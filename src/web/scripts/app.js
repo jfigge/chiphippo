@@ -212,6 +212,7 @@ async function init() {
   // Everything ON the desk (boards, chips, wires, placement, hover).
   let wireBtn = null;
   let swatchStrip = null;
+  let probeBtn = null;
   const onWireStateChange = ({ armed, color }) => {
     wireBtn?.classList.toggle("toolbar-btn--active", armed);
     wireBtn?.setAttribute("aria-pressed", String(armed));
@@ -221,11 +222,16 @@ async function init() {
         s.classList.toggle("wire-swatch--active", s.dataset.color === color),
       );
   };
+  const onProbeStateChange = ({ armed }) => {
+    probeBtn?.classList.toggle("toolbar-btn--active", armed);
+    probeBtn?.setAttribute("aria-pressed", String(armed));
+  };
   controller = new DeskController({
     viewport: desk,
     deskView,
     deskDoc,
     onWireStateChange,
+    onProbeStateChange,
   });
 
   const toolbar = document.getElementById("app-toolbar");
@@ -283,6 +289,17 @@ async function init() {
   );
   toolbar.append(wireBtn, swatchStrip);
   onWireStateChange({ armed: false, color: controller.wireColor });
+
+  // Probe tool: highlight a whole electrical net on hover (shortcut I).
+  probeBtn = el("button", {
+    class: "toolbar-btn",
+    type: "button",
+    text: "Probe",
+    title: "Connectivity probe — hover to highlight a net, click to pin (I)",
+    "aria-pressed": "false",
+    onClick: () => controller.toggleProbe(),
+  });
+  toolbar.append(probeBtn);
 
   // The empty-desk hint disappears once the desk has boards.
   const hint = desk.querySelector(".desk-hint");

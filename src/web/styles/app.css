@@ -269,6 +269,10 @@
   cursor: crosshair;
 }
 
+.desk-viewport--probing {
+  cursor: help;
+}
+
 .desk-hint {
   position: absolute;
   inset: 0;
@@ -628,6 +632,72 @@
 
 .hole-ring--illegal {
   border-color: var(--color-danger);
+}
+
+/* ── Connectivity inspector (Feature 70) ─────────────────────────────────── */
+/* One SVG in the overlay layer lighting up every point of one net. Token
+   1×1 box + overflow visible (a 0-size <svg> renders nothing). */
+.net-highlight {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.net-highlight-dot {
+  fill: var(--color-net-glow);
+  fill-opacity: 0.6;
+}
+
+.net-highlight-pin {
+  fill: none;
+  stroke: var(--color-net-glow);
+  stroke-width: 1.4;
+  stroke-opacity: 0.9;
+}
+
+.net-highlight-wire {
+  fill: none;
+  stroke: var(--color-net-glow);
+  stroke-width: 5;
+  stroke-opacity: 0.5;
+  stroke-linecap: round;
+}
+
+/* Pinned: brighter/thicker so a locked net reads as locked. */
+.net-highlight--pinned .net-highlight-dot {
+  fill-opacity: 0.85;
+}
+
+.net-highlight--pinned .net-highlight-pin {
+  stroke-width: 1.8;
+}
+
+.net-highlight--pinned .net-highlight-wire {
+  stroke-opacity: 0.7;
+}
+
+/* Net summary readout — a screen-fixed chip, bottom-left. */
+.net-status {
+  position: absolute;
+  left: var(--space-4);
+  bottom: var(--space-4);
+  max-width: 60%;
+  padding: var(--space-1) var(--space-3);
+  background: var(--color-surface-0);
+  border: 1px solid var(--color-net-glow);
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  user-select: none;
+}
+
+.net-status--pinned {
+  border-width: 2px;
+  font-weight: 600;
 }
 
 .desk-tooltip {

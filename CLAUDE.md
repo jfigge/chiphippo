@@ -41,8 +41,13 @@ contracts), discretes seating in ANY grid row via generalized
 `nextPsuId`) with addressable wireable terminals (`psu1.+`), `DiscreteView` /
 `PsuView` (interactive slider + momentary cap emitting
 `chiphippo:part-state`), LED color popover + `F`-to-flip ghost, and PSU
-volts via context menu. When a stage is finished, move its plan file into
-`features/done/`.
+volts via context menu; and the netlist & connectivity inspector (70) — the
+DOM-free engine package `scripts/sim/` (`union-find.js` + `netlist.js`
+partitioning every point into stable-id nets from board nodes / wires /
+component pins / active switch-button bridges), the `NetlistCache` (full
+rebuild on `chiphippo:doc-changed` / `chiphippo:part-state`), and the probe
+tool (shortcut `I`) with the `NetHighlight` overlay + net-summary readout.
+When a stage is finished, move its plan file into `features/done/`.
 
 ## Naming & identity
 
@@ -64,10 +69,11 @@ volts via context menu. When a stage is finished, move its plan file into
   `desk-store.js` + `migrations.js` for the desk document at `userData/desk.json`).
 - `src/web/` — **renderer** (Vanilla JS ES modules + plain CSS): the UI. Sandboxed;
   talks to main only through `window.chiphippo.*`. Entry points: `index.html` →
-  `scripts/app.js`. Pure DOM-free logic lives under `scripts/desk/` (camera math),
-  `scripts/model/` (breadboard specs/addressing/connectivity, `DeskDoc`,
-  `footprints.js`, `occupancy.js`), and later `scripts/sim/`; part metadata under
-  `scripts/catalog/` (pure data + integrity test — never chip-specific code
+  `scripts/app.js`. Pure DOM-free logic lives under `scripts/desk/` (camera + wire
+  path math), `scripts/model/` (breadboard specs/addressing/connectivity, `DeskDoc`,
+  `footprints.js`, `occupancy.js`), and `scripts/sim/` (the engine package:
+  `union-find.js`, `netlist.js` — imported unchanged by Feature 90); part metadata
+  under `scripts/catalog/` (pure data + integrity test — never part-specific code
   paths); thin view components under `scripts/components/`.
 - `src/web/fonts/` — bundled Inter variable font; never load fonts from a CDN.
 - `src/web/styles/` — `theme.css` (design tokens + reset) and `app.css` (shell). Use
@@ -119,6 +125,12 @@ Electron main process (src/app/main.js)
   `WIRE_COLORS` (a `--color-wire-<name>` token each; LEDs share these tokens).
   `occupancy.js` is the single collision authority (one hole/terminal, one
   lead).
+- **Netlist** (`sim/netlist.js`, Feature 70): a pure union-find partition of every
+  point into nets, keyed by the lexicographically smallest member address (stable
+  across rebuilds). Part state (switch position / button pressed) is an INPUT — a
+  switch's `internalBridges` conduct; chip pins are net MEMBERS, never conduits (the
+  simulator's job). Always a full rebuild, invalidated on `chiphippo:doc-changed`
+  and `chiphippo:part-state`. Electrical semantics arrive in Feature 90.
 - **Popups/menus**: `popup-manager.js` (ported from Port Hippo) is the only
   app-wide dialog/menu seam; build DOM with `dom.js` `el()`.
 

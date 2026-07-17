@@ -51,6 +51,7 @@ export class WireLayer {
   #doc;
   #onSelect;
   #onContextMenu;
+  #onHover;
   #selectedId = null;
   #preview = null; // preview path elements while the wire tool is pending
 
@@ -60,11 +61,14 @@ export class WireLayer {
    * @param {object} [callbacks]
    * @param {(id: string, e: MouseEvent) => void} [callbacks.onSelect]
    * @param {(id: string, e: MouseEvent) => void} [callbacks.onContextMenu]
+   * @param {(id: string|null) => void} [callbacks.onHover] - pointer enter
+   *   (wire id) / leave (null) over a wire (for the Feature 70 probe).
    */
-  constructor(layer, deskDoc, { onSelect, onContextMenu } = {}) {
+  constructor(layer, deskDoc, { onSelect, onContextMenu, onHover } = {}) {
     this.#doc = deskDoc;
     this.#onSelect = onSelect;
     this.#onContextMenu = onContextMenu;
+    this.#onHover = onHover;
     // NOTE: width/height 0 would DISABLE svg rendering per the SVG spec (and
     // percentages resolve against the zero-size layer anchor) — so give the
     // element a token 1×1 box and let CSS overflow:visible paint the wires.
@@ -144,6 +148,8 @@ export class WireLayer {
       group.addEventListener("contextmenu", (e) =>
         this.#onContextMenu?.(wire.id, e),
       );
+      group.addEventListener("pointerenter", () => this.#onHover?.(wire.id));
+      group.addEventListener("pointerleave", () => this.#onHover?.(null));
       this.#svg.append(group);
     }
     if (preview) this.#svg.append(preview);

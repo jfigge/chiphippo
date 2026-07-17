@@ -51,6 +51,7 @@
   --color-danger: #e07070; /* error */
 
   --color-desk-dot: #343434; /* desk pitch-grid dots */
+  --color-net-glow: #7fd0ff; /* connectivity-inspector highlight (Feature 70) */
 
   /* ── Breadboard palette (drawn boards — plastic tones) ───────────────── */
   --color-board-body: #d9d5c9; /* cream plastic slab */
@@ -138,6 +139,7 @@
     --color-warning: #9a6800;
     --color-danger: #b82020;
     --color-desk-dot: #c8c8c8;
+    --color-net-glow: #1f80c0;
     --color-board-body: #f2efe7;
     --color-board-edge: #c9c4b4;
     --color-board-trench: #e0dccf;
@@ -169,6 +171,7 @@
   --color-warning: #9a6800;
   --color-danger: #b82020;
   --color-desk-dot: #c8c8c8;
+  --color-net-glow: #1f80c0;
   --color-board-body: #f2efe7;
   --color-board-edge: #c9c4b4;
   --color-board-trench: #e0dccf;
@@ -201,6 +204,7 @@
   --color-warning: #d4b060;
   --color-danger: #e07070;
   --color-desk-dot: #343434;
+  --color-net-glow: #7fd0ff;
   --color-board-body: #d9d5c9;
   --color-board-edge: #b8b3a4;
   --color-board-trench: #c7c2b4;
