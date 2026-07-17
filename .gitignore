@@ -1,0 +1,26 @@
+# ── Build outputs ─────────────────────────────────────────────────────────────
+build/
+dist/
+data/
+
+# ── Node / npm ────────────────────────────────────────────────────────────────
+src/node_modules/
+src/npm-debug.log*
+.npm
+
+# ── macOS ─────────────────────────────────────────────────────────────────────
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# ── Editor / IDE ──────────────────────────────────────────────────────────────
+*.swp
+.vscode/
+
+# ── Electron builder cache ────────────────────────────────────────────────────
+.electron-builder-cache/
+
+# ── Local env files ───────────────────────────────────────────────────────────
+# Tracked templates live in *.env.example; the real files stay local.
+*.env
+!*.env.example

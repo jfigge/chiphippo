@@ -1,0 +1,184 @@
+/*
+ * Copyright 2026 Jason Figge
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/* theme.css — design tokens, reset, and global typography.
+   All colours/sizes are custom properties; components must use these tokens
+   rather than hardcoding values. */
+
+/* Inter variable font — bundled under src/web/fonts/ (never load from a CDN).
+   The opsz axis auto-tunes letterforms for the size; wght covers 100–900. */
+@font-face {
+  font-family: "Inter";
+  src: url("../fonts/Inter-VariableFont_opsz,wght.ttf") format("truetype");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  color-scheme: dark;
+
+  /* ── Palette (neutral charcoal grey — dark default) ──────────────────── */
+  --color-base: #1c1c1c; /* app background / desk */
+  --color-mantle: #161616; /* header / panel background */
+  --color-crust: #101010; /* deepest background */
+  --color-surface-0: #2a2a2a; /* panel background */
+  --color-surface-1: #383838; /* raised elements */
+  --color-overlay: #686868; /* borders / muted lines */
+
+  --color-text: #e8e8e8; /* primary text */
+  --color-subtext: #b0b0b0; /* secondary text */
+  --color-muted: #808080; /* de-emphasized text */
+
+  --color-accent: #d0d0d0; /* primary accent (monochrome) */
+  --color-accent-hover: #e0e0e0;
+  --color-success: #80c080; /* running / high logic level */
+  --color-info: #78a8d8; /* informational accent */
+  --color-warning: #d4b060; /* caution / conflict */
+  --color-danger: #e07070; /* error */
+
+  /* ── Typography ──────────────────────────────────────────────────────── */
+  --font-sans:
+    "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono:
+    ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono", Menlo, monospace;
+  --font-size: 13px;
+  --line-height: 1.5;
+
+  /* ── Spacing scale ───────────────────────────────────────────────────── */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  /* ── Radii & elevation ───────────────────────────────────────────────── */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --shadow-1: 0 1px 3px rgba(0, 0, 0, 0.4);
+
+  /* ── Layout ──────────────────────────────────────────────────────────── */
+  --header-height: 48px;
+  --control-height: 32px; /* text inputs, selects, and default buttons */
+}
+
+/* Light palette. Applied via the OS preference ONLY when the user hasn't
+   picked an explicit theme (`:not([data-theme])`), and via the explicit
+   `data-theme="light"` override (a later settings picker). The attribute
+   selector out-specifies the media query, so a chosen theme wins over the OS
+   in both directions. */
+@media (prefers-color-scheme: light) {
+  :root:not([data-theme]) {
+    color-scheme: light;
+    --color-base: #f4f4f4;
+    --color-mantle: #ebebeb;
+    --color-crust: #dedede;
+    --color-surface-0: #d2d2d2;
+    --color-surface-1: #c2c2c2;
+    --color-overlay: #828282;
+    --color-text: #1e1e1e;
+    --color-subtext: #484848;
+    --color-muted: #686868;
+    --color-accent: #383838;
+    --color-accent-hover: #202020;
+    --color-success: #2a7a2a;
+    --color-info: #3a6ea5;
+    --color-warning: #9a6800;
+    --color-danger: #b82020;
+    --shadow-1: 0 1px 3px rgba(0, 0, 0, 0.12);
+  }
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --color-base: #f4f4f4;
+  --color-mantle: #ebebeb;
+  --color-crust: #dedede;
+  --color-surface-0: #d2d2d2;
+  --color-surface-1: #c2c2c2;
+  --color-overlay: #828282;
+  --color-text: #1e1e1e;
+  --color-subtext: #484848;
+  --color-muted: #686868;
+  --color-accent: #383838;
+  --color-accent-hover: #202020;
+  --color-success: #2a7a2a;
+  --color-info: #3a6ea5;
+  --color-warning: #9a6800;
+  --color-danger: #b82020;
+  --shadow-1: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+/* Explicit dark override — same values as the :root default; present so a
+   chosen dark theme beats the OS light preference above. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-base: #1c1c1c;
+  --color-mantle: #161616;
+  --color-crust: #101010;
+  --color-surface-0: #2a2a2a;
+  --color-surface-1: #383838;
+  --color-overlay: #686868;
+  --color-text: #e8e8e8;
+  --color-subtext: #b0b0b0;
+  --color-muted: #808080;
+  --color-accent: #d0d0d0;
+  --color-accent-hover: #e0e0e0;
+  --color-success: #80c080;
+  --color-info: #78a8d8;
+  --color-warning: #d4b060;
+  --color-danger: #e07070;
+  --shadow-1: 0 1px 3px rgba(0, 0, 0, 0.4);
+}
+
+/* ── Minimal reset ───────────────────────────────────────────────────────── */
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: var(--font-size);
+  line-height: var(--line-height);
+  color: var(--color-text);
+  background: var(--color-base);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+button {
+  font: inherit;
+  color: inherit;
+  cursor: pointer;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}

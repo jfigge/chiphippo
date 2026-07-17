@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      CSP: only load scripts/styles/fonts from the same origin. The renderer
+      makes no network calls of its own — all I/O goes through the main process
+      over window.chiphippo.*.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="
+        default-src 'self';
+        script-src  'self';
+        style-src   'self' 'unsafe-inline';
+        font-src    'self';
+        img-src     'self' data:;
+      "
+    />
+    <title>Chip Hippo</title>
+    <link rel="icon" type="image/svg+xml" href="chiphippo-icon.svg" />
+
+    <!-- Design tokens + reset first, then the shell layout. -->
+    <link rel="stylesheet" href="styles/theme.css" />
+    <link rel="stylesheet" href="styles/app.css" />
+  </head>
+  <body>
+    <!-- app.js mounts the shell (header bar + desk viewport) here. -->
+    <div id="app"></div>
+
+    <script type="module" src="scripts/app.js"></script>
+  </body>
+</html>

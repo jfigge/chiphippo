@@ -1,0 +1,53 @@
+{
+  "name": "chiphippo",
+  "version": "0.1.0",
+  "description": "Design and simulate 74xx TTL logic circuits on virtual breadboards",
+  "homepage": "https://github.com/jfigge/chiphippo",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/jfigge/chiphippo.git"
+  },
+  "author": {
+    "name": "Jason Figge",
+    "email": "jason.figge@gmail.com"
+  },
+  "license": "Apache-2.0",
+  "main": "app/main.js",
+  "scripts": {
+    "start": "electron app/main.js",
+    "dev": "electron app/main.js --dev",
+    "fmt": "prettier --write \"web/**/*.{js,css,html}\" \"app/**/*.js\"",
+    "lint": "eslint \"web/scripts/**/*.js\" \"app/**/*.js\"",
+    "test": "node --test app/tests/"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.4",
+    "electron": "^42.1.0",
+    "electron-builder": "~26.8.1",
+    "eslint": "^9.39.4",
+    "globals": "^16.1.0",
+    "jsdom": "^27.0.1",
+    "prettier": "^3.3.3"
+  },
+  "dependencies": {},
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "build": {
+    "appId": "com.chiphippo.app",
+    "productName": "Chip Hippo",
+    "copyright": "Copyright © 2026 Jason Figge",
+    "artifactName": "Chip-Hippo-${version}-${arch}.${ext}",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "app/**/*",
+      "web/**/*",
+      "package.json"
+    ],
+    "mac": {
+      "category": "public.app-category.developer-tools"
+    }
+  }
+}

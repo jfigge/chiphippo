@@ -1,0 +1,9 @@
+Chip Hippo
+Copyright 2026 Jason Figge
+
+This product is licensed under the Apache License, Version 2.0 (see the LICENSE
+file in the root of this distribution).
+
+This software bundles third-party components, each distributed under its own
+license. Their copyright notices and license terms are retained within the
+respective files under src/node_modules/ (development and runtime dependencies).

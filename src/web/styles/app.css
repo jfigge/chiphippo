@@ -1,0 +1,95 @@
+/*
+ * Copyright 2026 Jason Figge
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/* app.css — the app shell: header bar above the full-bleed desk viewport.
+   Desk behaviour (pan/zoom camera, boards) arrives with Features 10–30. */
+
+#app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+/* ── Header ──────────────────────────────────────────────────────────────── */
+.app-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  height: var(--header-height);
+  padding: 0 var(--space-4);
+  background: var(--color-mantle);
+  border-bottom: 1px solid var(--color-crust);
+  flex: 0 0 auto;
+}
+
+.app-header-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.app-header-icon {
+  display: block;
+  user-select: none;
+}
+
+.app-logo {
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.app-subtitle {
+  color: var(--color-subtext);
+  font-size: 12px;
+}
+
+/* Empty toolbar slot — later stages mount desk tools here. Flexes to fill the
+   header so the meta block stays pinned to the right edge. */
+.app-header-toolbar {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.app-header-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.app-header-version {
+  color: var(--color-muted);
+  font-size: 11px;
+}
+
+/* ── Desk viewport ───────────────────────────────────────────────────────── */
+.desk-viewport {
+  flex: 1 1 auto;
+  display: grid;
+  place-items: center;
+  background: var(--color-base);
+  overflow: hidden;
+}
+
+.desk-hint {
+  color: var(--color-muted);
+  font-size: 14px;
+  user-select: none;
+}

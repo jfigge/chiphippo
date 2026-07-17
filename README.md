@@ -10,9 +10,10 @@ Chip Hippo is a native JavaScript / Node.js / Electron desktop app (no UI
 framework), sharing its engineering foundation with its siblings
 [Rest Hippo](../resthippo) and [Port Hippo](../porthippo).
 
-**Status: pre-scaffold.** The implementation plan lives in
-[`features/ROADMAP.md`](features/ROADMAP.md); stages are implemented in order,
-starting with `features/00-project-scaffold.md`.
+**Status: scaffold landed.** The implementation plan lives in
+[`features/ROADMAP.md`](features/ROADMAP.md); stages are implemented in order, and
+finished plans move to `features/done/`. Stage 00 (project scaffold & build system)
+is done — `make install && make debug` opens the app shell.
 
 ## License
 
