@@ -109,6 +109,14 @@ export class PalettePanel {
             [
               el("span", { class: "palette-item-id", text: def.id }),
               el("span", { class: "palette-item-title", text: def.title }),
+              // "sim-ready" badge for chips whose behavior is defined
+              // (Feature 80). Future waves light up automatically.
+              def.logic?.units?.length &&
+                el("span", {
+                  class: "palette-item-badge",
+                  text: "sim",
+                  title: "Behavior defined — ready for the simulator",
+                }),
             ],
           ),
         ),

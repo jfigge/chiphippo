@@ -46,8 +46,13 @@ DOM-free engine package `scripts/sim/` (`union-find.js` + `netlist.js`
 partitioning every point into stable-id nets from board nodes / wires /
 component pins / active switch-button bridges), the `NetlistCache` (full
 rebuild on `chiphippo:doc-changed` / `chiphippo:part-state`), and the probe
-tool (shortcut `I`) with the `NetHighlight` overlay + net-summary readout.
-When a stage is finished, move its plan file into `features/done/`.
+tool (shortcut `I`) with the `NetHighlight` overlay + net-summary readout;
+and the 74xx behavioral library (80) — `sim/levels.js` (H/L/Z/X vocabulary,
+"floating reads HIGH", ternary gate primitives), the ONE generic
+`sim/chip-eval.js` evaluator, `logic` blocks (data, never per-chip code) on
+all 12 gate defs, the exhaustive truth-table harness (468 combinations), and
+the palette "sim-ready" badge. When a stage is finished, move its plan file
+into `features/done/`.
 
 ## Naming & identity
 
@@ -131,6 +136,12 @@ Electron main process (src/app/main.js)
   switch's `internalBridges` conduct; chip pins are net MEMBERS, never conduits (the
   simulator's job). Always a full rebuild, invalidated on `chiphippo:doc-changed`
   and `chiphippo:part-state`. Electrical semantics arrive in Feature 90.
+- **Chip behavior** (`sim/levels.js` + `sim/chip-eval.js`, Feature 80): signal
+  levels H/L/Z/X (`asInput` = "floating reads HIGH"); each gate chip's `logic.units`
+  block is DATA the ONE generic `evaluate(def, pinLevels)` walks — **no per-chip
+  evaluator code**. To add a 74xx part, add data; if it can't be expressed, extend
+  the gate vocabulary in `chip-eval.js`, never fork it. Zero-delay, power-agnostic;
+  the truth-table harness enumerates every unit exhaustively.
 - **Popups/menus**: `popup-manager.js` (ported from Port Hippo) is the only
   app-wide dialog/menu seam; build DOM with `dom.js` `el()`.
 

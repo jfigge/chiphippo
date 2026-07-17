@@ -209,8 +209,22 @@
 }
 
 .palette-item-title {
+  flex: 1 1 auto;
   font-size: 12px;
   color: var(--color-subtext);
+}
+
+/* "sim-ready" badge (Feature 80) — a chip with defined behavior. */
+.palette-item-badge {
+  flex: 0 0 auto;
+  padding: 0 var(--space-1);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-1);
+  color: var(--color-success);
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .palette-empty {

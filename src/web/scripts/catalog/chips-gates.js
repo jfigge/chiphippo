@@ -14,13 +14,16 @@
  * limitations under the License.
  */
 
-// chips-gates.js — the combinational-gate wave of the 74xx catalog: METADATA
-// ONLY (identity, package, real pinouts); behavior lands in Feature 80. Pure
-// data — no chip-specific code paths anywhere. The catalog integrity test
-// validates every def (pin count matches the package, exactly one vcc + one
-// gnd at the standard corners, unique pin numbers/names).
+// chips-gates.js — the combinational-gate wave of the 74xx catalog: real
+// pinouts (Feature 40) AND behavior (Feature 80). Each def's `logic` block is
+// DATA the generic evaluator (sim/chip-eval.js) walks — never per-chip code.
+// A `logic` is `{ units: [{ fn, inputs: [pin…], output: pin, enable? }] }`
+// with `fn ∈ NAND | NOR | AND | OR | XOR | INV | BUF3`. Unit pin numbers must
+// match the `pins` table below (the catalog integrity test enforces it): the
+// units cover every input- and output-role pin exactly once.
 //
-// Pin roles: input | output | vcc | gnd | nc.
+// Behavior only — power (VCC/GND), timing, and damage are the engine's job
+// (Feature 90). The truth-table harness enumerates every unit exhaustively.
 
 /** Shorthand builders keep the defs readable; the data stays plain objects. */
 const pin = (n, name, role) => ({ n, name, role });
@@ -29,6 +32,16 @@ const output = (n, name) => pin(n, name, "output");
 const nc = (n) => pin(n, "NC", "nc");
 const gnd = (n) => pin(n, "GND", "gnd");
 const vcc = (n) => pin(n, "VCC", "vcc");
+
+/** A logic unit: a gate (`inputs → output`) or a tri-state buffer. */
+const unit = (fn, inputs, output) => ({ fn, inputs, output });
+/** A 74125-style tri-state buffer: `data` in, active-low `enable`, `output`. */
+const buf3 = (data, enable, output) => ({
+  fn: "BUF3",
+  inputs: [data],
+  enable,
+  output,
+});
 
 export const CHIPS_GATES = Object.freeze([
   {
@@ -53,6 +66,14 @@ export const CHIPS_GATES = Object.freeze([
       input(13, "4B"),
       vcc(14),
     ],
+    logic: {
+      units: [
+        unit("NAND", [1, 2], 3),
+        unit("NAND", [4, 5], 6),
+        unit("NAND", [9, 10], 8),
+        unit("NAND", [12, 13], 11),
+      ],
+    },
   },
   {
     id: "7402",
@@ -76,6 +97,15 @@ export const CHIPS_GATES = Object.freeze([
       output(13, "4Y"),
       vcc(14),
     ],
+    // NOR's outputs sit on the LOW pins — the unit wiring proves the order.
+    logic: {
+      units: [
+        unit("NOR", [2, 3], 1),
+        unit("NOR", [5, 6], 4),
+        unit("NOR", [8, 9], 10),
+        unit("NOR", [11, 12], 13),
+      ],
+    },
   },
   {
     id: "7404",
@@ -99,6 +129,16 @@ export const CHIPS_GATES = Object.freeze([
       input(13, "6A"),
       vcc(14),
     ],
+    logic: {
+      units: [
+        unit("INV", [1], 2),
+        unit("INV", [3], 4),
+        unit("INV", [5], 6),
+        unit("INV", [9], 8),
+        unit("INV", [11], 10),
+        unit("INV", [13], 12),
+      ],
+    },
   },
   {
     id: "7408",
@@ -122,6 +162,14 @@ export const CHIPS_GATES = Object.freeze([
       input(13, "4B"),
       vcc(14),
     ],
+    logic: {
+      units: [
+        unit("AND", [1, 2], 3),
+        unit("AND", [4, 5], 6),
+        unit("AND", [9, 10], 8),
+        unit("AND", [12, 13], 11),
+      ],
+    },
   },
   {
     id: "7410",
@@ -145,6 +193,13 @@ export const CHIPS_GATES = Object.freeze([
       input(13, "1C"),
       vcc(14),
     ],
+    logic: {
+      units: [
+        unit("NAND", [1, 2, 13], 12),
+        unit("NAND", [3, 4, 5], 6),
+        unit("NAND", [9, 10, 11], 8),
+      ],
+    },
   },
   {
     id: "7411",
@@ -168,6 +223,13 @@ export const CHIPS_GATES = Object.freeze([
       input(13, "1C"),
       vcc(14),
     ],
+    logic: {
+      units: [
+        unit("AND", [1, 2, 13], 12),
+        unit("AND", [3, 4, 5], 6),
+        unit("AND", [9, 10, 11], 8),
+      ],
+    },
   },
   {
     id: "7420",
@@ -191,6 +253,9 @@ export const CHIPS_GATES = Object.freeze([
       input(13, "2D"),
       vcc(14),
     ],
+    logic: {
+      units: [unit("NAND", [1, 2, 4, 5], 6), unit("NAND", [9, 10, 12, 13], 8)],
+    },
   },
   {
     id: "7427",
@@ -214,6 +279,13 @@ export const CHIPS_GATES = Object.freeze([
       input(13, "1C"),
       vcc(14),
     ],
+    logic: {
+      units: [
+        unit("NOR", [1, 2, 13], 12),
+        unit("NOR", [3, 4, 5], 6),
+        unit("NOR", [9, 10, 11], 8),
+      ],
+    },
   },
   {
     id: "7430",
@@ -237,6 +309,9 @@ export const CHIPS_GATES = Object.freeze([
       nc(13),
       vcc(14),
     ],
+    logic: {
+      units: [unit("NAND", [1, 2, 3, 4, 5, 6, 11, 12], 8)],
+    },
   },
   {
     id: "7432",
@@ -260,6 +335,14 @@ export const CHIPS_GATES = Object.freeze([
       input(13, "4B"),
       vcc(14),
     ],
+    logic: {
+      units: [
+        unit("OR", [1, 2], 3),
+        unit("OR", [4, 5], 6),
+        unit("OR", [9, 10], 8),
+        unit("OR", [12, 13], 11),
+      ],
+    },
   },
   {
     id: "7486",
@@ -283,6 +366,14 @@ export const CHIPS_GATES = Object.freeze([
       input(13, "4B"),
       vcc(14),
     ],
+    logic: {
+      units: [
+        unit("XOR", [1, 2], 3),
+        unit("XOR", [4, 5], 6),
+        unit("XOR", [9, 10], 8),
+        unit("XOR", [12, 13], 11),
+      ],
+    },
   },
   {
     id: "74125",
@@ -307,5 +398,10 @@ export const CHIPS_GATES = Object.freeze([
       input(13, "4G"),
       vcc(14),
     ],
+    // Each buffer drives its output only while its G (enable) is LOW; a HIGH
+    // (or floating → HIGH) enable puts the output in high-impedance (Z).
+    logic: {
+      units: [buf3(2, 1, 3), buf3(5, 4, 6), buf3(9, 10, 8), buf3(12, 13, 11)],
+    },
   },
 ]);

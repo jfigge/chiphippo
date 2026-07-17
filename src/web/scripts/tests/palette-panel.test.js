@@ -50,6 +50,23 @@ test("lists the whole catalog grouped by function; picks report the ref", () => 
   host.querySelector('.palette-item[data-ref="7486"]').click();
   assert.deepEqual(picked, ["7486"]);
   assert.ok(panel.element);
+
+  // "sim-ready" badge (Feature 80): every chip with behavior shows it; the
+  // discrete parts / PSU (no logic block) do not.
+  const badgeRef = (sel) =>
+    [...host.querySelectorAll(sel)].map(
+      (b) => b.closest(".palette-item").dataset.ref,
+    );
+  const badged = new Set(badgeRef(".palette-item-badge"));
+  for (const def of PALETTE_DEFS) {
+    assert.equal(
+      badged.has(def.id),
+      Boolean(def.logic?.units?.length),
+      `${def.id} badge`,
+    );
+  }
+  assert.ok(badged.has("7400"));
+  assert.ok(!badged.has("led"));
 });
 
 test("filter matches id, title, and blurb (case-insensitive)", () => {

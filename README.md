@@ -18,9 +18,10 @@ breadboards can be added, dragged, and deleted (every tie point addressable on
 hover), 74xx DIP chips, slide switches, push buttons, and LEDs from the searchable
 parts palette seat into the boards with full occupancy checking, power-supply
 bricks (3 V / 5 V / 12 V) sit on the desk with wireable `+`/`−` terminals, colored
-jumper wires connect any two free points — including across boards — and the
-connectivity probe highlights an entire electrical net on hover. Simulation is
-next.
+jumper wires connect any two free points — including across boards — the
+connectivity probe highlights an entire electrical net on hover, and every 74xx
+gate chip has correct TTL behavior (proven by exhaustive truth-table tests). The
+simulation engine that drives it all is next.
 
 ## License
 

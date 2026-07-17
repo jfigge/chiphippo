@@ -73,5 +73,43 @@ for (const def of CHIP_DEFS) {
     // Names unique among functional pins (NC may repeat).
     const names = def.pins.filter((p) => p.role !== "nc").map((p) => p.name);
     assert.equal(new Set(names).size, names.length, `${def.id} names`);
+
+    // ── Behavior (Feature 80): a complete, consistent logic block ──────────
+    assert.ok(def.logic?.units?.length, `${def.id} has no logic units`);
+    const pinRole = new Map(def.pins.map((p) => [p.n, p.role]));
+    const usedInputs = [];
+    const usedOutputs = [];
+    for (const unit of def.logic.units) {
+      const inPins = [...unit.inputs];
+      if (unit.enable != null) inPins.push(unit.enable);
+      for (const p of inPins) {
+        assert.equal(pinRole.get(p), "input", `${def.id} unit input pin ${p}`);
+        usedInputs.push(p);
+      }
+      assert.equal(
+        pinRole.get(unit.output),
+        "output",
+        `${def.id} unit output pin ${unit.output}`,
+      );
+      usedOutputs.push(unit.output);
+    }
+    // Every input-role pin is consumed exactly once; every output-role pin is
+    // driven exactly once (no pin double-used, none left dangling).
+    const inputPins = def.pins
+      .filter((p) => p.role === "input")
+      .map((p) => p.n);
+    const outputPins = def.pins
+      .filter((p) => p.role === "output")
+      .map((p) => p.n);
+    assert.deepEqual(
+      [...usedInputs].sort((a, b) => a - b),
+      [...inputPins].sort((a, b) => a - b),
+      `${def.id} input pins covered exactly once`,
+    );
+    assert.deepEqual(
+      [...usedOutputs].sort((a, b) => a - b),
+      [...outputPins].sort((a, b) => a - b),
+      `${def.id} output pins driven exactly once`,
+    );
   });
 }
