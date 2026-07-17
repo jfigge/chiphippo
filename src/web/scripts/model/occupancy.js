@@ -15,16 +15,16 @@
  */
 
 // occupancy.js — the app-wide collision authority: ONE hole holds at most one
-// lead. buildOccupancy() derives an address → occupant index from a desk
-// document; chip placement legality checks against it. Feature 50 adds wire
-// ends to the same index — never a second bookkeeping structure.
+// lead, whether it's a chip pin or a wire end. buildOccupancy() derives an
+// address → occupant index from a desk document; chip and wire placement
+// legality both check against it — never a second bookkeeping structure.
 //
 // Pure and DOM-free. Pin positions are always DERIVED (footprint + anchor),
 // never stored.
 
 import { chipDef } from "../catalog/index.js";
 import { allPinHoles } from "./footprints.js";
-import { formatAddress, parseHole } from "./breadboard.js";
+import { formatAddress, parseAddress, parseHole } from "./breadboard.js";
 
 const ANCHOR_RE = /^e([1-9]\d*)$/; // a chip anchor is pin 1's hole, row e
 
@@ -48,12 +48,12 @@ export function chipPinHoles(ref, anchor) {
 /**
  * Build the address → occupant index for a document. Occupants:
  *   { kind: "pin", componentId, pin }   — a seated chip pin
- *   (Feature 50 adds { kind: "wire", wireId, end }.)
+ *   { kind: "wire", wireId, end }       — a wire end ("from" | "to")
  *
- * Unresolvable components (unknown ref, malformed anchor) contribute
+ * Unresolvable entries (unknown ref, malformed anchor/address) contribute
  * nothing — normalizeDocument drops them on load anyway.
  *
- * @param {{ boards: Array, components: Array }} doc
+ * @param {{ boards: Array, components: Array, wires: Array }} doc
  * @returns {Map<string, object>}
  */
 export function buildOccupancy(doc) {
@@ -70,7 +70,39 @@ export function buildOccupancy(doc) {
       });
     }
   }
+  for (const wire of doc.wires ?? []) {
+    if (!wire || typeof wire !== "object") continue;
+    for (const end of ["from", "to"]) {
+      if (typeof wire[end] !== "string") continue;
+      map.set(wire[end], { kind: "wire", wireId: wire.id, end });
+    }
+  }
   return map;
+}
+
+/**
+ * Is `address` a real, unoccupied hole? True when it parses, its board
+ * exists, the hole exists on that board's type, and no lead sits in it.
+ *
+ * @param {{ boards: Array, components: Array, wires: Array }} doc
+ * @param {string} address - e.g. "bb1.j5"
+ */
+export function isFreeHole(doc, address) {
+  const parsed = parseAddress(address);
+  if (!parsed) return false;
+  const board = (doc.boards ?? []).find((b) => b.id === parsed.boardId);
+  if (!board) return false;
+  if (!parseHole(board.type, parsed.hole)) return false;
+  return !buildOccupancy(doc).has(address);
+}
+
+/**
+ * May a wire connect these two holes? Both ends must be free, real holes,
+ * and distinct (one hole holds one lead — a wire may still join two holes
+ * of the SAME internal node, which is harmless and real boards do it).
+ */
+export function canPlaceWire(doc, from, to) {
+  return from !== to && isFreeHole(doc, from) && isFreeHole(doc, to);
 }
 
 /**

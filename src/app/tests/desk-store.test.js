@@ -53,6 +53,7 @@ test("save → load round-trips a document across store instances", () => {
       wires: [],
       nextBoardId: 2,
       nextComponentId: 1,
+      nextWireId: 1,
     };
     store.save(doc);
     assert.deepEqual(new DeskStore(dir).load(), doc);
@@ -104,6 +105,7 @@ test("migrateDeskDocument: a current-version document passes through", () => {
     wires: [],
     nextBoardId: 5,
     nextComponentId: 3,
+    nextWireId: 2,
   };
   assert.deepEqual(migrateDeskDocument(doc), doc);
 });

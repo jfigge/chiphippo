@@ -33,14 +33,27 @@
 // never stored; occupancy.js is the single collision authority.
 
 import { BOARD_TYPES } from "./board-types.js";
-import { spec } from "./breadboard.js";
+import { parseAddress, parseHole, spec } from "./breadboard.js";
 import { chipDef } from "../catalog/index.js";
-import { canPlaceChip } from "./occupancy.js";
+import { canPlaceChip, canPlaceWire, isFreeHole } from "./occupancy.js";
 
 export const DOC_VERSION = 1;
 
+/** The fixed jumper-wire palette (theme.css defines a token per name). */
+export const WIRE_COLORS = Object.freeze([
+  "red",
+  "black",
+  "blue",
+  "green",
+  "yellow",
+  "orange",
+  "white",
+  "purple",
+]);
+
 const BOARD_ID_RE = /^bb([1-9]\d*)$/;
 const COMPONENT_ID_RE = /^c([1-9]\d*)$/;
+const WIRE_ID_RE = /^w([1-9]\d*)$/;
 
 function taggedError(message, code) {
   const err = new Error(message);
@@ -54,9 +67,10 @@ export function emptyDocument() {
     version: DOC_VERSION,
     boards: [],
     components: [],
-    wires: [], // reserved — Feature 50
+    wires: [],
     nextBoardId: 1,
     nextComponentId: 1,
+    nextWireId: 1,
   };
 }
 
@@ -116,7 +130,35 @@ export function normalizeDocument(raw) {
     });
   }
 
-  if (Array.isArray(raw.wires)) doc.wires = structuredClone(raw.wires);
+  // Wires: both endpoints must parse onto surviving boards' real holes and
+  // be distinct; junk colors fall back to the first palette entry.
+  let maxWireSeq = 0;
+  const wireIds = new Set();
+  const boardType = (boardId) =>
+    doc.boards.find((b) => b.id === boardId)?.type ?? null;
+  const validEndpoint = (address) => {
+    if (typeof address !== "string") return false;
+    const parsed = parseAddress(address);
+    if (!parsed) return false;
+    const type = boardType(parsed.boardId);
+    return type !== null && parseHole(type, parsed.hole) !== null;
+  };
+  const wires = Array.isArray(raw.wires) ? raw.wires : [];
+  for (const w of wires) {
+    if (!w || typeof w !== "object") continue;
+    const m = typeof w.id === "string" ? WIRE_ID_RE.exec(w.id) : null;
+    if (!m || wireIds.has(w.id)) continue;
+    if (!validEndpoint(w.from) || !validEndpoint(w.to)) continue;
+    if (w.from === w.to) continue;
+    wireIds.add(w.id);
+    maxWireSeq = Math.max(maxWireSeq, Number(m[1]));
+    doc.wires.push({
+      id: w.id,
+      from: w.from,
+      to: w.to,
+      color: WIRE_COLORS.includes(w.color) ? w.color : WIRE_COLORS[0],
+    });
+  }
 
   const storedNextBoard =
     Number.isInteger(raw.nextBoardId) && raw.nextBoardId > 0
@@ -128,6 +170,9 @@ export function normalizeDocument(raw) {
       ? raw.nextComponentId
       : 1;
   doc.nextComponentId = Math.max(storedNextComp, maxCompSeq + 1);
+  const storedNextWire =
+    Number.isInteger(raw.nextWireId) && raw.nextWireId > 0 ? raw.nextWireId : 1;
+  doc.nextWireId = Math.max(storedNextWire, maxWireSeq + 1);
   return doc;
 }
 
@@ -230,14 +275,25 @@ export class DeskDoc {
   }
 
   /**
-   * Remove a board AND everything seated on it (the UI confirms first when
-   * components would go with it). Throws NOT_FOUND.
+   * Remove a board AND everything attached to it — seated components and
+   * every wire with an endpoint on it (the UI confirms first when anything
+   * would go with it). Throws NOT_FOUND.
    */
   removeBoard(id) {
     const i = this.#doc.boards.findIndex((b) => b.id === id);
     if (i === -1) throw taggedError(`no board ${id}`, "NOT_FOUND");
     this.#doc.boards.splice(i, 1);
     this.#doc.components = this.#doc.components.filter((c) => c.board !== id);
+    this.#doc.wires = this.#doc.wires.filter(
+      (w) => !this.#wireTouchesBoard(w, id),
+    );
+  }
+
+  #wireTouchesBoard(wire, boardId) {
+    return (
+      parseAddress(wire.from)?.boardId === boardId ||
+      parseAddress(wire.to)?.boardId === boardId
+    );
   }
 
   // ── Components (chips now; discrete parts in Feature 60) ────────────────
@@ -326,6 +382,74 @@ export class DeskDoc {
     const i = this.#doc.components.findIndex((c) => c.id === id);
     if (i === -1) throw taggedError(`no component ${id}`, "NOT_FOUND");
     this.#doc.components.splice(i, 1);
+  }
+
+  // ── Wires (Feature 50) ───────────────────────────────────────────────────
+
+  /** Copies of the wires on the desk. */
+  get wires() {
+    return this.#doc.wires.map((w) => ({ ...w }));
+  }
+
+  /** A copy of one wire, or null. */
+  getWire(id) {
+    const w = this.#doc.wires.find((x) => x.id === id);
+    return w ? { ...w } : null;
+  }
+
+  /** Copies of the wires with an endpoint on one board. */
+  wiresOnBoard(boardId) {
+    return this.#doc.wires
+      .filter((w) => this.#wireTouchesBoard(w, boardId))
+      .map((w) => ({ ...w }));
+  }
+
+  /** Is `address` a real, unoccupied hole? (occupancy delegation) */
+  isHoleFree(address) {
+    return isFreeHole(this.#doc, address);
+  }
+
+  /** May a wire connect these holes? (occupancy delegation) */
+  canPlaceWire(from, to) {
+    return canPlaceWire(this.#doc, from, to);
+  }
+
+  /**
+   * Connect two free holes. Throws INVALID_ARG (bad color) /
+   * ILLEGAL_PLACEMENT (either end unreal, occupied, or from === to).
+   * Returns a copy of the new wire.
+   */
+  addWire({ from, to, color = WIRE_COLORS[0] }) {
+    if (!WIRE_COLORS.includes(color)) {
+      throw taggedError(`unknown wire color: ${color}`, "INVALID_ARG");
+    }
+    if (!canPlaceWire(this.#doc, from, to)) {
+      throw taggedError(
+        `a wire cannot connect ${from} → ${to}`,
+        "ILLEGAL_PLACEMENT",
+      );
+    }
+    const wire = { id: `w${this.#doc.nextWireId++}`, from, to, color };
+    this.#doc.wires.push(wire);
+    return { ...wire };
+  }
+
+  /** Change a wire's color. Throws NOT_FOUND / INVALID_ARG. */
+  recolorWire(id, color) {
+    const wire = this.#doc.wires.find((w) => w.id === id);
+    if (!wire) throw taggedError(`no wire ${id}`, "NOT_FOUND");
+    if (!WIRE_COLORS.includes(color)) {
+      throw taggedError(`unknown wire color: ${color}`, "INVALID_ARG");
+    }
+    wire.color = color;
+    return { ...wire };
+  }
+
+  /** Remove a wire. Throws NOT_FOUND. */
+  removeWire(id) {
+    const i = this.#doc.wires.findIndex((w) => w.id === id);
+    if (i === -1) throw taggedError(`no wire ${id}`, "NOT_FOUND");
+    this.#doc.wires.splice(i, 1);
   }
 
   /** The serializable document (a deep copy — safe to hand to IPC). */

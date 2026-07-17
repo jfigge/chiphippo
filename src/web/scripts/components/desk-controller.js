@@ -37,9 +37,11 @@ import {
 } from "../model/breadboard.js";
 import { chipPinHoles } from "../model/occupancy.js";
 import { packageSpec } from "../model/footprints.js";
+import { WIRE_COLORS } from "../model/desk-doc.js";
 import { chipDef } from "../catalog/index.js";
 import { BreadboardView, buildBoardSvg } from "./breadboard-view.js";
 import { ChipView, buildChipSvg, chipBox } from "./chip-view.js";
+import { WireLayer } from "./wire-layer.js";
 
 /** Pointer travel (px) below which a press stays a click, not a drag/pan. */
 const DRAG_THRESHOLD = 4;
@@ -69,13 +71,17 @@ export class DeskController {
   #layers;
   #views = new Map(); // boardId → BreadboardView
   #chipViews = new Map(); // componentId → ChipView
-  #selected = null; // { kind: "board"|"chip", id } | null
+  #wireLayer;
+  #selected = null; // { kind: "board"|"chip"|"wire", id } | null
   // Active interaction: null, or
   //   { kind: "place", type, ghost, pos, legal }
   //   { kind: "place-chip", ref, ghost, board, anchor, legal }
   //   { kind: "drag", id, … }            (board drag)
   //   { kind: "drag-chip", id, … }
+  //   { kind: "wire", from, hover }      (wire tool armed)
   #mode = null;
+  #wireColorIndex = 0; // next color the wire tool commits (auto-cycles)
+  #onWireStateChange;
   #lastDown = null; // last viewport pointerdown client pos (click-vs-pan)
   #hoverKey = null; // hover identity currently shown or pending
   #hoverTimer = null;
@@ -88,11 +94,15 @@ export class DeskController {
    * @param {object} opts.deskView - DeskView (or a stub with `surface`,
    *   `camera`, and `worldFromEvent(e)`).
    * @param {import('../model/desk-doc.js').DeskDoc} opts.deskDoc
+   * @param {(state: {armed: boolean, color: string}) => void}
+   *   [opts.onWireStateChange] - wire-tool arm/disarm/color changes (drives
+   *   the toolbar button + swatch strip).
    */
-  constructor({ viewport, deskView, deskDoc }) {
+  constructor({ viewport, deskView, deskDoc, onWireStateChange }) {
     this.#viewport = viewport;
     this.#deskView = deskView;
     this.#doc = deskDoc;
+    this.#onWireStateChange = onWireStateChange;
 
     // Layer order (established for every later stage): boards under parts
     // under wires under the interaction overlay. All are zero-size anchors —
@@ -116,6 +126,12 @@ export class DeskController {
     this.#tooltip = el("div", { class: "desk-tooltip", hidden: true });
     this.#layers.overlay.append(this.#ring, this.#tooltip);
 
+    // All wires render into one SVG in the wires layer.
+    this.#wireLayer = new WireLayer(this.#layers.wires, deskDoc, {
+      onSelect: (id) => this.selectWire(id),
+      onContextMenu: (id, e) => this.#onWireContextMenu(id, e),
+    });
+
     for (const board of this.#doc.boards) this.#mountBoard(board);
     for (const component of this.#doc.components) this.#mountChip(component);
 
@@ -123,6 +139,12 @@ export class DeskController {
     viewport.addEventListener("pointermove", this.#onViewportPointerMove);
     viewport.addEventListener("pointerleave", () => this.#hideHover());
     viewport.addEventListener("click", this.#onViewportClick);
+    // Right-click while wiring cancels the pending wire (Esc-equivalent).
+    viewport.addEventListener("contextmenu", (e) => {
+      if (this.#mode?.kind !== "wire") return;
+      e.preventDefault();
+      this.#clearPendingWire();
+    });
   }
 
   get selectedId() {
@@ -133,22 +155,22 @@ export class DeskController {
     return this.#mode?.kind === "place" || this.#mode?.kind === "place-chip";
   }
 
-  // ── Selection (boards and chips share one slot) ─────────────────────────
+  // ── Selection (boards, chips, and wires share one slot) ─────────────────
 
-  #selectedView() {
-    if (!this.#selected) return null;
-    return this.#selected.kind === "board"
-      ? this.#views.get(this.#selected.id)
-      : this.#chipViews.get(this.#selected.id);
+  #applySelection(sel, on) {
+    if (!sel) return;
+    if (sel.kind === "board") this.#views.get(sel.id)?.setSelected(on);
+    else if (sel.kind === "chip") this.#chipViews.get(sel.id)?.setSelected(on);
+    else this.#wireLayer.setSelected(on ? sel.id : null);
   }
 
   #select(sel) {
     if (this.#selected?.id === sel?.id && this.#selected?.kind === sel?.kind) {
       return;
     }
-    this.#selectedView()?.setSelected(false);
+    this.#applySelection(this.#selected, false);
     this.#selected = sel;
-    this.#selectedView()?.setSelected(true);
+    this.#applySelection(this.#selected, true);
   }
 
   selectBoard(id) {
@@ -157,6 +179,11 @@ export class DeskController {
 
   selectComponent(id) {
     this.#select(this.#chipViews.has(id) ? { kind: "chip", id } : null);
+  }
+
+  selectWire(id) {
+    if (this.#mode) return; // wiring/placing/dragging — clicks aren't selects
+    this.#select(this.#doc.getWire(id) ? { kind: "wire", id } : null);
   }
 
   deselect() {
@@ -169,6 +196,7 @@ export class DeskController {
   armPlacement(type) {
     spec(type); // validate before touching state
     this.cancelPlacement();
+    this.disarmWireTool();
     this.deselect();
     this.#hideHover();
     const ghost = el("div", { class: "board-ghost", hidden: true });
@@ -186,6 +214,7 @@ export class DeskController {
       throw err;
     }
     this.cancelPlacement();
+    this.disarmWireTool();
     this.deselect();
     this.#hideHover();
     const ghost = el("div", { class: "part-ghost", hidden: true });
@@ -291,6 +320,170 @@ export class DeskController {
     return null;
   }
 
+  // ── Wire tool (Feature 50) ───────────────────────────────────────────────
+
+  get wireToolArmed() {
+    return this.#mode?.kind === "wire";
+  }
+
+  /** The color the next committed wire gets. */
+  get wireColor() {
+    return WIRE_COLORS[this.#wireColorIndex];
+  }
+
+  /** Pin the next wire color (the toolbar swatch strip). */
+  setWireColor(color) {
+    const i = WIRE_COLORS.indexOf(color);
+    if (i === -1) {
+      const err = new Error(`unknown wire color: ${color}`);
+      err.code = "INVALID_ARG";
+      throw err;
+    }
+    this.#wireColorIndex = i;
+    this.#notifyWireState();
+  }
+
+  /** Arm click-click wiring; a second call to toggle goes through app.js. */
+  armWireTool() {
+    if (this.wireToolArmed) return;
+    this.cancelPlacement();
+    this.deselect();
+    this.#hideHover();
+    this.#mode = { kind: "wire", from: null, hover: null };
+    this.#viewport.classList.add("desk-viewport--wiring");
+    this.#notifyWireState();
+  }
+
+  disarmWireTool() {
+    if (!this.wireToolArmed) return;
+    this.#clearPendingWire();
+    this.#mode = null;
+    this.#viewport.classList.remove("desk-viewport--wiring");
+    this.#ring.hidden = true;
+    this.#ring.classList.remove("hole-ring--illegal");
+    this.#notifyWireState();
+  }
+
+  toggleWireTool() {
+    if (this.wireToolArmed) this.disarmWireTool();
+    else this.armWireTool();
+  }
+
+  #clearPendingWire() {
+    if (this.#mode?.kind !== "wire") return;
+    this.#mode.from = null;
+    this.#wireLayer.setPreview(null);
+  }
+
+  #notifyWireState() {
+    this.#onWireStateChange?.({
+      armed: this.wireToolArmed,
+      color: this.wireColor,
+    });
+  }
+
+  /** World px of a hole address (for the rubber-band anchor). */
+  #addressWorld(address) {
+    const parsed = /^([^.]+)\.(.+)$/.exec(address);
+    const board = this.#doc.getBoard(parsed[1]);
+    const pos = holePosition(board.type, parsed[2]);
+    return {
+      x: (board.x + pos.x) * PX_PER_UNIT,
+      y: (board.y + pos.y) * PX_PER_UNIT,
+    };
+  }
+
+  /** Wire-mode pointermove: instant ring with legality + the rubber band. */
+  #trackWire(e) {
+    const m = this.#mode;
+    const world = this.#deskView.worldFromEvent(e);
+    const hit = this.#holeAtWorld(world);
+    if (hit) {
+      const address = formatAddress(hit.board.id, hit.hole);
+      const free = this.#doc.isHoleFree(address);
+      const legal = free && address !== m.from;
+      m.hover = { address, legal, x: hit.x, y: hit.y };
+      const r = RING_RADIUS * PX_PER_UNIT;
+      this.#ring.style.left = `${hit.x * PX_PER_UNIT - r}px`;
+      this.#ring.style.top = `${hit.y * PX_PER_UNIT - r}px`;
+      this.#ring.classList.toggle("hole-ring--illegal", !legal);
+      this.#ring.hidden = false;
+    } else {
+      m.hover = null;
+      this.#ring.hidden = true;
+    }
+    if (m.from) {
+      this.#wireLayer.setPreview({
+        from: this.#addressWorld(m.from),
+        to: hit
+          ? { x: hit.x * PX_PER_UNIT, y: hit.y * PX_PER_UNIT }
+          : { x: world.x * PX_PER_UNIT, y: world.y * PX_PER_UNIT },
+        color: this.wireColor,
+        // Danger tint only over an actual occupied/self hole — over empty
+        // desk the band stays its color (a click there just does nothing).
+        legal: hit ? m.hover.legal : true,
+      });
+    }
+  }
+
+  /** Wire-mode click: anchor on the first free hole, commit on the second. */
+  #commitWireClick(e) {
+    const m = this.#mode;
+    this.#trackWire(e); // legality/hover at the exact click point
+    if (!m.hover?.legal) return;
+    if (!m.from) {
+      m.from = m.hover.address;
+      return;
+    }
+    const wire = this.#doc.addWire({
+      from: m.from,
+      to: m.hover.address,
+      color: this.wireColor,
+    });
+    this.#wireColorIndex = (this.#wireColorIndex + 1) % WIRE_COLORS.length;
+    this.#clearPendingWire(); // re-arm fresh — chain-friendly
+    this.#emitDocChanged();
+    this.#notifyWireState();
+    return wire;
+  }
+
+  /** Remove a wire; clears its selection. */
+  removeWire(id) {
+    this.#doc.removeWire(id);
+    if (this.#selected?.kind === "wire" && this.#selected.id === id) {
+      this.#selected = null;
+      this.#wireLayer.setSelected(null);
+    }
+    this.#emitDocChanged();
+  }
+
+  /** Recolor a wire (context menu). */
+  recolorWire(id, color) {
+    this.#doc.recolorWire(id, color);
+    this.#emitDocChanged();
+  }
+
+  #onWireContextMenu(id, e) {
+    e.preventDefault();
+    if (this.#mode) return;
+    this.selectWire(id);
+    PopupManager.menu({
+      x: e.clientX,
+      y: e.clientY,
+      items: [
+        {
+          label: "Remove wire",
+          danger: true,
+          onSelect: () => this.removeWire(id),
+        },
+        ...WIRE_COLORS.map((color) => ({
+          label: `Color: ${color}`,
+          onSelect: () => this.recolorWire(id, color),
+        })),
+      ],
+    });
+  }
+
   // ── Document mutations (all flow through desk-doc) ─────────────────────
 
   /** Add + mount + select a board; emits chiphippo:doc-changed. */
@@ -317,21 +510,24 @@ export class DeskController {
   }
 
   /**
-   * Remove a board. With parts seated on it, asks for confirmation first
-   * (the document cascade removes them too).
+   * Remove a board. With parts seated on it or wires attached, asks for
+   * confirmation first (the document cascade removes them too).
    */
   removeBoard(id) {
-    const seated = this.#doc.componentsOnBoard(id);
-    if (seated.length === 0) {
+    const parts = this.#doc.componentsOnBoard(id).length;
+    const wires = this.#doc.wiresOnBoard(id).length;
+    if (parts === 0 && wires === 0) {
       this.#doRemoveBoard(id);
       return;
     }
-    const n = seated.length;
+    const bits = [];
+    if (parts > 0) bits.push(`${parts} part${parts === 1 ? "" : "s"}`);
+    if (wires > 0) bits.push(`${wires} wire${wires === 1 ? "" : "s"}`);
     PopupManager.confirm({
       title: "Remove board?",
       message:
-        `${id} has ${n} part${n === 1 ? "" : "s"} seated on it — ` +
-        `removing the board removes ${n === 1 ? "it" : "them"} too.`,
+        `${id} has ${bits.join(" and ")} attached — ` +
+        `removing the board removes them too.`,
       confirmLabel: "Remove",
       confirmClass: "btn--danger",
       onConfirm: () => this.#doRemoveBoard(id),
@@ -344,12 +540,18 @@ export class DeskController {
       this.#chipViews.delete(comp.id);
       if (this.#selected?.id === comp.id) this.#selected = null;
     }
-    this.#doc.removeBoard(id); // cascades seated components
+    const cascadedWires = new Set(this.#doc.wiresOnBoard(id).map((w) => w.id));
+    this.#doc.removeBoard(id); // cascades seated components + attached wires
     this.#views.get(id)?.remove();
     this.#views.delete(id);
-    if (this.#selected?.id === id) this.#selected = null;
+    if (
+      this.#selected?.id === id ||
+      (this.#selected?.kind === "wire" && cascadedWires.has(this.#selected.id))
+    ) {
+      this.#selected = null;
+    }
     this.#hideHover();
-    this.#emitDocChanged();
+    this.#emitDocChanged(); // WireLayer re-renders from this
   }
 
   /** Remove a chip and its view; emits chiphippo:doc-changed. */
@@ -371,6 +573,12 @@ export class DeskController {
       return false;
     }
     if (e.key === "Escape") {
+      if (this.wireToolArmed) {
+        // First Esc cancels a pending wire; the next disarms the tool.
+        if (this.#mode.from) this.#clearPendingWire();
+        else this.disarmWireTool();
+        return true;
+      }
       if (this.placementArmed) {
         this.cancelPlacement();
         return true;
@@ -381,9 +589,19 @@ export class DeskController {
       }
       return false;
     }
+    if (
+      (e.key === "w" || e.key === "W") &&
+      !e.metaKey &&
+      !e.ctrlKey &&
+      !e.altKey
+    ) {
+      this.toggleWireTool();
+      return true;
+    }
     if ((e.key === "Delete" || e.key === "Backspace") && this.#selected) {
       const { kind, id } = this.#selected;
       if (kind === "chip") this.removeComponent(id);
+      else if (kind === "wire") this.removeWire(id);
       else this.removeBoard(id);
       return true;
     }
@@ -483,6 +701,8 @@ export class DeskController {
     view?.setPosition(d.pos.x, d.pos.y);
     view?.setIllegal(!d.legal);
     this.#repositionBoardChips(d.id, d.pos.x, d.pos.y);
+    // Wires with an endpoint on this board follow it live.
+    this.#wireLayer.render(new Map([[d.id, d.pos]]));
   };
 
   #onBoardPointerUp = (e) => {
@@ -511,10 +731,11 @@ export class DeskController {
     if (!cancelled && d.legal && moved) {
       this.#doc.moveBoard(d.id, d.pos.x, d.pos.y);
       this.#repositionBoardChips(d.id, d.pos.x, d.pos.y);
-      this.#emitDocChanged();
+      this.#emitDocChanged(); // WireLayer re-renders from this
     } else {
       view?.setPosition(d.origin.x, d.origin.y); // illegal drop → revert
       this.#repositionBoardChips(d.id, d.origin.x, d.origin.y);
+      this.#wireLayer.render();
     }
   };
 
@@ -670,13 +891,17 @@ export class DeskController {
 
   #onViewportClick = (e) => {
     const m = this.#mode;
-    if (!this.placementArmed) return;
+    if (!this.placementArmed && m?.kind !== "wire") return;
     // A pan that started while armed still ends in a click — suppress it.
     if (
       this.#lastDown &&
       Math.hypot(e.clientX - this.#lastDown.x, e.clientY - this.#lastDown.y) >=
         DRAG_THRESHOLD
     ) {
+      return;
+    }
+    if (m.kind === "wire") {
+      this.#commitWireClick(e);
       return;
     }
     this.#trackGhost(e); // ensure the seat reflects the click point
@@ -693,6 +918,10 @@ export class DeskController {
     const m = this.#mode;
     if (m?.kind === "place" || m?.kind === "place-chip") {
       this.#trackGhost(e);
+      return;
+    }
+    if (m?.kind === "wire") {
+      this.#trackWire(e);
       return;
     }
     if (m) return; // dragging — hover stays hidden
@@ -715,10 +944,8 @@ export class DeskController {
 
   // ── Hover addressing (holes + chip pins, pure math) ─────────────────────
 
-  /** Chip pins take precedence (they sit above the board), then holes. */
-  #hitTest(world) {
-    const pinHit = this.#pinHitTest(world);
-    if (pinHit) return pinHit;
+  /** The board + hole under a world point (boards never overlap). */
+  #holeAtWorld(world) {
     for (const board of this.#doc.boards) {
       const s = spec(board.type);
       if (
@@ -731,15 +958,24 @@ export class DeskController {
       }
       const hole = holeAt(board.type, world.x - board.x, world.y - board.y);
       if (!hole) return null;
-      // A hole under a seated pin reads as that pin (covered by the chip).
-      return {
-        key: formatAddress(board.id, hole),
-        label: formatAddress(board.id, hole),
-        x: board.x + holePosition(board.type, hole).x,
-        y: board.y + holePosition(board.type, hole).y,
-      };
+      const pos = holePosition(board.type, hole);
+      return { board, hole, x: board.x + pos.x, y: board.y + pos.y };
     }
     return null;
+  }
+
+  /** Chip pins take precedence (they sit above the board), then holes. */
+  #hitTest(world) {
+    const pinHit = this.#pinHitTest(world);
+    if (pinHit) return pinHit;
+    const hit = this.#holeAtWorld(world);
+    if (!hit) return null;
+    return {
+      key: formatAddress(hit.board.id, hit.hole),
+      label: formatAddress(hit.board.id, hit.hole),
+      x: hit.x,
+      y: hit.y,
+    };
   }
 
   #pinHitTest(world) {

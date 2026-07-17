@@ -102,6 +102,27 @@
   border-color: var(--color-accent);
 }
 
+/* Next-wire-color swatch strip beside the Wire tool button. */
+.wire-swatches {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+.wire-swatch {
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: 1px solid var(--color-overlay);
+  border-radius: 50%;
+  background: var(--wire-color);
+}
+
+.wire-swatch--active {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
 /* Standalone toolbar buttons (Parts toggle) share the split-button look. */
 .app-header-toolbar > .toolbar-btn {
   border-radius: var(--radius-sm);
@@ -441,6 +462,68 @@
   border-radius: 4px;
 }
 
+/* ── Wires (Feature 50): one SVG in .layer-wires ─────────────────────────── */
+.desk-viewport--wiring {
+  cursor: crosshair;
+}
+
+.wire-svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: visible;
+}
+
+/* Widened invisible hit stroke — the one sanctioned per-item event target. */
+.wire-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 10;
+  pointer-events: stroke;
+}
+
+/* While the wire tool is armed, wires must not swallow hole clicks. */
+.desk-viewport--wiring .wire-hit {
+  pointer-events: none;
+}
+
+.wire-outline {
+  fill: none;
+  stroke: var(--color-wire-outline);
+  stroke-width: 4;
+  stroke-linecap: round;
+  pointer-events: none;
+}
+
+.wire-core {
+  fill: none;
+  stroke: var(--wire-color);
+  stroke-width: 2.4;
+  stroke-linecap: round;
+  pointer-events: none;
+}
+
+.wire-cap {
+  fill: var(--wire-color);
+  stroke: var(--color-wire-outline);
+  stroke-width: 0.8;
+  pointer-events: none;
+}
+
+.wire--selected .wire-outline {
+  stroke: var(--color-accent);
+  stroke-width: 5;
+}
+
+/* Rubber-band preview while a wire is pending. */
+.wire-preview {
+  opacity: 0.75;
+}
+
+.wire-preview--illegal .wire-core {
+  stroke: var(--color-danger);
+}
+
 /* ── Hover addressing (ring + tooltip in the overlay layer) ─────────────── */
 .hole-ring {
   position: absolute;
@@ -448,6 +531,10 @@
   height: 9px;
   border: 1px solid var(--color-info);
   border-radius: 50%;
+}
+
+.hole-ring--illegal {
+  border-color: var(--color-danger);
 }
 
 .desk-tooltip {

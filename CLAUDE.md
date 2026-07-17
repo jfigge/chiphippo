@@ -28,7 +28,12 @@ add-flow ghost, select/drag/delete, hover addressing), ported popup manager; and
 the component framework & DIP chips (40) — `footprints.js` (DIP-14/16/20
 derivation), `occupancy.js` (the single collision authority), the data-driven
 12-chip 74xx catalog (`catalog/`), desk-doc component ops with `c<n>` ids, the
-searchable palette panel, and `chip-view.js` (drawn DIPs with pin hover).
+searchable palette panel, and `chip-view.js` (drawn DIPs with pin hover); and
+wires (50) — `{id, from, to, color}` with `w<n>` ids and address endpoints in
+the shared occupancy index, the pure `desk/wire-path.js` sag math, `WireLayer`
+(one SVG, outline+core+caps, the sanctioned per-wire hit-stroke exception),
+the click-click wire tool (shortcut W, chaining, color cycling + toolbar
+swatches), cross-board wires riding board drags, and cascade-on-board-delete.
 When a stage is finished, move its plan file into `features/done/`.
 
 ## Naming & identity
@@ -84,15 +89,22 @@ Electron main process (src/app/main.js)
 ```
 
 - **Desk surface layers** (inside `.desk-surface`, established in Feature 30):
-  `.layer-boards` → `.layer-parts` (chips) → `.layer-wires` (50) →
+  `.layer-boards` → `.layer-parts` (chips) → `.layer-wires` (one shared SVG) →
   `.layer-overlay` (ghosts, hover ring, tooltips — pointer-inert). Boards and
   chips are one static inline SVG each; **no per-hole or per-pin DOM nodes,
   listeners, or ids** — all hole/pin interaction is `holeAt()` / derived-pin math
-  from pointer coordinates. Pan/zoom must never rebuild or re-lay-out surface
-  children (transform-only).
+  from pointer coordinates. The ONE sanctioned per-item event exception: each
+  wire's invisible widened hit stroke (`pointer-events: stroke`) — idiomatic SVG
+  beats hand-rolled curve-distance math. Pan/zoom must never rebuild or
+  re-lay-out surface children (transform-only); wires re-render only on doc
+  changes or live board drags (positions passed as overrides). NOTE: an `<svg>`
+  with width/height 0 renders NOTHING per the SVG spec — zero-size anchors need
+  a token 1×1 box + overflow: visible.
 - **Components**: `{ id, kind, ref, board, anchor, params }` with `c<n>` ids; pin
-  positions are always DERIVED (footprint + anchor), never stored; `occupancy.js`
-  is the single collision authority (one hole, one lead — wires join it in 50).
+  positions are always DERIVED (footprint + anchor), never stored. **Wires**:
+  `{ id, from, to, color }` with `w<n>` ids, `from`/`to` hole ADDRESSES (never
+  pixels), colors from `WIRE_COLORS` (a `--color-wire-<name>` token each).
+  `occupancy.js` is the single collision authority (one hole, one lead).
 - **Popups/menus**: `popup-manager.js` (ported from Port Hippo) is the only
   app-wide dialog/menu seam; build DOM with `dom.js` `el()`.
 

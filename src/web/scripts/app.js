@@ -28,7 +28,7 @@ import { DeskHud } from "./components/desk-hud.js";
 import { DeskController } from "./components/desk-controller.js";
 import { BoardToolbar } from "./components/board-toolbar.js";
 import { PalettePanel } from "./components/palette-panel.js";
-import { DeskDoc } from "./model/desk-doc.js";
+import { DeskDoc, WIRE_COLORS } from "./model/desk-doc.js";
 
 /** How long after the last camera change to persist the viewport. */
 const VIEWPORT_SAVE_DEBOUNCE_MS = 500;
@@ -192,8 +192,24 @@ async function init() {
     },
   });
 
-  // Everything ON the desk (boards, chips, placement, hover addressing).
-  controller = new DeskController({ viewport: desk, deskView, deskDoc });
+  // Everything ON the desk (boards, chips, wires, placement, hover).
+  let wireBtn = null;
+  let swatchStrip = null;
+  const onWireStateChange = ({ armed, color }) => {
+    wireBtn?.classList.toggle("toolbar-btn--active", armed);
+    wireBtn?.setAttribute("aria-pressed", String(armed));
+    swatchStrip
+      ?.querySelectorAll(".wire-swatch")
+      .forEach((s) =>
+        s.classList.toggle("wire-swatch--active", s.dataset.color === color),
+      );
+  };
+  controller = new DeskController({
+    viewport: desk,
+    deskView,
+    deskDoc,
+    onWireStateChange,
+  });
 
   const toolbar = document.getElementById("app-toolbar");
   const partsBtn = el("button", {
@@ -218,6 +234,38 @@ async function init() {
   new BoardToolbar(toolbar, {
     onAddBoard: (type) => controller.armPlacement(type),
   });
+
+  // Wire tool: toggle button (shortcut W) + the next-color swatch strip.
+  wireBtn = el("button", {
+    class: "toolbar-btn",
+    type: "button",
+    text: "Wire",
+    title: "Wire tool — click two free holes to connect them (W)",
+    "aria-pressed": "false",
+    onClick: () => controller.toggleWireTool(),
+  });
+  swatchStrip = el(
+    "div",
+    { class: "wire-swatches", "aria-label": "Next wire color" },
+    WIRE_COLORS.map((color) => {
+      const swatch = el("button", {
+        class: "wire-swatch",
+        type: "button",
+        title: `Wire color: ${color}`,
+        "aria-label": `Wire color: ${color}`,
+        dataset: { color },
+        onClick: () => {
+          controller.setWireColor(color);
+          controller.armWireTool();
+        },
+      });
+      // Custom properties need setProperty (Object.assign can't set them).
+      swatch.style.setProperty("--wire-color", `var(--color-wire-${color})`);
+      return swatch;
+    }),
+  );
+  toolbar.append(wireBtn, swatchStrip);
+  onWireStateChange({ armed: false, color: controller.wireColor });
 
   // The empty-desk hint disappears once the desk has boards.
   const hint = desk.querySelector(".desk-hint");

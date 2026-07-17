@@ -22,7 +22,9 @@ import assert from "node:assert/strict";
 import {
   buildOccupancy,
   canPlaceChip,
+  canPlaceWire,
   chipPinHoles,
+  isFreeHole,
 } from "../model/occupancy.js";
 
 function docWith({ boards, components = [] }) {
@@ -147,5 +149,61 @@ test("canPlaceChip: occupied holes block; ignoreId frees a chip's own pins", () 
   assert.equal(
     canPlaceChip(doc, { ref: "7400", board: "bb1", anchor: "e6" }),
     false,
+  );
+});
+
+// ── Wire ends in the shared index (Feature 50) ───────────────────────────────
+
+test("buildOccupancy: wire ends occupy alongside pins", () => {
+  const doc = docWith({
+    boards: [FULL],
+    components: [
+      { id: "c1", kind: "chip", ref: "7400", board: "bb1", anchor: "e5" },
+    ],
+  });
+  doc.wires = [{ id: "w1", from: "bb1.a1", to: "bb1.t+3", color: "red" }];
+  const occ = buildOccupancy(doc);
+  assert.equal(occ.size, 16); // 14 pins + 2 wire ends
+  assert.deepEqual(occ.get("bb1.a1"), {
+    kind: "wire",
+    wireId: "w1",
+    end: "from",
+  });
+  assert.deepEqual(occ.get("bb1.t+3"), {
+    kind: "wire",
+    wireId: "w1",
+    end: "to",
+  });
+});
+
+test("isFreeHole: real + unoccupied only", () => {
+  const doc = docWith({ boards: [FULL] });
+  doc.wires = [{ id: "w1", from: "bb1.a1", to: "bb1.a5", color: "red" }];
+  assert.equal(isFreeHole(doc, "bb1.a2"), true);
+  assert.equal(isFreeHole(doc, "bb1.a1"), false); // wire end
+  assert.equal(isFreeHole(doc, "bb1.a99"), false); // no such hole
+  assert.equal(isFreeHole(doc, "bb9.a1"), false); // no such board
+  assert.equal(isFreeHole(doc, "junk"), false);
+});
+
+test("canPlaceWire: free + distinct endpoints", () => {
+  const doc = docWith({ boards: [FULL] });
+  doc.wires = [{ id: "w1", from: "bb1.a1", to: "bb1.a5", color: "red" }];
+  assert.equal(canPlaceWire(doc, "bb1.b1", "bb1.b5"), true);
+  assert.equal(canPlaceWire(doc, "bb1.a1", "bb1.b5"), false); // occupied
+  assert.equal(canPlaceWire(doc, "bb1.b1", "bb1.b1"), false); // same hole
+});
+
+test("wire ends block chip placement through the shared index", () => {
+  const doc = docWith({ boards: [FULL] });
+  doc.wires = [{ id: "w1", from: "bb1.e8", to: "bb1.a1", color: "red" }];
+  // A 7400 at e5 needs e5..e11 — e8 is a wire end.
+  assert.equal(
+    canPlaceChip(doc, { ref: "7400", board: "bb1", anchor: "e5" }),
+    false,
+  );
+  assert.equal(
+    canPlaceChip(doc, { ref: "7400", board: "bb1", anchor: "e20" }),
+    true,
   );
 });

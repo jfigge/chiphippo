@@ -34,6 +34,7 @@ test("a fresh DeskDoc serializes to the empty document shape", () => {
     wires: [],
     nextBoardId: 1,
     nextComponentId: 1,
+    nextWireId: 1,
   });
   assert.deepEqual(new DeskDoc(null).toJSON(), emptyDocument());
 });
@@ -319,4 +320,106 @@ test("canPlaceChip mirrors occupancy through the document", () => {
   assert.equal(doc.canPlaceChip("7404", "bb1", "e8"), false);
   assert.equal(doc.canPlaceChip("7404", "bb1", "e12"), true);
   assert.equal(doc.canPlaceChip("7400", "bb1", "e6", { ignoreId: "c1" }), true);
+});
+
+// ── Wires (Feature 50) ───────────────────────────────────────────────────────
+
+test("addWire: connects two free holes with a fresh w<n> id", () => {
+  const doc = docWithFull();
+  const wire = doc.addWire({ from: "bb1.a1", to: "bb1.t+3", color: "blue" });
+  assert.deepEqual(wire, {
+    id: "w1",
+    from: "bb1.a1",
+    to: "bb1.t+3",
+    color: "blue",
+  });
+  assert.equal(doc.addWire({ from: "bb1.a2", to: "bb1.a6" }).id, "w2");
+  assert.equal(doc.wires.length, 2);
+  // Both endpoints are now occupied.
+  assert.equal(doc.isHoleFree("bb1.a1"), false);
+  assert.equal(doc.isHoleFree("bb1.t+3"), false);
+});
+
+test("addWire: rejects occupied/self/unreal endpoints and junk colors", () => {
+  const doc = docWithFull();
+  doc.addComponent({ kind: "chip", ref: "7400", board: "bb1", anchor: "e5" });
+  doc.addWire({ from: "bb1.a1", to: "bb1.a5" });
+  // A chip pin's hole…
+  assert.throws(() => doc.addWire({ from: "bb1.e5", to: "bb1.b1" }), {
+    code: "ILLEGAL_PLACEMENT",
+  });
+  // …an existing wire end…
+  assert.throws(() => doc.addWire({ from: "bb1.a1", to: "bb1.b1" }), {
+    code: "ILLEGAL_PLACEMENT",
+  });
+  // …the same hole twice…
+  assert.throws(() => doc.addWire({ from: "bb1.b1", to: "bb1.b1" }), {
+    code: "ILLEGAL_PLACEMENT",
+  });
+  // …a hole that doesn't exist / a board that doesn't exist…
+  assert.throws(() => doc.addWire({ from: "bb1.a99", to: "bb1.b1" }), {
+    code: "ILLEGAL_PLACEMENT",
+  });
+  assert.throws(() => doc.addWire({ from: "bb9.a1", to: "bb1.b1" }), {
+    code: "ILLEGAL_PLACEMENT",
+  });
+  // …and a color outside the palette.
+  assert.throws(
+    () => doc.addWire({ from: "bb1.b1", to: "bb1.b5", color: "cyan" }),
+    { code: "INVALID_ARG" },
+  );
+});
+
+test("self-wires within one internal node are allowed (a1 → b1)", () => {
+  const doc = docWithFull();
+  const wire = doc.addWire({ from: "bb1.a1", to: "bb1.b1" });
+  assert.equal(wire.id, "w1"); // same node c1L — harmless, real boards do it
+});
+
+test("recolorWire / removeWire; ids never reused across reload", () => {
+  const doc = docWithFull();
+  doc.addWire({ from: "bb1.a1", to: "bb1.a5" });
+  assert.equal(doc.recolorWire("w1", "purple").color, "purple");
+  assert.throws(() => doc.recolorWire("w1", "cyan"), { code: "INVALID_ARG" });
+  assert.throws(() => doc.recolorWire("w9", "red"), { code: "NOT_FOUND" });
+
+  doc.removeWire("w1");
+  assert.deepEqual(doc.wires, []);
+  assert.equal(doc.isHoleFree("bb1.a1"), true); // hole freed
+  assert.throws(() => doc.removeWire("w1"), { code: "NOT_FOUND" });
+
+  const reloaded = new DeskDoc(doc.toJSON());
+  assert.equal(reloaded.addWire({ from: "bb1.a1", to: "bb1.a5" }).id, "w2");
+});
+
+test("removeBoard cascades wires touching it (either endpoint)", () => {
+  const doc = docWithFull();
+  doc.addBoard("tiny", 0, 30); // bb2
+  doc.addWire({ from: "bb1.a1", to: "bb2.a1" }); // cross-board
+  doc.addWire({ from: "bb2.a3", to: "bb2.a7" }); // wholly on bb2
+  doc.addWire({ from: "bb1.a5", to: "bb1.a9" }); // wholly on bb1
+  assert.equal(doc.wiresOnBoard("bb2").length, 2);
+  doc.removeBoard("bb2");
+  assert.deepEqual(
+    doc.wires.map((w) => w.id),
+    ["w3"],
+  );
+});
+
+test("normalizeDocument: junk wires dropped, junk colors coerced", () => {
+  const doc = normalizeDocument({
+    boards: [{ id: "bb1", type: "tiny", x: 0, y: 0 }],
+    wires: [
+      { id: "w2", from: "bb1.a1", to: "bb1.a5", color: "cyan" }, // color coerced
+      { id: "w2", from: "bb1.b1", to: "bb1.b5", color: "red" }, // dup id
+      { id: "x1", from: "bb1.c1", to: "bb1.c5", color: "red" }, // bad id
+      { id: "w3", from: "bb1.a1", to: "bb1.a1", color: "red" }, // self hole
+      { id: "w4", from: "bb9.a1", to: "bb1.d5", color: "red" }, // dangling board
+      { id: "w5", from: "bb1.t+1", to: "bb1.d5", color: "red" }, // Tiny has no rails
+    ],
+  });
+  assert.deepEqual(doc.wires, [
+    { id: "w2", from: "bb1.a1", to: "bb1.a5", color: "red" },
+  ]);
+  assert.equal(doc.nextWireId, 3);
 });

@@ -37,6 +37,7 @@ function defaultDeskDocument() {
     wires: [],
     nextBoardId: 1,
     nextComponentId: 1,
+    nextWireId: 1,
   };
 }
 

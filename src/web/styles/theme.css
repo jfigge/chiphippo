@@ -67,6 +67,17 @@
   --color-chip-leg: #9aa0a8; /* tinned legs */
   --color-chip-label: #d8d8dc; /* printed part number + pin-1 dot */
 
+  /* ── Jumper-wire palette (Feature 50 — one token per WIRE_COLORS name) ─ */
+  --color-wire-red: #d04a4a;
+  --color-wire-black: #26262a;
+  --color-wire-blue: #4a6fd0;
+  --color-wire-green: #4aa04a;
+  --color-wire-yellow: #d0b04a;
+  --color-wire-orange: #d0804a;
+  --color-wire-white: #e8e8e8;
+  --color-wire-purple: #9a5ad0;
+  --color-wire-outline: rgba(0, 0, 0, 0.5); /* darker under-stroke */
+
   /* ── Typography ──────────────────────────────────────────────────────── */
   --font-sans:
     "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -125,6 +136,8 @@
     --color-board-label: #97917f;
     --color-rail-plus: #c04545;
     --color-rail-minus: #4568c0;
+    --color-wire-white: #d4d4d4; /* keep white leads visible on light desks */
+    --color-wire-outline: rgba(0, 0, 0, 0.35);
     --shadow-1: 0 1px 3px rgba(0, 0, 0, 0.12);
   }
 }
@@ -154,6 +167,8 @@
   --color-board-label: #97917f;
   --color-rail-plus: #c04545;
   --color-rail-minus: #4568c0;
+  --color-wire-white: #d4d4d4;
+  --color-wire-outline: rgba(0, 0, 0, 0.35);
   --shadow-1: 0 1px 3px rgba(0, 0, 0, 0.12);
 }
 
@@ -184,6 +199,8 @@
   --color-board-label: #8a8577;
   --color-rail-plus: #c05050;
   --color-rail-minus: #5070c0;
+  --color-wire-white: #e8e8e8;
+  --color-wire-outline: rgba(0, 0, 0, 0.5);
   --shadow-1: 0 1px 3px rgba(0, 0, 0, 0.4);
 }
 
