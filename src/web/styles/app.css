@@ -107,6 +107,11 @@
   cursor: default;
 }
 
+/* A hidden transport button must collapse (the flex display would show it). */
+.toolbar-btn[hidden] {
+  display: none;
+}
+
 /* Run/Stop toggle (Feature 90): green to run, red while running. */
 .toolbar-btn--run {
   margin-left: var(--space-3);
@@ -558,6 +563,63 @@
 }
 
 .part-psu-terminal-glyph {
+  fill: var(--color-psu-badge);
+  font-family: var(--font-mono);
+  font-size: 0.7px;
+  user-select: none;
+  pointer-events: none;
+}
+
+/* ── Clock source brick (Feature 100) ────────────────────────────────────── */
+.part-clock-body {
+  fill: var(--color-psu-body);
+  stroke: var(--color-part-inset);
+  stroke-width: 0.08;
+}
+
+.part-clock-badge {
+  fill: var(--color-psu-badge);
+  font-family: var(--font-mono);
+  font-size: 1.1px;
+  font-weight: 600;
+  user-select: none;
+}
+
+.part-clock-wave {
+  fill: none;
+  stroke: var(--color-psu-badge);
+  stroke-width: 0.14;
+  stroke-linejoin: round;
+  opacity: 0.65;
+}
+
+/* Pulse lamp: dim until the output goes HIGH, then bright with a glow. */
+.part-clock-lamp {
+  fill: var(--color-part-inset);
+  stroke: var(--color-part-inset);
+  stroke-width: 0.05;
+}
+
+.part-clock--high .part-clock-lamp {
+  fill: var(--color-sim-high);
+  filter: drop-shadow(0 0 0.5px var(--color-sim-high))
+    drop-shadow(0 0 0.9px var(--color-sim-high));
+}
+
+.part-clock-terminal {
+  stroke: var(--color-part-inset);
+  stroke-width: 0.06;
+}
+
+.part-clock-terminal--out {
+  fill: var(--color-wire-orange);
+}
+
+.part-clock-terminal--gnd {
+  fill: var(--color-wire-black);
+}
+
+.part-clock-terminal-glyph {
   fill: var(--color-psu-badge);
   font-family: var(--font-mono);
   font-size: 0.7px;

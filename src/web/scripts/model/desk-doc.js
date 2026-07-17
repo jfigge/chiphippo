@@ -54,7 +54,14 @@ export const WIRE_COLORS = Object.freeze([
 const BOARD_ID_RE = /^bb([1-9]\d*)$/;
 const COMPONENT_ID_RE = /^c([1-9]\d*)$/;
 const PSU_ID_RE = /^psu([1-9]\d*)$/;
+const CLOCK_ID_RE = /^clk([1-9]\d*)$/;
 const WIRE_ID_RE = /^w([1-9]\d*)$/;
+
+/** Desk-level bricks (no board): kind → { id regex, id prefix, next counter }. */
+const BRICKS = Object.freeze({
+  psu: { re: PSU_ID_RE, prefix: "psu", counter: "nextPsuId" },
+  clock: { re: CLOCK_ID_RE, prefix: "clk", counter: "nextClockId" },
+});
 
 /** Params coerced through the def's own contract (chips have none). */
 function normalizeParams(def, raw) {
@@ -77,6 +84,7 @@ export function emptyDocument() {
     nextBoardId: 1,
     nextComponentId: 1,
     nextPsuId: 1,
+    nextClockId: 1,
     nextWireId: 1,
   };
 }
@@ -112,22 +120,23 @@ export function normalizeDocument(raw) {
   }
 
   let maxCompSeq = 0;
-  let maxPsuSeq = 0;
+  const maxBrickSeq = { psu: 0, clock: 0 };
   const compIds = new Set();
   const components = Array.isArray(raw.components) ? raw.components : [];
   for (const c of components) {
     if (!c || typeof c !== "object" || compIds.has(c.id)) continue;
     const def = partDef(c.ref);
     if (!def) continue;
-    if (c.kind === "psu" && def.kind === "psu") {
-      const m = typeof c.id === "string" ? PSU_ID_RE.exec(c.id) : null;
+    const brick = BRICKS[c.kind];
+    if (brick && def.kind === c.kind) {
+      const m = typeof c.id === "string" ? brick.re.exec(c.id) : null;
       if (!m) continue;
       if (!Number.isFinite(c.x) || !Number.isFinite(c.y)) continue;
       compIds.add(c.id);
-      maxPsuSeq = Math.max(maxPsuSeq, Number(m[1]));
+      maxBrickSeq[c.kind] = Math.max(maxBrickSeq[c.kind], Number(m[1]));
       doc.components.push({
         id: c.id,
-        kind: "psu",
+        kind: c.kind,
         ref: c.ref,
         x: Math.round(c.x),
         y: Math.round(c.y),
@@ -199,7 +208,12 @@ export function normalizeDocument(raw) {
   doc.nextComponentId = Math.max(storedNextComp, maxCompSeq + 1);
   const storedNextPsu =
     Number.isInteger(raw.nextPsuId) && raw.nextPsuId > 0 ? raw.nextPsuId : 1;
-  doc.nextPsuId = Math.max(storedNextPsu, maxPsuSeq + 1);
+  doc.nextPsuId = Math.max(storedNextPsu, maxBrickSeq.psu + 1);
+  const storedNextClock =
+    Number.isInteger(raw.nextClockId) && raw.nextClockId > 0
+      ? raw.nextClockId
+      : 1;
+  doc.nextClockId = Math.max(storedNextClock, maxBrickSeq.clock + 1);
   const storedNextWire =
     Number.isInteger(raw.nextWireId) && raw.nextWireId > 0 ? raw.nextWireId : 1;
   doc.nextWireId = Math.max(storedNextWire, maxWireSeq + 1);
@@ -240,10 +254,12 @@ export class DeskDoc {
     return b ? { ...b } : null;
   }
 
-  /** The desk rectangles of every PSU brick (from the catalog def size). */
-  #psuRects({ ignoreId = null } = {}) {
+  /** The desk rectangles of every brick (PSU, clock) from its def size. */
+  #brickRects({ ignoreId = null } = {}) {
     return this.#doc.components
-      .filter((c) => c.kind === "psu" && c.id !== ignoreId)
+      .filter(
+        (c) => c.board == null && c.id !== ignoreId && partDef(c.ref)?.size,
+      )
       .map((c) => {
         const { width, height } = partDef(c.ref).size;
         return { x: c.x, y: c.y, width, height };
@@ -266,21 +282,31 @@ export class DeskDoc {
     return (
       this.#doc.boards.every(
         (b) => b.id === ignoreId || !rectsOverlap(rect, outlineRect(b)),
-      ) && this.#psuRects().every((r) => !rectsOverlap(rect, r))
+      ) && this.#brickRects().every((r) => !rectsOverlap(rect, r))
     );
   }
 
   /**
-   * Would a PSU brick fit at (x, y) (after integer snapping) without
-   * covering a board or another PSU?
+   * Would a brick (`ref` sizing) fit at (x, y) — after integer snapping —
+   * without covering a board or another brick?
    */
-  canPlacePsu(x, y, { ignoreId = null } = {}) {
-    const { width, height } = partDef("psu").size;
+  canPlaceBrick(ref, x, y, { ignoreId = null } = {}) {
+    const { width, height } = partDef(ref).size;
     const rect = { x: Math.round(x), y: Math.round(y), width, height };
     return (
       this.#doc.boards.every((b) => !rectsOverlap(rect, outlineRect(b))) &&
-      this.#psuRects({ ignoreId }).every((r) => !rectsOverlap(rect, r))
+      this.#brickRects({ ignoreId }).every((r) => !rectsOverlap(rect, r))
     );
+  }
+
+  /** Would a PSU fit at (x, y)? (brick overlap check) */
+  canPlacePsu(x, y, opts) {
+    return this.canPlaceBrick("psu", x, y, opts);
+  }
+
+  /** Would a clock fit at (x, y)? (brick overlap check) */
+  canPlaceClock(x, y, opts) {
+    return this.canPlaceBrick("clock", x, y, opts);
   }
 
   /**
@@ -466,59 +492,83 @@ export class DeskDoc {
     const i = this.#doc.components.findIndex((c) => c.id === id);
     if (i === -1) throw taggedError(`no component ${id}`, "NOT_FOUND");
     const [removed] = this.#doc.components.splice(i, 1);
-    if (removed.kind === "psu") {
+    if (removed.board == null) {
+      // A desk-level brick (PSU, clock) takes its attached wires with it.
       this.#doc.wires = this.#doc.wires.filter(
         (w) => !this.#wireTouches(w, id),
       );
     }
   }
 
-  // ── PSU bricks (desk-level, Feature 60) ──────────────────────────────────
+  // ── Desk-level bricks: PSU + clock (Feature 60 / 100) ─────────────────────
 
   /**
-   * Drop a PSU brick on the desk (snapped to the pitch lattice). Throws
-   * INVALID_ARG / OVERLAP. Returns a copy.
+   * Drop a brick (`kind` ∈ psu | clock) on the desk, snapped to the lattice.
+   * Throws INVALID_KIND / INVALID_ARG / OVERLAP. Returns a copy.
    */
-  addPsu(x, y, params = {}) {
+  addBrick(kind, x, y, params = {}) {
+    const brick = BRICKS[kind];
+    if (!brick)
+      throw taggedError(`unsupported brick kind: ${kind}`, "INVALID_KIND");
     if (!Number.isFinite(x) || !Number.isFinite(y)) {
-      throw taggedError("psu position must be finite", "INVALID_ARG");
+      throw taggedError("brick position must be finite", "INVALID_ARG");
     }
-    if (!this.canPlacePsu(x, y)) {
+    if (!this.canPlaceBrick(kind, x, y)) {
       throw taggedError(
-        `a psu at ${Math.round(x)},${Math.round(y)} covers a board or psu`,
+        `a ${kind} at ${Math.round(x)},${Math.round(y)} covers a board or brick`,
         "OVERLAP",
       );
     }
-    const psu = {
-      id: `psu${this.#doc.nextPsuId++}`,
-      kind: "psu",
-      ref: "psu",
+    const component = {
+      id: `${brick.prefix}${this.#doc[brick.counter]++}`,
+      kind,
+      ref: kind,
       x: Math.round(x),
       y: Math.round(y),
-      params: normalizeParams(partDef("psu"), params),
+      params: normalizeParams(partDef(kind), params),
     };
-    this.#doc.components.push(psu);
-    return { ...psu };
+    this.#doc.components.push(component);
+    return { ...component };
   }
 
-  /** Move a PSU brick. Throws NOT_FOUND / INVALID_ARG / OVERLAP. */
-  movePsu(id, x, y) {
-    const psu = this.#doc.components.find(
-      (c) => c.id === id && c.kind === "psu",
+  /** Drop a PSU brick (kind "psu"). */
+  addPsu(x, y, params = {}) {
+    return this.addBrick("psu", x, y, params);
+  }
+
+  /** Drop a clock source (kind "clock"). */
+  addClock(x, y, params = {}) {
+    return this.addBrick("clock", x, y, params);
+  }
+
+  /** Move a desk-level brick. Throws NOT_FOUND / INVALID_ARG / OVERLAP. */
+  moveBrick(id, x, y) {
+    const brick = this.#doc.components.find(
+      (c) => c.id === id && c.board == null && BRICKS[c.kind],
     );
-    if (!psu) throw taggedError(`no psu ${id}`, "NOT_FOUND");
+    if (!brick) throw taggedError(`no brick ${id}`, "NOT_FOUND");
     if (!Number.isFinite(x) || !Number.isFinite(y)) {
-      throw taggedError("psu position must be finite", "INVALID_ARG");
+      throw taggedError("brick position must be finite", "INVALID_ARG");
     }
-    if (!this.canPlacePsu(x, y, { ignoreId: id })) {
+    if (!this.canPlaceBrick(brick.kind, x, y, { ignoreId: id })) {
       throw taggedError(
         `moving ${id} to ${Math.round(x)},${Math.round(y)} covers something`,
         "OVERLAP",
       );
     }
-    psu.x = Math.round(x);
-    psu.y = Math.round(y);
-    return { ...psu };
+    brick.x = Math.round(x);
+    brick.y = Math.round(y);
+    return { ...brick };
+  }
+
+  /** Move a PSU brick (back-compat name). */
+  movePsu(id, x, y) {
+    return this.moveBrick(id, x, y);
+  }
+
+  /** Move a clock source. */
+  moveClock(id, x, y) {
+    return this.moveBrick(id, x, y);
   }
 
   // ── Wires (Feature 50) ───────────────────────────────────────────────────

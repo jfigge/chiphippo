@@ -28,7 +28,7 @@ import { DeskHud } from "./components/desk-hud.js";
 import { DeskController } from "./components/desk-controller.js";
 import { BoardToolbar } from "./components/board-toolbar.js";
 import { PalettePanel } from "./components/palette-panel.js";
-import { SimController } from "./components/sim-controller.js";
+import { SimController, SPEEDS } from "./components/sim-controller.js";
 import { NotificationStack } from "./components/notification-stack.js";
 import { PopupManager } from "./popup-manager.js";
 import { DeskDoc, WIRE_COLORS } from "./model/desk-doc.js";
@@ -39,6 +39,9 @@ const VIEWPORT_SAVE_DEBOUNCE_MS = 500;
 
 /** How long after the last document change to persist the desk. */
 const DOC_SAVE_DEBOUNCE_MS = 1000;
+
+/** Speed-selector labels (keyed by the SimController multiplier). */
+const SPEED_LABELS = { 0.25: "×¼", 1: "×1", 4: "×4" };
 
 function buildHeader() {
   const header = document.createElement("header");
@@ -261,6 +264,7 @@ async function init() {
     onWireStateChange,
     onProbeStateChange,
     onReplaceChip: (id) => sim?.replaceChip(id),
+    onClockToggle: (id) => sim?.manualToggle(id),
   });
 
   const toolbar = document.getElementById("app-toolbar");
@@ -330,10 +334,10 @@ async function init() {
   });
   toolbar.append(probeBtn);
 
-  // ── Simulation (Feature 90): Run/Stop + the notification stack ──────────
+  // ── Simulation transport (Feature 90/100): Run/Stop, Pause, Step, speed ──
   const notifications = new NotificationStack(document.body);
 
-  // The Run/Stop toggle sits apart from the edit tools (right of the strip).
+  // The transport cluster sits apart from the edit tools (right of the strip).
   const runBtn = el("button", {
     class: "toolbar-btn toolbar-btn--run",
     type: "button",
@@ -342,10 +346,38 @@ async function init() {
     "aria-pressed": "false",
     onClick: () => sim.toggle(),
   });
-  toolbar.append(runBtn);
+  const pauseBtn = el("button", {
+    class: "toolbar-btn toolbar-btn--transport",
+    type: "button",
+    text: "⏸ Pause",
+    title: "Pause / resume the clock",
+    hidden: true,
+    onClick: () => sim.togglePause(),
+  });
+  const stepBtn = el("button", {
+    class: "toolbar-btn toolbar-btn--transport",
+    type: "button",
+    text: "⇥ Step",
+    title: "Advance one clock half-period",
+    hidden: true,
+    onClick: () => sim.step(),
+  });
+  const speedBtn = el("button", {
+    class: "toolbar-btn toolbar-btn--transport",
+    type: "button",
+    text: "×1",
+    title: "Clock speed (click to cycle ¼ / 1 / 4)",
+    hidden: true,
+    onClick: () => {
+      const i = (SPEEDS.indexOf(sim.speed) + 1) % SPEEDS.length;
+      sim.setSpeed(SPEEDS[i]);
+      speedBtn.textContent = SPEED_LABELS[SPEEDS[i]];
+    },
+  });
+  toolbar.append(runBtn, pauseBtn, stepBtn, speedBtn);
 
   // Buttons that edit topology are disabled while the circuit runs; the probe
-  // and the Run/Stop toggle stay live. The Add-board split lives in its own
+  // and the transport controls stay live. The Add-board split lives in its own
   // wrapper, so gather every editing button by element.
   const editButtons = () => [
     partsBtn,
@@ -353,17 +385,20 @@ async function init() {
     ...swatchStrip.querySelectorAll(".wire-swatch"),
     ...toolbar.querySelectorAll(".toolbar-split button"),
   ];
-  const onRunStateChange = (running) => {
-    controller.setEditingLocked(running);
-    runBtn.textContent = running ? "■ Stop" : "▶ Run";
-    runBtn.title = running
-      ? "Stop and return to editing (Space)"
-      : "Run the circuit (Space)";
-    runBtn.setAttribute("aria-pressed", String(running));
-    runBtn.classList.toggle("toolbar-btn--running", running);
-    for (const btn of editButtons()) btn.disabled = running;
+  const onTransportChange = (mode) => {
+    const stopped = mode === "stopped";
+    controller.setEditingLocked(!stopped);
+    runBtn.textContent = stopped ? "▶ Run" : "■ Stop";
+    runBtn.title = stopped
+      ? "Run the circuit (Space)"
+      : "Stop and return to editing (Space)";
+    runBtn.setAttribute("aria-pressed", String(!stopped));
+    runBtn.classList.toggle("toolbar-btn--running", !stopped);
+    pauseBtn.textContent = mode === "paused" ? "▶ Resume" : "⏸ Pause";
+    for (const btn of [pauseBtn, stepBtn, speedBtn]) btn.hidden = stopped;
+    for (const btn of editButtons()) btn.disabled = !stopped;
   };
-  sim = new SimController({ deskDoc, notifications, onRunStateChange });
+  sim = new SimController({ deskDoc, notifications, onTransportChange });
 
   // The empty-desk hint disappears once the desk has boards.
   const hint = desk.querySelector(".desk-hint");

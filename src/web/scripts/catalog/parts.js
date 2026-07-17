@@ -26,6 +26,9 @@
 
 export const LED_COLORS = Object.freeze(["red", "green", "yellow", "blue"]);
 export const PSU_VOLTS = Object.freeze([3, 5, 12]);
+/** Clock rates (Hz) plus click-to-toggle "manual"; the timer lives in the
+    renderer's SimController — the def carries only the pure contract. */
+export const CLOCK_HZ = Object.freeze([1, 2, 5, 10, "manual"]);
 
 export const PART_DEFS = Object.freeze(
   [
@@ -120,6 +123,27 @@ export const PART_DEFS = Object.freeze(
       // Terminal potentials for the simulator (Feature 90).
       source(params) {
         return { plus: params?.volts ?? 5, minus: 0 };
+      },
+    },
+    {
+      id: "clock",
+      kind: "clock",
+      title: "Clock source",
+      blurb:
+        "Square-wave clock (1 / 2 / 5 / 10 Hz, or manual click-to-toggle) with " +
+        "an `out` terminal and a `gnd` reference — wire it to a chip's clock pin.",
+      group: "Power",
+      size: Object.freeze({ width: 8, height: 5 }),
+      terminals: [
+        { id: "out", dx: 2, dy: 4 },
+        { id: "gnd", dx: 6, dy: 4 },
+      ],
+      normalizeParams(raw) {
+        return { hz: CLOCK_HZ.includes(raw?.hz) ? raw.hz : 1 };
+      },
+      /** Is this clock free-running (has a rate) rather than manual? */
+      isAuto(params) {
+        return params?.hz !== "manual";
       },
     },
   ].map(Object.freeze),

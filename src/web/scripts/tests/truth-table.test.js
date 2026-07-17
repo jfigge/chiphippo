@@ -58,10 +58,18 @@ function unitPins(unit) {
 
 let totalCases = 0;
 
-for (const def of CHIP_DEFS) {
+/** Gate vocabulary this exhaustive harness enumerates (decoder/mux `COMB`
+    units and sequential defs are checked by their own fixture suites). */
+const GATE_FNS = new Set(["AND", "OR", "NAND", "NOR", "XOR", "INV", "BUF3"]);
+const GATE_DEFS = CHIP_DEFS.filter(
+  (def) => hasLogic(def) && def.logic.units.some((u) => GATE_FNS.has(u.fn)),
+);
+
+for (const def of GATE_DEFS) {
   test(`${def.id}: exhaustive truth table on every unit`, () => {
     assert.ok(hasLogic(def), `${def.id} has no logic block`);
     for (const unit of def.logic.units) {
+      if (!GATE_FNS.has(unit.fn)) continue; // COMB units: not this harness
       const pins = unitPins(unit);
       const combos = 1 << pins.length;
       for (let mask = 0; mask < combos; mask++) {

@@ -35,6 +35,7 @@ test("a fresh DeskDoc serializes to the empty document shape", () => {
     nextBoardId: 1,
     nextComponentId: 1,
     nextPsuId: 1,
+    nextClockId: 1,
     nextWireId: 1,
   });
   assert.deepEqual(new DeskDoc(null).toJSON(), emptyDocument());

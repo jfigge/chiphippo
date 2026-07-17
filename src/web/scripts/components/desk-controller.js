@@ -43,7 +43,7 @@ import { partPinHoles } from "../model/occupancy.js";
 import { packageSpec } from "../model/footprints.js";
 import { WIRE_COLORS } from "../model/desk-doc.js";
 import { partDef } from "../catalog/index.js";
-import { PSU_VOLTS } from "../catalog/parts.js";
+import { PSU_VOLTS, CLOCK_HZ } from "../catalog/parts.js";
 import { BreadboardView, buildBoardSvg } from "./breadboard-view.js";
 import { ChipView, buildChipSvg, chipBox } from "./chip-view.js";
 import {
@@ -52,6 +52,7 @@ import {
   discreteBox,
 } from "./discrete-view.js";
 import { PsuView, buildPsuSvg } from "./psu-view.js";
+import { ClockView, buildClockSvg } from "./clock-view.js";
 import { WireLayer } from "./wire-layer.js";
 import { summarizeNet } from "../sim/netlist.js";
 import { H, L } from "../sim/levels.js";
@@ -97,10 +98,10 @@ export class DeskController {
   //   { kind: "place", type, ghost, pos, legal }              (board)
   //   { kind: "place-chip", ref, ghost, board, anchor, legal }
   //   { kind: "place-part", ref, params, ghost, board, anchor, legal }
-  //   { kind: "place-psu", params, ghost, pos, legal }
+  //   { kind: "place-brick", ref, params, ghost, pos, legal }   (PSU / clock)
   //   { kind: "drag", id, … }                                 (board drag)
   //   { kind: "drag-part", id, … }                            (chip/discrete)
-  //   { kind: "drag-psu", id, … }
+  //   { kind: "drag-brick", id, … }
   //   { kind: "wire", from, hover }                           (wire tool)
   #mode = null;
   #wireColorIndex = 0; // next color the wire tool commits (auto-cycles)
@@ -124,6 +125,7 @@ export class DeskController {
   #simLevels = new Map(); // netId → level
   #simNetlist = null; // the netlist the levels are keyed against
   #onReplaceChip;
+  #onClockToggle;
 
   /**
    * @param {object} opts
@@ -138,6 +140,8 @@ export class DeskController {
    *   probe-tool arm/disarm (drives the toolbar probe button).
    * @param {(id: string) => void} [opts.onReplaceChip] - the chip context
    *   menu's "Replace chip" (resets Feature 90 damage).
+   * @param {(id: string) => void} [opts.onClockToggle] - a manual clock's
+   *   click-to-toggle while running (Feature 100).
    */
   constructor({
     viewport,
@@ -146,6 +150,7 @@ export class DeskController {
     onWireStateChange,
     onProbeStateChange,
     onReplaceChip,
+    onClockToggle,
   }) {
     this.#viewport = viewport;
     this.#deskView = deskView;
@@ -153,6 +158,7 @@ export class DeskController {
     this.#onWireStateChange = onWireStateChange;
     this.#onProbeStateChange = onProbeStateChange;
     this.#onReplaceChip = onReplaceChip;
+    this.#onClockToggle = onClockToggle;
 
     // Layer order (established for every later stage): boards under parts
     // under wires under the interaction overlay. All are zero-size anchors —
@@ -221,7 +227,7 @@ export class DeskController {
   }
 
   get placementArmed() {
-    return ["place", "place-chip", "place-part", "place-psu"].includes(
+    return ["place", "place-chip", "place-part", "place-brick"].includes(
       this.#mode?.kind,
     );
   }
@@ -306,10 +312,15 @@ export class DeskController {
     }
     const normalized = def.normalizeParams ? def.normalizeParams(params) : {};
     const ghost = el("div", { class: "part-ghost", hidden: true });
-    if (def.kind === "psu") {
-      ghost.append(buildPsuSvg(normalized));
+    if (def.kind === "psu" || def.kind === "clock") {
+      ghost.append(
+        def.kind === "psu"
+          ? buildPsuSvg(normalized)
+          : buildClockSvg(normalized),
+      );
       this.#enterPlacement({
-        kind: "place-psu",
+        kind: "place-brick",
+        ref,
         params: normalized,
         ghost,
         pos: null,
@@ -359,7 +370,7 @@ export class DeskController {
   #trackGhost(e) {
     const kind = this.#mode.kind;
     if (kind === "place") this.#trackBoardGhost(e);
-    else if (kind === "place-psu") this.#trackPsuGhost(e);
+    else if (kind === "place-brick") this.#trackBrickGhost(e);
     else this.#trackSeatedGhost(e);
   }
 
@@ -379,14 +390,14 @@ export class DeskController {
     m.ghost.classList.toggle("board-ghost--illegal", !m.legal);
   }
 
-  #trackPsuGhost(e) {
+  #trackBrickGhost(e) {
     const m = this.#mode;
-    const { width, height } = partDef("psu").size;
+    const { width, height } = partDef(m.ref).size;
     const w = this.#deskView.worldFromEvent(e);
     const x = Math.round(w.x - width / 2);
     const y = Math.round(w.y - height / 2);
     m.pos = { x, y };
-    m.legal = this.#doc.canPlacePsu(x, y);
+    m.legal = this.#doc.canPlaceBrick(m.ref, x, y);
     m.ghost.hidden = false;
     m.ghost.style.left = `${x * PX_PER_UNIT}px`;
     m.ghost.style.top = `${y * PX_PER_UNIT}px`;
@@ -847,7 +858,7 @@ export class DeskController {
     return netId ? (this.#simLevels.get(netId) ?? null) : null;
   }
 
-  #onSimState({ running, netLevels, chipStatus, netlist }) {
+  #onSimState({ running, netLevels, chipStatus, netlist, clockLevels }) {
     this.#simRunning = running;
     this.#simLevels = netLevels ?? new Map();
     this.#simNetlist = netlist ?? null;
@@ -858,6 +869,13 @@ export class DeskController {
       for (const [id, { status }] of chipStatus ?? new Map()) {
         this.#partViews.get(id)?.setStatus?.(status);
       }
+    }
+
+    // Clock pulse lamps track their live output level.
+    for (const comp of this.#doc.components) {
+      if (comp.kind !== "clock") continue;
+      const view = this.#partViews.get(comp.id);
+      view?.setLevel?.(running && clockLevels?.get(comp.id) === H);
     }
 
     this.#updateLeds();
@@ -912,13 +930,18 @@ export class DeskController {
     return component;
   }
 
-  /** Drop + mount + select a PSU brick; emits chiphippo:doc-changed. */
-  addPsuAt(x, y, params = {}) {
-    const psu = this.#doc.addPsu(x, y, params);
-    this.#mountPart(psu);
-    this.selectComponent(psu.id);
+  /** Drop + mount + select a desk-level brick (PSU/clock); emits doc-changed. */
+  addBrickAt(ref, x, y, params = {}) {
+    const brick = this.#doc.addBrick(ref, x, y, params);
+    this.#mountPart(brick);
+    this.selectComponent(brick.id);
     this.#emitDocChanged();
-    return psu;
+    return brick;
+  }
+
+  /** Drop a PSU brick (back-compat name). */
+  addPsuAt(x, y, params = {}) {
+    return this.addBrickAt("psu", x, y, params);
   }
 
   /**
@@ -1026,6 +1049,13 @@ export class DeskController {
     this.#emitDocChanged();
   }
 
+  /** Set a clock's rate (context menu). */
+  setClockHz(id, hz) {
+    const updated = this.#doc.setComponentParams(id, { hz });
+    this.#partViews.get(id)?.updateParams(updated.params);
+    this.#emitDocChanged();
+  }
+
   // ── Central keyboard hooks (wired by app.js) ────────────────────────────
 
   /** @returns {boolean} true when the key was consumed. */
@@ -1118,6 +1148,8 @@ export class DeskController {
     let view;
     if (component.kind === "psu") {
       view = new PsuView(this.#layers.parts, component, callbacks);
+    } else if (component.kind === "clock") {
+      view = new ClockView(this.#layers.parts, component, callbacks);
     } else if (component.kind === "discrete") {
       view = new DiscreteView(this.#layers.parts, component, callbacks);
       view.updatePlacement(
@@ -1268,10 +1300,15 @@ export class DeskController {
     // While running, only slide switches stay interactive (click to flip);
     // every other part is frozen in place.
     if (this.#editingLocked) {
+      // While running, only live interactions remain: a slide switch flips,
+      // and a manual clock toggles one edge.
       const comp = this.#doc.getComponent(id);
       if (comp?.ref === "sw-slide") {
         e.stopPropagation();
         this.#toggleSlideSwitch(id);
+      } else if (comp?.kind === "clock" && comp.params?.hz === "manual") {
+        e.stopPropagation();
+        this.#onClockToggle?.(id);
       }
       return;
     }
@@ -1282,9 +1319,11 @@ export class DeskController {
     const view = this.#partViews.get(id);
     const w = this.#deskView.worldFromEvent(e);
 
-    if (comp.kind === "psu") {
+    if (comp.board == null) {
+      // A desk-level brick (PSU, clock) drags freely on the desk.
       this.#mode = {
-        kind: "drag-psu",
+        kind: "drag-brick",
+        ref: comp.ref,
         id,
         pointerId: e.pointerId,
         startClientX: e.clientX,
@@ -1331,7 +1370,7 @@ export class DeskController {
   #onPartPointerMove = (e) => {
     const d = this.#mode;
     if (
-      (d?.kind !== "drag-part" && d?.kind !== "drag-psu") ||
+      (d?.kind !== "drag-part" && d?.kind !== "drag-brick") ||
       e.pointerId !== d.pointerId
     ) {
       return;
@@ -1348,12 +1387,14 @@ export class DeskController {
     const view = this.#partViews.get(d.id);
     const w = this.#deskView.worldFromEvent(e);
 
-    if (d.kind === "drag-psu") {
+    if (d.kind === "drag-brick") {
       d.pos = {
         x: Math.round(d.origin.x + (w.x - d.startWorld.x)),
         y: Math.round(d.origin.y + (w.y - d.startWorld.y)),
       };
-      d.legal = this.#doc.canPlacePsu(d.pos.x, d.pos.y, { ignoreId: d.id });
+      d.legal = this.#doc.canPlaceBrick(d.ref, d.pos.x, d.pos.y, {
+        ignoreId: d.id,
+      });
       view?.setPosition(d.pos.x, d.pos.y);
       view?.setIllegal(!d.legal);
       // Wires on this PSU's terminals follow it live.
@@ -1378,7 +1419,7 @@ export class DeskController {
   #onPartPointerUp = (e) => {
     const d = this.#mode;
     if (
-      (d?.kind !== "drag-part" && d?.kind !== "drag-psu") ||
+      (d?.kind !== "drag-part" && d?.kind !== "drag-brick") ||
       e.pointerId !== d.pointerId
     ) {
       return;
@@ -1401,11 +1442,11 @@ export class DeskController {
     }
 
     const cancelled = e.type === "pointercancel";
-    if (d.kind === "drag-psu") {
+    if (d.kind === "drag-brick") {
       if (!d.active) return;
       const moved = d.pos.x !== d.origin.x || d.pos.y !== d.origin.y;
       if (!cancelled && d.legal && moved) {
-        this.#doc.movePsu(d.id, d.pos.x, d.pos.y);
+        this.#doc.moveBrick(d.id, d.pos.x, d.pos.y);
         this.#emitDocChanged();
       } else {
         view?.setPosition(d.origin.x, d.origin.y);
@@ -1449,6 +1490,23 @@ export class DeskController {
       if (!this.#editingLocked) {
         items.push({
           label: "Remove power supply",
+          danger: true,
+          onSelect: () => this.removeComponent(id),
+        });
+      }
+      PopupManager.menu({ x: e.clientX, y: e.clientY, items });
+      return;
+    }
+    // Clock: rate is a live setting (stays available while running); removal
+    // is a topology edit, dropped when editing is locked.
+    if (comp?.kind === "clock") {
+      const items = CLOCK_HZ.map((hz) => ({
+        label: `${comp.params.hz === hz ? "● " : ""}${hz === "manual" ? "Manual" : `${hz} Hz`}`,
+        onSelect: () => this.setClockHz(id, hz),
+      }));
+      if (!this.#editingLocked) {
+        items.push({
+          label: "Remove clock",
           danger: true,
           onSelect: () => this.removeComponent(id),
         });
@@ -1512,8 +1570,8 @@ export class DeskController {
     this.cancelPlacement();
     if (m.kind === "place") {
       this.addBoardAt(m.type, m.pos.x, m.pos.y);
-    } else if (m.kind === "place-psu") {
-      this.addPsuAt(m.pos.x, m.pos.y, m.params);
+    } else if (m.kind === "place-brick") {
+      this.addBrickAt(m.ref, m.pos.x, m.pos.y, m.params);
     } else if (m.kind === "place-part") {
       this.addComponentAt(m.ref, m.board, m.anchor, m.params);
     } else {
@@ -1592,16 +1650,22 @@ export class DeskController {
   #pinHitTest(world) {
     for (const comp of this.#doc.components) {
       const def = partDef(comp.ref);
-      if (comp.kind === "psu") {
+      // Desk-level bricks (PSU, clock) expose terminals as connection points.
+      if (comp.board == null && def?.terminals) {
         for (const t of def.terminals) {
           const x = comp.x + t.dx;
           const y = comp.y + t.dy;
           if (Math.hypot(world.x - x, world.y - y) > PIN_HIT_RADIUS) continue;
-          const volts = t.id === "+" ? `+${comp.params.volts} V` : "0 V";
           const address = formatAddress(comp.id, t.id);
+          let note = "";
+          if (comp.kind === "psu") {
+            note = t.id === "+" ? ` · +${comp.params.volts} V` : " · 0 V";
+          } else if (comp.kind === "clock") {
+            note = t.id === "out" ? " · clock out" : " · gnd";
+          }
           return {
             key: `${comp.id}#${t.id}`,
-            label: `${address} · ${volts}`,
+            label: `${address}${note}`,
             address,
             x,
             y,

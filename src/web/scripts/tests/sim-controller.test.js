@@ -109,40 +109,56 @@ function capture() {
 
 test("start publishes a running sim-state and flips run state", () => {
   resetDom();
-  const runStates = [];
+  const modes = [];
   const sim = new SimController({
     deskDoc: fakeDoc(poweredDoc(5)),
     notifications: fakeNotifications(),
-    onRunStateChange: (r) => runStates.push(r),
+    onTransportChange: (m) => modes.push(m),
   });
   const events = capture();
 
   assert.equal(sim.running, false);
   sim.start();
   assert.equal(sim.running, true);
-  assert.deepEqual(runStates, [true]);
+  assert.deepEqual(modes, ["running"]);
   assert.equal(events.at(-1).running, true);
   assert.equal(events.at(-1).chipStatus.get("c1").status, "ok");
 });
 
 test("stop clears notifications, publishes not-running, keeps run state off", () => {
   resetDom();
-  const runStates = [];
+  const modes = [];
   const notifications = fakeNotifications();
   const sim = new SimController({
     deskDoc: fakeDoc(poweredDoc(5)),
     notifications,
-    onRunStateChange: (r) => runStates.push(r),
+    onTransportChange: (m) => modes.push(m),
   });
   const events = capture();
 
   sim.start();
   sim.stop();
   assert.equal(sim.running, false);
-  assert.deepEqual(runStates, [true, false]);
+  assert.deepEqual(modes, ["running", "stopped"]);
   assert.equal(events.at(-1).running, false);
   assert.deepEqual(events.at(-1).netLevels, new Map()); // views clear
   assert.ok(notifications.calls.some((c) => c.cleared)); // clear() ran
+});
+
+test("pause freezes the transport; resume returns to running", () => {
+  resetDom();
+  const modes = [];
+  const sim = new SimController({
+    deskDoc: fakeDoc(poweredDoc(5)),
+    notifications: fakeNotifications(),
+    onTransportChange: (m) => modes.push(m),
+  });
+  sim.start();
+  sim.togglePause();
+  assert.equal(sim.mode, "paused");
+  sim.togglePause();
+  assert.equal(sim.mode, "running");
+  assert.deepEqual(modes, ["running", "paused", "running"]);
 });
 
 test("12 V damage persists into params.damaged and warns once", () => {
@@ -187,4 +203,48 @@ test("toggle alternates run state", () => {
   assert.equal(sim.running, true);
   sim.toggle();
   assert.equal(sim.running, false);
+});
+
+// ── Transport: clock stepping ─────────────────────────────────────────────
+
+/** A bare doc with one free-running clock (no chips). */
+const clockDoc = (hz) => ({
+  boards: [],
+  components: [
+    { id: "clk1", kind: "clock", ref: "clock", x: 0, y: 0, params: { hz } },
+  ],
+  wires: [],
+});
+
+test("step advances exactly one clock half-period (L→H→L) and pauses", () => {
+  resetDom();
+  const sim = new SimController({
+    deskDoc: fakeDoc(clockDoc(1)),
+    notifications: fakeNotifications(),
+  });
+  const events = capture();
+  sim.start();
+  assert.equal(events.at(-1).clockLevels.get("clk1"), "L", "idles low");
+
+  sim.step();
+  assert.equal(sim.mode, "paused", "stepping implies paused (clocks frozen)");
+  assert.equal(events.at(-1).clockLevels.get("clk1"), "H", "one half-period");
+
+  sim.step();
+  assert.equal(events.at(-1).clockLevels.get("clk1"), "L", "two → full cycle");
+  sim.stop(); // clear timers
+});
+
+test("a manual clock toggles on manualToggle", () => {
+  resetDom();
+  const sim = new SimController({
+    deskDoc: fakeDoc(clockDoc("manual")),
+    notifications: fakeNotifications(),
+  });
+  const events = capture();
+  sim.start();
+  assert.equal(events.at(-1).clockLevels.get("clk1"), "L");
+  sim.manualToggle("clk1");
+  assert.equal(events.at(-1).clockLevels.get("clk1"), "H");
+  sim.stop();
 });

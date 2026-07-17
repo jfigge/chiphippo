@@ -21,6 +21,7 @@ import assert from "node:assert/strict";
 
 import { resetDom } from "./jsdom-setup.js";
 import { PALETTE_DEFS } from "../catalog/index.js";
+import { hasBehavior } from "../sim/chip-eval.js";
 
 const { PalettePanel } = await import("../components/palette-panel.js");
 
@@ -59,14 +60,12 @@ test("lists the whole catalog grouped by function; picks report the ref", () => 
     );
   const badged = new Set(badgeRef(".palette-item-badge"));
   for (const def of PALETTE_DEFS) {
-    assert.equal(
-      badged.has(def.id),
-      Boolean(def.logic?.units?.length),
-      `${def.id} badge`,
-    );
+    assert.equal(badged.has(def.id), hasBehavior(def), `${def.id} badge`);
   }
-  assert.ok(badged.has("7400"));
+  assert.ok(badged.has("7400")); // combinational
+  assert.ok(badged.has("7474")); // sequential
   assert.ok(!badged.has("led"));
+  assert.ok(!badged.has("clock"));
 });
 
 test("filter matches id, title, and blurb (case-insensitive)", () => {

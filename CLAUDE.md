@@ -17,7 +17,7 @@ engineering setup mirrors its sibling projects **Rest Hippo** (`../resthippo`) a
 ## Status
 
 Built stage-by-stage from the plans in `features/` (see `features/ROADMAP.md`).
-**Stages 00–90 have landed**: the hardened Electron shell + `window.chiphippo` bridge
+**Stages 00–100 have landed**: the hardened Electron shell + `window.chiphippo` bridge
 and `make` toolchain (00); the infinite desk (10) — camera-transform pan/zoom
 (`DeskView` over the pure `desk-geometry.js`), dot grid, zoom controls, settings
 store; the breadboard domain model (20) — `board-types.js` + `breadboard.js`
@@ -61,7 +61,18 @@ publishes `chiphippo:sim-state`, persists 12 V damage through `desk-doc`,
 routes warnings to the `NotificationStack`), live views (LEDs light on
 anode-H/cathode-L, chip health badges, level-tinted probe highlights), and the
 header **Run/Stop** toggle (shortcut `Space`) that freezes editing while
-running. When a stage is finished, move its plan file into `features/done/`.
+running; and sequential logic & clocking (100) — the engine's two-phase
+`tick` (pre-settle with the old state → sample edges + `step` every sequential
+chip → post-settle with the new state) layered over the Feature 90 solver, the
+pure `sim/sequential.js` family builders (D-FF / JK-FF / transparent latch /
+sync + up-down counters / SIPO+PISO shift, plus `COMB` decoder/mux units), the
+14-chip datasheet-exact wave in `catalog/chips-seq.js` (7473/74/75/76, 74107,
+74138/139/151/157/161/164/165/175/193 — non-standard power pins and all), the
+desk-level **clock source** brick (`clk<n>` ids, `out`/`gnd` terminals,
+1/2/5/10 Hz or manual) with `ClockView`, and the SimController **transport**
+(Run / Pause / Step / speed) whose `setInterval` drives clock edges while the
+engine stays pure and timerless. When a stage is finished, move its plan file
+into `features/done/`.
 
 ## Naming & identity
 
@@ -86,8 +97,8 @@ running. When a stage is finished, move its plan file into `features/done/`.
   `scripts/app.js`. Pure DOM-free logic lives under `scripts/desk/` (camera + wire
   path math), `scripts/model/` (breadboard specs/addressing/connectivity, `DeskDoc`,
   `footprints.js`, `occupancy.js`), and `scripts/sim/` (the engine package:
-  `union-find.js`, `netlist.js`, `levels.js`, `chip-eval.js`, `resolve.js`,
-  `engine.js`); part metadata
+  `union-find.js`, `netlist.js`, `levels.js`, `chip-eval.js`, `sequential.js`,
+  `resolve.js`, `engine.js`); part metadata
   under `scripts/catalog/` (pure data + integrity test — never part-specific code
   paths); thin view components under `scripts/components/`.
 - `src/web/fonts/` — bundled Inter variable font; never load fonts from a CDN.
@@ -130,8 +141,11 @@ Electron main process (src/app/main.js)
   with width/height 0 renders NOTHING per the SVG spec — zero-size anchors need
   a token 1×1 box + overflow: visible.
 - **Components**: `{ id, kind, ref, board, anchor, params }` with `c<n>` ids
-  (kinds `chip` | `discrete`); PSUs are desk-level `{ id: psu<n>, kind: "psu",
-  ref, x, y, params }`. Pin positions are always DERIVED (footprint + anchor),
+  (kinds `chip` | `discrete`); desk-level **bricks** carry `{ id, kind, ref, x, y,
+  params }` instead of a board anchor — PSUs (`psu<n>`, kind `"psu"`) and clock
+  sources (`clk<n>`, kind `"clock"`, `out`/`gnd` terminals). Bricks share the
+  overlap/drag/terminal machinery via `board == null`. Pin positions are always
+  DERIVED (footprint + anchor),
   never stored; params are coerced through each def's `normalizeParams`.
   Electrical contracts (`internalBridges`, `source`, `polarity`) live in the
   catalog as pure data + pure functions — never in views or the netlist.
@@ -146,24 +160,42 @@ Electron main process (src/app/main.js)
   switch's `internalBridges` conduct; chip pins are net MEMBERS, never conduits (the
   simulator's job). Always a full rebuild, invalidated on `chiphippo:doc-changed`
   and `chiphippo:part-state`.
-- **Chip behavior** (`sim/levels.js` + `sim/chip-eval.js`, Feature 80): signal
-  levels H/L/Z/X (`asInput` = "floating reads HIGH"); each gate chip's `logic.units`
-  block is DATA the ONE generic `evaluate(def, pinLevels)` walks — **no per-chip
-  evaluator code**. To add a 74xx part, add data; if it can't be expressed, extend
-  the gate vocabulary in `chip-eval.js`, never fork it. Zero-delay, power-agnostic;
-  the truth-table harness enumerates every unit exhaustively.
+- **Chip behavior** (`sim/levels.js` + `sim/chip-eval.js` + `sim/sequential.js`):
+  signal levels H/L/Z/X (`asInput` = "floating reads HIGH"). Combinational chips
+  (Feature 80) carry a `logic.units` block the ONE generic `evaluate(def, pinLevels)`
+  walks — gate primitives, tri-state `BUF3`, and `COMB` units (a pure `compute` fn
+  over fanning-out inputs — the decoder/mux vocabulary). Sequential chips (Feature
+  100) carry a `logic` block of `{ state0, step, outputs }` built by the pure family
+  builders in `sequential.js` (D-FF, JK-FF, transparent latch, sync + up/down
+  counters, SIPO/PISO shift); `step(state, inputs, prevInputs)` advances state on
+  detected edges + level-sensitive async overrides, `outputs(state, inputs)` drives
+  the output pins. **No per-chip evaluator code** — a new 74xx part is data; if it
+  can't be expressed, extend the vocabulary, never fork. Zero-delay, power-agnostic;
+  the truth-table harness enumerates every gate unit exhaustively, sequential/MSI
+  parts prove out in circuit fixtures.
 - **Simulation engine** (`sim/resolve.js` + `sim/engine.js`, Feature 90): pure and
   DOM-free. `resolveNet` picks a net's level by strength precedence (supply beats
   chip output; opposing supplies → `X`+short; disagreeing outputs → `X`+conflict;
-  `Z`/undriven contributes nothing). `settle({document, netlist, warmStart})` gates
-  each chip on its VCC/GND nets (5 V ok, 3 V underpowered-inert, 12 V damaged), then
-  loops resolve→`evaluate`→re-drive until a fixpoint or the 200-iteration cap
-  (→ still-changing nets marked `X` + oscillation). Warm-starting net levels by
-  stable netId is exactly why cross-coupled NAND latches HOLD. The engine is a pure
-  function — it REPORTS `chipStatus` but never mutates `params`; the renderer's
-  `SimController` persists 12 V damage through `desk-doc`, owns Run/Stop, re-settles
-  on every input event, and publishes `chiphippo:sim-state` that live views render
-  from (views never query the engine).
+  `Z`/undriven contributes nothing; a clock source drives its `out` net at output
+  strength). `settle({document, netlist, warmStart})` gates each chip on its VCC/GND
+  nets (5 V ok, 3 V underpowered-inert, 12 V damaged), then loops
+  resolve→`evaluate`→re-drive until a fixpoint or the 200-iteration cap (→
+  still-changing nets marked `X` + oscillation). Warm-starting net levels by stable
+  netId is exactly why cross-coupled NAND latches HOLD. **`tick(...)` (Feature 100)**
+  adds the synchronous two-phase step for stateful parts on top of the same solver:
+  ① pre-settle with the OLD per-component state (propagating the new `clockPhase` +
+  input changes), ② sample each sequential chip's inputs and `step` it (edges from
+  the pre-settle vs the last tick's `prevPinLevels`; async overrides win), ③
+  post-settle with the NEW state — all edges observed at once, then the combinational
+  cloud settles. The engine is a pure function — it REPORTS `chipStatus` and returns
+  run-volatile `state`/`pinLevels`, never mutating `params` and never touching a
+  timer. The renderer's `SimController` owns the **transport** (Run / Pause / Step /
+  speed), drives each free-running clock's edges from a `setInterval` (handing `tick`
+  each clock's current level via `clockPhase`), persists 12 V damage through
+  `desk-doc`, re-ticks on every input event, and publishes `chiphippo:sim-state`
+  (net levels + chip status + clock levels) that live views render from — views never
+  query the engine. Sequential state and clock phases are **run-volatile** (reset on
+  Run, never serialized).
 - **Popups/menus**: `popup-manager.js` (ported from Port Hippo) is the only
   app-wide dialog/menu seam; build DOM with `dom.js` `el()`.
 

@@ -22,6 +22,7 @@
 
 import { clear, el } from "../dom.js";
 import { PALETTE_DEFS } from "../catalog/index.js";
+import { hasBehavior } from "../sim/chip-eval.js";
 
 export class PalettePanel {
   #el;
@@ -109,9 +110,9 @@ export class PalettePanel {
             [
               el("span", { class: "palette-item-id", text: def.id }),
               el("span", { class: "palette-item-title", text: def.title }),
-              // "sim-ready" badge for chips whose behavior is defined
-              // (Feature 80). Future waves light up automatically.
-              def.logic?.units?.length &&
+              // "sim-ready" badge for chips whose behavior is defined —
+              // combinational (Feature 80) or sequential (Feature 100).
+              hasBehavior(def) &&
                 el("span", {
                   class: "palette-item-badge",
                   text: "sim",

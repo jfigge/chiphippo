@@ -24,6 +24,7 @@ import { partDef, chipDef, PALETTE_DEFS } from "../catalog/index.js";
 
 test("the part catalog carries the Feature 60 inventory", () => {
   assert.deepEqual(PART_DEFS.map((d) => d.id).sort(), [
+    "clock",
     "led",
     "psu",
     "sw-push",
@@ -32,8 +33,9 @@ test("the part catalog carries the Feature 60 inventory", () => {
   // partDef resolves everything; chipDef stays chips-only.
   assert.ok(partDef("sw-slide"));
   assert.ok(partDef("7400"));
+  assert.ok(partDef("clock"));
   assert.equal(chipDef("sw-slide"), null);
-  assert.equal(PALETTE_DEFS.length, 16); // 12 chips + 4 parts
+  assert.equal(PALETTE_DEFS.length, 31); // 26 chips + 5 parts
 });
 
 for (const def of PART_DEFS.filter((d) => d.kind === "discrete")) {

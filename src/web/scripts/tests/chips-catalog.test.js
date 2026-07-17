@@ -14,18 +14,29 @@
  * limitations under the License.
  */
 
-// Catalog integrity: every def must be internally consistent — the catalog
-// is data + this validation, never chip-specific code paths.
+// Catalog integrity: every def must be internally consistent — the catalog is
+// data + this validation, never chip-specific code paths. Covers the
+// combinational gate wave (Feature 40/80), the combinational MSI wave
+// (decoders/mux, `COMB` units whose inputs fan out), and the sequential wave
+// (Feature 100, `state0`/`step`/`outputs`).
 
 import test from "node:test";
 import assert from "node:assert/strict";
 
 import { CHIP_DEFS, chipDef } from "../catalog/index.js";
 import { packageSpec } from "../model/footprints.js";
+import {
+  hasLogic,
+  isSequential,
+  hasBehavior,
+  initialState,
+  outputsOf,
+  inputLevels,
+} from "../sim/chip-eval.js";
 
 const ROLES = new Set(["input", "output", "vcc", "gnd", "nc"]);
 
-const STARTER_SET = [
+const GATE_WAVE = [
   "7400",
   "7402",
   "7404",
@@ -39,10 +50,29 @@ const STARTER_SET = [
   "7486",
   "74125",
 ];
+const SEQ_WAVE = [
+  "7473",
+  "7474",
+  "7475",
+  "7476",
+  "74107",
+  "74175",
+  "74161",
+  "74193",
+  "74164",
+  "74165",
+  "74138",
+  "74139",
+  "74151",
+  "74157",
+];
 
-test("the starter catalog contains exactly the Feature 40 wave", () => {
-  assert.deepEqual(CHIP_DEFS.map((d) => d.id).sort(), [...STARTER_SET].sort());
-  for (const id of STARTER_SET) assert.ok(chipDef(id), id);
+test("the catalog contains the gate wave plus the sequential/MSI wave", () => {
+  assert.deepEqual(
+    CHIP_DEFS.map((d) => d.id).sort(),
+    [...GATE_WAVE, ...SEQ_WAVE].sort(),
+  );
+  for (const id of [...GATE_WAVE, ...SEQ_WAVE]) assert.ok(chipDef(id), id);
   assert.equal(chipDef("9999"), null);
 });
 
@@ -61,55 +91,76 @@ for (const def of CHIP_DEFS) {
       Array.from({ length: pins }, (_, i) => i + 1),
     );
 
-    // Roles valid; exactly one vcc + one gnd, at the standard corners.
+    // Roles valid; exactly one vcc + one gnd (position may be non-standard —
+    // real parts like the 7473/7475/7476 don't always use the corners).
     for (const p of def.pins) assert.ok(ROLES.has(p.role), `${def.id} ${p.n}`);
-    const vcc = def.pins.filter((p) => p.role === "vcc");
-    const gnd = def.pins.filter((p) => p.role === "gnd");
-    assert.equal(vcc.length, 1);
-    assert.equal(gnd.length, 1);
-    assert.equal(vcc[0].n, pins);
-    assert.equal(gnd[0].n, pins / 2);
+    assert.equal(def.pins.filter((p) => p.role === "vcc").length, 1);
+    assert.equal(def.pins.filter((p) => p.role === "gnd").length, 1);
 
     // Names unique among functional pins (NC may repeat).
     const names = def.pins.filter((p) => p.role !== "nc").map((p) => p.name);
     assert.equal(new Set(names).size, names.length, `${def.id} names`);
 
-    // ── Behavior (Feature 80): a complete, consistent logic block ──────────
-    assert.ok(def.logic?.units?.length, `${def.id} has no logic units`);
-    const pinRole = new Map(def.pins.map((p) => [p.n, p.role]));
-    const usedInputs = [];
-    const usedOutputs = [];
-    for (const unit of def.logic.units) {
-      const inPins = [...unit.inputs];
-      if (unit.enable != null) inPins.push(unit.enable);
-      for (const p of inPins) {
-        assert.equal(pinRole.get(p), "input", `${def.id} unit input pin ${p}`);
-        usedInputs.push(p);
-      }
-      assert.equal(
-        pinRole.get(unit.output),
-        "output",
-        `${def.id} unit output pin ${unit.output}`,
-      );
-      usedOutputs.push(unit.output);
-    }
-    // Every input-role pin is consumed exactly once; every output-role pin is
-    // driven exactly once (no pin double-used, none left dangling).
+    // Every def carries SOME behavior (combinational or sequential).
+    assert.ok(hasBehavior(def), `${def.id} has no behavior`);
+
     const inputPins = def.pins
       .filter((p) => p.role === "input")
       .map((p) => p.n);
     const outputPins = def.pins
       .filter((p) => p.role === "output")
       .map((p) => p.n);
-    assert.deepEqual(
-      [...usedInputs].sort((a, b) => a - b),
-      [...inputPins].sort((a, b) => a - b),
-      `${def.id} input pins covered exactly once`,
-    );
-    assert.deepEqual(
-      [...usedOutputs].sort((a, b) => a - b),
-      [...outputPins].sort((a, b) => a - b),
-      `${def.id} output pins driven exactly once`,
-    );
+    const pinRole = new Map(def.pins.map((p) => [p.n, p.role]));
+
+    if (hasLogic(def)) {
+      // ── Combinational: units reference real input/output pins; every input
+      //    is used (fan-out allowed for MSI), every output driven exactly once.
+      const usedInputs = new Set();
+      const usedOutputs = [];
+      for (const unit of def.logic.units) {
+        const inPins = [...unit.inputs];
+        if (unit.enable != null) inPins.push(unit.enable);
+        for (const p of inPins) {
+          assert.equal(pinRole.get(p), "input", `${def.id} input pin ${p}`);
+          usedInputs.add(p);
+        }
+        assert.equal(
+          pinRole.get(unit.output),
+          "output",
+          `${def.id} output pin ${unit.output}`,
+        );
+        usedOutputs.push(unit.output);
+      }
+      assert.deepEqual(
+        [...usedInputs].sort((a, b) => a - b),
+        [...inputPins].sort((a, b) => a - b),
+        `${def.id} every input pin used`,
+      );
+      assert.deepEqual(
+        [...usedOutputs].sort((a, b) => a - b),
+        [...outputPins].sort((a, b) => a - b),
+        `${def.id} every output driven exactly once`,
+      );
+    } else {
+      // ── Sequential: a pure state0/step/outputs block whose initial outputs
+      //    cover exactly the output-role pins.
+      assert.ok(isSequential(def), `${def.id} sequential`);
+      assert.equal(typeof def.logic.state0, "function");
+      assert.equal(typeof def.logic.step, "function");
+      assert.equal(typeof def.logic.outputs, "function");
+      const out = outputsOf(
+        def,
+        initialState(def),
+        inputLevels(def, new Map()),
+      );
+      assert.deepEqual(
+        [...out.keys()].sort((a, b) => a - b),
+        [...outputPins].sort((a, b) => a - b),
+        `${def.id} outputs cover the output pins`,
+      );
+      for (const pin of out.keys()) {
+        assert.equal(pinRole.get(pin), "output", `${def.id} drives pin ${pin}`);
+      }
+    }
   });
 }

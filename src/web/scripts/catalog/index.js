@@ -19,13 +19,15 @@
 // ever see the exported lists and lookups.
 
 import { CHIPS_GATES } from "./chips-gates.js";
+import { CHIPS_SEQ } from "./chips-seq.js";
 import { PART_DEFS } from "./parts.js";
 
-/** Every chip def, in palette display order. `kind` is stamped uniformly,
-    and a `normalizeParams` that preserves only the `damaged` flag (Feature
-    90's magic-smoke bookkeeping) — chips otherwise carry no params. */
+/** Every chip def, in palette display order (combinational gates, then the
+    sequential & MSI wave). `kind` is stamped uniformly, and a
+    `normalizeParams` that preserves only the `damaged` flag (Feature 90's
+    magic-smoke bookkeeping) — chips otherwise carry no params. */
 export const CHIP_DEFS = Object.freeze(
-  CHIPS_GATES.map((def) =>
+  [...CHIPS_GATES, ...CHIPS_SEQ].map((def) =>
     Object.freeze({
       kind: "chip",
       normalizeParams: (raw) =>
