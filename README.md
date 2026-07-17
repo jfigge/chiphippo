@@ -12,9 +12,10 @@ framework), sharing its engineering foundation with its siblings
 
 **Status: in progress.** The implementation plan lives in
 [`features/ROADMAP.md`](features/ROADMAP.md); stages are implemented in order, and
-finished plans move to `features/done/`. Stages 00 (project scaffold & build system)
-and 10 (infinite desk workspace) are done — `make install && make debug` opens the
-app with a pannable, zoomable desk.
+finished plans move to `features/done/`. Stages 00–30 are done — `make install &&
+make debug` opens the app with a pannable, zoomable desk where Full / Half / Tiny
+breadboards can be added, dragged, and deleted, with every tie point addressable
+on hover (`bb1.f12`).
 
 ## License
 

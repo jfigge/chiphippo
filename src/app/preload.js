@@ -50,4 +50,14 @@ contextBridge.exposeInMainWorld("chiphippo", {
     get: () => ipcRenderer.invoke("settings:get"),
     set: (patch) => ipcRenderer.invoke("settings:set", patch),
   },
+
+  // ── Desk document (Feature 20) ─────────────────────────────────────────────
+  // The single persisted desk: boards (+ components/wires from later stages).
+  // The renderer keeps the live DeskDoc (model/desk-doc.js) and autosaves the
+  // WHOLE serialized document, debounced ~1 s — documents are small; deltas
+  // are premature. load() returns a migrated, ready-to-normalize document.
+  desk: {
+    load: () => ipcRenderer.invoke("desk:load"),
+    save: (doc) => ipcRenderer.invoke("desk:save", doc),
+  },
 });

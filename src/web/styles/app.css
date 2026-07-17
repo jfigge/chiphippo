@@ -58,14 +58,43 @@
   font-size: 12px;
 }
 
-/* Empty toolbar slot — later stages mount desk tools here. Flexes to fill the
-   header so the meta block stays pinned to the right edge. */
+/* Toolbar slot — desk tools mount here. Flexes to fill the header so the
+   meta block stays pinned to the right edge. */
 .app-header-toolbar {
   flex: 1 1 auto;
   display: flex;
   align-items: center;
   gap: var(--space-2);
   min-width: 0;
+}
+
+.toolbar-split {
+  display: flex;
+}
+
+.toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 var(--space-3);
+  background: var(--color-surface-0);
+  border: 1px solid var(--color-overlay);
+  color: var(--color-text);
+  font-size: 12px;
+}
+
+.toolbar-btn:hover {
+  background: var(--color-surface-1);
+}
+
+.toolbar-split .toolbar-btn:first-child {
+  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
+}
+
+.toolbar-split .toolbar-btn--arrow {
+  border-left: none;
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  padding: 0 var(--space-2);
 }
 
 .app-header-meta {
@@ -114,6 +143,10 @@
   will-change: transform;
 }
 
+.desk-viewport--placing {
+  cursor: crosshair;
+}
+
 .desk-hint {
   position: absolute;
   inset: 0;
@@ -123,6 +156,135 @@
   font-size: 14px;
   user-select: none;
   pointer-events: none;
+}
+
+/* The explicit display above would defeat the hidden attribute (app.js hides
+   the hint once the desk has boards) — restore it. */
+.desk-hint[hidden] {
+  display: none;
+}
+
+/* ── Surface layers (Feature 30) ─────────────────────────────────────────── */
+/* Zero-size anchors at the world origin; children position in world px.
+   Order: boards under parts (40/60) under wires (50) under the interaction
+   overlay (ghosts, hover ring, selection, tooltips). */
+.layer-boards,
+.layer-parts,
+.layer-wires,
+.layer-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+}
+
+.layer-overlay {
+  pointer-events: none; /* ghosts/rings/tooltips never intercept the desk */
+}
+
+/* ── Boards ──────────────────────────────────────────────────────────────── */
+.board {
+  position: absolute;
+  border-radius: 6px; /* matches the SVG body corner for outline hugging */
+}
+
+.board > svg {
+  display: block;
+}
+
+.board--selected {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.board--dragging {
+  opacity: 0.85;
+}
+
+.board--illegal {
+  outline: 2px solid var(--color-danger);
+  outline-offset: 2px;
+}
+
+/* SVG board parts — all colors from the theme tokens. */
+.board-body {
+  fill: var(--color-board-body);
+  stroke: var(--color-board-edge);
+  stroke-width: 0.15;
+}
+
+.board-trench {
+  fill: var(--color-board-trench);
+}
+
+.board-hole {
+  fill: var(--color-board-hole);
+}
+
+.board-rail-stripe--plus {
+  fill: var(--color-rail-plus);
+}
+
+.board-rail-stripe--minus {
+  fill: var(--color-rail-minus);
+}
+
+.board-row-label,
+.board-col-label {
+  fill: var(--color-board-label);
+  font-family: var(--font-sans);
+  font-size: 0.6px; /* SVG user units = pitch units */
+  user-select: none;
+}
+
+/* Placement ghost: a translucent board tracking the cursor. */
+.board-ghost {
+  position: absolute;
+  opacity: 0.55;
+  border-radius: 6px;
+}
+
+.board-ghost--legal {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.board-ghost--illegal {
+  outline: 2px solid var(--color-danger);
+  outline-offset: 2px;
+}
+
+.board-ghost--illegal::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--color-danger);
+  opacity: 0.2;
+  border-radius: 6px;
+}
+
+/* ── Hover addressing (ring + tooltip in the overlay layer) ─────────────── */
+.hole-ring {
+  position: absolute;
+  width: 9px; /* 0.9 pitch in world px */
+  height: 9px;
+  border: 1px solid var(--color-info);
+  border-radius: 50%;
+}
+
+.desk-tooltip {
+  position: absolute;
+  /* Counter-scaled by DeskController (--inv-zoom = 1/zoom) so the label is
+     the same apparent size at every zoom; offset applies in screen px. */
+  transform: scale(var(--inv-zoom, 1)) translate(8px, calc(-100% - 8px));
+  transform-origin: 0 0;
+  background: var(--color-surface-1);
+  color: var(--color-text);
+  border: 1px solid var(--color-overlay);
+  border-radius: var(--radius-sm);
+  padding: 2px 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  white-space: nowrap;
 }
 
 /* ── Zoom control cluster (bottom-right overlay) ─────────────────────────── */
@@ -189,4 +351,141 @@
   font-size: 11px;
   pointer-events: none;
   user-select: none;
+}
+
+/* ── Popup host, dialogs & menus (popup-manager.js, ported pattern) ─────── */
+/* A bare top-layer host: the native <dialog> centres its .popup card via the
+   UA default margins; the menu variant instead pins a .popup-menu at screen
+   coordinates. */
+.popup-dialog {
+  padding: var(--space-4);
+  border: none;
+  background: transparent;
+  max-width: 100vw;
+  max-height: 100vh;
+  overflow: visible;
+}
+
+.popup-dialog::backdrop {
+  background: rgba(0, 0, 0, 0.5);
+}
+
+.popup {
+  min-width: 320px;
+  max-width: 460px;
+  max-height: 80vh;
+  overflow: auto;
+  background: var(--color-surface-0);
+  border: 1px solid var(--color-overlay);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-1);
+}
+
+.popup-header {
+  padding: var(--space-4) var(--space-4) 0;
+}
+
+.popup-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.popup-body {
+  padding: var(--space-3) var(--space-4);
+}
+
+.popup-message {
+  font-size: 13px;
+  color: var(--color-text);
+}
+
+.popup-note {
+  margin-top: var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--color-muted);
+  word-break: break-all;
+}
+
+.popup-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding: 0 var(--space-4) var(--space-4);
+}
+
+/* Buttons (shared with later dialogs). */
+.btn {
+  height: var(--control-height);
+  padding: 0 var(--space-4);
+  border: 1px solid var(--color-overlay);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-1);
+  color: var(--color-text);
+  font-size: 13px;
+}
+
+.btn:hover {
+  background: var(--color-surface-0);
+}
+
+.btn--primary {
+  border-color: var(--color-accent);
+}
+
+.btn--secondary {
+  background: transparent;
+}
+
+.btn--danger {
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+}
+
+/* Context/dropdown menu: full-viewport transparent host, positioned card. */
+.popup-dialog--menu {
+  margin: 0;
+  padding: 0;
+  width: 100vw;
+  height: 100vh;
+}
+
+.popup-dialog--menu::backdrop {
+  background: transparent;
+}
+
+.popup-menu {
+  position: fixed;
+  min-width: 180px;
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-1);
+  background: var(--color-surface-0);
+  border: 1px solid var(--color-overlay);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-1);
+}
+
+.popup-menu-item {
+  display: block;
+  text-align: left;
+  border: none;
+  background: transparent;
+  padding: var(--space-2) var(--space-3);
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  font-size: 13px;
+}
+
+.popup-menu-item:enabled:hover {
+  background: var(--color-surface-1);
+}
+
+.popup-menu-item:disabled {
+  color: var(--color-muted);
+  cursor: default;
+}
+
+.popup-menu-item--danger {
+  color: var(--color-danger);
 }

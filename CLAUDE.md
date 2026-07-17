@@ -17,12 +17,18 @@ engineering setup mirrors its sibling projects **Rest Hippo** (`../resthippo`) a
 ## Status
 
 Built stage-by-stage from the plans in `features/` (see `features/ROADMAP.md`).
-**Stages 00–10 have landed**: the hardened Electron shell + `window.chiphippo` bridge
-and `make` toolchain (00), and the infinite desk (10) — camera-transform pan/zoom
-(`DeskView` over the pure `desk-geometry.js`), the pitch dot grid, zoom controls and
-shortcuts, and the settings-store foundation (`src/app/store/`) persisting the desk
-viewport + window bounds. When a stage is finished, move its plan file into
-`features/done/`.
+**Stages 00–30 have landed**: the hardened Electron shell + `window.chiphippo` bridge
+and `make` toolchain (00); the infinite desk (10) — camera-transform pan/zoom
+(`DeskView` over the pure `desk-geometry.js`), the pitch dot grid, zoom controls,
+and the settings store persisting viewport + window bounds; the breadboard domain
+model (20) — `model/board-types.js` + `breadboard.js` (holes ⇄ positions ⇄ nodes for
+Full 830 / Half 400 / Tiny 170), the `DeskDoc` document, the desk store with
+migrations stub + `desk:load/save` autosave IPC, and the ipc-parity guard; and
+breadboard rendering & placement (30) — boards drawn as one static SVG each
+(`breadboard-view.js`, no per-hole DOM), the `DeskController` (surface layers,
+toolbar add-flow with snapping ghost, select/drag/delete, hover addressing via
+`holeAt` math), and the ported popup manager (`popup-manager.js` + `dom.js`).
+When a stage is finished, move its plan file into `features/done/`.
 
 ## Naming & identity
 
@@ -40,12 +46,13 @@ viewport + window bounds. When a stage is finished, move its plan file into
   IPC handlers. All native I/O (filesystem, dialogs) lives here. Key entry points:
   `main.js` (window + lifecycle + ipcMain handlers), `preload.js` (the
   `window.chiphippo` bridge), `window-state.js` (bounds restore with display-fit
-  check), and `store/` (`io.js` atomic-write primitives + `settings-store.js`).
+  check), and `store/` (`io.js` atomic-write primitives, `settings-store.js`,
+  `desk-store.js` + `migrations.js` for the desk document at `userData/desk.json`).
 - `src/web/` — **renderer** (Vanilla JS ES modules + plain CSS): the UI. Sandboxed;
   talks to main only through `window.chiphippo.*`. Entry points: `index.html` →
-  `scripts/app.js`. Pure DOM-free logic lives under `scripts/desk/` (and later
-  `scripts/sim/`); thin view components under `scripts/components/`
-  (`desk-view.js` owns the camera; `desk-geometry.js` owns the math).
+  `scripts/app.js`. Pure DOM-free logic lives under `scripts/desk/` (camera math),
+  `scripts/model/` (breadboard specs/addressing/connectivity + `DeskDoc`), and
+  later `scripts/sim/`; thin view components under `scripts/components/`.
 - `src/web/fonts/` — bundled Inter variable font; never load fonts from a CDN.
 - `src/web/styles/` — `theme.css` (design tokens + reset) and `app.css` (shell). Use
   the tokens; don't hardcode colours/sizes.
@@ -60,19 +67,36 @@ Do **not** modify anything under `build/` or `src/node_modules/`.
 
 ```
 Electron main process (src/app/main.js)
-  ├── Settings store (src/app/store/)        settings.json under userData (atomic io.js)
+  ├── Stores         (src/app/store/)        settings.json + desk.json (atomic io.js;
+  │                                          desk loads through migrations.js)
   ├── Window state   (src/app/window-state.js)  bounds restore + debounced save
-  ├── IPC handlers   (app:platform, app:version, settings:get/set — more per stage)
+  ├── IPC handlers   (app:*, settings:get/set, desk:load/save — more per stage)
   └── IPC bridge     (src/app/preload.js)   →  window.chiphippo.*
         └── Renderer / UI (src/web/scripts/app.js)
-              └── DeskView (components/desk-view.js) ← desk/desk-geometry.js (pure)
+              ├── DeskView (components/desk-view.js) ← desk/desk-geometry.js (pure)
+              └── DeskController (components/desk-controller.js)
+                    owns DeskDoc (model/desk-doc.js ← model/breadboard.js, pure),
+                    the surface layers (boards→parts→wires→overlay), and mounts
+                    BreadboardView children; autosave via `chiphippo:doc-changed`
 ```
+
+- **Desk surface layers** (inside `.desk-surface`, established in Feature 30):
+  `.layer-boards` → `.layer-parts` (40/60) → `.layer-wires` (50) →
+  `.layer-overlay` (ghosts, hover ring, tooltips — pointer-inert). Boards are one
+  static inline SVG each; **no per-hole DOM nodes, listeners, or ids** — all hole
+  interaction is `holeAt()` math from pointer coordinates. Pan/zoom must never
+  rebuild or re-lay-out surface children (transform-only).
+- **Popups/menus**: `popup-manager.js` (ported from Port Hippo) is the only
+  app-wide dialog/menu seam; build DOM with `dom.js` `el()`.
 
 - The main process owns all filesystem and native I/O. The renderer is sandboxed
   (`contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`) and
   communicates exclusively via `window.chiphippo.*`.
-- **Keep `main.js` ipcMain handlers and the `preload.js` exposure in lockstep** (an
-  ipc-parity test guards this from Feature 20 on).
+- **Keep `main.js` ipcMain handlers and the `preload.js` exposure in lockstep** —
+  enforced by `app/tests/ipc-parity.test.js` (add new `ipc/*.js` files to its scan
+  list; channels follow `area:noun[:verb]`, lowercase + hyphenated).
+- **Addresses are the only cross-module currency for holes** (`bb1.f12`); nothing
+  outside `model/breadboard.js` does row/column arithmetic by hand.
 - Live state pushed main → renderer uses one-way broadcasts the preload re-dispatches
   as global `chiphippo:*` `CustomEvent`s (pattern arrives with the first push channel).
 - The **simulation engine is pure computation, not I/O** — it lives in the renderer as

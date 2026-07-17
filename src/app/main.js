@@ -30,6 +30,7 @@ const fs = require("fs");
 
 const { parseArgs } = require("./cli-args");
 const { SettingsStore } = require("./store/settings-store");
+const { DeskStore } = require("./store/desk-store");
 const {
   DEFAULT_BOUNDS,
   resolveWindowBounds,
@@ -82,6 +83,14 @@ function getSettingsStore() {
   return _settingsStore;
 }
 
+let _deskStore = null;
+
+/** @returns {DeskStore} */
+function getDeskStore() {
+  if (!_deskStore) _deskStore = new DeskStore(app.getPath("userData"));
+  return _deskStore;
+}
+
 // ─── IPC handlers ─────────────────────────────────────────────────────────────
 // Every channel registered here must have a matching window.chiphippo.* export
 // in preload.js (the ipc-parity test enforcing this lands in Feature 20).
@@ -97,6 +106,11 @@ function registerIpc() {
   ipcMain.handle("settings:set", (_event, patch) =>
     getSettingsStore().set(patch),
   );
+
+  // Desk document (Feature 20): load runs the schema migrations; the
+  // renderer autosaves the whole document, debounced (~1 s).
+  ipcMain.handle("desk:load", () => getDeskStore().load());
+  ipcMain.handle("desk:save", (_event, doc) => getDeskStore().save(doc));
 }
 
 // ─── Hot reload (dev only) ────────────────────────────────────────────────────

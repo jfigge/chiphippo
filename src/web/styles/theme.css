@@ -52,6 +52,15 @@
 
   --color-desk-dot: #343434; /* desk pitch-grid dots */
 
+  /* ── Breadboard palette (drawn boards — plastic tones) ───────────────── */
+  --color-board-body: #d9d5c9; /* cream plastic slab */
+  --color-board-edge: #b8b3a4; /* body outline */
+  --color-board-trench: #c7c2b4; /* center groove */
+  --color-board-hole: #33322e; /* tie-point squares */
+  --color-board-label: #8a8577; /* row letters / column numerals */
+  --color-rail-plus: #c05050; /* red rail stripe */
+  --color-rail-minus: #5070c0; /* blue rail stripe */
+
   /* ── Typography ──────────────────────────────────────────────────────── */
   --font-sans:
     "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -103,6 +112,13 @@
     --color-warning: #9a6800;
     --color-danger: #b82020;
     --color-desk-dot: #c8c8c8;
+    --color-board-body: #f2efe7;
+    --color-board-edge: #c9c4b4;
+    --color-board-trench: #e0dccf;
+    --color-board-hole: #3c3b36;
+    --color-board-label: #97917f;
+    --color-rail-plus: #c04545;
+    --color-rail-minus: #4568c0;
     --shadow-1: 0 1px 3px rgba(0, 0, 0, 0.12);
   }
 }
@@ -125,6 +141,13 @@
   --color-warning: #9a6800;
   --color-danger: #b82020;
   --color-desk-dot: #c8c8c8;
+  --color-board-body: #f2efe7;
+  --color-board-edge: #c9c4b4;
+  --color-board-trench: #e0dccf;
+  --color-board-hole: #3c3b36;
+  --color-board-label: #97917f;
+  --color-rail-plus: #c04545;
+  --color-rail-minus: #4568c0;
   --shadow-1: 0 1px 3px rgba(0, 0, 0, 0.12);
 }
 
@@ -148,6 +171,13 @@
   --color-warning: #d4b060;
   --color-danger: #e07070;
   --color-desk-dot: #343434;
+  --color-board-body: #d9d5c9;
+  --color-board-edge: #b8b3a4;
+  --color-board-trench: #c7c2b4;
+  --color-board-hole: #33322e;
+  --color-board-label: #8a8577;
+  --color-rail-plus: #c05050;
+  --color-rail-minus: #5070c0;
   --shadow-1: 0 1px 3px rgba(0, 0, 0, 0.4);
 }
 

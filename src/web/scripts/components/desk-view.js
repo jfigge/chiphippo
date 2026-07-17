@@ -85,6 +85,14 @@ export class DeskView {
     return { ...this.#camera };
   }
 
+  /**
+   * The world container element. DeskController mounts its layers (boards /
+   * parts / wires / overlay) here; children position in world px.
+   */
+  get surface() {
+    return this.#surface;
+  }
+
   /** Replace the camera wholesale (normalized), e.g. a restored viewport. */
   setCamera(camera) {
     this.#camera = normalizeCamera(camera);

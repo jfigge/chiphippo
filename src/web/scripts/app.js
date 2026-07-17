@@ -24,9 +24,15 @@
 import { DeskView } from "./components/desk-view.js";
 import { ZoomControl } from "./components/zoom-control.js";
 import { DeskHud } from "./components/desk-hud.js";
+import { DeskController } from "./components/desk-controller.js";
+import { BoardToolbar } from "./components/board-toolbar.js";
+import { DeskDoc } from "./model/desk-doc.js";
 
 /** How long after the last camera change to persist the viewport. */
 const VIEWPORT_SAVE_DEBOUNCE_MS = 500;
+
+/** How long after the last document change to persist the desk. */
+const DOC_SAVE_DEBOUNCE_MS = 1000;
 
 function buildHeader() {
   const header = document.createElement("header");
@@ -87,9 +93,16 @@ function buildDesk() {
   return desk;
 }
 
-/** Central keyboard shortcuts: cmd/ctrl +, −, 0 drive the desk zoom. */
-function bindZoomShortcuts(deskView) {
+/**
+ * Central keyboard shortcuts: desk keys (Esc / Delete via DeskController)
+ * first, then cmd/ctrl +, −, 0 for the desk zoom.
+ */
+function bindShortcuts(deskView, controller) {
   window.addEventListener("keydown", (e) => {
+    if (controller.handleKeyDown(e)) {
+      e.preventDefault();
+      return;
+    }
     if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
     if (e.key === "=" || e.key === "+") {
       e.preventDefault();
@@ -120,6 +133,27 @@ async function init() {
   const desk = buildDesk();
   app.append(buildHeader(), desk);
 
+  // Desk document (Feature 20): the persisted boards/components/wires, held
+  // in one in-memory DeskDoc. Anything that mutates it dispatches a global
+  // `chiphippo:doc-changed` CustomEvent, which triggers the debounced
+  // whole-document autosave below. Feature 30 renders it.
+  let deskDoc;
+  try {
+    deskDoc = new DeskDoc(await bridge.desk.load());
+  } catch (err) {
+    console.error("[renderer] desk:load failed:", err);
+    deskDoc = new DeskDoc(null);
+  }
+  let docSaveTimer = null;
+  window.addEventListener("chiphippo:doc-changed", () => {
+    clearTimeout(docSaveTimer);
+    docSaveTimer = setTimeout(() => {
+      bridge.desk
+        .save(deskDoc.toJSON())
+        .catch((err) => console.error("[renderer] desk:save failed:", err));
+    }, DOC_SAVE_DEBOUNCE_MS);
+  });
+
   // Debounced viewport persistence: every pan step emits a change, so writes
   // coalesce until the camera settles.
   let saveTimer = null;
@@ -134,14 +168,31 @@ async function init() {
 
   let zoomControl = null;
   let hud = null;
+  let controller = null;
   const deskView = new DeskView(desk, {
     camera: settings.viewport,
     onViewportChange: (camera) => {
       zoomControl?.setZoom(camera.zoom);
       hud?.update(camera);
+      controller?.onViewportChange(camera);
       scheduleViewportSave(camera);
     },
   });
+
+  // Everything ON the desk (boards, placement, selection, hover addressing).
+  controller = new DeskController({ viewport: desk, deskView, deskDoc });
+
+  new BoardToolbar(document.getElementById("app-toolbar"), {
+    onAddBoard: (type) => controller.armPlacement(type),
+  });
+
+  // The empty-desk hint disappears once the desk has boards.
+  const hint = desk.querySelector(".desk-hint");
+  const updateHint = () => {
+    hint.hidden = deskDoc.boards.length > 0;
+  };
+  updateHint();
+  window.addEventListener("chiphippo:doc-changed", updateHint);
 
   zoomControl = new ZoomControl(desk, {
     onZoomIn: () => deskView.zoomIn(),
@@ -150,7 +201,7 @@ async function init() {
   });
   zoomControl.setZoom(deskView.camera.zoom);
 
-  bindZoomShortcuts(deskView);
+  bindShortcuts(deskView, controller);
 
   if (bridge.isDev) hud = new DeskHud(desk, deskView);
 
