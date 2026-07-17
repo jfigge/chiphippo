@@ -20,7 +20,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { resetDom } from "./jsdom-setup.js";
-import { CHIP_DEFS } from "../catalog/index.js";
+import { PALETTE_DEFS } from "../catalog/index.js";
 
 const { PalettePanel } = await import("../components/palette-panel.js");
 
@@ -41,11 +41,11 @@ test("lists the whole catalog grouped by function; picks report the ref", () => 
   });
 
   const items = host.querySelectorAll(".palette-item");
-  assert.equal(items.length, CHIP_DEFS.length);
+  assert.equal(items.length, PALETTE_DEFS.length);
   const groups = [...host.querySelectorAll(".palette-group")].map(
     (g) => g.textContent,
   );
-  assert.deepEqual(groups, [...new Set(CHIP_DEFS.map((d) => d.group))]);
+  assert.deepEqual(groups, [...new Set(PALETTE_DEFS.map((d) => d.group))]);
 
   host.querySelector('.palette-item[data-ref="7486"]').click();
   assert.deepEqual(picked, ["7486"]);
@@ -74,7 +74,7 @@ test("filter matches id, title, and blurb (case-insensitive)", () => {
   assert.ok(host.querySelector(".palette-empty"));
 
   typeFilter(panel.element, "");
-  assert.equal(ids().length, CHIP_DEFS.length);
+  assert.equal(ids().length, PALETTE_DEFS.length);
 });
 
 test("setVisible toggles the hidden attribute", () => {

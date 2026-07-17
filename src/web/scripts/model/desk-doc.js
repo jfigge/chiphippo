@@ -34,8 +34,8 @@
 
 import { BOARD_TYPES } from "./board-types.js";
 import { parseAddress, parseHole, spec } from "./breadboard.js";
-import { chipDef } from "../catalog/index.js";
-import { canPlaceChip, canPlaceWire, isFreeHole } from "./occupancy.js";
+import { partDef } from "../catalog/index.js";
+import { canPlacePart, canPlaceWire, isFreeHole } from "./occupancy.js";
 
 export const DOC_VERSION = 1;
 
@@ -53,7 +53,13 @@ export const WIRE_COLORS = Object.freeze([
 
 const BOARD_ID_RE = /^bb([1-9]\d*)$/;
 const COMPONENT_ID_RE = /^c([1-9]\d*)$/;
+const PSU_ID_RE = /^psu([1-9]\d*)$/;
 const WIRE_ID_RE = /^w([1-9]\d*)$/;
+
+/** Params coerced through the def's own contract (chips have none). */
+function normalizeParams(def, raw) {
+  return def.normalizeParams ? def.normalizeParams(raw) : {};
+}
 
 function taggedError(message, code) {
   const err = new Error(message);
@@ -70,6 +76,7 @@ export function emptyDocument() {
     wires: [],
     nextBoardId: 1,
     nextComponentId: 1,
+    nextPsuId: 1,
     nextWireId: 1,
   };
 }
@@ -105,43 +112,63 @@ export function normalizeDocument(raw) {
   }
 
   let maxCompSeq = 0;
+  let maxPsuSeq = 0;
   const compIds = new Set();
   const components = Array.isArray(raw.components) ? raw.components : [];
   for (const c of components) {
-    if (!c || typeof c !== "object") continue;
+    if (!c || typeof c !== "object" || compIds.has(c.id)) continue;
+    const def = partDef(c.ref);
+    if (!def) continue;
+    if (c.kind === "psu" && def.kind === "psu") {
+      const m = typeof c.id === "string" ? PSU_ID_RE.exec(c.id) : null;
+      if (!m) continue;
+      if (!Number.isFinite(c.x) || !Number.isFinite(c.y)) continue;
+      compIds.add(c.id);
+      maxPsuSeq = Math.max(maxPsuSeq, Number(m[1]));
+      doc.components.push({
+        id: c.id,
+        kind: "psu",
+        ref: c.ref,
+        x: Math.round(c.x),
+        y: Math.round(c.y),
+        params: normalizeParams(def, c.params),
+      });
+      continue;
+    }
+    if (c.kind !== def.kind || (c.kind !== "chip" && c.kind !== "discrete")) {
+      continue;
+    }
     const m = typeof c.id === "string" ? COMPONENT_ID_RE.exec(c.id) : null;
-    if (!m || compIds.has(c.id)) continue;
-    if (c.kind !== "chip") continue; // discrete/psu arrive in Feature 60
-    if (!chipDef(c.ref)) continue;
+    if (!m) continue;
     if (!boardIds.has(c.board)) continue; // seated on a surviving board
     if (typeof c.anchor !== "string") continue;
     compIds.add(c.id);
     maxCompSeq = Math.max(maxCompSeq, Number(m[1]));
     doc.components.push({
       id: c.id,
-      kind: "chip",
+      kind: c.kind,
       ref: c.ref,
       board: c.board,
       anchor: c.anchor,
-      params:
-        c.params && typeof c.params === "object" && !Array.isArray(c.params)
-          ? structuredClone(c.params)
-          : {},
+      params: normalizeParams(def, c.params),
     });
   }
 
-  // Wires: both endpoints must parse onto surviving boards' real holes and
-  // be distinct; junk colors fall back to the first palette entry.
+  // Wires: both endpoints must parse onto surviving boards' real holes (or
+  // surviving PSU terminals) and be distinct; junk colors fall back to the
+  // first palette entry.
   let maxWireSeq = 0;
   const wireIds = new Set();
-  const boardType = (boardId) =>
-    doc.boards.find((b) => b.id === boardId)?.type ?? null;
   const validEndpoint = (address) => {
     if (typeof address !== "string") return false;
     const parsed = parseAddress(address);
     if (!parsed) return false;
-    const type = boardType(parsed.boardId);
-    return type !== null && parseHole(type, parsed.hole) !== null;
+    const board = doc.boards.find((b) => b.id === parsed.boardId);
+    if (board) return parseHole(board.type, parsed.hole) !== null;
+    const comp = doc.components.find((c) => c.id === parsed.boardId);
+    if (!comp) return false;
+    const def = partDef(comp.ref);
+    return Boolean(def?.terminals?.some((t) => t.id === parsed.hole));
   };
   const wires = Array.isArray(raw.wires) ? raw.wires : [];
   for (const w of wires) {
@@ -170,6 +197,9 @@ export function normalizeDocument(raw) {
       ? raw.nextComponentId
       : 1;
   doc.nextComponentId = Math.max(storedNextComp, maxCompSeq + 1);
+  const storedNextPsu =
+    Number.isInteger(raw.nextPsuId) && raw.nextPsuId > 0 ? raw.nextPsuId : 1;
+  doc.nextPsuId = Math.max(storedNextPsu, maxPsuSeq + 1);
   const storedNextWire =
     Number.isInteger(raw.nextWireId) && raw.nextWireId > 0 ? raw.nextWireId : 1;
   doc.nextWireId = Math.max(storedNextWire, maxWireSeq + 1);
@@ -210,10 +240,20 @@ export class DeskDoc {
     return b ? { ...b } : null;
   }
 
+  /** The desk rectangles of every PSU brick (from the catalog def size). */
+  #psuRects({ ignoreId = null } = {}) {
+    return this.#doc.components
+      .filter((c) => c.kind === "psu" && c.id !== ignoreId)
+      .map((c) => {
+        const { width, height } = partDef(c.ref).size;
+        return { x: c.x, y: c.y, width, height };
+      });
+  }
+
   /**
    * Would a `type` board fit at (x, y) (after integer snapping) without
-   * overlapping any existing board's outline? `ignoreId` excludes a board
-   * from the check (moving a board over its own footprint is fine).
+   * overlapping any existing board's outline or PSU brick? `ignoreId`
+   * excludes a board from the check (moving over its own footprint is fine).
    */
   canPlace(type, x, y, { ignoreId = null } = {}) {
     const s = spec(type);
@@ -223,8 +263,23 @@ export class DeskDoc {
       width: s.width,
       height: s.height,
     };
-    return this.#doc.boards.every(
-      (b) => b.id === ignoreId || !rectsOverlap(rect, outlineRect(b)),
+    return (
+      this.#doc.boards.every(
+        (b) => b.id === ignoreId || !rectsOverlap(rect, outlineRect(b)),
+      ) && this.#psuRects().every((r) => !rectsOverlap(rect, r))
+    );
+  }
+
+  /**
+   * Would a PSU brick fit at (x, y) (after integer snapping) without
+   * covering a board or another PSU?
+   */
+  canPlacePsu(x, y, { ignoreId = null } = {}) {
+    const { width, height } = partDef("psu").size;
+    const rect = { x: Math.round(x), y: Math.round(y), width, height };
+    return (
+      this.#doc.boards.every((b) => !rectsOverlap(rect, outlineRect(b))) &&
+      this.#psuRects({ ignoreId }).every((r) => !rectsOverlap(rect, r))
     );
   }
 
@@ -284,15 +339,14 @@ export class DeskDoc {
     if (i === -1) throw taggedError(`no board ${id}`, "NOT_FOUND");
     this.#doc.boards.splice(i, 1);
     this.#doc.components = this.#doc.components.filter((c) => c.board !== id);
-    this.#doc.wires = this.#doc.wires.filter(
-      (w) => !this.#wireTouchesBoard(w, id),
-    );
+    this.#doc.wires = this.#doc.wires.filter((w) => !this.#wireTouches(w, id));
   }
 
-  #wireTouchesBoard(wire, boardId) {
+  /** Does a wire endpoint belong to this owner (board or PSU)? */
+  #wireTouches(wire, ownerId) {
     return (
-      parseAddress(wire.from)?.boardId === boardId ||
-      parseAddress(wire.to)?.boardId === boardId
+      parseAddress(wire.from)?.boardId === ownerId ||
+      parseAddress(wire.to)?.boardId === ownerId
     );
   }
 
@@ -317,28 +371,37 @@ export class DeskDoc {
   }
 
   /**
-   * May a chip seat here? Delegates to occupancy — the single collision
-   * authority. `ignoreId` excludes one component's own pins (moves).
+   * May a board part (chip or discrete) seat here? Delegates to occupancy —
+   * the single collision authority. `ignoreId` excludes one component's own
+   * pins (moves).
    */
-  canPlaceChip(ref, boardId, anchor, { ignoreId = null } = {}) {
-    return canPlaceChip(this.#doc, { ref, board: boardId, anchor, ignoreId });
+  canPlacePart(ref, boardId, anchor, { ignoreId = null } = {}) {
+    return canPlacePart(this.#doc, { ref, board: boardId, anchor, ignoreId });
+  }
+
+  /** Back-compat alias (Feature 40 name). */
+  canPlaceChip(ref, boardId, anchor, opts) {
+    return this.canPlacePart(ref, boardId, anchor, opts);
   }
 
   /**
-   * Seat a chip: pin 1 at `anchor` (row e) on `boardId`. Throws INVALID_KIND
-   * / INVALID_REF / NOT_FOUND / ILLEGAL_PLACEMENT. Returns a copy.
+   * Seat a board part: pin 1 at `anchor` on `boardId` (chips row e;
+   * discretes any grid row). Params are coerced through the def's contract.
+   * Throws INVALID_KIND / INVALID_REF / NOT_FOUND / ILLEGAL_PLACEMENT.
+   * Returns a copy.
    */
   addComponent({ kind, ref, board: boardId, anchor, params = {} }) {
-    if (kind !== "chip") {
+    if (kind !== "chip" && kind !== "discrete") {
       throw taggedError(`unsupported component kind: ${kind}`, "INVALID_KIND");
     }
-    if (!chipDef(ref)) {
-      throw taggedError(`unknown catalog ref: ${ref}`, "INVALID_REF");
+    const def = partDef(ref);
+    if (!def || def.kind !== kind) {
+      throw taggedError(`unknown ${kind} ref: ${ref}`, "INVALID_REF");
     }
     if (!this.#doc.boards.some((b) => b.id === boardId)) {
       throw taggedError(`no board ${boardId}`, "NOT_FOUND");
     }
-    if (!this.canPlaceChip(ref, boardId, anchor)) {
+    if (!this.canPlacePart(ref, boardId, anchor)) {
       throw taggedError(
         `a ${ref} cannot seat at ${boardId}.${anchor}`,
         "ILLEGAL_PLACEMENT",
@@ -346,27 +409,31 @@ export class DeskDoc {
     }
     const component = {
       id: `c${this.#doc.nextComponentId++}`,
-      kind: "chip",
+      kind,
       ref,
       board: boardId,
       anchor,
-      params: structuredClone(params),
+      params: normalizeParams(def, params),
     };
     this.#doc.components.push(component);
     return { ...component };
   }
 
   /**
-   * Re-seat a component (same or another board). Throws NOT_FOUND /
-   * ILLEGAL_PLACEMENT. Returns a copy of the updated component.
+   * Re-seat a board part (same or another board). Throws NOT_FOUND /
+   * INVALID_KIND (PSUs move with movePsu) / ILLEGAL_PLACEMENT. Returns a
+   * copy of the updated component.
    */
   moveComponent(id, boardId, anchor) {
     const comp = this.#doc.components.find((c) => c.id === id);
     if (!comp) throw taggedError(`no component ${id}`, "NOT_FOUND");
+    if (comp.kind === "psu") {
+      throw taggedError(`use movePsu for ${id}`, "INVALID_KIND");
+    }
     if (!this.#doc.boards.some((b) => b.id === boardId)) {
       throw taggedError(`no board ${boardId}`, "NOT_FOUND");
     }
-    if (!this.canPlaceChip(comp.ref, boardId, anchor, { ignoreId: id })) {
+    if (!this.canPlacePart(comp.ref, boardId, anchor, { ignoreId: id })) {
       throw taggedError(
         `${id} cannot seat at ${boardId}.${anchor}`,
         "ILLEGAL_PLACEMENT",
@@ -377,11 +444,81 @@ export class DeskDoc {
     return { ...comp };
   }
 
-  /** Remove a component. Throws NOT_FOUND. */
+  /**
+   * Update a component's params through the def's contract (switch position,
+   * LED color/flip, PSU volts). Throws NOT_FOUND. Returns a copy.
+   */
+  setComponentParams(id, patch) {
+    const comp = this.#doc.components.find((c) => c.id === id);
+    if (!comp) throw taggedError(`no component ${id}`, "NOT_FOUND");
+    comp.params = normalizeParams(partDef(comp.ref), {
+      ...comp.params,
+      ...patch,
+    });
+    return { ...comp };
+  }
+
+  /**
+   * Remove a component. A PSU takes its attached wires with it (terminals
+   * would dangle otherwise). Throws NOT_FOUND.
+   */
   removeComponent(id) {
     const i = this.#doc.components.findIndex((c) => c.id === id);
     if (i === -1) throw taggedError(`no component ${id}`, "NOT_FOUND");
-    this.#doc.components.splice(i, 1);
+    const [removed] = this.#doc.components.splice(i, 1);
+    if (removed.kind === "psu") {
+      this.#doc.wires = this.#doc.wires.filter(
+        (w) => !this.#wireTouches(w, id),
+      );
+    }
+  }
+
+  // ── PSU bricks (desk-level, Feature 60) ──────────────────────────────────
+
+  /**
+   * Drop a PSU brick on the desk (snapped to the pitch lattice). Throws
+   * INVALID_ARG / OVERLAP. Returns a copy.
+   */
+  addPsu(x, y, params = {}) {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      throw taggedError("psu position must be finite", "INVALID_ARG");
+    }
+    if (!this.canPlacePsu(x, y)) {
+      throw taggedError(
+        `a psu at ${Math.round(x)},${Math.round(y)} covers a board or psu`,
+        "OVERLAP",
+      );
+    }
+    const psu = {
+      id: `psu${this.#doc.nextPsuId++}`,
+      kind: "psu",
+      ref: "psu",
+      x: Math.round(x),
+      y: Math.round(y),
+      params: normalizeParams(partDef("psu"), params),
+    };
+    this.#doc.components.push(psu);
+    return { ...psu };
+  }
+
+  /** Move a PSU brick. Throws NOT_FOUND / INVALID_ARG / OVERLAP. */
+  movePsu(id, x, y) {
+    const psu = this.#doc.components.find(
+      (c) => c.id === id && c.kind === "psu",
+    );
+    if (!psu) throw taggedError(`no psu ${id}`, "NOT_FOUND");
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      throw taggedError("psu position must be finite", "INVALID_ARG");
+    }
+    if (!this.canPlacePsu(x, y, { ignoreId: id })) {
+      throw taggedError(
+        `moving ${id} to ${Math.round(x)},${Math.round(y)} covers something`,
+        "OVERLAP",
+      );
+    }
+    psu.x = Math.round(x);
+    psu.y = Math.round(y);
+    return { ...psu };
   }
 
   // ── Wires (Feature 50) ───────────────────────────────────────────────────
@@ -397,11 +534,16 @@ export class DeskDoc {
     return w ? { ...w } : null;
   }
 
-  /** Copies of the wires with an endpoint on one board. */
-  wiresOnBoard(boardId) {
+  /** Copies of the wires with an endpoint on one owner (board or PSU). */
+  wiresTouching(ownerId) {
     return this.#doc.wires
-      .filter((w) => this.#wireTouchesBoard(w, boardId))
+      .filter((w) => this.#wireTouches(w, ownerId))
       .map((w) => ({ ...w }));
+  }
+
+  /** Back-compat alias (Feature 50 name). */
+  wiresOnBoard(boardId) {
+    return this.wiresTouching(boardId);
   }
 
   /** Is `address` a real, unoccupied hole? (occupancy delegation) */

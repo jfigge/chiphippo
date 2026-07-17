@@ -14,13 +14,14 @@
  * limitations under the License.
  */
 
-// palette-panel.js — the left parts palette: the chip catalog grouped by
-// function, with a filter box matching id/title/blurb. Clicking a chip arms
-// placement mode (reported via the constructor callback — the ghost belongs
-// to DeskController). Feature 60 adds discrete parts alongside the chips.
+// palette-panel.js — the left parts palette: chips, discrete parts, and
+// power bricks grouped by function, with a filter box matching
+// id/title/blurb. Clicking an entry arms placement mode (reported via the
+// constructor callback with the click event, so app.js can pop the LED
+// color swatches — the ghost belongs to DeskController).
 
 import { clear, el } from "../dom.js";
-import { CHIP_DEFS } from "../catalog/index.js";
+import { PALETTE_DEFS } from "../catalog/index.js";
 
 export class PalettePanel {
   #el;
@@ -79,7 +80,7 @@ export class PalettePanel {
 
   #render() {
     clear(this.#list);
-    const defs = CHIP_DEFS.filter((def) => this.#matches(def));
+    const defs = PALETTE_DEFS.filter((def) => this.#matches(def));
     if (defs.length === 0) {
       this.#list.append(
         el("p", { class: "palette-empty", text: "No matching parts." }),
@@ -103,7 +104,7 @@ export class PalettePanel {
               type: "button",
               title: def.blurb,
               dataset: { ref: def.id },
-              onClick: () => this.#onPickChip?.(def.id),
+              onClick: (e) => this.#onPickChip?.(def.id, e),
             },
             [
               el("span", { class: "palette-item-id", text: def.id }),

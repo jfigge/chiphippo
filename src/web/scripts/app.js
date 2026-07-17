@@ -28,7 +28,9 @@ import { DeskHud } from "./components/desk-hud.js";
 import { DeskController } from "./components/desk-controller.js";
 import { BoardToolbar } from "./components/board-toolbar.js";
 import { PalettePanel } from "./components/palette-panel.js";
+import { PopupManager } from "./popup-manager.js";
 import { DeskDoc, WIRE_COLORS } from "./model/desk-doc.js";
+import { LED_COLORS } from "./catalog/parts.js";
 
 /** How long after the last camera change to persist the viewport. */
 const VIEWPORT_SAVE_DEBOUNCE_MS = 500;
@@ -175,9 +177,24 @@ async function init() {
   let hud = null;
   let controller = null;
 
-  // Parts palette (left panel; visibility persists in settings).
+  // Parts palette (left panel; visibility persists in settings). An LED
+  // pick opens the color swatch popover first; everything else arms its
+  // placement ghost directly.
   const palette = new PalettePanel(main, {
-    onPickChip: (ref) => controller?.armChipPlacement(ref),
+    onPickChip: (ref, e) => {
+      if (ref === "led") {
+        PopupManager.menu({
+          x: e?.clientX ?? 0,
+          y: e?.clientY ?? 0,
+          items: LED_COLORS.map((color) => ({
+            label: `LED color: ${color}`,
+            onSelect: () => controller?.armPartPlacement("led", { color }),
+          })),
+        });
+        return;
+      }
+      controller?.armPartPlacement(ref);
+    },
   });
   palette.setVisible(settings.paletteOpen === true);
   main.append(desk);

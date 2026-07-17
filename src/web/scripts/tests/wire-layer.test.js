@@ -146,3 +146,22 @@ test("setPreview shows, retints, and hides the rubber band", () => {
   wires.setPreview(null);
   assert.equal(layer.querySelector(".wire-preview"), null);
 });
+
+test("resolves PSU terminal endpoints (and drag overrides)", () => {
+  resetDom();
+  const layer = document.createElement("div");
+  document.body.append(layer);
+  const doc = new DeskDoc(null);
+  doc.addBoard("full", 0, 0);
+  doc.addPsu(80, 10);
+  doc.addWire({ from: "psu1.+", to: "bb1.t+1", color: "red" });
+
+  const wires = new WireLayer(layer, doc, {});
+  // psu1.+ terminal sits at (80+2, 10+4) pitch units.
+  let d = layer.querySelector(".wire-core").getAttribute("d");
+  assert.ok(d.startsWith(`M ${82 * PX_PER_UNIT} ${14 * PX_PER_UNIT} `), d);
+
+  wires.render(new Map([["psu1", { x: 100, y: 10 }]]));
+  d = layer.querySelector(".wire-core").getAttribute("d");
+  assert.ok(d.startsWith(`M ${102 * PX_PER_UNIT} ${14 * PX_PER_UNIT} `), d);
+});

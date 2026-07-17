@@ -67,7 +67,16 @@
   --color-chip-leg: #9aa0a8; /* tinned legs */
   --color-chip-label: #d8d8dc; /* printed part number + pin-1 dot */
 
-  /* ── Jumper-wire palette (Feature 50 — one token per WIRE_COLORS name) ─ */
+  /* ── Discrete parts & PSU bricks (Feature 60) ────────────────────────── */
+  --color-part-body: #43474d; /* switch/button housings */
+  --color-part-inset: #2c2f34; /* slide slot / recesses */
+  --color-part-accent: #c8ccd2; /* knobs / caps highlight */
+  --color-part-cap: #b25252; /* push-button cap */
+  --color-psu-body: #2e3238; /* power brick */
+  --color-psu-badge: #e4e6ea; /* voltage badge text */
+
+  /* ── Jumper-wire palette (Feature 50 — one token per WIRE_COLORS name;
+        LEDs share these same color tokens — house rule) ─────────────────── */
   --color-wire-red: #d04a4a;
   --color-wire-black: #26262a;
   --color-wire-blue: #4a6fd0;

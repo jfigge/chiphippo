@@ -33,8 +33,16 @@ wires (50) — `{id, from, to, color}` with `w<n>` ids and address endpoints in
 the shared occupancy index, the pure `desk/wire-path.js` sag math, `WireLayer`
 (one SVG, outline+core+caps, the sanctioned per-wire hit-stroke exception),
 the click-click wire tool (shortcut W, chaining, color cycling + toolbar
-swatches), cross-board wires riding board drags, and cascade-on-board-delete.
-When a stage is finished, move its plan file into `features/done/`.
+swatches), cross-board wires riding board drags, and cascade-on-board-delete;
+and discrete parts & power (60) — `catalog/parts.js` (slide switch / push
+button / LED / PSU with `internalBridges`/`source`/`normalizeParams`
+contracts), discretes seating in ANY grid row via generalized
+`partPinHoles`/`canPlacePart`, desk-level PSU bricks (`psu<n>` ids,
+`nextPsuId`) with addressable wireable terminals (`psu1.+`), `DiscreteView` /
+`PsuView` (interactive slider + momentary cap emitting
+`chiphippo:part-state`), LED color popover + `F`-to-flip ghost, and PSU
+volts via context menu. When a stage is finished, move its plan file into
+`features/done/`.
 
 ## Naming & identity
 
@@ -100,11 +108,17 @@ Electron main process (src/app/main.js)
   changes or live board drags (positions passed as overrides). NOTE: an `<svg>`
   with width/height 0 renders NOTHING per the SVG spec — zero-size anchors need
   a token 1×1 box + overflow: visible.
-- **Components**: `{ id, kind, ref, board, anchor, params }` with `c<n>` ids; pin
-  positions are always DERIVED (footprint + anchor), never stored. **Wires**:
-  `{ id, from, to, color }` with `w<n>` ids, `from`/`to` hole ADDRESSES (never
-  pixels), colors from `WIRE_COLORS` (a `--color-wire-<name>` token each).
-  `occupancy.js` is the single collision authority (one hole, one lead).
+- **Components**: `{ id, kind, ref, board, anchor, params }` with `c<n>` ids
+  (kinds `chip` | `discrete`); PSUs are desk-level `{ id: psu<n>, kind: "psu",
+  ref, x, y, params }`. Pin positions are always DERIVED (footprint + anchor),
+  never stored; params are coerced through each def's `normalizeParams`.
+  Electrical contracts (`internalBridges`, `source`, `polarity`) live in the
+  catalog as pure data + pure functions — never in views or the netlist.
+  **Wires**: `{ id, from, to, color }` with `w<n>` ids, `from`/`to` ADDRESSES
+  (never pixels) — board holes or PSU terminals (`psu1.+`) — colors from
+  `WIRE_COLORS` (a `--color-wire-<name>` token each; LEDs share these tokens).
+  `occupancy.js` is the single collision authority (one hole/terminal, one
+  lead).
 - **Popups/menus**: `popup-manager.js` (ported from Port Hippo) is the only
   app-wide dialog/menu seam; build DOM with `dom.js` `el()`.
 

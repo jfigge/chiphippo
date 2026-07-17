@@ -16,16 +16,28 @@
 
 // catalog/index.js — the assembled parts catalog. Later waves (sequential
 // chips, MSI parts) concatenate their own def modules here; consumers only
-// ever see CHIP_DEFS / chipDef().
+// ever see the exported lists and lookups.
 
 import { CHIPS_GATES } from "./chips-gates.js";
+import { PART_DEFS } from "./parts.js";
 
-/** Every chip def, in palette display order. */
-export const CHIP_DEFS = Object.freeze([...CHIPS_GATES]);
+/** Every chip def, in palette display order (kind stamped uniformly). */
+export const CHIP_DEFS = Object.freeze(
+  CHIPS_GATES.map((def) => Object.freeze({ kind: "chip", ...def })),
+);
 
-const BY_ID = new Map(CHIP_DEFS.map((def) => [def.id, def]));
+/** Chips first, then discrete parts + power — the palette's full listing. */
+export const PALETTE_DEFS = Object.freeze([...CHIP_DEFS, ...PART_DEFS]);
 
-/** The def for a catalog id, or null. */
+const CHIPS_BY_ID = new Map(CHIP_DEFS.map((def) => [def.id, def]));
+const ALL_BY_ID = new Map(PALETTE_DEFS.map((def) => [def.id, def]));
+
+/** The chip def for a catalog id, or null (chips only). */
 export function chipDef(ref) {
-  return BY_ID.get(ref) ?? null;
+  return CHIPS_BY_ID.get(ref) ?? null;
+}
+
+/** The def for ANY catalog id — chip, discrete, or psu — or null. */
+export function partDef(ref) {
+  return ALL_BY_ID.get(ref) ?? null;
 }

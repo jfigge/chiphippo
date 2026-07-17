@@ -22,9 +22,11 @@ import assert from "node:assert/strict";
 import {
   buildOccupancy,
   canPlaceChip,
+  canPlacePart,
   canPlaceWire,
   chipPinHoles,
   isFreeHole,
+  partPinHoles,
 } from "../model/occupancy.js";
 
 function docWith({ boards, components = [] }) {
@@ -206,4 +208,52 @@ test("wire ends block chip placement through the shared index", () => {
     canPlaceChip(doc, { ref: "7400", board: "bb1", anchor: "e20" }),
     true,
   );
+});
+
+// ── Discrete parts + PSU terminals (Feature 60) ──────────────────────────────
+
+test("partPinHoles: linear discretes in any grid row", () => {
+  assert.deepEqual(partPinHoles("sw-slide", "b10"), [
+    { pin: 1, hole: "b10" },
+    { pin: 2, hole: "b11" },
+    { pin: 3, hole: "b12" },
+  ]);
+  assert.deepEqual(partPinHoles("sw-push", "j5"), [
+    { pin: 1, hole: "j5" },
+    { pin: 2, hole: "j7" },
+  ]);
+  assert.deepEqual(partPinHoles("led", "f1"), [
+    { pin: 1, hole: "f1" },
+    { pin: 2, hole: "f2" },
+  ]);
+  assert.equal(partPinHoles("led", "t+3"), null); // rails don't anchor parts
+  assert.equal(partPinHoles("psu", "b1"), null); // psu has terminals, not pins
+});
+
+test("canPlacePart: discretes across rows; edges clip", () => {
+  const doc = docWith({ boards: [TINY] });
+  assert.equal(
+    canPlacePart(doc, { ref: "sw-slide", board: "bb2", anchor: "a15" }),
+    true, // a15..a17 fits 17 columns
+  );
+  assert.equal(
+    canPlacePart(doc, { ref: "sw-slide", board: "bb2", anchor: "a16" }),
+    false, // a18 is off the board
+  );
+});
+
+test("isFreeHole resolves PSU terminals; wires occupy them", () => {
+  const doc = docWith({ boards: [FULL] });
+  doc.components = [
+    { id: "psu1", kind: "psu", ref: "psu", x: 80, y: 0, params: { volts: 5 } },
+  ];
+  doc.wires = [];
+  assert.equal(isFreeHole(doc, "psu1.+"), true);
+  assert.equal(isFreeHole(doc, "psu1.-"), true);
+  assert.equal(isFreeHole(doc, "psu1.?"), false);
+  assert.equal(isFreeHole(doc, "psu9.+"), false);
+  doc.wires = [{ id: "w1", from: "psu1.+", to: "bb1.a1", color: "red" }];
+  assert.equal(isFreeHole(doc, "psu1.+"), false);
+  assert.equal(canPlaceWire(doc, "psu1.-", "bb1.t-1"), true);
+  assert.equal(canPlaceWire(doc, "psu1.+", "bb1.t+1"), false);
 });

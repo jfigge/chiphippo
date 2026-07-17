@@ -30,6 +30,7 @@ import { clear } from "../dom.js";
 import { PX_PER_UNIT } from "../desk/desk-geometry.js";
 import { wirePath } from "../desk/wire-path.js";
 import { holePosition, parseAddress } from "../model/breadboard.js";
+import { partDef } from "../catalog/index.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -81,20 +82,32 @@ export class WireLayer {
   }
 
   /**
-   * World-px position of a hole address, honoring live board-drag
-   * `overrides` (boardId → {x, y}) before the document's own coordinates.
+   * World-px position of a wire endpoint — a board hole (bb1.a5) or a PSU
+   * terminal (psu1.+) — honoring live drag `overrides` (ownerId → {x, y})
+   * before the document's own coordinates.
    */
   #endpointWorld(address, overrides) {
     const parsed = parseAddress(address);
     if (!parsed) return null;
     const board = this.#doc.getBoard(parsed.boardId);
-    if (!board) return null;
-    const pos = holePosition(board.type, parsed.hole);
-    if (!pos) return null;
-    const origin = overrides?.get(parsed.boardId) ?? board;
+    if (board) {
+      const pos = holePosition(board.type, parsed.hole);
+      if (!pos) return null;
+      const origin = overrides?.get(parsed.boardId) ?? board;
+      return {
+        x: (origin.x + pos.x) * PX_PER_UNIT,
+        y: (origin.y + pos.y) * PX_PER_UNIT,
+      };
+    }
+    const comp = this.#doc.getComponent(parsed.boardId);
+    const terminal = partDef(comp?.ref)?.terminals?.find(
+      (t) => t.id === parsed.hole,
+    );
+    if (!terminal) return null;
+    const origin = overrides?.get(parsed.boardId) ?? comp;
     return {
-      x: (origin.x + pos.x) * PX_PER_UNIT,
-      y: (origin.y + pos.y) * PX_PER_UNIT,
+      x: (origin.x + terminal.dx) * PX_PER_UNIT,
+      y: (origin.y + terminal.dy) * PX_PER_UNIT,
     };
   }
 

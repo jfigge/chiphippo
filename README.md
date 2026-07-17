@@ -12,12 +12,13 @@ framework), sharing its engineering foundation with its siblings
 
 **Status: in progress.** The implementation plan lives in
 [`features/ROADMAP.md`](features/ROADMAP.md); stages are implemented in order, and
-finished plans move to `features/done/`. Stages 00–50 are done — `make install &&
+finished plans move to `features/done/`. Stages 00–60 are done — `make install &&
 make debug` opens the app with a pannable, zoomable desk where Full / Half / Tiny
 breadboards can be added, dragged, and deleted (every tie point addressable on
-hover), 74xx DIP chips from the searchable parts palette seat across the trenches
-with full occupancy checking, and colored jumper wires connect any two free holes —
-including across boards.
+hover), 74xx DIP chips, slide switches, push buttons, and LEDs from the searchable
+parts palette seat into the boards with full occupancy checking, power-supply
+bricks (3 V / 5 V / 12 V) sit on the desk with wireable `+`/`−` terminals, and
+colored jumper wires connect any two free points — including across boards.
 
 ## License
 

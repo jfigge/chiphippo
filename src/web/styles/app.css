@@ -436,7 +436,100 @@
   user-select: none;
 }
 
-/* Chip placement ghost (palette pick → seat across a trench). */
+/* ── Discrete parts (Feature 60): switch, button, LED ────────────────────── */
+.part-body {
+  fill: var(--color-part-body);
+  stroke: var(--color-part-inset);
+  stroke-width: 0.06;
+}
+
+.part-slide-slot {
+  fill: var(--color-part-inset);
+}
+
+.part-slide-knob {
+  fill: var(--color-part-accent);
+}
+
+.part-button-cap {
+  fill: var(--color-part-cap);
+  stroke: var(--color-part-inset);
+  stroke-width: 0.08;
+  pointer-events: auto; /* the press target — the view owns the gesture */
+}
+
+.part-discrete--pressed .part-button-cap {
+  fill: var(--color-danger);
+  transform: scale(0.88);
+  transform-origin: center;
+  transform-box: fill-box;
+}
+
+.part-led-leg {
+  fill: var(--color-chip-leg);
+}
+
+/* Unlit LED: a dim body tint until the simulator drives it (Feature 90).
+   LED colors share the wire color tokens (house rule). */
+.part-led-dome {
+  fill: var(--wire-color, var(--color-wire-red));
+  fill-opacity: 0.45;
+  stroke: var(--color-part-inset);
+  stroke-width: 0.07;
+}
+
+.part-led-dome--red {
+  --wire-color: var(--color-wire-red);
+}
+
+.part-led-dome--green {
+  --wire-color: var(--color-wire-green);
+}
+
+.part-led-dome--yellow {
+  --wire-color: var(--color-wire-yellow);
+}
+
+.part-led-dome--blue {
+  --wire-color: var(--color-wire-blue);
+}
+
+.part-led-flat {
+  fill: var(--color-part-inset);
+}
+
+/* ── PSU brick (desk-level) ──────────────────────────────────────────────── */
+.part-psu-body {
+  fill: var(--color-psu-body);
+  stroke: var(--color-part-inset);
+  stroke-width: 0.08;
+}
+
+.part-psu-badge {
+  fill: var(--color-psu-badge);
+  font-family: var(--font-mono);
+  font-size: 1.2px; /* SVG user units = pitch units */
+  font-weight: 600;
+  user-select: none;
+}
+
+.part-psu-terminal--plus {
+  fill: var(--color-wire-red);
+}
+
+.part-psu-terminal--minus {
+  fill: var(--color-wire-black);
+}
+
+.part-psu-terminal-glyph {
+  fill: var(--color-psu-badge);
+  font-family: var(--font-mono);
+  font-size: 0.7px;
+  user-select: none;
+  pointer-events: none;
+}
+
+/* Part placement ghost (palette pick → seat/drop). */
 .part-ghost {
   position: absolute;
   opacity: 0.6;

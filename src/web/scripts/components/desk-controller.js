@@ -16,12 +16,15 @@
 
 // desk-controller.js — the single owner of everything ON the desk: it holds
 // the in-memory DeskDoc, creates the four surface layers (boards → parts →
-// wires → overlay), mounts/removes BreadboardView + ChipView children, and
-// runs the desk interactions — board/chip placement modes with snapping
-// ghosts, select / drag / delete for both, right-click menus, and hover
-// addressing for holes AND chip pins (holeAt / derived-pin math — never
-// per-hole or per-pin DOM). Every document mutation flows through desk-doc
-// and is announced with a global `chiphippo:doc-changed` CustomEvent.
+// wires → overlay), mounts/removes the board/part/PSU views + the wire
+// layer, and runs the desk interactions — placement modes with snapping
+// ghosts (boards, chips, discretes, PSU bricks), the click-click wire tool,
+// select / drag / delete for everything, right-click menus, and hover
+// addressing for holes, part pins, and PSU terminals (holeAt / derived-pin
+// math — never per-hole or per-pin DOM). Every document mutation flows
+// through desk-doc and is announced with a `chiphippo:doc-changed`
+// CustomEvent; interactive part state (switch flips) also announces
+// `chiphippo:part-state`.
 //
 // Views report gestures through constructor callbacks (house rule); the
 // camera stays DeskView's job — this class only reads worldFromEvent/camera.
@@ -33,14 +36,22 @@ import {
   formatAddress,
   holeAt,
   holePosition,
+  parseAddress,
   spec,
 } from "../model/breadboard.js";
-import { chipPinHoles } from "../model/occupancy.js";
+import { partPinHoles } from "../model/occupancy.js";
 import { packageSpec } from "../model/footprints.js";
 import { WIRE_COLORS } from "../model/desk-doc.js";
-import { chipDef } from "../catalog/index.js";
+import { partDef } from "../catalog/index.js";
+import { PSU_VOLTS } from "../catalog/parts.js";
 import { BreadboardView, buildBoardSvg } from "./breadboard-view.js";
 import { ChipView, buildChipSvg, chipBox } from "./chip-view.js";
+import {
+  DiscreteView,
+  buildDiscreteSvg,
+  discreteBox,
+} from "./discrete-view.js";
+import { PsuView, buildPsuSvg } from "./psu-view.js";
 import { WireLayer } from "./wire-layer.js";
 
 /** Pointer travel (px) below which a press stays a click, not a drag/pan. */
@@ -54,15 +65,20 @@ const HOVER_MIN_ZOOM = 0.75;
 /** Radius of the hover ring (pitch units — a shade over one hole). */
 const RING_RADIUS = 0.45;
 
-/** Hit radius for chip pins (pitch units, matches hole hit feel). */
+/** Hit radius for part pins / PSU terminals (matches hole hit feel). */
 const PIN_HIT_RADIUS = 0.45;
 
-/** How far (pitch units) the cursor may sit from a trench center and still
-    seat a chip ghost there — beyond it (e.g. over the rails) the ghost
-    floats unseated with the danger tint. */
+/** How far (pitch units) the cursor may sit from a chip's trench center and
+    still seat its ghost — beyond it (e.g. over the rails) the ghost floats
+    unseated with the danger tint. */
 const SEAT_BAND = 2.5;
 
+/** How far (pitch units) the cursor may sit from a grid row and still seat
+    a discrete part's ghost on it. */
+const ROW_BAND = 0.8;
+
 const CHIP_ANCHOR_RE = /^e([1-9]\d*)$/;
+const GRID_ANCHOR_RE = /^([a-j])([1-9]\d*)$/;
 
 export class DeskController {
   #viewport;
@@ -70,15 +86,18 @@ export class DeskController {
   #doc;
   #layers;
   #views = new Map(); // boardId → BreadboardView
-  #chipViews = new Map(); // componentId → ChipView
+  #partViews = new Map(); // componentId → ChipView | DiscreteView | PsuView
   #wireLayer;
-  #selected = null; // { kind: "board"|"chip"|"wire", id } | null
+  #selected = null; // { kind: "board"|"part"|"wire", id } | null
   // Active interaction: null, or
-  //   { kind: "place", type, ghost, pos, legal }
+  //   { kind: "place", type, ghost, pos, legal }              (board)
   //   { kind: "place-chip", ref, ghost, board, anchor, legal }
-  //   { kind: "drag", id, … }            (board drag)
-  //   { kind: "drag-chip", id, … }
-  //   { kind: "wire", from, hover }      (wire tool armed)
+  //   { kind: "place-part", ref, params, ghost, board, anchor, legal }
+  //   { kind: "place-psu", params, ghost, pos, legal }
+  //   { kind: "drag", id, … }                                 (board drag)
+  //   { kind: "drag-part", id, … }                            (chip/discrete)
+  //   { kind: "drag-psu", id, … }
+  //   { kind: "wire", from, hover }                           (wire tool)
   #mode = null;
   #wireColorIndex = 0; // next color the wire tool commits (auto-cycles)
   #onWireStateChange;
@@ -133,7 +152,7 @@ export class DeskController {
     });
 
     for (const board of this.#doc.boards) this.#mountBoard(board);
-    for (const component of this.#doc.components) this.#mountChip(component);
+    for (const component of this.#doc.components) this.#mountPart(component);
 
     viewport.addEventListener("pointerdown", this.#onViewportPointerDown);
     viewport.addEventListener("pointermove", this.#onViewportPointerMove);
@@ -152,15 +171,17 @@ export class DeskController {
   }
 
   get placementArmed() {
-    return this.#mode?.kind === "place" || this.#mode?.kind === "place-chip";
+    return ["place", "place-chip", "place-part", "place-psu"].includes(
+      this.#mode?.kind,
+    );
   }
 
-  // ── Selection (boards, chips, and wires share one slot) ─────────────────
+  // ── Selection (boards, parts, and wires share one slot) ─────────────────
 
   #applySelection(sel, on) {
     if (!sel) return;
     if (sel.kind === "board") this.#views.get(sel.id)?.setSelected(on);
-    else if (sel.kind === "chip") this.#chipViews.get(sel.id)?.setSelected(on);
+    else if (sel.kind === "part") this.#partViews.get(sel.id)?.setSelected(on);
     else this.#wireLayer.setSelected(on ? sel.id : null);
   }
 
@@ -178,7 +199,7 @@ export class DeskController {
   }
 
   selectComponent(id) {
-    this.#select(this.#chipViews.has(id) ? { kind: "chip", id } : null);
+    this.#select(this.#partViews.has(id) ? { kind: "part", id } : null);
   }
 
   selectWire(id) {
@@ -190,45 +211,90 @@ export class DeskController {
     this.#select(null);
   }
 
-  // ── Placement modes (toolbar Add-board / palette chip pick) ─────────────
+  // ── Placement modes (toolbar Add-board / palette picks) ─────────────────
+
+  #enterPlacement(mode) {
+    this.cancelPlacement();
+    this.disarmWireTool();
+    this.deselect();
+    this.#hideHover();
+    this.#mode = mode;
+    this.#layers.overlay.append(mode.ghost);
+    this.#viewport.classList.add("desk-viewport--placing");
+  }
 
   /** Arm board placement: a translucent ghost tracks the cursor. */
   armPlacement(type) {
     spec(type); // validate before touching state
-    this.cancelPlacement();
-    this.disarmWireTool();
-    this.deselect();
-    this.#hideHover();
     const ghost = el("div", { class: "board-ghost", hidden: true });
     ghost.append(buildBoardSvg(type));
-    this.#layers.overlay.append(ghost);
-    this.#mode = { kind: "place", type, ghost, pos: null, legal: false };
-    this.#viewport.classList.add("desk-viewport--placing");
+    this.#enterPlacement({
+      kind: "place",
+      type,
+      ghost,
+      pos: null,
+      legal: false,
+    });
   }
 
-  /** Arm chip placement from the palette: ghost seats across a trench. */
-  armChipPlacement(ref) {
-    if (!chipDef(ref)) {
+  /**
+   * Arm placement for ANY palette pick: chips seat across a trench,
+   * discretes along any grid row, PSU bricks on the open desk.
+   */
+  armPartPlacement(ref, params = {}) {
+    const def = partDef(ref);
+    if (!def) {
       const err = new Error(`unknown catalog ref: ${ref}`);
       err.code = "INVALID_REF";
       throw err;
     }
-    this.cancelPlacement();
-    this.disarmWireTool();
-    this.deselect();
-    this.#hideHover();
+    if (def.package) {
+      this.armChipPlacement(ref);
+      return;
+    }
+    const normalized = def.normalizeParams ? def.normalizeParams(params) : {};
+    const ghost = el("div", { class: "part-ghost", hidden: true });
+    if (def.kind === "psu") {
+      ghost.append(buildPsuSvg(normalized));
+      this.#enterPlacement({
+        kind: "place-psu",
+        params: normalized,
+        ghost,
+        pos: null,
+        legal: false,
+      });
+    } else {
+      ghost.append(buildDiscreteSvg(ref, normalized));
+      this.#enterPlacement({
+        kind: "place-part",
+        ref,
+        params: normalized,
+        ghost,
+        board: null,
+        anchor: null,
+        legal: false,
+      });
+    }
+  }
+
+  /** Arm chip placement (palette): ghost seats across a trench. */
+  armChipPlacement(ref) {
+    const def = partDef(ref);
+    if (!def?.package) {
+      const err = new Error(`unknown chip ref: ${ref}`);
+      err.code = "INVALID_REF";
+      throw err;
+    }
     const ghost = el("div", { class: "part-ghost", hidden: true });
     ghost.append(buildChipSvg(ref));
-    this.#layers.overlay.append(ghost);
-    this.#mode = {
+    this.#enterPlacement({
       kind: "place-chip",
       ref,
       ghost,
       board: null,
       anchor: null,
       legal: false,
-    };
-    this.#viewport.classList.add("desk-viewport--placing");
+    });
   }
 
   cancelPlacement() {
@@ -239,8 +305,10 @@ export class DeskController {
   }
 
   #trackGhost(e) {
-    if (this.#mode.kind === "place") this.#trackBoardGhost(e);
-    else this.#trackChipGhost(e);
+    const kind = this.#mode.kind;
+    if (kind === "place") this.#trackBoardGhost(e);
+    else if (kind === "place-psu") this.#trackPsuGhost(e);
+    else this.#trackSeatedGhost(e);
   }
 
   #trackBoardGhost(e) {
@@ -259,23 +327,41 @@ export class DeskController {
     m.ghost.classList.toggle("board-ghost--illegal", !m.legal);
   }
 
-  #trackChipGhost(e) {
+  #trackPsuGhost(e) {
     const m = this.#mode;
-    const def = chipDef(m.ref);
-    const box = chipBox(def.package);
+    const { width, height } = partDef("psu").size;
     const w = this.#deskView.worldFromEvent(e);
-    const seat = this.#chipSeatAt(w, def.package, 0);
+    const x = Math.round(w.x - width / 2);
+    const y = Math.round(w.y - height / 2);
+    m.pos = { x, y };
+    m.legal = this.#doc.canPlacePsu(x, y);
+    m.ghost.hidden = false;
+    m.ghost.style.left = `${x * PX_PER_UNIT}px`;
+    m.ghost.style.top = `${y * PX_PER_UNIT}px`;
+    m.ghost.classList.toggle("part-ghost--legal", m.legal);
+    m.ghost.classList.toggle("part-ghost--illegal", !m.legal);
+  }
+
+  /** Chip + discrete ghosts: seat under the cursor or float, tinted. */
+  #trackSeatedGhost(e) {
+    const m = this.#mode;
+    const box =
+      m.kind === "place-chip"
+        ? chipBox(partDef(m.ref).package)
+        : discreteBox(m.ref);
+    const w = this.#deskView.worldFromEvent(e);
+    const seat = this.#partSeatAt(w, m.ref, 0);
     m.ghost.hidden = false;
     if (seat) {
       const board = this.#doc.getBoard(seat.board);
       const pos = holePosition(board.type, seat.anchor);
       m.board = seat.board;
       m.anchor = seat.anchor;
-      m.legal = this.#doc.canPlaceChip(m.ref, seat.board, seat.anchor);
+      m.legal = this.#doc.canPlacePart(m.ref, seat.board, seat.anchor);
       m.ghost.style.left = `${(board.x + pos.x + box.minX) * PX_PER_UNIT}px`;
       m.ghost.style.top = `${(board.y + pos.y + box.minY) * PX_PER_UNIT}px`;
     } else {
-      // Off-board / over the rails: the ghost floats on the cursor, illegal.
+      // Off-board / off-row: the ghost floats on the cursor, illegal.
       m.board = null;
       m.anchor = null;
       m.legal = false;
@@ -286,11 +372,18 @@ export class DeskController {
     m.ghost.classList.toggle("part-ghost--illegal", !m.legal);
   }
 
+  /** Seat (board + anchor) for a part under the cursor, by footprint kind. */
+  #partSeatAt(world, ref, grabOffsetCols) {
+    const def = partDef(ref);
+    return def.package
+      ? this.#chipSeatAt(world, def.package, grabOffsetCols)
+      : this.#discreteSeatAt(world, ref, grabOffsetCols);
+  }
+
   /**
-   * The seat (board + row-e anchor) for a chip whose CENTER rides the world
-   * point, or null when the cursor is off every board or too far from a
-   * trench. `grabOffsetCols` shifts the derived anchor for drags (so the
-   * chip keeps its grab point under the cursor).
+   * The seat for a chip whose CENTER rides the world point (grabOffsetCols
+   * 0), or whose grab column offset is preserved (drags), or null when the
+   * cursor is off every board or too far from a trench.
    */
   #chipSeatAt(world, pkg, grabOffsetCols) {
     const { halfPins } = packageSpec(pkg);
@@ -316,6 +409,43 @@ export class DeskController {
       );
       const clamped = Math.min(s.cols - halfPins + 1, Math.max(1, anchorCol));
       return { board: board.id, anchor: `e${clamped}` };
+    }
+    return null;
+  }
+
+  /** The seat for a discrete part: nearest grid row under the cursor. */
+  #discreteSeatAt(world, ref, grabOffsetCols) {
+    const offsets = partDef(ref).footprint.offsets;
+    const span = offsets[offsets.length - 1];
+    for (const board of this.#doc.boards) {
+      const s = spec(board.type);
+      if (
+        world.x < board.x ||
+        world.x > board.x + s.width ||
+        world.y < board.y ||
+        world.y > board.y + s.height
+      ) {
+        continue;
+      }
+      let bestRow = null;
+      let bestDist = ROW_BAND;
+      for (const [row, rowY] of Object.entries(s.rowY)) {
+        const dist = Math.abs(world.y - board.y - rowY);
+        if (dist <= bestDist) {
+          bestRow = row;
+          bestDist = dist;
+        }
+      }
+      if (!bestRow) return null; // rails / trench / margins
+      if (s.cols < span + 1) return null;
+      const cursorCol = world.x - board.x - s.colStartX + 1;
+      const anchorCol = Math.round(
+        grabOffsetCols === 0
+          ? cursorCol - span / 2
+          : cursorCol + grabOffsetCols,
+      );
+      const clamped = Math.min(s.cols - span, Math.max(1, anchorCol));
+      return { board: board.id, anchor: `${bestRow}${clamped}` };
     }
     return null;
   }
@@ -382,27 +512,51 @@ export class DeskController {
     });
   }
 
-  /** World px of a hole address (for the rubber-band anchor). */
+  /** World position (pitch units) of a wire point — hole or PSU terminal. */
   #addressWorld(address) {
-    const parsed = /^([^.]+)\.(.+)$/.exec(address);
-    const board = this.#doc.getBoard(parsed[1]);
-    const pos = holePosition(board.type, parsed[2]);
-    return {
-      x: (board.x + pos.x) * PX_PER_UNIT,
-      y: (board.y + pos.y) * PX_PER_UNIT,
-    };
+    const parsed = parseAddress(address);
+    const board = this.#doc.getBoard(parsed.boardId);
+    if (board) {
+      const pos = holePosition(board.type, parsed.hole);
+      return { x: board.x + pos.x, y: board.y + pos.y };
+    }
+    const comp = this.#doc.getComponent(parsed.boardId);
+    const t = partDef(comp.ref).terminals.find((x) => x.id === parsed.hole);
+    return { x: comp.x + t.dx, y: comp.y + t.dy };
+  }
+
+  /** The wireable point under a world position: board hole or PSU terminal. */
+  #wirePointAt(world) {
+    const hole = this.#holeAtWorld(world);
+    if (hole) {
+      return {
+        address: formatAddress(hole.board.id, hole.hole),
+        x: hole.x,
+        y: hole.y,
+      };
+    }
+    for (const comp of this.#doc.components) {
+      const terminals = partDef(comp.ref)?.terminals;
+      if (!terminals) continue;
+      for (const t of terminals) {
+        const x = comp.x + t.dx;
+        const y = comp.y + t.dy;
+        if (Math.hypot(world.x - x, world.y - y) > PIN_HIT_RADIUS) continue;
+        return { address: formatAddress(comp.id, t.id), x, y };
+      }
+    }
+    return null;
   }
 
   /** Wire-mode pointermove: instant ring with legality + the rubber band. */
   #trackWire(e) {
     const m = this.#mode;
     const world = this.#deskView.worldFromEvent(e);
-    const hit = this.#holeAtWorld(world);
+    const hit = this.#wirePointAt(world);
     if (hit) {
-      const address = formatAddress(hit.board.id, hit.hole);
-      const free = this.#doc.isHoleFree(address);
-      const legal = free && address !== m.from;
-      m.hover = { address, legal, x: hit.x, y: hit.y };
+      const free = this.#doc.isHoleFree(hit.address);
+      const legal = free && hit.address !== m.from;
+      m.hover = { address: hit.address, legal };
       const r = RING_RADIUS * PX_PER_UNIT;
       this.#ring.style.left = `${hit.x * PX_PER_UNIT - r}px`;
       this.#ring.style.top = `${hit.y * PX_PER_UNIT - r}px`;
@@ -413,20 +567,21 @@ export class DeskController {
       this.#ring.hidden = true;
     }
     if (m.from) {
+      const from = this.#addressWorld(m.from);
       this.#wireLayer.setPreview({
-        from: this.#addressWorld(m.from),
+        from: { x: from.x * PX_PER_UNIT, y: from.y * PX_PER_UNIT },
         to: hit
           ? { x: hit.x * PX_PER_UNIT, y: hit.y * PX_PER_UNIT }
           : { x: world.x * PX_PER_UNIT, y: world.y * PX_PER_UNIT },
         color: this.wireColor,
-        // Danger tint only over an actual occupied/self hole — over empty
+        // Danger tint only over an actual occupied/self point — over empty
         // desk the band stays its color (a click there just does nothing).
         legal: hit ? m.hover.legal : true,
       });
     }
   }
 
-  /** Wire-mode click: anchor on the first free hole, commit on the second. */
+  /** Wire-mode click: anchor on the first free point, commit on the second. */
   #commitWireClick(e) {
     const m = this.#mode;
     this.#trackWire(e); // legality/hover at the exact click point
@@ -435,7 +590,7 @@ export class DeskController {
       m.from = m.hover.address;
       return;
     }
-    const wire = this.#doc.addWire({
+    this.#doc.addWire({
       from: m.from,
       to: m.hover.address,
       color: this.wireColor,
@@ -444,7 +599,6 @@ export class DeskController {
     this.#clearPendingWire(); // re-arm fresh — chain-friendly
     this.#emitDocChanged();
     this.#notifyWireState();
-    return wire;
   }
 
   /** Remove a wire; clears its selection. */
@@ -495,18 +649,28 @@ export class DeskController {
     return board;
   }
 
-  /** Seat + mount + select a chip; emits chiphippo:doc-changed. */
-  addComponentAt(ref, boardId, anchor) {
+  /** Seat + mount + select a board part; emits chiphippo:doc-changed. */
+  addComponentAt(ref, boardId, anchor, params = {}) {
     const component = this.#doc.addComponent({
-      kind: "chip",
+      kind: partDef(ref).kind,
       ref,
       board: boardId,
       anchor,
+      params,
     });
-    this.#mountChip(component);
+    this.#mountPart(component);
     this.selectComponent(component.id);
     this.#emitDocChanged();
     return component;
+  }
+
+  /** Drop + mount + select a PSU brick; emits chiphippo:doc-changed. */
+  addPsuAt(x, y, params = {}) {
+    const psu = this.#doc.addPsu(x, y, params);
+    this.#mountPart(psu);
+    this.selectComponent(psu.id);
+    this.#emitDocChanged();
+    return psu;
   }
 
   /**
@@ -515,7 +679,7 @@ export class DeskController {
    */
   removeBoard(id) {
     const parts = this.#doc.componentsOnBoard(id).length;
-    const wires = this.#doc.wiresOnBoard(id).length;
+    const wires = this.#doc.wiresTouching(id).length;
     if (parts === 0 && wires === 0) {
       this.#doRemoveBoard(id);
       return;
@@ -536,11 +700,11 @@ export class DeskController {
 
   #doRemoveBoard(id) {
     for (const comp of this.#doc.componentsOnBoard(id)) {
-      this.#chipViews.get(comp.id)?.remove();
-      this.#chipViews.delete(comp.id);
+      this.#partViews.get(comp.id)?.remove();
+      this.#partViews.delete(comp.id);
       if (this.#selected?.id === comp.id) this.#selected = null;
     }
-    const cascadedWires = new Set(this.#doc.wiresOnBoard(id).map((w) => w.id));
+    const cascadedWires = new Set(this.#doc.wiresTouching(id).map((w) => w.id));
     this.#doc.removeBoard(id); // cascades seated components + attached wires
     this.#views.get(id)?.remove();
     this.#views.delete(id);
@@ -554,13 +718,63 @@ export class DeskController {
     this.#emitDocChanged(); // WireLayer re-renders from this
   }
 
-  /** Remove a chip and its view; emits chiphippo:doc-changed. */
+  /**
+   * Remove a component. A PSU with wires on its terminals confirms first
+   * (they go with it).
+   */
   removeComponent(id) {
-    this.#doc.removeComponent(id);
-    this.#chipViews.get(id)?.remove();
-    this.#chipViews.delete(id);
-    if (this.#selected?.id === id) this.#selected = null;
+    const comp = this.#doc.getComponent(id);
+    if (comp?.kind === "psu") {
+      const wires = this.#doc.wiresTouching(id).length;
+      if (wires > 0) {
+        PopupManager.confirm({
+          title: "Remove power supply?",
+          message:
+            `${id} has ${wires} wire${wires === 1 ? "" : "s"} attached — ` +
+            `removing it removes them too.`,
+          confirmLabel: "Remove",
+          confirmClass: "btn--danger",
+          onConfirm: () => this.#doRemoveComponent(id),
+        });
+        return;
+      }
+    }
+    this.#doRemoveComponent(id);
+  }
+
+  #doRemoveComponent(id) {
+    const cascadedWires = new Set(this.#doc.wiresTouching(id).map((w) => w.id));
+    this.#doc.removeComponent(id); // a PSU cascades its attached wires
+    this.#partViews.get(id)?.remove();
+    this.#partViews.delete(id);
+    if (
+      this.#selected?.id === id ||
+      (this.#selected?.kind === "wire" && cascadedWires.has(this.#selected.id))
+    ) {
+      this.#selected = null;
+    }
     this.#hideHover();
+    this.#emitDocChanged();
+  }
+
+  /** Flip a slide switch (click) — persists and announces the state. */
+  #toggleSlideSwitch(id) {
+    const comp = this.#doc.getComponent(id);
+    const next = comp.params.pos === "2" ? "1" : "2";
+    const updated = this.#doc.setComponentParams(id, { pos: next });
+    this.#partViews.get(id)?.updateParams(updated.params);
+    window.dispatchEvent(
+      new CustomEvent("chiphippo:part-state", {
+        detail: { id, ref: comp.ref, state: { pos: next } },
+      }),
+    );
+    this.#emitDocChanged();
+  }
+
+  /** Set a PSU's voltage (context menu). */
+  setPsuVolts(id, volts) {
+    const updated = this.#doc.setComponentParams(id, { volts });
+    this.#partViews.get(id)?.updateParams(updated.params);
     this.#emitDocChanged();
   }
 
@@ -598,9 +812,21 @@ export class DeskController {
       this.toggleWireTool();
       return true;
     }
+    // F flips LED polarity while its placement ghost is armed.
+    if (
+      (e.key === "f" || e.key === "F") &&
+      this.#mode?.kind === "place-part" &&
+      this.#mode.ref === "led"
+    ) {
+      const m = this.#mode;
+      m.params = { ...m.params, flip: !m.params.flip };
+      m.ghost.querySelector("svg")?.remove();
+      m.ghost.append(buildDiscreteSvg(m.ref, m.params));
+      return true;
+    }
     if ((e.key === "Delete" || e.key === "Backspace") && this.#selected) {
       const { kind, id } = this.#selected;
-      if (kind === "chip") this.removeComponent(id);
+      if (kind === "part") this.removeComponent(id);
       else if (kind === "wire") this.removeWire(id);
       else this.removeBoard(id);
       return true;
@@ -623,21 +849,36 @@ export class DeskController {
     this.#views.set(board.id, view);
   }
 
-  #mountChip(component) {
-    const view = new ChipView(this.#layers.parts, component, {
-      onPointerDown: (id, e) => this.#onChipPointerDown(id, e),
-      onContextMenu: (id, e) => this.#onChipContextMenu(id, e),
-    });
-    view.updatePlacement(this.#doc.getBoard(component.board), component.anchor);
-    this.#chipViews.set(component.id, view);
+  #mountPart(component) {
+    const callbacks = {
+      onPointerDown: (id, e) => this.#onPartPointerDown(id, e),
+      onContextMenu: (id, e) => this.#onPartContextMenu(id, e),
+    };
+    let view;
+    if (component.kind === "psu") {
+      view = new PsuView(this.#layers.parts, component, callbacks);
+    } else if (component.kind === "discrete") {
+      view = new DiscreteView(this.#layers.parts, component, callbacks);
+      view.updatePlacement(
+        this.#doc.getBoard(component.board),
+        component.anchor,
+      );
+    } else {
+      view = new ChipView(this.#layers.parts, component, callbacks);
+      view.updatePlacement(
+        this.#doc.getBoard(component.board),
+        component.anchor,
+      );
+    }
+    this.#partViews.set(component.id, view);
   }
 
-  /** Chips ride their board: refresh their views for a board at (x, y). */
-  #repositionBoardChips(boardId, x, y) {
+  /** Seated parts ride their board: refresh views for a board at (x, y). */
+  #repositionBoardParts(boardId, x, y) {
     const board = this.#doc.getBoard(boardId);
     if (!board) return;
     for (const comp of this.#doc.componentsOnBoard(boardId)) {
-      this.#chipViews
+      this.#partViews
         .get(comp.id)
         ?.updatePlacement({ type: board.type, x, y }, comp.anchor);
     }
@@ -700,7 +941,7 @@ export class DeskController {
     const view = this.#views.get(d.id);
     view?.setPosition(d.pos.x, d.pos.y);
     view?.setIllegal(!d.legal);
-    this.#repositionBoardChips(d.id, d.pos.x, d.pos.y);
+    this.#repositionBoardParts(d.id, d.pos.x, d.pos.y);
     // Wires with an endpoint on this board follow it live.
     this.#wireLayer.render(new Map([[d.id, d.pos]]));
   };
@@ -730,11 +971,11 @@ export class DeskController {
     const moved = d.pos.x !== d.origin.x || d.pos.y !== d.origin.y;
     if (!cancelled && d.legal && moved) {
       this.#doc.moveBoard(d.id, d.pos.x, d.pos.y);
-      this.#repositionBoardChips(d.id, d.pos.x, d.pos.y);
+      this.#repositionBoardParts(d.id, d.pos.x, d.pos.y);
       this.#emitDocChanged(); // WireLayer re-renders from this
     } else {
       view?.setPosition(d.origin.x, d.origin.y); // illegal drop → revert
-      this.#repositionBoardChips(d.id, d.origin.x, d.origin.y);
+      this.#repositionBoardParts(d.id, d.origin.x, d.origin.y);
       this.#wireLayer.render();
     }
   };
@@ -757,47 +998,72 @@ export class DeskController {
     });
   }
 
-  // ── Chip gestures ────────────────────────────────────────────────────────
+  // ── Part gestures (chips, discretes, PSUs) ──────────────────────────────
 
-  #onChipPointerDown(id, e) {
+  #onPartPointerDown(id, e) {
     if (e.button !== 0) return;
     if (this.#mode) return;
     this.#hideHover();
     this.selectComponent(id);
 
     const comp = this.#doc.getComponent(id);
-    const board = this.#doc.getBoard(comp.board);
-    const s = spec(board.type);
+    const view = this.#partViews.get(id);
     const w = this.#deskView.worldFromEvent(e);
-    const anchorCol = Number(CHIP_ANCHOR_RE.exec(comp.anchor)[1]);
-    const cursorCol = w.x - board.x - s.colStartX + 1;
-    const view = this.#chipViews.get(id);
-    this.#mode = {
-      kind: "drag-chip",
-      id,
-      ref: comp.ref,
-      pointerId: e.pointerId,
-      startClientX: e.clientX,
-      startClientY: e.clientY,
-      grabOffsetCols: anchorCol - cursorCol,
-      origin: { board: comp.board, anchor: comp.anchor },
-      seat: { board: comp.board, anchor: comp.anchor },
-      legal: true,
-      active: false,
-    };
+
+    if (comp.kind === "psu") {
+      this.#mode = {
+        kind: "drag-psu",
+        id,
+        pointerId: e.pointerId,
+        startClientX: e.clientX,
+        startClientY: e.clientY,
+        startWorld: w,
+        origin: { x: comp.x, y: comp.y },
+        pos: { x: comp.x, y: comp.y },
+        legal: true,
+        active: false,
+      };
+    } else {
+      const board = this.#doc.getBoard(comp.board);
+      const s = spec(board.type);
+      const anchorCol = Number(
+        (
+          CHIP_ANCHOR_RE.exec(comp.anchor) ?? GRID_ANCHOR_RE.exec(comp.anchor)
+        ).slice(-1)[0],
+      );
+      const cursorCol = w.x - board.x - s.colStartX + 1;
+      this.#mode = {
+        kind: "drag-part",
+        id,
+        ref: comp.ref,
+        pointerId: e.pointerId,
+        startClientX: e.clientX,
+        startClientY: e.clientY,
+        grabOffsetCols: anchorCol - cursorCol,
+        origin: { board: comp.board, anchor: comp.anchor },
+        seat: { board: comp.board, anchor: comp.anchor },
+        legal: true,
+        active: false,
+      };
+    }
     try {
       view.element.setPointerCapture(e.pointerId);
     } catch {
       /* capture is best-effort */
     }
-    view.element.addEventListener("pointermove", this.#onChipPointerMove);
-    view.element.addEventListener("pointerup", this.#onChipPointerUp);
-    view.element.addEventListener("pointercancel", this.#onChipPointerUp);
+    view.element.addEventListener("pointermove", this.#onPartPointerMove);
+    view.element.addEventListener("pointerup", this.#onPartPointerUp);
+    view.element.addEventListener("pointercancel", this.#onPartPointerUp);
   }
 
-  #onChipPointerMove = (e) => {
+  #onPartPointerMove = (e) => {
     const d = this.#mode;
-    if (d?.kind !== "drag-chip" || e.pointerId !== d.pointerId) return;
+    if (
+      (d?.kind !== "drag-part" && d?.kind !== "drag-psu") ||
+      e.pointerId !== d.pointerId
+    ) {
+      return;
+    }
     if (!d.active) {
       const travel = Math.hypot(
         e.clientX - d.startClientX,
@@ -805,47 +1071,83 @@ export class DeskController {
       );
       if (travel < DRAG_THRESHOLD) return;
       d.active = true;
-      this.#chipViews.get(d.id)?.setDragging(true);
+      this.#partViews.get(d.id)?.setDragging(true);
     }
-    const view = this.#chipViews.get(d.id);
-    const def = chipDef(d.ref);
+    const view = this.#partViews.get(d.id);
     const w = this.#deskView.worldFromEvent(e);
-    const seat = this.#chipSeatAt(w, def.package, d.grabOffsetCols);
+
+    if (d.kind === "drag-psu") {
+      d.pos = {
+        x: Math.round(d.origin.x + (w.x - d.startWorld.x)),
+        y: Math.round(d.origin.y + (w.y - d.startWorld.y)),
+      };
+      d.legal = this.#doc.canPlacePsu(d.pos.x, d.pos.y, { ignoreId: d.id });
+      view?.setPosition(d.pos.x, d.pos.y);
+      view?.setIllegal(!d.legal);
+      // Wires on this PSU's terminals follow it live.
+      this.#wireLayer.render(new Map([[d.id, d.pos]]));
+      return;
+    }
+
+    const seat = this.#partSeatAt(w, d.ref, d.grabOffsetCols);
     if (seat) {
-      // Ride the trench, snapped; tint tells occupancy legality.
+      // Ride the lattice, snapped; tint tells occupancy legality.
       d.seat = seat;
-      d.legal = this.#doc.canPlaceChip(d.ref, seat.board, seat.anchor, {
+      d.legal = this.#doc.canPlacePart(d.ref, seat.board, seat.anchor, {
         ignoreId: d.id,
       });
       view?.updatePlacement(this.#doc.getBoard(seat.board), seat.anchor);
     } else {
-      d.legal = false; // off-board / off-trench: stay at the last seat
+      d.legal = false; // off-board / off-row: stay at the last seat
     }
     view?.setIllegal(!d.legal);
   };
 
-  #onChipPointerUp = (e) => {
+  #onPartPointerUp = (e) => {
     const d = this.#mode;
-    if (d?.kind !== "drag-chip" || e.pointerId !== d.pointerId) return;
+    if (
+      (d?.kind !== "drag-part" && d?.kind !== "drag-psu") ||
+      e.pointerId !== d.pointerId
+    ) {
+      return;
+    }
     this.#mode = null;
 
-    const view = this.#chipViews.get(d.id);
+    const view = this.#partViews.get(d.id);
     if (view) {
-      const chipEl = view.element;
-      chipEl.removeEventListener("pointermove", this.#onChipPointerMove);
-      chipEl.removeEventListener("pointerup", this.#onChipPointerUp);
-      chipEl.removeEventListener("pointercancel", this.#onChipPointerUp);
+      const partEl = view.element;
+      partEl.removeEventListener("pointermove", this.#onPartPointerMove);
+      partEl.removeEventListener("pointerup", this.#onPartPointerUp);
+      partEl.removeEventListener("pointercancel", this.#onPartPointerUp);
       try {
-        chipEl.releasePointerCapture(d.pointerId);
+        partEl.releasePointerCapture(d.pointerId);
       } catch {
         /* already released */
       }
       view.setDragging(false);
       view.setIllegal(false);
     }
-    if (!d.active) return;
 
     const cancelled = e.type === "pointercancel";
+    if (d.kind === "drag-psu") {
+      if (!d.active) return;
+      const moved = d.pos.x !== d.origin.x || d.pos.y !== d.origin.y;
+      if (!cancelled && d.legal && moved) {
+        this.#doc.movePsu(d.id, d.pos.x, d.pos.y);
+        this.#emitDocChanged();
+      } else {
+        view?.setPosition(d.origin.x, d.origin.y);
+        this.#wireLayer.render();
+      }
+      return;
+    }
+
+    if (!d.active) {
+      // Plain click: a slide switch flips (always interactive).
+      const comp = this.#doc.getComponent(d.id);
+      if (comp?.ref === "sw-slide") this.#toggleSlideSwitch(d.id);
+      return;
+    }
     const moved =
       d.seat.board !== d.origin.board || d.seat.anchor !== d.origin.anchor;
     if (!cancelled && d.legal && moved) {
@@ -860,16 +1162,35 @@ export class DeskController {
     }
   };
 
-  #onChipContextMenu(id, e) {
+  #onPartContextMenu(id, e) {
     e.preventDefault();
     if (this.#mode) return;
     this.selectComponent(id);
+    const comp = this.#doc.getComponent(id);
+    if (comp?.kind === "psu") {
+      PopupManager.menu({
+        x: e.clientX,
+        y: e.clientY,
+        items: [
+          ...PSU_VOLTS.map((volts) => ({
+            label: `${comp.params.volts === volts ? "● " : ""}${volts} V`,
+            onSelect: () => this.setPsuVolts(id, volts),
+          })),
+          {
+            label: "Remove power supply",
+            danger: true,
+            onSelect: () => this.removeComponent(id),
+          },
+        ],
+      });
+      return;
+    }
     PopupManager.menu({
       x: e.clientX,
       y: e.clientY,
       items: [
         {
-          label: "Remove chip",
+          label: comp?.kind === "chip" ? "Remove chip" : "Remove part",
           danger: true,
           onSelect: () => this.removeComponent(id),
         },
@@ -909,6 +1230,10 @@ export class DeskController {
     this.cancelPlacement();
     if (m.kind === "place") {
       this.addBoardAt(m.type, m.pos.x, m.pos.y);
+    } else if (m.kind === "place-psu") {
+      this.addPsuAt(m.pos.x, m.pos.y, m.params);
+    } else if (m.kind === "place-part") {
+      this.addComponentAt(m.ref, m.board, m.anchor, m.params);
     } else {
       this.addComponentAt(m.ref, m.board, m.anchor);
     }
@@ -916,7 +1241,7 @@ export class DeskController {
 
   #onViewportPointerMove = (e) => {
     const m = this.#mode;
-    if (m?.kind === "place" || m?.kind === "place-chip") {
+    if (this.placementArmed) {
       this.#trackGhost(e);
       return;
     }
@@ -942,7 +1267,7 @@ export class DeskController {
     this.#hoverTimer = setTimeout(() => this.#showHover(hit), HOVER_DWELL_MS);
   };
 
-  // ── Hover addressing (holes + chip pins, pure math) ─────────────────────
+  // ── Hover addressing (holes, part pins, PSU terminals — pure math) ──────
 
   /** The board + hole under a world point (boards never overlap). */
   #holeAtWorld(world) {
@@ -964,7 +1289,7 @@ export class DeskController {
     return null;
   }
 
-  /** Chip pins take precedence (they sit above the board), then holes. */
+  /** Part pins/terminals take precedence (they sit above), then holes. */
   #hitTest(world) {
     const pinHit = this.#pinHitTest(world);
     if (pinHit) return pinHit;
@@ -980,8 +1305,24 @@ export class DeskController {
 
   #pinHitTest(world) {
     for (const comp of this.#doc.components) {
+      const def = partDef(comp.ref);
+      if (comp.kind === "psu") {
+        for (const t of def.terminals) {
+          const x = comp.x + t.dx;
+          const y = comp.y + t.dy;
+          if (Math.hypot(world.x - x, world.y - y) > PIN_HIT_RADIUS) continue;
+          const volts = t.id === "+" ? `+${comp.params.volts} V` : "0 V";
+          return {
+            key: `${comp.id}#${t.id}`,
+            label: `${formatAddress(comp.id, t.id)} · ${volts}`,
+            x,
+            y,
+          };
+        }
+        continue;
+      }
       const board = this.#doc.getBoard(comp.board);
-      const pins = chipPinHoles(comp.ref, comp.anchor);
+      const pins = partPinHoles(comp.ref, comp.anchor);
       if (!board || !pins) continue;
       for (const { pin, hole } of pins) {
         const pos = holePosition(board.type, hole);
@@ -989,7 +1330,6 @@ export class DeskController {
         const x = board.x + pos.x;
         const y = board.y + pos.y;
         if (Math.hypot(world.x - x, world.y - y) > PIN_HIT_RADIUS) continue;
-        const def = chipDef(comp.ref);
         const name = def.pins.find((p) => p.n === pin)?.name ?? "?";
         return {
           key: `${comp.id}#${pin}`,
@@ -1027,6 +1367,7 @@ export class DeskController {
     this.#hoverTimer = null;
     this.#hoverKey = null;
     this.#ring.hidden = true;
+    this.#ring.classList.remove("hole-ring--illegal");
     this.#tooltip.hidden = true;
   }
 

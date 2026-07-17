@@ -34,6 +34,7 @@ test("a fresh DeskDoc serializes to the empty document shape", () => {
     wires: [],
     nextBoardId: 1,
     nextComponentId: 1,
+    nextPsuId: 1,
     nextWireId: 1,
   });
   assert.deepEqual(new DeskDoc(null).toJSON(), emptyDocument());
@@ -422,4 +423,217 @@ test("normalizeDocument: junk wires dropped, junk colors coerced", () => {
     { id: "w2", from: "bb1.a1", to: "bb1.a5", color: "red" },
   ]);
   assert.equal(doc.nextWireId, 3);
+});
+
+// ── Discrete parts & PSU bricks (Feature 60) ─────────────────────────────────
+
+test("addComponent: discretes seat in ANY grid row with coerced params", () => {
+  const doc = docWithFull();
+  const sw = doc.addComponent({
+    kind: "discrete",
+    ref: "sw-slide",
+    board: "bb1",
+    anchor: "b10",
+  });
+  assert.deepEqual(sw.params, { pos: "1" }); // default via the def contract
+  const led = doc.addComponent({
+    kind: "discrete",
+    ref: "led",
+    board: "bb1",
+    anchor: "j20",
+    params: { color: "blue", flip: true },
+  });
+  assert.deepEqual(led.params, { color: "blue", flip: true });
+  // Kind/def mismatches are rejected.
+  assert.throws(
+    () =>
+      doc.addComponent({
+        kind: "chip",
+        ref: "led",
+        board: "bb1",
+        anchor: "e30",
+      }),
+    { code: "INVALID_REF" },
+  );
+  assert.throws(
+    () =>
+      doc.addComponent({
+        kind: "discrete",
+        ref: "7400",
+        board: "bb1",
+        anchor: "e30",
+      }),
+    { code: "INVALID_REF" },
+  );
+});
+
+test("discrete occupancy: pins occupy; overlaps rejected; rails illegal", () => {
+  const doc = docWithFull();
+  doc.addComponent({
+    kind: "discrete",
+    ref: "sw-slide",
+    board: "bb1",
+    anchor: "b10", // pins b10 b11 b12
+  });
+  assert.equal(doc.isHoleFree("bb1.b11"), false);
+  assert.throws(
+    () =>
+      doc.addComponent({
+        kind: "discrete",
+        ref: "led",
+        board: "bb1",
+        anchor: "b12",
+      }),
+    { code: "ILLEGAL_PLACEMENT" },
+  );
+  // sw-push spans anchor/+2 — b13 is free even though b12 is taken? b13+b15.
+  const push = doc.addComponent({
+    kind: "discrete",
+    ref: "sw-push",
+    board: "bb1",
+    anchor: "b13",
+  });
+  assert.equal(push.id.startsWith("c"), true);
+  // Rail anchors never fit a discrete footprint.
+  assert.throws(
+    () =>
+      doc.addComponent({
+        kind: "discrete",
+        ref: "led",
+        board: "bb1",
+        anchor: "t+3",
+      }),
+    { code: "ILLEGAL_PLACEMENT" },
+  );
+});
+
+test("setComponentParams: switch toggles persist through the def contract", () => {
+  const doc = docWithFull();
+  doc.addComponent({
+    kind: "discrete",
+    ref: "sw-slide",
+    board: "bb1",
+    anchor: "b10",
+  });
+  assert.deepEqual(doc.setComponentParams("c1", { pos: "2" }).params, {
+    pos: "2",
+  });
+  assert.deepEqual(doc.setComponentParams("c1", { pos: "junk" }).params, {
+    pos: "1", // coerced by the def
+  });
+  assert.throws(() => doc.setComponentParams("c9", {}), { code: "NOT_FOUND" });
+});
+
+test("addPsu: psu<n> ids, snapping, board/psu overlap rejection", () => {
+  const doc = new DeskDoc(null);
+  doc.addBoard("tiny", 0, 0);
+  const psu = doc.addPsu(30.4, 0.6, { volts: 12 });
+  assert.deepEqual(psu, {
+    id: "psu1",
+    kind: "psu",
+    ref: "psu",
+    x: 30,
+    y: 1,
+    params: { volts: 12 },
+  });
+  // Covering the board is rejected; covering another PSU too.
+  assert.throws(() => doc.addPsu(5, 5), { code: "OVERLAP" });
+  assert.throws(() => doc.addPsu(31, 2), { code: "OVERLAP" });
+  // And a board can't land on a PSU either.
+  assert.equal(doc.canPlace("tiny", 30, 1), false);
+  // Ids advance independently of c<n>.
+  doc.addComponent({
+    kind: "discrete",
+    ref: "led",
+    board: "bb1",
+    anchor: "a1",
+  });
+  assert.equal(doc.addPsu(30, 20).id, "psu2");
+});
+
+test("movePsu + volts via setComponentParams", () => {
+  const doc = new DeskDoc(null);
+  doc.addPsu(0, 0);
+  assert.deepEqual(doc.movePsu("psu1", 10.2, 3.8), {
+    id: "psu1",
+    kind: "psu",
+    ref: "psu",
+    x: 10,
+    y: 4,
+    params: { volts: 5 },
+  });
+  assert.equal(doc.setComponentParams("psu1", { volts: 3 }).params.volts, 3);
+  assert.equal(doc.setComponentParams("psu1", { volts: 9 }).params.volts, 5);
+  assert.throws(() => doc.movePsu("psu9", 0, 0), { code: "NOT_FOUND" });
+  const led = doc.addBoard("tiny", 40, 0);
+  assert.ok(led);
+  assert.throws(() => doc.moveComponent("psu1", "bb1", "a1"), {
+    code: "INVALID_KIND",
+  });
+});
+
+test("PSU terminals wire like holes and removal cascades those wires", () => {
+  const doc = docWithFull();
+  doc.addPsu(80, 0);
+  assert.equal(doc.isHoleFree("psu1.+"), true);
+  assert.equal(doc.isHoleFree("psu1.x"), false); // no such terminal
+  const wire = doc.addWire({ from: "psu1.+", to: "bb1.t+3", color: "red" });
+  assert.ok(wire);
+  assert.equal(doc.isHoleFree("psu1.+"), false); // one lead per terminal
+  assert.throws(() => doc.addWire({ from: "psu1.+", to: "bb1.t+4" }), {
+    code: "ILLEGAL_PLACEMENT",
+  });
+  doc.addWire({ from: "psu1.-", to: "bb1.t-3" });
+  assert.equal(doc.wiresTouching("psu1").length, 2);
+  doc.removeComponent("psu1");
+  assert.deepEqual(doc.wires, []);
+  assert.equal(doc.getComponent("psu1"), null);
+});
+
+test("normalizeDocument: discretes + PSUs survive; junk dropped/coerced", () => {
+  const doc = normalizeDocument({
+    boards: [{ id: "bb1", type: "tiny", x: 0, y: 0 }],
+    components: [
+      {
+        id: "c1",
+        kind: "discrete",
+        ref: "sw-slide",
+        board: "bb1",
+        anchor: "b3",
+        params: { pos: "2" },
+      },
+      {
+        id: "c2",
+        kind: "discrete",
+        ref: "resistor",
+        board: "bb1",
+        anchor: "b8",
+      }, // bad ref
+      {
+        id: "psu2",
+        kind: "psu",
+        ref: "psu",
+        x: 40.4,
+        y: 1,
+        params: { volts: 9 },
+      },
+      { id: "c3", kind: "psu", ref: "psu", x: 60, y: 0 }, // psu needs psu<n> id
+    ],
+    wires: [{ id: "w1", from: "psu2.+", to: "bb1.a1", color: "green" }],
+  });
+  assert.deepEqual(doc.components, [
+    {
+      id: "c1",
+      kind: "discrete",
+      ref: "sw-slide",
+      board: "bb1",
+      anchor: "b3",
+      params: { pos: "2" },
+    },
+    { id: "psu2", kind: "psu", ref: "psu", x: 40, y: 1, params: { volts: 5 } },
+  ]);
+  // A wire onto a surviving PSU terminal is kept.
+  assert.equal(doc.wires.length, 1);
+  assert.equal(doc.nextPsuId, 3);
+  assert.equal(doc.nextComponentId, 2);
 });

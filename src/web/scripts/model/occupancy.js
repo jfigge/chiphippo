@@ -22,28 +22,49 @@
 // Pure and DOM-free. Pin positions are always DERIVED (footprint + anchor),
 // never stored.
 
-import { chipDef } from "../catalog/index.js";
+import { partDef } from "../catalog/index.js";
 import { allPinHoles } from "./footprints.js";
 import { formatAddress, parseAddress, parseHole } from "./breadboard.js";
 
-const ANCHOR_RE = /^e([1-9]\d*)$/; // a chip anchor is pin 1's hole, row e
+const CHIP_ANCHOR_RE = /^e([1-9]\d*)$/; // a chip anchor: pin 1's hole, row e
+const GRID_ANCHOR_RE = /^([a-j])([1-9]\d*)$/; // a discrete anchors in ANY row
 
 /**
- * The seated hole of every pin of a chip: `ref` + `anchor` → derived
- * `[{ pin, hole }]`, or null when the ref is unknown or the anchor isn't a
- * row-e hole id. (Whether each hole exists on a given board type is the
- * caller's check — this is pure footprint arithmetic.)
+ * The seated hole of every pin of a board part (chip OR discrete):
+ * `ref` + `anchor` → derived `[{ pin, hole }]`, or null when the ref is
+ * unknown, isn't a board-seated part, or the anchor doesn't fit its
+ * footprint (chips: row e; discretes: any grid row). Whether each hole
+ * exists on a given board type is the caller's check — this is pure
+ * footprint arithmetic.
  */
-export function chipPinHoles(ref, anchor) {
-  const def = chipDef(ref);
-  if (!def) return null;
-  const m = ANCHOR_RE.exec(typeof anchor === "string" ? anchor : "");
-  if (!m) return null;
-  return allPinHoles(def.package, Number(m[1])).map(({ pin, row, col }) => ({
-    pin,
-    hole: `${row}${col}`,
-  }));
+export function partPinHoles(ref, anchor) {
+  const def = partDef(ref);
+  if (!def || typeof anchor !== "string") return null;
+  if (def.package) {
+    // DIP chip straddling the trench.
+    const m = CHIP_ANCHOR_RE.exec(anchor);
+    if (!m) return null;
+    return allPinHoles(def.package, Number(m[1])).map(({ pin, row, col }) => ({
+      pin,
+      hole: `${row}${col}`,
+    }));
+  }
+  if (def.footprint) {
+    // Linear discrete along one grid row.
+    const m = GRID_ANCHOR_RE.exec(anchor);
+    if (!m) return null;
+    const [, row, colStr] = m;
+    const col = Number(colStr);
+    return def.footprint.offsets.map((offset, i) => ({
+      pin: def.pins[i].n,
+      hole: `${row}${col + offset}`,
+    }));
+  }
+  return null; // a PSU has terminals, not board pins
 }
+
+/** Back-compat alias (Feature 40 name) — same derivation for chips. */
+export const chipPinHoles = partPinHoles;
 
 /**
  * Build the address → occupant index for a document. Occupants:
@@ -59,8 +80,8 @@ export function chipPinHoles(ref, anchor) {
 export function buildOccupancy(doc) {
   const map = new Map();
   for (const comp of doc.components ?? []) {
-    if (!comp || comp.kind !== "chip") continue;
-    const pins = chipPinHoles(comp.ref, comp.anchor);
+    if (!comp || (comp.kind !== "chip" && comp.kind !== "discrete")) continue;
+    const pins = partPinHoles(comp.ref, comp.anchor);
     if (!pins) continue;
     for (const { pin, hole } of pins) {
       map.set(formatAddress(comp.board, hole), {
@@ -70,6 +91,7 @@ export function buildOccupancy(doc) {
       });
     }
   }
+  // PSU terminals are connection POINTS like holes: free until a wire lands.
   for (const wire of doc.wires ?? []) {
     if (!wire || typeof wire !== "object") continue;
     for (const end of ["from", "to"]) {
@@ -81,18 +103,30 @@ export function buildOccupancy(doc) {
 }
 
 /**
- * Is `address` a real, unoccupied hole? True when it parses, its board
- * exists, the hole exists on that board's type, and no lead sits in it.
- *
- * @param {{ boards: Array, components: Array, wires: Array }} doc
- * @param {string} address - e.g. "bb1.j5"
+ * Does `address` name a real connection point — a hole on an existing
+ * board, or a terminal of an existing desk component (psu1.+)?
  */
-export function isFreeHole(doc, address) {
+export function isRealPoint(doc, address) {
   const parsed = parseAddress(address);
   if (!parsed) return false;
   const board = (doc.boards ?? []).find((b) => b.id === parsed.boardId);
-  if (!board) return false;
-  if (!parseHole(board.type, parsed.hole)) return false;
+  if (board) return parseHole(board.type, parsed.hole) !== null;
+  const comp = (doc.components ?? []).find((c) => c.id === parsed.boardId);
+  if (comp) {
+    const def = partDef(comp.ref);
+    return Boolean(def?.terminals?.some((t) => t.id === parsed.hole));
+  }
+  return false;
+}
+
+/**
+ * Is `address` a real, unoccupied connection point (hole or terminal)?
+ *
+ * @param {{ boards: Array, components: Array, wires: Array }} doc
+ * @param {string} address - e.g. "bb1.j5" or "psu1.+"
+ */
+export function isFreeHole(doc, address) {
+  if (!isRealPoint(doc, address)) return false;
   return !buildOccupancy(doc).has(address);
 }
 
@@ -106,21 +140,22 @@ export function canPlaceWire(doc, from, to) {
 }
 
 /**
- * May a chip seat here? True when the board exists, the anchor is a row-e
- * hole, EVERY pin's hole exists on the board type (rows e/f across the one
- * trench by construction), and every hole is free — ignoring the pins of
- * `ignoreId` (a chip may move within its own footprint).
+ * May a board part (chip or discrete) seat here? True when the board
+ * exists, the anchor fits the footprint (chips row e; discretes any grid
+ * row), EVERY pin's hole exists on the board type, and every hole is
+ * free — ignoring the pins of `ignoreId` (a part may move within its own
+ * footprint).
  *
  * @param {{ boards: Array, components: Array }} doc
  * @param {{ ref: string, board: string, anchor: string, ignoreId?: string|null }} opts
  */
-export function canPlaceChip(
+export function canPlacePart(
   doc,
   { ref, board: boardId, anchor, ignoreId = null },
 ) {
   const board = (doc.boards ?? []).find((b) => b.id === boardId);
   if (!board) return false;
-  const pins = chipPinHoles(ref, anchor);
+  const pins = partPinHoles(ref, anchor);
   if (!pins) return false;
   const occupancy = buildOccupancy(doc);
   for (const { hole } of pins) {
@@ -130,3 +165,6 @@ export function canPlaceChip(
   }
   return true;
 }
+
+/** Back-compat alias (Feature 40 name). */
+export const canPlaceChip = canPlacePart;
