@@ -54,6 +54,7 @@ import {
 import { PsuView, buildPsuSvg } from "./psu-view.js";
 import { WireLayer } from "./wire-layer.js";
 import { summarizeNet } from "../sim/netlist.js";
+import { H, L } from "../sim/levels.js";
 import { NetlistCache } from "./netlist-cache.js";
 import { NetHighlight } from "./net-highlight.js";
 
@@ -116,6 +117,13 @@ export class DeskController {
   #probeArmed = false;
   #probeAnchor = null; // pinned point address (net re-resolved from it), or null
   #netStatus;
+  // Simulation (Feature 90): editing is locked while running; live net levels
+  // arrive over chiphippo:sim-state and drive LEDs / chip badges / probe tint.
+  #editingLocked = false;
+  #simRunning = false;
+  #simLevels = new Map(); // netId → level
+  #simNetlist = null; // the netlist the levels are keyed against
+  #onReplaceChip;
 
   /**
    * @param {object} opts
@@ -128,6 +136,8 @@ export class DeskController {
    *   the toolbar button + swatch strip).
    * @param {(state: {armed: boolean}) => void} [opts.onProbeStateChange] -
    *   probe-tool arm/disarm (drives the toolbar probe button).
+   * @param {(id: string) => void} [opts.onReplaceChip] - the chip context
+   *   menu's "Replace chip" (resets Feature 90 damage).
    */
   constructor({
     viewport,
@@ -135,12 +145,14 @@ export class DeskController {
     deskDoc,
     onWireStateChange,
     onProbeStateChange,
+    onReplaceChip,
   }) {
     this.#viewport = viewport;
     this.#deskView = deskView;
     this.#doc = deskDoc;
     this.#onWireStateChange = onWireStateChange;
     this.#onProbeStateChange = onProbeStateChange;
+    this.#onReplaceChip = onReplaceChip;
 
     // Layer order (established for every later stage): boards under parts
     // under wires under the interaction overlay. All are zero-size anchors —
@@ -184,6 +196,10 @@ export class DeskController {
     window.addEventListener("chiphippo:part-state", () => {
       if (this.#probeAnchor) this.#refreshPinnedNet();
     });
+    // Live simulation state (Feature 90): LEDs, chip badges, probe tint.
+    window.addEventListener("chiphippo:sim-state", (e) =>
+      this.#onSimState(e.detail),
+    );
 
     for (const board of this.#doc.boards) this.#mountBoard(board);
     for (const component of this.#doc.components) this.#mountPart(component);
@@ -248,6 +264,7 @@ export class DeskController {
   // ── Placement modes (toolbar Add-board / palette picks) ─────────────────
 
   #enterPlacement(mode) {
+    if (this.#editingLocked) return; // topology is frozen while running
     this.cancelPlacement();
     this.disarmWireTool();
     this.disarmProbe();
@@ -510,7 +527,7 @@ export class DeskController {
 
   /** Arm click-click wiring; a second call to toggle goes through app.js. */
   armWireTool() {
-    if (this.wireToolArmed) return;
+    if (this.wireToolArmed || this.#editingLocked) return;
     this.cancelPlacement();
     this.disarmProbe();
     this.deselect();
@@ -659,7 +676,7 @@ export class DeskController {
 
   #onWireContextMenu(id, e) {
     e.preventDefault();
-    if (this.#mode) return;
+    if (this.#mode || this.#editingLocked) return; // no wire edits while running
     this.selectWire(id);
     PopupManager.menu({
       x: e.clientX,
@@ -739,9 +756,14 @@ export class DeskController {
   #showNetFor(address, pinned) {
     const netId = this.#netlist.netOf(address);
     const net = netId ? this.#netlist.netInfo(netId) : null;
-    this.#highlight.show(net, this.#highlightGeometry(), pinned);
+    // While running, tint the highlight + lead the summary with the level.
+    const level = this.#simRunning ? (this.#simLevels.get(netId) ?? "Z") : null;
+    this.#highlight.show(net, this.#highlightGeometry(), pinned, level);
     if (net) {
-      this.#netStatus.textContent = summarizeNet(net);
+      const summary = summarizeNet(net);
+      this.#netStatus.textContent = level ? `${level} · ${summary}` : summary;
+      if (level) this.#netStatus.dataset.level = level;
+      else delete this.#netStatus.dataset.level;
       this.#netStatus.classList.toggle("net-status--pinned", pinned);
       this.#netStatus.hidden = false;
     } else {
@@ -803,6 +825,65 @@ export class DeskController {
     }
     this.#ring.hidden = true;
     this.#showNetFor(wire.from, false);
+  }
+
+  // ── Simulation live state (Feature 90) ───────────────────────────────────
+
+  /** Freeze/unfreeze editing while the circuit runs (app.js drives this). */
+  setEditingLocked(locked) {
+    this.#editingLocked = locked;
+    this.#viewport.classList.toggle("desk-viewport--running", locked);
+    if (locked) {
+      // Cancel any armed tool the run supersedes (probe stays allowed).
+      this.cancelPlacement();
+      this.disarmWireTool();
+    }
+  }
+
+  /** Level (H/L/Z/X) of the net a point sits in, from the last sim-state. */
+  #levelAt(address) {
+    if (!this.#simNetlist) return null;
+    const netId = this.#simNetlist.netOfPoint.get(address);
+    return netId ? (this.#simLevels.get(netId) ?? null) : null;
+  }
+
+  #onSimState({ running, netLevels, chipStatus, netlist }) {
+    this.#simRunning = running;
+    this.#simLevels = netLevels ?? new Map();
+    this.#simNetlist = netlist ?? null;
+
+    // Chip status badges (cleared when not running).
+    for (const view of this.#partViews.values()) view.setStatus?.(null);
+    if (running) {
+      for (const [id, { status }] of chipStatus ?? new Map()) {
+        this.#partViews.get(id)?.setStatus?.(status);
+      }
+    }
+
+    this.#updateLeds();
+    if (this.#probeAnchor) this.#refreshPinnedNet(); // re-tint a pinned net
+  }
+
+  /** An LED lights when its anode net is H and its cathode net is L. */
+  #updateLeds() {
+    const def = partDef("led");
+    for (const comp of this.#doc.components) {
+      if (comp.ref !== "led") continue;
+      const view = this.#partViews.get(comp.id);
+      if (!view?.setLit) continue;
+      if (!this.#simRunning) {
+        view.setLit(false);
+        continue;
+      }
+      const { anodePin, cathodePin } = def.polarity(comp.params);
+      const pins = partPinHoles("led", comp.anchor);
+      const hole = (pin) => pins.find((p) => p.pin === pin)?.hole;
+      const anode = this.#levelAt(formatAddress(comp.board, hole(anodePin)));
+      const cathode = this.#levelAt(
+        formatAddress(comp.board, hole(cathodePin)),
+      );
+      view.setLit(anode === H && cathode === L);
+    }
   }
 
   // ── Document mutations (all flow through desk-doc) ─────────────────────
@@ -982,12 +1063,14 @@ export class DeskController {
       return false;
     }
     const bareKey = !e.metaKey && !e.ctrlKey && !e.altKey;
-    if ((e.key === "w" || e.key === "W") && bareKey) {
-      this.toggleWireTool();
-      return true;
-    }
+    // Probe stays available while running; edit shortcuts are locked out.
     if ((e.key === "i" || e.key === "I") && bareKey) {
       this.toggleProbe();
+      return true;
+    }
+    if (this.#editingLocked) return false;
+    if ((e.key === "w" || e.key === "W") && bareKey) {
+      this.toggleWireTool();
       return true;
     }
     // F flips LED polarity while its placement ghost is armed.
@@ -1066,7 +1149,8 @@ export class DeskController {
 
   #onBoardPointerDown(id, e) {
     if (e.button !== 0) return; // middle = pan (DeskView), right = menu
-    if (this.#mode || this.#probeArmed) return; // no board drags while probing
+    // No board drags while probing or running (topology frozen).
+    if (this.#mode || this.#probeArmed || this.#editingLocked) return;
     this.#hideHover();
     this.selectBoard(id);
 
@@ -1160,7 +1244,7 @@ export class DeskController {
 
   #onBoardContextMenu(id, e) {
     e.preventDefault();
-    if (this.#mode) return;
+    if (this.#mode || this.#editingLocked) return; // no board edits while running
     this.selectBoard(id);
     PopupManager.menu({
       x: e.clientX,
@@ -1181,6 +1265,16 @@ export class DeskController {
   #onPartPointerDown(id, e) {
     if (e.button !== 0) return;
     if (this.#mode || this.#probeArmed) return; // no part drags while probing
+    // While running, only slide switches stay interactive (click to flip);
+    // every other part is frozen in place.
+    if (this.#editingLocked) {
+      const comp = this.#doc.getComponent(id);
+      if (comp?.ref === "sw-slide") {
+        e.stopPropagation();
+        this.#toggleSlideSwitch(id);
+      }
+      return;
+    }
     this.#hideHover();
     this.selectComponent(id);
 
@@ -1345,36 +1439,42 @@ export class DeskController {
     if (this.#mode) return;
     this.selectComponent(id);
     const comp = this.#doc.getComponent(id);
+    // PSU: voltage is a live input — the picker stays available while running;
+    // removal is a topology edit, so it's dropped when editing is locked.
     if (comp?.kind === "psu") {
-      PopupManager.menu({
-        x: e.clientX,
-        y: e.clientY,
-        items: [
-          ...PSU_VOLTS.map((volts) => ({
-            label: `${comp.params.volts === volts ? "● " : ""}${volts} V`,
-            onSelect: () => this.setPsuVolts(id, volts),
-          })),
-          {
-            label: "Remove power supply",
-            danger: true,
-            onSelect: () => this.removeComponent(id),
-          },
-        ],
-      });
-      return;
-    }
-    PopupManager.menu({
-      x: e.clientX,
-      y: e.clientY,
-      items: [
-        {
-          label: comp?.kind === "chip" ? "Remove chip" : "Remove part",
+      const items = PSU_VOLTS.map((volts) => ({
+        label: `${comp.params.volts === volts ? "● " : ""}${volts} V`,
+        onSelect: () => this.setPsuVolts(id, volts),
+      }));
+      if (!this.#editingLocked) {
+        items.push({
+          label: "Remove power supply",
           danger: true,
           onSelect: () => this.removeComponent(id),
-        },
-        { label: "Properties…", disabled: true },
-      ],
-    });
+        });
+      }
+      PopupManager.menu({ x: e.clientX, y: e.clientY, items });
+      return;
+    }
+    // A damaged chip offers "Replace chip" (resets Feature 90 damage) — the
+    // only part action that stays live while running.
+    const items = [];
+    if (comp?.kind === "chip" && comp.params?.damaged === true) {
+      items.push({
+        label: "Replace chip",
+        onSelect: () => this.#onReplaceChip?.(id),
+      });
+    }
+    if (!this.#editingLocked) {
+      items.push({
+        label: comp?.kind === "chip" ? "Remove chip" : "Remove part",
+        danger: true,
+        onSelect: () => this.removeComponent(id),
+      });
+      items.push({ label: "Properties…", disabled: true });
+    }
+    if (items.length === 0) return; // nothing actionable (frozen non-chip)
+    PopupManager.menu({ x: e.clientX, y: e.clientY, items });
   }
 
   // ── Viewport-level pointer handling ─────────────────────────────────────

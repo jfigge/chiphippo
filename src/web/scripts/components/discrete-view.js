@@ -249,6 +249,11 @@ export class DiscreteView {
     this.#el.style.top = `${(board.y + pos.y + box.minY) * PX_PER_UNIT}px`;
   }
 
+  /** Light an LED (Feature 90): bright body + glow while its diode conducts. */
+  setLit(on) {
+    this.#el.classList.toggle("part-discrete--lit", on);
+  }
+
   setSelected(on) {
     this.#el.classList.toggle("part--selected", on);
   }

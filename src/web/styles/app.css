@@ -102,6 +102,24 @@
   border-color: var(--color-accent);
 }
 
+.toolbar-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* Run/Stop toggle (Feature 90): green to run, red while running. */
+.toolbar-btn--run {
+  margin-left: var(--space-3);
+  font-weight: 600;
+  border-color: var(--color-success);
+  color: var(--color-success);
+}
+
+.toolbar-btn--run.toolbar-btn--running {
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+}
+
 /* Next-wire-color swatch strip beside the Wire tool button. */
 .wire-swatches {
   display: flex;
@@ -931,4 +949,147 @@
 
 .popup-menu-item--danger {
   color: var(--color-danger);
+}
+
+/* ── Simulation live state (Feature 90) ──────────────────────────────────── */
+/* While running the desk shows a plain arrow (edit affordances are gone). */
+.desk-viewport--running {
+  cursor: default;
+}
+
+/* Lit LED: full-opacity dome in its color + a glow halo. The dome carries
+   its own --wire-color (set by the .part-led-dome--<color> class). */
+.part-discrete--lit .part-led-dome {
+  fill-opacity: 1;
+  filter: drop-shadow(0 0 0.5px var(--wire-color))
+    drop-shadow(0 0 0.9px var(--wire-color));
+}
+
+/* Chip health badge (Feature 90): a colored dot in the top-right corner —
+   grey unpowered, amber underpowered, red damaged. */
+.part-chip--unpowered::after,
+.part-chip--underpowered::after,
+.part-chip--damaged::after {
+  content: "";
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1px solid var(--color-base);
+}
+
+.part-chip--unpowered::after {
+  background: var(--color-muted);
+}
+
+.part-chip--underpowered::after {
+  background: var(--color-warning);
+}
+
+.part-chip--damaged::after {
+  background: var(--color-danger);
+  box-shadow: 0 0 5px var(--color-danger);
+}
+
+/* Level-tinted net highlight while running (probe/inspector). Overrides the
+   Feature 70 neutral glow via the level dataset on the SVG. */
+.net-highlight[data-level="H"] .net-highlight-dot,
+.net-highlight[data-level="H"] .net-highlight-pin,
+.net-highlight[data-level="H"] .net-highlight-wire {
+  fill: var(--color-sim-high);
+  stroke: var(--color-sim-high);
+}
+
+.net-highlight[data-level="L"] .net-highlight-dot,
+.net-highlight[data-level="L"] .net-highlight-pin,
+.net-highlight[data-level="L"] .net-highlight-wire {
+  fill: var(--color-sim-low);
+  stroke: var(--color-sim-low);
+}
+
+.net-highlight[data-level="Z"] .net-highlight-dot,
+.net-highlight[data-level="Z"] .net-highlight-pin,
+.net-highlight[data-level="Z"] .net-highlight-wire {
+  fill: var(--color-sim-float);
+  stroke: var(--color-sim-float);
+}
+
+.net-highlight[data-level="X"] .net-highlight-dot,
+.net-highlight[data-level="X"] .net-highlight-pin,
+.net-highlight[data-level="X"] .net-highlight-wire {
+  fill: var(--color-sim-conflict);
+  stroke: var(--color-sim-conflict);
+  animation: net-x-flash 0.7s steps(1) infinite;
+}
+
+@keyframes net-x-flash {
+  50% {
+    fill-opacity: 0.2;
+    stroke-opacity: 0.2;
+  }
+}
+
+.net-status[data-level="H"] {
+  border-color: var(--color-sim-high);
+}
+
+.net-status[data-level="L"] {
+  border-color: var(--color-sim-low);
+}
+
+.net-status[data-level="Z"] {
+  border-color: var(--color-sim-float);
+}
+
+.net-status[data-level="X"] {
+  border-color: var(--color-sim-conflict);
+}
+
+/* ── Notification toast stack (Feature 90) ───────────────────────────────── */
+.toast-stack {
+  position: fixed;
+  top: calc(var(--header-height) + var(--space-3));
+  right: var(--space-4);
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-width: 320px;
+  pointer-events: none;
+}
+
+.toast {
+  pointer-events: auto;
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface-0);
+  border: 1px solid var(--color-overlay);
+  border-left-width: 4px;
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-1);
+  color: var(--color-text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.toast--info {
+  border-left-color: var(--color-info);
+}
+
+.toast--warning {
+  border-left-color: var(--color-warning);
+}
+
+.toast--danger {
+  border-left-color: var(--color-danger);
+}
+
+.toast-title {
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.toast-message {
+  color: var(--color-subtext);
 }

@@ -198,6 +198,17 @@ export class ChipView {
     this.#el.style.top = `${(board.y + pos.y + box.minY) * PX_PER_UNIT}px`;
   }
 
+  /**
+   * Reflect the simulator's power/health status (Feature 90): a colored badge
+   * corner — grey unpowered, amber underpowered, red damaged; null clears it
+   * (editing / stopped).
+   */
+  setStatus(status) {
+    for (const s of ["unpowered", "underpowered", "damaged"]) {
+      this.#el.classList.toggle(`part-chip--${s}`, status === s);
+    }
+  }
+
   setSelected(on) {
     this.#el.classList.toggle("part--selected", on);
   }

@@ -28,6 +28,8 @@ import { DeskHud } from "./components/desk-hud.js";
 import { DeskController } from "./components/desk-controller.js";
 import { BoardToolbar } from "./components/board-toolbar.js";
 import { PalettePanel } from "./components/palette-panel.js";
+import { SimController } from "./components/sim-controller.js";
+import { NotificationStack } from "./components/notification-stack.js";
 import { PopupManager } from "./popup-manager.js";
 import { DeskDoc, WIRE_COLORS } from "./model/desk-doc.js";
 import { LED_COLORS } from "./catalog/parts.js";
@@ -99,12 +101,37 @@ function buildDesk() {
 
 /**
  * Central keyboard shortcuts: desk keys (Esc / Delete via DeskController)
- * first, then cmd/ctrl +, −, 0 for the desk zoom.
+ * first, then Space to toggle Run/Stop (only when no tool is armed), then
+ * cmd/ctrl +, −, 0 for the desk zoom.
  */
-function bindShortcuts(deskView, controller) {
+function bindShortcuts(deskView, controller, sim) {
   window.addEventListener("keydown", (e) => {
     if (controller.handleKeyDown(e)) {
       e.preventDefault();
+      return;
+    }
+    // Space runs/stops the circuit — but not while typing, and not when a
+    // placement/wire tool is armed (it may want the key for its own gesture).
+    if (e.key === " " || e.code === "Space") {
+      const tag = e.target?.tagName;
+      if (
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        e.target?.isContentEditable
+      ) {
+        return;
+      }
+      if (
+        controller.placementArmed ||
+        controller.wireToolArmed ||
+        e.metaKey ||
+        e.ctrlKey ||
+        e.altKey
+      ) {
+        return;
+      }
+      e.preventDefault();
+      sim.toggle();
       return;
     }
     if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
@@ -213,6 +240,7 @@ async function init() {
   let wireBtn = null;
   let swatchStrip = null;
   let probeBtn = null;
+  let sim = null; // the SimController (created after the toolbar below)
   const onWireStateChange = ({ armed, color }) => {
     wireBtn?.classList.toggle("toolbar-btn--active", armed);
     wireBtn?.setAttribute("aria-pressed", String(armed));
@@ -232,6 +260,7 @@ async function init() {
     deskDoc,
     onWireStateChange,
     onProbeStateChange,
+    onReplaceChip: (id) => sim?.replaceChip(id),
   });
 
   const toolbar = document.getElementById("app-toolbar");
@@ -301,6 +330,41 @@ async function init() {
   });
   toolbar.append(probeBtn);
 
+  // ── Simulation (Feature 90): Run/Stop + the notification stack ──────────
+  const notifications = new NotificationStack(document.body);
+
+  // The Run/Stop toggle sits apart from the edit tools (right of the strip).
+  const runBtn = el("button", {
+    class: "toolbar-btn toolbar-btn--run",
+    type: "button",
+    text: "▶ Run",
+    title: "Run the circuit (Space)",
+    "aria-pressed": "false",
+    onClick: () => sim.toggle(),
+  });
+  toolbar.append(runBtn);
+
+  // Buttons that edit topology are disabled while the circuit runs; the probe
+  // and the Run/Stop toggle stay live. The Add-board split lives in its own
+  // wrapper, so gather every editing button by element.
+  const editButtons = () => [
+    partsBtn,
+    wireBtn,
+    ...swatchStrip.querySelectorAll(".wire-swatch"),
+    ...toolbar.querySelectorAll(".toolbar-split button"),
+  ];
+  const onRunStateChange = (running) => {
+    controller.setEditingLocked(running);
+    runBtn.textContent = running ? "■ Stop" : "▶ Run";
+    runBtn.title = running
+      ? "Stop and return to editing (Space)"
+      : "Run the circuit (Space)";
+    runBtn.setAttribute("aria-pressed", String(running));
+    runBtn.classList.toggle("toolbar-btn--running", running);
+    for (const btn of editButtons()) btn.disabled = running;
+  };
+  sim = new SimController({ deskDoc, notifications, onRunStateChange });
+
   // The empty-desk hint disappears once the desk has boards.
   const hint = desk.querySelector(".desk-hint");
   const updateHint = () => {
@@ -316,7 +380,7 @@ async function init() {
   });
   zoomControl.setZoom(deskView.camera.zoom);
 
-  bindShortcuts(deskView, controller);
+  bindShortcuts(deskView, controller, sim);
 
   if (bridge.isDev) hud = new DeskHud(desk, deskView);
 

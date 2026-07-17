@@ -53,6 +53,12 @@
   --color-desk-dot: #343434; /* desk pitch-grid dots */
   --color-net-glow: #7fd0ff; /* connectivity-inspector highlight (Feature 70) */
 
+  /* ── Simulation logic-level tints (Feature 90 — probe/LED/net glow) ──── */
+  --color-sim-high: #7ce07c; /* H — driven high (green) */
+  --color-sim-low: #5878c8; /* L — driven low (dim blue) */
+  --color-sim-float: #868e98; /* Z — floating / undriven (grey) */
+  --color-sim-conflict: #e0a840; /* X — conflict / short / oscillation (amber) */
+
   /* ── Breadboard palette (drawn boards — plastic tones) ───────────────── */
   --color-board-body: #d9d5c9; /* cream plastic slab */
   --color-board-edge: #b8b3a4; /* body outline */
@@ -140,6 +146,10 @@
     --color-danger: #b82020;
     --color-desk-dot: #c8c8c8;
     --color-net-glow: #1f80c0;
+    --color-sim-high: #2a8a2a;
+    --color-sim-low: #3a5fb5;
+    --color-sim-float: #6c747e;
+    --color-sim-conflict: #a87400;
     --color-board-body: #f2efe7;
     --color-board-edge: #c9c4b4;
     --color-board-trench: #e0dccf;
@@ -172,6 +182,10 @@
   --color-danger: #b82020;
   --color-desk-dot: #c8c8c8;
   --color-net-glow: #1f80c0;
+  --color-sim-high: #2a8a2a;
+  --color-sim-low: #3a5fb5;
+  --color-sim-float: #6c747e;
+  --color-sim-conflict: #a87400;
   --color-board-body: #f2efe7;
   --color-board-edge: #c9c4b4;
   --color-board-trench: #e0dccf;
@@ -205,6 +219,10 @@
   --color-danger: #e07070;
   --color-desk-dot: #343434;
   --color-net-glow: #7fd0ff;
+  --color-sim-high: #7ce07c;
+  --color-sim-low: #5878c8;
+  --color-sim-float: #868e98;
+  --color-sim-conflict: #e0a840;
   --color-board-body: #d9d5c9;
   --color-board-edge: #b8b3a4;
   --color-board-trench: #c7c2b4;

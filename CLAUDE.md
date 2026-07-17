@@ -17,7 +17,7 @@ engineering setup mirrors its sibling projects **Rest Hippo** (`../resthippo`) a
 ## Status
 
 Built stage-by-stage from the plans in `features/` (see `features/ROADMAP.md`).
-**Stages 00–40 have landed**: the hardened Electron shell + `window.chiphippo` bridge
+**Stages 00–90 have landed**: the hardened Electron shell + `window.chiphippo` bridge
 and `make` toolchain (00); the infinite desk (10) — camera-transform pan/zoom
 (`DeskView` over the pure `desk-geometry.js`), dot grid, zoom controls, settings
 store; the breadboard domain model (20) — `board-types.js` + `breadboard.js`
@@ -51,8 +51,17 @@ and the 74xx behavioral library (80) — `sim/levels.js` (H/L/Z/X vocabulary,
 "floating reads HIGH", ternary gate primitives), the ONE generic
 `sim/chip-eval.js` evaluator, `logic` blocks (data, never per-chip code) on
 all 12 gate defs, the exhaustive truth-table harness (468 combinations), and
-the palette "sim-ready" badge. When a stage is finished, move its plan file
-into `features/done/`.
+the palette "sim-ready" badge; and the simulation engine v1 (90) — the pure
+`sim/resolve.js` (per-net driver → level with supply-beats-output strength
+precedence + short/conflict taxonomy) and `sim/engine.js` (power gating from
+VCC/GND nets, the warm-started settle loop with a 200-iteration oscillation
+cap, damage bookkeeping — reported, never mutated by the pure engine), the
+renderer-side `SimController` (owns Run/Stop, re-settles on every input event,
+publishes `chiphippo:sim-state`, persists 12 V damage through `desk-doc`,
+routes warnings to the `NotificationStack`), live views (LEDs light on
+anode-H/cathode-L, chip health badges, level-tinted probe highlights), and the
+header **Run/Stop** toggle (shortcut `Space`) that freezes editing while
+running. When a stage is finished, move its plan file into `features/done/`.
 
 ## Naming & identity
 
@@ -77,7 +86,8 @@ into `features/done/`.
   `scripts/app.js`. Pure DOM-free logic lives under `scripts/desk/` (camera + wire
   path math), `scripts/model/` (breadboard specs/addressing/connectivity, `DeskDoc`,
   `footprints.js`, `occupancy.js`), and `scripts/sim/` (the engine package:
-  `union-find.js`, `netlist.js` — imported unchanged by Feature 90); part metadata
+  `union-find.js`, `netlist.js`, `levels.js`, `chip-eval.js`, `resolve.js`,
+  `engine.js`); part metadata
   under `scripts/catalog/` (pure data + integrity test — never part-specific code
   paths); thin view components under `scripts/components/`.
 - `src/web/fonts/` — bundled Inter variable font; never load fonts from a CDN.
@@ -135,13 +145,25 @@ Electron main process (src/app/main.js)
   across rebuilds). Part state (switch position / button pressed) is an INPUT — a
   switch's `internalBridges` conduct; chip pins are net MEMBERS, never conduits (the
   simulator's job). Always a full rebuild, invalidated on `chiphippo:doc-changed`
-  and `chiphippo:part-state`. Electrical semantics arrive in Feature 90.
+  and `chiphippo:part-state`.
 - **Chip behavior** (`sim/levels.js` + `sim/chip-eval.js`, Feature 80): signal
   levels H/L/Z/X (`asInput` = "floating reads HIGH"); each gate chip's `logic.units`
   block is DATA the ONE generic `evaluate(def, pinLevels)` walks — **no per-chip
   evaluator code**. To add a 74xx part, add data; if it can't be expressed, extend
   the gate vocabulary in `chip-eval.js`, never fork it. Zero-delay, power-agnostic;
   the truth-table harness enumerates every unit exhaustively.
+- **Simulation engine** (`sim/resolve.js` + `sim/engine.js`, Feature 90): pure and
+  DOM-free. `resolveNet` picks a net's level by strength precedence (supply beats
+  chip output; opposing supplies → `X`+short; disagreeing outputs → `X`+conflict;
+  `Z`/undriven contributes nothing). `settle({document, netlist, warmStart})` gates
+  each chip on its VCC/GND nets (5 V ok, 3 V underpowered-inert, 12 V damaged), then
+  loops resolve→`evaluate`→re-drive until a fixpoint or the 200-iteration cap
+  (→ still-changing nets marked `X` + oscillation). Warm-starting net levels by
+  stable netId is exactly why cross-coupled NAND latches HOLD. The engine is a pure
+  function — it REPORTS `chipStatus` but never mutates `params`; the renderer's
+  `SimController` persists 12 V damage through `desk-doc`, owns Run/Stop, re-settles
+  on every input event, and publishes `chiphippo:sim-state` that live views render
+  from (views never query the engine).
 - **Popups/menus**: `popup-manager.js` (ported from Port Hippo) is the only
   app-wide dialog/menu seam; build DOM with `dom.js` `el()`.
 
@@ -156,8 +178,10 @@ Electron main process (src/app/main.js)
 - Live state pushed main → renderer uses one-way broadcasts the preload re-dispatches
   as global `chiphippo:*` `CustomEvent`s (pattern arrives with the first push channel).
 - The **simulation engine is pure computation, not I/O** — it lives in the renderer as
-  DOM-free ES modules under `src/web/scripts/sim/` (from Feature 90), fully testable
-  with `node --test`.
+  DOM-free ES modules under `src/web/scripts/sim/` (Feature 90), fully testable
+  with `node --test` (circuit-fixture suites build docs in code and assert settled
+  levels). All user-visible sim state (LEDs, chip badges, probe tints) renders from
+  `chiphippo:sim-state` events — never by querying the engine directly.
 
 ## Common Commands
 

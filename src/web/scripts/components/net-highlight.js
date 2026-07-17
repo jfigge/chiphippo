@@ -58,10 +58,14 @@ export class NetHighlight {
    * @param {import('../sim/netlist.js').NetInfo} net
    * @param {{positionOf: Function, wireEndpointsOf: Function}} geometry
    * @param {boolean} [pinned]
+   * @param {string|null} [level] - the net's sim level (H/L/Z/X) while
+   *   running, for level tinting; null when not simulating.
    */
-  show(net, geometry, pinned = false) {
+  show(net, geometry, pinned = false, level = null) {
     clear(this.#svg);
     this.#svg.classList.toggle("net-highlight--pinned", pinned);
+    if (level) this.#svg.dataset.level = level;
+    else delete this.#svg.dataset.level;
     if (!net) return;
 
     // Member wires: a glow stroke tracing each wire's sagging path.

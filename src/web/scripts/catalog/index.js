@@ -21,9 +21,18 @@
 import { CHIPS_GATES } from "./chips-gates.js";
 import { PART_DEFS } from "./parts.js";
 
-/** Every chip def, in palette display order (kind stamped uniformly). */
+/** Every chip def, in palette display order. `kind` is stamped uniformly,
+    and a `normalizeParams` that preserves only the `damaged` flag (Feature
+    90's magic-smoke bookkeeping) — chips otherwise carry no params. */
 export const CHIP_DEFS = Object.freeze(
-  CHIPS_GATES.map((def) => Object.freeze({ kind: "chip", ...def })),
+  CHIPS_GATES.map((def) =>
+    Object.freeze({
+      kind: "chip",
+      normalizeParams: (raw) =>
+        raw?.damaged === true ? { damaged: true } : {},
+      ...def,
+    }),
+  ),
 );
 
 /** Chips first, then discrete parts + power — the palette's full listing. */
