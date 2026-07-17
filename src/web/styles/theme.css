@@ -61,6 +61,12 @@
   --color-rail-plus: #c05050; /* red rail stripe */
   --color-rail-minus: #5070c0; /* blue rail stripe */
 
+  /* ── Part palette (DIP chips — same molded black in both themes) ─────── */
+  --color-chip-body: #26262b; /* molded plastic body */
+  --color-chip-notch: #17171a; /* notch recess */
+  --color-chip-leg: #9aa0a8; /* tinned legs */
+  --color-chip-label: #d8d8dc; /* printed part number + pin-1 dot */
+
   /* ── Typography ──────────────────────────────────────────────────────── */
   --font-sans:
     "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;

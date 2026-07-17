@@ -33,6 +33,7 @@ test("a fresh DeskDoc serializes to the empty document shape", () => {
     components: [],
     wires: [],
     nextBoardId: 1,
+    nextComponentId: 1,
   });
   assert.deepEqual(new DeskDoc(null).toJSON(), emptyDocument());
 });
@@ -129,14 +130,30 @@ test("normalizeDocument: junk → empty; bad boards dropped; coords rounded", ()
       { id: "bb3", type: "mega", x: 0, y: 0 }, // bad type — dropped
       { id: "bb4", type: "tiny", x: NaN, y: 0 }, // bad coords — dropped
     ],
-    components: [{ future: true }],
+    components: [
+      { id: "c2", kind: "chip", ref: "7400", board: "bb2", anchor: "e3" },
+      { id: "c2", kind: "chip", ref: "7404", board: "bb2", anchor: "e12" }, // dup id
+      { id: "c3", kind: "chip", ref: "9999", board: "bb2", anchor: "e3" }, // bad ref
+      { id: "c4", kind: "chip", ref: "7400", board: "bb9", anchor: "e3" }, // no board
+      { id: "c5", kind: "blob", ref: "7400", board: "bb2", anchor: "e3" }, // bad kind
+    ],
     wires: "not-an-array",
   });
   assert.deepEqual(doc.boards, [{ id: "bb2", type: "half", x: 4, y: 1 }]);
-  assert.deepEqual(doc.components, [{ future: true }]); // carried verbatim
+  assert.deepEqual(doc.components, [
+    {
+      id: "c2",
+      kind: "chip",
+      ref: "7400",
+      board: "bb2",
+      anchor: "e3",
+      params: {},
+    },
+  ]);
   assert.deepEqual(doc.wires, []);
-  // Counter advances past the max surviving id.
+  // Counters advance past the max surviving ids.
   assert.equal(doc.nextBoardId, 3);
+  assert.equal(doc.nextComponentId, 3);
 });
 
 test("normalizeDocument: an explicit larger nextBoardId wins (never reuse)", () => {
@@ -153,4 +170,153 @@ test("toJSON is a deep copy — later mutations don't leak into it", () => {
   const snapshot = doc.toJSON();
   doc.moveBoard("bb1", 5, 5);
   assert.deepEqual(snapshot.boards[0], { id: "bb1", type: "tiny", x: 0, y: 0 });
+});
+
+// ── Components (Feature 40) ──────────────────────────────────────────────────
+
+function docWithFull() {
+  const doc = new DeskDoc(null);
+  doc.addBoard("full", 0, 0);
+  return doc;
+}
+
+test("addComponent: seats a chip with a fresh c<n> id", () => {
+  const doc = docWithFull();
+  const chip = doc.addComponent({
+    kind: "chip",
+    ref: "7400",
+    board: "bb1",
+    anchor: "e5",
+  });
+  assert.deepEqual(chip, {
+    id: "c1",
+    kind: "chip",
+    ref: "7400",
+    board: "bb1",
+    anchor: "e5",
+    params: {},
+  });
+  assert.equal(
+    doc.addComponent({
+      kind: "chip",
+      ref: "7404",
+      board: "bb1",
+      anchor: "e20",
+    }).id,
+    "c2",
+  );
+  assert.equal(doc.components.length, 2);
+});
+
+test("addComponent: rejects bad kinds/refs/boards and illegal seats", () => {
+  const doc = docWithFull();
+  assert.throws(
+    () =>
+      doc.addComponent({
+        kind: "psu",
+        ref: "7400",
+        board: "bb1",
+        anchor: "e5",
+      }),
+    { code: "INVALID_KIND" },
+  );
+  assert.throws(
+    () =>
+      doc.addComponent({
+        kind: "chip",
+        ref: "9999",
+        board: "bb1",
+        anchor: "e5",
+      }),
+    { code: "INVALID_REF" },
+  );
+  assert.throws(
+    () =>
+      doc.addComponent({
+        kind: "chip",
+        ref: "7400",
+        board: "bb9",
+        anchor: "e5",
+      }),
+    { code: "NOT_FOUND" },
+  );
+  doc.addComponent({ kind: "chip", ref: "7400", board: "bb1", anchor: "e5" });
+  assert.throws(
+    () =>
+      doc.addComponent({
+        kind: "chip",
+        ref: "7404",
+        board: "bb1",
+        anchor: "e8",
+      }),
+    { code: "ILLEGAL_PLACEMENT" },
+  );
+  // Rails / wrong rows are illegal anchors.
+  assert.throws(
+    () =>
+      doc.addComponent({
+        kind: "chip",
+        ref: "7404",
+        board: "bb1",
+        anchor: "f20",
+      }),
+    { code: "ILLEGAL_PLACEMENT" },
+  );
+});
+
+test("moveComponent: re-seats (same or other board), self-overlap allowed", () => {
+  const doc = docWithFull();
+  doc.addBoard("tiny", 0, 30);
+  doc.addComponent({ kind: "chip", ref: "7400", board: "bb1", anchor: "e5" });
+  // Shift one column into its own footprint.
+  assert.deepEqual(doc.moveComponent("c1", "bb1", "e6").anchor, "e6");
+  // Cross-board re-seat.
+  const moved = doc.moveComponent("c1", "bb2", "e2");
+  assert.equal(moved.board, "bb2");
+  assert.throws(() => doc.moveComponent("c9", "bb1", "e5"), {
+    code: "NOT_FOUND",
+  });
+  doc.addComponent({ kind: "chip", ref: "7404", board: "bb1", anchor: "e5" });
+  assert.throws(() => doc.moveComponent("c1", "bb1", "e6"), {
+    code: "ILLEGAL_PLACEMENT",
+  });
+});
+
+test("removeComponent: removes; ids never reused across reload", () => {
+  const doc = docWithFull();
+  doc.addComponent({ kind: "chip", ref: "7400", board: "bb1", anchor: "e5" });
+  doc.removeComponent("c1");
+  assert.deepEqual(doc.components, []);
+  assert.throws(() => doc.removeComponent("c1"), { code: "NOT_FOUND" });
+  const reloaded = new DeskDoc(doc.toJSON());
+  assert.equal(
+    reloaded.addComponent({
+      kind: "chip",
+      ref: "7400",
+      board: "bb1",
+      anchor: "e5",
+    }).id,
+    "c2",
+  );
+});
+
+test("removeBoard cascades its seated components", () => {
+  const doc = docWithFull();
+  doc.addBoard("tiny", 0, 30);
+  doc.addComponent({ kind: "chip", ref: "7400", board: "bb1", anchor: "e5" });
+  doc.addComponent({ kind: "chip", ref: "7404", board: "bb2", anchor: "e2" });
+  assert.equal(doc.componentsOnBoard("bb1").length, 1);
+  doc.removeBoard("bb1");
+  assert.deepEqual(
+    doc.components.map((c) => c.id),
+    ["c2"],
+  );
+});
+
+test("canPlaceChip mirrors occupancy through the document", () => {
+  const doc = docWithFull();
+  doc.addComponent({ kind: "chip", ref: "7400", board: "bb1", anchor: "e5" });
+  assert.equal(doc.canPlaceChip("7404", "bb1", "e8"), false);
+  assert.equal(doc.canPlaceChip("7404", "bb1", "e12"), true);
+  assert.equal(doc.canPlaceChip("7400", "bb1", "e6", { ignoreId: "c1" }), true);
 });

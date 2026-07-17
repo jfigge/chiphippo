@@ -16,11 +16,12 @@
 
 // desk-controller.js — the single owner of everything ON the desk: it holds
 // the in-memory DeskDoc, creates the four surface layers (boards → parts →
-// wires → overlay), mounts/removes BreadboardView children, and runs the
-// desk interactions — placement mode with a snapping ghost, board select /
-// drag / delete, the right-click menu, and hover addressing (holeAt math —
-// never per-hole DOM). Every document mutation flows through desk-doc and is
-// announced with a global `chiphippo:doc-changed` CustomEvent (autosave).
+// wires → overlay), mounts/removes BreadboardView + ChipView children, and
+// runs the desk interactions — board/chip placement modes with snapping
+// ghosts, select / drag / delete for both, right-click menus, and hover
+// addressing for holes AND chip pins (holeAt / derived-pin math — never
+// per-hole or per-pin DOM). Every document mutation flows through desk-doc
+// and is announced with a global `chiphippo:doc-changed` CustomEvent.
 //
 // Views report gestures through constructor callbacks (house rule); the
 // camera stays DeskView's job — this class only reads worldFromEvent/camera.
@@ -34,7 +35,11 @@ import {
   holePosition,
   spec,
 } from "../model/breadboard.js";
+import { chipPinHoles } from "../model/occupancy.js";
+import { packageSpec } from "../model/footprints.js";
+import { chipDef } from "../catalog/index.js";
 import { BreadboardView, buildBoardSvg } from "./breadboard-view.js";
+import { ChipView, buildChipSvg, chipBox } from "./chip-view.js";
 
 /** Pointer travel (px) below which a press stays a click, not a drag/pan. */
 const DRAG_THRESHOLD = 4;
@@ -47,20 +52,32 @@ const HOVER_MIN_ZOOM = 0.75;
 /** Radius of the hover ring (pitch units — a shade over one hole). */
 const RING_RADIUS = 0.45;
 
+/** Hit radius for chip pins (pitch units, matches hole hit feel). */
+const PIN_HIT_RADIUS = 0.45;
+
+/** How far (pitch units) the cursor may sit from a trench center and still
+    seat a chip ghost there — beyond it (e.g. over the rails) the ghost
+    floats unseated with the danger tint. */
+const SEAT_BAND = 2.5;
+
+const CHIP_ANCHOR_RE = /^e([1-9]\d*)$/;
+
 export class DeskController {
   #viewport;
   #deskView;
   #doc;
   #layers;
   #views = new Map(); // boardId → BreadboardView
-  #selectedId = null;
+  #chipViews = new Map(); // componentId → ChipView
+  #selected = null; // { kind: "board"|"chip", id } | null
   // Active interaction: null, or
   //   { kind: "place", type, ghost, pos, legal }
-  //   { kind: "drag", id, pointerId, startClientX/Y, startWorld, origin,
-  //     pos, legal, active, type }
+  //   { kind: "place-chip", ref, ghost, board, anchor, legal }
+  //   { kind: "drag", id, … }            (board drag)
+  //   { kind: "drag-chip", id, … }
   #mode = null;
   #lastDown = null; // last viewport pointerdown client pos (click-vs-pan)
-  #hoverKey = null; // "bb1.f12" currently shown or pending
+  #hoverKey = null; // hover identity currently shown or pending
   #hoverTimer = null;
   #ring;
   #tooltip;
@@ -100,6 +117,7 @@ export class DeskController {
     this.#layers.overlay.append(this.#ring, this.#tooltip);
 
     for (const board of this.#doc.boards) this.#mountBoard(board);
+    for (const component of this.#doc.components) this.#mountChip(component);
 
     viewport.addEventListener("pointerdown", this.#onViewportPointerDown);
     viewport.addEventListener("pointermove", this.#onViewportPointerMove);
@@ -108,29 +126,46 @@ export class DeskController {
   }
 
   get selectedId() {
-    return this.#selectedId;
+    return this.#selected?.id ?? null;
   }
 
   get placementArmed() {
-    return this.#mode?.kind === "place";
+    return this.#mode?.kind === "place" || this.#mode?.kind === "place-chip";
   }
 
-  // ── Selection ───────────────────────────────────────────────────────────
+  // ── Selection (boards and chips share one slot) ─────────────────────────
+
+  #selectedView() {
+    if (!this.#selected) return null;
+    return this.#selected.kind === "board"
+      ? this.#views.get(this.#selected.id)
+      : this.#chipViews.get(this.#selected.id);
+  }
+
+  #select(sel) {
+    if (this.#selected?.id === sel?.id && this.#selected?.kind === sel?.kind) {
+      return;
+    }
+    this.#selectedView()?.setSelected(false);
+    this.#selected = sel;
+    this.#selectedView()?.setSelected(true);
+  }
 
   selectBoard(id) {
-    if (this.#selectedId === id) return;
-    this.#views.get(this.#selectedId)?.setSelected(false);
-    this.#selectedId = this.#views.has(id) ? id : null;
-    this.#views.get(this.#selectedId)?.setSelected(true);
+    this.#select(this.#views.has(id) ? { kind: "board", id } : null);
+  }
+
+  selectComponent(id) {
+    this.#select(this.#chipViews.has(id) ? { kind: "chip", id } : null);
   }
 
   deselect() {
-    this.selectBoard(null);
+    this.#select(null);
   }
 
-  // ── Placement mode (toolbar "Add board") ───────────────────────────────
+  // ── Placement modes (toolbar Add-board / palette chip pick) ─────────────
 
-  /** Arm placement: a translucent ghost tracks the cursor until click/Esc. */
+  /** Arm board placement: a translucent ghost tracks the cursor. */
   armPlacement(type) {
     spec(type); // validate before touching state
     this.cancelPlacement();
@@ -143,14 +178,43 @@ export class DeskController {
     this.#viewport.classList.add("desk-viewport--placing");
   }
 
+  /** Arm chip placement from the palette: ghost seats across a trench. */
+  armChipPlacement(ref) {
+    if (!chipDef(ref)) {
+      const err = new Error(`unknown catalog ref: ${ref}`);
+      err.code = "INVALID_REF";
+      throw err;
+    }
+    this.cancelPlacement();
+    this.deselect();
+    this.#hideHover();
+    const ghost = el("div", { class: "part-ghost", hidden: true });
+    ghost.append(buildChipSvg(ref));
+    this.#layers.overlay.append(ghost);
+    this.#mode = {
+      kind: "place-chip",
+      ref,
+      ghost,
+      board: null,
+      anchor: null,
+      legal: false,
+    };
+    this.#viewport.classList.add("desk-viewport--placing");
+  }
+
   cancelPlacement() {
-    if (this.#mode?.kind !== "place") return;
+    if (!this.placementArmed) return;
     this.#mode.ghost.remove();
     this.#mode = null;
     this.#viewport.classList.remove("desk-viewport--placing");
   }
 
   #trackGhost(e) {
+    if (this.#mode.kind === "place") this.#trackBoardGhost(e);
+    else this.#trackChipGhost(e);
+  }
+
+  #trackBoardGhost(e) {
     const m = this.#mode;
     const s = spec(m.type);
     const w = this.#deskView.worldFromEvent(e);
@@ -166,6 +230,67 @@ export class DeskController {
     m.ghost.classList.toggle("board-ghost--illegal", !m.legal);
   }
 
+  #trackChipGhost(e) {
+    const m = this.#mode;
+    const def = chipDef(m.ref);
+    const box = chipBox(def.package);
+    const w = this.#deskView.worldFromEvent(e);
+    const seat = this.#chipSeatAt(w, def.package, 0);
+    m.ghost.hidden = false;
+    if (seat) {
+      const board = this.#doc.getBoard(seat.board);
+      const pos = holePosition(board.type, seat.anchor);
+      m.board = seat.board;
+      m.anchor = seat.anchor;
+      m.legal = this.#doc.canPlaceChip(m.ref, seat.board, seat.anchor);
+      m.ghost.style.left = `${(board.x + pos.x + box.minX) * PX_PER_UNIT}px`;
+      m.ghost.style.top = `${(board.y + pos.y + box.minY) * PX_PER_UNIT}px`;
+    } else {
+      // Off-board / over the rails: the ghost floats on the cursor, illegal.
+      m.board = null;
+      m.anchor = null;
+      m.legal = false;
+      m.ghost.style.left = `${(w.x - box.width / 2) * PX_PER_UNIT}px`;
+      m.ghost.style.top = `${(w.y - box.height / 2) * PX_PER_UNIT}px`;
+    }
+    m.ghost.classList.toggle("part-ghost--legal", m.legal);
+    m.ghost.classList.toggle("part-ghost--illegal", !m.legal);
+  }
+
+  /**
+   * The seat (board + row-e anchor) for a chip whose CENTER rides the world
+   * point, or null when the cursor is off every board or too far from a
+   * trench. `grabOffsetCols` shifts the derived anchor for drags (so the
+   * chip keeps its grab point under the cursor).
+   */
+  #chipSeatAt(world, pkg, grabOffsetCols) {
+    const { halfPins } = packageSpec(pkg);
+    for (const board of this.#doc.boards) {
+      const s = spec(board.type);
+      if (
+        world.x < board.x ||
+        world.x > board.x + s.width ||
+        world.y < board.y ||
+        world.y > board.y + s.height
+      ) {
+        continue;
+      }
+      if (Math.abs(world.y - board.y - s.trench.centerY) > SEAT_BAND) {
+        return null; // on the board but away from the trench (e.g. rails)
+      }
+      if (s.cols < halfPins) return null; // package wider than the board
+      const cursorCol = world.x - board.x - s.colStartX + 1;
+      const anchorCol = Math.round(
+        grabOffsetCols === 0
+          ? cursorCol - (halfPins - 1) / 2 // ghost: chip centered on cursor
+          : cursorCol + grabOffsetCols, // drag: keep the grab point
+      );
+      const clamped = Math.min(s.cols - halfPins + 1, Math.max(1, anchorCol));
+      return { board: board.id, anchor: `e${clamped}` };
+    }
+    return null;
+  }
+
   // ── Document mutations (all flow through desk-doc) ─────────────────────
 
   /** Add + mount + select a board; emits chiphippo:doc-changed. */
@@ -177,12 +302,62 @@ export class DeskController {
     return board;
   }
 
-  /** Remove a board and its view; emits chiphippo:doc-changed. */
+  /** Seat + mount + select a chip; emits chiphippo:doc-changed. */
+  addComponentAt(ref, boardId, anchor) {
+    const component = this.#doc.addComponent({
+      kind: "chip",
+      ref,
+      board: boardId,
+      anchor,
+    });
+    this.#mountChip(component);
+    this.selectComponent(component.id);
+    this.#emitDocChanged();
+    return component;
+  }
+
+  /**
+   * Remove a board. With parts seated on it, asks for confirmation first
+   * (the document cascade removes them too).
+   */
   removeBoard(id) {
-    this.#doc.removeBoard(id);
+    const seated = this.#doc.componentsOnBoard(id);
+    if (seated.length === 0) {
+      this.#doRemoveBoard(id);
+      return;
+    }
+    const n = seated.length;
+    PopupManager.confirm({
+      title: "Remove board?",
+      message:
+        `${id} has ${n} part${n === 1 ? "" : "s"} seated on it — ` +
+        `removing the board removes ${n === 1 ? "it" : "them"} too.`,
+      confirmLabel: "Remove",
+      confirmClass: "btn--danger",
+      onConfirm: () => this.#doRemoveBoard(id),
+    });
+  }
+
+  #doRemoveBoard(id) {
+    for (const comp of this.#doc.componentsOnBoard(id)) {
+      this.#chipViews.get(comp.id)?.remove();
+      this.#chipViews.delete(comp.id);
+      if (this.#selected?.id === comp.id) this.#selected = null;
+    }
+    this.#doc.removeBoard(id); // cascades seated components
     this.#views.get(id)?.remove();
     this.#views.delete(id);
-    if (this.#selectedId === id) this.#selectedId = null;
+    if (this.#selected?.id === id) this.#selected = null;
+    this.#hideHover();
+    this.#emitDocChanged();
+  }
+
+  /** Remove a chip and its view; emits chiphippo:doc-changed. */
+  removeComponent(id) {
+    this.#doc.removeComponent(id);
+    this.#chipViews.get(id)?.remove();
+    this.#chipViews.delete(id);
+    if (this.#selected?.id === id) this.#selected = null;
     this.#hideHover();
     this.#emitDocChanged();
   }
@@ -196,18 +371,20 @@ export class DeskController {
       return false;
     }
     if (e.key === "Escape") {
-      if (this.#mode?.kind === "place") {
+      if (this.placementArmed) {
         this.cancelPlacement();
         return true;
       }
-      if (this.#selectedId) {
+      if (this.#selected) {
         this.deselect();
         return true;
       }
       return false;
     }
-    if ((e.key === "Delete" || e.key === "Backspace") && this.#selectedId) {
-      this.removeBoard(this.#selectedId);
+    if ((e.key === "Delete" || e.key === "Backspace") && this.#selected) {
+      const { kind, id } = this.#selected;
+      if (kind === "chip") this.removeComponent(id);
+      else this.removeBoard(id);
       return true;
     }
     return false;
@@ -218,7 +395,7 @@ export class DeskController {
     this.#hideHover();
   }
 
-  // ── Board mounting & gestures ───────────────────────────────────────────
+  // ── Mounting ─────────────────────────────────────────────────────────────
 
   #mountBoard(board) {
     const view = new BreadboardView(this.#layers.boards, board, {
@@ -227,6 +404,28 @@ export class DeskController {
     });
     this.#views.set(board.id, view);
   }
+
+  #mountChip(component) {
+    const view = new ChipView(this.#layers.parts, component, {
+      onPointerDown: (id, e) => this.#onChipPointerDown(id, e),
+      onContextMenu: (id, e) => this.#onChipContextMenu(id, e),
+    });
+    view.updatePlacement(this.#doc.getBoard(component.board), component.anchor);
+    this.#chipViews.set(component.id, view);
+  }
+
+  /** Chips ride their board: refresh their views for a board at (x, y). */
+  #repositionBoardChips(boardId, x, y) {
+    const board = this.#doc.getBoard(boardId);
+    if (!board) return;
+    for (const comp of this.#doc.componentsOnBoard(boardId)) {
+      this.#chipViews
+        .get(comp.id)
+        ?.updatePlacement({ type: board.type, x, y }, comp.anchor);
+    }
+  }
+
+  // ── Board gestures ───────────────────────────────────────────────────────
 
   #onBoardPointerDown(id, e) {
     if (e.button !== 0) return; // middle = pan (DeskView), right = menu
@@ -283,6 +482,7 @@ export class DeskController {
     const view = this.#views.get(d.id);
     view?.setPosition(d.pos.x, d.pos.y);
     view?.setIllegal(!d.legal);
+    this.#repositionBoardChips(d.id, d.pos.x, d.pos.y);
   };
 
   #onBoardPointerUp = (e) => {
@@ -310,9 +510,11 @@ export class DeskController {
     const moved = d.pos.x !== d.origin.x || d.pos.y !== d.origin.y;
     if (!cancelled && d.legal && moved) {
       this.#doc.moveBoard(d.id, d.pos.x, d.pos.y);
+      this.#repositionBoardChips(d.id, d.pos.x, d.pos.y);
       this.#emitDocChanged();
     } else {
       view?.setPosition(d.origin.x, d.origin.y); // illegal drop → revert
+      this.#repositionBoardChips(d.id, d.origin.x, d.origin.y);
     }
   };
 
@@ -334,6 +536,127 @@ export class DeskController {
     });
   }
 
+  // ── Chip gestures ────────────────────────────────────────────────────────
+
+  #onChipPointerDown(id, e) {
+    if (e.button !== 0) return;
+    if (this.#mode) return;
+    this.#hideHover();
+    this.selectComponent(id);
+
+    const comp = this.#doc.getComponent(id);
+    const board = this.#doc.getBoard(comp.board);
+    const s = spec(board.type);
+    const w = this.#deskView.worldFromEvent(e);
+    const anchorCol = Number(CHIP_ANCHOR_RE.exec(comp.anchor)[1]);
+    const cursorCol = w.x - board.x - s.colStartX + 1;
+    const view = this.#chipViews.get(id);
+    this.#mode = {
+      kind: "drag-chip",
+      id,
+      ref: comp.ref,
+      pointerId: e.pointerId,
+      startClientX: e.clientX,
+      startClientY: e.clientY,
+      grabOffsetCols: anchorCol - cursorCol,
+      origin: { board: comp.board, anchor: comp.anchor },
+      seat: { board: comp.board, anchor: comp.anchor },
+      legal: true,
+      active: false,
+    };
+    try {
+      view.element.setPointerCapture(e.pointerId);
+    } catch {
+      /* capture is best-effort */
+    }
+    view.element.addEventListener("pointermove", this.#onChipPointerMove);
+    view.element.addEventListener("pointerup", this.#onChipPointerUp);
+    view.element.addEventListener("pointercancel", this.#onChipPointerUp);
+  }
+
+  #onChipPointerMove = (e) => {
+    const d = this.#mode;
+    if (d?.kind !== "drag-chip" || e.pointerId !== d.pointerId) return;
+    if (!d.active) {
+      const travel = Math.hypot(
+        e.clientX - d.startClientX,
+        e.clientY - d.startClientY,
+      );
+      if (travel < DRAG_THRESHOLD) return;
+      d.active = true;
+      this.#chipViews.get(d.id)?.setDragging(true);
+    }
+    const view = this.#chipViews.get(d.id);
+    const def = chipDef(d.ref);
+    const w = this.#deskView.worldFromEvent(e);
+    const seat = this.#chipSeatAt(w, def.package, d.grabOffsetCols);
+    if (seat) {
+      // Ride the trench, snapped; tint tells occupancy legality.
+      d.seat = seat;
+      d.legal = this.#doc.canPlaceChip(d.ref, seat.board, seat.anchor, {
+        ignoreId: d.id,
+      });
+      view?.updatePlacement(this.#doc.getBoard(seat.board), seat.anchor);
+    } else {
+      d.legal = false; // off-board / off-trench: stay at the last seat
+    }
+    view?.setIllegal(!d.legal);
+  };
+
+  #onChipPointerUp = (e) => {
+    const d = this.#mode;
+    if (d?.kind !== "drag-chip" || e.pointerId !== d.pointerId) return;
+    this.#mode = null;
+
+    const view = this.#chipViews.get(d.id);
+    if (view) {
+      const chipEl = view.element;
+      chipEl.removeEventListener("pointermove", this.#onChipPointerMove);
+      chipEl.removeEventListener("pointerup", this.#onChipPointerUp);
+      chipEl.removeEventListener("pointercancel", this.#onChipPointerUp);
+      try {
+        chipEl.releasePointerCapture(d.pointerId);
+      } catch {
+        /* already released */
+      }
+      view.setDragging(false);
+      view.setIllegal(false);
+    }
+    if (!d.active) return;
+
+    const cancelled = e.type === "pointercancel";
+    const moved =
+      d.seat.board !== d.origin.board || d.seat.anchor !== d.origin.anchor;
+    if (!cancelled && d.legal && moved) {
+      this.#doc.moveComponent(d.id, d.seat.board, d.seat.anchor);
+      view?.updatePlacement(this.#doc.getBoard(d.seat.board), d.seat.anchor);
+      this.#emitDocChanged();
+    } else {
+      view?.updatePlacement(
+        this.#doc.getBoard(d.origin.board),
+        d.origin.anchor,
+      );
+    }
+  };
+
+  #onChipContextMenu(id, e) {
+    e.preventDefault();
+    if (this.#mode) return;
+    this.selectComponent(id);
+    PopupManager.menu({
+      x: e.clientX,
+      y: e.clientY,
+      items: [
+        {
+          label: "Remove chip",
+          danger: true,
+          onSelect: () => this.removeComponent(id),
+        },
+        { label: "Properties…", disabled: true },
+      ],
+    });
+  }
+
   // ── Viewport-level pointer handling ─────────────────────────────────────
 
   #onViewportPointerDown = (e) => {
@@ -347,7 +670,7 @@ export class DeskController {
 
   #onViewportClick = (e) => {
     const m = this.#mode;
-    if (m?.kind !== "place") return;
+    if (!this.placementArmed) return;
     // A pan that started while armed still ends in a click — suppress it.
     if (
       this.#lastDown &&
@@ -356,20 +679,23 @@ export class DeskController {
     ) {
       return;
     }
-    this.#trackGhost(e); // ensure pos/legal reflect the click point
-    if (!m.legal) return; // overlap — stay armed, tint explains why
-    const { type, pos } = m;
+    this.#trackGhost(e); // ensure the seat reflects the click point
+    if (!m.legal) return; // stay armed, the tint explains why
     this.cancelPlacement();
-    this.addBoardAt(type, pos.x, pos.y);
+    if (m.kind === "place") {
+      this.addBoardAt(m.type, m.pos.x, m.pos.y);
+    } else {
+      this.addComponentAt(m.ref, m.board, m.anchor);
+    }
   };
 
   #onViewportPointerMove = (e) => {
     const m = this.#mode;
-    if (m?.kind === "place") {
+    if (m?.kind === "place" || m?.kind === "place-chip") {
       this.#trackGhost(e);
       return;
     }
-    if (m?.kind === "drag") return; // hover stays hidden while dragging
+    if (m) return; // dragging — hover stays hidden
 
     // Hover addressing: suppressed below the zoom floor.
     if (this.#deskView.camera.zoom < HOVER_MIN_ZOOM) {
@@ -381,15 +707,18 @@ export class DeskController {
       this.#hideHover();
       return;
     }
-    const key = formatAddress(hit.board.id, hit.hole);
-    if (key === this.#hoverKey) return; // shown or pending already
+    if (hit.key === this.#hoverKey) return; // shown or pending already
     this.#hideHover();
-    this.#hoverKey = key;
+    this.#hoverKey = hit.key;
     this.#hoverTimer = setTimeout(() => this.#showHover(hit), HOVER_DWELL_MS);
   };
 
-  /** The board + hole under a world point, or null (boards never overlap). */
+  // ── Hover addressing (holes + chip pins, pure math) ─────────────────────
+
+  /** Chip pins take precedence (they sit above the board), then holes. */
   #hitTest(world) {
+    const pinHit = this.#pinHitTest(world);
+    if (pinHit) return pinHit;
     for (const board of this.#doc.boards) {
       const s = spec(board.type);
       if (
@@ -401,22 +730,52 @@ export class DeskController {
         continue;
       }
       const hole = holeAt(board.type, world.x - board.x, world.y - board.y);
-      return hole ? { board, hole } : null;
+      if (!hole) return null;
+      // A hole under a seated pin reads as that pin (covered by the chip).
+      return {
+        key: formatAddress(board.id, hole),
+        label: formatAddress(board.id, hole),
+        x: board.x + holePosition(board.type, hole).x,
+        y: board.y + holePosition(board.type, hole).y,
+      };
     }
     return null;
   }
 
-  #showHover({ board, hole }) {
-    const pos = holePosition(board.type, hole);
-    const wx = (board.x + pos.x) * PX_PER_UNIT;
-    const wy = (board.y + pos.y) * PX_PER_UNIT;
+  #pinHitTest(world) {
+    for (const comp of this.#doc.components) {
+      const board = this.#doc.getBoard(comp.board);
+      const pins = chipPinHoles(comp.ref, comp.anchor);
+      if (!board || !pins) continue;
+      for (const { pin, hole } of pins) {
+        const pos = holePosition(board.type, hole);
+        if (!pos) continue;
+        const x = board.x + pos.x;
+        const y = board.y + pos.y;
+        if (Math.hypot(world.x - x, world.y - y) > PIN_HIT_RADIUS) continue;
+        const def = chipDef(comp.ref);
+        const name = def.pins.find((p) => p.n === pin)?.name ?? "?";
+        return {
+          key: `${comp.id}#${pin}`,
+          label: `${comp.ref} pin ${pin} · ${name} → ${formatAddress(comp.board, hole)}`,
+          x,
+          y,
+        };
+      }
+    }
+    return null;
+  }
+
+  #showHover({ label, x, y }) {
+    const wx = x * PX_PER_UNIT;
+    const wy = y * PX_PER_UNIT;
 
     const r = RING_RADIUS * PX_PER_UNIT;
     this.#ring.style.left = `${wx - r}px`;
     this.#ring.style.top = `${wy - r}px`;
     this.#ring.hidden = false;
 
-    this.#tooltip.textContent = formatAddress(board.id, hole);
+    this.#tooltip.textContent = label;
     this.#tooltip.style.left = `${wx}px`;
     this.#tooltip.style.top = `${wy}px`;
     // Counter-scale so the label reads the same at every zoom.

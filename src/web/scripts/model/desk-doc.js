@@ -14,23 +14,33 @@
  * limitations under the License.
  */
 
-// desk-doc.js — the in-memory desk document: the boards on the desk (and,
-// from Features 40–60, components and wires). Pure model, DOM-free; the
-// renderer holds one instance, mutates it through these methods, and
-// autosaves the serialized form over window.chiphippo.desk.save.
+// desk-doc.js — the in-memory desk document: the boards on the desk, the
+// components seated on them (chips now; discrete parts in Feature 60), and —
+// from Feature 50 — wires. Pure model, DOM-free; the renderer holds one
+// instance, mutates it through these methods, and autosaves the serialized
+// form over window.chiphippo.desk.save.
 //
 // Board x/y are board-origin world coordinates in PITCH UNITS, snapped to
 // integers so every hole lands on the global 0.1-in lattice (holes are
 // integer offsets within a board — see board-types.js). Board ids are
-// `bb<n>` from a per-document counter that never reuses an id, even across
-// delete + save + reload (`nextBoardId` persists in the document).
+// `bb<n>` and component ids `c<n>`, from per-document counters that never
+// reuse an id, even across delete + save + reload (`nextBoardId` /
+// `nextComponentId` persist in the document).
+//
+// Components are `{ id, kind, ref, board, anchor, params }` — kind "chip"
+// now ("discrete"/"psu" later), `ref` a catalog id, `anchor` pin 1's seated
+// hole (row e). Pin positions are always DERIVED (footprints + occupancy),
+// never stored; occupancy.js is the single collision authority.
 
 import { BOARD_TYPES } from "./board-types.js";
 import { spec } from "./breadboard.js";
+import { chipDef } from "../catalog/index.js";
+import { canPlaceChip } from "./occupancy.js";
 
 export const DOC_VERSION = 1;
 
 const BOARD_ID_RE = /^bb([1-9]\d*)$/;
+const COMPONENT_ID_RE = /^c([1-9]\d*)$/;
 
 function taggedError(message, code) {
   const err = new Error(message);
@@ -43,34 +53,35 @@ export function emptyDocument() {
   return {
     version: DOC_VERSION,
     boards: [],
-    components: [], // reserved — Feature 40+
+    components: [],
     wires: [], // reserved — Feature 50
     nextBoardId: 1,
+    nextComponentId: 1,
   };
 }
 
 /**
  * Coerce a loaded (possibly junk/foreign) document into a valid one: arrays
- * forced, board entries with bad ids/types/coords dropped, coordinates
- * snapped to integers, and the id counter advanced past every surviving id.
- * Components/wires are carried through verbatim (their owning features
- * normalize them).
+ * forced; board/component entries with bad ids, types/refs, coords, or
+ * dangling board references dropped; coordinates snapped to integers; and
+ * the id counters advanced past every surviving id. Wires are carried
+ * through verbatim (Feature 50 normalizes them).
  */
 export function normalizeDocument(raw) {
   const doc = emptyDocument();
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return doc;
 
-  let maxSeq = 0;
-  const seenIds = new Set();
+  let maxBoardSeq = 0;
+  const boardIds = new Set();
   const boards = Array.isArray(raw.boards) ? raw.boards : [];
   for (const b of boards) {
     if (!b || typeof b !== "object") continue;
     const m = typeof b.id === "string" ? BOARD_ID_RE.exec(b.id) : null;
-    if (!m || seenIds.has(b.id)) continue;
+    if (!m || boardIds.has(b.id)) continue;
     if (!BOARD_TYPES[b.type]) continue;
     if (!Number.isFinite(b.x) || !Number.isFinite(b.y)) continue;
-    seenIds.add(b.id);
-    maxSeq = Math.max(maxSeq, Number(m[1]));
+    boardIds.add(b.id);
+    maxBoardSeq = Math.max(maxBoardSeq, Number(m[1]));
     doc.boards.push({
       id: b.id,
       type: b.type,
@@ -79,16 +90,44 @@ export function normalizeDocument(raw) {
     });
   }
 
-  if (Array.isArray(raw.components)) {
-    doc.components = structuredClone(raw.components);
+  let maxCompSeq = 0;
+  const compIds = new Set();
+  const components = Array.isArray(raw.components) ? raw.components : [];
+  for (const c of components) {
+    if (!c || typeof c !== "object") continue;
+    const m = typeof c.id === "string" ? COMPONENT_ID_RE.exec(c.id) : null;
+    if (!m || compIds.has(c.id)) continue;
+    if (c.kind !== "chip") continue; // discrete/psu arrive in Feature 60
+    if (!chipDef(c.ref)) continue;
+    if (!boardIds.has(c.board)) continue; // seated on a surviving board
+    if (typeof c.anchor !== "string") continue;
+    compIds.add(c.id);
+    maxCompSeq = Math.max(maxCompSeq, Number(m[1]));
+    doc.components.push({
+      id: c.id,
+      kind: "chip",
+      ref: c.ref,
+      board: c.board,
+      anchor: c.anchor,
+      params:
+        c.params && typeof c.params === "object" && !Array.isArray(c.params)
+          ? structuredClone(c.params)
+          : {},
+    });
   }
+
   if (Array.isArray(raw.wires)) doc.wires = structuredClone(raw.wires);
 
-  const storedNext =
+  const storedNextBoard =
     Number.isInteger(raw.nextBoardId) && raw.nextBoardId > 0
       ? raw.nextBoardId
       : 1;
-  doc.nextBoardId = Math.max(storedNext, maxSeq + 1);
+  doc.nextBoardId = Math.max(storedNextBoard, maxBoardSeq + 1);
+  const storedNextComp =
+    Number.isInteger(raw.nextComponentId) && raw.nextComponentId > 0
+      ? raw.nextComponentId
+      : 1;
+  doc.nextComponentId = Math.max(storedNextComp, maxCompSeq + 1);
   return doc;
 }
 
@@ -190,11 +229,103 @@ export class DeskDoc {
     return { ...board };
   }
 
-  /** Remove a board. Throws NOT_FOUND. */
+  /**
+   * Remove a board AND everything seated on it (the UI confirms first when
+   * components would go with it). Throws NOT_FOUND.
+   */
   removeBoard(id) {
     const i = this.#doc.boards.findIndex((b) => b.id === id);
     if (i === -1) throw taggedError(`no board ${id}`, "NOT_FOUND");
     this.#doc.boards.splice(i, 1);
+    this.#doc.components = this.#doc.components.filter((c) => c.board !== id);
+  }
+
+  // ── Components (chips now; discrete parts in Feature 60) ────────────────
+
+  /** Copies of the components on the desk. */
+  get components() {
+    return this.#doc.components.map((c) => ({ ...c }));
+  }
+
+  /** A copy of one component, or null. */
+  getComponent(id) {
+    const c = this.#doc.components.find((x) => x.id === id);
+    return c ? { ...c } : null;
+  }
+
+  /** Copies of the components seated on one board. */
+  componentsOnBoard(boardId) {
+    return this.#doc.components
+      .filter((c) => c.board === boardId)
+      .map((c) => ({ ...c }));
+  }
+
+  /**
+   * May a chip seat here? Delegates to occupancy — the single collision
+   * authority. `ignoreId` excludes one component's own pins (moves).
+   */
+  canPlaceChip(ref, boardId, anchor, { ignoreId = null } = {}) {
+    return canPlaceChip(this.#doc, { ref, board: boardId, anchor, ignoreId });
+  }
+
+  /**
+   * Seat a chip: pin 1 at `anchor` (row e) on `boardId`. Throws INVALID_KIND
+   * / INVALID_REF / NOT_FOUND / ILLEGAL_PLACEMENT. Returns a copy.
+   */
+  addComponent({ kind, ref, board: boardId, anchor, params = {} }) {
+    if (kind !== "chip") {
+      throw taggedError(`unsupported component kind: ${kind}`, "INVALID_KIND");
+    }
+    if (!chipDef(ref)) {
+      throw taggedError(`unknown catalog ref: ${ref}`, "INVALID_REF");
+    }
+    if (!this.#doc.boards.some((b) => b.id === boardId)) {
+      throw taggedError(`no board ${boardId}`, "NOT_FOUND");
+    }
+    if (!this.canPlaceChip(ref, boardId, anchor)) {
+      throw taggedError(
+        `a ${ref} cannot seat at ${boardId}.${anchor}`,
+        "ILLEGAL_PLACEMENT",
+      );
+    }
+    const component = {
+      id: `c${this.#doc.nextComponentId++}`,
+      kind: "chip",
+      ref,
+      board: boardId,
+      anchor,
+      params: structuredClone(params),
+    };
+    this.#doc.components.push(component);
+    return { ...component };
+  }
+
+  /**
+   * Re-seat a component (same or another board). Throws NOT_FOUND /
+   * ILLEGAL_PLACEMENT. Returns a copy of the updated component.
+   */
+  moveComponent(id, boardId, anchor) {
+    const comp = this.#doc.components.find((c) => c.id === id);
+    if (!comp) throw taggedError(`no component ${id}`, "NOT_FOUND");
+    if (!this.#doc.boards.some((b) => b.id === boardId)) {
+      throw taggedError(`no board ${boardId}`, "NOT_FOUND");
+    }
+    if (!this.canPlaceChip(comp.ref, boardId, anchor, { ignoreId: id })) {
+      throw taggedError(
+        `${id} cannot seat at ${boardId}.${anchor}`,
+        "ILLEGAL_PLACEMENT",
+      );
+    }
+    comp.board = boardId;
+    comp.anchor = anchor;
+    return { ...comp };
+  }
+
+  /** Remove a component. Throws NOT_FOUND. */
+  removeComponent(id) {
+    const i = this.#doc.components.findIndex((c) => c.id === id);
+    if (i === -1) throw taggedError(`no component ${id}`, "NOT_FOUND");
+    this.#doc.components.splice(i, 1);
   }
 
   /** The serializable document (a deep copy — safe to hand to IPC). */

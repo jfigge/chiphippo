@@ -17,17 +17,18 @@ engineering setup mirrors its sibling projects **Rest Hippo** (`../resthippo`) a
 ## Status
 
 Built stage-by-stage from the plans in `features/` (see `features/ROADMAP.md`).
-**Stages 00–30 have landed**: the hardened Electron shell + `window.chiphippo` bridge
+**Stages 00–40 have landed**: the hardened Electron shell + `window.chiphippo` bridge
 and `make` toolchain (00); the infinite desk (10) — camera-transform pan/zoom
-(`DeskView` over the pure `desk-geometry.js`), the pitch dot grid, zoom controls,
-and the settings store persisting viewport + window bounds; the breadboard domain
-model (20) — `model/board-types.js` + `breadboard.js` (holes ⇄ positions ⇄ nodes for
-Full 830 / Half 400 / Tiny 170), the `DeskDoc` document, the desk store with
-migrations stub + `desk:load/save` autosave IPC, and the ipc-parity guard; and
-breadboard rendering & placement (30) — boards drawn as one static SVG each
-(`breadboard-view.js`, no per-hole DOM), the `DeskController` (surface layers,
-toolbar add-flow with snapping ghost, select/drag/delete, hover addressing via
-`holeAt` math), and the ported popup manager (`popup-manager.js` + `dom.js`).
+(`DeskView` over the pure `desk-geometry.js`), dot grid, zoom controls, settings
+store; the breadboard domain model (20) — `board-types.js` + `breadboard.js`
+(holes ⇄ positions ⇄ nodes, 830/400/170), `DeskDoc`, desk store + migrations stub,
+`desk:load/save` autosave IPC, ipc-parity guard; breadboard rendering & placement
+(30) — one static SVG per board (no per-hole DOM), `DeskController` (layers,
+add-flow ghost, select/drag/delete, hover addressing), ported popup manager; and
+the component framework & DIP chips (40) — `footprints.js` (DIP-14/16/20
+derivation), `occupancy.js` (the single collision authority), the data-driven
+12-chip 74xx catalog (`catalog/`), desk-doc component ops with `c<n>` ids, the
+searchable palette panel, and `chip-view.js` (drawn DIPs with pin hover).
 When a stage is finished, move its plan file into `features/done/`.
 
 ## Naming & identity
@@ -51,8 +52,10 @@ When a stage is finished, move its plan file into `features/done/`.
 - `src/web/` — **renderer** (Vanilla JS ES modules + plain CSS): the UI. Sandboxed;
   talks to main only through `window.chiphippo.*`. Entry points: `index.html` →
   `scripts/app.js`. Pure DOM-free logic lives under `scripts/desk/` (camera math),
-  `scripts/model/` (breadboard specs/addressing/connectivity + `DeskDoc`), and
-  later `scripts/sim/`; thin view components under `scripts/components/`.
+  `scripts/model/` (breadboard specs/addressing/connectivity, `DeskDoc`,
+  `footprints.js`, `occupancy.js`), and later `scripts/sim/`; part metadata under
+  `scripts/catalog/` (pure data + integrity test — never chip-specific code
+  paths); thin view components under `scripts/components/`.
 - `src/web/fonts/` — bundled Inter variable font; never load fonts from a CDN.
 - `src/web/styles/` — `theme.css` (design tokens + reset) and `app.css` (shell). Use
   the tokens; don't hardcode colours/sizes.
@@ -81,11 +84,15 @@ Electron main process (src/app/main.js)
 ```
 
 - **Desk surface layers** (inside `.desk-surface`, established in Feature 30):
-  `.layer-boards` → `.layer-parts` (40/60) → `.layer-wires` (50) →
-  `.layer-overlay` (ghosts, hover ring, tooltips — pointer-inert). Boards are one
-  static inline SVG each; **no per-hole DOM nodes, listeners, or ids** — all hole
-  interaction is `holeAt()` math from pointer coordinates. Pan/zoom must never
-  rebuild or re-lay-out surface children (transform-only).
+  `.layer-boards` → `.layer-parts` (chips) → `.layer-wires` (50) →
+  `.layer-overlay` (ghosts, hover ring, tooltips — pointer-inert). Boards and
+  chips are one static inline SVG each; **no per-hole or per-pin DOM nodes,
+  listeners, or ids** — all hole/pin interaction is `holeAt()` / derived-pin math
+  from pointer coordinates. Pan/zoom must never rebuild or re-lay-out surface
+  children (transform-only).
+- **Components**: `{ id, kind, ref, board, anchor, params }` with `c<n>` ids; pin
+  positions are always DERIVED (footprint + anchor), never stored; `occupancy.js`
+  is the single collision authority (one hole, one lead — wires join it in 50).
 - **Popups/menus**: `popup-manager.js` (ported from Port Hippo) is the only
   app-wide dialog/menu seam; build DOM with `dom.js` `el()`.
 

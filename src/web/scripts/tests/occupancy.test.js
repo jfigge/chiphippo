@@ -1,0 +1,151 @@
+/*
+ * Copyright 2026 Jason Figge
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+// Tests for the occupancy index + chip placement legality (model/occupancy.js).
+
+import test from "node:test";
+import assert from "node:assert/strict";
+
+import {
+  buildOccupancy,
+  canPlaceChip,
+  chipPinHoles,
+} from "../model/occupancy.js";
+
+function docWith({ boards, components = [] }) {
+  return { boards, components };
+}
+
+const FULL = { id: "bb1", type: "full", x: 0, y: 0 };
+const TINY = { id: "bb2", type: "tiny", x: 100, y: 0 };
+
+test("chipPinHoles: derives the 14 seated holes of a 7400 at e5", () => {
+  const pins = chipPinHoles("7400", "e5");
+  assert.equal(pins.length, 14);
+  assert.deepEqual(pins[0], { pin: 1, hole: "e5" });
+  assert.deepEqual(
+    pins.find((p) => p.pin === 7),
+    { pin: 7, hole: "e11" },
+  );
+  assert.deepEqual(
+    pins.find((p) => p.pin === 8),
+    { pin: 8, hole: "f11" },
+  );
+  assert.deepEqual(
+    pins.find((p) => p.pin === 14),
+    { pin: 14, hole: "f5" },
+  );
+});
+
+test("chipPinHoles: unknown ref or non-e anchor is null", () => {
+  assert.equal(chipPinHoles("9999", "e5"), null);
+  assert.equal(chipPinHoles("7400", "f5"), null);
+  assert.equal(chipPinHoles("7400", "t+3"), null);
+  assert.equal(chipPinHoles("7400", null), null);
+});
+
+test("buildOccupancy: one entry per pin, addressed globally", () => {
+  const doc = docWith({
+    boards: [FULL],
+    components: [
+      { id: "c1", kind: "chip", ref: "7400", board: "bb1", anchor: "e5" },
+    ],
+  });
+  const occ = buildOccupancy(doc);
+  assert.equal(occ.size, 14);
+  assert.deepEqual(occ.get("bb1.e5"), {
+    kind: "pin",
+    componentId: "c1",
+    pin: 1,
+  });
+  assert.deepEqual(occ.get("bb1.f11"), {
+    kind: "pin",
+    componentId: "c1",
+    pin: 8,
+  });
+  assert.equal(occ.get("bb1.e4"), undefined);
+});
+
+test("canPlaceChip: happy path on Full and Tiny", () => {
+  const doc = docWith({ boards: [FULL, TINY] });
+  assert.equal(
+    canPlaceChip(doc, { ref: "7400", board: "bb1", anchor: "e5" }),
+    true,
+  );
+  // A DIP-14 needs 7 columns: Tiny (17 cols) fits at e1…e11.
+  assert.equal(
+    canPlaceChip(doc, { ref: "74125", board: "bb2", anchor: "e11" }),
+    true,
+  );
+});
+
+test("canPlaceChip: rejects off-board, bad anchors, unknown boards/refs", () => {
+  const doc = docWith({ boards: [FULL, TINY] });
+  // Full has 63 columns: e58 puts pin 7 at e64 — off the board.
+  assert.equal(
+    canPlaceChip(doc, { ref: "7400", board: "bb1", anchor: "e58" }),
+    false,
+  );
+  assert.equal(
+    canPlaceChip(doc, { ref: "7400", board: "bb2", anchor: "e12" }),
+    false, // Tiny: pin 7 would land at e18 (only 17 columns)
+  );
+  assert.equal(
+    canPlaceChip(doc, { ref: "7400", board: "bb1", anchor: "f5" }),
+    false, // anchor must be row e
+  );
+  assert.equal(
+    canPlaceChip(doc, { ref: "7400", board: "bb9", anchor: "e5" }),
+    false,
+  );
+  assert.equal(
+    canPlaceChip(doc, { ref: "9999", board: "bb1", anchor: "e5" }),
+    false,
+  );
+});
+
+test("canPlaceChip: occupied holes block; ignoreId frees a chip's own pins", () => {
+  const doc = docWith({
+    boards: [FULL],
+    components: [
+      { id: "c1", kind: "chip", ref: "7400", board: "bb1", anchor: "e5" },
+    ],
+  });
+  // Overlapping the seated 7400 (columns 5–11) fails…
+  assert.equal(
+    canPlaceChip(doc, { ref: "7404", board: "bb1", anchor: "e11" }),
+    false,
+  );
+  // …the next free column succeeds…
+  assert.equal(
+    canPlaceChip(doc, { ref: "7404", board: "bb1", anchor: "e12" }),
+    true,
+  );
+  // …and the chip itself may shift one column when its own pins are ignored.
+  assert.equal(
+    canPlaceChip(doc, {
+      ref: "7400",
+      board: "bb1",
+      anchor: "e6",
+      ignoreId: "c1",
+    }),
+    true,
+  );
+  assert.equal(
+    canPlaceChip(doc, { ref: "7400", board: "bb1", anchor: "e6" }),
+    false,
+  );
+});

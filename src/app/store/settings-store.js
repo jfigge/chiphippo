@@ -34,6 +34,10 @@ const DEFAULTS = Object.freeze({
   // ── Window bounds ─────────────────────────────────────────────────────────
   // {x,y,width,height} persisted by window-state.js; null → centred default.
   windowBounds: null,
+
+  // ── Parts palette (Feature 40) ────────────────────────────────────────────
+  // Whether the left palette panel is open (the toolbar Parts button toggles).
+  paletteOpen: false,
 });
 
 class SettingsStore {

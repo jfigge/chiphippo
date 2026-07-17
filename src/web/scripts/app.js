@@ -21,11 +21,13 @@
 // is loaded BEFORE DeskView mounts so the restored camera paints first —
 // no flash of the default view. Boards arrive with Features 20–30.
 
+import { el } from "./dom.js";
 import { DeskView } from "./components/desk-view.js";
 import { ZoomControl } from "./components/zoom-control.js";
 import { DeskHud } from "./components/desk-hud.js";
 import { DeskController } from "./components/desk-controller.js";
 import { BoardToolbar } from "./components/board-toolbar.js";
+import { PalettePanel } from "./components/palette-panel.js";
 import { DeskDoc } from "./model/desk-doc.js";
 
 /** How long after the last camera change to persist the viewport. */
@@ -131,7 +133,10 @@ async function init() {
 
   const app = document.getElementById("app");
   const desk = buildDesk();
-  app.append(buildHeader(), desk);
+  // Main row below the header: the parts palette (left, toggleable) beside
+  // the full-bleed desk.
+  const main = el("div", { class: "app-main" });
+  app.append(buildHeader(), main);
 
   // Desk document (Feature 20): the persisted boards/components/wires, held
   // in one in-memory DeskDoc. Anything that mutates it dispatches a global
@@ -169,6 +174,14 @@ async function init() {
   let zoomControl = null;
   let hud = null;
   let controller = null;
+
+  // Parts palette (left panel; visibility persists in settings).
+  const palette = new PalettePanel(main, {
+    onPickChip: (ref) => controller?.armChipPlacement(ref),
+  });
+  palette.setVisible(settings.paletteOpen === true);
+  main.append(desk);
+
   const deskView = new DeskView(desk, {
     camera: settings.viewport,
     onViewportChange: (camera) => {
@@ -179,10 +192,30 @@ async function init() {
     },
   });
 
-  // Everything ON the desk (boards, placement, selection, hover addressing).
+  // Everything ON the desk (boards, chips, placement, hover addressing).
   controller = new DeskController({ viewport: desk, deskView, deskDoc });
 
-  new BoardToolbar(document.getElementById("app-toolbar"), {
+  const toolbar = document.getElementById("app-toolbar");
+  const partsBtn = el("button", {
+    class: "toolbar-btn",
+    type: "button",
+    text: "Parts",
+    title: "Show or hide the parts palette",
+    "aria-pressed": String(palette.visible),
+    onClick: () => {
+      const on = !palette.visible;
+      palette.setVisible(on);
+      partsBtn.setAttribute("aria-pressed", String(on));
+      partsBtn.classList.toggle("toolbar-btn--active", on);
+      bridge.settings
+        .set({ paletteOpen: on })
+        .catch((err) => console.error("[renderer] settings:set failed:", err));
+    },
+  });
+  partsBtn.classList.toggle("toolbar-btn--active", palette.visible);
+  toolbar.append(partsBtn);
+
+  new BoardToolbar(toolbar, {
     onAddBoard: (type) => controller.armPlacement(type),
   });
 

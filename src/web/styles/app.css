@@ -97,6 +97,107 @@
   padding: 0 var(--space-2);
 }
 
+.toolbar-btn--active {
+  background: var(--color-surface-1);
+  border-color: var(--color-accent);
+}
+
+/* Standalone toolbar buttons (Parts toggle) share the split-button look. */
+.app-header-toolbar > .toolbar-btn {
+  border-radius: var(--radius-sm);
+}
+
+/* ── Main row: palette beside the desk ───────────────────────────────────── */
+.app-main {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* ── Parts palette (Feature 40) ──────────────────────────────────────────── */
+.palette-panel {
+  display: flex;
+  flex-direction: column;
+  width: 232px;
+  flex: 0 0 auto;
+  background: var(--color-mantle);
+  border-right: 1px solid var(--color-crust);
+  min-height: 0;
+}
+
+.palette-panel[hidden] {
+  display: none;
+}
+
+.palette-header {
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--color-crust);
+}
+
+.palette-filter {
+  width: 100%;
+  height: var(--control-height);
+  padding: 0 var(--space-2);
+  background: var(--color-base);
+  border: 1px solid var(--color-overlay);
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  font: inherit;
+}
+
+.palette-list {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: var(--space-2);
+}
+
+.palette-group {
+  margin: var(--space-3) 0 var(--space-1);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-muted);
+}
+
+.palette-group:first-child {
+  margin-top: 0;
+}
+
+.palette-item {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  width: 100%;
+  text-align: left;
+  padding: var(--space-2);
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+}
+
+.palette-item:hover {
+  background: var(--color-surface-0);
+}
+
+.palette-item-id {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.palette-item-title {
+  font-size: 12px;
+  color: var(--color-subtext);
+}
+
+.palette-empty {
+  color: var(--color-muted);
+  font-size: 12px;
+  padding: var(--space-2);
+}
+
 .app-header-meta {
   display: flex;
   align-items: center;
@@ -260,6 +361,84 @@
   background: var(--color-danger);
   opacity: 0.2;
   border-radius: 6px;
+}
+
+/* ── Parts (DIP chips, Feature 40) ───────────────────────────────────────── */
+.part {
+  position: absolute;
+}
+
+.part > svg {
+  display: block;
+}
+
+.part--selected {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+  border-radius: 4px;
+}
+
+.part--dragging {
+  opacity: 0.85;
+}
+
+.part--illegal {
+  outline: 2px solid var(--color-danger);
+  outline-offset: 1px;
+  border-radius: 4px;
+}
+
+.part-chip-body {
+  fill: var(--color-chip-body);
+  stroke: var(--color-chip-notch);
+  stroke-width: 0.06;
+}
+
+.part-chip-notch {
+  fill: var(--color-chip-notch);
+}
+
+.part-chip-leg {
+  fill: var(--color-chip-leg);
+}
+
+.part-chip-dot {
+  fill: var(--color-chip-label);
+  opacity: 0.85;
+}
+
+.part-chip-label {
+  fill: var(--color-chip-label);
+  font-family: var(--font-mono);
+  font-size: 0.8px; /* SVG user units = pitch units */
+  letter-spacing: 0.06px;
+  user-select: none;
+}
+
+/* Chip placement ghost (palette pick → seat across a trench). */
+.part-ghost {
+  position: absolute;
+  opacity: 0.6;
+  border-radius: 4px;
+}
+
+.part-ghost--legal {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.part-ghost--illegal {
+  outline: 2px solid var(--color-danger);
+  outline-offset: 1px;
+}
+
+.part-ghost--illegal::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--color-danger);
+  opacity: 0.25;
+  border-radius: 4px;
 }
 
 /* ── Hover addressing (ring + tooltip in the overlay layer) ─────────────── */
