@@ -34,7 +34,20 @@ contextBridge.exposeInMainWorld("chiphippo", {
   platform: process.platform,
   arch: process.arch,
 
+  // True under `make debug` / --dev (main passes --chiphippo-dev via
+  // additionalArguments). Gates dev-only UI like the desk debug HUD.
+  isDev: process.argv.includes("--chiphippo-dev"),
+
   // App version comes from the main process (package.json), over IPC — this
   // also proves the ipcMain <-> preload bridge is wired correctly.
   getVersion: () => ipcRenderer.invoke("app:version"),
+
+  // ── App settings (Feature 10) ──────────────────────────────────────────────
+  // A single preferences document in main (store/settings-store.js): the desk
+  // viewport, window bounds, and later stages' keys. `set` shallow-merges a
+  // patch; object-valued keys are replaced whole, so send the full object.
+  settings: {
+    get: () => ipcRenderer.invoke("settings:get"),
+    set: (patch) => ipcRenderer.invoke("settings:set", patch),
+  },
 });

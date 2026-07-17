@@ -50,6 +50,8 @@
   --color-warning: #d4b060; /* caution / conflict */
   --color-danger: #e07070; /* error */
 
+  --color-desk-dot: #343434; /* desk pitch-grid dots */
+
   /* ── Typography ──────────────────────────────────────────────────────── */
   --font-sans:
     "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
@@ -100,6 +102,7 @@
     --color-info: #3a6ea5;
     --color-warning: #9a6800;
     --color-danger: #b82020;
+    --color-desk-dot: #c8c8c8;
     --shadow-1: 0 1px 3px rgba(0, 0, 0, 0.12);
   }
 }
@@ -121,6 +124,7 @@
   --color-info: #3a6ea5;
   --color-warning: #9a6800;
   --color-danger: #b82020;
+  --color-desk-dot: #c8c8c8;
   --shadow-1: 0 1px 3px rgba(0, 0, 0, 0.12);
 }
 
@@ -143,6 +147,7 @@
   --color-info: #78a8d8;
   --color-warning: #d4b060;
   --color-danger: #e07070;
+  --color-desk-dot: #343434;
   --shadow-1: 0 1px 3px rgba(0, 0, 0, 0.4);
 }
 

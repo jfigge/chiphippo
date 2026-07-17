@@ -98,7 +98,9 @@ TEST_TIMEOUT ?= 30000
 
 test: test-license-headers
 	@echo "Running JavaScript unit tests..."
-	@cd $(SRC_DIR) && node --test --test-timeout=$(TEST_TIMEOUT) "app/tests/**/*.test.js"
+	@cd $(SRC_DIR) && node --test --test-timeout=$(TEST_TIMEOUT) \
+		"app/tests/**/*.test.js" \
+		"web/scripts/tests/**/*.test.js"
 	@echo "--------------------------------"
 
 # Guard: every first-party src/ JS+CSS file and build script must carry the

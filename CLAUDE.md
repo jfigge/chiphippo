@@ -17,10 +17,12 @@ engineering setup mirrors its sibling projects **Rest Hippo** (`../resthippo`) a
 ## Status
 
 Built stage-by-stage from the plans in `features/` (see `features/ROADMAP.md`).
-**Stage 00 (project scaffold) has landed**: the hardened Electron shell, the
-`window.chiphippo` IPC bridge, the empty-desk placeholder, and the full `make`
-toolchain (fmt / lint / test / build with the license-header guard). When a stage is
-finished, move its plan file into `features/done/`.
+**Stages 00–10 have landed**: the hardened Electron shell + `window.chiphippo` bridge
+and `make` toolchain (00), and the infinite desk (10) — camera-transform pan/zoom
+(`DeskView` over the pure `desk-geometry.js`), the pitch dot grid, zoom controls and
+shortcuts, and the settings-store foundation (`src/app/store/`) persisting the desk
+viewport + window bounds. When a stage is finished, move its plan file into
+`features/done/`.
 
 ## Naming & identity
 
@@ -36,11 +38,14 @@ finished, move its plan file into `features/done/`.
 
 - `src/app/` — Electron **main** process (Node.js, CommonJS): window lifecycle and
   IPC handlers. All native I/O (filesystem, dialogs) lives here. Key entry points:
-  `main.js` (window + lifecycle + ipcMain handlers) and `preload.js` (the
-  `window.chiphippo` bridge).
+  `main.js` (window + lifecycle + ipcMain handlers), `preload.js` (the
+  `window.chiphippo` bridge), `window-state.js` (bounds restore with display-fit
+  check), and `store/` (`io.js` atomic-write primitives + `settings-store.js`).
 - `src/web/` — **renderer** (Vanilla JS ES modules + plain CSS): the UI. Sandboxed;
   talks to main only through `window.chiphippo.*`. Entry points: `index.html` →
-  `scripts/app.js`.
+  `scripts/app.js`. Pure DOM-free logic lives under `scripts/desk/` (and later
+  `scripts/sim/`); thin view components under `scripts/components/`
+  (`desk-view.js` owns the camera; `desk-geometry.js` owns the math).
 - `src/web/fonts/` — bundled Inter variable font; never load fonts from a CDN.
 - `src/web/styles/` — `theme.css` (design tokens + reset) and `app.css` (shell). Use
   the tokens; don't hardcode colours/sizes.
@@ -55,9 +60,12 @@ Do **not** modify anything under `build/` or `src/node_modules/`.
 
 ```
 Electron main process (src/app/main.js)
-  ├── IPC handlers   (app:platform, app:version — more per stage)
+  ├── Settings store (src/app/store/)        settings.json under userData (atomic io.js)
+  ├── Window state   (src/app/window-state.js)  bounds restore + debounced save
+  ├── IPC handlers   (app:platform, app:version, settings:get/set — more per stage)
   └── IPC bridge     (src/app/preload.js)   →  window.chiphippo.*
         └── Renderer / UI (src/web/scripts/app.js)
+              └── DeskView (components/desk-view.js) ← desk/desk-geometry.js (pure)
 ```
 
 - The main process owns all filesystem and native I/O. The renderer is sandboxed

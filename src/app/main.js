@@ -24,17 +24,37 @@
 // preload.js.
 "use strict";
 
-const { app, BrowserWindow, ipcMain, shell } = require("electron");
+const { app, BrowserWindow, ipcMain, screen, shell } = require("electron");
 const path = require("path");
 const fs = require("fs");
 
 const { parseArgs } = require("./cli-args");
+const { SettingsStore } = require("./store/settings-store");
+const {
+  DEFAULT_BOUNDS,
+  resolveWindowBounds,
+  trackWindowState,
+} = require("./window-state");
 
 const {
   dev: isDev,
   hotReload: isHotReload,
   devTools: isDevTools,
 } = parseArgs(process.argv);
+
+// Any dev-ish launch gets the dev renderer flag (gates the desk debug HUD).
+const isDevLike = isDev || isHotReload || isDevTools;
+
+// ── Main-process error conventions ────────────────────────────────────────────
+/** Run `fn`, logging (not throwing) on failure — for best-effort reads/writes. */
+function safeCall(channel, fn, fallback = null) {
+  try {
+    return fn();
+  } catch (err) {
+    console.error(`[main] ${channel} error:`, err && err.message);
+    return fallback;
+  }
+}
 
 /**
  * Resolve the app's own version. In a packaged build app.getVersion() returns
@@ -49,6 +69,19 @@ function resolveAppVersion() {
   }
 }
 
+// ─── Storage ──────────────────────────────────────────────────────────────────
+// Built lazily on first use so app.getPath("userData") is resolvable (it
+// honours a --user-data-dir override once Electron has processed it).
+let _settingsStore = null;
+
+/** @returns {SettingsStore} */
+function getSettingsStore() {
+  if (!_settingsStore) {
+    _settingsStore = new SettingsStore(app.getPath("userData"));
+  }
+  return _settingsStore;
+}
+
 // ─── IPC handlers ─────────────────────────────────────────────────────────────
 // Every channel registered here must have a matching window.chiphippo.* export
 // in preload.js (the ipc-parity test enforcing this lands in Feature 20).
@@ -57,6 +90,13 @@ function registerIpc() {
   // authoritative source for platform info reachable over IPC.
   ipcMain.handle("app:platform", () => process.platform);
   ipcMain.handle("app:version", () => resolveAppVersion());
+
+  // App settings (Feature 10): the desk viewport + window bounds live here;
+  // later stages add their own keys. Writes are atomic (store/io.js).
+  ipcMain.handle("settings:get", () => getSettingsStore().get());
+  ipcMain.handle("settings:set", (_event, patch) =>
+    getSettingsStore().set(patch),
+  );
 }
 
 // ─── Hot reload (dev only) ────────────────────────────────────────────────────
@@ -79,9 +119,25 @@ function installHotReload(win) {
 let mainWindow = null;
 
 function createWindow() {
+  // Restore the last position/size when it still fits on a connected display;
+  // otherwise fall back to the centred default (resolveWindowBounds decides).
+  const displays = safeCall(
+    "window:displays",
+    () =>
+      screen
+        .getAllDisplays()
+        .map((d) => ({ bounds: d.bounds, workArea: d.workArea })),
+    [],
+  );
+  const savedBounds = safeCall(
+    "window:bounds",
+    () => getSettingsStore().get().windowBounds,
+    null,
+  );
+  const bounds = resolveWindowBounds(savedBounds, displays, DEFAULT_BOUNDS);
+
   const win = new BrowserWindow({
-    width: 1280,
-    height: 800,
+    ...bounds, // x/y only when restored; width/height always
     minWidth: 1024,
     minHeight: 640,
     backgroundColor: "#1c1c1c", // matches --color-base in theme.css
@@ -91,8 +147,22 @@ function createWindow() {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      // Visible to the sandboxed preload via process.argv — gates dev-only UI.
+      additionalArguments: isDevLike ? ["--chiphippo-dev"] : [],
     },
   });
+
+  // Persist position/size as the user moves/resizes (debounced) and on close.
+  trackWindowState(win, {
+    save: (b) =>
+      safeCall("window:save-bounds", () =>
+        getSettingsStore().set({ windowBounds: b }),
+      ),
+  });
+
+  // Disable Chromium's built-in pinch/ctrl-wheel visual zoom — the desk owns
+  // those gestures (DeskView zooms the camera, not the page).
+  win.webContents.setVisualZoomLevelLimits(1, 1).catch(() => {});
 
   // Window-open hardening: the renderer never opens windows of its own — pass
   // external links to the system browser and deny everything else.

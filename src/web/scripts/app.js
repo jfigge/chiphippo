@@ -16,9 +16,17 @@
 
 // app.js — renderer entry point: mounts the app shell.
 //
-// Stage 00 shell only: a header bar (brand + empty toolbar slot) above a
-// full-bleed, empty desk viewport with an inert hint. The infinite desk
-// (camera, grid, boards) arrives with Features 10–30.
+// The shell is a header bar (brand + empty toolbar slot) above the infinite
+// desk (DeskView: pan/zoom camera + dot grid, Feature 10). The saved viewport
+// is loaded BEFORE DeskView mounts so the restored camera paints first —
+// no flash of the default view. Boards arrive with Features 20–30.
+
+import { DeskView } from "./components/desk-view.js";
+import { ZoomControl } from "./components/zoom-control.js";
+import { DeskHud } from "./components/desk-hud.js";
+
+/** How long after the last camera change to persist the viewport. */
+const VIEWPORT_SAVE_DEBOUNCE_MS = 500;
 
 function buildHeader() {
   const header = document.createElement("header");
@@ -47,7 +55,7 @@ function buildHeader() {
 
   brand.append(icon, logo, subtitle);
 
-  // Empty toolbar slot — later stages mount desk tools (add board, zoom, …).
+  // Empty toolbar slot — later stages mount desk tools (add board, …).
   const toolbar = document.createElement("div");
   toolbar.className = "app-header-toolbar";
   toolbar.id = "app-toolbar";
@@ -69,6 +77,8 @@ function buildDesk() {
   desk.className = "desk-viewport";
   desk.setAttribute("aria-label", "Desk");
 
+  // Inert overlay hint (pointer-events: none) — Feature 30's "add board"
+  // flow replaces it.
   const hint = document.createElement("p");
   hint.className = "desk-hint";
   hint.textContent = "Add a breadboard to get started";
@@ -77,14 +87,77 @@ function buildDesk() {
   return desk;
 }
 
+/** Central keyboard shortcuts: cmd/ctrl +, −, 0 drive the desk zoom. */
+function bindZoomShortcuts(deskView) {
+  window.addEventListener("keydown", (e) => {
+    if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+    if (e.key === "=" || e.key === "+") {
+      e.preventDefault();
+      deskView.zoomIn();
+    } else if (e.key === "-" || e.key === "_") {
+      e.preventDefault();
+      deskView.zoomOut();
+    } else if (e.key === "0") {
+      e.preventDefault();
+      deskView.resetZoom();
+    }
+  });
+}
+
 async function init() {
+  const bridge = window.chiphippo;
+
+  // Load settings BEFORE mounting the desk so the saved viewport applies on
+  // the first paint (acceptable to proceed with defaults if the read fails).
+  let settings = {};
+  try {
+    settings = await bridge.settings.get();
+  } catch (err) {
+    console.error("[renderer] settings:get failed:", err);
+  }
+
   const app = document.getElementById("app");
-  app.append(buildHeader(), buildDesk());
+  const desk = buildDesk();
+  app.append(buildHeader(), desk);
+
+  // Debounced viewport persistence: every pan step emits a change, so writes
+  // coalesce until the camera settles.
+  let saveTimer = null;
+  const scheduleViewportSave = (camera) => {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(() => {
+      bridge.settings
+        .set({ viewport: camera })
+        .catch((err) => console.error("[renderer] settings:set failed:", err));
+    }, VIEWPORT_SAVE_DEBOUNCE_MS);
+  };
+
+  let zoomControl = null;
+  let hud = null;
+  const deskView = new DeskView(desk, {
+    camera: settings.viewport,
+    onViewportChange: (camera) => {
+      zoomControl?.setZoom(camera.zoom);
+      hud?.update(camera);
+      scheduleViewportSave(camera);
+    },
+  });
+
+  zoomControl = new ZoomControl(desk, {
+    onZoomIn: () => deskView.zoomIn(),
+    onZoomOut: () => deskView.zoomOut(),
+    onReset: () => deskView.resetZoom(),
+  });
+  zoomControl.setZoom(deskView.camera.zoom);
+
+  bindZoomShortcuts(deskView);
+
+  if (bridge.isDev) hud = new DeskHud(desk, deskView);
 
   // Prove the IPC bridge end-to-end: the version comes from the main
   // process's package.json over window.chiphippo.getVersion().
   try {
-    const version = await window.chiphippo.getVersion();
+    const version = await bridge.getVersion();
     document.getElementById("app-version").textContent = `v${version}`;
   } catch (err) {
     console.error("[renderer] app:version failed:", err);
