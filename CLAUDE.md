@@ -84,6 +84,21 @@ into `features/done/`.
   **chiphippo.com** (via `website/CNAME`) when a site lands, falling back to the
   `*.github.io` Pages URL until the domain is configured.
 
+## App icons
+
+Two vector sources drive every raster (regenerate with **`make icons`**):
+`chiphippo-icon.svg` (edge-to-edge logo → Windows `.ico`, the Linux `icons/`
+set, and `chiphippo-logo.png`) and **`chiphippo-mac-icon.svg`** — the SAME art
+inside the macOS **safe area** (a rounded square at ~80% of the canvas with a
+**transparent border** on every side, so the dock renders it at native visual
+weight) → `chiphippo-mac-icon.png` (electron-builder's `mac`/`mas` icon + the
+runtime dock icon). `scripts/make-icons.mjs` runs **under Electron**
+(`npx electron …`), rasterising each SVG in a hidden window via `<canvas>` +
+`toDataURL` — `qlmanage` flattens SVG transparency onto WHITE, so it must not be
+used for these. `main.js` loads the per-platform icon once and sets both the
+BrowserWindow `icon` and (darwin) `app.dock.setIcon` so `make debug` shows the
+Chip Hippo icon, never the default Electron one. All rasters are committed.
+
 ## Source Directories
 
 - `src/app/` — Electron **main** process (Node.js, CommonJS): window lifecycle and
@@ -198,6 +213,18 @@ Electron main process (src/app/main.js)
   Run, never serialized).
 - **Popups/menus**: `popup-manager.js` (ported from Port Hippo) is the only
   app-wide dialog/menu seam; build DOM with `dom.js` `el()`.
+- **Pin-assignments window** (Feature 100): double-clicking ANY part (every
+  part view fires `dblclick` → `DeskController.#onOpenPinout(ref, rows)`)
+  invokes `pinout:open`, and main opens a **separate floating OS window**
+  (`web/pinout.html` → `scripts/pinout.js`, rendering
+  `components/chip-pinout.js` `buildPartPinout`). One builder per catalog shape:
+  DIP chips → the physical two-column diagram; discretes → a linear pin list
+  keyed to anchor-hole offsets; PSU/clock bricks → a terminal map. One window
+  per ref (re-open focuses); it's `alwaysOnTop` by default, and a native
+  right-click menu toggles that for every open pinout and persists it as
+  `settings.pinoutFloat` (a de-facto global, ready for a future settings
+  dialog). Pure DOM, no modal chrome — the native window frame owns the title
+  bar + close.
 
 - The main process owns all filesystem and native I/O. The renderer is sandboxed
   (`contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`) and
@@ -224,6 +251,7 @@ make fmt       # Format JS/CSS/HTML via Prettier
 make fmt-check # Check formatting without writing
 make lint      # Lint JS via ESLint
 make test      # License-header guard + Node unit tests (node --test)
+make icons     # Regenerate app-icon rasters from the SVG sources (see below)
 make build     # Build the Electron app for macOS (dir only, unsigned)
 make dmg       # Build an unsigned macOS .dmg (bare `make` default)
 make clean     # Remove build/ and dist/

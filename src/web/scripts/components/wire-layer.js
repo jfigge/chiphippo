@@ -54,6 +54,7 @@ export class WireLayer {
   #onHover;
   #selectedId = null;
   #preview = null; // preview path elements while the wire tool is pending
+  #endpointDrag = null; // { wireId, end, world:{x,y} px, legal } while dragging an end
 
   /**
    * @param {HTMLElement} layer - the `.layer-wires` element.
@@ -123,10 +124,17 @@ export class WireLayer {
    */
   render(overrides) {
     const preview = this.#preview; // survives rebuilds (appended last)
+    const drag = this.#endpointDrag;
     clear(this.#svg);
     for (const wire of this.#doc.wires) {
-      const a = this.#endpointWorld(wire.from, overrides);
-      const b = this.#endpointWorld(wire.to, overrides);
+      let a = this.#endpointWorld(wire.from, overrides);
+      let b = this.#endpointWorld(wire.to, overrides);
+      // A dragged endpoint follows the cursor (world px) instead of its hole.
+      const dragging = drag && drag.wireId === wire.id;
+      if (dragging) {
+        if (drag.end === "from") a = drag.world;
+        else b = drag.world;
+      }
       if (!a || !b) continue; // defensive: normalize prevents danglers
       const d = wirePath(a, b);
 
@@ -143,6 +151,12 @@ export class WireLayer {
         svgEl("circle", { class: "wire-cap", cx: a.x, cy: a.y, r: CAP_RADIUS }),
         svgEl("circle", { class: "wire-cap", cx: b.x, cy: b.y, r: CAP_RADIUS }),
       );
+      // While an end is dragged, mute its hit stroke (pointer is captured) and
+      // tint the wire red over an illegal drop, mirroring the rubber band.
+      if (dragging) {
+        group.classList.add("wire--dragging");
+        group.classList.toggle("wire-preview--illegal", drag.legal === false);
+      }
       group.classList.toggle("wire--selected", wire.id === this.#selectedId);
       group.addEventListener("click", (e) => this.#onSelect?.(wire.id, e));
       group.addEventListener("contextmenu", (e) =>
@@ -153,6 +167,19 @@ export class WireLayer {
       this.#svg.append(group);
     }
     if (preview) this.#svg.append(preview);
+  }
+
+  /**
+   * Live-preview a wire with ONE endpoint dragged to an arbitrary world-px
+   * point (the drag-an-endpoint gesture). The dragged wire re-renders with that
+   * end following the cursor; `legal:false` tints it. Pass null to stop and
+   * redraw from the document. (Board-drag `overrides` are orthogonal — this
+   * moves a single endpoint, not a whole board.)
+   * @param {{wireId:string, end:"from"|"to", world:{x:number,y:number}, legal?:boolean}|null} spec
+   */
+  setEndpointDrag(spec) {
+    this.#endpointDrag = spec;
+    this.render();
   }
 
   /** Highlight one wire (null clears). Survives re-renders. */

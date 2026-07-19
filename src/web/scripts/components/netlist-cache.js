@@ -19,9 +19,10 @@
 // at this app's scale; incremental updates are complexity with no payoff),
 // so this just memoizes it and invalidates on the two events that can change
 // connectivity:
-//   • chiphippo:doc-changed — boards/parts/wires/switch-position edits
-//   • chiphippo:part-state  — a button pressed/released (transient), or a
-//     switch flip (also persisted, but this fires first)
+//   • chiphippo:doc-changed — boards/parts/wires/switch-position edits (a
+//     slide switch's `pos` is persisted, so a flip rides this)
+//   • chiphippo:part-state  — a button pressed/released (transient view state
+//     with no durable param)
 // It also tracks transient part state (a held button) so a pressed button
 // bridges in the netlist even though nothing durable is stored for it.
 

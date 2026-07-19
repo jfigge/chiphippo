@@ -73,6 +73,14 @@ const chip = (id, ref, anchor, params = {}) => ({
   anchor,
   params,
 });
+const part = (id, ref, anchor, params = {}) => ({
+  id,
+  kind: "discrete",
+  ref,
+  board: "bb1",
+  anchor,
+  params,
+});
 
 /** Power a chip at `anchor`: VCC (pin 14) → psu+, GND (pin 7) → psu−. */
 function powerWires(psuId, holes, gndMateIndex = 0) {
@@ -274,6 +282,51 @@ test("12 V damages the chip (magic smoke); params are NOT mutated by the pure en
     simulate(replaced).result.chipStatus.get("c1").status,
     "damaged",
   );
+});
+
+// ── Resistors: weak pull-down / pull-up / series conduction ──────────────────
+
+test("a pull-down resistor makes a floating chip input read LOW", () => {
+  const holes = chipHoles("7404", "e10"); // 1A(e10) → 1Y(e11)
+  const r = chipHoles("resistor", "a30"); // leads at a30 (col30) and a33 (col33)
+  const base = {
+    boards: [board],
+    components: [
+      psu("psu1", 80),
+      chip("c1", "7404", "e10"),
+      part("r1", "resistor", "a30"),
+    ],
+  };
+
+  // Baseline: input pin 1 floats → reads H → inverter output (e11) LOW.
+  const floating = { ...base, wires: powerWires("psu1", holes) };
+  assert.equal(simulate(floating).levelAt("bb1.e11"), L);
+
+  // Wire the resistor as a pull-down: one lead on the input strip, the other on
+  // the GND strip. The floating input now reads LOW → inverter output HIGH.
+  const pulled = {
+    ...base,
+    wires: [
+      ...powerWires("psu1", holes),
+      wire(`bb1.${mates(r.get(1))[0]}`, `bb1.${mates(holes.get(1))[0]}`),
+      wire(`bb1.${mates(r.get(2))[0]}`, `bb1.${mates(holes.get(7))[1]}`),
+    ],
+  };
+  const { levelAt } = simulate(pulled);
+  assert.equal(levelAt("bb1.e10"), L); // pulled to ground through the resistor
+  assert.equal(levelAt("bb1.e11"), H); // 1Y = INV(L)
+});
+
+test("a strong driver overrides a pull-up; a series resistor conducts a level", () => {
+  const r = chipHoles("resistor", "a30"); // a30 (col30) ── a33 (col33)
+  // Drive the resistor's pin-1 net HIGH from the supply +; leave pin-2 isolated.
+  const { levelAt } = simulate({
+    boards: [board],
+    components: [psu("psu1", 80), part("r1", "resistor", "a30")],
+    wires: [wire("psu1.+", `bb1.${mates(r.get(1))[0]}`)],
+  });
+  assert.equal(levelAt("bb1.a30"), H); // strongly driven end
+  assert.equal(levelAt("bb1.a33"), H); // conducted weakly through the resistor
 });
 
 test("opposing supplies on one net → short warning (X)", () => {

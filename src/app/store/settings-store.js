@@ -38,6 +38,12 @@ const DEFAULTS = Object.freeze({
   // ── Parts palette (Feature 40) ────────────────────────────────────────────
   // Whether the left palette panel is open (the toolbar Parts button toggles).
   paletteOpen: false,
+
+  // ── Pin-assignments window (Feature 100) ──────────────────────────────────
+  // Whether a chip's pin-out window floats above the main app. A de-facto
+  // global preference: the window's right-click menu toggles it, every open
+  // pinout window follows, and a future settings dialog binds to it.
+  pinoutFloat: true,
 });
 
 class SettingsStore {

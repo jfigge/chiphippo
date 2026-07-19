@@ -119,6 +119,40 @@ test("board-drag overrides shift wire endpoints live", () => {
   );
 });
 
+test("setEndpointDrag pins one end to a cursor point; null restores the doc", () => {
+  resetDom();
+  const layer = document.createElement("div");
+  document.body.append(layer);
+  const doc = deskWithWire(); // w1: bb1.a1 → bb1.a5
+  const wires = new WireLayer(layer, doc, {});
+
+  // Drag the `to` end to an arbitrary world-px point over an illegal spot.
+  wires.setEndpointDrag({
+    wireId: "w1",
+    end: "to",
+    world: { x: 999, y: 0 },
+    legal: false,
+  });
+  const group = layer.querySelector(".wire");
+  const d = group.querySelector(".wire-core").getAttribute("d");
+  assert.ok(d.endsWith("999 0"), d); // the bezier ends at the dragged point
+  assert.ok(group.classList.contains("wire--dragging"));
+  assert.ok(group.classList.contains("wire-preview--illegal"));
+  // The dragged end's cap follows too.
+  const caps = group.querySelectorAll(".wire-cap");
+  assert.equal(caps[1].getAttribute("cx"), "999");
+
+  // Clearing the drag redraws from the document (back on hole a5).
+  wires.setEndpointDrag(null);
+  const a5 = holePosition("full", "a5");
+  const restored = layer.querySelector(".wire-core").getAttribute("d");
+  assert.ok(
+    restored.endsWith(`${a5.x * PX_PER_UNIT} ${a5.y * PX_PER_UNIT}`),
+    restored,
+  );
+  assert.ok(!layer.querySelector(".wire").classList.contains("wire--dragging"));
+});
+
 test("setPreview shows, retints, and hides the rubber band", () => {
   resetDom();
   const layer = document.createElement("div");

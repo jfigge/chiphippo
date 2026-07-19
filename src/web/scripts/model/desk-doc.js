@@ -35,7 +35,12 @@
 import { BOARD_TYPES } from "./board-types.js";
 import { parseAddress, parseHole, spec } from "./breadboard.js";
 import { partDef } from "../catalog/index.js";
-import { canPlacePart, canPlaceWire, isFreeHole } from "./occupancy.js";
+import {
+  canPlacePart,
+  canPlaceWire,
+  canReendWire,
+  isFreeHole,
+} from "./occupancy.js";
 
 export const DOC_VERSION = 1;
 
@@ -606,6 +611,11 @@ export class DeskDoc {
     return canPlaceWire(this.#doc, from, to);
   }
 
+  /** May wire `id`'s `end` move to `address`? (occupancy delegation) */
+  canReendWire(id, end, address) {
+    return canReendWire(this.#doc, id, end, address);
+  }
+
   /**
    * Connect two free holes. Throws INVALID_ARG (bad color) /
    * ILLEGAL_PLACEMENT (either end unreal, occupied, or from === to).
@@ -623,6 +633,27 @@ export class DeskDoc {
     }
     const wire = { id: `w${this.#doc.nextWireId++}`, from, to, color };
     this.#doc.wires.push(wire);
+    return { ...wire };
+  }
+
+  /**
+   * Re-address ONE end of a wire (drag-an-endpoint). `end` is "from" | "to".
+   * Throws NOT_FOUND (no such wire) / INVALID_ARG (bad end) / ILLEGAL_PLACEMENT
+   * (target unreal, occupied, or the wire's other end). Returns the updated wire.
+   */
+  setWireEndpoint(id, end, address) {
+    const wire = this.#doc.wires.find((w) => w.id === id);
+    if (!wire) throw taggedError(`no wire ${id}`, "NOT_FOUND");
+    if (end !== "from" && end !== "to") {
+      throw taggedError(`bad wire end: ${end}`, "INVALID_ARG");
+    }
+    if (!canReendWire(this.#doc, id, end, address)) {
+      throw taggedError(
+        `wire ${id} cannot re-end at ${address}`,
+        "ILLEGAL_PLACEMENT",
+      );
+    }
+    wire[end] = address;
     return { ...wire };
   }
 

@@ -60,4 +60,10 @@ contextBridge.exposeInMainWorld("chiphippo", {
     load: () => ipcRenderer.invoke("desk:load"),
     save: (doc) => ipcRenderer.invoke("desk:save", doc),
   },
+
+  // ── Chip pin-assignments window (Feature 100) ──────────────────────────────
+  // Double-clicking a chip opens a separate, floating OS window that renders
+  // its DIP pinout as a wiring reference. `opts` may carry a `{ pins }` hint so
+  // main can size the window to the package.
+  openPinout: (ref, opts) => ipcRenderer.invoke("pinout:open", ref, opts),
 });

@@ -79,6 +79,7 @@
   --color-part-inset: #2c2f34; /* slide slot / recesses */
   --color-part-accent: #c8ccd2; /* knobs / caps highlight */
   --color-part-cap: #b25252; /* push-button cap */
+  --color-part-resistor: #c9a26a; /* resistor body (beige) */
   --color-psu-body: #2e3238; /* power brick */
   --color-psu-badge: #e4e6ea; /* voltage badge text */
 

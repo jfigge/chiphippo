@@ -265,6 +265,12 @@ async function init() {
     onProbeStateChange,
     onReplaceChip: (id) => sim?.replaceChip(id),
     onClockToggle: (id) => sim?.manualToggle(id),
+    // Double-click any part → open its floating pin/terminal-assignments OS
+    // window (`rows` sizes it to the layout).
+    onOpenPinout: (ref, rows) =>
+      bridge
+        .openPinout?.(ref, { rows })
+        .catch((err) => console.error("[renderer] pinout:open failed:", err)),
   });
 
   const toolbar = document.getElementById("app-toolbar");

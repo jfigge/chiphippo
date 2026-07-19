@@ -24,7 +24,15 @@
 // preload.js.
 "use strict";
 
-const { app, BrowserWindow, ipcMain, screen, shell } = require("electron");
+const {
+  app,
+  BrowserWindow,
+  ipcMain,
+  Menu,
+  nativeImage,
+  screen,
+  shell,
+} = require("electron");
 const path = require("path");
 const fs = require("fs");
 
@@ -45,6 +53,34 @@ const {
 
 // Any dev-ish launch gets the dev renderer flag (gates the desk debug HUD).
 const isDevLike = isDev || isHotReload || isDevTools;
+
+// ── App icon ──────────────────────────────────────────────────────────────────
+// Resolved once at startup; used for the macOS dock and every BrowserWindow (so
+// a `make debug` run shows the Chip Hippo icon, not the default Electron one).
+// macOS expects the artwork inside the system "safe area" — a rounded square
+// filling ~80% of the canvas with a TRANSPARENT border on every side — so the
+// dock renders it at native visual weight; we use the pre-padded
+// `chiphippo-mac-icon.png` on darwin. Windows gets the multi-resolution
+// `chiphippo-icon.ico` (the shell picks a purpose-rendered size instead of
+// blurrily downscaling one bitmap); Linux keeps the edge-to-edge logo, which is
+// designed to fill its canvas. All are regenerated from the SVGs by `make icons`.
+const APP_ICON_PATH = path.join(
+  __dirname,
+  "..",
+  "web",
+  process.platform === "darwin"
+    ? "chiphippo-mac-icon.png"
+    : process.platform === "win32"
+      ? "chiphippo-icon.ico"
+      : "chiphippo-logo.png",
+);
+const appIcon = nativeImage.createFromPath(APP_ICON_PATH);
+
+// Set the dock icon synchronously before whenReady() — safe in modern Electron
+// and eliminates the brief Electron-default-icon flash during launch.
+if (process.platform === "darwin" && app.dock && !appIcon.isEmpty()) {
+  app.dock.setIcon(appIcon);
+}
 
 // ── Main-process error conventions ────────────────────────────────────────────
 /** Run `fn`, logging (not throwing) on failure — for best-effort reads/writes. */
@@ -91,6 +127,93 @@ function getDeskStore() {
   return _deskStore;
 }
 
+// ─── Chip pin-assignments windows (Feature 100) ───────────────────────────────
+// Double-clicking a chip opens a small, floating OS window rendering its DIP
+// pinout (web/pinout.html) so it stays visible while the user wires. One window
+// per chip ref (re-opening focuses it). The window floats above the app by
+// default; right-clicking it toggles that via a native menu, and the choice is
+// persisted as a de-facto global preference (`settings.pinoutFloat`) that every
+// open pinout follows and a future settings dialog will bind to.
+const pinoutWindows = new Map(); // part ref → BrowserWindow
+// Catalog ids: chips ("7400"), discretes ("sw-slide", "led"), bricks ("psu").
+const PINOUT_REF_RE = /^[a-z0-9][a-z0-9-]{1,11}$/i;
+
+/** The persisted float-above preference (defaults true). */
+function pinoutFloatPref() {
+  return (
+    safeCall(
+      "pinout:float",
+      () => getSettingsStore().get().pinoutFloat,
+      true,
+    ) !== false
+  );
+}
+
+/** Open (or focus) the pin-assignments window for a part ref. */
+function openPinoutWindow(ref, opts = {}) {
+  if (typeof ref !== "string" || !PINOUT_REF_RE.test(ref)) return;
+  const existing = pinoutWindows.get(ref);
+  if (existing && !existing.isDestroyed()) {
+    existing.show();
+    existing.focus();
+    return;
+  }
+  // `rows` is the renderer's layout row count (DIP wraps to pins/2; discretes
+  // and bricks list every pin/terminal). Clamp defensively.
+  const rows = Math.min(12, Math.max(2, Number(opts.rows) || 8));
+  const win = new BrowserWindow({
+    width: 400,
+    height: 150 + rows * 30,
+    minWidth: 300,
+    minHeight: 220,
+    alwaysOnTop: pinoutFloatPref(),
+    backgroundColor: "#1c1c1c",
+    icon: appIcon,
+    title: "Pin assignments",
+    fullscreenable: false,
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  });
+  win.setMenuBarVisibility(false);
+  win.loadFile(path.join(__dirname, "..", "web", "pinout.html"), {
+    query: { ref },
+  });
+  // Right-click anywhere in the window → native float-above toggle.
+  win.webContents.on("context-menu", () => showPinoutMenu(win));
+  win.on("closed", () => {
+    if (pinoutWindows.get(ref) === win) pinoutWindows.delete(ref);
+  });
+  pinoutWindows.set(ref, win);
+}
+
+/** The native right-click menu for a pinout window (float toggle + close). */
+function showPinoutMenu(win) {
+  const floating = win.isAlwaysOnTop();
+  Menu.buildFromTemplate([
+    {
+      label: "Float above other windows",
+      type: "checkbox",
+      checked: floating,
+      click: () => setPinoutFloat(!floating),
+    },
+    { type: "separator" },
+    { label: "Close window", role: "close" },
+  ]).popup({ window: win });
+}
+
+/** Toggle float on EVERY open pinout window + persist the global default. */
+function setPinoutFloat(on) {
+  safeCall("pinout:set-float", () =>
+    getSettingsStore().set({ pinoutFloat: on }),
+  );
+  for (const w of pinoutWindows.values()) {
+    if (!w.isDestroyed()) w.setAlwaysOnTop(on);
+  }
+}
+
 // ─── IPC handlers ─────────────────────────────────────────────────────────────
 // Every channel registered here must have a matching window.chiphippo.* export
 // in preload.js (the ipc-parity test enforcing this lands in Feature 20).
@@ -111,6 +234,13 @@ function registerIpc() {
   // renderer autosaves the whole document, debounced (~1 s).
   ipcMain.handle("desk:load", () => getDeskStore().load());
   ipcMain.handle("desk:save", (_event, doc) => getDeskStore().save(doc));
+
+  // Chip pin-assignments window (Feature 100): double-clicking a chip opens a
+  // separate floating OS window rendering its pinout as a wiring reference.
+  ipcMain.handle("pinout:open", (_event, ref, opts) => {
+    openPinoutWindow(ref, opts);
+    return true;
+  });
 }
 
 // ─── Hot reload (dev only) ────────────────────────────────────────────────────
@@ -155,6 +285,7 @@ function createWindow() {
     minWidth: 1024,
     minHeight: 640,
     backgroundColor: "#1c1c1c", // matches --color-base in theme.css
+    icon: appIcon, // Windows/Linux window icon (macOS uses the dock icon)
     show: false,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),

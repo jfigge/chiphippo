@@ -48,9 +48,17 @@ test("buildDiscreteSvg: LED color class + flip mirrors the cathode flat", () => 
   assert.ok(flatLeft < flatRight, "flip moves the flat cue to the anchor side");
 });
 
+test("buildDiscreteSvg: resistor has two leads and a banded body", () => {
+  resetDom();
+  const svg = buildDiscreteSvg("resistor", { ohms: 220 });
+  assert.equal(svg.querySelectorAll(".part-resistor-lead").length, 2);
+  assert.ok(svg.querySelector(".part-resistor-body"));
+  assert.ok(svg.querySelectorAll(".part-resistor-band").length >= 1);
+});
+
 test("discreteBox rejects unknown refs", () => {
   resetDom();
-  assert.throws(() => discreteBox("resistor"), { code: "INVALID_REF" });
+  assert.throws(() => discreteBox("capacitor"), { code: "INVALID_REF" });
 });
 
 test("DiscreteView: seats in world px; cap press emits chiphippo:part-state", () => {

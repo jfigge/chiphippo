@@ -102,8 +102,14 @@ export class PsuView {
    * @param {object} [callbacks]
    * @param {(id: string, e: PointerEvent) => void} [callbacks.onPointerDown]
    * @param {(id: string, e: MouseEvent) => void} [callbacks.onContextMenu]
+   * @param {(id: string, e: MouseEvent) => void} [callbacks.onDoubleClick] -
+   *   opens the terminal-assignments window (Feature 100 wiring aid).
    */
-  constructor(layer, psu, { onPointerDown, onContextMenu } = {}) {
+  constructor(
+    layer,
+    psu,
+    { onPointerDown, onContextMenu, onDoubleClick } = {},
+  ) {
     this.#id = psu.id;
     this.#el = el("div", {
       class: "part part-psu",
@@ -117,6 +123,7 @@ export class PsuView {
     this.#el.addEventListener("contextmenu", (e) =>
       onContextMenu?.(this.#id, e),
     );
+    this.#el.addEventListener("dblclick", (e) => onDoubleClick?.(this.#id, e));
     layer.append(this.#el);
   }
 

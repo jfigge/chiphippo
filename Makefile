@@ -110,6 +110,15 @@ test-license-headers:
 	@node $(WORKSPACE)/scripts/license-header.mjs --check
 	@echo "--------------------------------"
 
+# ─── Icons ────────────────────────────────────────────────────────────────────
+# Regenerate every app-icon raster (macOS .png, Windows .ico, Linux set + logo)
+# from src/web/chiphippo-icon.svg and src/web/chiphippo-mac-icon.svg. macOS-only
+# (uses qlmanage/sips); outputs are committed and consumed at build + run time.
+icons:
+	@echo "Regenerating app icons from the SVG sources..."
+	@cd $(SRC_DIR) && npx electron $(WORKSPACE)/scripts/make-icons.mjs
+	@echo "--------------------------------"
+
 # ─── Build ────────────────────────────────────────────────────────────────────
 build: build-mac
 
@@ -165,6 +174,6 @@ help:
 	@echo "    version       Print version string"
 	@echo "    info          Print full build information"
 
-.PHONY: version info install debug fmt fmt-check lint license-headers \
+.PHONY: version info install debug fmt fmt-check lint license-headers icons \
         test test-license-headers build build-mac dmg build-setup build-install \
         clean help

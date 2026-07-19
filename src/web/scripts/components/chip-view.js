@@ -154,8 +154,14 @@ export class ChipView {
    * @param {object} [callbacks]
    * @param {(id: string, e: PointerEvent) => void} [callbacks.onPointerDown]
    * @param {(id: string, e: MouseEvent) => void} [callbacks.onContextMenu]
+   * @param {(id: string, e: MouseEvent) => void} [callbacks.onDoubleClick] -
+   *   opens the pin-assignments window (Feature 100 wiring aid).
    */
-  constructor(layer, component, { onPointerDown, onContextMenu } = {}) {
+  constructor(
+    layer,
+    component,
+    { onPointerDown, onContextMenu, onDoubleClick } = {},
+  ) {
     this.#id = component.id;
     this.#ref = component.ref;
     this.#el = el("div", {
@@ -169,6 +175,7 @@ export class ChipView {
     this.#el.addEventListener("contextmenu", (e) =>
       onContextMenu?.(this.#id, e),
     );
+    this.#el.addEventListener("dblclick", (e) => onDoubleClick?.(this.#id, e));
     layer.append(this.#el);
   }
 

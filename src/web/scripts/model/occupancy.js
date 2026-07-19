@@ -140,6 +140,27 @@ export function canPlaceWire(doc, from, to) {
 }
 
 /**
+ * May wire `wireId`'s `end` ("from" | "to") be re-addressed to `address`? Like
+ * `canPlaceWire`, but for MOVING one end of an existing wire: the target must
+ * be a real point, distinct from the wire's OTHER (anchored) end, and free —
+ * ignoring the moving wire's own two endpoints (so it slides off its old hole
+ * without colliding with itself).
+ *
+ * @param {{ boards: Array, components: Array, wires: Array }} doc
+ * @param {string} wireId
+ * @param {"from"|"to"} end
+ * @param {string} address
+ */
+export function canReendWire(doc, wireId, end, address) {
+  const wire = (doc.wires ?? []).find((w) => w && w.id === wireId);
+  if (!wire || (end !== "from" && end !== "to")) return false;
+  const other = end === "from" ? wire.to : wire.from;
+  if (address === other || !isRealPoint(doc, address)) return false;
+  const occupant = buildOccupancy(doc).get(address);
+  return !occupant || (occupant.kind === "wire" && occupant.wireId === wireId);
+}
+
+/**
  * May a board part (chip or discrete) seat here? True when the board
  * exists, the anchor fits the footprint (chips row e; discretes any grid
  * row), EVERY pin's hole exists on the board type, and every hole is

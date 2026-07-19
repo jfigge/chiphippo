@@ -539,6 +539,22 @@
   fill: var(--color-part-inset);
 }
 
+/* Resistor: metal leads, beige body, dark color bands. Purely cosmetic —
+   electrically it's a weak coupler (pull-up/pull-down/series R). */
+.part-resistor-lead {
+  fill: var(--color-chip-leg);
+}
+
+.part-resistor-body {
+  fill: var(--color-part-resistor);
+  stroke: var(--color-part-inset);
+  stroke-width: 0.07;
+}
+
+.part-resistor-band {
+  fill: var(--color-part-inset);
+}
+
 /* ── PSU brick (desk-level) ──────────────────────────────────────────────── */
 .part-psu-body {
   fill: var(--color-psu-body);
@@ -658,6 +674,15 @@
   cursor: crosshair;
 }
 
+/* Hovering a wire endpoint offers a grab; dragging one shows the closed hand. */
+.desk-viewport--wire-grab {
+  cursor: grab;
+}
+
+.desk-viewport--wire-dragging {
+  cursor: grabbing;
+}
+
 .wire-svg {
   position: absolute;
   top: 0;
@@ -675,6 +700,12 @@
 
 /* While the wire tool is armed, wires must not swallow hole clicks. */
 .desk-viewport--wiring .wire-hit {
+  pointer-events: none;
+}
+
+/* A wire whose end is being dragged: the pointer is captured, so its own hit
+   stroke must not intercept the gesture. */
+.wire--dragging .wire-hit {
   pointer-events: none;
 }
 
@@ -1154,4 +1185,182 @@
 
 .toast-message {
   color: var(--color-subtext);
+}
+
+/* ── Chip pin-assignments dialog (wiring reference) ──────────────────────── */
+.chip-pinout {
+  min-width: 380px;
+  max-width: 460px;
+}
+
+.chip-pinout-sub {
+  padding: 2px var(--space-4) var(--space-2);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--color-muted);
+}
+
+.chip-pinout-dip {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  padding: var(--space-4);
+}
+
+/* The DIP notch cue, cut into the top edge of the outlined body. */
+.chip-pinout-notch {
+  position: absolute;
+  top: calc(var(--space-4) - 1px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: 18px;
+  height: 9px;
+  background: var(--color-surface-0);
+  border: 2px solid var(--color-chip-leg);
+  border-top: none;
+  border-radius: 0 0 10px 10px;
+  z-index: 1;
+}
+
+.chip-pinout-grid {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  max-width: 344px;
+}
+
+.chip-pinout-row {
+  display: grid;
+  grid-template-columns: 1fr 52px 1fr;
+  align-items: stretch;
+}
+
+/* The center strip reads as the chip body running down the middle — a
+   light 2px outline lifts the near-black body off the dark dialog surface
+   (a hard visibility win for low-vision users) and a subtle top-light
+   gradient gives it a molded-plastic feel. */
+.chip-pinout-body {
+  position: relative;
+  background: linear-gradient(
+    var(--color-surface-1),
+    var(--color-chip-body) 55%
+  );
+  border-left: 2px solid var(--color-chip-leg);
+  border-right: 2px solid var(--color-chip-leg);
+}
+
+.chip-pinout-row:first-child .chip-pinout-body {
+  border-top: 2px solid var(--color-chip-leg);
+  border-radius: 6px 6px 0 0;
+}
+
+.chip-pinout-row:last-child .chip-pinout-body {
+  border-bottom: 2px solid var(--color-chip-leg);
+  border-radius: 0 0 6px 6px;
+}
+
+/* Pin-1 dot inside the body's top-left corner (datasheet orientation cue). */
+.chip-pinout-row:first-child .chip-pinout-body::after {
+  content: "";
+  position: absolute;
+  left: 6px;
+  top: 8px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-chip-leg);
+}
+
+.chip-pinout-pin {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 3px var(--space-1);
+}
+
+.chip-pinout-pin--right {
+  justify-content: flex-end;
+}
+
+.chip-pinout-num {
+  flex: 0 0 auto;
+  min-width: 20px;
+  height: 18px;
+  padding: 0 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--color-subtext);
+  background: var(--color-surface-1);
+  border: 1px solid var(--color-overlay);
+  border-radius: var(--radius-sm);
+}
+
+.chip-pinout-name {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.chip-pinout-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.chip-pinout-role {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--color-muted);
+  text-transform: uppercase;
+}
+
+.chip-pinout-name--vcc .chip-pinout-label {
+  color: var(--color-rail-plus);
+}
+
+.chip-pinout-name--gnd .chip-pinout-label {
+  color: var(--color-rail-minus);
+}
+
+.chip-pinout-name--output .chip-pinout-label {
+  color: var(--color-sim-high);
+}
+
+.chip-pinout-name--nc .chip-pinout-label {
+  color: var(--color-muted);
+  font-weight: 400;
+}
+
+.chip-pinout-name--anode .chip-pinout-label {
+  color: var(--color-rail-plus);
+}
+
+.chip-pinout-name--cathode .chip-pinout-label {
+  color: var(--color-rail-minus);
+}
+
+/* Single-column list layout for discretes (linear footprint) + desk bricks
+   (terminals) — each line is a badge, a role-colored name, and a detail. */
+.part-pinout-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-4) var(--space-4);
+}
+
+.part-pinout-line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-1) 0;
+}
+
+.part-pinout-detail {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--color-muted);
 }

@@ -34,7 +34,7 @@
 //      tick, and compute its next state via the def's `step`,
 //   ③ post-settle with the NEW state driving sequential outputs.
 
-import { Z, X } from "./levels.js";
+import { H, L, Z, X } from "./levels.js";
 import {
   evaluate,
   outputsOf,
@@ -124,6 +124,27 @@ function buildContext(doc, netlist) {
     }
   }
 
+  // Resistors: weak two-terminal couplers (pull-ups / pull-downs / series R).
+  // They never merge nets (that's a wire's job) — each conducts one terminal's
+  // STRONG level to the other at the weakest strength (resolveAll, below).
+  const resistors = []; // { netA, netB }
+  for (const comp of components) {
+    const def = partDef(comp.ref);
+    if (!def?.weakBridges || comp.board == null) continue;
+    const pins = partPinHoles(comp.ref, comp.anchor);
+    if (!pins) continue;
+    const holeOfPin = new Map(pins.map((p) => [p.pin, p.hole]));
+    for (const [a, b] of def.weakBridges(comp.params)) {
+      const ha = holeOfPin.get(a);
+      const hb = holeOfPin.get(b);
+      if (!ha || !hb) continue;
+      resistors.push({
+        netA: netOf(formatAddress(comp.board, ha)),
+        netB: netOf(formatAddress(comp.board, hb)),
+      });
+    }
+  }
+
   // Chips (combinational + sequential): pin→net maps + power status.
   const chips = [];
   const chipStatus = new Map();
@@ -155,7 +176,15 @@ function buildContext(doc, netlist) {
     chips.push({ comp, def, pinNet, status, sequential: isSequential(def) });
   }
 
-  return { netIds, supplyPlusVolts, supplyMinus, clocks, chips, chipStatus };
+  return {
+    netIds,
+    supplyPlusVolts,
+    supplyMinus,
+    clocks,
+    resistors,
+    chips,
+    chipStatus,
+  };
 }
 
 /** Every driver (clock sources + powered chip outputs) for a set of levels. */
@@ -188,16 +217,40 @@ function driversFor(ctx, levels, state, clockPhase) {
   return drivers;
 }
 
-/** Resolve every net once from supplies + the given drivers. */
+/** Resolve every net once from supplies + the given drivers (+ resistor pulls). */
 function resolveAll(ctx, drivers) {
-  const next = new Map();
-  const warnings = [];
-  for (const id of ctx.netIds) {
-    const res = resolveNet({
+  const resolveOne = (id, pullLevels) =>
+    resolveNet({
       supplyPlus: ctx.supplyPlusVolts.has(id),
       supplyMinus: ctx.supplyMinus.has(id),
       chipLevels: drivers.get(id) ?? [],
+      pullLevels,
     });
+
+  // With resistors present, first compute each net's STRONG level (supplies +
+  // chip outputs, no pulls) — that's what a resistor conducts — then let each
+  // resistor weakly drive its OTHER end toward that level. One extra pass, and
+  // only when resistors exist; the fixpoint loop folds it in like any driver.
+  let pulls = null;
+  if (ctx.resistors.length) {
+    const strong = new Map();
+    for (const id of ctx.netIds) strong.set(id, resolveOne(id, []).level);
+    pulls = new Map(); // netId → [levels]
+    const addPull = (net, level) => {
+      if (!net || (level !== H && level !== L)) return;
+      if (!pulls.has(net)) pulls.set(net, []);
+      pulls.get(net).push(level);
+    };
+    for (const r of ctx.resistors) {
+      addPull(r.netA, strong.get(r.netB));
+      addPull(r.netB, strong.get(r.netA));
+    }
+  }
+
+  const next = new Map();
+  const warnings = [];
+  for (const id of ctx.netIds) {
+    const res = resolveOne(id, pulls?.get(id) ?? []);
     next.set(id, res.level);
     if (res.warning) warnings.push({ type: res.warning, net: id });
   }

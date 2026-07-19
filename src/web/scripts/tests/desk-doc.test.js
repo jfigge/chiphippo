@@ -394,6 +394,41 @@ test("recolorWire / removeWire; ids never reused across reload", () => {
   assert.equal(reloaded.addWire({ from: "bb1.a1", to: "bb1.a5" }).id, "w2");
 });
 
+test("setWireEndpoint: re-addresses one end; frees the old hole", () => {
+  const doc = docWithFull();
+  doc.addWire({ from: "bb1.a1", to: "bb1.a10", color: "blue" }); // w1
+
+  // Move the `from` end to a free hole; the wire keeps its id/color/other end.
+  const moved = doc.setWireEndpoint("w1", "from", "bb1.a2");
+  assert.deepEqual(moved, {
+    id: "w1",
+    from: "bb1.a2",
+    to: "bb1.a10",
+    color: "blue",
+  });
+  assert.equal(doc.isHoleFree("bb1.a1"), true); // old hole released
+  assert.equal(doc.isHoleFree("bb1.a2"), false); // new hole occupied
+
+  // Rejections: bad end, unknown wire, onto the other end, onto an occupied
+  // hole (a second wire), and an unreal hole.
+  assert.throws(() => doc.setWireEndpoint("w1", "middle", "bb1.a3"), {
+    code: "INVALID_ARG",
+  });
+  assert.throws(() => doc.setWireEndpoint("w9", "from", "bb1.a3"), {
+    code: "NOT_FOUND",
+  });
+  assert.throws(() => doc.setWireEndpoint("w1", "from", "bb1.a10"), {
+    code: "ILLEGAL_PLACEMENT",
+  });
+  doc.addWire({ from: "bb1.b1", to: "bb1.b5" }); // w2 occupies bb1.b1
+  assert.throws(() => doc.setWireEndpoint("w1", "from", "bb1.b1"), {
+    code: "ILLEGAL_PLACEMENT",
+  });
+  assert.throws(() => doc.setWireEndpoint("w1", "to", "bb1.a99"), {
+    code: "ILLEGAL_PLACEMENT",
+  });
+});
+
 test("removeBoard cascades wires touching it (either endpoint)", () => {
   const doc = docWithFull();
   doc.addBoard("tiny", 0, 30); // bb2
@@ -606,7 +641,7 @@ test("normalizeDocument: discretes + PSUs survive; junk dropped/coerced", () => 
       {
         id: "c2",
         kind: "discrete",
-        ref: "resistor",
+        ref: "capacitor",
         board: "bb1",
         anchor: "b8",
       }, // bad ref

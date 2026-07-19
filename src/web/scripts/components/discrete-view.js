@@ -52,6 +52,7 @@ const BOXES = Object.freeze({
   }),
   "sw-push": Object.freeze({ minX: -0.7, minY: -1.4, width: 3.4, height: 2.8 }),
   led: Object.freeze({ minX: -0.7, minY: -1.9, width: 2.4, height: 2.9 }),
+  resistor: Object.freeze({ minX: -0.7, minY: -1.1, width: 4.4, height: 2.2 }),
 });
 
 /** Footprint box for a discrete ref (positioning + ghost sizing). */
@@ -128,6 +129,42 @@ export function buildDiscreteSvg(ref, params = {}) {
         r: 0.85,
       }),
     );
+  } else if (ref === "resistor") {
+    // Axial resistor: a lead to each end hole (0 and +3) with a banded body
+    // between them. Purely cosmetic — value/orientation don't affect the sim.
+    svg.append(
+      svgEl("rect", {
+        class: "part-resistor-lead",
+        x: 0,
+        y: -0.06,
+        width: 0.6,
+        height: 0.12,
+      }),
+      svgEl("rect", {
+        class: "part-resistor-lead",
+        x: 2.4,
+        y: -0.06,
+        width: 0.6,
+        height: 0.12,
+      }),
+      svgEl("rect", {
+        class: "part-resistor-body",
+        x: 0.5,
+        y: -0.5,
+        width: 2,
+        height: 1,
+        rx: 0.4,
+      }),
+      ...[0.85, 1.25, 1.65].map((x) =>
+        svgEl("rect", {
+          class: "part-resistor-band",
+          x,
+          y: -0.45,
+          width: 0.14,
+          height: 0.9,
+        }),
+      ),
+    );
   } else {
     // LED dome over the two holes; the flat chord marks the CATHODE side
     // (right by default — pin 2; params.flip mirrors it to the left).
@@ -177,8 +214,14 @@ export class DiscreteView {
    * @param {object} [callbacks]
    * @param {(id: string, e: PointerEvent) => void} [callbacks.onPointerDown]
    * @param {(id: string, e: MouseEvent) => void} [callbacks.onContextMenu]
+   * @param {(id: string, e: MouseEvent) => void} [callbacks.onDoubleClick] -
+   *   opens the pin-assignments window (Feature 100 wiring aid).
    */
-  constructor(layer, component, { onPointerDown, onContextMenu } = {}) {
+  constructor(
+    layer,
+    component,
+    { onPointerDown, onContextMenu, onDoubleClick } = {},
+  ) {
     this.#id = component.id;
     this.#ref = component.ref;
     this.#el = el("div", {
@@ -192,6 +235,7 @@ export class DiscreteView {
     this.#el.addEventListener("contextmenu", (e) =>
       onContextMenu?.(this.#id, e),
     );
+    this.#el.addEventListener("dblclick", (e) => onDoubleClick?.(this.#id, e));
     layer.append(this.#el);
   }
 

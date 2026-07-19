@@ -37,6 +37,7 @@
     "appId": "com.chiphippo.app",
     "productName": "Chip Hippo",
     "copyright": "Copyright © 2026 Jason Figge",
+    "icon": "web/chiphippo-icon.ico",
     "artifactName": "Chip-Hippo-${version}-${arch}.${ext}",
     "directories": {
       "output": "dist"
@@ -47,7 +48,14 @@
       "package.json"
     ],
     "mac": {
+      "icon": "web/chiphippo-mac-icon.png",
       "category": "public.app-category.developer-tools"
+    },
+    "win": {
+      "icon": "web/chiphippo-icon.ico"
+    },
+    "linux": {
+      "icon": "web/icons"
     }
   }
 }

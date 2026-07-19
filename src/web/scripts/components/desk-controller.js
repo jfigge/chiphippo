@@ -73,6 +73,12 @@ const RING_RADIUS = 0.45;
 /** Hit radius for part pins / PSU terminals (matches hole hit feel). */
 const PIN_HIT_RADIUS = 0.45;
 
+/** How close (pitch units) the cursor must press to a wire's endpoint cap to
+    grab it for a drag-the-end gesture. A shade over one hole so the cap is
+    forgiving to catch, but under the ~1-pitch hole spacing so an adjacent
+    endpoint isn't grabbed by mistake. */
+const WIRE_END_GRAB_RADIUS = 0.6;
+
 /** How far (pitch units) the cursor may sit from a chip's trench center and
     still seat its ghost — beyond it (e.g. over the rails) the ghost floats
     unseated with the danger tint. */
@@ -126,6 +132,7 @@ export class DeskController {
   #simNetlist = null; // the netlist the levels are keyed against
   #onReplaceChip;
   #onClockToggle;
+  #onOpenPinout;
 
   /**
    * @param {object} opts
@@ -142,6 +149,8 @@ export class DeskController {
    *   menu's "Replace chip" (resets Feature 90 damage).
    * @param {(id: string) => void} [opts.onClockToggle] - a manual clock's
    *   click-to-toggle while running (Feature 100).
+   * @param {(ref: string) => void} [opts.onOpenPinout] - double-clicking a chip
+   *   requests its pin-assignments window (main opens a native OS window).
    */
   constructor({
     viewport,
@@ -151,6 +160,7 @@ export class DeskController {
     onProbeStateChange,
     onReplaceChip,
     onClockToggle,
+    onOpenPinout,
   }) {
     this.#viewport = viewport;
     this.#deskView = deskView;
@@ -159,6 +169,7 @@ export class DeskController {
     this.#onProbeStateChange = onProbeStateChange;
     this.#onReplaceChip = onReplaceChip;
     this.#onClockToggle = onClockToggle;
+    this.#onOpenPinout = onOpenPinout;
 
     // Layer order (established for every later stage): boards under parts
     // under wires under the interaction overlay. All are zero-size anchors —
@@ -1028,17 +1039,16 @@ export class DeskController {
     this.#emitDocChanged();
   }
 
-  /** Flip a slide switch (click) — persists and announces the state. */
+  /** Flip a slide switch (click) — persists `pos`; doc-changed re-settles. */
   #toggleSlideSwitch(id) {
     const comp = this.#doc.getComponent(id);
     const next = comp.params.pos === "2" ? "1" : "2";
     const updated = this.#doc.setComponentParams(id, { pos: next });
     this.#partViews.get(id)?.updateParams(updated.params);
-    window.dispatchEvent(
-      new CustomEvent("chiphippo:part-state", {
-        detail: { id, ref: comp.ref, state: { pos: next } },
-      }),
-    );
+    // `pos` lives in params, so the flip rides `doc-changed` alone — which
+    // already invalidates the netlist, re-ticks the sim, and refreshes the
+    // pinned net. Emitting `part-state` too would double-tick (part-state is
+    // reserved for transient view state with no durable param — a held button).
     this.#emitDocChanged();
   }
 
@@ -1141,9 +1151,11 @@ export class DeskController {
   }
 
   #mountPart(component) {
+    // Every part double-clicks to open its pin/terminal-assignments window.
     const callbacks = {
       onPointerDown: (id, e) => this.#onPartPointerDown(id, e),
       onContextMenu: (id, e) => this.#onPartContextMenu(id, e),
+      onDoubleClick: (id) => this.#onPartDoubleClick(id),
     };
     let view;
     if (component.kind === "psu") {
@@ -1164,6 +1176,23 @@ export class DeskController {
       );
     }
     this.#partViews.set(component.id, view);
+  }
+
+  /**
+   * Double-clicking any part opens its pin/terminal-assignments window
+   * (read-only). The row count sizes the window: a DIP wraps to pins/2, a
+   * discrete lists every pin, a brick lists every terminal.
+   */
+  #onPartDoubleClick(id) {
+    const comp = this.#doc.getComponent(id);
+    const def = comp && partDef(comp.ref);
+    if (!def) return;
+    let rows;
+    if (def.package) rows = Math.ceil(def.pins.length / 2);
+    else if (def.footprint) rows = def.pins.length;
+    else if (def.terminals) rows = def.terminals.length;
+    else return; // nothing to show
+    this.#onOpenPinout?.(comp.ref, rows);
   }
 
   /** Seated parts ride their board: refresh views for a board at (x, y). */
@@ -1515,7 +1544,8 @@ export class DeskController {
       return;
     }
     // A damaged chip offers "Replace chip" (resets Feature 90 damage) — the
-    // only part action that stays live while running.
+    // only part action that stays live while running. (The pinout is a
+    // double-click, not a menu item — see #onPartDoubleClick.)
     const items = [];
     if (comp?.kind === "chip" && comp.params?.damaged === true) {
       items.push({
@@ -1539,10 +1569,132 @@ export class DeskController {
 
   #onViewportPointerDown = (e) => {
     this.#lastDown = { x: e.clientX, y: e.clientY };
+    if (this.#mode || e.button !== 0) return; // busy (tool/drag) or non-left
+    // Press near a wire's endpoint cap → grab it to drag the end elsewhere.
+    // Not while probing (clicks pin nets) or running (topology frozen).
+    if (!this.#probeArmed && !this.#editingLocked) {
+      const grab = this.#wireEndAtWorld(this.#deskView.worldFromEvent(e));
+      if (grab) {
+        this.#beginWireEndDrag(grab, e);
+        return;
+      }
+    }
     // Click on truly empty desk (the viewport itself — layers are zero-size
     // and overlay children are pointer-inert) deselects.
-    if (!this.#mode && e.button === 0 && e.target === this.#viewport) {
-      this.deselect();
+    if (e.target === this.#viewport) this.deselect();
+  };
+
+  // ── Wire-endpoint dragging (grab a cap, move the end to another point) ──────
+
+  /** The nearest wire endpoint within the grab radius of `world`, or null. */
+  #wireEndAtWorld(world) {
+    let best = null;
+    for (const wire of this.#doc.wires) {
+      for (const end of ["from", "to"]) {
+        const p = this.#addressWorld(wire[end]);
+        if (!p) continue;
+        const dist = Math.hypot(world.x - p.x, world.y - p.y);
+        if (dist > WIRE_END_GRAB_RADIUS) continue;
+        if (!best || dist < best.dist) {
+          best = { wireId: wire.id, end, origin: wire[end], dist };
+        }
+      }
+    }
+    return best;
+  }
+
+  #beginWireEndDrag(grab, e) {
+    this.#hideHover();
+    this.selectWire(grab.wireId); // select on press (mode still null here)
+    this.#mode = {
+      kind: "drag-wire-end",
+      wireId: grab.wireId,
+      end: grab.end,
+      origin: grab.origin, // revert target
+      pointerId: e.pointerId,
+      startClientX: e.clientX,
+      startClientY: e.clientY,
+      hover: null, // { address, legal } under the cursor
+      active: false,
+    };
+    // Capture on the persistent wire SVG — render() clears its CHILDREN but
+    // keeps the element, so capture and these listeners survive live re-renders.
+    const svg = this.#wireLayer.element;
+    try {
+      svg.setPointerCapture(e.pointerId);
+    } catch {
+      /* capture is best-effort (synthetic events) */
+    }
+    svg.addEventListener("pointermove", this.#onWireEndPointerMove);
+    svg.addEventListener("pointerup", this.#onWireEndPointerUp);
+    svg.addEventListener("pointercancel", this.#onWireEndPointerUp);
+  }
+
+  #onWireEndPointerMove = (e) => {
+    const m = this.#mode;
+    if (m?.kind !== "drag-wire-end" || e.pointerId !== m.pointerId) return;
+    if (!m.active) {
+      const travel = Math.hypot(
+        e.clientX - m.startClientX,
+        e.clientY - m.startClientY,
+      );
+      if (travel < DRAG_THRESHOLD) return; // separate a click from a drag
+      m.active = true;
+      this.#viewport.classList.add("desk-viewport--wire-dragging");
+    }
+    const world = this.#deskView.worldFromEvent(e);
+    const hit = this.#wirePointAt(world);
+    if (hit) {
+      const legal = this.#doc.canReendWire(m.wireId, m.end, hit.address);
+      m.hover = { address: hit.address, legal };
+      const r = RING_RADIUS * PX_PER_UNIT;
+      this.#ring.style.left = `${hit.x * PX_PER_UNIT - r}px`;
+      this.#ring.style.top = `${hit.y * PX_PER_UNIT - r}px`;
+      this.#ring.classList.toggle("hole-ring--illegal", !legal);
+      this.#ring.hidden = false;
+    } else {
+      m.hover = null;
+      this.#ring.hidden = true;
+    }
+    // The dragged end snaps to a hovered point, else rides the raw cursor.
+    const tip = hit ?? world;
+    this.#wireLayer.setEndpointDrag({
+      wireId: m.wireId,
+      end: m.end,
+      world: { x: tip.x * PX_PER_UNIT, y: tip.y * PX_PER_UNIT },
+      legal: hit ? m.hover.legal : true,
+    });
+  };
+
+  #onWireEndPointerUp = (e) => {
+    const m = this.#mode;
+    if (m?.kind !== "drag-wire-end" || e.pointerId !== m.pointerId) return;
+    this.#mode = null;
+
+    const svg = this.#wireLayer.element;
+    svg.removeEventListener("pointermove", this.#onWireEndPointerMove);
+    svg.removeEventListener("pointerup", this.#onWireEndPointerUp);
+    svg.removeEventListener("pointercancel", this.#onWireEndPointerUp);
+    try {
+      svg.releasePointerCapture(m.pointerId);
+    } catch {
+      /* already released */
+    }
+    this.#ring.hidden = true;
+    this.#ring.classList.remove("hole-ring--illegal");
+    this.#viewport.classList.remove("desk-viewport--wire-dragging");
+    this.#wireLayer.setEndpointDrag(null); // stop overriding; redraw from doc
+
+    if (!m.active) return; // plain click — the wire is already selected
+
+    const target = m.hover;
+    const commit =
+      e.type !== "pointercancel" &&
+      target?.legal &&
+      target.address !== m.origin;
+    if (commit) {
+      this.#doc.setWireEndpoint(m.wireId, m.end, target.address);
+      this.#emitDocChanged(); // WireLayer re-renders from this
     }
   };
 
@@ -1595,12 +1747,19 @@ export class DeskController {
     }
     if (m) return; // dragging — hover stays hidden
 
+    const world = this.#deskView.worldFromEvent(e);
+    // Affordance: offer a grab cursor over a draggable wire endpoint.
+    this.#viewport.classList.toggle(
+      "desk-viewport--wire-grab",
+      !this.#editingLocked && this.#wireEndAtWorld(world) !== null,
+    );
+
     // Hover addressing: suppressed below the zoom floor.
     if (this.#deskView.camera.zoom < HOVER_MIN_ZOOM) {
       this.#hideHover();
       return;
     }
-    const hit = this.#hitTest(this.#deskView.worldFromEvent(e));
+    const hit = this.#hitTest(world);
     if (!hit) {
       this.#hideHover();
       return;

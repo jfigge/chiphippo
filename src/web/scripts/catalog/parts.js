@@ -103,6 +103,38 @@ export const PART_DEFS = Object.freeze(
       },
     },
     {
+      id: "resistor",
+      kind: "discrete",
+      title: "Resistor",
+      blurb:
+        "Two-terminal resistor. In this logic-level sim it's a WEAK coupler: " +
+        "it conducts one end's driven level to the other at a strength below " +
+        "any chip output, so it behaves as a pull-up / pull-down / series " +
+        "resistor. The ohms value is cosmetic (no analog current here).",
+      group: "Parts",
+      footprint: Object.freeze({ offsets: Object.freeze([0, 3]) }),
+      pins: [
+        { n: 1, name: "1", role: "lead" },
+        { n: 2, name: "2", role: "lead" },
+      ],
+      normalizeParams(raw) {
+        const ohms = Number(raw?.ohms);
+        return { ohms: Number.isFinite(ohms) && ohms > 0 ? ohms : 10000 };
+      },
+      // A resistor is NOT a hard conductor — its two ends stay separate nets
+      // (unlike a wire or a closed switch), so it declares no internal bridges.
+      internalBridges() {
+        return [];
+      },
+      // …instead the two leads are WEAKLY coupled: the simulator (resolve.js's
+      // PULL tier) conducts one end's strong H/L to the other at the weakest
+      // drive strength. `weakBridges` lists the coupled pin pairs (data, not a
+      // code path) — a resistor could carry more, but this one bridges 1↔2.
+      weakBridges() {
+        return [[1, 2]];
+      },
+    },
+    {
       id: "psu",
       kind: "psu",
       title: "Power supply",

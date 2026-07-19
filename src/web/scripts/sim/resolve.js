@@ -22,6 +22,10 @@
 //   CHIP    totem-pole chip outputs. All-agreeing → that level; disagreeing →
 //           X + a CONFLICT (two outputs fighting). `Z` (a disabled 74125,
 //           an undriven pin) contributes nothing.
+//   PULL    resistors, the WEAKEST tier — a pull-up/pull-down conducts a rail
+//           level onto an otherwise-floating net. Any supply or chip driver
+//           overrides it; only a clean H/L pulls (Z/X contribute nothing).
+//           Opposing pulls (a divider across VCC↔GND) → weak indeterminate X.
 //   else    no driver → the net floats: `Z`.
 //
 // No analog voltages here — voltage matters only at the PSU power checks in
@@ -34,12 +38,15 @@ import { H, L, Z, X } from "./levels.js";
  * @param {boolean} [drivers.supplyPlus]  a PSU `+` terminal is on this net
  * @param {boolean} [drivers.supplyMinus] a PSU `−` terminal is on this net
  * @param {string[]} [drivers.chipLevels] chip-output levels driven onto it
+ * @param {string[]} [drivers.pullLevels] resistor-conducted levels (weakest);
+ *   engine.js fills these from each resistor's OTHER end's strong level.
  * @returns {{ level: string, warning?: "short"|"conflict" }}
  */
 export function resolveNet({
   supplyPlus = false,
   supplyMinus = false,
   chipLevels = [],
+  pullLevels = [],
 } = {}) {
   // Supply strength dominates.
   if (supplyPlus && supplyMinus) return { level: X, warning: "short" };
@@ -48,8 +55,18 @@ export function resolveNet({
 
   // Chip outputs: Z contributes nothing; disagreement is a conflict.
   const driven = chipLevels.filter((l) => l !== Z);
-  if (driven.length === 0) return { level: Z };
-  const distinct = new Set(driven);
-  if (distinct.size === 1) return { level: driven[0] };
-  return { level: X, warning: "conflict" };
+  if (driven.length > 0) {
+    const distinct = new Set(driven);
+    if (distinct.size === 1) return { level: driven[0] };
+    return { level: X, warning: "conflict" };
+  }
+
+  // Weakest tier: resistor pulls decide an otherwise-floating net. Only a
+  // clean H/L pulls; agreeing pulls settle the net, opposing pulls (a divider)
+  // leave it weakly indeterminate (X, but not a driver "conflict").
+  const pulls = pullLevels.filter((l) => l === H || l === L);
+  if (pulls.length > 0) {
+    return new Set(pulls).size === 1 ? { level: pulls[0] } : { level: X };
+  }
+  return { level: Z };
 }

@@ -49,6 +49,24 @@ test("agreeing chip outputs pass through; a lone X passes without conflict", () 
   assert.deepEqual(resolveNet({ chipLevels: [X, Z] }), { level: X });
 });
 
+test("a resistor pull decides an otherwise-floating net (weakest tier)", () => {
+  // Nothing else driving → the pull wins (pull-up/pull-down).
+  assert.deepEqual(resolveNet({ pullLevels: [H] }), { level: H });
+  assert.deepEqual(resolveNet({ pullLevels: [L] }), { level: L });
+  // Any supply or chip driver overrides a pull.
+  assert.deepEqual(resolveNet({ supplyMinus: true, pullLevels: [H] }), {
+    level: L,
+  });
+  assert.deepEqual(resolveNet({ chipLevels: [L], pullLevels: [H] }), {
+    level: L,
+  });
+  // Only clean H/L pulls; Z/X pulls contribute nothing.
+  assert.deepEqual(resolveNet({ pullLevels: [Z, X] }), { level: Z });
+  // Opposing pulls (a divider across VCC↔GND) → weak indeterminate X, but NOT
+  // a driver "conflict" (nothing is actually fighting at output strength).
+  assert.deepEqual(resolveNet({ pullLevels: [H, L] }), { level: X });
+});
+
 test("disagreeing chip outputs → conflict (X)", () => {
   assert.deepEqual(resolveNet({ chipLevels: [H, L] }), {
     level: X,

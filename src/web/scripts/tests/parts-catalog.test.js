@@ -27,6 +27,7 @@ test("the part catalog carries the Feature 60 inventory", () => {
     "clock",
     "led",
     "psu",
+    "resistor",
     "sw-push",
     "sw-slide",
   ]);
@@ -35,7 +36,7 @@ test("the part catalog carries the Feature 60 inventory", () => {
   assert.ok(partDef("7400"));
   assert.ok(partDef("clock"));
   assert.equal(chipDef("sw-slide"), null);
-  assert.equal(PALETTE_DEFS.length, 31); // 26 chips + 5 parts
+  assert.equal(PALETTE_DEFS.length, 32); // 26 chips + 6 parts
 });
 
 for (const def of PART_DEFS.filter((d) => d.kind === "discrete")) {
@@ -104,6 +105,21 @@ test("led: color/flip coercion and polarity contract", () => {
   });
   assert.deepEqual(def.internalBridges({}), []); // a diode never bridges
   assert.deepEqual(LED_COLORS, ["red", "green", "yellow", "blue"]);
+});
+
+test("resistor: weakly bridges 1↔2, never a hard bridge; ohms coerce", () => {
+  const def = partDef("resistor");
+  // A resistor is a WEAK coupler: no hard internal bridge (stays two nets)…
+  assert.deepEqual(def.internalBridges({ ohms: 220 }), []);
+  // …but declares its weakly-coupled pin pair for the simulator's PULL tier.
+  assert.deepEqual(def.weakBridges({ ohms: 220 }), [[1, 2]]);
+  // Ohms are cosmetic but coerced to a positive number (default 10k).
+  assert.deepEqual(def.normalizeParams({}), { ohms: 10000 });
+  assert.deepEqual(def.normalizeParams({ ohms: 330 }), { ohms: 330 });
+  assert.deepEqual(def.normalizeParams({ ohms: -5 }), { ohms: 10000 });
+  assert.deepEqual(def.normalizeParams({ ohms: "junk" }), { ohms: 10000 });
+  // Two leads on a 4-hole span (offsets 0 and 3).
+  assert.deepEqual(def.footprint.offsets, [0, 3]);
 });
 
 test("psu: volts enum, source contract, integer terminal offsets", () => {

@@ -24,6 +24,7 @@ import {
   canPlaceChip,
   canPlacePart,
   canPlaceWire,
+  canReendWire,
   chipPinHoles,
   isFreeHole,
   partPinHoles,
@@ -176,6 +177,33 @@ test("buildOccupancy: wire ends occupy alongside pins", () => {
     wireId: "w1",
     end: "to",
   });
+});
+
+test("canReendWire: moves an end to a free point, ignoring the wire itself", () => {
+  const doc = docWith({
+    boards: [FULL],
+    components: [
+      { id: "c1", kind: "chip", ref: "7400", board: "bb1", anchor: "e5" },
+    ],
+  });
+  doc.wires = [
+    { id: "w1", from: "bb1.a1", to: "bb1.a10", color: "red" },
+    { id: "w2", from: "bb1.b1", to: "bb1.b10", color: "blue" },
+  ];
+  // Move w1.from to a free hole.
+  assert.equal(canReendWire(doc, "w1", "from", "bb1.a2"), true);
+  // Its own current endpoints don't block the move (from can land on w1.to's
+  // node partner, or stay put) — the moving wire is ignored in occupancy.
+  assert.equal(canReendWire(doc, "w1", "from", "bb1.a1"), true); // no-op onto itself
+  // …but never onto the wire's OTHER (anchored) end.
+  assert.equal(canReendWire(doc, "w1", "to", "bb1.a1"), false);
+  // Occupied by a DIFFERENT wire or a chip pin → rejected.
+  assert.equal(canReendWire(doc, "w1", "from", "bb1.b1"), false); // w2 end
+  assert.equal(canReendWire(doc, "w1", "from", "bb1.e5"), false); // c1 pin 1
+  // Unreal points and bad ids/ends → rejected.
+  assert.equal(canReendWire(doc, "w1", "from", "bb1.a99"), false);
+  assert.equal(canReendWire(doc, "w1", "middle", "bb1.a2"), false);
+  assert.equal(canReendWire(doc, "w9", "from", "bb1.a2"), false);
 });
 
 test("isFreeHole: real + unoccupied only", () => {
