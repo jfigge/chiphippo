@@ -242,7 +242,8 @@ test("chip status badges apply per status and clear when the sim stops", () => {
   controller.addComponentAt("7400", "bb1", "e5");
   const chipEl = surface.querySelector(".part-chip");
 
-  for (const status of ["unpowered", "underpowered", "damaged"]) {
+  const STATUSES = ["unpowered", "underpowered", "reversed", "damaged"];
+  for (const status of STATUSES) {
     publishSim({
       netOfPoint: [],
       netLevels: new Map(),
@@ -253,10 +254,16 @@ test("chip status badges apply per status and clear when the sim stops", () => {
       `expected part-chip--${status}`,
     );
     // Exactly one status class at a time.
-    const badges = ["unpowered", "underpowered", "damaged"].filter((s) =>
+    const badges = STATUSES.filter((s) =>
       chipEl.classList.contains(`part-chip--${s}`),
     );
     assert.deepEqual(badges, [status]);
+    // The hint names the fault for every status the engine can report.
+    assert.match(
+      chipEl.querySelector(".part-chip-status > title").textContent,
+      /\S/,
+      `expected a hover hint for ${status}`,
+    );
   }
 
   // A not-running sim-state (Stop) clears every badge.
@@ -271,9 +278,13 @@ test("chip status badges apply per status and clear when the sim stops", () => {
       },
     }),
   );
-  for (const s of ["unpowered", "underpowered", "damaged"]) {
+  for (const s of STATUSES) {
     assert.ok(!chipEl.classList.contains(`part-chip--${s}`));
   }
+  assert.equal(
+    chipEl.querySelector(".part-chip-status > title").textContent,
+    "",
+  );
 });
 
 test("editing lock freezes placement/wire but keeps the probe live", () => {

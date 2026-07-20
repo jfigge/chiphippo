@@ -57,11 +57,19 @@ export const CHIP_STATUS = Object.freeze({
   OK: "ok",
   UNPOWERED: "unpowered",
   UNDERPOWERED: "underpowered",
+  REVERSED: "reversed",
   DAMAGED: "damaged",
 });
 
-function powerStatus({ vccVolts, gnd, damaged }) {
+/**
+ * Reversal is STRICT — both power pins must be actively wrong: a PSU `−` on
+ * the VCC pin's net AND a PSU `+` on the GND pin's net. One wrong pin (the
+ * other floating) is ordinary `UNPOWERED`; calling that "backwards" would
+ * accuse the user of a mistake they may not have made.
+ */
+function powerStatus({ vccVolts, vccMinus, gndVolts, gnd, damaged }) {
   if (damaged) return CHIP_STATUS.DAMAGED;
+  if (vccMinus && gndVolts.length) return CHIP_STATUS.REVERSED;
   if (vccVolts.includes(12)) return CHIP_STATUS.DAMAGED; // magic smoke
   if (gnd && vccVolts.includes(5)) return CHIP_STATUS.OK;
   if (gnd && vccVolts.includes(3)) return CHIP_STATUS.UNDERPOWERED;
@@ -167,9 +175,12 @@ function buildContext(doc, netlist) {
     const vccPin = def.pins.find((p) => p.role === "vcc")?.n;
     const gndPin = def.pins.find((p) => p.role === "gnd")?.n;
     const vccNet = pinNet.get(vccPin);
+    const gndNet = pinNet.get(gndPin);
     const status = powerStatus({
       vccVolts: (vccNet && supplyPlusVolts.get(vccNet)) || [],
-      gnd: supplyMinus.has(pinNet.get(gndPin)),
+      vccMinus: supplyMinus.has(vccNet),
+      gndVolts: (gndNet && supplyPlusVolts.get(gndNet)) || [],
+      gnd: supplyMinus.has(gndNet),
       damaged: comp.params?.damaged === true,
     });
     chipStatus.set(comp.id, { status });
@@ -303,6 +314,8 @@ function assemble(ctx, solved, extra = {}) {
   for (const c of ctx.chips) {
     if (c.status === CHIP_STATUS.UNDERPOWERED) {
       warnings.push({ type: "underpowered", chip: c.comp.id });
+    } else if (c.status === CHIP_STATUS.REVERSED) {
+      warnings.push({ type: "reversed", chip: c.comp.id });
     } else if (c.status === CHIP_STATUS.DAMAGED) {
       warnings.push({ type: "damaged", chip: c.comp.id });
     }

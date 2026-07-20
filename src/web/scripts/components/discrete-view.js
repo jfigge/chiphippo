@@ -31,6 +31,7 @@ import { el } from "../dom.js";
 import { PX_PER_UNIT } from "../desk/desk-geometry.js";
 import { holePosition } from "../model/breadboard.js";
 import { partDef } from "../catalog/index.js";
+import { buildBurnOverlay } from "./part-symbols.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -188,40 +189,6 @@ export function buildSpanSvg(ref, dx, dy, params = {}) {
     svg.append(buildBurnOverlay(midX + Math.sin(rad), midY - Math.cos(rad)));
   }
   return svg;
-}
-
-/** The red X + rising smoke drawn over a burnt-out LED, centred on its dome. */
-function buildBurnOverlay(cx, cy) {
-  const g = svgEl("g", { class: "part-burn" });
-  const r = 0.8;
-  g.append(
-    svgEl("line", {
-      class: "part-burn-x",
-      x1: cx - r,
-      y1: cy - r,
-      x2: cx + r,
-      y2: cy + r,
-    }),
-    svgEl("line", {
-      class: "part-burn-x",
-      x1: cx + r,
-      y1: cy - r,
-      x2: cx - r,
-      y2: cy + r,
-    }),
-  );
-  // Three staggered puffs, so the smoke reads as a continuous wisp.
-  for (const [i, dx] of [-0.22, 0.12, -0.05].entries()) {
-    const puff = svgEl("circle", {
-      class: "part-burn-smoke",
-      cx: cx + dx,
-      cy: cy - r,
-      r: 0.3,
-    });
-    puff.style.animationDelay = `${i * 0.45}s`;
-    g.append(puff);
-  }
-  return g;
 }
 
 /**

@@ -29,6 +29,7 @@ import { PX_PER_UNIT } from "../desk/desk-geometry.js";
 import { holePosition } from "../model/breadboard.js";
 import { packageSpec } from "../model/footprints.js";
 import { chipDef } from "../catalog/index.js";
+import { buildBurnOverlay, buildWarnOverlay } from "./part-symbols.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -151,8 +152,30 @@ export function buildChipSvg(ref, params = {}) {
     while (svg.firstChild) turned.append(svg.firstChild);
     svg.append(turned);
   }
+
+  // Fault symbols (Feature 90), centred on the body — appended AFTER the flip
+  // group above so they stay in screen space: smoke must rise, and an
+  // upside-down warning triangle would read as a delta. CSS reveals exactly
+  // one per .part-chip--<status> class and hides both otherwise.
+  const cx = (halfPins - 1) / 2;
+  const cy = (BODY_TOP + BODY_BOTTOM) / 2;
+  const status = svgEl("g", { class: "part-chip-status" });
+  status.append(
+    svgEl("title"), // the hover hint; text set by ChipView.setStatus
+    buildWarnOverlay(cx, cy),
+    buildBurnOverlay(cx, cy, 0.7),
+  );
+  svg.append(status);
   return svg;
 }
+
+/** Hover hints for the fault symbols — keyed by the status the engine reports. */
+const STATUS_HINT = Object.freeze({
+  unpowered: "Unpowered",
+  underpowered: "Underpowered — VCC is at 3 V",
+  reversed: "Power reversed — VCC and GND are swapped",
+  damaged: "Damaged — replace this chip",
+});
 
 export class ChipView {
   #el;
@@ -226,14 +249,17 @@ export class ChipView {
   }
 
   /**
-   * Reflect the simulator's power/health status (Feature 90): a colored badge
-   * corner — grey unpowered, amber underpowered, red damaged; null clears it
+   * Reflect the simulator's power/health status (Feature 90): a warning
+   * triangle over the body when unpowered, the red X + smoke when reversed or
+   * damaged, an amber corner dot when underpowered. `null` clears everything
    * (editing / stopped).
    */
   setStatus(status) {
-    for (const s of ["unpowered", "underpowered", "damaged"]) {
+    for (const s of ["unpowered", "underpowered", "reversed", "damaged"]) {
       this.#el.classList.toggle(`part-chip--${s}`, status === s);
     }
+    const title = this.#el.querySelector(".part-chip-status > title");
+    if (title) title.textContent = STATUS_HINT[status] ?? "";
   }
 
   setSelected(on) {

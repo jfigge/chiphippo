@@ -80,7 +80,10 @@
   --color-part-accent: #c8ccd2; /* knobs / caps highlight */
   --color-part-cap: #b25252; /* push-button cap */
   --color-part-resistor: #c9a26a; /* resistor body (beige) */
-  --color-part-smoke: #6a6f76; /* magic smoke from a burnt-out part */
+  /* Magic smoke from a burnt-out part. Sooty, but it has to read against BOTH
+     the dark and light desk (parts are theme-invariant), so it can't go much
+     darker than this without vanishing on #1c1c1c. */
+  --color-part-smoke: #565b62;
   --color-psu-body: #2e3238; /* power brick */
   --color-psu-badge: #e4e6ea; /* voltage badge text */
 

@@ -42,6 +42,21 @@ test("buildChipSvg: legs, body, notch, pin-1 dot, and the part number", () => {
   }
 });
 
+test("buildChipSvg: fault symbols stay OUTSIDE the 180° flip group", () => {
+  resetDom();
+  const svg = buildChipSvg("7400", { rot: 180 });
+  const flipped = svg.querySelector(".part-chip-flipped");
+  assert.ok(flipped, "expected the flip group");
+  // Smoke has to rise in screen space and the warning triangle has to stay
+  // upright, so neither symbol may be caught by the rotation.
+  assert.equal(flipped.querySelectorAll(".part-burn, .part-warn").length, 0);
+  const status = svg.querySelector(".part-chip-status");
+  assert.ok(status.querySelector(".part-warn"));
+  assert.ok(status.querySelector(".part-burn"));
+  // The hint host exists but is empty until a status arrives.
+  assert.equal(status.querySelector("title").textContent, "");
+});
+
 test("buildChipSvg: rejects unknown refs", () => {
   resetDom();
   assert.throws(() => buildChipSvg("9999"), { code: "INVALID_REF" });

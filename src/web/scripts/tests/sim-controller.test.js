@@ -177,6 +177,31 @@ test("12 V damage persists into params.damaged and warns once", () => {
   );
 });
 
+test("reversed power warns but is NEVER persisted as damage", () => {
+  resetDom();
+  const notifications = fakeNotifications();
+  const holes = chipHoles("7400", "e10");
+  const deskDoc = fakeDoc({
+    boards: [board],
+    components: [psu("psu1", 80, 5), chip("c1", "7400", "e10")],
+    wires: [
+      wire("psu1.+", `bb1.${mates(holes.get(7))[0]}`),
+      wire("psu1.-", `bb1.${mates(holes.get(14))[0]}`),
+    ],
+  });
+  const sim = new SimController({ deskDoc, notifications });
+
+  sim.start();
+  assert.ok(
+    notifications.calls.some(
+      (c) => c.variant === "danger" && /reversed/i.test(c.title),
+    ),
+  );
+  // Swapped wires are an editing mistake, not a dead chip: rewiring must fix
+  // it without a trip through "Replace chip".
+  assert.notEqual(deskDoc.getComponent("c1").params.damaged, true);
+});
+
 test("damage persists through Stop; Replace chip then resets it", () => {
   resetDom();
   const deskDoc = fakeDoc(poweredDoc(12));

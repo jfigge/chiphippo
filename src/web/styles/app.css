@@ -665,9 +665,12 @@
   overflow: visible;
 }
 
-/* ── Burnt-out LED: powered with no series resistor ──────────────────────── */
-/* Hidden until the controller marks the part burnt while the sim runs. */
-.part-burn {
+/* ── Part fault symbols (built by part-symbols.js, shared by LEDs + chips) ── */
+/* Both stay hidden until a view adds its status class while the sim runs; the
+   reveal rules live with each part family (burnt LEDs below, chips in the
+   Feature 90 section). */
+.part-burn,
+.part-warn {
   display: none;
 }
 
@@ -678,6 +681,21 @@
 /* A burnt LED never glows, whatever the levels say. */
 .part-discrete--burnt .part-led-dome {
   fill: var(--color-part-inset);
+}
+
+.part-warn-tri {
+  fill: var(--color-warning);
+  stroke: var(--color-base);
+  stroke-width: 0.08;
+  stroke-linejoin: round;
+}
+
+/* The exclamation mark, punched out of the triangle in the desk colour. */
+.part-warn-mark {
+  fill: var(--color-base);
+  stroke: var(--color-base);
+  stroke-width: 0.12;
+  stroke-linecap: round;
 }
 
 .part-burn-x {
@@ -691,27 +709,33 @@
   opacity: 0;
   transform-box: fill-box;
   transform-origin: center;
-  animation: part-burn-smoke 1.8s ease-out infinite;
+  animation: part-burn-smoke 2.4s ease-out infinite;
 }
 
+/* Nearly opaque at the base and slow to climb: sooty smoke reads by density,
+   and the colour alone can't carry it on a dark desk. Holding full opacity to
+   45% before the fade keeps a continuous plume rather than a blink. */
 @keyframes part-burn-smoke {
   0% {
     opacity: 0;
-    transform: translateY(0) scale(0.35);
+    transform: translateY(0) scale(0.4);
   }
-  25% {
-    opacity: 0.75; /* darker smoke needs a touch more presence to read */
+  18% {
+    opacity: 0.95;
+  }
+  45% {
+    opacity: 0.85;
   }
   100% {
     opacity: 0;
-    transform: translateY(-2.4px) scale(1.3);
+    transform: translateY(-3.2px) scale(1.7);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .part-burn-smoke {
     animation: none;
-    opacity: 0.4;
+    opacity: 0.7;
   }
 }
 
@@ -1224,11 +1248,33 @@
     drop-shadow(0 0 0.9px var(--wire-color));
 }
 
-/* Chip health badge (Feature 90): a colored dot in the top-right corner —
-   grey unpowered, amber underpowered, red damaged. */
-.part-chip--unpowered::after,
-.part-chip--underpowered::after,
-.part-chip--damaged::after {
+/* Chip fault symbols (Feature 90): drawn over the body in pitch units, so they
+   scale with the chip. A warning triangle when the chip has no power; the same
+   red X + smoke a burnt LED gets when its polarity is reversed or 12 V killed
+   it. Smoke rises past the viewBox, so let it escape. */
+.part-chip-svg {
+  overflow: visible;
+}
+
+.part-chip--unpowered .part-warn {
+  display: block;
+}
+
+.part-chip--reversed .part-burn,
+.part-chip--damaged .part-burn {
+  display: block;
+}
+
+/* The part number sits under the symbol — fade it rather than fight it. */
+.part-chip--unpowered .part-chip-label,
+.part-chip--reversed .part-chip-label,
+.part-chip--damaged .part-chip-label {
+  opacity: 0.25;
+}
+
+/* Underpowered (3 V) is the one status without a symbol: it still computes
+   nothing, but nothing is broken either — an amber corner dot suffices. */
+.part-chip--underpowered::after {
   content: "";
   position: absolute;
   top: -3px;
@@ -1237,19 +1283,7 @@
   height: 8px;
   border-radius: 50%;
   border: 1px solid var(--color-base);
-}
-
-.part-chip--unpowered::after {
-  background: var(--color-muted);
-}
-
-.part-chip--underpowered::after {
   background: var(--color-warning);
-}
-
-.part-chip--damaged::after {
-  background: var(--color-danger);
-  box-shadow: 0 0 5px var(--color-danger);
 }
 
 /* Level-tinted net highlight while running (probe/inspector). Overrides the

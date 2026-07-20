@@ -287,6 +287,38 @@ test("12 V damages the chip (magic smoke); params are NOT mutated by the pure en
   );
 });
 
+test("swapped supply wires read as reversed (inert) and warn", () => {
+  const holes = chipHoles("7400", "e10");
+  const doc = {
+    boards: [board],
+    components: [psu("psu1", 80), chip("c1", "7400", "e10")],
+    // The mirror of powerWires: + on the GND pin, − on the VCC pin.
+    wires: [
+      wire("psu1.+", `bb1.${mates(holes.get(7))[0]}`),
+      wire("psu1.-", `bb1.${mates(holes.get(14))[0]}`),
+    ],
+  };
+  const { result, levelAt } = simulate(doc);
+  assert.equal(result.chipStatus.get("c1").status, "reversed");
+  assert.equal(levelAt("bb1.e12"), Z);
+  assert.ok(result.warnings.some((w) => w.type === "reversed"));
+  assert.equal(doc.components[1].params.damaged, undefined); // never persisted
+});
+
+test("only one power pin miswired is unpowered, NOT reversed", () => {
+  // A flipped chip whose GND pin landed on the + rail while VCC reaches a rail
+  // with no supply on it: one pin is wrong, so we must not accuse the user of
+  // wiring it backwards.
+  const holes = chipHoles("7400", "e10");
+  const { result } = simulate({
+    boards: [board],
+    components: [psu("psu1", 80), chip("c1", "7400", "e10")],
+    wires: [wire("psu1.+", `bb1.${mates(holes.get(7))[0]}`)],
+  });
+  assert.equal(result.chipStatus.get("c1").status, "unpowered");
+  assert.ok(!result.warnings.some((w) => w.type === "reversed"));
+});
+
 // ── Resistors: weak pull-down / pull-up / series conduction ──────────────────
 
 test("a pull-down resistor makes a floating chip input read LOW", () => {

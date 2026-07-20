@@ -239,7 +239,11 @@ export class SimController {
     }
   }
 
-  /** Persist a 12 V kill into params.damaged (inert until "Replace chip"). */
+  /**
+   * Persist a 12 V kill into params.damaged (inert until "Replace chip").
+   * "reversed" is deliberately NOT persisted — swapped power wires are an
+   * editing mistake, so fixing the wiring and re-running clears it.
+   */
   #persistDamage(chipStatus) {
     let changed = false;
     for (const [id, { status }] of chipStatus) {
@@ -305,6 +309,13 @@ export class SimController {
           variant: "warning",
           title: "Underpowered",
           message: `${this.#refName(w.chip)} is at 3 V — running inert.`,
+        });
+      } else if (w.type === "reversed") {
+        this.#notifications.notify({
+          key: `reversed:${w.chip}`,
+          variant: "danger",
+          title: "Power reversed",
+          message: `${this.#refName(w.chip)} has VCC and GND swapped.`,
         });
       } else if (w.type === "damaged") {
         this.#notifications.notify({
