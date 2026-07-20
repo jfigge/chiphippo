@@ -49,9 +49,19 @@ export function partPinHoles(ref, anchor, params) {
     // DIP chip straddling the trench.
     const m = CHIP_ANCHOR_RE.exec(anchor);
     if (!m) return null;
-    return allPinHoles(def.package, Number(m[1])).map(({ pin, row, col }) => ({
+    const seated = allPinHoles(def.package, Number(m[1])).map(
+      ({ pin, row, col }) => ({ pin, hole: `${row}${col}` }),
+    );
+    if (params?.rot !== 180) return seated;
+    // Flipped 180°: a DIP's footprint maps onto ITSELF (same two rows, same
+    // columns), so only the pin numbering turns half a lap — pin 1 lands where
+    // the opposite corner pin sat. Applying it twice returns the original.
+    const count = seated.length;
+    const half = count / 2;
+    const holeOfPin = new Map(seated.map((s) => [s.pin, s.hole]));
+    return seated.map(({ pin }) => ({
       pin,
-      hole: `${row}${col}`,
+      hole: holeOfPin.get(((pin + half - 1) % count) + 1),
     }));
   }
   if (def.footprint) {

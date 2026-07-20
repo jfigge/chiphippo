@@ -622,6 +622,32 @@ export class DeskController {
       this.#trackResistorDrag();
       return true;
     }
+    // Mid-drag of a chip: flip the slab in hand. Its footprint maps onto itself,
+    // so the seat stays legal — the orientation rides along to the drop.
+    if (m?.kind === "drag-part" && partDef(m.ref)?.package) {
+      m.flip = !m.flip;
+      if (!m.active) {
+        m.active = true; // a flip alone still commits on release
+        this.#partViews.get(m.id)?.setDragging(true);
+      }
+      const comp = this.#doc.getComponent(m.id);
+      this.#partViews
+        .get(m.id)
+        ?.updateParams(this.#flippedParams(comp?.params, m.flip));
+      return true;
+    }
+    // ANY other gesture in flight — dragging a non-rotatable part, a board, a
+    // brick, a wire or one of its ends, rubber-banding, or wiring — swallows R
+    // as a no-op. Falling through would rotate the part BEHIND the drag,
+    // remounting its element and stranding the gesture mid-flight.
+    if (m && !this.placementArmed) return false;
+    // Placing a chip: R flips the ghost before it lands.
+    if (m?.kind === "place-chip") {
+      m.params = this.#flippedParams(m.params, true);
+      m.ghost.querySelector("svg")?.remove();
+      m.ghost.append(buildChipSvg(m.ref, m.params));
+      return true;
+    }
     if (m?.kind === "place-part" && partDef(m.ref)?.rotatable) {
       const { ref, params } = m;
       this.cancelPlacement();
@@ -634,15 +660,22 @@ export class DeskController {
       this.armPartPlacement(ref, { ...params, rot: 0 });
       return true;
     }
-    // Not placing: rotate a selected placed part in situ.
+    // Not placing: rotate a selected placed part in situ (a chip flips 180°).
     if (this.#selected?.kind === "part") {
       const comp = this.#doc.getComponent(this.#selected.id);
-      if (partDef(comp?.ref)?.rotatable) {
+      const def = partDef(comp?.ref);
+      if (def?.rotatable || def?.package) {
         this.rotateComponent(this.#selected.id);
         return true;
       }
     }
     return false;
+  }
+
+  /** Params with the 180° flag toggled (or set) — chips only. */
+  #flippedParams(params, toggle) {
+    if (!toggle) return { ...params };
+    return { ...params, rot: params?.rot === 180 ? 0 : 180 };
   }
 
   /** Two-click placement pointermove: ring on the hovered hole + span preview. */
@@ -1972,16 +2005,23 @@ export class DeskController {
     }
     const moved =
       d.seat.board !== d.origin.board || d.seat.anchor !== d.origin.anchor;
+    // A chip flipped mid-drag commits its half-lap even if it lands back where
+    // it started (the footprint maps onto itself, so it's always legal).
+    const flipped = !cancelled && d.flip === true;
+    if (flipped) this.#doc.rotateComponent(d.id);
     if (!cancelled && d.legal && moved) {
       this.#doc.moveComponent(d.id, d.seat.board, d.seat.anchor);
       view?.updatePlacement(this.#doc.getBoard(d.seat.board), d.seat.anchor);
       this.#emitDocChanged();
     } else {
+      if (flipped) this.#emitDocChanged();
       view?.updatePlacement(
         this.#doc.getBoard(d.origin.board),
         d.origin.anchor,
       );
     }
+    // Sync the drawn orientation to the document (undoes a cancelled preview).
+    if (d.flip) view?.updateParams(this.#doc.getComponent(d.id)?.params ?? {});
   };
 
   #onPartContextMenu(id, e) {
@@ -2513,7 +2553,7 @@ export class DeskController {
     } else if (m.kind === "place-part") {
       this.addComponentAt(m.ref, m.board, m.anchor, m.params);
     } else {
-      this.addComponentAt(m.ref, m.board, m.anchor);
+      this.addComponentAt(m.ref, m.board, m.anchor, m.params);
     }
   };
 

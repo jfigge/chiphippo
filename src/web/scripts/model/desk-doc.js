@@ -543,6 +543,16 @@ export class DeskDoc {
     const comp = this.#doc.components.find((c) => c.id === id);
     if (!comp) throw taggedError(`no component ${id}`, "NOT_FOUND");
     const def = partDef(comp.ref);
+    // A DIP chip turns a half lap in place: its footprint maps onto itself, so
+    // the holes (and every occupancy check) are unchanged — only the pin
+    // numbering reverses. Nothing can block it.
+    if (def?.package) {
+      comp.params = normalizeParams(def, {
+        ...comp.params,
+        rot: comp.params?.rot === 180 ? 0 : 180,
+      });
+      return { ...comp };
+    }
     if (!def?.rotatable) {
       throw taggedError(`${comp.ref} is not rotatable`, "INVALID_REF");
     }

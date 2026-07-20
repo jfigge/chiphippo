@@ -24,6 +24,7 @@ import assert from "node:assert/strict";
 
 import { resetDom } from "./jsdom-setup.js";
 import { DeskDoc } from "../model/desk-doc.js";
+import { partPinHoles } from "../model/occupancy.js";
 
 const { DeskController } = await import("../components/desk-controller.js");
 
@@ -597,6 +598,153 @@ test("R rotates a resistor freely mid-drag; the release commits it", () => {
   assert.equal(comp.anchor, "e10");
   assert.equal(comp.params.rot, 90);
   assert.equal(comp.params.end, "b10");
+});
+
+test("R during a non-rotatable part's drag does nothing and keeps the drag", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("full", 0, 0);
+  const world = { x: 0, y: 0 };
+  const { surface, controller } = makeDesk(doc, world);
+  // A push button neither rotates nor flips.
+  const btn = controller.addComponentAt("sw-push", "bb1", "a10");
+
+  const el = partEl(surface, btn.id);
+  world.y = 16; // row a
+  pointerAt(el, "pointerdown", 0, 0);
+  world.x = 2;
+  pointerAt(el, "pointermove", 50, 0);
+
+  // R is swallowed — nothing rotates, and the element is NOT remounted.
+  const consumed = controller.handleKeyDown(
+    new window.KeyboardEvent("keydown", { key: "r" }),
+  );
+  assert.equal(consumed, false, "R not consumed for a non-rotatable part");
+  assert.equal(partEl(surface, btn.id), el, "same element — drag intact");
+
+  // The drag still completes normally.
+  pointerAt(el, "pointerup", 50, 0);
+  assert.equal(doc.getComponent(btn.id).anchor, "a12");
+});
+
+test("R flips a chip 180°: same holes, pin numbering reversed", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("full", 0, 0);
+  const { controller } = makeDesk(doc);
+  const chip = controller.addComponentAt("7400", "bb1", "e5"); // auto-selected
+  const holesOf = () =>
+    partPinHoles("7400", "e5", doc.getComponent(chip.id).params);
+
+  // Unflipped: pin 1 bottom-left (e5), pin 14 top-left (f5).
+  assert.equal(holesOf().find((p) => p.pin === 1).hole, "e5");
+  assert.equal(holesOf().find((p) => p.pin === 14).hole, "f5");
+
+  const consumed = controller.handleKeyDown(
+    new window.KeyboardEvent("keydown", { key: "r" }),
+  );
+  assert.equal(consumed, true);
+  assert.equal(doc.getComponent(chip.id).params.rot, 180);
+
+  // Flipped: pin 1 swaps to the far corner; the SET of holes is unchanged.
+  assert.equal(holesOf().find((p) => p.pin === 1).hole, "f11");
+  assert.equal(holesOf().find((p) => p.pin === 8).hole, "e5");
+  assert.deepEqual(
+    holesOf()
+      .map((p) => p.hole)
+      .sort(),
+    partPinHoles("7400", "e5")
+      .map((p) => p.hole)
+      .sort(),
+    "occupies exactly the same holes",
+  );
+
+  // Flipping again returns it to the original orientation.
+  controller.handleKeyDown(new window.KeyboardEvent("keydown", { key: "r" }));
+  assert.equal(doc.getComponent(chip.id).params.rot, undefined);
+  assert.equal(holesOf().find((p) => p.pin === 1).hole, "e5");
+});
+
+test("a chip flipped mid-drag commits the flip with the move", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("full", 0, 0);
+  const world = { x: 0, y: 0 };
+  const { surface, controller } = makeDesk(doc, world);
+  const chip = controller.addComponentAt("7400", "bb1", "e10");
+
+  const el = partEl(surface, chip.id);
+  world.y = 10.5; // a chip only seats near the trench
+  pointerAt(el, "pointerdown", 0, 0);
+  world.x = 2;
+  pointerAt(el, "pointermove", 50, 0);
+  assert.equal(
+    controller.handleKeyDown(new window.KeyboardEvent("keydown", { key: "r" })),
+    true,
+    "R is consumed for a chip",
+  );
+  pointerAt(el, "pointerup", 50, 0);
+
+  const after = doc.getComponent(chip.id);
+  assert.equal(after.anchor, "e12", "moved");
+  assert.equal(after.params.rot, 180, "and flipped");
+});
+
+test("R during a resistor END drag is a no-op, not a rotate-behind-the-drag", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("full", 0, 0);
+  const world = { x: 0, y: 0 };
+  const { surface, controller } = makeDesk(doc, world);
+  const r = controller.addComponentAt("resistor", "bb1", "a10"); // a10 ── a13
+
+  const el = partEl(surface, r.id);
+  world.x = 13; // grab pin 2's lead
+  world.y = 16;
+  pointerAt(el, "pointerdown", 0, 0);
+  world.x = 16;
+  pointerAt(el, "pointermove", 40, 0);
+
+  const consumed = controller.handleKeyDown(
+    new window.KeyboardEvent("keydown", { key: "r" }),
+  );
+  assert.equal(consumed, false);
+  assert.equal(partEl(surface, r.id), el, "same element — drag intact");
+
+  // Releasing still commits the end move, unrotated.
+  pointerAt(el, "pointerup", 40, 0);
+  const after = doc.getComponent(r.id);
+  assert.equal(after.anchor, "a10"); // the anchored lead never moved
+  assert.equal(after.params.end, "a16");
+});
+
+test("R during a marquee drag leaves the selected part alone", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("full", 0, 0);
+  const world = { x: 0, y: 0 };
+  const { viewport, controller } = makeDesk(doc, world);
+  const r = controller.addComponentAt("resistor", "bb1", "a10"); // auto-selected
+  assert.equal(doc.getComponent(r.id).params.rot, 0);
+
+  // Start a marquee, then press R mid-drag.
+  world.x = 40;
+  world.y = 2;
+  viewport.dispatchEvent(
+    new window.PointerEvent("pointerdown", {
+      bubbles: true,
+      button: 0,
+      pointerId: 3,
+      shiftKey: true,
+      clientX: 0,
+      clientY: 0,
+    }),
+  );
+  const consumed = controller.handleKeyDown(
+    new window.KeyboardEvent("keydown", { key: "r" }),
+  );
+  assert.equal(consumed, false);
+  assert.equal(doc.getComponent(r.id).params.rot, 0, "not rotated behind it");
 });
 
 test("R rotates the selected resistor via handleKeyDown", () => {

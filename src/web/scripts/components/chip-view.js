@@ -63,7 +63,7 @@ const LEG_WIDTH = 0.28;
  * @param {string} ref - catalog id, e.g. "7400"
  * @returns {SVGSVGElement}
  */
-export function buildChipSvg(ref) {
+export function buildChipSvg(ref, params = {}) {
   const def = chipDef(ref);
   if (!def) {
     const err = new Error(`unknown catalog ref: ${ref}`);
@@ -140,6 +140,17 @@ export function buildChipSvg(ref) {
   label.textContent = def.id;
   svg.append(label);
 
+  // Flipped 180°: turn the whole slab about the footprint's centre, so the
+  // notch swings to the right edge and the pin-1 dot to the far corner — the
+  // printed label reads upside down, exactly as a real chip seated backwards.
+  if (params?.rot === 180) {
+    const turned = svgEl("g", {
+      class: "part-chip-flipped",
+      transform: `rotate(180 ${(halfPins - 1) / 2} -1.5)`,
+    });
+    while (svg.firstChild) turned.append(svg.firstChild);
+    svg.append(turned);
+  }
   return svg;
 }
 
@@ -147,6 +158,7 @@ export class ChipView {
   #el;
   #id;
   #ref;
+  #params = {}; // latest params (the 180° flip changes the drawn orientation)
 
   /**
    * @param {HTMLElement} layer - the `.layer-parts` element.
@@ -168,7 +180,8 @@ export class ChipView {
       class: "part part-chip",
       dataset: { componentId: component.id },
     });
-    this.#el.append(buildChipSvg(component.ref));
+    this.#params = component.params ?? {};
+    this.#el.append(buildChipSvg(component.ref, this.#params));
     this.#el.addEventListener("pointerdown", (e) =>
       onPointerDown?.(this.#id, e),
     );
@@ -189,6 +202,13 @@ export class ChipView {
 
   get element() {
     return this.#el;
+  }
+
+  /** Rebuild the SVG for new params (the 180° flip). */
+  updateParams(params) {
+    this.#params = params ?? {};
+    this.#el.querySelector("svg")?.remove();
+    this.#el.prepend(buildChipSvg(this.#ref, this.#params));
   }
 
   /**

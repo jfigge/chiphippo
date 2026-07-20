@@ -30,8 +30,14 @@ export const CHIP_DEFS = Object.freeze(
   [...CHIPS_GATES, ...CHIPS_SEQ].map((def) =>
     Object.freeze({
       kind: "chip",
-      normalizeParams: (raw) =>
-        raw?.damaged === true ? { damaged: true } : {},
+      // Only non-default flags are stored, so a plain chip keeps `params: {}`.
+      // `rot: 180` is the flipped orientation — same holes, reversed numbering.
+      normalizeParams: (raw) => {
+        const params = {};
+        if (raw?.damaged === true) params.damaged = true;
+        if (raw?.rot === 180) params.rot = 180;
+        return params;
+      },
       ...def,
     }),
   ),
