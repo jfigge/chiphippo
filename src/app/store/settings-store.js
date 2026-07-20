@@ -38,6 +38,9 @@ const DEFAULTS = Object.freeze({
   // ── Parts palette (Feature 40) ────────────────────────────────────────────
   // Whether the left palette panel is open (the toolbar Parts button toggles).
   paletteOpen: false,
+  // Names of palette groups the user has collapsed; the panel remembers these
+  // across sessions (clicking a group title toggles membership).
+  paletteCollapsedGroups: Object.freeze([]),
 
   // ── Pin-assignments window (Feature 100) ──────────────────────────────────
   // Whether a chip's pin-out window floats above the main app. A de-facto

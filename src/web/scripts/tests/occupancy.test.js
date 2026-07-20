@@ -21,6 +21,7 @@ import assert from "node:assert/strict";
 
 import {
   buildOccupancy,
+  canMoveWire,
   canPlaceChip,
   canPlacePart,
   canPlaceWire,
@@ -204,6 +205,29 @@ test("canReendWire: moves an end to a free point, ignoring the wire itself", () 
   assert.equal(canReendWire(doc, "w1", "from", "bb1.a99"), false);
   assert.equal(canReendWire(doc, "w1", "middle", "bb1.a2"), false);
   assert.equal(canReendWire(doc, "w9", "from", "bb1.a2"), false);
+});
+
+test("canMoveWire: both ends must land on real, free points; ignores itself", () => {
+  const doc = docWith({
+    boards: [FULL],
+    components: [
+      { id: "c1", kind: "chip", ref: "7400", board: "bb1", anchor: "e5" },
+    ],
+  });
+  doc.wires = [
+    { id: "w1", from: "bb1.a1", to: "bb1.a10", color: "red" },
+    { id: "w2", from: "bb1.b1", to: "bb1.b10", color: "blue" },
+  ];
+  // Rigid translation onto two free holes.
+  assert.equal(canMoveWire(doc, "w1", "bb1.a2", "bb1.a11"), true);
+  // A no-op back onto its own two endpoints — the moving wire is ignored.
+  assert.equal(canMoveWire(doc, "w1", "bb1.a1", "bb1.a10"), true);
+  // Either end onto a DIFFERENT wire's end or a chip pin → rejected.
+  assert.equal(canMoveWire(doc, "w1", "bb1.b1", "bb1.a11"), false); // w2 end
+  assert.equal(canMoveWire(doc, "w1", "bb1.a2", "bb1.e5"), false); // c1 pin 1
+  // Coincident, unreal, or malformed endpoints → rejected.
+  assert.equal(canMoveWire(doc, "w1", "bb1.a2", "bb1.a2"), false); // same point
+  assert.equal(canMoveWire(doc, "w1", "bb1.a99", "bb1.a2"), false); // unreal
 });
 
 test("isFreeHole: real + unoccupied only", () => {

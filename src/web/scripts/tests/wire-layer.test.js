@@ -153,6 +153,41 @@ test("setEndpointDrag pins one end to a cursor point; null restores the doc", ()
   assert.ok(!layer.querySelector(".wire").classList.contains("wire--dragging"));
 });
 
+test("setWholeDrag overrides BOTH endpoints; null restores the doc", () => {
+  resetDom();
+  const layer = document.createElement("div");
+  document.body.append(layer);
+  const doc = deskWithWire(); // w1: bb1.a1 → bb1.a5
+  const wires = new WireLayer(layer, doc, {});
+
+  // Translate the whole wire: both caps ride the supplied world-px points.
+  wires.setWholeDrag({
+    wireId: "w1",
+    from: { x: 100, y: 200 },
+    to: { x: 300, y: 200 },
+    legal: false,
+  });
+  const group = layer.querySelector(".wire");
+  const d = group.querySelector(".wire-core").getAttribute("d");
+  assert.ok(d.startsWith("M 100 200"), d); // starts at the dragged `from`
+  assert.ok(d.endsWith("300 200"), d); // ends at the dragged `to`
+  assert.ok(group.classList.contains("wire--dragging"));
+  assert.ok(group.classList.contains("wire-preview--illegal"));
+  const caps = group.querySelectorAll(".wire-cap");
+  assert.equal(caps[0].getAttribute("cx"), "100");
+  assert.equal(caps[1].getAttribute("cx"), "300");
+
+  // Clearing redraws from the document (back on holes a1 → a5).
+  wires.setWholeDrag(null);
+  const a1 = holePosition("full", "a1");
+  const restored = layer.querySelector(".wire-core").getAttribute("d");
+  assert.ok(
+    restored.startsWith(`M ${a1.x * PX_PER_UNIT} ${a1.y * PX_PER_UNIT}`),
+    restored,
+  );
+  assert.ok(!layer.querySelector(".wire").classList.contains("wire--dragging"));
+});
+
 test("setPreview shows, retints, and hides the rubber band", () => {
   resetDom();
   const layer = document.createElement("div");

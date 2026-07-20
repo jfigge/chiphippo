@@ -1230,6 +1230,8 @@ export class DeskController {
       legal: true,
       active: false,
     };
+    // Closed hand from the moment the board is grabbed (before any drag).
+    this.#viewport.classList.add("desk-viewport--dragging");
     try {
       view.element.setPointerCapture(e.pointerId);
     } catch {
@@ -1273,6 +1275,7 @@ export class DeskController {
     const d = this.#mode;
     if (d?.kind !== "drag" || e.pointerId !== d.pointerId) return;
     this.#mode = null;
+    this.#viewport.classList.remove("desk-viewport--dragging");
 
     const view = this.#views.get(d.id);
     if (view) {
@@ -1386,6 +1389,8 @@ export class DeskController {
         active: false,
       };
     }
+    // Closed hand from the moment the part is grabbed (before any drag).
+    this.#viewport.classList.add("desk-viewport--dragging");
     try {
       view.element.setPointerCapture(e.pointerId);
     } catch {
@@ -1454,6 +1459,7 @@ export class DeskController {
       return;
     }
     this.#mode = null;
+    this.#viewport.classList.remove("desk-viewport--dragging");
 
     const view = this.#partViews.get(d.id);
     if (view) {
@@ -1570,12 +1576,19 @@ export class DeskController {
   #onViewportPointerDown = (e) => {
     this.#lastDown = { x: e.clientX, y: e.clientY };
     if (this.#mode || e.button !== 0) return; // busy (tool/drag) or non-left
-    // Press near a wire's endpoint cap → grab it to drag the end elsewhere.
     // Not while probing (clicks pin nets) or running (topology frozen).
     if (!this.#probeArmed && !this.#editingLocked) {
+      // Press near a wire's endpoint cap → grab it to drag the end elsewhere.
       const grab = this.#wireEndAtWorld(this.#deskView.worldFromEvent(e));
       if (grab) {
         this.#beginWireEndDrag(grab, e);
+        return;
+      }
+      // Press on a wire's BODY (its hit stroke, away from both caps) → grab the
+      // whole wire and translate it rigidly.
+      const wireId = e.target?.closest?.(".wire")?.dataset.wireId;
+      if (wireId) {
+        this.#beginWholeWireDrag(wireId, e);
         return;
       }
     }
@@ -1698,6 +1711,108 @@ export class DeskController {
     }
   };
 
+  // ── Whole-wire dragging (grab the body, translate both ends rigidly) ────────
+
+  #beginWholeWireDrag(wireId, e) {
+    const wire = this.#doc.getWire(wireId);
+    const from0 = this.#addressWorld(wire?.from);
+    const to0 = this.#addressWorld(wire?.to);
+    if (!from0 || !to0) return; // defensive: unresolvable endpoints
+    this.#hideHover();
+    this.selectWire(wireId); // select on press (mode still null here)
+    this.#mode = {
+      kind: "drag-wire",
+      wireId,
+      from0, // origin endpoint world positions (pitch units)
+      to0,
+      fromOrigin: wire.from, // revert / no-op detection
+      toOrigin: wire.to,
+      startWorld: this.#deskView.worldFromEvent(e),
+      pointerId: e.pointerId,
+      startClientX: e.clientX,
+      startClientY: e.clientY,
+      target: null, // { from, to } addresses once snapped over legal holes
+      active: false,
+    };
+    // Capture on the persistent wire SVG (survives live re-renders).
+    const svg = this.#wireLayer.element;
+    try {
+      svg.setPointerCapture(e.pointerId);
+    } catch {
+      /* capture is best-effort (synthetic events) */
+    }
+    svg.addEventListener("pointermove", this.#onWholeWirePointerMove);
+    svg.addEventListener("pointerup", this.#onWholeWirePointerUp);
+    svg.addEventListener("pointercancel", this.#onWholeWirePointerUp);
+  }
+
+  #onWholeWirePointerMove = (e) => {
+    const m = this.#mode;
+    if (m?.kind !== "drag-wire" || e.pointerId !== m.pointerId) return;
+    if (!m.active) {
+      const travel = Math.hypot(
+        e.clientX - m.startClientX,
+        e.clientY - m.startClientY,
+      );
+      if (travel < DRAG_THRESHOLD) return; // separate a click from a drag
+      m.active = true;
+      this.#viewport.classList.add("desk-viewport--wire-dragging");
+    }
+    const world = this.#deskView.worldFromEvent(e);
+    // Rigid translation snapped to the 0.1-in lattice: ONE integer delta shifts
+    // both ends together, so length and orientation never change.
+    const dx = Math.round(world.x - m.startWorld.x);
+    const dy = Math.round(world.y - m.startWorld.y);
+    const fromW = { x: m.from0.x + dx, y: m.from0.y + dy };
+    const toW = { x: m.to0.x + dx, y: m.to0.y + dy };
+    // Both translated ends must land on real, free points for a legal drop.
+    const fromHit = this.#wirePointAt(fromW);
+    const toHit = this.#wirePointAt(toW);
+    const legal =
+      !!fromHit &&
+      !!toHit &&
+      this.#doc.canMoveWire(m.wireId, fromHit.address, toHit.address);
+    m.target = legal ? { from: fromHit.address, to: toHit.address } : null;
+    // Snap the rendered ends onto the resolved holes when legal, else float.
+    const a = fromHit ?? fromW;
+    const b = toHit ?? toW;
+    this.#wireLayer.setWholeDrag({
+      wireId: m.wireId,
+      from: { x: a.x * PX_PER_UNIT, y: a.y * PX_PER_UNIT },
+      to: { x: b.x * PX_PER_UNIT, y: b.y * PX_PER_UNIT },
+      legal,
+    });
+  };
+
+  #onWholeWirePointerUp = (e) => {
+    const m = this.#mode;
+    if (m?.kind !== "drag-wire" || e.pointerId !== m.pointerId) return;
+    this.#mode = null;
+
+    const svg = this.#wireLayer.element;
+    svg.removeEventListener("pointermove", this.#onWholeWirePointerMove);
+    svg.removeEventListener("pointerup", this.#onWholeWirePointerUp);
+    svg.removeEventListener("pointercancel", this.#onWholeWirePointerUp);
+    try {
+      svg.releasePointerCapture(m.pointerId);
+    } catch {
+      /* already released */
+    }
+    this.#viewport.classList.remove("desk-viewport--wire-dragging");
+    this.#wireLayer.setWholeDrag(null); // stop overriding; redraw from doc
+
+    if (!m.active) return; // plain click — the wire is already selected
+
+    // Commit only when BOTH ends landed on real free points (a legal, moved
+    // target); an invalid release cancels the drag-drop and the wire snaps back.
+    const t = m.target;
+    const moved = t && (t.from !== m.fromOrigin || t.to !== m.toOrigin);
+    if (e.type !== "pointercancel" && t && moved) {
+      this.#doc.moveWire(m.wireId, t.from, t.to);
+      this.#emitDocChanged(); // WireLayer re-renders from this
+    }
+  };
+
   #onViewportClick = (e) => {
     const m = this.#mode;
     if (!this.placementArmed && m?.kind !== "wire" && !this.#probeArmed) return;
@@ -1748,10 +1863,14 @@ export class DeskController {
     if (m) return; // dragging — hover stays hidden
 
     const world = this.#deskView.worldFromEvent(e);
-    // Affordance: offer a grab cursor over a draggable wire endpoint.
+    // Affordance: offer a grab cursor over a draggable wire — either an
+    // endpoint (drag one end) or the wire body (drag the whole wire).
+    const overWire =
+      this.#wireEndAtWorld(world) !== null ||
+      Boolean(e.target?.closest?.(".wire"));
     this.#viewport.classList.toggle(
       "desk-viewport--wire-grab",
-      !this.#editingLocked && this.#wireEndAtWorld(world) !== null,
+      !this.#editingLocked && overWire,
     );
 
     // Hover addressing: suppressed below the zoom floor.

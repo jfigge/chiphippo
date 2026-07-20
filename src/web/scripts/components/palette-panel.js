@@ -28,15 +28,27 @@ export class PalettePanel {
   #el;
   #list;
   #onPickChip;
+  #onCollapseChange;
   #filter = "";
+  #collapsed;
 
   /**
    * @param {HTMLElement} container - mounted as the desk row's left panel.
    * @param {object} callbacks
    * @param {(ref: string) => void} callbacks.onPickChip
+   * @param {(groups: string[]) => void} [callbacks.onCollapseChange] - fired
+   *   with the current collapsed-group names whenever the user toggles one, so
+   *   the host can persist them.
+   * @param {string[]} [callbacks.collapsedGroups] - group names to start
+   *   collapsed (restored from settings).
    */
-  constructor(container, { onPickChip } = {}) {
+  constructor(
+    container,
+    { onPickChip, onCollapseChange, collapsedGroups } = {},
+  ) {
     this.#onPickChip = onPickChip;
+    this.#onCollapseChange = onCollapseChange;
+    this.#collapsed = new Set(collapsedGroups ?? []);
 
     const filterInput = el("input", {
       class: "palette-filter",
@@ -94,34 +106,67 @@ export class PalettePanel {
       if (!groups.has(def.group)) groups.set(def.group, []);
       groups.get(def.group).push(def);
     }
+    // While a filter is active, force every group open so matches stay
+    // visible; the remembered collapse state only governs the unfiltered list.
+    const filtering = this.#filter.trim() !== "";
     for (const [group, members] of groups) {
+      const collapsed = !filtering && this.#collapsed.has(group);
       this.#list.append(
-        el("h3", { class: "palette-group", text: group }),
-        ...members.map((def) =>
-          el(
-            "button",
-            {
-              class: "palette-item",
-              type: "button",
-              title: def.blurb,
-              dataset: { ref: def.id },
-              onClick: (e) => this.#onPickChip?.(def.id, e),
-            },
-            [
-              el("span", { class: "palette-item-id", text: def.id }),
-              el("span", { class: "palette-item-title", text: def.title }),
-              // "sim-ready" badge for chips whose behavior is defined —
-              // combinational (Feature 80) or sequential (Feature 100).
-              hasBehavior(def) &&
-                el("span", {
-                  class: "palette-item-badge",
-                  text: "sim",
-                  title: "Behavior defined — ready for the simulator",
-                }),
-            ],
+        el(
+          "button",
+          {
+            class: collapsed
+              ? "palette-group palette-group--collapsed"
+              : "palette-group",
+            type: "button",
+            "aria-expanded": collapsed ? "false" : "true",
+            onClick: () => this.#toggleGroup(group),
+          },
+          [
+            // The caret glyph is a CSS pseudo-element on this span, so the
+            // button's textContent stays exactly the group name.
+            el("span", { class: "palette-group-caret", "aria-hidden": true }),
+            el("span", { class: "palette-group-label", text: group }),
+          ],
+        ),
+      );
+      this.#list.append(
+        el(
+          "div",
+          { class: "palette-group-items", hidden: collapsed },
+          members.map((def) =>
+            el(
+              "button",
+              {
+                class: "palette-item",
+                type: "button",
+                title: def.blurb,
+                dataset: { ref: def.id },
+                onClick: (e) => this.#onPickChip?.(def.id, e),
+              },
+              [
+                el("span", { class: "palette-item-id", text: def.id }),
+                el("span", { class: "palette-item-title", text: def.title }),
+                // "sim-ready" badge for chips whose behavior is defined —
+                // combinational (Feature 80) or sequential (Feature 100).
+                hasBehavior(def) &&
+                  el("span", {
+                    class: "palette-item-badge",
+                    text: "sim",
+                    title: "Behavior defined — ready for the simulator",
+                  }),
+              ],
+            ),
           ),
         ),
       );
     }
+  }
+
+  #toggleGroup(group) {
+    if (this.#collapsed.has(group)) this.#collapsed.delete(group);
+    else this.#collapsed.add(group);
+    this.#render();
+    this.#onCollapseChange?.([...this.#collapsed]);
   }
 }

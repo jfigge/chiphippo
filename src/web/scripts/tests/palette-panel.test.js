@@ -93,6 +93,104 @@ test("filter matches id, title, and blurb (case-insensitive)", () => {
   assert.equal(ids().length, PALETTE_DEFS.length);
 });
 
+test("group titles collapse/expand the parts beneath them", () => {
+  resetDom();
+  const host = document.createElement("div");
+  document.body.append(host);
+  new PalettePanel(host, {});
+
+  const firstGroup = host.querySelector(".palette-group");
+  const itemsFor = (headerEl) => headerEl.nextElementSibling;
+
+  // Open by default.
+  assert.equal(
+    firstGroup.classList.contains("palette-group--collapsed"),
+    false,
+  );
+  assert.equal(firstGroup.getAttribute("aria-expanded"), "true");
+  assert.equal(itemsFor(firstGroup).hidden, false);
+
+  // Clicking the header collapses the group's items (but keeps the header).
+  firstGroup.click();
+  const collapsedHeader = host.querySelector(".palette-group");
+  assert.equal(
+    collapsedHeader.classList.contains("palette-group--collapsed"),
+    true,
+  );
+  assert.equal(collapsedHeader.getAttribute("aria-expanded"), "false");
+  assert.equal(itemsFor(collapsedHeader).hidden, true);
+
+  // Clicking again re-opens it.
+  collapsedHeader.click();
+  const reopened = host.querySelector(".palette-group");
+  assert.equal(reopened.classList.contains("palette-group--collapsed"), false);
+  assert.equal(itemsFor(reopened).hidden, false);
+});
+
+test("an active filter forces collapsed groups open so matches show", () => {
+  resetDom();
+  const host = document.createElement("div");
+  document.body.append(host);
+  const panel = new PalettePanel(host, {});
+
+  // Collapse the first group, then filter to a member of it.
+  const header = host.querySelector(".palette-group");
+  const groupName = header.textContent;
+  const memberRef =
+    header.nextElementSibling.querySelector(".palette-item").dataset.ref;
+  header.click();
+  assert.equal(
+    host
+      .querySelector(".palette-group")
+      .classList.contains("palette-group--collapsed"),
+    true,
+  );
+
+  typeFilter(panel.element, memberRef);
+  const filteredHeader = host.querySelector(".palette-group");
+  assert.equal(filteredHeader.textContent, groupName);
+  assert.equal(
+    filteredHeader.classList.contains("palette-group--collapsed"),
+    false,
+  );
+  assert.ok(host.querySelector(`.palette-item[data-ref="${memberRef}"]`));
+
+  // Clearing the filter restores the remembered collapsed state.
+  typeFilter(panel.element, "");
+  assert.equal(
+    host
+      .querySelector(".palette-group")
+      .classList.contains("palette-group--collapsed"),
+    true,
+  );
+});
+
+test("collapsedGroups restores state and onCollapseChange reports toggles", () => {
+  resetDom();
+  const host = document.createElement("div");
+  document.body.append(host);
+
+  const firstName = [...new Set(PALETTE_DEFS.map((d) => d.group))][0];
+  const changes = [];
+  const panel = new PalettePanel(host, {
+    collapsedGroups: [firstName],
+    onCollapseChange: (groups) => changes.push(groups),
+  });
+
+  // The restored group starts collapsed.
+  const header = host.querySelector(".palette-group");
+  assert.equal(header.textContent, firstName);
+  assert.equal(header.classList.contains("palette-group--collapsed"), true);
+  assert.equal(header.nextElementSibling.hidden, true);
+
+  // Toggling reports the full collapsed set each time (not a delta).
+  header.click(); // expand → now empty
+  assert.deepEqual(changes.at(-1), []);
+  host.querySelector(".palette-group").click(); // collapse again
+  assert.deepEqual(changes.at(-1), [firstName]);
+  assert.ok(panel.element);
+});
+
 test("setVisible toggles the hidden attribute", () => {
   resetDom();
   const host = document.createElement("div");

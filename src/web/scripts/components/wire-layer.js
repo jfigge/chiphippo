@@ -55,6 +55,7 @@ export class WireLayer {
   #selectedId = null;
   #preview = null; // preview path elements while the wire tool is pending
   #endpointDrag = null; // { wireId, end, world:{x,y} px, legal } while dragging an end
+  #wholeDrag = null; // { wireId, from:{x,y} px, to:{x,y} px, legal } dragging a whole wire
 
   /**
    * @param {HTMLElement} layer - the `.layer-wires` element.
@@ -125,15 +126,21 @@ export class WireLayer {
   render(overrides) {
     const preview = this.#preview; // survives rebuilds (appended last)
     const drag = this.#endpointDrag;
+    const whole = this.#wholeDrag;
     clear(this.#svg);
     for (const wire of this.#doc.wires) {
       let a = this.#endpointWorld(wire.from, overrides);
       let b = this.#endpointWorld(wire.to, overrides);
-      // A dragged endpoint follows the cursor (world px) instead of its hole.
-      const dragging = drag && drag.wireId === wire.id;
-      if (dragging) {
+      // A dragged endpoint follows the cursor (world px) instead of its hole;
+      // a whole-wire drag overrides BOTH ends (rigid translation).
+      const draggingEnd = drag && drag.wireId === wire.id;
+      const draggingWhole = whole && whole.wireId === wire.id;
+      if (draggingEnd) {
         if (drag.end === "from") a = drag.world;
         else b = drag.world;
+      } else if (draggingWhole) {
+        a = whole.from;
+        b = whole.to;
       }
       if (!a || !b) continue; // defensive: normalize prevents danglers
       const d = wirePath(a, b);
@@ -151,11 +158,13 @@ export class WireLayer {
         svgEl("circle", { class: "wire-cap", cx: a.x, cy: a.y, r: CAP_RADIUS }),
         svgEl("circle", { class: "wire-cap", cx: b.x, cy: b.y, r: CAP_RADIUS }),
       );
-      // While an end is dragged, mute its hit stroke (pointer is captured) and
-      // tint the wire red over an illegal drop, mirroring the rubber band.
-      if (dragging) {
+      // While dragging (one end or the whole wire), mute the hit stroke
+      // (pointer is captured) and tint the wire red over an illegal drop,
+      // mirroring the rubber band.
+      if (draggingEnd || draggingWhole) {
         group.classList.add("wire--dragging");
-        group.classList.toggle("wire-preview--illegal", drag.legal === false);
+        const legal = draggingEnd ? drag.legal : whole.legal;
+        group.classList.toggle("wire-preview--illegal", legal === false);
       }
       group.classList.toggle("wire--selected", wire.id === this.#selectedId);
       group.addEventListener("click", (e) => this.#onSelect?.(wire.id, e));
@@ -179,6 +188,18 @@ export class WireLayer {
    */
   setEndpointDrag(spec) {
     this.#endpointDrag = spec;
+    this.render();
+  }
+
+  /**
+   * Live-preview a whole wire translated rigidly (the drag-the-middle gesture):
+   * BOTH endpoints move to arbitrary world-px points while length and
+   * orientation are preserved. `legal:false` tints it. Pass null to stop and
+   * redraw from the document.
+   * @param {{wireId:string, from:{x:number,y:number}, to:{x:number,y:number}, legal?:boolean}|null} spec
+   */
+  setWholeDrag(spec) {
+    this.#wholeDrag = spec;
     this.render();
   }
 

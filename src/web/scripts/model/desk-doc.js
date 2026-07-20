@@ -36,6 +36,7 @@ import { BOARD_TYPES } from "./board-types.js";
 import { parseAddress, parseHole, spec } from "./breadboard.js";
 import { partDef } from "../catalog/index.js";
 import {
+  canMoveWire,
   canPlacePart,
   canPlaceWire,
   canReendWire,
@@ -616,6 +617,11 @@ export class DeskDoc {
     return canReendWire(this.#doc, id, end, address);
   }
 
+  /** May wire `id` move rigidly to connect `from` → `to`? (occupancy) */
+  canMoveWire(id, from, to) {
+    return canMoveWire(this.#doc, id, from, to);
+  }
+
   /**
    * Connect two free holes. Throws INVALID_ARG (bad color) /
    * ILLEGAL_PLACEMENT (either end unreal, occupied, or from === to).
@@ -654,6 +660,25 @@ export class DeskDoc {
       );
     }
     wire[end] = address;
+    return { ...wire };
+  }
+
+  /**
+   * Move BOTH ends of a wire at once (the drag-the-whole-wire gesture, which
+   * translates it rigidly). Throws NOT_FOUND (no such wire) / ILLEGAL_PLACEMENT
+   * (either target unreal, occupied, or the two coincide). Returns the wire.
+   */
+  moveWire(id, from, to) {
+    const wire = this.#doc.wires.find((w) => w.id === id);
+    if (!wire) throw taggedError(`no wire ${id}`, "NOT_FOUND");
+    if (!canMoveWire(this.#doc, id, from, to)) {
+      throw taggedError(
+        `wire ${id} cannot move to ${from} → ${to}`,
+        "ILLEGAL_PLACEMENT",
+      );
+    }
+    wire.from = from;
+    wire.to = to;
     return { ...wire };
   }
 

@@ -196,7 +196,16 @@
 }
 
 .palette-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  width: 100%;
   margin: var(--space-3) 0 var(--space-1);
+  padding: var(--space-1) 0;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
   font-size: 11px;
   font-weight: 600;
   text-transform: uppercase;
@@ -206,6 +215,29 @@
 
 .palette-group:first-child {
   margin-top: 0;
+}
+
+.palette-group:hover {
+  color: var(--color-subtext);
+}
+
+/* Disclosure caret — points down when open, right when collapsed. */
+.palette-group-caret {
+  flex: 0 0 auto;
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid currentColor;
+  transition: transform 0.12s ease;
+}
+
+.palette-group--collapsed .palette-group-caret {
+  transform: rotate(-90deg);
+}
+
+.palette-group-items[hidden] {
+  display: none;
 }
 
 .palette-item {
@@ -287,6 +319,11 @@
 }
 
 .desk-viewport--panning {
+  cursor: grabbing;
+}
+
+/* An item (board, part, or brick) grabbed and being moved: closed hand. */
+.desk-viewport--dragging {
   cursor: grabbing;
 }
 

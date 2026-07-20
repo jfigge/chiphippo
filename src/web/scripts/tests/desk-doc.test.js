@@ -429,6 +429,39 @@ test("setWireEndpoint: re-addresses one end; frees the old hole", () => {
   });
 });
 
+test("moveWire: re-addresses BOTH ends at once; frees both old holes", () => {
+  const doc = docWithFull();
+  doc.addWire({ from: "bb1.a1", to: "bb1.a10", color: "blue" }); // w1
+
+  // Translate the whole wire; it keeps its id/color, both ends re-addressed.
+  const moved = doc.moveWire("w1", "bb1.a2", "bb1.a11");
+  assert.deepEqual(moved, {
+    id: "w1",
+    from: "bb1.a2",
+    to: "bb1.a11",
+    color: "blue",
+  });
+  assert.equal(doc.isHoleFree("bb1.a1"), true); // both old holes released
+  assert.equal(doc.isHoleFree("bb1.a10"), true);
+  assert.equal(doc.isHoleFree("bb1.a2"), false); // both new holes occupied
+  assert.equal(doc.isHoleFree("bb1.a11"), false);
+
+  // Rejections: unknown wire, coincident ends, onto another wire's hole, unreal.
+  assert.throws(() => doc.moveWire("w9", "bb1.a3", "bb1.a4"), {
+    code: "NOT_FOUND",
+  });
+  assert.throws(() => doc.moveWire("w1", "bb1.a3", "bb1.a3"), {
+    code: "ILLEGAL_PLACEMENT",
+  });
+  doc.addWire({ from: "bb1.b1", to: "bb1.b5" }); // w2 occupies bb1.b1
+  assert.throws(() => doc.moveWire("w1", "bb1.b1", "bb1.a3"), {
+    code: "ILLEGAL_PLACEMENT",
+  });
+  assert.throws(() => doc.moveWire("w1", "bb1.a3", "bb1.a99"), {
+    code: "ILLEGAL_PLACEMENT",
+  });
+});
+
 test("removeBoard cascades wires touching it (either endpoint)", () => {
   const doc = docWithFull();
   doc.addBoard("tiny", 0, 30); // bb2

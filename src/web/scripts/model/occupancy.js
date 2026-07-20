@@ -161,6 +161,30 @@ export function canReendWire(doc, wireId, end, address) {
 }
 
 /**
+ * May wire `wireId` move RIGIDLY so its two ends land on `from` and `to` at
+ * once (the drag-the-whole-wire gesture)? Both targets must be real, distinct
+ * points, and free — ignoring the moving wire's OWN two endpoints, since it
+ * slides off both old holes simultaneously.
+ *
+ * @param {{ boards: Array, components: Array, wires: Array }} doc
+ * @param {string} wireId
+ * @param {string} from
+ * @param {string} to
+ */
+export function canMoveWire(doc, wireId, from, to) {
+  if (from === to) return false;
+  if (!isRealPoint(doc, from) || !isRealPoint(doc, to)) return false;
+  const occupancy = buildOccupancy(doc);
+  for (const address of [from, to]) {
+    const occupant = occupancy.get(address);
+    if (occupant && !(occupant.kind === "wire" && occupant.wireId === wireId)) {
+      return false;
+    }
+  }
+  return true;
+}
+
+/**
  * May a board part (chip or discrete) seat here? True when the board
  * exists, the anchor fits the footprint (chips row e; discretes any grid
  * row), EVERY pin's hole exists on the board type, and every hole is
