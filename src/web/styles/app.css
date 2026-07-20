@@ -232,11 +232,48 @@
   transition: transform 0.12s ease;
 }
 
-.palette-group--collapsed .palette-group-caret {
+.palette-group--collapsed .palette-group-caret,
+.palette-folder--collapsed .palette-group-caret {
   transform: rotate(-90deg);
 }
 
 .palette-group-items[hidden] {
+  display: none;
+}
+
+/* Top-level "Chips" folder wrapping every chip group — one level above a
+   group: bolder, mixed-case, stronger colour. */
+.palette-folder {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  width: 100%;
+  margin: var(--space-3) 0 var(--space-1);
+  padding: var(--space-1) 0;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--color-subtext);
+}
+
+.palette-folder:first-child {
+  margin-top: 0;
+}
+
+.palette-folder:hover {
+  color: var(--color-text);
+}
+
+/* Chip groups sit indented one level under the folder. */
+.palette-folder-groups {
+  padding-left: var(--space-3);
+}
+
+.palette-folder-groups[hidden] {
   display: none;
 }
 
@@ -580,6 +617,85 @@
    electrically it's a weak coupler (pull-up/pull-down/series R). */
 .part-resistor-lead {
   fill: var(--color-chip-leg);
+}
+
+/* A span part's lead is a stroked line (any angle, rail↔column). */
+.part-span-lead {
+  stroke: var(--color-chip-leg);
+  stroke-width: 0.14;
+  stroke-linecap: round;
+}
+
+/* A part spanning a rail and a far row covers a tall, mostly-empty box, so only
+   its lead takes the pointer — every hole under the box stays clickable. The
+   widened invisible hit stroke mirrors .wire-hit. */
+.part-discrete--resistor,
+.part-discrete--led {
+  pointer-events: none;
+}
+
+.part-span-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+  pointer-events: stroke;
+}
+
+/* Smoke rises past the span's viewBox, so let it escape (same trick the wire
+   layer uses for its zero-size anchor). */
+.part-discrete-svg--rotated {
+  overflow: visible;
+}
+
+/* ── Burnt-out LED: powered with no series resistor ──────────────────────── */
+/* Hidden until the controller marks the part burnt while the sim runs. */
+.part-burn {
+  display: none;
+}
+
+.part-discrete--burnt .part-burn {
+  display: block;
+}
+
+/* A burnt LED never glows, whatever the levels say. */
+.part-discrete--burnt .part-led-dome {
+  fill: var(--color-part-inset);
+}
+
+.part-burn-x {
+  stroke: var(--color-danger);
+  stroke-width: 0.26;
+  stroke-linecap: round;
+}
+
+.part-burn-smoke {
+  fill: var(--color-part-smoke);
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: part-burn-smoke 1.8s ease-out infinite;
+}
+
+@keyframes part-burn-smoke {
+  0% {
+    opacity: 0;
+    transform: translateY(0) scale(0.35);
+  }
+  25% {
+    opacity: 0.75; /* darker smoke needs a touch more presence to read */
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-2.4px) scale(1.3);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .part-burn-smoke {
+    animation: none;
+    opacity: 0.4;
+  }
 }
 
 .part-resistor-body {

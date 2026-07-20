@@ -43,13 +43,24 @@ function makeDesk(deskDoc) {
   return { viewport, surface, controller };
 }
 
-/** Dispatch a running sim-state with a hand-built netlist + levels. */
-function publishSim({ netOfPoint, netLevels, chipStatus = new Map() }) {
+/**
+ * Dispatch a running sim-state with a hand-built netlist + levels.
+ * `strongLevels` are the levels from supplies/chip outputs alone; the default
+ * (empty) means nothing is strongly driven — i.e. the LED is fed through a
+ * current-limiting resistor, the safe case.
+ */
+function publishSim({
+  netOfPoint,
+  netLevels,
+  strongLevels = new Map(),
+  chipStatus = new Map(),
+}) {
   window.dispatchEvent(
     new window.CustomEvent("chiphippo:sim-state", {
       detail: {
         running: true,
         netLevels,
+        strongLevels,
         chipStatus,
         warnings: [],
         netlist: { netOfPoint: new Map(netOfPoint) },
@@ -57,6 +68,92 @@ function publishSim({ netOfPoint, netLevels, chipStatus = new Map() }) {
     }),
   );
 }
+
+/** An LED wired straight across the rails: both ends STRONGLY driven. */
+function ledDoc() {
+  const doc = new DeskDoc(null);
+  doc.addBoard("full", 0, 0);
+  return doc;
+}
+
+test("an LED powered with NO series resistor burns out (red X, no glow)", () => {
+  resetDom();
+  const doc = ledDoc();
+  const { surface, controller } = makeDesk(doc);
+  controller.addComponentAt("led", "bb1", "a1", { color: "red" });
+  const ledEl = surface.querySelector(".part-discrete--led");
+
+  const levels = new Map([
+    ["netA", H],
+    ["netK", L],
+  ]);
+  publishSim({
+    netOfPoint: [
+      ["bb1.a1", "netA"],
+      ["bb1.a2", "netK"],
+    ],
+    netLevels: levels,
+    // Both ends driven directly by rails/outputs — nothing limits the current.
+    strongLevels: levels,
+  });
+  assert.ok(ledEl.classList.contains("part-discrete--burnt"), "burnt");
+  assert.ok(!ledEl.classList.contains("part-discrete--lit"), "never glows");
+  // The overlay carries the X and the smoke puffs.
+  assert.equal(ledEl.querySelectorAll(".part-burn-x").length, 2);
+  assert.ok(ledEl.querySelectorAll(".part-burn-smoke").length >= 1);
+});
+
+test("a resistor in the path keeps the LED lit and unburnt", () => {
+  resetDom();
+  const doc = ledDoc();
+  const { surface, controller } = makeDesk(doc);
+  controller.addComponentAt("led", "bb1", "a1", { color: "red" });
+  const ledEl = surface.querySelector(".part-discrete--led");
+
+  publishSim({
+    netOfPoint: [
+      ["bb1.a1", "netA"],
+      ["bb1.a2", "netK"],
+    ],
+    netLevels: new Map([
+      ["netA", H],
+      ["netK", L],
+    ]),
+    // The anode only reaches H through a resistor, so it is not STRONGLY H.
+    strongLevels: new Map([["netK", L]]),
+  });
+  assert.ok(ledEl.classList.contains("part-discrete--lit"), "lit");
+  assert.ok(!ledEl.classList.contains("part-discrete--burnt"), "not burnt");
+});
+
+test("stopping the sim clears a burnt LED", () => {
+  resetDom();
+  const doc = ledDoc();
+  const { surface, controller } = makeDesk(doc);
+  controller.addComponentAt("led", "bb1", "a1", { color: "red" });
+  const ledEl = surface.querySelector(".part-discrete--led");
+
+  const levels = new Map([
+    ["netA", H],
+    ["netK", L],
+  ]);
+  publishSim({
+    netOfPoint: [
+      ["bb1.a1", "netA"],
+      ["bb1.a2", "netK"],
+    ],
+    netLevels: levels,
+    strongLevels: levels,
+  });
+  assert.ok(ledEl.classList.contains("part-discrete--burnt"));
+
+  window.dispatchEvent(
+    new window.CustomEvent("chiphippo:sim-state", {
+      detail: { running: false, netLevels: new Map(), warnings: [] },
+    }),
+  );
+  assert.ok(!ledEl.classList.contains("part-discrete--burnt"), "cleared");
+});
 
 test("an LED lights when its anode net is H and its cathode net is L", () => {
   resetDom();

@@ -258,6 +258,9 @@ export class SimController {
           running: this.running,
           mode: this.#mode,
           netLevels: result?.netLevels ?? new Map(),
+          // Levels from supplies/chip outputs ALONE (no resistor pulls) — the
+          // views use these to spot an LED wired with no series resistor.
+          strongLevels: result?.strongLevels ?? new Map(),
           chipStatus: result?.chipStatus ?? new Map(),
           warnings: result?.warnings ?? [],
           netlist: netlist ?? null,

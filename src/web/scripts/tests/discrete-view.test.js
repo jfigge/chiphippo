@@ -21,7 +21,7 @@ import assert from "node:assert/strict";
 
 import { resetDom } from "./jsdom-setup.js";
 
-const { buildDiscreteSvg, DiscreteView, discreteBox } =
+const { buildDiscreteSvg, buildSpanSvg, DiscreteView, discreteBox } =
   await import("../components/discrete-view.js");
 const { buildPsuSvg, PsuView } = await import("../components/psu-view.js");
 
@@ -59,6 +59,80 @@ test("buildDiscreteSvg: resistor has two leads and a banded body", () => {
 test("discreteBox rejects unknown refs", () => {
   resetDom();
   assert.throws(() => discreteBox("capacitor"), { code: "INVALID_REF" });
+});
+
+test("buildSpanSvg: draws a lead + banded body across any vector", () => {
+  resetDom();
+  // A vertical span (pin 2 three rows below pin 1).
+  const svg = buildSpanSvg("resistor", 0, 3);
+  const line = svg.querySelector(".part-span-lead");
+  assert.equal(line.getAttribute("x1"), "0");
+  assert.equal(line.getAttribute("y1"), "0");
+  assert.equal(line.getAttribute("x2"), "0");
+  assert.equal(line.getAttribute("y2"), "3"); // the lead reaches pin 2
+  assert.ok(svg.querySelector(".part-resistor-body"));
+  assert.ok(svg.querySelectorAll(".part-resistor-band").length >= 1);
+  assert.ok(svg.classList.contains("part-discrete-svg--rotated"));
+  // A widened hit stroke tracks the lead — the only pointer target, so a long
+  // span's box doesn't swallow clicks on the holes beneath it.
+  const hit = svg.querySelector(".part-span-hit");
+  assert.equal(hit.getAttribute("x2"), "0");
+  assert.equal(hit.getAttribute("y2"), "3");
+
+  // The body is CENTRED on the pair and rotated to the lead angle.
+  const body = svg.querySelector(".part-resistor-body");
+  assert.equal(body.getAttribute("y"), "1"); // midpoint 1.5 − half-height 0.5
+  assert.match(
+    body.parentNode.getAttribute("transform"),
+    /^rotate\(90 0 1\.5\)$/, // 90° about the midpoint (0, 1.5)
+  );
+});
+
+test("buildSpanSvg: an LED spans with a centred dome and cathode cue", () => {
+  resetDom();
+  // Diagonal span: 3 across, 4 down (length 5, angle ~53°).
+  const svg = buildSpanSvg("led", 3, 4, { color: "green", flip: false });
+  assert.ok(svg.querySelector(".part-led-dome--green"));
+  assert.ok(svg.querySelector(".part-span-lead"));
+  assert.ok(svg.querySelector(".part-span-hit"));
+  // The dome sits over the MIDPOINT (1.5, 2), lifted 1 unit off the leads.
+  const dome = svg.querySelector(".part-led-dome");
+  assert.equal(dome.getAttribute("cx"), "1.5");
+  assert.equal(dome.getAttribute("cy"), "1");
+  // …and the whole body is rotated to the lead angle about that midpoint.
+  assert.match(dome.parentNode.getAttribute("transform"), /^rotate\(53\./);
+
+  // Flipping mirrors the cathode flat to the other side of the midpoint.
+  const flatX = (flip) =>
+    Number(
+      buildSpanSvg("led", 3, 4, { color: "red", flip })
+        .querySelector(".part-led-flat")
+        .getAttribute("x"),
+    );
+  assert.ok(flatX(true) < flatX(false));
+});
+
+test("DiscreteView.updateSpan renders + positions a rotated resistor", () => {
+  resetDom();
+  const layer = document.createElement("div");
+  document.body.append(layer);
+  const board = { type: "full", x: 0, y: 0 };
+  const view = new DiscreteView(
+    layer,
+    {
+      id: "r1",
+      ref: "resistor",
+      params: { ohms: 10000, rot: 90, end: "a10" },
+    },
+    {},
+  );
+  // No horizontal SVG is built for a rotated resistor at construction…
+  assert.equal(layer.querySelector(".part-resistor-body"), null);
+  // …until updateSpan draws the span and seats the element.
+  view.updateSpan(board, "b-1", "a10");
+  assert.ok(layer.querySelector(".part-span-lead"));
+  assert.ok(layer.querySelector(".part-discrete-svg--rotated"));
+  assert.notEqual(view.element.style.left, "");
 });
 
 test("DiscreteView: seats in world px; cap press emits chiphippo:part-state", () => {

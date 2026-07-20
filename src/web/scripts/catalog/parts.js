@@ -79,17 +79,29 @@ export const PART_DEFS = Object.freeze(
       title: "LED",
       blurb:
         "Light-emitting diode (idealized — no series resistor required). " +
-        "Anode at the anchor hole; press F while placing to flip polarity.",
+        "Anode at the anchor hole; press F while placing to flip polarity, " +
+        "R to stand it up and pick two free ends (rail or column).",
       group: "Parts",
+      // Legs sit in ADJACENT holes — an LED needs no gap between its pins.
       footprint: Object.freeze({ offsets: Object.freeze([0, 1]) }),
+      // Rotatable to the two-free-ends form (see the resistor): either leg can
+      // move to any free hole, so an LED reaches any rail at any angle.
+      rotatable: true,
+      // One hole apart is fine — the legs only have to be in different holes.
+      minSpan: 1,
       pins: [
         { n: 1, name: "A", role: "anode" },
         { n: 2, name: "K", role: "cathode" },
       ],
       normalizeParams(raw) {
+        const rotated = raw?.rot === 90;
         return {
           color: LED_COLORS.includes(raw?.color) ? raw.color : "red",
           flip: raw?.flip === true,
+          // Orientation: 0 = footprint form, 90 = two free ends.
+          rot: rotated ? 90 : 0,
+          // Pin 2's hole id — only meaningful (and kept) when rotated.
+          end: rotated && typeof raw?.end === "string" ? raw.end : null,
         };
       },
       internalBridges() {
@@ -110,16 +122,33 @@ export const PART_DEFS = Object.freeze(
         "Two-terminal resistor. In this logic-level sim it's a WEAK coupler: " +
         "it conducts one end's driven level to the other at a strength below " +
         "any chip output, so it behaves as a pull-up / pull-down / series " +
-        "resistor. The ohms value is cosmetic (no analog current here).",
+        "resistor. The ohms value is cosmetic (no analog current here). " +
+        "Press R while placing to stand it vertically and pick two free ends " +
+        "(e.g. a power rail and a grid column).",
       group: "Parts",
       footprint: Object.freeze({ offsets: Object.freeze([0, 3]) }),
+      // Rotatable to a vertical, two-free-ends form: pin 1 at the anchor hole,
+      // pin 2 at `params.end` (any free hole — rail or grid). The seating model
+      // switches from footprint-offset to two independent endpoints, so either
+      // lead can reach ANY rail (near or far) at any angle.
+      rotatable: true,
+      // Leads can't be bent closer than the body is long: the two ends must sit
+      // at least this far apart (pitch units) — the horizontal footprint's span.
+      minSpan: 3,
       pins: [
         { n: 1, name: "1", role: "lead" },
         { n: 2, name: "2", role: "lead" },
       ],
       normalizeParams(raw) {
         const ohms = Number(raw?.ohms);
-        return { ohms: Number.isFinite(ohms) && ohms > 0 ? ohms : 10000 };
+        const rotated = raw?.rot === 90;
+        return {
+          ohms: Number.isFinite(ohms) && ohms > 0 ? ohms : 10000,
+          // Orientation: 0 = horizontal footprint, 90 = vertical two-end form.
+          rot: rotated ? 90 : 0,
+          // Pin 2's hole id — only meaningful (and kept) when rotated.
+          end: rotated && typeof raw?.end === "string" ? raw.end : null,
+        };
       },
       // A resistor is NOT a hard conductor — its two ends stay separate nets
       // (unlike a wire or a closed switch), so it declares no internal bridges.

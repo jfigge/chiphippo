@@ -33,7 +33,13 @@
 // never stored; occupancy.js is the single collision authority.
 
 import { BOARD_TYPES } from "./board-types.js";
-import { parseAddress, parseHole, spec } from "./breadboard.js";
+import {
+  holeAt,
+  holePosition,
+  parseAddress,
+  parseHole,
+  spec,
+} from "./breadboard.js";
 import { partDef } from "../catalog/index.js";
 import {
   canMoveWire,
@@ -41,6 +47,7 @@ import {
   canPlaceWire,
   canReendWire,
   isFreeHole,
+  partPinHoles,
 } from "./occupancy.js";
 
 export const DOC_VERSION = 1;
@@ -407,8 +414,14 @@ export class DeskDoc {
    * the single collision authority. `ignoreId` excludes one component's own
    * pins (moves).
    */
-  canPlacePart(ref, boardId, anchor, { ignoreId = null } = {}) {
-    return canPlacePart(this.#doc, { ref, board: boardId, anchor, ignoreId });
+  canPlacePart(ref, boardId, anchor, { ignoreId = null, params = null } = {}) {
+    return canPlacePart(this.#doc, {
+      ref,
+      board: boardId,
+      anchor,
+      params,
+      ignoreId,
+    });
   }
 
   /** Back-compat alias (Feature 40 name). */
@@ -433,7 +446,10 @@ export class DeskDoc {
     if (!this.#doc.boards.some((b) => b.id === boardId)) {
       throw taggedError(`no board ${boardId}`, "NOT_FOUND");
     }
-    if (!this.canPlacePart(ref, boardId, anchor)) {
+    // Normalize FIRST so a rotated resistor's pins (which depend on rot/end)
+    // are validated against the params that will actually be stored.
+    const normalized = normalizeParams(def, params);
+    if (!this.canPlacePart(ref, boardId, anchor, { params: normalized })) {
       throw taggedError(
         `a ${ref} cannot seat at ${boardId}.${anchor}`,
         "ILLEGAL_PLACEMENT",
@@ -445,7 +461,7 @@ export class DeskDoc {
       ref,
       board: boardId,
       anchor,
-      params: normalizeParams(def, params),
+      params: normalized,
     };
     this.#doc.components.push(component);
     return { ...component };
@@ -465,7 +481,12 @@ export class DeskDoc {
     if (!this.#doc.boards.some((b) => b.id === boardId)) {
       throw taggedError(`no board ${boardId}`, "NOT_FOUND");
     }
-    if (!this.canPlacePart(comp.ref, boardId, anchor, { ignoreId: id })) {
+    if (
+      !this.canPlacePart(comp.ref, boardId, anchor, {
+        ignoreId: id,
+        params: comp.params,
+      })
+    ) {
       throw taggedError(
         `${id} cannot seat at ${boardId}.${anchor}`,
         "ILLEGAL_PLACEMENT",
@@ -474,6 +495,84 @@ export class DeskDoc {
     comp.board = boardId;
     comp.anchor = anchor;
     return { ...comp };
+  }
+
+  /**
+   * Reposition a rotatable two-terminal part (resistor) by BOTH end holes at
+   * once — the rigid drag/rotate commit. Both must be free, real, distinct
+   * holes on `boardId` (rails included). Stores the two-free-ends form.
+   * Throws NOT_FOUND / INVALID_REF / ILLEGAL_PLACEMENT. Returns a copy.
+   */
+  movePartEnds(id, boardId, hole1, hole2) {
+    const comp = this.#doc.components.find((c) => c.id === id);
+    if (!comp) throw taggedError(`no component ${id}`, "NOT_FOUND");
+    const def = partDef(comp.ref);
+    if (!def?.rotatable) {
+      throw taggedError(`${comp.ref} is not rotatable`, "INVALID_REF");
+    }
+    if (!this.#doc.boards.some((b) => b.id === boardId)) {
+      throw taggedError(`no board ${boardId}`, "NOT_FOUND");
+    }
+    const params = normalizeParams(def, {
+      ...comp.params,
+      rot: 90,
+      end: hole2,
+    });
+    if (
+      !this.canPlacePart(comp.ref, boardId, hole1, { ignoreId: id, params })
+    ) {
+      throw taggedError(
+        `${id} cannot sit at ${boardId}.${hole1}→${hole2}`,
+        "ILLEGAL_PLACEMENT",
+      );
+    }
+    comp.board = boardId;
+    comp.anchor = hole1;
+    comp.params = params;
+    return { ...comp };
+  }
+
+  /**
+   * Rotate a placed rotatable part (resistor) 90° around pin 1: pin 1 stays,
+   * pin 2 pivots to the hole at the rotated position (snapped; tries CW then
+   * CCW). The part is stored in its two-free-ends form (`rot: 90`, `end`).
+   * Throws NOT_FOUND / INVALID_REF (not rotatable) / ILLEGAL_PLACEMENT (no free
+   * hole at either rotated position). Returns a copy.
+   */
+  rotateComponent(id) {
+    const comp = this.#doc.components.find((c) => c.id === id);
+    if (!comp) throw taggedError(`no component ${id}`, "NOT_FOUND");
+    const def = partDef(comp.ref);
+    if (!def?.rotatable) {
+      throw taggedError(`${comp.ref} is not rotatable`, "INVALID_REF");
+    }
+    const board = this.#doc.boards.find((b) => b.id === comp.board);
+    const pins = board && partPinHoles(comp.ref, comp.anchor, comp.params);
+    if (!pins) throw taggedError(`${id} has no pins`, "ILLEGAL_PLACEMENT");
+    const p1 = holePosition(board.type, pins[0].hole);
+    const p2 = holePosition(board.type, pins[1].hole);
+    // Pivot pin 2 around pin 1 by ±90° (keep pin 1 fixed); snap to a hole.
+    for (const dir of [1, -1]) {
+      const nx = p1.x - dir * (p2.y - p1.y);
+      const ny = p1.y + dir * (p2.x - p1.x);
+      const hole = holeAt(board.type, nx, ny);
+      if (!hole || hole === pins[0].hole) continue;
+      const params = normalizeParams(def, {
+        ...comp.params,
+        rot: 90,
+        end: hole,
+      });
+      if (
+        this.canPlacePart(comp.ref, comp.board, comp.anchor, {
+          ignoreId: id,
+          params,
+        })
+      ) {
+        comp.params = params;
+        return { ...comp };
+      }
+    }
+    throw taggedError(`${id} cannot rotate here`, "ILLEGAL_PLACEMENT");
   }
 
   /**

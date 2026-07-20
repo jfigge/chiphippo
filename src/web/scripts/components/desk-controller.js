@@ -49,7 +49,9 @@ import { ChipView, buildChipSvg, chipBox } from "./chip-view.js";
 import {
   DiscreteView,
   buildDiscreteSvg,
+  buildSpanSvg,
   discreteBox,
+  spanPad,
 } from "./discrete-view.js";
 import { PsuView, buildPsuSvg } from "./psu-view.js";
 import { ClockView, buildClockSvg } from "./clock-view.js";
@@ -129,6 +131,7 @@ export class DeskController {
   #editingLocked = false;
   #simRunning = false;
   #simLevels = new Map(); // netId → level
+  #simStrong = new Map(); // netId → level from supplies/outputs only (no pulls)
   #simNetlist = null; // the netlist the levels are keyed against
   #onReplaceChip;
   #onClockToggle;
@@ -238,9 +241,13 @@ export class DeskController {
   }
 
   get placementArmed() {
-    return ["place", "place-chip", "place-part", "place-brick"].includes(
-      this.#mode?.kind,
-    );
+    return [
+      "place",
+      "place-chip",
+      "place-part",
+      "place-brick",
+      "place-resistor",
+    ].includes(this.#mode?.kind);
   }
 
   // ── Selection (boards, parts, and wires share one slot) ─────────────────
@@ -376,6 +383,9 @@ export class DeskController {
     this.#mode.ghost.remove();
     this.#mode = null;
     this.#viewport.classList.remove("desk-viewport--placing");
+    // The two-click resistor uses the hover ring — clear it too (no-op else).
+    this.#ring.hidden = true;
+    this.#ring.classList.remove("hole-ring--illegal");
   }
 
   #trackGhost(e) {
@@ -522,6 +532,303 @@ export class DeskController {
       return { board: board.id, anchor: `${bestRow}${clamped}` };
     }
     return null;
+  }
+
+  // ── Rotated-resistor placement (two independent ends: rail ↔ column) ────────
+
+  get resistorPlaceArmed() {
+    return this.#mode?.kind === "place-resistor";
+  }
+
+  /**
+   * Enter a rotatable part's two-click placement (reached by pressing R while
+   * its ghost is armed): click a first free hole, then a second free hole on
+   * the SAME board — either can be a power rail or a grid column.
+   */
+  #enterSpanPlace(ref, params) {
+    const ghost = el("div", { class: "part-ghost", hidden: true });
+    this.#enterPlacement({
+      kind: "place-resistor",
+      ref,
+      params: { ...params, rot: 90 },
+      ghost,
+      from: null, // { boardId, hole, x, y } once the first end is clicked
+      hover: null, // { boardId, hole, x, y, legal } under the cursor
+    });
+  }
+
+  /** R toggles a rotatable part between footprint (ghost) and two-click
+      placement, spins it mid-drag, and rotates a selected placed one 90°. */
+  #toggleResistorRotation() {
+    const m = this.#mode;
+    // Mid-drag: spin the end-to-end vector 90° about pin 1 and redraw at the
+    // cursor's last position — free rotation while positioning.
+    if (m?.kind === "drag-resistor") {
+      m.orient = { dx: -m.orient.dy, dy: m.orient.dx };
+      // A rotation counts as a real gesture even without pointer travel, so the
+      // release commits (or reverts) instead of being treated as a plain click.
+      if (!m.active) {
+        m.active = true;
+        this.#partViews.get(m.id)?.setDragging(true);
+      }
+      this.#trackResistorDrag();
+      return true;
+    }
+    if (m?.kind === "place-part" && partDef(m.ref)?.rotatable) {
+      const { ref, params } = m;
+      this.cancelPlacement();
+      this.#enterSpanPlace(ref, params);
+      return true;
+    }
+    if (this.resistorPlaceArmed) {
+      const { ref, params } = m;
+      this.cancelPlacement();
+      this.armPartPlacement(ref, { ...params, rot: 0 });
+      return true;
+    }
+    // Not placing: rotate a selected placed part in situ.
+    if (this.#selected?.kind === "part") {
+      const comp = this.#doc.getComponent(this.#selected.id);
+      if (partDef(comp?.ref)?.rotatable) {
+        this.rotateComponent(this.#selected.id);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** Two-click placement pointermove: ring on the hovered hole + span preview. */
+  #trackResistorPlace(e) {
+    const m = this.#mode;
+    const world = this.#deskView.worldFromEvent(e);
+    const hit = this.#holeAtWorld(world); // board holes only (grid OR rail)
+    if (hit) {
+      const address = formatAddress(hit.board.id, hit.hole);
+      const free = this.#doc.isHoleFree(address);
+      // The 2nd end must be free, on the same board, a different hole, and at
+      // least the part's minimum lead span away (the body needs room).
+      const minSpan = partDef(m.ref)?.minSpan ?? 0;
+      const legal =
+        free &&
+        (!m.from ||
+          (hit.board.id === m.from.boardId &&
+            hit.hole !== m.from.hole &&
+            Math.hypot(hit.x - m.from.x, hit.y - m.from.y) >= minSpan));
+      m.hover = {
+        boardId: hit.board.id,
+        hole: hit.hole,
+        x: hit.x,
+        y: hit.y,
+        legal,
+      };
+      const r = RING_RADIUS * PX_PER_UNIT;
+      this.#ring.style.left = `${hit.x * PX_PER_UNIT - r}px`;
+      this.#ring.style.top = `${hit.y * PX_PER_UNIT - r}px`;
+      this.#ring.classList.toggle("hole-ring--illegal", !legal);
+      this.#ring.hidden = false;
+    } else {
+      m.hover = null;
+      this.#ring.hidden = true;
+    }
+    // Once the first end is anchored, a span preview tracks the cursor.
+    if (m.from) {
+      const to = m.hover ?? { x: world.x, y: world.y };
+      const dx = to.x - m.from.x;
+      const dy = to.y - m.from.y;
+      m.ghost.querySelector("svg")?.remove();
+      m.ghost.append(buildSpanSvg(m.ref, dx, dy, m.params));
+      const pad = spanPad(m.ref);
+      const minX = Math.min(0, dx) - pad;
+      const minY = Math.min(0, dy) - pad;
+      m.ghost.style.left = `${(m.from.x + minX) * PX_PER_UNIT}px`;
+      m.ghost.style.top = `${(m.from.y + minY) * PX_PER_UNIT}px`;
+      const legal = m.hover?.legal !== false && m.hover != null;
+      m.ghost.classList.toggle("part-ghost--legal", legal);
+      m.ghost.classList.toggle("part-ghost--illegal", !legal);
+      m.ghost.hidden = false;
+    } else {
+      m.ghost.hidden = true;
+    }
+  }
+
+  /** Two-click placement click: anchor the first end, create on the second. */
+  #commitResistorPlaceClick(e) {
+    const m = this.#mode;
+    this.#trackResistorPlace(e); // legality at the exact click point
+    if (!m.hover?.legal) return;
+    if (!m.from) {
+      m.from = { ...m.hover };
+      return;
+    }
+    this.addComponentAt(m.ref, m.from.boardId, m.from.hole, {
+      ...m.params,
+      rot: 90,
+      end: m.hover.hole,
+    });
+    // Re-arm for chaining: fresh first end, still vertical.
+    m.from = null;
+    m.ghost.hidden = true;
+    this.#ring.hidden = true;
+  }
+
+  /**
+   * The drag state for a placed resistor: it translates RIGIDLY (both ends
+   * together, snapped to the 0.1-in lattice) and can be rotated freely mid-drag
+   * with R. Returns null when its pins don't resolve (then a press just
+   * selects). Works for both forms — the horizontal footprint and the two-end
+   * span — since pin holes are always derived.
+   */
+  #resistorDragMode(comp, ends, e, world) {
+    return {
+      kind: "drag-resistor",
+      id: comp.id,
+      ref: comp.ref,
+      pointerId: e.pointerId,
+      startClientX: e.clientX,
+      startClientY: e.clientY,
+      startWorld: world,
+      lastWorld: world, // re-rendered from this when R rotates mid-drag
+      p1: { x: ends.a.x, y: ends.a.y }, // pin 1 at grab time
+      orient: { dx: ends.b.x - ends.a.x, dy: ends.b.y - ends.a.y },
+      origin: { board: comp.board, anchor: comp.anchor, params: comp.params },
+      holes: null, // { boardId, one, two } while both ends land legally
+      legal: false,
+      active: false,
+    };
+  }
+
+  /**
+   * A resistor's two ends as world points + hole ids, derived from whichever
+   * form it's stored in. Null when its pins don't resolve.
+   */
+  #resistorEndPoints(comp) {
+    const board = this.#doc.getBoard(comp.board);
+    const pins = board && partPinHoles(comp.ref, comp.anchor, comp.params);
+    if (!pins || pins.length < 2) return null;
+    const pa = holePosition(board.type, pins[0].hole);
+    const pb = holePosition(board.type, pins[1].hole);
+    if (!pa || !pb) return null;
+    return {
+      boardId: comp.board,
+      a: { hole: pins[0].hole, x: board.x + pa.x, y: board.y + pa.y },
+      b: { hole: pins[1].hole, x: board.x + pb.x, y: board.y + pb.y },
+    };
+  }
+
+  /** Which end (if either) a press grabs — "a", "b", or null for the body. */
+  #resistorEndAt(ends, world) {
+    let best = null;
+    let bestDist = WIRE_END_GRAB_RADIUS;
+    for (const key of ["a", "b"]) {
+      const p = ends[key];
+      const dist = Math.hypot(world.x - p.x, world.y - p.y);
+      if (dist <= bestDist) {
+        best = key;
+        bestDist = dist;
+      }
+    }
+    return best;
+  }
+
+  /** Drag ONE end of a resistor to any free hole (wire-endpoint style); the
+      other end stays put, so the span and angle are free to change. */
+  #resistorEndDragMode(comp, ends, grabbed, e, world) {
+    return {
+      kind: "drag-resistor-end",
+      id: comp.id,
+      ref: comp.ref,
+      boardId: comp.board,
+      moving: grabbed, // "a" (pin 1) or "b" (pin 2)
+      fixed: ends[grabbed === "a" ? "b" : "a"],
+      pointerId: e.pointerId,
+      startClientX: e.clientX,
+      startClientY: e.clientY,
+      lastWorld: world,
+      origin: { board: comp.board, anchor: comp.anchor, params: comp.params },
+      target: null, // { anchor, end } while the drop is legal
+      legal: false,
+      active: false,
+    };
+  }
+
+  /** Live single-end drag: the moving lead snaps to a hole, the other stays. */
+  #trackResistorEndDrag() {
+    const d = this.#mode;
+    const hit = this.#holeAtWorld(d.lastWorld);
+    d.target = null;
+    let legal = false;
+    if (hit && hit.board.id === d.boardId) {
+      // Keep pin order: the moving end replaces its own side of the pair.
+      const anchor = d.moving === "a" ? hit.hole : d.fixed.hole;
+      const end = d.moving === "a" ? d.fixed.hole : hit.hole;
+      // canPlacePart enforces free + distinct + the minimum lead span.
+      legal = this.#doc.canPlacePart(d.ref, d.boardId, anchor, {
+        ignoreId: d.id,
+        params: { rot: 90, end },
+      });
+      if (legal) d.target = { anchor, end };
+    }
+    d.legal = legal;
+    // The moving end rides the snapped hole, else the raw cursor.
+    const tip = hit ? { x: hit.x, y: hit.y } : d.lastWorld;
+    const view = this.#partViews.get(d.id);
+    view?.updateSpanWorld(
+      d.moving === "a" ? tip : d.fixed,
+      d.moving === "a" ? d.fixed : tip,
+    );
+    view?.setIllegal(!legal);
+  }
+
+  /** Live resistor drag: rigid lattice-snapped translation, both ends checked.
+      Either end may land on a rail, and the pair may move to ANOTHER board —
+      but both ends must share one board. */
+  #trackResistorDrag() {
+    const d = this.#mode;
+    // ONE integer delta moves both ends, so length and angle never change.
+    const dx = Math.round(d.lastWorld.x - d.startWorld.x);
+    const dy = Math.round(d.lastWorld.y - d.startWorld.y);
+    const p1 = { x: d.p1.x + dx, y: d.p1.y + dy };
+    const p2 = { x: p1.x + d.orient.dx, y: p1.y + d.orient.dy };
+    const a = this.#holeAtWorld(p1);
+    const b = this.#holeAtWorld(p2);
+    const sameBoard = a && b && a.board.id === b.board.id;
+    const legal =
+      Boolean(sameBoard && a.hole !== b.hole) &&
+      this.#doc.canPlacePart(d.ref, a.board.id, a.hole, {
+        ignoreId: d.id,
+        params: { rot: 90, end: b.hole },
+      });
+    d.holes = legal ? { boardId: a.board.id, one: a.hole, two: b.hole } : null;
+    d.legal = legal;
+    const view = this.#partViews.get(d.id);
+    view?.updateSpanWorld(p1, p2);
+    view?.setIllegal(!legal);
+  }
+
+  /** Rebuild a part's view from the document — the horizontal SVG and the
+      two-end span differ, so a shape change needs a fresh mount. Also the
+      canonical "snap back to where it was" after an illegal drop. */
+  #remountPart(id) {
+    const comp = this.#doc.getComponent(id);
+    if (!comp) return;
+    const selected =
+      this.#selected?.kind === "part" && this.#selected.id === id;
+    this.#partViews.get(id)?.remove();
+    this.#partViews.delete(id);
+    this.#mountPart(comp);
+    if (selected) this.#partViews.get(id)?.setSelected(true);
+  }
+
+  /** Rotate a placed rotatable part (resistor) 90° in place. No-op if it can't
+      fit (nothing free at either rotated position). */
+  rotateComponent(id) {
+    try {
+      this.#doc.rotateComponent(id);
+    } catch {
+      return; // nowhere free to rotate into — leave it as-is
+    }
+    this.#remountPart(id);
+    this.#emitDocChanged();
   }
 
   // ── Wire tool (Feature 50) ───────────────────────────────────────────────
@@ -869,9 +1176,26 @@ export class DeskController {
     return netId ? (this.#simLevels.get(netId) ?? null) : null;
   }
 
-  #onSimState({ running, netLevels, chipStatus, netlist, clockLevels }) {
+  /** The level a point would sit at from supplies/chip outputs ALONE — i.e.
+      ignoring resistor pulls. A point fed only through a resistor is not
+      strongly driven, which is how an LED tells a safe path from a lethal one. */
+  #strongLevelAt(address) {
+    if (!this.#simNetlist) return null;
+    const netId = this.#simNetlist.netOfPoint.get(address);
+    return netId ? (this.#simStrong.get(netId) ?? null) : null;
+  }
+
+  #onSimState({
+    running,
+    netLevels,
+    strongLevels,
+    chipStatus,
+    netlist,
+    clockLevels,
+  }) {
     this.#simRunning = running;
     this.#simLevels = netLevels ?? new Map();
+    this.#simStrong = strongLevels ?? new Map();
     this.#simNetlist = netlist ?? null;
 
     // Chip status badges (cleared when not running).
@@ -902,16 +1226,27 @@ export class DeskController {
       if (!view?.setLit) continue;
       if (!this.#simRunning) {
         view.setLit(false);
+        view.setBurnt?.(false);
         continue;
       }
       const { anodePin, cathodePin } = def.polarity(comp.params);
-      const pins = partPinHoles("led", comp.anchor);
+      const pins = partPinHoles("led", comp.anchor, comp.params);
+      if (!pins) continue; // a rotated LED with an unresolved far end
       const hole = (pin) => pins.find((p) => p.pin === pin)?.hole;
-      const anode = this.#levelAt(formatAddress(comp.board, hole(anodePin)));
-      const cathode = this.#levelAt(
-        formatAddress(comp.board, hole(cathodePin)),
-      );
-      view.setLit(anode === H && cathode === L);
+      const anodeAt = formatAddress(comp.board, hole(anodePin));
+      const cathodeAt = formatAddress(comp.board, hole(cathodePin));
+      const conducting =
+        this.#levelAt(anodeAt) === H && this.#levelAt(cathodeAt) === L;
+      // No series resistor: an LED conducting between a STRONGLY driven supply
+      // (rail or chip output) and a strongly grounded net has nothing limiting
+      // it. Anything fed through a resistor is only weakly pulled, so its
+      // strong level is not H/L — that's the safe case.
+      const unlimited =
+        conducting &&
+        this.#strongLevelAt(anodeAt) === H &&
+        this.#strongLevelAt(cathodeAt) === L;
+      view.setBurnt?.(unlimited);
+      view.setLit(conducting && !unlimited);
     }
   }
 
@@ -1092,6 +1427,13 @@ export class DeskController {
         else this.disarmWireTool();
         return true;
       }
+      // First Esc drops a pending resistor end; the next cancels placement.
+      if (this.resistorPlaceArmed && this.#mode.from) {
+        this.#mode.from = null;
+        this.#mode.ghost.hidden = true;
+        this.#ring.hidden = true;
+        return true;
+      }
       if (this.placementArmed) {
         this.cancelPlacement();
         return true;
@@ -1124,6 +1466,11 @@ export class DeskController {
       m.ghost.querySelector("svg")?.remove();
       m.ghost.append(buildDiscreteSvg(m.ref, m.params));
       return true;
+    }
+    // R rotates a resistor: toggles its placement between horizontal and the
+    // vertical two-click form, and rotates a selected placed resistor 90°.
+    if ((e.key === "r" || e.key === "R") && bareKey) {
+      if (this.#toggleResistorRotation()) return true;
     }
     if ((e.key === "Delete" || e.key === "Backspace") && this.#selected) {
       const { kind, id } = this.#selected;
@@ -1164,10 +1511,7 @@ export class DeskController {
       view = new ClockView(this.#layers.parts, component, callbacks);
     } else if (component.kind === "discrete") {
       view = new DiscreteView(this.#layers.parts, component, callbacks);
-      view.updatePlacement(
-        this.#doc.getBoard(component.board),
-        component.anchor,
-      );
+      this.#placePartView(view, component, this.#doc.getBoard(component.board));
     } else {
       view = new ChipView(this.#layers.parts, component, callbacks);
       view.updatePlacement(
@@ -1176,6 +1520,24 @@ export class DeskController {
       );
     }
     this.#partViews.set(component.id, view);
+  }
+
+  /** Position a part view: a rotated resistor spans its two holes, every other
+      part (chip/discrete) seats at its anchor. `board` may be an override
+      origin (live board drag). */
+  #placePartView(view, comp, board) {
+    if (!board) return;
+    // Every rotatable part draws as a span between its two derived pin holes —
+    // body centred on the pair and rotated to the lead angle, whichever form
+    // it's stored in (footprint or two free ends).
+    if (partDef(comp.ref)?.rotatable) {
+      const pins = partPinHoles(comp.ref, comp.anchor, comp.params);
+      if (pins?.length >= 2) {
+        view.updateSpan(board, pins[0].hole, pins[1].hole);
+        return;
+      }
+    }
+    view.updatePlacement(board, comp.anchor);
   }
 
   /**
@@ -1199,10 +1561,10 @@ export class DeskController {
   #repositionBoardParts(boardId, x, y) {
     const board = this.#doc.getBoard(boardId);
     if (!board) return;
+    const origin = { type: board.type, x, y };
     for (const comp of this.#doc.componentsOnBoard(boardId)) {
-      this.#partViews
-        .get(comp.id)
-        ?.updatePlacement({ type: board.type, x, y }, comp.anchor);
+      const view = this.#partViews.get(comp.id);
+      if (view) this.#placePartView(view, comp, origin);
     }
   }
 
@@ -1351,7 +1713,21 @@ export class DeskController {
     const view = this.#partViews.get(id);
     const w = this.#deskView.worldFromEvent(e);
 
-    if (comp.board == null) {
+    // A resistor drags RIGIDLY by its two ends (either may be a rail), and
+    // rotates freely mid-drag with R — never through the footprint reseat.
+    if (partDef(comp.ref)?.rotatable) {
+      const ends = this.#resistorEndPoints(comp);
+      if (!ends) {
+        e.stopPropagation();
+        return; // unresolvable pins — the press just selected it
+      }
+      // Near a lead → drag that end alone (any hole, any angle); on the body →
+      // translate the whole resistor rigidly.
+      const grabbed = this.#resistorEndAt(ends, w);
+      this.#mode = grabbed
+        ? this.#resistorEndDragMode(comp, ends, grabbed, e, w)
+        : this.#resistorDragMode(comp, ends, e, w);
+    } else if (comp.board == null) {
       // A desk-level brick (PSU, clock) drags freely on the desk.
       this.#mode = {
         kind: "drag-brick",
@@ -1404,7 +1780,10 @@ export class DeskController {
   #onPartPointerMove = (e) => {
     const d = this.#mode;
     if (
-      (d?.kind !== "drag-part" && d?.kind !== "drag-brick") ||
+      (d?.kind !== "drag-part" &&
+        d?.kind !== "drag-brick" &&
+        d?.kind !== "drag-resistor" &&
+        d?.kind !== "drag-resistor-end") ||
       e.pointerId !== d.pointerId
     ) {
       return;
@@ -1420,6 +1799,17 @@ export class DeskController {
     }
     const view = this.#partViews.get(d.id);
     const w = this.#deskView.worldFromEvent(e);
+
+    if (d.kind === "drag-resistor") {
+      d.lastWorld = w;
+      this.#trackResistorDrag();
+      return;
+    }
+    if (d.kind === "drag-resistor-end") {
+      d.lastWorld = w;
+      this.#trackResistorEndDrag();
+      return;
+    }
 
     if (d.kind === "drag-brick") {
       d.pos = {
@@ -1453,7 +1843,10 @@ export class DeskController {
   #onPartPointerUp = (e) => {
     const d = this.#mode;
     if (
-      (d?.kind !== "drag-part" && d?.kind !== "drag-brick") ||
+      (d?.kind !== "drag-part" &&
+        d?.kind !== "drag-brick" &&
+        d?.kind !== "drag-resistor" &&
+        d?.kind !== "drag-resistor-end") ||
       e.pointerId !== d.pointerId
     ) {
       return;
@@ -1477,6 +1870,30 @@ export class DeskController {
     }
 
     const cancelled = e.type === "pointercancel";
+    if (d.kind === "drag-resistor-end") {
+      if (!d.active) return; // plain click — the press already selected it
+      if (!cancelled && d.legal && d.target) {
+        this.#doc.movePartEnds(d.id, d.boardId, d.target.anchor, d.target.end);
+        this.#emitDocChanged();
+      }
+      // Redraw from the document — an illegal drop wrote nothing, so the lead
+      // springs back to where it was.
+      this.#remountPart(d.id);
+      return;
+    }
+
+    if (d.kind === "drag-resistor") {
+      if (!d.active) return; // plain click — the press already selected it
+      if (!cancelled && d.legal && d.holes) {
+        this.#doc.movePartEnds(d.id, d.holes.boardId, d.holes.one, d.holes.two);
+        this.#emitDocChanged();
+      }
+      // Commit or not, redraw from the document — an illegal drop leaves the
+      // document untouched, so this snaps the resistor back to its origin.
+      this.#remountPart(d.id);
+      return;
+    }
+
     if (d.kind === "drag-brick") {
       if (!d.active) return;
       const moved = d.pos.x !== d.origin.x || d.pos.y !== d.origin.y;
@@ -1560,6 +1977,12 @@ export class DeskController {
       });
     }
     if (!this.#editingLocked) {
+      if (partDef(comp?.ref)?.rotatable) {
+        items.push({
+          label: "Rotate 90°",
+          onSelect: () => this.rotateComponent(id),
+        });
+      }
       items.push({
         label: comp?.kind === "chip" ? "Remove chip" : "Remove part",
         danger: true,
@@ -1832,6 +2255,10 @@ export class DeskController {
       this.#commitWireClick(e);
       return;
     }
+    if (m.kind === "place-resistor") {
+      this.#commitResistorPlaceClick(e);
+      return;
+    }
     this.#trackGhost(e); // ensure the seat reflects the click point
     if (!m.legal) return; // stay armed, the tint explains why
     this.cancelPlacement();
@@ -1848,6 +2275,10 @@ export class DeskController {
 
   #onViewportPointerMove = (e) => {
     const m = this.#mode;
+    if (this.resistorPlaceArmed) {
+      this.#trackResistorPlace(e);
+      return;
+    }
     if (this.placementArmed) {
       this.#trackGhost(e);
       return;

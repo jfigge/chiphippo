@@ -63,6 +63,110 @@ test("chipPinHoles: unknown ref or non-e anchor is null", () => {
   assert.equal(chipPinHoles("7400", null), null);
 });
 
+test("partPinHoles: a rotated resistor derives two free-end holes from params", () => {
+  // Horizontal (no rot) still uses the footprint offsets.
+  assert.deepEqual(partPinHoles("resistor", "a5"), [
+    { pin: 1, hole: "a5" },
+    { pin: 2, hole: "a8" },
+  ]);
+  // Rotated: pin 1 at the anchor (here a rail), pin 2 at params.end (a column).
+  assert.deepEqual(partPinHoles("resistor", "t-3", { rot: 90, end: "j7" }), [
+    { pin: 1, hole: "t-3" },
+    { pin: 2, hole: "j7" },
+  ]);
+  // Rotated but no far end → unresolvable.
+  assert.equal(partPinHoles("resistor", "t-3", { rot: 90, end: null }), null);
+  // A non-rotatable part ignores rot and keeps its footprint.
+  assert.deepEqual(partPinHoles("sw-push", "a5", { rot: 90, end: "j7" }), [
+    { pin: 1, hole: "a5" },
+    { pin: 2, hole: "a7" },
+  ]);
+  // An LED is rotatable too, with its own two free ends.
+  assert.deepEqual(partPinHoles("led", "b-2", { rot: 90, end: "a4" }), [
+    { pin: 1, hole: "b-2" },
+    { pin: 2, hole: "a4" },
+  ]);
+});
+
+test("canPlacePart / buildOccupancy: rotated resistor bridges a rail and a column", () => {
+  const doc = docWith({ boards: [FULL] });
+  const rot = { rot: 90, end: "j7" };
+  // Both ends real + free + distinct → placeable.
+  assert.equal(
+    canPlacePart(doc, {
+      ref: "resistor",
+      board: "bb1",
+      anchor: "t-3",
+      params: rot,
+    }),
+    true,
+  );
+  // A rotated part pinned to ONE hole (end === anchor) is nonsense.
+  assert.equal(
+    canPlacePart(doc, {
+      ref: "resistor",
+      board: "bb1",
+      anchor: "j7",
+      params: rot,
+    }),
+    false,
+  );
+  // An unreal far end is rejected.
+  assert.equal(
+    canPlacePart(doc, {
+      ref: "resistor",
+      board: "bb1",
+      anchor: "t-3",
+      params: { rot: 90, end: "j99" },
+    }),
+    false,
+  );
+  // Occupancy records both ends (rail + grid) as members.
+  doc.components = [
+    {
+      id: "r1",
+      kind: "discrete",
+      ref: "resistor",
+      board: "bb1",
+      anchor: "t-3",
+      params: rot,
+    },
+  ];
+  const occ = buildOccupancy(doc);
+  assert.equal(occ.get("bb1.t-3").componentId, "r1");
+  assert.equal(occ.get("bb1.j7").componentId, "r1");
+  // A second part cannot reuse either occupied end.
+  assert.equal(
+    canPlacePart(doc, {
+      ref: "resistor",
+      board: "bb1",
+      anchor: "j7",
+      params: { rot: 90, end: "a1" },
+    }),
+    false,
+  );
+});
+
+test("canPlacePart: a resistor's ends must be at least minSpan apart", () => {
+  const doc = docWith({ boards: [FULL] });
+  const at = (anchor, end) =>
+    canPlacePart(doc, {
+      ref: "resistor",
+      board: "bb1",
+      anchor,
+      params: { rot: 90, end },
+    });
+  // a10 sits at x 10; the minimum span is 3 pitch units.
+  assert.equal(at("a10", "a13"), true); // exactly 3 → allowed
+  assert.equal(at("a10", "a12"), false); // 2 → too close
+  assert.equal(at("a10", "a11"), false); // 1 → too close
+  // Diagonals use true distance, not row/column counts: a10→c12 is √8 ≈ 2.83.
+  assert.equal(at("a10", "c12"), false);
+  assert.equal(at("a10", "c13"), true); // √(9+4) ≈ 3.6 → allowed
+  // Any distance BEYOND the minimum is fine — including the far rail.
+  assert.equal(at("a10", "t-8"), true);
+});
+
 test("buildOccupancy: one entry per pin, addressed globally", () => {
   const doc = docWith({
     boards: [FULL],

@@ -67,6 +67,164 @@ export function discreteBox(ref) {
 }
 
 /**
+ * Each span part's body, drawn about the midpoint `m` in a frame where the
+ * leads run along +x — the caller rotates the group to the lead angle.
+ *
+ * `pad` is how far (pitch units) the body reaches beyond the leads in ANY
+ * direction, since the group rotates: it sizes the SVG viewBox AND offsets the
+ * element, so the two must use the same number or the body gets clipped. A
+ * resistor's body is only half a unit off its leads; an LED's dome stands a
+ * whole unit off and is 0.85 across, so it needs more than twice the room.
+ */
+const SPAN_BODIES = Object.freeze({
+  resistor: Object.freeze({
+    pad: 0.9, // body half-height 0.5 (the 1.6-wide hit stroke wants 0.8)
+    build: (m) => [
+      svgEl("rect", {
+        class: "part-resistor-body",
+        x: m.x - 1,
+        y: m.y - 0.5,
+        width: 2,
+        height: 1,
+        rx: 0.4,
+      }),
+      ...[-0.4, 0, 0.4].map((off) =>
+        svgEl("rect", {
+          class: "part-resistor-band",
+          x: m.x + off - 0.07,
+          y: m.y - 0.45,
+          width: 0.14,
+          height: 0.9,
+        }),
+      ),
+    ],
+  }),
+  // Dome above the leads with the flat chord marking the CATHODE side — pin 2
+  // by default, mirrored to pin 1's side when flipped.
+  led: Object.freeze({
+    pad: 2, // dome centre 1 off the leads + radius 0.85, plus a hair
+    build: (m, params) => [
+      svgEl("circle", {
+        class: `part-led-dome part-led-dome--${params.color ?? "red"}`,
+        cx: m.x,
+        cy: m.y - 1,
+        r: 0.85,
+      }),
+      svgEl("rect", {
+        class: "part-led-flat",
+        x: m.x + (params.flip ? -0.65 : 0.65) - 0.07,
+        y: m.y - 1.75,
+        width: 0.14,
+        height: 1.5,
+      }),
+    ],
+  }),
+});
+
+const DEFAULT_SPAN_PAD = 0.9;
+
+/** The viewBox padding for a span part — shared by the SVG builder and the
+    placement math so the drawn body is never clipped. */
+export function spanPad(ref) {
+  return SPAN_BODIES[ref]?.pad ?? DEFAULT_SPAN_PAD;
+}
+
+/**
+ * A two-free-ends part drawn between pin 1 (local origin) and pin 2 at
+ * (dx, dy) pitch units — a straight lead with the part's body centred over the
+ * middle and rotated to the lead angle. Handles ANY angle (rail↔column leads
+ * bend when the two holes aren't aligned). Pure DOM construction.
+ */
+export function buildSpanSvg(ref, dx, dy, params = {}) {
+  const pad = spanPad(ref);
+  const minX = Math.min(0, dx) - pad;
+  const minY = Math.min(0, dy) - pad;
+  const width = Math.abs(dx) + 2 * pad;
+  const height = Math.abs(dy) + 2 * pad;
+  const midX = dx / 2;
+  const midY = dy / 2;
+  const angle = (Math.atan2(dy, dx) * 180) / Math.PI;
+
+  const svg = svgEl("svg", {
+    class: `part-discrete-svg part-discrete-svg--${ref} part-discrete-svg--rotated`,
+    viewBox: `${minX} ${minY} ${width} ${height}`,
+    width: width * PX_PER_UNIT,
+    height: height * PX_PER_UNIT,
+    "aria-hidden": "true",
+  });
+  // The lead runs straight from hole to hole; the body rides over the middle,
+  // rotated to align with the lead. The widened invisible hit stroke (the same
+  // sanctioned exception the wires use) is the ONLY part that takes the
+  // pointer — a long span's box would otherwise swallow clicks on the holes
+  // underneath it.
+  svg.append(
+    svgEl("line", {
+      class: "part-span-hit",
+      x1: 0,
+      y1: 0,
+      x2: dx,
+      y2: dy,
+    }),
+    svgEl("line", {
+      class: "part-span-lead",
+      x1: 0,
+      y1: 0,
+      x2: dx,
+      y2: dy,
+    }),
+  );
+  const spec = SPAN_BODIES[ref];
+  if (spec) {
+    const body = svgEl("g", { transform: `rotate(${angle} ${midX} ${midY})` });
+    body.append(...spec.build({ x: midX, y: midY }, params));
+    svg.append(body);
+  }
+  // Burn-out overlay (CSS shows it only on .part-discrete--burnt): a red X over
+  // the LED plus smoke. The dome sits one unit off the leads, so after the
+  // body's rotation it lands here — smoke must rise in SCREEN space, not the
+  // rotated frame, so it's built outside the rotated group.
+  if (ref === "led") {
+    const rad = (angle * Math.PI) / 180;
+    svg.append(buildBurnOverlay(midX + Math.sin(rad), midY - Math.cos(rad)));
+  }
+  return svg;
+}
+
+/** The red X + rising smoke drawn over a burnt-out LED, centred on its dome. */
+function buildBurnOverlay(cx, cy) {
+  const g = svgEl("g", { class: "part-burn" });
+  const r = 0.8;
+  g.append(
+    svgEl("line", {
+      class: "part-burn-x",
+      x1: cx - r,
+      y1: cy - r,
+      x2: cx + r,
+      y2: cy + r,
+    }),
+    svgEl("line", {
+      class: "part-burn-x",
+      x1: cx + r,
+      y1: cy - r,
+      x2: cx - r,
+      y2: cy + r,
+    }),
+  );
+  // Three staggered puffs, so the smoke reads as a continuous wisp.
+  for (const [i, dx] of [-0.22, 0.12, -0.05].entries()) {
+    const puff = svgEl("circle", {
+      class: "part-burn-smoke",
+      cx: cx + dx,
+      cy: cy - r,
+      r: 0.3,
+    });
+    puff.style.animationDelay = `${i * 0.45}s`;
+    g.append(puff);
+  }
+  return g;
+}
+
+/**
  * Build a discrete part's SVG from its catalog def + params. Pure DOM
  * construction (unit-testable under jsdom).
  */
@@ -207,6 +365,8 @@ export class DiscreteView {
   #el;
   #id;
   #ref;
+  #rotated = false; // a two-free-ends part — rendered/placed as a span
+  #params = {}; // latest params (the span body needs LED colour/flip)
 
   /**
    * @param {HTMLElement} layer - the `.layer-parts` element.
@@ -224,11 +384,17 @@ export class DiscreteView {
   ) {
     this.#id = component.id;
     this.#ref = component.ref;
+    // EVERY rotatable part renders as a span (body centred between its two
+    // ends, rotated to the lead angle) — the controller draws it via updateSpan.
+    this.#rotated = Boolean(partDef(component.ref)?.rotatable);
+    this.#params = component.params ?? {};
     this.#el = el("div", {
       class: `part part-discrete part-discrete--${component.ref}`,
       dataset: { componentId: component.id },
     });
-    this.updateParams(component.params);
+    // A rotated resistor's SVG needs board geometry (both hole positions), so
+    // the controller renders it via updateSpan right after construction.
+    if (!this.#rotated) this.updateParams(component.params);
     this.#el.addEventListener("pointerdown", (e) =>
       onPointerDown?.(this.#id, e),
     );
@@ -251,11 +417,47 @@ export class DiscreteView {
     return this.#el;
   }
 
-  /** Rebuild the SVG for new params (slider position, LED color/flip). */
+  /** Rebuild the SVG for new params (slider position, LED color/flip). A
+      span part is rendered by updateSpan (needs geometry), so skip. */
   updateParams(params) {
+    this.#params = params ?? {};
+    this.#rotated = Boolean(partDef(this.#ref)?.rotatable);
+    if (this.#rotated) return;
     this.#el.querySelector("svg")?.remove();
     this.#el.prepend(buildDiscreteSvg(this.#ref, params));
     if (this.#ref === "sw-push") this.#bindCap();
+  }
+
+  /**
+   * Render + position a rotated resistor spanning two holes: pin 1 at `anchor`,
+   * pin 2 at `endHole`, both on `board`. The lead bends when the two aren't
+   * axis-aligned (e.g. a power rail and a grid column).
+   */
+  updateSpan(board, anchor, endHole) {
+    const a = holePosition(board.type, anchor);
+    const b = holePosition(board.type, endHole);
+    if (!a || !b) return;
+    this.updateSpanWorld(
+      { x: board.x + a.x, y: board.y + a.y },
+      { x: board.x + b.x, y: board.y + b.y },
+    );
+  }
+
+  /**
+   * Render + position a resistor spanning two ABSOLUTE world points (pitch
+   * units). Used live during a drag, where an end may sit off-hole.
+   */
+  updateSpanWorld(p1, p2) {
+    const dx = p2.x - p1.x;
+    const dy = p2.y - p1.y;
+    this.#rotated = true;
+    this.#el.querySelector("svg")?.remove();
+    this.#el.prepend(buildSpanSvg(this.#ref, dx, dy, this.#params));
+    const pad = spanPad(this.#ref);
+    const minX = Math.min(0, dx) - pad;
+    const minY = Math.min(0, dy) - pad;
+    this.#el.style.left = `${(p1.x + minX) * PX_PER_UNIT}px`;
+    this.#el.style.top = `${(p1.y + minY) * PX_PER_UNIT}px`;
   }
 
   /** The momentary press gesture lives here — transient view state only. */
@@ -296,6 +498,11 @@ export class DiscreteView {
   /** Light an LED (Feature 90): bright body + glow while its diode conducts. */
   setLit(on) {
     this.#el.classList.toggle("part-discrete--lit", on);
+  }
+
+  /** Burnt out — powered with no series resistor: red X + rising smoke. */
+  setBurnt(on) {
+    this.#el.classList.toggle("part-discrete--burnt", on);
   }
 
   setSelected(on) {

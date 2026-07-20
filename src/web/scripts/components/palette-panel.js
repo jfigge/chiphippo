@@ -24,6 +24,10 @@ import { clear, el } from "../dom.js";
 import { PALETTE_DEFS } from "../catalog/index.js";
 import { hasBehavior } from "../sim/chip-eval.js";
 
+/** Every chip group nests one level under this top-level folder. Its collapse
+    state is remembered alongside the group names (no group shares this name). */
+const CHIPS_FOLDER = "Chips";
+
 export class PalettePanel {
   #el;
   #list;
@@ -106,61 +110,91 @@ export class PalettePanel {
       if (!groups.has(def.group)) groups.set(def.group, []);
       groups.get(def.group).push(def);
     }
-    // While a filter is active, force every group open so matches stay
-    // visible; the remembered collapse state only governs the unfiltered list.
+    // While a filter is active, force everything open so matches stay visible;
+    // the remembered collapse state only governs the unfiltered list.
     const filtering = this.#filter.trim() !== "";
-    for (const [group, members] of groups) {
-      const collapsed = !filtering && this.#collapsed.has(group);
+
+    // Chip groups nest under one top-level "Chips" folder; discrete/power
+    // groups stay at the top level. A group is a chip group when its members
+    // are chips (the catalog stamps `kind: "chip"`).
+    const chipGroups = [];
+    const topGroups = [];
+    for (const entry of groups) {
+      (entry[1][0]?.kind === "chip" ? chipGroups : topGroups).push(entry);
+    }
+
+    // Chips lead the catalog, so the folder renders first, then the rest.
+    if (chipGroups.length > 0) {
+      const collapsed = !filtering && this.#collapsed.has(CHIPS_FOLDER);
       this.#list.append(
-        el(
-          "button",
-          {
-            class: collapsed
-              ? "palette-group palette-group--collapsed"
-              : "palette-group",
-            type: "button",
-            "aria-expanded": collapsed ? "false" : "true",
-            onClick: () => this.#toggleGroup(group),
-          },
-          [
-            // The caret glyph is a CSS pseudo-element on this span, so the
-            // button's textContent stays exactly the group name.
-            el("span", { class: "palette-group-caret", "aria-hidden": true }),
-            el("span", { class: "palette-group-label", text: group }),
-          ],
-        ),
+        this.#sectionHeader("palette-folder", CHIPS_FOLDER, collapsed),
       );
-      this.#list.append(
-        el(
-          "div",
-          { class: "palette-group-items", hidden: collapsed },
-          members.map((def) =>
-            el(
-              "button",
-              {
-                class: "palette-item",
-                type: "button",
-                title: def.blurb,
-                dataset: { ref: def.id },
-                onClick: (e) => this.#onPickChip?.(def.id, e),
-              },
-              [
-                el("span", { class: "palette-item-id", text: def.id }),
-                el("span", { class: "palette-item-title", text: def.title }),
-                // "sim-ready" badge for chips whose behavior is defined —
-                // combinational (Feature 80) or sequential (Feature 100).
-                hasBehavior(def) &&
-                  el("span", {
-                    class: "palette-item-badge",
-                    text: "sim",
-                    title: "Behavior defined — ready for the simulator",
-                  }),
-              ],
-            ),
+      const body = el("div", {
+        class: "palette-folder-groups",
+        hidden: collapsed,
+      });
+      for (const [group, members] of chipGroups) {
+        this.#appendGroup(body, group, members, filtering);
+      }
+      this.#list.append(body);
+    }
+    for (const [group, members] of topGroups) {
+      this.#appendGroup(this.#list, group, members, filtering);
+    }
+  }
+
+  /** A collapsible section header (folder or group), keyed by `name`. The caret
+      glyph is a CSS pseudo-element, so textContent stays exactly `name`. */
+  #sectionHeader(baseClass, name, collapsed) {
+    return el(
+      "button",
+      {
+        class: collapsed ? `${baseClass} ${baseClass}--collapsed` : baseClass,
+        type: "button",
+        "aria-expanded": collapsed ? "false" : "true",
+        onClick: () => this.#toggleGroup(name),
+      },
+      [
+        el("span", { class: "palette-group-caret", "aria-hidden": true }),
+        el("span", { class: "palette-group-label", text: name }),
+      ],
+    );
+  }
+
+  /** Append one group's header + item list to `container`. */
+  #appendGroup(container, group, members, filtering) {
+    const collapsed = !filtering && this.#collapsed.has(group);
+    container.append(
+      this.#sectionHeader("palette-group", group, collapsed),
+      el(
+        "div",
+        { class: "palette-group-items", hidden: collapsed },
+        members.map((def) =>
+          el(
+            "button",
+            {
+              class: "palette-item",
+              type: "button",
+              title: def.blurb,
+              dataset: { ref: def.id },
+              onClick: (e) => this.#onPickChip?.(def.id, e),
+            },
+            [
+              el("span", { class: "palette-item-id", text: def.id }),
+              el("span", { class: "palette-item-title", text: def.title }),
+              // "sim-ready" badge for chips whose behavior is defined —
+              // combinational (Feature 80) or sequential (Feature 100).
+              hasBehavior(def) &&
+                el("span", {
+                  class: "palette-item-badge",
+                  text: "sim",
+                  title: "Behavior defined — ready for the simulator",
+                }),
+            ],
           ),
         ),
-      );
-    }
+      ),
+    );
   }
 
   #toggleGroup(group) {

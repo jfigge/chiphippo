@@ -285,6 +285,130 @@ test("moveComponent: re-seats (same or other board), self-overlap allowed", () =
   });
 });
 
+test("addComponent: seats a rotated resistor across a rail and a column", () => {
+  const doc = docWithFull();
+  const r = doc.addComponent({
+    kind: "discrete",
+    ref: "resistor",
+    board: "bb1",
+    anchor: "b-1", // pin 1 on the bottom − rail
+    params: { rot: 90, end: "a10" }, // pin 2 on a grid column
+  });
+  assert.equal(r.params.rot, 90);
+  assert.equal(r.params.end, "a10");
+  assert.equal(doc.isHoleFree("bb1.b-1"), false); // both ends occupied
+  assert.equal(doc.isHoleFree("bb1.a10"), false);
+  // Coincident ends (pin 2 === pin 1) are nonsense.
+  assert.throws(
+    () =>
+      doc.addComponent({
+        kind: "discrete",
+        ref: "resistor",
+        board: "bb1",
+        anchor: "c5",
+        params: { rot: 90, end: "c5" },
+      }),
+    { code: "ILLEGAL_PLACEMENT" },
+  );
+  // An unreal far end is rejected.
+  assert.throws(
+    () =>
+      doc.addComponent({
+        kind: "discrete",
+        ref: "resistor",
+        board: "bb1",
+        anchor: "c8",
+        params: { rot: 90, end: "z99" },
+      }),
+    { code: "ILLEGAL_PLACEMENT" },
+  );
+});
+
+test("movePartEnds: repositions BOTH ends atomically; guards bad targets", () => {
+  const doc = docWithFull();
+  doc.addComponent({
+    kind: "discrete",
+    ref: "resistor",
+    board: "bb1",
+    anchor: "e10", // e10 ── e13
+  });
+
+  // Drag it onto a rail ↔ column pair; both old holes are released.
+  const moved = doc.movePartEnds("c1", "bb1", "t-3", "j7");
+  assert.equal(moved.anchor, "t-3");
+  assert.equal(moved.params.rot, 90);
+  assert.equal(moved.params.end, "j7");
+  assert.equal(doc.isHoleFree("bb1.e10"), true);
+  assert.equal(doc.isHoleFree("bb1.e13"), true);
+  assert.equal(doc.isHoleFree("bb1.t-3"), false);
+  assert.equal(doc.isHoleFree("bb1.j7"), false);
+  // Sliding onto a hole it already owns is fine (it ignores itself).
+  assert.equal(doc.movePartEnds("c1", "bb1", "t-3", "j8").params.end, "j8");
+
+  // Unknown component / board.
+  assert.throws(() => doc.movePartEnds("c9", "bb1", "a1", "a4"), {
+    code: "NOT_FOUND",
+  });
+  assert.throws(() => doc.movePartEnds("c1", "bb9", "a1", "a4"), {
+    code: "NOT_FOUND",
+  });
+  // Coincident and unreal ends.
+  assert.throws(() => doc.movePartEnds("c1", "bb1", "a1", "a1"), {
+    code: "ILLEGAL_PLACEMENT",
+  });
+  assert.throws(() => doc.movePartEnds("c1", "bb1", "a1", "z99"), {
+    code: "ILLEGAL_PLACEMENT",
+  });
+  // An end occupied by another part.
+  doc.addComponent({
+    kind: "discrete",
+    ref: "led",
+    board: "bb1",
+    anchor: "a1", // a1, a2
+  });
+  assert.throws(() => doc.movePartEnds("c1", "bb1", "a1", "a5"), {
+    code: "ILLEGAL_PLACEMENT",
+  });
+  // Non-rotatable parts don't have two free ends to move.
+  doc.addComponent({
+    kind: "discrete",
+    ref: "sw-push",
+    board: "bb1",
+    anchor: "j1",
+  });
+  assert.throws(() => doc.movePartEnds("c3", "bb1", "a5", "a8"), {
+    code: "INVALID_REF",
+  });
+});
+
+test("rotateComponent: pivots pin 2 90° around pin 1; guards non-rotatable", () => {
+  const doc = docWithFull();
+  // Horizontal resistor: pin 1 at e10, pin 2 at e13 (offsets 0, 3).
+  doc.addComponent({
+    kind: "discrete",
+    ref: "resistor",
+    board: "bb1",
+    anchor: "e10",
+  });
+  const rotated = doc.rotateComponent("c1");
+  assert.equal(rotated.params.rot, 90);
+  assert.equal(rotated.anchor, "e10"); // pin 1 fixed
+  assert.equal(rotated.params.end, "b10"); // pin 2 pivots into the same column
+  assert.equal(doc.isHoleFree("bb1.e10"), false);
+  assert.equal(doc.isHoleFree("bb1.b10"), false);
+  assert.equal(doc.isHoleFree("bb1.e13"), true); // old pin-2 hole freed
+
+  // Unknown id and non-rotatable parts are guarded.
+  assert.throws(() => doc.rotateComponent("c9"), { code: "NOT_FOUND" });
+  doc.addComponent({
+    kind: "discrete",
+    ref: "sw-push",
+    board: "bb1",
+    anchor: "j1",
+  });
+  assert.throws(() => doc.rotateComponent("c2"), { code: "INVALID_REF" });
+});
+
 test("removeComponent: removes; ids never reused across reload", () => {
   const doc = docWithFull();
   doc.addComponent({ kind: "chip", ref: "7400", board: "bb1", anchor: "e5" });
@@ -512,7 +636,12 @@ test("addComponent: discretes seat in ANY grid row with coerced params", () => {
     anchor: "j20",
     params: { color: "blue", flip: true },
   });
-  assert.deepEqual(led.params, { color: "blue", flip: true });
+  assert.deepEqual(led.params, {
+    color: "blue",
+    flip: true,
+    rot: 0,
+    end: null,
+  });
   // Kind/def mismatches are rejected.
   assert.throws(
     () =>

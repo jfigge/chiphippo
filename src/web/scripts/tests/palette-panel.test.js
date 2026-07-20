@@ -20,7 +20,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { resetDom } from "./jsdom-setup.js";
-import { PALETTE_DEFS } from "../catalog/index.js";
+import { CHIP_DEFS, PALETTE_DEFS } from "../catalog/index.js";
 import { hasBehavior } from "../sim/chip-eval.js";
 
 const { PalettePanel } = await import("../components/palette-panel.js");
@@ -66,6 +66,72 @@ test("lists the whole catalog grouped by function; picks report the ref", () => 
   assert.ok(badged.has("7474")); // sequential
   assert.ok(!badged.has("led"));
   assert.ok(!badged.has("clock"));
+});
+
+test("all chip groups nest under one 'Chips' folder; parts stay top-level", () => {
+  resetDom();
+  const host = document.createElement("div");
+  document.body.append(host);
+  new PalettePanel(host, {});
+
+  // Exactly one folder, labelled "Chips", rendered before the top-level groups.
+  const folders = [...host.querySelectorAll(".palette-folder")];
+  assert.equal(folders.length, 1);
+  assert.equal(folders[0].textContent, "Chips");
+
+  const folderBody = host.querySelector(".palette-folder-groups");
+  const groupsIn = (root) =>
+    [...root.querySelectorAll(".palette-group")].map((g) => g.textContent);
+
+  // Every chip group lives inside the folder; the discrete/power groups don't.
+  const chipGroupNames = [...new Set(CHIP_DEFS.map((d) => d.group))];
+  assert.deepEqual(groupsIn(folderBody), chipGroupNames);
+  for (const name of ["Parts", "Power"]) {
+    assert.ok(!groupsIn(folderBody).includes(name), `${name} nested wrongly`);
+    assert.ok(
+      groupsIn(host).includes(name), // still present, just at the top level
+    );
+  }
+
+  // Every chip item sits under the folder; no part item does.
+  const chipIds = new Set(CHIP_DEFS.map((d) => d.id));
+  for (const item of host.querySelectorAll(".palette-item")) {
+    const underFolder = folderBody.contains(item);
+    assert.equal(underFolder, chipIds.has(item.dataset.ref), item.dataset.ref);
+  }
+});
+
+test("the 'Chips' folder collapses to hide every chip group; state persists", () => {
+  resetDom();
+  const host = document.createElement("div");
+  document.body.append(host);
+  const changes = [];
+  new PalettePanel(host, { onCollapseChange: (g) => changes.push(g) });
+
+  const folder = host.querySelector(".palette-folder");
+  assert.equal(folder.getAttribute("aria-expanded"), "true");
+  assert.equal(host.querySelector(".palette-folder-groups").hidden, false);
+
+  // Collapsing the folder hides the whole chip section and reports "Chips".
+  folder.click();
+  const collapsed = host.querySelector(".palette-folder");
+  assert.equal(collapsed.classList.contains("palette-folder--collapsed"), true);
+  assert.equal(collapsed.getAttribute("aria-expanded"), "false");
+  assert.equal(host.querySelector(".palette-folder-groups").hidden, true);
+  assert.deepEqual(changes.at(-1), ["Chips"]);
+
+  // Restoring "Chips" from settings starts the folder collapsed.
+  resetDom();
+  const host2 = document.createElement("div");
+  document.body.append(host2);
+  new PalettePanel(host2, { collapsedGroups: ["Chips"] });
+  assert.equal(
+    host2
+      .querySelector(".palette-folder")
+      .classList.contains("palette-folder--collapsed"),
+    true,
+  );
+  assert.equal(host2.querySelector(".palette-folder-groups").hidden, true);
 });
 
 test("filter matches id, title, and blurb (case-insensitive)", () => {

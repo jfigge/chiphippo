@@ -86,14 +86,32 @@ test("sw-push: bridges only while pressed; nothing durable in params", () => {
 
 test("led: color/flip coercion and polarity contract", () => {
   const def = partDef("led");
-  assert.deepEqual(def.normalizeParams({}), { color: "red", flip: false });
+  assert.deepEqual(def.normalizeParams({}), {
+    color: "red",
+    flip: false,
+    rot: 0,
+    end: null,
+  });
   assert.deepEqual(def.normalizeParams({ color: "blue", flip: true }), {
     color: "blue",
     flip: true,
+    rot: 0,
+    end: null,
+  });
+  // Rotatable like the resistor: rot 90 keeps the far-end hole.
+  assert.equal(def.rotatable, true);
+  assert.equal(def.minSpan, 1); // legs may sit side by side
+  assert.deepEqual(def.normalizeParams({ rot: 90, end: "j7" }), {
+    color: "red",
+    flip: false,
+    rot: 90,
+    end: "j7",
   });
   assert.deepEqual(def.normalizeParams({ color: "pink", flip: "yes" }), {
     color: "red",
     flip: false,
+    rot: 0,
+    end: null,
   });
   assert.deepEqual(def.polarity({ flip: false }), {
     anodePin: 1,
@@ -113,12 +131,43 @@ test("resistor: weakly bridges 1↔2, never a hard bridge; ohms coerce", () => {
   assert.deepEqual(def.internalBridges({ ohms: 220 }), []);
   // …but declares its weakly-coupled pin pair for the simulator's PULL tier.
   assert.deepEqual(def.weakBridges({ ohms: 220 }), [[1, 2]]);
-  // Ohms are cosmetic but coerced to a positive number (default 10k).
-  assert.deepEqual(def.normalizeParams({}), { ohms: 10000 });
-  assert.deepEqual(def.normalizeParams({ ohms: 330 }), { ohms: 330 });
-  assert.deepEqual(def.normalizeParams({ ohms: -5 }), { ohms: 10000 });
-  assert.deepEqual(def.normalizeParams({ ohms: "junk" }), { ohms: 10000 });
-  // Two leads on a 4-hole span (offsets 0 and 3).
+  // Ohms are cosmetic but coerced to a positive number (default 10k); a
+  // horizontal resistor carries rot 0 and no far end.
+  assert.deepEqual(def.normalizeParams({}), { ohms: 10000, rot: 0, end: null });
+  assert.deepEqual(def.normalizeParams({ ohms: 330 }), {
+    ohms: 330,
+    rot: 0,
+    end: null,
+  });
+  assert.deepEqual(def.normalizeParams({ ohms: -5 }), {
+    ohms: 10000,
+    rot: 0,
+    end: null,
+  });
+  assert.deepEqual(def.normalizeParams({ ohms: "junk" }), {
+    ohms: 10000,
+    rot: 0,
+    end: null,
+  });
+  // Rotatable: rot 90 keeps the far-end hole; a stray `end` without rot is
+  // dropped, and a rotated part with a non-string end normalizes end→null.
+  assert.equal(def.rotatable, true);
+  assert.deepEqual(def.normalizeParams({ rot: 90, end: "j7" }), {
+    ohms: 10000,
+    rot: 90,
+    end: "j7",
+  });
+  assert.deepEqual(def.normalizeParams({ end: "j7" }), {
+    ohms: 10000,
+    rot: 0,
+    end: null,
+  });
+  assert.deepEqual(def.normalizeParams({ rot: 90 }), {
+    ohms: 10000,
+    rot: 90,
+    end: null,
+  });
+  // Two leads on a 4-hole span (offsets 0 and 3) for the horizontal form.
   assert.deepEqual(def.footprint.offsets, [0, 3]);
 });
 

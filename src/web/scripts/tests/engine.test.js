@@ -53,6 +53,9 @@ function simulate(doc, warmStart) {
   return {
     result,
     levelAt: (address) => result.netLevels.get(netlist.netOfPoint.get(address)),
+    // The level from supplies/chip outputs alone — no resistor pulls.
+    strongAt: (address) =>
+      result.strongLevels.get(netlist.netOfPoint.get(address)),
   };
 }
 
@@ -315,6 +318,45 @@ test("a pull-down resistor makes a floating chip input read LOW", () => {
   const { levelAt } = simulate(pulled);
   assert.equal(levelAt("bb1.e10"), L); // pulled to ground through the resistor
   assert.equal(levelAt("bb1.e11"), H); // 1Y = INV(L)
+});
+
+test("strongLevels separate a direct rail feed from one through a resistor", () => {
+  // Two columns fed from +5 V: a10 straight off the rail, a20 through R.
+  const r = chipHoles("resistor", "a30"); // a30 ── a33
+  const { levelAt, strongAt } = simulate({
+    boards: [board],
+    components: [psu("psu1", 80), part("r1", "resistor", "a30")],
+    wires: [
+      wire("psu1.+", "bb1.t+1"),
+      wire("bb1.t+2", `bb1.${mates(r.get(1))[0]}`), // rail → resistor pin 1
+      wire(`bb1.${mates(r.get(2))[0]}`, "bb1.a20"), // resistor pin 2 → column
+      wire("bb1.t+3", "bb1.a10"), // rail → column, nothing in between
+    ],
+  });
+
+  // Both columns READ high…
+  assert.equal(levelAt("bb1.a10"), H);
+  assert.equal(levelAt("bb1.a20"), H);
+  // …but only the direct one is STRONGLY high; the resistor-fed column is
+  // undriven on its own. That difference is what saves an LED from burning.
+  assert.equal(strongAt("bb1.a10"), H);
+  assert.notEqual(strongAt("bb1.a20"), H);
+});
+
+test("a rotated resistor pulls a grid column to a rail's level (rail↔column)", () => {
+  // Vertical two-end resistor: pin 1 on the bottom − rail, pin 2 on a grid
+  // column. Grounding the − rail makes the column read LOW through the pull.
+  const { levelAt } = simulate({
+    boards: [board],
+    components: [
+      psu("psu1", 80),
+      part("r1", "resistor", "b-1", { rot: 90, end: "a10" }),
+    ],
+    // Ground the − rail via a different hole on the same (continuous) rail node.
+    wires: [wire("psu1.-", "bb1.b-2")],
+  });
+  assert.equal(levelAt("bb1.b-1"), L); // the − rail is GND
+  assert.equal(levelAt("bb1.a10"), L); // column pulled LOW through the resistor
 });
 
 test("a strong driver overrides a pull-up; a series resistor conducts a level", () => {

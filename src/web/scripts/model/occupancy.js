@@ -24,7 +24,12 @@
 
 import { partDef } from "../catalog/index.js";
 import { allPinHoles } from "./footprints.js";
-import { formatAddress, parseAddress, parseHole } from "./breadboard.js";
+import {
+  formatAddress,
+  holePosition,
+  parseAddress,
+  parseHole,
+} from "./breadboard.js";
 
 const CHIP_ANCHOR_RE = /^e([1-9]\d*)$/; // a chip anchor: pin 1's hole, row e
 const GRID_ANCHOR_RE = /^([a-j])([1-9]\d*)$/; // a discrete anchors in ANY row
@@ -37,7 +42,7 @@ const GRID_ANCHOR_RE = /^([a-j])([1-9]\d*)$/; // a discrete anchors in ANY row
  * exists on a given board type is the caller's check — this is pure
  * footprint arithmetic.
  */
-export function partPinHoles(ref, anchor) {
+export function partPinHoles(ref, anchor, params) {
   const def = partDef(ref);
   if (!def || typeof anchor !== "string") return null;
   if (def.package) {
@@ -50,6 +55,15 @@ export function partPinHoles(ref, anchor) {
     }));
   }
   if (def.footprint) {
+    // Rotated (vertical) two-free-ends form: pin 1 at the anchor hole, pin 2 at
+    // `params.end` (any hole — rail or grid), instead of a footprint offset.
+    if (def.rotatable && params?.rot === 90) {
+      if (typeof params.end !== "string") return null;
+      return [
+        { pin: def.pins[0].n, hole: anchor },
+        { pin: def.pins[1].n, hole: params.end },
+      ];
+    }
     // Linear discrete along one grid row.
     const m = GRID_ANCHOR_RE.exec(anchor);
     if (!m) return null;
@@ -81,7 +95,7 @@ export function buildOccupancy(doc) {
   const map = new Map();
   for (const comp of doc.components ?? []) {
     if (!comp || (comp.kind !== "chip" && comp.kind !== "discrete")) continue;
-    const pins = partPinHoles(comp.ref, comp.anchor);
+    const pins = partPinHoles(comp.ref, comp.anchor, comp.params);
     if (!pins) continue;
     for (const { pin, hole } of pins) {
       map.set(formatAddress(comp.board, hole), {
@@ -196,12 +210,25 @@ export function canMoveWire(doc, wireId, from, to) {
  */
 export function canPlacePart(
   doc,
-  { ref, board: boardId, anchor, ignoreId = null },
+  { ref, board: boardId, anchor, params = null, ignoreId = null },
 ) {
   const board = (doc.boards ?? []).find((b) => b.id === boardId);
   if (!board) return false;
-  const pins = partPinHoles(ref, anchor);
+  const def = partDef(ref);
+  const pins = partPinHoles(ref, anchor, params);
   if (!pins) return false;
+  // A rotated part's two ends must be DISTINCT holes (a wire could join a
+  // node's own holes; a two-terminal device pinned to one hole is nonsense).
+  if (params?.rot === 90 && pins[0]?.hole === pins[1]?.hole) return false;
+  // Two-terminal parts with a declared minimum lead span (a resistor's body
+  // needs room) must keep their ends that far apart — any angle, any distance
+  // beyond it, so a lead can reach the far rail.
+  if (def?.minSpan && pins.length === 2) {
+    const pa = holePosition(board.type, pins[0].hole);
+    const pb = holePosition(board.type, pins[1].hole);
+    if (!pa || !pb) return false;
+    if (Math.hypot(pb.x - pa.x, pb.y - pa.y) < def.minSpan) return false;
+  }
   const occupancy = buildOccupancy(doc);
   for (const { hole } of pins) {
     if (!parseHole(board.type, hole)) return false; // off the board

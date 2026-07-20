@@ -131,7 +131,7 @@ function buildContext(doc, netlist) {
   for (const comp of components) {
     const def = partDef(comp.ref);
     if (!def?.weakBridges || comp.board == null) continue;
-    const pins = partPinHoles(comp.ref, comp.anchor);
+    const pins = partPinHoles(comp.ref, comp.anchor, comp.params);
     if (!pins) continue;
     const holeOfPin = new Map(pins.map((p) => [p.pin, p.hole]));
     for (const [a, b] of def.weakBridges(comp.params)) {
@@ -158,7 +158,7 @@ function buildContext(doc, netlist) {
     ) {
       continue;
     }
-    const pins = partPinHoles(comp.ref, comp.anchor);
+    const pins = partPinHoles(comp.ref, comp.anchor, comp.params);
     if (!pins) continue;
     const pinNet = new Map();
     for (const { pin, hole } of pins) {
@@ -232,8 +232,9 @@ function resolveAll(ctx, drivers) {
   // resistor weakly drive its OTHER end toward that level. One extra pass, and
   // only when resistors exist; the fixpoint loop folds it in like any driver.
   let pulls = null;
+  let strong = null;
   if (ctx.resistors.length) {
-    const strong = new Map();
+    strong = new Map();
     for (const id of ctx.netIds) strong.set(id, resolveOne(id, []).level);
     pulls = new Map(); // netId → [levels]
     const addPull = (net, level) => {
@@ -254,7 +255,10 @@ function resolveAll(ctx, drivers) {
     next.set(id, res.level);
     if (res.warning) warnings.push({ type: res.warning, net: id });
   }
-  return { next, warnings };
+  // Without resistors nothing is weakly pulled, so the resolved level IS the
+  // strong one. Callers use this to tell "driven directly" from "fed through a
+  // resistor" — the difference between a lit LED and a burnt one.
+  return { next, warnings, strong: strong ?? next };
 }
 
 /** Run the warm-started settle loop for a fixed state + clock phase. */
@@ -265,14 +269,16 @@ function solve(ctx, warmStart, state, clockPhase) {
   let iterations = 0;
   let settled = false;
   let lastWarnings = [];
+  let lastStrong = new Map();
   let prev = levels;
   while (iterations < MAX_ITERATIONS) {
     iterations++;
-    const { next, warnings } = resolveAll(
+    const { next, warnings, strong } = resolveAll(
       ctx,
       driversFor(ctx, levels, state, clockPhase),
     );
     lastWarnings = warnings;
+    lastStrong = strong;
     if (mapsEqual(next, levels)) {
       levels = next;
       settled = true;
@@ -288,7 +294,7 @@ function solve(ctx, warmStart, state, clockPhase) {
     for (const id of nets) levels.set(id, X);
     if (nets.length) warnings.push({ type: "oscillation", nets });
   }
-  return { levels, iterations, settled, warnings };
+  return { levels, iterations, settled, warnings, strong: lastStrong };
 }
 
 /** Assemble the public result: net levels, chip status, deduped warnings. */
@@ -303,6 +309,7 @@ function assemble(ctx, solved, extra = {}) {
   }
   return {
     netLevels: solved.levels,
+    strongLevels: solved.strong,
     chipStatus: ctx.chipStatus,
     warnings: dedupe(warnings),
     iterations: solved.iterations,
