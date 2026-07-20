@@ -130,6 +130,9 @@ export class DeskController {
   // arrive over chiphippo:sim-state and drive LEDs / chip badges / probe tint.
   #editingLocked = false;
   #simRunning = false;
+  #multi = new Set(); // component ids from a marquee selection
+  #multiWires = new Set(); // wire ids from the same marquee
+  #marquee = null; // the rubber-band element while shift-dragging
   #simLevels = new Map(); // netId → level
   #simStrong = new Map(); // netId → level from supplies/outputs only (no pulls)
   #simNetlist = null; // the netlist the levels are keyed against
@@ -260,12 +263,56 @@ export class DeskController {
   }
 
   #select(sel) {
+    // A single pick always replaces a marquee selection.
+    if (sel && this.#multiSize()) this.#clearMultiSelection();
     if (this.#selected?.id === sel?.id && this.#selected?.kind === sel?.kind) {
       return;
     }
     this.#applySelection(this.#selected, false);
     this.#selected = sel;
     this.#applySelection(this.#selected, true);
+  }
+
+  /** The component ids currently marquee-selected (empty when none). */
+  get multiSelectedIds() {
+    return [...this.#multi];
+  }
+
+  /** The wire ids currently marquee-selected (empty when none). */
+  get multiSelectedWireIds() {
+    return [...this.#multiWires];
+  }
+
+  #multiSize() {
+    return this.#multi.size + this.#multiWires.size;
+  }
+
+  #clearMultiSelection() {
+    for (const id of this.#multi) {
+      this.#partViews.get(id)?.setSelected(false);
+    }
+    this.#multi.clear();
+    if (this.#multiWires.size) {
+      this.#multiWires.clear();
+      this.#wireLayer.setSelectedMany([]);
+    }
+  }
+
+  /** Replace the marquee selection; a non-empty one clears the single pick. */
+  #setMultiSelection(ids, wireIds = []) {
+    this.#clearMultiSelection();
+    for (const id of ids) {
+      if (!this.#partViews.has(id)) continue;
+      this.#multi.add(id);
+      this.#partViews.get(id).setSelected(true);
+    }
+    for (const id of wireIds) {
+      if (this.#doc.getWire(id)) this.#multiWires.add(id);
+    }
+    if (this.#multiWires.size) {
+      this.#wireLayer.setSelectedMany(this.#multiWires);
+    }
+    if (this.#multiSize()) this.#select(null);
   }
 
   selectBoard(id) {
@@ -282,6 +329,7 @@ export class DeskController {
   }
 
   deselect() {
+    this.#clearMultiSelection();
     this.#select(null);
   }
 
@@ -1438,7 +1486,7 @@ export class DeskController {
         this.cancelPlacement();
         return true;
       }
-      if (this.#selected) {
+      if (this.#selected || this.#multiSize() > 0) {
         this.deselect();
         return true;
       }
@@ -1471,6 +1519,13 @@ export class DeskController {
     // vertical two-click form, and rotates a selected placed resistor 90°.
     if ((e.key === "r" || e.key === "R") && bareKey) {
       if (this.#toggleResistorRotation()) return true;
+    }
+    if (
+      (e.key === "Delete" || e.key === "Backspace") &&
+      this.#multiSize() > 0
+    ) {
+      this.removeSelectedComponents();
+      return true;
     }
     if ((e.key === "Delete" || e.key === "Backspace") && this.#selected) {
       const { kind, id } = this.#selected;
@@ -1572,6 +1627,7 @@ export class DeskController {
 
   #onBoardPointerDown(id, e) {
     if (e.button !== 0) return; // middle = pan (DeskView), right = menu
+    if (e.shiftKey) return; // shift-drag is the viewport's marquee
     // No board drags while probing or running (topology frozen).
     if (this.#mode || this.#probeArmed || this.#editingLocked) return;
     this.#hideHover();
@@ -1690,6 +1746,7 @@ export class DeskController {
 
   #onPartPointerDown(id, e) {
     if (e.button !== 0) return;
+    if (e.shiftKey) return; // shift-drag is the viewport's marquee
     if (this.#mode || this.#probeArmed) return; // no part drags while probing
     // While running, only slide switches stay interactive (click to flip);
     // every other part is frozen in place.
@@ -1994,11 +2051,198 @@ export class DeskController {
     PopupManager.menu({ x: e.clientX, y: e.clientY, items });
   }
 
+  // ── Marquee selection (shift-drag anywhere) ─────────────────────────────
+
+  /**
+   * World positions of a component's connection points: a board part's derived
+   * pin holes, or a desk brick's terminals. Empty when they don't resolve (an
+   * unresolvable part is never marquee-selectable).
+   */
+  #componentPoints(comp) {
+    const def = partDef(comp.ref);
+    if (!def) return [];
+    if (comp.board == null) {
+      return (def.terminals ?? []).map((t) => ({
+        x: comp.x + t.dx,
+        y: comp.y + t.dy,
+      }));
+    }
+    const board = this.#doc.getBoard(comp.board);
+    const pins = board && partPinHoles(comp.ref, comp.anchor, comp.params);
+    if (!pins) return [];
+    const points = [];
+    for (const { hole } of pins) {
+      const pos = holePosition(board.type, hole);
+      if (!pos) return [];
+      points.push({ x: board.x + pos.x, y: board.y + pos.y });
+    }
+    return points;
+  }
+
+  /** Components whose EVERY pin/terminal lies inside the world-unit rect. */
+  #componentsWithin(rect) {
+    const inside = (p) =>
+      p.x >= rect.minX &&
+      p.x <= rect.maxX &&
+      p.y >= rect.minY &&
+      p.y <= rect.maxY;
+    const ids = [];
+    for (const comp of this.#doc.components) {
+      const points = this.#componentPoints(comp);
+      if (points.length > 0 && points.every(inside)) ids.push(comp.id);
+    }
+    return ids;
+  }
+
+  /** Wires with BOTH endpoints inside the world-unit rect. */
+  #wiresWithin(rect) {
+    const inside = (p) =>
+      p &&
+      p.x >= rect.minX &&
+      p.x <= rect.maxX &&
+      p.y >= rect.minY &&
+      p.y <= rect.maxY;
+    return this.#doc.wires
+      .filter(
+        (w) =>
+          inside(this.#addressWorld(w.from)) &&
+          inside(this.#addressWorld(w.to)),
+      )
+      .map((w) => w.id);
+  }
+
+  #beginMarquee(e) {
+    this.#hideHover();
+    this.#viewport.classList.add("desk-viewport--selecting"); // crosshair
+    const world = this.#deskView.worldFromEvent(e);
+    this.#marquee = el("div", { class: "marquee" });
+    this.#layers.overlay.append(this.#marquee);
+    this.#mode = {
+      kind: "marquee",
+      pointerId: e.pointerId,
+      startWorld: world,
+      rect: { minX: world.x, minY: world.y, maxX: world.x, maxY: world.y },
+    };
+    try {
+      this.#viewport.setPointerCapture(e.pointerId);
+    } catch {
+      /* capture is best-effort (synthetic events) */
+    }
+    this.#viewport.addEventListener("pointermove", this.#onMarqueePointerMove);
+    this.#viewport.addEventListener("pointerup", this.#onMarqueePointerUp);
+    this.#viewport.addEventListener("pointercancel", this.#onMarqueePointerUp);
+  }
+
+  #onMarqueePointerMove = (e) => {
+    const m = this.#mode;
+    if (m?.kind !== "marquee" || e.pointerId !== m.pointerId) return;
+    const w = this.#deskView.worldFromEvent(e);
+    m.rect = {
+      minX: Math.min(m.startWorld.x, w.x),
+      minY: Math.min(m.startWorld.y, w.y),
+      maxX: Math.max(m.startWorld.x, w.x),
+      maxY: Math.max(m.startWorld.y, w.y),
+    };
+    const box = this.#marquee;
+    if (!box) return;
+    box.style.left = `${m.rect.minX * PX_PER_UNIT}px`;
+    box.style.top = `${m.rect.minY * PX_PER_UNIT}px`;
+    box.style.width = `${(m.rect.maxX - m.rect.minX) * PX_PER_UNIT}px`;
+    box.style.height = `${(m.rect.maxY - m.rect.minY) * PX_PER_UNIT}px`;
+  };
+
+  #onMarqueePointerUp = (e) => {
+    const m = this.#mode;
+    if (m?.kind !== "marquee" || e.pointerId !== m.pointerId) return;
+    this.#mode = null;
+    this.#viewport.removeEventListener(
+      "pointermove",
+      this.#onMarqueePointerMove,
+    );
+    this.#viewport.removeEventListener("pointerup", this.#onMarqueePointerUp);
+    this.#viewport.removeEventListener(
+      "pointercancel",
+      this.#onMarqueePointerUp,
+    );
+    try {
+      this.#viewport.releasePointerCapture(m.pointerId);
+    } catch {
+      /* already released */
+    }
+    this.#marquee?.remove();
+    this.#marquee = null;
+    this.#viewport.classList.remove("desk-viewport--selecting");
+    if (e.type === "pointercancel") return;
+    this.#setMultiSelection(
+      this.#componentsWithin(m.rect),
+      this.#wiresWithin(m.rect),
+    );
+  };
+
+  /**
+   * Delete every marquee-selected component in ONE step (a single
+   * doc-changed). Bricks cascade their attached wires, so that's confirmed
+   * once for the whole batch rather than per part.
+   */
+  removeSelectedComponents() {
+    const ids = [...this.#multi];
+    const wireIds = [...this.#multiWires];
+    if (ids.length + wireIds.length === 0 || this.#editingLocked) return;
+    // Bricks cascade their attached wires. Wires the marquee already picked are
+    // going anyway, so only the EXTRA ones need confirming.
+    const cascaded = new Set();
+    for (const id of ids) {
+      for (const w of this.#doc.wiresTouching(id)) {
+        if (!this.#multiWires.has(w.id)) cascaded.add(w.id);
+      }
+    }
+    if (cascaded.size === 0) {
+      this.#doRemoveSelected(ids, wireIds);
+      return;
+    }
+    const what = [
+      ids.length && `${ids.length} part${ids.length === 1 ? "" : "s"}`,
+      wireIds.length &&
+        `${wireIds.length} wire${wireIds.length === 1 ? "" : "s"}`,
+    ]
+      .filter(Boolean)
+      .join(" and ");
+    const extra = `${cascaded.size} more wire${cascaded.size === 1 ? "" : "s"}`;
+    PopupManager.confirm({
+      title: `Remove ${what}?`,
+      message: `${extra} attached to them will be removed too.`,
+      confirmLabel: "Remove",
+      confirmClass: "btn--danger",
+      onConfirm: () => this.#doRemoveSelected(ids, wireIds),
+    });
+  }
+
+  #doRemoveSelected(ids, wireIds = []) {
+    this.#clearMultiSelection();
+    for (const id of ids) {
+      if (!this.#doc.getComponent(id)) continue; // already cascaded away
+      this.#doc.removeComponent(id);
+      this.#partViews.get(id)?.remove();
+      this.#partViews.delete(id);
+    }
+    for (const id of wireIds) {
+      if (this.#doc.getWire(id)) this.#doc.removeWire(id); // may have cascaded
+    }
+    this.#hideHover();
+    this.#emitDocChanged();
+  }
+
   // ── Viewport-level pointer handling ─────────────────────────────────────
 
   #onViewportPointerDown = (e) => {
     this.#lastDown = { x: e.clientX, y: e.clientY };
     if (this.#mode || e.button !== 0) return; // busy (tool/drag) or non-left
+    // Shift-drag anywhere rubber-bands a multi-selection (never a pan — DeskView
+    // skips shift-left too). Not while probing or running.
+    if (e.shiftKey && !this.#probeArmed && !this.#editingLocked) {
+      this.#beginMarquee(e);
+      return;
+    }
     // Not while probing (clicks pin nets) or running (topology frozen).
     if (!this.#probeArmed && !this.#editingLocked) {
       // Press near a wire's endpoint cap → grab it to drag the end elsewhere.
@@ -2294,16 +2538,6 @@ export class DeskController {
     if (m) return; // dragging — hover stays hidden
 
     const world = this.#deskView.worldFromEvent(e);
-    // Affordance: offer a grab cursor over a draggable wire — either an
-    // endpoint (drag one end) or the wire body (drag the whole wire).
-    const overWire =
-      this.#wireEndAtWorld(world) !== null ||
-      Boolean(e.target?.closest?.(".wire"));
-    this.#viewport.classList.toggle(
-      "desk-viewport--wire-grab",
-      !this.#editingLocked && overWire,
-    );
-
     // Hover addressing: suppressed below the zoom floor.
     if (this.#deskView.camera.zoom < HOVER_MIN_ZOOM) {
       this.#hideHover();

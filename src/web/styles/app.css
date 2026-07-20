@@ -352,7 +352,9 @@
     var(--color-desk-dot) 1px,
     transparent 1.5px
   );
-  cursor: grab;
+  /* A standard pointer at rest — the cursor only changes once a drag begins
+     (closed hand for a part/pan, crosshair for a marquee or a tool). */
+  cursor: default;
 }
 
 .desk-viewport--panning {
@@ -377,6 +379,12 @@
 }
 
 .desk-viewport--placing {
+  cursor: crosshair;
+}
+
+/* Shift-drag rubber band — crosshair, the conventional marquee cursor. Boards
+   and parts set no cursor of their own, so it inherits across the whole desk. */
+.desk-viewport--selecting {
   cursor: crosshair;
 }
 
@@ -416,6 +424,15 @@
 
 .layer-overlay {
   pointer-events: none; /* ghosts/rings/tooltips never intercept the desk */
+}
+
+/* Shift-drag rubber band. Lives in the overlay layer, so it's pointer-inert
+   and rides the camera transform with everything else. */
+.marquee {
+  position: absolute;
+  border: 1px solid var(--color-accent);
+  background: rgba(120, 170, 255, 0.12);
+  border-radius: 2px;
 }
 
 /* ── Boards ──────────────────────────────────────────────────────────────── */
@@ -827,11 +844,7 @@
   cursor: crosshair;
 }
 
-/* Hovering a wire endpoint offers a grab; dragging one shows the closed hand. */
-.desk-viewport--wire-grab {
-  cursor: grab;
-}
-
+/* Dragging a wire (an end or the whole run) shows the closed hand. */
 .desk-viewport--wire-dragging {
   cursor: grabbing;
 }

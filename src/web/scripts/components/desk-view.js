@@ -134,6 +134,8 @@ export class DeskView {
 
   #onPointerDown = (e) => {
     if (this.#drag) return;
+    // Shift-left-drag is the controller's marquee selection, never a pan.
+    if (e.button === 0 && e.shiftKey) return;
     const emptyDesk = e.target === this.#viewport || e.target === this.#surface;
     // Left-drag pans only from empty desk (overlays keep their own clicks);
     // middle-drag pans from anywhere, immediately (no click meaning to keep).

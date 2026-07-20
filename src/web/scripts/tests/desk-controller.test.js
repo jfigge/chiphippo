@@ -175,6 +175,186 @@ test("Delete/Backspace removes the selected board via handleKeyDown", () => {
   );
 });
 
+/** Shift-drag a marquee across the viewport from one world point to another. */
+function marquee(viewport, world, from, to) {
+  world.x = from.x;
+  world.y = from.y;
+  viewport.dispatchEvent(
+    new window.PointerEvent("pointerdown", {
+      bubbles: true,
+      button: 0,
+      pointerId: 7,
+      shiftKey: true,
+      clientX: 0,
+      clientY: 0,
+    }),
+  );
+  world.x = to.x;
+  world.y = to.y;
+  for (const type of ["pointermove", "pointerup"]) {
+    viewport.dispatchEvent(
+      new window.PointerEvent(type, {
+        bubbles: true,
+        button: 0,
+        pointerId: 7,
+        shiftKey: true,
+        clientX: 60,
+        clientY: 60,
+      }),
+    );
+  }
+}
+
+test("shift-drag marquee selects only components fully inside the box", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("full", 0, 0);
+  const world = { x: 0, y: 0 };
+  const { viewport, controller } = makeDesk(doc, world);
+  // 7400 at e5 spans columns 5–11 (x 5…11) across rows e (y 12) and f (y 9).
+  const chip = controller.addComponentAt("7400", "bb1", "e5");
+  // A second chip far to the right, well outside the box.
+  const outside = controller.addComponentAt("7404", "bb1", "e20");
+
+  // Box covering columns 4–12, rows f..e — encloses every pin of the first.
+  marquee(viewport, world, { x: 4, y: 8 }, { x: 12, y: 13 });
+  assert.deepEqual(controller.multiSelectedIds, [chip.id]);
+  assert.ok(!controller.multiSelectedIds.includes(outside.id));
+});
+
+test("a component only PARTLY inside the marquee is not selected", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("full", 0, 0);
+  const world = { x: 0, y: 0 };
+  const { viewport, controller } = makeDesk(doc, world);
+  const chip = controller.addComponentAt("7400", "bb1", "e5"); // cols 5–11
+
+  // Box stops at column 8 — the right-hand pins fall outside.
+  marquee(viewport, world, { x: 4, y: 8 }, { x: 8, y: 13 });
+  assert.deepEqual(controller.multiSelectedIds, []);
+  assert.ok(chip.id);
+});
+
+test("Delete removes the whole marquee selection in one doc-changed", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("full", 0, 0);
+  const world = { x: 0, y: 0 };
+  const { viewport, controller } = makeDesk(doc, world);
+  controller.addComponentAt("7400", "bb1", "e5"); // cols 5–11
+  controller.addComponentAt("resistor", "bb1", "a6"); // a6 ── a9
+  assert.equal(doc.components.length, 2);
+
+  // A box enclosing both (rows f..a, columns 4–12).
+  marquee(viewport, world, { x: 4, y: 8 }, { x: 12, y: 17 });
+  assert.equal(controller.multiSelectedIds.length, 2);
+
+  let changes = 0;
+  window.addEventListener("chiphippo:doc-changed", () => changes++);
+  const consumed = controller.handleKeyDown(
+    new window.KeyboardEvent("keydown", { key: "Delete" }),
+  );
+  assert.equal(consumed, true);
+  assert.equal(doc.components.length, 0, "both parts deleted");
+  assert.equal(changes, 1, "one batched doc-changed");
+  assert.deepEqual(controller.multiSelectedIds, []);
+});
+
+test("the marquee takes wires with BOTH ends inside, and Delete removes them", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("full", 0, 0);
+  const world = { x: 0, y: 0 };
+  const { viewport, controller } = makeDesk(doc, world);
+  // Wholly inside the box below: a5 (x 5, y 16) → a8 (x 8, y 16).
+  const held = doc.addWire({ from: "bb1.a5", to: "bb1.a8" });
+  // Straddling it: a6 is inside, a40 (x 40) is far to the right.
+  const straddling = doc.addWire({ from: "bb1.a6", to: "bb1.a40" });
+
+  marquee(viewport, world, { x: 4, y: 14 }, { x: 12, y: 18 });
+  assert.deepEqual(controller.multiSelectedWireIds, [held.id]);
+  assert.ok(!controller.multiSelectedWireIds.includes(straddling.id));
+
+  controller.handleKeyDown(
+    new window.KeyboardEvent("keydown", { key: "Delete" }),
+  );
+  assert.deepEqual(
+    doc.wires.map((w) => w.id),
+    [straddling.id],
+    "only the fully-enclosed wire went",
+  );
+});
+
+test("one marquee mixes parts and wires; Delete clears both at once", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("full", 0, 0);
+  const world = { x: 0, y: 0 };
+  const { viewport, controller } = makeDesk(doc, world);
+  const chip = controller.addComponentAt("7400", "bb1", "e5"); // cols 5–11
+  const wire = doc.addWire({ from: "bb1.a6", to: "bb1.a9" }); // y 16
+
+  let changes = 0;
+  window.addEventListener("chiphippo:doc-changed", () => changes++);
+  marquee(viewport, world, { x: 4, y: 8 }, { x: 12, y: 18 });
+  assert.deepEqual(controller.multiSelectedIds, [chip.id]);
+  assert.deepEqual(controller.multiSelectedWireIds, [wire.id]);
+
+  changes = 0;
+  controller.handleKeyDown(
+    new window.KeyboardEvent("keydown", { key: "Delete" }),
+  );
+  assert.equal(doc.components.length, 0);
+  assert.equal(doc.wires.length, 0);
+  assert.equal(changes, 1, "one batched doc-changed for parts + wires");
+});
+
+test("the marquee shows a crosshair for the duration of the drag", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("full", 0, 0);
+  const world = { x: 0, y: 0 };
+  const { viewport } = makeDesk(doc, world);
+
+  const send = (type, shiftKey = true) =>
+    viewport.dispatchEvent(
+      new window.PointerEvent(type, {
+        bubbles: true,
+        button: 0,
+        pointerId: 9,
+        shiftKey,
+        clientX: 0,
+        clientY: 0,
+      }),
+    );
+
+  send("pointerdown");
+  assert.ok(viewport.classList.contains("desk-viewport--selecting"));
+
+  send("pointermove");
+  assert.ok(viewport.classList.contains("desk-viewport--selecting"));
+
+  send("pointerup");
+  assert.ok(!viewport.classList.contains("desk-viewport--selecting"), "reset");
+});
+
+test("Escape clears a marquee selection", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("full", 0, 0);
+  const world = { x: 0, y: 0 };
+  const { viewport, controller } = makeDesk(doc, world);
+  controller.addComponentAt("7400", "bb1", "e5");
+
+  marquee(viewport, world, { x: 4, y: 8 }, { x: 12, y: 13 });
+  assert.equal(controller.multiSelectedIds.length, 1);
+  controller.handleKeyDown(
+    new window.KeyboardEvent("keydown", { key: "Escape" }),
+  );
+  assert.deepEqual(controller.multiSelectedIds, []);
+});
+
 test("every resistor renders as a span; rotateComponent swings the lead", () => {
   resetDom();
   const doc = new DeskDoc(null);

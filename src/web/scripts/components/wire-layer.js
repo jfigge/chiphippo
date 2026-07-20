@@ -52,7 +52,7 @@ export class WireLayer {
   #onSelect;
   #onContextMenu;
   #onHover;
-  #selectedId = null;
+  #selectedIds = new Set(); // highlighted wires (one pick, or a marquee)
   #preview = null; // preview path elements while the wire tool is pending
   #endpointDrag = null; // { wireId, end, world:{x,y} px, legal } while dragging an end
   #wholeDrag = null; // { wireId, from:{x,y} px, to:{x,y} px, legal } dragging a whole wire
@@ -166,7 +166,7 @@ export class WireLayer {
         const legal = draggingEnd ? drag.legal : whole.legal;
         group.classList.toggle("wire-preview--illegal", legal === false);
       }
-      group.classList.toggle("wire--selected", wire.id === this.#selectedId);
+      group.classList.toggle("wire--selected", this.#selectedIds.has(wire.id));
       group.addEventListener("click", (e) => this.#onSelect?.(wire.id, e));
       group.addEventListener("contextmenu", (e) =>
         this.#onContextMenu?.(wire.id, e),
@@ -205,11 +205,16 @@ export class WireLayer {
 
   /** Highlight one wire (null clears). Survives re-renders. */
   setSelected(id) {
-    this.#selectedId = id;
+    this.setSelectedMany(id == null ? [] : [id]);
+  }
+
+  /** Highlight a SET of wires (marquee selection); empty clears. */
+  setSelectedMany(ids) {
+    this.#selectedIds = new Set(ids);
     for (const group of this.#svg.querySelectorAll(".wire")) {
       group.classList.toggle(
         "wire--selected",
-        group.dataset.wireId === id && id !== null,
+        this.#selectedIds.has(group.dataset.wireId),
       );
     }
   }
