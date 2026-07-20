@@ -53,7 +53,7 @@ test("double-clicking a DIP chip requests its pinout (rows = pins/2)", () => {
   resetDom();
   const opened = [];
   const doc = new DeskDoc(null);
-  doc.addBoard("full", 0, 0);
+  doc.addBoard("pins-full", 0, 0);
   const { surface, controller } = makeDesk(doc, {
     onOpenPinout: (ref, rows) => opened.push([ref, rows]),
   });
@@ -67,7 +67,7 @@ test("double-clicking a discrete requests its pinout (rows = pin count)", () => 
   resetDom();
   const opened = [];
   const doc = new DeskDoc(null);
-  doc.addBoard("full", 0, 0);
+  doc.addBoard("pins-full", 0, 0);
   const { surface, controller } = makeDesk(doc, {
     onOpenPinout: (ref, rows) => opened.push([ref, rows]),
   });

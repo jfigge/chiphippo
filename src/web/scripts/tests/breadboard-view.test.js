@@ -28,12 +28,14 @@ const { buildBoardSvg, BreadboardView } =
 
 /** Expected column-numeral positions: col 1 + every multiple of 5, ×2 rows. */
 function expectedColLabels(cols) {
+  if (cols === 0) return 0; // a rail strip has no columns to number
   let n = 1;
   for (let c = 5; c <= cols; c += 5) n++;
   return n * 2;
 }
 
 for (const [type, s] of Object.entries(BOARD_TYPES)) {
+  const pins = s.kind === "pins";
   test(`buildBoardSvg(${type}): hole count, labels, rails, size`, () => {
     resetDom();
     const svg = buildBoardSvg(type);
@@ -43,8 +45,11 @@ for (const [type, s] of Object.entries(BOARD_TYPES)) {
     assert.equal(holes.length, s.tiePoints);
     for (const hole of holes) assert.equal(hole.id, "");
 
-    // Row letters at both ends of the 10 grid rows.
-    assert.equal(svg.querySelectorAll(".board-row-label").length, 20);
+    // Row letters at both ends of the 10 grid rows — a rail strip has none.
+    assert.equal(
+      svg.querySelectorAll(".board-row-label").length,
+      pins ? 20 : 0,
+    );
 
     // Column numerals above and below.
     assert.equal(
@@ -52,7 +57,7 @@ for (const [type, s] of Object.entries(BOARD_TYPES)) {
       expectedColLabels(s.cols),
     );
 
-    // Rail stripes: one per rail (red/blue), none on Tiny.
+    // Rail stripes: one per rail (red/blue), none on a pin-board.
     assert.equal(
       svg.querySelectorAll(".board-rail-stripe").length,
       s.rails.length,
@@ -62,9 +67,10 @@ for (const [type, s] of Object.entries(BOARD_TYPES)) {
       s.rails.filter((r) => r.polarity === "+").length,
     );
 
-    // One body, one trench; viewBox + px size match the spec outline.
+    // One body; the trench belongs to the pin-board alone. viewBox + px size
+    // match the spec outline.
     assert.equal(svg.querySelectorAll(".board-body").length, 1);
-    assert.equal(svg.querySelectorAll(".board-trench").length, 1);
+    assert.equal(svg.querySelectorAll(".board-trench").length, pins ? 1 : 0);
     assert.equal(svg.getAttribute("viewBox"), `0 0 ${s.width} ${s.height}`);
     assert.equal(Number(svg.getAttribute("width")), s.width * PX_PER_UNIT);
     assert.equal(Number(svg.getAttribute("height")), s.height * PX_PER_UNIT);
@@ -84,7 +90,7 @@ test("BreadboardView mounts, positions in world px, reports pointerdown", () => 
   const seen = [];
   const view = new BreadboardView(
     layer,
-    { id: "bb7", type: "tiny", x: 3, y: -2 },
+    { id: "bb7", type: "pins-tiny", x: 3, y: -2 },
     { onPointerDown: (id) => seen.push(id) },
   );
 

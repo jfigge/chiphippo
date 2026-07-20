@@ -46,7 +46,7 @@ import {
 } from "./chip-eval.js";
 import { resolveNet } from "./resolve.js";
 import { partDef } from "../catalog/index.js";
-import { partPinHoles } from "../model/occupancy.js";
+import { partPinAddresses } from "../model/occupancy.js";
 import { formatAddress } from "../model/breadboard.js";
 
 /** Settle iteration cap — beyond this a still-changing net is oscillating. */
@@ -139,17 +139,15 @@ function buildContext(doc, netlist) {
   for (const comp of components) {
     const def = partDef(comp.ref);
     if (!def?.weakBridges || comp.board == null) continue;
-    const pins = partPinHoles(comp.ref, comp.anchor, comp.params);
+    const pins = partPinAddresses(doc, comp);
     if (!pins) continue;
-    const holeOfPin = new Map(pins.map((p) => [p.pin, p.hole]));
+    const addressOfPin = new Map(pins.map((p) => [p.pin, p.address]));
     for (const [a, b] of def.weakBridges(comp.params)) {
-      const ha = holeOfPin.get(a);
-      const hb = holeOfPin.get(b);
-      if (!ha || !hb) continue;
-      resistors.push({
-        netA: netOf(formatAddress(comp.board, ha)),
-        netB: netOf(formatAddress(comp.board, hb)),
-      });
+      const aa = addressOfPin.get(a);
+      const ab = addressOfPin.get(b);
+      // A lead resolving to nothing conducts nothing — the part stays, inert.
+      if (!aa || !ab) continue;
+      resistors.push({ netA: netOf(aa), netB: netOf(ab) });
     }
   }
 
@@ -166,11 +164,12 @@ function buildContext(doc, netlist) {
     ) {
       continue;
     }
-    const pins = partPinHoles(comp.ref, comp.anchor, comp.params);
+    const pins = partPinAddresses(doc, comp);
     if (!pins) continue;
     const pinNet = new Map();
-    for (const { pin, hole } of pins) {
-      pinNet.set(pin, netOf(formatAddress(comp.board, hole)));
+    for (const { pin, address } of pins) {
+      // A floating lead maps to no net — the pin still exists, reading Z.
+      pinNet.set(pin, address ? netOf(address) : null);
     }
     const vccPin = def.pins.find((p) => p.role === "vcc")?.n;
     const gndPin = def.pins.find((p) => p.role === "gnd")?.n;

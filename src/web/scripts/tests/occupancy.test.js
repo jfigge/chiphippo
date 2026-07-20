@@ -28,6 +28,7 @@ import {
   canReendWire,
   chipPinHoles,
   isFreeHole,
+  partPinAddresses,
   partPinHoles,
 } from "../model/occupancy.js";
 
@@ -35,8 +36,9 @@ function docWith({ boards, components = [] }) {
   return { boards, components };
 }
 
-const FULL = { id: "bb1", type: "full", x: 0, y: 0 };
-const TINY = { id: "bb2", type: "tiny", x: 100, y: 0 };
+const FULL = { id: "bb1", type: "pins-full", x: 0, y: 0 };
+const TINY = { id: "bb2", type: "pins-tiny", x: 100, y: 0 };
+const RAIL = { id: "bb3", type: "rail-full", x: 0, y: -4 };
 
 test("chipPinHoles: derives the 14 seated holes of a 7400 at e5", () => {
   const pins = chipPinHoles("7400", "e5");
@@ -59,49 +61,61 @@ test("chipPinHoles: derives the 14 seated holes of a 7400 at e5", () => {
 test("chipPinHoles: unknown ref or non-e anchor is null", () => {
   assert.equal(chipPinHoles("9999", "e5"), null);
   assert.equal(chipPinHoles("7400", "f5"), null);
-  assert.equal(chipPinHoles("7400", "t+3"), null);
+  assert.equal(chipPinHoles("7400", "+3"), null);
   assert.equal(chipPinHoles("7400", null), null);
 });
 
-test("partPinHoles: a rotated resistor derives two free-end holes from params", () => {
+test("partPinHoles: a rotated resistor derives a seated pin plus a free lead", () => {
   // Horizontal (no rot) still uses the footprint offsets.
   assert.deepEqual(partPinHoles("resistor", "a5"), [
     { pin: 1, hole: "a5" },
     { pin: 2, hole: "a8" },
   ]);
-  // Rotated: pin 1 at the anchor (here a rail), pin 2 at params.end (a column).
-  assert.deepEqual(partPinHoles("resistor", "t-3", { rot: 90, end: "j7" }), [
-    { pin: 1, hole: "t-3" },
-    { pin: 2, hole: "j7" },
-  ]);
-  // Rotated but no far end → unresolvable.
-  assert.equal(partPinHoles("resistor", "t-3", { rot: 90, end: null }), null);
+  // Rotated: pin 1 at the anchor hole, pin 2 a {dx, dy} BEND from it. Which
+  // hole (or strip, or nothing) that reaches depends on the whole desk, so
+  // this stops at the geometry — partPinAddresses resolves it.
+  assert.deepEqual(
+    partPinHoles("resistor", "j3", { rot: 90, end: { dx: 0, dy: -4 } }),
+    [
+      { pin: 1, hole: "j3" },
+      { pin: 2, offset: { dx: 0, dy: -4 } },
+    ],
+  );
+  // Rotated with no bend, or an off-lattice one → unresolvable.
+  assert.equal(partPinHoles("resistor", "j3", { rot: 90, end: null }), null);
+  assert.equal(
+    partPinHoles("resistor", "j3", { rot: 90, end: { dx: 0.5, dy: 1 } }),
+    null,
+  );
+  // A rail hole never ANCHORS a part — pin 1 always seats in the grid, and it
+  // is the lead that reaches the rail.
+  assert.equal(
+    partPinHoles("resistor", "-3", { rot: 90, end: { dx: 0, dy: 3 } }),
+    null,
+  );
   // A non-rotatable part ignores rot and keeps its footprint.
-  assert.deepEqual(partPinHoles("sw-push", "a5", { rot: 90, end: "j7" }), [
-    { pin: 1, hole: "a5" },
-    { pin: 2, hole: "a7" },
-  ]);
-  // An LED is rotatable too, with its own two free ends.
-  assert.deepEqual(partPinHoles("led", "b-2", { rot: 90, end: "a4" }), [
-    { pin: 1, hole: "b-2" },
-    { pin: 2, hole: "a4" },
-  ]);
+  assert.deepEqual(
+    partPinHoles("sw-push", "a5", { rot: 90, end: { dx: 0, dy: -2 } }),
+    [
+      { pin: 1, hole: "a5" },
+      { pin: 2, hole: "a7" },
+    ],
+  );
+  // An LED is rotatable too, with its own free lead.
+  assert.deepEqual(
+    partPinHoles("led", "j2", { rot: 90, end: { dx: 1, dy: -3 } }),
+    [
+      { pin: 1, hole: "j2" },
+      { pin: 2, offset: { dx: 1, dy: -3 } },
+    ],
+  );
 });
 
-test("canPlacePart / buildOccupancy: rotated resistor bridges a rail and a column", () => {
-  const doc = docWith({ boards: [FULL] });
-  const rot = { rot: 90, end: "j7" };
-  // Both ends real + free + distinct → placeable.
-  assert.equal(
-    canPlacePart(doc, {
-      ref: "resistor",
-      board: "bb1",
-      anchor: "t-3",
-      params: rot,
-    }),
-    true,
-  );
-  // A rotated part pinned to ONE hole (end === anchor) is nonsense.
+test("canPlacePart / buildOccupancy: a rotated resistor's lead reaches the rail strip", () => {
+  const doc = docWith({ boards: [FULL, RAIL] });
+  // Pin 1 seats at j7 (world 7, 1); the lead bends 3 UP onto the rail strip
+  // above (its `-` rail sits at world y −2, where hole −5 is at x 7).
+  const rot = { rot: 90, end: { dx: 0, dy: -3 } };
   assert.equal(
     canPlacePart(doc, {
       ref: "resistor",
@@ -109,39 +123,61 @@ test("canPlacePart / buildOccupancy: rotated resistor bridges a rail and a colum
       anchor: "j7",
       params: rot,
     }),
-    false,
+    true,
   );
-  // An unreal far end is rejected.
+  // A rotated part pinned to ONE hole (a zero bend) is nonsense.
   assert.equal(
     canPlacePart(doc, {
       ref: "resistor",
       board: "bb1",
-      anchor: "t-3",
-      params: { rot: 90, end: "j99" },
+      anchor: "j7",
+      params: { rot: 90, end: { dx: 0, dy: 0 } },
     }),
     false,
   );
-  // Occupancy records both ends (rail + grid) as members.
+  // A lead landing on bare desk FLOATS — legal as a leftover when a strip is
+  // pulled away, never as a deliberate placement.
+  assert.equal(
+    canPlacePart(doc, {
+      ref: "resistor",
+      board: "bb1",
+      anchor: "j7",
+      params: { rot: 90, end: { dx: 0, dy: -8 } },
+    }),
+    false,
+  );
+  // …and so does one landing between a rail's hole groups (x 8 is the gap).
+  assert.equal(
+    canPlacePart(doc, {
+      ref: "resistor",
+      board: "bb1",
+      anchor: "j7",
+      params: { rot: 90, end: { dx: 1, dy: -3 } },
+    }),
+    false,
+  );
+  // Occupancy records BOTH ends — the far one under its own strip's id.
   doc.components = [
     {
       id: "r1",
       kind: "discrete",
       ref: "resistor",
       board: "bb1",
-      anchor: "t-3",
+      anchor: "j7",
       params: rot,
     },
   ];
   const occ = buildOccupancy(doc);
-  assert.equal(occ.get("bb1.t-3").componentId, "r1");
   assert.equal(occ.get("bb1.j7").componentId, "r1");
-  // A second part cannot reuse either occupied end.
+  assert.equal(occ.get("bb3.-5").componentId, "r1");
+  // A second part cannot reuse either occupied end — here the rail hole,
+  // reached from a different anchor (i7, world 7 2 → 4 up lands on bb3.-5).
   assert.equal(
     canPlacePart(doc, {
       ref: "resistor",
       board: "bb1",
-      anchor: "j7",
-      params: { rot: 90, end: "a1" },
+      anchor: "i7",
+      params: { rot: 90, end: { dx: 0, dy: -4 } },
     }),
     false,
   );
@@ -156,15 +192,43 @@ test("canPlacePart: a resistor's ends must be at least minSpan apart", () => {
       anchor,
       params: { rot: 90, end },
     });
-  // a10 sits at x 10; the minimum span is 3 pitch units.
-  assert.equal(at("a10", "a13"), true); // exactly 3 → allowed
-  assert.equal(at("a10", "a12"), false); // 2 → too close
-  assert.equal(at("a10", "a11"), false); // 1 → too close
+  // a10 sits at (10, 12); the minimum span is 3 pitch units.
+  assert.equal(at("a10", { dx: 3, dy: 0 }), true); // a13, exactly 3 → allowed
+  assert.equal(at("a10", { dx: 2, dy: 0 }), false); // a12, 2 → too close
+  assert.equal(at("a10", { dx: 1, dy: 0 }), false); // a11, 1 → too close
   // Diagonals use true distance, not row/column counts: a10→c12 is √8 ≈ 2.83.
-  assert.equal(at("a10", "c12"), false);
-  assert.equal(at("a10", "c13"), true); // √(9+4) ≈ 3.6 → allowed
-  // Any distance BEYOND the minimum is fine — including the far rail.
-  assert.equal(at("a10", "t-8"), true);
+  assert.equal(at("a10", { dx: 2, dy: -2 }), false);
+  assert.equal(at("a10", { dx: 3, dy: -2 }), true); // c13, √13 ≈ 3.6 → allowed
+  // Any distance BEYOND the minimum is fine — including clear across the trench.
+  assert.equal(at("a10", { dx: -9, dy: -11 }), true); // j1
+});
+
+test("partPinAddresses: a lead whose strip went away floats, it doesn't vanish", () => {
+  const comp = {
+    id: "r1",
+    kind: "discrete",
+    ref: "resistor",
+    board: "bb1",
+    anchor: "j7",
+    params: { rot: 90, end: { dx: 0, dy: -3 } },
+  };
+  // With the rail strip present the lead resolves onto it.
+  assert.deepEqual(partPinAddresses(docWith({ boards: [FULL, RAIL] }), comp), [
+    { pin: 1, address: "bb1.j7" },
+    { pin: 2, address: "bb3.-5" },
+  ]);
+  // Take the rail away and the SEATED pin is untouched; only the bend loses
+  // its hole. The part is still fully resolvable — a null address, not null.
+  assert.deepEqual(partPinAddresses(docWith({ boards: [FULL] }), comp), [
+    { pin: 1, address: "bb1.j7" },
+    { pin: 2, address: null },
+  ]);
+  // A floating lead occupies nothing, so the hole it used to hold is free.
+  const doc = docWith({ boards: [FULL], components: [comp] });
+  assert.equal(buildOccupancy(doc).size, 1);
+  assert.equal(isFreeHole(doc, "bb1.j7"), false);
+  // Only the part's own board must exist — a missing one is unresolvable.
+  assert.equal(partPinAddresses(docWith({ boards: [RAIL] }), comp), null);
 });
 
 test("buildOccupancy: one entry per pin, addressed globally", () => {
@@ -189,13 +253,13 @@ test("buildOccupancy: one entry per pin, addressed globally", () => {
   assert.equal(occ.get("bb1.e4"), undefined);
 });
 
-test("canPlaceChip: happy path on Full and Tiny", () => {
+test("canPlaceChip: happy path on the full and tiny pin-boards", () => {
   const doc = docWith({ boards: [FULL, TINY] });
   assert.equal(
     canPlaceChip(doc, { ref: "7400", board: "bb1", anchor: "e5" }),
     true,
   );
-  // A DIP-14 needs 7 columns: Tiny (17 cols) fits at e1…e11.
+  // A DIP-14 needs 7 columns: the tiny pin-board (17 cols) fits it at e1…e11.
   assert.equal(
     canPlaceChip(doc, { ref: "74125", board: "bb2", anchor: "e11" }),
     true,
@@ -204,14 +268,14 @@ test("canPlaceChip: happy path on Full and Tiny", () => {
 
 test("canPlaceChip: rejects off-board, bad anchors, unknown boards/refs", () => {
   const doc = docWith({ boards: [FULL, TINY] });
-  // Full has 63 columns: e58 puts pin 7 at e64 — off the board.
+  // The full pin-board has 63 columns: e58 puts pin 7 at e64 — off the board.
   assert.equal(
     canPlaceChip(doc, { ref: "7400", board: "bb1", anchor: "e58" }),
     false,
   );
   assert.equal(
     canPlaceChip(doc, { ref: "7400", board: "bb2", anchor: "e12" }),
-    false, // Tiny: pin 7 would land at e18 (only 17 columns)
+    false, // tiny: pin 7 would land at e18 (only 17 columns)
   );
   assert.equal(
     canPlaceChip(doc, { ref: "7400", board: "bb1", anchor: "f5" }),
@@ -264,12 +328,13 @@ test("canPlaceChip: occupied holes block; ignoreId frees a chip's own pins", () 
 
 test("buildOccupancy: wire ends occupy alongside pins", () => {
   const doc = docWith({
-    boards: [FULL],
+    boards: [FULL, RAIL],
     components: [
       { id: "c1", kind: "chip", ref: "7400", board: "bb1", anchor: "e5" },
     ],
   });
-  doc.wires = [{ id: "w1", from: "bb1.a1", to: "bb1.t+3", color: "red" }];
+  // A cross-strip wire: pin-board hole → rail-strip hole.
+  doc.wires = [{ id: "w1", from: "bb1.a1", to: "bb3.+3", color: "red" }];
   const occ = buildOccupancy(doc);
   assert.equal(occ.size, 16); // 14 pins + 2 wire ends
   assert.deepEqual(occ.get("bb1.a1"), {
@@ -277,7 +342,7 @@ test("buildOccupancy: wire ends occupy alongside pins", () => {
     wireId: "w1",
     end: "from",
   });
-  assert.deepEqual(occ.get("bb1.t+3"), {
+  assert.deepEqual(occ.get("bb3.+3"), {
     kind: "wire",
     wireId: "w1",
     end: "to",
@@ -382,7 +447,7 @@ test("partPinHoles: linear discretes in any grid row", () => {
     { pin: 1, hole: "f1" },
     { pin: 2, hole: "f2" },
   ]);
-  assert.equal(partPinHoles("led", "t+3"), null); // rails don't anchor parts
+  assert.equal(partPinHoles("led", "+3"), null); // rails don't anchor parts
   assert.equal(partPinHoles("psu", "b1"), null); // psu has terminals, not pins
 });
 
@@ -399,7 +464,7 @@ test("canPlacePart: discretes across rows; edges clip", () => {
 });
 
 test("isFreeHole resolves PSU terminals; wires occupy them", () => {
-  const doc = docWith({ boards: [FULL] });
+  const doc = docWith({ boards: [FULL, RAIL] });
   doc.components = [
     { id: "psu1", kind: "psu", ref: "psu", x: 80, y: 0, params: { volts: 5 } },
   ];
@@ -410,6 +475,6 @@ test("isFreeHole resolves PSU terminals; wires occupy them", () => {
   assert.equal(isFreeHole(doc, "psu9.+"), false);
   doc.wires = [{ id: "w1", from: "psu1.+", to: "bb1.a1", color: "red" }];
   assert.equal(isFreeHole(doc, "psu1.+"), false);
-  assert.equal(canPlaceWire(doc, "psu1.-", "bb1.t-1"), true);
-  assert.equal(canPlaceWire(doc, "psu1.+", "bb1.t+1"), false);
+  assert.equal(canPlaceWire(doc, "psu1.-", "bb3.-1"), true);
+  assert.equal(canPlaceWire(doc, "psu1.+", "bb3.+1"), false);
 });

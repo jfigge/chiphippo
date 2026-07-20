@@ -21,14 +21,24 @@
 //
 // Pure and DOM-free. Pin positions are always DERIVED (footprint + anchor),
 // never stored.
+//
+// A part is always seated on ONE board — for a breadboard kit, the centre
+// pin-board. Most pins therefore resolve within that board by footprint
+// arithmetic alone. The exception is a rotated two-terminal part's FREE LEAD,
+// which is stored as a `{dx, dy}` bend and may land on a neighbouring strip
+// (usually a power rail). That lead is resolved GEOMETRICALLY, against
+// whatever board lies under it — so pulling the rail away leaves the part
+// seated where it was, with the lead floating.
 
 import { partDef } from "../catalog/index.js";
 import { allPinHoles } from "./footprints.js";
 import {
   formatAddress,
+  holeAt,
   holePosition,
   parseAddress,
   parseHole,
+  spec,
 } from "./breadboard.js";
 
 const CHIP_ANCHOR_RE = /^e([1-9]\d*)$/; // a chip anchor: pin 1's hole, row e
@@ -41,6 +51,10 @@ const GRID_ANCHOR_RE = /^([a-j])([1-9]\d*)$/; // a discrete anchors in ANY row
  * footprint (chips: row e; discretes: any grid row). Whether each hole
  * exists on a given board type is the caller's check — this is pure
  * footprint arithmetic.
+ *
+ * A rotated part's free lead has no hole on the part's own board: its entry
+ * is `{ pin, offset }` instead of `{ pin, hole }`, since where it lands
+ * depends on the desk. Use partPinAddresses() to resolve it.
  */
 export function partPinHoles(ref, anchor, params) {
   const def = partDef(ref);
@@ -65,13 +79,18 @@ export function partPinHoles(ref, anchor, params) {
     }));
   }
   if (def.footprint) {
-    // Rotated (vertical) two-free-ends form: pin 1 at the anchor hole, pin 2 at
-    // `params.end` (any hole — rail or grid), instead of a footprint offset.
+    // Rotated (vertical) two-free-ends form: pin 1 at the anchor hole, pin 2
+    // bent to a {dx, dy} offset instead of a footprint offset. The bend may
+    // reach off this board entirely, so it stays geometry here.
     if (def.rotatable && params?.rot === 90) {
-      if (typeof params.end !== "string") return null;
+      const end = params.end;
+      if (!end || !Number.isInteger(end.dx) || !Number.isInteger(end.dy)) {
+        return null;
+      }
+      if (!GRID_ANCHOR_RE.test(anchor)) return null;
       return [
         { pin: def.pins[0].n, hole: anchor },
-        { pin: def.pins[1].n, hole: params.end },
+        { pin: def.pins[1].n, offset: { dx: end.dx, dy: end.dy } },
       ];
     }
     // Linear discrete along one grid row.
@@ -91,6 +110,81 @@ export function partPinHoles(ref, anchor, params) {
 export const chipPinHoles = partPinHoles;
 
 /**
+ * The desk address of the hole at a world point, or null when the point is
+ * over bare desk (or over a board but between holes). Boards never overlap,
+ * so the first hit wins.
+ *
+ * @param {Array<{id:string,type:string,x:number,y:number}>} boards
+ */
+export function addressAtWorld(boards, x, y) {
+  for (const board of boards ?? []) {
+    let s;
+    try {
+      s = spec(board.type);
+    } catch {
+      continue; // a foreign/junk board type never owns a hole
+    }
+    if (x < board.x || y < board.y) continue;
+    if (x > board.x + s.width || y > board.y + s.height) continue;
+    const hole = holeAt(board.type, x - board.x, y - board.y);
+    if (hole) return formatAddress(board.id, hole);
+  }
+  return null;
+}
+
+/**
+ * Every pin of a seated part as a DESK ADDRESS, resolving a rotated part's
+ * free lead against whatever board lies under its bend.
+ *
+ * Returns `[{ pin, address }]` where `address` is null for a lead that
+ * currently touches nothing — a floating leg, which is a legal state, not an
+ * error. Returns null only when the part itself can't be resolved (unknown
+ * ref, missing board, anchor off the footprint).
+ *
+ * @param {{ boards: Array }} doc
+ * @param {{ ref:string, board:string, anchor:string, params?:object }} comp
+ */
+export function partPinAddresses(doc, comp) {
+  const boards = doc?.boards ?? [];
+  const board = boards.find((b) => b.id === comp?.board);
+  if (!board) return null;
+  const pins = partPinHoles(comp.ref, comp.anchor, comp.params);
+  if (!pins) return null;
+
+  // The anchor's world position — the origin every bend is measured from.
+  // Guarded like addressAtWorld/worldOfAddress: a junk board type resolves to
+  // nothing rather than throwing, so one corrupt entry can't take out a whole
+  // occupancy rebuild.
+  let anchorWorld = null;
+  if (pins.some((p) => p.offset)) {
+    let pos = null;
+    try {
+      pos = holePosition(board.type, comp.anchor);
+    } catch {
+      return null;
+    }
+    if (!pos) return null;
+    anchorWorld = { x: board.x + pos.x, y: board.y + pos.y };
+  }
+
+  return pins.map(({ pin, hole, offset }) => {
+    if (hole != null) {
+      // On the part's own board — but still only real if the type has it.
+      if (!parseHole(board.type, hole)) return { pin, address: null };
+      return { pin, address: formatAddress(board.id, hole) };
+    }
+    return {
+      pin,
+      address: addressAtWorld(
+        boards,
+        anchorWorld.x + offset.dx,
+        anchorWorld.y + offset.dy,
+      ),
+    };
+  });
+}
+
+/**
  * Build the address → occupant index for a document. Occupants:
  *   { kind: "pin", componentId, pin }   — a seated chip pin
  *   { kind: "wire", wireId, end }       — a wire end ("from" | "to")
@@ -105,14 +199,12 @@ export function buildOccupancy(doc) {
   const map = new Map();
   for (const comp of doc.components ?? []) {
     if (!comp || (comp.kind !== "chip" && comp.kind !== "discrete")) continue;
-    const pins = partPinHoles(comp.ref, comp.anchor, comp.params);
+    const pins = partPinAddresses(doc, comp);
     if (!pins) continue;
-    for (const { pin, hole } of pins) {
-      map.set(formatAddress(comp.board, hole), {
-        kind: "pin",
-        componentId: comp.id,
-        pin,
-      });
+    for (const { pin, address } of pins) {
+      // A floating lead occupies nothing.
+      if (address == null) continue;
+      map.set(address, { kind: "pin", componentId: comp.id, pin });
     }
   }
   // PSU terminals are connection POINTS like holes: free until a wire lands.
@@ -209,11 +301,35 @@ export function canMoveWire(doc, wireId, from, to) {
 }
 
 /**
- * May a board part (chip or discrete) seat here? True when the board
- * exists, the anchor fits the footprint (chips row e; discretes any grid
- * row), EVERY pin's hole exists on the board type, and every hole is
- * free — ignoring the pins of `ignoreId` (a part may move within its own
- * footprint).
+ * The world position (pitch units) of an address's hole, or null when the
+ * board is gone or the hole doesn't exist on its type.
+ *
+ * @param {Array<{id:string,type:string,x:number,y:number}>} boards
+ */
+export function worldOfAddress(boards, address) {
+  const parsed = parseAddress(address);
+  if (!parsed) return null;
+  const board = (boards ?? []).find((b) => b.id === parsed.boardId);
+  if (!board) return null;
+  let pos = null;
+  try {
+    pos = holePosition(board.type, parsed.hole);
+  } catch {
+    return null; // junk board type
+  }
+  return pos ? { x: board.x + pos.x, y: board.y + pos.y } : null;
+}
+
+/**
+ * May a board part (chip or discrete) seat here? True when the board exists,
+ * the anchor fits the footprint (chips row e; discretes any grid row), EVERY
+ * lead lands in a real hole, and every one of those holes is free — ignoring
+ * the pins of `ignoreId` (a part may move within its own footprint).
+ *
+ * Note a rotated part's free lead may legally land on a DIFFERENT board (a
+ * power rail alongside the pin-board); it must still land in a real hole.
+ * Floating is a state a part falls into when a strip is moved or deleted out
+ * from under it — never one you can deliberately place into.
  *
  * @param {{ boards: Array, components: Array }} doc
  * @param {{ ref: string, board: string, anchor: string, ignoreId?: string|null }} opts
@@ -222,27 +338,27 @@ export function canPlacePart(
   doc,
   { ref, board: boardId, anchor, params = null, ignoreId = null },
 ) {
-  const board = (doc.boards ?? []).find((b) => b.id === boardId);
-  if (!board) return false;
+  const boards = doc.boards ?? [];
+  if (!boards.some((b) => b.id === boardId)) return false;
   const def = partDef(ref);
-  const pins = partPinHoles(ref, anchor, params);
+  const pins = partPinAddresses(doc, { ref, board: boardId, anchor, params });
   if (!pins) return false;
+  if (pins.some((p) => p.address == null)) return false; // a lead in mid-air
   // A rotated part's two ends must be DISTINCT holes (a wire could join a
   // node's own holes; a two-terminal device pinned to one hole is nonsense).
-  if (params?.rot === 90 && pins[0]?.hole === pins[1]?.hole) return false;
+  if (params?.rot === 90 && pins[0].address === pins[1].address) return false;
   // Two-terminal parts with a declared minimum lead span (a resistor's body
   // needs room) must keep their ends that far apart — any angle, any distance
   // beyond it, so a lead can reach the far rail.
   if (def?.minSpan && pins.length === 2) {
-    const pa = holePosition(board.type, pins[0].hole);
-    const pb = holePosition(board.type, pins[1].hole);
+    const pa = worldOfAddress(boards, pins[0].address);
+    const pb = worldOfAddress(boards, pins[1].address);
     if (!pa || !pb) return false;
     if (Math.hypot(pb.x - pa.x, pb.y - pa.y) < def.minSpan) return false;
   }
   const occupancy = buildOccupancy(doc);
-  for (const { hole } of pins) {
-    if (!parseHole(board.type, hole)) return false; // off the board
-    const occupant = occupancy.get(formatAddress(boardId, hole));
+  for (const { address } of pins) {
+    const occupant = occupancy.get(address);
     if (occupant && occupant.componentId !== ignoreId) return false;
   }
   return true;

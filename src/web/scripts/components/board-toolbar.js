@@ -15,16 +15,22 @@
  */
 
 // board-toolbar.js — the header's Add-board split-button: the main button
-// arms placement with the last-used size; the arrow opens a size menu
-// (Full / Half / Tiny) via the popup manager. Reports through the
-// constructor callback (house rule) — arming/ghosting is DeskController's.
+// arms placement with the last-used size; the arrow opens a menu of the
+// assembled breadboards (Full / Half / Tiny) and, below a rule, the loose
+// strips they are built from (bare pin-boards and power rails) via the popup
+// manager. Reports through the constructor callback (house rule) —
+// arming/ghosting is DeskController's.
 
 import { el } from "../dom.js";
 import { PopupManager } from "../popup-manager.js";
-import { BOARD_TYPES, BOARD_TYPE_KEYS } from "../model/board-types.js";
+import {
+  BREADBOARD_KITS,
+  KIT_KEYS,
+  STRIP_KIT_KEYS,
+} from "../model/board-types.js";
 
 export class BoardToolbar {
-  #lastType = "full";
+  #lastKit = "full";
   #mainBtn;
   #onAddBoard;
 
@@ -41,7 +47,7 @@ export class BoardToolbar {
       type: "button",
       text: this.#mainLabel(),
       title: "Add a breadboard to the desk (Esc cancels placement)",
-      onClick: () => this.#onAddBoard?.(this.#lastType),
+      onClick: () => this.#onAddBoard?.(this.#lastKit),
     });
     const arrow = el("button", {
       class: "toolbar-btn toolbar-btn--arrow",
@@ -54,14 +60,11 @@ export class BoardToolbar {
         PopupManager.menu({
           x: rect.left,
           y: rect.bottom + 4,
-          items: BOARD_TYPE_KEYS.map((key) => ({
-            label: `${BOARD_TYPES[key].label} (${BOARD_TYPES[key].tiePoints} tie points)`,
-            onSelect: () => {
-              this.#lastType = key;
-              this.#mainBtn.textContent = this.#mainLabel();
-              this.#onAddBoard?.(key);
-            },
-          })),
+          items: [
+            ...KIT_KEYS.map((key) => this.#kitItem(key)),
+            { separator: true },
+            ...STRIP_KIT_KEYS.map((key) => this.#kitItem(key)),
+          ],
         });
       },
     });
@@ -71,7 +74,20 @@ export class BoardToolbar {
     );
   }
 
+  /** One menu row: pick the kit, remember it, and arm placement. */
+  #kitItem(key) {
+    const kit = BREADBOARD_KITS[key];
+    return {
+      label: `${kit.label} (${kit.tiePoints} tie points)`,
+      onSelect: () => {
+        this.#lastKit = key;
+        this.#mainBtn.textContent = this.#mainLabel();
+        this.#onAddBoard?.(key);
+      },
+    };
+  }
+
   #mainLabel() {
-    return `Add ${BOARD_TYPES[this.#lastType].label}`;
+    return `Add ${BREADBOARD_KITS[this.#lastKit].label}`;
   }
 }

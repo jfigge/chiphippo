@@ -30,6 +30,33 @@ export const PSU_VOLTS = Object.freeze([3, 5, 12]);
     renderer's SimController — the def carries only the pure contract. */
 export const CLOCK_HZ = Object.freeze([1, 2, 5, 10, "manual"]);
 
+/**
+ * Coerce a rotated part's far lead to a `{dx, dy}` PITCH OFFSET from its
+ * anchor hole, or null when the shape is junk.
+ *
+ * A bent lead is geometry, not an address: which hole it touches is resolved
+ * from where it lands on the desk (occupancy.js), because the far hole may
+ * belong to a DIFFERENT strip — typically a power rail. Storing the offset is
+ * what lets a part keep its position when that rail is moved or deleted: the
+ * lead simply stops resolving to a hole and floats, exactly as a real leg
+ * would when you pull the rail out from under it.
+ *
+ * Both components must be integers so the lead stays on the 0.1-in lattice,
+ * and (0, 0) is rejected — a two-terminal device pinned to one hole is
+ * nonsense.
+ */
+export function normalizeLeadOffset(raw) {
+  const dx = Number(raw?.dx);
+  const dy = Number(raw?.dy);
+  if (!Number.isInteger(dx) || !Number.isInteger(dy)) return null;
+  if (dx === 0 && dy === 0) return null;
+  // Rotating a bend negates a component, and negating zero gives -0: equal to
+  // 0 under ===, distinct under Object.is, so it survives into the saved
+  // document and then fails a deepStrictEqual round-trip. Fold it here, the
+  // one chokepoint every stored bend passes through.
+  return Object.freeze({ dx: dx === 0 ? 0 : dx, dy: dy === 0 ? 0 : dy });
+}
+
 export const PART_DEFS = Object.freeze(
   [
     {
@@ -100,8 +127,10 @@ export const PART_DEFS = Object.freeze(
           flip: raw?.flip === true,
           // Orientation: 0 = footprint form, 90 = two free ends.
           rot: rotated ? 90 : 0,
-          // Pin 2's hole id — only meaningful (and kept) when rotated.
-          end: rotated && typeof raw?.end === "string" ? raw.end : null,
+          // Pin 2's lead bend as a {dx, dy} pitch offset from the anchor —
+          // only meaningful (and kept) when rotated. Resolved to a hole on
+          // whatever strip lies under it; see normalizeLeadOffset.
+          end: rotated ? normalizeLeadOffset(raw?.end) : null,
         };
       },
       internalBridges() {
@@ -128,9 +157,9 @@ export const PART_DEFS = Object.freeze(
       group: "Parts",
       footprint: Object.freeze({ offsets: Object.freeze([0, 3]) }),
       // Rotatable to a vertical, two-free-ends form: pin 1 at the anchor hole,
-      // pin 2 at `params.end` (any free hole — rail or grid). The seating model
-      // switches from footprint-offset to two independent endpoints, so either
-      // lead can reach ANY rail (near or far) at any angle.
+      // pin 2 bent to the `params.end` offset. The seating model switches from
+      // footprint-offset to a free lead, so pin 2 can reach ANY hole at any
+      // angle — including one on a neighbouring strip, e.g. a power rail.
       rotatable: true,
       // Leads can't be bent closer than the body is long: the two ends must sit
       // at least this far apart (pitch units) — the horizontal footprint's span.
@@ -146,8 +175,10 @@ export const PART_DEFS = Object.freeze(
           ohms: Number.isFinite(ohms) && ohms > 0 ? ohms : 10000,
           // Orientation: 0 = horizontal footprint, 90 = vertical two-end form.
           rot: rotated ? 90 : 0,
-          // Pin 2's hole id — only meaningful (and kept) when rotated.
-          end: rotated && typeof raw?.end === "string" ? raw.end : null,
+          // Pin 2's lead bend as a {dx, dy} pitch offset from the anchor —
+          // only meaningful (and kept) when rotated. Resolved to a hole on
+          // whatever strip lies under it; see normalizeLeadOffset.
+          end: rotated ? normalizeLeadOffset(raw?.end) : null,
         };
       },
       // A resistor is NOT a hard conductor — its two ends stay separate nets

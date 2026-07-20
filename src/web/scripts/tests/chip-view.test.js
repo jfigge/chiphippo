@@ -73,7 +73,7 @@ test("ChipView seats at its anchor hole in world px and reports gestures", () =>
     { id: "c3", ref: "7400" },
     { onPointerDown: (id) => seen.push(id) },
   );
-  const board = { type: "full", x: 10, y: 20 };
+  const board = { type: "pins-full", x: 10, y: 20 };
   view.updatePlacement(board, "e5");
 
   const partEl = layer.querySelector(".part-chip");
@@ -81,7 +81,7 @@ test("ChipView seats at its anchor hole in world px and reports gestures", () =>
   assert.equal(partEl.dataset.componentId, "c3");
 
   // Element origin = board origin + anchor hole + the footprint box offset.
-  const pos = holePosition("full", "e5");
+  const pos = holePosition("pins-full", "e5");
   const box = chipBox("DIP-14");
   assert.equal(
     partEl.style.left,

@@ -98,15 +98,35 @@ test("led: color/flip coercion and polarity contract", () => {
     rot: 0,
     end: null,
   });
-  // Rotatable like the resistor: rot 90 keeps the far-end hole.
+  // Rotatable like the resistor: rot 90 keeps the far lead's {dx, dy} bend.
   assert.equal(def.rotatable, true);
   assert.equal(def.minSpan, 1); // legs may sit side by side
-  assert.deepEqual(def.normalizeParams({ rot: 90, end: "j7" }), {
+  assert.deepEqual(def.normalizeParams({ rot: 90, end: { dx: 0, dy: -4 } }), {
     color: "red",
     flip: false,
     rot: 90,
-    end: "j7",
+    end: { dx: 0, dy: -4 },
   });
+  // A legacy hole-id end, a non-integer bend, and a zero bend are all junk.
+  assert.equal(def.normalizeParams({ rot: 90, end: "j7" }).end, null);
+  // Rotating a bend negates a component; -0 must not reach the document, or
+  // a saved desk stops round-tripping under deepStrictEqual.
+  const negZero = def.normalizeParams({ rot: 90, end: { dx: -0, dy: 4 } }).end;
+  assert.ok(Object.is(negZero.dx, 0), "dx must be +0, not -0");
+  assert.ok(
+    Object.is(
+      def.normalizeParams({ rot: 90, end: { dx: 4, dy: -0 } }).end.dy,
+      0,
+    ),
+  );
+  assert.equal(
+    def.normalizeParams({ rot: 90, end: { dx: 1.5, dy: 0 } }).end,
+    null,
+  );
+  assert.equal(
+    def.normalizeParams({ rot: 90, end: { dx: 0, dy: 0 } }).end,
+    null,
+  );
   assert.deepEqual(def.normalizeParams({ color: "pink", flip: "yes" }), {
     color: "red",
     flip: false,
@@ -149,19 +169,21 @@ test("resistor: weakly bridges 1↔2, never a hard bridge; ohms coerce", () => {
     rot: 0,
     end: null,
   });
-  // Rotatable: rot 90 keeps the far-end hole; a stray `end` without rot is
-  // dropped, and a rotated part with a non-string end normalizes end→null.
+  // Rotatable: rot 90 keeps the far lead's {dx, dy} bend; a stray `end`
+  // without rot is dropped, and a malformed bend normalizes end→null.
   assert.equal(def.rotatable, true);
-  assert.deepEqual(def.normalizeParams({ rot: 90, end: "j7" }), {
+  assert.deepEqual(def.normalizeParams({ rot: 90, end: { dx: -5, dy: 4 } }), {
     ohms: 10000,
     rot: 90,
-    end: "j7",
+    end: { dx: -5, dy: 4 },
   });
-  assert.deepEqual(def.normalizeParams({ end: "j7" }), {
+  assert.deepEqual(def.normalizeParams({ end: { dx: -5, dy: 4 } }), {
     ohms: 10000,
     rot: 0,
     end: null,
   });
+  // A v1 hole-id end is junk now; the migration converts it before load.
+  assert.equal(def.normalizeParams({ rot: 90, end: "j7" }).end, null);
   assert.deepEqual(def.normalizeParams({ rot: 90 }), {
     ohms: 10000,
     rot: 90,

@@ -43,7 +43,9 @@ function chipHoles(ref, anchor) {
 
 /** The free strip-mates of a hole (same node, excluding the hole itself). */
 function mates(hole) {
-  return holesOfNode("full", nodeOf("full", hole)).filter((h) => h !== hole);
+  return holesOfNode("pins-full", nodeOf("pins-full", hole)).filter(
+    (h) => h !== hole,
+  );
 }
 
 /** Assemble a document + build its netlist + settle. */
@@ -59,7 +61,14 @@ function simulate(doc, warmStart) {
   };
 }
 
-const board = { id: "bb1", type: "full", x: 0, y: 0 };
+// One full breadboard, as the strips it is really made of: the pin-board plus
+// the two power-rail strips that dovetail onto its edges. Every fixture gets
+// all three so a circuit can reach a rail whenever it needs one.
+const board = { id: "bb1", type: "pins-full", x: 0, y: 4 };
+const railTop = { id: "bb2", type: "rail-full", x: 0, y: 0 };
+const railBottom = { id: "bb3", type: "rail-full", x: 0, y: 18 };
+const boards = [board, railTop, railBottom];
+
 const psu = (id, x, volts = 5) => ({
   id,
   kind: "psu",
@@ -99,7 +108,7 @@ test("a powered 7404 inverts a driven-low input to HIGH (and floats read H)", ()
   const holes = chipHoles("7404", "e10");
   const gnd = mates(holes.get(7)); // c16L free holes
   const doc = {
-    boards: [board],
+    boards,
     components: [psu("psu1", 80), chip("c1", "7404", "e10")],
     wires: [
       ...powerWires("psu1", holes),
@@ -125,7 +134,7 @@ test("7400 NAND: one wired-low input → H; both floating → L", () => {
   const holes = chipHoles("7400", "e10");
   const gnd = mates(holes.get(7));
   const base = {
-    boards: [board],
+    boards,
     components: [psu("psu1", 80), chip("c1", "7400", "e10")],
   };
   // Gate 1: 1A(e10)/1B(e11) → 1Y(e12). Pull 1A low, leave 1B floating.
@@ -150,7 +159,7 @@ test("74125: two enabled buffers driving one net disagree → conflict (X)", () 
   // buf1: en 1G(1,e10), data 1A(2,e11), out 1Y(3,e12).
   // buf2: en 2G(4,e13), data 2A(5,e14), out 2Y(6,e15).
   const doc = {
-    boards: [board],
+    boards,
     components: [psu("psu1", 80), chip("c1", "74125", "e10")],
     wires: [
       ...powerWires("psu1", holes),
@@ -182,7 +191,7 @@ test("an SR latch from one 7400 sets, resets, and holds across settles", () => {
     wire(`bb1.${mates(holes.get(6))[0]}`, `bb1.${mates(holes.get(2))[0]}`),
   ];
   const common = {
-    boards: [board],
+    boards,
     components: [psu("psu1", 80), chip("c1", "7400", "e10")],
   };
   const idle = {
@@ -221,7 +230,7 @@ test("a ring of three inverters never settles → oscillation warning", () => {
   const holes = chipHoles("7404", "e10");
   // g1 e10→e11, g2 e12→e13, g3 e14→e15; chain the ring.
   const doc = {
-    boards: [board],
+    boards,
     components: [psu("psu1", 80), chip("c1", "7404", "e10")],
     wires: [
       ...powerWires("psu1", holes),
@@ -240,7 +249,7 @@ test("a ring of three inverters never settles → oscillation warning", () => {
 
 test("an unpowered chip drives nothing (outputs Z)", () => {
   const { result, levelAt } = simulate({
-    boards: [board],
+    boards,
     components: [chip("c1", "7400", "e10")], // no PSU
     wires: [],
   });
@@ -251,7 +260,7 @@ test("an unpowered chip drives nothing (outputs Z)", () => {
 test("a 3 V chip is underpowered (inert) and warns", () => {
   const holes = chipHoles("7400", "e10");
   const { result, levelAt } = simulate({
-    boards: [board],
+    boards,
     components: [psu("psu1", 80, 3), chip("c1", "7400", "e10")],
     wires: powerWires("psu1", holes),
   });
@@ -263,7 +272,7 @@ test("a 3 V chip is underpowered (inert) and warns", () => {
 test("12 V damages the chip (magic smoke); params are NOT mutated by the pure engine", () => {
   const holes = chipHoles("7400", "e10");
   const doc = {
-    boards: [board],
+    boards,
     components: [psu("psu1", 80, 12), chip("c1", "7400", "e10")],
     wires: powerWires("psu1", holes),
   };
@@ -290,7 +299,7 @@ test("12 V damages the chip (magic smoke); params are NOT mutated by the pure en
 test("swapped supply wires read as reversed (inert) and warn", () => {
   const holes = chipHoles("7400", "e10");
   const doc = {
-    boards: [board],
+    boards,
     components: [psu("psu1", 80), chip("c1", "7400", "e10")],
     // The mirror of powerWires: + on the GND pin, − on the VCC pin.
     wires: [
@@ -311,7 +320,7 @@ test("only one power pin miswired is unpowered, NOT reversed", () => {
   // wiring it backwards.
   const holes = chipHoles("7400", "e10");
   const { result } = simulate({
-    boards: [board],
+    boards,
     components: [psu("psu1", 80), chip("c1", "7400", "e10")],
     wires: [wire("psu1.+", `bb1.${mates(holes.get(7))[0]}`)],
   });
@@ -325,7 +334,7 @@ test("a pull-down resistor makes a floating chip input read LOW", () => {
   const holes = chipHoles("7404", "e10"); // 1A(e10) → 1Y(e11)
   const r = chipHoles("resistor", "a30"); // leads at a30 (col30) and a33 (col33)
   const base = {
-    boards: [board],
+    boards,
     components: [
       psu("psu1", 80),
       chip("c1", "7404", "e10"),
@@ -356,13 +365,13 @@ test("strongLevels separate a direct rail feed from one through a resistor", () 
   // Two columns fed from +5 V: a10 straight off the rail, a20 through R.
   const r = chipHoles("resistor", "a30"); // a30 ── a33
   const { levelAt, strongAt } = simulate({
-    boards: [board],
+    boards,
     components: [psu("psu1", 80), part("r1", "resistor", "a30")],
     wires: [
-      wire("psu1.+", "bb1.t+1"),
-      wire("bb1.t+2", `bb1.${mates(r.get(1))[0]}`), // rail → resistor pin 1
+      wire("psu1.+", "bb2.+1"),
+      wire("bb2.+2", `bb1.${mates(r.get(1))[0]}`), // rail → resistor pin 1
       wire(`bb1.${mates(r.get(2))[0]}`, "bb1.a20"), // resistor pin 2 → column
-      wire("bb1.t+3", "bb1.a10"), // rail → column, nothing in between
+      wire("bb2.+3", "bb1.a10"), // rail → column, nothing in between
     ],
   });
 
@@ -376,26 +385,61 @@ test("strongLevels separate a direct rail feed from one through a resistor", () 
 });
 
 test("a rotated resistor pulls a grid column to a rail's level (rail↔column)", () => {
-  // Vertical two-end resistor: pin 1 on the bottom − rail, pin 2 on a grid
-  // column. Grounding the − rail makes the column read LOW through the pull.
+  // Vertical two-end resistor straddling the trench: pin 1 at the anchor a10,
+  // pin 2 bent 11 pitches UP to j10 (the far lead is a {dx, dy} offset now,
+  // not a hole id). The lower half is jumpered to the bottom − rail strip, so
+  // grounding that rail makes the far half read LOW through the pull.
   const { levelAt } = simulate({
-    boards: [board],
+    boards,
     components: [
       psu("psu1", 80),
-      part("r1", "resistor", "b-1", { rot: 90, end: "a10" }),
+      part("r1", "resistor", "a10", { rot: 90, end: { dx: 0, dy: -11 } }),
     ],
-    // Ground the − rail via a different hole on the same (continuous) rail node.
-    wires: [wire("psu1.-", "bb1.b-2")],
+    wires: [
+      // Ground the − rail via a different hole on the same (continuous) node.
+      wire("psu1.-", "bb3.-2"),
+      wire("bb3.-3", "bb1.b10"), // − rail → the resistor's pin-1 strip
+    ],
   });
-  assert.equal(levelAt("bb1.b-1"), L); // the − rail is GND
-  assert.equal(levelAt("bb1.a10"), L); // column pulled LOW through the resistor
+  assert.equal(levelAt("bb3.-1"), L); // the − rail is GND
+  assert.equal(levelAt("bb1.j10"), L); // column pulled LOW through the resistor
+});
+
+test("a rotated resistor whose rail is gone floats: the pull dies, the rest settles", () => {
+  // Pin 1 at a10 (world 10,16), the free lead bent 4 pitches DOWN onto the
+  // bottom rail strip — bb3.-7 (world 10,20) — which the PSU grounds.
+  const components = [
+    psu("psu1", 80),
+    part("r1", "resistor", "a10", { rot: 90, end: { dx: 0, dy: 4 } }),
+  ];
+  const bent = simulate({
+    boards,
+    components,
+    wires: [
+      wire("psu1.-", "bb3.-2"), // ground the rail the free lead reaches
+      wire("psu1.+", "bb1.a20"), // an unrelated column, driven directly
+    ],
+  });
+  assert.equal(bent.levelAt("bb1.a10"), L); // pulled down through the resistor
+  assert.equal(bent.levelAt("bb1.a20"), H);
+
+  // Now pull that strip off the desk (its wires go with it, as removeBoard
+  // does) WITHOUT moving the resistor — exactly the state the doc lands in.
+  const floated = simulate({
+    boards: [board, railTop],
+    components,
+    wires: [wire("psu1.+", "bb1.a20")],
+  });
+  assert.equal(floated.result.settled, true); // a floating leg is not an error
+  assert.equal(floated.levelAt("bb1.a10"), Z); // nothing pulls the column now
+  assert.equal(floated.levelAt("bb1.a20"), H); // …and the rest is untouched
 });
 
 test("a strong driver overrides a pull-up; a series resistor conducts a level", () => {
   const r = chipHoles("resistor", "a30"); // a30 (col30) ── a33 (col33)
   // Drive the resistor's pin-1 net HIGH from the supply +; leave pin-2 isolated.
   const { levelAt } = simulate({
-    boards: [board],
+    boards,
     components: [psu("psu1", 80), part("r1", "resistor", "a30")],
     wires: [wire("psu1.+", `bb1.${mates(r.get(1))[0]}`)],
   });
@@ -405,7 +449,7 @@ test("a strong driver overrides a pull-up; a series resistor conducts a level", 
 
 test("opposing supplies on one net → short warning (X)", () => {
   const { result, levelAt } = simulate({
-    boards: [board],
+    boards,
     components: [psu("psu1", 80, 5), psu("psu2", 100, 5)],
     // psu1.+ and psu2.− land on the same 5-hole strip (c1L).
     wires: [wire("psu1.+", "bb1.a1"), wire("psu2.-", "bb1.b1")],

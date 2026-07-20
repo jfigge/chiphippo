@@ -33,6 +33,7 @@ test("a fresh DeskDoc serializes to the empty document shape", () => {
     components: [],
     wires: [],
     nextBoardId: 1,
+    nextGroupId: 1,
     nextComponentId: 1,
     nextPsuId: 1,
     nextClockId: 1,
@@ -43,9 +44,15 @@ test("a fresh DeskDoc serializes to the empty document shape", () => {
 
 test("addBoard: fresh bb<n> ids and integer snapping", () => {
   const doc = new DeskDoc(null);
-  const b1 = doc.addBoard("full", 3.4, -2.6);
-  assert.deepEqual(b1, { id: "bb1", type: "full", x: 3, y: -3 });
-  const b2 = doc.addBoard("tiny", 0.2, 30);
+  const b1 = doc.addBoard("pins-full", 3.4, -2.6);
+  assert.deepEqual(b1, {
+    id: "bb1",
+    type: "pins-full",
+    x: 3,
+    y: -3,
+    group: null, // a strip added on its own is loose
+  });
+  const b2 = doc.addBoard("pins-tiny", 0.2, 30);
   assert.equal(b2.id, "bb2");
   assert.deepEqual(
     doc.boards.map((b) => b.id),
@@ -56,52 +63,57 @@ test("addBoard: fresh bb<n> ids and integer snapping", () => {
 test("addBoard: rejects junk types and non-finite positions", () => {
   const doc = new DeskDoc(null);
   assert.throws(() => doc.addBoard("mega", 0, 0), { code: "INVALID_TYPE" });
-  assert.throws(() => doc.addBoard("full", NaN, 0), { code: "INVALID_ARG" });
+  assert.throws(() => doc.addBoard("full", 0, 0), { code: "INVALID_TYPE" }); // a kit
+  assert.throws(() => doc.addBoard("pins-full", NaN, 0), {
+    code: "INVALID_ARG",
+  });
 });
 
 test("addBoard: rejects overlap with an existing board's outline", () => {
   const doc = new DeskDoc(null);
-  doc.addBoard("full", 0, 0); // 65 × 21.7 at (0,0)
-  assert.throws(() => doc.addBoard("tiny", 10, 10), { code: "OVERLAP" });
+  doc.addBoard("pins-full", 0, 0); // 65 × 14 at (0,0)
+  assert.throws(() => doc.addBoard("pins-tiny", 10, 10), { code: "OVERLAP" });
   // Snapping happens BEFORE the check: 64.7 snaps to 65 → touching, allowed.
-  const beside = doc.addBoard("half", 64.7, 0);
+  const beside = doc.addBoard("pins-half", 64.7, 0);
   assert.deepEqual([beside.x, beside.y], [65, 0]);
-  // Edge-to-edge below (21.7-tall outline → y 22 clears it).
-  doc.addBoard("tiny", 0, 22);
+  // Edge-to-edge below (14-tall outline → y 14 clears it).
+  doc.addBoard("rail-full", 0, 14);
   assert.equal(doc.boards.length, 3);
 });
 
 test("removed ids are never reused, even across serialize + reload", () => {
   const doc = new DeskDoc(null);
-  doc.addBoard("tiny", 0, 0); // bb1
-  doc.addBoard("tiny", 30, 0); // bb2
+  doc.addBoard("pins-tiny", 0, 0); // bb1
+  doc.addBoard("pins-tiny", 30, 0); // bb2
   doc.removeBoard("bb2");
-  assert.equal(doc.addBoard("tiny", 60, 0).id, "bb3");
+  assert.equal(doc.addBoard("pins-tiny", 60, 0).id, "bb3");
 
   // Round-trip through the persisted form: the counter survives.
   const reloaded = new DeskDoc(doc.toJSON());
   reloaded.removeBoard("bb3");
-  assert.equal(reloaded.addBoard("tiny", 90, 0).id, "bb4");
+  assert.equal(reloaded.addBoard("pins-tiny", 90, 0).id, "bb4");
 });
 
 test("moveBoard: snaps, ignores its own footprint, rejects other overlaps", () => {
   const doc = new DeskDoc(null);
-  doc.addBoard("tiny", 0, 0);
-  doc.addBoard("tiny", 40, 0);
+  doc.addBoard("pins-tiny", 0, 0);
+  doc.addBoard("pins-tiny", 40, 0);
   // Nudge within its own footprint — fine.
   assert.deepEqual(doc.moveBoard("bb1", 1.2, 0.4), {
     id: "bb1",
-    type: "tiny",
+    type: "pins-tiny",
     x: 1,
     y: 0,
+    group: null,
   });
   // Onto the other board — rejected, position unchanged.
   assert.throws(() => doc.moveBoard("bb1", 39, 0), { code: "OVERLAP" });
   assert.deepEqual(doc.getBoard("bb1"), {
     id: "bb1",
-    type: "tiny",
+    type: "pins-tiny",
     x: 1,
     y: 0,
+    group: null,
   });
   assert.throws(() => doc.moveBoard("bb9", 0, 0), { code: "NOT_FOUND" });
 });
@@ -113,10 +125,10 @@ test("removeBoard: NOT_FOUND on unknown ids", () => {
 
 test("canPlace mirrors the add/move overlap rule", () => {
   const doc = new DeskDoc(null);
-  doc.addBoard("full", 0, 0);
-  assert.equal(doc.canPlace("tiny", 5, 5), false);
-  assert.equal(doc.canPlace("tiny", 0, 22), true);
-  assert.equal(doc.canPlace("full", 0.4, 0, { ignoreId: "bb1" }), true);
+  doc.addBoard("pins-full", 0, 0);
+  assert.equal(doc.canPlace("pins-tiny", 5, 5), false);
+  assert.equal(doc.canPlace("pins-tiny", 0, 14), true);
+  assert.equal(doc.canPlace("pins-full", 0.4, 0, { ignoreId: "bb1" }), true);
 });
 
 test("normalizeDocument: junk → empty; bad boards dropped; coords rounded", () => {
@@ -127,11 +139,12 @@ test("normalizeDocument: junk → empty; bad boards dropped; coords rounded", ()
   const doc = normalizeDocument({
     version: DOC_VERSION,
     boards: [
-      { id: "bb2", type: "half", x: 3.6, y: 1.2 },
-      { id: "bb2", type: "tiny", x: 0, y: 0 }, // duplicate id — dropped
-      { id: "nope", type: "tiny", x: 0, y: 0 }, // bad id — dropped
+      { id: "bb2", type: "pins-half", x: 3.6, y: 1.2 },
+      { id: "bb2", type: "pins-tiny", x: 0, y: 0 }, // duplicate id — dropped
+      { id: "nope", type: "pins-tiny", x: 0, y: 0 }, // bad id — dropped
       { id: "bb3", type: "mega", x: 0, y: 0 }, // bad type — dropped
-      { id: "bb4", type: "tiny", x: NaN, y: 0 }, // bad coords — dropped
+      { id: "bb4", type: "full", x: 0, y: 0 }, // a kit, not a strip — dropped
+      { id: "bb5", type: "pins-tiny", x: NaN, y: 0 }, // bad coords — dropped
     ],
     components: [
       { id: "c2", kind: "chip", ref: "7400", board: "bb2", anchor: "e3" },
@@ -142,7 +155,9 @@ test("normalizeDocument: junk → empty; bad boards dropped; coords rounded", ()
     ],
     wires: "not-an-array",
   });
-  assert.deepEqual(doc.boards, [{ id: "bb2", type: "half", x: 4, y: 1 }]);
+  assert.deepEqual(doc.boards, [
+    { id: "bb2", type: "pins-half", x: 4, y: 1, group: null },
+  ]);
   assert.deepEqual(doc.components, [
     {
       id: "c2",
@@ -161,25 +176,383 @@ test("normalizeDocument: junk → empty; bad boards dropped; coords rounded", ()
 
 test("normalizeDocument: an explicit larger nextBoardId wins (never reuse)", () => {
   const doc = normalizeDocument({
-    boards: [{ id: "bb1", type: "tiny", x: 0, y: 0 }],
+    boards: [{ id: "bb1", type: "pins-tiny", x: 0, y: 0 }],
     nextBoardId: 9,
   });
   assert.equal(doc.nextBoardId, 9);
 });
 
+test("normalizeDocument: group ids survive; junk groups degrade to loose", () => {
+  const doc = normalizeDocument({
+    boards: [
+      { id: "bb1", type: "rail-full", x: 0, y: 0, group: "g4" },
+      { id: "bb2", type: "pins-full", x: 0, y: 4, group: "g4" },
+      { id: "bb3", type: "pins-tiny", x: 0, y: 40, group: "nope" }, // → loose
+    ],
+  });
+  assert.deepEqual(
+    doc.boards.map((b) => b.group),
+    ["g4", "g4", null],
+  );
+  assert.equal(doc.nextGroupId, 5); // a group id is never reused either
+});
+
 test("toJSON is a deep copy — later mutations don't leak into it", () => {
   const doc = new DeskDoc(null);
-  doc.addBoard("tiny", 0, 0);
+  doc.addBoard("pins-tiny", 0, 0);
   const snapshot = doc.toJSON();
   doc.moveBoard("bb1", 5, 5);
-  assert.deepEqual(snapshot.boards[0], { id: "bb1", type: "tiny", x: 0, y: 0 });
+  assert.deepEqual(snapshot.boards[0], {
+    id: "bb1",
+    type: "pins-tiny",
+    x: 0,
+    y: 0,
+    group: null,
+  });
+});
+
+// ── Breadboard kits & strip groups ───────────────────────────────────────────
+
+test("kitPlacements / kitOutline describe a kit without touching the desk", () => {
+  assert.deepEqual(DeskDoc.kitPlacements("half", 10.4, -2.6), [
+    { type: "rail-half", x: 10, y: -3 },
+    { type: "pins-half", x: 10, y: 0 },
+    { type: "rail-half", x: 10, y: 13 },
+  ]);
+  // Rail (4) + pin-board (14) + rail (4) stacked.
+  assert.deepEqual(DeskDoc.kitOutline("full"), { width: 64, height: 19 });
+  assert.deepEqual(DeskDoc.kitOutline("tiny"), { width: 18, height: 13 });
+  assert.throws(() => DeskDoc.kitPlacements("mega", 0, 0), {
+    code: "INVALID_TYPE",
+  });
+});
+
+test("addKit: seats every strip at its preset offset, sharing one group", () => {
+  const doc = new DeskDoc(null);
+  assert.deepEqual(doc.addKit("full", 2, 5), [
+    { id: "bb1", type: "rail-full", x: 2, y: 5, group: "g1" },
+    { id: "bb2", type: "pins-full", x: 2, y: 8, group: "g1" },
+    { id: "bb3", type: "rail-full", x: 2, y: 21, group: "g1" },
+  ]);
+  // The next kit is its own rigid unit, with its own group id.
+  assert.deepEqual(
+    doc.addKit("half", 0, 40).map((b) => [b.id, b.type, b.group]),
+    [
+      ["bb4", "rail-half", "g2"],
+      ["bb5", "pins-half", "g2"],
+      ["bb6", "rail-half", "g2"],
+    ],
+  );
+});
+
+test("addKit: a tiny breadboard is a single loose strip", () => {
+  const doc = new DeskDoc(null);
+  // The real 170-point part is a bare pin-board — nothing to group it with.
+  assert.deepEqual(doc.addKit("tiny", 0.4, -0.4), [
+    { id: "bb1", type: "pins-tiny", x: 0, y: 0, group: null },
+  ]);
+  assert.equal(doc.toJSON().nextGroupId, 1); // no group id burned
+});
+
+test("addKit: all-or-nothing — nothing is added when one strip overlaps", () => {
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-tiny", 0, 20); // where the kit's pin-board would land
+  assert.equal(doc.canPlaceKit("full", 0, 16), false);
+  assert.throws(() => doc.addKit("full", 0, 16), { code: "OVERLAP" });
+  // Not even the strips that WOULD have fitted are seated, and no id is spent.
+  assert.deepEqual(
+    doc.boards.map((b) => b.id),
+    ["bb1"],
+  );
+  assert.equal(doc.toJSON().nextBoardId, 2);
+  assert.equal(doc.toJSON().nextGroupId, 1);
+  // Clear of it, the same kit seats fine.
+  assert.equal(doc.canPlaceKit("full", 0, 40), true);
+  assert.equal(doc.addKit("full", 0, 40).length, 3);
+  assert.throws(() => doc.addKit("mega", 0, 0), { code: "INVALID_TYPE" });
+  assert.throws(() => doc.addKit("full", NaN, 0), { code: "INVALID_ARG" });
+});
+
+test("addKit: a loose strip is placeable on its own, ungrouped", () => {
+  const doc = new DeskDoc(null);
+  // The bare parts out of the bag — each kit is exactly one strip.
+  assert.deepEqual(doc.addKit("pins-full", 0, 0), [
+    { id: "bb1", type: "pins-full", x: 0, y: 0, group: null },
+  ]);
+  assert.deepEqual(doc.addKit("rail-half", 0, 40), [
+    { id: "bb2", type: "rail-half", x: 0, y: 40, group: null },
+  ]);
+  assert.equal(doc.toJSON().nextGroupId, 1); // no group id burned
+});
+
+test("matingStrips: same width and left edge, edge-to-edge in y", () => {
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 4); // bb1 — spans y 4…17
+  doc.addBoard("rail-full", 0, 1); // bb2 — abuts bb1's top edge
+  doc.addBoard("rail-full", 0, 17); // bb3 — abuts bb1's bottom edge
+  doc.addBoard("rail-full", 0, 21); // bb4 — one pitch of daylight below bb3
+  doc.addBoard("rail-half", 70, 4); // bb5 — elsewhere entirely
+  assert.deepEqual(
+    doc.matingStrips("bb1").map((b) => b.id),
+    ["bb2", "bb3"],
+  );
+  assert.deepEqual(
+    doc.matingStrips("bb4").map((b) => b.id),
+    [], // a gap is a gap, however small
+  );
+  // Width has to match, as the real dovetail does.
+  doc.addBoard("pins-half", 0, -12); // bb6 — abuts bb2's top (y 1), wrong width
+  assert.deepEqual(doc.matingStrips("bb6"), []);
+  assert.deepEqual(doc.matingStrips("bb9"), []);
+});
+
+test("joinMatedGroup: a loose strip adopts the group it dovetails into", () => {
+  const doc = new DeskDoc(null);
+  doc.addKit("half", 0, 0); // bb1..bb3, group g1 — spans y 0…19
+  doc.addBoard("rail-half", 0, 19); // bb4 — flush under the kit's bottom rail
+  assert.equal(doc.joinMatedGroup("bb4"), "g1");
+  assert.deepEqual(
+    doc.groupMembers("bb4").map((b) => b.id),
+    ["bb1", "bb2", "bb3", "bb4"], // it drags with the whole board now
+  );
+  assert.equal(doc.toJSON().nextGroupId, 2); // the existing group was reused
+});
+
+test("joinMatedGroup: loose strips mint a group; touching nothing is a no-op", () => {
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 4); // bb1, loose
+  doc.addBoard("rail-full", 0, 1); // bb2, loose — flush above it
+  doc.addBoard("rail-full", 40, 40); // bb3 — off on its own
+  assert.equal(doc.joinMatedGroup("bb2"), "g1");
+  assert.deepEqual(
+    doc.groupMembers("bb1").map((b) => b.group),
+    ["g1", "g1"],
+  );
+  assert.equal(doc.joinMatedGroup("bb3"), null);
+  assert.equal(doc.getBoard("bb3").group, null);
+  assert.equal(doc.toJSON().nextGroupId, 2); // no id burned on the no-op
+});
+
+test("joinMatedGroup: a strip bridging two groups merges them into one", () => {
+  const doc = new DeskDoc(null);
+  doc.addKit("full", 0, 0); // bb1..bb3, g1 — spans y 0…19
+  doc.addKit("full", 0, 22); // bb4..bb6, g2 — spans y 22…41
+  doc.addBoard("rail-full", 0, 19); // bb7 — fills the gap, touching both
+  const group = doc.joinMatedGroup("bb7");
+  assert.deepEqual(
+    doc.groupMembers("bb7").map((b) => b.id),
+    ["bb1", "bb2", "bb3", "bb4", "bb5", "bb6", "bb7"],
+  );
+  assert.equal(group, "g1"); // the oldest group absorbs the rest
+  assert.equal(doc.toJSON().nextGroupId, 3); // and none is minted
+});
+
+test("matingStrips: boards dovetail side by side too, not just stacked", () => {
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0); // bb1 — 64 wide, 13 tall (spans x 0…64)
+  doc.addBoard("pins-full", 64, 0); // bb2 — flush against bb1's right edge
+  doc.addBoard("pins-full", 129, 0); // bb3 — a pitch of daylight past bb2
+  doc.addBoard("pins-half", 0, 13); // bb4 — below bb1 but half the width
+  assert.deepEqual(
+    doc.matingStrips("bb1").map((b) => b.id),
+    ["bb2"], // bb4 is flush below, but too narrow to dovetail
+  );
+  // Side-by-side mating needs matching HEIGHT, as stacking needs matching
+  // width — a rail never dovetails onto a pin-board's end.
+  doc.addBoard("rail-full", 193, 0); // flush right of bb3, but 3 tall
+  assert.deepEqual(doc.matingStrips("bb3"), []);
+});
+
+test("matedChain: walks one way only, and never leaves the group", () => {
+  const doc = new DeskDoc(null);
+  doc.addKit("full", 0, 0); // bb1 rail@0 · bb2 pins@3 · bb3 rail@16, g1
+  // Grabbing the pin-board takes what hangs BELOW it, or what sits ABOVE it.
+  assert.deepEqual(
+    doc.matedChain("bb2", "forward").map((b) => b.id),
+    ["bb2", "bb3"],
+  );
+  assert.deepEqual(
+    doc.matedChain("bb2", "backward").map((b) => b.id),
+    ["bb1", "bb2"],
+  );
+  // The end of a stack takes nothing with it.
+  assert.deepEqual(
+    doc.matedChain("bb3", "forward").map((b) => b.id),
+    ["bb3"],
+  );
+  // A strip resting flush but never snapped is NOT part of the chain.
+  doc.addBoard("rail-full", 0, 19); // loose, mated geometrically to bb3
+  assert.deepEqual(
+    doc.matedChain("bb3", "forward").map((b) => b.id),
+    ["bb3"],
+  );
+  assert.throws(() => doc.matedChain("bb2", "sideways"), {
+    code: "INVALID_ARG",
+  });
+  assert.deepEqual(doc.matedChain("bb9", "forward"), []);
+});
+
+test("matedChain: forward means down AND right across a joined pair", () => {
+  const doc = new DeskDoc(null);
+  doc.addKit("full", 0, 0); // bb1..bb3, g1 — the left board
+  doc.addKit("full", 64, 0); // bb4..bb6, g2 — flush to its right
+  assert.equal(doc.joinMatedGroup("bb5"), "g1"); // one six-strip unit
+
+  // From the left pin-board: down to its own bottom rail, right to the other
+  // board's pin-board, and on down to that one's bottom rail. The two TOP
+  // rails are above, so they stay.
+  assert.deepEqual(
+    doc.matedChain("bb2", "forward").map((b) => b.id),
+    ["bb2", "bb3", "bb5", "bb6"],
+  );
+  assert.deepEqual(
+    doc.matedChain("bb5", "backward").map((b) => b.id),
+    ["bb1", "bb2", "bb4", "bb5"],
+  );
+});
+
+test("moveBoardsBy: a partial move tears the snap and re-groups both halves", () => {
+  const doc = new DeskDoc(null);
+  doc.addKit("full", 0, 0); // bb1 rail@0 · bb2 pins@3 · bb3 rail@16, g1
+  const chain = doc.matedChain("bb2", "forward").map((b) => b.id);
+
+  doc.moveBoardsBy(chain, 0, 30);
+  assert.deepEqual(
+    doc.boards.map((b) => [b.id, b.y]),
+    [
+      ["bb1", 0], // left behind, exactly where it was
+      ["bb2", 33],
+      ["bb3", 46],
+    ],
+  );
+  // Both halves are re-derived from what is still mated. The pair that
+  // travelled stays a unit under a FRESH id; the strip left alone goes loose.
+  assert.equal(doc.getBoard("bb1").group, null);
+  assert.equal(doc.getBoard("bb2").group, "g2");
+  assert.equal(doc.getBoard("bb3").group, "g2");
+  assert.deepEqual(
+    doc.groupMembers("bb2").map((b) => b.id),
+    ["bb2", "bb3"],
+  );
+});
+
+test("moveBoardsBy: a torn group never leaves both halves sharing an id", () => {
+  const doc = new DeskDoc(null);
+  doc.addKit("full", 0, 0); // bb1..bb3, g1
+  doc.addBoard("rail-full", 0, 19); // bb4
+  doc.joinMatedGroup("bb4"); // a four-strip stack, still g1
+
+  // Tear it in the middle: two strips travel, two stay — and each pair is
+  // still internally mated, so BOTH come out as groups of two.
+  doc.moveBoardsBy(["bb3", "bb4"], 0, 40);
+  const groups = doc.boards.map((b) => b.group);
+  assert.equal(groups[0], groups[1]); // bb1 + bb2 still one unit
+  assert.equal(groups[2], groups[3]); // bb3 + bb4 too
+  assert.notEqual(groups[0], groups[2]); // but NOT the same unit
+  assert.equal(doc.groupMembers("bb1").length, 2);
+  assert.equal(doc.groupMembers("bb3").length, 2);
+});
+
+test("moveBoardsBy: moving a whole group leaves its id alone", () => {
+  const doc = new DeskDoc(null);
+  doc.addKit("full", 0, 0); // bb1..bb3, g1
+  doc.moveBoardsBy(["bb1", "bb2", "bb3"], 5, 5);
+  assert.deepEqual(
+    doc.boards.map((b) => b.group),
+    ["g1", "g1", "g1"], // nothing was torn, so no id is burned
+  );
+  assert.equal(doc.toJSON().nextGroupId, 2);
+});
+
+test("moveBoardsBy: guards unknown ids, junk deltas, and overlaps", () => {
+  const doc = new DeskDoc(null);
+  doc.addKit("full", 0, 0); // bb1..bb3
+  doc.addBoard("pins-tiny", 0, 40); // bb4
+  assert.throws(() => doc.moveBoardsBy(["bb1", "nope"], 0, 1), {
+    code: "NOT_FOUND",
+  });
+  assert.throws(() => doc.moveBoardsBy([], 0, 1), { code: "NOT_FOUND" });
+  assert.throws(() => doc.moveBoardsBy(["bb1"], NaN, 0), {
+    code: "INVALID_ARG",
+  });
+  assert.throws(() => doc.moveBoardsBy(["bb3"], 0, 24), { code: "OVERLAP" });
+  // A failed move changes nothing — not the positions, not the groups.
+  assert.deepEqual(
+    doc.boards.map((b) => [b.y, b.group]),
+    [
+      [0, "g1"],
+      [3, "g1"],
+      [16, "g1"],
+      [40, null],
+    ],
+  );
+});
+
+test("groupMembers: the whole kit for a grouped strip, itself for a loose one", () => {
+  const doc = new DeskDoc(null);
+  doc.addKit("full", 0, 0); // bb1..bb3, group g1
+  doc.addBoard("pins-tiny", 70, 0); // bb4, loose
+  assert.deepEqual(
+    doc.groupMembers("bb2").map((b) => b.id),
+    ["bb1", "bb2", "bb3"],
+  );
+  assert.deepEqual(doc.groupMembers("bb4"), [
+    { id: "bb4", type: "pins-tiny", x: 70, y: 0, group: null },
+  ]);
+  assert.deepEqual(doc.groupMembers("bb9"), []);
+});
+
+test("moveBoardBy: translates every member, preserving relative offsets", () => {
+  const doc = new DeskDoc(null);
+  doc.addKit("full", 0, 0); // strips at y 0 / 4 / 18
+  // Dragging ANY member drags the kit; the delta snaps to integers.
+  assert.deepEqual(doc.moveBoardBy("bb2", 4, -3.4), [
+    { id: "bb1", type: "rail-full", x: 4, y: -3, group: "g1" },
+    { id: "bb2", type: "pins-full", x: 4, y: 0, group: "g1" },
+    { id: "bb3", type: "rail-full", x: 4, y: 13, group: "g1" },
+  ]);
+  // The stack stays assembled — same offsets from the top strip as before.
+  assert.deepEqual(
+    doc.boards.map((b) => b.y - doc.getBoard("bb1").y),
+    [0, 3, 16],
+  );
+  // A loose strip moves alone.
+  doc.addBoard("pins-tiny", 70, 0); // bb4
+  assert.deepEqual(
+    doc.moveBoardBy("bb4", 1, 1).map((b) => b.id),
+    ["bb4"],
+  );
+  assert.throws(() => doc.moveBoardBy("bb9", 1, 1), { code: "NOT_FOUND" });
+  assert.throws(() => doc.moveBoardBy("bb1", NaN, 0), { code: "INVALID_ARG" });
+});
+
+test("canMoveBoardBy: fellow members never collide; outsiders do", () => {
+  const doc = new DeskDoc(null);
+  doc.addKit("full", 0, 0); // bb1..bb3 at y 0 / 4 / 18
+  doc.addBoard("pins-tiny", 0, 30); // bb4, loose, y 30..44
+  // A one-unit nudge slides each strip over a fellow member's OLD outline —
+  // allowed, because the group translates as one rigid unit.
+  assert.equal(doc.canMoveBoardBy("bb1", 0, 1), true);
+  assert.deepEqual(
+    doc.moveBoardBy("bb3", 0, 1).map((b) => b.y),
+    [1, 4, 17],
+  );
+  // …but sliding the kit down onto the loose strip is rejected, unmoved.
+  assert.equal(doc.canMoveBoardBy("bb2", 0, 12), false);
+  assert.throws(() => doc.moveBoardBy("bb2", 0, 12), { code: "OVERLAP" });
+  assert.deepEqual(
+    doc.boards.map((b) => b.y),
+    [1, 4, 17, 30],
+  );
+  assert.equal(doc.canMoveBoardBy("bb9", 0, 0), false);
 });
 
 // ── Components (Feature 40) ──────────────────────────────────────────────────
 
+// bb1 is the full pin-board; tests that need rails add a rail strip as bb2.
 function docWithFull() {
   const doc = new DeskDoc(null);
-  doc.addBoard("full", 0, 0);
+  doc.addBoard("pins-full", 0, 0);
   return doc;
 }
 
@@ -269,7 +642,7 @@ test("addComponent: rejects bad kinds/refs/boards and illegal seats", () => {
 
 test("moveComponent: re-seats (same or other board), self-overlap allowed", () => {
   const doc = docWithFull();
-  doc.addBoard("tiny", 0, 30);
+  doc.addBoard("pins-tiny", 0, 30);
   doc.addComponent({ kind: "chip", ref: "7400", board: "bb1", anchor: "e5" });
   // Shift one column into its own footprint.
   assert.deepEqual(doc.moveComponent("c1", "bb1", "e6").anchor, "e6");
@@ -285,20 +658,47 @@ test("moveComponent: re-seats (same or other board), self-overlap allowed", () =
   });
 });
 
-test("addComponent: seats a rotated resistor across a rail and a column", () => {
+test("addComponent: seats a rotated resistor by an anchor plus a lead bend", () => {
   const doc = docWithFull();
+  doc.addBoard("rail-full", 0, -4); // bb2 — a rail strip above the pin-board
   const r = doc.addComponent({
     kind: "discrete",
     ref: "resistor",
     board: "bb1",
-    anchor: "b-1", // pin 1 on the bottom − rail
-    params: { rot: 90, end: "a10" }, // pin 2 on a grid column
+    anchor: "j7", // pin 1 above the trench, world (7, 1)
+    params: { rot: 90, end: { dx: 0, dy: 11 } }, // the lead bends down to a7
   });
   assert.equal(r.params.rot, 90);
-  assert.equal(r.params.end, "a10");
-  assert.equal(doc.isHoleFree("bb1.b-1"), false); // both ends occupied
-  assert.equal(doc.isHoleFree("bb1.a10"), false);
-  // Coincident ends (pin 2 === pin 1) are nonsense.
+  assert.deepEqual(r.params.end, { dx: 0, dy: 11 });
+  assert.equal(doc.isHoleFree("bb1.j7"), false); // both ends occupied
+  assert.equal(doc.isHoleFree("bb1.a7"), false);
+  // The lead may bend onto a NEIGHBOURING strip. The part stays seated on the
+  // pin-board; 3 up from j10 (world 10, 1) is the rail strip's `-` hole 7.
+  const rail = doc.addComponent({
+    kind: "discrete",
+    ref: "resistor",
+    board: "bb1",
+    anchor: "j10",
+    params: { rot: 90, end: { dx: 0, dy: -3 } },
+  });
+  assert.equal(rail.board, "bb1"); // seated here, only REACHING the rail
+  assert.deepEqual(rail.params.end, { dx: 0, dy: -3 });
+  assert.equal(doc.isHoleFree("bb1.j10"), false);
+  assert.equal(doc.isHoleFree("bb2.-7"), false);
+  // A lead bent onto bare desk would float — legal as a leftover when a strip
+  // is pulled away, never as a deliberate placement.
+  assert.throws(
+    () =>
+      doc.addComponent({
+        kind: "discrete",
+        ref: "resistor",
+        board: "bb1",
+        anchor: "j20",
+        params: { rot: 90, end: { dx: 0, dy: -8 } }, // clear above the rail
+      }),
+    { code: "ILLEGAL_PLACEMENT" },
+  );
+  // Coincident ends (a zero bend) are nonsense.
   assert.throws(
     () =>
       doc.addComponent({
@@ -306,11 +706,11 @@ test("addComponent: seats a rotated resistor across a rail and a column", () => 
         ref: "resistor",
         board: "bb1",
         anchor: "c5",
-        params: { rot: 90, end: "c5" },
+        params: { rot: 90, end: { dx: 0, dy: 0 } },
       }),
     { code: "ILLEGAL_PLACEMENT" },
   );
-  // An unreal far end is rejected.
+  // An off-lattice bend never survives normalization.
   assert.throws(
     () =>
       doc.addComponent({
@@ -318,7 +718,7 @@ test("addComponent: seats a rotated resistor across a rail and a column", () => 
         ref: "resistor",
         board: "bb1",
         anchor: "c8",
-        params: { rot: 90, end: "z99" },
+        params: { rot: 90, end: { dx: 0.5, dy: 3 } },
       }),
     { code: "ILLEGAL_PLACEMENT" },
   );
@@ -326,6 +726,7 @@ test("addComponent: seats a rotated resistor across a rail and a column", () => 
 
 test("movePartEnds: repositions BOTH ends atomically; guards bad targets", () => {
   const doc = docWithFull();
+  doc.addBoard("rail-full", 0, -4); // bb2 — a rail strip above the pin-board
   doc.addComponent({
     kind: "discrete",
     ref: "resistor",
@@ -333,30 +734,38 @@ test("movePartEnds: repositions BOTH ends atomically; guards bad targets", () =>
     anchor: "e10", // e10 ── e13
   });
 
-  // Drag it onto a rail ↔ column pair; both old holes are released.
-  const moved = doc.movePartEnds("c1", "bb1", "t-3", "j7");
-  assert.equal(moved.anchor, "t-3");
+  // Stand it up at j5 (world 5, 1) with the lead 3 up onto the rail strip's
+  // `-` hole 3 (world 5, −2); both old holes are released.
+  const moved = doc.movePartEnds("c1", "bb1", "j5", { dx: 0, dy: -3 });
+  assert.equal(moved.board, "bb1");
+  assert.equal(moved.anchor, "j5");
   assert.equal(moved.params.rot, 90);
-  assert.equal(moved.params.end, "j7");
+  assert.deepEqual(moved.params.end, { dx: 0, dy: -3 });
   assert.equal(doc.isHoleFree("bb1.e10"), true);
   assert.equal(doc.isHoleFree("bb1.e13"), true);
-  assert.equal(doc.isHoleFree("bb1.t-3"), false);
-  assert.equal(doc.isHoleFree("bb1.j7"), false);
-  // Sliding onto a hole it already owns is fine (it ignores itself).
-  assert.equal(doc.movePartEnds("c1", "bb1", "t-3", "j8").params.end, "j8");
+  assert.equal(doc.isHoleFree("bb1.j5"), false);
+  assert.equal(doc.isHoleFree("bb2.-3"), false);
+  // Re-bending while keeping the anchor it already owns is fine (it ignores
+  // itself): 1 across lands on the rail's next hole, `-4`.
+  assert.deepEqual(
+    doc.movePartEnds("c1", "bb1", "j5", { dx: 1, dy: -3 }).params.end,
+    { dx: 1, dy: -3 },
+  );
+  assert.equal(doc.isHoleFree("bb2.-3"), true); // the old rail hole released
+  assert.equal(doc.isHoleFree("bb2.-4"), false);
 
   // Unknown component / board.
-  assert.throws(() => doc.movePartEnds("c9", "bb1", "a1", "a4"), {
+  assert.throws(() => doc.movePartEnds("c9", "bb1", "a1", { dx: 3, dy: 0 }), {
     code: "NOT_FOUND",
   });
-  assert.throws(() => doc.movePartEnds("c1", "bb9", "a1", "a4"), {
+  assert.throws(() => doc.movePartEnds("c1", "bb9", "a1", { dx: 3, dy: 0 }), {
     code: "NOT_FOUND",
   });
-  // Coincident and unreal ends.
-  assert.throws(() => doc.movePartEnds("c1", "bb1", "a1", "a1"), {
+  // Coincident ends, and a bend reaching nothing at all.
+  assert.throws(() => doc.movePartEnds("c1", "bb1", "a1", { dx: 0, dy: 0 }), {
     code: "ILLEGAL_PLACEMENT",
   });
-  assert.throws(() => doc.movePartEnds("c1", "bb1", "a1", "z99"), {
+  assert.throws(() => doc.movePartEnds("c1", "bb1", "a1", { dx: 0, dy: 20 }), {
     code: "ILLEGAL_PLACEMENT",
   });
   // An end occupied by another part.
@@ -366,7 +775,7 @@ test("movePartEnds: repositions BOTH ends atomically; guards bad targets", () =>
     board: "bb1",
     anchor: "a1", // a1, a2
   });
-  assert.throws(() => doc.movePartEnds("c1", "bb1", "a1", "a5"), {
+  assert.throws(() => doc.movePartEnds("c1", "bb1", "a1", { dx: 4, dy: 0 }), {
     code: "ILLEGAL_PLACEMENT",
   });
   // Non-rotatable parts don't have two free ends to move.
@@ -376,12 +785,12 @@ test("movePartEnds: repositions BOTH ends atomically; guards bad targets", () =>
     board: "bb1",
     anchor: "j1",
   });
-  assert.throws(() => doc.movePartEnds("c3", "bb1", "a5", "a8"), {
+  assert.throws(() => doc.movePartEnds("c3", "bb1", "a5", { dx: 3, dy: 0 }), {
     code: "INVALID_REF",
   });
 });
 
-test("rotateComponent: pivots pin 2 90° around pin 1; guards non-rotatable", () => {
+test("rotateComponent: swings pin 2's lead 90° around pin 1; guards non-rotatable", () => {
   const doc = docWithFull();
   // Horizontal resistor: pin 1 at e10, pin 2 at e13 (offsets 0, 3).
   doc.addComponent({
@@ -393,7 +802,8 @@ test("rotateComponent: pivots pin 2 90° around pin 1; guards non-rotatable", ()
   const rotated = doc.rotateComponent("c1");
   assert.equal(rotated.params.rot, 90);
   assert.equal(rotated.anchor, "e10"); // pin 1 fixed
-  assert.equal(rotated.params.end, "b10"); // pin 2 pivots into the same column
+  // The (3, 0) lead swings to (0, 3) — three rows down the same column, b10.
+  assert.deepEqual(rotated.params.end, { dx: 0, dy: 3 });
   assert.equal(doc.isHoleFree("bb1.e10"), false);
   assert.equal(doc.isHoleFree("bb1.b10"), false);
   assert.equal(doc.isHoleFree("bb1.e13"), true); // old pin-2 hole freed
@@ -407,6 +817,33 @@ test("rotateComponent: pivots pin 2 90° around pin 1; guards non-rotatable", ()
     anchor: "j1",
   });
   assert.throws(() => doc.rotateComponent("c2"), { code: "INVALID_REF" });
+});
+
+test("rotateComponent: a swung lead reaches a NEIGHBOURING strip's rail", () => {
+  const doc = docWithFull();
+  doc.addBoard("rail-full", 0, -4); // bb2 — a rail strip above the pin-board
+  // Horizontal at j5 ── j8 (row j is world y 1, right under the rail strip),
+  // with g5 — where the CW swing would land — already taken.
+  doc.addComponent({
+    kind: "discrete",
+    ref: "sw-push",
+    board: "bb1",
+    anchor: "g5", // g5 and g7
+  });
+  doc.addComponent({
+    kind: "discrete",
+    ref: "resistor",
+    board: "bb1",
+    anchor: "j5",
+  });
+  // So the CCW swing wins, and it takes the lead clean OFF this strip: (0, −3)
+  // from world (5, 1) is the rail strip's `-` hole 3.
+  const rotated = doc.rotateComponent("c2");
+  assert.deepEqual(rotated.params.end, { dx: 0, dy: -3 });
+  assert.equal(rotated.board, "bb1"); // still seated on the pin-board
+  assert.equal(doc.isHoleFree("bb1.j5"), false);
+  assert.equal(doc.isHoleFree("bb2.-3"), false);
+  assert.equal(doc.isHoleFree("bb1.j8"), true); // the old pin-2 hole freed
 });
 
 test("removeComponent: removes; ids never reused across reload", () => {
@@ -429,7 +866,7 @@ test("removeComponent: removes; ids never reused across reload", () => {
 
 test("removeBoard cascades its seated components", () => {
   const doc = docWithFull();
-  doc.addBoard("tiny", 0, 30);
+  doc.addBoard("pins-tiny", 0, 30);
   doc.addComponent({ kind: "chip", ref: "7400", board: "bb1", anchor: "e5" });
   doc.addComponent({ kind: "chip", ref: "7404", board: "bb2", anchor: "e2" });
   assert.equal(doc.componentsOnBoard("bb1").length, 1);
@@ -437,6 +874,51 @@ test("removeBoard cascades its seated components", () => {
   assert.deepEqual(
     doc.components.map((c) => c.id),
     ["c2"],
+  );
+});
+
+test("removeBoard leaves a part REACHING into it alone — the lead just floats", () => {
+  const doc = docWithFull();
+  doc.addBoard("rail-full", 0, -4); // bb2 — a rail strip above the pin-board
+  // A rotated LED seated on the pin-board with its cathode lead bent 3 up onto
+  // the rail strip: world (10, 1) → (10, −2), which is bb2.−7.
+  const led = doc.addComponent({
+    kind: "discrete",
+    ref: "led",
+    board: "bb1",
+    anchor: "j10",
+    params: { color: "green", rot: 90, end: { dx: 0, dy: -3 } },
+  });
+  assert.equal(doc.isHoleFree("bb2.-7"), false);
+
+  doc.removeBoard("bb2");
+
+  // Removal keys on where a part is SEATED, never on where a lead lands: the
+  // LED is untouched — same id, board, anchor and bend, so it keeps its exact
+  // position and span. Only the connection is gone.
+  assert.deepEqual(
+    doc.components.map((c) => c.id),
+    [led.id],
+  );
+  const after = doc.getComponent(led.id);
+  assert.equal(after.board, "bb1");
+  assert.equal(after.anchor, "j10");
+  assert.deepEqual(after.params.end, { dx: 0, dy: -3 });
+  assert.equal(after.params.color, "green");
+  // The seated pin still occupies its hole; the floating lead occupies nothing.
+  assert.equal(doc.isHoleFree("bb1.j10"), false);
+  // …and floating is a leftover, not something you can place INTO: the same
+  // bend is rejected now that there is nothing under it.
+  assert.throws(
+    () =>
+      doc.addComponent({
+        kind: "discrete",
+        ref: "led",
+        board: "bb1",
+        anchor: "j20",
+        params: { rot: 90, end: { dx: 0, dy: -3 } },
+      }),
+    { code: "ILLEGAL_PLACEMENT" },
   );
 });
 
@@ -452,18 +934,20 @@ test("canPlaceChip mirrors occupancy through the document", () => {
 
 test("addWire: connects two free holes with a fresh w<n> id", () => {
   const doc = docWithFull();
-  const wire = doc.addWire({ from: "bb1.a1", to: "bb1.t+3", color: "blue" });
+  doc.addBoard("rail-full", 0, -4); // bb2 — a rail strip above the pin-board
+  // A jumper from the pin-board up to a rail strip: wires cross strips freely.
+  const wire = doc.addWire({ from: "bb1.a1", to: "bb2.+3", color: "blue" });
   assert.deepEqual(wire, {
     id: "w1",
     from: "bb1.a1",
-    to: "bb1.t+3",
+    to: "bb2.+3",
     color: "blue",
   });
   assert.equal(doc.addWire({ from: "bb1.a2", to: "bb1.a6" }).id, "w2");
   assert.equal(doc.wires.length, 2);
   // Both endpoints are now occupied.
   assert.equal(doc.isHoleFree("bb1.a1"), false);
-  assert.equal(doc.isHoleFree("bb1.t+3"), false);
+  assert.equal(doc.isHoleFree("bb2.+3"), false);
 });
 
 test("addWire: rejects occupied/self/unreal endpoints and junk colors", () => {
@@ -588,7 +1072,7 @@ test("moveWire: re-addresses BOTH ends at once; frees both old holes", () => {
 
 test("removeBoard cascades wires touching it (either endpoint)", () => {
   const doc = docWithFull();
-  doc.addBoard("tiny", 0, 30); // bb2
+  doc.addBoard("pins-tiny", 0, 30); // bb2
   doc.addWire({ from: "bb1.a1", to: "bb2.a1" }); // cross-board
   doc.addWire({ from: "bb2.a3", to: "bb2.a7" }); // wholly on bb2
   doc.addWire({ from: "bb1.a5", to: "bb1.a9" }); // wholly on bb1
@@ -602,14 +1086,14 @@ test("removeBoard cascades wires touching it (either endpoint)", () => {
 
 test("normalizeDocument: junk wires dropped, junk colors coerced", () => {
   const doc = normalizeDocument({
-    boards: [{ id: "bb1", type: "tiny", x: 0, y: 0 }],
+    boards: [{ id: "bb1", type: "pins-tiny", x: 0, y: 0 }],
     wires: [
       { id: "w2", from: "bb1.a1", to: "bb1.a5", color: "cyan" }, // color coerced
       { id: "w2", from: "bb1.b1", to: "bb1.b5", color: "red" }, // dup id
       { id: "x1", from: "bb1.c1", to: "bb1.c5", color: "red" }, // bad id
       { id: "w3", from: "bb1.a1", to: "bb1.a1", color: "red" }, // self hole
       { id: "w4", from: "bb9.a1", to: "bb1.d5", color: "red" }, // dangling board
-      { id: "w5", from: "bb1.t+1", to: "bb1.d5", color: "red" }, // Tiny has no rails
+      { id: "w5", from: "bb1.+1", to: "bb1.d5", color: "red" }, // no rails on pins
     ],
   });
   assert.deepEqual(doc.wires, [
@@ -667,6 +1151,7 @@ test("addComponent: discretes seat in ANY grid row with coerced params", () => {
 
 test("discrete occupancy: pins occupy; overlaps rejected; rails illegal", () => {
   const doc = docWithFull();
+  doc.addBoard("rail-full", 0, -4); // bb2 — a rail strip above the pin-board
   doc.addComponent({
     kind: "discrete",
     ref: "sw-slide",
@@ -724,7 +1209,7 @@ test("setComponentParams: switch toggles persist through the def contract", () =
 
 test("addPsu: psu<n> ids, snapping, board/psu overlap rejection", () => {
   const doc = new DeskDoc(null);
-  doc.addBoard("tiny", 0, 0);
+  doc.addBoard("pins-tiny", 0, 0);
   const psu = doc.addPsu(30.4, 0.6, { volts: 12 });
   assert.deepEqual(psu, {
     id: "psu1",
@@ -738,7 +1223,7 @@ test("addPsu: psu<n> ids, snapping, board/psu overlap rejection", () => {
   assert.throws(() => doc.addPsu(5, 5), { code: "OVERLAP" });
   assert.throws(() => doc.addPsu(31, 2), { code: "OVERLAP" });
   // And a board can't land on a PSU either.
-  assert.equal(doc.canPlace("tiny", 30, 1), false);
+  assert.equal(doc.canPlace("pins-tiny", 30, 1), false);
   // Ids advance independently of c<n>.
   doc.addComponent({
     kind: "discrete",
@@ -763,7 +1248,7 @@ test("movePsu + volts via setComponentParams", () => {
   assert.equal(doc.setComponentParams("psu1", { volts: 3 }).params.volts, 3);
   assert.equal(doc.setComponentParams("psu1", { volts: 9 }).params.volts, 5);
   assert.throws(() => doc.movePsu("psu9", 0, 0), { code: "NOT_FOUND" });
-  const led = doc.addBoard("tiny", 40, 0);
+  const led = doc.addBoard("pins-tiny", 40, 0);
   assert.ok(led);
   assert.throws(() => doc.moveComponent("psu1", "bb1", "a1"), {
     code: "INVALID_KIND",
@@ -772,16 +1257,17 @@ test("movePsu + volts via setComponentParams", () => {
 
 test("PSU terminals wire like holes and removal cascades those wires", () => {
   const doc = docWithFull();
+  doc.addBoard("rail-full", 0, -4); // bb2 — the rails live on their own strip
   doc.addPsu(80, 0);
   assert.equal(doc.isHoleFree("psu1.+"), true);
   assert.equal(doc.isHoleFree("psu1.x"), false); // no such terminal
-  const wire = doc.addWire({ from: "psu1.+", to: "bb1.t+3", color: "red" });
+  const wire = doc.addWire({ from: "psu1.+", to: "bb2.+3", color: "red" });
   assert.ok(wire);
   assert.equal(doc.isHoleFree("psu1.+"), false); // one lead per terminal
-  assert.throws(() => doc.addWire({ from: "psu1.+", to: "bb1.t+4" }), {
+  assert.throws(() => doc.addWire({ from: "psu1.+", to: "bb2.+4" }), {
     code: "ILLEGAL_PLACEMENT",
   });
-  doc.addWire({ from: "psu1.-", to: "bb1.t-3" });
+  doc.addWire({ from: "psu1.-", to: "bb2.-3" });
   assert.equal(doc.wiresTouching("psu1").length, 2);
   doc.removeComponent("psu1");
   assert.deepEqual(doc.wires, []);
@@ -790,7 +1276,7 @@ test("PSU terminals wire like holes and removal cascades those wires", () => {
 
 test("normalizeDocument: discretes + PSUs survive; junk dropped/coerced", () => {
   const doc = normalizeDocument({
-    boards: [{ id: "bb1", type: "tiny", x: 0, y: 0 }],
+    boards: [{ id: "bb1", type: "pins-tiny", x: 0, y: 0 }],
     components: [
       {
         id: "c1",

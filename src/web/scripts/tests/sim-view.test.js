@@ -72,7 +72,7 @@ function publishSim({
 /** An LED wired straight across the rails: both ends STRONGLY driven. */
 function ledDoc() {
   const doc = new DeskDoc(null);
-  doc.addBoard("full", 0, 0);
+  doc.addBoard("pins-full", 0, 0);
   return doc;
 }
 
@@ -158,7 +158,7 @@ test("stopping the sim clears a burnt LED", () => {
 test("an LED lights when its anode net is H and its cathode net is L", () => {
   resetDom();
   const doc = new DeskDoc(null);
-  doc.addBoard("full", 0, 0);
+  doc.addBoard("pins-full", 0, 0);
   const { surface, controller } = makeDesk(doc);
   // Default polarity: anode = pin 1 (anchor hole a1), cathode = pin 2 (a2).
   controller.addComponentAt("led", "bb1", "a1", { color: "red" });
@@ -180,7 +180,7 @@ test("an LED lights when its anode net is H and its cathode net is L", () => {
 test("a reverse-biased LED (anode L, cathode H) stays dark", () => {
   resetDom();
   const doc = new DeskDoc(null);
-  doc.addBoard("full", 0, 0);
+  doc.addBoard("pins-full", 0, 0);
   const { surface, controller } = makeDesk(doc);
   controller.addComponentAt("led", "bb1", "a1", { color: "green" });
   const ledEl = surface.querySelector(".part-discrete--led");
@@ -201,7 +201,7 @@ test("a reverse-biased LED (anode L, cathode H) stays dark", () => {
 test("polarity flip swaps which levels light the LED", () => {
   resetDom();
   const doc = new DeskDoc(null);
-  doc.addBoard("full", 0, 0);
+  doc.addBoard("pins-full", 0, 0);
   const { surface, controller } = makeDesk(doc);
   // Flipped: anode = pin 2 (a2), cathode = pin 1 (a1).
   controller.addComponentAt("led", "bb1", "a1", { color: "red", flip: true });
@@ -237,7 +237,7 @@ test("polarity flip swaps which levels light the LED", () => {
 test("chip status badges apply per status and clear when the sim stops", () => {
   resetDom();
   const doc = new DeskDoc(null);
-  doc.addBoard("full", 0, 0);
+  doc.addBoard("pins-full", 0, 0);
   const { surface, controller } = makeDesk(doc);
   controller.addComponentAt("7400", "bb1", "e5");
   const chipEl = surface.querySelector(".part-chip");
@@ -290,7 +290,7 @@ test("chip status badges apply per status and clear when the sim stops", () => {
 test("editing lock freezes placement/wire but keeps the probe live", () => {
   resetDom();
   const doc = new DeskDoc(null);
-  doc.addBoard("full", 0, 0);
+  doc.addBoard("pins-full", 0, 0);
   const { viewport, controller } = makeDesk(doc);
 
   controller.setEditingLocked(true);

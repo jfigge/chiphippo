@@ -20,9 +20,14 @@
 // instance, mutates it through these methods, and autosaves the serialized
 // form over window.chiphippo.desk.save.
 //
-// Board x/y are board-origin world coordinates in PITCH UNITS, snapped to
+// A "board" is one STRIP — a pin-board or a power rail (board-types.js). A
+// breadboard is a KIT of strips placed together in one action and joined by a
+// shared `group` id (`g<n>`, or null for a loose strip). Strips in a group
+// drag as one rigid unit, the way a real board's snapped-together halves do.
+//
+// Board x/y are strip-origin world coordinates in PITCH UNITS, snapped to
 // integers so every hole lands on the global 0.1-in lattice (holes are
-// integer offsets within a board — see board-types.js). Board ids are
+// integer offsets within a strip — see board-types.js). Board ids are
 // `bb<n>` and component ids `c<n>`, from per-document counters that never
 // reuse an id, even across delete + save + reload (`nextBoardId` /
 // `nextComponentId` persist in the document).
@@ -32,14 +37,8 @@
 // hole (row e). Pin positions are always DERIVED (footprints + occupancy),
 // never stored; occupancy.js is the single collision authority.
 
-import { BOARD_TYPES } from "./board-types.js";
-import {
-  holeAt,
-  holePosition,
-  parseAddress,
-  parseHole,
-  spec,
-} from "./breadboard.js";
+import { BOARD_TYPES, BREADBOARD_KITS } from "./board-types.js";
+import { holePosition, parseAddress, parseHole, spec } from "./breadboard.js";
 import { partDef } from "../catalog/index.js";
 import {
   canMoveWire,
@@ -50,7 +49,7 @@ import {
   partPinHoles,
 } from "./occupancy.js";
 
-export const DOC_VERSION = 1;
+export const DOC_VERSION = 2;
 
 /** The fixed jumper-wire palette (theme.css defines a token per name). */
 export const WIRE_COLORS = Object.freeze([
@@ -65,6 +64,7 @@ export const WIRE_COLORS = Object.freeze([
 ]);
 
 const BOARD_ID_RE = /^bb([1-9]\d*)$/;
+const GROUP_ID_RE = /^g([1-9]\d*)$/;
 const COMPONENT_ID_RE = /^c([1-9]\d*)$/;
 const PSU_ID_RE = /^psu([1-9]\d*)$/;
 const CLOCK_ID_RE = /^clk([1-9]\d*)$/;
@@ -95,6 +95,7 @@ export function emptyDocument() {
     components: [],
     wires: [],
     nextBoardId: 1,
+    nextGroupId: 1,
     nextComponentId: 1,
     nextPsuId: 1,
     nextClockId: 1,
@@ -114,6 +115,7 @@ export function normalizeDocument(raw) {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return doc;
 
   let maxBoardSeq = 0;
+  let maxGroupSeq = 0;
   const boardIds = new Set();
   const boards = Array.isArray(raw.boards) ? raw.boards : [];
   for (const b of boards) {
@@ -124,11 +126,15 @@ export function normalizeDocument(raw) {
     if (!Number.isFinite(b.x) || !Number.isFinite(b.y)) continue;
     boardIds.add(b.id);
     maxBoardSeq = Math.max(maxBoardSeq, Number(m[1]));
+    // A junk group id degrades to a loose strip rather than dropping it.
+    const g = typeof b.group === "string" ? GROUP_ID_RE.exec(b.group) : null;
+    if (g) maxGroupSeq = Math.max(maxGroupSeq, Number(g[1]));
     doc.boards.push({
       id: b.id,
       type: b.type,
       x: Math.round(b.x),
       y: Math.round(b.y),
+      group: g ? b.group : null,
     });
   }
 
@@ -214,6 +220,11 @@ export function normalizeDocument(raw) {
       ? raw.nextBoardId
       : 1;
   doc.nextBoardId = Math.max(storedNextBoard, maxBoardSeq + 1);
+  const storedNextGroup =
+    Number.isInteger(raw.nextGroupId) && raw.nextGroupId > 0
+      ? raw.nextGroupId
+      : 1;
+  doc.nextGroupId = Math.max(storedNextGroup, maxGroupSeq + 1);
   const storedNextComp =
     Number.isInteger(raw.nextComponentId) && raw.nextComponentId > 0
       ? raw.nextComponentId
@@ -246,6 +257,58 @@ function rectsOverlap(a, b) {
 function outlineRect(board) {
   const s = spec(board.type);
   return { x: board.x, y: board.y, width: s.width, height: s.height };
+}
+
+/**
+ * Which edge of `a` the strip `b` dovetails onto — the real part's mating
+ * rule: the two must match across the shared edge (same width stacking, same
+ * height side by side) and meet flush, with no gap and no overlap.
+ *
+ * @returns {"above"|"below"|"left"|"right"|null} null when they do not mate.
+ */
+function matingEdge(a, b) {
+  const sa = spec(a.type);
+  const sb = spec(b.type);
+  if (a.x === b.x && sa.width === sb.width) {
+    if (b.y + sb.height === a.y) return "above";
+    if (a.y + sa.height === b.y) return "below";
+  }
+  if (a.y === b.y && sa.height === sb.height) {
+    if (b.x + sb.width === a.x) return "left";
+    if (a.x + sa.width === b.x) return "right";
+  }
+  return null;
+}
+
+/** The edges a directional break travels along. */
+const CHAIN_EDGES = Object.freeze({
+  forward: Object.freeze(["below", "right"]),
+  backward: Object.freeze(["above", "left"]),
+});
+
+/**
+ * Partition `boards` into the runs that are still mated to one another —
+ * used after a break to find which pieces are left holding together. Pure;
+ * considers only the boards passed in, so a split can never absorb an
+ * outsider that merely happens to sit flush.
+ *
+ * @returns {Array<Array<object>>} components, each in the given order.
+ */
+function matedComponents(boards) {
+  const pool = [...boards];
+  const components = [];
+  while (pool.length > 0) {
+    const component = [pool.shift()];
+    for (let i = 0; i < component.length; i += 1) {
+      for (let j = pool.length - 1; j >= 0; j -= 1) {
+        if (matingEdge(component[i], pool[j])) {
+          component.push(pool.splice(j, 1)[0]);
+        }
+      }
+    }
+    components.push(component);
+  }
+  return components;
 }
 
 export class DeskDoc {
@@ -342,9 +405,271 @@ export class DeskDoc {
       type,
       x: Math.round(x),
       y: Math.round(y),
+      group: null,
     };
     this.#doc.boards.push(board);
     return { ...board };
+  }
+
+  // ── Kits & groups ───────────────────────────────────────────────────────
+
+  /**
+   * The strips a kit places, resolved to absolute integer positions. Pure —
+   * used for the placement ghost as well as for the real add.
+   *
+   * @returns {Array<{type:string,x:number,y:number}>}
+   */
+  static kitPlacements(kitKey, x, y) {
+    const kit = BREADBOARD_KITS[kitKey];
+    if (!kit) throw taggedError(`unknown kit: ${kitKey}`, "INVALID_TYPE");
+    const ox = Math.round(x);
+    const oy = Math.round(y);
+    return kit.strips.map((s) => ({
+      type: s.type,
+      x: ox + s.dx,
+      y: oy + s.dy,
+    }));
+  }
+
+  /** The bounding box of a kit, for centring the placement ghost. */
+  static kitOutline(kitKey) {
+    const strips = DeskDoc.kitPlacements(kitKey, 0, 0);
+    const width = Math.max(...strips.map((s) => s.x + spec(s.type).width));
+    const height = Math.max(...strips.map((s) => s.y + spec(s.type).height));
+    return { width, height };
+  }
+
+  /** Would every strip of a kit fit at (x, y)? All-or-nothing. */
+  canPlaceKit(kitKey, x, y) {
+    return DeskDoc.kitPlacements(kitKey, x, y).every((s) =>
+      this.canPlace(s.type, s.x, s.y),
+    );
+  }
+
+  /**
+   * Place a whole breadboard: every strip of the kit, seated at its preset
+   * offset and joined into one group so they drag as a unit. Throws
+   * INVALID_TYPE / INVALID_ARG / OVERLAP — nothing is added on failure.
+   *
+   * @returns {Array<object>} copies of the new strips, in kit order.
+   */
+  addKit(kitKey, x, y) {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      throw taggedError("kit position must be finite", "INVALID_ARG");
+    }
+    const placements = DeskDoc.kitPlacements(kitKey, x, y);
+    if (!this.canPlaceKit(kitKey, x, y)) {
+      throw taggedError(
+        `a ${kitKey} breadboard at ${Math.round(x)},${Math.round(y)} overlaps an existing board`,
+        "OVERLAP",
+      );
+    }
+    // A lone strip needs no group — grouping starts at two.
+    const group = placements.length > 1 ? `g${this.#doc.nextGroupId++}` : null;
+    const added = placements.map((p) => ({
+      id: `bb${this.#doc.nextBoardId++}`,
+      type: p.type,
+      x: p.x,
+      y: p.y,
+      group,
+    }));
+    this.#doc.boards.push(...added);
+    return added.map((b) => ({ ...b }));
+  }
+
+  /**
+   * The strips `id` dovetails with: same width and same left edge (the real
+   * part only mates with its own size), and edge-to-edge in y with no gap.
+   * Pure — the geometric half of the mating rule, with no group side effects.
+   *
+   * @returns {Array<object>} copies of the mating strips, document order.
+   */
+  matingStrips(id) {
+    const board = this.#doc.boards.find((b) => b.id === id);
+    if (!board) return [];
+    return this.#doc.boards
+      .filter((b) => b.id !== id && matingEdge(board, b) !== null)
+      .map((b) => ({ ...b }));
+  }
+
+  /**
+   * The strips that travel with `id` when a snap is broken directionally:
+   * `id` itself plus everything reachable from it through mating edges that
+   * point only one way — `forward` (below / right) or `backward` (above /
+   * left). Whatever lies the other way is left behind.
+   *
+   * The walk stays INSIDE `id`'s group, so a strip merely resting flush
+   * against the stack — placed there, never snapped — is never dragged along.
+   * Throws INVALID_ARG on an unknown direction.
+   *
+   * @returns {Array<object>} copies of the chain, in document order.
+   */
+  matedChain(id, direction = "forward") {
+    const edges = CHAIN_EDGES[direction];
+    if (!edges) {
+      throw taggedError(`unknown chain direction: ${direction}`, "INVALID_ARG");
+    }
+    const pool = this.groupMembers(id);
+    if (pool.length === 0) return [];
+    const chained = new Set([id]);
+    // Breadth-first along one-way edges: reaching a strip does not license
+    // travelling back up from it, so a break only ever runs one way.
+    const queue = [pool.find((b) => b.id === id)];
+    while (queue.length > 0) {
+      const current = queue.shift();
+      for (const b of pool) {
+        if (chained.has(b.id)) continue;
+        if (!edges.includes(matingEdge(current, b))) continue;
+        chained.add(b.id);
+        queue.push(b);
+      }
+    }
+    return pool.filter((b) => chained.has(b.id));
+  }
+
+  /**
+   * Mate `id` with every strip it dovetails against: the strips — and the
+   * whole group each already belongs to — are united under one group id, so
+   * the stack drags as a unit. Reuses an existing group when there is one
+   * (the oldest, in document order) and mints `g<n>` only for a stack of
+   * loose strips. A no-op returning null when `id` touches nothing.
+   *
+   * @returns {string|null} the resulting group id.
+   */
+  joinMatedGroup(id) {
+    const mates = this.matingStrips(id);
+    if (mates.length === 0) return null;
+    // The union spans each mate's whole group, so mating with one strip of an
+    // assembled board joins the entire board, not just the strip touched.
+    const groups = new Set(mates.map((b) => b.group).filter((g) => g != null));
+    const ids = new Set([id, ...mates.map((b) => b.id)]);
+    const members = this.#doc.boards.filter(
+      (b) => ids.has(b.id) || (b.group != null && groups.has(b.group)),
+    );
+    const group =
+      members.find((b) => b.group != null)?.group ??
+      `g${this.#doc.nextGroupId++}`;
+    for (const b of members) b.group = group;
+    return group;
+  }
+
+  /**
+   * The strips that move with `id`: its whole group, or just itself when it
+   * is loose. Always includes `id`; empty when there is no such board.
+   */
+  groupMembers(id) {
+    const board = this.#doc.boards.find((b) => b.id === id);
+    if (!board) return [];
+    if (board.group == null) return [{ ...board }];
+    return this.#doc.boards
+      .filter((b) => b.group === board.group)
+      .map((b) => ({ ...b }));
+  }
+
+  /**
+   * Would translating `id`'s group by (dx, dy) — integers — clear every board
+   * and brick outside the group?
+   */
+  canMoveBoardBy(id, dx, dy) {
+    return this.canMoveBoardsBy(
+      this.groupMembers(id).map((b) => b.id),
+      dx,
+      dy,
+    );
+  }
+
+  /**
+   * Would translating exactly `ids` by (dx, dy) — integers — clear every
+   * board and brick that is NOT moving? False when any id is unknown.
+   */
+  canMoveBoardsBy(ids, dx, dy) {
+    const moving = new Set(ids);
+    const members = this.#doc.boards.filter((b) => moving.has(b.id));
+    if (members.length === 0 || members.length !== moving.size) return false;
+    const rects = members.map((b) =>
+      outlineRect({ ...b, x: b.x + Math.round(dx), y: b.y + Math.round(dy) }),
+    );
+    const others = this.#doc.boards.filter((b) => !moving.has(b.id));
+    return rects.every(
+      (rect) =>
+        others.every((b) => !rectsOverlap(rect, outlineRect(b))) &&
+        this.#brickRects().every((r) => !rectsOverlap(rect, r)),
+    );
+  }
+
+  /**
+   * Translate `id`'s whole group by (dx, dy). Throws NOT_FOUND /
+   * INVALID_ARG / OVERLAP. Returns copies of every moved strip.
+   */
+  moveBoardBy(id, dx, dy) {
+    if (!this.#doc.boards.some((b) => b.id === id)) {
+      throw taggedError(`no board ${id}`, "NOT_FOUND");
+    }
+    return this.moveBoardsBy(
+      this.groupMembers(id).map((b) => b.id),
+      dx,
+      dy,
+    );
+  }
+
+  /**
+   * Translate exactly `ids` by (dx, dy) — the rigid move behind a directional
+   * break. When the set is only PART of a group, the snap breaks: both halves
+   * are re-grouped from what is still mated within each, so a run that stays
+   * whole keeps travelling as a unit and a strip left on its own goes loose.
+   * A group id is never reused across a break. Throws NOT_FOUND /
+   * INVALID_ARG / OVERLAP — nothing moves on failure.
+   *
+   * @returns {Array<object>} copies of every moved strip, document order.
+   */
+  moveBoardsBy(ids, dx, dy) {
+    const moving = new Set(ids);
+    const members = this.#doc.boards.filter((b) => moving.has(b.id));
+    if (members.length === 0 || members.length !== moving.size) {
+      throw taggedError(`no such board in [${[...moving]}]`, "NOT_FOUND");
+    }
+    if (!Number.isFinite(dx) || !Number.isFinite(dy)) {
+      throw taggedError("board delta must be finite", "INVALID_ARG");
+    }
+    if (!this.canMoveBoardsBy(ids, dx, dy)) {
+      throw taggedError(`moving [${[...moving]}] overlaps a board`, "OVERLAP");
+    }
+    // A group that is only partly moving is being torn apart — note it before
+    // the translation, and re-derive both halves from geometry afterwards.
+    const torn = [
+      ...new Set(members.map((b) => b.group).filter((g) => g != null)),
+    ].filter((g) =>
+      this.#doc.boards.some((b) => b.group === g && !moving.has(b.id)),
+    );
+    const moved = [];
+    for (const b of this.#doc.boards) {
+      if (!moving.has(b.id)) continue;
+      b.x += Math.round(dx);
+      b.y += Math.round(dy);
+      moved.push(b);
+    }
+    for (const group of torn) this.#regroupAfterBreak(group, moving);
+    return moved.map((b) => ({ ...b }));
+  }
+
+  /**
+   * Re-derive `group` after a break: each half is split into the runs still
+   * mated within it, and every run of two or more gets a FRESH id (a lone
+   * strip goes loose). Fresh on both sides, so the two halves can never come
+   * out sharing an id and silently stay one unit.
+   */
+  #regroupAfterBreak(group, movedIds) {
+    const members = this.#doc.boards.filter((b) => b.group === group);
+    const halves = [
+      members.filter((b) => movedIds.has(b.id)),
+      members.filter((b) => !movedIds.has(b.id)),
+    ];
+    for (const half of halves) {
+      for (const run of matedComponents(half)) {
+        const id = run.length > 1 ? `g${this.#doc.nextGroupId++}` : null;
+        for (const b of run) b.group = id;
+      }
+    }
   }
 
   /**
@@ -369,9 +694,14 @@ export class DeskDoc {
   }
 
   /**
-   * Remove a board AND everything attached to it — seated components and
-   * every wire with an endpoint on it (the UI confirms first when anything
-   * would go with it). Throws NOT_FOUND.
+   * Remove a strip AND everything SEATED on it — components anchored to it
+   * and every wire with an endpoint on it (the UI confirms first when
+   * anything would go with it). Throws NOT_FOUND.
+   *
+   * A part anchored on a NEIGHBOURING strip whose free lead happens to reach
+   * into this one survives untouched, keeping its position: the lead simply
+   * stops resolving to a hole and floats. That is why removal keys on
+   * `c.board` (where the part is seated) and never on where a lead lands.
    */
   removeBoard(id) {
     const i = this.#doc.boards.findIndex((b) => b.id === id);
@@ -498,12 +828,15 @@ export class DeskDoc {
   }
 
   /**
-   * Reposition a rotatable two-terminal part (resistor) by BOTH end holes at
-   * once — the rigid drag/rotate commit. Both must be free, real, distinct
-   * holes on `boardId` (rails included). Stores the two-free-ends form.
+   * Reposition a rotatable two-terminal part (resistor) by BOTH ends at once —
+   * the rigid drag/rotate commit. Pin 1 seats in `anchor` on `boardId`; pin 2
+   * is `end`, a `{dx, dy}` lead bend measured in pitch units from that hole,
+   * so it may reach onto a NEIGHBOURING strip (typically a power rail). Both
+   * ends must land in free, real, distinct holes — a deliberate placement
+   * never leaves a lead floating.
    * Throws NOT_FOUND / INVALID_REF / ILLEGAL_PLACEMENT. Returns a copy.
    */
-  movePartEnds(id, boardId, hole1, hole2) {
+  movePartEnds(id, boardId, anchor, end) {
     const comp = this.#doc.components.find((c) => c.id === id);
     if (!comp) throw taggedError(`no component ${id}`, "NOT_FOUND");
     const def = partDef(comp.ref);
@@ -513,29 +846,25 @@ export class DeskDoc {
     if (!this.#doc.boards.some((b) => b.id === boardId)) {
       throw taggedError(`no board ${boardId}`, "NOT_FOUND");
     }
-    const params = normalizeParams(def, {
-      ...comp.params,
-      rot: 90,
-      end: hole2,
-    });
+    const params = normalizeParams(def, { ...comp.params, rot: 90, end });
     if (
-      !this.canPlacePart(comp.ref, boardId, hole1, { ignoreId: id, params })
+      !this.canPlacePart(comp.ref, boardId, anchor, { ignoreId: id, params })
     ) {
       throw taggedError(
-        `${id} cannot sit at ${boardId}.${hole1}→${hole2}`,
+        `${id} cannot sit at ${boardId}.${anchor} + (${end?.dx},${end?.dy})`,
         "ILLEGAL_PLACEMENT",
       );
     }
     comp.board = boardId;
-    comp.anchor = hole1;
+    comp.anchor = anchor;
     comp.params = params;
     return { ...comp };
   }
 
   /**
    * Rotate a placed rotatable part (resistor) 90° around pin 1: pin 1 stays,
-   * pin 2 pivots to the hole at the rotated position (snapped; tries CW then
-   * CCW). The part is stored in its two-free-ends form (`rot: 90`, `end`).
+   * pin 2's lead swings a quarter lap (tries CW then CCW). The part is stored
+   * in its two-free-ends form (`rot: 90`, `end` a `{dx, dy}` bend).
    * Throws NOT_FOUND / INVALID_REF (not rotatable) / ILLEGAL_PLACEMENT (no free
    * hole at either rotated position). Returns a copy.
    */
@@ -559,19 +888,26 @@ export class DeskDoc {
     const board = this.#doc.boards.find((b) => b.id === comp.board);
     const pins = board && partPinHoles(comp.ref, comp.anchor, comp.params);
     if (!pins) throw taggedError(`${id} has no pins`, "ILLEGAL_PLACEMENT");
-    const p1 = holePosition(board.type, pins[0].hole);
-    const p2 = holePosition(board.type, pins[1].hole);
-    // Pivot pin 2 around pin 1 by ±90° (keep pin 1 fixed); snap to a hole.
+    // The lead vector as it stands, whichever form the part is stored in: a
+    // bend is already an offset; a footprint pair is the gap between its holes.
+    let vec = pins[1].offset;
+    if (!vec) {
+      const p1 = holePosition(board.type, pins[0].hole);
+      const p2 = holePosition(board.type, pins[1].hole);
+      if (!p1 || !p2) {
+        throw taggedError(`${id} has no pins`, "ILLEGAL_PLACEMENT");
+      }
+      vec = { dx: p2.x - p1.x, dy: p2.y - p1.y };
+    }
+    // Pivot pin 2 around pin 1 by ±90° (keep pin 1 fixed). Hole offsets are
+    // integers, so the swung lead stays on the lattice and lands on a hole
+    // whenever one is there — including a NEIGHBOURING strip's rail. Negating
+    // a zero component yields -0, which would persist into the document and
+    // break value comparisons, so fold it back.
+    const swing = (n) => (n === 0 ? 0 : n);
     for (const dir of [1, -1]) {
-      const nx = p1.x - dir * (p2.y - p1.y);
-      const ny = p1.y + dir * (p2.x - p1.x);
-      const hole = holeAt(board.type, nx, ny);
-      if (!hole || hole === pins[0].hole) continue;
-      const params = normalizeParams(def, {
-        ...comp.params,
-        rot: 90,
-        end: hole,
-      });
+      const end = { dx: swing(-dir * vec.dy), dy: swing(dir * vec.dx) };
+      const params = normalizeParams(def, { ...comp.params, rot: 90, end });
       if (
         this.canPlacePart(comp.ref, comp.board, comp.anchor, {
           ignoreId: id,

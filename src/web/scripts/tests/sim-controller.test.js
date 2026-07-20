@@ -40,9 +40,9 @@ function chipHoles(ref, anchor) {
   return map;
 }
 const mates = (hole) =>
-  holesOfNode("full", nodeOf("full", hole)).filter((h) => h !== hole);
+  holesOfNode("pins-full", nodeOf("pins-full", hole)).filter((h) => h !== hole);
 
-const board = { id: "bb1", type: "full", x: 0, y: 0 };
+const board = { id: "bb1", type: "pins-full", x: 0, y: 0 };
 const psu = (id, x, volts) => ({
   id,
   kind: "psu",

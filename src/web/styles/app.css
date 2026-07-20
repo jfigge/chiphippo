@@ -454,6 +454,19 @@
   opacity: 0.85;
 }
 
+/* The strips a grab will move, lit as ONE item: a wash rather than a border,
+   so flush neighbours merge into a single block instead of drawing a seam
+   down every join. Works for any snapped shape, not just a tidy stack. */
+.board--drag-set::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--color-accent);
+  opacity: 0.18;
+  pointer-events: none;
+}
+
 .board--illegal {
   outline: 2px solid var(--color-danger);
   outline-offset: 2px;
@@ -490,11 +503,17 @@
   user-select: none;
 }
 
-/* Placement ghost: a translucent board tracking the cursor. */
+/* Placement ghost: a translucent breadboard kit tracking the cursor. Its
+   strips sit at their kit offsets inside it, so the outline frames the whole
+   assembly rather than each piece. */
 .board-ghost {
   position: absolute;
   opacity: 0.55;
   border-radius: 6px;
+}
+
+.board-ghost-strip {
+  position: absolute;
 }
 
 .board-ghost--legal {
@@ -657,6 +676,16 @@
   stroke-width: 1.6;
   stroke-linecap: round;
   pointer-events: stroke;
+}
+
+/* A bent lead that touches no hole — what a part is left with when the strip
+   under it is moved or deleted away. The part keeps its exact position and
+   span (the bend is geometry, not an address), so only the lead changes: it
+   goes dashed and takes the warning tint to show the connection is gone. */
+.part-discrete--floating .part-span-lead {
+  stroke: var(--color-warning);
+  stroke-dasharray: 0.36 0.28;
+  stroke-linecap: butt;
 }
 
 /* Smoke rises past the span's viewBox, so let it escape (same trick the wire
@@ -1232,6 +1261,12 @@
 
 .popup-menu-item--danger {
   color: var(--color-danger);
+}
+
+.popup-menu-separator {
+  height: 1px;
+  margin: var(--space-1) var(--space-2);
+  background: var(--color-overlay);
 }
 
 /* ── Simulation live state (Feature 90) ──────────────────────────────────── */

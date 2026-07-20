@@ -28,8 +28,8 @@ const { WireLayer } = await import("../components/wire-layer.js");
 
 function deskWithWire() {
   const doc = new DeskDoc(null);
-  doc.addBoard("full", 0, 0); // bb1
-  doc.addBoard("tiny", 100, 0); // bb2
+  doc.addBoard("pins-full", 0, 0); // bb1
+  doc.addBoard("pins-tiny", 100, 0); // bb2
   doc.addWire({ from: "bb1.a1", to: "bb1.a5", color: "green" });
   return doc;
 }
@@ -52,7 +52,7 @@ test("renders one .wire group per wire with color + geometry", () => {
     "var(--color-wire-green)",
   );
   // Path endpoints land exactly on the hole centers (world px).
-  const a = holePosition("full", "a1");
+  const a = holePosition("pins-full", "a1");
   const d = w1.querySelector(".wire-core").getAttribute("d");
   assert.ok(d.startsWith(`M ${a.x * PX_PER_UNIT} ${a.y * PX_PER_UNIT} `), d);
   // Hit + outline + core + two caps per wire.
@@ -110,7 +110,7 @@ test("board-drag overrides shift wire endpoints live", () => {
   const doc = deskWithWire();
   const wires = new WireLayer(layer, doc, {});
 
-  const a = holePosition("full", "a1");
+  const a = holePosition("pins-full", "a1");
   wires.render(new Map([["bb1", { x: 50, y: 7 }]]));
   const d = layer.querySelector(".wire-core").getAttribute("d");
   assert.ok(
@@ -144,7 +144,7 @@ test("setEndpointDrag pins one end to a cursor point; null restores the doc", ()
 
   // Clearing the drag redraws from the document (back on hole a5).
   wires.setEndpointDrag(null);
-  const a5 = holePosition("full", "a5");
+  const a5 = holePosition("pins-full", "a5");
   const restored = layer.querySelector(".wire-core").getAttribute("d");
   assert.ok(
     restored.endsWith(`${a5.x * PX_PER_UNIT} ${a5.y * PX_PER_UNIT}`),
@@ -179,7 +179,7 @@ test("setWholeDrag overrides BOTH endpoints; null restores the doc", () => {
 
   // Clearing redraws from the document (back on holes a1 → a5).
   wires.setWholeDrag(null);
-  const a1 = holePosition("full", "a1");
+  const a1 = holePosition("pins-full", "a1");
   const restored = layer.querySelector(".wire-core").getAttribute("d");
   assert.ok(
     restored.startsWith(`M ${a1.x * PX_PER_UNIT} ${a1.y * PX_PER_UNIT}`),
@@ -221,9 +221,10 @@ test("resolves PSU terminal endpoints (and drag overrides)", () => {
   const layer = document.createElement("div");
   document.body.append(layer);
   const doc = new DeskDoc(null);
-  doc.addBoard("full", 0, 0);
+  // A whole kit: bb1 top rail, bb2 pin-board, bb3 bottom rail.
+  doc.addKit("full", 0, 0);
   doc.addPsu(80, 10);
-  doc.addWire({ from: "psu1.+", to: "bb1.t+1", color: "red" });
+  doc.addWire({ from: "psu1.+", to: "bb1.+1", color: "red" });
 
   const wires = new WireLayer(layer, doc, {});
   // psu1.+ terminal sits at (80+2, 10+4) pitch units.

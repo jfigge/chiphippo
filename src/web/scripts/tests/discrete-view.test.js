@@ -112,27 +112,53 @@ test("buildSpanSvg: an LED spans with a centred dome and cathode cue", () => {
   assert.ok(flatX(true) < flatX(false));
 });
 
-test("DiscreteView.updateSpan renders + positions a rotated resistor", () => {
+/** A rotated resistor view, drawn but not yet spanned. */
+function rotatedResistor(layer, end = { dx: 0, dy: -3 }) {
+  return new DiscreteView(
+    layer,
+    { id: "r1", ref: "resistor", params: { ohms: 10000, rot: 90, end } },
+    {},
+  );
+}
+
+test("DiscreteView.updateSpanWorld renders + positions a rotated resistor", () => {
   resetDom();
   const layer = document.createElement("div");
   document.body.append(layer);
-  const board = { type: "full", x: 0, y: 0 };
-  const view = new DiscreteView(
-    layer,
-    {
-      id: "r1",
-      ref: "resistor",
-      params: { ohms: 10000, rot: 90, end: "a10" },
-    },
-    {},
-  );
+  const view = rotatedResistor(layer);
   // No horizontal SVG is built for a rotated resistor at construction…
   assert.equal(layer.querySelector(".part-resistor-body"), null);
-  // …until updateSpan draws the span and seats the element.
-  view.updateSpan(board, "b-1", "a10");
+  // …until updateSpanWorld draws the span and seats the element. Pin 1 sits at
+  // j10 (world 10, 1) and the lead bends 3 up onto the rail strip above.
+  view.updateSpanWorld({ x: 10, y: 1 }, { x: 10, y: -2 });
   assert.ok(layer.querySelector(".part-span-lead"));
   assert.ok(layer.querySelector(".part-discrete-svg--rotated"));
   assert.notEqual(view.element.style.left, "");
+});
+
+test("DiscreteView.setFloating cues a lost lead without moving the part", () => {
+  resetDom();
+  const layer = document.createElement("div");
+  document.body.append(layer);
+  const view = rotatedResistor(layer);
+  // The same span whether or not the far strip is still there — the bend is
+  // geometry, so pulling a rail away changes the CUE, never the position.
+  view.updateSpanWorld({ x: 10, y: 1 }, { x: 10, y: -2 });
+  const { left, top } = view.element.style;
+  const lead = () => layer.querySelector(".part-span-lead").getAttribute("y2");
+  assert.equal(lead(), "-3");
+
+  assert.ok(!view.element.classList.contains("part-discrete--floating"));
+  view.setFloating(true);
+  assert.ok(view.element.classList.contains("part-discrete--floating"));
+  assert.deepEqual(
+    [view.element.style.left, view.element.style.top],
+    [left, top],
+  );
+  assert.equal(lead(), "-3");
+
+  view.setFloating(false);
+  assert.ok(!view.element.classList.contains("part-discrete--floating"));
 });
 
 test("DiscreteView: seats in world px; cap press emits chiphippo:part-state", () => {
@@ -145,7 +171,7 @@ test("DiscreteView: seats in world px; cap press emits chiphippo:part-state", ()
     { id: "c5", ref: "sw-push", params: {} },
     {},
   );
-  view.updatePlacement({ type: "full", x: 0, y: 0 }, "b10");
+  view.updatePlacement({ type: "pins-full", x: 0, y: 0 }, "b10");
   const partEl = layer.querySelector(".part-discrete");
   assert.ok(partEl);
 

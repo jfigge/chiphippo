@@ -75,7 +75,7 @@ test("NetHighlight skips points/wires whose geometry is unresolved", () => {
 test("NetlistCache memoizes and invalidates on the two events", () => {
   resetDom();
   const doc = new DeskDoc(null);
-  doc.addBoard("full", 0, 0);
+  doc.addBoard("pins-full", 0, 0);
   const cache = new NetlistCache(doc);
 
   const first = cache.get();
@@ -92,7 +92,7 @@ test("NetlistCache memoizes and invalidates on the two events", () => {
 test("NetlistCache tracks a held button's transient pressed state", () => {
   resetDom();
   const doc = new DeskDoc(null);
-  doc.addBoard("full", 0, 0);
+  doc.addBoard("pins-full", 0, 0);
   doc.addComponent({
     kind: "discrete",
     ref: "sw-push",

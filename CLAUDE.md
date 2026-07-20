@@ -307,18 +307,51 @@ make clean     # Remove build/ and dist/
 
 - **World unit = one breadboard pitch = 0.1 in (2.54 mm).** All board geometry,
   footprints, snapping, and desk coordinates are integer-friendly in pitch units.
-- **Board types** (tie-point counts match the real parts):
-  - **Full** — 830 points: 63 columns × 10 rows (630) + 4 power rails × 50 (200).
-    ~165 × 55 mm.
-  - **Half** — 400 points: 30 columns × 10 rows (300) + 4 power rails × 25 (100).
-    ~82 × 55 mm.
-  - **Tiny** — 170 points: 17 columns × 10 rows (170), **no rails**. ~45 × 34.5 mm.
-- **Rows**, top to bottom: rails `t+`,`t−` · rows `j i h g f` · **trench** ·
-  rows `e d c b a` · rails `b+`,`b−`. Each column-half (`a–e`, `f–j`) is one
-  internal 5-hole node; each rail is one continuous node; the trench isolates the
-  halves — DIP chips straddle it (pins in rows `e` and `f`).
-- **Addresses**: `<ownerId>.<point>` — `bb1.a12` (hole), `bb1.t+7` (rail hole 7),
-  `psu1.+` (component terminal). One hole holds at most one lead (pin or wire end).
+- **A breadboard is not one part — it is STRIPS** (Feature 110), as on a real bench:
+  a centre **pin-board** plus dovetailed **power-rail** strips. Each strip is its own
+  entity in `doc.boards`; a "breadboard" is a **kit** of them placed in one action.
+  - **Strip types** — `pins-full` (63 cols, 630 pts) · `pins-half` (30, 300) ·
+    `pins-tiny` (17, 170) · `rail-full` (2 rails × 50) · `rail-half` (2 × 25).
+    Pin-boards are 13 tall, rails 3; all three pin-boards share ONE row map.
+  - **Kits** (`BREADBOARD_KITS`) — Full 830 = rail@0 · pins@3 · rail@16; Half 400
+    likewise; **Tiny 170 is a bare pin-board** (the real part has no rails).
+    Offsets are integers, so every hole stays on the global 0.1-in lattice.
+    Alongside the assembled boards (`KIT_KEYS`) the same table carries the loose
+    single-strip kits (`STRIP_KIT_KEYS` — `pins-full`/`pins-half` bare boards and
+    `rail-full`/`rail-half` spare rails), each keyed by its own strip type. The
+    Add-board menu offers them below a rule; placement, ghosting, and overlap
+    all run the one kit code path.
+- **Rows** of a pin-board, top to bottom: `j i h g f` · **trench** · `e d c b a`.
+  Each column-half (`a–e`, `f–j`) is one internal 5-hole node; the trench isolates
+  the halves — DIP chips straddle it (pins in rows `e` and `f`). A rail strip
+  carries both polarities, `+` and `−`, each one continuous node for its length.
+- **Groups**: strips snapped together share a `group` id (`g<n>`, or `null` when
+  loose) and drag as one rigid unit. A kit arrives pre-grouped. A LOOSE strip
+  placed flush against a board **mates** with it — `matingEdge` (matching size
+  across the shared edge, flush, no gap; stacked OR side by side) drives
+  `matingStrips` → `joinMatedGroup`, which unites both strips' whole groups
+  under one id, reusing an existing group before minting one. Assembled kits do
+  not mate on placement, and nothing re-mates on drop — Feature 120.
+  - **Breaking a snap** is a modifier on the board grab. Plain = the whole
+    group. **Option** = `matedChain(id, "forward")` — the run reachable from
+    the grabbed strip through *below/right* edges only; **Option+Shift** =
+    `"backward"` (above/left). The walk stays inside the group, so a strip
+    merely resting flush is never dragged along. Dragging a partial set commits
+    through `moveBoardsBy(ids, …)`, which tears the group: `#regroupAfterBreak`
+    re-derives BOTH halves from what is still mated within each (`matedComponents`),
+    minting a fresh id per run of two or more and going `null` for a lone strip —
+    fresh on both sides, so the halves can never come out sharing an id. The set
+    lights up on mouse-down (`board--drag-set`, a wash not a border, so flush
+    neighbours read as one block).
+- **Addresses**: `<ownerId>.<point>` — `bb1.a12` (grid hole), `bb2.+7` (rail hole 7
+  on a rail strip), `psu1.+` (component terminal). One hole holds at most one lead
+  (pin or wire end).
+- **Parts belong to the pin-board** — `comp.board` never names a rail. A rotated
+  two-terminal part's free lead is a `{dx, dy}` **bend** from its anchor, resolved
+  geometrically against whatever strip lies under it (`partPinAddresses`), so it can
+  reach a rail. A lead over nothing resolves to `null` and **floats** — legal, and
+  what happens when a rail is moved or deleted; the part keeps its exact position.
+  Deleting a strip removes only what is *seated* on it, never a neighbour's lead.
 
 ## License headers
 

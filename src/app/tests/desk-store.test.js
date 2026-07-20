@@ -48,12 +48,14 @@ test("save → load round-trips a document across store instances", () => {
   try {
     const doc = {
       version: DESK_DOC_VERSION,
-      boards: [{ id: "bb1", type: "full", x: 2, y: 3 }],
+      boards: [{ id: "bb1", type: "pins-full", x: 2, y: 3, group: null }],
       components: [],
       wires: [],
       nextBoardId: 2,
+      nextGroupId: 1,
       nextComponentId: 1,
       nextPsuId: 1,
+      nextClockId: 1,
       nextWireId: 1,
     };
     store.save(doc);
@@ -101,12 +103,14 @@ test("migrateDeskDocument: junk → default; missing fields filled", () => {
 test("migrateDeskDocument: a current-version document passes through", () => {
   const doc = {
     version: DESK_DOC_VERSION,
-    boards: [{ id: "bb1", type: "tiny", x: 0, y: 0 }],
+    boards: [{ id: "bb1", type: "pins-tiny", x: 0, y: 0, group: null }],
     components: [],
     wires: [],
     nextBoardId: 5,
+    nextGroupId: 2,
     nextComponentId: 3,
     nextPsuId: 2,
+    nextClockId: 1,
     nextWireId: 2,
   };
   assert.deepEqual(migrateDeskDocument(doc), doc);

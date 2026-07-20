@@ -108,9 +108,9 @@ export const PopupManager = {
 
   /**
    * A lightweight context/dropdown menu at screen coordinates (clamped into
-   * the viewport). Items: `{ label, disabled?, danger?, onSelect? }` — a
-   * selection closes the menu first, then runs onSelect. Mask click / Escape
-   * dismiss with no selection.
+   * the viewport). Items: `{ label, disabled?, danger?, onSelect? }`, or
+   * `{ separator: true }` for a divider rule — a selection closes the menu
+   * first, then runs onSelect. Mask click / Escape dismiss with no selection.
    * @param {{ x: number, y: number, items: Array<object> }} opts
    */
   menu({ x = 0, y = 0, items = [] } = {}) {
@@ -118,17 +118,19 @@ export const PopupManager = {
       "div",
       { class: "popup-menu", role: "menu" },
       items.map((item) =>
-        el("button", {
-          class: `popup-menu-item${item.danger ? " popup-menu-item--danger" : ""}`,
-          type: "button",
-          role: "menuitem",
-          text: item.label,
-          disabled: Boolean(item.disabled),
-          onClick: () => {
-            this.close();
-            item.onSelect?.();
-          },
-        }),
+        item.separator
+          ? el("div", { class: "popup-menu-separator", role: "separator" })
+          : el("button", {
+              class: `popup-menu-item${item.danger ? " popup-menu-item--danger" : ""}`,
+              type: "button",
+              role: "menuitem",
+              text: item.label,
+              disabled: Boolean(item.disabled),
+              onClick: () => {
+                this.close();
+                item.onSelect?.();
+              },
+            }),
       ),
     );
     this.open({ element: menuEl, variant: "menu" });

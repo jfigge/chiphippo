@@ -81,15 +81,18 @@ export function buildBoardSvg(type) {
   );
 
   // Trench groove between the two column halves (DIP chips straddle it).
-  svg.append(
-    svgEl("rect", {
-      class: "board-trench",
-      x: 0,
-      y: s.trench.centerY - s.trench.height / 2,
-      width: s.width,
-      height: s.trench.height,
-    }),
-  );
+  // Rail strips have no grid, so no trench.
+  if (s.trench) {
+    svg.append(
+      svgEl("rect", {
+        class: "board-trench",
+        x: 0,
+        y: s.trench.centerY - s.trench.height / 2,
+        width: s.width,
+        height: s.trench.height,
+      }),
+    );
+  }
 
   // Rail color stripes: red beside each `+` row, blue beside each `-` row,
   // running the length of the rail's holes (outer side of each rail pair).
@@ -217,6 +220,11 @@ export class BreadboardView {
 
   setDragging(on) {
     this.#el.classList.toggle("board--dragging", on);
+  }
+
+  /** Part of the set the current grab will move — lit as one block. */
+  setDragSet(on) {
+    this.#el.classList.toggle("board--drag-set", on);
   }
 
   setIllegal(on) {

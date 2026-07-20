@@ -18,13 +18,16 @@
 // internal electrical nodes, all derived from the specs in board-types.js.
 // DOM-free and Electron-free; fully covered by node --test.
 //
-// Vocabulary (see CLAUDE.md → Domain reference):
-//   hole    — "a12", "j63", "t+7"       (row+column, or rail id + index)
-//   address — "bb1.a12"                 (<boardId>.<hole>, the global currency)
-//   node    — "c12L", "c12U", "t+"      (what is electrically common inside
-//              one board: a 5-hole column-half strip, or a continuous rail)
+// "Board" here means one STRIP — a pin-board or a power rail. Each is its own
+// entity on the desk (see board-types.js); a breadboard is a kit of them.
 //
-// Positions are PITCH UNITS relative to the board's top-left origin. Nothing
+// Vocabulary (see CLAUDE.md → Domain reference):
+//   hole    — "a12", "j63", "+7"        (row+column, or rail id + index)
+//   address — "bb1.a12"                 (<boardId>.<hole>, the global currency)
+//   node    — "c12L", "c12U", "+"       (what is electrically common inside
+//              one strip: a 5-hole column-half, or a continuous rail)
+//
+// Positions are PITCH UNITS relative to the strip's top-left origin. Nothing
 // outside this module converts row/column arithmetic by hand.
 
 import { BOARD_TYPES } from "./board-types.js";
@@ -50,7 +53,7 @@ export const ROW_LETTERS = Object.freeze([
 const LOWER_ROWS = new Set(["a", "b", "c", "d", "e"]);
 
 const GRID_HOLE_RE = /^([a-j])([1-9]\d*)$/;
-const RAIL_HOLE_RE = /^([tb][+-])([1-9]\d*)$/;
+const RAIL_HOLE_RE = /^([+-])([1-9]\d*)$/;
 const STRIP_NODE_RE = /^c([1-9]\d*)(L|U)$/;
 
 /**
@@ -179,8 +182,8 @@ export function holeAt(type, x, y) {
 /**
  * The internal electrical node a hole belongs to: `c<col>L` / `c<col>U` for
  * a grid hole (the trench isolates L from U), or the rail id for a rail hole
- * (each rail is one continuous node — no mid-board split). Null for ids that
- * don't exist on this type.
+ * (a rail is one continuous node for the whole strip — no mid-strip split).
+ * Null for ids that don't exist on this type.
  */
 export function nodeOf(type, hole) {
   const parsed = parseHole(type, hole);

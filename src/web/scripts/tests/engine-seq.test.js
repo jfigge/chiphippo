@@ -34,7 +34,14 @@ import { holesOfNode, nodeOf } from "../model/breadboard.js";
 
 let wireSeq = 0;
 const wire = (from, to) => ({ id: `w${++wireSeq}`, from, to, color: "black" });
-const board = { id: "bb1", type: "full", x: 0, y: 0 };
+
+// One full breadboard, as the strips it is really made of: the pin-board
+// (bb1) plus the top/bottom power-rail strips (bb2/bb3) that dovetail on.
+const board = { id: "bb1", type: "pins-full", x: 0, y: 4 };
+const railTop = { id: "bb2", type: "rail-full", x: 0, y: 0 };
+const railBottom = { id: "bb3", type: "rail-full", x: 0, y: 18 };
+const boards = [board, railTop, railBottom];
+
 const psu = (id, x, volts = 5) => ({
   id,
   kind: "psu",
@@ -66,14 +73,14 @@ function holesOf(ref, anchor) {
   return m;
 }
 const mates = (hole) =>
-  holesOfNode("full", nodeOf("full", hole)).filter((h) => h !== hole);
+  holesOfNode("pins-full", nodeOf("pins-full", hole)).filter((h) => h !== hole);
 /** A free hole address on the strip of pin `pin` (index picks among mates). */
 const strip = (holes, pin, i = 0) => `bb1.${mates(holes.get(pin))[i]}`;
 
-// The board rails are the +5 V and ground buses (each rail is one node with 50
-// holes — plenty of tie points, unlike a 5-hole column strip).
-const HI = (k) => `bb1.t+${k}`;
-const LO = (k) => `bb1.b-${k}`;
+// The rail strips carry the +5 V and ground buses (each rail is one node with
+// 50 holes — plenty of tie points, unlike a 5-hole column strip).
+const HI = (k) => `bb2.+${k}`;
+const LO = (k) => `bb3.-${k}`;
 
 /** Power a chip: VCC/GND pins tie to the rails energized by the PSU. */
 const power = (psuId, holes, vccPin, gndPin) => [
@@ -141,7 +148,7 @@ test("chained 7474 FFs shift without falling through in one tick", () => {
   // PRE-edge Q1, not the value FF1 takes this same tick.
   const h = holesOf("7474", "e10");
   const doc = {
-    boards: [board],
+    boards,
     components: [psu("psu1", 80), clock("clk1", 90), chip("c1", "7474", "e10")],
     wires: [
       ...power("psu1", h, 14, 7),
@@ -166,7 +173,7 @@ test("chained 7474 FFs shift without falling through in one tick", () => {
 test("a 7474 wired Q̄→D divides the clock by two", () => {
   const h = holesOf("7474", "e10");
   const doc = {
-    boards: [board],
+    boards,
     components: [psu("psu1", 80), clock("clk1", 90), chip("c1", "7474", "e10")],
     wires: [
       ...power("psu1", h, 14, 7),
@@ -192,7 +199,7 @@ test("a 7476 with J=K=H toggles on each falling edge", () => {
   // J(4), K(16) float → H (toggle); PRE(2)/CLR(3) float → H (inactive).
   const h = holesOf("7476", "e10");
   const doc = {
-    boards: [board],
+    boards,
     components: [psu("psu1", 80), clock("clk1", 90), chip("c1", "7476", "e10")],
     wires: [...power("psu1", h, 5, 13), wire("clk1.out", strip(h, 1, 0))], // 1CLK
   };
@@ -215,7 +222,7 @@ test("a 74161 counts 0→15, asserts RCO at 15, then rolls over", () => {
   // CLR̄(1), LOAD̄(9), ENP(7), ENT(10) all float → H (count enabled).
   const h = holesOf("74161", "e10");
   const doc = {
-    boards: [board],
+    boards,
     components: [
       psu("psu1", 80),
       clock("clk1", 90),
@@ -243,7 +250,7 @@ test("a 74161 counts 0→15, asserts RCO at 15, then rolls over", () => {
 test("a 74161 held in async clear never counts", () => {
   const h = holesOf("74161", "e10");
   const doc = {
-    boards: [board],
+    boards,
     components: [
       psu("psu1", 80),
       clock("clk1", 90),
@@ -267,7 +274,7 @@ test("a 74164 shifts a HIGH along its stages, and clear zeroes it", () => {
   // A(1), B(2) float → H → serial = H; CLR̄(9) float → H.
   const h = holesOf("74164", "e10");
   const doc = {
-    boards: [board],
+    boards,
     components: [
       psu("psu1", 80),
       clock("clk1", 90),
@@ -292,7 +299,7 @@ test("a 74138 drives exactly one active-low output for its address", () => {
   // Enable: G1(6) high, G2A(4)/G2B(5) low. Address A/B/C via ties.
   const h = holesOf("74138", "e10");
   const doc = {
-    boards: [board],
+    boards,
     components: [psu("psu1", 80), chip("c1", "74138", "e10")],
     wires: [
       ...power("psu1", h, 16, 8),
@@ -318,7 +325,7 @@ test("a 74151 routes the addressed data input to Y", () => {
   // Tie D0(4) low and leave D7(12) floating → H; Y should read D7 = H.
   const h = holesOf("74151", "e10");
   const doc = {
-    boards: [board],
+    boards,
     components: [psu("psu1", 80), chip("c1", "74151", "e10")],
     wires: [
       ...power("psu1", h, 16, 8),
@@ -338,7 +345,7 @@ test("a 7475 latch is transparent while enabled and holds while not", () => {
   // Latch 1: D1(2), E12(13), Q1(16). D1 floats → H.
   const h = holesOf("7475", "e10");
   const enabled = {
-    boards: [board],
+    boards,
     components: [psu("psu1", 80), chip("c1", "7475", "e10")],
     // E12(13) floats → H → transparent → Q1 follows D1 = H.
     wires: [...power("psu1", h, 5, 12)],
@@ -348,7 +355,7 @@ test("a 7475 latch is transparent while enabled and holds while not", () => {
   assert.equal(t1.pin(h, 16), H, "transparent: Q1 follows D1 (H)");
 
   const held = {
-    boards: [board],
+    boards,
     components: [psu("psu1", 80), chip("c1", "7475", "e10")],
     wires: [
       ...power("psu1", h, 5, 12),
@@ -366,7 +373,7 @@ test("a 74193 counts up on CPU edges and down on CPD edges", () => {
   // MR(14) low via GND; LOAD̄(11) high (float); CPU(5)/CPD(4) from two clocks.
   const h = holesOf("74193", "e10");
   const doc = {
-    boards: [board],
+    boards,
     components: [
       psu("psu1", 80),
       clock("up", 90),

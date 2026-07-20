@@ -39,9 +39,9 @@ import {
   parseAddress,
   spec,
 } from "../model/breadboard.js";
-import { partPinHoles } from "../model/occupancy.js";
+import { partPinAddresses, partPinHoles } from "../model/occupancy.js";
 import { packageSpec } from "../model/footprints.js";
-import { WIRE_COLORS } from "../model/desk-doc.js";
+import { DeskDoc, WIRE_COLORS } from "../model/desk-doc.js";
 import { partDef } from "../catalog/index.js";
 import { PSU_VOLTS, CLOCK_HZ } from "../catalog/parts.js";
 import { BreadboardView, buildBoardSvg } from "./breadboard-view.js";
@@ -343,14 +343,29 @@ export class DeskController {
     this.#viewport.classList.add("desk-viewport--placing");
   }
 
-  /** Arm board placement: a translucent ghost tracks the cursor. */
-  armPlacement(type) {
-    spec(type); // validate before touching state
+  /**
+   * Arm breadboard placement: a translucent ghost of the whole kit — every
+   * strip at its preset offset — tracks the cursor.
+   */
+  armPlacement(kit) {
+    // Throws INVALID_TYPE on junk, before any state is touched.
+    const placements = DeskDoc.kitPlacements(kit, 0, 0);
+    const outline = DeskDoc.kitOutline(kit);
     const ghost = el("div", { class: "board-ghost", hidden: true });
-    ghost.append(buildBoardSvg(type));
+    // Absolutely positioned strips collapse the box, so size it explicitly —
+    // the legal/illegal outline and tint are drawn on this element.
+    ghost.style.width = `${outline.width * PX_PER_UNIT}px`;
+    ghost.style.height = `${outline.height * PX_PER_UNIT}px`;
+    for (const p of placements) {
+      const strip = el("div", { class: "board-ghost-strip" });
+      strip.style.left = `${p.x * PX_PER_UNIT}px`;
+      strip.style.top = `${p.y * PX_PER_UNIT}px`;
+      strip.append(buildBoardSvg(p.type));
+      ghost.append(strip);
+    }
     this.#enterPlacement({
       kind: "place",
-      type,
+      kit,
       ghost,
       pos: null,
       legal: false,
@@ -441,13 +456,13 @@ export class DeskController {
 
   #trackBoardGhost(e) {
     const m = this.#mode;
-    const s = spec(m.type);
+    const { width, height } = DeskDoc.kitOutline(m.kit);
     const w = this.#deskView.worldFromEvent(e);
     // Ghost centered on the cursor, snapped to the integer pitch lattice.
-    const x = Math.round(w.x - s.width / 2);
-    const y = Math.round(w.y - s.height / 2);
+    const x = Math.round(w.x - width / 2);
+    const y = Math.round(w.y - height / 2);
     m.pos = { x, y };
-    m.legal = this.#doc.canPlace(m.type, x, y);
+    m.legal = this.#doc.canPlaceKit(m.kit, x, y);
     m.ghost.hidden = false;
     m.ghost.style.left = `${x * PX_PER_UNIT}px`;
     m.ghost.style.top = `${y * PX_PER_UNIT}px`;
@@ -512,25 +527,23 @@ export class DeskController {
 
   /**
    * Ghost for a rotatable part turned off its footprint: pin 1 rides the hole
-   * under the cursor and pin 2 sits one orientation vector away, so it places
-   * in the same two-free-ends form a drag would produce.
+   * under the cursor and pin 2's lead bends one orientation vector away, so it
+   * places in the same two-free-ends form a drag would produce. The bend is an
+   * offset, so the ghost may reach a neighbouring strip's rail.
    */
   #trackTurnedGhost(w) {
     const m = this.#mode;
     const orient = this.#ghostOrient(m.ref, m.turns);
     const hit = this.#holeAtWorld(w);
     const p1 = hit ? { x: hit.x, y: hit.y } : w;
-    const end = hit
-      ? this.#holeAtWorld({ x: p1.x + orient.dx, y: p1.y + orient.dy })
-      : null;
-    const sameBoard = Boolean(hit && end && end.board.id === hit.board.id);
-    m.board = sameBoard ? hit.board.id : null;
-    m.anchor = sameBoard ? hit.hole : null;
-    m.end = sameBoard ? end.hole : null;
+    const end = { dx: orient.dx, dy: orient.dy };
+    m.board = hit ? hit.board.id : null;
+    m.anchor = hit ? hit.hole : null;
+    m.end = end;
     m.legal =
-      sameBoard &&
+      Boolean(hit) &&
       this.#doc.canPlacePart(m.ref, hit.board.id, hit.hole, {
-        params: { ...m.params, rot: 90, end: end.hole },
+        params: { ...m.params, rot: 90, end },
       });
 
     m.ghost.querySelector("svg")?.remove();
@@ -645,7 +658,10 @@ export class DeskController {
     // Mid-drag: spin the end-to-end vector 90° about pin 1 and redraw at the
     // cursor's last position — free rotation while positioning.
     if (m?.kind === "drag-resistor") {
-      m.orient = { dx: -m.orient.dy, dy: m.orient.dx };
+      // Negating a zero component yields -0, which would ride into the stored
+      // bend and break value comparisons — fold it back.
+      const dx = -m.orient.dy;
+      m.orient = { dx: dx === 0 ? 0 : dx, dy: m.orient.dx };
       // A rotation counts as a real gesture even without pointer travel, so the
       // release commits (or reverts) instead of being treated as a plain click.
       if (!m.active) {
@@ -733,20 +749,61 @@ export class DeskController {
   }
 
   /**
-   * A resistor's two ends as world points + hole ids, derived from whichever
-   * form it's stored in. Null when its pins don't resolve.
+   * A board part's pins as `{ pin, address, x, y }`: the desk address each
+   * lead resolves to and where it sits in the world.
+   *
+   * A rotated part's far lead is a `{dx, dy}` BEND, so its world position is
+   * always derivable — but the hole it touches depends on what lies under it,
+   * and `address` is null when that is bare desk (a FLOATING lead: legal, and
+   * exactly what a part is left with when its rail is pulled away). Null
+   * overall only when the part itself doesn't resolve.
+   *
+   * `boardOverride` substitutes a moved origin for the part's own board, so a
+   * live board drag re-renders against the position under the cursor.
+   */
+  #partPins(comp, boardOverride = null) {
+    const board = boardOverride ?? this.#doc.getBoard(comp.board);
+    const pins = board && partPinHoles(comp.ref, comp.anchor, comp.params);
+    if (!pins) return null;
+    const boards = this.#doc.boards.map((b) =>
+      b.id === comp.board ? { ...b, ...board } : b,
+    );
+    const addressed = partPinAddresses({ boards }, comp);
+    if (!addressed) return null;
+    const anchorPos = holePosition(board.type, comp.anchor);
+    if (!anchorPos) return null;
+    const out = [];
+    for (const [i, { pin, hole, offset }] of pins.entries()) {
+      const address = addressed[i].address;
+      if (offset) {
+        out.push({
+          pin,
+          address,
+          x: board.x + anchorPos.x + offset.dx,
+          y: board.y + anchorPos.y + offset.dy,
+        });
+        continue;
+      }
+      // A seated pin lives in a hole of its own board — no hole, no geometry.
+      const pos = holePosition(board.type, hole);
+      if (!pos) return null;
+      out.push({ pin, address, x: board.x + pos.x, y: board.y + pos.y });
+    }
+    return out;
+  }
+
+  /**
+   * A resistor's two ends as world points, derived from whichever form it's
+   * stored in. Null when its pins don't resolve.
    */
   #resistorEndPoints(comp) {
-    const board = this.#doc.getBoard(comp.board);
-    const pins = board && partPinHoles(comp.ref, comp.anchor, comp.params);
+    const pins = this.#partPins(comp);
     if (!pins || pins.length < 2) return null;
-    const pa = holePosition(board.type, pins[0].hole);
-    const pb = holePosition(board.type, pins[1].hole);
-    if (!pa || !pb) return null;
     return {
       boardId: comp.board,
-      a: { hole: pins[0].hole, x: board.x + pa.x, y: board.y + pa.y },
-      b: { hole: pins[1].hole, x: board.x + pb.x, y: board.y + pb.y },
+      anchor: comp.anchor,
+      a: { x: pins[0].x, y: pins[0].y },
+      b: { x: pins[1].x, y: pins[1].y },
     };
   }
 
@@ -773,6 +830,7 @@ export class DeskController {
       id: comp.id,
       ref: comp.ref,
       boardId: comp.board,
+      anchor: comp.anchor, // pin 1's seat, kept while only pin 2 moves
       moving: grabbed, // "a" (pin 1) or "b" (pin 2)
       fixed: ends[grabbed === "a" ? "b" : "a"],
       pointerId: e.pointerId,
@@ -792,16 +850,26 @@ export class DeskController {
     const hit = this.#holeAtWorld(d.lastWorld);
     d.target = null;
     let legal = false;
-    if (hit && hit.board.id === d.boardId) {
-      // Keep pin order: the moving end replaces its own side of the pair.
-      const anchor = d.moving === "a" ? hit.hole : d.fixed.hole;
-      const end = d.moving === "a" ? d.fixed.hole : hit.hole;
+    if (hit) {
+      // Pin 1 SEATS in a hole; pin 2 is a bend measured from it. So dragging
+      // pin 1 re-seats the part (onto another strip if that's where it landed)
+      // while dragging pin 2 only re-bends the lead — either way the pair is
+      // rewritten as one anchor plus one offset.
+      const movingA = d.moving === "a";
+      const boardId = movingA ? hit.board.id : d.boardId;
+      const anchor = movingA ? hit.hole : d.anchor;
+      const from = movingA ? hit : d.fixed;
+      const to = movingA ? d.fixed : hit;
+      const end = {
+        dx: Math.round(to.x - from.x),
+        dy: Math.round(to.y - from.y),
+      };
       // canPlacePart enforces free + distinct + the minimum lead span.
-      legal = this.#doc.canPlacePart(d.ref, d.boardId, anchor, {
+      legal = this.#doc.canPlacePart(d.ref, boardId, anchor, {
         ignoreId: d.id,
         params: { rot: 90, end },
       });
-      if (legal) d.target = { anchor, end };
+      if (legal) d.target = { boardId, anchor, end };
     }
     d.legal = legal;
     // The moving end rides the snapped hole, else the raw cursor.
@@ -815,8 +883,8 @@ export class DeskController {
   }
 
   /** Live resistor drag: rigid lattice-snapped translation, both ends checked.
-      Either end may land on a rail, and the pair may move to ANOTHER board —
-      but both ends must share one board. */
+      Pin 1 seats in whatever hole it lands on; the lead keeps its bend, so the
+      far end may reach a NEIGHBOURING strip's rail. */
   #trackResistorDrag() {
     const d = this.#mode;
     // ONE integer delta moves both ends, so length and angle never change.
@@ -825,15 +893,19 @@ export class DeskController {
     const p1 = { x: d.p1.x + dx, y: d.p1.y + dy };
     const p2 = { x: p1.x + d.orient.dx, y: p1.y + d.orient.dy };
     const a = this.#holeAtWorld(p1);
-    const b = this.#holeAtWorld(p2);
-    const sameBoard = a && b && a.board.id === b.board.id;
+    const end = {
+      dx: Math.round(d.orient.dx),
+      dy: Math.round(d.orient.dy),
+    };
+    // canPlacePart resolves the bent lead against the whole desk, so it is the
+    // one authority on whether the far end found a free hole.
     const legal =
-      Boolean(sameBoard && a.hole !== b.hole) &&
+      Boolean(a) &&
       this.#doc.canPlacePart(d.ref, a.board.id, a.hole, {
         ignoreId: d.id,
-        params: { rot: 90, end: b.hole },
+        params: { rot: 90, end },
       });
-    d.holes = legal ? { boardId: a.board.id, one: a.hole, two: b.hole } : null;
+    d.holes = legal ? { boardId: a.board.id, anchor: a.hole, end } : null;
     d.legal = legal;
     const view = this.#partViews.get(d.id);
     view?.updateSpanWorld(p1, p2);
@@ -1265,11 +1337,18 @@ export class DeskController {
         continue;
       }
       const { anodePin, cathodePin } = def.polarity(comp.params);
-      const pins = partPinHoles("led", comp.anchor, comp.params);
+      const pins = partPinAddresses(this.#doc, comp);
       if (!pins) continue; // a rotated LED with an unresolved far end
-      const hole = (pin) => pins.find((p) => p.pin === pin)?.hole;
-      const anodeAt = formatAddress(comp.board, hole(anodePin));
-      const cathodeAt = formatAddress(comp.board, hole(cathodePin));
+      const at = (pin) => pins.find((p) => p.pin === pin)?.address;
+      const anodeAt = at(anodePin);
+      const cathodeAt = at(cathodePin);
+      // A floating leg conducts nothing — the LED stays dark but keeps its
+      // place, exactly as a real one does when you pull its rail away.
+      if (!anodeAt || !cathodeAt) {
+        view.setLit(false);
+        view.setBurnt?.(false);
+        continue;
+      }
       const conducting =
         this.#levelAt(anodeAt) === H && this.#levelAt(cathodeAt) === L;
       // No series resistor: an LED conducting between a STRONGLY driven supply
@@ -1287,13 +1366,33 @@ export class DeskController {
 
   // ── Document mutations (all flow through desk-doc) ─────────────────────
 
-  /** Add + mount + select a board; emits chiphippo:doc-changed. */
+  /** Add + mount + select a single strip; emits chiphippo:doc-changed. */
   addBoardAt(type, x, y) {
     const board = this.#doc.addBoard(type, x, y);
     this.#mountBoard(board);
     this.selectBoard(board.id);
     this.#emitDocChanged();
     return board;
+  }
+
+  /**
+   * Add + mount a whole breadboard kit, selecting its pin-board (the strip
+   * users think of as "the board"). Emits chiphippo:doc-changed once.
+   *
+   * @returns {Array<object>} the new strips, in kit order.
+   */
+  addKitAt(kit, x, y) {
+    const strips = this.#doc.addKit(kit, x, y);
+    for (const strip of strips) this.#mountBoard(strip);
+    // A loose strip dropped flush against a board mates with it, as the real
+    // dovetailed part does — it joins that board's group and they drag as one
+    // unit. Assembled kits stay standoffish: Feature 120 generalises mating to
+    // every strip, alongside the gesture to pull a stack apart again.
+    if (strips.length === 1) this.#doc.joinMatedGroup(strips[0].id);
+    const pins = strips.find((s) => spec(s.type).kind === "pins") ?? strips[0];
+    this.selectBoard(pins.id);
+    this.#emitDocChanged();
+    return strips;
   }
 
   /** Seat + mount + select a board part; emits chiphippo:doc-changed. */
@@ -1557,18 +1656,21 @@ export class DeskController {
     this.#partViews.set(component.id, view);
   }
 
-  /** Position a part view: a rotated resistor spans its two holes, every other
+  /** Position a part view: a rotated resistor spans its two ends, every other
       part (chip/discrete) seats at its anchor. `board` may be an override
       origin (live board drag). */
   #placePartView(view, comp, board) {
     if (!board) return;
-    // Every rotatable part draws as a span between its two derived pin holes —
-    // body centred on the pair and rotated to the lead angle, whichever form
-    // it's stored in (footprint or two free ends).
+    // Every rotatable part draws as a span between its two derived ends — body
+    // centred on the pair and rotated to the lead angle, whichever form it's
+    // stored in (footprint or two free ends). The span is pure geometry, so a
+    // part whose far strip was pulled away keeps its exact position; only the
+    // floating cue marks the connection it lost.
     if (partDef(comp.ref)?.rotatable) {
-      const pins = partPinHoles(comp.ref, comp.anchor, comp.params);
+      const pins = this.#partPins(comp, board);
       if (pins?.length >= 2) {
-        view.updateSpan(board, pins[0].hole, pins[1].hole);
+        view.updateSpanWorld(pins[0], pins[1]);
+        view.setFloating?.(pins.some((p) => p.address == null));
         return;
       }
     }
@@ -1596,7 +1698,7 @@ export class DeskController {
   #repositionBoardParts(boardId, x, y) {
     const board = this.#doc.getBoard(boardId);
     if (!board) return;
-    const origin = { type: board.type, x, y };
+    const origin = { id: board.id, type: board.type, x, y };
     for (const comp of this.#doc.componentsOnBoard(boardId)) {
       const view = this.#partViews.get(comp.id);
       if (view) this.#placePartView(view, comp, origin);
@@ -1607,24 +1709,34 @@ export class DeskController {
 
   #onBoardPointerDown(id, e) {
     if (e.button !== 0) return; // middle = pan (DeskView), right = menu
-    if (e.shiftKey) return; // shift-drag is the viewport's marquee
+    // Shift alone is the viewport's marquee; with Option it selects a chain.
+    if (e.shiftKey && !e.altKey) return;
     // No board drags while probing or running (topology frozen).
     if (this.#mode || this.#probeArmed || this.#editingLocked) return;
     this.#hideHover();
     this.selectBoard(id);
 
-    const board = this.#doc.getBoard(id);
     const view = this.#views.get(id);
+    // Plain grab = the whole snapped unit. Option grabs the run from here
+    // ONE WAY — down/right, or up/left with Shift — and dragging it tears it
+    // off whatever it leaves behind.
+    const members = e.altKey
+      ? this.#doc.matedChain(id, e.shiftKey ? "backward" : "forward")
+      : this.#doc.groupMembers(id);
+    // The set lights up on mouse-down, before any travel, so it is clear what
+    // is about to move (and what is about to be left behind).
+    for (const b of members) this.#views.get(b.id)?.setDragSet(true);
+    // Strips dragging as one rigid unit means the drag tracks a delta plus
+    // every member's origin, not one board's position.
     this.#mode = {
       kind: "drag",
       id,
-      type: board.type,
+      members: members.map((b) => ({ id: b.id, ox: b.x, oy: b.y })),
       pointerId: e.pointerId,
       startClientX: e.clientX,
       startClientY: e.clientY,
       startWorld: this.#deskView.worldFromEvent(e),
-      origin: { x: board.x, y: board.y },
-      pos: { x: board.x, y: board.y },
+      delta: { dx: 0, dy: 0 },
       legal: true,
       active: false,
     };
@@ -1650,24 +1762,39 @@ export class DeskController {
       );
       if (travel < DRAG_THRESHOLD) return;
       d.active = true;
-      this.#views.get(d.id)?.setDragging(true);
+      for (const m of d.members) this.#views.get(m.id)?.setDragging(true);
     }
     const w = this.#deskView.worldFromEvent(e);
-    // The board rides the pointer, snapped live to the pitch lattice.
-    d.pos = {
-      x: Math.round(d.origin.x + (w.x - d.startWorld.x)),
-      y: Math.round(d.origin.y + (w.y - d.startWorld.y)),
+    // The group rides the pointer, snapped live to the pitch lattice.
+    d.delta = {
+      dx: Math.round(w.x - d.startWorld.x),
+      dy: Math.round(w.y - d.startWorld.y),
     };
-    d.legal = this.#doc.canPlace(d.type, d.pos.x, d.pos.y, {
-      ignoreId: d.id,
-    });
-    const view = this.#views.get(d.id);
-    view?.setPosition(d.pos.x, d.pos.y);
-    view?.setIllegal(!d.legal);
-    this.#repositionBoardParts(d.id, d.pos.x, d.pos.y);
-    // Wires with an endpoint on this board follow it live.
-    this.#wireLayer.render(new Map([[d.id, d.pos]]));
+    d.legal = this.#doc.canMoveBoardsBy(
+      d.members.map((m) => m.id),
+      d.delta.dx,
+      d.delta.dy,
+    );
+    // Wires with an endpoint on any member follow it live.
+    this.#wireLayer.render(this.#applyDragDelta(d, d.delta));
   };
+
+  /**
+   * Move every dragged strip's view (and its seated parts) by a delta from
+   * the drag origins. Returns the board → position overrides for WireLayer.
+   */
+  #applyDragDelta(d, { dx, dy }) {
+    const overrides = new Map();
+    for (const m of d.members) {
+      const pos = { x: m.ox + dx, y: m.oy + dy };
+      const view = this.#views.get(m.id);
+      view?.setPosition(pos.x, pos.y);
+      view?.setIllegal(!d.legal);
+      this.#repositionBoardParts(m.id, pos.x, pos.y);
+      overrides.set(m.id, pos);
+    }
+    return overrides;
+  }
 
   #onBoardPointerUp = (e) => {
     const d = this.#mode;
@@ -1686,20 +1813,29 @@ export class DeskController {
       } catch {
         /* already released */
       }
-      view.setDragging(false);
-      view.setIllegal(false);
+    }
+    for (const m of d.members) {
+      const memberView = this.#views.get(m.id);
+      memberView?.setDragging(false);
+      memberView?.setIllegal(false);
+      memberView?.setDragSet(false);
     }
     if (!d.active) return; // plain click — selection already happened
 
     const cancelled = e.type === "pointercancel";
-    const moved = d.pos.x !== d.origin.x || d.pos.y !== d.origin.y;
+    const moved = d.delta.dx !== 0 || d.delta.dy !== 0;
     if (!cancelled && d.legal && moved) {
-      this.#doc.moveBoard(d.id, d.pos.x, d.pos.y);
-      this.#repositionBoardParts(d.id, d.pos.x, d.pos.y);
+      // Moving only part of a group tears the snap — desk-doc re-derives the
+      // groups on both sides of the break.
+      this.#doc.moveBoardsBy(
+        d.members.map((m) => m.id),
+        d.delta.dx,
+        d.delta.dy,
+      );
+      this.#applyDragDelta(d, d.delta);
       this.#emitDocChanged(); // WireLayer re-renders from this
     } else {
-      view?.setPosition(d.origin.x, d.origin.y); // illegal drop → revert
-      this.#repositionBoardParts(d.id, d.origin.x, d.origin.y);
+      this.#applyDragDelta(d, { dx: 0, dy: 0 }); // illegal drop → revert
       this.#wireLayer.render();
     }
   };
@@ -1910,7 +2046,12 @@ export class DeskController {
     if (d.kind === "drag-resistor-end") {
       if (!d.active) return; // plain click — the press already selected it
       if (!cancelled && d.legal && d.target) {
-        this.#doc.movePartEnds(d.id, d.boardId, d.target.anchor, d.target.end);
+        this.#doc.movePartEnds(
+          d.id,
+          d.target.boardId,
+          d.target.anchor,
+          d.target.end,
+        );
         this.#emitDocChanged();
       }
       // Redraw from the document — an illegal drop wrote nothing, so the lead
@@ -1922,7 +2063,12 @@ export class DeskController {
     if (d.kind === "drag-resistor") {
       if (!d.active) return; // plain click — the press already selected it
       if (!cancelled && d.legal && d.holes) {
-        this.#doc.movePartEnds(d.id, d.holes.boardId, d.holes.one, d.holes.two);
+        this.#doc.movePartEnds(
+          d.id,
+          d.holes.boardId,
+          d.holes.anchor,
+          d.holes.end,
+        );
         this.#emitDocChanged();
       }
       // Commit or not, redraw from the document — an illegal drop leaves the
@@ -2054,16 +2200,10 @@ export class DeskController {
         y: comp.y + t.dy,
       }));
     }
-    const board = this.#doc.getBoard(comp.board);
-    const pins = board && partPinHoles(comp.ref, comp.anchor, comp.params);
-    if (!pins) return [];
-    const points = [];
-    for (const { hole } of pins) {
-      const pos = holePosition(board.type, hole);
-      if (!pos) return [];
-      points.push({ x: board.x + pos.x, y: board.y + pos.y });
-    }
-    return points;
+    // A bent lead counts by where it SITS, floating or not — the marquee
+    // encloses what the user can see.
+    const pins = this.#partPins(comp);
+    return pins ? pins.map(({ x, y }) => ({ x, y })) : [];
   }
 
   /** Components whose EVERY pin/terminal lies inside the world-unit rect. */
@@ -2490,7 +2630,7 @@ export class DeskController {
     if (!m.legal) return; // stay armed, the tint explains why
     this.cancelPlacement();
     if (m.kind === "place") {
-      this.addBoardAt(m.type, m.pos.x, m.pos.y);
+      this.addKitAt(m.kit, m.pos.x, m.pos.y);
     } else if (m.kind === "place-brick") {
       this.addBrickAt(m.ref, m.pos.x, m.pos.y, m.params);
     } else if (m.kind === "place-part") {
@@ -2600,20 +2740,15 @@ export class DeskController {
         }
         continue;
       }
-      const board = this.#doc.getBoard(comp.board);
-      const pins = partPinHoles(comp.ref, comp.anchor);
-      if (!board || !pins) continue;
-      for (const { pin, hole } of pins) {
-        const pos = holePosition(board.type, hole);
-        if (!pos) continue;
-        const x = board.x + pos.x;
-        const y = board.y + pos.y;
+      const pins = this.#partPins(comp);
+      if (!pins) continue;
+      for (const { pin, address, x, y } of pins) {
         if (Math.hypot(world.x - x, world.y - y) > PIN_HIT_RADIUS) continue;
         const name = def.pins.find((p) => p.n === pin)?.name ?? "?";
-        const address = formatAddress(comp.board, hole);
         return {
           key: `${comp.id}#${pin}`,
-          label: `${comp.ref} pin ${pin} · ${name} → ${address}`,
+          // A floating lead is still hoverable — it just has no net to name.
+          label: `${comp.ref} pin ${pin} · ${name} → ${address ?? "floating"}`,
           address, // a pin resolves to the net of its seated hole
           x,
           y,

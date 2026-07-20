@@ -352,15 +352,16 @@ export class DiscreteView {
     this.#id = component.id;
     this.#ref = component.ref;
     // EVERY rotatable part renders as a span (body centred between its two
-    // ends, rotated to the lead angle) — the controller draws it via updateSpan.
+    // ends, rotated to the lead angle) — the controller draws it via
+    // updateSpanWorld.
     this.#rotated = Boolean(partDef(component.ref)?.rotatable);
     this.#params = component.params ?? {};
     this.#el = el("div", {
       class: `part part-discrete part-discrete--${component.ref}`,
       dataset: { componentId: component.id },
     });
-    // A rotated resistor's SVG needs board geometry (both hole positions), so
-    // the controller renders it via updateSpan right after construction.
+    // A rotated resistor's SVG needs desk geometry (both end positions), so the
+    // controller renders it via updateSpanWorld right after construction.
     if (!this.#rotated) this.updateParams(component.params);
     this.#el.addEventListener("pointerdown", (e) =>
       onPointerDown?.(this.#id, e),
@@ -385,7 +386,7 @@ export class DiscreteView {
   }
 
   /** Rebuild the SVG for new params (slider position, LED color/flip). A
-      span part is rendered by updateSpan (needs geometry), so skip. */
+      span part is rendered by updateSpanWorld (needs geometry), so skip. */
   updateParams(params) {
     this.#params = params ?? {};
     this.#rotated = Boolean(partDef(this.#ref)?.rotatable);
@@ -396,23 +397,10 @@ export class DiscreteView {
   }
 
   /**
-   * Render + position a rotated resistor spanning two holes: pin 1 at `anchor`,
-   * pin 2 at `endHole`, both on `board`. The lead bends when the two aren't
-   * axis-aligned (e.g. a power rail and a grid column).
-   */
-  updateSpan(board, anchor, endHole) {
-    const a = holePosition(board.type, anchor);
-    const b = holePosition(board.type, endHole);
-    if (!a || !b) return;
-    this.updateSpanWorld(
-      { x: board.x + a.x, y: board.y + a.y },
-      { x: board.x + b.x, y: board.y + b.y },
-    );
-  }
-
-  /**
    * Render + position a resistor spanning two ABSOLUTE world points (pitch
-   * units). Used live during a drag, where an end may sit off-hole.
+   * units). The span is pure geometry — pin 1's hole plus the lead's bend — so
+   * it draws the same whether the far lead lands on a neighbouring strip, sits
+   * off-hole mid-drag, or floats over bare desk.
    */
   updateSpanWorld(p1, p2) {
     const dx = p2.x - p1.x;
@@ -460,6 +448,15 @@ export class DiscreteView {
     const box = discreteBox(this.#ref);
     this.#el.style.left = `${(board.x + pos.x + box.minX) * PX_PER_UNIT}px`;
     this.#el.style.top = `${(board.y + pos.y + box.minY) * PX_PER_UNIT}px`;
+  }
+
+  /**
+   * A bent lead touching no hole — what a part is left with when the strip
+   * under it is moved or deleted away. Legal, so the part keeps its position
+   * and span; the cue only says the connection is gone.
+   */
+  setFloating(on) {
+    this.#el.classList.toggle("part-discrete--floating", on);
   }
 
   /** Light an LED (Feature 90): bright body + glow while its diode conducts. */
