@@ -627,6 +627,62 @@ test("R during a non-rotatable part's drag does nothing and keeps the drag", () 
   assert.equal(doc.getComponent(btn.id).anchor, "a12");
 });
 
+test("R while placing rotates the ghost and KEEPS the placement armed", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("full", 0, 0);
+  const world = { x: 10, y: 16 }; // over hole a10
+  const { surface, controller } = makeDesk(doc, world);
+
+  controller.armPartPlacement("resistor");
+  const move = () =>
+    surface.dispatchEvent(
+      new window.PointerEvent("pointermove", { bubbles: true, clientX: 1 }),
+    );
+  // The viewport owns pointermove; dispatch through it.
+  const track = () => controller.onViewportChange?.() ?? move();
+  track();
+
+  const ghost = () => surface.querySelector(".part-ghost");
+  assert.ok(controller.placementArmed, "armed");
+  const R = () =>
+    controller.handleKeyDown(new window.KeyboardEvent("keydown", { key: "r" }));
+
+  assert.equal(R(), true, "R consumed");
+  assert.ok(controller.placementArmed, "STILL armed — not cancelled");
+  assert.ok(ghost(), "the ghost survives the rotation");
+});
+
+test("a ghost rotated with R places in the two-ends form", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("full", 0, 0);
+  const world = { x: 10, y: 16 }; // hole a10
+  const { viewport, controller } = makeDesk(doc, world);
+
+  controller.armPartPlacement("resistor");
+  viewport.dispatchEvent(
+    new window.PointerEvent("pointermove", { bubbles: true }),
+  );
+  // One quarter turn: the span runs DOWN the column instead of along the row.
+  controller.handleKeyDown(new window.KeyboardEvent("keydown", { key: "r" }));
+  assert.ok(controller.placementArmed);
+
+  // Click to drop it (pointerdown primes the click-vs-pan check).
+  viewport.dispatchEvent(
+    new window.PointerEvent("pointerdown", { bubbles: true, button: 0 }),
+  );
+  viewport.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+
+  const placed = doc.components[0];
+  assert.ok(placed, "a resistor landed");
+  assert.equal(placed.anchor, "a10"); // pin 1 under the cursor
+  assert.equal(placed.params.rot, 90);
+  // Pin 2 lands 3 units below row a (y 16 → 19) — the bottom + rail, right in
+  // the column: exactly the pull-down arrangement, straight off the ghost.
+  assert.equal(placed.params.end, "b+7");
+});
+
 test("R flips a chip 180°: same holes, pin numbering reversed", () => {
   resetDom();
   const doc = new DeskDoc(null);

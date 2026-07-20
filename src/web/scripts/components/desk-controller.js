@@ -244,13 +244,9 @@ export class DeskController {
   }
 
   get placementArmed() {
-    return [
-      "place",
-      "place-chip",
-      "place-part",
-      "place-brick",
-      "place-resistor",
-    ].includes(this.#mode?.kind);
+    return ["place", "place-chip", "place-part", "place-brick"].includes(
+      this.#mode?.kind,
+    );
   }
 
   // ── Selection (boards, parts, and wires share one slot) ─────────────────
@@ -476,12 +472,22 @@ export class DeskController {
 
   /** Chip + discrete ghosts: seat under the cursor or float, tinted. */
   #trackSeatedGhost(e) {
+    this.#trackSeatedGhostAt(this.#deskView.worldFromEvent(e));
+  }
+
+  /** As above but from a world point, so R can redraw at the last cursor spot. */
+  #trackSeatedGhostAt(w) {
     const m = this.#mode;
+    m.lastWorld = w;
+    // A rotatable part turned off its footprint places by two derived ends.
+    if (m.turns) {
+      this.#trackTurnedGhost(w);
+      return;
+    }
     const box =
       m.kind === "place-chip"
         ? chipBox(partDef(m.ref).package)
         : discreteBox(m.ref);
-    const w = this.#deskView.worldFromEvent(e);
     const seat = this.#partSeatAt(w, m.ref, 0);
     m.ghost.hidden = false;
     if (seat) {
@@ -500,6 +506,39 @@ export class DeskController {
       m.ghost.style.left = `${(w.x - box.width / 2) * PX_PER_UNIT}px`;
       m.ghost.style.top = `${(w.y - box.height / 2) * PX_PER_UNIT}px`;
     }
+    m.ghost.classList.toggle("part-ghost--legal", m.legal);
+    m.ghost.classList.toggle("part-ghost--illegal", !m.legal);
+  }
+
+  /**
+   * Ghost for a rotatable part turned off its footprint: pin 1 rides the hole
+   * under the cursor and pin 2 sits one orientation vector away, so it places
+   * in the same two-free-ends form a drag would produce.
+   */
+  #trackTurnedGhost(w) {
+    const m = this.#mode;
+    const orient = this.#ghostOrient(m.ref, m.turns);
+    const hit = this.#holeAtWorld(w);
+    const p1 = hit ? { x: hit.x, y: hit.y } : w;
+    const end = hit
+      ? this.#holeAtWorld({ x: p1.x + orient.dx, y: p1.y + orient.dy })
+      : null;
+    const sameBoard = Boolean(hit && end && end.board.id === hit.board.id);
+    m.board = sameBoard ? hit.board.id : null;
+    m.anchor = sameBoard ? hit.hole : null;
+    m.end = sameBoard ? end.hole : null;
+    m.legal =
+      sameBoard &&
+      this.#doc.canPlacePart(m.ref, hit.board.id, hit.hole, {
+        params: { ...m.params, rot: 90, end: end.hole },
+      });
+
+    m.ghost.querySelector("svg")?.remove();
+    m.ghost.append(buildSpanSvg(m.ref, orient.dx, orient.dy, m.params));
+    const pad = spanPad(m.ref);
+    m.ghost.style.left = `${(p1.x + Math.min(0, orient.dx) - pad) * PX_PER_UNIT}px`;
+    m.ghost.style.top = `${(p1.y + Math.min(0, orient.dy) - pad) * PX_PER_UNIT}px`;
+    m.ghost.hidden = false;
     m.ghost.classList.toggle("part-ghost--legal", m.legal);
     m.ghost.classList.toggle("part-ghost--illegal", !m.legal);
   }
@@ -582,31 +621,25 @@ export class DeskController {
     return null;
   }
 
-  // ── Rotated-resistor placement (two independent ends: rail ↔ column) ────────
-
-  get resistorPlaceArmed() {
-    return this.#mode?.kind === "place-resistor";
-  }
+  // ── Rotation while placing / dragging ───────────────────────────────────
 
   /**
-   * Enter a rotatable part's two-click placement (reached by pressing R while
-   * its ghost is armed): click a first free hole, then a second free hole on
-   * the SAME board — either can be a power rail or a grid column.
+   * The end-to-end vector of a rotatable part's ghost after `turns` quarter
+   * turns: 0 is the horizontal footprint, 1–3 swing it a quarter lap each.
    */
-  #enterSpanPlace(ref, params) {
-    const ghost = el("div", { class: "part-ghost", hidden: true });
-    this.#enterPlacement({
-      kind: "place-resistor",
-      ref,
-      params: { ...params, rot: 90 },
-      ghost,
-      from: null, // { boardId, hole, x, y } once the first end is clicked
-      hover: null, // { boardId, hole, x, y, legal } under the cursor
-    });
+  #ghostOrient(ref, turns) {
+    const offsets = partDef(ref).footprint.offsets;
+    const span = offsets[offsets.length - 1];
+    const table = [
+      { dx: span, dy: 0 },
+      { dx: 0, dy: span },
+      { dx: -span, dy: 0 },
+      { dx: 0, dy: -span },
+    ];
+    return table[turns % 4];
   }
 
-  /** R toggles a rotatable part between footprint (ghost) and two-click
-      placement, spins it mid-drag, and rotates a selected placed one 90°. */
+  /** R spins the ghost/part in hand, and rotates a selected placed one. */
   #toggleResistorRotation() {
     const m = this.#mode;
     // Mid-drag: spin the end-to-end vector 90° about pin 1 and redraw at the
@@ -648,16 +681,11 @@ export class DeskController {
       m.ghost.append(buildChipSvg(m.ref, m.params));
       return true;
     }
+    // Placing a rotatable part: R turns the ghost a quarter lap IN PLACE — the
+    // placement stays armed, and the orientation carries into the drop.
     if (m?.kind === "place-part" && partDef(m.ref)?.rotatable) {
-      const { ref, params } = m;
-      this.cancelPlacement();
-      this.#enterSpanPlace(ref, params);
-      return true;
-    }
-    if (this.resistorPlaceArmed) {
-      const { ref, params } = m;
-      this.cancelPlacement();
-      this.armPartPlacement(ref, { ...params, rot: 0 });
+      m.turns = ((m.turns ?? 0) + 1) % 4;
+      if (m.lastWorld) this.#trackSeatedGhostAt(m.lastWorld);
       return true;
     }
     // Not placing: rotate a selected placed part in situ (a chip flips 180°).
@@ -676,80 +704,6 @@ export class DeskController {
   #flippedParams(params, toggle) {
     if (!toggle) return { ...params };
     return { ...params, rot: params?.rot === 180 ? 0 : 180 };
-  }
-
-  /** Two-click placement pointermove: ring on the hovered hole + span preview. */
-  #trackResistorPlace(e) {
-    const m = this.#mode;
-    const world = this.#deskView.worldFromEvent(e);
-    const hit = this.#holeAtWorld(world); // board holes only (grid OR rail)
-    if (hit) {
-      const address = formatAddress(hit.board.id, hit.hole);
-      const free = this.#doc.isHoleFree(address);
-      // The 2nd end must be free, on the same board, a different hole, and at
-      // least the part's minimum lead span away (the body needs room).
-      const minSpan = partDef(m.ref)?.minSpan ?? 0;
-      const legal =
-        free &&
-        (!m.from ||
-          (hit.board.id === m.from.boardId &&
-            hit.hole !== m.from.hole &&
-            Math.hypot(hit.x - m.from.x, hit.y - m.from.y) >= minSpan));
-      m.hover = {
-        boardId: hit.board.id,
-        hole: hit.hole,
-        x: hit.x,
-        y: hit.y,
-        legal,
-      };
-      const r = RING_RADIUS * PX_PER_UNIT;
-      this.#ring.style.left = `${hit.x * PX_PER_UNIT - r}px`;
-      this.#ring.style.top = `${hit.y * PX_PER_UNIT - r}px`;
-      this.#ring.classList.toggle("hole-ring--illegal", !legal);
-      this.#ring.hidden = false;
-    } else {
-      m.hover = null;
-      this.#ring.hidden = true;
-    }
-    // Once the first end is anchored, a span preview tracks the cursor.
-    if (m.from) {
-      const to = m.hover ?? { x: world.x, y: world.y };
-      const dx = to.x - m.from.x;
-      const dy = to.y - m.from.y;
-      m.ghost.querySelector("svg")?.remove();
-      m.ghost.append(buildSpanSvg(m.ref, dx, dy, m.params));
-      const pad = spanPad(m.ref);
-      const minX = Math.min(0, dx) - pad;
-      const minY = Math.min(0, dy) - pad;
-      m.ghost.style.left = `${(m.from.x + minX) * PX_PER_UNIT}px`;
-      m.ghost.style.top = `${(m.from.y + minY) * PX_PER_UNIT}px`;
-      const legal = m.hover?.legal !== false && m.hover != null;
-      m.ghost.classList.toggle("part-ghost--legal", legal);
-      m.ghost.classList.toggle("part-ghost--illegal", !legal);
-      m.ghost.hidden = false;
-    } else {
-      m.ghost.hidden = true;
-    }
-  }
-
-  /** Two-click placement click: anchor the first end, create on the second. */
-  #commitResistorPlaceClick(e) {
-    const m = this.#mode;
-    this.#trackResistorPlace(e); // legality at the exact click point
-    if (!m.hover?.legal) return;
-    if (!m.from) {
-      m.from = { ...m.hover };
-      return;
-    }
-    this.addComponentAt(m.ref, m.from.boardId, m.from.hole, {
-      ...m.params,
-      rot: 90,
-      end: m.hover.hole,
-    });
-    // Re-arm for chaining: fresh first end, still vertical.
-    m.from = null;
-    m.ghost.hidden = true;
-    this.#ring.hidden = true;
   }
 
   /**
@@ -1506,13 +1460,6 @@ export class DeskController {
         // First Esc cancels a pending wire; the next disarms the tool.
         if (this.#mode.from) this.#clearPendingWire();
         else this.disarmWireTool();
-        return true;
-      }
-      // First Esc drops a pending resistor end; the next cancels placement.
-      if (this.resistorPlaceArmed && this.#mode.from) {
-        this.#mode.from = null;
-        this.#mode.ghost.hidden = true;
-        this.#ring.hidden = true;
         return true;
       }
       if (this.placementArmed) {
@@ -2539,10 +2486,6 @@ export class DeskController {
       this.#commitWireClick(e);
       return;
     }
-    if (m.kind === "place-resistor") {
-      this.#commitResistorPlaceClick(e);
-      return;
-    }
     this.#trackGhost(e); // ensure the seat reflects the click point
     if (!m.legal) return; // stay armed, the tint explains why
     this.cancelPlacement();
@@ -2551,7 +2494,12 @@ export class DeskController {
     } else if (m.kind === "place-brick") {
       this.addBrickAt(m.ref, m.pos.x, m.pos.y, m.params);
     } else if (m.kind === "place-part") {
-      this.addComponentAt(m.ref, m.board, m.anchor, m.params);
+      this.addComponentAt(
+        m.ref,
+        m.board,
+        m.anchor,
+        m.turns ? { ...m.params, rot: 90, end: m.end } : m.params,
+      );
     } else {
       this.addComponentAt(m.ref, m.board, m.anchor, m.params);
     }
@@ -2559,10 +2507,6 @@ export class DeskController {
 
   #onViewportPointerMove = (e) => {
     const m = this.#mode;
-    if (this.resistorPlaceArmed) {
-      this.#trackResistorPlace(e);
-      return;
-    }
     if (this.placementArmed) {
       this.#trackGhost(e);
       return;
