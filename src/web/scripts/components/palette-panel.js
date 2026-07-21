@@ -14,14 +14,21 @@
  * limitations under the License.
  */
 
-// palette-panel.js — the left parts palette: chips, discrete parts, and
-// power bricks grouped by function, with a filter box matching
-// id/title/blurb. Clicking an entry arms placement mode (reported via the
-// constructor callback with the click event, so app.js can pop the LED
+// palette-panel.js — the left parts palette: the board selector pinned at the
+// top (complete breadboards + loose pin-boards / power rails), then chips,
+// discrete parts, and power bricks grouped by function, with a filter box
+// matching id/title/blurb. Clicking an entry arms placement mode (reported via
+// the constructor callback with the click event, so app.js can pop the LED
 // color swatches — the ghost belongs to DeskController).
 
 import { clear, el } from "../dom.js";
 import { PALETTE_DEFS } from "../catalog/index.js";
+import {
+  BREADBOARD_KITS,
+  KIT_KEYS,
+  STRIP_KIT_KEYS,
+} from "../model/board-types.js";
+import { canRotate } from "../model/breadboard.js";
 import { hasBehavior } from "../sim/chip-eval.js";
 
 /** Every chip group nests one level under this top-level folder. It collapses
@@ -42,6 +49,7 @@ export class PalettePanel {
   #el;
   #list;
   #onPickChip;
+  #onPickBoard;
   #filter = "";
   // Every section starts shut, every launch. What the user opens lasts for
   // the session only — deliberately NOT persisted, so the panel always opens
@@ -51,10 +59,13 @@ export class PalettePanel {
   /**
    * @param {HTMLElement} container - mounted as the desk row's left panel.
    * @param {object} callbacks
-   * @param {(ref: string) => void} callbacks.onPickChip
+   * @param {(ref: string, e: MouseEvent) => void} callbacks.onPickChip
+   * @param {(kit: string) => void} callbacks.onPickBoard - a board kit key
+   *   (assembled breadboard or loose strip) was picked; app.js arms placement.
    */
-  constructor(container, { onPickChip } = {}) {
+  constructor(container, { onPickChip, onPickBoard } = {}) {
     this.#onPickChip = onPickChip;
+    this.#onPickBoard = onPickBoard;
 
     const filterInput = el("input", {
       class: "palette-filter",
@@ -99,6 +110,13 @@ export class PalettePanel {
 
   #render() {
     clear(this.#list);
+    // While a filter is active, force everything open so matches stay visible;
+    // the remembered collapse state only governs the unfiltered list.
+    const filtering = this.#filter.trim() !== "";
+    // The board selector is pinned at the very top of the palette; the filter
+    // box targets the parts list below, so hide the boards while filtering.
+    if (!filtering) this.#appendBoards();
+
     const defs = PALETTE_DEFS.filter((def) => this.#matches(def));
     if (defs.length === 0) {
       this.#list.append(
@@ -112,9 +130,6 @@ export class PalettePanel {
       if (!groups.has(def.group)) groups.set(def.group, []);
       groups.get(def.group).push(def);
     }
-    // While a filter is active, force everything open so matches stay visible;
-    // the remembered collapse state only governs the unfiltered list.
-    const filtering = this.#filter.trim() !== "";
 
     // Chip groups nest under one top-level "Chips" folder; discrete/power
     // groups stay at the top level. A group is a chip group when its members
@@ -143,6 +158,43 @@ export class PalettePanel {
     for (const [group, members] of topGroups) {
       this.#appendGroup(this.#list, group, members, filtering);
     }
+  }
+
+  /**
+   * The board selector, pinned at the top of the palette: the assembled
+   * breadboards (Full / Half / Tiny) then the loose strips (bare pin-boards +
+   * power rails). Each entry arms board placement via onPickBoard — the same
+   * kit keys the old header split-button used.
+   */
+  #appendBoards() {
+    const item = (key) => {
+      const kit = BREADBOARD_KITS[key];
+      // A kit made purely of rails can stand on end as a signal bus (R spins
+      // the ghost) — flag it in the tooltip, or nobody finds R.
+      const rotates = kit.strips.every((s) => canRotate(s.type));
+      const hint = rotates ? " (R to rotate)" : "";
+      return el(
+        "button",
+        {
+          class: "palette-board-item",
+          type: "button",
+          title: `${kit.label} — ${kit.tiePoints} tie points${hint}`,
+          dataset: { kit: key },
+          onClick: () => this.#onPickBoard?.(key),
+        },
+        [
+          el("span", { class: "palette-item-id", text: String(kit.tiePoints) }),
+          el("span", { class: "palette-item-title", text: kit.label }),
+        ],
+      );
+    };
+    this.#list.append(
+      el("div", { class: "palette-boards-header", text: "Boards" }),
+      el("div", { class: "palette-boards-items" }, [
+        ...KIT_KEYS.map(item),
+        ...STRIP_KIT_KEYS.map(item),
+      ]),
+    );
   }
 
   /** A collapsible section header (folder or group), keyed by `name`. The caret

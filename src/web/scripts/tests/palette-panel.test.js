@@ -21,6 +21,7 @@ import assert from "node:assert/strict";
 
 import { resetDom } from "./jsdom-setup.js";
 import { CHIP_DEFS, PALETTE_DEFS } from "../catalog/index.js";
+import { ALL_KIT_KEYS } from "../model/board-types.js";
 import { hasBehavior } from "../sim/chip-eval.js";
 
 const { PalettePanel } = await import("../components/palette-panel.js");
@@ -251,6 +252,48 @@ test("every section starts collapsed, and opening one is session-only", () => {
       .classList.contains("palette-group--collapsed"),
     true,
   );
+});
+
+test("the board selector is pinned at the top and reports the kit key", () => {
+  resetDom();
+  const host = document.createElement("div");
+  document.body.append(host);
+  const picked = [];
+  new PalettePanel(host, { onPickBoard: (kit) => picked.push(kit) });
+
+  // "Boards" is the palette's first entry — above the Chips folder.
+  const list = host.querySelector(".palette-list");
+  assert.equal(list.firstElementChild.className, "palette-boards-header");
+  assert.equal(list.firstElementChild.textContent, "Boards");
+
+  // Every kit — assembled boards then loose strips — in menu order.
+  const kits = [...host.querySelectorAll(".palette-board-item")].map(
+    (b) => b.dataset.kit,
+  );
+  assert.deepEqual(kits, [...ALL_KIT_KEYS]);
+  // Board entries are NOT counted as parts (distinct class).
+  assert.equal(
+    host.querySelectorAll(".palette-item").length,
+    PALETTE_DEFS.length,
+  );
+
+  host.querySelector('.palette-board-item[data-kit="full"]').click();
+  assert.deepEqual(picked, ["full"]);
+});
+
+test("the board selector hides while a parts filter is active", () => {
+  resetDom();
+  const host = document.createElement("div");
+  document.body.append(host);
+  const panel = new PalettePanel(host, {});
+  assert.ok(host.querySelector(".palette-boards-header"));
+
+  typeFilter(panel.element, "74LS00");
+  assert.equal(host.querySelector(".palette-boards-header"), null);
+  assert.equal(host.querySelectorAll(".palette-board-item").length, 0);
+
+  typeFilter(panel.element, ""); // clearing restores it
+  assert.ok(host.querySelector(".palette-boards-header"));
 });
 
 test("setVisible toggles the hidden attribute", () => {

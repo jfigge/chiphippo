@@ -26,7 +26,6 @@ import { DeskView } from "./components/desk-view.js";
 import { ZoomControl } from "./components/zoom-control.js";
 import { DeskHud } from "./components/desk-hud.js";
 import { DeskController } from "./components/desk-controller.js";
-import { BoardToolbar } from "./components/board-toolbar.js";
 import { AnnotateToolbar } from "./components/annotate-toolbar.js";
 import { PalettePanel } from "./components/palette-panel.js";
 import { SimController, SPEEDS } from "./components/sim-controller.js";
@@ -157,7 +156,7 @@ function buildDesk() {
   // flow replaces it.
   const hint = document.createElement("p");
   hint.className = "desk-hint";
-  hint.textContent = "Add a breadboard to get started";
+  hint.textContent = "Open Parts and add a breadboard to get started";
 
   desk.append(hint);
   return desk;
@@ -384,6 +383,9 @@ async function init() {
       }
       controller?.armPartPlacement(ref);
     },
+    // The board selector (Full / Half / Tiny + loose strips) lives at the top
+    // of the palette; picking one arms board placement, ghost + all.
+    onPickBoard: (kit) => controller?.armPlacement(kit),
     // Collapse state is deliberately NOT persisted — the palette opens with
     // every group shut, every launch (see PalettePanel).
   });
@@ -497,10 +499,6 @@ async function init() {
   });
   partsBtn.classList.toggle("toolbar-btn--active", palette.visible);
   toolbar.append(partsBtn);
-
-  new BoardToolbar(toolbar, {
-    onAddBoard: (type) => controller.armPlacement(type),
-  });
 
   // Wire tool: toggle button (shortcut W) + the next-color swatch strip.
   wireBtn = el("button", {
