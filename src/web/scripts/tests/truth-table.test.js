@@ -89,8 +89,8 @@ for (const def of GATE_DEFS) {
   });
 }
 
-test("the harness exercised a substantial case count (7430 alone is 256)", () => {
-  // 7430's single 8-input gate contributes 2^8 = 256 on its own.
+test("the harness exercised a substantial case count (74LS30 alone is 256)", () => {
+  // 74LS30's single 8-input gate contributes 2^8 = 256 on its own.
   assert.ok(totalCases >= 256 + 100, `only ${totalCases} cases ran`);
 });
 
@@ -100,11 +100,11 @@ const levels = (obj) => new Map(Object.entries(obj).map(([k, v]) => [+k, v]));
 const chip = (id) => CHIP_DEFS.find((d) => d.id === id);
 
 test("floating (Z) inputs read HIGH everywhere", () => {
-  // 7408 AND unit [1,2] → 3: one input floating reads H.
-  assert.equal(evaluate(chip("7408"), levels({ 1: Z, 2: H })).get(3), H);
-  assert.equal(evaluate(chip("7408"), levels({ 1: Z, 2: L })).get(3), L);
-  // 7404 inverter, floating input → H → output L.
-  assert.equal(evaluate(chip("7404"), levels({ 1: Z })).get(2), L);
+  // 74LS08 AND unit [1,2] → 3: one input floating reads H.
+  assert.equal(evaluate(chip("74LS08"), levels({ 1: Z, 2: H })).get(3), H);
+  assert.equal(evaluate(chip("74LS08"), levels({ 1: Z, 2: L })).get(3), L);
+  // 74LS04 inverter, floating input → H → output L.
+  assert.equal(evaluate(chip("74LS04"), levels({ 1: Z })).get(2), L);
   // A fully-unset 74LS00 NAND reads all-H → L.
   assert.equal(evaluate(chip("74LS00"), new Map()).get(3), L);
 });
@@ -113,31 +113,31 @@ test("X propagates except where a dominant input forces the output", () => {
   // 74LS00 NAND: X with H → X; X with L → H (L dominates).
   assert.equal(evaluate(chip("74LS00"), levels({ 1: X, 2: H })).get(3), X);
   assert.equal(evaluate(chip("74LS00"), levels({ 1: X, 2: L })).get(3), H);
-  // 7427 NOR: X with L → X; X with H → L (H dominates).
+  // 74LS27 NOR: X with L → X; X with H → L (H dominates).
   assert.equal(
-    evaluate(chip("7427"), levels({ 1: X, 2: L, 13: L })).get(12),
+    evaluate(chip("74LS27"), levels({ 1: X, 2: L, 13: L })).get(12),
     X,
   );
   assert.equal(
-    evaluate(chip("7427"), levels({ 1: X, 2: H, 13: L })).get(12),
+    evaluate(chip("74LS27"), levels({ 1: X, 2: H, 13: L })).get(12),
     L,
   );
 });
 
-test("7402: outputs are on the LOW pins (unit order proof)", () => {
+test("74LS02: outputs are on the LOW pins (unit order proof)", () => {
   // Unit 1 reads 1A(2)/1B(3) and drives 1Y on pin 1 — not pin 3.
-  assert.equal(evaluate(chip("7402"), levels({ 2: L, 3: L })).get(1), H);
-  assert.equal(evaluate(chip("7402"), levels({ 2: H, 3: L })).get(1), L);
+  assert.equal(evaluate(chip("74LS02"), levels({ 2: L, 3: L })).get(1), H);
+  assert.equal(evaluate(chip("74LS02"), levels({ 2: H, 3: L })).get(1), L);
 });
 
-test("7430: the single 8-input NAND is L only when all eight are HIGH", () => {
-  const all = chip("7430").logic.units[0].inputs;
+test("74LS30: the single 8-input NAND is L only when all eight are HIGH", () => {
+  const all = chip("74LS30").logic.units[0].inputs;
   const allHigh = new Map(all.map((p) => [p, H]));
-  assert.equal(evaluate(chip("7430"), allHigh).get(8), L);
+  assert.equal(evaluate(chip("74LS30"), allHigh).get(8), L);
   // Drop any one input to L → output H.
   const oneLow = new Map(allHigh);
   oneLow.set(all[3], L);
-  assert.equal(evaluate(chip("7430"), oneLow).get(8), H);
+  assert.equal(evaluate(chip("74LS30"), oneLow).get(8), H);
 });
 
 test("74125: each buffer drives its output only when enabled (G low)", () => {

@@ -76,7 +76,7 @@ export const CHIPS_GATES = Object.freeze([
     },
   },
   {
-    id: "7402",
+    id: "74LS02",
     title: "Quad 2-input NOR",
     blurb: "Four independent 2-input NOR gates (outputs on the low pins).",
     group: "NOR",
@@ -108,7 +108,7 @@ export const CHIPS_GATES = Object.freeze([
     },
   },
   {
-    id: "7404",
+    id: "74LS04",
     title: "Hex inverter",
     blurb: "Six independent NOT gates.",
     group: "Inverter",
@@ -141,7 +141,7 @@ export const CHIPS_GATES = Object.freeze([
     },
   },
   {
-    id: "7408",
+    id: "74LS08",
     title: "Quad 2-input AND",
     blurb: "Four independent 2-input AND gates.",
     group: "AND",
@@ -172,7 +172,7 @@ export const CHIPS_GATES = Object.freeze([
     },
   },
   {
-    id: "7410",
+    id: "74LS10",
     title: "Triple 3-input NAND",
     blurb: "Three independent 3-input NAND gates.",
     group: "NAND",
@@ -202,7 +202,7 @@ export const CHIPS_GATES = Object.freeze([
     },
   },
   {
-    id: "7411",
+    id: "74LS11",
     title: "Triple 3-input AND",
     blurb: "Three independent 3-input AND gates.",
     group: "AND",
@@ -232,7 +232,7 @@ export const CHIPS_GATES = Object.freeze([
     },
   },
   {
-    id: "7420",
+    id: "74LS20",
     title: "Dual 4-input NAND",
     blurb: "Two independent 4-input NAND gates.",
     group: "NAND",
@@ -258,7 +258,7 @@ export const CHIPS_GATES = Object.freeze([
     },
   },
   {
-    id: "7427",
+    id: "74LS27",
     title: "Triple 3-input NOR",
     blurb: "Three independent 3-input NOR gates.",
     group: "NOR",
@@ -288,7 +288,7 @@ export const CHIPS_GATES = Object.freeze([
     },
   },
   {
-    id: "7430",
+    id: "74LS30",
     title: "8-input NAND",
     blurb: "A single 8-input NAND gate.",
     group: "NAND",
@@ -314,7 +314,7 @@ export const CHIPS_GATES = Object.freeze([
     },
   },
   {
-    id: "7432",
+    id: "74LS32",
     title: "Quad 2-input OR",
     blurb: "Four independent 2-input OR gates.",
     group: "OR",
@@ -345,7 +345,7 @@ export const CHIPS_GATES = Object.freeze([
     },
   },
   {
-    id: "7486",
+    id: "74LS86",
     title: "Quad 2-input XOR",
     blurb: "Four independent 2-input exclusive-OR gates.",
     group: "XOR",

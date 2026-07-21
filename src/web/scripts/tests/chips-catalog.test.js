@@ -40,23 +40,23 @@ const ROLES = new Set(["input", "output", "vcc", "gnd", "nc", "io"]);
 
 const GATE_WAVE = [
   "74LS00",
-  "7402",
-  "7404",
-  "7408",
-  "7410",
-  "7411",
-  "7420",
-  "7427",
-  "7430",
-  "7432",
-  "7486",
+  "74LS02",
+  "74LS04",
+  "74LS08",
+  "74LS10",
+  "74LS11",
+  "74LS20",
+  "74LS27",
+  "74LS30",
+  "74LS32",
+  "74LS86",
   "74125",
 ];
 const SEQ_WAVE = [
-  "7473",
-  "7474",
-  "7475",
-  "7476",
+  "74LS73",
+  "74LS74",
+  "74LS75",
+  "74LS76",
   "74107",
   "74175",
   "74161",
@@ -125,7 +125,7 @@ for (const def of CHIP_DEFS) {
     );
 
     // Roles valid; exactly one vcc + one gnd (position may be non-standard —
-    // real parts like the 7473/7475/7476 don't always use the corners).
+    // real parts like the 74LS73/74LS75/74LS76 don't always use the corners).
     for (const p of def.pins) assert.ok(ROLES.has(p.role), `${def.id} ${p.n}`);
     assert.equal(def.pins.filter((p) => p.role === "vcc").length, 1);
     assert.equal(def.pins.filter((p) => p.role === "gnd").length, 1);

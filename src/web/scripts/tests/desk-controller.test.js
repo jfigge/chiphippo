@@ -384,7 +384,7 @@ test("shift-drag marquee selects only components fully inside the box", () => {
   // 74LS00 at e5 spans columns 5–11 (x 5…11) across rows f (y 5) and e (y 8).
   const chip = controller.addComponentAt("74LS00", "bb1", "e5");
   // A second chip far to the right, well outside the box.
-  const outside = controller.addComponentAt("7404", "bb1", "e20");
+  const outside = controller.addComponentAt("74LS04", "bb1", "e20");
 
   // Box covering columns 4–12, rows f..e — encloses every pin of the first.
   marquee(viewport, world, { x: 4, y: 4 }, { x: 12, y: 9 });

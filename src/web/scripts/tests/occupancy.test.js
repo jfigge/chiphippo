@@ -301,12 +301,12 @@ test("canPlaceChip: occupied holes block; ignoreId frees a chip's own pins", () 
   });
   // Overlapping the seated 74LS00 (columns 5–11) fails…
   assert.equal(
-    canPlaceChip(doc, { ref: "7404", board: "bb1", anchor: "e11" }),
+    canPlaceChip(doc, { ref: "74LS04", board: "bb1", anchor: "e11" }),
     false,
   );
   // …the next free column succeeds…
   assert.equal(
-    canPlaceChip(doc, { ref: "7404", board: "bb1", anchor: "e12" }),
+    canPlaceChip(doc, { ref: "74LS04", board: "bb1", anchor: "e12" }),
     true,
   );
   // …and the chip itself may shift one column when its own pins are ignored.

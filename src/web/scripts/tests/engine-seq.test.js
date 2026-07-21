@@ -17,9 +17,9 @@
 // Feature 100 engine fixtures: the two-phase tick over sequential & MSI parts.
 // Circuits are built in code (board + PSU + clock + chip + wires) and clocked
 // edge by edge; we assert settled output levels. Covers the two-phase
-// race-through contract, a 7474 divide-by-two, JK toggling, the 74161 counter
+// race-through contract, a 74LS74 divide-by-two, JK toggling, the 74161 counter
 // (count / carry / async clear), a 74164 shift, and the combinational MSI
-// (74138 decoder, 74151 mux, 7475 latch transparency, 74193 up/down).
+// (74138 decoder, 74151 mux, 74LS75 latch transparency, 74193 up/down).
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -143,13 +143,17 @@ class Harness {
 
 // ── Two-phase correctness: the classic race-through check ─────────────────────
 
-test("chained 7474 FFs shift without falling through in one tick", () => {
+test("chained 74LS74 FFs shift without falling through in one tick", () => {
   // Both FFs share one clock; Q1 → D2. On a rising edge FF2 must capture the
   // PRE-edge Q1, not the value FF1 takes this same tick.
-  const h = holesOf("7474", "e10");
+  const h = holesOf("74LS74", "e10");
   const doc = {
     boards,
-    components: [psu("psu1", 80), clock("clk1", 90), chip("c1", "7474", "e10")],
+    components: [
+      psu("psu1", 80),
+      clock("clk1", 90),
+      chip("c1", "74LS74", "e10"),
+    ],
     wires: [
       ...power("psu1", h, 14, 7),
       wire("clk1.out", strip(h, 3, 0)), // clock → 1CLK
@@ -168,13 +172,17 @@ test("chained 7474 FFs shift without falling through in one tick", () => {
   assert.equal(bench.pin(h, 9), H, "Q2 follows one edge behind");
 });
 
-// ── 7474 divide-by-two ───────────────────────────────────────────────────────
+// ── 74LS74 divide-by-two ───────────────────────────────────────────────────────
 
-test("a 7474 wired Q̄→D divides the clock by two", () => {
-  const h = holesOf("7474", "e10");
+test("a 74LS74 wired Q̄→D divides the clock by two", () => {
+  const h = holesOf("74LS74", "e10");
   const doc = {
     boards,
-    components: [psu("psu1", 80), clock("clk1", 90), chip("c1", "7474", "e10")],
+    components: [
+      psu("psu1", 80),
+      clock("clk1", 90),
+      chip("c1", "74LS74", "e10"),
+    ],
     wires: [
       ...power("psu1", h, 14, 7),
       wire("clk1.out", strip(h, 3, 0)), // clock → 1CLK
@@ -193,14 +201,18 @@ test("a 7474 wired Q̄→D divides the clock by two", () => {
   assert.equal(q(), H, "toggles on edge 3");
 });
 
-// ── JK toggling (negative-edge 7476) ─────────────────────────────────────────
+// ── JK toggling (negative-edge 74LS76) ─────────────────────────────────────────
 
-test("a 7476 with J=K=H toggles on each falling edge", () => {
+test("a 74LS76 with J=K=H toggles on each falling edge", () => {
   // J(4), K(16) float → H (toggle); PRE(2)/CLR(3) float → H (inactive).
-  const h = holesOf("7476", "e10");
+  const h = holesOf("74LS76", "e10");
   const doc = {
     boards,
-    components: [psu("psu1", 80), clock("clk1", 90), chip("c1", "7476", "e10")],
+    components: [
+      psu("psu1", 80),
+      clock("clk1", 90),
+      chip("c1", "74LS76", "e10"),
+    ],
     wires: [...power("psu1", h, 5, 13), wire("clk1.out", strip(h, 1, 0))], // 1CLK
   };
   const bench = new Harness(doc);
@@ -339,14 +351,14 @@ test("a 74151 routes the addressed data input to Y", () => {
   assert.equal(bench.pin(h, 6), L, "W = Ȳ");
 });
 
-// ── 7475 transparent latch: transparent vs held ──────────────────────────────
+// ── 74LS75 transparent latch: transparent vs held ──────────────────────────────
 
-test("a 7475 latch is transparent while enabled and holds while not", () => {
+test("a 74LS75 latch is transparent while enabled and holds while not", () => {
   // Latch 1: D1(2), E12(13), Q1(16). D1 floats → H.
-  const h = holesOf("7475", "e10");
+  const h = holesOf("74LS75", "e10");
   const enabled = {
     boards,
-    components: [psu("psu1", 80), chip("c1", "7475", "e10")],
+    components: [psu("psu1", 80), chip("c1", "74LS75", "e10")],
     // E12(13) floats → H → transparent → Q1 follows D1 = H.
     wires: [...power("psu1", h, 5, 12)],
   };
@@ -356,7 +368,7 @@ test("a 7475 latch is transparent while enabled and holds while not", () => {
 
   const held = {
     boards,
-    components: [psu("psu1", 80), chip("c1", "7475", "e10")],
+    components: [psu("psu1", 80), chip("c1", "74LS75", "e10")],
     wires: [
       ...power("psu1", h, 5, 12),
       wire(strip(h, 13, 0), `bb1.${mates(h.get(12))[1]}`), // E12 → GND (latched)

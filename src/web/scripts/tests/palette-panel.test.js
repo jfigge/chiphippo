@@ -48,8 +48,8 @@ test("lists the whole catalog grouped by function; picks report the ref", () => 
   );
   assert.deepEqual(groups, [...new Set(PALETTE_DEFS.map((d) => d.group))]);
 
-  host.querySelector('.palette-item[data-ref="7486"]').click();
-  assert.deepEqual(picked, ["7486"]);
+  host.querySelector('.palette-item[data-ref="74LS86"]').click();
+  assert.deepEqual(picked, ["74LS86"]);
   assert.ok(panel.element);
 
   // "sim-ready" badge (Feature 80): every chip with behavior shows it; the
@@ -63,7 +63,7 @@ test("lists the whole catalog grouped by function; picks report the ref", () => 
     assert.equal(badged.has(def.id), hasBehavior(def), `${def.id} badge`);
   }
   assert.ok(badged.has("74LS00")); // combinational
-  assert.ok(badged.has("7474")); // sequential
+  assert.ok(badged.has("74LS74")); // sequential
   assert.ok(!badged.has("led"));
   assert.ok(!badged.has("clock"));
 });
@@ -136,11 +136,11 @@ test("filter matches id, title, and blurb (case-insensitive)", () => {
   typeFilter(panel.element, "74LS00");
   assert.deepEqual(ids(), ["74LS00"]);
 
-  typeFilter(panel.element, "nor"); // title match: 7402 + 7427
-  assert.deepEqual(ids().sort(), ["7402", "7427"]);
+  typeFilter(panel.element, "nor"); // title match: 74LS02 + 74LS27
+  assert.deepEqual(ids().sort(), ["74LS02", "74LS27"]);
 
   typeFilter(panel.element, "EXCLUSIVE"); // blurb-only match, case-insensitive
-  assert.deepEqual(ids(), ["7486"]);
+  assert.deepEqual(ids(), ["74LS86"]);
 
   typeFilter(panel.element, "zzz");
   assert.deepEqual(ids(), []);

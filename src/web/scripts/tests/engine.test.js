@@ -104,12 +104,12 @@ function powerWires(psuId, holes, gndMateIndex = 0) {
 
 // ── Combinational: inverter + floating-input NAND ────────────────────────────
 
-test("a powered 7404 inverts a driven-low input to HIGH (and floats read H)", () => {
-  const holes = chipHoles("7404", "e10");
+test("a powered 74LS04 inverts a driven-low input to HIGH (and floats read H)", () => {
+  const holes = chipHoles("74LS04", "e10");
   const gnd = mates(holes.get(7)); // c16L free holes
   const doc = {
     boards,
-    components: [psu("psu1", 80), chip("c1", "7404", "e10")],
+    components: [psu("psu1", 80), chip("c1", "74LS04", "e10")],
     wires: [
       ...powerWires("psu1", holes),
       // Drive input pin 1 (e10) LOW by tying its strip to the GND strip.
@@ -125,7 +125,7 @@ test("a powered 7404 inverts a driven-low input to HIGH (and floats read H)", ()
   // Remove the pull-down: the input floats → reads H → output L.
   const floated = {
     ...doc,
-    wires: powerWires("psu1", chipHoles("7404", "e10")),
+    wires: powerWires("psu1", chipHoles("74LS04", "e10")),
   };
   assert.equal(simulate(floated).levelAt("bb1.e11"), L);
 });
@@ -227,11 +227,11 @@ test("an SR latch from one 74LS00 sets, resets, and holds across settles", () =>
 // ── Oscillation ──────────────────────────────────────────────────────────────
 
 test("a ring of three inverters never settles → oscillation warning", () => {
-  const holes = chipHoles("7404", "e10");
+  const holes = chipHoles("74LS04", "e10");
   // g1 e10→e11, g2 e12→e13, g3 e14→e15; chain the ring.
   const doc = {
     boards,
-    components: [psu("psu1", 80), chip("c1", "7404", "e10")],
+    components: [psu("psu1", 80), chip("c1", "74LS04", "e10")],
     wires: [
       ...powerWires("psu1", holes),
       wire(`bb1.${mates(holes.get(2))[0]}`, `bb1.${mates(holes.get(3))[0]}`), // g1→g2
@@ -331,13 +331,13 @@ test("only one power pin miswired is unpowered, NOT reversed", () => {
 // ── Resistors: weak pull-down / pull-up / series conduction ──────────────────
 
 test("a pull-down resistor makes a floating chip input read LOW", () => {
-  const holes = chipHoles("7404", "e10"); // 1A(e10) → 1Y(e11)
+  const holes = chipHoles("74LS04", "e10"); // 1A(e10) → 1Y(e11)
   const r = chipHoles("resistor", "a30"); // leads at a30 (col30) and a33 (col33)
   const base = {
     boards,
     components: [
       psu("psu1", 80),
-      chip("c1", "7404", "e10"),
+      chip("c1", "74LS04", "e10"),
       part("r1", "resistor", "a30"),
     ],
   };

@@ -16,8 +16,8 @@
 
 // chips-seq.js — the sequential & MSI wave of the 74xx catalog (Feature 100):
 // flip-flops, latches, counters, shift registers, decoders, and multiplexers.
-// Datasheet-exact pinouts (including the non-standard power pins of the 7473 /
-// 7475 / 7476 — real parts don't always put VCC/GND on the corners). Behavior
+// Datasheet-exact pinouts (including the non-standard power pins of the 74LS73 /
+// 74LS75 / 74LS76 — real parts don't always put VCC/GND on the corners). Behavior
 // is DATA + the pure family builders in sim/sequential.js — no per-chip engine
 // code. Stateful parts carry a `logic` block of `{ state0, step, outputs }`;
 // combinational decoders/mux carry `logic.units` of `COMB` units the generic
@@ -47,7 +47,7 @@ const vcc = (n) => pin(n, "VCC", "vcc");
 
 export const CHIPS_SEQ = Object.freeze([
   {
-    id: "7473",
+    id: "74LS73",
     title: "Dual JK flip-flop, clear",
     blurb:
       "Two negative-edge JK flip-flops with async active-low clear (no preset).",
@@ -75,7 +75,7 @@ export const CHIPS_SEQ = Object.freeze([
     ]),
   },
   {
-    id: "7474",
+    id: "74LS74",
     title: "Dual D flip-flop, preset & clear",
     blurb:
       "Two positive-edge D flip-flops with async active-low preset and clear.",
@@ -111,7 +111,7 @@ export const CHIPS_SEQ = Object.freeze([
     ]),
   },
   {
-    id: "7475",
+    id: "74LS75",
     title: "4-bit bistable latch",
     blurb:
       "Four transparent D latches; while its enable is HIGH a latch follows D, " +
@@ -144,7 +144,7 @@ export const CHIPS_SEQ = Object.freeze([
     ]),
   },
   {
-    id: "7476",
+    id: "74LS76",
     title: "Dual JK flip-flop, preset & clear",
     blurb:
       "Two negative-edge JK flip-flops with async active-low preset and clear " +

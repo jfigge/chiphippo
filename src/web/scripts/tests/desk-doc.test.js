@@ -204,7 +204,7 @@ test("normalizeDocument: junk → empty; bad boards dropped; coords rounded", ()
     ],
     components: [
       { id: "c2", kind: "chip", ref: "74LS00", board: "bb2", anchor: "e3" },
-      { id: "c2", kind: "chip", ref: "7404", board: "bb2", anchor: "e12" }, // dup id
+      { id: "c2", kind: "chip", ref: "74LS04", board: "bb2", anchor: "e12" }, // dup id
       { id: "c3", kind: "chip", ref: "9999", board: "bb2", anchor: "e3" }, // bad ref
       { id: "c4", kind: "chip", ref: "74LS00", board: "bb9", anchor: "e3" }, // no board
       { id: "c5", kind: "blob", ref: "74LS00", board: "bb2", anchor: "e3" }, // bad kind
@@ -658,7 +658,7 @@ test("addComponent: seats a chip with a fresh c<n> id", () => {
   assert.equal(
     doc.addComponent({
       kind: "chip",
-      ref: "7404",
+      ref: "74LS04",
       board: "bb1",
       anchor: "e20",
     }).id,
@@ -704,7 +704,7 @@ test("addComponent: rejects bad kinds/refs/boards and illegal seats", () => {
     () =>
       doc.addComponent({
         kind: "chip",
-        ref: "7404",
+        ref: "74LS04",
         board: "bb1",
         anchor: "e8",
       }),
@@ -715,7 +715,7 @@ test("addComponent: rejects bad kinds/refs/boards and illegal seats", () => {
     () =>
       doc.addComponent({
         kind: "chip",
-        ref: "7404",
+        ref: "74LS04",
         board: "bb1",
         anchor: "f20",
       }),
@@ -735,7 +735,7 @@ test("moveComponent: re-seats (same or other board), self-overlap allowed", () =
   assert.throws(() => doc.moveComponent("c9", "bb1", "e5"), {
     code: "NOT_FOUND",
   });
-  doc.addComponent({ kind: "chip", ref: "7404", board: "bb1", anchor: "e5" });
+  doc.addComponent({ kind: "chip", ref: "74LS04", board: "bb1", anchor: "e5" });
   assert.throws(() => doc.moveComponent("c1", "bb1", "e6"), {
     code: "ILLEGAL_PLACEMENT",
   });
@@ -951,7 +951,7 @@ test("removeBoard cascades its seated components", () => {
   const doc = docWithFull();
   doc.addBoard("pins-tiny", 0, 30);
   doc.addComponent({ kind: "chip", ref: "74LS00", board: "bb1", anchor: "e5" });
-  doc.addComponent({ kind: "chip", ref: "7404", board: "bb2", anchor: "e2" });
+  doc.addComponent({ kind: "chip", ref: "74LS04", board: "bb2", anchor: "e2" });
   assert.equal(doc.componentsOnBoard("bb1").length, 1);
   doc.removeBoard("bb1");
   assert.deepEqual(
@@ -1008,8 +1008,8 @@ test("removeBoard leaves a part REACHING into it alone — the lead just floats"
 test("canPlaceChip mirrors occupancy through the document", () => {
   const doc = docWithFull();
   doc.addComponent({ kind: "chip", ref: "74LS00", board: "bb1", anchor: "e5" });
-  assert.equal(doc.canPlaceChip("7404", "bb1", "e8"), false);
-  assert.equal(doc.canPlaceChip("7404", "bb1", "e12"), true);
+  assert.equal(doc.canPlaceChip("74LS04", "bb1", "e8"), false);
+  assert.equal(doc.canPlaceChip("74LS04", "bb1", "e12"), true);
   assert.equal(
     doc.canPlaceChip("74LS00", "bb1", "e6", { ignoreId: "c1" }),
     true,

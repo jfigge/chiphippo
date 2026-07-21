@@ -67,7 +67,7 @@ test("power/ground/output pins carry their role classes", () => {
 
 test("every pin appears exactly once across the columns", () => {
   resetDom();
-  for (const id of ["7474", "74161", "74138"]) {
+  for (const id of ["74LS74", "74161", "74138"]) {
     const el = buildChipPinout(chipDef(id));
     const nums = [...el.querySelectorAll(".chip-pinout-num")]
       .map((n) => Number(n.textContent))
