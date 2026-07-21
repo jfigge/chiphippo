@@ -187,6 +187,7 @@ function bindShortcuts(deskView, controller, sim) {
       if (
         controller.placementArmed ||
         controller.wireToolArmed ||
+        controller.busToolArmed ||
         e.metaKey ||
         e.ctrlKey ||
         e.altKey
@@ -404,6 +405,8 @@ async function init() {
 
   // Everything ON the desk (boards, chips, wires, placement, hover).
   let wireBtn = null;
+  let busBtn = null;
+  let busNameInput = null;
   let swatchStrip = null;
   let probeBtn = null;
   let sim = null; // the SimController (created after the toolbar below)
@@ -416,6 +419,10 @@ async function init() {
         s.classList.toggle("wire-swatch--active", s.dataset.color === color),
       );
   };
+  const onBusStateChange = ({ armed }) => {
+    busBtn?.classList.toggle("toolbar-btn--active", armed);
+    busBtn?.setAttribute("aria-pressed", String(armed));
+  };
   const onProbeStateChange = ({ armed }) => {
     probeBtn?.classList.toggle("toolbar-btn--active", armed);
     probeBtn?.setAttribute("aria-pressed", String(armed));
@@ -425,6 +432,7 @@ async function init() {
     deskView,
     deskDoc,
     onWireStateChange,
+    onBusStateChange,
     onProbeStateChange,
     onReplaceChip: (id) => sim?.replaceChip(id),
     onClockToggle: (id) => sim?.manualToggle(id),
@@ -532,6 +540,29 @@ async function init() {
   toolbar.append(wireBtn, swatchStrip);
   onWireStateChange({ armed: false, color: controller.wireColor });
 
+  // Bus tool: toggle button (shortcut B) + the name that sets its width/bit
+  // order (D[7:0]). It rides the wire-color swatch above for its color.
+  busBtn = el("button", {
+    class: "toolbar-btn",
+    type: "button",
+    text: "Bus",
+    title: "Bus tool — lay a named multi-bit run of wires in one gesture (B)",
+    "aria-pressed": "false",
+    onClick: () => controller.toggleBusTool(),
+  });
+  busNameInput = el("input", {
+    class: "bus-name-input",
+    type: "text",
+    value: controller.busName,
+    title: "Bus name — e.g. D[7:0], A[0:15]",
+    "aria-label": "Bus name",
+    placeholder: "D[7:0]",
+  });
+  busNameInput.addEventListener("input", () =>
+    controller.setBusName(busNameInput.value),
+  );
+  toolbar.append(busBtn, busNameInput);
+
   // Probe tool: highlight a whole electrical net on hover (shortcut I).
   probeBtn = el("button", {
     class: "toolbar-btn",
@@ -600,6 +631,8 @@ async function init() {
   const editButtons = () => [
     partsBtn,
     wireBtn,
+    busBtn,
+    busNameInput,
     ...swatchStrip.querySelectorAll(".wire-swatch"),
     ...toolbar.querySelectorAll(".toolbar-split button"),
   ];

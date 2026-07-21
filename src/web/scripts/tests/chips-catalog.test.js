@@ -205,5 +205,25 @@ for (const def of CHIP_DEFS) {
         assert.equal(pinRole.get(pin), "output", `${def.id} drives pin ${pin}`);
       }
     }
+
+    // ── Pin groups (Feature 130 bus taps, optional): each group names a
+    //    non-empty run of REAL pins, a valid direction, and no pin is claimed
+    //    by two groups (they name disjoint functional runs).
+    if (def.pinGroups) {
+      const claimed = new Set();
+      for (const g of def.pinGroups) {
+        assert.ok(g.name && g.name.length > 0, `${def.id} group name`);
+        assert.ok(
+          ["in", "out", "io"].includes(g.dir),
+          `${def.id} group ${g.name} dir ${g.dir}`,
+        );
+        assert.ok(g.pins.length > 0, `${def.id} group ${g.name} empty`);
+        for (const pin of g.pins) {
+          assert.ok(pinRole.has(pin), `${def.id} group ${g.name} pin ${pin}`);
+          assert.ok(!claimed.has(pin), `${def.id} pin ${pin} in two groups`);
+          claimed.add(pin);
+        }
+      }
+    }
   });
 }

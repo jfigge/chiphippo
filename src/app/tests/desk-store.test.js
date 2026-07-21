@@ -51,6 +51,7 @@ test("save → load round-trips a document across store instances", () => {
       boards: [{ id: "bb1", type: "pins-full", x: 2, y: 3, group: null }],
       components: [],
       wires: [],
+      buses: [],
       netNames: [],
       annotations: [],
       nextBoardId: 2,
@@ -59,6 +60,7 @@ test("save → load round-trips a document across store instances", () => {
       nextPsuId: 1,
       nextClockId: 1,
       nextWireId: 1,
+      nextBusId: 1,
       nextAnnotationId: 1,
     };
     store.save(doc);
@@ -105,6 +107,7 @@ test("writeFile → readFile round-trips a named schematic anywhere", () => {
       boards: [{ id: "bb1", type: "pins-half", x: 0, y: 0, group: null }],
       components: [],
       wires: [],
+      buses: [],
       netNames: [],
       annotations: [],
       nextBoardId: 2,
@@ -113,6 +116,7 @@ test("writeFile → readFile round-trips a named schematic anywhere", () => {
       nextPsuId: 1,
       nextClockId: 1,
       nextWireId: 1,
+      nextBusId: 1,
       nextAnnotationId: 1,
     };
     assert.equal(store.writeFile(file, doc), file);
@@ -185,6 +189,7 @@ test("migrateDeskDocument: a current-version document passes through", () => {
     boards: [{ id: "bb1", type: "pins-tiny", x: 0, y: 0, group: null }],
     components: [],
     wires: [],
+    buses: [],
     netNames: [],
     annotations: [],
     nextBoardId: 5,
@@ -193,6 +198,7 @@ test("migrateDeskDocument: a current-version document passes through", () => {
     nextPsuId: 2,
     nextClockId: 1,
     nextWireId: 2,
+    nextBusId: 1,
     nextAnnotationId: 1,
   };
   assert.deepEqual(migrateDeskDocument(doc), doc);

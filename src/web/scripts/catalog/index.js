@@ -59,3 +59,13 @@ export function chipDef(ref) {
 export function partDef(ref) {
   return ALL_BY_ID.get(ref) ?? null;
 }
+
+/** A chip's `pinGroups` (Feature 130 bus taps), or an empty list. */
+export function pinGroupsOf(ref) {
+  return partDef(ref)?.pinGroups ?? [];
+}
+
+/** The pin group `pin` belongs to on `ref`, or null (bus tap-mode lookup). */
+export function pinGroupContaining(ref, pin) {
+  return pinGroupsOf(ref).find((g) => g.pins.includes(pin)) ?? null;
+}

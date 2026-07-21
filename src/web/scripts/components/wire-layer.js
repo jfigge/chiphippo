@@ -28,7 +28,7 @@
 
 import { clear } from "../dom.js";
 import { PX_PER_UNIT } from "../desk/desk-geometry.js";
-import { wirePath } from "../desk/wire-path.js";
+import { wirePath, wireSag } from "../desk/wire-path.js";
 import { holePosition, parseAddress } from "../model/breadboard.js";
 import { partDef } from "../catalog/index.js";
 
@@ -46,16 +46,30 @@ function svgEl(tag, attrs = {}) {
   return node;
 }
 
+/** The average of a non-empty list of world-px points. */
+function centroid(points) {
+  const sum = points.reduce((acc, p) => ({ x: acc.x + p.x, y: acc.y + p.y }), {
+    x: 0,
+    y: 0,
+  });
+  return { x: sum.x / points.length, y: sum.y / points.length };
+}
+
 export class WireLayer {
   #svg;
   #doc;
   #onSelect;
   #onContextMenu;
   #onHover;
+  #onSelectBus;
+  #onBusContextMenu;
   #selectedIds = new Set(); // highlighted wires (one pick, or a marquee)
+  #selectedBusIds = new Set(); // highlighted bus bands
   #preview = null; // preview path elements while the wire tool is pending
+  #busPreview = null; // preview band while the bus tool is pending
   #endpointDrag = null; // { wireId, end, world:{x,y} px, legal } while dragging an end
   #wholeDrag = null; // { wireId, from:{x,y} px, to:{x,y} px, legal } dragging a whole wire
+  #busDrag = null; // { busId, memberIds:Set, dx, dy (px), legal } dragging a whole bus
 
   /**
    * @param {HTMLElement} layer - the `.layer-wires` element.
@@ -65,12 +79,21 @@ export class WireLayer {
    * @param {(id: string, e: MouseEvent) => void} [callbacks.onContextMenu]
    * @param {(id: string|null) => void} [callbacks.onHover] - pointer enter
    *   (wire id) / leave (null) over a wire (for the Feature 70 probe).
+   * @param {(id: string, e: MouseEvent) => void} [callbacks.onSelectBus] -
+   *   click on a bundle band (Feature 130).
+   * @param {(id: string, e: MouseEvent) => void} [callbacks.onBusContextMenu]
    */
-  constructor(layer, deskDoc, { onSelect, onContextMenu, onHover } = {}) {
+  constructor(
+    layer,
+    deskDoc,
+    { onSelect, onContextMenu, onHover, onSelectBus, onBusContextMenu } = {},
+  ) {
     this.#doc = deskDoc;
     this.#onSelect = onSelect;
     this.#onContextMenu = onContextMenu;
     this.#onHover = onHover;
+    this.#onSelectBus = onSelectBus;
+    this.#onBusContextMenu = onBusContextMenu;
     // NOTE: width/height 0 would DISABLE svg rendering per the SVG spec (and
     // percentages resolve against the zero-size layer anchor) — so give the
     // element a token 1×1 box and let CSS overflow:visible paint the wires.
@@ -125,22 +148,42 @@ export class WireLayer {
    */
   render(overrides) {
     const preview = this.#preview; // survives rebuilds (appended last)
+    const busPreview = this.#busPreview;
     const drag = this.#endpointDrag;
     const whole = this.#wholeDrag;
+    const busDrag = this.#busDrag;
     clear(this.#svg);
-    for (const wire of this.#doc.wires) {
+
+    // Snapshot the doc arrays ONCE — the getters copy on every access.
+    const wires = this.#doc.wires;
+    const buses = this.#doc.buses;
+    const wiresById = new Map(wires.map((w) => [w.id, w]));
+
+    // Bundle bands render FIRST (below the member wires): a click on a wire
+    // still selects the wire, while the band catches clicks in the gaps.
+    for (const bus of buses) {
+      const band = this.#buildBand(bus, overrides, busDrag, wiresById);
+      if (band) this.#svg.append(band);
+    }
+
+    for (const wire of wires) {
       let a = this.#endpointWorld(wire.from, overrides);
       let b = this.#endpointWorld(wire.to, overrides);
       // A dragged endpoint follows the cursor (world px) instead of its hole;
-      // a whole-wire drag overrides BOTH ends (rigid translation).
+      // a whole-wire drag overrides BOTH ends (rigid translation); a whole-bus
+      // drag rigidly offsets every member wire.
       const draggingEnd = drag && drag.wireId === wire.id;
       const draggingWhole = whole && whole.wireId === wire.id;
+      const draggingBus = busDrag && busDrag.memberIds.has(wire.id);
       if (draggingEnd) {
         if (drag.end === "from") a = drag.world;
         else b = drag.world;
       } else if (draggingWhole) {
         a = whole.from;
         b = whole.to;
+      } else if (draggingBus) {
+        if (a) a = { x: a.x + busDrag.dx, y: a.y + busDrag.dy };
+        if (b) b = { x: b.x + busDrag.dx, y: b.y + busDrag.dy };
       }
       if (!a || !b) continue; // defensive: normalize prevents danglers
       const d = wirePath(a, b);
@@ -161,9 +204,13 @@ export class WireLayer {
       // While dragging (one end or the whole wire), mute the hit stroke
       // (pointer is captured) and tint the wire red over an illegal drop,
       // mirroring the rubber band.
-      if (draggingEnd || draggingWhole) {
+      if (draggingEnd || draggingWhole || draggingBus) {
         group.classList.add("wire--dragging");
-        const legal = draggingEnd ? drag.legal : whole.legal;
+        const legal = draggingEnd
+          ? drag.legal
+          : draggingWhole
+            ? whole.legal
+            : busDrag.legal;
         group.classList.toggle("wire-preview--illegal", legal === false);
       }
       group.classList.toggle("wire--selected", this.#selectedIds.has(wire.id));
@@ -175,7 +222,62 @@ export class WireLayer {
       group.addEventListener("pointerleave", () => this.#onHover?.(null));
       this.#svg.append(group);
     }
+    if (busPreview) this.#svg.append(busPreview);
     if (preview) this.#svg.append(preview);
+  }
+
+  /**
+   * Build one bus's bundle band: a translucent fat curve traced along the
+   * corridor its member wires share (the centroid of their `from`s to the
+   * centroid of their `to`s), carrying the bus name at its midpoint. Null for
+   * a bus whose members don't currently resolve (all danglers). `busDrag`
+   * rigidly offsets the band when the whole bus is being dragged.
+   */
+  #buildBand(bus, overrides, busDrag, wiresById) {
+    if (bus.members.length === 0) return null;
+    const off = busDrag && busDrag.busId === bus.id ? busDrag : null;
+    const froms = [];
+    const tos = [];
+    for (const wid of bus.members) {
+      const wire = wiresById.get(wid);
+      if (!wire) continue;
+      let a = this.#endpointWorld(wire.from, overrides);
+      let b = this.#endpointWorld(wire.to, overrides);
+      if (!a || !b) continue;
+      if (off) {
+        a = { x: a.x + off.dx, y: a.y + off.dy };
+        b = { x: b.x + off.dx, y: b.y + off.dy };
+      }
+      froms.push(a);
+      tos.push(b);
+    }
+    if (froms.length === 0) return null;
+    const A = centroid(froms);
+    const B = centroid(tos);
+    const d = wirePath(A, B);
+
+    const g = svgEl("g", { class: "bus-band" });
+    g.dataset.busId = bus.id;
+    g.style.setProperty("--wire-color", `var(--color-wire-${bus.color})`);
+    g.classList.toggle("bus-band--selected", this.#selectedBusIds.has(bus.id));
+    if (off) g.classList.toggle("bus-band--illegal", off.legal === false);
+    g.append(
+      svgEl("path", { class: "bus-band-hit", d }),
+      svgEl("path", { class: "bus-band-fill", d }),
+    );
+    const label = svgEl("text", {
+      class: "bus-band-label",
+      x: (A.x + B.x) / 2,
+      // The quadratic's t=0.5 point hangs half the sag below the chord.
+      y: (A.y + B.y) / 2 + wireSag(A, B) / 2,
+    });
+    label.textContent = bus.name;
+    g.append(label);
+    g.addEventListener("click", (e) => this.#onSelectBus?.(bus.id, e));
+    g.addEventListener("contextmenu", (e) =>
+      this.#onBusContextMenu?.(bus.id, e),
+    );
+    return g;
   }
 
   /**
@@ -217,6 +319,56 @@ export class WireLayer {
         this.#selectedIds.has(group.dataset.wireId),
       );
     }
+  }
+
+  /** Highlight one bus band (null clears). Survives re-renders. */
+  setSelectedBus(id) {
+    this.#selectedBusIds = new Set(id == null ? [] : [id]);
+    for (const band of this.#svg.querySelectorAll(".bus-band")) {
+      band.classList.toggle(
+        "bus-band--selected",
+        this.#selectedBusIds.has(band.dataset.busId),
+      );
+    }
+  }
+
+  /**
+   * The bus tool's rubber-band preview: a fat translucent band from the
+   * anchored start to the cursor (both world px). `legal` tints it red over an
+   * illegal landing. Pass null to hide.
+   * @param {{from:{x,y}, to:{x,y}, color:string, legal?:boolean}|null} spec
+   */
+  setBusPreview(spec) {
+    if (!spec) {
+      this.#busPreview?.remove();
+      this.#busPreview = null;
+      return;
+    }
+    if (!this.#busPreview) {
+      this.#busPreview = svgEl("g", { class: "bus-band bus-band--preview" });
+      this.#busPreview.append(svgEl("path", { class: "bus-band-fill" }));
+      this.#svg.append(this.#busPreview);
+    }
+    this.#busPreview.style.setProperty(
+      "--wire-color",
+      `var(--color-wire-${spec.color})`,
+    );
+    this.#busPreview.classList.toggle("bus-band--illegal", !spec.legal);
+    const d = wirePath(spec.from, spec.to);
+    for (const path of this.#busPreview.querySelectorAll("path")) {
+      path.setAttribute("d", d);
+    }
+  }
+
+  /**
+   * Live-preview a whole bus dragged rigidly by a world-px offset: every member
+   * wire AND the band shift by (dx, dy). `legal:false` tints them. Pass null to
+   * stop and redraw from the document.
+   * @param {{busId:string, memberIds:Set<string>, dx:number, dy:number, legal?:boolean}|null} spec
+   */
+  setBusDrag(spec) {
+    this.#busDrag = spec;
+    this.render();
   }
 
   /**

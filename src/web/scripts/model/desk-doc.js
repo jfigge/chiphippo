@@ -62,7 +62,7 @@ import {
   partPinHoles,
 } from "./occupancy.js";
 
-export const DOC_VERSION = 3;
+export const DOC_VERSION = 4;
 
 /** The fixed jumper-wire palette (theme.css defines a token per name). */
 export const WIRE_COLORS = Object.freeze([
@@ -86,6 +86,55 @@ export const RESERVED_NET_NAMES = Object.freeze(["VCC", "GND", "CLK"]);
 /** Annotation kinds (Feature 120): a one-line label vs a multi-line note. */
 const ANNOTATION_KINDS = new Set(["label", "note"]);
 
+/** The widest bus the name grammar will mint — a guard against a `D[0:9999]`
+    typo trying to lay ten thousand wires. */
+export const MAX_BUS_WIDTH = 64;
+
+const BUS_NAME_RE = /^(.*?)\[\s*(\d+)\s*:\s*(\d+)\s*\]$/;
+
+/**
+ * Parse a bus name into its width + bit order (Feature 130). The grammar is a
+ * base plus an optional `[hi:lo]` (msb:lsb, e.g. `D[7:0]`) or `[lo:hi]`
+ * (`A[0:15]`); a bare name is a width-1 "bus" (a named single wire). The `bits`
+ * array is the bit NUMBER each ordered member carries — `D[7:0]` → [7,6,…,0],
+ * so member 0 is the msb and a pin-tap wires it to the high pin.
+ *
+ * @returns {{ base:string, width:number, hi:number, lo:number,
+ *   order:"asc"|"desc"|"single", bits:number[] }|null} null for junk or a
+ *   width past MAX_BUS_WIDTH.
+ */
+export function parseBusName(name) {
+  if (typeof name !== "string") return null;
+  const trimmed = name.trim();
+  if (!trimmed) return null;
+  const m = BUS_NAME_RE.exec(trimmed);
+  if (!m) {
+    return {
+      base: trimmed,
+      width: 1,
+      hi: 0,
+      lo: 0,
+      order: "single",
+      bits: [0],
+    };
+  }
+  const a = Number(m[2]);
+  const b = Number(m[3]);
+  const width = Math.abs(a - b) + 1;
+  if (width > MAX_BUS_WIDTH) return null;
+  const step = a <= b ? 1 : -1;
+  const bits = [];
+  for (let i = 0; i < width; i += 1) bits.push(a + i * step);
+  return {
+    base: m[1].trim(),
+    width,
+    hi: Math.max(a, b),
+    lo: Math.min(a, b),
+    order: a <= b ? "asc" : "desc",
+    bits,
+  };
+}
+
 const BOARD_ID_RE = /^bb([1-9]\d*)$/;
 const GROUP_ID_RE = /^g([1-9]\d*)$/;
 const COMPONENT_ID_RE = /^c([1-9]\d*)$/;
@@ -93,6 +142,7 @@ const PSU_ID_RE = /^psu([1-9]\d*)$/;
 const CLOCK_ID_RE = /^clk([1-9]\d*)$/;
 const WIRE_ID_RE = /^w([1-9]\d*)$/;
 const ANNOTATION_ID_RE = /^an([1-9]\d*)$/;
+const BUS_ID_RE = /^bus([1-9]\d*)$/;
 
 /** Desk-level bricks (no board): kind → { id regex, id prefix, next counter }. */
 const BRICKS = Object.freeze({
@@ -118,6 +168,7 @@ export function emptyDocument() {
     boards: [],
     components: [],
     wires: [],
+    buses: [],
     netNames: [],
     annotations: [],
     nextBoardId: 1,
@@ -126,6 +177,7 @@ export function emptyDocument() {
     nextPsuId: 1,
     nextClockId: 1,
     nextWireId: 1,
+    nextBusId: 1,
     nextAnnotationId: 1,
   };
 }
@@ -243,6 +295,38 @@ export function normalizeDocument(raw) {
     });
   }
 
+  // Buses (Feature 130): metadata over wires — `{ id, name, width, color,
+  // members: [wireId…] }`. Each member must be a surviving wire; junk names
+  // drop the bus. `width` is repaired up so it never undercounts its members
+  // (a name change may have shrunk the declared width below what was laid).
+  let maxBusSeq = 0;
+  const busIds = new Set();
+  const buses = Array.isArray(raw.buses) ? raw.buses : [];
+  for (const bus of buses) {
+    if (!bus || typeof bus !== "object") continue;
+    const m = typeof bus.id === "string" ? BUS_ID_RE.exec(bus.id) : null;
+    if (!m || busIds.has(bus.id)) continue;
+    const parsed = parseBusName(bus.name);
+    if (!parsed) continue; // an unparseable name is not a bus
+    busIds.add(bus.id);
+    maxBusSeq = Math.max(maxBusSeq, Number(m[1]));
+    const seen = new Set();
+    const members = [];
+    for (const wid of Array.isArray(bus.members) ? bus.members : []) {
+      if (wireIds.has(wid) && !seen.has(wid)) {
+        seen.add(wid);
+        members.push(wid);
+      }
+    }
+    doc.buses.push({
+      id: bus.id,
+      name: bus.name.trim(),
+      width: Math.max(parsed.width, members.length, 1),
+      color: WIRE_COLORS.includes(bus.color) ? bus.color : WIRE_COLORS[0],
+      members,
+    });
+  }
+
   // Net names (Feature 120): a binding is `{ address, name }` — the user names
   // a net by pointing at ONE member hole/terminal on it, so the name survives a
   // net-key change. Drop a binding whose address no longer parses; dedupe by
@@ -311,6 +395,9 @@ export function normalizeDocument(raw) {
   const storedNextWire =
     Number.isInteger(raw.nextWireId) && raw.nextWireId > 0 ? raw.nextWireId : 1;
   doc.nextWireId = Math.max(storedNextWire, maxWireSeq + 1);
+  const storedNextBus =
+    Number.isInteger(raw.nextBusId) && raw.nextBusId > 0 ? raw.nextBusId : 1;
+  doc.nextBusId = Math.max(storedNextBus, maxBusSeq + 1);
   const storedNextAnnotation =
     Number.isInteger(raw.nextAnnotationId) && raw.nextAnnotationId > 0
       ? raw.nextAnnotationId
@@ -806,6 +893,7 @@ export class DeskDoc {
     }
     this.#doc.components = this.#doc.components.filter((c) => c.board !== id);
     this.#doc.wires = this.#doc.wires.filter((w) => !this.#wireTouches(w, id));
+    this.#pruneBusesToWires();
     if (removed.group != null) {
       this.#regroupRuns(
         this.#doc.boards.filter((b) => b.group === removed.group),
@@ -1051,6 +1139,7 @@ export class DeskDoc {
       this.#doc.wires = this.#doc.wires.filter(
         (w) => !this.#wireTouches(w, id),
       );
+      this.#pruneBusesToWires();
     }
   }
 
@@ -1220,6 +1309,58 @@ export class DeskDoc {
     return { ...wire };
   }
 
+  /**
+   * Would every move in `moves` (each `{ id, from, to }`) land legally when
+   * the whole batch is applied AT ONCE — the rigid whole-bus drag? Legality is
+   * judged against a doc with EVERY moving wire lifted out, so members may
+   * shuffle among the holes they collectively vacate (a bus shifted by its own
+   * pitch), and every target must be a real point, free of any non-moving
+   * lead, and claimed by exactly one move.
+   */
+  canMoveWiresBatch(moves) {
+    const ids = new Set(moves.map((m) => m.id));
+    if (ids.size !== moves.length) return false; // a wire moved twice
+    if (!moves.every((m) => this.#doc.wires.some((w) => w.id === m.id))) {
+      return false;
+    }
+    // The doc as if the movers were gone — the holes they leave read free.
+    const reduced = {
+      boards: this.#doc.boards,
+      components: this.#doc.components,
+      wires: this.#doc.wires.filter((w) => !ids.has(w.id)),
+    };
+    const claimed = new Set();
+    for (const { from, to } of moves) {
+      if (from === to) return false;
+      for (const address of [from, to]) {
+        if (claimed.has(address)) return false; // two leads into one hole
+        if (!isFreeHole(reduced, address)) return false;
+        claimed.add(address);
+      }
+    }
+    return true;
+  }
+
+  /**
+   * Apply a batch of wire moves atomically (the whole-bus drag commit). Throws
+   * ILLEGAL_PLACEMENT if the batch isn't collectively legal — nothing moves on
+   * failure. Returns copies of the moved wires.
+   */
+  moveWiresBatch(moves) {
+    if (!this.canMoveWiresBatch(moves)) {
+      throw taggedError("wire batch move is illegal", "ILLEGAL_PLACEMENT");
+    }
+    const byId = new Map(this.#doc.wires.map((w) => [w.id, w]));
+    const moved = [];
+    for (const { id, from, to } of moves) {
+      const wire = byId.get(id);
+      wire.from = from;
+      wire.to = to;
+      moved.push({ ...wire });
+    }
+    return moved;
+  }
+
   /** Change a wire's color. Throws NOT_FOUND / INVALID_ARG. */
   recolorWire(id, color) {
     const wire = this.#doc.wires.find((w) => w.id === id);
@@ -1231,11 +1372,126 @@ export class DeskDoc {
     return { ...wire };
   }
 
-  /** Remove a wire. Throws NOT_FOUND. */
+  /** Remove a wire. A bus that included it simply shrinks. Throws NOT_FOUND. */
   removeWire(id) {
     const i = this.#doc.wires.findIndex((w) => w.id === id);
     if (i === -1) throw taggedError(`no wire ${id}`, "NOT_FOUND");
     this.#doc.wires.splice(i, 1);
+    this.#pruneBusesToWires();
+  }
+
+  // ── Buses (Feature 130) ──────────────────────────────────────────────────
+  // A bus is METADATA over wires: `{ id, name, width, color, members }`, where
+  // each member is an ordinary wire that already lives in `doc.wires`. The
+  // netlist, occupancy, and the engine never learn buses exist — they still see
+  // N plain wires. This is the Feature 110 "strips stay in doc.boards" move
+  // applied to wires. `width` comes from the name grammar (parseBusName).
+
+  /** Copies of the buses on the desk (member lists copied too). */
+  get buses() {
+    return this.#doc.buses.map((b) => ({ ...b, members: [...b.members] }));
+  }
+
+  /** A copy of one bus, or null. */
+  getBus(id) {
+    const b = this.#doc.buses.find((x) => x.id === id);
+    return b ? { ...b, members: [...b.members] } : null;
+  }
+
+  /** The bus a wire belongs to, or null. */
+  busOfWire(wireId) {
+    const b = this.#doc.buses.find((x) => x.members.includes(wireId));
+    return b ? { ...b, members: [...b.members] } : null;
+  }
+
+  /**
+   * Bundle existing wires into a bus. `name` sets the width/bit-order via the
+   * grammar (`D[7:0]`); `memberIds` are wire ids in bit order (only surviving,
+   * de-duplicated ones are kept). Throws INVALID_ARG (unparseable name / bad
+   * color). Returns a copy of the new bus.
+   */
+  addBus(name, memberIds = [], { color = WIRE_COLORS[0] } = {}) {
+    const parsed = parseBusName(name);
+    if (!parsed) {
+      throw taggedError(`bad bus name: ${name}`, "INVALID_ARG");
+    }
+    if (!WIRE_COLORS.includes(color)) {
+      throw taggedError(`unknown bus color: ${color}`, "INVALID_ARG");
+    }
+    const seen = new Set();
+    const members = [];
+    for (const wid of memberIds) {
+      if (this.#doc.wires.some((w) => w.id === wid) && !seen.has(wid)) {
+        seen.add(wid);
+        members.push(wid);
+      }
+    }
+    const bus = {
+      id: `bus${this.#doc.nextBusId++}`,
+      name: name.trim(),
+      width: Math.max(parsed.width, members.length, 1),
+      color,
+      members,
+    };
+    this.#doc.buses.push(bus);
+    return { ...bus, members: [...bus.members] };
+  }
+
+  /**
+   * Patch a bus's `name` (re-derives width), `color`, or `members`. Throws
+   * NOT_FOUND / INVALID_ARG. Returns a copy.
+   */
+  updateBus(id, patch = {}) {
+    const bus = this.#doc.buses.find((b) => b.id === id);
+    if (!bus) throw taggedError(`no bus ${id}`, "NOT_FOUND");
+    if ("name" in patch) {
+      const parsed = parseBusName(patch.name);
+      if (!parsed) throw taggedError(`bad bus name: ${patch.name}`, "INVALID_ARG"); // prettier-ignore
+      bus.name = patch.name.trim();
+      bus.width = Math.max(parsed.width, bus.members.length, 1);
+    }
+    if ("color" in patch) {
+      if (!WIRE_COLORS.includes(patch.color)) {
+        throw taggedError(`unknown bus color: ${patch.color}`, "INVALID_ARG");
+      }
+      bus.color = patch.color;
+    }
+    if ("members" in patch) {
+      const seen = new Set();
+      const members = [];
+      for (const wid of patch.members ?? []) {
+        if (this.#doc.wires.some((w) => w.id === wid) && !seen.has(wid)) {
+          seen.add(wid);
+          members.push(wid);
+        }
+      }
+      bus.members = members;
+      bus.width = Math.max(bus.width, bus.members.length, 1);
+    }
+    return { ...bus, members: [...bus.members] };
+  }
+
+  /**
+   * Remove a bus. With `cascadeWires`, its member wires go too (delete);
+   * otherwise the wires stay and simply un-bundle. Throws NOT_FOUND.
+   */
+  removeBus(id, { cascadeWires = false } = {}) {
+    const i = this.#doc.buses.findIndex((b) => b.id === id);
+    if (i === -1) throw taggedError(`no bus ${id}`, "NOT_FOUND");
+    const [removed] = this.#doc.buses.splice(i, 1);
+    if (cascadeWires) {
+      const drop = new Set(removed.members);
+      this.#doc.wires = this.#doc.wires.filter((w) => !drop.has(w.id));
+      this.#pruneBusesToWires(); // a shared wire (there shouldn't be) stays sane
+    }
+  }
+
+  /** Drop from every bus any member wire that no longer exists. */
+  #pruneBusesToWires() {
+    const live = new Set(this.#doc.wires.map((w) => w.id));
+    for (const bus of this.#doc.buses) {
+      bus.members = bus.members.filter((wid) => live.has(wid));
+    }
   }
 
   // ── Net names (Feature 120) ──────────────────────────────────────────────

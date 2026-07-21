@@ -664,6 +664,11 @@ export const CHIPS_74LS = Object.freeze([
         ],
       }),
     },
+    // Feature 130 bus taps: the two bidirectional octets, bit 0 first.
+    pinGroups: [
+      { name: "A", pins: [2, 3, 4, 5, 6, 7, 8, 9], dir: "io" },
+      { name: "B", pins: [18, 17, 16, 15, 14, 13, 12, 11], dir: "io" },
+    ],
   },
 
   // ── Decoders / arithmetic / comparators ──────────────────────────────────
@@ -969,6 +974,11 @@ export const CHIPS_74LS = Object.freeze([
       le: 11,
       oeN: 1,
     }),
+    // Feature 130 bus taps: the flow-through D/Q octets, bit 0 first.
+    pinGroups: [
+      { name: "D", pins: [2, 3, 4, 5, 6, 7, 8, 9], dir: "in" },
+      { name: "Q", pins: [19, 18, 17, 16, 15, 14, 13, 12], dir: "out" },
+    ],
   },
   {
     id: "74LS595",
@@ -1007,6 +1017,8 @@ export const CHIPS_74LS = Object.freeze([
       q: [15, 1, 2, 3, 4, 5, 6, 7], // QA..QH
       q7s: 9,
     }),
+    // Feature 130 bus taps: the parallel-out octet (QA..QH), bit 0 first.
+    pinGroups: [{ name: "Q", pins: [15, 1, 2, 3, 4, 5, 6, 7], dir: "out" }],
   },
   {
     id: "74LS90",

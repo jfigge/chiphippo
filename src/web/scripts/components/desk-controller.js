@@ -74,6 +74,7 @@ import { AnnotationLayer } from "./annotation-layer.js";
 import { SimOverlay } from "./sim-overlay.js";
 import { ProbeInspector } from "./probe-inspector.js";
 import { WireTools } from "./wire-tools.js";
+import { BusTools } from "./bus-tools.js";
 import { BoardOutline } from "./board-outline.js";
 
 /** Pointer travel (px) below which a press stays a click, not a drag/pan. */
@@ -117,6 +118,8 @@ export class DeskController {
   //   { kind: "wire", from, hover }                           (wire tool)
   #mode = null;
   #wire; // WireTools: the wire tool + endpoint/whole-wire drags (shares #mode)
+  #bus; // BusTools: the bus tool + whole-bus drag (Feature 130, shares #mode)
+  #busName = "D[7:0]"; // the name the bus tool reads (driven by the toolbar input)
   #lastDown = null; // last viewport pointerdown client pos (click-vs-pan)
   #hoverKey = null; // hover identity currently shown or pending
   #hoverTimer = null;
@@ -166,6 +169,7 @@ export class DeskController {
     deskView,
     deskDoc,
     onWireStateChange,
+    onBusStateChange,
     onProbeStateChange,
     onReplaceChip,
     onClockToggle,
@@ -212,6 +216,8 @@ export class DeskController {
       onSelect: (id) => this.selectWire(id),
       onContextMenu: (id, e) => this.#wire.onContextMenu(id, e),
       onHover: (id) => this.#probe.onWireHover(id),
+      onSelectBus: (id) => this.selectBus(id),
+      onBusContextMenu: (id, e) => this.#bus.onContextMenu(id, e),
     });
 
     // Labels + notes (Feature 120): one renderer over the annotations layer,
@@ -247,6 +253,7 @@ export class DeskController {
       coordinate: {
         cancelPlacement: () => this.cancelPlacement(),
         disarmWireTool: () => this.disarmWireTool(),
+        disarmBusTool: () => this.disarmBusTool(),
         deselect: () => this.deselect(),
         hideHover: () => this.#hideHover(),
       },
@@ -277,8 +284,45 @@ export class DeskController {
       deselect: () => this.deselect(),
       cancelPlacement: () => this.cancelPlacement(),
       disarmProbe: () => this.disarmProbe(),
+      disarmBusTool: () => this.disarmBusTool(),
       clearSelectionIfWire: (id) => this.#clearSelectionIfWire(id),
       onStateChange: onWireStateChange,
+    });
+
+    // Bus subsystem (Feature 130): the bus tool + whole-bus drag + its context
+    // menu. Like WireTools it shares `#mode` through this host; the bus color
+    // rides the shared wire-color pick and the name comes from the toolbar
+    // input (which drives `#busName` through setBusName).
+    this.#bus = new BusTools({
+      get mode() {
+        return self.#mode;
+      },
+      set mode(v) {
+        self.#mode = v;
+      },
+      get editingLocked() {
+        return self.#editingLocked;
+      },
+      get busName() {
+        return self.#busName;
+      },
+      get busColor() {
+        return self.#wire.color;
+      },
+      doc: deskDoc,
+      deskView,
+      viewport,
+      wireLayer: this.#wireLayer,
+      ring: this.#ring,
+      emitDocChanged: (label) => this.#emitDocChanged(label),
+      hideHover: () => this.#hideHover(),
+      selectBus: (id) => this.selectBus(id),
+      deselect: () => this.deselect(),
+      cancelPlacement: () => this.cancelPlacement(),
+      disarmProbe: () => this.disarmProbe(),
+      disarmWireTool: () => this.disarmWireTool(),
+      clearSelectionIfBus: (id) => this.#clearSelectionIfBus(id),
+      onStateChange: onBusStateChange,
     });
 
     // A pinned net follows its anchor through edits, switch flips, and each
@@ -314,9 +358,15 @@ export class DeskController {
         this.#probe.onContextMenu(this.#deskView.worldFromEvent(e), e);
         return;
       }
-      if (!this.#wire.armed) return;
-      e.preventDefault();
-      this.#wire.cancelPending();
+      if (this.#wire.armed) {
+        e.preventDefault();
+        this.#wire.cancelPending();
+        return;
+      }
+      if (this.#bus.armed) {
+        e.preventDefault();
+        this.#bus.cancelPending();
+      }
     });
   }
 
@@ -342,6 +392,8 @@ export class DeskController {
     else if (sel.kind === "part") this.#partViews.get(sel.id)?.setSelected(on);
     else if (sel.kind === "annotation") {
       this.#annotationLayer.setSelected(on ? sel.id : null);
+    } else if (sel.kind === "bus") {
+      this.#wireLayer.setSelectedBus(on ? sel.id : null);
     } else this.#wireLayer.setSelected(on ? sel.id : null);
   }
 
@@ -446,6 +498,11 @@ export class DeskController {
     this.#select(this.#doc.getWire(id) ? { kind: "wire", id } : null);
   }
 
+  selectBus(id) {
+    if (this.#mode) return; // busing/placing/dragging — clicks aren't selects
+    this.#select(this.#doc.getBus(id) ? { kind: "bus", id } : null);
+  }
+
   selectAnnotation(id) {
     this.#select(
       this.#doc.getAnnotation(id) ? { kind: "annotation", id } : null,
@@ -465,12 +522,21 @@ export class DeskController {
     }
   }
 
+  /** Drop the selection if it is this bus (BusTools calls this on remove). */
+  #clearSelectionIfBus(id) {
+    if (this.#selected?.kind === "bus" && this.#selected.id === id) {
+      this.#selected = null;
+      this.#wireLayer.setSelectedBus(null);
+    }
+  }
+
   // ── Placement modes (toolbar Add-board / palette picks) ─────────────────
 
   #enterPlacement(mode) {
     if (this.#editingLocked) return; // topology is frozen while running
     this.cancelPlacement();
     this.disarmWireTool();
+    this.disarmBusTool();
     this.disarmProbe();
     this.deselect();
     this.#hideHover();
@@ -1128,6 +1194,37 @@ export class DeskController {
     this.#wire.recolorWire(id, color);
   }
 
+  // ── Bus tool (Feature 130) ───────────────────────────────────────────────
+  // The bus subsystem lives in BusTools; these are the public shims app.js /
+  // keyboard drive it through. The bus color rides the shared wire-color pick;
+  // the name comes from the toolbar input via setBusName.
+
+  get busToolArmed() {
+    return this.#bus.armed;
+  }
+
+  /** The name the bus tool will lay next (from the toolbar input). */
+  get busName() {
+    return this.#busName;
+  }
+
+  /** Update the bus name the tool reads (the toolbar input's `input` event). */
+  setBusName(name) {
+    this.#busName = typeof name === "string" ? name : "";
+  }
+
+  armBusTool() {
+    this.#bus.arm();
+  }
+
+  disarmBusTool() {
+    this.#bus.disarm();
+  }
+
+  toggleBusTool() {
+    this.#bus.toggle();
+  }
+
   /** Shared address→world resolver (the probe's highlight geometry). */
   #addressWorld(address) {
     return addressWorld(this.#doc.boards, this.#doc.components, address);
@@ -1297,6 +1394,7 @@ export class DeskController {
       // Cancel any armed tool the run supersedes (probe stays allowed).
       this.cancelPlacement();
       this.disarmWireTool();
+      this.disarmBusTool();
       // History is frozen for the run — run-volatile effects (12 V damage, a
       // switch flipped live) never become undo steps.
       this.#history.freeze();
@@ -1497,6 +1595,7 @@ export class DeskController {
       // wire tool (cancel a pending wire, else disarm).
       if (this.#probe.handleEscape()) return true;
       if (this.#wire.handleEscape()) return true;
+      if (this.#bus.handleEscape()) return true;
       if (this.placementArmed) {
         this.cancelPlacement();
         return true;
@@ -1529,6 +1628,10 @@ export class DeskController {
       this.toggleWireTool();
       return true;
     }
+    if ((e.key === "b" || e.key === "B") && bareKey) {
+      this.toggleBusTool();
+      return true;
+    }
     // F flips LED polarity while its placement ghost is armed.
     if (
       (e.key === "f" || e.key === "F") &&
@@ -1557,6 +1660,7 @@ export class DeskController {
       const { kind, id } = this.#selected;
       if (kind === "part") this.removeComponent(id);
       else if (kind === "wire") this.removeWire(id);
+      else if (kind === "bus") this.#bus.removeBus(id, true);
       else if (kind === "annotation") this.removeAnnotation(id);
       else this.removeBoard(id);
       return true;
@@ -2457,9 +2561,12 @@ export class DeskController {
       return;
     }
     // Not while probing (clicks pin nets) or running (topology frozen). A
-    // press near a wire cap re-routes its end; on the body, translates it.
+    // press near a wire cap re-routes its end; on the body, translates it; on a
+    // bundle band (below the wires), it drags the whole bus.
     if (!this.#probe.armed && !this.#editingLocked) {
-      if (this.#wire.tryBeginDrag(e, this.#deskView.worldFromEvent(e))) return;
+      const world = this.#deskView.worldFromEvent(e);
+      if (this.#wire.tryBeginDrag(e, world)) return;
+      if (this.#bus.tryBeginDrag(e, world)) return;
     }
     // Click on truly empty desk (the viewport itself — layers are zero-size
     // and overlay children are pointer-inert) deselects.
@@ -2468,7 +2575,12 @@ export class DeskController {
 
   #onViewportClick = (e) => {
     const m = this.#mode;
-    if (!this.placementArmed && m?.kind !== "wire" && !this.#probe.armed)
+    if (
+      !this.placementArmed &&
+      m?.kind !== "wire" &&
+      m?.kind !== "bus" &&
+      !this.#probe.armed
+    )
       return;
     // A pan that started while armed still ends in a click — suppress it.
     if (
@@ -2484,6 +2596,10 @@ export class DeskController {
     }
     if (m.kind === "wire") {
       this.#wire.commitClick(e);
+      return;
+    }
+    if (m.kind === "bus") {
+      this.#bus.commitClick(e);
       return;
     }
     this.#trackGhost(e); // ensure the seat reflects the click point
@@ -2515,6 +2631,10 @@ export class DeskController {
     }
     if (m?.kind === "wire") {
       this.#wire.trackMove(e);
+      return;
+    }
+    if (m?.kind === "bus") {
+      this.#bus.trackMove(e);
       return;
     }
     if (this.#probe.armed) {

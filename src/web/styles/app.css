@@ -1179,6 +1179,86 @@
   stroke: var(--color-danger);
 }
 
+/* ── Buses (Feature 130): bundle bands over the member wires ─────────────── */
+.desk-viewport--bus {
+  cursor: crosshair;
+}
+
+/* The translucent band traced along the bundle's shared corridor. */
+.bus-band-fill {
+  fill: none;
+  stroke: var(--wire-color);
+  stroke-width: 12;
+  stroke-linecap: round;
+  opacity: 0.28;
+  pointer-events: none;
+}
+
+/* Widened invisible hit stroke — clicking the band (in the gaps between the
+   member wires) selects the whole bus. */
+.bus-band-hit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 16;
+  pointer-events: stroke;
+  cursor: grab;
+}
+
+/* While either wiring tool is armed, bands must not swallow hole clicks. */
+.desk-viewport--wiring .bus-band-hit,
+.desk-viewport--bus .bus-band-hit,
+.desk-viewport--wire-dragging .bus-band-hit {
+  pointer-events: none;
+}
+
+.bus-band-label {
+  fill: var(--color-text);
+  font-size: 5px; /* world px — counter-scaling isn't needed at these sizes */
+  font-weight: 600;
+  text-anchor: middle;
+  dominant-baseline: middle;
+  paint-order: stroke;
+  stroke: var(--color-surface-0);
+  stroke-width: 1.4;
+  pointer-events: none;
+  user-select: none;
+}
+
+.bus-band--selected .bus-band-fill {
+  stroke: var(--color-selection, var(--color-accent));
+  opacity: 0.5;
+}
+
+.bus-band--illegal .bus-band-fill {
+  stroke: var(--color-danger);
+}
+
+.bus-band--preview {
+  opacity: 0.85;
+}
+
+/* The bus-name field in the toolbar. */
+.bus-name-input {
+  width: 6.5rem;
+  height: var(--control-height);
+  padding: 0 var(--space-2);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: var(--color-text);
+  background: var(--color-surface-1);
+  border: 1px solid var(--color-overlay);
+  border-radius: var(--radius-sm);
+}
+
+.bus-name-input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.bus-name-input:disabled {
+  opacity: 0.5;
+}
+
 /* ── Hover addressing (ring + tooltip in the overlay layer) ─────────────── */
 .hole-ring {
   position: absolute;

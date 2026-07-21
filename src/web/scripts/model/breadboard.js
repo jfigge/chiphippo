@@ -253,6 +253,25 @@ export function columnAt(type, localX) {
 }
 
 /**
+ * The hole `delta` steps further along `hole`'s own run — a grid hole moves
+ * along its row (column ± delta), a rail hole along its rail (index ± delta).
+ * Returns null when `hole` is malformed for the type or the shifted hole runs
+ * off the strip. This is the ONE lattice primitive the bus tool marches a run
+ * of consecutive holes with, so no caller does column/index arithmetic by hand.
+ */
+export function holeAlong(type, hole, delta) {
+  if (!Number.isInteger(delta)) return null;
+  const parsed = parseHole(type, hole);
+  if (!parsed) return null;
+  const next =
+    parsed.kind === "grid"
+      ? `${parsed.row}${parsed.col + delta}`
+      : `${parsed.railId}${parsed.index + delta}`;
+  // parseHole re-validates the bounds (col ≤ cols / index ≤ railHoles, ≥ 1).
+  return parseHole(type, next) ? next : null;
+}
+
+/**
  * Clamp an anchor column so a footprint spanning `span` columns past it still
  * fits on the strip. Returns null when the type is too narrow to hold it.
  */

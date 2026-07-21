@@ -83,6 +83,7 @@ export class WireTools {
     if (this.armed || this.#host.editingLocked) return;
     this.#host.cancelPlacement();
     this.#host.disarmProbe();
+    this.#host.disarmBusTool?.();
     this.#host.deselect();
     this.#host.hideHover();
     this.#host.mode = { kind: "wire", from: null, hover: null };
