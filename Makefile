@@ -138,6 +138,17 @@ dmg: build-setup build-install
 	@echo "  → $(BUILD_DIR)/src/dist/"
 	@echo "--------------------------------"
 
+# Full unsigned macOS release: every mac target from package.json's build.mac
+# (dmg + zip, arm64 + x64). No code-signing or notarization — UNSIGNED_ENV
+# strips signing from the environment and -c.mac.notarize=false forces it off,
+# so the artifacts are distributable-but-unsigned. Signed/store builds are the
+# packaging backlog's job.
+release: build-setup build-install
+	@echo "Building unsigned macOS release artifacts (dmg + zip, arm64 + x64)…"
+	@cd $(BUILD_DIR)/src; env $(UNSIGNED_ENV) npx electron-builder --mac --publish never -c.mac.notarize=false
+	@echo "  → $(BUILD_DIR)/src/dist/"
+	@echo "--------------------------------"
+
 build-setup:
 	@echo "Preparing build directory..."
 	@rm -rf $(BUILD_DIR)/src || true
@@ -170,10 +181,11 @@ help:
 	@echo "    license-headers  Stamp the Apache 2.0 header on any file missing it"
 	@echo "    build         Build Electron app for macOS (dir only, unsigned)"
 	@echo "    dmg           Build unsigned macOS .dmg (default 'make')"
+	@echo "    release       Build all unsigned macOS artifacts (dmg + zip, arm64/x64)"
 	@echo "    clean         Remove build and dist directories"
 	@echo "    version       Print version string"
 	@echo "    info          Print full build information"
 
 .PHONY: version info install debug fmt fmt-check lint license-headers icons \
-        test test-license-headers build build-mac dmg build-setup build-install \
-        clean help
+        test test-license-headers build build-mac dmg release build-setup \
+        build-install clean help

@@ -38,6 +38,27 @@ test("get returns the defaults when nothing is stored", () => {
   }
 });
 
+test("the Settings-dialog keys default off / unset", () => {
+  assert.equal(DEFAULTS.showDeskHub, false);
+  assert.equal(DEFAULTS.selectionColor, null);
+});
+
+test("set persists a Settings-dialog patch (desk hub + selection colour)", () => {
+  const { dir, store } = freshStore();
+  try {
+    const next = store.set({ showDeskHub: true, selectionColor: "#ff8800" });
+    assert.equal(next.showDeskHub, true);
+    assert.equal(next.selectionColor, "#ff8800");
+    // A fresh reader sees the persisted values, other defaults intact.
+    const reread = new SettingsStore(dir).get();
+    assert.equal(reread.showDeskHub, true);
+    assert.equal(reread.selectionColor, "#ff8800");
+    assert.equal(reread.pinoutFloat, DEFAULTS.pinoutFloat);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("set shallow-merges a patch and leaves other defaults intact", () => {
   const { dir, store } = freshStore();
   try {

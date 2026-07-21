@@ -27,6 +27,20 @@
 
 const { contextBridge, ipcRenderer } = require("electron");
 
+// ── Main → renderer menu pushes ─────────────────────────────────────────────
+// The application menu's About / Settings items are one-way pushes from main;
+// re-dispatch each as a global chiphippo:* CustomEvent the renderer listens
+// for (the documented main→renderer broadcast pattern). No payload — the
+// renderer opens the matching PopupManager dialog.
+for (const [channel, event] of [
+  ["menu:show-about", "chiphippo:show-about"],
+  ["menu:open-settings", "chiphippo:open-settings"],
+]) {
+  ipcRenderer.on(channel, () => {
+    window.dispatchEvent(new CustomEvent(event));
+  });
+}
+
 contextBridge.exposeInMainWorld("chiphippo", {
   // Static platform info — available synchronously from the sandboxed
   // preload's process shim (main's app:platform handler carries the same
@@ -41,6 +55,11 @@ contextBridge.exposeInMainWorld("chiphippo", {
   // App version comes from the main process (package.json), over IPC — this
   // also proves the ipcMain <-> preload bridge is wired correctly.
   getVersion: () => ipcRenderer.invoke("app:version"),
+
+  // Read-only app / build metadata for the About dialog (version + runtime
+  // versions). Distinct from getVersion() — the About panel wants the fuller
+  // picture (Electron / Chromium / Node / platform).
+  getAppInfo: () => ipcRenderer.invoke("app:info:get"),
 
   // ── App settings (Feature 10) ──────────────────────────────────────────────
   // A single preferences document in main (store/settings-store.js): the desk

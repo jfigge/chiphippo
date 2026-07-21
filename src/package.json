@@ -49,13 +49,25 @@
     ],
     "mac": {
       "icon": "web/chiphippo-mac-icon.png",
-      "category": "public.app-category.developer-tools"
+      "category": "public.app-category.developer-tools",
+      "target": [
+        { "target": "dmg", "arch": ["arm64", "x64"] },
+        { "target": "zip", "arch": ["arm64", "x64"] }
+      ]
     },
     "win": {
-      "icon": "web/chiphippo-icon.ico"
+      "icon": "web/chiphippo-icon.ico",
+      "target": [
+        { "target": "nsis", "arch": ["x64", "arm64"] },
+        { "target": "portable", "arch": ["x64", "arm64"] }
+      ]
     },
     "linux": {
-      "icon": "web/icons"
+      "icon": "web/icons",
+      "target": [
+        { "target": "AppImage", "arch": ["x64", "arm64"] },
+        { "target": "deb", "arch": ["x64", "arm64"] }
+      ]
     }
   }
 }

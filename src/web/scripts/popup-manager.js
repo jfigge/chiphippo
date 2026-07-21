@@ -101,6 +101,10 @@ export const PopupManager = {
         // already closed
       }
       active.dialogEl.remove();
+      // A one-way notice for stateful dialogs (About/Settings) that need to
+      // reset an "is open" guard however they were dismissed (button, mask,
+      // or Escape). Fired after the DOM is torn down.
+      window.dispatchEvent(new CustomEvent("chiphippo:popup-closed"));
     }
     const next = state.queue.shift();
     if (next) mount(next);

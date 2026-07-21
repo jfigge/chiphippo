@@ -54,6 +54,14 @@ const BOXES = Object.freeze({
   "sw-push": Object.freeze({ minX: -0.7, minY: -1.4, width: 3.4, height: 2.8 }),
   led: Object.freeze({ minX: -0.7, minY: -1.9, width: 2.4, height: 2.9 }),
   resistor: Object.freeze({ minX: -0.7, minY: -1.1, width: 4.4, height: 2.2 }),
+  // Nine holes along one row (x 0…8) with the display block standing ABOVE
+  // them, so each anode's lower column holes stay clickable for wiring.
+  seg8: Object.freeze({ minX: -0.7, minY: -7.7, width: 9.4, height: 8.3 }),
+  bar8: Object.freeze({ minX: -0.7, minY: -4.7, width: 9.4, height: 5.3 }),
+  // A 16-pin DIP straddling the trench (row e ↔ row f, 3 pitches): the box
+  // matches chipBox("DIP-16") so the block covers both leg rows and the trench,
+  // leaving the rows above/below clickable — exactly as a chip does.
+  bar8iso: Object.freeze({ minX: -0.6, minY: -3.6, width: 8.2, height: 4.2 }),
 });
 
 /** Footprint box for a discrete ref (positioning + ghost sizing). */
@@ -191,6 +199,208 @@ export function buildSpanSvg(ref, dx, dy, params = {}) {
   return svg;
 }
 
+/** Points for a hexagonal 7-seg HORIZONTAL bar centred at (cx, cy). */
+function hSegPoints(cx, cy, len, t) {
+  const h = t / 2;
+  const x0 = cx - len / 2;
+  const x1 = cx + len / 2;
+  return `${x0},${cy} ${x0 + h},${cy - h} ${x1 - h},${cy - h} ${x1},${cy} ${x1 - h},${cy + h} ${x0 + h},${cy + h}`;
+}
+
+/** Points for a hexagonal 7-seg VERTICAL bar centred at (cx, cy). */
+function vSegPoints(cx, cy, len, t) {
+  const h = t / 2;
+  const y0 = cy - len / 2;
+  const y1 = cy + len / 2;
+  return `${cx},${y0} ${cx - h},${y0 + h} ${cx - h},${y1 - h} ${cx},${y1} ${cx + h},${y1 - h} ${cx + h},${y0 + h}`;
+}
+
+/** Nine short pin legs from the block's bottom edge down to holes 0…8. */
+function appendDisplayLegs(svg, edgeY) {
+  for (let i = 0; i <= 8; i++) {
+    svg.append(
+      svgEl("rect", {
+        class: "part-led-leg",
+        x: i - 0.1,
+        y: edgeY,
+        width: 0.2,
+        height: -edgeY,
+      }),
+    );
+  }
+}
+
+/**
+ * The single-block 8-segment digit (7 bars a–g + decimal point), common
+ * cathode. Each lit-able element carries `data-seg` so the view can light it;
+ * the whole block takes its colour from an inherited --wire-color.
+ */
+function buildDigitDisplay(svg, color) {
+  svg.style.setProperty("--wire-color", `var(--color-wire-${color})`);
+  const bodyY = -7.4;
+  const edgeY = -0.6;
+  svg.append(
+    svgEl("rect", {
+      class: "part-display-body",
+      x: -0.45,
+      y: bodyY,
+      width: 8.9,
+      height: edgeY - bodyY,
+      rx: 0.5,
+    }),
+  );
+  appendDisplayLegs(svg, edgeY);
+
+  const t = 0.5;
+  const cx = 4;
+  const hw = 1.4; // vertical bars sit ±hw off centre
+  const yT = -6.5;
+  const yM = -4.05;
+  const yB = -1.6;
+  const yUp = (yT + yM) / 2; // upper verticals (f, b)
+  const yDn = (yM + yB) / 2; // lower verticals (e, c)
+  const lh = 2.4;
+  const lv = 2.1;
+  const bars = [
+    ["a", hSegPoints(cx, yT, lh, t)],
+    ["b", vSegPoints(cx + hw, yUp, lv, t)],
+    ["c", vSegPoints(cx + hw, yDn, lv, t)],
+    ["d", hSegPoints(cx, yB, lh, t)],
+    ["e", vSegPoints(cx - hw, yDn, lv, t)],
+    ["f", vSegPoints(cx - hw, yUp, lv, t)],
+    ["g", hSegPoints(cx, yM, lh, t)],
+  ];
+  for (const [id, points] of bars) {
+    svg.append(svgEl("polygon", { class: "part-seg", "data-seg": id, points }));
+  }
+  svg.append(
+    svgEl("circle", {
+      class: "part-seg",
+      "data-seg": "dp",
+      cx: cx + hw + 0.9,
+      cy: yB,
+      r: 0.32,
+    }),
+  );
+  svg.append(buildBurnOverlay(cx, (yT + yB) / 2));
+  // Body-only hit target: the block drags, the holes underneath stay clickable.
+  svg.append(
+    svgEl("rect", {
+      class: "part-display-hit",
+      x: -0.45,
+      y: bodyY,
+      width: 8.9,
+      height: edgeY - bodyY,
+    }),
+  );
+}
+
+/** The 8-segment LED bar graph (eight bars over holes 0…7), common cathode. */
+function buildBarDisplay(svg, color) {
+  svg.style.setProperty("--wire-color", `var(--color-wire-${color})`);
+  const bodyY = -4.4;
+  const edgeY = -0.6;
+  svg.append(
+    svgEl("rect", {
+      class: "part-display-body",
+      x: -0.45,
+      y: bodyY,
+      width: 8.9,
+      height: edgeY - bodyY,
+      rx: 0.35,
+    }),
+  );
+  appendDisplayLegs(svg, edgeY);
+  for (let i = 0; i < 8; i++) {
+    svg.append(
+      svgEl("rect", {
+        class: "part-seg",
+        "data-seg": `s${i + 1}`,
+        x: i - 0.28,
+        y: -4.0,
+        width: 0.56,
+        height: 3.0,
+        rx: 0.14,
+      }),
+    );
+  }
+  svg.append(buildBurnOverlay(4, -2.4, 0.7));
+  svg.append(
+    svgEl("rect", {
+      class: "part-display-hit",
+      x: -0.45,
+      y: bodyY,
+      width: 8.9,
+      height: edgeY - bodyY,
+    }),
+  );
+}
+
+/**
+ * The isolated 8-segment LED bar array (bar8iso): a 16-pin DIP straddling the
+ * trench, eight INDEPENDENT bars each with its own anode (row e, local y 0) and
+ * cathode (row f, local y -3, three pitches up). The body is a chip-like slab
+ * over the trench with the eight bars drawn on it; legs reach both hole rows.
+ */
+function buildBarArrayDisplay(svg, color) {
+  svg.style.setProperty("--wire-color", `var(--color-wire-${color})`);
+  const bodyTop = -2.55;
+  const bodyBottom = -0.45;
+  // Legs: down from the slab to each row-e hole, up from each row-f hole (y=-3).
+  for (let c = 0; c <= 7; c++) {
+    svg.append(
+      svgEl("rect", {
+        class: "part-led-leg",
+        x: c - 0.14,
+        y: bodyBottom - 0.05,
+        width: 0.28,
+        height: 0.6,
+      }),
+      svgEl("rect", {
+        class: "part-led-leg",
+        x: c - 0.14,
+        y: -3.1,
+        width: 0.28,
+        height: bodyTop + 3.1,
+      }),
+    );
+  }
+  svg.append(
+    svgEl("rect", {
+      class: "part-display-body",
+      x: -0.5,
+      y: bodyTop,
+      width: 8,
+      height: bodyBottom - bodyTop,
+      rx: 0.3,
+    }),
+  );
+  // Eight vertical bars, one per column: bar s(c+1) over the anode at column c.
+  for (let c = 0; c <= 7; c++) {
+    svg.append(
+      svgEl("rect", {
+        class: "part-seg",
+        "data-seg": `s${c + 1}`,
+        x: c - 0.28,
+        y: bodyTop + 0.25,
+        width: 0.56,
+        height: bodyBottom - bodyTop - 0.5,
+        rx: 0.14,
+      }),
+    );
+  }
+  svg.append(buildBurnOverlay(3.5, (bodyTop + bodyBottom) / 2, 0.9));
+  svg.append(
+    svgEl("rect", {
+      class: "part-display-hit",
+      x: -0.5,
+      y: bodyTop,
+      width: 8,
+      height: bodyBottom - bodyTop,
+    }),
+  );
+}
+
 /**
  * Build a discrete part's SVG from its catalog def + params. Pure DOM
  * construction (unit-testable under jsdom).
@@ -290,6 +500,12 @@ export function buildDiscreteSvg(ref, params = {}) {
         }),
       ),
     );
+  } else if (ref === "seg8") {
+    buildDigitDisplay(svg, normalized.color);
+  } else if (ref === "bar8") {
+    buildBarDisplay(svg, normalized.color);
+  } else if (ref === "bar8iso") {
+    buildBarArrayDisplay(svg, normalized.color);
   } else {
     // LED dome over the two holes; the flat chord marks the CATHODE side
     // (right by default — pin 2; params.flip mirrors it to the left).
@@ -467,6 +683,20 @@ export class DiscreteView {
   /** Burnt out — powered with no series resistor: red X + rising smoke. */
   setBurnt(on) {
     this.#el.classList.toggle("part-discrete--burnt", on);
+  }
+
+  /** Light one segment of a multi-segment display (anode-H / cathode-L). */
+  setSegmentLit(segId, on) {
+    this.#el
+      .querySelector(`[data-seg="${segId}"]`)
+      ?.classList.toggle("part-seg--lit", on);
+  }
+
+  /** Mark one segment over-driven (conducting with no series resistor). */
+  setSegmentBurnt(segId, on) {
+    this.#el
+      .querySelector(`[data-seg="${segId}"]`)
+      ?.classList.toggle("part-seg--burnt", on);
   }
 
   setSelected(on) {

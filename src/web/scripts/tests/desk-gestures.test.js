@@ -418,3 +418,35 @@ test("placement: arming a part and clicking seats it on the board", () => {
   assert.equal(doc.components[0].ref, "7400");
   assert.equal(doc.components[0].kind, "chip");
 });
+
+// ── Wire tool (click-click) ─────────────────────────────────────────────────
+
+test("wire tool: the colour STAYS put across a chain of wires", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { viewport, controller } = makeDesk(doc, world);
+  controller.addBoardAt("pins-full", 0, 0);
+
+  controller.armWireTool();
+  const color = controller.wireColor;
+  // Two wires, anchor-then-commit each; the tool stays armed for chaining.
+  placeClick(viewport, world, { x: 1, y: 12 }); // anchor bb1.a1
+  placeClick(viewport, world, { x: 5, y: 12 }); // commit  bb1.a1 → a5
+  placeClick(viewport, world, { x: 1, y: 11 }); // anchor bb1.b1
+  placeClick(viewport, world, { x: 5, y: 11 }); // commit  bb1.b1 → b5
+
+  const wires = doc.wires;
+  assert.equal(wires.length, 2);
+  assert.equal(wires[0].color, color);
+  assert.equal(
+    wires[1].color,
+    color,
+    "the second wire kept the first's colour",
+  );
+  assert.equal(
+    controller.wireColor,
+    color,
+    "and the toolbar colour is unchanged",
+  );
+});

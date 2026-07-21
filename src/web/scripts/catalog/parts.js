@@ -108,7 +108,7 @@ export const PART_DEFS = Object.freeze(
         "Light-emitting diode (idealized — no series resistor required). " +
         "Anode at the anchor hole; press F while placing to flip polarity, " +
         "R to stand it up and pick two free ends (rail or column).",
-      group: "Parts",
+      group: "Displays",
       // Legs sit in ADJACENT holes — an LED needs no gap between its pins.
       footprint: Object.freeze({ offsets: Object.freeze([0, 1]) }),
       // Rotatable to the two-free-ends form (see the resistor): either leg can
@@ -116,6 +116,8 @@ export const PART_DEFS = Object.freeze(
       rotatable: true,
       // One hole apart is fine — the legs only have to be in different holes.
       minSpan: 1,
+      // The palette pops a colour swatch on pick for any def with `colors`.
+      colors: LED_COLORS,
       pins: [
         { n: 1, name: "A", role: "anode" },
         { n: 2, name: "K", role: "cathode" },
@@ -141,6 +143,134 @@ export const PART_DEFS = Object.freeze(
         return params?.flip
           ? { anodePin: 2, cathodePin: 1 }
           : { anodePin: 1, cathodePin: 2 };
+      },
+    },
+    {
+      id: "seg8",
+      kind: "discrete",
+      title: "8-segment digit",
+      blurb:
+        "Single-block 7-segment numeric display plus decimal point (8 lit " +
+        "segments), common cathode. Drive each segment anode (a–g, dp) HIGH " +
+        "to light it; pin 9 (K) is the shared cathode — tie it to ground. " +
+        "Comes in red / green / blue / yellow.",
+      group: "Displays",
+      // Nine holes along one grid row: eight segment anodes then the common
+      // cathode. Segments are idealized LEDs (no series resistor required).
+      footprint: Object.freeze({
+        offsets: Object.freeze([0, 1, 2, 3, 4, 5, 6, 7, 8]),
+      }),
+      pins: [
+        { n: 1, name: "a", role: "anode" },
+        { n: 2, name: "b", role: "anode" },
+        { n: 3, name: "c", role: "anode" },
+        { n: 4, name: "d", role: "anode" },
+        { n: 5, name: "e", role: "anode" },
+        { n: 6, name: "f", role: "anode" },
+        { n: 7, name: "g", role: "anode" },
+        { n: 8, name: "dp", role: "anode" },
+        { n: 9, name: "K", role: "cathode" },
+      ],
+      // Each segment is an LED between its anode pin and the shared cathode
+      // (pin 9). Pure data — the sim-overlay lights each with the LED rule.
+      segments: Object.freeze(
+        ["a", "b", "c", "d", "e", "f", "g", "dp"].map((id, i) =>
+          Object.freeze({ id, anodePin: i + 1, cathodePin: 9 }),
+        ),
+      ),
+      colors: LED_COLORS,
+      normalizeParams(raw) {
+        return { color: LED_COLORS.includes(raw?.color) ? raw.color : "red" };
+      },
+      internalBridges() {
+        return []; // segments are diodes — devices, not bridges (Feature 90)
+      },
+    },
+    {
+      id: "bar8",
+      kind: "discrete",
+      title: "8-segment LED bar",
+      blurb:
+        "Eight-segment LED bar graph, common cathode. Drive each bar's anode " +
+        "(1–8) HIGH to light it; pin 9 (K) is the shared cathode — tie it to " +
+        "ground. Comes in red / green / blue / yellow.",
+      group: "Displays",
+      // Nine holes along one grid row: eight bar anodes then the common cathode.
+      footprint: Object.freeze({
+        offsets: Object.freeze([0, 1, 2, 3, 4, 5, 6, 7, 8]),
+      }),
+      pins: [
+        { n: 1, name: "1", role: "anode" },
+        { n: 2, name: "2", role: "anode" },
+        { n: 3, name: "3", role: "anode" },
+        { n: 4, name: "4", role: "anode" },
+        { n: 5, name: "5", role: "anode" },
+        { n: 6, name: "6", role: "anode" },
+        { n: 7, name: "7", role: "anode" },
+        { n: 8, name: "8", role: "anode" },
+        { n: 9, name: "K", role: "cathode" },
+      ],
+      segments: Object.freeze(
+        ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8"].map((id, i) =>
+          Object.freeze({ id, anodePin: i + 1, cathodePin: 9 }),
+        ),
+      ),
+      colors: LED_COLORS,
+      normalizeParams(raw) {
+        return { color: LED_COLORS.includes(raw?.color) ? raw.color : "red" };
+      },
+      internalBridges() {
+        return []; // each bar is a diode — a device, not a bridge (Feature 90)
+      },
+    },
+    {
+      id: "bar8iso",
+      kind: "discrete",
+      title: "8-segment LED bar (isolated)",
+      blurb:
+        "Eight-segment LED bar graph in a 16-pin DIP package — each bar is an " +
+        "INDEPENDENT LED with its own anode and cathode (no shared pin). It " +
+        "straddles the trench like a chip: anodes A1–A8 in row e, cathodes " +
+        "K1–K8 in row f. Drive a bar's anode HIGH and pull its cathode LOW to " +
+        "light it. Comes in red / green / blue / yellow.",
+      group: "Displays",
+      // A 16-pin DIP straddling the trench: the anode/cathode of each bar face
+      // each other across a column, so it seats and derives pins with the same
+      // footprint machinery every DIP chip uses (footprints.js). Not a chip,
+      // though — electrically it's eight LEDs, lit by the sim-overlay.
+      package: "DIP-16",
+      // Anodes A1–A8 are pins 1–8 (row e, left→right); cathodes K8–K1 are pins
+      // 9–16 (row f, right→left), so bar i's cathode (pin 17-i) sits directly
+      // across the trench from its anode (pin i).
+      pins: [
+        ...Array.from({ length: 8 }, (_, i) => ({
+          n: i + 1,
+          name: `A${i + 1}`,
+          role: "anode",
+        })),
+        ...Array.from({ length: 8 }, (_, i) => ({
+          n: i + 9,
+          name: `K${8 - i}`,
+          role: "cathode",
+        })),
+      ],
+      // Each bar is an LED between its own anode pin and its own cathode pin —
+      // pure data, lit by the sim-overlay with the same rule as a single LED.
+      segments: Object.freeze(
+        Array.from({ length: 8 }, (_, i) =>
+          Object.freeze({
+            id: `s${i + 1}`,
+            anodePin: i + 1,
+            cathodePin: 16 - i,
+          }),
+        ),
+      ),
+      colors: LED_COLORS,
+      normalizeParams(raw) {
+        return { color: LED_COLORS.includes(raw?.color) ? raw.color : "red" };
+      },
+      internalBridges() {
+        return []; // each bar is a diode — a device, not a bridge (Feature 90)
       },
     },
     {

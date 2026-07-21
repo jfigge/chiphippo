@@ -21,13 +21,17 @@ import assert from "node:assert/strict";
 
 import { LED_COLORS, PART_DEFS, PSU_VOLTS } from "../catalog/parts.js";
 import { partDef, chipDef, PALETTE_DEFS } from "../catalog/index.js";
+import { packageSpec } from "../model/footprints.js";
 
 test("the part catalog carries the Feature 60 inventory", () => {
   assert.deepEqual(PART_DEFS.map((d) => d.id).sort(), [
+    "bar8",
+    "bar8iso",
     "clock",
     "led",
     "psu",
     "resistor",
+    "seg8",
     "sw-push",
     "sw-slide",
   ]);
@@ -36,17 +40,24 @@ test("the part catalog carries the Feature 60 inventory", () => {
   assert.ok(partDef("7400"));
   assert.ok(partDef("clock"));
   assert.equal(chipDef("sw-slide"), null);
-  assert.equal(PALETTE_DEFS.length, 32); // 26 chips + 6 parts
+  assert.equal(PALETTE_DEFS.length, 35); // 26 chips + 9 parts
 });
 
 for (const def of PART_DEFS.filter((d) => d.kind === "discrete")) {
   test(`part def ${def.id} is internally consistent`, () => {
     assert.ok(def.title.length > 0 && def.blurb.length > 0 && def.group);
-    // One footprint offset per pin, strictly ascending from 0.
-    assert.equal(def.footprint.offsets.length, def.pins.length);
-    assert.equal(def.footprint.offsets[0], 0);
-    for (let i = 1; i < def.footprint.offsets.length; i++) {
-      assert.ok(def.footprint.offsets[i] > def.footprint.offsets[i - 1]);
+    // Geometry: a discrete either lies along ONE grid row (footprint offsets,
+    // one per pin, strictly ascending from 0) or straddles the trench in a DIP
+    // package (the isolated bar array) — never both.
+    if (def.package) {
+      assert.ok(!def.footprint, "a DIP-footprint discrete carries no offsets");
+      assert.equal(packageSpec(def.package).pins, def.pins.length);
+    } else {
+      assert.equal(def.footprint.offsets.length, def.pins.length);
+      assert.equal(def.footprint.offsets[0], 0);
+      for (let i = 1; i < def.footprint.offsets.length; i++) {
+        assert.ok(def.footprint.offsets[i] > def.footprint.offsets[i - 1]);
+      }
     }
     // Pin numbers unique and 1-based.
     assert.deepEqual(
@@ -143,6 +154,70 @@ test("led: color/flip coercion and polarity contract", () => {
   });
   assert.deepEqual(def.internalBridges({}), []); // a diode never bridges
   assert.deepEqual(LED_COLORS, ["red", "green", "yellow", "blue"]);
+});
+
+test("seg8 / bar8: common-cathode displays, colour + segment contract", () => {
+  for (const id of ["seg8", "bar8"]) {
+    const def = partDef(id);
+    // Nine holes on one row: eight anodes then the shared cathode.
+    assert.deepEqual(def.footprint.offsets, [0, 1, 2, 3, 4, 5, 6, 7, 8]);
+    assert.equal(def.pins.length, 9);
+    assert.equal(def.pins[8].role, "cathode"); // pin 9 = common cathode K
+    for (let i = 0; i < 8; i++) {
+      assert.equal(def.pins[i].role, "anode", `${id} pin ${i + 1}`);
+    }
+    // Colour coerces to LED_COLORS (default red); junk → red.
+    assert.deepEqual(def.normalizeParams({}), { color: "red" });
+    assert.deepEqual(def.normalizeParams({ color: "blue" }), { color: "blue" });
+    assert.deepEqual(def.normalizeParams({ color: "mauve" }), { color: "red" });
+    assert.deepEqual(def.colors, LED_COLORS);
+    // Eight segments, each an LED to the shared cathode (pin 9); every anode
+    // pin referenced exactly once and every referenced pin exists.
+    assert.equal(def.segments.length, 8);
+    assert.deepEqual(
+      def.segments.map((s) => s.anodePin).sort((a, b) => a - b),
+      [1, 2, 3, 4, 5, 6, 7, 8],
+    );
+    const pinNumbers = new Set(def.pins.map((p) => p.n));
+    for (const seg of def.segments) {
+      assert.equal(seg.cathodePin, 9, `${id} ${seg.id} shares the cathode`);
+      assert.ok(pinNumbers.has(seg.anodePin) && pinNumbers.has(seg.cathodePin));
+    }
+    // A display's diodes never hard-bridge (like the LED).
+    assert.deepEqual(def.internalBridges(def.normalizeParams({})), []);
+  }
+});
+
+test("bar8iso: 16-pin DIP, eight isolated bars (own anode + cathode)", () => {
+  const def = partDef("bar8iso");
+  assert.equal(def.kind, "discrete"); // electrically LEDs, not a chip…
+  assert.equal(def.package, "DIP-16"); // …but seats across the trench.
+  assert.ok(!def.footprint, "seats by DIP package, not a row footprint");
+  assert.equal(def.pins.length, 16);
+  // Pins 1–8 are anodes (row e), 9–16 cathodes (row f).
+  for (let i = 0; i < 8; i++) assert.equal(def.pins[i].role, "anode");
+  for (let i = 8; i < 16; i++) assert.equal(def.pins[i].role, "cathode");
+  // Eight bars, each an LED between its OWN anode and cathode — no shared pin.
+  // Bar i sits at anode pin i, cathode pin 17-i (directly across the trench).
+  assert.equal(def.segments.length, 8);
+  const anodes = new Set();
+  const cathodes = new Set();
+  for (const seg of def.segments) {
+    assert.equal(seg.anodePin + seg.cathodePin, 17, `${seg.id} across trench`);
+    assert.notEqual(seg.anodePin, seg.cathodePin);
+    anodes.add(seg.anodePin);
+    cathodes.add(seg.cathodePin);
+  }
+  assert.equal(anodes.size, 8, "every bar has a distinct anode");
+  assert.equal(cathodes.size, 8, "every bar has a distinct cathode");
+  // No pin is shared between anode and cathode duty (the point of "isolated").
+  for (const a of anodes) assert.ok(!cathodes.has(a));
+  // Colour coercion like the other displays; diodes never hard-bridge.
+  assert.deepEqual(def.normalizeParams({}), { color: "red" });
+  assert.deepEqual(def.normalizeParams({ color: "green" }), { color: "green" });
+  assert.deepEqual(def.normalizeParams({ color: "mauve" }), { color: "red" });
+  assert.deepEqual(def.colors, LED_COLORS);
+  assert.deepEqual(def.internalBridges(def.normalizeParams({})), []);
 });
 
 test("resistor: weakly bridges 1↔2, never a hard bridge; ohms coerce", () => {

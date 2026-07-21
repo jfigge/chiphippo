@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 
-// desk-hud.js — dev-only debug overlay showing the camera (cx, cy, zoom) and
-// the world coordinate under the cursor. Mounted only when the app runs under
-// `make debug` / --dev (window.chiphippo.isDev); never in production.
+// desk-hud.js — a debug overlay showing the camera (cx, cy, zoom) and the world
+// coordinate under the cursor. Its visibility is driven by the "Show desk hub"
+// setting (off by default); the Settings dialog toggles it live.
 
 export class DeskHud {
   #el;
@@ -48,6 +48,11 @@ export class DeskHud {
   update(camera) {
     this.#camera = camera;
     this.#render();
+  }
+
+  /** Show or hide the overlay (driven by the "Show desk hub" setting). */
+  setVisible(on) {
+    this.#el.hidden = !on;
   }
 
   #render() {

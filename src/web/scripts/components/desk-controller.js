@@ -475,7 +475,10 @@ export class DeskController {
       err.code = "INVALID_REF";
       throw err;
     }
-    if (def.package) {
+    // Only true chips render + flip as a slab; a display that happens to seat in
+    // a DIP footprint (the isolated bar array) still places as a discrete — its
+    // trench-straddling geometry comes from `def.package` in seating/occupancy.
+    if (def.kind === "chip") {
       this.armChipPlacement(ref);
       return;
     }
@@ -708,8 +711,9 @@ export class DeskController {
       return true;
     }
     // Mid-drag of a chip: flip the slab in hand. Its footprint maps onto itself,
-    // so the seat stays legal — the orientation rides along to the drop.
-    if (m?.kind === "drag-part" && partDef(m.ref)?.package) {
+    // so the seat stays legal — the orientation rides along to the drop. Only
+    // chips flip; a DIP-footprint display (bar array) is fixed anode-side-down.
+    if (m?.kind === "drag-part" && partDef(m.ref)?.kind === "chip") {
       m.flip = !m.flip;
       if (!m.active) {
         m.active = true; // a flip alone still commits on release
@@ -753,7 +757,7 @@ export class DeskController {
     if (this.#selected?.kind === "part") {
       const comp = this.#doc.getComponent(this.#selected.id);
       const def = partDef(comp?.ref);
-      if (def?.rotatable || def?.package) {
+      if (def?.rotatable || def?.kind === "chip") {
         this.rotateComponent(this.#selected.id);
         return true;
       }

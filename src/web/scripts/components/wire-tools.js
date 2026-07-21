@@ -185,7 +185,8 @@ export class WireTools {
       to: m.hover.address,
       color: this.color,
     });
-    this.#colorIndex = (this.#colorIndex + 1) % WIRE_COLORS.length;
+    // The colour STAYS put between wires — a chain of jumpers keeps the colour
+    // you picked; change it deliberately via the toolbar swatch.
     this.#clearPending(); // re-arm fresh — chain-friendly
     this.#host.emitDocChanged();
     this.#notifyState();

@@ -232,7 +232,26 @@ Electron main process (src/app/main.js)
   query the engine. Sequential state and clock phases are **run-volatile** (reset on
   Run, never serialized).
 - **Popups/menus**: `popup-manager.js` (ported from Port Hippo) is the only
-  app-wide dialog/menu seam; build DOM with `dom.js` `el()`.
+  app-wide dialog/menu seam; build DOM with `dom.js` `el()`. `PopupManager.close()`
+  fires a one-way `chiphippo:popup-closed` event so stateful dialogs can reset
+  their open-guard however they were dismissed.
+- **Application menu + dialogs**: `main.js buildMenu()` installs the native app
+  menu; its **About** / **Settings…** items are one-way pushes
+  (`menu:show-about` / `menu:open-settings` via `webContents.send`), which the
+  preload re-dispatches as `chiphippo:show-about` / `chiphippo:open-settings`
+  (the documented main→renderer broadcast pattern — the parity test ignores
+  push channels, only `ipcMain.handle`↔`ipcRenderer.invoke`). `app.js` opens the
+  matching PopupManager modal: `components/about-dialog.js` (name/subtitle/desc
+  + version info from `app:info:get`) and `components/settings-dialog.js`. The
+  **Settings dialog is dumb**: it broadcasts a `chiphippo:settings-changed`
+  patch and `app.js`'s `applySettings` both persists it (`settings.set`) and
+  applies it live. Current settings keys it drives: **`showDeskHub`** (off by
+  default — toggles the `DeskHud` overlay via `setVisible`) and
+  **`selectionColor`** (`#rrggbb` or null → sets the `--color-selection` custom
+  property that `.board-outline-path` strokes with, falling back to
+  `--color-accent`). Window bounds and the desk camera (incl. **zoom**) are
+  already persisted in `settings.json` (`windowBounds` via `window-state.js`;
+  `viewport` via the renderer's debounced save).
 - **Pin-assignments window** (Feature 100): double-clicking ANY part (every
   part view fires `dblclick` → `DeskController.#onOpenPinout(ref, rows)`)
   invokes `pinout:open`, and main opens a **separate floating OS window**

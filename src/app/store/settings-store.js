@@ -46,6 +46,15 @@ const DEFAULTS = Object.freeze({
   // global preference: the window's right-click menu toggles it, every open
   // pinout window follows, and a future settings dialog binds to it.
   pinoutFloat: true,
+
+  // ── Settings dialog ────────────────────────────────────────────────────────
+  // Whether the desk hub (the camera/cursor readout overlay) is shown. Off by
+  // default — the Settings dialog's "Show desk hub" toggle drives it.
+  showDeskHub: false,
+
+  // The selection-border colour (`#rrggbb`), or null to use the theme accent.
+  // Applied by the renderer as the `--color-selection` custom property.
+  selectionColor: null,
 });
 
 class SettingsStore {

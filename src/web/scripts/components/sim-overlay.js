@@ -87,6 +87,7 @@ export class SimOverlay {
     }
 
     this.#updateLeds();
+    this.#updateDisplays();
   }
 
   /** The level of a net by id, or "Z" when it isn't driven (running only). */
@@ -110,6 +111,28 @@ export class SimOverlay {
     return netId ? (this.#strong.get(netId) ?? null) : null;
   }
 
+  /**
+   * The lit / over-driven state of ONE LED junction between two point
+   * addresses — shared by single LEDs and every segment of a display.
+   *
+   * A junction conducts when its anode net is H and its cathode net is L. With
+   * no series resistor it's "unlimited": conducting between a STRONGLY driven
+   * supply (rail or chip output) and a strongly grounded net has nothing
+   * limiting it. Anything fed through a resistor is only weakly pulled, so its
+   * strong level is not H/L — the safe case. A floating leg (null address)
+   * conducts nothing, exactly as a real one does when you pull its rail away.
+   */
+  #junctionState(anodeAt, cathodeAt) {
+    if (!anodeAt || !cathodeAt) return { conducting: false, unlimited: false };
+    const conducting =
+      this.#levelAt(anodeAt) === H && this.#levelAt(cathodeAt) === L;
+    const unlimited =
+      conducting &&
+      this.#strongLevelAt(anodeAt) === H &&
+      this.#strongLevelAt(cathodeAt) === L;
+    return { conducting, unlimited };
+  }
+
   /** An LED lights when its anode net is H and its cathode net is L. */
   #updateLeds() {
     const def = partDef("led");
@@ -126,27 +149,48 @@ export class SimOverlay {
       const pins = partPinAddresses(this.#doc, comp);
       if (!pins) continue; // a rotated LED with an unresolved far end
       const at = (pin) => pins.find((p) => p.pin === pin)?.address;
-      const anodeAt = at(anodePin);
-      const cathodeAt = at(cathodePin);
-      // A floating leg conducts nothing — the LED stays dark but keeps its
-      // place, exactly as a real one does when you pull its rail away.
-      if (!anodeAt || !cathodeAt) {
-        view.setLit(false);
-        view.setBurnt?.(false);
-        continue;
-      }
-      const conducting =
-        this.#levelAt(anodeAt) === H && this.#levelAt(cathodeAt) === L;
-      // No series resistor: an LED conducting between a STRONGLY driven supply
-      // (rail or chip output) and a strongly grounded net has nothing limiting
-      // it. Anything fed through a resistor is only weakly pulled, so its
-      // strong level is not H/L — that's the safe case.
-      const unlimited =
-        conducting &&
-        this.#strongLevelAt(anodeAt) === H &&
-        this.#strongLevelAt(cathodeAt) === L;
+      const { conducting, unlimited } = this.#junctionState(
+        at(anodePin),
+        at(cathodePin),
+      );
       view.setBurnt?.(unlimited);
       view.setLit(conducting && !unlimited);
+    }
+  }
+
+  /**
+   * Multi-segment displays (seg8 / bar8): each segment is an LED between its
+   * anode pin and the shared cathode. Light every segment with the same rule
+   * the single LED uses; a segment with no current limit burns (per segment),
+   * and the whole block gets the burn cue if any does.
+   */
+  #updateDisplays() {
+    for (const comp of this.#doc.components) {
+      const def = partDef(comp.ref);
+      if (!def?.segments) continue;
+      const view = this.#partViews.get(comp.id);
+      if (!view?.setSegmentLit) continue;
+      if (!this.#running) {
+        view.setBurnt?.(false);
+        for (const seg of def.segments) {
+          view.setSegmentLit(seg.id, false);
+          view.setSegmentBurnt?.(seg.id, false);
+        }
+        continue;
+      }
+      const pins = partPinAddresses(this.#doc, comp);
+      const at = (pin) => pins?.find((p) => p.pin === pin)?.address;
+      let anyBurnt = false;
+      for (const seg of def.segments) {
+        const { conducting, unlimited } = this.#junctionState(
+          at(seg.anodePin),
+          at(seg.cathodePin),
+        );
+        view.setSegmentLit(seg.id, conducting && !unlimited);
+        view.setSegmentBurnt?.(seg.id, unlimited);
+        if (unlimited) anyBurnt = true;
+      }
+      view.setBurnt?.(anyBurnt);
     }
   }
 }

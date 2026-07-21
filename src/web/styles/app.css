@@ -42,6 +42,26 @@
   gap: var(--space-2);
 }
 
+/* The icon is a bare button (opens the About dialog) — no default chrome. */
+.app-header-icon-btn {
+  display: flex;
+  padding: 2px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  cursor: pointer;
+  color: inherit;
+}
+
+.app-header-icon-btn:hover {
+  background: var(--color-surface-1);
+}
+
+.app-header-icon-btn:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
 .app-header-icon {
   display: block;
   user-select: none;
@@ -325,15 +345,41 @@
   padding: var(--space-2);
 }
 
-.app-header-meta {
+/* Right-aligned header action panel (the system/settings icon). */
+.header-icon-panel {
   display: flex;
   align-items: center;
   gap: var(--space-2);
 }
 
-.app-header-version {
-  color: var(--color-muted);
-  font-size: 11px;
+/* Bare icon buttons (ported from Rest Hippo). */
+.icon-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-subtext);
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.icon-btn:hover {
+  background-color: var(--color-surface-1);
+  color: var(--color-text);
+}
+
+.icon-btn:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.header-icon-btn {
+  width: 28px;
+  height: 28px;
 }
 
 /* ── Desk viewport (Feature 10) ──────────────────────────────────────────── */
@@ -479,7 +525,9 @@
 
 .board-outline-path {
   fill: none;
-  stroke: var(--color-accent);
+  /* --color-selection is the "Selection border colour" setting; it falls back
+     to the theme accent until the Settings dialog overrides it on :root. */
+  stroke: var(--color-selection, var(--color-accent));
   stroke-width: 2;
 }
 
@@ -560,7 +608,9 @@
 }
 
 .part--selected {
-  outline: 2px solid var(--color-accent);
+  /* Uses the "Selection border colour" setting (--color-selection), the same
+     token the board-outline highlighter strokes with; falls back to accent. */
+  outline: 2px solid var(--color-selection, var(--color-accent));
   outline-offset: 1px;
   border-radius: 4px;
 }
@@ -725,6 +775,53 @@
 /* A burnt LED never glows, whatever the levels say. */
 .part-discrete--burnt .part-led-dome {
   fill: var(--color-part-inset);
+}
+
+/* ── Segment displays (seg8 / bar8): a dark package block standing over a row
+   of holes, its LED segments lit individually. Segments share the wire-color
+   tokens (house rule), inherited from --wire-color set on the SVG root. ────── */
+.part-display-body {
+  fill: var(--color-chip-body);
+  stroke: var(--color-part-inset);
+  stroke-width: 0.08;
+}
+
+/* Unlit segment: a dim tint of the display's colour until the sim drives it. */
+.part-seg {
+  fill: var(--wire-color, var(--color-wire-red));
+  fill-opacity: 0.14;
+  stroke: var(--color-part-inset);
+  stroke-width: 0.04;
+}
+
+/* Lit segment (Feature 90 rule): full colour + a glow halo, exactly as the lit
+   LED dome. */
+.part-seg--lit {
+  fill-opacity: 1;
+  filter: drop-shadow(0 0 0.4px var(--wire-color))
+    drop-shadow(0 0 0.7px var(--wire-color));
+}
+
+/* Over-driven segment — conducting with no series resistor: dark, no glow,
+   the same fate a burnt LED dome gets (wins over --lit). */
+.part-seg--burnt {
+  fill: var(--color-part-inset);
+  fill-opacity: 1;
+  filter: none;
+}
+
+/* The block covers a wide, mostly-empty box, so only its body takes the
+   pointer — every hole under the row stays clickable. A transparent hit rect
+   over the block reports the drag/select (same trick as .part-span-hit). */
+.part-discrete--seg8,
+.part-discrete--bar8,
+.part-discrete--bar8iso {
+  pointer-events: none;
+}
+
+.part-display-hit {
+  fill: transparent;
+  pointer-events: fill;
 }
 
 .part-warn-tri {
@@ -1141,6 +1238,11 @@
   user-select: none;
 }
 
+/* The "Show desk hub" setting toggles the `hidden` attribute (desk-hud.js). */
+.desk-hud[hidden] {
+  display: none;
+}
+
 /* ── Popup host, dialogs & menus (popup-manager.js, ported pattern) ─────── */
 /* A bare top-layer host: the native <dialog> centres its .popup card via the
    UA default margins; the menu variant instead pins a .popup-menu at screen
@@ -1228,6 +1330,306 @@
 .btn--danger {
   border-color: var(--color-danger);
   color: var(--color-danger);
+}
+
+/* ── About dialog (styled after Rest Hippo) ───────────────────────────────── */
+.about-dialog {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-6) var(--space-6) var(--space-6);
+  text-align: center;
+  min-width: 340px;
+  user-select: none;
+}
+
+.about-logo {
+  width: 120px;
+  height: 120px;
+  border-radius: 22px;
+  margin-bottom: var(--space-2);
+}
+
+.about-name-row {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.about-name {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--color-accent);
+  letter-spacing: -0.02em;
+}
+
+.about-info-btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  color: var(--color-accent);
+  border: 1px solid var(--color-accent);
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+
+.about-info-btn:hover,
+.about-info-btn[aria-expanded="true"] {
+  background: var(--color-accent);
+  color: var(--color-crust);
+}
+
+/* Version/build popover — floats under the name so it doesn't reflow the card. */
+.about-build {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 260px;
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-surface-0);
+  border: 1px solid var(--color-overlay);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-1);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  white-space: nowrap;
+  text-align: left;
+}
+
+.about-build[hidden] {
+  display: none;
+}
+
+.about-build-row {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--space-5);
+}
+
+.about-build-label {
+  color: var(--color-subtext);
+}
+
+.about-build-value {
+  color: var(--color-text);
+  font-weight: 500;
+}
+
+.about-subtitle {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-text);
+}
+
+.about-desc {
+  margin: 0;
+  font-size: 11px;
+  color: var(--color-subtext);
+}
+
+.about-credit {
+  margin: var(--space-1) 0 0;
+  font-size: 11px;
+  color: var(--color-muted);
+}
+
+.about-close {
+  margin-top: var(--space-4);
+  padding: var(--space-2) var(--space-6);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-crust);
+  background: var(--color-accent);
+  border: none;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: opacity 0.15s ease;
+}
+
+.about-close:hover {
+  opacity: 0.85;
+}
+
+/* ── Settings dialog (styled after Rest Hippo: master-detail card) ────────── */
+.settings-popup {
+  display: flex;
+  flex-direction: column;
+  width: 560px;
+  max-width: 90vw;
+  height: 440px;
+  max-height: 85vh;
+  overflow: hidden;
+  padding: 0;
+}
+
+/* Header: title + a close (×) button, over a ruled mantle bar. */
+.settings-popup .popup-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-mantle);
+  border-bottom: 1px solid var(--color-crust);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  flex-shrink: 0;
+}
+
+.settings-popup .popup-title {
+  flex: 1;
+}
+
+.popup-close {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-subtext);
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.popup-close:hover {
+  background-color: var(--color-surface-1);
+  color: var(--color-danger);
+}
+
+/* Master-detail body: left nav rail + right single-column panel. */
+.settings-popup-body {
+  display: flex;
+  flex: 1 1 auto;
+  padding: 0;
+  overflow: hidden;
+}
+
+.settings-nav {
+  flex: 0 0 148px;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3) var(--space-2);
+  background: var(--color-mantle);
+  border-right: 1px solid var(--color-crust);
+  overflow-y: auto;
+}
+
+.settings-nav-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: var(--space-2) var(--space-3);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-subtext);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.settings-nav-item:hover {
+  background: var(--color-surface-1);
+  color: var(--color-text);
+}
+
+.settings-nav-item--active {
+  background: var(--color-accent);
+  color: var(--color-crust);
+  font-weight: 600;
+}
+
+.settings-panels {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: var(--space-4) var(--space-5);
+}
+
+.settings-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-panel[hidden] {
+  display: none;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+  padding: var(--space-3) 0;
+}
+
+.settings-label {
+  flex: 1;
+  font-size: 13px;
+  color: var(--color-text);
+  cursor: default;
+}
+
+.settings-color {
+  width: 32px;
+  height: 24px;
+  flex-shrink: 0;
+  padding: 0;
+  border: 1px solid var(--color-overlay);
+  border-radius: var(--radius-sm);
+  background: none;
+  cursor: pointer;
+}
+
+/* Checkbox → pill-slider toggle (scoped to the settings toggle so it doesn't
+   restyle checkboxes elsewhere). Ported from Rest Hippo's universal rule. */
+.settings-toggle {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 28px;
+  height: 17px;
+  flex-shrink: 0;
+  border-radius: var(--radius-lg);
+  background-color: var(--color-overlay);
+  background-image: radial-gradient(circle 5.5px, #fff 100%, transparent 0);
+  background-size: 13px 13px;
+  background-repeat: no-repeat;
+  background-position: 1.5px center;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    background-position 0.15s ease;
+}
+
+.settings-toggle:checked {
+  background-color: var(--color-success);
+  background-position: 13.5px center;
+}
+
+.settings-toggle:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
 }
 
 /* Context/dropdown menu: full-viewport transparent host, positioned card. */

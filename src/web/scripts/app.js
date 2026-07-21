@@ -31,8 +31,10 @@ import { PalettePanel } from "./components/palette-panel.js";
 import { SimController, SPEEDS } from "./components/sim-controller.js";
 import { NotificationStack } from "./components/notification-stack.js";
 import { PopupManager } from "./popup-manager.js";
+import { AboutDialog } from "./components/about-dialog.js";
+import { SettingsDialog } from "./components/settings-dialog.js";
 import { DeskDoc, WIRE_COLORS } from "./model/desk-doc.js";
-import { LED_COLORS } from "./catalog/parts.js";
+import { partDef } from "./catalog/index.js";
 
 /** How long after the last camera change to persist the viewport. */
 const VIEWPORT_SAVE_DEBOUNCE_MS = 500;
@@ -42,6 +44,22 @@ const DOC_SAVE_DEBOUNCE_MS = 1000;
 
 /** Speed-selector labels (keyed by the SimController multiplier). */
 const SPEED_LABELS = { 0.25: "×¼", 1: "×1", 4: "×4" };
+
+/** The system (settings) gear icon for the top-right header action. */
+const GEAR_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" ' +
+  'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+  'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+  '<circle cx="12" cy="12" r="3"/>' +
+  '<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06' +
+  "-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A" +
+  "1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l" +
+  ".06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1" +
+  ".65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l" +
+  ".06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.6" +
+  "5 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-." +
+  "06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-." +
+  '09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
 
 function buildHeader() {
   const header = document.createElement("header");
@@ -60,6 +78,15 @@ function buildHeader() {
   icon.setAttribute("aria-hidden", "true");
   icon.draggable = false;
 
+  // The icon is a button that opens the About dialog (the app-name affordance).
+  const iconBtn = document.createElement("button");
+  iconBtn.className = "app-header-icon-btn";
+  iconBtn.type = "button";
+  iconBtn.title = "About Chip Hippo";
+  iconBtn.setAttribute("aria-label", "About Chip Hippo");
+  iconBtn.append(icon);
+  iconBtn.addEventListener("click", () => AboutDialog.open());
+
   const logo = document.createElement("span");
   logo.className = "app-logo";
   logo.textContent = "Chip Hippo";
@@ -68,22 +95,33 @@ function buildHeader() {
   subtitle.className = "app-subtitle";
   subtitle.textContent = "TTL Breadboard Designer";
 
-  brand.append(icon, logo, subtitle);
+  brand.append(iconBtn, logo, subtitle);
 
   // Empty toolbar slot — later stages mount desk tools (add board, …).
   const toolbar = document.createElement("div");
   toolbar.className = "app-header-toolbar";
   toolbar.id = "app-toolbar";
 
-  const meta = document.createElement("div");
-  meta.className = "app-header-meta";
+  // Right-aligned action panel: the system (settings) icon. Opening Settings
+  // goes through the same chiphippo:open-settings event the menu uses, so the
+  // dialog is seeded with the current settings in one place (app.js).
+  const actions = document.createElement("div");
+  actions.className = "header-icon-panel";
+  actions.setAttribute("role", "toolbar");
+  actions.setAttribute("aria-label", "Application actions");
 
-  const version = document.createElement("span");
-  version.className = "app-header-version";
-  version.id = "app-version";
-  meta.append(version);
+  const settingsBtn = document.createElement("button");
+  settingsBtn.className = "icon-btn header-icon-btn";
+  settingsBtn.type = "button";
+  settingsBtn.title = "Settings";
+  settingsBtn.setAttribute("aria-label", "Open settings");
+  settingsBtn.innerHTML = GEAR_SVG;
+  settingsBtn.addEventListener("click", () =>
+    window.dispatchEvent(new CustomEvent("chiphippo:open-settings")),
+  );
+  actions.append(settingsBtn);
 
-  header.append(brand, toolbar, meta);
+  header.append(brand, toolbar, actions);
   return header;
 }
 
@@ -207,18 +245,19 @@ async function init() {
   let hud = null;
   let controller = null;
 
-  // Parts palette (left panel; visibility persists in settings). An LED
-  // pick opens the color swatch popover first; everything else arms its
-  // placement ghost directly.
+  // Parts palette (left panel; visibility persists in settings). A part with a
+  // `colors` list (the LED and the segment displays) opens the color swatch
+  // popover first; everything else arms its placement ghost directly.
   const palette = new PalettePanel(main, {
     onPickChip: (ref, e) => {
-      if (ref === "led") {
+      const colors = partDef(ref)?.colors;
+      if (colors) {
         PopupManager.menu({
           x: e?.clientX ?? 0,
           y: e?.clientY ?? 0,
-          items: LED_COLORS.map((color) => ({
-            label: `LED color: ${color}`,
-            onSelect: () => controller?.armPartPlacement("led", { color }),
+          items: colors.map((color) => ({
+            label: `Color: ${color}`,
+            onSelect: () => controller?.armPartPlacement(ref, { color }),
           })),
         });
         return;
@@ -425,16 +464,39 @@ async function init() {
 
   bindShortcuts(deskView, controller, sim);
 
-  if (bridge.isDev) hud = new DeskHud(desk, deskView);
+  // The desk hub is always mounted but hidden until the "Show desk hub"
+  // setting turns it on (applySettings below sets the initial visibility).
+  hud = new DeskHud(desk, deskView);
 
-  // Prove the IPC bridge end-to-end: the version comes from the main
-  // process's package.json over window.chiphippo.getVersion().
-  try {
-    const version = await bridge.getVersion();
-    document.getElementById("app-version").textContent = `v${version}`;
-  } catch (err) {
-    console.error("[renderer] app:version failed:", err);
-  }
+  // ── Settings (About / Settings dialogs + live application) ────────────────
+  // The Settings dialog is deliberately dumb: it broadcasts a patch, and this
+  // is where the app persists it (settings.set) and applies it live. Keep the
+  // running settings so the dialog opens seeded with the current values.
+  let currentSettings = settings;
+  const applySettings = (s) => {
+    hud?.setVisible(s.showDeskHub === true);
+    const root = document.documentElement;
+    if (s.selectionColor) {
+      root.style.setProperty("--color-selection", s.selectionColor);
+    } else {
+      root.style.removeProperty("--color-selection");
+    }
+  };
+  applySettings(currentSettings);
+
+  window.addEventListener("chiphippo:settings-changed", (e) => {
+    currentSettings = { ...currentSettings, ...e.detail };
+    applySettings(currentSettings);
+    bridge.settings
+      .set(e.detail)
+      .catch((err) => console.error("[renderer] settings:set failed:", err));
+  });
+  window.addEventListener("chiphippo:show-about", () => AboutDialog.open());
+  window.addEventListener("chiphippo:open-settings", () =>
+    SettingsDialog.open(currentSettings),
+  );
+  // The app version is no longer shown in the header — it lives in the About
+  // dialog (the (i) toggle), which fetches it over the IPC bridge.
 }
 
 init();

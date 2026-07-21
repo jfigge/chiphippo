@@ -106,6 +106,17 @@ function resolveAppVersion() {
   }
 }
 
+/** Read-only metadata for the About dialog (version + runtime versions). */
+function collectAppInfo() {
+  return {
+    version: resolveAppVersion(),
+    electron: process.versions.electron,
+    chrome: process.versions.chrome,
+    node: process.versions.node,
+    platform: `${process.platform} ${process.arch}`,
+  };
+}
+
 // ─── Storage ──────────────────────────────────────────────────────────────────
 // Built lazily on first use so app.getPath("userData") is resolvable (it
 // honours a --user-data-dir override once Electron has processed it).
@@ -189,6 +200,83 @@ function openPinoutWindow(ref, opts = {}) {
   pinoutWindows.set(ref, win);
 }
 
+// ─── Application menu ──────────────────────────────────────────────────────────
+// The About and Settings items PUSH to the renderer (menu:show-about /
+// menu:open-settings); the preload re-dispatches each as a chiphippo:* event
+// and the renderer opens the corresponding PopupManager dialog. Everything
+// else is a standard Electron role.
+function sendToMain(channel) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send(channel);
+  }
+}
+
+function buildAppMenu() {
+  const isMac = process.platform === "darwin";
+  const about = {
+    label: "About Chip Hippo",
+    click: () => sendToMain("menu:show-about"),
+  };
+  const settings = {
+    label: "Settings…",
+    accelerator: "CmdOrCtrl+,",
+    click: () => sendToMain("menu:open-settings"),
+  };
+
+  const template = [];
+  if (isMac) {
+    template.push({
+      label: app.name,
+      submenu: [
+        about,
+        { type: "separator" },
+        settings,
+        { type: "separator" },
+        { role: "services" },
+        { type: "separator" },
+        { role: "hide" },
+        { role: "hideOthers" },
+        { role: "unhide" },
+        { type: "separator" },
+        { role: "quit" },
+      ],
+    });
+  } else {
+    template.push({
+      label: "File",
+      submenu: [settings, { type: "separator" }, { role: "quit" }],
+    });
+  }
+
+  template.push({
+    label: "Edit",
+    submenu: [
+      { role: "undo" },
+      { role: "redo" },
+      { type: "separator" },
+      { role: "cut" },
+      { role: "copy" },
+      { role: "paste" },
+      { role: "selectAll" },
+    ],
+  });
+  template.push({
+    label: "Window",
+    submenu: [
+      { role: "minimize" },
+      { role: "zoom" },
+      { role: "close" },
+      ...(isMac ? [{ type: "separator" }, { role: "front" }] : []),
+    ],
+  });
+  template.push({
+    role: "help",
+    submenu: isMac ? [] : [about],
+  });
+
+  return Menu.buildFromTemplate(template);
+}
+
 /** The native right-click menu for a pinout window (float toggle + close). */
 function showPinoutMenu(win) {
   const floating = win.isAlwaysOnTop();
@@ -222,6 +310,8 @@ function registerIpc() {
   // authoritative source for platform info reachable over IPC.
   ipcMain.handle("app:platform", () => process.platform);
   ipcMain.handle("app:version", () => resolveAppVersion());
+  // Read-only app / build metadata for the About dialog.
+  ipcMain.handle("app:info:get", () => collectAppInfo());
 
   // App settings (Feature 10): the desk viewport + window bounds live here;
   // later stages add their own keys. Writes are atomic (store/io.js).
@@ -365,6 +455,7 @@ if (!gotSingleInstanceLock) {
 function bootstrap() {
   app.whenReady().then(() => {
     registerIpc();
+    Menu.setApplicationMenu(buildAppMenu());
     createWindow();
 
     app.on("activate", () => {
