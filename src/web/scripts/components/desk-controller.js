@@ -36,19 +36,20 @@ import {
   ROTATIONS,
   boardSize,
   columnAt,
-  formatAddress,
   holePosition,
-  parseAddress,
   parseHole,
   spec,
 } from "../model/breadboard.js";
-import {
-  holeAtWorld,
-  partPinAddresses,
-  partPinHoles,
-} from "../model/occupancy.js";
+import { holeAtWorld } from "../model/occupancy.js";
 import { partSeatAt } from "../model/seating.js";
-import { DeskDoc, WIRE_COLORS } from "../model/desk-doc.js";
+import {
+  addressWorld,
+  componentsInRect,
+  hoverHitAt,
+  partPinsWorld,
+  wiresInRect,
+} from "../model/part-geometry.js";
+import { DeskDoc } from "../model/desk-doc.js";
 import { partDef } from "../catalog/index.js";
 import { PSU_VOLTS, CLOCK_HZ } from "../catalog/parts.js";
 import {
@@ -67,10 +68,9 @@ import {
 import { PsuView, buildPsuSvg } from "./psu-view.js";
 import { ClockView, buildClockSvg } from "./clock-view.js";
 import { WireLayer } from "./wire-layer.js";
-import { summarizeNet } from "../sim/netlist.js";
 import { SimOverlay } from "./sim-overlay.js";
-import { NetlistCache } from "./netlist-cache.js";
-import { NetHighlight } from "./net-highlight.js";
+import { ProbeInspector } from "./probe-inspector.js";
+import { WireTools } from "./wire-tools.js";
 import { BoardOutline } from "./board-outline.js";
 
 /** Pointer travel (px) below which a press stays a click, not a drag/pan. */
@@ -83,9 +83,6 @@ const HOVER_MIN_ZOOM = 0.75;
 
 /** Radius of the hover ring (pitch units — a shade over one hole). */
 const RING_RADIUS = 0.45;
-
-/** Hit radius for part pins / PSU terminals (matches hole hit feel). */
-const PIN_HIT_RADIUS = 0.45;
 
 /** How close (pitch units) the cursor must press to a wire's endpoint cap to
     grab it for a drag-the-end gesture. A shade over one hole so the cap is
@@ -112,21 +109,14 @@ export class DeskController {
   //   { kind: "drag-brick", id, … }
   //   { kind: "wire", from, hover }                           (wire tool)
   #mode = null;
-  #wireColorIndex = 0; // next color the wire tool commits (auto-cycles)
-  #onWireStateChange;
-  #onProbeStateChange;
+  #wire; // WireTools: the wire tool + endpoint/whole-wire drags (shares #mode)
   #lastDown = null; // last viewport pointerdown client pos (click-vs-pan)
   #hoverKey = null; // hover identity currently shown or pending
   #hoverTimer = null;
   #ring;
   #tooltip;
   #boardOutline; // the selection highlighter around a whole snapped set
-  // Connectivity inspector (Feature 70).
-  #netlist;
-  #highlight;
-  #probeArmed = false;
-  #probeAnchor = null; // pinned point address (net re-resolved from it), or null
-  #netStatus;
+  #probe; // ProbeInspector: netlist highlight + net-status readout
   // Simulation (Feature 90): editing is locked while running; live net levels
   // arrive over chiphippo:sim-state and drive LEDs / chip badges / probe tint.
   #editingLocked = false;
@@ -169,8 +159,6 @@ export class DeskController {
     this.#viewport = viewport;
     this.#deskView = deskView;
     this.#doc = deskDoc;
-    this.#onWireStateChange = onWireStateChange;
-    this.#onProbeStateChange = onProbeStateChange;
     this.#onReplaceChip = onReplaceChip;
     this.#onClockToggle = onClockToggle;
     this.#onOpenPinout = onOpenPinout;
@@ -203,30 +191,74 @@ export class DeskController {
     // All wires render into one SVG in the wires layer.
     this.#wireLayer = new WireLayer(this.#layers.wires, deskDoc, {
       onSelect: (id) => this.selectWire(id),
-      onContextMenu: (id, e) => this.#onWireContextMenu(id, e),
-      onHover: (id) => this.#onWireHover(id),
+      onContextMenu: (id, e) => this.#wire.onContextMenu(id, e),
+      onHover: (id) => this.#probe.onWireHover(id),
     });
 
-    // Connectivity inspector (Feature 70): the netlist cache rebuilds on
-    // topology/part-state changes; the highlight overlay draws one net.
-    this.#netlist = new NetlistCache(deskDoc);
-    this.#highlight = new NetHighlight(this.#layers.overlay);
-    this.#netStatus = el("div", { class: "net-status", hidden: true });
-    viewport.append(this.#netStatus);
-    // A pinned net follows its anchor point through edits + switch flips.
-    window.addEventListener("chiphippo:doc-changed", () => {
-      if (this.#probeAnchor) this.#refreshPinnedNet();
-    });
-    window.addEventListener("chiphippo:part-state", () => {
-      if (this.#probeAnchor) this.#refreshPinnedNet();
-    });
     // Live simulation state (Feature 90): LEDs, chip badges, clock lamps —
     // and the net-level lookups the probe tints with. Renders from published
     // state, never the engine.
     this.#simOverlay = new SimOverlay(this.#doc, this.#partViews);
+
+    // Connectivity inspector (Feature 70): owns its netlist cache + net
+    // highlight; borrows the shared hover ring and the controller's geometry.
+    this.#probe = new ProbeInspector({
+      doc: deskDoc,
+      overlay: this.#layers.overlay,
+      viewport,
+      ring: this.#ring,
+      simOverlay: this.#simOverlay,
+      hitTest: (world) => this.#hitTest(world),
+      addressWorld: (address) => this.#addressWorld(address),
+      onStateChange: onProbeStateChange,
+      coordinate: {
+        cancelPlacement: () => this.cancelPlacement(),
+        disarmWireTool: () => this.disarmWireTool(),
+        deselect: () => this.deselect(),
+        hideHover: () => this.#hideHover(),
+      },
+    });
+
+    // Wire subsystem (Feature 50): the click-click tool + endpoint/whole-wire
+    // drags. It shares the controller's `#mode` through this host so the
+    // viewport dispatcher's mode checks are unchanged.
+    const self = this;
+    this.#wire = new WireTools({
+      get mode() {
+        return self.#mode;
+      },
+      set mode(v) {
+        self.#mode = v;
+      },
+      get editingLocked() {
+        return self.#editingLocked;
+      },
+      doc: deskDoc,
+      deskView,
+      viewport,
+      wireLayer: this.#wireLayer,
+      ring: this.#ring,
+      emitDocChanged: () => this.#emitDocChanged(),
+      hideHover: () => this.#hideHover(),
+      selectWire: (id) => this.selectWire(id),
+      deselect: () => this.deselect(),
+      cancelPlacement: () => this.cancelPlacement(),
+      disarmProbe: () => this.disarmProbe(),
+      clearSelectionIfWire: (id) => this.#clearSelectionIfWire(id),
+      onStateChange: onWireStateChange,
+    });
+
+    // A pinned net follows its anchor through edits, switch flips, and each
+    // sim tick (the probe self-guards when nothing is pinned).
+    window.addEventListener("chiphippo:doc-changed", () =>
+      this.#probe.refreshPinned(),
+    );
+    window.addEventListener("chiphippo:part-state", () =>
+      this.#probe.refreshPinned(),
+    );
     window.addEventListener("chiphippo:sim-state", (e) => {
       this.#simOverlay.apply(e.detail);
-      if (this.#probeAnchor) this.#refreshPinnedNet(); // re-tint a pinned net
+      this.#probe.refreshPinned(); // re-tint a pinned net
     });
 
     for (const board of this.#doc.boards) this.#mountBoard(board);
@@ -238,9 +270,9 @@ export class DeskController {
     viewport.addEventListener("click", this.#onViewportClick);
     // Right-click while wiring cancels the pending wire (Esc-equivalent).
     viewport.addEventListener("contextmenu", (e) => {
-      if (this.#mode?.kind !== "wire") return;
+      if (!this.#wire.armed) return;
       e.preventDefault();
-      this.#clearPendingWire();
+      this.#wire.cancelPending();
     });
   }
 
@@ -367,6 +399,14 @@ export class DeskController {
   deselect() {
     this.#clearMultiSelection();
     this.#select(null);
+  }
+
+  /** Drop the selection if it is this wire (WireTools calls this on remove). */
+  #clearSelectionIfWire(id) {
+    if (this.#selected?.kind === "wire" && this.#selected.id === id) {
+      this.#selected = null;
+      this.#wireLayer.setSelected(null);
+    }
   }
 
   // ── Placement modes (toolbar Add-board / palette picks) ─────────────────
@@ -767,38 +807,15 @@ export class DeskController {
    * live board drag re-renders against the position under the cursor.
    */
   #partPins(comp, boardOverride = null) {
-    const board = boardOverride ?? this.#doc.getBoard(comp.board);
-    const pins = board && partPinHoles(comp.ref, comp.anchor, comp.params);
-    if (!pins) return null;
-    const boards = this.#doc.boards.map((b) =>
-      b.id === comp.board ? { ...b, ...board } : b,
-    );
-    const addressed = partPinAddresses({ boards }, comp);
-    if (!addressed) return null;
-    // Hole ids are stated in the strip's own unrotated frame, so every
-    // holePosition here needs the strip's angle — exactly as partPinAddresses
-    // resolves it. Without it the drawn pins and the addressed ones disagree.
-    const rot = board.rot ?? 0;
-    const anchorPos = holePosition(board.type, comp.anchor, rot);
-    if (!anchorPos) return null;
-    const out = [];
-    for (const [i, { pin, hole, offset }] of pins.entries()) {
-      const address = addressed[i].address;
-      if (offset) {
-        out.push({
-          pin,
-          address,
-          x: board.x + anchorPos.x + offset.dx,
-          y: board.y + anchorPos.y + offset.dy,
-        });
-        continue;
-      }
-      // A seated pin lives in a hole of its own board — no hole, no geometry.
-      const pos = holePosition(board.type, hole, rot);
-      if (!pos) return null;
-      out.push({ pin, address, x: board.x + pos.x, y: board.y + pos.y });
-    }
-    return out;
+    // A live board drag substitutes a moved origin for the part's own board;
+    // otherwise the document's boards are the truth. The world geometry itself
+    // lives in model/part-geometry.js.
+    const boards = boardOverride
+      ? this.#doc.boards.map((b) =>
+          b.id === comp.board ? { ...b, ...boardOverride } : b,
+        )
+      : this.#doc.boards;
+    return partPinsWorld(boards, comp);
   }
 
   /**
@@ -948,328 +965,69 @@ export class DeskController {
   }
 
   // ── Wire tool (Feature 50) ───────────────────────────────────────────────
+  // The wire subsystem lives in WireTools; these are the public shims app.js /
+  // keyboard drive it through. It shares `#mode` via the host in the ctor.
 
   get wireToolArmed() {
-    return this.#mode?.kind === "wire";
+    return this.#wire.armed;
   }
 
   /** The color the next committed wire gets. */
   get wireColor() {
-    return WIRE_COLORS[this.#wireColorIndex];
+    return this.#wire.color;
   }
 
   /** Pin the next wire color (the toolbar swatch strip). */
   setWireColor(color) {
-    const i = WIRE_COLORS.indexOf(color);
-    if (i === -1) {
-      const err = new Error(`unknown wire color: ${color}`);
-      err.code = "INVALID_ARG";
-      throw err;
-    }
-    this.#wireColorIndex = i;
-    this.#notifyWireState();
+    this.#wire.setColor(color);
   }
 
-  /** Arm click-click wiring; a second call to toggle goes through app.js. */
   armWireTool() {
-    if (this.wireToolArmed || this.#editingLocked) return;
-    this.cancelPlacement();
-    this.disarmProbe();
-    this.deselect();
-    this.#hideHover();
-    this.#mode = { kind: "wire", from: null, hover: null };
-    this.#viewport.classList.add("desk-viewport--wiring");
-    this.#notifyWireState();
+    this.#wire.arm();
   }
 
   disarmWireTool() {
-    if (!this.wireToolArmed) return;
-    this.#clearPendingWire();
-    this.#mode = null;
-    this.#viewport.classList.remove("desk-viewport--wiring");
-    this.#ring.hidden = true;
-    this.#ring.classList.remove("hole-ring--illegal");
-    this.#notifyWireState();
+    this.#wire.disarm();
   }
 
   toggleWireTool() {
-    if (this.wireToolArmed) this.disarmWireTool();
-    else this.armWireTool();
-  }
-
-  #clearPendingWire() {
-    if (this.#mode?.kind !== "wire") return;
-    this.#mode.from = null;
-    this.#wireLayer.setPreview(null);
-  }
-
-  #notifyWireState() {
-    this.#onWireStateChange?.({
-      armed: this.wireToolArmed,
-      color: this.wireColor,
-    });
-  }
-
-  /**
-   * World position (pitch units) of a wire point — a board hole or PSU
-   * terminal — or null when the address doesn't resolve.
-   */
-  #addressWorld(address) {
-    const parsed = parseAddress(address);
-    if (!parsed) return null;
-    const board = this.#doc.getBoard(parsed.boardId);
-    if (board) {
-      const pos = holePosition(board.type, parsed.hole);
-      return pos ? { x: board.x + pos.x, y: board.y + pos.y } : null;
-    }
-    const comp = this.#doc.getComponent(parsed.boardId);
-    const t = partDef(comp?.ref)?.terminals?.find((x) => x.id === parsed.hole);
-    return t ? { x: comp.x + t.dx, y: comp.y + t.dy } : null;
-  }
-
-  /** The wireable point under a world position: board hole or PSU terminal. */
-  #wirePointAt(world) {
-    const hole = this.#holeAtWorld(world);
-    if (hole) {
-      return {
-        address: formatAddress(hole.board.id, hole.hole),
-        x: hole.x,
-        y: hole.y,
-      };
-    }
-    for (const comp of this.#doc.components) {
-      const terminals = partDef(comp.ref)?.terminals;
-      if (!terminals) continue;
-      for (const t of terminals) {
-        const x = comp.x + t.dx;
-        const y = comp.y + t.dy;
-        if (Math.hypot(world.x - x, world.y - y) > PIN_HIT_RADIUS) continue;
-        return { address: formatAddress(comp.id, t.id), x, y };
-      }
-    }
-    return null;
-  }
-
-  /** Wire-mode pointermove: instant ring with legality + the rubber band. */
-  #trackWire(e) {
-    const m = this.#mode;
-    const world = this.#deskView.worldFromEvent(e);
-    const hit = this.#wirePointAt(world);
-    if (hit) {
-      const free = this.#doc.isHoleFree(hit.address);
-      const legal = free && hit.address !== m.from;
-      m.hover = { address: hit.address, legal };
-      const r = RING_RADIUS * PX_PER_UNIT;
-      this.#ring.style.left = `${hit.x * PX_PER_UNIT - r}px`;
-      this.#ring.style.top = `${hit.y * PX_PER_UNIT - r}px`;
-      this.#ring.classList.toggle("hole-ring--illegal", !legal);
-      this.#ring.hidden = false;
-    } else {
-      m.hover = null;
-      this.#ring.hidden = true;
-    }
-    if (m.from) {
-      const from = this.#addressWorld(m.from);
-      this.#wireLayer.setPreview({
-        from: { x: from.x * PX_PER_UNIT, y: from.y * PX_PER_UNIT },
-        to: hit
-          ? { x: hit.x * PX_PER_UNIT, y: hit.y * PX_PER_UNIT }
-          : { x: world.x * PX_PER_UNIT, y: world.y * PX_PER_UNIT },
-        color: this.wireColor,
-        // Danger tint only over an actual occupied/self point — over empty
-        // desk the band stays its color (a click there just does nothing).
-        legal: hit ? m.hover.legal : true,
-      });
-    }
-  }
-
-  /** Wire-mode click: anchor on the first free point, commit on the second. */
-  #commitWireClick(e) {
-    const m = this.#mode;
-    this.#trackWire(e); // legality/hover at the exact click point
-    if (!m.hover?.legal) return;
-    if (!m.from) {
-      m.from = m.hover.address;
-      return;
-    }
-    this.#doc.addWire({
-      from: m.from,
-      to: m.hover.address,
-      color: this.wireColor,
-    });
-    this.#wireColorIndex = (this.#wireColorIndex + 1) % WIRE_COLORS.length;
-    this.#clearPendingWire(); // re-arm fresh — chain-friendly
-    this.#emitDocChanged();
-    this.#notifyWireState();
+    this.#wire.toggle();
   }
 
   /** Remove a wire; clears its selection. */
   removeWire(id) {
-    this.#doc.removeWire(id);
-    if (this.#selected?.kind === "wire" && this.#selected.id === id) {
-      this.#selected = null;
-      this.#wireLayer.setSelected(null);
-    }
-    this.#emitDocChanged();
+    this.#wire.removeWire(id);
   }
 
   /** Recolor a wire (context menu). */
   recolorWire(id, color) {
-    this.#doc.recolorWire(id, color);
-    this.#emitDocChanged();
+    this.#wire.recolorWire(id, color);
   }
 
-  #onWireContextMenu(id, e) {
-    e.preventDefault();
-    if (this.#mode || this.#editingLocked) return; // no wire edits while running
-    this.selectWire(id);
-    PopupManager.menu({
-      x: e.clientX,
-      y: e.clientY,
-      items: [
-        {
-          label: "Remove wire",
-          danger: true,
-          onSelect: () => this.removeWire(id),
-        },
-        ...WIRE_COLORS.map((color) => ({
-          label: `Color: ${color}`,
-          onSelect: () => this.recolorWire(id, color),
-        })),
-      ],
-    });
+  /** Shared address→world resolver (the probe's highlight geometry). */
+  #addressWorld(address) {
+    return addressWorld(this.#doc.boards, this.#doc.components, address);
   }
 
   // ── Connectivity inspector / probe (Feature 70) ─────────────────────────
+  // The probe subsystem lives in ProbeInspector; these are the public shims
+  // app.js/keyboard drive it through.
 
   get probeArmed() {
-    return this.#probeArmed;
+    return this.#probe.armed;
   }
 
   /** Arm probe mode: hover highlights a net, click pins it. */
   armProbe() {
-    if (this.#probeArmed) return;
-    this.cancelPlacement();
-    this.disarmWireTool();
-    this.deselect();
-    this.#hideHover();
-    this.#probeArmed = true;
-    this.#probeAnchor = null;
-    this.#viewport.classList.add("desk-viewport--probing");
-    this.#onProbeStateChange?.({ armed: true });
+    this.#probe.arm();
   }
 
   disarmProbe() {
-    if (!this.#probeArmed) return;
-    this.#probeArmed = false;
-    this.#probeAnchor = null;
-    this.#viewport.classList.remove("desk-viewport--probing");
-    this.#highlight.clear();
-    this.#ring.hidden = true;
-    this.#ring.classList.remove("hole-ring--illegal");
-    this.#netStatus.hidden = true;
-    this.#onProbeStateChange?.({ armed: false });
+    this.#probe.disarm();
   }
 
   toggleProbe() {
-    if (this.#probeArmed) this.disarmProbe();
-    else this.armProbe();
-  }
-
-  /** Geometry the highlight overlay draws by (world px). */
-  #highlightGeometry() {
-    return {
-      positionOf: (address) => {
-        const w = this.#addressWorld(address);
-        return w ? { x: w.x * PX_PER_UNIT, y: w.y * PX_PER_UNIT } : null;
-      },
-      wireEndpointsOf: (wireId) => {
-        const wire = this.#doc.getWire(wireId);
-        if (!wire) return null;
-        const a = this.#addressWorld(wire.from);
-        const b = this.#addressWorld(wire.to);
-        if (!a || !b) return null;
-        return {
-          a: { x: a.x * PX_PER_UNIT, y: a.y * PX_PER_UNIT },
-          b: { x: b.x * PX_PER_UNIT, y: b.y * PX_PER_UNIT },
-        };
-      },
-    };
-  }
-
-  /** Show the net containing `address`, pinned or transient. */
-  #showNetFor(address, pinned) {
-    const netId = this.#netlist.netOf(address);
-    const net = netId ? this.#netlist.netInfo(netId) : null;
-    // While running, tint the highlight + lead the summary with the level.
-    const level = this.#simOverlay.levelOfNet(netId);
-    this.#highlight.show(net, this.#highlightGeometry(), pinned, level);
-    if (net) {
-      const summary = summarizeNet(net);
-      this.#netStatus.textContent = level ? `${level} · ${summary}` : summary;
-      if (level) this.#netStatus.dataset.level = level;
-      else delete this.#netStatus.dataset.level;
-      this.#netStatus.classList.toggle("net-status--pinned", pinned);
-      this.#netStatus.hidden = false;
-    } else {
-      this.#netStatus.hidden = true;
-    }
-  }
-
-  /** Rebuild the pinned highlight from its anchor (switch-flip demo). */
-  #refreshPinnedNet() {
-    if (!this.#probeAnchor) return;
-    // The anchor may vanish (its board/PSU deleted) — drop the pin then.
-    if (!this.#netlist.netOf(this.#probeAnchor)) {
-      this.#probeAnchor = null;
-      this.#highlight.clear();
-      this.#netStatus.hidden = true;
-      return;
-    }
-    this.#showNetFor(this.#probeAnchor, true);
-  }
-
-  /** Probe pointermove: highlight the hovered point's net (unless pinned). */
-  #trackProbe(e) {
-    if (this.#probeAnchor) return; // pinned — hover doesn't disturb it
-    const hit = this.#hitTest(this.#deskView.worldFromEvent(e));
-    if (!hit?.address) {
-      this.#ring.hidden = true;
-      this.#highlight.clear();
-      this.#netStatus.hidden = true;
-      return;
-    }
-    const r = RING_RADIUS * PX_PER_UNIT;
-    this.#ring.style.left = `${hit.x * PX_PER_UNIT - r}px`;
-    this.#ring.style.top = `${hit.y * PX_PER_UNIT - r}px`;
-    this.#ring.hidden = false;
-    this.#showNetFor(hit.address, false);
-  }
-
-  /** Probe click: pin the hovered net, or unpin if already pinned. */
-  #commitProbeClick(e) {
-    if (this.#probeAnchor) {
-      this.#probeAnchor = null; // re-click unpins
-      this.#trackProbe(e); // fall back to hover highlight at the cursor
-      return;
-    }
-    const hit = this.#hitTest(this.#deskView.worldFromEvent(e));
-    if (!hit?.address || !this.#netlist.netOf(hit.address)) return;
-    this.#probeAnchor = hit.address;
-    this.#showNetFor(hit.address, true);
-  }
-
-  /** A wire hovered under the probe (via the wire hit stroke). */
-  #onWireHover(wireId) {
-    if (!this.#probeArmed || this.#probeAnchor) return;
-    const wire = wireId ? this.#doc.getWire(wireId) : null;
-    if (!wire) {
-      this.#highlight.clear();
-      this.#netStatus.hidden = true;
-      return;
-    }
-    this.#ring.hidden = true;
-    this.#showNetFor(wire.from, false);
+    this.#probe.toggle();
   }
 
   // ── Simulation live state (Feature 90) ───────────────────────────────────
@@ -1469,23 +1227,10 @@ export class DeskController {
       return false;
     }
     if (e.key === "Escape") {
-      if (this.#probeArmed) {
-        // First Esc unpins a pinned net; the next disarms the probe.
-        if (this.#probeAnchor) {
-          this.#probeAnchor = null;
-          this.#highlight.clear();
-          this.#netStatus.hidden = true;
-        } else {
-          this.disarmProbe();
-        }
-        return true;
-      }
-      if (this.wireToolArmed) {
-        // First Esc cancels a pending wire; the next disarms the tool.
-        if (this.#mode.from) this.#clearPendingWire();
-        else this.disarmWireTool();
-        return true;
-      }
+      // First Esc unpins a pinned net; the next disarms the probe. Then the
+      // wire tool (cancel a pending wire, else disarm).
+      if (this.#probe.handleEscape()) return true;
+      if (this.#wire.handleEscape()) return true;
       if (this.placementArmed) {
         this.cancelPlacement();
         return true;
@@ -1645,7 +1390,7 @@ export class DeskController {
     // Shift alone is the viewport's marquee; with Option it selects a chain.
     if (e.shiftKey && !e.altKey) return;
     // No board drags while probing or running (topology frozen).
-    if (this.#mode || this.#probeArmed || this.#editingLocked) return;
+    if (this.#mode || this.#probe.armed || this.#editingLocked) return;
     this.#hideHover();
     this.selectBoard(id);
 
@@ -1815,7 +1560,7 @@ export class DeskController {
   #onPartPointerDown(id, e) {
     if (e.button !== 0) return;
     if (e.shiftKey) return; // shift-drag is the viewport's marquee
-    if (this.#mode || this.#probeArmed) return; // no part drags while probing
+    if (this.#mode || this.#probe.armed) return; // no part drags while probing
     // While running, only slide switches stay interactive (click to flip);
     // every other part is frozen in place.
     if (this.#editingLocked) {
@@ -2141,56 +1886,19 @@ export class DeskController {
 
   // ── Marquee selection (shift-drag anywhere) ─────────────────────────────
 
-  /**
-   * World positions of a component's connection points: a board part's derived
-   * pin holes, or a desk brick's terminals. Empty when they don't resolve (an
-   * unresolvable part is never marquee-selectable).
-   */
-  #componentPoints(comp) {
-    const def = partDef(comp.ref);
-    if (!def) return [];
-    if (comp.board == null) {
-      return (def.terminals ?? []).map((t) => ({
-        x: comp.x + t.dx,
-        y: comp.y + t.dy,
-      }));
-    }
-    // A bent lead counts by where it SITS, floating or not — the marquee
-    // encloses what the user can see.
-    const pins = this.#partPins(comp);
-    return pins ? pins.map(({ x, y }) => ({ x, y })) : [];
-  }
-
   /** Components whose EVERY pin/terminal lies inside the world-unit rect. */
   #componentsWithin(rect) {
-    const inside = (p) =>
-      p.x >= rect.minX &&
-      p.x <= rect.maxX &&
-      p.y >= rect.minY &&
-      p.y <= rect.maxY;
-    const ids = [];
-    for (const comp of this.#doc.components) {
-      const points = this.#componentPoints(comp);
-      if (points.length > 0 && points.every(inside)) ids.push(comp.id);
-    }
-    return ids;
+    return componentsInRect(this.#doc.boards, this.#doc.components, rect);
   }
 
   /** Wires with BOTH endpoints inside the world-unit rect. */
   #wiresWithin(rect) {
-    const inside = (p) =>
-      p &&
-      p.x >= rect.minX &&
-      p.x <= rect.maxX &&
-      p.y >= rect.minY &&
-      p.y <= rect.maxY;
-    return this.#doc.wires
-      .filter(
-        (w) =>
-          inside(this.#addressWorld(w.from)) &&
-          inside(this.#addressWorld(w.to)),
-      )
-      .map((w) => w.id);
+    return wiresInRect(
+      this.#doc.boards,
+      this.#doc.components,
+      this.#doc.wires,
+      rect,
+    );
   }
 
   #beginMarquee(e) {
@@ -2321,250 +2029,24 @@ export class DeskController {
     if (this.#mode || e.button !== 0) return; // busy (tool/drag) or non-left
     // Shift-drag anywhere rubber-bands a multi-selection (never a pan — DeskView
     // skips shift-left too). Not while probing or running.
-    if (e.shiftKey && !this.#probeArmed && !this.#editingLocked) {
+    if (e.shiftKey && !this.#probe.armed && !this.#editingLocked) {
       this.#beginMarquee(e);
       return;
     }
-    // Not while probing (clicks pin nets) or running (topology frozen).
-    if (!this.#probeArmed && !this.#editingLocked) {
-      // Press near a wire's endpoint cap → grab it to drag the end elsewhere.
-      const grab = this.#wireEndAtWorld(this.#deskView.worldFromEvent(e));
-      if (grab) {
-        this.#beginWireEndDrag(grab, e);
-        return;
-      }
-      // Press on a wire's BODY (its hit stroke, away from both caps) → grab the
-      // whole wire and translate it rigidly.
-      const wireId = e.target?.closest?.(".wire")?.dataset.wireId;
-      if (wireId) {
-        this.#beginWholeWireDrag(wireId, e);
-        return;
-      }
+    // Not while probing (clicks pin nets) or running (topology frozen). A
+    // press near a wire cap re-routes its end; on the body, translates it.
+    if (!this.#probe.armed && !this.#editingLocked) {
+      if (this.#wire.tryBeginDrag(e, this.#deskView.worldFromEvent(e))) return;
     }
     // Click on truly empty desk (the viewport itself — layers are zero-size
     // and overlay children are pointer-inert) deselects.
     if (e.target === this.#viewport) this.deselect();
   };
 
-  // ── Wire-endpoint dragging (grab a cap, move the end to another point) ──────
-
-  /** The nearest wire endpoint within the grab radius of `world`, or null. */
-  #wireEndAtWorld(world) {
-    let best = null;
-    for (const wire of this.#doc.wires) {
-      for (const end of ["from", "to"]) {
-        const p = this.#addressWorld(wire[end]);
-        if (!p) continue;
-        const dist = Math.hypot(world.x - p.x, world.y - p.y);
-        if (dist > WIRE_END_GRAB_RADIUS) continue;
-        if (!best || dist < best.dist) {
-          best = { wireId: wire.id, end, origin: wire[end], dist };
-        }
-      }
-    }
-    return best;
-  }
-
-  #beginWireEndDrag(grab, e) {
-    this.#hideHover();
-    this.selectWire(grab.wireId); // select on press (mode still null here)
-    this.#mode = {
-      kind: "drag-wire-end",
-      wireId: grab.wireId,
-      end: grab.end,
-      origin: grab.origin, // revert target
-      pointerId: e.pointerId,
-      startClientX: e.clientX,
-      startClientY: e.clientY,
-      hover: null, // { address, legal } under the cursor
-      active: false,
-    };
-    // Capture on the persistent wire SVG — render() clears its CHILDREN but
-    // keeps the element, so capture and these listeners survive live re-renders.
-    const svg = this.#wireLayer.element;
-    try {
-      svg.setPointerCapture(e.pointerId);
-    } catch {
-      /* capture is best-effort (synthetic events) */
-    }
-    svg.addEventListener("pointermove", this.#onWireEndPointerMove);
-    svg.addEventListener("pointerup", this.#onWireEndPointerUp);
-    svg.addEventListener("pointercancel", this.#onWireEndPointerUp);
-  }
-
-  #onWireEndPointerMove = (e) => {
-    const m = this.#mode;
-    if (m?.kind !== "drag-wire-end" || e.pointerId !== m.pointerId) return;
-    if (!m.active) {
-      const travel = Math.hypot(
-        e.clientX - m.startClientX,
-        e.clientY - m.startClientY,
-      );
-      if (travel < DRAG_THRESHOLD) return; // separate a click from a drag
-      m.active = true;
-      this.#viewport.classList.add("desk-viewport--wire-dragging");
-    }
-    const world = this.#deskView.worldFromEvent(e);
-    const hit = this.#wirePointAt(world);
-    if (hit) {
-      const legal = this.#doc.canReendWire(m.wireId, m.end, hit.address);
-      m.hover = { address: hit.address, legal };
-      const r = RING_RADIUS * PX_PER_UNIT;
-      this.#ring.style.left = `${hit.x * PX_PER_UNIT - r}px`;
-      this.#ring.style.top = `${hit.y * PX_PER_UNIT - r}px`;
-      this.#ring.classList.toggle("hole-ring--illegal", !legal);
-      this.#ring.hidden = false;
-    } else {
-      m.hover = null;
-      this.#ring.hidden = true;
-    }
-    // The dragged end snaps to a hovered point, else rides the raw cursor.
-    const tip = hit ?? world;
-    this.#wireLayer.setEndpointDrag({
-      wireId: m.wireId,
-      end: m.end,
-      world: { x: tip.x * PX_PER_UNIT, y: tip.y * PX_PER_UNIT },
-      legal: hit ? m.hover.legal : true,
-    });
-  };
-
-  #onWireEndPointerUp = (e) => {
-    const m = this.#mode;
-    if (m?.kind !== "drag-wire-end" || e.pointerId !== m.pointerId) return;
-    this.#mode = null;
-
-    const svg = this.#wireLayer.element;
-    svg.removeEventListener("pointermove", this.#onWireEndPointerMove);
-    svg.removeEventListener("pointerup", this.#onWireEndPointerUp);
-    svg.removeEventListener("pointercancel", this.#onWireEndPointerUp);
-    try {
-      svg.releasePointerCapture(m.pointerId);
-    } catch {
-      /* already released */
-    }
-    this.#ring.hidden = true;
-    this.#ring.classList.remove("hole-ring--illegal");
-    this.#viewport.classList.remove("desk-viewport--wire-dragging");
-    this.#wireLayer.setEndpointDrag(null); // stop overriding; redraw from doc
-
-    if (!m.active) return; // plain click — the wire is already selected
-
-    const target = m.hover;
-    const commit =
-      e.type !== "pointercancel" &&
-      target?.legal &&
-      target.address !== m.origin;
-    if (commit) {
-      this.#doc.setWireEndpoint(m.wireId, m.end, target.address);
-      this.#emitDocChanged(); // WireLayer re-renders from this
-    }
-  };
-
-  // ── Whole-wire dragging (grab the body, translate both ends rigidly) ────────
-
-  #beginWholeWireDrag(wireId, e) {
-    const wire = this.#doc.getWire(wireId);
-    const from0 = this.#addressWorld(wire?.from);
-    const to0 = this.#addressWorld(wire?.to);
-    if (!from0 || !to0) return; // defensive: unresolvable endpoints
-    this.#hideHover();
-    this.selectWire(wireId); // select on press (mode still null here)
-    this.#mode = {
-      kind: "drag-wire",
-      wireId,
-      from0, // origin endpoint world positions (pitch units)
-      to0,
-      fromOrigin: wire.from, // revert / no-op detection
-      toOrigin: wire.to,
-      startWorld: this.#deskView.worldFromEvent(e),
-      pointerId: e.pointerId,
-      startClientX: e.clientX,
-      startClientY: e.clientY,
-      target: null, // { from, to } addresses once snapped over legal holes
-      active: false,
-    };
-    // Capture on the persistent wire SVG (survives live re-renders).
-    const svg = this.#wireLayer.element;
-    try {
-      svg.setPointerCapture(e.pointerId);
-    } catch {
-      /* capture is best-effort (synthetic events) */
-    }
-    svg.addEventListener("pointermove", this.#onWholeWirePointerMove);
-    svg.addEventListener("pointerup", this.#onWholeWirePointerUp);
-    svg.addEventListener("pointercancel", this.#onWholeWirePointerUp);
-  }
-
-  #onWholeWirePointerMove = (e) => {
-    const m = this.#mode;
-    if (m?.kind !== "drag-wire" || e.pointerId !== m.pointerId) return;
-    if (!m.active) {
-      const travel = Math.hypot(
-        e.clientX - m.startClientX,
-        e.clientY - m.startClientY,
-      );
-      if (travel < DRAG_THRESHOLD) return; // separate a click from a drag
-      m.active = true;
-      this.#viewport.classList.add("desk-viewport--wire-dragging");
-    }
-    const world = this.#deskView.worldFromEvent(e);
-    // Rigid translation snapped to the 0.1-in lattice: ONE integer delta shifts
-    // both ends together, so length and orientation never change.
-    const dx = Math.round(world.x - m.startWorld.x);
-    const dy = Math.round(world.y - m.startWorld.y);
-    const fromW = { x: m.from0.x + dx, y: m.from0.y + dy };
-    const toW = { x: m.to0.x + dx, y: m.to0.y + dy };
-    // Both translated ends must land on real, free points for a legal drop.
-    const fromHit = this.#wirePointAt(fromW);
-    const toHit = this.#wirePointAt(toW);
-    const legal =
-      !!fromHit &&
-      !!toHit &&
-      this.#doc.canMoveWire(m.wireId, fromHit.address, toHit.address);
-    m.target = legal ? { from: fromHit.address, to: toHit.address } : null;
-    // Snap the rendered ends onto the resolved holes when legal, else float.
-    const a = fromHit ?? fromW;
-    const b = toHit ?? toW;
-    this.#wireLayer.setWholeDrag({
-      wireId: m.wireId,
-      from: { x: a.x * PX_PER_UNIT, y: a.y * PX_PER_UNIT },
-      to: { x: b.x * PX_PER_UNIT, y: b.y * PX_PER_UNIT },
-      legal,
-    });
-  };
-
-  #onWholeWirePointerUp = (e) => {
-    const m = this.#mode;
-    if (m?.kind !== "drag-wire" || e.pointerId !== m.pointerId) return;
-    this.#mode = null;
-
-    const svg = this.#wireLayer.element;
-    svg.removeEventListener("pointermove", this.#onWholeWirePointerMove);
-    svg.removeEventListener("pointerup", this.#onWholeWirePointerUp);
-    svg.removeEventListener("pointercancel", this.#onWholeWirePointerUp);
-    try {
-      svg.releasePointerCapture(m.pointerId);
-    } catch {
-      /* already released */
-    }
-    this.#viewport.classList.remove("desk-viewport--wire-dragging");
-    this.#wireLayer.setWholeDrag(null); // stop overriding; redraw from doc
-
-    if (!m.active) return; // plain click — the wire is already selected
-
-    // Commit only when BOTH ends landed on real free points (a legal, moved
-    // target); an invalid release cancels the drag-drop and the wire snaps back.
-    const t = m.target;
-    const moved = t && (t.from !== m.fromOrigin || t.to !== m.toOrigin);
-    if (e.type !== "pointercancel" && t && moved) {
-      this.#doc.moveWire(m.wireId, t.from, t.to);
-      this.#emitDocChanged(); // WireLayer re-renders from this
-    }
-  };
-
   #onViewportClick = (e) => {
     const m = this.#mode;
-    if (!this.placementArmed && m?.kind !== "wire" && !this.#probeArmed) return;
+    if (!this.placementArmed && m?.kind !== "wire" && !this.#probe.armed)
+      return;
     // A pan that started while armed still ends in a click — suppress it.
     if (
       this.#lastDown &&
@@ -2573,12 +2055,12 @@ export class DeskController {
     ) {
       return;
     }
-    if (this.#probeArmed) {
-      this.#commitProbeClick(e);
+    if (this.#probe.armed) {
+      this.#probe.commitClick(this.#deskView.worldFromEvent(e));
       return;
     }
     if (m.kind === "wire") {
-      this.#commitWireClick(e);
+      this.#wire.commitClick(e);
       return;
     }
     this.#trackGhost(e); // ensure the seat reflects the click point
@@ -2607,11 +2089,11 @@ export class DeskController {
       return;
     }
     if (m?.kind === "wire") {
-      this.#trackWire(e);
+      this.#wire.trackMove(e);
       return;
     }
-    if (this.#probeArmed) {
-      this.#trackProbe(e);
+    if (this.#probe.armed) {
+      this.#probe.trackMove(this.#deskView.worldFromEvent(e));
       return;
     }
     if (m) return; // dragging — hover stays hidden
@@ -2642,61 +2124,11 @@ export class DeskController {
   }
 
   /**
-   * Part pins/terminals take precedence (they sit above), then holes. Each
-   * hit carries the conductive `address` it resolves to (a pin → its seated
-   * hole) so the netlist probe can look up its net.
+   * What the pointer is over — a part pin/terminal (they sit above) or a bare
+   * hole — as `{ key, label, address, x, y }`. See model/part-geometry.js.
    */
   #hitTest(world) {
-    const pinHit = this.#pinHitTest(world);
-    if (pinHit) return pinHit;
-    const hit = this.#holeAtWorld(world);
-    if (!hit) return null;
-    const address = formatAddress(hit.board.id, hit.hole);
-    return { key: address, label: address, address, x: hit.x, y: hit.y };
-  }
-
-  #pinHitTest(world) {
-    for (const comp of this.#doc.components) {
-      const def = partDef(comp.ref);
-      // Desk-level bricks (PSU, clock) expose terminals as connection points.
-      if (comp.board == null && def?.terminals) {
-        for (const t of def.terminals) {
-          const x = comp.x + t.dx;
-          const y = comp.y + t.dy;
-          if (Math.hypot(world.x - x, world.y - y) > PIN_HIT_RADIUS) continue;
-          const address = formatAddress(comp.id, t.id);
-          let note = "";
-          if (comp.kind === "psu") {
-            note = t.id === "+" ? ` · +${comp.params.volts} V` : " · 0 V";
-          } else if (comp.kind === "clock") {
-            note = t.id === "out" ? " · clock out" : " · gnd";
-          }
-          return {
-            key: `${comp.id}#${t.id}`,
-            label: `${address}${note}`,
-            address,
-            x,
-            y,
-          };
-        }
-        continue;
-      }
-      const pins = this.#partPins(comp);
-      if (!pins) continue;
-      for (const { pin, address, x, y } of pins) {
-        if (Math.hypot(world.x - x, world.y - y) > PIN_HIT_RADIUS) continue;
-        const name = def.pins.find((p) => p.n === pin)?.name ?? "?";
-        return {
-          key: `${comp.id}#${pin}`,
-          // A floating lead is still hoverable — it just has no net to name.
-          label: `${comp.ref} pin ${pin} · ${name} → ${address ?? "floating"}`,
-          address, // a pin resolves to the net of its seated hole
-          x,
-          y,
-        };
-      }
-    }
-    return null;
+    return hoverHitAt(this.#doc.boards, this.#doc.components, world);
   }
 
   #showHover({ label, x, y }) {

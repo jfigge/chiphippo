@@ -290,3 +290,131 @@ test("brick drag: a PSU moves to the dropped position and commits once", () => {
   assert.equal(moved.y, y0 + 10);
   assert.equal(changes, 1);
 });
+
+// ── Wire drag ───────────────────────────────────────────────────────────────
+
+const wireSvg = (surface) => surface.querySelector(".wire-svg");
+
+/** Add a wire straight into the doc and let WireLayer render it. */
+function seedWire(doc, from, to) {
+  const wire = doc.addWire({ from, to });
+  window.dispatchEvent(new window.CustomEvent("chiphippo:doc-changed"));
+  return wire;
+}
+
+test("wire-endpoint drag: re-ends a grabbed cap onto a new free hole", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { viewport, surface, controller } = makeDesk(doc, world);
+  controller.addBoardAt("pins-full", 0, 0);
+  const wire = seedWire(doc, "bb1.a1", "bb1.a20"); // (1,12) … (20,12)
+
+  // Grab the 'from' cap: viewport pointerdown at world (1,12).
+  world.x = 1;
+  world.y = 12;
+  fire(viewport, "pointerdown", { id: 9, client: [0, 0] });
+  // Drag it to the free hole b1 (1,11); move/up ride the persistent wire SVG.
+  world.x = 1;
+  world.y = 11;
+  fire(wireSvg(surface), "pointermove", { id: 9, client: [40, 40] });
+  fire(wireSvg(surface), "pointerup", { id: 9, client: [40, 40] });
+
+  assert.equal(doc.getWire(wire.id).from, "bb1.b1");
+  assert.equal(
+    doc.getWire(wire.id).to,
+    "bb1.a20",
+    "the other end is untouched",
+  );
+});
+
+test("wire-endpoint drag: an illegal target (occupied) leaves the wire alone", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { viewport, surface, controller } = makeDesk(doc, world);
+  controller.addBoardAt("pins-full", 0, 0);
+  const wire = seedWire(doc, "bb1.a1", "bb1.a20");
+  // Drag 'to' (20,12) onto a1 (1,12) — the wire's own other end.
+  world.x = 20;
+  world.y = 12;
+  fire(viewport, "pointerdown", { id: 9, client: [0, 0] });
+  world.x = 1;
+  world.y = 12;
+  fire(wireSvg(surface), "pointermove", { id: 9, client: [40, 40] });
+  fire(wireSvg(surface), "pointerup", { id: 9, client: [40, 40] });
+
+  assert.equal(doc.getWire(wire.id).to, "bb1.a20", "reverted");
+});
+
+test("whole-wire drag: both ends translate rigidly onto new holes", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { surface, controller } = makeDesk(doc, world);
+  controller.addBoardAt("pins-full", 0, 0);
+  const wire = seedWire(doc, "bb1.a1", "bb1.a5"); // (1,12) … (5,12)
+  const body = surface.querySelector(`.wire[data-wire-id="${wire.id}"]`);
+
+  // Grab the body at its midpoint (3,12) — clear of both caps — and shift it
+  // three rows up: a(y12) → d(y9), so a1→d1 and a5→d5.
+  world.x = 3;
+  world.y = 12;
+  fire(body, "pointerdown", { id: 9, client: [0, 0] });
+  world.x = 3;
+  world.y = 9;
+  fire(wireSvg(surface), "pointermove", { id: 9, client: [40, 40] });
+  fire(wireSvg(surface), "pointerup", { id: 9, client: [40, 40] });
+
+  assert.deepEqual(
+    { from: doc.getWire(wire.id).from, to: doc.getWire(wire.id).to },
+    { from: "bb1.d1", to: "bb1.d5" },
+  );
+});
+
+// ── Placement (arm → click to commit) ───────────────────────────────────────
+
+/** Arm a tool, then click at world `at` to commit — a placement gesture. */
+function placeClick(viewport, world, at) {
+  world.x = at.x;
+  world.y = at.y;
+  // pointerdown records the click origin (so the click isn't taken for a pan),
+  // then the click commits at the armed ghost's seat.
+  fire(viewport, "pointerdown", { id: 11, client: [5, 5] });
+  viewport.dispatchEvent(
+    new window.MouseEvent("click", { bubbles: true, clientX: 5, clientY: 5 }),
+  );
+}
+
+test("placement: arming a kit and clicking drops it at the cursor", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { viewport, controller } = makeDesk(doc, world);
+
+  controller.armPlacement("full");
+  assert.ok(controller.placementArmed);
+  placeClick(viewport, world, { x: 20, y: 20 });
+
+  assert.equal(doc.boards.length, 3, "the full kit's three strips landed");
+  assert.ok(
+    !controller.placementArmed,
+    "and placement disarmed after the drop",
+  );
+});
+
+test("placement: arming a part and clicking seats it on the board", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { viewport, controller } = makeDesk(doc, world);
+  controller.addBoardAt("pins-full", 0, 0);
+
+  controller.armChipPlacement("7400");
+  // Click over the trench around column 8 (trench centre y 6.5).
+  placeClick(viewport, world, { x: 8, y: 6.5 });
+
+  assert.equal(doc.components.length, 1);
+  assert.equal(doc.components[0].ref, "7400");
+  assert.equal(doc.components[0].kind, "chip");
+});

@@ -119,9 +119,19 @@ Chip Hippo icon, never the default Electron one. All rasters are committed.
   under `scripts/catalog/` (pure data + integrity test — never part-specific code
   paths); thin view components under `scripts/components/`. `DeskController`
   keeps the whole public surface but delegates cohesive slices to collaborators
-  it owns (e.g. `sim-overlay.js` — the live LED/badge/clock face + net-level
-  lookups, driven from `chiphippo:sim-state`); more are being carved off along
-  the section seams as the file shrinks.
+  it owns: `sim-overlay.js` (the live LED/badge/clock face + net-level lookups,
+  driven from `chiphippo:sim-state`), `probe-inspector.js` (the connectivity
+  probe — owns its netlist cache, net-highlight overlay, and status readout),
+  and `wire-tools.js` (the click-click wire tool + the endpoint/whole-wire
+  drags + the per-wire context menu; it shares the controller's `#mode` through
+  a host object so the viewport dispatcher's mode checks are unchanged). All the
+  world-coordinate/hit-test geometry the controller used to inline now lives in
+  the pure, tested `model/part-geometry.js`. What remains in the controller is
+  the direct-manipulation input state machine (the shared `#mode`, board
+  placement + the intertwined part rotation, the board/part/marquee drag
+  gestures, mounting, selection, doc mutations, and the one viewport pointer
+  dispatcher) — one responsibility, exercised by the characterization suite in
+  `tests/desk-gestures.test.js`.
 - `src/web/fonts/` — bundled Inter variable font; never load fonts from a CDN.
 - `src/web/styles/` — `theme.css` (design tokens + reset) and `app.css` (shell). Use
   the tokens; don't hardcode colours/sizes.
