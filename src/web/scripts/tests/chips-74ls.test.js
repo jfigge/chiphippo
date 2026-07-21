@@ -260,6 +260,25 @@ test("74LS240: octal inverting 3-state buffer, per-group enable", () => {
   assert.equal(evaluate(def, lv({ 19: H, 11: H })).get(9), Z);
 });
 
+test("74LS245: octal transceiver drives A→B or B→A; ŌĒ tri-states both sides", () => {
+  const def = chipDef("74LS245");
+  // DIR=1 (high → A→B), ŌĒ=19 ; pair A1=2 / B1=18.
+  // A→B: B1 follows A1, and the A side is the input (not driven → Z).
+  let out = evaluate(def, lv({ 1: H, 19: L, 2: L }));
+  assert.equal(out.get(18), L); // B1 = A1
+  assert.equal(out.get(2), Z); // A1 is the source side, not driven
+  out = evaluate(def, lv({ 1: H, 19: L, 2: H }));
+  assert.equal(out.get(18), H);
+  // B→A: DIR low → A1 follows B1, B side not driven.
+  out = evaluate(def, lv({ 1: L, 19: L, 18: L }));
+  assert.equal(out.get(2), L); // A1 = B1
+  assert.equal(out.get(18), Z);
+  // Output-enable de-asserted → both sides float.
+  out = evaluate(def, lv({ 1: H, 19: H, 2: L }));
+  assert.equal(out.get(18), Z);
+  assert.equal(out.get(2), Z);
+});
+
 // ── Decoders / arithmetic / comparators (COMB) ───────────────────────────────
 
 test("74LS47: BCD→7-segment decode, lamp test, and blanking", () => {

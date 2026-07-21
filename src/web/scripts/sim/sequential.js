@@ -376,6 +376,35 @@ export function busDriverUnits(m) {
 }
 
 /**
+ * Octal bus transceiver (74245-style): each A/B pin PAIR is BIDIRECTIONAL. With
+ * the active-low output-enable `oeN` low, data flows A→B when `dir` is HIGH and
+ * B→A when LOW; the passive side (and both sides while disabled) is
+ * high-impedance (`Z`). The A/B pins carry the catalog's `io` role — a unit
+ * both reads and drives them, which the engine already permits (it drives
+ * whatever a unit returns, and reads every pin's net level). Each direction is
+ * a separate COMB unit, so a pin is driven exactly once and read once.
+ * @param {{dir, oeN, pairs:Array<{a,b}>}} m
+ */
+export function transceiverUnits(m) {
+  const units = [];
+  for (const { a, b } of m.pairs) {
+    // B follows A when enabled and pointing A→B; otherwise it floats.
+    units.push(
+      comb([m.dir, m.oeN, a], b, ([dir, oe, av]) =>
+        oe === H ? Z : dir === H ? asBit(av) : Z,
+      ),
+    );
+    // A follows B when enabled and pointing B→A; otherwise it floats.
+    units.push(
+      comb([m.dir, m.oeN, b], a, ([dir, oe, bv]) =>
+        oe === H ? Z : dir === L ? asBit(bv) : Z,
+      ),
+    );
+  }
+  return units;
+}
+
+/**
  * 4-bit binary full adder (74283-style). `a`/`b` are the addend bit pins LSB
  * first, `cin` the carry-in, `s` the sum pins LSB first, `cout` the carry-out.
  * @param {{a:number[], b:number[], cin, s:number[], cout}} m

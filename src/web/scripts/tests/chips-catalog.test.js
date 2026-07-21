@@ -34,7 +34,9 @@ import {
   inputLevels,
 } from "../sim/chip-eval.js";
 
-const ROLES = new Set(["input", "output", "vcc", "gnd", "nc"]);
+// `io` is a BIDIRECTIONAL pin (the 74245 transceiver's bus lines): a unit both
+// reads it and drives it, so it counts as an input AND an output below.
+const ROLES = new Set(["input", "output", "vcc", "gnd", "nc", "io"]);
 
 const GATE_WAVE = [
   "7400",
@@ -83,6 +85,7 @@ const LS_WAVE = [
   "74LS257",
   "74LS240",
   "74LS244",
+  "74LS245",
   "74LS47",
   "74LS85",
   "74LS148",
@@ -140,37 +143,47 @@ for (const def of CHIP_DEFS) {
     const outputPins = def.pins
       .filter((p) => p.role === "output")
       .map((p) => p.n);
+    const ioPins = def.pins.filter((p) => p.role === "io").map((p) => p.n);
     const pinRole = new Map(def.pins.map((p) => [p.n, p.role]));
 
     if (hasLogic(def)) {
-      // ── Combinational: units reference real input/output pins; every input
-      //    is used (fan-out allowed for MSI), every output driven exactly once.
-      const usedInputs = new Set();
-      const usedOutputs = [];
+      // ── Combinational: units reference real pins; a unit may only READ an
+      //    input/io pin and only DRIVE an output/io pin. Every input is used
+      //    (fan-out allowed for MSI), every output driven exactly once, and
+      //    every bidirectional io pin BOTH driven once AND read (the 74245).
+      const usedAsInput = new Set();
+      const driveCount = new Map();
       for (const unit of def.logic.units) {
         const inPins = [...unit.inputs];
         if (unit.enable != null) inPins.push(unit.enable);
         for (const p of inPins) {
-          assert.equal(pinRole.get(p), "input", `${def.id} input pin ${p}`);
-          usedInputs.add(p);
+          assert.ok(
+            pinRole.get(p) === "input" || pinRole.get(p) === "io",
+            `${def.id} reads pin ${p} (role ${pinRole.get(p)})`,
+          );
+          usedAsInput.add(p);
         }
-        assert.equal(
-          pinRole.get(unit.output),
-          "output",
-          `${def.id} output pin ${unit.output}`,
+        const o = unit.output;
+        assert.ok(
+          pinRole.get(o) === "output" || pinRole.get(o) === "io",
+          `${def.id} drives pin ${o} (role ${pinRole.get(o)})`,
         );
-        usedOutputs.push(unit.output);
+        driveCount.set(o, (driveCount.get(o) ?? 0) + 1);
       }
-      assert.deepEqual(
-        [...usedInputs].sort((a, b) => a - b),
-        [...inputPins].sort((a, b) => a - b),
-        `${def.id} every input pin used`,
-      );
-      assert.deepEqual(
-        [...usedOutputs].sort((a, b) => a - b),
-        [...outputPins].sort((a, b) => a - b),
-        `${def.id} every output driven exactly once`,
-      );
+      for (const p of inputPins) {
+        assert.ok(usedAsInput.has(p), `${def.id} input pin ${p} unused`);
+      }
+      for (const p of outputPins) {
+        assert.equal(
+          driveCount.get(p),
+          1,
+          `${def.id} output pin ${p} driven once`,
+        );
+      }
+      for (const p of ioPins) {
+        assert.equal(driveCount.get(p), 1, `${def.id} io pin ${p} driven once`);
+        assert.ok(usedAsInput.has(p), `${def.id} io pin ${p} not read`);
+      }
     } else {
       // ── Sequential: a pure state0/step/outputs block whose initial outputs
       //    cover exactly the output-role pins.

@@ -30,6 +30,7 @@ import { el } from "../dom.js";
 const ROLE_TAG = Object.freeze({
   input: "in",
   output: "out",
+  io: "I/O",
   vcc: "pwr",
   gnd: "gnd",
   nc: "n/c",

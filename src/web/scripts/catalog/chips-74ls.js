@@ -35,6 +35,7 @@ import {
   selectorUnits,
   selectorTsUnits,
   busDriverUnits,
+  transceiverUnits,
   adder4Units,
   comparator4Units,
   priorityEncoder8Units,
@@ -55,6 +56,8 @@ const output = (n, name) => pin(n, name, "output");
 const nc = (n) => pin(n, "NC", "nc");
 const gnd = (n) => pin(n, "GND", "gnd");
 const vcc = (n) => pin(n, "VCC", "vcc");
+/** A bidirectional (I/O) pin — a bus line a unit both reads and drives. */
+const io = (n, name) => pin(n, name, "io");
 const unit = (fn, inputs, output) => ({ fn, inputs, output });
 /** A tri-state buffer: `data` in, active-low `enable`, `output` (74125-style). */
 const buf3 = (data, enable, output) => ({
@@ -611,6 +614,55 @@ export const CHIPS_74LS = Object.freeze([
         buf3(15, 19, 5),
         buf3(17, 19, 3),
       ],
+    },
+  },
+  {
+    id: "74LS245",
+    title: "Octal bus transceiver, tri-state",
+    blurb:
+      "Eight BIDIRECTIONAL A/B lines: with the output-enable (ŌĒ) low, data " +
+      "flows A→B when DIR is high and B→A when low; disabled, every line " +
+      "floats. The A and B pins are true I/O — the only bidirectional part in " +
+      "the catalog.",
+    group: "Buffer",
+    package: "DIP-20",
+    pins: [
+      input(1, "DIR"),
+      io(2, "A1"),
+      io(3, "A2"),
+      io(4, "A3"),
+      io(5, "A4"),
+      io(6, "A5"),
+      io(7, "A6"),
+      io(8, "A7"),
+      io(9, "A8"),
+      gnd(10),
+      io(11, "B8"),
+      io(12, "B7"),
+      io(13, "B6"),
+      io(14, "B5"),
+      io(15, "B4"),
+      io(16, "B3"),
+      io(17, "B2"),
+      io(18, "B1"),
+      input(19, "OE"),
+      vcc(20),
+    ],
+    logic: {
+      units: transceiverUnits({
+        dir: 1,
+        oeN: 19,
+        pairs: [
+          { a: 2, b: 18 }, // A1 ↔ B1
+          { a: 3, b: 17 },
+          { a: 4, b: 16 },
+          { a: 5, b: 15 },
+          { a: 6, b: 14 },
+          { a: 7, b: 13 },
+          { a: 8, b: 12 },
+          { a: 9, b: 11 }, // A8 ↔ B8
+        ],
+      }),
     },
   },
 
