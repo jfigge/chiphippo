@@ -55,6 +55,14 @@ const DEFAULTS = Object.freeze({
   // The selection-border colour (`#rrggbb`), or null to use the theme accent.
   // Applied by the renderer as the `--color-selection` custom property.
   selectionColor: null,
+
+  // ── Current schematic (file-based New/Open/Save) ───────────────────────────
+  // The named file the working desk maps to (null → Untitled), and a JSON
+  // snapshot of the document as last saved to that file (or the empty/new
+  // baseline). The renderer compares the live document to `savedDoc` to know
+  // whether there are unsaved changes (the dirty marker + discard prompt).
+  currentFile: null,
+  savedDoc: null,
 });
 
 class SettingsStore {

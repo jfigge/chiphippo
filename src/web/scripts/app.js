@@ -33,7 +33,7 @@ import { NotificationStack } from "./components/notification-stack.js";
 import { PopupManager } from "./popup-manager.js";
 import { AboutDialog } from "./components/about-dialog.js";
 import { SettingsDialog } from "./components/settings-dialog.js";
-import { DeskDoc, WIRE_COLORS } from "./model/desk-doc.js";
+import { DeskDoc, WIRE_COLORS, emptyDocument } from "./model/desk-doc.js";
 import { partDef } from "./catalog/index.js";
 
 /** How long after the last camera change to persist the viewport. */
@@ -60,6 +60,27 @@ const GEAR_SVG =
   "5 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-." +
   "06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-." +
   '09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
+
+/** Schematic file icons for the header toolbar (New / Load / Save). */
+const ICON_SVG_OPEN =
+  '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" ' +
+  'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+  'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">';
+const NEW_SVG =
+  ICON_SVG_OPEN +
+  '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>' +
+  '<polyline points="14 2 14 8 20 8"/>' +
+  '<line x1="12" y1="18" x2="12" y2="12"/>' +
+  '<line x1="9" y1="15" x2="15" y2="15"/></svg>';
+const LOAD_SVG =
+  ICON_SVG_OPEN +
+  '<path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 ' +
+  '0 0 1 2 2z"/></svg>';
+const SAVE_SVG =
+  ICON_SVG_OPEN +
+  '<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>' +
+  '<polyline points="17 21 17 13 7 13 7 21"/>' +
+  '<polyline points="7 3 7 8 15 8"/></svg>';
 
 function buildHeader() {
   const header = document.createElement("header");
@@ -241,6 +262,103 @@ async function init() {
     }, VIEWPORT_SAVE_DEBOUNCE_MS);
   };
 
+  // ── Schematic files (New / Open / Save / Save As) ─────────────────────────
+  // The working document is desk.json (autosaved above); these map it to a
+  // named file. New/Open rewrite the working file and reload so the whole
+  // scene rebuilds cleanly (the app's one guaranteed teardown path); Save /
+  // Save As just write a file. Dirty is the live document vs `savedDocJson` —
+  // the snapshot as last written to the file (persisted so it survives the
+  // reload and across sessions).
+  let currentFile = settings.currentFile ?? null;
+  let savedDocJson = settings.savedDoc ?? JSON.stringify(deskDoc.toJSON());
+  const fileName = (p) => (p ? p.split(/[\\/]/).pop() : "Untitled");
+  const isDirty = () => JSON.stringify(deskDoc.toJSON()) !== savedDocJson;
+  const updateTitle = () => {
+    document.title = `${isDirty() ? "• " : ""}${fileName(currentFile)} — Chip Hippo`;
+  };
+  updateTitle();
+  window.addEventListener("chiphippo:doc-changed", updateTitle);
+
+  const confirmDiscard = () =>
+    new Promise((resolve) => {
+      if (!isDirty()) return resolve(true);
+      PopupManager.confirm({
+        title: "Discard unsaved changes?",
+        message: `"${fileName(currentFile)}" has unsaved changes that will be lost.`,
+        confirmLabel: "Discard",
+        confirmClass: "btn--danger",
+        onConfirm: () => resolve(true),
+        onCancel: () => resolve(false),
+      });
+    });
+
+  // New/Open write the working desk.json + the new baseline, then reload.
+  // Cancel the debounced autosaves first so the OLD in-memory doc can't land
+  // on the freshly written working file after the awaits.
+  const reloadWith = async (doc, file) => {
+    clearTimeout(docSaveTimer);
+    clearTimeout(saveTimer);
+    await bridge.desk.save(doc);
+    await bridge.settings.set({
+      currentFile: file,
+      savedDoc: JSON.stringify(doc),
+    });
+    window.location.reload();
+  };
+
+  const newSchematic = async () => {
+    if (!(await confirmDiscard())) return;
+    await reloadWith(emptyDocument(), null);
+  };
+
+  const openSchematic = async () => {
+    if (!(await confirmDiscard())) return;
+    let res;
+    try {
+      res = await bridge.desk.open();
+    } catch (err) {
+      console.error("[renderer] desk:open failed:", err);
+      return;
+    }
+    if (!res) return; // cancelled
+    await reloadWith(res.doc, res.path);
+  };
+
+  const saveAsSchematic = async () => {
+    const json = deskDoc.toJSON();
+    let path;
+    try {
+      path = await bridge.desk.saveAs(json, currentFile);
+    } catch (err) {
+      console.error("[renderer] desk:save-as failed:", err);
+      return;
+    }
+    if (!path) return; // cancelled
+    currentFile = path;
+    savedDocJson = JSON.stringify(json);
+    await bridge.settings.set({ currentFile: path, savedDoc: savedDocJson });
+    updateTitle();
+  };
+
+  const saveSchematic = async () => {
+    if (!currentFile) return saveAsSchematic();
+    const json = deskDoc.toJSON();
+    try {
+      await bridge.desk.write(currentFile, json);
+    } catch (err) {
+      console.error("[renderer] desk:write failed:", err);
+      return;
+    }
+    savedDocJson = JSON.stringify(json);
+    await bridge.settings.set({ savedDoc: savedDocJson });
+    updateTitle();
+  };
+
+  window.addEventListener("chiphippo:schematic-new", newSchematic);
+  window.addEventListener("chiphippo:schematic-open", openSchematic);
+  window.addEventListener("chiphippo:schematic-save", saveSchematic);
+  window.addEventListener("chiphippo:schematic-save-as", saveAsSchematic);
+
   let zoomControl = null;
   let hud = null;
   let controller = null;
@@ -315,6 +433,27 @@ async function init() {
   });
 
   const toolbar = document.getElementById("app-toolbar");
+
+  // Schematic file actions (New / Load / Save) — icon buttons at the head of
+  // the toolbar, dispatching the SAME events the File menu pushes.
+  const schematicBtn = (label, svg, event) => {
+    const b = el("button", {
+      class: "toolbar-icon-btn",
+      type: "button",
+      title: label,
+      "aria-label": label,
+      onClick: () => window.dispatchEvent(new CustomEvent(event)),
+    });
+    b.innerHTML = svg;
+    return b;
+  };
+  toolbar.append(
+    schematicBtn("New schematic", NEW_SVG, "chiphippo:schematic-new"),
+    schematicBtn("Load schematic…", LOAD_SVG, "chiphippo:schematic-open"),
+    schematicBtn("Save schematic", SAVE_SVG, "chiphippo:schematic-save"),
+    el("span", { class: "toolbar-divider", "aria-hidden": "true" }),
+  );
+
   const partsBtn = el("button", {
     class: "toolbar-btn",
     type: "button",

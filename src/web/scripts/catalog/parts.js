@@ -325,6 +325,45 @@ export const PART_DEFS = Object.freeze(
       },
     },
     {
+      id: "rnet9",
+      kind: "discrete",
+      title: "Resistor array (bussed, 9-pin)",
+      blurb:
+        "Bussed resistor network in a 9-pin SIP: pin 9 (COM) is the shared " +
+        "bus, and pins 1–8 each reach it through their own resistor. Tie COM " +
+        "to ground for eight pull-downs, or to +V for eight pull-ups — like " +
+        "the single resistor, each element is a WEAK coupler (below any chip " +
+        "output), never a hard connection. The ohms value is cosmetic.",
+      group: "Parts",
+      // Nine holes along one grid row: eight resistor pins then the common bus.
+      footprint: Object.freeze({
+        offsets: Object.freeze([0, 1, 2, 3, 4, 5, 6, 7, 8]),
+      }),
+      pins: [
+        ...Array.from({ length: 8 }, (_, i) => ({
+          n: i + 1,
+          name: `${i + 1}`,
+          role: "lead",
+        })),
+        { n: 9, name: "COM", role: "common" },
+      ],
+      normalizeParams(raw) {
+        const ohms = Number(raw?.ohms);
+        return { ohms: Number.isFinite(ohms) && ohms > 0 ? ohms : 10000 };
+      },
+      // Like the single resistor, an element never hard-bridges — its two ends
+      // stay separate nets (the coupling is weak, below any chip output).
+      internalBridges() {
+        return [];
+      },
+      // …instead each of pins 1–8 is WEAKLY coupled to the common bus (pin 9):
+      // the simulator's PULL tier conducts COM's strong level out to every free
+      // pin at the weakest strength. Eight independent pulls, one shared bus.
+      weakBridges() {
+        return Array.from({ length: 8 }, (_, i) => [i + 1, 9]);
+      },
+    },
+    {
       id: "psu",
       kind: "psu",
       title: "Power supply",

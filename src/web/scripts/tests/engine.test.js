@@ -361,6 +361,34 @@ test("a pull-down resistor makes a floating chip input read LOW", () => {
   assert.equal(levelAt("bb1.e11"), H); // 1Y = INV(L)
 });
 
+test("a bussed resistor array pulls every free pin toward its grounded common", () => {
+  // rnet9 seated at a10 → pins 1–8 at a10…a17, common (pin 9) at a18.
+  const r = chipHoles("rnet9", "a10");
+  const { levelAt, strongAt } = simulate({
+    boards,
+    components: [psu("psu1", 80), part("r1", "rnet9", "a10")],
+    wires: [
+      // Ground the common bus (pin 9) via the bottom − rail.
+      wire("psu1.-", "bb3.-2"),
+      wire("bb3.-3", `bb1.${mates(r.get(9))[0]}`),
+      // Strongly drive one element pin (pin 3, a12) HIGH straight off the + rail.
+      wire("psu1.+", "bb2.+2"),
+      wire("bb2.+3", `bb1.${mates(r.get(3))[0]}`),
+    ],
+  });
+  // Every OTHER (free) pin floats to LOW through its own resistor to the
+  // grounded common — eight independent pull-downs, one shared bus.
+  assert.equal(levelAt("bb1.a11"), L); // pin 2
+  assert.equal(levelAt("bb1.a17"), L); // pin 8
+  // …but only WEAKLY: nothing strongly drives them (the PULL tier, not a rail).
+  assert.notEqual(strongAt("bb1.a11"), L);
+  // A strongly-driven pin overrides its own weak pull and stays HIGH; the weak
+  // pull it exerts back on the bus can't flip the strongly-grounded common.
+  assert.equal(levelAt("bb1.a12"), H); // pin 3, wired to +5
+  assert.equal(strongAt("bb1.a12"), H);
+  assert.equal(levelAt("bb1.a18"), L); // common stays grounded
+});
+
 test("strongLevels separate a direct rail feed from one through a resistor", () => {
   // Two columns fed from +5 V: a10 straight off the rail, a20 through R.
   const r = chipHoles("resistor", "a30"); // a30 ── a33

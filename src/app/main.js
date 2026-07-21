@@ -27,6 +27,7 @@
 const {
   app,
   BrowserWindow,
+  dialog,
   ipcMain,
   Menu,
   nativeImage,
@@ -138,6 +139,43 @@ function getDeskStore() {
   return _deskStore;
 }
 
+// ─── Named schematic files (Open / Save As) ───────────────────────────────────
+// The working document lives in userData/desk.json (autosaved); these let the
+// user Open/Save named `.chiphippo` files anywhere. The renderer then makes the
+// chosen file the working document (see app.js).
+const SCHEMATIC_FILTERS = [
+  { name: "Chip Hippo Schematic", extensions: ["chiphippo", "json"] },
+];
+
+/** Show the Open dialog; read + migrate the choice. Returns {path, doc}|null. */
+async function openSchematicDialog() {
+  const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+  const opts = { properties: ["openFile"], filters: SCHEMATIC_FILTERS };
+  const result = win
+    ? await dialog.showOpenDialog(win, opts)
+    : await dialog.showOpenDialog(opts);
+  if (result.canceled || !result.filePaths?.[0]) return null;
+  const filePath = result.filePaths[0];
+  return { path: filePath, doc: getDeskStore().readFile(filePath) };
+}
+
+/** Show the Save-As dialog; write `doc` to the choice. Returns the path|null. */
+async function saveSchematicDialog(doc, suggestedPath) {
+  const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+  const opts = {
+    defaultPath:
+      typeof suggestedPath === "string" && suggestedPath
+        ? suggestedPath
+        : "schematic.chiphippo",
+    filters: SCHEMATIC_FILTERS,
+  };
+  const result = win
+    ? await dialog.showSaveDialog(win, opts)
+    : await dialog.showSaveDialog(opts);
+  if (result.canceled || !result.filePath) return null;
+  return getDeskStore().writeFile(result.filePath, doc);
+}
+
 // ─── Chip pin-assignments windows (Feature 100) ───────────────────────────────
 // Double-clicking a chip opens a small, floating OS window rendering its DIP
 // pinout (web/pinout.html) so it stays visible while the user wires. One window
@@ -223,6 +261,32 @@ function buildAppMenu() {
     click: () => sendToMain("menu:open-settings"),
   };
 
+  // Schematic file operations — each pushes to the renderer, which owns the
+  // document (New/Open reload the working desk; Save/Save As write a file).
+  const schematicItems = [
+    {
+      label: "New Schematic",
+      accelerator: "CmdOrCtrl+N",
+      click: () => sendToMain("menu:schematic-new"),
+    },
+    {
+      label: "Open Schematic…",
+      accelerator: "CmdOrCtrl+O",
+      click: () => sendToMain("menu:schematic-open"),
+    },
+    { type: "separator" },
+    {
+      label: "Save",
+      accelerator: "CmdOrCtrl+S",
+      click: () => sendToMain("menu:schematic-save"),
+    },
+    {
+      label: "Save As…",
+      accelerator: "CmdOrCtrl+Shift+S",
+      click: () => sendToMain("menu:schematic-save-as"),
+    },
+  ];
+
   const template = [];
   if (isMac) {
     template.push({
@@ -241,10 +305,17 @@ function buildAppMenu() {
         { role: "quit" },
       ],
     });
+    template.push({ label: "File", submenu: schematicItems });
   } else {
     template.push({
       label: "File",
-      submenu: [settings, { type: "separator" }, { role: "quit" }],
+      submenu: [
+        ...schematicItems,
+        { type: "separator" },
+        settings,
+        { type: "separator" },
+        { role: "quit" },
+      ],
     });
   }
 
@@ -324,6 +395,17 @@ function registerIpc() {
   // renderer autosaves the whole document, debounced (~1 s).
   ipcMain.handle("desk:load", () => getDeskStore().load());
   ipcMain.handle("desk:save", (_event, doc) => getDeskStore().save(doc));
+
+  // Named schematic files (Open / Save As / Save). `desk:open` and
+  // `desk:save-as` show a native dialog and return null when cancelled;
+  // `desk:write` overwrites a known path (a re-Save with no prompt).
+  ipcMain.handle("desk:open", () => openSchematicDialog());
+  ipcMain.handle("desk:save-as", (_event, doc, suggestedPath) =>
+    saveSchematicDialog(doc, suggestedPath),
+  );
+  ipcMain.handle("desk:write", (_event, filePath, doc) =>
+    getDeskStore().writeFile(filePath, doc),
+  );
 
   // Chip pin-assignments window (Feature 100): double-clicking a chip opens a
   // separate floating OS window rendering its pinout as a wiring reference.

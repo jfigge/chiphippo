@@ -59,6 +59,37 @@ class DeskStore {
     io.writeJSON(this._file, doc);
     return doc;
   }
+
+  /**
+   * Read a NAMED schematic file (from the Open dialog), migrated to the
+   * current schema so an older `.chiphippo` still opens. Returns the default
+   * empty desk when the file is absent or corrupt (same policy as load()).
+   * @param {string} filePath
+   */
+  readFile(filePath) {
+    return migrateDeskDocument(io.readJSON(filePath));
+  }
+
+  /**
+   * Write a document to a NAMED schematic file (Save / Save As). Throws code
+   * INVALID_ARG on a junk document or path. Returns the path written.
+   * @param {string} filePath
+   * @param {object} doc
+   */
+  writeFile(filePath, doc) {
+    if (typeof filePath !== "string" || !filePath) {
+      const err = new Error("schematic path must be a non-empty string");
+      err.code = "INVALID_ARG";
+      throw err;
+    }
+    if (!doc || typeof doc !== "object" || Array.isArray(doc)) {
+      const err = new Error("desk document must be an object");
+      err.code = "INVALID_ARG";
+      throw err;
+    }
+    io.writeJSON(filePath, doc);
+    return filePath;
+  }
 }
 
 module.exports = { DeskStore };

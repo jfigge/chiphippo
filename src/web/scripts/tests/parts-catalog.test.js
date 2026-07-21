@@ -31,6 +31,7 @@ test("the part catalog carries the Feature 60 inventory", () => {
     "led",
     "psu",
     "resistor",
+    "rnet9",
     "seg8",
     "sw-push",
     "sw-slide",
@@ -40,7 +41,7 @@ test("the part catalog carries the Feature 60 inventory", () => {
   assert.ok(partDef("7400"));
   assert.ok(partDef("clock"));
   assert.equal(chipDef("sw-slide"), null);
-  assert.equal(PALETTE_DEFS.length, 35); // 26 chips + 9 parts
+  assert.equal(PALETTE_DEFS.length, 36); // 26 chips + 10 parts
 });
 
 for (const def of PART_DEFS.filter((d) => d.kind === "discrete")) {
@@ -266,6 +267,35 @@ test("resistor: weakly bridges 1↔2, never a hard bridge; ohms coerce", () => {
   });
   // Two leads on a 4-hole span (offsets 0 and 3) for the horizontal form.
   assert.deepEqual(def.footprint.offsets, [0, 3]);
+});
+
+test("rnet9: bussed array — 8 weak pulls to the common pin, no hard bridge", () => {
+  const def = partDef("rnet9");
+  assert.equal(def.kind, "discrete");
+  // Nine holes on one row; pins 1–8 leads, pin 9 the common bus.
+  assert.deepEqual(def.footprint.offsets, [0, 1, 2, 3, 4, 5, 6, 7, 8]);
+  assert.equal(def.pins.length, 9);
+  for (let i = 0; i < 8; i++) assert.equal(def.pins[i].role, "lead");
+  assert.equal(def.pins[8].role, "common");
+  assert.equal(def.pins[8].name, "COM");
+  // Never a hard connection (like the single resistor): the coupling is weak.
+  assert.deepEqual(def.internalBridges({ ohms: 220 }), []);
+  // Each of pins 1–8 weakly couples to the common bus (pin 9) — eight pulls.
+  assert.deepEqual(def.weakBridges({ ohms: 220 }), [
+    [1, 9],
+    [2, 9],
+    [3, 9],
+    [4, 9],
+    [5, 9],
+    [6, 9],
+    [7, 9],
+    [8, 9],
+  ]);
+  // Ohms are cosmetic but coerced to a positive number (default 10k).
+  assert.deepEqual(def.normalizeParams({}), { ohms: 10000 });
+  assert.deepEqual(def.normalizeParams({ ohms: 470 }), { ohms: 470 });
+  assert.deepEqual(def.normalizeParams({ ohms: -5 }), { ohms: 10000 });
+  assert.deepEqual(def.normalizeParams({ ohms: "junk" }), { ohms: 10000 });
 });
 
 test("psu: volts enum, source contract, integer terminal offsets", () => {

@@ -35,6 +35,10 @@ const { contextBridge, ipcRenderer } = require("electron");
 for (const [channel, event] of [
   ["menu:show-about", "chiphippo:show-about"],
   ["menu:open-settings", "chiphippo:open-settings"],
+  ["menu:schematic-new", "chiphippo:schematic-new"],
+  ["menu:schematic-open", "chiphippo:schematic-open"],
+  ["menu:schematic-save", "chiphippo:schematic-save"],
+  ["menu:schematic-save-as", "chiphippo:schematic-save-as"],
 ]) {
   ipcRenderer.on(channel, () => {
     window.dispatchEvent(new CustomEvent(event));
@@ -78,6 +82,13 @@ contextBridge.exposeInMainWorld("chiphippo", {
   desk: {
     load: () => ipcRenderer.invoke("desk:load"),
     save: (doc) => ipcRenderer.invoke("desk:save", doc),
+    // Named schematic files. open() → {path, doc}|null (Open dialog);
+    // saveAs(doc) → path|null (Save-As dialog); write(path, doc) → path
+    // (silent re-Save to a known file).
+    open: () => ipcRenderer.invoke("desk:open"),
+    saveAs: (doc, suggestedPath) =>
+      ipcRenderer.invoke("desk:save-as", doc, suggestedPath),
+    write: (filePath, doc) => ipcRenderer.invoke("desk:write", filePath, doc),
   },
 
   // ── Chip pin-assignments window (Feature 100) ──────────────────────────────

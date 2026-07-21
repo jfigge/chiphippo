@@ -107,6 +107,17 @@ Chip Hippo icon, never the default Electron one. All rasters are committed.
   `window.chiphippo` bridge), `window-state.js` (bounds restore with display-fit
   check), and `store/` (`io.js` atomic-write primitives, `settings-store.js`,
   `desk-store.js` + `migrations.js` for the desk document at `userData/desk.json`).
+  **Schematic files**: `desk.json` is the always-autosaved WORKING document;
+  named `.chiphippo` files are the user's documents. `DeskStore.readFile`/
+  `writeFile` (+ the `desk:open`/`desk:save-as`/`desk:write` handlers with
+  native dialogs) do Open/Save/Save-As. **New and Open write the working
+  `desk.json` + persist `settings.currentFile`/`savedDoc`, then the renderer
+  `window.location.reload()`s** — reload is the app's one guaranteed teardown
+  path (no `dispose()` exists on the controller/collaborators), so it rebuilds
+  the whole scene cleanly; the only thing lost is run-volatile sim state.
+  Dirty = live document vs `settings.savedDoc` (the last-saved baseline); it
+  drives the `document.title` marker and the discard prompt (File menu ⌘N/⌘O/
+  ⌘S/⇧⌘S push `menu:schematic-*` → `chiphippo:schematic-*`).
 - `src/web/` — **renderer** (Vanilla JS ES modules + plain CSS): the UI. Sandboxed;
   talks to main only through `window.chiphippo.*`. Entry points: `index.html` →
   `scripts/app.js`. Pure DOM-free logic lives under `scripts/desk/` (camera, wire

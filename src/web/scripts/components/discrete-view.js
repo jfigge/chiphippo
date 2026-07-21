@@ -54,6 +54,9 @@ const BOXES = Object.freeze({
   "sw-push": Object.freeze({ minX: -0.7, minY: -1.4, width: 3.4, height: 2.8 }),
   led: Object.freeze({ minX: -0.7, minY: -1.9, width: 2.4, height: 2.9 }),
   resistor: Object.freeze({ minX: -0.7, minY: -1.1, width: 4.4, height: 2.2 }),
+  // A 9-pin SIP standing over one row of holes (like the displays), body above
+  // so every hole stays clickable for wiring.
+  rnet9: Object.freeze({ minX: -0.7, minY: -2.9, width: 9.4, height: 3.5 }),
   // Nine holes along one row (x 0…8) with the display block standing ABOVE
   // them, so each anode's lower column holes stay clickable for wiring.
   seg8: Object.freeze({ minX: -0.7, minY: -7.7, width: 9.4, height: 8.3 }),
@@ -401,6 +404,62 @@ function buildBarArrayDisplay(svg, color) {
   );
 }
 
+/** A compact ohms label: 10000 → "10k", 4700000 → "4.7M", 220 → "220". */
+function formatOhms(ohms) {
+  if (ohms >= 1e6) return `${+(ohms / 1e6).toFixed(2)}M`;
+  if (ohms >= 1e3) return `${+(ohms / 1e3).toFixed(2)}k`;
+  return String(ohms);
+}
+
+/**
+ * The bussed resistor array (rnet9): a 9-pin SIP standing over one row of
+ * holes, its beige body printed with the value and a dot marking the common
+ * bus (pin 9, x=8). Like the displays, the body stands ABOVE the legs so every
+ * hole underneath stays clickable.
+ */
+function buildResistorNetwork(svg, ohms) {
+  const edgeY = -0.6;
+  const bodyY = -2.4;
+  appendDisplayLegs(svg, edgeY); // nine legs down to holes 0…8
+  svg.append(
+    svgEl("rect", {
+      class: "part-rnet-body",
+      x: -0.45,
+      y: bodyY,
+      width: 8.9,
+      height: edgeY - bodyY,
+      rx: 0.25,
+    }),
+  );
+  // A dot over pin 9 marks the shared/common bus end.
+  svg.append(
+    svgEl("circle", {
+      class: "part-rnet-dot",
+      cx: 8,
+      cy: bodyY + 0.42,
+      r: 0.22,
+    }),
+  );
+  const label = svgEl("text", {
+    class: "part-rnet-label",
+    x: 4,
+    y: (bodyY + edgeY) / 2 + 0.3,
+    "text-anchor": "middle",
+  });
+  label.textContent = formatOhms(ohms);
+  svg.append(label);
+  // Body-only hit target: the block drags, the holes underneath stay clickable.
+  svg.append(
+    svgEl("rect", {
+      class: "part-display-hit",
+      x: -0.45,
+      y: bodyY,
+      width: 8.9,
+      height: edgeY - bodyY,
+    }),
+  );
+}
+
 /**
  * Build a discrete part's SVG from its catalog def + params. Pure DOM
  * construction (unit-testable under jsdom).
@@ -506,6 +565,8 @@ export function buildDiscreteSvg(ref, params = {}) {
     buildBarDisplay(svg, normalized.color);
   } else if (ref === "bar8iso") {
     buildBarArrayDisplay(svg, normalized.color);
+  } else if (ref === "rnet9") {
+    buildResistorNetwork(svg, normalized.ohms);
   } else {
     // LED dome over the two holes; the flat chord marks the CATHODE side
     // (right by default — pin 2; params.flip mirrors it to the left).

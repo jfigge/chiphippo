@@ -107,6 +107,33 @@
   background: var(--color-surface-1);
 }
 
+/* Icon-only toolbar buttons (the schematic New / Load / Save group). */
+.toolbar-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  background: var(--color-surface-0);
+  border: 1px solid var(--color-overlay);
+  border-radius: var(--radius-sm);
+  color: var(--color-text);
+  cursor: pointer;
+}
+
+.toolbar-icon-btn:hover {
+  background: var(--color-surface-1);
+}
+
+/* Thin vertical rule separating toolbar groups. */
+.toolbar-divider {
+  width: 1px;
+  align-self: stretch;
+  margin: var(--space-1) var(--space-1);
+  background: var(--color-overlay);
+}
+
 .toolbar-split .toolbar-btn:first-child {
   border-radius: var(--radius-sm) 0 0 var(--radius-sm);
 }
@@ -815,7 +842,8 @@
    over the block reports the drag/select (same trick as .part-span-hit). */
 .part-discrete--seg8,
 .part-discrete--bar8,
-.part-discrete--bar8iso {
+.part-discrete--bar8iso,
+.part-discrete--rnet9 {
   pointer-events: none;
 }
 
@@ -888,6 +916,26 @@
 
 .part-resistor-band {
   fill: var(--color-part-inset);
+}
+
+/* Bussed resistor array (rnet9): a beige SIP body over one row of legs, printed
+   with its value and a dot at the common-bus end. */
+.part-rnet-body {
+  fill: var(--color-part-resistor);
+  stroke: var(--color-part-inset);
+  stroke-width: 0.08;
+}
+
+.part-rnet-dot {
+  fill: var(--color-part-inset);
+}
+
+.part-rnet-label {
+  fill: var(--color-part-inset);
+  font-family: var(--font-mono);
+  font-size: 0.8px; /* SVG user units = pitch units */
+  letter-spacing: 0.04px;
+  user-select: none;
 }
 
 /* ── PSU brick (desk-level) ──────────────────────────────────────────────── */
