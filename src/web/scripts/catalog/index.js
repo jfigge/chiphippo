@@ -20,6 +20,7 @@
 
 import { CHIPS_GATES } from "./chips-gates.js";
 import { CHIPS_SEQ } from "./chips-seq.js";
+import { CHIPS_74LS } from "./chips-74ls.js";
 import { PART_DEFS } from "./parts.js";
 
 /** Every chip def, in palette display order (combinational gates, then the
@@ -27,7 +28,7 @@ import { PART_DEFS } from "./parts.js";
     `normalizeParams` that preserves only the `damaged` flag (Feature 90's
     magic-smoke bookkeeping) — chips otherwise carry no params. */
 export const CHIP_DEFS = Object.freeze(
-  [...CHIPS_GATES, ...CHIPS_SEQ].map((def) =>
+  [...CHIPS_GATES, ...CHIPS_SEQ, ...CHIPS_74LS].map((def) =>
     Object.freeze({
       kind: "chip",
       // Only non-default flags are stored, so a plain chip keeps `params: {}`.

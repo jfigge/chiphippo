@@ -139,8 +139,8 @@ test("filter matches id, title, and blurb (case-insensitive)", () => {
   typeFilter(panel.element, "nor"); // title match: 7402 + 7427
   assert.deepEqual(ids().sort(), ["7402", "7427"]);
 
-  typeFilter(panel.element, "TRI-STATE"); // blurb match, case-insensitive
-  assert.deepEqual(ids(), ["74125"]);
+  typeFilter(panel.element, "EXCLUSIVE"); // blurb-only match, case-insensitive
+  assert.deepEqual(ids(), ["7486"]);
 
   typeFilter(panel.element, "zzz");
   assert.deepEqual(ids(), []);

@@ -169,6 +169,122 @@ test("armPlacement shows a ghost; cancel and Escape clear it", () => {
   assert.ok(!viewport.classList.contains("desk-viewport--placing"));
 });
 
+/** Fire a Cmd+<key> keydown at the controller; returns whether it consumed. */
+function accelKey(controller, key) {
+  return controller.handleKeyDown(
+    new window.KeyboardEvent("keydown", { key, metaKey: true }),
+  );
+}
+
+test("Cmd+C then Cmd+V arms a placement ghost that drops a duplicate", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const { viewport, surface, controller, world } = makeDesk(doc);
+  controller.addBoardAt("pins-full", 0, 0);
+  // Seating a chip selects it; Cmd+C should copy that one part.
+  controller.addComponentAt("7400", "bb1", "e5"); // cols 5–11
+  assert.equal(doc.components.length, 1);
+
+  assert.equal(accelKey(controller, "c"), true);
+  assert.equal(accelKey(controller, "v"), true);
+  assert.ok(controller.placementArmed);
+  assert.equal(
+    surface.querySelectorAll(".layer-overlay .part-ghost").length,
+    1,
+  );
+
+  // Drop the duplicate on a clear stretch of the same board.
+  const seat = worldOfAddress(doc.boards, "bb1.e30");
+  world.x = seat.x;
+  world.y = seat.y;
+  viewport.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+
+  assert.ok(!controller.placementArmed);
+  assert.equal(doc.components.length, 2);
+  assert.deepEqual(
+    doc.components.map((c) => c.ref),
+    ["7400", "7400"],
+  );
+});
+
+test("Cmd+V carries the copied chip's orientation into the duplicate", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const { viewport, controller, world } = makeDesk(doc);
+  controller.addBoardAt("pins-full", 0, 0);
+  const chip = controller.addComponentAt("7400", "bb1", "e5");
+  // R flips a selected chip 180°; copy the flipped part.
+  controller.handleKeyDown(new window.KeyboardEvent("keydown", { key: "r" }));
+  assert.equal(doc.getComponent(chip.id).params.rot, 180);
+
+  accelKey(controller, "c");
+  accelKey(controller, "v");
+  const seat = worldOfAddress(doc.boards, "bb1.e30");
+  world.x = seat.x;
+  world.y = seat.y;
+  viewport.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+
+  const dupe = doc.components.find((c) => c.id !== chip.id);
+  assert.equal(dupe.ref, "7400");
+  assert.equal(dupe.params.rot, 180);
+});
+
+test("Cmd+V keeps a rotatable part's turned orientation and lead vector", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0); // bb1
+  doc.addBoard("rail-full", 0, 14); // bb2 — a rail below row a
+  const world = { x: 0, y: 0 };
+  const { viewport, controller } = makeDesk(doc, world);
+
+  // Source: a resistor stood on end, its lead reaching down onto the rail.
+  const src = controller.addComponentAt("resistor", "bb1", "a10", {
+    rot: 90,
+    end: { dx: 0, dy: 3 },
+  });
+  assert.equal(doc.getComponent(src.id).params.rot, 90);
+
+  accelKey(controller, "c");
+  accelKey(controller, "v");
+  assert.ok(controller.placementArmed);
+
+  // Track + drop the duplicate a few columns over; pin 1 rides the cursor. Land
+  // it on a column whose rail hole exists (rails skip every fifth position).
+  world.x = 25;
+  world.y = 12; // hole a25
+  viewport.dispatchEvent(
+    new window.PointerEvent("pointermove", { bubbles: true }),
+  );
+  viewport.dispatchEvent(
+    new window.PointerEvent("pointerdown", { bubbles: true, button: 0 }),
+  );
+  viewport.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+
+  const dupe = doc.components.find((c) => c.id !== src.id);
+  assert.ok(dupe, "a duplicate landed");
+  assert.equal(dupe.ref, "resistor");
+  assert.equal(dupe.params.rot, 90); // turned, exactly like the source
+  assert.deepEqual(dupe.params.end, { dx: 0, dy: 3 });
+  // Same shape as the source: pin 1 on the board, pin 2 down on the rail.
+  assert.deepEqual(partPinAddresses(doc, dupe), [
+    { pin: 1, address: "bb1.a25" },
+    { pin: 2, address: "bb2.+20" },
+  ]);
+});
+
+test("Cmd+C with nothing selected and Cmd+V with an empty buffer no-op", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const { controller } = makeDesk(doc);
+  controller.addBoardAt("pins-full", 0, 0);
+  controller.deselect();
+
+  // Not consumed → the native Edit-menu copy/paste still handles the key.
+  assert.equal(accelKey(controller, "c"), false);
+  assert.equal(accelKey(controller, "v"), false);
+  assert.ok(!controller.placementArmed);
+});
+
 test("addKitAt: a loose strip dropped flush mates with the board it touches", () => {
   resetDom();
   const doc = new DeskDoc(null);

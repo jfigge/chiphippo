@@ -66,13 +66,43 @@ const SEQ_WAVE = [
   "74151",
   "74157",
 ];
+// The 74LS wave (a broad batch of Low-power Schottky parts). Duplicates of the
+// plain-TTL functions carry their own LS id; the electrical LS/TTL difference
+// is analog and invisible to the zero-delay engine.
+const LS_WAVE = [
+  "74LS05",
+  "74LS14",
+  "74LS112",
+  "74LS173",
+  "74LS174",
+  "74LS273",
+  "74LS279",
+  "74LS151",
+  "74LS153",
+  "74LS157",
+  "74LS257",
+  "74LS240",
+  "74LS244",
+  "74LS47",
+  "74LS85",
+  "74LS148",
+  "74LS283",
+  "74LS169",
+  "74LS259",
+  "74LS533",
+  "74LS573",
+  "74LS595",
+  "74LS90",
+];
 
-test("the catalog contains the gate wave plus the sequential/MSI wave", () => {
+test("the catalog contains the gate wave plus the sequential/MSI + 74LS waves", () => {
   assert.deepEqual(
     CHIP_DEFS.map((d) => d.id).sort(),
-    [...GATE_WAVE, ...SEQ_WAVE].sort(),
+    [...GATE_WAVE, ...SEQ_WAVE, ...LS_WAVE].sort(),
   );
-  for (const id of [...GATE_WAVE, ...SEQ_WAVE]) assert.ok(chipDef(id), id);
+  for (const id of [...GATE_WAVE, ...SEQ_WAVE, ...LS_WAVE]) {
+    assert.ok(chipDef(id), id);
+  }
   assert.equal(chipDef("9999"), null);
 });
 

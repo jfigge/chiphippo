@@ -31,7 +31,7 @@
 // datasheet. Combinational MSI parts (decoders, muxes) live here too as
 // `COMB` unit builders — their inputs legitimately fan out to every output.
 
-import { H, L, inv } from "./levels.js";
+import { H, L, Z, inv } from "./levels.js";
 
 /** A control/data line reads as a clean bit: H stays H, everything else L. */
 const asBit = (lv) => (lv === H ? H : L);
@@ -340,4 +340,357 @@ export function selectorUnits(m) {
       return sel === H ? asBit(b) : asBit(a);
     });
   });
+}
+
+/**
+ * Quad 2-to-1 selector with 3-STATE outputs (74257/258-style): a shared select
+ * and active-low output-enable `oeN` — disabled outputs float (`Z`), not LOW.
+ * `invert` gives the inverting 258. `units` = [{a,b,y}…].
+ * @param {{sel, oeN, invert?:boolean, units:Array<{a,b,y}>}} m
+ */
+export function selectorTsUnits(m) {
+  return m.units.map((u) => {
+    const inputs = [m.oeN, m.sel, u.a, u.b];
+    return comb(inputs, u.y, ([oe, sel, a, b]) => {
+      if (oe === H) return Z; // output disabled → high-impedance
+      const v = sel === H ? asBit(b) : asBit(a);
+      return m.invert ? inv(v) : v;
+    });
+  });
+}
+
+/**
+ * A bank of 3-state buffers sharing one active-low enable (an octal driver's
+ * 4-bit group — 74240 inverting / 74244 non-inverting). Each pair drives its
+ * `y` from `a` while `enableN` is LOW, else floats (`Z`).
+ * @param {{enableN, invert?:boolean, pairs:Array<{a,y}>}} m
+ */
+export function busDriverUnits(m) {
+  return m.pairs.map((p) => {
+    const inputs = [m.enableN, p.a];
+    return comb(inputs, p.y, ([oe, a]) => {
+      if (oe === H) return Z;
+      return m.invert ? inv(asBit(a)) : asBit(a);
+    });
+  });
+}
+
+/**
+ * 4-bit binary full adder (74283-style). `a`/`b` are the addend bit pins LSB
+ * first, `cin` the carry-in, `s` the sum pins LSB first, `cout` the carry-out.
+ * @param {{a:number[], b:number[], cin, s:number[], cout}} m
+ */
+export function adder4Units(m) {
+  const inputs = [...m.a, ...m.b, m.cin];
+  const total = (levels) => {
+    const byPin = new Map(inputs.map((p, i) => [p, levels[i]]));
+    const a = readBus(m.a, byPin);
+    const b = readBus(m.b, byPin);
+    return a + b + (high(byPin.get(m.cin)) ? 1 : 0);
+  };
+  const units = m.s.map((pin, i) =>
+    comb(inputs, pin, (levels) => ((total(levels) >> i) & 1 ? H : L)),
+  );
+  units.push(comb(inputs, m.cout, (levels) => (total(levels) > 15 ? H : L)));
+  return units;
+}
+
+/**
+ * 4-bit magnitude comparator (7485-style). `a`/`b` are the operand pins LSB
+ * first; `gtIn`/`eqIn`/`ltIn` the cascade inputs; `gtOut`/`eqOut`/`ltOut` the
+ * results. On equality the outputs follow the cascade inputs (so stages chain).
+ * @param {{a:number[], b:number[], gtIn, eqIn, ltIn, gtOut, eqOut, ltOut}} m
+ */
+export function comparator4Units(m) {
+  const inputs = [...m.a, ...m.b, m.gtIn, m.eqIn, m.ltIn];
+  const decide = (levels) => {
+    const byPin = new Map(inputs.map((p, i) => [p, levels[i]]));
+    const a = readBus(m.a, byPin);
+    const b = readBus(m.b, byPin);
+    if (a > b) return { gt: H, eq: L, lt: L };
+    if (a < b) return { gt: L, eq: L, lt: H };
+    // Equal: the datasheet-exact cascade form (reproduces the abnormal rows a
+    // naive pass-through would miss). OA>B = AEB·ĪA=B·ĪA<B, etc.
+    const igt = high(byPin.get(m.gtIn));
+    const ieq = high(byPin.get(m.eqIn));
+    const ilt = high(byPin.get(m.ltIn));
+    return {
+      gt: !ieq && !ilt ? H : L,
+      eq: ieq ? H : L,
+      lt: !ieq && !igt ? H : L,
+    };
+  };
+  return [
+    comb(inputs, m.gtOut, (l) => decide(l).gt),
+    comb(inputs, m.eqOut, (l) => decide(l).eq),
+    comb(inputs, m.ltOut, (l) => decide(l).lt),
+  ];
+}
+
+/**
+ * 8-to-3 priority encoder (74148-style), all active-low. `data` lists I0…I7,
+ * `eiN` the enable-in; `a` the address output pins A0…A2 (active-low), `gsN`
+ * the group-strobe, `eoN` the enable-out. Highest index wins; a floating (Z)
+ * input reads HIGH = inactive.
+ * @param {{data:number[], eiN, a:number[], gsN, eoN}} m
+ */
+export function priorityEncoder8Units(m) {
+  const inputs = [...m.data, m.eiN];
+  const state = (levels) => {
+    const byPin = new Map(inputs.map((p, i) => [p, levels[i]]));
+    if (byPin.get(m.eiN) !== L) return { enabled: false, idx: -1 };
+    let idx = -1;
+    for (let i = 7; i >= 0; i--) {
+      if (byPin.get(m.data[i]) === L) {
+        idx = i;
+        break;
+      }
+    }
+    return { enabled: true, idx };
+  };
+  const units = m.a.map((pin, k) =>
+    comb(inputs, pin, (levels) => {
+      const s = state(levels);
+      if (!s.enabled || s.idx < 0) return H; // idle → active-low outputs high
+      return (s.idx >> k) & 1 ? L : H; // address, active-low
+    }),
+  );
+  units.push(
+    comb(inputs, m.gsN, (levels) => {
+      const s = state(levels);
+      return s.enabled && s.idx >= 0 ? L : H;
+    }),
+  );
+  units.push(
+    comb(inputs, m.eoN, (levels) => {
+      const s = state(levels);
+      return s.enabled && s.idx < 0 ? L : H; // enabled, nothing active
+    }),
+  );
+  return units;
+}
+
+/**
+ * BCD-to-seven-segment decoder (7447-style), active-LOW segment outputs.
+ * `bcd` lists A…D (LSB first); active-low controls `biN` blanking-input,
+ * `ltN` lamp-test, `rbiN` ripple-blank-in; `seg` the seven segment pins a…g.
+ * `patterns` is a 16-entry table of 7-bit segment-ON masks (a…g) — the
+ * display font (incl. the 7447 6/9 quirks) baked in as DATA. Priority matches
+ * the datasheet: BI (all off) → lamp-test (all on) → zero-blank → decode. The
+ * chip's BI/RBO pin is bidirectional; we model its dominant BI (input)
+ * direction, so ripple-blank-OUT cascading is out of scope.
+ * @param {{bcd:number[], biN, ltN, rbiN, seg:number[], patterns:number[][]}} m
+ */
+export function bcd7segUnits(m) {
+  const inputs = [...m.bcd, m.biN, m.ltN, m.rbiN];
+  const decode = (levels) => {
+    const byPin = new Map(inputs.map((p, i) => [p, levels[i]]));
+    if (byPin.get(m.biN) === L) return [0, 0, 0, 0, 0, 0, 0]; // blank (dominant)
+    if (byPin.get(m.ltN) === L) return [1, 1, 1, 1, 1, 1, 1]; // lamp test
+    const v = readBus(m.bcd, byPin);
+    if (byPin.get(m.rbiN) === L && v === 0) return [0, 0, 0, 0, 0, 0, 0]; // zero-blank
+    return m.patterns[v];
+  };
+  return m.seg.map((pin, i) =>
+    comb(inputs, pin, (levels) => (decode(levels)[i] ? L : H)),
+  );
+}
+
+// ── Sequential families added with the 74LS wave ─────────────────────────────
+
+/**
+ * Synchronous 4-bit up/down binary counter with a SINGLE clock and a direction
+ * pin (74169-style): rising-edge clocked, `updn` HIGH counts up / LOW down,
+ * active-low count-enables `enPN` & `enTN`, active-low synchronous `loadN`
+ * (load beats count). Active-low ripple carry `rcoN` asserts at the terminal
+ * count (15 up / 0 down) while `enTN` is LOW.
+ * @param {{clk,updn,enPN,enTN,loadN,data:number[],q:number[],rcoN}} m
+ */
+export function upDownCounter4Sync(m) {
+  return {
+    state0: () => ({ n: 0 }),
+    step(s, ins, prev) {
+      if (prev && edgeRose(prev.get(m.clk), ins.get(m.clk))) {
+        if (ins.get(m.loadN) === L) return { n: readBus(m.data, ins) };
+        if (ins.get(m.enPN) === L && ins.get(m.enTN) === L) {
+          const up = high(ins.get(m.updn));
+          return { n: (s.n + (up ? 1 : 15)) & 15 };
+        }
+      }
+      return { n: s.n };
+    },
+    outputs(s, ins) {
+      const bits = busBits(s.n, 4);
+      const out = new Map(m.q.map((pin, i) => [pin, bits[i]]));
+      const terminal = high(ins.get(m.updn)) ? s.n === 15 : s.n === 0;
+      out.set(m.rcoN, ins.get(m.enTN) === L && terminal ? L : H);
+      return out;
+    },
+  };
+}
+
+/**
+ * 4-bit D register with 3-STATE outputs (74173-style): positive-edge common
+ * clock, active-HIGH async `clr`, two active-low data-enables `gN` (BOTH low to
+ * load, else hold), two active-low output-enables `oeN` (BOTH low to drive,
+ * else `Z`). `d`/`q` are the data/output pins.
+ * @param {{clk,clr,gN:number[],oeN:number[],d:number[],q:number[]}} m
+ */
+export function registerTs4(m) {
+  const width = m.d.length;
+  return {
+    state0: () => ({ bits: Array(width).fill(L) }),
+    step(s, ins, prev) {
+      if (ins.get(m.clr) === H) return { bits: Array(width).fill(L) };
+      if (prev && edgeRose(prev.get(m.clk), ins.get(m.clk))) {
+        if (m.gN.every((p) => ins.get(p) === L)) {
+          return { bits: m.d.map((pin) => asBit(ins.get(pin))) };
+        }
+      }
+      return s;
+    },
+    outputs(s, ins) {
+      const on = m.oeN.every((p) => ins.get(p) === L);
+      return new Map(m.q.map((pin, i) => [pin, on ? s.bits[i] : Z]));
+    },
+  };
+}
+
+/**
+ * Octal transparent D latch with 3-STATE outputs (74573 non-inverting /
+ * 74533 inverting): while latch-enable `le` is HIGH the outputs follow D;
+ * while LOW they hold. Active-low output-enable `oeN` floats the pins (`Z`).
+ * @param {{d:number[],q:number[],le,oeN,invert?:boolean}} m
+ */
+export function latchTs(m) {
+  const width = m.d.length;
+  return {
+    state0: () => ({ bits: Array(width).fill(L) }),
+    step(s, ins) {
+      if (ins.get(m.le) === H)
+        return { bits: m.d.map((p) => asBit(ins.get(p))) };
+      return s;
+    },
+    outputs(s, ins) {
+      const on = ins.get(m.oeN) === L;
+      const transparent = ins.get(m.le) === H;
+      return new Map(
+        m.q.map((pin, i) => {
+          if (!on) return [pin, Z];
+          const bit = transparent ? asBit(ins.get(m.d[i])) : s.bits[i];
+          return [pin, m.invert ? inv(bit) : bit];
+        }),
+      );
+    },
+  };
+}
+
+/**
+ * 8-bit addressable latch (74259-style), level-sensitive. `sel` are the three
+ * address pins (LSB first), `d` the data input, `gN` the active-low enable,
+ * `clrN` the active-low clear, `q` the eight outputs. The four modes fall out
+ * of (clrN, gN): addressable-latch, memory, demux, clear.
+ * @param {{sel:number[], d, gN, clrN, q:number[]}} m
+ */
+export function addressableLatch8(m) {
+  const resolve = (s, ins) => {
+    const clr = ins.get(m.clrN) === L;
+    const en = ins.get(m.gN) === L;
+    const bits = clr ? Array(8).fill(L) : s.bits.slice();
+    if (en) bits[readBus(m.sel, ins)] = asBit(ins.get(m.d)); // addressed follows D
+    return bits;
+  };
+  return {
+    state0: () => ({ bits: Array(8).fill(L) }),
+    step: (s, ins) => ({ bits: resolve(s, ins) }),
+    outputs: (s, ins) =>
+      new Map(m.q.map((pin, i) => [pin, resolve(s, ins)[i]])),
+  };
+}
+
+/**
+ * S̄R̄ latch (74279-style), asynchronous, active-low. `sN` is one set pin or a
+ * list of set pins (any LOW sets — the dual-set latches); `rN` resets. Both
+ * low → Q HIGH (the NAND-latch resolution). Q output only.
+ * @param {{sN:number|number[], rN, q}} m
+ */
+export function srLatchUnit(m) {
+  const setPins = Array.isArray(m.sN) ? m.sN : [m.sN];
+  const level = (s, ins) => {
+    const set = setPins.some((p) => ins.get(p) === L);
+    if (set) return H; // set wins (both-low → H on a NAND latch)
+    if (ins.get(m.rN) === L) return L;
+    return s.q;
+  };
+  return {
+    state0: () => ({ q: L }),
+    step: (s, ins) => ({ q: level(s, ins) }),
+    outputs: (s, ins) => new Map([[m.q, level(s, ins)]]),
+  };
+}
+
+/**
+ * 8-bit serial-in shift register with an output storage register and 3-state
+ * parallel outputs (74595-style). Two clocks: `shcp` shifts `ds` in on its
+ * rising edge (async active-low master reset `mrN` clears the shift register);
+ * `stcp` latches the shift register into the storage register on its rising
+ * edge. Parallel outputs `q` are gated by active-low `oeN` (else `Z`); the
+ * serial output `q7s` (the last shift stage) is never tri-stated.
+ * @param {{ds,shcp,stcp,mrN,oeN,q:number[],q7s}} m
+ */
+export function shiftRegister595(m) {
+  return {
+    state0: () => ({ shift: Array(8).fill(L), store: Array(8).fill(L) }),
+    step(s, ins, prev) {
+      let shift = s.shift;
+      if (ins.get(m.mrN) === L) {
+        shift = Array(8).fill(L);
+      } else if (prev && edgeRose(prev.get(m.shcp), ins.get(m.shcp))) {
+        shift = [asBit(ins.get(m.ds)), ...s.shift.slice(0, 7)];
+      }
+      const store =
+        prev && edgeRose(prev.get(m.stcp), ins.get(m.stcp))
+          ? shift.slice()
+          : s.store;
+      return { shift, store };
+    },
+    outputs(s, ins) {
+      const on = ins.get(m.oeN) === L;
+      const out = new Map(m.q.map((pin, i) => [pin, on ? s.store[i] : Z]));
+      out.set(m.q7s, s.shift[7]); // serial cascade out — always driven
+      return out;
+    },
+  };
+}
+
+/**
+ * Decade (÷10) ripple counter (7490-style): two independent sections — a ÷2
+ * stage (`qa`, clocked on the falling edge of `cka`) and a ÷5 stage
+ * (`qb`/`qc`/`qd`, clocked on the falling edge of `ckb`). Async gated resets:
+ * `r0` = both R0 inputs HIGH → 0; `r9` = both R9 inputs HIGH → 9 (priority).
+ * Wire QA→CKB externally for a BCD decade count.
+ * @param {{cka,ckb,r0:number[],r9:number[],qa,qb,qc,qd}} m
+ */
+export function decadeCounter7490(m) {
+  const reset9 = (ins) => m.r9.every((p) => ins.get(p) === H);
+  const reset0 = (ins) => m.r0.every((p) => ins.get(p) === H);
+  return {
+    state0: () => ({ a: L, v: 0 }), // a = QA; v = the ÷5 stage's 0…4 count
+    step(s, ins, prev) {
+      if (reset9(ins)) return { a: H, v: 4 }; // 1001 = 9 (QD QC QB QA)
+      if (reset0(ins)) return { a: L, v: 0 };
+      let a = s.a;
+      let v = s.v;
+      if (prev && edgeFell(prev.get(m.cka), ins.get(m.cka))) a = inv(a);
+      if (prev && edgeFell(prev.get(m.ckb), ins.get(m.ckb))) v = (v + 1) % 5;
+      return { a, v };
+    },
+    outputs: (s) =>
+      new Map([
+        [m.qa, s.a],
+        [m.qb, s.v & 1 ? H : L],
+        [m.qc, (s.v >> 1) & 1 ? H : L],
+        [m.qd, (s.v >> 2) & 1 ? H : L],
+      ]),
+  };
 }

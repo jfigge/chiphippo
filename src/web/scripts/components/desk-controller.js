@@ -99,6 +99,7 @@ export class DeskController {
   #partViews = new Map(); // componentId → ChipView | DiscreteView | PsuView
   #wireLayer;
   #selected = null; // { kind: "board"|"part"|"wire", id } | null
+  #copyBuffer = null; // { ref, params } of the last Cmd+C'd component | null
   // Active interaction: null, or
   //   { kind: "place", type, ghost, pos, legal }              (board)
   //   { kind: "place-chip", ref, ghost, board, anchor, legal }
@@ -479,7 +480,7 @@ export class DeskController {
     // a DIP footprint (the isolated bar array) still places as a discrete — its
     // trench-straddling geometry comes from `def.package` in seating/occupancy.
     if (def.kind === "chip") {
-      this.armChipPlacement(ref);
+      this.armChipPlacement(ref, params);
       return;
     }
     const normalized = def.normalizeParams ? def.normalizeParams(params) : {};
@@ -512,8 +513,12 @@ export class DeskController {
     }
   }
 
-  /** Arm chip placement (palette): ghost seats across a trench. */
-  armChipPlacement(ref) {
+  /**
+   * Arm chip placement (palette or a Cmd+V duplicate): ghost seats across a
+   * trench. `params` carries the copied chip's orientation so a pasted chip
+   * lands flipped exactly as its source; the palette passes none.
+   */
+  armChipPlacement(ref, params = {}) {
     const def = partDef(ref);
     if (!def?.package) {
       const err = new Error(`unknown chip ref: ${ref}`);
@@ -521,10 +526,11 @@ export class DeskController {
       throw err;
     }
     const ghost = el("div", { class: "part-ghost", hidden: true });
-    ghost.append(buildChipSvg(ref));
+    ghost.append(buildChipSvg(ref, params));
     this.#enterPlacement({
       kind: "place-chip",
       ref,
+      params,
       ghost,
       board: null,
       anchor: null,
@@ -540,6 +546,54 @@ export class DeskController {
     // The two-click resistor uses the hover ring — clear it too (no-op else).
     this.#ring.hidden = true;
     this.#ring.classList.remove("hole-ring--illegal");
+  }
+
+  /**
+   * Cmd+C: remember the one selected component (chip / discrete / PSU / clock
+   * brick) so Cmd+V can drop a fresh duplicate. Only a single selected part
+   * copies — a board, a wire, or a multi-selection is ignored (returns false so
+   * the native Edit-menu copy still serves text fields). The buffer keeps a
+   * deep copy of the params, so later edits to the source never bleed in.
+   */
+  copySelectedComponent() {
+    if (this.#selected?.kind !== "part") return false;
+    const comp = this.#doc.getComponent(this.#selected.id);
+    if (!comp) return false;
+    this.#copyBuffer = {
+      ref: comp.ref,
+      params: comp.params ? JSON.parse(JSON.stringify(comp.params)) : {},
+    };
+    return true;
+  }
+
+  /**
+   * Cmd+V: arm a placement ghost for a duplicate of the copied component so the
+   * user just clicks to drop it. The buffer persists, so repeated Cmd+V stamps
+   * more copies. Returns false when nothing has been copied. Orientation carries
+   * over: a flipped chip pastes flipped, and a rotatable part (LED / resistor)
+   * copied in its turned two-free-ends form re-arms with the SAME lead vector —
+   * so the drop lands rotated exactly as the source (R still re-spins it).
+   */
+  pasteComponent() {
+    const buf = this.#copyBuffer;
+    if (!buf) return false;
+    // A fresh duplicate starts pristine — never inherit run-state (12 V) damage.
+    const params = { ...buf.params };
+    delete params.damaged;
+    const def = partDef(buf.ref);
+    // Arm rotatable parts in the footprint form first (a safe ghost build); the
+    // turned geometry is a live two-free-ends ghost, seeded below.
+    const turned = def?.rotatable && buf.params?.rot === 90 && buf.params.end;
+    if (def?.rotatable) {
+      params.rot = 0;
+      params.end = null;
+    }
+    this.armPartPlacement(buf.ref, params);
+    if (turned && this.#mode?.kind === "place-part") {
+      this.#mode.turns = 1; // truthy → the turned two-free-ends tracking
+      this.#mode.orient = { dx: buf.params.end.dx, dy: buf.params.end.dy };
+    }
+    return true;
   }
 
   #trackGhost(e) {
@@ -645,7 +699,9 @@ export class DeskController {
    */
   #trackTurnedGhost(w) {
     const m = this.#mode;
-    const orient = this.#ghostOrient(m.ref, m.turns);
+    // A Cmd+V paste re-arms in the copied lead vector exactly (`m.orient`); a
+    // palette pick spun with R rides the four cardinal turns instead.
+    const orient = m.orient ?? this.#ghostOrient(m.ref, m.turns);
     const hit = this.#holeAtWorld(w);
     const p1 = hit ? { x: hit.x, y: hit.y } : w;
     const end = { dx: orient.dx, dy: orient.dy };
@@ -747,9 +803,17 @@ export class DeskController {
       return true;
     }
     // Placing a rotatable part: R turns the ghost a quarter lap IN PLACE — the
-    // placement stays armed, and the orientation carries into the drop.
+    // placement stays armed, and the orientation carries into the drop. A pasted
+    // ghost carries an explicit lead vector (m.orient), so spin THAT 90°
+    // (pin 1 fixed); a palette pick rides the four cardinal turns.
     if (m?.kind === "place-part" && partDef(m.ref)?.rotatable) {
-      m.turns = ((m.turns ?? 0) + 1) % 4;
+      if (m.orient) {
+        // Fold -0 back to 0 so it never rides into the stored bend.
+        const dx = -m.orient.dy;
+        m.orient = { dx: dx === 0 ? 0 : dx, dy: m.orient.dx };
+      } else {
+        m.turns = ((m.turns ?? 0) + 1) % 4;
+      }
       if (m.lastWorld) this.#trackSeatedGhostAt(m.lastWorld);
       return true;
     }
@@ -1252,6 +1316,17 @@ export class DeskController {
       return true;
     }
     if (this.#editingLocked) return false;
+    // Cmd/Ctrl+C copies the one selected component; Cmd/Ctrl+V arms a fresh
+    // duplicate as a placement ghost. Consume the key only when there is
+    // something to act on, so the native Edit-menu copy/paste still serves text
+    // fields (this handler already returned above when a text input is focused).
+    const accel = (e.metaKey || e.ctrlKey) && !e.altKey;
+    if (accel && (e.key === "c" || e.key === "C")) {
+      return this.copySelectedComponent();
+    }
+    if (accel && (e.key === "v" || e.key === "V")) {
+      return this.pasteComponent();
+    }
     if ((e.key === "w" || e.key === "W") && bareKey) {
       this.toggleWireTool();
       return true;

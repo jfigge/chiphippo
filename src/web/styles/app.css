@@ -770,6 +770,17 @@
   pointer-events: stroke;
 }
 
+/* The LED's leads are a thin span right where its wires attach, so the lead
+   line makes a poor grab handle. The bulb rides a unit above the leads over
+   empty space — make it a second pointer target so a click on the dome selects
+   and drags the whole LED, leaving the lead line (and the wires there) free to
+   click. Placed LEDs only: the placement ghost lives in the pointer-inert
+   overlay and must stay that way. */
+.part-discrete--led .part-led-dome {
+  pointer-events: fill;
+  cursor: grab;
+}
+
 /* A bent lead that touches no hole — what a part is left with when the strip
    under it is moved or deleted away. The part keeps its exact position and
    span (the bend is geometry, not an address), so only the lead changes: it
