@@ -45,6 +45,18 @@ const DOC_SAVE_DEBOUNCE_MS = 1000;
 /** Speed-selector labels (keyed by the SimController multiplier). */
 const SPEED_LABELS = { 0.25: "×¼", 1: "×1", 4: "×4" };
 
+/** The bus-width presets behind the Bus split-button's combo segment: the menu
+    label, the bus name it sets (the grammar the tool parses), and the short
+    glyph shown in the button. 8-bit is the default. */
+const BUS_WIDTHS = [
+  { short: "8", name: "D[7:0]", label: "8-bit D[7:0]" },
+  { short: "16", name: "D[15:0]", label: "16-bit D[15:0]" },
+];
+
+/** The short button glyph ("8"/"16") for a bus name; defaults to 8-bit. */
+const busWidthShort = (name) =>
+  BUS_WIDTHS.find((w) => w.name === name)?.short ?? "8";
+
 /** The system (settings) gear icon for the top-right header action. */
 const GEAR_SVG =
   '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" ' +
@@ -408,7 +420,6 @@ async function init() {
   let wireBtn = null;
   let wireDot = null; // the active-color dot inside the Wire split button
   let busBtn = null;
-  let busNameInput = null;
   let probeBtn = null;
   let sim = null; // the SimController (created after the toolbar below)
   const onWireStateChange = ({ armed, color }) => {
@@ -552,28 +563,42 @@ async function init() {
   );
   onWireStateChange({ armed: false, color: controller.wireColor });
 
-  // Bus tool: toggle button (shortcut B) + the name that sets its width/bit
-  // order (D[7:0]). It rides the active wire color (the Wire button) for its color.
+  // Bus tool: a split button mirroring the Wire one. The "Bus" half toggles the
+  // tool (shortcut B); the WIDTH segment on the right is the combobox trigger
+  // showing "8"/"16" and opens the width chooser (8-bit D[7:0] / 16-bit
+  // D[15:0]). It rides the active wire color (the Wire button) for its color.
   busBtn = el("button", {
     class: "toolbar-btn",
     type: "button",
     text: "Bus",
-    title: "Bus tool — lay a named multi-bit run of wires in one gesture (B)",
+    title: "Bus tool — lay a multi-bit run of wires in one gesture (B)",
     "aria-pressed": "false",
     onClick: () => controller.toggleBusTool(),
   });
-  busNameInput = el("input", {
-    class: "bus-name-input",
-    type: "text",
-    value: controller.busName,
-    title: "Bus name — e.g. D[7:0], A[0:15]",
-    "aria-label": "Bus name",
-    placeholder: "D[7:0]",
+  const busWidthBtn = el("button", {
+    class: "toolbar-btn toolbar-btn--bus-width",
+    type: "button",
+    text: busWidthShort(controller.busName),
+    "aria-label": "Choose the bus width",
+    "aria-haspopup": "menu",
+    title: "Choose the bus width",
+    onClick: () => {
+      const rect = busWidthBtn.getBoundingClientRect();
+      PopupManager.menu({
+        x: rect.left,
+        y: rect.bottom + 4,
+        items: BUS_WIDTHS.map(({ short, name, label }) => ({
+          label,
+          onSelect: () => {
+            controller.setBusName(name);
+            busWidthBtn.textContent = short;
+            controller.armBusTool();
+          },
+        })),
+      });
+    },
   });
-  busNameInput.addEventListener("input", () =>
-    controller.setBusName(busNameInput.value),
-  );
-  toolbar.append(busBtn, busNameInput);
+  toolbar.append(el("div", { class: "toolbar-split" }, [busBtn, busWidthBtn]));
 
   // Probe tool: highlight a whole electrical net on hover (shortcut I).
   probeBtn = el("button", {
@@ -637,9 +662,8 @@ async function init() {
   // wrapper, so gather every editing button by element.
   const editButtons = () => [
     partsBtn,
-    busBtn,
-    busNameInput,
-    // Every split-button half: the Wire tool (+ its color arrow) and Annotate.
+    // Every split-button half: the Wire tool (+ its color trigger) and the Bus
+    // tool (+ its width trigger).
     ...toolbar.querySelectorAll(".toolbar-split button"),
   ];
   const onTransportChange = (mode) => {
