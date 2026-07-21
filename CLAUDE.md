@@ -99,6 +99,28 @@ used for these. `main.js` loads the per-platform icon once and sets both the
 BrowserWindow `icon` and (darwin) `app.dock.setIcon` so `make debug` shows the
 Chip Hippo icon, never the default Electron one. All rasters are committed.
 
+## Datasheet crops
+
+The pin-assignments window shows each **chip's** manufacturer datasheet region
+(connection diagram + function/truth table, or the internal logic diagram for
+parts with no table) as a committed PNG under **`src/web/datasheets/<id>.png`**
+— regenerate them with **`make datasheets`**. Like `make icons`, the script
+(`scripts/make-datasheets.mjs`) runs **under Electron** (`npx electron …`): it
+renders the source PDF page at 216 DPI with **`pdfjs-dist`** (a build-only dev
+dependency) inside a hidden Chromium window, then crops to the per-chip
+rectangle. Electron is required because the diagrams are **JBIG2-encoded
+bitmaps** — pdfjs decodes those through a WASM module and a same-origin worker,
+so the harness loads a real `file://` page and wires up pdfjs' `wasmUrl` /
+`standardFontDataUrl` / `cMapUrl`. The crop manifest is data, not code:
+**`scripts/datasheet-crops.mjs`** maps each catalog id → `{ file, page, crop }`
+where `crop` is `{x,y,w,h}` as FRACTIONS of the rendered page (hand-tuned per
+datasheet — Fairchild/TI/Motorola layouts all differ; some diagrams live on
+page 2 or behind a Jameco cover). The **source PDFs are NOT in the repo** (they
+live in the user's datasheet folder — override with `DATASHEETS_DIR`); only the
+46 cropped PNGs are committed. The four catalog chips with no matching `74LS*`
+datasheet (74164, 74193, 7427, 7476) have no crop — the window shows only their
+pin map (see the Pin-assignments window architecture note).
+
 ## Source Directories
 
 - `src/app/` — Electron **main** process (Node.js, CommonJS): window lifecycle and
@@ -274,7 +296,12 @@ Electron main process (src/app/main.js)
   right-click menu toggles that for every open pinout and persists it as
   `settings.pinoutFloat` (a de-facto global, ready for a future settings
   dialog). Pure DOM, no modal chrome — the native window frame owns the title
-  bar + close.
+  bar + close. Below the pin map, a **chip** pinout also shows the manufacturer
+  **datasheet crop** — the connection-diagram / function-table region cut from
+  the source PDF (`web/datasheets/<id>.png`, built by `make datasheets`, see
+  below). The `<img>` loads lazily and its `<figure>` REMOVES ITSELF on load
+  error, so the four chips with no datasheet (and every discrete/brick) simply
+  show the pin map; main widens the window when a crop exists for the ref.
 
 - The main process owns all filesystem and native I/O. The renderer is sandboxed
   (`contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`) and
@@ -308,6 +335,7 @@ make fmt-check # Check formatting without writing
 make lint      # Lint JS via ESLint
 make test      # License-header guard + Node unit tests (node --test)
 make icons     # Regenerate app-icon rasters from the SVG sources (see below)
+make datasheets # Regenerate the pinout-window datasheet crops (see below)
 make build     # Build the Electron app for macOS (dir only, unsigned)
 make dmg       # Build an unsigned macOS .dmg (bare `make` default)
 make clean     # Remove build/ and dist/

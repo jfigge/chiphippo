@@ -1177,4 +1177,24 @@ export class DeskDoc {
   toJSON() {
     return structuredClone(this.#doc);
   }
+
+  /**
+   * An immutable snapshot of the whole document for the undo/redo history
+   * (Feature 200) — a deep copy, so later mutations never bleed into it. Same
+   * shape as toJSON; named for its role as a history entry.
+   */
+  snapshot() {
+    return structuredClone(this.#doc);
+  }
+
+  /**
+   * Replace the whole document with a `snapshot` (an undo/redo restore). The
+   * snapshot is deep-copied in, so the caller may keep re-restoring the same
+   * one. It is trusted to be a valid document (it came from snapshot()/toJSON),
+   * so it is NOT re-normalized — restore is byte-exact, the round-trip
+   * undo/redo relies on.
+   */
+  restore(snapshot) {
+    this.#doc = structuredClone(snapshot);
+  }
 }

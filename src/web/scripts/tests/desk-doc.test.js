@@ -203,11 +203,11 @@ test("normalizeDocument: junk → empty; bad boards dropped; coords rounded", ()
       { id: "bb5", type: "pins-tiny", x: NaN, y: 0 }, // bad coords — dropped
     ],
     components: [
-      { id: "c2", kind: "chip", ref: "7400", board: "bb2", anchor: "e3" },
+      { id: "c2", kind: "chip", ref: "74LS00", board: "bb2", anchor: "e3" },
       { id: "c2", kind: "chip", ref: "7404", board: "bb2", anchor: "e12" }, // dup id
       { id: "c3", kind: "chip", ref: "9999", board: "bb2", anchor: "e3" }, // bad ref
-      { id: "c4", kind: "chip", ref: "7400", board: "bb9", anchor: "e3" }, // no board
-      { id: "c5", kind: "blob", ref: "7400", board: "bb2", anchor: "e3" }, // bad kind
+      { id: "c4", kind: "chip", ref: "74LS00", board: "bb9", anchor: "e3" }, // no board
+      { id: "c5", kind: "blob", ref: "74LS00", board: "bb2", anchor: "e3" }, // bad kind
     ],
     wires: "not-an-array",
   });
@@ -218,7 +218,7 @@ test("normalizeDocument: junk → empty; bad boards dropped; coords rounded", ()
     {
       id: "c2",
       kind: "chip",
-      ref: "7400",
+      ref: "74LS00",
       board: "bb2",
       anchor: "e3",
       params: {},
@@ -643,14 +643,14 @@ test("addComponent: seats a chip with a fresh c<n> id", () => {
   const doc = docWithFull();
   const chip = doc.addComponent({
     kind: "chip",
-    ref: "7400",
+    ref: "74LS00",
     board: "bb1",
     anchor: "e5",
   });
   assert.deepEqual(chip, {
     id: "c1",
     kind: "chip",
-    ref: "7400",
+    ref: "74LS00",
     board: "bb1",
     anchor: "e5",
     params: {},
@@ -673,7 +673,7 @@ test("addComponent: rejects bad kinds/refs/boards and illegal seats", () => {
     () =>
       doc.addComponent({
         kind: "psu",
-        ref: "7400",
+        ref: "74LS00",
         board: "bb1",
         anchor: "e5",
       }),
@@ -693,13 +693,13 @@ test("addComponent: rejects bad kinds/refs/boards and illegal seats", () => {
     () =>
       doc.addComponent({
         kind: "chip",
-        ref: "7400",
+        ref: "74LS00",
         board: "bb9",
         anchor: "e5",
       }),
     { code: "NOT_FOUND" },
   );
-  doc.addComponent({ kind: "chip", ref: "7400", board: "bb1", anchor: "e5" });
+  doc.addComponent({ kind: "chip", ref: "74LS00", board: "bb1", anchor: "e5" });
   assert.throws(
     () =>
       doc.addComponent({
@@ -726,7 +726,7 @@ test("addComponent: rejects bad kinds/refs/boards and illegal seats", () => {
 test("moveComponent: re-seats (same or other board), self-overlap allowed", () => {
   const doc = docWithFull();
   doc.addBoard("pins-tiny", 0, 30);
-  doc.addComponent({ kind: "chip", ref: "7400", board: "bb1", anchor: "e5" });
+  doc.addComponent({ kind: "chip", ref: "74LS00", board: "bb1", anchor: "e5" });
   // Shift one column into its own footprint.
   assert.deepEqual(doc.moveComponent("c1", "bb1", "e6").anchor, "e6");
   // Cross-board re-seat.
@@ -931,7 +931,7 @@ test("rotateComponent: a swung lead reaches a NEIGHBOURING strip's rail", () => 
 
 test("removeComponent: removes; ids never reused across reload", () => {
   const doc = docWithFull();
-  doc.addComponent({ kind: "chip", ref: "7400", board: "bb1", anchor: "e5" });
+  doc.addComponent({ kind: "chip", ref: "74LS00", board: "bb1", anchor: "e5" });
   doc.removeComponent("c1");
   assert.deepEqual(doc.components, []);
   assert.throws(() => doc.removeComponent("c1"), { code: "NOT_FOUND" });
@@ -939,7 +939,7 @@ test("removeComponent: removes; ids never reused across reload", () => {
   assert.equal(
     reloaded.addComponent({
       kind: "chip",
-      ref: "7400",
+      ref: "74LS00",
       board: "bb1",
       anchor: "e5",
     }).id,
@@ -950,7 +950,7 @@ test("removeComponent: removes; ids never reused across reload", () => {
 test("removeBoard cascades its seated components", () => {
   const doc = docWithFull();
   doc.addBoard("pins-tiny", 0, 30);
-  doc.addComponent({ kind: "chip", ref: "7400", board: "bb1", anchor: "e5" });
+  doc.addComponent({ kind: "chip", ref: "74LS00", board: "bb1", anchor: "e5" });
   doc.addComponent({ kind: "chip", ref: "7404", board: "bb2", anchor: "e2" });
   assert.equal(doc.componentsOnBoard("bb1").length, 1);
   doc.removeBoard("bb1");
@@ -1007,10 +1007,13 @@ test("removeBoard leaves a part REACHING into it alone — the lead just floats"
 
 test("canPlaceChip mirrors occupancy through the document", () => {
   const doc = docWithFull();
-  doc.addComponent({ kind: "chip", ref: "7400", board: "bb1", anchor: "e5" });
+  doc.addComponent({ kind: "chip", ref: "74LS00", board: "bb1", anchor: "e5" });
   assert.equal(doc.canPlaceChip("7404", "bb1", "e8"), false);
   assert.equal(doc.canPlaceChip("7404", "bb1", "e12"), true);
-  assert.equal(doc.canPlaceChip("7400", "bb1", "e6", { ignoreId: "c1" }), true);
+  assert.equal(
+    doc.canPlaceChip("74LS00", "bb1", "e6", { ignoreId: "c1" }),
+    true,
+  );
 });
 
 // ── Wires (Feature 50) ───────────────────────────────────────────────────────
@@ -1035,7 +1038,7 @@ test("addWire: connects two free holes with a fresh w<n> id", () => {
 
 test("addWire: rejects occupied/self/unreal endpoints and junk colors", () => {
   const doc = docWithFull();
-  doc.addComponent({ kind: "chip", ref: "7400", board: "bb1", anchor: "e5" });
+  doc.addComponent({ kind: "chip", ref: "74LS00", board: "bb1", anchor: "e5" });
   doc.addWire({ from: "bb1.a1", to: "bb1.a5" });
   // A chip pin's hole…
   assert.throws(() => doc.addWire({ from: "bb1.e5", to: "bb1.b1" }), {
@@ -1224,7 +1227,7 @@ test("addComponent: discretes seat in ANY grid row with coerced params", () => {
     () =>
       doc.addComponent({
         kind: "discrete",
-        ref: "7400",
+        ref: "74LS00",
         board: "bb1",
         anchor: "e30",
       }),
@@ -1403,4 +1406,52 @@ test("normalizeDocument: discretes + PSUs survive; junk dropped/coerced", () => 
   assert.equal(doc.wires.length, 1);
   assert.equal(doc.nextPsuId, 3);
   assert.equal(doc.nextComponentId, 2);
+});
+
+// ── Snapshot / restore (Feature 200 undo/redo) ─────────────────────────────
+
+test("snapshot is a deep copy that later mutations never touch", () => {
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const snap = doc.snapshot();
+  doc.addBoard("pins-tiny", 0, 30);
+  // The snapshot froze the one-board state.
+  assert.equal(snap.boards.length, 1);
+  assert.equal(doc.boards.length, 2);
+});
+
+test("restore swaps the whole document for a snapshot, byte-exact", () => {
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const before = doc.snapshot();
+  doc.addBoard("pins-tiny", 0, 30);
+  doc.addComponent({
+    kind: "chip",
+    ref: "74LS00",
+    board: "bb1",
+    anchor: "e5",
+  });
+  doc.restore(before);
+  assert.deepEqual(doc.toJSON(), before);
+  assert.equal(doc.components.length, 0);
+  assert.equal(doc.boards.length, 1);
+});
+
+test("a snapshot→restore round-trip is idempotent", () => {
+  const doc = new DeskDoc(null);
+  doc.addKit("full", 0, 0);
+  const a = doc.snapshot();
+  doc.restore(a);
+  const b = doc.snapshot();
+  assert.deepEqual(a, b);
+});
+
+test("restore takes its own copy — the source snapshot stays reusable", () => {
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const snap = doc.snapshot();
+  doc.restore(snap);
+  doc.addBoard("pins-tiny", 0, 30); // mutating the live doc…
+  // …must not have reached back into the snapshot we restored from.
+  assert.equal(snap.boards.length, 1);
 });

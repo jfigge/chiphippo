@@ -38,7 +38,7 @@ test("the part catalog carries the Feature 60 inventory", () => {
   ]);
   // partDef resolves everything; chipDef stays chips-only.
   assert.ok(partDef("sw-slide"));
-  assert.ok(partDef("7400"));
+  assert.ok(partDef("74LS00"));
   assert.ok(partDef("clock"));
   assert.equal(chipDef("sw-slide"), null);
   assert.equal(PALETTE_DEFS.length, 60); // 50 chips (26 + 24 LS) + 10 parts

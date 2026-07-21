@@ -130,12 +130,12 @@ test("a powered 7404 inverts a driven-low input to HIGH (and floats read H)", ()
   assert.equal(simulate(floated).levelAt("bb1.e11"), L);
 });
 
-test("7400 NAND: one wired-low input → H; both floating → L", () => {
-  const holes = chipHoles("7400", "e10");
+test("74LS00 NAND: one wired-low input → H; both floating → L", () => {
+  const holes = chipHoles("74LS00", "e10");
   const gnd = mates(holes.get(7));
   const base = {
     boards,
-    components: [psu("psu1", 80), chip("c1", "7400", "e10")],
+    components: [psu("psu1", 80), chip("c1", "74LS00", "e10")],
   };
   // Gate 1: 1A(e10)/1B(e11) → 1Y(e12). Pull 1A low, leave 1B floating.
   const oneLow = simulate({
@@ -179,8 +179,8 @@ test("74125: two enabled buffers driving one net disagree → conflict (X)", () 
 
 // ── SR latch (the settle-loop proof): set, reset, and HOLD ──────────────────
 
-test("an SR latch from one 7400 sets, resets, and holds across settles", () => {
-  const holes = chipHoles("7400", "e10");
+test("an SR latch from one 74LS00 sets, resets, and holds across settles", () => {
+  const holes = chipHoles("74LS00", "e10");
   const gnd = mates(holes.get(7));
   // Gate 1: 1A(1,e10)=S, 1B(2,e11)=Qbar → 1Y(3,e12)=Q.
   // Gate 2: 2A(4,e13)=R, 2B(5,e14)=Q    → 2Y(6,e15)=Qbar.
@@ -192,7 +192,7 @@ test("an SR latch from one 7400 sets, resets, and holds across settles", () => {
   ];
   const common = {
     boards,
-    components: [psu("psu1", 80), chip("c1", "7400", "e10")],
+    components: [psu("psu1", 80), chip("c1", "74LS00", "e10")],
   };
   const idle = {
     ...common,
@@ -250,7 +250,7 @@ test("a ring of three inverters never settles → oscillation warning", () => {
 test("an unpowered chip drives nothing (outputs Z)", () => {
   const { result, levelAt } = simulate({
     boards,
-    components: [chip("c1", "7400", "e10")], // no PSU
+    components: [chip("c1", "74LS00", "e10")], // no PSU
     wires: [],
   });
   assert.equal(result.chipStatus.get("c1").status, "unpowered");
@@ -258,10 +258,10 @@ test("an unpowered chip drives nothing (outputs Z)", () => {
 });
 
 test("a 3 V chip is underpowered (inert) and warns", () => {
-  const holes = chipHoles("7400", "e10");
+  const holes = chipHoles("74LS00", "e10");
   const { result, levelAt } = simulate({
     boards,
-    components: [psu("psu1", 80, 3), chip("c1", "7400", "e10")],
+    components: [psu("psu1", 80, 3), chip("c1", "74LS00", "e10")],
     wires: powerWires("psu1", holes),
   });
   assert.equal(result.chipStatus.get("c1").status, "underpowered");
@@ -270,10 +270,10 @@ test("a 3 V chip is underpowered (inert) and warns", () => {
 });
 
 test("12 V damages the chip (magic smoke); params are NOT mutated by the pure engine", () => {
-  const holes = chipHoles("7400", "e10");
+  const holes = chipHoles("74LS00", "e10");
   const doc = {
     boards,
-    components: [psu("psu1", 80, 12), chip("c1", "7400", "e10")],
+    components: [psu("psu1", 80, 12), chip("c1", "74LS00", "e10")],
     wires: powerWires("psu1", holes),
   };
   const { result, levelAt } = simulate(doc);
@@ -287,7 +287,7 @@ test("12 V damages the chip (magic smoke); params are NOT mutated by the pure en
     ...doc,
     components: [
       psu("psu1", 80, 5),
-      chip("c1", "7400", "e10", { damaged: true }),
+      chip("c1", "74LS00", "e10", { damaged: true }),
     ],
   };
   assert.equal(
@@ -297,10 +297,10 @@ test("12 V damages the chip (magic smoke); params are NOT mutated by the pure en
 });
 
 test("swapped supply wires read as reversed (inert) and warn", () => {
-  const holes = chipHoles("7400", "e10");
+  const holes = chipHoles("74LS00", "e10");
   const doc = {
     boards,
-    components: [psu("psu1", 80), chip("c1", "7400", "e10")],
+    components: [psu("psu1", 80), chip("c1", "74LS00", "e10")],
     // The mirror of powerWires: + on the GND pin, − on the VCC pin.
     wires: [
       wire("psu1.+", `bb1.${mates(holes.get(7))[0]}`),
@@ -318,10 +318,10 @@ test("only one power pin miswired is unpowered, NOT reversed", () => {
   // A flipped chip whose GND pin landed on the + rail while VCC reaches a rail
   // with no supply on it: one pin is wrong, so we must not accuse the user of
   // wiring it backwards.
-  const holes = chipHoles("7400", "e10");
+  const holes = chipHoles("74LS00", "e10");
   const { result } = simulate({
     boards,
-    components: [psu("psu1", 80), chip("c1", "7400", "e10")],
+    components: [psu("psu1", 80), chip("c1", "74LS00", "e10")],
     wires: [wire("psu1.+", `bb1.${mates(holes.get(7))[0]}`)],
   });
   assert.equal(result.chipStatus.get("c1").status, "unpowered");

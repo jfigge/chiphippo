@@ -239,7 +239,7 @@ test("chip status badges apply per status and clear when the sim stops", () => {
   const doc = new DeskDoc(null);
   doc.addBoard("pins-full", 0, 0);
   const { surface, controller } = makeDesk(doc);
-  controller.addComponentAt("7400", "bb1", "e5");
+  controller.addComponentAt("74LS00", "bb1", "e5");
   const chipEl = surface.querySelector(".part-chip");
 
   const STATUSES = ["unpowered", "underpowered", "reversed", "damaged"];

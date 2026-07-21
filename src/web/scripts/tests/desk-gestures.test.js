@@ -217,7 +217,7 @@ test("part drag: a chip re-seats to the anchor under the pointer, once", () => {
   const world = { x: 0, y: 0 };
   const { surface, controller } = makeDesk(doc, world);
   controller.addBoardAt("pins-full", 0, 0);
-  const chip = controller.addComponentAt("7400", "bb1", "e5"); // cols 5–11
+  const chip = controller.addComponentAt("74LS00", "bb1", "e5"); // cols 5–11
 
   let changes = 0;
   window.addEventListener("chiphippo:doc-changed", () => changes++);
@@ -235,7 +235,7 @@ test("part drag: a sub-threshold press selects the chip but does not move it", (
   const world = { x: 0, y: 0 };
   const { surface, controller } = makeDesk(doc, world);
   controller.addBoardAt("pins-full", 0, 0);
-  const chip = controller.addComponentAt("7400", "bb1", "e5");
+  const chip = controller.addComponentAt("74LS00", "bb1", "e5");
   controller.deselect();
 
   let changes = 0;
@@ -261,8 +261,8 @@ test("part drag: an illegal drop (onto another chip) springs back to the origin"
   const world = { x: 0, y: 0 };
   const { surface, controller } = makeDesk(doc, world);
   controller.addBoardAt("pins-full", 0, 0);
-  const chip = controller.addComponentAt("7400", "bb1", "e5"); // cols 5–11
-  controller.addComponentAt("7400", "bb1", "e12"); // cols 12–18, blocks e10
+  const chip = controller.addComponentAt("74LS00", "bb1", "e5"); // cols 5–11
+  controller.addComponentAt("74LS00", "bb1", "e12"); // cols 12–18, blocks e10
 
   let changes = 0;
   window.addEventListener("chiphippo:doc-changed", () => changes++);
@@ -410,12 +410,12 @@ test("placement: arming a part and clicking seats it on the board", () => {
   const { viewport, controller } = makeDesk(doc, world);
   controller.addBoardAt("pins-full", 0, 0);
 
-  controller.armChipPlacement("7400");
+  controller.armChipPlacement("74LS00");
   // Click over the trench around column 8 (trench centre y 6.5).
   placeClick(viewport, world, { x: 8, y: 6.5 });
 
   assert.equal(doc.components.length, 1);
-  assert.equal(doc.components[0].ref, "7400");
+  assert.equal(doc.components[0].ref, "74LS00");
   assert.equal(doc.components[0].kind, "chip");
 });
 

@@ -45,7 +45,7 @@ const buf3 = (data, enable, output) => ({
 
 export const CHIPS_GATES = Object.freeze([
   {
-    id: "7400",
+    id: "74LS00",
     title: "Quad 2-input NAND",
     blurb: "Four independent 2-input NAND gates — the classic TTL workhorse.",
     group: "NAND",

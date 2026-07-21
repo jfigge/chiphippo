@@ -46,21 +46,49 @@ and grows in 100.
 | 80  | [74xx behavioral library v1](80-ttl-chip-library.md) | Signal levels (H/L/Z/X), generic gate evaluator, behavioral defs + truth-table tests for the combinational gate wave (7400/02/04/08/10/11/20/27/30/32/86, 74125) | 40 |
 | 90  | [Simulation engine v1](90-simulation-engine.md) | Rudimentary but real: power-rail seeding, chip VCC/GND power checks, iterative settle loop with warm start (SR latches work), conflict & oscillation detection, live switches, glowing LEDs, Run/Stop | 70, 80 |
 | 100 | [Sequential logic & clocking](100-sequential-and-clocking.md) | Stateful edge-triggered chips (7473/74/75/76, 74107), MSI wave (74138/139/151/157/161/164/165/175/193), clock-source component, run/pause/single-step + speed control | 90 |
+| 110 | [Breadboards as strips & snap groups](done/110-board-strips-and-grouping.md) | Breadboards decomposed into pin-board + rail strips, kits, snap groups, magnetic mating, group drag/break, board outline highlighter | 30 |
+
+## North-star goals (what the next wave drives toward)
+
+Two outcomes shape stages 120–210, beyond "more parts":
+
+1. **Buildable schematics.** A Chip Hippo design should yield artifacts an engineer can
+   *follow to build the real circuit on a real breadboard* — named nets, a legible
+   logical schematic, a step-by-step build guide + wiring list + BOM, and printable/
+   shareable exports. Stages **120, 130, 140, 150, 160** (and **210**'s timing charts).
+2. **File-backed memory.** Memory chips (ROM / RAM / EEPROM) that **supply data to** and
+   **record information from** the circuit, backed by **actual files** as byte storage,
+   with an in-app hex editor to program and observe them. Stages **170, 180, 190**.
+
+## Stages (next wave)
+
+| #   | Plan | What it delivers | Depends on |
+|-----|------|------------------|------------|
+| 120 | [Net names, labels & annotations](120-net-names-and-labels.md) | User-named nets bound by address (survive edits), freeform labels/notes on the desk, reserved-name quick-picks; pure metadata, engine-inert | 70 |
+| 130 | [Buses: bundled multi-bit signals](130-buses.md) | Named ordered nets (`D[7:0]`), a bus tool that lays/taps whole runs at once, bundle rendering; still N plain wires underneath | 50, 120 |
+| 140 | [Build guide, wiring list & BOM](140-build-guide-and-wiring-list.md) | A pure `build-plan.js` deriving a BOM, net-grouped human-addressed wiring list, and ordered assembly steps + warnings | 70, 120, 130 |
+| 150 | [Schematic view](150-schematic-view.md) | A derived logical diagram — chip symbols + routed named nets + bus lines, deterministic auto-layout with nudge, live sim tint, shared probe | 70, 120, 130 |
+| 160 | [Export to SVG / PNG / PDF](160-export-image-and-pdf.md) | Standalone vector/raster export of desk + schematic and a full build-package PDF (schematic + board + guide); fonts embedded, main-side write | 140, 150 |
+| 170 | [Memory chips & wide DIPs](170-memory-chips-and-wide-dips.md) | DIP-24/28 footprints, a `memUnit` vocabulary, ROM/SRAM/EEPROM catalog defs; async read + reported writes over a run-volatile image, engine stays pure | 40, 80/100, 130 |
+| 180 | [File-backed byte storage](180-file-backed-memory.md) | Memory bound to a real `.bin` via `mem:*` IPC; controller loads on Run, flushes writes atomically, binding persists in the doc | 170 |
+| 190 | [Memory inspector / hex editor](190-memory-inspector.md) | Per-chip floating hex/ASCII window; edit-when-stopped, live-when-running, Intel HEX + `.bin` import/export, fill/goto, binding management | 170, 180 |
+| 200 | [Undo / redo & command history](done/200-undo-redo.md) | Snapshot-based bounded history over every doc mutation via one commit seam, gesture coalescing, ⌘Z/⇧⌘Z; run-volatile state excluded | 20–110 |
+| 210 | [Logic analyzer & timing view](210-logic-analyzer.md) | A passive recorder over `chiphippo:sim-state`: net/bus channels, scrolling waveforms + hex bus lanes, cursors/Δ readout, exportable timing charts | 90/100, 120, 130, 170 |
 
 ## Backlog (unwritten — author a plan file when promoted)
 
 Ideas queued behind the stages above, roughly in priority order. None has a plan file
-yet; write one in the house format when it's next up.
+yet; write one in the house format when it's next up. (Landed since first draft: project
+files & save/load, copy/paste/duplicate, 7-segment displays, and the 74LS glue wave —
+buffers/latches/transceivers/decoders/comparators/adders.)
 
 | Idea | What it would deliver |
 |------|----------------------|
-| Project files & multi-desk | Named `.chiphippo` project files, save/load/recents, multiple desks per project |
-| Undo/redo & clipboard | Multi-select, copy/paste/duplicate of board regions, full undo history |
-| 7-segment displays & drivers | 7-seg display component + 7447/7448 decoder chips |
-| Instrumentation | Logic probe tool, waveform/timing view, breakpoint-style "pause on net change" |
-| Extended 74xx coverage | Open-collector variants (7401/03/05…), tri-state bus parts (74240/244/245), arithmetic (7483/85/181/283), further waves until the family is broadly covered |
-| More discrete parts | DIP-switch banks, resistors/pull-ups (drop the idealized-LED rule), buzzer |
-| Annotation & export | Text labels/notes on the desk, wire-color legend, export desk as PNG/SVG |
+| Two-board memory straddle | 600-mil DIP placement across two stacked pin-boards (the real wide-part footprint), beyond Feature 170's single-board modelling |
+| Extended 74xx coverage | Open-collector variants (7401/03/05…), arithmetic (74181/283 family), further waves until the family is broadly covered |
+| More discrete parts | DIP-switch banks, real resistors/pull-ups (drop the idealized-LED rule), buzzer, potentiometer |
+| Interactive build mode | Tick off Feature 140's build-guide steps live, highlighting the target holes on the desk as you go |
+| Assembler / HEX toolchain hooks | Import listing files that map addresses to source lines in the memory inspector |
 | CI/CD, packaging & website | Signed/notarized multi-platform builds, GitHub Actions, auto-update, download site (port Port Hippo's Feature 70) |
 | Docs & user guide | In-app + hosted user guide from one Markdown source (port Port Hippo's Feature 80) |
 | i18n | Locale catalogs + `t()` seam (mirror the siblings) |

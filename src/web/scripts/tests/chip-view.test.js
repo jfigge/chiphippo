@@ -28,14 +28,14 @@ const { buildChipSvg, ChipView, chipBox } =
 
 test("buildChipSvg: legs, body, notch, pin-1 dot, and the part number", () => {
   resetDom();
-  const svg = buildChipSvg("7400");
+  const svg = buildChipSvg("74LS00");
   // One leg per pin (14), split evenly over the two rows.
   assert.equal(svg.querySelectorAll(".part-chip-leg").length, 14);
   assert.equal(svg.querySelectorAll(".part-chip-body").length, 1);
   assert.equal(svg.querySelectorAll(".part-chip-notch").length, 1);
   assert.equal(svg.querySelectorAll(".part-chip-dot").length, 1);
   const label = svg.querySelector(".part-chip-label");
-  assert.equal(label.textContent, "7400");
+  assert.equal(label.textContent, "74LS00");
   // No per-pin ids or listeners — the legs are inert decoration.
   for (const leg of svg.querySelectorAll(".part-chip-leg")) {
     assert.equal(leg.id, "");
@@ -44,7 +44,7 @@ test("buildChipSvg: legs, body, notch, pin-1 dot, and the part number", () => {
 
 test("buildChipSvg: fault symbols stay OUTSIDE the 180° flip group", () => {
   resetDom();
-  const svg = buildChipSvg("7400", { rot: 180 });
+  const svg = buildChipSvg("74LS00", { rot: 180 });
   const flipped = svg.querySelector(".part-chip-flipped");
   assert.ok(flipped, "expected the flip group");
   // Smoke has to rise in screen space and the warning triangle has to stay
@@ -70,7 +70,7 @@ test("ChipView seats at its anchor hole in world px and reports gestures", () =>
   const seen = [];
   const view = new ChipView(
     layer,
-    { id: "c3", ref: "7400" },
+    { id: "c3", ref: "74LS00" },
     { onPointerDown: (id) => seen.push(id) },
   );
   const board = { type: "pins-full", x: 10, y: 20 };

@@ -32,23 +32,26 @@ const at = (boards, ref, x, y, grab = 0) =>
 
 test("a DIP centres on the cursor and anchors in row e", () => {
   // pins-full: trench centre 6.5, columns start at x 1.
-  const seat = at([FULL], "7400", 10, 6.5);
+  const seat = at([FULL], "74LS00", 10, 6.5);
   // A 14-pin DIP is 7 columns wide, so centring on column 10 anchors at 7.
   assert.deepEqual(seat, { board: "bb1", anchor: "e7" });
 });
 
 test("a DIP seats from anywhere inside the trench band, and nowhere beyond", () => {
   const { trench } = spec("pins-full");
-  assert.ok(at([FULL], "7400", 10, trench.centerY + SEAT_BAND));
-  assert.equal(at([FULL], "7400", 10, trench.centerY + SEAT_BAND + 0.01), null);
+  assert.ok(at([FULL], "74LS00", 10, trench.centerY + SEAT_BAND));
+  assert.equal(
+    at([FULL], "74LS00", 10, trench.centerY + SEAT_BAND + 0.01),
+    null,
+  );
 });
 
 test("a DIP never seats on a rail — no trench to straddle", () => {
-  assert.equal(at([RAIL], "7400", 10, 14), null);
+  assert.equal(at([RAIL], "74LS00", 10, 14), null);
 });
 
 test("an unknown ref seats nowhere", () => {
-  assert.ok(at([TINY], "7400", 105, 6.5)); // a real DIP fits even the tiny board
+  assert.ok(at([TINY], "74LS00", 105, 6.5)); // a real DIP fits even the tiny board
   assert.equal(at([TINY], "nonexistent", 105, 6.5), null);
 });
 
@@ -95,7 +98,7 @@ test("a board that cannot host does not end the search", () => {
   // must still be found. Flush strips share an inclusive seam, so this is the
   // ordering hazard in miniature — see occupancy.js holeAtWorld.
   const railAbove = { id: "bb9", type: "rail-full", x: 0, y: -3 };
-  const seat = at([railAbove, FULL], "7400", 10, 6.5);
+  const seat = at([railAbove, FULL], "74LS00", 10, 6.5);
   assert.deepEqual(seat, { board: "bb1", anchor: "e7" });
 });
 

@@ -61,7 +61,7 @@ const LEG_WIDTH = 0.28;
 /**
  * Build a chip's complete SVG from its catalog def. Pure DOM construction
  * (unit-testable under jsdom).
- * @param {string} ref - catalog id, e.g. "7400"
+ * @param {string} ref - catalog id, e.g. "74LS00"
  * @returns {SVGSVGElement}
  */
 export function buildChipSvg(ref, params = {}) {

@@ -66,12 +66,12 @@ function powerWires(psuId, holes) {
   ];
 }
 
-/** A 7400 whose VCC sits on a `volts` PSU rail. */
+/** A 74LS00 whose VCC sits on a `volts` PSU rail. */
 function poweredDoc(volts) {
-  const holes = chipHoles("7400", "e10");
+  const holes = chipHoles("74LS00", "e10");
   return {
     boards: [board],
-    components: [psu("psu1", 80, volts), chip("c1", "7400", "e10")],
+    components: [psu("psu1", 80, volts), chip("c1", "74LS00", "e10")],
     wires: powerWires("psu1", holes),
   };
 }
@@ -180,10 +180,10 @@ test("12 V damage persists into params.damaged and warns once", () => {
 test("reversed power warns but is NEVER persisted as damage", () => {
   resetDom();
   const notifications = fakeNotifications();
-  const holes = chipHoles("7400", "e10");
+  const holes = chipHoles("74LS00", "e10");
   const deskDoc = fakeDoc({
     boards: [board],
-    components: [psu("psu1", 80, 5), chip("c1", "7400", "e10")],
+    components: [psu("psu1", 80, 5), chip("c1", "74LS00", "e10")],
     wires: [
       wire("psu1.+", `bb1.${mates(holes.get(7))[0]}`),
       wire("psu1.-", `bb1.${mates(holes.get(14))[0]}`),

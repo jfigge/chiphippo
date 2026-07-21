@@ -165,13 +165,13 @@ test("a push button bridges only while pressed (transient part state)", () => {
 
 test("chip pins join their hole's net with name+role, never pin-to-pin", () => {
   const doc = fullKit();
-  doc.addComponent({ kind: "chip", ref: "7400", board: "bb2", anchor: "e5" });
+  doc.addComponent({ kind: "chip", ref: "74LS00", board: "bb2", anchor: "e5" });
   // Pin 1 (1A) seats in e5.
   const info = infoAt(doc, "bb2.e5");
   const pin = info.pins.find((p) => p.pin === 1);
   assert.deepEqual(pin, {
     componentId: "c1",
-    ref: "7400",
+    ref: "74LS00",
     pin: 1,
     name: "1A",
     role: "input",
@@ -189,7 +189,7 @@ test("a 180°-flipped chip labels each hole with its ROTATED pin", () => {
   const doc = fullKit();
   doc.addComponent({
     kind: "chip",
-    ref: "7400",
+    ref: "74LS00",
     board: "bb2",
     anchor: "e5",
     params: { rot: 180 },
@@ -198,7 +198,7 @@ test("a 180°-flipped chip labels each hole with its ROTATED pin", () => {
   const flipped = infoAt(doc, "bb2.e5").pins.find((p) => p.hole === "bb2.e5");
   assert.deepEqual(flipped, {
     componentId: "c1",
-    ref: "7400",
+    ref: "74LS00",
     pin: 8,
     name: "3Y",
     role: "output",
@@ -208,7 +208,7 @@ test("a 180°-flipped chip labels each hole with its ROTATED pin", () => {
   const one = infoAt(doc, "bb2.f11").pins.find((p) => p.pin === 1);
   assert.deepEqual(one, {
     componentId: "c1",
-    ref: "7400",
+    ref: "74LS00",
     pin: 1,
     name: "1A",
     role: "input",

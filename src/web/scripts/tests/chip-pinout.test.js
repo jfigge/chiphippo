@@ -28,8 +28,8 @@ const { buildChipPinout, buildPartPinout } =
 
 test("a 14-pin chip lays out 7 mirrored rows with numbers and names", () => {
   resetDom();
-  const el = buildChipPinout(chipDef("7400"));
-  assert.match(el.querySelector(".popup-title").textContent, /^7400 · /);
+  const el = buildChipPinout(chipDef("74LS00"));
+  assert.match(el.querySelector(".popup-title").textContent, /^74LS00 · /);
   assert.equal(
     el.querySelector(".chip-pinout-sub").textContent,
     "DIP-14 · pin assignments",
@@ -54,7 +54,7 @@ test("a 14-pin chip lays out 7 mirrored rows with numbers and names", () => {
 
 test("power/ground/output pins carry their role classes", () => {
   resetDom();
-  const el = buildChipPinout(chipDef("7400"));
+  const el = buildChipPinout(chipDef("74LS00"));
   const nameFor = (label) =>
     [...el.querySelectorAll(".chip-pinout-name")].find(
       (n) => n.querySelector(".chip-pinout-label").textContent === label,
@@ -85,8 +85,29 @@ test("every pin appears exactly once across the columns", () => {
 
 test("buildPartPinout routes a chip to the DIP layout", () => {
   resetDom();
-  const el = buildPartPinout(partDef("7400"));
+  const el = buildPartPinout(partDef("74LS00"));
   assert.ok(el.querySelector(".chip-pinout-dip"), "chip → DIP diagram");
+});
+
+test("a chip includes a datasheet figure pointing at its committed crop", () => {
+  resetDom();
+  const el = buildChipPinout(chipDef("74LS595"));
+  const img = el.querySelector(".chip-pinout-datasheet img");
+  assert.ok(img, "chip pinout carries a datasheet figure");
+  // The <id> is URL-encoded into the relative path make datasheets writes to.
+  assert.equal(img.getAttribute("src"), "datasheets/74LS595.png");
+});
+
+test("discretes and bricks carry no datasheet figure", () => {
+  resetDom();
+  for (const id of ["led", "psu", "clock"]) {
+    const el = buildPartPinout(partDef(id));
+    assert.equal(
+      el.querySelector(".chip-pinout-datasheet"),
+      null,
+      `${id} has no datasheet figure`,
+    );
+  }
 });
 
 test("a discrete (LED) renders a linear pin list with roles + offsets", () => {

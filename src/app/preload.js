@@ -39,6 +39,8 @@ for (const [channel, event] of [
   ["menu:schematic-open", "chiphippo:schematic-open"],
   ["menu:schematic-save", "chiphippo:schematic-save"],
   ["menu:schematic-save-as", "chiphippo:schematic-save-as"],
+  ["menu:edit-undo", "chiphippo:edit-undo"],
+  ["menu:edit-redo", "chiphippo:edit-redo"],
 ]) {
   ipcRenderer.on(channel, () => {
     window.dispatchEvent(new CustomEvent(event));
@@ -96,4 +98,11 @@ contextBridge.exposeInMainWorld("chiphippo", {
   // its DIP pinout as a wiring reference. `opts` may carry a `{ pins }` hint so
   // main can size the window to the package.
   openPinout: (ref, opts) => ipcRenderer.invoke("pinout:open", ref, opts),
+
+  // ── Undo/redo menu state (Feature 200) ─────────────────────────────────────
+  // The renderer owns the document history; this pushes the current
+  // availability so main can enable/disable Edit ▸ Undo / Redo to match.
+  menu: {
+    setEditState: (state) => ipcRenderer.invoke("menu:edit-state", state),
+  },
 });

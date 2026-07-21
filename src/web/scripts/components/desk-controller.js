@@ -50,6 +50,7 @@ import {
   wiresInRect,
 } from "../model/part-geometry.js";
 import { DeskDoc } from "../model/desk-doc.js";
+import { HistoryStore } from "../model/history-store.js";
 import { partDef } from "../catalog/index.js";
 import { PSU_VOLTS, CLOCK_HZ } from "../catalog/parts.js";
 import {
@@ -125,6 +126,11 @@ export class DeskController {
   #multiWires = new Set(); // wire ids from the same marquee
   #marquee = null; // the rubber-band element while shift-dragging
   #simOverlay; // live LEDs / badges / clock lamps + net-level lookups
+  // Undo/redo (Feature 200): a bounded snapshot history the doc-changed choke
+  // point feeds. `#restoring` suppresses re-recording while a restore replays.
+  #history = new HistoryStore();
+  #restoring = false;
+  #onHistoryChange;
   #onReplaceChip;
   #onClockToggle;
   #onOpenPinout;
@@ -146,6 +152,9 @@ export class DeskController {
    *   click-to-toggle while running (Feature 100).
    * @param {(ref: string) => void} [opts.onOpenPinout] - double-clicking a chip
    *   requests its pin-assignments window (main opens a native OS window).
+   * @param {(state: {canUndo: boolean, canRedo: boolean}) => void}
+   *   [opts.onHistoryChange] - undo/redo availability changed (drives the
+   *   Edit-menu enable state, Feature 200).
    */
   constructor({
     viewport,
@@ -156,6 +165,7 @@ export class DeskController {
     onReplaceChip,
     onClockToggle,
     onOpenPinout,
+    onHistoryChange,
   }) {
     this.#viewport = viewport;
     this.#deskView = deskView;
@@ -163,6 +173,7 @@ export class DeskController {
     this.#onReplaceChip = onReplaceChip;
     this.#onClockToggle = onClockToggle;
     this.#onOpenPinout = onOpenPinout;
+    this.#onHistoryChange = onHistoryChange;
 
     // Layer order (established for every later stage): boards under parts
     // under wires under the interaction overlay. All are zero-size anchors —
@@ -239,7 +250,7 @@ export class DeskController {
       viewport,
       wireLayer: this.#wireLayer,
       ring: this.#ring,
-      emitDocChanged: () => this.#emitDocChanged(),
+      emitDocChanged: (label) => this.#emitDocChanged(label),
       hideHover: () => this.#hideHover(),
       selectWire: (id) => this.selectWire(id),
       deselect: () => this.deselect(),
@@ -264,6 +275,11 @@ export class DeskController {
 
     for (const board of this.#doc.boards) this.#mountBoard(board);
     for (const component of this.#doc.components) this.#mountPart(component);
+
+    // Seed the undo history with the loaded document as the baseline — a fresh
+    // document (New/Open reload) starts a fresh, single-entry history.
+    this.#history.clear(this.#doc.snapshot());
+    this.#notifyHistoryState();
 
     viewport.addEventListener("pointerdown", this.#onViewportPointerDown);
     viewport.addEventListener("pointermove", this.#onViewportPointerMove);
@@ -1029,7 +1045,7 @@ export class DeskController {
       return; // nowhere free to rotate into — leave it as-is
     }
     this.#remountPart(id);
-    this.#emitDocChanged();
+    this.#emitDocChanged("rotate part");
   }
 
   // ── Wire tool (Feature 50) ───────────────────────────────────────────────
@@ -1108,7 +1124,16 @@ export class DeskController {
       // Cancel any armed tool the run supersedes (probe stays allowed).
       this.cancelPlacement();
       this.disarmWireTool();
+      // History is frozen for the run — run-volatile effects (12 V damage, a
+      // switch flipped live) never become undo steps.
+      this.#history.freeze();
+    } else {
+      // Stop: resume recording and re-baseline the present to the live document
+      // so any run-persisted change stays consistent with undo/redo.
+      this.#history.unfreeze();
+      this.#history.sync(this.#doc.snapshot());
     }
+    this.#notifyHistoryState();
   }
 
   // ── Document mutations (all flow through desk-doc) ─────────────────────
@@ -1118,7 +1143,7 @@ export class DeskController {
     const board = this.#doc.addBoard(type, x, y);
     this.#mountBoard(board);
     this.selectBoard(board.id);
-    this.#emitDocChanged();
+    this.#emitDocChanged("add board");
     return board;
   }
 
@@ -1138,7 +1163,7 @@ export class DeskController {
     this.#mateStrips(strips.map((s) => s.id));
     const pins = strips.find((s) => spec(s.type).kind === "pins") ?? strips[0];
     this.selectBoard(pins.id);
-    this.#emitDocChanged();
+    this.#emitDocChanged("add board");
     return strips;
   }
 
@@ -1162,7 +1187,7 @@ export class DeskController {
     });
     this.#mountPart(component);
     this.selectComponent(component.id);
-    this.#emitDocChanged();
+    this.#emitDocChanged("add part");
     return component;
   }
 
@@ -1171,7 +1196,7 @@ export class DeskController {
     const brick = this.#doc.addBrick(ref, x, y, params);
     this.#mountPart(brick);
     this.selectComponent(brick.id);
-    this.#emitDocChanged();
+    this.#emitDocChanged("add part");
     return brick;
   }
 
@@ -1217,7 +1242,7 @@ export class DeskController {
       this.#selected = null;
     }
     this.#hideHover();
-    this.#emitDocChanged(); // WireLayer re-renders from this
+    this.#emitDocChanged("delete board"); // WireLayer re-renders from this
   }
 
   /**
@@ -1256,7 +1281,7 @@ export class DeskController {
       this.#selected = null;
     }
     this.#hideHover();
-    this.#emitDocChanged();
+    this.#emitDocChanged("delete part");
   }
 
   /** Flip a slide switch (click) — persists `pos`; doc-changed re-settles. */
@@ -1269,21 +1294,21 @@ export class DeskController {
     // already invalidates the netlist, re-ticks the sim, and refreshes the
     // pinned net. Emitting `part-state` too would double-tick (part-state is
     // reserved for transient view state with no durable param — a held button).
-    this.#emitDocChanged();
+    this.#emitDocChanged("toggle switch");
   }
 
-  /** Set a PSU's voltage (context menu). */
+  /** Set a PSU's voltage (context menu). A rapid re-pick coalesces into one. */
   setPsuVolts(id, volts) {
     const updated = this.#doc.setComponentParams(id, { volts });
     this.#partViews.get(id)?.updateParams(updated.params);
-    this.#emitDocChanged();
+    this.#emitDocChanged("set voltage", { coalesce: true });
   }
 
-  /** Set a clock's rate (context menu). */
+  /** Set a clock's rate (context menu). A rapid re-pick coalesces into one. */
   setClockHz(id, hz) {
     const updated = this.#doc.setComponentParams(id, { hz });
     this.#partViews.get(id)?.updateParams(updated.params);
-    this.#emitDocChanged();
+    this.#emitDocChanged("set clock rate", { coalesce: true });
   }
 
   // ── Central keyboard hooks (wired by app.js) ────────────────────────────
@@ -1609,7 +1634,7 @@ export class DeskController {
       // offered, so a kit that touches on more than one edge joins them all.
       this.#mateStrips(ids);
       this.#applyDragDelta(d, d.delta);
-      this.#emitDocChanged(); // WireLayer re-renders from this
+      this.#emitDocChanged("move board"); // WireLayer re-renders from this
     } else {
       this.#applyDragDelta(d, { dx: 0, dy: 0 }); // illegal drop → revert
       this.#wireLayer.render();
@@ -1831,7 +1856,7 @@ export class DeskController {
           d.target.anchor,
           d.target.end,
         );
-        this.#emitDocChanged();
+        this.#emitDocChanged("move part");
       }
       // Redraw from the document — an illegal drop wrote nothing, so the lead
       // springs back to where it was.
@@ -1848,7 +1873,7 @@ export class DeskController {
           d.holes.anchor,
           d.holes.end,
         );
-        this.#emitDocChanged();
+        this.#emitDocChanged("move part");
       }
       // Commit or not, redraw from the document — an illegal drop leaves the
       // document untouched, so this snaps the resistor back to its origin.
@@ -1861,7 +1886,7 @@ export class DeskController {
       const moved = d.pos.x !== d.origin.x || d.pos.y !== d.origin.y;
       if (!cancelled && d.legal && moved) {
         this.#doc.moveBrick(d.id, d.pos.x, d.pos.y);
-        this.#emitDocChanged();
+        this.#emitDocChanged("move part");
       } else {
         view?.setPosition(d.origin.x, d.origin.y);
         this.#wireLayer.render();
@@ -1884,9 +1909,9 @@ export class DeskController {
     if (!cancelled && d.legal && moved) {
       this.#doc.moveComponent(d.id, d.seat.board, d.seat.anchor);
       view?.updatePlacement(this.#doc.getBoard(d.seat.board), d.seat.anchor);
-      this.#emitDocChanged();
+      this.#emitDocChanged("move part");
     } else {
-      if (flipped) this.#emitDocChanged();
+      if (flipped) this.#emitDocChanged("flip chip");
       view?.updatePlacement(
         this.#doc.getBoard(d.origin.board),
         d.origin.anchor,
@@ -2098,7 +2123,7 @@ export class DeskController {
       if (this.#doc.getWire(id)) this.#doc.removeWire(id); // may have cascaded
     }
     this.#hideHover();
-    this.#emitDocChanged();
+    this.#emitDocChanged("delete selection");
   }
 
   // ── Viewport-level pointer handling ─────────────────────────────────────
@@ -2239,10 +2264,105 @@ export class DeskController {
     this.#tooltip.hidden = true;
   }
 
-  #emitDocChanged() {
+  /**
+   * The single commit seam (Feature 200): every document mutation funnels
+   * through here, so this is where a labelled snapshot is pushed to the undo
+   * history. A `restore` replay sets `#restoring` so it doesn't re-record, and
+   * history is frozen while the circuit runs. `opts.coalesce` merges a rapid
+   * same-label burst (a param nudge) into one undo step.
+   *
+   * @param {string} [label] - a short verb for the edit ("move board", …).
+   * @param {{coalesce?: boolean}} [opts]
+   */
+  #emitDocChanged(label = "edit", opts = {}) {
     // Boards may have moved, been torn out of a group, or been deleted —
     // re-trace the highlighter before anyone renders from the new document.
     this.#refreshBoardOutline();
+    if (!this.#restoring) {
+      this.#history.record(this.#doc.snapshot(), label, Date.now(), opts);
+      this.#notifyHistoryState();
+    }
     window.dispatchEvent(new CustomEvent("chiphippo:doc-changed"));
+  }
+
+  // ── Undo / redo (Feature 200) ────────────────────────────────────────────
+
+  /** Whether an undo is currently available (false while running). */
+  get canUndo() {
+    return !this.#editingLocked && this.#history.canUndo;
+  }
+
+  /** Whether a redo is currently available (false while running). */
+  get canRedo() {
+    return !this.#editingLocked && this.#history.canRedo;
+  }
+
+  /** Restore the previous snapshot. @returns {boolean} true when it acted. */
+  undo() {
+    if (this.#editingLocked) return false; // history frozen during a run
+    const snapshot = this.#history.undo();
+    if (snapshot == null) return false;
+    this.#restoreSnapshot(snapshot);
+    return true;
+  }
+
+  /** Restore the next snapshot. @returns {boolean} true when it acted. */
+  redo() {
+    if (this.#editingLocked) return false;
+    const snapshot = this.#history.redo();
+    if (snapshot == null) return false;
+    this.#restoreSnapshot(snapshot);
+    return true;
+  }
+
+  /**
+   * Swap the whole document for a history snapshot and rebuild the scene from
+   * it — the same full teardown + remount New/Open would do, never a partial,
+   * drift-prone re-mount. `#restoring` keeps the resulting doc-changed from
+   * re-recording the restore as a fresh edit.
+   */
+  #restoreSnapshot(snapshot) {
+    this.#restoring = true;
+    try {
+      this.#doc.restore(snapshot);
+      this.#rebuildScene();
+      // Announce so autosave, the title/dirty marker, the sim, and the probe
+      // all reconcile — but not through the recording seam.
+      window.dispatchEvent(new CustomEvent("chiphippo:doc-changed"));
+    } finally {
+      this.#restoring = false;
+    }
+    this.#notifyHistoryState();
+  }
+
+  /**
+   * Tear down every mounted view and remount the whole scene from the current
+   * document — the reusable full-rebuild path (undo/redo restore). Selection is
+   * dropped; wires and the board outline re-render from the shared DeskDoc.
+   */
+  #rebuildScene() {
+    // Drop all selection state first (the views it points at are about to go).
+    this.#selected = null;
+    this.#multi.clear();
+    this.#multiWires.clear();
+    this.#wireLayer.setSelected(null);
+    this.#wireLayer.setSelectedMany([]);
+    this.#hideHover();
+    // Unmount every board and part view (keep the Map objects — collaborators
+    // hold references to them).
+    for (const view of this.#views.values()) view.remove();
+    this.#views.clear();
+    for (const view of this.#partViews.values()) view.remove();
+    this.#partViews.clear();
+    // Remount from the restored document.
+    for (const board of this.#doc.boards) this.#mountBoard(board);
+    for (const component of this.#doc.components) this.#mountPart(component);
+    this.#wireLayer.render();
+    this.#boardOutline.show([], false);
+  }
+
+  /** Push the current undo/redo availability to the Edit menu. */
+  #notifyHistoryState() {
+    this.#onHistoryChange?.({ canUndo: this.canUndo, canRedo: this.canRedo });
   }
 }

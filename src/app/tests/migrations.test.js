@@ -32,7 +32,7 @@ function v1Doc() {
     version: 1,
     boards: [{ id: "bb1", type: "full", x: 10, y: 20 }],
     components: [
-      { id: "c1", kind: "chip", ref: "7400", board: "bb1", anchor: "e5" },
+      { id: "c1", kind: "chip", ref: "74LS00", board: "bb1", anchor: "e5" },
       {
         id: "c2",
         kind: "discrete",

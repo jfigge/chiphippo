@@ -64,8 +64,8 @@ function nameSpan(name, role) {
   ]);
 }
 
-/** The outer popup shell: header (id · title) + subtitle + a body element. */
-function pinoutShell(def, subtitle, body) {
+/** The outer popup shell: header (id · title) + subtitle + body [+ extra]. */
+function pinoutShell(def, subtitle, body, extra) {
   return el(
     "div",
     {
@@ -80,8 +80,35 @@ function pinoutShell(def, subtitle, body) {
       ]),
       el("div", { class: "chip-pinout-sub", text: subtitle }),
       body,
+      extra,
     ],
   );
+}
+
+/**
+ * The manufacturer-datasheet figure: the connection diagram / function-table
+ * crop for this part, committed to web/datasheets/<id>.png by `make datasheets`.
+ * The image loads lazily and the whole figure REMOVES ITSELF if there is no
+ * crop for this part (the handful of chips with no datasheet on file), so the
+ * caller can add it unconditionally.
+ * @param {object} def - a catalog def with an `id`.
+ * @returns {HTMLElement}
+ */
+function datasheetFigure(def) {
+  const figure = el("figure", { class: "chip-pinout-datasheet" }, [
+    el("figcaption", {
+      class: "chip-pinout-datasheet-cap",
+      text: "Datasheet — internal diagram & function table",
+    }),
+    el("img", {
+      class: "chip-pinout-datasheet-img",
+      src: `datasheets/${encodeURIComponent(def.id)}.png`,
+      alt: `${def.id} datasheet connection diagram and function table`,
+      loading: "lazy",
+      onerror: () => figure.remove(),
+    }),
+  ]);
+  return figure;
 }
 
 /** One DIP pin cell: a numbered badge and the role-colored name (mirrored). */
@@ -126,6 +153,7 @@ export function buildChipPinout(def) {
       el("div", { class: "chip-pinout-notch", "aria-hidden": "true" }),
       el("div", { class: "chip-pinout-grid" }, rows),
     ]),
+    datasheetFigure(def),
   );
 }
 

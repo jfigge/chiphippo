@@ -430,6 +430,29 @@ async function init() {
       bridge
         .openPinout?.(ref, { rows })
         .catch((err) => console.error("[renderer] pinout:open failed:", err)),
+    // Undo/redo availability drives the native Edit-menu enable state.
+    onHistoryChange: (state) =>
+      bridge.menu
+        ?.setEditState(state)
+        .catch((err) =>
+          console.error("[renderer] menu:edit-state failed:", err),
+        ),
+  });
+
+  // Edit ▸ Undo / Redo (⌘Z / ⇧⌘Z), pushed from the native menu. A focused text
+  // field keeps its own editing (the document isn't touched while typing).
+  const inTextField = () => {
+    const t = document.activeElement;
+    return (
+      t &&
+      (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)
+    );
+  };
+  window.addEventListener("chiphippo:edit-undo", () => {
+    if (!inTextField()) controller.undo();
+  });
+  window.addEventListener("chiphippo:edit-redo", () => {
+    if (!inTextField()) controller.redo();
   });
 
   const toolbar = document.getElementById("app-toolbar");

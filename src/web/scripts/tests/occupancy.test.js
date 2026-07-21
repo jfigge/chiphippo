@@ -41,8 +41,8 @@ const FULL = { id: "bb1", type: "pins-full", x: 0, y: 0 };
 const TINY = { id: "bb2", type: "pins-tiny", x: 100, y: 0 };
 const RAIL = { id: "bb3", type: "rail-full", x: 0, y: -4 };
 
-test("chipPinHoles: derives the 14 seated holes of a 7400 at e5", () => {
-  const pins = chipPinHoles("7400", "e5");
+test("chipPinHoles: derives the 14 seated holes of a 74LS00 at e5", () => {
+  const pins = chipPinHoles("74LS00", "e5");
   assert.equal(pins.length, 14);
   assert.deepEqual(pins[0], { pin: 1, hole: "e5" });
   assert.deepEqual(
@@ -61,9 +61,9 @@ test("chipPinHoles: derives the 14 seated holes of a 7400 at e5", () => {
 
 test("chipPinHoles: unknown ref or non-e anchor is null", () => {
   assert.equal(chipPinHoles("9999", "e5"), null);
-  assert.equal(chipPinHoles("7400", "f5"), null);
-  assert.equal(chipPinHoles("7400", "+3"), null);
-  assert.equal(chipPinHoles("7400", null), null);
+  assert.equal(chipPinHoles("74LS00", "f5"), null);
+  assert.equal(chipPinHoles("74LS00", "+3"), null);
+  assert.equal(chipPinHoles("74LS00", null), null);
 });
 
 test("partPinHoles: a rotated resistor derives a seated pin plus a free lead", () => {
@@ -236,7 +236,7 @@ test("buildOccupancy: one entry per pin, addressed globally", () => {
   const doc = docWith({
     boards: [FULL],
     components: [
-      { id: "c1", kind: "chip", ref: "7400", board: "bb1", anchor: "e5" },
+      { id: "c1", kind: "chip", ref: "74LS00", board: "bb1", anchor: "e5" },
     ],
   });
   const occ = buildOccupancy(doc);
@@ -257,7 +257,7 @@ test("buildOccupancy: one entry per pin, addressed globally", () => {
 test("canPlaceChip: happy path on the full and tiny pin-boards", () => {
   const doc = docWith({ boards: [FULL, TINY] });
   assert.equal(
-    canPlaceChip(doc, { ref: "7400", board: "bb1", anchor: "e5" }),
+    canPlaceChip(doc, { ref: "74LS00", board: "bb1", anchor: "e5" }),
     true,
   );
   // A DIP-14 needs 7 columns: the tiny pin-board (17 cols) fits it at e1…e11.
@@ -271,19 +271,19 @@ test("canPlaceChip: rejects off-board, bad anchors, unknown boards/refs", () => 
   const doc = docWith({ boards: [FULL, TINY] });
   // The full pin-board has 63 columns: e58 puts pin 7 at e64 — off the board.
   assert.equal(
-    canPlaceChip(doc, { ref: "7400", board: "bb1", anchor: "e58" }),
+    canPlaceChip(doc, { ref: "74LS00", board: "bb1", anchor: "e58" }),
     false,
   );
   assert.equal(
-    canPlaceChip(doc, { ref: "7400", board: "bb2", anchor: "e12" }),
+    canPlaceChip(doc, { ref: "74LS00", board: "bb2", anchor: "e12" }),
     false, // tiny: pin 7 would land at e18 (only 17 columns)
   );
   assert.equal(
-    canPlaceChip(doc, { ref: "7400", board: "bb1", anchor: "f5" }),
+    canPlaceChip(doc, { ref: "74LS00", board: "bb1", anchor: "f5" }),
     false, // anchor must be row e
   );
   assert.equal(
-    canPlaceChip(doc, { ref: "7400", board: "bb9", anchor: "e5" }),
+    canPlaceChip(doc, { ref: "74LS00", board: "bb9", anchor: "e5" }),
     false,
   );
   assert.equal(
@@ -296,10 +296,10 @@ test("canPlaceChip: occupied holes block; ignoreId frees a chip's own pins", () 
   const doc = docWith({
     boards: [FULL],
     components: [
-      { id: "c1", kind: "chip", ref: "7400", board: "bb1", anchor: "e5" },
+      { id: "c1", kind: "chip", ref: "74LS00", board: "bb1", anchor: "e5" },
     ],
   });
-  // Overlapping the seated 7400 (columns 5–11) fails…
+  // Overlapping the seated 74LS00 (columns 5–11) fails…
   assert.equal(
     canPlaceChip(doc, { ref: "7404", board: "bb1", anchor: "e11" }),
     false,
@@ -312,7 +312,7 @@ test("canPlaceChip: occupied holes block; ignoreId frees a chip's own pins", () 
   // …and the chip itself may shift one column when its own pins are ignored.
   assert.equal(
     canPlaceChip(doc, {
-      ref: "7400",
+      ref: "74LS00",
       board: "bb1",
       anchor: "e6",
       ignoreId: "c1",
@@ -320,7 +320,7 @@ test("canPlaceChip: occupied holes block; ignoreId frees a chip's own pins", () 
     true,
   );
   assert.equal(
-    canPlaceChip(doc, { ref: "7400", board: "bb1", anchor: "e6" }),
+    canPlaceChip(doc, { ref: "74LS00", board: "bb1", anchor: "e6" }),
     false,
   );
 });
@@ -331,7 +331,7 @@ test("buildOccupancy: wire ends occupy alongside pins", () => {
   const doc = docWith({
     boards: [FULL, RAIL],
     components: [
-      { id: "c1", kind: "chip", ref: "7400", board: "bb1", anchor: "e5" },
+      { id: "c1", kind: "chip", ref: "74LS00", board: "bb1", anchor: "e5" },
     ],
   });
   // A cross-strip wire: pin-board hole → rail-strip hole.
@@ -354,7 +354,7 @@ test("canReendWire: moves an end to a free point, ignoring the wire itself", () 
   const doc = docWith({
     boards: [FULL],
     components: [
-      { id: "c1", kind: "chip", ref: "7400", board: "bb1", anchor: "e5" },
+      { id: "c1", kind: "chip", ref: "74LS00", board: "bb1", anchor: "e5" },
     ],
   });
   doc.wires = [
@@ -381,7 +381,7 @@ test("canMoveWire: both ends must land on real, free points; ignores itself", ()
   const doc = docWith({
     boards: [FULL],
     components: [
-      { id: "c1", kind: "chip", ref: "7400", board: "bb1", anchor: "e5" },
+      { id: "c1", kind: "chip", ref: "74LS00", board: "bb1", anchor: "e5" },
     ],
   });
   doc.wires = [
@@ -421,13 +421,13 @@ test("canPlaceWire: free + distinct endpoints", () => {
 test("wire ends block chip placement through the shared index", () => {
   const doc = docWith({ boards: [FULL] });
   doc.wires = [{ id: "w1", from: "bb1.e8", to: "bb1.a1", color: "red" }];
-  // A 7400 at e5 needs e5..e11 — e8 is a wire end.
+  // A 74LS00 at e5 needs e5..e11 — e8 is a wire end.
   assert.equal(
-    canPlaceChip(doc, { ref: "7400", board: "bb1", anchor: "e5" }),
+    canPlaceChip(doc, { ref: "74LS00", board: "bb1", anchor: "e5" }),
     false,
   );
   assert.equal(
-    canPlaceChip(doc, { ref: "7400", board: "bb1", anchor: "e20" }),
+    canPlaceChip(doc, { ref: "74LS00", board: "bb1", anchor: "e20" }),
     true,
   );
 });

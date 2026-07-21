@@ -105,14 +105,14 @@ test("floating (Z) inputs read HIGH everywhere", () => {
   assert.equal(evaluate(chip("7408"), levels({ 1: Z, 2: L })).get(3), L);
   // 7404 inverter, floating input → H → output L.
   assert.equal(evaluate(chip("7404"), levels({ 1: Z })).get(2), L);
-  // A fully-unset 7400 NAND reads all-H → L.
-  assert.equal(evaluate(chip("7400"), new Map()).get(3), L);
+  // A fully-unset 74LS00 NAND reads all-H → L.
+  assert.equal(evaluate(chip("74LS00"), new Map()).get(3), L);
 });
 
 test("X propagates except where a dominant input forces the output", () => {
-  // 7400 NAND: X with H → X; X with L → H (L dominates).
-  assert.equal(evaluate(chip("7400"), levels({ 1: X, 2: H })).get(3), X);
-  assert.equal(evaluate(chip("7400"), levels({ 1: X, 2: L })).get(3), H);
+  // 74LS00 NAND: X with H → X; X with L → H (L dominates).
+  assert.equal(evaluate(chip("74LS00"), levels({ 1: X, 2: H })).get(3), X);
+  assert.equal(evaluate(chip("74LS00"), levels({ 1: X, 2: L })).get(3), H);
   // 7427 NOR: X with L → X; X with H → L (H dominates).
   assert.equal(
     evaluate(chip("7427"), levels({ 1: X, 2: L, 13: L })).get(12),

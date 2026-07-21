@@ -62,7 +62,7 @@ test("lists the whole catalog grouped by function; picks report the ref", () => 
   for (const def of PALETTE_DEFS) {
     assert.equal(badged.has(def.id), hasBehavior(def), `${def.id} badge`);
   }
-  assert.ok(badged.has("7400")); // combinational
+  assert.ok(badged.has("74LS00")); // combinational
   assert.ok(badged.has("7474")); // sequential
   assert.ok(!badged.has("led"));
   assert.ok(!badged.has("clock"));
@@ -133,8 +133,8 @@ test("filter matches id, title, and blurb (case-insensitive)", () => {
   const ids = () =>
     [...host.querySelectorAll(".palette-item")].map((i) => i.dataset.ref);
 
-  typeFilter(panel.element, "7400");
-  assert.deepEqual(ids(), ["7400"]);
+  typeFilter(panel.element, "74LS00");
+  assert.deepEqual(ids(), ["74LS00"]);
 
   typeFilter(panel.element, "nor"); // title match: 7402 + 7427
   assert.deepEqual(ids().sort(), ["7402", "7427"]);

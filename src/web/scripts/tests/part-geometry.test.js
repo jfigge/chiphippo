@@ -31,11 +31,11 @@ import {
 } from "../model/part-geometry.js";
 
 const BOARDS = [{ id: "bb1", type: "pins-full", x: 0, y: 0 }];
-// 7400 at e5: pin 1 in hole e5 (world 5, 8). A PSU brick with + / − terminals.
+// 74LS00 at e5: pin 1 in hole e5 (world 5, 8). A PSU brick with + / − terminals.
 const CHIP = {
   id: "c1",
   kind: "chip",
-  ref: "7400",
+  ref: "74LS00",
   board: "bb1",
   anchor: "e5",
 };
@@ -81,7 +81,7 @@ test("connectionPointAt: a hole wins; a terminal matches within the radius", () 
 });
 
 test("componentsInRect: a component counts only when EVERY pin is inside", () => {
-  // 7400 at e5 spans columns 5–11 across rows e (y 8) and f (y 5).
+  // 74LS00 at e5 spans columns 5–11 across rows e (y 8) and f (y 5).
   const all = { minX: 0, minY: 0, maxX: 20, maxY: 20 };
   const partial = { minX: 0, minY: 0, maxX: 8, maxY: 20 }; // clips cols 9–11
   assert.deepEqual(componentsInRect(BOARDS, [CHIP], all), ["c1"]);
@@ -109,7 +109,7 @@ test("hoverHitAt: a pin outranks the hole under it; else the bare hole", () => {
   const onPin = hoverHitAt(BOARDS, [CHIP], { x: 5, y: 8 });
   assert.equal(onPin.key, "c1#1");
   assert.equal(onPin.address, "bb1.e5");
-  assert.match(onPin.label, /7400 pin 1/);
+  assert.match(onPin.label, /74LS00 pin 1/);
   // Over an empty hole: the bare address.
   const onHole = hoverHitAt(BOARDS, [CHIP], { x: 1, y: 12 });
   assert.deepEqual(

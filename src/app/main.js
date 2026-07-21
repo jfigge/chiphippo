@@ -184,7 +184,7 @@ async function saveSchematicDialog(doc, suggestedPath) {
 // persisted as a de-facto global preference (`settings.pinoutFloat`) that every
 // open pinout follows and a future settings dialog will bind to.
 const pinoutWindows = new Map(); // part ref → BrowserWindow
-// Catalog ids: chips ("7400"), discretes ("sw-slide", "led"), bricks ("psu").
+// Catalog ids: chips ("74LS00"), discretes ("sw-slide", "led"), bricks ("psu").
 const PINOUT_REF_RE = /^[a-z0-9][a-z0-9-]{1,11}$/i;
 
 /** The persisted float-above preference (defaults true). */
@@ -210,9 +210,15 @@ function openPinoutWindow(ref, opts = {}) {
   // `rows` is the renderer's layout row count (DIP wraps to pins/2; discretes
   // and bricks list every pin/terminal). Clamp defensively.
   const rows = Math.min(12, Math.max(2, Number(opts.rows) || 8));
+  // Parts with a committed datasheet crop (make datasheets → web/datasheets/
+  // <ref>.png) get a wider, taller default window so the diagram + truth table
+  // are legible without an immediate resize; it stays freely resizable.
+  const hasDatasheet = fs.existsSync(
+    path.join(__dirname, "..", "web", "datasheets", `${ref}.png`),
+  );
   const win = new BrowserWindow({
-    width: 400,
-    height: 150 + rows * 30,
+    width: hasDatasheet ? 640 : 400,
+    height: 150 + rows * 30 + (hasDatasheet ? 430 : 0),
     minWidth: 300,
     minHeight: 220,
     alwaysOnTop: pinoutFloatPref(),
@@ -319,11 +325,27 @@ function buildAppMenu() {
     });
   }
 
+  // Undo / Redo drive the DOCUMENT history (Feature 200), not text-field
+  // editing — each pushes to the renderer, which owns the snapshot stack and
+  // reports availability back over menu:edit-state (see setEditMenuState). They
+  // start disabled; the renderer enables them once there is something to do.
   template.push({
     label: "Edit",
     submenu: [
-      { role: "undo" },
-      { role: "redo" },
+      {
+        id: "edit-undo",
+        label: "Undo",
+        accelerator: "CmdOrCtrl+Z",
+        enabled: false,
+        click: () => sendToMain("menu:edit-undo"),
+      },
+      {
+        id: "edit-redo",
+        label: "Redo",
+        accelerator: "Shift+CmdOrCtrl+Z",
+        enabled: false,
+        click: () => sendToMain("menu:edit-redo"),
+      },
       { type: "separator" },
       { role: "cut" },
       { role: "copy" },
@@ -346,6 +368,19 @@ function buildAppMenu() {
   });
 
   return Menu.buildFromTemplate(template);
+}
+
+/**
+ * Enable/disable Edit ▸ Undo / Redo to match the renderer's history state
+ * (Feature 200). The renderer is the authority — it pushes this whenever undo
+ * availability changes.
+ */
+function setEditMenuState({ canUndo = false, canRedo = false } = {}) {
+  const menu = Menu.getApplicationMenu();
+  const undo = menu?.getMenuItemById("edit-undo");
+  const redo = menu?.getMenuItemById("edit-redo");
+  if (undo) undo.enabled = Boolean(canUndo);
+  if (redo) redo.enabled = Boolean(canRedo);
 }
 
 /** The native right-click menu for a pinout window (float toggle + close). */
@@ -411,6 +446,13 @@ function registerIpc() {
   // separate floating OS window rendering its pinout as a wiring reference.
   ipcMain.handle("pinout:open", (_event, ref, opts) => {
     openPinoutWindow(ref, opts);
+    return true;
+  });
+
+  // Undo/redo menu state (Feature 200): the renderer owns the document history
+  // and pushes the current availability so Edit ▸ Undo / Redo match.
+  ipcMain.handle("menu:edit-state", (_event, state) => {
+    setEditMenuState(state);
     return true;
   });
 }

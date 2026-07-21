@@ -182,7 +182,7 @@ test("Cmd+C then Cmd+V arms a placement ghost that drops a duplicate", () => {
   const { viewport, surface, controller, world } = makeDesk(doc);
   controller.addBoardAt("pins-full", 0, 0);
   // Seating a chip selects it; Cmd+C should copy that one part.
-  controller.addComponentAt("7400", "bb1", "e5"); // cols 5–11
+  controller.addComponentAt("74LS00", "bb1", "e5"); // cols 5–11
   assert.equal(doc.components.length, 1);
 
   assert.equal(accelKey(controller, "c"), true);
@@ -203,7 +203,7 @@ test("Cmd+C then Cmd+V arms a placement ghost that drops a duplicate", () => {
   assert.equal(doc.components.length, 2);
   assert.deepEqual(
     doc.components.map((c) => c.ref),
-    ["7400", "7400"],
+    ["74LS00", "74LS00"],
   );
 });
 
@@ -212,7 +212,7 @@ test("Cmd+V carries the copied chip's orientation into the duplicate", () => {
   const doc = new DeskDoc(null);
   const { viewport, controller, world } = makeDesk(doc);
   controller.addBoardAt("pins-full", 0, 0);
-  const chip = controller.addComponentAt("7400", "bb1", "e5");
+  const chip = controller.addComponentAt("74LS00", "bb1", "e5");
   // R flips a selected chip 180°; copy the flipped part.
   controller.handleKeyDown(new window.KeyboardEvent("keydown", { key: "r" }));
   assert.equal(doc.getComponent(chip.id).params.rot, 180);
@@ -225,7 +225,7 @@ test("Cmd+V carries the copied chip's orientation into the duplicate", () => {
   viewport.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
 
   const dupe = doc.components.find((c) => c.id !== chip.id);
-  assert.equal(dupe.ref, "7400");
+  assert.equal(dupe.ref, "74LS00");
   assert.equal(dupe.params.rot, 180);
 });
 
@@ -320,7 +320,7 @@ test("addKitAt: a bare pin-board places on its own and takes a chip", () => {
     [["pins-full", null]],
   );
   // It is an ordinary pin-board: parts seat across its trench as always.
-  assert.ok(doc.canPlaceChip("7400", strips[0].id, "e2"));
+  assert.ok(doc.canPlaceChip("74LS00", strips[0].id, "e2"));
 });
 
 test("Delete/Backspace removes the selected board via handleKeyDown", () => {
@@ -381,8 +381,8 @@ test("shift-drag marquee selects only components fully inside the box", () => {
   doc.addBoard("pins-full", 0, 0);
   const world = { x: 0, y: 0 };
   const { viewport, controller } = makeDesk(doc, world);
-  // 7400 at e5 spans columns 5–11 (x 5…11) across rows f (y 5) and e (y 8).
-  const chip = controller.addComponentAt("7400", "bb1", "e5");
+  // 74LS00 at e5 spans columns 5–11 (x 5…11) across rows f (y 5) and e (y 8).
+  const chip = controller.addComponentAt("74LS00", "bb1", "e5");
   // A second chip far to the right, well outside the box.
   const outside = controller.addComponentAt("7404", "bb1", "e20");
 
@@ -398,7 +398,7 @@ test("a component only PARTLY inside the marquee is not selected", () => {
   doc.addBoard("pins-full", 0, 0);
   const world = { x: 0, y: 0 };
   const { viewport, controller } = makeDesk(doc, world);
-  const chip = controller.addComponentAt("7400", "bb1", "e5"); // cols 5–11
+  const chip = controller.addComponentAt("74LS00", "bb1", "e5"); // cols 5–11
 
   // Box stops at column 8 — the right-hand pins fall outside.
   marquee(viewport, world, { x: 4, y: 4 }, { x: 8, y: 9 });
@@ -412,7 +412,7 @@ test("Delete removes the whole marquee selection in one doc-changed", () => {
   doc.addBoard("pins-full", 0, 0);
   const world = { x: 0, y: 0 };
   const { viewport, controller } = makeDesk(doc, world);
-  controller.addComponentAt("7400", "bb1", "e5"); // cols 5–11
+  controller.addComponentAt("74LS00", "bb1", "e5"); // cols 5–11
   controller.addComponentAt("resistor", "bb1", "a6"); // a6 ── a9
   assert.equal(doc.components.length, 2);
 
@@ -462,7 +462,7 @@ test("one marquee mixes parts and wires; Delete clears both at once", () => {
   doc.addBoard("pins-full", 0, 0);
   const world = { x: 0, y: 0 };
   const { viewport, controller } = makeDesk(doc, world);
-  const chip = controller.addComponentAt("7400", "bb1", "e5"); // cols 5–11
+  const chip = controller.addComponentAt("74LS00", "bb1", "e5"); // cols 5–11
   const wire = doc.addWire({ from: "bb1.a6", to: "bb1.a9" }); // y 12
 
   let changes = 0;
@@ -515,7 +515,7 @@ test("Escape clears a marquee selection", () => {
   doc.addBoard("pins-full", 0, 0);
   const world = { x: 0, y: 0 };
   const { viewport, controller } = makeDesk(doc, world);
-  controller.addComponentAt("7400", "bb1", "e5");
+  controller.addComponentAt("74LS00", "bb1", "e5");
 
   marquee(viewport, world, { x: 4, y: 4 }, { x: 12, y: 9 });
   assert.equal(controller.multiSelectedIds.length, 1);
@@ -1181,9 +1181,9 @@ test("R flips a chip 180°: same holes, pin numbering reversed", () => {
   const doc = new DeskDoc(null);
   doc.addBoard("pins-full", 0, 0);
   const { controller } = makeDesk(doc);
-  const chip = controller.addComponentAt("7400", "bb1", "e5"); // auto-selected
+  const chip = controller.addComponentAt("74LS00", "bb1", "e5"); // auto-selected
   const holesOf = () =>
-    partPinHoles("7400", "e5", doc.getComponent(chip.id).params);
+    partPinHoles("74LS00", "e5", doc.getComponent(chip.id).params);
 
   // Unflipped: pin 1 bottom-left (e5), pin 14 top-left (f5).
   assert.equal(holesOf().find((p) => p.pin === 1).hole, "e5");
@@ -1202,7 +1202,7 @@ test("R flips a chip 180°: same holes, pin numbering reversed", () => {
     holesOf()
       .map((p) => p.hole)
       .sort(),
-    partPinHoles("7400", "e5")
+    partPinHoles("74LS00", "e5")
       .map((p) => p.hole)
       .sort(),
     "occupies exactly the same holes",
@@ -1220,7 +1220,7 @@ test("a chip flipped mid-drag commits the flip with the move", () => {
   doc.addBoard("pins-full", 0, 0);
   const world = { x: 0, y: 0 };
   const { surface, controller } = makeDesk(doc, world);
-  const chip = controller.addComponentAt("7400", "bb1", "e10");
+  const chip = controller.addComponentAt("74LS00", "bb1", "e10");
 
   const el = partEl(surface, chip.id);
   world.y = 6.5; // a chip only seats near the trench
@@ -1380,4 +1380,127 @@ test("an upright rail resolves its holes down the desk, and wires reach them", (
     addressAtWorld(doc.boards, bottom.x, bottom.y),
     `${rail.id}.+50`,
   );
+});
+
+// ── Undo / redo (Feature 200) ──────────────────────────────────────────────
+
+test("a single add is one undo step, reversed and replayed exactly", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const { surface, controller } = makeDesk(doc);
+  assert.equal(controller.canUndo, false); // a fresh baseline
+
+  controller.addBoardAt("pins-tiny", 0, 0);
+  assert.equal(doc.boards.length, 1);
+  assert.equal(surface.querySelectorAll(".board").length, 1);
+  assert.equal(controller.canUndo, true);
+  assert.equal(controller.canRedo, false);
+
+  // ONE undo empties the desk — the add was a single step, not many.
+  assert.equal(controller.undo(), true);
+  assert.equal(doc.boards.length, 0);
+  assert.equal(surface.querySelectorAll(".board").length, 0);
+  assert.equal(controller.canUndo, false);
+  assert.equal(controller.canRedo, true);
+
+  // Redo replays it, remounting the view from the restored document.
+  assert.equal(controller.redo(), true);
+  assert.equal(doc.boards.length, 1);
+  assert.equal(surface.querySelectorAll(".board").length, 1);
+});
+
+test("a sequence of edits undoes/redoes to byte-identical documents", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const { controller } = makeDesk(doc);
+
+  const empty = doc.toJSON();
+  controller.addBoardAt("pins-full", 0, 0);
+  const afterA = doc.toJSON();
+  controller.addComponentAt("74LS00", "bb1", "e5");
+  const afterB = doc.toJSON();
+
+  controller.undo(); // back to afterA
+  assert.deepEqual(doc.toJSON(), afterA);
+  controller.undo(); // back to empty
+  assert.deepEqual(doc.toJSON(), empty);
+  assert.equal(controller.canUndo, false);
+
+  controller.redo(); // forward to afterA
+  assert.deepEqual(doc.toJSON(), afterA);
+  controller.redo(); // forward to afterB
+  assert.deepEqual(doc.toJSON(), afterB);
+  assert.equal(controller.canRedo, false);
+});
+
+test("a new edit after undo drops the redo future", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const { controller } = makeDesk(doc);
+  controller.addBoardAt("pins-tiny", 0, 0);
+  controller.addBoardAt("pins-tiny", 0, 30);
+  controller.undo(); // one board left
+  assert.equal(controller.canRedo, true);
+  controller.addBoardAt("pins-tiny", 0, 60); // a fresh branch
+  assert.equal(controller.canRedo, false);
+  assert.equal(doc.boards.length, 2);
+});
+
+test("undo restores through a full rebuild — selection is cleared", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const { surface, controller } = makeDesk(doc);
+  controller.addBoardAt("pins-full", 0, 0);
+  controller.addComponentAt("74LS00", "bb1", "e5");
+  assert.ok(controller.selectedId); // the add selected the new chip
+  controller.undo(); // remove the chip
+  assert.equal(controller.selectedId, null);
+  assert.equal(surface.querySelectorAll(".chip").length, 0);
+});
+
+test("running freezes history; stopping restores it", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const { controller } = makeDesk(doc);
+  controller.addBoardAt("pins-tiny", 0, 0);
+  assert.equal(controller.canUndo, true);
+
+  // Enter Run: undo/redo are unavailable and edits don't record.
+  controller.setEditingLocked(true);
+  assert.equal(controller.canUndo, false);
+  assert.equal(controller.canRedo, false);
+  assert.equal(controller.undo(), false); // frozen — no-op
+
+  // Stop: history is available again, right where it was.
+  controller.setEditingLocked(false);
+  assert.equal(controller.canUndo, true);
+  assert.equal(controller.undo(), true);
+  assert.equal(doc.boards.length, 0);
+});
+
+test("onHistoryChange fires with the current availability", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const viewport = document.createElement("section");
+  const surface = document.createElement("div");
+  viewport.append(surface);
+  document.body.append(viewport);
+  const deskView = {
+    surface,
+    camera: { cx: 0, cy: 0, zoom: 1 },
+    worldFromEvent: () => ({ x: 0, y: 0 }),
+  };
+  const states = [];
+  const controller = new DeskController({
+    viewport,
+    deskView,
+    deskDoc: doc,
+    onHistoryChange: (s) => states.push(s),
+  });
+  // Seeded at construction: nothing to undo yet.
+  assert.deepEqual(states.at(-1), { canUndo: false, canRedo: false });
+  controller.addBoardAt("pins-tiny", 0, 0);
+  assert.deepEqual(states.at(-1), { canUndo: true, canRedo: false });
+  controller.undo();
+  assert.deepEqual(states.at(-1), { canUndo: false, canRedo: true });
 });

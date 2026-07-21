@@ -188,7 +188,7 @@ export class WireTools {
     // The colour STAYS put between wires — a chain of jumpers keeps the colour
     // you picked; change it deliberately via the toolbar swatch.
     this.#clearPending(); // re-arm fresh — chain-friendly
-    this.#host.emitDocChanged();
+    this.#host.emitDocChanged("add wire");
     this.#notifyState();
   }
 
@@ -196,13 +196,13 @@ export class WireTools {
   removeWire(id) {
     this.#host.doc.removeWire(id);
     this.#host.clearSelectionIfWire(id);
-    this.#host.emitDocChanged();
+    this.#host.emitDocChanged("delete wire");
   }
 
   /** Recolor a wire (context menu). */
   recolorWire(id, color) {
     this.#host.doc.recolorWire(id, color);
-    this.#host.emitDocChanged();
+    this.#host.emitDocChanged("recolor wire");
   }
 
   onContextMenu(id, e) {
@@ -338,7 +338,7 @@ export class WireTools {
       target.address !== m.origin;
     if (commit) {
       this.#host.doc.setWireEndpoint(m.wireId, m.end, target.address);
-      this.#host.emitDocChanged(); // WireLayer re-renders from this
+      this.#host.emitDocChanged("move wire"); // WireLayer re-renders from this
     }
   };
 
@@ -437,7 +437,7 @@ export class WireTools {
     const moved = t && (t.from !== m.fromOrigin || t.to !== m.toOrigin);
     if (e.type !== "pointercancel" && t && moved) {
       this.#host.doc.moveWire(m.wireId, t.from, t.to);
-      this.#host.emitDocChanged(); // WireLayer re-renders from this
+      this.#host.emitDocChanged("move wire"); // WireLayer re-renders from this
     }
   };
 }

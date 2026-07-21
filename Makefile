@@ -119,6 +119,16 @@ icons:
 	@cd $(SRC_DIR) && npx electron $(WORKSPACE)/scripts/make-icons.mjs
 	@echo "--------------------------------"
 
+# ─── Datasheets ───────────────────────────────────────────────────────────────
+# Regenerate the datasheet connection-diagram / function-table crops shown in
+# the pin-assignments window, one committed PNG per catalog chip that has a
+# datasheet. Reads the crop manifest (scripts/datasheet-crops.mjs) and the
+# source PDFs (not in the repo — override the folder with DATASHEETS_DIR).
+datasheets:
+	@echo "Regenerating datasheet crops for the pinout window..."
+	@cd $(SRC_DIR) && npx electron $(WORKSPACE)/scripts/make-datasheets.mjs
+	@echo "--------------------------------"
+
 # ─── Build ────────────────────────────────────────────────────────────────────
 build: build-mac
 
@@ -179,6 +189,8 @@ help:
 	@echo "    lint          Lint JS (eslint)"
 	@echo "    test          Run license-header guard + JS unit tests"
 	@echo "    license-headers  Stamp the Apache 2.0 header on any file missing it"
+	@echo "    icons         Regenerate app-icon rasters from the SVG sources"
+	@echo "    datasheets    Regenerate datasheet crops for the pinout window"
 	@echo "    build         Build Electron app for macOS (dir only, unsigned)"
 	@echo "    dmg           Build unsigned macOS .dmg (default 'make')"
 	@echo "    release       Build all unsigned macOS artifacts (dmg + zip, arm64/x64)"
@@ -187,5 +199,5 @@ help:
 	@echo "    info          Print full build information"
 
 .PHONY: version info install debug fmt fmt-check lint license-headers icons \
-        test test-license-headers build build-mac dmg release build-setup \
-        build-install clean help
+        datasheets test test-license-headers build build-mac dmg release \
+        build-setup build-install clean help

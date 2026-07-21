@@ -39,7 +39,7 @@ import {
 const ROLES = new Set(["input", "output", "vcc", "gnd", "nc", "io"]);
 
 const GATE_WAVE = [
-  "7400",
+  "74LS00",
   "7402",
   "7404",
   "7408",
