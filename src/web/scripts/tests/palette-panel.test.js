@@ -263,7 +263,7 @@ test("the board selector is pinned at the top and reports the kit key", () => {
 
   // "Boards" is the palette's first entry — above the Chips folder.
   const list = host.querySelector(".palette-list");
-  assert.equal(list.firstElementChild.className, "palette-boards-header");
+  assert.ok(list.firstElementChild.classList.contains("palette-boards-folder"));
   assert.equal(list.firstElementChild.textContent, "Boards");
 
   // Every kit — assembled boards then loose strips — in menu order.
@@ -281,19 +281,48 @@ test("the board selector is pinned at the top and reports the kit key", () => {
   assert.deepEqual(picked, ["full"]);
 });
 
+test("the Boards section starts folded and opens on click", () => {
+  resetDom();
+  const host = document.createElement("div");
+  document.body.append(host);
+  new PalettePanel(host, {});
+
+  const header = host.querySelector(".palette-boards-folder");
+  const items = () => host.querySelector(".palette-boards-items");
+  // Shut on arrival — like every other section.
+  assert.equal(
+    header.classList.contains("palette-boards-folder--collapsed"),
+    true,
+  );
+  assert.equal(header.getAttribute("aria-expanded"), "false");
+  assert.equal(items().hidden, true);
+
+  header.click(); // open it
+  const opened = host.querySelector(".palette-boards-folder");
+  assert.equal(
+    opened.classList.contains("palette-boards-folder--collapsed"),
+    false,
+  );
+  assert.equal(opened.getAttribute("aria-expanded"), "true");
+  assert.equal(items().hidden, false);
+
+  opened.click(); // and fold it away again
+  assert.equal(host.querySelector(".palette-boards-items").hidden, true);
+});
+
 test("the board selector hides while a parts filter is active", () => {
   resetDom();
   const host = document.createElement("div");
   document.body.append(host);
   const panel = new PalettePanel(host, {});
-  assert.ok(host.querySelector(".palette-boards-header"));
+  assert.ok(host.querySelector(".palette-boards-folder"));
 
   typeFilter(panel.element, "74LS00");
-  assert.equal(host.querySelector(".palette-boards-header"), null);
+  assert.equal(host.querySelector(".palette-boards-folder"), null);
   assert.equal(host.querySelectorAll(".palette-board-item").length, 0);
 
   typeFilter(panel.element, ""); // clearing restores it
-  assert.ok(host.querySelector(".palette-boards-header"));
+  assert.ok(host.querySelector(".palette-boards-folder"));
 });
 
 test("setVisible toggles the hidden attribute", () => {

@@ -35,14 +35,22 @@ import { hasBehavior } from "../sim/chip-eval.js";
     like a group, and no group shares its name. */
 const CHIPS_FOLDER = "Chips";
 
+/** The board selector's foldable section name (pinned at the top). Folds like
+    any section, and starts shut with the rest. */
+const BOARDS_FOLDER = "Boards";
+
 /**
- * Every collapsible section name — the chips folder plus every group in the
- * catalog. The palette opens with ALL of them shut: the full list is long
- * enough that a wall of parts buries the structure, and the filter box is the
- * fast path to a specific one anyway.
+ * Every collapsible section name — the boards folder, the chips folder, and
+ * every group in the catalog. The palette opens with ALL of them shut: the
+ * full list is long enough that a wall of parts buries the structure, and the
+ * filter box is the fast path to a specific one anyway.
  */
 function allSections() {
-  return new Set([CHIPS_FOLDER, ...PALETTE_DEFS.map((def) => def.group)]);
+  return new Set([
+    BOARDS_FOLDER,
+    CHIPS_FOLDER,
+    ...PALETTE_DEFS.map((def) => def.group),
+  ]);
 }
 
 export class PalettePanel {
@@ -167,6 +175,7 @@ export class PalettePanel {
    * kit keys the old header split-button used.
    */
   #appendBoards() {
+    const collapsed = this.#collapsed.has(BOARDS_FOLDER);
     const item = (key) => {
       const kit = BREADBOARD_KITS[key];
       // A kit made purely of rails can stand on end as a signal bus (R spins
@@ -189,8 +198,8 @@ export class PalettePanel {
       );
     };
     this.#list.append(
-      el("div", { class: "palette-boards-header", text: "Boards" }),
-      el("div", { class: "palette-boards-items" }, [
+      this.#sectionHeader("palette-boards-folder", BOARDS_FOLDER, collapsed),
+      el("div", { class: "palette-boards-items", hidden: collapsed }, [
         ...KIT_KEYS.map(item),
         ...STRIP_KIT_KEYS.map(item),
       ]),

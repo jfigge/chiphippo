@@ -280,7 +280,8 @@
 }
 
 .palette-group--collapsed .palette-group-caret,
-.palette-folder--collapsed .palette-group-caret {
+.palette-folder--collapsed .palette-group-caret,
+.palette-boards-folder--collapsed .palette-group-caret {
   transform: rotate(-90deg);
 }
 
@@ -348,18 +349,36 @@
   cursor: pointer;
 }
 
-.palette-boards-header {
+/* The Boards header is a foldable section (like the Chips folder), pinned at
+   the top of the palette. */
+.palette-boards-folder {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  width: 100%;
   margin: 0 0 var(--space-1);
   padding: var(--space-1) 0;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.02em;
   color: var(--color-subtext);
 }
 
+.palette-boards-folder:hover {
+  color: var(--color-text);
+}
+
 .palette-boards-items {
   display: flex;
   flex-direction: column;
+}
+
+.palette-boards-items[hidden] {
+  display: none;
 }
 
 .palette-item-id {
@@ -1145,7 +1164,9 @@
 }
 
 .wire--selected .wire-outline {
-  stroke: var(--color-accent);
+  /* The "Selection border colour" setting (--color-selection), the same as the
+     board outline + selected annotations; falls back to the accent. */
+  stroke: var(--color-selection, var(--color-accent));
   stroke-width: 5;
 }
 

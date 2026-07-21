@@ -15,10 +15,11 @@
  */
 
 // wire-tools.js — everything about jumper wires the user drives: the
-// click-click wire TOOL (anchor a free point, click a second to lay a wire,
-// colour auto-cycling), grabbing a wire's END cap to re-route it, grabbing its
-// BODY to translate it rigidly, and the per-wire context menu (remove /
-// recolour). Pulled out of DeskController so "wiring" is one module.
+// click-click wire TOOL (anchor a free point, click a second to lay a wire;
+// the colour STAYS put between wires — change it via the toolbar swatch),
+// grabbing a wire's END cap to re-route it, grabbing its BODY to translate it
+// rigidly, and the per-wire context menu (remove / recolour). Pulled out of
+// DeskController so "wiring" is one module.
 //
 // It reuses the controller's shared `#mode` (through the host) so the viewport
 // pointer dispatcher's mode checks stay exactly as they were — this is a home
@@ -42,7 +43,7 @@ const RING_RADIUS = 0.45;
 
 export class WireTools {
   #host;
-  #colorIndex = 0; // the color the next committed wire gets (auto-cycles)
+  #colorIndex = 0; // the color the next committed wire gets (pinned; never cycles)
 
   /**
    * @param {object} host - shared controller surface:
