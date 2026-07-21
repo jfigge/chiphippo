@@ -60,7 +60,7 @@ const byId = (doc, id) => doc.boards.find((b) => b.id === id);
 
 test("v1 → v2: a full board becomes three grouped strips", () => {
   const doc = migrateDeskDocument(v1Doc());
-  assert.equal(doc.version, 2);
+  assert.equal(doc.version, 3); // migrateDeskDocument brings v1 fully current
   assert.equal(doc.boards.length, 3);
 
   // The pin-board KEEPS the original id, which is what lets grid addresses
@@ -204,4 +204,48 @@ test("v1 → v2 is not applied twice", () => {
   const once = migrateDeskDocument(v1Doc());
   const twice = migrateDeskDocument(once);
   assert.deepEqual(twice, once);
+});
+
+test("v2 → v3: net names + annotations arrays are added (additive)", () => {
+  const v2 = {
+    version: 2,
+    boards: [{ id: "bb1", type: "pins-tiny", x: 0, y: 0, group: null }],
+    components: [],
+    wires: [],
+    nextBoardId: 2,
+    nextGroupId: 1,
+    nextComponentId: 1,
+    nextPsuId: 1,
+    nextClockId: 1,
+    nextWireId: 1,
+  };
+  const doc = migrateDeskDocument(v2);
+  assert.equal(doc.version, 3);
+  assert.deepEqual(doc.netNames, []);
+  assert.deepEqual(doc.annotations, []);
+  assert.equal(doc.nextAnnotationId, 1);
+  // Boards/wires are untouched — a pure additive step, no address rewriting.
+  assert.deepEqual(doc.boards, v2.boards);
+});
+
+test("v2 → v3: preserves already-present names + annotations", () => {
+  const doc = migrateDeskDocument({
+    version: 2,
+    boards: [],
+    components: [],
+    wires: [],
+    netNames: [{ address: "bb1.a5", name: "VCC" }],
+    annotations: [{ id: "an1", kind: "label", x: 1, y: 2, text: "hi" }],
+    nextAnnotationId: 2,
+    nextBoardId: 1,
+    nextGroupId: 1,
+    nextComponentId: 1,
+    nextPsuId: 1,
+    nextClockId: 1,
+    nextWireId: 1,
+  });
+  assert.equal(doc.version, 3);
+  assert.deepEqual(doc.netNames, [{ address: "bb1.a5", name: "VCC" }]);
+  assert.equal(doc.annotations.length, 1);
+  assert.equal(doc.nextAnnotationId, 2);
 });

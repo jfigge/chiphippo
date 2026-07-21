@@ -64,7 +64,7 @@ Two outcomes shape stages 120–210, beyond "more parts":
 
 | #   | Plan | What it delivers | Depends on |
 |-----|------|------------------|------------|
-| 120 | [Net names, labels & annotations](120-net-names-and-labels.md) | User-named nets bound by address (survive edits), freeform labels/notes on the desk, reserved-name quick-picks; pure metadata, engine-inert | 70 |
+| 120 | [Net names, labels & annotations](done/120-net-names-and-labels.md) | User-named nets bound by address (survive edits), freeform labels/notes on the desk, reserved-name quick-picks; pure metadata, engine-inert | 70 |
 | 130 | [Buses: bundled multi-bit signals](130-buses.md) | Named ordered nets (`D[7:0]`), a bus tool that lays/taps whole runs at once, bundle rendering; still N plain wires underneath | 50, 120 |
 | 140 | [Build guide, wiring list & BOM](140-build-guide-and-wiring-list.md) | A pure `build-plan.js` deriving a BOM, net-grouped human-addressed wiring list, and ordered assembly steps + warnings | 70, 120, 130 |
 | 150 | [Schematic view](150-schematic-view.md) | A derived logical diagram — chip symbols + routed named nets + bus lines, deterministic auto-layout with nudge, live sim tint, shared probe | 70, 120, 130 |

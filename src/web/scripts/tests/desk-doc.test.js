@@ -32,12 +32,15 @@ test("a fresh DeskDoc serializes to the empty document shape", () => {
     boards: [],
     components: [],
     wires: [],
+    netNames: [],
+    annotations: [],
     nextBoardId: 1,
     nextGroupId: 1,
     nextComponentId: 1,
     nextPsuId: 1,
     nextClockId: 1,
     nextWireId: 1,
+    nextAnnotationId: 1,
   });
   assert.deepEqual(new DeskDoc(null).toJSON(), emptyDocument());
 });
@@ -1454,4 +1457,140 @@ test("restore takes its own copy — the source snapshot stays reusable", () => 
   doc.addBoard("pins-tiny", 0, 30); // mutating the live doc…
   // …must not have reached back into the snapshot we restored from.
   assert.equal(snap.boards.length, 1);
+});
+
+// ── Net names (Feature 120) ──────────────────────────────────────────────────
+
+test("nameNet: upsert by address; clearNetName removes it", () => {
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  assert.deepEqual(doc.nameNet("bb1.a5", "VCC"), {
+    address: "bb1.a5",
+    name: "VCC",
+  });
+  assert.equal(doc.netNameAt("bb1.a5"), "VCC");
+  // Naming the same address again replaces (upserts), never duplicates.
+  doc.nameNet("bb1.a5", "GND");
+  assert.equal(doc.netNames.length, 1);
+  assert.equal(doc.netNameAt("bb1.a5"), "GND");
+  assert.equal(doc.clearNetName("bb1.a5"), true);
+  assert.equal(doc.netNameAt("bb1.a5"), null);
+  assert.equal(doc.clearNetName("bb1.a5"), false); // idempotent
+});
+
+test("nameNet: trims the name and rejects junk", () => {
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  assert.equal(doc.nameNet("bb1.a5", "  CLK  ").name, "CLK");
+  assert.throws(() => doc.nameNet("bb1.a5", "   "), { code: "INVALID_ARG" });
+  assert.throws(() => doc.nameNet("bb1.a5", ""), { code: "INVALID_ARG" });
+  assert.throws(() => doc.nameNet("no-dot", "X"), { code: "INVALID_ARG" });
+});
+
+test("normalizeDocument: drops a binding whose address does not parse", () => {
+  const doc = normalizeDocument({
+    ...emptyDocument(),
+    netNames: [
+      { address: "bb1.a5", name: "VCC" },
+      { address: "no-dot", name: "BAD" }, // unparseable → dropped
+      { address: "bb1.a5", name: "DUP" }, // duplicate address → dropped
+      { address: "bb1.b7", name: "   " }, // empty name → dropped
+    ],
+  });
+  assert.deepEqual(doc.netNames, [{ address: "bb1.a5", name: "VCC" }]);
+});
+
+// ── Annotations: labels & notes (Feature 120) ────────────────────────────────
+
+test("addAnnotation: fresh an<n> ids, then round-trips through toJSON", () => {
+  const doc = new DeskDoc(null);
+  const a = doc.addAnnotation("label", 3, 4, "clock divider");
+  assert.match(a.id, /^an[1-9]\d*$/);
+  assert.deepEqual(a, {
+    id: "an1",
+    kind: "label",
+    x: 3,
+    y: 4,
+    text: "clock divider",
+  });
+  const b = doc.addAnnotation("note", 10, 12, "", {
+    color: "#f00",
+    anchor: "c1",
+  });
+  assert.equal(b.id, "an2");
+  assert.equal(b.color, "#f00");
+  assert.equal(b.anchor, "c1");
+  // The document round-trips the annotations + the id counter verbatim.
+  const round = normalizeDocument(doc.toJSON());
+  assert.deepEqual(round.annotations, doc.toJSON().annotations);
+  assert.equal(round.nextAnnotationId, 3);
+});
+
+test("updateAnnotation: patches x/y/text/color/anchor; clears with null", () => {
+  const doc = new DeskDoc(null);
+  const a = doc.addAnnotation("note", 0, 0, "hi", {
+    color: "#0f0",
+    anchor: "c1",
+  });
+  const u = doc.updateAnnotation(a.id, { x: 5, y: 6, text: "bye" });
+  assert.deepEqual(
+    { x: u.x, y: u.y, text: u.text },
+    { x: 5, y: 6, text: "bye" },
+  );
+  const cleared = doc.updateAnnotation(a.id, { color: null, anchor: "" });
+  assert.equal("color" in cleared, false);
+  assert.equal("anchor" in cleared, false);
+  assert.throws(() => doc.updateAnnotation("an99", { x: 1 }), {
+    code: "NOT_FOUND",
+  });
+});
+
+test("removeAnnotation: removes, then throws NOT_FOUND", () => {
+  const doc = new DeskDoc(null);
+  const a = doc.addAnnotation("label", 0, 0, "x");
+  doc.removeAnnotation(a.id);
+  assert.equal(doc.annotations.length, 0);
+  assert.throws(() => doc.removeAnnotation(a.id), { code: "NOT_FOUND" });
+});
+
+test("addAnnotation: rejects a bad kind or non-finite position", () => {
+  const doc = new DeskDoc(null);
+  assert.throws(() => doc.addAnnotation("scribble", 0, 0), {
+    code: "INVALID_KIND",
+  });
+  assert.throws(() => doc.addAnnotation("label", NaN, 0), {
+    code: "INVALID_ARG",
+  });
+});
+
+test("normalizeDocument: repairs annotations and advances the counter", () => {
+  const doc = normalizeDocument({
+    ...emptyDocument(),
+    annotations: [
+      { id: "an1", kind: "label", x: 1, y: 2, text: "ok" },
+      { id: "an5", kind: "note", x: 3, y: 4 }, // missing text → ""
+      { id: "bad", kind: "label", x: 0, y: 0 }, // bad id → dropped
+      { id: "an2", kind: "scribble", x: 0, y: 0 }, // bad kind → dropped
+      { id: "an3", kind: "label", x: NaN, y: 0 }, // bad coords → dropped
+    ],
+  });
+  assert.equal(doc.annotations.length, 2);
+  assert.equal(doc.annotations[1].text, ""); // defaulted
+  assert.equal(doc.nextAnnotationId, 6); // past an5
+});
+
+test("removing an anchored part detaches the annotation, keeping its spot", () => {
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const chip = doc.addComponent({
+    kind: "chip",
+    ref: "74LS00",
+    board: "bb1",
+    anchor: "e5",
+  });
+  const label = doc.addAnnotation("label", 2, 2, "U1", { anchor: chip.id });
+  doc.removeComponent(chip.id);
+  const still = doc.getAnnotation(label.id);
+  assert.equal(still.anchor, undefined); // detached
+  assert.deepEqual({ x: still.x, y: still.y }, { x: 2, y: 2 }); // stayed put
 });

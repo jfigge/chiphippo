@@ -218,6 +218,111 @@ export const PopupManager = {
   },
 
   /**
+   * A one-field text-input dialog. `quickPicks` render as buttons that fill
+   * (and immediately submit) the field. `onConfirm(value)` fires with the
+   * trimmed text after the dialog closes; an empty value is passed through, so
+   * the caller decides whether to ignore it. Enter submits, Escape cancels.
+   * @param {object} opts
+   */
+  prompt({
+    title,
+    message,
+    label = "",
+    value = "",
+    placeholder = "",
+    quickPicks = [],
+    confirmLabel = "OK",
+    cancelLabel = "Cancel",
+    onConfirm,
+    onCancel,
+  } = {}) {
+    const input = el("input", {
+      class: "popup-input",
+      type: "text",
+      value,
+      placeholder,
+      "data-autofocus": true,
+    });
+
+    const submit = () => {
+      const text = input.value.trim();
+      this.close();
+      onConfirm?.(text);
+    };
+    const cancel = () => {
+      this.close();
+      onCancel?.();
+    };
+
+    input.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        submit();
+      }
+    });
+
+    const picks =
+      quickPicks.length > 0 &&
+      el(
+        "div",
+        { class: "popup-quickpicks" },
+        quickPicks.map((name) =>
+          el("button", {
+            class: "btn popup-btn btn--secondary popup-quickpick",
+            type: "button",
+            text: name,
+            onClick: () => {
+              input.value = name;
+              submit();
+            },
+          }),
+        ),
+      );
+
+    const element = el(
+      "div",
+      {
+        class: "popup popup-prompt",
+        role: "dialog",
+        "aria-modal": "true",
+        "aria-label": title || label || "Enter a value",
+      },
+      [
+        title &&
+          el("div", { class: "popup-header" }, [
+            el("span", { class: "popup-title", text: title }),
+          ]),
+        el(
+          "div",
+          { class: "popup-body" },
+          [
+            message && el("p", { class: "popup-message", text: message }),
+            label && el("label", { class: "popup-label", text: label }),
+            input,
+            picks,
+          ].filter(Boolean),
+        ),
+        el("div", { class: "popup-footer" }, [
+          el("button", {
+            class: "btn popup-btn btn--secondary",
+            type: "button",
+            text: cancelLabel,
+            onClick: cancel,
+          }),
+          el("button", {
+            class: "btn popup-btn btn--primary",
+            type: "button",
+            text: confirmLabel,
+            onClick: submit,
+          }),
+        ]),
+      ].filter(Boolean),
+    );
+
+    this.open({ element, onMaskClick: cancel });
+  },
+
+  /**
    * A single-button acknowledgement dialog (no cancel).
    * @param {object} opts
    */

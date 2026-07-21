@@ -62,7 +62,7 @@ import {
   partPinHoles,
 } from "./occupancy.js";
 
-export const DOC_VERSION = 2;
+export const DOC_VERSION = 3;
 
 /** The fixed jumper-wire palette (theme.css defines a token per name). */
 export const WIRE_COLORS = Object.freeze([
@@ -76,12 +76,23 @@ export const WIRE_COLORS = Object.freeze([
   "purple",
 ]);
 
+/**
+ * The common net names offered as quick-picks when naming a net (Feature 120).
+ * They carry NO special power — the engine still derives power from PSU volts
+ * and rail polarity; a name is documentation. Any string is legal.
+ */
+export const RESERVED_NET_NAMES = Object.freeze(["VCC", "GND", "CLK"]);
+
+/** Annotation kinds (Feature 120): a one-line label vs a multi-line note. */
+const ANNOTATION_KINDS = new Set(["label", "note"]);
+
 const BOARD_ID_RE = /^bb([1-9]\d*)$/;
 const GROUP_ID_RE = /^g([1-9]\d*)$/;
 const COMPONENT_ID_RE = /^c([1-9]\d*)$/;
 const PSU_ID_RE = /^psu([1-9]\d*)$/;
 const CLOCK_ID_RE = /^clk([1-9]\d*)$/;
 const WIRE_ID_RE = /^w([1-9]\d*)$/;
+const ANNOTATION_ID_RE = /^an([1-9]\d*)$/;
 
 /** Desk-level bricks (no board): kind → { id regex, id prefix, next counter }. */
 const BRICKS = Object.freeze({
@@ -107,12 +118,15 @@ export function emptyDocument() {
     boards: [],
     components: [],
     wires: [],
+    netNames: [],
+    annotations: [],
     nextBoardId: 1,
     nextGroupId: 1,
     nextComponentId: 1,
     nextPsuId: 1,
     nextClockId: 1,
     nextWireId: 1,
+    nextAnnotationId: 1,
   };
 }
 
@@ -229,6 +243,48 @@ export function normalizeDocument(raw) {
     });
   }
 
+  // Net names (Feature 120): a binding is `{ address, name }` — the user names
+  // a net by pointing at ONE member hole/terminal on it, so the name survives a
+  // net-key change. Drop a binding whose address no longer parses; dedupe by
+  // address (first wins). Never resolved here — that is the netlist's job.
+  const namedAddresses = new Set();
+  const netNames = Array.isArray(raw.netNames) ? raw.netNames : [];
+  for (const b of netNames) {
+    if (!b || typeof b !== "object") continue;
+    if (!parseAddress(b.address)) continue;
+    if (typeof b.name !== "string" || b.name.trim() === "") continue;
+    if (namedAddresses.has(b.address)) continue;
+    namedAddresses.add(b.address);
+    doc.netNames.push({ address: b.address, name: b.name.trim() });
+  }
+
+  // Annotations (Feature 120): pure desk decoration — a `label` (one-line) or a
+  // `note` (multi-line), positioned in world pitch units, ignored by occupancy,
+  // the netlist, and the engine. `anchor` (a component id) makes it ride that
+  // part's moves; `color` is an optional CSS color string.
+  let maxAnnSeq = 0;
+  const annIds = new Set();
+  const annotations = Array.isArray(raw.annotations) ? raw.annotations : [];
+  for (const a of annotations) {
+    if (!a || typeof a !== "object") continue;
+    const m = typeof a.id === "string" ? ANNOTATION_ID_RE.exec(a.id) : null;
+    if (!m || annIds.has(a.id)) continue;
+    if (!ANNOTATION_KINDS.has(a.kind)) continue;
+    if (!Number.isFinite(a.x) || !Number.isFinite(a.y)) continue;
+    annIds.add(a.id);
+    maxAnnSeq = Math.max(maxAnnSeq, Number(m[1]));
+    const ann = {
+      id: a.id,
+      kind: a.kind,
+      x: a.x,
+      y: a.y,
+      text: typeof a.text === "string" ? a.text : "",
+    };
+    if (typeof a.color === "string" && a.color) ann.color = a.color;
+    if (typeof a.anchor === "string" && a.anchor) ann.anchor = a.anchor;
+    doc.annotations.push(ann);
+  }
+
   const storedNextBoard =
     Number.isInteger(raw.nextBoardId) && raw.nextBoardId > 0
       ? raw.nextBoardId
@@ -255,6 +311,11 @@ export function normalizeDocument(raw) {
   const storedNextWire =
     Number.isInteger(raw.nextWireId) && raw.nextWireId > 0 ? raw.nextWireId : 1;
   doc.nextWireId = Math.max(storedNextWire, maxWireSeq + 1);
+  const storedNextAnnotation =
+    Number.isInteger(raw.nextAnnotationId) && raw.nextAnnotationId > 0
+      ? raw.nextAnnotationId
+      : 1;
+  doc.nextAnnotationId = Math.max(storedNextAnnotation, maxAnnSeq + 1);
   return doc;
 }
 
@@ -740,6 +801,9 @@ export class DeskDoc {
     const i = this.#doc.boards.findIndex((b) => b.id === id);
     if (i === -1) throw taggedError(`no board ${id}`, "NOT_FOUND");
     const [removed] = this.#doc.boards.splice(i, 1);
+    for (const c of this.#doc.components) {
+      if (c.board === id) this.#detachAnnotations(c.id);
+    }
     this.#doc.components = this.#doc.components.filter((c) => c.board !== id);
     this.#doc.wires = this.#doc.wires.filter((w) => !this.#wireTouches(w, id));
     if (removed.group != null) {
@@ -981,6 +1045,7 @@ export class DeskDoc {
     const i = this.#doc.components.findIndex((c) => c.id === id);
     if (i === -1) throw taggedError(`no component ${id}`, "NOT_FOUND");
     const [removed] = this.#doc.components.splice(i, 1);
+    this.#detachAnnotations(id); // an anchored label falls free, keeping its spot
     if (removed.board == null) {
       // A desk-level brick (PSU, clock) takes its attached wires with it.
       this.#doc.wires = this.#doc.wires.filter(
@@ -1171,6 +1236,126 @@ export class DeskDoc {
     const i = this.#doc.wires.findIndex((w) => w.id === id);
     if (i === -1) throw taggedError(`no wire ${id}`, "NOT_FOUND");
     this.#doc.wires.splice(i, 1);
+  }
+
+  // ── Net names (Feature 120) ──────────────────────────────────────────────
+  // A NAME binds to a member ADDRESS, never the derived net key — the netlist
+  // resolves each binding to its current net on every rebuild, so the name
+  // survives edits that renumber the key. Metadata only: the engine, netlist
+  // partitioning, and occupancy stay unaware of names.
+
+  /** Copies of the net-name bindings on the desk. */
+  get netNames() {
+    return this.#doc.netNames.map((n) => ({ ...n }));
+  }
+
+  /** The name bound to an address, or null. */
+  netNameAt(address) {
+    return this.#doc.netNames.find((n) => n.address === address)?.name ?? null;
+  }
+
+  /**
+   * Bind a name to the net that `address` sits on (upsert by address). The
+   * address must parse and the name be a non-empty string. Throws INVALID_ARG.
+   * Returns a copy of the binding.
+   */
+  nameNet(address, name) {
+    if (!parseAddress(address)) {
+      throw taggedError(`bad net address: ${address}`, "INVALID_ARG");
+    }
+    const clean = typeof name === "string" ? name.trim() : "";
+    if (!clean) {
+      throw taggedError("net name must be a non-empty string", "INVALID_ARG");
+    }
+    const existing = this.#doc.netNames.find((n) => n.address === address);
+    if (existing) existing.name = clean;
+    else this.#doc.netNames.push({ address, name: clean });
+    return { address, name: clean };
+  }
+
+  /** Remove the name binding on `address`. @returns {boolean} true if removed. */
+  clearNetName(address) {
+    const before = this.#doc.netNames.length;
+    this.#doc.netNames = this.#doc.netNames.filter(
+      (n) => n.address !== address,
+    );
+    return this.#doc.netNames.length !== before;
+  }
+
+  // ── Annotations: labels & notes (Feature 120) ────────────────────────────
+  // Pure desk decoration — pointer-selectable, draggable, and ignored by
+  // occupancy, the netlist, and the engine. x/y are absolute world pitch
+  // coordinates; an `anchor` (component id) makes the annotation ride that
+  // part's moves (the caller shifts x/y by the same delta). Ids are `an<n>`.
+
+  /** Copies of the annotations on the desk. */
+  get annotations() {
+    return this.#doc.annotations.map((a) => ({ ...a }));
+  }
+
+  /** A copy of one annotation, or null. */
+  getAnnotation(id) {
+    const a = this.#doc.annotations.find((x) => x.id === id);
+    return a ? { ...a } : null;
+  }
+
+  /**
+   * Add a label / note at (x, y) in world pitch units. `extra` may carry
+   * `color` and `anchor`. Throws INVALID_KIND / INVALID_ARG. Returns a copy.
+   */
+  addAnnotation(kind, x, y, text = "", { color = null, anchor = null } = {}) {
+    if (!ANNOTATION_KINDS.has(kind)) {
+      throw taggedError(`unsupported annotation kind: ${kind}`, "INVALID_KIND");
+    }
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      throw taggedError("annotation position must be finite", "INVALID_ARG");
+    }
+    const ann = {
+      id: `an${this.#doc.nextAnnotationId++}`,
+      kind,
+      x,
+      y,
+      text: typeof text === "string" ? text : "",
+    };
+    if (color) ann.color = color;
+    if (anchor) ann.anchor = anchor;
+    this.#doc.annotations.push(ann);
+    return { ...ann };
+  }
+
+  /**
+   * Patch an annotation's `x`, `y`, `text`, `color`, or `anchor` (a null/empty
+   * color/anchor clears it). Throws NOT_FOUND. Returns a copy.
+   */
+  updateAnnotation(id, patch = {}) {
+    const ann = this.#doc.annotations.find((a) => a.id === id);
+    if (!ann) throw taggedError(`no annotation ${id}`, "NOT_FOUND");
+    if (Number.isFinite(patch.x)) ann.x = patch.x;
+    if (Number.isFinite(patch.y)) ann.y = patch.y;
+    if (typeof patch.text === "string") ann.text = patch.text;
+    if ("color" in patch) {
+      if (patch.color) ann.color = patch.color;
+      else delete ann.color;
+    }
+    if ("anchor" in patch) {
+      if (patch.anchor) ann.anchor = patch.anchor;
+      else delete ann.anchor;
+    }
+    return { ...ann };
+  }
+
+  /** Remove an annotation. Throws NOT_FOUND. */
+  removeAnnotation(id) {
+    const i = this.#doc.annotations.findIndex((a) => a.id === id);
+    if (i === -1) throw taggedError(`no annotation ${id}`, "NOT_FOUND");
+    this.#doc.annotations.splice(i, 1);
+  }
+
+  /** Detach any annotation anchored to a component that is going away. */
+  #detachAnnotations(componentId) {
+    for (const a of this.#doc.annotations) {
+      if (a.anchor === componentId) delete a.anchor;
+    }
   }
 
   /** The serializable document (a deep copy — safe to hand to IPC). */

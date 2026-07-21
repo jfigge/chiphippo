@@ -450,3 +450,87 @@ test("wire tool: the colour STAYS put across a chain of wires", () => {
     "and the toolbar colour is unchanged",
   );
 });
+
+// ── Annotations (Feature 120) ─────────────────────────────────────────────────
+
+test("annotation placement: arming a label and clicking drops it at the cursor", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { viewport, controller } = makeDesk(doc, world);
+
+  controller.armAnnotationPlacement("label");
+  assert.ok(controller.placementArmed);
+  placeClick(viewport, world, { x: 4, y: 5 });
+
+  assert.equal(doc.annotations.length, 1);
+  const [ann] = doc.annotations;
+  assert.equal(ann.kind, "label");
+  assert.deepEqual({ x: ann.x, y: ann.y }, { x: 4, y: 5 });
+  assert.equal(ann.anchor, undefined); // dropped over empty desk
+  assert.ok(!controller.placementArmed);
+});
+
+test("annotation placement over a part anchors it to that part", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { viewport, controller } = makeDesk(doc, world);
+  controller.addBoardAt("pins-full", 0, 0);
+  const chip = controller.addComponentAt("74LS00", "bb1", "e5"); // cols 5–11
+
+  controller.armAnnotationPlacement("note");
+  placeClick(viewport, world, { x: 8, y: 8 }); // over the chip body
+  const [ann] = doc.annotations;
+  assert.equal(ann.anchor, chip.id);
+});
+
+test("selecting an annotation and pressing Delete removes it", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const { controller } = makeDesk(doc);
+  const ann = doc.addAnnotation("label", 2, 2, "x");
+  window.dispatchEvent(new CustomEvent("chiphippo:doc-changed")); // mount it
+  controller.selectAnnotation(ann.id);
+
+  const consumed = controller.handleKeyDown({ key: "Delete", target: {} });
+  assert.equal(consumed, true);
+  assert.equal(doc.annotations.length, 0);
+});
+
+test("an anchored label rides a committed chip drag", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { surface, controller } = makeDesk(doc, world);
+  controller.addBoardAt("pins-full", 0, 0);
+  const chip = controller.addComponentAt("74LS00", "bb1", "e5"); // cols 5–11
+  const label = doc.addAnnotation("label", 3, 6, "U1", { anchor: chip.id });
+  window.dispatchEvent(new CustomEvent("chiphippo:doc-changed")); // mount label
+
+  // Same drag as the chip-reseat test: e5 → e10 (five columns right).
+  drag(partEl(surface, chip.id), world, { x: 8, y: 6.5 }, { x: 13, y: 6.5 });
+
+  assert.equal(doc.getComponent(chip.id).anchor, "e10");
+  const moved = doc.getAnnotation(label.id);
+  assert.equal(moved.x, 8, "label x shifted by the chip's +5 columns");
+  assert.equal(moved.y, 6, "label y unchanged");
+});
+
+test("an anchored label springs back when the chip's drop is illegal", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { surface, controller } = makeDesk(doc, world);
+  controller.addBoardAt("pins-full", 0, 0);
+  const chip = controller.addComponentAt("74LS00", "bb1", "e5"); // cols 5–11
+  controller.addComponentAt("74LS00", "bb1", "e12"); // blocks e10
+  const label = doc.addAnnotation("label", 3, 6, "U1", { anchor: chip.id });
+  window.dispatchEvent(new CustomEvent("chiphippo:doc-changed"));
+
+  drag(partEl(surface, chip.id), world, { x: 8, y: 6.5 }, { x: 13, y: 6.5 });
+
+  assert.equal(doc.getComponent(chip.id).anchor, "e5", "chip reverted");
+  const still = doc.getAnnotation(label.id);
+  assert.deepEqual({ x: still.x, y: still.y }, { x: 3, y: 6 }, "label unmoved");
+});

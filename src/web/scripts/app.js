@@ -27,9 +27,11 @@ import { ZoomControl } from "./components/zoom-control.js";
 import { DeskHud } from "./components/desk-hud.js";
 import { DeskController } from "./components/desk-controller.js";
 import { BoardToolbar } from "./components/board-toolbar.js";
+import { AnnotateToolbar } from "./components/annotate-toolbar.js";
 import { PalettePanel } from "./components/palette-panel.js";
 import { SimController, SPEEDS } from "./components/sim-controller.js";
 import { NotificationStack } from "./components/notification-stack.js";
+import { NetNameMonitor } from "./components/net-name-monitor.js";
 import { PopupManager } from "./popup-manager.js";
 import { AboutDialog } from "./components/about-dialog.js";
 import { SettingsDialog } from "./components/settings-dialog.js";
@@ -543,8 +545,17 @@ async function init() {
   });
   toolbar.append(probeBtn);
 
+  // Annotate: drop labels / notes on the desk (Feature 120).
+  new AnnotateToolbar(toolbar, {
+    onAdd: (kind) => controller.armAnnotationPlacement(kind),
+  });
+
   // ── Simulation transport (Feature 90/100): Run/Stop, Pause, Step, speed ──
   const notifications = new NotificationStack(document.body);
+
+  // Surface net-name merge conflicts (Feature 120) as toasts — a name that
+  // loses a merge is reported, never silently dropped.
+  new NetNameMonitor(deskDoc, notifications);
 
   // The transport cluster sits apart from the edit tools (right of the strip).
   const runBtn = el("button", {

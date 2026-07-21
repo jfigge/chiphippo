@@ -44,6 +44,7 @@ import { holeAtWorld } from "../model/occupancy.js";
 import { partSeatAt } from "../model/seating.js";
 import {
   addressWorld,
+  componentPoints,
   componentsInRect,
   hoverHitAt,
   partPinsWorld,
@@ -69,6 +70,7 @@ import {
 import { PsuView, buildPsuSvg } from "./psu-view.js";
 import { ClockView, buildClockSvg } from "./clock-view.js";
 import { WireLayer } from "./wire-layer.js";
+import { AnnotationLayer } from "./annotation-layer.js";
 import { SimOverlay } from "./sim-overlay.js";
 import { ProbeInspector } from "./probe-inspector.js";
 import { WireTools } from "./wire-tools.js";
@@ -99,7 +101,8 @@ export class DeskController {
   #views = new Map(); // boardId → BreadboardView
   #partViews = new Map(); // componentId → ChipView | DiscreteView | PsuView
   #wireLayer;
-  #selected = null; // { kind: "board"|"part"|"wire", id } | null
+  #annotationLayer; // AnnotationLayer: labels + notes (Feature 120)
+  #selected = null; // { kind: "board"|"part"|"wire"|"annotation", id } | null
   #copyBuffer = null; // { ref, params } of the last Cmd+C'd component | null
   // Active interaction: null, or
   //   { kind: "place", type, ghost, pos, legal }              (board)
@@ -109,6 +112,8 @@ export class DeskController {
   //   { kind: "drag", id, … }                                 (board drag)
   //   { kind: "drag-part", id, … }                            (chip/discrete)
   //   { kind: "drag-brick", id, … }
+  //   { kind: "place-annotation", annKind, ghost, pos, anchor } (label / note)
+  //   { kind: "drag-annotation", id, … }                      (label / note)
   //   { kind: "wire", from, hover }                           (wire tool)
   #mode = null;
   #wire; // WireTools: the wire tool + endpoint/whole-wire drags (shares #mode)
@@ -183,12 +188,14 @@ export class DeskController {
       boards: el("div", { class: "layer-boards" }),
       parts: el("div", { class: "layer-parts" }),
       wires: el("div", { class: "layer-wires" }),
+      annotations: el("div", { class: "layer-annotations" }),
       overlay: el("div", { class: "layer-overlay" }),
     };
     surface.append(
       this.#layers.boards,
       this.#layers.parts,
       this.#layers.wires,
+      this.#layers.annotations,
       this.#layers.overlay,
     );
 
@@ -207,6 +214,18 @@ export class DeskController {
       onHover: (id) => this.#probe.onWireHover(id),
     });
 
+    // Labels + notes (Feature 120): one renderer over the annotations layer,
+    // between wires and the interaction overlay.
+    this.#annotationLayer = new AnnotationLayer(
+      this.#layers.annotations,
+      deskDoc,
+      {
+        onPointerDown: (id, e) => this.#onAnnotationPointerDown(id, e),
+        onContextMenu: (id, e) => this.#onAnnotationContextMenu(id, e),
+        onEditCommit: (id, text) => this.#commitAnnotationText(id, text),
+      },
+    );
+
     // Live simulation state (Feature 90): LEDs, chip badges, clock lamps —
     // and the net-level lookups the probe tints with. Renders from published
     // state, never the engine.
@@ -223,6 +242,8 @@ export class DeskController {
       hitTest: (world) => this.#hitTest(world),
       addressWorld: (address) => this.#addressWorld(address),
       onStateChange: onProbeStateChange,
+      onNameNet: (address, name, stale) => this.nameNet(address, name, stale),
+      onClearNetNames: (addresses) => this.clearNetNames(addresses),
       coordinate: {
         cancelPlacement: () => this.cancelPlacement(),
         disarmWireTool: () => this.disarmWireTool(),
@@ -285,8 +306,14 @@ export class DeskController {
     viewport.addEventListener("pointermove", this.#onViewportPointerMove);
     viewport.addEventListener("pointerleave", () => this.#hideHover());
     viewport.addEventListener("click", this.#onViewportClick);
-    // Right-click while wiring cancels the pending wire (Esc-equivalent).
+    // Right-click while probing names the net under the cursor; while wiring it
+    // cancels the pending wire (Esc-equivalent).
     viewport.addEventListener("contextmenu", (e) => {
+      if (this.#probe.armed) {
+        e.preventDefault();
+        this.#probe.onContextMenu(this.#deskView.worldFromEvent(e), e);
+        return;
+      }
       if (!this.#wire.armed) return;
       e.preventDefault();
       this.#wire.cancelPending();
@@ -298,9 +325,13 @@ export class DeskController {
   }
 
   get placementArmed() {
-    return ["place", "place-chip", "place-part", "place-brick"].includes(
-      this.#mode?.kind,
-    );
+    return [
+      "place",
+      "place-chip",
+      "place-part",
+      "place-brick",
+      "place-annotation",
+    ].includes(this.#mode?.kind);
   }
 
   // ── Selection (boards, parts, and wires share one slot) ─────────────────
@@ -309,7 +340,9 @@ export class DeskController {
     if (!sel) return;
     if (sel.kind === "board") this.#views.get(sel.id)?.setSelected(on);
     else if (sel.kind === "part") this.#partViews.get(sel.id)?.setSelected(on);
-    else this.#wireLayer.setSelected(on ? sel.id : null);
+    else if (sel.kind === "annotation") {
+      this.#annotationLayer.setSelected(on ? sel.id : null);
+    } else this.#wireLayer.setSelected(on ? sel.id : null);
   }
 
   #select(sel) {
@@ -411,6 +444,12 @@ export class DeskController {
   selectWire(id) {
     if (this.#mode) return; // wiring/placing/dragging — clicks aren't selects
     this.#select(this.#doc.getWire(id) ? { kind: "wire", id } : null);
+  }
+
+  selectAnnotation(id) {
+    this.#select(
+      this.#doc.getAnnotation(id) ? { kind: "annotation", id } : null,
+    );
   }
 
   deselect() {
@@ -616,6 +655,7 @@ export class DeskController {
     const kind = this.#mode.kind;
     if (kind === "place") this.#trackBoardGhost(e);
     else if (kind === "place-brick") this.#trackBrickGhost(e);
+    else if (kind === "place-annotation") this.#trackAnnotationGhost(e);
     else this.#trackSeatedGhost(e);
   }
 
@@ -1114,6 +1154,139 @@ export class DeskController {
     this.#probe.toggle();
   }
 
+  // ── Net names (Feature 120) ──────────────────────────────────────────────
+  // The probe drives these; each is one commit through the doc-changed seam so
+  // it lands in undo/redo. Naming is inert to the engine — the netlist just
+  // resolves the binding to a net and hangs the name on it.
+
+  /**
+   * Bind `name` to the net that `address` sits on, first clearing any `stale`
+   * bindings on the same net so a rename never self-conflicts.
+   */
+  nameNet(address, name, stale = []) {
+    try {
+      for (const a of stale) this.#doc.clearNetName(a);
+      this.#doc.nameNet(address, name);
+    } catch {
+      return; // bad address/name — leave the document untouched
+    }
+    this.#emitDocChanged("name net");
+  }
+
+  /** Clear every net-name binding in `addresses` (one undo step). */
+  clearNetNames(addresses) {
+    let changed = false;
+    for (const a of addresses) {
+      if (this.#doc.clearNetName(a)) changed = true;
+    }
+    if (changed) this.#emitDocChanged("clear net name");
+  }
+
+  // ── Annotations: labels & notes (Feature 120) ────────────────────────────
+
+  /** Arm a place-annotation ghost that drops a label / note on click. */
+  armAnnotationPlacement(kind) {
+    if (this.#editingLocked) return;
+    const ghost = el("div", {
+      class: `annotation annotation--${kind} annotation-ghost`,
+      hidden: true,
+    });
+    ghost.append(
+      el("div", {
+        class: "annotation-text annotation-text--empty",
+        text: kind === "note" ? "Note" : "Label",
+      }),
+    );
+    this.#enterPlacement({
+      kind: "place-annotation",
+      annKind: kind,
+      ghost,
+      pos: null,
+      anchor: null,
+      legal: true,
+    });
+  }
+
+  /** Place-annotation ghost: rides the cursor; anchors when over a part. */
+  #trackAnnotationGhost(e) {
+    const m = this.#mode;
+    const w = this.#deskView.worldFromEvent(e);
+    m.pos = { x: w.x, y: w.y };
+    m.anchor = this.#componentAt(w);
+    m.ghost.hidden = false;
+    m.ghost.classList.toggle("annotation-ghost--anchored", Boolean(m.anchor));
+    m.ghost.style.left = `${w.x * PX_PER_UNIT}px`;
+    m.ghost.style.top = `${w.y * PX_PER_UNIT}px`;
+  }
+
+  /** The component whose (padded) pin/terminal box contains a world point. */
+  #componentAt(world) {
+    for (const comp of this.#doc.components) {
+      const points = componentPoints(this.#doc.boards, comp);
+      if (points.length === 0) continue;
+      const pad = 1; // one pitch of slack — the body extends past the pins
+      const xs = points.map((p) => p.x);
+      const ys = points.map((p) => p.y);
+      if (
+        world.x >= Math.min(...xs) - pad &&
+        world.x <= Math.max(...xs) + pad &&
+        world.y >= Math.min(...ys) - pad &&
+        world.y <= Math.max(...ys) + pad
+      ) {
+        return comp.id;
+      }
+    }
+    return null;
+  }
+
+  /** Drop a label / note; when anchored it rides its part. Opens the editor. */
+  addAnnotationAt(kind, x, y, anchor = null) {
+    const ann = this.#doc.addAnnotation(kind, x, y, "", { anchor });
+    this.#emitDocChanged("add annotation"); // AnnotationLayer renders it
+    this.selectAnnotation(ann.id);
+    this.#annotationLayer.beginEdit(ann.id); // drop → type the caption
+    return ann;
+  }
+
+  /** Annotations whose `anchor` is `componentId` (with base positions). */
+  #hasAnchored(componentId) {
+    return this.#doc.annotations.some((a) => a.anchor === componentId);
+  }
+
+  /** Shift every annotation anchored to `anchorIds` by (dx, dy) in the doc. */
+  #shiftAnchoredAnnotations(anchorIds, dx, dy) {
+    if (dx === 0 && dy === 0) return;
+    const ids = anchorIds instanceof Set ? anchorIds : new Set([anchorIds]);
+    for (const a of this.#doc.annotations) {
+      if (a.anchor && ids.has(a.anchor)) {
+        this.#doc.updateAnnotation(a.id, { x: a.x + dx, y: a.y + dy });
+      }
+    }
+  }
+
+  #commitAnnotationText(id, text) {
+    try {
+      this.#doc.updateAnnotation(id, { text });
+    } catch {
+      return;
+    }
+    this.#emitDocChanged("edit annotation");
+  }
+
+  /** Remove an annotation (Delete key / context menu). */
+  removeAnnotation(id) {
+    if (this.#editingLocked) return;
+    try {
+      this.#doc.removeAnnotation(id);
+    } catch {
+      return;
+    }
+    if (this.#selected?.kind === "annotation" && this.#selected.id === id) {
+      this.#selected = null;
+    }
+    this.#emitDocChanged("delete annotation");
+  }
+
   // ── Simulation live state (Feature 90) ───────────────────────────────────
 
   /** Freeze/unfreeze editing while the circuit runs (app.js drives this). */
@@ -1384,6 +1557,7 @@ export class DeskController {
       const { kind, id } = this.#selected;
       if (kind === "part") this.removeComponent(id);
       else if (kind === "wire") this.removeWire(id);
+      else if (kind === "annotation") this.removeAnnotation(id);
       else this.removeBoard(id);
       return true;
     }
@@ -1633,6 +1807,12 @@ export class DeskController {
       // dropping the real parts side by side does. Every dropped strip is
       // offered, so a kit that touches on more than one edge joins them all.
       this.#mateStrips(ids);
+      // Labels anchored to a chip on any moved strip ride the board too.
+      const carried = new Set();
+      for (const id of ids) {
+        for (const c of this.#doc.componentsOnBoard(id)) carried.add(c.id);
+      }
+      this.#shiftAnchoredAnnotations(carried, d.delta.dx, d.delta.dy);
       this.#applyDragDelta(d, d.delta);
       this.#emitDocChanged("move board"); // WireLayer re-renders from this
     } else {
@@ -1643,6 +1823,7 @@ export class DeskController {
 
   #onBoardContextMenu(id, e) {
     e.preventDefault();
+    if (this.#probe.armed) return; // right-click names the net (viewport handler)
     if (this.#mode || this.#editingLocked) return; // no board edits while running
     this.selectBoard(id);
     PopupManager.menu({
@@ -1713,6 +1894,7 @@ export class DeskController {
         startWorld: w,
         origin: { x: comp.x, y: comp.y },
         pos: { x: comp.x, y: comp.y },
+        hasAnchored: this.#hasAnchored(id),
         legal: true,
         active: false,
       };
@@ -1738,6 +1920,7 @@ export class DeskController {
         grabOffsetCols: seat.col - cursorCol,
         origin: { board: comp.board, anchor: comp.anchor },
         seat: { board: comp.board, anchor: comp.anchor },
+        hasAnchored: this.#hasAnchored(id),
         legal: true,
         active: false,
       };
@@ -1800,6 +1983,14 @@ export class DeskController {
       view?.setIllegal(!d.legal);
       // Wires on this PSU's terminals follow it live.
       this.#wireLayer.render(new Map([[d.id, d.pos]]));
+      // Labels anchored to this brick ride it live.
+      if (d.hasAnchored) {
+        this.#annotationLayer.render({
+          anchorId: d.id,
+          dx: d.pos.x - d.origin.x,
+          dy: d.pos.y - d.origin.y,
+        });
+      }
       return;
     }
 
@@ -1815,7 +2006,20 @@ export class DeskController {
       d.legal = false; // off-board / off-row: stay at the last seat
     }
     view?.setIllegal(!d.legal);
+    // Labels anchored to this part ride it live, by its anchor-hole delta.
+    if (d.hasAnchored) {
+      const shift = this.#anchorDelta(d.origin, d.seat);
+      if (shift) this.#annotationLayer.render({ anchorId: d.id, ...shift });
+    }
   };
+
+  /** World (dx, dy) between a part's origin and current anchor holes, or null. */
+  #anchorDelta(origin, seat) {
+    const originW = this.#addressWorld(`${origin.board}.${origin.anchor}`);
+    const seatW = this.#addressWorld(`${seat.board}.${seat.anchor}`);
+    if (!originW || !seatW) return null;
+    return { dx: seatW.x - originW.x, dy: seatW.y - originW.y };
+  }
 
   #onPartPointerUp = (e) => {
     const d = this.#mode;
@@ -1886,10 +2090,18 @@ export class DeskController {
       const moved = d.pos.x !== d.origin.x || d.pos.y !== d.origin.y;
       if (!cancelled && d.legal && moved) {
         this.#doc.moveBrick(d.id, d.pos.x, d.pos.y);
+        if (d.hasAnchored) {
+          this.#shiftAnchoredAnnotations(
+            d.id,
+            d.pos.x - d.origin.x,
+            d.pos.y - d.origin.y,
+          );
+        }
         this.#emitDocChanged("move part");
       } else {
         view?.setPosition(d.origin.x, d.origin.y);
         this.#wireLayer.render();
+        if (d.hasAnchored) this.#annotationLayer.render(); // snap labels back
       }
       return;
     }
@@ -1909,9 +2121,14 @@ export class DeskController {
     if (!cancelled && d.legal && moved) {
       this.#doc.moveComponent(d.id, d.seat.board, d.seat.anchor);
       view?.updatePlacement(this.#doc.getBoard(d.seat.board), d.seat.anchor);
+      if (d.hasAnchored) {
+        const shift = this.#anchorDelta(d.origin, d.seat);
+        if (shift) this.#shiftAnchoredAnnotations(d.id, shift.dx, shift.dy);
+      }
       this.#emitDocChanged("move part");
     } else {
       if (flipped) this.#emitDocChanged("flip chip");
+      else if (d.hasAnchored) this.#annotationLayer.render(); // snap labels back
       view?.updatePlacement(
         this.#doc.getBoard(d.origin.board),
         d.origin.anchor,
@@ -1923,6 +2140,7 @@ export class DeskController {
 
   #onPartContextMenu(id, e) {
     e.preventDefault();
+    if (this.#probe.armed) return; // right-click names the net (viewport handler)
     if (this.#mode) return;
     this.selectComponent(id);
     const comp = this.#doc.getComponent(id);
@@ -1986,6 +2204,107 @@ export class DeskController {
     }
     if (items.length === 0) return; // nothing actionable (frozen non-chip)
     PopupManager.menu({ x: e.clientX, y: e.clientY, items });
+  }
+
+  // ── Annotation gestures (labels & notes, Feature 120) ───────────────────
+
+  #onAnnotationPointerDown(id, e) {
+    if (e.button !== 0) return;
+    if (e.shiftKey) return; // shift-drag is the viewport's marquee
+    // No annotation drags while placing/dragging, probing (clicks pin nets),
+    // or running (topology + decoration frozen).
+    if (this.#mode || this.#probe.armed || this.#editingLocked) return;
+    this.#hideHover();
+    this.selectAnnotation(id);
+    const ann = this.#doc.getAnnotation(id);
+    if (!ann) return;
+    const box = e.currentTarget;
+    this.#mode = {
+      kind: "drag-annotation",
+      id,
+      pointerId: e.pointerId,
+      startClientX: e.clientX,
+      startClientY: e.clientY,
+      startWorld: this.#deskView.worldFromEvent(e),
+      origin: { x: ann.x, y: ann.y },
+      pos: { x: ann.x, y: ann.y },
+      active: false,
+    };
+    this.#viewport.classList.add("desk-viewport--dragging");
+    try {
+      box.setPointerCapture(e.pointerId);
+    } catch {
+      /* capture is best-effort (synthetic events) */
+    }
+    box.addEventListener("pointermove", this.#onAnnotationPointerMove);
+    box.addEventListener("pointerup", this.#onAnnotationPointerUp);
+    box.addEventListener("pointercancel", this.#onAnnotationPointerUp);
+  }
+
+  #onAnnotationPointerMove = (e) => {
+    const d = this.#mode;
+    if (d?.kind !== "drag-annotation" || e.pointerId !== d.pointerId) return;
+    if (!d.active) {
+      const travel = Math.hypot(
+        e.clientX - d.startClientX,
+        e.clientY - d.startClientY,
+      );
+      if (travel < DRAG_THRESHOLD) return;
+      d.active = true;
+    }
+    const w = this.#deskView.worldFromEvent(e);
+    d.pos = {
+      x: d.origin.x + (w.x - d.startWorld.x),
+      y: d.origin.y + (w.y - d.startWorld.y),
+    };
+    this.#annotationLayer.setPosition(d.id, d.pos.x, d.pos.y);
+  };
+
+  #onAnnotationPointerUp = (e) => {
+    const d = this.#mode;
+    if (d?.kind !== "drag-annotation" || e.pointerId !== d.pointerId) return;
+    this.#mode = null;
+    this.#viewport.classList.remove("desk-viewport--dragging");
+    const box = e.currentTarget;
+    box.removeEventListener("pointermove", this.#onAnnotationPointerMove);
+    box.removeEventListener("pointerup", this.#onAnnotationPointerUp);
+    box.removeEventListener("pointercancel", this.#onAnnotationPointerUp);
+    try {
+      box.releasePointerCapture(d.pointerId);
+    } catch {
+      /* already released */
+    }
+    if (!d.active) return; // plain click — the press already selected it
+    const cancelled = e.type === "pointercancel";
+    const moved = d.pos.x !== d.origin.x || d.pos.y !== d.origin.y;
+    if (!cancelled && moved) {
+      this.#doc.updateAnnotation(d.id, { x: d.pos.x, y: d.pos.y });
+      this.#emitDocChanged("move annotation");
+    } else {
+      this.#annotationLayer.render(); // snap back from the document
+    }
+  };
+
+  #onAnnotationContextMenu(id, e) {
+    e.preventDefault();
+    // While probing, the viewport handler names the net under the cursor.
+    if (this.#probe.armed || this.#mode || this.#editingLocked) return;
+    this.selectAnnotation(id);
+    PopupManager.menu({
+      x: e.clientX,
+      y: e.clientY,
+      items: [
+        {
+          label: "Edit text…",
+          onSelect: () => this.#annotationLayer.beginEdit(id),
+        },
+        {
+          label: "Remove",
+          danger: true,
+          onSelect: () => this.removeAnnotation(id),
+        },
+      ],
+    });
   }
 
   // ── Marquee selection (shift-drag anywhere) ─────────────────────────────
@@ -2174,6 +2493,8 @@ export class DeskController {
       this.addKitAt(m.kit, m.pos.x, m.pos.y, m.rot);
     } else if (m.kind === "place-brick") {
       this.addBrickAt(m.ref, m.pos.x, m.pos.y, m.params);
+    } else if (m.kind === "place-annotation") {
+      this.addAnnotationAt(m.annKind, m.pos.x, m.pos.y, m.anchor);
     } else if (m.kind === "place-part") {
       this.addComponentAt(
         m.ref,
@@ -2347,6 +2668,7 @@ export class DeskController {
     this.#multiWires.clear();
     this.#wireLayer.setSelected(null);
     this.#wireLayer.setSelectedMany([]);
+    this.#annotationLayer.setSelected(null);
     this.#hideHover();
     // Unmount every board and part view (keep the Map objects — collaborators
     // hold references to them).

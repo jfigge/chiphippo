@@ -23,10 +23,11 @@
  * defensively.
  *
  * v1 → v2 (Feature 110) splits the one-piece breadboard into strips.
+ * v2 → v3 (Feature 120) adds net names + annotations (pure additive).
  */
 "use strict";
 
-const DESK_DOC_VERSION = 2;
+const DESK_DOC_VERSION = 3;
 
 /** A fresh, empty desk document (main's copy of the renderer's shape). */
 function defaultDeskDocument() {
@@ -35,12 +36,15 @@ function defaultDeskDocument() {
     boards: [],
     components: [],
     wires: [],
+    netNames: [],
+    annotations: [],
     nextBoardId: 1,
     nextGroupId: 1,
     nextComponentId: 1,
     nextPsuId: 1,
     nextClockId: 1,
     nextWireId: 1,
+    nextAnnotationId: 1,
   };
 }
 
@@ -233,8 +237,26 @@ function migrateV1ToV2(doc) {
   };
 }
 
+/**
+ * v2 → v3: net names + annotations arrive (Feature 120). A pure additive
+ * migration — no address rewriting — that just defaults the two new arrays and
+ * the id counter for documents saved before they existed.
+ */
+function migrateV2ToV3(doc) {
+  return {
+    ...doc,
+    version: 3,
+    netNames: Array.isArray(doc.netNames) ? doc.netNames : [],
+    annotations: Array.isArray(doc.annotations) ? doc.annotations : [],
+    nextAnnotationId:
+      Number.isInteger(doc.nextAnnotationId) && doc.nextAnnotationId > 0
+        ? doc.nextAnnotationId
+        : 1,
+  };
+}
+
 /** version → one-step upgrade fn returning the doc at version + 1. */
-const MIGRATIONS = { 1: migrateV1ToV2 };
+const MIGRATIONS = { 1: migrateV1ToV2, 2: migrateV2ToV3 };
 
 /**
  * Bring a loaded document up to DESK_DOC_VERSION. Junk (null / non-object /

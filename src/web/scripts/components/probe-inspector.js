@@ -25,8 +25,10 @@
 // draw it" lives in one place instead of threaded through the controller.
 
 import { el } from "../dom.js";
+import { PopupManager } from "../popup-manager.js";
 import { PX_PER_UNIT } from "../desk/desk-geometry.js";
 import { summarizeNet } from "../sim/netlist.js";
+import { RESERVED_NET_NAMES } from "../model/desk-doc.js";
 import { NetlistCache } from "./netlist-cache.js";
 import { NetHighlight } from "./net-highlight.js";
 
@@ -41,6 +43,8 @@ export class ProbeInspector {
   #hitTest; // (world) → { address, x, y } | null
   #addressWorld; // (address) → { x, y } | null
   #onStateChange; // ({ armed }) → void
+  #onNameNet; // (address, name, staleAddresses) → void
+  #onClearNetNames; // (addresses) → void
   #coord; // { cancelPlacement, disarmWireTool, deselect, hideHover }
 
   #netlist;
@@ -59,6 +63,8 @@ export class ProbeInspector {
     hitTest,
     addressWorld,
     onStateChange,
+    onNameNet,
+    onClearNetNames,
     coordinate,
   }) {
     this.#doc = doc;
@@ -68,6 +74,8 @@ export class ProbeInspector {
     this.#hitTest = hitTest;
     this.#addressWorld = addressWorld;
     this.#onStateChange = onStateChange;
+    this.#onNameNet = onNameNet;
+    this.#onClearNetNames = onClearNetNames;
     this.#coord = coordinate;
 
     this.#netlist = new NetlistCache(doc);
@@ -208,8 +216,12 @@ export class ProbeInspector {
     const level = this.#simOverlay.levelOfNet(netId);
     this.#highlight.show(net, this.#highlightGeometry(), pinned, level);
     if (net) {
-      const summary = summarizeNet(net);
-      this.#netStatus.textContent = level ? `${level} · ${summary}` : summary;
+      // The readout leads with the user NAME (Feature 120), then the level
+      // while running, then the connectivity summary.
+      const name = this.#netlist.nameOf(netId);
+      const parts = [name, level, summarizeNet(net)].filter(Boolean);
+      this.#netStatus.textContent = parts.join(" · ");
+      this.#netStatus.classList.toggle("net-status--named", Boolean(name));
       if (level) this.#netStatus.dataset.level = level;
       else delete this.#netStatus.dataset.level;
       this.#netStatus.classList.toggle("net-status--pinned", pinned);
@@ -217,5 +229,62 @@ export class ProbeInspector {
     } else {
       this.#netStatus.hidden = true;
     }
+  }
+
+  /**
+   * Right-click while probing: name / rename / clear the net under the cursor
+   * (or the pinned net when the cursor is over nothing). Returns true when it
+   * showed a menu (the caller then suppresses the default desk menu).
+   */
+  onContextMenu(world, e) {
+    if (!this.#armed) return false;
+    const hit = this.#hitTest(world);
+    const address = hit?.address ?? this.#anchor;
+    const netId = address ? this.#netlist.netOf(address) : null;
+    if (!netId) return false;
+    const current = this.#netlist.nameOf(netId);
+    const items = [
+      {
+        label: current ? "Rename net…" : "Name this net…",
+        onSelect: () => this.#promptName(address, netId, current),
+      },
+    ];
+    if (current) {
+      items.push({
+        label: "Clear name",
+        onSelect: () => this.#clearName(netId),
+      });
+    }
+    PopupManager.menu({ x: e.clientX, y: e.clientY, items });
+    return true;
+  }
+
+  /** The bound addresses that currently resolve to a net (0, 1, or a merge). */
+  #bindingsOnNet(netId) {
+    return this.#doc.netNames
+      .filter((n) => this.#netlist.netOf(n.address) === netId)
+      .map((n) => n.address);
+  }
+
+  #promptName(address, netId, current) {
+    PopupManager.prompt({
+      title: current ? "Rename net" : "Name this net",
+      label: "Net name",
+      value: current ?? "",
+      placeholder: "e.g. VCC, GND, CLK, D0…",
+      quickPicks: RESERVED_NET_NAMES,
+      onConfirm: (name) => {
+        if (!name) return;
+        // Replace any OTHER bindings on this net so a rename never becomes a
+        // self-conflict; the name binds to the point the user pointed at.
+        const stale = this.#bindingsOnNet(netId).filter((a) => a !== address);
+        this.#onNameNet?.(address, name, stale);
+      },
+    });
+  }
+
+  #clearName(netId) {
+    const addresses = this.#bindingsOnNet(netId);
+    if (addresses.length) this.#onClearNetNames?.(addresses);
   }
 }

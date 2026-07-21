@@ -66,4 +66,9 @@ export class NetlistCache {
   netInfo(netId) {
     return this.get().nets.get(netId) ?? null;
   }
+
+  /** The user name bound to a net id (Feature 120), or null. */
+  nameOf(netId) {
+    return this.get().names?.get(netId) ?? null;
+  }
 }

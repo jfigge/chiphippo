@@ -51,12 +51,15 @@ test("save → load round-trips a document across store instances", () => {
       boards: [{ id: "bb1", type: "pins-full", x: 2, y: 3, group: null }],
       components: [],
       wires: [],
+      netNames: [],
+      annotations: [],
       nextBoardId: 2,
       nextGroupId: 1,
       nextComponentId: 1,
       nextPsuId: 1,
       nextClockId: 1,
       nextWireId: 1,
+      nextAnnotationId: 1,
     };
     store.save(doc);
     assert.deepEqual(new DeskStore(dir).load(), doc);
@@ -102,12 +105,15 @@ test("writeFile → readFile round-trips a named schematic anywhere", () => {
       boards: [{ id: "bb1", type: "pins-half", x: 0, y: 0, group: null }],
       components: [],
       wires: [],
+      netNames: [],
+      annotations: [],
       nextBoardId: 2,
       nextGroupId: 1,
       nextComponentId: 1,
       nextPsuId: 1,
       nextClockId: 1,
       nextWireId: 1,
+      nextAnnotationId: 1,
     };
     assert.equal(store.writeFile(file, doc), file);
     assert.deepEqual(store.readFile(file), doc);
@@ -179,12 +185,15 @@ test("migrateDeskDocument: a current-version document passes through", () => {
     boards: [{ id: "bb1", type: "pins-tiny", x: 0, y: 0, group: null }],
     components: [],
     wires: [],
+    netNames: [],
+    annotations: [],
     nextBoardId: 5,
     nextGroupId: 2,
     nextComponentId: 3,
     nextPsuId: 2,
     nextClockId: 1,
     nextWireId: 2,
+    nextAnnotationId: 1,
   };
   assert.deepEqual(migrateDeskDocument(doc), doc);
 });

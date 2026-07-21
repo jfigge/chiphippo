@@ -66,7 +66,9 @@ import { UnionFind } from "./union-find.js";
  * @param {Map<string, object>} [partStates] componentId → transient state
  *   (e.g. `{ pressed: true }` for a held button). Switch positions live in
  *   the persisted params, so they need no entry here.
- * @returns {{ netOfPoint: Map<string,string>, nets: Map<string, NetInfo> }}
+ * @returns {{ netOfPoint: Map<string,string>, nets: Map<string, NetInfo>,
+ *   names: Map<string,string>, nameConflicts: Array<object> }} — `names` maps
+ *   a net id to its resolved user name; `nameConflicts` lists merge losers.
  */
 export function buildNetlist(doc, partStates = new Map()) {
   const uf = new UnionFind();
@@ -192,7 +194,32 @@ export function buildNetlist(doc, partStates = new Map()) {
     };
   }
 
-  return { netOfPoint, nets };
+  // Resolve user net-name bindings (Feature 120) to their current nets. A name
+  // binds by ADDRESS, so it follows the net through key changes. Two bindings
+  // landing on ONE net is a soft MERGE conflict: a deterministic winner (name
+  // then address order) keeps the name; the loser is reported, never dropped.
+  const names = new Map(); // netId → name
+  const nameConflicts = []; // { netId, name, address, winner }
+  const bindings = [...(doc.netNames ?? [])].sort((a, b) =>
+    a.name === b.name
+      ? a.address < b.address
+        ? -1
+        : 1
+      : a.name < b.name
+        ? -1
+        : 1,
+  );
+  for (const { address, name } of bindings) {
+    const netId = netOfPoint.get(address);
+    if (netId == null) continue; // address on no net (its board is gone)
+    if (names.has(netId)) {
+      nameConflicts.push({ netId, name, address, winner: names.get(netId) });
+    } else {
+      names.set(netId, name);
+    }
+  }
+
+  return { netOfPoint, nets, names, nameConflicts };
 }
 
 /**

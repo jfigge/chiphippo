@@ -489,6 +489,7 @@
 .layer-boards,
 .layer-parts,
 .layer-wires,
+.layer-annotations,
 .layer-overlay {
   position: absolute;
   top: 0;
@@ -1215,6 +1216,96 @@
   font-weight: 600;
 }
 
+/* A named net (Feature 120) leads its readout with the user name in accent. */
+.net-status--named {
+  color: var(--color-accent);
+}
+
+/* ── Annotations: labels & notes (Feature 120) ───────────────────────────── */
+/* One absolutely-positioned box per annotation in .layer-annotations (above
+   wires, below the overlay). x/y are the box's top-left in world px. */
+.annotation {
+  position: absolute;
+  --annotation-color: var(--color-text);
+  max-width: 320px;
+  color: var(--annotation-color);
+  cursor: grab;
+  user-select: none;
+}
+
+.annotation-text {
+  padding: 2px 6px;
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 1.35;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* A label is a bare one-line caption; a note is a bordered multi-line box. */
+.annotation--label .annotation-text {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.annotation--note {
+  min-width: 80px;
+  background: color-mix(in srgb, var(--color-surface-0) 88%, transparent);
+  border: 1px solid var(--color-overlay);
+  border-radius: var(--radius-sm);
+}
+
+.annotation-text--empty {
+  color: var(--color-muted);
+  font-style: italic;
+  font-weight: 400;
+}
+
+/* An anchored label rides its part; a faint left tick marks the tether. */
+.annotation--anchored {
+  border-left: 2px solid var(--annotation-color);
+  padding-left: 2px;
+}
+
+.annotation--selected {
+  outline: 2px solid var(--color-selection, var(--color-accent));
+  outline-offset: 1px;
+  border-radius: 2px;
+}
+
+.annotation--editing {
+  cursor: text;
+}
+
+/* The inline editor swaps in for the text on double-click. */
+.annotation-editor {
+  min-width: 120px;
+  padding: 2px 6px;
+  background: var(--color-surface-1);
+  color: var(--color-text);
+  border: 1px solid var(--color-accent);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  resize: none;
+}
+
+textarea.annotation-editor {
+  min-height: 3.2em;
+  min-width: 160px;
+}
+
+/* The placement ghost tracks the cursor before the drop. */
+.annotation-ghost {
+  opacity: 0.7;
+  pointer-events: none;
+}
+
+.annotation-ghost--anchored {
+  outline: 1px dashed var(--color-accent);
+  outline-offset: 2px;
+}
+
 .desk-tooltip {
   position: absolute;
   /* Counter-scaled by DeskController (--inv-zoom = 1/zoom) so the label is
@@ -1361,6 +1452,43 @@
   justify-content: flex-end;
   gap: var(--space-2);
   padding: 0 var(--space-4) var(--space-4);
+}
+
+/* Prompt dialog (Feature 120): a labelled text field + reserved-name picks. */
+.popup-label {
+  display: block;
+  margin-bottom: var(--space-1);
+  font-size: 12px;
+  color: var(--color-subtext);
+}
+
+.popup-input {
+  width: 100%;
+  height: var(--control-height);
+  padding: 0 var(--space-3);
+  background: var(--color-surface-1);
+  color: var(--color-text);
+  border: 1px solid var(--color-overlay);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-sans);
+  font-size: 13px;
+}
+
+.popup-input:focus {
+  outline: none;
+  border-color: var(--color-accent);
+}
+
+.popup-quickpicks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.popup-quickpick {
+  height: auto;
+  padding: var(--space-1) var(--space-3);
 }
 
 /* Buttons (shared with later dialogs). */

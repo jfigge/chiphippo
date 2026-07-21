@@ -52,7 +52,7 @@ function makeDesk(deskDoc, world = { x: 0, y: 0 }) {
   return { viewport, surface, controller, world };
 }
 
-test("constructor creates the four layers in order and mounts doc boards", () => {
+test("constructor creates the surface layers in order and mounts doc boards", () => {
   resetDom();
   const doc = new DeskDoc(null);
   doc.addBoard("pins-full", 0, 0);
@@ -61,7 +61,13 @@ test("constructor creates the four layers in order and mounts doc boards", () =>
 
   assert.deepEqual(
     [...surface.children].map((c) => c.className),
-    ["layer-boards", "layer-parts", "layer-wires", "layer-overlay"],
+    [
+      "layer-boards",
+      "layer-parts",
+      "layer-wires",
+      "layer-annotations",
+      "layer-overlay",
+    ],
   );
   assert.equal(surface.querySelectorAll(".board").length, 2);
   // Boards land in the boards layer specifically.
