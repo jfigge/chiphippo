@@ -138,10 +138,10 @@
   border-radius: var(--radius-sm) 0 0 var(--radius-sm);
 }
 
-.toolbar-split .toolbar-btn--arrow {
+/* The right segment of a split button shares a seam with the left (one border). */
+.toolbar-split .toolbar-btn:last-child {
   border-left: none;
   border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-  padding: 0 var(--space-2);
 }
 
 .toolbar-btn--active {
@@ -172,25 +172,18 @@
   color: var(--color-danger);
 }
 
-/* Next-wire-color swatch strip beside the Wire tool button. */
-.wire-swatches {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
+/* The Wire split button's left segment: just the active-color circle, which is
+   the dropdown trigger (a PopupManager.menu of the eight colors, each a swatch). */
+.toolbar-btn--wire-color {
+  padding: 0 var(--space-2);
 }
 
-.wire-swatch {
-  width: 14px;
-  height: 14px;
-  padding: 0;
+.wire-swatch-dot {
+  width: 12px;
+  height: 12px;
   border: 1px solid var(--color-overlay);
   border-radius: 50%;
   background: var(--wire-color);
-}
-
-.wire-swatch--active {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 1px;
 }
 
 /* Standalone toolbar buttons (Parts toggle) share the split-button look. */
@@ -265,7 +258,7 @@
 }
 
 .palette-group:hover {
-  color: var(--color-subtext);
+  color: var(--color-text);
 }
 
 /* Disclosure caret — points down when open, right when collapsed. */
@@ -281,7 +274,8 @@
 
 .palette-group--collapsed .palette-group-caret,
 .palette-folder--collapsed .palette-group-caret,
-.palette-boards-folder--collapsed .palette-group-caret {
+.palette-boards-folder--collapsed .palette-group-caret,
+.palette-annotations-folder--collapsed .palette-group-caret {
   transform: rotate(-90deg);
 }
 
@@ -305,7 +299,7 @@
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.02em;
-  color: var(--color-subtext);
+  color: var(--color-muted);
 }
 
 .palette-folder:first-child {
@@ -326,7 +320,8 @@
 }
 
 .palette-item,
-.palette-board-item {
+.palette-board-item,
+.palette-annotation-item {
   display: flex;
   align-items: baseline;
   gap: var(--space-2);
@@ -340,8 +335,13 @@
 }
 
 .palette-item:hover,
-.palette-board-item:hover {
+.palette-board-item:hover,
+.palette-annotation-item:hover {
   background: var(--color-surface-0);
+}
+
+.palette-annotation-item {
+  cursor: pointer;
 }
 
 /* Board selector pinned at the top of the palette (Full/Half/Tiny + strips). */
@@ -365,7 +365,7 @@
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.02em;
-  color: var(--color-subtext);
+  color: var(--color-muted);
 }
 
 .palette-boards-folder:hover {
@@ -379,6 +379,29 @@
 
 .palette-boards-items[hidden] {
   display: none;
+}
+
+/* The annotations folder (labels + notes), pinned at the BOTTOM — same look as
+   the Chips folder, but with top margin so it separates from the parts above. */
+.palette-annotations-folder {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  width: 100%;
+  margin: var(--space-3) 0 var(--space-1);
+  padding: var(--space-1) 0;
+  border: none;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--color-muted);
+}
+
+.palette-annotations-folder:hover {
+  color: var(--color-text);
 }
 
 .palette-item-id {
@@ -1987,6 +2010,21 @@ textarea.annotation-editor {
 
 .popup-menu-item--danger {
   color: var(--color-danger);
+}
+
+/* Optional per-item color dot (the wire / bus color pickers). */
+.popup-menu-swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border: 1px solid var(--color-overlay);
+  border-radius: 50%;
+  vertical-align: middle;
+  margin-right: var(--space-2);
+}
+
+.popup-menu-label {
+  vertical-align: middle;
 }
 
 .popup-menu-separator {

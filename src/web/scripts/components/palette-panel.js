@@ -33,22 +33,32 @@ import { hasBehavior } from "../sim/chip-eval.js";
 
 /** Every chip group nests one level under this top-level folder. It collapses
     like a group, and no group shares its name. */
-const CHIPS_FOLDER = "Chips";
+const CHIPS_FOLDER = "CHIPS";
 
 /** The board selector's foldable section name (pinned at the top). Folds like
     any section, and starts shut with the rest. */
-const BOARDS_FOLDER = "Boards";
+const BOARDS_FOLDER = "BOARDS";
+
+/** The annotations section pinned at the BOTTOM (labels + notes). Not catalog
+    parts — hardcoded here like the boards folder — so it folds like any
+    section and is hidden while the (chip) filter is active. */
+const ANNOTATIONS_FOLDER = "ANNOTATIONS";
+const ANNOTATION_KINDS = [
+  { kind: "label", glyph: "T", label: "Label", hint: "a one-line caption" },
+  { kind: "note", glyph: "≡", label: "Note", hint: "a multi-line note box" },
+];
 
 /**
- * Every collapsible section name — the boards folder, the chips folder, and
- * every group in the catalog. The palette opens with ALL of them shut: the
- * full list is long enough that a wall of parts buries the structure, and the
- * filter box is the fast path to a specific one anyway.
+ * Every collapsible section name — the boards folder, the chips folder, the
+ * annotations folder, and every group in the catalog. The palette opens with
+ * ALL of them shut: the full list is long enough that a wall of parts buries
+ * the structure, and the filter box is the fast path to a specific one anyway.
  */
 function allSections() {
   return new Set([
     BOARDS_FOLDER,
     CHIPS_FOLDER,
+    ANNOTATIONS_FOLDER,
     ...PALETTE_DEFS.map((def) => def.group),
   ]);
 }
@@ -58,6 +68,7 @@ export class PalettePanel {
   #list;
   #onPickChip;
   #onPickBoard;
+  #onPickAnnotation;
   #filter = "";
   // Every section starts shut, every launch. What the user opens lasts for
   // the session only — deliberately NOT persisted, so the panel always opens
@@ -70,10 +81,13 @@ export class PalettePanel {
    * @param {(ref: string, e: MouseEvent) => void} callbacks.onPickChip
    * @param {(kit: string) => void} callbacks.onPickBoard - a board kit key
    *   (assembled breadboard or loose strip) was picked; app.js arms placement.
+   * @param {(kind: "label"|"note") => void} callbacks.onPickAnnotation - a
+   *   label/note was picked; app.js arms annotation placement.
    */
-  constructor(container, { onPickChip, onPickBoard } = {}) {
+  constructor(container, { onPickChip, onPickBoard, onPickAnnotation } = {}) {
     this.#onPickChip = onPickChip;
     this.#onPickBoard = onPickBoard;
+    this.#onPickAnnotation = onPickAnnotation;
 
     const filterInput = el("input", {
       class: "palette-filter",
@@ -166,6 +180,48 @@ export class PalettePanel {
     for (const [group, members] of topGroups) {
       this.#appendGroup(this.#list, group, members, filtering);
     }
+
+    // Labels + notes live at the very bottom (not catalog parts, so the chip
+    // filter hides them, exactly like the boards folder up top).
+    if (!filtering) this.#appendAnnotations();
+  }
+
+  /**
+   * The annotations section (labels + notes), pinned at the bottom. Each entry
+   * arms annotation placement via onPickAnnotation — the same kinds the old
+   * header Annotate split-button offered.
+   */
+  #appendAnnotations() {
+    const collapsed = this.#collapsed.has(ANNOTATIONS_FOLDER);
+    this.#list.append(
+      // Its own folder class (like the boards folder) so it isn't counted among
+      // the catalog `.palette-group`s.
+      this.#sectionHeader(
+        "palette-annotations-folder",
+        ANNOTATIONS_FOLDER,
+        collapsed,
+      ),
+      el(
+        "div",
+        { class: "palette-group-items", hidden: collapsed },
+        ANNOTATION_KINDS.map(({ kind, glyph, label, hint }) =>
+          el(
+            "button",
+            {
+              class: "palette-annotation-item",
+              type: "button",
+              title: hint,
+              dataset: { annotation: kind },
+              onClick: () => this.#onPickAnnotation?.(kind),
+            },
+            [
+              el("span", { class: "palette-item-id", text: glyph }),
+              el("span", { class: "palette-item-title", text: label }),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   /**

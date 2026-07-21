@@ -221,7 +221,8 @@ export class WireTools {
           onSelect: () => this.removeWire(id),
         },
         ...WIRE_COLORS.map((color) => ({
-          label: `Color: ${color}`,
+          label: color[0].toUpperCase() + color.slice(1),
+          swatch: `var(--color-wire-${color})`,
           onSelect: () => this.recolorWire(id, color),
         })),
       ],

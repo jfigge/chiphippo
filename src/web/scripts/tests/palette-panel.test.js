@@ -75,10 +75,10 @@ test("all chip groups nest under one 'Chips' folder; parts stay top-level", () =
   document.body.append(host);
   new PalettePanel(host, {});
 
-  // Exactly one folder, labelled "Chips", rendered before the top-level groups.
+  // Exactly one folder, labelled "CHIPS", rendered before the top-level groups.
   const folders = [...host.querySelectorAll(".palette-folder")];
   assert.equal(folders.length, 1);
-  assert.equal(folders[0].textContent, "Chips");
+  assert.equal(folders[0].textContent, "CHIPS");
 
   const folderBody = host.querySelector(".palette-folder-groups");
   const groupsIn = (root) =>
@@ -261,10 +261,10 @@ test("the board selector is pinned at the top and reports the kit key", () => {
   const picked = [];
   new PalettePanel(host, { onPickBoard: (kit) => picked.push(kit) });
 
-  // "Boards" is the palette's first entry — above the Chips folder.
+  // "BOARDS" is the palette's first entry — above the Chips folder.
   const list = host.querySelector(".palette-list");
   assert.ok(list.firstElementChild.classList.contains("palette-boards-folder"));
-  assert.equal(list.firstElementChild.textContent, "Boards");
+  assert.equal(list.firstElementChild.textContent, "BOARDS");
 
   // Every kit — assembled boards then loose strips — in menu order.
   const kits = [...host.querySelectorAll(".palette-board-item")].map(
@@ -323,6 +323,37 @@ test("the board selector hides while a parts filter is active", () => {
 
   typeFilter(panel.element, ""); // clearing restores it
   assert.ok(host.querySelector(".palette-boards-folder"));
+});
+
+test("the annotations section is pinned at the bottom and reports the kind", () => {
+  resetDom();
+  const host = document.createElement("div");
+  document.body.append(host);
+  const picked = [];
+  const panel = new PalettePanel(host, {
+    onPickAnnotation: (kind) => picked.push(kind),
+  });
+
+  // ANNOTATIONS is the palette's LAST section (below every part group): its
+  // items container is the list's final child, right after the folder header.
+  const list = host.querySelector(".palette-list");
+  const folder = host.querySelector(".palette-annotations-folder");
+  assert.ok(folder, "annotations folder present");
+  assert.equal(folder.textContent, "ANNOTATIONS");
+  assert.ok(list.lastElementChild.classList.contains("palette-group-items"));
+  assert.equal(list.lastElementChild.previousElementSibling, folder);
+
+  // Label + Note, each reporting its kind — and NOT counted among catalog parts.
+  const items = host.querySelectorAll(".palette-annotation-item");
+  assert.equal(items.length, 2);
+  host
+    .querySelector('.palette-annotation-item[data-annotation="note"]')
+    .click();
+  assert.deepEqual(picked, ["note"]);
+
+  // It hides while the (chip) filter is active, like the boards folder.
+  typeFilter(panel.element, "74LS00");
+  assert.equal(host.querySelector(".palette-annotations-folder"), null);
 });
 
 test("setVisible toggles the hidden attribute", () => {

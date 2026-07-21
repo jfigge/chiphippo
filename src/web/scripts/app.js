@@ -26,7 +26,6 @@ import { DeskView } from "./components/desk-view.js";
 import { ZoomControl } from "./components/zoom-control.js";
 import { DeskHud } from "./components/desk-hud.js";
 import { DeskController } from "./components/desk-controller.js";
-import { AnnotateToolbar } from "./components/annotate-toolbar.js";
 import { PalettePanel } from "./components/palette-panel.js";
 import { SimController, SPEEDS } from "./components/sim-controller.js";
 import { NotificationStack } from "./components/notification-stack.js";
@@ -387,6 +386,8 @@ async function init() {
     // The board selector (Full / Half / Tiny + loose strips) lives at the top
     // of the palette; picking one arms board placement, ghost + all.
     onPickBoard: (kit) => controller?.armPlacement(kit),
+    // The annotations section (labels + notes) lives at the bottom.
+    onPickAnnotation: (kind) => controller?.armAnnotationPlacement(kind),
     // Collapse state is deliberately NOT persisted — the palette opens with
     // every group shut, every launch (see PalettePanel).
   });
@@ -405,19 +406,17 @@ async function init() {
 
   // Everything ON the desk (boards, chips, wires, placement, hover).
   let wireBtn = null;
+  let wireDot = null; // the active-color dot inside the Wire split button
   let busBtn = null;
   let busNameInput = null;
-  let swatchStrip = null;
   let probeBtn = null;
   let sim = null; // the SimController (created after the toolbar below)
   const onWireStateChange = ({ armed, color }) => {
     wireBtn?.classList.toggle("toolbar-btn--active", armed);
     wireBtn?.setAttribute("aria-pressed", String(armed));
-    swatchStrip
-      ?.querySelectorAll(".wire-swatch")
-      .forEach((s) =>
-        s.classList.toggle("wire-swatch--active", s.dataset.color === color),
-      );
+    // The Wire button carries a dot showing the active color; the palette of
+    // colors lives behind the split-button arrow.
+    wireDot?.style.setProperty("--wire-color", `var(--color-wire-${color})`);
   };
   const onBusStateChange = ({ armed }) => {
     busBtn?.classList.toggle("toolbar-btn--active", armed);
@@ -508,7 +507,38 @@ async function init() {
   partsBtn.classList.toggle("toolbar-btn--active", palette.visible);
   toolbar.append(partsBtn);
 
-  // Wire tool: toggle button (shortcut W) + the next-color swatch strip.
+  // Wire tool: a split button. The "Wire" half (left) toggles the tool
+  // (shortcut W); the color CIRCLE on the right is the combobox-style dropdown
+  // trigger — it shows the active color and opens the color chooser. The eight
+  // colors used to sit in an always-open swatch strip; the circle-menu
+  // consolidates them.
+  wireDot = el("span", { class: "wire-swatch-dot", "aria-hidden": "true" });
+  const wireColorBtn = el(
+    "button",
+    {
+      class: "toolbar-btn toolbar-btn--wire-color",
+      type: "button",
+      "aria-label": "Choose the wire color",
+      "aria-haspopup": "menu",
+      title: "Choose the wire color",
+      onClick: () => {
+        const rect = wireColorBtn.getBoundingClientRect();
+        PopupManager.menu({
+          x: rect.left,
+          y: rect.bottom + 4,
+          items: WIRE_COLORS.map((color) => ({
+            label: color[0].toUpperCase() + color.slice(1),
+            swatch: `var(--color-wire-${color})`,
+            onSelect: () => {
+              controller.setWireColor(color);
+              controller.armWireTool();
+            },
+          })),
+        });
+      },
+    },
+    [wireDot],
+  );
   wireBtn = el("button", {
     class: "toolbar-btn",
     type: "button",
@@ -517,31 +547,13 @@ async function init() {
     "aria-pressed": "false",
     onClick: () => controller.toggleWireTool(),
   });
-  swatchStrip = el(
-    "div",
-    { class: "wire-swatches", "aria-label": "Next wire color" },
-    WIRE_COLORS.map((color) => {
-      const swatch = el("button", {
-        class: "wire-swatch",
-        type: "button",
-        title: `Wire color: ${color}`,
-        "aria-label": `Wire color: ${color}`,
-        dataset: { color },
-        onClick: () => {
-          controller.setWireColor(color);
-          controller.armWireTool();
-        },
-      });
-      // Custom properties need setProperty (Object.assign can't set them).
-      swatch.style.setProperty("--wire-color", `var(--color-wire-${color})`);
-      return swatch;
-    }),
+  toolbar.append(
+    el("div", { class: "toolbar-split" }, [wireBtn, wireColorBtn]),
   );
-  toolbar.append(wireBtn, swatchStrip);
   onWireStateChange({ armed: false, color: controller.wireColor });
 
   // Bus tool: toggle button (shortcut B) + the name that sets its width/bit
-  // order (D[7:0]). It rides the wire-color swatch above for its color.
+  // order (D[7:0]). It rides the active wire color (the Wire button) for its color.
   busBtn = el("button", {
     class: "toolbar-btn",
     type: "button",
@@ -573,11 +585,6 @@ async function init() {
     onClick: () => controller.toggleProbe(),
   });
   toolbar.append(probeBtn);
-
-  // Annotate: drop labels / notes on the desk (Feature 120).
-  new AnnotateToolbar(toolbar, {
-    onAdd: (kind) => controller.armAnnotationPlacement(kind),
-  });
 
   // ── Simulation transport (Feature 90/100): Run/Stop, Pause, Step, speed ──
   const notifications = new NotificationStack(document.body);
@@ -630,10 +637,9 @@ async function init() {
   // wrapper, so gather every editing button by element.
   const editButtons = () => [
     partsBtn,
-    wireBtn,
     busBtn,
     busNameInput,
-    ...swatchStrip.querySelectorAll(".wire-swatch"),
+    // Every split-button half: the Wire tool (+ its color arrow) and Annotate.
     ...toolbar.querySelectorAll(".toolbar-split button"),
   ];
   const onTransportChange = (mode) => {

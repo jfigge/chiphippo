@@ -420,7 +420,8 @@ export class BusTools {
           onSelect: () => this.removeBus(id, true),
         },
         ...WIRE_COLORS.map((color) => ({
-          label: `Color: ${color}`,
+          label: color[0].toUpperCase() + color.slice(1),
+          swatch: `var(--color-wire-${color})`,
           onSelect: () => this.recolorBus(id, color),
         })),
       ],

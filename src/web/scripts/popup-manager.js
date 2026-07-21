@@ -112,30 +112,43 @@ export const PopupManager = {
 
   /**
    * A lightweight context/dropdown menu at screen coordinates (clamped into
-   * the viewport). Items: `{ label, disabled?, danger?, onSelect? }`, or
-   * `{ separator: true }` for a divider rule — a selection closes the menu
-   * first, then runs onSelect. Mask click / Escape dismiss with no selection.
+   * the viewport). Items: `{ label, disabled?, danger?, swatch?, onSelect? }`,
+   * or `{ separator: true }` for a divider rule — `swatch` is a CSS color that
+   * renders a color dot before the label (the wire/bus color pickers). A
+   * selection closes the menu first, then runs onSelect. Mask click / Escape
+   * dismiss with no selection.
    * @param {{ x: number, y: number, items: Array<object> }} opts
    */
   menu({ x = 0, y = 0, items = [] } = {}) {
     const menuEl = el(
       "div",
       { class: "popup-menu", role: "menu" },
-      items.map((item) =>
-        item.separator
-          ? el("div", { class: "popup-menu-separator", role: "separator" })
-          : el("button", {
-              class: `popup-menu-item${item.danger ? " popup-menu-item--danger" : ""}`,
-              type: "button",
-              role: "menuitem",
-              text: item.label,
-              disabled: Boolean(item.disabled),
-              onClick: () => {
-                this.close();
-                item.onSelect?.();
-              },
-            }),
-      ),
+      items.map((item) => {
+        if (item.separator) {
+          return el("div", {
+            class: "popup-menu-separator",
+            role: "separator",
+          });
+        }
+        const swatch =
+          item.swatch &&
+          el("span", { class: "popup-menu-swatch", "aria-hidden": "true" });
+        if (swatch) swatch.style.background = item.swatch;
+        return el(
+          "button",
+          {
+            class: `popup-menu-item${item.danger ? " popup-menu-item--danger" : ""}`,
+            type: "button",
+            role: "menuitem",
+            disabled: Boolean(item.disabled),
+            onClick: () => {
+              this.close();
+              item.onSelect?.();
+            },
+          },
+          [swatch, el("span", { class: "popup-menu-label", text: item.label })],
+        );
+      }),
     );
     this.open({ element: menuEl, variant: "menu" });
     // Position after mount so the menu's size is measurable; keep it fully
