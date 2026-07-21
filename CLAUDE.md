@@ -109,13 +109,19 @@ Chip Hippo icon, never the default Electron one. All rasters are committed.
   `desk-store.js` + `migrations.js` for the desk document at `userData/desk.json`).
 - `src/web/` — **renderer** (Vanilla JS ES modules + plain CSS): the UI. Sandboxed;
   talks to main only through `window.chiphippo.*`. Entry points: `index.html` →
-  `scripts/app.js`. Pure DOM-free logic lives under `scripts/desk/` (camera + wire
-  path math), `scripts/model/` (breadboard specs/addressing/connectivity, `DeskDoc`,
-  `footprints.js`, `occupancy.js`), and `scripts/sim/` (the engine package:
+  `scripts/app.js`. Pure DOM-free logic lives under `scripts/desk/` (camera, wire
+  path, and `rect-outline.js` union-boundary math), `scripts/model/` (breadboard
+  specs/addressing/connectivity, `DeskDoc`, `footprints.js`, `occupancy.js`,
+  `mating.js`, and `seating.js` — the world-point → `{board, anchor}` placement
+  search), and `scripts/sim/` (the engine package:
   `union-find.js`, `netlist.js`, `levels.js`, `chip-eval.js`, `sequential.js`,
   `resolve.js`, `engine.js`); part metadata
   under `scripts/catalog/` (pure data + integrity test — never part-specific code
-  paths); thin view components under `scripts/components/`.
+  paths); thin view components under `scripts/components/`. `DeskController`
+  keeps the whole public surface but delegates cohesive slices to collaborators
+  it owns (e.g. `sim-overlay.js` — the live LED/badge/clock face + net-level
+  lookups, driven from `chiphippo:sim-state`); more are being carved off along
+  the section seams as the file shrinks.
 - `src/web/fonts/` — bundled Inter variable font; never load fonts from a CDN.
 - `src/web/styles/` — `theme.css` (design tokens + reset) and `app.css` (shell). Use
   the tokens; don't hardcode colours/sizes.
@@ -146,11 +152,15 @@ Electron main process (src/app/main.js)
 - **Desk surface layers** (inside `.desk-surface`, established in Feature 30):
   `.layer-boards` → `.layer-parts` (chips) → `.layer-wires` (one shared SVG) →
   `.layer-overlay` (ghosts, hover ring, tooltips — pointer-inert). Boards and
-  chips are one static inline SVG each; **no per-hole or per-pin DOM nodes,
-  listeners, or ids** — all hole/pin interaction is `holeAt()` / derived-pin math
-  from pointer coordinates. The ONE sanctioned per-item event exception: each
-  wire's invisible widened hit stroke (`pointer-events: stroke`) — idiomatic SVG
-  beats hand-rolled curve-distance math. Pan/zoom must never rebuild or
+  chips are one static inline SVG each; the tie-point/pin `<rect>`s that draw
+  them carry **no id, no `data-*`, and no listener** — all hole/pin *interaction*
+  is `holeAt()` / derived-pin math from pointer coordinates, never a per-hole
+  event or DOM lookup. The sanctioned per-item event exceptions, all widened
+  invisible hit targets where idiomatic SVG beats hand-rolled distance math:
+  each wire's hit stroke (`pointer-events: stroke`, `wire-layer.js` — listeners
+  on the `g.wire` group), each rotatable discrete's `.part-span-hit` stroke, and
+  each push button's `.part-button-cap` (a `pointerdown` target sized to the
+  cap). Pan/zoom must never rebuild or
   re-lay-out surface children (transform-only); wires re-render only on doc
   changes or live board drags (positions passed as overrides). NOTE: an `<svg>`
   with width/height 0 renders NOTHING per the SVG spec — zero-size anchors need
@@ -233,7 +243,13 @@ Electron main process (src/app/main.js)
   enforced by `app/tests/ipc-parity.test.js` (add new `ipc/*.js` files to its scan
   list; channels follow `area:noun[:verb]`, lowercase + hyphenated).
 - **Addresses are the only cross-module currency for holes** (`bb1.f12`); nothing
-  outside `model/breadboard.js` does row/column arithmetic by hand.
+  outside `model/breadboard.js` does row/column arithmetic by hand. Renderer and
+  model call its lattice primitives (`holeAt`, `columnAt`, `rowNear`,
+  `clampColumn`, `parseHole`, `parseAddress`) — they never re-derive the offsets.
+  The ONE deliberate exception is `app/store/migrations.js`: a frozen snapshot of
+  the v1 address grammar that must NOT track the live specs (a spec change would
+  silently rewrite already-saved documents), and which as main-process CommonJS
+  cannot import the renderer's ESM anyway. Leave its hand-rolled copy alone.
 - Live state pushed main → renderer uses one-way broadcasts the preload re-dispatches
   as global `chiphippo:*` `CustomEvent`s (pattern arrives with the first push channel).
 - The **simulation engine is pure computation, not I/O** — it lives in the renderer as
@@ -316,6 +332,22 @@ make clean     # Remove build/ and dist/
   - **Kits** (`BREADBOARD_KITS`) — Full 830 = rail@0 · pins@3 · rail@16; Half 400
     likewise; **Tiny 170 is a bare pin-board** (the real part has no rails).
     Offsets are integers, so every hole stays on the global 0.1-in lattice.
+  - **Rotation — power rails ONLY** (`canRotate` = `kind === "rail"`). A rail is
+    two lines of holes, so it reads the same stood on end: turned 90° beside a
+    breadboard it becomes a **signal bus** (a clock line, say) that can tap into
+    the board at any point. Pin-boards are pinned at 0 — a trench, and every DIP
+    straddling it, is built for one orientation. `board.rot` ∈ `ROTATIONS`
+    (0/90/180/270, coerced by `normalizeRotation`, always 0 for a pin-board);
+    **R cycles it while the placement ghost is in hand**, and a strip's angle is
+    fixed once placed. Hole ids and nodes are always stated in the strip's OWN
+    unrotated frame — `rotatePoint`/`unrotatePoint` in `breadboard.js` are the
+    only bridge to desk coordinates, and `holePosition`/`holeAt`/`boardSize` all
+    take the rotation as a trailing argument. So addresses, occupancy, the
+    netlist, and the whole simulation are rotation-blind; only geometry and
+    rendering care. The view spins ONE pre-built SVG with a CSS transform
+    (`applyBoardRotation`, shared by the placed view and the ghost) that keeps
+    the strip pinned to its top-left corner, so `board.x/y` mean the same thing
+    at every angle.
     Alongside the assembled boards (`KIT_KEYS`) the same table carries the loose
     single-strip kits (`STRIP_KIT_KEYS` — `pins-full`/`pins-half` bare boards and
     `rail-full`/`rail-half` spare rails), each keyed by its own strip type. The
@@ -326,12 +358,23 @@ make clean     # Remove build/ and dist/
   the halves — DIP chips straddle it (pins in rows `e` and `f`). A rail strip
   carries both polarities, `+` and `−`, each one continuous node for its length.
 - **Groups**: strips snapped together share a `group` id (`g<n>`, or `null` when
-  loose) and drag as one rigid unit. A kit arrives pre-grouped. A LOOSE strip
-  placed flush against a board **mates** with it — `matingEdge` (matching size
-  across the shared edge, flush, no gap; stacked OR side by side) drives
-  `matingStrips` → `joinMatedGroup`, which unites both strips' whole groups
-  under one id, reusing an existing group before minting one. Assembled kits do
-  not mate on placement, and nothing re-mates on drop — Feature 120.
+  loose) and drag as one rigid unit. A kit arrives pre-grouped. Anything landing
+  flush against a board **mates** with it — `model/mating.js` owns the rule
+  (`matingEdge`/`rectMatingEdge`: matching size across the shared edge, flush,
+  no gap; stacked OR side by side), which drives `matingStrips` →
+  `joinMatedGroup`, uniting both strips' whole groups under one id and reusing
+  an existing group before minting one. **Placing and dropping follow the ONE
+  rule** — a lone strip, a torn-off run, and a whole assembled kit all mate, and
+  the controller offers every strip of the set (`#mateStrips`) so a kit touching
+  on more than one edge joins them all.
+  - **Magnetic snap**: `snapCorrection` (pure, `mating.js`) returns the smallest
+    correction — at most `SNAP_RANGE` (2 pitch) on BOTH axes — that lands a
+    moving strip flush against one it can dovetail with; the whole set moves by
+    it, so a kit snaps as one piece. `DeskDoc.snapBoardsBy(ids, dx, dy)` serves
+    drags and `snapKitAt(kit, x, y)` the placement ghost; the controller
+    (`#pullToMate` / `#pullGhostToMate`) applies the pull only when the snapped
+    position is still legal — a magnet must never turn a legal drop illegal.
+    Mismatched sizes never attract, and an already-flush pair is left alone.
   - **Breaking a snap** is a modifier on the board grab. Plain = the whole
     group. **Option** = `matedChain(id, "forward")` — the run reachable from
     the grabbed strip through *below/right* edges only; **Option+Shift** =
@@ -343,6 +386,13 @@ make clean     # Remove build/ and dist/
     fresh on both sides, so the halves can never come out sharing an id. The set
     lights up on mouse-down (`board--drag-set`, a wash not a border, so flush
     neighbours read as one block).
+  - **The selection highlighter** outlines the whole set a grab would move, not
+    the one strip clicked: `BoardOutline` draws ONE path in the overlay layer
+    from `desk/rect-outline.js` (`unionOutline` traces the boundary of a union
+    of rects by coordinate compression + edge stitching; `outlinePath` rounds
+    the corners), so flush strips show no seam. It follows the drag live, tracks
+    an Option grab's torn-off run, and reddens on an illegal drop — boards carry
+    no selected/illegal outline of their own.
 - **Addresses**: `<ownerId>.<point>` — `bb1.a12` (grid hole), `bb2.+7` (rail hole 7
   on a rail strip), `psu1.+` (component terminal). One hole holds at most one lead
   (pin or wire end).

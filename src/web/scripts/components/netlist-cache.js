@@ -66,9 +66,4 @@ export class NetlistCache {
   netInfo(netId) {
     return this.get().nets.get(netId) ?? null;
   }
-
-  /** Force a rebuild on next access (rarely needed — events cover it). */
-  invalidate() {
-    this.#cached = null;
-  }
 }

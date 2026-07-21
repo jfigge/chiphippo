@@ -28,12 +28,18 @@
 //              one strip: a 5-hole column-half, or a continuous rail)
 //
 // Positions are PITCH UNITS relative to the strip's top-left origin. Nothing
-// outside this module converts row/column arithmetic by hand.
+// outside this module converts row/column arithmetic by hand — INCLUDING the
+// quarter-turn a power rail may be placed at: hole ids and nodes are stated in
+// the strip's own unrotated frame, and `rotatePoint`/`unrotatePoint` are the
+// only bridge between that frame and the desk.
 
 import { BOARD_TYPES } from "./board-types.js";
 
 /** How close (pitch units) a point must be to a hole for holeAt to match. */
 export const HOLE_HIT_RADIUS = 0.45;
+
+/** The quarter-turns a strip can be placed at. */
+export const ROTATIONS = Object.freeze([0, 90, 180, 270]);
 
 /** Grid row letters, bottom row first (a is nearest the bottom edge). */
 export const ROW_LETTERS = Object.freeze([
@@ -68,6 +74,54 @@ export function spec(type) {
     throw err;
   }
   return s;
+}
+
+/**
+ * Can this strip type be turned? Only power rails: a pin-board's trench — and
+ * every DIP seated across it — is built for one orientation, so pin-boards
+ * are pinned at 0. A rail is just two lines of holes, so it reads the same
+ * standing up, which is what makes it usable as a signal bus beside a board.
+ */
+export function canRotate(type) {
+  return spec(type).kind === "rail";
+}
+
+/** Coerce anything to a quarter-turn this type can actually hold. */
+export function normalizeRotation(type, rot) {
+  if (!canRotate(type)) return 0;
+  return ROTATIONS.includes(rot) ? rot : 0;
+}
+
+/** A strip's footprint on the desk — width and height swap on a quarter turn. */
+export function boardSize(type, rot = 0) {
+  const s = spec(type);
+  const turned = rot === 90 || rot === 270;
+  return {
+    width: turned ? s.height : s.width,
+    height: turned ? s.width : s.height,
+  };
+}
+
+/**
+ * A point in the strip's own (unrotated) frame → the same point relative to
+ * the strip's desk origin. The strip stays pinned to its own top-left corner
+ * at every angle, so `board.x`/`board.y` mean one thing however it is turned.
+ */
+export function rotatePoint(type, { x, y }, rot = 0) {
+  const s = spec(type);
+  if (rot === 90) return { x: s.height - y, y: x };
+  if (rot === 180) return { x: s.width - x, y: s.height - y };
+  if (rot === 270) return { x: y, y: s.width - x };
+  return { x, y };
+}
+
+/** The inverse of `rotatePoint`: desk-relative → the strip's own frame. */
+export function unrotatePoint(type, { x, y }, rot = 0) {
+  const s = spec(type);
+  if (rot === 90) return { x: y, y: s.height - x };
+  if (rot === 180) return { x: s.width - x, y: s.height - y };
+  if (rot === 270) return { x: s.width - y, y: x };
+  return { x, y };
 }
 
 /**
@@ -116,18 +170,21 @@ export function holes(type) {
 }
 
 /**
- * Position of a hole in pitch units from the board origin, or null for an
- * id that doesn't exist on this type.
+ * Position of a hole in pitch units from the board origin, at the strip's
+ * placed rotation, or null for an id that doesn't exist on this type.
  */
-export function holePosition(type, hole) {
+export function holePosition(type, hole, rot = 0) {
   const s = spec(type);
   const parsed = parseHole(type, hole);
   if (!parsed) return null;
-  if (parsed.kind === "grid") {
-    return { x: s.colStartX + (parsed.col - 1), y: s.rowY[parsed.row] };
-  }
-  const rail = s.rails.find((r) => r.id === parsed.railId);
-  return { x: railHoleX(s, parsed.index), y: rail.y };
+  const local =
+    parsed.kind === "grid"
+      ? { x: s.colStartX + (parsed.col - 1), y: s.rowY[parsed.row] }
+      : {
+          x: railHoleX(s, parsed.index),
+          y: s.rails.find((r) => r.id === parsed.railId).y,
+        };
+  return rotatePoint(type, local, rot);
 }
 
 /**
@@ -135,8 +192,10 @@ export function holePosition(type, hole) {
  * null when nothing is close enough (e.g. the dead zone between two holes,
  * the trench, or outside the board).
  */
-export function holeAt(type, x, y) {
+export function holeAt(type, px, py, rot = 0) {
   const s = spec(type);
+  // Hit-test in the strip's own frame; the rest of the math never turns.
+  const { x, y } = unrotatePoint(type, { x: px, y: py }, rot);
   let best = null;
   let bestDist = HOLE_HIT_RADIUS;
 
@@ -177,6 +236,56 @@ export function holeAt(type, x, y) {
   }
 
   return best;
+}
+
+// ── Lattice arithmetic ──────────────────────────────────────────────────────
+// Placing a part is a LOOSER search than holeAt's: a ghost seats from a whole
+// row-band or trench-band away, not just within HOLE_HIT_RADIUS. These are the
+// primitives that search takes, so the row/column arithmetic behind it stays
+// in this module — every offset below is in the strip's own unrotated frame.
+
+/**
+ * The grid column at a local x, 1-based and unrounded (so a caller can centre
+ * a footprint on it before rounding). Meaningless on a strip with no grid.
+ */
+export function columnAt(type, localX) {
+  return localX - spec(type).colStartX + 1;
+}
+
+/**
+ * Clamp an anchor column so a footprint spanning `span` columns past it still
+ * fits on the strip. Returns null when the type is too narrow to hold it.
+ */
+export function clampColumn(type, col, span) {
+  const { cols } = spec(type);
+  if (cols < span + 1) return null;
+  return Math.min(cols - span, Math.max(1, Math.round(col)));
+}
+
+/**
+ * The grid row whose y is nearest `localY`, within `band` — or null when the
+ * point is over the trench, the margins, or a strip with no grid at all.
+ */
+export function rowNear(type, localY, band) {
+  let best = null;
+  let bestDist = band;
+  for (const [row, y] of Object.entries(spec(type).rowY)) {
+    const dist = Math.abs(localY - y);
+    if (dist <= bestDist) {
+      best = row;
+      bestDist = dist;
+    }
+  }
+  return best;
+}
+
+/**
+ * How far `localY` sits from the trench's centre line, or null on a strip
+ * with no trench (a rail — nothing can straddle it).
+ */
+export function trenchOffset(type, localY) {
+  const { trench } = spec(type);
+  return trench ? Math.abs(localY - trench.centerY) : null;
 }
 
 /**

@@ -97,7 +97,7 @@ export class WireLayer {
     if (!parsed) return null;
     const board = this.#doc.getBoard(parsed.boardId);
     if (board) {
-      const pos = holePosition(board.type, parsed.hole);
+      const pos = holePosition(board.type, parsed.hole, board.rot ?? 0);
       if (!pos) return null;
       const origin = overrides?.get(parsed.boardId) ?? board;
       return {

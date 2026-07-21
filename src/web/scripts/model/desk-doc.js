@@ -38,8 +38,21 @@
 // never stored; occupancy.js is the single collision authority.
 
 import { BOARD_TYPES, BREADBOARD_KITS } from "./board-types.js";
-import { holePosition, parseAddress, parseHole, spec } from "./breadboard.js";
+import {
+  boardSize,
+  canRotate,
+  holePosition,
+  normalizeRotation,
+  parseAddress,
+  parseHole,
+  spec,
+} from "./breadboard.js";
 import { partDef } from "../catalog/index.js";
+import {
+  boardRect as outlineRect,
+  matingEdge,
+  snapCorrection,
+} from "./mating.js";
 import {
   canMoveWire,
   canPlacePart,
@@ -134,6 +147,7 @@ export function normalizeDocument(raw) {
       type: b.type,
       x: Math.round(b.x),
       y: Math.round(b.y),
+      rot: normalizeRotation(b.type, b.rot),
       group: g ? b.group : null,
     });
   }
@@ -254,32 +268,6 @@ function rectsOverlap(a, b) {
   );
 }
 
-function outlineRect(board) {
-  const s = spec(board.type);
-  return { x: board.x, y: board.y, width: s.width, height: s.height };
-}
-
-/**
- * Which edge of `a` the strip `b` dovetails onto — the real part's mating
- * rule: the two must match across the shared edge (same width stacking, same
- * height side by side) and meet flush, with no gap and no overlap.
- *
- * @returns {"above"|"below"|"left"|"right"|null} null when they do not mate.
- */
-function matingEdge(a, b) {
-  const sa = spec(a.type);
-  const sb = spec(b.type);
-  if (a.x === b.x && sa.width === sb.width) {
-    if (b.y + sb.height === a.y) return "above";
-    if (a.y + sa.height === b.y) return "below";
-  }
-  if (a.y === b.y && sa.height === sb.height) {
-    if (b.x + sb.width === a.x) return "left";
-    if (a.x + sa.width === b.x) return "right";
-  }
-  return null;
-}
-
 /** The edges a directional break travels along. */
 const CHAIN_EDGES = Object.freeze({
   forward: Object.freeze(["below", "right"]),
@@ -347,14 +335,9 @@ export class DeskDoc {
    * overlapping any existing board's outline or PSU brick? `ignoreId`
    * excludes a board from the check (moving over its own footprint is fine).
    */
-  canPlace(type, x, y, { ignoreId = null } = {}) {
-    const s = spec(type);
-    const rect = {
-      x: Math.round(x),
-      y: Math.round(y),
-      width: s.width,
-      height: s.height,
-    };
+  canPlace(type, x, y, { ignoreId = null, rot = 0 } = {}) {
+    const { width, height } = boardSize(type, normalizeRotation(type, rot));
+    const rect = { x: Math.round(x), y: Math.round(y), width, height };
     return (
       this.#doc.boards.every(
         (b) => b.id === ignoreId || !rectsOverlap(rect, outlineRect(b)),
@@ -375,26 +358,17 @@ export class DeskDoc {
     );
   }
 
-  /** Would a PSU fit at (x, y)? (brick overlap check) */
-  canPlacePsu(x, y, opts) {
-    return this.canPlaceBrick("psu", x, y, opts);
-  }
-
-  /** Would a clock fit at (x, y)? (brick overlap check) */
-  canPlaceClock(x, y, opts) {
-    return this.canPlaceBrick("clock", x, y, opts);
-  }
-
   /**
    * Add a board (coordinates snapped to integers). Throws INVALID_TYPE /
    * INVALID_ARG / OVERLAP. Returns a copy of the new board.
    */
-  addBoard(type, x, y) {
+  addBoard(type, x, y, rot = 0) {
     spec(type); // validates — throws INVALID_TYPE
     if (!Number.isFinite(x) || !Number.isFinite(y)) {
       throw taggedError("board position must be finite", "INVALID_ARG");
     }
-    if (!this.canPlace(type, x, y)) {
+    const turn = normalizeRotation(type, rot);
+    if (!this.canPlace(type, x, y, { rot: turn })) {
       throw taggedError(
         `a ${type} board at ${Math.round(x)},${Math.round(y)} overlaps an existing board`,
         "OVERLAP",
@@ -405,6 +379,7 @@ export class DeskDoc {
       type,
       x: Math.round(x),
       y: Math.round(y),
+      rot: turn,
       group: null,
     };
     this.#doc.boards.push(board);
@@ -419,30 +394,44 @@ export class DeskDoc {
    *
    * @returns {Array<{type:string,x:number,y:number}>}
    */
-  static kitPlacements(kitKey, x, y) {
+  static kitPlacements(kitKey, x, y, rot = 0) {
     const kit = BREADBOARD_KITS[kitKey];
     if (!kit) throw taggedError(`unknown kit: ${kitKey}`, "INVALID_TYPE");
     const ox = Math.round(x);
     const oy = Math.round(y);
+    // A kit turns only if EVERY strip in it can: in practice the lone-rail
+    // kits. An assembled board holds a pin-board, so it stays flat, and the
+    // preset offsets are only ever meaningful at 0.
+    const turn = DeskDoc.canRotateKit(kitKey) ? normalizeRotation(kit.strips[0].type, rot) : 0; // prettier-ignore
     return kit.strips.map((s) => ({
       type: s.type,
       x: ox + s.dx,
       y: oy + s.dy,
+      rot: turn,
     }));
   }
 
+  /** Can this kit be placed on its side? Only one made purely of rails. */
+  static canRotateKit(kitKey) {
+    const kit = BREADBOARD_KITS[kitKey];
+    if (!kit) throw taggedError(`unknown kit: ${kitKey}`, "INVALID_TYPE");
+    return kit.strips.every((s) => canRotate(s.type));
+  }
+
   /** The bounding box of a kit, for centring the placement ghost. */
-  static kitOutline(kitKey) {
-    const strips = DeskDoc.kitPlacements(kitKey, 0, 0);
-    const width = Math.max(...strips.map((s) => s.x + spec(s.type).width));
-    const height = Math.max(...strips.map((s) => s.y + spec(s.type).height));
-    return { width, height };
+  static kitOutline(kitKey, rot = 0) {
+    const strips = DeskDoc.kitPlacements(kitKey, 0, 0, rot);
+    const sized = strips.map((s) => ({ s, size: boardSize(s.type, s.rot) }));
+    return {
+      width: Math.max(...sized.map(({ s, size }) => s.x + size.width)),
+      height: Math.max(...sized.map(({ s, size }) => s.y + size.height)),
+    };
   }
 
   /** Would every strip of a kit fit at (x, y)? All-or-nothing. */
-  canPlaceKit(kitKey, x, y) {
-    return DeskDoc.kitPlacements(kitKey, x, y).every((s) =>
-      this.canPlace(s.type, s.x, s.y),
+  canPlaceKit(kitKey, x, y, rot = 0) {
+    return DeskDoc.kitPlacements(kitKey, x, y, rot).every((s) =>
+      this.canPlace(s.type, s.x, s.y, { rot: s.rot }),
     );
   }
 
@@ -453,12 +442,12 @@ export class DeskDoc {
    *
    * @returns {Array<object>} copies of the new strips, in kit order.
    */
-  addKit(kitKey, x, y) {
+  addKit(kitKey, x, y, rot = 0) {
     if (!Number.isFinite(x) || !Number.isFinite(y)) {
       throw taggedError("kit position must be finite", "INVALID_ARG");
     }
-    const placements = DeskDoc.kitPlacements(kitKey, x, y);
-    if (!this.canPlaceKit(kitKey, x, y)) {
+    const placements = DeskDoc.kitPlacements(kitKey, x, y, rot);
+    if (!this.canPlaceKit(kitKey, x, y, rot)) {
       throw taggedError(
         `a ${kitKey} breadboard at ${Math.round(x)},${Math.round(y)} overlaps an existing board`,
         "OVERLAP",
@@ -471,6 +460,7 @@ export class DeskDoc {
       type: p.type,
       x: p.x,
       y: p.y,
+      rot: p.rot,
       group,
     }));
     this.#doc.boards.push(...added);
@@ -598,6 +588,38 @@ export class DeskDoc {
   }
 
   /**
+   * The magnetic pull on a drag: the EXTRA (dx, dy) — at most SNAP_RANGE on
+   * either axis — that would land `ids`, already translated by (dx, dy),
+   * flush against a strip outside the set that it can dovetail with.
+   * `{dx: 0, dy: 0}` when nothing is in range or a pair is already flush.
+   *
+   * Pure geometry: it neither moves nor groups anything, and says nothing
+   * about legality — the caller applies the pull only if it likes the result.
+   */
+  snapBoardsBy(ids, dx, dy) {
+    const moving = new Set(ids);
+    const [members, others] = [
+      this.#doc.boards.filter((b) => moving.has(b.id)),
+      this.#doc.boards.filter((b) => !moving.has(b.id)),
+    ];
+    if (members.length === 0) return { dx: 0, dy: 0 };
+    return snapCorrection(
+      members.map((b) =>
+        outlineRect({ ...b, x: b.x + Math.round(dx), y: b.y + Math.round(dy) }),
+      ),
+      others.map(outlineRect),
+    );
+  }
+
+  /** The same magnetic pull, for a kit not yet placed (the ghost). */
+  snapKitAt(kitKey, x, y, rot = 0) {
+    return snapCorrection(
+      DeskDoc.kitPlacements(kitKey, x, y, rot).map(outlineRect),
+      this.#doc.boards.map(outlineRect),
+    );
+  }
+
+  /**
    * Translate `id`'s whole group by (dx, dy). Throws NOT_FOUND /
    * INVALID_ARG / OVERLAP. Returns copies of every moved strip.
    */
@@ -660,15 +682,19 @@ export class DeskDoc {
    */
   #regroupAfterBreak(group, movedIds) {
     const members = this.#doc.boards.filter((b) => b.group === group);
-    const halves = [
-      members.filter((b) => movedIds.has(b.id)),
-      members.filter((b) => !movedIds.has(b.id)),
-    ];
-    for (const half of halves) {
-      for (const run of matedComponents(half)) {
-        const id = run.length > 1 ? `g${this.#doc.nextGroupId++}` : null;
-        for (const b of run) b.group = id;
-      }
+    this.#regroupRuns(members.filter((b) => movedIds.has(b.id)));
+    this.#regroupRuns(members.filter((b) => !movedIds.has(b.id)));
+  }
+
+  /**
+   * Split a set of strips into the runs still mated within it, minting a fresh
+   * group id per run of two or more and going loose for a lone strip. The one
+   * place a group id is ever (re)assigned after a break.
+   */
+  #regroupRuns(members) {
+    for (const run of matedComponents(members)) {
+      const id = run.length > 1 ? `g${this.#doc.nextGroupId++}` : null;
+      for (const b of run) b.group = id;
     }
   }
 
@@ -682,7 +708,9 @@ export class DeskDoc {
     if (!Number.isFinite(x) || !Number.isFinite(y)) {
       throw taggedError("board position must be finite", "INVALID_ARG");
     }
-    if (!this.canPlace(board.type, x, y, { ignoreId: id })) {
+    // The strip keeps its angle, so the overlap check has to use it — an
+    // upright rail sweeps a 3×64 box, not a 64×3 one.
+    if (!this.canPlace(board.type, x, y, { ignoreId: id, rot: board.rot })) {
       throw taggedError(
         `moving ${id} to ${Math.round(x)},${Math.round(y)} overlaps another board`,
         "OVERLAP",
@@ -702,13 +730,23 @@ export class DeskDoc {
    * into this one survives untouched, keeping its position: the lead simply
    * stops resolving to a hole and floats. That is why removal keys on
    * `c.board` (where the part is seated) and never on where a lead lands.
+   *
+   * Pulling a strip out of the middle of a group BREAKS it exactly as tearing
+   * one off does — what is left may no longer touch. So the survivors are
+   * re-derived from what is still mated among them, or the two halves would go
+   * on dragging as one unit across the gap the removal just opened.
    */
   removeBoard(id) {
     const i = this.#doc.boards.findIndex((b) => b.id === id);
     if (i === -1) throw taggedError(`no board ${id}`, "NOT_FOUND");
-    this.#doc.boards.splice(i, 1);
+    const [removed] = this.#doc.boards.splice(i, 1);
     this.#doc.components = this.#doc.components.filter((c) => c.board !== id);
     this.#doc.wires = this.#doc.wires.filter((w) => !this.#wireTouches(w, id));
+    if (removed.group != null) {
+      this.#regroupRuns(
+        this.#doc.boards.filter((b) => b.group === removed.group),
+      );
+    }
   }
 
   /** Does a wire endpoint belong to this owner (board or PSU)? */
@@ -987,11 +1025,6 @@ export class DeskDoc {
     return this.addBrick("psu", x, y, params);
   }
 
-  /** Drop a clock source (kind "clock"). */
-  addClock(x, y, params = {}) {
-    return this.addBrick("clock", x, y, params);
-  }
-
   /** Move a desk-level brick. Throws NOT_FOUND / INVALID_ARG / OVERLAP. */
   moveBrick(id, x, y) {
     const brick = this.#doc.components.find(
@@ -1014,11 +1047,6 @@ export class DeskDoc {
 
   /** Move a PSU brick (back-compat name). */
   movePsu(id, x, y) {
-    return this.moveBrick(id, x, y);
-  }
-
-  /** Move a clock source. */
-  moveClock(id, x, y) {
     return this.moveBrick(id, x, y);
   }
 

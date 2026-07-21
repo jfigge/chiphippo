@@ -241,7 +241,7 @@ export class ChipView {
    * @param {string} anchor - pin 1's hole id (row e)
    */
   updatePlacement(board, anchor) {
-    const pos = holePosition(board.type, anchor);
+    const pos = holePosition(board.type, anchor, board.rot ?? 0);
     if (!pos) return; // defensive: never seat a view on a phantom hole
     const box = chipBox(chipDef(this.#ref).package);
     this.#el.style.left = `${(board.x + pos.x + box.minX) * PX_PER_UNIT}px`;

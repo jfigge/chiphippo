@@ -443,7 +443,7 @@ export class DiscreteView {
 
   /** Seat the element: board origin + anchor hole + the footprint box. */
   updatePlacement(board, anchor) {
-    const pos = holePosition(board.type, anchor);
+    const pos = holePosition(board.type, anchor, board.rot ?? 0);
     if (!pos) return;
     const box = discreteBox(this.#ref);
     this.#el.style.left = `${(board.x + pos.x + box.minX) * PX_PER_UNIT}px`;

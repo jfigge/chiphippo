@@ -28,6 +28,7 @@ import {
   KIT_KEYS,
   STRIP_KIT_KEYS,
 } from "../model/board-types.js";
+import { DeskDoc } from "../model/desk-doc.js";
 
 export class BoardToolbar {
   #lastKit = "full";
@@ -77,8 +78,10 @@ export class BoardToolbar {
   /** One menu row: pick the kit, remember it, and arm placement. */
   #kitItem(key) {
     const kit = BREADBOARD_KITS[key];
+    // A rail can stand on end as a signal bus — say so, or nobody finds R.
+    const hint = DeskDoc.canRotateKit(key) ? " — R to rotate" : "";
     return {
-      label: `${kit.label} (${kit.tiePoints} tie points)`,
+      label: `${kit.label} (${kit.tiePoints} tie points)${hint}`,
       onSelect: () => {
         this.#lastKit = key;
         this.#mainBtn.textContent = this.#mainLabel();

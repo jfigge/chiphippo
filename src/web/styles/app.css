@@ -445,10 +445,9 @@
   display: block;
 }
 
-.board--selected {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
-}
+/* `.board--selected` carries no outline of its own: the highlighter is ONE
+   path traced around the whole snapped set (see `.board-outline` below), so a
+   selection spanning several flush strips reads as a single item. */
 
 .board--dragging {
   opacity: 0.85;
@@ -467,9 +466,25 @@
   pointer-events: none;
 }
 
-.board--illegal {
-  outline: 2px solid var(--color-danger);
-  outline-offset: 2px;
+/* The selection highlighter: the outer edge of every strip a grab would
+   move, drawn in world px (so it scales with the camera, as a CSS outline
+   inside the transformed surface did) and reddened on an illegal drop. */
+.board-outline {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.board-outline-path {
+  fill: none;
+  stroke: var(--color-accent);
+  stroke-width: 2;
+}
+
+.board-outline--illegal .board-outline-path {
+  stroke: var(--color-danger);
 }
 
 /* SVG board parts — all colors from the theme tokens. */

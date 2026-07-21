@@ -35,8 +35,6 @@ export const L = "L";
 export const Z = "Z";
 export const X = "X";
 
-export const LEVELS = Object.freeze([H, L, Z, X]);
-
 /**
  * Read a pin as a gate input: a floating pin (`Z`) pulls HIGH; H/L/X pass
  * through unchanged. This is the one place the "floating reads high" rule

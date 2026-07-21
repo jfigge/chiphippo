@@ -33,12 +33,12 @@
 import { partDef } from "../catalog/index.js";
 import { allPinHoles } from "./footprints.js";
 import {
+  boardSize,
   formatAddress,
   holeAt,
   holePosition,
   parseAddress,
   parseHole,
-  spec,
 } from "./breadboard.js";
 
 const CHIP_ANCHOR_RE = /^e([1-9]\d*)$/; // a chip anchor: pin 1's hole, row e
@@ -110,26 +110,50 @@ export function partPinHoles(ref, anchor, params) {
 export const chipPinHoles = partPinHoles;
 
 /**
- * The desk address of the hole at a world point, or null when the point is
- * over bare desk (or over a board but between holes). Boards never overlap,
- * so the first hit wins.
+ * The board + hole under a world point, with the hole's exact world position,
+ * or null over bare desk (or over a board but between holes).
  *
- * @param {Array<{id:string,type:string,x:number,y:number}>} boards
+ * The ONE authority for "what is under this point" — hover, the wire tool,
+ * part drags, and addressAtWorld() all come through here, so none of them can
+ * drift apart on the boundary cases.
+ *
+ * Boards never overlap, but mated strips meet FLUSH and the bounds test is
+ * inclusive on every edge, so a point on a shared seam falls inside BOTH
+ * neighbours' boxes. A box hit with no hole near enough therefore has to keep
+ * looking: giving up on the first box would make the answer depend on board
+ * order and hide the neighbour's holes along every dovetail.
+ *
+ * @param {Array<{id:string,type:string,x:number,y:number,rot?:number}>} boards
+ * @returns {{board:object, hole:string, x:number, y:number}|null}
  */
-export function addressAtWorld(boards, x, y) {
+export function holeAtWorld(boards, x, y) {
   for (const board of boards ?? []) {
-    let s;
+    const rot = board.rot ?? 0;
+    let size;
     try {
-      s = spec(board.type);
+      size = boardSize(board.type, rot);
     } catch {
       continue; // a foreign/junk board type never owns a hole
     }
     if (x < board.x || y < board.y) continue;
-    if (x > board.x + s.width || y > board.y + s.height) continue;
-    const hole = holeAt(board.type, x - board.x, y - board.y);
-    if (hole) return formatAddress(board.id, hole);
+    if (x > board.x + size.width || y > board.y + size.height) continue;
+    const hole = holeAt(board.type, x - board.x, y - board.y, rot);
+    if (!hole) continue;
+    const pos = holePosition(board.type, hole, rot);
+    if (!pos) continue;
+    return { board, hole, x: board.x + pos.x, y: board.y + pos.y };
   }
   return null;
+}
+
+/**
+ * The desk address of the hole at a world point, or null over bare desk.
+ *
+ * @param {Array<{id:string,type:string,x:number,y:number}>} boards
+ */
+export function addressAtWorld(boards, x, y) {
+  const hit = holeAtWorld(boards, x, y);
+  return hit ? formatAddress(hit.board.id, hit.hole) : null;
 }
 
 /**
@@ -159,7 +183,7 @@ export function partPinAddresses(doc, comp) {
   if (pins.some((p) => p.offset)) {
     let pos = null;
     try {
-      pos = holePosition(board.type, comp.anchor);
+      pos = holePosition(board.type, comp.anchor, board.rot ?? 0);
     } catch {
       return null;
     }
@@ -313,7 +337,7 @@ export function worldOfAddress(boards, address) {
   if (!board) return null;
   let pos = null;
   try {
-    pos = holePosition(board.type, parsed.hole);
+    pos = holePosition(board.type, parsed.hole, board.rot ?? 0);
   } catch {
     return null; // junk board type
   }

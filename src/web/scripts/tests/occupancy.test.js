@@ -27,6 +27,7 @@ import {
   canPlaceWire,
   canReendWire,
   chipPinHoles,
+  holeAtWorld,
   isFreeHole,
   partPinAddresses,
   partPinHoles,
@@ -477,4 +478,41 @@ test("isFreeHole resolves PSU terminals; wires occupy them", () => {
   assert.equal(isFreeHole(doc, "psu1.+"), false);
   assert.equal(canPlaceWire(doc, "psu1.-", "bb3.-1"), true);
   assert.equal(canPlaceWire(doc, "psu1.+", "bb3.+1"), false);
+});
+
+// ── holeAtWorld: the one "what is under this point" scan ────────────────────
+
+test("holeAtWorld: reports the board, the hole, and its exact world position", () => {
+  const hit = holeAtWorld([FULL, TINY], 5, 1);
+  assert.equal(hit.board.id, "bb1");
+  assert.equal(hit.hole, "j5");
+  // The position is the HOLE's, snapped off the lattice — not the query point.
+  assert.deepEqual({ x: hit.x, y: hit.y }, { x: 5, y: 1 });
+  assert.equal(holeAtWorld([FULL], 5, 6.5), null); // the trench
+  assert.equal(holeAtWorld([FULL], 500, 500), null); // bare desk
+  assert.equal(holeAtWorld([], 5, 1), null);
+});
+
+test("holeAtWorld: a junk board type is skipped, not thrown over", () => {
+  const junk = { id: "bb8", type: "not-a-board", x: 0, y: 0 };
+  assert.equal(holeAtWorld([junk, FULL], 5, 1)?.hole, "j5");
+});
+
+test("a part can never seat on a rail strip — parts belong to the pin-board", () => {
+  // This is what keeps every part's own board un-turnable (only rails rotate),
+  // and so keeps derived pin geometry on the flat frame.
+  const doc = docWith({ boards: [FULL, RAIL] });
+  const params = { rot: 90, end: { dx: 0, dy: 1 } };
+  for (const anchor of ["a1", "j5", "+1", "-3"]) {
+    assert.equal(
+      canPlacePart(doc, { ref: "led", board: "bb3", anchor, params }),
+      false,
+      `a part must not seat on a rail at ${anchor}`,
+    );
+  }
+  // The same LED seats happily on the pin-board.
+  assert.equal(
+    canPlacePart(doc, { ref: "led", board: "bb1", anchor: "j5", params }),
+    true,
+  );
 });

@@ -24,35 +24,37 @@ import { clear, el } from "../dom.js";
 import { PALETTE_DEFS } from "../catalog/index.js";
 import { hasBehavior } from "../sim/chip-eval.js";
 
-/** Every chip group nests one level under this top-level folder. Its collapse
-    state is remembered alongside the group names (no group shares this name). */
+/** Every chip group nests one level under this top-level folder. It collapses
+    like a group, and no group shares its name. */
 const CHIPS_FOLDER = "Chips";
+
+/**
+ * Every collapsible section name — the chips folder plus every group in the
+ * catalog. The palette opens with ALL of them shut: the full list is long
+ * enough that a wall of parts buries the structure, and the filter box is the
+ * fast path to a specific one anyway.
+ */
+function allSections() {
+  return new Set([CHIPS_FOLDER, ...PALETTE_DEFS.map((def) => def.group)]);
+}
 
 export class PalettePanel {
   #el;
   #list;
   #onPickChip;
-  #onCollapseChange;
   #filter = "";
-  #collapsed;
+  // Every section starts shut, every launch. What the user opens lasts for
+  // the session only — deliberately NOT persisted, so the panel always opens
+  // in the same known state.
+  #collapsed = allSections();
 
   /**
    * @param {HTMLElement} container - mounted as the desk row's left panel.
    * @param {object} callbacks
    * @param {(ref: string) => void} callbacks.onPickChip
-   * @param {(groups: string[]) => void} [callbacks.onCollapseChange] - fired
-   *   with the current collapsed-group names whenever the user toggles one, so
-   *   the host can persist them.
-   * @param {string[]} [callbacks.collapsedGroups] - group names to start
-   *   collapsed (restored from settings).
    */
-  constructor(
-    container,
-    { onPickChip, onCollapseChange, collapsedGroups } = {},
-  ) {
+  constructor(container, { onPickChip } = {}) {
     this.#onPickChip = onPickChip;
-    this.#onCollapseChange = onCollapseChange;
-    this.#collapsed = new Set(collapsedGroups ?? []);
 
     const filterInput = el("input", {
       class: "palette-filter",
@@ -201,6 +203,5 @@ export class PalettePanel {
     if (this.#collapsed.has(group)) this.#collapsed.delete(group);
     else this.#collapsed.add(group);
     this.#render();
-    this.#onCollapseChange?.([...this.#collapsed]);
   }
 }

@@ -28,15 +28,21 @@ import {
 } from "../model/board-types.js";
 import {
   HOLE_HIT_RADIUS,
+  ROTATIONS,
+  boardSize,
+  canRotate,
   formatAddress,
   holeAt,
   holePosition,
   holes,
   holesOfNode,
   nodeOf,
+  normalizeRotation,
   parseAddress,
   parseHole,
+  rotatePoint,
   spec,
+  unrotatePoint,
 } from "../model/breadboard.js";
 
 // ── Tie-point counts (the roadmap's locked numbers) ──────────────────────────
@@ -290,5 +296,103 @@ test("a kit's strips tile flush, and its rows stay in order", () => {
     // Every strip in a kit is the same width, or they could not dovetail.
     const widths = new Set(strips.map((s) => BOARD_TYPES[s.type].width));
     assert.equal(widths.size, 1, `${key}: strips differ in width`);
+  }
+});
+
+// ── Rotation (power rails only) ──────────────────────────────────────────────
+
+test("canRotate: rails turn, pin-boards never do", () => {
+  assert.equal(canRotate("rail-full"), true);
+  assert.equal(canRotate("rail-half"), true);
+  assert.equal(canRotate("pins-full"), false);
+  assert.equal(canRotate("pins-tiny"), false);
+});
+
+test("normalizeRotation: junk and un-turnable types fall back to 0", () => {
+  assert.equal(normalizeRotation("rail-full", 90), 90);
+  assert.equal(normalizeRotation("rail-full", 270), 270);
+  assert.equal(normalizeRotation("rail-full", 45), 0);
+  assert.equal(normalizeRotation("rail-full", "90"), 0);
+  assert.equal(normalizeRotation("rail-full", undefined), 0);
+  assert.equal(normalizeRotation("pins-full", 90), 0); // pinned flat
+});
+
+test("boardSize: width and height swap on a quarter turn", () => {
+  assert.deepEqual(boardSize("rail-full", 0), { width: 64, height: 3 });
+  assert.deepEqual(boardSize("rail-full", 90), { width: 3, height: 64 });
+  assert.deepEqual(boardSize("rail-full", 180), { width: 64, height: 3 });
+  assert.deepEqual(boardSize("rail-full", 270), { width: 3, height: 64 });
+});
+
+test("rotatePoint / unrotatePoint are inverses at every quarter turn", () => {
+  const point = { x: 7, y: 2 };
+  for (const rot of ROTATIONS) {
+    const turned = rotatePoint("rail-full", point, rot);
+    assert.deepEqual(unrotatePoint("rail-full", turned, rot), point);
+    // …and the turned point stays inside the turned footprint.
+    const size = boardSize("rail-full", rot);
+    assert.ok(turned.x >= 0 && turned.x <= size.width, `x at ${rot}`);
+    assert.ok(turned.y >= 0 && turned.y <= size.height, `y at ${rot}`);
+  }
+});
+
+test("holePosition: an upright rail runs down the strip, not across it", () => {
+  const flat = holePosition("rail-full", "+1");
+  const upright = holePosition("rail-full", "+1", 90);
+  // Flat, hole +1 sits near the left edge; upright, near the top.
+  assert.ok(flat.x > flat.y);
+  assert.ok(upright.y > upright.x);
+  // The turn is rigid: consecutive holes stay one pitch apart, down the y axis.
+  const next = holePosition("rail-full", "+2", 90);
+  assert.deepEqual(
+    { dx: next.x - upright.x, dy: next.y - upright.y },
+    { dx: 0, dy: 1 },
+  );
+});
+
+test("holeAt: hit-testing follows the strip round", () => {
+  for (const rot of ROTATIONS) {
+    for (const hole of ["+1", "+7", "-25", "-50"]) {
+      const pos = holePosition("rail-full", hole, rot);
+      assert.equal(
+        holeAt("rail-full", pos.x, pos.y, rot),
+        hole,
+        `${hole}@${rot}`,
+      );
+    }
+  }
+});
+
+test("holeAt: a hit on a turned strip is not a hit on a flat one", () => {
+  const pos = holePosition("rail-full", "+50", 90);
+  assert.equal(holeAt("rail-full", pos.x, pos.y, 90), "+50");
+  assert.equal(holeAt("rail-full", pos.x, pos.y, 0), null); // off the flat strip
+});
+
+test("nodeOf is untouched by rotation — a rail is one node however it lies", () => {
+  assert.equal(nodeOf("rail-full", "+1"), nodeOf("rail-full", "+50"));
+});
+
+test("no hole comes within the hit radius of a strip edge, at any rotation", () => {
+  // Mated strips meet FLUSH, and every bounds test that picks a board is
+  // inclusive on its edges — so a point exactly on a seam falls inside BOTH
+  // neighbours' boxes. That ambiguity is harmless only while no hole sits
+  // close enough to a seam to be claimed through it, i.e. while every hole
+  // keeps more than HOLE_HIT_RADIUS of clear plastic around it. Should a new
+  // strip type ever break this, hole hit-testing along a dovetail starts to
+  // depend on which strip the document happens to list first — see
+  // occupancy.js holeAtWorld(), which must scan PAST a box holding no hole.
+  for (const key of BOARD_TYPE_KEYS) {
+    for (const rot of ROTATIONS) {
+      const { width, height } = boardSize(key, rot);
+      for (const hole of holes(key)) {
+        const p = holePosition(key, hole, rot);
+        const margin = Math.min(p.x, width - p.x, p.y, height - p.y);
+        assert.ok(
+          margin > HOLE_HIT_RADIUS,
+          `${key} at ${rot}°: ${hole} sits ${margin} from an edge, inside the ${HOLE_HIT_RADIUS} hit radius`,
+        );
+      }
+    }
   }
 });

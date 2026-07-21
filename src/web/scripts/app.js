@@ -225,12 +225,8 @@ async function init() {
       }
       controller?.armPartPlacement(ref);
     },
-    // Collapsed group titles persist across sessions (settings store).
-    collapsedGroups: settings.paletteCollapsedGroups,
-    onCollapseChange: (groups) =>
-      bridge.settings
-        .set({ paletteCollapsedGroups: groups })
-        .catch((err) => console.error("[renderer] settings:set failed:", err)),
+    // Collapse state is deliberately NOT persisted — the palette opens with
+    // every group shut, every launch (see PalettePanel).
   });
   palette.setVisible(settings.paletteOpen === true);
   main.append(desk);

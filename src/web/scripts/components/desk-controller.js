@@ -29,22 +29,33 @@
 // Views report gestures through constructor callbacks (house rule); the
 // camera stays DeskView's job — this class only reads worldFromEvent/camera.
 
-import { el } from "../dom.js";
+import { clear, el } from "../dom.js";
 import { PopupManager } from "../popup-manager.js";
 import { PX_PER_UNIT } from "../desk/desk-geometry.js";
 import {
+  ROTATIONS,
+  boardSize,
+  columnAt,
   formatAddress,
-  holeAt,
   holePosition,
   parseAddress,
+  parseHole,
   spec,
 } from "../model/breadboard.js";
-import { partPinAddresses, partPinHoles } from "../model/occupancy.js";
-import { packageSpec } from "../model/footprints.js";
+import {
+  holeAtWorld,
+  partPinAddresses,
+  partPinHoles,
+} from "../model/occupancy.js";
+import { partSeatAt } from "../model/seating.js";
 import { DeskDoc, WIRE_COLORS } from "../model/desk-doc.js";
 import { partDef } from "../catalog/index.js";
 import { PSU_VOLTS, CLOCK_HZ } from "../catalog/parts.js";
-import { BreadboardView, buildBoardSvg } from "./breadboard-view.js";
+import {
+  BreadboardView,
+  applyBoardRotation,
+  buildBoardSvg,
+} from "./breadboard-view.js";
 import { ChipView, buildChipSvg, chipBox } from "./chip-view.js";
 import {
   DiscreteView,
@@ -57,9 +68,10 @@ import { PsuView, buildPsuSvg } from "./psu-view.js";
 import { ClockView, buildClockSvg } from "./clock-view.js";
 import { WireLayer } from "./wire-layer.js";
 import { summarizeNet } from "../sim/netlist.js";
-import { H, L } from "../sim/levels.js";
+import { SimOverlay } from "./sim-overlay.js";
 import { NetlistCache } from "./netlist-cache.js";
 import { NetHighlight } from "./net-highlight.js";
+import { BoardOutline } from "./board-outline.js";
 
 /** Pointer travel (px) below which a press stays a click, not a drag/pan. */
 const DRAG_THRESHOLD = 4;
@@ -80,18 +92,6 @@ const PIN_HIT_RADIUS = 0.45;
     forgiving to catch, but under the ~1-pitch hole spacing so an adjacent
     endpoint isn't grabbed by mistake. */
 const WIRE_END_GRAB_RADIUS = 0.6;
-
-/** How far (pitch units) the cursor may sit from a chip's trench center and
-    still seat its ghost — beyond it (e.g. over the rails) the ghost floats
-    unseated with the danger tint. */
-const SEAT_BAND = 2.5;
-
-/** How far (pitch units) the cursor may sit from a grid row and still seat
-    a discrete part's ghost on it. */
-const ROW_BAND = 0.8;
-
-const CHIP_ANCHOR_RE = /^e([1-9]\d*)$/;
-const GRID_ANCHOR_RE = /^([a-j])([1-9]\d*)$/;
 
 export class DeskController {
   #viewport;
@@ -120,6 +120,7 @@ export class DeskController {
   #hoverTimer = null;
   #ring;
   #tooltip;
+  #boardOutline; // the selection highlighter around a whole snapped set
   // Connectivity inspector (Feature 70).
   #netlist;
   #highlight;
@@ -129,13 +130,10 @@ export class DeskController {
   // Simulation (Feature 90): editing is locked while running; live net levels
   // arrive over chiphippo:sim-state and drive LEDs / chip badges / probe tint.
   #editingLocked = false;
-  #simRunning = false;
   #multi = new Set(); // component ids from a marquee selection
   #multiWires = new Set(); // wire ids from the same marquee
   #marquee = null; // the rubber-band element while shift-dragging
-  #simLevels = new Map(); // netId → level
-  #simStrong = new Map(); // netId → level from supplies/outputs only (no pulls)
-  #simNetlist = null; // the netlist the levels are keyed against
+  #simOverlay; // live LEDs / badges / clock lamps + net-level lookups
   #onReplaceChip;
   #onClockToggle;
   #onOpenPinout;
@@ -199,6 +197,9 @@ export class DeskController {
     this.#tooltip = el("div", { class: "desk-tooltip", hidden: true });
     this.#layers.overlay.append(this.#ring, this.#tooltip);
 
+    // Board selection is drawn as ONE path around the whole snapped set.
+    this.#boardOutline = new BoardOutline(this.#layers.overlay);
+
     // All wires render into one SVG in the wires layer.
     this.#wireLayer = new WireLayer(this.#layers.wires, deskDoc, {
       onSelect: (id) => this.selectWire(id),
@@ -219,10 +220,14 @@ export class DeskController {
     window.addEventListener("chiphippo:part-state", () => {
       if (this.#probeAnchor) this.#refreshPinnedNet();
     });
-    // Live simulation state (Feature 90): LEDs, chip badges, probe tint.
-    window.addEventListener("chiphippo:sim-state", (e) =>
-      this.#onSimState(e.detail),
-    );
+    // Live simulation state (Feature 90): LEDs, chip badges, clock lamps —
+    // and the net-level lookups the probe tints with. Renders from published
+    // state, never the engine.
+    this.#simOverlay = new SimOverlay(this.#doc, this.#partViews);
+    window.addEventListener("chiphippo:sim-state", (e) => {
+      this.#simOverlay.apply(e.detail);
+      if (this.#probeAnchor) this.#refreshPinnedNet(); // re-tint a pinned net
+    });
 
     for (const board of this.#doc.boards) this.#mountBoard(board);
     for (const component of this.#doc.components) this.#mountPart(component);
@@ -267,6 +272,41 @@ export class DeskController {
     this.#applySelection(this.#selected, false);
     this.#selected = sel;
     this.#applySelection(this.#selected, true);
+    this.#refreshBoardOutline();
+  }
+
+  /** A board's world-px box, at an overridden position while dragging. */
+  #boardRect(board, pos) {
+    const size = boardSize(board.type, board.rot ?? 0);
+    return {
+      x: (pos?.x ?? board.x) * PX_PER_UNIT,
+      y: (pos?.y ?? board.y) * PX_PER_UNIT,
+      width: size.width * PX_PER_UNIT,
+      height: size.height * PX_PER_UNIT,
+    };
+  }
+
+  /**
+   * Re-draw the board highlighter around the OUTER edge of every strip the
+   * grab would move — the whole snapped group, or the one-way chain an Option
+   * grab tore off — never the single strip that was clicked. Positions come
+   * from `overrides` mid-drag, from the document otherwise.
+   *
+   * @param {Map<string, {x:number,y:number}>|null} [overrides]
+   */
+  #refreshBoardOutline(overrides = null) {
+    const drag = this.#mode?.kind === "drag" ? this.#mode : null;
+    let ids = [];
+    if (drag) ids = drag.members.map((m) => m.id);
+    else if (this.#selected?.kind === "board") {
+      ids = this.#doc.groupMembers(this.#selected.id).map((b) => b.id);
+    }
+    const rects = [];
+    for (const id of ids) {
+      const board = this.#doc.getBoard(id);
+      if (board) rects.push(this.#boardRect(board, overrides?.get(id)));
+    }
+    this.#boardOutline.show(rects, drag ? !drag.legal : false);
   }
 
   /** The component ids currently marquee-selected (empty when none). */
@@ -349,27 +389,39 @@ export class DeskController {
    */
   armPlacement(kit) {
     // Throws INVALID_TYPE on junk, before any state is touched.
-    const placements = DeskDoc.kitPlacements(kit, 0, 0);
-    const outline = DeskDoc.kitOutline(kit);
-    const ghost = el("div", { class: "board-ghost", hidden: true });
+    DeskDoc.kitPlacements(kit, 0, 0);
+    const mode = {
+      kind: "place",
+      kit,
+      ghost: el("div", { class: "board-ghost", hidden: true }),
+      pos: null,
+      legal: false,
+      rot: 0,
+    };
+    this.#renderBoardGhost(mode);
+    this.#enterPlacement(mode);
+  }
+
+  /**
+   * (Re)build the kit ghost at its current rotation — one strip element per
+   * strip, each turned exactly as the placed view will be, so what the user
+   * sees before the click is what lands after it.
+   */
+  #renderBoardGhost(m) {
+    clear(m.ghost);
+    const outline = DeskDoc.kitOutline(m.kit, m.rot);
     // Absolutely positioned strips collapse the box, so size it explicitly —
     // the legal/illegal outline and tint are drawn on this element.
-    ghost.style.width = `${outline.width * PX_PER_UNIT}px`;
-    ghost.style.height = `${outline.height * PX_PER_UNIT}px`;
-    for (const p of placements) {
+    m.ghost.style.width = `${outline.width * PX_PER_UNIT}px`;
+    m.ghost.style.height = `${outline.height * PX_PER_UNIT}px`;
+    for (const p of DeskDoc.kitPlacements(m.kit, 0, 0, m.rot)) {
       const strip = el("div", { class: "board-ghost-strip" });
       strip.style.left = `${p.x * PX_PER_UNIT}px`;
       strip.style.top = `${p.y * PX_PER_UNIT}px`;
       strip.append(buildBoardSvg(p.type));
-      ghost.append(strip);
+      applyBoardRotation(strip, p.type, p.rot);
+      m.ghost.append(strip);
     }
-    this.#enterPlacement({
-      kind: "place",
-      kit,
-      ghost,
-      pos: null,
-      legal: false,
-    });
   }
 
   /**
@@ -456,18 +508,35 @@ export class DeskController {
 
   #trackBoardGhost(e) {
     const m = this.#mode;
-    const { width, height } = DeskDoc.kitOutline(m.kit);
+    m.lastEvent = e; // R re-tracks from here, so the ghost spins in place
+    const { width, height } = DeskDoc.kitOutline(m.kit, m.rot);
     const w = this.#deskView.worldFromEvent(e);
-    // Ghost centered on the cursor, snapped to the integer pitch lattice.
-    const x = Math.round(w.x - width / 2);
-    const y = Math.round(w.y - height / 2);
+    // Ghost centered on the cursor, snapped to the integer pitch lattice and
+    // then pulled flush onto any board it can dovetail with — so the ghost
+    // shows the mate BEFORE the click, not as a surprise after it.
+    const { x, y } = this.#pullGhostToMate(
+      m.kit,
+      Math.round(w.x - width / 2),
+      Math.round(w.y - height / 2),
+      m.rot,
+    );
     m.pos = { x, y };
-    m.legal = this.#doc.canPlaceKit(m.kit, x, y);
+    m.legal = this.#doc.canPlaceKit(m.kit, x, y, m.rot);
     m.ghost.hidden = false;
     m.ghost.style.left = `${x * PX_PER_UNIT}px`;
     m.ghost.style.top = `${y * PX_PER_UNIT}px`;
     m.ghost.classList.toggle("board-ghost--legal", m.legal);
     m.ghost.classList.toggle("board-ghost--illegal", !m.legal);
+  }
+
+  /** `#pullToMate` for a kit that is not on the desk yet. */
+  #pullGhostToMate(kit, x, y, rot = 0) {
+    const pull = this.#doc.snapKitAt(kit, x, y, rot);
+    if (pull.dx === 0 && pull.dy === 0) return { x, y };
+    const snapped = { x: x + pull.dx, y: y + pull.dy };
+    return this.#doc.canPlaceKit(kit, snapped.x, snapped.y, rot)
+      ? snapped
+      : { x, y };
   }
 
   #trackBrickGhost(e) {
@@ -556,82 +625,9 @@ export class DeskController {
     m.ghost.classList.toggle("part-ghost--illegal", !m.legal);
   }
 
-  /** Seat (board + anchor) for a part under the cursor, by footprint kind. */
+  /** Seat (board + anchor) for a part under the cursor — see model/seating.js. */
   #partSeatAt(world, ref, grabOffsetCols) {
-    const def = partDef(ref);
-    return def.package
-      ? this.#chipSeatAt(world, def.package, grabOffsetCols)
-      : this.#discreteSeatAt(world, ref, grabOffsetCols);
-  }
-
-  /**
-   * The seat for a chip whose CENTER rides the world point (grabOffsetCols
-   * 0), or whose grab column offset is preserved (drags), or null when the
-   * cursor is off every board or too far from a trench.
-   */
-  #chipSeatAt(world, pkg, grabOffsetCols) {
-    const { halfPins } = packageSpec(pkg);
-    for (const board of this.#doc.boards) {
-      const s = spec(board.type);
-      if (
-        world.x < board.x ||
-        world.x > board.x + s.width ||
-        world.y < board.y ||
-        world.y > board.y + s.height
-      ) {
-        continue;
-      }
-      if (Math.abs(world.y - board.y - s.trench.centerY) > SEAT_BAND) {
-        return null; // on the board but away from the trench (e.g. rails)
-      }
-      if (s.cols < halfPins) return null; // package wider than the board
-      const cursorCol = world.x - board.x - s.colStartX + 1;
-      const anchorCol = Math.round(
-        grabOffsetCols === 0
-          ? cursorCol - (halfPins - 1) / 2 // ghost: chip centered on cursor
-          : cursorCol + grabOffsetCols, // drag: keep the grab point
-      );
-      const clamped = Math.min(s.cols - halfPins + 1, Math.max(1, anchorCol));
-      return { board: board.id, anchor: `e${clamped}` };
-    }
-    return null;
-  }
-
-  /** The seat for a discrete part: nearest grid row under the cursor. */
-  #discreteSeatAt(world, ref, grabOffsetCols) {
-    const offsets = partDef(ref).footprint.offsets;
-    const span = offsets[offsets.length - 1];
-    for (const board of this.#doc.boards) {
-      const s = spec(board.type);
-      if (
-        world.x < board.x ||
-        world.x > board.x + s.width ||
-        world.y < board.y ||
-        world.y > board.y + s.height
-      ) {
-        continue;
-      }
-      let bestRow = null;
-      let bestDist = ROW_BAND;
-      for (const [row, rowY] of Object.entries(s.rowY)) {
-        const dist = Math.abs(world.y - board.y - rowY);
-        if (dist <= bestDist) {
-          bestRow = row;
-          bestDist = dist;
-        }
-      }
-      if (!bestRow) return null; // rails / trench / margins
-      if (s.cols < span + 1) return null;
-      const cursorCol = world.x - board.x - s.colStartX + 1;
-      const anchorCol = Math.round(
-        grabOffsetCols === 0
-          ? cursorCol - span / 2
-          : cursorCol + grabOffsetCols,
-      );
-      const clamped = Math.min(s.cols - span, Math.max(1, anchorCol));
-      return { board: board.id, anchor: `${bestRow}${clamped}` };
-    }
-    return null;
+    return partSeatAt(this.#doc.boards, ref, world, grabOffsetCols);
   }
 
   // ── Rotation while placing / dragging ───────────────────────────────────
@@ -690,6 +686,15 @@ export class DeskController {
     // as a no-op. Falling through would rotate the part BEHIND the drag,
     // remounting its element and stranding the gesture mid-flight.
     if (m && !this.placementArmed) return false;
+    // Placing a rail: R stands it on end (a quarter lap per press) so it can
+    // run down the side of a board as a signal bus. Assembled kits hold a
+    // pin-board and never turn.
+    if (m?.kind === "place" && DeskDoc.canRotateKit(m.kit)) {
+      m.rot = ROTATIONS[(ROTATIONS.indexOf(m.rot) + 1) % ROTATIONS.length];
+      this.#renderBoardGhost(m);
+      if (m.lastEvent) this.#trackBoardGhost(m.lastEvent);
+      return true;
+    }
     // Placing a chip: R flips the ghost before it lands.
     if (m?.kind === "place-chip") {
       m.params = this.#flippedParams(m.params, true);
@@ -770,7 +775,11 @@ export class DeskController {
     );
     const addressed = partPinAddresses({ boards }, comp);
     if (!addressed) return null;
-    const anchorPos = holePosition(board.type, comp.anchor);
+    // Hole ids are stated in the strip's own unrotated frame, so every
+    // holePosition here needs the strip's angle — exactly as partPinAddresses
+    // resolves it. Without it the drawn pins and the addressed ones disagree.
+    const rot = board.rot ?? 0;
+    const anchorPos = holePosition(board.type, comp.anchor, rot);
     if (!anchorPos) return null;
     const out = [];
     for (const [i, { pin, hole, offset }] of pins.entries()) {
@@ -785,7 +794,7 @@ export class DeskController {
         continue;
       }
       // A seated pin lives in a hole of its own board — no hole, no geometry.
-      const pos = holePosition(board.type, hole);
+      const pos = holePosition(board.type, hole, rot);
       if (!pos) return null;
       out.push({ pin, address, x: board.x + pos.x, y: board.y + pos.y });
     }
@@ -1193,7 +1202,7 @@ export class DeskController {
     const netId = this.#netlist.netOf(address);
     const net = netId ? this.#netlist.netInfo(netId) : null;
     // While running, tint the highlight + lead the summary with the level.
-    const level = this.#simRunning ? (this.#simLevels.get(netId) ?? "Z") : null;
+    const level = this.#simOverlay.levelOfNet(netId);
     this.#highlight.show(net, this.#highlightGeometry(), pinned, level);
     if (net) {
       const summary = summarizeNet(net);
@@ -1276,94 +1285,6 @@ export class DeskController {
     }
   }
 
-  /** Level (H/L/Z/X) of the net a point sits in, from the last sim-state. */
-  #levelAt(address) {
-    if (!this.#simNetlist) return null;
-    const netId = this.#simNetlist.netOfPoint.get(address);
-    return netId ? (this.#simLevels.get(netId) ?? null) : null;
-  }
-
-  /** The level a point would sit at from supplies/chip outputs ALONE — i.e.
-      ignoring resistor pulls. A point fed only through a resistor is not
-      strongly driven, which is how an LED tells a safe path from a lethal one. */
-  #strongLevelAt(address) {
-    if (!this.#simNetlist) return null;
-    const netId = this.#simNetlist.netOfPoint.get(address);
-    return netId ? (this.#simStrong.get(netId) ?? null) : null;
-  }
-
-  #onSimState({
-    running,
-    netLevels,
-    strongLevels,
-    chipStatus,
-    netlist,
-    clockLevels,
-  }) {
-    this.#simRunning = running;
-    this.#simLevels = netLevels ?? new Map();
-    this.#simStrong = strongLevels ?? new Map();
-    this.#simNetlist = netlist ?? null;
-
-    // Chip status badges (cleared when not running).
-    for (const view of this.#partViews.values()) view.setStatus?.(null);
-    if (running) {
-      for (const [id, { status }] of chipStatus ?? new Map()) {
-        this.#partViews.get(id)?.setStatus?.(status);
-      }
-    }
-
-    // Clock pulse lamps track their live output level.
-    for (const comp of this.#doc.components) {
-      if (comp.kind !== "clock") continue;
-      const view = this.#partViews.get(comp.id);
-      view?.setLevel?.(running && clockLevels?.get(comp.id) === H);
-    }
-
-    this.#updateLeds();
-    if (this.#probeAnchor) this.#refreshPinnedNet(); // re-tint a pinned net
-  }
-
-  /** An LED lights when its anode net is H and its cathode net is L. */
-  #updateLeds() {
-    const def = partDef("led");
-    for (const comp of this.#doc.components) {
-      if (comp.ref !== "led") continue;
-      const view = this.#partViews.get(comp.id);
-      if (!view?.setLit) continue;
-      if (!this.#simRunning) {
-        view.setLit(false);
-        view.setBurnt?.(false);
-        continue;
-      }
-      const { anodePin, cathodePin } = def.polarity(comp.params);
-      const pins = partPinAddresses(this.#doc, comp);
-      if (!pins) continue; // a rotated LED with an unresolved far end
-      const at = (pin) => pins.find((p) => p.pin === pin)?.address;
-      const anodeAt = at(anodePin);
-      const cathodeAt = at(cathodePin);
-      // A floating leg conducts nothing — the LED stays dark but keeps its
-      // place, exactly as a real one does when you pull its rail away.
-      if (!anodeAt || !cathodeAt) {
-        view.setLit(false);
-        view.setBurnt?.(false);
-        continue;
-      }
-      const conducting =
-        this.#levelAt(anodeAt) === H && this.#levelAt(cathodeAt) === L;
-      // No series resistor: an LED conducting between a STRONGLY driven supply
-      // (rail or chip output) and a strongly grounded net has nothing limiting
-      // it. Anything fed through a resistor is only weakly pulled, so its
-      // strong level is not H/L — that's the safe case.
-      const unlimited =
-        conducting &&
-        this.#strongLevelAt(anodeAt) === H &&
-        this.#strongLevelAt(cathodeAt) === L;
-      view.setBurnt?.(unlimited);
-      view.setLit(conducting && !unlimited);
-    }
-  }
-
   // ── Document mutations (all flow through desk-doc) ─────────────────────
 
   /** Add + mount + select a single strip; emits chiphippo:doc-changed. */
@@ -1381,18 +1302,27 @@ export class DeskController {
    *
    * @returns {Array<object>} the new strips, in kit order.
    */
-  addKitAt(kit, x, y) {
-    const strips = this.#doc.addKit(kit, x, y);
+  addKitAt(kit, x, y, rot = 0) {
+    const strips = this.#doc.addKit(kit, x, y, rot);
     for (const strip of strips) this.#mountBoard(strip);
-    // A loose strip dropped flush against a board mates with it, as the real
-    // dovetailed part does — it joins that board's group and they drag as one
-    // unit. Assembled kits stay standoffish: Feature 120 generalises mating to
-    // every strip, alongside the gesture to pull a stack apart again.
-    if (strips.length === 1) this.#doc.joinMatedGroup(strips[0].id);
+    // Anything dropped flush against a board mates with it, as the real
+    // dovetailed part does — the strips join that board's group and drag as
+    // one unit from here on. A whole kit mates the same way a lone strip
+    // does; placing and dropping follow the ONE rule.
+    this.#mateStrips(strips.map((s) => s.id));
     const pins = strips.find((s) => spec(s.type).kind === "pins") ?? strips[0];
     this.selectBoard(pins.id);
     this.#emitDocChanged();
     return strips;
+  }
+
+  /**
+   * Offer every strip in `ids` to the mating rule. Strips of the same set
+   * already share a group, so the joins compose: whatever any of them
+   * dovetails with ends up in one unit.
+   */
+  #mateStrips(ids) {
+    for (const id of ids) this.#doc.joinMatedGroup(id);
   }
 
   /** Seat + mount + select a board part; emits chiphippo:doc-changed. */
@@ -1417,11 +1347,6 @@ export class DeskController {
     this.selectComponent(brick.id);
     this.#emitDocChanged();
     return brick;
-  }
-
-  /** Drop a PSU brick (back-compat name). */
-  addPsuAt(x, y, params = {}) {
-    return this.addBrickAt("psu", x, y, params);
   }
 
   /**
@@ -1698,7 +1623,15 @@ export class DeskController {
   #repositionBoardParts(boardId, x, y) {
     const board = this.#doc.getBoard(boardId);
     if (!board) return;
-    const origin = { id: board.id, type: board.type, x, y };
+    // A drag moves a strip, never turns it — but the override stands in for
+    // the whole board downstream, so it carries the angle too.
+    const origin = {
+      id: board.id,
+      type: board.type,
+      x,
+      y,
+      rot: board.rot ?? 0,
+    };
     for (const comp of this.#doc.componentsOnBoard(boardId)) {
       const view = this.#partViews.get(comp.id);
       if (view) this.#placePartView(view, comp, origin);
@@ -1740,6 +1673,9 @@ export class DeskController {
       legal: true,
       active: false,
     };
+    // …and the highlighter re-traces that set, so an Option grab shows the
+    // torn-off run's edge rather than the whole group's.
+    this.#refreshBoardOutline();
     // Closed hand from the moment the board is grabbed (before any drag).
     this.#viewport.classList.add("desk-viewport--dragging");
     try {
@@ -1765,19 +1701,33 @@ export class DeskController {
       for (const m of d.members) this.#views.get(m.id)?.setDragging(true);
     }
     const w = this.#deskView.worldFromEvent(e);
-    // The group rides the pointer, snapped live to the pitch lattice.
-    d.delta = {
+    // The group rides the pointer, snapped live to the pitch lattice, then
+    // pulled the last pitch or two onto a strip it can dovetail with.
+    const ids = d.members.map((m) => m.id);
+    d.delta = this.#pullToMate(ids, {
       dx: Math.round(w.x - d.startWorld.x),
       dy: Math.round(w.y - d.startWorld.y),
-    };
-    d.legal = this.#doc.canMoveBoardsBy(
-      d.members.map((m) => m.id),
-      d.delta.dx,
-      d.delta.dy,
-    );
+    });
+    d.legal = this.#doc.canMoveBoardsBy(ids, d.delta.dx, d.delta.dy);
     // Wires with an endpoint on any member follow it live.
     this.#wireLayer.render(this.#applyDragDelta(d, d.delta));
   };
+
+  /**
+   * Magnetic mating: a set dragged within a pitch or two of an edge it can
+   * dovetail with is pulled the rest of the way, so dropping two boards side
+   * by side joins them without pixel-perfect aim. The pull is abandoned if it
+   * would land the set on top of something — a snap must never be the reason
+   * a legal drop turns illegal.
+   */
+  #pullToMate(ids, delta) {
+    const pull = this.#doc.snapBoardsBy(ids, delta.dx, delta.dy);
+    if (pull.dx === 0 && pull.dy === 0) return delta;
+    const snapped = { dx: delta.dx + pull.dx, dy: delta.dy + pull.dy };
+    return this.#doc.canMoveBoardsBy(ids, snapped.dx, snapped.dy)
+      ? snapped
+      : delta;
+  }
 
   /**
    * Move every dragged strip's view (and its seated parts) by a delta from
@@ -1789,10 +1739,12 @@ export class DeskController {
       const pos = { x: m.ox + dx, y: m.oy + dy };
       const view = this.#views.get(m.id);
       view?.setPosition(pos.x, pos.y);
-      view?.setIllegal(!d.legal);
       this.#repositionBoardParts(m.id, pos.x, pos.y);
       overrides.set(m.id, pos);
     }
+    // The highlighter rides the set and reddens on an illegal drop — one
+    // shape for the whole unit, so no seams appear between flush strips.
+    this.#refreshBoardOutline(overrides);
     return overrides;
   }
 
@@ -1817,7 +1769,6 @@ export class DeskController {
     for (const m of d.members) {
       const memberView = this.#views.get(m.id);
       memberView?.setDragging(false);
-      memberView?.setIllegal(false);
       memberView?.setDragSet(false);
     }
     if (!d.active) return; // plain click — selection already happened
@@ -1827,11 +1778,12 @@ export class DeskController {
     if (!cancelled && d.legal && moved) {
       // Moving only part of a group tears the snap — desk-doc re-derives the
       // groups on both sides of the break.
-      this.#doc.moveBoardsBy(
-        d.members.map((m) => m.id),
-        d.delta.dx,
-        d.delta.dy,
-      );
+      const ids = d.members.map((m) => m.id);
+      this.#doc.moveBoardsBy(ids, d.delta.dx, d.delta.dy);
+      // Landing flush against a strip it dovetails with mates the two, as
+      // dropping the real parts side by side does. Every dropped strip is
+      // offered, so a kit that touches on more than one edge joins them all.
+      this.#mateStrips(ids);
       this.#applyDragDelta(d, d.delta);
       this.#emitDocChanged(); // WireLayer re-renders from this
     } else {
@@ -1917,13 +1869,16 @@ export class DeskController {
       };
     } else {
       const board = this.#doc.getBoard(comp.board);
-      const s = spec(board.type);
-      const anchorCol = Number(
-        (
-          CHIP_ANCHOR_RE.exec(comp.anchor) ?? GRID_ANCHOR_RE.exec(comp.anchor)
-        ).slice(-1)[0],
-      );
-      const cursorCol = w.x - board.x - s.colStartX + 1;
+      // A grid anchor is the ONE thing a footprint drag needs: the column the
+      // part is pinned at, so the grab point stays under the finger. A part
+      // whose anchor doesn't parse (only reachable from a hand-edited file)
+      // is left where it is — the press just selects it.
+      const seat = parseHole(board.type, comp.anchor);
+      if (seat?.kind !== "grid") {
+        e.stopPropagation();
+        return;
+      }
+      const cursorCol = columnAt(board.type, w.x - board.x);
       this.#mode = {
         kind: "drag-part",
         id,
@@ -1931,7 +1886,7 @@ export class DeskController {
         pointerId: e.pointerId,
         startClientX: e.clientX,
         startClientY: e.clientY,
-        grabOffsetCols: anchorCol - cursorCol,
+        grabOffsetCols: seat.col - cursorCol,
         origin: { board: comp.board, anchor: comp.anchor },
         seat: { board: comp.board, anchor: comp.anchor },
         legal: true,
@@ -2630,7 +2585,7 @@ export class DeskController {
     if (!m.legal) return; // stay armed, the tint explains why
     this.cancelPlacement();
     if (m.kind === "place") {
-      this.addKitAt(m.kit, m.pos.x, m.pos.y);
+      this.addKitAt(m.kit, m.pos.x, m.pos.y, m.rot);
     } else if (m.kind === "place-brick") {
       this.addBrickAt(m.ref, m.pos.x, m.pos.y, m.params);
     } else if (m.kind === "place-part") {
@@ -2680,24 +2635,10 @@ export class DeskController {
 
   // ── Hover addressing (holes, part pins, PSU terminals — pure math) ──────
 
-  /** The board + hole under a world point (boards never overlap). */
+  /** The board + hole under a world point — see occupancy.js holeAtWorld(),
+      the one authority (this used to be a second, subtly different scan). */
   #holeAtWorld(world) {
-    for (const board of this.#doc.boards) {
-      const s = spec(board.type);
-      if (
-        world.x < board.x ||
-        world.x > board.x + s.width ||
-        world.y < board.y ||
-        world.y > board.y + s.height
-      ) {
-        continue;
-      }
-      const hole = holeAt(board.type, world.x - board.x, world.y - board.y);
-      if (!hole) return null;
-      const pos = holePosition(board.type, hole);
-      return { board, hole, x: board.x + pos.x, y: board.y + pos.y };
-    }
-    return null;
+    return holeAtWorld(this.#doc.boards, world.x, world.y);
   }
 
   /**
@@ -2788,6 +2729,9 @@ export class DeskController {
   }
 
   #emitDocChanged() {
+    // Boards may have moved, been torn out of a group, or been deleted —
+    // re-trace the highlighter before anyone renders from the new document.
+    this.#refreshBoardOutline();
     window.dispatchEvent(new CustomEvent("chiphippo:doc-changed"));
   }
 }

@@ -175,9 +175,29 @@ export function buildBoardSvg(type) {
   return svg;
 }
 
+/**
+ * Spin a strip element a quarter lap at a time. The SVG is built ONCE in the
+ * strip's own frame and turned with a CSS transform; the translate keeps it
+ * pinned to its top-left corner, so `left`/`top` still mean the board origin
+ * at every angle — which is exactly what holePosition assumes. Shared by the
+ * placed view and the placement ghost so the two can never disagree.
+ */
+export function applyBoardRotation(element, type, rot) {
+  const { width, height } = spec(type);
+  const [w, h] = [width * PX_PER_UNIT, height * PX_PER_UNIT];
+  const transform = {
+    90: `translateX(${h}px) rotate(90deg)`,
+    180: `translate(${w}px, ${h}px) rotate(180deg)`,
+    270: `translateY(${w}px) rotate(270deg)`,
+  }[rot];
+  element.style.transform = transform ?? "";
+  element.style.transformOrigin = "0 0";
+}
+
 export class BreadboardView {
   #el;
   #id;
+  #type;
 
   /**
    * @param {HTMLElement} layer - the `.layer-boards` element to mount into.
@@ -188,8 +208,10 @@ export class BreadboardView {
    */
   constructor(layer, board, { onPointerDown, onContextMenu } = {}) {
     this.#id = board.id;
+    this.#type = board.type;
     this.#el = el("div", { class: "board", dataset: { boardId: board.id } });
     this.#el.append(buildBoardSvg(board.type));
+    this.setRotation(board.rot ?? 0);
     this.setPosition(board.x, board.y);
     this.#el.addEventListener("pointerdown", (e) =>
       onPointerDown?.(this.#id, e),
@@ -214,6 +236,16 @@ export class BreadboardView {
     this.#el.style.top = `${y * PX_PER_UNIT}px`;
   }
 
+  /**
+   * Turn the strip a quarter lap at a time. The SVG is built ONCE in the
+   * strip's own frame and spun with a CSS transform — the translate keeps the
+   * turned strip pinned to its top-left corner, so `left`/`top` still mean the
+   * board origin at every angle (which is exactly what holePosition assumes).
+   */
+  setRotation(rot) {
+    applyBoardRotation(this.#el, this.#type, rot);
+  }
+
   setSelected(on) {
     this.#el.classList.toggle("board--selected", on);
   }
@@ -225,10 +257,6 @@ export class BreadboardView {
   /** Part of the set the current grab will move — lit as one block. */
   setDragSet(on) {
     this.#el.classList.toggle("board--drag-set", on);
-  }
-
-  setIllegal(on) {
-    this.#el.classList.toggle("board--illegal", on);
   }
 
   remove() {
