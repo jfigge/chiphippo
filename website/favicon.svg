@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Chip Hippo app icon">
+  <title>Chip Hippo icon</title>
+  <rect x="0" y="0" width="512" height="512" rx="114" fill="#2F855A"/>
+  <!-- ears -->
+  <circle cx="170" cy="146" r="40" fill="#FFFFFF"/>
+  <circle cx="342" cy="146" r="40" fill="#FFFFFF"/>
+  <!-- head -->
+  <rect x="144" y="140" width="224" height="190" rx="74" fill="#FFFFFF"/>
+  <rect x="118" y="260" width="276" height="150" rx="74" fill="#FFFFFF"/>
+  <!-- eyes -->
+  <circle cx="201" cy="198" r="17" fill="#1C1C1C"/>
+  <circle cx="311" cy="198" r="17" fill="#1C1C1C"/>
+  <!-- DIP chip across the snout: the 74xx motif -->
+  <g>
+    <rect x="200" y="306" width="14" height="18" fill="#8F969E"/>
+    <rect x="232" y="306" width="14" height="18" fill="#8F969E"/>
+    <rect x="264" y="306" width="14" height="18" fill="#8F969E"/>
+    <rect x="296" y="306" width="14" height="18" fill="#8F969E"/>
+    <rect x="200" y="368" width="14" height="18" fill="#8F969E"/>
+    <rect x="232" y="368" width="14" height="18" fill="#8F969E"/>
+    <rect x="264" y="368" width="14" height="18" fill="#8F969E"/>
+    <rect x="296" y="368" width="14" height="18" fill="#8F969E"/>
+    <rect x="186" y="320" width="140" height="52" rx="8" fill="#23272B"/>
+    <circle cx="186" cy="346" r="11" fill="#FFFFFF"/>
+    <circle cx="207" cy="361" r="5" fill="#FFFFFF" opacity="0.85"/>
+  </g>
+</svg>

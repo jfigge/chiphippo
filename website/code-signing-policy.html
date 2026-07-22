@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <meta name="description" content="Chip Hippo's code signing policy: how release binaries are built and signed, and how to verify a download you received is genuine." />
+  <title>Code Signing Policy — Chip Hippo</title>
+  <link rel="canonical" href="https://chiphippo.com/code-signing-policy.html" />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Chip Hippo" />
+  <meta property="og:title" content="Code Signing Policy — Chip Hippo" />
+  <meta property="og:description" content="How Chip Hippo release binaries are built and signed, and how to verify a download is genuine." />
+  <meta property="og:url" content="https://chiphippo.com/code-signing-policy.html" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:#1c1c1c; --mantle:#161616; --crust:#101010;
+      --surface-0:#2a2a2a; --surface-1:#383838; --overlay-0:#686868;
+      --text:#e8e8e8; --subtext:#b0b0b0; --accent:#3fb950; --green:#56d364; --yellow:#d4b060;
+    }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg); color: var(--text); line-height: 1.6;
+      min-height: 100vh; display: flex; flex-direction: column;
+    }
+    nav {
+      background: var(--mantle); border-bottom: 1px solid var(--surface-0);
+      position: sticky; top: 0; z-index: 100; padding: 0 2rem;
+      display: flex; align-items: center; justify-content: space-between; height: 58px;
+    }
+    .nav-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+    .logo-mark { width: 32px; height: 32px; border-radius: 8px; overflow: hidden; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .nav-wordmark { font-size: 1.2rem; font-weight: 800; color: var(--text); letter-spacing: -0.5px; }
+    .nav-right { display: flex; align-items: center; gap: 1.5rem; }
+    .nav-link { color: var(--subtext); text-decoration: none; font-size: 0.875rem; transition: color 0.15s; }
+    .nav-link:hover { color: var(--text); }
+    .btn { display: inline-flex; align-items: center; gap: 7px; padding: 8px 18px; border-radius: 8px; font-size: 0.875rem; font-weight: 600; text-decoration: none; cursor: pointer; border: none; line-height: 1; transition: background 0.15s, transform 0.15s; }
+    .btn-primary { background: var(--accent); color: var(--crust); }
+    .btn-primary:hover { background: var(--green); transform: translateY(-1px); }
+    .page { flex: 1; max-width: 800px; width: 100%; margin: 0 auto; padding: 64px 2rem 80px; }
+    .page-tag { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: var(--accent); margin-bottom: 12px; }
+    .page h1 { font-size: clamp(2rem, 5vw, 3rem); font-weight: 900; letter-spacing: -1.5px; line-height: 1.1; margin-bottom: 12px; }
+    .updated { font-size: 0.85rem; color: var(--overlay-0); margin-bottom: 32px; }
+    .tldr { display: flex; gap: 14px; align-items: flex-start; background: color-mix(in srgb, var(--yellow) 9%, var(--mantle)); border: 1px solid color-mix(in srgb, var(--yellow) 32%, transparent); border-radius: 12px; padding: 18px 20px; margin-bottom: 44px; }
+    .tldr svg { flex-shrink: 0; color: var(--yellow); margin-top: 2px; }
+    .tldr-body { font-size: 0.95rem; color: var(--subtext); }
+    .tldr-body strong { color: var(--text); font-weight: 700; }
+    .page h2 { font-size: 1.3rem; font-weight: 800; letter-spacing: -0.4px; margin: 40px 0 14px; padding-bottom: 8px; border-bottom: 1px solid var(--surface-0); }
+    .page h3 { font-size: 1.02rem; font-weight: 700; color: var(--text); margin: 22px 0 6px; }
+    .page p { color: var(--subtext); margin-bottom: 14px; }
+    .page ul { color: var(--subtext); margin: 0 0 16px; padding-left: 22px; }
+    .page li { margin-bottom: 8px; }
+    .page a { color: var(--accent); text-decoration: none; }
+    .page a:hover { text-decoration: underline; }
+    .page strong { color: var(--text); }
+    .page code { font-size: 0.85em; background: var(--surface-0); padding: 1px 5px; border-radius: 3px; color: var(--accent); }
+    footer { background: var(--crust); border-top: 1px solid var(--surface-0); padding: 48px 2rem; text-align: center; }
+    .footer-inner { max-width: 700px; margin: 0 auto; }
+    .footer-logo { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 16px; }
+    .footer-name { font-size: 1.1rem; font-weight: 800; color: var(--text); }
+    footer p { color: var(--overlay-0); font-size: 0.83rem; line-height: 1.8; }
+    footer a { color: var(--accent); text-decoration: none; }
+    @media (max-width: 640px) { nav { padding: 0 1rem; } .nav-right .nav-link { display: none; } .page { padding: 44px 1rem 64px; } }
+  </style>
+</head>
+<body>
+
+<nav>
+  <a class="nav-logo" href="/">
+    <span class="logo-mark">
+      <svg width="32" height="32" viewBox="0 0 512 512" role="img" aria-label="Chip Hippo">
+        <rect x="0" y="0" width="512" height="512" rx="114" fill="#2F855A"/>
+        <circle cx="170" cy="146" r="40" fill="#FFFFFF"/><circle cx="342" cy="146" r="40" fill="#FFFFFF"/>
+        <rect x="144" y="140" width="224" height="190" rx="74" fill="#FFFFFF"/>
+        <rect x="118" y="260" width="276" height="150" rx="74" fill="#FFFFFF"/>
+        <circle cx="201" cy="198" r="17" fill="#1C1C1C"/><circle cx="311" cy="198" r="17" fill="#1C1C1C"/>
+        <rect x="186" y="320" width="140" height="52" rx="8" fill="#23272B"/>
+        <circle cx="186" cy="346" r="11" fill="#FFFFFF"/>
+      </svg>
+    </span>
+    <span class="nav-wordmark">Chip Hippo</span>
+  </a>
+  <div class="nav-right">
+    <a class="nav-link" href="/#features">Features</a>
+    <a class="nav-link" href="/#downloads">Downloads</a>
+    <a class="nav-link" href="https://github.com/jfigge/chiphippo" rel="noopener noreferrer">GitHub</a>
+    <a class="btn btn-primary" href="/#downloads">Download</a>
+  </div>
+</nav>
+
+<main class="page">
+  <p class="page-tag">Security</p>
+  <h1>Code Signing Policy</h1>
+  <p class="updated">Last updated: July 22, 2026</p>
+
+  <div class="tldr" role="note">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+    </svg>
+    <p class="tldr-body">
+      <strong>The short version:</strong> Chip Hippo is in <strong>pre-release</strong>, and
+      its installers are <strong>not yet code-signed</strong>. macOS and Windows will warn
+      you before running an unsigned app — that's expected. Every build is produced in the
+      open by GitHub Actions straight from the public source, so you can verify it yourself
+      or build from source. Signing is wired into the release pipeline and switches on once
+      certificates are configured.
+    </p>
+  </div>
+
+  <p>
+    <strong>Chip Hippo</strong> is a free, open-source (Apache-2.0) desktop app for
+    designing and simulating 74xx TTL logic circuits, built and maintained by Jason Figge.
+    This page documents how its release binaries are produced and signed, and how you can
+    verify a download you received is genuine.
+  </p>
+
+  <h2>1. Current status — unsigned pre-release</h2>
+  <p>
+    While the app is pre-1.0, published installers are shipped <strong>unsigned</strong>.
+    That means:
+  </p>
+  <ul>
+    <li>
+      <strong>macOS</strong> Gatekeeper will say the app “cannot be opened because the
+      developer cannot be verified.” Right-click (or Control-click) the app and choose
+      <em>Open</em>, then confirm — you only need to do this the first time.
+    </li>
+    <li>
+      <strong>Windows</strong> SmartScreen will show a blue “Windows protected your PC”
+      prompt. Click <em>More info → Run anyway</em> to launch it.
+    </li>
+    <li>
+      <strong>Linux</strong> packages are not code-signed (Linux uses distribution-level
+      trust); make an AppImage executable with <code>chmod +x</code>, or install the
+      <code>.deb</code> with your package manager.
+    </li>
+  </ul>
+
+  <h2>2. How builds are produced</h2>
+  <p>
+    Installers are never built on a personal machine. Every release is built by a
+    <a href="https://github.com/jfigge/chiphippo/actions" rel="noopener noreferrer">GitHub Actions</a>
+    workflow running on GitHub-hosted runners, from a tagged commit in the public
+    <a href="https://github.com/jfigge/chiphippo" rel="noopener noreferrer">source repository</a> —
+    macOS on a macOS runner, Windows on a Windows runner, Linux on a Linux runner. The
+    build configuration (the <code>Makefile</code> and <code>.github/workflows</code>) is
+    part of that public repository and is fully auditable.
+  </p>
+
+  <h2>3. When signing turns on</h2>
+  <p>
+    The release pipeline already contains the signing steps; they are gated on
+    credentials being present, so they activate without any code change once the
+    certificates are configured:
+  </p>
+  <ul>
+    <li>
+      <strong>macOS</strong> — builds will be signed with an Apple <strong>Developer ID</strong>
+      certificate and notarized by Apple, so Gatekeeper opens them without a warning.
+    </li>
+    <li>
+      <strong>Windows</strong> — installers will be Authenticode-signed and timestamped.
+      When signing is provided through a foundation program for open-source projects, the
+      verified publisher Windows shows may be that foundation rather than “Jason Figge” —
+      that is normal and is itself a trust signal that the build came through the reviewed
+      release pipeline.
+    </li>
+  </ul>
+  <p>
+    This page will be updated with the exact signing details (and the expected publisher
+    name) when signing is enabled.
+  </p>
+
+  <h2>4. Where to get genuine builds</h2>
+  <p>
+    Only download Chip Hippo from official sources: the
+    <a href="/#downloads">chiphippo.com downloads section</a> (which links to GitHub) and
+    the project's
+    <a href="https://github.com/jfigge/chiphippo/releases" rel="noopener noreferrer">GitHub Releases</a>.
+    Binaries obtained anywhere else are not covered by this policy and should not be trusted.
+  </p>
+
+  <h2>5. Verifying a download</h2>
+  <p>
+    Because the current builds are unsigned, verify integrity against the checksums
+    published with each release. Every GitHub Release includes electron-updater metadata
+    (<code>latest.yml</code> / <code>latest-mac.yml</code> / <code>latest-linux.yml</code>)
+    containing the SHA-512 hash and size of each installer. Compute the hash of your
+    download and confirm it matches:
+  </p>
+  <ul>
+    <li><strong>macOS / Linux:</strong> <code>shasum -a 512 &lt;file&gt;</code> (then base64-encode to compare, or compare the raw hash).</li>
+    <li><strong>Windows:</strong> <code>certutil -hashfile &lt;file&gt; SHA512</code>.</li>
+  </ul>
+  <p>
+    When in doubt, you can always
+    <a href="https://github.com/jfigge/chiphippo" rel="noopener noreferrer">build from source</a>
+    with <code>make dist-mac</code> / <code>dist-linux</code> / <code>dist-win</code>.
+  </p>
+
+  <h2>6. Reporting a problem</h2>
+  <p>
+    If you find a binary that claims to be Chip Hippo but is signed by an unexpected
+    publisher, fails checksum verification, or is otherwise suspicious, open an issue on
+    <a href="https://github.com/jfigge/chiphippo/issues" rel="noopener noreferrer">GitHub</a>.
+    Because the project is open source, the entire build and signing configuration is public
+    and auditable in the repository.
+  </p>
+</main>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo">
+      <span class="logo-mark">
+        <svg width="28" height="28" viewBox="0 0 512 512" role="img" aria-label="Chip Hippo">
+          <rect x="0" y="0" width="512" height="512" rx="114" fill="#2F855A"/>
+          <circle cx="170" cy="146" r="40" fill="#FFFFFF"/><circle cx="342" cy="146" r="40" fill="#FFFFFF"/>
+          <rect x="144" y="140" width="224" height="190" rx="74" fill="#FFFFFF"/>
+          <rect x="118" y="260" width="276" height="150" rx="74" fill="#FFFFFF"/>
+          <circle cx="201" cy="198" r="17" fill="#1C1C1C"/><circle cx="311" cy="198" r="17" fill="#1C1C1C"/>
+          <rect x="186" y="320" width="140" height="52" rx="8" fill="#23272B"/>
+          <circle cx="186" cy="346" r="11" fill="#FFFFFF"/>
+        </svg>
+      </span>
+      <span class="footer-name">Chip Hippo</span>
+    </div>
+    <p style="margin-bottom:14px">
+      <a href="/">Home</a>
+      &nbsp;·&nbsp;
+      <a href="https://github.com/jfigge/chiphippo" rel="noopener noreferrer">GitHub</a>
+      &nbsp;·&nbsp;
+      <a href="https://github.com/sponsors/jfigge" rel="noopener noreferrer">Donate</a>
+      &nbsp;·&nbsp;
+      <a href="/privacy.html">Privacy</a>
+      &nbsp;·&nbsp;
+      <a href="https://github.com/jfigge/chiphippo/issues" rel="noopener noreferrer">Contact</a>
+    </p>
+    <p>Copyright &copy; 2026 Jason Figge. Released under the Apache 2.0 License.<br>
+    Built with Electron &amp; Vanilla JS. No telemetry, no accounts, fully offline.</p>
+  </div>
+</footer>
+
+</body>
+</html>

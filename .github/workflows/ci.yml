@@ -1,0 +1,111 @@
+name: CI
+
+on:
+  push:
+    # Only branch pushes to main; tag pushes are handled by release.yml, and an
+    # unqualified `push:` would build every branch and tag (and double-build
+    # release tags).
+    branches: [main]
+  pull_request:
+
+# Least privilege: no CI job writes repo contents, so drop the token to
+# read-only rather than inheriting the repo/org default scope.
+permissions:
+  contents: read
+
+# Cancel superseded runs on the same ref to save runner minutes.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # Electron 42 bundles Node 22; match it for CI parity with the runtime.
+  NODE_VERSION: "22"
+
+jobs:
+  # ── Format, lint, and the full test suite ───────────────────────────────────
+  check:
+    name: Lint, format & test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: src/package-lock.json
+
+      - name: Install dependencies
+        run: make install
+
+      - name: Lint
+        run: make lint
+
+      - name: Check formatting
+        run: make fmt-check
+
+      - name: Test
+        run: |
+          set -o pipefail
+          make test 2>&1 | tee test-output.log
+
+      - name: Upload test output on failure
+        if: failure()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: test-output
+          path: test-output.log
+          if-no-files-found: ignore
+
+  # ── Verify the Electron app packages on all three desktop platforms ─────────
+  build:
+    name: Build (${{ matrix.os }})
+    needs: check
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Only the 1× Linux packaging smoke-test runs by default, to conserve
+        # GitHub Actions minutes (macOS is 10×, Windows 2×). To restore full
+        # cross-platform CI, uncomment the macos-latest and windows-latest
+        # entries below.
+        include:
+          # - os: macos-latest
+          #   target: build-mac
+          - os: ubuntu-latest
+            target: build-linux
+          # - os: windows-latest
+          #   target: build-win
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+
+      - name: Set up Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: src/package-lock.json
+
+      # Windows runners lack make, rsync, and a make-compatible /bin/bash. MSYS2
+      # provides all three so the existing `make build-win` recipe runs unchanged.
+      - name: Set up MSYS2 (Windows)
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@66cd2cce69caa17b53920067426061ca1de3a884 # v2
+        with:
+          msystem: UCRT64
+          install: make rsync
+          path-type: inherit
+
+      - name: Build (Windows)
+        if: runner.os == 'Windows'
+        shell: "msys2 {0}"
+        run: make ${{ matrix.target }}
+
+      - name: Build (macOS / Linux)
+        if: runner.os != 'Windows'
+        run: make ${{ matrix.target }}

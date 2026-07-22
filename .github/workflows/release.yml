@@ -1,0 +1,155 @@
+name: Release
+
+# Trigger a full release by pushing a version tag, e.g.:
+#   git tag v0.2.0 && git push origin v0.2.0
+# `workflow_dispatch` also lets you run the build manually from the Actions tab
+# to smoke-test packaging — that path builds installers but does NOT publish a
+# GitHub Release (only tag pushes do).
+#
+# Code signing is driven entirely by repository secrets: when a secret is empty
+# the build still succeeds, just unsigned, so this workflow works before any
+# certificate is configured. Add these to enable macOS Developer ID signing
+# (Settings → Secrets and variables → Actions):
+#
+#   CSC_LINK           base64 of the Developer ID Application .p12
+#   CSC_KEY_PASSWORD   its export password
+#
+# Windows and Linux artifacts ship unsigned for now (see the website's
+# code-signing policy). The installer's internal version comes from
+# src/package.json ("version"), so bump that to match the tag before tagging.
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read # the build job only reads; the release job elevates below
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: "22"
+
+jobs:
+  # ── Build real installers on each native runner ─────────────────────────────
+  build:
+    name: Build installers (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: dist-mac
+          - os: ubuntu-latest
+            target: dist-linux
+          - os: windows-latest
+            target: dist-win
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          fetch-depth: 0 # full history so `git describe --tags` resolves VERSION
+
+      - name: Set up Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: src/package-lock.json
+
+      # Windows runners lack make/rsync/bash; MSYS2 provides them so the same
+      # `make dist-win` recipe runs unchanged (see ci.yml for the rationale).
+      - name: Set up MSYS2 (Windows)
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@66cd2cce69caa17b53920067426061ca1de3a884 # v2
+        with:
+          msystem: UCRT64
+          install: make rsync
+          path-type: inherit
+
+      - name: Build installers (Windows)
+        if: runner.os == 'Windows'
+        shell: "msys2 {0}"
+        run: make ${{ matrix.target }}
+
+      - name: Build installers (macOS / Linux)
+        if: runner.os != 'Windows'
+        # Developer ID signing is enabled only when a cert is present; otherwise
+        # auto-discovery is forced off so the macOS build cleanly skips signing
+        # instead of hunting for an identity. Linux ignores all of these.
+        env:
+          CSC_LINK: ${{ secrets.CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          CSC_IDENTITY_AUTO_DISCOVERY: ${{ secrets.CSC_LINK != '' }}
+        run: make ${{ matrix.target }}
+
+      - name: Upload installers
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: installers-${{ matrix.os }}
+          path: |
+            build/src/dist/*.dmg
+            build/src/dist/*.zip
+            build/src/dist/*.AppImage
+            build/src/dist/*.deb
+            build/src/dist/*.exe
+            build/src/dist/latest*.yml
+            build/src/dist/*.blockmap
+          if-no-files-found: error
+          # A hand-off to the `release` job within the same run (which attaches
+          # them to the GitHub Release — Release assets don't count against
+          # Actions storage). Expire fast so workflow_dispatch smoke builds don't
+          # accumulate; same-run downloads work regardless of retention.
+          retention-days: 1
+
+  # ── Publish a GitHub Release with every platform's installers attached ──────
+  # Only runs for tag pushes; manual dispatch stops after the build job above.
+  release:
+    name: Publish GitHub Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all installers
+        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v6
+        with:
+          path: artifacts
+          pattern: installers-*
+
+      - name: Publish release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          files: artifacts/**/*
+          draft: false
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+
+  # ── Refresh the website now that the Release is published ───────────────────
+  # deploy-site.yml's `push: main` trigger runs ~before this Release exists (on
+  # the version-bump commit), so it would capture the OLD version. GitHub never
+  # starts a workflow from an event created by the default GITHUB_TOKEN (so a
+  # `release: published` trigger would silently never fire), but workflow_dispatch
+  # IS the sanctioned exception and fires with the built-in token — so we dispatch
+  # deploy-site explicitly here to pick up the just-published Release.
+  refresh-site:
+    name: Refresh website
+    needs: release
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write # POST .../actions/workflows/{id}/dispatches
+    steps:
+      - name: Trigger Deploy Website
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run deploy-site.yml --ref main --repo "${{ github.repository }}"

@@ -142,6 +142,21 @@ build-mac: build-setup build-install
 	@echo "  → $(BUILD_DIR)/src/dist/"
 	@echo "--------------------------------"
 
+# Per-platform `--dir` packaging smoke-tests (no installer). CI runs the matching
+# one on each native runner to prove the app packs; a given host can only build
+# its own platform (mac needs macOS, etc.).
+build-linux: build-setup build-install
+	@echo "Building Electron app for Linux (dir, unsigned)..."
+	@cd $(BUILD_DIR)/src; env $(UNSIGNED_ENV) npx electron-builder --linux --dir --publish never
+	@echo "  → $(BUILD_DIR)/src/dist/"
+	@echo "--------------------------------"
+
+build-win: build-setup build-install
+	@echo "Building Electron app for Windows (dir, unsigned)..."
+	@cd $(BUILD_DIR)/src; env $(UNSIGNED_ENV) npx electron-builder --win --dir --publish never
+	@echo "  → $(BUILD_DIR)/src/dist/"
+	@echo "--------------------------------"
+
 dmg: build-setup build-install
 	@echo "Building macOS .dmg (unsigned, un-notarized)…"
 	@cd $(BUILD_DIR)/src; env $(UNSIGNED_ENV) npx electron-builder --mac dmg --publish never -c.mac.notarize=false
@@ -170,6 +185,48 @@ build-install:
 	@cd $(BUILD_DIR)/src; npm install > /dev/null
 	@echo "--------------------------------"
 
+# ─── Distribution packages ────────────────────────────────────────────────────
+# Real installers per platform — the entrypoints the Release workflow runs on
+# native runners. `dist` builds all three, but a given host can only build its
+# own (a mac .dmg needs macOS, an .exe needs a Windows runner, etc.).
+#
+# Signing is driven by the ENVIRONMENT, not forced off like the convenience
+# builds above: dist-mac signs + when creds are present. macOS reads CSC_LINK /
+# CSC_KEY_PASSWORD (a Developer ID .p12) — absent ⇒ electron-builder emits an
+# unsigned .app with no failure, so this works before any certificate exists (in
+# CI those come from repository secrets; see .github/workflows/release.yml).
+# Notarization stays off for now (it needs hardenedRuntime + entitlements).
+dist: dist-mac dist-linux dist-win
+
+dist-mac: build-setup build-install
+	@echo "Building macOS distribution (dmg + zip; signed if a cert is present)..."
+	@cd $(BUILD_DIR)/src; npx electron-builder --mac --publish never -c.mac.notarize=false
+	@echo "  → $(BUILD_DIR)/src/dist/"
+	@echo "--------------------------------"
+
+dist-linux: build-setup build-install
+	@echo "Building Linux distribution (AppImage + deb)..."
+	@cd $(BUILD_DIR)/src; npx electron-builder --linux --publish never
+	@echo "  → $(BUILD_DIR)/src/dist/"
+	@echo "--------------------------------"
+
+dist-win: build-setup build-install
+	@echo "Building Windows distribution (nsis installer + portable)..."
+	@cd $(BUILD_DIR)/src; npx electron-builder --win --publish never
+	@echo "  → $(BUILD_DIR)/src/dist/"
+	@echo "--------------------------------"
+
+# ─── Website ──────────────────────────────────────────────────────────────────
+# Regenerate website/versions.json from the GitHub Releases API so the download
+# buttons + version history track real release assets. Needs a token to avoid the
+# unauthenticated rate limit:  GITHUB_TOKEN=$(gh auth token) make site
+# CI runs this in .github/workflows/deploy-site.yml, then publishes website/ to
+# GitHub Pages (chiphippo.com). The custom domain comes from website/CNAME.
+site:
+	@echo "Regenerating website/versions.json from GitHub Releases..."
+	@node $(WORKSPACE)/scripts/build-versions.mjs --repo jfigge/chiphippo --out $(WORKSPACE)/website/versions.json
+	@echo "--------------------------------"
+
 # ─── Clean ────────────────────────────────────────────────────────────────────
 clean:
 	@echo "Cleaning build artifacts..."
@@ -192,12 +249,20 @@ help:
 	@echo "    icons         Regenerate app-icon rasters from the SVG sources"
 	@echo "    datasheets    Regenerate datasheet crops for the pinout window"
 	@echo "    build         Build Electron app for macOS (dir only, unsigned)"
+	@echo "    build-linux   Package smoke-test for Linux (dir only, unsigned)"
+	@echo "    build-win     Package smoke-test for Windows (dir only, unsigned)"
 	@echo "    dmg           Build unsigned macOS .dmg (default 'make')"
 	@echo "    release       Build all unsigned macOS artifacts (dmg + zip, arm64/x64)"
+	@echo "    dist          Build installers for all platforms (host builds its own)"
+	@echo "    dist-mac      Build macOS installer (dmg + zip; signed if a cert is present)"
+	@echo "    dist-linux    Build Linux installer (AppImage + deb)"
+	@echo "    dist-win      Build Windows installer (nsis + portable)"
+	@echo "    site          Regenerate website/versions.json from GitHub Releases"
 	@echo "    clean         Remove build and dist directories"
 	@echo "    version       Print version string"
 	@echo "    info          Print full build information"
 
 .PHONY: version info install debug fmt fmt-check lint license-headers icons \
-        datasheets test test-license-headers build build-mac dmg release \
+        datasheets test test-license-headers build build-mac build-linux \
+        build-win dmg release dist dist-mac dist-linux dist-win site \
         build-setup build-install clean help

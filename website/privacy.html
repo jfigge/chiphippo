@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <meta name="description" content="Chip Hippo's privacy statement: no accounts, no telemetry, no tracking. Your circuit designs stay on your own device, and this website sets no cookies." />
+  <title>Privacy — Chip Hippo</title>
+  <link rel="canonical" href="https://chiphippo.com/privacy.html" />
+  <meta property="og:type" content="website" />
+  <meta property="og:site_name" content="Chip Hippo" />
+  <meta property="og:title" content="Privacy — Chip Hippo" />
+  <meta property="og:description" content="No accounts, no telemetry, no tracking. Your designs stay on your device." />
+  <meta property="og:url" content="https://chiphippo.com/privacy.html" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    :root {
+      --bg:#1c1c1c; --mantle:#161616; --crust:#101010;
+      --surface-0:#2a2a2a; --surface-1:#383838; --overlay-0:#686868;
+      --text:#e8e8e8; --subtext:#b0b0b0; --accent:#3fb950; --green:#56d364;
+    }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: "Segoe UI", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      background: var(--bg); color: var(--text); line-height: 1.6;
+      min-height: 100vh; display: flex; flex-direction: column;
+    }
+    nav {
+      background: var(--mantle); border-bottom: 1px solid var(--surface-0);
+      position: sticky; top: 0; z-index: 100; padding: 0 2rem;
+      display: flex; align-items: center; justify-content: space-between; height: 58px;
+    }
+    .nav-logo { display: flex; align-items: center; gap: 10px; text-decoration: none; }
+    .logo-mark { width: 32px; height: 32px; border-radius: 8px; overflow: hidden; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+    .nav-wordmark { font-size: 1.2rem; font-weight: 800; color: var(--text); letter-spacing: -0.5px; }
+    .nav-right { display: flex; align-items: center; gap: 1.5rem; }
+    .nav-link { color: var(--subtext); text-decoration: none; font-size: 0.875rem; transition: color 0.15s; }
+    .nav-link:hover { color: var(--text); }
+    .btn { display: inline-flex; align-items: center; gap: 7px; padding: 8px 18px; border-radius: 8px; font-size: 0.875rem; font-weight: 600; text-decoration: none; cursor: pointer; border: none; line-height: 1; transition: background 0.15s, transform 0.15s; }
+    .btn-primary { background: var(--accent); color: var(--crust); }
+    .btn-primary:hover { background: var(--green); transform: translateY(-1px); }
+    .page { flex: 1; max-width: 800px; width: 100%; margin: 0 auto; padding: 64px 2rem 80px; }
+    .page-tag { font-size: 0.72rem; font-weight: 700; text-transform: uppercase; letter-spacing: 1.5px; color: var(--accent); margin-bottom: 12px; }
+    .page h1 { font-size: clamp(2rem, 5vw, 3rem); font-weight: 900; letter-spacing: -1.5px; line-height: 1.1; margin-bottom: 12px; }
+    .updated { font-size: 0.85rem; color: var(--overlay-0); margin-bottom: 32px; }
+    .tldr { display: flex; gap: 14px; align-items: flex-start; background: color-mix(in srgb, var(--accent) 9%, var(--mantle)); border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent); border-radius: 12px; padding: 18px 20px; margin-bottom: 44px; }
+    .tldr svg { flex-shrink: 0; color: var(--accent); margin-top: 2px; }
+    .tldr-body { font-size: 0.95rem; color: var(--subtext); }
+    .tldr-body strong { color: var(--text); font-weight: 700; }
+    .page h2 { font-size: 1.3rem; font-weight: 800; letter-spacing: -0.4px; margin: 40px 0 14px; padding-bottom: 8px; border-bottom: 1px solid var(--surface-0); }
+    .page h3 { font-size: 1.02rem; font-weight: 700; color: var(--text); margin: 22px 0 6px; }
+    .page p { color: var(--subtext); margin-bottom: 14px; }
+    .page ul { color: var(--subtext); margin: 0 0 16px; padding-left: 22px; }
+    .page li { margin-bottom: 8px; }
+    .page a { color: var(--accent); text-decoration: none; }
+    .page a:hover { text-decoration: underline; }
+    .page strong { color: var(--text); }
+    footer { background: var(--crust); border-top: 1px solid var(--surface-0); padding: 48px 2rem; text-align: center; }
+    .footer-inner { max-width: 700px; margin: 0 auto; }
+    .footer-logo { display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 16px; }
+    .footer-name { font-size: 1.1rem; font-weight: 800; color: var(--text); }
+    footer p { color: var(--overlay-0); font-size: 0.83rem; line-height: 1.8; }
+    footer a { color: var(--accent); text-decoration: none; }
+    @media (max-width: 640px) { nav { padding: 0 1rem; } .nav-right .nav-link { display: none; } .page { padding: 44px 1rem 64px; } }
+  </style>
+</head>
+<body>
+
+<nav>
+  <a class="nav-logo" href="/">
+    <span class="logo-mark">
+      <svg width="32" height="32" viewBox="0 0 512 512" role="img" aria-label="Chip Hippo">
+        <rect x="0" y="0" width="512" height="512" rx="114" fill="#2F855A"/>
+        <circle cx="170" cy="146" r="40" fill="#FFFFFF"/><circle cx="342" cy="146" r="40" fill="#FFFFFF"/>
+        <rect x="144" y="140" width="224" height="190" rx="74" fill="#FFFFFF"/>
+        <rect x="118" y="260" width="276" height="150" rx="74" fill="#FFFFFF"/>
+        <circle cx="201" cy="198" r="17" fill="#1C1C1C"/><circle cx="311" cy="198" r="17" fill="#1C1C1C"/>
+        <rect x="186" y="320" width="140" height="52" rx="8" fill="#23272B"/>
+        <circle cx="186" cy="346" r="11" fill="#FFFFFF"/>
+      </svg>
+    </span>
+    <span class="nav-wordmark">Chip Hippo</span>
+  </a>
+  <div class="nav-right">
+    <a class="nav-link" href="/#features">Features</a>
+    <a class="nav-link" href="/#downloads">Downloads</a>
+    <a class="nav-link" href="https://github.com/jfigge/chiphippo" rel="noopener noreferrer">GitHub</a>
+    <a class="btn btn-primary" href="/#downloads">Download</a>
+  </div>
+</nav>
+
+<main class="page">
+  <p class="page-tag">Legal</p>
+  <h1>Privacy Statement</h1>
+  <p class="updated">Last updated: July 22, 2026</p>
+
+  <div class="tldr" role="note">
+    <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="10"/>
+    </svg>
+    <p class="tldr-body">
+      <strong>The short version:</strong> Chip Hippo has no accounts, no telemetry, and
+      no third-party tracking. Everything you build — boards, chips, wires, and whole
+      designs — stays on your own device as plain files. This website sets no cookies and
+      runs no analytics.
+    </p>
+  </div>
+
+  <p>
+    This statement explains how the <strong>Chip Hippo</strong> desktop application and
+    the <strong>chiphippo.com</strong> website handle your information. Both are built and
+    maintained by Jason Figge. The principle behind both is the same: Chip Hippo is a
+    local-first tool, so your work belongs to you and stays with you.
+  </p>
+
+  <h2>1. The Chip Hippo app</h2>
+
+  <h3>Your designs stay on your device</h3>
+  <p>
+    Your working desk, saved <code>.chiphippo</code> schematics, and settings are stored
+    in local files under your operating system's user-profile folder (and wherever you
+    choose to save documents). None of it is uploaded to us or to any cloud service —
+    there is no Chip Hippo account and no server that holds your work. You can back it up,
+    move it, or delete it yourself at any time.
+  </p>
+
+  <h3>Fully offline simulation</h3>
+  <p>
+    Chip Hippo designs and simulates circuits entirely on your machine. The app makes no
+    network requests to run — placing parts, wiring, and the whole simulation engine are
+    local computation. It does not send your designs anywhere.
+  </p>
+
+  <h3>Software updates (optional)</h3>
+  <p>
+    If update checks are offered and you use them — or download a new version manually —
+    the app or your browser contacts
+    <a href="https://github.com" rel="noopener noreferrer">GitHub</a> to look for and fetch
+    new releases. That connection reaches GitHub's servers and is subject to
+    <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement" rel="noopener noreferrer">GitHub's privacy statement</a>.
+    You can always download new versions yourself instead.
+  </p>
+
+  <h3>No telemetry</h3>
+  <p>
+    Chip Hippo contains no analytics SDKs, usage tracking, crash-reporting services,
+    advertising, or “phone-home” beacons. The optional donation link simply opens a page
+    in your browser; the app does not track whether you visit it or give.
+  </p>
+
+  <h2>2. This website</h2>
+
+  <h3>Static, cookie-free, no analytics</h3>
+  <p>
+    chiphippo.com is a static website. It sets no cookies, runs no analytics or
+    advertising scripts, and includes no third-party tracking. Fonts are loaded from your
+    own system, so there are no web-font CDN requests either.
+  </p>
+
+  <h3>Hosting</h3>
+  <p>
+    The site is hosted on <a href="https://pages.github.com" rel="noopener noreferrer">GitHub Pages</a>.
+    As with any web host, GitHub may process standard technical information — such as your
+    IP address and browser user-agent — in server logs in order to deliver and protect the
+    site. We do not receive or store those logs; that processing is governed by GitHub's
+    privacy practices, not ours.
+  </p>
+
+  <h3>Content loaded from GitHub</h3>
+  <p>
+    The download buttons point to GitHub Releases, and the downloads section reads the
+    list of releases from a small static file generated at build time. When you follow a
+    download link, your browser connects to GitHub, subject to GitHub's privacy statement.
+  </p>
+
+  <h3>Outbound links</h3>
+  <p>
+    Links to GitHub and other external sites take you to third parties that have their own
+    privacy policies, which we don't control.
+  </p>
+
+  <h2>3. What we never do</h2>
+  <ul>
+    <li>We don't sell, rent, or share your personal data — we don't collect it to begin with.</li>
+    <li>We don't run ads or embed third-party trackers, in the app or on this site.</li>
+    <li>We don't require or create user accounts.</li>
+    <li>We don't collect, transmit, or store your circuit designs.</li>
+  </ul>
+
+  <h2>4. Your data and your rights</h2>
+  <p>
+    Because we don't collect or hold personal data about you, there is nothing on our side
+    to access, correct, export, or delete. The information the app stores lives on your own
+    device and is fully under your control — you can view, edit, back up, or erase it at
+    any time. If you are in a region with data-protection laws such as the GDPR or CCPA,
+    those rights are effectively satisfied because no personal data about you ever leaves
+    your machine for us.
+  </p>
+
+  <h2>5. Changes to this statement</h2>
+  <p>
+    If this statement changes, we'll update the “Last updated” date above and post the
+    revised version here. Because the site is open source, its full history is also visible
+    in the project's <a href="https://github.com/jfigge/chiphippo" rel="noopener noreferrer">GitHub repository</a>.
+  </p>
+
+  <h2>6. Contact</h2>
+  <p>
+    Questions about privacy? Open an issue on
+    <a href="https://github.com/jfigge/chiphippo/issues" rel="noopener noreferrer">GitHub</a>.
+  </p>
+</main>
+
+<footer>
+  <div class="footer-inner">
+    <div class="footer-logo">
+      <span class="logo-mark">
+        <svg width="28" height="28" viewBox="0 0 512 512" role="img" aria-label="Chip Hippo">
+          <rect x="0" y="0" width="512" height="512" rx="114" fill="#2F855A"/>
+          <circle cx="170" cy="146" r="40" fill="#FFFFFF"/><circle cx="342" cy="146" r="40" fill="#FFFFFF"/>
+          <rect x="144" y="140" width="224" height="190" rx="74" fill="#FFFFFF"/>
+          <rect x="118" y="260" width="276" height="150" rx="74" fill="#FFFFFF"/>
+          <circle cx="201" cy="198" r="17" fill="#1C1C1C"/><circle cx="311" cy="198" r="17" fill="#1C1C1C"/>
+          <rect x="186" y="320" width="140" height="52" rx="8" fill="#23272B"/>
+          <circle cx="186" cy="346" r="11" fill="#FFFFFF"/>
+        </svg>
+      </span>
+      <span class="footer-name">Chip Hippo</span>
+    </div>
+    <p style="margin-bottom:14px">
+      <a href="/">Home</a>
+      &nbsp;·&nbsp;
+      <a href="https://github.com/jfigge/chiphippo" rel="noopener noreferrer">GitHub</a>
+      &nbsp;·&nbsp;
+      <a href="https://github.com/sponsors/jfigge" rel="noopener noreferrer">Donate</a>
+      &nbsp;·&nbsp;
+      <a href="/code-signing-policy.html">Code Signing</a>
+      &nbsp;·&nbsp;
+      <a href="https://github.com/jfigge/chiphippo/issues" rel="noopener noreferrer">Contact</a>
+    </p>
+    <p>Copyright &copy; 2026 Jason Figge. Released under the Apache 2.0 License.<br>
+    Built with Electron &amp; Vanilla JS. No telemetry, no accounts, fully offline.</p>
+  </div>
+</footer>
+
+</body>
+</html>
