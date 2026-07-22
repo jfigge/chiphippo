@@ -57,10 +57,10 @@ test("double-clicking a DIP chip requests its pinout (rows = pins/2)", () => {
   const { surface, controller } = makeDesk(doc, {
     onOpenPinout: (ref, rows) => opened.push([ref, rows]),
   });
-  controller.addComponentAt("74138", "bb1", "e5"); // DIP-16 → 8 rows
+  controller.addComponentAt("74LS138", "bb1", "e5"); // DIP-16 → 8 rows
 
   dblclick(surface.querySelector(".part-chip"));
-  assert.deepEqual(opened, [["74138", 8]]);
+  assert.deepEqual(opened, [["74LS138", 8]]);
 });
 
 test("double-clicking a discrete requests its pinout (rows = pin count)", () => {

@@ -262,7 +262,7 @@ test("canPlaceChip: happy path on the full and tiny pin-boards", () => {
   );
   // A DIP-14 needs 7 columns: the tiny pin-board (17 cols) fits it at e1…e11.
   assert.equal(
-    canPlaceChip(doc, { ref: "74125", board: "bb2", anchor: "e11" }),
+    canPlaceChip(doc, { ref: "74LS125", board: "bb2", anchor: "e11" }),
     true,
   );
 });

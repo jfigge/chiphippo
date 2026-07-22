@@ -232,13 +232,13 @@ test("a 74LS76 with J=K=H toggles on each falling edge", () => {
 
 test("a 74161 counts 0→15, asserts RCO at 15, then rolls over", () => {
   // CLR̄(1), LOAD̄(9), ENP(7), ENT(10) all float → H (count enabled).
-  const h = holesOf("74161", "e10");
+  const h = holesOf("74LS161", "e10");
   const doc = {
     boards,
     components: [
       psu("psu1", 80),
       clock("clk1", 90),
-      chip("c1", "74161", "e10"),
+      chip("c1", "74LS161", "e10"),
     ],
     wires: [...power("psu1", h, 16, 8), wire("clk1.out", strip(h, 2, 0))], // CLK
   };
@@ -260,13 +260,13 @@ test("a 74161 counts 0→15, asserts RCO at 15, then rolls over", () => {
 });
 
 test("a 74161 held in async clear never counts", () => {
-  const h = holesOf("74161", "e10");
+  const h = holesOf("74LS161", "e10");
   const doc = {
     boards,
     components: [
       psu("psu1", 80),
       clock("clk1", 90),
-      chip("c1", "74161", "e10"),
+      chip("c1", "74LS161", "e10"),
     ],
     wires: [
       ...power("psu1", h, 16, 8),
@@ -284,13 +284,13 @@ test("a 74161 held in async clear never counts", () => {
 
 test("a 74164 shifts a HIGH along its stages, and clear zeroes it", () => {
   // A(1), B(2) float → H → serial = H; CLR̄(9) float → H.
-  const h = holesOf("74164", "e10");
+  const h = holesOf("74LS164", "e10");
   const doc = {
     boards,
     components: [
       psu("psu1", 80),
       clock("clk1", 90),
-      chip("c1", "74164", "e10"),
+      chip("c1", "74LS164", "e10"),
     ],
     wires: [...power("psu1", h, 14, 7), wire("clk1.out", strip(h, 8, 0))], // CLK
   };
@@ -309,10 +309,10 @@ test("a 74164 shifts a HIGH along its stages, and clear zeroes it", () => {
 
 test("a 74138 drives exactly one active-low output for its address", () => {
   // Enable: G1(6) high, G2A(4)/G2B(5) low. Address A/B/C via ties.
-  const h = holesOf("74138", "e10");
+  const h = holesOf("74LS138", "e10");
   const doc = {
     boards,
-    components: [psu("psu1", 80), chip("c1", "74138", "e10")],
+    components: [psu("psu1", 80), chip("c1", "74LS138", "e10")],
     wires: [
       ...power("psu1", h, 16, 8),
       wire(strip(h, 6, 0), HI(3)), // G1 → +5 V (high)
@@ -335,10 +335,10 @@ test("a 74138 drives exactly one active-low output for its address", () => {
 test("a 74151 routes the addressed data input to Y", () => {
   // Strobe G(7) low (enabled); address A/B/C floating → H → 7 → selects D7.
   // Tie D0(4) low and leave D7(12) floating → H; Y should read D7 = H.
-  const h = holesOf("74151", "e10");
+  const h = holesOf("74LS151", "e10");
   const doc = {
     boards,
-    components: [psu("psu1", 80), chip("c1", "74151", "e10")],
+    components: [psu("psu1", 80), chip("c1", "74LS151", "e10")],
     wires: [
       ...power("psu1", h, 16, 8),
       wire(strip(h, 7, 0), `bb1.${mates(h.get(8))[1]}`), // G → GND (enabled)
@@ -383,14 +383,14 @@ test("a 74LS75 latch is transparent while enabled and holds while not", () => {
 
 test("a 74193 counts up on CPU edges and down on CPD edges", () => {
   // MR(14) low via GND; LOAD̄(11) high (float); CPU(5)/CPD(4) from two clocks.
-  const h = holesOf("74193", "e10");
+  const h = holesOf("74LS193", "e10");
   const doc = {
     boards,
     components: [
       psu("psu1", 80),
       clock("up", 90),
       clock("dn", 100),
-      chip("c1", "74193", "e10"),
+      chip("c1", "74LS193", "e10"),
     ],
     wires: [
       ...power("psu1", h, 16, 8),

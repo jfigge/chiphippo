@@ -376,7 +376,7 @@ export const CHIPS_GATES = Object.freeze([
     },
   },
   {
-    id: "74125",
+    id: "74LS125",
     title: "Quad bus buffer, tri-state",
     blurb:
       "Four independent buffers with active-low output-enable (tri-state).",

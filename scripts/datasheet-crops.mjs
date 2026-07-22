@@ -34,7 +34,7 @@
 //     Jameco distributor cover — hence the per-entry `page`.
 //
 // An entry with `crop: null` is skipped (no image). The four catalog chips with
-// no matching 74LS* datasheet (74164, 74193, 74LS27, 74LS76) are absent by design —
+// no matching 74LS* datasheet (74LS164, 74LS193, 74LS27, 74LS76) are absent by design —
 // the pinout window simply shows no diagram for them.
 
 /** @typedef {{ file: string, page: number, crop: {x:number,y:number,w:number,h:number}|null }} CropEntry */
@@ -53,21 +53,21 @@ export const DATASHEET_CROPS = {
   "74LS30": { file: "74LS30", page: 1, crop: { x: 0.155, y: 0.42, w: 0.62, h: 0.2 } },
   "74LS32": { file: "74LS32", page: 1, crop: { x: 0.155, y: 0.42, w: 0.62, h: 0.19 } },
   "74LS86": { file: "74LS86", page: 1, crop: { x: 0.155, y: 0.42, w: 0.62, h: 0.19 } },
-  74125: { file: "74LS125", page: 1, crop: { x: 0.155, y: 0.515, w: 0.62, h: 0.215 } },
+  "74LS125": { file: "74LS125", page: 1, crop: { x: 0.155, y: 0.515, w: 0.62, h: 0.215 } },
 
   // Flip-flops / latches (Feature 100 wave). Fairchild sheets sit lower (long
   // titles); TI/Motorola sheets favour the function table.
   "74LS73": { file: "74LS73", page: 1, crop: { x: 0.155, y: 0.545, w: 0.62, h: 0.235 } },
   "74LS74": { file: "74LS74", page: 1, crop: { x: 0.155, y: 0.565, w: 0.62, h: 0.25 } },
   "74LS75": { file: "74LS75", page: 1, crop: { x: 0.15, y: 0.095, w: 0.63, h: 0.235 } }, // TI: table + pinout
-  74107: { file: "74LS107", page: 2, crop: { x: 0.55, y: 0.75, w: 0.31, h: 0.15 } }, // Jameco cover; LS107A table
-  74151: { file: "74LS151", page: 1, crop: { x: 0.155, y: 0.5, w: 0.62, h: 0.3 } },
-  74157: { file: "74LS157", page: 1, crop: { x: 0.15, y: 0.655, w: 0.33, h: 0.175 } }, // combined 157/158
-  74161: { file: "74LS161", page: 2, crop: { x: 0.17, y: 0.15, w: 0.49, h: 0.205 } }, // connection diagram
-  74165: { file: "74LS165", page: 1, crop: { x: 0.155, y: 0.595, w: 0.66, h: 0.28 } },
-  74175: { file: "74LS175", page: 1, crop: { x: 0.49, y: 0.62, w: 0.33, h: 0.205 } }, // combined 174/175 (right)
-  74138: { file: "74LS138", page: 2, crop: { x: 0.17, y: 0.145, w: 0.32, h: 0.49 } }, // combined 138/139 (left)
-  74139: { file: "74LS139", page: 2, crop: { x: 0.5, y: 0.145, w: 0.3, h: 0.49 } }, // combined 138/139 (right)
+  "74LS107": { file: "74LS107", page: 2, crop: { x: 0.55, y: 0.75, w: 0.31, h: 0.15 } }, // Jameco cover; LS107A table
+  "74LS151": { file: "74LS151", page: 1, crop: { x: 0.155, y: 0.5, w: 0.62, h: 0.3 } },
+  "74LS157": { file: "74LS157", page: 1, crop: { x: 0.15, y: 0.655, w: 0.33, h: 0.175 } }, // combined 157/158
+  "74LS161": { file: "74LS161", page: 2, crop: { x: 0.17, y: 0.15, w: 0.49, h: 0.205 } }, // connection diagram
+  "74LS165": { file: "74LS165", page: 1, crop: { x: 0.155, y: 0.595, w: 0.66, h: 0.28 } },
+  "74LS175": { file: "74LS175", page: 1, crop: { x: 0.49, y: 0.62, w: 0.33, h: 0.205 } }, // combined 174/175 (right)
+  "74LS138": { file: "74LS138", page: 2, crop: { x: 0.17, y: 0.145, w: 0.32, h: 0.49 } }, // combined 138/139 (left)
+  "74LS139": { file: "74LS139", page: 2, crop: { x: 0.5, y: 0.145, w: 0.3, h: 0.49 } }, // combined 138/139 (right)
 
   // 74LS wave (catalog ids already carry the LS).
   "74LS05": { file: "74LS05", page: 1, crop: { x: 0.155, y: 0.565, w: 0.62, h: 0.205 } },

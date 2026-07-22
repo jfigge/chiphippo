@@ -17,7 +17,7 @@
 // The exhaustive truth-table harness: every catalog chip × every unit × every
 // H/L input combination, checked against an independent reference expression —
 // so adding a future chip means adding data, and this picks it up. Plus the
-// TTL special cases: floating (Z) inputs read HIGH, X propagation, and 74125
+// TTL special cases: floating (Z) inputs read HIGH, X propagation, and 74LS125
 // tri-state enable/disable.
 
 import test from "node:test";
@@ -140,8 +140,8 @@ test("74LS30: the single 8-input NAND is L only when all eight are HIGH", () => 
   assert.equal(evaluate(chip("74LS30"), oneLow).get(8), H);
 });
 
-test("74125: each buffer drives its output only when enabled (G low)", () => {
-  const c = chip("74125");
+test("74LS125: each buffer drives its output only when enabled (G low)", () => {
+  const c = chip("74LS125");
   // Buffer 1: enable 1G(1), data 1A(2), out 1Y(3).
   assert.equal(evaluate(c, levels({ 1: L, 2: H })).get(3), H); // enabled → pass
   assert.equal(evaluate(c, levels({ 1: L, 2: L })).get(3), L);

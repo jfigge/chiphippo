@@ -2378,3 +2378,269 @@ textarea.annotation-editor {
   font-size: 11px;
   color: var(--color-muted);
 }
+
+/* ── Build guide (Feature 140) ────────────────────────────────────────────── */
+/* A right-docked panel formatting the pure plan from model/build-plan.js: the
+   BOM, the net-grouped wiring list, and the ordered assembly steps. */
+.build-guide {
+  display: flex;
+  flex-direction: column;
+  width: 300px;
+  flex: 0 0 auto;
+  background: var(--color-mantle);
+  border-left: 1px solid var(--color-crust);
+  min-height: 0;
+}
+
+.build-guide[hidden] {
+  display: none;
+}
+
+.build-guide-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--color-crust);
+}
+
+.build-guide-title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-weight: 600;
+}
+
+/* The warning count beside the title. */
+.build-guide-warn-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--color-warning);
+  color: var(--color-crust);
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.build-guide-warn-badge[hidden] {
+  display: none;
+}
+
+.build-guide-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-muted);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.build-guide-close:hover {
+  background: var(--color-surface-1);
+  color: var(--color-text);
+}
+
+/* Tab strip. */
+.build-guide-tabs {
+  display: flex;
+  border-bottom: 1px solid var(--color-crust);
+}
+
+.build-guide-tab {
+  flex: 1 1 0;
+  padding: var(--space-2) 0;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--color-muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.build-guide-tab:hover {
+  color: var(--color-text);
+}
+
+.build-guide-tab[aria-selected="true"] {
+  color: var(--color-text);
+  border-bottom-color: var(--color-accent);
+}
+
+.build-guide-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: var(--space-3);
+  font-size: 12px;
+}
+
+/* Section headers, shared by BOM + Steps (mirrors the palette group heads). */
+.build-guide-section {
+  margin-bottom: var(--space-4);
+}
+
+.build-guide-section-head {
+  margin: 0 0 var(--space-2);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-muted);
+}
+
+/* BOM lines. */
+.build-guide-bom-list,
+.build-guide-steps,
+.build-guide-step-detail {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.build-guide-bom-line {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: 3px 0;
+}
+
+.build-guide-count {
+  font-family: var(--font-mono);
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+
+/* Wiring list. */
+.build-guide-bus-head {
+  margin: var(--space-3) 0 var(--space-1);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--color-accent);
+}
+
+.build-guide-net {
+  padding: var(--space-2) 0;
+  border-bottom: 1px solid var(--color-crust);
+}
+
+.build-guide-net-name {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-weight: 600;
+  margin-bottom: 2px;
+}
+
+.build-guide-net--named .build-guide-net-name {
+  color: var(--color-accent);
+}
+
+.build-guide-net-flag {
+  color: var(--color-warning);
+}
+
+.build-guide-net-members {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 3px;
+  color: var(--color-text);
+}
+
+.build-guide-member--pin {
+  font-family: var(--font-mono);
+}
+
+.build-guide-member--rail,
+.build-guide-member--terminal {
+  color: var(--color-muted);
+}
+
+.build-guide-member--hole {
+  font-family: var(--font-mono);
+  color: var(--color-muted);
+}
+
+.build-guide-sep {
+  color: var(--color-overlay);
+}
+
+.build-guide-net--singleton {
+  background: color-mix(in srgb, var(--color-warning) 10%, transparent);
+}
+
+/* Steps. */
+.build-guide-step {
+  padding: 3px 0;
+}
+
+.build-guide-step-main {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  cursor: pointer;
+}
+
+.build-guide-step-check {
+  margin-top: 2px;
+  flex: 0 0 auto;
+}
+
+.build-guide-step--done .build-guide-step-text {
+  text-decoration: line-through;
+  color: var(--color-muted);
+}
+
+.build-guide-step-detail {
+  margin: 2px 0 4px calc(var(--space-4) + 2px);
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.build-guide-step-detail li {
+  padding: 1px 0;
+}
+
+/* Warnings banner (shown on every tab). */
+.build-guide-warnings {
+  margin-bottom: var(--space-3);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--color-warning) 45%, transparent);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-warning) 12%, transparent);
+}
+
+.build-guide-warnings-head {
+  font-weight: 600;
+  margin-bottom: var(--space-1);
+}
+
+.build-guide-warn-list {
+  margin: 0;
+  padding-left: var(--space-4);
+}
+
+.build-guide-warn {
+  padding: 1px 0;
+}
+
+.build-guide-empty {
+  color: var(--color-muted);
+  text-align: center;
+  margin-top: var(--space-5);
+}

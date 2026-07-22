@@ -50,23 +50,21 @@ const GATE_WAVE = [
   "74LS30",
   "74LS32",
   "74LS86",
-  "74125",
+  "74LS125",
 ];
 const SEQ_WAVE = [
   "74LS73",
   "74LS74",
   "74LS75",
   "74LS76",
-  "74107",
-  "74175",
-  "74161",
-  "74193",
-  "74164",
-  "74165",
-  "74138",
-  "74139",
-  "74151",
-  "74157",
+  "74LS107",
+  "74LS175",
+  "74LS161",
+  "74LS193",
+  "74LS164",
+  "74LS165",
+  "74LS138",
+  "74LS139",
 ];
 // The 74LS wave (a broad batch of Low-power Schottky parts). Duplicates of the
 // plain-TTL functions carry their own LS id; the electrical LS/TTL difference

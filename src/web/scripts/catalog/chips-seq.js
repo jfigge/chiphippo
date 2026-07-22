@@ -33,8 +33,6 @@ import {
   shiftSipo,
   shiftPiso,
   decoderUnits,
-  muxUnits,
-  selectorUnits,
 } from "../sim/sequential.js";
 import { H, L } from "../sim/levels.js";
 
@@ -193,7 +191,7 @@ export const CHIPS_SEQ = Object.freeze([
     ]),
   },
   {
-    id: "74107",
+    id: "74LS107",
     title: "Dual JK flip-flop, clear",
     blurb:
       "Two negative-edge JK flip-flops with async active-low clear (no preset).",
@@ -221,7 +219,7 @@ export const CHIPS_SEQ = Object.freeze([
     ]),
   },
   {
-    id: "74175",
+    id: "74LS175",
     title: "Quad D flip-flop",
     blurb:
       "Four positive-edge D flip-flops with a common clock and common " +
@@ -254,7 +252,7 @@ export const CHIPS_SEQ = Object.freeze([
     ]),
   },
   {
-    id: "74161",
+    id: "74LS161",
     title: "Sync 4-bit binary counter",
     blurb:
       "Presettable synchronous 4-bit counter: async clear, sync load, " +
@@ -291,7 +289,7 @@ export const CHIPS_SEQ = Object.freeze([
     }),
   },
   {
-    id: "74193",
+    id: "74LS193",
     title: "Sync up/down 4-bit counter",
     blurb:
       "Synchronous 4-bit up/down counter with separate up and down clocks, " +
@@ -328,7 +326,7 @@ export const CHIPS_SEQ = Object.freeze([
     }),
   },
   {
-    id: "74164",
+    id: "74LS164",
     title: "8-bit SIPO shift register",
     blurb:
       "Serial-in parallel-out 8-bit shift register (serial data is A AND B) " +
@@ -360,7 +358,7 @@ export const CHIPS_SEQ = Object.freeze([
     }),
   },
   {
-    id: "74165",
+    id: "74LS165",
     title: "8-bit PISO shift register",
     blurb:
       "Parallel-in serial-out 8-bit shift register: async parallel load, " +
@@ -396,7 +394,7 @@ export const CHIPS_SEQ = Object.freeze([
     }),
   },
   {
-    id: "74138",
+    id: "74LS138",
     title: "3-to-8 line decoder",
     blurb:
       "One-of-eight active-low decoder with three enables (G1 high, G2A & " +
@@ -432,7 +430,7 @@ export const CHIPS_SEQ = Object.freeze([
     },
   },
   {
-    id: "74139",
+    id: "74LS139",
     title: "Dual 2-to-4 line decoder",
     blurb:
       "Two independent one-of-four active-low decoders, each with an " +
@@ -472,81 +470,6 @@ export const CHIPS_SEQ = Object.freeze([
           out: [12, 11, 10, 9],
         }),
       ],
-    },
-  },
-  {
-    id: "74151",
-    title: "8-to-1 line multiplexer",
-    blurb:
-      "Eight-input mux with 3 select lines, active-low strobe, and " +
-      "complementary outputs.",
-    group: "Multiplexer",
-    package: "DIP-16",
-    pins: [
-      input(1, "D3"),
-      input(2, "D2"),
-      input(3, "D1"),
-      input(4, "D0"),
-      output(5, "Y"),
-      output(6, "W"),
-      input(7, "G"),
-      gnd(8),
-      input(9, "C"),
-      input(10, "B"),
-      input(11, "A"),
-      input(12, "D7"),
-      input(13, "D6"),
-      input(14, "D5"),
-      input(15, "D4"),
-      vcc(16),
-    ],
-    logic: {
-      units: muxUnits({
-        sel: [11, 10, 9],
-        data: [4, 3, 2, 1, 15, 14, 13, 12],
-        strobeN: 7,
-        y: 5,
-        yn: 6,
-      }),
-    },
-  },
-  {
-    id: "74157",
-    title: "Quad 2-to-1 selector",
-    blurb:
-      "Four 2-input multiplexers sharing one select and an active-low enable " +
-      "(select low → A, high → B).",
-    group: "Multiplexer",
-    package: "DIP-16",
-    pins: [
-      input(1, "S"),
-      input(2, "1A"),
-      input(3, "1B"),
-      output(4, "1Y"),
-      input(5, "2A"),
-      input(6, "2B"),
-      output(7, "2Y"),
-      gnd(8),
-      output(9, "3Y"),
-      input(10, "3B"),
-      input(11, "3A"),
-      output(12, "4Y"),
-      input(13, "4B"),
-      input(14, "4A"),
-      input(15, "G"),
-      vcc(16),
-    ],
-    logic: {
-      units: selectorUnits({
-        sel: 1,
-        strobeN: 15,
-        units: [
-          { a: 2, b: 3, y: 4 },
-          { a: 5, b: 6, y: 7 },
-          { a: 11, b: 10, y: 9 },
-          { a: 14, b: 13, y: 12 },
-        ],
-      }),
     },
   },
 ]);

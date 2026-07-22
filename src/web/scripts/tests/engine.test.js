@@ -153,14 +153,14 @@ test("74LS00 NAND: one wired-low input → H; both floating → L", () => {
 
 // ── Tri-state conflict ───────────────────────────────────────────────────────
 
-test("74125: two enabled buffers driving one net disagree → conflict (X)", () => {
-  const holes = chipHoles("74125", "e10");
+test("74LS125: two enabled buffers driving one net disagree → conflict (X)", () => {
+  const holes = chipHoles("74LS125", "e10");
   const gnd = mates(holes.get(7));
   // buf1: en 1G(1,e10), data 1A(2,e11), out 1Y(3,e12).
   // buf2: en 2G(4,e13), data 2A(5,e14), out 2Y(6,e15).
   const doc = {
     boards,
-    components: [psu("psu1", 80), chip("c1", "74125", "e10")],
+    components: [psu("psu1", 80), chip("c1", "74LS125", "e10")],
     wires: [
       ...powerWires("psu1", holes),
       // Tie the two outputs together.

@@ -27,6 +27,7 @@ import { ZoomControl } from "./components/zoom-control.js";
 import { DeskHud } from "./components/desk-hud.js";
 import { DeskController } from "./components/desk-controller.js";
 import { PalettePanel } from "./components/palette-panel.js";
+import { BuildGuide } from "./components/build-guide.js";
 import { SimController, SPEEDS } from "./components/sim-controller.js";
 import { NotificationStack } from "./components/notification-stack.js";
 import { NetNameMonitor } from "./components/net-name-monitor.js";
@@ -406,6 +407,23 @@ async function init() {
   palette.setVisible(settings.paletteOpen === true);
   main.append(desk);
 
+  // Build guide (Feature 140): a right-docked panel deriving the BOM / wiring
+  // list / assembly steps from the live document. Visibility persists like the
+  // palette; a toolbar button (added below) and its own close button both route
+  // through onVisibilityChange so the button state + setting stay in step.
+  let guideBtn = null;
+  const buildGuide = new BuildGuide(main, {
+    deskDoc,
+    onVisibilityChange: (visible) => {
+      guideBtn?.classList.toggle("toolbar-btn--active", visible);
+      guideBtn?.setAttribute("aria-pressed", String(visible));
+      bridge.settings
+        .set({ guideOpen: visible })
+        .catch((err) => console.error("[renderer] settings:set failed:", err));
+    },
+  });
+  buildGuide.setVisible(settings.guideOpen === true);
+
   const deskView = new DeskView(desk, {
     camera: settings.viewport,
     onViewportChange: (camera) => {
@@ -610,6 +628,19 @@ async function init() {
     onClick: () => controller.toggleProbe(),
   });
   toolbar.append(probeBtn);
+
+  // Build guide: toggle the right-docked BOM / wiring-list / steps panel. It is
+  // read-only, so it stays available while the circuit runs.
+  guideBtn = el("button", {
+    class: "toolbar-btn",
+    type: "button",
+    text: "Guide",
+    title: "Build guide — BOM, wiring list, and assembly steps",
+    "aria-pressed": String(buildGuide.visible),
+    onClick: () => buildGuide.toggle(),
+  });
+  guideBtn.classList.toggle("toolbar-btn--active", buildGuide.visible);
+  toolbar.append(guideBtn);
 
   // ── Simulation transport (Feature 90/100): Run/Stop, Pause, Step, speed ──
   const notifications = new NotificationStack(document.body);
