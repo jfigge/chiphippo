@@ -119,7 +119,10 @@ function makeContext(doc, netlist) {
       const wire = wireById.get(wireId);
       if (!wire) return;
       const netId = netlist?.netOfPoint?.get(wire.from);
-      if (netId != null) {
+      // Keep the FIRST bit that lands on a net: if two members resolve to the
+      // same net (two bus wires sharing a node, or reordered members), a bare
+      // set() would overwrite and label the net with the wrong bit/bus.
+      if (netId != null && !busOfNet.has(netId)) {
         busOfNet.set(netId, { name: bus.name, bit: parsed.bits[i] ?? i });
       }
     });
@@ -517,6 +520,9 @@ function wireSteps(doc, netlist, ctx, steps) {
     const detail = bus.members
       .map((wireId) => ctx.wireById.get(wireId))
       .filter(Boolean)
+      // A power-rail member is already a Power step; don't list it twice (the
+      // non-bus signal branch below excludes power wires for the same reason).
+      .filter((w) => !isPowerWire(doc, ctx, w))
       .map(
         (w) =>
           `${localLabel(doc, ctx, w.from)} → ${localLabel(doc, ctx, w.to)}`,
