@@ -25,13 +25,17 @@ import assert from "node:assert/strict";
 
 import { CHIP_DEFS, chipDef } from "../catalog/index.js";
 import { packageSpec } from "../model/footprints.js";
+import { Z } from "../sim/levels.js";
 import {
   hasLogic,
   isSequential,
+  isMemory,
   hasBehavior,
   initialState,
   outputsOf,
   inputLevels,
+  memoryConfig,
+  memoryOutputs,
 } from "../sim/chip-eval.js";
 
 // `io` is a BIDIRECTIONAL pin (the 74245 transceiver's bus lines): a unit both
@@ -95,13 +99,22 @@ const LS_WAVE = [
   "74LS595",
   "74LS90",
 ];
+// The memory wave (Feature 170): ROM / SRAM / EEPROM on the wide DIP packages.
+const MEM_WAVE = [
+  "rom-8k",
+  "ram-8k",
+  "28C16",
+  "HM62256",
+  "AS6C1024",
+  "AM27C1024",
+];
 
-test("the catalog contains the gate wave plus the sequential/MSI + 74LS waves", () => {
+test("the catalog contains the gate wave plus the sequential/MSI + 74LS + memory waves", () => {
   assert.deepEqual(
     CHIP_DEFS.map((d) => d.id).sort(),
-    [...GATE_WAVE, ...SEQ_WAVE, ...LS_WAVE].sort(),
+    [...GATE_WAVE, ...SEQ_WAVE, ...LS_WAVE, ...MEM_WAVE].sort(),
   );
-  for (const id of [...GATE_WAVE, ...SEQ_WAVE, ...LS_WAVE]) {
+  for (const id of [...GATE_WAVE, ...SEQ_WAVE, ...LS_WAVE, ...MEM_WAVE]) {
     assert.ok(chipDef(id), id);
   }
   assert.equal(chipDef("9999"), null);
@@ -122,14 +135,20 @@ for (const def of CHIP_DEFS) {
       Array.from({ length: pins }, (_, i) => i + 1),
     );
 
-    // Roles valid; exactly one vcc + one gnd (position may be non-standard —
-    // real parts like the 74LS73/74LS75/74LS76 don't always use the corners).
+    // Roles valid; exactly one vcc; exactly one gnd — except a memory part may
+    // carry the datasheet's duplicate VSS (the AM27C1024 grounds pins 11 & 30).
+    // Position may be non-standard (the 74LS73/74LS75/74LS76 skip the corners).
     for (const p of def.pins) assert.ok(ROLES.has(p.role), `${def.id} ${p.n}`);
     assert.equal(def.pins.filter((p) => p.role === "vcc").length, 1);
-    assert.equal(def.pins.filter((p) => p.role === "gnd").length, 1);
+    const gndCount = def.pins.filter((p) => p.role === "gnd").length;
+    if (isMemory(def)) assert.ok(gndCount >= 1, `${def.id} has ≥1 gnd`);
+    else assert.equal(gndCount, 1, `${def.id} gnd`);
 
-    // Names unique among functional pins (NC may repeat).
-    const names = def.pins.filter((p) => p.role !== "nc").map((p) => p.name);
+    // Names unique among functional SIGNAL pins (NC and the power rails — which
+    // may legitimately repeat, e.g. a dual VSS — are excluded).
+    const names = def.pins
+      .filter((p) => !["nc", "vcc", "gnd"].includes(p.role))
+      .map((p) => p.name);
     assert.equal(new Set(names).size, names.length, `${def.id} names`);
 
     // Every def carries SOME behavior (combinational or sequential).
@@ -144,7 +163,39 @@ for (const def of CHIP_DEFS) {
     const ioPins = def.pins.filter((p) => p.role === "io").map((p) => p.n);
     const pinRole = new Map(def.pins.map((p) => [p.n, p.role]));
 
-    if (hasLogic(def)) {
+    if (isMemory(def)) {
+      // ── Memory: a byte/word image over the `memUnit` vocabulary. The config
+      //    references real pins with the right roles, the geometry is
+      //    self-consistent, and a deselected part floats its data bus.
+      const cfg = memoryConfig(def);
+      assert.equal(cfg.size, 2 ** cfg.addr.length, `${def.id} size↔addr width`);
+      assert.equal(cfg.data.length, cfg.width, `${def.id} data width`);
+      assert.ok(cfg.width === 8 || cfg.width === 16, `${def.id} width 8/16`);
+      for (const p of cfg.addr) {
+        assert.equal(pinRole.get(p), "input", `${def.id} addr pin ${p}`);
+      }
+      for (const p of [cfg.ceN, cfg.oeN, cfg.weN, cfg.ce2].filter(
+        (x) => x != null,
+      )) {
+        assert.equal(pinRole.get(p), "input", `${def.id} control pin ${p}`);
+      }
+      // A writable part (has WE) uses bidirectional `io` data pins; a read-only
+      // ROM (no WE) drives output-only data pins.
+      const dataRole = cfg.weN != null ? "io" : "output";
+      for (const p of cfg.data) {
+        assert.equal(pinRole.get(p), dataRole, `${def.id} data pin ${p}`);
+      }
+      // Deselected (every input floats HIGH) → the whole data bus is high-Z.
+      const off = memoryOutputs(def, inputLevels(def, new Map()), null);
+      assert.deepEqual(
+        [...off.keys()].sort((a, b) => a - b),
+        [...cfg.data].sort((a, b) => a - b),
+        `${def.id} drives exactly the data bus`,
+      );
+      for (const [pin, lv] of off) {
+        assert.equal(lv, Z, `${def.id} data pin ${pin} floats when deselected`);
+      }
+    } else if (hasLogic(def)) {
       // ── Combinational: units reference real pins; a unit may only READ an
       //    input/io pin and only DRIVE an output/io pin. Every input is used
       //    (fan-out allowed for MSI), every output driven exactly once, and

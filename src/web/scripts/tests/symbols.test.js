@@ -73,17 +73,21 @@ for (const def of CHIP_DEFS) {
       `${def.id} covers every functional pin`,
     );
 
-    // Power on the correct edges: VCC top, GND bottom, and nowhere else.
-    const vccPin = def.pins.find((p) => p.role === "vcc").n;
-    const gndPin = def.pins.find((p) => p.role === "gnd").n;
+    // Power on the correct edges: every VCC pin top, every GND pin bottom, and
+    // nowhere else (a memory part may carry the datasheet's duplicate VSS).
+    const bySide = (role) =>
+      def.pins
+        .filter((p) => p.role === role)
+        .map((p) => p.n)
+        .sort((a, b) => a - b);
     assert.deepEqual(
-      symbol.sides.top.map((s) => s.pin),
-      [vccPin],
+      symbol.sides.top.map((s) => s.pin).sort((a, b) => a - b),
+      bySide("vcc"),
       `${def.id} VCC on top`,
     );
     assert.deepEqual(
-      symbol.sides.bottom.map((s) => s.pin),
-      [gndPin],
+      symbol.sides.bottom.map((s) => s.pin).sort((a, b) => a - b),
+      bySide("gnd"),
       `${def.id} GND on bottom`,
     );
   });

@@ -43,6 +43,9 @@ import {
   initialState,
   hasBehavior,
   isSequential,
+  isMemory,
+  memoryOutputs,
+  memoryWrite,
 } from "./chip-eval.js";
 import { resolveNet } from "./resolve.js";
 import { partDef } from "../catalog/index.js";
@@ -183,7 +186,14 @@ function buildContext(doc, netlist) {
       damaged: comp.params?.damaged === true,
     });
     chipStatus.set(comp.id, { status });
-    chips.push({ comp, def, pinNet, status, sequential: isSequential(def) });
+    chips.push({
+      comp,
+      def,
+      pinNet,
+      status,
+      sequential: isSequential(def),
+      memory: isMemory(def),
+    });
   }
 
   return {
@@ -198,7 +208,7 @@ function buildContext(doc, netlist) {
 }
 
 /** Every driver (clock sources + powered chip outputs) for a set of levels. */
-function driversFor(ctx, levels, state, clockPhase) {
+function driversFor(ctx, levels, state, clockPhase, images) {
   const drivers = new Map(); // netId → [levels]
   const add = (net, level) => {
     if (!net) return;
@@ -215,13 +225,23 @@ function driversFor(ctx, levels, state, clockPhase) {
     for (const [pin, net] of c.pinNet) {
       pinLevels.set(pin, net ? (levels.get(net) ?? Z) : Z);
     }
-    const outMap = c.sequential
-      ? outputsOf(
-          c.def,
-          state.get(c.comp.id) ?? initialState(c.def),
-          inputLevels(c.def, pinLevels),
-        )
-      : evaluate(c.def, pinLevels);
+    let outMap;
+    if (c.memory) {
+      // A memory reads its image (a pure input) onto the data pins, or floats.
+      outMap = memoryOutputs(
+        c.def,
+        inputLevels(c.def, pinLevels),
+        images.get(c.comp.id),
+      );
+    } else if (c.sequential) {
+      outMap = outputsOf(
+        c.def,
+        state.get(c.comp.id) ?? initialState(c.def),
+        inputLevels(c.def, pinLevels),
+      );
+    } else {
+      outMap = evaluate(c.def, pinLevels);
+    }
     for (const [outPin, level] of outMap) add(c.pinNet.get(outPin), level);
   }
   return drivers;
@@ -271,8 +291,8 @@ function resolveAll(ctx, drivers) {
   return { next, warnings, strong: strong ?? next };
 }
 
-/** Run the warm-started settle loop for a fixed state + clock phase. */
-function solve(ctx, warmStart, state, clockPhase) {
+/** Run the warm-started settle loop for a fixed state + clock phase + images. */
+function solve(ctx, warmStart, state, clockPhase, images) {
   let levels = new Map();
   for (const id of ctx.netIds) levels.set(id, warmStart.get(id) ?? Z);
 
@@ -285,7 +305,7 @@ function solve(ctx, warmStart, state, clockPhase) {
     iterations++;
     const { next, warnings, strong } = resolveAll(
       ctx,
-      driversFor(ctx, levels, state, clockPhase),
+      driversFor(ctx, levels, state, clockPhase, images),
     );
     lastWarnings = warnings;
     lastStrong = strong;
@@ -341,6 +361,8 @@ function assemble(ctx, solved, extra = {}) {
  * @param {Map<string,string>} [opts.warmStart] - previous stable net levels.
  * @param {Map<string,object>} [opts.state] - per-component sequential state.
  * @param {Map<string,string>} [opts.clockPhase] - clock id → output level.
+ * @param {Map<string,Uint8Array|Uint16Array>} [opts.images] - per-memory byte
+ *   images (read-only input; the engine never mutates them).
  * @returns {{netLevels:Map, chipStatus:Map, warnings:Array, iterations:number, settled:boolean}}
  */
 export function settle({
@@ -349,9 +371,10 @@ export function settle({
   warmStart = new Map(),
   state = new Map(),
   clockPhase = new Map(),
+  images = new Map(),
 }) {
   const ctx = buildContext(doc, netlist);
-  return assemble(ctx, solve(ctx, warmStart, state, clockPhase));
+  return assemble(ctx, solve(ctx, warmStart, state, clockPhase, images));
 }
 
 /**
@@ -368,8 +391,10 @@ export function settle({
  * @param {Map<string,Map<number,string>>} [opts.prevPinLevels] - last tick's
  *   sampled input levels per component (for edge detection; empty → no edges).
  * @param {Map<string,string>} [opts.clockPhase] - clock id → current output.
+ * @param {Map<string,Uint8Array|Uint16Array>} [opts.images] - per-memory byte
+ *   images (read-only input; writes are REPORTED via `memWrites`, not applied).
  * @returns {{netLevels, chipStatus, warnings, iterations, settled,
- *   state: Map, pinLevels: Map}}
+ *   state: Map, pinLevels: Map, memWrites: Array<{compId,addr,value}>}}
  */
 export function tick({
   document: doc,
@@ -378,25 +403,36 @@ export function tick({
   state = new Map(),
   prevPinLevels = new Map(),
   clockPhase = new Map(),
+  images = new Map(),
 }) {
   const ctx = buildContext(doc, netlist);
 
   // ① Pre-settle: propagate the new clock phase / input changes with the OLD
   //    sequential state holding.
-  const pre = solve(ctx, warmStart, state, clockPhase);
+  const pre = solve(ctx, warmStart, state, clockPhase, images);
 
   // ② Sample + step: read each sequential chip's inputs from the pre-settled
-  //    levels, detect edges vs the previous tick, compute the next state.
+  //    levels, detect edges vs the previous tick, compute the next state. A
+  //    memory chip has no clocked state — instead it REPORTS a write op for the
+  //    controller to apply after the tick (the engine never mutates the image).
   const newState = new Map(state);
   const pinLevels = new Map();
+  const memWrites = [];
   for (const c of ctx.chips) {
-    if (!c.sequential) continue;
+    if (!c.sequential && !c.memory) continue;
     const raw = new Map();
     for (const [pin, net] of c.pinNet) {
       raw.set(pin, net ? (pre.levels.get(net) ?? Z) : Z);
     }
     const ins = inputLevels(c.def, raw);
     pinLevels.set(c.comp.id, ins);
+    if (c.memory) {
+      if (c.status === CHIP_STATUS.OK) {
+        const op = memoryWrite(c.def, ins, images.get(c.comp.id));
+        if (op) memWrites.push({ compId: c.comp.id, ...op });
+      }
+      continue; // memory carries no sequential state to advance
+    }
     const current = state.get(c.comp.id) ?? initialState(c.def);
     if (c.status !== CHIP_STATUS.OK) {
       newState.set(c.comp.id, current); // inert chip holds; drives nothing
@@ -409,6 +445,6 @@ export function tick({
   }
 
   // ③ Post-settle: let the combinational cloud settle around the NEW state.
-  const post = solve(ctx, pre.levels, newState, clockPhase);
-  return assemble(ctx, post, { state: newState, pinLevels });
+  const post = solve(ctx, pre.levels, newState, clockPhase, images);
+  return assemble(ctx, post, { state: newState, pinLevels, memWrites });
 }

@@ -25,20 +25,30 @@
 //     e:  1  2  …  n       ← pins 1…n run left→right along row e
 //
 // Pin 1 sits at the component's ANCHOR hole (always row e); every other pin
-// position is DERIVED from the package + anchor column — never stored. All
-// DIPs here are 0.3-in row spacing, which the board geometry fixes as rows
-// e/f (exactly 3 pitches apart, straddling the single trench).
+// position is DERIVED from the package + anchor column — never stored.
+//
+// `body` is the package's real body width in mils: the small logic DIPs are
+// 300-mil (0.3-in row spacing), the wide memory DIPs (DIP-24…40) are 600-mil.
+// The board geometry pins EVERY DIP to rows e/f (exactly 3 pitches apart,
+// straddling the single trench), so `body` never changes the derived hole
+// arithmetic — a real 600-mil part is wider than one trench, and this stage
+// models it trench-straddling anyway (Feature 170). The hint drives only the
+// drawn body + the build-guide note; a true two-board straddle is out of scope.
 
-/** The DIP packages the catalog may reference. */
+/** The DIP packages the catalog may reference. `body` is the width in mils. */
 export const DIP_PACKAGES = Object.freeze({
-  "DIP-14": Object.freeze({ pins: 14 }),
-  "DIP-16": Object.freeze({ pins: 16 }),
-  "DIP-20": Object.freeze({ pins: 20 }),
+  "DIP-14": Object.freeze({ pins: 14, body: 300 }),
+  "DIP-16": Object.freeze({ pins: 16, body: 300 }),
+  "DIP-20": Object.freeze({ pins: 20, body: 300 }),
+  "DIP-24": Object.freeze({ pins: 24, body: 600 }),
+  "DIP-28": Object.freeze({ pins: 28, body: 600 }),
+  "DIP-32": Object.freeze({ pins: 32, body: 600 }),
+  "DIP-40": Object.freeze({ pins: 40, body: 600 }),
 });
 
 /**
  * The package table entry (throws code INVALID_PACKAGE on junk).
- * @returns {{ pins: number, halfPins: number }}
+ * @returns {{ pins: number, halfPins: number, body: number }}
  */
 export function packageSpec(pkg) {
   const p = DIP_PACKAGES[pkg];
@@ -47,7 +57,7 @@ export function packageSpec(pkg) {
     err.code = "INVALID_PACKAGE";
     throw err;
   }
-  return { pins: p.pins, halfPins: p.pins / 2 };
+  return { pins: p.pins, halfPins: p.pins / 2, body: p.body };
 }
 
 /**

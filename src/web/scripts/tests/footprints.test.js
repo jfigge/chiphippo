@@ -27,9 +27,34 @@ import {
 } from "../model/footprints.js";
 
 test("packageSpec: known packages; junk throws INVALID_PACKAGE", () => {
-  assert.deepEqual(packageSpec("DIP-14"), { pins: 14, halfPins: 7 });
-  assert.deepEqual(packageSpec("DIP-16"), { pins: 16, halfPins: 8 });
-  assert.deepEqual(packageSpec("DIP-20"), { pins: 20, halfPins: 10 });
+  // The small logic DIPs are 300-mil; the wide memory DIPs (24…40) are 600-mil.
+  assert.deepEqual(packageSpec("DIP-14"), { pins: 14, halfPins: 7, body: 300 });
+  assert.deepEqual(packageSpec("DIP-16"), { pins: 16, halfPins: 8, body: 300 });
+  assert.deepEqual(packageSpec("DIP-20"), {
+    pins: 20,
+    halfPins: 10,
+    body: 300,
+  });
+  assert.deepEqual(packageSpec("DIP-24"), {
+    pins: 24,
+    halfPins: 12,
+    body: 600,
+  });
+  assert.deepEqual(packageSpec("DIP-28"), {
+    pins: 28,
+    halfPins: 14,
+    body: 600,
+  });
+  assert.deepEqual(packageSpec("DIP-32"), {
+    pins: 32,
+    halfPins: 16,
+    body: 600,
+  });
+  assert.deepEqual(packageSpec("DIP-40"), {
+    pins: 40,
+    halfPins: 20,
+    body: 600,
+  });
   assert.throws(() => packageSpec("DIP-8"), { code: "INVALID_PACKAGE" });
   assert.throws(() => packageSpec(undefined), { code: "INVALID_PACKAGE" });
 });

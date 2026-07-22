@@ -42,6 +42,23 @@ test("buildChipSvg: legs, body, notch, pin-1 dot, and the part number", () => {
   }
 });
 
+test("buildChipSvg: the wide memory packages (DIP-24…40) render, one leg per pin", () => {
+  for (const [ref, pins] of [
+    ["28C16", 24],
+    ["rom-8k", 28],
+    ["AS6C1024", 32],
+    ["AM27C1024", 40],
+  ]) {
+    resetDom();
+    const svg = buildChipSvg(ref);
+    assert.equal(svg.querySelectorAll(".part-chip-leg").length, pins, ref);
+    assert.equal(svg.querySelectorAll(".part-chip-body").length, 1, ref);
+    assert.equal(svg.querySelector(".part-chip-label").textContent, ref);
+    // The footprint box widens with the pin count (a DIP-40 is far longer).
+    assert.ok(chipBox("DIP-40").width > chipBox("DIP-14").width);
+  }
+});
+
 test("buildChipSvg: fault symbols stay OUTSIDE the 180° flip group", () => {
   resetDom();
   const svg = buildChipSvg("74LS00", { rot: 180 });

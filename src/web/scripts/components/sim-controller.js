@@ -30,7 +30,23 @@
 import { tick } from "../sim/engine.js";
 import { H, L } from "../sim/levels.js";
 import { partDef } from "../catalog/index.js";
+import { isMemory, memoryConfig } from "../sim/chip-eval.js";
 import { NetlistCache } from "./netlist-cache.js";
+
+/**
+ * A fresh run-volatile byte image for a memory chip: a typed array sized to the
+ * def's address space (Uint16Array for a >8-bit data bus, else Uint8Array),
+ * zero-filled and then seeded from the def's `initial` ROM data if present.
+ */
+function seedImage(def) {
+  const { size, width, initial } = memoryConfig(def);
+  const image = width > 8 ? new Uint16Array(size) : new Uint8Array(size);
+  if (initial == null) return image;
+  const seed = typeof initial === "function" ? initial(size) : initial;
+  const n = Math.min(size, seed?.length ?? 0);
+  for (let i = 0; i < n; i++) image[i] = seed[i];
+  return image;
+}
 
 /** Transport modes. */
 export const TRANSPORT = Object.freeze({
@@ -56,6 +72,7 @@ export class SimController {
   #state = new Map(); // per-component sequential state (run-volatile)
   #prevPins = new Map(); // last tick's sampled inputs (edge detection)
   #clockPhase = new Map(); // clockId → "H" | "L" (run-volatile)
+  #images = new Map(); // memory compId → Uint8Array/Uint16Array (run-volatile)
   #timers = new Map(); // clockId → interval handle
   #suppress = false; // ignore our own damage-persist writes
 
@@ -97,6 +114,7 @@ export class SimController {
     this.#prevPins = new Map();
     this.#clockPhase = new Map();
     for (const c of this.#clocks()) this.#clockPhase.set(c.id, L); // idle low
+    this.#seedImages();
     this.#onTransportChange?.(this.#mode);
     this.#tickNow();
     this.#scheduleClocks();
@@ -127,6 +145,7 @@ export class SimController {
     this.#state = new Map();
     this.#prevPins = new Map();
     this.#clockPhase = new Map();
+    this.#images = new Map();
     this.#notifications?.clear();
     this.#onTransportChange?.(this.#mode);
     this.#publish(null, null); // views clear from a not-running sim-state
@@ -170,6 +189,25 @@ export class SimController {
 
   #clocks() {
     return this.#doc.toJSON().components.filter((c) => c.kind === "clock");
+  }
+
+  // ── Memory images (run-volatile; Feature 180 makes them file-backed) ──────
+
+  /** Seed a fresh image per memory chip on Run (ROM data or zeros). */
+  #seedImages() {
+    this.#images = new Map();
+    for (const c of this.#doc.toJSON().components) {
+      const def = partDef(c.ref);
+      if (isMemory(def)) this.#images.set(c.id, seedImage(def));
+    }
+  }
+
+  /** Apply the tick's reported writes into the images (read-only ROMs report none). */
+  #applyWrites(writes) {
+    for (const { compId, addr, value } of writes ?? []) {
+      const img = this.#images.get(compId);
+      if (img && addr >= 0 && addr < img.length) img[addr] = value;
+    }
   }
 
   #autoClocks() {
@@ -227,10 +265,12 @@ export class SimController {
         state: this.#state,
         prevPinLevels: this.#prevPins,
         clockPhase: this.#clockPhase,
+        images: this.#images,
       });
       this.#warm = result.netLevels;
       this.#state = result.state;
       this.#prevPins = result.pinLevels;
+      this.#applyWrites(result.memWrites);
       this.#persistDamage(result.chipStatus);
       this.#publish(result, netlist);
       this.#report(result.warnings);

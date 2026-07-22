@@ -52,6 +52,24 @@ test("a 14-pin chip lays out 7 mirrored rows with numbers and names", () => {
   assert.equal(lastLeft.querySelector(".chip-pinout-label").textContent, "GND");
 });
 
+test("a 40-pin memory lays out 20 rows with io/output data pins", () => {
+  resetDom();
+  const el = buildChipPinout(chipDef("AM27C1024"));
+  assert.equal(
+    el.querySelector(".chip-pinout-sub").textContent,
+    "DIP-40 · pin assignments",
+  );
+  assert.equal(el.querySelectorAll(".chip-pinout-row").length, 20);
+  // The read-only EPROM's data pins carry the output role.
+  assert.ok(el.querySelector(".chip-pinout-name--output"));
+
+  // A writable SRAM exposes bidirectional io data pins.
+  resetDom();
+  const ram = buildChipPinout(chipDef("HM62256"));
+  assert.equal(ram.querySelectorAll(".chip-pinout-row").length, 14);
+  assert.ok(ram.querySelector(".chip-pinout-name--io"));
+});
+
 test("power/ground/output pins carry their role classes", () => {
   resetDom();
   const el = buildChipPinout(chipDef("74LS00"));

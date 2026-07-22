@@ -268,6 +268,74 @@ export function shiftPiso(m) {
   };
 }
 
+// ── Memory vocabulary (ROM / SRAM / EEPROM) — an addressable byte/word image ──
+
+/**
+ * A memory unit: an address-indexed array of bytes/words backing a ROM, SRAM,
+ * or EEPROM. Reads are COMBINATIONAL — while the part is selected and
+ * output-enabled (and not mid-write) the data pins present `image[addr]`, one
+ * bit per data pin; otherwise they float (`Z`), so a shared data bus resolves
+ * through Feature 90's strength precedence. Writes are LEVEL-latched and
+ * REPORTED, never applied here: the engine stays pure (it never mutates the
+ * image), and the renderer's SimController owns the image and applies the
+ * reported `{ addr, value }` after each tick (Feature 170; Feature 180 swaps
+ * the volatile image for a file-backed one behind this same contract).
+ *
+ * The returned block is neither `logic.units` (combinational) nor
+ * `logic.step`/`outputs` (sequential) — it carries a `memory` marker plus
+ * `read`/`write` fns the engine dispatches to (see sim/chip-eval.js). The
+ * `image` is passed IN as an argument (it lives with run-volatile state,
+ * keyed by component id), so the shared/frozen def holds no per-instance bytes.
+ *
+ * @param {object} m
+ * @param {number} m.size   addressable locations (a power of two = 2**addr.length)
+ * @param {number} m.width  data-bus width in bits (8 or 16)
+ * @param {number[]} m.addr address pins, LSB first (length = log2(size))
+ * @param {number[]} m.data data pins, LSB first (length = width)
+ * @param {number} m.ceN    active-low chip-enable pin
+ * @param {number} m.oeN    active-low output-enable pin
+ * @param {number} [m.weN]  active-low write-enable pin — OMIT for a read-only ROM
+ * @param {number} [m.ce2]  optional active-HIGH second chip-enable (some SRAMs)
+ * @param {Uint8Array|number[]|((size:number)=>Uint8Array|number[])} [m.initial]
+ *   seed for a ROM image (undefined → zero-filled). Consumed by SimController.
+ */
+export function memUnit(m) {
+  const mask = m.size - 1;
+  const wordMask = (1 << m.width) - 1;
+  const selected = (ins) =>
+    ins.get(m.ceN) === L && (m.ce2 == null || ins.get(m.ce2) === H);
+  const writing = (ins) => m.weN != null && ins.get(m.weN) === L;
+  const address = (ins) => readBus(m.addr, ins) & mask;
+
+  return {
+    memory: {
+      size: m.size,
+      width: m.width,
+      addr: m.addr,
+      data: m.data,
+      ceN: m.ceN,
+      oeN: m.oeN,
+      weN: m.weN ?? null,
+      ce2: m.ce2 ?? null,
+      initial: m.initial ?? null,
+    },
+    /** Data-pin levels driven this settle: the stored word, or Z when idle. */
+    read(ins, image) {
+      // Float unless selected, output-enabled, and not mid-write (so an
+      // external writer owns the bus during a write cycle).
+      const drive = selected(ins) && ins.get(m.oeN) === L && !writing(ins);
+      if (!drive) return new Map(m.data.map((pin) => [pin, Z]));
+      const word = image ? (image[address(ins)] ?? 0) : 0;
+      return new Map(m.data.map((pin, i) => [pin, (word >> i) & 1 ? H : L]));
+    },
+    /** The write op to apply after this tick, or null (idle / read-only). */
+    write(ins) {
+      if (!writing(ins) || !selected(ins)) return null;
+      return { addr: address(ins), value: readBus(m.data, ins) & wordMask };
+    },
+  };
+}
+
 // ── Combinational MSI vocabulary (decoders, muxes) — COMB units ──────────────
 
 /** A COMB unit: `compute(levels)` over shared, fanning-out inputs. */

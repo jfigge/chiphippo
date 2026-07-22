@@ -46,9 +46,14 @@ export function isSequential(def) {
   return typeof def?.logic?.step === "function";
 }
 
-/** Does this def carry ANY simulated behavior (combinational or sequential)? */
+/** Does this def carry a memory image (ROM / SRAM / EEPROM — Feature 170)? */
+export function isMemory(def) {
+  return Boolean(def?.logic?.memory);
+}
+
+/** Does this def carry ANY simulated behavior (combinational/sequential/memory)? */
 export function hasBehavior(def) {
-  return hasLogic(def) || isSequential(def);
+  return hasLogic(def) || isSequential(def) || isMemory(def);
 }
 
 /** The fresh per-component state for a sequential def (never in the doc). */
@@ -98,8 +103,11 @@ export function evaluate(def, pinLevels) {
 }
 
 /**
- * The input-pin levels a sequential/latch chip reads, keyed by pin number and
- * already `asInput`'d (Z → H) so `step`/`outputs` see only H/L/X.
+ * The input-pin levels a sequential/latch/memory chip reads, keyed by pin
+ * number and already `asInput`'d (Z → H) so `step`/`outputs`/`read`/`write`
+ * see only H/L/X. Bidirectional `io` pins (a memory's data bus, driven by the
+ * unit AND read back during a write) are included — the unit floats them while
+ * writing, so their net level reflects the external driver.
  * @param {object} def
  * @param {Map<number, string>} pinLevels
  * @returns {Map<number, string>}
@@ -107,7 +115,9 @@ export function evaluate(def, pinLevels) {
 export function inputLevels(def, pinLevels) {
   const ins = new Map();
   for (const p of def.pins) {
-    if (p.role === "input") ins.set(p.n, asInput(pinLevels.get(p.n) ?? Z));
+    if (p.role === "input" || p.role === "io") {
+      ins.set(p.n, asInput(pinLevels.get(p.n) ?? Z));
+    }
   }
   return ins;
 }
@@ -129,4 +139,31 @@ export function stepChip(def, state, inputs, prevInputs) {
  */
 export function outputsOf(def, state, inputs) {
   return def.logic.outputs(state, inputs);
+}
+
+/**
+ * What a memory chip drives on its data pins for the given inputs + byte image:
+ * the addressed word (per bit) while selected & output-enabled, else `Z`. Reads
+ * the image, never mutates it (the engine stays pure).
+ * @param {object} def   a def with a `logic.memory` block
+ * @param {Map<number, string>} inputs  asInput'd address/control/data levels
+ * @param {Uint8Array|Uint16Array} [image]  the run-volatile byte image
+ * @returns {Map<number, string>} data pin → level
+ */
+export function memoryOutputs(def, inputs, image) {
+  return def.logic.read(inputs, image);
+}
+
+/**
+ * The write op a memory chip commits this tick, or null (idle / read-only ROM).
+ * Reported to the caller — the engine never applies it (SimController does).
+ * @returns {{ addr: number, value: number }|null}
+ */
+export function memoryWrite(def, inputs, image) {
+  return def.logic.write(inputs, image);
+}
+
+/** A memory def's config (size/width/pins/initial), for seeding + tests. */
+export function memoryConfig(def) {
+  return def.logic.memory;
 }
