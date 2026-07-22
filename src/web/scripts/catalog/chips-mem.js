@@ -206,14 +206,16 @@ export const CHIPS_MEM = Object.freeze([
     logic: memUnit({
       size: 2048,
       width: 8,
-      addr: [8, 7, 6, 5, 4, 3, 2, 1, 19, 22, 23],
+      // LSB-first: A0..A10. Pins 23/22/19 carry A8/A9/A10 on the real AT28C16
+      // (pin 19 = A10, pin 23 = A8) — NOT in ascending pin order.
+      addr: [8, 7, 6, 5, 4, 3, 2, 1, 23, 22, 19],
       data: [9, 10, 11, 13, 14, 15, 16, 17],
       ceN: 18,
       oeN: 20,
       weN: 21,
     }),
     pinGroups: [
-      { name: "A", pins: [8, 7, 6, 5, 4, 3, 2, 1, 19, 22, 23], dir: "in" },
+      { name: "A", pins: [8, 7, 6, 5, 4, 3, 2, 1, 23, 22, 19], dir: "in" },
       { name: "DQ", pins: [9, 10, 11, 13, 14, 15, 16, 17], dir: "io" },
     ],
   },

@@ -171,9 +171,23 @@ for (const def of CHIP_DEFS) {
       assert.equal(cfg.size, 2 ** cfg.addr.length, `${def.id} size↔addr width`);
       assert.equal(cfg.data.length, cfg.width, `${def.id} data width`);
       assert.ok(cfg.width === 8 || cfg.width === 16, `${def.id} width 8/16`);
+      const pinName = new Map(def.pins.map((p) => [p.n, p.name]));
       for (const p of cfg.addr) {
         assert.equal(pinRole.get(p), "input", `${def.id} addr pin ${p}`);
       }
+      // The address bus is LSB-first: cfg.addr[i] MUST be the pin the datasheet
+      // labels `A<i>` (a scrambled entry — e.g. A8/A10 swapped — silently reads
+      // the wrong byte and nothing crashes, so assert the mapping directly).
+      cfg.addr.forEach((p, i) => {
+        assert.equal(pinName.get(p), `A${i}`, `${def.id} addr[${i}] → A${i}`);
+      });
+      // Likewise the data bus, bit i on the pin named `Q<i>` or `DQ<i>`.
+      cfg.data.forEach((p, i) => {
+        assert.ok(
+          pinName.get(p) === `Q${i}` || pinName.get(p) === `DQ${i}`,
+          `${def.id} data[${i}] → Q${i}/DQ${i} (got ${pinName.get(p)})`,
+        );
+      });
       for (const p of [cfg.ceN, cfg.oeN, cfg.weN, cfg.ce2].filter(
         (x) => x != null,
       )) {
