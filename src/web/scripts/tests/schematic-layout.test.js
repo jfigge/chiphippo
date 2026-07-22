@@ -161,6 +161,28 @@ test("a bus between two chips' pin groups renders as ONE fat line", () => {
   assert.ok(!out.edges.some((e) => !e.bus));
 });
 
+test("a bus bit wired to a single ungrouped pin still routes a connecting edge", () => {
+  // 74LS573 Q0 (a pin-group member → drawn as a bus port) → a 74LS00 input
+  // (ungrouped). Only ONE bit is wired, so the bus port has no matching bus to
+  // bundle with; the bit must break out to a real edge, not vanish or leave a
+  // dangling stub pointing into empty space.
+  const doc = {
+    components: [
+      { id: "c1", ref: "74LS573", board: "bb1" },
+      { id: "c2", ref: "74LS00", board: "bb1" },
+    ],
+  };
+  const nl = netlistOf([
+    net("b0", [pin("c1", 19, "output"), pin("c2", 1, "input")]), // Q0 → 1A
+  ]);
+  const out = layout(doc, nl);
+
+  const edge = out.edges.find((e) => e.netIds?.includes("b0"));
+  assert.ok(edge, "the Q0→1A connection is routed, not dropped");
+  assert.ok(!edge.dangling, "not a dangling stub into empty space");
+  assert.ok(edge.segments.flat().length >= 2, "the edge has real geometry");
+});
+
 test("a schematicPos hint pins a symbol and reflows only its edges", () => {
   const doc = chipsDoc(["c1", "c2"]);
   const nl = netlistOf([
