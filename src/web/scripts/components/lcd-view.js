@@ -38,9 +38,34 @@ function svgEl(tag, attrs = {}) {
   return node;
 }
 
-/** The display panel rectangle within the body (pitch units). The canvas that
-    draws the characters is positioned exactly over this. */
-export const LCD_PANEL = Object.freeze({ x: 2, y: 1.5, w: 22, h: 8 });
+/** Character cell size on the desk (pitch units). Fixed across LCD sizes so a
+    16×2 and a 20×4 draw the SAME-sized characters — the panel shrinks with the
+    grid, not the glyphs. Chosen so a 20×4 grid fills the legacy 22×8 panel. */
+const CELL_UNIT_W = 1.1;
+const CELL_UNIT_H = 2;
+
+/** The band within the body (pitch units) the panel is centred in — the region
+    above the terminal row. Sized so a 20×4 panel still lands at the legacy x/y. */
+const PANEL_BAND = Object.freeze({ x: 0, w: 26, top: 1.5, bottom: 9.5 });
+
+/**
+ * The green display panel rectangle (pitch units) for a given LCD size, derived
+ * from its character grid so cells stay the same physical size across sizes and
+ * the panel is centred within the fixed 26×14 body. A 16×2 renders a visibly
+ * smaller panel than a 20×4 while occupying the SAME desk footprint (option #1:
+ * cosmetic only — occupancy is unchanged). The canvas sits exactly over this.
+ */
+export function lcdPanel(size) {
+  const { cols, rows } = lcdGeometry(size);
+  const w = cols * CELL_UNIT_W;
+  const h = rows * CELL_UNIT_H;
+  return {
+    x: PANEL_BAND.x + (PANEL_BAND.w - w) / 2,
+    y: PANEL_BAND.top + (PANEL_BAND.bottom - PANEL_BAND.top - h) / 2,
+    w,
+    h,
+  };
+}
 
 /** HD44780 5×8 character cell (dots) + a one-dot gap between cells. */
 const CELL_W = 5;
@@ -65,6 +90,7 @@ export function buildLcdSvg(params = {}) {
   const def = partDef("lcd");
   const { width, height } = def.size;
   const { size } = def.normalizeParams(params);
+  const panel = lcdPanel(size);
 
   const svg = svgEl("svg", {
     class: "part-lcd-svg",
@@ -85,10 +111,10 @@ export function buildLcdSvg(params = {}) {
     }),
     svgEl("rect", {
       class: "part-lcd-panel",
-      x: LCD_PANEL.x,
-      y: LCD_PANEL.y,
-      width: LCD_PANEL.w,
-      height: LCD_PANEL.h,
+      x: panel.x,
+      y: panel.y,
+      width: panel.w,
+      height: panel.h,
       rx: 0.3,
     }),
   );
@@ -184,11 +210,13 @@ export class LcdView {
     if (!this.#el.contains(this.#canvas)) this.#el.append(this.#canvas);
 
     // Position the canvas over the panel (world px) and give it a crisp,
-    // grid-proportioned backing buffer (device px).
-    this.#canvas.style.left = `${LCD_PANEL.x * PX_PER_UNIT}px`;
-    this.#canvas.style.top = `${LCD_PANEL.y * PX_PER_UNIT}px`;
-    this.#canvas.style.width = `${LCD_PANEL.w * PX_PER_UNIT}px`;
-    this.#canvas.style.height = `${LCD_PANEL.h * PX_PER_UNIT}px`;
+    // grid-proportioned backing buffer (device px). The panel is sized from the
+    // grid, so a 16×2 is smaller than a 20×4 but the character cells match.
+    const panel = lcdPanel(size);
+    this.#canvas.style.left = `${panel.x * PX_PER_UNIT}px`;
+    this.#canvas.style.top = `${panel.y * PX_PER_UNIT}px`;
+    this.#canvas.style.width = `${panel.w * PX_PER_UNIT}px`;
+    this.#canvas.style.height = `${panel.h * PX_PER_UNIT}px`;
     this.#canvas.width = this.#cols * (CELL_W + CELL_GAP) * DOT_PX;
     this.#canvas.height = this.#rows * (CELL_H + CELL_GAP) * DOT_PX;
 

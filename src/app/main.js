@@ -40,6 +40,7 @@ const fs = require("fs");
 const { parseArgs } = require("./cli-args");
 const { SettingsStore } = require("./store/settings-store");
 const { DeskStore } = require("./store/desk-store");
+const memStore = require("./store/mem-store");
 const {
   DEFAULT_BOUNDS,
   resolveWindowBounds,
@@ -299,6 +300,145 @@ function openPinoutWindow(ref, opts = {}) {
   pinoutWindows.set(ref, win);
 }
 
+// ─── Memory backing files + inspector windows (Features 180 / 190) ─────────────
+// A memory chip's bytes live in a real `.bin` sidecar (the document stores only
+// the binding: a path + a rom/ram mode). All file I/O is here in main, over the
+// byte-oriented mem-store; the sandboxed renderer holds only in-RAM images and
+// byte batches. The inspector is a separate floating OS window per component
+// (like the pinout), and because it is its own renderer it talks to the main
+// renderer only THROUGH main — the two `memory:to-*` relays below are that pipe.
+const memoryWindows = new Map(); // component id → BrowserWindow
+const MEM_COMP_RE = /^c[0-9]{1,6}$/i; // component ids are `c<n>`
+
+/** Native picker for a chip's backing file. ram → a Save target (may be new);
+    rom → an existing file to program from. Returns the path, or null. */
+async function chooseMemoryFile(mode) {
+  const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+  const filters = [
+    { name: "Binary image", extensions: ["bin", "rom", "dat"] },
+    { name: "All files", extensions: ["*"] },
+  ];
+  if (mode === "ram") {
+    const opts = { defaultPath: "memory.bin", filters };
+    const r = win
+      ? await dialog.showSaveDialog(win, opts)
+      : await dialog.showSaveDialog(opts);
+    return r.canceled || !r.filePath ? null : r.filePath;
+  }
+  const opts = { properties: ["openFile"], filters };
+  const r = win
+    ? await dialog.showOpenDialog(win, opts)
+    : await dialog.showOpenDialog(opts);
+  return r.canceled || !r.filePaths?.[0] ? null : r.filePaths[0];
+}
+
+/** Import a `.bin`/`.hex` file for the inspector — returns its RAW bytes; the
+    renderer decides bin-vs-hex by extension and parses Intel HEX itself. */
+async function importMemoryFile() {
+  const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+  const opts = {
+    properties: ["openFile"],
+    filters: [
+      { name: "Memory image", extensions: ["bin", "hex", "rom", "dat"] },
+      { name: "All files", extensions: ["*"] },
+    ],
+  };
+  const r = win
+    ? await dialog.showOpenDialog(win, opts)
+    : await dialog.showOpenDialog(opts);
+  if (r.canceled || !r.filePaths?.[0]) return null;
+  const filePath = r.filePaths[0];
+  try {
+    return {
+      ok: true,
+      name: path.basename(filePath),
+      bytes: fs.readFileSync(filePath),
+    };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
+/** Export image bytes to a chosen file (the renderer builds the payload, raw
+    `.bin` OR Intel-HEX text as bytes, and picks the suggested extension). */
+async function exportMemoryFile(bytes, suggestedName) {
+  const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+  const opts = {
+    defaultPath:
+      typeof suggestedName === "string" && suggestedName
+        ? suggestedName
+        : "memory.bin",
+    filters: [
+      { name: "Binary image", extensions: ["bin"] },
+      { name: "Intel HEX", extensions: ["hex"] },
+      { name: "All files", extensions: ["*"] },
+    ],
+  };
+  const r = win
+    ? await dialog.showSaveDialog(win, opts)
+    : await dialog.showSaveDialog(opts);
+  if (r.canceled || !r.filePath) return null;
+  try {
+    memStore.writeAll(r.filePath, bytes);
+    return { ok: true, path: r.filePath };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
+/** Open (or focus) the memory-inspector window for a component id. */
+function openMemoryWindow(compId, ref) {
+  if (!MEM_COMP_RE.test(String(compId)) || !PINOUT_REF_RE.test(String(ref))) {
+    return;
+  }
+  const existing = memoryWindows.get(compId);
+  if (existing && !existing.isDestroyed()) {
+    existing.show();
+    existing.focus();
+    return;
+  }
+  const win = new BrowserWindow({
+    width: 760,
+    height: 560,
+    minWidth: 480,
+    minHeight: 320,
+    // An editor you type into, so it does NOT float over the app by default.
+    backgroundColor: "#1c1c1c",
+    icon: appIcon,
+    title: "Memory inspector",
+    fullscreenable: false,
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  });
+  win.setMenuBarVisibility(false);
+  win.loadFile(path.join(__dirname, "..", "web", "memory.html"), {
+    query: { comp: compId, ref },
+  });
+  win.on("closed", () => {
+    if (memoryWindows.get(compId) === win) memoryWindows.delete(compId);
+  });
+  memoryWindows.set(compId, win);
+}
+
+/** Relay a message from the main renderer to a component's inspector window. */
+function relayToInspector(compId, msg) {
+  const win = memoryWindows.get(compId);
+  if (win && !win.isDestroyed()) {
+    win.webContents.send("memory:inbound", { compId, msg });
+  }
+}
+
+/** Relay a message from an inspector window back to the main renderer. */
+function relayToHost(compId, msg) {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send("memory:host-inbound", { compId, msg });
+  }
+}
+
 // ─── Application menu ──────────────────────────────────────────────────────────
 // The About and Settings items PUSH to the renderer (menu:show-about /
 // menu:open-settings); the preload re-dispatches each as a chiphippo:* event
@@ -511,6 +651,57 @@ function registerIpc() {
   // Data Sheets) in the OS PDF viewer. Requested by the pinout window's
   // "open datasheet" button; a no-op (returns false) when no PDF is on file.
   ipcMain.handle("datasheet:open", (_event, ref) => openDatasheetPdf(ref));
+
+  // Memory backing files (Feature 180): the byte-oriented store behind a memory
+  // chip's `.bin`. load/flush/write are atomic (io.js); each returns
+  // { ok, ... } / { ok:false, error } so the renderer can surface a failure
+  // rather than silently zeroing.
+  ipcMain.handle("mem:load", (_event, filePath, byteLength) => {
+    try {
+      return { ok: true, bytes: memStore.load(filePath, byteLength) };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  });
+  ipcMain.handle("mem:flush", (_event, filePath, writes, byteLength) => {
+    try {
+      memStore.flush(filePath, writes, byteLength);
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  });
+  ipcMain.handle("mem:write", (_event, filePath, bytes) => {
+    try {
+      memStore.writeAll(filePath, bytes);
+      return { ok: true };
+    } catch (err) {
+      return { ok: false, error: err.message };
+    }
+  });
+  // Native pickers for the binding (Feature 180 "Backing file…") and for the
+  // inspector's Import / Export (Feature 190).
+  ipcMain.handle("mem:choose", (_event, mode) => chooseMemoryFile(mode));
+  ipcMain.handle("mem:import", () => importMemoryFile());
+  ipcMain.handle("mem:export", (_event, bytes, suggestedName) =>
+    exportMemoryFile(bytes, suggestedName),
+  );
+
+  // Memory inspector window + cross-window relay (Feature 190): the inspector
+  // is its own OS window per component and reaches the main renderer only
+  // through these two relays (host ⇄ inspector, addressed by component id).
+  ipcMain.handle("memory:open", (_event, compId, ref) => {
+    openMemoryWindow(compId, ref);
+    return true;
+  });
+  ipcMain.handle("memory:to-inspector", (_event, compId, msg) => {
+    relayToInspector(compId, msg);
+    return true;
+  });
+  ipcMain.handle("memory:to-host", (_event, compId, msg) => {
+    relayToHost(compId, msg);
+    return true;
+  });
 
   // Undo/redo menu state (Feature 200): the renderer owns the document history
   // and pushes the current availability so Edit ▸ Undo / Redo match.

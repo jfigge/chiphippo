@@ -47,6 +47,20 @@ for (const [channel, event] of [
   });
 }
 
+// ── Memory inspector cross-window relay (Feature 190) ───────────────────────
+// Unlike the menu pushes above these carry a payload, so re-dispatch the detail
+// verbatim. `memory:inbound` reaches an inspector window (host → inspector);
+// `memory:host-inbound` reaches the main renderer (inspector → host). A window
+// that main never sends a given channel to simply never fires it.
+for (const [channel, event] of [
+  ["memory:inbound", "chiphippo:memory-inbound"],
+  ["memory:host-inbound", "chiphippo:memory-host-inbound"],
+]) {
+  ipcRenderer.on(channel, (_e, detail) => {
+    window.dispatchEvent(new CustomEvent(event, { detail }));
+  });
+}
+
 contextBridge.exposeInMainWorld("chiphippo", {
   // Static platform info — available synchronously from the sandboxed
   // preload's process shim (main's app:platform handler carries the same
@@ -108,6 +122,38 @@ contextBridge.exposeInMainWorld("chiphippo", {
   // folder) in the OS PDF viewer. Used by the pinout window's "open datasheet"
   // button. Resolves to whether a file was opened.
   openDatasheet: (ref) => ipcRenderer.invoke("datasheet:open", ref),
+
+  // ── Memory backing files (Feature 180) ─────────────────────────────────────
+  // The byte store behind a memory chip's `.bin`. All I/O is atomic in main;
+  // the renderer holds only in-RAM images + byte batches. `load`/`flush` are
+  // byte-oriented (the SimController packs 8/16-bit words to byte offsets);
+  // each resolves to { ok, ... } or { ok:false, error }. `choose`/`import`/
+  // `export` open native dialogs (Feature 190 uses import/export).
+  mem: {
+    load: (filePath, byteLength) =>
+      ipcRenderer.invoke("mem:load", filePath, byteLength),
+    flush: (filePath, writes, byteLength) =>
+      ipcRenderer.invoke("mem:flush", filePath, writes, byteLength),
+    write: (filePath, bytes) =>
+      ipcRenderer.invoke("mem:write", filePath, bytes),
+    choose: (mode) => ipcRenderer.invoke("mem:choose", mode),
+    import: () => ipcRenderer.invoke("mem:import"),
+    export: (bytes, suggestedName) =>
+      ipcRenderer.invoke("mem:export", bytes, suggestedName),
+  },
+
+  // ── Memory inspector window (Feature 190) ──────────────────────────────────
+  // `open` spawns/focuses the per-component floating inspector. The two relays
+  // are the ONLY channel between the main renderer and an inspector window
+  // (each its own sandboxed renderer): `toInspector` sends host → inspector,
+  // `toHost` sends inspector → host, both addressed by component id. Inbound
+  // messages arrive as `chiphippo:memory-inbound` / `-host-inbound` events.
+  memory: {
+    open: (compId, ref) => ipcRenderer.invoke("memory:open", compId, ref),
+    toInspector: (compId, msg) =>
+      ipcRenderer.invoke("memory:to-inspector", compId, msg),
+    toHost: (compId, msg) => ipcRenderer.invoke("memory:to-host", compId, msg),
+  },
 
   // ── Undo/redo menu state (Feature 200) ─────────────────────────────────────
   // The renderer owns the document history; this pushes the current

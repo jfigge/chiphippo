@@ -71,8 +71,23 @@ sync + up-down counters / SIPO+PISO shift, plus `COMB` decoder/mux units), the
 desk-level **clock source** brick (`clk<n>` ids, `out`/`gnd` terminals,
 1/2/5/10 Hz or manual) with `ClockView`, and the SimController **transport**
 (Run / Pause / Step / speed) whose `setInterval` drives clock edges while the
-engine stays pure and timerless. When a stage is finished, move its plan file
-into `features/done/`.
+engine stays pure and timerless; and (skipping the deferred 150–170 wave in the
+tree) **file-backed memory** (180) — the main-side byte store
+`app/store/mem-store.js` (atomic `load`/`flush`/`writeAll` over `io.js`) behind
+the parity-guarded `mem:*` IPC, a memory chip's `params.storage = {path, mode}`
+binding carried through `normalizeParams`, and the SimController lifecycle that
+loads each bound chip's `.bin` on Run (async gate before the first tick), packs
+reported writes to bytes and flushes them debounced (RAM mode) / drops them with
+a warning (ROM mode), and flushes a final time on Pause/Stop — the engine and
+`memUnit` are byte-identical to Feature 170; and the **memory inspector** (190)
+— a floating per-component hex/ASCII window (`web/memory.html` →
+`scripts/memory.js`) built on the virtualized `components/memory-inspector.js`
+grid (offset gutter · hex · ASCII, a reused row pool so a 32 KiB image is ~30
+rows in the DOM), pure `model/hex-format.js` (Intel HEX ⇄ bytes) for
+Import/Export, editable-when-stopped / read-only-live-when-running, and the
+renderer-side `components/memory-bridge.js` coordinator that relays a window's
+context + the engine's live byte writes across the main→inspector window
+boundary. When a stage is finished, move its plan file into `features/done/`.
 
 ## Naming & identity
 
@@ -128,7 +143,9 @@ pin map (see the Pin-assignments window architecture note).
   `main.js` (window + lifecycle + ipcMain handlers), `preload.js` (the
   `window.chiphippo` bridge), `window-state.js` (bounds restore with display-fit
   check), and `store/` (`io.js` atomic-write primitives, `settings-store.js`,
-  `desk-store.js` + `migrations.js` for the desk document at `userData/desk.json`).
+  `desk-store.js` + `migrations.js` for the desk document at `userData/desk.json`,
+  and `mem-store.js` — the atomic byte store behind a memory chip's `.bin`
+  sidecar, Feature 180).
   **Schematic files**: `desk.json` is the always-autosaved WORKING document;
   named `.chiphippo` files are the user's documents. `DeskStore.readFile`/
   `writeFile` (+ the `desk:open`/`desk:save-as`/`desk:write` handlers with
@@ -264,6 +281,28 @@ Electron main process (src/app/main.js)
   (net levels + chip status + clock levels) that live views render from — views never
   query the engine. Sequential state and clock phases are **run-volatile** (reset on
   Run, never serialized).
+- **Memory: file-backing + inspector** (`app/store/mem-store.js` +
+  `components/memory-inspector.js` + `components/memory-bridge.js`, Features
+  180/190): a memory chip's bytes live in a real `.bin` **sidecar**; the
+  document stores only the binding `params.storage = { path, mode }` (`rom` =
+  load-only, `ram` = load + flush), never the bytes. **All file I/O is in main**
+  over the parity-guarded `mem:*` IPC (`load`/`flush`/`write`/`choose`/`import`/
+  `export`) — `mem-store.js` is byte-oriented and atomic; the SimController packs
+  8/16-bit words to byte offsets, loads on Run, and flushes reported writes
+  debounced (a **RAM** binding) or drops them with a one-time warning (a **ROM**
+  binding), keeping the pure engine/`memUnit` byte-identical to Feature 170. The
+  **inspector** is a floating OS window per component (like the pinout), opened
+  on double-click / context menu; because it is its own sandboxed renderer it
+  reaches the main renderer ONLY through main's `memory:*` relay
+  (`open`/`to-inspector`/`to-host`, re-dispatched by preload as
+  `chiphippo:memory-inbound` / `chiphippo:memory-host-inbound`). The main-window
+  `MemoryBridge` answers a window's `ready` with its chip context (and the live
+  image bytes while running), routes `set-binding` through the controller (so it
+  rides undo/redo), and streams `chiphippo:mem-state` byte writes out to open
+  windows. The grid is **virtualized** (a reused row pool — only ~viewport rows
+  in the DOM), **editable when stopped** (the window loads/saves the file
+  itself) and **read-only + live when running** (it mirrors the engine-owned
+  image, never writes it). Intel HEX ⇄ bytes is the pure `model/hex-format.js`.
 - **Popups/menus**: `popup-manager.js` (ported from Port Hippo) is the only
   app-wide dialog/menu seam; build DOM with `dom.js` `el()`. `PopupManager.close()`
   fires a one-way `chiphippo:popup-closed` event so stateful dialogs can reset

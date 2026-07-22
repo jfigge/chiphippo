@@ -24,10 +24,26 @@ import { CHIPS_74LS } from "./chips-74ls.js";
 import { CHIPS_MEM } from "./chips-mem.js";
 import { PART_DEFS } from "./parts.js";
 
+/**
+ * Coerce a memory chip's file binding (Feature 180) to a valid
+ * `{ path, mode }`, or null. `path` must be a non-empty string; `mode` is
+ * `rom` (read-only: load, never write back) or `ram` (load + flush). Anything
+ * else drops the binding, so an unbound chip falls back to the run-volatile
+ * image. Non-memory chips never carry one — but coercing it here is harmless.
+ */
+function normalizeStorage(raw) {
+  const s = raw?.storage;
+  if (!s || typeof s !== "object") return null;
+  const path = typeof s.path === "string" && s.path.trim() ? s.path : null;
+  if (!path) return null;
+  return { path, mode: s.mode === "ram" ? "ram" : "rom" };
+}
+
 /** Every chip def, in palette display order (combinational gates, then the
     sequential & MSI wave). `kind` is stamped uniformly, and a
     `normalizeParams` that preserves only the `damaged` flag (Feature 90's
-    magic-smoke bookkeeping) — chips otherwise carry no params. */
+    magic-smoke bookkeeping) and a memory chip's file binding (Feature 180) —
+    chips otherwise carry no params. */
 export const CHIP_DEFS = Object.freeze(
   [...CHIPS_GATES, ...CHIPS_SEQ, ...CHIPS_74LS, ...CHIPS_MEM].map((def) =>
     Object.freeze({
@@ -38,6 +54,8 @@ export const CHIP_DEFS = Object.freeze(
         const params = {};
         if (raw?.damaged === true) params.damaged = true;
         if (raw?.rot === 180) params.rot = 180;
+        const storage = normalizeStorage(raw);
+        if (storage) params.storage = storage;
         return params;
       },
       ...def,

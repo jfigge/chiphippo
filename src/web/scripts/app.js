@@ -30,6 +30,7 @@ import { SchematicView } from "./components/schematic-view.js";
 import { PalettePanel } from "./components/palette-panel.js";
 import { BuildGuide } from "./components/build-guide.js";
 import { SimController, SPEEDS } from "./components/sim-controller.js";
+import { MemoryBridge } from "./components/memory-bridge.js";
 import { NotificationStack } from "./components/notification-stack.js";
 import { NetNameMonitor } from "./components/net-name-monitor.js";
 import { PopupManager } from "./popup-manager.js";
@@ -480,6 +481,7 @@ async function init() {
   let busBtn = null;
   let probeBtn = null;
   let sim = null; // the SimController (created after the toolbar below)
+  let memoryBridge = null; // memory-inspector coordinator (created with sim)
   const onWireStateChange = ({ armed, color }) => {
     wireBtn?.classList.toggle("toolbar-btn--active", armed);
     wireBtn?.setAttribute("aria-pressed", String(armed));
@@ -510,6 +512,17 @@ async function init() {
       bridge
         .openPinout?.(ref, { rows })
         .catch((err) => console.error("[renderer] pinout:open failed:", err)),
+    // Double-click / context-menu on a memory chip → its hex inspector window.
+    onOpenMemory: (id) => memoryBridge?.open(id),
+    // "Backing file…": pick a `.bin` in rom/ram mode, then bind it (Feature 180).
+    onBindMemory: async (id, mode) => {
+      try {
+        const path = await bridge.mem?.choose(mode);
+        if (path) controller.setMemoryStorage(id, { path, mode });
+      } catch (err) {
+        console.error("[renderer] mem:choose failed:", err);
+      }
+    },
     // Undo/redo availability drives the native Edit-menu enable state.
     onHistoryChange: (state) =>
       bridge.menu
@@ -780,6 +793,10 @@ async function init() {
     for (const btn of editButtons()) btn.disabled = !stopped;
   };
   sim = new SimController({ deskDoc, notifications, onTransportChange });
+
+  // Memory-inspector coordinator (Feature 190): bridges inspector windows to the
+  // document (bindings), the controller (undo/redo), and the running image.
+  memoryBridge = new MemoryBridge({ deskDoc, sim, controller, bridge });
 
   // The empty-desk hint disappears once the desk has boards.
   const hint = desk.querySelector(".desk-hint");

@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Memory inspector</title>
+    <link rel="stylesheet" href="styles/theme.css" />
+    <link rel="stylesheet" href="styles/app.css" />
+    <style>
+      /* The inspector fills its OS window (no modal chrome). */
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+        background: var(--color-surface-0);
+      }
+      body {
+        color: var(--color-text);
+        font-family: var(--font-sans);
+        overflow: hidden;
+      }
+      #memory-root {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+      }
+      .mem-empty {
+        padding: var(--space-5);
+        color: var(--color-muted);
+      }
+
+      /* ── Toolbar ─────────────────────────────────────────────────────── */
+      .mem-toolbar {
+        flex: 0 0 auto;
+        display: flex;
+        flex-direction: column;
+        gap: var(--space-2);
+        padding: var(--space-3) var(--space-4);
+        border-bottom: 1px solid var(--color-border);
+        background: var(--color-surface-1);
+      }
+      .mem-toolrow {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: var(--space-2);
+      }
+      .mem-tool-gap {
+        flex: 1 1 var(--space-3);
+      }
+      .mem-tool-label {
+        color: var(--color-muted);
+        font-size: 12px;
+      }
+      .mem-btn {
+        font: inherit;
+        font-size: 12px;
+        color: var(--color-text);
+        background: var(--color-surface-2);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-1);
+        padding: 4px 10px;
+        cursor: pointer;
+      }
+      .mem-btn:hover:not(:disabled) {
+        background: var(--color-surface-3);
+      }
+      .mem-btn:disabled {
+        opacity: 0.45;
+        cursor: default;
+      }
+      .mem-input {
+        font-family: var(--font-mono, ui-monospace, monospace);
+        font-size: 12px;
+        color: var(--color-text);
+        background: var(--color-surface-0);
+        border: 1px solid var(--color-border);
+        border-radius: var(--radius-1);
+        padding: 3px 6px;
+        width: 6ch;
+      }
+      .mem-input--val {
+        width: 4ch;
+      }
+      .mem-binding {
+        font-size: 12px;
+        color: var(--color-muted);
+        font-family: var(--font-mono, ui-monospace, monospace);
+      }
+      .mem-binding--bound {
+        color: var(--color-text);
+      }
+      .mem-status {
+        font-size: 12px;
+        color: var(--color-muted);
+      }
+      .mem-status--running {
+        color: var(--color-accent);
+      }
+      .mem-error {
+        font-size: 12px;
+        color: var(--color-danger, #e05252);
+      }
+
+      /* ── Grid ────────────────────────────────────────────────────────── */
+      .mem-inspector {
+        flex: 1 1 auto;
+        display: flex;
+        flex-direction: column;
+        min-height: 0;
+        font-family: var(
+          --font-mono,
+          ui-monospace,
+          SFMono-Regular,
+          Menlo,
+          monospace
+        );
+        font-size: 13px;
+      }
+      .mem-header {
+        flex: 0 0 auto;
+        padding: 6px var(--space-4) 4px;
+        color: var(--color-muted);
+        border-bottom: 1px solid var(--color-border);
+        white-space: nowrap;
+      }
+      .mem-grid-scroll {
+        flex: 1 1 auto;
+        overflow-y: auto;
+        overflow-x: hidden;
+        position: relative;
+        padding: 0 var(--space-4);
+      }
+      .mem-grid-canvas {
+        position: relative;
+        width: 100%;
+      }
+      .mem-row {
+        white-space: nowrap;
+        line-height: 22px;
+      }
+      .mem-off,
+      .mem-head-off {
+        display: inline-block;
+        width: 7ch;
+        text-align: right;
+        padding-right: 1.5ch;
+        color: var(--color-muted);
+      }
+      .mem-hx {
+        display: inline-block;
+        width: 2.5ch;
+        text-align: center;
+      }
+      .mem-asc-sep {
+        display: inline-block;
+        width: 1.5ch;
+      }
+      .mem-asc {
+        display: inline-block;
+        width: 1.2ch;
+        text-align: center;
+        color: var(--color-muted);
+      }
+      .mem-asc-head {
+        display: inline-block;
+        padding-left: 1.5ch;
+      }
+      .mem-inspector--editable .mem-hx,
+      .mem-inspector--editable .mem-asc {
+        cursor: text;
+      }
+      .mem-inspector--editable .mem-hx:hover,
+      .mem-inspector--editable .mem-asc:hover {
+        background: var(--color-surface-2);
+        border-radius: 2px;
+      }
+      .mem-cell--sel {
+        background: var(--color-selection, var(--color-accent));
+        color: var(--color-surface-0);
+        border-radius: 2px;
+      }
+      .mem-cell--written {
+        background: color-mix(in srgb, var(--color-accent) 45%, transparent);
+        border-radius: 2px;
+      }
+      .mem-cell-edit {
+        font: inherit;
+        width: 2.4ch;
+        box-sizing: border-box;
+        text-align: center;
+        color: var(--color-text);
+        background: var(--color-surface-0);
+        border: 1px solid var(--color-accent);
+        border-radius: 2px;
+        padding: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="memory-root"></div>
+    <script type="module" src="scripts/memory.js"></script>
+  </body>
+</html>

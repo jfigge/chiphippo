@@ -58,6 +58,7 @@ import {
 import { DeskDoc } from "../model/desk-doc.js";
 import { HistoryStore } from "../model/history-store.js";
 import { partDef } from "../catalog/index.js";
+import { isMemory } from "../sim/chip-eval.js";
 import { PSU_VOLTS, CLOCK_HZ, LCD_SIZES } from "../catalog/parts.js";
 import {
   BreadboardView,
@@ -88,6 +89,11 @@ function brickSvg(kind, params) {
   if (kind === "psu") return buildPsuSvg(params);
   if (kind === "clock") return buildClockSvg(params);
   return buildLcdSvg(params);
+}
+
+/** The trailing file name of a path (for the backing-file menu label). */
+function fileName(p) {
+  return typeof p === "string" ? p.split(/[\\/]/).pop() : p;
 }
 
 /** Pointer travel (px) below which a press stays a click, not a drag/pan. */
@@ -156,6 +162,8 @@ export class DeskController {
   #onReplaceChip;
   #onClockToggle;
   #onOpenPinout;
+  #onOpenMemory;
+  #onBindMemory;
 
   /**
    * @param {object} opts
@@ -174,6 +182,12 @@ export class DeskController {
    *   click-to-toggle while running (Feature 100).
    * @param {(ref: string) => void} [opts.onOpenPinout] - double-clicking a chip
    *   requests its pin-assignments window (main opens a native OS window).
+   * @param {(id: string) => void} [opts.onOpenMemory] - open the memory
+   *   inspector window for a memory chip (double-click / context menu,
+   *   Feature 190).
+   * @param {(id: string, mode: string) => void} [opts.onBindMemory] - pick a
+   *   backing file for a memory chip in `rom`/`ram` mode (Feature 180); the
+   *   handler runs the native picker and calls back setMemoryStorage.
    * @param {(state: {canUndo: boolean, canRedo: boolean}) => void}
    *   [opts.onHistoryChange] - undo/redo availability changed (drives the
    *   Edit-menu enable state, Feature 200).
@@ -188,6 +202,8 @@ export class DeskController {
     onReplaceChip,
     onClockToggle,
     onOpenPinout,
+    onOpenMemory,
+    onBindMemory,
     onHistoryChange,
   }) {
     this.#viewport = viewport;
@@ -196,6 +212,8 @@ export class DeskController {
     this.#onReplaceChip = onReplaceChip;
     this.#onClockToggle = onClockToggle;
     this.#onOpenPinout = onOpenPinout;
+    this.#onOpenMemory = onOpenMemory;
+    this.#onBindMemory = onBindMemory;
     this.#onHistoryChange = onHistoryChange;
 
     // Layer order (established for every later stage): boards under parts
@@ -1821,6 +1839,20 @@ export class DeskController {
     this.#emitDocChanged("set LCD size", { coalesce: true });
   }
 
+  /**
+   * Bind (or clear) a memory chip's backing file (Feature 180). `storage` is
+   * `{ path, mode }` (`rom`/`ram`) or null to unbind. A no-op while editing is
+   * locked — the binding is a topology-ish edit and the running image is
+   * engine-owned.
+   */
+  setMemoryStorage(id, storage) {
+    if (this.#editingLocked) return;
+    const comp = this.#doc.getComponent(id);
+    if (!comp || !isMemory(partDef(comp.ref))) return;
+    this.#doc.setComponentParams(id, { storage: storage ?? null });
+    this.#emitDocChanged("set backing file");
+  }
+
   // ── Central keyboard hooks (wired by app.js) ────────────────────────────
 
   /** @returns {boolean} true when the key was consumed. */
@@ -1979,6 +2011,12 @@ export class DeskController {
     const comp = this.#doc.getComponent(id);
     const def = comp && partDef(comp.ref);
     if (!def) return;
+    // A memory chip opens its hex/ASCII inspector instead of the pinout
+    // (Feature 190) — the pinout stays reachable via its context menu.
+    if (isMemory(def)) {
+      this.#onOpenMemory?.(id);
+      return;
+    }
     let rows;
     if (def.package) rows = Math.ceil(def.pins.length / 2);
     else if (def.footprint) rows = def.pins.length;
@@ -2549,6 +2587,40 @@ export class DeskController {
         label: "Replace chip",
         onSelect: () => this.#onReplaceChip?.(id),
       });
+    }
+    // Memory chips: the inspector + the file binding (Features 180 / 190). The
+    // inspector stays available while running (read-only + live); binding is an
+    // edit, so it's dropped when editing is locked.
+    if (comp?.kind === "chip" && isMemory(partDef(comp.ref))) {
+      items.push({
+        label: "Inspect memory…",
+        onSelect: () => this.#onOpenMemory?.(id),
+      });
+      if (!this.#editingLocked) {
+        const bound = comp.params?.storage ?? null;
+        items.push({ separator: true });
+        items.push({
+          label: bound
+            ? `● Backing: ${fileName(bound.path)} (${bound.mode.toUpperCase()})`
+            : "No backing file",
+          disabled: true,
+        });
+        items.push({
+          label: "Program from file… (ROM)",
+          onSelect: () => this.#onBindMemory?.(id, "rom"),
+        });
+        items.push({
+          label: "Record to file… (RAM)",
+          onSelect: () => this.#onBindMemory?.(id, "ram"),
+        });
+        if (bound) {
+          items.push({
+            label: "Clear backing file",
+            onSelect: () => this.setMemoryStorage(id, null),
+          });
+        }
+        items.push({ separator: true });
+      }
     }
     if (!this.#editingLocked) {
       if (partDef(comp?.ref)?.rotatable) {
