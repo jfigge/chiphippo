@@ -53,7 +53,7 @@ const BOARDS_FOLDER = "BOARDS";
 
 /** The annotations section pinned at the BOTTOM (labels + notes). Not catalog
     parts — hardcoded here like the boards folder — so it folds like any
-    section and is hidden while the (chip) filter is active. */
+    section and is hidden while the parts filter is active. */
 const ANNOTATIONS_FOLDER = "ANNOTATIONS";
 const ANNOTATION_KINDS = [
   { kind: "label", glyph: "T", label: "Label", hint: "a one-line caption" },
@@ -105,8 +105,8 @@ export class PalettePanel {
     const filterInput = el("input", {
       class: "palette-filter",
       type: "search",
-      placeholder: "Filter chips…",
-      "aria-label": "Filter chips",
+      placeholder: "Filter parts…",
+      "aria-label": "Filter parts",
       onInput: (e) => {
         this.#filter = e.target.value;
         this.#render();
