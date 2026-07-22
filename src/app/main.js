@@ -250,12 +250,12 @@ function datasheetPdfPath(ref) {
 
 /** Open (or focus) the pin-assignments window for a part ref. */
 function openPinoutWindow(ref, opts = {}) {
-  if (typeof ref !== "string" || !PINOUT_REF_RE.test(ref)) return;
+  if (typeof ref !== "string" || !PINOUT_REF_RE.test(ref)) return false;
   const existing = pinoutWindows.get(ref);
   if (existing && !existing.isDestroyed()) {
     existing.show();
     existing.focus();
-    return;
+    return true;
   }
   // `rows` is the renderer's layout row count (DIP wraps to pins/2; discretes
   // and bricks list every pin/terminal). Clamp defensively.
@@ -298,6 +298,7 @@ function openPinoutWindow(ref, opts = {}) {
     if (pinoutWindows.get(ref) === win) pinoutWindows.delete(ref);
   });
   pinoutWindows.set(ref, win);
+  return true;
 }
 
 // ─── Memory backing files + inspector windows (Features 180 / 190) ─────────────
@@ -397,13 +398,13 @@ async function exportMemoryFile(bytes, suggestedName) {
 /** Open (or focus) the memory-inspector window for a component id. */
 function openMemoryWindow(compId, ref) {
   if (!MEM_COMP_RE.test(String(compId)) || !PINOUT_REF_RE.test(String(ref))) {
-    return;
+    return false;
   }
   const existing = memoryWindows.get(compId);
   if (existing && !existing.isDestroyed()) {
     existing.show();
     existing.focus();
-    return;
+    return true;
   }
   const win = new BrowserWindow({
     width: 760,
@@ -430,6 +431,7 @@ function openMemoryWindow(compId, ref) {
     if (memoryWindows.get(compId) === win) memoryWindows.delete(compId);
   });
   memoryWindows.set(compId, win);
+  return true;
 }
 
 /** Relay a message from the main renderer to a component's inspector window. */
@@ -664,10 +666,9 @@ function registerIpc() {
 
   // Chip pin-assignments window (Feature 100): double-clicking a chip opens a
   // separate floating OS window rendering its pinout as a wiring reference.
-  ipcMain.handle("pinout:open", (_event, ref, opts) => {
-    openPinoutWindow(ref, opts);
-    return true;
-  });
+  ipcMain.handle("pinout:open", (_event, ref, opts) =>
+    openPinoutWindow(ref, opts),
+  );
 
   // Open a part's external datasheet PDF from the configured folder (Settings ▸
   // Data Sheets) in the OS PDF viewer. Requested by the pinout window's
@@ -710,10 +711,9 @@ function registerIpc() {
   // Memory inspector window + cross-window relay (Feature 190): the inspector
   // is its own OS window per component and reaches the main renderer only
   // through these two relays (host ⇄ inspector, addressed by component id).
-  ipcMain.handle("memory:open", (_event, compId, ref) => {
-    openMemoryWindow(compId, ref);
-    return true;
-  });
+  ipcMain.handle("memory:open", (_event, compId, ref) =>
+    openMemoryWindow(compId, ref),
+  );
   ipcMain.handle("memory:to-inspector", (_event, compId, msg) => {
     relayToInspector(compId, msg);
     return true;
