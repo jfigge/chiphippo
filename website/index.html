@@ -123,6 +123,57 @@
     .nav-link { color: var(--subtext); text-decoration: none; font-size: 0.875rem; transition: color 0.15s; }
     .nav-link:hover { color: var(--text); }
 
+    /* ── Other-Hippos dropdown (native <details>, no JS — CSP-safe) ─────────── */
+
+    .nav-dropdown { position: relative; }
+
+    .nav-dropdown-summary {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      cursor: pointer;
+      list-style: none;
+      user-select: none;
+    }
+    .nav-dropdown-summary::-webkit-details-marker { display: none; }
+    .nav-dropdown-summary::marker { content: ""; }
+    .nav-dropdown-summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+
+    .nav-dropdown-chevron { transition: transform 0.15s; }
+    .nav-dropdown[open] .nav-dropdown-summary { color: var(--text); }
+    .nav-dropdown[open] .nav-dropdown-chevron { transform: rotate(180deg); }
+
+    .nav-dropdown-menu {
+      position: absolute;
+      top: calc(100% + 12px);
+      right: 0;
+      min-width: 168px;
+      background: var(--mantle);
+      border: 1px solid var(--surface-1);
+      border-radius: 10px;
+      padding: 6px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      box-shadow: 0 14px 36px rgba(0, 0, 0, 0.55);
+      z-index: 200;
+    }
+
+    .nav-dropdown-item {
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      padding: 9px 12px;
+      border-radius: 7px;
+      color: var(--subtext);
+      text-decoration: none;
+      font-size: 0.85rem;
+      white-space: nowrap;
+      transition: background 0.15s, color 0.15s;
+    }
+    .nav-dropdown-item:hover { background: var(--surface-0); color: var(--text); }
+    .nav-dropdown-item svg { color: var(--accent); flex-shrink: 0; }
+
     .btn {
       display: inline-flex;
       align-items: center;
@@ -412,7 +463,7 @@
     @media (max-width: 640px) {
       .prerelease-banner { padding: 9px 1rem; font-size: 0.74rem; }
       nav { padding: 0 1rem; }
-      .nav-right .nav-link { display: none; }
+      .nav-right .nav-link, .nav-right .nav-dropdown { display: none; }
       .hero { padding: 64px 1rem 48px; }
       .mock-wrap { margin-top: 36px; padding: 0 1rem; }
       .section { padding: 64px 1rem; }
@@ -451,6 +502,26 @@
   <div class="nav-right">
     <a class="nav-link" href="#features">Features</a>
     <a class="nav-link" href="#downloads">Downloads</a>
+    <details class="nav-dropdown">
+      <summary class="nav-link nav-dropdown-summary">
+        Other Hippos
+        <svg class="nav-dropdown-chevron" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+      </summary>
+      <div class="nav-dropdown-menu">
+        <a class="nav-dropdown-item" href="https://resthippo.com" rel="noopener noreferrer">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 12h4l3-9 4 18 3-9h2"/></svg>
+          Rest Hippo
+        </a>
+        <a class="nav-dropdown-item" href="https://jumphippo.com" rel="noopener noreferrer">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 13c3-6 11-6 14 0"/><polyline points="15 5 19 5 19 9"/></svg>
+          Jump Hippo
+        </a>
+        <a class="nav-dropdown-item" href="https://keephippo.com" rel="noopener noreferrer">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>
+          Keep Hippo
+        </a>
+      </div>
+    </details>
     <a class="nav-link" href="https://github.com/jfigge/chiphippo" rel="noopener noreferrer">GitHub</a>
     <a class="nav-link" href="https://github.com/sponsors/jfigge" rel="noopener noreferrer">Donate</a>
     <a class="btn btn-primary" href="#downloads">
