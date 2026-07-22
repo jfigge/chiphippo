@@ -26,6 +26,39 @@
 
 import { el } from "../dom.js";
 
+/** A line-drawn document (file + text lines) glyph for the "open datasheet
+    PDF" header button — a datasheet reads as a spec sheet, not a book. */
+const DATASHEET_SVG =
+  '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" ' +
+  'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+  'stroke-linejoin="round" aria-hidden="true">' +
+  '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>' +
+  '<polyline points="14 2 14 8 20 8"/>' +
+  '<line x1="16" y1="13" x2="8" y2="13"/>' +
+  '<line x1="16" y1="17" x2="8" y2="17"/>' +
+  '<polyline points="10 9 9 9 8 9"/>' +
+  "</svg>";
+
+/**
+ * The header "open datasheet PDF" button (a line-drawn book), shown top-right
+ * of the pinout window when the user's datasheet folder holds a PDF for this
+ * part. Pure DOM + a callback — the bridge call that actually opens the PDF is
+ * wired by the caller (pinout.js), keeping this module electrical-logic-free.
+ * @param {() => void} onOpen - invoked on click.
+ * @returns {HTMLButtonElement}
+ */
+export function datasheetButton(onOpen) {
+  const btn = el("button", {
+    class: "pinout-datasheet-btn",
+    type: "button",
+    title: "Open the datasheet PDF",
+    "aria-label": "Open the datasheet PDF",
+    onClick: () => onOpen?.(),
+  });
+  btn.innerHTML = DATASHEET_SVG;
+  return btn;
+}
+
 /** Short role tag shown beside each pin/terminal name. */
 const ROLE_TAG = Object.freeze({
   input: "in",

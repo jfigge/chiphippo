@@ -130,6 +130,63 @@ test("removeBoard unmounts, clears selection, and emits", () => {
   assert.equal(changes, 1);
 });
 
+test("Delete on a selected strip removes the whole snapped set", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { surface, controller } = makeDesk(doc, world);
+  controller.addKitAt("full", 0, 0); // bb1 rail · bb2 pins · bb3 rail, one group
+  assert.equal(doc.boards.length, 3);
+
+  controller.selectBoard("bb2"); // selecting any strip highlights the whole set
+  let changes = 0;
+  window.addEventListener("chiphippo:doc-changed", () => changes++);
+  const consumed = controller.handleKeyDown(
+    new window.KeyboardEvent("keydown", { key: "Delete" }),
+  );
+  assert.equal(consumed, true);
+  assert.equal(doc.boards.length, 0, "all three strips removed");
+  assert.equal(surface.querySelectorAll(".board").length, 0);
+  assert.equal(controller.selectedId, null);
+  assert.equal(changes, 1, "one batched doc-changed");
+});
+
+test("deleting a board set cascades its parts and every wire crossing out", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { surface, controller } = makeDesk(doc, world);
+  controller.addKitAt("full", 0, 0); // bb1 · bb2 · bb3, one group
+  controller.addBoardAt("pins-full", 0, 40); // bb4, loose and unselected
+  const chip = controller.addComponentAt("74LS00", "bb2", "e5"); // seated on the kit
+  // A wire from the kit's pin-board out to the unselected loose board…
+  const crossing = doc.addWire({ from: "bb2.a20", to: "bb4.a20" });
+  // …and one wholly on the loose board, which must survive.
+  const kept = doc.addWire({ from: "bb4.a5", to: "bb4.a8" });
+
+  controller.selectBoard("bb1"); // grab a rail; the whole kit is the set
+  let changes = 0;
+  window.addEventListener("chiphippo:doc-changed", () => changes++);
+  controller.handleKeyDown(
+    new window.KeyboardEvent("keydown", { key: "Delete" }),
+  );
+  // Parts/wires cascade, so a confirm is raised — accept it.
+  const confirmBtn = document.querySelector(".popup-confirm .btn--danger");
+  assert.ok(confirmBtn, "a confirm dialog was raised");
+  confirmBtn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+
+  assert.deepEqual(
+    doc.boards.map((b) => b.id),
+    ["bb4"],
+    "only the unselected loose board remains",
+  );
+  assert.equal(doc.getComponent(chip.id), null, "the seated chip cascaded");
+  assert.equal(doc.getWire(crossing.id), null, "the crossing wire cascaded");
+  assert.ok(doc.getWire(kept.id), "the loose board's own wire survived");
+  assert.equal(surface.querySelectorAll(".part-chip").length, 0);
+  assert.equal(changes, 1, "one batched doc-changed after confirm");
+});
+
 test("selection moves between boards; deselect clears", () => {
   resetDom();
   const doc = new DeskDoc(null);

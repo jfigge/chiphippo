@@ -1920,6 +1920,85 @@ textarea.annotation-editor {
   cursor: pointer;
 }
 
+/* A stacked row (label on top of its control) — for wide controls like the
+   datasheet-folder picker that would crowd the single-line flex layout. */
+.settings-row--stack {
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-2);
+}
+
+/* Datasheet-folder control: the current path (elided) above Clear/Browse. */
+.settings-folder {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.settings-folder-path {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  padding: var(--space-2) var(--space-3);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--color-text);
+  background: var(--color-surface-0);
+  border: 1px solid var(--color-overlay);
+  border-radius: var(--radius-sm);
+}
+
+.settings-folder-path--empty {
+  color: var(--color-muted);
+  font-style: italic;
+}
+
+.settings-folder-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.settings-folder-browse,
+.settings-folder-clear {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-overlay);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-1);
+  color: var(--color-text);
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.settings-folder-browse:hover,
+.settings-folder-clear:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+}
+
+.settings-folder-clear {
+  background: transparent;
+  color: var(--color-subtext);
+}
+
+.settings-hint {
+  margin: var(--space-2) 0 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--color-muted);
+}
+
 /* Checkbox → pill-slider toggle (scoped to the settings toggle so it doesn't
    restyle checkboxes elsewhere). Ported from Rest Hippo's universal rule. */
 .settings-toggle {
@@ -2176,6 +2255,50 @@ textarea.annotation-editor {
 .chip-pinout {
   min-width: 380px;
   max-width: 460px;
+}
+
+/* The pinout header carries the title and, top-right, an optional "open
+   datasheet PDF" button (shown when the user's datasheet folder holds a
+   <id>.pdf for this part). */
+.chip-pinout .popup-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.chip-pinout .popup-title {
+  flex: 1;
+  min-width: 0;
+}
+
+.pinout-datasheet-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--color-overlay);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-subtext);
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.pinout-datasheet-btn:hover {
+  background: var(--color-surface-1);
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+.pinout-datasheet-btn:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
 }
 
 .chip-pinout-sub {
@@ -2643,4 +2766,273 @@ textarea.annotation-editor {
   color: var(--color-muted);
   text-align: center;
   margin-top: var(--space-5);
+}
+
+/* ── Schematic view (Feature 150) ─────────────────────────────────────────
+   A second pannable/zoomable surface (its own DeskView) drawing the SAME
+   document as chip symbols + routed nets. Coordinates inside .schematic-svg
+   are pitch units (viewBox), so strokes/offsets below are in pitch too. */
+.schematic-viewport {
+  position: relative;
+  flex: 1 1 auto;
+  overflow: hidden;
+  background-color: var(--color-base);
+  background-image: radial-gradient(
+    circle,
+    var(--color-desk-dot) 1px,
+    transparent 1.5px
+  );
+  cursor: default;
+}
+
+.schematic-viewport[hidden] {
+  display: none;
+}
+
+/* The svg spans the diagram bounds; empty area is click-through so dragging
+   bare desk still pans (only symbols are interactive). */
+.schematic-svg {
+  position: absolute;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.schematic-node {
+  pointer-events: all; /* inherited by the box/labels/stubs within */
+  cursor: grab;
+}
+
+.schematic-box {
+  fill: var(--color-surface-0);
+  stroke: var(--color-subtext);
+  stroke-width: 0.14;
+}
+
+.schematic-label {
+  fill: var(--color-text);
+  font-family: var(--font-mono);
+  font-weight: 600;
+  user-select: none;
+}
+
+.schematic-pin-label {
+  fill: var(--color-subtext);
+  font-family: var(--font-sans);
+  user-select: none;
+}
+
+.schematic-stub {
+  stroke: var(--color-subtext);
+  stroke-width: 0.1;
+}
+
+.schematic-wire {
+  fill: none;
+  stroke: var(--color-subtext);
+  stroke-width: 0.12;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.schematic-edge--bus .schematic-wire {
+  stroke: var(--color-text);
+  stroke-width: 0.36;
+}
+
+.schematic-edge--dangling .schematic-wire {
+  stroke-dasharray: 0.4 0.3;
+}
+
+.schematic-net-label {
+  fill: var(--color-info);
+  font-family: var(--font-mono);
+  font-weight: 600;
+  user-select: none;
+}
+
+/* Distinctive-shape gate glyph — a subtle type badge in the box corner. */
+.schematic-glyph-shape {
+  fill: var(--color-overlay);
+  stroke: var(--color-subtext);
+  stroke-width: 0.05;
+}
+
+.schematic-glyph-line {
+  fill: none;
+  stroke: var(--color-subtext);
+  stroke-width: 0.06;
+}
+
+/* Power / ground rail symbols dropped at each supply pin (never routed). */
+.schematic-power-stem,
+.schematic-power-bar {
+  fill: none;
+  stroke: var(--color-text);
+  stroke-width: 0.12;
+  stroke-linecap: round;
+}
+
+.schematic-power--VCC .schematic-power-stem,
+.schematic-power--VCC .schematic-power-bar {
+  stroke: var(--color-wire-red);
+}
+
+.schematic-power-label {
+  fill: var(--color-muted);
+  font-family: var(--font-mono);
+  user-select: none;
+}
+
+/* ── Live simulation tint (running) — level colors match the breadboard ── */
+.schematic-edge[data-level="H"] .schematic-wire,
+.schematic-stub[data-level="H"] {
+  stroke: var(--color-sim-high);
+}
+
+.schematic-edge[data-level="L"] .schematic-wire,
+.schematic-stub[data-level="L"] {
+  stroke: var(--color-sim-low);
+}
+
+.schematic-edge[data-level="Z"] .schematic-wire,
+.schematic-stub[data-level="Z"] {
+  stroke: var(--color-sim-float);
+}
+
+.schematic-edge[data-level="X"] .schematic-wire,
+.schematic-stub[data-level="X"] {
+  stroke: var(--color-sim-conflict);
+  animation: net-x-flash 0.7s steps(1) infinite;
+}
+
+/* ── Shared probe highlight — same net lit in both views ── */
+.schematic-edge.schematic--highlight .schematic-wire {
+  stroke: var(--color-net-glow);
+  stroke-width: 0.32;
+}
+
+.schematic-stub.schematic--highlight {
+  stroke: var(--color-net-glow);
+  stroke-width: 0.24;
+}
+
+/* ── Chip health badges (running) ── */
+.schematic-node--damaged .schematic-box,
+.schematic-node--reversed .schematic-box {
+  stroke: var(--color-danger);
+  stroke-width: 0.24;
+}
+
+.schematic-node--underpowered .schematic-box {
+  stroke: var(--color-warning);
+  stroke-width: 0.2;
+}
+
+.schematic-node--unpowered .schematic-box {
+  stroke: var(--color-muted);
+  stroke-dasharray: 0.4 0.3;
+}
+
+.schematic-hint {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--color-muted);
+  font-size: 14px;
+  user-select: none;
+  pointer-events: none;
+}
+
+.schematic-hint[hidden] {
+  display: none;
+}
+
+.schematic-tools {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  display: flex;
+  gap: var(--space-2);
+}
+
+.schematic-tool-btn {
+  height: var(--control-height);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--color-overlay);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-0);
+  color: var(--color-text);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.schematic-tool-btn:hover {
+  background: var(--color-surface-1);
+}
+
+/* ── Distinctive-shape parts (Feature 150 discretes) ─────────────────────── */
+.schematic-shape-line {
+  fill: none;
+  stroke: var(--color-subtext);
+  stroke-width: 0.14;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.schematic-shape-body {
+  fill: var(--color-surface-0);
+  stroke: var(--color-subtext);
+  stroke-width: 0.14;
+}
+
+.schematic-shape-dot {
+  fill: var(--color-subtext);
+}
+
+.schematic-led-body {
+  fill: var(--led-color, var(--color-wire-red));
+  fill-opacity: 0.32;
+  stroke: var(--color-subtext);
+  stroke-width: 0.12;
+}
+
+.schematic-led-bar {
+  stroke: var(--color-subtext);
+  stroke-width: 0.16;
+  stroke-linecap: round;
+}
+
+.schematic-led-ray {
+  stroke: var(--color-subtext);
+  stroke-width: 0.1;
+  stroke-linecap: round;
+}
+
+.schematic-shape--led.schematic-lit .schematic-led-body {
+  fill-opacity: 1;
+}
+
+.schematic-shape--led.schematic-lit .schematic-led-ray {
+  stroke: var(--led-color, var(--color-wire-red));
+  stroke-width: 0.18;
+}
+
+.schematic-shape-label {
+  fill: var(--color-text);
+  font-family: var(--font-mono);
+  font-weight: 600;
+  user-select: none;
+}
+
+.schematic-shape-value {
+  fill: var(--color-muted);
+  font-family: var(--font-mono);
+  user-select: none;
+}
+
+.schematic-terminal-label {
+  fill: var(--color-muted);
+  font-family: var(--font-sans);
+  user-select: none;
 }

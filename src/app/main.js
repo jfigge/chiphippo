@@ -176,6 +176,33 @@ async function saveSchematicDialog(doc, suggestedPath) {
   return getDeskStore().writeFile(result.filePath, doc);
 }
 
+// ─── Datasheet folder + PDFs ──────────────────────────────────────────────────
+// The user can point Settings ▸ Data Sheets at a folder of manufacturer
+// datasheet PDFs; a pinout window then offers to open `<folder>/<partId>.pdf`
+// in the OS PDF viewer. The folder path lives in settings (`datasheetDir`).
+
+/** Native folder picker for the datasheet directory. Returns the chosen
+    absolute path, or null when cancelled. */
+async function chooseDatasheetDir() {
+  const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+  const opts = { properties: ["openDirectory", "createDirectory"] };
+  const result = win
+    ? await dialog.showOpenDialog(win, opts)
+    : await dialog.showOpenDialog(opts);
+  if (result.canceled || !result.filePaths?.[0]) return null;
+  return result.filePaths[0];
+}
+
+/** Natively open a part's external datasheet PDF (no-op when none is on file).
+    Returns whether a file was handed to the OS. */
+async function openDatasheetPdf(ref) {
+  const file = datasheetPdfPath(ref);
+  if (!file) return false;
+  const err = await shell.openPath(file); // "" on success, else a message
+  if (err) console.error("[main] datasheet:open error:", err);
+  return !err;
+}
+
 // ─── Chip pin-assignments windows (Feature 100) ───────────────────────────────
 // Double-clicking a chip opens a small, floating OS window rendering its DIP
 // pinout (web/pinout.html) so it stays visible while the user wires. One window
@@ -196,6 +223,28 @@ function pinoutFloatPref() {
       true,
     ) !== false
   );
+}
+
+/**
+ * Absolute path to a part's external datasheet PDF, or null when none is on
+ * file. Reads the user's `datasheetDir` setting and looks for `<dir>/<ref>.pdf`
+ * (see the Settings ▸ Data Sheets folder). A missing/blank folder, a bad ref,
+ * or an absent file all yield null.
+ * @param {string} ref - a catalog id (e.g. "74LS00").
+ * @returns {string|null}
+ */
+function datasheetPdfPath(ref) {
+  if (typeof ref !== "string" || !PINOUT_REF_RE.test(ref)) return null;
+  const dir = safeCall(
+    "datasheet:dir",
+    () => getSettingsStore().get().datasheetDir,
+    null,
+  );
+  if (typeof dir !== "string" || !dir) return null;
+  const file = path.join(dir, `${ref}.pdf`);
+  return safeCall("datasheet:exists", () => fs.existsSync(file), false)
+    ? file
+    : null;
 }
 
 /** Open (or focus) the pin-assignments window for a part ref. */
@@ -227,15 +276,21 @@ function openPinoutWindow(ref, opts = {}) {
     title: "Pin assignments",
     fullscreenable: false,
     webPreferences: {
+      // The pinout page is otherwise bridge-free, but it needs the narrow
+      // window.chiphippo surface to open a part's external datasheet PDF
+      // (datasheet:open) when the user has a datasheet folder configured.
+      preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
     },
   });
   win.setMenuBarVisibility(false);
-  win.loadFile(path.join(__dirname, "..", "web", "pinout.html"), {
-    query: { ref },
-  });
+  // When the user's datasheet folder holds a `<ref>.pdf`, tell the page to show
+  // the "open datasheet" button (it invokes datasheet:open back into main).
+  const query = { ref };
+  if (datasheetPdfPath(ref)) query.pdf = "1";
+  win.loadFile(path.join(__dirname, "..", "web", "pinout.html"), { query });
   // Right-click anywhere in the window → native float-above toggle.
   win.webContents.on("context-menu", () => showPinoutMenu(win));
   win.on("closed", () => {
@@ -425,6 +480,9 @@ function registerIpc() {
   ipcMain.handle("settings:set", (_event, patch) =>
     getSettingsStore().set(patch),
   );
+  // Settings ▸ Data Sheets: pick the external datasheet-PDF folder (native
+  // directory dialog); the renderer persists the chosen path via settings:set.
+  ipcMain.handle("settings:choose-datasheet-dir", () => chooseDatasheetDir());
 
   // Desk document (Feature 20): load runs the schema migrations; the
   // renderer autosaves the whole document, debounced (~1 s).
@@ -448,6 +506,11 @@ function registerIpc() {
     openPinoutWindow(ref, opts);
     return true;
   });
+
+  // Open a part's external datasheet PDF from the configured folder (Settings ▸
+  // Data Sheets) in the OS PDF viewer. Requested by the pinout window's
+  // "open datasheet" button; a no-op (returns false) when no PDF is on file.
+  ipcMain.handle("datasheet:open", (_event, ref) => openDatasheetPdf(ref));
 
   // Undo/redo menu state (Feature 200): the renderer owns the document history
   // and pushes the current availability so Edit ▸ Undo / Redo match.

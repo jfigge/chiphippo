@@ -74,6 +74,11 @@ contextBridge.exposeInMainWorld("chiphippo", {
   settings: {
     get: () => ipcRenderer.invoke("settings:get"),
     set: (patch) => ipcRenderer.invoke("settings:set", patch),
+    // Settings ▸ Data Sheets: open a native folder picker for the external
+    // datasheet-PDF directory. Resolves to the chosen path, or null if
+    // cancelled — the caller then persists it with set({ datasheetDir }).
+    chooseDatasheetDir: () =>
+      ipcRenderer.invoke("settings:choose-datasheet-dir"),
   },
 
   // ── Desk document (Feature 20) ─────────────────────────────────────────────
@@ -98,6 +103,11 @@ contextBridge.exposeInMainWorld("chiphippo", {
   // its DIP pinout as a wiring reference. `opts` may carry a `{ pins }` hint so
   // main can size the window to the package.
   openPinout: (ref, opts) => ipcRenderer.invoke("pinout:open", ref, opts),
+
+  // Open a part's external datasheet PDF (from the Settings ▸ Data Sheets
+  // folder) in the OS PDF viewer. Used by the pinout window's "open datasheet"
+  // button. Resolves to whether a file was opened.
+  openDatasheet: (ref) => ipcRenderer.invoke("datasheet:open", ref),
 
   // ── Undo/redo menu state (Feature 200) ─────────────────────────────────────
   // The renderer owns the document history; this pushes the current

@@ -672,6 +672,43 @@ test("addComponent: seats a chip with a fresh c<n> id", () => {
   assert.equal(doc.components.length, 2);
 });
 
+test("setSchematicPos: sets, clears, and round-trips a Feature 150 nudge", () => {
+  const doc = docWithFull();
+  doc.addComponent({ kind: "chip", ref: "74LS00", board: "bb1", anchor: "e5" });
+
+  const set = doc.setSchematicPos("c1", 12.5, -8);
+  assert.deepEqual(set.schematicPos, { x: 12.5, y: -8 });
+  assert.deepEqual(doc.getComponent("c1").schematicPos, { x: 12.5, y: -8 });
+
+  // It survives serialization AND a reload through normalizeDocument.
+  const reloaded = normalizeDocument(doc.toJSON());
+  assert.deepEqual(reloaded.components[0].schematicPos, { x: 12.5, y: -8 });
+
+  // A non-finite coordinate clears the hint (resets the symbol to auto-layout).
+  doc.setSchematicPos("c1", NaN, 0);
+  assert.equal(doc.getComponent("c1").schematicPos, undefined);
+  assert.ok(!("schematicPos" in normalizeDocument(doc.toJSON()).components[0]));
+
+  assert.throws(() => doc.setSchematicPos("nope", 1, 1), /no component/);
+});
+
+test("clearSchematicPositions: drops every nudge and reports the count", () => {
+  const doc = docWithFull();
+  doc.addComponent({ kind: "chip", ref: "74LS00", board: "bb1", anchor: "e5" });
+  doc.addComponent({
+    kind: "chip",
+    ref: "74LS04",
+    board: "bb1",
+    anchor: "e20",
+  });
+  doc.setSchematicPos("c1", 1, 2);
+  doc.setSchematicPos("c2", 3, 4);
+  assert.equal(doc.clearSchematicPositions(), 2);
+  assert.equal(doc.getComponent("c1").schematicPos, undefined);
+  assert.equal(doc.getComponent("c2").schematicPos, undefined);
+  assert.equal(doc.clearSchematicPositions(), 0); // idempotent
+});
+
 test("addComponent: rejects bad kinds/refs/boards and illegal seats", () => {
   const doc = docWithFull();
   assert.throws(

@@ -23,7 +23,7 @@ import assert from "node:assert/strict";
 import { resetDom } from "./jsdom-setup.js";
 import { chipDef, partDef } from "../catalog/index.js";
 
-const { buildChipPinout, buildPartPinout } =
+const { buildChipPinout, buildPartPinout, datasheetButton } =
   await import("../components/chip-pinout.js");
 
 test("a 14-pin chip lays out 7 mirrored rows with numbers and names", () => {
@@ -149,4 +149,18 @@ test("a clock renders out/gnd terminals", () => {
     (n) => n.textContent,
   );
   assert.deepEqual(tags, ["out", "gnd"]);
+});
+
+// ── datasheetButton: the "open datasheet PDF" header affordance ──────────────
+
+test("datasheetButton builds an accessible book button that fires its callback", () => {
+  resetDom();
+  let clicks = 0;
+  const btn = datasheetButton(() => clicks++);
+  assert.equal(btn.tagName, "BUTTON");
+  assert.ok(btn.classList.contains("pinout-datasheet-btn"));
+  assert.equal(btn.getAttribute("aria-label"), "Open the datasheet PDF");
+  assert.ok(btn.querySelector("svg"), "carries the line-drawn document glyph");
+  btn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  assert.equal(clicks, 1, "clicking invokes the open callback");
 });

@@ -25,10 +25,12 @@
  * v1 → v2 (Feature 110) splits the one-piece breadboard into strips.
  * v2 → v3 (Feature 120) adds net names + annotations (pure additive).
  * v3 → v4 (Feature 130) adds buses (pure additive).
+ * v4 → v5 (Feature 150) adds an optional per-component schematic position hint
+ *   (no doc-level state — a pure version bump; absence is valid).
  */
 "use strict";
 
-const DESK_DOC_VERSION = 4;
+const DESK_DOC_VERSION = 5;
 
 /** A fresh, empty desk document (main's copy of the renderer's shape). */
 function defaultDeskDocument() {
@@ -273,8 +275,23 @@ function migrateV3ToV4(doc) {
   };
 }
 
+/**
+ * v4 → v5: the schematic view (Feature 150) arrives. Its only persisted state
+ * is an OPTIONAL per-component `schematicPos` hint whose absence is valid, so
+ * there is nothing to default at the document level — this is a pure version
+ * bump that keeps the version monotonic with the feature waves.
+ */
+function migrateV4ToV5(doc) {
+  return { ...doc, version: 5 };
+}
+
 /** version → one-step upgrade fn returning the doc at version + 1. */
-const MIGRATIONS = { 1: migrateV1ToV2, 2: migrateV2ToV3, 3: migrateV3ToV4 };
+const MIGRATIONS = {
+  1: migrateV1ToV2,
+  2: migrateV2ToV3,
+  3: migrateV3ToV4,
+  4: migrateV4ToV5,
+};
 
 /**
  * Bring a loaded document up to DESK_DOC_VERSION. Junk (null / non-object /

@@ -88,11 +88,15 @@ test("partPinHoles: a rotated resistor derives a seated pin plus a free lead", (
     partPinHoles("resistor", "j3", { rot: 90, end: { dx: 0.5, dy: 1 } }),
     null,
   );
-  // A rail hole never ANCHORS a part — pin 1 always seats in the grid, and it
-  // is the lead that reaches the rail.
-  assert.equal(
+  // A turned two-terminal part may ANCHOR on a rail too, so BOTH leads can
+  // reach rails: pin 1 seats in the rail hole, pin 2 bends off it. (Whether
+  // that rail hole actually exists is partPinAddresses' parseHole check.)
+  assert.deepEqual(
     partPinHoles("resistor", "-3", { rot: 90, end: { dx: 0, dy: 3 } }),
-    null,
+    [
+      { pin: 1, hole: "-3" },
+      { pin: 2, offset: { dx: 0, dy: 3 } },
+    ],
   );
   // A non-rotatable part ignores rot and keeps its footprint.
   assert.deepEqual(
@@ -448,7 +452,7 @@ test("partPinHoles: linear discretes in any grid row", () => {
     { pin: 1, hole: "f1" },
     { pin: 2, hole: "f2" },
   ]);
-  assert.equal(partPinHoles("led", "+3"), null); // rails don't anchor parts
+  assert.equal(partPinHoles("led", "+3"), null); // linear form is grid-only
   assert.equal(partPinHoles("psu", "b1"), null); // psu has terminals, not pins
 });
 
@@ -498,21 +502,73 @@ test("holeAtWorld: a junk board type is skipped, not thrown over", () => {
   assert.equal(holeAtWorld([junk, FULL], 5, 1)?.hole, "j5");
 });
 
-test("a part can never seat on a rail strip — parts belong to the pin-board", () => {
-  // This is what keeps every part's own board un-turnable (only rails rotate),
-  // and so keeps derived pin geometry on the flat frame.
+test("a linear (footprint) part can never seat on a rail — the offsets are grid arithmetic", () => {
+  // A NON-turned discrete lays out along grid columns, which the rail's grouped
+  // lattice can't honour, so it stays pin-board only.
   const doc = docWith({ boards: [FULL, RAIL] });
-  const params = { rot: 90, end: { dx: 0, dy: 1 } };
-  for (const anchor of ["a1", "j5", "+1", "-3"]) {
+  for (const anchor of ["+1", "-3"]) {
     assert.equal(
-      canPlacePart(doc, { ref: "led", board: "bb3", anchor, params }),
+      canPlacePart(doc, { ref: "led", board: "bb3", anchor }),
       false,
-      `a part must not seat on a rail at ${anchor}`,
+      `a linear part must not seat on a rail at ${anchor}`,
     );
   }
-  // The same LED seats happily on the pin-board.
+  // The same LED seats happily along a pin-board row.
   assert.equal(
-    canPlacePart(doc, { ref: "led", board: "bb1", anchor: "j5", params }),
+    canPlacePart(doc, { ref: "led", board: "bb1", anchor: "j5" }),
     true,
+  );
+});
+
+test("a TURNED two-terminal part may anchor on a rail — both leads can reach rails", () => {
+  // rail-full at (0,−4): + holes at world y −3, − at y −2; a second rail strip
+  // sits below the pin-board so a resistor can bridge rail → rail across it.
+  const RAIL2 = { id: "bb4", type: "rail-full", x: 0, y: 14 }; // + holes at y 15
+  const doc = docWith({ boards: [FULL, RAIL, RAIL2] });
+
+  // Pin 1 anchored on the top rail (bb3.-3 = world (5,−2)); the lead bends DOWN
+  // to a grid hole (bb1.j5 = (5,1)) — 3 apart, exactly minSpan. This is the
+  // case the old "parts belong to the pin-board" rule wrongly forbade.
+  assert.equal(
+    canPlacePart(doc, {
+      ref: "resistor",
+      board: "bb3",
+      anchor: "-3",
+      params: { rot: 90, end: { dx: 0, dy: 3 } },
+    }),
+    true,
+  );
+
+  // BOTH leads on rails: pin 1 on the top rail (bb3.+3 = (5,−3)), lead bending
+  // down 18 onto the bottom rail (bb4.+3 = (5,15)) — well past minSpan.
+  assert.equal(
+    canPlacePart(doc, {
+      ref: "resistor",
+      board: "bb3",
+      anchor: "+3",
+      params: { rot: 90, end: { dx: 0, dy: 18 } },
+    }),
+    true,
+  );
+
+  // A LED (minSpan 1) bridges the + and − of ONE rail: bb3.+3 (5,−3) → the
+  // lead down 1 to bb3.-3 (5,−2). A resistor's longer body couldn't (below).
+  assert.equal(
+    canPlacePart(doc, {
+      ref: "led",
+      board: "bb3",
+      anchor: "+3",
+      params: { rot: 90, end: { dx: 0, dy: 1 } },
+    }),
+    true,
+  );
+  assert.equal(
+    canPlacePart(doc, {
+      ref: "resistor",
+      board: "bb3",
+      anchor: "+3",
+      params: { rot: 90, end: { dx: 0, dy: 1 } },
+    }),
+    false, // 1 < minSpan 3
   );
 });

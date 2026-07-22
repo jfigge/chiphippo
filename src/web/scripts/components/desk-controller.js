@@ -692,8 +692,13 @@ export class DeskController {
    * user just clicks to drop it. The buffer persists, so repeated Cmd+V stamps
    * more copies. Returns false when nothing has been copied. Orientation carries
    * over: a flipped chip pastes flipped, and a rotatable part (LED / resistor)
-   * copied in its turned two-free-ends form re-arms with the SAME lead vector —
-   * so the drop lands rotated exactly as the source (R still re-spins it).
+   * copied in its turned two-free-ends form re-arms turned the same CARDINAL way
+   * (R still re-spins it). The bend is NORMALISED back to the clean footprint
+   * span — never the source's verbatim lead vector: that vector may have been
+   * stretched to reach a power rail (whose holes sit on a non-uniform lattice),
+   * and re-injecting it would pin the drop to that exact grid→rail geometry, so
+   * the paste would refuse most rail positions. A footprint-span bend re-fits
+   * freely, exactly like a fresh turned part — drag an end onto a rail after.
    */
   pasteComponent() {
     const buf = this.#copyBuffer;
@@ -712,7 +717,14 @@ export class DeskController {
     this.armPartPlacement(buf.ref, params);
     if (turned && this.#mode?.kind === "place-part") {
       this.#mode.turns = 1; // truthy → the turned two-free-ends tracking
-      this.#mode.orient = { dx: buf.params.end.dx, dy: buf.params.end.dy };
+      // Keep the source's cardinal direction, but snap the magnitude back to a
+      // clean footprint-span bend so the drop re-fits anywhere (see the method
+      // doc). A raw rail-reaching vector would only re-validate where the exact
+      // grid→rail displacement recurs.
+      const { dx, dy } = buf.params.end;
+      const turns =
+        Math.abs(dx) >= Math.abs(dy) ? (dx >= 0 ? 0 : 2) : dy >= 0 ? 1 : 3;
+      this.#mode.orient = this.#ghostOrient(buf.ref, turns);
     }
     return true;
   }
@@ -1251,6 +1263,28 @@ export class DeskController {
     this.#probe.toggle();
   }
 
+  // ── Schematic view (Feature 150) ─────────────────────────────────────────
+  // The derived schematic drags symbols; each nudge (and the auto-layout reset)
+  // commits through the one doc-changed seam so it lands in undo/redo and
+  // persists. Purely a layout hint — the physical desk placement is untouched.
+
+  /** Persist a schematic symbol's position nudge. */
+  setSchematicPos(id, x, y) {
+    try {
+      this.#doc.setSchematicPos(id, x, y);
+    } catch {
+      return; // the component vanished mid-drag — nothing to record
+    }
+    this.#emitDocChanged("move symbol");
+  }
+
+  /** Clear every schematic nudge, returning the diagram to auto-layout. */
+  autoLayoutSchematic() {
+    if (this.#doc.clearSchematicPositions() > 0) {
+      this.#emitDocChanged("auto-layout schematic");
+    }
+  }
+
   // ── Net names (Feature 120) ──────────────────────────────────────────────
   // The probe drives these; each is one commit through the doc-changed seam so
   // it lands in undo/redo. Naming is inert to the engine — the netlist just
@@ -1472,45 +1506,72 @@ export class DeskController {
   }
 
   /**
-   * Remove a board. With parts seated on it or wires attached, asks for
-   * confirmation first (the document cascade removes them too).
+   * Remove a board — and the whole snapped SET it belongs to. Selecting any
+   * strip highlights its entire group (every joined pin-board and rail), so
+   * deleting matches that outline: every strip in the set goes, along with
+   * every component seated on any of them and every wire touching them —
+   * including wires that cross to a board OUTSIDE the set. A lone strip is a
+   * set of one. With anything to cascade, asks for confirmation first.
    */
   removeBoard(id) {
-    const parts = this.#doc.componentsOnBoard(id).length;
-    const wires = this.#doc.wiresTouching(id).length;
-    if (parts === 0 && wires === 0) {
-      this.#doRemoveBoard(id);
+    const boardIds = this.#doc.groupMembers(id).map((b) => b.id);
+    if (boardIds.length === 0) return;
+    // Count the cascade deduped across the set: a component seats on one
+    // strip, but a wire spanning two members touches both.
+    const partIds = new Set();
+    const wireIds = new Set();
+    for (const bid of boardIds) {
+      for (const c of this.#doc.componentsOnBoard(bid)) partIds.add(c.id);
+      for (const w of this.#doc.wiresTouching(bid)) wireIds.add(w.id);
+    }
+    if (partIds.size === 0 && wireIds.size === 0) {
+      this.#doRemoveBoards(boardIds);
       return;
     }
+    const many = boardIds.length > 1;
     const bits = [];
-    if (parts > 0) bits.push(`${parts} part${parts === 1 ? "" : "s"}`);
-    if (wires > 0) bits.push(`${wires} wire${wires === 1 ? "" : "s"}`);
+    if (partIds.size > 0)
+      bits.push(`${partIds.size} part${partIds.size === 1 ? "" : "s"}`);
+    if (wireIds.size > 0)
+      bits.push(`${wireIds.size} wire${wireIds.size === 1 ? "" : "s"}`);
     PopupManager.confirm({
-      title: "Remove board?",
+      title: many ? "Remove boards?" : "Remove board?",
       message:
-        `${id} has ${bits.join(" and ")} attached — ` +
-        `removing the board removes them too.`,
+        `${many ? `These ${boardIds.length} joined boards have` : `${id} has`} ` +
+        `${bits.join(" and ")} attached — removing ` +
+        `${many ? "them removes those" : "the board removes them"} too.`,
       confirmLabel: "Remove",
       confirmClass: "btn--danger",
-      onConfirm: () => this.#doRemoveBoard(id),
+      onConfirm: () => this.#doRemoveBoards(boardIds),
     });
   }
 
-  #doRemoveBoard(id) {
-    for (const comp of this.#doc.componentsOnBoard(id)) {
-      this.#partViews.get(comp.id)?.remove();
-      this.#partViews.delete(comp.id);
-      if (this.#selected?.id === comp.id) this.#selected = null;
-    }
-    const cascadedWires = new Set(this.#doc.wiresTouching(id).map((w) => w.id));
-    this.#doc.removeBoard(id); // cascades seated components + attached wires
-    this.#views.get(id)?.remove();
-    this.#views.delete(id);
-    if (
-      this.#selected?.id === id ||
-      (this.#selected?.kind === "wire" && cascadedWires.has(this.#selected.id))
-    ) {
-      this.#selected = null;
+  /**
+   * Remove every strip in `boardIds` in ONE doc-changed. Each strip's model
+   * removal cascades its seated components and any wire touching it (whether
+   * the other end lands on another member, an unselected board, or a brick),
+   * so the whole set — and every wire crossing out of it — comes away.
+   */
+  #doRemoveBoards(boardIds) {
+    for (const bid of boardIds) {
+      for (const comp of this.#doc.componentsOnBoard(bid)) {
+        this.#partViews.get(comp.id)?.remove();
+        this.#partViews.delete(comp.id);
+        if (this.#selected?.id === comp.id) this.#selected = null;
+      }
+      const cascadedWires = new Set(
+        this.#doc.wiresTouching(bid).map((w) => w.id),
+      );
+      this.#doc.removeBoard(bid); // cascades seated components + attached wires
+      this.#views.get(bid)?.remove();
+      this.#views.delete(bid);
+      if (
+        this.#selected?.id === bid ||
+        (this.#selected?.kind === "wire" &&
+          cascadedWires.has(this.#selected.id))
+      ) {
+        this.#selected = null;
+      }
     }
     this.#hideHover();
     this.#emitDocChanged("delete board"); // WireLayer re-renders from this

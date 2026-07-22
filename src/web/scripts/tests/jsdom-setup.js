@@ -50,6 +50,18 @@ export function resetDom() {
     window.HTMLElement.prototype.scrollIntoView = () => {};
   }
 
+  // jsdom has no ResizeObserver; DeskView (and views that compose it) observe
+  // their viewport. A no-op stub is enough — tests drive size explicitly.
+  if (!window.ResizeObserver) {
+    class ResizeObserver {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    }
+    window.ResizeObserver = ResizeObserver;
+    global.ResizeObserver = ResizeObserver;
+  }
+
   // jsdom doesn't implement the <dialog> modal surface the popup manager
   // uses. Polyfill just enough of it — showModal/show set `open`; close
   // clears it and fires a `close` event. Production uses the real element.

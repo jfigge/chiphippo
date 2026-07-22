@@ -36,6 +36,13 @@ const CLOSE_SVG =
   'stroke="currentColor" stroke-width="1.6" stroke-linecap="round" ' +
   'aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg>';
 
+/** A line-drawn book glyph for the "browse the datasheet folder" affordance. */
+const FOLDER_SVG =
+  '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" ' +
+  'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+  'stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 ' +
+  '2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
+
 /** The effective selection-border colour when none is stored (theme default). */
 function themeSelectionColor() {
   const v = getComputedStyle(document.documentElement)
@@ -87,6 +94,135 @@ export class SettingsDialog {
     });
     closeBtn.innerHTML = CLOSE_SVG;
 
+    // ── Data Sheets panel: the external datasheet-PDF folder ────────────────
+    const hasDir =
+      typeof settings.datasheetDir === "string" && settings.datasheetDir;
+    const folderPath = el("span", {
+      class: `settings-folder-path${hasDir ? "" : " settings-folder-path--empty"}`,
+      text: hasDir ? settings.datasheetDir : "No folder selected",
+      title: hasDir ? settings.datasheetDir : "",
+    });
+    const clearBtn = el("button", {
+      class: "settings-folder-clear",
+      type: "button",
+      text: "Clear",
+      hidden: !hasDir,
+      onClick: () => {
+        folderPath.textContent = "No folder selected";
+        folderPath.title = "";
+        folderPath.classList.add("settings-folder-path--empty");
+        clearBtn.hidden = true;
+        SettingsDialog.#emit({ datasheetDir: null });
+      },
+    });
+    const browseBtn = el("button", {
+      class: "settings-folder-browse",
+      type: "button",
+      title: "Choose the datasheet folder",
+      onClick: async () => {
+        let dir;
+        try {
+          dir = await window.chiphippo?.settings?.chooseDatasheetDir?.();
+        } catch (err) {
+          console.error("[renderer] choose datasheet dir failed:", err);
+          return;
+        }
+        if (!dir) return; // cancelled
+        folderPath.textContent = dir;
+        folderPath.title = dir;
+        folderPath.classList.remove("settings-folder-path--empty");
+        clearBtn.hidden = false;
+        SettingsDialog.#emit({ datasheetDir: dir });
+      },
+    });
+    browseBtn.innerHTML = `${FOLDER_SVG}<span>Browse…</span>`;
+
+    const panels = {
+      general: el(
+        "section",
+        { class: "settings-panel", role: "tabpanel", "data-panel": "general" },
+        [
+          el("div", { class: "settings-row settings-row--toggle" }, [
+            el("label", {
+              class: "settings-label",
+              for: "set-show-hub",
+              text: "Show desk hub",
+            }),
+            showHub,
+          ]),
+          el("div", { class: "settings-row" }, [
+            el("label", {
+              class: "settings-label",
+              for: "set-selection-color",
+              text: "Selection border colour",
+            }),
+            selColor,
+          ]),
+        ],
+      ),
+      datasheets: el(
+        "section",
+        {
+          class: "settings-panel",
+          role: "tabpanel",
+          "data-panel": "datasheets",
+          hidden: true,
+        },
+        [
+          el("div", { class: "settings-row settings-row--stack" }, [
+            el("label", {
+              class: "settings-label",
+              text: "Datasheet folder",
+            }),
+            el("div", { class: "settings-folder" }, [
+              folderPath,
+              el("div", { class: "settings-folder-actions" }, [
+                clearBtn,
+                browseBtn,
+              ]),
+            ]),
+          ]),
+          el("p", {
+            class: "settings-hint",
+            text:
+              "Point this at a folder of manufacturer datasheet PDFs named " +
+              "after each chip (e.g. 74LS00.pdf). When a matching PDF is " +
+              "found, a chip's pin-assignments window shows a button to open " +
+              "it.",
+          }),
+        ],
+      ),
+    };
+
+    // Left nav rail — one item per panel; clicking switches the visible panel.
+    const TABS = [
+      { key: "general", label: "General" },
+      { key: "datasheets", label: "Data Sheets" },
+    ];
+    const navItems = TABS.map(({ key, label }, i) =>
+      el("button", {
+        class:
+          "settings-nav-item" + (i === 0 ? " settings-nav-item--active" : ""),
+        type: "button",
+        role: "tab",
+        "aria-selected": String(i === 0),
+        "data-panel": key,
+        text: label,
+        onClick: () => select(key),
+      }),
+    );
+
+    const select = (key) => {
+      for (const item of navItems) {
+        const on = item.getAttribute("data-panel") === key;
+        item.classList.toggle("settings-nav-item--active", on);
+        item.setAttribute("aria-selected", String(on));
+      }
+      for (const [panelKey, panel] of Object.entries(panels)) {
+        panel.hidden = panelKey !== key;
+      }
+    };
+
     const element = el(
       "div",
       {
@@ -101,43 +237,10 @@ export class SettingsDialog {
           closeBtn,
         ]),
         el("div", { class: "popup-body settings-popup-body" }, [
-          el("nav", { class: "settings-nav", role: "tablist" }, [
-            el("button", {
-              class: "settings-nav-item settings-nav-item--active",
-              type: "button",
-              role: "tab",
-              "aria-selected": "true",
-              "data-panel": "general",
-              text: "General",
-            }),
-          ]),
+          el("nav", { class: "settings-nav", role: "tablist" }, navItems),
           el("div", { class: "settings-panels" }, [
-            el(
-              "section",
-              {
-                class: "settings-panel",
-                role: "tabpanel",
-                "data-panel": "general",
-              },
-              [
-                el("div", { class: "settings-row settings-row--toggle" }, [
-                  el("label", {
-                    class: "settings-label",
-                    for: "set-show-hub",
-                    text: "Show desk hub",
-                  }),
-                  showHub,
-                ]),
-                el("div", { class: "settings-row" }, [
-                  el("label", {
-                    class: "settings-label",
-                    for: "set-selection-color",
-                    text: "Selection border colour",
-                  }),
-                  selColor,
-                ]),
-              ],
-            ),
+            panels.general,
+            panels.datasheets,
           ]),
         ]),
       ],

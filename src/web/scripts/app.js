@@ -26,6 +26,7 @@ import { DeskView } from "./components/desk-view.js";
 import { ZoomControl } from "./components/zoom-control.js";
 import { DeskHud } from "./components/desk-hud.js";
 import { DeskController } from "./components/desk-controller.js";
+import { SchematicView } from "./components/schematic-view.js";
 import { PalettePanel } from "./components/palette-panel.js";
 import { BuildGuide } from "./components/build-guide.js";
 import { SimController, SPEEDS } from "./components/sim-controller.js";
@@ -174,13 +175,43 @@ function buildDesk() {
   return desk;
 }
 
+/** The schematic surface (Feature 150) — a sibling of the desk, hidden until
+    the Breadboard ⇄ Schematic toggle (or Tab) switches to it. */
+function buildSchematicViewport() {
+  const view = document.createElement("section");
+  view.className = "schematic-viewport";
+  view.setAttribute("aria-label", "Schematic");
+  view.hidden = true;
+  return view;
+}
+
 /**
  * Central keyboard shortcuts: desk keys (Esc / Delete via DeskController)
  * first, then Space to toggle Run/Stop (only when no tool is armed), then
  * cmd/ctrl +, −, 0 for the desk zoom.
  */
-function bindShortcuts(deskView, controller, sim) {
+function bindShortcuts(controller, sim, getActiveView, onToggleView) {
   window.addEventListener("keydown", (e) => {
+    // Tab flips Breadboard ⇄ Schematic (Feature 150) — not while typing.
+    if (
+      e.key === "Tab" &&
+      !e.metaKey &&
+      !e.ctrlKey &&
+      !e.altKey &&
+      !e.shiftKey
+    ) {
+      const tag = e.target?.tagName;
+      if (
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        e.target?.isContentEditable
+      ) {
+        return;
+      }
+      e.preventDefault();
+      onToggleView?.();
+      return;
+    }
     if (controller.handleKeyDown(e)) {
       e.preventDefault();
       return;
@@ -211,15 +242,16 @@ function bindShortcuts(deskView, controller, sim) {
       return;
     }
     if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+    const view = getActiveView();
     if (e.key === "=" || e.key === "+") {
       e.preventDefault();
-      deskView.zoomIn();
+      view.zoomIn();
     } else if (e.key === "-" || e.key === "_") {
       e.preventDefault();
-      deskView.zoomOut();
+      view.zoomOut();
     } else if (e.key === "0") {
       e.preventDefault();
-      deskView.resetZoom();
+      view.resetZoom();
     }
   });
 }
@@ -407,6 +439,14 @@ async function init() {
   palette.setVisible(settings.paletteOpen === true);
   main.append(desk);
 
+  // The schematic surface sits beside the desk (Feature 150); a header toggle
+  // (or Tab) swaps which one is visible. Constructed further below, once the
+  // controller exists to receive its position-nudge commits.
+  const schematicViewport = buildSchematicViewport();
+  main.append(schematicViewport);
+  let schematicView = null;
+  let mode = "desk";
+
   // Build guide (Feature 140): a right-docked panel deriving the BOM / wiring
   // list / assembly steps from the live document. Visibility persists like the
   // palette; a toolbar button (added below) and its own close button both route
@@ -496,6 +536,35 @@ async function init() {
   });
 
   const toolbar = document.getElementById("app-toolbar");
+
+  // Breadboard ⇄ Schematic view toggle (Feature 150) — leads the toolbar.
+  // Hidden for now: the schematic still works and Tab still toggles it, but the
+  // toolbar entry point is held back. Flip SHOW_SCHEMATIC_TOGGLE to re-enable.
+  const SHOW_SCHEMATIC_TOGGLE = false;
+  const modeBtn = el("button", {
+    class: "toolbar-btn",
+    type: "button",
+    text: "▧ Schematic",
+    title: "Show the logical schematic (Tab)",
+    "aria-pressed": "false",
+    onClick: () => setMode(mode === "desk" ? "schematic" : "desk"),
+  });
+  if (SHOW_SCHEMATIC_TOGGLE) {
+    toolbar.append(modeBtn, el("span", { class: "toolbar-divider" }));
+  }
+
+  function setMode(next) {
+    mode = next === "schematic" ? "schematic" : "desk";
+    const schematic = mode === "schematic";
+    desk.hidden = schematic;
+    schematicView?.setVisible(schematic);
+    modeBtn.classList.toggle("toolbar-btn--active", schematic);
+    modeBtn.textContent = schematic ? "▦ Breadboard" : "▧ Schematic";
+    modeBtn.title = schematic
+      ? "Back to the breadboard (Tab)"
+      : "Show the logical schematic (Tab)";
+    modeBtn.setAttribute("aria-pressed", String(schematic));
+  }
 
   // Schematic file actions (New / Load / Save) — icon buttons at the head of
   // the toolbar, dispatching the SAME events the File menu pushes.
@@ -727,7 +796,22 @@ async function init() {
   });
   zoomControl.setZoom(deskView.camera.zoom);
 
-  bindShortcuts(deskView, controller, sim);
+  // The derived schematic (Feature 150): the same document as chip symbols +
+  // routed nets. Symbol nudges and the auto-layout reset commit through the
+  // controller so they ride the one undo/redo seam.
+  schematicView = new SchematicView(schematicViewport, {
+    doc: deskDoc,
+    onSetSchematicPos: (id, x, y) => controller.setSchematicPos(id, x, y),
+    onAutoLayout: () => controller.autoLayoutSchematic(),
+  });
+  setMode("desk"); // sync the initial toggle state
+
+  bindShortcuts(
+    controller,
+    sim,
+    () => (mode === "schematic" ? schematicView : deskView),
+    () => setMode(mode === "desk" ? "schematic" : "desk"),
+  );
 
   // The desk hub is always mounted but hidden until the "Show desk hub"
   // setting turns it on (applySettings below sets the initial visibility).

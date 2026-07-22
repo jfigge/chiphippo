@@ -56,6 +56,12 @@ const DEFAULTS = Object.freeze({
   // Applied by the renderer as the `--color-selection` custom property.
   selectionColor: null,
 
+  // ── Data sheets ────────────────────────────────────────────────────────────
+  // An external directory of manufacturer datasheet PDFs. When it is set and a
+  // `<dir>/<partId>.pdf` exists, the pin-assignments window shows a button that
+  // opens that PDF natively. null → no directory (the default).
+  datasheetDir: null,
+
   // ── Current schematic (file-based New/Open/Save) ───────────────────────────
   // The named file the working desk maps to (null → Untitled), and a JSON
   // snapshot of the document as last saved to that file (or the empty/new

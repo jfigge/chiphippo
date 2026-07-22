@@ -22,13 +22,14 @@
 // Pure and DOM-free. Pin positions are always DERIVED (footprint + anchor),
 // never stored.
 //
-// A part is always seated on ONE board — for a breadboard kit, the centre
-// pin-board. Most pins therefore resolve within that board by footprint
-// arithmetic alone. The exception is a rotated two-terminal part's FREE LEAD,
-// which is stored as a `{dx, dy}` bend and may land on a neighbouring strip
-// (usually a power rail). That lead is resolved GEOMETRICALLY, against
-// whatever board lies under it — so pulling the rail away leaves the part
-// seated where it was, with the lead floating.
+// A part is always seated on ONE board. A chip and a LINEAR discrete seat on a
+// pin-board, so most pins resolve within that board by footprint arithmetic
+// alone. A rotated two-terminal part (resistor / LED) is different: it is a
+// free two-ends device — pin 1 anchors in ANY hole (grid OR power rail) and
+// pin 2 is a `{dx, dy}` bend from it, resolved GEOMETRICALLY against whatever
+// board lies under it. So BOTH leads can reach rails, and pulling a strip away
+// from under either the anchor or the bent lead leaves the part where it was,
+// with that leg floating.
 
 import { partDef } from "../catalog/index.js";
 import { allPinHoles } from "./footprints.js";
@@ -43,6 +44,12 @@ import {
 
 const CHIP_ANCHOR_RE = /^e([1-9]\d*)$/; // a chip anchor: pin 1's hole, row e
 const GRID_ANCHOR_RE = /^([a-j])([1-9]\d*)$/; // a discrete anchors in ANY row
+// A TURNED two-terminal part (resistor / LED) anchors pin 1 in ANY hole — a
+// grid row OR a power rail — so BOTH leads can reach rails (e.g. a resistor
+// bridging two rails). The linear footprint form stays GRID_ANCHOR_RE only:
+// its offsets are grid-column arithmetic that the rail's grouped lattice can't
+// honour. Pin 1 being a real hole on its own board is all the turned form needs.
+const LEAD_ANCHOR_RE = /^([a-j]|[+-])([1-9]\d*)$/;
 
 /**
  * The seated hole of every pin of a board part (chip OR discrete):
@@ -81,13 +88,16 @@ export function partPinHoles(ref, anchor, params) {
   if (def.footprint) {
     // Rotated (vertical) two-free-ends form: pin 1 at the anchor hole, pin 2
     // bent to a {dx, dy} offset instead of a footprint offset. The bend may
-    // reach off this board entirely, so it stays geometry here.
+    // reach off this board entirely, so it stays geometry here. Pin 1 may
+    // anchor on a rail as freely as on the grid (LEAD_ANCHOR_RE), so both leads
+    // can land on rails — whether each anchor/lead hole actually EXISTS is the
+    // caller's parseHole check (partPinAddresses), as ever.
     if (def.rotatable && params?.rot === 90) {
       const end = params.end;
       if (!end || !Number.isInteger(end.dx) || !Number.isInteger(end.dy)) {
         return null;
       }
-      if (!GRID_ANCHOR_RE.test(anchor)) return null;
+      if (!LEAD_ANCHOR_RE.test(anchor)) return null;
       return [
         { pin: def.pins[0].n, hole: anchor },
         { pin: def.pins[1].n, offset: { dx: end.dx, dy: end.dy } },

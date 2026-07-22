@@ -278,13 +278,17 @@ Electron main process (src/app/main.js)
   + version info from `app:info:get`) and `components/settings-dialog.js`. The
   **Settings dialog is dumb**: it broadcasts a `chiphippo:settings-changed`
   patch and `app.js`'s `applySettings` both persists it (`settings.set`) and
-  applies it live. Current settings keys it drives: **`showDeskHub`** (off by
-  default — toggles the `DeskHud` overlay via `setVisible`) and
-  **`selectionColor`** (`#rrggbb` or null → sets the `--color-selection` custom
-  property that `.board-outline-path` strokes with, falling back to
-  `--color-accent`). Window bounds and the desk camera (incl. **zoom**) are
-  already persisted in `settings.json` (`windowBounds` via `window-state.js`;
-  `viewport` via the renderer's debounced save).
+  applies it live. It is a **tabbed** master-detail card (left nav rail →
+  panels). The **General** tab drives **`showDeskHub`** (off by default —
+  toggles the `DeskHud` overlay via `setVisible`) and **`selectionColor`**
+  (`#rrggbb` or null → sets the `--color-selection` custom property that
+  `.board-outline-path` strokes with, falling back to `--color-accent`). The
+  **Data Sheets** tab drives **`datasheetDir`** (the external datasheet-PDF
+  folder, default null) — its Browse button calls the native
+  `settings.chooseDatasheetDir` picker and emits the chosen path; no live apply
+  (the pinout window reads it at open time). Window bounds and the desk camera
+  (incl. **zoom**) are already persisted in `settings.json` (`windowBounds` via
+  `window-state.js`; `viewport` via the renderer's debounced save).
 - **Pin-assignments window** (Feature 100): double-clicking ANY part (every
   part view fires `dblclick` → `DeskController.#onOpenPinout(ref, rows)`)
   invokes `pinout:open`, and main opens a **separate floating OS window**
@@ -302,6 +306,16 @@ Electron main process (src/app/main.js)
   below). The `<img>` loads lazily and its `<figure>` REMOVES ITSELF on load
   error, so the four chips with no datasheet (and every discrete/brick) simply
   show the pin map; main widens the window when a crop exists for the ref.
+  Separately, the user can point **Settings ▸ Data Sheets** at an external
+  folder of manufacturer datasheet PDFs (`settings.datasheetDir`, default null,
+  chosen via the native `settings:choose-datasheet-dir` picker). When that
+  folder holds a `<ref>.pdf`, main flags the window (`?pdf=1`) and the header
+  grows a top-right line-drawn **document button** (`chip-pinout.js`
+  `datasheetButton`, wired in `pinout.js`) that invokes `datasheet:open` →
+  `shell.openPath` to open the PDF in the OS viewer. This external-PDF path is
+  independent of the committed PNG crop above — either, both, or neither may be
+  present. It is the ONE reason the otherwise bridge-free pinout window loads
+  `preload.js`.
 
 - The main process owns all filesystem and native I/O. The renderer is sandboxed
   (`contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`) and
@@ -464,12 +478,17 @@ make clean     # Remove build/ and dist/
 - **Addresses**: `<ownerId>.<point>` — `bb1.a12` (grid hole), `bb2.+7` (rail hole 7
   on a rail strip), `psu1.+` (component terminal). One hole holds at most one lead
   (pin or wire end).
-- **Parts belong to the pin-board** — `comp.board` never names a rail. A rotated
-  two-terminal part's free lead is a `{dx, dy}` **bend** from its anchor, resolved
-  geometrically against whatever strip lies under it (`partPinAddresses`), so it can
-  reach a rail. A lead over nothing resolves to `null` and **floats** — legal, and
-  what happens when a rail is moved or deleted; the part keeps its exact position.
-  Deleting a strip removes only what is *seated* on it, never a neighbour's lead.
+- **A chip and a LINEAR discrete belong to the pin-board** — their `comp.board`
+  never names a rail (the footprint is grid-column arithmetic). A **rotated
+  two-terminal part** (resistor / LED) is instead a free two-ends device: pin 1
+  anchors in ANY hole — a grid row OR a power rail (`LEAD_ANCHOR_RE` in
+  `occupancy.js`) — and pin 2's free lead is a `{dx, dy}` **bend** from that
+  anchor, resolved geometrically against whatever strip lies under it
+  (`partPinAddresses`). So **both leads can reach rails** (a resistor bridging two
+  rails), subject only to each def's `minSpan`. A lead — or the anchor — over
+  nothing resolves to `null` and **floats** — legal, and what happens when a rail
+  is moved or deleted; the part keeps its exact position. Deleting a strip removes
+  only what is *seated* on it (`comp.board === id`), never a neighbour's lead.
 
 ## License headers
 

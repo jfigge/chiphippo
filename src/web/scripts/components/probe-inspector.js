@@ -111,6 +111,7 @@ export class ProbeInspector {
     this.#ring.hidden = true;
     this.#ring.classList.remove("hole-ring--illegal");
     this.#netStatus.hidden = true;
+    this.#emitProbed(null);
     this.#onStateChange?.({ armed: false });
   }
 
@@ -126,6 +127,7 @@ export class ProbeInspector {
       this.#anchor = null;
       this.#highlight.clear();
       this.#netStatus.hidden = true;
+      this.#emitProbed(null);
     } else {
       this.disarm();
     }
@@ -140,6 +142,7 @@ export class ProbeInspector {
       this.#anchor = null;
       this.#highlight.clear();
       this.#netStatus.hidden = true;
+      this.#emitProbed(null);
       return;
     }
     this.#showNetFor(this.#anchor, true);
@@ -153,6 +156,7 @@ export class ProbeInspector {
       this.#ring.hidden = true;
       this.#highlight.clear();
       this.#netStatus.hidden = true;
+      this.#emitProbed(null);
       return;
     }
     const r = RING_RADIUS * PX_PER_UNIT;
@@ -182,6 +186,7 @@ export class ProbeInspector {
     if (!wire) {
       this.#highlight.clear();
       this.#netStatus.hidden = true;
+      this.#emitProbed(null);
       return;
     }
     this.#ring.hidden = true;
@@ -209,6 +214,23 @@ export class ProbeInspector {
     };
   }
 
+  /**
+   * Broadcast the probed net so OTHER views (the schematic, Feature 150) can
+   * highlight the SAME net by its stable id. `null` clears the highlight
+   * everywhere. One-way, like every `chiphippo:*` state push.
+   */
+  #emitProbed(netId, level = null, pinned = false) {
+    window.dispatchEvent(
+      new CustomEvent("chiphippo:net-probed", {
+        detail: {
+          netId: netId ?? null,
+          level: netId ? level : null,
+          pinned: netId ? pinned : false,
+        },
+      }),
+    );
+  }
+
   /** Show the net containing `address`, pinned or transient. */
   #showNetFor(address, pinned) {
     const netId = this.#netlist.netOf(address);
@@ -216,6 +238,7 @@ export class ProbeInspector {
     // While running, tint the highlight + lead the summary with the level.
     const level = this.#simOverlay.levelOfNet(netId);
     this.#highlight.show(net, this.#highlightGeometry(), pinned, level);
+    this.#emitProbed(netId, level, pinned);
     if (net) {
       // The readout leads with the user NAME (Feature 120), then the level
       // while running, then the connectivity summary.

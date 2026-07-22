@@ -62,7 +62,7 @@ import {
   partPinHoles,
 } from "./occupancy.js";
 
-export const DOC_VERSION = 4;
+export const DOC_VERSION = 5;
 
 /** The fixed jumper-wire palette (theme.css defines a token per name). */
 export const WIRE_COLORS = Object.freeze([
@@ -153,6 +153,17 @@ const BRICKS = Object.freeze({
 /** Params coerced through the def's own contract (chips have none). */
 function normalizeParams(def, raw) {
   return def.normalizeParams ? def.normalizeParams(raw) : {};
+}
+
+/**
+ * A component's optional `schematicPos` nudge (Feature 150): a finite `{x,y}`
+ * or undefined. Purely a layout hint for the derived schematic view — the desk
+ * placement is unaffected.
+ */
+function normalizeSchematicPos(raw) {
+  if (!raw || typeof raw !== "object") return undefined;
+  const { x, y } = raw;
+  return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : undefined;
 }
 
 function taggedError(message, code) {
@@ -252,14 +263,17 @@ export function normalizeDocument(raw) {
     if (typeof c.anchor !== "string") continue;
     compIds.add(c.id);
     maxCompSeq = Math.max(maxCompSeq, Number(m[1]));
-    doc.components.push({
+    const record = {
       id: c.id,
       kind: c.kind,
       ref: c.ref,
       board: c.board,
       anchor: c.anchor,
       params: normalizeParams(def, c.params),
-    });
+    };
+    const schematicPos = normalizeSchematicPos(c.schematicPos);
+    if (schematicPos) record.schematicPos = schematicPos; // Feature 150 nudge
+    doc.components.push(record);
   }
 
   // Wires: both endpoints must parse onto surviving boards' real holes (or
@@ -1123,6 +1137,33 @@ export class DeskDoc {
       ...patch,
     });
     return { ...comp };
+  }
+
+  /**
+   * Set (or, with a non-finite coordinate, clear) a component's schematic-view
+   * position nudge (Feature 150). A pure layout hint — the desk placement is
+   * untouched — so a re-layout honours the user's arrangement. Throws
+   * NOT_FOUND. Returns a copy of the component.
+   */
+  setSchematicPos(id, x, y) {
+    const comp = this.#doc.components.find((c) => c.id === id);
+    if (!comp) throw taggedError(`no component ${id}`, "NOT_FOUND");
+    const pos = normalizeSchematicPos({ x, y });
+    if (pos) comp.schematicPos = pos;
+    else delete comp.schematicPos;
+    return { ...comp };
+  }
+
+  /** Clear every schematic-view position nudge (a full auto-layout reset). */
+  clearSchematicPositions() {
+    let cleared = 0;
+    for (const comp of this.#doc.components) {
+      if (comp.schematicPos) {
+        delete comp.schematicPos;
+        cleared++;
+      }
+    }
+    return cleared;
   }
 
   /**
