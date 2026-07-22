@@ -9,17 +9,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#2F855A" />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-  <meta name="description" content="Chip Hippo — design and simulate 74xx TTL logic circuits on a virtual breadboard. Place chips, wire them up, hit Run, and watch electricity ripple through every net. macOS, Windows, and Linux — fully offline." />
+  <meta name="description" content="Chip Hippo — design and simulate 74xx TTL logic circuits on a virtual desktop. Place chips, wire them up, hit Run, and watch electricity ripple through every net. macOS, Windows, and Linux — fully offline." />
   <title>Chip Hippo — TTL Breadboard Designer &amp; Simulator</title>
   <link rel="canonical" href="https://chiphippo.com/" />
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="Chip Hippo" />
   <meta property="og:title" content="Chip Hippo — TTL Breadboard Designer & Simulator" />
-  <meta property="og:description" content="Design and simulate 74xx TTL logic circuits on a virtual breadboard. Place chips, wire them, hit Run, and watch the circuit come alive — all offline." />
+  <meta property="og:description" content="Design and simulate 74xx TTL logic circuits on a virtual desktop. Place chips, wire them, hit Run, and watch the circuit come alive — all offline." />
   <meta property="og:url" content="https://chiphippo.com/" />
   <meta name="twitter:card" content="summary" />
   <meta name="twitter:title" content="Chip Hippo — TTL Breadboard Designer & Simulator" />
-  <meta name="twitter:description" content="Design and simulate 74xx TTL logic circuits on a virtual breadboard — for macOS, Windows, and Linux, all offline." />
+  <meta name="twitter:description" content="Design and simulate 74xx TTL logic circuits on a virtual desktop — for macOS, Windows, and Linux, all offline." />
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -27,7 +27,7 @@
     "name": "Chip Hippo",
     "applicationCategory": "DeveloperApplication",
     "operatingSystem": "macOS, Windows, Linux",
-    "description": "Design and simulate 74xx TTL logic circuits on a virtual breadboard. Place chips, wire them up, and simulate the whole circuit — all offline.",
+    "description": "Design and simulate 74xx TTL logic circuits on a virtual desktop. Place chips, wire them up, and simulate the whole circuit — all offline.",
     "url": "https://chiphippo.com/",
     "downloadUrl": "https://github.com/jfigge/chiphippo/releases/latest",
     "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
@@ -197,7 +197,7 @@
     .hero-actions .btn { padding: 13px 28px; font-size: 0.975rem; }
     .hero-platforms { font-size: 0.78rem; color: var(--overlay-0); }
 
-    /* ── App mock (breadboard scene) ───────────────────────────────────────── */
+    /* ── App screenshot ────────────────────────────────────────────────────── */
 
     .mock-wrap { max-width: 980px; margin: 56px auto 0; padding: 0 2rem; }
 
@@ -209,71 +209,7 @@
       box-shadow: 0 40px 100px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255,255,255,0.04);
     }
 
-    .titlebar {
-      background: var(--crust);
-      padding: 11px 16px;
-      display: flex;
-      align-items: center;
-      border-bottom: 1px solid var(--surface-0);
-    }
-
-    .tb-dots { display: flex; gap: 7px; flex-shrink: 0; }
-    .tb-dot { width: 12px; height: 12px; border-radius: 50%; }
-    .tb-dot-r { background: #ff5f57; }
-    .tb-dot-y { background: #febc2e; }
-    .tb-dot-g { background: #28c840; }
-    .tb-title { flex: 1; text-align: center; font-size: 0.75rem; color: var(--overlay-0); pointer-events: none; }
-
-    .app-layout { display: grid; grid-template-columns: 190px 1fr; height: 360px; }
-
-    .sidebar {
-      background: var(--mantle);
-      border-right: 1px solid var(--surface-0);
-      padding: 8px;
-      overflow: hidden;
-    }
-
-    .sidebar-section {
-      font-size: 0.65rem;
-      font-weight: 700;
-      text-transform: uppercase;
-      letter-spacing: 1px;
-      color: var(--overlay-0);
-      padding: 10px 6px 6px;
-    }
-
-    .tree-item {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      padding: 5px 6px;
-      border-radius: 5px;
-      font-size: 0.74rem;
-      color: var(--subtext);
-      cursor: default;
-      margin-bottom: 1px;
-    }
-    .tree-item.sel { background: var(--surface-0); color: var(--text); }
-
-    /* chip / part badges in the palette */
-    .cb { font-size: 0.58rem; font-weight: 800; padding: 2px 5px; border-radius: 3px; flex-shrink: 0; letter-spacing: 0.3px; }
-    .cb-ic  { background: color-mix(in srgb,#8F969E 26%,transparent); color:#cfd4d9; }
-    .cb-led { background: color-mix(in srgb,#3fb950 22%,transparent); color:#56d364; }
-    .cb-sw  { background: color-mix(in srgb,#d4b060 22%,transparent); color:#d4b060; }
-    .cb-pwr { background: color-mix(in srgb,#e06666 22%,transparent); color:#e06666; }
-    .cb-mem { background: color-mix(in srgb,#70b8d0 22%,transparent); color:#70b8d0; }
-
-    .board-panel {
-      background: var(--bg);
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 18px;
-      overflow: hidden;
-      background-image: radial-gradient(var(--surface-0) 1px, transparent 1px);
-      background-size: 20px 20px;
-    }
-    .board-svg { width: 100%; height: 100%; }
+    .app-shot { display: block; width: 100%; height: auto; }
 
     /* ── Sections ──────────────────────────────────────────────────────────── */
 
@@ -478,7 +414,7 @@
       nav { padding: 0 1rem; }
       .nav-right .nav-link { display: none; }
       .hero { padding: 64px 1rem 48px; }
-      .mock-wrap { display: none; }
+      .mock-wrap { margin-top: 36px; padding: 0 1rem; }
       .section { padding: 64px 1rem; }
       .os-grid { grid-template-columns: 1fr; }
     }
@@ -532,11 +468,11 @@
     <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/></svg>
     <span id="hero-version">v0.1.0</span> — Now Available
   </div>
-  <h1>Build 74xx logic<br>on a <span class="accent">virtual breadboard</span></h1>
+  <h1>Build 74xx logic<br>on <span class="accent">virtual breadboards</span></h1>
   <p class="hero-desc">
     Chip Hippo is a desktop playground for TTL circuits. Drop 74-series chips onto an
-    infinite breadboard, wire them up, hit Run — and watch electricity ripple through
-    every net until it settles. LEDs light, counters count, shorts smoke. All offline.
+    infinite desktop, wire them up, hit Run — and watch electricity ripple through
+    every net until it settles. LEDs light, counters count, magic smoke. All offline.
   </p>
   <div class="hero-actions">
     <a class="btn btn-primary" href="#downloads">
@@ -555,98 +491,11 @@
   <p class="hero-platforms">macOS · Windows · Linux &nbsp;·&nbsp; Free &amp; open source</p>
 </div>
 
-<!-- ── App mock (breadboard scene) ─────────────────────────────────────────── -->
+<!-- ── App screenshot ──────────────────────────────────────────────────────── -->
 <div class="mock-wrap">
   <div class="app-window">
-    <div class="titlebar">
-      <div class="tb-dots">
-        <div class="tb-dot tb-dot-r"></div>
-        <div class="tb-dot tb-dot-y"></div>
-        <div class="tb-dot tb-dot-g"></div>
-      </div>
-      <div class="tb-title">Chip Hippo — 4-bit counter · Running</div>
-    </div>
-    <div class="app-layout">
-      <div class="sidebar">
-        <div class="sidebar-section">Palette</div>
-        <div class="tree-item sel"><span class="cb cb-ic">IC</span> 74LS161 · counter</div>
-        <div class="tree-item"><span class="cb cb-ic">IC</span> 74LS04 · hex inverter</div>
-        <div class="tree-item"><span class="cb cb-ic">IC</span> 74LS00 · quad NAND</div>
-        <div class="tree-item"><span class="cb cb-mem">MEM</span> HM62256 · SRAM</div>
-        <div class="sidebar-section" style="margin-top:8px">Parts</div>
-        <div class="tree-item"><span class="cb cb-led">LED</span> Output LED</div>
-        <div class="tree-item"><span class="cb cb-sw">SW</span> Slide switch</div>
-        <div class="tree-item"><span class="cb cb-pwr">PWR</span> 5&nbsp;V supply</div>
-        <div class="tree-item"><span class="cb cb-pwr">CLK</span> Clock source</div>
-      </div>
-      <div class="board-panel">
-        <svg class="board-svg" viewBox="0 0 620 320" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="A breadboard with a 74LS161 counter driving four LEDs, two lit">
-          <defs>
-            <pattern id="holes" width="17" height="17" patternUnits="userSpaceOnUse">
-              <circle cx="8.5" cy="8.5" r="2.1" fill="#b7b1a1"/>
-            </pattern>
-            <linearGradient id="chip" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stop-color="#33383d"/>
-              <stop offset="1" stop-color="#1e2124"/>
-            </linearGradient>
-            <filter id="glow" x="-60%" y="-60%" width="220%" height="220%">
-              <feGaussianBlur stdDeviation="5" result="b"/>
-              <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
-            </filter>
-          </defs>
-
-          <!-- board -->
-          <rect x="16" y="24" width="588" height="272" rx="14" fill="#ddd8ca" stroke="#c6c0af" stroke-width="1.5"/>
-
-          <!-- power rails -->
-          <line x1="40" y1="44" x2="580" y2="44" stroke="#e06666" stroke-width="2"/>
-          <line x1="40" y1="52" x2="580" y2="52" stroke="#5b8dd6" stroke-width="2"/>
-          <line x1="40" y1="268" x2="580" y2="268" stroke="#e06666" stroke-width="2"/>
-          <line x1="40" y1="276" x2="580" y2="276" stroke="#5b8dd6" stroke-width="2"/>
-
-          <!-- hole banks (split by the centre trench) -->
-          <rect x="40" y="72" width="540" height="68" fill="url(#holes)"/>
-          <rect x="40" y="176" width="540" height="68" fill="url(#holes)"/>
-          <rect x="40" y="150" width="540" height="16" fill="#d0cab9"/>
-
-          <!-- jumper wires -->
-          <path d="M107 90 C 130 40, 300 40, 470 176" stroke="#3fb950" stroke-width="3.5" fill="none" stroke-linecap="round"/>
-          <path d="M141 90 C 180 44, 360 48, 505 176" stroke="#d4b060" stroke-width="3.5" fill="none" stroke-linecap="round"/>
-          <path d="M175 90 C 240 40, 420 52, 540 176" stroke="#d0905f" stroke-width="3.5" fill="none" stroke-linecap="round"/>
-          <path d="M73 244 C 60 260, 60 260, 44 268" stroke="#e06666" stroke-width="3" fill="none" stroke-linecap="round"/>
-          <path d="M90 90 C 70 66, 56 60, 44 52" stroke="#5b8dd6" stroke-width="3" fill="none" stroke-linecap="round"/>
-
-          <!-- DIP chip straddling the trench -->
-          <g>
-            <rect x="86" y="142" width="12" height="10" fill="#9aa0a6"/>
-            <rect x="120" y="142" width="12" height="10" fill="#9aa0a6"/>
-            <rect x="154" y="142" width="12" height="10" fill="#9aa0a6"/>
-            <rect x="188" y="142" width="12" height="10" fill="#9aa0a6"/>
-            <rect x="86" y="164" width="12" height="10" fill="#9aa0a6"/>
-            <rect x="120" y="164" width="12" height="10" fill="#9aa0a6"/>
-            <rect x="154" y="164" width="12" height="10" fill="#9aa0a6"/>
-            <rect x="188" y="164" width="12" height="10" fill="#9aa0a6"/>
-            <rect x="78" y="150" width="130" height="16" rx="4" fill="url(#chip)"/>
-            <circle cx="86" cy="158" r="3.4" fill="#c9cdd2"/>
-            <text x="146" y="162" text-anchor="middle" font-family="'Cascadia Code','JetBrains Mono',monospace" font-size="8" fill="#c9cdd2" letter-spacing="0.5">74LS161</text>
-          </g>
-
-          <!-- output LEDs (two lit, two dim) -->
-          <g>
-            <circle cx="470" cy="212" r="9" fill="#3fb950" filter="url(#glow)"/>
-            <circle cx="470" cy="212" r="9" fill="#56d364"/>
-            <circle cx="505" cy="212" r="9" fill="#2b7a37"/>
-            <circle cx="540" cy="212" r="9" fill="#3fb950" filter="url(#glow)"/>
-            <circle cx="540" cy="212" r="9" fill="#56d364"/>
-            <circle cx="575" cy="212" r="9" fill="#2b7a37"/>
-            <text x="470" y="238" text-anchor="middle" font-family="monospace" font-size="8" fill="#7a746a">Q0</text>
-            <text x="505" y="238" text-anchor="middle" font-family="monospace" font-size="8" fill="#7a746a">Q1</text>
-            <text x="540" y="238" text-anchor="middle" font-family="monospace" font-size="8" fill="#7a746a">Q2</text>
-            <text x="575" y="238" text-anchor="middle" font-family="monospace" font-size="8" fill="#7a746a">Q3</text>
-          </g>
-        </svg>
-      </div>
-    </div>
+    <img class="app-shot" src="/hero-breadboard.png" width="1726" height="1254" loading="lazy"
+         alt="A Chip Hippo circuit: a 5 V supply and a 1 Hz clock feeding a 74LS00 and a 74LS08 across stacked breadboards, wired with jumpers, resistors, slide switches, and lit LEDs." />
   </div>
 </div>
 
@@ -725,34 +574,10 @@
 
       <div class="feature-card">
         <div class="feature-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
-        </div>
-        <h3>Schematic view</h3>
-        <p>Flip from the physical breadboard to a clean logical schematic — each part drawn as its symbol, nets auto-routed — so you can read the design the way an engineer would.</p>
-      </div>
-
-      <div class="feature-card">
-        <div class="feature-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 11 12 14 22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-        </div>
-        <h3>Build guide &amp; wiring list</h3>
-        <p>Turn a finished design into artifacts you can follow at a real bench: named nets, a step-by-step build guide, and a wiring list to place every chip and route every jumper.</p>
-      </div>
-
-      <div class="feature-card">
-        <div class="feature-icon">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>
         </div>
         <h3>Pinouts &amp; datasheets</h3>
         <p>Double-click any part for a floating pin-assignment window — the physical DIP diagram plus the manufacturer's connection diagram and function table, right on the desk.</p>
-      </div>
-
-      <div class="feature-card">
-        <div class="feature-icon">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
-        </div>
-        <h3>Offline &amp; open source</h3>
-        <p>No account, no telemetry, no cloud. Everything runs locally and your designs are plain files you own. Apache-2.0 licensed and fully auditable on GitHub.</p>
       </div>
 
     </div>
