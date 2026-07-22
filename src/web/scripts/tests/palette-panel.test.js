@@ -47,7 +47,20 @@ test("lists the whole catalog grouped by function; picks report the ref", () => 
   const groups = [...host.querySelectorAll(".palette-group")].map(
     (g) => g.textContent,
   );
-  assert.deepEqual(groups, [...new Set(PALETTE_DEFS.map((d) => d.group))]);
+  // Logic chips (catalog order, minus Memory), then Memory on its own, then the
+  // COMPONENTS sub-groups in their shelf order.
+  const chipGroupNames = [...new Set(CHIP_DEFS.map((d) => d.group))].filter(
+    (g) => g !== "Memory",
+  );
+  assert.deepEqual(groups, [
+    ...chipGroupNames,
+    "Memory",
+    "Switches",
+    "Resistors",
+    "LEDs",
+    "Displays",
+    "Power",
+  ]);
 
   host.querySelector('.palette-item[data-ref="74LS86"]').click();
   assert.deepEqual(picked, ["74LS86"]);
@@ -69,36 +82,55 @@ test("lists the whole catalog grouped by function; picks report the ref", () => 
   assert.ok(!badged.has("clock"));
 });
 
-test("all chip groups nest under one 'Chips' folder; parts stay top-level", () => {
+test("logic chips nest under CHIPS; Memory + parts are their own sections", () => {
   resetDom();
   const host = document.createElement("div");
   document.body.append(host);
   new PalettePanel(host, {});
 
-  // Exactly one folder, labelled "CHIPS", rendered before the top-level groups.
-  const folders = [...host.querySelectorAll(".palette-folder")];
-  assert.equal(folders.length, 1);
-  assert.equal(folders[0].textContent, "CHIPS");
+  // Two folders, in order: CHIPS then COMPONENTS.
+  const folders = [...host.querySelectorAll(".palette-folder")].map(
+    (f) => f.textContent,
+  );
+  assert.deepEqual(folders, ["CHIPS", "COMPONENTS"]);
 
-  const folderBody = host.querySelector(".palette-folder-groups");
+  const bodies = [...host.querySelectorAll(".palette-folder-groups")];
   const groupsIn = (root) =>
     [...root.querySelectorAll(".palette-group")].map((g) => g.textContent);
 
-  // Every chip group lives inside the folder; the discrete/power groups don't.
-  const chipGroupNames = [...new Set(CHIP_DEFS.map((d) => d.group))];
-  assert.deepEqual(groupsIn(folderBody), chipGroupNames);
-  for (const name of ["Parts", "Power"]) {
-    assert.ok(!groupsIn(folderBody).includes(name), `${name} nested wrongly`);
-    assert.ok(
-      groupsIn(host).includes(name), // still present, just at the top level
-    );
-  }
+  // Logic chips (minus Memory) fill the CHIPS folder; the parts fill COMPONENTS.
+  const chipGroupNames = [...new Set(CHIP_DEFS.map((d) => d.group))].filter(
+    (g) => g !== "Memory",
+  );
+  assert.deepEqual(groupsIn(bodies[0]), chipGroupNames);
+  assert.deepEqual(groupsIn(bodies[1]), [
+    "Switches",
+    "Resistors",
+    "LEDs",
+    "Displays",
+    "Power",
+  ]);
 
-  // Every chip item sits under the folder; no part item does.
-  const chipIds = new Set(CHIP_DEFS.map((d) => d.id));
-  for (const item of host.querySelectorAll(".palette-item")) {
-    const underFolder = folderBody.contains(item);
-    assert.equal(underFolder, chipIds.has(item.dataset.ref), item.dataset.ref);
+  // Memory is pulled OUT of both folders into its own top-level group.
+  assert.ok(!groupsIn(bodies[0]).includes("Memory"), "not under CHIPS");
+  assert.ok(!groupsIn(bodies[1]).includes("Memory"), "not under COMPONENTS");
+  assert.ok(groupsIn(host).includes("Memory"), "present at the top level");
+
+  // The CHIPS folder holds exactly the non-memory chip items; memory items are
+  // NOT under it (they moved to the top-level Memory group).
+  const memIds = new Set(
+    CHIP_DEFS.filter((d) => d.group === "Memory").map((d) => d.id),
+  );
+  const chipIds = new Set(
+    CHIP_DEFS.map((d) => d.id).filter((id) => !memIds.has(id)),
+  );
+  const idsIn = (root) =>
+    new Set(
+      [...root.querySelectorAll(".palette-item")].map((i) => i.dataset.ref),
+    );
+  assert.deepEqual(idsIn(bodies[0]), chipIds);
+  for (const id of memIds) {
+    assert.ok(!idsIn(bodies[0]).has(id), `${id} not under CHIPS`);
   }
 });
 

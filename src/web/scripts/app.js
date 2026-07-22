@@ -514,15 +514,18 @@ async function init() {
         .catch((err) => console.error("[renderer] pinout:open failed:", err)),
     // Double-click / context-menu on a memory chip → its hex inspector window.
     onOpenMemory: (id) => memoryBridge?.open(id),
-    // "Backing file…": pick a `.bin` in rom/ram mode, then bind it (Feature 180).
-    onBindMemory: async (id, mode) => {
-      try {
-        const path = await bridge.mem?.choose(mode);
-        if (path) controller.setMemoryStorage(id, { path, mode });
-      } catch (err) {
-        console.error("[renderer] mem:choose failed:", err);
-      }
-    },
+    // "Load image… (program)" on a ROM chip → the in-app external programmer.
+    onProgramMemory: (id) => memoryBridge?.program(id),
+    // A ROM chip gets a noise-filled backing file on placement, deleted on
+    // removal (the byte store lives in main; Feature 190).
+    onCreateMemoryFile: (guid, byteLength) =>
+      bridge.mem
+        ?.create(guid, byteLength)
+        .catch((err) => console.error("[renderer] mem:create failed:", err)),
+    onRemoveMemoryFile: (guid) =>
+      bridge.mem
+        ?.delete(guid)
+        .catch((err) => console.error("[renderer] mem:delete failed:", err)),
     // Undo/redo availability drives the native Edit-menu enable state.
     onHistoryChange: (state) =>
       bridge.menu
@@ -795,8 +798,14 @@ async function init() {
   sim = new SimController({ deskDoc, notifications, onTransportChange });
 
   // Memory-inspector coordinator (Feature 190): bridges inspector windows to the
-  // document (bindings), the controller (undo/redo), and the running image.
-  memoryBridge = new MemoryBridge({ deskDoc, sim, controller, bridge });
+  // document, the controller (programmer + undo/redo), and the running image.
+  memoryBridge = new MemoryBridge({
+    deskDoc,
+    sim,
+    controller,
+    bridge,
+    notifications,
+  });
 
   // The empty-desk hint disappears once the desk has boards.
   const hint = desk.querySelector(".desk-hint");

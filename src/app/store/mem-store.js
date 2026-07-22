@@ -16,25 +16,34 @@
 
 /**
  * mem-store.js — the main-process byte store behind a memory chip's backing
- * file (Feature 180). Everything here is BYTE-oriented: the renderer's
- * SimController packs/unpacks 8- or 16-bit words to/from byte offsets, so this
- * module never needs to know a chip's data width. All three operations go
- * through io.js atomic primitives, so a crash mid-run can never leave a half-
+ * file (Features 180/190). Only NON-VOLATILE chips (ROM / EPROM / EEPROM) are
+ * file-backed; the file is a `.bin` sidecar in the app working folder keyed by a
+ * per-chip GUID (main maps the GUID to a path — this module is purely
+ * path-oriented and byte-oriented, so it's testable against a temp dir). Writes
+ * go through io.js atomic primitives, so a crash mid-op never leaves a half-
  * written `.bin`.
  *
- * - load(path, byteLength)     → a Buffer of exactly byteLength (zero-padded /
- *                                truncated), or throws on an unreadable file.
- * - flush(path, writes, len)   → read-modify-write a batch of { addr, value }
- *                                byte writes back to the file (atomic).
- * - writeAll(path, bytes)      → overwrite the whole file (Save / Export).
+ * - create(path, byteLength)     → create the file at EXACTLY byteLength bytes
+ *                                  of random noise IF it's missing (an
+ *                                  unprogrammed chip reads garbage, like real
+ *                                  hardware); an existing file is left untouched.
+ * - load(path, byteLength)       → a Buffer of exactly byteLength (padded /
+ *                                  truncated).
+ * - program(path, bytes, len)    → the in-app "external programmer": copy an
+ *                                  image to the START of the file, keeping the
+ *                                  rest — short files write a prefix, long files
+ *                                  are truncated.
+ * - writeAll(path, bytes)        → overwrite the whole file (inspector Save).
+ * - remove(path)                 → delete the file (chip removed).
  *
- * The document stores only the binding (a path + a rom/ram mode); the bytes are
- * this sidecar file, so a `.chiphippo` stays small and text.
+ * The document stores only the GUID; the bytes are this sidecar, so a
+ * `.chiphippo` stays small and text.
  */
 "use strict";
 
 const fs = require("fs");
 const path = require("path");
+const crypto = require("crypto");
 const io = require("./io");
 
 /** The largest backing file we'll allocate in one buffer (guards a bad size). */
@@ -62,9 +71,26 @@ function coerceLength(byteLength) {
 }
 
 /**
- * Read the file into a Buffer of exactly `byteLength` bytes: the file's bytes
- * up to that length, zero-padded past the end (or a fully-zero buffer when the
- * file is absent — a fresh, never-written binding is not an error).
+ * Create the backing file at exactly `byteLength` bytes of random noise when it
+ * does NOT already exist — an unprogrammed ROM reads garbage, like real silicon,
+ * never clean zeros. An existing file is left exactly as it was (its programmed
+ * contents survive). Returns whether a fresh file was written.
+ *
+ * @param {string} filePath
+ * @param {number} byteLength
+ * @returns {{ created: boolean }}
+ */
+function create(filePath, byteLength) {
+  const resolved = resolvePath(filePath);
+  const len = coerceLength(byteLength);
+  if (fs.existsSync(resolved)) return { created: false };
+  io.atomicWrite(resolved, crypto.randomBytes(len));
+  return { created: true };
+}
+
+/**
+ * Read the file into a Buffer of exactly `byteLength` bytes: its bytes up to
+ * that length, zero-padded past the end (or all-zero when absent).
  *
  * @param {string} filePath
  * @param {number} byteLength
@@ -78,7 +104,7 @@ function load(filePath, byteLength) {
   try {
     raw = fs.readFileSync(resolved);
   } catch (err) {
-    if (err.code === "ENOENT") return out; // unwritten binding → all zeros
+    if (err.code === "ENOENT") return out; // absent → all zeros
     throw err;
   }
   raw.copy(out, 0, 0, Math.min(raw.length, len));
@@ -86,32 +112,38 @@ function load(filePath, byteLength) {
 }
 
 /**
- * Apply a batch of byte writes to the file atomically (read-modify-write). The
- * on-disk file is grown/truncated to `byteLength` so it always matches the
- * chip's address space; out-of-range writes are ignored. The IPC payload is
- * only the dirty bytes since the last flush — the whole image is never streamed.
+ * The in-app external programmer: copy `bytes` (a `.bin`/`.hex` image the
+ * renderer already decoded) to the START of the file, keeping any bytes past
+ * the image intact. A shorter image writes only its prefix; a longer image is
+ * truncated to the memory size. Atomic. Returns what actually happened so the
+ * caller can warn on a size mismatch.
  *
  * @param {string} filePath
- * @param {Array<{addr:number,value:number}>} writes
- * @param {number} byteLength
+ * @param {number[]|Uint8Array|Buffer} bytes
+ * @param {number} byteLength  the chip's memory size in bytes
+ * @returns {{ written: number, imageLength: number, memLength: number,
+ *   truncated: boolean, short: boolean }}
  */
-function flush(filePath, writes, byteLength) {
+function program(filePath, bytes, byteLength) {
   const resolved = resolvePath(filePath);
   const len = coerceLength(byteLength);
-  const buf = load(resolved, len); // current contents, sized to byteLength
-  for (const w of writes ?? []) {
-    const addr = Math.floor(Number(w?.addr));
-    if (!Number.isInteger(addr) || addr < 0 || addr >= len) continue;
-    buf[addr] = Number(w.value) & 0xff;
-  }
+  const image = Buffer.from(bytes ?? []);
+  const buf = load(resolved, len); // keep whatever is past the image
+  const written = Math.min(image.length, len);
+  image.copy(buf, 0, 0, written);
   io.atomicWrite(resolved, buf);
-  return resolved;
+  return {
+    written,
+    imageLength: image.length,
+    memLength: len,
+    truncated: image.length > len,
+    short: image.length < len,
+  };
 }
 
 /**
- * Overwrite the whole file with `bytes` (an Array/Uint8Array/Buffer). Used by
- * the inspector's Save and Export (Feature 190) — a full image write, still
- * atomic. Returns the resolved path written.
+ * Overwrite the whole file with `bytes` (inspector Save). Atomic. Returns the
+ * resolved path written.
  *
  * @param {string} filePath
  * @param {number[]|Uint8Array|Buffer} bytes
@@ -128,4 +160,20 @@ function writeAll(filePath, bytes) {
   return resolved;
 }
 
-module.exports = { load, flush, writeAll };
+/**
+ * Delete the backing file (its chip was removed). Missing is not an error.
+ * @param {string} filePath
+ * @returns {{ removed: boolean }}
+ */
+function remove(filePath) {
+  const resolved = resolvePath(filePath);
+  try {
+    fs.unlinkSync(resolved);
+    return { removed: true };
+  } catch (err) {
+    if (err.code === "ENOENT") return { removed: false };
+    throw err;
+  }
+}
+
+module.exports = { create, load, program, writeAll, remove };

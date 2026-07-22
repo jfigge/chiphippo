@@ -296,8 +296,12 @@ export function shiftPiso(m) {
  * @param {number} m.oeN    active-low output-enable pin
  * @param {number} [m.weN]  active-low write-enable pin — OMIT for a read-only ROM
  * @param {number} [m.ce2]  optional active-HIGH second chip-enable (some SRAMs)
+ * @param {boolean} [m.volatile]  true for SRAM — the contents are lost at power-
+ *   off, so the chip is NEVER file-backed (run-volatile only). A non-volatile
+ *   chip (ROM/EPROM/EEPROM) is file-backed and, in this app, read-only (the
+ *   circuit can't drive its write cycle). Consumed by the SimController.
  * @param {Uint8Array|number[]|((size:number)=>Uint8Array|number[])} [m.initial]
- *   seed for a ROM image (undefined → zero-filled). Consumed by SimController.
+ *   seed for a volatile image (undefined → zero-filled). Consumed by SimController.
  */
 export function memUnit(m) {
   const mask = m.size - 1;
@@ -317,6 +321,7 @@ export function memUnit(m) {
       oeN: m.oeN,
       weN: m.weN ?? null,
       ce2: m.ce2 ?? null,
+      volatile: m.volatile === true,
       initial: m.initial ?? null,
     },
     /** Data-pin levels driven this settle: the stored word, or Z when idle. */

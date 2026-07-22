@@ -25,25 +25,24 @@ import { CHIPS_MEM } from "./chips-mem.js";
 import { PART_DEFS } from "./parts.js";
 
 /**
- * Coerce a memory chip's file binding (Feature 180) to a valid
- * `{ path, mode }`, or null. `path` must be a non-empty string; `mode` is
- * `rom` (read-only: load, never write back) or `ram` (load + flush). Anything
- * else drops the binding, so an unbound chip falls back to the run-volatile
- * image. Non-memory chips never carry one — but coercing it here is harmless.
+ * Coerce a non-volatile memory chip's backing-file reference (Feature 190) to a
+ * `{ guid }`, or null. The GUID (a `crypto.randomUUID()` the renderer minted on
+ * placement) names a `.bin` sidecar in the app working folder; main is the only
+ * place that maps it to a path. A malformed GUID drops the reference.
  */
+const GUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 function normalizeStorage(raw) {
-  const s = raw?.storage;
-  if (!s || typeof s !== "object") return null;
-  const path = typeof s.path === "string" && s.path.trim() ? s.path : null;
-  if (!path) return null;
-  return { path, mode: s.mode === "ram" ? "ram" : "rom" };
+  const guid = raw?.storage?.guid;
+  return typeof guid === "string" && GUID_RE.test(guid) ? { guid } : null;
 }
 
 /** Every chip def, in palette display order (combinational gates, then the
     sequential & MSI wave). `kind` is stamped uniformly, and a
-    `normalizeParams` that preserves only the `damaged` flag (Feature 90's
-    magic-smoke bookkeeping) and a memory chip's file binding (Feature 180) —
-    chips otherwise carry no params. */
+    `normalizeParams` that preserves the `damaged` flag (Feature 90's
+    magic-smoke bookkeeping) and, for a non-volatile memory chip, its backing-
+    file `storage.guid` + `programmed` flag (Feature 190) — chips otherwise
+    carry no params. */
 export const CHIP_DEFS = Object.freeze(
   [...CHIPS_GATES, ...CHIPS_SEQ, ...CHIPS_74LS, ...CHIPS_MEM].map((def) =>
     Object.freeze({
@@ -56,6 +55,9 @@ export const CHIP_DEFS = Object.freeze(
         if (raw?.rot === 180) params.rot = 180;
         const storage = normalizeStorage(raw);
         if (storage) params.storage = storage;
+        // A ROM flagged programmed by the in-app programmer — drives the
+        // "backing file went missing" loss warning after a delete + undo.
+        if (raw?.programmed === true) params.programmed = true;
         return params;
       },
       ...def,

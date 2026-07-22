@@ -30,7 +30,7 @@
 import { tick } from "../sim/engine.js";
 import { H, L } from "../sim/levels.js";
 import { partDef } from "../catalog/index.js";
-import { isMemory, memoryConfig } from "../sim/chip-eval.js";
+import { isMemory, isVolatileMemory, memoryConfig } from "../sim/chip-eval.js";
 import { framebufferOf } from "../sim/hd44780.js";
 import { NetlistCache } from "./netlist-cache.js";
 
@@ -41,9 +41,9 @@ function blankImage(def) {
 }
 
 /**
- * A fresh run-volatile byte image for a memory chip (Feature 170's unbound
- * fallback): zero-filled and then seeded from the def's `initial` ROM data if
- * present. A file-bound chip (Feature 180) loads from disk instead.
+ * A fresh run-volatile byte image for a VOLATILE (SRAM) memory chip: zero-
+ * filled (SRAM powers up cleared here — its contents are lost every Run). Only
+ * volatile chips take this path; a non-volatile chip loads its file instead.
  */
 function seedImage(def) {
   const { initial } = memoryConfig(def);
@@ -91,26 +91,22 @@ function packImage(width, image) {
   return Uint8Array.from(image);
 }
 
-/** Split one word write into its constituent byte writes (little-endian). */
+/** The byte offsets a single word write touches (for the live inspector view). */
 function wordToBytes(width, addr, value) {
   if (width > 8) {
     return [
-      { addr: 2 * addr, value: value & 0xff },
-      { addr: 2 * addr + 1, value: (value >> 8) & 0xff },
+      [2 * addr, value & 0xff],
+      [2 * addr + 1, (value >> 8) & 0xff],
     ];
   }
-  return [{ addr, value: value & 0xff }];
+  return [[addr, value & 0xff]];
 }
 
-/** A memory component's validated `{ path, mode }` binding, or null (unbound). */
-function memStorage(comp) {
-  const s = comp?.params?.storage;
-  if (!s || typeof s.path !== "string" || !s.path) return null;
-  return { path: s.path, mode: s.mode === "ram" ? "ram" : "rom" };
+/** A non-volatile memory chip's backing-file GUID, or null. */
+function memGuid(comp) {
+  const guid = comp?.params?.storage?.guid;
+  return typeof guid === "string" && guid ? guid : null;
 }
-
-/** Debounce window for flushing accumulated RAM writes back to disk. */
-const FLUSH_DEBOUNCE_MS = 250;
 
 /** Transport modes. */
 export const TRANSPORT = Object.freeze({
@@ -137,12 +133,8 @@ export class SimController {
   #prevPins = new Map(); // last tick's sampled inputs (edge detection)
   #clockPhase = new Map(); // clockId → "H" | "L" (run-volatile)
   #images = new Map(); // memory compId → Uint8Array/Uint16Array (run-volatile)
-  #binding = new Map(); // memory compId → { path, mode, width, byteLength } (bound only)
-  #memWidth = new Map(); // memory compId → data-bus width (all memory chips)
-  #loadFailed = new Set(); // bound chips whose file load failed (never flushed)
-  #romWarned = new Set(); // bound-rom chips already warned about a dropped write
-  #pendingFlush = new Map(); // compId → queued byte writes awaiting a flush
-  #flushTimer = null; // debounced flush handle (the ONLY disk-write timer)
+  #memInfo = new Map(); // memory compId → { volatile, guid, width, byteLength }
+  #dataLossWarned = new Set(); // programmed chips already warned of a missing file
   #timers = new Map(); // clockId → interval handle
   #suppress = false; // ignore our own damage-persist writes
 
@@ -177,10 +169,10 @@ export class SimController {
 
   /**
    * Enter Run: reset run-volatile state, seed memory images (loading any
-   * file-bound chip from disk first — Feature 180), cold-settle, start the
-   * clocks. Seeding is async ONLY when a chip is file-bound; with none, Run
-   * proceeds synchronously exactly as before. Returns a promise that resolves
-   * once the first tick has run (tests await it; the UI ignores it).
+   * non-volatile ROM chip from its file first — Feature 190), cold-settle,
+   * start the clocks. Seeding is async ONLY when a ROM chip is present; with
+   * none (or only volatile SRAM), Run proceeds synchronously. Returns a promise
+   * that resolves once the first tick has run (tests await it; the UI ignores it).
    */
   start() {
     if (this.#mode !== TRANSPORT.STOPPED) return;
@@ -190,8 +182,7 @@ export class SimController {
     this.#prevPins = new Map();
     this.#clockPhase = new Map();
     for (const c of this.#clocks()) this.#clockPhase.set(c.id, L); // idle low
-    this.#romWarned = new Set();
-    this.#pendingFlush = new Map();
+    this.#dataLossWarned = new Set();
     this.#onTransportChange?.(this.#mode); // lock editing while files load
     const pending = this.#seedImages();
     if (pending) return pending.then(() => this.#afterSeed());
@@ -210,7 +201,6 @@ export class SimController {
     if (this.#mode !== TRANSPORT.RUNNING) return;
     this.#mode = TRANSPORT.PAUSED;
     this.#clearTimers();
-    this.#flushNow(); // a Pause commits any pending RAM writes to disk
     this.#onTransportChange?.(this.#mode);
   }
 
@@ -226,7 +216,6 @@ export class SimController {
   stop() {
     if (this.#mode === TRANSPORT.STOPPED) return;
     this.#clearTimers();
-    this.#flushNow(); // final flush of any pending RAM writes before we drop the image
     // Snapshot each memory's final bytes (while the images still exist) so an
     // open inspector shows the exact end-of-run contents with no file re-read.
     const finalImages = new Map();
@@ -239,9 +228,7 @@ export class SimController {
     this.#prevPins = new Map();
     this.#clockPhase = new Map();
     this.#images = new Map();
-    this.#binding = new Map();
-    this.#memWidth = new Map();
-    this.#loadFailed = new Set();
+    this.#memInfo = new Map();
     this.#notifications?.clear();
     this.#onTransportChange?.(this.#mode);
     this.#publish(null, null); // views clear from a not-running sim-state
@@ -293,58 +280,64 @@ export class SimController {
     return this.#doc.toJSON().components.filter((c) => c.kind === "clock");
   }
 
-  // ── Memory images (Feature 170 volatile; Feature 180 file-backed) ─────────
+  // ── Memory images (Feature 190: volatile SRAM vs file-backed ROM) ─────────
 
   /**
-   * Seed a fresh image per memory chip on Run. An UNBOUND chip gets Feature
-   * 170's volatile seed (ROM `initial` data or zeros). A FILE-BOUND chip
-   * (Feature 180) starts zeroed and then loads its `.bin` from disk over the
-   * `mem:load` IPC. Returns a promise that resolves once every bound load has
-   * settled, or null when nothing is bound (Run then stays fully synchronous).
+   * Seed a fresh image per memory chip on Run. A VOLATILE (SRAM) chip gets a
+   * cleared run-volatile image (no file). A NON-VOLATILE (ROM/EPROM/EEPROM)
+   * chip loads its `.bin` from the app working folder over the GUID-keyed
+   * `mem:load` IPC — after ensuring the file exists (created noise-filled if
+   * missing, which for a chip flagged `programmed` means its data was lost).
+   * Returns a promise that resolves once every ROM load has settled, or null
+   * when there is no ROM (Run then stays fully synchronous).
    */
   #seedImages() {
     this.#images = new Map();
-    this.#binding = new Map();
-    this.#memWidth = new Map();
-    this.#loadFailed = new Set();
+    this.#memInfo = new Map();
     const loads = [];
     for (const c of this.#doc.toJSON().components) {
       const def = partDef(c.ref);
       if (!isMemory(def)) continue;
-      this.#memWidth.set(c.id, memoryConfig(def).width);
-      const storage = memStorage(c);
-      if (storage) {
-        this.#binding.set(c.id, {
-          ...storage,
-          width: memoryConfig(def).width,
-          byteLength: byteLengthOf(def),
-        });
-        this.#images.set(c.id, blankImage(def)); // reads 0 until the load lands
-        loads.push(this.#loadBinding(c.id, def, storage));
+      const info = {
+        volatile: isVolatileMemory(def),
+        guid: memGuid(c),
+        width: memoryConfig(def).width,
+        byteLength: byteLengthOf(def),
+      };
+      this.#memInfo.set(c.id, info);
+      if (info.volatile) {
+        this.#images.set(c.id, seedImage(def)); // SRAM: cleared, no file
       } else {
-        this.#images.set(c.id, seedImage(def));
+        this.#images.set(c.id, blankImage(def)); // reads 0 until the load lands
+        loads.push(this.#loadRom(c.id, c, def, info));
       }
     }
     return loads.length ? Promise.all(loads) : null;
   }
 
-  /** Load one file-bound chip's image from disk; a failure warns and zeros. */
-  async #loadBinding(compId, def, storage) {
+  /** Load a ROM chip's image from its backing file (creating the file first). */
+  async #loadRom(compId, comp, def, info) {
+    const mem = window.chiphippo?.mem;
     try {
-      const res = await window.chiphippo?.mem?.load(
-        storage.path,
-        byteLengthOf(def),
-      );
+      // A ROM should have a GUID from placement; mint one defensively if not.
+      if (!info.guid) {
+        info.guid = crypto.randomUUID();
+        this.#doc.setComponentParams(compId, { storage: { guid: info.guid } });
+      }
+      const created = await mem?.create(info.guid, info.byteLength);
       if (this.#mode === TRANSPORT.STOPPED) return; // run aborted mid-load
+      // A programmed chip whose file had to be recreated lost its data (the
+      // classic delete-then-undo). It now holds random noise — say so loudly.
+      if (created?.created && comp.params?.programmed === true) {
+        this.#warnDataLoss(compId);
+      }
+      const res = await mem?.load(info.guid, info.byteLength);
+      if (this.#mode === TRANSPORT.STOPPED) return;
       if (!res || res.ok === false) {
         throw new Error(res?.error ?? "no memory bridge");
       }
       this.#images.set(compId, unpackImage(def, res.bytes));
     } catch (err) {
-      // Blocks this chip's data (reads zeros) with a loud message rather than
-      // silently zeroing; it is also excluded from flushes so a file we could
-      // not read is never overwritten.
-      this.#loadFailed.add(compId);
       this.#notifications?.notify({
         key: `mem-load:${compId}`,
         variant: "danger",
@@ -356,87 +349,37 @@ export class SimController {
   }
 
   /**
-   * Apply the tick's reported (word) writes to the in-RAM images and return the
-   * per-component BYTE-level changes. A ROM-mode binding DROPS the write (a
-   * one-time warning); a RAM-mode binding applies it and the change is queued
-   * for a debounced disk flush; an unbound chip applies it (volatile). The
-   * returned map drives both the flush queue and the live inspector broadcast.
+   * Apply the tick's reported (word) writes and return per-component BYTE-level
+   * changes (for the live inspector). A VOLATILE chip's writes land in its
+   * run-volatile image; a NON-VOLATILE (ROM) chip is read-only in this app — the
+   * circuit cannot drive a write cycle, so any reported write is DROPPED.
    * @returns {Map<string, Array<[number, number]>>} compId → [[byteAddr, byteVal]]
    */
   #applyWrites(writes) {
     const changes = new Map();
     for (const { compId, addr, value } of writes ?? []) {
+      const info = this.#memInfo.get(compId);
+      if (!info || !info.volatile) continue; // ROM is read-only → drop
       const img = this.#images.get(compId);
       if (!img || addr < 0 || addr >= img.length) continue;
-      const bind = this.#binding.get(compId);
-      if (bind?.mode === "rom") {
-        this.#warnRomWrite(compId); // read-only file — write dropped
-        continue;
-      }
       img[addr] = value;
-      const width = this.#memWidth.get(compId) ?? 8;
       let arr = changes.get(compId);
       if (!arr) changes.set(compId, (arr = []));
-      for (const bw of wordToBytes(width, addr, value))
-        arr.push([bw.addr, bw.value]);
+      for (const bw of wordToBytes(info.width, addr, value)) arr.push(bw);
     }
     return changes;
   }
 
-  /** Queue byte writes for a RAM-bound chip and (re)arm the debounced flush. */
-  #queueFlush(compId, byteChanges) {
-    if (byteChanges.length === 0) return;
-    let arr = this.#pendingFlush.get(compId);
-    if (!arr) this.#pendingFlush.set(compId, (arr = []));
-    for (const [addr, value] of byteChanges) arr.push({ addr, value });
-    if (this.#flushTimer == null) {
-      this.#flushTimer = setTimeout(() => {
-        this.#flushTimer = null;
-        this.#drainFlush();
-      }, FLUSH_DEBOUNCE_MS);
-    }
-  }
-
-  /** Flush every component's accumulated byte writes to disk (atomic in main). */
-  #drainFlush() {
-    for (const [compId, writes] of this.#pendingFlush) {
-      const bind = this.#binding.get(compId);
-      if (!bind || writes.length === 0) continue;
-      window.chiphippo?.mem
-        ?.flush(bind.path, writes, bind.byteLength)
-        .then((res) => {
-          if (res && res.ok === false) {
-            this.#notifications?.notify({
-              key: `mem-flush:${compId}`,
-              variant: "danger",
-              title: "Memory not saved",
-              message: `${this.#refName(compId)}: ${res.error}`,
-            });
-          }
-        })
-        .catch(() => {});
-    }
-    this.#pendingFlush = new Map();
-  }
-
-  /** Cancel the debounce and flush immediately (Pause / Stop). */
-  #flushNow() {
-    if (this.#flushTimer != null) {
-      clearTimeout(this.#flushTimer);
-      this.#flushTimer = null;
-    }
-    this.#drainFlush();
-  }
-
-  /** Warn once that a write to a read-only (ROM-mode) binding was ignored. */
-  #warnRomWrite(compId) {
-    if (this.#romWarned.has(compId)) return;
-    this.#romWarned.add(compId);
+  /** Warn once that a programmed chip's backing file was missing (data lost). */
+  #warnDataLoss(compId) {
+    if (this.#dataLossWarned.has(compId)) return;
+    this.#dataLossWarned.add(compId);
     this.#notifications?.notify({
-      key: `rom-write:${compId}`,
-      variant: "warning",
-      title: "Read-only memory",
-      message: `${this.#refName(compId)} is bound read-only (ROM); writes are ignored.`,
+      key: `mem-lost:${compId}`,
+      variant: "danger",
+      sticky: true,
+      title: "Memory data lost",
+      message: `${this.#refName(compId)} was programmed, but its data file was missing — it now holds random noise. Re-load an image.`,
     });
   }
 
@@ -458,7 +401,7 @@ export class SimController {
   imageBytesOf(compId) {
     const img = this.#images.get(compId);
     if (!img) return null;
-    return packImage(this.#memWidth.get(compId) ?? 8, img);
+    return packImage(this.#memInfo.get(compId)?.width ?? 8, img);
   }
 
   #autoClocks() {
@@ -522,14 +465,9 @@ export class SimController {
       this.#warm = result.netLevels;
       this.#state = result.state;
       this.#prevPins = result.pinLevels;
-      const changes = this.#applyWrites(result.memWrites);
-      for (const [compId, byteChanges] of changes) {
-        const bind = this.#binding.get(compId);
-        if (bind?.mode === "ram" && !this.#loadFailed.has(compId)) {
-          this.#queueFlush(compId, byteChanges);
-        }
-      }
-      this.#broadcastMemChanges(changes);
+      // Volatile (SRAM) writes land in the run image + drive the live inspector;
+      // ROM writes are dropped (read-only). No file is ever written while running.
+      this.#broadcastMemChanges(this.#applyWrites(result.memWrites));
       this.#persistDamage(result.chipStatus);
       this.#publish(result, netlist, this.#displayState(doc, result.state));
       this.#report(result.warnings);

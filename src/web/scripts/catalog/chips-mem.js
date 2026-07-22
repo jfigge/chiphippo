@@ -156,6 +156,7 @@ export const CHIPS_MEM = Object.freeze([
       ceN: 26,
       oeN: 27,
       weN: 20,
+      volatile: true, // SRAM — lost at power-off, never file-backed
     }),
     pinGroups: [
       {
@@ -263,6 +264,7 @@ export const CHIPS_MEM = Object.freeze([
       ceN: 20,
       oeN: 22,
       weN: 27,
+      volatile: true, // SRAM — lost at power-off, never file-backed
     }),
     pinGroups: [
       {
@@ -325,6 +327,7 @@ export const CHIPS_MEM = Object.freeze([
       oeN: 24,
       weN: 29,
       ce2: 30,
+      volatile: true, // SRAM — lost at power-off, never file-backed
     }),
     pinGroups: [
       {

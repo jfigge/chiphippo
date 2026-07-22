@@ -123,21 +123,25 @@ contextBridge.exposeInMainWorld("chiphippo", {
   // button. Resolves to whether a file was opened.
   openDatasheet: (ref) => ipcRenderer.invoke("datasheet:open", ref),
 
-  // ── Memory backing files (Feature 180) ─────────────────────────────────────
-  // The byte store behind a memory chip's `.bin`. All I/O is atomic in main;
-  // the renderer holds only in-RAM images + byte batches. `load`/`flush` are
-  // byte-oriented (the SimController packs 8/16-bit words to byte offsets);
-  // each resolves to { ok, ... } or { ok:false, error }. `choose`/`import`/
-  // `export` open native dialogs (Feature 190 uses import/export).
+  // ── Memory backing files (Features 180/190) ────────────────────────────────
+  // The GUID-keyed byte store behind a non-volatile (ROM/EPROM/EEPROM) chip's
+  // `.bin` in the app working folder. All I/O is atomic in main, which alone
+  // maps a GUID to a path. `create` makes a fresh noise-filled file (chip
+  // added); `load` reads it; `program` copies a picked image to the file's
+  // start (the external programmer); `write` overwrites (inspector Save);
+  // `delete` removes it (chip deleted); `path` resolves the display path.
+  // `pickImage`/`export` open native dialogs. Each resolves to { ok, ... }.
   mem: {
-    load: (filePath, byteLength) =>
-      ipcRenderer.invoke("mem:load", filePath, byteLength),
-    flush: (filePath, writes, byteLength) =>
-      ipcRenderer.invoke("mem:flush", filePath, writes, byteLength),
-    write: (filePath, bytes) =>
-      ipcRenderer.invoke("mem:write", filePath, bytes),
-    choose: (mode) => ipcRenderer.invoke("mem:choose", mode),
-    import: () => ipcRenderer.invoke("mem:import"),
+    create: (guid, byteLength) =>
+      ipcRenderer.invoke("mem:create", guid, byteLength),
+    load: (guid, byteLength) =>
+      ipcRenderer.invoke("mem:load", guid, byteLength),
+    program: (guid, bytes, byteLength) =>
+      ipcRenderer.invoke("mem:program", guid, bytes, byteLength),
+    write: (guid, bytes) => ipcRenderer.invoke("mem:write", guid, bytes),
+    delete: (guid) => ipcRenderer.invoke("mem:delete", guid),
+    path: (guid) => ipcRenderer.invoke("mem:path", guid),
+    pickImage: () => ipcRenderer.invoke("mem:pick-image"),
     export: (bytes, suggestedName) =>
       ipcRenderer.invoke("mem:export", bytes, suggestedName),
   },

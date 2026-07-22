@@ -58,7 +58,7 @@ import {
 import { DeskDoc } from "../model/desk-doc.js";
 import { HistoryStore } from "../model/history-store.js";
 import { partDef } from "../catalog/index.js";
-import { isMemory } from "../sim/chip-eval.js";
+import { isMemory, isVolatileMemory, memoryConfig } from "../sim/chip-eval.js";
 import { PSU_VOLTS, CLOCK_HZ, LCD_SIZES } from "../catalog/parts.js";
 import {
   BreadboardView,
@@ -91,9 +91,16 @@ function brickSvg(kind, params) {
   return buildLcdSvg(params);
 }
 
-/** The trailing file name of a path (for the backing-file menu label). */
-function fileName(p) {
-  return typeof p === "string" ? p.split(/[\\/]/).pop() : p;
+/** A non-volatile memory chip's backing-file size in bytes (address space ×
+    bytes-per-word), used when provisioning its `.bin` on placement. */
+function memByteLength(def) {
+  const { size, width } = memoryConfig(def);
+  return size * (width > 8 ? 2 : 1);
+}
+
+/** True for a file-backed (non-volatile ROM/EPROM/EEPROM) memory chip. */
+function isRomChip(def) {
+  return isMemory(def) && !isVolatileMemory(def);
 }
 
 /** Pointer travel (px) below which a press stays a click, not a drag/pan. */
@@ -163,7 +170,9 @@ export class DeskController {
   #onClockToggle;
   #onOpenPinout;
   #onOpenMemory;
-  #onBindMemory;
+  #onProgramMemory;
+  #onCreateMemoryFile;
+  #onRemoveMemoryFile;
 
   /**
    * @param {object} opts
@@ -185,9 +194,12 @@ export class DeskController {
    * @param {(id: string) => void} [opts.onOpenMemory] - open the memory
    *   inspector window for a memory chip (double-click / context menu,
    *   Feature 190).
-   * @param {(id: string, mode: string) => void} [opts.onBindMemory] - pick a
-   *   backing file for a memory chip in `rom`/`ram` mode (Feature 180); the
-   *   handler runs the native picker and calls back setMemoryStorage.
+   * @param {(id: string) => void} [opts.onProgramMemory] - run the in-app
+   *   external programmer for a ROM chip (pick a `.bin`/`.hex` → its file).
+   * @param {(guid: string, byteLength: number) => void} [opts.onCreateMemoryFile]
+   *   - create a ROM chip's backing file on placement (noise-filled).
+   * @param {(guid: string) => void} [opts.onRemoveMemoryFile] - delete a ROM
+   *   chip's backing file on removal.
    * @param {(state: {canUndo: boolean, canRedo: boolean}) => void}
    *   [opts.onHistoryChange] - undo/redo availability changed (drives the
    *   Edit-menu enable state, Feature 200).
@@ -203,7 +215,9 @@ export class DeskController {
     onClockToggle,
     onOpenPinout,
     onOpenMemory,
-    onBindMemory,
+    onProgramMemory,
+    onCreateMemoryFile,
+    onRemoveMemoryFile,
     onHistoryChange,
   }) {
     this.#viewport = viewport;
@@ -213,7 +227,9 @@ export class DeskController {
     this.#onClockToggle = onClockToggle;
     this.#onOpenPinout = onOpenPinout;
     this.#onOpenMemory = onOpenMemory;
-    this.#onBindMemory = onBindMemory;
+    this.#onProgramMemory = onProgramMemory;
+    this.#onCreateMemoryFile = onCreateMemoryFile;
+    this.#onRemoveMemoryFile = onRemoveMemoryFile;
     this.#onHistoryChange = onHistoryChange;
 
     // Layer order (established for every later stage): boards under parts
@@ -898,6 +914,7 @@ export class DeskController {
                 anchor: r.seat.anchor,
                 params: r.params,
               });
+        this.#provisionMemory(comp); // a pasted ROM gets its OWN fresh file
         this.#mountPart(comp);
         newIds.push(comp.id);
       } catch {
@@ -1671,10 +1688,43 @@ export class DeskController {
       anchor,
       params,
     });
+    this.#provisionMemory(component);
     this.#mountPart(component);
     this.selectComponent(component.id);
     this.#emitDocChanged("add part");
     return component;
+  }
+
+  /**
+   * Give a freshly-placed ROM chip its own backing file (Feature 190): mint a
+   * GUID, clear any copied `programmed` flag (a paste is a NEW, unprogrammed
+   * chip), and create the noise-filled `.bin`. A no-op for volatile SRAM (never
+   * file-backed) and non-memory parts. The GUID lands in the same doc-changed
+   * as the placement, so it rides one undo step.
+   */
+  #provisionMemory(comp) {
+    const def = partDef(comp.ref);
+    if (!isRomChip(def)) return;
+    const guid = crypto.randomUUID();
+    this.#doc.setComponentParams(comp.id, {
+      storage: { guid },
+      programmed: false,
+    });
+    this.#onCreateMemoryFile?.(guid, memByteLength(def));
+  }
+
+  /** Delete a ROM chip's backing file as it's removed (a no-op for SRAM). */
+  #releaseMemory(comp) {
+    const guid = comp?.params?.storage?.guid;
+    if (guid && isRomChip(partDef(comp.ref))) this.#onRemoveMemoryFile?.(guid);
+  }
+
+  /** Set/clear a ROM chip's `programmed` flag (the in-app programmer wrote it). */
+  setMemoryProgrammed(id, programmed) {
+    const comp = this.#doc.getComponent(id);
+    if (!comp || !isRomChip(partDef(comp.ref))) return;
+    this.#doc.setComponentParams(id, { programmed: programmed === true });
+    this.#emitDocChanged("program memory");
   }
 
   /** Drop + mount + select a desk-level brick (PSU/clock); emits doc-changed. */
@@ -1736,6 +1786,7 @@ export class DeskController {
   #doRemoveBoards(boardIds) {
     for (const bid of boardIds) {
       for (const comp of this.#doc.componentsOnBoard(bid)) {
+        this.#releaseMemory(comp); // a seated ROM's backing file goes with it
         this.#partViews.get(comp.id)?.remove();
         this.#partViews.delete(comp.id);
         if (this.#selected?.id === comp.id) this.#selected = null;
@@ -1792,6 +1843,7 @@ export class DeskController {
 
   #doRemoveComponent(id) {
     const cascadedWires = new Set(this.#doc.wiresTouching(id).map((w) => w.id));
+    this.#releaseMemory(this.#doc.getComponent(id)); // delete a ROM's backing file
     this.#doc.removeComponent(id); // a PSU cascades its attached wires
     this.#partViews.get(id)?.remove();
     this.#partViews.delete(id);
@@ -1837,20 +1889,6 @@ export class DeskController {
     const updated = this.#doc.setComponentParams(id, { size });
     this.#partViews.get(id)?.updateParams(updated.params);
     this.#emitDocChanged("set LCD size", { coalesce: true });
-  }
-
-  /**
-   * Bind (or clear) a memory chip's backing file (Feature 180). `storage` is
-   * `{ path, mode }` (`rom`/`ram`) or null to unbind. A no-op while editing is
-   * locked — the binding is a topology-ish edit and the running image is
-   * engine-owned.
-   */
-  setMemoryStorage(id, storage) {
-    if (this.#editingLocked) return;
-    const comp = this.#doc.getComponent(id);
-    if (!comp || !isMemory(partDef(comp.ref))) return;
-    this.#doc.setComponentParams(id, { storage: storage ?? null });
-    this.#emitDocChanged("set backing file");
   }
 
   // ── Central keyboard hooks (wired by app.js) ────────────────────────────
@@ -2588,35 +2626,18 @@ export class DeskController {
         onSelect: () => this.#onReplaceChip?.(id),
       });
     }
-    // Memory chips: the inspector + the file binding (Features 180 / 190). The
-    // inspector stays available while running (read-only + live); binding is an
-    // edit, so it's dropped when editing is locked.
+    // Memory chips: the inspector (read-only + live while running) and, for a
+    // non-volatile ROM, the in-app programmer. Volatile SRAM has no file.
     if (comp?.kind === "chip" && isMemory(partDef(comp.ref))) {
       items.push({
         label: "Inspect memory…",
         onSelect: () => this.#onOpenMemory?.(id),
       });
       if (!this.#editingLocked) {
-        const bound = comp.params?.storage ?? null;
-        items.push({ separator: true });
-        items.push({
-          label: bound
-            ? `● Backing: ${fileName(bound.path)} (${bound.mode.toUpperCase()})`
-            : "No backing file",
-          disabled: true,
-        });
-        items.push({
-          label: "Program from file… (ROM)",
-          onSelect: () => this.#onBindMemory?.(id, "rom"),
-        });
-        items.push({
-          label: "Record to file… (RAM)",
-          onSelect: () => this.#onBindMemory?.(id, "ram"),
-        });
-        if (bound) {
+        if (isRomChip(partDef(comp.ref))) {
           items.push({
-            label: "Clear backing file",
-            onSelect: () => this.setMemoryStorage(id, null),
+            label: "Load image… (program)",
+            onSelect: () => this.#onProgramMemory?.(id),
           });
         }
         items.push({ separator: true });
@@ -2867,7 +2888,9 @@ export class DeskController {
   #doRemoveSelected(ids, wireIds = []) {
     this.#clearMultiSelection();
     for (const id of ids) {
-      if (!this.#doc.getComponent(id)) continue; // already cascaded away
+      const comp = this.#doc.getComponent(id);
+      if (!comp) continue; // already cascaded away
+      this.#releaseMemory(comp); // a ROM's backing file goes with it
       this.#doc.removeComponent(id);
       this.#partViews.get(id)?.remove();
       this.#partViews.delete(id);

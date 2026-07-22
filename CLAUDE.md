@@ -72,22 +72,30 @@ desk-level **clock source** brick (`clk<n>` ids, `out`/`gnd` terminals,
 1/2/5/10 Hz or manual) with `ClockView`, and the SimController **transport**
 (Run / Pause / Step / speed) whose `setInterval` drives clock edges while the
 engine stays pure and timerless; and (skipping the deferred 150–170 wave in the
-tree) **file-backed memory** (180) — the main-side byte store
-`app/store/mem-store.js` (atomic `load`/`flush`/`writeAll` over `io.js`) behind
-the parity-guarded `mem:*` IPC, a memory chip's `params.storage = {path, mode}`
-binding carried through `normalizeParams`, and the SimController lifecycle that
-loads each bound chip's `.bin` on Run (async gate before the first tick), packs
-reported writes to bytes and flushes them debounced (RAM mode) / drops them with
-a warning (ROM mode), and flushes a final time on Pause/Stop — the engine and
-`memUnit` are byte-identical to Feature 170; and the **memory inspector** (190)
-— a floating per-component hex/ASCII window (`web/memory.html` →
-`scripts/memory.js`) built on the virtualized `components/memory-inspector.js`
-grid (offset gutter · hex · ASCII, a reused row pool so a 32 KiB image is ~30
-rows in the DOM), pure `model/hex-format.js` (Intel HEX ⇄ bytes) for
-Import/Export, editable-when-stopped / read-only-live-when-running, and the
-renderer-side `components/memory-bridge.js` coordinator that relays a window's
-context + the engine's live byte writes across the main→inspector window
-boundary. When a stage is finished, move its plan file into `features/done/`.
+tree) **file-backed memory + inspector** (180/190). Volatility decides
+everything: a **volatile SRAM** (`ram-8k`/`HM62256`/`AS6C1024`, flagged
+`volatile` in the catalog) is never file-backed — run-volatile only; a
+**non-volatile ROM/EPROM/EEPROM** is backed by a real `.bin` in the app working
+folder, named by a per-chip GUID minted on placement (`params.storage.guid`).
+EEPROM/EPROM are treated as ROMs (the app can't drive their write cycle), so the
+CIRCUIT never writes any file-backed chip — a ROM is programmed only by the
+in-app **external programmer** (a menu action: pick a `.bin`/`.hex`, copy it to
+the file's start with a size warning). The main-side byte store
+`app/store/mem-store.js` (`create` noise-filled / `load` / `program` / `writeAll`
+/ `remove`, atomic over `io.js`) sits behind the GUID-keyed, parity-guarded
+`mem:*` IPC (main alone maps a GUID → path). The SimController loads each ROM's
+file on Run (async gate before the first tick), drops any reported write (ROMs
+are read-only), and warns when a chip flagged `programmed` finds its file missing
+(the delete-then-undo data-loss case). The **inspector** is a floating
+per-component hex/ASCII window (`web/memory.html` → `scripts/memory.js`) on the
+virtualized `components/memory-inspector.js` grid (offset · hex · ASCII, a reused
+row pool so a 32 KiB image is ~30 rows in the DOM), pure `model/hex-format.js`
+(Intel HEX ⇄ bytes) for Import/Export, editable-when-stopped (ROM only) /
+read-only-live-when-running, showing the ROM's backing-file path; the
+renderer-side `components/memory-bridge.js` coordinator runs the programmer +
+Save through the DeskController (so the `programmed` flag rides undo/redo) and
+relays context + live byte writes across the main↔inspector window boundary.
+When a stage is finished, move its plan file into `features/done/`.
 
 ## Naming & identity
 
@@ -283,26 +291,37 @@ Electron main process (src/app/main.js)
   Run, never serialized).
 - **Memory: file-backing + inspector** (`app/store/mem-store.js` +
   `components/memory-inspector.js` + `components/memory-bridge.js`, Features
-  180/190): a memory chip's bytes live in a real `.bin` **sidecar**; the
-  document stores only the binding `params.storage = { path, mode }` (`rom` =
-  load-only, `ram` = load + flush), never the bytes. **All file I/O is in main**
-  over the parity-guarded `mem:*` IPC (`load`/`flush`/`write`/`choose`/`import`/
-  `export`) — `mem-store.js` is byte-oriented and atomic; the SimController packs
-  8/16-bit words to byte offsets, loads on Run, and flushes reported writes
-  debounced (a **RAM** binding) or drops them with a one-time warning (a **ROM**
-  binding), keeping the pure engine/`memUnit` byte-identical to Feature 170. The
-  **inspector** is a floating OS window per component (like the pinout), opened
-  on double-click / context menu; because it is its own sandboxed renderer it
-  reaches the main renderer ONLY through main's `memory:*` relay
+  180/190). **Volatility is the whole axis.** A **volatile SRAM** (catalog flag
+  `volatile`, via `isVolatileMemory`) is NEVER file-backed — run-volatile only.
+  A **non-volatile** chip (ROM/EPROM/EEPROM) is backed by a real `.bin` **sidecar**
+  in the app working folder (`userData/memory/<guid>.bin`); the document stores
+  only `params.storage = { guid }` (a `crypto.randomUUID()` minted on placement)
+  plus a `programmed` flag — never the bytes, never a user-chosen path. The
+  CIRCUIT can never write a file-backed chip: EEPROM/EPROM are treated as ROMs
+  (the app can't drive a write cycle), so the SimController **drops** any reported
+  write to a non-volatile chip; a ROM is programmed only by the in-app **external
+  programmer**. **All file I/O is in main** over the GUID-keyed, parity-guarded
+  `mem:*` IPC (`create`/`load`/`program`/`write`/`delete`/`path`/`pick-image`/
+  `export`) — main alone maps a GUID → path (rejecting a hostile one), and
+  `mem-store.js` is byte-oriented + atomic (`create` fills a fresh file with
+  **random noise**, `program` copies an image to the file's start — short writes
+  a prefix, long truncates, both warned). File lifecycle rides the DeskController:
+  a ROM gets its noise file on placement (`#provisionMemory`) and loses it on
+  removal (`#releaseMemory`); a chip flagged `programmed` whose file is later
+  found missing (delete-then-undo) is recreated as noise and **warned** (the loss
+  the flag exists to catch). The **inspector** is a floating OS window per
+  component (like the pinout); because it is its own sandboxed renderer it reaches
+  the main renderer ONLY through main's `memory:*` relay
   (`open`/`to-inspector`/`to-host`, re-dispatched by preload as
   `chiphippo:memory-inbound` / `chiphippo:memory-host-inbound`). The main-window
-  `MemoryBridge` answers a window's `ready` with its chip context (and the live
-  image bytes while running), routes `set-binding` through the controller (so it
-  rides undo/redo), and streams `chiphippo:mem-state` byte writes out to open
-  windows. The grid is **virtualized** (a reused row pool — only ~viewport rows
-  in the DOM), **editable when stopped** (the window loads/saves the file
-  itself) and **read-only + live when running** (it mirrors the engine-owned
-  image, never writes it). Intel HEX ⇄ bytes is the pure `model/hex-format.js`.
+  `MemoryBridge` answers a window's `ready` with its chip context (kind + GUID +
+  display path, or the live image bytes while running), runs the programmer +
+  Save through the controller (so `programmed` rides undo/redo), and streams
+  `chiphippo:mem-state` byte writes out to open windows. The grid is
+  **virtualized** (a reused row pool — only ~viewport rows in the DOM), **editable
+  when stopped** for a ROM (Save writes its file) and a **read-only live viewer**
+  for SRAM + any running chip (it mirrors the engine-owned image, never writes
+  it). Intel HEX ⇄ bytes is the pure `model/hex-format.js`.
 - **Popups/menus**: `popup-manager.js` (ported from Port Hippo) is the only
   app-wide dialog/menu seam; build DOM with `dom.js` `el()`. `PopupManager.close()`
   fires a one-way `chiphippo:popup-closed` event so stateful dialogs can reset

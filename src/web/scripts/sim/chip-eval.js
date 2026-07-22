@@ -51,6 +51,16 @@ export function isMemory(def) {
   return Boolean(def?.logic?.memory);
 }
 
+/**
+ * Is this memory chip VOLATILE (SRAM)? Volatile memory is never file-backed —
+ * it is run-volatile only (Feature 190). A NON-volatile chip (ROM/EPROM/EEPROM)
+ * carries a `.bin` backing file and, in this app, cannot be written by the
+ * circuit (there is no way to drive a valid write cycle) — so it reads as ROM.
+ */
+export function isVolatileMemory(def) {
+  return isMemory(def) && def.logic.memory.volatile === true;
+}
+
 /** Does this def carry ANY simulated behavior (combinational/sequential/memory)? */
 export function hasBehavior(def) {
   return hasLogic(def) || isSequential(def) || isMemory(def);

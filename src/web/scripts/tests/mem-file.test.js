@@ -14,11 +14,12 @@
  * limitations under the License.
  */
 
-// Feature 180: the SimController's file-backed memory lifecycle. With a stubbed
-// window.chiphippo.mem, we prove Run LOADS the backing file before it ticks (a
-// bound ROM drives the file's bytes, not its volatile seed), RAM writes FLUSH
-// (debounced — deferred until Stop/Pause), a ROM-mode binding REFUSES writes
-// with a warning, and a load error BLOCKS that chip without aborting the run.
+// Feature 190: the SimController's file-backed ROM lifecycle. With a stubbed
+// window.chiphippo.mem, we prove a non-volatile ROM LOADS its GUID file before
+// it ticks (the file's bytes drive the bus), a VOLATILE SRAM does NO file I/O
+// at all, a non-volatile chip is READ-ONLY (a circuit write is dropped — even
+// on the writable EEPROM), and a programmed chip whose file went missing raises
+// a data-loss warning.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -30,7 +31,7 @@ import { holesOfNode, nodeOf } from "../model/breadboard.js";
 
 const { SimController } = await import("../components/sim-controller.js");
 
-// ── Circuit fixture (a powered memory driven by rail-tied address/data) ───────
+// ── Circuit fixture ───────────────────────────────────────────────────────────
 
 let wireSeq = 0;
 const wire = (from, to) => ({ id: `w${++wireSeq}`, from, to, color: "black" });
@@ -47,13 +48,13 @@ const psu = (id, x) => ({
   y: 0,
   params: { volts: 5 },
 });
-const memChip = (id, ref, anchor, storage) => ({
+const memChip = (id, ref, anchor, params = {}) => ({
   id,
   kind: "chip",
   ref,
   board: "bb1",
   anchor,
-  params: storage ? { storage } : {},
+  params,
 });
 
 const holesOf = (ref, anchor) => {
@@ -67,9 +68,9 @@ const strip = (holes, pin, i = 0) => `bb1.${mates(holes.get(pin))[i]}`;
 const HI = (k) => `bb2.+${k}`;
 const LO = (k) => `bb3.-${k}`;
 
-const power = (psuId, holes, vccPin, gndPin) => [
-  wire(`${psuId}.+`, HI(1)),
-  wire(`${psuId}.-`, LO(1)),
+const power = (holes, vccPin, gndPin) => [
+  wire("psu1.+", HI(1)),
+  wire("psu1.-", LO(1)),
   wire(strip(holes, vccPin, 0), HI(2)),
   wire(strip(holes, gndPin, 0), LO(2)),
 ];
@@ -80,57 +81,30 @@ const driveBits = (holes, pins, value, k0) =>
 const tieLow = (holes, pin, k) => wire(strip(holes, pin, 0), LO(k));
 const tieHigh = (holes, pin, k) => wire(strip(holes, pin, 0), HI(k));
 
-const ADDR = [1, 2, 3, 4, 5, 6, 7, 8, 21, 22, 23, 24, 25];
-const DATA = [9, 10, 11, 12, 13, 17, 18, 19];
-const CE = 26;
-const OE = 27;
-const WE = 20;
-const VCC = 28;
-const GND = 14;
-
-/** A read circuit: ROM/RAM selected & output-enabled at `addr`, no bus driver. */
-function readDoc(ref, anchor, storage, addr) {
-  const h = holesOf(ref, anchor);
-  const wires = [
-    ...power("psu1", h, VCC, GND),
-    ...driveBits(h, ADDR, addr, 10),
-    tieLow(h, CE, 40),
-    tieLow(h, OE, 41),
-  ];
-  if (ref === "ram-8k") wires.push(tieHigh(h, WE, 42));
-  return {
-    doc: {
-      boards,
-      components: [psu("psu1", 80), memChip("c1", ref, anchor, storage)],
-      wires,
-    },
-    holes: h,
-  };
-}
-
-/** A write circuit: an external source drives `value` at `addr`, CE·WE low. */
-function writeDoc(ref, anchor, storage, addr, value) {
-  const h = holesOf(ref, anchor);
-  return {
-    doc: {
-      boards,
-      components: [psu("psu1", 80), memChip("c1", ref, anchor, storage)],
-      wires: [
-        ...power("psu1", h, VCC, GND),
-        ...driveBits(h, ADDR, addr, 10),
-        ...driveBits(h, DATA, value, 30),
-        tieLow(h, CE, 44),
-        tieLow(h, WE, 45),
-        tieHigh(h, OE, 46),
-      ],
-    },
-    holes: h,
-  };
-}
+// rom-8k (non-volatile, no WE — pure ROM).
+const ROM = {
+  ref: "rom-8k",
+  addr: [1, 2, 3, 4, 5, 6, 7, 8, 21, 22, 23, 24, 25],
+  data: [9, 10, 11, 12, 13, 17, 18, 19],
+  ce: 26,
+  oe: 27,
+  vcc: 28,
+  gnd: 14,
+};
+// 28C16 (non-volatile EEPROM — has WE, but read-only in this app).
+const EEPROM = {
+  ref: "28C16",
+  addr: [8, 7, 6, 5, 4, 3, 2, 1, 19, 22, 23],
+  data: [9, 10, 11, 13, 14, 15, 16, 17],
+  ce: 18,
+  oe: 20,
+  we: 21,
+  vcc: 24,
+  gnd: 12,
+};
 
 // ── Stubs ─────────────────────────────────────────────────────────────────────
 
-/** A DeskDoc stand-in (the three methods SimController touches). */
 function fakeDoc(raw) {
   const doc = JSON.parse(JSON.stringify(raw));
   return {
@@ -143,48 +117,73 @@ function fakeDoc(raw) {
     },
   };
 }
-
 function fakeNotifications() {
   const calls = [];
   return { calls, notify: (o) => calls.push(o), clear: () => {} };
 }
 
-/** A window.chiphippo.mem stub: an in-memory file table + recorded calls. */
-function installMem({ files = new Map(), loadError = null } = {}) {
-  const calls = { load: [], flush: [], write: [] };
+/** A window.chiphippo.mem stub: an in-memory GUID→bytes table + recorded calls. */
+function installMem({ files = new Map() } = {}) {
+  const calls = { create: [], load: [], write: [], program: [], delete: [] };
   window.chiphippo = {
     mem: {
-      async load(path, len) {
-        calls.load.push({ path, len });
-        if (loadError) return { ok: false, error: loadError };
+      async create(guid, len) {
+        calls.create.push({ guid, len });
+        const existed = files.has(guid);
+        if (!existed) files.set(guid, new Uint8Array(len));
+        return { ok: true, created: !existed };
+      },
+      async load(guid, len) {
+        calls.load.push({ guid, len });
         const out = new Uint8Array(len);
-        const b = files.get(path);
+        const b = files.get(guid);
         if (b) out.set(b.subarray(0, Math.min(b.length, len)));
         return { ok: true, bytes: out };
       },
-      async flush(path, writes, len) {
-        calls.flush.push({ path, writes: writes.map((w) => ({ ...w })), len });
-        let b = files.get(path);
-        if (!b) files.set(path, (b = new Uint8Array(len)));
-        for (const w of writes) {
-          if (w.addr >= 0 && w.addr < len) b[w.addr] = w.value & 0xff;
-        }
+      async write(guid, bytes) {
+        calls.write.push({ guid, bytes: [...bytes] });
+        files.set(guid, Uint8Array.from(bytes));
         return { ok: true };
       },
-      async write(path, bytes) {
-        calls.write.push({ path, bytes: [...bytes] });
-        files.set(path, Uint8Array.from(bytes));
+      async program(guid) {
+        calls.program.push({ guid });
         return { ok: true };
+      },
+      async delete(guid) {
+        calls.delete.push({ guid });
+        files.delete(guid);
+        return { ok: true, removed: true };
       },
     },
   };
   return { calls, files };
 }
 
-/** Read a chip's data bus back into an integer from a captured sim-state. */
-function busWord(detail, holes) {
+const GUID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+
+/** A read circuit for a memory: selected & output-enabled at `addr`. */
+function readDoc(part, anchor, addr, params) {
+  const h = holesOf(part.ref, anchor);
+  const wires = [
+    ...power(h, part.vcc, part.gnd),
+    ...driveBits(h, part.addr, addr, 10),
+    tieLow(h, part.ce, 40),
+    tieLow(h, part.oe, 41),
+  ];
+  if (part.we != null) wires.push(tieHigh(h, part.we, 42)); // not writing
+  return {
+    doc: {
+      boards,
+      components: [psu("psu1", 80), memChip("c1", part.ref, anchor, params)],
+      wires,
+    },
+    holes: h,
+  };
+}
+
+function busWord(detail, holes, dataPins) {
   const { netLevels, netlist } = detail;
-  return DATA.reduce((n, pin, i) => {
+  return dataPins.reduce((n, pin, i) => {
     const net = netlist.netOfPoint.get(`bb1.${holes.get(pin)}`);
     return n + (netLevels.get(net) === H ? 1 << i : 0);
   }, 0);
@@ -197,17 +196,12 @@ function captureSimState() {
 
 // ── Tests ─────────────────────────────────────────────────────────────────────
 
-test("Run loads a bound ROM from disk BEFORE ticking (file bytes drive, not the seed)", async () => {
+test("a ROM loads its GUID file on Run BEFORE ticking (file bytes drive the bus)", async () => {
   resetDom();
   const romFile = new Uint8Array(8192);
-  romFile[5] = 0x5a; // the file says byte 5 is 0x5A; the rom-8k SEED would be 5
-  const { calls } = installMem({ files: new Map([["/x/rom.bin", romFile]]) });
-  const { doc, holes } = readDoc(
-    "rom-8k",
-    "e10",
-    { path: "/x/rom.bin", mode: "rom" },
-    5,
-  );
+  romFile[5] = 0x5a;
+  const { calls } = installMem({ files: new Map([[GUID, romFile]]) });
+  const { doc, holes } = readDoc(ROM, "e10", 5, { storage: { guid: GUID } });
   const sim = new SimController({
     deskDoc: fakeDoc(doc),
     notifications: fakeNotifications(),
@@ -216,116 +210,123 @@ test("Run loads a bound ROM from disk BEFORE ticking (file bytes drive, not the 
 
   await sim.start();
   assert.deepEqual(
-    calls.load,
-    [{ path: "/x/rom.bin", len: 8192 }],
-    "loaded once, byte-sized",
+    calls.create,
+    [{ guid: GUID, len: 8192 }],
+    "ensured the file exists",
   );
-  assert.equal(
-    busWord(events.at(-1), holes),
-    0x5a,
-    "the loaded file byte drives the bus",
-  );
-  sim.stop();
-});
-
-test("a bound RAM flushes writes — debounced (deferred until Stop)", async () => {
-  resetDom();
-  const { calls, files } = installMem();
-  const { doc } = writeDoc(
-    "ram-8k",
-    "e10",
-    { path: "/x/scratch.bin", mode: "ram" },
-    5,
-    0xa5,
-  );
-  const sim = new SimController({
-    deskDoc: fakeDoc(doc),
-    notifications: fakeNotifications(),
-  });
-
-  await sim.start();
-  assert.equal(
-    calls.flush.length,
-    0,
-    "the write is queued, not flushed synchronously",
-  );
-
-  sim.stop(); // a Stop forces the final flush
-  assert.equal(calls.flush.length, 1, "flushed once on Stop");
   assert.deepEqual(
-    calls.flush[0].writes,
-    [{ addr: 5, value: 0xa5 }],
-    "the dirty byte",
+    calls.load,
+    [{ guid: GUID, len: 8192 }],
+    "loaded it, byte-sized",
   );
   assert.equal(
-    files.get("/x/scratch.bin")[5],
-    0xa5,
-    "and the file now holds it",
-  );
-});
-
-test("a ROM-mode binding REFUSES writes with a one-time warning", async () => {
-  resetDom();
-  const { calls } = installMem();
-  const notifications = fakeNotifications();
-  // A writable RAM chip, but bound read-only → its WE̅ pulse must be dropped.
-  const { doc } = writeDoc(
-    "ram-8k",
-    "e10",
-    { path: "/x/rom.bin", mode: "rom" },
-    5,
-    0xa5,
-  );
-  const sim = new SimController({ deskDoc: fakeDoc(doc), notifications });
-
-  await sim.start();
-  sim.stop();
-  assert.equal(
-    calls.flush.length,
-    0,
-    "nothing is ever flushed to a read-only file",
-  );
-  assert.ok(
-    notifications.calls.some((c) => /read-only/i.test(c.title)),
-    "and a read-only warning is raised",
-  );
-});
-
-test("a load error BLOCKS that chip with a message but the run still starts", async () => {
-  resetDom();
-  installMem({ loadError: "ENOENT: no such file" });
-  const notifications = fakeNotifications();
-  const { doc } = readDoc(
-    "rom-8k",
-    "e10",
-    { path: "/missing.bin", mode: "rom" },
-    5,
-  );
-  const sim = new SimController({ deskDoc: fakeDoc(doc), notifications });
-
-  await sim.start();
-  assert.equal(sim.running, true, "the run still starts (other chips can run)");
-  assert.ok(
-    notifications.calls.some(
-      (c) => c.variant === "danger" && /not loaded/i.test(c.title),
-    ),
-    "a clear load-failure message is shown",
+    busWord(events.at(-1), holes, ROM.data),
+    0x5a,
+    "the file byte drives the bus",
   );
   sim.stop();
 });
 
-test("an UNBOUND memory stays volatile — no file I/O at all", async () => {
+test("a volatile SRAM does NO file I/O at all", async () => {
   resetDom();
   const { calls } = installMem();
-  const { doc } = writeDoc("ram-8k", "e10", null, 5, 0xa5);
+  const h = holesOf("ram-8k", "e10");
+  const doc = {
+    boards,
+    components: [psu("psu1", 80), memChip("c1", "ram-8k", "e10")],
+    wires: power(h, 28, 14),
+  };
   const sim = new SimController({
     deskDoc: fakeDoc(doc),
     notifications: fakeNotifications(),
   });
 
   const pending = sim.start();
-  assert.equal(pending, undefined, "no bound chip → Run stays synchronous");
+  assert.equal(pending, undefined, "no ROM → Run stays synchronous");
   sim.stop();
+  assert.deepEqual(calls.create, [], "never creates a file");
   assert.deepEqual(calls.load, [], "never loads");
-  assert.deepEqual(calls.flush, [], "never flushes");
+  assert.deepEqual(calls.write, [], "never writes");
+});
+
+test("a non-volatile EEPROM is READ-ONLY — a circuit write is dropped", async () => {
+  resetDom();
+  const file = new Uint8Array(2048);
+  file[5] = 0x11; // the programmed byte at address 5
+  installMem({ files: new Map([[GUID, file]]) });
+
+  // Write phase: drive 0xAA at addr 5 with CE·WE low — the app can't really
+  // write an EEPROM, so this must be ignored.
+  const h = holesOf("28C16", "e5");
+  const writeDoc = {
+    boards,
+    components: [
+      psu("psu1", 80),
+      memChip("c1", "28C16", "e5", { storage: { guid: GUID } }),
+    ],
+    wires: [
+      ...power(h, EEPROM.vcc, EEPROM.gnd),
+      ...driveBits(h, EEPROM.addr, 5, 10),
+      ...driveBits(h, EEPROM.data, 0xaa, 30),
+      tieLow(h, EEPROM.ce, 44),
+      tieLow(h, EEPROM.we, 45),
+      tieHigh(h, EEPROM.oe, 46),
+    ],
+  };
+  const sim = new SimController({
+    deskDoc: fakeDoc(writeDoc),
+    notifications: fakeNotifications(),
+  });
+  await sim.start();
+  sim.stop();
+
+  // Read phase (fresh controller, same file): the byte must still be 0x11.
+  const { doc, holes } = readDoc(EEPROM, "e5", 5, { storage: { guid: GUID } });
+  const sim2 = new SimController({
+    deskDoc: fakeDoc(doc),
+    notifications: fakeNotifications(),
+  });
+  const events = captureSimState();
+  await sim2.start();
+  assert.equal(
+    busWord(events.at(-1), holes, EEPROM.data),
+    0x11,
+    "the write never took",
+  );
+  sim2.stop();
+});
+
+test("a programmed ROM whose file went missing warns of data loss", async () => {
+  resetDom();
+  const notifications = fakeNotifications();
+  installMem(); // empty table → create() reports created:true (file was missing)
+  const { doc } = readDoc(ROM, "e10", 0, {
+    storage: { guid: GUID },
+    programmed: true,
+  });
+  const sim = new SimController({ deskDoc: fakeDoc(doc), notifications });
+
+  await sim.start();
+  assert.ok(
+    notifications.calls.some(
+      (c) => c.variant === "danger" && /data lost/i.test(c.title),
+    ),
+    "a programmed chip with a recreated (noise) file is flagged",
+  );
+  sim.stop();
+});
+
+test("an UNprogrammed ROM whose file is created stays silent (fresh noise is expected)", async () => {
+  resetDom();
+  const notifications = fakeNotifications();
+  installMem(); // empty → create() reports created:true, but chip isn't programmed
+  const { doc } = readDoc(ROM, "e10", 0, { storage: { guid: GUID } });
+  const sim = new SimController({ deskDoc: fakeDoc(doc), notifications });
+
+  await sim.start();
+  assert.ok(
+    !notifications.calls.some((c) => /data lost/i.test(c.title ?? "")),
+    "no loss warning for a never-programmed chip",
+  );
+  sim.stop();
 });

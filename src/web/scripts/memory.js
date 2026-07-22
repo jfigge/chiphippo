@@ -17,19 +17,21 @@
 // memory.js — entry point for the standalone memory-inspector OS window
 // (web/memory.html, one per memory chip). It reads the component id + ref from
 // the query string, renders the virtualized MemoryInspector grid, and drives
-// the toolbar: binding management, Save / Import / Export (.bin + Intel HEX),
-// Fill-range, and Go-to-address. It reaches the main renderer ONLY through
-// main's relay (window.chiphippo.memory.toHost / the chiphippo:memory-inbound
-// event): it announces `ready` to pull its context, and posts `set-binding`
-// when the user re-binds. While STOPPED the window is the authority (it loads
-// the backing file and Save writes it); while RUNNING it is read-only and
-// mirrors the engine's live writes.
+// the toolbar. It reaches the main renderer ONLY through main's relay
+// (window.chiphippo.memory.toHost / the chiphippo:memory-inbound event): it
+// announces `ready` to pull its context, and posts `program` / `save`.
+//
+// A NON-VOLATILE (ROM/EPROM/EEPROM) chip is file-backed: the window shows its
+// backing-file path (copyable), the in-app programmer ("Load image…"), Save,
+// and Export, and is editable while stopped. A VOLATILE (SRAM) chip has no file
+// — the window is a read-only live viewer (watch writes while running; the
+// final image when stopped) with Export only.
 
 import { el } from "./dom.js";
 import { partDef } from "./catalog/index.js";
-import { memoryConfig } from "./sim/chip-eval.js";
+import { memoryConfig, isVolatileMemory } from "./sim/chip-eval.js";
 import { MemoryInspector } from "./components/memory-inspector.js";
-import { parseIntelHex, emitIntelHex } from "./model/hex-format.js";
+import { emitIntelHex } from "./model/hex-format.js";
 
 const bridge = window.chiphippo;
 const params = new URLSearchParams(location.search);
@@ -51,23 +53,20 @@ if (!def || !mem) {
 }
 
 function startInspector() {
-  const bytesPerWord = mem.width > 8 ? 2 : 1;
-  const byteLength = mem.size * bytesPerWord;
+  const byteLength = mem.size * (mem.width > 8 ? 2 : 1);
+  const chipVolatile = isVolatileMemory(def);
 
-  let storage = null; // { path, mode } | null
+  let guid = null;
   let running = false;
   let dirty = false;
 
   // ── Toolbar ─────────────────────────────────────────────────────────────────
-  const bindingLabel = el("span", {
-    class: "mem-binding",
-    text: "No backing file",
-  });
-  const romBtn = button("Program from file… (ROM)", () => chooseBinding("rom"));
-  const ramBtn = button("Record to file… (RAM)", () => chooseBinding("ram"));
-  const clearBtn = button("Clear", () => setBinding(null));
+  const statusLabel = el("span", { class: "mem-status", text: "Stopped" });
+  const pathLabel = el("span", { class: "mem-binding" });
+  const copyBtn = button("Copy path", copyPath);
+
+  const loadBtn = button("Load image… (program)", program);
   const saveBtn = button("Save", save);
-  const importBtn = button("Import…", importFile);
   const exportBinBtn = button("Export .bin", () => exportImage(false));
   const exportHexBtn = button("Export HEX", () => exportImage(true));
 
@@ -85,24 +84,10 @@ function startInspector() {
     if (e.key === "Enter") gotoBtn.click();
   });
 
-  const fillStart = el("input", {
-    class: "mem-input",
-    type: "text",
-    placeholder: "start",
-    "aria-label": "Fill start",
-  });
-  const fillEnd = el("input", {
-    class: "mem-input",
-    type: "text",
-    placeholder: "end",
-    "aria-label": "Fill end",
-  });
-  const fillVal = el("input", {
-    class: "mem-input mem-input--val",
-    type: "text",
-    placeholder: "val",
-    "aria-label": "Fill value",
-  });
+  const fillStart = fillInput("start", "Fill start");
+  const fillEnd = fillInput("end", "Fill end");
+  const fillVal = fillInput("val", "Fill value");
+  fillVal.classList.add("mem-input--val");
   const fillBtn = button("Fill", () => {
     const sel = grid.selection;
     const start = orHex(fillStart.value, sel?.start ?? 0);
@@ -110,20 +95,17 @@ function startInspector() {
     const val = Number.parseInt(fillVal.value, 16);
     if (Number.isNaN(val)) return;
     grid.fillRange(start, end, val);
-    markDirty();
   });
 
-  const statusLabel = el("span", { class: "mem-status", text: "Stopped" });
   const errorLabel = el("span", { class: "mem-error", hidden: true });
 
   const toolbar = el("div", { class: "mem-toolbar" }, [
     el("div", { class: "mem-toolrow" }, [
-      bindingLabel,
-      romBtn,
-      ramBtn,
-      clearBtn,
+      statusLabel,
+      pathLabel,
+      copyBtn,
       el("span", { class: "mem-tool-gap" }),
-      importBtn,
+      loadBtn,
       saveBtn,
       exportBinBtn,
       exportHexBtn,
@@ -139,44 +121,43 @@ function startInspector() {
       fillVal,
       fillBtn,
       el("span", { class: "mem-tool-gap" }),
-      statusLabel,
       errorLabel,
     ]),
   ]);
   root.append(toolbar);
 
-  const grid = new MemoryInspector(root, { onEdit: markDirty });
+  const grid = new MemoryInspector(root, { onEdit: () => markDirty() });
 
   // ── State → UI ──────────────────────────────────────────────────────────────
-  function updateBindingUI() {
-    bindingLabel.textContent = storage
-      ? `${fileName(storage.path)} · ${storage.mode.toUpperCase()}`
-      : "No backing file";
-    bindingLabel.classList.toggle("mem-binding--bound", Boolean(storage));
-  }
-  function updateRunningUI() {
+  function updateUI() {
     statusLabel.textContent = running
       ? "Running · read-only"
-      : "Stopped · editable";
+      : chipVolatile
+        ? "Stopped · volatile (read-only)"
+        : "Stopped · editable";
     statusLabel.classList.toggle("mem-status--running", running);
-    grid.setEditable(!running);
-    // Editing the binding / buffer is a stopped-only affordance.
-    for (const b of [
-      romBtn,
-      ramBtn,
-      clearBtn,
-      importBtn,
-      fillBtn,
-      exportBinBtn,
-      exportHexBtn,
-    ]) {
-      b.disabled = running;
+
+    if (chipVolatile) {
+      pathLabel.textContent = "Volatile (SRAM) — no backing file";
+      pathLabel.classList.remove("mem-binding--bound");
+      copyBtn.hidden = true;
+    } else {
+      pathLabel.textContent = path || "…";
+      pathLabel.classList.add("mem-binding--bound");
+      copyBtn.hidden = !path;
     }
+
+    // A ROM is editable only when stopped; SRAM is never editable (volatile).
+    const editable = !running && !chipVolatile;
+    grid.setEditable(editable);
+    loadBtn.disabled = !editable;
+    fillBtn.disabled = !editable;
+    for (const b of [fillStart, fillEnd, fillVal, gotoInput])
+      b.disabled = false;
     updateSaveEnabled();
   }
   function updateSaveEnabled() {
-    saveBtn.disabled = running || !storage || !dirty;
-    clearBtn.disabled = running || !storage;
+    saveBtn.disabled = running || chipVolatile || !dirty;
   }
   function markDirty() {
     dirty = true;
@@ -187,43 +168,21 @@ function startInspector() {
     errorLabel.hidden = !message;
   }
 
-  // ── Binding ─────────────────────────────────────────────────────────────────
-  async function chooseBinding(mode) {
-    const path = await bridge?.mem?.choose(mode);
-    if (path) setBinding({ path, mode });
-  }
-  function setBinding(next) {
-    // The host owns the document — it applies the change and echoes context back.
-    bridge?.memory?.toHost(compId, { kind: "set-binding", storage: next });
-  }
+  let path = null;
 
-  // ── File ops ────────────────────────────────────────────────────────────────
-  async function save() {
-    if (running || !storage) return;
-    const res = await bridge?.mem?.write(storage.path, grid.getBytes());
-    if (res && res.ok === false) return showError(res.error);
+  // ── Actions ─────────────────────────────────────────────────────────────────
+  function program() {
+    // The programmer lives in the host (it warns + flags the chip); ask for it.
+    bridge?.memory?.toHost(compId, { kind: "program" });
+  }
+  function save() {
+    if (running || chipVolatile) return;
+    bridge?.memory?.toHost(compId, {
+      kind: "save",
+      bytes: Array.from(grid.getBytes()),
+    });
     dirty = false;
     updateSaveEnabled();
-    showError(null);
-  }
-  async function importFile() {
-    if (running) return;
-    const res = await bridge?.mem?.import();
-    if (!res) return; // cancelled
-    if (res.ok === false) return showError(res.error);
-    let bytes = res.bytes;
-    if (/\.hex$/i.test(res.name ?? "")) {
-      try {
-        bytes = parseIntelHex(new TextDecoder().decode(res.bytes));
-      } catch (err) {
-        return showError(err.message);
-      }
-    }
-    const buf = new Uint8Array(byteLength);
-    buf.set(bytes.subarray(0, Math.min(bytes.length, byteLength)));
-    grid.setBytes(buf);
-    markDirty();
-    showError(null);
   }
   async function exportImage(asHex) {
     const bytes = grid.getBytes();
@@ -232,34 +191,37 @@ function startInspector() {
       : bytes;
     await bridge?.mem?.export(payload, `${def.id}.${asHex ? "hex" : "bin"}`);
   }
+  async function copyPath() {
+    if (path) await navigator.clipboard?.writeText(path).catch(() => {});
+  }
 
   // ── Context ─────────────────────────────────────────────────────────────────
   async function applyContext(ctx) {
-    storage = ctx.storage ?? null;
     running = ctx.running === true;
-    updateBindingUI();
-    updateRunningUI();
+    guid = ctx.guid ?? null;
+    path = ctx.path ?? null;
+    updateUI();
     if (ctx.bytes) {
-      grid.setBytes(toBytes(ctx.bytes)); // running snapshot / stopped final image
+      grid.setBytes(toBytes(ctx.bytes)); // running snapshot / SRAM final image
       showError(null);
-    } else if (storage) {
-      const res = await bridge?.mem?.load(storage.path, byteLength);
+    } else if (!chipVolatile && guid) {
+      const res = await bridge?.mem?.load(guid, byteLength);
       if (res && res.ok) {
         grid.setBytes(res.bytes);
         showError(null);
       } else {
-        grid.setBytes(seedBytes());
+        grid.setBytes(new Uint8Array(byteLength));
         showError(res?.error ?? "could not load backing file");
       }
     } else {
-      grid.setBytes(seedBytes()); // unbound → the def's seed (ROM ramp / zeros)
+      grid.setBytes(new Uint8Array(byteLength)); // volatile stopped → cleared
       showError(null);
     }
     dirty = false;
     updateSaveEnabled();
   }
 
-  // Inbound messages from the host (only ours by component id).
+  // Inbound messages from the host (only ours, by component id).
   window.addEventListener("chiphippo:memory-inbound", (e) => {
     const { compId: id, msg } = e.detail ?? {};
     if (id !== compId || !msg) return;
@@ -277,25 +239,6 @@ function startInspector() {
       window.close();
     }
   });
-
-  // Seed bytes from the def (an unbound chip shows what Run would use).
-  function seedBytes() {
-    const bytes = new Uint8Array(byteLength);
-    if (mem.initial != null) {
-      const seed =
-        typeof mem.initial === "function" ? mem.initial(mem.size) : mem.initial;
-      const n = Math.min(mem.size, seed?.length ?? 0);
-      for (let i = 0; i < n; i++) {
-        if (bytesPerWord === 2) {
-          bytes[2 * i] = seed[i] & 0xff;
-          bytes[2 * i + 1] = (seed[i] >> 8) & 0xff;
-        } else {
-          bytes[i] = seed[i] & 0xff;
-        }
-      }
-    }
-    return bytes;
-  }
 }
 
 // ── Small helpers ─────────────────────────────────────────────────────────────
@@ -308,8 +251,13 @@ function button(label, onClick) {
     onClick,
   });
 }
-function fileName(p) {
-  return typeof p === "string" ? p.split(/[\\/]/).pop() : p;
+function fillInput(placeholder, label) {
+  return el("input", {
+    class: "mem-input",
+    type: "text",
+    placeholder,
+    "aria-label": label,
+  });
 }
 function toBytes(b) {
   return b instanceof Uint8Array ? b : Uint8Array.from(b ?? []);

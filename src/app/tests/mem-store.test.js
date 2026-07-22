@@ -14,9 +14,11 @@
  * limitations under the License.
  */
 
-// Tests for mem-store.js — the main-process byte store behind a memory chip's
-// backing file (Feature 180). load() pads/truncates to size; flush() applies a
-// sparse batch atomically (no temp file left behind); writeAll() overwrites.
+// Tests for mem-store.js — the main-process byte store behind a ROM chip's
+// backing file (Features 180/190). create() fills a fresh file with noise sized
+// exactly to the chip and never clobbers an existing one; program() copies an
+// image to the START (prefix on short, truncate on long); writeAll overwrites;
+// remove() deletes; all writes are atomic (no temp file left behind).
 
 "use strict";
 
@@ -32,81 +34,101 @@ const { isTempFileName } = require("../store/io");
 function tempDir() {
   return fs.mkdtempSync(path.join(os.tmpdir(), "chiphippo-mem-"));
 }
+const noTemp = (dir) =>
+  assert.deepEqual(
+    fs.readdirSync(dir).filter((n) => isTempFileName(n)),
+    [],
+    "no temp file left behind",
+  );
 
-test("load() of a missing file returns a zero-filled buffer of the size", () => {
+test("create() makes a file of EXACTLY the byte size, non-zero (noise)", () => {
   const dir = tempDir();
-  const buf = mem.load(path.join(dir, "absent.bin"), 8);
-  assert.equal(buf.length, 8);
-  assert.ok(buf.every((b) => b === 0));
+  const file = path.join(dir, "rom.bin");
+  const { created } = mem.create(file, 4096);
+  assert.equal(created, true);
+  const buf = fs.readFileSync(file);
+  assert.equal(buf.length, 4096, "exactly the requested size");
+  assert.ok(
+    buf.some((b) => b !== 0),
+    "filled with noise, not zeros",
+  );
+  noTemp(dir);
 });
 
-test("load() zero-pads a short file up to the requested size", () => {
+test("create() never clobbers an existing file", () => {
   const dir = tempDir();
-  const file = path.join(dir, "short.bin");
+  const file = path.join(dir, "rom.bin");
+  fs.writeFileSync(file, Buffer.from([1, 2, 3, 4]));
+  const { created } = mem.create(file, 4);
+  assert.equal(created, false, "reports it did not create");
+  assert.deepEqual(
+    [...fs.readFileSync(file)],
+    [1, 2, 3, 4],
+    "contents untouched",
+  );
+});
+
+test("load() pads / truncates to the byte size", () => {
+  const dir = tempDir();
+  const file = path.join(dir, "img.bin");
   fs.writeFileSync(file, Buffer.from([1, 2, 3]));
-  const buf = mem.load(file, 6);
-  assert.deepEqual([...buf], [1, 2, 3, 0, 0, 0]);
+  assert.deepEqual([...mem.load(file, 5)], [1, 2, 3, 0, 0]);
+  assert.deepEqual([...mem.load(file, 2)], [1, 2]);
 });
 
-test("load() truncates a file longer than the requested size", () => {
+test("program() copies a SHORT image to the start and keeps the tail", () => {
   const dir = tempDir();
-  const file = path.join(dir, "long.bin");
-  fs.writeFileSync(file, Buffer.from([1, 2, 3, 4, 5, 6]));
-  const buf = mem.load(file, 4);
-  assert.deepEqual([...buf], [1, 2, 3, 4]);
+  const file = path.join(dir, "rom.bin");
+  fs.writeFileSync(file, Buffer.from([9, 9, 9, 9, 9, 9]));
+  const info = mem.program(file, Uint8Array.from([1, 2, 3]), 6);
+  assert.deepEqual([...fs.readFileSync(file)], [1, 2, 3, 9, 9, 9]);
+  assert.deepEqual(info, {
+    written: 3,
+    imageLength: 3,
+    memLength: 6,
+    truncated: false,
+    short: true,
+  });
+  noTemp(dir);
 });
 
-test("flush() applies a sparse byte batch and sizes the file to byteLength", () => {
+test("program() truncates a LONG image to the memory size", () => {
   const dir = tempDir();
-  const file = path.join(dir, "scratch.bin");
-  mem.flush(
-    file,
-    [
-      { addr: 0, value: 0xaa },
-      { addr: 3, value: 0xff },
-    ],
-    4,
-  );
-  assert.deepEqual([...fs.readFileSync(file)], [0xaa, 0, 0, 0xff]);
+  const file = path.join(dir, "rom.bin");
+  mem.create(file, 4);
+  const info = mem.program(file, Uint8Array.from([1, 2, 3, 4, 5, 6]), 4);
+  assert.deepEqual([...fs.readFileSync(file)], [1, 2, 3, 4]);
+  assert.equal(info.truncated, true);
+  assert.equal(info.written, 4);
 });
 
-test("flush() is read-modify-write: it preserves existing bytes", () => {
+test("program() of an exact-size image reports no mismatch", () => {
   const dir = tempDir();
-  const file = path.join(dir, "rmw.bin");
-  fs.writeFileSync(file, Buffer.from([10, 20, 30, 40]));
-  mem.flush(file, [{ addr: 1, value: 99 }], 4);
-  assert.deepEqual([...fs.readFileSync(file)], [10, 99, 30, 40]);
+  const file = path.join(dir, "rom.bin");
+  const info = mem.program(file, Uint8Array.from([1, 2, 3, 4]), 4);
+  assert.equal(info.short, false);
+  assert.equal(info.truncated, false);
 });
 
-test("flush() ignores out-of-range and masks the value to a byte", () => {
+test("writeAll() overwrites the whole file", () => {
   const dir = tempDir();
-  const file = path.join(dir, "range.bin");
-  mem.flush(
-    file,
-    [
-      { addr: -1, value: 5 },
-      { addr: 2, value: 0x1ff }, // masks to 0xff
-      { addr: 99, value: 7 }, // beyond size → dropped
-    ],
-    4,
-  );
-  assert.deepEqual([...fs.readFileSync(file)], [0, 0, 0xff, 0]);
-});
-
-test("flush() leaves no temp file behind (atomic rename)", () => {
-  const dir = tempDir();
-  const file = path.join(dir, "atomic.bin");
-  mem.flush(file, [{ addr: 0, value: 1 }], 4);
-  const leftover = fs.readdirSync(dir).filter((n) => isTempFileName(n));
-  assert.deepEqual(leftover, []);
-});
-
-test("writeAll() overwrites the whole file with the given bytes", () => {
-  const dir = tempDir();
-  const file = path.join(dir, "full.bin");
+  const file = path.join(dir, "img.bin");
   fs.writeFileSync(file, Buffer.from([9, 9, 9, 9, 9]));
   mem.writeAll(file, Uint8Array.from([1, 2, 3]));
   assert.deepEqual([...fs.readFileSync(file)], [1, 2, 3]);
+});
+
+test("remove() deletes the file; a missing file is not an error", () => {
+  const dir = tempDir();
+  const file = path.join(dir, "gone.bin");
+  fs.writeFileSync(file, Buffer.from([1]));
+  assert.deepEqual(mem.remove(file), { removed: true });
+  assert.equal(fs.existsSync(file), false);
+  assert.deepEqual(
+    mem.remove(file),
+    { removed: false },
+    "second remove is a no-op",
+  );
 });
 
 test("a blank path is rejected with INVALID_ARG", () => {
@@ -115,7 +137,7 @@ test("a blank path is rejected with INVALID_ARG", () => {
     (e) => e.code === "INVALID_ARG",
   );
   assert.throws(
-    () => mem.flush("   ", [], 4),
+    () => mem.create("   ", 4),
     (e) => e.code === "INVALID_ARG",
   );
 });

@@ -103,7 +103,7 @@ export const PART_DEFS = Object.freeze(
       blurb:
         "Single-pole double-throw slide switch — the center pin is common; " +
         "click to flip which side it bridges.",
-      group: "Parts",
+      group: "Switches",
       footprint: Object.freeze({ offsets: Object.freeze([0, 1, 2]) }),
       pins: [
         { n: 1, name: "1", role: "contact" },
@@ -124,7 +124,7 @@ export const PART_DEFS = Object.freeze(
       title: "Push button (momentary)",
       blurb:
         "Momentary SPST tactile button — bridges its two pins only while held.",
-      group: "Parts",
+      group: "Switches",
       footprint: Object.freeze({ offsets: Object.freeze([0, 2]) }),
       pins: [
         { n: 1, name: "1", role: "contact" },
@@ -145,7 +145,7 @@ export const PART_DEFS = Object.freeze(
         "Light-emitting diode (idealized — no series resistor required). " +
         "Anode at the anchor hole; press F while placing to flip polarity, " +
         "R to stand it up and pick two free ends (rail or column).",
-      group: "Displays",
+      group: "LEDs",
       // Legs sit in ADJACENT holes — an LED needs no gap between its pins.
       footprint: Object.freeze({ offsets: Object.freeze([0, 1]) }),
       // Rotatable to the two-free-ends form (see the resistor): either leg can
@@ -191,7 +191,7 @@ export const PART_DEFS = Object.freeze(
         "segments), common cathode. Drive each segment anode (a–g, dp) HIGH " +
         "to light it; pin 9 (K) is the shared cathode — tie it to ground. " +
         "Comes in red / green / blue / yellow.",
-      group: "Displays",
+      group: "LEDs",
       // Nine holes along one grid row: eight segment anodes then the common
       // cathode. Segments are idealized LEDs (no series resistor required).
       footprint: Object.freeze({
@@ -231,7 +231,7 @@ export const PART_DEFS = Object.freeze(
         "Eight-segment LED bar graph, common cathode. Drive each bar's anode " +
         "(1–8) HIGH to light it; pin 9 (K) is the shared cathode — tie it to " +
         "ground. Comes in red / green / blue / yellow.",
-      group: "Displays",
+      group: "LEDs",
       // Nine holes along one grid row: eight bar anodes then the common cathode.
       footprint: Object.freeze({
         offsets: Object.freeze([0, 1, 2, 3, 4, 5, 6, 7, 8]),
@@ -270,7 +270,7 @@ export const PART_DEFS = Object.freeze(
         "straddles the trench like a chip: anodes A1–A8 in row e, cathodes " +
         "K1–K8 in row f. Drive a bar's anode HIGH and pull its cathode LOW to " +
         "light it. Comes in red / green / blue / yellow.",
-      group: "Displays",
+      group: "LEDs",
       // A 16-pin DIP straddling the trench: the anode/cathode of each bar face
       // each other across a column, so it seats and derives pins with the same
       // footprint machinery every DIP chip uses (footprints.js). Not a chip,
@@ -321,7 +321,7 @@ export const PART_DEFS = Object.freeze(
         "resistor. The ohms value is cosmetic (no analog current here). " +
         "Press R while placing to stand it vertically and pick two free ends " +
         "(e.g. a power rail and a grid column).",
-      group: "Parts",
+      group: "Resistors",
       footprint: Object.freeze({ offsets: Object.freeze([0, 3]) }),
       // Rotatable to a vertical, two-free-ends form: pin 1 at the anchor hole,
       // pin 2 bent to the `params.end` offset. The seating model switches from
@@ -371,7 +371,7 @@ export const PART_DEFS = Object.freeze(
         "to ground for eight pull-downs, or to +V for eight pull-ups — like " +
         "the single resistor, each element is a WEAK coupler (below any chip " +
         "output), never a hard connection. The ohms value is cosmetic.",
-      group: "Parts",
+      group: "Resistors",
       // Nine holes along one grid row: eight resistor pins then the common bus.
       footprint: Object.freeze({
         offsets: Object.freeze([0, 1, 2, 3, 4, 5, 6, 7, 8]),

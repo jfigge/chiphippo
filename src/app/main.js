@@ -301,40 +301,48 @@ function openPinoutWindow(ref, opts = {}) {
 }
 
 // ─── Memory backing files + inspector windows (Features 180 / 190) ─────────────
-// A memory chip's bytes live in a real `.bin` sidecar (the document stores only
-// the binding: a path + a rom/ram mode). All file I/O is here in main, over the
-// byte-oriented mem-store; the sandboxed renderer holds only in-RAM images and
-// byte batches. The inspector is a separate floating OS window per component
-// (like the pinout), and because it is its own renderer it talks to the main
-// renderer only THROUGH main — the two `memory:to-*` relays below are that pipe.
+// Only NON-VOLATILE memory chips (ROM / EPROM / EEPROM) are file-backed; each
+// keeps a `.bin` sidecar in the app working folder keyed by a per-chip GUID (the
+// document stores only that GUID). All file I/O is here in main over the
+// byte-oriented mem-store; main is the only place that maps a GUID to a real
+// path, so a bad/hostile GUID can never escape the memory folder. The inspector
+// is a separate floating OS window per component (like the pinout), and because
+// it is its own renderer it talks to the main renderer only THROUGH main — the
+// two `memory:to-*` relays below are that pipe.
 const memoryWindows = new Map(); // component id → BrowserWindow
 const MEM_COMP_RE = /^c[0-9]{1,6}$/i; // component ids are `c<n>`
+// A crypto.randomUUID() the renderer minted for a memory chip. Anchored so a
+// value with path separators / `..` can never reach the filesystem.
+const MEM_GUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-/** Native picker for a chip's backing file. ram → a Save target (may be new);
-    rom → an existing file to program from. Returns the path, or null. */
-async function chooseMemoryFile(mode) {
-  const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
-  const filters = [
-    { name: "Binary image", extensions: ["bin", "rom", "dat"] },
-    { name: "All files", extensions: ["*"] },
-  ];
-  if (mode === "ram") {
-    const opts = { defaultPath: "memory.bin", filters };
-    const r = win
-      ? await dialog.showSaveDialog(win, opts)
-      : await dialog.showSaveDialog(opts);
-    return r.canceled || !r.filePath ? null : r.filePath;
-  }
-  const opts = { properties: ["openFile"], filters };
-  const r = win
-    ? await dialog.showOpenDialog(win, opts)
-    : await dialog.showOpenDialog(opts);
-  return r.canceled || !r.filePaths?.[0] ? null : r.filePaths[0];
+/** The folder holding every memory chip's `.bin` sidecar (under userData). */
+function memoryDir() {
+  return path.join(app.getPath("userData"), "memory");
 }
 
-/** Import a `.bin`/`.hex` file for the inspector — returns its RAW bytes; the
-    renderer decides bin-vs-hex by extension and parses Intel HEX itself. */
-async function importMemoryFile() {
+/** Resolve a chip GUID to its backing-file path, or throw on a bad GUID. */
+function memoryPath(guid) {
+  if (!MEM_GUID_RE.test(String(guid))) {
+    const err = new Error(`invalid memory guid: ${guid}`);
+    err.code = "INVALID_ARG";
+    throw err;
+  }
+  return path.join(memoryDir(), `${guid}.bin`);
+}
+
+/** Run `fn(path)` for a GUID, returning { ok, ...} / { ok:false, error }. */
+function withMemoryPath(guid, fn) {
+  try {
+    return { ok: true, ...(fn(memoryPath(guid)) || {}) };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+}
+
+/** Open a `.bin`/`.hex` image for the external programmer — returns its RAW
+    bytes; the renderer decides bin-vs-hex by extension and parses HEX itself. */
+async function pickMemoryImage() {
   const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
   const opts = {
     properties: ["openFile"],
@@ -652,37 +660,35 @@ function registerIpc() {
   // "open datasheet" button; a no-op (returns false) when no PDF is on file.
   ipcMain.handle("datasheet:open", (_event, ref) => openDatasheetPdf(ref));
 
-  // Memory backing files (Feature 180): the byte-oriented store behind a memory
-  // chip's `.bin`. load/flush/write are atomic (io.js); each returns
-  // { ok, ... } / { ok:false, error } so the renderer can surface a failure
-  // rather than silently zeroing.
-  ipcMain.handle("mem:load", (_event, filePath, byteLength) => {
-    try {
-      return { ok: true, bytes: memStore.load(filePath, byteLength) };
-    } catch (err) {
-      return { ok: false, error: err.message };
-    }
-  });
-  ipcMain.handle("mem:flush", (_event, filePath, writes, byteLength) => {
-    try {
-      memStore.flush(filePath, writes, byteLength);
-      return { ok: true };
-    } catch (err) {
-      return { ok: false, error: err.message };
-    }
-  });
-  ipcMain.handle("mem:write", (_event, filePath, bytes) => {
-    try {
-      memStore.writeAll(filePath, bytes);
-      return { ok: true };
-    } catch (err) {
-      return { ok: false, error: err.message };
-    }
-  });
-  // Native pickers for the binding (Feature 180 "Backing file…") and for the
-  // inspector's Import / Export (Feature 190).
-  ipcMain.handle("mem:choose", (_event, mode) => chooseMemoryFile(mode));
-  ipcMain.handle("mem:import", () => importMemoryFile());
+  // Memory backing files (Features 180/190): the byte-oriented, GUID-keyed store
+  // behind a ROM chip's `.bin` in the app working folder. Each resolves the
+  // GUID to a path (rejecting a bad one) and returns { ok, ... } /
+  // { ok:false, error } so the renderer can surface a failure.
+  ipcMain.handle("mem:create", (_event, guid, byteLength) =>
+    withMemoryPath(guid, (p) => memStore.create(p, byteLength)),
+  );
+  ipcMain.handle("mem:load", (_event, guid, byteLength) =>
+    withMemoryPath(guid, (p) => ({ bytes: memStore.load(p, byteLength) })),
+  );
+  ipcMain.handle("mem:program", (_event, guid, bytes, byteLength) =>
+    withMemoryPath(guid, (p) => memStore.program(p, bytes, byteLength)),
+  );
+  ipcMain.handle("mem:write", (_event, guid, bytes) =>
+    withMemoryPath(guid, (p) => {
+      memStore.writeAll(p, bytes);
+    }),
+  );
+  ipcMain.handle("mem:delete", (_event, guid) =>
+    withMemoryPath(guid, (p) => memStore.remove(p)),
+  );
+  // The chip's backing-file path (for the inspector's display / copy affordance).
+  ipcMain.handle("mem:path", (_event, guid) =>
+    withMemoryPath(guid, (p) => ({ path: p })),
+  );
+  // The external programmer's file picker (a `.bin`/`.hex` image → raw bytes).
+  ipcMain.handle("mem:pick-image", () => pickMemoryImage());
+  // Export the current image to a user-chosen file (raw `.bin` or Intel-HEX
+  // text — the renderer builds the payload + picks the suggested extension).
   ipcMain.handle("mem:export", (_event, bytes, suggestedName) =>
     exportMemoryFile(bytes, suggestedName),
   );

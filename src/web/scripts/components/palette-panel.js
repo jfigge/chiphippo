@@ -31,9 +31,21 @@ import {
 import { canRotate } from "../model/breadboard.js";
 import { hasBehavior } from "../sim/chip-eval.js";
 
-/** Every chip group nests one level under this top-level folder. It collapses
-    like a group, and no group shares its name. */
+/** Every logic-chip group nests one level under this top-level folder. It
+    collapses like a group, and no group shares its name. */
 const CHIPS_FOLDER = "CHIPS";
+
+/** Memory chips are pulled OUT of the CHIPS folder into their own top-level
+    group, right below it (they're chips, but a distinct category). */
+const MEMORY_GROUP = "Memory";
+
+/** Every non-chip part (switches, resistors, LEDs, displays, power) nests under
+    this top-level folder, one level down in a function sub-group. */
+const COMPONENTS_FOLDER = "COMPONENTS";
+
+/** The order the COMPONENTS sub-groups render in (catalog order is by first
+    appearance, which reads oddly; this is the intended shelf order). */
+const COMPONENT_ORDER = ["Switches", "Resistors", "LEDs", "Displays", "Power"];
 
 /** The board selector's foldable section name (pinned at the top). Folds like
     any section, and starts shut with the rest. */
@@ -58,6 +70,7 @@ function allSections() {
   return new Set([
     BOARDS_FOLDER,
     CHIPS_FOLDER,
+    COMPONENTS_FOLDER,
     ANNOTATIONS_FOLDER,
     ...PALETTE_DEFS.map((def) => def.group),
   ]);
@@ -153,33 +166,28 @@ export class PalettePanel {
       groups.get(def.group).push(def);
     }
 
-    // Chip groups nest under one top-level "Chips" folder; discrete/power
-    // groups stay at the top level. A group is a chip group when its members
-    // are chips (the catalog stamps `kind: "chip"`).
+    // Three top-level buckets: logic chips nest under the CHIPS folder; memory
+    // chips are pulled out into their own group below it; every non-chip part
+    // nests under the COMPONENTS folder. A group is a chip group when its
+    // members are chips (the catalog stamps `kind: "chip"`).
     const chipGroups = [];
-    const topGroups = [];
-    for (const entry of groups) {
-      (entry[1][0]?.kind === "chip" ? chipGroups : topGroups).push(entry);
+    const componentGroups = [];
+    let memoryMembers = null;
+    for (const [group, members] of groups) {
+      if (members[0]?.kind !== "chip") componentGroups.push([group, members]);
+      else if (group === MEMORY_GROUP) memoryMembers = members;
+      else chipGroups.push([group, members]);
     }
+    componentGroups.sort(
+      (a, b) => COMPONENT_ORDER.indexOf(a[0]) - COMPONENT_ORDER.indexOf(b[0]),
+    );
 
-    // Chips lead the catalog, so the folder renders first, then the rest.
-    if (chipGroups.length > 0) {
-      const collapsed = !filtering && this.#collapsed.has(CHIPS_FOLDER);
-      this.#list.append(
-        this.#sectionHeader("palette-folder", CHIPS_FOLDER, collapsed),
-      );
-      const body = el("div", {
-        class: "palette-folder-groups",
-        hidden: collapsed,
-      });
-      for (const [group, members] of chipGroups) {
-        this.#appendGroup(body, group, members, filtering);
-      }
-      this.#list.append(body);
+    // Chips lead, then memory (its own group), then every other component.
+    this.#appendFolder(CHIPS_FOLDER, chipGroups, filtering);
+    if (memoryMembers) {
+      this.#appendGroup(this.#list, MEMORY_GROUP, memoryMembers, filtering);
     }
-    for (const [group, members] of topGroups) {
-      this.#appendGroup(this.#list, group, members, filtering);
-    }
+    this.#appendFolder(COMPONENTS_FOLDER, componentGroups, filtering);
 
     // Labels + notes live at the very bottom (not catalog parts, so the chip
     // filter hides them, exactly like the boards folder up top).
@@ -278,6 +286,24 @@ export class PalettePanel {
         el("span", { class: "palette-group-label", text: name }),
       ],
     );
+  }
+
+  /** Append a top-level folder (CHIPS / COMPONENTS) wrapping its sub-groups. A
+      no-op when it has no groups (e.g. the filter hid them all). */
+  #appendFolder(folderName, groupEntries, filtering) {
+    if (groupEntries.length === 0) return;
+    const collapsed = !filtering && this.#collapsed.has(folderName);
+    this.#list.append(
+      this.#sectionHeader("palette-folder", folderName, collapsed),
+    );
+    const body = el("div", {
+      class: "palette-folder-groups",
+      hidden: collapsed,
+    });
+    for (const [group, members] of groupEntries) {
+      this.#appendGroup(body, group, members, filtering);
+    }
+    this.#list.append(body);
   }
 
   /** Append one group's header + item list to `container`. */
