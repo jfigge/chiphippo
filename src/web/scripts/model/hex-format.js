@@ -33,28 +33,39 @@ function hexError(message) {
   return err;
 }
 
+/** The largest image parseIntelHex will allocate (matches mem-store's cap). */
+const MAX_HEX_BYTES = 1 << 24; // 16 MiB — far above any modelled memory
+
 /** Parse a run of hex-pair bytes; validates even length + hex digits. */
 function hexPairs(s, lineNo) {
   if (s.length % 2 !== 0) throw hexError(`line ${lineNo}: odd hex-digit count`);
+  // Validate the WHOLE run up front: `parseInt("4G", 16)` returns 4 (it stops
+  // at the first non-hex char), so a bad LOW nibble would otherwise slip
+  // through as a wrong byte and surface later as a misleading checksum error.
+  if (!/^[0-9a-fA-F]*$/.test(s))
+    throw hexError(`line ${lineNo}: non-hex digits`);
   const out = [];
   for (let i = 0; i < s.length; i += 2) {
-    const b = Number.parseInt(s.slice(i, i + 2), 16);
-    if (Number.isNaN(b)) throw hexError(`line ${lineNo}: non-hex digits`);
-    out.push(b);
+    out.push(Number.parseInt(s.slice(i, i + 2), 16));
   }
   return out;
 }
 
 /**
- * Parse Intel HEX text into a dense Uint8Array (sparse gaps zero-filled, sized
- * to the highest written address + 1). Throws a `HEX_PARSE` error on a
- * malformed record, a bad checksum, or an unknown record type.
+ * Parse Intel HEX text into a dense Uint8Array. The image is rebased to its
+ * LOWEST written address (like `objcopy -O binary`): a firmware `.hex` based at
+ * a nonzero flash origin (e.g. an extended-address record putting data at
+ * 0x08000000) flattens to offset 0 instead of allocating a gigabyte-long zero
+ * prefix — the caller pads/truncates to the target ROM size. Sparse interior
+ * gaps are zero-filled. Throws a `HEX_PARSE` error on a malformed record, a bad
+ * checksum, an unknown record type, or an image spanning more than 16 MiB.
  * @param {string} text
  * @returns {Uint8Array}
  */
 export function parseIntelHex(text) {
   const lines = String(text ?? "").split(/\r?\n/);
   let base = 0; // running base from an extended-address record
+  let minAddr = Infinity;
   let maxAddr = -1;
   const writes = [];
   for (let i = 0; i < lines.length; i++) {
@@ -81,13 +92,18 @@ export function parseIntelHex(text) {
       for (let k = 0; k < len; k++) {
         const a = base + addr + k;
         writes.push([a, data[k]]);
+        if (a < minAddr) minAddr = a;
         if (a > maxAddr) maxAddr = a;
       }
     } else if (type === 0x01) {
       break; // end of file
     } else if (type === 0x02) {
+      if (len !== 2)
+        throw hexError(`line ${lineNo}: extended-segment record needs 2 bytes`);
       base = ((data[0] << 8) | data[1]) << 4; // segment × 16
     } else if (type === 0x04) {
+      if (len !== 2)
+        throw hexError(`line ${lineNo}: extended-linear record needs 2 bytes`);
       base = ((data[0] << 8) | data[1]) * 0x10000; // upper 16 bits
     } else if (type === 0x03 || type === 0x05) {
       /* start-address records carry no image data — ignore */
@@ -97,8 +113,15 @@ export function parseIntelHex(text) {
       );
     }
   }
-  const out = new Uint8Array(maxAddr + 1);
-  for (const [a, v] of writes) out[a] = v;
+  if (maxAddr < 0) return new Uint8Array(0); // no data records
+  const size = maxAddr - minAddr + 1;
+  if (size > MAX_HEX_BYTES) {
+    throw hexError(
+      `image spans ${size} bytes (max ${MAX_HEX_BYTES}) — check the address records`,
+    );
+  }
+  const out = new Uint8Array(size);
+  for (const [a, v] of writes) out[a - minAddr] = v;
   return out;
 }
 
