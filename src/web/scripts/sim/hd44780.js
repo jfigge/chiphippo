@@ -94,7 +94,10 @@ function applyInstruction(next, state, byte) {
     // Cursor / display shift: S/C (bit 3), R/L (bit 2).
     const right = Boolean(byte & 0x04);
     if (byte & 0x08) {
-      next.shiftOffset = (state.shiftOffset + (right ? 1 : 39)) % 40;
+      // Shifting the DISPLAY right reveals LOWER addresses, so shiftOffset must
+      // DECREASE (+39 ≡ −1) — the opposite sign from the cursor-move branch
+      // below, and matching the entry-mode auto-shift (increment → left → +1).
+      next.shiftOffset = (state.shiftOffset + (right ? 39 : 1)) % 40;
     } else {
       next.ac = (state.ac + (right ? 1 : 0x7f)) & 0x7f;
     }
