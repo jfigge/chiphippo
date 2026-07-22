@@ -60,7 +60,7 @@ const byId = (doc, id) => doc.boards.find((b) => b.id === id);
 
 test("v1 → v2: a full board becomes three grouped strips", () => {
   const doc = migrateDeskDocument(v1Doc());
-  assert.equal(doc.version, 5); // migrateDeskDocument brings v1 fully current
+  assert.equal(doc.version, 6); // migrateDeskDocument brings v1 fully current
   assert.equal(doc.boards.length, 3);
 
   // The pin-board KEEPS the original id, which is what lets grid addresses
@@ -220,7 +220,7 @@ test("v2 → v3: net names + annotations arrays are added (additive)", () => {
     nextWireId: 1,
   };
   const doc = migrateDeskDocument(v2);
-  assert.equal(doc.version, 5);
+  assert.equal(doc.version, 6);
   assert.deepEqual(doc.netNames, []);
   assert.deepEqual(doc.annotations, []);
   assert.equal(doc.nextAnnotationId, 1);
@@ -244,7 +244,7 @@ test("v2 → v3: preserves already-present names + annotations", () => {
     nextClockId: 1,
     nextWireId: 1,
   });
-  assert.equal(doc.version, 5);
+  assert.equal(doc.version, 6);
   assert.deepEqual(doc.netNames, [{ address: "bb1.a5", name: "VCC" }]);
   assert.equal(doc.annotations.length, 1);
   assert.equal(doc.nextAnnotationId, 2);
@@ -266,7 +266,7 @@ test("v3 → v4: buses array + id counter are added (additive)", () => {
     nextWireId: 1,
     nextAnnotationId: 1,
   });
-  assert.equal(doc.version, 5);
+  assert.equal(doc.version, 6);
   assert.deepEqual(doc.buses, []);
   assert.equal(doc.nextBusId, 1);
 });
@@ -289,7 +289,7 @@ test("v3 → v4: preserves already-present buses + counter", () => {
     nextWireId: 2,
     nextAnnotationId: 1,
   });
-  assert.equal(doc.version, 5);
+  assert.equal(doc.version, 6);
   assert.equal(doc.buses.length, 1);
   assert.equal(doc.buses[0].id, "bus1");
   assert.equal(doc.nextBusId, 2);
@@ -316,8 +316,54 @@ test("v4 → v5: a pure version bump (schematic hints need no doc-level state)",
     nextAnnotationId: 1,
   };
   const doc = migrateDeskDocument(v4);
-  assert.equal(doc.version, 5);
+  assert.equal(doc.version, 6);
   // Everything else passes through untouched — nothing to default.
   assert.deepEqual(doc.components, v4.components);
   assert.deepEqual(doc.boards, v4.boards);
+});
+
+test("v5 → v6: the LCD brick id counter is added (additive)", () => {
+  const v5 = {
+    version: 5,
+    boards: [],
+    components: [],
+    wires: [],
+    buses: [],
+    netNames: [],
+    annotations: [],
+    nextBoardId: 1,
+    nextGroupId: 1,
+    nextComponentId: 1,
+    nextPsuId: 1,
+    nextClockId: 1,
+    nextWireId: 1,
+    nextBusId: 1,
+    nextAnnotationId: 1,
+  };
+  const doc = migrateDeskDocument(v5);
+  assert.equal(doc.version, 6);
+  assert.equal(doc.nextLcdId, 1);
+});
+
+test("v5 → v6: preserves an already-present LCD counter", () => {
+  const doc = migrateDeskDocument({
+    version: 5,
+    boards: [],
+    components: [],
+    wires: [],
+    buses: [],
+    netNames: [],
+    annotations: [],
+    nextBoardId: 1,
+    nextGroupId: 1,
+    nextComponentId: 1,
+    nextPsuId: 1,
+    nextClockId: 1,
+    nextLcdId: 4,
+    nextWireId: 1,
+    nextBusId: 1,
+    nextAnnotationId: 1,
+  });
+  assert.equal(doc.version, 6);
+  assert.equal(doc.nextLcdId, 4);
 });

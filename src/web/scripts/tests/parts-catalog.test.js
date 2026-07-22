@@ -19,7 +19,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { LED_COLORS, PART_DEFS, PSU_VOLTS } from "../catalog/parts.js";
+import {
+  LED_COLORS,
+  PART_DEFS,
+  PSU_VOLTS,
+  LCD_SIZES,
+  lcdGeometry,
+} from "../catalog/parts.js";
 import { partDef, chipDef, PALETTE_DEFS } from "../catalog/index.js";
 import { packageSpec } from "../model/footprints.js";
 
@@ -28,6 +34,7 @@ test("the part catalog carries the Feature 60 inventory", () => {
     "bar8",
     "bar8iso",
     "clock",
+    "lcd",
     "led",
     "psu",
     "resistor",
@@ -40,8 +47,9 @@ test("the part catalog carries the Feature 60 inventory", () => {
   assert.ok(partDef("sw-slide"));
   assert.ok(partDef("74LS00"));
   assert.ok(partDef("clock"));
+  assert.ok(partDef("lcd"));
   assert.equal(chipDef("sw-slide"), null);
-  assert.equal(PALETTE_DEFS.length, 64); // 54 chips (24 + 24 LS + 6 memory) + 10 parts
+  assert.equal(PALETTE_DEFS.length, 65); // 54 chips (24 + 24 LS + 6 memory) + 11 parts
 });
 
 for (const def of PART_DEFS.filter((d) => d.kind === "discrete")) {
@@ -314,4 +322,49 @@ test("psu: volts enum, source contract, integer terminal offsets", () => {
     assert.ok(t.dx > 0 && t.dx < def.size.width);
     assert.ok(t.dy > 0 && t.dy < def.size.height);
   }
+});
+
+test("lcd: 16-pin brick, size coercion, pins↔terminals in sync", () => {
+  const def = partDef("lcd");
+  assert.equal(def.kind, "lcd");
+  assert.ok(!def.package && !def.footprint); // a brick, not a board part
+  // Size coerces to the enum (default 16×2); geometry maps each size.
+  assert.deepEqual(LCD_SIZES, ["16x2", "20x4"]);
+  assert.deepEqual(def.normalizeParams({}), { size: "16x2" });
+  assert.deepEqual(def.normalizeParams({ size: "20x4" }), { size: "20x4" });
+  assert.deepEqual(def.normalizeParams({ size: "99x9" }), { size: "16x2" });
+  // Magic-smoke persists like a chip.
+  assert.deepEqual(def.normalizeParams({ size: "20x4", damaged: true }), {
+    size: "20x4",
+    damaged: true,
+  });
+  assert.deepEqual(lcdGeometry("16x2"), { cols: 16, rows: 2 });
+  assert.deepEqual(lcdGeometry("20x4"), { cols: 20, rows: 4 });
+  // 16 pins and 16 terminals, one terminal per pin, integer offsets inside body.
+  assert.equal(def.pins.length, 16);
+  assert.equal(def.terminals.length, 16);
+  assert.deepEqual(
+    def.pins.map((p) => p.n),
+    Array.from({ length: 16 }, (_, i) => i + 1),
+  );
+  const pinNums = new Set(def.pins.map((p) => p.n));
+  const termPins = new Set();
+  for (const t of def.terminals) {
+    assert.ok(pinNums.has(t.pin), `terminal ${t.id} → pin ${t.pin}`);
+    termPins.add(t.pin);
+    assert.ok(Number.isInteger(t.dx) && Number.isInteger(t.dy), t.id);
+    assert.ok(t.dx > 0 && t.dx < def.size.width);
+    assert.ok(t.dy > 0 && t.dy < def.size.height);
+  }
+  assert.equal(termPins.size, 16, "every pin has exactly one terminal");
+  // Power roles wire into the sim's power-gating; DB0–7 are the bidirectional
+  // bus (io); RS/RW/E are control inputs; V0/A/K are inert.
+  const role = (name) => def.pins.find((p) => p.name === name)?.role;
+  assert.equal(role("VDD"), "vcc");
+  assert.equal(role("VSS"), "gnd");
+  assert.equal(role("RS"), "input");
+  assert.equal(role("E"), "input");
+  assert.equal(role("DB0"), "io");
+  assert.equal(role("DB7"), "io");
+  assert.equal(role("V0"), "nc");
 });

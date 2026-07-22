@@ -27,10 +27,11 @@
  * v3 → v4 (Feature 130) adds buses (pure additive).
  * v4 → v5 (Feature 150) adds an optional per-component schematic position hint
  *   (no doc-level state — a pure version bump; absence is valid).
+ * v5 → v6 (HD44780 LCD) adds the `nextLcdId` brick counter (pure additive).
  */
 "use strict";
 
-const DESK_DOC_VERSION = 5;
+const DESK_DOC_VERSION = 6;
 
 /** A fresh, empty desk document (main's copy of the renderer's shape). */
 function defaultDeskDocument() {
@@ -47,6 +48,7 @@ function defaultDeskDocument() {
     nextComponentId: 1,
     nextPsuId: 1,
     nextClockId: 1,
+    nextLcdId: 1,
     nextWireId: 1,
     nextBusId: 1,
     nextAnnotationId: 1,
@@ -285,12 +287,27 @@ function migrateV4ToV5(doc) {
   return { ...doc, version: 5 };
 }
 
+/**
+ * v5 → v6: the HD44780 character-LCD brick arrives. A pure additive migration
+ * that defaults its id counter for documents saved before it existed (the
+ * brick itself is a new component kind — old docs simply have none).
+ */
+function migrateV5ToV6(doc) {
+  return {
+    ...doc,
+    version: 6,
+    nextLcdId:
+      Number.isInteger(doc.nextLcdId) && doc.nextLcdId > 0 ? doc.nextLcdId : 1,
+  };
+}
+
 /** version → one-step upgrade fn returning the doc at version + 1. */
 const MIGRATIONS = {
   1: migrateV1ToV2,
   2: migrateV2ToV3,
   3: migrateV3ToV4,
   4: migrateV4ToV5,
+  5: migrateV5ToV6,
 };
 
 /**

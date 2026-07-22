@@ -86,6 +86,9 @@
   --color-part-smoke: #565b62;
   --color-psu-body: #2e3238; /* power brick */
   --color-psu-badge: #e4e6ea; /* voltage badge text */
+  --color-lcd-bezel: #20242a; /* HD44780 module frame (dark plastic) */
+  --color-lcd-screen: #7cbf5a; /* classic green LCD backlight */
+  --color-lcd-dot: #16261a; /* a lit dot on the green field */
 
   /* ── Jumper-wire palette (Feature 50 — one token per WIRE_COLORS name;
         LEDs share these same color tokens — house rule) ─────────────────── */

@@ -83,6 +83,40 @@ const TERMINAL_INFO = Object.freeze({
     out: { name: "OUT", role: "output", detail: "square-wave clock signal" },
     gnd: { name: "GND", role: "gnd", detail: "ground reference" },
   },
+  lcd: {
+    VSS: { name: "VSS", role: "gnd", detail: "0 V ground" },
+    VDD: { name: "VDD", role: "vcc", detail: "+5 V supply" },
+    V0: { name: "V0", role: "nc", detail: "contrast (cosmetic here)" },
+    RS: {
+      name: "RS",
+      role: "input",
+      detail: "register select — 0 cmd / 1 data",
+    },
+    RW: { name: "R/W", role: "input", detail: "0 = write, 1 = read" },
+    E: {
+      name: "E",
+      role: "input",
+      detail: "enable strobe — latches on falling edge",
+    },
+    DB0: { name: "DB0", role: "io", detail: "data bus bit 0 (LSB)" },
+    DB1: { name: "DB1", role: "io", detail: "data bus bit 1" },
+    DB2: { name: "DB2", role: "io", detail: "data bus bit 2" },
+    DB3: { name: "DB3", role: "io", detail: "data bus bit 3" },
+    DB4: {
+      name: "DB4",
+      role: "io",
+      detail: "data bus bit 4 (low nibble in 4-bit mode)",
+    },
+    DB5: { name: "DB5", role: "io", detail: "data bus bit 5" },
+    DB6: { name: "DB6", role: "io", detail: "data bus bit 6" },
+    DB7: {
+      name: "DB7",
+      role: "io",
+      detail: "data bus bit 7 (MSB / busy flag)",
+    },
+    A: { name: "A", role: "nc", detail: "backlight anode (cosmetic here)" },
+    K: { name: "K", role: "nc", detail: "backlight cathode (cosmetic here)" },
+  },
 });
 
 /** The offset of a discrete pin from its anchor hole, as a label. */

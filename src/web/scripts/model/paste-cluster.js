@@ -52,7 +52,8 @@ export function memberForm(ref, params) {
   const def = partDef(ref);
   if (!def) return null;
   if (def.package) return "chip"; // DIP straddling the trench
-  if (def.kind === "psu" || def.kind === "clock") return "brick"; // desk-level
+  if (def.kind === "psu" || def.kind === "clock" || def.kind === "lcd")
+    return "brick"; // desk-level
   if (def.rotatable && params?.rot === 90) return "turned"; // two free ends
   return "discrete"; // linear footprint along one grid row
 }

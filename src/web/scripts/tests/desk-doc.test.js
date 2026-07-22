@@ -40,6 +40,7 @@ test("a fresh DeskDoc serializes to the empty document shape", () => {
     nextComponentId: 1,
     nextPsuId: 1,
     nextClockId: 1,
+    nextLcdId: 1,
     nextWireId: 1,
     nextBusId: 1,
     nextAnnotationId: 1,

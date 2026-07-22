@@ -58,7 +58,7 @@ import {
 import { DeskDoc } from "../model/desk-doc.js";
 import { HistoryStore } from "../model/history-store.js";
 import { partDef } from "../catalog/index.js";
-import { PSU_VOLTS, CLOCK_HZ } from "../catalog/parts.js";
+import { PSU_VOLTS, CLOCK_HZ, LCD_SIZES } from "../catalog/parts.js";
 import {
   BreadboardView,
   applyBoardRotation,
@@ -74,6 +74,7 @@ import {
 } from "./discrete-view.js";
 import { PsuView, buildPsuSvg } from "./psu-view.js";
 import { ClockView, buildClockSvg } from "./clock-view.js";
+import { LcdView, buildLcdSvg } from "./lcd-view.js";
 import { WireLayer } from "./wire-layer.js";
 import { AnnotationLayer } from "./annotation-layer.js";
 import { SimOverlay } from "./sim-overlay.js";
@@ -81,6 +82,13 @@ import { ProbeInspector } from "./probe-inspector.js";
 import { WireTools } from "./wire-tools.js";
 import { BusTools } from "./bus-tools.js";
 import { BoardOutline } from "./board-outline.js";
+
+/** The static SVG for a desk brick (PSU / clock / LCD) by kind. */
+function brickSvg(kind, params) {
+  if (kind === "psu") return buildPsuSvg(params);
+  if (kind === "clock") return buildClockSvg(params);
+  return buildLcdSvg(params);
+}
 
 /** Pointer travel (px) below which a press stays a click, not a drag/pan. */
 const DRAG_THRESHOLD = 4;
@@ -613,12 +621,8 @@ export class DeskController {
     }
     const normalized = def.normalizeParams ? def.normalizeParams(params) : {};
     const ghost = el("div", { class: "part-ghost", hidden: true });
-    if (def.kind === "psu" || def.kind === "clock") {
-      ghost.append(
-        def.kind === "psu"
-          ? buildPsuSvg(normalized)
-          : buildClockSvg(normalized),
-      );
+    if (def.kind === "psu" || def.kind === "clock" || def.kind === "lcd") {
+      ghost.append(brickSvg(def.kind, normalized));
       this.#enterPlacement({
         kind: "place-brick",
         ref,
@@ -790,9 +794,7 @@ export class DeskController {
       case "turned":
         return buildSpanSvg(m.ref, m.params.end.dx, m.params.end.dy, m.params);
       case "brick":
-        return partDef(m.ref).kind === "psu"
-          ? buildPsuSvg(m.params)
-          : buildClockSvg(m.params);
+        return brickSvg(partDef(m.ref).kind, m.params);
       default:
         return buildDiscreteSvg(m.ref, m.params);
     }
@@ -1744,11 +1746,19 @@ export class DeskController {
    */
   removeComponent(id) {
     const comp = this.#doc.getComponent(id);
-    if (comp?.kind === "psu") {
+    // A desk-level brick (PSU / clock / LCD) takes its wired terminals with it,
+    // so confirm first when any are attached.
+    if (comp?.board == null) {
+      const noun =
+        comp.kind === "psu"
+          ? "power supply"
+          : comp.kind === "clock"
+            ? "clock"
+            : "display";
       const wires = this.#doc.wiresTouching(id).length;
       if (wires > 0) {
         PopupManager.confirm({
-          title: "Remove power supply?",
+          title: `Remove ${noun}?`,
           message:
             `${id} has ${wires} wire${wires === 1 ? "" : "s"} attached — ` +
             `removing it removes them too.`,
@@ -1802,6 +1812,13 @@ export class DeskController {
     const updated = this.#doc.setComponentParams(id, { hz });
     this.#partViews.get(id)?.updateParams(updated.params);
     this.#emitDocChanged("set clock rate", { coalesce: true });
+  }
+
+  /** Set an LCD's character size (context menu, 16×2 / 20×4). */
+  setLcdSize(id, size) {
+    const updated = this.#doc.setComponentParams(id, { size });
+    this.#partViews.get(id)?.updateParams(updated.params);
+    this.#emitDocChanged("set LCD size", { coalesce: true });
   }
 
   // ── Central keyboard hooks (wired by app.js) ────────────────────────────
@@ -1917,6 +1934,8 @@ export class DeskController {
       view = new PsuView(this.#layers.parts, component, callbacks);
     } else if (component.kind === "clock") {
       view = new ClockView(this.#layers.parts, component, callbacks);
+    } else if (component.kind === "lcd") {
+      view = new LcdView(this.#layers.parts, component, callbacks);
     } else if (component.kind === "discrete") {
       view = new DiscreteView(this.#layers.parts, component, callbacks);
       this.#placePartView(view, component, this.#doc.getBoard(component.board));
@@ -2497,6 +2516,23 @@ export class DeskController {
       if (!this.#editingLocked) {
         items.push({
           label: "Remove clock",
+          danger: true,
+          onSelect: () => this.removeComponent(id),
+        });
+      }
+      PopupManager.menu({ x: e.clientX, y: e.clientY, items });
+      return;
+    }
+    // LCD: the character size (16×2 / 20×4) is a live setting; removal is a
+    // topology edit, dropped when editing is locked.
+    if (comp?.kind === "lcd") {
+      const items = LCD_SIZES.map((size) => ({
+        label: `${comp.params.size === size ? "● " : ""}${size.replace("x", "×")}`,
+        onSelect: () => this.setLcdSize(id, size),
+      }));
+      if (!this.#editingLocked) {
+        items.push({
+          label: "Remove display",
           danger: true,
           onSelect: () => this.removeComponent(id),
         });

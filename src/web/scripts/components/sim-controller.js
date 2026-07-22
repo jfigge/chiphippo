@@ -31,6 +31,7 @@ import { tick } from "../sim/engine.js";
 import { H, L } from "../sim/levels.js";
 import { partDef } from "../catalog/index.js";
 import { isMemory, memoryConfig } from "../sim/chip-eval.js";
+import { framebufferOf } from "../sim/hd44780.js";
 import { NetlistCache } from "./netlist-cache.js";
 
 /**
@@ -257,9 +258,10 @@ export class SimController {
     if (this.#mode === TRANSPORT.STOPPED) return;
     this.#suppress = true;
     try {
+      const doc = this.#doc.toJSON();
       const netlist = this.#netlist.get();
       const result = tick({
-        document: this.#doc.toJSON(),
+        document: doc,
         netlist,
         warmStart: this.#warm,
         state: this.#state,
@@ -272,11 +274,25 @@ export class SimController {
       this.#prevPins = result.pinLevels;
       this.#applyWrites(result.memWrites);
       this.#persistDamage(result.chipStatus);
-      this.#publish(result, netlist);
+      this.#publish(result, netlist, this.#displayState(doc, result.state));
       this.#report(result.warnings);
     } finally {
       this.#suppress = false;
     }
+  }
+
+  /**
+   * The per-LCD framebuffer (visible chars + cursor) derived from the engine's
+   * sequential state — the "display output" the live views paint. Run-volatile:
+   * the state resets on start()/stop(), so the screen blanks/re-inits on its own.
+   */
+  #displayState(doc, state) {
+    const displays = new Map();
+    for (const c of doc.components) {
+      if (c.kind !== "lcd") continue;
+      displays.set(c.id, framebufferOf(state.get(c.id), c.params));
+    }
+    return displays;
   }
 
   /**
@@ -295,7 +311,7 @@ export class SimController {
     if (changed) window.dispatchEvent(new CustomEvent("chiphippo:doc-changed"));
   }
 
-  #publish(result, netlist) {
+  #publish(result, netlist, displays) {
     window.dispatchEvent(
       new CustomEvent("chiphippo:sim-state", {
         detail: {
@@ -309,6 +325,9 @@ export class SimController {
           warnings: result?.warnings ?? [],
           netlist: netlist ?? null,
           clockLevels: new Map(this.#clockPhase),
+          // Per-LCD framebuffers (compId → { chars, cursor, … }); empty when
+          // not running, which blanks every LCD screen.
+          displayState: displays ?? new Map(),
         },
       }),
     );

@@ -37,6 +37,7 @@ export class SimOverlay {
   #levels = new Map(); // netId → level
   #strong = new Map(); // netId → level from supplies/outputs only (no pulls)
   #netlist = null; // the netlist those levels are keyed against
+  #displays = new Map(); // compId → LCD framebuffer (from the sim-state payload)
 
   /**
    * @param {import("../model/desk-doc.js").DeskDoc} doc
@@ -64,11 +65,13 @@ export class SimOverlay {
     chipStatus,
     netlist,
     clockLevels,
+    displayState,
   }) {
     this.#running = running;
     this.#levels = netLevels ?? new Map();
     this.#strong = strongLevels ?? new Map();
     this.#netlist = netlist ?? null;
+    this.#displays = displayState ?? new Map();
 
     // Chip status badges (cleared when not running).
     for (const view of this.#partViews.values()) view.setStatus?.(null);
@@ -88,6 +91,7 @@ export class SimOverlay {
 
     this.#updateLeds();
     this.#updateDisplays();
+    this.#updateLcds();
   }
 
   /** The level of a net by id, or "Z" when it isn't driven (running only). */
@@ -191,6 +195,23 @@ export class SimOverlay {
         if (unlimited) anyBurnt = true;
       }
       view.setBurnt?.(anyBurnt);
+    }
+  }
+
+  /**
+   * Character-LCD modules paint the framebuffer the SimController derived from
+   * the engine state (chars + cursor). Not running → blank the screen. Unlike
+   * the LED rule, this reads no net levels — the display is the chip's OWN
+   * output, carried in the payload.
+   */
+  #updateLcds() {
+    for (const comp of this.#doc.components) {
+      if (comp.kind !== "lcd") continue;
+      const view = this.#partViews.get(comp.id);
+      if (!view?.renderFramebuffer) continue;
+      view.renderFramebuffer(
+        this.#running ? (this.#displays.get(comp.id) ?? null) : null,
+      );
     }
   }
 }

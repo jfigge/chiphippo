@@ -24,11 +24,48 @@
 //   - `normalizeParams(raw)` — coerce arbitrary stored params to valid ones.
 // No electrical logic lives in views, and none in the netlist yet.
 
+import { hd44780Unit } from "../sim/hd44780.js";
+
 export const LED_COLORS = Object.freeze(["red", "green", "yellow", "blue"]);
 export const PSU_VOLTS = Object.freeze([3, 5, 12]);
 /** Clock rates (Hz) plus click-to-toggle "manual"; the timer lives in the
     renderer's SimController — the def carries only the pure contract. */
 export const CLOCK_HZ = Object.freeze([1, 2, 5, 10, "manual"]);
+
+/** Character-LCD module sizes (HD44780). ONE controller drives both — the size
+    is a runtime param (visible-window only), never two separate parts. */
+export const LCD_SIZES = Object.freeze(["16x2", "20x4"]);
+
+/** The visible character grid (columns × rows) for an LCD size. */
+export function lcdGeometry(size) {
+  return size === "20x4" ? { cols: 20, rows: 4 } : { cols: 16, rows: 2 };
+}
+
+/**
+ * The HD44780 module's 16-pin interface, in datasheet order. Both the `pins`
+ * array (roles for power-gating + logic) and the wireable `terminals` derive
+ * from this ONE table so they can never drift. VDD/VSS are real power (the sim
+ * power-gates the module like a chip); V0 (contrast) and A/K (backlight) are
+ * inert `nc`; RS/RW/E are control inputs; DB0–DB7 are the bidirectional bus.
+ */
+const LCD_PINOUT = [
+  { n: 1, name: "VSS", role: "gnd" },
+  { n: 2, name: "VDD", role: "vcc" },
+  { n: 3, name: "V0", role: "nc" },
+  { n: 4, name: "RS", role: "input" },
+  { n: 5, name: "RW", role: "input" },
+  { n: 6, name: "E", role: "input" },
+  { n: 7, name: "DB0", role: "io" },
+  { n: 8, name: "DB1", role: "io" },
+  { n: 9, name: "DB2", role: "io" },
+  { n: 10, name: "DB3", role: "io" },
+  { n: 11, name: "DB4", role: "io" },
+  { n: 12, name: "DB5", role: "io" },
+  { n: 13, name: "DB6", role: "io" },
+  { n: 14, name: "DB7", role: "io" },
+  { n: 15, name: "A", role: "nc" },
+  { n: 16, name: "K", role: "nc" },
+];
 
 /**
  * Coerce a rotated part's far lead to a `{dx, dy}` PITCH OFFSET from its
@@ -406,6 +443,46 @@ export const PART_DEFS = Object.freeze(
       isAuto(params) {
         return params?.hz !== "manual";
       },
+    },
+    {
+      id: "lcd",
+      kind: "lcd",
+      title: "Character LCD (HD44780)",
+      blurb:
+        "Hitachi HD44780 character-LCD module (16×2 or 20×4). Wire VDD/VSS to " +
+        "a 5 V rail, then drive it over the parallel bus: put a command or " +
+        "character code on DB0–DB7, set RS (0 = instruction, 1 = data) and " +
+        "R/W (0 = write), and pulse E — the byte latches on E's falling edge. " +
+        "Right-click to switch between 16×2 and 20×4. V0 (contrast) and A/K " +
+        "(backlight) are cosmetic here. During a read the module drives " +
+        "DB0–DB7, so tri-state whatever else is on the bus.",
+      group: "Displays",
+      // Fixed desk footprint (pitch units) sized for the LARGER 20×4 grid, so
+      // switching size never re-checks overlap. Terminal pads sit at integer
+      // offsets so wired terminals land on the global 0.1-in lattice.
+      size: Object.freeze({ width: 26, height: 14 }),
+      terminals: LCD_PINOUT.map((p) =>
+        Object.freeze({ id: p.name, pin: p.n, dx: 4 + p.n, dy: 12 }),
+      ),
+      pins: LCD_PINOUT.map((p) =>
+        Object.freeze({ n: p.n, name: p.name, role: p.role }),
+      ),
+      normalizeParams(raw) {
+        const params = {
+          size: LCD_SIZES.includes(raw?.size) ? raw.size : "16x2",
+        };
+        // 12 V magic-smoke persists like a chip (Feature 90 power-gating).
+        if (raw?.damaged === true) params.damaged = true;
+        return params;
+      },
+      // The controller behavior (data, referencing the pure builder — like a
+      // chip def references a family builder). DB0–DB7 are pins 7–14.
+      logic: hd44780Unit({
+        rs: 4,
+        rw: 5,
+        e: 6,
+        db: [7, 8, 9, 10, 11, 12, 13, 14],
+      }),
     },
   ].map(Object.freeze),
 );

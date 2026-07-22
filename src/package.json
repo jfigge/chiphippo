@@ -39,6 +39,16 @@
     "copyright": "Copyright © 2026 Jason Figge",
     "icon": "web/chiphippo-icon.ico",
     "artifactName": "Chip-Hippo-${version}-${arch}.${ext}",
+    "publish": {
+      "provider": "github",
+      "owner": "jfigge",
+      "repo": "chiphippo"
+    },
+    "nsis": {
+      "artifactName": "Chip-Hippo-Setup-${version}-${arch}.${ext}",
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    },
     "directories": {
       "output": "dist"
     },

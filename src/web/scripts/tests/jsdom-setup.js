@@ -62,6 +62,26 @@ export function resetDom() {
     global.ResizeObserver = ResizeObserver;
   }
 
+  // jsdom doesn't implement the canvas 2d context (getContext returns null and
+  // logs "not implemented"). LcdView draws its characters onto a <canvas>, so
+  // install a lightweight recording context: it captures clearRect/fillRect ops
+  // on `canvas.__ctx.ops` for assertions and lets the view draw without error.
+  if (window.HTMLCanvasElement) {
+    window.HTMLCanvasElement.prototype.getContext = function getContext(type) {
+      if (type !== "2d") return null;
+      if (!this.__ctx) {
+        const ops = [];
+        this.__ctx = {
+          ops,
+          fillStyle: "#000000",
+          clearRect: (...a) => ops.push(["clearRect", ...a]),
+          fillRect: (...a) => ops.push(["fillRect", ...a]),
+        };
+      }
+      return this.__ctx;
+    };
+  }
+
   // jsdom doesn't implement the <dialog> modal surface the popup manager
   // uses. Polyfill just enough of it — showModal/show set `open`; close
   // clears it and fires a `close` event. Production uses the real element.

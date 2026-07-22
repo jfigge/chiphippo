@@ -62,7 +62,7 @@ import {
   partPinHoles,
 } from "./occupancy.js";
 
-export const DOC_VERSION = 5;
+export const DOC_VERSION = 6;
 
 /** The fixed jumper-wire palette (theme.css defines a token per name). */
 export const WIRE_COLORS = Object.freeze([
@@ -140,6 +140,7 @@ const GROUP_ID_RE = /^g([1-9]\d*)$/;
 const COMPONENT_ID_RE = /^c([1-9]\d*)$/;
 const PSU_ID_RE = /^psu([1-9]\d*)$/;
 const CLOCK_ID_RE = /^clk([1-9]\d*)$/;
+const LCD_ID_RE = /^lcd([1-9]\d*)$/;
 const WIRE_ID_RE = /^w([1-9]\d*)$/;
 const ANNOTATION_ID_RE = /^an([1-9]\d*)$/;
 const BUS_ID_RE = /^bus([1-9]\d*)$/;
@@ -148,6 +149,7 @@ const BUS_ID_RE = /^bus([1-9]\d*)$/;
 const BRICKS = Object.freeze({
   psu: { re: PSU_ID_RE, prefix: "psu", counter: "nextPsuId" },
   clock: { re: CLOCK_ID_RE, prefix: "clk", counter: "nextClockId" },
+  lcd: { re: LCD_ID_RE, prefix: "lcd", counter: "nextLcdId" },
 });
 
 /** Params coerced through the def's own contract (chips have none). */
@@ -187,6 +189,7 @@ export function emptyDocument() {
     nextComponentId: 1,
     nextPsuId: 1,
     nextClockId: 1,
+    nextLcdId: 1,
     nextWireId: 1,
     nextBusId: 1,
     nextAnnotationId: 1,
@@ -230,7 +233,7 @@ export function normalizeDocument(raw) {
   }
 
   let maxCompSeq = 0;
-  const maxBrickSeq = { psu: 0, clock: 0 };
+  const maxBrickSeq = { psu: 0, clock: 0, lcd: 0 };
   const compIds = new Set();
   const components = Array.isArray(raw.components) ? raw.components : [];
   for (const c of components) {
@@ -406,6 +409,9 @@ export function normalizeDocument(raw) {
       ? raw.nextClockId
       : 1;
   doc.nextClockId = Math.max(storedNextClock, maxBrickSeq.clock + 1);
+  const storedNextLcd =
+    Number.isInteger(raw.nextLcdId) && raw.nextLcdId > 0 ? raw.nextLcdId : 1;
+  doc.nextLcdId = Math.max(storedNextLcd, maxBrickSeq.lcd + 1);
   const storedNextWire =
     Number.isInteger(raw.nextWireId) && raw.nextWireId > 0 ? raw.nextWireId : 1;
   doc.nextWireId = Math.max(storedNextWire, maxWireSeq + 1);
@@ -1009,8 +1015,9 @@ export class DeskDoc {
   moveComponent(id, boardId, anchor) {
     const comp = this.#doc.components.find((c) => c.id === id);
     if (!comp) throw taggedError(`no component ${id}`, "NOT_FOUND");
-    if (comp.kind === "psu") {
-      throw taggedError(`use movePsu for ${id}`, "INVALID_KIND");
+    if (comp.board == null) {
+      // A desk-level brick (PSU / clock / LCD) is repositioned with moveBrick.
+      throw taggedError(`use moveBrick for ${id}`, "INVALID_KIND");
     }
     if (!this.#doc.boards.some((b) => b.id === boardId)) {
       throw taggedError(`no board ${boardId}`, "NOT_FOUND");
@@ -1176,7 +1183,7 @@ export class DeskDoc {
     const [removed] = this.#doc.components.splice(i, 1);
     this.#detachAnnotations(id); // an anchored label falls free, keeping its spot
     if (removed.board == null) {
-      // A desk-level brick (PSU, clock) takes its attached wires with it.
+      // A desk-level brick (PSU, clock, LCD) takes its attached wires with it.
       this.#doc.wires = this.#doc.wires.filter(
         (w) => !this.#wireTouches(w, id),
       );

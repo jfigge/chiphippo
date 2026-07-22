@@ -1101,6 +1101,77 @@
   pointer-events: none;
 }
 
+/* ── Character-LCD module (HD44780) ──────────────────────────────────────── */
+.part-lcd-body {
+  fill: var(--color-lcd-bezel);
+  stroke: var(--color-part-inset);
+  stroke-width: 0.1;
+}
+
+.part-lcd-panel {
+  fill: var(--color-lcd-screen);
+  stroke: var(--color-part-inset);
+  stroke-width: 0.08;
+}
+
+/* The live characters are drawn onto a canvas sitting over the panel. Nearest-
+   neighbour scaling keeps the 5×8 dots crisp; it's pointer-inert so drags land
+   on the body div. */
+.part-lcd-screen {
+  position: absolute;
+  image-rendering: pixelated;
+  pointer-events: none;
+}
+
+.part-lcd-terminal {
+  stroke: var(--color-part-inset);
+  stroke-width: 0.06;
+}
+
+.part-lcd-terminal--power {
+  fill: var(--color-wire-red);
+}
+
+.part-lcd-terminal--ctrl {
+  fill: var(--color-wire-yellow);
+}
+
+.part-lcd-terminal--data {
+  fill: var(--color-wire-blue);
+}
+
+.part-lcd-terminal--aux {
+  fill: var(--color-part-smoke);
+}
+
+.part-lcd-terminal-label {
+  fill: var(--color-psu-badge);
+  font-family: var(--font-mono);
+  font-size: 0.55px;
+  user-select: none;
+  pointer-events: none;
+}
+
+.part-lcd-size {
+  fill: var(--color-psu-badge);
+  font-family: var(--font-mono);
+  font-size: 0.9px;
+  opacity: 0.7;
+  user-select: none;
+  pointer-events: none;
+}
+
+/* Power faults dim the screen (mirrors the chip fault feedback). */
+.part-lcd--unpowered .part-lcd-panel,
+.part-lcd--underpowered .part-lcd-panel {
+  opacity: 0.4;
+}
+
+.part-lcd--reversed .part-lcd-panel,
+.part-lcd--damaged .part-lcd-panel {
+  fill: var(--color-part-smoke);
+}
+
 /* Part placement ghost (palette pick → seat/drop). */
 .part-ghost {
   position: absolute;
