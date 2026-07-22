@@ -100,14 +100,22 @@ function load(filePath, byteLength) {
   const resolved = resolvePath(filePath);
   const len = coerceLength(byteLength);
   const out = Buffer.alloc(len);
-  let raw;
+  let fd;
   try {
-    raw = fs.readFileSync(resolved);
+    fd = fs.openSync(resolved, "r");
   } catch (err) {
     if (err.code === "ENOENT") return out; // absent → all zeros
     throw err;
   }
-  raw.copy(out, 0, 0, Math.min(raw.length, len));
+  // Read AT MOST `len` bytes straight into the pre-sized buffer rather than
+  // slurping the whole file: a tampered/corrupt sidecar of arbitrary size must
+  // not be pulled into memory just to return a small chip-sized view. A shorter
+  // file leaves the tail zero-filled (Buffer.alloc); a longer one is ignored.
+  try {
+    fs.readSync(fd, out, 0, len, 0);
+  } finally {
+    fs.closeSync(fd);
+  }
   return out;
 }
 
@@ -127,6 +135,15 @@ function load(filePath, byteLength) {
 function program(filePath, bytes, byteLength) {
   const resolved = resolvePath(filePath);
   const len = coerceLength(byteLength);
+  // A too-long image is normally truncated to the chip size (below), but reject
+  // one past the cap BEFORE Buffer.from allocates, so a bogus renderer array
+  // can't force an unbounded allocation.
+  const srcLen = bytes?.length ?? 0;
+  if (srcLen > MAX_BYTES) {
+    const err = new Error(`memory image too large: ${srcLen} bytes`);
+    err.code = "INVALID_ARG";
+    throw err;
+  }
   const image = Buffer.from(bytes ?? []);
   const buf = load(resolved, len); // keep whatever is past the image
   const written = Math.min(image.length, len);
