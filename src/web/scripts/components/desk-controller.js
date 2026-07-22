@@ -433,6 +433,25 @@ export class DeskController {
     ].includes(this.#mode?.kind);
   }
 
+  /**
+   * True while a direct-manipulation pointer drag is in flight — its pointer is
+   * captured and a pending pointerup will commit + tear it down. A tool-arm
+   * (W/B), copy/paste, or delete shortcut must NOT run here: it would overwrite
+   * #mode out from under that pointerup, orphaning the capture + listeners and
+   * freezing the dragged item in its grabbed visual state.
+   */
+  get #dragGestureActive() {
+    return [
+      "drag",
+      "drag-part",
+      "drag-brick",
+      "drag-annotation",
+      "drag-resistor",
+      "drag-resistor-end",
+      "marquee",
+    ].includes(this.#mode?.kind);
+  }
+
   // ── Selection (boards, parts, and wires share one slot) ─────────────────
 
   #applySelection(sel, on) {
@@ -1922,6 +1941,13 @@ export class DeskController {
       return true;
     }
     if (this.#editingLocked) return false;
+    // A live pointer drag owns #mode until its pointerup commits + tears it
+    // down. W/B arm a tool, paste arms a ghost, and Delete removes the dragged
+    // item — each would overwrite #mode (or the view) out from under that
+    // pending pointerup, orphaning the capture. So they are inert mid-drag (the
+    // R rotate/flip path deliberately DOES act mid-drag and self-guards in
+    // #toggleResistorRotation; F is gated to placement). See #dragGestureActive.
+    const dragging = this.#dragGestureActive;
     // Cmd/Ctrl+C copies the one selected component; Cmd/Ctrl+V arms a fresh
     // duplicate as a placement ghost. Consume the key only when there is
     // something to act on, so the native Edit-menu copy/paste still serves text
@@ -1930,14 +1956,14 @@ export class DeskController {
     if (accel && (e.key === "c" || e.key === "C")) {
       return this.copySelectedComponent();
     }
-    if (accel && (e.key === "v" || e.key === "V")) {
+    if (accel && (e.key === "v" || e.key === "V") && !dragging) {
       return this.pasteComponent();
     }
-    if ((e.key === "w" || e.key === "W") && bareKey) {
+    if ((e.key === "w" || e.key === "W") && bareKey && !dragging) {
       this.toggleWireTool();
       return true;
     }
-    if ((e.key === "b" || e.key === "B") && bareKey) {
+    if ((e.key === "b" || e.key === "B") && bareKey && !dragging) {
       this.toggleBusTool();
       return true;
     }
@@ -1960,12 +1986,17 @@ export class DeskController {
     }
     if (
       (e.key === "Delete" || e.key === "Backspace") &&
+      !dragging &&
       this.#multiSize() > 0
     ) {
       this.removeSelectedComponents();
       return true;
     }
-    if ((e.key === "Delete" || e.key === "Backspace") && this.#selected) {
+    if (
+      (e.key === "Delete" || e.key === "Backspace") &&
+      !dragging &&
+      this.#selected
+    ) {
       const { kind, id } = this.#selected;
       if (kind === "part") this.removeComponent(id);
       else if (kind === "wire") this.removeWire(id);

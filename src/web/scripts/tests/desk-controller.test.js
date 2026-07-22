@@ -1359,6 +1359,39 @@ test("R during a marquee drag leaves the selected part alone", () => {
   assert.equal(doc.getComponent(r.id).params.rot, 0, "not rotated behind it");
 });
 
+test("W during a board drag is inert, and the drag still commits cleanly", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const board = doc.addBoard("pins-full", 0, 0); // y=0
+  const world = { x: 0, y: 0 };
+  const { surface, controller } = makeDesk(doc, world);
+
+  const el = boardEl(surface, board.id);
+  pointerAt(el, "pointerdown", 0, 0); // grab at world (0,0)
+  world.x = 0;
+  world.y = 30;
+  pointerAt(el, "pointermove", 40, 40);
+  assert.deepEqual(dragSetIds(surface), [board.id], "drag set lit mid-gesture");
+
+  // Press W mid-drag: it must NOT arm the wire tool (which would overwrite
+  // #mode and make the pending pointerup bail before committing + cleaning up).
+  const consumed = controller.handleKeyDown(
+    new window.KeyboardEvent("keydown", { key: "w" }),
+  );
+  assert.equal(consumed, false, "W is inert mid-drag");
+  assert.deepEqual(dragSetIds(surface), [board.id], "drag still intact");
+
+  // Releasing commits the move and clears the highlight — proving #mode was a
+  // live "drag" at pointerup, not clobbered to "wire".
+  pointerAt(el, "pointerup", 40, 40);
+  assert.equal(
+    doc.boards.find((b) => b.id === board.id).y,
+    30,
+    "drag committed",
+  );
+  assert.deepEqual(dragSetIds(surface), [], "clean teardown, no stuck set");
+});
+
 test("R rotates the selected resistor via handleKeyDown", () => {
   resetDom();
   const doc = new DeskDoc(null);
