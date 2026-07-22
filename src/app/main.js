@@ -611,6 +611,20 @@ function setPinoutFloat(on) {
   }
 }
 
+/**
+ * Close every auxiliary window (pinout diagrams + memory inspectors). The main
+ * renderer rebuilds the whole scene by reloading on New/Open (the app's one
+ * teardown path), which orphans these separate OS windows: a pinout points at a
+ * chip that may be gone, and — worse — an open inspector's Save would recreate
+ * a `.bin` for a chip the reload just removed. Each window's own `closed`
+ * handler prunes its map entry.
+ */
+function closeAuxWindows() {
+  for (const w of [...pinoutWindows.values(), ...memoryWindows.values()]) {
+    if (!w.isDestroyed()) w.close();
+  }
+}
+
 // ─── IPC handlers ─────────────────────────────────────────────────────────────
 // Every channel registered here must have a matching window.chiphippo.* export
 // in preload.js (the ipc-parity test enforcing this lands in Feature 20).
@@ -797,6 +811,14 @@ function createWindow() {
     }
     return { action: "deny" };
   });
+
+  // Any top-level navigation of the main frame is a full scene rebuild (New /
+  // Open reload the working desk; hot-reload; a manual reload). Close the
+  // orphaned pinout / inspector windows so a stale inspector can't write a
+  // `.bin` for a chip the reload removed. did-navigate is main-frame only and
+  // skips in-page navigations; the initial load is a harmless no-op (maps
+  // empty).
+  win.webContents.on("did-navigate", () => closeAuxWindows());
 
   win.loadFile(path.join(__dirname, "..", "web", "index.html"));
 
