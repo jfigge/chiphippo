@@ -1392,6 +1392,33 @@ test("W during a board drag is inert, and the drag still commits cleanly", () =>
   assert.deepEqual(dragSetIds(surface), [], "clean teardown, no stuck set");
 });
 
+test("a board drag interrupted by Run reverts instead of committing", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const board = doc.addBoard("pins-full", 0, 0); // y=0
+  const world = { x: 0, y: 0 };
+  const { surface, controller } = makeDesk(doc, world);
+
+  const el = boardEl(surface, board.id);
+  pointerAt(el, "pointerdown", 0, 0);
+  world.x = 0;
+  world.y = 30;
+  pointerAt(el, "pointermove", 40, 40);
+
+  // Run starts mid-drag (Space → sim.toggle + setEditingLocked): editing freezes.
+  controller.setEditingLocked(true);
+
+  // Releasing must NOT commit the move into the frozen/running state — the
+  // board snaps back to y=0 and the highlight clears cleanly.
+  pointerAt(el, "pointerup", 40, 40);
+  assert.equal(
+    doc.boards.find((b) => b.id === board.id).y,
+    0,
+    "in-flight move reverted; no topology mutation while frozen",
+  );
+  assert.deepEqual(dragSetIds(surface), [], "clean teardown");
+});
+
 test("R rotates the selected resistor via handleKeyDown", () => {
   resetDom();
   const doc = new DeskDoc(null);

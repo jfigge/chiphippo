@@ -2248,7 +2248,9 @@ export class DeskController {
     }
     if (!d.active) return; // plain click — selection already happened
 
-    const cancelled = e.type === "pointercancel";
+    // A drag that spans Run (editing locked mid-gesture) reverts, never
+    // commits — the teardown above already ran, so this only skips the mutation.
+    const cancelled = e.type === "pointercancel" || this.#editingLocked;
     const moved = d.delta.dx !== 0 || d.delta.dy !== 0;
     if (!cancelled && d.legal && moved) {
       // Moving only part of a group tears the snap — desk-doc re-derives the
@@ -2502,7 +2504,9 @@ export class DeskController {
       view.setIllegal(false);
     }
 
-    const cancelled = e.type === "pointercancel";
+    // A drag that spans Run (editing locked mid-gesture) reverts, never
+    // commits — the teardown above already ran, so this only skips the mutation.
+    const cancelled = e.type === "pointercancel" || this.#editingLocked;
     if (d.kind === "drag-resistor-end") {
       if (!d.active) return; // plain click — the press already selected it
       if (!cancelled && d.legal && d.target) {
@@ -2761,7 +2765,9 @@ export class DeskController {
       /* already released */
     }
     if (!d.active) return; // plain click — the press already selected it
-    const cancelled = e.type === "pointercancel";
+    // A drag that spans Run (editing locked mid-gesture) reverts, never
+    // commits — the teardown above already ran, so this only skips the mutation.
+    const cancelled = e.type === "pointercancel" || this.#editingLocked;
     const moved = d.pos.x !== d.origin.x || d.pos.y !== d.origin.y;
     if (!cancelled && moved) {
       this.#doc.updateAnnotation(d.id, { x: d.pos.x, y: d.pos.y });
@@ -2871,7 +2877,8 @@ export class DeskController {
     this.#marquee?.remove();
     this.#marquee = null;
     this.#viewport.classList.remove("desk-viewport--selecting");
-    if (e.type === "pointercancel") return;
+    // A marquee that spans Run applies no selection into the frozen state.
+    if (e.type === "pointercancel" || this.#editingLocked) return;
     this.#setMultiSelection(
       this.#componentsWithin(m.rect),
       this.#wiresWithin(m.rect),
