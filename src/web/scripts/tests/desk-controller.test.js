@@ -1567,3 +1567,115 @@ test("onHistoryChange fires with the current availability", () => {
   controller.undo();
   assert.deepEqual(states.at(-1), { canUndo: false, canRedo: true });
 });
+
+test("Cmd+C on a marquee selection pastes the whole cluster onto clear holes", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const world = { x: 0, y: 0 };
+  const { viewport, surface, controller } = makeDesk(doc, world);
+  const a = controller.addComponentAt("74LS00", "bb1", "e5"); // cols 5–11
+  const b = controller.addComponentAt("74LS04", "bb1", "e20"); // cols 20–26
+
+  // Marquee both chips (rows f..e, columns 4..27).
+  marquee(viewport, world, { x: 4, y: 4 }, { x: 27, y: 9 });
+  assert.equal(controller.multiSelectedIds.length, 2);
+
+  assert.equal(accelKey(controller, "c"), true);
+  assert.equal(accelKey(controller, "v"), true);
+  assert.ok(controller.placementArmed);
+  // One translucent ghost per member.
+  assert.equal(
+    surface.querySelectorAll(".layer-overlay .part-ghost").length,
+    2,
+  );
+
+  // Slide the pair 35 columns right (centre 12.5 → 47.5), onto empty board.
+  world.x = 47.5;
+  world.y = 8;
+  viewport.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+
+  assert.ok(!controller.placementArmed);
+  assert.equal(doc.components.length, 4, "both members pasted");
+  const pasted = doc.components.filter((c) => c.id !== a.id && c.id !== b.id);
+  const seats = pasted.map((c) => `${c.ref}@${c.anchor}`).sort();
+  assert.deepEqual(seats, ["74LS00@e40", "74LS04@e55"]);
+  // The fresh set is the new selection (draggable/deletable as a unit).
+  assert.deepEqual(
+    controller.multiSelectedIds.sort(),
+    pasted.map((c) => c.id).sort(),
+  );
+});
+
+test("a cluster paste seats the valid members and discards the invalid ones", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const world = { x: 0, y: 0 };
+  const { viewport, controller } = makeDesk(doc, world);
+  const a = controller.addComponentAt("74LS00", "bb1", "e5");
+  const b = controller.addComponentAt("74LS04", "bb1", "e20");
+
+  marquee(viewport, world, { x: 4, y: 4 }, { x: 27, y: 9 });
+  accelKey(controller, "c");
+  accelKey(controller, "v");
+
+  // Slide 45 columns right: the first (e5→e50) still fits the 63-column board;
+  // the second (e20→e65) runs off the end and is discarded.
+  world.x = 57.5;
+  world.y = 8;
+  viewport.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+
+  assert.ok(!controller.placementArmed);
+  assert.equal(doc.components.length, 3, "only the seatable member pasted");
+  const pasted = doc.components.filter((c) => c.id !== a.id && c.id !== b.id);
+  assert.equal(pasted.length, 1);
+  assert.equal(`${pasted[0].ref}@${pasted[0].anchor}`, "74LS00@e50");
+});
+
+test("a cluster ghost shades an unseatable member red while dragging", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const world = { x: 0, y: 0 };
+  const { viewport, surface, controller } = makeDesk(doc, world);
+  controller.addComponentAt("74LS00", "bb1", "e5");
+  controller.addComponentAt("74LS04", "bb1", "e20");
+
+  marquee(viewport, world, { x: 4, y: 4 }, { x: 27, y: 9 });
+  accelKey(controller, "c");
+  accelKey(controller, "v");
+
+  // Same off-the-end shift, but hovering — the first member seats (green), the
+  // second is off the board (red). Ghost order follows member order.
+  world.x = 57.5;
+  world.y = 8;
+  viewport.dispatchEvent(
+    new window.PointerEvent("pointermove", { bubbles: true }),
+  );
+  const ghosts = [...surface.querySelectorAll(".layer-overlay .part-ghost")];
+  assert.equal(ghosts.length, 2);
+  assert.ok(ghosts[0].classList.contains("part-ghost--legal"));
+  assert.ok(ghosts[1].classList.contains("part-ghost--illegal"));
+});
+
+test("a fully-unseatable cluster drop stays armed (nothing pasted)", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const world = { x: 0, y: 0 };
+  const { viewport, controller } = makeDesk(doc, world);
+  controller.addComponentAt("74LS00", "bb1", "e5");
+  controller.addComponentAt("74LS04", "bb1", "e20");
+
+  marquee(viewport, world, { x: 4, y: 4 }, { x: 27, y: 9 });
+  accelKey(controller, "c");
+  accelKey(controller, "v");
+
+  // Drop far off any board — nothing can seat, so the paste stays in hand.
+  world.x = 400;
+  world.y = 400;
+  viewport.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  assert.ok(controller.placementArmed, "still armed to try again");
+  assert.equal(doc.components.length, 2, "nothing pasted");
+});

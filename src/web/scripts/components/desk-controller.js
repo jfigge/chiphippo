@@ -50,6 +50,11 @@ import {
   partPinsWorld,
   wiresInRect,
 } from "../model/part-geometry.js";
+import {
+  captureCluster,
+  memberForm,
+  resolveCluster,
+} from "../model/paste-cluster.js";
 import { DeskDoc } from "../model/desk-doc.js";
 import { HistoryStore } from "../model/history-store.js";
 import { partDef } from "../catalog/index.js";
@@ -105,6 +110,7 @@ export class DeskController {
   #annotationLayer; // AnnotationLayer: labels + notes (Feature 120)
   #selected = null; // { kind: "board"|"part"|"wire"|"annotation", id } | null
   #copyBuffer = null; // { ref, params } of the last Cmd+C'd component | null
+  #clusterBuffer = null; // a captured multi-selection for a cluster paste | null
   // Active interaction: null, or
   //   { kind: "place", type, ghost, pos, legal }              (board)
   //   { kind: "place-chip", ref, ghost, board, anchor, legal }
@@ -381,6 +387,7 @@ export class DeskController {
       "place-part",
       "place-brick",
       "place-annotation",
+      "place-cluster",
     ].includes(this.#mode?.kind);
   }
 
@@ -670,13 +677,28 @@ export class DeskController {
   }
 
   /**
-   * Cmd+C: remember the one selected component (chip / discrete / PSU / clock
-   * brick) so Cmd+V can drop a fresh duplicate. Only a single selected part
-   * copies — a board, a wire, or a multi-selection is ignored (returns false so
-   * the native Edit-menu copy still serves text fields). The buffer keeps a
-   * deep copy of the params, so later edits to the source never bleed in.
+   * Cmd+C: remember what's selected so Cmd+V can drop a fresh duplicate.
+   *
+   * A marquee MULTI-selection copies as a rigid CLUSTER — every selected part
+   * and brick, in the exact arrangement of the source; wires are never part of
+   * a paste. A single selected part keeps the simpler one-off buffer. Either
+   * way the copy is a brand-new part (its arrangement, none of its run-state) —
+   * see captureCluster / pasteComponent. A board, a wire, or nothing selected
+   * is ignored (returns false, so the native Edit-menu copy still serves text
+   * fields). The buffer deep-copies params, so later edits to the source never
+   * bleed in.
    */
   copySelectedComponent() {
+    if (this.#multi.size > 0) {
+      const comps = [...this.#multi]
+        .map((id) => this.#doc.getComponent(id))
+        .filter(Boolean);
+      const cluster = captureCluster(this.#doc.boards, comps);
+      if (!cluster) return false;
+      this.#clusterBuffer = cluster;
+      this.#copyBuffer = null; // the cluster wins the next paste
+      return true;
+    }
     if (this.#selected?.kind !== "part") return false;
     const comp = this.#doc.getComponent(this.#selected.id);
     if (!comp) return false;
@@ -684,6 +706,7 @@ export class DeskController {
       ref: comp.ref,
       params: comp.params ? JSON.parse(JSON.stringify(comp.params)) : {},
     };
+    this.#clusterBuffer = null;
     return true;
   }
 
@@ -701,6 +724,10 @@ export class DeskController {
    * freely, exactly like a fresh turned part — drag an end onto a rail after.
    */
   pasteComponent() {
+    if (this.#clusterBuffer) {
+      this.#armClusterPlacement(this.#clusterBuffer);
+      return true;
+    }
     const buf = this.#copyBuffer;
     if (!buf) return false;
     // A fresh duplicate starts pristine — never inherit run-state (12 V) damage.
@@ -729,11 +756,145 @@ export class DeskController {
     return true;
   }
 
+  /**
+   * Arm a CLUSTER paste: one translucent ghost per copied member, wrapped in a
+   * single container element (so `#enterPlacement`/`cancelPlacement` treat it
+   * like any other placement ghost). The arrangement translates rigidly with
+   * the cursor; each member is tinted green/red by whether it seats legally,
+   * re-evaluated on every move. The buffer persists, so repeated Cmd+V stamps
+   * the arrangement again.
+   */
+  #armClusterPlacement(cluster) {
+    const box = el("div", { class: "part-ghost-cluster", hidden: true });
+    const ghosts = cluster.members.map((m) => {
+      const g = el("div", { class: "part-ghost" });
+      g.append(this.#buildMemberGhostSvg(m));
+      box.append(g);
+      return g;
+    });
+    this.#enterPlacement({
+      kind: "place-cluster",
+      cluster,
+      ghost: box,
+      ghosts,
+      results: [],
+      legalCount: 0,
+    });
+  }
+
+  /** The drawn SVG for one cluster member, by its placement form. */
+  #buildMemberGhostSvg(m) {
+    switch (memberForm(m.ref, m.params)) {
+      case "chip":
+        return buildChipSvg(m.ref, m.params);
+      case "turned":
+        return buildSpanSvg(m.ref, m.params.end.dx, m.params.end.dy, m.params);
+      case "brick":
+        return partDef(m.ref).kind === "psu"
+          ? buildPsuSvg(m.params)
+          : buildClockSvg(m.params);
+      default:
+        return buildDiscreteSvg(m.ref, m.params);
+    }
+  }
+
+  #trackClusterGhost(e) {
+    const m = this.#mode;
+    const w = this.#deskView.worldFromEvent(e);
+    // A rigid, integer-pitch shift keeps the arrangement exact and lets every
+    // hole-anchored member land squarely on a hole (or over nothing → red).
+    const shift = {
+      dx: Math.round(w.x - m.cluster.center.x),
+      dy: Math.round(w.y - m.cluster.center.y),
+    };
+    const results = resolveCluster(
+      {
+        boards: this.#doc.boards,
+        components: this.#doc.components,
+        wires: this.#doc.wires,
+      },
+      m.cluster.members,
+      shift,
+      (ref, x, y) => this.#doc.canPlaceBrick(ref, x, y),
+    );
+    m.results = results;
+    m.shift = shift;
+    m.legalCount = results.reduce((n, r) => n + (r.legal ? 1 : 0), 0);
+    m.ghost.hidden = false;
+    results.forEach((r, i) => {
+      const g = m.ghosts[i];
+      const tl = this.#memberGhostTopLeft(r, shift);
+      g.style.left = `${tl.x * PX_PER_UNIT}px`;
+      g.style.top = `${tl.y * PX_PER_UNIT}px`;
+      g.classList.toggle("part-ghost--legal", r.legal);
+      g.classList.toggle("part-ghost--illegal", !r.legal);
+    });
+  }
+
+  /** Top-left (pitch units) of a member's ghost after the rigid shift — the
+      same box maths the seated views use, translated by `shift`. */
+  #memberGhostTopLeft(member, shift) {
+    const ax = member.anchorWorld.x + shift.dx;
+    const ay = member.anchorWorld.y + shift.dy;
+    switch (member.form ?? memberForm(member.ref, member.params)) {
+      case "chip": {
+        const box = chipBox(partDef(member.ref).package);
+        return { x: ax + box.minX, y: ay + box.minY };
+      }
+      case "turned": {
+        const pad = spanPad(member.ref);
+        const { dx, dy } = member.params.end;
+        return { x: ax + Math.min(0, dx) - pad, y: ay + Math.min(0, dy) - pad };
+      }
+      case "brick":
+        return { x: ax, y: ay };
+      default: {
+        const box = discreteBox(member.ref);
+        return { x: ax + box.minX, y: ay + box.minY };
+      }
+    }
+  }
+
+  /**
+   * Drop a cluster paste: seat every member with a legal placement and DISCARD
+   * the rest (a red member simply isn't part of the paste). One doc-changed for
+   * the whole batch; the freshly-pasted set becomes the new marquee selection so
+   * it can be nudged, deleted, or copied again as a unit.
+   */
+  #commitClusterPaste() {
+    const results = this.#mode.results;
+    this.cancelPlacement(); // removes the ghost box, clears #mode
+    const newIds = [];
+    for (const r of results) {
+      if (!r.legal) continue;
+      try {
+        const comp =
+          r.form === "brick"
+            ? this.#doc.addBrick(r.ref, r.seat.x, r.seat.y, r.params)
+            : this.#doc.addComponent({
+                kind: partDef(r.ref).kind,
+                ref: r.ref,
+                board: r.seat.board,
+                anchor: r.seat.anchor,
+                params: r.params,
+              });
+        this.#mountPart(comp);
+        newIds.push(comp.id);
+      } catch {
+        /* validated already — skip a stray failure rather than abort the batch */
+      }
+    }
+    if (newIds.length === 0) return;
+    this.#emitDocChanged("paste");
+    this.#setMultiSelection(newIds);
+  }
+
   #trackGhost(e) {
     const kind = this.#mode.kind;
     if (kind === "place") this.#trackBoardGhost(e);
     else if (kind === "place-brick") this.#trackBrickGhost(e);
     else if (kind === "place-annotation") this.#trackAnnotationGhost(e);
+    else if (kind === "place-cluster") this.#trackClusterGhost(e);
     else this.#trackSeatedGhost(e);
   }
 
@@ -2661,6 +2822,12 @@ export class DeskController {
     }
     if (m.kind === "bus") {
       this.#bus.commitClick(e);
+      return;
+    }
+    if (m.kind === "place-cluster") {
+      this.#trackClusterGhost(e); // shading reflects the exact click point
+      if (m.legalCount === 0) return; // nothing seats here — stay armed
+      this.#commitClusterPaste();
       return;
     }
     this.#trackGhost(e); // ensure the seat reflects the click point
