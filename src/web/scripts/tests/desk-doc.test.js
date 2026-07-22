@@ -259,6 +259,39 @@ test("normalizeDocument: group ids survive; junk groups degrade to loose", () =>
   assert.equal(doc.nextGroupId, 5); // a group id is never reused either
 });
 
+test("normalizeDocument drops a wire whose endpoint sits on a chip pin", () => {
+  const doc = normalizeDocument({
+    boards: [{ id: "bb1", type: "pins-full", x: 0, y: 0 }],
+    components: [
+      { id: "c1", kind: "chip", ref: "74LS00", board: "bb1", anchor: "e5" },
+    ],
+    wires: [
+      // bb1.e5 is c1's pin-1 hole — a wire may not share it (one lead/point).
+      { id: "w1", from: "bb1.e5", to: "bb1.a20", color: "red" },
+      { id: "w2", from: "bb1.a10", to: "bb1.a20", color: "red" }, // clean → kept
+    ],
+  });
+  assert.deepEqual(
+    doc.wires.map((w) => w.id),
+    ["w2"],
+    "the pin-colliding wire is dropped, the clean one survives",
+  );
+});
+
+test("normalizeDocument keeps only the first of two wires sharing a hole", () => {
+  const doc = normalizeDocument({
+    boards: [{ id: "bb1", type: "pins-full", x: 0, y: 0 }],
+    wires: [
+      { id: "w1", from: "bb1.a5", to: "bb1.a10", color: "red" },
+      { id: "w2", from: "bb1.a5", to: "bb1.a20", color: "red" }, // shares a5 → dropped
+    ],
+  });
+  assert.deepEqual(
+    doc.wires.map((w) => w.id),
+    ["w1"],
+  );
+});
+
 test("toJSON is a deep copy — later mutations don't leak into it", () => {
   const doc = new DeskDoc(null);
   doc.addBoard("pins-tiny", 0, 0);

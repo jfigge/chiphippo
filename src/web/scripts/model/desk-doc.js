@@ -54,6 +54,7 @@ import {
   snapCorrection,
 } from "./mating.js";
 import {
+  buildOccupancy,
   canMoveWire,
   canPlacePart,
   canPlaceWire,
@@ -295,6 +296,13 @@ export function normalizeDocument(raw) {
     const def = partDef(comp.ref);
     return Boolean(def?.terminals?.some((t) => t.id === parsed.hole));
   };
+  // One lead per point: validEndpoint only proves an endpoint is a REAL hole/
+  // terminal, not that it is FREE. Seed the claimed set with the seated parts'
+  // pin holes (doc.wires is still empty, so buildOccupancy yields pins only),
+  // then claim each wire's ends as they load. A foreign/hand-edited doc with
+  // two leads on one hole would otherwise have the loser silently hidden by
+  // buildOccupancy's last-writer-wins.
+  const claimed = new Set(buildOccupancy(doc).keys());
   const wires = Array.isArray(raw.wires) ? raw.wires : [];
   for (const w of wires) {
     if (!w || typeof w !== "object") continue;
@@ -302,7 +310,10 @@ export function normalizeDocument(raw) {
     if (!m || wireIds.has(w.id)) continue;
     if (!validEndpoint(w.from) || !validEndpoint(w.to)) continue;
     if (w.from === w.to) continue;
+    if (claimed.has(w.from) || claimed.has(w.to)) continue; // point already taken
     wireIds.add(w.id);
+    claimed.add(w.from);
+    claimed.add(w.to);
     maxWireSeq = Math.max(maxWireSeq, Number(m[1]));
     doc.wires.push({
       id: w.id,
