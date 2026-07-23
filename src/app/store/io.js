@@ -108,6 +108,42 @@ function fsyncDir(dir) {
 }
 
 /**
+ * Block the current thread for `ms` — a rare Windows rename-retry backoff.
+ * Atomics.wait times out (the value never changes) without spinning the CPU;
+ * main-thread Atomics.wait is permitted in Node.
+ */
+function sleepSync(ms) {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+}
+
+/**
+ * renameSync, retried on Windows when the destination is transiently locked.
+ * Windows refuses a rename over a file another handle holds open — antivirus
+ * scanning the just-written temp, a search indexer, or the target mmap'd
+ * elsewhere — with EPERM/EBUSY/EACCES; a short bounded backoff usually clears
+ * it. POSIX renames atomically over an open destination, so this is win32-only
+ * and leaves every other platform's behaviour byte-for-byte unchanged.
+ */
+function renameWithRetry(from, to) {
+  if (process.platform !== "win32") {
+    fs.renameSync(from, to);
+    return;
+  }
+  const MAX_ATTEMPTS = 5;
+  for (let attempt = 0; ; attempt++) {
+    try {
+      fs.renameSync(from, to);
+      return;
+    } catch (err) {
+      const transient =
+        err.code === "EPERM" || err.code === "EBUSY" || err.code === "EACCES";
+      if (!transient || attempt >= MAX_ATTEMPTS - 1) throw err;
+      sleepSync(20 * (attempt + 1)); // 20, 40, 60, 80 ms
+    }
+  }
+}
+
+/**
  * Atomically and durably write `data` to `filePath` using a
  * write-temp → fsync → rename → fsync-dir strategy.
  *
@@ -134,7 +170,7 @@ function atomicWrite(filePath, data) {
     } finally {
       fs.closeSync(fd);
     }
-    fs.renameSync(tmpPath, filePath);
+    renameWithRetry(tmpPath, filePath);
     fsyncDir(path.dirname(filePath));
   } catch (err) {
     try {
