@@ -23,6 +23,7 @@
 
 import { clear, el } from "../dom.js";
 import { buildPlan } from "../model/build-plan.js";
+import { planToRtf } from "../model/build-export.js";
 import { NetlistCache } from "./netlist-cache.js";
 
 const TABS = [
@@ -30,6 +31,15 @@ const TABS = [
   { id: "wiring", label: "Wiring" },
   { id: "steps", label: "Steps" },
 ];
+
+/** Download icon (Feather "download"), for the header export button. */
+const DOWNLOAD_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" ' +
+  'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+  'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+  '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>' +
+  '<polyline points="7 10 12 15 17 10"/>' +
+  '<line x1="12" y1="15" x2="12" y2="3"/></svg>';
 
 /** The BOM sections, in display order (skip a section with no line items). */
 const BOM_SECTIONS = [
@@ -56,6 +66,7 @@ export class BuildGuide {
   #tabButtons = new Map();
   #warnBadge;
   #onVisibilityChange;
+  #schemaName;
   #tab = "bom";
   #dirty = true; // re-derive lazily when shown / on change while shown
 
@@ -67,11 +78,14 @@ export class BuildGuide {
    * @param {(visible:boolean) => void} [opts.onVisibilityChange] - fired
    *   whenever the panel opens/closes (incl. its own close button), so the
    *   toolbar button + persisted setting stay in step.
+   * @param {() => string} [opts.schemaName] - the current schematic's base name
+   *   (no extension), used to name the exported bill-of-materials file.
    */
-  constructor(container, { deskDoc, onVisibilityChange, netlist }) {
+  constructor(container, { deskDoc, onVisibilityChange, netlist, schemaName }) {
     this.#doc = deskDoc;
     this.#netlist = netlist ?? new NetlistCache(deskDoc);
     this.#onVisibilityChange = onVisibilityChange;
+    this.#schemaName = schemaName ?? (() => "Untitled");
 
     const tabs = el("div", { class: "build-guide-tabs", role: "tablist" });
     for (const { id, label } of TABS) {
@@ -93,10 +107,22 @@ export class BuildGuide {
       title: "Design warnings",
     });
 
+    const downloadBtn = el("button", {
+      class: "build-guide-download",
+      type: "button",
+      title: "Download the bill of materials (.rtf)",
+      "aria-label": "Download the bill of materials",
+      onClick: () => this.#downloadBom(),
+    });
+    downloadBtn.innerHTML = DOWNLOAD_SVG;
+
     const header = el("div", { class: "build-guide-header" }, [
-      el("span", { class: "build-guide-title" }, [
-        "Build guide",
-        this.#warnBadge,
+      el("div", { class: "build-guide-header-left" }, [
+        el("span", { class: "build-guide-title" }, [
+          "Build guide",
+          this.#warnBadge,
+        ]),
+        downloadBtn,
       ]),
       el("button", {
         class: "build-guide-close",
@@ -155,19 +181,46 @@ export class BuildGuide {
     this.#renderBody();
   }
 
-  /** Re-derive the plan (if needed) and repaint the whole panel. */
-  #render() {
+  /** Re-derive the plan only when the document changed since last time. */
+  #ensurePlan() {
     if (this.#dirty) {
       this.#plan = buildPlan(this.#doc.toJSON(), this.#netlist.get());
       this.#dirty = false;
     }
-    const n = this.#plan.warnings.length;
+    return this.#plan;
+  }
+
+  /** Re-derive the plan (if needed) and repaint the whole panel. */
+  #render() {
+    const plan = this.#ensurePlan();
+    const n = plan.warnings.length;
     this.#warnBadge.textContent = n ? String(n) : "";
     this.#warnBadge.hidden = n === 0;
     this.#renderBody();
   }
 
   #plan = { bom: {}, nets: [], steps: [], warnings: [] };
+
+  // ── Export (a Rich Text bill of materials; a browser download, no IPC) ───────
+
+  /** Format the live plan as an .rtf document and download it. */
+  #downloadBom() {
+    const name = this.#schemaName?.() || "Untitled";
+    const rtf = planToRtf(this.#ensurePlan(), { title: name });
+    this.#download(
+      new Blob([rtf], { type: "application/rtf" }),
+      `${name}-bom.rtf`,
+    );
+  }
+
+  #download(blob, name) {
+    const url = URL.createObjectURL(blob);
+    const a = el("a", { href: url, download: name });
+    document.body.append(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+  }
 
   #renderBody() {
     clear(this.#body);

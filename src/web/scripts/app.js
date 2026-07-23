@@ -542,6 +542,8 @@ async function init() {
   const buildGuide = new BuildGuide(main, {
     deskDoc,
     netlist: netlistCache,
+    // The exported BOM file is named after the current schematic (no ext).
+    schemaName: () => fileName(currentFile).replace(/\.chiphippo$/i, ""),
     onVisibilityChange: (visible) => {
       guideBtn?.classList.toggle("toolbar-btn--active", visible);
       guideBtn?.setAttribute("aria-pressed", String(visible));

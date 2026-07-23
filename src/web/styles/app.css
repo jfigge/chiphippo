@@ -2671,11 +2671,38 @@ textarea.annotation-editor {
   border-bottom: 1px solid var(--color-crust);
 }
 
+.build-guide-header-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
 .build-guide-title {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   font-weight: 600;
+}
+
+/* Download-the-BOM button, sitting beside the title. */
+.build-guide-download {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-muted);
+  cursor: pointer;
+}
+
+.build-guide-download:hover {
+  background: var(--color-surface-1);
+  color: var(--color-text);
 }
 
 /* The warning count beside the title. */

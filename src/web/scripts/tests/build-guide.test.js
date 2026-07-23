@@ -101,6 +101,36 @@ test("Steps tab groups the checklist and ticks a step visually", () => {
   );
 });
 
+test("download button exports an RTF BOM named after the schema", () => {
+  const { container, doc } = mount();
+  new BuildGuide(container, { deskDoc: doc, schemaName: () => "MyCircuit" });
+  const btn = container.querySelector(".build-guide-download");
+  assert.ok(btn, "the header has a download button");
+
+  // Capture the download without jsdom's unimplemented createObjectURL / nav.
+  const origCreate = URL.createObjectURL;
+  const origRevoke = URL.revokeObjectURL;
+  const origClick = window.HTMLAnchorElement.prototype.click;
+  const captured = {};
+  URL.createObjectURL = (blob) => {
+    captured.blob = blob;
+    return "blob:stub";
+  };
+  URL.revokeObjectURL = () => {};
+  window.HTMLAnchorElement.prototype.click = function () {
+    captured.name = this.getAttribute("download");
+  };
+  try {
+    btn.dispatchEvent(new window.Event("click"));
+  } finally {
+    URL.createObjectURL = origCreate;
+    URL.revokeObjectURL = origRevoke;
+    window.HTMLAnchorElement.prototype.click = origClick;
+  }
+  assert.equal(captured.name, "MyCircuit-bom.rtf");
+  assert.equal(captured.blob.type, "application/rtf");
+});
+
 test("refreshes live when the document changes while open", () => {
   const { container, doc } = mount();
   const guide = new BuildGuide(container, { deskDoc: doc });
