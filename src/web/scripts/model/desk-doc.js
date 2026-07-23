@@ -895,8 +895,18 @@ export class DeskDoc {
         "OVERLAP",
       );
     }
+    const group = board.group;
     board.x = Math.round(x);
     board.y = Math.round(y);
+    // Moving one strip of a group can open a gap the group id would still span,
+    // dragging the now-disconnected strips as one unit. Tear it out and
+    // re-derive both halves from what is still mated (as moveBoardsBy does).
+    if (
+      group != null &&
+      this.#doc.boards.some((b) => b.group === group && b.id !== id)
+    ) {
+      this.#regroupAfterBreak(group, new Set([id]));
+    }
     return { ...board };
   }
 

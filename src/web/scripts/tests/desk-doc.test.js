@@ -127,6 +127,25 @@ test("moveBoard: snaps, ignores its own footprint, rejects other overlaps", () =
   assert.throws(() => doc.moveBoard("bb9", 0, 0), { code: "NOT_FOUND" });
 });
 
+test("moveBoard tears a grouped strip out and regroups the remainder", () => {
+  const doc = new DeskDoc(null);
+  doc.addKit("full", 0, 0); // bb1 rail@0 · bb2 pins@3 · bb3 rail@16, one group
+  const orig = doc.getBoard("bb2").group;
+  assert.ok(orig != null, "kit strips start grouped");
+
+  doc.moveBoard("bb1", 200, 200); // drag the top rail far off on its own
+
+  const group = Object.fromEntries(doc.boards.map((b) => [b.id, b.group]));
+  assert.equal(group.bb1, null, "the moved strip goes loose");
+  assert.equal(
+    group.bb2,
+    group.bb3,
+    "the still-flush remainder shares a group",
+  );
+  assert.ok(group.bb2 != null, "and it is a real group, not loose");
+  assert.notEqual(group.bb2, orig, "a FRESH id, never the stale spanning one");
+});
+
 test("moveBoard: an upright rail is collision-checked at its TURNED size", () => {
   const doc = new DeskDoc(null);
   doc.addBoard("rail-full", 0, 0, 90); // bb1: 3 wide × 64 tall
