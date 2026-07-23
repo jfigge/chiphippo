@@ -176,6 +176,13 @@ const SHAPE_DEFS = Object.freeze({
       { name: "2", side: "right", pin: 2 },
     ],
   },
+  "sw-toggle": {
+    shape: "button",
+    terminals: [
+      { name: "1", side: "left", pin: 1 },
+      { name: "2", side: "right", pin: 2 },
+    ],
+  },
   psu: {
     shape: "psu",
     terminals: [

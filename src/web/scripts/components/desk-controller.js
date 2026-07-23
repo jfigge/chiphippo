@@ -120,6 +120,10 @@ const RING_RADIUS = 0.45;
     endpoint isn't grabbed by mistake. */
 const WIRE_END_GRAB_RADIUS = 0.6;
 
+/** Discretes whose plain click flips a durable param — interactive even
+    while the sim is running (a held-down button stays momentary instead). */
+const CLICK_TOGGLE_REFS = new Set(["sw-slide", "sw-toggle"]);
+
 export class DeskController {
   #viewport;
   #deskView;
@@ -1938,13 +1942,17 @@ export class DeskController {
     this.#emitDocChanged("delete part");
   }
 
-  /** Flip a slide switch (click) — persists `pos`; doc-changed re-settles. */
-  #toggleSlideSwitch(id) {
+  /** Flip a slide switch's position or a toggle button's on/off (click) —
+      persists the param; doc-changed re-settles. */
+  #toggleClickPart(id) {
     const comp = this.#doc.getComponent(id);
-    const next = comp.params.pos === "2" ? "1" : "2";
-    const updated = this.#doc.setComponentParams(id, { pos: next });
+    const patch =
+      comp.ref === "sw-toggle"
+        ? { on: !comp.params.on }
+        : { pos: comp.params.pos === "2" ? "1" : "2" };
+    const updated = this.#doc.setComponentParams(id, patch);
     this.#partViews.get(id)?.updateParams(updated.params);
-    // `pos` lives in params, so the flip rides `doc-changed` alone — which
+    // pos/on lives in params, so the flip rides `doc-changed` alone — which
     // already invalidates the netlist, re-ticks the sim, and refreshes the
     // pinned net. Emitting `part-state` too would double-tick (part-state is
     // reserved for transient view state with no durable param — a held button).
@@ -2404,15 +2412,15 @@ export class DeskController {
     if (e.button !== 0) return;
     if (e.shiftKey) return; // shift-drag is the viewport's marquee
     if (this.#mode || this.#probe.armed) return; // no part drags while probing
-    // While running, only slide switches stay interactive (click to flip);
-    // every other part is frozen in place.
+    // While running, only click-toggle parts stay interactive (click to
+    // flip); every other part is frozen in place.
     if (this.#editingLocked) {
-      // While running, only live interactions remain: a slide switch flips,
-      // and a manual clock toggles one edge.
+      // While running, only live interactions remain: a slide switch or
+      // toggle button flips, and a manual clock toggles one edge.
       const comp = this.#doc.getComponent(id);
-      if (comp?.ref === "sw-slide") {
+      if (CLICK_TOGGLE_REFS.has(comp?.ref)) {
         e.stopPropagation();
-        this.#toggleSlideSwitch(id);
+        this.#toggleClickPart(id);
       } else if (comp?.kind === "clock" && comp.params?.hz === "manual") {
         e.stopPropagation();
         this.#onClockToggle?.(id);
@@ -2667,9 +2675,10 @@ export class DeskController {
     }
 
     if (!d.active) {
-      // Plain click: a slide switch flips (always interactive).
+      // Plain click: a slide switch or toggle button flips (always
+      // interactive).
       const comp = this.#doc.getComponent(d.id);
-      if (comp?.ref === "sw-slide") this.#toggleSlideSwitch(d.id);
+      if (CLICK_TOGGLE_REFS.has(comp?.ref)) this.#toggleClickPart(d.id);
       return;
     }
     const moved =

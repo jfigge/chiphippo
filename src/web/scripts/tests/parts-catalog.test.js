@@ -43,6 +43,7 @@ test("the part catalog carries the Feature 60 inventory", () => {
     "seg8ca",
     "sw-push",
     "sw-slide",
+    "sw-toggle",
   ]);
   // partDef resolves everything; chipDef stays chips-only.
   assert.ok(partDef("sw-slide"));
@@ -50,7 +51,7 @@ test("the part catalog carries the Feature 60 inventory", () => {
   assert.ok(partDef("clock"));
   assert.ok(partDef("lcd"));
   assert.equal(chipDef("sw-slide"), null);
-  assert.equal(PALETTE_DEFS.length, 69); // 57 chips (24 + 24 LS + 6 memory + 3 io) + 12 parts
+  assert.equal(PALETTE_DEFS.length, 70); // 57 chips (24 + 24 LS + 6 memory + 3 io) + 13 parts
 });
 
 for (const def of PART_DEFS.filter((d) => d.kind === "discrete")) {
@@ -103,6 +104,16 @@ test("sw-push: bridges only while pressed; nothing durable in params", () => {
   assert.deepEqual(def.internalBridges({}, { pressed: false }), []);
   assert.deepEqual(def.internalBridges({}), []);
   assert.deepEqual(def.normalizeParams({ pressed: true }), {});
+});
+
+test("sw-toggle: bridges while on; on persists in params", () => {
+  const def = partDef("sw-toggle");
+  assert.deepEqual(def.internalBridges({ on: true }), [[1, 2]]);
+  assert.deepEqual(def.internalBridges({ on: false }), []);
+  assert.deepEqual(def.internalBridges({}), []);
+  assert.deepEqual(def.normalizeParams({ on: true }), { on: true });
+  assert.deepEqual(def.normalizeParams({ on: "junk" }), { on: false });
+  assert.deepEqual(def.normalizeParams({}), { on: false });
 });
 
 test("led: color/flip coercion and polarity contract", () => {

@@ -16,14 +16,16 @@
 
 // discrete-view.js — the seated discrete parts (.layer-parts): slide switch
 // with a visible slider position, push button whose cap depresses while
-// held, and LED dome with a flat-side cathode cue. One SVG per part, rebuilt
-// only when params change (never on camera moves); NO electrical logic here.
+// held, toggle button whose cap latches on/off, and LED dome with a
+// flat-side cathode cue. One SVG per part, rebuilt only when params change
+// (never on camera moves); NO electrical logic here.
 //
-// The button cap is interactive VIEW state (momentary — nothing durable):
-// the view owns the press gesture (capture on the cap, stopPropagation so
-// the controller never starts a drag from it) and announces
-// `chiphippo:part-state` for later stages. Slide toggling needs a document
-// write, so the CONTROLLER owns it (plain click on the part).
+// The push button's cap is interactive VIEW state (momentary — nothing
+// durable): the view owns the press gesture (capture on the cap,
+// stopPropagation so the controller never starts a drag from it) and
+// announces `chiphippo:part-state` for later stages. A slide switch or
+// toggle button instead persists a durable param, so the CONTROLLER owns
+// the write (plain click on the part).
 //
 // Local SVG coordinates are pitch units with the ORIGIN AT PIN 1's hole.
 
@@ -52,6 +54,12 @@ const BOXES = Object.freeze({
     height: 2.2,
   }),
   "sw-push": Object.freeze({ minX: -0.7, minY: -1.4, width: 3.4, height: 2.8 }),
+  "sw-toggle": Object.freeze({
+    minX: -0.7,
+    minY: -1.4,
+    width: 3.4,
+    height: 2.8,
+  }),
   led: Object.freeze({ minX: -0.7, minY: -1.9, width: 2.4, height: 2.9 }),
   resistor: Object.freeze({ minX: -0.7, minY: -1.1, width: 4.4, height: 2.2 }),
   // A 9-pin SIP standing over one row of holes (like the displays), body above
@@ -520,6 +528,28 @@ export function buildDiscreteSvg(ref, params = {}) {
       }),
       svgEl("circle", {
         class: "part-button-cap",
+        cx: 1,
+        cy: 0,
+        r: 0.85,
+      }),
+    );
+  } else if (ref === "sw-toggle") {
+    // Same body as sw-push, but the cap LATCHES: params.on (persisted, a
+    // controller click flips it) drives the cap's own on-state, not a
+    // transient pointer-held class.
+    svg.append(
+      svgEl("rect", {
+        class: "part-body",
+        x: -0.6,
+        y: -1.3,
+        width: 3.2,
+        height: 2.6,
+        rx: 0.25,
+      }),
+      svgEl("circle", {
+        class: normalized.on
+          ? "part-toggle-cap part-toggle-cap--on"
+          : "part-toggle-cap",
         cx: 1,
         cy: 0,
         r: 0.85,

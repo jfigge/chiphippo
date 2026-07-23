@@ -138,6 +138,26 @@ export const PART_DEFS = Object.freeze(
       },
     },
     {
+      id: "sw-toggle",
+      kind: "discrete",
+      title: "Push button (toggle)",
+      blurb:
+        "Latching SPST push button — click to turn on, click again to " +
+        "turn off.",
+      group: "Switches",
+      footprint: Object.freeze({ offsets: Object.freeze([0, 2]) }),
+      pins: [
+        { n: 1, name: "1", role: "contact" },
+        { n: 2, name: "2", role: "contact" },
+      ],
+      normalizeParams(raw) {
+        return { on: raw?.on === true };
+      },
+      internalBridges(params) {
+        return params?.on ? [[1, 2]] : [];
+      },
+    },
+    {
       id: "led",
       kind: "discrete",
       title: "LED",

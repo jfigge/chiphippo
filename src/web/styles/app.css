@@ -772,6 +772,19 @@
   transform-box: fill-box;
 }
 
+.part-toggle-cap {
+  fill: var(--color-part-cap);
+  stroke: var(--color-part-inset);
+  stroke-width: 0.08;
+}
+
+.part-toggle-cap--on {
+  fill: var(--color-success);
+  transform: scale(0.88);
+  transform-origin: center;
+  transform-box: fill-box;
+}
+
 .part-led-leg {
   fill: var(--color-chip-leg);
 }

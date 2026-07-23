@@ -155,6 +155,7 @@ test("discretes get distinctive-shape symbols with pin terminals", () => {
   assert.equal(sw.shape, "switch");
   assert.equal(sw.terminals.length, 3); // common + two throws
   assert.equal(symbolFor("sw-push").shape, "button");
+  assert.equal(symbolFor("sw-toggle").shape, "button");
 });
 
 test("PSU and clock bricks get source symbols keyed by terminal id", () => {

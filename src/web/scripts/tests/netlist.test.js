@@ -161,6 +161,24 @@ test("a push button bridges only while pressed (transient part state)", () => {
   assert.equal(netAt(doc, "bb2.b10", pressed), netAt(doc, "bb2.b12", pressed));
 });
 
+test("a toggle button bridges while on (persisted part state)", () => {
+  const doc = fullKit();
+  doc.addComponent({
+    kind: "discrete",
+    ref: "sw-toggle",
+    board: "bb2",
+    anchor: "b10", // pins b10, b12
+  });
+  // Off: the two column-strips are separate.
+  assert.notEqual(netAt(doc, "bb2.b10"), netAt(doc, "bb2.b12"));
+  // Click on (persisted param): bridged, and stays bridged across rebuilds.
+  doc.setComponentParams("c1", { on: true });
+  assert.equal(netAt(doc, "bb2.b10"), netAt(doc, "bb2.b12"));
+  // Click again: back off.
+  doc.setComponentParams("c1", { on: false });
+  assert.notEqual(netAt(doc, "bb2.b10"), netAt(doc, "bb2.b12"));
+});
+
 // ── Chip pins are members, not conduits ──────────────────────────────────────
 
 test("chip pins join their hole's net with name+role, never pin-to-pin", () => {

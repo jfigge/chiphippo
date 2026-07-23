@@ -34,6 +34,15 @@ test("buildDiscreteSvg: slide switch knob follows params.pos", () => {
   assert.ok(x2 > x1, "knob moves right for pos 2");
 });
 
+test("buildDiscreteSvg: toggle button cap reflects params.on", () => {
+  resetDom();
+  const off = buildDiscreteSvg("sw-toggle", { on: false });
+  assert.ok(off.querySelector(".part-toggle-cap"));
+  assert.ok(!off.querySelector(".part-toggle-cap--on"));
+  const on = buildDiscreteSvg("sw-toggle", { on: true });
+  assert.ok(on.querySelector(".part-toggle-cap--on"));
+});
+
 test("buildDiscreteSvg: LED color class + flip mirrors the cathode flat", () => {
   resetDom();
   const green = buildDiscreteSvg("led", { color: "green" });
@@ -212,6 +221,20 @@ test("DiscreteView.updateParams rebuilds the SVG (slider flip)", () => {
     layer.querySelector(".part-slide-knob").getAttribute("x"),
   );
   assert.ok(after > before);
+});
+
+test("DiscreteView.updateParams rebuilds the SVG (toggle button on/off)", () => {
+  resetDom();
+  const layer = document.createElement("div");
+  document.body.append(layer);
+  const view = new DiscreteView(
+    layer,
+    { id: "c1", ref: "sw-toggle", params: { on: false } },
+    {},
+  );
+  assert.ok(!layer.querySelector(".part-toggle-cap--on"));
+  view.updateParams({ on: true });
+  assert.ok(layer.querySelector(".part-toggle-cap--on"));
 });
 
 test("PsuView: badge shows volts, terminals render, position in world px", () => {
