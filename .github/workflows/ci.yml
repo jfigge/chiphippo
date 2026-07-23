@@ -91,6 +91,23 @@ jobs:
           cache: npm
           cache-dependency-path: src/package-lock.json
 
+      # electron-builder downloads the Electron binary (~100 MB) fresh on each
+      # runner. Caching it means a transient CDN reset — the failure this guards
+      # against — can't sink the build once a prior run has populated the cache,
+      # and later runs skip the download entirely. Keyed on the lockfile so an
+      # Electron bump fetches once, then caches. Paths are the Linux defaults
+      # (the only active matrix leg); a re-enabled macOS/Windows leg caches to
+      # ~/Library/Caches or ~/AppData and would need its own path here.
+      - name: Cache Electron download
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cache/electron
+            ~/.cache/electron-builder
+          key: electron-${{ runner.os }}-${{ hashFiles('src/package-lock.json') }}
+          restore-keys: |
+            electron-${{ runner.os }}-
+
       # Windows runners lack make, rsync, and a make-compatible /bin/bash. MSYS2
       # provides all three so the existing `make build-win` recipe runs unchanged.
       - name: Set up MSYS2 (Windows)
