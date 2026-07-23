@@ -135,6 +135,16 @@ const PROBE_SVG =
   '<line x1="20" y1="4" x2="13" y2="11"/>' +
   '<path d="M20 4c1-1.5 3-1.5 3 0"/></svg>';
 
+/** Fit-to-screen ("locate") icon for the toolbar action that frames every
+ * board/part/wire on the desk — a crosshair/target glyph. */
+const LOCATE_SVG =
+  ICON_SVG_OPEN +
+  '<circle cx="12" cy="12" r="10"/>' +
+  '<line x1="22" y1="12" x2="18" y2="12"/>' +
+  '<line x1="6" y1="12" x2="2" y2="12"/>' +
+  '<line x1="12" y1="6" x2="12" y2="2"/>' +
+  '<line x1="12" y1="22" x2="12" y2="18"/></svg>';
+
 /** Build-guide (clipboard-list) icon for the Guide toolbar toggle. */
 const GUIDE_SVG =
   ICON_SVG_OPEN +
@@ -858,6 +868,18 @@ async function init() {
   });
   probeBtn.innerHTML = PROBE_SVG;
   toolbar.append(probeBtn);
+
+  // Fit to screen: frame every board/part/wire on the desk (find lost parts).
+  // A passive camera move, so it stays available while the circuit runs.
+  const locateBtn = el("button", {
+    class: "toolbar-icon-btn",
+    type: "button",
+    "aria-label": "Fit to screen",
+    title: "Fit to screen — frame every board, part, and wire",
+    onClick: () => controller.fitToScreen(),
+  });
+  locateBtn.innerHTML = LOCATE_SVG;
+  toolbar.append(locateBtn);
 
   // Logic analyzer: toggle the bottom-docked waveform panel. Like the guide it
   // is a passive viewer, so it stays available while the circuit runs.

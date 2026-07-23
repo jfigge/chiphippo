@@ -31,7 +31,8 @@
 /** World px per world unit at zoom 1.0 (a Full board ≈ 650 px wide at 100%). */
 export const PX_PER_UNIT = 10;
 
-export const ZOOM_MIN = 0.25;
+// 5% is also the floor "fit to screen" needs for a sprawling layout.
+export const ZOOM_MIN = 0.05;
 export const ZOOM_MAX = 4;
 
 /** One keyboard/button zoom step (~15% — exponential, so steps compose). */

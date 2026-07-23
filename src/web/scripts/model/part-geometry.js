@@ -33,6 +33,7 @@ import {
   partPinHoles,
   worldOfAddress,
 } from "./occupancy.js";
+import { boardRect } from "./mating.js";
 import { partDef } from "../catalog/index.js";
 
 /** How close (pitch units) a point must be to a pin/terminal to hit it. */
@@ -167,6 +168,39 @@ export function wiresInRect(boards, components, wires, rect) {
         inRect(rect, addressWorld(boards, components, w.to)),
     )
     .map((w) => w.id);
+}
+
+/**
+ * The bounding rect (world units) of everything on the desk — every board,
+ * every component's pins/terminals, and every wire endpoint. Null when the
+ * desk is empty, so a camera "fit" has nothing to frame.
+ */
+export function deskBounds(boards, components, wires) {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  const grow = (x, y) => {
+    if (x < minX) minX = x;
+    if (y < minY) minY = y;
+    if (x > maxX) maxX = x;
+    if (y > maxY) maxY = y;
+  };
+  for (const board of boards) {
+    const r = boardRect(board);
+    grow(r.x, r.y);
+    grow(r.x + r.width, r.y + r.height);
+  }
+  for (const comp of components) {
+    for (const p of componentPoints(boards, comp)) grow(p.x, p.y);
+  }
+  for (const wire of wires) {
+    const a = addressWorld(boards, components, wire.from);
+    const b = addressWorld(boards, components, wire.to);
+    if (a) grow(a.x, a.y);
+    if (b) grow(b.x, b.y);
+  }
+  return Number.isFinite(minX) ? { minX, minY, maxX, maxY } : null;
 }
 
 /**

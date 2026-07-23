@@ -31,7 +31,7 @@
 
 import { clear, el } from "../dom.js";
 import { PopupManager } from "../popup-manager.js";
-import { PX_PER_UNIT } from "../desk/desk-geometry.js";
+import { PX_PER_UNIT, clampZoom } from "../desk/desk-geometry.js";
 import {
   ROTATIONS,
   boardSize,
@@ -46,6 +46,7 @@ import {
   addressWorld,
   componentPoints,
   componentsInRect,
+  deskBounds,
   hoverHitAt,
   partPinsWorld,
   wiresInRect,
@@ -123,6 +124,10 @@ const HOVER_MIN_ZOOM = 0.75;
 
 /** Radius of the hover ring (pitch units — a shade over one hole). */
 const RING_RADIUS = 0.45;
+
+/** World-unit margin fitToScreen() leaves around the desk's bounds, so the
+    outermost board/part/wire doesn't sit flush against the viewport edge. */
+const FIT_PAD = 4;
 
 /** How close (pitch units) the cursor must press to a wire's endpoint cap to
     grab it for a drag-the-end gesture. A shade over one hole so the cap is
@@ -1524,6 +1529,31 @@ export class DeskController {
 
   toggleProbe() {
     this.#probe.toggle();
+  }
+
+  /** Centre + scale the camera so every board, part, and wire fits on
+      screen — how a lost component gets found again. */
+  fitToScreen() {
+    const bounds = deskBounds(
+      this.#doc.boards,
+      this.#doc.components,
+      this.#doc.wires,
+    );
+    if (!bounds) return;
+    const rect = this.#viewport.getBoundingClientRect();
+    const wPitch = bounds.maxX - bounds.minX + 2 * FIT_PAD;
+    const hPitch = bounds.maxY - bounds.minY + 2 * FIT_PAD;
+    let zoom = 1;
+    if (rect.width && rect.height && wPitch && hPitch) {
+      const zx = rect.width / (wPitch * PX_PER_UNIT);
+      const zy = rect.height / (hPitch * PX_PER_UNIT);
+      zoom = clampZoom(Math.min(zx, zy, 1));
+    }
+    this.#deskView.setCamera({
+      cx: (bounds.minX + bounds.maxX) / 2,
+      cy: (bounds.minY + bounds.maxY) / 2,
+      zoom,
+    });
   }
 
   // ── Schematic view (Feature 150) ─────────────────────────────────────────

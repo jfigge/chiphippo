@@ -24,6 +24,7 @@ import {
   addressWorld,
   componentsInRect,
   connectionPointAt,
+  deskBounds,
   hoverHitAt,
   partPinsWorld,
   wireEndNear,
@@ -124,4 +125,30 @@ test("hoverHitAt: a brick terminal is hoverable and labelled with its voltage", 
   assert.equal(hit.key, "psu1#+");
   assert.equal(hit.address, "psu1.+");
   assert.match(hit.label, /\+5 V/);
+});
+
+test("deskBounds: null on an empty desk", () => {
+  assert.equal(deskBounds([], [], []), null);
+});
+
+test("deskBounds: frames just the board when nothing else exists", () => {
+  // pins-full is 64×13 pitch units at its origin.
+  assert.deepEqual(deskBounds(BOARDS, [], []), {
+    minX: 0,
+    minY: 0,
+    maxX: 64,
+    maxY: 13,
+  });
+});
+
+test("deskBounds: grows past the board for a brick's terminals and a wire to it", () => {
+  // The PSU sits at x 80 with terminals at +2/+6 — its "-" terminal (86, 4)
+  // is the furthest point right of the board's own edge (64).
+  const wires = [{ id: "w1", from: "bb1.a1", to: "psu1.+" }];
+  assert.deepEqual(deskBounds(BOARDS, [PSU], wires), {
+    minX: 0,
+    minY: 0,
+    maxX: 86,
+    maxY: 13,
+  });
 });
