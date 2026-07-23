@@ -173,17 +173,6 @@ dmg: build-setup build-install
 	@echo "  → $(BUILD_DIR)/src/dist/"
 	@echo "--------------------------------"
 
-# Full unsigned macOS release: every mac target from package.json's build.mac
-# (dmg + zip, arm64 + x64). No code-signing or notarization — UNSIGNED_ENV
-# strips signing from the environment and -c.mac.notarize=false forces it off,
-# so the artifacts are distributable-but-unsigned. Signed/store builds are the
-# packaging backlog's job.
-release: build-setup build-install
-	@echo "Building unsigned macOS release artifacts (dmg + zip, arm64 + x64)…"
-	@cd $(BUILD_DIR)/src; env $(UNSIGNED_ENV) npx electron-builder --mac --publish never -c.mac.notarize=false
-	@echo "  → $(BUILD_DIR)/src/dist/"
-	@echo "--------------------------------"
-
 build-setup:
 	@echo "Preparing build directory..."
 	@rm -rf $(BUILD_DIR)/src || true
@@ -226,6 +215,85 @@ dist-win: build-setup build-install
 	@echo "  → $(BUILD_DIR)/src/dist/"
 	@echo "--------------------------------"
 
+# ─── Release ──────────────────────────────────────────────────────────────────
+# Cut a release (Model A — "shipped pointer"):
+#   validate -> preflight (on main, clean, in sync with origin) -> gate on tests
+#   -> bump src/package.json on main -> fast-forward `release` to main -> tag
+#   -> atomic push of main + release + tag (the tag push triggers the build).
+# `release` stays a strict fast-forward of `main`, so history is linear and the
+# branch always points at exactly what was last shipped. The tag push is what
+# fires .github/workflows/release.yml (which builds + publishes the installers).
+# Usage:  make release VERSION=1.2.3
+MAIN_BRANCH    ?= main
+RELEASE_BRANCH ?= release
+
+release:
+	@set -e; \
+	NEW="$(VERSION)"; \
+	if ! [[ "$$NEW" =~ ^[0-9]+\.[0-9]+\.[0-9]+$$ ]]; then \
+		echo "Error: version must be in x.y.z format (got '$$NEW')."; \
+		echo "Usage: make release VERSION=1.2.3"; exit 1; \
+	fi; \
+	ORIG=$$(git rev-parse --abbrev-ref HEAD); \
+	trap 'git checkout "$$ORIG" --quiet 2>/dev/null || true' EXIT; \
+	if [ "$$ORIG" != "$(MAIN_BRANCH)" ]; then \
+		echo "Error: release must be run from '$(MAIN_BRANCH)' (currently on '$$ORIG')."; exit 1; \
+	fi; \
+	if ! git diff-index --quiet HEAD --; then \
+		echo "Error: working tree has uncommitted changes; commit or stash first."; exit 1; \
+	fi; \
+	CURRENT=$$(cd $(SRC_DIR) && node -p "require('./package.json').version"); \
+	if [ "$$NEW" = "$$CURRENT" ]; then \
+		echo "Error: new version equals the current version ($$CURRENT)."; exit 1; \
+	fi; \
+	echo "Fetching origin..."; \
+	git fetch --quiet --tags origin; \
+	if git rev-parse -q --verify "refs/tags/v$$NEW" >/dev/null; then \
+		echo "Error: tag v$$NEW already exists."; exit 1; \
+	fi; \
+	if ! git merge-base --is-ancestor origin/$(MAIN_BRANCH) $(MAIN_BRANCH); then \
+		echo "Error: local '$(MAIN_BRANCH)' is behind/diverged from origin; pull or rebase first."; exit 1; \
+	fi; \
+	echo ""; \
+	echo "  Current version: $$CURRENT"; \
+	echo "  New version:     $$NEW"; \
+	echo "  Flow: bump on $(MAIN_BRANCH) -> ff '$(RELEASE_BRANCH)' -> tag v$$NEW -> push (triggers build)"; \
+	echo ""; \
+	read -p "Run tests and cut release v$$NEW? [y/N] " ans; \
+	if [[ "$$ans" != "y" && "$$ans" != "Y" ]]; then echo "Aborted."; exit 1; fi; \
+	echo "Running test suite..."; \
+	if ! $(MAKE) test; then echo "Tests failed; aborting release (no changes made)."; exit 1; fi; \
+	echo "Bumping version on $(MAIN_BRANCH)..."; \
+	(cd $(SRC_DIR) && npm version "$$NEW" --no-git-tag-version >/dev/null); \
+	sed -i.bak -E \
+		-e "s|(id=\"hero-version\">)v[0-9]+\.[0-9]+\.[0-9]+|\1v$$NEW|" \
+		-e "s|(id=\"dl-version\">)[0-9]+\.[0-9]+\.[0-9]+|\1$$NEW|" \
+		-e "s|(id=\"footer-version\">)v[0-9]+\.[0-9]+\.[0-9]+|\1v$$NEW|" \
+		website/index.html && rm -f website/index.html.bak; \
+	git add src/package.json src/package-lock.json website/index.html; \
+	git commit -m "Release v$$NEW" >/dev/null; \
+	echo "Fast-forwarding $(RELEASE_BRANCH) to $(MAIN_BRANCH)..."; \
+	if git show-ref --verify --quiet refs/remotes/origin/$(RELEASE_BRANCH); then \
+		git checkout -B $(RELEASE_BRANCH) origin/$(RELEASE_BRANCH) --quiet; \
+	elif git show-ref --verify --quiet refs/heads/$(RELEASE_BRANCH); then \
+		git checkout $(RELEASE_BRANCH) --quiet; \
+	else \
+		git checkout -b $(RELEASE_BRANCH) --quiet; \
+	fi; \
+	git merge --ff-only $(MAIN_BRANCH) --quiet; \
+	git tag -a "v$$NEW" -m "Release v$$NEW"; \
+	echo "Pushing $(MAIN_BRANCH) + $(RELEASE_BRANCH) + tag v$$NEW (atomic)..."; \
+	if ! git push --atomic origin $(MAIN_BRANCH) $(RELEASE_BRANCH) "v$$NEW"; then \
+		echo "Push failed. Local commit/tag were created but nothing was pushed."; \
+		echo "Retry with: git push --atomic origin $(MAIN_BRANCH) $(RELEASE_BRANCH) v$$NEW"; \
+		exit 1; \
+	fi; \
+	echo "Released v$$NEW — the Release workflow will build and publish the installers."; \
+	SLUG=$$(git remote get-url origin 2>/dev/null | sed -E 's#^.*github\.com[:/]##; s#\.git$$##'); \
+	if [ -n "$$SLUG" ]; then \
+		echo "  Release: https://github.com/$$SLUG/releases/tag/v$$NEW"; \
+	fi
+
 # ─── Website ──────────────────────────────────────────────────────────────────
 # Regenerate website/versions.json from the GitHub Releases API so the download
 # buttons + version history track real release assets. Needs a token to avoid the
@@ -262,8 +330,8 @@ help:
 	@echo "    build-linux   Package smoke-test for Linux (dir only, unsigned)"
 	@echo "    build-win     Package smoke-test for Windows (dir only, unsigned)"
 	@echo "    dmg           Build unsigned macOS .dmg (default 'make')"
-	@echo "    release       Build all unsigned macOS artifacts (dmg + zip, arm64/x64)"
 	@echo "    dist          Build installers for all platforms (host builds its own)"
+	@echo "    release       Bump version, tag, and push to trigger a release (VERSION=x.y.z)"
 	@echo "    dist-mac      Build macOS installer (dmg + zip; signed if a cert is present)"
 	@echo "    dist-linux    Build Linux installer (AppImage + deb)"
 	@echo "    dist-win      Build Windows installer (nsis + portable)"
