@@ -45,6 +45,7 @@ export class ProbeInspector {
   #onStateChange; // ({ armed }) → void
   #onNameNet; // (address, name, staleAddresses) → void
   #onClearNetNames; // (addresses) → void
+  #onAddToScope; // (address) → void — pin the probed net as an analyzer channel
   #coord; // { cancelPlacement, disarmWireTool, deselect, hideHover }
 
   #netlist;
@@ -65,6 +66,7 @@ export class ProbeInspector {
     onStateChange,
     onNameNet,
     onClearNetNames,
+    onAddToScope,
     coordinate,
     netlist,
   }) {
@@ -77,6 +79,7 @@ export class ProbeInspector {
     this.#onStateChange = onStateChange;
     this.#onNameNet = onNameNet;
     this.#onClearNetNames = onClearNetNames;
+    this.#onAddToScope = onAddToScope;
     this.#coord = coordinate;
 
     this.#netlist = netlist ?? new NetlistCache(doc);
@@ -278,6 +281,13 @@ export class ProbeInspector {
       items.push({
         label: "Clear name",
         onSelect: () => this.#clearName(netId),
+      });
+    }
+    if (this.#onAddToScope) {
+      items.push({ separator: true });
+      items.push({
+        label: "Add to analyzer",
+        onSelect: () => this.#onAddToScope(address),
       });
     }
     PopupManager.menu({ x: e.clientX, y: e.clientY, items });

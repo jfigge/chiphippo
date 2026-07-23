@@ -26,13 +26,19 @@
 // Digital abstraction with drive strengths (resolve.js): supply beats chip
 // output; a clock source drives at output strength; Z contributes nothing.
 //
-// Two-phase tick (the standard synchronous trick — all edges observed at once,
-// then the combinational cloud settles):
+// Tick (Feature 100, extended for ripple in Feature 220):
 //   ① pre-settle with the OLD sequential state (propagates the new clock phase
 //      + any input change to every pin),
-//   ② sample each sequential chip's inputs, detect its edges vs the previous
-//      tick, and compute its next state via the def's `step`,
-//   ③ post-settle with the NEW state driving sequential outputs.
+//   ② sample each sequential chip's inputs and `step` it, then RE-settle and
+//      repeat until no chip's state changes (a bounded fixpoint) — so an
+//      output→clock ripple (QA→CKB) cascades WITHIN one tick.
+//   ③ the loop's final settle is the post-settle (NEW state drives outputs).
+//
+// Edge safety across the inner loop: every step detects edges against the
+// tick's ENTRY inputs (`prevPinLevels`) plus a per-tick consumed-edge set — the
+// external clock edge is consumed on the first pass (synchronous parts step
+// exactly once, byte-for-byte the old two-phase result), yet a NEW internal
+// edge that a just-updated output creates is still observed (ripple cascades).
 
 import { H, L, Z, X } from "./levels.js";
 import {
@@ -54,6 +60,14 @@ import { formatAddress } from "../model/breadboard.js";
 
 /** Settle iteration cap — beyond this a still-changing net is oscillating. */
 export const MAX_ITERATIONS = 200;
+
+/**
+ * Sequential-step fixpoint cap within a single `tick` (Feature 220). A ripple
+ * chain settles in ~depth iterations; beyond this a self-clocking loop is
+ * oscillating — its still-changing sequential nets are marked `X` and reported,
+ * mirroring the combinational settle cap.
+ */
+export const MAX_TICK_ITERATIONS = 200;
 
 /** Chip power/health states. Only "ok" chips drive their outputs. */
 export const CHIP_STATUS = Object.freeze({
@@ -397,11 +411,45 @@ export function settle({
   return assemble(ctx, solve(ctx, warmStart, state, clockPhase, images));
 }
 
+/** Structural equality for plain-data sequential states (arrays/objects/scalars). */
+function sameState(a, b) {
+  if (a === b) return true;
+  if (
+    typeof a !== "object" ||
+    typeof b !== "object" ||
+    a === null ||
+    b === null
+  ) {
+    return false;
+  }
+  if (Array.isArray(a) !== Array.isArray(b)) return false;
+  const ka = Object.keys(a);
+  const kb = Object.keys(b);
+  if (ka.length !== kb.length) return false;
+  for (const k of ka) if (!sameState(a[k], b[k])) return false;
+  return true;
+}
+
+/** Sample a chip's input pins from a settled net-level map (Z when floating). */
+function samplePins(c, levels) {
+  const raw = new Map();
+  for (const [pin, net] of c.pinNet) {
+    raw.set(pin, net ? (levels.get(net) ?? Z) : Z);
+  }
+  return inputLevels(c.def, raw);
+}
+
 /**
- * Advance the circuit one synchronous tick: pre-settle (old state) → sample +
- * step every sequential chip → post-settle (new state). A tick fires on a
- * clock transition OR any input event; edges are detected from the pre-settle
- * levels versus `prevPinLevels` (the previous tick's sampled inputs).
+ * Advance the circuit one synchronous tick: pre-settle (old state), then iterate
+ * sample→step→re-settle to a state fixpoint so an output→clock ripple cascades
+ * within the tick, ending on the post-settle of the final state. A tick fires on
+ * a clock transition OR any input event; each inner step detects edges against
+ * the PREVIOUS inner iteration's sampled inputs (seeded, on the first pass, from
+ * the tick's entry inputs `prevPinLevels`). An external clock net is fixed at
+ * `clockPhase` for the whole tick, so its edge is seen once (byte-for-byte the
+ * old two-phase result for synchronous designs); a clock net driven by another
+ * chip's output re-transitions as that output updates, so a NEW internal edge
+ * cascades the ripple (Feature 220).
  *
  * @param {object} opts
  * @param {{boards:Array, components:Array, wires:Array}} opts.document
@@ -429,42 +477,107 @@ export function tick({
 
   // ① Pre-settle: propagate the new clock phase / input changes with the OLD
   //    sequential state holding.
-  const pre = solve(ctx, warmStart, state, clockPhase, images);
+  let solved = solve(ctx, warmStart, state, clockPhase, images);
 
-  // ② Sample + step: read each sequential chip's inputs from the pre-settled
-  //    levels, detect edges vs the previous tick, compute the next state. A
-  //    memory chip has no clocked state — instead it REPORTS a write op for the
-  //    controller to apply after the tick (the engine never mutates the image).
-  const newState = new Map(state);
-  const pinLevels = new Map();
-  const memWrites = [];
+  // ② Sequential-step fixpoint: sample each sequential chip from the current
+  //    settled levels, `step` it (edges vs the previous inner iteration), and
+  //    re-settle around the new state — repeating until no chip's state changes.
+  //    The first pass reproduces the old two-phase result; a further pass only
+  //    fires a NEW edge that a just-updated output created (the ripple cascade).
+  // Seed the state with every sequential chip's current-or-initial state so the
+  // returned map always has an entry per chip (a no-change pass returns this),
+  // and seed the edge-detection "prev" from the tick's entry inputs.
+  const curStateSeed = new Map(state);
+  const prevIns = new Map(); // compId → previous inner iteration's sampled inputs
   for (const c of ctx.chips) {
-    if (!c.sequential && !c.memory) continue;
-    const raw = new Map();
-    for (const [pin, net] of c.pinNet) {
-      raw.set(pin, net ? (pre.levels.get(net) ?? Z) : Z);
+    if (!c.sequential) continue;
+    if (!curStateSeed.has(c.comp.id)) {
+      curStateSeed.set(c.comp.id, initialState(c.def));
     }
-    const ins = inputLevels(c.def, raw);
-    pinLevels.set(c.comp.id, ins);
-    if (c.memory) {
-      if (c.status === CHIP_STATUS.OK) {
-        const op = memoryWrite(c.def, ins, images.get(c.comp.id));
-        if (op) memWrites.push({ compId: c.comp.id, ...op });
-      }
-      continue; // memory carries no sequential state to advance
+    const entry = prevPinLevels.get(c.comp.id);
+    if (entry) prevIns.set(c.comp.id, entry);
+  }
+  let curState = curStateSeed;
+  const finalIns = new Map(); // compId → last-sampled input levels
+  let iterations = 0;
+  let oscillating = false;
+  let lastChanged = new Set();
+  for (;;) {
+    const changed = new Set();
+    const nextState = new Map(curState);
+    const sampled = new Map();
+    for (const c of ctx.chips) {
+      if (!c.sequential) continue;
+      const ins = samplePins(c, solved.levels);
+      sampled.set(c.comp.id, ins);
+      finalIns.set(c.comp.id, ins);
+      const current = curState.get(c.comp.id) ?? initialState(c.def);
+      const next =
+        c.status === CHIP_STATUS.OK
+          ? stepChip(c.def, current, ins, prevIns.get(c.comp.id) ?? null)
+          : current; // inert chip holds; drives nothing
+      if (!sameState(next, current)) changed.add(c.comp.id);
+      nextState.set(c.comp.id, next);
     }
-    const current = state.get(c.comp.id) ?? initialState(c.def);
-    if (c.status !== CHIP_STATUS.OK) {
-      newState.set(c.comp.id, current); // inert chip holds; drives nothing
-      continue;
+    // Advance the edge-detection baseline to this iteration's samples: a pin
+    // that has reached its stable level shows no edge next pass (so the external
+    // clock fires once), while a still-rippling output keeps producing edges.
+    for (const [id, ins] of sampled) prevIns.set(id, ins);
+    if (changed.size === 0) break; // state fixpoint reached
+    iterations++;
+    curState = nextState;
+    lastChanged = changed;
+    if (iterations >= MAX_TICK_ITERATIONS) {
+      oscillating = true;
+      break;
     }
-    newState.set(
-      c.comp.id,
-      stepChip(c.def, current, ins, prevPinLevels.get(c.comp.id) ?? null),
-    );
+    solved = solve(ctx, solved.levels, curState, clockPhase, images);
   }
 
-  // ③ Post-settle: let the combinational cloud settle around the NEW state.
-  const post = solve(ctx, pre.levels, newState, clockPhase, images);
-  return assemble(ctx, post, { state: newState, pinLevels, memWrites });
+  // Memory: no clocked state — read its inputs from the FINAL settled levels and
+  // REPORT any write op for the controller to apply (the engine never mutates
+  // the image). Populate its pin levels for parity with sequential chips.
+  const memWrites = [];
+  for (const c of ctx.chips) {
+    if (!c.memory) continue;
+    const ins = samplePins(c, solved.levels);
+    finalIns.set(c.comp.id, ins);
+    if (c.status === CHIP_STATUS.OK) {
+      const op = memoryWrite(c.def, ins, images.get(c.comp.id));
+      if (op) memWrites.push({ compId: c.comp.id, ...op });
+    }
+  }
+
+  // A self-clocking ring that never settles: mark the still-changing sequential
+  // nets `X` and report oscillation, exactly as the combinational settle does.
+  const extraWarnings = [];
+  if (oscillating) {
+    const nets = new Set();
+    for (const compId of lastChanged) {
+      const c = ctx.chips.find((x) => x.comp.id === compId);
+      if (!c) continue;
+      const outs = outputsOf(
+        c.def,
+        curState.get(compId),
+        finalIns.get(compId) ?? new Map(),
+      );
+      for (const pin of outs.keys()) {
+        const net = c.pinNet.get(pin);
+        if (net) nets.add(net);
+      }
+    }
+    for (const id of nets) solved.levels.set(id, X);
+    if (nets.size) extraWarnings.push({ type: "oscillation", nets: [...nets] });
+  }
+
+  const result = assemble(ctx, solved, {
+    state: curState,
+    pinLevels: finalIns,
+    memWrites,
+  });
+  if (extraWarnings.length) {
+    result.warnings = dedupe([...result.warnings, ...extraWarnings]);
+    result.settled = false;
+  }
+  return result;
 }

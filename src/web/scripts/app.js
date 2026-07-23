@@ -29,6 +29,7 @@ import { DeskController } from "./components/desk-controller.js";
 import { SchematicView } from "./components/schematic-view.js";
 import { PalettePanel } from "./components/palette-panel.js";
 import { BuildGuide } from "./components/build-guide.js";
+import { ScopeView } from "./components/scope-view.js";
 import { SimController, SPEEDS } from "./components/sim-controller.js";
 import { NetlistCache } from "./components/netlist-cache.js";
 import { MemoryBridge } from "./components/memory-bridge.js";
@@ -48,6 +49,22 @@ const DOC_SAVE_DEBOUNCE_MS = 1000;
 
 /** Speed-selector labels (keyed by the SimController multiplier). */
 const SPEED_LABELS = { 0.25: "×¼", 1: "×1", 4: "×4" };
+
+/**
+ * The modeled duration of one engine tick (a clock half-period), for the logic
+ * analyzer's Δ-time readout — the fastest free-running clock at the current
+ * speed. Null when there is no periodic clock (manual/step: only Δticks shown).
+ */
+function tickMsFor(deskDoc, sim) {
+  if (!sim) return null;
+  const hzList = deskDoc
+    .toJSON()
+    .components.filter((c) => c.kind === "clock")
+    .map((c) => c.params?.hz)
+    .filter((hz) => typeof hz === "number" && hz > 0);
+  if (!hzList.length) return null;
+  return 1000 / (2 * Math.max(...hzList) * sim.speed);
+}
 
 /** The bus-width presets behind the Bus split-button's combo segment: the menu
     label, the bus name it sets (the grammar the tool parses), and the short
@@ -471,6 +488,27 @@ async function init() {
   });
   buildGuide.setVisible(settings.guideOpen === true);
 
+  // Logic analyzer (Feature 210): a bottom-docked waveform panel that records
+  // the sim-state stream into timing diagrams. Its channel mutations route
+  // through the controller (undo/redo), and it stays live while the sim runs.
+  let scopeBtn = null;
+  const scopeView = new ScopeView(app, {
+    deskDoc,
+    netlist: netlistCache,
+    onVisibilityChange: (visible) => {
+      scopeBtn?.classList.toggle("toolbar-btn--active", visible);
+      scopeBtn?.setAttribute("aria-pressed", String(visible));
+      bridge.settings
+        .set({ scopeOpen: visible })
+        .catch((err) => console.error("[renderer] settings:set failed:", err));
+    },
+    onAddChannel: (kind, ref) => controller?.addScopeChannel(kind, ref),
+    onRemoveChannel: (id) => controller?.removeScopeChannel(id),
+    onMoveChannel: (id, index) => controller?.moveScopeChannel(id, index),
+    tickMs: () => tickMsFor(deskDoc, sim),
+  });
+  scopeView.setVisible(settings.scopeOpen === true);
+
   const deskView = new DeskView(desk, {
     camera: settings.viewport,
     onViewportChange: (camera) => {
@@ -511,6 +549,11 @@ async function init() {
     onWireStateChange,
     onBusStateChange,
     onProbeStateChange,
+    // Probe context-menu → pin the net as an analyzer channel (and reveal it).
+    onAddNetToAnalyzer: (address) => {
+      scopeView.addNetChannel(address);
+      scopeView.setVisible(true);
+    },
     onReplaceChip: (id) => sim?.replaceChip(id),
     onClockToggle: (id) => sim?.manualToggle(id),
     // Double-click any part → open its floating pin/terminal-assignments OS
@@ -733,6 +776,19 @@ async function init() {
   });
   guideBtn.classList.toggle("toolbar-btn--active", buildGuide.visible);
   toolbar.append(guideBtn);
+
+  // Logic analyzer: toggle the bottom-docked waveform panel. Like the guide it
+  // is a passive viewer, so it stays available while the circuit runs.
+  scopeBtn = el("button", {
+    class: "toolbar-btn",
+    type: "button",
+    text: "Analyzer",
+    title: "Logic analyzer — record and view signal waveforms over time",
+    "aria-pressed": String(scopeView.visible),
+    onClick: () => scopeView.toggle(),
+  });
+  scopeBtn.classList.toggle("toolbar-btn--active", scopeView.visible);
+  toolbar.append(scopeBtn);
 
   // ── Simulation transport (Feature 90/100): Run/Stop, Pause, Step, speed ──
   const notifications = new NotificationStack(document.body);

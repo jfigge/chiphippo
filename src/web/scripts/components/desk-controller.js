@@ -211,6 +211,7 @@ export class DeskController {
     onWireStateChange,
     onBusStateChange,
     onProbeStateChange,
+    onAddNetToAnalyzer,
     onReplaceChip,
     onClockToggle,
     onOpenPinout,
@@ -300,6 +301,9 @@ export class DeskController {
       onStateChange: onProbeStateChange,
       onNameNet: (address, name, stale) => this.nameNet(address, name, stale),
       onClearNetNames: (addresses) => this.clearNetNames(addresses),
+      onAddToScope: onAddNetToAnalyzer
+        ? (address) => onAddNetToAnalyzer(address)
+        : null,
       coordinate: {
         cancelPlacement: () => this.cancelPlacement(),
         disarmWireTool: () => this.disarmWireTool(),
@@ -1530,6 +1534,54 @@ export class DeskController {
       if (this.#doc.clearNetName(a)) changed = true;
     }
     if (changed) this.#emitDocChanged("clear net name");
+  }
+
+  // ── Logic-analyzer channels (Feature 210) ────────────────────────────────
+  // The instrument setup is document data, so its mutations ride the ONE
+  // undo/redo + autosave seam like everything else. Unlike circuit edits these
+  // are NOT gated on `#editingLocked` — the analyzer stays usable while running.
+
+  /** Add a channel bound to a net address or a bus id (deduped). Returns its id. */
+  addScopeChannel(kind, ref, extra = {}) {
+    if (this.#doc.hasScopeChannel(kind, ref)) return null;
+    let channel;
+    try {
+      channel = this.#doc.addScopeChannel(kind, ref, extra);
+    } catch {
+      return null; // bad kind/ref — leave the document untouched
+    }
+    this.#emitDocChanged("add analyzer channel");
+    return channel.id;
+  }
+
+  /** Remove an analyzer channel. */
+  removeScopeChannel(id) {
+    try {
+      this.#doc.removeScopeChannel(id);
+    } catch {
+      return;
+    }
+    this.#emitDocChanged("remove analyzer channel");
+  }
+
+  /** Reorder an analyzer channel to a new index. */
+  moveScopeChannel(id, index) {
+    try {
+      this.#doc.moveScopeChannel(id, index);
+    } catch {
+      return;
+    }
+    this.#emitDocChanged("reorder analyzer channel");
+  }
+
+  /** Patch an analyzer channel's label / color. */
+  updateScopeChannel(id, patch) {
+    try {
+      this.#doc.updateScopeChannel(id, patch);
+    } catch {
+      return;
+    }
+    this.#emitDocChanged("update analyzer channel");
   }
 
   // ── Annotations: labels & notes (Feature 120) ────────────────────────────

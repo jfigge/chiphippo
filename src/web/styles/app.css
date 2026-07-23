@@ -3107,3 +3107,212 @@ textarea.annotation-editor {
   font-family: var(--font-sans);
   user-select: none;
 }
+
+/* ── Logic analyzer (Feature 210) ────────────────────────────────────────────
+   A bottom-docked waveform panel: a header, a channel gutter, and a
+   horizontally-scrolling SVG lanes surface. Colors come from the sim-level
+   tokens so waveforms match the desk/schematic tinting. */
+.scope-panel {
+  display: flex;
+  flex-direction: column;
+  height: 280px;
+  flex: 0 0 auto;
+  background: var(--color-mantle);
+  border-top: 1px solid var(--color-crust);
+  min-height: 0;
+}
+
+.scope-panel[hidden] {
+  display: none;
+}
+
+.scope-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border-bottom: 1px solid var(--color-crust);
+  flex: 0 0 auto;
+}
+
+.scope-title {
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--color-text);
+  flex: 0 0 auto;
+}
+
+.scope-tools {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex: 1 1 auto;
+}
+
+.scope-sep {
+  width: 1px;
+  height: 16px;
+  background: var(--color-overlay);
+  margin: 0 var(--space-1);
+}
+
+.scope-delta {
+  margin-left: auto;
+  font: 11px / 1 var(--font-mono);
+  color: var(--color-subtext);
+  white-space: nowrap;
+}
+
+.scope-btn {
+  padding: 2px var(--space-2);
+  font-size: 11px;
+  color: var(--color-text);
+  background: var(--color-surface-0);
+  border: 1px solid var(--color-overlay);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.scope-btn:hover {
+  background: var(--color-surface-1);
+}
+
+.scope-close {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--color-muted);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.scope-close:hover {
+  color: var(--color-text);
+  background: var(--color-surface-0);
+}
+
+.scope-body {
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.scope-gutter {
+  width: 210px;
+  flex: 0 0 auto;
+  overflow: hidden;
+  border-right: 1px solid var(--color-crust);
+  background: var(--color-mantle);
+}
+
+.scope-chan {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0 var(--space-2);
+  box-sizing: border-box;
+  border-bottom: 1px solid var(--color-crust);
+}
+
+.scope-chan-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  flex: 0 0 auto;
+}
+
+.scope-chan-name {
+  flex: 1 1 auto;
+  font-size: 11px;
+  color: var(--color-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.scope-chan-value {
+  font: 11px / 1 var(--font-mono);
+  color: var(--color-subtext);
+  min-width: 4ch;
+  text-align: right;
+}
+
+.scope-chan-ctl {
+  display: flex;
+  gap: 2px;
+  flex: 0 0 auto;
+}
+
+.scope-mini {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--color-muted);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.scope-mini:hover:not(:disabled) {
+  color: var(--color-text);
+  background: var(--color-surface-0);
+}
+
+.scope-mini:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.scope-mini--del:hover:not(:disabled) {
+  color: var(--color-danger);
+}
+
+.scope-lanes {
+  flex: 1 1 auto;
+  overflow: auto;
+  background: var(--color-base);
+  cursor: crosshair;
+}
+
+.scope-svg {
+  display: block;
+}
+
+.scope-empty {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  flex-wrap: wrap;
+  padding: var(--space-4);
+  font-size: 12px;
+  color: var(--color-muted);
+  text-align: center;
+}
+
+.scope-empty[hidden] {
+  display: none;
+}
+
+.scope-body[hidden] {
+  display: none;
+}
+
+.scope-link {
+  padding: 0;
+  font: inherit;
+  color: var(--color-info);
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-decoration: underline;
+}

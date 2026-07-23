@@ -35,6 +35,7 @@ test("a fresh DeskDoc serializes to the empty document shape", () => {
     buses: [],
     netNames: [],
     annotations: [],
+    scopeChannels: [],
     nextBoardId: 1,
     nextGroupId: 1,
     nextComponentId: 1,
@@ -44,6 +45,7 @@ test("a fresh DeskDoc serializes to the empty document shape", () => {
     nextWireId: 1,
     nextBusId: 1,
     nextAnnotationId: 1,
+    nextScopeChannelId: 1,
   });
   assert.deepEqual(new DeskDoc(null).toJSON(), emptyDocument());
 });
@@ -1685,4 +1687,88 @@ test("removing an anchored part detaches the annotation, keeping its spot", () =
   const still = doc.getAnnotation(label.id);
   assert.equal(still.anchor, undefined); // detached
   assert.deepEqual({ x: still.x, y: still.y }, { x: 2, y: 2 }); // stayed put
+});
+
+// ── Scope channels (Feature 210) ─────────────────────────────────────────────
+
+test("addScopeChannel: fresh sc<n> ids, kind/ref, and dedupe check", () => {
+  const doc = new DeskDoc(null);
+  const a = doc.addScopeChannel("net", "bb1.f12", { color: "#0af" });
+  const b = doc.addScopeChannel("bus", "bus1", { label: "ADDR" });
+  assert.equal(a.id, "sc1");
+  assert.equal(b.id, "sc2");
+  assert.deepEqual(
+    doc.scopeChannels.map((c) => c.id),
+    ["sc1", "sc2"],
+  );
+  assert.equal(a.kind, "net");
+  assert.equal(a.color, "#0af");
+  assert.equal(b.label, "ADDR");
+  assert.ok(doc.hasScopeChannel("net", "bb1.f12"));
+  assert.ok(!doc.hasScopeChannel("net", "bb1.f13"));
+  // Survives a JSON round-trip with the counter reconciled past the max id.
+  const round = normalizeDocument(doc.toJSON());
+  assert.equal(round.scopeChannels.length, 2);
+  assert.equal(round.nextScopeChannelId, 3);
+});
+
+test("addScopeChannel: rejects a bad kind or empty ref", () => {
+  const doc = new DeskDoc(null);
+  assert.throws(() => doc.addScopeChannel("wat", "bb1.a1"), {
+    code: "INVALID_KIND",
+  });
+  assert.throws(() => doc.addScopeChannel("net", ""), { code: "INVALID_ARG" });
+});
+
+test("updateScopeChannel: patches label/color, clears with null", () => {
+  const doc = new DeskDoc(null);
+  const a = doc.addScopeChannel("net", "bb1.f12", {
+    label: "Q",
+    color: "#f00",
+  });
+  const u = doc.updateScopeChannel(a.id, { label: "Q0" });
+  assert.equal(u.label, "Q0");
+  assert.equal(u.color, "#f00");
+  const cleared = doc.updateScopeChannel(a.id, { color: null, label: "" });
+  assert.equal(cleared.color, undefined);
+  assert.equal(cleared.label, undefined);
+  assert.throws(() => doc.updateScopeChannel("sc99", { label: "x" }), {
+    code: "NOT_FOUND",
+  });
+});
+
+test("removeScopeChannel + moveScopeChannel reorder", () => {
+  const doc = new DeskDoc(null);
+  const a = doc.addScopeChannel("net", "bb1.a1");
+  const b = doc.addScopeChannel("net", "bb1.a2");
+  const c = doc.addScopeChannel("net", "bb1.a3");
+  doc.moveScopeChannel(c.id, 0); // move last to front
+  assert.deepEqual(
+    doc.scopeChannels.map((x) => x.id),
+    [c.id, a.id, b.id],
+  );
+  doc.removeScopeChannel(a.id);
+  assert.deepEqual(
+    doc.scopeChannels.map((x) => x.id),
+    [c.id, b.id],
+  );
+  assert.throws(() => doc.removeScopeChannel(a.id), { code: "NOT_FOUND" });
+});
+
+test("normalizeDocument: drops junk scope channels and advances the counter", () => {
+  const doc = normalizeDocument({
+    scopeChannels: [
+      { id: "sc2", kind: "net", ref: "bb1.f12", color: "#0af" },
+      { id: "sc3", kind: "bus", ref: "bus1" },
+      { id: "sc4", kind: "wat", ref: "bb1.a1" }, // bad kind → dropped
+      { id: "sc5", kind: "net", ref: "" }, // empty ref → dropped
+      { id: "junk", kind: "net", ref: "bb1.a1" }, // bad id → dropped
+      { id: "sc2", kind: "net", ref: "dup" }, // duplicate id → dropped
+    ],
+  });
+  assert.deepEqual(
+    doc.scopeChannels.map((c) => c.id),
+    ["sc2", "sc3"],
+  );
+  assert.equal(doc.nextScopeChannelId, 4); // past sc3
 });

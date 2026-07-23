@@ -145,6 +145,10 @@ const LCD_ID_RE = /^lcd([1-9]\d*)$/;
 const WIRE_ID_RE = /^w([1-9]\d*)$/;
 const ANNOTATION_ID_RE = /^an([1-9]\d*)$/;
 const BUS_ID_RE = /^bus([1-9]\d*)$/;
+const SCOPE_CHANNEL_ID_RE = /^sc([1-9]\d*)$/;
+
+/** Logic-analyzer channel kinds (Feature 210): a single net or a whole bus. */
+const SCOPE_CHANNEL_KINDS = new Set(["net", "bus"]);
 
 /** Desk-level bricks (no board): kind → { id regex, id prefix, next counter }. */
 const BRICKS = Object.freeze({
@@ -185,6 +189,7 @@ export function emptyDocument() {
     buses: [],
     netNames: [],
     annotations: [],
+    scopeChannels: [],
     nextBoardId: 1,
     nextGroupId: 1,
     nextComponentId: 1,
@@ -194,6 +199,7 @@ export function emptyDocument() {
     nextWireId: 1,
     nextBusId: 1,
     nextAnnotationId: 1,
+    nextScopeChannelId: 1,
   };
 }
 
@@ -397,6 +403,30 @@ export function normalizeDocument(raw) {
     doc.annotations.push(ann);
   }
 
+  // Scope channels (Feature 210): the logic-analyzer's instrument setup — an
+  // ordered list of { kind:"net"|"bus", ref } bindings (ref = a member address
+  // or a bus id) with an optional label/color. Additive and passive: they touch
+  // neither occupancy, the netlist, nor the engine, so a stale ref simply reads
+  // as undriven until its target returns.
+  let maxScopeSeq = 0;
+  const scopeIds = new Set();
+  const scopeChannels = Array.isArray(raw.scopeChannels)
+    ? raw.scopeChannels
+    : [];
+  for (const s of scopeChannels) {
+    if (!s || typeof s !== "object") continue;
+    const m = typeof s.id === "string" ? SCOPE_CHANNEL_ID_RE.exec(s.id) : null;
+    if (!m || scopeIds.has(s.id)) continue;
+    if (!SCOPE_CHANNEL_KINDS.has(s.kind)) continue;
+    if (typeof s.ref !== "string" || !s.ref) continue;
+    scopeIds.add(s.id);
+    maxScopeSeq = Math.max(maxScopeSeq, Number(m[1]));
+    const ch = { id: s.id, kind: s.kind, ref: s.ref };
+    if (typeof s.label === "string" && s.label) ch.label = s.label;
+    if (typeof s.color === "string" && s.color) ch.color = s.color;
+    doc.scopeChannels.push(ch);
+  }
+
   const storedNextBoard =
     Number.isInteger(raw.nextBoardId) && raw.nextBoardId > 0
       ? raw.nextBoardId
@@ -434,6 +464,11 @@ export function normalizeDocument(raw) {
       ? raw.nextAnnotationId
       : 1;
   doc.nextAnnotationId = Math.max(storedNextAnnotation, maxAnnSeq + 1);
+  const storedNextScope =
+    Number.isInteger(raw.nextScopeChannelId) && raw.nextScopeChannelId > 0
+      ? raw.nextScopeChannelId
+      : 1;
+  doc.nextScopeChannelId = Math.max(storedNextScope, maxScopeSeq + 1);
   return doc;
 }
 
@@ -1681,6 +1716,92 @@ export class DeskDoc {
     for (const a of this.#doc.annotations) {
       if (a.anchor === componentId) delete a.anchor;
     }
+  }
+
+  // ── Scope channels: the logic-analyzer instrument setup (Feature 210) ──────
+  // An ordered list of channel bindings persisted with the design so a saved
+  // schematic keeps its analyzer setup. A `net` channel binds to a member
+  // ADDRESS (surviving a re-key like a net name); a `bus` channel binds to a
+  // bus id. Passive — no occupancy/netlist/engine effect; a dead ref reads as
+  // undriven, coming back to life if its target returns (undo, re-add).
+
+  /** Copies of the analyzer channels, in display order. */
+  get scopeChannels() {
+    return this.#doc.scopeChannels.map((c) => ({ ...c }));
+  }
+
+  /** A copy of one channel, or null. */
+  getScopeChannel(id) {
+    const c = this.#doc.scopeChannels.find((x) => x.id === id);
+    return c ? { ...c } : null;
+  }
+
+  /** True if a channel already tracks this (kind, ref) — avoids duplicate lanes. */
+  hasScopeChannel(kind, ref) {
+    return this.#doc.scopeChannels.some(
+      (c) => c.kind === kind && c.ref === ref,
+    );
+  }
+
+  /**
+   * Append a channel bound to a net address or a bus id. `extra` may carry
+   * `label` and `color`. Throws INVALID_KIND / INVALID_ARG. Returns a copy.
+   */
+  addScopeChannel(kind, ref, { color = null, label = null } = {}) {
+    if (!SCOPE_CHANNEL_KINDS.has(kind)) {
+      throw taggedError(
+        `unsupported scope channel kind: ${kind}`,
+        "INVALID_KIND",
+      );
+    }
+    if (typeof ref !== "string" || !ref) {
+      throw taggedError(
+        "scope channel ref must be a non-empty string",
+        "INVALID_ARG",
+      );
+    }
+    const ch = { id: `sc${this.#doc.nextScopeChannelId++}`, kind, ref };
+    if (label) ch.label = label;
+    if (color) ch.color = color;
+    this.#doc.scopeChannels.push(ch);
+    return { ...ch };
+  }
+
+  /**
+   * Patch a channel's `label` or `color` (a null/empty value clears it). Throws
+   * NOT_FOUND. Returns a copy.
+   */
+  updateScopeChannel(id, patch = {}) {
+    const ch = this.#doc.scopeChannels.find((c) => c.id === id);
+    if (!ch) throw taggedError(`no scope channel ${id}`, "NOT_FOUND");
+    if ("label" in patch) {
+      if (patch.label) ch.label = patch.label;
+      else delete ch.label;
+    }
+    if ("color" in patch) {
+      if (patch.color) ch.color = patch.color;
+      else delete ch.color;
+    }
+    return { ...ch };
+  }
+
+  /** Remove a channel. Throws NOT_FOUND. */
+  removeScopeChannel(id) {
+    const i = this.#doc.scopeChannels.findIndex((c) => c.id === id);
+    if (i === -1) throw taggedError(`no scope channel ${id}`, "NOT_FOUND");
+    this.#doc.scopeChannels.splice(i, 1);
+  }
+
+  /** Reorder a channel to a new (clamped) index. Throws NOT_FOUND. */
+  moveScopeChannel(id, index) {
+    const from = this.#doc.scopeChannels.findIndex((c) => c.id === id);
+    if (from === -1) throw taggedError(`no scope channel ${id}`, "NOT_FOUND");
+    const to = Math.max(
+      0,
+      Math.min(this.#doc.scopeChannels.length - 1, Math.floor(index) || 0),
+    );
+    const [ch] = this.#doc.scopeChannels.splice(from, 1);
+    this.#doc.scopeChannels.splice(to, 0, ch);
   }
 
   /** The serializable document (a deep copy — safe to hand to IPC). */
