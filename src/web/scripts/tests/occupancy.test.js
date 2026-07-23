@@ -456,6 +456,92 @@ test("partPinHoles: linear discretes in any grid row", () => {
   assert.equal(partPinHoles("psu", "b1"), null); // psu has terminals, not pins
 });
 
+test("partPinHoles/canPlacePart: an oscillator can — every rotation, trench-crossing and not", () => {
+  const doc = docWith({ boards: [FULL] });
+
+  // rot 0, anchor e10 — the legacy trench-crossing position (row e ↔ row f,
+  // 3 pitch-units apart). Pin 1 (NC) is the only real hole; the other 3
+  // corners are {dx, dy} offsets resolved geometrically.
+  assert.deepEqual(partPinHoles("osc-full", "e10", { rot: 0 }), [
+    { pin: 1, hole: "e10" },
+    { pin: 2, offset: { dx: 6, dy: 0 } },
+    { pin: 3, offset: { dx: 6, dy: -3 } },
+    { pin: 4, offset: { dx: 0, dy: -3 } },
+  ]);
+  let addrs = partPinAddresses(doc, {
+    ref: "osc-full",
+    board: "bb1",
+    anchor: "e10",
+    params: { rot: 0 },
+  });
+  assert.deepEqual(
+    addrs.map((p) => p.address),
+    ["bb1.e10", "bb1.e16", "bb1.f16", "bb1.f10"],
+  );
+  assert.ok(
+    canPlacePart(doc, {
+      ref: "osc-full",
+      board: "bb1",
+      anchor: "e10",
+      params: { rot: 0 },
+    }),
+  );
+
+  // rot 90: the 6-unit axis is now vertical (needs the {i,e}/{h,d}/{g,c}/{f,b}
+  // family, not the 3-unit trench span) — anchor i10 lands the far corner on e.
+  addrs = partPinAddresses(doc, {
+    ref: "osc-full",
+    board: "bb1",
+    anchor: "i10",
+    params: { rot: 90 },
+  });
+  assert.deepEqual(
+    addrs.map((p) => p.address),
+    ["bb1.i10", "bb1.e10", "bb1.e13", "bb1.i13"],
+  );
+  assert.ok(
+    canPlacePart(doc, {
+      ref: "osc-full",
+      board: "bb1",
+      anchor: "i10",
+      params: { rot: 90 },
+    }),
+  );
+
+  // A can seated ENTIRELY within one row block, no trench at all: the half
+  // can (3×3) spanning rows j/g (j=1, g=4 — 3 pitch-units apart, no gap).
+  addrs = partPinAddresses(doc, {
+    ref: "osc-half",
+    board: "bb1",
+    anchor: "g10",
+    params: { rot: 0 },
+  });
+  assert.deepEqual(
+    addrs.map((p) => p.address),
+    ["bb1.g10", "bb1.g13", "bb1.j13", "bb1.j10"],
+  );
+  assert.ok(
+    canPlacePart(doc, {
+      ref: "osc-half",
+      board: "bb1",
+      anchor: "g10",
+      params: { rot: 0 },
+    }),
+  );
+
+  // Off by one row from the trench (h + 3 lands in the gap between f and e):
+  // the far corner resolves to nothing, so placement is illegal.
+  assert.equal(
+    canPlacePart(doc, {
+      ref: "osc-full",
+      board: "bb1",
+      anchor: "h10",
+      params: { rot: 0 },
+    }),
+    false,
+  );
+});
+
 test("canPlacePart: discretes across rows; edges clip", () => {
   const doc = docWith({ boards: [TINY] });
   assert.equal(

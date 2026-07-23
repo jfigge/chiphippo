@@ -16,13 +16,15 @@
 
 // chip-pinout.js — draws a part's pin/terminal map as a wiring reference,
 // rendered into the standalone pin-assignments OS window (web/pinout.html),
-// opened by double-clicking ANY component. Three layouts, one per catalog
+// opened by double-clicking ANY component. Four layouts, one per catalog
 // shape: DIP chips (`buildChipPinout` — the physical two-column layout, notch
-// at top, pin 1 top-left wrapping to pin N top-right); discrete parts
-// (`buildDiscretePinout` — a linear list keyed to the anchor-hole offsets); and
-// desk-level bricks with terminals (`buildTerminalPinout` — PSU / clock). Pure
-// DOM from the catalog def — no electrical logic, no modal chrome (the native
-// window frame owns the title bar + close).
+// at top, pin 1 top-left wrapping to pin N top-right); oscillator cans
+// (`buildCanPinout` — a linear list keyed to which of the 4 corners a pin
+// sits at); discrete parts (`buildDiscretePinout` — a linear list keyed to
+// the anchor-hole offsets); and desk-level bricks with terminals
+// (`buildTerminalPinout` — PSU / clock). Pure DOM from the catalog def — no
+// electrical logic, no modal chrome (the native window frame owns the title
+// bar + close).
 
 import { el } from "../dom.js";
 
@@ -261,6 +263,42 @@ export function buildDiscretePinout(def) {
   );
 }
 
+/** Corner labels for a `def.can` part's 4 pins, in canonical (rot 0) order —
+    the same bottom-left → bottom-right → top-right → top-left winding
+    catalog/parts.js's `def.can` defs and model/occupancy.js's `def.can`
+    branch both use. */
+const CAN_CORNERS = Object.freeze([
+  "bottom-left corner (the anchor, pin 1)",
+  "bottom-right corner",
+  "top-right corner",
+  "top-left corner",
+]);
+
+/**
+ * Oscillator-can layout: a rigid rectangle with legs only at its 4 corners
+ * (`def.can` — see catalog/parts.js) — a linear list keyed to which corner
+ * each pin sits at, since a can has no single grid row to key offsets
+ * against and can seat anywhere, at any of 4 rotations.
+ * @param {object} def - a can def ({ id, title, pins, can }).
+ * @returns {HTMLElement}
+ */
+export function buildCanPinout(def) {
+  const rows = def.pins.map((p, i) =>
+    listRow({
+      tag: p.n,
+      name: p.name,
+      role: p.role,
+      detail: CAN_CORNERS[i] ?? "",
+    }),
+  );
+  const holes = `${def.can.width + 1} × ${def.can.height + 1}`;
+  return pinoutShell(
+    def,
+    `${holes} holes, legs at the 4 corners · pin assignments`,
+    el("div", { class: "part-pinout-list" }, rows),
+  );
+}
+
 /**
  * Desk-brick layout (PSU / clock): a list of terminals with descriptions.
  * @param {object} def - a def with `terminals` ({ id, title, terminals }).
@@ -292,6 +330,7 @@ export function buildTerminalPinout(def) {
 export function buildPartPinout(def) {
   if (!def) return null;
   if (def.package) return buildChipPinout(def);
+  if (def.can) return buildCanPinout(def);
   if (def.footprint) return buildDiscretePinout(def);
   if (def.terminals) return buildTerminalPinout(def);
   return null;

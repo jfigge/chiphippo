@@ -33,7 +33,9 @@ import {
   boardSize,
   clampColumn,
   columnAt,
+  rotateOffset,
   rowNear,
+  rowOffsetBy,
   trenchOffset,
   unrotatePoint,
 } from "./breadboard.js";
@@ -62,17 +64,27 @@ export const ROW_BAND = 0.8;
  * @param {string} ref
  * @param {{x:number,y:number}} world
  * @param {number} [grabOffsetCols]
+ * @param {{rot?:number}|null} [params] - only a `def.can` part's current
+ *   quarter-turn matters here; every other seat search ignores it.
  * @returns {{board:string, anchor:string}|null}
  */
-export function partSeatAt(boards, ref, world, grabOffsetCols = 0) {
+export function partSeatAt(
+  boards,
+  ref,
+  world,
+  grabOffsetCols = 0,
+  params = null,
+) {
   const def = partDef(ref);
   if (!def) return null;
   for (const board of boards ?? []) {
     const local = localPoint(board, world);
     if (!local) continue;
-    const seat = def.package
-      ? chipSeat(board, def.package, local, grabOffsetCols)
-      : discreteSeat(board, def, local, grabOffsetCols);
+    const seat = def.can
+      ? canSeat(board, def, local, grabOffsetCols, params?.rot ?? 0)
+      : def.package
+        ? chipSeat(board, def.package, local, grabOffsetCols)
+        : discreteSeat(board, def, local, grabOffsetCols);
     if (seat) return seat;
   }
   return null;
@@ -124,4 +136,43 @@ function discreteSeat(board, def, local, grabOffsetCols) {
     grabOffsetCols === 0 ? cursorCol - span / 2 : cursorCol + grabOffsetCols;
   const anchor = clampColumn(board.type, col, span);
   return anchor == null ? null : { board: board.id, anchor: `${row}${anchor}` };
+}
+
+/**
+ * A rigid multi-corner shape (an oscillator can) seats like a discrete — pin
+ * 1 in any grid row, including straddling the trench — but its diagonally
+ * opposite corner must ALSO land on a real row (rowOffsetBy), and the whole
+ * SHAPE centres on the cursor rather than pin 1 alone, since pin 1 is not
+ * always its top-left corner once rotated.
+ */
+function canSeat(board, def, local, grabOffsetCols, rot) {
+  const { width, height } = def.can;
+  // Pin 1 (the anchor) → the corner diagonally opposite it, at this rotation
+  // — the same rotated offset model/occupancy.js's `def.can` branch uses.
+  const diag = rotateOffset({ dx: width, dy: -height }, rot);
+  // Ghost: centre the SHAPE on the cursor (pin 1 sits half the diagonal back
+  // from the centre) — the two-axis generalization of discreteSeat's
+  // `cursorCol - span / 2`. Dragging keeps the grabbed point under the
+  // finger instead (grabOffsetCols is already anchor-relative).
+  const target =
+    grabOffsetCols === 0
+      ? { x: local.x - diag.dx / 2, y: local.y - diag.dy / 2 }
+      : local;
+
+  const row = rowNear(board.type, target.y, ROW_BAND);
+  if (!row) return null;
+  if (!rowOffsetBy(board.type, row, diag.dy)) return null; // far corner's row
+
+  const cursorCol = columnAt(board.type, target.x);
+  // clampColumn assumes a forward-only, non-negative span from its anchor —
+  // but pin 1 may be the shape's RIGHT edge (a negative diag.dx). Clamp the
+  // shape's actual left edge instead, then shift back to pin 1's column.
+  const lo = Math.min(0, diag.dx);
+  const span = Math.abs(diag.dx);
+  const leftCol =
+    (grabOffsetCols === 0 ? cursorCol : cursorCol + grabOffsetCols) + lo;
+  const clampedLeft = clampColumn(board.type, leftCol, span);
+  return clampedLeft == null
+    ? null
+    : { board: board.id, anchor: `${row}${clampedLeft - lo}` };
 }

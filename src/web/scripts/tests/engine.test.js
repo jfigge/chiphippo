@@ -26,7 +26,7 @@ import assert from "node:assert/strict";
 import { H, L, Z, X } from "../sim/levels.js";
 import { settle, MAX_ITERATIONS } from "../sim/engine.js";
 import { buildNetlist } from "../sim/netlist.js";
-import { partPinHoles } from "../model/occupancy.js";
+import { partPinAddresses, partPinHoles } from "../model/occupancy.js";
 import { holesOfNode, nodeOf } from "../model/breadboard.js";
 
 // ── Fixture helpers ──────────────────────────────────────────────────────────
@@ -46,6 +46,23 @@ function mates(hole) {
   return holesOfNode("pins-full", nodeOf("pins-full", hole)).filter(
     (h) => h !== hole,
   );
+}
+
+/**
+ * Pin number → its seated BARE hole (e.g. 3 → "f16") for a `def.can` part at
+ * `anchor` on "bb1", rot 0. Unlike chipHoles, this resolves against a full
+ * document: 3 of a can's 4 pins are {dx, dy} offsets from the anchor (see
+ * model/occupancy.js's `def.can` branch), not footprint-derived like a
+ * chip's, so they need partPinAddresses (board-aware), not bare partPinHoles.
+ */
+function canHoles(anchor, ref = "osc-full") {
+  const doc = { boards, components: [], wires: [] };
+  const comp = { ref, board: "bb1", anchor, params: {} };
+  const map = new Map();
+  for (const { pin, address } of partPinAddresses(doc, comp)) {
+    map.set(pin, address ? address.split(".")[1] : null);
+  }
+  return map;
 }
 
 /** Assemble a document + build its netlist + settle. */
@@ -330,12 +347,18 @@ test("only one power pin miswired is unpowered, NOT reversed", () => {
 
 // ── Oscillator can: a board-seated, power-gated clock source ──
 
-test("osc-full: OUTPUT (pin 8) follows clockPhase while powered", () => {
-  const holes = chipHoles("osc-full", "e10");
+// Canonical can pin numbers (both sizes — see catalog/parts.js's `def.can`
+// defs): 1 NC, 2 GND, 3 OUT, 4 VCC.
+
+test("osc-full: OUTPUT (pin 3) follows clockPhase while powered", () => {
+  const holes = canHoles("e10", "osc-full");
   const doc = {
     boards,
     components: [psu("psu1", 80), part("c1", "osc-full", "e10")],
-    wires: powerWires("psu1", holes), // VCC=14, GND=7 — same as a 74xx DIP-14
+    wires: [
+      wire("psu1.+", `bb1.${mates(holes.get(4))[0]}`), // VCC
+      wire("psu1.-", `bb1.${mates(holes.get(2))[0]}`), // GND
+    ],
   };
   for (const level of [H, L, H]) {
     const { result, levelAt } = simulate(
@@ -344,47 +367,49 @@ test("osc-full: OUTPUT (pin 8) follows clockPhase while powered", () => {
       new Map([["c1", level]]),
     );
     assert.equal(result.chipStatus.get("c1").status, "ok");
-    assert.equal(levelAt(`bb1.${holes.get(8)}`), level);
+    assert.equal(levelAt(`bb1.${holes.get(3)}`), level);
   }
 });
 
-test("osc-half: OUTPUT (pin 5) follows clockPhase on the smaller footprint", () => {
-  const holes = chipHoles("osc-half", "e10");
+test("osc-half: OUTPUT (pin 3) follows clockPhase on the smaller footprint", () => {
+  const holes = canHoles("e10", "osc-half");
   const doc = {
     boards,
     components: [psu("psu1", 80), part("c1", "osc-half", "e10")],
-    // Half can: VCC=8, GND=4 (not 14/7 — powerWires doesn't fit this size).
     wires: [
-      wire("psu1.+", `bb1.${mates(holes.get(8))[0]}`),
-      wire("psu1.-", `bb1.${mates(holes.get(4))[0]}`),
+      wire("psu1.+", `bb1.${mates(holes.get(4))[0]}`), // VCC
+      wire("psu1.-", `bb1.${mates(holes.get(2))[0]}`), // GND
     ],
   };
   const { result, levelAt } = simulate(doc, undefined, new Map([["c1", H]]));
   assert.equal(result.chipStatus.get("c1").status, "ok");
-  assert.equal(levelAt(`bb1.${holes.get(5)}`), H);
+  assert.equal(levelAt(`bb1.${holes.get(3)}`), H);
 });
 
 test("osc-full: unpowered drives nothing, whatever clockPhase says", () => {
-  const holes = chipHoles("osc-full", "e10");
+  const holes = canHoles("e10", "osc-full");
   const { result, levelAt } = simulate(
     { boards, components: [part("c1", "osc-full", "e10")], wires: [] },
     undefined,
     new Map([["c1", H]]),
   );
   assert.equal(result.chipStatus.get("c1").status, "unpowered");
-  assert.equal(levelAt(`bb1.${holes.get(8)}`), Z);
+  assert.equal(levelAt(`bb1.${holes.get(3)}`), Z);
 });
 
 test("osc-full: 12 V damages the can (same magic smoke as a chip)", () => {
-  const holes = chipHoles("osc-full", "e10");
+  const holes = canHoles("e10", "osc-full");
   const doc = {
     boards,
     components: [psu("psu1", 80, 12), part("c1", "osc-full", "e10")],
-    wires: powerWires("psu1", holes),
+    wires: [
+      wire("psu1.+", `bb1.${mates(holes.get(4))[0]}`),
+      wire("psu1.-", `bb1.${mates(holes.get(2))[0]}`),
+    ],
   };
   const { result, levelAt } = simulate(doc, undefined, new Map([["c1", H]]));
   assert.equal(result.chipStatus.get("c1").status, "damaged");
-  assert.equal(levelAt(`bb1.${holes.get(8)}`), Z);
+  assert.equal(levelAt(`bb1.${holes.get(3)}`), Z);
   assert.ok(result.warnings.some((w) => w.type === "damaged"));
 });
 

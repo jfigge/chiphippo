@@ -31,8 +31,7 @@
 
 import { el } from "../dom.js";
 import { PX_PER_UNIT } from "../desk/desk-geometry.js";
-import { holePosition } from "../model/breadboard.js";
-import { packageSpec } from "../model/footprints.js";
+import { holePosition, rotateOffset } from "../model/breadboard.js";
 import { partDef } from "../catalog/index.js";
 import {
   buildBurnOverlay,
@@ -80,25 +79,45 @@ const BOXES = Object.freeze({
   // matches chipBox("DIP-16") so the block covers both leg rows and the trench,
   // leaving the rows above/below clickable — exactly as a chip does.
   bar8iso: Object.freeze({ minX: -0.6, minY: -3.6, width: 8.2, height: 4.2 }),
-  // Oscillator cans straddle the trench like any DIP, so the box uses the same
-  // chipBox(pkg) formula (minX/minY/height are fixed; only width scales with
-  // the package's half-pin count).
-  "osc-full": Object.freeze({
-    minX: -0.6,
-    minY: -3.6,
-    width: packageSpec("DIP-14").halfPins - 1 + 1.2,
-    height: 4.2,
-  }),
-  "osc-half": Object.freeze({
-    minX: -0.6,
-    minY: -3.6,
-    width: packageSpec("DIP-8").halfPins - 1 + 1.2,
-    height: 4.2,
-  }),
 });
 
-/** Footprint box for a discrete ref (positioning + ghost sizing). */
-export function discreteBox(ref) {
+/**
+ * An oscillator can's box (rot-aware, unlike every fixed BOXES entry): its
+ * body is the pin rectangle plus a 0.5-pitch overhang on every side, drawn
+ * canonically with pin 1 at the local origin then rotated in place — so the
+ * bounding box itself shifts (and the full can's swaps width/height) as it
+ * spins. Rotating the canonical body's 4 corners with the SAME primitive
+ * (`rotateOffset`) the pin math uses keeps the drawn box and the resolved
+ * pins from ever disagreeing.
+ */
+function canBox(def, rot) {
+  const { width: w, height: h } = def.can;
+  const corners = [
+    { dx: -0.5, dy: 0.5 },
+    { dx: w + 0.5, dy: 0.5 },
+    { dx: w + 0.5, dy: -h - 0.5 },
+    { dx: -0.5, dy: -h - 0.5 },
+  ].map((c) => rotateOffset(c, rot));
+  const xs = corners.map((c) => c.dx);
+  const ys = corners.map((c) => c.dy);
+  const minX = Math.min(...xs);
+  const minY = Math.min(...ys);
+  return {
+    minX,
+    minY,
+    width: Math.max(...xs) - minX,
+    height: Math.max(...ys) - minY,
+  };
+}
+
+/**
+ * Footprint box for a discrete ref (positioning + ghost sizing). `rot` only
+ * matters for a `def.can` part (an oscillator can) — every fixed BOXES entry
+ * ignores it.
+ */
+export function discreteBox(ref, rot = 0) {
+  const def = partDef(ref);
+  if (def?.can) return canBox(def, rot);
   const box = BOXES[ref];
   if (!box) {
     const err = new Error(`unknown discrete ref: ${ref}`);
@@ -435,93 +454,103 @@ function buildBarArrayDisplay(svg, color) {
 }
 
 /**
- * A crystal-oscillator can (osc-full/osc-half): a plain metal body with an
- * inset rim, straddling the trench like any DIP — but only the package's two
- * END columns carry a real leg (both rows), exactly the datasheet's four
- * populated pins (1/7/8/14 on a full can, 1/4/5/8 on a half can). The
- * selected simulated rate prints on the body, same idea as the
- * clock brick's badge.
+ * A crystal-oscillator can (osc-full/osc-half): a rigid rectangular body with
+ * legs only at its 4 corners (`def.can` — see catalog/parts.js), free to seat
+ * anywhere and spin in true 90° steps. The body/legs/dot/badge are drawn ONCE
+ * in canonical (rot 0) local coordinates with pin 1 (NC) at the origin, then
+ * wrapped in an SVG `rotate()` group: pin 1 sits exactly at the pivot, so its
+ * own leg never moves in the drawing — the body and the other 3 legs swing
+ * around it, exactly matching how the pins themselves resolve
+ * (model/occupancy.js's `def.can` branch, both sharing model/breadboard.js's
+ * `rotateOffset`). The fault-status overlay stays OUTSIDE the rotated group
+ * (screen space — smoke must rise), so its centre is rotated separately.
  */
 function buildOscillatorCan(svg, def, params) {
-  const { halfPins } = packageSpec(def.package);
-  const bodyTop = -2.55;
-  const bodyBottom = -0.45;
+  const { width: w, height: h } = def.can;
+  const rot = params.rot ?? 0;
   const bodyX = -0.5;
-  const bodyWidth = halfPins;
-  // Legs: only the two end columns are real pins on a can — everything
-  // between is empty DIP footprint (see the def's mostly-"nc" pins array).
-  for (const c of [0, halfPins - 1]) {
-    svg.append(
+  const bodyY = -h - 0.5;
+  const bodyWidth = w + 1;
+  const bodyHeight = h + 1;
+
+  const spin = svgEl("g", {
+    class: "part-can-spin",
+    transform: `rotate(${rot})`,
+  });
+  // Corner legs: pin 1 (NC) bottom-left, pin 2 (GND) bottom-right, pin 3
+  // (OUT) top-right, pin 4 (VCC) top-left — the canonical order
+  // model/occupancy.js's `def.can` branch derives the other 3 pins from.
+  for (const { x, yFrom, yTo } of [
+    { x: 0, yFrom: 0, yTo: 0.5 },
+    { x: w, yFrom: 0, yTo: 0.5 },
+    { x: w, yFrom: -h - 0.5, yTo: -h },
+    { x: 0, yFrom: -h - 0.5, yTo: -h },
+  ]) {
+    spin.append(
       svgEl("rect", {
         class: "part-chip-leg",
-        x: c - 0.14,
-        y: bodyBottom - 0.05,
+        x: x - 0.14,
+        y: Math.min(yFrom, yTo),
         width: 0.28,
-        height: 0.6,
-      }),
-      svgEl("rect", {
-        class: "part-chip-leg",
-        x: c - 0.14,
-        y: -3.1,
-        width: 0.28,
-        height: bodyTop + 3.1,
+        height: Math.abs(yTo - yFrom),
       }),
     );
   }
-  svg.append(
+  spin.append(
     svgEl("rect", {
       class: "part-can-body",
       x: bodyX,
-      y: bodyTop,
+      y: bodyY,
       width: bodyWidth,
-      height: bodyBottom - bodyTop,
+      height: bodyHeight,
       rx: 0.3,
     }),
     svgEl("rect", {
       class: "part-can-rim",
       x: bodyX + 0.22,
-      y: bodyTop + 0.22,
+      y: bodyY + 0.22,
       width: bodyWidth - 0.44,
-      height: bodyBottom - bodyTop - 0.44,
+      height: bodyHeight - 0.44,
       rx: 0.16,
     }),
-    // Pin-1 cue near the anchor corner (row e, column 0).
+    // Pin-1 cue, inset from the corner nearest the anchor.
     svgEl("circle", {
       class: "part-can-dot",
-      cx: bodyX + 0.4,
-      cy: bodyBottom - 0.35,
+      cx: bodyX + 0.32,
+      cy: bodyY + bodyHeight - 0.32,
       r: 0.12,
     }),
   );
   const badge = svgEl("text", {
     class: "part-can-badge",
-    x: bodyX + bodyWidth / 2,
-    y: (bodyTop + bodyBottom) / 2 + 0.3,
+    x: w / 2,
+    y: -h / 2 + 0.3,
     "text-anchor": "middle",
   });
   badge.textContent = `${params.hz} Hz`;
-  svg.append(badge);
-  // Fault symbols, centred on the body — same shared
-  // overlay primitives + live setStatus() the chip view uses.
-  const cx = bodyX + bodyWidth / 2;
-  const cy = (bodyTop + bodyBottom) / 2;
-  const status = svgEl("g", { class: "part-can-status" });
-  status.append(
-    svgEl("title"), // hover hint; text set by DiscreteView.setStatus
-    buildWarnOverlay(cx, cy, 0.6),
-    buildBurnOverlay(cx, cy, 0.6),
-  );
-  svg.append(status);
+  spin.append(badge);
   // Body-only hit target: the can drags, the holes underneath stay clickable.
-  svg.append(
+  spin.append(
     svgEl("rect", {
       class: "part-display-hit",
       x: bodyX,
-      y: bodyTop,
+      y: bodyY,
       width: bodyWidth,
-      height: bodyBottom - bodyTop,
+      height: bodyHeight,
     }),
   );
+  svg.append(spin);
+
+  // Fault symbols stay in SCREEN space (smoke must rise): the canonical
+  // centre, rotated the same way the drawing group was.
+  const center = rotateOffset({ dx: w / 2, dy: -h / 2 }, rot);
+  const status = svgEl("g", { class: "part-can-status" });
+  status.append(
+    svgEl("title"), // hover hint; text set by DiscreteView.setStatus
+    buildWarnOverlay(center.dx, center.dy, 0.6),
+    buildBurnOverlay(center.dx, center.dy, 0.6),
+  );
+  svg.append(status);
 }
 
 /** A compact ohms label: 10000 → "10k", 4700000 → "4.7M", 220 → "220". */
@@ -586,8 +615,8 @@ function buildResistorNetwork(svg, ohms) {
  */
 export function buildDiscreteSvg(ref, params = {}) {
   const def = partDef(ref);
-  const box = discreteBox(ref);
   const normalized = def.normalizeParams(params);
+  const box = discreteBox(ref, normalized.rot);
 
   const svg = svgEl("svg", {
     class: `part-discrete-svg part-discrete-svg--${ref}`,
@@ -866,7 +895,7 @@ export class DiscreteView {
   updatePlacement(board, anchor) {
     const pos = holePosition(board.type, anchor, board.rot ?? 0);
     if (!pos) return;
-    const box = discreteBox(this.#ref);
+    const box = discreteBox(this.#ref, this.#params?.rot);
     this.#el.style.left = `${(board.x + pos.x + box.minX) * PX_PER_UNIT}px`;
     this.#el.style.top = `${(board.y + pos.y + box.minY) * PX_PER_UNIT}px`;
   }

@@ -54,12 +54,13 @@ test("lists the whole catalog grouped by function; picks report the ref", () => 
   );
   assert.deepEqual(groups, [
     ...chipGroupNames,
-    "Memory",
     "Switches",
     "Resistors",
     "LEDs",
     "Displays",
+    "Oscillators",
     "Power",
+    "Memory",
   ]);
 
   host.querySelector('.palette-item[data-ref="74LS86"]').click();
@@ -108,6 +109,7 @@ test("logic chips nest under CHIPS; Memory + parts are their own sections", () =
     "Resistors",
     "LEDs",
     "Displays",
+    "Oscillators",
     "Power",
   ]);
 

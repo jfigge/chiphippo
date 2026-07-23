@@ -41,6 +41,34 @@ export const HOLE_HIT_RADIUS = 0.45;
 /** The quarter-turns a strip can be placed at. */
 export const ROTATIONS = Object.freeze([0, 90, 180, 270]);
 
+/**
+ * A pitch-unit vector turned one quarter-turn clockwise (screen/SVG y-down
+ * frame — the same formula `rotate(90)` uses natively, so a view can spin a
+ * canonical drawing with a plain SVG transform and the pin math never
+ * disagrees with what's on screen). Apply `rot / 90` times for 0/90/180/270.
+ */
+function quarterTurn({ dx, dy }) {
+  return { dx: -dy, dy: dx };
+}
+
+/**
+ * `{dx, dy}` rotated by a quarter-turn count (0/90/180/270), CCW-invalid
+ * values coerced to 0. Shared by every part footprint that spins a rigid
+ * multi-pin shape in place (an oscillator can, say) — pin offsets and the
+ * view's SVG rotation both derive from this ONE primitive.
+ */
+export function rotateOffset(offset, rot = 0) {
+  let v = { dx: offset?.dx ?? 0, dy: offset?.dy ?? 0 };
+  const turns = ROTATIONS.includes(rot) ? rot / 90 : 0;
+  for (let i = 0; i < turns; i++) v = quarterTurn(v);
+  // Negating a zero component yields -0: equal to 0 under ===, distinct under
+  // Object.is, so it would survive into a stored offset and then fail a
+  // deepStrictEqual round-trip (the same -0 trap normalizeLeadOffset guards
+  // against). Fold it here, the one chokepoint every rotated offset passes
+  // through.
+  return { dx: v.dx === 0 ? 0 : v.dx, dy: v.dy === 0 ? 0 : v.dy };
+}
+
 /** Grid row letters, bottom row first (a is nearest the bottom edge). */
 export const ROW_LETTERS = Object.freeze([
   "a",
@@ -296,6 +324,25 @@ export function rowNear(type, localY, band) {
     }
   }
   return best;
+}
+
+/**
+ * The row whose Y sits exactly `delta` pitch-units from `row`'s, or null when
+ * no row on this type has that Y — the trench gap (e.g. row `g` + 3 lands in
+ * empty space, not row `e`), or off the strip's top/bottom edge. `delta` may
+ * be negative. Lets a rigid multi-row footprint (an oscillator can spanning
+ * more than the one-row discretes use) find its far corner's row without any
+ * caller hand-deriving row-letter arithmetic.
+ */
+export function rowOffsetBy(type, row, delta) {
+  const s = spec(type);
+  const y0 = s.rowY[row];
+  if (y0 == null) return null;
+  const target = y0 + delta;
+  for (const [r, y] of Object.entries(s.rowY)) {
+    if (y === target) return r;
+  }
+  return null;
 }
 
 /**

@@ -40,6 +40,8 @@ import {
   holePosition,
   parseAddress,
   parseHole,
+  ROTATIONS,
+  rotateOffset,
 } from "./breadboard.js";
 
 const CHIP_ANCHOR_RE = /^e([1-9]\d*)$/; // a chip anchor: pin 1's hole, row e
@@ -50,6 +52,16 @@ const GRID_ANCHOR_RE = /^([a-j])([1-9]\d*)$/; // a discrete anchors in ANY row
 // its offsets are grid-column arithmetic that the rail's grouped lattice can't
 // honour. Pin 1 being a real hole on its own board is all the turned form needs.
 const LEAD_ANCHOR_RE = /^([a-j]|[+-])([1-9]\d*)$/;
+
+/**
+ * A `def.can` part's pin-1 offset from the shape's own centre, at rot 0 —
+ * bottom-left of its `width` × `height` rectangle. The one fact both
+ * `partPinHoles` (below) and a rotate-in-place (`desk-doc.js`) need to
+ * convert between "pin 1's hole" and "the shape's centre".
+ */
+export function canCornerOffset(def) {
+  return { dx: -def.can.width / 2, dy: def.can.height / 2 };
+}
 
 /**
  * The seated hole of every pin of a board part (chip OR discrete):
@@ -84,6 +96,29 @@ export function partPinHoles(ref, anchor, params) {
       pin,
       hole: holeOfPin.get(((pin + half - 1) % count) + 1),
     }));
+  }
+  if (def.can) {
+    // A rigid multi-corner shape (an oscillator can): pin 1 anchors in ANY
+    // grid row, like a linear discrete; the other 3 corners are {dx, dy}
+    // offsets from it, rotated to the part's current quarter-turn — resolved
+    // geometrically (partPinAddresses), exactly like a rotated LED/resistor's
+    // bent lead, so a corner may legally resolve to nothing (the trench gap)
+    // without disturbing the other three.
+    const m = GRID_ANCHOR_RE.exec(anchor);
+    if (!m) return null;
+    const rot = ROTATIONS.includes(params?.rot) ? params.rot : 0;
+    const { width: w, height: h } = def.can;
+    const rel = [
+      { dx: w, dy: 0 },
+      { dx: w, dy: -h },
+      { dx: 0, dy: -h },
+    ].map((v) => rotateOffset(v, rot));
+    return [
+      { pin: def.pins[0].n, hole: anchor },
+      { pin: def.pins[1].n, offset: rel[0] },
+      { pin: def.pins[2].n, offset: rel[1] },
+      { pin: def.pins[3].n, offset: rel[2] },
+    ];
   }
   if (def.footprint) {
     // Rotated (vertical) two-free-ends form: pin 1 at the anchor hole, pin 2

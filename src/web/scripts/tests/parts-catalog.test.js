@@ -63,11 +63,17 @@ for (const def of PART_DEFS.filter((d) => d.kind === "discrete")) {
   test(`part def ${def.id} is internally consistent`, () => {
     assert.ok(def.title.length > 0 && def.blurb.length > 0 && def.group);
     // Geometry: a discrete either lies along ONE grid row (footprint offsets,
-    // one per pin, strictly ascending from 0) or straddles the trench in a DIP
-    // package (the isolated bar array) — never both.
+    // one per pin, strictly ascending from 0), straddles the trench in a DIP
+    // package (the isolated bar array), or is a rigid 4-corner can — never
+    // more than one.
     if (def.package) {
       assert.ok(!def.footprint, "a DIP-footprint discrete carries no offsets");
       assert.equal(packageSpec(def.package).pins, def.pins.length);
+    } else if (def.can) {
+      assert.ok(!def.footprint, "a can carries no row offsets");
+      assert.equal(def.pins.length, 4);
+      assert.ok(Number.isInteger(def.can.width) && def.can.width > 0);
+      assert.ok(Number.isInteger(def.can.height) && def.can.height > 0);
     } else {
       assert.equal(def.footprint.offsets.length, def.pins.length);
       assert.equal(def.footprint.offsets[0], 0);
@@ -121,54 +127,62 @@ test("sw-toggle: bridges while on; on persists in params", () => {
   assert.deepEqual(def.normalizeParams({}), { on: false });
 });
 
-test("osc-full: only pins 1/7/8/14 are real; the rest float (nc)", () => {
+test("osc-full: a rigid 4-corner can, 7 holes by 4 holes; NC/GND/OUT/VCC only", () => {
   const def = partDef("osc-full");
-  assert.equal(def.package, "DIP-14");
-  assert.equal(packageSpec(def.package).pins, def.pins.length);
-  const byRole = (role) =>
-    def.pins.filter((p) => p.role === role).map((p) => p.n);
-  assert.deepEqual(byRole("nc"), [1, 2, 3, 4, 5, 6, 9, 10, 11, 12, 13]);
-  assert.deepEqual(byRole("gnd"), [7]);
-  assert.deepEqual(byRole("output"), [8]);
-  assert.deepEqual(byRole("vcc"), [14]);
+  assert.deepEqual(def.can, { width: 6, height: 3 }); // 7×4 holes
+  assert.equal(def.pins.length, 4);
+  assert.deepEqual(
+    def.pins.map((p) => p.role),
+    ["nc", "gnd", "output", "vcc"],
+  );
   assert.ok(isOscillator(def));
   assert.ok(hasBehavior(def));
   assert.deepEqual(def.internalBridges(), []); // driven, never a passive bridge
 });
 
-test("osc-half: only pins 1/4/5/8 are real; the rest float (nc)", () => {
+test("osc-half: a rigid 4-corner can, 4 holes by 4 holes; NC/GND/OUT/VCC only", () => {
   const def = partDef("osc-half");
-  assert.equal(def.package, "DIP-8");
-  assert.equal(packageSpec(def.package).pins, def.pins.length);
-  const byRole = (role) =>
-    def.pins.filter((p) => p.role === role).map((p) => p.n);
-  assert.deepEqual(byRole("nc"), [1, 2, 3, 6, 7]);
-  assert.deepEqual(byRole("gnd"), [4]);
-  assert.deepEqual(byRole("output"), [5]);
-  assert.deepEqual(byRole("vcc"), [8]);
+  assert.deepEqual(def.can, { width: 3, height: 3 }); // 4×4 holes
+  assert.equal(def.pins.length, 4);
+  assert.deepEqual(
+    def.pins.map((p) => p.role),
+    ["nc", "gnd", "output", "vcc"],
+  );
   assert.ok(isOscillator(def));
   assert.deepEqual(def.internalBridges(), []);
 });
 
-test("osc-full/osc-half: rate picks from OSCILLATOR_HZ (no manual mode); damaged persists", () => {
+test("osc-full/osc-half: rate picks from OSCILLATOR_HZ (no manual mode); rot + damaged persist", () => {
   assert.deepEqual(
     OSCILLATOR_HZ,
     CLOCK_HZ.filter((hz) => hz !== "manual"),
   );
   for (const id of ["osc-full", "osc-half"]) {
     const def = partDef(id);
-    assert.deepEqual(def.normalizeParams({}), { hz: OSCILLATOR_HZ[0] });
-    assert.deepEqual(def.normalizeParams({ hz: 5 }), { hz: 5 });
+    assert.deepEqual(def.normalizeParams({}), { hz: OSCILLATOR_HZ[0], rot: 0 });
+    assert.deepEqual(def.normalizeParams({ hz: 5 }), { hz: 5, rot: 0 });
     // "manual" isn't valid for a can — a real crystal has no toggle pin.
     assert.deepEqual(def.normalizeParams({ hz: "manual" }), {
       hz: OSCILLATOR_HZ[0],
+      rot: 0,
+    });
+    // Only a true quarter-turn sticks; junk coerces to 0.
+    assert.deepEqual(def.normalizeParams({ hz: 5, rot: 90 }), {
+      hz: 5,
+      rot: 90,
+    });
+    assert.deepEqual(def.normalizeParams({ rot: 45 }), {
+      hz: OSCILLATOR_HZ[0],
+      rot: 0,
     });
     assert.deepEqual(def.normalizeParams({ hz: 5, damaged: true }), {
       hz: 5,
+      rot: 0,
       damaged: true,
     });
     assert.deepEqual(def.normalizeParams({ damaged: false }), {
       hz: OSCILLATOR_HZ[0],
+      rot: 0,
     });
   }
 });

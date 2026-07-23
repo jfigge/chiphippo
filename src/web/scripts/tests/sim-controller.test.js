@@ -24,7 +24,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { resetDom } from "./jsdom-setup.js";
-import { partPinHoles } from "../model/occupancy.js";
+import { partPinAddresses, partPinHoles } from "../model/occupancy.js";
 import { holesOfNode, nodeOf } from "../model/breadboard.js";
 
 const { SimController } = await import("../components/sim-controller.js");
@@ -41,6 +41,23 @@ function chipHoles(ref, anchor) {
 }
 const mates = (hole) =>
   holesOfNode("pins-full", nodeOf("pins-full", hole)).filter((h) => h !== hole);
+
+/**
+ * Pin number → its seated BARE hole for a `def.can` part at `anchor` on
+ * "bb1", rot 0. Unlike chipHoles, this resolves against a full document —
+ * 3 of a can's 4 pins are {dx, dy} offsets from the anchor (see
+ * model/occupancy.js's `def.can` branch), not footprint-derived like a
+ * chip's.
+ */
+function canHoles(anchor, ref = "osc-full") {
+  const doc = { boards: [board], components: [], wires: [] };
+  const comp = { ref, board: "bb1", anchor, params: {} };
+  const map = new Map();
+  for (const { pin, address } of partPinAddresses(doc, comp)) {
+    map.set(pin, address ? address.split(".")[1] : null);
+  }
+  return map;
+}
 
 const board = { id: "bb1", type: "pins-full", x: 0, y: 0 };
 const psu = (id, x, volts) => ({
@@ -284,20 +301,26 @@ test("a manual clock toggles on manualToggle", () => {
 
 // ── Transport: board-seated oscillator can ─────────────────────
 
-/** An osc-full can, VCC/GND wired to a 5 V PSU (pins 14/7, like a DIP-14 chip). */
+// Canonical can pin numbers (see catalog/parts.js's `def.can` defs):
+// 1 NC, 2 GND, 3 OUT, 4 VCC.
+
+/** An osc-full can, VCC/GND wired to a 5 V PSU. */
 function oscDoc(hz) {
-  const holes = chipHoles("osc-full", "e10");
+  const holes = canHoles("e10", "osc-full");
   return {
     boards: [board],
     components: [psu("psu1", 80, 5), part("c1", "osc-full", "e10", { hz })],
-    wires: powerWires("psu1", holes),
+    wires: [
+      wire("psu1.+", `bb1.${mates(holes.get(4))[0]}`), // VCC
+      wire("psu1.-", `bb1.${mates(holes.get(2))[0]}`), // GND
+    ],
   };
 }
 
 test("a board-seated oscillator can free-runs like a clock brick — but only while powered", () => {
   resetDom();
-  const holes = chipHoles("osc-full", "e10");
-  const outAddr = `bb1.${holes.get(8)}`;
+  const holes = canHoles("e10", "osc-full");
+  const outAddr = `bb1.${holes.get(3)}`;
   const sim = new SimController({
     deskDoc: fakeDoc(oscDoc(1)),
     notifications: fakeNotifications(),

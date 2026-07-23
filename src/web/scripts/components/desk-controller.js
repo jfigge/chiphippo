@@ -927,7 +927,7 @@ export class DeskController {
       case "brick":
         return { x: ax, y: ay };
       default: {
-        const box = discreteBox(member.ref);
+        const box = discreteBox(member.ref, member.params?.rot);
         return { x: ax + box.minX, y: ay + box.minY };
       }
     }
@@ -1042,15 +1042,17 @@ export class DeskController {
     const box =
       m.kind === "place-chip"
         ? chipBox(partDef(m.ref).package)
-        : discreteBox(m.ref);
-    const seat = this.#partSeatAt(w, m.ref, 0);
+        : discreteBox(m.ref, m.params?.rot);
+    const seat = this.#partSeatAt(w, m.ref, 0, m.params);
     m.ghost.hidden = false;
     if (seat) {
       const board = this.#doc.getBoard(seat.board);
       const pos = holePosition(board.type, seat.anchor);
       m.board = seat.board;
       m.anchor = seat.anchor;
-      m.legal = this.#doc.canPlacePart(m.ref, seat.board, seat.anchor);
+      m.legal = this.#doc.canPlacePart(m.ref, seat.board, seat.anchor, {
+        params: m.params,
+      });
       m.ghost.style.left = `${(board.x + pos.x + box.minX) * PX_PER_UNIT}px`;
       m.ghost.style.top = `${(board.y + pos.y + box.minY) * PX_PER_UNIT}px`;
     } else {
@@ -1099,8 +1101,8 @@ export class DeskController {
   }
 
   /** Seat (board + anchor) for a part under the cursor — see model/seating.js. */
-  #partSeatAt(world, ref, grabOffsetCols) {
-    return partSeatAt(this.#doc.boards, ref, world, grabOffsetCols);
+  #partSeatAt(world, ref, grabOffsetCols, params = null) {
+    return partSeatAt(this.#doc.boards, ref, world, grabOffsetCols, params);
   }
 
   // ── Rotation while placing / dragging ───────────────────────────────────
@@ -1176,6 +1178,22 @@ export class DeskController {
       m.ghost.append(buildChipSvg(m.ref, m.params));
       return true;
     }
+    // Placing an oscillator can: R spins the ghost a full quarter turn IN
+    // PLACE (0/90/180/270, unlike the resistor's boolean toggle below) — the
+    // ghost re-centres and its SVG is rebuilt since a full can's box isn't
+    // square, so 90°/270° swap its bounding box.
+    if (m?.kind === "place-part" && partDef(m.ref)?.can) {
+      m.params = {
+        ...m.params,
+        rot: ROTATIONS[
+          (ROTATIONS.indexOf(m.params.rot ?? 0) + 1) % ROTATIONS.length
+        ],
+      };
+      m.ghost.querySelector("svg")?.remove();
+      m.ghost.append(buildDiscreteSvg(m.ref, m.params));
+      if (m.lastWorld) this.#trackSeatedGhostAt(m.lastWorld);
+      return true;
+    }
     // Placing a rotatable part: R turns the ghost a quarter lap IN PLACE — the
     // placement stays armed, and the orientation carries into the drop. A pasted
     // ghost carries an explicit lead vector (m.orient), so spin THAT 90°
@@ -1195,7 +1213,7 @@ export class DeskController {
     if (this.#selected?.kind === "part") {
       const comp = this.#doc.getComponent(this.#selected.id);
       const def = partDef(comp?.ref);
-      if (def?.rotatable || def?.kind === "chip") {
+      if (def?.rotatable || def?.can || def?.kind === "chip") {
         this.rotateComponent(this.#selected.id);
         return true;
       }
@@ -2204,6 +2222,7 @@ export class DeskController {
     }
     let rows;
     if (def.package) rows = Math.ceil(def.pins.length / 2);
+    else if (def.can) rows = def.pins.length;
     else if (def.footprint) rows = def.pins.length;
     else if (def.terminals) rows = def.terminals.length;
     else return; // nothing to show
@@ -2490,6 +2509,7 @@ export class DeskController {
         kind: "drag-part",
         id,
         ref: comp.ref,
+        params: comp.params,
         pointerId: e.pointerId,
         startClientX: e.clientX,
         startClientY: e.clientY,
@@ -2570,12 +2590,13 @@ export class DeskController {
       return;
     }
 
-    const seat = this.#partSeatAt(w, d.ref, d.grabOffsetCols);
+    const seat = this.#partSeatAt(w, d.ref, d.grabOffsetCols, d.params);
     if (seat) {
       // Ride the lattice, snapped; tint tells occupancy legality.
       d.seat = seat;
       d.legal = this.#doc.canPlacePart(d.ref, seat.board, seat.anchor, {
         ignoreId: d.id,
+        params: d.params,
       });
       view?.updatePlacement(this.#doc.getBoard(seat.board), seat.anchor);
     } else {
@@ -2818,7 +2839,7 @@ export class DeskController {
       }
     }
     if (!this.#editingLocked) {
-      if (partDef(comp?.ref)?.rotatable) {
+      if (partDef(comp?.ref)?.rotatable || partDef(comp?.ref)?.can) {
         items.push({
           label: "Rotate 90°",
           onSelect: () => this.rotateComponent(id),

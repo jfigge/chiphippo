@@ -1021,8 +1021,8 @@
   }
 }
 
-/* ── Oscillator can: a plain metal body — no notch, unlike a
-   chip — straddling the trench with only its 4 real legs drawn. ─────────── */
+/* ── Oscillator can: a plain metal body — no notch, unlike a chip — with
+   legs only at its 4 corners; free to seat anywhere and spin in place. ──── */
 .part-can-body {
   fill: var(--color-chip-leg);
   stroke: var(--color-part-inset);

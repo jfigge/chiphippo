@@ -25,6 +25,7 @@
 // No electrical logic lives in views, and none in the netlist yet.
 
 import { hd44780Unit } from "../sim/hd44780.js";
+import { ROTATIONS } from "../model/breadboard.js";
 
 export const LED_COLORS = Object.freeze(["red", "green", "yellow", "blue"]);
 export const PSU_VOLTS = Object.freeze([3, 5, 12]);
@@ -99,15 +100,13 @@ export function normalizeLeadOffset(raw) {
   return Object.freeze({ dx: dx === 0 ? 0 : dx, dy: dy === 0 ? 0 : dy });
 }
 
-/** An unused DIP position on an oscillator can — only 4 of the 14/8 footprint
-    positions carry a real leg (see the "osc-full"/"osc-half" defs below). */
-const oscNc = (n) => ({ n, name: "N/C", role: "nc" });
-
-/** Shared by both oscillator-can sizes: a simulated rate plus
-    the same `damaged` bookkeeping a chip's 12 V "magic smoke" needs. */
+/** Shared by both oscillator-can sizes: a simulated rate, the current
+    quarter-turn orientation, plus the same `damaged` bookkeeping a chip's
+    12 V "magic smoke" needs. */
 function normalizeOscillatorParams(raw) {
   const params = {
     hz: OSCILLATOR_HZ.includes(raw?.hz) ? raw.hz : OSCILLATOR_HZ[0],
+    rot: ROTATIONS.includes(raw?.rot) ? raw.rot : 0,
   };
   if (raw?.damaged === true) params.damaged = true;
   return params;
@@ -531,27 +530,23 @@ export const PART_DEFS = Object.freeze(
       kind: "discrete",
       title: "Oscillator (full can)",
       blurb:
-        "Crystal-oscillator can, full-size 14-pin DIP footprint — only pins " +
-        "1, 7, 8, 14 carry a real leg, the rest of the footprint is empty. " +
-        "A free-running square-wave source, powered like a chip: pin 1 " +
-        "N/C, pin 7 GND, pin 8 OUTPUT, pin 14 VCC.",
-      group: "Power",
-      package: "DIP-14",
+        "Crystal-oscillator can, full size — a rectangular metal can with " +
+        "just 4 legs at its corners (7 holes by 4 holes, body overhanging " +
+        "half a hole on every side). Seats anywhere, any row — including " +
+        "straddling the centre channel — and turns in 90° steps; press R " +
+        "while placing (or with it selected) to spin it. A free-running " +
+        "square-wave source, powered like a chip: NC, GND, OUTPUT, VCC.",
+      group: "Oscillators",
+      // The rigid footprint's full pitch-unit extents (rot 0): 6 units long
+      // (7 holes) by 3 units deep (4 holes) — see model/occupancy.js's
+      // `def.can` branch and model/breadboard.js's rotateOffset for how the
+      // 4 corner pins derive from this at any quarter-turn.
+      can: Object.freeze({ width: 6, height: 3 }),
       pins: [
-        oscNc(1),
-        oscNc(2),
-        oscNc(3),
-        oscNc(4),
-        oscNc(5),
-        oscNc(6),
-        { n: 7, name: "GND", role: "gnd" },
-        { n: 8, name: "OUT", role: "output" },
-        oscNc(9),
-        oscNc(10),
-        oscNc(11),
-        oscNc(12),
-        oscNc(13),
-        { n: 14, name: "VCC", role: "vcc" },
+        { n: 1, name: "NC", role: "nc" },
+        { n: 2, name: "GND", role: "gnd" },
+        { n: 3, name: "OUT", role: "output" },
+        { n: 4, name: "VCC", role: "vcc" },
       ],
       // A self-clocking source: the engine drives the output
       // pin from clockPhase instead of evaluating logic.units.
@@ -566,20 +561,19 @@ export const PART_DEFS = Object.freeze(
       kind: "discrete",
       title: "Oscillator (half can)",
       blurb:
-        "Crystal-oscillator can, half-size 8-pin DIP footprint — only pins " +
-        "1, 4, 5, 8 carry a real leg. Pin 1 N/C, pin 4 GND, pin 5 OUTPUT, " +
-        "pin 8 VCC.",
-      group: "Power",
-      package: "DIP-8",
+        "Crystal-oscillator can, half size — a rectangular metal can with " +
+        "just 4 legs at its corners (4 holes by 4 holes, body overhanging " +
+        "half a hole on every side). Seats anywhere, any row — including " +
+        "straddling the centre channel — and turns in 90° steps; press R " +
+        "while placing (or with it selected) to spin it. NC, GND, OUTPUT, VCC.",
+      group: "Oscillators",
+      // 3 pitch-units square (4 holes by 4 holes) at rot 0.
+      can: Object.freeze({ width: 3, height: 3 }),
       pins: [
-        oscNc(1),
-        oscNc(2),
-        oscNc(3),
-        { n: 4, name: "GND", role: "gnd" },
-        { n: 5, name: "OUT", role: "output" },
-        oscNc(6),
-        oscNc(7),
-        { n: 8, name: "VCC", role: "vcc" },
+        { n: 1, name: "NC", role: "nc" },
+        { n: 2, name: "GND", role: "gnd" },
+        { n: 3, name: "OUT", role: "output" },
+        { n: 4, name: "VCC", role: "vcc" },
       ],
       logic: Object.freeze({ oscillator: true }),
       normalizeParams: normalizeOscillatorParams,

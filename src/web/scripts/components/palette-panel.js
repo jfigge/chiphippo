@@ -36,7 +36,7 @@ import { hasBehavior } from "../sim/chip-eval.js";
 const CHIPS_FOLDER = "CHIPS";
 
 /** Memory chips are pulled OUT of the CHIPS folder into their own top-level
-    group, right below it (they're chips, but a distinct category). */
+    group, below COMPONENTS (they're chips, but a distinct category). */
 const MEMORY_GROUP = "Memory";
 
 /** Every non-chip part (switches, resistors, LEDs, displays, power) nests under
@@ -45,7 +45,14 @@ const COMPONENTS_FOLDER = "COMPONENTS";
 
 /** The order the COMPONENTS sub-groups render in (catalog order is by first
     appearance, which reads oddly; this is the intended shelf order). */
-const COMPONENT_ORDER = ["Switches", "Resistors", "LEDs", "Displays", "Power"];
+const COMPONENT_ORDER = [
+  "Switches",
+  "Resistors",
+  "LEDs",
+  "Displays",
+  "Oscillators",
+  "Power",
+];
 
 /** The board selector's foldable section name (pinned at the top). Folds like
     any section, and starts shut with the rest. */
@@ -182,12 +189,12 @@ export class PalettePanel {
       (a, b) => COMPONENT_ORDER.indexOf(a[0]) - COMPONENT_ORDER.indexOf(b[0]),
     );
 
-    // Chips lead, then memory (its own group), then every other component.
+    // Chips lead, then every other component, then memory (its own group).
     this.#appendFolder(CHIPS_FOLDER, chipGroups, filtering);
+    this.#appendFolder(COMPONENTS_FOLDER, componentGroups, filtering);
     if (memoryMembers) {
       this.#appendGroup(this.#list, MEMORY_GROUP, memoryMembers, filtering);
     }
-    this.#appendFolder(COMPONENTS_FOLDER, componentGroups, filtering);
 
     // Labels + notes live at the very bottom (not catalog parts, so the chip
     // filter hides them, exactly like the boards folder up top).

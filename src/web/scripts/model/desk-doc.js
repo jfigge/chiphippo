@@ -45,6 +45,8 @@ import {
   normalizeRotation,
   parseAddress,
   parseHole,
+  ROTATIONS,
+  rotateOffset,
   spec,
 } from "./breadboard.js";
 import { partDef } from "../catalog/index.js";
@@ -54,7 +56,9 @@ import {
   snapCorrection,
 } from "./mating.js";
 import {
+  addressAtWorld,
   buildOccupancy,
+  canCornerOffset,
   canMoveWire,
   canPlacePart,
   canPlaceWire,
@@ -1147,6 +1151,52 @@ export class DeskDoc {
     const comp = this.#doc.components.find((c) => c.id === id);
     if (!comp) throw taggedError(`no component ${id}`, "NOT_FOUND");
     const def = partDef(comp.ref);
+    // A rigid multi-corner shape (an oscillator can) spins IN PLACE around its
+    // own centre — pin 1 (the stored anchor) moves to a new hole each
+    // quarter-turn, unlike the pivot-on-pin-1 rotate below. Recover the
+    // centre from the current anchor + rot, then find the next rot's anchor
+    // near that same centre.
+    if (def?.can) {
+      const board = this.#doc.boards.find((b) => b.id === comp.board);
+      const anchorPos =
+        board && holePosition(board.type, comp.anchor, board.rot ?? 0);
+      if (!anchorPos) {
+        throw taggedError(`${id} has no pins`, "ILLEGAL_PLACEMENT");
+      }
+      const anchorWorld = {
+        x: board.x + anchorPos.x,
+        y: board.y + anchorPos.y,
+      };
+      const curRot = comp.params?.rot ?? 0;
+      const nextRot =
+        ROTATIONS[(ROTATIONS.indexOf(curRot) + 1) % ROTATIONS.length];
+      const toCenter = rotateOffset(canCornerOffset(def), curRot);
+      const center = {
+        x: anchorWorld.x - toCenter.dx,
+        y: anchorWorld.y - toCenter.dy,
+      };
+      const toAnchor = rotateOffset(canCornerOffset(def), nextRot);
+      const candidate = addressAtWorld(
+        this.#doc.boards,
+        center.x + toAnchor.dx,
+        center.y + toAnchor.dy,
+      );
+      const parsed = candidate && parseAddress(candidate);
+      const params = normalizeParams(def, { ...comp.params, rot: nextRot });
+      if (
+        !parsed ||
+        !this.canPlacePart(comp.ref, parsed.boardId, parsed.hole, {
+          ignoreId: id,
+          params,
+        })
+      ) {
+        throw taggedError(`${id} cannot rotate here`, "ILLEGAL_PLACEMENT");
+      }
+      comp.board = parsed.boardId;
+      comp.anchor = parsed.hole;
+      comp.params = params;
+      return { ...comp };
+    }
     // A DIP chip turns a half lap in place: its footprint maps onto itself, so
     // the holes (and every occupancy check) are unchanged — only the pin
     // numbering reverses. Nothing can block it.

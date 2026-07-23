@@ -81,6 +81,42 @@ test("buildDiscreteSvg: osc-full/osc-half draw only the 4 real legs + a metal ca
   assert.equal(half.querySelector(".part-can-badge").textContent, "10 Hz");
 });
 
+test("discreteBox: an oscillator can's box swaps width/height at 90°/270°", () => {
+  resetDom();
+  // Full can: 7 holes long (rot 0 width) by 4 holes deep (rot 0 height).
+  const rot0 = discreteBox("osc-full", 0);
+  assert.ok(rot0.width > rot0.height, "rot 0 is the long-and-flat orientation");
+  const rot90 = discreteBox("osc-full", 90);
+  assert.ok(rot90.height > rot90.width, "rot 90 stands the can on end");
+  assert.equal(rot90.width, rot0.height);
+  assert.equal(rot90.height, rot0.width);
+  const rot180 = discreteBox("osc-full", 180);
+  assert.equal(rot180.width, rot0.width);
+  assert.equal(rot180.height, rot0.height);
+  const rot270 = discreteBox("osc-full", 270);
+  assert.equal(rot270.width, rot90.width);
+  assert.equal(rot270.height, rot90.height);
+  // Half can is square (4×4) — every rotation keeps the same box.
+  const half0 = discreteBox("osc-half", 0);
+  const half90 = discreteBox("osc-half", 90);
+  assert.equal(half0.width, half90.width);
+  assert.equal(half0.height, half90.height);
+});
+
+test("buildDiscreteSvg: an oscillator can still draws its 4 legs + body at rot 90", () => {
+  resetDom();
+  const svg = buildDiscreteSvg("osc-full", { hz: 2, rot: 90 });
+  assert.equal(svg.querySelectorAll(".part-chip-leg").length, 4);
+  assert.ok(svg.querySelector(".part-can-body"));
+  assert.ok(svg.querySelector(".part-can-dot"));
+  // The rotated group carries the transform; the pin math and the drawing
+  // share the same rotateOffset, so this is the one visible proof they agree.
+  assert.equal(
+    svg.querySelector(".part-can-spin").getAttribute("transform"),
+    "rotate(90)",
+  );
+});
+
 test("discreteBox rejects unknown refs", () => {
   resetDom();
   assert.throws(() => discreteBox("capacitor"), { code: "INVALID_REF" });

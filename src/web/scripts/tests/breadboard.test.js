@@ -40,7 +40,9 @@ import {
   normalizeRotation,
   parseAddress,
   parseHole,
+  rotateOffset,
   rotatePoint,
+  rowOffsetBy,
   spec,
   unrotatePoint,
 } from "../model/breadboard.js";
@@ -395,4 +397,41 @@ test("no hole comes within the hit radius of a strip edge, at any rotation", () 
       }
     }
   }
+});
+
+// ── rotateOffset / rowOffsetBy (an oscillator can's rigid 4-corner rotate) ──
+
+test("rotateOffset: four quarter-turns return to the start; each is a 90° swing", () => {
+  const v = { dx: 6, dy: -3 };
+  assert.deepEqual(rotateOffset(v, 0), { dx: 6, dy: -3 });
+  assert.deepEqual(rotateOffset(v, 90), { dx: 3, dy: 6 });
+  assert.deepEqual(rotateOffset(v, 180), { dx: -6, dy: 3 });
+  assert.deepEqual(rotateOffset(v, 270), { dx: -3, dy: -6 });
+  // Applying all four quarter turns is the identity.
+  let out = v;
+  for (let i = 0; i < 4; i++) out = rotateOffset(out, 90);
+  assert.deepEqual(out, v);
+  // A junk rotation coerces to 0 (no turn).
+  assert.deepEqual(rotateOffset(v, 45), v);
+});
+
+test("rowOffsetBy: the row exactly N pitch-units away, or null (trench gap / off-edge)", () => {
+  // A 3-pitch-unit span: the trench-crossing pair, plus one wholly within
+  // each row block — every pair the full/half can's height=3 relies on.
+  assert.equal(rowOffsetBy("pins-full", "f", 3), "e"); // straddles the trench
+  assert.equal(rowOffsetBy("pins-full", "e", -3), "f");
+  assert.equal(rowOffsetBy("pins-full", "j", 3), "g"); // within the upper block
+  assert.equal(rowOffsetBy("pins-full", "e", 3), "b"); // within the lower block
+  // A partial trench crossing lands in the gap — no row there.
+  assert.equal(rowOffsetBy("pins-full", "g", 3), null);
+  assert.equal(rowOffsetBy("pins-full", "h", 3), null);
+  // Off the strip's top/bottom edge.
+  assert.equal(rowOffsetBy("pins-full", "a", 3), null);
+  assert.equal(rowOffsetBy("pins-full", "j", -1), null);
+  // A 6-pitch-unit span: the full can's long axis, rotated 90°/270°.
+  assert.equal(rowOffsetBy("pins-full", "i", 6), "e");
+  assert.equal(rowOffsetBy("pins-full", "f", 6), "b");
+  // Unknown row / rail-hole id / junk type never resolves.
+  assert.equal(rowOffsetBy("pins-full", "z", 3), null);
+  assert.equal(rowOffsetBy("rail-full", "+", 3), null);
 });
