@@ -129,6 +129,16 @@ datasheets:
 	@cd $(SRC_DIR) && npx electron $(WORKSPACE)/scripts/make-datasheets.mjs
 	@echo "--------------------------------"
 
+# ─── Demos ────────────────────────────────────────────────────────────────────
+# Regenerate the loadable demo schematics in demos/ (a .chiphippo layout + a .hex
+# ROM image each). The generator computes every wire from the model and then runs
+# each demo through the simulation engine, asserting the LED blinks / the LCD
+# prints "HI" before writing the files. Plain Node — no Electron needed.
+demos:
+	@echo "Regenerating + validating the demo schematics..."
+	@node $(WORKSPACE)/scripts/make-demos.mjs
+	@echo "--------------------------------"
+
 # ─── Build ────────────────────────────────────────────────────────────────────
 build: build-mac
 
@@ -263,6 +273,6 @@ help:
 	@echo "    info          Print full build information"
 
 .PHONY: version info install debug fmt fmt-check lint license-headers icons \
-        datasheets test test-license-headers build build-mac build-linux \
+        datasheets demos test test-license-headers build build-mac build-linux \
         build-win dmg release dist dist-mac dist-linux dist-win site \
         build-setup build-install clean help

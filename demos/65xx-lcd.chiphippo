@@ -1,0 +1,456 @@
+{
+  "version": 6,
+  "boards": [
+    {
+      "id": "bb1",
+      "type": "rail-full",
+      "x": 0,
+      "y": 0,
+      "rot": 0,
+      "group": null
+    },
+    {
+      "id": "bb2",
+      "type": "pins-full",
+      "x": 0,
+      "y": 4,
+      "rot": 0,
+      "group": null
+    },
+    {
+      "id": "bb3",
+      "type": "pins-full",
+      "x": 0,
+      "y": 20,
+      "rot": 0,
+      "group": null
+    },
+    {
+      "id": "bb4",
+      "type": "pins-full",
+      "x": 0,
+      "y": 36,
+      "rot": 0,
+      "group": null
+    }
+  ],
+  "components": [
+    {
+      "id": "psu1",
+      "kind": "psu",
+      "ref": "psu",
+      "x": 70,
+      "y": 0,
+      "params": {
+        "volts": 5
+      }
+    },
+    {
+      "id": "clk1",
+      "kind": "clock",
+      "ref": "clock",
+      "x": 70,
+      "y": 12,
+      "params": {
+        "hz": 5
+      }
+    },
+    {
+      "id": "lcd1",
+      "kind": "lcd",
+      "ref": "lcd",
+      "x": 34,
+      "y": 40,
+      "params": {
+        "size": "16x2"
+      }
+    },
+    {
+      "id": "c1",
+      "kind": "chip",
+      "ref": "w65c02",
+      "board": "bb2",
+      "anchor": "e3",
+      "params": {}
+    },
+    {
+      "id": "c2",
+      "kind": "chip",
+      "ref": "rom-8k",
+      "board": "bb3",
+      "anchor": "e3",
+      "params": {}
+    },
+    {
+      "id": "c3",
+      "kind": "chip",
+      "ref": "74LS04",
+      "board": "bb4",
+      "anchor": "e3",
+      "params": {}
+    },
+    {
+      "id": "c4",
+      "kind": "chip",
+      "ref": "74LS08",
+      "board": "bb4",
+      "anchor": "e20",
+      "params": {}
+    }
+  ],
+  "wires": [
+    {
+      "id": "w1",
+      "from": "psu1.+",
+      "to": "bb1.+1",
+      "color": "red"
+    },
+    {
+      "id": "w2",
+      "from": "psu1.-",
+      "to": "bb1.-1",
+      "color": "black"
+    },
+    {
+      "id": "w3",
+      "from": "clk1.gnd",
+      "to": "bb1.-2",
+      "color": "black"
+    },
+    {
+      "id": "w4",
+      "from": "bb2.a10",
+      "to": "bb1.+2",
+      "color": "red"
+    },
+    {
+      "id": "w5",
+      "from": "bb2.g22",
+      "to": "bb1.-3",
+      "color": "black"
+    },
+    {
+      "id": "w6",
+      "from": "bb3.g3",
+      "to": "bb1.+3",
+      "color": "red"
+    },
+    {
+      "id": "w7",
+      "from": "bb3.a16",
+      "to": "bb1.-4",
+      "color": "black"
+    },
+    {
+      "id": "w8",
+      "from": "bb4.g3",
+      "to": "bb1.+4",
+      "color": "red"
+    },
+    {
+      "id": "w9",
+      "from": "bb4.a9",
+      "to": "bb1.-5",
+      "color": "black"
+    },
+    {
+      "id": "w10",
+      "from": "bb4.g20",
+      "to": "bb1.+5",
+      "color": "red"
+    },
+    {
+      "id": "w11",
+      "from": "bb4.a26",
+      "to": "bb1.-6",
+      "color": "black"
+    },
+    {
+      "id": "w12",
+      "from": "lcd1.VDD",
+      "to": "bb1.+6",
+      "color": "red"
+    },
+    {
+      "id": "w13",
+      "from": "lcd1.VSS",
+      "to": "bb1.-7",
+      "color": "black"
+    },
+    {
+      "id": "w14",
+      "from": "bb2.a11",
+      "to": "bb3.a3",
+      "color": "green"
+    },
+    {
+      "id": "w15",
+      "from": "bb2.a12",
+      "to": "bb3.a4",
+      "color": "green"
+    },
+    {
+      "id": "w16",
+      "from": "bb2.a13",
+      "to": "bb3.a5",
+      "color": "green"
+    },
+    {
+      "id": "w17",
+      "from": "bb2.a14",
+      "to": "bb3.a6",
+      "color": "green"
+    },
+    {
+      "id": "w18",
+      "from": "bb2.a15",
+      "to": "bb3.a7",
+      "color": "green"
+    },
+    {
+      "id": "w19",
+      "from": "bb2.a16",
+      "to": "bb3.a8",
+      "color": "green"
+    },
+    {
+      "id": "w20",
+      "from": "bb2.a17",
+      "to": "bb3.a9",
+      "color": "green"
+    },
+    {
+      "id": "w21",
+      "from": "bb2.a18",
+      "to": "bb3.a10",
+      "color": "green"
+    },
+    {
+      "id": "w22",
+      "from": "bb2.a19",
+      "to": "bb3.g10",
+      "color": "green"
+    },
+    {
+      "id": "w23",
+      "from": "bb2.a20",
+      "to": "bb3.g9",
+      "color": "green"
+    },
+    {
+      "id": "w24",
+      "from": "bb2.a21",
+      "to": "bb3.g8",
+      "color": "green"
+    },
+    {
+      "id": "w25",
+      "from": "bb2.a22",
+      "to": "bb3.g7",
+      "color": "green"
+    },
+    {
+      "id": "w26",
+      "from": "bb2.g21",
+      "to": "bb3.g6",
+      "color": "green"
+    },
+    {
+      "id": "w27",
+      "from": "bb2.b11",
+      "to": "lcd1.RS",
+      "color": "green"
+    },
+    {
+      "id": "w28",
+      "from": "bb2.g10",
+      "to": "bb3.a11",
+      "color": "blue"
+    },
+    {
+      "id": "w29",
+      "from": "bb3.b11",
+      "to": "lcd1.DB0",
+      "color": "blue"
+    },
+    {
+      "id": "w30",
+      "from": "bb2.g11",
+      "to": "bb3.a12",
+      "color": "blue"
+    },
+    {
+      "id": "w31",
+      "from": "bb3.b12",
+      "to": "lcd1.DB1",
+      "color": "blue"
+    },
+    {
+      "id": "w32",
+      "from": "bb2.g12",
+      "to": "bb3.a13",
+      "color": "blue"
+    },
+    {
+      "id": "w33",
+      "from": "bb3.b13",
+      "to": "lcd1.DB2",
+      "color": "blue"
+    },
+    {
+      "id": "w34",
+      "from": "bb2.g13",
+      "to": "bb3.a14",
+      "color": "blue"
+    },
+    {
+      "id": "w35",
+      "from": "bb3.b14",
+      "to": "lcd1.DB3",
+      "color": "blue"
+    },
+    {
+      "id": "w36",
+      "from": "bb2.g14",
+      "to": "bb3.a15",
+      "color": "blue"
+    },
+    {
+      "id": "w37",
+      "from": "bb3.b15",
+      "to": "lcd1.DB4",
+      "color": "blue"
+    },
+    {
+      "id": "w38",
+      "from": "bb2.g15",
+      "to": "bb3.g14",
+      "color": "blue"
+    },
+    {
+      "id": "w39",
+      "from": "bb3.h14",
+      "to": "lcd1.DB5",
+      "color": "blue"
+    },
+    {
+      "id": "w40",
+      "from": "bb2.g16",
+      "to": "bb3.g13",
+      "color": "blue"
+    },
+    {
+      "id": "w41",
+      "from": "bb3.h13",
+      "to": "lcd1.DB6",
+      "color": "blue"
+    },
+    {
+      "id": "w42",
+      "from": "bb2.g17",
+      "to": "bb3.g12",
+      "color": "blue"
+    },
+    {
+      "id": "w43",
+      "from": "bb3.h12",
+      "to": "lcd1.DB7",
+      "color": "blue"
+    },
+    {
+      "id": "w44",
+      "from": "bb2.g18",
+      "to": "bb4.a3",
+      "color": "yellow"
+    },
+    {
+      "id": "w45",
+      "from": "bb4.a4",
+      "to": "bb3.g5",
+      "color": "orange"
+    },
+    {
+      "id": "w46",
+      "from": "bb4.b4",
+      "to": "bb4.a20",
+      "color": "orange"
+    },
+    {
+      "id": "w47",
+      "from": "bb3.g4",
+      "to": "bb1.-8",
+      "color": "black"
+    },
+    {
+      "id": "w48",
+      "from": "clk1.out",
+      "to": "bb2.g6",
+      "color": "purple"
+    },
+    {
+      "id": "w49",
+      "from": "bb2.h6",
+      "to": "bb4.a21",
+      "color": "purple"
+    },
+    {
+      "id": "w50",
+      "from": "bb4.a22",
+      "to": "lcd1.E",
+      "color": "white"
+    },
+    {
+      "id": "w51",
+      "from": "bb2.g9",
+      "to": "lcd1.RW",
+      "color": "white"
+    },
+    {
+      "id": "w52",
+      "from": "bb2.g3",
+      "to": "bb1.+7",
+      "color": "red"
+    },
+    {
+      "id": "w53",
+      "from": "bb2.g7",
+      "to": "bb1.+8",
+      "color": "red"
+    },
+    {
+      "id": "w54",
+      "from": "bb2.a4",
+      "to": "bb1.+9",
+      "color": "red"
+    },
+    {
+      "id": "w55",
+      "from": "bb2.a6",
+      "to": "bb1.+10",
+      "color": "red"
+    },
+    {
+      "id": "w56",
+      "from": "bb2.a8",
+      "to": "bb1.+11",
+      "color": "red"
+    },
+    {
+      "id": "w57",
+      "from": "bb2.g5",
+      "to": "bb1.+12",
+      "color": "red"
+    }
+  ],
+  "buses": [],
+  "netNames": [],
+  "annotations": [],
+  "nextBoardId": 5,
+  "nextGroupId": 1,
+  "nextComponentId": 8,
+  "nextPsuId": 2,
+  "nextClockId": 2,
+  "nextWireId": 58,
+  "nextBusId": 1,
+  "nextAnnotationId": 1
+}
