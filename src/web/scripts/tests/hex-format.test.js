@@ -90,3 +90,42 @@ test("extended linear address records carry past 64 KiB", () => {
 test("emit of an empty image is just the EOF record", () => {
   assert.equal(emitIntelHex(new Uint8Array(0)).trim(), ":00000001FF");
 });
+
+test("parse rebases a nonzero flash origin to offset 0", () => {
+  // Firmware based at 0x08000000 (a type-04 record → upper 16 bits 0x0800),
+  // three data bytes at record-address 0. Rebased to the lowest address, this
+  // must be a 3-byte image from offset 0 — NOT a 128 MiB (or OOM) allocation.
+  const hex = [
+    ":020000040800F2", // extended linear address, base = 0x08000000
+    ":0300000011223397", // 3 data bytes at 0x08000000
+    ":00000001FF",
+  ].join("\n");
+  const bytes = parseIntelHex(hex);
+  assert.equal(bytes.length, 3, "rebased, not sized to the absolute address");
+  assert.deepEqual([...bytes], [0x11, 0x22, 0x33]);
+});
+
+test("parse rejects a bad LOW nibble (not just a bad first nibble)", () => {
+  // parseInt("0G", 16) === 0, so the corrupt low nibble must be caught by the
+  // digit validation, not silently truncated to a wrong byte.
+  const hex = ":10000000000102030405060708090A0B0C0D0E0G78\n:00000001FF";
+  assert.throws(
+    () => parseIntelHex(hex),
+    (e) => e.code === "HEX_PARSE" && /non-hex/.test(e.message),
+  );
+});
+
+test("parse caps a pathologically sparse image instead of OOM-ing", () => {
+  // A byte at 0x00000000 and another at 0x08000000 → a 128 MiB span even after
+  // rebasing; reject with a tagged error rather than allocate.
+  const hex = [
+    ":0100000011EE", // data at absolute 0
+    ":020000040800F2", // base → 0x08000000
+    ":0100000022DD", // data at absolute 0x08000000
+    ":00000001FF",
+  ].join("\n");
+  assert.throws(
+    () => parseIntelHex(hex),
+    (e) => e.code === "HEX_PARSE" && /spans/.test(e.message),
+  );
+});

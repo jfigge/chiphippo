@@ -144,9 +144,9 @@ export class SimController {
    * @param {import('./notification-stack.js').NotificationStack} [opts.notifications]
    * @param {(mode: string) => void} [opts.onTransportChange]
    */
-  constructor({ deskDoc, notifications, onTransportChange }) {
+  constructor({ deskDoc, notifications, onTransportChange, netlist }) {
     this.#doc = deskDoc;
-    this.#netlist = new NetlistCache(deskDoc);
+    this.#netlist = netlist ?? new NetlistCache(deskDoc);
     this.#notifications = notifications;
     this.#onTransportChange = onTransportChange;
     window.addEventListener("chiphippo:part-state", this.#onPartState);

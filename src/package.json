@@ -18,7 +18,7 @@
     "dev": "electron app/main.js --dev",
     "fmt": "prettier --write \"web/**/*.{js,css,html}\" \"app/**/*.js\"",
     "lint": "eslint \"web/scripts/**/*.js\" \"app/**/*.js\"",
-    "test": "node --test app/tests/"
+    "test": "node --test --test-timeout=30000 \"app/tests/**/*.test.js\" \"web/scripts/tests/**/*.test.js\""
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",

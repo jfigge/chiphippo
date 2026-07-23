@@ -120,6 +120,30 @@ test("return home un-shifts and re-homes without clearing DDRAM", () => {
   assert.equal(s.ddram[0], 0x5a); // DDRAM preserved
 });
 
+test("display shift moves the text the way the datasheet R/L bit says", () => {
+  const u = unit();
+  let s = initDisplay(u);
+  s = cmd(u, s, 0x80 | 5); // AC → col 5
+  s = writeChar(u, s, 0x41); // 'A' at DDRAM 5
+  assert.equal(framebufferOf(s, { size: "16x2" }).chars[5], 0x41);
+
+  // 0x18 = display shift LEFT (S/C=1, R/L=0): the text slides toward col 0.
+  let left = cmd(u, s, 0x18);
+  assert.equal(
+    framebufferOf(left, { size: "16x2" }).chars[4],
+    0x41,
+    "shift-left moves 'A' from col 5 to col 4",
+  );
+
+  // 0x1C = display shift RIGHT (S/C=1, R/L=1): the text slides toward col 15.
+  let right = cmd(u, s, 0x1c);
+  assert.equal(
+    framebufferOf(right, { size: "16x2" }).chars[6],
+    0x41,
+    "shift-right moves 'A' from col 5 to col 6",
+  );
+});
+
 test("cursor/blink flags flow into the framebuffer", () => {
   const u = unit();
   let s = initDisplay(u);

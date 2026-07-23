@@ -219,6 +219,7 @@ export class DeskController {
     onCreateMemoryFile,
     onRemoveMemoryFile,
     onHistoryChange,
+    netlist,
   }) {
     this.#viewport = viewport;
     this.#deskView = deskView;
@@ -289,6 +290,7 @@ export class DeskController {
     // highlight; borrows the shared hover ring and the controller's geometry.
     this.#probe = new ProbeInspector({
       doc: deskDoc,
+      netlist,
       overlay: this.#layers.overlay,
       viewport,
       ring: this.#ring,
@@ -430,6 +432,25 @@ export class DeskController {
       "place-brick",
       "place-annotation",
       "place-cluster",
+    ].includes(this.#mode?.kind);
+  }
+
+  /**
+   * True while a direct-manipulation pointer drag is in flight — its pointer is
+   * captured and a pending pointerup will commit + tear it down. A tool-arm
+   * (W/B), copy/paste, or delete shortcut must NOT run here: it would overwrite
+   * #mode out from under that pointerup, orphaning the capture + listeners and
+   * freezing the dragged item in its grabbed visual state.
+   */
+  get #dragGestureActive() {
+    return [
+      "drag",
+      "drag-part",
+      "drag-brick",
+      "drag-annotation",
+      "drag-resistor",
+      "drag-resistor-end",
+      "marquee",
     ].includes(this.#mode?.kind);
   }
 
@@ -1922,6 +1943,13 @@ export class DeskController {
       return true;
     }
     if (this.#editingLocked) return false;
+    // A live pointer drag owns #mode until its pointerup commits + tears it
+    // down. W/B arm a tool, paste arms a ghost, and Delete removes the dragged
+    // item — each would overwrite #mode (or the view) out from under that
+    // pending pointerup, orphaning the capture. So they are inert mid-drag (the
+    // R rotate/flip path deliberately DOES act mid-drag and self-guards in
+    // #toggleResistorRotation; F is gated to placement). See #dragGestureActive.
+    const dragging = this.#dragGestureActive;
     // Cmd/Ctrl+C copies the one selected component; Cmd/Ctrl+V arms a fresh
     // duplicate as a placement ghost. Consume the key only when there is
     // something to act on, so the native Edit-menu copy/paste still serves text
@@ -1930,14 +1958,14 @@ export class DeskController {
     if (accel && (e.key === "c" || e.key === "C")) {
       return this.copySelectedComponent();
     }
-    if (accel && (e.key === "v" || e.key === "V")) {
+    if (accel && (e.key === "v" || e.key === "V") && !dragging) {
       return this.pasteComponent();
     }
-    if ((e.key === "w" || e.key === "W") && bareKey) {
+    if ((e.key === "w" || e.key === "W") && bareKey && !dragging) {
       this.toggleWireTool();
       return true;
     }
-    if ((e.key === "b" || e.key === "B") && bareKey) {
+    if ((e.key === "b" || e.key === "B") && bareKey && !dragging) {
       this.toggleBusTool();
       return true;
     }
@@ -1960,12 +1988,17 @@ export class DeskController {
     }
     if (
       (e.key === "Delete" || e.key === "Backspace") &&
+      !dragging &&
       this.#multiSize() > 0
     ) {
       this.removeSelectedComponents();
       return true;
     }
-    if ((e.key === "Delete" || e.key === "Backspace") && this.#selected) {
+    if (
+      (e.key === "Delete" || e.key === "Backspace") &&
+      !dragging &&
+      this.#selected
+    ) {
       const { kind, id } = this.#selected;
       if (kind === "part") this.removeComponent(id);
       else if (kind === "wire") this.removeWire(id);
@@ -2217,7 +2250,9 @@ export class DeskController {
     }
     if (!d.active) return; // plain click — selection already happened
 
-    const cancelled = e.type === "pointercancel";
+    // A drag that spans Run (editing locked mid-gesture) reverts, never
+    // commits — the teardown above already ran, so this only skips the mutation.
+    const cancelled = e.type === "pointercancel" || this.#editingLocked;
     const moved = d.delta.dx !== 0 || d.delta.dy !== 0;
     if (!cancelled && d.legal && moved) {
       // Moving only part of a group tears the snap — desk-doc re-derives the
@@ -2471,7 +2506,9 @@ export class DeskController {
       view.setIllegal(false);
     }
 
-    const cancelled = e.type === "pointercancel";
+    // A drag that spans Run (editing locked mid-gesture) reverts, never
+    // commits — the teardown above already ran, so this only skips the mutation.
+    const cancelled = e.type === "pointercancel" || this.#editingLocked;
     if (d.kind === "drag-resistor-end") {
       if (!d.active) return; // plain click — the press already selected it
       if (!cancelled && d.legal && d.target) {
@@ -2730,7 +2767,9 @@ export class DeskController {
       /* already released */
     }
     if (!d.active) return; // plain click — the press already selected it
-    const cancelled = e.type === "pointercancel";
+    // A drag that spans Run (editing locked mid-gesture) reverts, never
+    // commits — the teardown above already ran, so this only skips the mutation.
+    const cancelled = e.type === "pointercancel" || this.#editingLocked;
     const moved = d.pos.x !== d.origin.x || d.pos.y !== d.origin.y;
     if (!cancelled && moved) {
       this.#doc.updateAnnotation(d.id, { x: d.pos.x, y: d.pos.y });
@@ -2840,7 +2879,8 @@ export class DeskController {
     this.#marquee?.remove();
     this.#marquee = null;
     this.#viewport.classList.remove("desk-viewport--selecting");
-    if (e.type === "pointercancel") return;
+    // A marquee that spans Run applies no selection into the frozen state.
+    if (e.type === "pointercancel" || this.#editingLocked) return;
     this.#setMultiSelection(
       this.#componentsWithin(m.rect),
       this.#wiresWithin(m.rect),

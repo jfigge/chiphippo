@@ -127,6 +127,25 @@ test("moveBoard: snaps, ignores its own footprint, rejects other overlaps", () =
   assert.throws(() => doc.moveBoard("bb9", 0, 0), { code: "NOT_FOUND" });
 });
 
+test("moveBoard tears a grouped strip out and regroups the remainder", () => {
+  const doc = new DeskDoc(null);
+  doc.addKit("full", 0, 0); // bb1 rail@0 · bb2 pins@3 · bb3 rail@16, one group
+  const orig = doc.getBoard("bb2").group;
+  assert.ok(orig != null, "kit strips start grouped");
+
+  doc.moveBoard("bb1", 200, 200); // drag the top rail far off on its own
+
+  const group = Object.fromEntries(doc.boards.map((b) => [b.id, b.group]));
+  assert.equal(group.bb1, null, "the moved strip goes loose");
+  assert.equal(
+    group.bb2,
+    group.bb3,
+    "the still-flush remainder shares a group",
+  );
+  assert.ok(group.bb2 != null, "and it is a real group, not loose");
+  assert.notEqual(group.bb2, orig, "a FRESH id, never the stale spanning one");
+});
+
 test("moveBoard: an upright rail is collision-checked at its TURNED size", () => {
   const doc = new DeskDoc(null);
   doc.addBoard("rail-full", 0, 0, 90); // bb1: 3 wide × 64 tall
@@ -257,6 +276,39 @@ test("normalizeDocument: group ids survive; junk groups degrade to loose", () =>
     ["g4", "g4", null],
   );
   assert.equal(doc.nextGroupId, 5); // a group id is never reused either
+});
+
+test("normalizeDocument drops a wire whose endpoint sits on a chip pin", () => {
+  const doc = normalizeDocument({
+    boards: [{ id: "bb1", type: "pins-full", x: 0, y: 0 }],
+    components: [
+      { id: "c1", kind: "chip", ref: "74LS00", board: "bb1", anchor: "e5" },
+    ],
+    wires: [
+      // bb1.e5 is c1's pin-1 hole — a wire may not share it (one lead/point).
+      { id: "w1", from: "bb1.e5", to: "bb1.a20", color: "red" },
+      { id: "w2", from: "bb1.a10", to: "bb1.a20", color: "red" }, // clean → kept
+    ],
+  });
+  assert.deepEqual(
+    doc.wires.map((w) => w.id),
+    ["w2"],
+    "the pin-colliding wire is dropped, the clean one survives",
+  );
+});
+
+test("normalizeDocument keeps only the first of two wires sharing a hole", () => {
+  const doc = normalizeDocument({
+    boards: [{ id: "bb1", type: "pins-full", x: 0, y: 0 }],
+    wires: [
+      { id: "w1", from: "bb1.a5", to: "bb1.a10", color: "red" },
+      { id: "w2", from: "bb1.a5", to: "bb1.a20", color: "red" }, // shares a5 → dropped
+    ],
+  });
+  assert.deepEqual(
+    doc.wires.map((w) => w.id),
+    ["w1"],
+  );
 });
 
 test("toJSON is a deep copy — later mutations don't leak into it", () => {

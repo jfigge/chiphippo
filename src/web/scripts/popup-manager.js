@@ -68,7 +68,7 @@ export const PopupManager = {
    * Mount a popup. If one is already open the new popup is QUEUED (shown when
    * the current one closes) rather than replacing it. Focuses the first
    * `[data-autofocus]` control, or the first enabled button.
-   * @param {{ element: HTMLElement, onMaskClick?: () => void, variant?: string }} popup
+   * @param {{ element: HTMLElement, onMaskClick?: () => void, onClose?: () => void, variant?: string }} popup
    */
   open(popup) {
     if (!popup || !popup.element) return;
@@ -101,9 +101,14 @@ export const PopupManager = {
         // already closed
       }
       active.dialogEl.remove();
-      // A one-way notice for stateful dialogs (About/Settings) that need to
-      // reset an "is open" guard however they were dismissed (button, mask,
-      // or Escape). Fired after the DOM is torn down.
+      // Scoped notice: reset the CLOSED popup's own open-guard, whichever way it
+      // was dismissed (button, mask, or Escape). This must be per-popup, not a
+      // broadcast — a stateful dialog QUEUED behind another popup would reset
+      // its guard when the OTHER popup closed (just before it mounts), leaving
+      // it visible-but-unguarded and stackable.
+      active.popup.onClose?.();
+      // The un-scoped broadcast is retained for any incidental listener, but the
+      // guard reset above no longer depends on it.
       window.dispatchEvent(new CustomEvent("chiphippo:popup-closed"));
     }
     const next = state.queue.shift();

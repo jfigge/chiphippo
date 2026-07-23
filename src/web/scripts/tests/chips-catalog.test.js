@@ -108,13 +108,23 @@ const MEM_WAVE = [
   "AS6C1024",
   "AM27C1024",
 ];
+// The 65xx peripheral-interface wave: the W65C21 PIA + W65C22 VIA. Bus-addressed
+// register-file peripherals whose sequential `outputs` drive bidirectional `io`
+// pins (the data bus, the I/O ports, CA2/CB2/CB1) — not just strict outputs.
+const IO_WAVE = ["w65c21", "w65c22", "w65c02"];
 
-test("the catalog contains the gate wave plus the sequential/MSI + 74LS + memory waves", () => {
+test("the catalog contains the gate wave plus the sequential/MSI + 74LS + memory + io waves", () => {
   assert.deepEqual(
     CHIP_DEFS.map((d) => d.id).sort(),
-    [...GATE_WAVE, ...SEQ_WAVE, ...LS_WAVE, ...MEM_WAVE].sort(),
+    [...GATE_WAVE, ...SEQ_WAVE, ...LS_WAVE, ...MEM_WAVE, ...IO_WAVE].sort(),
   );
-  for (const id of [...GATE_WAVE, ...SEQ_WAVE, ...LS_WAVE, ...MEM_WAVE]) {
+  for (const id of [
+    ...GATE_WAVE,
+    ...SEQ_WAVE,
+    ...LS_WAVE,
+    ...MEM_WAVE,
+    ...IO_WAVE,
+  ]) {
     assert.ok(chipDef(id), id);
   }
   assert.equal(chipDef("9999"), null);
@@ -171,9 +181,23 @@ for (const def of CHIP_DEFS) {
       assert.equal(cfg.size, 2 ** cfg.addr.length, `${def.id} size↔addr width`);
       assert.equal(cfg.data.length, cfg.width, `${def.id} data width`);
       assert.ok(cfg.width === 8 || cfg.width === 16, `${def.id} width 8/16`);
+      const pinName = new Map(def.pins.map((p) => [p.n, p.name]));
       for (const p of cfg.addr) {
         assert.equal(pinRole.get(p), "input", `${def.id} addr pin ${p}`);
       }
+      // The address bus is LSB-first: cfg.addr[i] MUST be the pin the datasheet
+      // labels `A<i>` (a scrambled entry — e.g. A8/A10 swapped — silently reads
+      // the wrong byte and nothing crashes, so assert the mapping directly).
+      cfg.addr.forEach((p, i) => {
+        assert.equal(pinName.get(p), `A${i}`, `${def.id} addr[${i}] → A${i}`);
+      });
+      // Likewise the data bus, bit i on the pin named `Q<i>` or `DQ<i>`.
+      cfg.data.forEach((p, i) => {
+        assert.ok(
+          pinName.get(p) === `Q${i}` || pinName.get(p) === `DQ${i}`,
+          `${def.id} data[${i}] → Q${i}/DQ${i} (got ${pinName.get(p)})`,
+        );
+      });
       for (const p of [cfg.ceN, cfg.oeN, cfg.weN, cfg.ce2].filter(
         (x) => x != null,
       )) {
@@ -234,8 +258,9 @@ for (const def of CHIP_DEFS) {
         assert.ok(usedAsInput.has(p), `${def.id} io pin ${p} not read`);
       }
     } else {
-      // ── Sequential: a pure state0/step/outputs block whose initial outputs
-      //    cover exactly the output-role pins.
+      // ── Sequential: a pure state0/step/outputs block. Its initial outputs
+      //    cover every output-role pin and may ALSO drive bidirectional `io`
+      //    pins (the W65C21/W65C22 data bus + I/O ports); nothing else.
       assert.ok(isSequential(def), `${def.id} sequential`);
       assert.equal(typeof def.logic.state0, "function");
       assert.equal(typeof def.logic.step, "function");
@@ -245,13 +270,16 @@ for (const def of CHIP_DEFS) {
         initialState(def),
         inputLevels(def, new Map()),
       );
-      assert.deepEqual(
-        [...out.keys()].sort((a, b) => a - b),
-        [...outputPins].sort((a, b) => a - b),
-        `${def.id} outputs cover the output pins`,
-      );
+      const driven = new Set(out.keys());
+      for (const p of outputPins) {
+        assert.ok(driven.has(p), `${def.id} output pin ${p} not driven`);
+      }
       for (const pin of out.keys()) {
-        assert.equal(pinRole.get(pin), "output", `${def.id} drives pin ${pin}`);
+        const r = pinRole.get(pin);
+        assert.ok(
+          r === "output" || r === "io",
+          `${def.id} drives pin ${pin} (role ${r})`,
+        );
       }
     }
 

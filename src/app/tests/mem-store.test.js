@@ -76,6 +76,27 @@ test("load() pads / truncates to the byte size", () => {
   assert.deepEqual([...mem.load(file, 2)], [1, 2]);
 });
 
+test("load() reads at most byteLength bytes from an over-long file", () => {
+  const dir = tempDir();
+  const file = path.join(dir, "big.bin");
+  // A file far larger than the chip (e.g. a tampered sidecar): load must return
+  // only the first `len` bytes, never pull the whole thing into memory.
+  fs.writeFileSync(file, Buffer.alloc(1 << 20, 0xab)); // 1 MiB of 0xAB
+  const got = mem.load(file, 8);
+  assert.equal(got.length, 8);
+  assert.deepEqual([...got], [0xab, 0xab, 0xab, 0xab, 0xab, 0xab, 0xab, 0xab]);
+});
+
+test("program() rejects an image past the allocation cap", () => {
+  const dir = tempDir();
+  const file = path.join(dir, "rom.bin");
+  const huge = { length: (1 << 24) + 1 }; // claims > 16 MiB; rejected pre-alloc
+  assert.throws(
+    () => mem.program(file, huge, 8),
+    (e) => e.code === "INVALID_ARG",
+  );
+});
+
 test("program() copies a SHORT image to the start and keeps the tail", () => {
   const dir = tempDir();
   const file = path.join(dir, "rom.bin");

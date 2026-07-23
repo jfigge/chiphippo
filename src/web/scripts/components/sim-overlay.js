@@ -38,6 +38,7 @@ export class SimOverlay {
   #strong = new Map(); // netId → level from supplies/outputs only (no pulls)
   #netlist = null; // the netlist those levels are keyed against
   #displays = new Map(); // compId → LCD framebuffer (from the sim-state payload)
+  #pinCache = new Map(); // compId → partPinAddresses (cleared on a topology change)
 
   /**
    * @param {import("../model/desk-doc.js").DeskDoc} doc
@@ -70,6 +71,13 @@ export class SimOverlay {
     this.#running = running;
     this.#levels = netLevels ?? new Map();
     this.#strong = strongLevels ?? new Map();
+    // Pin addresses derive from the doc geometry, which changes only when the
+    // topology does — and a topology change (doc-changed OR part-state) rebuilds
+    // the netlist, so a new netlist reference is exactly the signal to drop the
+    // per-part pin-address cache. Pure clock ticks reuse the same netlist, so
+    // the cache holds across them (no getBoundingClientRect-free geometry rerun
+    // per LED/segment every tick).
+    if (netlist !== this.#netlist) this.#pinCache.clear();
     this.#netlist = netlist ?? null;
     this.#displays = displayState ?? new Map();
 
@@ -137,6 +145,20 @@ export class SimOverlay {
     return { conducting, unlimited };
   }
 
+  /**
+   * The resolved pin addresses of a part, memoised for the life of one netlist
+   * (topology). partPinAddresses walks the footprint/anchor geometry, so caching
+   * it keeps a running sim from recomputing every LED/segment's holes each tick.
+   */
+  #pinsFor(comp) {
+    let pins = this.#pinCache.get(comp.id);
+    if (pins === undefined) {
+      pins = partPinAddresses(this.#doc, comp) ?? null;
+      this.#pinCache.set(comp.id, pins);
+    }
+    return pins;
+  }
+
   /** An LED lights when its anode net is H and its cathode net is L. */
   #updateLeds() {
     const def = partDef("led");
@@ -150,7 +172,7 @@ export class SimOverlay {
         continue;
       }
       const { anodePin, cathodePin } = def.polarity(comp.params);
-      const pins = partPinAddresses(this.#doc, comp);
+      const pins = this.#pinsFor(comp);
       if (!pins) continue; // a rotated LED with an unresolved far end
       const at = (pin) => pins.find((p) => p.pin === pin)?.address;
       const { conducting, unlimited } = this.#junctionState(
@@ -182,7 +204,7 @@ export class SimOverlay {
         }
         continue;
       }
-      const pins = partPinAddresses(this.#doc, comp);
+      const pins = this.#pinsFor(comp);
       const at = (pin) => pins?.find((p) => p.pin === pin)?.address;
       let anyBurnt = false;
       for (const seg of def.segments) {

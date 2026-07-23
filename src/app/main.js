@@ -250,12 +250,12 @@ function datasheetPdfPath(ref) {
 
 /** Open (or focus) the pin-assignments window for a part ref. */
 function openPinoutWindow(ref, opts = {}) {
-  if (typeof ref !== "string" || !PINOUT_REF_RE.test(ref)) return;
+  if (typeof ref !== "string" || !PINOUT_REF_RE.test(ref)) return false;
   const existing = pinoutWindows.get(ref);
   if (existing && !existing.isDestroyed()) {
     existing.show();
     existing.focus();
-    return;
+    return true;
   }
   // `rows` is the renderer's layout row count (DIP wraps to pins/2; discretes
   // and bricks list every pin/terminal). Clamp defensively.
@@ -291,13 +291,16 @@ function openPinoutWindow(ref, opts = {}) {
   // the "open datasheet" button (it invokes datasheet:open back into main).
   const query = { ref };
   if (datasheetPdfPath(ref)) query.pdf = "1";
-  win.loadFile(path.join(__dirname, "..", "web", "pinout.html"), { query });
+  win
+    .loadFile(path.join(__dirname, "..", "web", "pinout.html"), { query })
+    .catch(() => {});
   // Right-click anywhere in the window → native float-above toggle.
   win.webContents.on("context-menu", () => showPinoutMenu(win));
   win.on("closed", () => {
     if (pinoutWindows.get(ref) === win) pinoutWindows.delete(ref);
   });
   pinoutWindows.set(ref, win);
+  return true;
 }
 
 // ─── Memory backing files + inspector windows (Features 180 / 190) ─────────────
@@ -397,13 +400,13 @@ async function exportMemoryFile(bytes, suggestedName) {
 /** Open (or focus) the memory-inspector window for a component id. */
 function openMemoryWindow(compId, ref) {
   if (!MEM_COMP_RE.test(String(compId)) || !PINOUT_REF_RE.test(String(ref))) {
-    return;
+    return false;
   }
   const existing = memoryWindows.get(compId);
   if (existing && !existing.isDestroyed()) {
     existing.show();
     existing.focus();
-    return;
+    return true;
   }
   const win = new BrowserWindow({
     width: 760,
@@ -423,13 +426,16 @@ function openMemoryWindow(compId, ref) {
     },
   });
   win.setMenuBarVisibility(false);
-  win.loadFile(path.join(__dirname, "..", "web", "memory.html"), {
-    query: { comp: compId, ref },
-  });
+  win
+    .loadFile(path.join(__dirname, "..", "web", "memory.html"), {
+      query: { comp: compId, ref },
+    })
+    .catch(() => {});
   win.on("closed", () => {
     if (memoryWindows.get(compId) === win) memoryWindows.delete(compId);
   });
   memoryWindows.set(compId, win);
+  return true;
 }
 
 /** Relay a message from the main renderer to a component's inspector window. */
@@ -611,6 +617,20 @@ function setPinoutFloat(on) {
   }
 }
 
+/**
+ * Close every auxiliary window (pinout diagrams + memory inspectors). The main
+ * renderer rebuilds the whole scene by reloading on New/Open (the app's one
+ * teardown path), which orphans these separate OS windows: a pinout points at a
+ * chip that may be gone, and — worse — an open inspector's Save would recreate
+ * a `.bin` for a chip the reload just removed. Each window's own `closed`
+ * handler prunes its map entry.
+ */
+function closeAuxWindows() {
+  for (const w of [...pinoutWindows.values(), ...memoryWindows.values()]) {
+    if (!w.isDestroyed()) w.close();
+  }
+}
+
 // ─── IPC handlers ─────────────────────────────────────────────────────────────
 // Every channel registered here must have a matching window.chiphippo.* export
 // in preload.js (the ipc-parity test enforcing this lands in Feature 20).
@@ -650,10 +670,9 @@ function registerIpc() {
 
   // Chip pin-assignments window (Feature 100): double-clicking a chip opens a
   // separate floating OS window rendering its pinout as a wiring reference.
-  ipcMain.handle("pinout:open", (_event, ref, opts) => {
-    openPinoutWindow(ref, opts);
-    return true;
-  });
+  ipcMain.handle("pinout:open", (_event, ref, opts) =>
+    openPinoutWindow(ref, opts),
+  );
 
   // Open a part's external datasheet PDF from the configured folder (Settings ▸
   // Data Sheets) in the OS PDF viewer. Requested by the pinout window's
@@ -696,10 +715,9 @@ function registerIpc() {
   // Memory inspector window + cross-window relay (Feature 190): the inspector
   // is its own OS window per component and reaches the main renderer only
   // through these two relays (host ⇄ inspector, addressed by component id).
-  ipcMain.handle("memory:open", (_event, compId, ref) => {
-    openMemoryWindow(compId, ref);
-    return true;
-  });
+  ipcMain.handle("memory:open", (_event, compId, ref) =>
+    openMemoryWindow(compId, ref),
+  );
   ipcMain.handle("memory:to-inspector", (_event, compId, msg) => {
     relayToInspector(compId, msg);
     return true;
@@ -798,11 +816,23 @@ function createWindow() {
     return { action: "deny" };
   });
 
-  win.loadFile(path.join(__dirname, "..", "web", "index.html"));
+  // Any top-level navigation of the main frame is a full scene rebuild (New /
+  // Open reload the working desk; hot-reload; a manual reload). Close the
+  // orphaned pinout / inspector windows so a stale inspector can't write a
+  // `.bin` for a chip the reload removed. did-navigate is main-frame only and
+  // skips in-page navigations; the initial load is a harmless no-op (maps
+  // empty).
+  win.webContents.on("did-navigate", () => closeAuxWindows());
+
+  win.loadFile(path.join(__dirname, "..", "web", "index.html")).catch(() => {});
 
   win.once("ready-to-show", () => win.show());
   win.on("closed", () => {
     if (mainWindow === win) mainWindow = null;
+    // Close the orphaned pinout/inspector windows so they don't outlive the
+    // desk they belong to — and, on Windows/Linux, so `window-all-closed` can
+    // actually fire and quit the app instead of hanging on a stray inspector.
+    closeAuxWindows();
   });
 
   if (isDev || isDevTools) win.webContents.openDevTools({ mode: "bottom" });

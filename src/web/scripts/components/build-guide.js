@@ -68,9 +68,9 @@ export class BuildGuide {
    *   whenever the panel opens/closes (incl. its own close button), so the
    *   toolbar button + persisted setting stay in step.
    */
-  constructor(container, { deskDoc, onVisibilityChange }) {
+  constructor(container, { deskDoc, onVisibilityChange, netlist }) {
     this.#doc = deskDoc;
-    this.#netlist = new NetlistCache(deskDoc);
+    this.#netlist = netlist ?? new NetlistCache(deskDoc);
     this.#onVisibilityChange = onVisibilityChange;
 
     const tabs = el("div", { class: "build-guide-tabs", role: "tablist" });

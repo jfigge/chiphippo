@@ -66,6 +66,7 @@ export class ProbeInspector {
     onNameNet,
     onClearNetNames,
     coordinate,
+    netlist,
   }) {
     this.#doc = doc;
     this.#viewport = viewport;
@@ -78,7 +79,7 @@ export class ProbeInspector {
     this.#onClearNetNames = onClearNetNames;
     this.#coord = coordinate;
 
-    this.#netlist = new NetlistCache(doc);
+    this.#netlist = netlist ?? new NetlistCache(doc);
     this.#highlight = new NetHighlight(overlay);
     this.#netStatus = el("div", { class: "net-status", hidden: true });
     viewport.append(this.#netStatus);

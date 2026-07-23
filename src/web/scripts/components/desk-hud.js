@@ -33,10 +33,15 @@ export class DeskHud {
     container.append(this.#el);
 
     container.addEventListener("pointermove", (e) => {
+      // The HUD is always mounted but OFF by default. worldFromEvent reads
+      // getBoundingClientRect (forces layout), so skip it — and the DOM write —
+      // on every pointermove across the whole viewport while it's invisible.
+      if (this.#el.hidden) return;
       this.#cursor = deskView.worldFromEvent(e);
       this.#render();
     });
     container.addEventListener("pointerleave", () => {
+      if (this.#el.hidden) return;
       this.#cursor = null;
       this.#render();
     });
