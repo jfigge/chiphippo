@@ -22,6 +22,7 @@ import { CHIPS_GATES } from "./chips-gates.js";
 import { CHIPS_SEQ } from "./chips-seq.js";
 import { CHIPS_74LS } from "./chips-74ls.js";
 import { CHIPS_MEM } from "./chips-mem.js";
+import { CHIPS_IO } from "./chips-io.js";
 import { PART_DEFS } from "./parts.js";
 
 /**
@@ -44,24 +45,25 @@ function normalizeStorage(raw) {
     file `storage.guid` + `programmed` flag (Feature 190) — chips otherwise
     carry no params. */
 export const CHIP_DEFS = Object.freeze(
-  [...CHIPS_GATES, ...CHIPS_SEQ, ...CHIPS_74LS, ...CHIPS_MEM].map((def) =>
-    Object.freeze({
-      kind: "chip",
-      // Only non-default flags are stored, so a plain chip keeps `params: {}`.
-      // `rot: 180` is the flipped orientation — same holes, reversed numbering.
-      normalizeParams: (raw) => {
-        const params = {};
-        if (raw?.damaged === true) params.damaged = true;
-        if (raw?.rot === 180) params.rot = 180;
-        const storage = normalizeStorage(raw);
-        if (storage) params.storage = storage;
-        // A ROM flagged programmed by the in-app programmer — drives the
-        // "backing file went missing" loss warning after a delete + undo.
-        if (raw?.programmed === true) params.programmed = true;
-        return params;
-      },
-      ...def,
-    }),
+  [...CHIPS_GATES, ...CHIPS_SEQ, ...CHIPS_74LS, ...CHIPS_MEM, ...CHIPS_IO].map(
+    (def) =>
+      Object.freeze({
+        kind: "chip",
+        // Only non-default flags are stored, so a plain chip keeps `params: {}`.
+        // `rot: 180` is the flipped orientation — same holes, reversed numbering.
+        normalizeParams: (raw) => {
+          const params = {};
+          if (raw?.damaged === true) params.damaged = true;
+          if (raw?.rot === 180) params.rot = 180;
+          const storage = normalizeStorage(raw);
+          if (storage) params.storage = storage;
+          // A ROM flagged programmed by the in-app programmer — drives the
+          // "backing file went missing" loss warning after a delete + undo.
+          if (raw?.programmed === true) params.programmed = true;
+          return params;
+        },
+        ...def,
+      }),
   ),
 );
 
