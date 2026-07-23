@@ -23,7 +23,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { resetDom } from "./jsdom-setup.js";
-import { DeskDoc } from "../model/desk-doc.js";
+import { DeskDoc, WIRE_COLORS } from "../model/desk-doc.js";
 import {
   addressAtWorld,
   partPinAddresses,
@@ -1738,4 +1738,102 @@ test("a fully-unseatable cluster drop stays armed (nothing pasted)", () => {
   viewport.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
   assert.ok(controller.placementArmed, "still armed to try again");
   assert.equal(doc.components.length, 2, "nothing pasted");
+});
+
+// ── P / M / digit-key shortcuts ───────────────────────────────────────────
+
+test("P toggles the probe tool, same as I", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const { controller } = makeDesk(doc);
+
+  const consumed = controller.handleKeyDown(
+    new window.KeyboardEvent("keydown", { key: "p" }),
+  );
+  assert.equal(consumed, true);
+  assert.equal(controller.probeArmed, true);
+
+  controller.handleKeyDown(new window.KeyboardEvent("keydown", { key: "P" }));
+  assert.equal(controller.probeArmed, false);
+});
+
+test("M disarms whichever of the wire/bus/probe tools is armed", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const { controller } = makeDesk(doc);
+
+  controller.armWireTool();
+  assert.equal(controller.wireToolArmed, true);
+  let consumed = controller.handleKeyDown(
+    new window.KeyboardEvent("keydown", { key: "m" }),
+  );
+  assert.equal(consumed, true);
+  assert.equal(controller.wireToolArmed, false);
+
+  controller.armBusTool();
+  assert.equal(controller.busToolArmed, true);
+  consumed = controller.handleKeyDown(
+    new window.KeyboardEvent("keydown", { key: "M" }),
+  );
+  assert.equal(consumed, true);
+  assert.equal(controller.busToolArmed, false);
+
+  controller.armProbe();
+  assert.equal(controller.probeArmed, true);
+  consumed = controller.handleKeyDown(
+    new window.KeyboardEvent("keydown", { key: "m" }),
+  );
+  assert.equal(consumed, true);
+  assert.equal(controller.probeArmed, false);
+});
+
+test("M is inert (returns false) when no tool is armed", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const { controller } = makeDesk(doc);
+
+  const consumed = controller.handleKeyDown(
+    new window.KeyboardEvent("keydown", { key: "m" }),
+  );
+  assert.equal(consumed, false);
+});
+
+test("1-8 pick the wire color while the wire tool is armed", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const { controller } = makeDesk(doc);
+
+  controller.armWireTool();
+  for (let n = 1; n <= 8; n++) {
+    const consumed = controller.handleKeyDown(
+      new window.KeyboardEvent("keydown", { key: String(n) }),
+    );
+    assert.equal(consumed, true);
+    assert.equal(controller.wireColor, WIRE_COLORS[n - 1]);
+  }
+});
+
+test("1-2 pick the bus width while the bus tool is armed; digits are inert otherwise", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const { controller } = makeDesk(doc);
+
+  // Not armed: a digit is not consumed and doesn't touch the bus name.
+  let consumed = controller.handleKeyDown(
+    new window.KeyboardEvent("keydown", { key: "1" }),
+  );
+  assert.equal(consumed, false);
+
+  controller.armBusTool();
+  consumed = controller.handleKeyDown(
+    new window.KeyboardEvent("keydown", { key: "2" }),
+  );
+  assert.equal(consumed, true);
+  assert.equal(controller.busName, "D[15:0]");
+
+  consumed = controller.handleKeyDown(
+    new window.KeyboardEvent("keydown", { key: "1" }),
+  );
+  assert.equal(consumed, true);
+  assert.equal(controller.busName, "D[7:0]");
 });

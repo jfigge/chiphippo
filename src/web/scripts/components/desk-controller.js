@@ -55,7 +55,7 @@ import {
   memberForm,
   resolveCluster,
 } from "../model/paste-cluster.js";
-import { DeskDoc } from "../model/desk-doc.js";
+import { BUS_WIDTHS, DeskDoc, WIRE_COLORS } from "../model/desk-doc.js";
 import { HistoryStore } from "../model/history-store.js";
 import { partDef } from "../catalog/index.js";
 import { isMemory, isVolatileMemory, memoryConfig } from "../sim/chip-eval.js";
@@ -173,6 +173,7 @@ export class DeskController {
   #onProgramMemory;
   #onCreateMemoryFile;
   #onRemoveMemoryFile;
+  #onBusNameChange;
 
   /**
    * @param {object} opts
@@ -210,6 +211,7 @@ export class DeskController {
     deskDoc,
     onWireStateChange,
     onBusStateChange,
+    onBusNameChange,
     onProbeStateChange,
     onAddNetToAnalyzer,
     onReplaceChip,
@@ -233,6 +235,7 @@ export class DeskController {
     this.#onCreateMemoryFile = onCreateMemoryFile;
     this.#onRemoveMemoryFile = onRemoveMemoryFile;
     this.#onHistoryChange = onHistoryChange;
+    this.#onBusNameChange = onBusNameChange;
 
     // Layer order (established for every later stage): boards under parts
     // under wires under the interaction overlay. All are zero-size anchors —
@@ -1443,9 +1446,14 @@ export class DeskController {
     return this.#busName;
   }
 
-  /** Update the bus name the tool reads (the toolbar input's `input` event). */
+  /** Update the bus name the tool reads (the toolbar width menu or a keyboard
+      shortcut) — notifies onBusNameChange so the toolbar glyph stays in sync
+      regardless of which one drove the change. */
   setBusName(name) {
-    this.#busName = typeof name === "string" ? name : "";
+    const next = typeof name === "string" ? name : "";
+    if (next === this.#busName) return;
+    this.#busName = next;
+    this.#onBusNameChange?.(next);
   }
 
   armBusTool() {
@@ -1990,9 +1998,31 @@ export class DeskController {
     }
     const bareKey = !e.metaKey && !e.ctrlKey && !e.altKey;
     // Probe stays available while running; edit shortcuts are locked out.
-    if ((e.key === "i" || e.key === "I") && bareKey) {
+    if (
+      (e.key === "i" || e.key === "I" || e.key === "p" || e.key === "P") &&
+      bareKey
+    ) {
       this.toggleProbe();
       return true;
+    }
+    // M disarms whichever of the wire/bus/probe tools is currently armed — a
+    // single "put the tools away" key. Stays available while running too (the
+    // probe does), so it can turn that off even while the circuit is live.
+    if ((e.key === "m" || e.key === "M") && bareKey) {
+      let handled = false;
+      if (this.wireToolArmed) {
+        this.disarmWireTool();
+        handled = true;
+      }
+      if (this.busToolArmed) {
+        this.disarmBusTool();
+        handled = true;
+      }
+      if (this.probeArmed) {
+        this.disarmProbe();
+        handled = true;
+      }
+      return handled;
     }
     if (this.#editingLocked) return false;
     // A live pointer drag owns #mode until its pointerup commits + tears it
@@ -2020,6 +2050,20 @@ export class DeskController {
     if ((e.key === "b" || e.key === "B") && bareKey && !dragging) {
       this.toggleBusTool();
       return true;
+    }
+    // 1–8 pick the wire color while the wire tool is armed; 1–2 pick the bus
+    // width (8-bit / 16-bit) while the bus tool is armed — the same picks the
+    // toolbar's color swatch / width menu offer, without leaving the keyboard.
+    if (bareKey && !dragging && /^[1-9]$/.test(e.key)) {
+      const n = Number(e.key);
+      if (this.wireToolArmed && n <= WIRE_COLORS.length) {
+        this.setWireColor(WIRE_COLORS[n - 1]);
+        return true;
+      }
+      if (this.busToolArmed && n <= BUS_WIDTHS.length) {
+        this.setBusName(BUS_WIDTHS[n - 1].name);
+        return true;
+      }
     }
     // F flips LED polarity while its placement ghost is armed.
     if (
@@ -2175,6 +2219,12 @@ export class DeskController {
     if (e.shiftKey && !e.altKey) return;
     // No board drags while probing or running (topology frozen).
     if (this.#mode || this.#probe.armed || this.#editingLocked) return;
+    // A wire's end cap sits directly ON a board hole, so a press there lands on
+    // the board SVG (caps aren't pointer targets) and this handler runs before
+    // the viewport dispatcher can try the same grab. Give the wire endpoint
+    // priority — pressing a wire end selects that wire and drags the one end,
+    // never the board underneath it (matches the viewport dispatcher's order).
+    if (this.#wire.tryBeginDrag(e, this.#deskView.worldFromEvent(e))) return;
     this.#hideHover();
     this.selectBoard(id);
 

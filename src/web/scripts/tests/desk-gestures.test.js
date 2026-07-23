@@ -372,6 +372,35 @@ test("whole-wire drag: both ends translate rigidly onto new holes", () => {
   );
 });
 
+test("wire-endpoint grab beats the board: a press on a cap that sits on a hole drags the wire end", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { surface, controller } = makeDesk(doc, world);
+  controller.addBoardAt("pins-full", 0, 0);
+  const wire = seedWire(doc, "bb1.a1", "bb1.a20"); // (1,12) … (20,12)
+  const boardY0 = doc.getBoard("bb1").y;
+
+  // The 'from' cap sits ON hole a1, so a press there lands on the BOARD SVG,
+  // not the wire — the exact case the fix guards. Grab it via the board element.
+  world.x = 1;
+  world.y = 12;
+  fire(boardEl(surface, "bb1"), "pointerdown", { id: 9, client: [0, 0] });
+  // The endpoint drag rides the persistent wire SVG; re-end onto b1 (1,11).
+  world.x = 1;
+  world.y = 11;
+  fire(wireSvg(surface), "pointermove", { id: 9, client: [40, 40] });
+  fire(wireSvg(surface), "pointerup", { id: 9, client: [40, 40] });
+
+  assert.equal(controller.selectedId, wire.id, "the wire is selected");
+  assert.equal(
+    doc.getWire(wire.id).from,
+    "bb1.b1",
+    "the grabbed end re-routed",
+  );
+  assert.equal(doc.getBoard("bb1").y, boardY0, "the board did not move");
+});
+
 // ── Placement (arm → click to commit) ───────────────────────────────────────
 
 /** Arm a tool, then click at world `at` to commit — a placement gesture. */

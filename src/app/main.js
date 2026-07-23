@@ -559,7 +559,6 @@ function buildAppMenu() {
       { role: "cut" },
       { role: "copy" },
       { role: "paste" },
-      { role: "selectAll" },
     ],
   });
   // View ▸ Toggle Developer Tools. A custom item (not the built-in role) so the
@@ -591,9 +590,14 @@ function buildAppMenu() {
       ...(isMac ? [{ type: "separator" }, { role: "front" }] : []),
     ],
   });
+  const shortcuts = {
+    label: "Keyboard Shortcuts",
+    accelerator: "CmdOrCtrl+K",
+    click: () => sendToMain("menu:keyboard-shortcuts"),
+  };
   template.push({
     role: "help",
-    submenu: isMac ? [] : [about],
+    submenu: isMac ? [shortcuts] : [about, { type: "separator" }, shortcuts],
   });
 
   return Menu.buildFromTemplate(template);

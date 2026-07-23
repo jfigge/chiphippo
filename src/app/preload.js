@@ -35,6 +35,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 for (const [channel, event] of [
   ["menu:show-about", "chiphippo:show-about"],
   ["menu:open-settings", "chiphippo:open-settings"],
+  ["menu:keyboard-shortcuts", "chiphippo:keyboard-shortcuts"],
   ["menu:schematic-new", "chiphippo:schematic-new"],
   ["menu:schematic-open", "chiphippo:schematic-open"],
   ["menu:schematic-save", "chiphippo:schematic-save"],

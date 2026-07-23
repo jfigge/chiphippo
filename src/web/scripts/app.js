@@ -38,7 +38,13 @@ import { NetNameMonitor } from "./components/net-name-monitor.js";
 import { PopupManager } from "./popup-manager.js";
 import { AboutDialog } from "./components/about-dialog.js";
 import { SettingsDialog } from "./components/settings-dialog.js";
-import { DeskDoc, WIRE_COLORS, emptyDocument } from "./model/desk-doc.js";
+import { KeyboardShortcutsDialog } from "./components/keyboard-shortcuts.js";
+import {
+  BUS_WIDTHS as BUS_WIDTH_PRESETS,
+  DeskDoc,
+  WIRE_COLORS,
+  emptyDocument,
+} from "./model/desk-doc.js";
 import { partDef } from "./catalog/index.js";
 
 /** How long after the last camera change to persist the viewport. */
@@ -49,6 +55,9 @@ const DOC_SAVE_DEBOUNCE_MS = 1000;
 
 /** Speed-selector labels (keyed by the SimController multiplier). */
 const SPEED_LABELS = { 0.25: "×¼", 1: "×1", 4: "×4" };
+
+/** The platform-correct modifier glyph for tooltips (⌘ on macOS, Ctrl elsewhere). */
+const MOD_KEY = window.chiphippo?.platform === "darwin" ? "⌘" : "Ctrl";
 
 /**
  * The modeled duration of one engine tick (a clock half-period), for the logic
@@ -68,11 +77,14 @@ function tickMsFor(deskDoc, sim) {
 
 /** The bus-width presets behind the Bus split-button's combo segment: the menu
     label, the bus name it sets (the grammar the tool parses), and the short
-    glyph shown in the button. 8-bit is the default. */
-const BUS_WIDTHS = [
-  { short: "8", name: "D[7:0]", label: "8-bit D[7:0]" },
-  { short: "16", name: "D[15:0]", label: "16-bit D[15:0]" },
-];
+    glyph shown in the button. 8-bit is the default. The name/bits themselves
+    come from the shared model constant (BUS_WIDTH_PRESETS); this just adds the
+    UI-facing label/glyph. */
+const BUS_WIDTHS = BUS_WIDTH_PRESETS.map(({ bits, name }) => ({
+  short: String(bits),
+  name,
+  label: `${bits}-bit ${name}`,
+}));
 
 /** The short button glyph ("8"/"16") for a bus name; defaults to 8-bit. */
 const busWidthShort = (name) =>
@@ -115,14 +127,13 @@ const SAVE_SVG =
   '<polyline points="17 21 17 13 7 13 7 21"/>' +
   '<polyline points="7 3 7 8 15 8"/></svg>';
 
-/** Connectivity-probe (crosshair) icon for the Probe toolbar toggle. */
+/** Connectivity-probe icon for the Probe toolbar toggle: a probe tip landing
+ * on a digital rising edge, with a cable trailing off the handle end. */
 const PROBE_SVG =
   ICON_SVG_OPEN +
-  '<circle cx="12" cy="12" r="10"/>' +
-  '<line x1="22" y1="12" x2="18" y2="12"/>' +
-  '<line x1="6" y1="12" x2="2" y2="12"/>' +
-  '<line x1="12" y1="6" x2="12" y2="2"/>' +
-  '<line x1="12" y1="22" x2="12" y2="18"/></svg>';
+  '<path d="M3 19h4v-6h5"/>' +
+  '<line x1="20" y1="4" x2="13" y2="11"/>' +
+  '<path d="M20 4c1-1.5 3-1.5 3 0"/></svg>';
 
 /** Build-guide (clipboard-list) icon for the Guide toolbar toggle. */
 const GUIDE_SVG =
@@ -226,10 +237,18 @@ function buildSchematicViewport() {
 
 /**
  * Central keyboard shortcuts: desk keys (Esc / Delete via DeskController)
- * first, then Space to toggle Run/Stop (only when no tool is armed), then
- * cmd/ctrl +, −, 0 for the desk zoom.
+ * first, then Space to toggle Run/Stop (only when no tool is armed), then the
+ * app-chrome accelerators (analyzer / palette / run toggle), then cmd/ctrl
+ * +, −, 0 for the desk zoom.
  */
-function bindShortcuts(controller, sim, getActiveView, onToggleView) {
+function bindShortcuts(
+  controller,
+  sim,
+  scopeView,
+  togglePalette,
+  getActiveView,
+  onToggleView,
+) {
   window.addEventListener("keydown", (e) => {
     // Tab flips Breadboard ⇄ Schematic (Feature 150) — not while typing.
     if (
@@ -281,6 +300,31 @@ function bindShortcuts(controller, sim, getActiveView, onToggleView) {
       return;
     }
     if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+    // Cmd/Ctrl+A / +P / +R toggle app-chrome panels — not while typing (Cmd+A
+    // in particular used to be the native "select all" menu role; freeing it
+    // for the analyzer meant removing that role in main.js, so a text field's
+    // own native select-all still works, but this shortcut must stay out of
+    // its way).
+    const tag = e.target?.tagName;
+    const typing =
+      tag === "INPUT" || tag === "TEXTAREA" || e.target?.isContentEditable;
+    if (!typing) {
+      if (e.key === "a" || e.key === "A") {
+        e.preventDefault();
+        scopeView.toggle();
+        return;
+      }
+      if (e.key === "p" || e.key === "P") {
+        e.preventDefault();
+        togglePalette();
+        return;
+      }
+      if (e.key === "r" || e.key === "R") {
+        e.preventDefault();
+        sim.toggle();
+        return;
+      }
+    }
     const view = getActiveView();
     if (e.key === "=" || e.key === "+") {
       e.preventDefault();
@@ -549,6 +593,7 @@ async function init() {
   let wireBtn = null;
   let wireDot = null; // the active-color dot inside the Wire split button
   let busBtn = null;
+  let busWidthBtn = null; // the "8"/"16" glyph inside the Bus split button
   let probeBtn = null;
   let sim = null; // the SimController (created after the toolbar below)
   let memoryBridge = null; // memory-inspector coordinator (created with sim)
@@ -574,6 +619,11 @@ async function init() {
     netlist: netlistCache,
     onWireStateChange,
     onBusStateChange,
+    // Keeps the bus split-button's width glyph ("8"/"16") in sync whether the
+    // name changed via the toolbar menu or the 1/2 keyboard shortcut.
+    onBusNameChange: (name) => {
+      if (busWidthBtn) busWidthBtn.textContent = busWidthShort(name);
+    },
     onProbeStateChange,
     // Probe context-menu → pin the net as an analyzer channel (and reveal it).
     onAddNetToAnalyzer: (address) => {
@@ -671,28 +721,43 @@ async function init() {
     b.innerHTML = svg;
     return b;
   };
+  // Build guide: toggle the right-docked BOM / wiring-list / steps panel. It is
+  // read-only, so it stays available while the circuit runs.
+  guideBtn = el("button", {
+    class: "toolbar-icon-btn",
+    type: "button",
+    "aria-label": "Guide",
+    title: "Build guide — BOM, wiring list, and assembly steps",
+    "aria-pressed": String(buildGuide.visible),
+    onClick: () => buildGuide.toggle(),
+  });
+  guideBtn.innerHTML = GUIDE_SVG;
+  guideBtn.classList.toggle("toolbar-btn--active", buildGuide.visible);
+
   toolbar.append(
     schematicBtn("New schematic", NEW_SVG, "chiphippo:schematic-new"),
     schematicBtn("Load schematic…", LOAD_SVG, "chiphippo:schematic-open"),
     schematicBtn("Save schematic", SAVE_SVG, "chiphippo:schematic-save"),
+    guideBtn,
     el("span", { class: "toolbar-divider", "aria-hidden": "true" }),
   );
 
+  const togglePalette = () => {
+    const on = !palette.visible;
+    palette.setVisible(on);
+    partsBtn.setAttribute("aria-pressed", String(on));
+    partsBtn.classList.toggle("toolbar-btn--active", on);
+    bridge.settings
+      .set({ paletteOpen: on })
+      .catch((err) => console.error("[renderer] settings:set failed:", err));
+  };
   const partsBtn = el("button", {
     class: "toolbar-btn",
     type: "button",
     text: "Parts",
-    title: "Show or hide the parts palette",
+    title: `Show or hide the parts palette (${MOD_KEY}+P)`,
     "aria-pressed": String(palette.visible),
-    onClick: () => {
-      const on = !palette.visible;
-      palette.setVisible(on);
-      partsBtn.setAttribute("aria-pressed", String(on));
-      partsBtn.classList.toggle("toolbar-btn--active", on);
-      bridge.settings
-        .set({ paletteOpen: on })
-        .catch((err) => console.error("[renderer] settings:set failed:", err));
-    },
+    onClick: () => togglePalette(),
   });
   partsBtn.classList.toggle("toolbar-btn--active", palette.visible);
   toolbar.append(partsBtn);
@@ -754,7 +819,7 @@ async function init() {
     "aria-pressed": "false",
     onClick: () => controller.toggleBusTool(),
   });
-  const busWidthBtn = el("button", {
+  busWidthBtn = el("button", {
     class: "toolbar-btn toolbar-btn--bus-width",
     type: "button",
     text: busWidthShort(controller.busName),
@@ -766,11 +831,12 @@ async function init() {
       PopupManager.menu({
         x: rect.left,
         y: rect.bottom + 4,
-        items: BUS_WIDTHS.map(({ short, name, label }) => ({
+        items: BUS_WIDTHS.map(({ name, label }) => ({
           label,
+          // onBusNameChange (passed to DeskController above) updates the
+          // glyph — the same path a 1/2 keyboard shortcut drives.
           onSelect: () => {
             controller.setBusName(name);
-            busWidthBtn.textContent = short;
             controller.armBusTool();
           },
         })),
@@ -784,26 +850,12 @@ async function init() {
     class: "toolbar-icon-btn",
     type: "button",
     "aria-label": "Probe",
-    title: "Connectivity probe — hover to highlight a net, click to pin (I)",
+    title: "Connectivity probe — hover to highlight a net, click to pin (P)",
     "aria-pressed": "false",
     onClick: () => controller.toggleProbe(),
   });
   probeBtn.innerHTML = PROBE_SVG;
   toolbar.append(probeBtn);
-
-  // Build guide: toggle the right-docked BOM / wiring-list / steps panel. It is
-  // read-only, so it stays available while the circuit runs.
-  guideBtn = el("button", {
-    class: "toolbar-icon-btn",
-    type: "button",
-    "aria-label": "Guide",
-    title: "Build guide — BOM, wiring list, and assembly steps",
-    "aria-pressed": String(buildGuide.visible),
-    onClick: () => buildGuide.toggle(),
-  });
-  guideBtn.innerHTML = GUIDE_SVG;
-  guideBtn.classList.toggle("toolbar-btn--active", buildGuide.visible);
-  toolbar.append(guideBtn);
 
   // Logic analyzer: toggle the bottom-docked waveform panel. Like the guide it
   // is a passive viewer, so it stays available while the circuit runs.
@@ -811,7 +863,7 @@ async function init() {
     class: "toolbar-btn",
     type: "button",
     text: "Analyzer",
-    title: "Logic analyzer — record and view signal waveforms over time",
+    title: `Logic analyzer — record and view signal waveforms over time (${MOD_KEY}+A)`,
     "aria-pressed": String(scopeView.visible),
     onClick: () => scopeView.toggle(),
   });
@@ -830,7 +882,7 @@ async function init() {
     class: "toolbar-btn toolbar-btn--run",
     type: "button",
     text: "▶ Run",
-    title: "Run the circuit (Space)",
+    title: `Run the circuit (Space or ${MOD_KEY}+R)`,
     "aria-pressed": "false",
     onClick: () => sim.toggle(),
   });
@@ -878,8 +930,8 @@ async function init() {
     controller.setEditingLocked(!stopped);
     runBtn.textContent = stopped ? "▶ Run" : "■ Stop";
     runBtn.title = stopped
-      ? "Run the circuit (Space)"
-      : "Stop and return to editing (Space)";
+      ? `Run the circuit (Space or ${MOD_KEY}+R)`
+      : `Stop and return to editing (Space or ${MOD_KEY}+R)`;
     runBtn.setAttribute("aria-pressed", String(!stopped));
     runBtn.classList.toggle("toolbar-btn--running", !stopped);
     pauseBtn.textContent = mode === "paused" ? "▶ Resume" : "⏸ Pause";
@@ -932,6 +984,8 @@ async function init() {
   bindShortcuts(
     controller,
     sim,
+    scopeView,
+    togglePalette,
     () => (mode === "schematic" ? schematicView : deskView),
     () => setMode(mode === "desk" ? "schematic" : "desk"),
   );
@@ -966,6 +1020,9 @@ async function init() {
   window.addEventListener("chiphippo:show-about", () => AboutDialog.open());
   window.addEventListener("chiphippo:open-settings", () =>
     SettingsDialog.open(currentSettings),
+  );
+  window.addEventListener("chiphippo:keyboard-shortcuts", () =>
+    KeyboardShortcutsDialog.open(),
   );
   // The app version is no longer shown in the header — it lives in the About
   // dialog (the (i) toggle), which fetches it over the IPC bridge.

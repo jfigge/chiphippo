@@ -1721,6 +1721,62 @@ textarea.annotation-editor {
   color: var(--color-danger);
 }
 
+/* ── Keyboard shortcuts dialog ─────────────────────────────────────────────── */
+.shortcuts-popup {
+  max-width: 520px;
+}
+
+.shortcuts-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+.shortcuts-group-title {
+  margin: 0 0 var(--space-2);
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-subtext);
+}
+
+.shortcuts-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.shortcuts-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  padding: var(--space-1) 0;
+}
+
+.shortcuts-desc {
+  font-size: 13px;
+  color: var(--color-text);
+}
+
+.shortcuts-keys {
+  flex: none;
+  padding: 2px var(--space-2);
+  border: 1px solid var(--color-overlay);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-1);
+  color: var(--color-subtext);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  white-space: nowrap;
+}
+
 /* ── About dialog (styled after Rest Hippo) ───────────────────────────────── */
 .about-dialog {
   display: flex;

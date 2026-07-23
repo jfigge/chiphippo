@@ -77,6 +77,14 @@ export const WIRE_COLORS = Object.freeze([
   "purple",
 ]);
 
+/** The bus-width presets the bus tool's toolbar/keyboard shortcuts pick from —
+    `name` is the grammar the tool parses (see parseBusName); 8-bit is the
+    default. */
+export const BUS_WIDTHS = Object.freeze([
+  Object.freeze({ bits: 8, name: "D[7:0]" }),
+  Object.freeze({ bits: 16, name: "D[15:0]" }),
+]);
+
 /**
  * The common net names offered as quick-picks when naming a net (Feature 120).
  * They carry NO special power — the engine still derives power from PSU volts
