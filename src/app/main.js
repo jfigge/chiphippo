@@ -291,7 +291,9 @@ function openPinoutWindow(ref, opts = {}) {
   // the "open datasheet" button (it invokes datasheet:open back into main).
   const query = { ref };
   if (datasheetPdfPath(ref)) query.pdf = "1";
-  win.loadFile(path.join(__dirname, "..", "web", "pinout.html"), { query });
+  win
+    .loadFile(path.join(__dirname, "..", "web", "pinout.html"), { query })
+    .catch(() => {});
   // Right-click anywhere in the window → native float-above toggle.
   win.webContents.on("context-menu", () => showPinoutMenu(win));
   win.on("closed", () => {
@@ -424,9 +426,11 @@ function openMemoryWindow(compId, ref) {
     },
   });
   win.setMenuBarVisibility(false);
-  win.loadFile(path.join(__dirname, "..", "web", "memory.html"), {
-    query: { comp: compId, ref },
-  });
+  win
+    .loadFile(path.join(__dirname, "..", "web", "memory.html"), {
+      query: { comp: compId, ref },
+    })
+    .catch(() => {});
   win.on("closed", () => {
     if (memoryWindows.get(compId) === win) memoryWindows.delete(compId);
   });
@@ -820,11 +824,15 @@ function createWindow() {
   // empty).
   win.webContents.on("did-navigate", () => closeAuxWindows());
 
-  win.loadFile(path.join(__dirname, "..", "web", "index.html"));
+  win.loadFile(path.join(__dirname, "..", "web", "index.html")).catch(() => {});
 
   win.once("ready-to-show", () => win.show());
   win.on("closed", () => {
     if (mainWindow === win) mainWindow = null;
+    // Close the orphaned pinout/inspector windows so they don't outlive the
+    // desk they belong to — and, on Windows/Linux, so `window-all-closed` can
+    // actually fire and quit the app instead of hanging on a stray inspector.
+    closeAuxWindows();
   });
 
   if (isDev || isDevTools) win.webContents.openDevTools({ mode: "bottom" });
