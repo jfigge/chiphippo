@@ -126,6 +126,48 @@ test("a resistor in the path keeps the LED lit and unburnt", () => {
   assert.ok(!ledEl.classList.contains("part-discrete--burnt"), "not burnt");
 });
 
+test("a moved LED re-resolves its holes — the pin cache invalidates", () => {
+  resetDom();
+  const doc = ledDoc();
+  const { surface, controller } = makeDesk(doc);
+  const led = controller.addComponentAt("led", "bb1", "a1", { color: "red" });
+  const ledEl = surface.querySelector(".part-discrete--led");
+
+  // Light it at a1/a2 — this fills the overlay's per-part pin cache.
+  publishSim({
+    netOfPoint: [
+      ["bb1.a1", "netA"],
+      ["bb1.a2", "netK"],
+    ],
+    netLevels: new Map([
+      ["netA", H],
+      ["netK", L],
+    ]),
+    strongLevels: new Map([["netK", L]]),
+  });
+  assert.ok(ledEl.classList.contains("part-discrete--lit"), "lit at a1/a2");
+
+  // Move it — its holes become a5/a6. A real move rebuilds the netlist, so the
+  // next sim-state carries a FRESH netlist reference; the overlay must re-resolve
+  // and light the NEW holes, never the stale cached a1/a2.
+  doc.moveComponent(led.id, "bb1", "a5");
+  publishSim({
+    netOfPoint: [
+      ["bb1.a5", "netA"],
+      ["bb1.a6", "netK"],
+    ],
+    netLevels: new Map([
+      ["netA", H],
+      ["netK", L],
+    ]),
+    strongLevels: new Map([["netK", L]]),
+  });
+  assert.ok(
+    ledEl.classList.contains("part-discrete--lit"),
+    "lit at the NEW holes — the cache did not serve stale addresses",
+  );
+});
+
 test("stopping the sim clears a burnt LED", () => {
   resetDom();
   const doc = ledDoc();
