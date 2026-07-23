@@ -101,14 +101,15 @@ export class AboutDialog {
       ],
     );
 
-    PopupManager.open({ element, onMaskClick: () => PopupManager.close() });
-    window.addEventListener(
-      "chiphippo:popup-closed",
-      () => {
+    // onClose fires only when THIS popup closes (not when a popup it was queued
+    // behind closes), so the guard never resets while the dialog is still up.
+    PopupManager.open({
+      element,
+      onMaskClick: () => PopupManager.close(),
+      onClose: () => {
         AboutDialog.#open = false;
       },
-      { once: true },
-    );
+    });
 
     AboutDialog.#fillDetails(build);
   }

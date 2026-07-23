@@ -246,13 +246,14 @@ export class SettingsDialog {
       ],
     );
 
-    PopupManager.open({ element, onMaskClick: () => PopupManager.close() });
-    window.addEventListener(
-      "chiphippo:popup-closed",
-      () => {
+    // onClose fires only when THIS popup closes (not when a popup it was queued
+    // behind closes), so the guard never resets while the dialog is still up.
+    PopupManager.open({
+      element,
+      onMaskClick: () => PopupManager.close(),
+      onClose: () => {
         SettingsDialog.#open = false;
       },
-      { once: true },
-    );
+    });
   }
 }
