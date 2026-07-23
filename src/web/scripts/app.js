@@ -30,6 +30,7 @@ import { SchematicView } from "./components/schematic-view.js";
 import { PalettePanel } from "./components/palette-panel.js";
 import { BuildGuide } from "./components/build-guide.js";
 import { SimController, SPEEDS } from "./components/sim-controller.js";
+import { NetlistCache } from "./components/netlist-cache.js";
 import { MemoryBridge } from "./components/memory-bridge.js";
 import { NotificationStack } from "./components/notification-stack.js";
 import { NetNameMonitor } from "./components/net-name-monitor.js";
@@ -287,6 +288,10 @@ async function init() {
     console.error("[renderer] desk:load failed:", err);
     deskDoc = new DeskDoc(null);
   }
+  // ONE netlist cache shared by every consumer (probe, sim, build guide,
+  // schematic): a topology change rebuilds the partition once instead of once
+  // per consumer, and they can never tint/route/list from divergent nets.
+  const netlistCache = new NetlistCache(deskDoc);
   let docSaveTimer = null;
   window.addEventListener("chiphippo:doc-changed", () => {
     clearTimeout(docSaveTimer);
@@ -455,6 +460,7 @@ async function init() {
   let guideBtn = null;
   const buildGuide = new BuildGuide(main, {
     deskDoc,
+    netlist: netlistCache,
     onVisibilityChange: (visible) => {
       guideBtn?.classList.toggle("toolbar-btn--active", visible);
       guideBtn?.setAttribute("aria-pressed", String(visible));
@@ -501,6 +507,7 @@ async function init() {
     viewport: desk,
     deskView,
     deskDoc,
+    netlist: netlistCache,
     onWireStateChange,
     onBusStateChange,
     onProbeStateChange,
@@ -795,7 +802,12 @@ async function init() {
     for (const btn of [pauseBtn, stepBtn, speedBtn]) btn.hidden = stopped;
     for (const btn of editButtons()) btn.disabled = !stopped;
   };
-  sim = new SimController({ deskDoc, notifications, onTransportChange });
+  sim = new SimController({
+    deskDoc,
+    netlist: netlistCache,
+    notifications,
+    onTransportChange,
+  });
 
   // Memory-inspector coordinator (Feature 190): bridges inspector windows to the
   // document, the controller (programmer + undo/redo), and the running image.
@@ -827,6 +839,7 @@ async function init() {
   // controller so they ride the one undo/redo seam.
   schematicView = new SchematicView(schematicViewport, {
     doc: deskDoc,
+    netlist: netlistCache,
     onSetSchematicPos: (id, x, y) => controller.setSchematicPos(id, x, y),
     onAutoLayout: () => controller.autoLayoutSchematic(),
   });

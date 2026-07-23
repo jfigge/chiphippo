@@ -219,6 +219,7 @@ export class DeskController {
     onCreateMemoryFile,
     onRemoveMemoryFile,
     onHistoryChange,
+    netlist,
   }) {
     this.#viewport = viewport;
     this.#deskView = deskView;
@@ -289,6 +290,7 @@ export class DeskController {
     // highlight; borrows the shared hover ring and the controller's geometry.
     this.#probe = new ProbeInspector({
       doc: deskDoc,
+      netlist,
       overlay: this.#layers.overlay,
       viewport,
       ring: this.#ring,
