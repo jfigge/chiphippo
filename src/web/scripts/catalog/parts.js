@@ -224,6 +224,49 @@ export const PART_DEFS = Object.freeze(
       },
     },
     {
+      id: "seg8ca",
+      kind: "discrete",
+      title: "8-segment digit (common anode)",
+      blurb:
+        "Single-block 7-segment numeric display plus decimal point (8 lit " +
+        "segments), common ANODE. Tie pin 9 (A) to VCC; pull each segment " +
+        "cathode (a–g, dp) LOW to light it — the form a 74LS47 (active-low " +
+        "outputs) drives directly. Comes in red / green / blue / yellow.",
+      group: "LEDs",
+      // Nine holes along one grid row: eight segment cathodes then the shared
+      // anode. Segments are idealized LEDs (no series resistor required).
+      footprint: Object.freeze({
+        offsets: Object.freeze([0, 1, 2, 3, 4, 5, 6, 7, 8]),
+      }),
+      pins: [
+        { n: 1, name: "a", role: "cathode" },
+        { n: 2, name: "b", role: "cathode" },
+        { n: 3, name: "c", role: "cathode" },
+        { n: 4, name: "d", role: "cathode" },
+        { n: 5, name: "e", role: "cathode" },
+        { n: 6, name: "f", role: "cathode" },
+        { n: 7, name: "g", role: "cathode" },
+        { n: 8, name: "dp", role: "cathode" },
+        { n: 9, name: "A", role: "anode" },
+      ],
+      // Each segment is an LED from the shared anode (pin 9) to its own cathode
+      // pin — the mirror of seg8. It lights when pin 9 is HIGH and the segment
+      // pin is driven LOW (the LED rule in sim-overlay), which is exactly what a
+      // 74LS47's active-low outputs do.
+      segments: Object.freeze(
+        ["a", "b", "c", "d", "e", "f", "g", "dp"].map((id, i) =>
+          Object.freeze({ id, anodePin: 9, cathodePin: i + 1 }),
+        ),
+      ),
+      colors: LED_COLORS,
+      normalizeParams(raw) {
+        return { color: LED_COLORS.includes(raw?.color) ? raw.color : "red" };
+      },
+      internalBridges() {
+        return []; // segments are diodes — devices, not bridges (Feature 90)
+      },
+    },
+    {
       id: "bar8",
       kind: "discrete",
       title: "8-segment LED bar",

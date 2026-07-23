@@ -128,6 +128,38 @@ test("a seg8 segment driven straight across the rails burns (no series R)", () =
   assert.equal(el.querySelectorAll(".part-burn-x").length, 2);
 });
 
+test("seg8ca (common anode) lights a segment whose cathode is pulled LOW", () => {
+  resetDom();
+  const doc = displayDoc();
+  const { surface, controller } = makeDesk(doc);
+  controller.addComponentAt("seg8ca", "bb1", "a1", { color: "green" });
+  const el = surface.querySelector(".part-discrete--seg8ca");
+  assert.ok(el, "seg8ca mounted");
+
+  // Common anode: pin 9 (A) → VCC (H); a 74LS47 pulls a segment cathode LOW to
+  // light it (the mirror of the common-cathode seg8).
+  publishSim({
+    netOfPoint: [
+      ["bb1.a9", "netA"], // pin 9 → shared anode, tied HIGH
+      ["bb1.a1", "netLo"], // pin 1 → segment a's cathode, driven LOW → lit
+      ["bb1.a3", "netLo"], // pin 3 → segment c's cathode → lit
+      ["bb1.a2", "netHi"], // pin 2 → segment b's cathode HIGH → dark
+    ],
+    netLevels: new Map([
+      ["netA", H],
+      ["netLo", L],
+      ["netHi", H],
+    ]),
+    // Nothing STRONGLY driven → fed through a limiting resistor: the safe case.
+  });
+
+  assert.ok(lit(el, "a"), "segment a lit (cathode low under the H anode)");
+  assert.ok(lit(el, "c"), "segment c lit");
+  assert.ok(!lit(el, "b"), "segment b dark (cathode not low)");
+  assert.ok(!lit(el, "g"), "segment g dark (cathode undriven)");
+  assert.ok(!el.classList.contains("part-discrete--burnt"), "not burnt");
+});
+
 test("bar8 lights a driven bar and clears every segment when the sim stops", () => {
   resetDom();
   const doc = displayDoc();
