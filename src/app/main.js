@@ -562,6 +562,26 @@ function buildAppMenu() {
       { role: "selectAll" },
     ],
   });
+  // View ▸ Toggle Developer Tools. A custom item (not the built-in role) so the
+  // panel always docks along the BOTTOM of the window — matching the dev-launch
+  // auto-open — and so the accelerator is the familiar Option+Cmd+I (Alt+Ctrl+I
+  // off macOS). Targets the focused window, falling back to the main one.
+  template.push({
+    label: "View",
+    submenu: [
+      {
+        label: "Toggle Developer Tools",
+        accelerator: "Alt+CmdOrCtrl+I",
+        click: (_item, focusedWindow) => {
+          const win = focusedWindow || mainWindow;
+          if (!win || win.isDestroyed()) return;
+          const wc = win.webContents;
+          if (wc.isDevToolsOpened()) wc.closeDevTools();
+          else wc.openDevTools({ mode: "bottom" });
+        },
+      },
+    ],
+  });
   template.push({
     label: "Window",
     submenu: [

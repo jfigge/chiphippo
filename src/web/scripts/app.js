@@ -115,6 +115,26 @@ const SAVE_SVG =
   '<polyline points="17 21 17 13 7 13 7 21"/>' +
   '<polyline points="7 3 7 8 15 8"/></svg>';
 
+/** Connectivity-probe (crosshair) icon for the Probe toolbar toggle. */
+const PROBE_SVG =
+  ICON_SVG_OPEN +
+  '<circle cx="12" cy="12" r="10"/>' +
+  '<line x1="22" y1="12" x2="18" y2="12"/>' +
+  '<line x1="6" y1="12" x2="2" y2="12"/>' +
+  '<line x1="12" y1="6" x2="12" y2="2"/>' +
+  '<line x1="12" y1="22" x2="12" y2="18"/></svg>';
+
+/** Build-guide (clipboard-list) icon for the Guide toolbar toggle. */
+const GUIDE_SVG =
+  ICON_SVG_OPEN +
+  '<rect x="8" y="2" width="8" height="4" rx="1" ry="1"/>' +
+  '<path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 ' +
+  '1 2-2h2"/>' +
+  '<line x1="12" y1="11" x2="16" y2="11"/>' +
+  '<line x1="12" y1="16" x2="16" y2="16"/>' +
+  '<line x1="8" y1="11" x2="8.01" y2="11"/>' +
+  '<line x1="8" y1="16" x2="8.01" y2="16"/></svg>';
+
 function buildHeader() {
   const header = document.createElement("header");
   header.className = "app-header";
@@ -495,11 +515,17 @@ async function init() {
   const scopeView = new ScopeView(app, {
     deskDoc,
     netlist: netlistCache,
+    height: settings.scopeHeight,
     onVisibilityChange: (visible) => {
       scopeBtn?.classList.toggle("toolbar-btn--active", visible);
       scopeBtn?.setAttribute("aria-pressed", String(visible));
       bridge.settings
         .set({ scopeOpen: visible })
+        .catch((err) => console.error("[renderer] settings:set failed:", err));
+    },
+    onHeightChange: (height) => {
+      bridge.settings
+        .set({ scopeHeight: height })
         .catch((err) => console.error("[renderer] settings:set failed:", err));
     },
     onAddChannel: (kind, ref) => controller?.addScopeChannel(kind, ref),
@@ -755,25 +781,27 @@ async function init() {
 
   // Probe tool: highlight a whole electrical net on hover (shortcut I).
   probeBtn = el("button", {
-    class: "toolbar-btn",
+    class: "toolbar-icon-btn",
     type: "button",
-    text: "Probe",
+    "aria-label": "Probe",
     title: "Connectivity probe — hover to highlight a net, click to pin (I)",
     "aria-pressed": "false",
     onClick: () => controller.toggleProbe(),
   });
+  probeBtn.innerHTML = PROBE_SVG;
   toolbar.append(probeBtn);
 
   // Build guide: toggle the right-docked BOM / wiring-list / steps panel. It is
   // read-only, so it stays available while the circuit runs.
   guideBtn = el("button", {
-    class: "toolbar-btn",
+    class: "toolbar-icon-btn",
     type: "button",
-    text: "Guide",
+    "aria-label": "Guide",
     title: "Build guide — BOM, wiring list, and assembly steps",
     "aria-pressed": String(buildGuide.visible),
     onClick: () => buildGuide.toggle(),
   });
+  guideBtn.innerHTML = GUIDE_SVG;
   guideBtn.classList.toggle("toolbar-btn--active", buildGuide.visible);
   toolbar.append(guideBtn);
 

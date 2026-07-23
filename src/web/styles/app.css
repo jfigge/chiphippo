@@ -525,7 +525,7 @@
 }
 
 .desk-viewport--probing {
-  cursor: help;
+  cursor: pointer;
 }
 
 .desk-hint {
@@ -2002,8 +2002,14 @@ textarea.annotation-editor {
 /* Datasheet-folder control: the current path (elided) above Clear/Browse. */
 .settings-folder {
   display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+/* The path field spans the full panel width on its own line. */
+.settings-folder-input {
+  display: flex;
   align-items: center;
-  gap: var(--space-3);
 }
 
 .settings-folder-path {
@@ -2026,11 +2032,12 @@ textarea.annotation-editor {
   font-style: italic;
 }
 
+/* The trash + Browse buttons share a line under the input, aligned right. */
 .settings-folder-actions {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: var(--space-2);
-  flex-shrink: 0;
 }
 
 .settings-folder-browse,
@@ -2052,15 +2059,24 @@ textarea.annotation-editor {
     border-color 0.15s ease;
 }
 
-.settings-folder-browse:hover,
-.settings-folder-clear:hover {
+.settings-folder-browse:hover {
   border-color: var(--color-accent);
   color: var(--color-accent);
 }
 
+/* The clear action is a red, icon-only trash button (square, borderless at
+   rest; the danger colour signals it discards the chosen folder). */
 .settings-folder-clear {
+  padding: var(--space-2);
   background: transparent;
-  color: var(--color-subtext);
+  border-color: transparent;
+  color: var(--color-danger);
+}
+
+.settings-folder-clear:hover {
+  border-color: var(--color-danger);
+  color: var(--color-danger);
+  background: var(--color-surface-1);
 }
 
 .settings-hint {
@@ -3116,6 +3132,7 @@ textarea.annotation-editor {
   display: flex;
   flex-direction: column;
   height: 280px;
+  max-height: 50vh;
   flex: 0 0 auto;
   background: var(--color-mantle);
   border-top: 1px solid var(--color-crust);
@@ -3124,6 +3141,35 @@ textarea.annotation-editor {
 
 .scope-panel[hidden] {
   display: none;
+}
+
+/* The draggable top edge. A dedicated flex strip on the seam — it grows the
+   panel upward (capped at half the window by the renderer). */
+.scope-resize {
+  position: relative;
+  flex: 0 0 auto;
+  height: 6px;
+  cursor: ns-resize;
+  touch-action: none;
+}
+
+.scope-resize::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 44px;
+  height: 3px;
+  transform: translate(-50%, -50%);
+  border-radius: var(--radius-sm);
+  background: var(--color-overlay);
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.scope-resize:hover::after,
+.scope-resize--active::after {
+  opacity: 1;
 }
 
 .scope-header {

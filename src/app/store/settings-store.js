@@ -56,6 +56,16 @@ const DEFAULTS = Object.freeze({
   // Applied by the renderer as the `--color-selection` custom property.
   selectionColor: null,
 
+  // ── Panels (Build guide / Logic analyzer) ──────────────────────────────────
+  // Whether the right-docked build guide is shown.
+  guideOpen: false,
+
+  // Whether the bottom-docked logic analyzer is shown, and its height in CSS
+  // px. The panel's draggable top edge writes the height (the renderer clamps
+  // it to half the window); the toolbar / close button writes the open flag.
+  scopeOpen: false,
+  scopeHeight: 280,
+
   // ── Data sheets ────────────────────────────────────────────────────────────
   // An external directory of manufacturer datasheet PDFs. When it is set and a
   // `<dir>/<partId>.pdf` exists, the pin-assignments window shows a button that

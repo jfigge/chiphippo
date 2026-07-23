@@ -39,6 +39,11 @@ const LANE_H = 46; // one channel row
 const WAVE_PAD = 10; // top/bottom inset within a lane
 const PX_PER_TICK = 10; // one tick column's width
 
+/** Panel sizing (the bottom-docked height, in CSS px). */
+const DEFAULT_PANEL_H = 280; // matches the .scope-panel CSS fallback
+const MIN_PANEL_H = 120; // header + at least one legible lane
+const MAX_PANEL_FRAC = 0.5; // never taller than half the window
+
 /** Distinct lane colors, cycled by position when a channel has no own color. */
 const CHANNEL_COLORS = [
   "var(--color-wire-blue)",
@@ -82,6 +87,11 @@ export class ScopeView {
   #svg;
   #empty;
   #delta; // the cursor Δ readout in the header
+  #resize; // the draggable top edge
+  #onHeightChange;
+  #height = DEFAULT_PANEL_H;
+  #resizeStartY = null; // pointer Y at drag start (null = not resizing)
+  #resizeStartH = 0; // panel height at drag start
 
   #recorder = new ScopeRecorder();
   #lastMode = "stopped";
@@ -103,6 +113,9 @@ export class ScopeView {
    * @param {(id:string)=>void} opts.onRemoveChannel
    * @param {(id:string, index:number)=>void} opts.onMoveChannel
    * @param {()=>number|null} [opts.tickMs] - ms per tick for the Δ readout.
+   * @param {number} [opts.height] - restored panel height in CSS px.
+   * @param {(height:number)=>void} [opts.onHeightChange] - persist the height
+   *   after a resize drag settles.
    */
   constructor(
     container,
@@ -114,6 +127,8 @@ export class ScopeView {
       onRemoveChannel,
       onMoveChannel,
       tickMs,
+      height,
+      onHeightChange,
     },
   ) {
     this.#doc = deskDoc;
@@ -123,9 +138,11 @@ export class ScopeView {
     this.#onRemoveChannel = onRemoveChannel;
     this.#onMoveChannel = onMoveChannel;
     this.#tickMs = tickMs ?? (() => null);
+    this.#onHeightChange = onHeightChange;
 
     this.#buildDom();
     container.append(this.#el);
+    this.#applyHeight(Number.isFinite(height) ? height : DEFAULT_PANEL_H);
 
     window.addEventListener("chiphippo:sim-state", (e) =>
       this.#onSim(e.detail),
@@ -213,10 +230,22 @@ export class ScopeView {
       this.#gutter,
       this.#lanes,
     ]);
+
+    // The draggable top edge. A dedicated strip (its own flex row) so it never
+    // competes with the header controls or the desk above for pointer events.
+    this.#resize = el("div", {
+      class: "scope-resize",
+      title: "Drag to resize the analyzer",
+      "aria-hidden": "true",
+    });
+    this.#resize.addEventListener("pointerdown", (e) => this.#onResizeDown(e));
+    this.#resize.addEventListener("pointermove", (e) => this.#onResizeMove(e));
+    this.#resize.addEventListener("pointerup", (e) => this.#onResizeUp(e));
+
     this.#el = el(
       "aside",
       { class: "scope-panel", "aria-label": "Logic analyzer", hidden: true },
-      [header, this.#body, this.#empty],
+      [this.#resize, header, this.#body, this.#empty],
     );
   }
 
@@ -237,6 +266,46 @@ export class ScopeView {
 
   toggle() {
     this.setVisible(!this.visible);
+  }
+
+  // ── Sizing (drag the top edge; the panel docks along the window's bottom) ────
+
+  /** The tallest the panel may grow to: half the window, floored at the min. */
+  #maxHeight() {
+    const half = Math.floor((window.innerHeight || 0) * MAX_PANEL_FRAC);
+    return Math.max(MIN_PANEL_H, half);
+  }
+
+  /** Clamp a pixel height to [min, half-window] and apply it; returns applied. */
+  #applyHeight(h) {
+    const clamped = Math.round(
+      Math.min(this.#maxHeight(), Math.max(MIN_PANEL_H, h)),
+    );
+    this.#height = clamped;
+    this.#el.style.height = `${clamped}px`;
+    return clamped;
+  }
+
+  #onResizeDown(e) {
+    e.preventDefault();
+    this.#resizeStartY = e.clientY;
+    this.#resizeStartH = this.#el.getBoundingClientRect().height;
+    this.#resize.setPointerCapture?.(e.pointerId);
+    this.#resize.classList.add("scope-resize--active");
+  }
+
+  #onResizeMove(e) {
+    if (this.#resizeStartY == null) return;
+    // Dragging the handle UP (a negative delta) grows the bottom-docked panel.
+    this.#applyHeight(this.#resizeStartH - (e.clientY - this.#resizeStartY));
+  }
+
+  #onResizeUp(e) {
+    if (this.#resizeStartY == null) return;
+    this.#resizeStartY = null;
+    this.#resize.releasePointerCapture?.(e.pointerId);
+    this.#resize.classList.remove("scope-resize--active");
+    this.#onHeightChange?.(this.#height);
   }
 
   // ── Public channel entry points (probe "Add to analyzer", picker) ───────────
