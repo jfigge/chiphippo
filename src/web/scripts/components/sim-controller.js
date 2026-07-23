@@ -30,7 +30,12 @@
 import { tick } from "../sim/engine.js";
 import { H, L } from "../sim/levels.js";
 import { partDef } from "../catalog/index.js";
-import { isMemory, isVolatileMemory, memoryConfig } from "../sim/chip-eval.js";
+import {
+  isMemory,
+  isVolatileMemory,
+  isOscillator,
+  memoryConfig,
+} from "../sim/chip-eval.js";
 import { framebufferOf } from "../sim/hd44780.js";
 import { NetlistCache } from "./netlist-cache.js";
 
@@ -276,8 +281,14 @@ export class SimController {
 
   // ── Clock scheduling (the ONLY timer — the engine stays timerless) ────────
 
+  /** Free-running edge sources: clock bricks (`kind:"clock"`) and board-seated
+      oscillator cans — anything the engine reads via clockPhase. */
   #clocks() {
-    return this.#doc.toJSON().components.filter((c) => c.kind === "clock");
+    return this.#doc
+      .toJSON()
+      .components.filter(
+        (c) => c.kind === "clock" || isOscillator(partDef(c.ref)),
+      );
   }
 
   // ── Memory images (Feature 190: volatile SRAM vs file-backed ROM) ─────────
@@ -405,7 +416,11 @@ export class SimController {
   }
 
   #autoClocks() {
-    return this.#clocks().filter((c) => partDef("clock").isAuto(c.params));
+    // A clock brick may be in manual mode; an oscillator can never is — a
+    // real crystal has no click-to-toggle pin.
+    return this.#clocks().filter((c) =>
+      c.kind === "clock" ? partDef("clock").isAuto(c.params) : true,
+    );
   }
 
   #flip(id) {

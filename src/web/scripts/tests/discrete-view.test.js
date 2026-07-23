@@ -65,6 +65,22 @@ test("buildDiscreteSvg: resistor has two leads and a banded body", () => {
   assert.ok(svg.querySelectorAll(".part-resistor-band").length >= 1);
 });
 
+test("buildDiscreteSvg: osc-full/osc-half draw only the 4 real legs + a metal can body", () => {
+  resetDom();
+  const full = buildDiscreteSvg("osc-full", { hz: 2 });
+  assert.equal(full.querySelectorAll(".part-chip-leg").length, 4); // 2 cols × 2 rows
+  assert.ok(full.querySelector(".part-can-body"));
+  assert.ok(full.querySelector(".part-can-rim"));
+  assert.ok(full.querySelector(".part-can-dot"));
+  assert.equal(full.querySelector(".part-can-badge").textContent, "2 Hz");
+  // No chip-style notch/dot/part-number label — a can looks nothing like a DIP.
+  assert.ok(!full.querySelector(".part-chip-notch"));
+
+  const half = buildDiscreteSvg("osc-half", { hz: 10 });
+  assert.equal(half.querySelectorAll(".part-chip-leg").length, 4);
+  assert.equal(half.querySelector(".part-can-badge").textContent, "10 Hz");
+});
+
 test("discreteBox rejects unknown refs", () => {
   resetDom();
   assert.throws(() => discreteBox("capacitor"), { code: "INVALID_REF" });
@@ -235,6 +251,48 @@ test("DiscreteView.updateParams rebuilds the SVG (toggle button on/off)", () => 
   assert.ok(!layer.querySelector(".part-toggle-cap--on"));
   view.updateParams({ on: true });
   assert.ok(layer.querySelector(".part-toggle-cap--on"));
+});
+
+test("DiscreteView.setStatus reflects power/health onto an oscillator can", () => {
+  resetDom();
+  const layer = document.createElement("div");
+  document.body.append(layer);
+  const view = new DiscreteView(
+    layer,
+    { id: "c1", ref: "osc-full", params: { hz: 1 } },
+    {},
+  );
+  const partEl = layer.querySelector(".part-discrete");
+  const title = () =>
+    layer.querySelector(".part-can-status > title").textContent;
+
+  view.setStatus("unpowered");
+  assert.ok(partEl.classList.contains("part-discrete--unpowered"));
+  assert.match(title(), /unpowered/i);
+
+  view.setStatus("damaged");
+  assert.ok(!partEl.classList.contains("part-discrete--unpowered"));
+  assert.ok(partEl.classList.contains("part-discrete--damaged"));
+  assert.match(title(), /damaged/i);
+
+  view.setStatus(null);
+  assert.ok(!partEl.classList.contains("part-discrete--damaged"));
+  assert.equal(title(), "");
+});
+
+test("DiscreteView.setStatus is a harmless no-op on a part with no status overlay", () => {
+  resetDom();
+  const layer = document.createElement("div");
+  document.body.append(layer);
+  const view = new DiscreteView(
+    layer,
+    { id: "c1", ref: "led", params: {} },
+    {},
+  );
+  const partEl = layer.querySelector(".part-discrete");
+  view.setStatus("damaged"); // no .part-can-status in an LED's SVG
+  assert.ok(partEl.classList.contains("part-discrete--damaged")); // class still toggles
+  assert.equal(layer.querySelector(".part-can-status"), null);
 });
 
 test("PsuView: badge shows volts, terminals render, position in world px", () => {

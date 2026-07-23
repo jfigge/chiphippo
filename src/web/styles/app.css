@@ -877,7 +877,7 @@
 /* ── Part fault symbols (built by part-symbols.js, shared by LEDs + chips) ── */
 /* Both stay hidden until a view adds its status class while the sim runs; the
    reveal rules live with each part family (burnt LEDs below, chips in the
-   Feature 90 section). */
+   Feature 90 section, oscillator cans further down). */
 .part-burn,
 .part-warn {
   display: none;
@@ -890,6 +890,29 @@
 /* A burnt LED never glows, whatever the levels say. */
 .part-discrete--burnt .part-led-dome {
   fill: var(--color-part-inset);
+}
+
+/* A powered, behavioral discrete (currently: an oscillator can)
+   gets the same fault symbols a chip does; see DiscreteView.setStatus. */
+.part-discrete--unpowered .part-warn {
+  display: block;
+}
+
+.part-discrete--reversed .part-burn,
+.part-discrete--damaged .part-burn {
+  display: block;
+}
+
+.part-discrete--underpowered::after {
+  content: "";
+  position: absolute;
+  top: -3px;
+  right: -3px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1px solid var(--color-base);
+  background: var(--color-warning);
 }
 
 /* ── Segment displays (seg8 / bar8): a dark package block standing over a row
@@ -931,7 +954,9 @@
 .part-discrete--seg8,
 .part-discrete--bar8,
 .part-discrete--bar8iso,
-.part-discrete--rnet9 {
+.part-discrete--rnet9,
+.part-discrete--osc-full,
+.part-discrete--osc-half {
   pointer-events: none;
 }
 
@@ -994,6 +1019,39 @@
     animation: none;
     opacity: 0.7;
   }
+}
+
+/* ── Oscillator can: a plain metal body — no notch, unlike a
+   chip — straddling the trench with only its 4 real legs drawn. ─────────── */
+.part-can-body {
+  fill: var(--color-chip-leg);
+  stroke: var(--color-part-inset);
+  stroke-width: 0.08;
+}
+
+.part-can-rim {
+  fill: none;
+  stroke: var(--color-part-inset);
+  stroke-width: 0.05;
+  opacity: 0.6;
+}
+
+.part-can-dot {
+  fill: var(--color-part-inset);
+}
+
+.part-can-badge {
+  fill: var(--color-part-inset);
+  font-family: var(--font-mono);
+  font-size: 0.75px;
+  font-weight: 600;
+  user-select: none;
+}
+
+.part-discrete--unpowered .part-can-badge,
+.part-discrete--reversed .part-can-badge,
+.part-discrete--damaged .part-can-badge {
+  opacity: 0.25;
 }
 
 .part-resistor-body {

@@ -28,6 +28,7 @@ import {
 
 test("packageSpec: known packages; junk throws INVALID_PACKAGE", () => {
   // The small logic DIPs are 300-mil; the wide memory DIPs (24…40) are 600-mil.
+  assert.deepEqual(packageSpec("DIP-8"), { pins: 8, halfPins: 4, body: 300 });
   assert.deepEqual(packageSpec("DIP-14"), { pins: 14, halfPins: 7, body: 300 });
   assert.deepEqual(packageSpec("DIP-16"), { pins: 16, halfPins: 8, body: 300 });
   assert.deepEqual(packageSpec("DIP-20"), {
@@ -55,7 +56,7 @@ test("packageSpec: known packages; junk throws INVALID_PACKAGE", () => {
     halfPins: 20,
     body: 600,
   });
-  assert.throws(() => packageSpec("DIP-8"), { code: "INVALID_PACKAGE" });
+  assert.throws(() => packageSpec("DIP-12"), { code: "INVALID_PACKAGE" });
   assert.throws(() => packageSpec(undefined), { code: "INVALID_PACKAGE" });
 });
 
@@ -71,6 +72,11 @@ test("pinOffset: standard counterclockwise DIP numbering, notch left", () => {
   assert.deepEqual(pinOffset("DIP-16", 8), { row: "e", dcol: 7 });
   assert.deepEqual(pinOffset("DIP-16", 9), { row: "f", dcol: 7 });
   assert.deepEqual(pinOffset("DIP-20", 20), { row: "f", dcol: 0 });
+  // DIP-8 (half-can oscillator footprint): pins 4/5 adjacent at the far end,
+  // pins 1/8 adjacent at the notch end.
+  assert.deepEqual(pinOffset("DIP-8", 4), { row: "e", dcol: 3 });
+  assert.deepEqual(pinOffset("DIP-8", 5), { row: "f", dcol: 3 });
+  assert.deepEqual(pinOffset("DIP-8", 8), { row: "f", dcol: 0 });
 });
 
 test("pinOffset: out-of-range pins are null", () => {

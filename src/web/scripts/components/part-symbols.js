@@ -112,3 +112,12 @@ export function buildWarnOverlay(cx, cy, r = 0.7) {
   );
   return g;
 }
+
+/** Hover hints for the fault symbols — keyed by the status the engine reports.
+    Shared by every view with a live setStatus (chip-view.js, discrete-view.js). */
+export const STATUS_HINT = Object.freeze({
+  unpowered: "Unpowered",
+  underpowered: "Underpowered — VCC is at 3 V",
+  reversed: "Power reversed — VCC and GND are swapped",
+  damaged: "Damaged — replace this part",
+});

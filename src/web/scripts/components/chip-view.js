@@ -29,7 +29,11 @@ import { PX_PER_UNIT } from "../desk/desk-geometry.js";
 import { holePosition } from "../model/breadboard.js";
 import { packageSpec } from "../model/footprints.js";
 import { chipDef } from "../catalog/index.js";
-import { buildBurnOverlay, buildWarnOverlay } from "./part-symbols.js";
+import {
+  buildBurnOverlay,
+  buildWarnOverlay,
+  STATUS_HINT,
+} from "./part-symbols.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -168,14 +172,6 @@ export function buildChipSvg(ref, params = {}) {
   svg.append(status);
   return svg;
 }
-
-/** Hover hints for the fault symbols — keyed by the status the engine reports. */
-const STATUS_HINT = Object.freeze({
-  unpowered: "Unpowered",
-  underpowered: "Underpowered — VCC is at 3 V",
-  reversed: "Power reversed — VCC and GND are swapped",
-  damaged: "Damaged — replace this chip",
-});
 
 export class ChipView {
   #el;

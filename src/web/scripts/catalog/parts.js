@@ -31,6 +31,11 @@ export const PSU_VOLTS = Object.freeze([3, 5, 12]);
 /** Clock rates (Hz) plus click-to-toggle "manual"; the timer lives in the
     renderer's SimController — the def carries only the pure contract. */
 export const CLOCK_HZ = Object.freeze([1, 2, 5, 10, "manual"]);
+/** An oscillator can is always free-running — a real crystal has no
+    click-to-toggle pin — so it picks from CLOCK_HZ minus "manual". */
+export const OSCILLATOR_HZ = Object.freeze(
+  CLOCK_HZ.filter((hz) => hz !== "manual"),
+);
 
 /** Character-LCD module sizes (HD44780). ONE controller drives both — the size
     is a runtime param (visible-window only), never two separate parts. */
@@ -92,6 +97,20 @@ export function normalizeLeadOffset(raw) {
   // document and then fails a deepStrictEqual round-trip. Fold it here, the
   // one chokepoint every stored bend passes through.
   return Object.freeze({ dx: dx === 0 ? 0 : dx, dy: dy === 0 ? 0 : dy });
+}
+
+/** An unused DIP position on an oscillator can — only 4 of the 14/8 footprint
+    positions carry a real leg (see the "osc-full"/"osc-half" defs below). */
+const oscNc = (n) => ({ n, name: "N/C", role: "nc" });
+
+/** Shared by both oscillator-can sizes: a simulated rate plus
+    the same `damaged` bookkeeping a chip's 12 V "magic smoke" needs. */
+function normalizeOscillatorParams(raw) {
+  const params = {
+    hz: OSCILLATOR_HZ.includes(raw?.hz) ? raw.hz : OSCILLATOR_HZ[0],
+  };
+  if (raw?.damaged === true) params.damaged = true;
+  return params;
 }
 
 export const PART_DEFS = Object.freeze(
@@ -505,6 +524,67 @@ export const PART_DEFS = Object.freeze(
       /** Is this clock free-running (has a rate) rather than manual? */
       isAuto(params) {
         return params?.hz !== "manual";
+      },
+    },
+    {
+      id: "osc-full",
+      kind: "discrete",
+      title: "Oscillator (full can)",
+      blurb:
+        "Crystal-oscillator can, full-size 14-pin DIP footprint — only pins " +
+        "1, 7, 8, 14 carry a real leg, the rest of the footprint is empty. " +
+        "A free-running square-wave source, powered like a chip: pin 1 " +
+        "N/C, pin 7 GND, pin 8 OUTPUT, pin 14 VCC.",
+      group: "Power",
+      package: "DIP-14",
+      pins: [
+        oscNc(1),
+        oscNc(2),
+        oscNc(3),
+        oscNc(4),
+        oscNc(5),
+        oscNc(6),
+        { n: 7, name: "GND", role: "gnd" },
+        { n: 8, name: "OUT", role: "output" },
+        oscNc(9),
+        oscNc(10),
+        oscNc(11),
+        oscNc(12),
+        oscNc(13),
+        { n: 14, name: "VCC", role: "vcc" },
+      ],
+      // A self-clocking source: the engine drives the output
+      // pin from clockPhase instead of evaluating logic.units.
+      logic: Object.freeze({ oscillator: true }),
+      normalizeParams: normalizeOscillatorParams,
+      internalBridges() {
+        return []; // the output is DRIVEN by the engine, never a passive bridge
+      },
+    },
+    {
+      id: "osc-half",
+      kind: "discrete",
+      title: "Oscillator (half can)",
+      blurb:
+        "Crystal-oscillator can, half-size 8-pin DIP footprint — only pins " +
+        "1, 4, 5, 8 carry a real leg. Pin 1 N/C, pin 4 GND, pin 5 OUTPUT, " +
+        "pin 8 VCC.",
+      group: "Power",
+      package: "DIP-8",
+      pins: [
+        oscNc(1),
+        oscNc(2),
+        oscNc(3),
+        { n: 4, name: "GND", role: "gnd" },
+        { n: 5, name: "OUT", role: "output" },
+        oscNc(6),
+        oscNc(7),
+        { n: 8, name: "VCC", role: "vcc" },
+      ],
+      logic: Object.freeze({ oscillator: true }),
+      normalizeParams: normalizeOscillatorParams,
+      internalBridges() {
+        return [];
       },
     },
     {

@@ -23,11 +23,14 @@ import {
   LED_COLORS,
   PART_DEFS,
   PSU_VOLTS,
+  CLOCK_HZ,
+  OSCILLATOR_HZ,
   LCD_SIZES,
   lcdGeometry,
 } from "../catalog/parts.js";
 import { partDef, chipDef, PALETTE_DEFS } from "../catalog/index.js";
 import { packageSpec } from "../model/footprints.js";
+import { isOscillator, hasBehavior } from "../sim/chip-eval.js";
 
 test("the part catalog carries the Feature 60 inventory", () => {
   assert.deepEqual(PART_DEFS.map((d) => d.id).sort(), [
@@ -36,6 +39,8 @@ test("the part catalog carries the Feature 60 inventory", () => {
     "clock",
     "lcd",
     "led",
+    "osc-full",
+    "osc-half",
     "psu",
     "resistor",
     "rnet9",
@@ -51,7 +56,7 @@ test("the part catalog carries the Feature 60 inventory", () => {
   assert.ok(partDef("clock"));
   assert.ok(partDef("lcd"));
   assert.equal(chipDef("sw-slide"), null);
-  assert.equal(PALETTE_DEFS.length, 70); // 57 chips (24 + 24 LS + 6 memory + 3 io) + 13 parts
+  assert.equal(PALETTE_DEFS.length, 72); // 57 chips (24 + 24 LS + 6 memory + 3 io) + 15 parts
 });
 
 for (const def of PART_DEFS.filter((d) => d.kind === "discrete")) {
@@ -114,6 +119,58 @@ test("sw-toggle: bridges while on; on persists in params", () => {
   assert.deepEqual(def.normalizeParams({ on: true }), { on: true });
   assert.deepEqual(def.normalizeParams({ on: "junk" }), { on: false });
   assert.deepEqual(def.normalizeParams({}), { on: false });
+});
+
+test("osc-full: only pins 1/7/8/14 are real; the rest float (nc)", () => {
+  const def = partDef("osc-full");
+  assert.equal(def.package, "DIP-14");
+  assert.equal(packageSpec(def.package).pins, def.pins.length);
+  const byRole = (role) =>
+    def.pins.filter((p) => p.role === role).map((p) => p.n);
+  assert.deepEqual(byRole("nc"), [1, 2, 3, 4, 5, 6, 9, 10, 11, 12, 13]);
+  assert.deepEqual(byRole("gnd"), [7]);
+  assert.deepEqual(byRole("output"), [8]);
+  assert.deepEqual(byRole("vcc"), [14]);
+  assert.ok(isOscillator(def));
+  assert.ok(hasBehavior(def));
+  assert.deepEqual(def.internalBridges(), []); // driven, never a passive bridge
+});
+
+test("osc-half: only pins 1/4/5/8 are real; the rest float (nc)", () => {
+  const def = partDef("osc-half");
+  assert.equal(def.package, "DIP-8");
+  assert.equal(packageSpec(def.package).pins, def.pins.length);
+  const byRole = (role) =>
+    def.pins.filter((p) => p.role === role).map((p) => p.n);
+  assert.deepEqual(byRole("nc"), [1, 2, 3, 6, 7]);
+  assert.deepEqual(byRole("gnd"), [4]);
+  assert.deepEqual(byRole("output"), [5]);
+  assert.deepEqual(byRole("vcc"), [8]);
+  assert.ok(isOscillator(def));
+  assert.deepEqual(def.internalBridges(), []);
+});
+
+test("osc-full/osc-half: rate picks from OSCILLATOR_HZ (no manual mode); damaged persists", () => {
+  assert.deepEqual(
+    OSCILLATOR_HZ,
+    CLOCK_HZ.filter((hz) => hz !== "manual"),
+  );
+  for (const id of ["osc-full", "osc-half"]) {
+    const def = partDef(id);
+    assert.deepEqual(def.normalizeParams({}), { hz: OSCILLATOR_HZ[0] });
+    assert.deepEqual(def.normalizeParams({ hz: 5 }), { hz: 5 });
+    // "manual" isn't valid for a can — a real crystal has no toggle pin.
+    assert.deepEqual(def.normalizeParams({ hz: "manual" }), {
+      hz: OSCILLATOR_HZ[0],
+    });
+    assert.deepEqual(def.normalizeParams({ hz: 5, damaged: true }), {
+      hz: 5,
+      damaged: true,
+    });
+    assert.deepEqual(def.normalizeParams({ damaged: false }), {
+      hz: OSCILLATOR_HZ[0],
+    });
+  }
 });
 
 test("led: color/flip coercion and polarity contract", () => {

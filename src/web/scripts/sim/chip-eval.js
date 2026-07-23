@@ -52,6 +52,16 @@ export function isMemory(def) {
 }
 
 /**
+ * Is this a self-clocking oscillator (a crystal-can part)? Its
+ * output pin is driven from the engine's `clockPhase`, exactly like a clock
+ * brick's terminal, but — unlike a brick — it is power-gated like any chip
+ * (see sim/engine.js `driversFor`/`buildContext`).
+ */
+export function isOscillator(def) {
+  return Boolean(def?.logic?.oscillator);
+}
+
+/**
  * Is this memory chip VOLATILE (SRAM)? Volatile memory is never file-backed —
  * it is run-volatile only (Feature 190). A NON-volatile chip (ROM/EPROM/EEPROM)
  * carries a `.bin` backing file and, in this app, cannot be written by the
@@ -61,9 +71,11 @@ export function isVolatileMemory(def) {
   return isMemory(def) && def.logic.memory.volatile === true;
 }
 
-/** Does this def carry ANY simulated behavior (combinational/sequential/memory)? */
+/** Does this def carry ANY simulated behavior (combinational/sequential/memory/oscillator)? */
 export function hasBehavior(def) {
-  return hasLogic(def) || isSequential(def) || isMemory(def);
+  return (
+    hasLogic(def) || isSequential(def) || isMemory(def) || isOscillator(def)
+  );
 }
 
 /** The fresh per-component state for a sequential def (never in the doc). */

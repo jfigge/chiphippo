@@ -50,6 +50,7 @@ import {
   hasBehavior,
   isSequential,
   isMemory,
+  isOscillator,
   memoryOutputs,
   memoryWrite,
 } from "./chip-eval.js";
@@ -220,6 +221,7 @@ function buildContext(doc, netlist) {
       damaged: comp.params?.damaged === true,
     });
     chipStatus.set(comp.id, { status });
+    const oscillator = isOscillator(def);
     chips.push({
       comp,
       def,
@@ -227,6 +229,11 @@ function buildContext(doc, netlist) {
       status,
       sequential: isSequential(def),
       memory: isMemory(def),
+      oscillator,
+      // A can has exactly one output pin — resolved once here, not per drive.
+      outputPin: oscillator
+        ? def.pins.find((p) => p.role === "output")?.n
+        : undefined,
     });
   }
 
@@ -273,6 +280,10 @@ function driversFor(ctx, levels, state, clockPhase, images) {
         state.get(c.comp.id) ?? initialState(c.def),
         inputLevels(c.def, pinLevels),
       );
+    } else if (c.oscillator) {
+      // A board-seated crystal can: same free-running source as a clock
+      // brick's terminal, but only while powered (the c.status check above).
+      outMap = new Map([[c.outputPin, clockPhase.get(c.comp.id) ?? Z]]);
     } else {
       outMap = evaluate(c.def, pinLevels);
     }

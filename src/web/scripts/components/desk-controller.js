@@ -58,8 +58,18 @@ import {
 import { BUS_WIDTHS, DeskDoc, WIRE_COLORS } from "../model/desk-doc.js";
 import { HistoryStore } from "../model/history-store.js";
 import { partDef } from "../catalog/index.js";
-import { isMemory, isVolatileMemory, memoryConfig } from "../sim/chip-eval.js";
-import { PSU_VOLTS, CLOCK_HZ, LCD_SIZES } from "../catalog/parts.js";
+import {
+  isMemory,
+  isVolatileMemory,
+  isOscillator,
+  memoryConfig,
+} from "../sim/chip-eval.js";
+import {
+  PSU_VOLTS,
+  CLOCK_HZ,
+  OSCILLATOR_HZ,
+  LCD_SIZES,
+} from "../catalog/parts.js";
 import {
   BreadboardView,
   applyBoardRotation,
@@ -2764,15 +2774,31 @@ export class DeskController {
       PopupManager.menu({ x: e.clientX, y: e.clientY, items });
       return;
     }
-    // A damaged chip offers "Replace chip" (resets Feature 90 damage) — the
-    // only part action that stays live while running. (The pinout is a
-    // double-click, not a menu item — see #onPartDoubleClick.)
+    // A damaged chip (or oscillator can, powered like a chip)
+    // offers "Replace" (resets Feature 90 damage) — the only part action
+    // that stays live while running. (The pinout is a double-click, not a
+    // menu item — see #onPartDoubleClick.)
     const items = [];
-    if (comp?.kind === "chip" && comp.params?.damaged === true) {
+    const oscillator = isOscillator(partDef(comp?.ref));
+    if (
+      (comp?.kind === "chip" || oscillator) &&
+      comp.params?.damaged === true
+    ) {
       items.push({
-        label: "Replace chip",
+        label: comp.kind === "chip" ? "Replace chip" : "Replace part",
         onSelect: () => this.#onReplaceChip?.(id),
       });
+    }
+    // Oscillator can: the simulated rate is a live setting (stays available
+    // while running) — same picker pattern as the clock brick.
+    if (oscillator) {
+      for (const hz of OSCILLATOR_HZ) {
+        items.push({
+          label: `${comp.params.hz === hz ? "● " : ""}${hz} Hz`,
+          onSelect: () => this.setClockHz(id, hz),
+        });
+      }
+      items.push({ separator: true });
     }
     // Memory chips: the inspector (read-only + live while running) and, for a
     // non-volatile ROM, the in-app programmer. Volatile SRAM has no file.

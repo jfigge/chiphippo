@@ -37,6 +37,7 @@
 
 /** The DIP packages the catalog may reference. `body` is the width in mils. */
 export const DIP_PACKAGES = Object.freeze({
+  "DIP-8": Object.freeze({ pins: 8, body: 300 }),
   "DIP-14": Object.freeze({ pins: 14, body: 300 }),
   "DIP-16": Object.freeze({ pins: 16, body: 300 }),
   "DIP-20": Object.freeze({ pins: 20, body: 300 }),

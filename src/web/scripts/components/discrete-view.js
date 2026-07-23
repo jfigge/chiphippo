@@ -32,8 +32,13 @@
 import { el } from "../dom.js";
 import { PX_PER_UNIT } from "../desk/desk-geometry.js";
 import { holePosition } from "../model/breadboard.js";
+import { packageSpec } from "../model/footprints.js";
 import { partDef } from "../catalog/index.js";
-import { buildBurnOverlay } from "./part-symbols.js";
+import {
+  buildBurnOverlay,
+  buildWarnOverlay,
+  STATUS_HINT,
+} from "./part-symbols.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -75,6 +80,21 @@ const BOXES = Object.freeze({
   // matches chipBox("DIP-16") so the block covers both leg rows and the trench,
   // leaving the rows above/below clickable — exactly as a chip does.
   bar8iso: Object.freeze({ minX: -0.6, minY: -3.6, width: 8.2, height: 4.2 }),
+  // Oscillator cans straddle the trench like any DIP, so the box uses the same
+  // chipBox(pkg) formula (minX/minY/height are fixed; only width scales with
+  // the package's half-pin count).
+  "osc-full": Object.freeze({
+    minX: -0.6,
+    minY: -3.6,
+    width: packageSpec("DIP-14").halfPins - 1 + 1.2,
+    height: 4.2,
+  }),
+  "osc-half": Object.freeze({
+    minX: -0.6,
+    minY: -3.6,
+    width: packageSpec("DIP-8").halfPins - 1 + 1.2,
+    height: 4.2,
+  }),
 });
 
 /** Footprint box for a discrete ref (positioning + ghost sizing). */
@@ -414,6 +434,96 @@ function buildBarArrayDisplay(svg, color) {
   );
 }
 
+/**
+ * A crystal-oscillator can (osc-full/osc-half): a plain metal body with an
+ * inset rim, straddling the trench like any DIP — but only the package's two
+ * END columns carry a real leg (both rows), exactly the datasheet's four
+ * populated pins (1/7/8/14 on a full can, 1/4/5/8 on a half can). The
+ * selected simulated rate prints on the body, same idea as the
+ * clock brick's badge.
+ */
+function buildOscillatorCan(svg, def, params) {
+  const { halfPins } = packageSpec(def.package);
+  const bodyTop = -2.55;
+  const bodyBottom = -0.45;
+  const bodyX = -0.5;
+  const bodyWidth = halfPins;
+  // Legs: only the two end columns are real pins on a can — everything
+  // between is empty DIP footprint (see the def's mostly-"nc" pins array).
+  for (const c of [0, halfPins - 1]) {
+    svg.append(
+      svgEl("rect", {
+        class: "part-chip-leg",
+        x: c - 0.14,
+        y: bodyBottom - 0.05,
+        width: 0.28,
+        height: 0.6,
+      }),
+      svgEl("rect", {
+        class: "part-chip-leg",
+        x: c - 0.14,
+        y: -3.1,
+        width: 0.28,
+        height: bodyTop + 3.1,
+      }),
+    );
+  }
+  svg.append(
+    svgEl("rect", {
+      class: "part-can-body",
+      x: bodyX,
+      y: bodyTop,
+      width: bodyWidth,
+      height: bodyBottom - bodyTop,
+      rx: 0.3,
+    }),
+    svgEl("rect", {
+      class: "part-can-rim",
+      x: bodyX + 0.22,
+      y: bodyTop + 0.22,
+      width: bodyWidth - 0.44,
+      height: bodyBottom - bodyTop - 0.44,
+      rx: 0.16,
+    }),
+    // Pin-1 cue near the anchor corner (row e, column 0).
+    svgEl("circle", {
+      class: "part-can-dot",
+      cx: bodyX + 0.4,
+      cy: bodyBottom - 0.35,
+      r: 0.12,
+    }),
+  );
+  const badge = svgEl("text", {
+    class: "part-can-badge",
+    x: bodyX + bodyWidth / 2,
+    y: (bodyTop + bodyBottom) / 2 + 0.3,
+    "text-anchor": "middle",
+  });
+  badge.textContent = `${params.hz} Hz`;
+  svg.append(badge);
+  // Fault symbols, centred on the body — same shared
+  // overlay primitives + live setStatus() the chip view uses.
+  const cx = bodyX + bodyWidth / 2;
+  const cy = (bodyTop + bodyBottom) / 2;
+  const status = svgEl("g", { class: "part-can-status" });
+  status.append(
+    svgEl("title"), // hover hint; text set by DiscreteView.setStatus
+    buildWarnOverlay(cx, cy, 0.6),
+    buildBurnOverlay(cx, cy, 0.6),
+  );
+  svg.append(status);
+  // Body-only hit target: the can drags, the holes underneath stay clickable.
+  svg.append(
+    svgEl("rect", {
+      class: "part-display-hit",
+      x: bodyX,
+      y: bodyTop,
+      width: bodyWidth,
+      height: bodyBottom - bodyTop,
+    }),
+  );
+}
+
 /** A compact ohms label: 10000 → "10k", 4700000 → "4.7M", 220 → "220". */
 function formatOhms(ohms) {
   if (ohms >= 1e6) return `${+(ohms / 1e6).toFixed(2)}M`;
@@ -597,6 +707,8 @@ export function buildDiscreteSvg(ref, params = {}) {
     buildBarDisplay(svg, normalized.color);
   } else if (ref === "bar8iso") {
     buildBarArrayDisplay(svg, normalized.color);
+  } else if (ref === "osc-full" || ref === "osc-half") {
+    buildOscillatorCan(svg, def, normalized);
   } else if (ref === "rnet9") {
     buildResistorNetwork(svg, normalized.ohms);
   } else {
@@ -776,6 +888,19 @@ export class DiscreteView {
   /** Burnt out — powered with no series resistor: red X + rising smoke. */
   setBurnt(on) {
     this.#el.classList.toggle("part-discrete--burnt", on);
+  }
+
+  /**
+   * Reflect the simulator's power/health status (Feature 90) — only an
+   * oscillator can actually has a status overlay to reveal; every other
+   * discrete's classList toggle is a harmless no-op. `null` clears it.
+   */
+  setStatus(status) {
+    for (const s of ["unpowered", "underpowered", "reversed", "damaged"]) {
+      this.#el.classList.toggle(`part-discrete--${s}`, status === s);
+    }
+    const title = this.#el.querySelector(".part-can-status > title");
+    if (title) title.textContent = STATUS_HINT[status] ?? "";
   }
 
   /** Light one segment of a multi-segment display (anode-H / cathode-L). */

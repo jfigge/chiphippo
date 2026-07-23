@@ -59,6 +59,14 @@ const chip = (id, ref, anchor, params = {}) => ({
   anchor,
   params,
 });
+const part = (id, ref, anchor, params = {}) => ({
+  id,
+  kind: "discrete",
+  ref,
+  board: "bb1",
+  anchor,
+  params,
+});
 function powerWires(psuId, holes) {
   return [
     wire(`${psuId}.+`, `bb1.${mates(holes.get(14))[0]}`),
@@ -271,5 +279,61 @@ test("a manual clock toggles on manualToggle", () => {
   assert.equal(events.at(-1).clockLevels.get("clk1"), "L");
   sim.manualToggle("clk1");
   assert.equal(events.at(-1).clockLevels.get("clk1"), "H");
+  sim.stop();
+});
+
+// ── Transport: board-seated oscillator can ─────────────────────
+
+/** An osc-full can, VCC/GND wired to a 5 V PSU (pins 14/7, like a DIP-14 chip). */
+function oscDoc(hz) {
+  const holes = chipHoles("osc-full", "e10");
+  return {
+    boards: [board],
+    components: [psu("psu1", 80, 5), part("c1", "osc-full", "e10", { hz })],
+    wires: powerWires("psu1", holes),
+  };
+}
+
+test("a board-seated oscillator can free-runs like a clock brick — but only while powered", () => {
+  resetDom();
+  const holes = chipHoles("osc-full", "e10");
+  const outAddr = `bb1.${holes.get(8)}`;
+  const sim = new SimController({
+    deskDoc: fakeDoc(oscDoc(1)),
+    notifications: fakeNotifications(),
+  });
+  const events = capture();
+  const outLevel = () => {
+    const e = events.at(-1);
+    return e.netLevels.get(e.netlist.netOfPoint.get(outAddr));
+  };
+
+  sim.start();
+  assert.equal(events.at(-1).chipStatus.get("c1").status, "ok");
+  assert.equal(events.at(-1).clockLevels.get("c1"), "L", "idles low");
+  assert.equal(outLevel(), "L");
+
+  sim.step();
+  assert.equal(events.at(-1).clockLevels.get("c1"), "H", "one half-period");
+  assert.equal(outLevel(), "H", "the output net follows, power-gated by VCC");
+  sim.stop();
+});
+
+test("an unpowered oscillator can is scheduled but the engine gates its output", () => {
+  resetDom();
+  const sim = new SimController({
+    deskDoc: fakeDoc({
+      boards: [board],
+      components: [part("c1", "osc-full", "e10", { hz: 1 })], // no PSU wired
+      wires: [],
+    }),
+    notifications: fakeNotifications(),
+  });
+  const events = capture();
+  sim.start();
+  // The transport still schedules it (clockLevels carries an entry) — power
+  // gating is the ENGINE's concern (chipStatus), not the transport's.
+  assert.ok(events.at(-1).clockLevels.has("c1"));
+  assert.equal(events.at(-1).chipStatus.get("c1").status, "unpowered");
   sim.stop();
 });

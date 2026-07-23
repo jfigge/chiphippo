@@ -49,9 +49,9 @@ function mates(hole) {
 }
 
 /** Assemble a document + build its netlist + settle. */
-function simulate(doc, warmStart) {
+function simulate(doc, warmStart, clockPhase) {
   const netlist = buildNetlist(doc);
-  const result = settle({ document: doc, netlist, warmStart });
+  const result = settle({ document: doc, netlist, warmStart, clockPhase });
   return {
     result,
     levelAt: (address) => result.netLevels.get(netlist.netOfPoint.get(address)),
@@ -326,6 +326,66 @@ test("only one power pin miswired is unpowered, NOT reversed", () => {
   });
   assert.equal(result.chipStatus.get("c1").status, "unpowered");
   assert.ok(!result.warnings.some((w) => w.type === "reversed"));
+});
+
+// ── Oscillator can: a board-seated, power-gated clock source ──
+
+test("osc-full: OUTPUT (pin 8) follows clockPhase while powered", () => {
+  const holes = chipHoles("osc-full", "e10");
+  const doc = {
+    boards,
+    components: [psu("psu1", 80), part("c1", "osc-full", "e10")],
+    wires: powerWires("psu1", holes), // VCC=14, GND=7 — same as a 74xx DIP-14
+  };
+  for (const level of [H, L, H]) {
+    const { result, levelAt } = simulate(
+      doc,
+      undefined,
+      new Map([["c1", level]]),
+    );
+    assert.equal(result.chipStatus.get("c1").status, "ok");
+    assert.equal(levelAt(`bb1.${holes.get(8)}`), level);
+  }
+});
+
+test("osc-half: OUTPUT (pin 5) follows clockPhase on the smaller footprint", () => {
+  const holes = chipHoles("osc-half", "e10");
+  const doc = {
+    boards,
+    components: [psu("psu1", 80), part("c1", "osc-half", "e10")],
+    // Half can: VCC=8, GND=4 (not 14/7 — powerWires doesn't fit this size).
+    wires: [
+      wire("psu1.+", `bb1.${mates(holes.get(8))[0]}`),
+      wire("psu1.-", `bb1.${mates(holes.get(4))[0]}`),
+    ],
+  };
+  const { result, levelAt } = simulate(doc, undefined, new Map([["c1", H]]));
+  assert.equal(result.chipStatus.get("c1").status, "ok");
+  assert.equal(levelAt(`bb1.${holes.get(5)}`), H);
+});
+
+test("osc-full: unpowered drives nothing, whatever clockPhase says", () => {
+  const holes = chipHoles("osc-full", "e10");
+  const { result, levelAt } = simulate(
+    { boards, components: [part("c1", "osc-full", "e10")], wires: [] },
+    undefined,
+    new Map([["c1", H]]),
+  );
+  assert.equal(result.chipStatus.get("c1").status, "unpowered");
+  assert.equal(levelAt(`bb1.${holes.get(8)}`), Z);
+});
+
+test("osc-full: 12 V damages the can (same magic smoke as a chip)", () => {
+  const holes = chipHoles("osc-full", "e10");
+  const doc = {
+    boards,
+    components: [psu("psu1", 80, 12), part("c1", "osc-full", "e10")],
+    wires: powerWires("psu1", holes),
+  };
+  const { result, levelAt } = simulate(doc, undefined, new Map([["c1", H]]));
+  assert.equal(result.chipStatus.get("c1").status, "damaged");
+  assert.equal(levelAt(`bb1.${holes.get(8)}`), Z);
+  assert.ok(result.warnings.some((w) => w.type === "damaged"));
 });
 
 // ── Resistors: weak pull-down / pull-up / series conduction ──────────────────
