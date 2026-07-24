@@ -74,6 +74,8 @@ const SEQ_WAVE = [
 // plain-TTL functions carry their own LS id; the electrical LS/TTL difference
 // is analog and invisible to the zero-delay engine.
 const LS_WAVE = [
+  "74LS01",
+  "74LS03",
   "74LS05",
   "74LS14",
   "74LS112",
@@ -92,6 +94,8 @@ const LS_WAVE = [
   "74LS85",
   "74LS148",
   "74LS283",
+  "74LS83",
+  "74LS181",
   "74LS169",
   "74LS259",
   "74LS533",

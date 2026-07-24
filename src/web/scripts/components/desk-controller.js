@@ -59,7 +59,7 @@ import {
 import { BUS_WIDTHS, DeskDoc, WIRE_COLORS } from "../model/desk-doc.js";
 import { HistoryStore } from "../model/history-store.js";
 import { partDef } from "../catalog/index.js";
-import { isMemory, isVolatileMemory, memoryConfig } from "../sim/chip-eval.js";
+import { isMemory, isRomChip, memoryConfig } from "../sim/chip-eval.js";
 import {
   BreadboardView,
   applyBoardRotation,
@@ -97,11 +97,6 @@ function brickSvg(kind, params) {
 function memByteLength(def) {
   const { size, width } = memoryConfig(def);
   return size * (width > 8 ? 2 : 1);
-}
-
-/** True for a file-backed (non-volatile ROM/EPROM/EEPROM) memory chip. */
-function isRomChip(def) {
-  return isMemory(def) && !isVolatileMemory(def);
 }
 
 /** The DIP-switch position a pointer landed on, or null (the body, or a
@@ -1861,16 +1856,21 @@ export class DeskController {
    * GUID, clear any copied `programmed` flag (a paste is a NEW, unprogrammed
    * chip), and create the noise-filled `.bin`. A no-op for volatile SRAM (never
    * file-backed) and non-memory parts. The GUID lands in the same doc-changed
-   * as the placement, so it rides one undo step.
+   * as the placement, so it rides one undo step. Patches `comp.params` in
+   * place (not just the doc) since the caller mounts THIS object right after —
+   * without it the freshly-placed chip's view never sees its own `storage`/
+   * `programmed`, and (Feature 190 follow-up) never shows its "unprogrammed"
+   * design-time warning until the next remount.
    */
   #provisionMemory(comp) {
     const def = partDef(comp.ref);
     if (!isRomChip(def)) return;
     const guid = crypto.randomUUID();
-    this.#doc.setComponentParams(comp.id, {
+    const updated = this.#doc.setComponentParams(comp.id, {
       storage: { guid },
       programmed: false,
     });
+    comp.params = updated.params;
     this.#onCreateMemoryFile?.(guid, memByteLength(def));
   }
 
@@ -1880,11 +1880,17 @@ export class DeskController {
     if (guid && isRomChip(partDef(comp.ref))) this.#onRemoveMemoryFile?.(guid);
   }
 
-  /** Set/clear a ROM chip's `programmed` flag (the in-app programmer wrote it). */
+  /** Set/clear a ROM chip's `programmed` flag (the in-app programmer wrote
+      it) and refresh its view so the "not programmed" warning triangle
+      (Feature 190 follow-up) clears/reappears immediately, not just on the
+      next remount. */
   setMemoryProgrammed(id, programmed) {
     const comp = this.#doc.getComponent(id);
     if (!comp || !isRomChip(partDef(comp.ref))) return;
-    this.#doc.setComponentParams(id, { programmed: programmed === true });
+    const updated = this.#doc.setComponentParams(id, {
+      programmed: programmed === true,
+    });
+    this.#partViews.get(id)?.updateParams(updated.params);
     this.#emitDocChanged("program memory");
   }
 

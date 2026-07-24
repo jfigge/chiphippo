@@ -37,6 +37,7 @@ import {
   busDriverUnits,
   transceiverUnits,
   adder4Units,
+  alu4Units,
   comparator4Units,
   priorityEncoder8Units,
   bcd7segUnits,
@@ -92,6 +93,79 @@ const SEG7_PATTERNS = Object.freeze(
 );
 
 export const CHIPS_74LS = Object.freeze([
+  // ── Open-collector NAND gates ────────────────────────────────────────────
+  {
+    id: "74LS01",
+    title: "Quad 2-input NAND (open-collector)",
+    blurb:
+      "Four independent 2-input NAND gates with open-collector outputs " +
+      "(the outputs pull low only — an external pull-up is assumed; " +
+      "modelled as a plain NAND here, like the 74LS05 open-collector " +
+      "inverter). Pin-compatible with the classic quad-NAND layout.",
+    group: "NAND",
+    package: "DIP-14",
+    pins: [
+      input(1, "1A"),
+      input(2, "1B"),
+      output(3, "1Y"),
+      input(4, "2A"),
+      input(5, "2B"),
+      output(6, "2Y"),
+      gnd(7),
+      output(8, "3Y"),
+      input(9, "3A"),
+      input(10, "3B"),
+      output(11, "4Y"),
+      input(12, "4A"),
+      input(13, "4B"),
+      vcc(14),
+    ],
+    logic: {
+      units: [
+        unit("NAND", [1, 2], 3),
+        unit("NAND", [4, 5], 6),
+        unit("NAND", [9, 10], 8),
+        unit("NAND", [12, 13], 11),
+      ],
+    },
+  },
+  {
+    id: "74LS03",
+    title: "Quad 2-input NAND (open-collector)",
+    blurb:
+      "Four independent 2-input NAND gates with open-collector outputs " +
+      "(the outputs pull low only — an external pull-up is assumed; " +
+      "modelled as a plain NAND here, like the 74LS05 open-collector " +
+      "inverter). A different open-collector variant from the 74LS01, " +
+      "also pin-compatible with the classic quad-NAND layout.",
+    group: "NAND",
+    package: "DIP-14",
+    pins: [
+      input(1, "A1"),
+      input(2, "B1"),
+      output(3, "Y1"),
+      input(4, "A2"),
+      input(5, "B2"),
+      output(6, "Y2"),
+      gnd(7),
+      output(8, "Y3"),
+      input(9, "A3"),
+      input(10, "B3"),
+      output(11, "Y4"),
+      input(12, "A4"),
+      input(13, "B4"),
+      vcc(14),
+    ],
+    logic: {
+      units: [
+        unit("NAND", [1, 2], 3),
+        unit("NAND", [4, 5], 6),
+        unit("NAND", [9, 10], 8),
+        unit("NAND", [12, 13], 11),
+      ],
+    },
+  },
+
   // ── Inverters ──────────────────────────────────────────────────────────────
   {
     id: "74LS05",
@@ -821,6 +895,97 @@ export const CHIPS_74LS = Object.freeze([
         cin: 7,
         s: [4, 1, 13, 10], // S1..S4 (LSB first)
         cout: 9,
+      }),
+    },
+  },
+  {
+    id: "74LS83",
+    title: "4-bit binary adder (original pinout)",
+    blurb:
+      "Adds two 4-bit words plus a carry-in with internal carry-lookahead, " +
+      "driving a 4-bit sum and carry-out — electrically identical to the " +
+      "74LS283, but the ORIGINAL non-standard pinout (VCC at pin 5, GND at " +
+      "pin 12, not the later JEDEC corners).",
+    group: "Arithmetic",
+    package: "DIP-16",
+    pins: [
+      input(1, "A4"),
+      output(2, "S3"),
+      input(3, "A3"),
+      input(4, "B3"),
+      vcc(5),
+      output(6, "S2"),
+      input(7, "B2"),
+      input(8, "A2"),
+      output(9, "S1"),
+      input(10, "A1"),
+      input(11, "B1"),
+      gnd(12),
+      input(13, "C0"),
+      output(14, "C4"),
+      output(15, "S4"),
+      input(16, "B4"),
+    ],
+    logic: {
+      units: adder4Units({
+        a: [10, 8, 3, 1], // A1..A4 (LSB first)
+        b: [11, 7, 4, 16], // B1..B4 (LSB first)
+        cin: 13,
+        s: [9, 6, 2, 15], // S1..S4 (LSB first)
+        cout: 14,
+      }),
+    },
+  },
+  {
+    id: "74LS181",
+    title: "4-bit Arithmetic Logic Unit",
+    blurb:
+      "16 logic operations (M=H) or 16 arithmetic operations (M=L), " +
+      "selected by S0-S3, with an active-low carry-in, a carry-out, and " +
+      "active-low carry generate/propagate outputs for cascading multiple " +
+      "ALUs (meaningful only in arithmetic mode). A=B is open-collector on " +
+      "the real part (modelled as a plain output, like this catalog's " +
+      "other open-collector parts).",
+    group: "Arithmetic",
+    package: "DIP-24",
+    pins: [
+      input(1, "B0"),
+      input(2, "A0"),
+      input(3, "S3"),
+      input(4, "S2"),
+      input(5, "S1"),
+      input(6, "S0"),
+      input(7, "Cn"),
+      input(8, "M"),
+      output(9, "F0"),
+      output(10, "F1"),
+      output(11, "F2"),
+      gnd(12),
+      output(13, "F3"),
+      output(14, "A=B"),
+      output(15, "P"),
+      output(16, "Cn+4"),
+      output(17, "G"),
+      input(18, "B3"),
+      input(19, "A3"),
+      input(20, "B2"),
+      input(21, "A2"),
+      input(22, "B1"),
+      input(23, "A1"),
+      vcc(24),
+    ],
+    logic: {
+      units: alu4Units({
+        a: [2, 23, 21, 19], // A0..A3 (LSB first)
+        b: [1, 22, 20, 18], // B0..B3 (LSB first)
+        s: [6, 5, 4, 3], // S0..S3 (LSB first)
+        m: 8,
+        cin: 7,
+        f: [9, 10, 11, 13], // F0..F3 (LSB first)
+        cout: 16,
+        gN: 17,
+        pN: 15,
+        aeqb: 14,
       }),
     },
   },

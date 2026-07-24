@@ -29,6 +29,7 @@ import { PX_PER_UNIT } from "../desk/desk-geometry.js";
 import { holePosition } from "../model/breadboard.js";
 import { packageSpec } from "../model/footprints.js";
 import { chipDef } from "../catalog/index.js";
+import { isRomChip } from "../sim/chip-eval.js";
 import {
   buildBurnOverlay,
   buildWarnOverlay,
@@ -180,6 +181,8 @@ export class ChipView {
   #id;
   #ref;
   #params = {}; // latest params (the 180° flip changes the drawn orientation)
+  #status = null; // last engine-reported power/health status (Feature 90)
+  #unprogrammed = false; // a ROM/EPROM/EEPROM with no image loaded (Feature 190)
 
   /**
    * @param {HTMLElement} layer - the `.layer-parts` element.
@@ -204,6 +207,7 @@ export class ChipView {
       onContextMenu?.(this.#id, e),
     );
     layer.append(this.#el);
+    this.#refresh();
   }
 
   get id() {
@@ -223,6 +227,7 @@ export class ChipView {
     this.#params = params ?? {};
     this.#el.querySelector("svg")?.remove();
     this.#el.prepend(buildChipSvg(this.#ref, this.#params));
+    this.#refresh();
   }
 
   /**
@@ -243,14 +248,42 @@ export class ChipView {
    * Reflect the simulator's power/health status (Feature 90): a warning
    * triangle over the body when unpowered, the red X + smoke when reversed or
    * damaged, an amber corner dot when underpowered. `null` clears everything
-   * (editing / stopped).
+   * (editing / stopped) — but an unprogrammed ROM's own warning (Feature 190
+   * follow-up, see #refresh) is independent of this and stays put.
    */
   setStatus(status) {
+    this.#status = status;
+    this.#refresh();
+  }
+
+  /**
+   * Recompute every fault class + hover hint from the engine status (above,
+   * cleared whenever the sim isn't running) and the "unprogrammed" flag
+   * (computed from params alone, so it's true at design time too — a ROM/
+   * EPROM/EEPROM with no image loaded reads garbage whether or not the sim
+   * is running). The two share the one warning-triangle asset; a burn fault
+   * (reversed/damaged — the chip needs replacing outright) wins over the
+   * milder "load an image" hint rather than drawing both overlays at once.
+   */
+  #refresh() {
+    this.#unprogrammed =
+      isRomChip(chipDef(this.#ref)) &&
+      Boolean(this.#params?.storage?.guid) &&
+      this.#params?.programmed !== true;
+    const burning = this.#status === "reversed" || this.#status === "damaged";
     for (const s of ["unpowered", "underpowered", "reversed", "damaged"]) {
-      this.#el.classList.toggle(`part-chip--${s}`, status === s);
+      this.#el.classList.toggle(`part-chip--${s}`, this.#status === s);
     }
+    this.#el.classList.toggle(
+      "part-chip--unprogrammed",
+      this.#unprogrammed && !burning,
+    );
     const title = this.#el.querySelector(".part-chip-status > title");
-    if (title) title.textContent = STATUS_HINT[status] ?? "";
+    if (title) {
+      title.textContent =
+        STATUS_HINT[this.#status] ??
+        (this.#unprogrammed ? STATUS_HINT.unprogrammed : "");
+    }
   }
 
   setSelected(on) {

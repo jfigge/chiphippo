@@ -530,6 +530,90 @@ export function comparator4Units(m) {
 }
 
 /**
+ * 4-bit Arithmetic Logic Unit (74181-style). `a`/`b` are the operand pins LSB
+ * first, `s` the four function-select pins LSB first (S0..S3), `m` the mode
+ * control (H = logic, L = arithmetic), `cin` the active-low carry-in (LOW
+ * asserts a carry). Drives `f` (F0..F3, LSB first), and optionally `cout`
+ * (Cn+4), `gN`/`pN` (active-low carry generate/propagate, for cascading
+ * multiple ALUs — only meaningful in arithmetic mode; carries are inhibited
+ * in logic mode so they read inactive there), and `aeqb` (A=B — open-
+ * collector on the real part, wired-AND across cascaded ALUs; modelled here
+ * as a plain output, the same simplification as this catalog's other open-
+ * collector parts).
+ *
+ * Per-select-code logic/arithmetic pair is the datasheet's Function Table,
+ * active-HIGH-operand column, transcribed exactly (Fairchild DM74LS181,
+ * DS009821): the arithmetic "baseline" is the Cn=H (no incoming carry) entry,
+ * evaluated with unsigned 4-bit complements (never negative), then `cin` is
+ * added and the total both masked to 4 bits (the sum) and compared against 16
+ * (the carry).
+ * @param {{a:number[], b:number[], s:number[], m, cin, f:number[], cout?, gN?, pN?, aeqb?}} m_
+ */
+export function alu4Units(m_) {
+  const inputs = [...m_.a, ...m_.b, ...m_.s, m_.m, m_.cin];
+  const mask = 0xf;
+  const comp = (x) => ~x & mask;
+  const ROWS = [
+    { logic: (a) => comp(a), arith: (a) => a },
+    { logic: (a, b) => comp(a & b), arith: (a, b) => a + b },
+    { logic: (a, b) => comp(a) & b, arith: (a, b) => a + comp(b) },
+    { logic: () => 0, arith: () => mask },
+    { logic: (a, b) => comp(a | b), arith: (a, b) => a + (a & comp(b)) },
+    { logic: (a, b) => comp(b), arith: (a, b) => (a | b) + (a & comp(b)) },
+    { logic: (a, b) => a ^ b, arith: (a, b) => a + comp(b) },
+    { logic: (a, b) => a & comp(b), arith: (a, b) => (a & b) + mask },
+    { logic: (a, b) => comp(a) | b, arith: (a, b) => a + (a & b) },
+    { logic: (a, b) => comp(a ^ b), arith: (a, b) => a + b },
+    { logic: (a, b) => b, arith: (a, b) => (a | comp(b)) + (a & b) },
+    { logic: (a, b) => a & b, arith: (a, b) => (a & b) + mask },
+    { logic: () => mask, arith: (a) => a + a },
+    { logic: (a, b) => a | comp(b), arith: (a, b) => (a | b) + a },
+    { logic: (a, b) => a | b, arith: (a, b) => (a | comp(b)) + a },
+    { logic: (a) => a, arith: (a) => a + mask },
+  ];
+  const compute = (levels) => {
+    const byPin = new Map(inputs.map((p, i) => [p, levels[i]]));
+    const a = readBus(m_.a, byPin);
+    const b = readBus(m_.b, byPin);
+    const row = ROWS[readBus(m_.s, byPin)];
+    if (high(byPin.get(m_.m))) {
+      const f = row.logic(a, b) & mask;
+      return { f, total: f, baseline: f };
+    }
+    const cin = byPin.get(m_.cin) === L ? 1 : 0; // Cn is active-low.
+    const baseline = row.arith(a, b);
+    const total = baseline + cin;
+    return { f: total & mask, total, baseline };
+  };
+  const units = m_.f.map((pin, i) =>
+    comb(inputs, pin, (levels) => ((compute(levels).f >> i) & 1 ? H : L)),
+  );
+  if (m_.cout != null) {
+    units.push(
+      comb(inputs, m_.cout, (levels) => (compute(levels).total >= 16 ? H : L)),
+    );
+  }
+  if (m_.gN != null) {
+    // Generate/propagate are NOT affected by carry-in (datasheet-stated) —
+    // computed from the baseline (Cin-less) total, unlike Cn+4 above.
+    units.push(
+      comb(inputs, m_.gN, (levels) => (compute(levels).baseline >= 16 ? L : H)),
+    );
+  }
+  if (m_.pN != null) {
+    units.push(
+      comb(inputs, m_.pN, (levels) => (compute(levels).baseline >= 15 ? L : H)),
+    );
+  }
+  if (m_.aeqb != null) {
+    units.push(
+      comb(inputs, m_.aeqb, (levels) => (compute(levels).f === mask ? H : L)),
+    );
+  }
+  return units;
+}
+
+/**
  * 8-to-3 priority encoder (74148-style), all active-low. `data` lists I0…I7,
  * `eiN` the enable-in; `a` the address output pins A0…A2 (active-low), `gsN`
  * the group-strobe, `eoN` the enable-out. Highest index wins; a floating (Z)

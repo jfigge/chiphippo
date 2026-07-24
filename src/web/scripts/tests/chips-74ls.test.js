@@ -363,6 +363,135 @@ test("74LS283: 4-bit adder with carry-lookahead", () => {
   );
 });
 
+test("74LS83: 4-bit adder, original (non-standard) pinout", () => {
+  const def = chipDef("74LS83");
+  // A1..4 = 10,8,3,1 ; B1..4 = 11,7,4,16 ; C0=13 ; S1..4 = 9,6,2,15 ; C4=14.
+  // 3 + 6 + 0 = 9 → S = 1001.
+  const A3 = { 10: H, 8: H, 3: L, 1: L };
+  const B6 = { 11: L, 7: H, 4: H, 16: L };
+  let out = evaluate(def, lv({ ...A3, ...B6, 13: L }));
+  assert.deepEqual(
+    [out.get(9), out.get(6), out.get(2), out.get(15), out.get(14)],
+    [H, L, L, H, L], // S1 S2 S3 S4 C4
+  );
+  // 15 + 1 + 0 = 16 → S = 0000, carry out.
+  const A15 = { 10: H, 8: H, 3: H, 1: H };
+  const B1 = { 11: H, 7: L, 4: L, 16: L };
+  out = evaluate(def, lv({ ...A15, ...B1, 13: L }));
+  assert.deepEqual(
+    [out.get(9), out.get(6), out.get(2), out.get(15), out.get(14)],
+    [L, L, L, L, H],
+  );
+});
+
+test("74LS181: 4-bit ALU — logic mode covers all 16 functions", () => {
+  const def = chipDef("74LS181");
+  // A0..3=2,23,21,19 ; B0..3=1,22,20,18 ; S0..3=6,5,4,3 ; M=8 ; Cn=7.
+  // F0..3=9,10,11,13 ; Cn+4=16 ; G=17 ; P=15 ; A=B=14.
+  const A = 0b1010; // 10
+  const B = 0b0110; // 6
+  const bits = (v) => [v & 1, (v >> 1) & 1, (v >> 2) & 1, (v >> 3) & 1];
+  const pinLevels = (pins, v) =>
+    Object.fromEntries(bits(v).map((b, i) => [pins[i], b ? H : L]));
+  const aPins = [2, 23, 21, 19];
+  const bPins = [1, 22, 20, 18];
+  const sPins = [6, 5, 4, 3];
+  const fPins = [9, 10, 11, 13];
+  const readF = (out) =>
+    fPins.reduce((n, p, i) => n + (out.get(p) === H ? 1 << i : 0), 0);
+  const logicOut = (sel) =>
+    readF(
+      evaluate(
+        def,
+        lv({
+          ...pinLevels(aPins, A),
+          ...pinLevels(bPins, B),
+          ...pinLevels(sPins, sel),
+          8: H, // M=H: logic mode
+          7: H, // Cn unused in logic mode
+        }),
+      ),
+    );
+  const mask = 0xf;
+  const comp = (x) => ~x & mask;
+  // The 16 functions, in S0..S3 order, per the datasheet's active-HIGH
+  // function table (DM74LS181, DS009821).
+  const expected = [
+    comp(A), // 0000: A'
+    comp(A & B), // 0001: NAND
+    comp(A) & B, // 0010: A'B
+    0, // 0011: Logic 0
+    comp(A | B), // 0100: NOR
+    comp(B), // 0101: B'
+    A ^ B, // 0110: XOR
+    A & comp(B), // 0111: AB'
+    comp(A) | B, // 1000: A'+B
+    comp(A ^ B), // 1001: XNOR
+    B, // 1010: B
+    A & B, // 1011: AB
+    mask, // 1100: Logic 1
+    A | comp(B), // 1101: A+B'
+    A | B, // 1110: OR
+    A, // 1111: A
+  ];
+  expected.forEach((exp, sel) => {
+    assert.equal(logicOut(sel), exp & mask, `S=${sel.toString(2)}`);
+  });
+  // All 16 results are distinct (the datasheet's own "16 logic operations").
+  assert.equal(new Set(expected.map((v) => v & mask)).size, 16);
+});
+
+test("74LS181: 4-bit ALU — arithmetic mode add/subtract with carry", () => {
+  const def = chipDef("74LS181");
+  const aPins = [2, 23, 21, 19];
+  const bPins = [1, 22, 20, 18];
+  const sPins = [6, 5, 4, 3];
+  const fPins = [9, 10, 11, 13];
+  const bits = (v) => [v & 1, (v >> 1) & 1, (v >> 2) & 1, (v >> 3) & 1];
+  const pinLevels = (pins, v) =>
+    Object.fromEntries(bits(v).map((b, i) => [pins[i], b ? H : L]));
+  const readF = (out) =>
+    fPins.reduce((n, p, i) => n + (out.get(p) === H ? 1 << i : 0), 0);
+  const run = (a, b, sel, cinLow) =>
+    evaluate(
+      def,
+      lv({
+        ...pinLevels(aPins, a),
+        ...pinLevels(bPins, b),
+        ...pinLevels(sPins, sel),
+        8: L, // M=L: arithmetic mode
+        7: cinLow ? L : H, // Cn active-low
+      }),
+    );
+  // S=0001 "A+B": 9 + 3 = 12, no carry (12 < 16).
+  let out = run(9, 3, 0b0001, false);
+  assert.equal(readF(out), 12);
+  assert.equal(out.get(16), L); // Cn+4
+  // S=0001 "A+B": 15 + 1 = 16 → sum wraps to 0, carry out.
+  out = run(15, 1, 0b0001, false);
+  assert.equal(readF(out), 0);
+  assert.equal(out.get(16), H);
+  // S=0110 with Cn asserted (LOW): the classic "A minus B" subtractor.
+  // 9 - 3 = 6, no borrow → Cn+4 HIGH.
+  out = run(9, 3, 0b0110, true);
+  assert.equal(readF(out), 6);
+  assert.equal(out.get(16), H);
+  // 3 - 9 = -6 ≡ 10 (mod 16), a borrow occurred → Cn+4 LOW.
+  out = run(3, 9, 0b0110, true);
+  assert.equal(readF(out), 10);
+  assert.equal(out.get(16), L);
+});
+
+test("74LS181: 4-bit ALU — A=B output", () => {
+  const def = chipDef("74LS181");
+  // S=1100 (Logic 1, M=H) forces F=1111 regardless of A/B → A=B HIGH.
+  let out = evaluate(def, lv({ 6: L, 5: L, 4: H, 3: H, 8: H, 7: H }));
+  assert.equal(out.get(14), H);
+  // S=0011 (Logic 0, M=H) forces F=0000 → A=B LOW.
+  out = evaluate(def, lv({ 6: H, 5: H, 4: L, 3: L, 8: H, 7: H }));
+  assert.equal(out.get(14), L);
+});
+
 // ── Sequential: counter, addressable latch, octal latches, shift register ────
 
 test("74LS169: synchronous up/down count, load, and ripple carry", () => {

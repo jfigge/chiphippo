@@ -117,3 +117,80 @@ test("ChipView seats at its anchor hole in world px and reports gestures", () =>
   view.remove();
   assert.equal(layer.querySelector(".part-chip"), null);
 });
+
+test("ChipView flags an unprogrammed ROM at design time, no sim status needed", () => {
+  resetDom();
+  const layer = document.createElement("div");
+  document.body.append(layer);
+
+  const view = new ChipView(layer, {
+    id: "c1",
+    ref: "rom-8k",
+    params: { storage: { guid: "g1" }, programmed: false },
+  });
+  const partEl = layer.querySelector(".part-chip");
+  assert.ok(partEl.classList.contains("part-chip--unprogrammed"));
+  assert.equal(
+    partEl.querySelector(".part-chip-status > title").textContent,
+    "Not programmed — load an image",
+  );
+
+  // Programming the chip (a Save/Load in the memory inspector) clears it
+  // live, with no sim state involved at all.
+  view.updateParams({ storage: { guid: "g1" }, programmed: true });
+  assert.ok(!partEl.classList.contains("part-chip--unprogrammed"));
+  assert.equal(
+    partEl.querySelector(".part-chip-status > title").textContent,
+    "",
+  );
+});
+
+test("ChipView never flags a volatile SRAM or a non-memory chip as unprogrammed", () => {
+  resetDom();
+  const layer = document.createElement("div");
+  document.body.append(layer);
+
+  const sram = new ChipView(layer, {
+    id: "c1",
+    ref: "AS6C1024",
+    params: {},
+  });
+  assert.ok(
+    !sram.element.classList.contains("part-chip--unprogrammed"),
+    "SRAM is run-volatile, never file-backed — nothing to program",
+  );
+
+  const gate = new ChipView(layer, { id: "c2", ref: "74LS00", params: {} });
+  assert.ok(!gate.element.classList.contains("part-chip--unprogrammed"));
+});
+
+test("ChipView: a burn fault (reversed/damaged) wins over the unprogrammed hint, not both at once", () => {
+  resetDom();
+  const layer = document.createElement("div");
+  document.body.append(layer);
+
+  const view = new ChipView(layer, {
+    id: "c1",
+    ref: "rom-8k",
+    params: { storage: { guid: "g1" }, programmed: false },
+  });
+  const partEl = layer.querySelector(".part-chip");
+  assert.ok(partEl.classList.contains("part-chip--unprogrammed"));
+
+  view.setStatus("damaged");
+  assert.ok(partEl.classList.contains("part-chip--damaged"));
+  assert.ok(
+    !partEl.classList.contains("part-chip--unprogrammed"),
+    "the burn overlay already covers it — don't also show the triangle",
+  );
+  assert.equal(
+    partEl.querySelector(".part-chip-status > title").textContent,
+    "Damaged — replace this part",
+  );
+
+  // Stopping the sim clears the engine status; the design-time warning
+  // reappears since the chip is still, in fact, unprogrammed.
+  view.setStatus(null);
+  assert.ok(!partEl.classList.contains("part-chip--damaged"));
+  assert.ok(partEl.classList.contains("part-chip--unprogrammed"));
+});

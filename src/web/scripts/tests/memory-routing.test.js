@@ -165,3 +165,28 @@ test("setMemoryProgrammed flags a ROM (and only a memory chip)", () => {
   controller.setMemoryProgrammed(id, false);
   assert.equal(doc.getComponent(id).params.programmed, undefined, "cleared");
 });
+
+test('setMemoryProgrammed refreshes the chip\'s own "unprogrammed" warning triangle immediately', () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const { surface, controller } = makeDesk(doc, {
+    onCreateMemoryFile: () => {},
+  });
+  controller.addComponentAt("rom-8k", "bb1", "e5");
+  const id = chipId(doc, "rom-8k");
+  const chipEl = surface.querySelector(".part-chip");
+
+  // A fresh placement is unprogrammed — the design-time warning shows with
+  // no Run/Stop involved at all.
+  assert.ok(chipEl.classList.contains("part-chip--unprogrammed"));
+
+  // Programming it (the in-app programmer, or an inspector Save) must clear
+  // the badge on the already-mounted view, not just in the doc.
+  controller.setMemoryProgrammed(id, true);
+  assert.ok(!chipEl.classList.contains("part-chip--unprogrammed"));
+
+  // Clearing it again (a fresh, never-programmed replacement) restores it.
+  controller.setMemoryProgrammed(id, false);
+  assert.ok(chipEl.classList.contains("part-chip--unprogrammed"));
+});

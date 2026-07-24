@@ -120,4 +120,5 @@ export const STATUS_HINT = Object.freeze({
   underpowered: "Underpowered — VCC is at 3 V",
   reversed: "Power reversed — VCC and GND are swapped",
   damaged: "Damaged — replace this part",
+  unprogrammed: "Not programmed — load an image",
 });

@@ -54,6 +54,8 @@ export const DATASHEET_CROPS = {
   "74LS32": { file: "74LS32", page: 1, crop: { x: 0.155, y: 0.42, w: 0.62, h: 0.19 } },
   "74LS86": { file: "74LS86", page: 1, crop: { x: 0.155, y: 0.42, w: 0.62, h: 0.19 } },
   "74LS125": { file: "74LS125", page: 1, crop: { x: 0.155, y: 0.515, w: 0.62, h: 0.215 } },
+  "74LS01": { file: "74LS01", page: 1, crop: { x: 0.17, y: 0.24, w: 0.3, h: 0.18 } }, // Motorola: OC connection diagram
+  "74LS03": { file: "74LS03", page: 1, crop: { x: 0.15, y: 0.513, w: 0.65, h: 0.227 } }, // Fairchild: conn + function table
 
   // Flip-flops / latches (Feature 100 wave). Fairchild sheets sit lower (long
   // titles); TI/Motorola sheets favour the function table.
@@ -91,6 +93,8 @@ export const DATASHEET_CROPS = {
   "74LS273": { file: "74LS273", page: 1, crop: { x: 0.07, y: 0.3, w: 0.44, h: 0.16 } }, // Motorola: conn diagram
   "74LS279": { file: "74LS279", page: 1, crop: { x: 0.1, y: 0.415, w: 0.4, h: 0.2 } }, // TI: function table
   "74LS283": { file: "74LS283", page: 1, crop: { x: 0.5, y: 0.6, w: 0.41, h: 0.29 } }, // TI: function table
+  "74LS83": { file: "74LS83", page: 1, crop: { x: 0.165, y: 0.445, w: 0.453, h: 0.205 } }, // Fairchild: conn diagram (original pinout)
+  "74LS181": { file: "74LS181", page: 2, crop: { x: 0.08, y: 0.38, w: 0.89, h: 0.52 } }, // Fairchild: function table
   "74LS533": { file: "74LS533", page: 1, crop: { x: 0.16, y: 0.365, w: 0.62, h: 0.42 } }, // conn + logic + function
   "74LS573": { file: "74LS573", page: 2, crop: { x: 0.16, y: 0.365, w: 0.62, h: 0.42 } }, // Jameco cover
   "74LS595": { file: "74LS595", page: 2, crop: { x: 0.18, y: 0.05, w: 0.55, h: 0.48 } }, // ON: pinout + logic diagram

@@ -60,7 +60,7 @@ test("the part catalog carries the Feature 60 inventory", () => {
   assert.ok(partDef("clock"));
   assert.ok(partDef("lcd"));
   assert.equal(chipDef("sw-slide"), null);
-  assert.equal(PALETTE_DEFS.length, 76); // 57 chips (24 + 24 LS + 6 memory + 3 io) + 19 parts
+  assert.equal(PALETTE_DEFS.length, 80); // 61 chips (24 + 28 LS + 6 memory + 3 io) + 19 parts
 });
 
 for (const def of PART_DEFS.filter((d) => d.kind === "discrete")) {

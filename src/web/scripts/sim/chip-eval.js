@@ -71,6 +71,11 @@ export function isVolatileMemory(def) {
   return isMemory(def) && def.logic.memory.volatile === true;
 }
 
+/** Is this a file-backed (non-volatile ROM/EPROM/EEPROM) memory chip? */
+export function isRomChip(def) {
+  return isMemory(def) && !isVolatileMemory(def);
+}
+
 /** Does this def carry ANY simulated behavior (combinational/sequential/memory/oscillator)? */
 export function hasBehavior(def) {
   return (
