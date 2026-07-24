@@ -115,9 +115,15 @@ export class HistoryStore {
    * @param {string} [label] - drives coalescing + a future history UI.
    * @param {number} [time] - caller-stamped monotonic time (no Date here).
    * @param {{coalesce?: boolean}} [opts]
+   * @returns {object[]} snapshots permanently dropped by this call (the
+   *   truncated redo future, and/or the oldest entries evicted past the
+   *   depth limit) — never returned to the caller by undo/redo again. A
+   *   caller that owns resources keyed by something INSIDE a snapshot (e.g. a
+   *   ROM chip's backing file, keyed by its GUID) can release one once it no
+   *   longer appears in any snapshot `snapshots()` still retains.
    */
   record(snapshot, label = "edit", time = 0, { coalesce = false } = {}) {
-    if (this.#frozen) return;
+    if (this.#frozen) return [];
     const present = this.#entries[this.#index];
     const canMerge =
       coalesce &&
@@ -129,10 +135,12 @@ export class HistoryStore {
     if (canMerge) {
       present.snapshot = snapshot;
       present.time = time;
-      return;
+      return [];
     }
+    let dropped = [];
     // A genuine new edit invalidates the redo future.
     if (this.#index < this.#entries.length - 1) {
+      dropped = this.#entries.slice(this.#index + 1).map((e) => e.snapshot);
       this.#entries.length = this.#index + 1;
     }
     this.#entries.push({ snapshot, label, time, coalesce });
@@ -140,9 +148,18 @@ export class HistoryStore {
     // Enforce the depth bound by dropping the oldest entries.
     if (this.#entries.length > this.#limit) {
       const drop = this.#entries.length - this.#limit;
+      dropped = dropped.concat(
+        this.#entries.slice(0, drop).map((e) => e.snapshot),
+      );
       this.#entries.splice(0, drop);
       this.#index -= drop;
     }
+    return dropped;
+  }
+
+  /** Every currently-retained snapshot (past + present + future), read-only. */
+  snapshots() {
+    return this.#entries.map((e) => e.snapshot);
   }
 
   /** Step back one entry and return its snapshot, or null when at the start. */

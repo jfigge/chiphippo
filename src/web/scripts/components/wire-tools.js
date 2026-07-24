@@ -160,16 +160,23 @@ export class WireTools {
     }
     if (m.from) {
       const from = this.#addressWorld(m.from);
-      this.#host.wireLayer.setPreview({
-        from: { x: from.x * PX_PER_UNIT, y: from.y * PX_PER_UNIT },
-        to: hit
-          ? { x: hit.x * PX_PER_UNIT, y: hit.y * PX_PER_UNIT }
-          : { x: world.x * PX_PER_UNIT, y: world.y * PX_PER_UNIT },
-        color: this.color,
-        // Danger tint only over an actual occupied/self point — over empty
-        // desk the band stays its color (a click there just does nothing).
-        legal: hit ? m.hover.legal : true,
-      });
+      if (!from) {
+        // The anchored hole vanished from under us (e.g. an undo/redo removed
+        // its board while the wire tool stayed armed) — drop the stale anchor
+        // instead of crashing on a null world point.
+        this.#clearPending();
+      } else {
+        this.#host.wireLayer.setPreview({
+          from: { x: from.x * PX_PER_UNIT, y: from.y * PX_PER_UNIT },
+          to: hit
+            ? { x: hit.x * PX_PER_UNIT, y: hit.y * PX_PER_UNIT }
+            : { x: world.x * PX_PER_UNIT, y: world.y * PX_PER_UNIT },
+          color: this.color,
+          // Danger tint only over an actual occupied/self point — over empty
+          // desk the band stays its color (a click there just does nothing).
+          legal: hit ? m.hover.legal : true,
+        });
+      }
     }
   }
 

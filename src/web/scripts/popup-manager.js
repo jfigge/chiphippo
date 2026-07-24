@@ -64,6 +64,11 @@ function mount(popup) {
 }
 
 export const PopupManager = {
+  /** True while any popup (dialog or menu) is mounted and showing. */
+  isOpen() {
+    return state.active != null;
+  },
+
   /**
    * Mount a popup. If one is already open the new popup is QUEUED (shown when
    * the current one closes) rather than replacing it. Focuses the first
@@ -193,6 +198,11 @@ export const PopupManager = {
       fn?.();
     };
 
+    // A destructive confirm (btn--danger) autofocuses Cancel, not Confirm, so a
+    // reflexive Enter right after the dialog opens never fires the dangerous
+    // action. Only a non-destructive confirm autofocuses Confirm.
+    const isDanger = confirmClass.includes("danger");
+
     const element = el(
       "div",
       {
@@ -220,13 +230,14 @@ export const PopupManager = {
             type: "button",
             text: cancelLabel,
             onClick: done(onCancel),
+            "data-autofocus": isDanger,
           }),
           el("button", {
             class: `btn popup-btn ${confirmClass}`,
             type: "button",
             text: confirmLabel,
             onClick: done(onConfirm),
-            "data-autofocus": true,
+            "data-autofocus": !isDanger,
           }),
         ]),
       ].filter(Boolean),

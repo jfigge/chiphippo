@@ -79,6 +79,13 @@ export class MemoryBridge {
    * any open inspector. Invoked from the desk context menu or the inspector.
    */
   async program(compId) {
+    if (this.#sim?.running) {
+      return this.#warn(
+        "danger",
+        "Cannot program while running",
+        `${this.#refName(compId)} is live — stop the simulation first.`,
+      );
+    }
     const info = this.#romInfo(compId);
     if (!info) return;
     const picked = await this.#bridge?.mem?.pickImage();
@@ -134,6 +141,17 @@ export class MemoryBridge {
 
   /** Persist inspector hand-edits to a ROM's file (Save) + flag it programmed. */
   async #save(compId, bytes) {
+    if (this.#sim?.running) {
+      // The requesting window's own "running" flag only updates on ready/
+      // program/stop — it can be stale (e.g. Run started after it opened).
+      // This is the authoritative check: never let a live ROM's backing file
+      // be overwritten out from under the running simulation's own image.
+      return this.#warn(
+        "danger",
+        "Cannot save while running",
+        `${this.#refName(compId)} is live — stop the simulation first.`,
+      );
+    }
     const info = this.#romInfo(compId);
     if (!info) return;
     const res = await this.#bridge?.mem?.write(info.guid, bytes);

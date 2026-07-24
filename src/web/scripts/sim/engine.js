@@ -303,23 +303,40 @@ function resolveAll(ctx, drivers) {
     });
 
   // With resistors present, first compute each net's STRONG level (supplies +
-  // chip outputs, no pulls) — that's what a resistor conducts — then let each
-  // resistor weakly drive its OTHER end toward that level. One extra pass, and
-  // only when resistors exist; the fixpoint loop folds it in like any driver.
+  // chip outputs, no pulls) — that's what a resistor conducts, and it's also
+  // what callers use to tell "driven directly" from "fed through a resistor"
+  // (a lit LED vs. a burnt one), so it must never itself include a pull.
   let pulls = null;
   let strong = null;
   if (ctx.resistors.length) {
     strong = new Map();
     for (const id of ctx.netIds) strong.set(id, resolveOne(id, []).level);
-    pulls = new Map(); // netId → [levels]
-    const addPull = (net, level) => {
-      if (!net || (level !== H && level !== L)) return;
-      if (!pulls.has(net)) pulls.set(net, []);
-      pulls.get(net).push(level);
-    };
-    for (const r of ctx.resistors) {
-      addPull(r.netA, strong.get(r.netB));
-      addPull(r.netB, strong.get(r.netA));
+
+    // Relax the resistor network to a fixpoint: a net one resistor just
+    // pulled to H/L can itself feed the NEXT resistor down the chain (R1
+    // pulling netMid, netMid's own resistor R2 pulling netFar, and so on) —
+    // a single pass off the bare `strong` levels only ever sees one hop.
+    // `basis` starts at the strong levels and is refined each pass; a
+    // resistor chain of N resistors fully propagates in at most N passes.
+    let basis = strong;
+    for (let pass = 0; pass <= ctx.resistors.length; pass++) {
+      const p = new Map(); // netId → [levels]
+      const addPull = (net, level) => {
+        if (!net || (level !== H && level !== L)) return;
+        if (!p.has(net)) p.set(net, []);
+        p.get(net).push(level);
+      };
+      for (const r of ctx.resistors) {
+        addPull(r.netA, basis.get(r.netB));
+        addPull(r.netB, basis.get(r.netA));
+      }
+      const nextBasis = new Map();
+      for (const id of ctx.netIds) {
+        nextBasis.set(id, resolveOne(id, p.get(id) ?? []).level);
+      }
+      pulls = p;
+      if (mapsEqual(nextBasis, basis)) break;
+      basis = nextBasis;
     }
   }
 

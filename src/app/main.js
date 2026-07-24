@@ -781,9 +781,20 @@ function registerIpc() {
   ipcMain.handle("desk:save-as", (_event, doc, suggestedPath) =>
     saveSchematicDialog(doc, suggestedPath),
   );
-  ipcMain.handle("desk:write", (_event, filePath, doc) =>
-    getDeskStore().writeFile(filePath, doc),
-  );
+  ipcMain.handle("desk:write", (_event, filePath, doc) => {
+    // Unlike desk:open/desk:save-as, there's no native dialog here to
+    // mediate the path — this call is a re-Save with no prompt, so it must
+    // only ever overwrite the path a PRIOR open/save-as legitimately
+    // established (persisted as settings.currentFile), never some other
+    // path the renderer hands over for this call.
+    const known = getSettingsStore().get().currentFile;
+    if (typeof known !== "string" || !known || known !== filePath) {
+      const err = new Error("desk:write: path is not the known current file");
+      err.code = "INVALID_ARG";
+      throw err;
+    }
+    return getDeskStore().writeFile(filePath, doc);
+  });
 
   // Chip pin-assignments window (Feature 100): a part's "Pin Assignment"
   // context-menu item opens a separate floating OS window rendering its

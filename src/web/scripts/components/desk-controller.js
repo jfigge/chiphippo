@@ -3307,10 +3307,46 @@ export class DeskController {
     // re-trace the highlighter before anyone renders from the new document.
     this.#refreshBoardOutline();
     if (!this.#restoring) {
-      this.#history.record(this.#doc.snapshot(), label, Date.now(), opts);
+      const dropped = this.#history.record(
+        this.#doc.snapshot(),
+        label,
+        Date.now(),
+        opts,
+      );
+      this.#reconcileMemoryFiles(dropped);
       this.#notifyHistoryState();
     }
     window.dispatchEvent(new CustomEvent("chiphippo:doc-changed"));
+  }
+
+  /**
+   * Release a ROM chip's backing file once its GUID has fallen out of EVERY
+   * snapshot the undo/redo history still retains (a redo-future truncation or
+   * a depth-limit eviction) — otherwise placing a ROM, undoing it, then
+   * making any other edit leaks its `.bin` file forever (the doc no longer
+   * references the GUID, but nothing ever told main to delete it).
+   * @param {object[]} droppedSnapshots
+   */
+  #reconcileMemoryFiles(droppedSnapshots) {
+    if (!droppedSnapshots?.length || !this.#onRemoveMemoryFile) return;
+    const droppedGuids = this.#romGuidsIn(droppedSnapshots);
+    if (!droppedGuids.size) return;
+    const retainedGuids = this.#romGuidsIn(this.#history.snapshots());
+    for (const guid of droppedGuids) {
+      if (!retainedGuids.has(guid)) this.#onRemoveMemoryFile(guid);
+    }
+  }
+
+  /** Every ROM chip GUID referenced across a set of document snapshots. */
+  #romGuidsIn(snapshots) {
+    const guids = new Set();
+    for (const snap of snapshots) {
+      for (const comp of snap?.components ?? []) {
+        const guid = comp?.params?.storage?.guid;
+        if (guid && isRomChip(partDef(comp.ref))) guids.add(guid);
+      }
+    }
+    return guids;
   }
 
   // ── Undo / redo (Feature 200) ────────────────────────────────────────────

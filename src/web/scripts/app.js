@@ -268,6 +268,10 @@ function bindShortcuts(
   onToggleView,
 ) {
   window.addEventListener("keydown", (e) => {
+    // A dialog/menu owns the keyboard while it's open — its own handlers
+    // (native Escape-to-cancel, button activation) must be the only thing
+    // that reacts, so no desk/app shortcut leaks through underneath it.
+    if (PopupManager.isOpen()) return;
     // Tab flips Breadboard ⇄ Schematic (Feature 150) — not while typing.
     if (
       e.key === "Tab" &&

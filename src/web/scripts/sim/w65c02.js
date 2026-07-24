@@ -111,13 +111,13 @@ function adc(cpu, v) {
       lo += 6;
       hi += 1;
     }
-    const bin = cpu.a + v + carry;
-    setF(cpu, ZF, (bin & 0xff) === 0);
     setF(cpu, V, (~(cpu.a ^ v) & (cpu.a ^ (hi << 4)) & 0x80) !== 0);
-    setF(cpu, N, (hi & 0x08) !== 0);
     if (hi > 9) hi += 6;
     setF(cpu, C, hi > 15);
+    // N/Z read the final BCD-corrected byte, not the pre-correction digits —
+    // e.g. $99 + $01 with carry must show Z set, N clear (rolls over to $00).
     cpu.a = ((hi << 4) | (lo & 0x0f)) & 0xff;
+    setNZ(cpu, cpu.a);
   } else {
     const sum = cpu.a + v + carry;
     setF(cpu, C, sum > 0xff);
@@ -140,8 +140,10 @@ function sbc(cpu, v) {
     if (hi < 0) hi -= 6;
     setF(cpu, C, bin >= 0);
     setF(cpu, V, ((cpu.a ^ v) & (cpu.a ^ (bin & 0xff)) & 0x80) !== 0);
-    setNZ(cpu, bin & 0xff);
+    // N/Z read the final BCD-corrected byte, not the pre-correction binary
+    // difference — e.g. $00 - $01 with borrow must show N set (result $99).
     cpu.a = ((hi << 4) | (lo & 0x0f)) & 0xff;
+    setNZ(cpu, cpu.a);
   } else {
     setF(cpu, C, bin >= 0);
     setF(cpu, V, ((cpu.a ^ v) & (cpu.a ^ bin) & 0x80) !== 0);
