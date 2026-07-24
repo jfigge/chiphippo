@@ -785,14 +785,8 @@ export class DiscreteView {
    * @param {object} [callbacks]
    * @param {(id: string, e: PointerEvent) => void} [callbacks.onPointerDown]
    * @param {(id: string, e: MouseEvent) => void} [callbacks.onContextMenu]
-   * @param {(id: string, e: MouseEvent) => void} [callbacks.onDoubleClick] -
-   *   opens the pin-assignments window (Feature 100 wiring aid).
    */
-  constructor(
-    layer,
-    component,
-    { onPointerDown, onContextMenu, onDoubleClick } = {},
-  ) {
+  constructor(layer, component, { onPointerDown, onContextMenu } = {}) {
     this.#id = component.id;
     this.#ref = component.ref;
     // EVERY rotatable part renders as a span (body centred between its two
@@ -813,7 +807,6 @@ export class DiscreteView {
     this.#el.addEventListener("contextmenu", (e) =>
       onContextMenu?.(this.#id, e),
     );
-    this.#el.addEventListener("dblclick", (e) => onDoubleClick?.(this.#id, e));
     layer.append(this.#el);
   }
 

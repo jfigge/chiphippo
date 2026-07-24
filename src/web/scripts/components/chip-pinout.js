@@ -16,7 +16,8 @@
 
 // chip-pinout.js — draws a part's pin/terminal map as a wiring reference,
 // rendered into the standalone pin-assignments OS window (web/pinout.html),
-// opened by double-clicking ANY component. Four layouts, one per catalog
+// opened from ANY component's "Pin Assignment" context-menu item. Four
+// layouts, one per catalog
 // shape: DIP chips (`buildChipPinout` — the physical two-column layout, notch
 // at top, pin 1 top-left wrapping to pin N top-right); oscillator cans
 // (`buildCanPinout` — a linear list keyed to which of the 4 corners a pin

@@ -25,9 +25,10 @@ it's wired into.
 
 ## Choosing a voltage — and the 12 V damage rule
 
-Right-click a PSU brick to pick its voltage: **3 V**, **5 V**, or **12 V**.
-The picker stays available even while the simulation is running, so you can
-change voltage on the fly and watch the effect.
+Right-click a PSU brick and choose **Properties…** to pick its voltage:
+**3 V**, **5 V**, or **12 V**. It's a live setting — the dropdown stays
+available and applies immediately even while the simulation is running, so
+you can change voltage on the fly and watch the effect.
 
 - **5 V** — normal operation. A chip whose VCC net carries a 5 V supply and
   whose GND net is properly grounded runs exactly to its datasheet behavior.
@@ -53,15 +54,9 @@ covers what puts a chip into each state.
 ## Replacing a damaged part
 
 A damaged chip or oscillator can stays damaged and inert until you swap it
-out. Right-click the damaged part and choose **Replace chip** (or **Replace
-part** for an oscillator can) — this is the one part action that stays
-available even while the simulation is running, since surviving a burnout and
-carrying on is exactly the scenario it exists for. Replacing resets the
-damage flag; everything else about the part (position, wiring, rate) is
-unchanged.
-
-There's no undo-the-damage option beyond this — 12 V is meant to sting a
-little, the same way it would on a real bench.
+out. There's no in-place repair — delete it (**Delete Component** on its
+context menu) and place a fresh one from the palette, then rewire it. 12 V is
+meant to sting a little, the same way it would on a real bench.
 
 ## Clock sources
 
@@ -71,7 +66,7 @@ a PSU, a clock brick is desk-level — it doesn't seat on a board — and expose
 two addressable terminals: **`out`** and **`gnd`** (`clk1.out` / `clk1.gnd`).
 Wire `out` to a chip's clock input and `gnd` to your circuit's ground.
 
-Right-click a clock brick to set its rate:
+Right-click a clock brick and choose **Properties…** to set its rate:
 
 - **1 / 2 / 5 / 10 Hz** — free-running. Once the simulation is running, the
   brick toggles its `out` level on its own at the chosen rate; a small lamp
@@ -81,14 +76,15 @@ Right-click a clock brick to set its rate:
   HIGH (or back) once per click — handy for single-stepping a counter or
   flip-flop by hand and watching each edge land.
 
-The rate picker, like the PSU's voltage picker, stays available while
-running, so you can retune a clock's speed mid-simulation.
+The rate dropdown, like the PSU's voltage one, is a live setting — it applies
+immediately and stays available while running, so you can retune a clock's
+speed mid-simulation.
 
 An **oscillator can** (a discrete part that seats directly on a board rather
 than as a desk brick) behaves the same electrically — it's a free-running
-square-wave source powered like a chip, with its own right-click rate picker
-— but it only ever free-runs; a real crystal has no click-to-toggle pin, so
-it has no manual mode.
+square-wave source powered like a chip, with its own rate field in its
+Properties dialog — but it only ever free-runs; a real crystal has no
+click-to-toggle pin, so it has no manual mode.
 
 ## The transport drives the edges
 

@@ -73,11 +73,11 @@ damage) ever becomes an undo step of its own. Sequential state and clock
 phase vanish outright the next time you press **Run**. 12 V damage is the one
 exception that outlives the run: it's written into the document, so stopping
 — or even quitting and reopening — doesn't clear it, and there's no `Cmd+Z`
-back to before it happened. The only way to clear a damaged chip is the
-right-click **Replace chip** action (see
-[Power & Clock Sources](power-and-clocks.md)) — which, taken while stopped,
-is a normal edit and undoes/redoes like any other. What undo/redo restores is
-always the circuit you built, never a moment in its simulated behavior.
+back to before it happened. The only way to clear a damaged chip is to delete
+it and place a fresh one (see [Power & Clock Sources](power-and-clocks.md))
+— which, taken while stopped, is a normal edit and undoes/redoes like any
+other. What undo/redo restores is always the circuit you built, never a
+moment in its simulated behavior.
 
 ## Example circuits
 

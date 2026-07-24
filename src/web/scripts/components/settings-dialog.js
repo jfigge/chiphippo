@@ -29,6 +29,7 @@
 
 import { el } from "../dom.js";
 import { PopupManager } from "../popup-manager.js";
+import { LED_COLOR_OPTIONS } from "../catalog/parts.js";
 
 /** A close "×" glyph for the header button. */
 const CLOSE_SVG =
@@ -96,6 +97,23 @@ export class SettingsDialog {
       onInput: (e) => SettingsDialog.#emit({ selectionColor: e.target.value }),
     });
 
+    const ledColorSelect = el(
+      "select",
+      {
+        class: "settings-select",
+        id: "set-default-led-color",
+        onChange: (e) =>
+          SettingsDialog.#emit({ defaultLedColor: e.target.value }),
+      },
+      LED_COLOR_OPTIONS.map((color) =>
+        el("option", {
+          value: color,
+          text: color[0].toUpperCase() + color.slice(1),
+          selected: (settings.defaultLedColor || "red") === color,
+        }),
+      ),
+    );
+
     const closeBtn = el("button", {
       class: "popup-close",
       type: "button",
@@ -151,9 +169,13 @@ export class SettingsDialog {
     browseBtn.innerHTML = `${FOLDER_SVG}<span>Browse…</span>`;
 
     const panels = {
-      general: el(
+      appearance: el(
         "section",
-        { class: "settings-panel", role: "tabpanel", "data-panel": "general" },
+        {
+          class: "settings-panel",
+          role: "tabpanel",
+          "data-panel": "appearance",
+        },
         [
           el("div", { class: "settings-row settings-row--toggle" }, [
             el("label", {
@@ -170,6 +192,14 @@ export class SettingsDialog {
               text: "Selection border colour",
             }),
             selColor,
+          ]),
+          el("div", { class: "settings-row" }, [
+            el("label", {
+              class: "settings-label",
+              for: "set-default-led-color",
+              text: "Default LED color",
+            }),
+            ledColorSelect,
           ]),
         ],
       ),
@@ -209,7 +239,7 @@ export class SettingsDialog {
 
     // Left nav rail — one item per panel; clicking switches the visible panel.
     const TABS = [
-      { key: "general", label: "General" },
+      { key: "appearance", label: "Appearance" },
       { key: "datasheets", label: "Data Sheets" },
     ];
     const navItems = TABS.map(({ key, label }, i) =>
@@ -252,7 +282,7 @@ export class SettingsDialog {
         el("div", { class: "popup-body settings-popup-body" }, [
           el("nav", { class: "settings-nav", role: "tablist" }, navItems),
           el("div", { class: "settings-panels" }, [
-            panels.general,
+            panels.appearance,
             panels.datasheets,
           ]),
         ]),

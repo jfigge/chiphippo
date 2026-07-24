@@ -123,8 +123,9 @@ floats, unconnected, just as it would on a real bench.
 
 ## The pin-assignments window
 
-Double-click any placed part — chip, discrete, or brick — to open its
-floating pin-assignments window: a diagram of every pin/terminal and, for
+Right-click any placed part — chip, discrete, or brick — and choose
+**Pin Assignment**, at the top of its context menu, to open its floating
+pin-assignments window: a diagram of every pin/terminal and, for
 most chips, a cropped datasheet excerpt below it. A real chip's diagram
 stays fixed at its canonical layout no matter how you've flipped it on the
 desk (it matches the physical part, not the placement); `bar8iso` is the

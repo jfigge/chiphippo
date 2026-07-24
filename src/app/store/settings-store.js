@@ -56,6 +56,12 @@ const DEFAULTS = Object.freeze({
   // Applied by the renderer as the `--color-selection` custom property.
   selectionColor: null,
 
+  // The color a newly placed LED gets (Settings ▸ Appearance ▸ "Default LED
+  // color") — one of catalog/parts.js's LED_COLOR_OPTIONS. Only the default
+  // for NEW LEDs; an already-placed LED's color is changed through its own
+  // Properties dialog (right-click ▸ Properties…).
+  defaultLedColor: "red",
+
   // ── Panels (Build guide / Logic analyzer) ──────────────────────────────────
   // Whether the right-docked build guide is shown.
   guideOpen: false,

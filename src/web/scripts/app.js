@@ -523,11 +523,21 @@ async function init() {
   let hud = null;
   let controller = null;
 
-  // Parts palette (left panel; visibility persists in settings). A part with a
-  // `colors` list (the LED and the segment displays) opens the color swatch
-  // popover first; everything else arms its placement ghost directly.
+  // Parts palette (left panel; visibility persists in settings). The LED
+  // arms placement directly with the "Default LED color" setting (Settings ▸
+  // Appearance) — its color is changed afterward through the Properties
+  // dialog (right-click ▸ Properties…), not a placement-time picker. A part
+  // with its own `colors` list (the segment/bar displays) still opens the
+  // color swatch popover first; everything else arms its placement ghost
+  // directly.
   const palette = new PalettePanel(main, {
     onPickChip: (ref, e) => {
+      if (ref === "led") {
+        controller?.armPartPlacement(ref, {
+          color: currentSettings.defaultLedColor,
+        });
+        return;
+      }
       const colors = partDef(ref)?.colors;
       if (colors) {
         PopupManager.menu({
@@ -659,17 +669,18 @@ async function init() {
       scopeView.addNetChannel(address);
       scopeView.setVisible(true);
     },
-    onReplaceChip: (id) => sim?.replaceChip(id),
     onClockToggle: (id) => sim?.manualToggle(id),
-    // Double-click any part → open its floating pin/terminal-assignments OS
-    // window (`rows` sizes it to the layout; `rot` is a snapshot of the
-    // part's placed rotation — only an oscillator can's corner assignment
-    // depends on it, see chip-pinout.js's buildCanPinout).
+    // A part's "Pin Assignment" context-menu item → its floating
+    // pin/terminal-assignments OS window (`rows` sizes it to the layout;
+    // `rot` is a snapshot of the part's placed rotation — only an oscillator
+    // can's corner assignment depends on it, see chip-pinout.js's
+    // buildCanPinout).
     onOpenPinout: (ref, rows, rot) =>
       bridge
         .openPinout?.(ref, { rows, rot })
         .catch((err) => console.error("[renderer] pinout:open failed:", err)),
-    // Double-click / context-menu on a memory chip → its hex inspector window.
+    // A memory chip's "Inspect memory…" context-menu item → its hex inspector
+    // window.
     onOpenMemory: (id) => memoryBridge?.open(id),
     // "Load image… (program)" on a ROM chip → the in-app external programmer.
     onProgramMemory: (id) => memoryBridge?.program(id),

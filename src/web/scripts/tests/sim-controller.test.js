@@ -239,7 +239,7 @@ test("damage persists through Stop; Replace chip then resets it", () => {
   assert.equal(deskDoc.getComponent("c1").params.damaged, true);
   sim.stop(); // returning to editing keeps the damage
   assert.equal(deskDoc.getComponent("c1").params.damaged, true);
-  sim.replaceChip("c1"); // the context-menu action clears it (not running)
+  sim.replaceChip("c1"); // clears the damage flag (not running)
   assert.equal(deskDoc.getComponent("c1").params.damaged, false);
 });
 

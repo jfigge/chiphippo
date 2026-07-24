@@ -41,6 +41,7 @@ test("get returns the defaults when nothing is stored", () => {
 test("the Settings-dialog keys default off / unset", () => {
   assert.equal(DEFAULTS.showDeskHub, false);
   assert.equal(DEFAULTS.selectionColor, null);
+  assert.equal(DEFAULTS.defaultLedColor, "red");
 });
 
 test("set persists a Settings-dialog patch (desk hub + selection colour)", () => {

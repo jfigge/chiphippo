@@ -114,9 +114,9 @@ contextBridge.exposeInMainWorld("chiphippo", {
   },
 
   // ── Chip pin-assignments window (Feature 100) ──────────────────────────────
-  // Double-clicking a chip opens a separate, floating OS window that renders
-  // its DIP pinout as a wiring reference. `opts` may carry a `{ pins }` hint so
-  // main can size the window to the package.
+  // A part's "Pin Assignment" context-menu item opens a separate, floating OS
+  // window that renders its DIP pinout as a wiring reference. `opts` may carry
+  // a `{ pins }` hint so main can size the window to the package.
   openPinout: (ref, opts) => ipcRenderer.invoke("pinout:open", ref, opts),
 
   // Open a part's external datasheet PDF (from the Settings ▸ Data Sheets

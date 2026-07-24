@@ -62,6 +62,42 @@ test("SettingsDialog: the colour input seeds from selectionColor and emits on in
   PopupManager.close();
 });
 
+test("SettingsDialog: the default-LED-color select seeds and emits on change", () => {
+  resetDom();
+  SettingsDialog.open({ defaultLedColor: "blue" });
+  const select = document.querySelector("#set-default-led-color");
+  assert.equal(select.value, "blue");
+  assert.deepEqual(
+    [...select.options].map((o) => o.value),
+    ["red", "green", "blue", "yellow", "white"],
+  );
+
+  const patches = [];
+  window.addEventListener("chiphippo:settings-changed", (e) =>
+    patches.push(e.detail),
+  );
+  select.value = "white";
+  select.dispatchEvent(new window.Event("change"));
+  assert.deepEqual(patches, [{ defaultLedColor: "white" }]);
+
+  PopupManager.close();
+});
+
+test("SettingsDialog: Appearance is the first, default-visible tab", () => {
+  resetDom();
+  SettingsDialog.open({});
+  const dialog = document.querySelector(".settings-popup");
+  const appearance = dialog.querySelector(
+    '[data-panel="appearance"].settings-panel',
+  );
+  const appearanceTab = dialog.querySelector(
+    '.settings-nav-item[data-panel="appearance"]',
+  );
+  assert.ok(!appearance.hidden, "Appearance panel starts visible");
+  assert.equal(appearanceTab.getAttribute("aria-selected"), "true");
+  PopupManager.close();
+});
+
 test("SettingsDialog: opening twice does not stack a second dialog", () => {
   resetDom();
   SettingsDialog.open({});
@@ -79,20 +115,22 @@ test("SettingsDialog: the Data Sheets tab switches panels", () => {
   SettingsDialog.open({});
   const dialog = document.querySelector(".settings-popup");
   const items = dialog.querySelectorAll(".settings-nav-item");
-  assert.equal(items.length, 2, "General + Data Sheets tabs");
+  assert.equal(items.length, 2, "Appearance + Data Sheets tabs");
 
-  const general = dialog.querySelector('[data-panel="general"].settings-panel');
+  const appearance = dialog.querySelector(
+    '[data-panel="appearance"].settings-panel',
+  );
   const sheets = dialog.querySelector(
     '[data-panel="datasheets"].settings-panel',
   );
-  assert.ok(!general.hidden, "General panel starts visible");
+  assert.ok(!appearance.hidden, "Appearance panel starts visible");
   assert.ok(sheets.hidden, "Data Sheets panel starts hidden");
 
   const sheetsTab = dialog.querySelector(
     '.settings-nav-item[data-panel="datasheets"]',
   );
   sheetsTab.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-  assert.ok(general.hidden, "General hides after switching");
+  assert.ok(appearance.hidden, "Appearance hides after switching");
   assert.ok(!sheets.hidden, "Data Sheets shows after switching");
   assert.equal(sheetsTab.getAttribute("aria-selected"), "true");
 

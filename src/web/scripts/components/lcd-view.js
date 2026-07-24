@@ -165,13 +165,8 @@ export class LcdView {
    * @param {object} [callbacks]
    * @param {(id: string, e: PointerEvent) => void} [callbacks.onPointerDown]
    * @param {(id: string, e: MouseEvent) => void} [callbacks.onContextMenu]
-   * @param {(id: string, e: MouseEvent) => void} [callbacks.onDoubleClick]
    */
-  constructor(
-    layer,
-    lcd,
-    { onPointerDown, onContextMenu, onDoubleClick } = {},
-  ) {
+  constructor(layer, lcd, { onPointerDown, onContextMenu } = {}) {
     this.#id = lcd.id;
     this.#el = el("div", {
       class: "part part-lcd",
@@ -186,7 +181,6 @@ export class LcdView {
     this.#el.addEventListener("contextmenu", (e) =>
       onContextMenu?.(this.#id, e),
     );
-    this.#el.addEventListener("dblclick", (e) => onDoubleClick?.(this.#id, e));
     layer.append(this.#el);
   }
 

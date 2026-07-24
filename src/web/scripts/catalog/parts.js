@@ -28,6 +28,17 @@ import { hd44780Unit } from "../sim/hd44780.js";
 import { ROTATIONS } from "../model/breadboard.js";
 
 export const LED_COLORS = Object.freeze(["red", "green", "yellow", "blue"]);
+/** The LED's own color choices (the Properties dialog + the "Default LED
+    color" setting) — a superset of LED_COLORS adding white. The segment/bar
+    displays above keep the 4-color LED_COLORS list; they have no white face
+    art. */
+export const LED_COLOR_OPTIONS = Object.freeze([
+  "red",
+  "green",
+  "blue",
+  "yellow",
+  "white",
+]);
 export const PSU_VOLTS = Object.freeze([3, 5, 12]);
 /** Clock rates (Hz) plus click-to-toggle "manual"; the timer lives in the
     renderer's SimController — the def carries only the pure contract. */
@@ -112,6 +123,16 @@ function normalizeOscillatorParams(raw) {
   return params;
 }
 
+/** Shared by both oscillator-can sizes — the Properties dialog's rate field. */
+const OSCILLATOR_PROPERTIES = [
+  {
+    key: "hz",
+    label: "Rate",
+    type: "select",
+    options: OSCILLATOR_HZ.map((hz) => ({ value: hz, label: `${hz} Hz` })),
+  },
+];
+
 export const PART_DEFS = Object.freeze(
   [
     {
@@ -191,8 +212,23 @@ export const PART_DEFS = Object.freeze(
       rotatable: true,
       // One hole apart is fine — the legs only have to be in different holes.
       minSpan: 1,
-      // The palette pops a colour swatch on pick for any def with `colors`.
-      colors: LED_COLORS,
+      // The LED's own color list (see LED_COLOR_OPTIONS above) — the palette
+      // no longer pops a swatch chooser on pick for the LED specifically (it
+      // arms placement with the "Default LED color" setting instead; see
+      // app.js's onPickChip), but `colors` still describes its valid values.
+      colors: LED_COLOR_OPTIONS,
+      // The Properties dialog (context menu → "Properties…") — one control
+      // per entry, dispatched generically by part-properties-dialog.js. Any
+      // future part just adds its own `properties` list; the dialog and the
+      // context-menu wiring never change.
+      properties: [
+        {
+          key: "color",
+          label: "Color",
+          type: "color",
+          options: LED_COLOR_OPTIONS,
+        },
+      ],
       pins: [
         { n: 1, name: "A", role: "anode" },
         { n: 2, name: "K", role: "cathode" },
@@ -200,7 +236,7 @@ export const PART_DEFS = Object.freeze(
       normalizeParams(raw) {
         const rotated = raw?.rot === 90;
         return {
-          color: LED_COLORS.includes(raw?.color) ? raw.color : "red",
+          color: LED_COLOR_OPTIONS.includes(raw?.color) ? raw.color : "red",
           flip: raw?.flip === true,
           // Orientation: 0 = footprint form, 90 = two free ends.
           rot: rotated ? 90 : 0,
@@ -507,6 +543,16 @@ export const PART_DEFS = Object.freeze(
         { id: "+", dx: 2, dy: 4 },
         { id: "-", dx: 6, dy: 4 },
       ],
+      // The Properties dialog (context menu → "Properties…") — a live input,
+      // so this field applies with no lock/undo-gap even while the sim runs.
+      properties: [
+        {
+          key: "volts",
+          label: "Voltage",
+          type: "select",
+          options: PSU_VOLTS.map((v) => ({ value: v, label: `${v} V` })),
+        },
+      ],
       normalizeParams(raw) {
         return { volts: PSU_VOLTS.includes(raw?.volts) ? raw.volts : 5 };
       },
@@ -527,6 +573,18 @@ export const PART_DEFS = Object.freeze(
       terminals: [
         { id: "out", dx: 2, dy: 4 },
         { id: "gnd", dx: 6, dy: 4 },
+      ],
+      // The Properties dialog — a live setting, so it applies while running.
+      properties: [
+        {
+          key: "hz",
+          label: "Rate",
+          type: "select",
+          options: CLOCK_HZ.map((hz) => ({
+            value: hz,
+            label: hz === "manual" ? "Manual" : `${hz} Hz`,
+          })),
+        },
       ],
       normalizeParams(raw) {
         return { hz: CLOCK_HZ.includes(raw?.hz) ? raw.hz : 1 };
@@ -563,6 +621,7 @@ export const PART_DEFS = Object.freeze(
       // A self-clocking source: the engine drives the output
       // pin from clockPhase instead of evaluating logic.units.
       logic: Object.freeze({ oscillator: true }),
+      properties: OSCILLATOR_PROPERTIES,
       normalizeParams: normalizeOscillatorParams,
       internalBridges() {
         return []; // the output is DRIVEN by the engine, never a passive bridge
@@ -588,6 +647,7 @@ export const PART_DEFS = Object.freeze(
         { n: 4, name: "VCC", role: "vcc" },
       ],
       logic: Object.freeze({ oscillator: true }),
+      properties: OSCILLATOR_PROPERTIES,
       normalizeParams: normalizeOscillatorParams,
       internalBridges() {
         return [];
@@ -602,7 +662,8 @@ export const PART_DEFS = Object.freeze(
         "a 5 V rail, then drive it over the parallel bus: put a command or " +
         "character code on DB0–DB7, set RS (0 = instruction, 1 = data) and " +
         "R/W (0 = write), and pulse E — the byte latches on E's falling edge. " +
-        "Right-click to switch between 16×2 and 20×4. V0 (contrast) and A/K " +
+        "Right-click ▸ Properties… to switch between 16×2 and 20×4. V0 " +
+        "(contrast) and A/K " +
         "(backlight) are cosmetic here. During a read the module drives " +
         "DB0–DB7, so tri-state whatever else is on the bus.",
       group: "Displays",
@@ -616,6 +677,18 @@ export const PART_DEFS = Object.freeze(
       pins: LCD_PINOUT.map((p) =>
         Object.freeze({ n: p.n, name: p.name, role: p.role }),
       ),
+      // The Properties dialog — a live setting, so it applies while running.
+      properties: [
+        {
+          key: "size",
+          label: "Size",
+          type: "select",
+          options: LCD_SIZES.map((s) => ({
+            value: s,
+            label: s.replace("x", "×"),
+          })),
+        },
+      ],
       normalizeParams(raw) {
         const params = {
           size: LCD_SIZES.includes(raw?.size) ? raw.size : "16x2",

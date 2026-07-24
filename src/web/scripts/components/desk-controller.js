@@ -59,18 +59,7 @@ import {
 import { BUS_WIDTHS, DeskDoc, WIRE_COLORS } from "../model/desk-doc.js";
 import { HistoryStore } from "../model/history-store.js";
 import { partDef } from "../catalog/index.js";
-import {
-  isMemory,
-  isVolatileMemory,
-  isOscillator,
-  memoryConfig,
-} from "../sim/chip-eval.js";
-import {
-  PSU_VOLTS,
-  CLOCK_HZ,
-  OSCILLATOR_HZ,
-  LCD_SIZES,
-} from "../catalog/parts.js";
+import { isMemory, isVolatileMemory, memoryConfig } from "../sim/chip-eval.js";
 import {
   BreadboardView,
   applyBoardRotation,
@@ -88,6 +77,7 @@ import { PsuView, buildPsuSvg } from "./psu-view.js";
 import { ClockView, buildClockSvg } from "./clock-view.js";
 import { LcdView, buildLcdSvg } from "./lcd-view.js";
 import { WireLayer } from "./wire-layer.js";
+import { PartPropertiesDialog } from "./part-properties-dialog.js";
 import { AnnotationLayer } from "./annotation-layer.js";
 import { SimOverlay } from "./sim-overlay.js";
 import { ProbeInspector } from "./probe-inspector.js";
@@ -185,7 +175,6 @@ export class DeskController {
   #history = new HistoryStore();
   #restoring = false;
   #onHistoryChange;
-  #onReplaceChip;
   #onClockToggle;
   #onOpenPinout;
   #onOpenMemory;
@@ -205,16 +194,15 @@ export class DeskController {
    *   the toolbar button + swatch strip).
    * @param {(state: {armed: boolean}) => void} [opts.onProbeStateChange] -
    *   probe-tool arm/disarm (drives the toolbar probe button).
-   * @param {(id: string) => void} [opts.onReplaceChip] - the chip context
-   *   menu's "Replace chip" (resets Feature 90 damage).
    * @param {(id: string) => void} [opts.onClockToggle] - a manual clock's
    *   click-to-toggle while running (Feature 100).
    * @param {(ref: string, rows: number, rot?: number) => void} [opts.onOpenPinout] -
-   *   double-clicking a part requests its pin-assignments window (main opens a
-   *   native OS window); `rot` is the part's placed rotation, a snapshot only
-   *   an oscillator can's corner-assignment layout uses.
+   *   a part's context-menu "Pin Assignment" item requests its pin-assignments
+   *   window (main opens a native OS window); `rot` is the part's placed
+   *   rotation, a snapshot only an oscillator can's corner-assignment layout
+   *   uses.
    * @param {(id: string) => void} [opts.onOpenMemory] - open the memory
-   *   inspector window for a memory chip (double-click / context menu,
+   *   inspector window for a memory chip (its own context-menu item,
    *   Feature 190).
    * @param {(id: string) => void} [opts.onProgramMemory] - run the in-app
    *   external programmer for a ROM chip (pick a `.bin`/`.hex` → its file).
@@ -235,7 +223,6 @@ export class DeskController {
     onBusNameChange,
     onProbeStateChange,
     onAddNetToAnalyzer,
-    onReplaceChip,
     onClockToggle,
     onOpenPinout,
     onOpenMemory,
@@ -248,7 +235,6 @@ export class DeskController {
     this.#viewport = viewport;
     this.#deskView = deskView;
     this.#doc = deskDoc;
-    this.#onReplaceChip = onReplaceChip;
     this.#onClockToggle = onClockToggle;
     this.#onOpenPinout = onOpenPinout;
     this.#onOpenMemory = onOpenMemory;
@@ -2026,25 +2012,66 @@ export class DeskController {
     this.#emitDocChanged("toggle switch");
   }
 
-  /** Set a PSU's voltage (context menu). A rapid re-pick coalesces into one. */
-  setPsuVolts(id, volts) {
-    const updated = this.#doc.setComponentParams(id, { volts });
-    this.#partViews.get(id)?.updateParams(updated.params);
-    this.#emitDocChanged("set voltage", { coalesce: true });
+  /** Every field the Properties dialog shows for one component: the catalog
+      def's static `properties` list (PSU volts, clock/oscillator rate, LCD
+      size, the LED's color — all live settings, so nothing here is filtered
+      by #editingLocked) plus a memory chip's instance-conditional action
+      fields (its own kind/ROM check, not catalog data — a chip's write
+      affordance depends on whether the sim is running). */
+  #propertyFieldsFor(comp, def) {
+    const fields = [...(def?.properties ?? [])];
+    if (comp?.kind === "chip" && isMemory(def)) {
+      fields.push({
+        key: "inspectMemory",
+        type: "action",
+        actionLabel: "Inspect memory…",
+      });
+      if (isRomChip(def) && !this.#editingLocked) {
+        fields.push({
+          key: "programMemory",
+          type: "action",
+          actionLabel: "Load image… (program)",
+        });
+      }
+    }
+    return fields;
   }
 
-  /** Set a clock's rate (context menu). A rapid re-pick coalesces into one. */
-  setClockHz(id, hz) {
-    const updated = this.#doc.setComponentParams(id, { hz });
-    this.#partViews.get(id)?.updateParams(updated.params);
-    this.#emitDocChanged("set clock rate", { coalesce: true });
+  /** Open the shared Properties dialog (context menu → "Properties…") for a
+      part with any editable fields or actions — see #propertyFieldsFor. A
+      no-op for anything else (the menu item stays disabled in that case;
+      see #onPartContextMenu). */
+  #onOpenProperties(id) {
+    const comp = this.#doc.getComponent(id);
+    const def = partDef(comp?.ref);
+    if (!comp) return;
+    const fields = this.#propertyFieldsFor(comp, def);
+    if (!fields.length) return;
+    PartPropertiesDialog.open({
+      title: `${def.title} Properties`,
+      fields,
+      values: comp.params,
+      onChange: (key, value) => this.#setComponentProperty(id, key, value),
+      onAction: (key) => this.#onPropertyAction(id, key),
+    });
   }
 
-  /** Set an LCD's character size (context menu, 16×2 / 20×4). */
-  setLcdSize(id, size) {
-    const updated = this.#doc.setComponentParams(id, { size });
-    this.#partViews.get(id)?.updateParams(updated.params);
-    this.#emitDocChanged("set LCD size", { coalesce: true });
+  /** Apply one Properties-dialog field change. Remounting (rather than
+      updateParams alone) is correct for every part kind: a rotatable/span
+      part (e.g. the LED) only redraws through its span geometry, which
+      updateParams alone skips — see DiscreteView.updateParams. */
+  #setComponentProperty(id, key, value) {
+    this.#doc.setComponentParams(id, { [key]: value });
+    this.#remountPart(id);
+    this.#emitDocChanged("set properties", { coalesce: true });
+  }
+
+  /** Fire a Properties-dialog `"action"` field — the memory chip commands
+      (#propertyFieldsFor); the dialog has already closed by the time this
+      runs. */
+  #onPropertyAction(id, key) {
+    if (key === "inspectMemory") this.#onOpenMemory?.(id);
+    else if (key === "programMemory") this.#onProgramMemory?.(id);
   }
 
   // ── Central keyboard hooks (wired by app.js) ────────────────────────────
@@ -2197,11 +2224,11 @@ export class DeskController {
   }
 
   #mountPart(component) {
-    // Every part double-clicks to open its pin/terminal-assignments window.
+    // Every part's pin/terminal-assignments window opens from its context
+    // menu's "Pin Assignment" item (#onPartContextMenu), not a double-click.
     const callbacks = {
       onPointerDown: (id, e) => this.#onPartPointerDown(id, e),
       onContextMenu: (id, e) => this.#onPartContextMenu(id, e),
-      onDoubleClick: (id) => this.#onPartDoubleClick(id),
     };
     let view;
     if (component.kind === "psu") {
@@ -2244,28 +2271,17 @@ export class DeskController {
     view.updatePlacement(board, comp.anchor);
   }
 
-  /**
-   * Double-clicking any part opens its pin/terminal-assignments window
-   * (read-only). The row count sizes the window: a DIP wraps to pins/2, a
-   * discrete lists every pin, a brick lists every terminal.
-   */
-  #onPartDoubleClick(id) {
-    const comp = this.#doc.getComponent(id);
-    const def = comp && partDef(comp.ref);
-    if (!def) return;
-    // A memory chip opens its hex/ASCII inspector instead of the pinout
-    // (Feature 190) — the pinout stays reachable via its context menu.
-    if (isMemory(def)) {
-      this.#onOpenMemory?.(id);
-      return;
-    }
-    let rows;
-    if (def.package) rows = Math.ceil(def.pins.length / 2);
-    else if (def.can) rows = def.pins.length;
-    else if (def.footprint) rows = def.pins.length;
-    else if (def.terminals) rows = def.terminals.length;
-    else return; // nothing to show
-    this.#onOpenPinout?.(comp.ref, rows, comp.params?.rot);
+  /** Row count for a part's pin/terminal-assignments window, or null if it
+      has none — a DIP wraps to pins/2, a discrete/can lists every pin, a
+      brick lists every terminal. Feeds the "Pin Assignment" context-menu
+      item (#onPartContextMenu). */
+  #pinoutRows(def) {
+    if (!def) return null;
+    if (def.package) return Math.ceil(def.pins.length / 2);
+    if (def.can) return def.pins.length;
+    if (def.footprint) return def.pins.length;
+    if (def.terminals) return def.terminals.length;
+    return null; // nothing to show
   }
 
   /** Seated parts ride their board: refresh views for a board at (x, y). */
@@ -2777,125 +2793,41 @@ export class DeskController {
     if (d.flip) view?.updateParams(this.#doc.getComponent(d.id)?.params ?? {});
   };
 
+  /** Every part's context menu is the SAME three items, always, in this
+      order — no more per-kind branching: a picker (PSU volts, clock/
+      oscillator rate, LCD size, ROM programming, memory inspection…) is a
+      Properties-dialog field now, never a menu item of its own (see
+      #propertyFieldsFor). Items that don't currently apply stay PRESENT but
+      `disabled`, so the menu's shape never changes, only its enabled state. */
   #onPartContextMenu(id, e) {
     e.preventDefault();
     if (this.#probe.armed) return; // right-click names the net (viewport handler)
     if (this.#mode) return;
     this.selectComponent(id);
     const comp = this.#doc.getComponent(id);
-    // PSU: voltage is a live input — the picker stays available while running;
-    // removal is a topology edit, so it's dropped when editing is locked.
-    if (comp?.kind === "psu") {
-      const items = PSU_VOLTS.map((volts) => ({
-        label: `${comp.params.volts === volts ? "● " : ""}${volts} V`,
-        onSelect: () => this.setPsuVolts(id, volts),
-      }));
-      if (!this.#editingLocked) {
-        items.push({
-          label: "Remove power supply",
-          danger: true,
-          onSelect: () => this.removeComponent(id),
-        });
-      }
-      PopupManager.menu({ x: e.clientX, y: e.clientY, items });
-      return;
-    }
-    // Clock: rate is a live setting (stays available while running); removal
-    // is a topology edit, dropped when editing is locked.
-    if (comp?.kind === "clock") {
-      const items = CLOCK_HZ.map((hz) => ({
-        label: `${comp.params.hz === hz ? "● " : ""}${hz === "manual" ? "Manual" : `${hz} Hz`}`,
-        onSelect: () => this.setClockHz(id, hz),
-      }));
-      if (!this.#editingLocked) {
-        items.push({
-          label: "Remove clock",
-          danger: true,
-          onSelect: () => this.removeComponent(id),
-        });
-      }
-      PopupManager.menu({ x: e.clientX, y: e.clientY, items });
-      return;
-    }
-    // LCD: the character size (16×2 / 20×4) is a live setting; removal is a
-    // topology edit, dropped when editing is locked.
-    if (comp?.kind === "lcd") {
-      const items = LCD_SIZES.map((size) => ({
-        label: `${comp.params.size === size ? "● " : ""}${size.replace("x", "×")}`,
-        onSelect: () => this.setLcdSize(id, size),
-      }));
-      if (!this.#editingLocked) {
-        items.push({
-          label: "Remove display",
-          danger: true,
-          onSelect: () => this.removeComponent(id),
-        });
-      }
-      PopupManager.menu({ x: e.clientX, y: e.clientY, items });
-      return;
-    }
-    // A damaged chip (or oscillator can, powered like a chip)
-    // offers "Replace" (resets Feature 90 damage) — the only part action
-    // that stays live while running. (The pinout is a double-click, not a
-    // menu item — see #onPartDoubleClick.)
-    const items = [];
-    const oscillator = isOscillator(partDef(comp?.ref));
-    if (
-      (comp?.kind === "chip" || oscillator) &&
-      comp.params?.damaged === true
-    ) {
-      items.push({
-        label: comp.kind === "chip" ? "Replace chip" : "Replace part",
-        onSelect: () => this.#onReplaceChip?.(id),
-      });
-    }
-    // Oscillator can: the simulated rate is a live setting (stays available
-    // while running) — same picker pattern as the clock brick.
-    if (oscillator) {
-      for (const hz of OSCILLATOR_HZ) {
-        items.push({
-          label: `${comp.params.hz === hz ? "● " : ""}${hz} Hz`,
-          onSelect: () => this.setClockHz(id, hz),
-        });
-      }
-      items.push({ separator: true });
-    }
-    // Memory chips: the inspector (read-only + live while running) and, for a
-    // non-volatile ROM, the in-app programmer. Volatile SRAM has no file.
-    if (comp?.kind === "chip" && isMemory(partDef(comp.ref))) {
-      items.push({
-        label: "Inspect memory…",
-        onSelect: () => this.#onOpenMemory?.(id),
-      });
-      if (!this.#editingLocked) {
-        if (isRomChip(partDef(comp.ref))) {
-          items.push({
-            label: "Load image… (program)",
-            onSelect: () => this.#onProgramMemory?.(id),
-          });
-        }
-        items.push({ separator: true });
-      }
-    }
-    if (!this.#editingLocked) {
-      const rotDef = partDef(comp?.ref);
-      if (rotDef?.rotatable || rotDef?.can) {
-        // A non-square can (full-can) rotates an already-seated part 180° per
-        // call (see desk-doc.js's rotateComponent) — match the menu label.
-        const step = rotDef.can && rotDef.can.width !== rotDef.can.height ? 180 : 90; // prettier-ignore
-        items.push({
-          label: `Rotate ${step}°`,
-          onSelect: () => this.rotateComponent(id),
-        });
-      }
-      items.push({
-        label: comp?.kind === "chip" ? "Remove chip" : "Remove part",
+    const def = partDef(comp?.ref);
+    const rows = this.#pinoutRows(def);
+    const fields = comp ? this.#propertyFieldsFor(comp, def) : [];
+    const items = [
+      {
+        label: "Pin Assignment",
+        disabled: rows == null,
+        onSelect: () => this.#onOpenPinout?.(comp.ref, rows, comp.params?.rot),
+      },
+      { separator: true },
+      {
+        label: "Properties…",
+        disabled: fields.length === 0,
+        onSelect: () => this.#onOpenProperties(id),
+      },
+      { separator: true },
+      {
+        label: "Delete Component",
         danger: true,
+        disabled: this.#editingLocked,
         onSelect: () => this.removeComponent(id),
-      });
-      items.push({ label: "Properties…", disabled: true });
-    }
-    if (items.length === 0) return; // nothing actionable (frozen non-chip)
+      },
+    ];
     PopupManager.menu({ x: e.clientX, y: e.clientY, items });
   }
 

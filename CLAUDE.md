@@ -399,6 +399,44 @@ Electron main process (src/app/main.js)
   app-wide dialog/menu seam; build DOM with `dom.js` `el()`. `PopupManager.close()`
   fires a one-way `chiphippo:popup-closed` event so stateful dialogs can reset
   their open-guard however they were dismissed.
+- **Part context menu — ONE shape for every kind**: `DeskController.#onPartContextMenu`
+  builds the exact same three items, always, in this order: **Pin
+  Assignment**, **Properties…**, **Delete Component**. No per-kind branching
+  and no extra items — an item that doesn't currently apply stays PRESENT but
+  `disabled` (Pin Assignment when a part has no pins/terminals; Properties…
+  when it has no fields; Delete Component while `#editingLocked`), so the
+  menu's shape never changes, only its enabled state. There is no Rotate or
+  "Replace chip" item any more — rotating an already-placed, selected part is
+  `R` only (`handleKeyDown`), and a damaged chip's only recovery is deleting
+  it and placing a fresh one (`SimController.replaceChip` still exists and is
+  still tested, just with no UI caller left).
+- **Part Properties dialog** (`components/part-properties-dialog.js`): the ONE
+  shared modal every part's **Properties…** item opens (enabled only when
+  `DeskController.#propertyFieldsFor(comp, def)` returns at least one field).
+  A catalog def declares its own editable fields as data (`properties: [{
+  key, label, type, options }]`) — the dialog is a pure renderer over that
+  list (one `buildControl`/`buildRow` dispatch per `type`) and knows nothing
+  about any specific part. Three types today: `"color"` (the LED — a row of
+  clickable swatches reusing the `--color-wire-<name>` tokens), `"select"` (a
+  `<select>` over `options: [{value, label}]` — the PSU's volts, the clock/
+  oscillator's Hz, the LCD's size; a `<select>`'s value is always a STRING,
+  so `buildSelect`'s change handler looks the typed option value back up by
+  its stringified match rather than handing the raw string on to
+  `normalizeParams`, which compares by `===`), and `"action"` (a full-width
+  command button, not a value — a memory chip's `"Inspect memory…"` /
+  `"Load image… (program)"`, appended by `#propertyFieldsFor` itself rather
+  than the catalog, since a ROM's program action is additionally gated on
+  `!#editingLocked`; clicking one closes the dialog and calls `onAction(key)`
+  instead of `onChange`). A future part's properties are purely a catalog
+  change (plus, only for a genuinely new control shape, one more `type` case
+  in `buildControl`) — no changes to the dialog shell or the context-menu
+  wiring. Like the Settings dialog, value fields apply live (`onChange(key,
+  value)` fires per control change, no Save/Cancel); `DeskController
+  #setComponentProperty` applies the patch via `DeskDoc.setComponentParams`
+  and **remounts** the part view (`#remountPart`, not `updateParams` alone —
+  a rotatable/span part like the LED only redraws through its span geometry,
+  which `updateParams` alone skips) before committing through
+  `#emitDocChanged` (coalesced) to ride undo/redo.
 - **Application menu + dialogs**: `main.js buildMenu()` installs the native app
   menu; its **About** / **Settings…** items are one-way pushes
   (`menu:show-about` / `menu:open-settings` via `webContents.send`), which the
@@ -410,19 +448,25 @@ Electron main process (src/app/main.js)
   **Settings dialog is dumb**: it broadcasts a `chiphippo:settings-changed`
   patch and `app.js`'s `applySettings` both persists it (`settings.set`) and
   applies it live. It is a **tabbed** master-detail card (left nav rail →
-  panels). The **General** tab drives **`showDeskHub`** (off by default —
-  toggles the `DeskHud` overlay via `setVisible`) and **`selectionColor`**
-  (`#rrggbb` or null → sets the `--color-selection` custom property that
-  `.board-outline-path` strokes with, falling back to `--color-accent`). The
-  **Data Sheets** tab drives **`datasheetDir`** (the external datasheet-PDF
-  folder, default null) — its Browse button calls the native
-  `settings.chooseDatasheetDir` picker and emits the chosen path; no live apply
+  panels). The **Appearance** tab (the first/default tab — there is no
+  General) drives **`showDeskHub`** (off by default — toggles the `DeskHud`
+  overlay via `setVisible`), **`selectionColor`** (`#rrggbb` or null → sets
+  the `--color-selection` custom property that `.board-outline-path` strokes
+  with, falling back to `--color-accent`), and **`defaultLedColor`** (one of
+  `catalog/parts.js`'s `LED_COLOR_OPTIONS`, default `"red"` — the color a
+  newly placed LED gets; not a live-apply setting, only read at placement
+  time by `app.js`'s `onPickChip`). The **Data Sheets** tab drives
+  **`datasheetDir`** (the external datasheet-PDF folder, default null) — its
+  Browse button calls the native `settings.chooseDatasheetDir` picker and
+  emits the chosen path; no live apply
   (the pinout window reads it at open time). Window bounds and the desk camera
   (incl. **zoom**) are already persisted in `settings.json` (`windowBounds` via
   `window-state.js`; `viewport` via the renderer's debounced save).
-- **Pin-assignments window** (Feature 100): double-clicking ANY part (every
-  part view fires `dblclick` → `DeskController.#onOpenPinout(ref, rows)`)
-  invokes `pinout:open`, and main opens a **separate floating OS window**
+- **Pin-assignments window** (Feature 100): **Pin Assignment**, the item
+  leading every part's context menu (`DeskController.#onPartContextMenu` →
+  `#onOpenPinout(ref, rows, rot)` — read-only, so it's offered even while the
+  circuit runs), invokes `pinout:open`, and main opens a **separate floating
+  OS window**
   (`web/pinout.html` → `scripts/pinout.js`, rendering
   `components/chip-pinout.js` `buildPartPinout`). One builder per catalog shape:
   DIP chips → the physical two-column diagram; discretes → a linear pin list

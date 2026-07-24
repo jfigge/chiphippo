@@ -591,13 +591,15 @@ export class SimController {
           key: `smoke:${w.chip}`,
           variant: "danger",
           title: "Magic smoke!",
-          message: `${this.#refName(w.chip)} was damaged by 12 V. Replace it to continue.`,
+          message: `${this.#refName(w.chip)} was damaged by 12 V. Delete it and place a fresh one to continue.`,
         });
       }
     }
   }
 
-  /** Reset a damaged chip (context-menu "Replace chip"). */
+  /** Reset a damaged chip's `damaged` flag. No UI currently calls this —
+      delete + re-place is the in-app recovery path (see the notification
+      above) — but it stays a small, independently tested capability. */
   replaceChip(id) {
     this.#doc.setComponentParams(id, { damaged: false });
     window.dispatchEvent(new CustomEvent("chiphippo:doc-changed"));

@@ -117,10 +117,11 @@ pinout but no behavior yet.
 
 ## The pin-assignments window
 
-Double-click **any** chip — or a package-footprint discrete like the `bar8iso`
+Right-click **any** chip — or a package-footprint discrete like the `bar8iso`
 LED bar, which seats and rotates exactly like a DIP chip even though it isn't
-one — to open its **pin-assignments window**: a small, floating window
-separate from the main desk, showing the physical DIP layout with the notch
+one — and choose **Pin Assignment**, at the top of its context menu, to open
+its **pin-assignments window**: a small, floating window separate from the
+main desk, showing the physical DIP layout with the notch
 at the top, pin 1 at the top-left, and pin numbers wrapping down the left side
 and back up the right to the highest pin at the top-right, exactly as printed
 on the part.

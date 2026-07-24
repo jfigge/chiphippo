@@ -63,7 +63,7 @@ export class MemoryBridge {
     window.addEventListener("chiphippo:mem-state", this.#onMemState);
   }
 
-  /** Open (or focus) the inspector window for a memory chip (dblclick / menu). */
+  /** Open (or focus) the inspector window for a memory chip (context menu). */
   open(compId) {
     const comp = this.#doc.getComponent(compId);
     if (!comp || !isMemory(partDef(comp.ref))) return;

@@ -14,10 +14,12 @@
  * limitations under the License.
  */
 
-// The DeskController's memory-chip lifecycle (Feature 190): double-clicking a
-// memory chip opens the INSPECTOR (not the pinout); placing a non-volatile ROM
-// mints a backing-file GUID + creates its file; a volatile SRAM gets neither;
-// removing a ROM deletes its file; and setMemoryProgrammed flags the chip.
+// The DeskController's memory-chip lifecycle (Feature 190): a memory chip's
+// context menu carries an "Inspect memory…" item that opens the INSPECTOR
+// (separate from its "Pin Assignment" item, which opens the pinout); placing
+// a non-volatile ROM mints a backing-file GUID + creates its file; a volatile
+// SRAM gets neither; removing a ROM deletes its file; and setMemoryProgrammed
+// flags the chip.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -48,12 +50,26 @@ function makeDesk(deskDoc, opts = {}) {
   });
   return { surface, controller };
 }
-const dblclick = (elem) =>
-  elem.dispatchEvent(new window.MouseEvent("dblclick", { bubbles: true }));
 const chipId = (doc, ref) =>
   doc.toJSON().components.find((c) => c.ref === ref).id;
 
-test("double-clicking a memory chip opens the INSPECTOR, not the pinout", () => {
+/** Right-click a part and pick a context-menu item by its exact label. */
+const pickMenuItem = (elem, label) => {
+  elem.dispatchEvent(
+    new window.MouseEvent("contextmenu", {
+      bubbles: true,
+      clientX: 10,
+      clientY: 10,
+    }),
+  );
+  const item = [...document.querySelectorAll(".popup-menu-item")].find(
+    (b) => b.textContent.trim() === label,
+  );
+  assert.ok(item, `"${label}" is in the context menu`);
+  item.click();
+};
+
+test('a memory chip\'s Properties dialog "Inspect memory…" action opens the INSPECTOR, not the pinout', () => {
   resetDom();
   const opened = [];
   const pinouts = [];
@@ -67,7 +83,15 @@ test("double-clicking a memory chip opens the INSPECTOR, not the pinout", () => 
   controller.addComponentAt("rom-8k", "bb1", "e5");
   const id = chipId(doc, "rom-8k");
 
-  dblclick(surface.querySelector(".part-chip"));
+  // The context menu's own items are always Pin Assignment / Properties… /
+  // Delete Component — memory actions live inside the Properties dialog.
+  pickMenuItem(surface.querySelector(".part-chip"), "Properties…");
+  const action = [...document.querySelectorAll(".properties-action")].find(
+    (b) => b.textContent.trim() === "Inspect memory…",
+  );
+  assert.ok(action, '"Inspect memory…" is a Properties dialog action');
+  action.click();
+
   assert.deepEqual(opened, [id], "the inspector opens for this component");
   assert.deepEqual(pinouts, [], "and the pinout window does NOT open");
 });

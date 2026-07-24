@@ -43,8 +43,8 @@ dropped if the chip is non-volatile.
 
 The only way to put data into a ROM is the **external programmer**:
 
-1. Right-click the chip on the desk.
-2. Choose **Load image… (program)**.
+1. Right-click the chip on the desk and choose **Properties…**.
+2. Click **Load image… (program)**.
 3. Pick a `.bin` (raw bytes) or `.hex` (Intel HEX) file.
 
 The image is copied to the start of the chip's memory. If the file is
@@ -60,7 +60,7 @@ simulation is stopped) — see [Running a Simulation](simulation.md).
 ## The memory inspector
 
 Every memory chip — SRAM or ROM alike — has a floating **inspector**
-window: double-click the chip on the desk, or right-click it and choose
+window: right-click it on the desk, choose **Properties…**, then
 **Inspect memory…**. It's a hex/ASCII grid, one row per 16 bytes, with a
 toolbar for **Go to** (jump to an address), **Fill** (write a byte value
 across a start/end range), **Save**, and Import/Export.

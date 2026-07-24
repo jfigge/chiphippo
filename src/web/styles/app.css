@@ -814,6 +814,10 @@
   --wire-color: var(--color-wire-blue);
 }
 
+.part-led-dome--white {
+  --wire-color: var(--color-wire-white);
+}
+
 .part-led-flat {
   fill: var(--color-part-inset);
 }
@@ -2118,6 +2122,24 @@ textarea.annotation-editor {
   cursor: pointer;
 }
 
+.settings-select {
+  flex-shrink: 0;
+  height: var(--control-height);
+  padding: 0 var(--space-3);
+  background: var(--color-surface-1);
+  color: var(--color-text);
+  border: 1px solid var(--color-overlay);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.settings-select:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
 /* A stacked row (label on top of its control) — for wide controls like the
    datasheet-folder picker that would crowd the single-line flex layout. */
 .settings-row--stack {
@@ -2241,6 +2263,131 @@ textarea.annotation-editor {
 .settings-toggle:focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
+}
+
+/* ── Part Properties dialog (context menu → "Properties…") ─────────────────
+   The one shared modal every part's properties open (part-properties-dialog.js).
+   Styled like the Settings dialog's header/rows, but no nav rail — a part's
+   property list is short and flat. */
+.properties-popup {
+  width: 360px;
+  max-width: 90vw;
+  padding: 0;
+}
+
+.properties-popup .popup-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--color-mantle);
+  border-bottom: 1px solid var(--color-crust);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+}
+
+.properties-popup .popup-title {
+  flex: 1;
+}
+
+.properties-popup-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+}
+
+.properties-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-4);
+}
+
+.properties-label {
+  flex: 1;
+  font-size: 13px;
+  color: var(--color-text);
+}
+
+.properties-value {
+  font-size: 13px;
+  color: var(--color-subtext);
+}
+
+/* A field's color choice: clickable swatches (the same --color-wire-<name>
+   tokens the wire tool and the LED body use). The selected one gets a ring;
+   hovering any swatch grows it slightly. */
+.properties-swatches {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.properties-swatch {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid var(--color-overlay);
+  border-radius: 50%;
+  background: var(--wire-color);
+  cursor: pointer;
+  box-shadow: 0 0 0 2px transparent;
+  transition:
+    box-shadow 0.15s ease,
+    transform 0.15s ease;
+}
+
+.properties-swatch:hover {
+  transform: scale(1.1);
+}
+
+.properties-swatch--selected {
+  box-shadow: 0 0 0 2px var(--color-accent);
+}
+
+.properties-swatch:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* A field's enum choice (PSU voltage, clock/oscillator rate, LCD size). */
+.properties-select {
+  flex-shrink: 0;
+  height: var(--control-height);
+  padding: 0 var(--space-3);
+  background: var(--color-surface-1);
+  color: var(--color-text);
+  border: 1px solid var(--color-overlay);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-sans);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.properties-select:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* A field's command button (a memory chip's "Inspect memory…" / "Load
+   image…") — full width, no separate label column. */
+.properties-row--action {
+  gap: 0;
+}
+
+.properties-action {
+  flex: 1;
+  height: var(--control-height);
+  padding: 0 var(--space-3);
+  background: var(--color-surface-1);
+  color: var(--color-text);
+  border: 1px solid var(--color-overlay);
+  border-radius: var(--radius-sm);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.properties-action:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
 }
 
 /* Context/dropdown menu: full-viewport transparent host, positioned card. */

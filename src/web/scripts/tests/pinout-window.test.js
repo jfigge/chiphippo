@@ -14,10 +14,11 @@
  * limitations under the License.
  */
 
-// jsdom test for the pin-assignments double-click: double-clicking ANY part —
-// chip, discrete, or desk brick — requests its pinout window via onOpenPinout
-// with a layout row count (DIP wraps to pins/2, discretes list every pin,
-// bricks list every terminal).
+// jsdom test for the pin-assignments context-menu item: right-clicking ANY
+// part — chip, discrete, or desk brick — and picking "Pin Assignment" (the
+// menu's first item) requests its pinout window via onOpenPinout with a
+// layout row count (DIP wraps to pins/2, discretes list every pin, bricks
+// list every terminal).
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -46,10 +47,23 @@ function makeDesk(deskDoc, opts = {}) {
   return { viewport, surface, controller };
 }
 
-const dblclick = (elem) =>
-  elem.dispatchEvent(new window.MouseEvent("dblclick", { bubbles: true }));
+/** Right-click a part and pick "Pin Assignment" — the menu's first item. */
+const openPinoutViaMenu = (elem) => {
+  elem.dispatchEvent(
+    new window.MouseEvent("contextmenu", {
+      bubbles: true,
+      clientX: 10,
+      clientY: 10,
+    }),
+  );
+  const item = [...document.querySelectorAll(".popup-menu-item")].find(
+    (b) => b.textContent.trim() === "Pin Assignment",
+  );
+  assert.ok(item, "Pin Assignment is in the context menu");
+  item.click();
+};
 
-test("double-clicking a DIP chip requests its pinout (rows = pins/2)", () => {
+test("right-clicking a DIP chip → Pin Assignment requests its pinout (rows = pins/2)", () => {
   resetDom();
   const opened = [];
   const doc = new DeskDoc(null);
@@ -59,11 +73,11 @@ test("double-clicking a DIP chip requests its pinout (rows = pins/2)", () => {
   });
   controller.addComponentAt("74LS138", "bb1", "e5"); // DIP-16 → 8 rows
 
-  dblclick(surface.querySelector(".part-chip"));
+  openPinoutViaMenu(surface.querySelector(".part-chip"));
   assert.deepEqual(opened, [["74LS138", 8]]);
 });
 
-test("double-clicking a discrete requests its pinout (rows = pin count)", () => {
+test("right-clicking a discrete → Pin Assignment requests its pinout (rows = pin count)", () => {
   resetDom();
   const opened = [];
   const doc = new DeskDoc(null);
@@ -73,11 +87,11 @@ test("double-clicking a discrete requests its pinout (rows = pin count)", () => 
   });
   controller.addComponentAt("led", "bb1", "a20", { color: "red" }); // 2 pins
 
-  dblclick(surface.querySelector(".part-discrete"));
+  openPinoutViaMenu(surface.querySelector(".part-discrete"));
   assert.deepEqual(opened, [["led", 2]]);
 });
 
-test("double-clicking an oscillator can requests its pinout with its CURRENT rotation", () => {
+test("right-clicking an oscillator can → Pin Assignment requests its pinout with its CURRENT rotation", () => {
   resetDom();
   const opened = [];
   const doc = new DeskDoc(null);
@@ -87,9 +101,9 @@ test("double-clicking an oscillator can requests its pinout with its CURRENT rot
   });
   controller.addComponentAt("osc-full", "bb1", "e10"); // 4 pins, rot 0
 
-  dblclick(surface.querySelector(".part-discrete"));
+  openPinoutViaMenu(surface.querySelector(".part-discrete"));
   controller.rotateComponent("c1"); // full-can: one call jumps straight to 180°
-  dblclick(surface.querySelector(".part-discrete"));
+  openPinoutViaMenu(surface.querySelector(".part-discrete"));
 
   assert.deepEqual(opened, [
     ["osc-full", 4, 0],
@@ -97,7 +111,7 @@ test("double-clicking an oscillator can requests its pinout with its CURRENT rot
   ]);
 });
 
-test("double-clicking bar8iso (a package-footprint discrete) requests its pinout with its CURRENT rotation", () => {
+test("right-clicking bar8iso (a package-footprint discrete) → Pin Assignment requests its pinout with its CURRENT rotation", () => {
   resetDom();
   const opened = [];
   const doc = new DeskDoc(null);
@@ -107,9 +121,9 @@ test("double-clicking bar8iso (a package-footprint discrete) requests its pinout
   });
   controller.addComponentAt("bar8iso", "bb1", "e5"); // DIP-16 → 8 rows
 
-  dblclick(surface.querySelector(".part-discrete"));
+  openPinoutViaMenu(surface.querySelector(".part-discrete"));
   controller.rotateComponent("c1"); // chip-style half-lap flip
-  dblclick(surface.querySelector(".part-discrete"));
+  openPinoutViaMenu(surface.querySelector(".part-discrete"));
 
   assert.deepEqual(opened, [
     ["bar8iso", 8, undefined],
@@ -117,7 +131,7 @@ test("double-clicking bar8iso (a package-footprint discrete) requests its pinout
   ]);
 });
 
-test("double-clicking a desk brick requests its terminal map", () => {
+test("right-clicking a desk brick → Pin Assignment requests its terminal map", () => {
   resetDom();
   const opened = [];
   const doc = new DeskDoc(null);
@@ -127,8 +141,8 @@ test("double-clicking a desk brick requests its terminal map", () => {
   controller.addBrickAt("psu", 4, 4); // 2 terminals
   controller.addBrickAt("clock", 20, 4);
 
-  dblclick(surface.querySelector(".part-psu"));
-  dblclick(surface.querySelector(".part-clock"));
+  openPinoutViaMenu(surface.querySelector(".part-psu"));
+  openPinoutViaMenu(surface.querySelector(".part-clock"));
   assert.deepEqual(opened, [
     ["psu", 2],
     ["clock", 2],

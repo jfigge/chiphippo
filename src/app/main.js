@@ -205,8 +205,9 @@ async function openDatasheetPdf(ref) {
 }
 
 // ─── Chip pin-assignments windows (Feature 100) ───────────────────────────────
-// Double-clicking a chip opens a small, floating OS window rendering its DIP
-// pinout (web/pinout.html) so it stays visible while the user wires. One window
+// A part's "Pin Assignment" context-menu item opens a small, floating OS
+// window rendering its DIP pinout (web/pinout.html) so it stays visible while
+// the user wires. One window
 // per chip ref (re-opening focuses it). The window floats above the app by
 // default; right-clicking it toggles that via a native menu, and the choice is
 // persisted as a de-facto global preference (`settings.pinoutFloat`) that every
@@ -784,8 +785,9 @@ function registerIpc() {
     getDeskStore().writeFile(filePath, doc),
   );
 
-  // Chip pin-assignments window (Feature 100): double-clicking a chip opens a
-  // separate floating OS window rendering its pinout as a wiring reference.
+  // Chip pin-assignments window (Feature 100): a part's "Pin Assignment"
+  // context-menu item opens a separate floating OS window rendering its
+  // pinout as a wiring reference.
   ipcMain.handle("pinout:open", (_event, ref, opts) =>
     openPinoutWindow(ref, opts),
   );

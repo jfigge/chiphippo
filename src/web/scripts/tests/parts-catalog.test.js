@@ -21,6 +21,7 @@ import assert from "node:assert/strict";
 
 import {
   LED_COLORS,
+  LED_COLOR_OPTIONS,
   PART_DEFS,
   PSU_VOLTS,
   CLOCK_HZ,
@@ -184,6 +185,16 @@ test("osc-full/osc-half: rate picks from OSCILLATOR_HZ (no manual mode); rot + d
       hz: OSCILLATOR_HZ[0],
       rot: 0,
     });
+    // The Properties dialog (context menu → "Properties…") — shared by both
+    // can sizes, same field shape as the clock brick's rate.
+    assert.deepEqual(def.properties, [
+      {
+        key: "hz",
+        label: "Rate",
+        type: "select",
+        options: OSCILLATOR_HZ.map((hz) => ({ value: hz, label: `${hz} Hz` })),
+      },
+    ]);
   }
 });
 
@@ -246,6 +257,28 @@ test("led: color/flip coercion and polarity contract", () => {
   });
   assert.deepEqual(def.internalBridges({}), []); // a diode never bridges
   assert.deepEqual(LED_COLORS, ["red", "green", "yellow", "blue"]);
+  // The LED's own color list adds white (the Properties dialog + the
+  // "Default LED color" setting) — a superset of the shared LED_COLORS the
+  // segment/bar displays use.
+  assert.deepEqual(LED_COLOR_OPTIONS, [
+    "red",
+    "green",
+    "blue",
+    "yellow",
+    "white",
+  ]);
+  assert.deepEqual(def.colors, LED_COLOR_OPTIONS);
+  assert.deepEqual(def.normalizeParams({ color: "white" }), {
+    color: "white",
+    flip: false,
+    rot: 0,
+    end: null,
+  });
+  // The Properties dialog (context menu → "Properties…") reads this
+  // declarative list — one color field, its options the same LED palette.
+  assert.deepEqual(def.properties, [
+    { key: "color", label: "Color", type: "color", options: LED_COLOR_OPTIONS },
+  ]);
 });
 
 test("seg8 / bar8: common-cathode displays, colour + segment contract", () => {
@@ -405,6 +438,48 @@ test("psu: volts enum, source contract, integer terminal offsets", () => {
     assert.ok(t.dx > 0 && t.dx < def.size.width);
     assert.ok(t.dy > 0 && t.dy < def.size.height);
   }
+  // The Properties dialog (context menu → "Properties…") — a live setting.
+  assert.deepEqual(def.properties, [
+    {
+      key: "volts",
+      label: "Voltage",
+      type: "select",
+      options: [
+        { value: 3, label: "3 V" },
+        { value: 5, label: "5 V" },
+        { value: 12, label: "12 V" },
+      ],
+    },
+  ]);
+});
+
+test("clock: hz enum (+manual), isAuto contract, Properties field", () => {
+  const def = partDef("clock");
+  assert.deepEqual(CLOCK_HZ, [1, 2, 5, 10, "manual"]);
+  assert.deepEqual(def.normalizeParams({}), { hz: 1 });
+  assert.deepEqual(def.normalizeParams({ hz: 10 }), { hz: 10 });
+  assert.deepEqual(def.normalizeParams({ hz: "manual" }), { hz: "manual" });
+  assert.deepEqual(def.normalizeParams({ hz: 3 }), { hz: 1 });
+  assert.equal(def.isAuto({ hz: 5 }), true);
+  assert.equal(def.isAuto({ hz: "manual" }), false);
+  assert.deepEqual(
+    def.terminals.map((t) => t.id),
+    ["out", "gnd"],
+  );
+  assert.deepEqual(def.properties, [
+    {
+      key: "hz",
+      label: "Rate",
+      type: "select",
+      options: [
+        { value: 1, label: "1 Hz" },
+        { value: 2, label: "2 Hz" },
+        { value: 5, label: "5 Hz" },
+        { value: 10, label: "10 Hz" },
+        { value: "manual", label: "Manual" },
+      ],
+    },
+  ]);
 });
 
 test("lcd: 16-pin brick, size coercion, pins↔terminals in sync", () => {
@@ -423,6 +498,18 @@ test("lcd: 16-pin brick, size coercion, pins↔terminals in sync", () => {
   });
   assert.deepEqual(lcdGeometry("16x2"), { cols: 16, rows: 2 });
   assert.deepEqual(lcdGeometry("20x4"), { cols: 20, rows: 4 });
+  // The Properties dialog (context menu → "Properties…") — a live setting.
+  assert.deepEqual(def.properties, [
+    {
+      key: "size",
+      label: "Size",
+      type: "select",
+      options: [
+        { value: "16x2", label: "16×2" },
+        { value: "20x4", label: "20×4" },
+      ],
+    },
+  ]);
   // 16 pins and 16 terminals, one terminal per pin, integer offsets inside body.
   assert.equal(def.pins.length, 16);
   assert.equal(def.terminals.length, 16);
