@@ -860,11 +860,16 @@ function installHotReload(win) {
   const webDir = path.join(__dirname, "..", "web");
   let timer = null;
   try {
-    fs.watch(webDir, { recursive: true }, () => {
+    const watcher = fs.watch(webDir, { recursive: true }, () => {
       clearTimeout(timer);
       timer = setTimeout(() => {
         if (!win.isDestroyed()) win.webContents.reloadIgnoringCache();
       }, 120);
+    });
+    // Otherwise this FSWatcher outlives the window it was watching for.
+    win.once("closed", () => {
+      clearTimeout(timer);
+      watcher.close();
     });
   } catch (err) {
     console.error("[main] hot-reload watcher failed:", err && err.message);
