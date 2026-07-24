@@ -2122,24 +2122,6 @@ textarea.annotation-editor {
   cursor: pointer;
 }
 
-.settings-select {
-  flex-shrink: 0;
-  height: var(--control-height);
-  padding: 0 var(--space-3);
-  background: var(--color-surface-1);
-  color: var(--color-text);
-  border: 1px solid var(--color-overlay);
-  border-radius: var(--radius-sm);
-  font-family: var(--font-sans);
-  font-size: 13px;
-  cursor: pointer;
-}
-
-.settings-select:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
-}
-
 /* A stacked row (label on top of its control) — for wide controls like the
    datasheet-folder picker that would crowd the single-line flex layout. */
 .settings-row--stack {
@@ -2313,15 +2295,17 @@ textarea.annotation-editor {
   color: var(--color-subtext);
 }
 
-/* A field's color choice: clickable swatches (the same --color-wire-<name>
-   tokens the wire tool and the LED body use). The selected one gets a ring;
+/* The shared color picker (components/color-swatches.js): clickable circle
+   swatches over the same --color-wire-<name> tokens the wire tool and the
+   LED body use. Used by both the Part Properties dialog's "color" field and
+   the Settings dialog's "Default LED color". The selected one gets a ring;
    hovering any swatch grows it slightly. */
-.properties-swatches {
+.color-swatches {
   display: flex;
   gap: var(--space-2);
 }
 
-.properties-swatch {
+.color-swatch {
   width: 22px;
   height: 22px;
   padding: 0;
@@ -2335,15 +2319,15 @@ textarea.annotation-editor {
     transform 0.15s ease;
 }
 
-.properties-swatch:hover {
+.color-swatch:hover {
   transform: scale(1.1);
 }
 
-.properties-swatch--selected {
+.color-swatch--selected {
   box-shadow: 0 0 0 2px var(--color-accent);
 }
 
-.properties-swatch:focus-visible {
+.color-swatch:focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
 }

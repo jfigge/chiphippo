@@ -36,58 +36,13 @@
 
 import { el } from "../dom.js";
 import { PopupManager } from "../popup-manager.js";
+import { buildColorSwatches } from "./color-swatches.js";
 
 /** A close "×" glyph for the header button (matches settings-dialog.js's). */
 const CLOSE_SVG =
   '<svg viewBox="0 0 16 16" width="13" height="13" fill="none" ' +
   'stroke="currentColor" stroke-width="1.6" stroke-linecap="round" ' +
   'aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg>';
-
-const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);
-
-/**
- * A row of clickable color swatches (one per `field.options` entry), reusing
- * the same `--color-wire-<name>` tokens the wire tool and the LED body
- * share. Clicking one updates every swatch's selected state in place (the
- * dialog stays open) and calls `onPick(color)`.
- */
-function buildColorSwatches(field, value, onPick) {
-  const buttons = [];
-  for (const opt of field.options) {
-    const btn = el("button", {
-      class:
-        "properties-swatch" +
-        (opt === value ? " properties-swatch--selected" : ""),
-      type: "button",
-      dataset: { color: opt },
-      title: capitalize(opt),
-      "aria-label": capitalize(opt),
-      "aria-pressed": String(opt === value),
-      onClick: () => {
-        for (const b of buttons) {
-          const selected = b.dataset.color === opt;
-          b.classList.toggle("properties-swatch--selected", selected);
-          b.setAttribute("aria-pressed", String(selected));
-        }
-        onPick(opt);
-      },
-    });
-    // el()'s `style` prop bag can't set a CUSTOM property (CSSStyleDeclaration
-    // ignores plain assignment for `--*` keys) — setProperty is the only way,
-    // same as the toolbar's wire-color dot in app.js.
-    btn.style.setProperty("--wire-color", `var(--color-wire-${opt})`);
-    buttons.push(btn);
-  }
-  return el(
-    "div",
-    {
-      class: "properties-swatches",
-      role: "radiogroup",
-      "aria-label": field.label,
-    },
-    buttons,
-  );
-}
 
 /** A dropdown over `field.options: [{value, label}]`. A <select>'s value is
     ALWAYS a string (`3` becomes `"3"`), but an option's real value may be a
@@ -132,7 +87,12 @@ function buildActionButton(field, onFire) {
     untouched. An unrecognized type falls back to a read-only value. */
 function buildControl(field, value, onChange) {
   if (field.type === "color") {
-    return buildColorSwatches(field, value, (v) => onChange(field.key, v));
+    return buildColorSwatches({
+      colors: field.options,
+      value,
+      ariaLabel: field.label,
+      onPick: (v) => onChange(field.key, v),
+    });
   }
   if (field.type === "select") {
     return buildSelect(field, value, (v) => onChange(field.key, v));

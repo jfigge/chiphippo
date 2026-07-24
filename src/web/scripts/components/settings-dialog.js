@@ -30,6 +30,7 @@
 import { el } from "../dom.js";
 import { PopupManager } from "../popup-manager.js";
 import { LED_COLOR_OPTIONS } from "../catalog/parts.js";
+import { buildColorSwatches } from "./color-swatches.js";
 
 /** A close "×" glyph for the header button. */
 const CLOSE_SVG =
@@ -97,22 +98,12 @@ export class SettingsDialog {
       onInput: (e) => SettingsDialog.#emit({ selectionColor: e.target.value }),
     });
 
-    const ledColorSelect = el(
-      "select",
-      {
-        class: "settings-select",
-        id: "set-default-led-color",
-        onChange: (e) =>
-          SettingsDialog.#emit({ defaultLedColor: e.target.value }),
-      },
-      LED_COLOR_OPTIONS.map((color) =>
-        el("option", {
-          value: color,
-          text: color[0].toUpperCase() + color.slice(1),
-          selected: (settings.defaultLedColor || "red") === color,
-        }),
-      ),
-    );
+    const ledColorSwatches = buildColorSwatches({
+      colors: LED_COLOR_OPTIONS,
+      value: settings.defaultLedColor || "red",
+      ariaLabel: "Default LED color",
+      onPick: (color) => SettingsDialog.#emit({ defaultLedColor: color }),
+    });
 
     const closeBtn = el("button", {
       class: "popup-close",
@@ -196,10 +187,9 @@ export class SettingsDialog {
           el("div", { class: "settings-row" }, [
             el("label", {
               class: "settings-label",
-              for: "set-default-led-color",
               text: "Default LED color",
             }),
-            ledColorSelect,
+            ledColorSwatches,
           ]),
         ],
       ),

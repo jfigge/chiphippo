@@ -62,23 +62,29 @@ test("SettingsDialog: the colour input seeds from selectionColor and emits on in
   PopupManager.close();
 });
 
-test("SettingsDialog: the default-LED-color select seeds and emits on change", () => {
+test("SettingsDialog: the default-LED-color swatches seed and emit on click", () => {
   resetDom();
   SettingsDialog.open({ defaultLedColor: "blue" });
-  const select = document.querySelector("#set-default-led-color");
-  assert.equal(select.value, "blue");
+  const swatches = [...document.querySelectorAll(".color-swatch")];
   assert.deepEqual(
-    [...select.options].map((o) => o.value),
+    swatches.map((b) => b.dataset.color),
     ["red", "green", "blue", "yellow", "white"],
   );
+  const selected = document.querySelector(".color-swatch--selected");
+  assert.equal(selected.dataset.color, "blue", "seeded from defaultLedColor");
 
   const patches = [];
   window.addEventListener("chiphippo:settings-changed", (e) =>
     patches.push(e.detail),
   );
-  select.value = "white";
-  select.dispatchEvent(new window.Event("change"));
+  const white = swatches.find((b) => b.dataset.color === "white");
+  white.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
   assert.deepEqual(patches, [{ defaultLedColor: "white" }]);
+  assert.equal(
+    white.classList.contains("color-swatch--selected"),
+    true,
+    "the ring moves to the clicked swatch",
+  );
 
   PopupManager.close();
 });
