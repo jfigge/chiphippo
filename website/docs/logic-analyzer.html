@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#2F855A" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <title>Logic Analyzer &amp; Timing · Chip Hippo Guide</title>
+  <meta name="description" content="Logic Analyzer &amp; Timing — the Chip Hippo user guide." />
+  <link rel="canonical" href="https://chiphippo.com/docs/logic-analyzer.html" />
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="Chip Hippo" />
+  <meta property="og:title" content="Logic Analyzer &amp; Timing · Chip Hippo Guide" />
+  <meta property="og:description" content="Logic Analyzer &amp; Timing — the Chip Hippo user guide." />
+  <meta property="og:url" content="https://chiphippo.com/docs/logic-analyzer.html" />
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="Logic Analyzer &amp; Timing · Chip Hippo Guide" />
+  <meta name="twitter:description" content="Logic Analyzer &amp; Timing — the Chip Hippo user guide." />
+  <style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#1c1c1c;--mantle:#161616;--crust:#101010;--surface-0:#2a2a2a;--surface-1:#383838;--overlay-0:#686868;--text:#e8e8e8;--subtext:#b0b0b0;--accent:#3fb950;--green:#56d364}
+html{scroll-behavior:smooth}
+body{font-family:"Segoe UI",system-ui,-apple-system,BlinkMacSystemFont,sans-serif;background:var(--bg);color:var(--text);line-height:1.65}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+code{font-family:"Cascadia Code","JetBrains Mono","Fira Code",monospace;font-size:.88em;background:var(--surface-0);padding:1px 6px;border-radius:4px;color:var(--text)}
+pre{background:var(--crust);border:1px solid var(--surface-0);border-radius:10px;padding:14px 16px;overflow:auto;margin:16px 0}
+pre code{background:none;padding:0}
+kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px solid var(--surface-1);border-bottom-width:2px;border-radius:5px;padding:1px 6px}
+.topbar{position:sticky;top:0;z-index:10;height:58px;display:flex;align-items:center;justify-content:space-between;padding:0 24px;background:var(--mantle);border-bottom:1px solid var(--surface-0)}
+.brand{display:flex;align-items:center;gap:10px;font-weight:800;color:var(--accent);font-size:1.1rem}
+.brand:hover{text-decoration:none}
+.topbar .back{color:var(--subtext);font-size:.85rem}
+.layout{max-width:1180px;margin:0 auto;display:grid;grid-template-columns:260px 1fr;gap:40px;padding:32px 24px 80px}
+.sidebar{position:sticky;top:90px;align-self:start;max-height:calc(100vh - 110px);overflow:auto}
+.sidebar-title{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--overlay-0);padding:0 12px 8px}
+.doc-nav-link{display:block;padding:7px 12px;border-radius:7px;color:var(--subtext);font-size:.9rem;margin-bottom:2px}
+.doc-nav-link:hover{background:var(--surface-0);color:var(--text);text-decoration:none}
+.doc-nav-link--active{background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent);font-weight:600}
+.content{min-width:0;max-width:760px}
+.content h1{font-size:2.1rem;font-weight:800;letter-spacing:-1px;margin:0 0 20px;line-height:1.2}
+.content h2{font-size:1.45rem;font-weight:700;margin:36px 0 12px;padding-top:12px;border-top:1px solid var(--surface-0)}
+.content h3{font-size:1.12rem;font-weight:700;margin:26px 0 10px}
+.content p,.content ul,.content ol,.content blockquote,.content table{margin:0 0 16px}
+.content ul,.content ol{padding-left:24px}
+.content li{margin:4px 0}
+.content img{max-width:100%;height:auto;border:1px solid var(--surface-0);border-radius:10px;margin:8px 0}
+.content blockquote{border-left:3px solid var(--accent);background:var(--mantle);padding:10px 16px;border-radius:0 8px 8px 0;color:var(--subtext)}
+.content blockquote p:last-child{margin:0}
+.content table{border-collapse:collapse;width:100%;font-size:.9rem;display:block;overflow:auto}
+.content th,.content td{border:1px solid var(--surface-0);padding:8px 12px;text-align:left}
+.content th{background:var(--mantle)}
+.content hr{border:none;border-top:1px solid var(--surface-0);margin:28px 0}
+@media(max-width:820px){.layout{grid-template-columns:1fr;gap:20px}.sidebar{position:static;max-height:none;border-bottom:1px solid var(--surface-0);padding-bottom:16px}}
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/"><svg width="24" height="24" viewBox="0 0 512 512" role="img" aria-label="Chip Hippo"><rect x="0" y="0" width="512" height="512" rx="114" fill="#2F855A"/><circle cx="170" cy="146" r="40" fill="#FFFFFF"/><circle cx="342" cy="146" r="40" fill="#FFFFFF"/><rect x="144" y="140" width="224" height="190" rx="74" fill="#FFFFFF"/><rect x="118" y="260" width="276" height="150" rx="74" fill="#FFFFFF"/><circle cx="201" cy="198" r="17" fill="#1C1C1C"/><circle cx="311" cy="198" r="17" fill="#1C1C1C"/><rect x="186" y="320" width="140" height="52" rx="8" fill="#23272B"/><circle cx="186" cy="346" r="11" fill="#FFFFFF"/></svg><span>Chip Hippo</span></a>
+    <a class="back" href="/">← Back to site</a>
+  </header>
+  <div class="layout">
+    <nav class="sidebar" aria-label="User guide">
+      <div class="sidebar-title">User Guide</div>
+        <a class="doc-nav-link" href="index.html">Overview</a>
+        <a class="doc-nav-link" href="getting-started.html">Getting Started</a>
+        <a class="doc-nav-link" href="the-desk.html">The Desk &amp; Breadboards</a>
+        <a class="doc-nav-link" href="components.html">Chips &amp; Components</a>
+        <a class="doc-nav-link" href="wiring.html">Wiring, Nets &amp; Buses</a>
+        <a class="doc-nav-link" href="power-and-clocks.html">Power &amp; Clock Sources</a>
+        <a class="doc-nav-link" href="chip-library.html">The 74xx Chip Library</a>
+        <a class="doc-nav-link" href="simulation.html">Running a Simulation</a>
+        <a class="doc-nav-link" href="probing.html">Probing &amp; Net Names</a>
+        <a class="doc-nav-link" href="memory.html">Memory Chips &amp; the Inspector</a>
+        <a class="doc-nav-link doc-nav-link--active" href="logic-analyzer.html">Logic Analyzer &amp; Timing</a>
+        <a class="doc-nav-link" href="build-guide.html">Build Guide, Wiring List &amp; BOM</a>
+        <a class="doc-nav-link" href="schematic-view.html">Schematic View</a>
+        <a class="doc-nav-link" href="files-and-undo.html">Files, Autosave &amp; Undo</a>
+        <a class="doc-nav-link" href="settings.html">Settings</a>
+        <a class="doc-nav-link" href="keyboard-shortcuts.html">Keyboard Shortcuts</a>
+    </nav>
+    <main class="content">
+<h1>Logic Analyzer &amp; Timing</h1>
+<p>The <strong>Analyzer</strong> is a bottom-docked panel that records the live simulation
+and draws it as a scrolling timing diagram — one lane per signal you&#39;ve
+chosen to watch, a step waveform for a single net or a hex value-lane for a
+bus, with two draggable cursors for measuring the time between two points.
+It&#39;s a passive recorder: it reads the same broadcast the LEDs and chip
+badges already render from, so opening it, closing it, or adding channels
+never changes how the circuit behaves.</p>
+<p><img src="images/logic-analyzer.png" alt="The logic analyzer panel, docked along the bottom of the window"></p>
+<h2 id="opening-the-analyzer">Opening the analyzer</h2>
+<p>Click <strong>Analyzer</strong> in the toolbar, or press <code>Cmd/Ctrl+A</code>, to dock the panel
+along the bottom of the window. Click the button again, press the shortcut
+again, or click the panel&#39;s <strong>×</strong> to close it — the panel remembers whether
+it was open and how tall you left it (drag its top edge to resize, from a
+compact strip up to half the window).</p>
+<p>With no channels added yet, the panel shows a prompt instead of an empty
+grid: <strong>add a net or bus</strong>, or right-click a probed net and choose <strong>Add to
+analyzer</strong>.</p>
+<h2 id="adding-a-channel">Adding a channel</h2>
+<p>There are two ways to add a channel:</p>
+<ul>
+<li><strong>From the panel</strong> — click <strong>+ Channel</strong> in the header. The menu lists
+every <em>named</em> net (see <a href="probing.html">Probing &amp; Net Names</a>) and every bus in
+the document that isn&#39;t already on a channel; picking one adds it.</li>
+<li><strong>From the probe tool</strong> — arm the probe (<code>I</code>), right-click any net on the
+desk, and choose <strong>Add to analyzer</strong>. This works on ANY net the probe can
+reach, named or not — it&#39;s the way to watch a signal you haven&#39;t bothered
+to name. Using it also opens the panel automatically if it was closed.</li>
+</ul>
+<p>Each channel gets a row in the left-hand gutter: a color dot (cycled from a
+fixed palette unless the channel has its own color), the net or bus name,
+its current value, and three small controls — <strong>↑</strong> / <strong>↓</strong> to reorder the
+channel, and <strong>×</strong> to remove it. Channels are saved with the document
+(<code>doc.scopeChannels</code>), so a schematic reopens with its analyzer setup
+intact, and adding/removing/reordering a channel rides the normal undo/redo
+stack. A channel that loses its target (the net was deleted, the bus was
+removed) simply reads as undriven rather than disappearing — it comes back
+to life if the target returns.</p>
+<h2 id="reading-a-waveform">Reading a waveform</h2>
+<p>A single-bit channel (a <strong>net</strong>) draws as a step waveform inside its lane:</p>
+<ul>
+<li><strong>High</strong> traces along the top of the lane, <strong>Low</strong> along the bottom.</li>
+<li><strong>Floating (Z)</strong> draws a dashed line through the lane&#39;s midline.</li>
+<li><strong>Unknown/conflict (X)</strong> — including anywhere the net is undriven — fills
+the region with a diagonal amber hatch instead of a line.</li>
+</ul>
+<p>The gutter&#39;s value column always shows the channel&#39;s current level (or its
+value at cursor A, once one is placed — see below).</p>
+<h2 id="multi-bit-bus-lanes">Multi-bit (bus) lanes</h2>
+<p>A channel bound to a <strong>bus</strong> (see <a href="wiring.html">Wiring, Nets &amp; Buses</a>) doesn&#39;t
+draw a two-level waveform — decoding eight or sixteen individual traces
+would be unreadable. Instead it draws a <strong>value-lane</strong>: a band that necks
+down to a point at every change and displays the bus&#39;s current value as
+hex (<code>0x1A</code>, uppercase) centered in the band, wide enough for the label to
+fit. The bus is decoded from its member wires&#39; bit positions (as parsed
+from a name like <code>D[7:0]</code>); if even one member is floating or unknown, the
+whole word is undecodable for that span and the lane hatches just like an
+unknown net.</p>
+<h2 id="cursors--">Cursors &amp; Δ</h2>
+<p>Click anywhere in the waveform area to drop <strong>cursor A</strong> at that tick;
+<code>Shift</code>-click to drop <strong>cursor B</strong>. Drag either cursor to slide it to a
+different tick — the gutter&#39;s value column updates to show each channel&#39;s
+value at cursor A while it&#39;s placed. With only cursor A down, the header
+reads <code>t=&lt;tick&gt;</code>; with both down, it reads the delta between them —
+<strong>Δ N ticks</strong>, plus a millisecond figure when a clock source on the desk
+gives the analyzer a time base to convert against.</p>
+<p>While the simulation is running, the view auto-scrolls to keep the newest
+tick in sight; scrolling the lanes away from the right edge turns this
+&quot;follow&quot; behavior off until you scroll back. <strong>Clear</strong> in the header wipes
+the recorded trace and both cursors without touching the channel list;
+starting a fresh <strong>Run</strong> does the same automatically.</p>
+<h2 id="export">Export</h2>
+<p>Two buttons in the header export the diagram exactly as currently rendered
+— every channel, the full retained trace, and a label column identifying
+each lane:</p>
+<ul>
+<li><strong>SVG</strong> — downloads a self-contained <code>timing.svg</code> (colors resolved to
+concrete values, not the app&#39;s live CSS variables, so it renders
+correctly outside Chip Hippo).</li>
+<li><strong>PNG</strong> — rasterizes that same SVG at 2× scale and downloads it as
+<code>timing.png</code>.</li>
+</ul>
+<p>Both are plain browser downloads (no file dialog, no IPC round-trip) and do
+nothing if there are no channels or nothing has been recorded yet.</p>
+<h2 id="see-also">See also</h2>
+<ul>
+<li><a href="probing.html">Probing &amp; Net Names</a> — arming the probe, naming a net, and
+the &quot;Add to analyzer&quot; context-menu entry.</li>
+<li><a href="wiring.html">Wiring, Nets &amp; Buses</a> — laying the buses a bus channel decodes.</li>
+</ul>
+
+    </main>
+  </div>
+</body>
+</html>

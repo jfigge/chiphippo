@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#2F855A" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <title>Files, Autosave &amp; Undo · Chip Hippo Guide</title>
+  <meta name="description" content="Files, Autosave &amp; Undo — the Chip Hippo user guide." />
+  <link rel="canonical" href="https://chiphippo.com/docs/files-and-undo.html" />
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="Chip Hippo" />
+  <meta property="og:title" content="Files, Autosave &amp; Undo · Chip Hippo Guide" />
+  <meta property="og:description" content="Files, Autosave &amp; Undo — the Chip Hippo user guide." />
+  <meta property="og:url" content="https://chiphippo.com/docs/files-and-undo.html" />
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="Files, Autosave &amp; Undo · Chip Hippo Guide" />
+  <meta name="twitter:description" content="Files, Autosave &amp; Undo — the Chip Hippo user guide." />
+  <style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#1c1c1c;--mantle:#161616;--crust:#101010;--surface-0:#2a2a2a;--surface-1:#383838;--overlay-0:#686868;--text:#e8e8e8;--subtext:#b0b0b0;--accent:#3fb950;--green:#56d364}
+html{scroll-behavior:smooth}
+body{font-family:"Segoe UI",system-ui,-apple-system,BlinkMacSystemFont,sans-serif;background:var(--bg);color:var(--text);line-height:1.65}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+code{font-family:"Cascadia Code","JetBrains Mono","Fira Code",monospace;font-size:.88em;background:var(--surface-0);padding:1px 6px;border-radius:4px;color:var(--text)}
+pre{background:var(--crust);border:1px solid var(--surface-0);border-radius:10px;padding:14px 16px;overflow:auto;margin:16px 0}
+pre code{background:none;padding:0}
+kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px solid var(--surface-1);border-bottom-width:2px;border-radius:5px;padding:1px 6px}
+.topbar{position:sticky;top:0;z-index:10;height:58px;display:flex;align-items:center;justify-content:space-between;padding:0 24px;background:var(--mantle);border-bottom:1px solid var(--surface-0)}
+.brand{display:flex;align-items:center;gap:10px;font-weight:800;color:var(--accent);font-size:1.1rem}
+.brand:hover{text-decoration:none}
+.topbar .back{color:var(--subtext);font-size:.85rem}
+.layout{max-width:1180px;margin:0 auto;display:grid;grid-template-columns:260px 1fr;gap:40px;padding:32px 24px 80px}
+.sidebar{position:sticky;top:90px;align-self:start;max-height:calc(100vh - 110px);overflow:auto}
+.sidebar-title{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--overlay-0);padding:0 12px 8px}
+.doc-nav-link{display:block;padding:7px 12px;border-radius:7px;color:var(--subtext);font-size:.9rem;margin-bottom:2px}
+.doc-nav-link:hover{background:var(--surface-0);color:var(--text);text-decoration:none}
+.doc-nav-link--active{background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent);font-weight:600}
+.content{min-width:0;max-width:760px}
+.content h1{font-size:2.1rem;font-weight:800;letter-spacing:-1px;margin:0 0 20px;line-height:1.2}
+.content h2{font-size:1.45rem;font-weight:700;margin:36px 0 12px;padding-top:12px;border-top:1px solid var(--surface-0)}
+.content h3{font-size:1.12rem;font-weight:700;margin:26px 0 10px}
+.content p,.content ul,.content ol,.content blockquote,.content table{margin:0 0 16px}
+.content ul,.content ol{padding-left:24px}
+.content li{margin:4px 0}
+.content img{max-width:100%;height:auto;border:1px solid var(--surface-0);border-radius:10px;margin:8px 0}
+.content blockquote{border-left:3px solid var(--accent);background:var(--mantle);padding:10px 16px;border-radius:0 8px 8px 0;color:var(--subtext)}
+.content blockquote p:last-child{margin:0}
+.content table{border-collapse:collapse;width:100%;font-size:.9rem;display:block;overflow:auto}
+.content th,.content td{border:1px solid var(--surface-0);padding:8px 12px;text-align:left}
+.content th{background:var(--mantle)}
+.content hr{border:none;border-top:1px solid var(--surface-0);margin:28px 0}
+@media(max-width:820px){.layout{grid-template-columns:1fr;gap:20px}.sidebar{position:static;max-height:none;border-bottom:1px solid var(--surface-0);padding-bottom:16px}}
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/"><svg width="24" height="24" viewBox="0 0 512 512" role="img" aria-label="Chip Hippo"><rect x="0" y="0" width="512" height="512" rx="114" fill="#2F855A"/><circle cx="170" cy="146" r="40" fill="#FFFFFF"/><circle cx="342" cy="146" r="40" fill="#FFFFFF"/><rect x="144" y="140" width="224" height="190" rx="74" fill="#FFFFFF"/><rect x="118" y="260" width="276" height="150" rx="74" fill="#FFFFFF"/><circle cx="201" cy="198" r="17" fill="#1C1C1C"/><circle cx="311" cy="198" r="17" fill="#1C1C1C"/><rect x="186" y="320" width="140" height="52" rx="8" fill="#23272B"/><circle cx="186" cy="346" r="11" fill="#FFFFFF"/></svg><span>Chip Hippo</span></a>
+    <a class="back" href="/">← Back to site</a>
+  </header>
+  <div class="layout">
+    <nav class="sidebar" aria-label="User guide">
+      <div class="sidebar-title">User Guide</div>
+        <a class="doc-nav-link" href="index.html">Overview</a>
+        <a class="doc-nav-link" href="getting-started.html">Getting Started</a>
+        <a class="doc-nav-link" href="the-desk.html">The Desk &amp; Breadboards</a>
+        <a class="doc-nav-link" href="components.html">Chips &amp; Components</a>
+        <a class="doc-nav-link" href="wiring.html">Wiring, Nets &amp; Buses</a>
+        <a class="doc-nav-link" href="power-and-clocks.html">Power &amp; Clock Sources</a>
+        <a class="doc-nav-link" href="chip-library.html">The 74xx Chip Library</a>
+        <a class="doc-nav-link" href="simulation.html">Running a Simulation</a>
+        <a class="doc-nav-link" href="probing.html">Probing &amp; Net Names</a>
+        <a class="doc-nav-link" href="memory.html">Memory Chips &amp; the Inspector</a>
+        <a class="doc-nav-link" href="logic-analyzer.html">Logic Analyzer &amp; Timing</a>
+        <a class="doc-nav-link" href="build-guide.html">Build Guide, Wiring List &amp; BOM</a>
+        <a class="doc-nav-link" href="schematic-view.html">Schematic View</a>
+        <a class="doc-nav-link doc-nav-link--active" href="files-and-undo.html">Files, Autosave &amp; Undo</a>
+        <a class="doc-nav-link" href="settings.html">Settings</a>
+        <a class="doc-nav-link" href="keyboard-shortcuts.html">Keyboard Shortcuts</a>
+    </nav>
+    <main class="content">
+<h1>Files, Autosave &amp; Undo</h1>
+<p>Chip Hippo separates two things most apps blur together: the circuit you&#39;re
+currently poking at, which is saved for you continuously, and a named
+schematic file you deliberately save to organize or share a specific design.
+This page covers both, plus the discard-changes prompt, the title bar&#39;s dirty
+indicator, and undo/redo.</p>
+<h2 id="the-autosaved-working-document">The autosaved working document</h2>
+<p>Whatever is on the desk right now — every board, chip, wire, and part — lives
+in a <strong>working document</strong> that Chip Hippo saves automatically as you go.
+There&#39;s nothing to save manually for day-to-day tinkering: place a chip, lay
+a wire, quit the app, relaunch, and the desk comes back exactly as you left
+it. This is the same document that opens by default every time you launch
+Chip Hippo.</p>
+<h2 id="named-files">Named files</h2>
+<p>A <strong>named file</strong> (extension <code>.chiphippo</code>) is a snapshot of a schematic you&#39;ve
+explicitly saved somewhere on disk — useful for organizing a design under a
+project name, keeping several circuits side by side, or sharing one with
+someone else. Once you&#39;ve opened or saved a named file, it becomes the
+working document: further edits keep autosaving into it, and the title bar
+shows its filename.</p>
+<h2 id="new-open-save-save-as">New, Open, Save, Save As</h2>
+<p>Four commands on the <strong>File</strong> menu cover the whole file lifecycle:</p>
+<ul>
+<li><strong>New Schematic</strong> (<code>Cmd/Ctrl+N</code>) — clears the desk back to an empty working
+document, no file attached.</li>
+<li><strong>Open Schematic…</strong> (<code>Cmd/Ctrl+O</code>) — shows a native file picker; choose a
+<code>.chiphippo</code> file and it becomes the working document.</li>
+<li><strong>Save</strong> (<code>Cmd/Ctrl+S</code>) — writes the current desk to the file it&#39;s already
+associated with. If there isn&#39;t one yet, this falls back to <strong>Save As…</strong>.</li>
+<li><strong>Save As…</strong> (<code>Shift+Cmd/Ctrl+S</code>) — shows a native save dialog; writes the
+current desk to the chosen path and adopts it as the working file from then
+on.</li>
+</ul>
+<p>The same four actions are also available as buttons in the header toolbar&#39;s
+schematic menu, alongside their keyboard shortcuts.</p>
+<p><strong>New</strong> and <strong>Open</strong> replace the whole desk, so the window refreshes to load
+it — a brief flash as everything rebuilds from the new document. Note that
+this resets any run-volatile simulation state (see below); it doesn&#39;t affect
+what&#39;s saved.</p>
+<h2 id="unsaved-changes">Unsaved changes</h2>
+<p>The title bar shows the current file&#39;s name (or &quot;Untitled&quot; for a fresh
+document) with a leading dot — <code>• MyCircuit — Chip Hippo</code> — whenever the desk
+has changes that haven&#39;t been written to that file yet. Save clears the dot.</p>
+<p>Because <strong>New Schematic</strong> and <strong>Open Schematic…</strong> both replace the working
+document outright, Chip Hippo won&#39;t silently throw away unsaved work: if the
+desk is dirty, it shows a <strong>Discard unsaved changes?</strong> prompt naming the
+current file and asking you to confirm before proceeding. Choose <strong>Discard</strong>
+to continue (losing those changes) or <strong>Cancel</strong> to back out and save first.</p>
+<h2 id="undo--redo">Undo &amp; redo</h2>
+<p><code>Cmd/Ctrl+Z</code> undoes the last edit; <code>Shift+Cmd/Ctrl+Z</code> redoes it. Undo/redo
+covers the full editing history of the circuit — placing and moving boards,
+chips, and discretes; wiring and unwiring; deleting anything; net names — as
+far back as your session&#39;s history allows, and both menu items disable
+themselves automatically when there&#39;s nothing left to undo or redo.</p>
+<p>Undo/redo does <strong>not</strong> cover simulation state. While the circuit is running,
+editing — and with it, recording new undo steps — is locked, so nothing that
+happens mid-run (sequential chip state, clock phase, a chip taking 12 V
+damage) ever becomes an undo step of its own. Sequential state and clock
+phase vanish outright the next time you press <strong>Run</strong>. 12 V damage is the one
+exception that outlives the run: it&#39;s written into the document, so stopping
+— or even quitting and reopening — doesn&#39;t clear it, and there&#39;s no <code>Cmd+Z</code>
+back to before it happened. The only way to clear a damaged chip is the
+right-click <strong>Replace chip</strong> action (see
+<a href="power-and-clocks.html">Power &amp; Clock Sources</a>) — which, taken while stopped,
+is a normal edit and undoes/redoes like any other. What undo/redo restores is
+always the circuit you built, never a moment in its simulated behavior.</p>
+<h2 id="example-circuits">Example circuits</h2>
+<p>Chip Hippo&#39;s project repository ships a handful of ready-to-load example
+circuits as ordinary <code>.chiphippo</code> files — currently small W65C02-based
+breadboard computers built from 74xx glue logic, each paired with a <code>.hex</code>
+ROM image. Open one the same way as any saved file: <strong>File ▸ Open
+Schematic…</strong>, then load its matching <code>.hex</code> into the ROM chip via the memory
+inspector or the external programmer before pressing <strong>Run</strong>.</p>
+<hr>
+<p>See <a href="getting-started.html">Getting Started</a> for building your first circuit
+from scratch, and <a href="settings.html">Settings</a> for what else persists between
+sessions.</p>
+
+    </main>
+  </div>
+</body>
+</html>

@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      CSP: only load scripts/styles from the same origin. The guide's only
+      network-shaped action — opening an external link — goes through main's
+      setWindowOpenHandler (system browser), never a navigation of this page.
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="
+        default-src 'self';
+        script-src  'self';
+        style-src   'self' 'unsafe-inline';
+        img-src     'self' data:;
+      "
+    />
+    <title>Chip Hippo User Guide</title>
+    <link rel="icon" type="image/svg+xml" href="chiphippo-icon.svg" />
+    <link rel="stylesheet" href="styles/theme.css" />
+    <link rel="stylesheet" href="styles/docs.css" />
+  </head>
+  <body class="docs-window">
+    <div id="docs-root"></div>
+    <script type="module" src="scripts/docs-window.js"></script>
+  </body>
+</html>

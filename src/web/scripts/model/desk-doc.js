@@ -1141,9 +1141,12 @@ export class DeskDoc {
   }
 
   /**
-   * Rotate a placed rotatable part (resistor) 90° around pin 1: pin 1 stays,
-   * pin 2's lead swings a quarter lap (tries CW then CCW). The part is stored
-   * in its two-free-ends form (`rot: 90`, `end` a `{dx, dy}` bend).
+   * Rotate a placed part in situ. A rotatable two-lead part (resistor) turns
+   * 90° around pin 1: pin 1 stays, pin 2's lead swings a quarter lap (tries CW
+   * then CCW), stored in its two-free-ends form (`rot: 90`, `end` a `{dx, dy}`
+   * bend). A rigid `def.can` part (an oscillator) spins about its own centre —
+   * 180° per call for a non-square can (full-can), a plain 90° for a square one
+   * (half-can); see the `def?.can` branch below for why.
    * Throws NOT_FOUND / INVALID_REF (not rotatable) / ILLEGAL_PLACEMENT (no free
    * hole at either rotated position). Returns a copy.
    */
@@ -1152,10 +1155,16 @@ export class DeskDoc {
     if (!comp) throw taggedError(`no component ${id}`, "NOT_FOUND");
     const def = partDef(comp.ref);
     // A rigid multi-corner shape (an oscillator can) spins IN PLACE around its
-    // own centre — pin 1 (the stored anchor) moves to a new hole each
-    // quarter-turn, unlike the pivot-on-pin-1 rotate below. Recover the
-    // centre from the current anchor + rot, then find the next rot's anchor
-    // near that same centre.
+    // own centre — pin 1 (the stored anchor) moves to a new hole each turn,
+    // unlike the pivot-on-pin-1 rotate below. Recover the centre from the
+    // current anchor + rot, then find the next rot's anchor near that same
+    // centre. A non-square can (the full-can, 6×3) already covers both of its
+    // distinct footprints in half a lap, so ROTATING AN ALREADY-SEATED ONE
+    // jumps straight 180° (0↔180, 90↔270) rather than stopping at the
+    // intermediate 90°/270° swapped-footprint orientation; the ghost while
+    // PLACING still steps a full quarter-turn (`desk-controller.js`) so every
+    // orientation stays reachable when hunting for a fit. A square can (the
+    // half-can) keeps the plain quarter-turn either way.
     if (def?.can) {
       const board = this.#doc.boards.find((b) => b.id === comp.board);
       const anchorPos =
@@ -1168,8 +1177,9 @@ export class DeskDoc {
         y: board.y + anchorPos.y,
       };
       const curRot = comp.params?.rot ?? 0;
+      const step = def.can.width !== def.can.height ? 2 : 1;
       const nextRot =
-        ROTATIONS[(ROTATIONS.indexOf(curRot) + 1) % ROTATIONS.length];
+        ROTATIONS[(ROTATIONS.indexOf(curRot) + step) % ROTATIONS.length];
       const toCenter = rotateOffset(canCornerOffset(def), curRot);
       const center = {
         x: anchorWorld.x - toCenter.dx,

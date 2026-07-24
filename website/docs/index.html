@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#2F855A" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <title>Overview · Chip Hippo Guide</title>
+  <meta name="description" content="Overview — the Chip Hippo user guide." />
+  <link rel="canonical" href="https://chiphippo.com/docs/index.html" />
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="Chip Hippo" />
+  <meta property="og:title" content="Overview · Chip Hippo Guide" />
+  <meta property="og:description" content="Overview — the Chip Hippo user guide." />
+  <meta property="og:url" content="https://chiphippo.com/docs/index.html" />
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="Overview · Chip Hippo Guide" />
+  <meta name="twitter:description" content="Overview — the Chip Hippo user guide." />
+  <style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#1c1c1c;--mantle:#161616;--crust:#101010;--surface-0:#2a2a2a;--surface-1:#383838;--overlay-0:#686868;--text:#e8e8e8;--subtext:#b0b0b0;--accent:#3fb950;--green:#56d364}
+html{scroll-behavior:smooth}
+body{font-family:"Segoe UI",system-ui,-apple-system,BlinkMacSystemFont,sans-serif;background:var(--bg);color:var(--text);line-height:1.65}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+code{font-family:"Cascadia Code","JetBrains Mono","Fira Code",monospace;font-size:.88em;background:var(--surface-0);padding:1px 6px;border-radius:4px;color:var(--text)}
+pre{background:var(--crust);border:1px solid var(--surface-0);border-radius:10px;padding:14px 16px;overflow:auto;margin:16px 0}
+pre code{background:none;padding:0}
+kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px solid var(--surface-1);border-bottom-width:2px;border-radius:5px;padding:1px 6px}
+.topbar{position:sticky;top:0;z-index:10;height:58px;display:flex;align-items:center;justify-content:space-between;padding:0 24px;background:var(--mantle);border-bottom:1px solid var(--surface-0)}
+.brand{display:flex;align-items:center;gap:10px;font-weight:800;color:var(--accent);font-size:1.1rem}
+.brand:hover{text-decoration:none}
+.topbar .back{color:var(--subtext);font-size:.85rem}
+.layout{max-width:1180px;margin:0 auto;display:grid;grid-template-columns:260px 1fr;gap:40px;padding:32px 24px 80px}
+.sidebar{position:sticky;top:90px;align-self:start;max-height:calc(100vh - 110px);overflow:auto}
+.sidebar-title{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--overlay-0);padding:0 12px 8px}
+.doc-nav-link{display:block;padding:7px 12px;border-radius:7px;color:var(--subtext);font-size:.9rem;margin-bottom:2px}
+.doc-nav-link:hover{background:var(--surface-0);color:var(--text);text-decoration:none}
+.doc-nav-link--active{background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent);font-weight:600}
+.content{min-width:0;max-width:760px}
+.content h1{font-size:2.1rem;font-weight:800;letter-spacing:-1px;margin:0 0 20px;line-height:1.2}
+.content h2{font-size:1.45rem;font-weight:700;margin:36px 0 12px;padding-top:12px;border-top:1px solid var(--surface-0)}
+.content h3{font-size:1.12rem;font-weight:700;margin:26px 0 10px}
+.content p,.content ul,.content ol,.content blockquote,.content table{margin:0 0 16px}
+.content ul,.content ol{padding-left:24px}
+.content li{margin:4px 0}
+.content img{max-width:100%;height:auto;border:1px solid var(--surface-0);border-radius:10px;margin:8px 0}
+.content blockquote{border-left:3px solid var(--accent);background:var(--mantle);padding:10px 16px;border-radius:0 8px 8px 0;color:var(--subtext)}
+.content blockquote p:last-child{margin:0}
+.content table{border-collapse:collapse;width:100%;font-size:.9rem;display:block;overflow:auto}
+.content th,.content td{border:1px solid var(--surface-0);padding:8px 12px;text-align:left}
+.content th{background:var(--mantle)}
+.content hr{border:none;border-top:1px solid var(--surface-0);margin:28px 0}
+@media(max-width:820px){.layout{grid-template-columns:1fr;gap:20px}.sidebar{position:static;max-height:none;border-bottom:1px solid var(--surface-0);padding-bottom:16px}}
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/"><svg width="24" height="24" viewBox="0 0 512 512" role="img" aria-label="Chip Hippo"><rect x="0" y="0" width="512" height="512" rx="114" fill="#2F855A"/><circle cx="170" cy="146" r="40" fill="#FFFFFF"/><circle cx="342" cy="146" r="40" fill="#FFFFFF"/><rect x="144" y="140" width="224" height="190" rx="74" fill="#FFFFFF"/><rect x="118" y="260" width="276" height="150" rx="74" fill="#FFFFFF"/><circle cx="201" cy="198" r="17" fill="#1C1C1C"/><circle cx="311" cy="198" r="17" fill="#1C1C1C"/><rect x="186" y="320" width="140" height="52" rx="8" fill="#23272B"/><circle cx="186" cy="346" r="11" fill="#FFFFFF"/></svg><span>Chip Hippo</span></a>
+    <a class="back" href="/">← Back to site</a>
+  </header>
+  <div class="layout">
+    <nav class="sidebar" aria-label="User guide">
+      <div class="sidebar-title">User Guide</div>
+        <a class="doc-nav-link doc-nav-link--active" href="index.html">Overview</a>
+        <a class="doc-nav-link" href="getting-started.html">Getting Started</a>
+        <a class="doc-nav-link" href="the-desk.html">The Desk &amp; Breadboards</a>
+        <a class="doc-nav-link" href="components.html">Chips &amp; Components</a>
+        <a class="doc-nav-link" href="wiring.html">Wiring, Nets &amp; Buses</a>
+        <a class="doc-nav-link" href="power-and-clocks.html">Power &amp; Clock Sources</a>
+        <a class="doc-nav-link" href="chip-library.html">The 74xx Chip Library</a>
+        <a class="doc-nav-link" href="simulation.html">Running a Simulation</a>
+        <a class="doc-nav-link" href="probing.html">Probing &amp; Net Names</a>
+        <a class="doc-nav-link" href="memory.html">Memory Chips &amp; the Inspector</a>
+        <a class="doc-nav-link" href="logic-analyzer.html">Logic Analyzer &amp; Timing</a>
+        <a class="doc-nav-link" href="build-guide.html">Build Guide, Wiring List &amp; BOM</a>
+        <a class="doc-nav-link" href="schematic-view.html">Schematic View</a>
+        <a class="doc-nav-link" href="files-and-undo.html">Files, Autosave &amp; Undo</a>
+        <a class="doc-nav-link" href="settings.html">Settings</a>
+        <a class="doc-nav-link" href="keyboard-shortcuts.html">Keyboard Shortcuts</a>
+    </nav>
+    <main class="content">
+<h1>Chip Hippo User Guide</h1>
+<p>Chip Hippo is a desktop app for designing and simulating <strong>74xx TTL logic
+circuits</strong> on virtual solderless breadboards. Place a breadboard on the
+infinite desk, populate it with 74xx DIP chips, wires, switches, LEDs, and
+power sources, then press <strong>Run</strong> — a simulation engine traces electricity
+from every power source, resolves each electrical net, and ripples changes
+through the circuit exactly like a real breadboard would.</p>
+<p><img src="images/overview.png" alt="The Chip Hippo desk"></p>
+<h2 id="what-you-can-build">What you can build</h2>
+<p>Anything a 74xx TTL breadboard bench can hold: combinational logic (gates,
+decoders, multiplexers), sequential logic (flip-flops, counters, shift
+registers), a free-running or manually stepped clock, and small memory
+circuits backed by ROM/RAM chips — all wired across Full/Half/Tiny
+breadboards, powered at 3 V / 5 V / 12 V, and watched settle live.</p>
+<h2 id="highlights">Highlights</h2>
+<ul>
+<li><strong>Breadboard-accurate placement</strong> — chips, wires, and discretes snap to the
+real 0.1 in hole grid, with the same row-half/trench/rail tie-point rules
+as a physical board.</li>
+<li><strong>Live simulation</strong> — Run the circuit and watch LEDs light, chip health
+badges report power/damage state, and switches drive the circuit live.</li>
+<li><strong>Deep inspection tools</strong> — a connectivity <strong>probe</strong>, <strong>net names/labels</strong>,
+and a <strong>logic analyzer</strong> for capturing waveforms.</li>
+<li><strong>Memory chips with a hex inspector</strong> — file-backed ROM/EEPROM images you
+program with an in-app programmer, plus a live hex/ASCII viewer.</li>
+<li><strong>A derived schematic view</strong> — press <code>Tab</code> to flip between the physical
+breadboard and a logical diagram of chip symbols, routed named nets, and
+bus lines, kept in sync with the desk.</li>
+<li><strong>Build guide &amp; BOM export</strong>, and <strong>undo/redo</strong> across every edit, with an
+always-autosaved working document.</li>
+</ul>
+<h2 id="table-of-contents">Table of contents</h2>
+<h3 id="getting-started">Getting started</h3>
+<ul>
+<li><a href="getting-started.html">Getting Started</a> — install the app, place your first
+board and chip, and run your first circuit.</li>
+</ul>
+<h3 id="building-a-circuit">Building a circuit</h3>
+<ul>
+<li><a href="the-desk.html">The Desk &amp; Breadboards</a> — pan/zoom, breadboard kits, strips
+and rails, snapping and grouping.</li>
+<li><a href="components.html">Chips &amp; Components</a> — the parts palette, DIP chips,
+discretes, placement and rotation.</li>
+<li><a href="wiring.html">Wiring, Nets &amp; Buses</a> — the wire tool, colors, cross-board
+wires, and multi-bit buses.</li>
+<li><a href="power-and-clocks.html">Power &amp; Clock Sources</a> — PSU bricks, voltage and the
+12 V damage rule, and clock sources.</li>
+<li><a href="chip-library.html">The 74xx Chip Library</a> — the catalog, chip families, and
+the pin-assignments/datasheet window.</li>
+</ul>
+<h3 id="simulating--inspecting">Simulating &amp; inspecting</h3>
+<ul>
+<li><a href="simulation.html">Running a Simulation</a> — Run/Stop/Pause/Step, the settle
+model, and live views.</li>
+<li><a href="probing.html">Probing &amp; Net Names</a> — the connectivity probe and naming nets.</li>
+<li><a href="memory.html">Memory Chips &amp; the Inspector</a> — ROM/RAM, the programmer, and
+the hex/ASCII inspector.</li>
+<li><a href="logic-analyzer.html">Logic Analyzer &amp; Timing</a> — capturing and reading
+waveforms.</li>
+<li><a href="schematic-view.html">Schematic View</a> — the derived logical diagram.</li>
+</ul>
+<h3 id="files--reference">Files &amp; reference</h3>
+<ul>
+<li><a href="build-guide.html">Build Guide, Wiring List &amp; BOM</a> — deriving an assembly
+guide and bill of materials.</li>
+<li><a href="files-and-undo.html">Files, Autosave &amp; Undo</a> — the working document, saved
+files, and undo/redo.</li>
+<li><a href="settings.html">Settings</a> — the settings dialog and its options.</li>
+<li><a href="keyboard-shortcuts.html">Keyboard Shortcuts</a> — every shortcut in one place.</li>
+</ul>
+
+    </main>
+  </div>
+</body>
+</html>

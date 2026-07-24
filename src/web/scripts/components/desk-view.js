@@ -32,6 +32,7 @@ import {
   surfaceTransform,
   wheelZoom,
   zoomAboutPoint,
+  ZOOM_MIN,
 } from "../desk/desk-geometry.js";
 
 /** Pointer travel (px) below which a press stays a click, not a pan. */
@@ -120,6 +121,12 @@ export class DeskView {
 
   resetZoom() {
     this.#zoomAtCenter(1);
+  }
+
+  /** Zoom all the way out to the floor (5%) — a fast way to spot a lost
+      component without recentering the camera, unlike fitToScreen(). */
+  zoomOutFull() {
+    this.#zoomAtCenter(ZOOM_MIN);
   }
 
   dispose() {

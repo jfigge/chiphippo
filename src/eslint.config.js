@@ -5,6 +5,13 @@ const js = require("@eslint/js");
 const globals = require("globals");
 
 module.exports = [
+  // ── Ignore vendored third-party bundles ────────────────────────────────────
+  // web/scripts/vendor/markdown.js is esbuild's bundled marked + DOMPurify
+  // (Feature 230) — generated output, never hand-edited, never linted.
+  {
+    ignores: ["web/scripts/vendor/**"],
+  },
+
   // ── Renderer / browser scripts ─────────────────────────────────────────────
   {
     files: ["web/scripts/**/*.js"],

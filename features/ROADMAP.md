@@ -74,7 +74,7 @@ Two outcomes shape stages 120–210, beyond "more parts":
 | 190 | [Memory inspector / hex editor](190-memory-inspector.md) | Per-chip floating hex/ASCII window; edit-when-stopped, live-when-running, Intel HEX + `.bin` import/export, fill/goto, binding management | 170, 180 |
 | 200 | [Undo / redo & command history](done/200-undo-redo.md) | Snapshot-based bounded history over every doc mutation via one commit seam, gesture coalescing, ⌘Z/⇧⌘Z; run-volatile state excluded | 20–110 |
 | 210 | [Logic analyzer & timing view](210-logic-analyzer.md) | A passive recorder over `chiphippo:sim-state`: net/bus channels, scrolling waveforms + hex bus lanes, cursors/Δ readout, exportable timing charts | 90/100, 120, 130, 170 |
-| 230 | [User guide & documentation](230-user-guide-and-docs.md) | One Markdown source → in-app guide window (Help menu), hosted `website/docs/`, and a `make pdf` guide; a `make screenshots` harness renders the real renderer at 1920×1080 into committed PNGs | 10–220 |
+| 230 | [User guide & documentation](done/230-user-guide-and-docs.md) | One Markdown source → in-app guide window (Help menu), hosted `website/docs/`, and a `make pdf` guide; screenshots captured via an uncommitted CDP-driven harness (mirroring Rest Hippo) into committed PNGs | 10–220 |
 
 ## Backlog (unwritten — author a plan file when promoted)
 

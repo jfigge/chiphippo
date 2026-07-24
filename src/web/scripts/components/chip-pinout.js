@@ -27,6 +27,8 @@
 // bar + close).
 
 import { el } from "../dom.js";
+import { rotateOffset } from "../model/breadboard.js";
+import { flippedPin } from "../model/footprints.js";
 
 /** A line-drawn document (file + text lines) glyph for the "open datasheet
     PDF" header button — a datasheet reads as a spec sheet, not a book. */
@@ -195,22 +197,32 @@ function pinCell(pinDef, side) {
 
 /**
  * DIP chip layout: pin 1 top-left down the left side, wrapping up the right
- * side to pin N top-right, with the notch cue at the top of the body.
+ * side to pin N top-right, with the notch cue at the top of the body. `rot`
+ * (0 or 180) is a FLIPPED part's placed rotation — a DIP's footprint maps onto
+ * itself under a half lap (model/occupancy.js's `def.package` branch), so at
+ * rot 180 every drawn position shows the pin that sat diagonally opposite it
+ * at rot 0 (footprints.js's `flippedPin`, its own inverse). A true `kind:
+ * "chip"` part's real pin-1 marking is fixed by its physical package (the
+ * flip only changes which desk hole it lands in), so callers keep its dialog
+ * at the canonical rot 0 — only a symmetric package like bar8iso, with no
+ * such marking, passes a live `rot` through (see buildPartPinout).
  * @param {object} def - a catalog chip def ({ id, title, package, pins }).
+ * @param {number} [rot] - 0 or 180.
  * @returns {HTMLElement}
  */
-export function buildChipPinout(def) {
+export function buildChipPinout(def, rot = 0) {
   const byPin = new Map(def.pins.map((p) => [p.n, p]));
   const count = def.pins.length;
   const half = count / 2;
+  const pinAt = (n) => byPin.get(rot === 180 ? flippedPin(def.package, n) : n);
 
   const rows = [];
   for (let i = 1; i <= half; i++) {
     rows.push(
       el("div", { class: "chip-pinout-row" }, [
-        pinCell(byPin.get(i), "left"),
+        pinCell(pinAt(i), "left"),
         el("div", { class: "chip-pinout-body" }),
-        pinCell(byPin.get(count + 1 - i), "right"),
+        pinCell(pinAt(count + 1 - i), "right"),
       ]),
     );
   }
@@ -263,35 +275,43 @@ export function buildDiscretePinout(def) {
   );
 }
 
-/** Corner labels for a `def.can` part's 4 pins, in canonical (rot 0) order —
-    the same bottom-left → bottom-right → top-right → top-left winding
-    catalog/parts.js's `def.can` defs and model/occupancy.js's `def.can`
-    branch both use. */
-const CAN_CORNERS = Object.freeze([
-  "bottom-left corner (the anchor, pin 1)",
-  "bottom-right corner",
-  "top-right corner",
-  "top-left corner",
-]);
-
 /**
  * Oscillator-can layout: a rigid rectangle with legs only at its 4 corners
  * (`def.can` — see catalog/parts.js) — a linear list keyed to which corner
- * each pin sits at, since a can has no single grid row to key offsets
- * against and can seat anywhere, at any of 4 rotations.
+ * each pin CURRENTLY sits at, since a can has no single grid row to key
+ * offsets against and seats at any of 4 rotations. Pin 1's canonical (rot 0)
+ * offset from the shape's own centre is bottom-left
+ * (`{-width/2, +height/2}`, screen y-down), and the other 3 pins follow the
+ * same bottom-left → bottom-right → top-right → top-left winding
+ * model/occupancy.js's `def.can` branch uses. Rotating each pin's canonical
+ * offset by the part's placed `rot` — `model/breadboard.js`'s `rotateOffset`,
+ * the ONE primitive every can rotation (ghost spin, in-place rotate) already
+ * goes through — and reading its sign gives the corner it occupies now, so a
+ * rotated can (e.g. a full-can flipped 180°) shows pin 1 at top-right, not
+ * the canonical bottom-left.
  * @param {object} def - a can def ({ id, title, pins, can }).
+ * @param {number} [rot] - the part's placed rotation (0/90/180/270).
  * @returns {HTMLElement}
  */
-export function buildCanPinout(def) {
-  const rows = def.pins.map((p, i) =>
-    listRow({
+export function buildCanPinout(def, rot = 0) {
+  const { width, height } = def.can;
+  const cornerOffsets = [
+    { dx: -width / 2, dy: height / 2 }, // bottom-left — pin 1's rot-0 corner
+    { dx: width / 2, dy: height / 2 }, // bottom-right
+    { dx: width / 2, dy: -height / 2 }, // top-right
+    { dx: -width / 2, dy: -height / 2 }, // top-left
+  ];
+  const rows = def.pins.map((p, i) => {
+    const { dx, dy } = rotateOffset(cornerOffsets[i], rot);
+    const corner = `${dy > 0 ? "bottom" : "top"}-${dx > 0 ? "right" : "left"} corner`;
+    return listRow({
       tag: p.n,
       name: p.name,
       role: p.role,
-      detail: CAN_CORNERS[i] ?? "",
-    }),
-  );
-  const holes = `${def.can.width + 1} × ${def.can.height + 1}`;
+      detail: i === 0 ? `${corner} (the anchor, pin 1)` : corner,
+    });
+  });
+  const holes = `${width + 1} × ${height + 1}`;
   return pinoutShell(
     def,
     `${holes} holes, legs at the 4 corners · pin assignments`,
@@ -325,12 +345,17 @@ export function buildTerminalPinout(def) {
 /**
  * Build the pin/terminal map for ANY catalog def, dispatching on its shape.
  * @param {object} def
+ * @param {number} [rot] - the placed part's rotation. A `def.can` layout
+ *   always uses it (see buildCanPinout). A `def.package` layout uses it only
+ *   for a non-`chip` part (e.g. bar8iso) — a real chip's dialog stays at the
+ *   canonical rot 0, matching its fixed physical pin-1 marking and datasheet
+ *   crop (see buildChipPinout).
  * @returns {HTMLElement|null}
  */
-export function buildPartPinout(def) {
+export function buildPartPinout(def, rot = 0) {
   if (!def) return null;
-  if (def.package) return buildChipPinout(def);
-  if (def.can) return buildCanPinout(def);
+  if (def.package) return buildChipPinout(def, def.kind === "chip" ? 0 : rot);
+  if (def.can) return buildCanPinout(def, rot);
   if (def.footprint) return buildDiscretePinout(def);
   if (def.terminals) return buildTerminalPinout(def);
   return null;

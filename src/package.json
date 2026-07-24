@@ -18,15 +18,19 @@
     "dev": "electron app/main.js --dev",
     "fmt": "prettier --write \"web/**/*.{js,css,html}\" \"app/**/*.js\"",
     "lint": "eslint \"web/scripts/**/*.js\" \"app/**/*.js\"",
-    "test": "node --test --test-timeout=30000 \"app/tests/**/*.test.js\" \"web/scripts/tests/**/*.test.js\""
+    "test": "node --test --test-timeout=30000 \"app/tests/**/*.test.js\" \"web/scripts/tests/**/*.test.js\"",
+    "vendor-markdown": "esbuild web/scripts/vendor/markdown-entry.js --bundle --format=esm --outfile=web/scripts/vendor/markdown.js"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
+    "dompurify": "^3.4.7",
     "electron": "^42.1.0",
     "electron-builder": "~26.8.1",
+    "esbuild": "^0.28.0",
     "eslint": "^9.39.4",
     "globals": "^16.1.0",
     "jsdom": "^27.0.1",
+    "marked": "^18.0.4",
     "pdfjs-dist": "^6.1.200",
     "prettier": "^3.3.3"
   },

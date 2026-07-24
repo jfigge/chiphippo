@@ -25,6 +25,7 @@
 
 import { partDef } from "./catalog/index.js";
 import { buildPartPinout, datasheetButton } from "./components/chip-pinout.js";
+import { ROTATIONS } from "./model/breadboard.js";
 
 /**
  * Add the "open datasheet PDF" button to a pinout's header (top-right). Shown
@@ -47,8 +48,13 @@ const root = document.getElementById("pinout-root");
 const params = new URLSearchParams(location.search);
 const ref = params.get("ref");
 const hasPdf = params.get("pdf") === "1";
+// Only a `def.can` (oscillator) layout is rotation-dependent — see
+// buildCanPinout — but reading it here for every ref is harmless.
+const rot = Number(params.get("rot"));
 const def = ref ? partDef(ref) : null;
-const pinout = def ? buildPartPinout(def) : null;
+const pinout = def
+  ? buildPartPinout(def, ROTATIONS.includes(rot) ? rot : 0)
+  : null;
 
 // Escape closes the floating window — the same reflex as dismissing an in-app
 // modal, even though this is its own OS window (Electron routes window.close()

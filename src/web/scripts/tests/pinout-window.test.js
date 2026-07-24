@@ -77,6 +77,46 @@ test("double-clicking a discrete requests its pinout (rows = pin count)", () => 
   assert.deepEqual(opened, [["led", 2]]);
 });
 
+test("double-clicking an oscillator can requests its pinout with its CURRENT rotation", () => {
+  resetDom();
+  const opened = [];
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const { surface, controller } = makeDesk(doc, {
+    onOpenPinout: (ref, rows, rot) => opened.push([ref, rows, rot]),
+  });
+  controller.addComponentAt("osc-full", "bb1", "e10"); // 4 pins, rot 0
+
+  dblclick(surface.querySelector(".part-discrete"));
+  controller.rotateComponent("c1"); // full-can: one call jumps straight to 180°
+  dblclick(surface.querySelector(".part-discrete"));
+
+  assert.deepEqual(opened, [
+    ["osc-full", 4, 0],
+    ["osc-full", 4, 180],
+  ]);
+});
+
+test("double-clicking bar8iso (a package-footprint discrete) requests its pinout with its CURRENT rotation", () => {
+  resetDom();
+  const opened = [];
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const { surface, controller } = makeDesk(doc, {
+    onOpenPinout: (ref, rows, rot) => opened.push([ref, rows, rot]),
+  });
+  controller.addComponentAt("bar8iso", "bb1", "e5"); // DIP-16 → 8 rows
+
+  dblclick(surface.querySelector(".part-discrete"));
+  controller.rotateComponent("c1"); // chip-style half-lap flip
+  dblclick(surface.querySelector(".part-discrete"));
+
+  assert.deepEqual(opened, [
+    ["bar8iso", 8, undefined],
+    ["bar8iso", 8, 180],
+  ]);
+});
+
 test("double-clicking a desk brick requests its terminal map", () => {
   resetDom();
   const opened = [];

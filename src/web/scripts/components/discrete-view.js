@@ -75,10 +75,13 @@ const BOXES = Object.freeze({
   // The common-anode digit is the same physical block as seg8.
   seg8ca: Object.freeze({ minX: -0.7, minY: -7.7, width: 9.4, height: 8.3 }),
   bar8: Object.freeze({ minX: -0.7, minY: -4.7, width: 9.4, height: 5.3 }),
-  // A 16-pin DIP straddling the trench (row e ↔ row f, 3 pitches): the box
-  // matches chipBox("DIP-16") so the block covers both leg rows and the trench,
-  // leaving the rows above/below clickable — exactly as a chip does.
-  bar8iso: Object.freeze({ minX: -0.6, minY: -3.6, width: 8.2, height: 4.2 }),
+  // A 16-pin DIP straddling the trench (row e ↔ row f, 3 pitches): the body
+  // (see buildBarArrayDisplay) overhangs its own 8-column leg span by half a
+  // pitch on every side — enough to read as its own package without
+  // overlapping a neighbour seated flush against it — and runs past both
+  // hole rows the same way, rather than hugging the trench like a real
+  // chip's body would. This box is that body plus a 0.25 margin.
+  bar8iso: Object.freeze({ minX: -0.75, minY: -3.6, width: 8.5, height: 4.2 }),
 });
 
 /**
@@ -391,52 +394,43 @@ function buildBarDisplay(svg, color) {
 /**
  * The isolated 8-segment LED bar array (bar8iso): a 16-pin DIP straddling the
  * trench, eight INDEPENDENT bars each with its own anode (row e, local y 0) and
- * cathode (row f, local y -3, three pitches up). The body is a chip-like slab
- * over the trench with the eight bars drawn on it; legs reach both hole rows.
+ * cathode (row f, local y -3, three pitches up). The slab is taller than its
+ * own leg span (as tall as bar8's body, 3.8) rather than fitting inside the
+ * trench like a real chip's body would — bar8iso reads as the same physical
+ * bar-graph package as bar8, just wired isolated. That means the body (and
+ * the bars on it) run 0.4 past BOTH hole rows, over the top of the anode and
+ * cathode pins themselves, so no leg stub is drawn to either row — there is
+ * no longer a gap for one to bridge. Widthwise it only overhangs its own
+ * 8-column leg span by half a pitch a side (BODY_WIDTH below) — any more and
+ * a neighbour seated flush against it would visibly overlap.
  */
 function buildBarArrayDisplay(svg, color) {
   svg.style.setProperty("--wire-color", `var(--color-wire-${color})`);
-  const bodyTop = -2.55;
-  const bodyBottom = -0.45;
-  // Legs: down from the slab to each row-e hole, up from each row-f hole (y=-3).
-  for (let c = 0; c <= 7; c++) {
-    svg.append(
-      svgEl("rect", {
-        class: "part-led-leg",
-        x: c - 0.14,
-        y: bodyBottom - 0.05,
-        width: 0.28,
-        height: 0.6,
-      }),
-      svgEl("rect", {
-        class: "part-led-leg",
-        x: c - 0.14,
-        y: -3.1,
-        width: 0.28,
-        height: bodyTop + 3.1,
-      }),
-    );
-  }
+  const bodyTop = -3.4; // 0.4 past the row-f holes (y -3)
+  const bodyBottom = 0.4; // 0.4 past the row-e holes (y 0)
+  const BODY_WIDTH = 8; // half a pitch past the leg span (columns 0…7) a side
+  const bodyX = 3.5 - BODY_WIDTH / 2; // centred over legs at columns 0…7
   svg.append(
     svgEl("rect", {
       class: "part-display-body",
-      x: -0.5,
+      x: bodyX,
       y: bodyTop,
-      width: 8,
+      width: BODY_WIDTH,
       height: bodyBottom - bodyTop,
       rx: 0.3,
     }),
   );
-  // Eight vertical bars, one per column: bar s(c+1) over the anode at column c.
+  // Eight vertical bars, one per column: bar s(c+1) over the anode at column
+  // c, inset 0.4 from the body's top/bottom edges — the same inset bar8 uses.
   for (let c = 0; c <= 7; c++) {
     svg.append(
       svgEl("rect", {
         class: "part-seg",
         "data-seg": `s${c + 1}`,
         x: c - 0.28,
-        y: bodyTop + 0.25,
+        y: bodyTop + 0.4,
         width: 0.56,
-        height: bodyBottom - bodyTop - 0.5,
+        height: bodyBottom - bodyTop - 0.8,
         rx: 0.14,
       }),
     );
@@ -445,9 +439,9 @@ function buildBarArrayDisplay(svg, color) {
   svg.append(
     svgEl("rect", {
       class: "part-display-hit",
-      x: -0.5,
+      x: bodyX,
       y: bodyTop,
-      width: 8,
+      width: BODY_WIDTH,
       height: bodyBottom - bodyTop,
     }),
   );

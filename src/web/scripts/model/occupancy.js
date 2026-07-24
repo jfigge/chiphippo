@@ -32,7 +32,7 @@
 // with that leg floating.
 
 import { partDef } from "../catalog/index.js";
-import { allPinHoles } from "./footprints.js";
+import { allPinHoles, flippedPin } from "./footprints.js";
 import {
   boardSize,
   formatAddress,
@@ -88,13 +88,11 @@ export function partPinHoles(ref, anchor, params) {
     if (params?.rot !== 180) return seated;
     // Flipped 180°: a DIP's footprint maps onto ITSELF (same two rows, same
     // columns), so only the pin numbering turns half a lap — pin 1 lands where
-    // the opposite corner pin sat. Applying it twice returns the original.
-    const count = seated.length;
-    const half = count / 2;
+    // the opposite corner pin sat (footprints.js's flippedPin, its own inverse).
     const holeOfPin = new Map(seated.map((s) => [s.pin, s.hole]));
     return seated.map(({ pin }) => ({
       pin,
-      hole: holeOfPin.get(((pin + half - 1) % count) + 1),
+      hole: holeOfPin.get(flippedPin(def.package, pin)),
     }));
   }
   if (def.can) {

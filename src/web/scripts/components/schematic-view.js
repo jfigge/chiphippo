@@ -619,6 +619,10 @@ export class SchematicView {
     this.#deskView.resetZoom();
   }
 
+  zoomOutFull() {
+    this.#deskView.zoomOutFull();
+  }
+
   /** Centre + scale the camera to frame the whole diagram. */
   fit() {
     const b = this.#result?.bounds;

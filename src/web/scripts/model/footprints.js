@@ -88,3 +88,19 @@ export function allPinHoles(pkg, anchorCol) {
   }
   return out;
 }
+
+/**
+ * The pin number that CURRENTLY occupies the position pin `pin` held at rot 0,
+ * after flipping a DIP-packaged part 180° in place. A DIP's footprint maps
+ * onto itself under a half lap (same two rows, same columns) — only the pin
+ * numbering turns half the package, so pin `p` trades places with pin
+ * `p ± halfPins`. Its own inverse: applying it twice returns the original.
+ * Shared by model/occupancy.js's `def.package` rotate (which hole a pin
+ * lands in) and components/chip-pinout.js's flipped dialog (which pin a
+ * drawn position shows) — the same physical fact, read two ways.
+ * @returns {number}
+ */
+export function flippedPin(pkg, pin) {
+  const { pins, halfPins } = packageSpec(pkg);
+  return ((pin + halfPins - 1) % pins) + 1;
+}

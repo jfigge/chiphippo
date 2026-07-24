@@ -209,8 +209,10 @@ export class DeskController {
    *   menu's "Replace chip" (resets Feature 90 damage).
    * @param {(id: string) => void} [opts.onClockToggle] - a manual clock's
    *   click-to-toggle while running (Feature 100).
-   * @param {(ref: string) => void} [opts.onOpenPinout] - double-clicking a chip
-   *   requests its pin-assignments window (main opens a native OS window).
+   * @param {(ref: string, rows: number, rot?: number) => void} [opts.onOpenPinout] -
+   *   double-clicking a part requests its pin-assignments window (main opens a
+   *   native OS window); `rot` is the part's placed rotation, a snapshot only
+   *   an oscillator can's corner-assignment layout uses.
    * @param {(id: string) => void} [opts.onOpenMemory] - open the memory
    *   inspector window for a memory chip (double-click / context menu,
    *   Feature 190).
@@ -1214,11 +1216,13 @@ export class DeskController {
       if (m.lastWorld) this.#trackSeatedGhostAt(m.lastWorld);
       return true;
     }
-    // Not placing: rotate a selected placed part in situ (a chip flips 180°).
+    // Not placing: rotate a selected placed part in situ (any DIP-packaged
+    // part — a chip OR a package-footprint discrete like bar8iso — flips
+    // 180°; desk-doc.js's rotateComponent gates on `def.package`, not kind).
     if (this.#selected?.kind === "part") {
       const comp = this.#doc.getComponent(this.#selected.id);
       const def = partDef(comp?.ref);
-      if (def?.rotatable || def?.can || def?.kind === "chip") {
+      if (def?.rotatable || def?.can || def?.package) {
         this.rotateComponent(this.#selected.id);
         return true;
       }
@@ -1417,8 +1421,13 @@ export class DeskController {
     if (selected) this.#partViews.get(id)?.setSelected(true);
   }
 
-  /** Rotate a placed rotatable part (resistor) 90° in place. No-op if it can't
-      fit (nothing free at either rotated position). */
+  /** Rotate a placed part in place — 90° for a rotatable two-lead part
+      (resistor) or a square can (half-can oscillator); 180° for a non-square
+      can (full-can oscillator) or a DIP-packaged part (a chip, or a
+      package-footprint discrete like bar8iso — its own inverse, since the
+      footprint maps onto itself and only the pin numbering turns); see
+      desk-doc.js. No-op if it can't fit (nothing free at the rotated
+      position — a DIP flip never fails). */
   rotateComponent(id) {
     try {
       this.#doc.rotateComponent(id);
@@ -2256,7 +2265,7 @@ export class DeskController {
     else if (def.footprint) rows = def.pins.length;
     else if (def.terminals) rows = def.terminals.length;
     else return; // nothing to show
-    this.#onOpenPinout?.(comp.ref, rows);
+    this.#onOpenPinout?.(comp.ref, rows, comp.params?.rot);
   }
 
   /** Seated parts ride their board: refresh views for a board at (x, y). */
@@ -2869,9 +2878,13 @@ export class DeskController {
       }
     }
     if (!this.#editingLocked) {
-      if (partDef(comp?.ref)?.rotatable || partDef(comp?.ref)?.can) {
+      const rotDef = partDef(comp?.ref);
+      if (rotDef?.rotatable || rotDef?.can) {
+        // A non-square can (full-can) rotates an already-seated part 180° per
+        // call (see desk-doc.js's rotateComponent) — match the menu label.
+        const step = rotDef.can && rotDef.can.width !== rotDef.can.height ? 180 : 90; // prettier-ignore
         items.push({
-          label: "Rotate 90°",
+          label: `Rotate ${step}°`,
           onSelect: () => this.rotateComponent(id),
         });
       }

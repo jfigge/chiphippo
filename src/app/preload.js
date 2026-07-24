@@ -166,4 +166,16 @@ contextBridge.exposeInMainWorld("chiphippo", {
   menu: {
     setEditState: (state) => ipcRenderer.invoke("menu:edit-state", state),
   },
+
+  // ── User guide (Feature 230) ────────────────────────────────────────────────
+  // Help ▸ Chip Hippo User Guide opens its own OS window directly from the
+  // native menu (main's openDocsWindow) — this bridge exists only so the docs
+  // window itself, once open, can fetch one Markdown page's source at a time
+  // by slug (never a filesystem path, never fetch(), so it works under
+  // file://). Shared with the docs window, same as every other auxiliary
+  // window (pinout/memory) — Chip Hippo has one bridge, not a narrow preload
+  // per window.
+  docs: {
+    read: (slug) => ipcRenderer.invoke("docs:read", slug),
+  },
 });

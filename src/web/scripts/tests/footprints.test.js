@@ -22,6 +22,7 @@ import assert from "node:assert/strict";
 import {
   DIP_PACKAGES,
   allPinHoles,
+  flippedPin,
   packageSpec,
   pinOffset,
 } from "../model/footprints.js";
@@ -83,6 +84,21 @@ test("pinOffset: out-of-range pins are null", () => {
   assert.equal(pinOffset("DIP-14", 0), null);
   assert.equal(pinOffset("DIP-14", 15), null);
   assert.equal(pinOffset("DIP-14", 1.5), null);
+});
+
+test("flippedPin: swaps each pin with the one halfway around the package; its own inverse", () => {
+  // DIP-16 (bar8iso): pin 1 trades with pin 9, pin 8 with pin 16.
+  assert.equal(flippedPin("DIP-16", 1), 9);
+  assert.equal(flippedPin("DIP-16", 9), 1);
+  assert.equal(flippedPin("DIP-16", 8), 16);
+  assert.equal(flippedPin("DIP-16", 16), 8);
+  // Applying it twice returns the original pin, for every package/pin.
+  for (const pkg of Object.keys(DIP_PACKAGES)) {
+    const { pins } = packageSpec(pkg);
+    for (let pin = 1; pin <= pins; pin++) {
+      assert.equal(flippedPin(pkg, flippedPin(pkg, pin)), pin);
+    }
+  }
 });
 
 test("allPinHoles: every pin exactly once, anchored at the given column", () => {

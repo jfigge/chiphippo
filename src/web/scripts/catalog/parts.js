@@ -350,7 +350,10 @@ export const PART_DEFS = Object.freeze(
         "INDEPENDENT LED with its own anode and cathode (no shared pin). It " +
         "straddles the trench like a chip: anodes A1–A8 in row e, cathodes " +
         "K1–K8 in row f. Drive a bar's anode HIGH and pull its cathode LOW to " +
-        "light it. Comes in red / green / blue / yellow.",
+        "light it. Comes in red / green / blue / yellow. Press R with it " +
+        "selected to flip it 180° in place, same as a chip — the holes it " +
+        "occupies never move, only which anode/cathode sits in which; its " +
+        "pin dialog updates to match.",
       group: "LEDs",
       // A 16-pin DIP straddling the trench: the anode/cathode of each bar face
       // each other across a column, so it seats and derives pins with the same
@@ -384,8 +387,16 @@ export const PART_DEFS = Object.freeze(
         ),
       ),
       colors: LED_COLORS,
+      // `rot: 180` is a chip-style half-lap flip (model/occupancy.js's
+      // `def.package` branch) — same holes, reversed pin numbering; press R
+      // with it selected. Preserve it the same way CHIP_DEFS's shared
+      // normalizeParams does (catalog/index.js) — this def isn't wrapped by
+      // that, since it's a PART_DEFS discrete, not a chip.
       normalizeParams(raw) {
-        return { color: LED_COLORS.includes(raw?.color) ? raw.color : "red" };
+        return {
+          color: LED_COLORS.includes(raw?.color) ? raw.color : "red",
+          ...(raw?.rot === 180 ? { rot: 180 } : {}),
+        };
       },
       internalBridges() {
         return []; // each bar is a diode — a device, not a bridge (Feature 90)
@@ -533,9 +544,10 @@ export const PART_DEFS = Object.freeze(
         "Crystal-oscillator can, full size — a rectangular metal can with " +
         "just 4 legs at its corners (7 holes by 4 holes, body overhanging " +
         "half a hole on every side). Seats anywhere, any row — including " +
-        "straddling the centre channel — and turns in 90° steps; press R " +
-        "while placing (or with it selected) to spin it. A free-running " +
-        "square-wave source, powered like a chip: NC, GND, OUTPUT, VCC.",
+        "straddling the centre channel; press R while placing to spin the " +
+        "ghost a quarter turn at a time, or with it selected to flip an " +
+        "already-seated can end-for-end (180°). A free-running square-wave " +
+        "source, powered like a chip: NC, GND, OUTPUT, VCC.",
       group: "Oscillators",
       // The rigid footprint's full pitch-unit extents (rot 0): 6 units long
       // (7 holes) by 3 units deep (4 holes) — see model/occupancy.js's

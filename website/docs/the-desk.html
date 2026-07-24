@@ -1,0 +1,189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#2F855A" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <title>The Desk &amp; Breadboards · Chip Hippo Guide</title>
+  <meta name="description" content="The Desk &amp; Breadboards — the Chip Hippo user guide." />
+  <link rel="canonical" href="https://chiphippo.com/docs/the-desk.html" />
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="Chip Hippo" />
+  <meta property="og:title" content="The Desk &amp; Breadboards · Chip Hippo Guide" />
+  <meta property="og:description" content="The Desk &amp; Breadboards — the Chip Hippo user guide." />
+  <meta property="og:url" content="https://chiphippo.com/docs/the-desk.html" />
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="The Desk &amp; Breadboards · Chip Hippo Guide" />
+  <meta name="twitter:description" content="The Desk &amp; Breadboards — the Chip Hippo user guide." />
+  <style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#1c1c1c;--mantle:#161616;--crust:#101010;--surface-0:#2a2a2a;--surface-1:#383838;--overlay-0:#686868;--text:#e8e8e8;--subtext:#b0b0b0;--accent:#3fb950;--green:#56d364}
+html{scroll-behavior:smooth}
+body{font-family:"Segoe UI",system-ui,-apple-system,BlinkMacSystemFont,sans-serif;background:var(--bg);color:var(--text);line-height:1.65}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+code{font-family:"Cascadia Code","JetBrains Mono","Fira Code",monospace;font-size:.88em;background:var(--surface-0);padding:1px 6px;border-radius:4px;color:var(--text)}
+pre{background:var(--crust);border:1px solid var(--surface-0);border-radius:10px;padding:14px 16px;overflow:auto;margin:16px 0}
+pre code{background:none;padding:0}
+kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px solid var(--surface-1);border-bottom-width:2px;border-radius:5px;padding:1px 6px}
+.topbar{position:sticky;top:0;z-index:10;height:58px;display:flex;align-items:center;justify-content:space-between;padding:0 24px;background:var(--mantle);border-bottom:1px solid var(--surface-0)}
+.brand{display:flex;align-items:center;gap:10px;font-weight:800;color:var(--accent);font-size:1.1rem}
+.brand:hover{text-decoration:none}
+.topbar .back{color:var(--subtext);font-size:.85rem}
+.layout{max-width:1180px;margin:0 auto;display:grid;grid-template-columns:260px 1fr;gap:40px;padding:32px 24px 80px}
+.sidebar{position:sticky;top:90px;align-self:start;max-height:calc(100vh - 110px);overflow:auto}
+.sidebar-title{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--overlay-0);padding:0 12px 8px}
+.doc-nav-link{display:block;padding:7px 12px;border-radius:7px;color:var(--subtext);font-size:.9rem;margin-bottom:2px}
+.doc-nav-link:hover{background:var(--surface-0);color:var(--text);text-decoration:none}
+.doc-nav-link--active{background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent);font-weight:600}
+.content{min-width:0;max-width:760px}
+.content h1{font-size:2.1rem;font-weight:800;letter-spacing:-1px;margin:0 0 20px;line-height:1.2}
+.content h2{font-size:1.45rem;font-weight:700;margin:36px 0 12px;padding-top:12px;border-top:1px solid var(--surface-0)}
+.content h3{font-size:1.12rem;font-weight:700;margin:26px 0 10px}
+.content p,.content ul,.content ol,.content blockquote,.content table{margin:0 0 16px}
+.content ul,.content ol{padding-left:24px}
+.content li{margin:4px 0}
+.content img{max-width:100%;height:auto;border:1px solid var(--surface-0);border-radius:10px;margin:8px 0}
+.content blockquote{border-left:3px solid var(--accent);background:var(--mantle);padding:10px 16px;border-radius:0 8px 8px 0;color:var(--subtext)}
+.content blockquote p:last-child{margin:0}
+.content table{border-collapse:collapse;width:100%;font-size:.9rem;display:block;overflow:auto}
+.content th,.content td{border:1px solid var(--surface-0);padding:8px 12px;text-align:left}
+.content th{background:var(--mantle)}
+.content hr{border:none;border-top:1px solid var(--surface-0);margin:28px 0}
+@media(max-width:820px){.layout{grid-template-columns:1fr;gap:20px}.sidebar{position:static;max-height:none;border-bottom:1px solid var(--surface-0);padding-bottom:16px}}
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/"><svg width="24" height="24" viewBox="0 0 512 512" role="img" aria-label="Chip Hippo"><rect x="0" y="0" width="512" height="512" rx="114" fill="#2F855A"/><circle cx="170" cy="146" r="40" fill="#FFFFFF"/><circle cx="342" cy="146" r="40" fill="#FFFFFF"/><rect x="144" y="140" width="224" height="190" rx="74" fill="#FFFFFF"/><rect x="118" y="260" width="276" height="150" rx="74" fill="#FFFFFF"/><circle cx="201" cy="198" r="17" fill="#1C1C1C"/><circle cx="311" cy="198" r="17" fill="#1C1C1C"/><rect x="186" y="320" width="140" height="52" rx="8" fill="#23272B"/><circle cx="186" cy="346" r="11" fill="#FFFFFF"/></svg><span>Chip Hippo</span></a>
+    <a class="back" href="/">← Back to site</a>
+  </header>
+  <div class="layout">
+    <nav class="sidebar" aria-label="User guide">
+      <div class="sidebar-title">User Guide</div>
+        <a class="doc-nav-link" href="index.html">Overview</a>
+        <a class="doc-nav-link" href="getting-started.html">Getting Started</a>
+        <a class="doc-nav-link doc-nav-link--active" href="the-desk.html">The Desk &amp; Breadboards</a>
+        <a class="doc-nav-link" href="components.html">Chips &amp; Components</a>
+        <a class="doc-nav-link" href="wiring.html">Wiring, Nets &amp; Buses</a>
+        <a class="doc-nav-link" href="power-and-clocks.html">Power &amp; Clock Sources</a>
+        <a class="doc-nav-link" href="chip-library.html">The 74xx Chip Library</a>
+        <a class="doc-nav-link" href="simulation.html">Running a Simulation</a>
+        <a class="doc-nav-link" href="probing.html">Probing &amp; Net Names</a>
+        <a class="doc-nav-link" href="memory.html">Memory Chips &amp; the Inspector</a>
+        <a class="doc-nav-link" href="logic-analyzer.html">Logic Analyzer &amp; Timing</a>
+        <a class="doc-nav-link" href="build-guide.html">Build Guide, Wiring List &amp; BOM</a>
+        <a class="doc-nav-link" href="schematic-view.html">Schematic View</a>
+        <a class="doc-nav-link" href="files-and-undo.html">Files, Autosave &amp; Undo</a>
+        <a class="doc-nav-link" href="settings.html">Settings</a>
+        <a class="doc-nav-link" href="keyboard-shortcuts.html">Keyboard Shortcuts</a>
+    </nav>
+    <main class="content">
+<h1>The Desk &amp; Breadboards</h1>
+<p>The desk is Chip Hippo&#39;s infinite, pannable, zoomable workspace — the place
+every board, chip, wire, and power source lives. This page covers how to move
+around the desk and how breadboards actually work under the hood: they are
+not single parts but individual <strong>strips</strong> — a pin-board plus power rails —
+that snap and mate together the way real boards do on a bench.</p>
+<p><img src="images/the-desk.png" alt="A Full 830 breadboard on the desk"></p>
+<h2 id="pan-zoom--fit-to-screen">Pan, zoom &amp; fit to screen</h2>
+<p>The desk has no edges — pan and zoom to work at whatever scale suits the
+circuit in front of you.</p>
+<ul>
+<li><strong>Pan</strong>: click-drag an empty patch of desk, or two-finger scroll on a
+trackpad.</li>
+<li><strong>Zoom</strong>: scroll/pinch to zoom, centered on the pointer, or use the
+<strong>+</strong> / <strong>−</strong> buttons in the zoom control. Keyboard: <code>Cmd/Ctrl+=</code> (zoom in),
+<code>Cmd/Ctrl+-</code> (zoom out), <code>Cmd/Ctrl+0</code> (reset to 100%).</li>
+<li><strong>Fit to screen</strong>: <code>Cmd/Ctrl+F</code> frames everything currently on the desk in
+the viewport — the fastest way to find your circuit after panning away.</li>
+<li><strong>Zoom out full</strong>: <code>Cmd/Ctrl+Shift+F</code> zooms all the way out, useful for
+locating a part on a very large or sprawling layout.</li>
+</ul>
+<p>A faint <strong>dot grid</strong> marks the 0.1 in hole pitch under everything you place;
+it coarsens at low zoom and disappears entirely once you&#39;re zoomed out too
+far for individual holes to matter. Zoom and pan position are remembered
+between sessions.</p>
+<h2 id="breadboards-are-strips">Breadboards are strips</h2>
+<p>A real solderless breadboard is not one molded part — it&#39;s a centre
+<strong>pin-board</strong> with one or two <strong>power-rail</strong> strips dovetailed onto its top
+and bottom edges. Chip Hippo models this literally: each strip is its own
+object on the desk, and what looks like &quot;a breadboard&quot; is a small <strong>kit</strong> of
+strips placed together in one action.</p>
+<p>The palette offers three assembled kits:</p>
+<ul>
+<li><strong>Full 830</strong> — a full-length pin-board with a rail strip above and below.</li>
+<li><strong>Half 400</strong> — the same layout at half length.</li>
+<li><strong>Tiny 170</strong> — a bare pin-board only; the real 170-point part ships with no
+rails at all, so this kit is a single strip.</li>
+</ul>
+<p>On a pin-board, rows run top to bottom as <code>j i h g f</code>, then the <strong>trench</strong>,
+then <code>e d c b a</code>. The trench is the gap down the centre that isolates the top
+half of each column from the bottom half electrically — a DIP chip <strong>straddles
+the trench</strong>, with one row of pins in <code>f</code> and the other in <code>e</code>, exactly as it
+would seat on a real board. A power-rail strip carries both a <code>+</code> and a <code>−</code>
+line, each one continuous connection along its whole length, independent of
+every other strip.</p>
+<p>See <a href="components.html">Chips &amp; Components</a> for how chips and discretes seat into
+the grid, and <a href="power-and-clocks.html">Power &amp; Clock Sources</a> for feeding a rail
+from a PSU.</p>
+<h2 id="kits-vs-loose-strips">Kits vs. loose strips</h2>
+<p>Below the assembled kits, the palette also offers the individual strips on
+their own — a bare <strong>Full pin-board</strong>, a bare <strong>Half pin-board</strong>, a spare
+<strong>Full power rail</strong>, and a spare <strong>Half power rail</strong>. Reach for these when a
+board shipped without enough rails, when you want a rail somewhere a kit
+wouldn&#39;t put one, or when you&#39;re building up a custom layout strip by strip.
+Placing, ghosting, and overlap checking all work identically whether you&#39;re
+dropping a whole kit or a single loose strip.</p>
+<h2 id="snapping--mating">Snapping &amp; mating</h2>
+<p>Drop a strip within a couple of tenths of an inch of another strip it can
+dovetail with — matching width when stacked, matching height side by side,
+meeting flush with no gap — and it snaps into place automatically. This is
+the same <strong>magnetic pull</strong> whether you&#39;re dragging a placed strip or holding
+a fresh one from the palette; a whole kit snaps as one piece, and the pull
+only ever engages when the snapped position is still legal (it will never
+pull a strip into an illegal overlap).</p>
+<p>Two strips that end up flush <strong>mate</strong>: they join a shared <strong>group</strong> and from
+then on drag together as one rigid unit, just like a real breadboard&#39;s rails
+stay attached to its pin-board when you nudge it on the bench. A kit arrives
+pre-grouped; anything you drop flush against an existing board joins its
+group (or merges two groups into one, if it bridges a gap). When several
+strips are mated, clicking any one of them highlights the whole set — the
+outline traces the union of the group&#39;s strips, so flush neighbours read as
+one board rather than showing a seam between them.</p>
+<h2 id="groups--breaking-a-snap">Groups &amp; breaking a snap</h2>
+<p>Grabbing a mated strip normally drags the <strong>whole group</strong> together. To pull
+just part of a group apart, hold a modifier while you start the drag:</p>
+<ul>
+<li><strong>Option-drag</strong> — moves the <strong>reachable run forward</strong> from the strip you
+grabbed: itself plus every strip mated to it through a below/right edge.</li>
+<li><strong>Option+Shift-drag</strong> — moves the run <strong>backward</strong> instead, following
+above/left edges.</li>
+</ul>
+<p>Either way, only strips still reachable through the group come along; a strip
+that merely happens to sit flush elsewhere in the layout is left behind. When
+you drop a torn-off run, both the piece you moved and what&#39;s left of the
+original group are re-evaluated — each is split into fresh groups based on
+what&#39;s still actually mated within it, so the two halves never end up
+sharing a group id after the break.</p>
+<h2 id="rotating-a-rail">Rotating a rail</h2>
+<p><strong>Power rails can rotate; pin-boards cannot.</strong> A pin-board&#39;s trench (and
+every DIP seated across it) only makes sense in one orientation, so it&#39;s
+locked at 0°. A rail strip is just two parallel lines of holes, so it reads
+the same standing on end — turned 90° it becomes a vertical <strong>signal bus</strong>
+you can run alongside a board and tap into at any point along its length.</p>
+<p>Press <code>R</code> while a rail is in hand (mid-placement, before you click it down)
+to cycle its rotation through 0°/90°/180°/270°. Once a strip is placed its
+angle is fixed; to change it, pick it up again. Rotating doesn&#39;t change
+anything electrically — a rail is one continuous node however it&#39;s turned —
+it only changes which way the strip&#39;s footprint runs on the desk.</p>
+<hr>
+<p>Next: <a href="components.html">Chips &amp; Components</a> for populating a board, or
+<a href="wiring.html">Wiring, Nets &amp; Buses</a> for connecting everything up.</p>
+
+    </main>
+  </div>
+</body>
+</html>

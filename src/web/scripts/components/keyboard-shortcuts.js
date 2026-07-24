@@ -74,6 +74,11 @@ const SHORTCUT_GROUPS = [
       { desc: "Breadboard ⇄ Schematic", keys: "Tab" },
       { desc: "Toggle the parts palette", keys: `${MOD}+P` },
       { desc: "Toggle the logic analyzer", keys: `${MOD}+A` },
+      { desc: "Fit to screen", keys: `${MOD}+F` },
+      {
+        desc: "Zoom all the way out (find a lost part)",
+        keys: `${SHIFT}+${MOD}+F`,
+      },
       { desc: "Zoom in / out / reset", keys: `${MOD}+ / ${MOD}- / ${MOD}0` },
     ],
   },

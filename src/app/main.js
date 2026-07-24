@@ -291,6 +291,10 @@ function openPinoutWindow(ref, opts = {}) {
   // the "open datasheet" button (it invokes datasheet:open back into main).
   const query = { ref };
   if (datasheetPdfPath(ref)) query.pdf = "1";
+  // The part's placed rotation, a snapshot as of THIS open — only an
+  // oscillator can's pinout is rotation-dependent (pinout.js/chip-pinout.js
+  // ignore it otherwise), but main has no catalog access to gate on that here.
+  if ([0, 90, 180, 270].includes(opts.rot)) query.rot = String(opts.rot);
   win
     .loadFile(path.join(__dirname, "..", "web", "pinout.html"), { query })
     .catch(() => {});
@@ -453,6 +457,81 @@ function relayToHost(compId, msg) {
   }
 }
 
+// ─── User guide (Feature 230) ───────────────────────────────────────────────────
+// One Markdown source (src/web/docs/*.md) drives the in-app guide here, the
+// hosted website (scripts/build-docs.mjs), and the PDF (scripts/build-pdf.mjs) —
+// see docs-viewer.js's PAGES for the page list, kept in sync by hand with the
+// copy in build-docs.mjs. The guide window is a true singleton (unlike pinout/
+// memory, which are keyed per ref/component) and carries no document state, so
+// it is NOT closed by closeAuxWindows() on New/Open — only when the app itself
+// is shutting down.
+let docsWindow = null;
+const DOCS_DIR = path.join(__dirname, "..", "web", "docs");
+const DOCS_SLUG_RE = /^[a-zA-Z0-9-]+$/;
+
+/**
+ * Read one guide page's raw Markdown by slug (e.g. "getting-started", or
+ * "README" for the overview page). Two layers of validation, defense in
+ * depth: a strict slug pattern (no dots/slashes possible) AND a path.relative
+ * containment check, so no crafted slug can ever escape DOCS_DIR.
+ */
+function readDocsPage(slug) {
+  if (typeof slug !== "string" || !DOCS_SLUG_RE.test(slug)) {
+    throw new Error(`invalid docs page: ${slug}`);
+  }
+  const filePath = path.join(DOCS_DIR, `${slug}.md`);
+  if (path.relative(DOCS_DIR, filePath).startsWith("..")) {
+    throw new Error(`docs page outside docs dir: ${slug}`);
+  }
+  return fs.promises.readFile(filePath, "utf8");
+}
+
+/** Open (or focus) the singleton Chip Hippo User Guide window. */
+function openDocsWindow() {
+  if (docsWindow && !docsWindow.isDestroyed()) {
+    docsWindow.show();
+    docsWindow.focus();
+    return true;
+  }
+  const win = new BrowserWindow({
+    width: 900,
+    height: 700,
+    minWidth: 560,
+    minHeight: 400,
+    // A reference window, not a floating aid — stays behind the main window
+    // like the memory inspector, not always-on-top like a pinout diagram.
+    backgroundColor: "#1c1c1c",
+    icon: appIcon,
+    title: "Chip Hippo User Guide",
+    fullscreenable: false,
+    webPreferences: {
+      preload: path.join(__dirname, "preload.js"),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+    },
+  });
+  win.setMenuBarVisibility(false);
+  win.webContents.setWindowOpenHandler(({ url }) => {
+    let scheme = "";
+    try {
+      scheme = new URL(url).protocol;
+    } catch {
+      return { action: "deny" };
+    }
+    if (scheme === "http:" || scheme === "https:" || scheme === "mailto:") {
+      shell.openExternal(url).catch(() => {});
+    }
+    return { action: "deny" };
+  });
+  win.loadFile(path.join(__dirname, "..", "web", "docs.html")).catch(() => {});
+  win.on("closed", () => {
+    if (docsWindow === win) docsWindow = null;
+  });
+  docsWindow = win;
+  return true;
+}
+
 // ─── Application menu ──────────────────────────────────────────────────────────
 // The About and Settings items PUSH to the renderer (menu:show-about /
 // menu:open-settings); the preload re-dispatches each as a chiphippo:* event
@@ -595,9 +674,22 @@ function buildAppMenu() {
     accelerator: "CmdOrCtrl+K",
     click: () => sendToMain("menu:keyboard-shortcuts"),
   };
+  const userGuide = {
+    label: "Chip Hippo User Guide",
+    accelerator: "CmdOrCtrl+/",
+    click: () => openDocsWindow(),
+  };
   template.push({
     role: "help",
-    submenu: isMac ? [shortcuts] : [about, { type: "separator" }, shortcuts],
+    submenu: isMac
+      ? [userGuide, { type: "separator" }, shortcuts]
+      : [
+          userGuide,
+          { type: "separator" },
+          about,
+          { type: "separator" },
+          shortcuts,
+        ],
   });
 
   return Menu.buildFromTemplate(template);
@@ -702,6 +794,10 @@ function registerIpc() {
   // Data Sheets) in the OS PDF viewer. Requested by the pinout window's
   // "open datasheet" button; a no-op (returns false) when no PDF is on file.
   ipcMain.handle("datasheet:open", (_event, ref) => openDatasheetPdf(ref));
+
+  // User guide (Feature 230): the docs window fetches one Markdown page's raw
+  // source at a time by slug — never the filesystem path, never fetch().
+  ipcMain.handle("docs:read", (_event, slug) => readDocsPage(slug));
 
   // Memory backing files (Features 180/190): the byte-oriented, GUID-keyed store
   // behind a ROM chip's `.bin` in the app working folder. Each resolves the
@@ -857,6 +953,9 @@ function createWindow() {
     // desk they belong to — and, on Windows/Linux, so `window-all-closed` can
     // actually fire and quit the app instead of hanging on a stray inspector.
     closeAuxWindows();
+    // The guide carries no document state (unlike pinout/inspector windows),
+    // so it survives New/Open — but it must not outlive the app itself.
+    if (docsWindow && !docsWindow.isDestroyed()) docsWindow.close();
   });
 
   if (isDev || isDevTools) win.webContents.openDevTools({ mode: "bottom" });

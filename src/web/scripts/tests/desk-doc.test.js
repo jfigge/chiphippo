@@ -1026,6 +1026,38 @@ test("rotateComponent: a swung lead reaches a NEIGHBOURING strip's rail", () => 
   assert.equal(doc.isHoleFree("bb1.j8"), true); // the old pin-2 hole freed
 });
 
+test("rotateComponent: an oscillator can spins in place around its own centre — 180° per call for the non-square full-can, 90° for the square half-can", () => {
+  const doc = docWithFull();
+  // Full-can (6×3) at e10, rot 0 — see occupancy.test.js for the full corner
+  // layout (e10/e16/f16/f10). One call jumps straight to the diagonally
+  // opposite corner (where pin 3 sat) instead of stopping at 90°.
+  doc.addComponent({
+    kind: "discrete",
+    ref: "osc-full",
+    board: "bb1",
+    anchor: "e10",
+  });
+  let rotated = doc.rotateComponent("c1");
+  assert.equal(rotated.params.rot, 180);
+  assert.equal(rotated.anchor, "f16");
+  rotated = doc.rotateComponent("c1");
+  assert.equal(rotated.params.rot, 0); // and back — never stops at 90/270
+  assert.equal(rotated.anchor, "e10");
+
+  // Half-can (3×3, square) at g10, rot 0 — a plain quarter-turn each call.
+  doc.addComponent({
+    kind: "discrete",
+    ref: "osc-half",
+    board: "bb1",
+    anchor: "g10",
+  });
+  rotated = doc.rotateComponent("c2");
+  assert.equal(rotated.params.rot, 90);
+  assert.equal(rotated.anchor, "j10");
+  rotated = doc.rotateComponent("c2");
+  assert.equal(rotated.params.rot, 180);
+});
+
 test("removeComponent: removes; ids never reused across reload", () => {
   const doc = docWithFull();
   doc.addComponent({ kind: "chip", ref: "74LS00", board: "bb1", anchor: "e5" });

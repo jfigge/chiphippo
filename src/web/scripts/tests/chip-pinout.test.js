@@ -99,6 +99,116 @@ test("every pin appears exactly once across the columns", () => {
   }
 });
 
+// ── buildChipPinout: a flipped (rot 180) DIP layout ─────────────────────────
+
+/** The (num, name) pair drawn on one side of a `.chip-pinout-row`. */
+function rowSide(row, side) {
+  const cell = row.querySelector(`.chip-pinout-pin--${side}`);
+  return {
+    num: Number(cell.querySelector(".chip-pinout-num").textContent),
+    name: cell.querySelector(".chip-pinout-label").textContent,
+  };
+}
+
+test("buildChipPinout: rot 180 turns the DIP a half lap — bar8iso's K8/A1 swap corners", () => {
+  resetDom();
+  const def = partDef("bar8iso");
+
+  // rot 0 (default): pin 1 (A1) top-left, pin 16 (K1) top-right; pin 8 (A8)
+  // bottom-left, pin 9 (K8) bottom-right.
+  let rows = buildChipPinout(def).querySelectorAll(".chip-pinout-row");
+  assert.deepEqual(rowSide(rows[0], "left"), { num: 1, name: "A1" });
+  assert.deepEqual(rowSide(rows[0], "right"), { num: 16, name: "K1" });
+  assert.deepEqual(rowSide(rows[7], "left"), { num: 8, name: "A8" });
+  assert.deepEqual(rowSide(rows[7], "right"), { num: 9, name: "K8" });
+
+  // rot 180 — the SAME physical flip R applies (see desk-doc.js): K8 (pin 9)
+  // is now top-left, A1 (pin 1) is now bottom-right, per the feature request.
+  rows = buildChipPinout(def, 180).querySelectorAll(".chip-pinout-row");
+  assert.deepEqual(rowSide(rows[0], "left"), { num: 9, name: "K8" });
+  assert.deepEqual(rowSide(rows[0], "right"), { num: 8, name: "A8" });
+  assert.deepEqual(rowSide(rows[7], "left"), { num: 16, name: "K1" });
+  assert.deepEqual(rowSide(rows[7], "right"), { num: 1, name: "A1" });
+});
+
+test("buildPartPinout: a real chip's dialog ignores rot — its pin-1 marking is fixed", () => {
+  resetDom();
+  const unflipped = buildPartPinout(chipDef("74LS00"));
+  const flipped = buildPartPinout(chipDef("74LS00"), 180);
+  const numsOf = (el) =>
+    [...el.querySelectorAll(".chip-pinout-num")].map((n) => n.textContent);
+  assert.deepEqual(numsOf(flipped), numsOf(unflipped));
+
+  // bar8iso, a package-footprint DISCRETE (kind !== "chip"), does react.
+  const barFlipped = buildPartPinout(partDef("bar8iso"), 180);
+  const barUnflipped = buildPartPinout(partDef("bar8iso"));
+  assert.notDeepEqual(numsOf(barFlipped), numsOf(barUnflipped));
+});
+
+// ── buildCanPinout: an oscillator can's corner labels track its rotation ────
+
+test("buildCanPinout: a full-can's (non-square) corner assignment rotates with the part", () => {
+  resetDom();
+  const def = partDef("osc-full");
+  const detailsAt = (rot) =>
+    [...buildPartPinout(def, rot).querySelectorAll(".part-pinout-detail")].map(
+      (n) => n.textContent,
+    );
+
+  // rot 0 — the canonical bottom-left → bottom-right → top-right → top-left
+  // winding, pin 1 (NC) anchored at bottom-left.
+  assert.deepEqual(detailsAt(0), [
+    "bottom-left corner (the anchor, pin 1)",
+    "bottom-right corner",
+    "top-right corner",
+    "top-left corner",
+  ]);
+  // A non-square can's 90°/270° swap which physical corner every pin sits
+  // at (unlike a square half-can, where the same 4 labels merely relabel).
+  assert.deepEqual(detailsAt(90), [
+    "top-left corner (the anchor, pin 1)",
+    "bottom-left corner",
+    "bottom-right corner",
+    "top-right corner",
+  ]);
+  // 180° — the rotation an already-placed full-can actually steps through
+  // (see desk-doc.js rotateComponent): pin 1 lands where pin 3 sat at rot 0.
+  assert.deepEqual(detailsAt(180), [
+    "top-right corner (the anchor, pin 1)",
+    "top-left corner",
+    "bottom-left corner",
+    "bottom-right corner",
+  ]);
+  assert.deepEqual(detailsAt(270), [
+    "bottom-right corner (the anchor, pin 1)",
+    "top-right corner",
+    "top-left corner",
+    "bottom-left corner",
+  ]);
+  // No rot argument defaults to the canonical rot-0 layout.
+  assert.deepEqual(
+    [...buildPartPinout(def).querySelectorAll(".part-pinout-detail")].map(
+      (n) => n.textContent,
+    ),
+    detailsAt(0),
+  );
+});
+
+test("buildCanPinout: a square half-can rotates the same way, one quarter-turn per step", () => {
+  resetDom();
+  const def = partDef("osc-half");
+  const detailsAt = (rot) =>
+    [...buildPartPinout(def, rot).querySelectorAll(".part-pinout-detail")].map(
+      (n) => n.textContent,
+    );
+  assert.deepEqual(detailsAt(90), [
+    "top-left corner (the anchor, pin 1)",
+    "bottom-left corner",
+    "bottom-right corner",
+    "top-right corner",
+  ]);
+});
+
 // ── buildPartPinout: discretes + desk bricks ────────────────────────────────
 
 test("buildPartPinout routes a chip to the DIP layout", () => {

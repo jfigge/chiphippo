@@ -71,8 +71,15 @@ sync + up-down counters / SIPO+PISO shift, plus `COMB` decoder/mux units), the
 desk-level **clock source** brick (`clk<n>` ids, `out`/`gnd` terminals,
 1/2/5/10 Hz or manual) with `ClockView`, and the SimController **transport**
 (Run / Pause / Step / speed) whose `setInterval` drives clock edges while the
-engine stays pure and timerless; and (skipping the deferred 150–170 wave in the
-tree) **file-backed memory + inspector** (180/190). Volatility decides
+engine stays pure and timerless; the derived logical **schematic view**
+(150 — landed out of tree order; its plan file still needs moving to
+`features/done/`) that flips in via `Tab` alongside the breadboard, drawing
+chip symbols + routed named nets + bus lines from the same `DeskDoc`
+(`components/schematic-view.js` + `model/schematic-layout.js` +
+`catalog/symbols.js`), sharing the desk's camera/probe/live sim tint and
+persisting only a per-symbol `schematicPos` layout nudge — never a second
+source of truth; and (skipping the still-deferred 160/170 wave in the tree)
+**file-backed memory + inspector** (180/190). Volatility decides
 everything: a **volatile SRAM** (`ram-8k`/`HM62256`/`AS6C1024`, flagged
 `volatile` in the catalog) is never file-backed — run-volatile only; a
 **non-volatile ROM/EPROM/EEPROM** is backed by a real `.bin` in the app working
@@ -94,7 +101,11 @@ row pool so a 32 KiB image is ~30 rows in the DOM), pure `model/hex-format.js`
 read-only-live-when-running, showing the ROM's backing-file path; the
 renderer-side `components/memory-bridge.js` coordinator runs the programmer +
 Save through the DeskController (so the `programmed` flag rides undo/redo) and
-relays context + live byte writes across the main↔inspector window boundary.
+relays context + live byte writes across the main↔inspector window boundary;
+and the **user guide** (230) — one Markdown source (`src/web/docs/*.md`)
+driving the in-app Help ▸ *Chip Hippo User Guide* window, the hosted website
+(`make docs`), and a PDF (`make pdf`); see the "User guide & docs" section
+below.
 When a stage is finished, move its plan file into `features/done/`.
 
 ## Naming & identity
@@ -143,6 +154,68 @@ live in the user's datasheet folder — override with `DATASHEETS_DIR`); only th
 46 cropped PNGs are committed. The four catalog chips with no matching `74LS*`
 datasheet (74164, 74193, 7427, 7476) have no crop — the window shows only their
 pin map (see the Pin-assignments window architecture note).
+
+## User guide & docs
+
+**One Markdown source drives three outputs that can never diverge**:
+**`src/web/docs/*.md`** (+ `images/*.png`, committed screenshots) feeds the
+**in-app viewer** (Help ▸ *Chip Hippo User Guide*, `⌘/`), the **hosted
+website** (`make docs` → `website/docs/`), and a **PDF** (`make pdf` →
+`docs/chip-hippo-user-guide.pdf`). The page index (`PAGES` — slug, optional
+`file` override, title) is **hand-duplicated, not shared**, between
+`src/web/scripts/components/docs-viewer.js` (browser) and
+`scripts/build-docs.mjs` (Node) — keep the two in sync when adding a page.
+- **In-app**: `web/docs.html` + `scripts/docs-window.js` mount
+  `components/docs-viewer.js` (`DocsViewer`) into a **non-modal** floating OS
+  window (`openDocsWindow()` in `main.js`, a true singleton — unlike
+  pinout/memory windows it carries no document state, so it's NOT closed by
+  `closeAuxWindows()` on New/Open, only when the app itself quits). It fetches
+  a page's raw Markdown over **`window.chiphippo.docs.read(slug)`** — never
+  `fetch()`, so it works under `file://` in both `make debug` and a packaged
+  build — through the SAME shared `preload.js` bridge every other window uses
+  (Chip Hippo has one bridge, not Rest Hippo's per-window narrow preload). The
+  `docs:read` handler slug-validates (`^[a-zA-Z0-9-]+$`) AND path-contains the
+  resolved file inside `src/web/docs/`, defense in depth against a crafted
+  slug. Rendering goes through **`web/scripts/vendor/markdown.js`** — `marked`
+  + DOMPurify bundled by **esbuild** from `vendor/markdown-entry.js`
+  (`make vendor-markdown` / `npm run vendor-markdown`; the whole `vendor/`
+  directory is exempt from both the license-header guard and ESLint, since
+  it's a generated artifact) — every link is forced `target="_blank"` so
+  clicking one asks main's `setWindowOpenHandler` to open the system browser
+  instead of navigating the guide. `DocsViewer` rewrites `images/x.png` →
+  `docs/images/x.png` (resolving relative to `docs.html`) and stamps
+  GitHub-style heading ids (`marked` no longer emits them) so in-page
+  `#anchor` links and cross-page `*.md` links resolve without leaving the
+  window; a monotonic load-token guards a rapid nav click from a slower
+  in-flight page load clobbering a newer one.
+- **Website**: `scripts/build-docs.mjs` renders the same Markdown through
+  `marked` directly under Node (no DOMPurify — first-party, trusted content)
+  into Chip Hippo–themed static HTML (`STYLE`/`LOGO_SVG` in the file, the
+  green `--accent:#3fb950` tokens, matching `website/index.html`) under
+  `website/docs/`, copies `images/`, and writes `website/sitemap.xml`. It
+  resolves `marked` **by file path** (`src/node_modules/marked/...`, or
+  `MARKED_DIR` override) since `marked` is ESM-only and bare specifiers don't
+  honor `NODE_PATH` — matters if CI builds the site without `src/`'s
+  devDependencies installed. `website/index.html` carries a **Guide** nav
+  link + footer link.
+- **PDF**: `scripts/build-pdf.mjs` **imports `PAGES`/`SRC`/`renderBody`/
+  `LOGO_SVG` from `build-docs.mjs`** (real code reuse, not a hand-synced copy)
+  so it can't drift from the website; it stitches a cover page + table of
+  contents + one section per page into a single print-styled (light-theme)
+  HTML document, absolutizes `images/` to `file://` URLs, and prints it via a
+  hidden **Electron** window's `printToPDF` — so it runs `cd src && npx
+  electron ../scripts/build-pdf.mjs` (`make pdf`), never plain Node. It awaits
+  `document.fonts.ready` + every `<img>`'s load/error before printing
+  (`loadFile` resolves before images necessarily have). `PDF_OUT` overrides
+  the output path (default `docs/chip-hippo-user-guide.pdf`, committed).
+- **Screenshots**: the committed PNGs under `src/web/docs/images/` are
+  captured by driving a real, separately-launched `make debug`-equivalent
+  Electron process over the Chrome DevTools Protocol (`--remote-debugging-port`,
+  a raw `ws` WebSocket, `Page.captureScreenshot`) — the same technique as an
+  ad hoc verification launch, not an in-process hidden `BrowserWindow`
+  harness. This capture tooling is **local developer tooling, not committed**
+  (mirrors Rest Hippo's own `.docs-build/`, which is gitignored there too) —
+  only the resulting PNGs are checked in.
 
 ## Source Directories
 

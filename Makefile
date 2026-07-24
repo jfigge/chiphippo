@@ -139,6 +139,38 @@ demos:
 	@node $(WORKSPACE)/scripts/make-demos.mjs
 	@echo "--------------------------------"
 
+# ─── User guide (Feature 230) ───────────────────────────────────────────────────
+# One Markdown source (src/web/docs/*.md) drives three outputs: the in-app
+# Help ▸ Chip Hippo User Guide window, this hosted website build, and the PDF.
+
+# Rebuild the bundled marked+DOMPurify renderer the in-app viewer imports
+# (web/scripts/vendor/markdown.js) from web/scripts/vendor/markdown-entry.js.
+# A generated artifact — reformat it too so `make fmt-check` stays clean.
+vendor-markdown:
+	@echo "Rebuilding the vendored Markdown renderer..."
+	@cd $(SRC_DIR) && npm run vendor-markdown --silent
+	@cd $(SRC_DIR) && npx prettier --write web/scripts/vendor/markdown.js > /dev/null
+	@echo "--------------------------------"
+
+# Render src/web/docs/*.md into the Chip Hippo–themed static site under
+# website/docs/, copy the images, and write website/sitemap.xml.
+docs:
+	@echo "Building the hosted user guide..."
+	@node $(WORKSPACE)/scripts/build-docs.mjs
+	@echo "--------------------------------"
+
+PDF_OUT ?= $(WORKSPACE)/docs/chip-hippo-user-guide.pdf
+
+# Stitch the same Markdown into one printable PDF (cover + contents + a
+# section per page) via a hidden Electron window's printToPDF. Needs a
+# display server on headless Linux/CI (xvfb-run); macOS runs it hidden.
+pdf:
+	@echo "Building user-guide PDF..."
+	@mkdir -p $(dir $(PDF_OUT))
+	@cd $(SRC_DIR) && PDF_OUT="$(PDF_OUT)" npx electron $(WORKSPACE)/scripts/build-pdf.mjs
+	@echo "  → $(PDF_OUT)"
+	@echo "--------------------------------"
+
 # ─── Build ────────────────────────────────────────────────────────────────────
 build: build-mac
 
@@ -326,6 +358,10 @@ help:
 	@echo "    license-headers  Stamp the Apache 2.0 header on any file missing it"
 	@echo "    icons         Regenerate app-icon rasters from the SVG sources"
 	@echo "    datasheets    Regenerate datasheet crops for the pinout window"
+	@echo "    demos         Regenerate + validate the loadable demo schematics"
+	@echo "    vendor-markdown  Rebuild the bundled marked+DOMPurify renderer"
+	@echo "    docs          Build the hosted user guide (website/docs/)"
+	@echo "    pdf           Build the user-guide PDF (PDF_OUT=path to override)"
 	@echo "    build         Build Electron app for macOS (dir only, unsigned)"
 	@echo "    build-linux   Package smoke-test for Linux (dir only, unsigned)"
 	@echo "    build-win     Package smoke-test for Windows (dir only, unsigned)"
@@ -341,6 +377,6 @@ help:
 	@echo "    info          Print full build information"
 
 .PHONY: version info install debug fmt fmt-check lint license-headers icons \
-        datasheets demos test test-license-headers build build-mac build-linux \
-        build-win dmg release dist dist-mac dist-linux dist-win site \
-        build-setup build-install clean help
+        datasheets demos vendor-markdown docs pdf test test-license-headers \
+        build build-mac build-linux build-win dmg release dist dist-mac \
+        dist-linux dist-win site build-setup build-install clean help

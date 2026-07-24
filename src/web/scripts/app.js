@@ -145,6 +145,14 @@ const LOCATE_SVG =
   '<line x1="12" y1="6" x2="12" y2="2"/>' +
   '<line x1="12" y1="22" x2="12" y2="18"/></svg>';
 
+/** Zoom-out-fully glyph the Fit-to-screen button swaps to while hovered with
+ * Shift held (⌘⇧F previews as a magnifying glass with a "−"). */
+const ZOOM_OUT_SVG =
+  ICON_SVG_OPEN +
+  '<circle cx="11" cy="11" r="8"/>' +
+  '<line x1="21" y1="21" x2="16.65" y2="16.65"/>' +
+  '<line x1="8" y1="11" x2="14" y2="11"/></svg>';
+
 /** Build-guide (clipboard-list) icon for the Guide toolbar toggle. */
 const GUIDE_SVG =
   ICON_SVG_OPEN +
@@ -332,6 +340,15 @@ function bindShortcuts(
       if (e.key === "r" || e.key === "R") {
         e.preventDefault();
         sim.toggle();
+        return;
+      }
+      if (e.key === "f" || e.key === "F") {
+        e.preventDefault();
+        if (e.shiftKey) {
+          getActiveView().zoomOutFull();
+        } else {
+          controller.fitToScreen();
+        }
         return;
       }
     }
@@ -645,10 +662,12 @@ async function init() {
     onReplaceChip: (id) => sim?.replaceChip(id),
     onClockToggle: (id) => sim?.manualToggle(id),
     // Double-click any part → open its floating pin/terminal-assignments OS
-    // window (`rows` sizes it to the layout).
-    onOpenPinout: (ref, rows) =>
+    // window (`rows` sizes it to the layout; `rot` is a snapshot of the
+    // part's placed rotation — only an oscillator can's corner assignment
+    // depends on it, see chip-pinout.js's buildCanPinout).
+    onOpenPinout: (ref, rows, rot) =>
       bridge
-        .openPinout?.(ref, { rows })
+        .openPinout?.(ref, { rows, rot })
         .catch((err) => console.error("[renderer] pinout:open failed:", err)),
     // Double-click / context-menu on a memory chip → its hex inspector window.
     onOpenMemory: (id) => memoryBridge?.open(id),
@@ -871,14 +890,60 @@ async function init() {
 
   // Fit to screen: frame every board/part/wire on the desk (find lost parts).
   // A passive camera move, so it stays available while the circuit runs.
+  // Shift previews the OTHER find-a-lost-part move (zoom out fully, ⌘⇧F): the
+  // icon/tooltip swap while hovered+held is a pure preview (no click yet), so
+  // it tracks hover and Shift independently and recomputes on either change.
+  const getActiveView = () => (mode === "schematic" ? schematicView : deskView);
+  let locateHovered = false;
+  let locateShiftHeld = false;
+  const updateLocateIcon = () => {
+    const zoomOutFull = locateHovered && locateShiftHeld;
+    locateBtn.innerHTML = zoomOutFull ? ZOOM_OUT_SVG : LOCATE_SVG;
+    locateBtn.setAttribute(
+      "aria-label",
+      zoomOutFull ? "Zoom out fully" : "Fit to screen",
+    );
+    locateBtn.title = zoomOutFull
+      ? `Zoom all the way out — find a lost part (${MOD_KEY}+Shift+F)`
+      : `Fit to screen — frame every board, part, and wire (${MOD_KEY}+F)`;
+  };
   const locateBtn = el("button", {
     class: "toolbar-icon-btn",
     type: "button",
     "aria-label": "Fit to screen",
-    title: "Fit to screen — frame every board, part, and wire",
-    onClick: () => controller.fitToScreen(),
+    title: `Fit to screen — frame every board, part, and wire (${MOD_KEY}+F)`,
+    onClick: (e) => {
+      if (e.shiftKey) getActiveView().zoomOutFull();
+      else controller.fitToScreen();
+    },
   });
   locateBtn.innerHTML = LOCATE_SVG;
+  locateBtn.addEventListener("pointerenter", () => {
+    locateHovered = true;
+    updateLocateIcon();
+  });
+  locateBtn.addEventListener("pointerleave", () => {
+    locateHovered = false;
+    updateLocateIcon();
+  });
+  window.addEventListener("keydown", (e) => {
+    if (e.key !== "Shift" || locateShiftHeld) return;
+    locateShiftHeld = true;
+    updateLocateIcon();
+  });
+  window.addEventListener("keyup", (e) => {
+    if (e.key !== "Shift") return;
+    locateShiftHeld = false;
+    updateLocateIcon();
+  });
+  // A Shift held on the way in (window regained focus, or a modifier chord
+  // released outside the window) never fires our own keyup — blur is the only
+  // reliable place left to drop a stuck preview.
+  window.addEventListener("blur", () => {
+    if (!locateShiftHeld) return;
+    locateShiftHeld = false;
+    updateLocateIcon();
+  });
   toolbar.append(locateBtn);
 
   // Logic analyzer: toggle the bottom-docked waveform panel. Like the guide it
@@ -1005,13 +1070,8 @@ async function init() {
   });
   setMode("desk"); // sync the initial toggle state
 
-  bindShortcuts(
-    controller,
-    sim,
-    scopeView,
-    togglePalette,
-    () => (mode === "schematic" ? schematicView : deskView),
-    () => setMode(mode === "desk" ? "schematic" : "desk"),
+  bindShortcuts(controller, sim, scopeView, togglePalette, getActiveView, () =>
+    setMode(mode === "desk" ? "schematic" : "desk"),
   );
 
   // The desk hub is always mounted but hidden until the "Show desk hub"

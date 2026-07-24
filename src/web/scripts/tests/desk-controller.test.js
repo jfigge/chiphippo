@@ -1277,6 +1277,45 @@ test("R flips a chip 180°: same holes, pin numbering reversed", () => {
   assert.equal(holesOf().find((p) => p.pin === 1).hole, "e5");
 });
 
+test("R flips bar8iso 180°, same as a chip: same holes, pin numbering reversed", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const { controller } = makeDesk(doc);
+  const bar = controller.addComponentAt("bar8iso", "bb1", "e5"); // auto-selected
+  const holesOf = () =>
+    partPinHoles("bar8iso", "e5", doc.getComponent(bar.id).params);
+
+  // Unflipped: pin 1 (A1) bottom-left (e5), pin 16 (K1) top-left (f5).
+  assert.equal(holesOf().find((p) => p.pin === 1).hole, "e5");
+  assert.equal(holesOf().find((p) => p.pin === 16).hole, "f5");
+
+  const consumed = controller.handleKeyDown(
+    new window.KeyboardEvent("keydown", { key: "r" }),
+  );
+  assert.equal(consumed, true);
+  assert.equal(doc.getComponent(bar.id).params.rot, 180);
+
+  // Flipped: pin 1 swaps to the far corner (pin 9's old hole); the SET of
+  // holes is unchanged — a bar8iso flip never fails to fit.
+  assert.equal(holesOf().find((p) => p.pin === 1).hole, "f12");
+  assert.equal(holesOf().find((p) => p.pin === 9).hole, "e5");
+  assert.deepEqual(
+    holesOf()
+      .map((p) => p.hole)
+      .sort(),
+    partPinHoles("bar8iso", "e5")
+      .map((p) => p.hole)
+      .sort(),
+    "occupies exactly the same holes",
+  );
+
+  // Flipping again returns it to the original orientation.
+  controller.handleKeyDown(new window.KeyboardEvent("keydown", { key: "r" }));
+  assert.equal(doc.getComponent(bar.id).params.rot, undefined);
+  assert.equal(holesOf().find((p) => p.pin === 1).hole, "e5");
+});
+
 test("a chip flipped mid-drag commits the flip with the move", () => {
   resetDom();
   const doc = new DeskDoc(null);

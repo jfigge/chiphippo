@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#2F855A" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <title>Power &amp; Clock Sources · Chip Hippo Guide</title>
+  <meta name="description" content="Power &amp; Clock Sources — the Chip Hippo user guide." />
+  <link rel="canonical" href="https://chiphippo.com/docs/power-and-clocks.html" />
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="Chip Hippo" />
+  <meta property="og:title" content="Power &amp; Clock Sources · Chip Hippo Guide" />
+  <meta property="og:description" content="Power &amp; Clock Sources — the Chip Hippo user guide." />
+  <meta property="og:url" content="https://chiphippo.com/docs/power-and-clocks.html" />
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="Power &amp; Clock Sources · Chip Hippo Guide" />
+  <meta name="twitter:description" content="Power &amp; Clock Sources — the Chip Hippo user guide." />
+  <style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#1c1c1c;--mantle:#161616;--crust:#101010;--surface-0:#2a2a2a;--surface-1:#383838;--overlay-0:#686868;--text:#e8e8e8;--subtext:#b0b0b0;--accent:#3fb950;--green:#56d364}
+html{scroll-behavior:smooth}
+body{font-family:"Segoe UI",system-ui,-apple-system,BlinkMacSystemFont,sans-serif;background:var(--bg);color:var(--text);line-height:1.65}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+code{font-family:"Cascadia Code","JetBrains Mono","Fira Code",monospace;font-size:.88em;background:var(--surface-0);padding:1px 6px;border-radius:4px;color:var(--text)}
+pre{background:var(--crust);border:1px solid var(--surface-0);border-radius:10px;padding:14px 16px;overflow:auto;margin:16px 0}
+pre code{background:none;padding:0}
+kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px solid var(--surface-1);border-bottom-width:2px;border-radius:5px;padding:1px 6px}
+.topbar{position:sticky;top:0;z-index:10;height:58px;display:flex;align-items:center;justify-content:space-between;padding:0 24px;background:var(--mantle);border-bottom:1px solid var(--surface-0)}
+.brand{display:flex;align-items:center;gap:10px;font-weight:800;color:var(--accent);font-size:1.1rem}
+.brand:hover{text-decoration:none}
+.topbar .back{color:var(--subtext);font-size:.85rem}
+.layout{max-width:1180px;margin:0 auto;display:grid;grid-template-columns:260px 1fr;gap:40px;padding:32px 24px 80px}
+.sidebar{position:sticky;top:90px;align-self:start;max-height:calc(100vh - 110px);overflow:auto}
+.sidebar-title{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--overlay-0);padding:0 12px 8px}
+.doc-nav-link{display:block;padding:7px 12px;border-radius:7px;color:var(--subtext);font-size:.9rem;margin-bottom:2px}
+.doc-nav-link:hover{background:var(--surface-0);color:var(--text);text-decoration:none}
+.doc-nav-link--active{background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent);font-weight:600}
+.content{min-width:0;max-width:760px}
+.content h1{font-size:2.1rem;font-weight:800;letter-spacing:-1px;margin:0 0 20px;line-height:1.2}
+.content h2{font-size:1.45rem;font-weight:700;margin:36px 0 12px;padding-top:12px;border-top:1px solid var(--surface-0)}
+.content h3{font-size:1.12rem;font-weight:700;margin:26px 0 10px}
+.content p,.content ul,.content ol,.content blockquote,.content table{margin:0 0 16px}
+.content ul,.content ol{padding-left:24px}
+.content li{margin:4px 0}
+.content img{max-width:100%;height:auto;border:1px solid var(--surface-0);border-radius:10px;margin:8px 0}
+.content blockquote{border-left:3px solid var(--accent);background:var(--mantle);padding:10px 16px;border-radius:0 8px 8px 0;color:var(--subtext)}
+.content blockquote p:last-child{margin:0}
+.content table{border-collapse:collapse;width:100%;font-size:.9rem;display:block;overflow:auto}
+.content th,.content td{border:1px solid var(--surface-0);padding:8px 12px;text-align:left}
+.content th{background:var(--mantle)}
+.content hr{border:none;border-top:1px solid var(--surface-0);margin:28px 0}
+@media(max-width:820px){.layout{grid-template-columns:1fr;gap:20px}.sidebar{position:static;max-height:none;border-bottom:1px solid var(--surface-0);padding-bottom:16px}}
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/"><svg width="24" height="24" viewBox="0 0 512 512" role="img" aria-label="Chip Hippo"><rect x="0" y="0" width="512" height="512" rx="114" fill="#2F855A"/><circle cx="170" cy="146" r="40" fill="#FFFFFF"/><circle cx="342" cy="146" r="40" fill="#FFFFFF"/><rect x="144" y="140" width="224" height="190" rx="74" fill="#FFFFFF"/><rect x="118" y="260" width="276" height="150" rx="74" fill="#FFFFFF"/><circle cx="201" cy="198" r="17" fill="#1C1C1C"/><circle cx="311" cy="198" r="17" fill="#1C1C1C"/><rect x="186" y="320" width="140" height="52" rx="8" fill="#23272B"/><circle cx="186" cy="346" r="11" fill="#FFFFFF"/></svg><span>Chip Hippo</span></a>
+    <a class="back" href="/">← Back to site</a>
+  </header>
+  <div class="layout">
+    <nav class="sidebar" aria-label="User guide">
+      <div class="sidebar-title">User Guide</div>
+        <a class="doc-nav-link" href="index.html">Overview</a>
+        <a class="doc-nav-link" href="getting-started.html">Getting Started</a>
+        <a class="doc-nav-link" href="the-desk.html">The Desk &amp; Breadboards</a>
+        <a class="doc-nav-link" href="components.html">Chips &amp; Components</a>
+        <a class="doc-nav-link" href="wiring.html">Wiring, Nets &amp; Buses</a>
+        <a class="doc-nav-link doc-nav-link--active" href="power-and-clocks.html">Power &amp; Clock Sources</a>
+        <a class="doc-nav-link" href="chip-library.html">The 74xx Chip Library</a>
+        <a class="doc-nav-link" href="simulation.html">Running a Simulation</a>
+        <a class="doc-nav-link" href="probing.html">Probing &amp; Net Names</a>
+        <a class="doc-nav-link" href="memory.html">Memory Chips &amp; the Inspector</a>
+        <a class="doc-nav-link" href="logic-analyzer.html">Logic Analyzer &amp; Timing</a>
+        <a class="doc-nav-link" href="build-guide.html">Build Guide, Wiring List &amp; BOM</a>
+        <a class="doc-nav-link" href="schematic-view.html">Schematic View</a>
+        <a class="doc-nav-link" href="files-and-undo.html">Files, Autosave &amp; Undo</a>
+        <a class="doc-nav-link" href="settings.html">Settings</a>
+        <a class="doc-nav-link" href="keyboard-shortcuts.html">Keyboard Shortcuts</a>
+    </nav>
+    <main class="content">
+<h1>Power &amp; Clock Sources</h1>
+<p>Every circuit needs somewhere to draw power from and, for sequential parts, a
+signal to step them along. Chip Hippo gives you two kinds of desk-level
+<strong>bricks</strong> for this — a <strong>power supply (PSU)</strong> and a <strong>clock source</strong> —
+neither of which seats on a breadboard. They sit loose on the desk with their
+own addressable terminals, and you wire those terminals into a board&#39;s rails
+(or straight to a chip&#39;s pins) just like any other wire run.</p>
+<p><img src="images/power-and-clocks.png" alt="A PSU and clock brick wired to a breadboard"></p>
+<h2 id="psu-bricks">PSU bricks</h2>
+<p>Add a <strong>Power supply</strong> from the parts palette (<strong>Power</strong> group) and drop it
+anywhere on the desk — it isn&#39;t tied to a board. It draws as a small body with
+a voltage badge and two terminal pads: a red <strong><code>+</code></strong> and a black <strong><code>−</code></strong>.
+Those pads are addressable wire endpoints, <code>psu1.+</code> and <code>psu1.-</code> for the
+first PSU you place, exactly like a breadboard hole — click-click a wire from
+each terminal into a power rail (or directly to a chip&#39;s VCC/GND pins) to
+energize a circuit.</p>
+<p>A PSU has no on/off switch of its own — it&#39;s always &quot;live&quot; the moment the
+simulation is running; what matters is which voltage it&#39;s set to and what
+it&#39;s wired into.</p>
+<h2 id="choosing-a-voltage--and-the-12-v-damage-rule">Choosing a voltage — and the 12 V damage rule</h2>
+<p>Right-click a PSU brick to pick its voltage: <strong>3 V</strong>, <strong>5 V</strong>, or <strong>12 V</strong>.
+The picker stays available even while the simulation is running, so you can
+change voltage on the fly and watch the effect.</p>
+<ul>
+<li><strong>5 V</strong> — normal operation. A chip whose VCC net carries a 5 V supply and
+whose GND net is properly grounded runs exactly to its datasheet behavior.</li>
+<li><strong>3 V</strong> — underpowered. The chip is inert — every output floats/reads as if
+disconnected — but nothing is harmed. Useful for demonstrating what an
+underpowered chip looks like without any risk.</li>
+<li><strong>12 V</strong> — <strong>damage</strong>. This is Chip Hippo&#39;s &quot;magic smoke&quot; rule: any chip
+(or oscillator can, which is powered the same way) whose VCC net sees 12 V
+is immediately marked <strong>damaged</strong> and goes permanently inert, independent
+of anything else on the net. Damage is real bookkeeping, persisted with the
+circuit — it doesn&#39;t clear on its own, and it doesn&#39;t clear on Stop.</li>
+</ul>
+<p>A chip can also come up <strong>reversed</strong> — a PSU <code>−</code> on its VCC pin&#39;s net at the
+same time as a PSU <code>+</code> on its GND pin&#39;s net — which is reported separately
+from plain unpowered/underpowered, since it specifically means the supply
+leads are swapped.</p>
+<p>Live chip health (powered / underpowered / reversed / damaged) shows as a
+badge on each chip while running — see <a href="simulation.html">Running a Simulation</a>
+for how those badges and the rest of the settle model work. This page only
+covers what puts a chip into each state.</p>
+<h2 id="replacing-a-damaged-part">Replacing a damaged part</h2>
+<p>A damaged chip or oscillator can stays damaged and inert until you swap it
+out. Right-click the damaged part and choose <strong>Replace chip</strong> (or <strong>Replace
+part</strong> for an oscillator can) — this is the one part action that stays
+available even while the simulation is running, since surviving a burnout and
+carrying on is exactly the scenario it exists for. Replacing resets the
+damage flag; everything else about the part (position, wiring, rate) is
+unchanged.</p>
+<p>There&#39;s no undo-the-damage option beyond this — 12 V is meant to sting a
+little, the same way it would on a real bench.</p>
+<h2 id="clock-sources">Clock sources</h2>
+<p>Add a <strong>Clock source</strong> from the palette (<strong>Power</strong> group) for a free-running
+or manually stepped square wave to drive a sequential chip&#39;s clock pin. Like
+a PSU, a clock brick is desk-level — it doesn&#39;t seat on a board — and exposes
+two addressable terminals: <strong><code>out</code></strong> and <strong><code>gnd</code></strong> (<code>clk1.out</code> / <code>clk1.gnd</code>).
+Wire <code>out</code> to a chip&#39;s clock input and <code>gnd</code> to your circuit&#39;s ground.</p>
+<p>Right-click a clock brick to set its rate:</p>
+<ul>
+<li><strong>1 / 2 / 5 / 10 Hz</strong> — free-running. Once the simulation is running, the
+brick toggles its <code>out</code> level on its own at the chosen rate; a small lamp
+on the body lights while the output is HIGH.</li>
+<li><strong>Manual</strong> — click-to-toggle. No timer runs it; instead, while the
+simulation is running, clicking the brick&#39;s body flips <code>out</code> from LOW to
+HIGH (or back) once per click — handy for single-stepping a counter or
+flip-flop by hand and watching each edge land.</li>
+</ul>
+<p>The rate picker, like the PSU&#39;s voltage picker, stays available while
+running, so you can retune a clock&#39;s speed mid-simulation.</p>
+<p>An <strong>oscillator can</strong> (a discrete part that seats directly on a board rather
+than as a desk brick) behaves the same electrically — it&#39;s a free-running
+square-wave source powered like a chip, with its own right-click rate picker
+— but it only ever free-runs; a real crystal has no click-to-toggle pin, so
+it has no manual mode.</p>
+<h2 id="the-transport-drives-the-edges">The transport drives the edges</h2>
+<p>Free-running clocks (and oscillator cans) don&#39;t tick on their own outside a
+simulation — their edges are driven by the <strong>Run/Pause/Step/speed transport</strong>
+in the header, described fully in
+<a href="simulation.html">Running a Simulation</a>. Briefly: <strong>Run</strong> (<code>Space</code>) starts
+every free-running clock at its configured rate; <strong>Pause</strong> freezes them in
+place without stopping the simulation; <strong>Step</strong> advances every free-running
+clock by exactly one half-period and re-settles the circuit, useful for
+watching a sequential chain edge by edge; and the <strong>speed</strong> control scales
+every free-running clock&#39;s rate together (it has no effect on a manual
+clock, which only ever moves on a click). A manual clock only responds to
+clicks while the simulation is actually running — stopped, its body is inert
+like everything else on the desk.</p>
+<hr>
+<p>See <a href="wiring.html">Wiring, Nets &amp; Buses</a> for how to route power-rail and clock
+wiring generally, and <a href="simulation.html">Running a Simulation</a> for how power
+state and clock edges feed into the settle model and live views.</p>
+
+    </main>
+  </div>
+</body>
+</html>
