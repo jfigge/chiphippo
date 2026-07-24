@@ -185,7 +185,7 @@ export class SimOverlay {
   }
 
   /**
-   * Multi-segment displays (seg8 / bar8): each segment is an LED between its
+   * Multi-segment displays (seg8cc / bar8): each segment is an LED between its
    * anode pin and the shared cathode. Light every segment with the same rule
    * the single LED uses; a segment with no current limit burns (per segment),
    * and the whole block gets the burn cue if any does.

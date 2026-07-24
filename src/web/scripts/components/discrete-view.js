@@ -71,8 +71,8 @@ const BOXES = Object.freeze({
   rnet9: Object.freeze({ minX: -0.7, minY: -2.9, width: 9.4, height: 3.5 }),
   // Nine holes along one row (x 0…8) with the display block standing ABOVE
   // them, so each anode's lower column holes stay clickable for wiring.
-  seg8: Object.freeze({ minX: -0.7, minY: -7.7, width: 9.4, height: 8.3 }),
-  // The common-anode digit is the same physical block as seg8.
+  seg8cc: Object.freeze({ minX: -0.7, minY: -7.7, width: 9.4, height: 8.3 }),
+  // The common-anode digit is the same physical block as seg8cc.
   seg8ca: Object.freeze({ minX: -0.7, minY: -7.7, width: 9.4, height: 8.3 }),
   bar8: Object.freeze({ minX: -0.7, minY: -4.7, width: 9.4, height: 5.3 }),
   // A 16-pin DIP straddling the trench (row e ↔ row f, 3 pitches): the body
@@ -724,7 +724,7 @@ export function buildDiscreteSvg(ref, params = {}) {
         }),
       ),
     );
-  } else if (ref === "seg8" || ref === "seg8ca") {
+  } else if (ref === "seg8cc" || ref === "seg8ca") {
     buildDigitDisplay(svg, normalized.color);
   } else if (ref === "bar8") {
     buildBarDisplay(svg, normalized.color);

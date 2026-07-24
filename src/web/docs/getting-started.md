@@ -43,19 +43,22 @@ desk space near the breadboard to place it. A PSU brick isn't seated on the
 board; it's a free-standing part with two wireable terminals, **+** and
 **−**.
 
-Right-click the placed PSU to open its context menu and confirm it's set to
-**5 V** (new PSUs default to 5 V, but 3 V and 12 V are also on the menu — 12 V
-is enough to damage a chip, so save it for parts rated to take it). The same
-menu removes the PSU if you want to start over.
+Right-click the placed PSU and choose **Properties…** to confirm it's set to
+**5 V** (new PSUs default to 5 V, but 3 V and 12 V are also there — 12 V is
+enough to damage a chip, so save it for parts rated to take it). **Delete
+Component**, further down the same context menu, removes the PSU if you want
+to start over.
 
 ## Add an LED
 
 Back in the palette, open **COMPONENTS ▸ LEDs** and click **LED**. A small
-color swatch popover appears first — pick red (or any color) to arm
-placement. Move the ghost over a free row of breadboard holes and click to
-seat it — an LED's two legs land in adjacent holes on the same row, anode
-first. (Press `F` while the ghost is in hand to flip which leg is the anode,
-or `R` to stand it up on two free ends instead of a footprint row.)
+LED ghost follows your cursor, already colored with your "Default LED color"
+setting (Settings ▸ Appearance — red out of the box). Move it over a free row
+of breadboard holes and click to seat it — an LED's two legs land in
+adjacent holes on the same row, anode first. (Press `F` while the ghost is in
+hand to flip which leg is the anode, or `R` to stand it up on two free ends
+instead of a footprint row.) To change an LED's color afterward, right-click
+it and choose **Properties…**.
 
 Chip Hippo's LED is idealized — no series resistor is required to protect it,
 so you can wire it straight to a supply.

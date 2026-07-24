@@ -27,11 +27,9 @@
 import { hd44780Unit } from "../sim/hd44780.js";
 import { ROTATIONS } from "../model/breadboard.js";
 
-export const LED_COLORS = Object.freeze(["red", "green", "yellow", "blue"]);
-/** The LED's own color choices (the Properties dialog + the "Default LED
-    color" setting) — a superset of LED_COLORS adding white. The segment/bar
-    displays above keep the 4-color LED_COLORS list; they have no white face
-    art. */
+/** The shared color choices for every colored discrete (LED, and the
+    segment/bar displays) — each part's own Properties dialog + the "Default
+    LED color" setting all pick from this one list. */
 export const LED_COLOR_OPTIONS = Object.freeze([
   "red",
   "green",
@@ -212,10 +210,9 @@ export const PART_DEFS = Object.freeze(
       rotatable: true,
       // One hole apart is fine — the legs only have to be in different holes.
       minSpan: 1,
-      // The LED's own color list (see LED_COLOR_OPTIONS above) — the palette
-      // no longer pops a swatch chooser on pick for the LED specifically (it
-      // arms placement with the "Default LED color" setting instead; see
-      // app.js's onPickChip), but `colors` still describes its valid values.
+      // Any def with a `colors` list arms placement with the "Default LED
+      // color" setting instead of a placement-time swatch chooser (see
+      // app.js's onPickChip); color is changed afterward via Properties.
       colors: LED_COLOR_OPTIONS,
       // The Properties dialog (context menu → "Properties…") — one control
       // per entry, dispatched generically by part-properties-dialog.js. Any
@@ -257,14 +254,14 @@ export const PART_DEFS = Object.freeze(
       },
     },
     {
-      id: "seg8",
+      id: "seg8cc",
       kind: "discrete",
-      title: "8-segment digit",
+      title: "8-segment digit (common cathode)",
       blurb:
         "Single-block 7-segment numeric display plus decimal point (8 lit " +
         "segments), common cathode. Drive each segment anode (a–g, dp) HIGH " +
         "to light it; pin 9 (K) is the shared cathode — tie it to ground. " +
-        "Comes in red / green / blue / yellow.",
+        "Comes in red / green / blue / yellow / white.",
       group: "LEDs",
       // Nine holes along one grid row: eight segment anodes then the common
       // cathode. Segments are idealized LEDs (no series resistor required).
@@ -289,9 +286,21 @@ export const PART_DEFS = Object.freeze(
           Object.freeze({ id, anodePin: i + 1, cathodePin: 9 }),
         ),
       ),
-      colors: LED_COLORS,
+      // Same color set + Properties-dialog field as the LED — no placement-
+      // time popover; color is changed afterward via the context menu.
+      colors: LED_COLOR_OPTIONS,
+      properties: [
+        {
+          key: "color",
+          label: "Color",
+          type: "color",
+          options: LED_COLOR_OPTIONS,
+        },
+      ],
       normalizeParams(raw) {
-        return { color: LED_COLORS.includes(raw?.color) ? raw.color : "red" };
+        return {
+          color: LED_COLOR_OPTIONS.includes(raw?.color) ? raw.color : "red",
+        };
       },
       internalBridges() {
         return []; // segments are diodes — devices, not bridges (Feature 90)
@@ -305,7 +314,8 @@ export const PART_DEFS = Object.freeze(
         "Single-block 7-segment numeric display plus decimal point (8 lit " +
         "segments), common ANODE. Tie pin 9 (A) to VCC; pull each segment " +
         "cathode (a–g, dp) LOW to light it — the form a 74LS47 (active-low " +
-        "outputs) drives directly. Comes in red / green / blue / yellow.",
+        "outputs) drives directly. Comes in red / green / blue / yellow / " +
+        "white.",
       group: "LEDs",
       // Nine holes along one grid row: eight segment cathodes then the shared
       // anode. Segments are idealized LEDs (no series resistor required).
@@ -324,7 +334,7 @@ export const PART_DEFS = Object.freeze(
         { n: 9, name: "A", role: "anode" },
       ],
       // Each segment is an LED from the shared anode (pin 9) to its own cathode
-      // pin — the mirror of seg8. It lights when pin 9 is HIGH and the segment
+      // pin — the mirror of seg8cc. It lights when pin 9 is HIGH and the segment
       // pin is driven LOW (the LED rule in sim-overlay), which is exactly what a
       // 74LS47's active-low outputs do.
       segments: Object.freeze(
@@ -332,9 +342,21 @@ export const PART_DEFS = Object.freeze(
           Object.freeze({ id, anodePin: 9, cathodePin: i + 1 }),
         ),
       ),
-      colors: LED_COLORS,
+      // Same color set + Properties-dialog field as the LED — no placement-
+      // time popover; color is changed afterward via the context menu.
+      colors: LED_COLOR_OPTIONS,
+      properties: [
+        {
+          key: "color",
+          label: "Color",
+          type: "color",
+          options: LED_COLOR_OPTIONS,
+        },
+      ],
       normalizeParams(raw) {
-        return { color: LED_COLORS.includes(raw?.color) ? raw.color : "red" };
+        return {
+          color: LED_COLOR_OPTIONS.includes(raw?.color) ? raw.color : "red",
+        };
       },
       internalBridges() {
         return []; // segments are diodes — devices, not bridges (Feature 90)
@@ -347,7 +369,7 @@ export const PART_DEFS = Object.freeze(
       blurb:
         "Eight-segment LED bar graph, common cathode. Drive each bar's anode " +
         "(1–8) HIGH to light it; pin 9 (K) is the shared cathode — tie it to " +
-        "ground. Comes in red / green / blue / yellow.",
+        "ground. Comes in red / green / blue / yellow / white.",
       group: "LEDs",
       // Nine holes along one grid row: eight bar anodes then the common cathode.
       footprint: Object.freeze({
@@ -369,9 +391,21 @@ export const PART_DEFS = Object.freeze(
           Object.freeze({ id, anodePin: i + 1, cathodePin: 9 }),
         ),
       ),
-      colors: LED_COLORS,
+      // Same color set + Properties-dialog field as the LED — no placement-
+      // time popover; color is changed afterward via the context menu.
+      colors: LED_COLOR_OPTIONS,
+      properties: [
+        {
+          key: "color",
+          label: "Color",
+          type: "color",
+          options: LED_COLOR_OPTIONS,
+        },
+      ],
       normalizeParams(raw) {
-        return { color: LED_COLORS.includes(raw?.color) ? raw.color : "red" };
+        return {
+          color: LED_COLOR_OPTIONS.includes(raw?.color) ? raw.color : "red",
+        };
       },
       internalBridges() {
         return []; // each bar is a diode — a device, not a bridge (Feature 90)
@@ -386,7 +420,7 @@ export const PART_DEFS = Object.freeze(
         "INDEPENDENT LED with its own anode and cathode (no shared pin). It " +
         "straddles the trench like a chip: anodes A1–A8 in row e, cathodes " +
         "K1–K8 in row f. Drive a bar's anode HIGH and pull its cathode LOW to " +
-        "light it. Comes in red / green / blue / yellow. Press R with it " +
+        "light it. Comes in red / green / blue / yellow / white. Press R with it " +
         "selected to flip it 180° in place, same as a chip — the holes it " +
         "occupies never move, only which anode/cathode sits in which; its " +
         "pin dialog updates to match.",
@@ -422,7 +456,17 @@ export const PART_DEFS = Object.freeze(
           }),
         ),
       ),
-      colors: LED_COLORS,
+      // Same color set + Properties-dialog field as the LED — no placement-
+      // time popover; color is changed afterward via the context menu.
+      colors: LED_COLOR_OPTIONS,
+      properties: [
+        {
+          key: "color",
+          label: "Color",
+          type: "color",
+          options: LED_COLOR_OPTIONS,
+        },
+      ],
       // `rot: 180` is a chip-style half-lap flip (model/occupancy.js's
       // `def.package` branch) — same holes, reversed pin numbering; press R
       // with it selected. Preserve it the same way CHIP_DEFS's shared
@@ -430,7 +474,7 @@ export const PART_DEFS = Object.freeze(
       // that, since it's a PART_DEFS discrete, not a chip.
       normalizeParams(raw) {
         return {
-          color: LED_COLORS.includes(raw?.color) ? raw.color : "red",
+          color: LED_COLOR_OPTIONS.includes(raw?.color) ? raw.color : "red",
           ...(raw?.rot === 180 ? { rot: 180 } : {}),
         };
       },

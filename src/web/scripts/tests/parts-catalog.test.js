@@ -20,7 +20,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
-  LED_COLORS,
   LED_COLOR_OPTIONS,
   PART_DEFS,
   PSU_VOLTS,
@@ -45,8 +44,8 @@ test("the part catalog carries the Feature 60 inventory", () => {
     "psu",
     "resistor",
     "rnet9",
-    "seg8",
     "seg8ca",
+    "seg8cc",
     "sw-push",
     "sw-slide",
     "sw-toggle",
@@ -256,10 +255,9 @@ test("led: color/flip coercion and polarity contract", () => {
     cathodePin: 1,
   });
   assert.deepEqual(def.internalBridges({}), []); // a diode never bridges
-  assert.deepEqual(LED_COLORS, ["red", "green", "yellow", "blue"]);
-  // The LED's own color list adds white (the Properties dialog + the
-  // "Default LED color" setting) — a superset of the shared LED_COLORS the
-  // segment/bar displays use.
+  // The shared color list (the Properties dialog + the "Default LED color"
+  // setting) — every colored discrete (LED, segment/bar displays) picks
+  // from this one list.
   assert.deepEqual(LED_COLOR_OPTIONS, [
     "red",
     "green",
@@ -281,8 +279,8 @@ test("led: color/flip coercion and polarity contract", () => {
   ]);
 });
 
-test("seg8 / bar8: common-cathode displays, colour + segment contract", () => {
-  for (const id of ["seg8", "bar8"]) {
+test("seg8cc / bar8: common-cathode displays, colour + segment contract", () => {
+  for (const id of ["seg8cc", "bar8"]) {
     const def = partDef(id);
     // Nine holes on one row: eight anodes then the shared cathode.
     assert.deepEqual(def.footprint.offsets, [0, 1, 2, 3, 4, 5, 6, 7, 8]);
@@ -291,11 +289,23 @@ test("seg8 / bar8: common-cathode displays, colour + segment contract", () => {
     for (let i = 0; i < 8; i++) {
       assert.equal(def.pins[i].role, "anode", `${id} pin ${i + 1}`);
     }
-    // Colour coerces to LED_COLORS (default red); junk → red.
+    // Colour coerces to LED_COLOR_OPTIONS (default red); junk → red — same
+    // set + Properties-dialog field as the LED (no placement-time popover).
     assert.deepEqual(def.normalizeParams({}), { color: "red" });
     assert.deepEqual(def.normalizeParams({ color: "blue" }), { color: "blue" });
+    assert.deepEqual(def.normalizeParams({ color: "white" }), {
+      color: "white",
+    });
     assert.deepEqual(def.normalizeParams({ color: "mauve" }), { color: "red" });
-    assert.deepEqual(def.colors, LED_COLORS);
+    assert.deepEqual(def.colors, LED_COLOR_OPTIONS);
+    assert.deepEqual(def.properties, [
+      {
+        key: "color",
+        label: "Color",
+        type: "color",
+        options: LED_COLOR_OPTIONS,
+      },
+    ]);
     // Eight segments, each an LED to the shared cathode (pin 9); every anode
     // pin referenced exactly once and every referenced pin exists.
     assert.equal(def.segments.length, 8);
@@ -311,6 +321,17 @@ test("seg8 / bar8: common-cathode displays, colour + segment contract", () => {
     // A display's diodes never hard-bridge (like the LED).
     assert.deepEqual(def.internalBridges(def.normalizeParams({})), []);
   }
+});
+
+test("seg8ca: common-anode display, colour contract matches the LED's", () => {
+  const def = partDef("seg8ca");
+  assert.deepEqual(def.normalizeParams({}), { color: "red" });
+  assert.deepEqual(def.normalizeParams({ color: "white" }), { color: "white" });
+  assert.deepEqual(def.normalizeParams({ color: "mauve" }), { color: "red" });
+  assert.deepEqual(def.colors, LED_COLOR_OPTIONS);
+  assert.deepEqual(def.properties, [
+    { key: "color", label: "Color", type: "color", options: LED_COLOR_OPTIONS },
+  ]);
 });
 
 test("bar8iso: 16-pin DIP, eight isolated bars (own anode + cathode)", () => {
@@ -337,11 +358,16 @@ test("bar8iso: 16-pin DIP, eight isolated bars (own anode + cathode)", () => {
   assert.equal(cathodes.size, 8, "every bar has a distinct cathode");
   // No pin is shared between anode and cathode duty (the point of "isolated").
   for (const a of anodes) assert.ok(!cathodes.has(a));
-  // Colour coercion like the other displays; diodes never hard-bridge.
+  // Colour coercion like the other displays (same set + Properties-dialog
+  // field as the LED); diodes never hard-bridge.
   assert.deepEqual(def.normalizeParams({}), { color: "red" });
   assert.deepEqual(def.normalizeParams({ color: "green" }), { color: "green" });
+  assert.deepEqual(def.normalizeParams({ color: "white" }), { color: "white" });
   assert.deepEqual(def.normalizeParams({ color: "mauve" }), { color: "red" });
-  assert.deepEqual(def.colors, LED_COLORS);
+  assert.deepEqual(def.colors, LED_COLOR_OPTIONS);
+  assert.deepEqual(def.properties, [
+    { key: "color", label: "Color", type: "color", options: LED_COLOR_OPTIONS },
+  ]);
   assert.deepEqual(def.internalBridges(def.normalizeParams({})), []);
 });
 

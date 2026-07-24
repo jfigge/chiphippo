@@ -2480,12 +2480,13 @@ export class DeskController {
       x: e.clientX,
       y: e.clientY,
       items: [
+        { label: "Properties…", disabled: true },
+        { separator: true },
         {
           label: "Remove board",
           danger: true,
           onSelect: () => this.removeBoard(id),
         },
-        { label: "Properties…", disabled: true },
       ],
     });
   }

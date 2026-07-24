@@ -523,30 +523,17 @@ async function init() {
   let hud = null;
   let controller = null;
 
-  // Parts palette (left panel; visibility persists in settings). The LED
-  // arms placement directly with the "Default LED color" setting (Settings ▸
-  // Appearance) — its color is changed afterward through the Properties
-  // dialog (right-click ▸ Properties…), not a placement-time picker. A part
-  // with its own `colors` list (the segment/bar displays) still opens the
-  // color swatch popover first; everything else arms its placement ghost
-  // directly.
+  // Parts palette (left panel; visibility persists in settings). Any part
+  // with a `colors` list (the LED and the segment/bar displays) arms
+  // placement directly with the "Default LED color" setting (Settings ▸
+  // Appearance) — no placement-time color popover any more. Its color is
+  // changed afterward through its own Properties dialog (right-click ▸
+  // Properties…); everything else arms its placement ghost directly.
   const palette = new PalettePanel(main, {
-    onPickChip: (ref, e) => {
-      if (ref === "led") {
+    onPickChip: (ref) => {
+      if (partDef(ref)?.colors) {
         controller?.armPartPlacement(ref, {
           color: currentSettings.defaultLedColor,
-        });
-        return;
-      }
-      const colors = partDef(ref)?.colors;
-      if (colors) {
-        PopupManager.menu({
-          x: e?.clientX ?? 0,
-          y: e?.clientY ?? 0,
-          items: colors.map((color) => ({
-            label: `Color: ${color}`,
-            onSelect: () => controller?.armPartPlacement(ref, { color }),
-          })),
         });
         return;
       }

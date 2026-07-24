@@ -15,7 +15,7 @@
  */
 
 // jsdom tests for the multi-segment display live-view: a chiphippo:sim-state
-// event lights each segment of a seg8 / bar8 as an LED between its anode pin
+// event lights each segment of a seg8cc / bar8 as an LED between its anode pin
 // and the shared cathode (pin 9), burns a segment driven with no series
 // resistor, and clears every segment when the sim stops. The engine/resolver
 // are proven separately; here we assert the DOM reactions, mirroring
@@ -70,13 +70,13 @@ function displayDoc() {
 const lit = (el, seg) =>
   el.querySelector(`[data-seg="${seg}"]`).classList.contains("part-seg--lit");
 
-test("seg8 lights only the segments whose anode is H over the common cathode", () => {
+test("seg8cc lights only the segments whose anode is H over the common cathode", () => {
   resetDom();
   const doc = displayDoc();
   const { surface, controller } = makeDesk(doc);
-  controller.addComponentAt("seg8", "bb1", "a1", { color: "green" });
-  const el = surface.querySelector(".part-discrete--seg8");
-  assert.ok(el, "seg8 mounted");
+  controller.addComponentAt("seg8cc", "bb1", "a1", { color: "green" });
+  const el = surface.querySelector(".part-discrete--seg8cc");
+  assert.ok(el, "seg8cc mounted");
 
   publishSim({
     netOfPoint: [
@@ -98,12 +98,12 @@ test("seg8 lights only the segments whose anode is H over the common cathode", (
   assert.ok(!el.classList.contains("part-discrete--burnt"), "not burnt");
 });
 
-test("a seg8 segment driven straight across the rails burns (no series R)", () => {
+test("a seg8cc segment driven straight across the rails burns (no series R)", () => {
   resetDom();
   const doc = displayDoc();
   const { surface, controller } = makeDesk(doc);
-  controller.addComponentAt("seg8", "bb1", "a1", { color: "red" });
-  const el = surface.querySelector(".part-discrete--seg8");
+  controller.addComponentAt("seg8cc", "bb1", "a1", { color: "red" });
+  const el = surface.querySelector(".part-discrete--seg8cc");
 
   const strong = new Map([
     ["netH", H],
@@ -137,7 +137,7 @@ test("seg8ca (common anode) lights a segment whose cathode is pulled LOW", () =>
   assert.ok(el, "seg8ca mounted");
 
   // Common anode: pin 9 (A) → VCC (H); a 74LS47 pulls a segment cathode LOW to
-  // light it (the mirror of the common-cathode seg8).
+  // light it (the mirror of the common-cathode seg8cc).
   publishSim({
     netOfPoint: [
       ["bb1.a9", "netA"], // pin 9 → shared anode, tied HIGH

@@ -919,7 +919,7 @@
   background: var(--color-warning);
 }
 
-/* ── Segment displays (seg8 / bar8): a dark package block standing over a row
+/* ── Segment displays (seg8cc / bar8): a dark package block standing over a row
    of holes, its LED segments lit individually. Segments share the wire-color
    tokens (house rule), inherited from --wire-color set on the SVG root. ────── */
 .part-display-body {
@@ -955,7 +955,7 @@
 /* The block covers a wide, mostly-empty box, so only its body takes the
    pointer — every hole under the row stays clickable. A transparent hit rect
    over the block reports the drag/select (same trick as .part-span-hit). */
-.part-discrete--seg8,
+.part-discrete--seg8cc,
 .part-discrete--bar8,
 .part-discrete--bar8iso,
 .part-discrete--rnet9,

@@ -176,7 +176,7 @@ test("PSU and clock bricks get source symbols keyed by terminal id", () => {
 });
 
 test("a many-pinned display renders as a labelled box", () => {
-  const seg = symbolFor("seg8");
+  const seg = symbolFor("seg8cc");
   assert.equal(seg.kind, "box");
   assert.equal(seg.sides.left.length, 8, "eight segment anodes on the left");
   assert.ok(

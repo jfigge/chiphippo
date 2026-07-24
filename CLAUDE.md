@@ -416,8 +416,12 @@ Electron main process (src/app/main.js)
   A catalog def declares its own editable fields as data (`properties: [{
   key, label, type, options }]`) — the dialog is a pure renderer over that
   list (one `buildControl`/`buildRow` dispatch per `type`) and knows nothing
-  about any specific part. Three types today: `"color"` (the LED — a row of
-  clickable swatches reusing the `--color-wire-<name>` tokens), `"select"` (a
+  about any specific part. Three types today: `"color"` (every colored
+  discrete — LED, `seg8cc`/`seg8ca`, `bar8`/`bar8iso` — shares one
+  `LED_COLOR_OPTIONS` list of 5 colors and a row of clickable swatches
+  reusing the `--color-wire-<name>` tokens; any def with a `colors` list
+  arms placement directly with the "Default LED color" setting instead of a
+  placement-time swatch popover, per `app.js`'s `onPickChip`), `"select"` (a
   `<select>` over `options: [{value, label}]` — the PSU's volts, the clock/
   oscillator's Hz, the LCD's size; a `<select>`'s value is always a STRING,
   so `buildSelect`'s change handler looks the typed option value back up by
@@ -453,9 +457,10 @@ Electron main process (src/app/main.js)
   overlay via `setVisible`), **`selectionColor`** (`#rrggbb` or null → sets
   the `--color-selection` custom property that `.board-outline-path` strokes
   with, falling back to `--color-accent`), and **`defaultLedColor`** (one of
-  `catalog/parts.js`'s `LED_COLOR_OPTIONS`, default `"red"` — the color a
-  newly placed LED gets; not a live-apply setting, only read at placement
-  time by `app.js`'s `onPickChip`). The **Data Sheets** tab drives
+  `catalog/parts.js`'s `LED_COLOR_OPTIONS`, default `"red"` — the color any
+  newly placed colored discrete (LED, `seg8cc`/`seg8ca`, `bar8`/`bar8iso`)
+  gets; not a live-apply setting, only read at placement time by `app.js`'s
+  `onPickChip`). The **Data Sheets** tab drives
   **`datasheetDir`** (the external datasheet-PDF folder, default null) — its
   Browse button calls the native `settings.chooseDatasheetDir` picker and
   emits the chosen path; no live apply

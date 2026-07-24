@@ -680,7 +680,7 @@ export const CHIPS_74LS = Object.freeze([
       "common-anode display, with lamp-test (LT̄), ripple-blank-in (RBĪ), and " +
       "a blanking input (BĪ) that forces every segment off. Drive the seg8ca " +
       "(common-anode) display — tie its pin 9 (A) to VCC; the active-low " +
-      "outputs would light the common-cathode seg8 inverted.",
+      "outputs would light the common-cathode seg8cc inverted.",
     group: "Display driver",
     package: "DIP-16",
     pins: [
