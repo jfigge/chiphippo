@@ -33,6 +33,8 @@ import { el } from "../dom.js";
 import { PX_PER_UNIT } from "../desk/desk-geometry.js";
 import { holePosition, rotateOffset } from "../model/breadboard.js";
 import { partDef } from "../catalog/index.js";
+import { packageSpec } from "../model/footprints.js";
+import { chipBox, CHIP_BODY_TOP, CHIP_BODY_BOTTOM } from "./chip-view.js";
 import {
   buildBurnOverlay,
   buildWarnOverlay,
@@ -122,12 +124,15 @@ export function discreteBox(ref, rot = 0) {
   const def = partDef(ref);
   if (def?.can) return canBox(def, rot);
   const box = BOXES[ref];
-  if (!box) {
-    const err = new Error(`unknown discrete ref: ${ref}`);
-    err.code = "INVALID_REF";
-    throw err;
-  }
-  return box;
+  if (box) return box;
+  // A DIP-packaged discrete with no hand-tuned BOXES entry (a DIP switch
+  // bank) is exactly a DIP: derive its box from the package, the same one
+  // chip-view.js draws from. A half-lap flip maps a DIP box onto itself, so
+  // `rot` never enters.
+  if (def?.package) return chipBox(def.package);
+  const err = new Error(`unknown discrete ref: ${ref}`);
+  err.code = "INVALID_REF";
+  throw err;
 }
 
 /**
@@ -604,6 +609,123 @@ function buildResistorNetwork(svg, ohms) {
 }
 
 /**
+ * A DIP switch bank (sw-dip1/2/4/8): a DIP-2n body straddling the trench with
+ * n slide actuators in a row. Switch i's actuator sits over column i — its
+ * OWN pin pair (pin i+1 in row e, pin 2n-i in row f, the pins facing each
+ * other across the trench per model/footprints.js's pinOffset), so what you
+ * click and what conducts are the same column. The nub sits toward the
+ * row-f edge (marked by the ON bar) when closed.
+ *
+ * Each actuator carries `data-switch-index` and NO listener of its own: a
+ * bank position is a DURABLE param, so the CONTROLLER owns the write (the
+ * house rule at the top of this file) — it reads the index off the pointer
+ * event's target. The body-wide hit rect is appended BEFORE the per-switch
+ * groups so a press between actuators still drags the package, while each
+ * actuator's own (later, topmost) hit rect wins over its own column.
+ */
+function buildDipSwitchBank(svg, def, params) {
+  const { halfPins: n } = packageSpec(def.package);
+  const box = chipBox(def.package);
+  const states = params.states ?? [];
+  const bodyHeight = CHIP_BODY_BOTTOM - CHIP_BODY_TOP;
+
+  // Legs: the same stubs a chip draws, one pair per column.
+  for (let dcol = 0; dcol < n; dcol++) {
+    for (const [y, h] of [
+      [CHIP_BODY_BOTTOM - 0.05, 0.6], // down over the row-e holes
+      [-3.1, CHIP_BODY_TOP + 3.1], // up from the row-f holes to the body
+    ]) {
+      svg.append(
+        svgEl("rect", {
+          class: "part-chip-leg",
+          x: dcol - 0.14,
+          y,
+          width: 0.28,
+          height: h,
+        }),
+      );
+    }
+  }
+
+  svg.append(
+    svgEl("rect", {
+      class: "part-body",
+      x: box.minX + 0.1,
+      y: CHIP_BODY_TOP,
+      width: box.width - 0.2,
+      height: bodyHeight,
+      rx: 0.18,
+    }),
+    // The ON bar marks which edge is "closed" — the row-f side.
+    svgEl("rect", {
+      class: "part-dip-on-bar",
+      x: box.minX + 0.1,
+      y: CHIP_BODY_TOP,
+      width: box.width - 0.2,
+      height: 0.22,
+    }),
+    // Body-only hit target: a press outside every actuator still drags the
+    // package, same trick every wide discrete above uses.
+    svgEl("rect", {
+      class: "part-display-hit",
+      x: box.minX + 0.1,
+      y: CHIP_BODY_TOP,
+      width: box.width - 0.2,
+      height: bodyHeight,
+    }),
+  );
+
+  // One slot + nub + hit target per switch, appended LAST so they win
+  // hit-testing over the body-wide hit rect.
+  for (let i = 0; i < n; i++) {
+    const group = svgEl("g", {
+      class: "part-dip-switch",
+      "data-switch-index": i,
+    });
+    const on = states[i] === true;
+    group.append(
+      svgEl("rect", {
+        class: "part-dip-slot",
+        x: i - 0.24,
+        y: CHIP_BODY_TOP + 0.34,
+        width: 0.48,
+        height: 1.42,
+        rx: 0.08,
+      }),
+      svgEl("rect", {
+        class: on ? "part-dip-nub part-dip-nub--on" : "part-dip-nub",
+        x: i - 0.18,
+        y: on ? CHIP_BODY_TOP + 0.4 : CHIP_BODY_TOP + 1.1,
+        width: 0.36,
+        height: 0.6,
+        rx: 0.06,
+      }),
+      svgEl("rect", {
+        class: "part-display-hit",
+        x: i - 0.45,
+        y: CHIP_BODY_TOP,
+        width: 0.9,
+        height: bodyHeight,
+      }),
+    );
+    svg.append(group);
+  }
+
+  // Flipped 180°: the same half-lap turn chip-view.js's buildChipSvg uses —
+  // the ON bar swings to the row-e side and switch 1's actuator lands at the
+  // far end, matching where its pins now sit. Indices do NOT renumber:
+  // switch i's actuator moves with switch i's pins, which is exactly right.
+  if (params?.rot === 180) {
+    const turned = svgEl("g", {
+      class: "part-chip-flipped",
+      transform: `rotate(180 ${(n - 1) / 2} -1.5)`,
+    });
+    while (svg.firstChild) turned.append(svg.firstChild);
+    svg.append(turned);
+  }
+}
+
+/**
  * Build a discrete part's SVG from its catalog def + params. Pure DOM
  * construction (unit-testable under jsdom).
  */
@@ -734,6 +856,8 @@ export function buildDiscreteSvg(ref, params = {}) {
     buildOscillatorCan(svg, def, normalized);
   } else if (ref === "rnet9") {
     buildResistorNetwork(svg, normalized.ohms);
+  } else if (def.switchBank) {
+    buildDipSwitchBank(svg, def, normalized);
   } else {
     // LED dome over the two holes; the flat chord marks the CATHODE side
     // (right by default — pin 2; params.flip mirrors it to the left).

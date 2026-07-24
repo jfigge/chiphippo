@@ -46,6 +46,10 @@ test("the part catalog carries the Feature 60 inventory", () => {
     "rnet9",
     "seg8ca",
     "seg8cc",
+    "sw-dip1",
+    "sw-dip2",
+    "sw-dip4",
+    "sw-dip8",
     "sw-push",
     "sw-slide",
     "sw-toggle",
@@ -56,7 +60,7 @@ test("the part catalog carries the Feature 60 inventory", () => {
   assert.ok(partDef("clock"));
   assert.ok(partDef("lcd"));
   assert.equal(chipDef("sw-slide"), null);
-  assert.equal(PALETTE_DEFS.length, 72); // 57 chips (24 + 24 LS + 6 memory + 3 io) + 15 parts
+  assert.equal(PALETTE_DEFS.length, 76); // 57 chips (24 + 24 LS + 6 memory + 3 io) + 19 parts
 });
 
 for (const def of PART_DEFS.filter((d) => d.kind === "discrete")) {
@@ -125,6 +129,71 @@ test("sw-toggle: bridges while on; on persists in params", () => {
   assert.deepEqual(def.normalizeParams({ on: true }), { on: true });
   assert.deepEqual(def.normalizeParams({ on: "junk" }), { on: false });
   assert.deepEqual(def.normalizeParams({}), { on: false });
+});
+
+test("sw-dip1/2/4/8: DIP switch banks — package, pins, and switch-pair bridges", () => {
+  for (const [id, n] of [
+    ["sw-dip1", 1],
+    ["sw-dip2", 2],
+    ["sw-dip4", 4],
+    ["sw-dip8", 8],
+  ]) {
+    const def = partDef(id);
+    const pins = 2 * n;
+    assert.equal(def.kind, "discrete"); // electrically n switches, not a chip…
+    assert.equal(def.package, `DIP-${pins}`); // …but seats across the trench.
+    assert.ok(!def.footprint, "seats by DIP package, not a row footprint");
+    assert.equal(def.switchBank, true);
+    assert.equal(def.pins.length, pins);
+    assert.ok(
+      def.pins.every((p) => p.role === "contact"),
+      `${id}: every pin is a plain switch contact`,
+    );
+    // Switch k's two pins are named "kA"/"kB" so they read as one pair in the
+    // Pin Assignment window.
+    for (let i = 0; i < n; i++) {
+      assert.equal(def.pins[i].name, `${i + 1}A`);
+      assert.equal(def.pins[pins - 1 - i].name, `${i + 1}B`);
+    }
+
+    // normalizeParams: exactly n booleans, padded/trimmed/coerced; rot only
+    // kept at 180 (bar8iso's convention).
+    assert.deepEqual(def.normalizeParams({}), {
+      states: Array(n).fill(false),
+    });
+    assert.deepEqual(def.normalizeParams({ states: [true] }), {
+      states: Array.from({ length: n }, (_, i) => i === 0),
+    });
+    assert.deepEqual(def.normalizeParams({ states: Array(n + 3).fill(true) }), {
+      states: Array(n).fill(true),
+    });
+    assert.deepEqual(def.normalizeParams({ states: [1, "yes", null] }), {
+      states: Array(n).fill(false),
+    });
+    assert.deepEqual(def.normalizeParams({ rot: 180 }), {
+      states: Array(n).fill(false),
+      rot: 180,
+    });
+    assert.deepEqual(def.normalizeParams({ rot: 90 }), {
+      states: Array(n).fill(false),
+    });
+
+    // Bridges: switch i (0-based) joins pin i+1 (row e) to pin pins-i (row
+    // f) — the pin directly across the trench (model/footprints.js's
+    // pinOffset). All-off bridges nothing; each position bridges only its
+    // own pair.
+    assert.deepEqual(def.internalBridges(def.normalizeParams({})), []);
+    const allOn = def.internalBridges({ states: Array(n).fill(true) });
+    assert.deepEqual(
+      allOn,
+      Array.from({ length: n }, (_, i) => [i + 1, pins - i]),
+    );
+    for (let i = 0; i < n; i++) {
+      const states = Array(n).fill(false);
+      states[i] = true;
+      assert.deepEqual(def.internalBridges({ states }), [[i + 1, pins - i]]);
+    }
+  }
 });
 
 test("osc-full: a rigid 4-corner can, 7 holes by 4 holes; NC/GND/OUT/VCC only", () => {

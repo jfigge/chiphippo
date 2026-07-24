@@ -456,6 +456,31 @@ test("partPinHoles: linear discretes in any grid row", () => {
   assert.equal(partPinHoles("psu", "b1"), null); // psu has terminals, not pins
 });
 
+test("partPinHoles: a DIP switch bank straddles the trench like a chip", () => {
+  // sw-dip4 (DIP-8): switch k's two pins face each other across a column —
+  // pin 1↔8, 2↔7, 3↔6, 4↔5, exactly the internalBridges pairing.
+  assert.deepEqual(partPinHoles("sw-dip4", "e5"), [
+    { pin: 1, hole: "e5" },
+    { pin: 2, hole: "e6" },
+    { pin: 3, hole: "e7" },
+    { pin: 4, hole: "e8" },
+    { pin: 5, hole: "f8" },
+    { pin: 6, hole: "f7" },
+    { pin: 7, hole: "f6" },
+    { pin: 8, hole: "f5" },
+  ]);
+  // sw-dip1 (DIP-2), flipped 180°: same two holes, half-lap pin numbering —
+  // just like bar8iso.
+  assert.deepEqual(partPinHoles("sw-dip1", "e5"), [
+    { pin: 1, hole: "e5" },
+    { pin: 2, hole: "f5" },
+  ]);
+  assert.deepEqual(partPinHoles("sw-dip1", "e5", { rot: 180 }), [
+    { pin: 1, hole: "f5" },
+    { pin: 2, hole: "e5" },
+  ]);
+});
+
 test("partPinHoles/canPlacePart: an oscillator can — every rotation, trench-crossing and not", () => {
   const doc = docWith({ boards: [FULL] });
 

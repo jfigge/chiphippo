@@ -1316,6 +1316,76 @@ test("R flips bar8iso 180°, same as a chip: same holes, pin numbering reversed"
   assert.equal(holesOf().find((p) => p.pin === 1).hole, "e5");
 });
 
+test("R flips a DIP switch bank 180°, same as a chip", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const { controller } = makeDesk(doc);
+  const bank = controller.addComponentAt("sw-dip4", "bb1", "e5"); // auto-selected
+  const holesOf = () =>
+    partPinHoles("sw-dip4", "e5", doc.getComponent(bank.id).params);
+
+  assert.equal(holesOf().find((p) => p.pin === 1).hole, "e5");
+  assert.equal(
+    controller.handleKeyDown(new window.KeyboardEvent("keydown", { key: "r" })),
+    true,
+  );
+  assert.equal(doc.getComponent(bank.id).params.rot, 180);
+  // Same holes occupied, pin numbering reversed (bar8iso's half-lap flip).
+  assert.deepEqual(
+    holesOf()
+      .map((p) => p.hole)
+      .sort(),
+    partPinHoles("sw-dip4", "e5")
+      .map((p) => p.hole)
+      .sort(),
+  );
+});
+
+test("clicking a DIP switch bank's actuator toggles only that position", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const { surface, controller } = makeDesk(doc);
+  const bank = controller.addComponentAt("sw-dip4", "bb1", "e5");
+
+  const el = partEl(surface, bank.id);
+  const actuator = (i) => el.querySelector(`[data-switch-index="${i}"]`);
+
+  pointerAt(actuator(2), "pointerdown", 0, 0);
+  pointerAt(actuator(2), "pointerup", 0, 0);
+  assert.deepEqual(doc.getComponent(bank.id).params.states, [
+    false,
+    false,
+    true,
+    false,
+  ]);
+
+  // Click again: flips back off.
+  pointerAt(actuator(2), "pointerdown", 0, 0);
+  pointerAt(actuator(2), "pointerup", 0, 0);
+  assert.deepEqual(doc.getComponent(bank.id).params.states, [
+    false,
+    false,
+    false,
+    false,
+  ]);
+
+  // A press that never leaves the body (no data-switch-index ancestor)
+  // selects/drags the package but changes no position.
+  pointerAt(actuator(1), "pointerdown", 0, 0);
+  pointerAt(actuator(1), "pointerup", 0, 0);
+  const bodyHit = el.querySelector(".part-body");
+  pointerAt(bodyHit, "pointerdown", 0, 0);
+  pointerAt(bodyHit, "pointerup", 0, 0);
+  assert.deepEqual(doc.getComponent(bank.id).params.states, [
+    false,
+    true,
+    false,
+    false,
+  ]);
+});
+
 test("a chip flipped mid-drag commits the flip with the move", () => {
   resetDom();
   const doc = new DeskDoc(null);
@@ -1704,6 +1774,42 @@ test("Cmd+C on a marquee selection pastes the whole cluster onto clear holes", (
     controller.multiSelectedIds.sort(),
     pasted.map((c) => c.id).sort(),
   );
+});
+
+test("a cluster paste including a DIP-packaged discrete doesn't throw (bar8iso/sw-dip* seat like a chip but aren't one)", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const world = { x: 0, y: 0 };
+  const { viewport, surface, controller } = makeDesk(doc, world);
+  const chip = controller.addComponentAt("74LS00", "bb1", "e5"); // cols 5–11
+  const bank = controller.addComponentAt("sw-dip4", "bb1", "e20"); // cols 20–27
+
+  marquee(viewport, world, { x: 4, y: 4 }, { x: 30, y: 9 });
+  assert.equal(controller.multiSelectedIds.length, 2);
+
+  assert.equal(accelKey(controller, "c"), true);
+  assert.equal(accelKey(controller, "v"), true);
+  assert.ok(controller.placementArmed);
+  assert.equal(
+    surface.querySelectorAll(".layer-overlay .part-ghost").length,
+    2,
+    'both members ghost — memberForm("chip") for a def.package DISCRETE ' +
+      "must draw via buildDiscreteSvg, not buildChipSvg",
+  );
+
+  world.x = 47.5;
+  world.y = 8;
+  viewport.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+
+  assert.ok(!controller.placementArmed);
+  assert.equal(doc.components.length, 4, "both members pasted");
+  const pasted = doc.components.filter(
+    (c) => c.id !== chip.id && c.id !== bank.id,
+  );
+  assert.equal(pasted.length, 2);
+  assert.ok(pasted.some((c) => c.ref === "74LS00"));
+  assert.ok(pasted.some((c) => c.ref === "sw-dip4"));
 });
 
 test("a cluster paste seats the valid members and discards the invalid ones", () => {

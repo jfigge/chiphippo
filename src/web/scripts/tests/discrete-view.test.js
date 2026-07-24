@@ -24,6 +24,7 @@ import { resetDom } from "./jsdom-setup.js";
 const { buildDiscreteSvg, buildSpanSvg, DiscreteView, discreteBox } =
   await import("../components/discrete-view.js");
 const { buildPsuSvg, PsuView } = await import("../components/psu-view.js");
+const { chipBox } = await import("../components/chip-view.js");
 
 test("buildDiscreteSvg: slide switch knob follows params.pos", () => {
   resetDom();
@@ -120,6 +121,59 @@ test("buildDiscreteSvg: an oscillator can still draws its 4 legs + body at rot 9
 test("discreteBox rejects unknown refs", () => {
   resetDom();
   assert.throws(() => discreteBox("capacitor"), { code: "INVALID_REF" });
+});
+
+test("discreteBox: a DIP-packaged discrete with no BOXES entry falls back to chipBox", () => {
+  resetDom();
+  assert.deepEqual(discreteBox("sw-dip8"), chipBox("DIP-16"));
+  assert.deepEqual(discreteBox("sw-dip1"), chipBox("DIP-2"));
+  // bar8iso keeps its own hand-tuned box — the BOXES lookup wins over the
+  // fallback (regression guard on the fallback ordering).
+  assert.notDeepEqual(discreteBox("bar8iso"), chipBox("DIP-16"));
+});
+
+test("buildDiscreteSvg: a DIP switch bank draws n actuators + 2n legs + a body", () => {
+  resetDom();
+  const svg = buildDiscreteSvg("sw-dip8", {});
+  const switches = svg.querySelectorAll("[data-switch-index]");
+  assert.equal(switches.length, 8);
+  assert.deepEqual(
+    [...switches].map((g) => g.dataset.switchIndex),
+    ["0", "1", "2", "3", "4", "5", "6", "7"],
+  );
+  assert.equal(svg.querySelectorAll(".part-chip-leg").length, 16);
+  assert.equal(svg.querySelectorAll(".part-body").length, 1);
+  assert.equal(svg.querySelectorAll(".part-dip-on-bar").length, 1);
+
+  // sw-dip1: the one-switch edge case.
+  const one = buildDiscreteSvg("sw-dip1", {});
+  assert.equal(one.querySelectorAll("[data-switch-index]").length, 1);
+  assert.equal(one.querySelectorAll(".part-chip-leg").length, 2);
+});
+
+test("buildDiscreteSvg: a switch bank's nub reflects params.states", () => {
+  resetDom();
+  const svg = buildDiscreteSvg("sw-dip4", {
+    states: [true, false, false, false],
+  });
+  const groups = [...svg.querySelectorAll("[data-switch-index]")];
+  const nubOf = (g) => g.querySelector(".part-dip-nub");
+  assert.ok(nubOf(groups[0]).classList.contains("part-dip-nub--on"));
+  assert.ok(!nubOf(groups[1]).classList.contains("part-dip-nub--on"));
+  // The closed (on) nub sits nearer the row-e edge than the open one.
+  const onY = Number(nubOf(groups[0]).getAttribute("y"));
+  const offY = Number(nubOf(groups[1]).getAttribute("y"));
+  assert.ok(onY < offY);
+});
+
+test("buildDiscreteSvg: a switch bank flips 180° like a chip, indices unchanged", () => {
+  resetDom();
+  const svg = buildDiscreteSvg("sw-dip8", { rot: 180 });
+  assert.ok(svg.querySelector(".part-chip-flipped"));
+  const indices = [...svg.querySelectorAll("[data-switch-index]")].map(
+    (g) => g.dataset.switchIndex,
+  );
+  assert.deepEqual(indices, ["0", "1", "2", "3", "4", "5", "6", "7"]);
 });
 
 test("buildSpanSvg: draws a lead + banded body across any vector", () => {
@@ -287,6 +341,26 @@ test("DiscreteView.updateParams rebuilds the SVG (toggle button on/off)", () => 
   assert.ok(!layer.querySelector(".part-toggle-cap--on"));
   view.updateParams({ on: true });
   assert.ok(layer.querySelector(".part-toggle-cap--on"));
+});
+
+test("DiscreteView.updateParams rebuilds the SVG (DIP switch bank position)", () => {
+  resetDom();
+  const layer = document.createElement("div");
+  document.body.append(layer);
+  const view = new DiscreteView(
+    layer,
+    {
+      id: "c1",
+      ref: "sw-dip4",
+      params: { states: [false, false, false, false] },
+    },
+    {},
+  );
+  assert.ok(!layer.querySelector(".part-dip-nub--on"));
+  view.updateParams({ states: [false, true, false, false] });
+  const nubs = [...layer.querySelectorAll("[data-switch-index]")];
+  assert.ok(!nubs[0].querySelector(".part-dip-nub--on"));
+  assert.ok(nubs[1].querySelector(".part-dip-nub--on"));
 });
 
 test("DiscreteView.setStatus reflects power/health onto an oscillator can", () => {

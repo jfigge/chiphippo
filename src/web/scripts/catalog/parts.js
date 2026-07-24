@@ -121,6 +121,73 @@ function normalizeOscillatorParams(raw) {
   return params;
 }
 
+/**
+ * A bank of `n` independent SPST switches in a DIP-2n body, straddling the
+ * trench like a chip: switch k bridges pin k (row e) to pin 2n+1-k (row f) —
+ * the pin DIRECTLY ACROSS the trench from it (model/footprints.js's
+ * pinOffset: pin p ≤ n sits at dcol p-1 in row e, pin p > n at dcol 2n-p in
+ * row f, so the two share a column exactly when q = 2n+1-p). Every
+ * position's state is durable (params.states[i]) — the CONTROLLER owns the
+ * write, the view only draws it (components/discrete-view.js's house rule).
+ */
+function dipSwitchBankDef(n) {
+  const pins = 2 * n;
+  return {
+    id: `sw-dip${n}`,
+    kind: "discrete",
+    title: `DIP switch (${n}-position)`,
+    blurb:
+      `${n}-position DIP switch bank in a ${pins}-pin DIP (DIP-${pins}) — ` +
+      `${n} independent SPST switch${n === 1 ? "" : "es"}, each bridging the ` +
+      "two pins that face each other across the trench (switch k joins pin " +
+      `k in row e to pin ${pins}+1-k in row f). Click a position's actuator ` +
+      "to open or close it — it stays where you put it, and stays " +
+      "clickable while the simulation runs. Press R with it selected to " +
+      "flip it 180° in place, same as a chip.",
+    group: "Switches",
+    // Seats and derives pins with the same footprint machinery every DIP
+    // chip uses (footprints.js) — not a chip, though: electrically it's n
+    // independent switches.
+    package: `DIP-${pins}`,
+    // The data hook generic code (the view's artwork, the controller's
+    // per-position click) branches on — never an id-prefix string test.
+    switchBank: true,
+    pins: [
+      ...Array.from({ length: n }, (_, i) => ({
+        n: i + 1,
+        name: `${i + 1}A`,
+        role: "contact",
+      })),
+      ...Array.from({ length: n }, (_, i) => ({
+        n: n + i + 1,
+        name: `${n - i}B`, // pin n+1 faces pin n, pin 2n faces pin 1
+        role: "contact",
+      })),
+    ],
+    normalizeParams(raw) {
+      const raws = Array.isArray(raw?.states) ? raw.states : [];
+      return {
+        // Exactly n booleans: padded with false, trimmed, junk coerced.
+        states: Array.from({ length: n }, (_, i) => raws[i] === true),
+        // A chip-style half-lap flip, stored only when set (as bar8iso does).
+        ...(raw?.rot === 180 ? { rot: 180 } : {}),
+      };
+    },
+    // A closed position is a HARD bridge (a real switch contact), unlike the
+    // resistor's weak coupling: pin i+1 ↔ pin 2n-i, the pair facing each
+    // other across the trench.
+    internalBridges(params) {
+      const states = params?.states;
+      if (!Array.isArray(states)) return [];
+      const out = [];
+      for (let i = 0; i < n; i++) {
+        if (states[i] === true) out.push([i + 1, pins - i]);
+      }
+      return out;
+    },
+  };
+}
+
 /** Shared by both oscillator-can sizes — the Properties dialog's rate field. */
 const OSCILLATOR_PROPERTIES = [
   {
@@ -194,6 +261,7 @@ export const PART_DEFS = Object.freeze(
         return params?.on ? [[1, 2]] : [];
       },
     },
+    ...[1, 2, 4, 8].map(dipSwitchBankDef),
     {
       id: "led",
       kind: "discrete",

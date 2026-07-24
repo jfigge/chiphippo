@@ -57,9 +57,11 @@ export function chipBox(pkg) {
   };
 }
 
-/** Body edges (pitch units, local coords): between the rows, inset. */
-const BODY_TOP = -2.55;
-const BODY_BOTTOM = -0.45;
+/** Body edges (pitch units, local coords): between the rows, inset. Exported
+    for discrete-view.js's DIP-packaged discretes (a DIP switch bank) that
+    draw a chip-shaped body but aren't chips. */
+export const CHIP_BODY_TOP = -2.55;
+export const CHIP_BODY_BOTTOM = -0.45;
 const LEG_WIDTH = 0.28;
 
 /**
@@ -91,8 +93,8 @@ export function buildChipSvg(ref, params = {}) {
   const legs = svgEl("g", { class: "part-chip-legs" });
   for (let dcol = 0; dcol < halfPins; dcol++) {
     for (const [y, h] of [
-      [BODY_BOTTOM - 0.05, 0.6], // down over the row-e holes
-      [-3.1, BODY_TOP + 3.1], // up from the row-f holes to the body
+      [CHIP_BODY_BOTTOM - 0.05, 0.6], // down over the row-e holes
+      [-3.1, CHIP_BODY_TOP + 3.1], // up from the row-f holes to the body
     ]) {
       legs.append(
         svgEl("rect", {
@@ -112,9 +114,9 @@ export function buildChipSvg(ref, params = {}) {
     svgEl("rect", {
       class: "part-chip-body",
       x: box.minX + 0.1,
-      y: BODY_TOP,
+      y: CHIP_BODY_TOP,
       width: box.width - 0.2,
-      height: BODY_BOTTOM - BODY_TOP,
+      height: CHIP_BODY_BOTTOM - CHIP_BODY_TOP,
       rx: 0.18,
     }),
   );
@@ -162,7 +164,7 @@ export function buildChipSvg(ref, params = {}) {
   // upside-down warning triangle would read as a delta. CSS reveals exactly
   // one per .part-chip--<status> class and hides both otherwise.
   const cx = (halfPins - 1) / 2;
-  const cy = (BODY_TOP + BODY_BOTTOM) / 2;
+  const cy = (CHIP_BODY_TOP + CHIP_BODY_BOTTOM) / 2;
   const status = svgEl("g", { class: "part-chip-status" });
   status.append(
     svgEl("title"), // the hover hint; text set by ChipView.setStatus

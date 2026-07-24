@@ -785,6 +785,28 @@
   transform-box: fill-box;
 }
 
+/* DIP switch bank (sw-dip1/2/4/8): a chip-shaped body with n slide actuators,
+   each in its own .part-dip-switch group (see discrete-view.js's
+   buildDipSwitchBank). The ON bar marks the row-f edge as "closed". */
+.part-dip-on-bar {
+  fill: var(--color-part-inset);
+}
+
+.part-dip-slot {
+  fill: var(--color-part-inset);
+}
+
+.part-dip-nub {
+  fill: var(--color-part-cap);
+  stroke: var(--color-part-inset);
+  stroke-width: 0.06;
+  cursor: pointer;
+}
+
+.part-dip-nub--on {
+  fill: var(--color-success);
+}
+
 .part-led-leg {
   fill: var(--color-chip-leg);
 }
@@ -954,13 +976,19 @@
 
 /* The block covers a wide, mostly-empty box, so only its body takes the
    pointer — every hole under the row stays clickable. A transparent hit rect
-   over the block reports the drag/select (same trick as .part-span-hit). */
+   over the block reports the drag/select (same trick as .part-span-hit). A
+   DIP switch bank instead layers several .part-display-hit rects (one per
+   switch position, one for the body) so each actuator addresses itself. */
 .part-discrete--seg8cc,
 .part-discrete--bar8,
 .part-discrete--bar8iso,
 .part-discrete--rnet9,
 .part-discrete--osc-full,
-.part-discrete--osc-half {
+.part-discrete--osc-half,
+.part-discrete--sw-dip1,
+.part-discrete--sw-dip2,
+.part-discrete--sw-dip4,
+.part-discrete--sw-dip8 {
   pointer-events: none;
 }
 

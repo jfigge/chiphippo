@@ -52,6 +52,10 @@ A few parts don't fit that linear model:
 - **bar8iso** — the isolated 8-segment LED bar — is packaged as a 16-pin
   DIP, so it straddles the trench exactly like a chip: anodes A1–A8 in row
   e, cathodes K1–K8 in row f.
+- **DIP switch banks** (**sw-dip1**, **sw-dip2**, **sw-dip4**, **sw-dip8**)
+  are likewise DIP-packaged (2/4/8/16 pins for 1/2/4/8 switch positions),
+  straddling the trench the same way: each position's two facing pins —
+  one in row e, one in row f — are its own independent SPST switch.
 - **Oscillator cans** (**osc-full**, **osc-half**) are rigid four-cornered
   shapes rather than a line of pins — a full can is 7 holes by 4, a half
   can 4 holes square, with legs only at the four corners. A can can seat
@@ -70,11 +74,13 @@ placed chip and press `R` to flip it 180° in place, or press `R` while
 mid-drag to flip it before you drop it. Either way its pin-assignments
 window updates to show the new numbering.
 
-**bar8iso (`R` while selected).** The isolated LED bar is DIP-packaged, so
-it flips exactly like a chip: `R` turns it 180° in place, the same 16 holes,
-only the anode/cathode assignment per bar reverses. It does not have the
-turn-in-hand behavior of a plain LED — treat it as a chip for rotation
-purposes.
+**bar8iso and DIP switch banks (`R` while selected).** The isolated LED bar
+and every DIP switch bank are DIP-packaged, so they flip exactly like a
+chip: `R` turns the part 180° in place, the same holes, only the pin
+numbering per position reverses (a switch bank's own position states don't
+move — position 1 is still position 1, just wired to the opposite pins now).
+Neither has the turn-in-hand behavior of a plain LED — treat them as chips
+for rotation purposes.
 
 **Resistor and LED (`R`, both while placing and once placed).** These
 two-lead parts start in a horizontal **footprint** form (pin 1 and pin 2 a
@@ -128,9 +134,10 @@ Right-click any placed part — chip, discrete, or brick — and choose
 pin-assignments window: a diagram of every pin/terminal and, for
 most chips, a cropped datasheet excerpt below it. A real chip's diagram
 stays fixed at its canonical layout no matter how you've flipped it on the
-desk (it matches the physical part, not the placement); `bar8iso` is the
-exception — its diagram reflects its current `R` flip, since it has no real
-notch of its own. See [The 74xx Chip Library](chip-library.md) for the full
+desk (it matches the physical part, not the placement); a DIP-packaged
+discrete — `bar8iso` or any DIP switch bank — is the exception: its diagram
+reflects its current `R` flip, since it has no real notch of its own. See
+[The 74xx Chip Library](chip-library.md) for the full
 detail on what the window shows and how it sources its datasheet crops.
 
 ---

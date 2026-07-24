@@ -29,6 +29,10 @@ import {
 
 test("packageSpec: known packages; junk throws INVALID_PACKAGE", () => {
   // The small logic DIPs are 300-mil; the wide memory DIPs (24…40) are 600-mil.
+  // DIP-2/DIP-4 aren't chips — they're the 1-/2-position DIP switch bank
+  // bodies (catalog/parts.js's dipSwitchBankDef).
+  assert.deepEqual(packageSpec("DIP-2"), { pins: 2, halfPins: 1, body: 300 });
+  assert.deepEqual(packageSpec("DIP-4"), { pins: 4, halfPins: 2, body: 300 });
   assert.deepEqual(packageSpec("DIP-8"), { pins: 8, halfPins: 4, body: 300 });
   assert.deepEqual(packageSpec("DIP-14"), { pins: 14, halfPins: 7, body: 300 });
   assert.deepEqual(packageSpec("DIP-16"), { pins: 16, halfPins: 8, body: 300 });

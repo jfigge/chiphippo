@@ -35,8 +35,13 @@
 // models it trench-straddling anyway (Feature 170). The hint drives only the
 // drawn body + the build-guide note; a true two-board straddle is out of scope.
 
-/** The DIP packages the catalog may reference. `body` is the width in mils. */
+/** The DIP packages the catalog may reference. `body` is the width in mils.
+    DIP-2/DIP-4 aren't logic chips — they're the bodies the 1- and 2-position
+    DIP switch banks come in (catalog/parts.js's dipSwitchBankDef); every
+    derivation below is already generic over any even pin count. */
 export const DIP_PACKAGES = Object.freeze({
+  "DIP-2": Object.freeze({ pins: 2, body: 300 }),
+  "DIP-4": Object.freeze({ pins: 4, body: 300 }),
   "DIP-8": Object.freeze({ pins: 8, body: 300 }),
   "DIP-14": Object.freeze({ pins: 14, body: 300 }),
   "DIP-16": Object.freeze({ pins: 16, body: 300 }),

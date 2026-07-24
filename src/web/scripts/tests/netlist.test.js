@@ -179,6 +179,37 @@ test("a toggle button bridges while on (persisted part state)", () => {
   assert.notEqual(netAt(doc, "bb2.b10"), netAt(doc, "bb2.b12"));
 });
 
+test("a DIP switch bank bridges only the positions switched on", () => {
+  const doc = fullKit();
+  doc.addComponent({
+    kind: "discrete",
+    ref: "sw-dip4",
+    board: "bb2",
+    anchor: "e5", // straddles the trench: e5..e8 / f5..f8
+    params: { states: [false, false, false, false] },
+  });
+  // Nothing on: every switch's two facing pins stay on separate nets.
+  assert.notEqual(netAt(doc, "bb2.e5"), netAt(doc, "bb2.f5"));
+  assert.notEqual(netAt(doc, "bb2.e6"), netAt(doc, "bb2.f6"));
+
+  // Switch 1 on: e5↔f5 join; every other position is untouched.
+  doc.setComponentParams("c1", { states: [true, false, false, false] });
+  assert.equal(netAt(doc, "bb2.e5"), netAt(doc, "bb2.f5"));
+  assert.notEqual(netAt(doc, "bb2.e6"), netAt(doc, "bb2.f6"));
+  assert.notEqual(netAt(doc, "bb2.e7"), netAt(doc, "bb2.f7"));
+  assert.notEqual(netAt(doc, "bb2.e8"), netAt(doc, "bb2.f8"));
+
+  // Switch 4 (the far end, e8↔f8) on too — independent of switch 1.
+  doc.setComponentParams("c1", { states: [true, false, false, true] });
+  assert.equal(netAt(doc, "bb2.e8"), netAt(doc, "bb2.f8"));
+  assert.notEqual(netAt(doc, "bb2.e6"), netAt(doc, "bb2.f6"));
+
+  // Back off: separate again.
+  doc.setComponentParams("c1", { states: [false, false, false, false] });
+  assert.notEqual(netAt(doc, "bb2.e5"), netAt(doc, "bb2.f5"));
+  assert.notEqual(netAt(doc, "bb2.e8"), netAt(doc, "bb2.f8"));
+});
+
 // ── Chip pins are members, not conduits ──────────────────────────────────────
 
 test("chip pins join their hole's net with name+role, never pin-to-pin", () => {

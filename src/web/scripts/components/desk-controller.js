@@ -104,6 +104,17 @@ function isRomChip(def) {
   return isMemory(def) && !isVolatileMemory(def);
 }
 
+/** The DIP-switch position a pointer landed on, or null (the body, or a
+    non-bank part). The view stamps `data-switch-index` on each actuator and
+    binds no listener of its own — a bank position is a durable param, so the
+    CONTROLLER owns the write; this is where a raw event becomes an index. */
+function switchIndexFromEvent(e) {
+  const hit = e?.target?.closest?.("[data-switch-index]");
+  if (!hit) return null;
+  const i = Number(hit.dataset.switchIndex);
+  return Number.isInteger(i) && i >= 0 ? i : null;
+}
+
 /** Pointer travel (px) below which a press stays a click, not a drag/pan. */
 const DRAG_THRESHOLD = 4;
 
@@ -126,8 +137,16 @@ const FIT_PAD = 4;
 const WIRE_END_GRAB_RADIUS = 0.6;
 
 /** Discretes whose plain click flips a durable param — interactive even
-    while the sim is running (a held-down button stays momentary instead). */
-const CLICK_TOGGLE_REFS = new Set(["sw-slide", "sw-toggle"]);
+    while the sim is running (a held-down button stays momentary instead).
+    A DIP switch bank's click flips one POSITION (see #clickTogglePatch). */
+const CLICK_TOGGLE_REFS = new Set([
+  "sw-slide",
+  "sw-toggle",
+  "sw-dip1",
+  "sw-dip2",
+  "sw-dip4",
+  "sw-dip8",
+]);
 
 export class DeskController {
   #viewport;
@@ -855,15 +874,18 @@ export class DeskController {
     });
   }
 
-  /** The drawn SVG for one cluster member, by its placement form. */
+  /** The drawn SVG for one cluster member, by its placement form. A
+      DIP-packaged discrete (bar8iso, a DIP switch bank) SEATS like a chip
+      (memberForm says "chip"), but it isn't one — buildChipSvg only knows
+      CHIP_DEFS, so it's drawn via the discrete path like every other part. */
   #buildMemberGhostSvg(m) {
+    const def = partDef(m.ref);
+    if (def?.kind === "chip") return buildChipSvg(m.ref, m.params);
     switch (memberForm(m.ref, m.params)) {
-      case "chip":
-        return buildChipSvg(m.ref, m.params);
       case "turned":
         return buildSpanSvg(m.ref, m.params.end.dx, m.params.end.dy, m.params);
       case "brick":
-        return brickSvg(partDef(m.ref).kind, m.params);
+        return brickSvg(def.kind, m.params);
       default:
         return buildDiscreteSvg(m.ref, m.params);
     }
@@ -907,11 +929,12 @@ export class DeskController {
   #memberGhostTopLeft(member, shift) {
     const ax = member.anchorWorld.x + shift.dx;
     const ay = member.anchorWorld.y + shift.dy;
+    const def = partDef(member.ref);
+    if (def?.kind === "chip") {
+      const box = chipBox(def.package);
+      return { x: ax + box.minX, y: ay + box.minY };
+    }
     switch (member.form ?? memberForm(member.ref, member.params)) {
-      case "chip": {
-        const box = chipBox(partDef(member.ref).package);
-        return { x: ax + box.minX, y: ay + box.minY };
-      }
       case "turned": {
         const pad = spanPad(member.ref);
         const { dx, dy } = member.params.end;
@@ -1995,21 +2018,40 @@ export class DeskController {
     this.#emitDocChanged("delete part");
   }
 
-  /** Flip a slide switch's position or a toggle button's on/off (click) —
-      persists the param; doc-changed re-settles. */
-  #toggleClickPart(id) {
+  /** Flip a slide switch's position, a toggle button's on/off, or one
+      position of a DIP switch bank (click) — persists the param;
+      doc-changed re-settles. `switchIndex` (a bank position, read off the
+      pointer event's target) is ignored by every other CLICK_TOGGLE_REFS
+      part. */
+  #toggleClickPart(id, switchIndex = null) {
     const comp = this.#doc.getComponent(id);
-    const patch =
-      comp.ref === "sw-toggle"
-        ? { on: !comp.params.on }
-        : { pos: comp.params.pos === "2" ? "1" : "2" };
+    const patch = this.#clickTogglePatch(comp, switchIndex);
+    if (!patch) return; // a bank's body pressed, not a switch position
     const updated = this.#doc.setComponentParams(id, patch);
     this.#partViews.get(id)?.updateParams(updated.params);
-    // pos/on lives in params, so the flip rides `doc-changed` alone — which
-    // already invalidates the netlist, re-ticks the sim, and refreshes the
-    // pinned net. Emitting `part-state` too would double-tick (part-state is
-    // reserved for transient view state with no durable param — a held button).
+    // pos/on/states lives in params, so the flip rides `doc-changed` alone —
+    // which already invalidates the netlist, re-ticks the sim, and refreshes
+    // the pinned net. Emitting `part-state` too would double-tick (part-state
+    // is reserved for transient view state with no durable param — a held
+    // button).
     this.#emitDocChanged("toggle switch");
+  }
+
+  /** The params patch one plain click on a CLICK_TOGGLE_REFS part makes, or
+      null when the click changes nothing (a DIP bank's body, not one of its
+      switch positions). */
+  #clickTogglePatch(comp, switchIndex) {
+    if (comp.ref === "sw-toggle") return { on: !comp.params.on };
+    if (partDef(comp.ref)?.switchBank) {
+      const states = comp.params.states ?? [];
+      if (!Number.isInteger(switchIndex) || switchIndex >= states.length) {
+        return null;
+      }
+      const next = [...states]; // COPY: the doc owns the stored array, and
+      next[switchIndex] = !next[switchIndex]; // history snapshots mustn't alias
+      return { states: next };
+    }
+    return { pos: comp.params.pos === "2" ? "1" : "2" };
   }
 
   /** Every field the Properties dialog shows for one component: the catalog
@@ -2505,7 +2547,7 @@ export class DeskController {
       const comp = this.#doc.getComponent(id);
       if (CLICK_TOGGLE_REFS.has(comp?.ref)) {
         e.stopPropagation();
-        this.#toggleClickPart(id);
+        this.#toggleClickPart(id, switchIndexFromEvent(e));
       } else if (comp?.kind === "clock" && comp.params?.hz === "manual") {
         e.stopPropagation();
         this.#onClockToggle?.(id);
@@ -2573,6 +2615,10 @@ export class DeskController {
         origin: { board: comp.board, anchor: comp.anchor },
         seat: { board: comp.board, anchor: comp.anchor },
         hasAnchored: this.#hasAnchored(id),
+        // Read NOW: pointer capture (below) retargets every later event on
+        // this pointerId to the part's root element, so a switch-bank click
+        // resolved at pointerup would always see the body, never an actuator.
+        switchIndex: switchIndexFromEvent(e),
         legal: true,
         active: false,
       };
@@ -2762,10 +2808,12 @@ export class DeskController {
     }
 
     if (!d.active) {
-      // Plain click: a slide switch or toggle button flips (always
-      // interactive).
+      // Plain click: a slide switch, toggle button, or DIP switch bank
+      // position flips (always interactive).
       const comp = this.#doc.getComponent(d.id);
-      if (CLICK_TOGGLE_REFS.has(comp?.ref)) this.#toggleClickPart(d.id);
+      if (CLICK_TOGGLE_REFS.has(comp?.ref)) {
+        this.#toggleClickPart(d.id, d.switchIndex ?? null);
+      }
       return;
     }
     const moved =

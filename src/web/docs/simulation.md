@@ -111,7 +111,8 @@ computed by the views themselves:
 
 Switches, push buttons, and clock bricks stay fully interactive while
 running — click a **slide switch** to flip it, hold a **push button** to
-press it, or click a **manual clock** to pulse it by hand. Each of these is
+press it, click one position of a **DIP switch bank** to open or close it, or
+click a **manual clock** to pulse it by hand. Each of these is
 exactly the kind of input event described above: it doesn't just update its
 own view, it triggers a fresh settle of the whole circuit, so downstream
 LEDs and chips react immediately.
