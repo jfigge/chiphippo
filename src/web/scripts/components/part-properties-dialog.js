@@ -14,25 +14,35 @@
  * limitations under the License.
  */
 
-// part-properties-dialog.js — the shared "Properties…" modal every part's
-// context menu opens (desk-controller.js's #onOpenProperties). ONE dialog
-// shell rendering a data-driven list of fields; a part declares which
-// properties it has and how to edit them in its catalog def (`properties`,
-// e.g. the LED's `color`, the PSU's `volts`), and this component is the only
-// place that knows how to turn a field descriptor into a control. Adding
-// properties to a new part later is purely a catalog change — this file and
-// the desk-controller wiring never need to touch that part specifically.
-// Three field types today: `"color"` (a row of swatches), `"select"` (a
-// dropdown over `options: [{value, label}]`), and `"action"` (a button that
-// fires a named command rather than editing a param, e.g. a memory chip's
-// "Inspect memory…" — see desk-controller.js's #propertyFieldsFor).
+// part-properties-dialog.js — the shared "Properties…" modal every part's AND
+// every board's context menu opens (desk-controller.js's #onOpenProperties /
+// #onOpenBoardProperties). ONE dialog shell rendering a data-driven list of
+// fields; a part declares which extra properties it has and how to edit them
+// in its catalog def (`properties`, e.g. the LED's `color`, the PSU's
+// `volts`), and this component is the only place that knows how to turn a
+// field descriptor into a control. Adding properties to a new part later is
+// purely a catalog change — this file and the desk-controller wiring never
+// need to touch that part specifically.
+//
+// EVERY call gets a Name (`"text"`) and Description (`"textarea"`) field for
+// free — `open()` prepends them unconditionally — so the dialog is never
+// empty, even for a part/board with no catalog-declared properties at all. The
+// caller's own `fields` (if any) are appended below a `"separator"` divider.
+// Field types: `"text"` (single-line input), `"textarea"` (multi-line,
+// stacked label-above-control layout), `"color"` (a row of swatches),
+// `"select"` (a dropdown over `options: [{value, label}]`), `"action"` (a
+// button that fires a named command rather than editing a value, e.g. a
+// memory chip's "Inspect memory…" — see desk-controller.js's
+// #propertyFieldsFor), and `"separator"` (a plain divider, no key/control).
 //
 // Like the Settings dialog, it is deliberately dumb and applies live: every
-// value control calls `onChange(key, value)` immediately (no Save/Cancel),
-// and the caller (desk-controller.js) owns persisting it through
-// DeskDoc.setComponentParams + the undo/redo commit seam. An action button
-// calls `onAction(key)` instead and closes the dialog — it's a command, not
-// a value the dialog needs to keep showing.
+// value control commits `onChange(key, value)` (text/textarea commit on
+// blur/Enter via the `change` event, not per keystroke, so they don't spam
+// the undo history), and the caller (desk-controller.js) owns persisting it
+// through DeskDoc.setComponentParams/setComponentMeta/setBoardParams + the
+// undo/redo commit seam. An action button calls `onAction(key)` instead and
+// closes the dialog — it's a command, not a value the dialog needs to keep
+// showing.
 
 import { el } from "../dom.js";
 import { PopupManager } from "../popup-manager.js";
@@ -76,6 +86,31 @@ function buildActionButton(field, onFire) {
   });
 }
 
+/** A single-line text field (Name) — commits on the `change` event (blur/
+    Enter), not per keystroke, so it doesn't spam the remount + undo-history
+    commit every field change fires. */
+function buildTextInput(field, value, onChange) {
+  return el("input", {
+    type: "text",
+    class: "properties-text-input",
+    value: value ?? "",
+    "aria-label": field.label,
+    onChange: (e) => onChange(field.key, e.target.value),
+  });
+}
+
+/** A multi-line text field (Description) — same commit-on-`change` style as
+    buildTextInput. */
+function buildTextarea(field, value, onChange) {
+  return el("textarea", {
+    class: "properties-textarea",
+    rows: 3,
+    value: value ?? "",
+    "aria-label": field.label,
+    onChange: (e) => onChange(field.key, e.target.value),
+  });
+}
+
 /** Build one field's control by its declared `type`. New types extend this
     switch alone — the dialog shell and every part's catalog def stay
     untouched. An unrecognized type falls back to a read-only value. */
@@ -91,47 +126,79 @@ function buildControl(field, value, onChange) {
   if (field.type === "select") {
     return buildSelect(field, value, (v) => onChange(field.key, v));
   }
+  if (field.type === "text") {
+    return buildTextInput(field, value, onChange);
+  }
+  if (field.type === "textarea") {
+    return buildTextarea(field, value, onChange);
+  }
   return el("span", { class: "properties-value", text: String(value ?? "") });
 }
 
+/** A plain divider between the universal Name/Description pair and a part's
+    own catalog-declared properties. */
+const STACKED_TYPES = new Set(["text", "textarea"]);
+
 function buildRow(field, value, onChange, onAction) {
+  if (field.type === "separator") {
+    return el("hr", { class: "properties-separator" });
+  }
   if (field.type === "action") {
     return el("div", { class: "properties-row properties-row--action" }, [
       buildActionButton(field, () => onAction(field.key)),
     ]);
   }
-  return el("div", { class: "properties-row" }, [
+  // A textarea doesn't fit the narrow flex-shrink control column the other
+  // types share, so text/textarea stack the label above a full-width control.
+  const rowClass = STACKED_TYPES.has(field.type)
+    ? "properties-row properties-row--stacked"
+    : "properties-row";
+  return el("div", { class: rowClass }, [
     el("span", { class: "properties-label", text: field.label }),
     buildControl(field, value, onChange),
   ]);
 }
 
+/** Every part and every board gets these two fields, always, at the top of
+    the dialog — this is the one place that rule lives, so neither caller
+    (desk-controller.js's part or board flow) has to repeat it. */
+const NAME_DESCRIPTION_FIELDS = [
+  { key: "name", label: "Name", type: "text" },
+  { key: "description", label: "Description", type: "textarea" },
+];
+
 export class PartPropertiesDialog {
   static #open = false;
 
   /**
-   * Show the shared Properties dialog for one part (a no-op when one is
-   * already open — same singleton convention as About/Settings).
+   * Show the shared Properties dialog for one part or board (a no-op when
+   * one is already open — same singleton convention as About/Settings).
+   * Name/Description always come first; `fields` (if any) follow a separator.
    * @param {object} opts
    * @param {string} opts.title - the dialog header (e.g. "LED Properties").
-   * @param {Array<{key:string,label:string,type:string,options?:Array<{value,label}>,actionLabel?:string}>} opts.fields -
+   * @param {Array<{key:string,label:string,type:string,options?:Array<{value,label}>,actionLabel?:string}>} [opts.fields] -
    *   the part's catalog `properties` list (plus any instance-conditional
-   *   action fields desk-controller.js appends).
-   * @param {object} opts.values - the component's current params.
+   *   action fields desk-controller.js appends) — empty/omitted for a board
+   *   or a part with nothing beyond Name/Description.
+   * @param {object} opts.values - the component's current params (merged
+   *   with its name/description) or the board itself.
    * @param {(key: string, value: any) => void} opts.onChange - fires live,
-   *   once per value-field control change.
+   *   once per value-field control change (text/textarea: on blur/Enter).
    * @param {(key: string) => void} [opts.onAction] - fires once when an
    *   `"action"`-type field's button is clicked; the dialog closes first.
    */
-  static open({ title, fields, values = {}, onChange, onAction }) {
+  static open({ title, fields = [], values = {}, onChange, onAction }) {
     if (PartPropertiesDialog.#open) return;
     PartPropertiesDialog.#open = true;
 
+    const allFields = fields.length
+      ? [...NAME_DESCRIPTION_FIELDS, { type: "separator" }, ...fields]
+      : NAME_DESCRIPTION_FIELDS;
     const fireAction = (key) => {
       PopupManager.close();
       onAction?.(key);
     };
-    const rows = fields.map((field) =>
+    const rows = allFields.map((field) =>
       buildRow(field, values[field.key], onChange, fireAction),
     );
 

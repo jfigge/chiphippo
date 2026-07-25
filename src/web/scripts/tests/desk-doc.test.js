@@ -69,6 +69,44 @@ test("addBoard: fresh bb<n> ids and integer snapping", () => {
   );
 });
 
+test("setBoardParams: sets, clears, and round-trips Name/Description", () => {
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  assert.equal("name" in doc.getBoard("bb1"), false, "omitted until set");
+
+  const set = doc.setBoardParams("bb1", {
+    name: "Main board",
+    description: "holds the CPU",
+  });
+  assert.equal(set.name, "Main board");
+  assert.equal(set.description, "holds the CPU");
+  assert.deepEqual(doc.getBoard("bb1"), {
+    id: "bb1",
+    type: "pins-full",
+    x: 0,
+    y: 0,
+    rot: 0,
+    group: null,
+    name: "Main board",
+    description: "holds the CPU",
+  });
+
+  // It survives serialization AND a reload through normalizeDocument.
+  const reloaded = normalizeDocument(doc.toJSON());
+  assert.equal(reloaded.boards[0].name, "Main board");
+  assert.equal(reloaded.boards[0].description, "holds the CPU");
+
+  // An empty string clears the field back to omitted.
+  doc.setBoardParams("bb1", { name: "", description: "" });
+  assert.equal("name" in doc.getBoard("bb1"), false);
+  assert.equal("description" in doc.getBoard("bb1"), false);
+  assert.ok(!("name" in normalizeDocument(doc.toJSON()).boards[0]));
+
+  assert.throws(() => doc.setBoardParams("nope", { name: "x" }), {
+    code: "NOT_FOUND",
+  });
+});
+
 test("addBoard: rejects junk types and non-finite positions", () => {
   const doc = new DeskDoc(null);
   assert.throws(() => doc.addBoard("mega", 0, 0), { code: "INVALID_TYPE" });
@@ -764,6 +802,33 @@ test("clearSchematicPositions: drops every nudge and reports the count", () => {
   assert.equal(doc.clearSchematicPositions(), 0); // idempotent
 });
 
+test("setComponentMeta: sets, clears, and round-trips Name/Description", () => {
+  const doc = docWithFull();
+  doc.addComponent({ kind: "chip", ref: "74LS00", board: "bb1", anchor: "e5" });
+  assert.equal("name" in doc.getComponent("c1"), false, "omitted until set");
+
+  const set = doc.setComponentMeta("c1", { name: "U1", description: "NAND" });
+  assert.equal(set.name, "U1");
+  assert.equal(set.description, "NAND");
+  // Params (the def's own contract) stay untouched by meta — a separate bag.
+  assert.deepEqual(doc.getComponent("c1").params, {});
+
+  // It survives serialization AND a reload through normalizeDocument.
+  const reloaded = normalizeDocument(doc.toJSON());
+  assert.equal(reloaded.components[0].name, "U1");
+  assert.equal(reloaded.components[0].description, "NAND");
+
+  // An empty string clears the field back to omitted.
+  doc.setComponentMeta("c1", { name: "", description: "" });
+  assert.equal("name" in doc.getComponent("c1"), false);
+  assert.equal("description" in doc.getComponent("c1"), false);
+  assert.ok(!("name" in normalizeDocument(doc.toJSON()).components[0]));
+
+  assert.throws(() => doc.setComponentMeta("nope", { name: "x" }), {
+    code: "NOT_FOUND",
+  });
+});
+
 test("addComponent: rejects bad kinds/refs/boards and illegal seats", () => {
   const doc = docWithFull();
   assert.throws(
@@ -1215,6 +1280,36 @@ test("recolorWire / removeWire; ids never reused across reload", () => {
 
   const reloaded = new DeskDoc(doc.toJSON());
   assert.equal(reloaded.addWire({ from: "bb1.a1", to: "bb1.a5" }).id, "w2");
+});
+
+test("setWireMeta: sets, clears, and round-trips Name/Description", () => {
+  const doc = docWithFull();
+  doc.addWire({ from: "bb1.a1", to: "bb1.a5" }); // w1
+  assert.equal("name" in doc.getWire("w1"), false, "omitted until set");
+
+  const set = doc.setWireMeta("w1", {
+    name: "reset line",
+    description: "pulls SR low on power-up",
+  });
+  assert.equal(set.name, "reset line");
+  assert.equal(set.description, "pulls SR low on power-up");
+  // Color (its own setter, recolorWire) is untouched by meta.
+  assert.equal(doc.getWire("w1").color, "red");
+
+  // It survives serialization AND a reload through normalizeDocument.
+  const reloaded = normalizeDocument(doc.toJSON());
+  assert.equal(reloaded.wires[0].name, "reset line");
+  assert.equal(reloaded.wires[0].description, "pulls SR low on power-up");
+
+  // An empty string clears the field back to omitted.
+  doc.setWireMeta("w1", { name: "", description: "" });
+  assert.equal("name" in doc.getWire("w1"), false);
+  assert.equal("description" in doc.getWire("w1"), false);
+  assert.ok(!("name" in normalizeDocument(doc.toJSON()).wires[0]));
+
+  assert.throws(() => doc.setWireMeta("nope", { name: "x" }), {
+    code: "NOT_FOUND",
+  });
 });
 
 test("setWireEndpoint: re-addresses one end; frees the old hole", () => {

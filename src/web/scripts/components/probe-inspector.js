@@ -54,6 +54,7 @@ export class ProbeInspector {
 
   #armed = false;
   #anchor = null; // pinned point address, or null
+  #hoverWire = null; // wire id under the cursor, or null (see onWireHover)
 
   constructor({
     doc,
@@ -110,6 +111,7 @@ export class ProbeInspector {
     if (!this.#armed) return;
     this.#armed = false;
     this.#anchor = null;
+    this.#hoverWire = null;
     this.#viewport.classList.remove("desk-viewport--probing");
     this.#highlight.clear();
     this.#ring.hidden = true;
@@ -185,7 +187,12 @@ export class ProbeInspector {
 
   /** A wire hovered under the probe (via the wire hit stroke). */
   onWireHover(wireId) {
-    if (!this.#armed || this.#anchor) return;
+    if (!this.#armed) return;
+    // Remembered even while pinned: a right-click over a wire's BODY has no
+    // hole to hit-test, so the menu falls back to whatever wire is under the
+    // cursor (#onContextMenu).
+    this.#hoverWire = wireId ?? null;
+    if (this.#anchor) return; // pinned — hover doesn't disturb it
     const wire = wireId ? this.#doc.getWire(wireId) : null;
     if (!wire) {
       this.#highlight.clear();
@@ -261,13 +268,16 @@ export class ProbeInspector {
 
   /**
    * Right-click while probing: name / rename / clear the net under the cursor
-   * (or the pinned net when the cursor is over nothing). Returns true when it
+   * — a hole, a wire, or (over nothing) the pinned net. Returns true when it
    * showed a menu (the caller then suppresses the default desk menu).
    */
   onContextMenu(world, e) {
     if (!this.#armed) return false;
     const hit = this.#hitTest(world);
-    const address = hit?.address ?? this.#anchor;
+    // A hole under the cursor wins; failing that the wire under the cursor
+    // stands in for its own net (its `from` end), and only then the pin.
+    const onWire = this.#hoverWire ? this.#doc.getWire(this.#hoverWire) : null;
+    const address = hit?.address ?? onWire?.from ?? this.#anchor;
     const netId = address ? this.#netlist.netOf(address) : null;
     if (!netId) return false;
     const current = this.#netlist.nameOf(netId);

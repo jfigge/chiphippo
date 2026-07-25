@@ -24,7 +24,11 @@
 // owns the window itself (float-above default + the right-click toggle).
 
 import { partDef } from "./catalog/index.js";
-import { buildPartPinout, datasheetButton } from "./components/chip-pinout.js";
+import {
+  buildPartPinout,
+  buildWirePinout,
+  datasheetButton,
+} from "./components/chip-pinout.js";
 import { ROTATIONS } from "./model/breadboard.js";
 
 /**
@@ -48,13 +52,18 @@ const root = document.getElementById("pinout-root");
 const params = new URLSearchParams(location.search);
 const ref = params.get("ref");
 const hasPdf = params.get("pdf") === "1";
+// A wire has no catalog def — its ref is just its own id (e.g. "w12"), so it
+// carries this flag rather than resolving through partDef.
+const isWire = params.get("kind") === "wire";
 // Only a `def.can` (oscillator) layout is rotation-dependent — see
 // buildCanPinout — but reading it here for every ref is harmless.
 const rot = Number(params.get("rot"));
-const def = ref ? partDef(ref) : null;
-const pinout = def
-  ? buildPartPinout(def, ROTATIONS.includes(rot) ? rot : 0)
-  : null;
+const def = !isWire && ref ? partDef(ref) : null;
+const pinout = isWire
+  ? buildWirePinout()
+  : def
+    ? buildPartPinout(def, ROTATIONS.includes(rot) ? rot : 0)
+    : null;
 
 // Escape closes the floating window — the same reflex as dismissing an in-app
 // modal, even though this is its own OS window (Electron routes window.close()
@@ -67,7 +76,7 @@ window.addEventListener("keydown", (event) => {
 });
 
 if (pinout) {
-  document.title = `${def.id} · ${def.title}`;
+  document.title = isWire ? "Wire" : `${def.id} · ${def.title}`;
   if (hasPdf) addDatasheetButton(pinout, ref);
   root.append(pinout);
 } else {

@@ -2370,6 +2370,15 @@ textarea.annotation-editor {
   gap: var(--space-4);
 }
 
+/* Name/Description (and any other text/textarea field): the label sits above
+   a full-width control rather than beside a narrow one — a textarea doesn't
+   fit the flex-shrink column the select/color rows share. */
+.properties-row--stacked {
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-2);
+}
+
 .properties-label {
   flex: 1;
   font-size: 13px;
@@ -2435,6 +2444,45 @@ textarea.annotation-editor {
 .properties-select:focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
+}
+
+/* Name (text) / Description (textarea) — the two universal fields every
+   Properties dialog opens with. */
+.properties-text-input,
+.properties-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface-1);
+  color: var(--color-text);
+  border: 1px solid var(--color-overlay);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-sans);
+  font-size: 13px;
+}
+
+.properties-text-input {
+  height: var(--control-height);
+}
+
+.properties-textarea {
+  resize: vertical;
+  min-height: 60px;
+}
+
+.properties-text-input:focus-visible,
+.properties-textarea:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* Divider between Name/Description and a part's own catalog properties. */
+.properties-separator {
+  width: 100%;
+  height: 0;
+  margin: 0;
+  border: none;
+  border-top: 1px solid var(--color-crust);
 }
 
 /* A field's command button (a memory chip's "Inspect memory…" / "Load

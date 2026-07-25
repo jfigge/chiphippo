@@ -65,9 +65,10 @@ export class BusTools {
   /**
    * @param {object} host - shared controller surface (see the ctor in
    *   desk-controller.js): mode get/set, doc, deskView, viewport, wireLayer,
-   *   ring, editingLocked, busName (from the toolbar input), busColor,
-   *   emitDocChanged, hideHover, selectBus, deselect, clearSelectionIfBus,
-   *   cancelPlacement, disarmProbe, disarmWireTool, onStateChange.
+   *   ring, editingLocked, probeArmed, busName (from the toolbar input),
+   *   busColor, emitDocChanged, hideHover, selectBus, deselect,
+   *   clearSelectionIfBus, cancelPlacement, disarmProbe, disarmWireTool,
+   *   onStateChange.
    */
   constructor(host) {
     this.#host = host;
@@ -535,6 +536,10 @@ export class BusTools {
 
   onContextMenu(id, e) {
     e.preventDefault();
+    // Probing owns the right-click: the viewport handler names the net under
+    // the cursor (a member's hole sits under the band's own hit area, so
+    // without this both menus fire — see WireTools.onContextMenu).
+    if (this.#host.probeArmed) return;
     if (this.#host.mode || this.#host.editingLocked) return;
     this.#host.selectBus(id);
     const bus = this.#doc().getBus(id);

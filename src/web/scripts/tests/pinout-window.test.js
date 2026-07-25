@@ -15,10 +15,10 @@
  */
 
 // jsdom test for the pin-assignments context-menu item: right-clicking ANY
-// part — chip, discrete, or desk brick — and picking "Pin Assignment" (the
-// menu's first item) requests its pinout window via onOpenPinout with a
+// part — chip, discrete, desk brick, or wire — and picking "Pin Assignment"
+// (the menu's first item) requests its pinout window via onOpenPinout with a
 // layout row count (DIP wraps to pins/2, discretes list every pin, bricks
-// list every terminal).
+// list every terminal, a wire always 2).
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -147,4 +147,23 @@ test("right-clicking a desk brick → Pin Assignment requests its terminal map",
     ["psu", 2],
     ["clock", 2],
   ]);
+});
+
+test('right-clicking a wire → Pin Assignment requests its pinout as kind "wire"', () => {
+  resetDom();
+  const opened = [];
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const { surface } = makeDesk(doc, {
+    onOpenPinout: (ref, rows, rot, kind) => opened.push([ref, rows, rot, kind]),
+  });
+  const wire = doc.addWire({ from: "bb1.a6", to: "bb1.a9" });
+  window.dispatchEvent(new window.CustomEvent("chiphippo:doc-changed")); // draw it
+
+  // A wire has no catalog ref — its own id stands in for one (see main.js's
+  // openPinoutWindow, which keys its one-window-per-ref map on it just like
+  // any other part); kind:"wire" tells main to skip catalog resolution (see
+  // pinout.js / chip-pinout.js's buildWirePinout).
+  openPinoutViaMenu(surface.querySelector(`[data-wire-id="${wire.id}"]`));
+  assert.deepEqual(opened, [[wire.id, 2, undefined, "wire"]]);
 });

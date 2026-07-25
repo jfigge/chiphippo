@@ -35,6 +35,7 @@ import { PX_PER_UNIT } from "../desk/desk-geometry.js";
 import { OUTLINE_MARGIN } from "../components/board-outline.js";
 
 const { DeskController } = await import("../components/desk-controller.js");
+const { PopupManager } = await import("../popup-manager.js");
 
 /** A viewport + DeskView stub good enough for the controller. `world` is read
     live, so a test can move the "cursor" between dispatched pointer events. */
@@ -1883,6 +1884,69 @@ test("a fully-unseatable cluster drop stays armed (nothing pasted)", () => {
   viewport.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
   assert.ok(controller.placementArmed, "still armed to try again");
   assert.equal(doc.components.length, 2, "nothing pasted");
+});
+
+// ── Right-click while probing ─────────────────────────────────────────────
+
+// PopupManager QUEUES a second popup rather than replacing it, so a wire menu
+// that opens on the way to the probe's net menu isn't merely redundant — the
+// user sees it FIRST and has to dismiss it. Wires/buses must stand aside while
+// probing, exactly as boards, parts, and annotations already do.
+test("right-clicking a wire while probing shows the net menu, not the wire menu", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const world = { x: 0, y: 0 };
+  const { surface, controller } = makeDesk(doc, world);
+  const wire = doc.addWire({ from: "bb1.a6", to: "bb1.a9" });
+  window.dispatchEvent(new window.CustomEvent("chiphippo:doc-changed")); // draw it
+  const at = worldOfAddress(doc.boards, "bb1.a6");
+  world.x = at.x;
+  world.y = at.y;
+
+  controller.armProbe();
+  PopupManager.close();
+  surface.querySelector(`[data-wire-id="${wire.id}"]`).dispatchEvent(
+    new window.MouseEvent("contextmenu", {
+      bubbles: true,
+      clientX: 10,
+      clientY: 10,
+    }),
+  );
+
+  assert.deepEqual(
+    [...document.querySelectorAll(".popup-menu-item")].map((b) =>
+      b.textContent.trim(),
+    ),
+    ["Name this net…"],
+  );
+});
+
+test("right-clicking a wire with the probe disarmed shows the uniform part menu", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const { surface } = makeDesk(doc);
+  const wire = doc.addWire({ from: "bb1.a6", to: "bb1.a9" });
+  window.dispatchEvent(new window.CustomEvent("chiphippo:doc-changed")); // draw it
+
+  PopupManager.close();
+  surface.querySelector(`[data-wire-id="${wire.id}"]`).dispatchEvent(
+    new window.MouseEvent("contextmenu", {
+      bubbles: true,
+      clientX: 10,
+      clientY: 10,
+    }),
+  );
+
+  const labels = [...document.querySelectorAll(".popup-menu-item")].map((b) =>
+    b.textContent.trim(),
+  );
+  assert.deepEqual(labels, [
+    "Pin Assignment",
+    "Properties…",
+    "Delete Component",
+  ]);
 });
 
 // ── P / M / digit-key shortcuts ───────────────────────────────────────────

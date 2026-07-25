@@ -214,11 +214,13 @@ export class DeskController {
    *   fires on every setWiresFaded, including the initial apply at startup.
    * @param {(id: string) => void} [opts.onClockToggle] - a manual clock's
    *   click-to-toggle while running (Feature 100).
-   * @param {(ref: string, rows: number, rot?: number) => void} [opts.onOpenPinout] -
-   *   a part's context-menu "Pin Assignment" item requests its pin-assignments
-   *   window (main opens a native OS window); `rot` is the part's placed
-   *   rotation, a snapshot only an oscillator can's corner-assignment layout
-   *   uses.
+   * @param {(ref: string, rows: number, rot?: number, kind?: string) => void} [opts.onOpenPinout] -
+   *   a part's (or a wire's) context-menu "Pin Assignment" item requests its
+   *   pin-assignments window (main opens a native OS window); `rot` is the
+   *   part's placed rotation, a snapshot only an oscillator can's corner-
+   *   assignment layout uses; `kind: "wire"` (passed through the WireTools
+   *   host) tells main to skip catalog resolution — a wire's `ref` is just
+   *   its own id.
    * @param {(id: string) => void} [opts.onOpenMemory] - open the memory
    *   inspector window for a memory chip (its own context-menu item,
    *   Feature 190).
@@ -357,6 +359,9 @@ export class DeskController {
       get editingLocked() {
         return self.#editingLocked;
       },
+      get probeArmed() {
+        return self.#probe.armed;
+      },
       doc: deskDoc,
       deskView,
       viewport,
@@ -371,6 +376,11 @@ export class DeskController {
       disarmBusTool: () => this.disarmBusTool(),
       clearSelectionIfWire: (id) => this.#clearSelectionIfWire(id),
       onStateChange: onWireStateChange,
+      // The uniform Pin Assignment / Properties… context-menu pair — the
+      // dialogs themselves stay centralized in DeskController (same as every
+      // other part/board), threaded through like emitDocChanged/selectWire.
+      onOpenPinout: (id) => this.#onOpenPinout?.(id, 2, undefined, "wire"),
+      onOpenProperties: (id) => this.#onOpenWireProperties(id),
     });
 
     // Bus subsystem (Feature 130): the bus tool + whole-bus drag + its context
@@ -386,6 +396,9 @@ export class DeskController {
       },
       get editingLocked() {
         return self.#editingLocked;
+      },
+      get probeArmed() {
+        return self.#probe.armed;
       },
       get busName() {
         return self.#busName;
@@ -2164,30 +2177,42 @@ export class DeskController {
   }
 
   /** Open the shared Properties dialog (context menu → "Properties…") for a
-      part with any editable fields or actions — see #propertyFieldsFor. A
-      no-op for anything else (the menu item stays disabled in that case;
-      see #onPartContextMenu). */
+      part — see #propertyFieldsFor. Every part gets Name/Description (the
+      dialog itself prepends those), so this is never a no-op. */
   #onOpenProperties(id) {
     const comp = this.#doc.getComponent(id);
-    const def = partDef(comp?.ref);
     if (!comp) return;
+    const def = partDef(comp.ref);
     const fields = this.#propertyFieldsFor(comp, def);
-    if (!fields.length) return;
     PartPropertiesDialog.open({
       title: `${def.title} Properties`,
       fields,
-      values: comp.params,
+      // Name/Description live OUTSIDE params (see setComponentMeta) — merge
+      // them in so the dialog's values[field.key] lookup finds every field,
+      // catalog-declared or universal, by the same key.
+      values: {
+        name: comp.name,
+        description: comp.description,
+        ...comp.params,
+      },
       onChange: (key, value) => this.#setComponentProperty(id, key, value),
       onAction: (key) => this.#onPropertyAction(id, key),
     });
   }
 
-  /** Apply one Properties-dialog field change. Remounting (rather than
-      updateParams alone) is correct for every part kind: a rotatable/span
-      part (e.g. the LED) only redraws through its span geometry, which
-      updateParams alone skips — see DiscreteView.updateParams. */
+  /** Apply one Properties-dialog field change. Name/Description are universal
+      metadata outside a def's own params contract, so they route to
+      setComponentMeta; everything else (catalog-declared properties) still
+      goes through setComponentParams. Remounting (rather than updateParams
+      alone) is correct for every part kind: a rotatable/span part (e.g. the
+      LED) only redraws through its span geometry, which updateParams alone
+      skips — see DiscreteView.updateParams. */
   #setComponentProperty(id, key, value) {
-    this.#doc.setComponentParams(id, { [key]: value });
+    if (key === "name" || key === "description") {
+      this.#doc.setComponentMeta(id, { [key]: value });
+    } else {
+      this.#doc.setComponentParams(id, { [key]: value });
+    }
     this.#remountPart(id);
     this.#emitDocChanged("set properties", { coalesce: true });
   }
@@ -2623,7 +2648,10 @@ export class DeskController {
       x: e.clientX,
       y: e.clientY,
       items: [
-        { label: "Properties…", disabled: true },
+        {
+          label: "Properties…",
+          onSelect: () => this.#onOpenBoardProperties(id),
+        },
         { separator: true },
         {
           label: "Remove board",
@@ -2632,6 +2660,55 @@ export class DeskController {
         },
       ],
     });
+  }
+
+  /** Open the shared Properties dialog for a board — Name/Description only
+      (a strip declares no other editable fields; see part-properties-dialog.js
+      for why the dialog never needs a fields list to have something to show). */
+  #onOpenBoardProperties(id) {
+    const board = this.#doc.getBoard(id);
+    if (!board) return;
+    PartPropertiesDialog.open({
+      title: `${spec(board.type).label} Properties`,
+      values: board,
+      onChange: (key, value) => this.#setBoardProperty(id, key, value),
+    });
+  }
+
+  /** Apply one board Properties-dialog field change. No remount — nothing
+      currently draws a board's name/description onto its SVG. */
+  #setBoardProperty(id, key, value) {
+    this.#doc.setBoardParams(id, { [key]: value });
+    this.#emitDocChanged("set board properties", { coalesce: true });
+  }
+
+  /** Open the shared Properties dialog for a wire — Name/Description plus its
+      one catalog-style field, Color (all 8 WIRE_COLORS), matching every
+      other part's Properties dialog shape (see WireTools#onContextMenu). */
+  #onOpenWireProperties(id) {
+    const wire = this.#doc.getWire(id);
+    if (!wire) return;
+    PartPropertiesDialog.open({
+      title: "Wire Properties",
+      fields: [
+        { key: "color", label: "Color", type: "color", options: WIRE_COLORS },
+      ],
+      values: wire,
+      onChange: (key, value) => this.#setWireProperty(id, key, value),
+    });
+  }
+
+  /** Apply one wire Properties-dialog field change. Color already has its own
+      DeskDoc method/commit path (recolorWire — also driven by the color-
+      cycling keyboard shortcut and the old flat context menu); Name/
+      Description route to the new setWireMeta. */
+  #setWireProperty(id, key, value) {
+    if (key === "name" || key === "description") {
+      this.#doc.setWireMeta(id, { [key]: value });
+      this.#emitDocChanged("set wire properties", { coalesce: true });
+    } else {
+      this.recolorWire(id, value); // already commits + emits
+    }
   }
 
   // ── Part gestures (chips, discretes, PSUs) ──────────────────────────────
@@ -2947,8 +3024,10 @@ export class DeskController {
       order — no more per-kind branching: a picker (PSU volts, clock/
       oscillator rate, LCD size, ROM programming, memory inspection…) is a
       Properties-dialog field now, never a menu item of its own (see
-      #propertyFieldsFor). Items that don't currently apply stay PRESENT but
-      `disabled`, so the menu's shape never changes, only its enabled state. */
+      #propertyFieldsFor). Properties… is always enabled — every part has at
+      least Name/Description. Items that don't currently apply otherwise stay
+      PRESENT but `disabled`, so the menu's shape never changes, only its
+      enabled state. */
   #onPartContextMenu(id, e) {
     e.preventDefault();
     if (this.#probe.armed) return; // right-click names the net (viewport handler)
@@ -2957,7 +3036,6 @@ export class DeskController {
     const comp = this.#doc.getComponent(id);
     const def = partDef(comp?.ref);
     const rows = this.#pinoutRows(def);
-    const fields = comp ? this.#propertyFieldsFor(comp, def) : [];
     const items = [
       {
         label: "Pin Assignment",
@@ -2967,7 +3045,6 @@ export class DeskController {
       { separator: true },
       {
         label: "Properties…",
-        disabled: fields.length === 0,
         onSelect: () => this.#onOpenProperties(id),
       },
       { separator: true },

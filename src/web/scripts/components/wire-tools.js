@@ -18,8 +18,11 @@
 // click-click wire TOOL (anchor a free point, click a second to lay a wire;
 // the colour STAYS put between wires — change it via the toolbar swatch),
 // grabbing a wire's END cap to re-route it, grabbing its BODY to translate it
-// rigidly, and the per-wire context menu (remove / recolour). Pulled out of
-// DeskController so "wiring" is one module.
+// rigidly, and the per-wire context menu — the SAME uniform shape every
+// part/board menu has (Pin Assignment / Properties… / Delete Component; see
+// desk-controller.js's #onPartContextMenu), with Pin Assignment and
+// Properties… opening their dialogs through host callbacks so this file stays
+// wire-behaviour-only. Pulled out of DeskController so "wiring" is one module.
 //
 // It reuses the controller's shared `#mode` (through the host) so the viewport
 // pointer dispatcher's mode checks stay exactly as they were — this is a home
@@ -68,7 +71,8 @@ export class WireTools {
    * @param {object} host - shared controller surface:
    *   { get mode, set mode, doc, deskView, viewport, wireLayer, ring,
    *     emitDocChanged, hideHover, selectWire, deselect, cancelPlacement,
-   *     disarmProbe, get editingLocked, clearSelectionIfWire, onStateChange }
+   *     disarmProbe, get probeArmed, get editingLocked, clearSelectionIfWire,
+   *     onStateChange, onOpenPinout, onOpenProperties }
    */
   constructor(host) {
     this.#host = host;
@@ -233,8 +237,19 @@ export class WireTools {
     this.#host.emitDocChanged("recolor wire");
   }
 
+  /** The SAME three items every part/board menu has, always, in the same
+      order — Pin Assignment / Properties… / Delete Component. A wire always
+      has both (2 endpoints; Name/Description + Color), so neither is ever
+      disabled — see desk-controller.js's #onPartContextMenu for the sibling
+      convention on parts. */
   onContextMenu(id, e) {
     e.preventDefault();
+    // While probing, a wire right-click belongs to the PROBE: it names the net
+    // the wire sits on. Bail and let the event bubble to the viewport handler
+    // (the same rule boards/parts/annotations follow) — otherwise BOTH menus
+    // open, and since PopupManager QUEUES the second rather than replacing it,
+    // the wire menu is what the user sees first, with the net menu behind it.
+    if (this.#host.probeArmed) return;
     if (this.#host.mode || this.#host.editingLocked) return; // frozen while running
     this.#host.selectWire(id);
     PopupManager.menu({
@@ -242,15 +257,20 @@ export class WireTools {
       y: e.clientY,
       items: [
         {
-          label: "Remove wire",
+          label: "Pin Assignment",
+          onSelect: () => this.#host.onOpenPinout(id),
+        },
+        { separator: true },
+        {
+          label: "Properties…",
+          onSelect: () => this.#host.onOpenProperties(id),
+        },
+        { separator: true },
+        {
+          label: "Delete Component",
           danger: true,
           onSelect: () => this.removeWire(id),
         },
-        ...WIRE_COLORS.map((color) => ({
-          label: color[0].toUpperCase() + color.slice(1),
-          swatch: `var(--color-wire-${color})`,
-          onSelect: () => this.recolorWire(id, color),
-        })),
       ],
     });
   }

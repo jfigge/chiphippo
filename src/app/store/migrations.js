@@ -28,10 +28,16 @@
  * v4 → v5 (Feature 150) adds an optional per-component schematic position hint
  *   (no doc-level state — a pure version bump; absence is valid).
  * v5 → v6 (HD44780 LCD) adds the `nextLcdId` brick counter (pure additive).
+ * v6 → v7 adds an optional Name/Description pair to every board and
+ *   component (the shared Properties dialog) — no doc-level state, a pure
+ *   version bump; absence is valid.
+ * v7 → v8 adds an optional Name/Description pair to every wire too (the wire
+ *   context menu now opens the same shared Properties dialog) — no doc-level
+ *   state, a pure version bump; absence is valid.
  */
 "use strict";
 
-const DESK_DOC_VERSION = 6;
+const DESK_DOC_VERSION = 8;
 
 /** A fresh, empty desk document (main's copy of the renderer's shape). */
 function defaultDeskDocument() {
@@ -301,6 +307,25 @@ function migrateV5ToV6(doc) {
   };
 }
 
+/**
+ * v6 → v7: every board and component gains an optional Name/Description pair
+ * (the shared Properties dialog). A pure additive migration — an absent
+ * name/description is valid, so there is nothing to default at the document
+ * level.
+ */
+function migrateV6ToV7(doc) {
+  return { ...doc, version: 7 };
+}
+
+/**
+ * v7 → v8: every wire gains an optional Name/Description pair too (the wire
+ * context menu now opens the same shared Properties dialog as every other
+ * part). A pure additive migration — nothing to default.
+ */
+function migrateV7ToV8(doc) {
+  return { ...doc, version: 8 };
+}
+
 /** version → one-step upgrade fn returning the doc at version + 1. */
 const MIGRATIONS = {
   1: migrateV1ToV2,
@@ -308,6 +333,8 @@ const MIGRATIONS = {
   3: migrateV3ToV4,
   4: migrateV4ToV5,
   5: migrateV5ToV6,
+  6: migrateV6ToV7,
+  7: migrateV7ToV8,
 };
 
 /**

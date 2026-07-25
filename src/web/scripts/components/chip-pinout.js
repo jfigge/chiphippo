@@ -344,6 +344,45 @@ export function buildTerminalPinout(def) {
 }
 
 /**
+ * Wire layout: the two ends of a wire, in the same badge · name · detail list
+ * shape as a discrete's pin list (reusing offsetLabel's "anchor hole" / "+1
+ * hole" wording) — a wire has no catalog def, so its name is always the
+ * literal "Wire" and there is no per-end role to tag (listRow's role span is
+ * skipped rather than left empty).
+ * @returns {HTMLElement}
+ */
+export function buildWirePinout() {
+  const rows = [0, 1].map((offset) =>
+    el("div", { class: "part-pinout-line" }, [
+      el("span", { class: "chip-pinout-num", text: String(offset + 1) }),
+      el("span", { class: "chip-pinout-name" }, [
+        el("span", { class: "chip-pinout-label", text: "Wire" }),
+      ]),
+      el("span", { class: "part-pinout-detail", text: offsetLabel(offset) }),
+    ]),
+  );
+  return el(
+    "div",
+    {
+      class: "popup chip-pinout",
+      role: "dialog",
+      "aria-modal": "true",
+      "aria-label": "Wire pin assignments",
+    },
+    [
+      el("div", { class: "popup-header" }, [
+        el("span", { class: "popup-title", text: "Wire" }),
+      ]),
+      el("div", {
+        class: "chip-pinout-sub",
+        text: "2 endpoints · pin assignments",
+      }),
+      el("div", { class: "part-pinout-list" }, rows),
+    ],
+  );
+}
+
+/**
  * Build the pin/terminal map for ANY catalog def, dispatching on its shape.
  * @param {object} def
  * @param {number} [rot] - the placed part's rotation. A `def.can` layout

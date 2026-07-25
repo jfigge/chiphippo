@@ -186,6 +186,19 @@ function normalizeSchematicPos(raw) {
   return Number.isFinite(x) && Number.isFinite(y) ? { x, y } : undefined;
 }
 
+/**
+ * Apply an optional Name/Description pair (the shared Properties dialog) to a
+ * board or component record, present only when set to a non-empty string —
+ * same omit-when-empty convention as schematicPos, so a record that never had
+ * one round-trips to the identical shape it had before these fields existed.
+ */
+function applyMeta(record, raw) {
+  if (typeof raw?.name === "string" && raw.name) record.name = raw.name;
+  if (typeof raw?.description === "string" && raw.description) {
+    record.description = raw.description;
+  }
+}
+
 function taggedError(message, code) {
   const err = new Error(message);
   err.code = code;
@@ -242,14 +255,16 @@ export function normalizeDocument(raw) {
     // A junk group id degrades to a loose strip rather than dropping it.
     const g = typeof b.group === "string" ? GROUP_ID_RE.exec(b.group) : null;
     if (g) maxGroupSeq = Math.max(maxGroupSeq, Number(g[1]));
-    doc.boards.push({
+    const board = {
       id: b.id,
       type: b.type,
       x: Math.round(b.x),
       y: Math.round(b.y),
       rot: normalizeRotation(b.type, b.rot),
       group: g ? b.group : null,
-    });
+    };
+    applyMeta(board, b);
+    doc.boards.push(board);
   }
 
   let maxCompSeq = 0;
@@ -267,14 +282,16 @@ export function normalizeDocument(raw) {
       if (!Number.isFinite(c.x) || !Number.isFinite(c.y)) continue;
       compIds.add(c.id);
       maxBrickSeq[c.kind] = Math.max(maxBrickSeq[c.kind], Number(m[1]));
-      doc.components.push({
+      const brickRecord = {
         id: c.id,
         kind: c.kind,
         ref: c.ref,
         x: Math.round(c.x),
         y: Math.round(c.y),
         params: normalizeParams(def, c.params),
-      });
+      };
+      applyMeta(brickRecord, c);
+      doc.components.push(brickRecord);
       continue;
     }
     if (c.kind !== def.kind || (c.kind !== "chip" && c.kind !== "discrete")) {
@@ -296,6 +313,7 @@ export function normalizeDocument(raw) {
     };
     const schematicPos = normalizeSchematicPos(c.schematicPos);
     if (schematicPos) record.schematicPos = schematicPos; // Feature 150 nudge
+    applyMeta(record, c);
     doc.components.push(record);
   }
 
@@ -334,12 +352,14 @@ export function normalizeDocument(raw) {
     claimed.add(w.from);
     claimed.add(w.to);
     maxWireSeq = Math.max(maxWireSeq, Number(m[1]));
-    doc.wires.push({
+    const wireRecord = {
       id: w.id,
       from: w.from,
       to: w.to,
       color: WIRE_COLORS.includes(w.color) ? w.color : WIRE_COLORS[0],
-    });
+    };
+    applyMeta(wireRecord, w);
+    doc.wires.push(wireRecord);
   }
 
   // Buses (Feature 130): metadata over wires — `{ id, name, width, color,
@@ -543,6 +563,27 @@ export class DeskDoc {
   getBoard(id) {
     const b = this.#doc.boards.find((x) => x.id === id);
     return b ? { ...b } : null;
+  }
+
+  /**
+   * Update a board's Name/Description — the shared Properties dialog's only
+   * fields for a board (a strip has no other editable properties; its
+   * geometry/rotation is fixed once placed). Present only when non-empty, same
+   * omit-when-empty convention as setComponentMeta/schematicPos. Throws
+   * NOT_FOUND. Returns a copy.
+   */
+  setBoardParams(id, patch) {
+    const board = this.#doc.boards.find((b) => b.id === id);
+    if (!board) throw taggedError(`no board ${id}`, "NOT_FOUND");
+    if (typeof patch.name === "string") {
+      if (patch.name) board.name = patch.name;
+      else delete board.name;
+    }
+    if (typeof patch.description === "string") {
+      if (patch.description) board.description = patch.description;
+      else delete board.description;
+    }
+    return { ...board };
   }
 
   /** The desk rectangles of every brick (PSU, clock) from its def size. */
@@ -1272,6 +1313,27 @@ export class DeskDoc {
   }
 
   /**
+   * Update a component's Name/Description — the shared Properties dialog's
+   * universal metadata, kept OUTSIDE `params` so it never touches a def's own
+   * normalizeParams contract (every part gets it, chips included, unlike
+   * catalog-declared params). Present only when non-empty, same omit-when-empty
+   * convention as setBoardParams/schematicPos. Throws NOT_FOUND. Returns a copy.
+   */
+  setComponentMeta(id, patch) {
+    const comp = this.#doc.components.find((c) => c.id === id);
+    if (!comp) throw taggedError(`no component ${id}`, "NOT_FOUND");
+    if (typeof patch.name === "string") {
+      if (patch.name) comp.name = patch.name;
+      else delete comp.name;
+    }
+    if (typeof patch.description === "string") {
+      if (patch.description) comp.description = patch.description;
+      else delete comp.description;
+    }
+    return { ...comp };
+  }
+
+  /**
    * Set (or, with a non-finite coordinate, clear) a component's schematic-view
    * position nudge (Feature 150). A pure layout hint — the desk placement is
    * untouched — so a re-layout honours the user's arrangement. Throws
@@ -1590,6 +1652,27 @@ export class DeskDoc {
       throw taggedError(`unknown wire color: ${color}`, "INVALID_ARG");
     }
     wire.color = color;
+    return { ...wire };
+  }
+
+  /**
+   * Update a wire's Name/Description — the shared Properties dialog's
+   * universal metadata, kept separate from `recolorWire` (its one catalog-
+   * style field, Color). Present only when non-empty, same omit-when-empty
+   * convention as setBoardParams/setComponentMeta. Throws NOT_FOUND. Returns
+   * a copy.
+   */
+  setWireMeta(id, patch) {
+    const wire = this.#doc.wires.find((w) => w.id === id);
+    if (!wire) throw taggedError(`no wire ${id}`, "NOT_FOUND");
+    if (typeof patch.name === "string") {
+      if (patch.name) wire.name = patch.name;
+      else delete wire.name;
+    }
+    if (typeof patch.description === "string") {
+      if (patch.description) wire.description = patch.description;
+      else delete wire.description;
+    }
     return { ...wire };
   }
 

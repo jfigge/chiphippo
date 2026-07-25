@@ -23,7 +23,7 @@ import assert from "node:assert/strict";
 import { resetDom } from "./jsdom-setup.js";
 import { chipDef, partDef } from "../catalog/index.js";
 
-const { buildChipPinout, buildPartPinout, datasheetButton } =
+const { buildChipPinout, buildPartPinout, buildWirePinout, datasheetButton } =
   await import("../components/chip-pinout.js");
 
 test("a 14-pin chip lays out 7 mirrored rows with numbers and names", () => {
@@ -277,6 +277,30 @@ test("a clock renders out/gnd terminals", () => {
     (n) => n.textContent,
   );
   assert.deepEqual(tags, ["out", "gnd"]);
+});
+
+// ── buildWirePinout: a wire's two ends, same shape as a discrete's list ────
+
+test("buildWirePinout: two rows, badges 1/2, both labeled Wire, no datasheet", () => {
+  resetDom();
+  const el = buildWirePinout();
+  assert.equal(el.querySelector(".popup-title").textContent, "Wire");
+  const lines = el.querySelectorAll(".part-pinout-list .part-pinout-line");
+  assert.equal(lines.length, 2);
+  const tags = [...el.querySelectorAll(".chip-pinout-num")].map(
+    (n) => n.textContent,
+  );
+  assert.deepEqual(tags, ["1", "2"]);
+  const labels = [...el.querySelectorAll(".chip-pinout-label")].map(
+    (n) => n.textContent,
+  );
+  assert.deepEqual(labels, ["Wire", "Wire"]);
+  // Same "anchor hole" / "+1 hole" wording a discrete's two-lead list uses.
+  const details = [...el.querySelectorAll(".part-pinout-detail")].map(
+    (n) => n.textContent,
+  );
+  assert.deepEqual(details, ["anchor hole", "+1 hole"]);
+  assert.equal(el.querySelector(".chip-pinout-datasheet"), null);
 });
 
 // ── datasheetButton: the "open datasheet PDF" header affordance ──────────────

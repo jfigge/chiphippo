@@ -291,6 +291,7 @@ function openPinoutWindow(ref, opts = {}) {
   // When the user's datasheet folder holds a `<ref>.pdf`, tell the page to show
   // the "open datasheet" button (it invokes datasheet:open back into main).
   const query = { ref };
+  if (opts.kind === "wire") query.kind = "wire";
   if (datasheetPdfPath(ref)) query.pdf = "1";
   // The part's placed rotation, a snapshot as of THIS open — only an
   // oscillator can's pinout is rotation-dependent (pinout.js/chip-pinout.js

@@ -682,14 +682,16 @@ async function init() {
       scopeView.setVisible(true);
     },
     onClockToggle: (id) => sim?.manualToggle(id),
-    // A part's "Pin Assignment" context-menu item → its floating
-    // pin/terminal-assignments OS window (`rows` sizes it to the layout;
-    // `rot` is a snapshot of the part's placed rotation — only an oscillator
-    // can's corner assignment depends on it, see chip-pinout.js's
-    // buildCanPinout).
-    onOpenPinout: (ref, rows, rot) =>
+    // A part's (or a wire's) "Pin Assignment" context-menu item → its
+    // floating pin/terminal-assignments OS window (`rows` sizes it to the
+    // layout; `rot` is a snapshot of the part's placed rotation — only an
+    // oscillator can's corner assignment depends on it, see chip-pinout.js's
+    // buildCanPinout; `kind: "wire"` routes main to the query flag pinout.js
+    // reads instead of resolving `ref` against the catalog — a wire has no
+    // catalog def, so `ref` is just its own id, e.g. "w12").
+    onOpenPinout: (ref, rows, rot, kind) =>
       bridge
-        .openPinout?.(ref, { rows, rot })
+        .openPinout?.(ref, { rows, rot, kind })
         .catch((err) => console.error("[renderer] pinout:open failed:", err)),
     // A memory chip's "Inspect memory…" context-menu item → its hex inspector
     // window.
