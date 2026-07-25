@@ -434,7 +434,17 @@ Electron main process (src/app/main.js)
   tab id into a path inside the projects root. Tab documents follow the MANUAL
   save model (the toolbar's New / Load / Save act on the active tab, silently,
   since a tab owns its path); the project FILE autosaves whenever the tab set,
-  names, or active tab change. With no project open nothing changes — no tab
+  names/descriptions, or active tab change. A tab's context menu is the
+  **board's** two-item shape — Properties… · rule · Delete Sub-Desktop — NOT
+  the part menu's three: a desktop has no pins at all, so the leading Pin
+  Assignment and its separator are gone (`project-tabs.js`). Properties…
+  opens the app-wide `PartPropertiesDialog`, so a desktop carries the same
+  universal **Name/Description** pair every part, board, and wire does (the
+  description shows in the tab's tooltip — its only room on the strip). Both
+  ride the existing `project:save-meta`: `ProjectWorkspace#setTabProperty`
+  applies each field live, and the store's per-tab whitelist takes exactly
+  `name` + `description` (omit-when-empty, `file`/`kind` still re-derived from
+  disk). With no project open nothing changes — no tab
   strip, the working `desk.json`, today's New/Open/Save. The **design clip**
   (`model/design-clip.js`, pure) is `paste-cluster.js` one level up: it carries
   the BOARDS too (plus everything seated on them, selected desk bricks, every
@@ -451,7 +461,7 @@ Electron main process (src/app/main.js)
   separated by spacing rather than by borders of their own (there is no
   split-button seam anywhere), and an armed segment FILLS instead of gaining
   an accent border. Two exist: the desk tools (Wire · Bus · Fade · Probe ·
-  Fit) and **File** (New + the ▾ that drops the file menu, tightened by
+  Analyzer · Fit) and **File** (New + the ▾ that drops the file menu, tightened by
   `.toolbar-pill--file` since it is an action plus its menu, not a row of
   peers). Everything else is a plain `.toolbar-btn` / `.toolbar-icon-btn`.
   The pill is the APP's grouping shape, not the toolbar's alone — the desktop

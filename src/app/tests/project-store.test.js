@@ -203,6 +203,32 @@ test("saveMeta persists renames and the active tab — and only those", () => {
   });
 });
 
+test("saveMeta stores a tab description, keeps it, and clears it on empty", () => {
+  withStore((store) => {
+    const created = store.create("described", null);
+    const [main, sub] = created.tabs;
+    const patch = (description) => ({
+      tabs: [{ id: main.id, name: "Main" }, { id: sub.id, name: sub.name, description }], // prettier-ignore
+    });
+
+    let saved = store.saveMeta(created.id, patch("  The clock module  "));
+    assert.equal(saved.tabs[1].description, "The clock module", "trimmed");
+    assert.equal(saved.tabs[0].description, undefined, "only the tab patched");
+
+    // An absent key leaves what is stored — a rename must not drop it.
+    saved = store.saveMeta(created.id, {
+      tabs: [{ id: main.id }, { id: sub.id, name: "Clock" }],
+    });
+    assert.equal(saved.tabs[1].name, "Clock");
+    assert.equal(saved.tabs[1].description, "The clock module");
+
+    // An empty string is the way to clear it (omit-when-empty on disk).
+    saved = store.saveMeta(created.id, patch("   "));
+    assert.equal("description" in saved.tabs[1], false);
+    assert.equal(store.load(created.id).tabs[1].description, undefined);
+  });
+});
+
 test("saveMeta ignores tabs this store never minted, and needs at least one", () => {
   withStore((store) => {
     const created = store.create("strict", null);

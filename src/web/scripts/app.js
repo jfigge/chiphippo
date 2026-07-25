@@ -140,6 +140,12 @@ const PROBE_SVG =
   '<line x1="20" y1="4" x2="13" y2="11"/>' +
   '<path d="M20 4c1-1.5 3-1.5 3 0"/></svg>';
 
+/** Logic-analyzer icon for the Analyzer toolbar toggle: a recorded digital
+ * waveform — what the panel draws. */
+const ANALYZER_SVG =
+  ICON_SVG_OPEN +
+  '<polyline points="2 18 6 18 6 6 11 6 11 18 16 18 16 6 22 6"/></svg>';
+
 /** "Fade wires" toggle icon — the effect itself: two tie points joined by a
  * jumper drawn solid off each end and faded away in between. */
 const FADE_WIRES_SVG =
@@ -664,7 +670,7 @@ async function init() {
   const projectTabs = new ProjectTabs(stage, {
     onSelect: (id) => workspace?.selectTab(id),
     onAdd: () => workspace?.addTab(),
-    onRename: (id) => workspace?.renameTab(id),
+    onProperties: (id) => workspace?.editTabProperties(id),
     onDelete: (id) => workspace?.deleteTab(id),
   });
   stage.append(desk);
@@ -1018,8 +1024,8 @@ async function init() {
   partsBtn.classList.toggle("toolbar-btn--active", palette.visible);
   toolbar.append(partsBtn);
 
-  // ── Desk-tool pill (Wire / Bus / Fade / Probe / Fit) ──────────────────────
-  // The five desk tools read as ONE control: a single rounded surface carrying
+  // ── Desk-tool pill (Wire / Bus / Fade / Probe / Analyzer / Fit) ───────────
+  // The six desk tools read as ONE control: a single rounded surface carrying
   // the only border, its segments separated by spacing rather than by borders
   // of their own. Each segment is still an ordinary button with its own state
   // — only the chrome is shared. Built empty here so each tool can append
@@ -1097,6 +1103,20 @@ async function init() {
   probeBtn.innerHTML = PROBE_SVG;
   toolPill.append(probeBtn);
 
+  // Logic analyzer: toggle the bottom-docked waveform panel. Like the guide it
+  // is a passive viewer, so it stays available while the circuit runs.
+  scopeBtn = el("button", {
+    class: "toolbar-pill-btn toolbar-pill-btn--icon",
+    type: "button",
+    "aria-label": "Analyzer",
+    title: `Logic analyzer — record and view signal waveforms over time (${MOD_KEY}+A)`,
+    "aria-pressed": String(scopeView.visible),
+    onClick: () => scopeView.toggle(),
+  });
+  scopeBtn.innerHTML = ANALYZER_SVG;
+  scopeBtn.classList.toggle("toolbar-btn--active", scopeView.visible);
+  toolPill.append(scopeBtn);
+
   // Fit to screen: frame every board/part/wire on the desk (find lost parts).
   // A passive camera move, so it stays available while the circuit runs.
   // Shift previews the OTHER find-a-lost-part move (zoom out fully, ⌘⇧F): the
@@ -1154,19 +1174,6 @@ async function init() {
     updateLocateIcon();
   });
   toolPill.append(locateBtn);
-
-  // Logic analyzer: toggle the bottom-docked waveform panel. Like the guide it
-  // is a passive viewer, so it stays available while the circuit runs.
-  scopeBtn = el("button", {
-    class: "toolbar-btn",
-    type: "button",
-    text: "Analyzer",
-    title: `Logic analyzer — record and view signal waveforms over time (${MOD_KEY}+A)`,
-    "aria-pressed": String(scopeView.visible),
-    onClick: () => scopeView.toggle(),
-  });
-  scopeBtn.classList.toggle("toolbar-btn--active", scopeView.visible);
-  toolbar.append(scopeBtn);
 
   // ── Simulation transport (Feature 90/100): Run/Stop, Pause, Step, speed ──
   const notifications = new NotificationStack(document.body);

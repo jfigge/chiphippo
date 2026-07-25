@@ -197,8 +197,8 @@
   cursor: pointer;
 }
 
-/* An icon-only segment (Fade / Probe / Fit, and File's ▾) is square and
-   de-emphasized. */
+/* An icon-only segment (Fade / Probe / Analyzer / Fit, and File's ▾) is
+   square and de-emphasized. */
 .toolbar-pill-btn--icon {
   justify-content: center;
   width: 24px;

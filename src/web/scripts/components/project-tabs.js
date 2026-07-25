@@ -24,11 +24,11 @@
 // no project open it isn't in the DOM at all, so the app looks exactly as it
 // did before a project existed.
 //
-// Right-clicking a tab opens the SAME three-item menu every part on the desk
-// offers, in the same order — Pin Assignment, Properties…, Delete — because
-// the app-wide rule is that the menu's SHAPE never changes, only what is
-// enabled. A tab has no pins, so Pin Assignment is always disabled; Main is
-// the project, so its Delete is too.
+// Right-clicking a tab opens the BOARD menu's shape — Properties…, a rule,
+// Delete — rather than the part menu's three items. A part's leading Pin
+// Assignment is meaningless here (a desktop has no pins at all, not even a
+// disabled-today set), so it is dropped along with its separator, exactly as
+// a board's menu drops it. Main is the project, so its Delete is disabled.
 
 import { el } from "../dom.js";
 import { PopupManager } from "../popup-manager.js";
@@ -37,7 +37,7 @@ export class ProjectTabs {
   #root;
   #onSelect;
   #onAdd;
-  #onRename;
+  #onProperties;
   #onDelete;
   #tabs = [];
   #activeId = null;
@@ -51,13 +51,14 @@ export class ProjectTabs {
    * @param {object} callbacks
    * @param {(id: string) => void} callbacks.onSelect - a tab was clicked.
    * @param {() => void} callbacks.onAdd - the "+" affordance.
-   * @param {(id: string) => void} callbacks.onRename - Properties… on a tab.
+   * @param {(id: string) => void} callbacks.onProperties - Properties… on a
+   *   tab (its Name/Description, through the app-wide shared dialog).
    * @param {(id: string) => void} callbacks.onDelete - Delete on a tab.
    */
-  constructor(container, { onSelect, onAdd, onRename, onDelete } = {}) {
+  constructor(container, { onSelect, onAdd, onProperties, onDelete } = {}) {
     this.#onSelect = onSelect;
     this.#onAdd = onAdd;
-    this.#onRename = onRename;
+    this.#onProperties = onProperties;
     this.#onDelete = onDelete;
     this.#root = el("div", {
       class: "project-tabs",
@@ -80,7 +81,7 @@ export class ProjectTabs {
 
   /**
    * Show the tabs of the open project — or hide the strip entirely when there
-   * is none (`tabs` empty). `tabs` are `{ id, name, kind }`.
+   * is none (`tabs` empty). `tabs` are `{ id, name, description?, kind }`.
    */
   setTabs(tabs, activeId) {
     this.#tabs = Array.isArray(tabs) ? tabs : [];
@@ -121,6 +122,9 @@ export class ProjectTabs {
     const classes = ["project-tab"];
     if (active) classes.push("project-tab--active");
     if (dirty) classes.push("project-tab--dirty");
+    // The tooltip is a desktop's Description's only visible surface — the strip
+    // shows the name alone, and the tab is too narrow for anything more.
+    const head = dirty ? `${tab.name} — unsaved changes` : tab.name;
     return el(
       "button",
       {
@@ -128,7 +132,7 @@ export class ProjectTabs {
         type: "button",
         role: "tab",
         "aria-selected": String(active),
-        title: dirty ? `${tab.name} — unsaved changes` : tab.name,
+        title: tab.description ? `${head}\n${tab.description}` : head,
         dataset: { tabId: tab.id },
         onClick: () => {
           if (!active) this.#onSelect?.(tab.id);
@@ -148,19 +152,19 @@ export class ProjectTabs {
     );
   }
 
-  /** The app-wide three-item part menu, in its tab form (see the file note). */
+  /** The board menu's two items, in their tab form (see the file note). */
   #openMenu(tab, e) {
     PopupManager.menu({
       x: e.clientX,
       y: e.clientY,
       items: [
-        { label: "Pin Assignment", disabled: true },
         {
           label: "Properties…",
-          onSelect: () => this.#onRename?.(tab.id),
+          onSelect: () => this.#onProperties?.(tab.id),
         },
+        { separator: true },
         {
-          label: "Delete Desktop",
+          label: "Delete Sub-Desktop",
           danger: true,
           disabled: tab.kind === "main" || this.#locked,
           onSelect: () => this.#onDelete?.(tab.id),

@@ -45,9 +45,10 @@
 // Saving follows the toolbar: New / Load / Save act on the ACTIVE TAB, whose
 // file lives in the project folder, so Save never prompts for a path. The
 // project file itself (the tab list) is written automatically whenever the set
-// of tabs, their names, or the active one changes.
+// of tabs, their names/descriptions, or the active one changes.
 
 import { PopupManager } from "../popup-manager.js";
+import { PartPropertiesDialog } from "./part-properties-dialog.js";
 import { HistoryStore } from "../model/history-store.js";
 import { DeskDoc, emptyDocument } from "../model/desk-doc.js";
 
@@ -158,7 +159,7 @@ export class ProjectWorkspace {
     return this.#project?.name ?? null;
   }
 
-  /** The active tab record `{id, name, kind, file}`, or null. */
+  /** The active tab record `{id, name, description?, kind, file}`, or null. */
   get activeTab() {
     if (!this.#project) return null;
     return (
@@ -366,23 +367,49 @@ export class ProjectWorkspace {
     this.#announce();
   }
 
-  /** Properties… on a tab: rename this desktop. */
-  renameTab(id) {
+  /**
+   * Properties… on a tab: the SAME shared dialog every part, board, and wire
+   * opens, with the same universal Name/Description pair. A desktop declares no
+   * fields of its own, so — like a board (desk-controller.js's
+   * #onOpenBoardProperties) — it passes no `fields` list at all.
+   */
+  editTabProperties(id) {
     const tab = this.#project?.tabs.find((t) => t.id === id);
     if (!tab) return;
-    PopupManager.prompt({
-      title: "Desktop properties",
-      label: "Name",
-      value: tab.name,
-      confirmLabel: "Rename",
-      onConfirm: async (name) => {
-        if (!name || name === tab.name) return;
-        tab.name = name;
-        this.#tabsView?.setTabs(this.#project.tabs, this.#project.activeTab);
-        await this.#saveMeta();
-        this.#announce();
-      },
+    PartPropertiesDialog.open({
+      title: "Desktop Properties",
+      values: { name: tab.name, description: tab.description },
+      onChange: (key, value) => void this.#setTabProperty(id, key, value),
     });
+  }
+
+  /**
+   * Apply one Properties-dialog field change to a tab. The dialog applies live
+   * (one change per control, on blur/Enter), so each field commits on its own —
+   * there is no Save to batch them behind.
+   *
+   * A desktop must keep a NAME: an empty one is ignored rather than stored, so
+   * the strip can never render a blank tab (the store falls back to the old
+   * name too). A description follows the omit-when-empty convention
+   * DeskDoc.setComponentMeta uses — cleared, the key goes away entirely.
+   */
+  async #setTabProperty(id, key, value) {
+    const tab = this.#project?.tabs.find((t) => t.id === id);
+    if (!tab) return;
+    const text = typeof value === "string" ? value.trim() : "";
+    if (key === "name") {
+      if (!text || text === tab.name) return;
+      tab.name = text;
+    } else if (key === "description") {
+      if (text === (tab.description ?? "")) return;
+      if (text) tab.description = text;
+      else delete tab.description;
+    } else {
+      return;
+    }
+    this.#tabsView?.setTabs(this.#project.tabs, this.#project.activeTab);
+    await this.#saveMeta();
+    this.#announce();
   }
 
   /**
@@ -572,14 +599,20 @@ export class ProjectWorkspace {
     return state;
   }
 
-  /** Persist the tab list — names, order, and which one is active. */
+  /** Persist the tab list — names, descriptions, order, and which one is
+      active. The description is always sent as a string, empty included, so
+      CLEARING one is expressible: an absent key means "leave what is stored". */
   async #saveMeta() {
     if (!this.#project) return;
     try {
       await this.#bridge.project.saveMeta(this.#project.id, {
         name: this.#project.name,
         activeTab: this.#project.activeTab,
-        tabs: this.#project.tabs.map(({ id, name }) => ({ id, name })),
+        tabs: this.#project.tabs.map(({ id, name, description }) => ({
+          id,
+          name,
+          description: description ?? "",
+        })),
       });
     } catch (err) {
       console.error("[renderer] project:save-meta failed:", err);

@@ -55,12 +55,15 @@ saved yet. The window title shows the project and the active desktop.
 
 ## Managing tabs
 
-Right-click a tab for the standard part menu:
+Right-click a tab for its menu:
 
-- **Properties…** renames the desktop.
-- **Delete Desktop** removes it, along with its file. `Main` can't be deleted —
-  it is the project. If the desktop has unsaved changes, you're asked whether
-  to **save and delete**, **delete anyway**, or **cancel**.
+- **Properties…** opens the same dialog every part, board, and wire has, with
+  the same two fields: a **Name** — what the tab reads — and a **Description**,
+  a note on what this bench is for. Hover the tab to see the description; both
+  are saved with the project as you type them.
+- **Delete Sub-Desktop** removes it, along with its file. `Main` can't be
+  deleted — it is the project. If the desktop has unsaved changes, you're asked
+  whether to **save and delete**, **delete anyway**, or **cancel**.
 
 Sub-desktop numbers only ever count up: deleting `Sub-Desktop #2` doesn't make
 the next one #2 again, so a name you wrote in a note keeps meaning the same

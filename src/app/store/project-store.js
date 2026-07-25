@@ -37,7 +37,10 @@
  * loads into a tab. The tab LIST is this module's own small file:
  *
  *     { version, name, activeTab, nextSubIndex,
- *       tabs: [ { id, name, kind: "main"|"sub", file } ] }
+ *       tabs: [ { id, name, description?, kind: "main"|"sub", file } ] }
+ *
+ * A tab's `description` is the second half of the Name/Description pair every
+ * object in the app carries, and is optional in the same omit-when-empty way.
  */
 "use strict";
 
@@ -255,7 +258,8 @@ class ProjectStore {
    * Persist the tab list — the "automatically saved when changes happen" half
    * of a project. Only the fields this module owns are written, so a renderer
    * patch can never smuggle a path in: tab `file` names are re-derived from
-   * what is already on disk, never taken from the caller.
+   * what is already on disk, never taken from the caller. A tab's editable
+   * fields are exactly its `name` and `description`.
    */
   saveMeta(slug, meta) {
     const dir = this._dirFor(slug);
@@ -266,13 +270,22 @@ class ProjectStore {
     for (const tab of meta?.tabs ?? []) {
       const existing = known.get(tab?.id);
       if (!existing) continue; // a tab this store never minted
-      tabs.push({
+      const next = {
         ...existing,
         name:
           typeof tab.name === "string" && tab.name.trim()
             ? tab.name.trim()
             : existing.name,
-      });
+      };
+      // The description is optional and omit-when-empty (the convention the
+      // desk document's own Name/Description pair follows): an empty string
+      // CLEARS it, an absent key leaves whatever is stored.
+      if (typeof tab.description === "string") {
+        const text = tab.description.trim();
+        if (text) next.description = text;
+        else delete next.description;
+      }
+      tabs.push(next);
     }
     if (tabs.length === 0) throw taggedError("a project needs a tab", "INVALID_ARG"); // prettier-ignore
     const next = {

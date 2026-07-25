@@ -65,12 +65,21 @@ function fakeBridge() {
     },
     load: async (id) =>
       projects.has(id) ? structuredClone(projects.get(id)) : null,
+    // The store's own whitelist, mirrored (project-store.js's saveMeta): only
+    // name/description are taken from the caller, and an empty description
+    // clears the key rather than storing "".
     saveMeta: async (id, meta) => {
       const current = projects.get(id);
       current.activeTab = meta.activeTab ?? current.activeTab;
       for (const patch of meta.tabs ?? []) {
         const tab = current.tabs.find((t) => t.id === patch.id);
-        if (tab && patch.name) tab.name = patch.name;
+        if (!tab) continue;
+        if (patch.name) tab.name = patch.name;
+        if (typeof patch.description === "string") {
+          const text = patch.description.trim();
+          if (text) tab.description = text;
+          else delete tab.description;
+        }
       }
       return structuredClone(current);
     },
@@ -183,6 +192,22 @@ function answerPrompt(text) {
   input.value = text;
   const ok = document.querySelector(".popup-prompt .btn--primary");
   ok.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+}
+
+/** Edit one field of the open Properties dialog. Its text controls commit on
+    `change` (blur/Enter), not per keystroke — see part-properties-dialog.js. */
+function setProperty(selector, value) {
+  const control = document.querySelector(`.properties-popup ${selector}`);
+  assert.ok(control, `the properties dialog shows ${selector}`);
+  control.value = value;
+  control.dispatchEvent(new window.Event("change", { bubbles: true }));
+}
+
+/** Close whatever popup is open (the dialog's header ×). */
+function closePopup() {
+  document
+    .querySelector(".popup-close")
+    ?.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
 }
 
 /** Click a button by its label in the open dialog. */
@@ -388,22 +413,107 @@ test("deleting a desktop with unsaved changes asks the three-way question", asyn
   assert.equal(h.doc.boards.length, 0, "and shows Main's document");
 });
 
-test("Properties… renames a desktop and persists it", async () => {
+test("a tab's context menu is the board's two items — no Pin Assignment", () => {
+  const win = resetDom();
+  const host = win.document.createElement("div");
+  win.document.body.append(host);
+  const picked = [];
+  const strip = new ProjectTabs(host, {
+    onProperties: (id) => picked.push(`properties:${id}`),
+    onDelete: (id) => picked.push(`delete:${id}`),
+  });
+  strip.setTabs(
+    [
+      { id: "t1", name: "Main", kind: "main" },
+      { id: "t2-1", name: "Sub-Desktop #1", kind: "sub" },
+    ],
+    "t1",
+  );
+
+  const sub = strip.element.querySelectorAll(".project-tab")[1];
+  sub.dispatchEvent(new win.MouseEvent("contextmenu", { bubbles: true }));
+  const items = [...document.querySelectorAll(".popup-menu-item")].map((b) =>
+    b.textContent.trim(),
+  );
+  assert.deepEqual(items, ["Properties…", "Delete Sub-Desktop"]);
+  assert.equal(
+    document.querySelectorAll(".popup-menu-separator").length,
+    1,
+    "one rule, between the two items",
+  );
+
+  const properties = [...document.querySelectorAll(".popup-menu-item")].find(
+    (b) => b.textContent.trim() === "Properties…",
+  );
+  properties.dispatchEvent(new win.MouseEvent("click", { bubbles: true }));
+  assert.deepEqual(picked, ["properties:t2-1"]);
+});
+
+test("Delete Sub-Desktop is disabled on Main", () => {
+  const win = resetDom();
+  const host = win.document.createElement("div");
+  win.document.body.append(host);
+  const strip = new ProjectTabs(host, {});
+  strip.setTabs([{ id: "t1", name: "Main", kind: "main" }], "t1");
+
+  strip.element
+    .querySelector(".project-tab")
+    .dispatchEvent(new win.MouseEvent("contextmenu", { bubbles: true }));
+  const del = [...document.querySelectorAll(".popup-menu-item")].find(
+    (b) => b.textContent.trim() === "Delete Sub-Desktop",
+  );
+  assert.ok(del);
+  assert.equal(del.disabled, true, "Main is the project — it can never go");
+});
+
+test("Properties… sets a desktop's Name and Description, and persists both", async () => {
   const h = harness();
   await h.workspace.newProject();
   answerPrompt("Naming");
   await settle();
   const [, sub] = [...h.projects.values()][0].tabs;
 
-  h.workspace.renameTab(sub.id);
-  answerPrompt("Clock module");
+  h.workspace.editTabProperties(sub.id);
+  setProperty(".properties-text-input", "Clock module");
+  setProperty(".properties-textarea", "The 555 and its divider.");
+  closePopup();
   await settle();
-  assert.equal([...h.projects.values()][0].tabs[1].name, "Clock module");
-  assert.ok(
-    [...h.tabs.element.querySelectorAll(".project-tab")].some(
-      (b) => b.textContent.trim() === "Clock module",
-    ),
+  const saved = [...h.projects.values()][0].tabs[1];
+  assert.equal(saved.name, "Clock module");
+  assert.equal(saved.description, "The 555 and its divider.");
+  const button = [...h.tabs.element.querySelectorAll(".project-tab")].find(
+    (b) => b.textContent.trim() === "Clock module",
   );
+  assert.ok(button, "the strip shows the new name");
+  assert.match(
+    button.title,
+    /The 555 and its divider\./,
+    "and the description",
+  );
+});
+
+test("a desktop keeps its name when Properties… is left blank; an empty description clears", async () => {
+  const h = harness();
+  await h.workspace.newProject();
+  answerPrompt("Blanking");
+  await settle();
+  const [, sub] = [...h.projects.values()][0].tabs;
+
+  h.workspace.editTabProperties(sub.id);
+  setProperty(".properties-textarea", "Scratch bench");
+  setProperty(".properties-text-input", "   ");
+  closePopup();
+  await settle();
+  let saved = [...h.projects.values()][0].tabs[1];
+  assert.equal(saved.name, sub.name, "a desktop always has a name");
+  assert.equal(saved.description, "Scratch bench");
+
+  h.workspace.editTabProperties(sub.id);
+  setProperty(".properties-textarea", "");
+  closePopup();
+  await settle();
+  saved = [...h.projects.values()][0].tabs[1];
+  assert.equal("description" in saved, false, "cleared, not stored empty");
 });
 
 test("New on a tab empties that desktop after asking", async () => {

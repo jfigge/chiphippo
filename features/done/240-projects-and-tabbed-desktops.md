@@ -126,12 +126,23 @@ outright while any strip is red. Mating snap comes from `snapCorrection`, fed th
 rects as *moving* and the document's as *stationary* — the design pulls flush onto the
 boards already on the desk before the click, never after it.
 
-### The tab context menu is the ONE part-menu shape
+### The tab context menu is the BOARD menu's shape
 
-Per the house rule, a right-click on a tab builds the same three items in the same order —
-**Pin Assignment** (always `disabled`; a tab has no pins), **Properties…** (rename), and
-**Delete Component** ("Delete Desktop"), `disabled` on Main and while the sim runs. The
-shape never changes, only the enabled state.
+Per the house rule, a right-click on a tab builds the same items in the same order as a
+board's menu — **Properties…**, a rule, and **Delete Component** ("Delete Sub-Desktop"),
+`disabled` on Main and while the sim runs.
+
+*Landed differently from the original plan*: the menu first carried a leading, always-
+`disabled` **Pin Assignment**, on the reasoning that the part menu's shape never varies.
+A board's menu already drops it, and for the same reason — a desktop has no pins at all,
+not even a set that is empty today — so the item and its separator went with it.
+
+**Properties…** opens the app-wide `PartPropertiesDialog`, so a desktop carries the
+universal **Name** *and* **Description** pair every other object does (the description
+surfaces in the tab's tooltip, its only room on the strip). Both are persisted in
+`project.json` through the existing `project:save-meta` — the store's per-tab whitelist
+takes exactly `name` and `description` from the caller, `file`/`kind` still re-derived
+from disk, with the same omit-when-empty convention the desk document uses.
 
 Deleting a tab with unsaved changes prompts three ways — **Cancel / Save / Discard** —
 which needs one new `PopupManager.confirm3` shape (the existing `confirm` is two-button).
@@ -198,8 +209,9 @@ which needs one new `PopupManager.confirm3` shape (the existing `confirm` is two
   removes it with the document untouched.
 - A pasted design is one undo step, and its parts, boards, and wires all carry fresh ids —
   the source tab is unaffected.
-- Right-clicking a tab opens the standard three-item menu (Pin Assignment disabled);
-  *Delete Desktop* is disabled on Main, and on a dirty tab prompts Cancel / Save / Discard.
+- Right-clicking a tab opens the board menu's two items (Properties… / Delete
+  Sub-Desktop); *Delete Sub-Desktop* is disabled on Main, and on a dirty tab prompts
+  Cancel / Save / Discard.
 - The project file records the tabs and their files and is rewritten as soon as the tab set
   changes; reopening the app (or *Load Project…*) restores the tabs and the active one.
 
@@ -224,4 +236,4 @@ In the app: Projects ▸ *Add tab* → name the project → build a small design
 a few wires) on **Sub-Desktop #1** → marquee it, ⌘C → click **Main** → ⌘V → move the ghost
 next to an existing board (it snaps flush) → click. Confirm the drop is one ⌘Z, that Esc
 on a fresh ⌘V leaves the document untouched, that right-clicking Main offers a disabled
-*Delete Desktop*, and that quitting and relaunching restores both tabs.
+*Delete Sub-Desktop*, and that quitting and relaunching restores both tabs.
