@@ -296,6 +296,10 @@ export class WireTools {
    * resolved member endpoints rather than threading collar points through.
    */
   #nearOwnBusHandle(wireId, world) {
+    // Faded wires put the whole ribbon away — band, handles and all (see
+    // WireLayer's header) — so there is no handle left to lose the grab to,
+    // and a member's cap re-routes like every other wire's.
+    if (this.#host.wireLayer.faded) return false;
     const doc = this.#host.doc;
     const bus = doc.busOfWire(wireId);
     if (!bus) return false;

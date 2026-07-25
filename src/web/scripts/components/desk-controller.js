@@ -196,6 +196,7 @@ export class DeskController {
   #onCreateMemoryFile;
   #onRemoveMemoryFile;
   #onBusNameChange;
+  #onWireFadeChange;
 
   /**
    * @param {object} opts
@@ -208,6 +209,9 @@ export class DeskController {
    *   the toolbar button + swatch strip).
    * @param {(state: {armed: boolean}) => void} [opts.onProbeStateChange] -
    *   probe-tool arm/disarm (drives the toolbar probe button).
+   * @param {(state: {faded: boolean}) => void} [opts.onWireFadeChange] - the
+   *   wire fade toggled (drives the toolbar button + persists the setting);
+   *   fires on every setWiresFaded, including the initial apply at startup.
    * @param {(id: string) => void} [opts.onClockToggle] - a manual clock's
    *   click-to-toggle while running (Feature 100).
    * @param {(ref: string, rows: number, rot?: number) => void} [opts.onOpenPinout] -
@@ -236,6 +240,7 @@ export class DeskController {
     onBusStateChange,
     onBusNameChange,
     onProbeStateChange,
+    onWireFadeChange,
     onAddNetToAnalyzer,
     onClockToggle,
     onOpenPinout,
@@ -257,6 +262,7 @@ export class DeskController {
     this.#onRemoveMemoryFile = onRemoveMemoryFile;
     this.#onHistoryChange = onHistoryChange;
     this.#onBusNameChange = onBusNameChange;
+    this.#onWireFadeChange = onWireFadeChange;
 
     // Layer order (established for every later stage): boards under parts
     // under wires under the interaction overlay. All are zero-size anchors —
@@ -1532,6 +1538,28 @@ export class DeskController {
     this.#wire.recolorWire(id, color);
   }
 
+  /** Are wires drawn as fading stubs? (the toolbar's Fade wires toggle) */
+  get wiresFaded() {
+    return this.#wireLayer.faded;
+  }
+
+  /**
+   * Fade wires back to a short stub off each end so a crowded board stays
+   * readable, or draw them in full again (see WireLayer#setFaded). Purely how
+   * the desk is drawn — no document change — so it stays available while the
+   * circuit runs.
+   */
+  setWiresFaded(on) {
+    this.#wireLayer.setFaded(on);
+    this.#onWireFadeChange?.({ faded: this.#wireLayer.faded });
+  }
+
+  /** Flip the wire fade; returns the new state. */
+  toggleWiresFaded() {
+    this.setWiresFaded(!this.wiresFaded);
+    return this.wiresFaded;
+  }
+
   // ── Bus tool (Feature 130) ───────────────────────────────────────────────
   // The bus subsystem lives in BusTools; these are the public shims app.js /
   // keyboard drive it through. The bus color rides the shared wire-color pick;
@@ -2229,6 +2257,12 @@ export class DeskController {
         handled = true;
       }
       return handled;
+    }
+    // H fades the wires back to a stub at each end (and back). Like the probe
+    // it only changes what is DRAWN, so it stays available while running.
+    if ((e.key === "h" || e.key === "H") && bareKey) {
+      this.toggleWiresFaded();
+      return true;
     }
     if (this.#editingLocked) return false;
     // A live pointer drag owns #mode until its pointerup commits + tears it

@@ -308,3 +308,134 @@ test("a selected bus lead renders over the ribbon body; releasing restores order
       .classList.contains("wire--selected"),
   );
 });
+
+test("setFaded cuts each wire back to two masked stubs, and back", () => {
+  resetDom();
+  const layer = document.createElement("div");
+  document.body.append(layer);
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  doc.addWire({ from: "bb1.a1", to: "bb1.a40", color: "green" }); // w1, a long run
+  const wires = new WireLayer(layer, doc, {});
+  const group = () => layer.querySelector('.wire[data-wire-id="w1"]');
+  const coreD = () => group().querySelector(".wire-core").getAttribute("d");
+  const whole = coreD();
+
+  wires.setFaded(true);
+  assert.equal(wires.faded, true);
+  assert.equal(group().getAttribute("mask"), "url(#wire-fade-w1)");
+  // Two subpaths (one stub per end) instead of one run…
+  assert.equal(coreD().match(/M /g).length, 2, coreD());
+  // …and the HIT stroke is cut back with them, so the vanished middle can't
+  // swallow a click meant for whatever is underneath it.
+  assert.equal(group().querySelector(".wire-hit").getAttribute("d"), coreD());
+  // The mask itself: one falloff circle per end, centred on its own hole.
+  const circles = [...layer.querySelectorAll("defs mask circle")];
+  assert.equal(circles.length, 2);
+  const a1 = holePosition("pins-full", "a1");
+  assert.equal(Number(circles[0].getAttribute("cx")), a1.x * PX_PER_UNIT);
+  assert.equal(Number(circles[0].getAttribute("cy")), a1.y * PX_PER_UNIT);
+  assert.ok(Number(circles[0].getAttribute("r")) > 0);
+  // …painted with the ONE shared gradient, opaque then ramping to clear.
+  assert.equal(
+    circles[0].getAttribute("fill"),
+    "url(#wire-fade-falloff)",
+    "every circle shares one gradient",
+  );
+  const stops = [...layer.querySelectorAll("defs stop")];
+  assert.equal(stops.length, 3);
+  assert.deepEqual(
+    stops.map((s) => s.getAttribute("stop-opacity")),
+    [null, null, "0"],
+  );
+  assert.equal(layer.querySelectorAll("defs mask").length, 1);
+
+  wires.setFaded(false);
+  assert.equal(group().getAttribute("mask"), null);
+  assert.equal(coreD(), whole);
+  assert.equal(layer.querySelectorAll("defs").length, 0);
+});
+
+test("a faded wire comes back whole while selected", () => {
+  resetDom();
+  const layer = document.createElement("div");
+  document.body.append(layer);
+  const doc = deskWithWire();
+  doc.addWire({ from: "bb1.j1", to: "bb1.j9", color: "red" }); // w2
+  const wires = new WireLayer(layer, doc, {});
+  const group = (id) => layer.querySelector(`.wire[data-wire-id="${id}"]`);
+  wires.setFaded(true);
+  const stub = group("w1").querySelector(".wire-core").getAttribute("d");
+
+  wires.setSelectedMany(["w1"]);
+  assert.equal(group("w1").getAttribute("mask"), null, "no fade while picked");
+  assert.equal(
+    group("w1").querySelector(".wire-core").getAttribute("d").match(/M /g)
+      .length,
+    1,
+    "the whole run is drawn again",
+  );
+  assert.ok(group("w1").classList.contains("wire--selected"));
+  // Its neighbour is untouched by the selection.
+  assert.equal(group("w2").getAttribute("mask"), "url(#wire-fade-w2)");
+
+  wires.setSelectedMany([]);
+  assert.equal(group("w1").getAttribute("mask"), "url(#wire-fade-w1)");
+  assert.equal(group("w1").querySelector(".wire-core").getAttribute("d"), stub);
+});
+
+test("fading puts the ribbon away but keeps its members' leads aimed at it", () => {
+  resetDom();
+  const layer = document.createElement("div");
+  document.body.append(layer);
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const ids = [];
+  for (let i = 0; i < 4; i += 1) {
+    ids.push(doc.addWire({ from: `bb1.a${10 + i}`, to: `bb1.a${30 + i}` }).id);
+  }
+  const loose = doc.addWire({ from: "bb1.j1", to: "bb1.j9" }).id;
+  doc.addBus("D[3:0]", ids, { color: "blue" });
+
+  const wires = new WireLayer(layer, doc, {});
+  const group = (id) => layer.querySelector(`.wire[data-wire-id="${id}"]`);
+  const coreD = (id) => group(id).querySelector(".wire-core").getAttribute("d");
+  const leads = coreD(ids[0]); // its two leads off the ribbon's collars
+  assert.ok(layer.querySelector(".bus-band-fill"), "the ribbon body is drawn");
+
+  wires.setFaded(true);
+  assert.equal(layer.querySelectorAll(".bus-band").length, 0, "no band");
+  assert.equal(
+    layer.querySelectorAll(".bus-end-handle").length,
+    0,
+    "no handle",
+  );
+  for (const id of ids) {
+    assert.equal(
+      group(id).getAttribute("mask"),
+      `url(#wire-fade-${id})`,
+      `${id} fades`,
+    );
+  }
+  // The lead geometry is UNTOUCHED — the wire still leaves its hole pointing
+  // at the collar the (now hidden) ribbon runs through; only the mask changed.
+  assert.equal(coreD(ids[0]), leads);
+  // And it fades from the HOLE outward, over no more than the lead itself, so
+  // the lead vanishes before its collar end rather than stopping dead there.
+  const [, cx, cy, , , ax, ay] = /^M (\S+) (\S+) Q (\S+) (\S+) (\S+) (\S+)/
+    .exec(leads)
+    .map(Number);
+  const circle = layer.querySelector(`mask[id="wire-fade-${ids[0]}"] circle`);
+  assert.equal(Number(circle.getAttribute("cx")), ax, "centred on the hole");
+  assert.equal(Number(circle.getAttribute("cy")), ay);
+  const lead = Math.hypot(ax - cx, ay - cy);
+  assert.ok(Number(circle.getAttribute("r")) < lead, `r vs lead ${lead}`);
+  assert.ok(layer.querySelector(`mask[id="wire-fade-${loose}"]`));
+
+  // Turning it back off restores the ribbon; the leads never moved.
+  wires.setFaded(false);
+  assert.ok(layer.querySelector(".bus-band-fill"));
+  assert.equal(layer.querySelectorAll(".bus-end-handle").length, 2);
+  assert.equal(group(ids[0]).getAttribute("mask"), null);
+  assert.equal(coreD(ids[0]), leads);
+});

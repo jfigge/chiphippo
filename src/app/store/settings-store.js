@@ -62,6 +62,12 @@ const DEFAULTS = Object.freeze({
   // Properties dialog (right-click ▸ Properties…).
   defaultLedColor: "red",
 
+  // ── Desk drawing ──────────────────────────────────────────────────────────
+  // Whether wires are faded back to a short stub at each end (the toolbar's
+  // "Fade wires" toggle, or H) so a heavily wired board stays readable. A
+  // selected wire is always drawn whole.
+  wiresFaded: false,
+
   // ── Panels (Build guide / Logic analyzer) ──────────────────────────────────
   // Whether the right-docked build guide is shown.
   guideOpen: false,

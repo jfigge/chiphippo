@@ -21,6 +21,22 @@
 // invisible hit stroke with `pointer-events: stroke` for click-select and the
 // context menu (idiomatic SVG beats hand-rolled curve-distance math).
 //
+// FADED (the toolbar's "Fade wires" toggle, setFaded): a dense board can end
+// up buried under its own wiring, so every wire can be cut back to a short stub
+// off each end that ramps away to nothing in between — enough to read where a
+// wire lands without the run across the middle hiding the parts. The stub is
+// the drawn path AND the hit stroke, so the vanished middle can't swallow a
+// click meant for the chip underneath it. A SELECTED wire is exempt: picking
+// one (or marquee-ing it) brings the whole run back.
+//
+// A BUS is the biggest thing in the way, so fading puts the ribbon itself away
+// — no trunk, no hit band, no end handles — but its members keep the very leads
+// they had, still aimed at the collar the ribbon would run through, and just
+// fade out along them. So a faded bus still reads as a bundle: every member
+// points at where the tunnel is. With no band and no handles rendered there is
+// nothing to grab a bus by while faded; WireTools#nearOwnBusHandle drops its
+// collar exclusion to match.
+//
 // Endpoints are ADDRESSES resolved through board origins at render time, so
 // cross-board wires are first-class: wires re-render only when the wire list
 // changes (chiphippo:doc-changed) or an endpoint's board moves (the
@@ -28,7 +44,13 @@
 
 import { clear, svgEl } from "../dom.js";
 import { PX_PER_UNIT } from "../desk/desk-geometry.js";
-import { wirePath, wireSag } from "../desk/wire-path.js";
+import {
+  FADE_SOLID_FRACTION,
+  fadeRadius,
+  fadedWire,
+  wirePath,
+  wireSag,
+} from "../desk/wire-path.js";
 import {
   HANDLE_HIT_RADIUS,
   centroid,
@@ -47,12 +69,20 @@ const CAP_RADIUS = 2.4;
     desk/ribbon-path.js. */
 const HANDLE_KNOB_RADIUS = 4;
 
+/** The id of the one falloff gradient every fade mask paints its circles with
+    (see #fadeDefs) — it is in objectBoundingBox units, so ONE definition
+    serves every circle whatever its radius. */
+const FADE_GRADIENT_ID = "wire-fade-falloff";
+
 /** A bus ribbon's drawn width (world px), scaled modestly with bit count —
     shared by #busGeometry (the leads' spread) and #buildBandCover (the
     visible body), so the two always agree on how wide the pipe reads. */
 function ribbonWidth(memberCount) {
   return Math.max(8, Math.min(24, 5 + memberCount));
 }
+
+/** Straight-line distance between two world-px points. */
+const distance = (p, q) => Math.hypot(q.x - p.x, q.y - p.y);
 
 /** Do two sets hold exactly the same members? */
 function sameSet(a, b) {
@@ -69,6 +99,7 @@ export class WireLayer {
   #onHover;
   #onSelectBus;
   #onBusContextMenu;
+  #faded = false; // draw every unselected wire as two fading stubs
   #selectedIds = new Set(); // highlighted wires (one pick, or a marquee)
   #selectedBusIds = new Set(); // highlighted bus bands
   #preview = null; // preview path elements while the wire tool is pending
@@ -169,6 +200,9 @@ export class WireLayer {
     const busOffset = rigidBus ? null : busDrag;
     clear(this.#svg);
     this.#dragShift = [];
+    // The fade masks (one per faded wire) live in a <defs> made on demand —
+    // nothing to carry when the toggle is off, which is the usual case.
+    let defs = null;
 
     // Snapshot the doc arrays ONCE — the getters copy on every access.
     const wires = this.#doc.wires;
@@ -203,6 +237,11 @@ export class WireLayer {
     // lifting a lead over it costs nothing — lifting it over the handles too
     // would hand a member's hit stroke priority over the handle at the collar,
     // the exact ambiguity WireTools#nearOwnBusHandle exists to settle.
+    // While FADED only the collars survive that: the leads still aim at where
+    // the ribbon runs, but the band, the body and the handles are all put away
+    // (`ribbons` below), so there is nothing left to paint over a lead or to
+    // grab the bus by.
+    const ribbons = !this.#faded;
     const wireCollars = new Map(); // wireId -> { collarA, collarB } (spread, not shared)
     const bandCovers = [];
     const endHandles = [];
@@ -210,6 +249,13 @@ export class WireLayer {
     for (const bus of buses) {
       const geo = this.#busGeometry(bus, overrides, busOffset, wiresById);
       if (!geo) continue;
+      bus.members.forEach((wid, i) => {
+        wireCollars.set(wid, {
+          collarA: geo.spreadA[i] ?? geo.collarA,
+          collarB: geo.spreadB[i] ?? geo.collarB,
+        });
+      });
+      if (!ribbons) continue; // faded: leads only
       const off = busDrag && busDrag.busId === bus.id ? busDrag : null;
       const shifts = rigidBus && off ? this.#dragShift : null;
       const bandHit = this.#buildBandHit(bus, geo);
@@ -226,16 +272,10 @@ export class WireLayer {
       this.#svg.append(bandHit);
       bandCovers.push(bandCover);
       endHandles.push(...handles);
-      bus.members.forEach((wid, i) => {
-        wireCollars.set(wid, {
-          collarA: geo.spreadA[i] ?? geo.collarA,
-          collarB: geo.spreadB[i] ?? geo.collarB,
-        });
-      });
     }
-    // Which wires draw as a bus lead this render — the ones whose selection
-    // has to lift them over the ribbon body (see #raisedIds / setSelectedMany).
-    this.#memberIds = new Set(wireCollars.keys());
+    // Which wires' selection has to lift them over the ribbon body (see
+    // #raisedIds / setSelectedMany) — none while faded: there is no body.
+    this.#memberIds = ribbons ? new Set(wireCollars.keys()) : new Set();
 
     for (const wire of wires) {
       let a = this.#endpointWorld(wire.from, overrides);
@@ -266,11 +306,41 @@ export class WireLayer {
       // #busGeometry) rather than one full run — the shared trunk carries the
       // middle, so only the last stretch into each hole needs its own path.
       const collars = wireCollars.get(wire.id);
-      const d = collars
-        ? `${wirePath(collars.collarA, a)} ${wirePath(collars.collarB, b)}`
-        : wirePath(a, b);
+      const selected = this.#selectedIds.has(wire.id);
+      const leads =
+        collars &&
+        `${wirePath(collars.collarA, a)} ${wirePath(collars.collarB, b)}`;
+      // Faded (setFaded), unless this wire is picked — a selected wire is
+      // deliberately shown whole. A bus member keeps the very leads it already
+      // had, so it still points at the ribbon; every other wire is cut back to
+      // a stub off each end. Either way a mask fades each end out over a circle
+      // around its own hole, sized to how much wire runs off that end.
+      let d = leads || wirePath(a, b);
+      let fadeEnds = null;
+      if (this.#faded && !selected) {
+        if (collars) {
+          fadeEnds = [
+            { ...a, r: fadeRadius(distance(a, collars.collarA)) },
+            { ...b, r: fadeRadius(distance(b, collars.collarB)) },
+          ];
+        } else {
+          const fade = fadedWire(a, b);
+          d = fade.d;
+          fadeEnds = [
+            { ...a, r: fade.radius },
+            { ...b, r: fade.radius },
+          ];
+        }
+      }
 
       const group = svgEl("g", { class: "wire" });
+      if (fadeEnds) {
+        defs ??= this.#fadeDefs();
+        group.setAttribute(
+          "mask",
+          `url(#${this.#appendFadeMask(defs, wire.id, fadeEnds)})`,
+        );
+      }
       group.dataset.wireId = wire.id;
       group.style.setProperty(
         "--wire-color",
@@ -295,7 +365,7 @@ export class WireLayer {
             : busDrag.legal;
         group.classList.toggle("wire-preview--illegal", legal === false);
       }
-      group.classList.toggle("wire--selected", this.#selectedIds.has(wire.id));
+      group.classList.toggle("wire--selected", selected);
       group.addEventListener("click", (e) => this.#onSelect?.(wire.id, e));
       group.addEventListener("contextmenu", (e) =>
         this.#onContextMenu?.(wire.id, e),
@@ -307,7 +377,7 @@ export class WireLayer {
       }
       // A selected bus lead is held back and re-appended over the ribbon body
       // (pass 4 above); everything else keeps its document-order slot.
-      if (collars && this.#selectedIds.has(wire.id)) raised.push(group);
+      if (collars && selected) raised.push(group);
       else this.#svg.append(group);
     }
     for (const cover of bandCovers) this.#svg.append(cover);
@@ -316,6 +386,71 @@ export class WireLayer {
     if (busPreview) this.#svg.append(busPreview);
     if (preview) this.#svg.append(preview);
     if (rigidBus) this.#applyDragShift(busDrag);
+  }
+
+  /**
+   * The `<defs>` every fade mask lives in, holding the ONE falloff gradient
+   * they all paint with: opaque white out to FADE_SOLID_FRACTION of the way,
+   * then ramping to fully transparent at the rim. It is in objectBoundingBox
+   * units, so the same definition serves a circle of any radius — the fade is
+   * always the same shape, just scaled.
+   *
+   * The stops go transparent rather than black on purpose: a mask's shapes
+   * composite source-over, so two overlapping circles (a wire short enough for
+   * its two ends to meet) ADD up to a union instead of the later one punching
+   * a hole through the earlier.
+   */
+  #fadeDefs() {
+    const defs = svgEl("defs");
+    const gradient = svgEl("radialGradient", { id: FADE_GRADIENT_ID });
+    gradient.append(
+      svgEl("stop", { offset: 0, "stop-color": "#fff" }),
+      svgEl("stop", { offset: FADE_SOLID_FRACTION, "stop-color": "#fff" }),
+      svgEl("stop", { offset: 1, "stop-color": "#fff", "stop-opacity": 0 }),
+    );
+    defs.append(gradient);
+    this.#svg.append(defs);
+    return defs;
+  }
+
+  /**
+   * Build one wire's fade mask into `defs` and return its id: one falloff
+   * circle per `ends` entry ({x, y, r}), so the wire shows only within `r` of
+   * that hole — in EVERY direction, which is what lets a bus member's lead
+   * point off at the ribbon and still fade cleanly. It masks the whole
+   * `g.wire`, so outline, core, and end caps ramp away together, and the caps
+   * (right on the holes, where the mask is solid) survive.
+   *
+   * Ids are keyed by wire id, so a rebuild replaces its own mask rather than
+   * piling up (`clear()` empties the whole svg first either way).
+   */
+  #appendFadeMask(defs, wireId, ends) {
+    const maskId = `wire-fade-${wireId}`;
+    // Only what a circle covers can show, so the mask region is just their
+    // bounds (+1 for rounding) — no need to reach around the wire itself.
+    const box = {
+      x: Math.min(...ends.map((e) => e.x - e.r)) - 1,
+      y: Math.min(...ends.map((e) => e.y - e.r)) - 1,
+    };
+    box.width = Math.max(...ends.map((e) => e.x + e.r)) + 1 - box.x;
+    box.height = Math.max(...ends.map((e) => e.y + e.r)) + 1 - box.y;
+    const mask = svgEl("mask", {
+      id: maskId,
+      maskUnits: "userSpaceOnUse",
+      ...box,
+    });
+    for (const end of ends) {
+      mask.append(
+        svgEl("circle", {
+          cx: end.x,
+          cy: end.y,
+          r: end.r,
+          fill: `url(#${FADE_GRADIENT_ID})`,
+        }),
+      );
+    }
+    defs.append(mask);
+    return maskId;
   }
 
   /**
@@ -495,6 +630,24 @@ export class WireLayer {
     this.render();
   }
 
+  /** Are wires drawn as fading stubs? */
+  get faded() {
+    return this.#faded;
+  }
+
+  /**
+   * Fade every wire back to a short stub off each end (true), or draw them in
+   * full (false) — the toolbar's "Fade wires" toggle. A selected wire stays
+   * whole either way, and a bus keeps its members' leads but loses its ribbon;
+   * see the note at the top of the file.
+   */
+  setFaded(on) {
+    const next = Boolean(on);
+    if (next === this.#faded) return;
+    this.#faded = next;
+    this.render();
+  }
+
   /** Highlight one wire (null clears). Survives re-renders. */
   setSelected(id) {
     this.setSelectedMany(id == null ? [] : [id]);
@@ -503,16 +656,20 @@ export class WireLayer {
   /** Highlight a SET of wires (marquee selection); empty clears. */
   setSelectedMany(ids) {
     const next = new Set(ids);
-    // Selecting or deselecting a BUS LEAD changes render order, not just a
-    // class: render() lifts it over the ribbon body that would otherwise
-    // paint over nearly all of it, and drops it back into document order when
-    // the selection is released. Any other selection change is a pure class
-    // toggle, which is why this doesn't just always re-render — selection is
+    if (sameSet(this.#selectedIds, next)) return;
+    // Two selection changes are more than a class toggle, and both have to
+    // rebuild — which is why this doesn't just always re-render: selection is
     // committed once per click/marquee gesture, but render() rebuilds every
     // wire in the document.
+    //   · a BUS LEAD changes render order — render() lifts it over the ribbon
+    //     body that would otherwise paint over nearly all of it, and drops it
+    //     back into document order when the selection is released;
+    //   · while FADED, a wire's selection changes its geometry (the stub path
+    //     and its mask come off, so the whole run shows and the whole run is
+    //     clickable again).
     const wasRaised = this.#raisedIds(this.#selectedIds);
     this.#selectedIds = next;
-    if (!sameSet(wasRaised, this.#raisedIds(next))) {
+    if (this.#faded || !sameSet(wasRaised, this.#raisedIds(next))) {
       this.render();
       return;
     }

@@ -66,6 +66,7 @@ const SHORTCUT_GROUPS = [
     title: "View",
     rows: [
       { desc: "Breadboard ⇄ Schematic", keys: "Tab" },
+      { desc: "Fade wires to a stub at each end", keys: "H" },
       { desc: "Toggle the parts palette", keys: `${MOD}+P` },
       { desc: "Toggle the logic analyzer", keys: `${MOD}+A` },
       { desc: "Fit to screen", keys: `${MOD}+F` },

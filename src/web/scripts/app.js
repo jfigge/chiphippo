@@ -135,6 +135,16 @@ const PROBE_SVG =
   '<line x1="20" y1="4" x2="13" y2="11"/>' +
   '<path d="M20 4c1-1.5 3-1.5 3 0"/></svg>';
 
+/** "Fade wires" toggle icon — the effect itself: two tie points joined by a
+ * jumper drawn solid off each end and faded away in between. */
+const FADE_WIRES_SVG =
+  ICON_SVG_OPEN +
+  '<path d="M4 7 Q12 19 20 7" opacity=".3"/>' +
+  '<path d="M4 7 Q6.24 10.36 8.48 11.84"/>' +
+  '<path d="M15.52 11.84 Q17.76 10.36 20 7"/>' +
+  '<circle cx="4" cy="7" r="1.8"/>' +
+  '<circle cx="20" cy="7" r="1.8"/></svg>';
+
 /** Fit-to-screen ("locate") icon for the toolbar action that frames every
  * board/part/wire on the desk — a crosshair/target glyph. */
 const LOCATE_SVG =
@@ -625,6 +635,7 @@ async function init() {
   let busBtn = null;
   let busWidthBtn = null; // the "8"/"16" glyph inside the Bus split button
   let probeBtn = null;
+  let fadeBtn = null; // the "Fade wires" toggle
   let sim = null; // the SimController (created after the toolbar below)
   let memoryBridge = null; // memory-inspector coordinator (created with sim)
   const onWireStateChange = ({ armed, color }) => {
@@ -642,6 +653,15 @@ async function init() {
     probeBtn?.classList.toggle("toolbar-btn--active", armed);
     probeBtn?.setAttribute("aria-pressed", String(armed));
   };
+  // Fading the wires is a view preference, so it persists like the panels do —
+  // and the button follows whether the toolbar or H flipped it.
+  const onWireFadeChange = ({ faded }) => {
+    fadeBtn?.classList.toggle("toolbar-btn--active", faded);
+    fadeBtn?.setAttribute("aria-pressed", String(faded));
+    bridge.settings
+      .set({ wiresFaded: faded })
+      .catch((err) => console.error("[renderer] settings:set failed:", err));
+  };
   controller = new DeskController({
     viewport: desk,
     deskView,
@@ -655,6 +675,7 @@ async function init() {
       if (busWidthBtn) busWidthBtn.textContent = busWidthShort(name);
     },
     onProbeStateChange,
+    onWireFadeChange,
     // Probe context-menu → pin the net as an analyzer channel (and reveal it).
     onAddNetToAnalyzer: (address) => {
       scopeView.addNetChannel(address);
@@ -877,6 +898,22 @@ async function init() {
     },
   });
   toolbar.append(el("div", { class: "toolbar-split" }, [busBtn, busWidthBtn]));
+
+  // Fade wires: draw every wire as a short stub off each hole, fading out in
+  // between, so a heavily wired board stays readable. A selected wire comes
+  // back whole. Purely how the desk is drawn, so it stays live while running.
+  fadeBtn = el("button", {
+    class: "toolbar-icon-btn",
+    type: "button",
+    "aria-label": "Fade wires",
+    title:
+      "Fade wires — draw only a stub at each end so the board stays readable (H)",
+    "aria-pressed": "false",
+    onClick: () => controller.toggleWiresFaded(),
+  });
+  fadeBtn.innerHTML = FADE_WIRES_SVG;
+  toolbar.append(fadeBtn);
+  controller.setWiresFaded(settings.wiresFaded === true);
 
   // Probe tool: highlight a whole electrical net on hover (shortcut I).
   probeBtn = el("button", {
