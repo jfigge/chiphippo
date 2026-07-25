@@ -129,11 +129,17 @@
   --control-height: 32px; /* text inputs, selects, and default buttons */
 }
 
-/* Light palette. Applied via the OS preference ONLY when the user hasn't
-   picked an explicit theme (`:not([data-theme])`), and via the explicit
-   `data-theme="light"` override (a later settings picker). The attribute
-   selector out-specifies the media query, so a chosen theme wins over the OS
-   in both directions. */
+/* Light palette, reached two ways.
+   ① The media query is the app's ACTUAL path: Settings ▸ Appearance ▸ Theme
+   persists "system"/"light"/"dark", and main turns that into Electron's
+   `nativeTheme.themeSource` — which is what `prefers-color-scheme` reports in
+   every window here. So one native switch themes the main window, every
+   auxiliary window, and the native menus/dialogs, with nothing to plumb per
+   window and no flash of the wrong palette.
+   ② `data-theme="light"`/`"dark"` on the root is a manual override (handy in
+   the devtools, and the escape hatch if a page ever needs to pin a palette).
+   The attribute out-specifies the media query, so it wins in both directions —
+   which is why the media query is guarded with `:not([data-theme])`. */
 @media (prefers-color-scheme: light) {
   :root:not([data-theme]) {
     color-scheme: light;
@@ -206,8 +212,8 @@
   --shadow-1: 0 1px 3px rgba(0, 0, 0, 0.12);
 }
 
-/* Explicit dark override — same values as the :root default; present so a
-   chosen dark theme beats the OS light preference above. */
+/* Explicit dark override — same values as the :root default; present so the
+   manual override works in both directions (see the note above). */
 :root[data-theme="dark"] {
   color-scheme: dark;
   --color-base: #1c1c1c;

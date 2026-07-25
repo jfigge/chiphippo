@@ -533,8 +533,17 @@ Electron main process (src/app/main.js)
   patch and `app.js`'s `applySettings` both persists it (`settings.set`) and
   applies it live. It is a **tabbed** master-detail card (left nav rail →
   panels). The **Appearance** tab (the first/default tab — there is no
-  General) drives **`showDeskHub`** (off by default — toggles the `DeskHud`
-  overlay via `setVisible`), **`selectionColor`** (`#rrggbb` or null → sets
+  General) leads with **`theme`** — a `.settings-segmented` picker (the
+  dialog's form of the toolbar pill) offering **System / Light / Dark**,
+  default `"system"`. It is the ONE setting the renderer does not apply:
+  main turns it into Electron's **`nativeTheme.themeSource`**, and everything
+  follows from that — every window's `prefers-color-scheme` (so theme.css's
+  light palette reaches the main window AND every auxiliary window with no
+  per-window plumbing and no flash), the native menus/dialogs, and each new
+  `BrowserWindow`'s pre-paint `backgroundColor` (`windowBackground()`). The
+  `:root[data-theme]` blocks in theme.css stay as a manual override only.
+  The tab also drives **`showDeskHub`** (off by default — toggles the
+  `DeskHud` overlay via `setVisible`), **`selectionColor`** (`#rrggbb` or null → sets
   the `--color-selection` custom property that `.board-outline-path` strokes
   with, falling back to `--color-accent`), and **`defaultLedColor`** (one of
   `catalog/parts.js`'s `LED_COLOR_OPTIONS`, default `"red"` — the color any

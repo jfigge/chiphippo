@@ -48,6 +48,12 @@ const DEFAULTS = Object.freeze({
   pinoutFloat: true,
 
   // ── Settings dialog ────────────────────────────────────────────────────────
+  // Light / dark appearance: "system" (follow the OS, the default), "light",
+  // or "dark". Main applies it as Electron's `nativeTheme.themeSource`, which
+  // is what every renderer's `prefers-color-scheme` — and the native menus and
+  // dialogs — then follow, so there is ONE switch for the whole app.
+  theme: "system",
+
   // Whether the desk hub (the camera/cursor readout overlay) is shown. Off by
   // default — the Settings dialog's "Show desk hub" toggle drives it.
   showDeskHub: false,

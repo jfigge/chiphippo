@@ -45,6 +45,57 @@ test("SettingsDialog: opens seeded, and a toggle broadcasts a patch", () => {
   PopupManager.close();
 });
 
+test("SettingsDialog: the theme picker leads Appearance, seeds, and emits", () => {
+  resetDom();
+  SettingsDialog.open({ theme: "light" });
+
+  // `.settings-panel` qualified: the NAV ITEM carries the same data-panel.
+  const panel = document.querySelector('.settings-panel[data-panel="appearance"]'); // prettier-ignore
+  assert.equal(
+    panel.firstElementChild.querySelector(".settings-label").textContent,
+    "Theme",
+    "the theme picker is the FIRST row of the Appearance panel",
+  );
+
+  const segments = [...panel.querySelectorAll(".settings-segment")];
+  assert.deepEqual(
+    segments.map((b) => b.textContent),
+    ["System", "Light", "Dark"],
+  );
+  assert.deepEqual(
+    segments.filter((b) => b.classList.contains("settings-segment--active")),
+    [segments[1]],
+    "seeded from the passed theme",
+  );
+
+  const patches = [];
+  window.addEventListener("chiphippo:settings-changed", (e) =>
+    patches.push(e.detail),
+  );
+  segments[2].click();
+  assert.deepEqual(patches, [{ theme: "dark" }]);
+  assert.equal(segments[2].getAttribute("aria-checked"), "true");
+  assert.equal(segments[1].getAttribute("aria-checked"), "false");
+
+  PopupManager.close();
+});
+
+test("SettingsDialog: an absent or junk theme falls back to System", () => {
+  resetDom();
+  SettingsDialog.open({});
+  const active = document.querySelector(".settings-segment--active");
+  assert.equal(active.textContent, "System");
+  PopupManager.close();
+
+  resetDom();
+  SettingsDialog.open({ theme: "solarized" });
+  assert.equal(
+    document.querySelector(".settings-segment--active").textContent,
+    "System",
+  );
+  PopupManager.close();
+});
+
 test("SettingsDialog: the colour input seeds from selectionColor and emits on input", () => {
   resetDom();
   SettingsDialog.open({ showDeskHub: false, selectionColor: "#ff8800" });

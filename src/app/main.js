@@ -31,6 +31,7 @@ const {
   ipcMain,
   Menu,
   nativeImage,
+  nativeTheme,
   screen,
   shell,
 } = require("electron");
@@ -123,6 +124,28 @@ function collectAppInfo() {
     node: process.versions.node,
     platform: `${process.platform} ${process.arch}`,
   };
+}
+
+// ─── Appearance (light / dark) ────────────────────────────────────────────────
+// ONE switch for the whole app: the `theme` setting ("system" | "light" |
+// "dark") becomes Electron's `nativeTheme.themeSource`, and everything else
+// follows from that — every renderer's `prefers-color-scheme` (so theme.css's
+// light palette applies in the main window AND in every auxiliary window,
+// with no per-window plumbing and no flash of the wrong palette), plus the
+// native menus, dialogs, and scrollbars. The renderer never sets a theme
+// attribute of its own; it only persists the choice, which lands here.
+const THEME_SOURCES = new Set(["system", "light", "dark"]);
+
+/** Apply a theme choice natively. Unknown/absent values mean "system". */
+function applyThemeSource(theme) {
+  nativeTheme.themeSource = THEME_SOURCES.has(theme) ? theme : "system";
+}
+
+/** The chrome colour a new window paints BEFORE its first frame, so a light
+    app never flashes a dark rectangle (and vice-versa). Reads the resolved
+    theme, i.e. the choice above layered over the OS preference. */
+function windowBackground() {
+  return nativeTheme.shouldUseDarkColors ? "#1c1c1c" : "#f4f4f4";
 }
 
 // ─── Storage ──────────────────────────────────────────────────────────────────
@@ -349,7 +372,7 @@ function openPinoutWindow(ref, opts = {}) {
     minWidth: 300,
     minHeight: 220,
     alwaysOnTop: pinoutFloatPref(),
-    backgroundColor: "#1c1c1c",
+    backgroundColor: windowBackground(),
     icon: appIcon,
     title: "Pin assignments",
     fullscreenable: false,
@@ -507,7 +530,7 @@ function openMemoryWindow(compId, ref) {
     minWidth: 480,
     minHeight: 320,
     // An editor you type into, so it does NOT float over the app by default.
-    backgroundColor: "#1c1c1c",
+    backgroundColor: windowBackground(),
     icon: appIcon,
     title: "Memory inspector",
     fullscreenable: false,
@@ -589,7 +612,7 @@ function openDocsWindow() {
     minHeight: 400,
     // A reference window, not a floating aid — stays behind the main window
     // like the memory inspector, not always-on-top like a pinout diagram.
-    backgroundColor: "#1c1c1c",
+    backgroundColor: windowBackground(),
     icon: appIcon,
     title: "Chip Hippo User Guide",
     fullscreenable: false,
@@ -861,9 +884,13 @@ function registerIpc() {
   // App settings (Feature 10): the desk viewport + window bounds live here;
   // later stages add their own keys. Writes are atomic (store/io.js).
   ipcMain.handle("settings:get", () => getSettingsStore().get());
-  ipcMain.handle("settings:set", (_event, patch) =>
-    getSettingsStore().set(patch),
-  );
+  ipcMain.handle("settings:set", (_event, patch) => {
+    const next = getSettingsStore().set(patch);
+    // Appearance is the one setting main itself acts on: `theme` becomes the
+    // native theme source, which every window (and the native chrome) follows.
+    if (patch && Object.hasOwn(patch, "theme")) applyThemeSource(next.theme);
+    return next;
+  });
   // Settings ▸ Data Sheets: pick the external datasheet-PDF folder (native
   // directory dialog); the renderer persists the chosen path via settings:set.
   ipcMain.handle("settings:choose-datasheet-dir", () => chooseDatasheetDir());
@@ -1061,7 +1088,7 @@ function createWindow() {
     ...bounds, // x/y only when restored; width/height always
     minWidth: 1024,
     minHeight: 640,
-    backgroundColor: "#1c1c1c", // matches --color-base in theme.css
+    backgroundColor: windowBackground(), // --color-base of the live theme
     icon: appIcon, // Windows/Linux window icon (macOS uses the dock icon)
     show: false,
     webPreferences: {
@@ -1157,6 +1184,15 @@ if (!gotSingleInstanceLock) {
 function bootstrap() {
   app.whenReady().then(() => {
     registerIpc();
+    // Before the first window exists, so it opens already in the right
+    // palette rather than repainting into it.
+    applyThemeSource(
+      safeCall(
+        "settings:theme",
+        () => getSettingsStore().get().theme,
+        "system",
+      ),
+    );
     Menu.setApplicationMenu(buildAppMenu());
     createWindow();
 

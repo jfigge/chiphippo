@@ -50,6 +50,51 @@ const TRASH_SVG =
   '<line x1="10" y1="11" x2="10" y2="17"/>' +
   '<line x1="14" y1="11" x2="14" y2="17"/></svg>';
 
+/** Appearance ▸ Theme. "System" follows the OS; the other two pin it. The
+    choice is persisted like any other setting, and MAIN acts on it — it
+    becomes Electron's `nativeTheme.themeSource`, which every window's
+    `prefers-color-scheme` (and the native menus/dialogs) then follow. */
+const THEME_OPTIONS = [
+  { value: "system", label: "System" },
+  { value: "light", label: "Light" },
+  { value: "dark", label: "Dark" },
+];
+
+/**
+ * A segmented picker — the settings-dialog form of the toolbar's pill: one
+ * bordered track holding borderless segments, the chosen one filled. Generic
+ * over `{ value, label }` options, so the next either/or setting reuses it.
+ */
+function buildSegmented({ options, value, ariaLabel, onPick }) {
+  const buttons = options.map((opt) =>
+    el("button", {
+      class: `settings-segment${opt.value === value ? " settings-segment--active" : ""}`,
+      type: "button",
+      role: "radio",
+      "aria-checked": String(opt.value === value),
+      "data-value": opt.value,
+      text: opt.label,
+      onClick: () => {
+        for (const b of buttons) {
+          const on = b.getAttribute("data-value") === opt.value;
+          b.classList.toggle("settings-segment--active", on);
+          b.setAttribute("aria-checked", String(on));
+        }
+        onPick?.(opt.value);
+      },
+    }),
+  );
+  return el(
+    "div",
+    {
+      class: "settings-segmented",
+      role: "radiogroup",
+      "aria-label": ariaLabel,
+    },
+    buttons,
+  );
+}
+
 /** The effective selection-border colour when none is stored (theme default). */
 function themeSelectionColor() {
   const v = getComputedStyle(document.documentElement)
@@ -75,6 +120,15 @@ export class SettingsDialog {
   static open(settings = {}) {
     if (SettingsDialog.#open) return;
     SettingsDialog.#open = true;
+
+    const themePicker = buildSegmented({
+      options: THEME_OPTIONS,
+      value: THEME_OPTIONS.some((o) => o.value === settings.theme)
+        ? settings.theme
+        : "system",
+      ariaLabel: "Theme",
+      onPick: (theme) => SettingsDialog.#emit({ theme }),
+    });
 
     const showHub = el("input", {
       class: "settings-toggle",
@@ -153,6 +207,10 @@ export class SettingsDialog {
           "data-panel": "appearance",
         },
         [
+          el("div", { class: "settings-row" }, [
+            el("label", { class: "settings-label", text: "Theme" }),
+            themePicker,
+          ]),
           el("div", { class: "settings-row settings-row--toggle" }, [
             el("label", {
               class: "settings-label",

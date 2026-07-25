@@ -1305,6 +1305,9 @@ async function init() {
   // The Settings dialog is deliberately dumb: it broadcasts a patch, and this
   // is where the app persists it (settings.set) and applies it live. Keep the
   // running settings so the dialog opens seeded with the current values.
+  // `theme` is deliberately absent from applySettings: main acts on it (it
+  // becomes nativeTheme.themeSource), so persisting the patch below IS
+  // applying it — for every window at once, not just this one.
   let currentSettings = settings;
   const applySettings = (s) => {
     hud?.setVisible(s.showDeskHub === true);
