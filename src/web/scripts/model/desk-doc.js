@@ -64,6 +64,7 @@ import {
   canPlaceWire,
   canReendWire,
   isFreeHole,
+  isRealPoint,
   partPinHoles,
 } from "./occupancy.js";
 
@@ -1488,29 +1489,77 @@ export class DeskDoc {
    * shuffle among the holes they collectively vacate (a bus shifted by its own
    * pitch), and every target must be a real point, free of any non-moving
    * lead, and claimed by exactly one move.
+   *
+   * A bus end-handle drag calls this once PER CANDIDATE OFFSET of its
+   * snap search (up to thousands of times per drop on a wide bus) — so
+   * unlike a single wire's own `isFreeHole` check, this builds the reduced
+   * doc's occupancy map ONCE up front and reuses it for every address,
+   * instead of `isFreeHole` silently rebuilding the whole map from scratch
+   * per address (an O(members) multiplier on top of an already-expensive
+   * per-candidate cost that measurably mattered at bus width).
+   *
+   * A drag probing the SAME wire ids over and over should hoist that map out
+   * of its search loop entirely — see `prepareWireBatchMove`, which this is
+   * a one-shot wrapper around.
    */
   canMoveWiresBatch(moves) {
-    const ids = new Set(moves.map((m) => m.id));
-    if (ids.size !== moves.length) return false; // a wire moved twice
-    if (!moves.every((m) => this.#doc.wires.some((w) => w.id === m.id))) {
-      return false;
-    }
+    return this.prepareWireBatchMove(moves.map((m) => m.id))(moves);
+  }
+
+  /**
+   * `canMoveWiresBatch` with the expensive half hoisted out: the reduced doc
+   * (every one of `wireIds` lifted out) and its occupancy map are built ONCE
+   * here, and the returned `(moves) => boolean` reuses them for every
+   * candidate batch over those same ids.
+   *
+   * This is what a live drag wants. `canMoveWiresBatch` rebuilds the whole
+   * document's occupancy — deriving every chip's pin addresses — on each
+   * call, and a bus drag's snap search calls it up to 25 times per
+   * `pointermove` (`SNAP_RADIUS`'s rings) or thousands of times for an
+   * end-handle's unbounded release search. Prepared once per GESTURE that
+   * collapses to one build, which is what let the live preview keep up with
+   * the cursor on a wide bus.
+   *
+   * Valid only while the document is unchanged — a gesture holds one of
+   * these for its own duration and drops it at the drop, and the commit
+   * itself still re-validates through `moveWiresBatch`.
+   *
+   * @param {string[]} wireIds - the wires the batches will move
+   * @returns {(moves: {id:string, from:string, to:string}[]) => boolean}
+   */
+  prepareWireBatchMove(wireIds) {
+    const ids = new Set(wireIds);
+    const known = new Set(this.#doc.wires.map((w) => w.id));
+    // A wire named twice, or one that isn't in the document, can never make a
+    // legal batch — resolve that up front rather than per candidate.
+    const usable =
+      ids.size === wireIds.length && wireIds.every((id) => known.has(id));
+    if (!usable) return () => false;
     // The doc as if the movers were gone — the holes they leave read free.
     const reduced = {
       boards: this.#doc.boards,
       components: this.#doc.components,
       wires: this.#doc.wires.filter((w) => !ids.has(w.id)),
     };
-    const claimed = new Set();
-    for (const { from, to } of moves) {
-      if (from === to) return false;
-      for (const address of [from, to]) {
-        if (claimed.has(address)) return false; // two leads into one hole
-        if (!isFreeHole(reduced, address)) return false;
-        claimed.add(address);
+    const occupied = buildOccupancy(reduced);
+    return (moves) => {
+      if (moves.length !== wireIds.length) return false;
+      const moved = new Set();
+      const claimed = new Set();
+      for (const { id, from, to } of moves) {
+        if (!ids.has(id) || moved.has(id)) return false; // a wire moved twice
+        moved.add(id);
+        if (from === to) return false;
+        for (const address of [from, to]) {
+          if (claimed.has(address)) return false; // two leads into one hole
+          if (!isRealPoint(reduced, address) || occupied.has(address)) {
+            return false;
+          }
+          claimed.add(address);
+        }
       }
-    }
-    return true;
+      return true;
+    };
   }
 
   /**

@@ -491,6 +491,14 @@
   /* A standard pointer at rest — the cursor only changes once a drag begins
      (closed hand for a part/pan, crosshair for a marquee or a tool). */
   cursor: default;
+  /* Every desk gesture is a pointer drag the app steers itself (pan, board,
+     part, marquee, wire, bus). Without this the browser can decide, partway
+     through one, that the movement was really a scroll/zoom it should own —
+     and it takes the pointer by firing `pointercancel`, which every one of
+     those gestures correctly treats as "revert, never commit". The drop just
+     vanishes, intermittently and velocity-dependently, on exactly the
+     trackpad/touch input most likely to produce it. */
+  touch-action: none;
 }
 
 .desk-viewport--panning {
@@ -1383,13 +1391,25 @@
   cursor: crosshair;
 }
 
-/* The translucent band traced along the bundle's shared corridor. */
+/* The ribbon's flat, cut-edge body: a darker outline under a colored fill
+   (the .wire-outline/.wire-core idiom, just wider), sized to the bit count
+   via --ribbon-width. A butt cap reads as a flat cable end, not a wire tip.
+   Rendered AFTER every member lead (see WireLayer#buildBandCover) and fully
+   opaque, so it paints OVER the base of each lead right where they meet it —
+   the leads read as entering a solid body, not just touching its edge. */
+.bus-band-outline {
+  fill: none;
+  stroke: var(--color-wire-outline);
+  stroke-width: calc(var(--ribbon-width, 12) + 3);
+  stroke-linecap: butt;
+  pointer-events: none;
+}
+
 .bus-band-fill {
   fill: none;
   stroke: var(--wire-color);
-  stroke-width: 12;
-  stroke-linecap: round;
-  opacity: 0.28;
+  stroke-width: var(--ribbon-width, 12);
+  stroke-linecap: butt;
   pointer-events: none;
 }
 
@@ -1406,8 +1426,41 @@
 /* While either wiring tool is armed, bands must not swallow hole clicks. */
 .desk-viewport--wiring .bus-band-hit,
 .desk-viewport--bus .bus-band-hit,
-.desk-viewport--wire-dragging .bus-band-hit {
+.desk-viewport--wire-dragging .bus-band-hit,
+.desk-viewport--wiring .bus-end-handle-hit,
+.desk-viewport--bus .bus-end-handle-hit,
+.desk-viewport--wire-dragging .bus-end-handle-hit {
   pointer-events: none;
+}
+
+/* One end's grab target: an always-live, invisible widened hit circle (finds
+   the cursor before the band's own hit stroke does — smaller, more specific
+   target wins) plus a small knob that fades in on hover, or stays shown for
+   the whole gesture once THIS end is the one being dragged (--active — a
+   captured pointer can wander off the tiny circle mid-drag without CSS
+   :hover following it there). */
+.bus-end-handle-hit {
+  fill: transparent;
+  pointer-events: all;
+  cursor: grab;
+}
+
+.bus-end-handle-knob {
+  fill: var(--color-surface-0);
+  stroke: var(--wire-color);
+  stroke-width: 1.6;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.1s ease;
+}
+
+.bus-end-handle:hover .bus-end-handle-knob,
+.bus-end-handle--active .bus-end-handle-knob {
+  opacity: 1;
+}
+
+.bus-end-handle--active .bus-end-handle-hit {
+  cursor: grabbing;
 }
 
 .bus-band-label {
@@ -1425,10 +1478,13 @@
 
 .bus-band--selected .bus-band-fill {
   stroke: var(--color-selection, var(--color-accent));
-  opacity: 0.5;
 }
 
 .bus-band--illegal .bus-band-fill {
+  stroke: var(--color-danger);
+}
+
+.bus-band--illegal .bus-end-handle--active .bus-end-handle-knob {
   stroke: var(--color-danger);
 }
 

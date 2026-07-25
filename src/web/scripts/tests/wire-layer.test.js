@@ -235,3 +235,76 @@ test("resolves PSU terminal endpoints (and drag overrides)", () => {
   d = layer.querySelector(".wire-core").getAttribute("d");
   assert.ok(d.startsWith(`M ${102 * PX_PER_UNIT} ${14 * PX_PER_UNIT} `), d);
 });
+
+test("a selected bus lead renders over the ribbon body; releasing restores order", () => {
+  resetDom();
+  const layer = document.createElement("div");
+  document.body.append(layer);
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const ids = [];
+  for (let i = 0; i < 4; i += 1) {
+    ids.push(
+      doc.addWire({
+        from: `bb1.a${10 + i}`,
+        to: `bb1.a${30 + i}`,
+        color: "blue",
+      }).id,
+    );
+  }
+  const loose = doc.addWire({ from: "bb1.j1", to: "bb1.j5", color: "red" }).id;
+  doc.addBus("D[3:0]", ids, { color: "blue" });
+  const wires = new WireLayer(layer, doc, {});
+
+  // The SVG's own child order IS the paint order (SVG has no z-index).
+  const kindOf = (el) =>
+    el.dataset.wireId
+      ? `wire:${el.dataset.wireId}`
+      : el.classList.contains("bus-end-handle")
+        ? "handle"
+        : el.querySelector(".bus-band-hit")
+          ? "bandhit"
+          : "cover";
+  const order = () =>
+    [...layer.querySelector(".wire-svg").children].map(kindOf);
+
+  const before = order();
+  assert.ok(before.includes("cover"), "the ribbon body rendered");
+  assert.ok(
+    before.indexOf(`wire:${ids[1]}`) < before.indexOf("cover"),
+    "unselected, a lead sits UNDER the body that paints over it",
+  );
+
+  wires.setSelected(ids[1]);
+  const sel = order();
+  assert.ok(
+    sel.indexOf(`wire:${ids[1]}`) > sel.indexOf("cover"),
+    "selected, it is lifted over the body",
+  );
+  assert.ok(
+    sel.indexOf(`wire:${ids[1]}`) < sel.indexOf("handle"),
+    "but stays under the end handles (they keep hit-test priority)",
+  );
+  assert.ok(
+    layer
+      .querySelector(`.wire[data-wire-id="${ids[1]}"]`)
+      .classList.contains("wire--selected"),
+  );
+  // Every other wire keeps its document-order slot.
+  assert.deepEqual(
+    sel.filter((k) => k.startsWith("wire:") && k !== `wire:${ids[1]}`),
+    [ids[0], ids[2], ids[3], loose].map((id) => `wire:${id}`),
+  );
+
+  wires.setSelected(null);
+  assert.deepEqual(order(), before, "releasing drops it back into place");
+
+  // A NON-member wire's selection is a pure class toggle — no reordering.
+  wires.setSelected(loose);
+  assert.deepEqual(order(), before, "a loose wire never reorders");
+  assert.ok(
+    layer
+      .querySelector(`.wire[data-wire-id="${loose}"]`)
+      .classList.contains("wire--selected"),
+  );
+});

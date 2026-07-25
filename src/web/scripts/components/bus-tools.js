@@ -21,10 +21,14 @@
 //   • a chip pin in a catalog `pinGroups` run → TAP mode: the bus fans onto
 //     that group in bit order.
 // A bus is metadata over the wires it lays (see model/bus-layout.js) — the
-// netlist and engine never learn it exists. This module also owns grabbing a
-// bundle band to drag the whole bus, and its right-click menu (rename /
-// recolour / un-bundle / delete). Like WireTools it shares the controller's
-// `#mode` through the host so the viewport dispatcher is unchanged.
+// netlist and engine never learn it exists. This module also owns grabbing
+// the ribbon (drag the whole bus, both ends together) or one of its two end
+// handles (drag just that end's leads, the other staying put — each member's
+// individual wire is still its own draggable `.wire` underneath, EXCEPT
+// right at its own bus's collar — see WireTools#tryBeginDrag), and the bus's
+// right-click menu (rename / recolour / un-bundle / delete). Like WireTools
+// it shares the controller's `#mode` through the host so the viewport
+// dispatcher is unchanged.
 
 import { PopupManager } from "../popup-manager.js";
 import { PX_PER_UNIT } from "../desk/desk-geometry.js";
@@ -37,9 +41,21 @@ import {
   connectionPointAt,
   partPinsWorld,
 } from "../model/part-geometry.js";
+import { nearestLegalOffset } from "../model/nearest-legal.js";
+import { beginPointerGesture, releaseWorld } from "./pointer-gesture.js";
 
 /** Pointer travel (px) below which a press stays a click, not a drag. */
 const DRAG_THRESHOLD = 4;
+/** How far (pitch units) a search stays a cheap, TIGHT near-miss lookup
+    instead of the full "always find the nearest, however far" one: a
+    WHOLE-BUS (rigid, both ends together) drop's only recovery margin (a
+    tight near-miss, not a teleport — mirrors wire-tools.js's own
+    SNAP_RADIUS for the whole-wire drag) — AND, separately, the bound every
+    LIVE pointermove uses for an END-HANDLE drag's preview. An end-handle's
+    search is only ever unbounded ONCE per gesture, at the moment of
+    release (#onBusUp calling #resolveBusDrop with no maxRadius) — never
+    on every move; see #resolveBusDrop's own comment for why. */
+const SNAP_RADIUS = 2;
 /** Radius of the shared hover ring (pitch units). */
 const RING_RADIUS = 0.45;
 
@@ -275,20 +291,50 @@ export class BusTools {
     this.#notifyState();
   }
 
-  // ── Grabbing a bundle band (whole-bus translate) ──────────────────────────
+  // ── Grabbing a bundle band or an end handle (whole-bus / one-end translate) ─
 
   /**
-   * A viewport press with no mode: try to grab a bundle band and drag the whole
-   * bus. Returns true when a drag started.
+   * A viewport press with no mode: try to grab an end handle (translate just
+   * that end's leads, in parallel, the other end staying put) or, failing
+   * that, a bundle band (translate the whole bus). Returns true when a drag
+   * started. The handle check comes first — it's the smaller, more specific
+   * target sitting on top of the band's own hit stroke.
    */
   tryBeginDrag(e, world) {
+    const handle = e.target?.closest?.(".bus-end-handle");
+    if (handle) {
+      this.#beginBusDrag(handle.dataset.busId, e, world, handle.dataset.end);
+      return true;
+    }
     const busId = e.target?.closest?.(".bus-band")?.dataset.busId;
     if (!busId) return false;
-    this.#beginBusDrag(busId, e, world);
+    this.#beginBusDrag(busId, e, world, null);
     return true;
   }
 
-  #beginBusDrag(busId, e, world) {
+  /**
+   * Abort an in-flight whole-bus or end-handle drag (DeskController#
+   * cancelDragGesture — Escape, or recovering a pointerup the browser
+   * silently dropped). Routes a synthetic `pointercancel` through the same
+   * up-handler a real one would reach, so it tears down the capture and
+   * listeners and reverts without duplicating that logic here. A no-op when
+   * no bus drag is current.
+   */
+  cancelDrag() {
+    const m = this.#host.mode;
+    if (m?.kind === "drag-bus") {
+      this.#onBusUp({ type: "pointercancel", pointerId: m.pointerId });
+    }
+  }
+
+  /**
+   * @param {string} busId
+   * @param {PointerEvent} e
+   * @param {{x:number,y:number}} world
+   * @param {"from"|"to"|null} end - null drags the whole bus (both ends);
+   *   otherwise only that end's leads move, the other staying anchored.
+   */
+  #beginBusDrag(busId, e, world, end) {
     const doc = this.#doc();
     const bus = doc.getBus(busId);
     if (!bus || bus.members.length === 0) return;
@@ -298,32 +344,41 @@ export class BusTools {
       const from0 = wire && addressWorld(doc.boards, doc.components, wire.from);
       const to0 = wire && addressWorld(doc.boards, doc.components, wire.to);
       if (!from0 || !to0) continue;
-      members.push({ id, from0, to0 });
+      members.push({
+        id,
+        from0,
+        to0,
+        fromAddress: wire.from,
+        toAddress: wire.to,
+      });
     }
     if (members.length === 0) return;
     this.#host.hideHover();
     this.#host.selectBus(busId);
-    this.#host.mode = {
+    const ids = members.map((mem) => mem.id);
+    const mode = {
       kind: "drag-bus",
       busId,
+      end,
       members,
-      memberIds: new Set(members.map((m) => m.id)),
+      memberIds: new Set(ids),
+      // The document can't change until this gesture commits, so the batch
+      // legality check hoists its occupancy build out of the snap search —
+      // once per GESTURE instead of once per candidate offset per move.
+      canBatch: doc.prepareWireBatchMove(ids),
       startWorld: world,
       pointerId: e.pointerId,
       startClientX: e.clientX,
       startClientY: e.clientY,
-      moves: null,
       active: false,
+      teardown: null,
     };
-    const svg = this.#host.wireLayer.element;
-    try {
-      svg.setPointerCapture(e.pointerId);
-    } catch {
-      /* best-effort */
-    }
-    svg.addEventListener("pointermove", this.#onBusMove);
-    svg.addEventListener("pointerup", this.#onBusUp);
-    svg.addEventListener("pointercancel", this.#onBusUp);
+    this.#host.mode = mode;
+    mode.teardown = beginPointerGesture(
+      this.#host.wireLayer.element,
+      e.pointerId,
+      { onMove: this.#onBusMove, onEnd: this.#onBusUp },
+    );
   }
 
   #onBusMove = (e) => {
@@ -338,56 +393,135 @@ export class BusTools {
       m.active = true;
       this.#host.viewport.classList.add("desk-viewport--wire-dragging");
     }
-    const doc = this.#doc();
     const world = this.#host.deskView.worldFromEvent(e);
-    const dx = Math.round(world.x - m.startWorld.x);
-    const dy = Math.round(world.y - m.startWorld.y);
-    // Each member's both ends translate by the same integer delta, then resolve
-    // to a hole; the drop is legal only when EVERY end lands and the batch is
-    // collectively free (members may shuffle among the holes they vacate).
-    const moves = [];
-    let resolved = true;
-    for (const mem of m.members) {
-      const from = this.#holeAtWorld(mem.from0.x + dx, mem.from0.y + dy);
-      const to = this.#holeAtWorld(mem.to0.x + dx, mem.to0.y + dy);
-      if (!from || !to) {
-        resolved = false;
-        break;
-      }
-      moves.push({ id: mem.id, from, to });
-    }
-    const legal = resolved && doc.canMoveWiresBatch(moves);
-    m.moves = legal ? moves : null;
+    m.lastWorld = world; // the fallback for a release with no position of its own
+    const rawDx = Math.round(world.x - m.startWorld.x);
+    const rawDy = Math.round(world.y - m.startWorld.y);
+    // A cheap, SNAP_RADIUS-bounded lookup for the live preview, for BOTH
+    // grab kinds — see the SNAP_RADIUS comment for why the end-handle's own
+    // unbounded search is reserved for the one-time #onBusUp resolve
+    // instead of running here every move. What this finds is ONLY the
+    // preview: the drop itself re-resolves at the release point (#onBusUp),
+    // so a coalesced move stream can't decide where the bus lands.
+    const found = this.#resolveBusDrop(m, rawDx, rawDy, SNAP_RADIUS);
     this.#host.wireLayer.setBusDrag({
       busId: m.busId,
       memberIds: m.memberIds,
-      dx: dx * PX_PER_UNIT,
-      dy: dy * PX_PER_UNIT,
-      legal,
+      end: m.end,
+      dx: (found ? found.dx : rawDx) * PX_PER_UNIT,
+      dy: (found ? found.dy : rawDy) * PX_PER_UNIT,
+      legal: Boolean(found),
     });
   };
+
+  /**
+   * The nearest legal drop at or around the rigid delta `(rawDx, rawDy)`:
+   * `{ dx, dy, moves }` for the first offset at which every member's moved
+   * end(s) land legally AS A BATCH, or null. Every member still shifts by
+   * the SAME final delta either way, so this never snaps one lead
+   * independently of the rest. `maxRadius` omitted means UNBOUNDED ("always
+   * find the nearest, however far") — reserved for the one-time end-handle
+   * fallback in #onBusUp; #onBusMove's own per-move call always passes
+   * SNAP_RADIUS — see its comment: an unbounded search costs ~15-20ms of
+   * pure search overhead on a few hundred wires, fine once on release, a
+   * visible stutter on every pointermove.
+   *
+   * The winning offset's batch comes back with it (the caller used to
+   * rebuild it), and legality goes through the gesture's PREPARED checker
+   * (`DeskDoc.prepareWireBatchMove`, built once in #beginBusDrag) rather
+   * than `canMoveWiresBatch` rebuilding the whole document's occupancy map
+   * on every candidate.
+   */
+  #resolveBusDrop(m, rawDx, rawDy, maxRadius) {
+    let hit = null;
+    nearestLegalOffset((ddx, ddy) => {
+      const dx = rawDx + ddx;
+      const dy = rawDy + ddy;
+      const moves = this.#busMovesAt(m, dx, dy);
+      if (!moves || !m.canBatch(moves)) return false;
+      hit = { dx, dy, moves };
+      return true;
+    }, maxRadius);
+    return hit;
+  }
+
+  /**
+   * The batch of `{id, from, to}` moves a bus(-end) drag would commit at
+   * delta `(dx, dy)`: a whole-bus grab (`m.end` null) translates both ends
+   * of every member by the same delta; an end-handle grab translates only
+   * that one end, the other staying at its current (unchanged) address.
+   * Null when any end that's supposed to move doesn't resolve to a real
+   * point at that delta — the caller still needs the batch legality check on
+   * top (members may collectively vacate holes for each other to land on, so
+   * legality can't be judged member by member).
+   */
+  #busMovesAt(m, dx, dy) {
+    const moveFrom = m.end !== "to";
+    const moveTo = m.end !== "from";
+    const moves = [];
+    for (const mem of m.members) {
+      const from = moveFrom
+        ? this.#holeAtWorld(mem.from0.x + dx, mem.from0.y + dy)
+        : mem.fromAddress;
+      const to = moveTo
+        ? this.#holeAtWorld(mem.to0.x + dx, mem.to0.y + dy)
+        : mem.toAddress;
+      if (!from || !to) return null;
+      moves.push({ id: mem.id, from, to });
+    }
+    return moves;
+  }
 
   #onBusUp = (e) => {
     const m = this.#host.mode;
     if (m?.kind !== "drag-bus" || e.pointerId !== m.pointerId) return;
     this.#host.mode = null;
-    const svg = this.#host.wireLayer.element;
-    svg.removeEventListener("pointermove", this.#onBusMove);
-    svg.removeEventListener("pointerup", this.#onBusUp);
-    svg.removeEventListener("pointercancel", this.#onBusUp);
-    try {
-      svg.releasePointerCapture(m.pointerId);
-    } catch {
-      /* already released */
-    }
+    m.teardown?.();
     this.#host.viewport.classList.remove("desk-viewport--wire-dragging");
     this.#host.wireLayer.setBusDrag(null);
     if (!m.active) return; // a plain click — the bus is already selected
-    if (e.type !== "pointercancel" && m.moves) {
-      this.#doc().moveWiresBatch(m.moves);
-      this.#host.emitDocChanged("move bus");
+    if (e.type === "pointercancel") return; // aborted — never commit
+
+    // Resolve the drop from the RELEASE point itself, not from whatever the
+    // last pointermove happened to leave behind. Moves are coalesced (and on
+    // a wide bus the preview could fall behind the cursor outright), so the
+    // last sample can be several frames stale — and a stale sample sitting
+    // somewhere illegal used to make the whole drop silently revert, which
+    // is exactly what "the drop got missed" looked like.
+    const { dx, dy } = this.#releaseDelta(m, e);
+    // The tight near-miss margin first (the same one the preview showed),
+    // then — for an END-HANDLE drag only — the ONE unbounded "always find
+    // the nearest, however far" search, a single call rather than a
+    // per-frame cost. A WHOLE-BUS drag (m.end null) has no such fallback: it
+    // stays SNAP_RADIUS-only end to end, same as a whole-wire drag, since a
+    // big rigid jump would relocate the entire bus somewhere the cursor
+    // never was.
+    const found =
+      this.#resolveBusDrop(m, dx, dy, SNAP_RADIUS) ??
+      (m.end ? this.#resolveBusDrop(m, dx, dy) : null);
+    // An illegal drop (no delta seats every member's moved end in a free
+    // hole) commits nothing, and the render above already reverted to the
+    // document's real (unmoved) addresses.
+    if (found) {
+      this.#doc().moveWiresBatch(found.moves);
+      this.#host.emitDocChanged(m.end ? "move bus end" : "move bus");
     }
   };
+
+  /** The rigid delta a release asks for — see pointer-gesture.js's
+      releaseWorld for why it comes from the release event and not from the
+      last pointermove. */
+  #releaseDelta(m, e) {
+    const world = releaseWorld(
+      this.#host.deskView,
+      e,
+      m.lastWorld ?? m.startWorld,
+    );
+    return {
+      dx: Math.round(world.x - m.startWorld.x),
+      dy: Math.round(world.y - m.startWorld.y),
+    };
+  }
 
   /** The board hole under a world point, as an address, or null. */
   #holeAtWorld(x, y) {

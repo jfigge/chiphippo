@@ -255,7 +255,9 @@ website** (`make docs` → `website/docs/`), and a **PDF** (`make pdf` →
   probe — owns its netlist cache, net-highlight overlay, and status readout),
   and `wire-tools.js` (the click-click wire tool + the endpoint/whole-wire
   drags + the per-wire context menu; it shares the controller's `#mode` through
-  a host object so the viewport dispatcher's mode checks are unchanged). All the
+  a host object so the viewport dispatcher's mode checks are unchanged — its
+  drags and `bus-tools.js`' run on the shared `components/pointer-gesture.js`
+  plumbing, see the pointer-capture discipline note below). All the
   world-coordinate/hit-test geometry the controller used to inline now lives in
   the pure, tested `model/part-geometry.js`. What remains in the controller is
   the direct-manipulation input state machine (the shared `#mode`, board
@@ -574,7 +576,17 @@ make clean     # Remove build/ and dist/
   thin. (This is the Port Hippo `card-canvas.js`/`grid-layout.js` discipline.)
 - **Pointer-capture drag discipline**: drags use pointer events + `setPointerCapture`
   with a ~4 px threshold separating click from drag — never native HTML5 DnD (per
-  `porthippo/src/web/scripts/components/card-canvas.js`).
+  `porthippo/src/web/scripts/components/card-canvas.js`). The capture is for the
+  MOVE stream only — never the sole delivery route for the RELEASE. The four
+  wire/bus drags go through **`components/pointer-gesture.js`**
+  (`beginPointerGesture` → one teardown): `pointerup`/`pointercancel` listen on
+  `window` in the CAPTURE phase, so a release reaches the gesture whether or not
+  the capture held, and `lostpointercapture` + window `blur` end it too (the only
+  signals for "this pointer isn't yours" with no up/cancel behind them). A drop
+  is resolved from the RELEASE event's own position (`releaseWorld`), never from
+  the last `pointermove` — coalesced moves lag the cursor, and a stale sample
+  used to silently lose the drop. `.desk-viewport` sets `touch-action: none` so
+  the browser can't claim a gesture mid-drag and cancel it.
 - **Events vs callbacks**: a parent-owned widget reporting to the one parent that
   created it → **constructor callback**; an app-wide state change any number of panels
   may react to → a global **`chiphippo:*` `CustomEvent`**. No event-bus library.

@@ -328,19 +328,74 @@ test("wire-endpoint drag: re-ends a grabbed cap onto a new free hole", () => {
   );
 });
 
-test("wire-endpoint drag: an illegal target (occupied) leaves the wire alone", () => {
+test("wire-endpoint drag: a near-miss onto an occupied hole snaps to the nearest free one", () => {
   resetDom();
   const doc = new DeskDoc(null);
   const world = { x: 0, y: 0 };
   const { viewport, surface, controller } = makeDesk(doc, world);
   controller.addBoardAt("pins-full", 0, 0);
   const wire = seedWire(doc, "bb1.a1", "bb1.a20");
-  // Drag 'to' (20,12) onto a1 (1,12) — the wire's own other end.
+  // Drag 'to' (20,12) onto a1 (1,12) — the wire's own other end, so the
+  // exact spot is illegal. The nearest free hole to a1 (SNAP_RADIUS
+  // recovery, wire-tools.js) is b1, one pitch unit up.
   world.x = 20;
   world.y = 12;
   fire(viewport, "pointerdown", { id: 9, client: [0, 0] });
   world.x = 1;
   world.y = 12;
+  fire(wireSvg(surface), "pointermove", { id: 9, client: [40, 40] });
+  fire(wireSvg(surface), "pointerup", { id: 9, client: [40, 40] });
+
+  assert.equal(
+    doc.getWire(wire.id).to,
+    "bb1.b1",
+    "snapped to the nearest free hole",
+  );
+});
+
+test("wire-endpoint drag: a release well beyond SNAP_RADIUS still finds the nearest hole", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { viewport, surface, controller } = makeDesk(doc, world);
+  controller.addBoardAt("pins-full", 0, 0);
+  const wire = seedWire(doc, "bb1.a1", "bb1.a20");
+  // Release well off the board's right edge (col 63 is its last column) —
+  // 37 pitch units past SNAP_RADIUS (2), the bound the LIVE per-move
+  // preview searches, but well within the one-time unbounded search
+  // #onEndpointUp falls back to when the release point itself isn't legal.
+  // A single move+up (no intermediate moves) exercises exactly that
+  // fallback, not just the cheap live-preview path.
+  world.x = 20;
+  world.y = 12;
+  fire(viewport, "pointerdown", { id: 9, client: [0, 0] });
+  world.x = 100;
+  world.y = 12;
+  fire(wireSvg(surface), "pointermove", { id: 9, client: [40, 40] });
+  fire(wireSvg(surface), "pointerup", { id: 9, client: [40, 40] });
+
+  assert.equal(
+    doc.getWire(wire.id).to,
+    "bb1.a63",
+    "found the nearest hole far beyond the live-preview's own search bound",
+  );
+});
+
+test("wire-endpoint drag: a target with nothing legal anywhere nearby reverts", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { viewport, surface, controller } = makeDesk(doc, world);
+  controller.addBoardAt("pins-full", 0, 0);
+  const wire = seedWire(doc, "bb1.a1", "bb1.a20");
+  // Drag 'to' off the board entirely — a target well beyond even the
+  // endpoint drag's unbounded search's DEFAULT_SEARCH_RADIUS from every
+  // hole on the board, so there's genuinely nothing to recover onto.
+  world.x = 20;
+  world.y = 12;
+  fire(viewport, "pointerdown", { id: 9, client: [0, 0] });
+  world.x = 1000;
+  world.y = 1000;
   fire(wireSvg(surface), "pointermove", { id: 9, client: [40, 40] });
   fire(wireSvg(surface), "pointerup", { id: 9, client: [40, 40] });
 

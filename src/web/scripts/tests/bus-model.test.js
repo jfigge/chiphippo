@@ -138,6 +138,47 @@ test("moveWiresBatch shifts a whole bus atomically, shuffles allowed", () => {
   assert.equal(doc.getWire(wireIds[3]).to, "bb2.j5");
 });
 
+test("prepareWireBatchMove answers many candidate batches over one occupancy build", () => {
+  const { doc, wireIds } = docWithFourWires();
+  doc.addBus("D[3:0]", wireIds);
+  doc.addWire({ from: "bb2.a9", to: "bb2.j9", color: "red" }); // an outsider
+  // What a drag's snap search does: probe candidate after candidate over the
+  // SAME member ids. The prepared checker is the whole reason that search
+  // isn't rebuilding the document's occupancy map per candidate — so it has
+  // to agree with canMoveWiresBatch on every one of them.
+  const canBatch = doc.prepareWireBatchMove(wireIds);
+  for (const shift of [1, 2, 7, 20]) {
+    const moves = wireIds.map((id, i) => ({
+      id,
+      from: `bb2.a${i + 1 + shift}`,
+      to: `bb2.j${i + 1 + shift}`,
+    }));
+    assert.equal(
+      canBatch(moves),
+      doc.canMoveWiresBatch(moves),
+      `shift ${shift}`,
+    );
+  }
+  // shift 7 puts member 2 on the outsider's a9 — a real collision, not a
+  // vacated hole — so the loop above is asserting both answers, not just true.
+  assert.equal(
+    canBatch(
+      wireIds.map((id, i) => ({
+        id,
+        from: `bb2.a${i + 8}`,
+        to: `bb2.j${i + 8}`,
+      })),
+    ),
+    false,
+  );
+  // A batch that isn't over the prepared ids is never legal.
+  assert.equal(
+    canBatch([{ id: wireIds[0], from: "bb2.a2", to: "bb2.j2" }]),
+    false,
+  );
+  assert.equal(doc.prepareWireBatchMove(["w999"])([]), false);
+});
+
 test("moveWiresBatch rejects a collision with a non-moving lead", () => {
   const { doc, wireIds } = docWithFourWires();
   doc.addWire({ from: "bb2.a9", to: "bb2.j9", color: "red" }); // an outsider

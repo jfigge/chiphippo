@@ -479,18 +479,28 @@ export class DeskController {
       "drag-resistor",
       "drag-resistor-end",
       "marquee",
+      "drag-wire-end",
+      "drag-wire",
+      "drag-bus",
     ].includes(this.#mode?.kind);
   }
 
   /**
-   * Abort whichever direct-manipulation drag is in flight (Escape mid-drag).
-   * Routes a synthetic `pointercancel` through the SAME up-handler the real
-   * pointer event would reach — every one of them already treats
-   * `e.type === "pointercancel"` as "tear down the capture/listeners, revert,
-   * never commit" (the same path a lost pointer capture takes), so this
-   * reuses that instead of duplicating the teardown here. Without this,
-   * Escape used to only clear selection, leaving the drag's capture and
-   * listeners alive to commit the move anyway on the next pointerup.
+   * Abort whichever direct-manipulation drag is in flight (Escape mid-drag,
+   * OR a real pointerup/pointercancel the OS/browser silently dropped — a
+   * fast release, a focus change mid-drag, capture lost with no matching
+   * event, all observed in practice, not hypothetical). Routes a synthetic
+   * `pointercancel` through the SAME up-handler the real pointer event would
+   * reach — every one of them already treats `e.type === "pointercancel"` as
+   * "tear down the capture/listeners, revert, never commit" (the same path a
+   * lost pointer capture takes), so this reuses that instead of duplicating
+   * the teardown here. Without this, Escape used to only clear selection,
+   * leaving the drag's capture and listeners alive to commit the move anyway
+   * on the next pointerup — or, if that pointerup never arrives, alive
+   * forever, stuck mid-drag with no way out but a reload. The wire/bus
+   * gestures live in their own collaborator modules (WireTools/BusTools), so
+   * they get a small public `cancelDrag()` each instead of a private
+   * up-handler reference here.
    */
   #cancelDragGesture() {
     const m = this.#mode;
@@ -511,6 +521,13 @@ export class DeskController {
         break;
       case "marquee":
         this.#onMarqueePointerUp(fake);
+        break;
+      case "drag-wire-end":
+      case "drag-wire":
+        this.#wire.cancelDrag();
+        break;
+      case "drag-bus":
+        this.#bus.cancelDrag();
         break;
     }
   }
@@ -2403,7 +2420,12 @@ export class DeskController {
     // the viewport dispatcher can try the same grab. Give the wire endpoint
     // priority — pressing a wire end selects that wire and drags the one end,
     // never the board underneath it (matches the viewport dispatcher's order).
-    if (this.#wire.tryBeginDrag(e, this.#deskView.worldFromEvent(e))) return;
+    // A bus member's cap declines the drag (see WireTools#tryBeginDrag) but
+    // must still absorb the press — otherwise it falls through to a board
+    // drag right here, since #capNear doesn't care whether a grab started.
+    const world = this.#deskView.worldFromEvent(e);
+    if (this.#wire.tryBeginDrag(e, world)) return;
+    if (this.#wire.capNear(world)) return;
     this.#hideHover();
     this.selectBoard(id);
 
