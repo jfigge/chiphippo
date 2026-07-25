@@ -88,10 +88,6 @@
   min-width: 0;
 }
 
-.toolbar-split {
-  display: flex;
-}
-
 .toolbar-btn {
   display: inline-flex;
   align-items: center;
@@ -134,16 +130,6 @@
   background: var(--color-overlay);
 }
 
-.toolbar-split .toolbar-btn:first-child {
-  border-radius: var(--radius-sm) 0 0 var(--radius-sm);
-}
-
-/* The right segment of a split button shares a seam with the left (one border). */
-.toolbar-split .toolbar-btn:last-child {
-  border-left: none;
-  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
-}
-
 .toolbar-btn--active {
   background: var(--color-surface-1);
   border-color: var(--color-accent);
@@ -172,18 +158,112 @@
   color: var(--color-danger);
 }
 
-/* The Wire split button's left segment: just the active-color circle, which is
-   the dropdown trigger (a PopupManager.menu of the eight colors, each a swatch). */
-.toolbar-btn--wire-color {
-  padding: 0 var(--space-2);
+/* A leading icon inside a labelled toolbar segment (the File pill's New). */
+.toolbar-btn-icon {
+  display: inline-flex;
+  align-items: center;
+  color: var(--color-subtext);
 }
 
+/* ── Toolbar pill ─────────────────────────────────────────────────────────
+   The toolbar's grouping shape, used by the desk tools (Wire / Bus / Fade /
+   Probe / Fit) and by File (New + the ▾ that drops the file menu). Whatever
+   it holds reads as ONE control: the PILL carries the only border and the
+   only background, and its segments are separated by spacing rather than by
+   borders of their own. Each segment is still a plain button — only the
+   chrome is shared. */
+.toolbar-pill {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: 28px;
+  padding: 0 var(--space-1);
+  background: var(--color-surface-0);
+  border: 1px solid var(--color-overlay);
+  border-radius: var(--radius-md);
+}
+
+.toolbar-pill-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 22px;
+  padding: 0 var(--space-2);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-text);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+/* An icon-only segment (Fade / Probe / Fit, and File's ▾) is square and
+   de-emphasized. */
+.toolbar-pill-btn--icon {
+  justify-content: center;
+  width: 24px;
+  padding: 0;
+  color: var(--color-subtext);
+}
+
+/* File is an ACTION PLUS ITS MENU, not a row of peer tools: the ▾ hugs the
+   label — no gap between the two segments, a narrower arrow, and the label
+   gives up its trailing padding — so the pill stays compact. */
+.toolbar-pill--file {
+  gap: 0;
+}
+
+.toolbar-pill--file .toolbar-pill-btn:first-child {
+  padding-right: var(--space-1);
+}
+
+.toolbar-pill-btn--caret {
+  width: 16px;
+}
+
+.toolbar-pill-btn:enabled:hover {
+  background: var(--color-surface-1);
+  color: var(--color-text);
+}
+
+/* Armed / on: the segment FILLS, since it has no border to accent, and an
+   icon comes up from subtext to full strength. Beats the shared
+   .toolbar-btn--active rule (which colours a border this button doesn't have)
+   on specificity, so one class still drives every toolbar button's state. */
+.toolbar-pill-btn.toolbar-btn--active {
+  background: var(--color-surface-1);
+  color: var(--color-text);
+}
+
+.toolbar-pill-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* The active wire color, DISPLAYED beside the Wire label (1–8 change it while
+   the tool is armed) — not a picker. */
 .wire-swatch-dot {
   width: 12px;
   height: 12px;
   border: 1px solid var(--color-overlay);
   border-radius: 50%;
   background: var(--wire-color);
+}
+
+/* The active bus width, displayed beside the Bus label (1/2 change it). */
+.bus-width-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 16px;
+  padding: 0 3px;
+  background: var(--color-surface-1);
+  border: 1px solid var(--color-overlay);
+  border-radius: var(--radius-sm);
+  color: var(--color-subtext);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
 }
 
 /* Standalone toolbar buttons (Parts toggle) share the split-button look. */
@@ -211,24 +291,26 @@
 }
 
 /* ── Desktop tabs (Feature 240) ──────────────────────────────────────────── */
-/* One tab per desktop in the open project. The STRIP itself is transparent and
-   floats over the desk, so the dot grid runs behind it unbroken and the desk
-   loses no area to it — only the tabs themselves are solid. It is also
-   pointer-inert between the tabs, so a click in the gaps still reaches the
-   desk underneath (the tabs re-enable pointer events for themselves).
-   Hidden entirely when no project is open, so the shell is unchanged. */
+/* One tab per desktop in the open project, in ONE floating pill over the desk
+   — the toolbar's grouping shape (see .toolbar-pill), so the app has a single
+   vocabulary for "these controls are one thing". The pill carries the only
+   background; a tab is a borderless segment that FILLS when it is the active
+   desktop. It is sized to its content and inset from the corner, so the dot
+   grid runs behind it unbroken and every click outside it still reaches the
+   desk. Hidden entirely when no project is open, so the shell is unchanged. */
 .project-tabs {
   position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
+  top: var(--space-2);
+  left: var(--space-3);
   z-index: 2;
   display: flex;
-  align-items: stretch;
-  gap: 2px;
-  padding: 0 var(--space-3);
-  background: transparent;
-  pointer-events: none;
+  align-items: center;
+  gap: var(--space-1);
+  max-width: calc(100% - 2 * var(--space-3));
+  padding: var(--space-1);
+  background: var(--color-mantle);
+  border: 1px solid var(--color-crust);
+  border-radius: var(--radius-md);
   overflow-x: auto;
   scrollbar-width: thin;
 }
@@ -237,18 +319,16 @@
 .project-tab-add {
   display: flex;
   align-items: center;
-  gap: var(--space-1);
-  padding: var(--space-2) var(--space-3);
+  gap: var(--space-2);
+  height: 24px;
+  padding: 0 var(--space-3);
   border: 0;
-  border-bottom: 2px solid transparent;
-  border-radius: 0 0 6px 6px;
-  /* Solid, so a tab never has the desk's dots showing through its label. */
-  background: var(--color-mantle);
+  border-radius: var(--radius-sm);
+  background: transparent;
   color: var(--color-subtext);
   font: inherit;
   white-space: nowrap;
   cursor: pointer;
-  pointer-events: auto;
 }
 
 .project-tab:hover,
@@ -257,14 +337,19 @@
   background: var(--color-surface-0);
 }
 
-.project-tab--active {
+/* The desktop on the desk: a filled chip, the way an armed pill segment fills. */
+.project-tab--active,
+.project-tab--active:hover {
+  background: var(--color-surface-1);
   color: var(--color-text);
-  border-bottom-color: var(--color-accent);
 }
 
+/* Unsaved changes on THAT desktop (the tab's own dirty marker). */
 .project-tab-marker {
-  color: var(--color-accent);
-  line-height: 1;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--color-success);
 }
 
 .project-tab-add {
@@ -1597,14 +1682,6 @@
   opacity: 0.85;
 }
 
-/* The Bus split button's right segment: the "8"/"16" width, a combobox-style
-   dropdown trigger (a PopupManager.menu of the width presets). */
-.toolbar-btn--bus-width {
-  min-width: 28px;
-  justify-content: center;
-  padding: 0 var(--space-2);
-}
-
 /* ── Hover addressing (ring + tooltip in the overlay layer) ─────────────── */
 .hole-ring {
   position: absolute;
@@ -2638,7 +2715,9 @@ textarea.annotation-editor {
 }
 
 .popup-menu-item {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   text-align: left;
   border: none;
   background: transparent;
@@ -2648,7 +2727,8 @@ textarea.annotation-editor {
   font-size: 13px;
 }
 
-.popup-menu-item:enabled:hover {
+.popup-menu-item:enabled:hover,
+.popup-menu-item--open {
   background: var(--color-surface-1);
 }
 
@@ -2664,16 +2744,90 @@ textarea.annotation-editor {
 /* Optional per-item color dot (the wire / bus color pickers). */
 .popup-menu-swatch {
   display: inline-block;
+  flex: 0 0 auto;
   width: 12px;
   height: 12px;
   border: 1px solid var(--color-overlay);
   border-radius: 50%;
-  vertical-align: middle;
-  margin-right: var(--space-2);
+}
+
+/* Leading icon slot. Present but EMPTY on the iconless items of a card that
+   has icons, so every label in that card still lines up. */
+.popup-menu-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  color: var(--color-subtext);
 }
 
 .popup-menu-label {
-  vertical-align: middle;
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Right-aligned shortcut hint ("⌘S") and the submenu chevron. */
+.popup-menu-accel {
+  flex: 0 0 auto;
+  padding-left: var(--space-4);
+  color: var(--color-muted);
+  font-size: 12px;
+}
+
+.popup-menu-chevron {
+  flex: 0 0 auto;
+  padding-left: var(--space-3);
+  color: var(--color-subtext);
+}
+
+/* A removable row (an Open Recent entry): the item plus its own × — a button
+   can't nest another, so the two are siblings sharing one hover surface. */
+.popup-menu-row {
+  display: flex;
+  align-items: center;
+  border-radius: var(--radius-sm);
+}
+
+.popup-menu-row:hover {
+  background: var(--color-surface-1);
+}
+
+.popup-menu-row .popup-menu-item {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.popup-menu-remove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  margin-right: var(--space-2);
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-muted);
+  opacity: 0;
+}
+
+/* The × stays out of the way until the row is hovered (or it is focused, so
+   it remains reachable by keyboard). */
+.popup-menu-row:hover .popup-menu-remove,
+.popup-menu-remove:focus-visible {
+  opacity: 1;
+}
+
+.popup-menu-remove:hover {
+  background: var(--color-overlay);
+  color: var(--color-text);
 }
 
 .popup-menu-separator {

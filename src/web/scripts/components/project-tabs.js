@@ -140,12 +140,10 @@ export class ProjectTabs {
       },
       [
         el("span", { class: "project-tab-label", text: tab.name }),
+        // A drawn dot, not a "•" glyph — the marker is a shape, so CSS owns
+        // its size and color (the title carries the meaning for a reader).
         dirty &&
-          el("span", {
-            class: "project-tab-marker",
-            text: "•",
-            "aria-hidden": "true",
-          }),
+          el("span", { class: "project-tab-marker", "aria-hidden": "true" }),
       ],
     );
   }

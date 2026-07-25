@@ -32,8 +32,9 @@ searchable palette panel, and `chip-view.js` (drawn DIPs with pin hover); and
 wires (50) — `{id, from, to, color}` with `w<n>` ids and address endpoints in
 the shared occupancy index, the pure `desk/wire-path.js` sag math, `WireLayer`
 (one SVG, outline+core+caps, the sanctioned per-wire hit-stroke exception),
-the click-click wire tool (shortcut W, chaining, color cycling + toolbar
-swatches), cross-board wires riding board drags, and cascade-on-board-delete;
+the click-click wire tool (shortcut W, chaining, colors picked with 1–8 while
+armed and shown as a dot on the toolbar's Wire button), cross-board wires
+riding board drags, and cascade-on-board-delete;
 and discrete parts & power (60) — `catalog/parts.js` (slide switch / push
 button / LED / PSU with `internalBridges`/`source`/`normalizeParams`
 contracts), discretes seating in ANY grid row via generalized
@@ -240,7 +241,18 @@ website** (`make docs` → `website/docs/`), and a **PDF** (`make pdf` →
   the whole scene cleanly; the only thing lost is run-volatile sim state.
   Dirty = live document vs `settings.savedDoc` (the last-saved baseline); it
   drives the `document.title` marker and the discard prompt (File menu ⌘N/⌘O/
-  ⌘S/⇧⌘S push `menu:schematic-*` → `chiphippo:schematic-*`).
+  ⌘S/⇧⌘S/⌘B push `menu:schematic-*` / `menu:build-guide` →
+  `chiphippo:schematic-*` / `chiphippo:build-guide`). **The header toolbar
+  mirrors that menu exactly** — one File **split button** (New + a ▾) whose
+  items dispatch the SAME `chiphippo:*` events, so the two can never drift;
+  only **Open Recent** is toolbar-only. That MRU is `settings.recentFiles`
+  (the last 10 paths, most recent first — `store/recent-files.js` is the pure
+  list arithmetic, `desk:recent:list`/`:open`/`:remove` the IPC), written by
+  main on every open/save-as/save. The list is also the **allowlist**:
+  `desk:recent:open` is the one read of a renderer-named path, and — like
+  `desk:write` — it only touches a path a prior dialog established, returning
+  `{ok:false, code:"missing"}` for an entry whose file has since gone so the
+  renderer can offer to forget it.
 - `src/web/` — **renderer** (Vanilla JS ES modules + plain CSS): the UI. Sandboxed;
   talks to main only through `window.chiphippo.*`. Entry points: `index.html` →
   `scripts/app.js`. Pure DOM-free logic lives under `scripts/desk/` (camera, wire
@@ -433,6 +445,24 @@ Electron main process (src/app/main.js)
   behind. The ghost is built ONCE in the clip's own coordinates and then just
   TRANSLATED (it is rigid), and `DeskDoc.pasteDesign` stamps it in one
   snapshot-guarded mutation that rolls itself back on any refusal.
+- **Header toolbar**: two shapes, and no others. A **pill**
+  (`.toolbar-pill`) groups buttons that read as ONE control — it carries the
+  only border and the only background, its `.toolbar-pill-btn` segments are
+  separated by spacing rather than by borders of their own (there is no
+  split-button seam anywhere), and an armed segment FILLS instead of gaining
+  an accent border. Two exist: the desk tools (Wire · Bus · Fade · Probe ·
+  Fit) and **File** (New + the ▾ that drops the file menu, tightened by
+  `.toolbar-pill--file` since it is an action plus its menu, not a row of
+  peers). Everything else is a plain `.toolbar-btn` / `.toolbar-icon-btn`.
+  The pill is the APP's grouping shape, not the toolbar's alone — the desktop
+  tab strip (`.project-tabs`, Feature 240) is the same thing floating over the
+  desk, its active tab filling exactly as an armed tool segment does.
+  A pill segment may carry a **readout** — the Wire button's color dot, the
+  Bus button's `8`/`16` badge — and a readout is exactly that: it shows the
+  active option and is NOT a picker (1–8 set the wire color and 1/2 the bus
+  width while that tool is armed; a placed wire's color is changed through its
+  Properties dialog). `.toolbar-btn--active` remains the one class every
+  toolbar button's armed state toggles, whatever its shape.
 - **Popups/menus**: `popup-manager.js` (ported from Port Hippo) is the only
   app-wide dialog/menu seam; build DOM with `dom.js` `el()`. `PopupManager.close()`
   fires a one-way `chiphippo:popup-closed` event so stateful dialogs can reset
@@ -440,7 +470,15 @@ Electron main process (src/app/main.js)
   `prompt` / `notify` / `dialog` there is **`choose`** — the Cancel + N-choices
   shape a "save, discard, or cancel" question needs (Feature 240's tab
   delete), where "no" splits into two different answers; its `onChoose` fires
-  with `null` for every dismissal, so a caller can never miss one.
+  with `null` for every dismissal, so a caller can never miss one. `menu`'s
+  item vocabulary is `{ label, disabled, danger, swatch, icon, accelerator,
+  title, submenu + emptyLabel, onSelect, onRemove }` — a card where ANY item
+  has an `icon` gives every item the 16 px slot (so labels line up), a
+  `submenu` opens as a SIBLING card in the same dialog (hover or click; never
+  nested, so it can't be clipped), and `onRemove` renders a trailing × that
+  drops its row IN PLACE and leaves the menu open (removing an Open Recent
+  entry is not a selection). Everything is opt-in: an item with none of them
+  renders exactly as it always did.
 - **Part context menu — ONE shape for every kind**: `DeskController.#onPartContextMenu`
   builds the exact same three items, always, in this order: **Pin
   Assignment**, **Properties…**, **Delete Component**. No per-kind branching

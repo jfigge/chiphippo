@@ -92,6 +92,13 @@ const DEFAULTS = Object.freeze({
   currentFile: null,
   savedDoc: null,
 
+  // The last 10 schematic files opened or saved, most recent first — the
+  // toolbar's File ▸ Open Recent submenu. Main owns this list (store/
+  // recent-files.js does the arithmetic): it is also the ALLOWLIST that
+  // desk:recent:open checks a path against, so the renderer can never ask
+  // main to read an arbitrary file.
+  recentFiles: Object.freeze([]),
+
   // ── Current project (Feature 240) ─────────────────────────────────────────
   // The id (folder slug) of the open project of desktops, or null when the
   // session is on the plain working desk. Which of its tabs is active lives in

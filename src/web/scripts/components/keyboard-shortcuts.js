@@ -31,6 +31,16 @@ const SHIFT = isMac ? "⇧" : "Shift";
 /** Grouped shortcut rows — the single source of truth this dialog renders. */
 const SHORTCUT_GROUPS = [
   {
+    title: "File",
+    rows: [
+      { desc: "New desktop", keys: `${MOD}+N` },
+      { desc: "Open a schematic", keys: `${MOD}+O` },
+      { desc: "Save", keys: `${MOD}+S` },
+      { desc: "Save As…", keys: `${SHIFT}+${MOD}+S` },
+      { desc: "Bill of materials (build guide)", keys: `${MOD}+B` },
+    ],
+  },
+  {
     title: "Tools",
     rows: [
       { desc: "Wire tool", keys: "W" },

@@ -43,6 +43,11 @@ const { DeskStore } = require("./store/desk-store");
 const { ProjectStore } = require("./store/project-store");
 const memStore = require("./store/mem-store");
 const {
+  rememberRecent,
+  forgetRecent,
+  sanitizeRecent,
+} = require("./store/recent-files");
+const {
   DEFAULT_BOUNDS,
   resolveWindowBounds,
   trackWindowState,
@@ -159,6 +164,38 @@ const SCHEMATIC_FILTERS = [
   { name: "Chip Hippo Schematic", extensions: ["chiphippo", "json"] },
 ];
 
+// ── Most recently used files ─────────────────────────────────────────────────
+// Every file the user opens or saves under a name lands at the head of
+// settings.recentFiles (store/recent-files.js caps + de-duplicates it). The
+// list doubles as the ALLOWLIST for desk:recent:open — the one channel that
+// reads a renderer-named path — so, exactly like desk:write, main only ever
+// touches a path a prior dialog legitimately established.
+
+/** The persisted MRU list, sanitized (never the frozen defaults array). */
+function recentFiles() {
+  return sanitizeRecent(
+    safeCall("desk:recent", () => getSettingsStore().get().recentFiles, []),
+  );
+}
+
+/** Move `filePath` to the head of the MRU list. Returns the new list. */
+function rememberFile(filePath) {
+  const next = rememberRecent(recentFiles(), filePath);
+  safeCall("desk:recent:remember", () =>
+    getSettingsStore().set({ recentFiles: next }),
+  );
+  return next;
+}
+
+/** Drop `filePath` from the MRU list. Returns the new list. */
+function forgetFile(filePath) {
+  const next = forgetRecent(recentFiles(), filePath);
+  safeCall("desk:recent:forget", () =>
+    getSettingsStore().set({ recentFiles: next }),
+  );
+  return next;
+}
+
 /** Show the Open dialog; read + migrate the choice. Returns {path, doc}|null. */
 async function openSchematicDialog() {
   const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
@@ -167,8 +204,34 @@ async function openSchematicDialog() {
     ? await dialog.showOpenDialog(win, opts)
     : await dialog.showOpenDialog(opts);
   if (result.canceled || !result.filePaths?.[0]) return null;
-  const filePath = result.filePaths[0];
-  return { path: filePath, doc: getDeskStore().readFile(filePath) };
+  const filePath = path.resolve(result.filePaths[0]);
+  const doc = getDeskStore().readFile(filePath);
+  rememberFile(filePath);
+  return { path: filePath, doc };
+}
+
+/**
+ * Open a file the user picked from the MRU menu. It is the only read of a
+ * renderer-named path, so it is allowed ONLY for a path already on the list —
+ * and a file that has since been moved/deleted comes back as
+ * `{ ok:false, code:"missing" }` so the renderer can offer to forget it.
+ * @param {string} filePath
+ */
+function openRecentSchematic(filePath) {
+  const wanted = typeof filePath === "string" ? path.resolve(filePath) : "";
+  if (!wanted || !recentFiles().includes(wanted)) {
+    return { ok: false, code: "unknown", error: "not a recent file" };
+  }
+  if (!safeCall("desk:recent:exists", () => fs.existsSync(wanted), false)) {
+    return { ok: false, code: "missing", error: "file not found" };
+  }
+  try {
+    const doc = getDeskStore().readFile(wanted);
+    rememberFile(wanted);
+    return { ok: true, path: wanted, doc };
+  } catch (err) {
+    return { ok: false, code: "error", error: err.message };
+  }
 }
 
 /** Show the Save-As dialog; write `doc` to the choice. Returns the path|null. */
@@ -185,7 +248,9 @@ async function saveSchematicDialog(doc, suggestedPath) {
     ? await dialog.showSaveDialog(win, opts)
     : await dialog.showSaveDialog(opts);
   if (result.canceled || !result.filePath) return null;
-  return getDeskStore().writeFile(result.filePath, doc);
+  const written = getDeskStore().writeFile(path.resolve(result.filePath), doc);
+  rememberFile(written);
+  return written;
 }
 
 // ─── Datasheet folder + PDFs ──────────────────────────────────────────────────
@@ -581,14 +646,17 @@ function buildAppMenu() {
 
   // Schematic file operations — each pushes to the renderer, which owns the
   // document (New/Open reload the working desk; Save/Save As write a file).
+  // Same items, same order, same wording as the toolbar's File split-button
+  // menu; that menu adds only Open Recent (an MRU list the native menu would
+  // have to be rebuilt to carry).
   const schematicItems = [
     {
-      label: "New Schematic",
+      label: "New Desktop",
       accelerator: "CmdOrCtrl+N",
       click: () => sendToMain("menu:schematic-new"),
     },
     {
-      label: "Open Schematic…",
+      label: "Open…",
       accelerator: "CmdOrCtrl+O",
       click: () => sendToMain("menu:schematic-open"),
     },
@@ -602,6 +670,14 @@ function buildAppMenu() {
       label: "Save As…",
       accelerator: "CmdOrCtrl+Shift+S",
       click: () => sendToMain("menu:schematic-save-as"),
+    },
+    { type: "separator" },
+    {
+      // The right-docked build guide (BOM / wiring list / assembly steps).
+      // Read-only, so it stays available while the circuit runs.
+      label: "Bill Of Materials…",
+      accelerator: "CmdOrCtrl+B",
+      click: () => sendToMain("menu:build-guide"),
     },
   ];
 
@@ -816,8 +892,21 @@ function registerIpc() {
       err.code = "INVALID_ARG";
       throw err;
     }
-    return getDeskStore().writeFile(filePath, doc);
+    const written = getDeskStore().writeFile(filePath, doc);
+    rememberFile(written); // a re-Save is a use — bump it up the MRU list
+    return written;
   });
+
+  // Most recently used files (the toolbar's File ▸ Open Recent submenu): the
+  // list, one entry opened by path (allowlisted against the list itself), and
+  // one entry forgotten (its × / the "that file is gone" prompt).
+  ipcMain.handle("desk:recent:list", () => recentFiles());
+  ipcMain.handle("desk:recent:open", (_event, filePath) =>
+    openRecentSchematic(filePath),
+  );
+  ipcMain.handle("desk:recent:remove", (_event, filePath) =>
+    forgetFile(typeof filePath === "string" ? path.resolve(filePath) : ""),
+  );
 
   // Projects (Feature 240): a named workspace of several desktops, each tab
   // its own `.chiphippo` inside userData/projects/<id>/. The renderer passes

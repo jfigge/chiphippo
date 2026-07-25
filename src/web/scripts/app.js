@@ -44,7 +44,6 @@ import { KeyboardShortcutsDialog } from "./components/keyboard-shortcuts.js";
 import {
   BUS_WIDTHS as BUS_WIDTH_PRESETS,
   DeskDoc,
-  WIRE_COLORS,
   emptyDocument,
 } from "./model/desk-doc.js";
 import { partDef } from "./catalog/index.js";
@@ -59,7 +58,13 @@ const DOC_SAVE_DEBOUNCE_MS = 1000;
 const SPEED_LABELS = { 0.25: "×¼", 1: "×1", 4: "×4" };
 
 /** The platform-correct modifier glyph for tooltips (⌘ on macOS, Ctrl elsewhere). */
-const MOD_KEY = window.chiphippo?.platform === "darwin" ? "⌘" : "Ctrl";
+const IS_MAC = window.chiphippo?.platform === "darwin";
+const MOD_KEY = IS_MAC ? "⌘" : "Ctrl";
+
+/** A menu-style accelerator hint ("⇧⌘S" on macOS, "Shift+Ctrl+S" elsewhere) —
+    the same accelerators the native File menu registers (main.js). */
+const accel = (key, shift = false) =>
+  IS_MAC ? `${shift ? "⇧" : ""}⌘${key}` : `${shift ? "Shift+" : ""}Ctrl+${key}`;
 
 /**
  * The modeled duration of one engine tick (a clock half-period), for the logic
@@ -77,20 +82,10 @@ function tickMsFor(deskDoc, sim) {
   return 1000 / (2 * Math.max(...hzList) * sim.speed);
 }
 
-/** The bus-width presets behind the Bus split-button's combo segment: the menu
-    label, the bus name it sets (the grammar the tool parses), and the short
-    glyph shown in the button. 8-bit is the default. The name/bits themselves
-    come from the shared model constant (BUS_WIDTH_PRESETS); this just adds the
-    UI-facing label/glyph. */
-const BUS_WIDTHS = BUS_WIDTH_PRESETS.map(({ bits, name }) => ({
-  short: String(bits),
-  name,
-  label: `${bits}-bit ${name}`,
-}));
-
-/** The short button glyph ("8"/"16") for a bus name; defaults to 8-bit. */
+/** The short badge glyph ("8"/"16") the Bus button displays for a bus name,
+    derived from the shared model presets; defaults to 8-bit. */
 const busWidthShort = (name) =>
-  BUS_WIDTHS.find((w) => w.name === name)?.short ?? "8";
+  BUS_WIDTH_PRESETS.find((w) => w.name === name)?.bits.toString() ?? "8";
 
 /** The system (settings) gear icon for the top-right header action. */
 const GEAR_SVG =
@@ -108,7 +103,8 @@ const GEAR_SVG =
   "06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-." +
   '09a1.65 1.65 0 0 0-1.51 1z"/></svg>';
 
-/** Schematic file icons for the header toolbar (New / Load / Save). */
+/** Schematic file icons — the File pill's Save button and the file menu's
+    New / Open / Save items. */
 const ICON_SVG_OPEN =
   '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" ' +
   'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
@@ -128,6 +124,13 @@ const SAVE_SVG =
   '<path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>' +
   '<polyline points="17 21 17 13 7 13 7 21"/>' +
   '<polyline points="7 3 7 8 15 8"/></svg>';
+
+/** The ▾ on the File pill's right segment (drops the file menu). */
+const CARET_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" ' +
+  'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" ' +
+  'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+  '<polyline points="6 9 12 15 18 9"/></svg>';
 
 /** Connectivity-probe icon for the Probe toolbar toggle: a probe tip landing
  * on a digital rising edge, with a cable trailing off the handle end. */
@@ -537,6 +540,49 @@ async function init() {
     await reloadWith(res.doc, res.path);
   };
 
+  // ── Open Recent (the MRU list) ────────────────────────────────────────────
+  // Main owns the list (settings.recentFiles) and only opens a path that is
+  // ON it. A file that has since been moved or deleted comes back as
+  // `code: "missing"`, and the user is offered its removal right there — the
+  // one moment they can be sure the entry is dead.
+  const forgetRecent = (filePath) =>
+    bridge.desk.recent
+      .remove(filePath)
+      .catch((err) => console.error("[renderer] desk:recent:remove:", err));
+
+  const offerForgetRecent = (filePath) =>
+    PopupManager.confirm({
+      title: "That file is no longer there",
+      message: `"${fileName(filePath)}" could not be found. Remove it from the recent files?`,
+      note: filePath,
+      confirmLabel: "Remove",
+      confirmClass: "btn--danger",
+      onConfirm: () => forgetRecent(filePath),
+    });
+
+  const openRecentSchematic = async (filePath) => {
+    let res;
+    try {
+      res = await bridge.desk.recent.open(filePath);
+    } catch (err) {
+      console.error("[renderer] desk:recent:open failed:", err);
+      return;
+    }
+    if (!res?.ok) {
+      if (res?.code === "missing") return offerForgetRecent(filePath);
+      return PopupManager.notify({
+        title: "Could not open that file",
+        message: res?.error ?? "The file could not be read.",
+      });
+    }
+    // Inside a project the desk is a TAB: the file is read INTO the active
+    // desktop (no reload, no re-pointing of the working file) exactly as
+    // Load… does there.
+    if (workspace?.isOpen) return workspace.loadDocIntoActiveTab(res.doc);
+    if (!(await confirmDiscard())) return;
+    await reloadWith(res.doc, res.path);
+  };
+
   const saveAsSchematic = async () => {
     const json = deskDoc.toJSON();
     let path;
@@ -633,23 +679,24 @@ async function init() {
 
   // Build guide (Feature 140): a right-docked panel deriving the BOM / wiring
   // list / assembly steps from the live document. Visibility persists like the
-  // palette; a toolbar button (added below) and its own close button both route
-  // through onVisibilityChange so the button state + setting stay in step.
-  let guideBtn = null;
+  // palette; the File menu's "Bill Of Materials…" item (⌘B), its own close
+  // button, and the native File menu all route through onVisibilityChange so
+  // the persisted setting stays in step however it was flipped.
   const buildGuide = new BuildGuide(main, {
     deskDoc,
     netlist: netlistCache,
     // The exported BOM file is named after the current schematic (no ext).
     schemaName: () => fileName(currentFile).replace(/\.chiphippo$/i, ""),
     onVisibilityChange: (visible) => {
-      guideBtn?.classList.toggle("toolbar-btn--active", visible);
-      guideBtn?.setAttribute("aria-pressed", String(visible));
       bridge.settings
         .set({ guideOpen: visible })
         .catch((err) => console.error("[renderer] settings:set failed:", err));
     },
   });
   buildGuide.setVisible(settings.guideOpen === true);
+  // File ▸ Bill Of Materials… (⌘B) — pushed by the native File menu, and the
+  // toolbar's own file menu calls buildGuide.toggle() directly.
+  window.addEventListener("chiphippo:build-guide", () => buildGuide.toggle());
 
   // Logic analyzer (Feature 210): a bottom-docked waveform panel that records
   // the sim-state stream into timing diagrams. Its channel mutations route
@@ -690,9 +737,9 @@ async function init() {
 
   // Everything ON the desk (boards, chips, wires, placement, hover).
   let wireBtn = null;
-  let wireDot = null; // the active-color dot inside the Wire split button
+  let wireDot = null; // the active-color dot displayed inside the Wire button
   let busBtn = null;
-  let busWidthBtn = null; // the "8"/"16" glyph inside the Bus split button
+  let busWidthLabel = null; // the "8"/"16" badge displayed inside the Bus button
   let probeBtn = null;
   let fadeBtn = null; // the "Fade wires" toggle
   let sim = null; // the SimController (created after the toolbar below)
@@ -700,9 +747,10 @@ async function init() {
   const onWireStateChange = ({ armed, color }) => {
     wireBtn?.classList.toggle("toolbar-btn--active", armed);
     wireBtn?.setAttribute("aria-pressed", String(armed));
-    // The Wire button carries a dot showing the active color; the palette of
-    // colors lives behind the split-button arrow.
+    // The Wire button carries a dot showing the active color — a readout, not
+    // a picker (1–8 set it while the tool is armed).
     wireDot?.style.setProperty("--wire-color", `var(--color-wire-${color})`);
+    if (wireDot) wireDot.title = `Wire color: ${color} (1–8 to change)`;
   };
   const onBusStateChange = ({ armed }) => {
     busBtn?.classList.toggle("toolbar-btn--active", armed);
@@ -728,10 +776,10 @@ async function init() {
     netlist: netlistCache,
     onWireStateChange,
     onBusStateChange,
-    // Keeps the bus split-button's width glyph ("8"/"16") in sync whether the
-    // name changed via the toolbar menu or the 1/2 keyboard shortcut.
+    // Keeps the Bus button's width badge ("8"/"16") in sync with the 1/2
+    // keyboard shortcut that sets it.
     onBusNameChange: (name) => {
-      if (busWidthBtn) busWidthBtn.textContent = busWidthShort(name);
+      if (busWidthLabel) busWidthLabel.textContent = busWidthShort(name);
     },
     onProbeStateChange,
     onWireFadeChange,
@@ -823,31 +871,110 @@ async function init() {
     modeBtn.setAttribute("aria-pressed", String(schematic));
   }
 
-  // Schematic file actions (New / Load / Save) — icon buttons at the head of
-  // the toolbar, dispatching the SAME events the File menu pushes.
-  const schematicBtn = (label, svg, event) => {
-    const b = el("button", {
-      class: "toolbar-icon-btn",
-      type: "button",
-      title: label,
-      "aria-label": label,
-      onClick: () => window.dispatchEvent(new CustomEvent(event)),
-    });
-    b.innerHTML = svg;
-    return b;
-  };
-  // Build guide: toggle the right-docked BOM / wiring-list / steps panel. It is
-  // read-only, so it stays available while the circuit runs.
-  guideBtn = el("button", {
-    class: "toolbar-icon-btn",
+  // Schematic file actions — a PILL at the head of the toolbar, the same shape
+  // the desk tools use: one border around two borderless segments. The left is
+  // Save (the action reached most often, and the one with a cost to
+  // forgetting); the ▾ drops the whole file menu. Every item dispatches the
+  // SAME chiphippo:* event the native File menu pushes, so the two can't
+  // drift; only Open Recent is menu-only.
+  const fileSaveBtn = el("button", {
+    class: "toolbar-pill-btn",
     type: "button",
-    "aria-label": "Guide",
-    title: "Build guide — BOM, wiring list, and assembly steps",
-    "aria-pressed": String(buildGuide.visible),
-    onClick: () => buildGuide.toggle(),
+    title: `Save (${MOD_KEY}+S)`,
+    "aria-label": "Save",
+    onClick: () =>
+      window.dispatchEvent(new CustomEvent("chiphippo:schematic-save")),
   });
-  guideBtn.innerHTML = GUIDE_SVG;
-  guideBtn.classList.toggle("toolbar-btn--active", buildGuide.visible);
+  const fileSaveIcon = el("span", {
+    class: "toolbar-btn-icon",
+    "aria-hidden": "true",
+  });
+  fileSaveIcon.innerHTML = SAVE_SVG;
+  fileSaveBtn.append(fileSaveIcon, el("span", { text: "Save" }));
+
+  const fileMenuBtn = el("button", {
+    class: "toolbar-pill-btn toolbar-pill-btn--icon toolbar-pill-btn--caret",
+    type: "button",
+    title: "File actions",
+    "aria-label": "File actions",
+    "aria-haspopup": "menu",
+    onClick: () => openFileMenu(),
+  });
+  fileMenuBtn.innerHTML = CARET_SVG;
+  const filePill = el(
+    "div",
+    {
+      class: "toolbar-pill toolbar-pill--file",
+      role: "group",
+      "aria-label": "File",
+    },
+    [fileSaveBtn, fileMenuBtn],
+  );
+
+  /** The file menu: New / Open / Open Recent ▸ / Save / Save As / BOM. The
+      MRU list is fetched BEFORE the menu opens, so the submenu is plain
+      static items — no async menu. */
+  const openFileMenu = async () => {
+    let recents = [];
+    try {
+      recents = (await bridge.desk.recent.list()) ?? [];
+    } catch (err) {
+      console.error("[renderer] desk:recent:list failed:", err);
+    }
+    const rect = filePill.getBoundingClientRect();
+    PopupManager.menu({
+      x: rect.left,
+      y: rect.bottom + 4,
+      items: [
+        {
+          label: "New Desktop",
+          icon: NEW_SVG,
+          accelerator: accel("N"),
+          onSelect: () => newSchematic(),
+        },
+        {
+          label: "Open…",
+          icon: LOAD_SVG,
+          accelerator: accel("O"),
+          onSelect: () => openSchematic(),
+        },
+        {
+          label: "Open Recent",
+          emptyLabel: "No recent files",
+          submenu: recents.map((filePath) => ({
+            label: fileName(filePath),
+            title: filePath,
+            onSelect: () => openRecentSchematic(filePath),
+            // The × drops the entry from the list without opening it (and
+            // without closing the menu).
+            onRemove: () => forgetRecent(filePath),
+            removeLabel: `Remove ${fileName(filePath)} from recent files`,
+          })),
+        },
+        { separator: true },
+        {
+          label: "Save",
+          icon: SAVE_SVG,
+          accelerator: accel("S"),
+          onSelect: () => saveSchematic(),
+        },
+        {
+          label: "Save As…",
+          accelerator: accel("S", true),
+          onSelect: () => saveAsSchematic(),
+        },
+        { separator: true },
+        {
+          // The right-docked build guide (BOM / wiring list / steps). Read-only,
+          // so it stays offered while the circuit runs.
+          label: "Bill Of Materials…",
+          icon: GUIDE_SVG,
+          accelerator: accel("B"),
+          onSelect: () => buildGuide.toggle(),
+        },
+      ],
+    });
+  };
 
   // Projects (Feature 240): New / Load a project of desktops, or add a
   // sub-desktop tab. The menu itself lives on the workspace — it is the only
@@ -866,11 +993,8 @@ async function init() {
   projectsBtn.innerHTML = PROJECTS_SVG;
 
   toolbar.append(
-    schematicBtn("New schematic", NEW_SVG, "chiphippo:schematic-new"),
-    schematicBtn("Load schematic…", LOAD_SVG, "chiphippo:schematic-open"),
-    schematicBtn("Save schematic", SAVE_SVG, "chiphippo:schematic-save"),
+    filePill,
     projectsBtn,
-    guideBtn,
     el("span", { class: "toolbar-divider", "aria-hidden": "true" }),
   );
 
@@ -894,94 +1018,62 @@ async function init() {
   partsBtn.classList.toggle("toolbar-btn--active", palette.visible);
   toolbar.append(partsBtn);
 
-  // Wire tool: a split button. The "Wire" half (left) toggles the tool
-  // (shortcut W); the color CIRCLE on the right is the combobox-style dropdown
-  // trigger — it shows the active color and opens the color chooser. The eight
-  // colors used to sit in an always-open swatch strip; the circle-menu
-  // consolidates them.
+  // ── Desk-tool pill (Wire / Bus / Fade / Probe / Fit) ──────────────────────
+  // The five desk tools read as ONE control: a single rounded surface carrying
+  // the only border, its segments separated by spacing rather than by borders
+  // of their own. Each segment is still an ordinary button with its own state
+  // — only the chrome is shared. Built empty here so each tool can append
+  // itself where it is defined; the append order IS the layout.
+  const toolPill = el("div", {
+    class: "toolbar-pill",
+    role: "group",
+    "aria-label": "Desk tools",
+  });
+  toolbar.append(toolPill);
+
+  // Wire tool (shortcut W). The dot beside the label DISPLAYS the active wire
+  // color — it is not a picker: the color is chosen with 1–8 while the tool is
+  // armed, or on an already-placed wire through its Properties dialog.
   wireDot = el("span", { class: "wire-swatch-dot", "aria-hidden": "true" });
-  const wireColorBtn = el(
+  wireBtn = el(
     "button",
     {
-      class: "toolbar-btn toolbar-btn--wire-color",
+      class: "toolbar-pill-btn",
       type: "button",
-      "aria-label": "Choose the wire color",
-      "aria-haspopup": "menu",
-      title: "Choose the wire color",
-      onClick: () => {
-        const rect = wireColorBtn.getBoundingClientRect();
-        PopupManager.menu({
-          x: rect.left,
-          y: rect.bottom + 4,
-          items: WIRE_COLORS.map((color) => ({
-            label: color[0].toUpperCase() + color.slice(1),
-            swatch: `var(--color-wire-${color})`,
-            onSelect: () => {
-              controller.setWireColor(color);
-              controller.armWireTool();
-            },
-          })),
-        });
-      },
+      title: "Wire tool — click two free holes to connect them (W)",
+      "aria-pressed": "false",
+      onClick: () => controller.toggleWireTool(),
     },
-    [wireDot],
+    [el("span", { text: "Wire" }), wireDot],
   );
-  wireBtn = el("button", {
-    class: "toolbar-btn",
-    type: "button",
-    text: "Wire",
-    title: "Wire tool — click two free holes to connect them (W)",
-    "aria-pressed": "false",
-    onClick: () => controller.toggleWireTool(),
-  });
-  toolbar.append(
-    el("div", { class: "toolbar-split" }, [wireBtn, wireColorBtn]),
-  );
+  toolPill.append(wireBtn);
   onWireStateChange({ armed: false, color: controller.wireColor });
 
-  // Bus tool: a split button mirroring the Wire one. The "Bus" half toggles the
-  // tool (shortcut B); the WIDTH segment on the right is the combobox trigger
-  // showing "8"/"16" and opens the width chooser (8-bit D[7:0] / 16-bit
-  // D[15:0]). It rides the active wire color (the Wire button) for its color.
-  busBtn = el("button", {
-    class: "toolbar-btn",
-    type: "button",
-    text: "Bus",
-    title: "Bus tool — lay a multi-bit run of wires in one gesture (B)",
-    "aria-pressed": "false",
-    onClick: () => controller.toggleBusTool(),
-  });
-  busWidthBtn = el("button", {
-    class: "toolbar-btn toolbar-btn--bus-width",
-    type: "button",
+  // Bus tool (shortcut B) — lays a multi-bit run of wires in one gesture,
+  // riding the active wire color. The "8"/"16" badge likewise DISPLAYS the
+  // active width (8-bit D[7:0] / 16-bit D[15:0]), which 1/2 set while armed.
+  busWidthLabel = el("span", {
+    class: "bus-width-badge",
     text: busWidthShort(controller.busName),
-    "aria-label": "Choose the bus width",
-    "aria-haspopup": "menu",
-    title: "Choose the bus width",
-    onClick: () => {
-      const rect = busWidthBtn.getBoundingClientRect();
-      PopupManager.menu({
-        x: rect.left,
-        y: rect.bottom + 4,
-        items: BUS_WIDTHS.map(({ name, label }) => ({
-          label,
-          // onBusNameChange (passed to DeskController above) updates the
-          // glyph — the same path a 1/2 keyboard shortcut drives.
-          onSelect: () => {
-            controller.setBusName(name);
-            controller.armBusTool();
-          },
-        })),
-      });
-    },
   });
-  toolbar.append(el("div", { class: "toolbar-split" }, [busBtn, busWidthBtn]));
+  busBtn = el(
+    "button",
+    {
+      class: "toolbar-pill-btn",
+      type: "button",
+      title: "Bus tool — lay a multi-bit run of wires in one gesture (B)",
+      "aria-pressed": "false",
+      onClick: () => controller.toggleBusTool(),
+    },
+    [el("span", { text: "Bus" }), busWidthLabel],
+  );
+  toolPill.append(busBtn);
 
   // Fade wires: draw every wire as a short stub off each hole, fading out in
   // between, so a heavily wired board stays readable. A selected wire comes
   // back whole. Purely how the desk is drawn, so it stays live while running.
   fadeBtn = el("button", {
-    class: "toolbar-icon-btn",
+    class: "toolbar-pill-btn toolbar-pill-btn--icon",
     type: "button",
     "aria-label": "Fade wires",
     title:
@@ -990,12 +1082,12 @@ async function init() {
     onClick: () => controller.toggleWiresFaded(),
   });
   fadeBtn.innerHTML = FADE_WIRES_SVG;
-  toolbar.append(fadeBtn);
+  toolPill.append(fadeBtn);
   controller.setWiresFaded(settings.wiresFaded === true);
 
   // Probe tool: highlight a whole electrical net on hover (shortcut I).
   probeBtn = el("button", {
-    class: "toolbar-icon-btn",
+    class: "toolbar-pill-btn toolbar-pill-btn--icon",
     type: "button",
     "aria-label": "Probe",
     title: "Connectivity probe — hover to highlight a net, click to pin (P)",
@@ -1003,7 +1095,7 @@ async function init() {
     onClick: () => controller.toggleProbe(),
   });
   probeBtn.innerHTML = PROBE_SVG;
-  toolbar.append(probeBtn);
+  toolPill.append(probeBtn);
 
   // Fit to screen: frame every board/part/wire on the desk (find lost parts).
   // A passive camera move, so it stays available while the circuit runs.
@@ -1025,7 +1117,7 @@ async function init() {
       : `Fit to screen — frame every board, part, and wire (${MOD_KEY}+F)`;
   };
   const locateBtn = el("button", {
-    class: "toolbar-icon-btn",
+    class: "toolbar-pill-btn toolbar-pill-btn--icon",
     type: "button",
     "aria-label": "Fit to screen",
     title: `Fit to screen — frame every board, part, and wire (${MOD_KEY}+F)`,
@@ -1061,7 +1153,7 @@ async function init() {
     locateShiftHeld = false;
     updateLocateIcon();
   });
-  toolbar.append(locateBtn);
+  toolPill.append(locateBtn);
 
   // Logic analyzer: toggle the bottom-docked waveform panel. Like the guide it
   // is a passive viewer, so it stays available while the circuit runs.
@@ -1122,15 +1214,11 @@ async function init() {
   });
   toolbar.append(runBtn, pauseBtn, stepBtn, speedBtn);
 
-  // Buttons that edit topology are disabled while the circuit runs; the probe
-  // and the transport controls stay live. The Add-board split lives in its own
-  // wrapper, so gather every editing button by element.
-  const editButtons = () => [
-    partsBtn,
-    // Every split-button half: the Wire tool (+ its color trigger) and the Bus
-    // tool (+ its width trigger).
-    ...toolbar.querySelectorAll(".toolbar-split button"),
-  ];
+  // Buttons that edit topology are disabled while the circuit runs; the probe,
+  // the file actions, and the transport controls stay live. Listed by element
+  // rather than queried — the File pill's segments look exactly like the tool
+  // pill's, and opening or saving a document is not a topology edit.
+  const editButtons = [partsBtn, wireBtn, busBtn];
   const onTransportChange = (mode) => {
     const stopped = mode === "stopped";
     controller.setEditingLocked(!stopped);
@@ -1143,7 +1231,7 @@ async function init() {
     runBtn.classList.toggle("toolbar-btn--running", !stopped);
     pauseBtn.textContent = mode === "paused" ? "▶ Resume" : "⏸ Pause";
     for (const btn of [pauseBtn, stepBtn, speedBtn]) btn.hidden = stopped;
-    for (const btn of editButtons()) btn.disabled = !stopped;
+    for (const btn of editButtons) btn.disabled = !stopped;
   };
   sim = new SimController({
     deskDoc,

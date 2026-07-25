@@ -40,6 +40,7 @@ for (const [channel, event] of [
   ["menu:schematic-open", "chiphippo:schematic-open"],
   ["menu:schematic-save", "chiphippo:schematic-save"],
   ["menu:schematic-save-as", "chiphippo:schematic-save-as"],
+  ["menu:build-guide", "chiphippo:build-guide"],
   ["menu:edit-undo", "chiphippo:edit-undo"],
   ["menu:edit-redo", "chiphippo:edit-redo"],
 ]) {
@@ -111,6 +112,16 @@ contextBridge.exposeInMainWorld("chiphippo", {
     saveAs: (doc, suggestedPath) =>
       ipcRenderer.invoke("desk:save-as", doc, suggestedPath),
     write: (filePath, doc) => ipcRenderer.invoke("desk:write", filePath, doc),
+    // The MRU list behind File ▸ Open Recent: `list()` → the last 10 paths,
+    // most recent first; `open(path)` → { ok:true, path, doc } or
+    // { ok:false, code } ("missing" when the file has been moved/deleted, so
+    // the renderer can offer to forget it); `remove(path)` → the new list.
+    // Main keeps the list and only opens a path that is ON it.
+    recent: {
+      list: () => ipcRenderer.invoke("desk:recent:list"),
+      open: (filePath) => ipcRenderer.invoke("desk:recent:open", filePath),
+      remove: (filePath) => ipcRenderer.invoke("desk:recent:remove", filePath),
+    },
   },
 
   // ── Projects: tabbed sub-desktops (Feature 240) ───────────────────────────

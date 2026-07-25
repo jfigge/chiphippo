@@ -510,17 +510,37 @@ export class ProjectWorkspace {
       return;
     }
     if (!res) return; // cancelled
+    await this.#swapActiveDoc(res.doc);
+  }
+
+  /**
+   * The same load, for a document the caller has ALREADY read — File ▸ Open
+   * Recent, where main read the file (and vetted the path) before offering it.
+   * @param {object} doc
+   */
+  async loadDocIntoActiveTab(doc) {
+    if (!this.#project || !doc) return;
+    if (!(await this.#confirmDiscardActive())) return;
+    await this.#swapActiveDoc(doc);
+  }
+
+  // ── Internals ───────────────────────────────────────────────────────────
+
+  /**
+   * Put `doc` on the desk as the active tab's document: stop the sim, drop the
+   * aux windows pointing at the desk being replaced, then swap it in through
+   * the controller's load path (keeping the tab's own undo history).
+   */
+  async #swapActiveDoc(doc) {
     const state = this.#state.get(this.#project.activeTab);
     this.#sim?.stop?.();
     await this.#closeAuxWindows();
-    this.#controller.loadDocument(res.doc, {
+    this.#controller.loadDocument(doc, {
       history: state?.history ?? new HistoryStore(),
     });
     this.refreshDirty();
     this.#announce();
   }
-
-  // ── Internals ───────────────────────────────────────────────────────────
 
   /** Take a loaded project as the open one, seeding its active tab's state. */
   #adopt(project, doc) {

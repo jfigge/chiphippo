@@ -36,6 +36,146 @@ const CLOSE_SVG =
   'stroke="currentColor" stroke-width="1.6" stroke-linecap="round" ' +
   'aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg>';
 
+/** The smaller "×" a removable menu row carries (an Open Recent entry). */
+const REMOVE_SVG =
+  '<svg viewBox="0 0 12 12" width="10" height="10" fill="none" ' +
+  'stroke="currentColor" stroke-width="1.6" stroke-linecap="round" ' +
+  'aria-hidden="true"><path d="M3 3l6 6M9 3l-6 6"/></svg>';
+
+/** Keep a positioned card (menu or submenu) fully on-screen, with a margin. */
+function placeCard(node, x, y) {
+  const rect = node.getBoundingClientRect();
+  const pad = 8;
+  const left = Math.max(pad, Math.min(x, window.innerWidth - rect.width - pad));
+  const top = Math.max(
+    pad,
+    Math.min(y, window.innerHeight - rect.height - pad),
+  );
+  node.style.left = `${left}px`;
+  node.style.top = `${top}px`;
+}
+
+/** The disabled placeholder a submenu shows when it has nothing to list. */
+function emptyMenuItem(label) {
+  return el(
+    "button",
+    {
+      class: "popup-menu-item popup-menu-item--empty",
+      type: "button",
+      role: "menuitem",
+      disabled: true,
+    },
+    [el("span", { class: "popup-menu-label", text: label })],
+  );
+}
+
+/**
+ * One menu row. Plain items are a single `<button.popup-menu-item>` (so a
+ * menu with no icons/accelerators/submenus renders exactly as it always
+ * has); a REMOVABLE item is that button wrapped in a row beside its own ×,
+ * since a button can't nest another one.
+ */
+function menuItemNode(item, ctx) {
+  if (item.separator) {
+    return el("div", { class: "popup-menu-separator", role: "separator" });
+  }
+
+  const icon =
+    ctx.hasIcons &&
+    el("span", { class: "popup-menu-icon", "aria-hidden": "true" });
+  if (icon && item.icon) icon.innerHTML = item.icon;
+
+  const swatch =
+    item.swatch &&
+    el("span", { class: "popup-menu-swatch", "aria-hidden": "true" });
+  if (swatch) swatch.style.background = item.swatch;
+
+  const button = el(
+    "button",
+    {
+      class: `popup-menu-item${item.danger ? " popup-menu-item--danger" : ""}`,
+      type: "button",
+      role: "menuitem",
+      title: item.title,
+      disabled: Boolean(item.disabled),
+      "aria-haspopup": item.submenu ? "menu" : null,
+      onClick: () => {
+        if (item.submenu) {
+          ctx.toggleFlyout(button, item);
+          return;
+        }
+        ctx.close();
+        item.onSelect?.();
+      },
+    },
+    [
+      icon,
+      swatch,
+      el("span", { class: "popup-menu-label", text: item.label }),
+      item.accelerator &&
+        el("span", { class: "popup-menu-accel", text: item.accelerator }),
+      item.submenu &&
+        el("span", {
+          class: "popup-menu-chevron",
+          "aria-hidden": "true",
+          text: "›",
+        }),
+    ],
+  );
+  if (!item.disabled) {
+    button.addEventListener("pointerenter", () => {
+      if (item.submenu) ctx.openFlyout(button, item);
+      else ctx.leaveFlyout(button);
+    });
+  }
+  if (!item.onRemove) return button;
+
+  const removeLabel = item.removeLabel ?? `Remove ${item.label}`;
+  const removeBtn = el("button", {
+    class: "popup-menu-remove",
+    type: "button",
+    title: removeLabel,
+    "aria-label": removeLabel,
+    onClick: (event) => {
+      // Dropping an entry is not a selection: the menu stays open so several
+      // can go in one visit, and the card falls back to its empty placeholder
+      // once the last row is gone.
+      event.stopPropagation();
+      const row = event.currentTarget.closest(".popup-menu-row");
+      const card = row?.parentElement;
+      row?.remove();
+      item.onRemove();
+      if (card && !card.querySelector(".popup-menu-item")) {
+        const label = card.dataset.emptyLabel;
+        if (label) card.append(emptyMenuItem(label));
+      }
+    },
+  });
+  removeBtn.innerHTML = REMOVE_SVG;
+  return el("div", { class: "popup-menu-row" }, [button, removeBtn]);
+}
+
+/**
+ * A menu card: the root menu, or a submenu flyout. `emptyLabel` (submenus
+ * only) is both the placeholder for an empty list and — stored on the card —
+ * what a row removal falls back to when it empties the card.
+ */
+function buildCard(items, emptyLabel, ctx) {
+  const hasIcons = items.some((item) => item.icon);
+  const cardCtx = { ...ctx, hasIcons };
+  const card = el(
+    "div",
+    { class: "popup-menu", role: "menu" },
+    items.length
+      ? items.map((item) => menuItemNode(item, cardCtx))
+      : emptyLabel
+        ? [emptyMenuItem(emptyLabel)]
+        : [],
+  );
+  if (emptyLabel) card.dataset.emptyLabel = emptyLabel;
+  return card;
+}
+
 function dismiss(popup) {
   (popup.onMaskClick || PopupManager.close)();
 }
@@ -128,59 +268,68 @@ export const PopupManager = {
 
   /**
    * A lightweight context/dropdown menu at screen coordinates (clamped into
-   * the viewport). Items: `{ label, disabled?, danger?, swatch?, onSelect? }`,
-   * or `{ separator: true }` for a divider rule — `swatch` is a CSS color that
-   * renders a color dot before the label (the wire/bus color pickers). A
-   * selection closes the menu first, then runs onSelect. Mask click / Escape
-   * dismiss with no selection.
+   * the viewport). An item is
+   * `{ label, disabled?, danger?, swatch?, icon?, accelerator?, title?,
+   *    submenu?, emptyLabel?, onSelect?, onRemove?, removeLabel? }`, or
+   * `{ separator: true }` for a divider rule:
+   *   - `swatch` — a CSS color rendering a dot before the label (the wire/bus
+   *     color pickers).
+   *   - `icon` — an SVG source string drawn in a leading 16 px slot; when ANY
+   *     item in a card has one, the others get an empty slot so every label
+   *     still lines up.
+   *   - `accelerator` — a right-aligned shortcut hint ("⌘S").
+   *   - `submenu` — nested items shown in a flyout card beside this one, which
+   *     opens on hover or click; `emptyLabel` is the disabled placeholder for
+   *     an empty (or emptied) flyout.
+   *   - `onRemove` — renders a trailing × that DROPS THE ROW in place and
+   *     leaves the menu open (removing an Open Recent entry), rather than
+   *     selecting anything.
+   * A selection closes the whole menu first, then runs onSelect. Mask click /
+   * Escape dismiss with no selection.
    * @param {{ x: number, y: number, items: Array<object> }} opts
    */
   menu({ x = 0, y = 0, items = [] } = {}) {
-    const menuEl = el(
-      "div",
-      { class: "popup-menu", role: "menu" },
-      items.map((item) => {
-        if (item.separator) {
-          return el("div", {
-            class: "popup-menu-separator",
-            role: "separator",
-          });
-        }
-        const swatch =
-          item.swatch &&
-          el("span", { class: "popup-menu-swatch", "aria-hidden": "true" });
-        if (swatch) swatch.style.background = item.swatch;
-        return el(
-          "button",
-          {
-            class: `popup-menu-item${item.danger ? " popup-menu-item--danger" : ""}`,
-            type: "button",
-            role: "menuitem",
-            disabled: Boolean(item.disabled),
-            onClick: () => {
-              this.close();
-              item.onSelect?.();
-            },
-          },
-          [swatch, el("span", { class: "popup-menu-label", text: item.label })],
-        );
-      }),
-    );
+    // At most one flyout is open at a time; it lives beside the root card in
+    // the same dialog (a fixed-position sibling), so it is never clipped by
+    // the card's rounded box and dies with the popup.
+    let flyout = null; // { anchor, card }
+
+    const closeFlyout = () => {
+      if (!flyout) return;
+      flyout.card.remove();
+      flyout.anchor.classList.remove("popup-menu-item--open");
+      flyout = null;
+    };
+
+    const openFlyout = (anchor, item) => {
+      if (flyout?.anchor === anchor) return;
+      closeFlyout();
+      const card = buildCard(item.submenu ?? [], item.emptyLabel, ctx);
+      (anchor.closest("dialog") ?? document.body).append(card);
+      anchor.classList.add("popup-menu-item--open");
+      flyout = { anchor, card };
+      const rect = anchor.getBoundingClientRect();
+      placeCard(card, rect.right + 2, rect.top - 4);
+    };
+
+    const ctx = {
+      close: () => this.close(),
+      openFlyout,
+      // Hovering a plain item closes the open flyout — unless that item IS in
+      // the flyout (moving onto its own entries must not shut it).
+      leaveFlyout: (button) => {
+        if (flyout && !flyout.card.contains(button)) closeFlyout();
+      },
+      toggleFlyout: (anchor, item) => {
+        if (flyout?.anchor === anchor) closeFlyout();
+        else openFlyout(anchor, item);
+      },
+    };
+
+    const menuEl = buildCard(items, null, ctx);
     this.open({ element: menuEl, variant: "menu" });
-    // Position after mount so the menu's size is measurable; keep it fully
-    // on-screen with a small margin.
-    const rect = menuEl.getBoundingClientRect();
-    const pad = 8;
-    const left = Math.max(
-      pad,
-      Math.min(x, window.innerWidth - rect.width - pad),
-    );
-    const top = Math.max(
-      pad,
-      Math.min(y, window.innerHeight - rect.height - pad),
-    );
-    menuEl.style.left = `${left}px`;
-    menuEl.style.top = `${top}px`;
+    // Position after mount so the menu's size is measurable.
+    placeCard(menuEl, x, y);
   },
 
   /**
