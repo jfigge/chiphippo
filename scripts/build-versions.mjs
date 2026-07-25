@@ -48,22 +48,66 @@ const MAX_RELEASES = 3;
 function classify(name) {
   const n = name.toLowerCase();
   const arch = /arm64|aarch64/.test(n) ? "arm64" : "x64"; // amd64/x86_64 -> x64
-  if (n.endsWith(".dmg")) return { platform: "mac", arch, kind: "dmg", label: "Disk Image", primary: true };
-  if (n.endsWith(".zip")) return { platform: "mac", arch, kind: "zip", label: "ZIP Archive", primary: false };
+  if (n.endsWith(".dmg"))
+    return {
+      platform: "mac",
+      arch,
+      kind: "dmg",
+      label: "Disk Image",
+      primary: true,
+    };
+  if (n.endsWith(".zip"))
+    return {
+      platform: "mac",
+      arch,
+      kind: "zip",
+      label: "ZIP Archive",
+      primary: false,
+    };
   if (n.endsWith(".exe"))
     return n.includes("setup")
-      ? { platform: "win", arch, kind: "setup", label: "Installer", primary: true }
-      : { platform: "win", arch, kind: "portable", label: "Portable", primary: true };
-  if (n.endsWith(".appimage")) return { platform: "linux", arch, kind: "appimage", label: "AppImage", primary: true };
-  if (n.endsWith(".deb")) return { platform: "linux", arch, kind: "deb", label: "Debian Package", primary: true };
+      ? {
+          platform: "win",
+          arch,
+          kind: "setup",
+          label: "Installer",
+          primary: true,
+        }
+      : {
+          platform: "win",
+          arch,
+          kind: "portable",
+          label: "Portable",
+          primary: true,
+        };
+  if (n.endsWith(".appimage"))
+    return {
+      platform: "linux",
+      arch,
+      kind: "appimage",
+      label: "AppImage",
+      primary: true,
+    };
+  if (n.endsWith(".deb"))
+    return {
+      platform: "linux",
+      arch,
+      kind: "deb",
+      label: "Debian Package",
+      primary: true,
+    };
   return null;
 }
 
 async function gh(path) {
-  const headers = { Accept: "application/vnd.github+json", "User-Agent": "chiphippo-build-versions" };
+  const headers = {
+    Accept: "application/vnd.github+json",
+    "User-Agent": "chiphippo-build-versions",
+  };
   if (token) headers.Authorization = `Bearer ${token}`;
   const res = await fetch(`https://api.github.com${path}`, { headers });
-  if (!res.ok) throw new Error(`GitHub API ${path} -> ${res.status} ${res.statusText}`);
+  if (!res.ok)
+    throw new Error(`GitHub API ${path} -> ${res.status} ${res.statusText}`);
   return res.json();
 }
 
@@ -81,7 +125,9 @@ const releases = raw
     assets: (r.assets || [])
       .map((a) => {
         const c = classify(a.name);
-        return c ? { name: a.name, size: a.size, url: a.browser_download_url, ...c } : null;
+        return c
+          ? { name: a.name, size: a.size, url: a.browser_download_url, ...c }
+          : null;
       })
       .filter(Boolean),
   }))
@@ -97,4 +143,6 @@ const data = {
 };
 
 await writeFile(out, JSON.stringify(data, null, 2) + "\n");
-console.log(`Wrote ${out}: ${releases.length} release(s), latest ${data.latest ?? "(none)"}`);
+console.log(
+  `Wrote ${out}: ${releases.length} release(s), latest ${data.latest ?? "(none)"}`,
+);

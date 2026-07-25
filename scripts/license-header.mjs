@@ -101,7 +101,7 @@ function stamp(content) {
     shebang = nl === -1 ? body + "\n" : body.slice(0, nl + 1);
     body = nl === -1 ? "" : body.slice(nl + 1);
   }
-  body = body.replace(/^[\s﻿]+/, ""); // drop leading BOM / blank lines
+  body = body.replace(/^[\s\uFEFF]+/, ""); // drop leading BOM / blank lines
   return `${shebang}${HEADER}\n\n${body}`;
 }
 
@@ -125,13 +125,19 @@ if (check) {
     );
     for (const f of missing) console.error(`  ${rel(f)}`);
     console.error(`\nAdd it with:  make license-headers`);
-    console.error(`(stamps ${basename(process.argv[1])}'s scope; see CLAUDE.md).`);
+    console.error(
+      `(stamps ${basename(process.argv[1])}'s scope; see CLAUDE.md).`,
+    );
     process.exit(1);
   }
-  console.log(`License-header guard: all ${files.length} files carry the header.`);
+  console.log(
+    `License-header guard: all ${files.length} files carry the header.`,
+  );
 } else if (missing.length) {
   console.log(`Stamped ${missing.length} file(s) with the Apache 2.0 header:`);
   for (const f of missing) console.log(`  ${rel(f)}`);
 } else {
-  console.log(`All ${files.length} files already carry the header. Nothing to do.`);
+  console.log(
+    `All ${files.length} files already carry the header. Nothing to do.`,
+  );
 }

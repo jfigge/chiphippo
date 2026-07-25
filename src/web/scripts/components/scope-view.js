@@ -95,7 +95,6 @@ export class ScopeView {
 
   #recorder = new ScopeRecorder();
   #lastMode = "stopped";
-  #lastDetail = null; // most recent sim-state detail (for resolution + Run reset)
   #cursorA = null; // tick index or null
   #cursorB = null;
   #dragging = null; // "a" | "b" while dragging a cursor
@@ -327,7 +326,6 @@ export class ScopeView {
   #onSim(detail) {
     const wasStopped = this.#lastMode === "stopped";
     this.#lastMode = detail.mode;
-    this.#lastDetail = detail;
     if (detail.mode === "stopped") {
       // Keep the last run's trace on screen for inspection / export.
       if (this.visible) this.#scheduleRender();

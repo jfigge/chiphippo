@@ -144,14 +144,18 @@ app.whenReady().then(async () => {
 
     mkdirSync(LINUX_DIR, { recursive: true });
     for (const size of LINUX_SIZES) {
-      writeFileSync(path.join(LINUX_DIR, `${size}x${size}.png`), await at(size));
+      writeFileSync(
+        path.join(LINUX_DIR, `${size}x${size}.png`),
+        await at(size),
+      );
       console.log(`  linux  ${size}²`);
     }
     writeFileSync(LOGO_OUT, await at(LOGO_SIZE));
     console.log(`  → ${rel(LOGO_OUT)} (${LOGO_SIZE}²)`);
 
     const icoEntries = [];
-    for (const size of ICO_SIZES) icoEntries.push({ size, png: await at(size) });
+    for (const size of ICO_SIZES)
+      icoEntries.push({ size, png: await at(size) });
     writeFileSync(ICO_OUT, buildIco(icoEntries));
     console.log(`  → ${rel(ICO_OUT)} (${ICO_SIZES.join(", ")})`);
 

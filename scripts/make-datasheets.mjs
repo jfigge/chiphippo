@@ -57,7 +57,10 @@ function resolvePdf(base) {
   const want = base.toLowerCase();
   for (const name of readdirSync(DATASHEETS_DIR)) {
     const parsed = path.parse(name);
-    if (parsed.ext.toLowerCase() === ".pdf" && parsed.name.toLowerCase() === want)
+    if (
+      parsed.ext.toLowerCase() === ".pdf" &&
+      parsed.name.toLowerCase() === want
+    )
       return path.join(DATASHEETS_DIR, name);
   }
   return null;
@@ -98,11 +101,18 @@ function harnessHtml() {
 }
 
 async function makeHarnessWindow() {
-  const harnessPath = path.join(app.getPath("temp"), "chiphippo-ds-harness.html");
+  const harnessPath = path.join(
+    app.getPath("temp"),
+    "chiphippo-ds-harness.html",
+  );
   writeFileSync(harnessPath, harnessHtml());
   const win = new BrowserWindow({
     show: false,
-    webPreferences: { sandbox: false, contextIsolation: false, webSecurity: false },
+    webPreferences: {
+      sandbox: false,
+      contextIsolation: false,
+      webSecurity: false,
+    },
   });
   await win.loadFile(harnessPath);
   for (let i = 0; i < 200; i++) {
@@ -155,14 +165,20 @@ app.whenReady().then(async () => {
       const out = path.join(OUT_DIR, `${id}.png`);
       writeFileSync(out, png);
       wrote++;
-      console.log(`  ${id.padEnd(8)} ${entry.file} p${entry.page} → ${rel(out)}`);
+      console.log(
+        `  ${id.padEnd(8)} ${entry.file} p${entry.page} → ${rel(out)}`,
+      );
     }
 
     console.log(`\nWrote ${wrote} crop(s) to ${rel(OUT_DIR)}/`);
-    if (skipped.length) console.log(`Skipped ${skipped.length}: ${skipped.join(", ")}`);
+    if (skipped.length)
+      console.log(`Skipped ${skipped.length}: ${skipped.join(", ")}`);
     app.exit(0);
   } catch (err) {
-    console.error("make-datasheets failed:", err && err.stack ? err.stack : err);
+    console.error(
+      "make-datasheets failed:",
+      err && err.stack ? err.stack : err,
+    );
     app.exit(1);
   }
 });

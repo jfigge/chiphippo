@@ -26,9 +26,16 @@ import { writeFileSync, mkdirSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
-import { normalizeDocument, DOC_VERSION } from "../src/web/scripts/model/desk-doc.js";
+import {
+  normalizeDocument,
+  DOC_VERSION,
+} from "../src/web/scripts/model/desk-doc.js";
 import { partPinHoles } from "../src/web/scripts/model/occupancy.js";
-import { nodeOf, holesOfNode, formatAddress } from "../src/web/scripts/model/breadboard.js";
+import {
+  nodeOf,
+  holesOfNode,
+  formatAddress,
+} from "../src/web/scripts/model/breadboard.js";
 import { buildNetlist } from "../src/web/scripts/sim/netlist.js";
 import { tick } from "../src/web/scripts/sim/engine.js";
 import { partPinAddresses } from "../src/web/scripts/model/occupancy.js";
@@ -79,7 +86,8 @@ function builder() {
   // Pin → seated hole, per part (for resolving pins to node-holes).
   const holesOfPart = (ref, anchor, params) => {
     const m = new Map();
-    for (const { pin, hole } of partPinHoles(ref, anchor, params)) m.set(pin, hole);
+    for (const { pin, hole } of partPinHoles(ref, anchor, params))
+      m.set(pin, hole);
     return m;
   };
 
@@ -131,31 +139,58 @@ function builder() {
 const CPU = {
   A: [9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 22, 23, 24, 25], // A0…A15
   D: [33, 32, 31, 30, 29, 28, 27, 26], // D0…D7
-  RWB: 34, PHI2: 37, RESB: 40, BE: 36, RDY: 2, IRQB: 4, NMIB: 6, SOB: 38,
-  VCC: 8, GND: 21,
+  RWB: 34,
+  PHI2: 37,
+  RESB: 40,
+  BE: 36,
+  RDY: 2,
+  IRQB: 4,
+  NMIB: 6,
+  SOB: 38,
+  VCC: 8,
+  GND: 21,
 };
 // ROM pins (rom-8k): A0…A12, Q0…Q7, CE, OE, VCC, GND.
 const ROM = {
   A: [1, 2, 3, 4, 5, 6, 7, 8, 21, 22, 23, 24, 25],
   Q: [9, 10, 11, 12, 13, 17, 18, 19],
-  CE: 26, OE: 27, VCC: 28, GND: 14,
+  CE: 26,
+  OE: 27,
+  VCC: 28,
+  GND: 14,
 };
 // VIA pins (w65c22).
 const VIA = {
   RS: [38, 37, 36, 35], // RS0…RS3 ← A0…A3
   D: [33, 32, 31, 30, 29, 28, 27, 26], // D0…D7
-  PB0: 10, RWB: 22, PHI2: 25, CS1: 24, CS2B: 23, RESB: 34, VDD: 20, VSS: 1,
+  PB0: 10,
+  RWB: 22,
+  PHI2: 25,
+  CS1: 24,
+  CS2B: 23,
+  RESB: 34,
+  VDD: 20,
+  VSS: 1,
 };
 // 74LS04 hex inverter — inverter #1: 1A=1 (in) → 1Y=2 (out); GND=7, VCC=14.
 const INV = { A: 1, Y: 2, GND: 7, VCC: 14 };
 
 const BLINK_PROGRAM = [
-  0xa9, 0xff, //        LDA #$FF
-  0x8d, 0x02, 0x00, //  STA $0002   ; VIA DDRB = all outputs
-  0xa9, 0x01, //        LDA #$01
-  0x8d, 0x00, 0x00, //  STA $0000   ; VIA ORB  = A  (PB0 → LED)  [loop target $8007]
-  0x49, 0x01, //        EOR #$01     ; toggle bit 0
-  0x4c, 0x07, 0x80, //  JMP $8007
+  0xa9,
+  0xff, //        LDA #$FF
+  0x8d,
+  0x02,
+  0x00, //  STA $0002   ; VIA DDRB = all outputs
+  0xa9,
+  0x01, //        LDA #$01
+  0x8d,
+  0x00,
+  0x00, //  STA $0000   ; VIA ORB  = A  (PB0 → LED)  [loop target $8007]
+  0x49,
+  0x01, //        EOR #$01     ; toggle bit 0
+  0x4c,
+  0x07,
+  0x80, //  JMP $8007
 ];
 
 function buildBlink() {
@@ -208,8 +243,10 @@ function buildBlink() {
   }
 
   // Address bus: A0–A12 → ROM; A0–A3 → VIA RS0–RS3.
-  for (let i = 0; i < 13; i++) b.wire(cpuAt(CPU.A[i]), romAt(ROM.A[i]), "green");
-  for (let i = 0; i < 4; i++) b.wire(cpuAt(CPU.A[i]), viaAt(VIA.RS[i]), "green");
+  for (let i = 0; i < 13; i++)
+    b.wire(cpuAt(CPU.A[i]), romAt(ROM.A[i]), "green");
+  for (let i = 0; i < 4; i++)
+    b.wire(cpuAt(CPU.A[i]), viaAt(VIA.RS[i]), "green");
 
   // Data bus: CPU ↔ ROM ↔ VIA (all three share each Dk net via ROM Qk's node).
   for (let i = 0; i < 8; i++) {
@@ -252,13 +289,39 @@ function buildBlink() {
 const AND = { A: 1, B: 2, Y: 3, GND: 7, VCC: 14 }; // 74LS08 gate #1
 
 const LCD_PROGRAM = [
-  0xa9, 0x38, 0x8d, 0x00, 0x00, //  LDA #$38 / STA $0000  function set (8-bit, 2-line)
-  0xa9, 0x0c, 0x8d, 0x00, 0x00, //  LDA #$0C / STA $0000  display on
-  0xa9, 0x01, 0x8d, 0x00, 0x00, //  LDA #$01 / STA $0000  clear
-  0xa9, 0x06, 0x8d, 0x00, 0x00, //  LDA #$06 / STA $0000  entry mode (increment)
-  0xa9, 0x48, 0x8d, 0x01, 0x00, //  LDA #'H' / STA $0001  data
-  0xa9, 0x49, 0x8d, 0x01, 0x00, //  LDA #'I' / STA $0001  data
-  0x4c, 0x1e, 0x80, //              JMP $801E             done (self-loop)
+  0xa9,
+  0x38,
+  0x8d,
+  0x00,
+  0x00, //  LDA #$38 / STA $0000  function set (8-bit, 2-line)
+  0xa9,
+  0x0c,
+  0x8d,
+  0x00,
+  0x00, //  LDA #$0C / STA $0000  display on
+  0xa9,
+  0x01,
+  0x8d,
+  0x00,
+  0x00, //  LDA #$01 / STA $0000  clear
+  0xa9,
+  0x06,
+  0x8d,
+  0x00,
+  0x00, //  LDA #$06 / STA $0000  entry mode (increment)
+  0xa9,
+  0x48,
+  0x8d,
+  0x01,
+  0x00, //  LDA #'H' / STA $0001  data
+  0xa9,
+  0x49,
+  0x8d,
+  0x01,
+  0x00, //  LDA #'I' / STA $0001  data
+  0x4c,
+  0x1e,
+  0x80, //              JMP $801E             done (self-loop)
 ];
 
 function buildLcd() {
@@ -306,7 +369,8 @@ function buildLcd() {
   b.wire(lcd("VSS"), minus(), "black");
 
   // Address: A0–A12 → ROM; A0 → LCD RS.
-  for (let i = 0; i < 13; i++) b.wire(cpuAt(CPU.A[i]), romAt(ROM.A[i]), "green");
+  for (let i = 0; i < 13; i++)
+    b.wire(cpuAt(CPU.A[i]), romAt(ROM.A[i]), "green");
   b.wire(cpuAt(CPU.A[0]), lcd("RS"), "green");
 
   // Data bus: CPU ↔ ROM ↔ LCD DB0–DB7.
@@ -411,7 +475,8 @@ function validateBlink(doc, pb0) {
     const conducting =
       r.netLevels.get(netAnode) === H && r.netLevels.get(netCathode) === L;
     const unlimited =
-      r.strongLevels.get(netAnode) === H && r.strongLevels.get(netCathode) === L;
+      r.strongLevels.get(netAnode) === H &&
+      r.strongLevels.get(netCathode) === L;
     if (conducting && !unlimited) litSeen = true;
     if (!conducting) offSeen = true;
   }

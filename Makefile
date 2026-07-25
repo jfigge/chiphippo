@@ -61,26 +61,35 @@ debug:
 	@echo "--------------------------------"
 
 # ─── Formatting ───────────────────────────────────────────────────────────────
+# Covers the build tooling under scripts/ too (a sibling of src/, so prettier
+# is pointed at it explicitly alongside the app/web globs below).
 fmt:
 	@echo "Formatting JavaScript / CSS / HTML..."
 	@cd $(SRC_DIR) && npx prettier --write \
 		"web/**/*.{js,css,html}" \
-		"app/**/*.js" > /dev/null
+		"app/**/*.js" \
+		"../scripts/*.mjs" > /dev/null
 	@echo "--------------------------------"
 
 fmt-check:
 	@echo "Checking formatting (prettier --check)..."
 	@cd $(SRC_DIR) && npx prettier --check \
 		"web/**/*.{js,css,html}" \
-		"app/**/*.js"
+		"app/**/*.js" \
+		"../scripts/*.mjs"
 	@echo "--------------------------------"
 
 # ─── Linting ──────────────────────────────────────────────────────────────────
+# Run from the REPO ROOT (not src/) so ESLint's base path — the boundary it
+# refuses to lint outside of, silently — covers scripts/ too, not just src/.
+# eslint.config.js's blocks anchor back to src/ via their own `basePath`.
 lint:
 	@echo "Linting JavaScript..."
-	@cd $(SRC_DIR) && npx eslint \
-		"web/scripts/**/*.js" \
-		"app/**/*.js"
+	@cd $(WORKSPACE) && $(SRC_DIR)/node_modules/.bin/eslint \
+		--config $(SRC_DIR)/eslint.config.js \
+		"src/web/scripts/**/*.js" \
+		"src/app/**/*.js" \
+		"scripts/**/*.mjs"
 	@echo "--------------------------------"
 
 # ─── License headers ──────────────────────────────────────────────────────────
