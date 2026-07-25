@@ -82,14 +82,28 @@ jobs:
 
       - name: Build installers (macOS / Linux)
         if: runner.os != 'Windows'
-        # Developer ID signing is enabled only when a cert is present; otherwise
-        # auto-discovery is forced off so the macOS build cleanly skips signing
-        # instead of hunting for an identity. Linux ignores all of these.
+        # Developer ID signing is enabled only when a cert secret is actually
+        # present. A workflow `env:` entry always DEFINES the variable, even
+        # when the expression is empty — `CSC_LINK: ${{ secrets.CSC_LINK }}`
+        # on a missing secret sets CSC_LINK to an empty STRING, not an unset
+        # var. electron-builder's cscLink check only treats null/undefined as
+        # "no cert configured"; an empty string is treated as an explicit
+        # (blank) path, which resolves to the current directory and fails
+        # with "not a file". So the secrets are passed under different names
+        # and only exported into CSC_LINK/CSC_KEY_PASSWORD when non-empty,
+        # leaving them genuinely unset otherwise.
         env:
-          CSC_LINK: ${{ secrets.CSC_LINK }}
-          CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
-          CSC_IDENTITY_AUTO_DISCOVERY: ${{ secrets.CSC_LINK != '' }}
-        run: make ${{ matrix.target }}
+          INPUT_CSC_LINK: ${{ secrets.CSC_LINK }}
+          INPUT_CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+        run: |
+          if [ -n "$INPUT_CSC_LINK" ]; then
+            export CSC_LINK="$INPUT_CSC_LINK"
+            export CSC_KEY_PASSWORD="$INPUT_CSC_KEY_PASSWORD"
+            export CSC_IDENTITY_AUTO_DISCOVERY=true
+          else
+            export CSC_IDENTITY_AUTO_DISCOVERY=false
+          fi
+          make ${{ matrix.target }}
 
       - name: Upload installers
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
