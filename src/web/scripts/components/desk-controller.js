@@ -29,9 +29,10 @@
 // Views report gestures through constructor callbacks (house rule); the
 // camera stays DeskView's job — this class only reads worldFromEvent/camera.
 
-import { clear, el } from "../dom.js";
+import { clear, el, svgEl } from "../dom.js";
 import { PopupManager } from "../popup-manager.js";
 import { PX_PER_UNIT, clampZoom } from "../desk/desk-geometry.js";
+import { wirePath } from "../desk/wire-path.js";
 import {
   ROTATIONS,
   boardSize,
@@ -44,6 +45,7 @@ import { holeAtWorld } from "../model/occupancy.js";
 import { partSeatAt } from "../model/seating.js";
 import {
   addressWorld,
+  boardsInRect,
   componentPoints,
   componentsInRect,
   deskBounds,
@@ -53,9 +55,16 @@ import {
 } from "../model/part-geometry.js";
 import {
   captureCluster,
+  memberAnchorWorld,
   memberForm,
   resolveCluster,
 } from "../model/paste-cluster.js";
+import {
+  captureDesign,
+  clipScene,
+  resolveDesign,
+  shiftFor,
+} from "../model/design-clip.js";
 import { BUS_WIDTHS, DeskDoc, WIRE_COLORS } from "../model/desk-doc.js";
 import { HistoryStore } from "../model/history-store.js";
 import { partDef } from "../catalog/index.js";
@@ -155,6 +164,10 @@ export class DeskController {
   #selected = null; // { kind: "board"|"part"|"wire"|"annotation", id } | null
   #copyBuffer = null; // { ref, params } of the last Cmd+C'd component | null
   #clusterBuffer = null; // a captured multi-selection for a cluster paste | null
+  // A whole sub-assembly (boards + what is on them + the wiring), captured by
+  // a marquee that took in boards. It deliberately OUTLIVES loadDocument, so a
+  // design copied on one project tab pastes onto another (Feature 240).
+  #designBuffer = null;
   // Active interaction: null, or
   //   { kind: "place", type, ghost, pos, legal }              (board)
   //   { kind: "place-chip", ref, ghost, board, anchor, legal }
@@ -182,6 +195,7 @@ export class DeskController {
   #editingLocked = false;
   #multi = new Set(); // component ids from a marquee selection
   #multiWires = new Set(); // wire ids from the same marquee
+  #multiBoards = new Set(); // board ids from the same marquee (Feature 240)
   #marquee = null; // the rubber-band element while shift-dragging
   #simOverlay; // live LEDs / badges / clock lamps + net-level lookups
   // Undo/redo (Feature 200): a bounded snapshot history the doc-changed choke
@@ -479,6 +493,7 @@ export class DeskController {
       "place-brick",
       "place-annotation",
       "place-cluster",
+      "place-design",
     ].includes(this.#mode?.kind);
   }
 
@@ -601,6 +616,10 @@ export class DeskController {
     if (drag) ids = drag.members.map((m) => m.id);
     else if (this.#selected?.kind === "board") {
       ids = this.#doc.groupMembers(this.#selected.id).map((b) => b.id);
+    } else if (this.#multiBoards.size > 0) {
+      // A marquee that took in boards outlines exactly those — the same
+      // highlighter, so a selected design reads as one block (Feature 240).
+      ids = [...this.#multiBoards];
     }
     const rects = [];
     for (const id of ids) {
@@ -620,8 +639,13 @@ export class DeskController {
     return [...this.#multiWires];
   }
 
+  /** The board ids currently marquee-selected (empty when none). */
+  get multiSelectedBoardIds() {
+    return [...this.#multiBoards];
+  }
+
   #multiSize() {
-    return this.#multi.size + this.#multiWires.size;
+    return this.#multi.size + this.#multiWires.size + this.#multiBoards.size;
   }
 
   #clearMultiSelection() {
@@ -633,10 +657,14 @@ export class DeskController {
       this.#multiWires.clear();
       this.#wireLayer.setSelectedMany([]);
     }
+    if (this.#multiBoards.size) {
+      this.#multiBoards.clear();
+      this.#boardOutline.show([], false);
+    }
   }
 
   /** Replace the marquee selection; a non-empty one clears the single pick. */
-  #setMultiSelection(ids, wireIds = []) {
+  #setMultiSelection(ids, wireIds = [], boardIds = []) {
     this.#clearMultiSelection();
     for (const id of ids) {
       if (!this.#partViews.has(id)) continue;
@@ -646,10 +674,16 @@ export class DeskController {
     for (const id of wireIds) {
       if (this.#doc.getWire(id)) this.#multiWires.add(id);
     }
+    for (const id of boardIds) {
+      if (this.#views.has(id)) this.#multiBoards.add(id);
+    }
     if (this.#multiWires.size) {
       this.#wireLayer.setSelectedMany(this.#multiWires);
     }
     if (this.#multiSize()) this.#select(null);
+    // #select(null) already re-traces the outline, but only when something WAS
+    // selected — refresh unconditionally so a marquee's boards light up.
+    this.#refreshBoardOutline();
   }
 
   selectBoard(id) {
@@ -845,6 +879,31 @@ export class DeskController {
    * bleed in.
    */
   copySelectedComponent() {
+    // A marquee that took in BOARDS is a whole design (Feature 240): the
+    // boards, everything seated on them, and all the wiring between them
+    // travel together — including to another desktop. Boards first, because a
+    // design that also caught loose parts is still a design.
+    if (this.#multiBoards.size > 0) {
+      const clip = captureDesign(
+        {
+          boards: this.#doc.boards,
+          components: this.#doc.components,
+          wires: this.#doc.wires,
+          buses: this.#doc.buses,
+          netNames: this.#doc.netNames,
+          annotations: this.#doc.annotations,
+        },
+        {
+          boardIds: [...this.#multiBoards],
+          componentIds: [...this.#multi],
+        },
+      );
+      if (!clip) return false;
+      this.#designBuffer = clip;
+      this.#clusterBuffer = null; // the design wins the next paste
+      this.#copyBuffer = null;
+      return true;
+    }
     if (this.#multi.size > 0) {
       const comps = [...this.#multi]
         .map((id) => this.#doc.getComponent(id))
@@ -853,6 +912,7 @@ export class DeskController {
       if (!cluster) return false;
       this.#clusterBuffer = cluster;
       this.#copyBuffer = null; // the cluster wins the next paste
+      this.#designBuffer = null;
       return true;
     }
     if (this.#selected?.kind !== "part") return false;
@@ -863,6 +923,7 @@ export class DeskController {
       params: comp.params ? JSON.parse(JSON.stringify(comp.params)) : {},
     };
     this.#clusterBuffer = null;
+    this.#designBuffer = null;
     return true;
   }
 
@@ -880,6 +941,10 @@ export class DeskController {
    * freely, exactly like a fresh turned part — drag an end onto a rail after.
    */
   pasteComponent() {
+    if (this.#designBuffer) {
+      this.#armDesignPlacement(this.#designBuffer);
+      return true;
+    }
     if (this.#clusterBuffer) {
       this.#armClusterPlacement(this.#clusterBuffer);
       return true;
@@ -1048,12 +1113,164 @@ export class DeskController {
     this.#setMultiSelection(newIds);
   }
 
+  // ── Design paste (Feature 240) ──────────────────────────────────────────
+  // A whole sub-assembly — its boards, what is seated on them, and the wiring
+  // between them — armed as ONE placement ghost. It is rigid by construction,
+  // so unlike the cluster ghost (which re-seats each member against whatever
+  // it lands over) this is drawn ONCE in the clip's own coordinates and then
+  // simply TRANSLATED: a pointermove writes two style properties, not one per
+  // board, part, and wire. Legality is per-board, and the drop is all-or-
+  // nothing — see model/design-clip.js.
+
+  /**
+   * Arm a design paste: strips, parts, and wiring ghosted together, tracking
+   * the cursor until a click drops them (or Esc throws them away). The buffer
+   * persists, so repeated Cmd+V stamps the design again.
+   */
+  #armDesignPlacement(clip) {
+    const scene = clipScene(clip);
+    const ghost = el("div", { class: "design-ghost", hidden: true });
+    // The boards, each drawn (and turned) exactly as its placed view will be.
+    const strips = new Map();
+    for (const b of clip.boards) {
+      const strip = el("div", { class: "board-ghost-strip" });
+      strip.style.left = `${b.x * PX_PER_UNIT}px`;
+      strip.style.top = `${b.y * PX_PER_UNIT}px`;
+      strip.append(buildBoardSvg(b.type));
+      applyBoardRotation(strip, b.type, b.rot);
+      ghost.append(strip);
+      strips.set(b.key, strip);
+    }
+    // The parts and bricks, through the cluster ghost's own member drawing.
+    for (const comp of scene.components) {
+      const anchorWorld = memberAnchorWorld(scene.boards, comp);
+      if (!anchorWorld) continue;
+      const member = {
+        ref: comp.ref,
+        params: comp.params,
+        anchorWorld,
+        form: memberForm(comp.ref, comp.params),
+      };
+      const g = el("div", { class: "part-ghost" });
+      g.append(this.#buildMemberGhostSvg(member));
+      const tl = this.#memberGhostTopLeft(member, { dx: 0, dy: 0 });
+      g.style.left = `${tl.x * PX_PER_UNIT}px`;
+      g.style.top = `${tl.y * PX_PER_UNIT}px`;
+      ghost.append(g);
+    }
+    // The wiring, sagging exactly as WireLayer draws it (same classes, same
+    // path maths) — a design without its wires wouldn't read as one.
+    const svg = svgEl("svg", {
+      class: "design-ghost-wires",
+      width: 1,
+      height: 1,
+    });
+    for (const w of scene.wires) {
+      const a = addressWorld(scene.boards, scene.components, w.from);
+      const b = addressWorld(scene.boards, scene.components, w.to);
+      if (!a || !b) continue;
+      const d = wirePath(
+        { x: a.x * PX_PER_UNIT, y: a.y * PX_PER_UNIT },
+        { x: b.x * PX_PER_UNIT, y: b.y * PX_PER_UNIT },
+      );
+      const group = svgEl("g", { class: "wire" }, [
+        svgEl("path", { class: "wire-outline", d }),
+        svgEl("path", { class: "wire-core", d }),
+      ]);
+      group.style.setProperty("--wire-color", `var(--color-wire-${w.color})`);
+      svg.append(group);
+    }
+    if (scene.wires.length > 0) ghost.append(svg);
+    this.#enterPlacement({
+      kind: "place-design",
+      clip,
+      ghost,
+      strips,
+      shift: { dx: 0, dy: 0 },
+      legal: false,
+    });
+  }
+
+  #trackDesignGhost(e) {
+    const m = this.#mode;
+    const world = this.#deskView.worldFromEvent(e);
+    let shift = shiftFor(m.clip, world);
+    // Magnetic mate, on the same terms as a board drag or a kit ghost: pull
+    // flush onto a board already on the desk, but only when the pulled
+    // position is still legal — a magnet must never turn a legal drop into an
+    // illegal one.
+    const pull = this.#doc.snapDesignAt(m.clip, shift);
+    if (pull.dx !== 0 || pull.dy !== 0) {
+      const snapped = { dx: shift.dx + pull.dx, dy: shift.dy + pull.dy };
+      if (this.#resolveDesignAt(m.clip, snapped).legal) shift = snapped;
+    }
+    const resolved = this.#resolveDesignAt(m.clip, shift);
+    m.shift = shift;
+    m.legal = resolved.legal;
+    m.ghost.hidden = false;
+    m.ghost.style.left = `${shift.dx * PX_PER_UNIT}px`;
+    m.ghost.style.top = `${shift.dy * PX_PER_UNIT}px`;
+    for (const b of resolved.boards) {
+      const strip = m.strips.get(b.key);
+      strip?.classList.toggle("board-ghost-strip--legal", b.legal);
+      strip?.classList.toggle("board-ghost-strip--illegal", !b.legal);
+    }
+  }
+
+  /** Where a clip would land at `shift`, and whether it may (all-or-nothing). */
+  #resolveDesignAt(clip, shift) {
+    return resolveDesign(clip, shift, {
+      canPlaceBoard: (type, x, y, rot) => this.#doc.canPlace(type, x, y, { rot }), // prettier-ignore
+      canPlaceBrick: (ref, x, y) => this.#doc.canPlaceBrick(ref, x, y),
+    });
+  }
+
+  /**
+   * Drop a design paste: the document stamps the whole clip in one atomic
+   * mutation (and rolls itself back if any part of it is refused), then the
+   * new strips are offered to the mating rule exactly as a placed kit's are,
+   * so a design dropped flush against an existing board joins its group. The
+   * fresh design becomes the selection, ready to be nudged or copied again.
+   */
+  #commitDesignPaste() {
+    const { clip, shift } = this.#mode;
+    this.cancelPlacement(); // removes the ghost, clears #mode
+    let pasted;
+    try {
+      pasted = this.#doc.pasteDesign(clip, shift);
+    } catch (err) {
+      // The document is already back as it was — say why nothing landed
+      // rather than leaving the click looking ignored.
+      PopupManager.notify({
+        title: "Could not paste the design",
+        message:
+          err?.code === "OVERLAP"
+            ? "Part of it lands on something already on this desk."
+            : "Something it needs is not free on this desk.",
+      });
+      return;
+    }
+    for (const board of pasted.boards) this.#mountBoard(board);
+    for (const comp of pasted.components) {
+      this.#provisionMemory(comp); // a pasted ROM gets its OWN fresh file
+      this.#mountPart(comp);
+    }
+    this.#mateStrips(pasted.boards.map((b) => b.id));
+    this.#emitDocChanged("paste design");
+    this.#setMultiSelection(
+      pasted.components.map((c) => c.id),
+      pasted.wires.map((w) => w.id),
+      pasted.boards.map((b) => b.id),
+    );
+  }
+
   #trackGhost(e) {
     const kind = this.#mode.kind;
     if (kind === "place") this.#trackBoardGhost(e);
     else if (kind === "place-brick") this.#trackBrickGhost(e);
     else if (kind === "place-annotation") this.#trackAnnotationGhost(e);
     else if (kind === "place-cluster") this.#trackClusterGhost(e);
+    else if (kind === "place-design") this.#trackDesignGhost(e);
     else this.#trackSeatedGhost(e);
   }
 
@@ -2042,6 +2259,17 @@ export class DeskController {
    * so the whole set — and every wire crossing out of it — comes away.
    */
   #doRemoveBoards(boardIds) {
+    this.#tearDownBoards(boardIds);
+    this.#hideHover();
+    this.#emitDocChanged("delete board"); // WireLayer re-renders from this
+  }
+
+  /**
+   * The removal itself, without announcing it — so a batch that also deletes
+   * parts and wires (a marquee holding boards, Feature 240) lands as ONE
+   * doc-changed, and so one undo step.
+   */
+  #tearDownBoards(boardIds) {
     for (const bid of boardIds) {
       for (const comp of this.#doc.componentsOnBoard(bid)) {
         this.#releaseMemory(comp); // a seated ROM's backing file goes with it
@@ -2063,8 +2291,6 @@ export class DeskController {
         this.#selected = null;
       }
     }
-    this.#hideHover();
-    this.#emitDocChanged("delete board"); // WireLayer re-renders from this
   }
 
   /**
@@ -3170,6 +3396,11 @@ export class DeskController {
     return componentsInRect(this.#doc.boards, this.#doc.components, rect);
   }
 
+  /** Boards lying WHOLLY inside the world-unit rect (Feature 240). */
+  #boardsWithin(rect) {
+    return boardsInRect(this.#doc.boards, rect);
+  }
+
   /** Wires with BOTH endpoints inside the world-unit rect. */
   #wiresWithin(rect) {
     return wiresInRect(
@@ -3246,6 +3477,7 @@ export class DeskController {
     this.#setMultiSelection(
       this.#componentsWithin(m.rect),
       this.#wiresWithin(m.rect),
+      this.#boardsWithin(m.rect),
     );
   };
 
@@ -3257,37 +3489,59 @@ export class DeskController {
   removeSelectedComponents() {
     const ids = [...this.#multi];
     const wireIds = [...this.#multiWires];
-    if (ids.length + wireIds.length === 0 || this.#editingLocked) return;
-    // Bricks cascade their attached wires. Wires the marquee already picked are
-    // going anyway, so only the EXTRA ones need confirming.
-    const cascaded = new Set();
-    for (const id of ids) {
-      for (const w of this.#doc.wiresTouching(id)) {
-        if (!this.#multiWires.has(w.id)) cascaded.add(w.id);
-      }
-    }
-    if (cascaded.size === 0) {
-      this.#doRemoveSelected(ids, wireIds);
+    const boardIds = [...this.#multiBoards];
+    if (
+      ids.length + wireIds.length + boardIds.length === 0 ||
+      this.#editingLocked
+    ) {
       return;
     }
+    // Bricks cascade their attached wires, and a board cascades everything
+    // seated on it. What the marquee already picked is going anyway, so only
+    // the EXTRA casualties need confirming.
+    const wires = new Set();
+    const parts = new Set();
+    for (const id of ids) {
+      for (const w of this.#doc.wiresTouching(id)) {
+        if (!this.#multiWires.has(w.id)) wires.add(w.id);
+      }
+    }
+    for (const bid of boardIds) {
+      for (const c of this.#doc.componentsOnBoard(bid)) {
+        if (!this.#multi.has(c.id)) parts.add(c.id);
+      }
+      for (const w of this.#doc.wiresTouching(bid)) {
+        if (!this.#multiWires.has(w.id)) wires.add(w.id);
+      }
+    }
+    if (wires.size === 0 && parts.size === 0) {
+      this.#doRemoveSelected(ids, wireIds, boardIds);
+      return;
+    }
+    const count = (n, noun) => `${n} ${noun}${n === 1 ? "" : "s"}`;
     const what = [
-      ids.length && `${ids.length} part${ids.length === 1 ? "" : "s"}`,
-      wireIds.length &&
-        `${wireIds.length} wire${wireIds.length === 1 ? "" : "s"}`,
+      boardIds.length && count(boardIds.length, "board"),
+      ids.length && count(ids.length, "part"),
+      wireIds.length && count(wireIds.length, "wire"),
+    ]
+      .filter(Boolean)
+      .join(", ");
+    const extra = [
+      parts.size && count(parts.size, "more part"),
+      wires.size && count(wires.size, "more wire"),
     ]
       .filter(Boolean)
       .join(" and ");
-    const extra = `${cascaded.size} more wire${cascaded.size === 1 ? "" : "s"}`;
     PopupManager.confirm({
       title: `Remove ${what}?`,
       message: `${extra} attached to them will be removed too.`,
       confirmLabel: "Remove",
       confirmClass: "btn--danger",
-      onConfirm: () => this.#doRemoveSelected(ids, wireIds),
+      onConfirm: () => this.#doRemoveSelected(ids, wireIds, boardIds),
     });
   }
 
-  #doRemoveSelected(ids, wireIds = []) {
+  #doRemoveSelected(ids, wireIds = [], boardIds = []) {
     this.#clearMultiSelection();
     for (const id of ids) {
       const comp = this.#doc.getComponent(id);
@@ -3300,6 +3554,9 @@ export class DeskController {
     for (const id of wireIds) {
       if (this.#doc.getWire(id)) this.#doc.removeWire(id); // may have cascaded
     }
+    // Boards last: each cascades whatever is still seated on it, so the parts
+    // and wires already removed above simply aren't there to remove twice.
+    this.#tearDownBoards(boardIds);
     this.#hideHover();
     this.#emitDocChanged("delete selection");
   }
@@ -3361,6 +3618,12 @@ export class DeskController {
       this.#trackClusterGhost(e); // shading reflects the exact click point
       if (m.legalCount === 0) return; // nothing seats here — stay armed
       this.#commitClusterPaste();
+      return;
+    }
+    if (m.kind === "place-design") {
+      this.#trackDesignGhost(e); // the tint reflects the exact click point
+      if (!m.legal) return; // half a design is no design — stay armed
+      this.#commitDesignPaste();
       return;
     }
     this.#trackGhost(e); // ensure the seat reflects the click point
@@ -3554,6 +3817,42 @@ export class DeskController {
   }
 
   /**
+   * Swap the desk for ANOTHER DOCUMENT entirely — a project tab switch, or a
+   * file loaded into the active tab (Feature 240). It rides the same
+   * restore + `#rebuildScene` path undo/redo uses, which is exactly why a tab
+   * switch needs no page reload: that path IS the in-process teardown.
+   *
+   * The document is untrusted (it came from a file), so it goes in through
+   * `DeskDoc.load` — normalized — not `restore`.
+   *
+   * Each tab owns its own undo history, handed in here: switching away and
+   * back leaves ⌘Z undoing THAT desk's last edit, not the other one's. A store
+   * with no entries yet is seeded with the loaded document as its baseline.
+   * The copy buffers are deliberately NOT cleared — carrying a design from one
+   * desktop to another is the whole point of the feature.
+   *
+   * @param {object} raw - a document as loaded from a file.
+   * @param {{history?: import('../model/history-store.js').HistoryStore}} [opts]
+   */
+  loadDocument(raw, { history = null } = {}) {
+    this.cancelPlacement();
+    this.disarmWireTool();
+    this.disarmBusTool();
+    this.disarmProbe();
+    this.#restoring = true; // a load is not an edit — never record it
+    try {
+      this.#doc.load(raw);
+      if (history) this.#history = history;
+      if (this.#history.size === 0) this.#history.clear(this.#doc.snapshot());
+      this.#rebuildScene();
+      window.dispatchEvent(new CustomEvent("chiphippo:doc-changed"));
+    } finally {
+      this.#restoring = false;
+    }
+    this.#notifyHistoryState();
+  }
+
+  /**
    * Swap the whole document for a history snapshot and rebuild the scene from
    * it — the same full teardown + remount New/Open would do, never a partial,
    * drift-prone re-mount. `#restoring` keeps the resulting doc-changed from
@@ -3583,6 +3882,7 @@ export class DeskController {
     this.#selected = null;
     this.#multi.clear();
     this.#multiWires.clear();
+    this.#multiBoards.clear();
     this.#wireLayer.setSelected(null);
     this.#wireLayer.setSelectedMany([]);
     this.#annotationLayer.setSelected(null);

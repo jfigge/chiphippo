@@ -113,6 +113,29 @@ contextBridge.exposeInMainWorld("chiphippo", {
     write: (filePath, doc) => ipcRenderer.invoke("desk:write", filePath, doc),
   },
 
+  // ── Projects: tabbed sub-desktops (Feature 240) ───────────────────────────
+  // A project is a named workspace of desktops, one `.chiphippo` per tab,
+  // kept in an app-managed folder. Every call names a project by ID and a tab
+  // by its id/file — never by path: main alone turns those into a location
+  // inside the projects root. `create` throws NAME_TAKEN when the name is
+  // already saved (the renderer then offers to load that one instead).
+  project: {
+    list: () => ipcRenderer.invoke("project:list"),
+    create: (name, mainDoc, opts) =>
+      ipcRenderer.invoke("project:create", name, mainDoc, opts),
+    load: (id) => ipcRenderer.invoke("project:load", id),
+    saveMeta: (id, meta) => ipcRenderer.invoke("project:save-meta", id, meta),
+    addTab: (id) => ipcRenderer.invoke("project:add-tab", id),
+    removeTab: (id, tabId) =>
+      ipcRenderer.invoke("project:remove-tab", id, tabId),
+    readTab: (id, file) => ipcRenderer.invoke("project:read-tab", id, file),
+    writeTab: (id, file, doc) =>
+      ipcRenderer.invoke("project:write-tab", id, file, doc),
+    // A tab switch swaps the whole desk — ask main to close the pinout /
+    // memory windows that were pointing at the desk being left behind.
+    closeAuxWindows: () => ipcRenderer.invoke("project:closed-aux"),
+  },
+
   // ── Chip pin-assignments window (Feature 100) ──────────────────────────────
   // A part's "Pin Assignment" context-menu item opens a separate, floating OS
   // window that renders its DIP pinout as a wiring reference. `opts` may carry

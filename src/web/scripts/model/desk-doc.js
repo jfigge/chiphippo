@@ -41,6 +41,7 @@ import { BOARD_TYPES, BREADBOARD_KITS } from "./board-types.js";
 import {
   boardSize,
   canRotate,
+  formatAddress,
   holePosition,
   normalizeRotation,
   parseAddress,
@@ -55,6 +56,7 @@ import {
   matingEdge,
   snapCorrection,
 } from "./mating.js";
+import { snapDesign } from "./design-clip.js";
 import {
   addressAtWorld,
   buildOccupancy,
@@ -885,6 +887,12 @@ export class DeskDoc {
       DeskDoc.kitPlacements(kitKey, x, y, rot).map(outlineRect),
       this.#doc.boards.map(outlineRect),
     );
+  }
+
+  /** The same magnetic pull, for a design clip about to be pasted at `shift`
+      (Feature 240) — so a pasted design mates exactly like a placed kit. */
+  snapDesignAt(clip, shift) {
+    return snapDesign(clip, shift, this.#doc.boards.map(outlineRect));
   }
 
   /**
@@ -2011,6 +2019,133 @@ export class DeskDoc {
     this.#doc.scopeChannels.splice(to, 0, ch);
   }
 
+  // ── Design paste (Feature 240) ───────────────────────────────────────────
+
+  /**
+   * Stamp a captured design (model/design-clip.js) onto this desk, translated
+   * by an integer `shift`: its boards, the parts seated on them, the desk
+   * bricks that travelled with it, all the wiring between them, and the bus /
+   * net-name / anchored-label metadata riding those. Everything arrives with
+   * FRESH ids from this document's own counters — a paste is new hardware, not
+   * a reference to the design it came from.
+   *
+   * ALL-OR-NOTHING, and that is the whole reason it lives here rather than in
+   * the controller: half a design is not a design (a board left behind silently
+   * cuts every wire that crossed to it). The document is snapshotted first, and
+   * ANY failure — an overlapping board, an occupied hole — restores it and
+   * rethrows, so a refused paste leaves the desk exactly as it was.
+   *
+   * Mating is NOT applied here: the caller offers the new strips to
+   * `joinMatedGroup` afterwards, exactly as it does for a placed kit, so a
+   * design dropped flush against an existing board joins its group.
+   *
+   * @param {object} clip - from captureDesign
+   * @param {{dx:number, dy:number}} shift
+   * @returns {{boards:Array, components:Array, wires:Array, buses:Array,
+   *   annotations:Array}} copies of everything created.
+   */
+  pasteDesign(clip, shift = { dx: 0, dy: 0 }) {
+    const before = this.snapshot();
+    const dx = Math.round(shift.dx);
+    const dy = Math.round(shift.dy);
+    try {
+      // Clip key → the id it landed under here. Boards and bricks share one
+      // map because a wire endpoint's owner may be either.
+      const owners = new Map();
+      const groups = new Map(); // clip group → a fresh group id
+      const boards = [];
+      for (const b of clip.boards) {
+        const added = this.addBoard(b.type, b.x + dx, b.y + dy, b.rot);
+        if (b.name || b.description) {
+          this.setBoardParams(added.id, {
+            name: b.name ?? "",
+            description: b.description ?? "",
+          });
+        }
+        if (b.group != null) {
+          if (!groups.has(b.group)) {
+            groups.set(b.group, `g${this.#doc.nextGroupId++}`);
+          }
+          this.#doc.boards.find((x) => x.id === added.id).group = groups.get(b.group); // prettier-ignore
+        }
+        owners.set(b.key, added.id);
+        boards.push(this.getBoard(added.id));
+      }
+      const components = [];
+      for (const b of clip.bricks) {
+        const brick = this.addBrick(b.kind, b.x + dx, b.y + dy, b.params);
+        owners.set(b.key, brick.id);
+        components.push(brick);
+      }
+      const parts = new Map(); // clip key → new component id (label anchors)
+      for (const p of clip.parts) {
+        const boardId = owners.get(p.board);
+        if (!boardId) continue; // a part whose board wasn't captured
+        const comp = this.addComponent({
+          kind: p.kind,
+          ref: p.ref,
+          board: boardId,
+          anchor: p.anchor,
+          params: p.params,
+        });
+        if (p.name || p.description) {
+          this.setComponentMeta(comp.id, {
+            name: p.name ?? "",
+            description: p.description ?? "",
+          });
+        }
+        parts.set(p.key, comp.id);
+        components.push(this.getComponent(comp.id));
+      }
+      const wireIds = new Map(); // clip key → new wire id (bus members)
+      const wires = [];
+      for (const w of clip.wires) {
+        const from = owners.get(w.from.owner);
+        const to = owners.get(w.to.owner);
+        if (!from || !to) continue;
+        const wire = this.addWire({
+          from: formatAddress(from, w.from.point),
+          to: formatAddress(to, w.to.point),
+          color: w.color,
+        });
+        if (w.name || w.description) {
+          this.setWireMeta(wire.id, {
+            name: w.name ?? "",
+            description: w.description ?? "",
+          });
+        }
+        wireIds.set(w.key, wire.id);
+        wires.push(this.getWire(wire.id));
+      }
+      const buses = (clip.buses ?? []).map((b) =>
+        this.addBus(
+          b.name,
+          b.members.map((m) => wireIds.get(m)).filter(Boolean),
+          { color: b.color },
+        ),
+      );
+      for (const n of clip.netNames ?? []) {
+        const owner = owners.get(n.owner);
+        if (owner) this.nameNet(formatAddress(owner, n.point), n.name);
+      }
+      const annotations = [];
+      for (const a of clip.annotations ?? []) {
+        const anchor = parts.get(a.anchor);
+        if (!anchor) continue;
+        annotations.push(
+          this.addAnnotation(a.kind, a.x + dx, a.y + dy, a.text, {
+            color: a.color ?? null,
+            anchor,
+          }),
+        );
+      }
+      return { boards, components, wires, buses, annotations };
+    } catch (err) {
+      this.restore(before); // a refused paste changes nothing at all
+      throw err;
+    }
+  }
+
   /** The serializable document (a deep copy — safe to hand to IPC). */
   toJSON() {
     return structuredClone(this.#doc);
@@ -2034,5 +2169,17 @@ export class DeskDoc {
    */
   restore(snapshot) {
     this.#doc = structuredClone(snapshot);
+  }
+
+  /**
+   * Replace the whole document with one loaded from OUTSIDE — a file, or
+   * another project tab (Feature 240). Unlike `restore`, the input is
+   * untrusted, so it goes through the same normalization the constructor
+   * applies: a hand-edited or older file can never leave a half-valid document
+   * on the desk. The counterpart to `restore` (trusted, byte-exact) — pick by
+   * where the document came from, never by convenience.
+   */
+  load(raw) {
+    this.#doc = normalizeDocument(raw);
   }
 }

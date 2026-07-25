@@ -91,6 +91,13 @@ const DEFAULTS = Object.freeze({
   // whether there are unsaved changes (the dirty marker + discard prompt).
   currentFile: null,
   savedDoc: null,
+
+  // ── Current project (Feature 240) ─────────────────────────────────────────
+  // The id (folder slug) of the open project of desktops, or null when the
+  // session is on the plain working desk. Which of its tabs is active lives in
+  // the project's own file, not here — it belongs to the project, not to this
+  // machine's preferences.
+  currentProject: null,
 });
 
 class SettingsStore {

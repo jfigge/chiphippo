@@ -198,6 +198,79 @@
   min-height: 0;
 }
 
+/* The desk column: the tab strip stacked over whichever surface is showing.
+   It is a row item of .app-main, so it starts to the right of the parts
+   palette — the tabs line up with the desk, not with the palette. */
+.app-stage {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* ── Desktop tabs (Feature 240) ──────────────────────────────────────────── */
+/* One tab per desktop in the open project. The STRIP itself is transparent and
+   floats over the desk, so the dot grid runs behind it unbroken and the desk
+   loses no area to it — only the tabs themselves are solid. It is also
+   pointer-inert between the tabs, so a click in the gaps still reaches the
+   desk underneath (the tabs re-enable pointer events for themselves).
+   Hidden entirely when no project is open, so the shell is unchanged. */
+.project-tabs {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  display: flex;
+  align-items: stretch;
+  gap: 2px;
+  padding: 0 var(--space-3);
+  background: transparent;
+  pointer-events: none;
+  overflow-x: auto;
+  scrollbar-width: thin;
+}
+
+.project-tab,
+.project-tab-add {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  border-radius: 0 0 6px 6px;
+  /* Solid, so a tab never has the desk's dots showing through its label. */
+  background: var(--color-mantle);
+  color: var(--color-subtext);
+  font: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.project-tab:hover,
+.project-tab-add:hover {
+  color: var(--color-text);
+  background: var(--color-surface-0);
+}
+
+.project-tab--active {
+  color: var(--color-text);
+  border-bottom-color: var(--color-accent);
+}
+
+.project-tab-marker {
+  color: var(--color-accent);
+  line-height: 1;
+}
+
+.project-tab-add {
+  color: var(--color-overlay);
+}
+
 /* ── Parts palette (Feature 40) ──────────────────────────────────────────── */
 .palette-panel {
   display: flex;
@@ -676,6 +749,38 @@
 
 .board-ghost-strip {
   position: absolute;
+}
+
+/* A pasted DESIGN (Feature 240): boards, parts, and wiring ghosted as one
+   rigid arrangement, so only this wrapper moves with the cursor. Its children
+   are laid out once in the clip's own coordinates. */
+.design-ghost {
+  position: absolute;
+  opacity: 0.6;
+}
+
+/* Zero-size SVG renders nothing (per spec), so the wire ghost is a token 1×1
+   box that paints outside itself — the paths carry their own coordinates. */
+.design-ghost-wires {
+  position: absolute;
+  left: 0;
+  top: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+/* Per STRIP, not per design: the ghost's wrapper has no size of its own (its
+   children carry the geometry), so the "will this land?" outline goes on the
+   boards themselves — the same green/red the kit ghost uses. */
+.board-ghost-strip--legal {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.board-ghost-strip--illegal {
+  outline: 2px solid var(--color-danger);
+  outline-offset: 1px;
+  background: color-mix(in srgb, var(--color-danger) 25%, transparent);
 }
 
 .board-ghost--legal {

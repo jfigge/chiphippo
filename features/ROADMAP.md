@@ -75,6 +75,7 @@ Two outcomes shape stages 120–210, beyond "more parts":
 | 200 | [Undo / redo & command history](done/200-undo-redo.md) | Snapshot-based bounded history over every doc mutation via one commit seam, gesture coalescing, ⌘Z/⇧⌘Z; run-volatile state excluded | 20–110 |
 | 210 | [Logic analyzer & timing view](210-logic-analyzer.md) | A passive recorder over `chiphippo:sim-state`: net/bus channels, scrolling waveforms + hex bus lanes, cursors/Δ readout, exportable timing charts | 90/100, 120, 130, 170 |
 | 230 | [User guide & documentation](done/230-user-guide-and-docs.md) | One Markdown source → in-app guide window (Help menu), hosted `website/docs/`, and a `make pdf` guide; screenshots captured via an uncommitted CDP-driven harness (mirroring Rest Hippo) into committed PNGs | 10–220 |
+| 240 | [Projects & tabbed sub-desktops](done/240-projects-and-tabbed-desktops.md) | A named project of several desktops as tabs (Main + Sub-Desktop #N), the document swapped in place per tab; a design clip carrying boards + parts + wires across tabs, pasted as a cursor-following ghost that mates with what is already on the desk | 20, 30, 110, 200 |
 
 ## Backlog (unwritten — author a plan file when promoted)
 

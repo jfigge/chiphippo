@@ -28,6 +28,8 @@ import { DeskHud } from "./components/desk-hud.js";
 import { DeskController } from "./components/desk-controller.js";
 import { SchematicView } from "./components/schematic-view.js";
 import { PalettePanel } from "./components/palette-panel.js";
+import { ProjectTabs } from "./components/project-tabs.js";
+import { ProjectWorkspace } from "./components/project-workspace.js";
 import { BuildGuide } from "./components/build-guide.js";
 import { ScopeView } from "./components/scope-view.js";
 import { SimController, SPEEDS } from "./components/sim-controller.js";
@@ -162,6 +164,13 @@ const ZOOM_OUT_SVG =
   '<circle cx="11" cy="11" r="8"/>' +
   '<line x1="21" y1="21" x2="16.65" y2="16.65"/>' +
   '<line x1="8" y1="11" x2="14" y2="11"/></svg>';
+
+/** Projects icon for the toolbar button that opens the projects menu — two
+ * stacked desktops, the front one lifted off the back (Feature 240). */
+const PROJECTS_SVG =
+  ICON_SVG_OPEN +
+  '<rect x="3" y="7" width="13" height="10" rx="2"/>' +
+  '<path d="M8 7V5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/></svg>';
 
 /** Build-guide (clipboard-list) icon for the Guide toolbar toggle. */
 const GUIDE_SVG =
@@ -392,12 +401,24 @@ async function init() {
     console.error("[renderer] settings:get failed:", err);
   }
 
+  // Projects (Feature 240): when a project was open last session, its active
+  // desktop is the document the desk starts on. Read BEFORE anything mounts,
+  // so the app opens straight onto that desktop instead of painting the plain
+  // working desk and swapping it out a moment later.
+  let projectBoot = null;
+  try {
+    projectBoot = await ProjectWorkspace.boot(bridge, settings);
+  } catch (err) {
+    console.error("[renderer] project boot failed:", err);
+  }
+
   const app = document.getElementById("app");
   const desk = buildDesk();
   // Main row below the header: the parts palette (left, toggleable) beside
   // the full-bleed desk.
   const main = el("div", { class: "app-main" });
   app.append(buildHeader(), main);
+  let workspace = null;
 
   // Desk document (Feature 20): the persisted boards/components/wires, held
   // in one in-memory DeskDoc. Anything that mutates it dispatches a global
@@ -405,7 +426,7 @@ async function init() {
   // whole-document autosave below. Feature 30 renders it.
   let deskDoc;
   try {
-    deskDoc = new DeskDoc(await bridge.desk.load());
+    deskDoc = new DeskDoc(projectBoot?.doc ?? (await bridge.desk.load()));
   } catch (err) {
     console.error("[renderer] desk:load failed:", err);
     deskDoc = new DeskDoc(null);
@@ -416,6 +437,11 @@ async function init() {
   const netlistCache = new NetlistCache(deskDoc);
   let docSaveTimer = null;
   window.addEventListener("chiphippo:doc-changed", () => {
+    // With a project open the desk belongs to a TAB, not to the working
+    // document: each desktop has its own file and is saved deliberately (⌘S),
+    // so autosaving it over desk.json would quietly replace the desk the user
+    // left behind before opening the project.
+    if (workspace?.isOpen) return;
     clearTimeout(docSaveTimer);
     docSaveTimer = setTimeout(() => {
       bridge.desk
@@ -448,6 +474,14 @@ async function init() {
   const fileName = (p) => (p ? p.split(/[\\/]/).pop() : "Untitled");
   const isDirty = () => JSON.stringify(deskDoc.toJSON()) !== savedDocJson;
   const updateTitle = () => {
+    // With a project open the desk IS a tab, so the title names the project
+    // and the desktop rather than the working file (Feature 240).
+    if (workspace?.isOpen) {
+      const tab = workspace.activeTab;
+      const marker = workspace.activeDirty ? "• " : "";
+      document.title = `${marker}${workspace.projectName} — ${tab?.name ?? ""} — Chip Hippo`;
+      return;
+    }
     document.title = `${isDirty() ? "• " : ""}${fileName(currentFile)} — Chip Hippo`;
   };
   updateTitle();
@@ -480,12 +514,17 @@ async function init() {
     window.location.reload();
   };
 
+  // With a project open, every file action targets the ACTIVE TAB and its own
+  // file inside the project folder — no reload (the tab machinery swaps the
+  // document in place) and no dialog (the tab already owns a path).
   const newSchematic = async () => {
+    if (workspace?.isOpen) return workspace.newActiveTab();
     if (!(await confirmDiscard())) return;
     await reloadWith(emptyDocument(), null);
   };
 
   const openSchematic = async () => {
+    if (workspace?.isOpen) return workspace.loadIntoActiveTab();
     if (!(await confirmDiscard())) return;
     let res;
     try {
@@ -508,6 +547,10 @@ async function init() {
       return;
     }
     if (!path) return; // cancelled
+    // Inside a project, Save As EXPORTS a copy of the desktop: the tab keeps
+    // its own file, so the working-file bookkeeping (and the dirty baseline)
+    // must not be re-pointed at the exported path.
+    if (workspace?.isOpen) return;
     currentFile = path;
     savedDocJson = JSON.stringify(json);
     await bridge.settings.set({ currentFile: path, savedDoc: savedDocJson });
@@ -515,6 +558,7 @@ async function init() {
   };
 
   const saveSchematic = async () => {
+    if (workspace?.isOpen) return workspace.saveActiveTab();
     if (!currentFile) return saveAsSchematic();
     const json = deskDoc.toJSON();
     try {
@@ -562,13 +606,28 @@ async function init() {
     // every group shut, every launch (see PalettePanel).
   });
   palette.setVisible(settings.paletteOpen === true);
-  main.append(desk);
+
+  // The stage: whichever surface is showing (desk or schematic) with the
+  // desktop tab strip over it. It sits to the RIGHT of the palette, so the
+  // tabs start where the desk does rather than spanning the palette too.
+  const stage = el("div", { class: "app-stage" });
+  main.append(stage);
+  // The tab strip leads the stage (append order IS the layout) and stays
+  // hidden until a project is open. Its callbacks reach the workspace built
+  // further below.
+  const projectTabs = new ProjectTabs(stage, {
+    onSelect: (id) => workspace?.selectTab(id),
+    onAdd: () => workspace?.addTab(),
+    onRename: (id) => workspace?.renameTab(id),
+    onDelete: (id) => workspace?.deleteTab(id),
+  });
+  stage.append(desk);
 
   // The schematic surface sits beside the desk (Feature 150); a header toggle
   // (or Tab) swaps which one is visible. Constructed further below, once the
   // controller exists to receive its position-nudge commits.
   const schematicViewport = buildSchematicViewport();
-  main.append(schematicViewport);
+  stage.append(schematicViewport);
   let schematicView = null;
   let mode = "desk";
 
@@ -790,10 +849,27 @@ async function init() {
   guideBtn.innerHTML = GUIDE_SVG;
   guideBtn.classList.toggle("toolbar-btn--active", buildGuide.visible);
 
+  // Projects (Feature 240): New / Load a project of desktops, or add a
+  // sub-desktop tab. The menu itself lives on the workspace — it is the only
+  // thing that knows whether a project is open.
+  const projectsBtn = el("button", {
+    class: "toolbar-icon-btn",
+    type: "button",
+    "aria-label": "Projects",
+    "aria-haspopup": "menu",
+    title: "Projects — work a design out on a sub-desktop beside the main one",
+    onClick: () => {
+      const rect = projectsBtn.getBoundingClientRect();
+      workspace?.openMenu({ x: rect.left, y: rect.bottom + 4 });
+    },
+  });
+  projectsBtn.innerHTML = PROJECTS_SVG;
+
   toolbar.append(
     schematicBtn("New schematic", NEW_SVG, "chiphippo:schematic-new"),
     schematicBtn("Load schematic…", LOAD_SVG, "chiphippo:schematic-open"),
     schematicBtn("Save schematic", SAVE_SVG, "chiphippo:schematic-save"),
+    projectsBtn,
     guideBtn,
     el("span", { class: "toolbar-divider", "aria-hidden": "true" }),
   );
@@ -1058,6 +1134,7 @@ async function init() {
   const onTransportChange = (mode) => {
     const stopped = mode === "stopped";
     controller.setEditingLocked(!stopped);
+    workspace?.setEditingLocked(!stopped);
     runBtn.textContent = stopped ? "▶ Run" : "■ Stop";
     runBtn.title = stopped
       ? `Run the circuit (Space or ${MOD_KEY}+R)`
@@ -1074,6 +1151,23 @@ async function init() {
     notifications,
     onTransportChange,
   });
+
+  // Projects & tabbed sub-desktops (Feature 240): owns which desktop is on the
+  // desk, swapping the document (and its camera, baseline, and undo history)
+  // through the controller's load path. Built here because it needs the sim to
+  // stop across a switch.
+  workspace = new ProjectWorkspace({
+    bridge,
+    deskDoc,
+    controller,
+    sim,
+    tabs: projectTabs,
+    getCamera: () => deskView.camera,
+    setCamera: (camera) => deskView.setCamera(camera),
+    boot: projectBoot,
+    onActiveChange: () => updateTitle(),
+  });
+  updateTitle(); // the boot-restored project names the window
 
   // Memory-inspector coordinator (Feature 190): bridges inspector windows to the
   // document, the controller (programmer + undo/redo), and the running image.

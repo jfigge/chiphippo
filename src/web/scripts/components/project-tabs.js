@@ -1,0 +1,173 @@
+/*
+ * Copyright 2026 Jason Figge
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+// project-tabs.js — the desktop tab strip (Feature 240): one tab per desktop
+// in the open project, sitting between the header and the desk. `Main` holds
+// the build; each `Sub-Desktop #N` is a bench beside it.
+//
+// Pure chrome. It renders a tab list it is handed and reports intents to its
+// creator through constructor callbacks (the house rule for a parent-owned
+// widget) — it never touches the document, the store, or the controller. With
+// no project open it isn't in the DOM at all, so the app looks exactly as it
+// did before a project existed.
+//
+// Right-clicking a tab opens the SAME three-item menu every part on the desk
+// offers, in the same order — Pin Assignment, Properties…, Delete — because
+// the app-wide rule is that the menu's SHAPE never changes, only what is
+// enabled. A tab has no pins, so Pin Assignment is always disabled; Main is
+// the project, so its Delete is too.
+
+import { el } from "../dom.js";
+import { PopupManager } from "../popup-manager.js";
+
+export class ProjectTabs {
+  #root;
+  #onSelect;
+  #onAdd;
+  #onRename;
+  #onDelete;
+  #tabs = [];
+  #activeId = null;
+  #dirtyIds = new Set();
+  #locked = false; // editing frozen (the circuit is running)
+
+  /**
+   * @param {HTMLElement} container - the strip is APPENDED, so the shell
+   *   controls where it lands by when it constructs this (between the header
+   *   and the desk row, in app.js).
+   * @param {object} callbacks
+   * @param {(id: string) => void} callbacks.onSelect - a tab was clicked.
+   * @param {() => void} callbacks.onAdd - the "+" affordance.
+   * @param {(id: string) => void} callbacks.onRename - Properties… on a tab.
+   * @param {(id: string) => void} callbacks.onDelete - Delete on a tab.
+   */
+  constructor(container, { onSelect, onAdd, onRename, onDelete } = {}) {
+    this.#onSelect = onSelect;
+    this.#onAdd = onAdd;
+    this.#onRename = onRename;
+    this.#onDelete = onDelete;
+    this.#root = el("div", {
+      class: "project-tabs",
+      role: "tablist",
+      "aria-label": "Desktops",
+      hidden: true,
+    });
+    container.append(this.#root);
+  }
+
+  /** The strip element (tests + layout). */
+  get element() {
+    return this.#root;
+  }
+
+  /** Whether the strip is currently showing (a project is open). */
+  get visible() {
+    return !this.#root.hidden;
+  }
+
+  /**
+   * Show the tabs of the open project — or hide the strip entirely when there
+   * is none (`tabs` empty). `tabs` are `{ id, name, kind }`.
+   */
+  setTabs(tabs, activeId) {
+    this.#tabs = Array.isArray(tabs) ? tabs : [];
+    this.#activeId = activeId ?? this.#tabs[0]?.id ?? null;
+    this.#root.hidden = this.#tabs.length === 0;
+    this.#render();
+  }
+
+  /** Mark which desktops have unsaved changes (the • on the tab). */
+  setDirty(ids) {
+    this.#dirtyIds = new Set(ids ?? []);
+    this.#render();
+  }
+
+  /** Freeze the destructive affordances while the circuit runs. */
+  setEditingLocked(locked) {
+    this.#locked = locked === true;
+    this.#render();
+  }
+
+  #render() {
+    this.#root.replaceChildren(
+      ...this.#tabs.map((tab) => this.#tabButton(tab)),
+      el("button", {
+        class: "project-tab-add",
+        type: "button",
+        text: "+",
+        title: "Add a sub-desktop",
+        "aria-label": "Add a sub-desktop",
+        onClick: () => this.#onAdd?.(),
+      }),
+    );
+  }
+
+  #tabButton(tab) {
+    const active = tab.id === this.#activeId;
+    const dirty = this.#dirtyIds.has(tab.id);
+    const classes = ["project-tab"];
+    if (active) classes.push("project-tab--active");
+    if (dirty) classes.push("project-tab--dirty");
+    return el(
+      "button",
+      {
+        class: classes.join(" "),
+        type: "button",
+        role: "tab",
+        "aria-selected": String(active),
+        title: dirty ? `${tab.name} — unsaved changes` : tab.name,
+        dataset: { tabId: tab.id },
+        onClick: () => {
+          if (!active) this.#onSelect?.(tab.id);
+        },
+        onContextMenu: (e) => {
+          e.preventDefault();
+          this.#openMenu(tab, e);
+        },
+      },
+      [
+        el("span", { class: "project-tab-label", text: tab.name }),
+        dirty &&
+          el("span", {
+            class: "project-tab-marker",
+            text: "•",
+            "aria-hidden": "true",
+          }),
+      ],
+    );
+  }
+
+  /** The app-wide three-item part menu, in its tab form (see the file note). */
+  #openMenu(tab, e) {
+    PopupManager.menu({
+      x: e.clientX,
+      y: e.clientY,
+      items: [
+        { label: "Pin Assignment", disabled: true },
+        {
+          label: "Properties…",
+          onSelect: () => this.#onRename?.(tab.id),
+        },
+        {
+          label: "Delete Desktop",
+          danger: true,
+          disabled: tab.kind === "main" || this.#locked,
+          onSelect: () => this.#onDelete?.(tab.id),
+        },
+      ],
+    });
+  }
+}

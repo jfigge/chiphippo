@@ -72,6 +72,7 @@ export const PAGES = [
   { slug: "build-guide", title: "Build Guide, Wiring List & BOM" },
   { slug: "schematic-view", title: "Schematic View" },
   { slug: "files-and-undo", title: "Files, Autosave & Undo" },
+  { slug: "projects-and-desktops", title: "Projects & Sub-Desktops" },
   { slug: "settings", title: "Settings" },
   { slug: "keyboard-shortcuts", title: "Keyboard Shortcuts" },
 ];

@@ -316,6 +316,79 @@ export const PopupManager = {
   },
 
   /**
+   * A dialog with MORE than two ways out — the "Cancel / Save / Discard"
+   * shape a close-with-unsaved-changes has to offer (Feature 240's tab
+   * delete). `confirm` can't express it: there the only question is yes or no,
+   * and here "no" splits into two different answers.
+   *
+   * Choices render left-to-right after Cancel, each `{ label, value, class }`;
+   * `onChoose(value)` fires after the dialog closes, and a Cancel / mask click
+   * / Escape calls it with `null` — one exit path, so a caller can never miss
+   * a dismissal. Cancel autofocuses: the safe answer is always the default.
+   *
+   * @param {object} opts
+   * @param {string} [opts.title]
+   * @param {string} [opts.message]
+   * @param {Array<{label: string, value: *, class?: string}>} opts.choices
+   * @param {string} [opts.cancelLabel]
+   * @param {(value: *) => void} [opts.onChoose]
+   */
+  choose({
+    title,
+    message,
+    note,
+    choices = [],
+    cancelLabel = "Cancel",
+    onChoose,
+  } = {}) {
+    const done = (value) => () => {
+      this.close();
+      onChoose?.(value);
+    };
+    const element = el(
+      "div",
+      {
+        class: "popup popup-confirm",
+        role: "dialog",
+        "aria-modal": "true",
+        "aria-label": title || message || "",
+      },
+      [
+        title &&
+          el("div", { class: "popup-header" }, [
+            el("span", { class: "popup-title", text: title }),
+          ]),
+        el(
+          "div",
+          { class: "popup-body" },
+          [
+            message && el("p", { class: "popup-message", text: message }),
+            note && el("p", { class: "popup-note", text: note }),
+          ].filter(Boolean),
+        ),
+        el("div", { class: "popup-footer" }, [
+          el("button", {
+            class: "btn popup-btn btn--secondary",
+            type: "button",
+            text: cancelLabel,
+            onClick: done(null),
+            "data-autofocus": true,
+          }),
+          ...choices.map((choice) =>
+            el("button", {
+              class: `btn popup-btn ${choice.class ?? "btn--primary"}`,
+              type: "button",
+              text: choice.label,
+              onClick: done(choice.value),
+            }),
+          ),
+        ]),
+      ].filter(Boolean),
+    );
+    this.open({ element, onMaskClick: done(null) });
+  },
+
+  /**
    * A one-field text-input dialog. `quickPicks` render as buttons that fill
    * (and immediately submit) the field. `onConfirm(value)` fires with the
    * trimmed text after the dialog closes; an empty value is passed through, so

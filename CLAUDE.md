@@ -105,7 +105,10 @@ relays context + live byte writes across the main↔inspector window boundary;
 and the **user guide** (230) — one Markdown source (`src/web/docs/*.md`)
 driving the in-app Help ▸ *Chip Hippo User Guide* window, the hosted website
 (`make docs`), and a PDF (`make pdf`); see the "User guide & docs" section
-below.
+below; and **projects & tabbed sub-desktops** (240) — a named project of
+several desktops as tabs (`Main` + `Sub-Desktop #N`), the document swapped in
+place per tab, plus the whole-design clip that carries a sub-assembly from one
+desktop onto another (see the "Projects & tabbed sub-desktops" section below).
 When a stage is finished, move its plan file into `features/done/`.
 
 ## Naming & identity
@@ -397,10 +400,47 @@ Electron main process (src/app/main.js)
   when stopped** for a ROM (Save writes its file) and a **read-only live viewer**
   for SRAM + any running chip (it mirrors the engine-owned image, never writes
   it). Intel HEX ⇄ bytes is the pure `model/hex-format.js`.
+- **Projects & tabbed sub-desktops** (`app/store/project-store.js` +
+  `components/project-workspace.js` + `components/project-tabs.js` +
+  `model/design-clip.js`, Feature 240). **A TAB IS A DOCUMENT, NOT A SECOND
+  DESK**: there is still exactly one `DeskView` / `DeskController` /
+  `SimController` / palette / guide / analyzer, and switching desktops SWAPS
+  THE DOCUMENT in place through `DeskController.loadDocument` — the same
+  `restore` + `#rebuildScene` path undo/redo has used since Feature 200 (which
+  is why a tab switch needs no `window.location.reload()`: reload is the
+  guaranteed teardown for a scene there is no other way to dismantle;
+  `#rebuildScene` IS the in-process one). `ProjectWorkspace` keeps, PER TAB,
+  the document, the camera, the saved baseline (the • dirty marker), and its
+  own `HistoryStore` — so ⌘Z after switching back undoes THAT desk's last
+  edit. A switch stops the sim and closes the aux windows (`c3` on Main is a
+  different chip from `c3` on a sub-desktop); the controller's copy buffers
+  deliberately survive it, which is what makes a cross-desktop paste work. A
+  **project** is an app-managed FOLDER (`userData/projects/<slug>/` —
+  `project.json` tab list + one `.chiphippo` per tab), because the "name must
+  be unique" rule only means something against a directory the app owns; all
+  its I/O is main-side behind `project:*`, and the store alone turns a name /
+  tab id into a path inside the projects root. Tab documents follow the MANUAL
+  save model (the toolbar's New / Load / Save act on the active tab, silently,
+  since a tab owns its path); the project FILE autosaves whenever the tab set,
+  names, or active tab change. With no project open nothing changes — no tab
+  strip, the working `desk.json`, today's New/Open/Save. The **design clip**
+  (`model/design-clip.js`, pure) is `paste-cluster.js` one level up: it carries
+  the BOARDS too (plus everything seated on them, selected desk bricks, every
+  wire with BOTH ends inside, and the buses / net names / anchored labels
+  riding them), so a sub-assembly brings its own holes and its wiring survives
+  the trip. Legality is per-board only and the drop is **all-or-nothing** —
+  half a design would silently cut the wires that crossed to the board left
+  behind. The ghost is built ONCE in the clip's own coordinates and then just
+  TRANSLATED (it is rigid), and `DeskDoc.pasteDesign` stamps it in one
+  snapshot-guarded mutation that rolls itself back on any refusal.
 - **Popups/menus**: `popup-manager.js` (ported from Port Hippo) is the only
   app-wide dialog/menu seam; build DOM with `dom.js` `el()`. `PopupManager.close()`
   fires a one-way `chiphippo:popup-closed` event so stateful dialogs can reset
-  their open-guard however they were dismissed.
+  their open-guard however they were dismissed. Beyond `menu` / `confirm` /
+  `prompt` / `notify` / `dialog` there is **`choose`** — the Cancel + N-choices
+  shape a "save, discard, or cancel" question needs (Feature 240's tab
+  delete), where "no" splits into two different answers; its `onChoose` fires
+  with `null` for every dismissal, so a caller can never miss one.
 - **Part context menu — ONE shape for every kind**: `DeskController.#onPartContextMenu`
   builds the exact same three items, always, in this order: **Pin
   Assignment**, **Properties…**, **Delete Component**. No per-kind branching

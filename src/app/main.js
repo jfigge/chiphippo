@@ -40,6 +40,7 @@ const fs = require("fs");
 const { parseArgs } = require("./cli-args");
 const { SettingsStore } = require("./store/settings-store");
 const { DeskStore } = require("./store/desk-store");
+const { ProjectStore } = require("./store/project-store");
 const memStore = require("./store/mem-store");
 const {
   DEFAULT_BOUNDS,
@@ -138,6 +139,16 @@ let _deskStore = null;
 function getDeskStore() {
   if (!_deskStore) _deskStore = new DeskStore(app.getPath("userData"));
   return _deskStore;
+}
+
+let _projectStore = null;
+
+/** @returns {ProjectStore} — projects (Feature 240) live under userData/projects. */
+function getProjectStore() {
+  if (!_projectStore) {
+    _projectStore = new ProjectStore(app.getPath("userData"), getDeskStore());
+  }
+  return _projectStore;
 }
 
 // ─── Named schematic files (Open / Save As) ───────────────────────────────────
@@ -806,6 +817,41 @@ function registerIpc() {
       throw err;
     }
     return getDeskStore().writeFile(filePath, doc);
+  });
+
+  // Projects (Feature 240): a named workspace of several desktops, each tab
+  // its own `.chiphippo` inside userData/projects/<id>/. The renderer passes
+  // a project id and a tab id/file — never a path; the store alone resolves
+  // those into the projects root and refuses anything that escapes it.
+  // `project:load` returns null for an unknown project (the session simply
+  // falls back to the plain working desk), so it is not an error path.
+  ipcMain.handle("project:list", () => getProjectStore().list());
+  ipcMain.handle("project:create", (_event, name, mainDoc, opts) =>
+    getProjectStore().create(name, mainDoc, opts ?? {}),
+  );
+  ipcMain.handle("project:load", (_event, id) => getProjectStore().load(id));
+  ipcMain.handle("project:save-meta", (_event, id, meta) =>
+    getProjectStore().saveMeta(id, meta),
+  );
+  ipcMain.handle("project:add-tab", (_event, id) =>
+    getProjectStore().addTab(id),
+  );
+  ipcMain.handle("project:remove-tab", (_event, id, tabId) =>
+    getProjectStore().removeTab(id, tabId),
+  );
+  ipcMain.handle("project:read-tab", (_event, id, file) =>
+    getProjectStore().readTab(id, file),
+  );
+  ipcMain.handle("project:write-tab", (_event, id, file, doc) =>
+    getProjectStore().writeTab(id, file, doc),
+  );
+  // Switching tabs replaces the whole desk, which orphans the auxiliary
+  // windows exactly as New/Open does — a pinout or memory inspector would be
+  // pointing at a chip that is no longer on the desk (worse, an inspector's
+  // Save would write a `.bin` for a chip on another desktop).
+  ipcMain.handle("project:closed-aux", () => {
+    closeAuxWindows();
+    return true;
   });
 
   // Chip pin-assignments window (Feature 100): a part's "Pin Assignment"

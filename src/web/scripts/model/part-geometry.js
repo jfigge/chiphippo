@@ -159,6 +159,24 @@ export function componentsInRect(boards, components, rect) {
   return ids;
 }
 
+/**
+ * Ids of boards lying WHOLLY inside the world rect — the marquee's board pick
+ * (Feature 240). Whole-rect, to match the component rule ("every pin inside"):
+ * a design is copied by drawing a box around it, and a board only half in the
+ * box was not part of what the user drew around.
+ */
+export function boardsInRect(boards, rect) {
+  return boards
+    .filter((b) => {
+      const r = boardRect(b);
+      return (
+        inRect(rect, { x: r.x, y: r.y }) &&
+        inRect(rect, { x: r.x + r.width, y: r.y + r.height })
+      );
+    })
+    .map((b) => b.id);
+}
+
 /** Ids of wires with BOTH endpoints inside the world rect. */
 export function wiresInRect(boards, components, wires, rect) {
   return wires
