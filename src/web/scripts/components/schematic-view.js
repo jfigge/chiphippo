@@ -29,22 +29,11 @@
 // DOM building lives in the pure exported functions (jsdom-testable); the class
 // wires them to the document, the camera, and symbol-drag.
 
-import { el } from "../dom.js";
+import { el, svgEl } from "../dom.js";
 import { PX_PER_UNIT, clampZoom } from "../desk/desk-geometry.js";
 import { layout } from "../model/schematic-layout.js";
 import { DeskView } from "./desk-view.js";
 import { NetlistCache } from "./netlist-cache.js";
-
-const SVG_NS = "http://www.w3.org/2000/svg";
-
-function svgEl(tag, attrs = {}, children = []) {
-  const node = document.createElementNS(SVG_NS, tag);
-  for (const [k, v] of Object.entries(attrs)) {
-    if (v != null) node.setAttribute(k, v);
-  }
-  for (const c of [].concat(children)) if (c) node.append(c);
-  return node;
-}
 
 function svgText(text, x, y, cls, size, anchor = "middle") {
   const t = svgEl("text", {

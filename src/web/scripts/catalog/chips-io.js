@@ -30,16 +30,7 @@
 import { w65c21Unit } from "../sim/w65c21.js";
 import { w65c22Unit } from "../sim/w65c22.js";
 import { w65c02Unit } from "../sim/w65c02.js";
-
-/** Pin builders (mirror chips-seq.js / chips-mem.js). */
-const pin = (n, name, role) => ({ n, name, role });
-const input = (n, name) => pin(n, name, "input");
-const output = (n, name) => pin(n, name, "output");
-/** A bidirectional line: the data bus, an I/O port bit, or a control line. */
-const io = (n, name) => pin(n, name, "io");
-const nc = (n) => pin(n, "NC", "nc");
-const gnd = (n, name = "VSS") => pin(n, name, "gnd");
-const vcc = (n, name = "VDD") => pin(n, name, "vcc");
+import { input, output, io, nc, gnd, vcc } from "./pin-builders.js";
 
 export const CHIPS_IO = Object.freeze([
   {
@@ -55,7 +46,7 @@ export const CHIPS_IO = Object.freeze([
     group: "Interface",
     package: "DIP-40",
     pins: [
-      gnd(1),
+      gnd(1, "VSS"),
       io(2, "PA0"),
       io(3, "PA1"),
       io(4, "PA2"),
@@ -74,7 +65,7 @@ export const CHIPS_IO = Object.freeze([
       io(17, "PB7"),
       input(18, "CB1"),
       io(19, "CB2"),
-      vcc(20),
+      vcc(20, "VDD"),
       input(21, "RWB"),
       input(22, "CS0"),
       input(23, "CS2B"),
@@ -135,7 +126,7 @@ export const CHIPS_IO = Object.freeze([
     group: "Interface",
     package: "DIP-40",
     pins: [
-      gnd(1),
+      gnd(1, "VSS"),
       io(2, "PA0"),
       io(3, "PA1"),
       io(4, "PA2"),
@@ -154,7 +145,7 @@ export const CHIPS_IO = Object.freeze([
       io(17, "PB7"),
       io(18, "CB1"),
       io(19, "CB2"),
-      vcc(20),
+      vcc(20, "VDD"),
       output(21, "IRQB"),
       input(22, "RWB"),
       input(23, "CS2B"),
@@ -219,7 +210,7 @@ export const CHIPS_IO = Object.freeze([
       output(5, "MLB"),
       input(6, "NMIB"),
       output(7, "SYNC"),
-      vcc(8),
+      vcc(8, "VDD"),
       output(9, "A0"),
       output(10, "A1"),
       output(11, "A2"),
@@ -232,7 +223,7 @@ export const CHIPS_IO = Object.freeze([
       output(18, "A9"),
       output(19, "A10"),
       output(20, "A11"),
-      gnd(21),
+      gnd(21, "VSS"),
       output(22, "A12"),
       output(23, "A13"),
       output(24, "A14"),

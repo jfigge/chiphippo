@@ -22,21 +22,12 @@
 // which the SimOverlay feeds from chiphippo:sim-state. The controller logic,
 // font, and cursor blink live elsewhere — this view only paints what it's told.
 
-import { el } from "../dom.js";
+import { el, svgEl } from "../dom.js";
 import { PX_PER_UNIT } from "../desk/desk-geometry.js";
 import { partDef } from "../catalog/index.js";
 import { lcdGeometry } from "../catalog/parts.js";
 import { glyphRows } from "../sim/hd44780-cgrom.js";
-
-const SVG_NS = "http://www.w3.org/2000/svg";
-
-function svgEl(tag, attrs = {}) {
-  const node = document.createElementNS(SVG_NS, tag);
-  for (const [key, value] of Object.entries(attrs)) {
-    node.setAttribute(key, value);
-  }
-  return node;
-}
+import { BrickView } from "./brick-view.js";
 
 /** Character cell size on the desk (pitch units). Fixed across LCD sizes so a
     16×2 and a 20×4 draw the SAME-sized characters — the panel shrinks with the
@@ -150,9 +141,7 @@ export function buildLcdSvg(params = {}) {
   return svg;
 }
 
-export class LcdView {
-  #el;
-  #id;
+export class LcdView extends BrickView {
   #canvas;
   #cols = 16;
   #rows = 2;
@@ -166,30 +155,10 @@ export class LcdView {
    * @param {(id: string, e: PointerEvent) => void} [callbacks.onPointerDown]
    * @param {(id: string, e: MouseEvent) => void} [callbacks.onContextMenu]
    */
-  constructor(layer, lcd, { onPointerDown, onContextMenu } = {}) {
-    this.#id = lcd.id;
-    this.#el = el("div", {
-      class: "part part-lcd",
-      dataset: { componentId: lcd.id },
-    });
+  constructor(layer, lcd, callbacks = {}) {
+    super(layer, lcd, "part-lcd", callbacks);
     this.#canvas = el("canvas", { class: "part-lcd-screen" });
     this.updateParams(lcd.params);
-    this.setPosition(lcd.x, lcd.y);
-    this.#el.addEventListener("pointerdown", (e) =>
-      onPointerDown?.(this.#id, e),
-    );
-    this.#el.addEventListener("contextmenu", (e) =>
-      onContextMenu?.(this.#id, e),
-    );
-    layer.append(this.#el);
-  }
-
-  get id() {
-    return this.#id;
-  }
-
-  get element() {
-    return this.#el;
   }
 
   /** Rebuild the body SVG and size the character canvas for the chosen grid. */
@@ -199,9 +168,9 @@ export class LcdView {
     this.#cols = geo.cols;
     this.#rows = geo.rows;
 
-    this.#el.querySelector("svg")?.remove();
-    this.#el.prepend(buildLcdSvg(params));
-    if (!this.#el.contains(this.#canvas)) this.#el.append(this.#canvas);
+    this.element.querySelector("svg")?.remove();
+    this.element.prepend(buildLcdSvg(params));
+    if (!this.element.contains(this.#canvas)) this.element.append(this.#canvas);
 
     // Position the canvas over the panel (world px) and give it a crisp,
     // grid-proportioned backing buffer (device px). The panel is sized from the
@@ -267,7 +236,7 @@ export class LcdView {
   /** The lit-dot colour from the theme token, resolved once and cached. */
   #resolveDotColor() {
     if (this.#dotColor) return this.#dotColor;
-    const v = getComputedStyle(this.#el)
+    const v = getComputedStyle(this.element)
       .getPropertyValue("--color-lcd-dot")
       .trim();
     this.#dotColor = v || "#16261a";
@@ -277,29 +246,7 @@ export class LcdView {
   /** Reflect power/health (Feature 90): mirror the chip fault classes. */
   setStatus(status) {
     for (const s of ["unpowered", "underpowered", "reversed", "damaged"]) {
-      this.#el.classList.toggle(`part-lcd--${s}`, status === s);
+      this.element.classList.toggle(`part-lcd--${s}`, status === s);
     }
-  }
-
-  /** Desk origin in pitch units → world px. */
-  setPosition(x, y) {
-    this.#el.style.left = `${x * PX_PER_UNIT}px`;
-    this.#el.style.top = `${y * PX_PER_UNIT}px`;
-  }
-
-  setSelected(on) {
-    this.#el.classList.toggle("part--selected", on);
-  }
-
-  setDragging(on) {
-    this.#el.classList.toggle("part--dragging", on);
-  }
-
-  setIllegal(on) {
-    this.#el.classList.toggle("part--illegal", on);
-  }
-
-  remove() {
-    this.#el.remove();
   }
 }

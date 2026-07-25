@@ -49,24 +49,7 @@ import {
   shiftRegister595,
   decadeCounter7490,
 } from "../sim/sequential.js";
-
-/** Pin builders (mirror chips-gates.js / chips-seq.js). */
-const pin = (n, name, role) => ({ n, name, role });
-const input = (n, name) => pin(n, name, "input");
-const output = (n, name) => pin(n, name, "output");
-const nc = (n) => pin(n, "NC", "nc");
-const gnd = (n) => pin(n, "GND", "gnd");
-const vcc = (n) => pin(n, "VCC", "vcc");
-/** A bidirectional (I/O) pin — a bus line a unit both reads and drives. */
-const io = (n, name) => pin(n, name, "io");
-const unit = (fn, inputs, output) => ({ fn, inputs, output });
-/** A tri-state buffer: `data` in, active-low `enable`, `output` (74125-style). */
-const buf3 = (data, enable, output) => ({
-  fn: "BUF3",
-  inputs: [data],
-  enable,
-  output,
-});
+import { input, output, io, nc, gnd, vcc, unit, buf3 } from "./pin-builders.js";
 
 // The 7447 segment font: for BCD value 0…15, which of segments a…g light
 // (1 = on). The classic quirks are baked in — 6 has no top bar (a off), 9 no

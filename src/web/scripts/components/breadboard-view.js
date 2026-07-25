@@ -24,20 +24,9 @@
 // interaction is holeAt() math from pointer coordinates (DeskController).
 // All colors come from theme.css tokens via the SVG part classes.
 
-import { el } from "../dom.js";
+import { el, svgEl } from "../dom.js";
 import { PX_PER_UNIT } from "../desk/desk-geometry.js";
 import { holePosition, holes, spec } from "../model/breadboard.js";
-
-const SVG_NS = "http://www.w3.org/2000/svg";
-
-/** createElementNS + attributes, for the builder below. */
-function svgEl(tag, attrs = {}) {
-  const node = document.createElementNS(SVG_NS, tag);
-  for (const [key, value] of Object.entries(attrs)) {
-    node.setAttribute(key, value);
-  }
-  return node;
-}
 
 /** Corner radius of the board body (pitch units). */
 const BODY_RADIUS = 0.6;

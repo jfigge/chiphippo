@@ -78,3 +78,27 @@ export function clear(node) {
   while (node.firstChild) node.removeChild(node.firstChild);
   return node;
 }
+
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+/**
+ * Build an SVG element. Like `el()` but for the SVG namespace: attrs always
+ * go through `setAttribute` (SVG has none of HTML's meaningful DOM-property
+ * shortcuts) and a null/undefined value is skipped rather than stringified.
+ * `children` may be a single node, an array (falsy entries filtered), or
+ * omitted.
+ * @param {string} tag
+ * @param {Object<string, any>} [attrs]
+ * @param {Node|null|false|Array<Node|null|false>} [children]
+ * @returns {SVGElement}
+ */
+export function svgEl(tag, attrs = {}, children = []) {
+  const node = document.createElementNS(SVG_NS, tag);
+  for (const [key, value] of Object.entries(attrs)) {
+    if (value != null) node.setAttribute(key, value);
+  }
+  for (const child of [].concat(children)) {
+    if (child) node.append(child);
+  }
+  return node;
+}

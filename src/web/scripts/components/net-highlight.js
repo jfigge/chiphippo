@@ -21,23 +21,13 @@
 // arithmetic — it draws exactly what the NetInfo lists, positioned by the
 // geometry lookups the controller passes in.
 
-import { clear } from "../dom.js";
+import { clear, svgEl } from "../dom.js";
 import { PX_PER_UNIT } from "../desk/desk-geometry.js";
 import { wirePath } from "../desk/wire-path.js";
-
-const SVG_NS = "http://www.w3.org/2000/svg";
 
 /** Glow marker radii (world px — scale with the camera). */
 const DOT_RADIUS = 3.2;
 const PIN_RING_RADIUS = 5;
-
-function svgEl(tag, attrs = {}) {
-  const node = document.createElementNS(SVG_NS, tag);
-  for (const [key, value] of Object.entries(attrs)) {
-    node.setAttribute(key, value);
-  }
-  return node;
-}
 
 export class NetHighlight {
   #svg;

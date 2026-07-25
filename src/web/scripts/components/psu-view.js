@@ -19,19 +19,10 @@
 // centers are the addressable wire points (psu1.+ / psu1.-). Drawn once;
 // the badge text updates when the voltage changes.
 
-import { el } from "../dom.js";
+import { svgEl } from "../dom.js";
 import { PX_PER_UNIT } from "../desk/desk-geometry.js";
 import { partDef } from "../catalog/index.js";
-
-const SVG_NS = "http://www.w3.org/2000/svg";
-
-function svgEl(tag, attrs = {}) {
-  const node = document.createElementNS(SVG_NS, tag);
-  for (const [key, value] of Object.entries(attrs)) {
-    node.setAttribute(key, value);
-  }
-  return node;
-}
+import { BrickView } from "./brick-view.js";
 
 /**
  * Build a PSU brick's SVG from the catalog def + params. Pure DOM
@@ -92,10 +83,7 @@ export function buildPsuSvg(params = {}) {
   return svg;
 }
 
-export class PsuView {
-  #el;
-  #id;
-
+export class PsuView extends BrickView {
   /**
    * @param {HTMLElement} layer - the `.layer-parts` element.
    * @param {{id:string,x:number,y:number,params:object}} psu
@@ -103,56 +91,14 @@ export class PsuView {
    * @param {(id: string, e: PointerEvent) => void} [callbacks.onPointerDown]
    * @param {(id: string, e: MouseEvent) => void} [callbacks.onContextMenu]
    */
-  constructor(layer, psu, { onPointerDown, onContextMenu } = {}) {
-    this.#id = psu.id;
-    this.#el = el("div", {
-      class: "part part-psu",
-      dataset: { componentId: psu.id },
-    });
+  constructor(layer, psu, callbacks = {}) {
+    super(layer, psu, "part-psu", callbacks);
     this.updateParams(psu.params);
-    this.setPosition(psu.x, psu.y);
-    this.#el.addEventListener("pointerdown", (e) =>
-      onPointerDown?.(this.#id, e),
-    );
-    this.#el.addEventListener("contextmenu", (e) =>
-      onContextMenu?.(this.#id, e),
-    );
-    layer.append(this.#el);
-  }
-
-  get id() {
-    return this.#id;
-  }
-
-  get element() {
-    return this.#el;
   }
 
   /** Rebuild the SVG (the badge shows the current volts). */
   updateParams(params) {
-    this.#el.querySelector("svg")?.remove();
-    this.#el.prepend(buildPsuSvg(params));
-  }
-
-  /** Desk origin in pitch units → world px. */
-  setPosition(x, y) {
-    this.#el.style.left = `${x * PX_PER_UNIT}px`;
-    this.#el.style.top = `${y * PX_PER_UNIT}px`;
-  }
-
-  setSelected(on) {
-    this.#el.classList.toggle("part--selected", on);
-  }
-
-  setDragging(on) {
-    this.#el.classList.toggle("part--dragging", on);
-  }
-
-  setIllegal(on) {
-    this.#el.classList.toggle("part--illegal", on);
-  }
-
-  remove() {
-    this.#el.remove();
+    this.element.querySelector("svg")?.remove();
+    this.element.prepend(buildPsuSvg(params));
   }
 }

@@ -32,12 +32,6 @@ import { PopupManager } from "../popup-manager.js";
 import { LED_COLOR_OPTIONS } from "../catalog/parts.js";
 import { buildColorSwatches } from "./color-swatches.js";
 
-/** A close "×" glyph for the header button. */
-const CLOSE_SVG =
-  '<svg viewBox="0 0 16 16" width="13" height="13" fill="none" ' +
-  'stroke="currentColor" stroke-width="1.6" stroke-linecap="round" ' +
-  'aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg>';
-
 /** A line-drawn book glyph for the "browse the datasheet folder" affordance. */
 const FOLDER_SVG =
   '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" ' +
@@ -104,15 +98,6 @@ export class SettingsDialog {
       ariaLabel: "Default LED color",
       onPick: (color) => SettingsDialog.#emit({ defaultLedColor: color }),
     });
-
-    const closeBtn = el("button", {
-      class: "popup-close",
-      type: "button",
-      title: "Close",
-      "aria-label": "Close settings",
-      onClick: () => PopupManager.close(),
-    });
-    closeBtn.innerHTML = CLOSE_SVG;
 
     // ── Data Sheets panel: the external datasheet-PDF folder ────────────────
     const hasDir =
@@ -256,34 +241,22 @@ export class SettingsDialog {
       }
     };
 
-    const element = el(
-      "div",
-      {
-        class: "popup settings-popup",
-        role: "dialog",
-        "aria-modal": "true",
-        "aria-label": "Settings",
-      },
-      [
-        el("div", { class: "popup-header" }, [
-          el("span", { class: "popup-title", text: "Settings" }),
-          closeBtn,
-        ]),
-        el("div", { class: "popup-body settings-popup-body" }, [
-          el("nav", { class: "settings-nav", role: "tablist" }, navItems),
-          el("div", { class: "settings-panels" }, [
-            panels.appearance,
-            panels.datasheets,
-          ]),
-        ]),
-      ],
-    );
+    const body = [
+      el("nav", { class: "settings-nav", role: "tablist" }, navItems),
+      el("div", { class: "settings-panels" }, [
+        panels.appearance,
+        panels.datasheets,
+      ]),
+    ];
 
     // onClose fires only when THIS popup closes (not when a popup it was queued
     // behind closes), so the guard never resets while the dialog is still up.
-    PopupManager.open({
-      element,
-      onMaskClick: () => PopupManager.close(),
+    PopupManager.dialog({
+      title: "Settings",
+      closeAriaLabel: "Close settings",
+      className: "settings-popup",
+      bodyClass: "settings-popup-body",
+      body,
       onClose: () => {
         SettingsDialog.#open = false;
       },

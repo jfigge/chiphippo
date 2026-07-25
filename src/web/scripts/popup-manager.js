@@ -30,6 +30,12 @@ const state = {
   queue: [], // popups waiting behind the active one — QUEUED, never dropped
 };
 
+/** A close "×" glyph for a dialog()'s header button. */
+const CLOSE_SVG =
+  '<svg viewBox="0 0 16 16" width="13" height="13" fill="none" ' +
+  'stroke="currentColor" stroke-width="1.6" stroke-linecap="round" ' +
+  'aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg>';
+
 function dismiss(popup) {
   (popup.onMaskClick || PopupManager.close)();
 }
@@ -175,6 +181,69 @@ export const PopupManager = {
     );
     menuEl.style.left = `${left}px`;
     menuEl.style.top = `${top}px`;
+  },
+
+  /**
+   * The standard "header (title + × close button) over a scrollable body"
+   * modal shape — About/Settings/Properties/Keyboard-Shortcuts all build this
+   * by hand before; this is that ceremony in one place. The caller supplies
+   * only its own body content and its `static #open` guard's reset.
+   * @param {object} opts
+   * @param {string} opts.title - header title text; also the dialog's default
+   *   `aria-label`.
+   * @param {string} [opts.ariaLabel] - overrides the dialog's `aria-label`
+   *   (defaults to `title`).
+   * @param {string} [opts.closeAriaLabel] - the close button's `aria-label`
+   *   (e.g. "Close settings"); defaults to `Close ${title}`.
+   * @param {string} [opts.className] - an extra class on the popup root
+   *   (alongside "popup"), e.g. "settings-popup".
+   * @param {string} [opts.bodyClass] - an extra class on the `.popup-body`
+   *   wrapper, e.g. "settings-popup-body".
+   * @param {Node|Array<Node>} opts.body - the dialog's own content.
+   * @param {() => void} [opts.onClose] - fires when THIS popup closes (not
+   *   when a popup it was queued behind closes) — reset the caller's guard.
+   */
+  dialog({
+    title,
+    ariaLabel,
+    closeAriaLabel,
+    className,
+    bodyClass,
+    body,
+    onClose,
+  } = {}) {
+    const closeBtn = el("button", {
+      class: "popup-close",
+      type: "button",
+      title: "Close",
+      "aria-label": closeAriaLabel ?? `Close ${title}`,
+      onClick: () => this.close(),
+      "data-autofocus": true,
+    });
+    closeBtn.innerHTML = CLOSE_SVG;
+
+    const element = el(
+      "div",
+      {
+        class: `popup${className ? ` ${className}` : ""}`,
+        role: "dialog",
+        "aria-modal": "true",
+        "aria-label": ariaLabel ?? title,
+      },
+      [
+        el("div", { class: "popup-header" }, [
+          el("span", { class: "popup-title", text: title }),
+          closeBtn,
+        ]),
+        el(
+          "div",
+          { class: `popup-body${bodyClass ? ` ${bodyClass}` : ""}` },
+          body,
+        ),
+      ],
+    );
+
+    this.open({ element, onMaskClick: () => this.close(), onClose });
   },
 
   /**

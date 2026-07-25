@@ -25,23 +25,7 @@
 // Behavior only — power (VCC/GND), timing, and damage are the engine's job
 // (Feature 90). The truth-table harness enumerates every unit exhaustively.
 
-/** Shorthand builders keep the defs readable; the data stays plain objects. */
-const pin = (n, name, role) => ({ n, name, role });
-const input = (n, name) => pin(n, name, "input");
-const output = (n, name) => pin(n, name, "output");
-const nc = (n) => pin(n, "NC", "nc");
-const gnd = (n) => pin(n, "GND", "gnd");
-const vcc = (n) => pin(n, "VCC", "vcc");
-
-/** A logic unit: a gate (`inputs → output`) or a tri-state buffer. */
-const unit = (fn, inputs, output) => ({ fn, inputs, output });
-/** A 74125-style tri-state buffer: `data` in, active-low `enable`, `output`. */
-const buf3 = (data, enable, output) => ({
-  fn: "BUF3",
-  inputs: [data],
-  enable,
-  output,
-});
+import { input, output, nc, gnd, vcc, unit, buf3 } from "./pin-builders.js";
 
 export const CHIPS_GATES = Object.freeze([
   {

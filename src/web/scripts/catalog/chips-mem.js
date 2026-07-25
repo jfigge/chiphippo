@@ -32,16 +32,7 @@
 // only. A true two-board straddle is a later footprint stage.
 
 import { memUnit } from "../sim/sequential.js";
-
-/** Pin builders (mirror chips-gates.js / chips-seq.js). */
-const pin = (n, name, role) => ({ n, name, role });
-const input = (n, name) => pin(n, name, "input");
-const output = (n, name) => pin(n, name, "output");
-/** A bidirectional data-bus pin (SRAM/EEPROM): read while writing, driven while reading. */
-const io = (n, name) => pin(n, name, "io");
-const nc = (n) => pin(n, "NC", "nc");
-const gnd = (n, name = "GND") => pin(n, name, "gnd");
-const vcc = (n) => pin(n, "VCC", "vcc");
+import { input, output, io, nc, gnd, vcc } from "./pin-builders.js";
 
 /** A byte ramp (address N → byte N mod 256) — a satisfying out-of-the-box ROM demo. */
 const rampBytes = (size) => {

@@ -22,19 +22,10 @@
 // manual mode the whole body is a click-to-toggle button (the controller owns
 // that gesture, like a slide switch).
 
-import { el } from "../dom.js";
+import { svgEl } from "../dom.js";
 import { PX_PER_UNIT } from "../desk/desk-geometry.js";
 import { partDef } from "../catalog/index.js";
-
-const SVG_NS = "http://www.w3.org/2000/svg";
-
-function svgEl(tag, attrs = {}) {
-  const node = document.createElementNS(SVG_NS, tag);
-  for (const [key, value] of Object.entries(attrs)) {
-    node.setAttribute(key, value);
-  }
-  return node;
-}
+import { BrickView } from "./brick-view.js";
 
 const rateLabel = (hz) => (hz === "manual" ? "MAN" : `${hz} Hz`);
 
@@ -102,10 +93,7 @@ export function buildClockSvg(params = {}) {
   return svg;
 }
 
-export class ClockView {
-  #el;
-  #id;
-
+export class ClockView extends BrickView {
   /**
    * @param {HTMLElement} layer - the `.layer-parts` element.
    * @param {{id:string,x:number,y:number,params:object}} clock
@@ -113,61 +101,19 @@ export class ClockView {
    * @param {(id: string, e: PointerEvent) => void} [callbacks.onPointerDown]
    * @param {(id: string, e: MouseEvent) => void} [callbacks.onContextMenu]
    */
-  constructor(layer, clock, { onPointerDown, onContextMenu } = {}) {
-    this.#id = clock.id;
-    this.#el = el("div", {
-      class: "part part-clock",
-      dataset: { componentId: clock.id },
-    });
+  constructor(layer, clock, callbacks = {}) {
+    super(layer, clock, "part-clock", callbacks);
     this.updateParams(clock.params);
-    this.setPosition(clock.x, clock.y);
-    this.#el.addEventListener("pointerdown", (e) =>
-      onPointerDown?.(this.#id, e),
-    );
-    this.#el.addEventListener("contextmenu", (e) =>
-      onContextMenu?.(this.#id, e),
-    );
-    layer.append(this.#el);
-  }
-
-  get id() {
-    return this.#id;
-  }
-
-  get element() {
-    return this.#el;
   }
 
   /** Rebuild the SVG (the badge shows the current rate). */
   updateParams(params) {
-    this.#el.querySelector("svg")?.remove();
-    this.#el.prepend(buildClockSvg(params));
+    this.element.querySelector("svg")?.remove();
+    this.element.prepend(buildClockSvg(params));
   }
 
   /** Reflect the live output level (Feature 100): lamp on while HIGH. */
   setLevel(on) {
-    this.#el.classList.toggle("part-clock--high", on === true);
-  }
-
-  /** Desk origin in pitch units → world px. */
-  setPosition(x, y) {
-    this.#el.style.left = `${x * PX_PER_UNIT}px`;
-    this.#el.style.top = `${y * PX_PER_UNIT}px`;
-  }
-
-  setSelected(on) {
-    this.#el.classList.toggle("part--selected", on);
-  }
-
-  setDragging(on) {
-    this.#el.classList.toggle("part--dragging", on);
-  }
-
-  setIllegal(on) {
-    this.#el.classList.toggle("part--illegal", on);
-  }
-
-  remove() {
-    this.#el.remove();
+    this.element.classList.toggle("part-clock--high", on === true);
   }
 }

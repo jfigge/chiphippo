@@ -26,25 +26,15 @@
 // changes (chiphippo:doc-changed) or an endpoint's board moves (the
 // controller passes live drag positions via `overrides`) — never on pan/zoom.
 
-import { clear } from "../dom.js";
+import { clear, svgEl } from "../dom.js";
 import { PX_PER_UNIT } from "../desk/desk-geometry.js";
 import { wirePath, wireSag } from "../desk/wire-path.js";
 import { holePosition, parseAddress } from "../model/breadboard.js";
 import { partDef } from "../catalog/index.js";
 
-const SVG_NS = "http://www.w3.org/2000/svg";
-
 /** Endpoint cap radius (world px — scales with the camera); stroke widths
     live in app.css on the .wire-* classes. */
 const CAP_RADIUS = 2.4;
-
-function svgEl(tag, attrs = {}) {
-  const node = document.createElementNS(SVG_NS, tag);
-  for (const [key, value] of Object.entries(attrs)) {
-    node.setAttribute(key, value);
-  }
-  return node;
-}
 
 /** The average of a non-empty list of world-px points. */
 function centroid(points) {

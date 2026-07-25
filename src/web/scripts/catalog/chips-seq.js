@@ -35,13 +35,7 @@ import {
   decoderUnits,
 } from "../sim/sequential.js";
 import { H, L } from "../sim/levels.js";
-
-/** Pin builders (mirror chips-gates.js). */
-const pin = (n, name, role) => ({ n, name, role });
-const input = (n, name) => pin(n, name, "input");
-const output = (n, name) => pin(n, name, "output");
-const gnd = (n) => pin(n, "GND", "gnd");
-const vcc = (n) => pin(n, "VCC", "vcc");
+import { input, output, gnd, vcc } from "./pin-builders.js";
 
 export const CHIPS_SEQ = Object.freeze([
   {

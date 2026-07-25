@@ -38,12 +38,6 @@ import { el } from "../dom.js";
 import { PopupManager } from "../popup-manager.js";
 import { buildColorSwatches } from "./color-swatches.js";
 
-/** A close "×" glyph for the header button (matches settings-dialog.js's). */
-const CLOSE_SVG =
-  '<svg viewBox="0 0 16 16" width="13" height="13" fill="none" ' +
-  'stroke="currentColor" stroke-width="1.6" stroke-linecap="round" ' +
-  'aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg>';
-
 /** A dropdown over `field.options: [{value, label}]`. A <select>'s value is
     ALWAYS a string (`3` becomes `"3"`), but an option's real value may be a
     number (PSU volts) or mixed (clock rate: numbers + the string "manual") —
@@ -133,15 +127,6 @@ export class PartPropertiesDialog {
     if (PartPropertiesDialog.#open) return;
     PartPropertiesDialog.#open = true;
 
-    const closeBtn = el("button", {
-      class: "popup-close",
-      type: "button",
-      title: "Close",
-      "aria-label": "Close properties",
-      onClick: () => PopupManager.close(),
-    });
-    closeBtn.innerHTML = CLOSE_SVG;
-
     const fireAction = (key) => {
       PopupManager.close();
       onAction?.(key);
@@ -150,28 +135,14 @@ export class PartPropertiesDialog {
       buildRow(field, values[field.key], onChange, fireAction),
     );
 
-    const element = el(
-      "div",
-      {
-        class: "popup properties-popup",
-        role: "dialog",
-        "aria-modal": "true",
-        "aria-label": title,
-      },
-      [
-        el("div", { class: "popup-header" }, [
-          el("span", { class: "popup-title", text: title }),
-          closeBtn,
-        ]),
-        el("div", { class: "popup-body properties-popup-body" }, rows),
-      ],
-    );
-
     // onClose fires only when THIS popup closes (not when a popup it was
     // queued behind closes), so the guard never resets while still up.
-    PopupManager.open({
-      element,
-      onMaskClick: () => PopupManager.close(),
+    PopupManager.dialog({
+      title,
+      closeAriaLabel: "Close properties",
+      className: "properties-popup",
+      bodyClass: "properties-popup-body",
+      body: rows,
       onClose: () => {
         PartPropertiesDialog.#open = false;
       },

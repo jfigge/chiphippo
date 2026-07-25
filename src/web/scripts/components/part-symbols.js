@@ -27,15 +27,7 @@
 // append these OUTSIDE any rotated group: smoke has to rise in SCREEN space,
 // and a flipped warning triangle would read upside down.
 
-const SVG_NS = "http://www.w3.org/2000/svg";
-
-function svgEl(tag, attrs = {}) {
-  const node = document.createElementNS(SVG_NS, tag);
-  for (const [key, value] of Object.entries(attrs)) {
-    node.setAttribute(key, value);
-  }
-  return node;
-}
+import { svgEl } from "../dom.js";
 
 /**
  * The red X + rising smoke drawn over a burnt-out part.

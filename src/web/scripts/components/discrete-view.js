@@ -29,7 +29,7 @@
 //
 // Local SVG coordinates are pitch units with the ORIGIN AT PIN 1's hole.
 
-import { el } from "../dom.js";
+import { el, svgEl } from "../dom.js";
 import { PX_PER_UNIT } from "../desk/desk-geometry.js";
 import { holePosition, rotateOffset } from "../model/breadboard.js";
 import { partDef } from "../catalog/index.js";
@@ -40,16 +40,6 @@ import {
   buildWarnOverlay,
   STATUS_HINT,
 } from "./part-symbols.js";
-
-const SVG_NS = "http://www.w3.org/2000/svg";
-
-function svgEl(tag, attrs = {}) {
-  const node = document.createElementNS(SVG_NS, tag);
-  for (const [key, value] of Object.entries(attrs)) {
-    node.setAttribute(key, value);
-  }
-  return node;
-}
 
 /** Per-ref body boxes (pitch units, origin at pin 1's hole). */
 const BOXES = Object.freeze({

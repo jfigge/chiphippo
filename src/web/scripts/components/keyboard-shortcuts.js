@@ -28,12 +28,6 @@ const isMac = window.chiphippo?.platform === "darwin";
 const MOD = isMac ? "⌘" : "Ctrl";
 const SHIFT = isMac ? "⇧" : "Shift";
 
-/** A close "×" glyph for the header button (matches SettingsDialog's). */
-const CLOSE_SVG =
-  '<svg viewBox="0 0 16 16" width="13" height="13" fill="none" ' +
-  'stroke="currentColor" stroke-width="1.6" stroke-linecap="round" ' +
-  'aria-hidden="true"><path d="M4 4l8 8M12 4l-8 8"/></svg>';
-
 /** Grouped shortcut rows — the single source of truth this dialog renders. */
 const SHORTCUT_GROUPS = [
   {
@@ -96,16 +90,6 @@ export class KeyboardShortcutsDialog {
     if (KeyboardShortcutsDialog.#open) return;
     KeyboardShortcutsDialog.#open = true;
 
-    const closeBtn = el("button", {
-      class: "popup-close",
-      type: "button",
-      title: "Close",
-      "aria-label": "Close keyboard shortcuts",
-      onClick: () => PopupManager.close(),
-      "data-autofocus": true,
-    });
-    closeBtn.innerHTML = CLOSE_SVG;
-
     const groups = SHORTCUT_GROUPS.map(({ title, rows }) =>
       el("section", { class: "shortcuts-group" }, [
         el("h3", { class: "shortcuts-group-title", text: title }),
@@ -122,26 +106,12 @@ export class KeyboardShortcutsDialog {
       ]),
     );
 
-    const element = el(
-      "div",
-      {
-        class: "popup shortcuts-popup",
-        role: "dialog",
-        "aria-modal": "true",
-        "aria-label": "Keyboard Shortcuts",
-      },
-      [
-        el("div", { class: "popup-header" }, [
-          el("span", { class: "popup-title", text: "Keyboard Shortcuts" }),
-          closeBtn,
-        ]),
-        el("div", { class: "popup-body shortcuts-body" }, groups),
-      ],
-    );
-
-    PopupManager.open({
-      element,
-      onMaskClick: () => PopupManager.close(),
+    PopupManager.dialog({
+      title: "Keyboard Shortcuts",
+      closeAriaLabel: "Close keyboard shortcuts",
+      className: "shortcuts-popup",
+      bodyClass: "shortcuts-body",
+      body: groups,
       onClose: () => {
         KeyboardShortcutsDialog.#open = false;
       },

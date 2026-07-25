@@ -24,7 +24,7 @@
 // (row e, the component anchor); row f is exactly 3 pitches above (fixed by
 // the board geometry every DIP relies on).
 
-import { el } from "../dom.js";
+import { el, svgEl } from "../dom.js";
 import { PX_PER_UNIT } from "../desk/desk-geometry.js";
 import { holePosition } from "../model/breadboard.js";
 import { packageSpec } from "../model/footprints.js";
@@ -35,16 +35,6 @@ import {
   buildWarnOverlay,
   STATUS_HINT,
 } from "./part-symbols.js";
-
-const SVG_NS = "http://www.w3.org/2000/svg";
-
-function svgEl(tag, attrs = {}) {
-  const node = document.createElementNS(SVG_NS, tag);
-  for (const [key, value] of Object.entries(attrs)) {
-    node.setAttribute(key, value);
-  }
-  return node;
-}
 
 /** Footprint-box geometry shared by the builder and the ghost/controller. */
 export function chipBox(pkg) {
