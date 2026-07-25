@@ -1616,11 +1616,12 @@ export class DeskDoc {
   updateBus(id, patch = {}) {
     const bus = this.#doc.buses.find((b) => b.id === id);
     if (!bus) throw taggedError(`no bus ${id}`, "NOT_FOUND");
+    let declaredWidth = null;
     if ("name" in patch) {
       const parsed = parseBusName(patch.name);
       if (!parsed) throw taggedError(`bad bus name: ${patch.name}`, "INVALID_ARG"); // prettier-ignore
       bus.name = patch.name.trim();
-      bus.width = Math.max(parsed.width, bus.members.length, 1);
+      declaredWidth = parsed.width;
     }
     if ("color" in patch) {
       if (!WIRE_COLORS.includes(patch.color)) {
@@ -1638,7 +1639,13 @@ export class DeskDoc {
         }
       }
       bus.members = members;
-      bus.width = Math.max(bus.width, bus.members.length, 1);
+    }
+    // Width always reflects the FINAL name + FINAL members TOGETHER — never a
+    // stale mix of one patched field's new value with the other's pre-patch
+    // one (patching both in a single call used to do exactly that).
+    if ("name" in patch || "members" in patch) {
+      if (declaredWidth == null) declaredWidth = parseBusName(bus.name).width;
+      bus.width = Math.max(declaredWidth, bus.members.length, 1);
     }
     return { ...bus, members: [...bus.members] };
   }

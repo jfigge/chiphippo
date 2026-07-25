@@ -939,7 +939,13 @@ export function cpuCycle(state, busByte, ctl) {
   if (ctl.ready === false) return { ...state, ...base, nmiPending }; // RDY stall
   if (state.cur === "stp") return { ...state, ...base, nmiPending }; // wait for reset
   if (state.cur === "wai") {
-    const wake = nmiPending || (ctl.irq && !(state.p & I));
+    // WAI wakes on NMI, IRQ, or RESET regardless of the I flag — a MASKED
+    // IRQ still wakes the CPU, it just isn't serviced (beginNextOp's own
+    // `ctl.irq && !(committed.p & I)` check below leaves `cur` as "instr" in
+    // that case, so execution resumes at the next instruction rather than
+    // jumping to the ISR). Reset is already handled by the `ctl.reset` guard
+    // above, ahead of this branch.
+    const wake = nmiPending || ctl.irq;
     if (!wake) return { ...state, ...base, nmiPending };
     return beginNextOp(state, base, nmiPending, ctl);
   }

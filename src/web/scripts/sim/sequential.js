@@ -31,13 +31,18 @@
 // datasheet. Combinational MSI parts (decoders, muxes) live here too as
 // `COMB` unit builders — their inputs legitimately fan out to every output.
 
-import { H, L, Z, inv } from "./levels.js";
+import { H, L, Z, X, inv } from "./levels.js";
 
 /** A control/data line reads as a clean bit: H stays H, everything else L. */
 const asBit = (lv) => (lv === H ? H : L);
 const high = (lv) => lv === H;
 const edgeRose = (p, c) => p === L && c === H;
 const edgeFell = (p, c) => p === H && c === L;
+/** True when any of `levels` is unknown/contested — a shorted or conflicting
+    net (never Z; callers always asInput() first). Used by the COMB units
+    below to propagate X instead of silently reading it as a clean L, the way
+    `asBit`/`high` do for ordinary clocked control lines. */
+const anyX = (levels) => levels.some((lv) => lv === X);
 
 /** Read a little-endian bus (LSB first) of input pins into an integer. */
 const readBus = (pins, ins) =>
@@ -363,11 +368,16 @@ export function decoderUnits(m) {
     comb(inputs, pin, (levels) => {
       const byPin = new Map(inputs.map((p, i) => [p, levels[i]]));
       const en = m.enabled(byPin);
+      // A confidently-disabled decoder is H regardless of an unknown select
+      // bus (dominant, same shortcut the gate primitives use) — only while
+      // enabled does an X select bit make the address genuinely uncertain.
+      if (!en) return H;
+      if (m.sel.some((p) => byPin.get(p) === X)) return X;
       const value = m.sel.reduce(
         (n, p, i) => n + (high(byPin.get(p)) ? 1 << i : 0),
         0,
       );
-      return en && value === addr ? L : H;
+      return value === addr ? L : H;
     }),
   );
 }
@@ -386,12 +396,17 @@ export function muxUnits(m) {
   ];
   const value = (levels) => {
     const byPin = new Map(inputs.map((p, i) => [p, levels[i]]));
-    if (m.strobeN != null && byPin.get(m.strobeN) === H) return L; // disabled
+    if (m.strobeN != null) {
+      const strobe = byPin.get(m.strobeN);
+      if (strobe === H) return L; // confidently disabled (dominant)
+      if (strobe === X) return X; // unknown whether enabled at all
+    }
+    if (m.sel.some((p) => byPin.get(p) === X)) return X; // address uncertain
     const addr = m.sel.reduce(
       (n, p, i) => n + (high(byPin.get(p)) ? 1 << i : 0),
       0,
     );
-    return asBit(byPin.get(m.data[addr]));
+    return byPin.get(m.data[addr]); // route the selected input as-is (X-preserving)
   };
   const units = [comb(inputs, m.y, value)];
   if (m.yn != null)
@@ -409,8 +424,9 @@ export function selectorUnits(m) {
   return m.units.map((u) => {
     const inputs = [m.strobeN, m.sel, u.a, u.b];
     return comb(inputs, u.y, ([strobe, sel, a, b]) => {
-      if (strobe === H) return L; // disabled
-      return sel === H ? asBit(b) : asBit(a);
+      if (strobe === H) return L; // confidently disabled (dominant)
+      if (strobe === X || sel === X) return X; // enable/select uncertain
+      return sel === H ? b : a; // route the selected input as-is
     });
   });
 }
@@ -426,7 +442,8 @@ export function selectorTsUnits(m) {
     const inputs = [m.oeN, m.sel, u.a, u.b];
     return comb(inputs, u.y, ([oe, sel, a, b]) => {
       if (oe === H) return Z; // output disabled → high-impedance
-      const v = sel === H ? asBit(b) : asBit(a);
+      if (oe === X || sel === X) return X; // enable/select uncertain
+      const v = sel === H ? b : a; // route the selected input as-is
       return m.invert ? inv(v) : v;
     });
   });
@@ -443,7 +460,8 @@ export function busDriverUnits(m) {
     const inputs = [m.enableN, p.a];
     return comb(inputs, p.y, ([oe, a]) => {
       if (oe === H) return Z;
-      return m.invert ? inv(asBit(a)) : asBit(a);
+      if (oe === X) return X; // unknown whether enabled at all
+      return m.invert ? inv(a) : a; // pass through as-is (X-preserving)
     });
   });
 }
@@ -461,17 +479,27 @@ export function busDriverUnits(m) {
 export function transceiverUnits(m) {
   const units = [];
   for (const { a, b } of m.pairs) {
-    // B follows A when enabled and pointing A→B; otherwise it floats.
+    // B follows A when enabled and pointing A→B; otherwise it floats — unless
+    // `dir`/`oeN` is itself unknown, in which case whether this side drives
+    // at all is uncertain, so it reads X rather than confidently floating.
     units.push(
-      comb([m.dir, m.oeN, a], b, ([dir, oe, av]) =>
-        oe === H ? Z : dir === H ? asBit(av) : Z,
-      ),
+      comb([m.dir, m.oeN, a], b, ([dir, oe, av]) => {
+        if (oe === H) return Z;
+        if (oe === X) return X;
+        if (dir === H) return av; // pass through as-is (X-preserving)
+        if (dir === L) return Z;
+        return X; // dir unknown
+      }),
     );
     // A follows B when enabled and pointing B→A; otherwise it floats.
     units.push(
-      comb([m.dir, m.oeN, b], a, ([dir, oe, bv]) =>
-        oe === H ? Z : dir === L ? asBit(bv) : Z,
-      ),
+      comb([m.dir, m.oeN, b], a, ([dir, oe, bv]) => {
+        if (oe === H) return Z;
+        if (oe === X) return X;
+        if (dir === L) return bv; // pass through as-is (X-preserving)
+        if (dir === H) return Z;
+        return X; // dir unknown
+      }),
     );
   }
   return units;
@@ -490,10 +518,19 @@ export function adder4Units(m) {
     const b = readBus(m.b, byPin);
     return a + b + (high(byPin.get(m.cin)) ? 1 : 0);
   };
+  // A contested/shorted operand bit makes the whole sum uncertain (carry
+  // ripples through every more-significant bit) — coarse but sound, rather
+  // than confidently computing a specific wrong total off a collapsed X.
   const units = m.s.map((pin, i) =>
-    comb(inputs, pin, (levels) => ((total(levels) >> i) & 1 ? H : L)),
+    comb(inputs, pin, (levels) =>
+      anyX(levels) ? X : (total(levels) >> i) & 1 ? H : L,
+    ),
   );
-  units.push(comb(inputs, m.cout, (levels) => (total(levels) > 15 ? H : L)));
+  units.push(
+    comb(inputs, m.cout, (levels) =>
+      anyX(levels) ? X : total(levels) > 15 ? H : L,
+    ),
+  );
   return units;
 }
 
@@ -522,10 +559,13 @@ export function comparator4Units(m) {
       lt: !ieq && !igt ? H : L,
     };
   };
+  // A contested/shorted operand or cascade bit makes the comparison itself
+  // uncertain — coarse but sound, rather than confidently comparing off a
+  // collapsed X.
   return [
-    comb(inputs, m.gtOut, (l) => decide(l).gt),
-    comb(inputs, m.eqOut, (l) => decide(l).eq),
-    comb(inputs, m.ltOut, (l) => decide(l).lt),
+    comb(inputs, m.gtOut, (l) => (anyX(l) ? X : decide(l).gt)),
+    comb(inputs, m.eqOut, (l) => (anyX(l) ? X : decide(l).eq)),
+    comb(inputs, m.ltOut, (l) => (anyX(l) ? X : decide(l).lt)),
   ];
 }
 
@@ -585,29 +625,42 @@ export function alu4Units(m_) {
     const total = baseline + cin;
     return { f: total & mask, total, baseline };
   };
+  // A contested/shorted operand, select, or control bit makes every ALU
+  // output uncertain — coarse but sound, rather than confidently computing a
+  // specific wrong result off a collapsed X.
   const units = m_.f.map((pin, i) =>
-    comb(inputs, pin, (levels) => ((compute(levels).f >> i) & 1 ? H : L)),
+    comb(inputs, pin, (levels) =>
+      anyX(levels) ? X : (compute(levels).f >> i) & 1 ? H : L,
+    ),
   );
   if (m_.cout != null) {
     units.push(
-      comb(inputs, m_.cout, (levels) => (compute(levels).total >= 16 ? H : L)),
+      comb(inputs, m_.cout, (levels) =>
+        anyX(levels) ? X : compute(levels).total >= 16 ? H : L,
+      ),
     );
   }
   if (m_.gN != null) {
     // Generate/propagate are NOT affected by carry-in (datasheet-stated) —
     // computed from the baseline (Cin-less) total, unlike Cn+4 above.
     units.push(
-      comb(inputs, m_.gN, (levels) => (compute(levels).baseline >= 16 ? L : H)),
+      comb(inputs, m_.gN, (levels) =>
+        anyX(levels) ? X : compute(levels).baseline >= 16 ? L : H,
+      ),
     );
   }
   if (m_.pN != null) {
     units.push(
-      comb(inputs, m_.pN, (levels) => (compute(levels).baseline >= 15 ? L : H)),
+      comb(inputs, m_.pN, (levels) =>
+        anyX(levels) ? X : compute(levels).baseline >= 15 ? L : H,
+      ),
     );
   }
   if (m_.aeqb != null) {
     units.push(
-      comb(inputs, m_.aeqb, (levels) => (compute(levels).f === mask ? H : L)),
+      comb(inputs, m_.aeqb, (levels) =>
+        anyX(levels) ? X : compute(levels).f === mask ? H : L,
+      ),
     );
   }
   return units;
@@ -624,19 +677,24 @@ export function priorityEncoder8Units(m) {
   const inputs = [...m.data, m.eiN];
   const state = (levels) => {
     const byPin = new Map(inputs.map((p, i) => [p, levels[i]]));
-    if (byPin.get(m.eiN) !== L) return { enabled: false, idx: -1 };
-    let idx = -1;
+    const ei = byPin.get(m.eiN);
+    if (ei === H) return { enabled: false, idx: -1 }; // confidently idle
+    if (ei === X) return { unknown: true }; // unknown whether enabled at all
+    // ei === L (enabled): scan from the highest index down. A definite L
+    // dominates everything below it (real priority-encoder behaviour), so
+    // only an X encountered BEFORE any definite L leaves the result unknown
+    // — it might be the true (higher-priority) winner, or might not.
     for (let i = 7; i >= 0; i--) {
-      if (byPin.get(m.data[i]) === L) {
-        idx = i;
-        break;
-      }
+      const d = byPin.get(m.data[i]);
+      if (d === L) return { enabled: true, idx: i };
+      if (d === X) return { unknown: true };
     }
-    return { enabled: true, idx };
+    return { enabled: true, idx: -1 };
   };
   const units = m.a.map((pin, k) =>
     comb(inputs, pin, (levels) => {
       const s = state(levels);
+      if (s.unknown) return X;
       if (!s.enabled || s.idx < 0) return H; // idle → active-low outputs high
       return (s.idx >> k) & 1 ? L : H; // address, active-low
     }),
@@ -644,12 +702,14 @@ export function priorityEncoder8Units(m) {
   units.push(
     comb(inputs, m.gsN, (levels) => {
       const s = state(levels);
+      if (s.unknown) return X;
       return s.enabled && s.idx >= 0 ? L : H;
     }),
   );
   units.push(
     comb(inputs, m.eoN, (levels) => {
       const s = state(levels);
+      if (s.unknown) return X;
       return s.enabled && s.idx < 0 ? L : H; // enabled, nothing active
     }),
   );
@@ -672,13 +732,27 @@ export function bcd7segUnits(m) {
   const decode = (levels) => {
     const byPin = new Map(inputs.map((p, i) => [p, levels[i]]));
     if (byPin.get(m.biN) === L) return [0, 0, 0, 0, 0, 0, 0]; // blank (dominant)
-    if (byPin.get(m.ltN) === L) return [1, 1, 1, 1, 1, 1, 1]; // lamp test
+    if (byPin.get(m.ltN) === L) return [1, 1, 1, 1, 1, 1, 1]; // lamp test (dominant)
+    // Neither dominant override applies — an unknown control or BCD bit now
+    // genuinely makes the decode uncertain (null; the caller reads that as X
+    // per segment), rather than silently reading it as a clean digit.
+    if (
+      byPin.get(m.biN) === X ||
+      byPin.get(m.ltN) === X ||
+      byPin.get(m.rbiN) === X ||
+      m.bcd.some((p) => byPin.get(p) === X)
+    ) {
+      return null;
+    }
     const v = readBus(m.bcd, byPin);
     if (byPin.get(m.rbiN) === L && v === 0) return [0, 0, 0, 0, 0, 0, 0]; // zero-blank
     return m.patterns[v];
   };
   return m.seg.map((pin, i) =>
-    comb(inputs, pin, (levels) => (decode(levels)[i] ? L : H)),
+    comb(inputs, pin, (levels) => {
+      const d = decode(levels);
+      return d ? (d[i] ? L : H) : X;
+    }),
   );
 }
 

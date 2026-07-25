@@ -178,17 +178,25 @@ function detail(text) {
 
 /**
  * Escape text for an RTF stream: the three control characters, and every
- * non-ASCII (BMP) code point as a `\uN?` unicode escape with an ASCII fallback.
+ * non-ASCII character as a `\uN?` unicode escape with an ASCII fallback.
+ * Walks UTF-16 CODE UNITS, not code points — RTF's `\uN` escape is itself a
+ * UTF-16-code-unit mechanism (it predates supplementary planes), so a
+ * character outside the BMP (an emoji in a net name or component label, say)
+ * must be split into its surrogate pair and each half escaped separately;
+ * code-point iteration would hand the whole astral scalar value to the
+ * int16-wrap formula below and produce an out-of-range, meaningless escape.
  */
 function esc(str) {
   let out = "";
-  for (const ch of String(str)) {
+  const s = String(str);
+  for (let i = 0; i < s.length; i++) {
+    const ch = s[i];
     if (ch === "\\") out += "\\\\";
     else if (ch === "{") out += "\\{";
     else if (ch === "}") out += "\\}";
     else if (ch === "\n") out += "\\line ";
     else {
-      const code = ch.codePointAt(0);
+      const code = ch.charCodeAt(0);
       if (code < 128) out += ch;
       else out += `\\u${code > 32767 ? code - 65536 : code}?`;
     }
