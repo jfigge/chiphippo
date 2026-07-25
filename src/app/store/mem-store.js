@@ -193,4 +193,4 @@ function remove(filePath) {
   }
 }
 
-module.exports = { create, load, program, writeAll, remove };
+module.exports = { create, load, program, writeAll, remove, MAX_BYTES };

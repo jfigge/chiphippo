@@ -966,7 +966,7 @@ async function init() {
 
   // Surface net-name merge conflicts (Feature 120) as toasts — a name that
   // loses a merge is reported, never silently dropped.
-  new NetNameMonitor(deskDoc, notifications);
+  new NetNameMonitor(netlistCache, notifications);
 
   // The transport cluster sits apart from the edit tools (right of the strip).
   const runBtn = el("button", {

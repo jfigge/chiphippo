@@ -142,6 +142,7 @@ export class SimController {
   #dataLossWarned = new Set(); // programmed chips already warned of a missing file
   #timers = new Map(); // clockId → interval handle
   #suppress = false; // ignore our own damage-persist writes
+  #runToken = 0; // bumped on every start() — see #loadRom
 
   /**
    * @param {object} opts
@@ -182,6 +183,7 @@ export class SimController {
   start() {
     if (this.#mode !== TRANSPORT.STOPPED) return;
     this.#mode = TRANSPORT.RUNNING;
+    const token = ++this.#runToken;
     this.#warm = new Map();
     this.#state = new Map();
     this.#prevPins = new Map();
@@ -189,14 +191,17 @@ export class SimController {
     for (const c of this.#clocks()) this.#clockPhase.set(c.id, L); // idle low
     this.#dataLossWarned = new Set();
     this.#onTransportChange?.(this.#mode); // lock editing while files load
-    const pending = this.#seedImages();
-    if (pending) return pending.then(() => this.#afterSeed());
-    this.#afterSeed();
+    const pending = this.#seedImages(token);
+    if (pending) return pending.then(() => this.#afterSeed(token));
+    this.#afterSeed(token);
   }
 
   /** First settle + clock start once memory images are seeded/loaded. */
-  #afterSeed() {
-    if (this.#mode !== TRANSPORT.RUNNING) return; // stopped during a load
+  #afterSeed(token) {
+    // `token` guards a fast Stop→Start on this SAME instance: a straggling
+    // async load from a PRIOR run must never act once a NEWER run has begun,
+    // even though `#mode` alone reads RUNNING again by then (see #loadRom).
+    if (token !== this.#runToken || this.#mode !== TRANSPORT.RUNNING) return;
     this.#tickNow();
     this.#scheduleClocks();
   }
@@ -302,7 +307,7 @@ export class SimController {
    * Returns a promise that resolves once every ROM load has settled, or null
    * when there is no ROM (Run then stays fully synchronous).
    */
-  #seedImages() {
+  #seedImages(token) {
     this.#images = new Map();
     this.#memInfo = new Map();
     const loads = [];
@@ -320,14 +325,19 @@ export class SimController {
         this.#images.set(c.id, seedImage(def)); // SRAM: cleared, no file
       } else {
         this.#images.set(c.id, blankImage(def)); // reads 0 until the load lands
-        loads.push(this.#loadRom(c.id, c, def, info));
+        loads.push(this.#loadRom(c.id, c, def, info, token));
       }
     }
     return loads.length ? Promise.all(loads) : null;
   }
 
-  /** Load a ROM chip's image from its backing file (creating the file first). */
-  async #loadRom(compId, comp, def, info) {
+  /** Load a ROM chip's image from its backing file (creating the file first).
+      `token` is this call's #runToken snapshot — a fast Stop→Start on this
+      SAME controller instance re-arms #mode to RUNNING before this straggling
+      load resolves, so #mode alone can't tell a superseded run from the
+      current one; only a token mismatch can. */
+  async #loadRom(compId, comp, def, info, token) {
+    const stale = () => token !== this.#runToken || this.#mode === TRANSPORT.STOPPED; // prettier-ignore
     const mem = window.chiphippo?.mem;
     try {
       // A ROM should have a GUID from placement; mint one defensively if not.
@@ -336,19 +346,20 @@ export class SimController {
         this.#doc.setComponentParams(compId, { storage: { guid: info.guid } });
       }
       const created = await mem?.create(info.guid, info.byteLength);
-      if (this.#mode === TRANSPORT.STOPPED) return; // run aborted mid-load
+      if (stale()) return; // run aborted, or superseded by a newer run
       // A programmed chip whose file had to be recreated lost its data (the
       // classic delete-then-undo). It now holds random noise — say so loudly.
       if (created?.created && comp.params?.programmed === true) {
         this.#warnDataLoss(compId);
       }
       const res = await mem?.load(info.guid, info.byteLength);
-      if (this.#mode === TRANSPORT.STOPPED) return;
+      if (stale()) return;
       if (!res || res.ok === false) {
         throw new Error(res?.error ?? "no memory bridge");
       }
       this.#images.set(compId, unpackImage(def, res.bytes));
     } catch (err) {
+      if (stale()) return; // a superseded run's own failure is nobody's business
       this.#notifications?.notify({
         key: `mem-load:${compId}`,
         variant: "danger",

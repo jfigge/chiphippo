@@ -20,26 +20,32 @@
 // one net. The netlist reports the loser deterministically; this routes it to
 // a toast so a name is never silently dropped. Naming stays inert to the
 // engine — this only reads the netlist partition, never changes it.
-
-import { buildNetlist } from "../sim/netlist.js";
+//
+// Reads the ONE shared NetlistCache every other consumer uses, rather than
+// running its own independent buildNetlist() — that used to mean a held
+// pushbutton's transient bridge (tracked only by the shared cache's
+// #partStates, via chiphippo:part-state) could merge two named nets without
+// this ever noticing, since it neither shared that state nor listened for the
+// event at all.
 
 export class NetNameMonitor {
-  #doc;
+  #netlist;
   #notifications;
 
   /**
-   * @param {import('../model/desk-doc.js').DeskDoc} deskDoc
+   * @param {import('./netlist-cache.js').NetlistCache} netlistCache
    * @param {import('./notification-stack.js').NotificationStack} notifications
    */
-  constructor(deskDoc, notifications) {
-    this.#doc = deskDoc;
+  constructor(netlistCache, notifications) {
+    this.#netlist = netlistCache;
     this.#notifications = notifications;
     window.addEventListener("chiphippo:doc-changed", () => this.check());
+    window.addEventListener("chiphippo:part-state", () => this.check());
   }
 
-  /** Rebuild the netlist and toast every current name-merge conflict. */
+  /** Toast every current name-merge conflict from the shared netlist. */
   check() {
-    const { nameConflicts } = buildNetlist(this.#doc.toJSON());
+    const { nameConflicts } = this.#netlist.get();
     for (const c of nameConflicts) {
       this.#notifications.notify({
         // Keyed on the net so a re-settle refreshes rather than stacks.

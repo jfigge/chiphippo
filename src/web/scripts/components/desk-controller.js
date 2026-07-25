@@ -482,6 +482,39 @@ export class DeskController {
     ].includes(this.#mode?.kind);
   }
 
+  /**
+   * Abort whichever direct-manipulation drag is in flight (Escape mid-drag).
+   * Routes a synthetic `pointercancel` through the SAME up-handler the real
+   * pointer event would reach — every one of them already treats
+   * `e.type === "pointercancel"` as "tear down the capture/listeners, revert,
+   * never commit" (the same path a lost pointer capture takes), so this
+   * reuses that instead of duplicating the teardown here. Without this,
+   * Escape used to only clear selection, leaving the drag's capture and
+   * listeners alive to commit the move anyway on the next pointerup.
+   */
+  #cancelDragGesture() {
+    const m = this.#mode;
+    if (!m) return;
+    const fake = { type: "pointercancel", pointerId: m.pointerId };
+    switch (m.kind) {
+      case "drag":
+        this.#onBoardPointerUp(fake);
+        break;
+      case "drag-part":
+      case "drag-brick":
+      case "drag-resistor":
+      case "drag-resistor-end":
+        this.#onPartPointerUp(fake);
+        break;
+      case "drag-annotation":
+        this.#onAnnotationPointerUp({ ...fake, currentTarget: m.elem });
+        break;
+      case "marquee":
+        this.#onMarqueePointerUp(fake);
+        break;
+    }
+  }
+
   // ── Selection (boards, parts, and wires share one slot) ─────────────────
 
   #applySelection(sel, on) {
@@ -2131,6 +2164,12 @@ export class DeskController {
       return false;
     }
     if (e.key === "Escape") {
+      // A live pointer drag takes priority over everything below — revert it
+      // (never commit) rather than merely deselecting out from under it.
+      if (this.#dragGestureActive) {
+        this.#cancelDragGesture();
+        return true;
+      }
       // First Esc unpins a pinned net; the next disarms the probe. Then the
       // wire tool (cancel a pending wire, else disarm).
       if (this.#probe.handleEscape()) return true;
@@ -2902,6 +2941,8 @@ export class DeskController {
     this.#mode = {
       kind: "drag-annotation",
       id,
+      elem: box, // so a programmatic cancel (Escape mid-drag) can supply
+      // #onAnnotationPointerUp's expected e.currentTarget itself
       pointerId: e.pointerId,
       startClientX: e.clientX,
       startClientY: e.clientY,

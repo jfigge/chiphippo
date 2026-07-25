@@ -365,6 +365,17 @@ async function pickMemoryImage() {
   if (r.canceled || !r.filePaths?.[0]) return null;
   const filePath = r.filePaths[0];
   try {
+    // The dialog's filter offers "All files" too, so this can't rely on the
+    // extension alone — every other path into a memory chip's image (create/
+    // load/program/writeAll in mem-store.js) caps at MAX_BYTES; an unbounded
+    // read here was the one exception, risking a hang/OOM on a large pick.
+    const { size } = fs.statSync(filePath);
+    if (size > memStore.MAX_BYTES) {
+      return {
+        ok: false,
+        error: `file is too large (${size} bytes, max ${memStore.MAX_BYTES})`,
+      };
+    }
     return {
       ok: true,
       name: path.basename(filePath),
