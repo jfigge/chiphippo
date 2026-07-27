@@ -20,6 +20,12 @@
 // matching id/title/blurb. Clicking an entry arms placement mode (reported via
 // the constructor callback with the click event, so app.js can pop the LED
 // color swatches — the ghost belongs to DeskController).
+//
+// The tray carries its OWN open/close control rather than a toolbar button:
+// a chevron in the header's top-right corner shuts it, and a flap pinned to
+// the desk's left edge — the same vertical line, so the control reads as one
+// thing sliding into the wall — opens it again. The flap floats over the desk
+// (the `.project-tabs` shape), so a closed tray costs no layout width at all.
 
 import { clear, el } from "../dom.js";
 import { PALETTE_DEFS } from "../catalog/index.js";
@@ -62,6 +68,29 @@ const BOARDS_FOLDER = "BOARDS";
     parts — hardcoded here like the boards folder — so it folds like any
     section and is hidden while the parts filter is active. */
 const ANNOTATIONS_FOLDER = "ANNOTATIONS";
+/** The tray's own open/close chevron. Its own copy of the app's line-icon
+    idiom (16 px box, round-capped strokes) — the toolbar's constants live in
+    app.js and aren't exported. */
+function chevron(points) {
+  return (
+    '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" ' +
+    'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" ' +
+    'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    `<polyline points="${points}"/></svg>`
+  );
+}
+/** ‹ — closing pushes the tray back into the left wall. */
+const CHEVRON_LEFT = chevron("15 6 9 12 15 18");
+/** › — opening pulls it back out over the desk. */
+const CHEVRON_RIGHT = chevron("9 6 15 12 9 18");
+
+/** The platform-correct modifier glyph for the toggle's tooltips. Read when the
+    panel is built, not at import: the jsdom tests install `window` after the
+    module graph has already loaded. */
+function modKey() {
+  return globalThis.window?.chiphippo?.platform === "darwin" ? "⌘" : "Ctrl";
+}
+
 const ANNOTATION_KINDS = [
   { kind: "label", glyph: "T", label: "Label", hint: "a one-line caption" },
   { kind: "note", glyph: "≡", label: "Note", hint: "a multi-line note box" },
@@ -86,6 +115,8 @@ function allSections() {
 export class PalettePanel {
   #el;
   #list;
+  #container;
+  #flap;
   #onPickChip;
   #onPickBoard;
   #onPickAnnotation;
@@ -103,8 +134,16 @@ export class PalettePanel {
    *   (assembled breadboard or loose strip) was picked; app.js arms placement.
    * @param {(kind: "label"|"note") => void} callbacks.onPickAnnotation - a
    *   label/note was picked; app.js arms annotation placement.
+   * @param {() => void} callbacks.onToggle - the header chevron or the
+   *   desk-edge flap was clicked. The panel does NOT flip itself: app.js owns
+   *   the one toggle that also persists `paletteOpen`, exactly as the ⌘P
+   *   shortcut does.
    */
-  constructor(container, { onPickChip, onPickBoard, onPickAnnotation } = {}) {
+  constructor(
+    container,
+    { onPickChip, onPickBoard, onPickAnnotation, onToggle } = {},
+  ) {
+    this.#container = container;
     this.#onPickChip = onPickChip;
     this.#onPickBoard = onPickBoard;
     this.#onPickAnnotation = onPickAnnotation;
@@ -120,13 +159,39 @@ export class PalettePanel {
       },
     });
 
+    const mod = modKey();
+    const collapseBtn = el("button", {
+      class: "palette-collapse",
+      type: "button",
+      title: `Hide the parts tray (${mod}+P)`,
+      "aria-label": "Hide the parts tray",
+      onClick: () => onToggle?.(),
+    });
+    collapseBtn.innerHTML = CHEVRON_LEFT;
+
     this.#list = el("div", { class: "palette-list" });
     this.#el = el(
       "aside",
       { class: "palette-panel", "aria-label": "Parts palette", hidden: true },
-      [el("div", { class: "palette-header" }, [filterInput]), this.#list],
+      [
+        el("div", { class: "palette-header" }, [filterInput, collapseBtn]),
+        this.#list,
+      ],
     );
-    container.append(this.#el);
+
+    // The reopen flap: a sibling of the tray, not a child — the tray itself is
+    // display:none when shut. It floats over the desk's left edge on the same
+    // line as the header chevron above, so the two read as one control.
+    this.#flap = el("button", {
+      class: "palette-flap",
+      type: "button",
+      title: `Show the parts tray (${mod}+P)`,
+      "aria-label": "Show the parts tray",
+      onClick: () => onToggle?.(),
+    });
+    this.#flap.innerHTML = CHEVRON_RIGHT;
+
+    container.append(this.#el, this.#flap);
     this.#render();
   }
 
@@ -140,6 +205,11 @@ export class PalettePanel {
 
   setVisible(on) {
     this.#el.hidden = !on;
+    // Exactly one of the two chevrons is ever showing.
+    this.#flap.hidden = !!on;
+    // The flap overlays the desk's top-left corner, which is where the
+    // desktop tab strip starts — the modifier insets the tabs past it.
+    this.#container?.classList.toggle("app-main--tray-closed", !on);
   }
 
   #matches(def) {

@@ -265,7 +265,7 @@ function buildDesk() {
   // flow replaces it.
   const hint = document.createElement("p");
   hint.className = "desk-hint";
-  hint.textContent = "Open Parts and add a breadboard to get started";
+  hint.textContent = "Open the parts tray and add a breadboard to get started";
 
   desk.append(hint);
   return desk;
@@ -664,6 +664,10 @@ async function init() {
     onPickBoard: (kit) => controller?.armPlacement(kit),
     // The annotations section (labels + notes) lives at the bottom.
     onPickAnnotation: (kind) => controller?.armAnnotationPlacement(kind),
+    // The tray's own header chevron / desk-edge flap. `togglePalette` is
+    // declared with the toolbar further below; this closure only runs on a
+    // click, long after that.
+    onToggle: () => togglePalette(),
     // Collapse state is deliberately NOT persisted — the palette opens with
     // every group shut, every launch (see PalettePanel).
   });
@@ -1014,25 +1018,16 @@ async function init() {
     el("span", { class: "toolbar-divider", "aria-hidden": "true" }),
   );
 
+  // The parts tray has no toolbar button: it carries its own chevron in the
+  // header and its own flap on the desk edge (see PalettePanel), both of which
+  // route back here so ⌘P, the chevron, and the flap are one code path.
   const togglePalette = () => {
     const on = !palette.visible;
     palette.setVisible(on);
-    partsBtn.setAttribute("aria-pressed", String(on));
-    partsBtn.classList.toggle("toolbar-btn--active", on);
     bridge.settings
       .set({ paletteOpen: on })
       .catch((err) => console.error("[renderer] settings:set failed:", err));
   };
-  const partsBtn = el("button", {
-    class: "toolbar-btn",
-    type: "button",
-    text: "Parts",
-    title: `Show or hide the parts palette (${MOD_KEY}+P)`,
-    "aria-pressed": String(palette.visible),
-    onClick: () => togglePalette(),
-  });
-  partsBtn.classList.toggle("toolbar-btn--active", palette.visible);
-  toolbar.append(partsBtn);
 
   // ── Desk-tool pill (Wire / Bus / Fade / Probe / Analyzer / Fit) ───────────
   // The six desk tools read as ONE control: a single rounded surface carrying
@@ -1243,8 +1238,11 @@ async function init() {
   // Buttons that edit topology are disabled while the circuit runs; the probe,
   // the file actions, and the transport controls stay live. Listed by element
   // rather than queried — the File pill's segments look exactly like the tool
-  // pill's, and opening or saving a document is not a topology edit.
-  const editButtons = [partsBtn, wireBtn, busBtn];
+  // pill's, and opening or saving a document is not a topology edit. The parts
+  // tray isn't in the list either: showing or hiding a panel edits nothing, and
+  // `#enterPlacement` already refuses every pick while the circuit runs (⌘P has
+  // always stayed live for the same reason).
+  const editButtons = [wireBtn, busBtn];
   const onTransportChange = (mode) => {
     const stopped = mode === "stopped";
     controller.setEditingLocked(!stopped);

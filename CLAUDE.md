@@ -477,7 +477,15 @@ Electron main process (src/app/main.js)
   Bus button's `8`/`16` badge — and a readout is exactly that: it shows the
   active option and is NOT a picker (1–8 set the wire color and 1/2 the bus
   width while that tool is armed; a placed wire's color is changed through its
-  Properties dialog). `.toolbar-btn--active` remains the one class every
+  Properties dialog). The **parts tray is deliberately NOT in the toolbar**: it
+  carries its own chevron in the palette header's top-right corner and its own
+  `.palette-flap` — a drawer pull absolutely positioned on the desk's left edge,
+  so a shut tray costs zero layout width — with both on the SAME vertical line,
+  so the control reads as one thing sliding into the wall. Both, and ⌘P, route
+  through app.js's one `togglePalette` (the only thing that persists
+  `paletteOpen`); `PalettePanel.setVisible` flips the pair and stamps
+  `.app-main--tray-closed`, which insets `.project-tabs` past the flap.
+  `.toolbar-btn--active` remains the one class every
   toolbar button's armed state toggles, whatever its shape.
 - **Popups/menus**: `popup-manager.js` (ported from Port Hippo) is the only
   app-wide dialog/menu seam; build DOM with `dom.js` `el()`. `PopupManager.close()`

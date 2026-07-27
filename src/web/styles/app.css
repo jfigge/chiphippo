@@ -277,16 +277,23 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* Standalone toolbar buttons (Parts toggle) share the split-button look. */
+/* Standalone toolbar buttons (the Schematic toggle) share the split-button
+   look. */
 .app-header-toolbar > .toolbar-btn {
   border-radius: var(--radius-sm);
 }
 
 /* ── Main row: palette beside the desk ───────────────────────────────────── */
+/* Positioned so the parts tray's reopen flap can float over the desk's left
+   edge without taking a single pixel of layout width when the tray is shut.
+   `--tray-flap-width` is how far that flap reaches out — shared by the flap
+   itself and by what it would otherwise cover (the desktop tab strip). */
 .app-main {
+  position: relative;
   display: flex;
   flex: 1 1 auto;
   min-height: 0;
+  --tray-flap-width: 20px;
 }
 
 /* The desk column: the tab strip stacked over whichever surface is showing.
@@ -324,6 +331,13 @@
   border-radius: var(--radius-md);
   overflow-x: auto;
   scrollbar-width: thin;
+}
+
+/* With the parts tray shut, its reopen flap sits on the desk's top-left corner
+   — exactly where the tabs start — so they step aside for it. */
+.app-main--tray-closed .project-tabs {
+  left: calc(var(--space-3) + var(--tray-flap-width));
+  max-width: calc(100% - 2 * var(--space-3) - var(--tray-flap-width));
 }
 
 .project-tab,
@@ -383,12 +397,74 @@
 }
 
 .palette-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
   padding: var(--space-2);
   border-bottom: 1px solid var(--color-crust);
 }
 
+/* The tray's own close control, in the header's top-right corner — the tray
+   has no toolbar button. Clicking it shuts the tray down to nothing; the flap
+   below reopens it from the same line. */
+.palette-collapse {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-muted);
+  cursor: pointer;
+}
+
+.palette-collapse:hover {
+  background: var(--color-surface-1);
+  color: var(--color-text);
+}
+
+/* The reopen flap: a drawer pull left behind on the desk's edge when the tray
+   is shut. Absolute, so a closed tray costs no layout width; flush against the
+   left wall and rounded only on the desk side, so it reads as the shut tray's
+   handle rather than a floating button. Its vertical centre matches the header
+   chevron's (header padding + half a control), so the control appears to slide
+   sideways into the wall. */
+.palette-flap {
+  position: absolute;
+  z-index: 2;
+  top: var(--space-2);
+  left: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--tray-flap-width);
+  height: var(--control-height);
+  padding: 0;
+  border: 1px solid var(--color-crust);
+  border-left: none;
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  background: var(--color-mantle);
+  color: var(--color-muted);
+  cursor: pointer;
+}
+
+.palette-flap:hover {
+  background: var(--color-surface-1);
+  color: var(--color-text);
+}
+
+.palette-flap[hidden] {
+  display: none;
+}
+
+/* Takes the header row's remaining width, beside the collapse chevron. */
 .palette-filter {
-  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
   height: var(--control-height);
   padding: 0 var(--space-2);
   background: var(--color-base);

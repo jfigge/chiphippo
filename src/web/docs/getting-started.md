@@ -13,15 +13,20 @@ Open the installed app like any other desktop program (or, if you're running
 from source, `make debug`). Chip Hippo opens on an **infinitely pannable,
 zoomable desk** — drag to pan, scroll or pinch to zoom, and the header's
 zoom controls (bottom-right of the desk) reset or step the view. The first
-time you launch, the desk is empty and shows a hint: *"Open Parts and add a
-breadboard to get started."*
+time you launch, the desk is empty and shows a hint: *"Open the parts tray and
+add a breadboard to get started."*
 
 ## Open the parts palette
 
-Click **Parts** in the header toolbar (or press `Ctrl+P` / `⌘P`) to open the
-palette panel on the left. At the top is the **board selector** (Full / Half
-/ Tiny breadboards, plus loose strips); below that, chips and components
-grouped by function, with a filter box to search by name.
+The palette is a tray docked to the left of the desk, and it carries its own
+open/close control rather than a toolbar button. When it is shut, a small
+chevron flap sits against the desk's left edge — click it (or press `Ctrl+P` /
+`⌘P`) to slide the tray out. The matching chevron in the tray's top-right
+corner shuts it again, back to nothing.
+
+At the top of the tray is the **board selector** (Full / Half / Tiny
+breadboards, plus loose strips); below that, chips and components grouped by
+function, with a filter box to search by name.
 
 ## Add a breadboard
 
