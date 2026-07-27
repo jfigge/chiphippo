@@ -36,10 +36,12 @@ const DEFAULTS = Object.freeze({
   windowBounds: null,
 
   // ── Parts palette (Feature 40) ────────────────────────────────────────────
-  // Whether the left palette panel is open (the toolbar Parts button toggles).
+  // Whether the left palette panel is open (the palette flap / chevron and ⌘P
+  // toggle it). Open by default — the tray is how parts reach the desk, so a
+  // first launch shows it rather than hiding it behind the drawer pull.
   // Which groups are collapsed is NOT stored: the palette opens with every
   // group shut on every launch, and what the user opens lasts the session.
-  paletteOpen: false,
+  paletteOpen: true,
 
   // ── Pin-assignments window (Feature 100) ──────────────────────────────────
   // Whether a chip's pin-out window floats above the main app. A de-facto
@@ -60,7 +62,10 @@ const DEFAULTS = Object.freeze({
 
   // The selection-border colour (`#rrggbb`), or null to use the theme accent.
   // Applied by the renderer as the `--color-selection` custom property.
-  selectionColor: null,
+  // Defaults to the house orange (the `--color-wire-orange` value): the theme
+  // accent is monochrome, so an outline drawn in it reads as one more grey
+  // line on the desk.
+  selectionColor: "#d0804a",
 
   // The color a newly placed LED gets (Settings ▸ Appearance ▸ "Default LED
   // color") — one of catalog/parts.js's LED_COLOR_OPTIONS. Only the default

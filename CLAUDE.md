@@ -243,9 +243,11 @@ website** (`make docs` → `website/docs/`), and a **PDF** (`make pdf` →
   drives the `document.title` marker and the discard prompt (File menu ⌘N/⌘O/
   ⌘S/⇧⌘S/⌘B push `menu:schematic-*` / `menu:build-guide` →
   `chiphippo:schematic-*` / `chiphippo:build-guide`). **The header toolbar
-  mirrors that menu exactly** — one File **split button** (New + a ▾) whose
-  items dispatch the SAME `chiphippo:*` events, so the two can never drift;
-  only **Open Recent** is toolbar-only. That MRU is `settings.recentFiles`
+  mirrors that menu exactly** — one File **pill** whose five icon-only segments
+  (New · Open · Open Recent · Save · Save As) dispatch the SAME `chiphippo:*`
+  events, so the two can never drift; only **Open Recent** is toolbar-only, and
+  only **Bill Of Materials** sits elsewhere (it toggles a desk panel, so it is a
+  desk-tool segment — see the toolbar note below). That MRU is `settings.recentFiles`
   (the last 10 paths, most recent first — `store/recent-files.js` is the pure
   list arithmetic, `desk:recent:list`/`:open`/`:remove` the IPC), written by
   main on every open/save-as/save. The list is also the **allowlist**:
@@ -461,9 +463,15 @@ Electron main process (src/app/main.js)
   separated by spacing rather than by borders of their own (there is no
   split-button seam anywhere), and an armed segment FILLS instead of gaining
   an accent border. Three exist: the desk tools (Wire · Bus · Fade · Probe ·
-  Analyzer · Fit), **File** (New + the ▾ that drops the file menu, tightened by
-  `.toolbar-pill--file` since it is an action plus its menu, not a row of
-  peers), and the **transport** (`.toolbar-pill--transport`, Feature 90/100),
+  Analyzer · Fit · **BOM** — BOM lives here, not with the file actions, because
+  it toggles a desk panel exactly as Analyzer does, and like Analyzer its armed
+  state comes from the panel's own `onVisibilityChange`, so the segment tracks
+  the panel however it was closed), **File** (New · Open · Open Recent · Save ·
+  Save As — every file action is its OWN icon-only segment rather than a row
+  hidden behind a ▾, since they are peers and a toolbar's job is to show what is
+  available; the name + accelerator live in each segment's tooltip, and Open
+  Recent is the one that still drops a menu, because an MRU list can't be a
+  button), and the **transport** (`.toolbar-pill--transport`, Feature 90/100),
   which is the one pill whose SEGMENT COUNT changes: stopped it holds only
   **Run**, and running it becomes **Stop** with Pause · Step · speed unhidden
   beside it (`.toolbar-pill-btn[hidden]` collapses the rest), so the pill never
@@ -501,7 +509,10 @@ Electron main process (src/app/main.js)
   `submenu` opens as a SIBLING card in the same dialog (hover or click; never
   nested, so it can't be clipped), and `onRemove` renders a trailing × that
   drops its row IN PLACE and leaves the menu open (removing an Open Recent
-  entry is not a selection). Everything is opt-in: an item with none of them
+  entry is not a selection). `emptyLabel` is a CARD-level option — passed
+  alongside `items` for the root card, or on the owning item for a submenu —
+  and is both the placeholder for an empty list and what the last `onRemove`
+  falls back to; without one, an empty list opens an empty card. Everything is opt-in: an item with none of them
   renders exactly as it always did.
 - **Part context menu — ONE shape for every kind**: `DeskController.#onPartContextMenu`
   builds the exact same three items, always, in this order: **Pin

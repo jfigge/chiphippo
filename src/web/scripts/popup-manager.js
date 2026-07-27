@@ -156,9 +156,9 @@ function menuItemNode(item, ctx) {
 }
 
 /**
- * A menu card: the root menu, or a submenu flyout. `emptyLabel` (submenus
- * only) is both the placeholder for an empty list and — stored on the card —
- * what a row removal falls back to when it empties the card.
+ * A menu card: the root menu, or a submenu flyout. `emptyLabel` is both the
+ * placeholder for an empty list and — stored on the card — what a row removal
+ * falls back to when it empties the card.
  */
 function buildCard(items, emptyLabel, ctx) {
   const hasIcons = items.some((item) => item.icon);
@@ -279,16 +279,19 @@ export const PopupManager = {
    *     still lines up.
    *   - `accelerator` — a right-aligned shortcut hint ("⌘S").
    *   - `submenu` — nested items shown in a flyout card beside this one, which
-   *     opens on hover or click; `emptyLabel` is the disabled placeholder for
-   *     an empty (or emptied) flyout.
+   *     opens on hover or click; the item's own `emptyLabel` is the disabled
+   *     placeholder for an empty (or emptied) flyout.
    *   - `onRemove` — renders a trailing × that DROPS THE ROW in place and
    *     leaves the menu open (removing an Open Recent entry), rather than
    *     selecting anything.
    * A selection closes the whole menu first, then runs onSelect. Mask click /
-   * Escape dismiss with no selection.
-   * @param {{ x: number, y: number, items: Array<object> }} opts
+   * Escape dismiss with no selection. The card's own `emptyLabel` is the
+   * disabled placeholder when `items` is empty (or is emptied by an `onRemove`)
+   * — without one, an empty list opens an empty card.
+   * @param {{ x: number, y: number, items: Array<object>,
+   *   emptyLabel?: string }} opts
    */
-  menu({ x = 0, y = 0, items = [] } = {}) {
+  menu({ x = 0, y = 0, items = [], emptyLabel = null } = {}) {
     // At most one flyout is open at a time; it lives beside the root card in
     // the same dialog (a fixed-position sibling), so it is never clipped by
     // the card's rounded box and dies with the popup.
@@ -326,7 +329,7 @@ export const PopupManager = {
       },
     };
 
-    const menuEl = buildCard(items, null, ctx);
+    const menuEl = buildCard(items, emptyLabel, ctx);
     this.open({ element: menuEl, variant: "menu" });
     // Position after mount so the menu's size is measurable.
     placeCard(menuEl, x, y);

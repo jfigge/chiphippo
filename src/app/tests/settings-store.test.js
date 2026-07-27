@@ -38,10 +38,14 @@ test("get returns the defaults when nothing is stored", () => {
   }
 });
 
-test("the Settings-dialog keys default off / unset", () => {
+test("the Settings-dialog keys carry their shipped defaults", () => {
   assert.equal(DEFAULTS.showDeskHub, false);
-  assert.equal(DEFAULTS.selectionColor, null);
+  assert.equal(DEFAULTS.selectionColor, "#d0804a");
   assert.equal(DEFAULTS.defaultLedColor, "red");
+});
+
+test("the parts tray opens by default", () => {
+  assert.equal(DEFAULTS.paletteOpen, true);
 });
 
 test("set persists a Settings-dialog patch (desk hub + selection colour)", () => {

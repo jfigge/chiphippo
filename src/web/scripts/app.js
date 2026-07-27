@@ -125,12 +125,18 @@ const SAVE_SVG =
   '<polyline points="17 21 17 13 7 13 7 21"/>' +
   '<polyline points="7 3 7 8 15 8"/></svg>';
 
-/** The ▾ on the File pill's right segment (drops the file menu). */
-const CARET_SVG =
-  '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" ' +
-  'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" ' +
-  'stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
-  '<polyline points="6 9 12 15 18 9"/></svg>';
+/** Save As — the floppy left open at the corner a pencil writes into. */
+const SAVE_AS_SVG =
+  ICON_SVG_OPEN +
+  '<path d="M13 19H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h9l4 4v3"/>' +
+  '<polyline points="7 3 7 8 13 8"/>' +
+  '<path d="M19 13a1.8 1.8 0 0 1 2.5 2.5L16.5 20.5l-3.5 1 1-3.5z"/></svg>';
+
+/** Open Recent — a clock, for the recently-opened list. */
+const RECENT_SVG =
+  ICON_SVG_OPEN +
+  '<circle cx="12" cy="12" r="9"/>' +
+  '<polyline points="12 7 12 12 16 14"/></svg>';
 
 /** Connectivity-probe icon for the Probe toolbar toggle: a probe tip landing
  * on a digital rising edge, with a cable trailing off the handle end. */
@@ -222,11 +228,7 @@ function buildHeader() {
   logo.className = "app-logo";
   logo.textContent = "Chip Hippo";
 
-  const subtitle = document.createElement("span");
-  subtitle.className = "app-subtitle";
-  subtitle.textContent = "TTL Breadboard Designer";
-
-  brand.append(iconBtn, logo, subtitle);
+  brand.append(iconBtn, logo);
 
   // Empty toolbar slot — later stages mount desk tools (add board, …).
   const toolbar = document.createElement("div");
@@ -699,23 +701,27 @@ async function init() {
 
   // Build guide (Feature 140): a right-docked panel deriving the BOM / wiring
   // list / assembly steps from the live document. Visibility persists like the
-  // palette; the File menu's "Bill Of Materials…" item (⌘B), its own close
-  // button, and the native File menu all route through onVisibilityChange so
-  // the persisted setting stays in step however it was flipped.
+  // palette; the desk-tool pill's BOM segment (⌘B), its own close button, and
+  // the native File menu all route through onVisibilityChange so the persisted
+  // setting — and the segment's armed state — stay in step however it was
+  // flipped.
+  let guideBtn = null;
   const buildGuide = new BuildGuide(main, {
     deskDoc,
     netlist: netlistCache,
     // The exported BOM file is named after the current schematic (no ext).
     schemaName: () => fileName(currentFile).replace(/\.chiphippo$/i, ""),
     onVisibilityChange: (visible) => {
+      guideBtn?.classList.toggle("toolbar-btn--active", visible);
+      guideBtn?.setAttribute("aria-pressed", String(visible));
       bridge.settings
         .set({ guideOpen: visible })
         .catch((err) => console.error("[renderer] settings:set failed:", err));
     },
   });
   buildGuide.setVisible(settings.guideOpen === true);
-  // File ▸ Bill Of Materials… (⌘B) — pushed by the native File menu, and the
-  // toolbar's own file menu calls buildGuide.toggle() directly.
+  // File ▸ Bill Of Materials… (⌘B) — pushed by the native File menu; the
+  // toolbar's own BOM segment calls buildGuide.toggle() directly.
   window.addEventListener("chiphippo:build-guide", () => buildGuide.toggle());
 
   // Logic analyzer (Feature 210): a bottom-docked waveform panel that records
@@ -892,107 +898,88 @@ async function init() {
   }
 
   // Schematic file actions — a PILL just right of the Projects button, the same
-  // shape the desk tools use: one border around two borderless segments. The
-  // left is Save (the action reached most often, and the one with a cost to
-  // forgetting); the ▾ drops the whole file menu. Every item dispatches the
-  // SAME chiphippo:* event the native File menu pushes, so the two can't
-  // drift; only Open Recent is menu-only.
-  const fileSaveBtn = el("button", {
-    class: "toolbar-pill-btn",
-    type: "button",
-    title: `Save (${MOD_KEY}+S)`,
-    "aria-label": "Save",
+  // shape the desk tools use: one border around a row of borderless segments.
+  // Every file action is its own segment rather than a row hidden behind a ▾:
+  // they're peers, and a toolbar's job is to show what's available. Each is
+  // icon-only with the name + accelerator in its tooltip, so five of them cost
+  // about what the old Save + ▾ pair did. Every one dispatches the SAME
+  // chiphippo:* event the native File menu pushes, so the two can't drift —
+  // except Open Recent, which is toolbar-only and drops its own menu.
+  const fileBtn = ({ icon, label, title, haspopup = false, onClick }) => {
+    const btn = el("button", {
+      class: "toolbar-pill-btn toolbar-pill-btn--icon",
+      type: "button",
+      title,
+      "aria-label": label,
+      "aria-haspopup": haspopup ? "menu" : null,
+      onClick,
+    });
+    btn.innerHTML = icon;
+    return btn;
+  };
+
+  const fileNewBtn = fileBtn({
+    icon: NEW_SVG,
+    label: "New Desktop",
+    title: `New Desktop (${accel("N")}) — start over on an empty desk`,
+    onClick: () => newSchematic(),
+  });
+  const fileOpenBtn = fileBtn({
+    icon: LOAD_SVG,
+    label: "Open",
+    title: `Open… (${accel("O")}) — load a saved design`,
+    onClick: () => openSchematic(),
+  });
+  const fileRecentBtn = fileBtn({
+    icon: RECENT_SVG,
+    label: "Open Recent",
+    title: "Open Recent — reopen one of the last designs you saved or opened",
+    haspopup: true,
+    onClick: () => openRecentMenu(),
+  });
+  const fileSaveBtn = fileBtn({
+    icon: SAVE_SVG,
+    label: "Save",
+    title: `Save (${accel("S")}) — write the design back to its file`,
     onClick: () =>
       window.dispatchEvent(new CustomEvent("chiphippo:schematic-save")),
   });
-  const fileSaveIcon = el("span", {
-    class: "toolbar-btn-icon",
-    "aria-hidden": "true",
+  const fileSaveAsBtn = fileBtn({
+    icon: SAVE_AS_SVG,
+    label: "Save As",
+    title: `Save As… (${accel("S", true)}) — write the design to a new file`,
+    onClick: () => saveAsSchematic(),
   });
-  fileSaveIcon.innerHTML = SAVE_SVG;
-  fileSaveBtn.append(fileSaveIcon, el("span", { text: "Save" }));
-
-  const fileMenuBtn = el("button", {
-    class: "toolbar-pill-btn toolbar-pill-btn--icon toolbar-pill-btn--caret",
-    type: "button",
-    title: "File actions",
-    "aria-label": "File actions",
-    "aria-haspopup": "menu",
-    onClick: () => openFileMenu(),
-  });
-  fileMenuBtn.innerHTML = CARET_SVG;
   const filePill = el(
     "div",
-    {
-      class: "toolbar-pill toolbar-pill--file",
-      role: "group",
-      "aria-label": "File",
-    },
-    [fileSaveBtn, fileMenuBtn],
+    { class: "toolbar-pill", role: "group", "aria-label": "File" },
+    [fileNewBtn, fileOpenBtn, fileRecentBtn, fileSaveBtn, fileSaveAsBtn],
   );
 
-  /** The file menu: New / Open / Open Recent ▸ / Save / Save As / BOM. The
-      MRU list is fetched BEFORE the menu opens, so the submenu is plain
-      static items — no async menu. */
-  const openFileMenu = async () => {
+  /** The MRU list, dropped under the Open Recent segment — the one file action
+      that can't be a single button. Fetched BEFORE the menu opens, so the items
+      are plain and static; no async menu. */
+  const openRecentMenu = async () => {
     let recents = [];
     try {
       recents = (await bridge.desk.recent.list()) ?? [];
     } catch (err) {
       console.error("[renderer] desk:recent:list failed:", err);
     }
-    const rect = filePill.getBoundingClientRect();
+    const rect = fileRecentBtn.getBoundingClientRect();
     PopupManager.menu({
       x: rect.left,
       y: rect.bottom + 4,
-      items: [
-        {
-          label: "New Desktop",
-          icon: NEW_SVG,
-          accelerator: accel("N"),
-          onSelect: () => newSchematic(),
-        },
-        {
-          label: "Open…",
-          icon: LOAD_SVG,
-          accelerator: accel("O"),
-          onSelect: () => openSchematic(),
-        },
-        {
-          label: "Open Recent",
-          emptyLabel: "No recent files",
-          submenu: recents.map((filePath) => ({
-            label: fileName(filePath),
-            title: filePath,
-            onSelect: () => openRecentSchematic(filePath),
-            // The × drops the entry from the list without opening it (and
-            // without closing the menu).
-            onRemove: () => forgetRecent(filePath),
-            removeLabel: `Remove ${fileName(filePath)} from recent files`,
-          })),
-        },
-        { separator: true },
-        {
-          label: "Save",
-          icon: SAVE_SVG,
-          accelerator: accel("S"),
-          onSelect: () => saveSchematic(),
-        },
-        {
-          label: "Save As…",
-          accelerator: accel("S", true),
-          onSelect: () => saveAsSchematic(),
-        },
-        { separator: true },
-        {
-          // The right-docked build guide (BOM / wiring list / steps). Read-only,
-          // so it stays offered while the circuit runs.
-          label: "Bill Of Materials…",
-          icon: GUIDE_SVG,
-          accelerator: accel("B"),
-          onSelect: () => buildGuide.toggle(),
-        },
-      ],
+      emptyLabel: "No recent files",
+      items: recents.map((filePath) => ({
+        label: fileName(filePath),
+        title: filePath,
+        onSelect: () => openRecentSchematic(filePath),
+        // The × drops the entry from the list without opening it (and without
+        // closing the menu).
+        onRemove: () => forgetRecent(filePath),
+        removeLabel: `Remove ${fileName(filePath)} from recent files`,
+      })),
     });
   };
 
@@ -1179,6 +1166,24 @@ async function init() {
     updateLocateIcon();
   });
   toolPill.append(locateBtn);
+
+  // Bill of materials (⌘B), the pill's last segment: toggle the right-docked
+  // build guide — BOM, wiring list, assembly steps. It reads the desk rather
+  // than editing it, so like the analyzer it stays available while the circuit
+  // runs. Its armed state is set from buildGuide's onVisibilityChange, so the
+  // segment tracks the panel however it was closed (its own ×, the native File
+  // menu, or this button).
+  guideBtn = el("button", {
+    class: "toolbar-pill-btn toolbar-pill-btn--icon",
+    type: "button",
+    "aria-label": "Bill Of Materials",
+    title: `Bill Of Materials — parts list, wiring list, and assembly steps (${MOD_KEY}+B)`,
+    "aria-pressed": String(buildGuide.visible),
+    onClick: () => buildGuide.toggle(),
+  });
+  guideBtn.innerHTML = GUIDE_SVG;
+  guideBtn.classList.toggle("toolbar-btn--active", buildGuide.visible);
+  toolPill.append(guideBtn);
 
   // ── Simulation transport (Feature 90/100): Run/Stop, Pause, Step, speed ──
   const notifications = new NotificationStack(document.body);

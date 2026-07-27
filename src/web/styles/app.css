@@ -73,11 +73,6 @@
   letter-spacing: 0.01em;
 }
 
-.app-subtitle {
-  color: var(--color-subtext);
-  font-size: 12px;
-}
-
 /* Toolbar slot — desk tools mount here. Flexes to fill the header so the
    meta block stays pinned to the right edge. */
 .app-header-toolbar {
@@ -140,17 +135,11 @@
   cursor: default;
 }
 
-/* A leading icon inside a labelled toolbar segment (the File pill's New). */
-.toolbar-btn-icon {
-  display: inline-flex;
-  align-items: center;
-  color: var(--color-subtext);
-}
-
 /* ── Toolbar pill ─────────────────────────────────────────────────────────
    The toolbar's grouping shape, used by the desk tools (Wire / Bus / Fade /
-   Probe / Fit) and by File (New + the ▾ that drops the file menu). Whatever
-   it holds reads as ONE control: the PILL carries the only border and the
+   Probe / Fit) and by File (New / Open / Open Recent / Save / Save As / BOM).
+   Whatever it holds reads as ONE control: the PILL carries the only border and
+   the
    only background, and its segments are separated by spacing rather than by
    borders of their own. Each segment is still a plain button — only the
    chrome is shared. */
@@ -179,28 +168,13 @@
   cursor: pointer;
 }
 
-/* An icon-only segment (Fade / Probe / Analyzer / Fit, and File's ▾) is
-   square and de-emphasized. */
+/* An icon-only segment (Fade / Probe / Analyzer / Fit, and every File action)
+   is square and de-emphasized. */
 .toolbar-pill-btn--icon {
   justify-content: center;
   width: 24px;
   padding: 0;
   color: var(--color-subtext);
-}
-
-/* File is an ACTION PLUS ITS MENU, not a row of peer tools: the ▾ hugs the
-   label — no gap between the two segments, a narrower arrow, and the label
-   gives up its trailing padding — so the pill stays compact. */
-.toolbar-pill--file {
-  gap: 0;
-}
-
-.toolbar-pill--file .toolbar-pill-btn:first-child {
-  padding-right: var(--space-1);
-}
-
-.toolbar-pill-btn--caret {
-  width: 16px;
 }
 
 .toolbar-pill-btn:enabled:hover {
@@ -331,6 +305,15 @@
   border-radius: var(--radius-md);
   overflow-x: auto;
   scrollbar-width: thin;
+}
+
+/* The explicit display above would defeat the hidden attribute (project-tabs.js
+   hides the strip whenever no project is open) — restore it. Without this the
+   strip still lays out with no tabs in it: a 10 px pill of padding + border on
+   the desk's top-left corner, which both shows as a stray dark dot and, being
+   a real element at z-index 2, swallows clicks meant for the desk. */
+.project-tabs[hidden] {
+  display: none;
 }
 
 /* With the parts tray shut, its reopen flap sits on the desk's top-left corner
