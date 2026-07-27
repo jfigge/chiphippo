@@ -15,20 +15,27 @@
  */
 
 // project-tabs.js — the desktop tab strip (Feature 240): one tab per desktop
-// in the open project, sitting between the header and the desk. `Main` holds
-// the build; each `Sub-Desktop #N` is a bench beside it.
+// in the open project, sitting between the header and the desk. Every desktop
+// is the same — peers, not a build plus its benches — so every tab gets the
+// same menu, and any of them can be renamed or deleted.
 //
 // Pure chrome. It renders a tab list it is handed and reports intents to its
 // creator through constructor callbacks (the house rule for a parent-owned
-// widget) — it never touches the document, the store, or the controller. With
-// no project open it isn't in the DOM at all, so the app looks exactly as it
-// did before a project existed.
+// widget) — it never touches the document, the store, or the controller.
+//
+// THE STRIP IS ALWAYS THERE. With no project open the workspace hands it the
+// one `kind: "working"` tab standing for the desk you are on, so the "+" —
+// the only way to reach another desktop — is visible from the first launch
+// instead of hiding behind a project that has to exist first.
 //
 // Right-clicking a tab opens the BOARD menu's shape — Properties…, a rule,
 // Delete — rather than the part menu's three items. A part's leading Pin
 // Assignment is meaningless here (a desktop has no pins at all, not even a
 // disabled-today set), so it is dropped along with its separator, exactly as
-// a board's menu drops it. Main is the project, so its Delete is disabled.
+// a board's menu drops it. As everywhere else, an item that doesn't apply
+// stays PRESENT but disabled — and there is no per-tab branching left: the
+// only desktop that can't be deleted is the LAST one, whichever it is, and
+// the only one with nowhere to keep a name is the working desk (no project).
 
 import { el } from "../dom.js";
 import { PopupManager } from "../popup-manager.js";
@@ -64,9 +71,11 @@ export class ProjectTabs {
       class: "project-tabs",
       role: "tablist",
       "aria-label": "Desktops",
-      hidden: true,
     });
     container.append(this.#root);
+    // The "+" is the strip's whole reason for always being here, so it exists
+    // from construction — before the workspace has handed over any tabs.
+    this.#render();
   }
 
   /** The strip element (tests + layout). */
@@ -74,19 +83,14 @@ export class ProjectTabs {
     return this.#root;
   }
 
-  /** Whether the strip is currently showing (a project is open). */
-  get visible() {
-    return !this.#root.hidden;
-  }
-
   /**
-   * Show the tabs of the open project — or hide the strip entirely when there
-   * is none (`tabs` empty). `tabs` are `{ id, name, description?, kind }`.
+   * Show the desktops on the strip. `tabs` are `{ id, name, description?,
+   * kind }` — either the open project's, or the single synthetic `working`
+   * tab standing for the desk when no project is open.
    */
   setTabs(tabs, activeId) {
     this.#tabs = Array.isArray(tabs) ? tabs : [];
     this.#activeId = activeId ?? this.#tabs[0]?.id ?? null;
-    this.#root.hidden = this.#tabs.length === 0;
     this.#render();
   }
 
@@ -102,6 +106,11 @@ export class ProjectTabs {
     this.#render();
   }
 
+  /** A real project is open (rather than the lone synthetic working desk). */
+  get #hasProject() {
+    return this.#tabs.length > 0 && this.#tabs[0].kind !== "working";
+  }
+
   #render() {
     this.#root.replaceChildren(
       ...this.#tabs.map((tab) => this.#tabButton(tab)),
@@ -109,8 +118,10 @@ export class ProjectTabs {
         class: "project-tab-add",
         type: "button",
         text: "+",
-        title: "Add a sub-desktop",
-        "aria-label": "Add a sub-desktop",
+        title: this.#hasProject
+          ? "Add a desktop"
+          : "Add a desktop (creates a project around this desk)",
+        "aria-label": "Add a desktop",
         onClick: () => this.#onAdd?.(),
       }),
     );
@@ -160,13 +171,17 @@ export class ProjectTabs {
       items: [
         {
           label: "Properties…",
+          // The working desk has nowhere to keep a name or description —
+          // there is no project file yet — so the item stays but is inert.
+          disabled: tab.kind === "working",
           onSelect: () => this.#onProperties?.(tab.id),
         },
         { separator: true },
         {
-          label: "Delete Sub-Desktop",
+          label: "Delete Desktop",
           danger: true,
-          disabled: tab.kind === "main" || this.#locked,
+          // Every desktop is deletable; a project just can't run out of them.
+          disabled: this.#tabs.length <= 1 || this.#locked,
           onSelect: () => this.#onDelete?.(tab.id),
         },
       ],

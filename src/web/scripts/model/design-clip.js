@@ -18,7 +18,7 @@
 // everything seated on them, the desk bricks selected with them, and all the
 // wiring between them — captured as one rigid arrangement and re-stamped
 // somewhere else. That "somewhere else" is usually ANOTHER DESKTOP (a project
-// tab, Feature 240): work a reference design out on a sub-desktop, copy it,
+// tab, Feature 240): work a reference design out on one desktop, copy it,
 // and drop it into the main build.
 //
 // This is `paste-cluster.js` one level up. That module carries loose PARTS and

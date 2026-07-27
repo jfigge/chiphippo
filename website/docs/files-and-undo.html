@@ -77,6 +77,7 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
         <a class="doc-nav-link" href="build-guide.html">Build Guide, Wiring List &amp; BOM</a>
         <a class="doc-nav-link" href="schematic-view.html">Schematic View</a>
         <a class="doc-nav-link doc-nav-link--active" href="files-and-undo.html">Files, Autosave &amp; Undo</a>
+        <a class="doc-nav-link" href="projects-and-desktops.html">Projects &amp; Desktops</a>
         <a class="doc-nav-link" href="settings.html">Settings</a>
         <a class="doc-nav-link" href="keyboard-shortcuts.html">Keyboard Shortcuts</a>
     </nav>
@@ -142,11 +143,11 @@ damage) ever becomes an undo step of its own. Sequential state and clock
 phase vanish outright the next time you press <strong>Run</strong>. 12 V damage is the one
 exception that outlives the run: it&#39;s written into the document, so stopping
 — or even quitting and reopening — doesn&#39;t clear it, and there&#39;s no <code>Cmd+Z</code>
-back to before it happened. The only way to clear a damaged chip is the
-right-click <strong>Replace chip</strong> action (see
-<a href="power-and-clocks.html">Power &amp; Clock Sources</a>) — which, taken while stopped,
-is a normal edit and undoes/redoes like any other. What undo/redo restores is
-always the circuit you built, never a moment in its simulated behavior.</p>
+back to before it happened. The only way to clear a damaged chip is to delete
+it and place a fresh one (see <a href="power-and-clocks.html">Power &amp; Clock Sources</a>)
+— which, taken while stopped, is a normal edit and undoes/redoes like any
+other. What undo/redo restores is always the circuit you built, never a
+moment in its simulated behavior.</p>
 <h2 id="example-circuits">Example circuits</h2>
 <p>Chip Hippo&#39;s project repository ships a handful of ready-to-load example
 circuits as ordinary <code>.chiphippo</code> files — currently small W65C02-based

@@ -40,7 +40,12 @@
 // main's `closeAuxWindows` already exists for.
 //
 // What deliberately DOES cross: the controller's copy buffers. Carrying a
-// design from a sub-desktop into the main build is the whole feature.
+// design worked out on one desktop onto another is the whole feature.
+//
+// Every desktop is a PEER — there is no privileged main desk. Any of them can
+// be renamed or deleted; the only rule is that a project keeps at least one,
+// which the store enforces and the strip reflects by disabling Delete on the
+// last remaining tab.
 //
 // Saving follows the toolbar: New / Load / Save act on the ACTIVE TAB, whose
 // file lives in the project folder, so Save never prompts for a path. The
@@ -54,6 +59,21 @@ import { DeskDoc, emptyDocument } from "../model/desk-doc.js";
 
 /** The label a brand-new project's name dialog suggests nothing for. */
 const NAME_PLACEHOLDER = "e.g. 6502 SBC";
+
+/**
+ * The tab the strip shows when NO project is open: the working desk itself.
+ * The strip is always on screen (that is the only place the "+" lives), so it
+ * always has something to show — and this tab is honest about what the desk
+ * is, rather than pretending a project exists. Creating one adopts this very
+ * desk as its first desktop under this very name, so the tab reads the same
+ * before and after.
+ */
+const WORKING_TAB = Object.freeze({
+  id: "working",
+  name: "Desktop 1",
+  kind: "working",
+  description: "The desk you are on. Add a desktop to make it a project.",
+});
 
 /**
  * A document in the ONE canonical form the desk holds it in. A file — or an
@@ -74,6 +94,8 @@ export class ProjectWorkspace {
   #getCamera;
   #setCamera;
   #onActiveChange;
+  #isWorkingDirty;
+  #saveWorking;
   #project = null; // { id, name, tabs: [...], activeTab } | null
   #state = new Map(); // tabId → { doc, savedJson, history, camera }
 
@@ -121,6 +143,12 @@ export class ProjectWorkspace {
    * @param {object|null} [opts.boot] - the result of `ProjectWorkspace.boot`.
    * @param {(tab: object|null) => void} [opts.onActiveChange] - the active
    *   desktop (or the project) changed: re-title, re-baseline, re-render.
+   * @param {() => boolean} [opts.isWorkingDirty] - with no project open the
+   *   desk is the working document, whose baseline the shell owns; this is
+   *   how the working tab gets the same • marker a desktop's does.
+   * @param {() => Promise<boolean>} [opts.saveWorking] - and this is how it
+   *   can be SAVED before a project takes the screen from it (the shell owns
+   *   its file and its Save-As dialog; resolves false if it never landed).
    */
   constructor({
     bridge,
@@ -132,6 +160,8 @@ export class ProjectWorkspace {
     setCamera,
     boot = null,
     onActiveChange,
+    isWorkingDirty,
+    saveWorking,
   }) {
     this.#bridge = bridge;
     this.#deskDoc = deskDoc;
@@ -141,7 +171,10 @@ export class ProjectWorkspace {
     this.#getCamera = getCamera;
     this.#setCamera = setCamera;
     this.#onActiveChange = onActiveChange;
+    this.#isWorkingDirty = isWorkingDirty;
+    this.#saveWorking = saveWorking;
     if (boot?.project) this.#adopt(boot.project, boot.doc);
+    else this.#renderTabs(); // the working desk's own tab
     // The dirty marker is per desktop, so it re-derives on every edit — the
     // same whole-document comparison the window title has always made.
     window.addEventListener("chiphippo:doc-changed", () => this.refreshDirty());
@@ -159,6 +192,15 @@ export class ProjectWorkspace {
     return this.#project?.name ?? null;
   }
 
+  /**
+   * Is the open project the UNTITLED working one — never given a name, and so
+   * never one of the user's saved projects? This is the only thing Save
+   * Project… acts on, and the reason leaving is guarded.
+   */
+  get isUntitled() {
+    return this.#project?.untitled === true;
+  }
+
   /** The active tab record `{id, name, description?, kind, file}`, or null. */
   get activeTab() {
     if (!this.#project) return null;
@@ -174,6 +216,17 @@ export class ProjectWorkspace {
     return JSON.stringify(this.#deskDoc.toJSON()) !== state.savedJson;
   }
 
+  /**
+   * QUITTING (or closing the window): the same question changing projects
+   * asks, in the same three states — nothing unsaved goes without being
+   * offered a save. Main waits on the answer, so this always settles.
+   *
+   * @returns {Promise<boolean>} whether it is safe to go.
+   */
+  confirmClose() {
+    return this.#confirmLeaveProject({ quitting: true });
+  }
+
   /** Freeze the tab strip's destructive affordances while the circuit runs. */
   setEditingLocked(locked) {
     this.#tabsView?.setEditingLocked(locked);
@@ -181,7 +234,13 @@ export class ProjectWorkspace {
 
   /** Re-derive every tab's dirty marker (cheap enough: documents are small). */
   refreshDirty() {
-    if (!this.#project) return;
+    if (!this.#project) {
+      // No project: the one tab is the working desk, and its baseline is the
+      // shell's (desk.json vs the last-saved snapshot), not ours.
+      const dirty = this.#isWorkingDirty?.() ? [WORKING_TAB.id] : [];
+      this.#tabsView?.setDirty(dirty);
+      return;
+    }
     const dirty = [];
     for (const tab of this.#project.tabs) {
       const state = this.#state.get(tab.id);
@@ -198,68 +257,141 @@ export class ProjectWorkspace {
   // ── The Projects menu (the toolbar button) ──────────────────────────────
 
   /**
-   * The Projects menu: New / Load, then Add tab. With no project open, "Add
-   * tab" IS the create flow — it asks for a name first and lands you on a
-   * project with a Main desktop (adopting the desk you were already on) and
-   * one sub-desktop.
+   * The Projects menu: New / Load / Save, then Add Desktop. Nothing here asks
+   * for a name except Save Project… — a project is untitled until the user
+   * decides to keep it, so adding a desktop never stops to fill in a dialog.
    */
   openMenu({ x, y }) {
     PopupManager.menu({
       x,
       y,
       items: [
-        { label: "New Project…", onSelect: () => this.newProject() },
+        { label: "New Project", onSelect: () => this.newProject() },
         { label: "Load Project…", onSelect: () => this.loadProject() },
-        { separator: true },
         {
-          label: this.isOpen ? "Add tab" : "Add tab…",
-          onSelect: () => this.addTab(),
+          label: "Save Project…",
+          // A named project's own file is already kept up to date; there is
+          // nothing for Save to do but rename it, which is not what it means.
+          disabled: !this.isUntitled,
+          title: this.isOpen
+            ? this.isUntitled
+              ? "Give this project a name and keep it"
+              : "This project is saved — its desktops and tab list are kept up to date"
+            : "No project to save",
+          onSelect: () => this.saveProject(),
         },
+        { separator: true },
+        { label: "Add Desktop", onSelect: () => this.addTab() },
       ],
     });
   }
 
   // ── Project lifecycle ───────────────────────────────────────────────────
 
-  /** New Project…: name it, then create it around the desk you are on. */
+  /**
+   * New Project: a blank slate — a fresh UNTITLED project holding ONE new,
+   * empty desktop. No dialog: a name is asked for once, at Save Project…, and
+   * never before. Whatever was open is dealt with first (`#confirmLeaveProject`
+   * — saved, discarded, or the whole action cancelled).
+   */
   async newProject() {
     if (!(await this.#confirmLeaveProject())) return;
-    this.#askName(async (name) => {
-      const taken = (await this.#savedProjects()).find(
-        (p) => p.name.toLowerCase() === name.toLowerCase(),
-      );
-      if (taken) {
-        this.#offerExisting(taken, () => this.newProject());
-        return;
-      }
-      let project;
-      try {
-        project = await this.#bridge.project.create(
-          name,
-          this.#deskDoc.toJSON(),
-          { subCount: 1 },
-        );
-      } catch (err) {
-        // The store is the authority on uniqueness — two spellings of one name
-        // collide there even when the list check above let them through.
-        if (err?.message?.includes("already exists")) {
-          const existing = (await this.#savedProjects()).find(
-            (p) => p.name.toLowerCase() === name.toLowerCase(),
-          );
-          if (existing) {
-            this.#offerExisting(existing, () => this.newProject());
-            return;
-          }
-        }
-        this.#fail("Could not create the project", err);
-        return;
-      }
-      // The desk that became Main is already on screen, so adopt without
-      // reloading it — it IS the active document.
-      this.#adopt(project, this.#deskDoc.toJSON());
-      await this.#persistCurrent();
-      this.#announce();
+    const doc = emptyDocument();
+    let project;
+    try {
+      project = await this.#bridge.project.createUntitled(doc);
+    } catch (err) {
+      this.#fail("Could not start the project", err);
+      return;
+    }
+    await this.#swapProject(project, doc);
+  }
+
+  /**
+   * The "+" with no project open: start the untitled project AROUND the desk
+   * you are on, so nothing is discarded — it becomes that project's ONE
+   * desktop. A new project is always exactly one desk (the store cannot make
+   * it otherwise), so the desktop the "+" is asking for is added on top, by
+   * the ordinary `addTab` path that grows any other project.
+   */
+  async #startProjectAroundDesk() {
+    const doc = this.#deskDoc.toJSON();
+    let project;
+    try {
+      project = await this.#bridge.project.createUntitled(doc);
+    } catch (err) {
+      this.#fail("Could not start the project", err);
+      return;
+    }
+    // The desk is already on screen and IS that desktop, so adopt it without
+    // reloading anything.
+    this.#state.clear();
+    this.#adopt(project, doc);
+    await this.#persistCurrent();
+    this.#announce();
+  }
+
+  /** Put a just-opened/just-created project on the desk, from scratch. */
+  async #swapProject(project, doc) {
+    this.#sim?.stop?.();
+    await this.#closeAuxWindows();
+    this.#state.clear();
+    this.#adopt(project, doc);
+    this.#controller.loadDocument(doc, {
+      history: this.#state.get(project.activeTab).history,
     });
+    await this.#persistCurrent();
+    this.#announce();
+  }
+
+  /**
+   * Save Project…: the ONE moment a project needs a name. SAVES ALL OF IT —
+   * every desktop to its own file first (a project's changes are its
+   * desktops' changes), then the project itself. Naming is a move of the
+   * whole working folder, so no document changes desk and the tab ids — and
+   * every per-tab state this workspace holds — survive it untouched.
+   *
+   * @returns {Promise<boolean>} whether the project is now saved. A caller
+   *   doing this on the user's behalf before something destructive must
+   *   honour a `false`: the name dialog was cancelled, or a write failed, so
+   *   the work is still only here.
+   */
+  async saveProject() {
+    if (!this.isOpen) return false;
+    for (const tab of this.#project.tabs) {
+      if (!(await this.saveTab(tab.id))) return false;
+    }
+    // A project that already has a name is saved by the above: its tab list
+    // is written on every change, so there is nothing else to do.
+    if (!this.isUntitled) return true;
+    for (;;) {
+      const name = await this.#askName();
+      if (!name) return false; // cancelled
+      try {
+        const project = await this.#bridge.project.saveAs(
+          this.#project.id,
+          name,
+        );
+        this.#project = { ...project, activeTab: this.#project.activeTab };
+        await this.#persistCurrent();
+        this.#renderTabs();
+        this.#announce();
+        return true;
+      } catch (err) {
+        // The name is the identity, so a clash can't be merged into — ask for
+        // another one rather than offering to open the project that has it
+        // (which would throw away the work being saved).
+        if (err?.message?.includes("already exists")) {
+          await this.#notify(
+            `"${name}" is already a saved project`,
+            "Choose a different name.",
+          );
+          continue;
+        }
+        this.#fail("Could not save the project", err);
+        return false;
+      }
+    }
   }
 
   /** Load Project…: pick from the projects this app has saved. */
@@ -268,7 +400,9 @@ export class ProjectWorkspace {
     if (projects.length === 0) {
       PopupManager.notify({
         title: "No saved projects",
-        message: "Create one with Projects ▸ New Project…",
+        message:
+          "Add a desktop to start one, then keep it with Projects ▸ " +
+          "Save Project…",
       });
       return;
     }
@@ -306,25 +440,21 @@ export class ProjectWorkspace {
       this.#fail("Could not open the project", err);
       return;
     }
-    this.#sim?.stop?.();
-    await this.#closeAuxWindows();
-    this.#state.clear();
-    this.#adopt(project, doc);
-    this.#controller.loadDocument(doc, {
-      history: this.#state.get(active.id).history,
-    });
-    await this.#persistCurrent();
-    this.#announce();
+    await this.#swapProject(project, doc);
   }
 
   // ── Tabs ────────────────────────────────────────────────────────────────
 
-  /** Add a sub-desktop — or, with no project open, create the project first. */
+  /**
+   * Add a desktop. With no project open this quietly starts the UNTITLED
+   * working project around the desk you are on first — no dialog, no name:
+   * that is asked for once, if and when the user saves the project.
+   */
   async addTab() {
-    if (!this.#project) {
-      await this.newProject();
-      return;
-    }
+    // No project yet: one appears around the desk (holding it as its single
+    // desktop), and then the desktop actually asked for is added below.
+    if (!this.#project) await this.#startProjectAroundDesk();
+    if (!this.#project) return; // it could not be started
     let project;
     try {
       project = await this.#bridge.project.addTab(this.#project.id);
@@ -334,7 +464,7 @@ export class ProjectWorkspace {
     }
     const previous = this.#project.activeTab;
     this.#project = { ...project, activeTab: previous };
-    this.#tabsView?.setTabs(this.#project.tabs, previous);
+    this.#renderTabs();
     // Land on the new desktop — the point of adding one is to work on it.
     await this.selectTab(project.tabs[project.tabs.length - 1].id);
   }
@@ -362,7 +492,7 @@ export class ProjectWorkspace {
     this.#project.activeTab = id;
     this.#controller.loadDocument(state.doc, { history: state.history });
     if (state.camera) this.#setCamera?.(state.camera);
-    this.#tabsView?.setTabs(this.#project.tabs, id);
+    this.#renderTabs();
     await this.#saveMeta();
     this.#announce();
   }
@@ -407,19 +537,20 @@ export class ProjectWorkspace {
     } else {
       return;
     }
-    this.#tabsView?.setTabs(this.#project.tabs, this.#project.activeTab);
+    this.#renderTabs();
     await this.#saveMeta();
     this.#announce();
   }
 
   /**
-   * Delete a desktop. The Main tab is the project and can never go. A desktop
+   * Delete a desktop. Any of them can go, EXCEPT the last one — a project
+   * with no desktops has nothing to open (the store refuses it too). A desktop
    * with unsaved changes asks the three-way question first — cancel, save it,
    * or lose it — because the delete is the last chance to keep that work.
    */
   async deleteTab(id) {
     const tab = this.#project?.tabs.find((t) => t.id === id);
-    if (!tab || tab.kind === "main") return;
+    if (!tab || this.#project.tabs.length <= 1) return;
     const state = this.#state.get(id);
     const json =
       id === this.#project.activeTab
@@ -467,7 +598,7 @@ export class ProjectWorkspace {
       ...project,
       activeTab: wasActive ? project.activeTab : this.#project.activeTab,
     };
-    this.#tabsView?.setTabs(this.#project.tabs, this.#project.activeTab);
+    this.#renderTabs();
     if (wasActive) {
       // The desk still shows the deleted desktop — put the surviving active
       // one on it. selectTab short-circuits on "already active", so load here.
@@ -578,6 +709,20 @@ export class ProjectWorkspace {
     this.#announce();
   }
 
+  /**
+   * Push the current desktops onto the strip — the ONE place that decides
+   * what it shows. With a project open that is its tabs; without one it is
+   * the working desk's single tab, because the strip is always on screen and
+   * the "+" beside it is the only route to another desktop.
+   */
+  #renderTabs() {
+    if (!this.#project) {
+      this.#tabsView?.setTabs([WORKING_TAB], WORKING_TAB.id);
+      return;
+    }
+    this.#tabsView?.setTabs(this.#project.tabs, this.#project.activeTab);
+  }
+
   /** Take a loaded project as the open one, seeding its active tab's state. */
   #adopt(project, doc) {
     this.#project = project;
@@ -588,7 +733,7 @@ export class ProjectWorkspace {
       history: new HistoryStore(),
       camera: null,
     });
-    this.#tabsView?.setTabs(project.tabs, project.activeTab);
+    this.#renderTabs();
     this.refreshDirty();
   }
 
@@ -654,39 +799,117 @@ export class ProjectWorkspace {
     );
   }
 
-  /** Ask for a project name (non-empty; the store owns uniqueness). */
-  #askName(onName) {
-    PopupManager.prompt({
-      title: "New project",
-      message: "A project holds your main desk plus any sub-desktops.",
-      label: "Project name",
-      placeholder: NAME_PLACEHOLDER,
-      confirmLabel: "Create",
-      onConfirm: (name) => {
-        if (name) onName(name);
-      },
+  /**
+   * Ask for a project name (the store owns uniqueness).
+   * @returns {Promise<string|null>} null for every way of dismissing it, so a
+   *   caller waiting on the answer can never be left hanging.
+   */
+  #askName() {
+    return new Promise((resolve) => {
+      PopupManager.prompt({
+        title: "Save project",
+        message:
+          "Name this project to keep it. Its desktops are saved with it.",
+        label: "Project name",
+        placeholder: NAME_PLACEHOLDER,
+        confirmLabel: "Save",
+        onConfirm: (name) => resolve(name || null),
+        onCancel: () => resolve(null),
+      });
     });
   }
 
-  /** A name that is already saved: load that project, or pick another name. */
-  #offerExisting(project, retry) {
-    PopupManager.choose({
-      title: `"${project.name}" already exists`,
-      message: "Open the saved project, or choose a different name.",
-      choices: [
-        { label: "Open it", value: "open" },
-        { label: "Choose another name", value: "rename" },
-      ],
-      onChoose: (answer) => {
-        if (answer === "open") this.openProject(project.id);
-        else if (answer === "rename") retry();
-      },
+  /** A notice the caller waits on before carrying on. */
+  #notify(title, message) {
+    return new Promise((resolve) => {
+      PopupManager.notify({ title, message, onClose: resolve });
     });
   }
 
-  /** Guard leaving the open project with unsaved desktops behind. */
-  #confirmLeaveProject() {
-    if (!this.#project) return Promise.resolve(true);
+  /**
+   * CHANGING PROJECTS — or QUITTING: everything open must be saved,
+   * discarded, or the whole thing called off. Three different losses to
+   * catch, one per state:
+   *
+   * ① no project — the working desk itself has unsaved changes, and a project
+   *    is about to take the screen from it (or the window is going away).
+   * ② an UNTITLED project — it lives in the one working slot, so starting or
+   *    opening another overwrites it whether or not its desktops reached
+   *    their files. It was never named, so this is the last moment it can be
+   *    kept at all; "Save it first" names it AND writes every desktop.
+   * ③ a saved project with desktops whose work is only on the desk.
+   *
+   * Answering "save" and having it succeed lets the action GO AHEAD — the
+   * point is to change projects (or to quit), not to make the user ask twice.
+   *
+   * Only the WORDING differs between the two callers: what is at stake, and
+   * what happens next, are identical.
+   *
+   * @param {{quitting?: boolean}} [opts]
+   * @returns {Promise<boolean>} whether to proceed.
+   */
+  #confirmLeaveProject({ quitting = false } = {}) {
+    if (!this.#project) return this.#confirmLeaveWorkingDesk(quitting);
+    if (this.isUntitled) return this.#confirmSaveUntitled(quitting);
+    return this.#confirmSaveDirtyTabs();
+  }
+
+  /** ① The plain working desk, about to be replaced on screen by a project. */
+  #confirmLeaveWorkingDesk(quitting) {
+    if (!this.#isWorkingDirty?.()) return Promise.resolve(true);
+    return new Promise((resolve) => {
+      PopupManager.choose({
+        title: "The desk has unsaved changes",
+        message: quitting
+          ? "Quitting now loses them."
+          : "A project is about to take its place on screen.",
+        choices: [
+          // Only offered when the shell handed us its Save — it owns the
+          // working document's file, not this workspace.
+          this.#saveWorking && { label: "Save first", value: "save" },
+          { label: "Discard", value: "discard", class: "btn--danger" },
+        ].filter(Boolean),
+        onChoose: async (answer) => {
+          if (answer == null) return resolve(false);
+          // A save that never reached a file is a cancel, not a discard.
+          if (answer === "save" && !(await this.#saveWorking())) {
+            return resolve(false);
+          }
+          resolve(true);
+        },
+      });
+    });
+  }
+
+  /** ② The untitled project is about to be replaced: name it, or lose it. */
+  #confirmSaveUntitled(quitting) {
+    return new Promise((resolve) => {
+      PopupManager.choose({
+        title: "This project hasn't been saved",
+        message: quitting
+          ? "It has no name yet, so quitting discards it — desktops and all."
+          : "It has no name yet, so starting or opening another project " +
+            "discards it — desktops and all.",
+        choices: [
+          { label: "Save it first", value: "save" },
+          { label: "Discard", value: "discard", class: "btn--danger" },
+        ],
+        onChoose: async (answer) => {
+          if (answer == null) return resolve(false);
+          // saveProject asks for the name and writes every desktop; a
+          // cancelled dialog or a failed write means nothing was saved, so
+          // the project stays and the action that got here is called off.
+          if (answer === "save" && !(await this.saveProject())) {
+            return resolve(false);
+          }
+          resolve(true);
+        },
+      });
+    });
+  }
+
+  /** ③ Desktops whose work is only on the desk. */
+  #confirmSaveDirtyTabs() {
     const dirty = this.#project.tabs.filter((tab) => {
       const state = this.#state.get(tab.id);
       if (!state) return false;

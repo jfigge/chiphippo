@@ -307,15 +307,6 @@
   scrollbar-width: thin;
 }
 
-/* The explicit display above would defeat the hidden attribute (project-tabs.js
-   hides the strip whenever no project is open) — restore it. Without this the
-   strip still lays out with no tabs in it: a 10 px pill of padding + border on
-   the desk's top-left corner, which both shows as a stray dark dot and, being
-   a real element at z-index 2, swallows clicks meant for the desk. */
-.project-tabs[hidden] {
-  display: none;
-}
-
 /* With the parts tray shut, its reopen flap sits on the desk's top-left corner
    — exactly where the tabs start — so they step aside for it. */
 .app-main--tray-closed .project-tabs {

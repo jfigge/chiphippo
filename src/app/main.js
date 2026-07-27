@@ -881,6 +881,25 @@ function registerIpc() {
   // Read-only app / build metadata for the About dialog.
   ipcMain.handle("app:info:get", () => collectAppInfo());
 
+  // The renderer's answer to `app:confirm-close`: `true` to go ahead (it has
+  // saved or discarded whatever was unsaved), `false` to stay. Resuming is
+  // deferred to the next tick so this reply reaches the renderer before the
+  // teardown it triggers.
+  ipcMain.handle("app:close-reply", (_event, ok) => {
+    closePending = false;
+    if (!ok) {
+      quitRequested = false; // a cancelled quit is not a pending one
+      return false;
+    }
+    closeConfirmed = true;
+    const quitting = quitRequested;
+    setImmediate(() => {
+      if (quitting) app.quit();
+      else if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close();
+    });
+    return true;
+  });
+
   // App settings (Feature 10): the desk viewport + window bounds live here;
   // later stages add their own keys. Writes are atomic (store/io.js).
   ipcMain.handle("settings:get", () => getSettingsStore().get());
@@ -935,15 +954,20 @@ function registerIpc() {
     forgetFile(typeof filePath === "string" ? path.resolve(filePath) : ""),
   );
 
-  // Projects (Feature 240): a named workspace of several desktops, each tab
-  // its own `.chiphippo` inside userData/projects/<id>/. The renderer passes
-  // a project id and a tab id/file — never a path; the store alone resolves
-  // those into the projects root and refuses anything that escapes it.
+  // Projects (Feature 240): a workspace of several desktops, each tab its own
+  // `.chiphippo` inside userData/projects/<id>/. The renderer passes a project
+  // id and a tab id/file — never a path; the store alone resolves those into
+  // the projects root and refuses anything that escapes it.
   // `project:load` returns null for an unknown project (the session simply
   // falls back to the plain working desk), so it is not an error path.
+  // A project is UNNAMED until `project:save-as` — `create-untitled` takes no
+  // name at all, so adding a desktop never has to stop and ask for one.
   ipcMain.handle("project:list", () => getProjectStore().list());
-  ipcMain.handle("project:create", (_event, name, mainDoc, opts) =>
-    getProjectStore().create(name, mainDoc, opts ?? {}),
+  ipcMain.handle("project:create-untitled", (_event, firstDoc) =>
+    getProjectStore().createUntitled(firstDoc),
+  );
+  ipcMain.handle("project:save-as", (_event, id, name) =>
+    getProjectStore().saveAs(id, name),
   );
   ipcMain.handle("project:load", (_event, id) => getProjectStore().load(id));
   ipcMain.handle("project:save-meta", (_event, id, meta) =>
@@ -1139,6 +1163,17 @@ function createWindow() {
   win.loadFile(path.join(__dirname, "..", "web", "index.html")).catch(() => {});
 
   win.once("ready-to-show", () => win.show());
+
+  // Closing the window loses every desktop that is only in the renderer, so
+  // ask first (see the close/quit guard above). `before-quit` covers ⌘Q; this
+  // covers the window's own button, and on macOS the two are not the same
+  // event at all.
+  win.on("close", (event) => {
+    if (closeConfirmed || !canAskRenderer(win)) return;
+    event.preventDefault();
+    askBeforeClose(win);
+  });
+
   win.on("closed", () => {
     if (mainWindow === win) mainWindow = null;
     // Close the orphaned pinout/inspector windows so they don't outlive the
@@ -1155,6 +1190,42 @@ function createWindow() {
 
   mainWindow = win;
   return win;
+}
+
+// ─── Close / quit guard ───────────────────────────────────────────────────────
+// Main owns the lifecycle; the RENDERER owns the unsaved state and the dialog
+// that asks about it (`chiphippo:confirm-close` → `app:close-reply`). So a
+// close or a quit is prevented ONCE, the renderer is asked, and the answer
+// resumes or abandons it. Desktop documents are written deliberately (⌘S /
+// Save Project), never autosaved, so this is the only thing standing between
+// an unsaved desktop and the window going away.
+//
+// There is deliberately NO timeout on the answer: the user may sit on that
+// dialog for as long as they like, and an app that quits out from under a
+// question is worse than one that waits. If the renderer is gone or crashed
+// there is nobody to ask, so the close simply proceeds.
+
+/** The renderer has answered "yes, go" — the next close/quit is let through. */
+let closeConfirmed = false;
+
+/** A question is already out; a second close must not stack another dialog. */
+let closePending = false;
+
+/** The close came from a QUIT (⌘Q / menu), not from the window's own button. */
+let quitRequested = false;
+
+/** Is there a live renderer to put the question to? */
+function canAskRenderer(win) {
+  return Boolean(
+    win && !win.isDestroyed() && win.webContents && !win.webContents.isDestroyed(), // prettier-ignore
+  );
+}
+
+/** Put the question to the renderer (once). */
+function askBeforeClose(win) {
+  if (closePending) return;
+  closePending = true;
+  win.webContents.send("app:confirm-close");
 }
 
 /** Show and focus the window (the single-instance / dock-activate path). */
@@ -1200,6 +1271,16 @@ function bootstrap() {
       // macOS: clicking the dock re-shows (or recreates) the window.
       showWindow();
     });
+  });
+
+  // ⌘Q / Quit. Prevented BEFORE any window starts closing, so answering "no"
+  // leaves the app exactly as it was rather than half torn down (the auxiliary
+  // windows close in the same sequence).
+  app.on("before-quit", (event) => {
+    if (closeConfirmed || !canAskRenderer(mainWindow)) return;
+    event.preventDefault();
+    quitRequested = true;
+    askBeforeClose(mainWindow);
   });
 
   // Chip Hippo is a foreground document app: closing the last window quits

@@ -106,10 +106,11 @@ relays context + live byte writes across the main↔inspector window boundary;
 and the **user guide** (230) — one Markdown source (`src/web/docs/*.md`)
 driving the in-app Help ▸ *Chip Hippo User Guide* window, the hosted website
 (`make docs`), and a PDF (`make pdf`); see the "User guide & docs" section
-below; and **projects & tabbed sub-desktops** (240) — a named project of
-several desktops as tabs (`Main` + `Sub-Desktop #N`), the document swapped in
-place per tab, plus the whole-design clip that carries a sub-assembly from one
-desktop onto another (see the "Projects & tabbed sub-desktops" section below).
+below; and **projects & tabbed desktops** (240) — a named project of several
+PEER desktops as tabs (`Desktop N`; no privileged main desk), the document
+swapped in place per tab, plus the whole-design clip that carries a
+sub-assembly from one desktop onto another (see the "Projects & tabbed
+desktops" section below).
 When a stage is finished, move its plan file into `features/done/`.
 
 ## Naming & identity
@@ -414,7 +415,7 @@ Electron main process (src/app/main.js)
   when stopped** for a ROM (Save writes its file) and a **read-only live viewer**
   for SRAM + any running chip (it mirrors the engine-owned image, never writes
   it). Intel HEX ⇄ bytes is the pure `model/hex-format.js`.
-- **Projects & tabbed sub-desktops** (`app/store/project-store.js` +
+- **Projects & tabbed desktops** (`app/store/project-store.js` +
   `components/project-workspace.js` + `components/project-tabs.js` +
   `model/design-clip.js`, Feature 240). **A TAB IS A DOCUMENT, NOT A SECOND
   DESK**: there is still exactly one `DeskView` / `DeskController` /
@@ -427,27 +428,74 @@ Electron main process (src/app/main.js)
   the document, the camera, the saved baseline (the • dirty marker), and its
   own `HistoryStore` — so ⌘Z after switching back undoes THAT desk's last
   edit. A switch stops the sim and closes the aux windows (`c3` on Main is a
-  different chip from `c3` on a sub-desktop); the controller's copy buffers
+  different chip from `c3` on another desktop); the controller's copy buffers
   deliberately survive it, which is what makes a cross-desktop paste work. A
   **project** is an app-managed FOLDER (`userData/projects/<slug>/` —
   `project.json` tab list + one `.chiphippo` per tab), because the "name must
   be unique" rule only means something against a directory the app owns; all
   its I/O is main-side behind `project:*`, and the store alone turns a name /
-  tab id into a path inside the projects root. Tab documents follow the MANUAL
+  tab id into a path inside the projects root. **A PROJECT IS NOT NAMED UNTIL
+  IT IS SAVED**: adding a desktop must never stop to ask, so a project starts
+  in the ONE reserved working folder (`__working/`, name `Untitled`, meta flag
+  `untitled` — an underscore never survives `slugify`, so no typed name can
+  collide with it, and `list()` skips it exactly as the recent-files list skips
+  `desk.json`). `Projects ▸ Save Project…` is the single place a name is asked
+  for: `saveAs(slug, name)` checks uniqueness and MOVES the folder to its slug,
+  so tab ids — and every per-tab state the workspace holds — survive it. There
+  is one working slot, so `createUntitled` replaces it. A name already taken
+  re-asks rather than offering to open that project — the work being saved
+  would be thrown away. **CHANGING PROJECTS** (New / Load) runs everything
+  through `#confirmLeaveProject`, which has one branch per state and, on
+  "save", LETS THE ACTION GO AHEAD (the user is not made to ask twice):
+  no project → the working desk's own dirt, saved through the shell's
+  `saveWorking` callback (app.js hands over `saveSchematic`, which owns the
+  Save-As dialog); untitled → save (`saveProject` names it AND writes every
+  desktop) / discard / cancel, asked whether or not the desktops are dirty;
+  named → the dirty-desktop question. Every one of them resolves `false` for a
+  cancel, and a save that never landed IS a cancel. `saveProject` therefore
+  returns a `Promise<boolean>` and `#askName`/`#notify` are promise-wrapped —
+  PopupManager fires its callbacks on EVERY dismissal path, mask click
+  included, so an awaiting caller can't hang. **A NEW PROJECT IS ALWAYS
+  EXACTLY ONE DESKTOP**, numbering started over at 1 — `createUntitled(doc)`
+  takes no count, so nothing can ask for more, and a project only ever grows
+  through `addTab`. New Project is a blank slate (that one desktop empty, the
+  desk reloaded through `#swapProject`); the "+" with no project open starts
+  the project AROUND the desk you are on (`#startProjectAroundDesk` — it
+  becomes that single desktop, so nothing is discarded) and then falls through
+  to the ordinary `addTab`, so "+" adds exactly one desktop and lands you on
+  it, as it does everywhere else. Load Project…
+  shows the picker BEFORE the guard, so backing out of the list costs
+  nothing. Tab documents follow the MANUAL
   save model (the toolbar's New / Load / Save act on the active tab, silently,
   since a tab owns its path); the project FILE autosaves whenever the tab set,
-  names/descriptions, or active tab change. A tab's context menu is the
-  **board's** two-item shape — Properties… · rule · Delete Sub-Desktop — NOT
-  the part menu's three: a desktop has no pins at all, so the leading Pin
-  Assignment and its separator are gone (`project-tabs.js`). Properties…
+  names/descriptions, or active tab change. **EVERY DESKTOP IS A PEER**: v1's
+  `kind: "main"|"sub"` split is gone (`PROJECT_VERSION` 2 — `_normalize` drops
+  the kinds and carries `nextSubIndex` forward as `nextIndex` when an old
+  `project.json` is read, leaving the user's own tab NAMES and files alone).
+  Any desktop can be renamed or deleted; the ONE rule is that a project keeps
+  at least one, enforced in `removeTab` and mirrored by the strip disabling
+  Delete on the last remaining tab. So there is no per-tab branching left
+  anywhere — one menu, one code path. A tab's context menu is the **board's**
+  two-item shape — Properties… · rule · Delete Desktop — NOT the part menu's
+  three: a desktop has no pins at all, so the leading Pin Assignment and its
+  separator are gone (`project-tabs.js`). Properties…
   opens the app-wide `PartPropertiesDialog`, so a desktop carries the same
   universal **Name/Description** pair every part, board, and wire does (the
   description shows in the tab's tooltip — its only room on the strip). Both
   ride the existing `project:save-meta`: `ProjectWorkspace#setTabProperty`
   applies each field live, and the store's per-tab whitelist takes exactly
   `name` + `description` (omit-when-empty, `file`/`kind` still re-derived from
-  disk). With no project open nothing changes — no tab
-  strip, the working `desk.json`, today's New/Open/Save. The **design clip**
+  disk). **The strip is ALWAYS on screen**, project or not: with none open
+  the workspace hands it the one synthetic `kind: "working"` tab standing for
+  the desk you are on (named `Desktop 1`, since New Project adopts that very
+  desk under that name), carrying the working file's own • marker via the
+  shell's `isWorkingDirty`. Its menu keeps the same two items with both
+  disabled — the working desk has no project file to keep a name in, and it is
+  the only desktop there is (the same last-one rule, not a special case). That
+  is the whole point: the `+` beside it, the only route to another desktop,
+  can't hide behind a project that has to exist first.
+  Everything else with no project open is unchanged — the working
+  `desk.json`, today's New/Open/Save. The **design clip**
   (`model/design-clip.js`, pure) is `paste-cluster.js` one level up: it carries
   the BOARDS too (plus everything seated on them, selected desk bricks, every
   wire with BOTH ends inside, and the buses / net names / anchored labels

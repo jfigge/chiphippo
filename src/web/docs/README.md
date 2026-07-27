@@ -71,7 +71,7 @@ breadboards, powered at 3 V / 5 V / 12 V, and watched settle live.
   guide and bill of materials.
 - [Files, Autosave & Undo](files-and-undo.md) — the working document, saved
   files, and undo/redo.
-- [Projects & Sub-Desktops](projects-and-desktops.md) — tabbed desktops, and
+- [Projects & Desktops](projects-and-desktops.md) — tabbed desktops, and
   copying a design from one onto another.
 - [Settings](settings.md) — the settings dialog and its options.
 - [Keyboard Shortcuts](keyboard-shortcuts.md) — every shortcut in one place.

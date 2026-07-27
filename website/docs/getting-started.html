@@ -77,6 +77,7 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
         <a class="doc-nav-link" href="build-guide.html">Build Guide, Wiring List &amp; BOM</a>
         <a class="doc-nav-link" href="schematic-view.html">Schematic View</a>
         <a class="doc-nav-link" href="files-and-undo.html">Files, Autosave &amp; Undo</a>
+        <a class="doc-nav-link" href="projects-and-desktops.html">Projects &amp; Desktops</a>
         <a class="doc-nav-link" href="settings.html">Settings</a>
         <a class="doc-nav-link" href="keyboard-shortcuts.html">Keyboard Shortcuts</a>
     </nav>
@@ -92,13 +93,17 @@ circuit afterward.</p>
 from source, <code>make debug</code>). Chip Hippo opens on an <strong>infinitely pannable,
 zoomable desk</strong> — drag to pan, scroll or pinch to zoom, and the header&#39;s
 zoom controls (bottom-right of the desk) reset or step the view. The first
-time you launch, the desk is empty and shows a hint: <em>&quot;Open Parts and add a
-breadboard to get started.&quot;</em></p>
+time you launch, the desk is empty and shows a hint: <em>&quot;Open the parts tray and
+add a breadboard to get started.&quot;</em></p>
 <h2 id="open-the-parts-palette">Open the parts palette</h2>
-<p>Click <strong>Parts</strong> in the header toolbar (or press <code>Ctrl+P</code> / <code>⌘P</code>) to open the
-palette panel on the left. At the top is the <strong>board selector</strong> (Full / Half
-/ Tiny breadboards, plus loose strips); below that, chips and components
-grouped by function, with a filter box to search by name.</p>
+<p>The palette is a tray docked to the left of the desk, and it carries its own
+open/close control rather than a toolbar button. When it is shut, a small
+chevron flap sits against the desk&#39;s left edge — click it (or press <code>Ctrl+P</code> /
+<code>⌘P</code>) to slide the tray out. The matching chevron in the tray&#39;s top-right
+corner shuts it again, back to nothing.</p>
+<p>At the top of the tray is the <strong>board selector</strong> (Full / Half / Tiny
+breadboards, plus loose strips); below that, chips and components grouped by
+function, with a filter box to search by name.</p>
 <h2 id="add-a-breadboard">Add a breadboard</h2>
 <p>In the palette&#39;s <strong>BOARDS</strong> section, click <strong>Full-size</strong> (830 tie points) —
 the default recommendation for a first circuit; it has the most room and
@@ -114,17 +119,20 @@ palette any time to add more.</p>
 desk space near the breadboard to place it. A PSU brick isn&#39;t seated on the
 board; it&#39;s a free-standing part with two wireable terminals, <strong>+</strong> and
 <strong>−</strong>.</p>
-<p>Right-click the placed PSU to open its context menu and confirm it&#39;s set to
-<strong>5 V</strong> (new PSUs default to 5 V, but 3 V and 12 V are also on the menu — 12 V
-is enough to damage a chip, so save it for parts rated to take it). The same
-menu removes the PSU if you want to start over.</p>
+<p>Right-click the placed PSU and choose <strong>Properties…</strong> to confirm it&#39;s set to
+<strong>5 V</strong> (new PSUs default to 5 V, but 3 V and 12 V are also there — 12 V is
+enough to damage a chip, so save it for parts rated to take it). <strong>Delete
+Component</strong>, further down the same context menu, removes the PSU if you want
+to start over.</p>
 <h2 id="add-an-led">Add an LED</h2>
 <p>Back in the palette, open <strong>COMPONENTS ▸ LEDs</strong> and click <strong>LED</strong>. A small
-color swatch popover appears first — pick red (or any color) to arm
-placement. Move the ghost over a free row of breadboard holes and click to
-seat it — an LED&#39;s two legs land in adjacent holes on the same row, anode
-first. (Press <code>F</code> while the ghost is in hand to flip which leg is the anode,
-or <code>R</code> to stand it up on two free ends instead of a footprint row.)</p>
+LED ghost follows your cursor, already colored with your &quot;Default LED color&quot;
+setting (Settings ▸ Appearance — red out of the box). Move it over a free row
+of breadboard holes and click to seat it — an LED&#39;s two legs land in
+adjacent holes on the same row, anode first. (Press <code>F</code> while the ghost is in
+hand to flip which leg is the anode, or <code>R</code> to stand it up on two free ends
+instead of a footprint row.) To change an LED&#39;s color afterward, right-click
+it and choose <strong>Properties…</strong>.</p>
 <p>Chip Hippo&#39;s LED is idealized — no series resistor is required to protect it,
 so you can wire it straight to a supply.</p>
 <h2 id="wire-it-up">Wire it up</h2>

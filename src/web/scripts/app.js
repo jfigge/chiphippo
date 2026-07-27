@@ -641,6 +641,26 @@ async function init() {
   window.addEventListener("chiphippo:schematic-save", saveSchematic);
   window.addEventListener("chiphippo:schematic-save-as", saveAsSchematic);
 
+  // ── Closing the window / quitting ────────────────────────────────────────
+  // Main prevents the close and asks HERE, because the unsaved state and the
+  // dialog that deals with it both live in the renderer. Desktops are written
+  // deliberately, never autosaved, so without this a • on a tab dies with the
+  // window. It must reply EXACTLY once, whatever happens: main waits for the
+  // answer with no timeout (the user is entitled to think about it), so a
+  // guard that threw would leave an app that cannot be quit — hence letting
+  // the close proceed on an error rather than blocking it.
+  window.addEventListener("chiphippo:confirm-close", async () => {
+    let ok = true;
+    try {
+      ok = workspace ? await workspace.confirmClose() : await confirmDiscard();
+    } catch (err) {
+      console.error("[renderer] close guard failed:", err);
+    }
+    bridge.closeReply(ok).catch((err) => {
+      console.error("[renderer] app:close-reply failed:", err);
+    });
+  });
+
   let zoomControl = null;
   let hud = null;
   let controller = null;
@@ -680,9 +700,10 @@ async function init() {
   // tabs start where the desk does rather than spanning the palette too.
   const stage = el("div", { class: "app-stage" });
   main.append(stage);
-  // The tab strip leads the stage (append order IS the layout) and stays
-  // hidden until a project is open. Its callbacks reach the workspace built
-  // further below.
+  // The tab strip leads the stage (append order IS the layout) and is ALWAYS
+  // showing — with no project open it carries the working desk's own tab, so
+  // the "+" that adds another desktop is never hidden behind a project that
+  // has to be created first. Its callbacks reach the workspace built below.
   const projectTabs = new ProjectTabs(stage, {
     onSelect: (id) => workspace?.selectTab(id),
     onAdd: () => workspace?.addTab(),
@@ -983,15 +1004,15 @@ async function init() {
     });
   };
 
-  // Projects (Feature 240): New / Load a project of desktops, or add a
-  // sub-desktop tab. The menu itself lives on the workspace — it is the only
+  // Projects (Feature 240): New / Load a project of desktops, or add another
+  // desktop to it. The menu itself lives on the workspace — it is the only
   // thing that knows whether a project is open.
   const projectsBtn = el("button", {
     class: "toolbar-icon-btn",
     type: "button",
     "aria-label": "Projects",
     "aria-haspopup": "menu",
-    title: "Projects — work a design out on a sub-desktop beside the main one",
+    title: "Projects — work a design out on one desktop, use it on another",
     onClick: () => {
       const rect = projectsBtn.getBoundingClientRect();
       workspace?.openMenu({ x: rect.left, y: rect.bottom + 4 });
@@ -1269,7 +1290,7 @@ async function init() {
     onTransportChange,
   });
 
-  // Projects & tabbed sub-desktops (Feature 240): owns which desktop is on the
+  // Projects & tabbed desktops (Feature 240): owns which desktop is on the
   // desk, swapping the document (and its camera, baseline, and undo history)
   // through the controller's load path. Built here because it needs the sim to
   // stop across a switch.
@@ -1283,6 +1304,13 @@ async function init() {
     setCamera: (camera) => deskView.setCamera(camera),
     boot: projectBoot,
     onActiveChange: () => updateTitle(),
+    // With no project open the strip still shows the working desk, and its
+    // dirty marker is the working file's — the same test the title makes.
+    isWorkingDirty: () => isDirty(),
+    // …and starting a project takes the screen from that desk, so the guard
+    // can offer to save it first. Save owns the Save-As dialog when the desk
+    // has no file yet, and reports whether it actually landed.
+    saveWorking: () => saveSchematic(),
   });
   updateTitle(); // the boot-restored project names the window
 

@@ -77,6 +77,7 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
         <a class="doc-nav-link" href="build-guide.html">Build Guide, Wiring List &amp; BOM</a>
         <a class="doc-nav-link" href="schematic-view.html">Schematic View</a>
         <a class="doc-nav-link" href="files-and-undo.html">Files, Autosave &amp; Undo</a>
+        <a class="doc-nav-link" href="projects-and-desktops.html">Projects &amp; Desktops</a>
         <a class="doc-nav-link" href="settings.html">Settings</a>
         <a class="doc-nav-link" href="keyboard-shortcuts.html">Keyboard Shortcuts</a>
     </nav>
@@ -120,8 +121,8 @@ on a breadboard. Any write a chip reports during simulation is silently
 dropped if the chip is non-volatile.</p>
 <p>The only way to put data into a ROM is the <strong>external programmer</strong>:</p>
 <ol>
-<li>Right-click the chip on the desk.</li>
-<li>Choose <strong>Load image… (program)</strong>.</li>
+<li>Right-click the chip on the desk and choose <strong>Properties…</strong>.</li>
+<li>Click <strong>Load image… (program)</strong>.</li>
 <li>Pick a <code>.bin</code> (raw bytes) or <code>.hex</code> (Intel HEX) file.</li>
 </ol>
 <p>The image is copied to the start of the chip&#39;s memory. If the file is
@@ -134,7 +135,7 @@ keeps its new contents the next time you open the document or press Run.</p>
 simulation is stopped) — see <a href="simulation.html">Running a Simulation</a>.</p>
 <h2 id="the-memory-inspector">The memory inspector</h2>
 <p>Every memory chip — SRAM or ROM alike — has a floating <strong>inspector</strong>
-window: double-click the chip on the desk, or right-click it and choose
+window: right-click it on the desk, choose <strong>Properties…</strong>, then
 <strong>Inspect memory…</strong>. It&#39;s a hex/ASCII grid, one row per 16 bytes, with a
 toolbar for <strong>Go to</strong> (jump to an address), <strong>Fill</strong> (write a byte value
 across a start/end range), <strong>Save</strong>, and Import/Export.</p>

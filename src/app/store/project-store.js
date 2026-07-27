@@ -16,14 +16,29 @@
 
 /**
  * project-store.js — projects: a NAMED workspace of several desktops
- * (Feature 240). The main desk is one tab; each sub-desktop is another, so a
- * reference design can be worked out beside the build and pasted into it.
+ * (Feature 240), so a reference design can be worked out beside the build and
+ * pasted into it.
+ *
+ * EVERY DESKTOP IS THE SAME. There is no privileged "main" desk and no
+ * lesser "sub-desktop": a project is simply N peers, any of which can be
+ * renamed, worked on, or deleted. The ONE rule is that a project must keep at
+ * least one — deleting the last desktop would leave a project with nothing to
+ * open, so `removeTab` refuses it (v2; see `_normalize`).
  *
  * A project is an app-managed FOLDER, not a loose set of paths:
  *
- *     userData/projects/<slug>/project.json     the tab list (below)
- *     userData/projects/<slug>/main.chiphippo   one document per tab
- *     userData/projects/<slug>/sub-1.chiphippo
+ *     userData/projects/<slug>/project.json        the tab list (below)
+ *     userData/projects/<slug>/desktop-1.chiphippo one document per tab
+ *     userData/projects/<slug>/desktop-2.chiphippo
+ *
+ * A PROJECT IS NOT NAMED UNTIL IT IS SAVED. Adding a desktop must never stop
+ * to ask for a name, so a project starts life UNTITLED in the one reserved
+ * working folder — `userData/projects/__working/`, which is to a project
+ * exactly what `desk.json` is to a schematic: the always-there working set,
+ * not one of the user's saved things. `list()` never reports it, and
+ * `saveAs(slug, name)` is the moment it becomes a real project: the name is
+ * checked for uniqueness and the folder is MOVED to its slug, documents and
+ * all. There is only ever one working project — starting another replaces it.
  *
  * The NAME is the identity — "must not match an existing saved project" only
  * means something against a directory the app owns, which is exactly why
@@ -36,8 +51,8 @@
  * DeskStore, so a tab file opens as a normal schematic and a normal schematic
  * loads into a tab. The tab LIST is this module's own small file:
  *
- *     { version, name, activeTab, nextSubIndex,
- *       tabs: [ { id, name, description?, kind: "main"|"sub", file } ] }
+ *     { version, name, activeTab, nextIndex,
+ *       tabs: [ { id, name, description?, file } ] }
  *
  * A tab's `description` is the second half of the Name/Description pair every
  * object in the app carries, and is optional in the same omit-when-empty way.
@@ -49,8 +64,11 @@ const path = require("path");
 const io = require("./io");
 const { defaultDeskDocument } = require("./migrations");
 
-/** Schema version of `project.json` (bump with a migration, as desk docs do). */
-const PROJECT_VERSION = 1;
+/**
+ * Schema version of `project.json` (bump with a migration, as desk docs do).
+ * v2 dropped the `kind: "main"|"sub"` split — see `_normalize`.
+ */
+const PROJECT_VERSION = 2;
 
 /** The file every project's tab list lives in. */
 const PROJECT_FILE = "project.json";
@@ -60,6 +78,16 @@ const TAB_EXT = ".chiphippo";
 
 /** How long a project name may be (a folder name has to stay sane). */
 const MAX_NAME = 64;
+
+/**
+ * The one UNNAMED project's folder. An underscore never survives `slugify`,
+ * so no name a user can type will ever resolve to this slug — the working
+ * project can't be collided with, listed, or opened by name.
+ */
+const WORKING_SLUG = "__working";
+
+/** What an unsaved project is called until the user names it. */
+const WORKING_NAME = "Untitled";
 
 function taggedError(message, code) {
   const err = new Error(message);
@@ -119,7 +147,8 @@ class ProjectStore {
    * place a name becomes a path, so this is the one gate that has to hold.
    */
   _dirFor(slug) {
-    if (typeof slug !== "string" || !slug || slug !== slugify(slug)) {
+    const known = slug === WORKING_SLUG || slug === slugify(slug);
+    if (typeof slug !== "string" || !slug || !known) {
       throw taggedError(`bad project id: ${slug}`, "INVALID_ARG");
     }
     const dir = path.resolve(this._root, slug);
@@ -162,6 +191,9 @@ class ProjectStore {
     const out = [];
     for (const entry of entries) {
       if (!entry.isDirectory()) continue;
+      // The working project is not one of the user's saved projects, any more
+      // than desk.json is one of their files.
+      if (entry.name === WORKING_SLUG) continue;
       const meta = io.readJSON(path.join(this._root, entry.name, PROJECT_FILE));
       if (!meta) continue; // not a project folder (or a corrupt file, quarantined)
       out.push({
@@ -180,63 +212,131 @@ class ProjectStore {
   }
 
   /**
-   * Create a project. The Main tab adopts `mainDoc` — the desk the user is
-   * looking at right now, so making a project never discards their work — and
-   * `subCount` sub-desktops start empty.
+   * Start the UNTITLED working project — what New Project does, and what
+   * adding a desktop with no project open does, WITHOUT stopping to ask for a
+   * name.
    *
-   * Throws NAME_TAKEN when the name is already a saved project: the caller
-   * offers to load that one instead rather than silently merging into it.
+   * A NEW PROJECT IS ALWAYS EXACTLY ONE DESKTOP, whose document is `firstDoc`
+   * (normally the desk the user is looking at right now, so this never
+   * discards their work). There is no way to ask for more: a project grows
+   * one desktop at a time through `addTab`, so "new" can only ever mean a
+   * single desk, its numbering starting over at 1.
    *
-   * @param {string} name
-   * @param {object|null} mainDoc - the document for the Main tab.
-   * @param {{subCount?: number}} [opts]
-   * @returns {object} the project meta (as `load` returns it).
+   * There is exactly one working slot, so this REPLACES whatever was in it —
+   * the same thing New does to `desk.json`. Callers guard the work first.
+   *
+   * @param {object|null} firstDoc - the document for that one desktop.
+   * @returns {object} the project meta (as `load` returns it), `untitled` set.
    */
-  create(name, mainDoc = null, { subCount = 1 } = {}) {
-    const clean = checkName(name);
-    const slug = slugify(clean);
-    if (this.exists(clean)) {
-      throw taggedError(`a project named "${clean}" already exists`, "NAME_TAKEN"); // prettier-ignore
-    }
-    const dir = this._dirFor(slug);
+  createUntitled(firstDoc = null) {
+    const dir = this._dirFor(WORKING_SLUG);
+    fs.rmSync(dir, { recursive: true, force: true });
     io.ensureDir(dir);
     const meta = {
       version: PROJECT_VERSION,
-      name: clean,
-      activeTab: "t1",
-      nextSubIndex: 1,
-      tabs: [{ id: "t1", name: "Main", kind: "main", file: `main${TAB_EXT}` }],
+      name: WORKING_NAME,
+      untitled: true,
+      activeTab: null,
+      nextIndex: 1,
+      tabs: [],
     };
-    this._desk.writeFile(
-      path.join(dir, `main${TAB_EXT}`),
-      mainDoc ?? defaultDeskDocument(),
-    );
-    for (let i = 0; i < Math.max(0, subCount); i += 1)
-      this._appendSub(meta, dir);
+    const only = this._appendTab(meta, dir, firstDoc ?? defaultDeskDocument());
+    meta.activeTab = only.id;
     io.writeJSON(path.join(dir, PROJECT_FILE), meta);
-    return { id: slug, ...meta };
+    return { id: WORKING_SLUG, ...meta };
   }
 
   /**
-   * Append one sub-desktop to `meta` (in memory) and write its empty document.
-   * The visible number comes from `nextSubIndex`, which only ever counts up —
-   * deleting "Sub-Desktop #2" never makes the next one #2 again, so a name in a
-   * note or a screenshot keeps meaning the same desk.
+   * NAME a project — the moment an untitled one becomes the user's, and the
+   * only place a name is ever required. The whole folder MOVES to the new
+   * slug (documents and all), so nothing is copied and nothing can be left
+   * behind half-saved.
+   *
+   * Throws NAME_TAKEN when the name is already a saved project: the caller
+   * asks for a different one rather than merging into it — there is work on
+   * this desk that opening the other project would throw away.
+   *
+   * @param {string} slug - the project to name (normally the working one).
+   * @param {string} name
+   * @returns {object} the meta, under its NEW id.
    */
-  _appendSub(meta, dir) {
-    const index = meta.nextSubIndex;
-    meta.nextSubIndex = index + 1;
+  saveAs(slug, name) {
+    const clean = checkName(name);
+    const target = slugify(clean);
+    const from = this._dirFor(slug);
+    const to = this._dirFor(target);
+    const meta = this._readMeta(from);
+    if (!meta) throw taggedError(`no project ${slug}`, "NOT_FOUND");
+    // A project keeping its own slug (a case-only rename) is not a collision.
+    if (from !== to && this.exists(clean)) {
+      throw taggedError(`a project named "${clean}" already exists`, "NAME_TAKEN"); // prettier-ignore
+    }
+    if (from !== to) fs.renameSync(from, to);
+    delete meta.untitled;
+    meta.name = clean;
+    io.writeJSON(path.join(to, PROJECT_FILE), meta);
+    return { id: target, ...meta };
+  }
+
+  /**
+   * Append one desktop to `meta` (in memory) and write its document.
+   * The visible number comes from `nextIndex`, which only ever counts up —
+   * deleting "Desktop 2" never makes the next one Desktop 2 again, so a name
+   * in a note or a screenshot keeps meaning the same desk. It is also stepped
+   * past anything already taken, so a project carried forward from v1 (whose
+   * ids and files were spelled differently) can never collide with one.
+   */
+  _appendTab(meta, dir, doc = defaultDeskDocument()) {
+    const ids = new Set(meta.tabs.map((t) => t.id));
+    const files = new Set(meta.tabs.map((t) => t.file));
+    let index = meta.nextIndex;
+    while (ids.has(`t${index}`) || files.has(`desktop-${index}${TAB_EXT}`)) {
+      index += 1;
+    }
+    meta.nextIndex = index + 1;
     const tab = {
-      id: `t${meta.tabs.length + 1}-${index}`,
-      name: `Sub-Desktop #${index}`,
-      kind: "sub",
-      file: `sub-${index}${TAB_EXT}`,
+      id: `t${index}`,
+      name: `Desktop ${index}`,
+      file: `desktop-${index}${TAB_EXT}`,
     };
     meta.tabs.push(tab);
     // A real empty desk document, not `{}` — the file a new desktop starts
     // from should read back as exactly what the renderer will show.
-    this._desk.writeFile(path.join(dir, tab.file), defaultDeskDocument());
+    this._desk.writeFile(path.join(dir, tab.file), doc);
     return tab;
+  }
+
+  /**
+   * Bring a stored project forward to the current shape (v1 → v2), in memory:
+   * the next write puts it on disk. v1 gave one tab a privileged
+   * `kind: "main"` that could never be deleted and numbered the rest as
+   * sub-desktops; every desktop is now a peer, so the kinds go and the
+   * counter is whatever `nextSubIndex` had reached.
+   *
+   * NAMES AND FILES ARE LEFT ALONE. They are the user's — a project whose
+   * first tab reads `Main` keeps reading `Main` (and can now be renamed, or
+   * deleted, like any other) rather than being silently re-labelled.
+   */
+  _normalize(meta) {
+    if (!meta || !Array.isArray(meta.tabs) || meta.tabs.length === 0) {
+      return null;
+    }
+    const { nextSubIndex, ...rest } = meta;
+    return {
+      ...rest,
+      version: PROJECT_VERSION,
+      nextIndex: Number.isInteger(meta.nextIndex)
+        ? meta.nextIndex
+        : Number.isInteger(nextSubIndex)
+          ? nextSubIndex
+          : meta.tabs.length + 1,
+      tabs: meta.tabs.map(({ kind, ...tab }) => tab),
+    };
+  }
+
+  /** Read + normalize a project's own file. Null when it isn't one. */
+  _readMeta(dir) {
+    return this._normalize(io.readJSON(path.join(dir, PROJECT_FILE)));
   }
 
   /**
@@ -246,12 +346,8 @@ class ProjectStore {
    * working desk.
    */
   load(slug) {
-    const dir = this._dirFor(slug);
-    const meta = io.readJSON(path.join(dir, PROJECT_FILE));
-    if (!meta || !Array.isArray(meta.tabs) || meta.tabs.length === 0) {
-      return null;
-    }
-    return { id: slug, ...meta };
+    const meta = this._readMeta(this._dirFor(slug));
+    return meta ? { id: slug, ...meta } : null;
   }
 
   /**
@@ -263,7 +359,7 @@ class ProjectStore {
    */
   saveMeta(slug, meta) {
     const dir = this._dirFor(slug);
-    const current = io.readJSON(path.join(dir, PROJECT_FILE));
+    const current = this._readMeta(dir);
     if (!current) throw taggedError(`no project ${slug}`, "NOT_FOUND");
     const known = new Map((current.tabs ?? []).map((t) => [t.id, t]));
     const tabs = [];
@@ -300,29 +396,30 @@ class ProjectStore {
     return { id: slug, ...next };
   }
 
-  /** Add one sub-desktop; returns the updated meta (with the new tab last). */
+  /** Add one desktop; returns the updated meta (with the new tab last). */
   addTab(slug) {
     const dir = this._dirFor(slug);
-    const meta = io.readJSON(path.join(dir, PROJECT_FILE));
+    const meta = this._readMeta(dir);
     if (!meta) throw taggedError(`no project ${slug}`, "NOT_FOUND");
-    const tab = this._appendSub(meta, dir);
+    const tab = this._appendTab(meta, dir);
     meta.activeTab = tab.id;
     io.writeJSON(path.join(dir, PROJECT_FILE), meta);
     return { id: slug, ...meta };
   }
 
   /**
-   * Remove a sub-desktop and its document. The MAIN tab can never be removed —
-   * it is the project. Throws NOT_FOUND / INVALID_ARG.
+   * Remove a desktop and its document. ANY desktop can go — they are peers —
+   * except the LAST one: a project with no desktops has nothing to open.
+   * Throws NOT_FOUND / INVALID_ARG.
    */
   removeTab(slug, tabId) {
     const dir = this._dirFor(slug);
-    const meta = io.readJSON(path.join(dir, PROJECT_FILE));
+    const meta = this._readMeta(dir);
     if (!meta) throw taggedError(`no project ${slug}`, "NOT_FOUND");
-    const tab = (meta.tabs ?? []).find((t) => t.id === tabId);
+    const tab = meta.tabs.find((t) => t.id === tabId);
     if (!tab) throw taggedError(`no tab ${tabId}`, "NOT_FOUND");
-    if (tab.kind === "main") {
-      throw taggedError("the main desktop cannot be removed", "INVALID_ARG");
+    if (meta.tabs.length <= 1) {
+      throw taggedError("a project needs at least one desktop", "INVALID_ARG");
     }
     meta.tabs = meta.tabs.filter((t) => t.id !== tabId);
     if (meta.activeTab === tabId) meta.activeTab = meta.tabs[0].id;
@@ -346,4 +443,11 @@ class ProjectStore {
   }
 }
 
-module.exports = { ProjectStore, slugify, PROJECT_VERSION, PROJECT_FILE };
+module.exports = {
+  ProjectStore,
+  slugify,
+  PROJECT_VERSION,
+  PROJECT_FILE,
+  WORKING_SLUG,
+  WORKING_NAME,
+};

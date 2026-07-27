@@ -43,6 +43,9 @@ for (const [channel, event] of [
   ["menu:build-guide", "chiphippo:build-guide"],
   ["menu:edit-undo", "chiphippo:edit-undo"],
   ["menu:edit-redo", "chiphippo:edit-redo"],
+  // Not a menu item: main asking, before a close or a quit, whether anything
+  // unsaved needs dealing with first. The renderer answers with closeReply().
+  ["app:confirm-close", "chiphippo:confirm-close"],
 ]) {
   ipcRenderer.on(channel, () => {
     window.dispatchEvent(new CustomEvent(event));
@@ -82,6 +85,11 @@ contextBridge.exposeInMainWorld("chiphippo", {
   // versions). Distinct from getVersion() — the About panel wants the fuller
   // picture (Electron / Chromium / Node / platform).
   getAppInfo: () => ipcRenderer.invoke("app:info:get"),
+
+  // The answer to `chiphippo:confirm-close`: true to let the window go, false
+  // to stay open. Main waits for this indefinitely — it is a user decision —
+  // so every path through the renderer's guard must reply exactly once.
+  closeReply: (ok) => ipcRenderer.invoke("app:close-reply", ok === true),
 
   // ── App settings (Feature 10) ──────────────────────────────────────────────
   // A single preferences document in main (store/settings-store.js): the desk
@@ -124,16 +132,18 @@ contextBridge.exposeInMainWorld("chiphippo", {
     },
   },
 
-  // ── Projects: tabbed sub-desktops (Feature 240) ───────────────────────────
-  // A project is a named workspace of desktops, one `.chiphippo` per tab,
-  // kept in an app-managed folder. Every call names a project by ID and a tab
-  // by its id/file — never by path: main alone turns those into a location
-  // inside the projects root. `create` throws NAME_TAKEN when the name is
-  // already saved (the renderer then offers to load that one instead).
+  // ── Projects: tabbed desktops (Feature 240) ───────────────────────────────
+  // A project is a workspace of desktops, one `.chiphippo` per tab, kept in an
+  // app-managed folder. Every call names a project by ID and a tab by its
+  // id/file — never by path: main alone turns those into a location inside the
+  // projects root. A project is UNNAMED until `saveAs` (`createUntitled` asks
+  // for nothing), which throws NAME_TAKEN when that name is already saved —
+  // the renderer then asks for a different one.
   project: {
     list: () => ipcRenderer.invoke("project:list"),
-    create: (name, mainDoc, opts) =>
-      ipcRenderer.invoke("project:create", name, mainDoc, opts),
+    createUntitled: (firstDoc) =>
+      ipcRenderer.invoke("project:create-untitled", firstDoc),
+    saveAs: (id, name) => ipcRenderer.invoke("project:save-as", id, name),
     load: (id) => ipcRenderer.invoke("project:load", id),
     saveMeta: (id, meta) => ipcRenderer.invoke("project:save-meta", id, meta),
     addTab: (id) => ipcRenderer.invoke("project:add-tab", id),
