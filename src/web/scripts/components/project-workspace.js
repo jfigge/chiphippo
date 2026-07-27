@@ -445,7 +445,9 @@ export class ProjectWorkspace {
       ],
       onChoose: async (answer) => {
         if (answer == null) return; // cancelled — the desktop stays
-        if (answer === "save") await this.saveTab(id);
+        // A save that never reached a file (a cancelled dialog, a failed
+        // write) must not become a delete: the desktop stays, still dirty.
+        if (answer === "save" && !(await this.saveTab(id))) return;
         await this.#doDeleteTab(id);
       },
     });
@@ -482,7 +484,10 @@ export class ProjectWorkspace {
 
   // ── The toolbar's file actions, aimed at the active tab ──────────────────
 
-  /** Save the active desktop to its own file inside the project folder. */
+  /**
+   * Save the active desktop to its own file inside the project folder.
+   * @returns {Promise<boolean>} whether it reached its file.
+   */
   async saveActiveTab() {
     return this.saveTab(this.#project?.activeTab);
   }
@@ -491,6 +496,10 @@ export class ProjectWorkspace {
    * Save one desktop — the live document when it is the active one, the
    * stashed copy otherwise (so "Save and delete" can save a desktop that is
    * not on screen).
+   *
+   * @returns {Promise<boolean>} whether the document reached its file. A
+   *   caller that saves before discarding or deleting must honour a `false`:
+   *   nothing was written, so the work is still only on the desk.
    */
   async saveTab(id) {
     const tab = this.#project?.tabs.find((t) => t.id === id);
@@ -699,7 +708,11 @@ export class ProjectWorkspace {
         onChoose: async (answer) => {
           if (answer == null) return resolve(false);
           if (answer === "save") {
-            for (const tab of dirty) await this.saveTab(tab.id);
+            // Stop at the first desktop that did not reach its file rather
+            // than leaving the project behind with that work only on screen.
+            for (const tab of dirty) {
+              if (!(await this.saveTab(tab.id))) return resolve(false);
+            }
           }
           resolve(true);
         },
@@ -721,7 +734,10 @@ export class ProjectWorkspace {
         ],
         onChoose: async (answer) => {
           if (answer == null) return resolve(false);
-          if (answer === "save") await this.saveActiveTab();
+          // "Save first" that did not save is a cancel, not a discard.
+          if (answer === "save" && !(await this.saveActiveTab())) {
+            return resolve(false);
+          }
           resolve(true);
         },
       });

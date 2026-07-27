@@ -460,10 +460,16 @@ Electron main process (src/app/main.js)
   only border and the only background, its `.toolbar-pill-btn` segments are
   separated by spacing rather than by borders of their own (there is no
   split-button seam anywhere), and an armed segment FILLS instead of gaining
-  an accent border. Two exist: the desk tools (Wire · Bus · Fade · Probe ·
-  Analyzer · Fit) and **File** (New + the ▾ that drops the file menu, tightened by
+  an accent border. Three exist: the desk tools (Wire · Bus · Fade · Probe ·
+  Analyzer · Fit), **File** (New + the ▾ that drops the file menu, tightened by
   `.toolbar-pill--file` since it is an action plus its menu, not a row of
-  peers). Everything else is a plain `.toolbar-btn` / `.toolbar-icon-btn`.
+  peers), and the **transport** (`.toolbar-pill--transport`, Feature 90/100),
+  which is the one pill whose SEGMENT COUNT changes: stopped it holds only
+  **Run**, and running it becomes **Stop** with Pause · Step · speed unhidden
+  beside it (`.toolbar-pill-btn[hidden]` collapses the rest), so the pill never
+  offers a control that doesn't apply. Run/Stop keeps its green/red signal as
+  colour alone — the pill carries the only border, so no segment accents one of
+  its own. Everything else is a plain `.toolbar-btn` / `.toolbar-icon-btn`.
   The pill is the APP's grouping shape, not the toolbar's alone — the desktop
   tab strip (`.project-tabs`, Feature 240) is the same thing floating over the
   desk, its active tab filling exactly as an armed tool segment does.

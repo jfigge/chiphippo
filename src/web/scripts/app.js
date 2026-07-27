@@ -589,6 +589,10 @@ async function init() {
     await reloadWith(res.doc, res.path);
   };
 
+  // Both report whether the desktop actually reached a file — `false` for a
+  // cancelled dialog or a failed write — so a caller that saves on the user's
+  // behalf before doing something destructive can abort instead of discarding
+  // work that was never written.
   const saveAsSchematic = async () => {
     const json = deskDoc.toJSON();
     let path;
@@ -596,32 +600,38 @@ async function init() {
       path = await bridge.desk.saveAs(json, currentFile);
     } catch (err) {
       console.error("[renderer] desk:save-as failed:", err);
-      return;
+      return false;
     }
-    if (!path) return; // cancelled
+    // Cancelled: nothing is written and no baseline moves, so the desktop
+    // stays exactly as dirty as it was.
+    if (!path) return false;
     // Inside a project, Save As EXPORTS a copy of the desktop: the tab keeps
     // its own file, so the working-file bookkeeping (and the dirty baseline)
     // must not be re-pointed at the exported path.
-    if (workspace?.isOpen) return;
+    if (workspace?.isOpen) return true;
     currentFile = path;
     savedDocJson = JSON.stringify(json);
     await bridge.settings.set({ currentFile: path, savedDoc: savedDocJson });
     updateTitle();
+    return true;
   };
 
   const saveSchematic = async () => {
     if (workspace?.isOpen) return workspace.saveActiveTab();
+    // An Untitled desktop has no file to write to, so Save IS Save As: ask for
+    // one. Cancel that dialog and nothing is saved — the desk stays dirty.
     if (!currentFile) return saveAsSchematic();
     const json = deskDoc.toJSON();
     try {
       await bridge.desk.write(currentFile, json);
     } catch (err) {
       console.error("[renderer] desk:write failed:", err);
-      return;
+      return false;
     }
     savedDocJson = JSON.stringify(json);
     await bridge.settings.set({ savedDoc: savedDocJson });
     updateTitle();
+    return true;
   };
 
   window.addEventListener("chiphippo:schematic-new", newSchematic);
@@ -877,9 +887,9 @@ async function init() {
     modeBtn.setAttribute("aria-pressed", String(schematic));
   }
 
-  // Schematic file actions — a PILL at the head of the toolbar, the same shape
-  // the desk tools use: one border around two borderless segments. The left is
-  // Save (the action reached most often, and the one with a cost to
+  // Schematic file actions — a PILL just right of the Projects button, the same
+  // shape the desk tools use: one border around two borderless segments. The
+  // left is Save (the action reached most often, and the one with a cost to
   // forgetting); the ▾ drops the whole file menu. Every item dispatches the
   // SAME chiphippo:* event the native File menu pushes, so the two can't
   // drift; only Open Recent is menu-only.
@@ -999,8 +1009,8 @@ async function init() {
   projectsBtn.innerHTML = PROJECTS_SVG;
 
   toolbar.append(
-    filePill,
     projectsBtn,
+    filePill,
     el("span", { class: "toolbar-divider", "aria-hidden": "true" }),
   );
 
@@ -1182,9 +1192,17 @@ async function init() {
   // loses a merge is reported, never silently dropped.
   new NetNameMonitor(netlistCache, notifications);
 
-  // The transport cluster sits apart from the edit tools (right of the strip).
+  // The transport is its own pill (the app's grouping shape), sitting apart
+  // from the edit tools. Stopped it holds exactly ONE segment — Run; the
+  // moment the circuit runs that segment becomes Stop and Pause / Step /
+  // speed unhide beside it, so the pill only ever offers what applies.
+  const transportPill = el("div", {
+    class: "toolbar-pill toolbar-pill--transport",
+    role: "group",
+    "aria-label": "Simulation transport",
+  });
   const runBtn = el("button", {
-    class: "toolbar-btn toolbar-btn--run",
+    class: "toolbar-pill-btn toolbar-pill-btn--run",
     type: "button",
     text: "▶ Run",
     title: `Run the circuit (Space or ${MOD_KEY}+R)`,
@@ -1192,7 +1210,7 @@ async function init() {
     onClick: () => sim.toggle(),
   });
   const pauseBtn = el("button", {
-    class: "toolbar-btn toolbar-btn--transport",
+    class: "toolbar-pill-btn",
     type: "button",
     text: "⏸ Pause",
     title: "Pause / resume the clock",
@@ -1200,7 +1218,7 @@ async function init() {
     onClick: () => sim.togglePause(),
   });
   const stepBtn = el("button", {
-    class: "toolbar-btn toolbar-btn--transport",
+    class: "toolbar-pill-btn",
     type: "button",
     text: "⇥ Step",
     title: "Advance one clock half-period",
@@ -1208,7 +1226,7 @@ async function init() {
     onClick: () => sim.step(),
   });
   const speedBtn = el("button", {
-    class: "toolbar-btn toolbar-btn--transport",
+    class: "toolbar-pill-btn",
     type: "button",
     text: "×1",
     title: "Clock speed (click to cycle ¼ / 1 / 4)",
@@ -1219,7 +1237,8 @@ async function init() {
       speedBtn.textContent = SPEED_LABELS[SPEEDS[i]];
     },
   });
-  toolbar.append(runBtn, pauseBtn, stepBtn, speedBtn);
+  transportPill.append(runBtn, pauseBtn, stepBtn, speedBtn);
+  toolbar.append(transportPill);
 
   // Buttons that edit topology are disabled while the circuit runs; the probe,
   // the file actions, and the transport controls stay live. Listed by element

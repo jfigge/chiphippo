@@ -34,6 +34,9 @@ function fakeBridge() {
   const files = new Map();
   const settings = {};
   const counts = { aux: 0 };
+  // Stand-in for a save that never reaches a file — the cancelled Save-As
+  // dialog or the failed write the real store can hand back.
+  const control = { failWrites: false };
   const key = (id, file) => `${id}/${file}`;
   const project = {
     list: async () =>
@@ -98,6 +101,7 @@ function fakeBridge() {
     readTab: async (id, file) =>
       structuredClone(files.get(key(id, file)) ?? emptyDocument()),
     writeTab: async (id, file, doc) => {
+      if (control.failWrites) throw new Error("no file to write to");
       files.set(key(id, file), structuredClone(doc));
       return file;
     },
@@ -128,13 +132,14 @@ function fakeBridge() {
     files,
     settings,
     counts,
+    control,
   };
 }
 
 /** The pieces app.js normally wires up, as stubs the tests can inspect. */
 function harness({ boot = null, doc = new DeskDoc(null) } = {}) {
   const win = resetDom();
-  const { bridge, projects, files, settings, counts } = fakeBridge();
+  const { bridge, projects, files, settings, counts, control } = fakeBridge();
   const sim = {
     stops: 0,
     stop() {
@@ -178,6 +183,7 @@ function harness({ boot = null, doc = new DeskDoc(null) } = {}) {
     files,
     settings,
     counts,
+    control,
     camera: () => camera,
     moveCamera: (c) => {
       camera = c;
@@ -411,6 +417,48 @@ test("deleting a desktop with unsaved changes asks the three-way question", asyn
   assert.equal([...h.projects.values()][0].tabs.length, 1);
   assert.equal(h.workspace.activeTab.name, "Main", "the desk falls back to Main"); // prettier-ignore
   assert.equal(h.doc.boards.length, 0, "and shows Main's document");
+});
+
+test("Save and delete keeps the desktop when the save never reaches a file", async () => {
+  const h = harness();
+  await h.workspace.newProject();
+  answerPrompt("Refused");
+  await settle();
+  const [, sub] = [...h.projects.values()][0].tabs;
+  await h.workspace.selectTab(sub.id);
+  h.doc.addBoard("pins-tiny", 0, 0);
+  h.workspace.refreshDirty();
+
+  // The save is refused (a cancelled Save-As dialog, a failed write): the
+  // delete must not go ahead — that work only exists on the desk.
+  h.control.failWrites = true;
+  await h.workspace.deleteTab(sub.id);
+  clickButton("Save and delete");
+  await settle();
+  assert.equal([...h.projects.values()][0].tabs.length, 2, "the desktop stays");
+  assert.equal(h.workspace.activeTab.id, sub.id, "and is still on the desk");
+  assert.equal(h.doc.boards.length, 1, "with its work");
+  assert.equal(h.workspace.activeDirty, true, "still dirty");
+});
+
+test("'Save first' that never saves leaves the desktop alone", async () => {
+  const h = harness();
+  h.doc.addBoard("pins-full", 0, 0);
+  await h.workspace.newProject();
+  answerPrompt("Unwritten");
+  await settle();
+  h.doc.addBoard("pins-tiny", 0, 20); // now dirty against its file
+  h.workspace.refreshDirty();
+
+  // New awaits its own guard dialog, so the answer has to be clicked while the
+  // call is still in flight (the dialog opens synchronously).
+  h.control.failWrites = true;
+  const emptied = h.workspace.newActiveTab();
+  clickButton("Save first");
+  await emptied;
+  await settle();
+  assert.equal(h.doc.boards.length, 2, "the desktop was not emptied");
+  assert.equal(h.workspace.activeDirty, true, "and is still dirty");
 });
 
 test("a tab's context menu is the board's two items — no Pin Assignment", () => {

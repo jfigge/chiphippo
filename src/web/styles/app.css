@@ -140,24 +140,6 @@
   cursor: default;
 }
 
-/* A hidden transport button must collapse (the flex display would show it). */
-.toolbar-btn[hidden] {
-  display: none;
-}
-
-/* Run/Stop toggle (Feature 90): green to run, red while running. */
-.toolbar-btn--run {
-  margin-left: var(--space-3);
-  font-weight: 600;
-  border-color: var(--color-success);
-  color: var(--color-success);
-}
-
-.toolbar-btn--run.toolbar-btn--running {
-  border-color: var(--color-danger);
-  color: var(--color-danger);
-}
-
 /* A leading icon inside a labelled toolbar segment (the File pill's New). */
 .toolbar-btn-icon {
   display: inline-flex;
@@ -238,6 +220,35 @@
 .toolbar-pill-btn:disabled {
   opacity: 0.4;
   cursor: default;
+}
+
+/* A hidden segment must COLLAPSE — the pill's flex row would otherwise still
+   lay it out. This is what lets the transport pill be one Run button while the
+   circuit is stopped and a four-segment transport the moment it runs. */
+.toolbar-pill-btn[hidden] {
+  display: none;
+}
+
+/* ── Transport pill (Feature 90/100) ─────────────────────────────────────
+   Run/Stop · Pause · Step · speed, grouped in the same pill the desk tools
+   use. It sits apart from the edit tools, hence the leading gap. */
+.toolbar-pill--transport {
+  margin-left: var(--space-2);
+}
+
+/* Run/Stop keeps its signal — green to run, red while running — as COLOR
+   alone: the pill carries the only border, so the segment has none to accent.
+   The hover pairs restate it, since .toolbar-pill-btn:enabled:hover would
+   otherwise out-specify the base colour and wash the segment back to text. */
+.toolbar-pill-btn--run,
+.toolbar-pill-btn--run:enabled:hover {
+  font-weight: 600;
+  color: var(--color-success);
+}
+
+.toolbar-pill-btn--run.toolbar-btn--running,
+.toolbar-pill-btn--run.toolbar-btn--running:enabled:hover {
+  color: var(--color-danger);
 }
 
 /* The active wire color, DISPLAYED beside the Wire label (1–8 change it while
