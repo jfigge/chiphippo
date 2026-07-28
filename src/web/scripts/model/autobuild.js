@@ -26,8 +26,11 @@
 //
 //   * POWER IS DERIVED. Every def declares `role: "vcc"|"gnd"`, so the spec
 //     never lists a power pin — the compiler finds them and wires them. A PSU
-//     is planted automatically; a kit's two rail strips are bridged, because
-//     they share no node and the bottom one is otherwise dead.
+//     is planted automatically; a board's two rail strips are bridged, because
+//     they share no node and the bottom one is otherwise dead. A design needing
+//     more than one board gets them SNAPPED into a single run that shares the
+//     rail between each pair, so those bridges chain and nothing has to be
+//     wired from one board to the next.
 //   * LEDs NEED A RESISTOR. Per sim/junction.js an LED conducting between two
 //     strongly driven nets burns rather than lights. That is physics, not
 //     logic, so the netlist should not have to mention it: when a display's
@@ -43,7 +46,7 @@
 
 import { partDef } from "../catalog/index.js";
 import { BREADBOARD_KITS } from "./board-types.js";
-import { holePosition, nodeOf, parseAddress } from "./breadboard.js";
+import { boardSize, holePosition, nodeOf, parseAddress } from "./breadboard.js";
 import { createAllocator } from "./column-allocator.js";
 import { captureDesign } from "./design-clip.js";
 import { DIP_PACKAGES } from "./footprints.js";
@@ -52,7 +55,6 @@ import { RAIL_TOKENS, parseMember, resolvePin } from "./pin-resolve.js";
 import { boxOf, crossingCount } from "./wire-crossing.js";
 
 const GAP = 1; // blank columns between parts, so nothing reads as one block
-const KIT_PITCH = 22; // vertical spacing when a design needs a second kit
 
 const REPAIR = "repair";
 const ABORT = "abort";
@@ -692,25 +694,50 @@ function assemble(resolved, title, notes) {
   const perKit = kitKey === "half" ? 30 : 63;
   const kitCount = Math.max(1, Math.ceil(budget / perKit));
 
+  // The boards SNAP TOGETHER, and a stacked pair SHARES the rail between them.
+  // That is what a bench does: dovetail two 830s and the strip in the middle
+  // serves the board above it and the board below it — you do not fit a second
+  // one against it. So the stack is one RUN of strips,
+  //
+  //   rail · pins · rail · pins · rail          (not rail·pins·rail  gap  rail·pins·rail)
+  //
+  // and the shared strip belongs to BOTH kits' `rails`. Everything downstream
+  // falls out of that: the bridge loop chains R0–R1–R2 by itself, so the two
+  // wires that used to run from kit 1 to kit 2 — the height of a whole
+  // breadboard, over everything in between — are not needed at all.
+  //
+  // One `group` for the run, so it drags as a unit and the selection outline
+  // traces the assembly rather than one strip of it. A kit added from the
+  // palette arrives grouped the same way (`DeskDoc.addKit`); the compiler used
+  // to leave every strip loose, so even a single generated kit came apart when
+  // the pin-board was dragged. `pasteDesign` re-mints the id on the way in.
+  const kitStrips = BREADBOARD_KITS[kitKey].strips;
+  const railStrip = kitStrips.find((s) => s.type.startsWith("rail"));
+  const pinsStrip = kitStrips.find((s) => !s.type.startsWith("rail"));
+
   const boards = [];
   const kits = [];
   let boardSeq = 0;
+  let stackY = 0;
+  const addStrip = (strip) => {
+    const id = `bb${++boardSeq}`;
+    boards.push({
+      id,
+      type: strip.type,
+      x: strip.dx,
+      y: stackY,
+      rot: 0,
+      group: "g1",
+    });
+    stackY += boardSize(strip.type).height;
+    return id;
+  };
+  let above = addStrip(railStrip);
   for (let k = 0; k < kitCount; k++) {
-    const kit = { rails: [], pins: null };
-    for (const strip of BREADBOARD_KITS[kitKey].strips) {
-      const id = `bb${++boardSeq}`;
-      boards.push({
-        id,
-        type: strip.type,
-        x: strip.dx,
-        y: k * KIT_PITCH + strip.dy,
-        rot: 0,
-        group: null,
-      });
-      if (strip.type.startsWith("rail")) kit.rails.push(id);
-      else kit.pins = id;
-    }
-    kits.push(kit);
+    const pins = addStrip(pinsStrip);
+    const below = addStrip(railStrip);
+    kits.push({ pins, rails: [above, below] });
+    above = below; // the next board's TOP rail is this one's bottom rail
   }
 
   const alloc = createAllocator(boards);
@@ -886,6 +913,13 @@ function assemble(resolved, title, notes) {
     kits.push(...survivors);
   }
 
+  // Every rail strip left standing, ONCE. Read off the boards rather than off
+  // `kits`, whose lists now overlap: a shared strip sits in the kit above it
+  // and the kit below it, so walking the kits would offer its holes twice.
+  const railStripIds = boards
+    .filter((b) => b.type.startsWith("rail"))
+    .map((b) => b.id);
+
   // ── How a wire is routed — shared by the power wiring and the net router.
   //
   // A net is a TREE, and its shape is the subtle part: EVERY wire end needs its
@@ -988,10 +1022,8 @@ function assemble(resolved, title, notes) {
     capacity: Infinity,
     at: null, // a rail runs the width of the desk; nearness decides the hole
     options: () =>
-      kits.flatMap((kit) =>
-        kit.rails.flatMap((id) =>
-          alloc.freeRailHoles(id, rail === "VCC" ? "+" : "-"),
-        ),
+      railStripIds.flatMap((id) =>
+        alloc.freeRailHoles(id, rail === "VCC" ? "+" : "-"),
       ),
     take: (address) => alloc.claim(address),
   });
@@ -1108,15 +1140,14 @@ function assemble(resolved, title, notes) {
     "black",
     "the PSU's − terminal",
   );
+  // The two strips of a kit share no node, so bridge them across the board.
+  // Nothing runs BETWEEN kits: a stacked pair shares the rail between them, so
+  // these bridges already chain — R0–R1 for the first board, R1–R2 for the
+  // second — and every rail on the desk is one node without a wire the height
+  // of a breadboard being dragged over everything on it.
   for (let k = 0; k < kits.length; k++) {
-    // Within a kit the two strips share no node, so bridge them…
     bridge(strip(k, 0), strip(k, 1), "+", "red", `kit ${k + 1}'s +`);
     bridge(strip(k, 1), strip(k, 0), "-", "black", `kit ${k + 1}'s −`);
-    // …and across kits, so a second board is powered too.
-    if (k > 0) {
-      bridge(strip(0, 0), strip(k, 0), "+", "red", `kit ${k + 1}`);
-      bridge(strip(0, 1), strip(k, 1), "-", "black", `kit ${k + 1}`);
-    }
   }
 
   if (unpowered.length) {

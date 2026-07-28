@@ -34,6 +34,7 @@ import { isLit, junctionState } from "../sim/junction.js";
 import { normalizeDocument } from "../model/desk-doc.js";
 import { partPinAddresses } from "../model/occupancy.js";
 import { holePosition, nodeOf, parseAddress } from "../model/breadboard.js";
+import { matingEdge } from "../model/mating.js";
 import { partDef } from "../catalog/index.js";
 import { wireCrossings } from "../model/wire-crossing.js";
 import { compileNetlist, designClipOf, wrapText } from "../model/autobuild.js";
@@ -1069,6 +1070,77 @@ test("a board nothing landed on is given back, not shipped empty", () => {
       );
     }
   }
+});
+
+test("a generated kit arrives grouped, not as three loose strips", () => {
+  // `DeskDoc.addKit` groups the strips it places; the compiler built its own
+  // boards and left them all loose, so dragging the pin-board of a generated
+  // circuit left both rails — and every wire to them — behind.
+  const { doc } = build(COUNTER_SPEC);
+  assert.equal(doc.boards.length, 3, "one kit: rail, pins, rail");
+  assert.ok(
+    doc.boards.every((b) => b.group),
+    "every strip belongs to a group",
+  );
+  assert.equal(new Set(doc.boards.map((b) => b.group)).size, 1, "the same one");
+});
+
+test("more than one board snaps together and SHARES the rail between them", () => {
+  // A bench dovetails two 830s and the strip in the middle serves the board
+  // above it and the board below it — you do not fit a second one against it.
+  // So the stack is one run, rail·pins·rail·pins·rail, and the shared strip is
+  // what makes the cross-kit bridges unnecessary: those ran the height of a
+  // whole breadboard, over everything on it.
+  const parts = [...Array(10)].map((_, i) => ({ id: `U${i}`, ref: "74LS161" }));
+  const { doc } = build({
+    parts,
+    nets: [
+      { name: "TIE", members: [...parts.map((p) => `${p.id}.CLR`), "VCC"] },
+      ...[...Array(9)].map((_, i) => ({
+        name: `CH${i}`,
+        members: [`U${i}.RCO`, `U${i + 1}.ENP`],
+      })),
+    ],
+  });
+  const stack = [...doc.boards].sort((a, b) => a.y - b.y);
+  const pins = stack.filter((b) => b.type.startsWith("pins"));
+  const rails = stack.filter((b) => b.type.startsWith("rail"));
+  assert.ok(pins.length > 1, "a design that genuinely needs a second board");
+  assert.equal(
+    rails.length,
+    pins.length + 1,
+    "one rail between each pair of boards, not two back to back",
+  );
+
+  // Flush and in one run — which is what the desk's own drag, snap and outline
+  // machinery reads off the geometry, whatever the group id says.
+  for (let i = 0; i + 1 < stack.length; i++) {
+    assert.equal(
+      matingEdge(stack[i], stack[i + 1]),
+      "below",
+      `${stack[i].id} and ${stack[i + 1].id} are dovetailed`,
+    );
+  }
+  assert.equal(
+    new Set(doc.boards.map((b) => b.group)).size,
+    1,
+    "and the whole assembly drags as one unit",
+  );
+
+  // The point of all of it: the supply is still ONE net, end to end, reached
+  // by chaining each board's own two bridges rather than by wiring kit to kit.
+  const nl = buildNetlist(doc);
+  for (const polarity of ["+", "-"]) {
+    const nets = new Set(
+      rails.map((r) => nl.netOfPoint.get(`${r.id}.${polarity}1`)),
+    );
+    assert.equal(nets.size, 1, `every ${polarity} strip is the same net`);
+  }
+  assert.equal(
+    nl.netOfPoint.get("psu1.+"),
+    nl.netOfPoint.get(`${rails.at(-1).id}.+1`),
+    "including the strip furthest from the PSU",
+  );
 });
 
 // ── The design's own note ───────────────────────────────────────────────────

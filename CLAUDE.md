@@ -610,6 +610,23 @@ Electron main process (src/app/main.js)
     free hole on the pin's NODE), the hub being the highest-capacity port
     (a rail is ∞), and a port is keyed by its NODE so two pins already sharing
     one are never wired to each other.
+  - **THE BOARDS SNAP TOGETHER, AND A STACKED PAIR SHARES THE RAIL BETWEEN
+    THEM.** A bench dovetails two 830s and the strip in the middle serves the
+    board above it and the board below it — you do not fit a second one against
+    it — so the compiler emits one RUN of strips,
+    `rail · pins · rail · pins · rail`, not N self-contained kits with a gap
+    between them. The shared strip sits in BOTH kits' `rails`, and everything
+    else falls out of that: the bridge loop CHAINS (R0–R1 across the first
+    board, R1–R2 across the second), so the two wires that used to run from
+    kit 1 to kit 2 — the height of a whole breadboard, over everything on it —
+    are not needed at all. Two boards therefore cost one fewer strip and two
+    fewer wires than they did, and the supply is still one net end to end.
+    `railStripIds` is read off `boards` rather than off `kits`, whose lists now
+    overlap: walking the kits would offer the shared strip's holes twice. The
+    run also carries ONE `group`, as `DeskDoc.addKit` gives a kit placed from
+    the palette — the compiler used to leave every strip loose, so even a
+    single generated kit came apart when its pin-board was dragged
+    (`pasteDesign` re-mints the id on the way in).
   - **PLACEMENT is a step, not an accident.** Seating used to follow whatever
     order the spec listed parts in, with the compiler's own interposed
     resistors appended last — the worst possible order for exactly the parts
