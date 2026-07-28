@@ -32,6 +32,7 @@ const {
   Menu,
   nativeImage,
   nativeTheme,
+  safeStorage,
   screen,
   shell,
 } = require("electron");
@@ -39,6 +40,9 @@ const path = require("path");
 const fs = require("fs");
 
 const { parseArgs } = require("./cli-args");
+const { CredentialStore } = require("./store/credential-store");
+const aiClient = require("./ai/client");
+const aiProviders = require("./ai/providers");
 const { SettingsStore } = require("./store/settings-store");
 const { DeskStore } = require("./store/desk-store");
 const {
@@ -173,6 +177,19 @@ let _deskStore = null;
 function getDeskStore() {
   if (!_deskStore) _deskStore = new DeskStore();
   return _deskStore;
+}
+
+let _credentialStore = null;
+
+/** @returns {CredentialStore} — the user's own AI key, OS-encrypted. */
+function getCredentialStore() {
+  if (!_credentialStore) {
+    _credentialStore = new CredentialStore(
+      app.getPath("userData"),
+      safeStorage,
+    );
+  }
+  return _credentialStore;
 }
 
 let _projectStore = null;
@@ -1363,6 +1380,71 @@ function registerIpc() {
     closeAuxWindows();
     return true;
   });
+
+  // AI circuit builder (Feature 260). The renderer cannot make a network call
+  // — its CSP is `default-src 'self'` with no `connect-src` — so the whole
+  // outbound path lives here, exactly as filesystem I/O does.
+  //
+  // The KEY NEVER COMES BACK. `ai:key:set` writes it OS-encrypted;
+  // `ai:key:status` answers whether one is there and nothing more. That is the
+  // reason it does not ride `settings:set`: a settings patch is written to a
+  // plaintext file AND handed back in full on every `settings:get`.
+  //
+  // The provider LIST is data, not a renderer constant: the Settings tab builds
+  // its picker from whatever `ai/providers.js` declares, so adding a third
+  // adapter needs no renderer change and the two can never drift.
+  ipcMain.handle("ai:providers", () =>
+    Object.values(aiProviders.PROVIDERS).map((p) => ({
+      id: p.id,
+      label: p.label,
+      defaultBaseUrl: p.defaultBaseUrl,
+      defaultModel: p.defaultModel,
+      keyLabel: p.keyLabel,
+    })),
+  );
+  ipcMain.handle("ai:key:set", (_event, providerId, key) =>
+    getCredentialStore().set(providerId, key),
+  );
+  ipcMain.handle("ai:key:clear", (_event, providerId) =>
+    getCredentialStore().clear(providerId),
+  );
+  ipcMain.handle("ai:key:status", (_event, providerId) =>
+    getCredentialStore().status(providerId),
+  );
+  // Begin a generation. Returns a request id immediately; the answer streams
+  // back as one-way `ai:delta` pushes and lands with `ai:done`, so a long
+  // generation shows progress and stays cancellable.
+  ipcMain.handle("ai:start", (_event, config, system, messages) => {
+    const provider = config?.provider;
+    const { requestId, done } = aiClient.start({
+      config,
+      apiKey: getCredentialStore().get(provider) ?? "",
+      system: String(system ?? ""),
+      messages: Array.isArray(messages) ? messages : [],
+      onDelta: (delta) => sendToMain("ai:delta", { requestId, ...delta }),
+    });
+    done.then(
+      (result) => sendToMain("ai:done", { requestId, ...result }),
+      (err) =>
+        sendToMain("ai:done", {
+          requestId,
+          ok: false,
+          error: String(err?.message ?? err),
+        }),
+    );
+    return { ok: true, requestId };
+  });
+  // Settings ▸ AI's "Test connection": one tiny request, so a wrong key or an
+  // unreachable base URL is found where it is fixed rather than on first use.
+  ipcMain.handle("ai:test", (_event, config) =>
+    aiClient.test({
+      config,
+      apiKey: getCredentialStore().get(config?.provider) ?? "",
+    }),
+  );
+  ipcMain.handle("ai:cancel", (_event, requestId) => ({
+    ok: aiClient.cancel(String(requestId ?? "")),
+  }));
 
   // Chip pin-assignments window (Feature 100): a part's "Pin Assignment"
   // context-menu item opens a separate floating OS window rendering its

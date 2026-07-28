@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#2F855A" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <title>AI Circuit Builder · Chip Hippo Guide</title>
+  <meta name="description" content="AI Circuit Builder — the Chip Hippo user guide." />
+  <link rel="canonical" href="https://chiphippo.com/docs/ai-builder.html" />
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="Chip Hippo" />
+  <meta property="og:title" content="AI Circuit Builder · Chip Hippo Guide" />
+  <meta property="og:description" content="AI Circuit Builder — the Chip Hippo user guide." />
+  <meta property="og:url" content="https://chiphippo.com/docs/ai-builder.html" />
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="AI Circuit Builder · Chip Hippo Guide" />
+  <meta name="twitter:description" content="AI Circuit Builder — the Chip Hippo user guide." />
+  <style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#1c1c1c;--mantle:#161616;--crust:#101010;--surface-0:#2a2a2a;--surface-1:#383838;--overlay-0:#686868;--text:#e8e8e8;--subtext:#b0b0b0;--accent:#3fb950;--green:#56d364}
+html{scroll-behavior:smooth}
+body{font-family:"Segoe UI",system-ui,-apple-system,BlinkMacSystemFont,sans-serif;background:var(--bg);color:var(--text);line-height:1.65}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+code{font-family:"Cascadia Code","JetBrains Mono","Fira Code",monospace;font-size:.88em;background:var(--surface-0);padding:1px 6px;border-radius:4px;color:var(--text)}
+pre{background:var(--crust);border:1px solid var(--surface-0);border-radius:10px;padding:14px 16px;overflow:auto;margin:16px 0}
+pre code{background:none;padding:0}
+kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px solid var(--surface-1);border-bottom-width:2px;border-radius:5px;padding:1px 6px}
+.topbar{position:sticky;top:0;z-index:10;height:58px;display:flex;align-items:center;justify-content:space-between;padding:0 24px;background:var(--mantle);border-bottom:1px solid var(--surface-0)}
+.brand{display:flex;align-items:center;gap:10px;font-weight:800;color:var(--accent);font-size:1.1rem}
+.brand:hover{text-decoration:none}
+.topbar .back{color:var(--subtext);font-size:.85rem}
+.layout{max-width:1180px;margin:0 auto;display:grid;grid-template-columns:260px 1fr;gap:40px;padding:32px 24px 80px}
+.sidebar{position:sticky;top:90px;align-self:start;max-height:calc(100vh - 110px);overflow:auto}
+.sidebar-title{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--overlay-0);padding:0 12px 8px}
+.doc-nav-link{display:block;padding:7px 12px;border-radius:7px;color:var(--subtext);font-size:.9rem;margin-bottom:2px}
+.doc-nav-link:hover{background:var(--surface-0);color:var(--text);text-decoration:none}
+.doc-nav-link--active{background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent);font-weight:600}
+.content{min-width:0;max-width:760px}
+.content h1{font-size:2.1rem;font-weight:800;letter-spacing:-1px;margin:0 0 20px;line-height:1.2}
+.content h2{font-size:1.45rem;font-weight:700;margin:36px 0 12px;padding-top:12px;border-top:1px solid var(--surface-0)}
+.content h3{font-size:1.12rem;font-weight:700;margin:26px 0 10px}
+.content p,.content ul,.content ol,.content blockquote,.content table{margin:0 0 16px}
+.content ul,.content ol{padding-left:24px}
+.content li{margin:4px 0}
+.content img{max-width:100%;height:auto;border:1px solid var(--surface-0);border-radius:10px;margin:8px 0}
+.content blockquote{border-left:3px solid var(--accent);background:var(--mantle);padding:10px 16px;border-radius:0 8px 8px 0;color:var(--subtext)}
+.content blockquote p:last-child{margin:0}
+.content table{border-collapse:collapse;width:100%;font-size:.9rem;display:block;overflow:auto}
+.content th,.content td{border:1px solid var(--surface-0);padding:8px 12px;text-align:left}
+.content th{background:var(--mantle)}
+.content hr{border:none;border-top:1px solid var(--surface-0);margin:28px 0}
+@media(max-width:820px){.layout{grid-template-columns:1fr;gap:20px}.sidebar{position:static;max-height:none;border-bottom:1px solid var(--surface-0);padding-bottom:16px}}
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/"><svg width="24" height="24" viewBox="0 0 512 512" role="img" aria-label="Chip Hippo"><rect x="0" y="0" width="512" height="512" rx="114" fill="#2F855A"/><circle cx="170" cy="146" r="40" fill="#FFFFFF"/><circle cx="342" cy="146" r="40" fill="#FFFFFF"/><rect x="144" y="140" width="224" height="190" rx="74" fill="#FFFFFF"/><rect x="118" y="260" width="276" height="150" rx="74" fill="#FFFFFF"/><circle cx="201" cy="198" r="17" fill="#1C1C1C"/><circle cx="311" cy="198" r="17" fill="#1C1C1C"/><rect x="186" y="320" width="140" height="52" rx="8" fill="#23272B"/><circle cx="186" cy="346" r="11" fill="#FFFFFF"/></svg><span>Chip Hippo</span></a>
+    <a class="back" href="/">← Back to site</a>
+  </header>
+  <div class="layout">
+    <nav class="sidebar" aria-label="User guide">
+      <div class="sidebar-title">User Guide</div>
+        <a class="doc-nav-link" href="index.html">Overview</a>
+        <a class="doc-nav-link" href="getting-started.html">Getting Started</a>
+        <a class="doc-nav-link" href="the-desk.html">The Desk &amp; Breadboards</a>
+        <a class="doc-nav-link" href="components.html">Chips &amp; Components</a>
+        <a class="doc-nav-link" href="wiring.html">Wiring, Nets &amp; Buses</a>
+        <a class="doc-nav-link" href="power-and-clocks.html">Power &amp; Clock Sources</a>
+        <a class="doc-nav-link" href="chip-library.html">The 74xx Chip Library</a>
+        <a class="doc-nav-link" href="simulation.html">Running a Simulation</a>
+        <a class="doc-nav-link" href="probing.html">Probing &amp; Net Names</a>
+        <a class="doc-nav-link" href="memory.html">Memory Chips &amp; the Inspector</a>
+        <a class="doc-nav-link" href="logic-analyzer.html">Logic Analyzer &amp; Timing</a>
+        <a class="doc-nav-link" href="build-guide.html">Build Guide, Wiring List &amp; BOM</a>
+        <a class="doc-nav-link" href="schematic-view.html">Schematic View</a>
+        <a class="doc-nav-link doc-nav-link--active" href="ai-builder.html">AI Circuit Builder</a>
+        <a class="doc-nav-link" href="files-and-undo.html">Files, Saving &amp; Undo</a>
+        <a class="doc-nav-link" href="projects-and-desktops.html">Projects &amp; Desktops</a>
+        <a class="doc-nav-link" href="settings.html">Settings</a>
+        <a class="doc-nav-link" href="keyboard-shortcuts.html">Keyboard Shortcuts</a>
+    </nav>
+    <main class="content">
+<h1>AI Circuit Builder</h1>
+<p>The <strong>AI builder</strong> is a bottom-docked panel where you describe a circuit in
+plain English and get a real, wired, <strong>simulation-proven</strong> design to place on
+the desk. It uses <em>your own</em> AI connection — your key, your provider, your
+account — and Chip Hippo makes no network request of any kind until you&#39;ve set
+one up and asked it for something.</p>
+<p>The important thing to understand about it is what the model is and isn&#39;t
+allowed to decide. It never places a chip, never picks a hole, and never draws
+a wire. It answers one question — <em>which parts, and which of their pins are
+joined?</em> — and Chip Hippo&#39;s own compiler does all the geometry, then proves the
+result by running it through the same simulation engine the <strong>Run</strong> button
+uses. Nothing that fails is ever offered to you.</p>
+<h2 id="setting-up-a-connection">Setting up a connection</h2>
+<p>Open <strong>Settings</strong> (<code>Cmd/Ctrl+,</code>) and pick the <strong>AI</strong> tab. There are four
+things there:</p>
+<ul>
+<li><strong>Provider</strong> — <strong>Anthropic</strong>, or <strong>OpenAI-compatible</strong>. The second is
+deliberately not &quot;OpenAI&quot;: the same request format is what Ollama, LM
+Studio, OpenRouter and vLLM all speak, so one setting plus a base URL covers
+every local and hosted endpoint worth using.</li>
+<li><strong>Base URL</strong> — leave blank to use the provider&#39;s own default (shown as the
+field&#39;s placeholder). Point it at <code>http://localhost:11434</code> for a local
+Ollama, or at any compatible proxy.</li>
+<li><strong>Model</strong> — also blank for the default. Any model id your endpoint accepts.</li>
+<li><strong>API key</strong> — paste it and click <strong>Save key</strong>.</li>
+</ul>
+<p><strong>Your key is never stored in Chip Hippo&#39;s settings file.</strong> It goes straight
+to your operating system&#39;s own secure credential store (Keychain on macOS, the
+Credential Manager on Windows, the desktop keyring on Linux), encrypted, and it
+is never read back into the app&#39;s window afterwards — the panel only ever
+learns <em>whether</em> a key is configured, not what it is. If your system has no
+secure store available, Chip Hippo <strong>refuses to save the key</strong> and tells you
+so, rather than quietly writing it to disk in the clear.</p>
+<p>Click <strong>Test connection</strong> to check the base URL, key and model in one small
+request before you rely on them. <strong>Clear key</strong> forgets the stored key.</p>
+<p>A local server that needs no key at all works fine — leave the key blank and
+just set the base URL.</p>
+<h2 id="asking-for-a-circuit">Asking for a circuit</h2>
+<p>Click the <strong>AI builder</strong> button in the toolbar to dock the panel along the
+bottom of the window (drag its top edge to resize it; it remembers whether it
+was open and how tall you left it). Type a description and press <code>Enter</code> —
+<code>Shift+Enter</code> gives you a newline for a longer brief.</p>
+<p>Descriptions that work well are the ones an engineer would accept:</p>
+<blockquote>
+<p>add two 8-bit numbers together with a carry, switches for the inputs and an
+LED bar for the sum</p>
+</blockquote>
+<blockquote>
+<p>a 4-bit counter driven by a clock, showing its count on an LED bar</p>
+</blockquote>
+<p>Be specific about the <strong>inputs and the outputs</strong> — what you want to set, and
+what you want to see. The parts themselves you can leave to it: the model is
+told, on every request, exactly which chips are in Chip Hippo&#39;s catalog and
+exactly what every pin on each of them is called, so it has no reason to
+invent a part that doesn&#39;t exist.</p>
+<p>You don&#39;t need to mention power, and you shouldn&#39;t. Every chip declares its
+own VCC and GND pins, so the compiler wires power itself, plants a 5 V supply,
+and bridges the breadboard&#39;s two power rails. You also don&#39;t need to ask for a
+series resistor on an LED — see below.</p>
+<p>While it&#39;s working the panel shows progress; the same button becomes a
+<strong>cancel</strong>, so a long or expensive request is always interruptible.</p>
+<h2 id="what-happens-to-the-answer">What happens to the answer</h2>
+<p>Before you are shown anything at all, the answer is put through a ladder of
+checks. Each one exists because of a specific way a machine-generated circuit
+goes wrong <em>while still looking perfectly fine</em>:</p>
+<ol>
+<li><strong>It compiles.</strong> Parts get real seats on real breadboard columns, with an
+allocator that makes it impossible for two parts to accidentally share a
+column-half — which on a real breadboard means they&#39;re shorted together.</li>
+<li><strong>Everything seated.</strong> No part hangs off the end of a board with pins over
+nothing. A part like that loads without complaint and is electrically dead.</li>
+<li><strong>The nets match.</strong> The connections the design <em>asked for</em> are compared
+against the connections the finished breadboard <em>actually has</em>. This is the
+check that catches an accidental short, which is otherwise invisible — the
+circuit loads clean and simulates happily while computing something else.</li>
+<li><strong>It powers up and settles.</strong> Every chip reports OK, with no conflicts,
+no shorts, and no oscillation.</li>
+<li><strong>Nothing is left floating.</strong> A signal net nothing drives is reported
+rather than shipped.</li>
+<li><strong>Its own tests pass.</strong> This is the interesting one. The design is asked to
+state its own acceptance tests — &quot;with these switches set this way, after
+this many clock edges, these LEDs should read this&quot; — and Chip Hippo
+<strong>runs them</strong>. It&#39;s the only check that tests what the circuit <em>means</em>
+rather than whether it&#39;s internally consistent, and it&#39;s what catches a
+perfectly-built adder with its bit order reversed.</li>
+</ol>
+<p>The panel reports which tests ran and whether they passed as part of the
+summary.</p>
+<h2 id="placing-what-you-get">Placing what you get</h2>
+<p>A design that passes is <strong>armed as a placement ghost</strong> — the whole circuit
+follows your cursor, snaps against boards already on the desk, and turns red
+where it won&#39;t fit. Click to place it, or press <code>Escape</code> to discard it. A
+circuit you positioned yourself is a great deal easier to trust than one that
+simply appears.</p>
+<p>However large it is, placing it is <strong>one undo step</strong>: <code>Cmd/Ctrl+Z</code> removes the
+entire thing — boards, chips, wires and all — in one go.</p>
+<h2 id="when-it-doesnt-work">When it doesn&#39;t work</h2>
+<p>Two very different things can go wrong, and the panel distinguishes them.</p>
+<p><strong>The design was wrong.</strong> A pin named that doesn&#39;t exist, an input left
+floating, an output shared with another output, a test that fails. These go
+back to the model as a precise list of what failed — not as prose — and it
+gets up to <strong>two</strong> attempts to fix them. If it still can&#39;t, the panel lists
+what&#39;s still wrong and stops rather than looping at your expense.</p>
+<p><strong>Chip Hippo was wrong.</strong> If the design was described correctly but the
+compiler couldn&#39;t build it, the panel says so plainly and doesn&#39;t send it back
+— re-asking would only spend your tokens on a fault the model has no way to
+influence.</p>
+<p>A few things are outside what a netlist can express, and it will tell you
+rather than guess:</p>
+<ul>
+<li><strong>Rotated two-lead parts</strong> — a bare LED or resistor placed at an angle. Use
+the DIP-bodied displays (<code>bar8</code>, <code>seg8cc</code>) and switch banks (<code>sw-dip8</code>)
+instead, which is what it will reach for anyway.</li>
+<li><strong>Multi-corner cans</strong> — the oscillator packages.</li>
+</ul>
+<h2 id="leds-and-resistors">LEDs and resistors</h2>
+<p>You never need to ask for a current-limiting resistor, and you shouldn&#39;t put
+one in your description. Chip Hippo models the <em>physical</em> requirement, not just
+the logical one: an LED conducting between two strongly-driven nets burns out
+instead of lighting, exactly as it would on a real bench. So whenever a
+display&#39;s common leg heads for a power rail, the compiler interposes a series
+resistor for you. See <a href="components.html">Chips &amp; Components</a> for the same rule
+when you&#39;re wiring by hand.</p>
+<h2 id="cost-privacy-and-the-simulation">Cost, privacy and the simulation</h2>
+<p>Requests go to whichever endpoint you configured, billed to your own account —
+Chip Hippo neither proxies them nor sees them. The parts catalog that makes up
+most of each request is sent in a form your provider can cache, so a repair
+attempt costs far less than the first ask.</p>
+<p>The panel won&#39;t build while the simulation is <strong>running</strong> — press <strong>Stop</strong>
+first. A generated circuit is a document edit like any other, and the desk is
+frozen while the circuit runs.</p>
+<h2 id="see-also">See also</h2>
+<ul>
+<li><a href="settings.html">Settings</a> — the AI tab in full, alongside every other
+preference.</li>
+<li><a href="simulation.html">Running a Simulation</a> — the engine every generated circuit
+is proved against before you see it.</li>
+<li><a href="files-and-undo.html">Files, Saving &amp; Undo</a> — how a placed circuit is saved,
+and how one undo step removes it.</li>
+</ul>
+
+    </main>
+  </div>
+</body>
+</html>

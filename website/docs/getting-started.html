@@ -76,6 +76,7 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
         <a class="doc-nav-link" href="logic-analyzer.html">Logic Analyzer &amp; Timing</a>
         <a class="doc-nav-link" href="build-guide.html">Build Guide, Wiring List &amp; BOM</a>
         <a class="doc-nav-link" href="schematic-view.html">Schematic View</a>
+        <a class="doc-nav-link" href="ai-builder.html">AI Circuit Builder</a>
         <a class="doc-nav-link" href="files-and-undo.html">Files, Saving &amp; Undo</a>
         <a class="doc-nav-link" href="projects-and-desktops.html">Projects &amp; Desktops</a>
         <a class="doc-nav-link" href="settings.html">Settings</a>
@@ -133,8 +134,11 @@ adjacent holes on the same row, anode first. (Press <code>F</code> while the gho
 hand to flip which leg is the anode, or <code>R</code> to stand it up on two free ends
 instead of a footprint row.) To change an LED&#39;s color afterward, right-click
 it and choose <strong>Properties…</strong>.</p>
-<p>Chip Hippo&#39;s LED is idealized — no series resistor is required to protect it,
-so you can wire it straight to a supply.</p>
+<p>Give an LED a series resistor, just as you would on a bench. Wired straight
+between a supply rail and ground it has nothing to limit the current, and the
+simulation shows it <strong>burnt</strong> rather than lit. One resistor anywhere in the
+loop is enough — including a single one in a display&#39;s common leg, which
+protects all of its segments at once.</p>
 <h2 id="wire-it-up">Wire it up</h2>
 <p>Press <code>W</code> (or click <strong>Wire</strong> in the toolbar) to arm the wire tool. Click a
 free hole or terminal to anchor the first end, then click a second free point

@@ -89,11 +89,27 @@ const DEFAULTS = Object.freeze({
   scopeOpen: false,
   scopeHeight: 280,
 
+  // The bottom-docked AI builder panel — same two keys, same reasons.
+  aiOpen: false,
+  aiHeight: 280,
+
   // ── Data sheets ────────────────────────────────────────────────────────────
   // An external directory of manufacturer datasheet PDFs. When it is set and a
   // `<dir>/<partId>.pdf` exists, the pin-assignments window shows a button that
   // opens that PDF natively. null → no directory (the default).
   datasheetDir: null,
+
+  // ── AI circuit builder (Feature 260) ───────────────────────────────────────
+  // The NON-SECRET half of the user's own AI connection: which provider, where
+  // it lives, and which model. The API key is deliberately absent — it lives
+  // OS-encrypted in store/credential-store.js, because this file is plaintext
+  // and is handed back to the renderer in full on every `settings:get`.
+  // An object-valued key is replaced whole, so a caller sends the whole thing.
+  ai: {
+    provider: "anthropic", // "anthropic" | "openai-compat"
+    baseUrl: "", // blank → the provider's own default
+    model: "", // blank → the provider's own default
+  },
 
   // ── Recent projects ────────────────────────────────────────────────────────
   // The last 10 PROJECT files saved or opened, most recent first. Main owns

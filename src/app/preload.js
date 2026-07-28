@@ -69,9 +69,16 @@ for (const [channel, event] of [
 // verbatim. `memory:inbound` reaches an inspector window (host → inspector);
 // `memory:host-inbound` reaches the main renderer (inspector → host). A window
 // that main never sends a given channel to simply never fires it.
+// `ai:delta` / `ai:done` (Feature 260) carry a payload for the same reason:
+// a generation streams, so the panel needs each fragment as it arrives rather
+// than one resolved promise at the end. Both detail objects carry the
+// `requestId` the `ai:start` invoke returned, so a panel can ignore the tail
+// of a request it has already cancelled.
 for (const [channel, event] of [
   ["memory:inbound", "chiphippo:memory-inbound"],
   ["memory:host-inbound", "chiphippo:memory-host-inbound"],
+  ["ai:delta", "chiphippo:ai-delta"],
+  ["ai:done", "chiphippo:ai-done"],
 ]) {
   ipcRenderer.on(channel, (_e, detail) => {
     window.dispatchEvent(new CustomEvent(event, { detail }));
@@ -115,6 +122,26 @@ contextBridge.exposeInMainWorld("chiphippo", {
     // cancelled — the caller then persists it with set({ datasheetDir }).
     chooseDatasheetDir: () =>
       ipcRenderer.invoke("settings:choose-datasheet-dir"),
+  },
+
+  // ── AI circuit builder (Feature 260) ───────────────────────────────────────
+  // The user's own connection. Non-secret config (provider, base URL, model)
+  // lives in settings; the KEY does not, and never crosses back over this
+  // bridge — `key.status` answers whether one is configured and nothing else.
+  // A generation streams: `start` resolves with a request id, then
+  // `chiphippo:ai-delta` fires per fragment and `chiphippo:ai-done` once.
+  ai: {
+    providers: () => ipcRenderer.invoke("ai:providers"),
+    key: {
+      set: (providerId, key) =>
+        ipcRenderer.invoke("ai:key:set", providerId, key),
+      clear: (providerId) => ipcRenderer.invoke("ai:key:clear", providerId),
+      status: (providerId) => ipcRenderer.invoke("ai:key:status", providerId),
+    },
+    test: (config) => ipcRenderer.invoke("ai:test", config),
+    start: (config, system, messages) =>
+      ipcRenderer.invoke("ai:start", config, system, messages),
+    cancel: (requestId) => ipcRenderer.invoke("ai:cancel", requestId),
   },
 
   // ── Projects ───────────────────────────────────────────────────────────────

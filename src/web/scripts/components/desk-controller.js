@@ -66,6 +66,7 @@ import {
   shiftFor,
 } from "../model/design-clip.js";
 import { BUS_WIDTHS, DeskDoc, WIRE_COLORS } from "../model/desk-doc.js";
+import { nearestLegalOffset } from "../model/nearest-legal.js";
 import { HistoryStore } from "../model/history-store.js";
 import { partDef } from "../catalog/index.js";
 import { isMemory, isRomChip, memoryConfig } from "../sim/chip-eval.js";
@@ -1260,20 +1261,43 @@ export class DeskController {
   #commitDesignPaste() {
     const { clip, shift } = this.#mode;
     this.cancelPlacement(); // removes the ghost, clears #mode
+    this.#dropDesign(clip, shift);
+  }
+
+  /**
+   * Stamp a clip at `shift` and bring the result onto the desk.
+   *
+   * This is the whole transaction: `pasteDesign` snapshots, replays through the
+   * ordinary add* methods — each of which THROWS on an illegal placement — and
+   * restores wholesale if any of them refuses, so a design can never land half
+   * applied. One `#emitDocChanged` follows, so the entire arrangement is a
+   * single undo step however many boards, parts and wires it carries.
+   *
+   * Shared by the paste ghost and by a generated design, which is the point:
+   * there is exactly one way a multi-part arrangement reaches the desk.
+   *
+   * @param {object} clip
+   * @param {{dx:number, dy:number}} shift
+   * @param {{label?:string, notify?:boolean}} [opts]
+   * @returns {object|null} what landed, or null when the document refused
+   */
+  #dropDesign(clip, shift, { label = "paste design", notify = true } = {}) {
     let pasted;
     try {
       pasted = this.#doc.pasteDesign(clip, shift);
     } catch (err) {
       // The document is already back as it was — say why nothing landed
       // rather than leaving the click looking ignored.
-      PopupManager.notify({
-        title: "Could not paste the design",
-        message:
-          err?.code === "OVERLAP"
-            ? "Part of it lands on something already on this desk."
-            : "Something it needs is not free on this desk.",
-      });
-      return;
+      if (notify) {
+        PopupManager.notify({
+          title: "Could not paste the design",
+          message:
+            err?.code === "OVERLAP"
+              ? "Part of it lands on something already on this desk."
+              : "Something it needs is not free on this desk.",
+        });
+      }
+      return null;
     }
     for (const board of pasted.boards) this.#mountBoard(board);
     for (const comp of pasted.components) {
@@ -1281,11 +1305,60 @@ export class DeskController {
       this.#mountPart(comp);
     }
     this.#mateStrips(pasted.boards.map((b) => b.id));
-    this.#emitDocChanged("paste design");
+    this.#emitDocChanged(label);
     this.#setMultiSelection(
       pasted.components.map((c) => c.id),
       pasted.wires.map((w) => w.id),
       pasted.boards.map((b) => b.id),
+    );
+    return pasted;
+  }
+
+  // ── Generated designs (Feature 260) ─────────────────────────────────────
+  // A circuit the app built from a netlist rather than one the user copied.
+  // It arrives as the same design clip a copy produces, so it rides the same
+  // atomic drop — no second transaction path, and no second thing to keep in
+  // lockstep with undo/redo and ROM provisioning.
+
+  /**
+   * Arm a generated design as a cursor-following ghost: the user positions it,
+   * sees it mate magnetically with what is already on the desk and redden where
+   * it will not fit, and clicks to drop. Preferred over dropping it outright —
+   * a circuit that simply appears is harder to trust than one you placed.
+   *
+   * @returns {boolean} false when the clip carries nothing to place
+   */
+  armGeneratedDesign(clip) {
+    if (!clip?.boards?.length) return false;
+    this.cancelPlacement();
+    this.#armDesignPlacement(clip);
+    return true;
+  }
+
+  /**
+   * Drop a generated design straight onto the desk, at `at` or at the nearest
+   * spot that clears whatever is already there. Same single transaction, same
+   * single undo step.
+   *
+   * @param {object} clip
+   * @param {{at?:{dx:number,dy:number}}} [opts]
+   * @returns {object|null} what landed, or null when nothing on the desk fits it
+   */
+  applyGeneratedDesign(clip, { at = null } = {}) {
+    if (!clip?.boards?.length) return null;
+    this.cancelPlacement();
+    const shift = at ?? this.#findFreeShiftFor(clip);
+    if (!shift) return null;
+    return this.#dropDesign(clip, shift, {
+      label: "add generated design",
+      notify: false,
+    });
+  }
+
+  /** The nearest whole-pitch offset at which a clip clears the desk. */
+  #findFreeShiftFor(clip) {
+    return nearestLegalOffset(
+      (dx, dy) => this.#resolveDesignAt(clip, { dx, dy }).legal,
     );
   }
 

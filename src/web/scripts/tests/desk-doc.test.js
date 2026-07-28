@@ -351,6 +351,106 @@ test("normalizeDocument keeps only the first of two wires sharing a hole", () =>
   );
 });
 
+test("normalizeDocument drops a part that does not seat on its board", () => {
+  // A DIP-14 needs 7 columns. Anchored at e60 on a 63-column pin-board its
+  // last three pins hang off the end — they resolve to nothing, so the chip is
+  // electrically dead while still LOOKING present. Counts used to match, which
+  // is exactly what made this invisible.
+  const doc = normalizeDocument({
+    boards: [{ id: "bb1", type: "pins-full", x: 0, y: 0 }],
+    components: [
+      { id: "c1", kind: "chip", ref: "74LS00", board: "bb1", anchor: "e60" },
+      { id: "c2", kind: "chip", ref: "74LS00", board: "bb1", anchor: "e5" },
+    ],
+  });
+  assert.deepEqual(
+    doc.components.map((c) => c.id),
+    ["c2"],
+    "the overhanging chip is dropped, the seated one survives",
+  );
+});
+
+test("normalizeDocument drops a part whose anchor defies its footprint", () => {
+  // A DIP straddles the trench, so its anchor is a row-e hole. Row a is not a
+  // seat a chip can take, and `typeof anchor === "string"` never noticed.
+  const doc = normalizeDocument({
+    boards: [{ id: "bb1", type: "pins-full", x: 0, y: 0 }],
+    components: [
+      { id: "c1", kind: "chip", ref: "74LS00", board: "bb1", anchor: "a5" },
+      { id: "c2", kind: "chip", ref: "74LS00", board: "bb1", anchor: "e5" },
+    ],
+  });
+  assert.deepEqual(
+    doc.components.map((c) => c.id),
+    ["c2"],
+  );
+});
+
+test("normalizeDocument drops a part seated on the wrong board type", () => {
+  // A rail strip has no grid rows, so a linear discrete cannot seat on one —
+  // and pins-tiny is 17 columns, so column 25 does not exist.
+  const doc = normalizeDocument({
+    boards: [
+      { id: "bb1", type: "rail-full", x: 0, y: 0 },
+      { id: "bb2", type: "pins-tiny", x: 0, y: 4 },
+    ],
+    components: [
+      {
+        id: "c1",
+        kind: "discrete",
+        ref: "resistor",
+        board: "bb1",
+        anchor: "a3",
+      },
+      {
+        id: "c2",
+        kind: "discrete",
+        ref: "resistor",
+        board: "bb2",
+        anchor: "a25",
+      },
+      {
+        id: "c3",
+        kind: "discrete",
+        ref: "resistor",
+        board: "bb2",
+        anchor: "a5",
+      },
+    ],
+  });
+  assert.deepEqual(
+    doc.components.map((c) => c.id),
+    ["c3"],
+  );
+});
+
+test("normalizeDocument KEEPS a rotated part whose bent lead floats", () => {
+  // The seating rule must not swallow the documented floating-lead state: pull
+  // a rail out from under a stood-up resistor and its far lead touches nothing.
+  // That is a state a document legally falls into (addComponent refuses to
+  // CREATE it, which is a different question), so a reload must preserve the
+  // part exactly where it sits rather than quietly deleting it.
+  const doc = normalizeDocument({
+    boards: [{ id: "bb1", type: "pins-full", x: 0, y: 0 }],
+    components: [
+      {
+        id: "c1",
+        kind: "discrete",
+        ref: "resistor",
+        board: "bb1",
+        anchor: "j20",
+        params: { rot: 90, end: { dx: 0, dy: -8 } }, // bent onto bare desk
+      },
+    ],
+  });
+  assert.deepEqual(
+    doc.components.map((c) => c.id),
+    ["c1"],
+    "a floating bent lead is preserved, not dropped",
+  );
+  assert.deepEqual(doc.components[0].params.end, { dx: 0, dy: -8 });
+});
+
 test("toJSON is a deep copy — later mutations don't leak into it", () => {
   const doc = new DeskDoc(null);
   doc.addBoard("pins-tiny", 0, 0);

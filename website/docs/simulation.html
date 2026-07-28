@@ -76,6 +76,7 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
         <a class="doc-nav-link" href="logic-analyzer.html">Logic Analyzer &amp; Timing</a>
         <a class="doc-nav-link" href="build-guide.html">Build Guide, Wiring List &amp; BOM</a>
         <a class="doc-nav-link" href="schematic-view.html">Schematic View</a>
+        <a class="doc-nav-link" href="ai-builder.html">AI Circuit Builder</a>
         <a class="doc-nav-link" href="files-and-undo.html">Files, Saving &amp; Undo</a>
         <a class="doc-nav-link" href="projects-and-desktops.html">Projects &amp; Desktops</a>
         <a class="doc-nav-link" href="settings.html">Settings</a>
@@ -159,12 +160,14 @@ capturing what these edges actually do to your signals over time.</p>
 <p>Live views render entirely from the settled simulation state — nothing is
 computed by the views themselves:</p>
 <ul>
-<li><strong>LEDs</strong> light when their anode net is <code>H</code> and their cathode net is <code>L</code>.
-Chip Hippo&#39;s LEDs are idealized (no series resistor required), but an LED
-driven directly between a strong supply and strong ground with nothing
-current-limiting it shows a distinct <strong>burnt</strong> cue instead of lighting
-normally — the app&#39;s way of telling you that connection would fry a real
-LED.</li>
+<li><strong>LEDs</strong> light when their anode net is <code>H</code> and their cathode net is <code>L</code> —
+provided something is limiting the current. An LED driven directly between
+a strong supply and strong ground, with no series resistor anywhere in the
+loop, shows a distinct <strong>burnt</strong> cue instead of lighting: that connection
+would fry a real LED, so it fries this one. A net reached through a resistor
+is only weakly pulled rather than strongly driven, which is what makes the
+resistor count. This is a physical rule, not a logical one — the levels
+alone would happily light it.</li>
 <li><strong>Chips</strong> show a small health badge the moment they&#39;re powered: normal
 chips show nothing extra, an <strong>underpowered</strong> chip (running at 3 V) gets
 an amber corner dot, and a chip killed by 12 V shows <strong>damaged</strong> — a red X

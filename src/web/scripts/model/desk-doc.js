@@ -304,6 +304,24 @@ export function normalizeDocument(raw) {
     if (!m) continue;
     if (!boardIds.has(c.board)) continue; // seated on a surviving board
     if (typeof c.anchor !== "string") continue;
+    // …and actually SEATED on it: the anchor has to fit the part's footprint,
+    // and every hole that footprint lands on has to exist on that board. A DIP
+    // anchored past the end of a strip used to load "clean" with its
+    // overhanging pins resolving to nothing — the counts matched, so even an
+    // entity-count check passed, while the chip sat there electrically dead.
+    // A rotated part's BENT lead is deliberately exempt: it carries an
+    // {offset} rather than a hole and may legally resolve to nothing, which is
+    // the documented state a part falls into when a rail moves out from under
+    // it. Floating is a state you fall into, never one you load into.
+    const params = normalizeParams(def, c.params);
+    const seat = partPinHoles(c.ref, c.anchor, params);
+    if (!seat) continue; // anchor doesn't fit the footprint at all
+    const seatBoard = doc.boards.find((b) => b.id === c.board);
+    if (
+      seat.some((p) => p.hole != null && !parseHole(seatBoard.type, p.hole))
+    ) {
+      continue;
+    }
     compIds.add(c.id);
     maxCompSeq = Math.max(maxCompSeq, Number(m[1]));
     const record = {
@@ -312,7 +330,7 @@ export function normalizeDocument(raw) {
       ref: c.ref,
       board: c.board,
       anchor: c.anchor,
-      params: normalizeParams(def, c.params),
+      params,
     };
     const schematicPos = normalizeSchematicPos(c.schematicPos);
     if (schematicPos) record.schematicPos = schematicPos; // Feature 150 nudge

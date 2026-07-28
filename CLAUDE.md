@@ -117,7 +117,13 @@ until you save. A desktop stopped being a file: Save As / Open on one became
 **Export / Import** snapshots, and the two-file-lifetime machinery (app-kept
 flags, orphan collection, eager write-through, `desk.json`, the
 recent-DESKTOPS list) is gone (see the "Projects & tabbed desktops" section
-below).
+below); and the **AI circuit builder** (260, all but its last step — describe a
+circuit and get a wired, SIMULATION-PROVEN design, on the user's own
+`safeStorage`-held API key. The model emits a coordinate-free **netlist** it
+cannot get geometry wrong in; a pure compiler places, routes, and proves it
+through the real engine, and only then arms it as a placement ghost. See the
+"AI circuit builder" architecture note below; step 15, refactoring `make demos`
+onto `model/autobuild.js`, is still open).
 When a stage is finished, move its plan file into `features/done/`.
 
 ## Naming & identity
@@ -239,8 +245,11 @@ website** (`make docs` → `website/docs/`), and a **PDF** (`make pdf` →
   `project-store.js` + `project-images.js` + `project-migrate.js` (below),
   `desk-store.js` + `migrations.js` — the desk-document schema migrations, plus
   the by-PATH reader `project-migrate.js` uses to inline a v3 desktop file —
-  and `mem-store.js`, the atomic byte store behind a memory chip's `.bin`
-  sidecar, Feature 180).
+  `mem-store.js`, the atomic byte store behind a memory chip's `.bin`
+  sidecar, Feature 180, and `credential-store.js`, the `safeStorage`-encrypted
+  API-key sidecar, Feature 260), plus `ai/` (`providers.js` + `client.js`) —
+  the app's ONLY outbound network call, in main because the renderer's CSP
+  forbids one.
   **Files**: there is exactly ONE — the open PROJECT (`<name>.chiphippo`),
   which holds every desktop's document and every programmed ROM's bytes (see
   "Projects & tabbed desktops" below). The whole file surface is
@@ -274,7 +283,10 @@ website** (`make docs` → `website/docs/`), and a **PDF** (`make pdf` →
   `mating.js`, and `seating.js` — the world-point → `{board, anchor}` placement
   search), and `scripts/sim/` (the engine package:
   `union-find.js`, `netlist.js`, `levels.js`, `chip-eval.js`, `sequential.js`,
-  `resolve.js`, `engine.js`); part metadata
+  `resolve.js`, `engine.js`) and `scripts/ai/` (the renderer half of the AI
+  builder: `catalog-brief.js` derives the system prompt from the catalog,
+  `generate.js` is the reply → compile → verify → clip pipeline — both pure);
+  part metadata
   under `scripts/catalog/` (pure data + integrity test — never part-specific code
   paths); thin view components under `scripts/components/`. `DeskController`
   keeps the whole public surface but delegates cohesive slices to collaborators
@@ -565,16 +577,98 @@ Electron main process (src/app/main.js)
   behind. The ghost is built ONCE in the clip's own coordinates and then just
   TRANSLATED (it is rigid), and `DeskDoc.pasteDesign` stamps it in one
   snapshot-guarded mutation that rolls itself back on any refusal.
+- **AI circuit builder** (Feature 260 — `app/store/credential-store.js` +
+  `app/ai/{providers,client}.js` + `model/{pin-resolve,column-allocator,
+  autobuild,autobuild-verify}.js` + `web/scripts/ai/{catalog-brief,generate}.js`
+  + `components/ai-panel.js`). **AN LLM CANNOT EMIT GEOMETRY, SO IT IS NEVER
+  ASKED TO.** The model answers exactly one question — which parts, and which
+  of their pins share a net — as a coordinate-free `{parts, nets, tests}`
+  spec, and a pure, DOM-free compiler decides every hole, column, anchor and
+  wire. `sim/junction.js` (the LED burn rule, moved out of the view because it
+  is PHYSICS, not logic) is why the compiler interposes a series resistor
+  itself: an unlimited LED burns rather than lights, so a netlist must not have
+  to mention one.
+  - **Compile** (`autobuild.js`): `compileNetlist(spec)` → `{document,
+    warnings, partMap, nets}`. Power is DERIVED — every def declares
+    `role:"vcc"|"gnd"`, so a spec never lists a power pin; the compiler wires
+    them, plants a PSU, and bridges the kit's two rail strips (they share no
+    node). `column-allocator.js` hands out EXCLUSIVE column runs, which makes
+    the worst machine-generation bug — two parts sharing a column-half, hence
+    silently shorted — unrepresentable rather than merely unlikely. Routing is
+    per-net star-from-hub over `freeAt` (you never wire TO a pin, you wire to a
+    free hole on the pin's NODE), the hub being the highest-capacity port
+    (a rail is ∞). `pin-resolve.js` is FAIL-CLOSED and case-FIRST: pin names
+    are case-distinguished in the catalog (74LS47's `A`–`D` inputs vs its
+    `a`–`g` outputs), so folding case would MANUFACTURE ambiguity; the one real
+    ambiguity is `74LS148` (inputs *named* `0`–`7` that do not match their pin
+    numbers), reported with both readings, with `#N` as the escape.
+  - **Verify** (`autobuild-verify.js`): the L3a–L7 ladder, faults tagged
+    `abort` (OUR bug) or `repair` (the SPEC's mistake) — the split the panel's
+    retry loop needs. **L4 is the important one**: it compares the DECLARED net
+    partition against the one `buildNetlist` DERIVES, which is the only thing
+    that catches an accidental short (counts match, it loads clean, it settles,
+    and it computes something else). **L7 is the highest-value one**: the spec
+    states its own acceptance tests and the app RUNS them, so a perfectly-built
+    adder with its bit order reversed is caught. Bit ordering in `set`/`expect`
+    is PINNED by a test, not inferred. L5 settles with every clock idle-low —
+    a bare `settle` leaves a clock line at `Z` and L6 would report a good
+    circuit as undriven.
+  - **Place**: the output is a **design clip** (`designClipOf` =
+    `captureDesign` with everything selected, never a second converter), handed
+    to `DeskController.armGeneratedDesign` — a ghost the user positions, NOT a
+    circuit that appears. `applyGeneratedDesign(clip, {at})` drops it outright
+    (shift from `nearestLegalOffset`). Both go through the one `#dropDesign`,
+    so a generated circuit is ONE undo step and rides the same atomic
+    `pasteDesign` transaction as a paste — there is deliberately no
+    `applyBatch`.
+  - **The prompt is DERIVED, never hand-written** (`ai/catalog-brief.js`):
+    `buildCatalogCard()` projects `PALETTE_DEFS` (ids, packages, exact
+    `n:name` pin lists — `JSON.stringify` would silently drop the FUNCTION
+    fields). A new 74xx part reaches the model the moment it lands in
+    `catalog/`. ~3.7 K tokens, over the prompt-cache minimum, so a repair round
+    re-reads rather than re-pays.
+  - **The renderer makes NO network call** — its CSP is `default-src 'self'`
+    with no `connect-src`, so the whole outbound path is main's, exactly as
+    filesystem I/O is. `ai/client.js` uses Node's global `fetch` (no runtime
+    dependency; `src/package.json` still has no `dependencies` block) with an
+    `AbortController` registry keyed by request id and an SSE reader that
+    carries the tail across chunk boundaries. `ai/providers.js` holds BOTH
+    adapters in one file behind `buildRequest`/`readEvent`/`buildPing`; nothing
+    else branches on provider. A **refusal is a failure** — Anthropic returns
+    HTTP 200 on a policy decline, so `stop_reason:"refusal"` is checked before
+    the text is used. `ai:test` pings with `buildPing` (unstreamed,
+    unschema'd): Test connection asks "can I reach you", so it must not fail
+    because a model declined to fill a netlist.
+  - **THE KEY NEVER CROSSES THE BRIDGE.** `credential-store.js` writes it
+    through `safeStorage` into `userData/credentials.json` and REFUSES rather
+    than falling back to plaintext when the OS has no store; `ai:key:status`
+    answers `{configured, encryptionAvailable}` and nothing more. That is
+    exactly why it does not ride `settings:set` — settings.json is plaintext
+    and is handed back to the renderer whole on every read. Only the NON-secret
+    half (`ai: {provider, baseUrl, model}`) lives there. The provider LIST is
+    itself IPC (`ai:providers`), so the Settings picker cannot drift from the
+    adapters, and the AI tab's panel therefore fills in asynchronously.
+  - **The panel** (`components/ai-panel.js`) shares the analyzer's docked shell
+    and its toolbar-pill segment discipline. `ai/generate.js` is the DOM-free
+    seam (`parseNetlist` → compile → verify → clip), so a whole generation is
+    testable with no window and no network; the clip is taken from the VERIFIED
+    (loaded) document, since what the desk places must be what the loader would
+    keep. Repair rounds cap at **2** and only `repair`-class faults are sent
+    back — the model cannot fix our compiler, so re-asking would just spend the
+    user's tokens. `ai:delta`/`:done` are a SEPARATE message stream from the
+    `ai:start` invoke result, so pushes that beat the reply back are held and
+    replayed rather than dropped.
 - **Header toolbar**: two shapes, and no others. A **pill**
   (`.toolbar-pill`) groups buttons that read as ONE control — it carries the
   only border and the only background, its `.toolbar-pill-btn` segments are
   separated by spacing rather than by borders of their own (there is no
   split-button seam anywhere), and an armed segment FILLS instead of gaining
   an accent border. Three exist: the desk tools (Wire · Bus · Fade · Probe ·
-  Analyzer · Fit · **BOM** — BOM lives here, not with the file actions, because
-  it toggles a desk panel exactly as Analyzer does, and like Analyzer its armed
-  state comes from the panel's own `onVisibilityChange`, so the segment tracks
-  the panel however it was closed), **File** (New · Open · Save · Save As, all
+  Analyzer · Fit · **BOM** · **AI** — BOM lives here, not with the file
+  actions, because it toggles a desk panel exactly as Analyzer does, and like
+  Analyzer its armed state comes from the panel's own `onVisibilityChange`, so
+  the segment tracks the panel however it was closed; the AI builder is the
+  same shape for the same reason), **File** (New · Open · Save · Save As, all
   aimed at the PROJECT, which is the document — every file action is its OWN
   icon-only segment rather than a row hidden behind a ▾, since they are peers
   and a toolbar's job is to show what is available; the name + accelerator live
@@ -730,7 +824,13 @@ Electron main process (src/app/main.js)
   **`datasheetDir`** (the external datasheet-PDF folder, default null) — its
   Browse button calls the native `settings.chooseDatasheetDir` picker and
   emits the chosen path; no live apply
-  (the pinout window reads it at open time). Window bounds and the desk camera
+  (the pinout window reads it at open time). The **AI** tab drives the
+  NON-SECRET half of the user's connection (`ai: {provider, baseUrl, model}`,
+  emitted WHOLE as an object-valued setting) and is the one panel built
+  asynchronously — its picker comes from `ai:providers`, so it cannot drift
+  from `app/ai/providers.js`. Its API-key field is the ONE control in the
+  dialog that bypasses `#emit` entirely, calling `ai.key.set` directly; see
+  the AI-circuit-builder note above for why. Window bounds and the desk camera
   (incl. **zoom**) are already persisted in `settings.json` (`windowBounds` via
   `window-state.js`; `viewport` via the renderer's debounced save).
 - **Pin-assignments window** (Feature 100): **Pin Assignment**, the item

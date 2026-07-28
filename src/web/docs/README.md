@@ -33,6 +33,9 @@ breadboards, powered at 3 V / 5 V / 12 V, and watched settle live.
   bus lines, kept in sync with the desk.
 - **Build guide & BOM export**, and **undo/redo** across every edit, per
   desktop of the open project.
+- **An AI circuit builder** — describe a circuit in words, using your own AI
+  connection, and get a wired design that has already been built and run
+  before you're offered it.
 
 ## Table of contents
 
@@ -64,6 +67,8 @@ breadboards, powered at 3 V / 5 V / 12 V, and watched settle live.
 - [Logic Analyzer & Timing](logic-analyzer.md) — capturing and reading
   waveforms.
 - [Schematic View](schematic-view.md) — the derived logical diagram.
+- [AI Circuit Builder](ai-builder.md) — describe a circuit in words and get a
+  simulation-proven design, using your own AI connection.
 
 ### Files & reference
 

@@ -32,6 +32,7 @@ import { ProjectTabs } from "./components/project-tabs.js";
 import { ProjectWorkspace } from "./components/project-workspace.js";
 import { BuildGuide } from "./components/build-guide.js";
 import { ScopeView } from "./components/scope-view.js";
+import { AiPanel } from "./components/ai-panel.js";
 import { SimController, SPEEDS } from "./components/sim-controller.js";
 import { NetlistCache } from "./components/netlist-cache.js";
 import { MemoryBridge } from "./components/memory-bridge.js";
@@ -166,6 +167,13 @@ const ZOOM_OUT_SVG =
   '<circle cx="11" cy="11" r="8"/>' +
   '<line x1="21" y1="21" x2="16.65" y2="16.65"/>' +
   '<line x1="8" y1="11" x2="14" y2="11"/></svg>';
+
+/** AI-builder icon: a four-point spark — the app-wide "generated" glyph. */
+const AI_SVG =
+  ICON_SVG_OPEN +
+  '<path d="M12 3 13.8 9.2 20 11 13.8 12.8 12 19 10.2 12.8 4 11 10.2 9.2Z"/>' +
+  '<path d="M18.5 3.5 19.2 5.8 21.5 6.5 19.2 7.2 18.5 9.5 17.8 7.2 15.5 6.5 ' +
+  '17.8 5.8Z"/></svg>';
 
 /** Build-guide (clipboard-list) icon for the Guide toolbar toggle. */
 const GUIDE_SVG =
@@ -632,6 +640,39 @@ async function init() {
   });
   scopeView.setVisible(settings.scopeOpen === true);
 
+  // The live settings document. Declared here rather than beside the Settings
+  // dialog below because the AI panel reads `ai` from it on every send — that
+  // is how a Settings change reaches the panel with no wiring between them.
+  let currentSettings = settings;
+  // The transport's last reported mode, kept because several panels need to
+  // know the desk is frozen and `sim` itself is built further down.
+  let transportMode = "stopped";
+
+  // AI circuit builder (Feature 260): describe a circuit, get a verified design
+  // ARMED as a placement ghost. It hands over a design clip and nothing else —
+  // the desk's own atomic paste path does the placing, so a generated circuit
+  // rides undo/redo exactly as a pasted one does.
+  let aiBtn = null;
+  const aiPanel = new AiPanel(app, {
+    config: () => currentSettings.ai ?? {},
+    height: settings.aiHeight,
+    isLocked: () => transportMode !== "stopped",
+    onDesign: (clip) => controller?.armGeneratedDesign(clip),
+    onVisibilityChange: (visible) => {
+      aiBtn?.classList.toggle("toolbar-btn--active", visible);
+      aiBtn?.setAttribute("aria-pressed", String(visible));
+      bridge.settings
+        .set({ aiOpen: visible })
+        .catch((err) => console.error("[renderer] settings:set failed:", err));
+    },
+    onHeightChange: (height) => {
+      bridge.settings
+        .set({ aiHeight: height })
+        .catch((err) => console.error("[renderer] settings:set failed:", err));
+    },
+  });
+  aiPanel.setVisible(settings.aiOpen === true);
+
   const deskView = new DeskView(desk, {
     camera: settings.viewport,
     onViewportChange: (camera) => {
@@ -1047,6 +1088,25 @@ async function init() {
   guideBtn.classList.toggle("toolbar-btn--active", buildGuide.visible);
   toolPill.append(guideBtn);
 
+  // AI builder: toggle the bottom-docked builder panel. Like the analyzer its
+  // armed state comes from the panel's own onVisibilityChange, so the segment
+  // tracks the panel however it was closed. It stays available while the
+  // circuit runs — the panel itself refuses to build while the desk is frozen,
+  // and saying so there is clearer than a dead button here.
+  aiBtn = el("button", {
+    class: "toolbar-pill-btn toolbar-pill-btn--icon",
+    type: "button",
+    "aria-label": "AI builder",
+    title:
+      "AI circuit builder — describe a circuit and have it designed, " +
+      "built and tested for you",
+    "aria-pressed": String(aiPanel.visible),
+    onClick: () => aiPanel.toggle(),
+  });
+  aiBtn.innerHTML = AI_SVG;
+  aiBtn.classList.toggle("toolbar-btn--active", aiPanel.visible);
+  toolPill.append(aiBtn);
+
   // ── Simulation transport (Feature 90/100): Run/Stop, Pause, Step, speed ──
   const notifications = new NotificationStack(document.body);
 
@@ -1111,6 +1171,7 @@ async function init() {
   // always stayed live for the same reason).
   const editButtons = [wireBtn, busBtn];
   const onTransportChange = (mode) => {
+    transportMode = mode;
     const stopped = mode === "stopped";
     controller.setEditingLocked(!stopped);
     workspace?.setEditingLocked(!stopped);
@@ -1200,7 +1261,6 @@ async function init() {
   // `theme` is deliberately absent from applySettings: main acts on it (it
   // becomes nativeTheme.themeSource), so persisting the patch below IS
   // applying it — for every window at once, not just this one.
-  let currentSettings = settings;
   const applySettings = (s) => {
     hud?.setVisible(s.showDeskHub === true);
     const root = document.documentElement;
