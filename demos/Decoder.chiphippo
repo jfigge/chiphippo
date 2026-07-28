@@ -15,24 +15,24 @@
           {
             "id": "bb1",
             "type": "rail-full",
-            "x": -37,
-            "y": -14,
+            "x": -32,
+            "y": -7,
             "rot": 0,
             "group": "g1"
           },
           {
             "id": "bb2",
             "type": "pins-full",
-            "x": -37,
-            "y": -11,
+            "x": -32,
+            "y": -4,
             "rot": 0,
             "group": "g1"
           },
           {
             "id": "bb3",
             "type": "rail-full",
-            "x": -37,
-            "y": 2,
+            "x": -32,
+            "y": 9,
             "rot": 0,
             "group": "g1"
           }
@@ -42,8 +42,8 @@
             "id": "psu1",
             "kind": "psu",
             "ref": "psu",
-            "x": -36,
-            "y": -23,
+            "x": -31,
+            "y": -16,
             "params": {
               "volts": 5
             }
@@ -513,132 +513,132 @@
           {
             "id": "an1",
             "kind": "label",
-            "x": -34.3,
-            "y": -16.4,
+            "x": -29.299999999999997,
+            "y": -9.399999999999999,
             "text": "A"
           },
           {
             "id": "an2",
             "kind": "label",
-            "x": -28.3,
-            "y": -16.4,
+            "x": -23.3,
+            "y": -9.399999999999999,
             "text": "B"
           },
           {
             "id": "an3",
             "kind": "label",
-            "x": -22.3,
-            "y": -16.4,
+            "x": -17.3,
+            "y": -9.399999999999999,
             "text": "C"
           },
           {
             "id": "an4",
             "kind": "label",
-            "x": -0.3,
-            "y": -16.4,
+            "x": 4.7,
+            "y": -9.399999999999999,
             "text": "Y0"
           },
           {
             "id": "an5",
             "kind": "label",
-            "x": 2.7,
-            "y": -16.4,
+            "x": 7.7,
+            "y": -9.399999999999999,
             "text": "Y1"
           },
           {
             "id": "an6",
             "kind": "label",
-            "x": 5.7,
-            "y": -16.4,
+            "x": 10.7,
+            "y": -9.399999999999999,
             "text": "Y2"
           },
           {
             "id": "an7",
             "kind": "label",
-            "x": 8.7,
-            "y": -16.4,
+            "x": 13.7,
+            "y": -9.399999999999999,
             "text": "Y3"
           },
           {
             "id": "an8",
             "kind": "label",
-            "x": 11.7,
-            "y": -16.4,
+            "x": 16.7,
+            "y": -9.399999999999999,
             "text": "Y4"
           },
           {
             "id": "an9",
             "kind": "label",
-            "x": 14.7,
-            "y": -16.4,
+            "x": 19.7,
+            "y": -9.399999999999999,
             "text": "Y5"
           },
           {
             "id": "an10",
             "kind": "label",
-            "x": 17.7,
-            "y": -16.4,
+            "x": 22.7,
+            "y": -9.399999999999999,
             "text": "Y6"
           },
           {
             "id": "an11",
             "kind": "label",
-            "x": 20.7,
-            "y": -16.4,
+            "x": 25.7,
+            "y": -9.399999999999999,
             "text": "Y7"
           },
           {
             "id": "an12",
             "kind": "label",
-            "x": -37,
-            "y": -36.6,
+            "x": -32,
+            "y": -29.6,
             "text": "74LS138 — 3-to-8 line decoder"
           },
           {
             "id": "an13",
             "kind": "label",
-            "x": -37,
-            "y": -34.8,
+            "x": -32,
+            "y": -27.799999999999997,
             "text": "Switches A, B, C select one of eight",
             "color": "#808080"
           },
           {
             "id": "an14",
             "kind": "label",
-            "x": -37,
-            "y": -33,
+            "x": -32,
+            "y": -26,
             "text": "outputs; G1 is tied HIGH and both G2s",
             "color": "#808080"
           },
           {
             "id": "an15",
             "kind": "label",
-            "x": -37,
-            "y": -31.2,
+            "x": -32,
+            "y": -24.2,
             "text": "LOW, so the part is always enabled.",
             "color": "#808080"
           },
           {
             "id": "an16",
             "kind": "label",
-            "x": -37,
-            "y": -29.4,
+            "x": -32,
+            "y": -22.4,
             "text": "The outputs are active LOW, so each LED",
             "color": "#808080"
           },
           {
             "id": "an17",
             "kind": "label",
-            "x": -37,
-            "y": -27.6,
+            "x": -32,
+            "y": -20.6,
             "text": "is wired the other way up: exactly one",
             "color": "#808080"
           },
           {
             "id": "an18",
             "kind": "label",
-            "x": -37,
-            "y": -25.8,
+            "x": -32,
+            "y": -18.8,
             "text": "lights, and it is the one selected.",
             "color": "#808080"
           }
@@ -666,24 +666,24 @@
           {
             "id": "bb1",
             "type": "rail-full",
-            "x": -37,
-            "y": -14,
+            "x": -32,
+            "y": -7,
             "rot": 0,
             "group": "g1"
           },
           {
             "id": "bb2",
             "type": "pins-full",
-            "x": -37,
-            "y": -11,
+            "x": -32,
+            "y": -4,
             "rot": 0,
             "group": "g1"
           },
           {
             "id": "bb3",
             "type": "rail-full",
-            "x": -37,
-            "y": 2,
+            "x": -32,
+            "y": 9,
             "rot": 0,
             "group": "g1"
           }
@@ -693,8 +693,8 @@
             "id": "psu1",
             "kind": "psu",
             "ref": "psu",
-            "x": -36,
-            "y": -23,
+            "x": -31,
+            "y": -16,
             "params": {
               "volts": 5
             }
@@ -1260,145 +1260,145 @@
           {
             "id": "an1",
             "kind": "label",
-            "x": -34.3,
-            "y": -16.4,
+            "x": -29.299999999999997,
+            "y": -9.399999999999999,
             "text": "1G"
           },
           {
             "id": "an2",
             "kind": "label",
-            "x": -28.3,
-            "y": -16.4,
+            "x": -23.3,
+            "y": -9.399999999999999,
             "text": "1A"
           },
           {
             "id": "an3",
             "kind": "label",
-            "x": -22.3,
-            "y": -16.4,
+            "x": -17.3,
+            "y": -9.399999999999999,
             "text": "1B"
           },
           {
             "id": "an4",
             "kind": "label",
-            "x": -16.3,
-            "y": -16.4,
+            "x": -11.3,
+            "y": -9.399999999999999,
             "text": "2G"
           },
           {
             "id": "an5",
             "kind": "label",
-            "x": -34.3,
-            "y": 5.4,
+            "x": -29.299999999999997,
+            "y": 12.4,
             "text": "2A"
           },
           {
             "id": "an6",
             "kind": "label",
-            "x": -28.3,
-            "y": 5.4,
+            "x": -23.3,
+            "y": 12.4,
             "text": "2B"
           },
           {
             "id": "an7",
             "kind": "label",
-            "x": -0.3,
-            "y": -16.4,
+            "x": 4.7,
+            "y": -9.399999999999999,
             "text": "1Y0"
           },
           {
             "id": "an8",
             "kind": "label",
-            "x": 2.7,
-            "y": -16.4,
+            "x": 7.7,
+            "y": -9.399999999999999,
             "text": "1Y1"
           },
           {
             "id": "an9",
             "kind": "label",
-            "x": 5.7,
-            "y": -16.4,
+            "x": 10.7,
+            "y": -9.399999999999999,
             "text": "1Y2"
           },
           {
             "id": "an10",
             "kind": "label",
-            "x": 8.7,
-            "y": -16.4,
+            "x": 13.7,
+            "y": -9.399999999999999,
             "text": "1Y3"
           },
           {
             "id": "an11",
             "kind": "label",
-            "x": 11.7,
-            "y": -16.4,
+            "x": 16.7,
+            "y": -9.399999999999999,
             "text": "2Y0"
           },
           {
             "id": "an12",
             "kind": "label",
-            "x": 14.7,
-            "y": -16.4,
+            "x": 19.7,
+            "y": -9.399999999999999,
             "text": "2Y1"
           },
           {
             "id": "an13",
             "kind": "label",
-            "x": 17.7,
-            "y": -16.4,
+            "x": 22.7,
+            "y": -9.399999999999999,
             "text": "2Y2"
           },
           {
             "id": "an14",
             "kind": "label",
-            "x": 20.7,
-            "y": -16.4,
+            "x": 25.7,
+            "y": -9.399999999999999,
             "text": "2Y3"
           },
           {
             "id": "an15",
             "kind": "label",
-            "x": -37,
-            "y": -34.8,
+            "x": -32,
+            "y": -27.799999999999997,
             "text": "74LS139 — Dual 2-to-4 decoder"
           },
           {
             "id": "an16",
             "kind": "label",
-            "x": -37,
-            "y": -33,
+            "x": -32,
+            "y": -26,
             "text": "Two independent decoders in one package,",
             "color": "#808080"
           },
           {
             "id": "an17",
             "kind": "label",
-            "x": -37,
-            "y": -31.2,
+            "x": -32,
+            "y": -24.2,
             "text": "each with its own active-low enable. Both",
             "color": "#808080"
           },
           {
             "id": "an18",
             "kind": "label",
-            "x": -37,
-            "y": -29.4,
+            "x": -32,
+            "y": -22.4,
             "text": "sets of outputs are active LOW, so the",
             "color": "#808080"
           },
           {
             "id": "an19",
             "kind": "label",
-            "x": -37,
-            "y": -27.6,
+            "x": -32,
+            "y": -20.6,
             "text": "lamps are wired the other way up: one lit",
             "color": "#808080"
           },
           {
             "id": "an20",
             "kind": "label",
-            "x": -37,
-            "y": -25.8,
+            "x": -32,
+            "y": -18.8,
             "text": "per half, none at all while its Ḡ is high.",
             "color": "#808080"
           }

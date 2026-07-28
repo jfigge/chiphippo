@@ -163,6 +163,17 @@ function fakeBridge() {
     duplicate: async (doc) => ({ doc: reseat(doc) }),
   };
 
+  // The bundled example circuits (Feature 270): main reads web/demos/<ref>.json
+  // and hands over { ref, title, doc }; a part with no bench answers null.
+  const examples = new Map(); // ref → { ref, title, doc }
+  const demo = {
+    open: async () => true, // the pinout window's half — never called from here
+    read: async (ref) => {
+      if (control.failExampleRead) throw new Error("unreadable example");
+      return clone(examples.get(ref)) ?? null;
+    },
+  };
+
   // What the renderer last told main the native Desktop menu may offer. The
   // tab strip disables the same two items, so a test can hold the two answers
   // against each other.
@@ -172,6 +183,7 @@ function fakeBridge() {
     bridge: {
       project,
       desktop,
+      demo,
       settings: { set: async (patch) => Object.assign(settings, patch) },
       menu: {
         setEditState: async () => true,
@@ -189,6 +201,7 @@ function fakeBridge() {
     recentList: () => [...recent],
     seedProject: (filePath, meta) => projects.set(filePath, clone(meta)),
     seedRecent: (filePath) => remember(filePath),
+    seedExample: (ref, payload) => examples.set(ref, payload),
   };
 }
 
@@ -280,10 +293,16 @@ function closePopup() {
 }
 
 /** Click a button by its label in the open dialog. */
-function clickButton(label) {
-  const btn = [...document.querySelectorAll(".popup-dialog button")].find(
-    (b) => b.textContent.trim() === label,
+function findButton(label) {
+  return (
+    [...document.querySelectorAll(".popup-dialog button")].find(
+      (b) => b.textContent.trim() === label,
+    ) ?? null
   );
+}
+
+function clickButton(label) {
+  const btn = findButton(label);
   assert.ok(btn, `a "${label}" button is showing`);
   btn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
 }
@@ -307,12 +326,13 @@ const saveAs = async (h, filePath) => {
 };
 
 /** Run something that LEAVES the open project, discarding it at the guard.
-    An untitled project is always asked about — the working slot it lives in is
-    what the incoming project is about to claim. */
+    An untitled project holding anything is asked about — the working slot it
+    lives in is what the incoming project is about to claim — while a pristine
+    one is let go silently, so the discard is conditional. */
 const leaving = async (run) => {
   const done = run();
   await settle();
-  clickButton("Discard");
+  if (findButton("Discard")) clickButton("Discard");
   const out = await done;
   await settle();
   return out;
@@ -685,6 +705,91 @@ test("a cancelled import changes nothing", async () => {
   assert.deepEqual(h.strip(), ["Desktop 1"]);
 });
 
+// ── Example circuits (Feature 270) ──────────────────────────────────────────
+
+test("a part's example arrives as a desktop named for it", async () => {
+  const h = await harness();
+  h.doc.load(someDesign("bb1"));
+  h.seedExample("74LS00", {
+    ref: "74LS00",
+    title: "Quad 2-input NAND",
+    doc: someDesign("bb7"),
+  });
+  assert.equal(await h.workspace.openExample("74LS00"), "added");
+  await settle();
+  assert.deepEqual(h.strip(), ["Desktop 1", "74LS00 example"]);
+  assert.equal(h.workspace.activeTab.name, "74LS00 example");
+  // The spec's title becomes the desktop's description — its tab tooltip.
+  assert.equal(h.workspace.activeTab.description, "Quad 2-input NAND");
+  assert.deepEqual(
+    h.doc.boards.map((b) => b.id),
+    ["bb7"],
+  );
+});
+
+test("asking for the same example twice switches to it, never copies it", async () => {
+  const h = await harness();
+  h.seedExample("74LS00", { ref: "74LS00", title: "NAND", doc: someDesign() });
+  await h.workspace.openExample("74LS00");
+  await settle();
+  await h.workspace.selectTab("t1");
+  await settle();
+  assert.equal(await h.workspace.openExample("74LS00"), "switched");
+  await settle();
+  assert.deepEqual(h.strip(), ["Desktop 1", "74LS00 example"]);
+  assert.equal(h.workspace.activeTab.name, "74LS00 example");
+});
+
+test("two clicks in a row make ONE example desktop", async () => {
+  const h = await harness();
+  h.seedExample("74LS00", { ref: "74LS00", title: "NAND", doc: someDesign() });
+  // Deliberately NOT awaited in turn: the name check and the insert are
+  // separated by awaits, which is exactly where a double-click gets in.
+  const [a, b] = await Promise.all([
+    h.workspace.openExample("74LS00"),
+    h.workspace.openExample("74LS00"),
+  ]);
+  await settle();
+  assert.deepEqual([a, b], ["added", "added"], "both callers see one outcome");
+  assert.deepEqual(h.strip(), ["Desktop 1", "74LS00 example"]);
+});
+
+test("an example is reseated like any other copy of a desktop", async () => {
+  const h = await harness();
+  h.seedExample("74LS00", { ref: "74LS00", title: "NAND", doc: someDesign() });
+  await h.workspace.openExample("74LS00");
+  await settle();
+  // The fake marks a reseated document, so this proves desktop.duplicate was
+  // in the path — two examples must never share a ROM guid.
+  assert.equal(h.doc.toJSON().nextBoardId, 101);
+});
+
+test("an example is an unsaved change like any other desktop", async () => {
+  const h = await harness();
+  h.seedExample("74LS00", { ref: "74LS00", title: "NAND", doc: someDesign() });
+  await h.workspace.openExample("74LS00");
+  await settle();
+  assert.equal(h.workspace.dirty, true);
+  assert.equal(h.tabsOf().length, 1, "nothing was written");
+});
+
+test("a part with no bundled example is reported and changes nothing", async () => {
+  const h = await harness();
+  assert.equal(await h.workspace.openExample("ram-8k"), null);
+  await settle();
+  assert.match(dialogTitle(), /Could not open the ram-8k example/);
+  assert.deepEqual(h.strip(), ["Desktop 1"]);
+});
+
+test("an unreadable example is reported and changes nothing", async () => {
+  const h = await harness();
+  h.control.failExampleRead = true;
+  assert.equal(await h.workspace.openExample("74LS00"), null);
+  await settle();
+  assert.match(dialogTitle(), /Could not open the 74LS00 example/);
+  assert.deepEqual(h.strip(), ["Desktop 1"]);
+});
+
 test("exporting hands over the desk on screen, name and all", async () => {
   const h = await harness();
   h.doc.load(someDesign("bb4"));
@@ -767,20 +872,30 @@ test("the last desktop cannot be deleted, and the strip disables it", async () =
 
 // ── Leaving a project ────────────────────────────────────────────────────────
 
-test("an untitled project is ALWAYS asked about, even with nothing unsaved", async () => {
+test("a brand-new project is not asked about — it holds nothing to lose", async () => {
   const h = await harness();
   assert.equal(h.workspace.dirty, false);
+  await h.workspace.newProject();
+  await settle();
+  assert.equal(
+    dialogTitle(),
+    "",
+    "the very first thing a session does must not open with a save question",
+  );
+  assert.deepEqual(h.strip(), ["Desktop 1"]);
+  assert.equal(h.workspace.isUntitled, true, "and the new one is on the desk");
+});
+
+test("a second desktop is enough to be asked about", async () => {
+  const h = await harness();
+  await twoDesktops(h);
   const done = h.workspace.newProject();
   await settle();
-  assert.match(
-    dialogTitle(),
-    /hasn't been saved/,
-    "replacing the working slot is destructive whether or not it is dirty",
-  );
+  assert.match(dialogTitle(), /hasn't been saved/);
   clickButton("Discard");
   await done;
   await settle();
-  assert.deepEqual(h.strip(), ["Desktop 1"]);
+  assert.deepEqual(h.strip(), ["Desktop 1"], "one blank desktop again");
 });
 
 test("a SAVED project with nothing unsaved is not asked about", async () => {
@@ -833,6 +948,7 @@ test("a ⌘S into the slot does not make replacing it any less destructive", asy
 
 test("Open… guards the untitled project the same way New Project does", async () => {
   const h = await harness();
+  h.doc.load(someDesign()); // something in the slot for the guard to be about
   h.seedProject("/home/other.chiphippo", {
     name: "Other",
     activeTab: "t1",

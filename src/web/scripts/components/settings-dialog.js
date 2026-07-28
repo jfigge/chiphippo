@@ -95,6 +95,242 @@ function buildSegmented({ options, value, ariaLabel, onPick }) {
   );
 }
 
+/** Emit a settings patch for app.js to persist + apply. */
+function emitSettings(patch) {
+  window.dispatchEvent(
+    new CustomEvent("chiphippo:settings-changed", { detail: patch }),
+  );
+}
+
+/**
+ * Announce that the stored API key changed.
+ *
+ * The key is the one control here that bypasses the settings patch (it goes
+ * straight to the OS-encrypted store), so a settings-changed event would never
+ * carry it — and whether a key exists is exactly what decides if the toolbar's
+ * AI segment is offered. The event says only THAT it changed: the value does
+ * not cross the bridge, let alone the app.
+ */
+function announceKeyChange() {
+  window.dispatchEvent(new CustomEvent("chiphippo:ai-key-changed"));
+}
+
+/**
+ * Build the AI panel's rows once the provider list has arrived.
+ *
+ * The list comes from MAIN (`ai:providers`, projected from `app/ai/
+ * providers.js`) rather than being restated here, so adding a third adapter
+ * needs no renderer change and the picker can never offer one that does not
+ * exist. That is also why this is built asynchronously: everything in the
+ * panel — the placeholders, the key label — is the CHOSEN provider's data.
+ *
+ * @param {object} settings the current settings document.
+ * @param {Array} providers `[{id, label, defaultBaseUrl, defaultModel, keyLabel}]`.
+ * @returns {HTMLElement[]} the panel's children.
+ */
+function buildAiRows(settings, providers) {
+  const bridge = window.chiphippo?.ai;
+  // A patch replaces the `ai` object whole (the object-valued-setting
+  // convention), so every control emits the WHOLE config, not its own field.
+  let config = {
+    provider: providers.some((p) => p.id === settings.ai?.provider)
+      ? settings.ai.provider
+      : providers[0].id,
+    baseUrl: settings.ai?.baseUrl ?? "",
+    model: settings.ai?.model ?? "",
+  };
+  const emit = (patch) => {
+    config = { ...config, ...patch };
+    emitSettings({ ai: { ...config } });
+  };
+  const chosen = () => providers.find((p) => p.id === config.provider);
+
+  const status = el("p", { class: "settings-hint", text: "" });
+  const keyInput = el("input", {
+    class: "settings-text-input",
+    type: "password",
+    id: "set-ai-key",
+    autocomplete: "off",
+    spellcheck: false,
+    placeholder: "Paste a key to store it",
+  });
+  const result = el("p", { class: "settings-hint", text: "" });
+
+  /** Re-read whether a key is stored. The key itself never comes back. */
+  const refreshStatus = async () => {
+    const label = chosen()?.label ?? config.provider;
+    let s;
+    try {
+      s = await bridge?.key?.status(config.provider);
+    } catch {
+      s = null;
+    }
+    if (s && s.encryptionAvailable === false) {
+      status.textContent =
+        "This system has no secure credential store, so a key cannot be " +
+        "saved. Point the base URL at a local server that needs no key.";
+      keyInput.disabled = true;
+      return;
+    }
+    keyInput.disabled = false;
+    status.textContent = s?.configured
+      ? `A key is stored for ${label}. It is encrypted by the OS and is never read back into this window.`
+      : `No key stored for ${label}.`;
+  };
+
+  const baseUrl = el("input", {
+    class: "settings-text-input",
+    type: "text",
+    id: "set-ai-base-url",
+    spellcheck: false,
+    value: config.baseUrl,
+    // Commit on change (blur/Enter), never per keystroke — a half-typed URL
+    // is not a setting, and this is written to disk.
+    onChange: (e) => emit({ baseUrl: e.target.value.trim() }),
+  });
+  const model = el("input", {
+    class: "settings-text-input",
+    type: "text",
+    id: "set-ai-model",
+    spellcheck: false,
+    value: config.model,
+    onChange: (e) => emit({ model: e.target.value.trim() }),
+  });
+
+  const keyLabel = el("label", {
+    class: "settings-label",
+    for: "set-ai-key",
+    text: "API key",
+  });
+
+  /** Placeholders show what an empty field falls back to. */
+  const showDefaults = () => {
+    const p = chosen();
+    baseUrl.placeholder = p?.defaultBaseUrl ?? "";
+    model.placeholder = p?.defaultModel ?? "";
+    keyLabel.textContent = p?.keyLabel ?? "API key";
+  };
+
+  const picker = buildSegmented({
+    options: providers.map((p) => ({ value: p.id, label: p.label })),
+    value: config.provider,
+    ariaLabel: "AI provider",
+    onPick: (provider) => {
+      emit({ provider });
+      showDefaults();
+      result.textContent = "";
+      refreshStatus();
+    },
+  });
+
+  // The key is the ONE control that bypasses the settings patch entirely: it
+  // goes straight to main's OS-encrypted store, because settings.json is
+  // plaintext and is handed back to this window in full on every read.
+  const saveKey = el("button", {
+    class: "settings-folder-browse",
+    type: "button",
+    text: "Save key",
+    onClick: async () => {
+      const value = keyInput.value.trim();
+      if (!value) return;
+      const r = await bridge?.key?.set(config.provider, value);
+      keyInput.value = "";
+      if (r && r.ok === false) {
+        result.textContent = r.error ?? "The key could not be stored.";
+        return;
+      }
+      result.textContent = "";
+      refreshStatus();
+      announceKeyChange();
+    },
+  });
+  const clearKey = el("button", {
+    class: "settings-folder-browse",
+    type: "button",
+    text: "Clear key",
+    onClick: async () => {
+      await bridge?.key?.clear(config.provider);
+      keyInput.value = "";
+      result.textContent = "";
+      refreshStatus();
+      announceKeyChange();
+    },
+  });
+  const testBtn = el("button", {
+    class: "settings-folder-browse",
+    type: "button",
+    text: "Test connection",
+    onClick: async () => {
+      testBtn.disabled = true;
+      result.textContent = "Testing…";
+      let r;
+      try {
+        r = await bridge?.test({ ...config });
+      } catch (err) {
+        r = { ok: false, error: String(err?.message ?? err) };
+      }
+      testBtn.disabled = false;
+      result.textContent = r?.ok
+        ? "Connected."
+        : (r?.error ?? "The connection could not be tested.");
+    },
+  });
+
+  showDefaults();
+  refreshStatus();
+
+  return [
+    el("div", { class: "settings-row" }, [
+      el("label", { class: "settings-label", text: "Provider" }),
+      picker,
+    ]),
+    el("div", { class: "settings-row settings-row--stack" }, [
+      el("label", {
+        class: "settings-label",
+        for: "set-ai-base-url",
+        text: "Base URL",
+      }),
+      baseUrl,
+    ]),
+    el("div", { class: "settings-row settings-row--stack" }, [
+      el("label", {
+        class: "settings-label",
+        for: "set-ai-model",
+        text: "Model",
+      }),
+      model,
+    ]),
+    el("div", { class: "settings-row settings-row--stack" }, [
+      keyLabel,
+      keyInput,
+      el("div", { class: "settings-folder-actions" }, [
+        clearKey,
+        saveKey,
+        testBtn,
+      ]),
+      status,
+      result,
+    ]),
+    el("p", {
+      class: "settings-hint",
+      text:
+        "Chip Hippo uses your own connection — nothing is sent anywhere until " +
+        "you ask it to build something, and the key is stored encrypted by " +
+        "the operating system, never in settings.json. Leave Base URL and " +
+        "Model blank to use the shown defaults.",
+    }),
+    // Said HERE, where the connection is set up, because this is where the
+    // builder is first met — long before a design lands on the desk.
+    el("p", {
+      class: "settings-hint",
+      text:
+        "AI generation is experimental. Every design is verified against the " +
+        "simulator before it is offered, but it may not be the most optimal " +
+        "circuit or the tidiest layout — expect to review and adjust it.",
+    }),
+  ];
+}
+
 /** The effective selection-border colour when none is stored (theme default). */
 function themeSelectionColor() {
   const v = getComputedStyle(document.documentElement)
@@ -108,9 +344,7 @@ export class SettingsDialog {
 
   /** Emit a settings patch for app.js to persist + apply. */
   static #emit(patch) {
-    window.dispatchEvent(
-      new CustomEvent("chiphippo:settings-changed", { detail: patch }),
-    );
+    emitSettings(patch);
   }
 
   /**
@@ -198,6 +432,37 @@ export class SettingsDialog {
     });
     browseBtn.innerHTML = `${FOLDER_SVG}<span>Browse…</span>`;
 
+    // The AI panel is filled in once main answers with the provider list, so
+    // the dialog itself stays synchronous. It is never the open tab, so the
+    // placeholder is not something a user normally sees.
+    const aiPanel = el(
+      "section",
+      {
+        class: "settings-panel",
+        role: "tabpanel",
+        "data-panel": "ai",
+        hidden: true,
+      },
+      [el("p", { class: "settings-hint", text: "Loading providers…" })],
+    );
+    Promise.resolve(window.chiphippo?.ai?.providers?.() ?? []).then(
+      (providers) => {
+        aiPanel.replaceChildren(
+          ...(Array.isArray(providers) && providers.length
+            ? buildAiRows(settings, providers)
+            : [
+                el("p", {
+                  class: "settings-hint",
+                  text: "No AI providers are available in this build.",
+                }),
+              ]),
+        );
+      },
+      (err) => {
+        console.error("[renderer] ai:providers failed:", err);
+      },
+    );
+
     const panels = {
       appearance: el(
         "section",
@@ -268,12 +533,14 @@ export class SettingsDialog {
           }),
         ],
       ),
+      ai: aiPanel,
     };
 
     // Left nav rail — one item per panel; clicking switches the visible panel.
     const TABS = [
       { key: "appearance", label: "Appearance" },
       { key: "datasheets", label: "Data Sheets" },
+      { key: "ai", label: "AI" },
     ];
     const navItems = TABS.map(({ key, label }, i) =>
       el("button", {
@@ -304,6 +571,7 @@ export class SettingsDialog {
       el("div", { class: "settings-panels" }, [
         panels.appearance,
         panels.datasheets,
+        panels.ai,
       ]),
     ];
 

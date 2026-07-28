@@ -23,6 +23,7 @@ import {
   DOC_VERSION,
   DeskDoc,
   emptyDocument,
+  isEmptyDocument,
   normalizeDocument,
 } from "../model/desk-doc.js";
 
@@ -48,6 +49,22 @@ test("a fresh DeskDoc serializes to the empty document shape", () => {
     nextScopeChannelId: 1,
   });
   assert.deepEqual(new DeskDoc(null).toJSON(), emptyDocument());
+});
+
+test("isEmptyDocument: nothing on the desk, whatever the counters say", () => {
+  assert.equal(isEmptyDocument(emptyDocument()), true);
+  assert.equal(isEmptyDocument(null), true, "no document is no content");
+  assert.equal(isEmptyDocument({}), true, "and neither is a junk one");
+
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  assert.equal(isEmptyDocument(doc.toJSON()), false);
+
+  // The counters remember bb1, but the desk itself is bare again.
+  doc.removeBoard("bb1");
+  const bare = doc.toJSON();
+  assert.equal(bare.nextBoardId, 2, "the id is spent");
+  assert.equal(isEmptyDocument(bare), true, "and the desk is empty regardless");
 });
 
 test("addBoard: fresh bb<n> ids and integer snapping", () => {
@@ -349,6 +366,106 @@ test("normalizeDocument keeps only the first of two wires sharing a hole", () =>
     doc.wires.map((w) => w.id),
     ["w1"],
   );
+});
+
+test("normalizeDocument drops a part that does not seat on its board", () => {
+  // A DIP-14 needs 7 columns. Anchored at e60 on a 63-column pin-board its
+  // last three pins hang off the end — they resolve to nothing, so the chip is
+  // electrically dead while still LOOKING present. Counts used to match, which
+  // is exactly what made this invisible.
+  const doc = normalizeDocument({
+    boards: [{ id: "bb1", type: "pins-full", x: 0, y: 0 }],
+    components: [
+      { id: "c1", kind: "chip", ref: "74LS00", board: "bb1", anchor: "e60" },
+      { id: "c2", kind: "chip", ref: "74LS00", board: "bb1", anchor: "e5" },
+    ],
+  });
+  assert.deepEqual(
+    doc.components.map((c) => c.id),
+    ["c2"],
+    "the overhanging chip is dropped, the seated one survives",
+  );
+});
+
+test("normalizeDocument drops a part whose anchor defies its footprint", () => {
+  // A DIP straddles the trench, so its anchor is a row-e hole. Row a is not a
+  // seat a chip can take, and `typeof anchor === "string"` never noticed.
+  const doc = normalizeDocument({
+    boards: [{ id: "bb1", type: "pins-full", x: 0, y: 0 }],
+    components: [
+      { id: "c1", kind: "chip", ref: "74LS00", board: "bb1", anchor: "a5" },
+      { id: "c2", kind: "chip", ref: "74LS00", board: "bb1", anchor: "e5" },
+    ],
+  });
+  assert.deepEqual(
+    doc.components.map((c) => c.id),
+    ["c2"],
+  );
+});
+
+test("normalizeDocument drops a part seated on the wrong board type", () => {
+  // A rail strip has no grid rows, so a linear discrete cannot seat on one —
+  // and pins-tiny is 17 columns, so column 25 does not exist.
+  const doc = normalizeDocument({
+    boards: [
+      { id: "bb1", type: "rail-full", x: 0, y: 0 },
+      { id: "bb2", type: "pins-tiny", x: 0, y: 4 },
+    ],
+    components: [
+      {
+        id: "c1",
+        kind: "discrete",
+        ref: "resistor",
+        board: "bb1",
+        anchor: "a3",
+      },
+      {
+        id: "c2",
+        kind: "discrete",
+        ref: "resistor",
+        board: "bb2",
+        anchor: "a25",
+      },
+      {
+        id: "c3",
+        kind: "discrete",
+        ref: "resistor",
+        board: "bb2",
+        anchor: "a5",
+      },
+    ],
+  });
+  assert.deepEqual(
+    doc.components.map((c) => c.id),
+    ["c3"],
+  );
+});
+
+test("normalizeDocument KEEPS a rotated part whose bent lead floats", () => {
+  // The seating rule must not swallow the documented floating-lead state: pull
+  // a rail out from under a stood-up resistor and its far lead touches nothing.
+  // That is a state a document legally falls into (addComponent refuses to
+  // CREATE it, which is a different question), so a reload must preserve the
+  // part exactly where it sits rather than quietly deleting it.
+  const doc = normalizeDocument({
+    boards: [{ id: "bb1", type: "pins-full", x: 0, y: 0 }],
+    components: [
+      {
+        id: "c1",
+        kind: "discrete",
+        ref: "resistor",
+        board: "bb1",
+        anchor: "j20",
+        params: { rot: 90, end: { dx: 0, dy: -8 } }, // bent onto bare desk
+      },
+    ],
+  });
+  assert.deepEqual(
+    doc.components.map((c) => c.id),
+    ["c1"],
+    "a floating bent lead is preserved, not dropped",
+  );
+  assert.deepEqual(doc.components[0].params.end, { dx: 0, dy: -8 });
 });
 
 test("toJSON is a deep copy — later mutations don't leak into it", () => {
@@ -1898,4 +2015,86 @@ test("normalizeDocument: drops junk scope channels and advances the counter", ()
     ["sc2", "sc3"],
   );
   assert.equal(doc.nextScopeChannelId, 4); // past sc3
+});
+
+// ── translateAll: sliding the whole desk (the fit-to-screen recentre) ───────
+
+/** A desk with one of everything that carries a position, far from the origin:
+    a grouped Full 830 kit (rail bb1 · pins bb2 · rail bb3), a chip on it, a
+    PSU brick, a wire between them, and both flavours of label. */
+function docToSlide() {
+  const doc = new DeskDoc(null);
+  doc.addKit("full", 100, 200);
+  doc.addComponent({ kind: "chip", ref: "74LS00", board: "bb2", anchor: "e5" });
+  doc.addPsu(180, 200);
+  doc.addWire({ from: "psu1.+", to: "bb1.+3" });
+  doc.addAnnotation("label", 101, 199, "adder", { anchor: "c1" });
+  doc.addAnnotation("note", 150, 260, "loose");
+  return doc;
+}
+
+test("translateAll: boards, bricks, and labels all slide by one integer delta", () => {
+  const doc = docToSlide();
+  assert.deepEqual(doc.translateAll(-140, -210), { dx: -140, dy: -210 });
+  assert.deepEqual(
+    doc.boards.map((b) => [b.id, b.x, b.y]),
+    [
+      ["bb1", -40, -10],
+      ["bb2", -40, -7],
+      ["bb3", -40, 6],
+    ],
+  );
+  assert.deepEqual(
+    doc.annotations.map((a) => [a.x, a.y]),
+    [
+      [-39, -11], // anchored: its position is absolute, so it moves too
+      [10, 50],
+    ],
+  );
+  const psu = doc.getComponent("psu1");
+  assert.deepEqual([psu.x, psu.y], [40, -10]);
+});
+
+test("translateAll: a seated part rides its board, addresses untouched", () => {
+  const doc = docToSlide();
+  const before = doc.getComponent("c1");
+  doc.translateAll(-140, -210);
+  // A chip is stored as board + anchor, so the record is byte-identical…
+  assert.deepEqual(doc.getComponent("c1"), before);
+  // …and so is every wire, which names holes rather than coordinates.
+  assert.deepEqual(doc.wires, [
+    { id: "w1", from: "psu1.+", to: "bb1.+3", color: "red" },
+  ]);
+});
+
+test("translateAll: rounds the delta and no-ops on zero", () => {
+  const doc = docToSlide();
+  assert.deepEqual(doc.translateAll(2.4, -3.6), { dx: 2, dy: -4 });
+  assert.deepEqual(
+    doc.boards.map((b) => [b.x, b.y]),
+    [
+      [102, 196],
+      [102, 199],
+      [102, 212],
+    ],
+  );
+  const untouched = doc.snapshot();
+  assert.deepEqual(doc.translateAll(0, 0.4), { dx: 0, dy: 0 });
+  assert.deepEqual(doc.snapshot(), untouched);
+  assert.throws(() => doc.translateAll(NaN, 0), { code: "INVALID_ARG" });
+});
+
+test("translateAll: rigid — the group and every mating survive the slide", () => {
+  const doc = docToSlide();
+  const groups = doc.boards.map((b) => b.group);
+  doc.translateAll(-1000, -1000);
+  assert.deepEqual(
+    doc.boards.map((b) => b.group),
+    groups,
+  );
+  // Still flush: the pin-board's rails are exactly where they were.
+  assert.deepEqual(
+    doc.matingStrips("bb2").map((b) => b.id),
+    ["bb1", "bb3"],
+  );
 });

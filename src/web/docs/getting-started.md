@@ -28,6 +28,10 @@ At the top of the tray is the **board selector** (Full / Half / Tiny
 breadboards, plus loose strips); below that, chips and components grouped by
 function, with a filter box to search by name.
 
+Drag the tray's **right edge** to make it wider or narrower — useful when a
+long part name is elided. The width you leave it at is remembered between
+launches, and across closing and reopening the tray.
+
 ## Add a breadboard
 
 In the palette's **BOARDS** section, click **Full-size** (830 tie points) —
@@ -65,8 +69,11 @@ hand to flip which leg is the anode, or `R` to stand it up on two free ends
 instead of a footprint row.) To change an LED's color afterward, right-click
 it and choose **Properties…**.
 
-Chip Hippo's LED is idealized — no series resistor is required to protect it,
-so you can wire it straight to a supply.
+Give an LED a series resistor, just as you would on a bench. Wired straight
+between a supply rail and ground it has nothing to limit the current, and the
+simulation shows it **burnt** rather than lit. One resistor anywhere in the
+loop is enough — including a single one in a display's common leg, which
+protects all of its segments at once.
 
 ## Wire it up
 

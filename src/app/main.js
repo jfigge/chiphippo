@@ -32,6 +32,7 @@ const {
   Menu,
   nativeImage,
   nativeTheme,
+  safeStorage,
   screen,
   shell,
 } = require("electron");
@@ -39,6 +40,9 @@ const path = require("path");
 const fs = require("fs");
 
 const { parseArgs } = require("./cli-args");
+const { CredentialStore } = require("./store/credential-store");
+const aiClient = require("./ai/client");
+const aiProviders = require("./ai/providers");
 const { SettingsStore } = require("./store/settings-store");
 const { DeskStore } = require("./store/desk-store");
 const {
@@ -173,6 +177,19 @@ let _deskStore = null;
 function getDeskStore() {
   if (!_deskStore) _deskStore = new DeskStore();
   return _deskStore;
+}
+
+let _credentialStore = null;
+
+/** @returns {CredentialStore} — the user's own AI key, OS-encrypted. */
+function getCredentialStore() {
+  if (!_credentialStore) {
+    _credentialStore = new CredentialStore(
+      app.getPath("userData"),
+      safeStorage,
+    );
+  }
+  return _credentialStore;
 }
 
 let _projectStore = null;
@@ -601,8 +618,9 @@ function openPinoutWindow(ref, opts = {}) {
     fullscreenable: false,
     webPreferences: {
       // The pinout page is otherwise bridge-free, but it needs the narrow
-      // window.chiphippo surface to open a part's external datasheet PDF
-      // (datasheet:open) when the user has a datasheet folder configured.
+      // window.chiphippo surface for its two header buttons: opening a part's
+      // external datasheet PDF (datasheet:open) when the user has a datasheet
+      // folder configured, and importing its example circuit (demo:open).
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
@@ -611,10 +629,16 @@ function openPinoutWindow(ref, opts = {}) {
   });
   win.setMenuBarVisibility(false);
   // When the user's datasheet folder holds a `<ref>.pdf`, tell the page to show
-  // the "open datasheet" button (it invokes datasheet:open back into main).
+  // the "open datasheet" button (it invokes datasheet:open back into main); and
+  // when this part has a bundled example circuit, the button that imports it.
+  // Both are settled HERE, once, because the window is cached per ref — for the
+  // PDF that means a datasheet folder changed mid-session leaves an open window
+  // stale, but the example flag cannot go stale at all: web/demos/ is inside the
+  // app bundle and does not change while the app runs.
   const query = { ref };
   if (opts.kind === "wire") query.kind = "wire";
   if (datasheetPdfPath(ref)) query.pdf = "1";
+  if (demoDocPath(ref)) query.demo = "1";
   // The part's placed rotation, a snapshot as of THIS open — only an
   // oscillator can's pinout is rotation-dependent (pinout.js/chip-pinout.js
   // ignore it otherwise), but main has no catalog access to gate on that here.
@@ -628,6 +652,67 @@ function openPinoutWindow(ref, opts = {}) {
     if (pinoutWindows.get(ref) === win) pinoutWindows.delete(ref);
   });
   pinoutWindows.set(ref, win);
+  return true;
+}
+
+// ─── Example circuits (Feature 270) ───────────────────────────────────────────
+// `make demos` builds a demonstration bench for every benchable 74xx part and
+// ships one document per part as web/demos/<ref>.json — the SAME desktop the
+// group project in demos/ holds, written in the same pass. A pin-assignments
+// window offers to open its part's example as a desktop of its own.
+//
+// TWO channels, because there are two windows and only one of them can use the
+// bytes. A PINOUT window has a ref and nothing else — no project, no desk — so
+// it asks (`demo:open`) and main RELAYS the request to the app window, the way
+// a memory inspector reaches its host below. The APP window then READS the
+// document (`demo:read`) itself. So the document crosses the bridge exactly
+// once, into the window that is going to hold it.
+const DEMOS_DIR = path.join(__dirname, "..", "web", "demos");
+
+/**
+ * Absolute path to a part's bundled example circuit, or null when it has none —
+ * the Memory/Interface chips (a RAM or a CPU cannot be demonstrated by flipping
+ * switches at it), every discrete, every brick, and a wire. Two layers of
+ * validation as `readDocsPage` has: the ref pattern forbids a dot or a
+ * separator outright, AND the resolved path is proved to be inside DEMOS_DIR.
+ */
+function demoDocPath(ref) {
+  if (typeof ref !== "string" || !PINOUT_REF_RE.test(ref)) return null;
+  const file = path.join(DEMOS_DIR, `${ref}.json`);
+  if (path.relative(DEMOS_DIR, file).startsWith("..")) return null;
+  return safeCall("demo:exists", () => fs.existsSync(file), false)
+    ? file
+    : null;
+}
+
+/**
+ * One example circuit's payload (`{ ref, title, doc }`), or null when the part
+ * has none. The document is handed over VERBATIM: it is first-party, built by
+ * the same tree that ships it, and main deliberately keeps its document
+ * knowledge to migrations.js and project-images.js — the renderer canonicalizes
+ * it through DeskDoc on the way in, exactly as it does every desktop that
+ * arrives from a file. A corrupt file throws, which reaches the renderer as a
+ * rejected invoke and is reported there.
+ */
+async function readDemoDoc(ref) {
+  const file = demoDocPath(ref);
+  if (!file) return null;
+  return JSON.parse(await fs.promises.readFile(file, "utf8"));
+}
+
+/**
+ * A pinout window asking for its part's example. Main answers only "yes, that
+ * exists" and pushes the ref to the app window; it never carries the document.
+ * The app window is raised first — the click came from a small, always-on-top
+ * reference window sitting over the very desk the new desktop appears on.
+ */
+function requestDemoImport(ref) {
+  if (!demoDocPath(ref)) return false;
+  if (!mainWindow || mainWindow.isDestroyed()) return false;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+  sendToMain("demo:host-inbound", { ref });
   return true;
 }
 
@@ -1364,6 +1449,71 @@ function registerIpc() {
     return true;
   });
 
+  // AI circuit builder (Feature 260). The renderer cannot make a network call
+  // — its CSP is `default-src 'self'` with no `connect-src` — so the whole
+  // outbound path lives here, exactly as filesystem I/O does.
+  //
+  // The KEY NEVER COMES BACK. `ai:key:set` writes it OS-encrypted;
+  // `ai:key:status` answers whether one is there and nothing more. That is the
+  // reason it does not ride `settings:set`: a settings patch is written to a
+  // plaintext file AND handed back in full on every `settings:get`.
+  //
+  // The provider LIST is data, not a renderer constant: the Settings tab builds
+  // its picker from whatever `ai/providers.js` declares, so adding a third
+  // adapter needs no renderer change and the two can never drift.
+  ipcMain.handle("ai:providers", () =>
+    Object.values(aiProviders.PROVIDERS).map((p) => ({
+      id: p.id,
+      label: p.label,
+      defaultBaseUrl: p.defaultBaseUrl,
+      defaultModel: p.defaultModel,
+      keyLabel: p.keyLabel,
+    })),
+  );
+  ipcMain.handle("ai:key:set", (_event, providerId, key) =>
+    getCredentialStore().set(providerId, key),
+  );
+  ipcMain.handle("ai:key:clear", (_event, providerId) =>
+    getCredentialStore().clear(providerId),
+  );
+  ipcMain.handle("ai:key:status", (_event, providerId) =>
+    getCredentialStore().status(providerId),
+  );
+  // Begin a generation. Returns a request id immediately; the answer streams
+  // back as one-way `ai:delta` pushes and lands with `ai:done`, so a long
+  // generation shows progress and stays cancellable.
+  ipcMain.handle("ai:start", (_event, config, system, messages) => {
+    const provider = config?.provider;
+    const { requestId, done } = aiClient.start({
+      config,
+      apiKey: getCredentialStore().get(provider) ?? "",
+      system: String(system ?? ""),
+      messages: Array.isArray(messages) ? messages : [],
+      onDelta: (delta) => sendToMain("ai:delta", { requestId, ...delta }),
+    });
+    done.then(
+      (result) => sendToMain("ai:done", { requestId, ...result }),
+      (err) =>
+        sendToMain("ai:done", {
+          requestId,
+          ok: false,
+          error: String(err?.message ?? err),
+        }),
+    );
+    return { ok: true, requestId };
+  });
+  // Settings ▸ AI's "Test connection": one tiny request, so a wrong key or an
+  // unreachable base URL is found where it is fixed rather than on first use.
+  ipcMain.handle("ai:test", (_event, config) =>
+    aiClient.test({
+      config,
+      apiKey: getCredentialStore().get(config?.provider) ?? "",
+    }),
+  );
+  ipcMain.handle("ai:cancel", (_event, requestId) => ({
+    ok: aiClient.cancel(String(requestId ?? "")),
+  }));
+
   // Chip pin-assignments window (Feature 100): a part's "Pin Assignment"
   // context-menu item opens a separate floating OS window rendering its
   // pinout as a wiring reference.
@@ -1375,6 +1525,13 @@ function registerIpc() {
   // Data Sheets) in the OS PDF viewer. Requested by the pinout window's
   // "open datasheet" button; a no-op (returns false) when no PDF is on file.
   ipcMain.handle("datasheet:open", (_event, ref) => openDatasheetPdf(ref));
+
+  // Example circuits (Feature 270). `demo:open` is the PINOUT window's — it has
+  // only a ref, so main relays the request to the app window; `demo:read` is the
+  // APP window's, handing over the document it is about to make a desktop of.
+  // Split so the bytes cross the bridge once, into the window that uses them.
+  ipcMain.handle("demo:open", (_event, ref) => requestDemoImport(ref));
+  ipcMain.handle("demo:read", (_event, ref) => readDemoDoc(ref));
 
   // User guide (Feature 230): the docs window fetches one Markdown page's raw
   // source at a time by slug — never the filesystem path, never fetch().

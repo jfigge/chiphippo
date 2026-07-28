@@ -45,22 +45,62 @@ const DATASHEET_SVG =
   "</svg>";
 
 /**
- * The header "open datasheet PDF" button (a line-drawn book), shown top-right
- * of the pinout window when the user's datasheet folder holds a PDF for this
- * part. Pure DOM + a callback — the bridge call that actually opens the PDF is
- * wired by the caller (pinout.js), keeping this module electrical-logic-free.
+ * The header "open datasheet PDF" button (a line-drawn document), shown
+ * top-right of the pinout window when the user's datasheet folder holds a PDF
+ * for this part. Pure DOM + a callback — the bridge call that actually opens the
+ * PDF is wired by the caller (pinout.js), keeping this module free of both
+ * electrical logic and IPC, as its sibling `exampleButton` below is.
  * @param {() => void} onOpen - invoked on click.
  * @returns {HTMLButtonElement}
  */
 export function datasheetButton(onOpen) {
   const btn = el("button", {
-    class: "pinout-datasheet-btn",
+    class: "pinout-header-btn",
     type: "button",
     title: "Open the datasheet PDF",
     "aria-label": "Open the datasheet PDF",
     onClick: () => onOpen?.(),
   });
   btn.innerHTML = DATASHEET_SVG;
+  return btn;
+}
+
+/** A line-drawn three-node net (two inputs joining, one output tapped off) for
+    the "open the example circuit" header button — a CIRCUIT, deliberately not
+    a chip: the window it sits in is already all about the chip. */
+const EXAMPLE_SVG =
+  '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" ' +
+  'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+  'stroke-linejoin="round" aria-hidden="true">' +
+  '<circle cx="5" cy="6" r="2"/>' +
+  '<circle cx="5" cy="18" r="2"/>' +
+  '<circle cx="19" cy="12" r="2"/>' +
+  '<path d="M7 6h5v12H7"/>' +
+  '<path d="M12 12h5"/>' +
+  "</svg>";
+
+/**
+ * The header "open the example circuit" button, shown LEFT of the datasheet one
+ * when this part has a bundled demonstration bench (main flags it with
+ * `?demo=1`). Pure DOM + a callback exactly as `datasheetButton` is — the bridge
+ * call is the caller's (pinout.js), so this module stays free of both electrical
+ * logic and IPC.
+ *
+ * `title` and `aria-label` deliberately differ: "as a new desktop" is the fact a
+ * user needs BEFORE clicking (this is the one header button with a consequence),
+ * but it is too long to make a good accessible name.
+ * @param {() => void} onOpen - invoked on click.
+ * @returns {HTMLButtonElement}
+ */
+export function exampleButton(onOpen) {
+  const btn = el("button", {
+    class: "pinout-header-btn",
+    type: "button",
+    title: "Open this part's example circuit as a new desktop",
+    "aria-label": "Open the example circuit",
+    onClick: () => onOpen?.(),
+  });
+  btn.innerHTML = EXAMPLE_SVG;
   return btn;
 }
 

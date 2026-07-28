@@ -89,12 +89,14 @@ capturing what these edges actually do to your signals over time.
 Live views render entirely from the settled simulation state — nothing is
 computed by the views themselves:
 
-- **LEDs** light when their anode net is `H` and their cathode net is `L`.
-  Chip Hippo's LEDs are idealized (no series resistor required), but an LED
-  driven directly between a strong supply and strong ground with nothing
-  current-limiting it shows a distinct **burnt** cue instead of lighting
-  normally — the app's way of telling you that connection would fry a real
-  LED.
+- **LEDs** light when their anode net is `H` and their cathode net is `L` —
+  provided something is limiting the current. An LED driven directly between
+  a strong supply and strong ground, with no series resistor anywhere in the
+  loop, shows a distinct **burnt** cue instead of lighting: that connection
+  would fry a real LED, so it fries this one. A net reached through a resistor
+  is only weakly pulled rather than strongly driven, which is what makes the
+  resistor count. This is a physical rule, not a logical one — the levels
+  alone would happily light it.
 - **Chips** show a small health badge the moment they're powered: normal
   chips show nothing extra, an **underpowered** chip (running at 3 V) gets
   an amber corner dot, and a chip killed by 12 V shows **damaged** — a red X

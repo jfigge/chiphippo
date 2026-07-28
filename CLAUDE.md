@@ -52,8 +52,8 @@ tool (shortcut `I`) with the `NetHighlight` overlay + net-summary readout;
 and the 74xx behavioral library (80) — `sim/levels.js` (H/L/Z/X vocabulary,
 "floating reads HIGH", ternary gate primitives), the ONE generic
 `sim/chip-eval.js` evaluator, `logic` blocks (data, never per-chip code) on
-all 12 gate defs, the exhaustive truth-table harness (468 combinations), and
-the palette "sim-ready" badge; and the simulation engine v1 (90) — the pure
+all 12 gate defs, and the exhaustive truth-table harness (468 combinations);
+and the simulation engine v1 (90) — the pure
 `sim/resolve.js` (per-net driver → level with supply-beats-output strength
 precedence + short/conflict taxonomy) and `sim/engine.js` (power gating from
 VCC/GND nets, the warm-started settle loop with a 200-iteration oscillation
@@ -117,7 +117,16 @@ until you save. A desktop stopped being a file: Save As / Open on one became
 **Export / Import** snapshots, and the two-file-lifetime machinery (app-kept
 flags, orphan collection, eager write-through, `desk.json`, the
 recent-DESKTOPS list) is gone (see the "Projects & tabbed desktops" section
-below).
+below); and the **AI circuit builder** (260, all but its last step — describe a
+circuit and get a wired, SIMULATION-PROVEN design, on the user's own
+`safeStorage`-held API key. The model emits a coordinate-free **netlist** it
+cannot get geometry wrong in; a pure compiler places, routes, and proves it
+through the real engine, and only then arms it as a placement ghost. See the
+"AI circuit builder" architecture note below; step 15, refactoring `make demos`
+onto `model/autobuild.js`, is still open — note it now has `centreDocument` and
+a second output to honour); and **example circuits** (270) — every benchable
+74xx part's demonstration bench shipped inside the app and offered as a button
+on that part's pin-assignments window, landing as a `<ref> example` desktop.
 When a stage is finished, move its plan file into `features/done/`.
 
 ## Naming & identity
@@ -239,8 +248,11 @@ website** (`make docs` → `website/docs/`), and a **PDF** (`make pdf` →
   `project-store.js` + `project-images.js` + `project-migrate.js` (below),
   `desk-store.js` + `migrations.js` — the desk-document schema migrations, plus
   the by-PATH reader `project-migrate.js` uses to inline a v3 desktop file —
-  and `mem-store.js`, the atomic byte store behind a memory chip's `.bin`
-  sidecar, Feature 180).
+  `mem-store.js`, the atomic byte store behind a memory chip's `.bin`
+  sidecar, Feature 180, and `credential-store.js`, the `safeStorage`-encrypted
+  API-key sidecar, Feature 260), plus `ai/` (`providers.js` + `client.js`) —
+  the app's ONLY outbound network call, in main because the renderer's CSP
+  forbids one.
   **Files**: there is exactly ONE — the open PROJECT (`<name>.chiphippo`),
   which holds every desktop's document and every programmed ROM's bytes (see
   "Projects & tabbed desktops" below). The whole file surface is
@@ -274,7 +286,10 @@ website** (`make docs` → `website/docs/`), and a **PDF** (`make pdf` →
   `mating.js`, and `seating.js` — the world-point → `{board, anchor}` placement
   search), and `scripts/sim/` (the engine package:
   `union-find.js`, `netlist.js`, `levels.js`, `chip-eval.js`, `sequential.js`,
-  `resolve.js`, `engine.js`); part metadata
+  `resolve.js`, `engine.js`) and `scripts/ai/` (the renderer half of the AI
+  builder: `catalog-brief.js` derives the system prompt from the catalog,
+  `generate.js` is the reply → compile → verify → clip pipeline — both pure);
+  part metadata
   under `scripts/catalog/` (pure data + integrity test — never part-specific code
   paths); thin view components under `scripts/components/`. `DeskController`
   keeps the whole public surface but delegates cohesive slices to collaborators
@@ -340,6 +355,17 @@ Electron main process (src/app/main.js)
   changes or live board drags (positions passed as overrides). NOTE: an `<svg>`
   with width/height 0 renders NOTHING per the SVG spec — zero-size anchors need
   a token 1×1 box + overflow: visible.
+  **FIT (⌘F) IS THE ONE CAMERA ACTION THAT EDITS THE DOCUMENT** — deliberately,
+  not by oversight. `#recentreDesk` slides the WHOLE desk onto the origin
+  (`DeskDoc.translateAll`: every board, brick, and label by one integer delta;
+  seated parts and wires are addresses, so they ride their board) before the
+  camera frames it, so a design built across a long session cannot creep ever
+  further out into the coordinate space. The move is RIGID, so it can neither
+  be refused nor break a mating; it rides `#emitDocChanged` as one undo step
+  and marks the project dirty; and it is skipped while the sim runs, where
+  topology is frozen. Fit follows the ACTIVE view (app.js's `fitActiveView`):
+  the schematic's own `fit()` is camera-only, since its symbol positions are
+  derived and there is nothing to move.
 - **Components**: `{ id, kind, ref, board, anchor, params }` with `c<n>` ids
   (kinds `chip` | `discrete`); desk-level **bricks** carry `{ id, kind, ref, x, y,
   params }` instead of a board anchor — PSUs (`psu<n>`, kind `"psu"`) and clock
@@ -507,11 +533,23 @@ Electron main process (src/app/main.js)
   on "save" LETS THE ACTION GO AHEAD (the user is not made to ask twice).
   Quitting is the silent case — no Save button was clicked, so nothing is asked
   about WHERE. Changing projects (New Project / Open… / Open Recent) differs in
-  one way, and it is why an UNTITLED project is **always** asked about, dirty or
-  not: it lives in the one working file the incoming project is about to claim,
-  and there is nowhere else for it to go, so replacing it is destructive whether
-  or not anything is "unsaved" — a ⌘S into the slot does not make it less so.
-  That is also why "save" there means `saveAs`, a home of its own. A SAVED
+  one way, and it is why an UNTITLED project **that holds something** is asked
+  about dirty or not: it lives in the one working file the incoming project is
+  about to claim, and there is nowhere else for it to go, so replacing it is
+  destructive whether or not anything is "unsaved" — a ⌘S into the slot does not
+  make it less so. That is also why "save" there means `saveAs`, a home of its
+  own. The exception is the state the app BOOTS INTO: a **PRISTINE** project
+  (`#isPristine` — no name, no description, ONE desktop, `isEmptyDocument`, and
+  not dirty) holds nothing for the incoming one to destroy, so it is let go
+  silently. Otherwise the very first thing a session does — New Project, or
+  Open… — would open with a save-or-discard question over a blank desk nobody
+  has touched. Both halves of the test are load-bearing: an unsaved change is
+  caught by `dirty`, and one already ⌘S'd into the slot (which is NOT dirty) by
+  the project still having something in it. `isEmptyDocument` reads only the
+  CONTENT lists (derived from `emptyDocument()`, so a list added later cannot be
+  forgotten) and never the `next*Id` counters — those say what a desk has ever
+  held, not what it holds, and a board placed then deleted leaves it as empty as
+  it started. A SAVED
   project has a file nothing is claiming, so it is asked about only when dirty.
   Every path resolves `false` for a cancel, and a save that never landed IS a
   cancel — `save` /
@@ -546,7 +584,10 @@ Electron main process (src/app/main.js)
   is why they live on the `+` and not in a tab's own menu; both are additions
   that land on the new desk (an import can no more replace what is on screen
   than a new desktop can), and both mirror the Desktop menu's leading pair, so
-  the wordings must stay in step.
+  the wordings must stay in step. A THIRD way arrives with Feature 270 and
+  deliberately does NOT live on the `+`: a chip's **example circuit** belongs to
+  a PART, not to the tab strip, so it is a button on that part's
+  pin-assignments window.
   **v3 → v4** (`project-migrate.js`): a project that listed desktop PATHS has
   them inlined on read, NON-DESTRUCTIVELY — a desktop file the user saved
   somewhere of their own is read and left exactly where it is. A tab whose file
@@ -565,16 +606,335 @@ Electron main process (src/app/main.js)
   behind. The ghost is built ONCE in the clip's own coordinates and then just
   TRANSLATED (it is rigid), and `DeskDoc.pasteDesign` stamps it in one
   snapshot-guarded mutation that rolls itself back on any refusal.
+- **AI circuit builder** (Feature 260 — `app/store/credential-store.js` +
+  `app/ai/{providers,client}.js` + `model/{pin-resolve,column-allocator,
+  autobuild,autobuild-verify}.js` + `web/scripts/ai/{catalog-brief,generate}.js`
+  + `components/ai-panel.js`). **AN LLM CANNOT EMIT GEOMETRY, SO IT IS NEVER
+  ASKED TO.** The model answers exactly one question — which parts, and which
+  of their pins share a net — as a coordinate-free `{parts, nets, tests}`
+  spec, and a pure, DOM-free compiler decides every hole, column, anchor and
+  wire. `sim/junction.js` (the LED burn rule, moved out of the view because it
+  is PHYSICS, not logic) is why the compiler interposes a series resistor
+  itself: an unlimited LED burns rather than lights, so a netlist must not have
+  to mention one. The **pull rule** is the same fact one step over: a switch
+  is a CONTACT, not a source, so an input fed from one floats whenever the
+  switch is open — and a floating TTL input reads HIGH, which is a switch that
+  appears to do nothing. So a signal net with no rail, no output driver and no
+  resistor of its own, whose only path to a supply runs through a contact, gets
+  a pull to the OPPOSITE rail (`contactPairs` probes each def's own
+  `internalBridges` at both extremes of its parameter domain rather than adding
+  a second catalog field that could drift). Which rail is READ off the far side
+  of the contact, never assumed — a GND-side switch gets a pull-UP — and a net
+  whose contacts disagree, or reach no rail at all, is left exactly as declared
+  for L6 to report. Pulls to one rail pack eight to an `rnet9`; a lone one is a
+  bare `resistor`.
+  - **Compile** (`autobuild.js`): `compileNetlist(spec)` → `{document,
+    warnings, partMap, nets}`. Power is DERIVED — every def declares
+    `role:"vcc"|"gnd"`, so a spec never lists a power pin; the compiler wires
+    them, plants a PSU, and bridges the kit's two rail strips (they share no
+    node). `column-allocator.js` hands out EXCLUSIVE column runs, which makes
+    the worst machine-generation bug — two parts sharing a column-half, hence
+    silently shorted — unrepresentable rather than merely unlikely. Routing is
+    per-net star-from-hub over `freeAt` (you never wire TO a pin, you wire to a
+    free hole on the pin's NODE), the hub being the highest-capacity port
+    (a rail is ∞), and a port is keyed by its NODE so two pins already sharing
+    one are never wired to each other.
+  - **THE BOARDS SNAP TOGETHER, AND A STACKED PAIR SHARES THE RAIL BETWEEN
+    THEM.** A bench dovetails two 830s and the strip in the middle serves the
+    board above it and the board below it — you do not fit a second one against
+    it — so the compiler emits one RUN of strips,
+    `rail · pins · rail · pins · rail`, not N self-contained kits with a gap
+    between them. The shared strip sits in BOTH kits' `rails`, and everything
+    else falls out of that: the bridge loop CHAINS (R0–R1 across the first
+    board, R1–R2 across the second), so the two wires that used to run from
+    kit 1 to kit 2 — the height of a whole breadboard, over everything on it —
+    are not needed at all. Two boards therefore cost one fewer strip and two
+    fewer wires than they did, and the supply is still one net end to end.
+    `railStripIds` is read off `boards` rather than off `kits`, whose lists now
+    overlap: walking the kits would offer the shared strip's holes twice. The
+    run also carries ONE `group`, as `DeskDoc.addKit` gives a kit placed from
+    the palette — the compiler used to leave every strip loose, so even a
+    single generated kit came apart when its pin-board was dragged
+    (`pasteDesign` re-mints the id on the way in).
+  - **PLACEMENT is a step, not an accident.** Seating used to follow whatever
+    order the spec listed parts in, with the compiler's own interposed
+    resistors appended last — the worst possible order for exactly the parts
+    it applies to, since a pull-down array serves ONE switch bank and was
+    therefore seated as far from it as the board allowed (and, once a board
+    filled, onto the next board entirely). Three rules now decide the layout,
+    and together they took the 8-bit adder from two breadboards and 74 wires
+    to **one board and 58**, total wire length −48%; across all 51 demo-bench
+    circuits, −18% wire and 104 fewer wires.
+    - `orderByConnectivity` — greedy cluster growth from the busiest part,
+      then whichever unplaced part shares the most nets with what is down.
+      Since the seating loop fills one board before starting the next, an
+      order where neighbours are adjacent also keeps a net's parts on ONE
+      board; the cross-board wires that remain fall on the genuinely
+      least-connected seam. RAIL nets are deliberately not adjacency (every
+      part touches power, and a rail net routes to the nearest rail hole
+      rather than between its members). Ties break by spec order, so a spec
+      always lays out the same way.
+    - `seatCompanion` — a pull pack seats IN the columns of the switch bank it
+      pulls, the bench move where an `rnet9` under a `sw-dip8` buys eight
+      pull-downs for zero wires and zero columns. Sharing a column-half is
+      otherwise the exact disaster `column-allocator.js` exists to prevent, so
+      NOTHING here is inferred: the net equality is given (the pull rule
+      CREATED one net per pack pin, each already holding that switch contact),
+      the geometry is then proved pin by pin with `nodeOf`, and every column
+      touched must be free or the host's — hence `columnOwner`, and hence a
+      column recording WHO owns it rather than merely that it is owned. Any
+      check failing returns null and the part seats the ordinary way, so this
+      can only ever cost columns, never correctness; L4 checks the result
+      regardless. One host per pack only — a pack serving four separate slide
+      switches falls back.
+    - `freeRail(…, {fromEnd})` — the PSU brick stands off the RIGHT of the
+      boards, and a rail is one node end to end, so reaching for hole 1 bought
+      nothing but two wires the full width of the desk.
+    - **SEATING IS TWO PASSES, and a second breadboard is a LAST RESORT.**
+      Pass 1 fills each board before starting the next — the only way to learn
+      how many boards a design ACTUALLY needs, which the column budget cannot
+      know (same reason the prune step exists). What happens next is decided
+      from that answer, and both halves matter because a spilled design used
+      to arrive as one board crammed to its last hole and another holding a
+      single resistor.
+      - **The blank column goes before the board does.** `GAP` is a courtesy —
+        so neighbours do not read as one block — but insisting on it fetched a
+        whole breadboard for a 1-column shortfall: eight LEDs reserving a
+        blank each left two columns free at the edge and the last part needed
+        three. So if pass 1 spilled, the design is re-seated with `gap = 0`,
+        and that is kept ONLY when it saves a board. This alone took the demo
+        corpus from **9 multi-board circuits to 1**.
+      - **The split is CHOSEN, not fallen into** (`splitAcrossBoards`, pure).
+        A design that genuinely needs two boards is cut where it severs the
+        FEWEST NETS, not at the halfway column — cutting for an even split
+        alone slices straight through a byte-wide bus, and 16 nets crossing
+        the seam cost far more than a half-empty board (measured: a naive
+        even split turned 8 cross-board wires into 22). Every position that
+        leaves the board reasonably filled (`FLOOR`) is a candidate, ties go
+        to the evenest. RAIL nets are excluded — every part touches power, so
+        they sever nothing. A companion costs 0, since it rides its host's
+        columns and follows it wherever it goes.
+      - The assignment is a **preference, never a refusal**: the assigned
+        board is tried first, then every board. So it can only change WHICH
+        board a part lands on, never whether it lands — and a re-seat that
+        needed MORE boards is discarded for the one that came before it.
+      Corpus-wide this was **−13% strips, −8% wire length, −11% crossings**.
+      Note a serpentine fill (alternate boards filling right-to-left) was
+      tried and REJECTED: it only helps when the first board is full to its
+      last column, and once the split is chosen properly it rarely is — with
+      a half-filled first board it puts the seam at opposite ends and made
+      the 8-bit bus port 43% longer.
+    - **Kits are PRUNED, not predicted.** How many breadboards a design needs
+      cannot be known before it is placed: the column budget has to assume a
+      pull pack costs its nine columns, and companion seating then costs it
+      none — so a design that fits comfortably on one board was handed two, and
+      the spare shipped EMPTY with bridge wires stitched across it. Nothing
+      tries to estimate better (guessing low costs a `NO_ROOM` refusal, which
+      is not recoverable; guessing high costs a board that is simply given
+      back). Seat first, then keep only the kits something landed on. This is
+      the other reason the power wiring and the routing moved after seating:
+      the bridges and rail taps are never built for a board that is about to
+      go. A design with no seated parts at all keeps the first kit — the PSU
+      still needs a rail to reach.
+  - **ROUTING minimises length AND crossings** (`model/wire-crossing.js`, pure).
+    A layout can be short and still unreadable, because "short" says nothing
+    about what a wire passes OVER. The geometry that makes it tractable: a DIP
+    straddles the trench with its pins in rows e/f, everything else the
+    compiler seats lies along row **a**, and a wire attaches not to a pin but
+    to a free hole on that pin's NODE — which offers five ROWS. Taking "the
+    first free hole" took row a every time, i.e. the one row every discrete
+    occupies. So a port now OFFERS its free holes and `bestPair` picks the
+    pair by `distance + 20 × crossingCount`, `segmentHitsBox` being
+    Liang–Barsky (sampling steps over a corner clip, and near-misses are
+    exactly what reads as crossing). The same chooser does the POWER wiring,
+    which is where it pays twice: a kit has a rail strip above the board and
+    one below, bridged, so nearest-that-flies-over-nothing picks the rail on
+    the pin's own side of the trench with nothing told to it. The bridges and
+    PSU leads are therefore wired AFTER seating — a bridge crosses the whole
+    pin-board, and before seating there is nothing to avoid, so it always went
+    down column 1, which is exactly where the first part goes. Residual
+    crossings are REPORTED (`WIRES_CROSS_PARTS`), never hidden: a net joining
+    a pin below the trench to one above has to get across, and where both ends
+    sit under a chip a straight hole-to-hole run cannot go around the end of
+    it the way a hand would. Corpus-wide this took wire length −38% and
+    crossings −44% (932 → 518). `pin-resolve.js` is FAIL-CLOSED and case-FIRST: pin names
+    are case-distinguished in the catalog (74LS47's `A`–`D` inputs vs its
+    `a`–`g` outputs), so folding case would MANUFACTURE ambiguity; the one real
+    ambiguity is `74LS148` (inputs *named* `0`–`7` that do not match their pin
+    numbers), reported with both readings, with `#N` as the escape.
+  - **Verify** (`autobuild-verify.js`): the L3a–L7 ladder, faults tagged
+    `abort` (OUR bug) or `repair` (the SPEC's mistake) — the split the panel's
+    retry loop needs. **L4 is the important one**: it compares the DECLARED net
+    partition against the one `buildNetlist` DERIVES, which is the only thing
+    that catches an accidental short (counts match, it loads clean, it settles,
+    and it computes something else). It derives that partition from **WIRING
+    ALONE** — `buildNetlist(doc, …, {bridges: false})`, every switch treated as
+    an open contact however it is set — because a switch thrown to a rail
+    genuinely does make its signal net that rail, and holding THAT against the
+    declared topology condemned the most ordinary input stage there is: L4
+    aborted every slide-switch design as `NET_SHORTED_TO_RAIL`, a fault the
+    model could neither cause nor repair. A severed net and two parts sharing a
+    column-half are both facts about wiring, which no switch position can hide
+    or invent; a real electrical short is L5's to report, from the conducting
+    netlist it keeps. **L7 is the highest-value one**: the spec
+    states its own acceptance tests and the app RUNS them, so a perfectly-built
+    adder with its bit order reversed is caught. Bit ordering in `set`/`expect`
+    is PINNED by a test, not inferred. L5 settles with every clock idle-low —
+    a bare `settle` leaves a clock line at `Z` and L6 would report a good
+    circuit as undriven.
+  - **Every generated circuit explains itself.** The spec carries a `notes`
+    paragraph and `assemble` stamps it above the boards as a caption, in the
+    same line pitch and muted body a demo bench uses — a generated circuit and
+    a shipped demo should read the same way on the desk. A generated circuit
+    arrives with no history: the user did not build it and cannot ask it why it
+    is wired the way it is, and the model already knew, it just had nowhere to
+    say so. The caption is **anchored to the leftmost seated part**, and that
+    is load-bearing rather than decorative: `captureDesign` carries ONLY
+    anchored labels, on the rule that a free-floating one belongs to the desk
+    it was written on rather than to the design, so an unanchored note would be
+    silently dropped on the way to the ghost. `wrapText` breaks the paragraph
+    to 64 characters because a label is `white-space: nowrap` — the width is
+    not a style choice but how wide a line may be DRAWN, and 64 stays inside a
+    full pin-board's own footprint (a word longer than that overflows rather
+    than being cut — a split part number is worse than a ragged edge; and
+    `.annotation--label` clears the shared `max-width`, which on a nowrap label
+    could only shrink the box under the text, not wrap it). The 30-line cap is
+    a GUARD, not a budget — ~1900 characters, past anything the prompt asks
+    for — so an essay cannot bury the circuit it explains; at 12 lines of 42 it
+    was a routine ceiling that cut an ordinary note off mid-sentence. A trim
+    now marks its last line with an ellipsis, because a caption that simply
+    stops reads as one written badly rather than one that was cut. The prompt
+    states the length it wants (four to eight sentences) — an unstated budget
+    is one the model cannot write to. The same paragraph is handed back on the build
+    result, so the panel can say it while the user is still deciding whether
+    to place the design. A `title` with no notes still captions the circuit
+    with one line; neither gives no caption at all.
+  - **Place**: the output is a **design clip** (`designClipOf` =
+    `captureDesign` with everything selected, never a second converter), handed
+    to `DeskController.armGeneratedDesign` — a ghost the user positions, NOT a
+    circuit that appears. `applyGeneratedDesign(clip, {at})` drops it outright
+    (shift from `nearestLegalOffset`). Both go through the one `#dropDesign`,
+    so a generated circuit is ONE undo step and rides the same atomic
+    `pasteDesign` transaction as a paste — there is deliberately no
+    `applyBatch`.
+  - **The prompt is DERIVED, never hand-written** (`ai/catalog-brief.js`):
+    `buildCatalogCard()` projects `PALETTE_DEFS` (ids, packages, exact
+    `n:name` pin lists — `JSON.stringify` would silently drop the FUNCTION
+    fields). A new 74xx part reaches the model the moment it lands in
+    `catalog/`. ~4.4 K tokens, over the prompt-cache minimum, so a repair round
+    re-reads rather than re-pays. Each pin carries a one-character MARK
+    (`pinMark`): `>` an output, `<>` bidirectional, `!` an **active-low output
+    enable**. The first exists because "two outputs must not share a net" is a
+    rule the compiler ENFORCES, and a bare `n:name` list left the model
+    guessing which pins those were. The `!` is the one fact in the catalog
+    nothing else reveals — the pins are called `1G`, `OE`, `M`, `N`, with no
+    bar anywhere — and getting it wrong is silent: the part floats every
+    output it gates, an unwired enable reads HIGH, so a datasheet-correct
+    netlist comes up dead.
+  - **Tri-state is DECLARED, then PROVED** — `outputEnable: [pins]` on the nine
+    parts that have one, plus `tests/chips-tristate.test.js`. It is not derived
+    because the catalog expresses tri-state FOUR ways and only one is
+    introspectable: a `BUF3` unit ('125, '244), a `COMB` unit returning `Z`
+    ('240, '245, '257), a sequential `outputs()` returning `Z` ('173, '533,
+    '573, '595), and a memory image. So the test probes the REAL evaluator:
+    every declared pin must float an output that drives when it is LOW (which
+    also pins the active-low convention), and a behavioural sweep requires any
+    part that floats an output to declare one — that sweep is what found the
+    **'595**, whose title never says "tri-state". `74LS245`'s `DIR` is
+    deliberately NOT an enable (it picks which side drives; only `OE` stops
+    both), and the Memory/Interface groups are out of the sweep because a CPU
+    or PIA floats its bus on a PROTOCOL and its ports on a direction register,
+    neither of which is a pin anyone can tie. **L6** uses the same data: a net
+    that floats with a tri-state driver on it reports `OUTPUTS_DISABLED`,
+    naming the chip, the pin and "tie it to GND", instead of `NET_NOT_DRIVEN`
+    sending a repair round hunting for a wire that was never missing.
+  - **The compiler's corpus is the DEMO BENCHES** (`tests/autobuild-corpus.test.js`).
+    `scripts/demo-specs.mjs` describes 52 circuits — one per 74xx part in the
+    catalog, each proved through the real engine by `make demos` against a
+    datasheet truth table — and it is ALREADY coordinate-free (`inputs`,
+    `ties`, `links`, `clock`, `leds`), so a forward mapping turns each into a
+    netlist spec. Every one is compiled and verified on `make test`, with no
+    API key and no network: before this the compiler had ONE real circuit
+    holding it honest, and its bugs arrived one paid-for bad build at a time.
+    Deliberately a forward map from the SPECS, never a reverse-compile of the
+    committed documents — a document's derived netlist includes whatever its
+    switches are currently conducting, so reverse-compiling would promote a
+    transient switch position into declared topology (which is exactly the
+    confusion L4 above used to make). Two exception lists carry what the DSL
+    cannot say, each named and argued rather than skipped: the `route` demo
+    (a switch that STEERS a signal rather than sourcing it) and the seven
+    tri-state parts whose demo hangs an enable on a switch — a spec cannot
+    state a switch's RESTING position, and the answer is to tie the enable,
+    which the prompt now says and the corpus proves builds clean.
+  - **The renderer makes NO network call** — its CSP is `default-src 'self'`
+    with no `connect-src`, so the whole outbound path is main's, exactly as
+    filesystem I/O is. `ai/client.js` uses Node's global `fetch` (no runtime
+    dependency; `src/package.json` still has no `dependencies` block) with an
+    `AbortController` registry keyed by request id and an SSE reader that
+    carries the tail across chunk boundaries. `ai/providers.js` holds BOTH
+    adapters in one file behind `buildRequest`/`readEvent`/`buildPing`; nothing
+    else branches on provider. A **refusal is a failure** — Anthropic returns
+    HTTP 200 on a policy decline, so `stop_reason:"refusal"` is checked before
+    the text is used. `ai:test` pings with `buildPing` (unstreamed,
+    unschema'd): Test connection asks "can I reach you", so it must not fail
+    because a model declined to fill a netlist.
+  - **THE KEY NEVER CROSSES THE BRIDGE.** `credential-store.js` writes it
+    through `safeStorage` into `userData/credentials.json` and REFUSES rather
+    than falling back to plaintext when the OS has no store; `ai:key:status`
+    answers `{configured, encryptionAvailable}` and nothing more. That is
+    exactly why it does not ride `settings:set` — settings.json is plaintext
+    and is handed back to the renderer whole on every read. Only the NON-secret
+    half (`ai: {provider, baseUrl, model}`) lives there. The provider LIST is
+    itself IPC (`ai:providers`), so the Settings picker cannot drift from the
+    adapters, and the AI tab's panel therefore fills in asynchronously.
+  - **The panel** (`components/ai-panel.js`) shares the analyzer's docked shell
+    and its toolbar-pill segment discipline. `ai/generate.js` is the DOM-free
+    seam (`parseNetlist` → compile → verify → clip), so a whole generation is
+    testable with no window and no network; the clip is taken from the VERIFIED
+    (loaded) document, since what the desk places must be what the loader would
+    keep. Repair rounds cap at **2** and only `repair`-class faults are sent
+    back — the model cannot fix our compiler, so re-asking would just spend the
+    user's tokens. `ai:delta`/`:done` are a SEPARATE message stream from the
+    `ai:start` invoke result, so pushes that beat the reply back are held and
+    replayed rather than dropped.
+  - **NO CONNECTION, NO SEGMENT.** The builder is the one tool that cannot work
+    on the user's own machine, so the toolbar's AI segment is **disabled** until
+    there is something to ask: `ai/connection.js` (pure) reads the settings' `ai`
+    config, the `ai:providers` list, and `ai:key:status` for the provider the
+    Settings picker would show — one `effectiveProvider` rule, so the button can
+    never be gated on a key for a provider the panel isn't showing. Validity is
+    decided WITHOUT asking the provider (nothing is sent anywhere until the user
+    asks for a build): a key is stored, the provider is one this build has an
+    adapter for, and a typed base URL parses as http(s). Whether the server would
+    ACCEPT that key is only the server's to say — Settings ▸ AI's Test connection
+    is where that is found. Every refusal carries the sentence the disabled
+    button shows as its tooltip. The two ways the answer changes are a settings
+    patch carrying `ai` and the key itself, which bypasses settings entirely —
+    hence the dialog's `chiphippo:ai-key-changed` broadcast, which says only THAT
+    it changed. The panel's remembered `aiOpen` is restored only once the answer
+    is known (an `aiOpen` from a session that HAD a key must not reopen a panel
+    whose button is now dead), and a key cleared while the panel is open closes
+    it — a panel no button can close would be stranded.
 - **Header toolbar**: two shapes, and no others. A **pill**
   (`.toolbar-pill`) groups buttons that read as ONE control — it carries the
   only border and the only background, its `.toolbar-pill-btn` segments are
   separated by spacing rather than by borders of their own (there is no
   split-button seam anywhere), and an armed segment FILLS instead of gaining
   an accent border. Three exist: the desk tools (Wire · Bus · Fade · Probe ·
-  Analyzer · Fit · **BOM** — BOM lives here, not with the file actions, because
-  it toggles a desk panel exactly as Analyzer does, and like Analyzer its armed
-  state comes from the panel's own `onVisibilityChange`, so the segment tracks
-  the panel however it was closed), **File** (New · Open · Save · Save As, all
+  Analyzer · Fit · **BOM** · **Schematic** · **AI** — BOM lives here, not with
+  the file
+  actions, because it toggles a desk panel exactly as Analyzer does, and like
+  Analyzer its armed state comes from the panel's own `onVisibilityChange`, so
+  the segment tracks the panel however it was closed; the AI builder is the
+  same shape for the same reason, and the one segment that is DISABLED when it
+  has nothing to offer — no API key, no builder; see the AI note above. The
+  **Schematic** segment between them is the odd one: it arms no tool and opens
+  no panel, it SWAPS THE VIEWPORT, so its icon shows the view it would take
+  you TO — diagram boxes on the desk, a tie-point board on the schematic —
+  the way the Fit segment previews zoom-out-full while Shift is held. It is
+  `Tab`'s button: both call app.js's one `setMode`, which owns the icon,
+  tooltip, and armed state, so a key and a button can never disagree),
+  **File** (New · Open · Save · Save As, all
   aimed at the PROJECT, which is the document — every file action is its OWN
   icon-only segment rather than a row hidden behind a ▾, since they are peers
   and a toolbar's job is to show what is available; the name + accelerator live
@@ -601,7 +961,15 @@ Electron main process (src/app/main.js)
   so the control reads as one thing sliding into the wall. Both, and ⌘P, route
   through app.js's one `togglePalette` (the only thing that persists
   `paletteOpen`); `PalettePanel.setVisible` flips the pair and stamps
-  `.app-main--tray-closed`, which insets `.project-tabs` past the flap.
+  `.app-main--tray-closed`, which insets `.project-tabs` past the flap. Its
+  WIDTH is the user's: `.palette-resize` is the analyzer's resize seam stood on
+  end (same grip, `ew-resize`, straddling the border so it never covers the
+  list's scrollbar), clamped to `[180, half the window]` and persisted as
+  `settings.paletteWidth` — reported by the panel, written by app.js, exactly
+  as the open flag is. It survives a close/reopen for free, since shutting the
+  tray HIDES the panel rather than rebuilding it. The drag runs on
+  `pointer-gesture.js` (unlike the two bottom-docked panels, which predate it),
+  so the release lands wherever the pointer is let go.
   `.toolbar-btn--active` remains the one class every
   toolbar button's armed state toggles, whatever its shape.
 - **Popups/menus**: `popup-manager.js` (ported from Port Hippo) is the only
@@ -730,13 +1098,21 @@ Electron main process (src/app/main.js)
   **`datasheetDir`** (the external datasheet-PDF folder, default null) — its
   Browse button calls the native `settings.chooseDatasheetDir` picker and
   emits the chosen path; no live apply
-  (the pinout window reads it at open time). Window bounds and the desk camera
+  (the pinout window reads it at open time). The **AI** tab drives the
+  NON-SECRET half of the user's connection (`ai: {provider, baseUrl, model}`,
+  emitted WHOLE as an object-valued setting) and is the one panel built
+  asynchronously — its picker comes from `ai:providers`, so it cannot drift
+  from `app/ai/providers.js`. Its API-key field is the ONE control in the
+  dialog that bypasses `#emit` entirely, calling `ai.key.set` directly; see
+  the AI-circuit-builder note above for why. Window bounds and the desk camera
   (incl. **zoom**) are already persisted in `settings.json` (`windowBounds` via
   `window-state.js`; `viewport` via the renderer's debounced save).
 - **Pin-assignments window** (Feature 100): **Pin Assignment**, the item
   leading every part's context menu (`DeskController.#onPartContextMenu` →
-  `#onOpenPinout(ref, rows, rot)` — read-only, so it's offered even while the
-  circuit runs), invokes `pinout:open`, and main opens a **separate floating
+  `#onOpenPinout(ref, rows, rot)` — offered even while the circuit runs; the
+  pin map itself is read-only, though the **example-circuit button** below is
+  not: it adds a desktop, which stops the run exactly as switching tabs does),
+  invokes `pinout:open`, and main opens a **separate floating
   OS window**
   (`web/pinout.html` → `scripts/pinout.js`, rendering
   `components/chip-pinout.js` `buildPartPinout`). One builder per catalog shape:
@@ -760,8 +1136,52 @@ Electron main process (src/app/main.js)
   `datasheetButton`, wired in `pinout.js`) that invokes `datasheet:open` →
   `shell.openPath` to open the PDF in the OS viewer. This external-PDF path is
   independent of the committed PNG crop above — either, both, or neither may be
-  present. It is the ONE reason the otherwise bridge-free pinout window loads
+  present. Beside it sits the **example-circuit button** (`exampleButton`,
+  shown when main flags `?demo=1`) — see "Example circuits" below. The two
+  buttons are one box with two glyphs (`.pinout-header-btn`, one CSS rule), and
+  they are the only two reasons the otherwise bridge-free pinout window loads
   `preload.js`.
+- **Example circuits** (Feature 270): every benchable 74xx part's demonstration
+  bench, shipped INSIDE the app as `src/web/demos/<ref>.json` and offered as a
+  button on that part's pin-assignments window. **One build, two outputs**:
+  `make-gate-demos.mjs` writes each desktop into its group project
+  (`demos/<Group>.chiphippo`) AND on its own into `src/web/demos/`, from the
+  SAME `buildDemo(spec)` call — so the copies cannot drift, and
+  `gate-demos.test.js` holds them to byte-for-byte agreement. Minified (nobody
+  reads that one) and pre-**CENTRED** on the origin by `demo-build.mjs`'s
+  `centreDocument`, which is load-bearing rather than tidy: `fitToScreen`
+  RECENTRES as well as frames, so an uncentred example would put a "recentre
+  desk" undo step at the top of a brand-new desk's history and the user's first
+  ⌘Z would slide the circuit off-centre. Centred, the fit finds a zero delta,
+  returns before `#emitDocChanged`, and is pure camera. The directory is
+  **SWEPT** every run: a chip dropped from the catalog must not leave a
+  document behind that still puts a button on a pinout window. Per-chip rather
+  than per-group because it makes "does this part have an example?" an
+  `fs.existsSync` — main answers it with no catalog knowledge and no JSON
+  parse, so its document knowledge stays the two narrow places it already was.
+  **TWO channels, because there are two windows and only one can use the
+  bytes**: a PINOUT window has a ref and nothing else, so it asks (`demo:open`)
+  and main RELAYS `demo:host-inbound` to the app window (the memory
+  inspector's host pipe, one step simpler) after raising it — the window is
+  `alwaysOnTop`, so an unraised desk would land behind the click; the APP
+  window then READS the document (`demo:read`) itself, so it crosses the bridge
+  once, into the window that will hold it. `ProjectWorkspace.openExample(ref)`
+  is `importTab` with the file picker swapped for that read: an ADDITION,
+  reseated through `desktop.duplicate` (no shipped example carries a ROM today,
+  but "two chips can never share a guid" must not have a door in it), landing
+  as `<ref> example`. Asking twice **switches** to the desktop already holding
+  it rather than copying it — the tab NAME is the whole identity test, which is
+  also its cost: rename it and the next ask brings a fresh one, the honest
+  answer since the v4 schema keeps no per-tab marker a rename could not erase.
+  An in-flight map keyed by ref makes a double-click ONE desktop (the name
+  check and the insert are separated by awaits, which is exactly where a
+  duplicate gets in). The answer is three-valued (`"added"`/`"switched"`/null)
+  because `app.js` frames it with `fitActiveView` — framing a brand-new desk is
+  help, re-framing one the user has arranged is interference. Memory/Interface
+  chips get no example and therefore no button: a RAM or a CPU cannot be
+  demonstrated by flipping switches at it, and the 65xx demos are excluded for
+  a sharper reason still — their program lives in a separate `.hex`, so the
+  document alone would arrive not working.
 
 - The main process owns all filesystem and native I/O. The renderer is sandboxed
   (`contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`) and
@@ -796,6 +1216,7 @@ make lint      # Lint JS via ESLint
 make test      # License-header guard + Node unit tests (node --test)
 make icons     # Regenerate app-icon rasters from the SVG sources (see below)
 make datasheets # Regenerate the pinout-window datasheet crops (see below)
+make demos     # Regenerate + engine-validate demos/ AND src/web/demos/ (see below)
 make build     # Build the Electron app for macOS (dir only, unsigned)
 make dmg       # Build an unsigned macOS .dmg (bare `make` default)
 make clean     # Remove build/ and dist/

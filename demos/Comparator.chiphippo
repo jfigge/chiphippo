@@ -15,24 +15,24 @@
           {
             "id": "bb1",
             "type": "rail-full",
-            "x": -37,
-            "y": -14,
+            "x": -32,
+            "y": -7,
             "rot": 0,
             "group": "g1"
           },
           {
             "id": "bb2",
             "type": "pins-full",
-            "x": -37,
-            "y": -11,
+            "x": -32,
+            "y": -4,
             "rot": 0,
             "group": "g1"
           },
           {
             "id": "bb3",
             "type": "rail-full",
-            "x": -37,
-            "y": 2,
+            "x": -32,
+            "y": 9,
             "rot": 0,
             "group": "g1"
           }
@@ -42,8 +42,8 @@
             "id": "psu1",
             "kind": "psu",
             "ref": "psu",
-            "x": -36,
-            "y": -23,
+            "x": -31,
+            "y": -16,
             "params": {
               "volts": 5
             }
@@ -355,124 +355,124 @@
           {
             "id": "an1",
             "kind": "label",
-            "x": -35.3,
-            "y": -16.4,
+            "x": -30.299999999999997,
+            "y": -9.399999999999999,
             "text": "A0"
           },
           {
             "id": "an2",
             "kind": "label",
-            "x": -34.3,
-            "y": -18,
+            "x": -29.299999999999997,
+            "y": -11,
             "text": "A1"
           },
           {
             "id": "an3",
             "kind": "label",
-            "x": -33.3,
-            "y": -16.4,
+            "x": -28.299999999999997,
+            "y": -9.399999999999999,
             "text": "A2"
           },
           {
             "id": "an4",
             "kind": "label",
-            "x": -32.3,
-            "y": -18,
+            "x": -27.299999999999997,
+            "y": -11,
             "text": "A3"
           },
           {
             "id": "an5",
             "kind": "label",
-            "x": -31.3,
-            "y": -16.4,
+            "x": -26.3,
+            "y": -9.399999999999999,
             "text": "B0"
           },
           {
             "id": "an6",
             "kind": "label",
-            "x": -30.3,
-            "y": -18,
+            "x": -25.3,
+            "y": -11,
             "text": "B1"
           },
           {
             "id": "an7",
             "kind": "label",
-            "x": -29.3,
-            "y": -16.4,
+            "x": -24.3,
+            "y": -9.399999999999999,
             "text": "B2"
           },
           {
             "id": "an8",
             "kind": "label",
-            "x": -28.3,
-            "y": -18,
+            "x": -23.3,
+            "y": -11,
             "text": "B3"
           },
           {
             "id": "an9",
             "kind": "label",
-            "x": -0.3,
-            "y": -16.4,
+            "x": 4.7,
+            "y": -9.399999999999999,
             "text": "A>B"
           },
           {
             "id": "an10",
             "kind": "label",
-            "x": 2.7,
-            "y": -16.4,
+            "x": 7.7,
+            "y": -9.399999999999999,
             "text": "A=B"
           },
           {
             "id": "an11",
             "kind": "label",
-            "x": 5.7,
-            "y": -16.4,
+            "x": 10.7,
+            "y": -9.399999999999999,
             "text": "A<B"
           },
           {
             "id": "an12",
             "kind": "label",
-            "x": -37,
-            "y": -34.8,
+            "x": -32,
+            "y": -27.799999999999997,
             "text": "74LS85 — 4-bit magnitude comparator"
           },
           {
             "id": "an13",
             "kind": "label",
-            "x": -37,
-            "y": -33,
+            "x": -32,
+            "y": -26,
             "text": "Two 4-bit words off one switch bank: A on",
             "color": "#808080"
           },
           {
             "id": "an14",
             "kind": "label",
-            "x": -37,
-            "y": -31.2,
+            "x": -32,
+            "y": -24.2,
             "text": "the left four, B on the right four. Exactly",
             "color": "#808080"
           },
           {
             "id": "an15",
             "kind": "label",
-            "x": -37,
-            "y": -29.4,
+            "x": -32,
+            "y": -22.4,
             "text": "one of the three lamps is lit — greater,",
             "color": "#808080"
           },
           {
             "id": "an16",
             "kind": "label",
-            "x": -37,
-            "y": -27.6,
+            "x": -32,
+            "y": -20.6,
             "text": "equal, or less. The cascade inputs are",
             "color": "#808080"
           },
           {
             "id": "an17",
             "kind": "label",
-            "x": -37,
-            "y": -25.8,
+            "x": -32,
+            "y": -18.8,
             "text": "strapped for a single stage (A=B high).",
             "color": "#808080"
           }

@@ -148,7 +148,10 @@ datasheets:
 # PER CATALOG GROUP (NAND, Flip-flop, Multiplexer…) holding a desktop for every
 # chip in it — a logic bench per 74xx part, each proved out by enumerating its
 # whole truth table (or clocking it edge by edge) through the engine before the
-# file is written.
+# file is written. It writes each of those desktops a SECOND time, on its own,
+# to src/web/demos/<ref>.json — the copy that ships inside the app, which a
+# chip's pin-assignments window offers as its example circuit. One build, two
+# outputs, so the two can never drift.
 demos:
 	@echo "Regenerating + validating the demo schematics..."
 	@node $(WORKSPACE)/scripts/make-demos.mjs
@@ -374,7 +377,7 @@ help:
 	@echo "    license-headers  Stamp the Apache 2.0 header on any file missing it"
 	@echo "    icons         Regenerate app-icon rasters from the SVG sources"
 	@echo "    datasheets    Regenerate datasheet crops for the pinout window"
-	@echo "    demos         Regenerate + validate the loadable demo schematics"
+	@echo "    demos         Regenerate + validate demos/ and the bundled examples"
 	@echo "    vendor-markdown  Rebuild the bundled marked+DOMPurify renderer"
 	@echo "    docs          Build the hosted user guide (website/docs/)"
 	@echo "    pdf           Build the user-guide PDF (PDF_OUT=path to override)"

@@ -31,6 +31,7 @@ import {
   worldOfAddress,
 } from "../model/occupancy.js";
 import { spec } from "../model/breadboard.js";
+import { deskBounds } from "../model/part-geometry.js";
 import { PX_PER_UNIT } from "../desk/desk-geometry.js";
 import { OUTLINE_MARGIN } from "../components/board-outline.js";
 
@@ -48,9 +49,10 @@ function makeDesk(deskDoc, world = { x: 0, y: 0 }) {
     surface,
     camera: { cx: 0, cy: 0, zoom: 1 },
     worldFromEvent: () => ({ x: world.x, y: world.y }),
+    setCamera: (c) => Object.assign(deskView.camera, c),
   };
   const controller = new DeskController({ viewport, deskView, deskDoc });
-  return { viewport, surface, controller, world };
+  return { viewport, surface, controller, deskView, world };
 }
 
 test("constructor creates the surface layers in order and mounts doc boards", () => {
@@ -2110,4 +2112,84 @@ test("1-2 pick the bus width while the bus tool is armed; digits are inert other
   );
   assert.equal(consumed, true);
   assert.equal(controller.busName, "D[7:0]");
+});
+
+// ── Fit to screen (recentre + frame) ───────────────────────────────────────
+
+test("fitToScreen slides the whole desk onto the origin and frames it", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addKit("full", 400, 300); // bb1 rail · bb2 pins · bb3 rail
+  doc.addComponent({ kind: "chip", ref: "74LS00", board: "bb2", anchor: "e5" });
+  doc.addPsu(480, 303);
+  doc.addWire({ from: "psu1.+", to: "bb1.+3" });
+  doc.addAnnotation("note", 402, 296, "adder");
+  const { surface, controller, deskView } = makeDesk(doc);
+  const before = doc.getBoard("bb2");
+  const chip = surface.querySelector('[data-component-id="c1"]');
+  const chipLeft = Number.parseFloat(chip.style.left);
+
+  let changes = 0;
+  window.addEventListener("chiphippo:doc-changed", () => changes++);
+  controller.fitToScreen();
+
+  // Everything straddles the origin now — the camera lands there too.
+  const bounds = deskBounds(doc.boards, doc.components, doc.wires);
+  assert.ok(Math.abs(bounds.minX + bounds.maxX) <= 1, "centred on x");
+  assert.ok(Math.abs(bounds.minY + bounds.maxY) <= 1, "centred on y");
+  assert.ok(Math.abs(deskView.camera.cx) <= 1);
+  assert.ok(Math.abs(deskView.camera.cy) <= 1);
+  // Every kind of positioned thing moved by the SAME delta.
+  const moved = doc.getBoard("bb2");
+  const [dx, dy] = [moved.x - before.x, moved.y - before.y];
+  assert.deepEqual(
+    [doc.getComponent("psu1").x, doc.getComponent("psu1").y],
+    [480 + dx, 303 + dy],
+  );
+  assert.deepEqual(
+    [doc.annotations[0].x, doc.annotations[0].y],
+    [402 + dx, 296 + dy],
+  );
+  // The views followed the document rather than staying where they were…
+  const board = surface.querySelector('[data-board-id="bb2"]');
+  assert.equal(board.style.left, `${moved.x * PX_PER_UNIT}px`);
+  // …and the seated chip rode its board by the same delta.
+  assert.equal(Number.parseFloat(chip.style.left), chipLeft + dx * PX_PER_UNIT);
+  // One document edit — so it is one undo step, which puts the desk back.
+  assert.equal(changes, 1);
+  controller.undo();
+  assert.deepEqual(doc.getBoard("bb2"), before);
+});
+
+test("fitToScreen is camera-only while the sim runs — topology stays put", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addKit("full", 400, 300);
+  const { controller, deskView } = makeDesk(doc);
+  controller.setEditingLocked(true);
+
+  let changes = 0;
+  window.addEventListener("chiphippo:doc-changed", () => changes++);
+  controller.fitToScreen();
+
+  assert.equal(changes, 0);
+  assert.deepEqual(
+    [doc.getBoard("bb1").x, doc.getBoard("bb1").y],
+    [400, 300],
+    "a running circuit is never rearranged under the user",
+  );
+  assert.ok(deskView.camera.cx > 0, "but the camera still frames it");
+});
+
+test("fitToScreen on an empty desk changes nothing", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const { controller, deskView } = makeDesk(doc);
+
+  let changes = 0;
+  window.addEventListener("chiphippo:doc-changed", () => changes++);
+  controller.fitToScreen();
+
+  assert.equal(changes, 0);
+  assert.deepEqual(deskView.camera, { cx: 0, cy: 0, zoom: 1 });
 });

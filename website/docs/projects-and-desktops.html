@@ -76,6 +76,7 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
         <a class="doc-nav-link" href="logic-analyzer.html">Logic Analyzer &amp; Timing</a>
         <a class="doc-nav-link" href="build-guide.html">Build Guide, Wiring List &amp; BOM</a>
         <a class="doc-nav-link" href="schematic-view.html">Schematic View</a>
+        <a class="doc-nav-link" href="ai-builder.html">AI Circuit Builder</a>
         <a class="doc-nav-link" href="files-and-undo.html">Files, Saving &amp; Undo</a>
         <a class="doc-nav-link doc-nav-link--active" href="projects-and-desktops.html">Projects &amp; Desktops</a>
         <a class="doc-nav-link" href="settings.html">Settings</a>
@@ -90,6 +91,7 @@ everything else — and then drop the finished thing into the main design.</p>
 <strong>desktops</strong>, shown as tabs above the desk. Each desktop is a complete desk of
 its own — its own boards, chips, wiring, camera position, and undo history —
 and a design worked out on one can be copied straight onto another.</p>
+<p><img src="images/project-tabs.png" alt="Desktops as tabs above the desk"></p>
 <p><strong>The project is the document.</strong> One <code>.chiphippo</code> file holds all of it: every
 desktop, and the contents of every ROM you programmed. That&#39;s the whole design
 in a single file you can email, drop in a repo, or carry to another machine.
@@ -114,6 +116,12 @@ and you land on it.</p>
 projects</em> below).</li>
 </ul>
 <p>Either way it&#39;s an addition, and nothing already there is touched.</p>
+<p>There is a third way one arrives, and it doesn&#39;t belong on the <strong>+</strong> because
+it belongs to a <em>part</em>: a chip&#39;s <strong>example circuit</strong>. Right-click any 74xx chip
+on the desk, choose <strong>Pin Assignment</strong>, and click the circuit button in that
+window&#39;s top-right corner — a worked bench for that part lands as a desktop of
+its own, called <code>74LS138 example</code>. See
+<a href="chip-library.html#example-circuits">The Chip Library</a>.</p>
 <p>The <strong>Desktop</strong> menu has the same two plus the rest, acting on the desktop
 you&#39;re looking at:</p>
 <ul>

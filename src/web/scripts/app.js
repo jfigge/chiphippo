@@ -32,6 +32,8 @@ import { ProjectTabs } from "./components/project-tabs.js";
 import { ProjectWorkspace } from "./components/project-workspace.js";
 import { BuildGuide } from "./components/build-guide.js";
 import { ScopeView } from "./components/scope-view.js";
+import { AiPanel } from "./components/ai-panel.js";
+import { checkConnection, effectiveProvider } from "./ai/connection.js";
 import { SimController, SPEEDS } from "./components/sim-controller.js";
 import { NetlistCache } from "./components/netlist-cache.js";
 import { MemoryBridge } from "./components/memory-bridge.js";
@@ -167,6 +169,39 @@ const ZOOM_OUT_SVG =
   '<line x1="21" y1="21" x2="16.65" y2="16.65"/>' +
   '<line x1="8" y1="11" x2="14" y2="11"/></svg>';
 
+/** The AI segment's tooltip while it is available (see `refreshAiReady`). */
+const AI_TITLE =
+  "AI circuit builder — describe a circuit and have it designed, " +
+  "built and tested for you";
+
+/** AI-builder icon: a four-point spark — the app-wide "generated" glyph. */
+const AI_SVG =
+  ICON_SVG_OPEN +
+  '<path d="M12 3 13.8 9.2 20 11 13.8 12.8 12 19 10.2 12.8 4 11 10.2 9.2Z"/>' +
+  '<path d="M18.5 3.5 19.2 5.8 21.5 6.5 19.2 7.2 18.5 9.5 17.8 7.2 15.5 6.5 ' +
+  '17.8 5.8Z"/></svg>';
+
+/** Schematic-view icon: what the view itself draws — two symbol boxes joined
+ * by one orthogonally routed net. */
+const SCHEMATIC_SVG =
+  ICON_SVG_OPEN +
+  '<rect x="2.5" y="3.5" width="7.5" height="6.5" rx="1"/>' +
+  '<rect x="14" y="14" width="7.5" height="6.5" rx="1"/>' +
+  '<path d="M10 6.75h2.25v10.5H14"/></svg>';
+
+/** Breadboard icon the Schematic toggle swaps to while the diagram is
+ * showing: a board's two rows of tie points either side of the trench. */
+const BREADBOARD_SVG =
+  ICON_SVG_OPEN +
+  '<rect x="2.5" y="4.5" width="19" height="15" rx="2"/>' +
+  '<line x1="2.5" y1="12" x2="21.5" y2="12"/>' +
+  '<line x1="7" y1="8" x2="7.01" y2="8"/>' +
+  '<line x1="12" y1="8" x2="12.01" y2="8"/>' +
+  '<line x1="17" y1="8" x2="17.01" y2="8"/>' +
+  '<line x1="7" y1="16" x2="7.01" y2="16"/>' +
+  '<line x1="12" y1="16" x2="12.01" y2="16"/>' +
+  '<line x1="17" y1="16" x2="17.01" y2="16"/></svg>';
+
 /** Build-guide (clipboard-list) icon for the Guide toolbar toggle. */
 const GUIDE_SVG =
   ICON_SVG_OPEN +
@@ -275,6 +310,7 @@ function bindShortcuts(
   scopeView,
   togglePalette,
   getActiveView,
+  fitActiveView,
   onToggleView,
 ) {
   window.addEventListener("keydown", (e) => {
@@ -375,7 +411,7 @@ function bindShortcuts(
         if (e.shiftKey) {
           getActiveView().zoomOutFull();
         } else {
-          controller.fitToScreen();
+          fitActiveView(); // the desk, or the schematic when it is showing
         }
         return;
       }
@@ -492,6 +528,23 @@ async function init() {
     if (e.detail) void workspace?.openRecentProject(e.detail);
   });
 
+  // A part's EXAMPLE CIRCUIT, asked for from its pin-assignments window. That
+  // window has a ref and nothing else — no project, no desk — so main relays
+  // the request here, where both live (the memory inspector's host relay is the
+  // same pipe). The desktop arrives through the workspace; it is FRAMED here,
+  // because framing follows the ACTIVE view and only app.js knows which that
+  // is. The fit is camera-only: `make demos` writes every example already
+  // centred on the origin, so ⌘F's recentre half finds a zero delta and leaves
+  // no undo step behind on a desk nobody has touched. A desktop that was
+  // already open is not re-framed — its camera is the user's.
+  window.addEventListener("chiphippo:demo-host-inbound", (e) => {
+    const ref = e.detail?.ref;
+    if (!ref) return;
+    void workspace?.openExample(ref).then((res) => {
+      if (res === "added") fitActiveView();
+    });
+  });
+
   /** A Desktop-menu item aimed at whichever desktop is on screen. */
   function activeDesktopAction(method) {
     const id = workspace?.activeTab?.id;
@@ -547,6 +600,14 @@ async function init() {
     // declared with the toolbar further below; this closure only runs on a
     // click, long after that.
     onToggle: () => togglePalette(),
+    // The tray's own width, dragged on its right edge. Persisted like the open
+    // flag — the panel reports, app.js writes.
+    width: settings.paletteWidth,
+    onWidthChange: (width) => {
+      bridge.settings
+        .set({ paletteWidth: width })
+        .catch((err) => console.error("[renderer] settings:set failed:", err));
+    },
     // Collapse state is deliberately NOT persisted — the palette opens with
     // every group shut, every launch (see PalettePanel).
   });
@@ -631,6 +692,88 @@ async function init() {
     tickMs: () => tickMsFor(deskDoc, sim),
   });
   scopeView.setVisible(settings.scopeOpen === true);
+
+  // The live settings document. Declared here rather than beside the Settings
+  // dialog below because the AI panel reads `ai` from it on every send — that
+  // is how a Settings change reaches the panel with no wiring between them.
+  let currentSettings = settings;
+  // The transport's last reported mode, kept because several panels need to
+  // know the desk is frozen and `sim` itself is built further down.
+  let transportMode = "stopped";
+
+  // AI circuit builder (Feature 260): describe a circuit, get a verified design
+  // ARMED as a placement ghost. It hands over a design clip and nothing else —
+  // the desk's own atomic paste path does the placing, so a generated circuit
+  // rides undo/redo exactly as a pasted one does.
+  let aiBtn = null;
+  const aiPanel = new AiPanel(app, {
+    config: () => currentSettings.ai ?? {},
+    height: settings.aiHeight,
+    history: settings.aiHistory,
+    isLocked: () => transportMode !== "stopped",
+    onDesign: (clip) => controller?.armGeneratedDesign(clip),
+    onHistoryChange: (entries) => {
+      bridge.settings
+        .set({ aiHistory: entries })
+        .catch((err) => console.error("[renderer] settings:set failed:", err));
+    },
+    onVisibilityChange: (visible) => {
+      aiBtn?.classList.toggle("toolbar-btn--active", visible);
+      aiBtn?.setAttribute("aria-pressed", String(visible));
+      bridge.settings
+        .set({ aiOpen: visible })
+        .catch((err) => console.error("[renderer] settings:set failed:", err));
+    },
+    onHeightChange: (height) => {
+      bridge.settings
+        .set({ aiHeight: height })
+        .catch((err) => console.error("[renderer] settings:set failed:", err));
+    },
+  });
+
+  // The AI segment is only offered when there is a connection to ask: a key
+  // stored for the chosen provider, a provider this build has an adapter for,
+  // and a base URL that could be reached (`ai/connection.js` decides, without
+  // a network call — nothing is sent anywhere until the user asks for a
+  // build). So the panel's restore waits for that answer rather than firing
+  // here: an `aiOpen` remembered from a session that HAD a key must not
+  // reopen a panel whose button is now dead, and must not be overwritten
+  // either — the key may well come back.
+  let aiProviders = null; // main's provider list, read once
+  let aiRestored = false; // whether the remembered `aiOpen` has been applied
+  const refreshAiReady = async () => {
+    let ready = { ok: false, reason: "The AI connection could not be read." };
+    try {
+      aiProviders ??= (await bridge.ai?.providers?.()) ?? [];
+      const config = currentSettings.ai ?? {};
+      // The key is asked about for the provider `checkConnection` will judge —
+      // one rule, so the button can never be gated on a key for a provider the
+      // Settings panel is not showing.
+      const provider = effectiveProvider(config, aiProviders)?.id;
+      const status = provider ? await bridge.ai?.key?.status(provider) : null;
+      ready = checkConnection(config, aiProviders, status);
+    } catch (err) {
+      console.error("[renderer] ai readiness check failed:", err);
+    }
+    if (aiBtn) {
+      aiBtn.disabled = !ready.ok;
+      aiBtn.title = ready.ok ? AI_TITLE : ready.reason;
+    }
+    if (ready.ok) {
+      // First pass only: honour the remembered state, never force the panel
+      // open under the user afterwards.
+      if (aiRestored === false) aiPanel.setVisible(settings.aiOpen === true);
+    } else if (aiPanel.visible) {
+      // A key cleared while the panel is open leaves a panel no button can
+      // close — so it goes with the connection it belonged to.
+      aiPanel.setVisible(false);
+    }
+    aiRestored = true;
+  };
+  // Settings ▸ AI changing the provider (a settings patch) or the key itself
+  // (which bypasses settings entirely, straight to the OS-encrypted store) are
+  // the two ways this answer changes.
+  window.addEventListener("chiphippo:ai-key-changed", () => refreshAiReady());
 
   const deskView = new DeskView(desk, {
     camera: settings.viewport,
@@ -772,29 +915,25 @@ async function init() {
 
   const toolbar = document.getElementById("app-toolbar");
 
-  // Breadboard ⇄ Schematic view toggle (Feature 150) — leads the toolbar.
-  // Hidden for now: the schematic still works and Tab still toggles it, but the
-  // toolbar entry point is held back. Flip SHOW_SCHEMATIC_TOGGLE to re-enable.
-  const SHOW_SCHEMATIC_TOGGLE = false;
-  const modeBtn = el("button", {
-    class: "toolbar-btn",
-    type: "button",
-    text: "▧ Schematic",
-    title: "Show the logical schematic (Tab)",
-    "aria-pressed": "false",
-    onClick: () => setMode(mode === "desk" ? "schematic" : "desk"),
-  });
-  if (SHOW_SCHEMATIC_TOGGLE) {
-    toolbar.append(modeBtn, el("span", { class: "toolbar-divider" }));
-  }
+  // Breadboard ⇄ Schematic view toggle (Feature 150): a desk-tool pill segment
+  // built further down (between Bill Of Materials and AI). Unlike the panel
+  // toggles either side of it this one swaps the whole viewport, so its icon
+  // swaps too — it shows the view it would take you TO, the way the
+  // Fit/zoom-out segment previews its alternate action.
+  let modeBtn = null;
 
   function setMode(next) {
     mode = next === "schematic" ? "schematic" : "desk";
     const schematic = mode === "schematic";
     desk.hidden = schematic;
     schematicView?.setVisible(schematic);
+    if (!modeBtn) return;
     modeBtn.classList.toggle("toolbar-btn--active", schematic);
-    modeBtn.textContent = schematic ? "▦ Breadboard" : "▧ Schematic";
+    modeBtn.innerHTML = schematic ? BREADBOARD_SVG : SCHEMATIC_SVG;
+    modeBtn.setAttribute(
+      "aria-label",
+      schematic ? "Breadboard view" : "Schematic view",
+    );
     modeBtn.title = schematic
       ? "Back to the breadboard (Tab)"
       : "Show the logical schematic (Tab)";
@@ -971,12 +1110,20 @@ async function init() {
   scopeBtn.classList.toggle("toolbar-btn--active", scopeView.visible);
   toolPill.append(scopeBtn);
 
-  // Fit to screen: frame every board/part/wire on the desk (find lost parts).
-  // A passive camera move, so it stays available while the circuit runs.
+  // Fit to screen: recentre the desk on the origin, then frame every
+  // board/part/wire on it (find lost parts). It stays available while the
+  // circuit runs — the recentre is a document edit, so it alone is skipped.
   // Shift previews the OTHER find-a-lost-part move (zoom out fully, ⌘⇧F): the
   // icon/tooltip swap while hovered+held is a pure preview (no click yet), so
   // it tracks hover and Shift independently and recomputes on either change.
   const getActiveView = () => (mode === "schematic" ? schematicView : deskView);
+  // Fit follows the view you are LOOKING at, like zoom-out-full does — but it
+  // is not a plain camera call on either: the desk's lives on the controller
+  // because it recentres the document as well, and the schematic's is the
+  // diagram's own (its symbol positions are derived, so there is nothing to
+  // move — fitting IS centring it).
+  const fitActiveView = () =>
+    mode === "schematic" ? schematicView.fit() : controller.fitToScreen();
   let locateHovered = false;
   let locateShiftHeld = false;
   const updateLocateIcon = () => {
@@ -997,7 +1144,7 @@ async function init() {
     title: `Fit to screen — frame every board, part, and wire (${MOD_KEY}+F)`,
     onClick: (e) => {
       if (e.shiftKey) getActiveView().zoomOutFull();
-      else controller.fitToScreen();
+      else fitActiveView();
     },
   });
   locateBtn.innerHTML = LOCATE_SVG;
@@ -1046,6 +1193,48 @@ async function init() {
   guideBtn.innerHTML = GUIDE_SVG;
   guideBtn.classList.toggle("toolbar-btn--active", buildGuide.visible);
   toolPill.append(guideBtn);
+
+  // Breadboard ⇄ Schematic (Tab). The one segment that swaps the VIEWPORT
+  // rather than arming a tool or opening a panel, so its icon shows where it
+  // would take you; `setMode` (above) owns both states, and Tab drives the
+  // same function, so the key and the button can never disagree. It reads the
+  // desk rather than editing it — available while the circuit runs, like the
+  // analyzer and the BOM it sits between.
+  modeBtn = el("button", {
+    class: "toolbar-pill-btn toolbar-pill-btn--icon",
+    type: "button",
+    "aria-label": "Schematic view",
+    title: "Show the logical schematic (Tab)",
+    "aria-pressed": "false",
+    onClick: () => setMode(mode === "desk" ? "schematic" : "desk"),
+  });
+  modeBtn.innerHTML = SCHEMATIC_SVG;
+  toolPill.append(modeBtn);
+
+  // AI builder: toggle the bottom-docked builder panel. Like the analyzer its
+  // armed state comes from the panel's own onVisibilityChange, so the segment
+  // tracks the panel however it was closed. It stays available while the
+  // circuit runs — the panel itself refuses to build while the desk is frozen,
+  // and saying so there is clearer than a dead button here.
+  //
+  // It is DISABLED, though, until there is a connection to ask at all: the
+  // builder is the one tool that cannot work on the user's own machine, so
+  // offering it with no API key configured would be offering nothing. It
+  // starts disabled and `refreshAiReady` (above) enables it once main has
+  // answered, replacing this tooltip with the reason whenever it is off.
+  aiBtn = el("button", {
+    class: "toolbar-pill-btn toolbar-pill-btn--icon",
+    type: "button",
+    "aria-label": "AI builder",
+    title: AI_TITLE,
+    disabled: true,
+    "aria-pressed": String(aiPanel.visible),
+    onClick: () => aiPanel.toggle(),
+  });
+  aiBtn.innerHTML = AI_SVG;
+  aiBtn.classList.toggle("toolbar-btn--active", aiPanel.visible);
+  toolPill.append(aiBtn);
+  refreshAiReady();
 
   // ── Simulation transport (Feature 90/100): Run/Stop, Pause, Step, speed ──
   const notifications = new NotificationStack(document.body);
@@ -1111,6 +1300,7 @@ async function init() {
   // always stayed live for the same reason).
   const editButtons = [wireBtn, busBtn];
   const onTransportChange = (mode) => {
+    transportMode = mode;
     const stopped = mode === "stopped";
     controller.setEditingLocked(!stopped);
     workspace?.setEditingLocked(!stopped);
@@ -1185,8 +1375,14 @@ async function init() {
   });
   setMode("desk"); // sync the initial toggle state
 
-  bindShortcuts(controller, sim, scopeView, togglePalette, getActiveView, () =>
-    setMode(mode === "desk" ? "schematic" : "desk"),
+  bindShortcuts(
+    controller,
+    sim,
+    scopeView,
+    togglePalette,
+    getActiveView,
+    fitActiveView,
+    () => setMode(mode === "desk" ? "schematic" : "desk"),
   );
 
   // The desk hub is always mounted but hidden until the "Show desk hub"
@@ -1200,7 +1396,6 @@ async function init() {
   // `theme` is deliberately absent from applySettings: main acts on it (it
   // becomes nativeTheme.themeSource), so persisting the patch below IS
   // applying it — for every window at once, not just this one.
-  let currentSettings = settings;
   const applySettings = (s) => {
     hud?.setVisible(s.showDeskHub === true);
     const root = document.documentElement;
@@ -1215,6 +1410,10 @@ async function init() {
   window.addEventListener("chiphippo:settings-changed", (e) => {
     currentSettings = { ...currentSettings, ...e.detail };
     applySettings(currentSettings);
+    // A different provider has a different key, and a base URL can be typed
+    // into something unreachable — either changes whether the AI segment has
+    // a connection to offer.
+    if (e.detail && "ai" in e.detail) refreshAiReady();
     bridge.settings
       .set(e.detail)
       .catch((err) => console.error("[renderer] settings:set failed:", err));

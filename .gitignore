@@ -2,6 +2,11 @@
 build/
 dist/
 data/
+keys/
+
+# ── Doc-screenshot capture harness (local dev tooling; only the PNGs it
+#    writes into src/web/docs/images/ are committed) ───────────────────────────
+.docs-build/
 
 # ── Node / npm ────────────────────────────────────────────────────────────────
 src/node_modules/

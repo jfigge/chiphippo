@@ -2,11 +2,11 @@
 
 The parts palette's **CHIPS** folder holds a broad shelf of 74xx-family DIP
 logic — everything from a single quad NAND gate up to octal shift registers
-and 4-bit counters — every one with a datasheet-accurate pinout and, where
-the simulator supports it, real behavior you can wire up and run. A separate
-**Memory** group sits alongside it for address-indexed ROM/RAM parts, which
-get their own dedicated page. This page is a tour of what's on the shelf and
-how to read a chip's pin-assignments window once you've placed one.
+and 4-bit counters — every one with a datasheet-accurate pinout and real
+behavior you can wire up and run. A separate **Memory** group sits alongside
+it for address-indexed ROM/RAM parts, which get their own dedicated page.
+This page is a tour of what's on the shelf and how to read a chip's
+pin-assignments window once you've placed one.
 
 ## Combinational gates
 
@@ -106,15 +106,6 @@ and are programmed through a dedicated in-app tool rather than by the circuit
 itself. See [Memory Chips & the Inspector](memory.md) for the full story —
 file-backing, the external programmer, and the hex/ASCII inspector.
 
-## The sim-ready badge
-
-Every chip in the palette that has real behavior wired up — its truth table
-or state machine, not just its pinout — carries a small **sim** badge next to
-its name. Hover it for a reminder: *"Behavior defined — ready for the
-simulator."* In practice this covers the whole 74xx shelf on this page;
-you'll only ever see a chip without the badge if a future part ships with a
-pinout but no behavior yet.
-
 ## The pin-assignments window
 
 Right-click **any** chip — or a package-footprint discrete like the `bar8iso`
@@ -146,6 +137,43 @@ chip's full datasheet PDF, the window also grows a small document button in
 its top-right corner; clicking it opens the PDF itself in your system's PDF
 viewer. This is independent of the built-in datasheet crop — you may have
 one, both, or neither for any given chip.
+
+## Example circuits
+
+A pin map tells you where the pins are; it doesn't show you the part working.
+So every 74xx chip in the catalog ships with a **worked example** — a small
+bench built around that one part — and the pin-assignments window is where you
+reach it. Look for the **circuit button** in the window's top-right corner,
+beside the datasheet one.
+
+Click it and the example arrives as a **new desktop** in the open project,
+called `74LS138 example` (or whichever part it is), already framed on screen.
+Every one is the same bench, so once you can read one you can read them all:
+
+- a **5 V brick** feeding both power rails, and a **clock** for the clocked
+  parts;
+- **switched inputs** on the left, each throwing between +5 V and a pull-down
+  so an input is never left floating — a part with more inputs than will fit
+  gets a DIP switch bank over a resistor network instead;
+- the **chip under test** in the middle, straddling the trench;
+- **LED read-outs** on the right, one per output, through its own resistor. An
+  active-LOW output has its LED wired the other way up, so a lit lamp always
+  means *this output is asserted*;
+- a **caption** above the bench saying what the demo shows.
+
+Press **Run** (Space) and flip the switches. Each example opens in a state
+chosen to show the part doing something.
+
+A few practical notes:
+
+- It's an ordinary desktop and an ordinary unsaved change — nothing is written
+  until you save, and you can rename it, edit it, or delete it like any other.
+- Asking for the same example twice doesn't make a second copy; you land back
+  on the desktop you already have.
+- Adding it stops a running simulation, exactly as switching desktops does.
+- Parts with no bench have no button: the memory and interface chips (a RAM or
+  a CPU can't be demonstrated by flipping switches at it — those are the
+  computer demos, which need a program), and every discrete, brick and wire.
 
 ## Datasheets
 

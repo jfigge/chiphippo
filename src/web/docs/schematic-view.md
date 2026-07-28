@@ -14,11 +14,19 @@ or a wire on the desk.
 
 Press `Tab` to flip between the **Breadboard** and **Schematic** views (not
 while a text field has focus — typing a `Tab` there behaves normally, e.g.
-to move between fields). The schematic reuses the desk's own camera, so
-pan and zoom feel identical in both views and your position is preserved
-when you switch back. The first time you open the schematic in a session it
-automatically fits the whole diagram in the viewport; after that, panning
-and zooming are exactly what you left them.
+to move between fields), or click the **schematic** button in the toolbar,
+between **Bill Of Materials** and the **AI builder**. Its icon shows the
+view it will take you to, and fills in while the diagram is up. The
+schematic reuses the desk's own camera, so pan and zoom feel identical in
+both views and your position is preserved when you switch back. The first
+time you open the schematic in a session it automatically fits the whole
+diagram in the viewport; after that, panning and zooming are exactly what
+you left them.
+
+`Cmd/Ctrl+F` re-fits whichever view you are looking at — with the schematic
+showing it frames and centers the diagram again, the same way it frames the
+desk. (Fitting the schematic only moves the camera: symbol positions are
+derived, so there is nothing on the diagram to relocate.)
 
 If the desk has no chips on it yet, the schematic shows a short hint instead
 of an empty canvas — add a chip on the breadboard and switch back to see it

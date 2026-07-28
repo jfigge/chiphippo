@@ -232,6 +232,27 @@ export function emptyDocument() {
   };
 }
 
+/** Every list a desk's CONTENT lives in, read off the empty document itself so
+    a list added later can never be forgotten here. */
+const CONTENT_KEYS = Object.freeze(
+  Object.entries(emptyDocument())
+    .filter(([, value]) => Array.isArray(value))
+    .map(([key]) => key),
+);
+
+/**
+ * Is there NOTHING on this desk? No boards, parts, wires, buses, net names,
+ * labels, or scope channels — so there is nothing in it to keep or to lose.
+ *
+ * The `next*Id` counters are deliberately not read: they say what a desk has
+ * ever HELD, not what it holds. A board placed and then deleted leaves the
+ * desk as empty as it started, and this must say so.
+ */
+export function isEmptyDocument(doc) {
+  if (!doc || typeof doc !== "object") return true;
+  return CONTENT_KEYS.every((key) => (doc[key]?.length ?? 0) === 0);
+}
+
 /**
  * Coerce a loaded (possibly junk/foreign) document into a valid one: arrays
  * forced; board/component entries with bad ids, types/refs, coords, or
@@ -304,6 +325,24 @@ export function normalizeDocument(raw) {
     if (!m) continue;
     if (!boardIds.has(c.board)) continue; // seated on a surviving board
     if (typeof c.anchor !== "string") continue;
+    // …and actually SEATED on it: the anchor has to fit the part's footprint,
+    // and every hole that footprint lands on has to exist on that board. A DIP
+    // anchored past the end of a strip used to load "clean" with its
+    // overhanging pins resolving to nothing — the counts matched, so even an
+    // entity-count check passed, while the chip sat there electrically dead.
+    // A rotated part's BENT lead is deliberately exempt: it carries an
+    // {offset} rather than a hole and may legally resolve to nothing, which is
+    // the documented state a part falls into when a rail moves out from under
+    // it. Floating is a state you fall into, never one you load into.
+    const params = normalizeParams(def, c.params);
+    const seat = partPinHoles(c.ref, c.anchor, params);
+    if (!seat) continue; // anchor doesn't fit the footprint at all
+    const seatBoard = doc.boards.find((b) => b.id === c.board);
+    if (
+      seat.some((p) => p.hole != null && !parseHole(seatBoard.type, p.hole))
+    ) {
+      continue;
+    }
     compIds.add(c.id);
     maxCompSeq = Math.max(maxCompSeq, Number(m[1]));
     const record = {
@@ -312,7 +351,7 @@ export function normalizeDocument(raw) {
       ref: c.ref,
       board: c.board,
       anchor: c.anchor,
-      params: normalizeParams(def, c.params),
+      params,
     };
     const schematicPos = normalizeSchematicPos(c.schematicPos);
     if (schematicPos) record.schematicPos = schematicPos; // Feature 150 nudge
@@ -2145,6 +2184,48 @@ export class DeskDoc {
       this.restore(before); // a refused paste changes nothing at all
       throw err;
     }
+  }
+
+  // ── Whole-desk translation ───────────────────────────────────────────────
+
+  /**
+   * Slide the ENTIRE desk by an integer (dx, dy): every board, every desk-level
+   * brick, and every annotation. Seated parts and wires need nothing — they are
+   * stored as board addresses, not coordinates, so they ride their board.
+   *
+   * The move is RIGID, which is why there is no legality check and no way to
+   * refuse it: nothing changes its position relative to anything else, so
+   * nothing that was clear can start overlapping and nothing that was mated can
+   * come apart. It exists so a design that has wandered far from the origin can
+   * be pulled back around it (the fit-to-screen recentre) rather than drifting
+   * ever further out into the coordinate range.
+   *
+   * @returns {{dx:number, dy:number}} the rounded delta actually applied.
+   */
+  translateAll(dx, dy) {
+    if (!Number.isFinite(dx) || !Number.isFinite(dy)) {
+      throw taggedError("desk delta must be finite", "INVALID_ARG");
+    }
+    const [ix, iy] = [Math.round(dx), Math.round(dy)];
+    if (ix === 0 && iy === 0) return { dx: 0, dy: 0 };
+    for (const board of this.#doc.boards) {
+      board.x += ix;
+      board.y += iy;
+    }
+    for (const comp of this.#doc.components) {
+      // Bricks alone carry desk coordinates; a seated part has board + anchor.
+      if (comp.board == null && Number.isFinite(comp.x)) {
+        comp.x += ix;
+        comp.y += iy;
+      }
+    }
+    // A label's position is absolute even when it is anchored to a part (the
+    // anchor only makes it ride that part's drag), so every one moves.
+    for (const ann of this.#doc.annotations) {
+      ann.x += ix;
+      ann.y += iy;
+    }
+    return { dx: ix, dy: iy };
   }
 
   /** The serializable document (a deep copy — safe to hand to IPC). */

@@ -28,7 +28,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 
 import { DEMOS } from "../../../../scripts/demo-specs.mjs";
@@ -41,11 +41,17 @@ import {
   PROGRAM_ONLY,
 } from "../../../../scripts/demo-build.mjs";
 import { CHIP_DEFS } from "../catalog/index.js";
-import { normalizeDocument } from "../model/desk-doc.js";
+import { DOC_VERSION, normalizeDocument } from "../model/desk-doc.js";
+import { deskBounds } from "../model/part-geometry.js";
 
 const demoPath = (file) =>
   fileURLToPath(new URL(`../../../../demos/${file}`, import.meta.url));
 const readProject = (file) => JSON.parse(readFileSync(demoPath(file), "utf8"));
+
+// The copy that ships INSIDE the app — one document per chip under
+// src/web/demos/, which a pin-assignments window opens as its example circuit.
+const WEB_DEMO_DIR = fileURLToPath(new URL("../../demos/", import.meta.url));
+const webDemoPath = (ref) => `${WEB_DEMO_DIR}${ref}.json`;
 
 const GROUPS = catalogGroups();
 const SPECS = new Map(DEMOS.map((spec) => [spec.ref, spec]));
@@ -90,15 +96,58 @@ for (const [group, ids] of GROUPS) {
             `re-run \`make demos\``,
         );
       }
+
+      // The BUNDLED copy is held to a stricter bar than the shipped-vs-rebuilt
+      // comparison above: these two came from one buildDemo call in one pass,
+      // so anything less than byte-for-byte means one of them was hand-edited.
+      assert.ok(
+        existsSync(webDemoPath(id)),
+        `src/web/demos/${id}.json is missing — run \`make demos\``,
+      );
+      const bundled = JSON.parse(readFileSync(webDemoPath(id), "utf8"));
+      assert.equal(bundled.ref, id);
+      assert.equal(bundled.title, SPECS.get(id).title);
+      assert.deepEqual(
+        bundled.doc,
+        tab.doc,
+        `${id}: the bundled example and the group desktop have drifted apart`,
+      );
+
+      // The renderer canonicalizes whatever arrives, but a bundled document
+      // skips main's migrations — so it must already be at the renderer's own
+      // version, not merely loadable.
+      assert.equal(tab.doc.version, DOC_VERSION, `${id}: doc version`);
+
+      // …and already CENTRED, so opening one as a desktop is framed by a plain
+      // camera fit: fitToScreen's recentre half finds a zero delta and returns
+      // without emitting, leaving no undo step on a brand-new desk.
+      const b = deskBounds(tab.doc.boards, tab.doc.components, tab.doc.wires);
+      assert.equal(b.minX + b.maxX, 0, `${id}: not centred on x`);
+      assert.equal(b.minY + b.maxY, 0, `${id}: not centred on y`);
     });
   });
 }
+
+test("src/web/demos holds exactly one example per benchable chip", () => {
+  const want = [...GROUPS.values()].flat().map((id) => `${id}.json`);
+  const have = readdirSync(WEB_DEMO_DIR).filter((f) => f.endsWith(".json"));
+  // A chip dropped from the catalog leaves a document that would still put an
+  // example button on a pin-assignments window; make-gate-demos.mjs sweeps the
+  // directory, and this is the guard that the sweep ran.
+  assert.deepEqual(have.sort(), want.sort());
+});
 
 test("the program-only groups are left to the 65xx demos", () => {
   const skipped = CHIP_DEFS.filter((def) => PROGRAM_ONLY.has(def.group));
   assert.ok(skipped.length > 0, "nothing is program-only any more?");
   for (const def of skipped) {
     assert.ok(!SPECS.has(def.id), `${def.id} should have no bench demo`);
+    // …and therefore no bundled example either, so a RAM or a CPU's pinout
+    // window offers no button rather than a circuit that cannot demonstrate it.
+    assert.ok(
+      !existsSync(webDemoPath(def.id)),
+      `${def.id} should have no bundled example`,
+    );
   }
   assert.ok(!existsSync(demoPath(fileNameOf("Memory"))));
 });

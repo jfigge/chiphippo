@@ -76,6 +76,7 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
         <a class="doc-nav-link" href="logic-analyzer.html">Logic Analyzer &amp; Timing</a>
         <a class="doc-nav-link" href="build-guide.html">Build Guide, Wiring List &amp; BOM</a>
         <a class="doc-nav-link" href="schematic-view.html">Schematic View</a>
+        <a class="doc-nav-link" href="ai-builder.html">AI Circuit Builder</a>
         <a class="doc-nav-link" href="files-and-undo.html">Files, Saving &amp; Undo</a>
         <a class="doc-nav-link" href="projects-and-desktops.html">Projects &amp; Desktops</a>
         <a class="doc-nav-link doc-nav-link--active" href="settings.html">Settings</a>
@@ -85,23 +86,33 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
 <h1>Settings</h1>
 <p>Chip Hippo keeps its handful of app-wide preferences in one small <strong>Settings</strong>
 dialog — a tabbed master-detail card with a left nav rail and a panel on the
-right. It&#39;s deliberately minimal: two tabs, a couple of controls each, applied
+right. It&#39;s deliberately minimal: three tabs, a few controls each, applied
 live the moment you change them.</p>
 <p><img src="images/settings.png" alt="The Settings dialog"></p>
 <h2 id="opening-settings">Opening Settings</h2>
 <p>Open the dialog with <code>Cmd/Ctrl+,</code>, or click the gear icon in the top-right
 corner of the header. Both routes lead to the same dialog seeded with your
 current settings, so it doesn&#39;t matter which you use.</p>
-<h2 id="general">General</h2>
-<p>The <strong>General</strong> tab holds two controls:</p>
+<h2 id="appearance">Appearance</h2>
+<p>The <strong>Appearance</strong> tab is the one the dialog opens on:</p>
 <ul>
+<li><strong>Theme</strong> — <strong>System</strong>, <strong>Light</strong> or <strong>Dark</strong>. System follows your
+operating system&#39;s own setting; the other two pin it. The choice applies to
+every Chip Hippo window at once, including the floating pinout, memory
+inspector and user-guide windows, and to the native menus and dialogs.</li>
 <li><strong>Show desk hub</strong> — off by default. This toggles a debug overlay (the
 <code>DeskHud</code>) on the desk; most users can leave it off.</li>
 <li><strong>Selection border colour</strong> — a <code>#rrggbb</code> colour picker for the outline
 drawn around whatever&#39;s selected on the desk. Leave it unset to use the
 theme&#39;s default accent colour instead of a custom one.</li>
+<li><strong>Default LED color</strong> — which colour a newly placed LED, LED bar or
+seven-segment digit gets. Unlike the others this one isn&#39;t applied live; it&#39;s
+read when you place a part, so changing it doesn&#39;t recolour anything already
+on the desk. Any placed part&#39;s colour can still be changed from its
+<strong>Properties…</strong> dialog.</li>
 </ul>
-<p>Both take effect immediately — there&#39;s no separate Apply or OK step.</p>
+<p>Everything but the LED colour takes effect immediately — there&#39;s no separate
+Apply or OK step.</p>
 <h2 id="data-sheets">Data Sheets</h2>
 <p>The <strong>Data Sheets</strong> tab points Chip Hippo at an external folder of
 manufacturer datasheet PDFs on your machine. Click <strong>Browse…</strong> to pick a
@@ -113,12 +124,39 @@ example <code>74LS00.pdf</code>). When a chip&#39;s file is found there, its
 in your system&#39;s default viewer. This is separate from the small datasheet
 crop the pinout window already shows for most chips — the external folder is
 for the full manufacturer document, not the built-in crop.</p>
+<h2 id="ai">AI</h2>
+<p>The <strong>AI</strong> tab is where you point Chip Hippo at your own AI connection, for
+the <a href="ai-builder.html">AI circuit builder</a>. Nothing here is required — the app
+works completely without it, and makes no outbound request of any kind until
+a connection is configured and you ask the builder for something.</p>
+<p><img src="images/settings-ai.png" alt="The AI tab of the Settings dialog"></p>
+<ul>
+<li><strong>Provider</strong> — <strong>Anthropic</strong>, or <strong>OpenAI-compatible</strong>. The second covers
+Ollama, LM Studio, OpenRouter, vLLM and anything else speaking that request
+format; you supply the base URL.</li>
+<li><strong>Base URL</strong> and <strong>Model</strong> — leave either blank to use the chosen provider&#39;s
+default, which is shown as the field&#39;s placeholder. Both commit when you
+leave the field or press <code>Enter</code>, not as you type.</li>
+<li><strong>API key</strong> — paste it and click <strong>Save key</strong>. <strong>Clear key</strong> forgets it.
+A local server that needs no key works with this left blank.</li>
+<li><strong>Test connection</strong> — one small request that checks the base URL, key and
+model together, so a typo is found here rather than on your first build.</li>
+</ul>
+<p><strong>The key is never written to Chip Hippo&#39;s settings file.</strong> It&#39;s handed to
+your operating system&#39;s own secure credential store — Keychain on macOS, the
+Credential Manager on Windows, the desktop keyring on Linux — encrypted, and
+it&#39;s never read back into the app&#39;s window afterwards; the dialog only learns
+<em>whether</em> a key is stored. If no secure store is available on your system,
+Chip Hippo <strong>refuses to save the key</strong> and says so rather than quietly writing
+it out in the clear.</p>
 <h2 id="what-else-persists-automatically">What else persists automatically</h2>
 <p>A few things aren&#39;t part of this dialog but are remembered between sessions
-without any action on your part: the app window&#39;s position and size, and the
-desk camera — your current pan position and zoom level. Close Chip Hippo and
-reopen it, and you&#39;re back exactly where you left off.</p>
-<p>See <a href="files-and-undo.html">Files, Autosave &amp; Undo</a> for how your circuit itself
+without any action on your part: the app window&#39;s position and size, the desk
+camera — your current pan position and zoom level — and which panels you left
+open (the parts tray, the build guide, the analyzer, the AI builder) along with
+the height you dragged each docked one to. Close Chip Hippo and reopen it, and
+you&#39;re back exactly where you left off.</p>
+<p>See <a href="files-and-undo.html">Files, Saving &amp; Undo</a> for how your circuit itself
 is saved.</p>
 
     </main>

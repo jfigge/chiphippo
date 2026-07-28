@@ -23,8 +23,13 @@ import assert from "node:assert/strict";
 import { resetDom } from "./jsdom-setup.js";
 import { chipDef, partDef } from "../catalog/index.js";
 
-const { buildChipPinout, buildPartPinout, buildWirePinout, datasheetButton } =
-  await import("../components/chip-pinout.js");
+const {
+  buildChipPinout,
+  buildPartPinout,
+  buildWirePinout,
+  datasheetButton,
+  exampleButton,
+} = await import("../components/chip-pinout.js");
 
 test("a 14-pin chip lays out 7 mirrored rows with numbers and names", () => {
   resetDom();
@@ -310,9 +315,27 @@ test("datasheetButton builds an accessible book button that fires its callback",
   let clicks = 0;
   const btn = datasheetButton(() => clicks++);
   assert.equal(btn.tagName, "BUTTON");
-  assert.ok(btn.classList.contains("pinout-datasheet-btn"));
+  assert.ok(btn.classList.contains("pinout-header-btn"));
   assert.equal(btn.getAttribute("aria-label"), "Open the datasheet PDF");
   assert.ok(btn.querySelector("svg"), "carries the line-drawn document glyph");
+  btn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  assert.equal(clicks, 1, "clicking invokes the open callback");
+});
+
+// ── exampleButton: the "open the example circuit" header affordance ──────────
+
+test("exampleButton builds an accessible circuit button that fires its callback", () => {
+  resetDom();
+  let clicks = 0;
+  const btn = exampleButton(() => clicks++);
+  assert.equal(btn.tagName, "BUTTON");
+  // Both header buttons are one box with two glyphs — same class, one rule.
+  assert.ok(btn.classList.contains("pinout-header-btn"));
+  assert.equal(btn.getAttribute("aria-label"), "Open the example circuit");
+  // This is the one header button with a consequence, so the tooltip says what
+  // clicking it DOES, not merely what it is.
+  assert.match(btn.title, /new desktop/);
+  assert.ok(btn.querySelector("svg"), "carries the line-drawn circuit glyph");
   btn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
   assert.equal(clicks, 1, "clicking invokes the open callback");
 });

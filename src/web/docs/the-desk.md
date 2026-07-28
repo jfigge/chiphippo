@@ -6,7 +6,7 @@ around the desk and how breadboards actually work under the hood: they are
 not single parts but individual **strips** — a pin-board plus power rails —
 that snap and mate together the way real boards do on a bench.
 
-![A Full 830 breadboard on the desk](images/the-desk.png)
+![A Full 830 breadboard on the desk, with a spare power rail turned on end beside it](images/the-desk.png)
 
 ## Pan, zoom & fit to screen
 
@@ -19,7 +19,11 @@ circuit in front of you.
   **+** / **−** buttons in the zoom control. Keyboard: `Cmd/Ctrl+=` (zoom in),
   `Cmd/Ctrl+-` (zoom out), `Cmd/Ctrl+0` (reset to 100%).
 - **Fit to screen**: `Cmd/Ctrl+F` frames everything currently on the desk in
-  the viewport — the fastest way to find your circuit after panning away.
+  the viewport — the fastest way to find your circuit after panning away. It
+  also slides the whole design back around the middle of the desk, keeping a
+  layout that has crept a long way out from drifting further; that part is a
+  document edit (one `Cmd/Ctrl+Z` puts it back) and is skipped while the
+  circuit is running.
 - **Zoom out full**: `Cmd/Ctrl+Shift+F` zooms all the way out, useful for
   locating a part on a very large or sprawling layout.
 

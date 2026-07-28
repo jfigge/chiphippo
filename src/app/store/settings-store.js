@@ -43,6 +43,13 @@ const DEFAULTS = Object.freeze({
   // group shut on every launch, and what the user opens lasts the session.
   paletteOpen: true,
 
+  // How wide that tray is, in CSS px — written by its draggable right edge
+  // (the renderer clamps it to [180, half the window], and the panel's
+  // `max-width: 50vw` re-caps a width saved on a wider display). Unlike the
+  // collapse state this IS remembered: it is a working preference about how
+  // much of the desk a permanent left column may take, not a transient one.
+  paletteWidth: 232,
+
   // ── Pin-assignments window (Feature 100) ──────────────────────────────────
   // Whether a chip's pin-out window floats above the main app. A de-facto
   // global preference: the window's right-click menu toggles it, every open
@@ -89,11 +96,34 @@ const DEFAULTS = Object.freeze({
   scopeOpen: false,
   scopeHeight: 280,
 
+  // The bottom-docked AI builder panel — same two keys, same reasons.
+  aiOpen: false,
+  aiHeight: 280,
+
+  // The prompts the user has asked the AI builder for, newest first, capped at
+  // MAX_HISTORY (web/scripts/ai/prompt-history.js). Deliberately here and not
+  // in the project file: what you have asked for before is yours, not the
+  // design's, so arrowing back through it works the same in every project —
+  // including a brand-new one, where a per-project list would always be empty.
+  aiHistory: Object.freeze([]),
+
   // ── Data sheets ────────────────────────────────────────────────────────────
   // An external directory of manufacturer datasheet PDFs. When it is set and a
   // `<dir>/<partId>.pdf` exists, the pin-assignments window shows a button that
   // opens that PDF natively. null → no directory (the default).
   datasheetDir: null,
+
+  // ── AI circuit builder (Feature 260) ───────────────────────────────────────
+  // The NON-SECRET half of the user's own AI connection: which provider, where
+  // it lives, and which model. The API key is deliberately absent — it lives
+  // OS-encrypted in store/credential-store.js, because this file is plaintext
+  // and is handed back to the renderer in full on every `settings:get`.
+  // An object-valued key is replaced whole, so a caller sends the whole thing.
+  ai: {
+    provider: "anthropic", // "anthropic" | "openai-compat"
+    baseUrl: "", // blank → the provider's own default
+    model: "", // blank → the provider's own default
+  },
 
   // ── Recent projects ────────────────────────────────────────────────────────
   // The last 10 PROJECT files saved or opened, most recent first. Main owns

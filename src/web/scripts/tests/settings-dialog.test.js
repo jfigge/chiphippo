@@ -171,8 +171,12 @@ test("SettingsDialog: the Data Sheets tab switches panels", () => {
   resetDom();
   SettingsDialog.open({});
   const dialog = document.querySelector(".settings-popup");
-  const items = dialog.querySelectorAll(".settings-nav-item");
-  assert.equal(items.length, 2, "Appearance + Data Sheets tabs");
+  assert.deepEqual(
+    [...dialog.querySelectorAll(".settings-nav-item")].map(
+      (b) => b.textContent,
+    ),
+    ["Appearance", "Data Sheets", "AI"],
+  );
 
   const appearance = dialog.querySelector(
     '[data-panel="appearance"].settings-panel',
@@ -223,6 +227,166 @@ test("SettingsDialog: with no datasheet folder, Clear is hidden and path is empt
   assert.equal(path.textContent, "No folder selected");
   assert.ok(path.classList.contains("settings-folder-path--empty"));
   assert.ok(document.querySelector(".settings-folder-clear").hidden);
+  PopupManager.close();
+});
+
+// ── The AI tab (Feature 260) ────────────────────────────────────────────────
+// Its rows are built from the provider list MAIN answers with, so the bridge
+// is stubbed rather than the list restated here — that IS the thing under test.
+
+const AI_PROVIDERS = [
+  {
+    id: "anthropic",
+    label: "Anthropic",
+    defaultBaseUrl: "https://api.anthropic.com",
+    defaultModel: "claude-opus-5",
+    keyLabel: "API key",
+  },
+  {
+    id: "openai-compat",
+    label: "OpenAI-compatible",
+    defaultBaseUrl: "http://localhost:11434",
+    defaultModel: "llama3.1",
+    keyLabel: "API key (blank for a local server)",
+  },
+];
+
+/** Install a fake `window.chiphippo.ai`, recording every call it receives. */
+function stubAiBridge({
+  status = { configured: false, encryptionAvailable: true },
+} = {}) {
+  const calls = { set: [], clear: [], test: [] };
+  window.chiphippo = {
+    ai: {
+      providers: async () => AI_PROVIDERS,
+      key: {
+        status: async () => status,
+        set: async (...a) => (calls.set.push(a), { ok: true }),
+        clear: async (...a) => (calls.clear.push(a), { ok: true }),
+      },
+      test: async (...a) => (calls.test.push(a), { ok: true }),
+    },
+  };
+  return calls;
+}
+
+/** Let the provider fetch + the key-status read settle. */
+const flush = () => new Promise((r) => setTimeout(r, 0));
+
+test("SettingsDialog: the AI tab builds its picker from main's provider list", async () => {
+  resetDom();
+  stubAiBridge();
+  SettingsDialog.open({
+    ai: { provider: "openai-compat", baseUrl: "", model: "" },
+  });
+  await flush();
+
+  const panel = document.querySelector('.settings-panel[data-panel="ai"]');
+  assert.ok(panel.hidden, "the AI panel starts hidden");
+  const segments = [...panel.querySelectorAll(".settings-segment")];
+  assert.deepEqual(
+    segments.map((b) => b.textContent),
+    ["Anthropic", "OpenAI-compatible"],
+    "the picker is the list main sent, not a renderer constant",
+  );
+  assert.equal(
+    segments.find((b) => b.classList.contains("settings-segment--active"))
+      .textContent,
+    "OpenAI-compatible",
+    "seeded from settings.ai.provider",
+  );
+  // Empty fields advertise the chosen provider's fallbacks.
+  assert.equal(
+    panel.querySelector("#set-ai-base-url").placeholder,
+    "http://localhost:11434",
+  );
+  assert.equal(panel.querySelector("#set-ai-model").placeholder, "llama3.1");
+
+  PopupManager.close();
+});
+
+test("SettingsDialog: an AI field emits the WHOLE ai object, on change not per keystroke", async () => {
+  resetDom();
+  stubAiBridge();
+  SettingsDialog.open({
+    ai: { provider: "anthropic", baseUrl: "", model: "" },
+  });
+  await flush();
+
+  const patches = [];
+  window.addEventListener("chiphippo:settings-changed", (e) =>
+    patches.push(e.detail),
+  );
+  const model = document.querySelector("#set-ai-model");
+  model.value = "claude-sonnet-5";
+  model.dispatchEvent(new window.Event("input"));
+  assert.deepEqual(patches, [], "typing alone writes nothing to disk");
+
+  model.dispatchEvent(new window.Event("change"));
+  assert.deepEqual(patches, [
+    {
+      ai: { provider: "anthropic", baseUrl: "", model: "claude-sonnet-5" },
+    },
+  ]);
+
+  // settings.set shallow-merges, so an object-valued setting must be whole —
+  // emitting only the changed field would erase the provider and base URL.
+  document
+    .querySelectorAll(".settings-panel[data-panel='ai'] .settings-segment")[1]
+    .click();
+  assert.deepEqual(patches[1], {
+    ai: {
+      provider: "openai-compat",
+      baseUrl: "",
+      model: "claude-sonnet-5",
+    },
+  });
+
+  PopupManager.close();
+});
+
+test("SettingsDialog: the API key bypasses the settings patch entirely", async () => {
+  resetDom();
+  const calls = stubAiBridge();
+  SettingsDialog.open({
+    ai: { provider: "anthropic", baseUrl: "", model: "" },
+  });
+  await flush();
+
+  const patches = [];
+  window.addEventListener("chiphippo:settings-changed", (e) =>
+    patches.push(e.detail),
+  );
+  const key = document.querySelector("#set-ai-key");
+  assert.equal(key.type, "password");
+  key.value = "sk-secret";
+  [...document.querySelectorAll(".settings-folder-browse")]
+    .find((b) => b.textContent === "Save key")
+    .dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  await flush();
+
+  assert.deepEqual(calls.set, [["anthropic", "sk-secret"]], "went to main");
+  assert.deepEqual(patches, [], "and NEVER through settings.json");
+  assert.equal(key.value, "", "the field does not keep the key around");
+
+  PopupManager.close();
+});
+
+test("SettingsDialog: with no OS credential store the key field is disabled and says why", async () => {
+  resetDom();
+  stubAiBridge({ status: { configured: false, encryptionAvailable: false } });
+  SettingsDialog.open({});
+  await flush();
+
+  const panel = document.querySelector('.settings-panel[data-panel="ai"]');
+  assert.equal(panel.querySelector("#set-ai-key").disabled, true);
+  assert.match(
+    [...panel.querySelectorAll(".settings-hint")]
+      .map((p) => p.textContent)
+      .join(" "),
+    /no secure credential store/i,
+  );
+
   PopupManager.close();
 });
 

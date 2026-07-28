@@ -17,12 +17,14 @@ The palette opens with every section collapsed, grouped by function:
 - **COMPONENTS** — **Switches**, **Resistors**, **LEDs**, **Displays**,
   **Oscillators**, and **Power**, in that shelf order.
 
+The tray's right edge is a drag handle: pull it out to give long part names
+more room, and the width you leave it at is remembered.
+
 Type in the **Filter parts…** box to search by id, title, or description —
 matching, it forces every group open so results aren't hidden behind a
-collapsed folder. A chip whose behavior is wired into the simulator carries
-a small **sim** badge next to its name (every chip in the catalog currently
-does). Click any entry to arm placement — a ghost of the part follows your
-pointer until you click it down on a board, or press `Esc` to cancel.
+collapsed folder. Click any entry to arm placement — a ghost of the part
+follows your pointer until you click it down on a board, or press `Esc` to
+cancel.
 
 ## Placing a DIP chip
 

@@ -74,7 +74,7 @@
 import { PopupManager } from "../popup-manager.js";
 import { PartPropertiesDialog } from "./part-properties-dialog.js";
 import { HistoryStore } from "../model/history-store.js";
-import { DeskDoc, emptyDocument } from "../model/desk-doc.js";
+import { DeskDoc, emptyDocument, isEmptyDocument } from "../model/desk-doc.js";
 import {
   activeDesktop,
   addDesktop,
@@ -131,6 +131,7 @@ export class ProjectWorkspace {
   #state = new Map(); // tabId → { history, camera }
   #saved = null; // the signature of the project as its file holds it
   #locked = false; // editing frozen (the circuit is running)
+  #examples = new Map(); // ref → the in-flight openExample promise
 
   /**
    * Read the project this session opens with, BEFORE the desk is built — so
@@ -490,6 +491,91 @@ export class ProjectWorkspace {
   }
 
   /**
+   * Put a part's EXAMPLE CIRCUIT on the desk as a desktop of its own — the
+   * demonstration bench `make demos` builds for every benchable 74xx part,
+   * asked for from that part's pin-assignments window (which has a ref and
+   * nothing else, so the request reaches here through main).
+   *
+   * It arrives the way an IMPORT does — an addition, landing on the new desk,
+   * with its ROM guids reseated — with ONE difference: an example is a fixed,
+   * named thing rather than a file the user chose, so asking for the same one
+   * twice does not make a second copy; the desktop already holding it is put
+   * back on the desk instead. The NAME is the whole identity test, which is
+   * also its cost: rename the tab and the next ask brings a fresh one. That is
+   * the honest answer, since the project schema keeps no per-tab marker a
+   * rename could not erase.
+   *
+   * The caller FRAMES it (app.js's `fitActiveView`), because framing follows
+   * the active view and the workspace has no opinion about which one is on
+   * screen. Which is also why the answer is three-valued: framing a brand-new
+   * desk is help, and re-framing one the user has already arranged is not.
+   *
+   * @param {string} ref - a catalog id ("74LS00").
+   * @returns {Promise<"added"|"switched"|null>} null when it could not (already
+   *   reported to the user).
+   */
+  openExample(ref) {
+    if (!this.#project || typeof ref !== "string" || !ref) {
+      return Promise.resolve(null);
+    }
+    // A double-click on the pinout window's button is TWO relays, and both
+    // calls would look for an existing tab before either had added one. So the
+    // second joins the first rather than racing it — the check and the insert
+    // are separated by awaits, which is exactly where a duplicate gets in.
+    const inFlight = this.#examples.get(ref);
+    if (inFlight) return inFlight;
+    const run = this.#addExample(ref).finally(() => this.#examples.delete(ref));
+    this.#examples.set(ref, run);
+    return run;
+  }
+
+  async #addExample(ref) {
+    const name = `${ref} example`;
+    const open = this.#project.tabs.find((tab) => tab.name === name);
+    if (open) {
+      await this.selectTab(open.id); // a no-op when it is already on the desk
+      return "switched";
+    }
+    const failed = (err) => {
+      this.#fail(`Could not open the ${ref} example`, err);
+      return null;
+    };
+    let demo;
+    try {
+      demo = await this.#bridge.demo?.read?.(ref);
+    } catch (err) {
+      return failed(err);
+    }
+    if (!demo?.doc) {
+      return failed(new Error("no example circuit is bundled for that part"));
+    }
+    // A COPIED desktop is reseated, with no exception. No shipped example
+    // carries a memory chip today (the Memory and Interface groups have no
+    // bench), but "two chips can never share a ROM guid" is a rule that must
+    // not have a door in it — opening the same example twice would walk
+    // straight through one.
+    let doc;
+    try {
+      doc = (await this.#bridge.desktop.duplicate(demo.doc))?.doc;
+    } catch (err) {
+      return failed(err);
+    }
+    if (!doc) return failed(new Error("the example could not be prepared"));
+    this.#stash();
+    const next = importDesktop(this.#project, {
+      name,
+      description: demo.title ?? "",
+      doc: canonical(doc),
+    });
+    await this.#leaveActiveDesk();
+    this.#project = next.meta;
+    this.#loadActive();
+    this.#renderTabs();
+    this.#announce();
+    return "added";
+  }
+
+  /**
    * Export Desktop…: write one desktop out as a self-contained snapshot — its
    * design and every programmed ROM's bytes — with no link retained. A copy
    * cannot dangle, which is exactly why this replaced a desktop's own Save As.
@@ -642,6 +728,26 @@ export class ProjectWorkspace {
   }
 
   /**
+   * Is there NOTHING in this project — the state a brand-new one is in until
+   * the user does something with it? No name, no description, one desktop, an
+   * empty desk, and nothing unsaved.
+   *
+   * This is the untitled guard's one exception, and it is deliberately the
+   * whole project rather than the desk alone: a design, a second desktop, or a
+   * project name are all things the working slot would be holding FOR the
+   * user. Both halves are needed — an unsaved change is caught by `dirty`, and
+   * one already ⌘S'd into the slot (which is not dirty at all) by the project
+   * still having something in it.
+   */
+  #isPristine() {
+    const meta = this.#project;
+    if (!meta || meta.name || meta.description) return false;
+    if (meta.tabs.length !== 1) return false;
+    if (this.dirty) return false;
+    return isEmptyDocument(this.#deskDoc.toJSON());
+  }
+
+  /**
    * Leaving the desk that is on screen: the simulation is run-volatile and
    * never crosses documents, and an open pinout or memory inspector would be
    * left pointing at a chip that is no longer there.
@@ -775,12 +881,18 @@ export class ProjectWorkspace {
    * which is where the next launch will look for it.
    *
    * CHANGING PROJECTS differs in exactly one way, and it is the reason an
-   * UNTITLED project is ALWAYS asked about — dirty or not. It lives in the app's
-   * one working file, the project taking its place is about to claim that file,
-   * and there is nowhere else for it to go: replacing it is destructive whether
-   * or not anything is "unsaved" in the ordinary sense, and a ⌘S into the slot
-   * does not make it any less so. That is also why "Save" here means Save As, a
-   * home of its own.
+   * UNTITLED project that HOLDS SOMETHING is asked about whether or not it is
+   * dirty. It lives in the app's one working file, the project taking its place
+   * is about to claim that file, and there is nowhere else for it to go:
+   * replacing it is destructive whether or not anything is "unsaved" in the
+   * ordinary sense, and a ⌘S into the slot does not make it any less so. That
+   * is also why "Save" here means Save As, a home of its own.
+   *
+   * The exception is the state the app BOOTS INTO: a brand-new project holds
+   * nothing at all, so there is nothing for the incoming one to destroy
+   * (`#isPristine`). Asking about it would put a save-or-discard question in
+   * front of the very first thing a session does — New Project, or Open… —
+   * over a blank desk nobody has touched.
    *
    * A SAVED project is the ordinary case: it has a file of its own that nothing
    * is claiming, so it is asked about only when it is dirty.
@@ -790,7 +902,7 @@ export class ProjectWorkspace {
    */
   #confirmLeaveProject({ quitting = false } = {}) {
     if (!this.#project) return Promise.resolve(true);
-    if (this.isUntitled && !quitting) {
+    if (this.isUntitled && !quitting && !this.#isPristine()) {
       return this.#askUnsaved({
         title: "This project hasn't been saved",
         message:

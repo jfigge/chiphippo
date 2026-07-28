@@ -267,9 +267,12 @@ export const PART_DEFS = Object.freeze(
       kind: "discrete",
       title: "LED",
       blurb:
-        "Light-emitting diode (idealized — no series resistor required). " +
-        "Anode at the anchor hole; press F while placing to flip polarity, " +
-        "R to stand it up and pick two free ends (rail or column).",
+        "Light-emitting diode. Needs a series resistor whenever both legs " +
+        "reach strongly driven nets (a supply rail, or a chip output) — " +
+        "wired straight across the rails it burns out instead of lighting, " +
+        "exactly as it would on a bench. Anode at the anchor hole; press F " +
+        "while placing to flip polarity, R to stand it up and pick two free " +
+        "ends (rail or column).",
       group: "LEDs",
       // Legs sit in ADJACENT holes — an LED needs no gap between its pins.
       footprint: Object.freeze({ offsets: Object.freeze([0, 1]) }),
@@ -332,7 +335,8 @@ export const PART_DEFS = Object.freeze(
         "Comes in red / green / blue / yellow / white.",
       group: "LEDs",
       // Nine holes along one grid row: eight segment anodes then the common
-      // cathode. Segments are idealized LEDs (no series resistor required).
+      // cathode. Each segment is an LED and obeys sim/junction.js — a series
+      // resistor in the common-cathode leg limits all eight at once.
       footprint: Object.freeze({
         offsets: Object.freeze([0, 1, 2, 3, 4, 5, 6, 7, 8]),
       }),
@@ -386,7 +390,8 @@ export const PART_DEFS = Object.freeze(
         "white.",
       group: "LEDs",
       // Nine holes along one grid row: eight segment cathodes then the shared
-      // anode. Segments are idealized LEDs (no series resistor required).
+      // anode. Each segment is an LED and obeys sim/junction.js — a series
+      // resistor in the common-anode leg limits all eight at once.
       footprint: Object.freeze({
         offsets: Object.freeze([0, 1, 2, 3, 4, 5, 6, 7, 8]),
       }),

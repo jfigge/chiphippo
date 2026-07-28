@@ -27,7 +27,8 @@
 
 import { partDef } from "../catalog/index.js";
 import { partPinAddresses } from "../model/occupancy.js";
-import { H, L } from "../sim/levels.js";
+import { isLit, junctionState } from "../sim/junction.js";
+import { H } from "../sim/levels.js";
 
 export class SimOverlay {
   #doc;
@@ -127,22 +128,18 @@ export class SimOverlay {
    * The lit / over-driven state of ONE LED junction between two point
    * addresses — shared by single LEDs and every segment of a display.
    *
-   * A junction conducts when its anode net is H and its cathode net is L. With
-   * no series resistor it's "unlimited": conducting between a STRONGLY driven
-   * supply (rail or chip output) and a strongly grounded net has nothing
-   * limiting it. Anything fed through a resistor is only weakly pulled, so its
-   * strong level is not H/L — the safe case. A floating leg (null address)
-   * conducts nothing, exactly as a real one does when you pull its rail away.
+   * The rule itself is physics, not rendering, so it lives in the model
+   * (sim/junction.js); this only resolves the two addresses into the four
+   * levels that rule asks for. A leg with no address conducts nothing.
    */
   #junctionState(anodeAt, cathodeAt) {
     if (!anodeAt || !cathodeAt) return { conducting: false, unlimited: false };
-    const conducting =
-      this.#levelAt(anodeAt) === H && this.#levelAt(cathodeAt) === L;
-    const unlimited =
-      conducting &&
-      this.#strongLevelAt(anodeAt) === H &&
-      this.#strongLevelAt(cathodeAt) === L;
-    return { conducting, unlimited };
+    return junctionState({
+      anode: this.#levelAt(anodeAt),
+      cathode: this.#levelAt(cathodeAt),
+      anodeStrong: this.#strongLevelAt(anodeAt),
+      cathodeStrong: this.#strongLevelAt(cathodeAt),
+    });
   }
 
   /**
@@ -175,12 +172,9 @@ export class SimOverlay {
       const pins = this.#pinsFor(comp);
       if (!pins) continue; // a rotated LED with an unresolved far end
       const at = (pin) => pins.find((p) => p.pin === pin)?.address;
-      const { conducting, unlimited } = this.#junctionState(
-        at(anodePin),
-        at(cathodePin),
-      );
-      view.setBurnt?.(unlimited);
-      view.setLit(conducting && !unlimited);
+      const state = this.#junctionState(at(anodePin), at(cathodePin));
+      view.setBurnt?.(state.unlimited);
+      view.setLit(isLit(state));
     }
   }
 
@@ -208,13 +202,10 @@ export class SimOverlay {
       const at = (pin) => pins?.find((p) => p.pin === pin)?.address;
       let anyBurnt = false;
       for (const seg of def.segments) {
-        const { conducting, unlimited } = this.#junctionState(
-          at(seg.anodePin),
-          at(seg.cathodePin),
-        );
-        view.setSegmentLit(seg.id, conducting && !unlimited);
-        view.setSegmentBurnt?.(seg.id, unlimited);
-        if (unlimited) anyBurnt = true;
+        const state = this.#junctionState(at(seg.anodePin), at(seg.cathodePin));
+        view.setSegmentLit(seg.id, isLit(state));
+        view.setSegmentBurnt?.(seg.id, state.unlimited);
+        if (state.unlimited) anyBurnt = true;
       }
       view.setBurnt?.(anyBurnt);
     }

@@ -352,10 +352,16 @@
 }
 
 /* ── Parts palette (Feature 40) ──────────────────────────────────────────── */
+/* The width here is only the fallback: the renderer applies the user's own
+   (settings.paletteWidth) as an inline style. `max-width` is the same ceiling
+   the analyzer's `max-height: 50vh` is — it keeps a tray sized on a wide
+   display from swallowing the desk when the window is later made narrow. */
 .palette-panel {
+  position: relative;
   display: flex;
   flex-direction: column;
   width: 232px;
+  max-width: 50vw;
   flex: 0 0 auto;
   background: var(--color-mantle);
   border-right: 1px solid var(--color-crust);
@@ -364,6 +370,41 @@
 
 .palette-panel[hidden] {
   display: none;
+}
+
+/* The draggable right edge — the analyzer's resize seam stood on end (same
+   grip, same hover reveal, `ew-resize` instead of `ns-`). It straddles the
+   border rather than sitting inside the panel, so it never covers the parts
+   list's scrollbar; the 3 px reaching over the desk is grab room, and the
+   desk beneath is only ever panned, never dropped on, at that edge. */
+.palette-resize {
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  right: -3px;
+  width: 6px;
+  height: 100%;
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.palette-resize::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 3px;
+  height: 44px;
+  transform: translate(-50%, -50%);
+  border-radius: var(--radius-sm);
+  background: var(--color-overlay);
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.palette-resize:hover::after,
+.palette-resize--active::after {
+  opacity: 1;
 }
 
 .palette-header {
@@ -629,19 +670,6 @@
   flex: 1 1 auto;
   font-size: 12px;
   color: var(--color-subtext);
-}
-
-/* "sim-ready" badge (Feature 80) — a chip with defined behavior. */
-.palette-item-badge {
-  flex: 0 0 auto;
-  padding: 0 var(--space-1);
-  border-radius: var(--radius-sm);
-  background: var(--color-surface-1);
-  color: var(--color-success);
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
 }
 
 .palette-empty {
@@ -1850,6 +1878,13 @@
   white-space: nowrap;
 }
 
+/* A label cannot wrap, so its width is intrinsic — the shared max-width would
+   only shrink the BOX (its selection outline and its grab area) under the text
+   it draws. It stays on .annotation--note, where it is what makes one wrap. */
+.annotation--label {
+  max-width: none;
+}
+
 .annotation--note {
   min-width: 80px;
   background: color-mix(in srgb, var(--color-surface-0) 88%, transparent);
@@ -2570,6 +2605,32 @@ textarea.annotation-editor {
   background: var(--color-surface-1);
 }
 
+/* A text/password field in a stacked row (AI ▸ base URL, model, API key).
+   Matches .properties-text-input — same box, same focus ring — but scoped to
+   the settings card, whose rows own their own spacing. */
+.settings-text-input {
+  width: 100%;
+  box-sizing: border-box;
+  height: var(--control-height);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface-0);
+  color: var(--color-text);
+  border: 1px solid var(--color-overlay);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-sans);
+  font-size: 13px;
+}
+
+.settings-text-input:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.settings-text-input:disabled {
+  color: var(--color-muted);
+  cursor: not-allowed;
+}
+
 .settings-hint {
   margin: var(--space-2) 0 0;
   font-size: 12px;
@@ -3101,9 +3162,12 @@ textarea.annotation-editor {
   max-width: 460px;
 }
 
-/* The pinout header carries the title and, top-right, an optional "open
-   datasheet PDF" button (shown when the user's datasheet folder holds a
-   <id>.pdf for this part). */
+/* The pinout header carries the title and, top-right, up to two line-drawn
+   buttons: "open the example circuit" (shown when this part has a bundled
+   demonstration bench) and "open the datasheet PDF" (shown when the user's
+   datasheet folder holds a <id>.pdf for this part). ONE rule, one box — they
+   are the same affordance with different glyphs, and `.popup-title { flex: 1 }`
+   right-aligns however many of them there are. */
 .chip-pinout .popup-header {
   display: flex;
   align-items: center;
@@ -3115,7 +3179,7 @@ textarea.annotation-editor {
   min-width: 0;
 }
 
-.pinout-datasheet-btn {
+.pinout-header-btn {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3134,13 +3198,13 @@ textarea.annotation-editor {
     border-color 0.15s ease;
 }
 
-.pinout-datasheet-btn:hover {
+.pinout-header-btn:hover {
   background: var(--color-surface-1);
   color: var(--color-accent);
   border-color: var(--color-accent);
 }
 
-.pinout-datasheet-btn:focus-visible {
+.pinout-header-btn:focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
 }
@@ -4145,4 +4209,247 @@ textarea.annotation-editor {
   border: none;
   cursor: pointer;
   text-decoration: underline;
+}
+
+/* ── AI circuit builder (Feature 260) ────────────────────────────────────────
+   A bottom-docked conversation panel sharing the analyzer's shell — same
+   header, same draggable top edge, same docking — because they are the same
+   kind of thing: a workspace that borrows the desk's bottom edge. What differs
+   is the body: a scrolling transcript over a compose row. */
+.ai-panel {
+  display: flex;
+  flex-direction: column;
+  height: 280px;
+  max-height: 60vh;
+  flex: 0 0 auto;
+  background: var(--color-mantle);
+  border-top: 1px solid var(--color-crust);
+  min-height: 0;
+}
+
+.ai-panel[hidden] {
+  display: none;
+}
+
+.ai-resize {
+  position: relative;
+  flex: 0 0 auto;
+  height: 6px;
+  cursor: ns-resize;
+  touch-action: none;
+}
+
+.ai-resize::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 44px;
+  height: 3px;
+  transform: translate(-50%, -50%);
+  border-radius: var(--radius-sm);
+  background: var(--color-overlay);
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.ai-resize:hover::after,
+.ai-resize--active::after {
+  opacity: 1;
+}
+
+.ai-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border-bottom: 1px solid var(--color-crust);
+  flex: 0 0 auto;
+}
+
+.ai-title {
+  font-weight: 600;
+  font-size: 12px;
+  color: var(--color-text);
+  flex: 0 0 auto;
+}
+
+.ai-tools {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  flex: 1 1 auto;
+}
+
+.ai-status {
+  font: 11px / 1 var(--font-mono);
+  color: var(--color-subtext);
+  white-space: nowrap;
+}
+
+/* The session's running token total. A SIBLING of `.ai-status` rather than a
+   second writer of it — `#setBusy` owns the status outright — and one step more
+   muted, because the status is about what is happening now and this is a total
+   the Clear button resets. */
+.ai-usage {
+  font: 11px / 1 var(--font-mono);
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+
+.ai-btn {
+  padding: 2px var(--space-2);
+  font-size: 11px;
+  color: var(--color-text);
+  background: var(--color-surface-0);
+  border: 1px solid var(--color-overlay);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.ai-btn:hover {
+  background: var(--color-surface-1);
+}
+
+.ai-close {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  font-size: 16px;
+  line-height: 1;
+  color: var(--color-muted);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.ai-close:hover {
+  color: var(--color-text);
+  background: var(--color-surface-0);
+}
+
+/* The transcript. Rows are typed by what they report, and the type shows as a
+   left rule + text colour rather than as a chat bubble — this is a build log,
+   not a messaging app. */
+.ai-log {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-2) var(--space-3);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.ai-row {
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--color-overlay);
+}
+
+.ai-row-text {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--color-subtext);
+  white-space: pre-wrap;
+}
+
+.ai-row-list {
+  margin: var(--space-1) 0 0;
+  padding-left: var(--space-4);
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--color-muted);
+}
+
+/* What the user asked for reads as the strongest line in the log. */
+.ai-row--you {
+  border-left-color: var(--color-accent);
+}
+
+.ai-row--you .ai-row-text {
+  color: var(--color-text);
+  font-weight: 500;
+}
+
+.ai-row--ok {
+  border-left-color: var(--color-success);
+}
+
+.ai-row--ok .ai-row-text {
+  color: var(--color-text);
+}
+
+.ai-row--fail {
+  border-left-color: var(--color-danger);
+}
+
+.ai-row--fail .ai-row-text {
+  color: var(--color-danger);
+}
+
+.ai-row--working .ai-row-text {
+  font-style: italic;
+}
+
+/* The compose row: a growable prompt beside a single send/cancel button. */
+.ai-compose {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+  flex: 0 0 auto;
+  padding: var(--space-2) var(--space-3);
+  border-top: 1px solid var(--color-crust);
+}
+
+.ai-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  box-sizing: border-box;
+  resize: none;
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface-0);
+  color: var(--color-text);
+  border: 1px solid var(--color-overlay);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.ai-input:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.ai-input:disabled {
+  color: var(--color-muted);
+}
+
+.ai-send {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--control-height);
+  height: var(--control-height);
+  padding: 0;
+  color: var(--color-text);
+  background: var(--color-surface-0);
+  border: 1px solid var(--color-overlay);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.ai-send:hover {
+  border-color: var(--color-accent);
+}
+
+/* Busy is the SAME button, meaning cancel — one control for one activity. */
+.ai-send--busy {
+  color: var(--color-danger);
+  border-color: var(--color-danger);
 }

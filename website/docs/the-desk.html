@@ -76,6 +76,7 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
         <a class="doc-nav-link" href="logic-analyzer.html">Logic Analyzer &amp; Timing</a>
         <a class="doc-nav-link" href="build-guide.html">Build Guide, Wiring List &amp; BOM</a>
         <a class="doc-nav-link" href="schematic-view.html">Schematic View</a>
+        <a class="doc-nav-link" href="ai-builder.html">AI Circuit Builder</a>
         <a class="doc-nav-link" href="files-and-undo.html">Files, Saving &amp; Undo</a>
         <a class="doc-nav-link" href="projects-and-desktops.html">Projects &amp; Desktops</a>
         <a class="doc-nav-link" href="settings.html">Settings</a>
@@ -88,7 +89,7 @@ every board, chip, wire, and power source lives. This page covers how to move
 around the desk and how breadboards actually work under the hood: they are
 not single parts but individual <strong>strips</strong> — a pin-board plus power rails —
 that snap and mate together the way real boards do on a bench.</p>
-<p><img src="images/the-desk.png" alt="A Full 830 breadboard on the desk"></p>
+<p><img src="images/the-desk.png" alt="A Full 830 breadboard on the desk, with a spare power rail turned on end beside it"></p>
 <h2 id="pan-zoom--fit-to-screen">Pan, zoom &amp; fit to screen</h2>
 <p>The desk has no edges — pan and zoom to work at whatever scale suits the
 circuit in front of you.</p>
@@ -99,7 +100,11 @@ trackpad.</li>
 <strong>+</strong> / <strong>−</strong> buttons in the zoom control. Keyboard: <code>Cmd/Ctrl+=</code> (zoom in),
 <code>Cmd/Ctrl+-</code> (zoom out), <code>Cmd/Ctrl+0</code> (reset to 100%).</li>
 <li><strong>Fit to screen</strong>: <code>Cmd/Ctrl+F</code> frames everything currently on the desk in
-the viewport — the fastest way to find your circuit after panning away.</li>
+the viewport — the fastest way to find your circuit after panning away. It
+also slides the whole design back around the middle of the desk, keeping a
+layout that has crept a long way out from drifting further; that part is a
+document edit (one <code>Cmd/Ctrl+Z</code> puts it back) and is skipped while the
+circuit is running.</li>
 <li><strong>Zoom out full</strong>: <code>Cmd/Ctrl+Shift+F</code> zooms all the way out, useful for
 locating a part on a very large or sprawling layout.</li>
 </ul>

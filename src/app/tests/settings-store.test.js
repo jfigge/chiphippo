@@ -44,8 +44,32 @@ test("the Settings-dialog keys carry their shipped defaults", () => {
   assert.equal(DEFAULTS.defaultLedColor, "red");
 });
 
-test("the parts tray opens by default", () => {
+test("the parts tray opens by default, at its shipped width", () => {
   assert.equal(DEFAULTS.paletteOpen, true);
+  // Matches the .palette-panel CSS fallback; the tray's right edge writes it.
+  assert.equal(DEFAULTS.paletteWidth, 232);
+});
+
+test("both bottom-docked panels ship shut, at the same height", () => {
+  assert.equal(DEFAULTS.scopeOpen, false);
+  assert.equal(DEFAULTS.aiOpen, false);
+  assert.equal(DEFAULTS.aiHeight, DEFAULTS.scopeHeight);
+});
+
+test("the AI connection ships unconfigured, and carries NO key", () => {
+  assert.deepEqual(DEFAULTS.ai, {
+    provider: "anthropic",
+    baseUrl: "",
+    model: "",
+  });
+  // The key lives OS-encrypted in credential-store.js. Settings is plaintext
+  // and is handed back to the renderer whole, so a key here would be readable
+  // on disk and re-seeded into the dialog on every open.
+  assert.equal(
+    JSON.stringify(DEFAULTS).toLowerCase().includes("key"),
+    false,
+    "no key-shaped field anywhere in the defaults",
+  );
 });
 
 test("set persists a Settings-dialog patch (desk hub + selection colour)", () => {
