@@ -114,6 +114,16 @@ simply appears.
 However large it is, placing it is **one undo step**: `Cmd/Ctrl+Z` removes the
 entire thing — boards, chips, wires and all — in one go.
 
+![A generated 4-bit counter placed on the desk, captioned with the design's own explanation of itself](images/ai-design.png)
+
+Every generated circuit **explains itself**. The description above is stamped
+on the desk as a caption over the boards, in the design's own words: which
+chip does the work, why each tie-off is where it is, and what the compiler
+added on your behalf. You didn't build it and can't ask it why it's wired the
+way it is — so it says so up front. The caption is an ordinary annotation
+anchored to the design, so it travels with it, and you can edit or delete it
+like any other note.
+
 ## When it doesn't work
 
 Two very different things can go wrong, and the panel distinguishes them.
