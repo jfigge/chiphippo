@@ -1,0 +1,1720 @@
+{
+  "version": 4,
+  "name": "Multiplexer",
+  "description": "Multiplexer — one desktop per catalog part.",
+  "activeTab": "t1",
+  "nextIndex": 5,
+  "tabs": [
+    {
+      "id": "t1",
+      "name": "74LS151",
+      "description": "8-to-1 multiplexer",
+      "doc": {
+        "version": 6,
+        "boards": [
+          {
+            "id": "bb1",
+            "type": "rail-full",
+            "x": -37,
+            "y": -14,
+            "rot": 0,
+            "group": "g1"
+          },
+          {
+            "id": "bb2",
+            "type": "pins-full",
+            "x": -37,
+            "y": -11,
+            "rot": 0,
+            "group": "g1"
+          },
+          {
+            "id": "bb3",
+            "type": "rail-full",
+            "x": -37,
+            "y": 2,
+            "rot": 0,
+            "group": "g1"
+          }
+        ],
+        "components": [
+          {
+            "id": "psu1",
+            "kind": "psu",
+            "ref": "psu",
+            "x": -36,
+            "y": -23,
+            "params": {
+              "volts": 5
+            }
+          },
+          {
+            "id": "c1",
+            "kind": "chip",
+            "ref": "74LS151",
+            "board": "bb2",
+            "anchor": "e26",
+            "params": {}
+          },
+          {
+            "id": "c2",
+            "kind": "discrete",
+            "ref": "sw-slide",
+            "board": "bb2",
+            "anchor": "h2",
+            "params": {
+              "pos": "1"
+            },
+            "name": "Input A"
+          },
+          {
+            "id": "c3",
+            "kind": "discrete",
+            "ref": "resistor",
+            "board": "bb2",
+            "anchor": "i4",
+            "params": {
+              "ohms": 10000,
+              "rot": 90,
+              "end": {
+                "dx": 0,
+                "dy": -3
+              }
+            }
+          },
+          {
+            "id": "c4",
+            "kind": "discrete",
+            "ref": "sw-slide",
+            "board": "bb2",
+            "anchor": "h8",
+            "params": {
+              "pos": "2"
+            },
+            "name": "Input B"
+          },
+          {
+            "id": "c5",
+            "kind": "discrete",
+            "ref": "resistor",
+            "board": "bb2",
+            "anchor": "i10",
+            "params": {
+              "ohms": 10000,
+              "rot": 90,
+              "end": {
+                "dx": 0,
+                "dy": -3
+              }
+            }
+          },
+          {
+            "id": "c6",
+            "kind": "discrete",
+            "ref": "sw-slide",
+            "board": "bb2",
+            "anchor": "h14",
+            "params": {
+              "pos": "2"
+            },
+            "name": "Input C"
+          },
+          {
+            "id": "c7",
+            "kind": "discrete",
+            "ref": "resistor",
+            "board": "bb2",
+            "anchor": "i16",
+            "params": {
+              "ohms": 10000,
+              "rot": 90,
+              "end": {
+                "dx": 0,
+                "dy": -3
+              }
+            }
+          },
+          {
+            "id": "c8",
+            "kind": "discrete",
+            "ref": "led",
+            "board": "bb2",
+            "anchor": "g37",
+            "params": {
+              "color": "green",
+              "flip": false,
+              "rot": 0,
+              "end": null
+            },
+            "name": "Y"
+          },
+          {
+            "id": "c9",
+            "kind": "discrete",
+            "ref": "resistor",
+            "board": "bb2",
+            "anchor": "i38",
+            "params": {
+              "ohms": 330,
+              "rot": 90,
+              "end": {
+                "dx": -1,
+                "dy": -3
+              }
+            }
+          },
+          {
+            "id": "c10",
+            "kind": "discrete",
+            "ref": "led",
+            "board": "bb2",
+            "anchor": "g40",
+            "params": {
+              "color": "red",
+              "flip": false,
+              "rot": 0,
+              "end": null
+            },
+            "name": "W̄"
+          },
+          {
+            "id": "c11",
+            "kind": "discrete",
+            "ref": "resistor",
+            "board": "bb2",
+            "anchor": "i41",
+            "params": {
+              "ohms": 330,
+              "rot": 90,
+              "end": {
+                "dx": 0,
+                "dy": -3
+              }
+            }
+          }
+        ],
+        "wires": [
+          {
+            "id": "w1",
+            "from": "psu1.+",
+            "to": "bb1.+1",
+            "color": "red"
+          },
+          {
+            "id": "w2",
+            "from": "psu1.-",
+            "to": "bb1.-5",
+            "color": "black"
+          },
+          {
+            "id": "w3",
+            "from": "bb1.+50",
+            "to": "bb3.+50",
+            "color": "red"
+          },
+          {
+            "id": "w4",
+            "from": "bb1.-50",
+            "to": "bb3.-50",
+            "color": "black"
+          },
+          {
+            "id": "w5",
+            "from": "bb2.g26",
+            "to": "bb1.+20",
+            "color": "red"
+          },
+          {
+            "id": "w6",
+            "from": "bb2.a33",
+            "to": "bb3.-26",
+            "color": "black"
+          },
+          {
+            "id": "w7",
+            "from": "bb2.f2",
+            "to": "bb1.+2",
+            "color": "red"
+          },
+          {
+            "id": "w8",
+            "from": "bb2.f3",
+            "to": "bb2.g31",
+            "color": "green"
+          },
+          {
+            "id": "w9",
+            "from": "bb2.f8",
+            "to": "bb1.+5",
+            "color": "red"
+          },
+          {
+            "id": "w10",
+            "from": "bb2.f9",
+            "to": "bb2.g32",
+            "color": "green"
+          },
+          {
+            "id": "w11",
+            "from": "bb2.f14",
+            "to": "bb1.+10",
+            "color": "red"
+          },
+          {
+            "id": "w12",
+            "from": "bb2.f15",
+            "to": "bb2.g33",
+            "color": "green"
+          },
+          {
+            "id": "w13",
+            "from": "bb2.a32",
+            "to": "bb3.-25",
+            "color": "black"
+          },
+          {
+            "id": "w14",
+            "from": "bb2.a28",
+            "to": "bb3.+22",
+            "color": "red"
+          },
+          {
+            "id": "w15",
+            "from": "bb2.a27",
+            "to": "bb3.+21",
+            "color": "red"
+          },
+          {
+            "id": "w16",
+            "from": "bb2.g27",
+            "to": "bb1.+21",
+            "color": "red"
+          },
+          {
+            "id": "w17",
+            "from": "bb2.g30",
+            "to": "bb1.+24",
+            "color": "red"
+          },
+          {
+            "id": "w18",
+            "from": "bb2.a29",
+            "to": "bb3.-23",
+            "color": "black"
+          },
+          {
+            "id": "w19",
+            "from": "bb2.a26",
+            "to": "bb3.-20",
+            "color": "black"
+          },
+          {
+            "id": "w20",
+            "from": "bb2.g28",
+            "to": "bb1.-22",
+            "color": "black"
+          },
+          {
+            "id": "w21",
+            "from": "bb2.g29",
+            "to": "bb1.-23",
+            "color": "black"
+          },
+          {
+            "id": "w22",
+            "from": "bb2.a30",
+            "to": "bb2.f37",
+            "color": "purple"
+          },
+          {
+            "id": "w23",
+            "from": "bb2.a31",
+            "to": "bb2.f40",
+            "color": "purple"
+          }
+        ],
+        "buses": [],
+        "netNames": [],
+        "annotations": [
+          {
+            "id": "an1",
+            "kind": "label",
+            "x": -34.3,
+            "y": -16.4,
+            "text": "A"
+          },
+          {
+            "id": "an2",
+            "kind": "label",
+            "x": -28.3,
+            "y": -16.4,
+            "text": "B"
+          },
+          {
+            "id": "an3",
+            "kind": "label",
+            "x": -22.3,
+            "y": -16.4,
+            "text": "C"
+          },
+          {
+            "id": "an4",
+            "kind": "label",
+            "x": -0.3,
+            "y": -16.4,
+            "text": "Y"
+          },
+          {
+            "id": "an5",
+            "kind": "label",
+            "x": 2.7,
+            "y": -16.4,
+            "text": "W̄"
+          },
+          {
+            "id": "an6",
+            "kind": "label",
+            "x": -37,
+            "y": -33,
+            "text": "74LS151 — 8-to-1 multiplexer"
+          },
+          {
+            "id": "an7",
+            "kind": "label",
+            "x": -37,
+            "y": -31.2,
+            "text": "D0–D7 are hard-wired to the pattern",
+            "color": "#808080"
+          },
+          {
+            "id": "an8",
+            "kind": "label",
+            "x": -37,
+            "y": -29.4,
+            "text": "0 1 1 0 1 0 0 1. Switches A, B, C pick",
+            "color": "#808080"
+          },
+          {
+            "id": "an9",
+            "kind": "label",
+            "x": -37,
+            "y": -27.6,
+            "text": "one of them: Y shows the bit, W̄ its",
+            "color": "#808080"
+          },
+          {
+            "id": "an10",
+            "kind": "label",
+            "x": -37,
+            "y": -25.8,
+            "text": "complement. The strobe is tied LOW.",
+            "color": "#808080"
+          }
+        ],
+        "scopeChannels": [],
+        "nextBoardId": 4,
+        "nextGroupId": 2,
+        "nextComponentId": 12,
+        "nextPsuId": 2,
+        "nextClockId": 2,
+        "nextLcdId": 1,
+        "nextWireId": 24,
+        "nextBusId": 1,
+        "nextAnnotationId": 11,
+        "nextScopeChannelId": 1
+      }
+    },
+    {
+      "id": "t2",
+      "name": "74LS153",
+      "description": "Dual 4-to-1 multiplexer",
+      "doc": {
+        "version": 6,
+        "boards": [
+          {
+            "id": "bb1",
+            "type": "rail-full",
+            "x": -37,
+            "y": -14,
+            "rot": 0,
+            "group": "g1"
+          },
+          {
+            "id": "bb2",
+            "type": "pins-full",
+            "x": -37,
+            "y": -11,
+            "rot": 0,
+            "group": "g1"
+          },
+          {
+            "id": "bb3",
+            "type": "rail-full",
+            "x": -37,
+            "y": 2,
+            "rot": 0,
+            "group": "g1"
+          }
+        ],
+        "components": [
+          {
+            "id": "psu1",
+            "kind": "psu",
+            "ref": "psu",
+            "x": -36,
+            "y": -23,
+            "params": {
+              "volts": 5
+            }
+          },
+          {
+            "id": "c1",
+            "kind": "chip",
+            "ref": "74LS153",
+            "board": "bb2",
+            "anchor": "e26",
+            "params": {}
+          },
+          {
+            "id": "c2",
+            "kind": "discrete",
+            "ref": "sw-slide",
+            "board": "bb2",
+            "anchor": "h2",
+            "params": {
+              "pos": "1"
+            },
+            "name": "Input A"
+          },
+          {
+            "id": "c3",
+            "kind": "discrete",
+            "ref": "resistor",
+            "board": "bb2",
+            "anchor": "i4",
+            "params": {
+              "ohms": 10000,
+              "rot": 90,
+              "end": {
+                "dx": 0,
+                "dy": -3
+              }
+            }
+          },
+          {
+            "id": "c4",
+            "kind": "discrete",
+            "ref": "sw-slide",
+            "board": "bb2",
+            "anchor": "h8",
+            "params": {
+              "pos": "2"
+            },
+            "name": "Input B"
+          },
+          {
+            "id": "c5",
+            "kind": "discrete",
+            "ref": "resistor",
+            "board": "bb2",
+            "anchor": "i10",
+            "params": {
+              "ohms": 10000,
+              "rot": 90,
+              "end": {
+                "dx": 0,
+                "dy": -3
+              }
+            }
+          },
+          {
+            "id": "c6",
+            "kind": "discrete",
+            "ref": "led",
+            "board": "bb2",
+            "anchor": "g37",
+            "params": {
+              "color": "green",
+              "flip": false,
+              "rot": 0,
+              "end": null
+            },
+            "name": "1Y"
+          },
+          {
+            "id": "c7",
+            "kind": "discrete",
+            "ref": "resistor",
+            "board": "bb2",
+            "anchor": "i38",
+            "params": {
+              "ohms": 330,
+              "rot": 90,
+              "end": {
+                "dx": -1,
+                "dy": -3
+              }
+            }
+          },
+          {
+            "id": "c8",
+            "kind": "discrete",
+            "ref": "led",
+            "board": "bb2",
+            "anchor": "g40",
+            "params": {
+              "color": "yellow",
+              "flip": false,
+              "rot": 0,
+              "end": null
+            },
+            "name": "2Y"
+          },
+          {
+            "id": "c9",
+            "kind": "discrete",
+            "ref": "resistor",
+            "board": "bb2",
+            "anchor": "i41",
+            "params": {
+              "ohms": 330,
+              "rot": 90,
+              "end": {
+                "dx": 0,
+                "dy": -3
+              }
+            }
+          }
+        ],
+        "wires": [
+          {
+            "id": "w1",
+            "from": "psu1.+",
+            "to": "bb1.+1",
+            "color": "red"
+          },
+          {
+            "id": "w2",
+            "from": "psu1.-",
+            "to": "bb1.-5",
+            "color": "black"
+          },
+          {
+            "id": "w3",
+            "from": "bb1.+50",
+            "to": "bb3.+50",
+            "color": "red"
+          },
+          {
+            "id": "w4",
+            "from": "bb1.-50",
+            "to": "bb3.-50",
+            "color": "black"
+          },
+          {
+            "id": "w5",
+            "from": "bb2.g26",
+            "to": "bb1.+20",
+            "color": "red"
+          },
+          {
+            "id": "w6",
+            "from": "bb2.a33",
+            "to": "bb3.-26",
+            "color": "black"
+          },
+          {
+            "id": "w7",
+            "from": "bb2.f2",
+            "to": "bb1.+2",
+            "color": "red"
+          },
+          {
+            "id": "w8",
+            "from": "bb2.f3",
+            "to": "bb2.g28",
+            "color": "green"
+          },
+          {
+            "id": "w9",
+            "from": "bb2.f8",
+            "to": "bb1.+5",
+            "color": "red"
+          },
+          {
+            "id": "w10",
+            "from": "bb2.f9",
+            "to": "bb2.a27",
+            "color": "green"
+          },
+          {
+            "id": "w11",
+            "from": "bb2.a26",
+            "to": "bb3.-20",
+            "color": "black"
+          },
+          {
+            "id": "w12",
+            "from": "bb2.g27",
+            "to": "bb1.-21",
+            "color": "black"
+          },
+          {
+            "id": "w13",
+            "from": "bb2.a30",
+            "to": "bb3.+24",
+            "color": "red"
+          },
+          {
+            "id": "w14",
+            "from": "bb2.a29",
+            "to": "bb3.+23",
+            "color": "red"
+          },
+          {
+            "id": "w15",
+            "from": "bb2.a31",
+            "to": "bb3.-25",
+            "color": "black"
+          },
+          {
+            "id": "w16",
+            "from": "bb2.a28",
+            "to": "bb3.-22",
+            "color": "black"
+          },
+          {
+            "id": "w17",
+            "from": "bb2.g32",
+            "to": "bb1.+25",
+            "color": "red"
+          },
+          {
+            "id": "w18",
+            "from": "bb2.g29",
+            "to": "bb1.+23",
+            "color": "red"
+          },
+          {
+            "id": "w19",
+            "from": "bb2.g31",
+            "to": "bb1.-25",
+            "color": "black"
+          },
+          {
+            "id": "w20",
+            "from": "bb2.g30",
+            "to": "bb1.-24",
+            "color": "black"
+          },
+          {
+            "id": "w21",
+            "from": "bb2.a32",
+            "to": "bb2.f37",
+            "color": "purple"
+          },
+          {
+            "id": "w22",
+            "from": "bb2.g33",
+            "to": "bb2.f40",
+            "color": "purple"
+          }
+        ],
+        "buses": [],
+        "netNames": [],
+        "annotations": [
+          {
+            "id": "an1",
+            "kind": "label",
+            "x": -34.3,
+            "y": -16.4,
+            "text": "A"
+          },
+          {
+            "id": "an2",
+            "kind": "label",
+            "x": -28.3,
+            "y": -16.4,
+            "text": "B"
+          },
+          {
+            "id": "an3",
+            "kind": "label",
+            "x": -0.3,
+            "y": -16.4,
+            "text": "1Y"
+          },
+          {
+            "id": "an4",
+            "kind": "label",
+            "x": 2.7,
+            "y": -16.4,
+            "text": "2Y"
+          },
+          {
+            "id": "an5",
+            "kind": "label",
+            "x": -37,
+            "y": -34.8,
+            "text": "74LS153 — Dual 4-to-1 multiplexer"
+          },
+          {
+            "id": "an6",
+            "kind": "label",
+            "x": -37,
+            "y": -33,
+            "text": "Two muxes sharing one pair of select lines:",
+            "color": "#808080"
+          },
+          {
+            "id": "an7",
+            "kind": "label",
+            "x": -37,
+            "y": -31.2,
+            "text": "A and B pick the same position out of each",
+            "color": "#808080"
+          },
+          {
+            "id": "an8",
+            "kind": "label",
+            "x": -37,
+            "y": -29.4,
+            "text": "of two hard-wired words (0110 and 1001), so",
+            "color": "#808080"
+          },
+          {
+            "id": "an9",
+            "kind": "label",
+            "x": -37,
+            "y": -27.6,
+            "text": "1Y and 2Y read out two different patterns",
+            "color": "#808080"
+          },
+          {
+            "id": "an10",
+            "kind": "label",
+            "x": -37,
+            "y": -25.8,
+            "text": "from one address.",
+            "color": "#808080"
+          }
+        ],
+        "scopeChannels": [],
+        "nextBoardId": 4,
+        "nextGroupId": 2,
+        "nextComponentId": 10,
+        "nextPsuId": 2,
+        "nextClockId": 2,
+        "nextLcdId": 1,
+        "nextWireId": 23,
+        "nextBusId": 1,
+        "nextAnnotationId": 11,
+        "nextScopeChannelId": 1
+      }
+    },
+    {
+      "id": "t3",
+      "name": "74LS157",
+      "description": "Quad 2-to-1 selector",
+      "doc": {
+        "version": 6,
+        "boards": [
+          {
+            "id": "bb1",
+            "type": "rail-full",
+            "x": -37,
+            "y": -14,
+            "rot": 0,
+            "group": "g1"
+          },
+          {
+            "id": "bb2",
+            "type": "pins-full",
+            "x": -37,
+            "y": -11,
+            "rot": 0,
+            "group": "g1"
+          },
+          {
+            "id": "bb3",
+            "type": "rail-full",
+            "x": -37,
+            "y": 2,
+            "rot": 0,
+            "group": "g1"
+          }
+        ],
+        "components": [
+          {
+            "id": "psu1",
+            "kind": "psu",
+            "ref": "psu",
+            "x": -36,
+            "y": -23,
+            "params": {
+              "volts": 5
+            }
+          },
+          {
+            "id": "c1",
+            "kind": "chip",
+            "ref": "74LS157",
+            "board": "bb2",
+            "anchor": "e26",
+            "params": {}
+          },
+          {
+            "id": "c2",
+            "kind": "discrete",
+            "ref": "sw-slide",
+            "board": "bb2",
+            "anchor": "h2",
+            "params": {
+              "pos": "2"
+            },
+            "name": "Input S"
+          },
+          {
+            "id": "c3",
+            "kind": "discrete",
+            "ref": "resistor",
+            "board": "bb2",
+            "anchor": "i4",
+            "params": {
+              "ohms": 10000,
+              "rot": 90,
+              "end": {
+                "dx": 0,
+                "dy": -3
+              }
+            }
+          },
+          {
+            "id": "c4",
+            "kind": "discrete",
+            "ref": "sw-slide",
+            "board": "bb2",
+            "anchor": "h8",
+            "params": {
+              "pos": "2"
+            },
+            "name": "Input /G"
+          },
+          {
+            "id": "c5",
+            "kind": "discrete",
+            "ref": "resistor",
+            "board": "bb2",
+            "anchor": "i10",
+            "params": {
+              "ohms": 10000,
+              "rot": 90,
+              "end": {
+                "dx": 0,
+                "dy": -3
+              }
+            }
+          },
+          {
+            "id": "c6",
+            "kind": "discrete",
+            "ref": "led",
+            "board": "bb2",
+            "anchor": "g37",
+            "params": {
+              "color": "green",
+              "flip": false,
+              "rot": 0,
+              "end": null
+            },
+            "name": "1Y"
+          },
+          {
+            "id": "c7",
+            "kind": "discrete",
+            "ref": "resistor",
+            "board": "bb2",
+            "anchor": "i38",
+            "params": {
+              "ohms": 330,
+              "rot": 90,
+              "end": {
+                "dx": -1,
+                "dy": -3
+              }
+            }
+          },
+          {
+            "id": "c8",
+            "kind": "discrete",
+            "ref": "led",
+            "board": "bb2",
+            "anchor": "g40",
+            "params": {
+              "color": "green",
+              "flip": false,
+              "rot": 0,
+              "end": null
+            },
+            "name": "2Y"
+          },
+          {
+            "id": "c9",
+            "kind": "discrete",
+            "ref": "resistor",
+            "board": "bb2",
+            "anchor": "i41",
+            "params": {
+              "ohms": 330,
+              "rot": 90,
+              "end": {
+                "dx": 0,
+                "dy": -3
+              }
+            }
+          },
+          {
+            "id": "c10",
+            "kind": "discrete",
+            "ref": "led",
+            "board": "bb2",
+            "anchor": "g43",
+            "params": {
+              "color": "green",
+              "flip": false,
+              "rot": 0,
+              "end": null
+            },
+            "name": "3Y"
+          },
+          {
+            "id": "c11",
+            "kind": "discrete",
+            "ref": "resistor",
+            "board": "bb2",
+            "anchor": "i44",
+            "params": {
+              "ohms": 330,
+              "rot": 90,
+              "end": {
+                "dx": -1,
+                "dy": -3
+              }
+            }
+          },
+          {
+            "id": "c12",
+            "kind": "discrete",
+            "ref": "led",
+            "board": "bb2",
+            "anchor": "g46",
+            "params": {
+              "color": "green",
+              "flip": false,
+              "rot": 0,
+              "end": null
+            },
+            "name": "4Y"
+          },
+          {
+            "id": "c13",
+            "kind": "discrete",
+            "ref": "resistor",
+            "board": "bb2",
+            "anchor": "i47",
+            "params": {
+              "ohms": 330,
+              "rot": 90,
+              "end": {
+                "dx": 0,
+                "dy": -3
+              }
+            }
+          }
+        ],
+        "wires": [
+          {
+            "id": "w1",
+            "from": "psu1.+",
+            "to": "bb1.+1",
+            "color": "red"
+          },
+          {
+            "id": "w2",
+            "from": "psu1.-",
+            "to": "bb1.-5",
+            "color": "black"
+          },
+          {
+            "id": "w3",
+            "from": "bb1.+50",
+            "to": "bb3.+50",
+            "color": "red"
+          },
+          {
+            "id": "w4",
+            "from": "bb1.-50",
+            "to": "bb3.-50",
+            "color": "black"
+          },
+          {
+            "id": "w5",
+            "from": "bb2.g26",
+            "to": "bb1.+20",
+            "color": "red"
+          },
+          {
+            "id": "w6",
+            "from": "bb2.a33",
+            "to": "bb3.-26",
+            "color": "black"
+          },
+          {
+            "id": "w7",
+            "from": "bb2.f2",
+            "to": "bb1.+2",
+            "color": "red"
+          },
+          {
+            "id": "w8",
+            "from": "bb2.f3",
+            "to": "bb2.a26",
+            "color": "green"
+          },
+          {
+            "id": "w9",
+            "from": "bb2.f8",
+            "to": "bb1.+5",
+            "color": "red"
+          },
+          {
+            "id": "w10",
+            "from": "bb2.f9",
+            "to": "bb2.g27",
+            "color": "green"
+          },
+          {
+            "id": "w11",
+            "from": "bb2.a27",
+            "to": "bb3.+21",
+            "color": "red"
+          },
+          {
+            "id": "w12",
+            "from": "bb2.g31",
+            "to": "bb1.+25",
+            "color": "red"
+          },
+          {
+            "id": "w13",
+            "from": "bb2.g28",
+            "to": "bb1.+22",
+            "color": "red"
+          },
+          {
+            "id": "w14",
+            "from": "bb2.a30",
+            "to": "bb3.-24",
+            "color": "black"
+          },
+          {
+            "id": "w15",
+            "from": "bb2.a31",
+            "to": "bb3.+25",
+            "color": "red"
+          },
+          {
+            "id": "w16",
+            "from": "bb2.g32",
+            "to": "bb1.+26",
+            "color": "red"
+          },
+          {
+            "id": "w17",
+            "from": "bb2.a28",
+            "to": "bb3.-22",
+            "color": "black"
+          },
+          {
+            "id": "w18",
+            "from": "bb2.g29",
+            "to": "bb1.-23",
+            "color": "black"
+          },
+          {
+            "id": "w19",
+            "from": "bb2.a29",
+            "to": "bb2.f37",
+            "color": "purple"
+          },
+          {
+            "id": "w20",
+            "from": "bb2.a32",
+            "to": "bb2.f40",
+            "color": "purple"
+          },
+          {
+            "id": "w21",
+            "from": "bb2.g33",
+            "to": "bb2.f43",
+            "color": "purple"
+          },
+          {
+            "id": "w22",
+            "from": "bb2.g30",
+            "to": "bb2.f46",
+            "color": "purple"
+          }
+        ],
+        "buses": [],
+        "netNames": [],
+        "annotations": [
+          {
+            "id": "an1",
+            "kind": "label",
+            "x": -34.3,
+            "y": -16.4,
+            "text": "S"
+          },
+          {
+            "id": "an2",
+            "kind": "label",
+            "x": -28.3,
+            "y": -16.4,
+            "text": "/G"
+          },
+          {
+            "id": "an3",
+            "kind": "label",
+            "x": -0.3,
+            "y": -16.4,
+            "text": "1Y"
+          },
+          {
+            "id": "an4",
+            "kind": "label",
+            "x": 2.7,
+            "y": -16.4,
+            "text": "2Y"
+          },
+          {
+            "id": "an5",
+            "kind": "label",
+            "x": 5.7,
+            "y": -16.4,
+            "text": "3Y"
+          },
+          {
+            "id": "an6",
+            "kind": "label",
+            "x": 8.7,
+            "y": -16.4,
+            "text": "4Y"
+          },
+          {
+            "id": "an7",
+            "kind": "label",
+            "x": -37,
+            "y": -33,
+            "text": "74LS157 — Quad 2-to-1 selector"
+          },
+          {
+            "id": "an8",
+            "kind": "label",
+            "x": -37,
+            "y": -31.2,
+            "text": "Four bits of A or four bits of B, picked by",
+            "color": "#808080"
+          },
+          {
+            "id": "an9",
+            "kind": "label",
+            "x": -37,
+            "y": -29.4,
+            "text": "ONE switch: S low passes A (1011), S high",
+            "color": "#808080"
+          },
+          {
+            "id": "an10",
+            "kind": "label",
+            "x": -37,
+            "y": -27.6,
+            "text": "passes B (0110). Ḡ high forces every output",
+            "color": "#808080"
+          },
+          {
+            "id": "an11",
+            "kind": "label",
+            "x": -37,
+            "y": -25.8,
+            "text": "LOW — driven, not floating.",
+            "color": "#808080"
+          }
+        ],
+        "scopeChannels": [],
+        "nextBoardId": 4,
+        "nextGroupId": 2,
+        "nextComponentId": 14,
+        "nextPsuId": 2,
+        "nextClockId": 2,
+        "nextLcdId": 1,
+        "nextWireId": 23,
+        "nextBusId": 1,
+        "nextAnnotationId": 12,
+        "nextScopeChannelId": 1
+      }
+    },
+    {
+      "id": "t4",
+      "name": "74LS257",
+      "description": "Quad 2-to-1 selector (tri-state)",
+      "doc": {
+        "version": 6,
+        "boards": [
+          {
+            "id": "bb1",
+            "type": "rail-full",
+            "x": -37,
+            "y": -14,
+            "rot": 0,
+            "group": "g1"
+          },
+          {
+            "id": "bb2",
+            "type": "pins-full",
+            "x": -37,
+            "y": -11,
+            "rot": 0,
+            "group": "g1"
+          },
+          {
+            "id": "bb3",
+            "type": "rail-full",
+            "x": -37,
+            "y": 2,
+            "rot": 0,
+            "group": "g1"
+          }
+        ],
+        "components": [
+          {
+            "id": "psu1",
+            "kind": "psu",
+            "ref": "psu",
+            "x": -36,
+            "y": -23,
+            "params": {
+              "volts": 5
+            }
+          },
+          {
+            "id": "c1",
+            "kind": "chip",
+            "ref": "74LS257",
+            "board": "bb2",
+            "anchor": "e26",
+            "params": {}
+          },
+          {
+            "id": "c2",
+            "kind": "discrete",
+            "ref": "sw-slide",
+            "board": "bb2",
+            "anchor": "h2",
+            "params": {
+              "pos": "2"
+            },
+            "name": "Input S"
+          },
+          {
+            "id": "c3",
+            "kind": "discrete",
+            "ref": "resistor",
+            "board": "bb2",
+            "anchor": "i4",
+            "params": {
+              "ohms": 10000,
+              "rot": 90,
+              "end": {
+                "dx": 0,
+                "dy": -3
+              }
+            }
+          },
+          {
+            "id": "c4",
+            "kind": "discrete",
+            "ref": "sw-slide",
+            "board": "bb2",
+            "anchor": "h8",
+            "params": {
+              "pos": "2"
+            },
+            "name": "Input /OE"
+          },
+          {
+            "id": "c5",
+            "kind": "discrete",
+            "ref": "resistor",
+            "board": "bb2",
+            "anchor": "i10",
+            "params": {
+              "ohms": 10000,
+              "rot": 90,
+              "end": {
+                "dx": 0,
+                "dy": -3
+              }
+            }
+          },
+          {
+            "id": "c6",
+            "kind": "discrete",
+            "ref": "led",
+            "board": "bb2",
+            "anchor": "g37",
+            "params": {
+              "color": "green",
+              "flip": false,
+              "rot": 0,
+              "end": null
+            },
+            "name": "1Y"
+          },
+          {
+            "id": "c7",
+            "kind": "discrete",
+            "ref": "resistor",
+            "board": "bb2",
+            "anchor": "i38",
+            "params": {
+              "ohms": 330,
+              "rot": 90,
+              "end": {
+                "dx": -1,
+                "dy": -3
+              }
+            }
+          },
+          {
+            "id": "c8",
+            "kind": "discrete",
+            "ref": "led",
+            "board": "bb2",
+            "anchor": "g40",
+            "params": {
+              "color": "green",
+              "flip": false,
+              "rot": 0,
+              "end": null
+            },
+            "name": "2Y"
+          },
+          {
+            "id": "c9",
+            "kind": "discrete",
+            "ref": "resistor",
+            "board": "bb2",
+            "anchor": "i41",
+            "params": {
+              "ohms": 330,
+              "rot": 90,
+              "end": {
+                "dx": 0,
+                "dy": -3
+              }
+            }
+          },
+          {
+            "id": "c10",
+            "kind": "discrete",
+            "ref": "led",
+            "board": "bb2",
+            "anchor": "g43",
+            "params": {
+              "color": "green",
+              "flip": false,
+              "rot": 0,
+              "end": null
+            },
+            "name": "3Y"
+          },
+          {
+            "id": "c11",
+            "kind": "discrete",
+            "ref": "resistor",
+            "board": "bb2",
+            "anchor": "i44",
+            "params": {
+              "ohms": 330,
+              "rot": 90,
+              "end": {
+                "dx": -1,
+                "dy": -3
+              }
+            }
+          },
+          {
+            "id": "c12",
+            "kind": "discrete",
+            "ref": "led",
+            "board": "bb2",
+            "anchor": "g46",
+            "params": {
+              "color": "green",
+              "flip": false,
+              "rot": 0,
+              "end": null
+            },
+            "name": "4Y"
+          },
+          {
+            "id": "c13",
+            "kind": "discrete",
+            "ref": "resistor",
+            "board": "bb2",
+            "anchor": "i47",
+            "params": {
+              "ohms": 330,
+              "rot": 90,
+              "end": {
+                "dx": 0,
+                "dy": -3
+              }
+            }
+          }
+        ],
+        "wires": [
+          {
+            "id": "w1",
+            "from": "psu1.+",
+            "to": "bb1.+1",
+            "color": "red"
+          },
+          {
+            "id": "w2",
+            "from": "psu1.-",
+            "to": "bb1.-5",
+            "color": "black"
+          },
+          {
+            "id": "w3",
+            "from": "bb1.+50",
+            "to": "bb3.+50",
+            "color": "red"
+          },
+          {
+            "id": "w4",
+            "from": "bb1.-50",
+            "to": "bb3.-50",
+            "color": "black"
+          },
+          {
+            "id": "w5",
+            "from": "bb2.g26",
+            "to": "bb1.+20",
+            "color": "red"
+          },
+          {
+            "id": "w6",
+            "from": "bb2.a33",
+            "to": "bb3.-26",
+            "color": "black"
+          },
+          {
+            "id": "w7",
+            "from": "bb2.f2",
+            "to": "bb1.+2",
+            "color": "red"
+          },
+          {
+            "id": "w8",
+            "from": "bb2.f3",
+            "to": "bb2.a26",
+            "color": "green"
+          },
+          {
+            "id": "w9",
+            "from": "bb2.f8",
+            "to": "bb1.+5",
+            "color": "red"
+          },
+          {
+            "id": "w10",
+            "from": "bb2.f9",
+            "to": "bb2.g27",
+            "color": "green"
+          },
+          {
+            "id": "w11",
+            "from": "bb2.a27",
+            "to": "bb3.+21",
+            "color": "red"
+          },
+          {
+            "id": "w12",
+            "from": "bb2.g31",
+            "to": "bb1.+25",
+            "color": "red"
+          },
+          {
+            "id": "w13",
+            "from": "bb2.g28",
+            "to": "bb1.+22",
+            "color": "red"
+          },
+          {
+            "id": "w14",
+            "from": "bb2.a30",
+            "to": "bb3.-24",
+            "color": "black"
+          },
+          {
+            "id": "w15",
+            "from": "bb2.a31",
+            "to": "bb3.+25",
+            "color": "red"
+          },
+          {
+            "id": "w16",
+            "from": "bb2.g32",
+            "to": "bb1.+26",
+            "color": "red"
+          },
+          {
+            "id": "w17",
+            "from": "bb2.a28",
+            "to": "bb3.-22",
+            "color": "black"
+          },
+          {
+            "id": "w18",
+            "from": "bb2.g29",
+            "to": "bb1.-23",
+            "color": "black"
+          },
+          {
+            "id": "w19",
+            "from": "bb2.a29",
+            "to": "bb2.f37",
+            "color": "purple"
+          },
+          {
+            "id": "w20",
+            "from": "bb2.a32",
+            "to": "bb2.f40",
+            "color": "purple"
+          },
+          {
+            "id": "w21",
+            "from": "bb2.g33",
+            "to": "bb2.f43",
+            "color": "purple"
+          },
+          {
+            "id": "w22",
+            "from": "bb2.g30",
+            "to": "bb2.f46",
+            "color": "purple"
+          }
+        ],
+        "buses": [],
+        "netNames": [],
+        "annotations": [
+          {
+            "id": "an1",
+            "kind": "label",
+            "x": -34.3,
+            "y": -16.4,
+            "text": "S"
+          },
+          {
+            "id": "an2",
+            "kind": "label",
+            "x": -28.3,
+            "y": -16.4,
+            "text": "/OE"
+          },
+          {
+            "id": "an3",
+            "kind": "label",
+            "x": -0.3,
+            "y": -16.4,
+            "text": "1Y"
+          },
+          {
+            "id": "an4",
+            "kind": "label",
+            "x": 2.7,
+            "y": -16.4,
+            "text": "2Y"
+          },
+          {
+            "id": "an5",
+            "kind": "label",
+            "x": 5.7,
+            "y": -16.4,
+            "text": "3Y"
+          },
+          {
+            "id": "an6",
+            "kind": "label",
+            "x": 8.7,
+            "y": -16.4,
+            "text": "4Y"
+          },
+          {
+            "id": "an7",
+            "kind": "label",
+            "x": -37,
+            "y": -33,
+            "text": "74LS257 — Quad 2-to-1 selector, tri-state"
+          },
+          {
+            "id": "an8",
+            "kind": "label",
+            "x": -37,
+            "y": -31.2,
+            "text": "The '157 with three-state outputs: same A/B",
+            "color": "#808080"
+          },
+          {
+            "id": "an9",
+            "kind": "label",
+            "x": -37,
+            "y": -29.4,
+            "text": "selection, but ŌĒ high FLOATS the outputs",
+            "color": "#808080"
+          },
+          {
+            "id": "an10",
+            "kind": "label",
+            "x": -37,
+            "y": -27.6,
+            "text": "instead of forcing them low — the version",
+            "color": "#808080"
+          },
+          {
+            "id": "an11",
+            "kind": "label",
+            "x": -37,
+            "y": -25.8,
+            "text": "you can hang on a shared bus.",
+            "color": "#808080"
+          }
+        ],
+        "scopeChannels": [],
+        "nextBoardId": 4,
+        "nextGroupId": 2,
+        "nextComponentId": 14,
+        "nextPsuId": 2,
+        "nextClockId": 2,
+        "nextLcdId": 1,
+        "nextWireId": 23,
+        "nextBusId": 1,
+        "nextAnnotationId": 12,
+        "nextScopeChannelId": 1
+      }
+    }
+  ]
+}

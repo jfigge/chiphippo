@@ -1,0 +1,566 @@
+{
+  "version": 4,
+  "name": "Encoder",
+  "description": "Encoder — one desktop per catalog part.",
+  "activeTab": "t1",
+  "nextIndex": 2,
+  "tabs": [
+    {
+      "id": "t1",
+      "name": "74LS148",
+      "description": "8-to-3 priority encoder",
+      "doc": {
+        "version": 6,
+        "boards": [
+          {
+            "id": "bb1",
+            "type": "rail-full",
+            "x": -37,
+            "y": -14,
+            "rot": 0,
+            "group": "g1"
+          },
+          {
+            "id": "bb2",
+            "type": "pins-full",
+            "x": -37,
+            "y": -11,
+            "rot": 0,
+            "group": "g1"
+          },
+          {
+            "id": "bb3",
+            "type": "rail-full",
+            "x": -37,
+            "y": 2,
+            "rot": 0,
+            "group": "g1"
+          }
+        ],
+        "components": [
+          {
+            "id": "psu1",
+            "kind": "psu",
+            "ref": "psu",
+            "x": -36,
+            "y": -23,
+            "params": {
+              "volts": 5
+            }
+          },
+          {
+            "id": "c1",
+            "kind": "chip",
+            "ref": "74LS148",
+            "board": "bb2",
+            "anchor": "e26",
+            "params": {}
+          },
+          {
+            "id": "c2",
+            "kind": "discrete",
+            "ref": "sw-dip8",
+            "board": "bb2",
+            "anchor": "e2",
+            "params": {
+              "states": [
+                true,
+                true,
+                true,
+                true,
+                true,
+                false,
+                true,
+                true
+              ]
+            }
+          },
+          {
+            "id": "c3",
+            "kind": "discrete",
+            "ref": "rnet9",
+            "board": "bb2",
+            "anchor": "b2",
+            "params": {
+              "ohms": 10000
+            }
+          },
+          {
+            "id": "c4",
+            "kind": "discrete",
+            "ref": "led",
+            "board": "bb2",
+            "anchor": "g37",
+            "params": {
+              "color": "green",
+              "flip": false,
+              "rot": 0,
+              "end": null
+            },
+            "name": "A0"
+          },
+          {
+            "id": "c5",
+            "kind": "discrete",
+            "ref": "resistor",
+            "board": "bb2",
+            "anchor": "i37",
+            "params": {
+              "ohms": 330,
+              "rot": 90,
+              "end": {
+                "dx": 0,
+                "dy": -4
+              }
+            }
+          },
+          {
+            "id": "c6",
+            "kind": "discrete",
+            "ref": "led",
+            "board": "bb2",
+            "anchor": "g40",
+            "params": {
+              "color": "green",
+              "flip": false,
+              "rot": 0,
+              "end": null
+            },
+            "name": "A1"
+          },
+          {
+            "id": "c7",
+            "kind": "discrete",
+            "ref": "resistor",
+            "board": "bb2",
+            "anchor": "i40",
+            "params": {
+              "ohms": 330,
+              "rot": 90,
+              "end": {
+                "dx": 0,
+                "dy": -4
+              }
+            }
+          },
+          {
+            "id": "c8",
+            "kind": "discrete",
+            "ref": "led",
+            "board": "bb2",
+            "anchor": "g43",
+            "params": {
+              "color": "green",
+              "flip": false,
+              "rot": 0,
+              "end": null
+            },
+            "name": "A2"
+          },
+          {
+            "id": "c9",
+            "kind": "discrete",
+            "ref": "resistor",
+            "board": "bb2",
+            "anchor": "i43",
+            "params": {
+              "ohms": 330,
+              "rot": 90,
+              "end": {
+                "dx": 0,
+                "dy": -4
+              }
+            }
+          },
+          {
+            "id": "c10",
+            "kind": "discrete",
+            "ref": "led",
+            "board": "bb2",
+            "anchor": "g46",
+            "params": {
+              "color": "yellow",
+              "flip": false,
+              "rot": 0,
+              "end": null
+            },
+            "name": "GS"
+          },
+          {
+            "id": "c11",
+            "kind": "discrete",
+            "ref": "resistor",
+            "board": "bb2",
+            "anchor": "i46",
+            "params": {
+              "ohms": 330,
+              "rot": 90,
+              "end": {
+                "dx": 0,
+                "dy": -4
+              }
+            }
+          },
+          {
+            "id": "c12",
+            "kind": "discrete",
+            "ref": "led",
+            "board": "bb2",
+            "anchor": "g49",
+            "params": {
+              "color": "red",
+              "flip": false,
+              "rot": 0,
+              "end": null
+            },
+            "name": "EO"
+          },
+          {
+            "id": "c13",
+            "kind": "discrete",
+            "ref": "resistor",
+            "board": "bb2",
+            "anchor": "i49",
+            "params": {
+              "ohms": 330,
+              "rot": 90,
+              "end": {
+                "dx": 0,
+                "dy": -4
+              }
+            }
+          }
+        ],
+        "wires": [
+          {
+            "id": "w1",
+            "from": "psu1.+",
+            "to": "bb1.+1",
+            "color": "red"
+          },
+          {
+            "id": "w2",
+            "from": "psu1.-",
+            "to": "bb1.-5",
+            "color": "black"
+          },
+          {
+            "id": "w3",
+            "from": "bb1.+50",
+            "to": "bb3.+50",
+            "color": "red"
+          },
+          {
+            "id": "w4",
+            "from": "bb1.-50",
+            "to": "bb3.-50",
+            "color": "black"
+          },
+          {
+            "id": "w5",
+            "from": "bb2.g26",
+            "to": "bb1.+20",
+            "color": "red"
+          },
+          {
+            "id": "w6",
+            "from": "bb2.a33",
+            "to": "bb3.-26",
+            "color": "black"
+          },
+          {
+            "id": "w7",
+            "from": "bb2.j2",
+            "to": "bb2.j3",
+            "color": "red"
+          },
+          {
+            "id": "w8",
+            "from": "bb2.i3",
+            "to": "bb2.i4",
+            "color": "red"
+          },
+          {
+            "id": "w9",
+            "from": "bb2.j4",
+            "to": "bb2.j5",
+            "color": "red"
+          },
+          {
+            "id": "w10",
+            "from": "bb2.i5",
+            "to": "bb2.i6",
+            "color": "red"
+          },
+          {
+            "id": "w11",
+            "from": "bb2.j6",
+            "to": "bb2.j7",
+            "color": "red"
+          },
+          {
+            "id": "w12",
+            "from": "bb2.i7",
+            "to": "bb2.i8",
+            "color": "red"
+          },
+          {
+            "id": "w13",
+            "from": "bb2.j8",
+            "to": "bb2.j9",
+            "color": "red"
+          },
+          {
+            "id": "w14",
+            "from": "bb2.g2",
+            "to": "bb1.+2",
+            "color": "red"
+          },
+          {
+            "id": "w15",
+            "from": "bb2.a10",
+            "to": "bb3.-7",
+            "color": "black"
+          },
+          {
+            "id": "w16",
+            "from": "bb2.a2",
+            "to": "bb2.g32",
+            "color": "green"
+          },
+          {
+            "id": "w17",
+            "from": "bb2.a3",
+            "to": "bb2.g31",
+            "color": "green"
+          },
+          {
+            "id": "w18",
+            "from": "bb2.a4",
+            "to": "bb2.g30",
+            "color": "green"
+          },
+          {
+            "id": "w19",
+            "from": "bb2.a5",
+            "to": "bb2.g29",
+            "color": "green"
+          },
+          {
+            "id": "w20",
+            "from": "bb2.a6",
+            "to": "bb2.a26",
+            "color": "green"
+          },
+          {
+            "id": "w21",
+            "from": "bb2.a7",
+            "to": "bb2.a27",
+            "color": "green"
+          },
+          {
+            "id": "w22",
+            "from": "bb2.a8",
+            "to": "bb2.a28",
+            "color": "green"
+          },
+          {
+            "id": "w23",
+            "from": "bb2.a9",
+            "to": "bb2.a29",
+            "color": "green"
+          },
+          {
+            "id": "w24",
+            "from": "bb2.a30",
+            "to": "bb3.-24",
+            "color": "black"
+          },
+          {
+            "id": "w25",
+            "from": "bb2.g33",
+            "to": "bb2.f38",
+            "color": "purple"
+          },
+          {
+            "id": "w26",
+            "from": "bb2.a32",
+            "to": "bb2.f41",
+            "color": "purple"
+          },
+          {
+            "id": "w27",
+            "from": "bb2.a31",
+            "to": "bb2.f44",
+            "color": "purple"
+          },
+          {
+            "id": "w28",
+            "from": "bb2.g28",
+            "to": "bb2.f47",
+            "color": "purple"
+          },
+          {
+            "id": "w29",
+            "from": "bb2.g27",
+            "to": "bb2.f50",
+            "color": "purple"
+          }
+        ],
+        "buses": [],
+        "netNames": [],
+        "annotations": [
+          {
+            "id": "an1",
+            "kind": "label",
+            "x": -35.3,
+            "y": -16.4,
+            "text": "I0"
+          },
+          {
+            "id": "an2",
+            "kind": "label",
+            "x": -34.3,
+            "y": -18,
+            "text": "I1"
+          },
+          {
+            "id": "an3",
+            "kind": "label",
+            "x": -33.3,
+            "y": -16.4,
+            "text": "I2"
+          },
+          {
+            "id": "an4",
+            "kind": "label",
+            "x": -32.3,
+            "y": -18,
+            "text": "I3"
+          },
+          {
+            "id": "an5",
+            "kind": "label",
+            "x": -31.3,
+            "y": -16.4,
+            "text": "I4"
+          },
+          {
+            "id": "an6",
+            "kind": "label",
+            "x": -30.3,
+            "y": -18,
+            "text": "I5"
+          },
+          {
+            "id": "an7",
+            "kind": "label",
+            "x": -29.3,
+            "y": -16.4,
+            "text": "I6"
+          },
+          {
+            "id": "an8",
+            "kind": "label",
+            "x": -28.3,
+            "y": -18,
+            "text": "I7"
+          },
+          {
+            "id": "an9",
+            "kind": "label",
+            "x": -0.3,
+            "y": -16.4,
+            "text": "A0"
+          },
+          {
+            "id": "an10",
+            "kind": "label",
+            "x": 2.7,
+            "y": -16.4,
+            "text": "A1"
+          },
+          {
+            "id": "an11",
+            "kind": "label",
+            "x": 5.7,
+            "y": -16.4,
+            "text": "A2"
+          },
+          {
+            "id": "an12",
+            "kind": "label",
+            "x": 8.7,
+            "y": -16.4,
+            "text": "GS"
+          },
+          {
+            "id": "an13",
+            "kind": "label",
+            "x": 11.7,
+            "y": -16.4,
+            "text": "EO"
+          },
+          {
+            "id": "an14",
+            "kind": "label",
+            "x": -37,
+            "y": -34.8,
+            "text": "74LS148 — 8-to-3 priority encoder"
+          },
+          {
+            "id": "an15",
+            "kind": "label",
+            "x": -37,
+            "y": -33,
+            "text": "The mirror of the '138. Its inputs are",
+            "color": "#808080"
+          },
+          {
+            "id": "an16",
+            "kind": "label",
+            "x": -37,
+            "y": -31.2,
+            "text": "ACTIVE LOW, so OPENING a switch is what",
+            "color": "#808080"
+          },
+          {
+            "id": "an17",
+            "kind": "label",
+            "x": -37,
+            "y": -29.4,
+            "text": "requests that line, and the highest one",
+            "color": "#808080"
+          },
+          {
+            "id": "an18",
+            "kind": "label",
+            "x": -37,
+            "y": -27.6,
+            "text": "open wins. A0–A2 read out its number, GS",
+            "color": "#808080"
+          },
+          {
+            "id": "an19",
+            "kind": "label",
+            "x": -37,
+            "y": -25.8,
+            "text": "says something asked, EO says nothing did.",
+            "color": "#808080"
+          }
+        ],
+        "scopeChannels": [],
+        "nextBoardId": 4,
+        "nextGroupId": 2,
+        "nextComponentId": 14,
+        "nextPsuId": 2,
+        "nextClockId": 2,
+        "nextLcdId": 1,
+        "nextWireId": 30,
+        "nextBusId": 1,
+        "nextAnnotationId": 20,
+        "nextScopeChannelId": 1
+      }
+    }
+  ]
+}
