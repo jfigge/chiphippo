@@ -93,6 +93,13 @@ const DEFAULTS = Object.freeze({
   aiOpen: false,
   aiHeight: 280,
 
+  // The prompts the user has asked the AI builder for, newest first, capped at
+  // MAX_HISTORY (web/scripts/ai/prompt-history.js). Deliberately here and not
+  // in the project file: what you have asked for before is yours, not the
+  // design's, so arrowing back through it works the same in every project —
+  // including a brand-new one, where a per-project list would always be empty.
+  aiHistory: Object.freeze([]),
+
   // ── Data sheets ────────────────────────────────────────────────────────────
   // An external directory of manufacturer datasheet PDFs. When it is set and a
   // `<dir>/<partId>.pdf` exists, the pin-assignments window shows a button that

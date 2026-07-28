@@ -106,6 +106,7 @@ design.
 
 {
   "title": "8-bit adder with carry",
+  "notes": "Two 74LS283s in ripple-carry: the low nibble's C4 feeds …",
   "parts": [{ "id": "U1", "ref": "74LS283", "label": "low nibble" }],
   "nets":  [{ "name": "A0", "members": ["U1.A1", "SW1.1A"] }],
   "tests": [{ "name": "181 + 78",
@@ -121,8 +122,8 @@ design.
 * \`VCC\` and \`GND\` bind to the power rails, either as a reserved NET NAME
   (\`{ "name": "VCC", "members": [...] }\`) or as a member of a net of your own
   name (\`{ "name": "A_SRC", "members": ["SW1.1B", "VCC"] }\`). Both work.
-* An optional field (\`title\`, \`label\`, \`set\`, \`edges\`, \`tests\`) may be
-  \`null\` — the app reads null as absent.
+* An optional field (\`title\`, \`notes\`, \`label\`, \`set\`, \`edges\`,
+  \`tests\`) may be \`null\` — the app reads null as absent.
 
 # Rules the compiler enforces
 
@@ -158,6 +159,21 @@ design.
 * Rotated two-lead parts (a bare \`led\`/\`resistor\` placed at an angle) cannot
   be expressed as a netlist. Use the DIP-bodied displays (\`bar8\`, \`seg8cc\`)
   and switch banks (\`sw-dip8\`) instead.
+
+# Notes — one paragraph, written onto the desk
+
+\`notes\` is stamped above the finished circuit as a caption the user reads on
+the board, so write it for the person who is about to look at a circuit they
+did not build and cannot ask about. ONE paragraph, plain prose, no lists and
+no markdown.
+
+Say what the design DOES and why it is wired that way — the part that is not
+obvious from staring at it. Name the chips and the job each one has, say which
+pins are the inputs and what the read-out shows, and call out anything that
+would look arbitrary: an enable tied low, a carry chained between two adders,
+an output that is active-low so its lamp is wired the other way up. Do not
+describe the breadboard, the holes or the wire colours — the compiler chose
+those and the user can see them.
 
 # Tests — write them, they are run
 

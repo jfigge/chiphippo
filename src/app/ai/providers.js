@@ -85,6 +85,10 @@ const NETLIST_SCHEMA = Object.freeze({
   type: "object",
   properties: {
     title: optional({ type: "string" }),
+    // One paragraph explaining the design, stamped on the desk as a caption
+    // (autobuild.js). A generated circuit arrives with no history — the user
+    // did not build it and cannot ask it why it is wired this way.
+    notes: optional({ type: "string" }),
     parts: {
       type: "array",
       items: {
@@ -125,7 +129,7 @@ const NETLIST_SCHEMA = Object.freeze({
       },
     }),
   },
-  required: ["title", "parts", "nets", "tests"],
+  required: ["title", "notes", "parts", "nets", "tests"],
   additionalProperties: false,
 });
 

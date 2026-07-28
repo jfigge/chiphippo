@@ -544,3 +544,196 @@ test("AiPanel: a repair round says so while it is happening, not after", async (
     "the second request names itself while it is running",
   );
 });
+
+// ── Prompt history ──────────────────────────────────────────────────────────
+//
+// The state machine is proven in prompt-history.test.js. What is proven here is
+// the half that needs a real textarea: WHEN an arrow belongs to the text and
+// when it belongs to history, and where the caret lands afterwards.
+
+/** Press a key on the prompt box; returns whether the panel took the event. */
+const press = (container, key, init = {}) => {
+  const e = new window.KeyboardEvent("keydown", {
+    key,
+    bubbles: true,
+    cancelable: true,
+    ...init,
+  });
+  container.querySelector(".ai-input").dispatchEvent(e);
+  return e.defaultPrevented;
+};
+
+/** Put text in the box the way a user would, so `input` fires. */
+const type = (container, text, caret = text.length) => {
+  const box = container.querySelector(".ai-input");
+  box.value = text;
+  box.dispatchEvent(new window.Event("input", { bubbles: true }));
+  box.setSelectionRange(caret, caret);
+};
+
+const promptBox = (container) => container.querySelector(".ai-input");
+
+test("AiPanel: Up at the top of the text recalls the previous prompt", async () => {
+  resetDom();
+  stubBridge([JSON.stringify(COUNTER_SPEC), JSON.stringify(COUNTER_SPEC)]);
+  const { container } = mount();
+
+  ask(container, "a counter");
+  await settleUi();
+  ask(container, "an adder");
+  await settleUi();
+
+  const box = promptBox(container);
+  assert.equal(box.value, "", "the box was emptied by sending");
+
+  // NOTE this panel has no `onHistoryChange` — recording must not depend on
+  // anyone listening for it.
+  assert.equal(press(container, "ArrowUp"), true, "history took the key");
+  assert.equal(box.value, "an adder", "the newest prompt first");
+  assert.equal(box.selectionStart, 0, "caret at the top, ready to keep going");
+
+  press(container, "ArrowUp");
+  assert.equal(box.value, "a counter", "and back again");
+
+  press(container, "ArrowUp");
+  assert.equal(box.value, "a counter", "nothing older — the box is left alone");
+});
+
+test("AiPanel: Down walks forward and restores the unsent draft", async () => {
+  resetDom();
+  stubBridge([JSON.stringify(COUNTER_SPEC)]);
+  const { container } = mount();
+
+  ask(container, "a counter");
+  await settleUi();
+
+  const box = promptBox(container);
+  // Caret at the top — from the END, Up belongs to the text, which is the
+  // point of the rule and has its own test below.
+  type(container, "half a thought", 0);
+  press(container, "ArrowUp");
+  assert.equal(box.value, "a counter");
+  assert.equal(box.selectionStart, 0, "recalled at the top, ready for another");
+
+  // Turning round costs one press through the recalled text, exactly as the
+  // rule says it should. A real browser moves the caret to the end itself on
+  // Down at the last line; jsdom implements no caret movement for arrow keys,
+  // so the test does what the browser would.
+  assert.equal(press(container, "ArrowDown"), false, "the text takes it first");
+  const toEnd = box.value.length;
+  box.setSelectionRange(toEnd, toEnd);
+
+  assert.equal(press(container, "ArrowDown"), true, "now history takes it");
+  assert.equal(box.value, "half a thought", "the draft came back intact");
+  assert.equal(box.selectionStart, box.value.length, "caret at the bottom");
+  assert.equal(press(container, "ArrowDown"), false, "already home");
+});
+
+test("AiPanel: an arrow moves through the text before it reaches history", () => {
+  // The rule the whole feature turns on: an arrow does what an arrow does
+  // until there is nowhere left for it to go IN THE TEXT.
+  resetDom();
+  stubBridge([]);
+  const { container } = mount();
+  const box = promptBox(container);
+  box.value = "";
+  const panelHistory = ["previous ask"];
+  void panelHistory;
+
+  type(container, "line one\nline two", 3); // mid first line
+  assert.equal(press(container, "ArrowUp"), false, "not at the very start");
+  assert.equal(box.value, "line one\nline two", "the text is untouched");
+
+  box.setSelectionRange(12, 12); // mid second line
+  assert.equal(press(container, "ArrowDown"), false, "not at the very end");
+  assert.equal(box.value, "line one\nline two");
+});
+
+test("AiPanel: a selection is never an edge", () => {
+  resetDom();
+  stubBridge([]);
+  const { container, panel } = mount({ history: ["previous ask"] });
+  void panel;
+  const box = promptBox(container);
+  type(container, "some text", 0);
+  box.setSelectionRange(0, 4); // caret at 0, but something is selected
+
+  assert.equal(press(container, "ArrowUp"), false, "the textarea keeps it");
+  assert.equal(box.value, "some text");
+});
+
+test("AiPanel: a modified arrow is left to the textarea", () => {
+  resetDom();
+  stubBridge([]);
+  const { container } = mount({ history: ["previous ask"] });
+  const box = promptBox(container);
+
+  for (const mod of ["shiftKey", "altKey", "metaKey", "ctrlKey"]) {
+    box.value = "";
+    box.setSelectionRange(0, 0);
+    assert.equal(press(container, "ArrowUp", { [mod]: true }), false, mod);
+    assert.equal(box.value, "", `${mod}+Up did not recall`);
+  }
+});
+
+test("AiPanel: history is seeded from settings and survives across projects", () => {
+  // The point of storing it app-wide: a brand-new panel, with no conversation
+  // and no project behind it, can still arrow back through what was asked
+  // before.
+  resetDom();
+  stubBridge([]);
+  const { container } = mount({ history: ["an adder", "a counter"] });
+  const box = promptBox(container);
+
+  press(container, "ArrowUp");
+  assert.equal(box.value, "an adder");
+  press(container, "ArrowUp");
+  assert.equal(box.value, "a counter");
+});
+
+test("AiPanel: a sent prompt is reported for persisting, newest first", async () => {
+  resetDom();
+  stubBridge([JSON.stringify(COUNTER_SPEC)]);
+  const saved = [];
+  const { container } = mount({
+    history: ["an older ask"],
+    onHistoryChange: (entries) => saved.push(entries),
+  });
+
+  ask(container, "a counter");
+  await settleUi();
+
+  assert.equal(saved.length, 1, "reported once, on send");
+  assert.deepEqual(saved[0], ["a counter", "an older ask"]);
+});
+
+test("AiPanel: editing a recalled prompt restarts the walk", () => {
+  resetDom();
+  stubBridge([]);
+  const { container } = mount({ history: ["newest", "older"] });
+  const box = promptBox(container);
+
+  press(container, "ArrowUp");
+  assert.equal(box.value, "newest");
+  // Typing makes the text the user's own; the next Up should start over from
+  // the newest entry rather than continuing deeper into the past.
+  type(container, "newest, tweaked", 0);
+  press(container, "ArrowUp");
+  assert.equal(box.value, "newest", "back to the top of the list");
+});
+
+test("AiPanel: Clear forgets the conversation but never the prompt history", () => {
+  resetDom();
+  stubBridge([]);
+  const { container } = mount({ history: ["an earlier ask"] });
+  container
+    .querySelectorAll(".ai-btn")
+    .forEach((b) => b.textContent === "Clear" && b.click());
+
+  press(container, "ArrowUp");
+  assert.equal(
+    promptBox(container).value,
+    "an earlier ask",
+    "the history is the user's, not the conversation's",
+  );
+});

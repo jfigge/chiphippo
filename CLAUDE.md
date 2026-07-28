@@ -702,6 +702,24 @@ Electron main process (src/app/main.js)
     is PINNED by a test, not inferred. L5 settles with every clock idle-low —
     a bare `settle` leaves a clock line at `Z` and L6 would report a good
     circuit as undriven.
+  - **Every generated circuit explains itself.** The spec carries a `notes`
+    paragraph and `assemble` stamps it above the boards as a caption, in the
+    same line pitch and muted body a demo bench uses — a generated circuit and
+    a shipped demo should read the same way on the desk. A generated circuit
+    arrives with no history: the user did not build it and cannot ask it why it
+    is wired the way it is, and the model already knew, it just had nowhere to
+    say so. The caption is **anchored to the leftmost seated part**, and that
+    is load-bearing rather than decorative: `captureDesign` carries ONLY
+    anchored labels, on the rule that a free-floating one belongs to the desk
+    it was written on rather than to the design, so an unanchored note would be
+    silently dropped on the way to the ghost. `wrapText` breaks the paragraph
+    to 42 characters because a label is `white-space: nowrap` (a word longer
+    than that overflows rather than being cut — a split part number is worse
+    than a ragged edge), and the block caps at 12 lines so an essay cannot bury
+    the circuit it explains. The same paragraph is handed back on the build
+    result, so the panel can say it while the user is still deciding whether
+    to place the design. A `title` with no notes still captions the circuit
+    with one line; neither gives no caption at all.
   - **Place**: the output is a **design clip** (`designClipOf` =
     `captureDesign` with everything selected, never a second converter), handed
     to `DeskController.armGeneratedDesign` — a ghost the user positions, NOT a

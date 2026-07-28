@@ -40,6 +40,7 @@ import { el } from "../dom.js";
 import { buildRepairMessage, buildSystemPrompt } from "../ai/catalog-brief.js";
 import { buildStepsFromReply, partitionFaults } from "../ai/generate.js";
 import { addUsage, formatTotal, formatUsage } from "../ai/usage.js";
+import { PromptHistory } from "../ai/prompt-history.js";
 
 const MIN_PANEL_H = 160;
 const DEFAULT_PANEL_H = 280;
@@ -83,6 +84,11 @@ export class AiPanel {
   #onHeightChange;
   #onDesign;
   #isLocked;
+  #onHistoryChange;
+
+  // What the user has asked for before, and where they are in it. The cursor
+  // and the parked draft live in the model, not here — see prompt-history.js.
+  #past;
 
   #height = DEFAULT_PANEL_H;
   #resizeStartY = null;
@@ -132,6 +138,10 @@ export class AiPanel {
    * @param {()=>boolean} [opts.isLocked] - true while the sim is running, when
    *   the desk refuses edits and a build could not be placed anyway.
    * @param {number} [opts.height]
+   * @param {Array<string>} [opts.history] - `settings.aiHistory`, newest first.
+   *   The user's own prompt history, kept in the APP's settings rather than the
+   *   project, so it follows them across every design they open.
+   * @param {(entries:Array<string>)=>void} [opts.onHistoryChange]
    * @param {(visible:boolean)=>void} [opts.onVisibilityChange]
    * @param {(height:number)=>void} [opts.onHeightChange]
    */
@@ -142,6 +152,8 @@ export class AiPanel {
       onDesign,
       isLocked,
       height,
+      history,
+      onHistoryChange,
       onVisibilityChange,
       onHeightChange,
     } = {},
@@ -151,6 +163,8 @@ export class AiPanel {
     this.#isLocked = isLocked ?? (() => false);
     this.#onVisibilityChange = onVisibilityChange;
     this.#onHeightChange = onHeightChange;
+    this.#past = new PromptHistory(history);
+    this.#onHistoryChange = onHistoryChange;
 
     this.#buildDom();
     container.append(this.#el);
@@ -193,10 +207,16 @@ export class AiPanel {
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         this.#onSend();
+      } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
+        this.#onArrow(e);
       }
       // The desk's own shortcuts must not fire while typing into the panel.
       e.stopPropagation();
     });
+    // Any edit ends the navigation: the text on screen is now the user's, not
+    // a recalled one, so the next Up should start again from the newest entry
+    // rather than continuing from wherever they had wandered to.
+    this.#input.addEventListener("input", () => this.#past.reset());
 
     this.#send = el("button", {
       class: "ai-send",
@@ -345,6 +365,10 @@ export class AiPanel {
   #clear() {
     if (this.#requestId || this.#building) this.#cancel();
     this.#history = [];
+    // The CONVERSATION is cleared; the prompt history is not. It is the user's,
+    // spans every project, and outlives any one design — so Clear only returns
+    // the cursor home, exactly as sending does.
+    this.#past.reset();
     this.#repairs = 0;
     this.#round = "";
     this.#sendUsage = null;
@@ -396,6 +420,46 @@ export class AiPanel {
       : "Build this circuit (Enter)";
   }
 
+  // ── History ────────────────────────────────────────────────────────────────
+
+  /**
+   * Up/Down: move within the text first, recall a past prompt at the edges.
+   *
+   * The rule is the caret's position, not a mode. An arrow does what an arrow
+   * always does until there is nowhere left for it to go IN THE TEXT — caret at
+   * the very start for Up, the very end for Down — and only then does it reach
+   * for history. A browser already collapses a multi-line box to those two
+   * points (Up on the first line goes to offset 0, Down on the last to the
+   * end), so a long prompt takes one extra press to step out of, which is
+   * exactly what stops a stray arrow from wiping what you were writing.
+   *
+   * A SELECTION is never an edge: arrows collapse it, so that keystroke belongs
+   * to the textarea.
+   */
+  #onArrow(e) {
+    if (e.altKey || e.metaKey || e.ctrlKey || e.shiftKey) return;
+    const box = this.#input;
+    const { selectionStart: from, selectionEnd: to, value } = box;
+    if (from !== to) return;
+
+    const up = e.key === "ArrowUp";
+    if (up ? from !== 0 : from !== value.length) return;
+
+    const text = up ? this.#past.back(value) : this.#past.forward();
+    if (text == null) return; // nowhere further to go — leave the box alone
+    e.preventDefault();
+    box.value = text;
+    // Land the caret on the edge the user ARRIVED from, so the same key keeps
+    // walking: at the top after an Up, at the bottom after a Down. Without
+    // this, one recall would strand the caret and the next press would just
+    // move through the text it had loaded.
+    const caret = up ? 0 : text.length;
+    box.setSelectionRange(caret, caret);
+    // A recalled multi-line prompt is taller than the box; show the end the
+    // caret is on rather than whichever the browser happens to keep.
+    box.scrollTop = up ? 0 : box.scrollHeight;
+  }
+
   // ── Sending ────────────────────────────────────────────────────────────────
 
   #onSend() {
@@ -414,6 +478,15 @@ export class AiPanel {
       return;
     }
     this.#input.value = "";
+    // Remembered on SEND, which also ends any navigation in progress — so the
+    // next Up starts from this prompt rather than from wherever the user had
+    // arrowed back to. Persisted through the app's settings, not the project's.
+    //
+    // Two statements ON PURPOSE. Folded into `#onHistoryChange?.(remember(…))`
+    // the optional call short-circuits WITHOUT EVALUATING ITS ARGUMENT, so a
+    // panel nobody is listening to would quietly stop recording anything.
+    const entries = this.#past.remember(prompt);
+    this.#onHistoryChange?.(entries);
     this.#repairs = 0;
     this.#round = "";
     this.#sendUsage = null;
@@ -644,6 +717,10 @@ export class AiPanel {
       summary,
       built.results.map((r) => `${r.ok ? "✓" : "✗"} ${r.name}`),
     );
+    // The design's own explanation, at the moment the user is deciding whether
+    // to place it. The same paragraph rides onto the desk as a caption, so it
+    // is still there long after this conversation is gone.
+    if (built.notes) this.#say("note", built.notes);
     if (built.warnings.length) {
       this.#sayList(
         "note",

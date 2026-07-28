@@ -662,8 +662,14 @@ async function init() {
   const aiPanel = new AiPanel(app, {
     config: () => currentSettings.ai ?? {},
     height: settings.aiHeight,
+    history: settings.aiHistory,
     isLocked: () => transportMode !== "stopped",
     onDesign: (clip) => controller?.armGeneratedDesign(clip),
+    onHistoryChange: (entries) => {
+      bridge.settings
+        .set({ aiHistory: entries })
+        .catch((err) => console.error("[renderer] settings:set failed:", err));
+    },
     onVisibilityChange: (visible) => {
       aiBtn?.classList.toggle("toolbar-btn--active", visible);
       aiBtn?.setAttribute("aria-pressed", String(visible));

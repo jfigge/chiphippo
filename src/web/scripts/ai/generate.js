@@ -215,6 +215,10 @@ export function* buildStepsFromSpec(spec) {
     warnings: compiled.warnings ?? [],
     results: verdict.results ?? [],
     title: typeof spec.title === "string" ? spec.title : "",
+    // Also stamped on the desk as a caption (autobuild.js); handed back here so
+    // the panel can say it at the moment the design is offered, when the user
+    // is deciding whether to place it at all.
+    notes: typeof spec.notes === "string" ? spec.notes : "",
   };
 }
 

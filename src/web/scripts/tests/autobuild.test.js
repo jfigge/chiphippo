@@ -36,7 +36,7 @@ import { partPinAddresses } from "../model/occupancy.js";
 import { holePosition, nodeOf, parseAddress } from "../model/breadboard.js";
 import { partDef } from "../catalog/index.js";
 import { wireCrossings } from "../model/wire-crossing.js";
-import { compileNetlist } from "../model/autobuild.js";
+import { compileNetlist, designClipOf, wrapText } from "../model/autobuild.js";
 
 // ── Specs ───────────────────────────────────────────────────────────────────
 
@@ -1069,4 +1069,105 @@ test("a board nothing landed on is given back, not shipped empty", () => {
       );
     }
   }
+});
+
+// ── The design's own note ───────────────────────────────────────────────────
+
+test("wrapText breaks a paragraph to the caption width", () => {
+  // A label is `white-space: nowrap`, so what is written is what is drawn — a
+  // paragraph handed over whole runs off the desk in a single line.
+  const lines = wrapText("the quick brown fox jumps over the lazy dog", 12);
+  assert.deepEqual(lines, [
+    "the quick",
+    "brown fox",
+    "jumps over",
+    "the lazy dog",
+  ]);
+  for (const line of lines) assert.ok(line.length <= 12, line);
+  assert.deepEqual(wrapText("", 12), [], "nothing to wrap");
+  assert.deepEqual(wrapText(null, 12), []);
+  assert.deepEqual(wrapText("  spaced   out  ", 20), ["spaced out"]);
+  // A word longer than the width overflows rather than being cut in half: a
+  // part number split down the middle is worse than a ragged edge.
+  assert.deepEqual(wrapText("a 74LS283ABCDEFGH b", 8), [
+    "a",
+    "74LS283ABCDEFGH",
+    "b",
+  ]);
+});
+
+test("a spec's notes become a caption above the circuit", () => {
+  const notes =
+    "A 74LS161 free-runs from the clock brick with clear, load and both " +
+    "count enables tied high, so it counts continuously.";
+  const { doc } = build({ ...COUNTER_SPEC, notes });
+  const caption = doc.annotations;
+  assert.ok(caption.length > 1, "a title line and a wrapped body");
+  assert.equal(caption[0].text, COUNTER_SPEC.title, "the title leads");
+  assert.equal(caption[0].color, undefined, "in the desk's own colour");
+  assert.ok(
+    caption.slice(1).every((a) => a.color),
+    "the body is muted, so the block reads as a caption",
+  );
+  // Reassembling the body must give the paragraph back — a caption that drops
+  // or reorders a line is worse than no caption.
+  assert.equal(
+    caption
+      .slice(1)
+      .map((a) => a.text)
+      .join(" "),
+    notes,
+  );
+  // Above the boards, and in reading order down the page.
+  const ys = caption.map((a) => a.y);
+  assert.ok(
+    ys.every((y) => y < Math.min(...doc.boards.map((b) => b.y))),
+    "clear of the top rail",
+  );
+  assert.deepEqual(
+    ys,
+    [...ys].sort((a, b) => a - b),
+    "top to bottom",
+  );
+});
+
+test("the note is ANCHORED, which is the only way it rides the design", () => {
+  // `captureDesign` carries only anchored labels — a free-floating one belongs
+  // to the desk it was written on, not to the design. A note explaining THIS
+  // circuit is the design's, so it has to be pinned to a part of it.
+  const { out, doc } = build({ ...COUNTER_SPEC, notes: "Counts up." });
+  const seated = new Set(
+    doc.components.filter((c) => c.board).map((c) => c.id),
+  );
+  assert.ok(doc.annotations.length, "there is a caption at all");
+  for (const a of doc.annotations) {
+    assert.ok(seated.has(a.anchor), `${a.id} is pinned to a seated part`);
+  }
+  const clip = designClipOf(doc);
+  assert.equal(
+    clip.annotations.length,
+    doc.annotations.length,
+    "and the whole caption rides the clip onto the desk",
+  );
+  void out;
+});
+
+test("a title alone still names the circuit; nothing at all says nothing", () => {
+  const titled = build(COUNTER_SPEC).doc.annotations;
+  assert.equal(titled.length, 1, "just the heading");
+  assert.equal(titled[0].text, COUNTER_SPEC.title);
+
+  const { title, ...untitled } = COUNTER_SPEC;
+  void title;
+  assert.deepEqual(
+    build(untitled).doc.annotations,
+    [],
+    "a spec with neither gets no caption rather than an empty one",
+  );
+
+  // The prompt asks for one paragraph. If it gets an essay, the caption is
+  // capped rather than covering the circuit it is meant to explain.
+  const essay = "word ".repeat(600);
+  const { doc } = build({ ...COUNTER_SPEC, notes: essay });
+  assert.ok(doc.annotations.length <= 12, `${doc.annotations.length} lines`);
 });

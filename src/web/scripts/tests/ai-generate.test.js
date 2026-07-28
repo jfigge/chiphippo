@@ -269,6 +269,8 @@ test("the system prompt states the rules the compiler actually enforces", () => 
   // switched enable leaves the outputs at Z and L6 rejects the design, and the
   // flipped LED is how all 52 benches read an active-low output.
   assert.match(prompt, /ACTIVE-LOW output gets its LED the other way up/);
+  // The note is written for someone looking at a circuit they did not build.
+  assert.match(prompt, /ONE paragraph, plain prose/);
   // Tri-state: the card MARKS every output enable and the legend explains it,
   // because nothing in a pin's name ("1G", "OE", "M") says active-low and a
   // part whose enable is left out comes up driving nothing at all.
@@ -334,4 +336,23 @@ test("a reply that will not parse yields nothing before it gives up", () => {
   assert.equal(first.done, true, "it refuses before any work is announced");
   assert.equal(first.value.ok, false);
   assert.equal(first.value.faults[0].code, "NOT_JSON");
+});
+
+test("the design's own explanation reaches the caller as well as the desk", () => {
+  // Two audiences for one paragraph: the panel says it while the user decides
+  // whether to place the design, and the desk keeps it long after the
+  // conversation is gone.
+  const notes = "A 74LS161 free-runs from the clock and drives the bar.";
+  const built = buildFromSpec({ ...COUNTER_SPEC, notes });
+  assert.equal(built.ok, true);
+  assert.equal(built.notes, notes, "handed back for the panel");
+  assert.ok(
+    built.document.annotations.some((a) => notes.startsWith(a.text)),
+    "and stamped on the desk",
+  );
+  assert.equal(
+    buildFromSpec(COUNTER_SPEC).notes,
+    "",
+    "a spec without one reports no note rather than undefined",
+  );
 });

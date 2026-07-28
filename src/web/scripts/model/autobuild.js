@@ -80,7 +80,42 @@ const err = (code, message, extra = {}) => ({
 export function compileNetlist(spec) {
   const resolved = resolveSpec(spec);
   if (!resolved.ok) return resolved;
-  return assemble(resolved, spec?.title);
+  return assemble(resolved, spec?.title, spec?.notes);
+}
+
+// The design's own caption, above the boards. Matches the pitch and the muted
+// body the demo benches use (scripts/demo-bench.mjs), because a generated
+// circuit and a shipped demo should read the same way on the desk.
+const CAPTION_LINE = 1.8; // vertical pitch between caption lines
+const CAPTION_BOTTOM = -2; // the last line sits just above the top rail
+const CAPTION_WIDTH = 42; // characters; a label is nowrap, so this is the wrap
+const CAPTION_MAX = 12; // lines, so a runaway note cannot bury the desk
+const CAPTION_MUTED = "#808080";
+
+/**
+ * Break a paragraph into lines of at most `width` characters.
+ *
+ * An annotation is `white-space: nowrap` — what is written is what is drawn —
+ * so a paragraph handed over whole would run off the desk in one line. A word
+ * longer than the width overflows its own line rather than being cut: a part
+ * number split down the middle is worse than a ragged edge.
+ */
+export function wrapText(text, width = CAPTION_WIDTH) {
+  const words = String(text ?? "")
+    .split(/\s+/)
+    .filter(Boolean);
+  const lines = [];
+  let line = "";
+  for (const word of words) {
+    if (line && line.length + 1 + word.length > width) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = line ? `${line} ${word}` : word;
+    }
+  }
+  if (line) lines.push(line);
+  return lines;
 }
 
 // ── Resolve: the spec's own semantics (L1) ──────────────────────────────────
@@ -478,7 +513,7 @@ function commonLeg(def) {
   return null;
 }
 
-function assemble(resolved, title) {
+function assemble(resolved, title, notes) {
   const { parts, nets } = resolved;
   const warnings = [];
 
@@ -1195,6 +1230,48 @@ function assemble(resolved, title) {
     });
   }
 
+  // ── The design's own note, written on the desk above it.
+  //
+  // A generated circuit arrives with no history: the user did not build it and
+  // cannot ask it why it is wired the way it is. The model already knows —
+  // it just had nowhere to say so. So the spec carries a paragraph and it is
+  // stamped where a demo bench puts its caption, in the same pitch and the same
+  // muted body, because a generated circuit and a shipped demo should read the
+  // same way.
+  //
+  // ANCHORED to a seated part, and that is not decoration: `captureDesign`
+  // carries only anchored labels, on the rule that a free-floating one belongs
+  // to the desk it was written on rather than to the design. A note explaining
+  // THIS circuit is the design's, so it has to ride a part of it — the leftmost
+  // one, which puts the caption over the design's own left edge and keeps it
+  // there if the part is later moved.
+  const annotations = [];
+  const leftmost = [...seatOf.values()].sort(
+    (a, b) =>
+      (worldOf(`${a.boardId}.${a.anchor}`)?.x ?? 0) -
+      (worldOf(`${b.boardId}.${b.anchor}`)?.x ?? 0),
+  )[0];
+  const caption = [...(title ? [String(title)] : []), ...wrapText(notes)].slice(
+    0,
+    CAPTION_MAX,
+  );
+  if (leftmost && caption.length) {
+    const left = Math.min(...boards.map((b) => b.x));
+    caption.forEach((line, i) => {
+      annotations.push({
+        id: `an${i + 1}`,
+        kind: "label",
+        x: left,
+        y: CAPTION_BOTTOM - (caption.length - i) * CAPTION_LINE,
+        text: line,
+        anchor: leftmost.compId,
+        // The title keeps the desk's text colour; the body is muted, so the
+        // block reads as a caption rather than as part of the circuit.
+        ...(i === 0 && title ? {} : { color: CAPTION_MUTED }),
+      });
+    });
+  }
+
   return {
     ok: true,
     document: {
@@ -1205,7 +1282,7 @@ function assemble(resolved, title) {
       wires,
       buses: [],
       netNames: [],
-      annotations: [],
+      annotations,
     },
     warnings,
     interposed: interposed.map((i) => i.resistor.id),
