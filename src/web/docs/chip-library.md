@@ -147,6 +147,43 @@ its top-right corner; clicking it opens the PDF itself in your system's PDF
 viewer. This is independent of the built-in datasheet crop — you may have
 one, both, or neither for any given chip.
 
+## Example circuits
+
+A pin map tells you where the pins are; it doesn't show you the part working.
+So every 74xx chip in the catalog ships with a **worked example** — a small
+bench built around that one part — and the pin-assignments window is where you
+reach it. Look for the **circuit button** in the window's top-right corner,
+beside the datasheet one.
+
+Click it and the example arrives as a **new desktop** in the open project,
+called `74LS138 example` (or whichever part it is), already framed on screen.
+Every one is the same bench, so once you can read one you can read them all:
+
+- a **5 V brick** feeding both power rails, and a **clock** for the clocked
+  parts;
+- **switched inputs** on the left, each throwing between +5 V and a pull-down
+  so an input is never left floating — a part with more inputs than will fit
+  gets a DIP switch bank over a resistor network instead;
+- the **chip under test** in the middle, straddling the trench;
+- **LED read-outs** on the right, one per output, through its own resistor. An
+  active-LOW output has its LED wired the other way up, so a lit lamp always
+  means *this output is asserted*;
+- a **caption** above the bench saying what the demo shows.
+
+Press **Run** (Space) and flip the switches. Each example opens in a state
+chosen to show the part doing something.
+
+A few practical notes:
+
+- It's an ordinary desktop and an ordinary unsaved change — nothing is written
+  until you save, and you can rename it, edit it, or delete it like any other.
+- Asking for the same example twice doesn't make a second copy; you land back
+  on the desktop you already have.
+- Adding it stops a running simulation, exactly as switching desktops does.
+- Parts with no bench have no button: the memory and interface chips (a RAM or
+  a CPU can't be demonstrated by flipping switches at it — those are the
+  computer demos, which need a program), and every discrete, brick and wire.
+
 ## Datasheets
 
 The datasheet crops shown in the pin-assignments window are committed image

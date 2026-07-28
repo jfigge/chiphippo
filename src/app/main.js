@@ -618,8 +618,9 @@ function openPinoutWindow(ref, opts = {}) {
     fullscreenable: false,
     webPreferences: {
       // The pinout page is otherwise bridge-free, but it needs the narrow
-      // window.chiphippo surface to open a part's external datasheet PDF
-      // (datasheet:open) when the user has a datasheet folder configured.
+      // window.chiphippo surface for its two header buttons: opening a part's
+      // external datasheet PDF (datasheet:open) when the user has a datasheet
+      // folder configured, and importing its example circuit (demo:open).
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
@@ -628,10 +629,16 @@ function openPinoutWindow(ref, opts = {}) {
   });
   win.setMenuBarVisibility(false);
   // When the user's datasheet folder holds a `<ref>.pdf`, tell the page to show
-  // the "open datasheet" button (it invokes datasheet:open back into main).
+  // the "open datasheet" button (it invokes datasheet:open back into main); and
+  // when this part has a bundled example circuit, the button that imports it.
+  // Both are settled HERE, once, because the window is cached per ref — for the
+  // PDF that means a datasheet folder changed mid-session leaves an open window
+  // stale, but the example flag cannot go stale at all: web/demos/ is inside the
+  // app bundle and does not change while the app runs.
   const query = { ref };
   if (opts.kind === "wire") query.kind = "wire";
   if (datasheetPdfPath(ref)) query.pdf = "1";
+  if (demoDocPath(ref)) query.demo = "1";
   // The part's placed rotation, a snapshot as of THIS open — only an
   // oscillator can's pinout is rotation-dependent (pinout.js/chip-pinout.js
   // ignore it otherwise), but main has no catalog access to gate on that here.
@@ -645,6 +652,67 @@ function openPinoutWindow(ref, opts = {}) {
     if (pinoutWindows.get(ref) === win) pinoutWindows.delete(ref);
   });
   pinoutWindows.set(ref, win);
+  return true;
+}
+
+// ─── Example circuits (Feature 270) ───────────────────────────────────────────
+// `make demos` builds a demonstration bench for every benchable 74xx part and
+// ships one document per part as web/demos/<ref>.json — the SAME desktop the
+// group project in demos/ holds, written in the same pass. A pin-assignments
+// window offers to open its part's example as a desktop of its own.
+//
+// TWO channels, because there are two windows and only one of them can use the
+// bytes. A PINOUT window has a ref and nothing else — no project, no desk — so
+// it asks (`demo:open`) and main RELAYS the request to the app window, the way
+// a memory inspector reaches its host below. The APP window then READS the
+// document (`demo:read`) itself. So the document crosses the bridge exactly
+// once, into the window that is going to hold it.
+const DEMOS_DIR = path.join(__dirname, "..", "web", "demos");
+
+/**
+ * Absolute path to a part's bundled example circuit, or null when it has none —
+ * the Memory/Interface chips (a RAM or a CPU cannot be demonstrated by flipping
+ * switches at it), every discrete, every brick, and a wire. Two layers of
+ * validation as `readDocsPage` has: the ref pattern forbids a dot or a
+ * separator outright, AND the resolved path is proved to be inside DEMOS_DIR.
+ */
+function demoDocPath(ref) {
+  if (typeof ref !== "string" || !PINOUT_REF_RE.test(ref)) return null;
+  const file = path.join(DEMOS_DIR, `${ref}.json`);
+  if (path.relative(DEMOS_DIR, file).startsWith("..")) return null;
+  return safeCall("demo:exists", () => fs.existsSync(file), false)
+    ? file
+    : null;
+}
+
+/**
+ * One example circuit's payload (`{ ref, title, doc }`), or null when the part
+ * has none. The document is handed over VERBATIM: it is first-party, built by
+ * the same tree that ships it, and main deliberately keeps its document
+ * knowledge to migrations.js and project-images.js — the renderer canonicalizes
+ * it through DeskDoc on the way in, exactly as it does every desktop that
+ * arrives from a file. A corrupt file throws, which reaches the renderer as a
+ * rejected invoke and is reported there.
+ */
+async function readDemoDoc(ref) {
+  const file = demoDocPath(ref);
+  if (!file) return null;
+  return JSON.parse(await fs.promises.readFile(file, "utf8"));
+}
+
+/**
+ * A pinout window asking for its part's example. Main answers only "yes, that
+ * exists" and pushes the ref to the app window; it never carries the document.
+ * The app window is raised first — the click came from a small, always-on-top
+ * reference window sitting over the very desk the new desktop appears on.
+ */
+function requestDemoImport(ref) {
+  if (!demoDocPath(ref)) return false;
+  if (!mainWindow || mainWindow.isDestroyed()) return false;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+  sendToMain("demo:host-inbound", { ref });
   return true;
 }
 
@@ -1457,6 +1525,13 @@ function registerIpc() {
   // Data Sheets) in the OS PDF viewer. Requested by the pinout window's
   // "open datasheet" button; a no-op (returns false) when no PDF is on file.
   ipcMain.handle("datasheet:open", (_event, ref) => openDatasheetPdf(ref));
+
+  // Example circuits (Feature 270). `demo:open` is the PINOUT window's — it has
+  // only a ref, so main relays the request to the app window; `demo:read` is the
+  // APP window's, handing over the document it is about to make a desktop of.
+  // Split so the bytes cross the bridge once, into the window that uses them.
+  ipcMain.handle("demo:open", (_event, ref) => requestDemoImport(ref));
+  ipcMain.handle("demo:read", (_event, ref) => readDemoDoc(ref));
 
   // User guide (Feature 230): the docs window fetches one Markdown page's raw
   // source at a time by slug — never the filesystem path, never fetch().

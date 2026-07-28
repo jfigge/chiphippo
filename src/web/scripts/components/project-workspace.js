@@ -131,6 +131,7 @@ export class ProjectWorkspace {
   #state = new Map(); // tabId → { history, camera }
   #saved = null; // the signature of the project as its file holds it
   #locked = false; // editing frozen (the circuit is running)
+  #examples = new Map(); // ref → the in-flight openExample promise
 
   /**
    * Read the project this session opens with, BEFORE the desk is built — so
@@ -487,6 +488,91 @@ export class ProjectWorkspace {
     this.#loadActive();
     this.#renderTabs();
     this.#announce();
+  }
+
+  /**
+   * Put a part's EXAMPLE CIRCUIT on the desk as a desktop of its own — the
+   * demonstration bench `make demos` builds for every benchable 74xx part,
+   * asked for from that part's pin-assignments window (which has a ref and
+   * nothing else, so the request reaches here through main).
+   *
+   * It arrives the way an IMPORT does — an addition, landing on the new desk,
+   * with its ROM guids reseated — with ONE difference: an example is a fixed,
+   * named thing rather than a file the user chose, so asking for the same one
+   * twice does not make a second copy; the desktop already holding it is put
+   * back on the desk instead. The NAME is the whole identity test, which is
+   * also its cost: rename the tab and the next ask brings a fresh one. That is
+   * the honest answer, since the project schema keeps no per-tab marker a
+   * rename could not erase.
+   *
+   * The caller FRAMES it (app.js's `fitActiveView`), because framing follows
+   * the active view and the workspace has no opinion about which one is on
+   * screen. Which is also why the answer is three-valued: framing a brand-new
+   * desk is help, and re-framing one the user has already arranged is not.
+   *
+   * @param {string} ref - a catalog id ("74LS00").
+   * @returns {Promise<"added"|"switched"|null>} null when it could not (already
+   *   reported to the user).
+   */
+  openExample(ref) {
+    if (!this.#project || typeof ref !== "string" || !ref) {
+      return Promise.resolve(null);
+    }
+    // A double-click on the pinout window's button is TWO relays, and both
+    // calls would look for an existing tab before either had added one. So the
+    // second joins the first rather than racing it — the check and the insert
+    // are separated by awaits, which is exactly where a duplicate gets in.
+    const inFlight = this.#examples.get(ref);
+    if (inFlight) return inFlight;
+    const run = this.#addExample(ref).finally(() => this.#examples.delete(ref));
+    this.#examples.set(ref, run);
+    return run;
+  }
+
+  async #addExample(ref) {
+    const name = `${ref} example`;
+    const open = this.#project.tabs.find((tab) => tab.name === name);
+    if (open) {
+      await this.selectTab(open.id); // a no-op when it is already on the desk
+      return "switched";
+    }
+    const failed = (err) => {
+      this.#fail(`Could not open the ${ref} example`, err);
+      return null;
+    };
+    let demo;
+    try {
+      demo = await this.#bridge.demo?.read?.(ref);
+    } catch (err) {
+      return failed(err);
+    }
+    if (!demo?.doc) {
+      return failed(new Error("no example circuit is bundled for that part"));
+    }
+    // A COPIED desktop is reseated, with no exception. No shipped example
+    // carries a memory chip today (the Memory and Interface groups have no
+    // bench), but "two chips can never share a ROM guid" is a rule that must
+    // not have a door in it — opening the same example twice would walk
+    // straight through one.
+    let doc;
+    try {
+      doc = (await this.#bridge.desktop.duplicate(demo.doc))?.doc;
+    } catch (err) {
+      return failed(err);
+    }
+    if (!doc) return failed(new Error("the example could not be prepared"));
+    this.#stash();
+    const next = importDesktop(this.#project, {
+      name,
+      description: demo.title ?? "",
+      doc: canonical(doc),
+    });
+    await this.#leaveActiveDesk();
+    this.#project = next.meta;
+    this.#loadActive();
+    this.#renderTabs();
+    this.#announce();
+    return "added";
   }
 
   /**

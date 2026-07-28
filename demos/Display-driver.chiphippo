@@ -15,24 +15,24 @@
           {
             "id": "bb1",
             "type": "rail-full",
-            "x": -37,
-            "y": -14,
+            "x": -32,
+            "y": -7,
             "rot": 0,
             "group": "g1"
           },
           {
             "id": "bb2",
             "type": "pins-full",
-            "x": -37,
-            "y": -11,
+            "x": -32,
+            "y": -4,
             "rot": 0,
             "group": "g1"
           },
           {
             "id": "bb3",
             "type": "rail-full",
-            "x": -37,
-            "y": 2,
+            "x": -32,
+            "y": 9,
             "rot": 0,
             "group": "g1"
           }
@@ -42,8 +42,8 @@
             "id": "psu1",
             "kind": "psu",
             "ref": "psu",
-            "x": -36,
-            "y": -23,
+            "x": -31,
+            "y": -16,
             "params": {
               "volts": 5
             }
@@ -338,67 +338,67 @@
           {
             "id": "an1",
             "kind": "label",
-            "x": -34.3,
-            "y": -16.4,
+            "x": -29.299999999999997,
+            "y": -9.399999999999999,
             "text": "A"
           },
           {
             "id": "an2",
             "kind": "label",
-            "x": -28.3,
-            "y": -16.4,
+            "x": -23.3,
+            "y": -9.399999999999999,
             "text": "B"
           },
           {
             "id": "an3",
             "kind": "label",
-            "x": -22.3,
-            "y": -16.4,
+            "x": -17.3,
+            "y": -9.399999999999999,
             "text": "C"
           },
           {
             "id": "an4",
             "kind": "label",
-            "x": -16.3,
-            "y": -16.4,
+            "x": -11.3,
+            "y": -9.399999999999999,
             "text": "D"
           },
           {
             "id": "an5",
             "kind": "label",
-            "x": -37,
-            "y": -33,
+            "x": -32,
+            "y": -26,
             "text": "74LS47 — BCD to 7-segment decoder"
           },
           {
             "id": "an6",
             "kind": "label",
-            "x": -37,
-            "y": -31.2,
+            "x": -32,
+            "y": -24.2,
             "text": "Switches A–D set a BCD digit. The seven",
             "color": "#808080"
           },
           {
             "id": "an7",
             "kind": "label",
-            "x": -37,
-            "y": -29.4,
+            "x": -32,
+            "y": -22.4,
             "text": "active-LOW outputs SINK the segments of",
             "color": "#808080"
           },
           {
             "id": "an8",
             "kind": "label",
-            "x": -37,
-            "y": -27.6,
+            "x": -32,
+            "y": -20.6,
             "text": "a common-anode display; LT, BI and RBI",
             "color": "#808080"
           },
           {
             "id": "an9",
             "kind": "label",
-            "x": -37,
-            "y": -25.8,
+            "x": -32,
+            "y": -18.8,
             "text": "are tied HIGH (all inactive).",
             "color": "#808080"
           }

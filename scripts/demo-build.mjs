@@ -34,7 +34,11 @@
 // index it, so a spec never has to know which physical part a bit landed on.
 
 import { Bench, LAYOUT } from "./demo-bench.mjs";
-import { normalizeDocument } from "../src/web/scripts/model/desk-doc.js";
+import {
+  DeskDoc,
+  normalizeDocument,
+} from "../src/web/scripts/model/desk-doc.js";
+import { deskBounds } from "../src/web/scripts/model/part-geometry.js";
 import {
   canPlacePart,
   partPinAddresses,
@@ -215,10 +219,34 @@ export function buildDemo(spec) {
   b.caption(spec.note);
 
   // Validate what the APP will load, not what the builder happened to emit.
-  const doc = normalizeDocument(b.document());
+  const doc = centreDocument(normalizeDocument(b.document()));
   assertClean(b.document(), doc, spec.ref);
   assertPlaceable(doc, spec.ref);
   return { spec, doc, chipId: chip.id, switches, bank, leds, display, labels, defaults }; // prettier-ignore
+}
+
+/**
+ * Slide a finished bench so it straddles the origin — the SAME rigid move
+ * fit-to-screen makes (`DeskDoc.translateAll` over `deskBounds`), applied ONCE
+ * here so the app never has to make it. A demo opened as an example desktop is
+ * framed by a plain camera fit: the recentre half of ⌘F finds a zero delta and
+ * returns without emitting, so nothing lands on the undo stack of a desk the
+ * user has not touched yet. The bench is a fixed frame, so this is the same
+ * delta for every spec — but it is DERIVED, not hardcoded, so a layout change
+ * cannot quietly leave the demos off-centre.
+ *
+ * Rigid, so it can neither drop an entity nor illegalise a placement: the two
+ * assertions below stay exactly as meaningful over the centred document.
+ */
+function centreDocument(doc) {
+  const bounds = deskBounds(doc.boards, doc.components, doc.wires);
+  if (!bounds) return doc;
+  const deskDoc = new DeskDoc(doc);
+  deskDoc.translateAll(
+    -(bounds.minX + bounds.maxX) / 2,
+    -(bounds.minY + bounds.maxY) / 2,
+  );
+  return deskDoc.toJSON();
 }
 
 /** The loader must keep every entity — a dropped one is a silent dead wire. */

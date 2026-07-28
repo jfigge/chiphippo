@@ -123,7 +123,10 @@ circuit and get a wired, SIMULATION-PROVEN design, on the user's own
 cannot get geometry wrong in; a pure compiler places, routes, and proves it
 through the real engine, and only then arms it as a placement ghost. See the
 "AI circuit builder" architecture note below; step 15, refactoring `make demos`
-onto `model/autobuild.js`, is still open).
+onto `model/autobuild.js`, is still open — note it now has `centreDocument` and
+a second output to honour); and **example circuits** (270) — every benchable
+74xx part's demonstration bench shipped inside the app and offered as a button
+on that part's pin-assignments window, landing as a `<ref> example` desktop.
 When a stage is finished, move its plan file into `features/done/`.
 
 ## Naming & identity
@@ -581,7 +584,10 @@ Electron main process (src/app/main.js)
   is why they live on the `+` and not in a tab's own menu; both are additions
   that land on the new desk (an import can no more replace what is on screen
   than a new desktop can), and both mirror the Desktop menu's leading pair, so
-  the wordings must stay in step.
+  the wordings must stay in step. A THIRD way arrives with Feature 270 and
+  deliberately does NOT live on the `+`: a chip's **example circuit** belongs to
+  a PART, not to the tab strip, so it is a button on that part's
+  pin-assignments window.
   **v3 → v4** (`project-migrate.js`): a project that listed desktop PATHS has
   them inlined on read, NON-DESTRUCTIVELY — a desktop file the user saved
   somewhere of their own is read and left exactly where it is. A tab whose file
@@ -1103,8 +1109,10 @@ Electron main process (src/app/main.js)
   `window-state.js`; `viewport` via the renderer's debounced save).
 - **Pin-assignments window** (Feature 100): **Pin Assignment**, the item
   leading every part's context menu (`DeskController.#onPartContextMenu` →
-  `#onOpenPinout(ref, rows, rot)` — read-only, so it's offered even while the
-  circuit runs), invokes `pinout:open`, and main opens a **separate floating
+  `#onOpenPinout(ref, rows, rot)` — offered even while the circuit runs; the
+  pin map itself is read-only, though the **example-circuit button** below is
+  not: it adds a desktop, which stops the run exactly as switching tabs does),
+  invokes `pinout:open`, and main opens a **separate floating
   OS window**
   (`web/pinout.html` → `scripts/pinout.js`, rendering
   `components/chip-pinout.js` `buildPartPinout`). One builder per catalog shape:
@@ -1128,8 +1136,52 @@ Electron main process (src/app/main.js)
   `datasheetButton`, wired in `pinout.js`) that invokes `datasheet:open` →
   `shell.openPath` to open the PDF in the OS viewer. This external-PDF path is
   independent of the committed PNG crop above — either, both, or neither may be
-  present. It is the ONE reason the otherwise bridge-free pinout window loads
+  present. Beside it sits the **example-circuit button** (`exampleButton`,
+  shown when main flags `?demo=1`) — see "Example circuits" below. The two
+  buttons are one box with two glyphs (`.pinout-header-btn`, one CSS rule), and
+  they are the only two reasons the otherwise bridge-free pinout window loads
   `preload.js`.
+- **Example circuits** (Feature 270): every benchable 74xx part's demonstration
+  bench, shipped INSIDE the app as `src/web/demos/<ref>.json` and offered as a
+  button on that part's pin-assignments window. **One build, two outputs**:
+  `make-gate-demos.mjs` writes each desktop into its group project
+  (`demos/<Group>.chiphippo`) AND on its own into `src/web/demos/`, from the
+  SAME `buildDemo(spec)` call — so the copies cannot drift, and
+  `gate-demos.test.js` holds them to byte-for-byte agreement. Minified (nobody
+  reads that one) and pre-**CENTRED** on the origin by `demo-build.mjs`'s
+  `centreDocument`, which is load-bearing rather than tidy: `fitToScreen`
+  RECENTRES as well as frames, so an uncentred example would put a "recentre
+  desk" undo step at the top of a brand-new desk's history and the user's first
+  ⌘Z would slide the circuit off-centre. Centred, the fit finds a zero delta,
+  returns before `#emitDocChanged`, and is pure camera. The directory is
+  **SWEPT** every run: a chip dropped from the catalog must not leave a
+  document behind that still puts a button on a pinout window. Per-chip rather
+  than per-group because it makes "does this part have an example?" an
+  `fs.existsSync` — main answers it with no catalog knowledge and no JSON
+  parse, so its document knowledge stays the two narrow places it already was.
+  **TWO channels, because there are two windows and only one can use the
+  bytes**: a PINOUT window has a ref and nothing else, so it asks (`demo:open`)
+  and main RELAYS `demo:host-inbound` to the app window (the memory
+  inspector's host pipe, one step simpler) after raising it — the window is
+  `alwaysOnTop`, so an unraised desk would land behind the click; the APP
+  window then READS the document (`demo:read`) itself, so it crosses the bridge
+  once, into the window that will hold it. `ProjectWorkspace.openExample(ref)`
+  is `importTab` with the file picker swapped for that read: an ADDITION,
+  reseated through `desktop.duplicate` (no shipped example carries a ROM today,
+  but "two chips can never share a guid" must not have a door in it), landing
+  as `<ref> example`. Asking twice **switches** to the desktop already holding
+  it rather than copying it — the tab NAME is the whole identity test, which is
+  also its cost: rename it and the next ask brings a fresh one, the honest
+  answer since the v4 schema keeps no per-tab marker a rename could not erase.
+  An in-flight map keyed by ref makes a double-click ONE desktop (the name
+  check and the insert are separated by awaits, which is exactly where a
+  duplicate gets in). The answer is three-valued (`"added"`/`"switched"`/null)
+  because `app.js` frames it with `fitActiveView` — framing a brand-new desk is
+  help, re-framing one the user has arranged is interference. Memory/Interface
+  chips get no example and therefore no button: a RAM or a CPU cannot be
+  demonstrated by flipping switches at it, and the 65xx demos are excluded for
+  a sharper reason still — their program lives in a separate `.hex`, so the
+  document alone would arrive not working.
 
 - The main process owns all filesystem and native I/O. The renderer is sandboxed
   (`contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`) and
@@ -1164,6 +1216,7 @@ make lint      # Lint JS via ESLint
 make test      # License-header guard + Node unit tests (node --test)
 make icons     # Regenerate app-icon rasters from the SVG sources (see below)
 make datasheets # Regenerate the pinout-window datasheet crops (see below)
+make demos     # Regenerate + engine-validate demos/ AND src/web/demos/ (see below)
 make build     # Build the Electron app for macOS (dir only, unsigned)
 make dmg       # Build an unsigned macOS .dmg (bare `make` default)
 make clean     # Remove build/ and dist/

@@ -18,18 +18,45 @@
 // (web/pinout.html). Reads the part ref from the query string, renders its
 // pin/terminal map via the shared buildPartPinout (chip / discrete / brick),
 // and titles the window. A sandboxed reference view with no electrical logic
-// and no writes; its ONE bridge use is the optional "open datasheet PDF"
-// header button (shown when main flags ?pdf=1 because the user's datasheet
-// folder holds a <ref>.pdf), which calls window.chiphippo.openDatasheet. Main
-// owns the window itself (float-above default + the right-click toggle).
+// and no writes. Its TWO bridge uses are both optional header buttons, each
+// flagged by main on the query string because only main can see the file
+// behind it: "open datasheet PDF" (?pdf=1 — the user's datasheet folder holds
+// a <ref>.pdf) calls window.chiphippo.openDatasheet, and "open the example
+// circuit" (?demo=1 — the app bundles a demonstration bench for this part)
+// calls window.chiphippo.demo.open. The second is the one action here with a
+// consequence: it adds a desktop to the open project, which is why it does not
+// do so itself — this window has no project, so main relays the request to the
+// app window. Main owns the window itself (float-above default + the
+// right-click toggle).
 
 import { partDef } from "./catalog/index.js";
 import {
   buildPartPinout,
   buildWirePinout,
   datasheetButton,
+  exampleButton,
 } from "./components/chip-pinout.js";
 import { ROTATIONS } from "./model/breadboard.js";
+
+/**
+ * Add the "open the example circuit" button to a pinout's header, LEFT of the
+ * datasheet button. Shown only when main flagged (via ?demo=1) that this part
+ * has a bundled demonstration bench; clicking it asks main to relay the request
+ * to the app window. This window deliberately learns nothing back: it has no
+ * project, no desk and no handshake — it knows a ref, and that is the whole
+ * message.
+ */
+function addExampleButton(pinoutEl, partRef) {
+  const header = pinoutEl.querySelector(".popup-header");
+  if (!header) return;
+  header.append(
+    exampleButton(() =>
+      Promise.resolve(window.chiphippo?.demo?.open?.(partRef)).catch((err) =>
+        console.error("[pinout] demo:open failed:", err),
+      ),
+    ),
+  );
+}
 
 /**
  * Add the "open datasheet PDF" button to a pinout's header (top-right). Shown
@@ -52,6 +79,7 @@ const root = document.getElementById("pinout-root");
 const params = new URLSearchParams(location.search);
 const ref = params.get("ref");
 const hasPdf = params.get("pdf") === "1";
+const hasDemo = params.get("demo") === "1";
 // A wire has no catalog def — its ref is just its own id (e.g. "w12"), so it
 // carries this flag rather than resolving through partDef.
 const isWire = params.get("kind") === "wire";
@@ -77,6 +105,10 @@ window.addEventListener("keydown", (event) => {
 
 if (pinout) {
   document.title = isWire ? "Wire" : `${def.id} · ${def.title}`;
+  // Order is deliberate: the datasheet button is the incumbent and stays at the
+  // far right, where a hand already goes. The example button — the one with a
+  // consequence — sits inside it.
+  if (hasDemo) addExampleButton(pinout, ref);
   if (hasPdf) addDatasheetButton(pinout, ref);
   root.append(pinout);
 } else {

@@ -15,24 +15,24 @@
           {
             "id": "bb1",
             "type": "rail-full",
-            "x": -37,
-            "y": -14,
+            "x": -32,
+            "y": -7,
             "rot": 0,
             "group": "g1"
           },
           {
             "id": "bb2",
             "type": "pins-full",
-            "x": -37,
-            "y": -11,
+            "x": -32,
+            "y": -4,
             "rot": 0,
             "group": "g1"
           },
           {
             "id": "bb3",
             "type": "rail-full",
-            "x": -37,
-            "y": 2,
+            "x": -32,
+            "y": 9,
             "rot": 0,
             "group": "g1"
           }
@@ -42,8 +42,8 @@
             "id": "psu1",
             "kind": "psu",
             "ref": "psu",
-            "x": -36,
-            "y": -23,
+            "x": -31,
+            "y": -16,
             "params": {
               "volts": 5
             }
@@ -413,138 +413,138 @@
           {
             "id": "an1",
             "kind": "label",
-            "x": -35.3,
-            "y": -16.4,
+            "x": -30.299999999999997,
+            "y": -9.399999999999999,
             "text": "I0"
           },
           {
             "id": "an2",
             "kind": "label",
-            "x": -34.3,
-            "y": -18,
+            "x": -29.299999999999997,
+            "y": -11,
             "text": "I1"
           },
           {
             "id": "an3",
             "kind": "label",
-            "x": -33.3,
-            "y": -16.4,
+            "x": -28.299999999999997,
+            "y": -9.399999999999999,
             "text": "I2"
           },
           {
             "id": "an4",
             "kind": "label",
-            "x": -32.3,
-            "y": -18,
+            "x": -27.299999999999997,
+            "y": -11,
             "text": "I3"
           },
           {
             "id": "an5",
             "kind": "label",
-            "x": -31.3,
-            "y": -16.4,
+            "x": -26.3,
+            "y": -9.399999999999999,
             "text": "I4"
           },
           {
             "id": "an6",
             "kind": "label",
-            "x": -30.3,
-            "y": -18,
+            "x": -25.3,
+            "y": -11,
             "text": "I5"
           },
           {
             "id": "an7",
             "kind": "label",
-            "x": -29.3,
-            "y": -16.4,
+            "x": -24.3,
+            "y": -9.399999999999999,
             "text": "I6"
           },
           {
             "id": "an8",
             "kind": "label",
-            "x": -28.3,
-            "y": -18,
+            "x": -23.3,
+            "y": -11,
             "text": "I7"
           },
           {
             "id": "an9",
             "kind": "label",
-            "x": -0.3,
-            "y": -16.4,
+            "x": 4.7,
+            "y": -9.399999999999999,
             "text": "A0"
           },
           {
             "id": "an10",
             "kind": "label",
-            "x": 2.7,
-            "y": -16.4,
+            "x": 7.7,
+            "y": -9.399999999999999,
             "text": "A1"
           },
           {
             "id": "an11",
             "kind": "label",
-            "x": 5.7,
-            "y": -16.4,
+            "x": 10.7,
+            "y": -9.399999999999999,
             "text": "A2"
           },
           {
             "id": "an12",
             "kind": "label",
-            "x": 8.7,
-            "y": -16.4,
+            "x": 13.7,
+            "y": -9.399999999999999,
             "text": "GS"
           },
           {
             "id": "an13",
             "kind": "label",
-            "x": 11.7,
-            "y": -16.4,
+            "x": 16.7,
+            "y": -9.399999999999999,
             "text": "EO"
           },
           {
             "id": "an14",
             "kind": "label",
-            "x": -37,
-            "y": -34.8,
+            "x": -32,
+            "y": -27.799999999999997,
             "text": "74LS148 — 8-to-3 priority encoder"
           },
           {
             "id": "an15",
             "kind": "label",
-            "x": -37,
-            "y": -33,
+            "x": -32,
+            "y": -26,
             "text": "The mirror of the '138. Its inputs are",
             "color": "#808080"
           },
           {
             "id": "an16",
             "kind": "label",
-            "x": -37,
-            "y": -31.2,
+            "x": -32,
+            "y": -24.2,
             "text": "ACTIVE LOW, so OPENING a switch is what",
             "color": "#808080"
           },
           {
             "id": "an17",
             "kind": "label",
-            "x": -37,
-            "y": -29.4,
+            "x": -32,
+            "y": -22.4,
             "text": "requests that line, and the highest one",
             "color": "#808080"
           },
           {
             "id": "an18",
             "kind": "label",
-            "x": -37,
-            "y": -27.6,
+            "x": -32,
+            "y": -20.6,
             "text": "open wins. A0–A2 read out its number, GS",
             "color": "#808080"
           },
           {
             "id": "an19",
             "kind": "label",
-            "x": -37,
-            "y": -25.8,
+            "x": -32,
+            "y": -18.8,
             "text": "says something asked, EO says nothing did.",
             "color": "#808080"
           }

@@ -41,6 +41,13 @@ and you land on it.
 
 Either way it's an addition, and nothing already there is touched.
 
+There is a third way one arrives, and it doesn't belong on the **+** because
+it belongs to a *part*: a chip's **example circuit**. Right-click any 74xx chip
+on the desk, choose **Pin Assignment**, and click the circuit button in that
+window's top-right corner — a worked bench for that part lands as a desktop of
+its own, called `74LS138 example`. See
+[The Chip Library](chip-library.md#example-circuits).
+
 The **Desktop** menu has the same two plus the rest, acting on the desktop
 you're looking at:
 

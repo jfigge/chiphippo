@@ -37,7 +37,17 @@ The groups are the **catalog's own**, so the demos track the parts palette:
 | `Arithmetic` | '283 '83 '181 |
 
 **File ▸ Open…** one of them, then pick a chip from the **desktop tabs** along the
-top. Every desktop is the same bench, so once you can read one you can read all
+top.
+
+**Or reach one from inside the app.** Every desktop below also ships *within*
+Chip Hippo (`src/web/demos/<ref>.json`, written by the same `make demos` pass, so
+the two copies cannot drift). Right-click a chip on the desk ▸ **Pin Assignment**,
+then click the **circuit button** in that window's top-right corner: the bench for
+that part arrives as a desktop of its own, called `74LS00 example`, in whatever
+project you already have open. That is the everyday way in — the group projects
+here are for comparing a whole family side by side.
+
+Every desktop is the same bench, so once you can read one you can read all
 of them:
 
 - a **5 V brick** feeding both power rails, and (for the clocked parts) a **clock**;
@@ -128,8 +138,13 @@ make demos
 ```
 
 Rebuilds both `.chiphippo` + `.hex` pairs from `scripts/make-demos.mjs`, then
-every group project from `scripts/make-gate-demos.mjs`, re-validating everything
-through the engine. Both are guarded by `make test` as well
+every group project **and every bundled per-chip example** from
+`scripts/make-gate-demos.mjs` — one `buildDemo` call feeding both outputs, so
+`demos/<Group>.chiphippo` and `src/web/demos/<ref>.json` come from the same build
+and are held to byte-for-byte agreement by the tests. `src/web/demos/` is swept
+on every run, so a chip dropped from the catalog cannot leave a live example
+button behind. Everything is re-validated through the engine. Both are guarded by
+`make test` as well
 (`tests/demos.test.js` and `tests/gate-demos.test.js` load the committed files
 and run them), so a catalog or engine change that breaks a demo fails CI.
 

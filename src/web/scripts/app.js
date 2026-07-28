@@ -528,6 +528,23 @@ async function init() {
     if (e.detail) void workspace?.openRecentProject(e.detail);
   });
 
+  // A part's EXAMPLE CIRCUIT, asked for from its pin-assignments window. That
+  // window has a ref and nothing else — no project, no desk — so main relays
+  // the request here, where both live (the memory inspector's host relay is the
+  // same pipe). The desktop arrives through the workspace; it is FRAMED here,
+  // because framing follows the ACTIVE view and only app.js knows which that
+  // is. The fit is camera-only: `make demos` writes every example already
+  // centred on the origin, so ⌘F's recentre half finds a zero delta and leaves
+  // no undo step behind on a desk nobody has touched. A desktop that was
+  // already open is not re-framed — its camera is the user's.
+  window.addEventListener("chiphippo:demo-host-inbound", (e) => {
+    const ref = e.detail?.ref;
+    if (!ref) return;
+    void workspace?.openExample(ref).then((res) => {
+      if (res === "added") fitActiveView();
+    });
+  });
+
   /** A Desktop-menu item aimed at whichever desktop is on screen. */
   function activeDesktopAction(method) {
     const id = workspace?.activeTab?.id;

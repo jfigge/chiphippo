@@ -3175,9 +3175,12 @@ textarea.annotation-editor {
   max-width: 460px;
 }
 
-/* The pinout header carries the title and, top-right, an optional "open
-   datasheet PDF" button (shown when the user's datasheet folder holds a
-   <id>.pdf for this part). */
+/* The pinout header carries the title and, top-right, up to two line-drawn
+   buttons: "open the example circuit" (shown when this part has a bundled
+   demonstration bench) and "open the datasheet PDF" (shown when the user's
+   datasheet folder holds a <id>.pdf for this part). ONE rule, one box — they
+   are the same affordance with different glyphs, and `.popup-title { flex: 1 }`
+   right-aligns however many of them there are. */
 .chip-pinout .popup-header {
   display: flex;
   align-items: center;
@@ -3189,7 +3192,7 @@ textarea.annotation-editor {
   min-width: 0;
 }
 
-.pinout-datasheet-btn {
+.pinout-header-btn {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3208,13 +3211,13 @@ textarea.annotation-editor {
     border-color 0.15s ease;
 }
 
-.pinout-datasheet-btn:hover {
+.pinout-header-btn:hover {
   background: var(--color-surface-1);
   color: var(--color-accent);
   border-color: var(--color-accent);
 }
 
-.pinout-datasheet-btn:focus-visible {
+.pinout-header-btn:focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
 }

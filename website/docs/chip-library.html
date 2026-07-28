@@ -381,6 +381,40 @@ chip&#39;s full datasheet PDF, the window also grows a small document button in
 its top-right corner; clicking it opens the PDF itself in your system&#39;s PDF
 viewer. This is independent of the built-in datasheet crop — you may have
 one, both, or neither for any given chip.</p>
+<h2 id="example-circuits">Example circuits</h2>
+<p>A pin map tells you where the pins are; it doesn&#39;t show you the part working.
+So every 74xx chip in the catalog ships with a <strong>worked example</strong> — a small
+bench built around that one part — and the pin-assignments window is where you
+reach it. Look for the <strong>circuit button</strong> in the window&#39;s top-right corner,
+beside the datasheet one.</p>
+<p>Click it and the example arrives as a <strong>new desktop</strong> in the open project,
+called <code>74LS138 example</code> (or whichever part it is), already framed on screen.
+Every one is the same bench, so once you can read one you can read them all:</p>
+<ul>
+<li>a <strong>5 V brick</strong> feeding both power rails, and a <strong>clock</strong> for the clocked
+parts;</li>
+<li><strong>switched inputs</strong> on the left, each throwing between +5 V and a pull-down
+so an input is never left floating — a part with more inputs than will fit
+gets a DIP switch bank over a resistor network instead;</li>
+<li>the <strong>chip under test</strong> in the middle, straddling the trench;</li>
+<li><strong>LED read-outs</strong> on the right, one per output, through its own resistor. An
+active-LOW output has its LED wired the other way up, so a lit lamp always
+means <em>this output is asserted</em>;</li>
+<li>a <strong>caption</strong> above the bench saying what the demo shows.</li>
+</ul>
+<p>Press <strong>Run</strong> (Space) and flip the switches. Each example opens in a state
+chosen to show the part doing something.</p>
+<p>A few practical notes:</p>
+<ul>
+<li>It&#39;s an ordinary desktop and an ordinary unsaved change — nothing is written
+until you save, and you can rename it, edit it, or delete it like any other.</li>
+<li>Asking for the same example twice doesn&#39;t make a second copy; you land back
+on the desktop you already have.</li>
+<li>Adding it stops a running simulation, exactly as switching desktops does.</li>
+<li>Parts with no bench have no button: the memory and interface chips (a RAM or
+a CPU can&#39;t be demonstrated by flipping switches at it — those are the
+computer demos, which need a program), and every discrete, brick and wire.</li>
+</ul>
 <h2 id="datasheets">Datasheets</h2>
 <p>The datasheet crops shown in the pin-assignments window are committed image
 assets built once from the manufacturer PDFs (<code>make datasheets</code>), not
