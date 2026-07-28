@@ -608,7 +608,64 @@ Electron main process (src/app/main.js)
     silently shorted — unrepresentable rather than merely unlikely. Routing is
     per-net star-from-hub over `freeAt` (you never wire TO a pin, you wire to a
     free hole on the pin's NODE), the hub being the highest-capacity port
-    (a rail is ∞). `pin-resolve.js` is FAIL-CLOSED and case-FIRST: pin names
+    (a rail is ∞), and a port is keyed by its NODE so two pins already sharing
+    one are never wired to each other.
+  - **PLACEMENT is a step, not an accident.** Seating used to follow whatever
+    order the spec listed parts in, with the compiler's own interposed
+    resistors appended last — the worst possible order for exactly the parts
+    it applies to, since a pull-down array serves ONE switch bank and was
+    therefore seated as far from it as the board allowed (and, once a board
+    filled, onto the next board entirely). Three rules now decide the layout,
+    and together they took the 8-bit adder from two breadboards and 74 wires
+    to **one board and 58**, total wire length −48%; across all 51 demo-bench
+    circuits, −18% wire and 104 fewer wires.
+    - `orderByConnectivity` — greedy cluster growth from the busiest part,
+      then whichever unplaced part shares the most nets with what is down.
+      Since the seating loop fills one board before starting the next, an
+      order where neighbours are adjacent also keeps a net's parts on ONE
+      board; the cross-board wires that remain fall on the genuinely
+      least-connected seam. RAIL nets are deliberately not adjacency (every
+      part touches power, and a rail net routes to the nearest rail hole
+      rather than between its members). Ties break by spec order, so a spec
+      always lays out the same way.
+    - `seatCompanion` — a pull pack seats IN the columns of the switch bank it
+      pulls, the bench move where an `rnet9` under a `sw-dip8` buys eight
+      pull-downs for zero wires and zero columns. Sharing a column-half is
+      otherwise the exact disaster `column-allocator.js` exists to prevent, so
+      NOTHING here is inferred: the net equality is given (the pull rule
+      CREATED one net per pack pin, each already holding that switch contact),
+      the geometry is then proved pin by pin with `nodeOf`, and every column
+      touched must be free or the host's — hence `columnOwner`, and hence a
+      column recording WHO owns it rather than merely that it is owned. Any
+      check failing returns null and the part seats the ordinary way, so this
+      can only ever cost columns, never correctness; L4 checks the result
+      regardless. One host per pack only — a pack serving four separate slide
+      switches falls back.
+    - `freeRail(…, {fromEnd})` — the PSU brick stands off the RIGHT of the
+      boards, and a rail is one node end to end, so reaching for hole 1 bought
+      nothing but two wires the full width of the desk.
+  - **ROUTING minimises length AND crossings** (`model/wire-crossing.js`, pure).
+    A layout can be short and still unreadable, because "short" says nothing
+    about what a wire passes OVER. The geometry that makes it tractable: a DIP
+    straddles the trench with its pins in rows e/f, everything else the
+    compiler seats lies along row **a**, and a wire attaches not to a pin but
+    to a free hole on that pin's NODE — which offers five ROWS. Taking "the
+    first free hole" took row a every time, i.e. the one row every discrete
+    occupies. So a port now OFFERS its free holes and `bestPair` picks the
+    pair by `distance + 20 × crossingCount`, `segmentHitsBox` being
+    Liang–Barsky (sampling steps over a corner clip, and near-misses are
+    exactly what reads as crossing). The same chooser does the POWER wiring,
+    which is where it pays twice: a kit has a rail strip above the board and
+    one below, bridged, so nearest-that-flies-over-nothing picks the rail on
+    the pin's own side of the trench with nothing told to it. The bridges and
+    PSU leads are therefore wired AFTER seating — a bridge crosses the whole
+    pin-board, and before seating there is nothing to avoid, so it always went
+    down column 1, which is exactly where the first part goes. Residual
+    crossings are REPORTED (`WIRES_CROSS_PARTS`), never hidden: a net joining
+    a pin below the trench to one above has to get across, and where both ends
+    sit under a chip a straight hole-to-hole run cannot go around the end of
+    it the way a hand would. Corpus-wide this took wire length −38% and
+    crossings −44% (932 → 518). `pin-resolve.js` is FAIL-CLOSED and case-FIRST: pin names
     are case-distinguished in the catalog (74LS47's `A`–`D` inputs vs its
     `a`–`g` outputs), so folding case would MANUFACTURE ambiguity; the one real
     ambiguity is `74LS148` (inputs *named* `0`–`7` that do not match their pin

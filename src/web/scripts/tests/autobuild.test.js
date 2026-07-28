@@ -33,6 +33,9 @@ import { buildNetlist } from "../sim/netlist.js";
 import { isLit, junctionState } from "../sim/junction.js";
 import { normalizeDocument } from "../model/desk-doc.js";
 import { partPinAddresses } from "../model/occupancy.js";
+import { holePosition, nodeOf, parseAddress } from "../model/breadboard.js";
+import { partDef } from "../catalog/index.js";
+import { wireCrossings } from "../model/wire-crossing.js";
 import { compileNetlist } from "../model/autobuild.js";
 
 // ── Specs ───────────────────────────────────────────────────────────────────
@@ -82,6 +85,35 @@ const ADDER_SPEC = {
       "B",
       (i) => `U${i < 4 ? 1 : 2}.B${(i % 4) + 1}`,
     ),
+  ],
+};
+
+const DECODER_SPEC = {
+  title: "3-to-8 decoder, switched in, LEDs out",
+  parts: [
+    { id: "U1", ref: "74LS138" },
+    { id: "SW", ref: "sw-dip4" },
+    ...[...Array(8)].map((_, i) => ({ id: `D${i + 1}`, ref: "led" })),
+  ],
+  nets: [
+    {
+      name: "SRC",
+      members: [...Array(4)].map((_, i) => `SW.${i + 1}B`).concat("VCC"),
+    },
+    { name: "A", members: ["SW.1A", "U1.A"] },
+    { name: "B", members: ["SW.2A", "U1.B"] },
+    { name: "C", members: ["SW.3A", "U1.C"] },
+    { name: "G1", members: ["U1.G1", "VCC"] },
+    { name: "G2", members: ["U1.G2A", "U1.G2B", "GND"] },
+    // Active-low outputs, so each LED hangs from VCC down to its pin.
+    ...[...Array(8)].map((_, i) => ({
+      name: `LA${i}`,
+      members: [`D${i + 1}.A`, "VCC"],
+    })),
+    ...[...Array(8)].map((_, i) => ({
+      name: `LK${i}`,
+      members: [`D${i + 1}.K`, `U1.Y${i}`],
+    })),
   ],
 };
 
@@ -735,4 +767,246 @@ test("a switch reaching no rail is left alone, for L6 to report", () => {
   });
   assert.equal(out.ok, true);
   assert.ok(!out.warnings.some((w) => w.code === "PULL_INSERTED"));
+});
+
+// ── Placement ───────────────────────────────────────────────────────────────
+//
+// The layout used to follow whatever order the spec listed parts in, with the
+// compiler's own interposed resistors appended last — so a pull-down array
+// serving one switch bank was seated as far from that bank as the board
+// allowed, and once a board filled, onto the NEXT board entirely. The 8-bit
+// adder came out on two breadboards with fifteen wires crossing between them.
+// Nothing was wrong with it; nobody had thought about it.
+
+/** Eight switched inputs into one chip — the shape every bench demo has. */
+const SWITCHED_BANK = {
+  title: "a switch bank feeding a buffer",
+  parts: [
+    { id: "U1", ref: "74LS244" },
+    { id: "SW", ref: "sw-dip8" },
+  ],
+  nets: [
+    {
+      name: "SRC",
+      members: [...Array(8)].map((_, i) => `SW.${i + 1}B`).concat("VCC"),
+    },
+    { name: "OE", members: ["U1.1G", "U1.2G", "GND"] },
+    ...[2, 4, 6, 8, 11, 13, 15, 17].map((pin, i) => ({
+      name: `A${i}`,
+      members: [`SW.${i + 1}A`, `U1.#${pin}`],
+    })),
+  ],
+};
+
+test("a pull pack seats UNDER the switch it pulls, sharing its columns", () => {
+  const { doc, netlist } = build(SWITCHED_BANK);
+  const sw = doc.components.find((c) => c.ref === "sw-dip8");
+  const rn = doc.components.find((c) => c.ref === "rnet9");
+  assert.ok(rn, "the compiler put a bussed pull-down in");
+  assert.equal(rn.board, sw.board, "on the same board");
+  assert.equal(
+    rn.anchor.slice(1),
+    sw.anchor.slice(1),
+    "and in the very same columns",
+  );
+  assert.match(
+    rn.anchor,
+    /^a/,
+    "in the bottom row, clear of the switch's pins",
+  );
+
+  // The claim that makes it legal: pin for pin, the board already joins them,
+  // so the eight pull-downs cost zero wires. Node sharing is normally the
+  // exact disaster column-allocator.js exists to prevent, which is why this is
+  // asserted rather than assumed.
+  for (let k = 1; k <= 8; k++) {
+    assert.equal(
+      netlist.netOfPoint.get(pinAddress(doc, rn.id, k)),
+      netlist.netOfPoint.get(pinAddress(doc, sw.id, k)),
+      `pack pin ${k} IS switch pin ${k}'s node`,
+    );
+  }
+});
+
+test("the whole 8-bit adder now fits on ONE breadboard", () => {
+  // The user-visible outcome: two kits and fifteen cross-board wires became
+  // one kit. Twenty columns come back from the two pull packs, which is the
+  // difference between not fitting and fitting with room to spare.
+  const { doc } = build(ADDER_SPEC);
+  const pinBoards = doc.boards.filter((b) => b.type.startsWith("pins"));
+  assert.equal(pinBoards.length, 1, "one pin-board");
+  assert.ok(
+    doc.boards.every((b) => b.y < 22),
+    "and one kit — nothing spilled onto a second",
+  );
+});
+
+test("a net's parts land next to each other, not in the order they were listed", () => {
+  // Connectivity ordering. The spec below lists the two halves interleaved on
+  // purpose; a compiler seating in spec order would alternate them across the
+  // board and wire every net the long way round.
+  const spec = {
+    parts: [
+      { id: "A1", ref: "74LS04" },
+      { id: "B1", ref: "74LS08" },
+      { id: "A2", ref: "74LS04" },
+      { id: "B2", ref: "74LS08" },
+    ],
+    nets: [
+      { name: "A", members: ["A1.1Y", "A2.1A"] },
+      { name: "B", members: ["B1.1Y", "B2.1A"] },
+      { name: "A_", members: ["A1.2Y", "A2.2A"] },
+      { name: "B_", members: ["B1.2Y", "B2.2A"] },
+    ],
+  };
+  const { doc } = build(spec);
+  const col = (ref, nth) => {
+    const comp = doc.components.filter((c) => c.ref === ref)[nth];
+    return Number(comp.anchor.replace(/^\D+/, ""));
+  };
+  // The two '04s share two nets, as do the two '08s. Each pair should be
+  // adjacent — so one pair sits entirely left of the other.
+  const inv = [col("74LS04", 0), col("74LS04", 1)].sort((a, b) => a - b);
+  const and = [col("74LS08", 0), col("74LS08", 1)].sort((a, b) => a - b);
+  assert.ok(
+    inv[1] < and[0] || and[1] < inv[0],
+    `pairs are interleaved: '04 at ${inv}, '08 at ${and}`,
+  );
+});
+
+test("the PSU taps the near end of the rail, not the far one", () => {
+  // A rail is one node end to end, so which hole the brick reaches for is free
+  // to choose — and reaching for hole 1 ran both supply leads the full width
+  // of the desk, which is the longest wire in most builds.
+  const { doc } = build(SWITCHED_BANK);
+  const psu = doc.components.find((c) => c.kind === "psu");
+  const leads = doc.wires.filter((w) => w.from.startsWith(`${psu.id}.`));
+  assert.equal(leads.length, 2, "+ and −");
+  // Stated as "further along than anything else on that rail" rather than as a
+  // hole number: a half kit's rail is 25 holes and a full one's is 50, so any
+  // constant here would only be right for one board size.
+  const index = (address) => Number(address.replace(/^.*[+-]/, ""));
+  for (const lead of leads) {
+    const [, rail, polarity] = /^(.*)\.([+-])/.exec(lead.to);
+    const others = doc.wires
+      .filter((w) => w !== lead)
+      .flatMap((w) => [w.from, w.to])
+      .filter((a) => a.startsWith(`${rail}.${polarity}`))
+      .map(index);
+    assert.ok(
+      others.every((n) => n < index(lead.to)),
+      `${lead.to} sits past every other tap on that line (${others})`,
+    );
+  }
+});
+
+// ── Not crossing things ─────────────────────────────────────────────────────
+
+/** Every wire that runs over a part it does not terminate on. */
+function crossingsOf(doc) {
+  const boards = new Map(doc.boards.map((b) => [b.id, b]));
+  const comps = new Map(doc.components.map((c) => [c.id, c]));
+  const world = (address) => {
+    const p = parseAddress(address);
+    if (!p) return null;
+    const b = boards.get(p.boardId);
+    if (b) {
+      const h = holePosition(b.type, p.hole, b.rot ?? 0);
+      return h && { x: b.x + h.x, y: b.y + h.y };
+    }
+    const c = comps.get(p.boardId);
+    const t = partDef(c?.ref)?.terminals?.find((q) => q.id === p.hole);
+    return t && { x: c.x + t.dx, y: c.y + t.dy };
+  };
+  // Which part owns the NODE an address sits on — a lead leaving a part from
+  // the row above its pins is attached to it, not flying over it.
+  const owner = new Map();
+  for (const c of doc.components) {
+    if (!c.board) continue;
+    const type = boards.get(c.board).type;
+    for (const p of partPinAddresses(doc, c) ?? []) {
+      if (!p.address) continue;
+      const node = nodeOf(type, parseAddress(p.address).hole);
+      if (node) owner.set(`${c.board}:${node}`, c.id);
+    }
+  }
+  const ownerOf = (address) => {
+    const p = parseAddress(address);
+    const b = p && boards.get(p.boardId);
+    if (!b) return null;
+    const node = nodeOf(b.type, p.hole);
+    return node ? (owner.get(`${p.boardId}:${node}`) ?? null) : null;
+  };
+  return wireCrossings(doc, world, (c) => partPinAddresses(doc, c), ownerOf);
+}
+
+test("wires stay OUT of the row the discretes sit in", () => {
+  // The class the hole choice exists to fix. Every footprint part the compiler
+  // seats — resistor networks, LED bars, single LEDs — lies along row a, and
+  // "take the first free hole" took row a every time, so signal wires ran the
+  // length of the board straight through them. Rows b, c and d are empty and
+  // cost at most three pitch more.
+  const { doc } = build(DECODER_SPEC);
+  const inRowA = new Set(
+    doc.components.filter((c) => c.anchor?.startsWith("a")).map((c) => c.id),
+  );
+  assert.ok(inRowA.size >= 8, "the bench really does have discretes on row a");
+  const over = crossingsOf(doc).filter((c) => inRowA.has(c.part));
+  assert.deepEqual(over, [], "nothing flies over a part seated on row a");
+});
+
+test("a supply lead takes the rail on its OWN side of the trench", () => {
+  // A kit has a rail strip above the board and one below, bridged, so either
+  // works electrically — and taking the first free hole on the first strip sent
+  // every chip's ground lead up and over the chip to reach the far rail.
+  const { out, doc } = build(DECODER_SPEC);
+  const boards = new Map(doc.boards.map((b) => [b.id, b]));
+  const yOf = (address) => {
+    const p = parseAddress(address);
+    const b = boards.get(p.boardId);
+    return b.y + holePosition(b.type, p.hole, b.rot ?? 0).y;
+  };
+  const chip = doc.components.find((c) => c.id === out.partMap.get("U1"));
+  const def = partDef(chip.ref);
+  const rails = doc.boards.filter((b) => b.type.startsWith("rail"));
+  assert.equal(rails.length, 2, "one strip above the board and one below");
+
+  for (const role of ["vcc", "gnd"]) {
+    const pin = def.pins.find((q) => q.role === role);
+    const pinY = yOf(pinAddress(doc, chip.id, pin.n));
+    const lead = doc.wires.find(
+      (w) =>
+        [w.from, w.to].some((a) => parseAddress(a).boardId === chip.board) &&
+        [w.from, w.to].some((a) =>
+          rails.some((r) => parseAddress(a).boardId === r.id),
+        ) &&
+        Math.abs(yOf(w.from) - pinY) < 5,
+    );
+    assert.ok(lead, `${role} is wired to a rail`);
+    const railEnd = rails.some((r) => parseAddress(lead.from).boardId === r.id)
+      ? lead.from
+      : lead.to;
+    const chosen = Math.abs(yOf(railEnd) - pinY);
+    const other = rails.map((r) => Math.abs(r.y - pinY)).sort((a, b) => a - b);
+    assert.ok(
+      chosen <= other[1],
+      `${role} reached the nearer rail (${chosen.toFixed(1)} vs ${other})`,
+    );
+  }
+});
+
+test("what could NOT be routed clear is reported, not hidden", () => {
+  // A net joining a pin below the trench to one above has to get across, and
+  // where both ends sit under a chip there is no clear column to cross in. A
+  // straight run between two holes cannot go around the end of a chip the way
+  // a hand would, so the honest thing is to say how many did not make it.
+  const { out, doc } = build(ADDER_SPEC);
+  const crossings = crossingsOf(doc);
+  const warned = out.warnings.find((w) => w.code === "WIRES_CROSS_PARTS");
+  if (crossings.length) {
+    assert.ok(warned, "a residual crossing is warned about");
+    assert.match(warned.message, /run over a part/);
+  } else {
+    assert.equal(warned, undefined, "and a clean layout says nothing");
+  }
 });

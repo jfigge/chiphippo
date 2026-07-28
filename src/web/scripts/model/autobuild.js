@@ -43,10 +43,13 @@
 
 import { partDef } from "../catalog/index.js";
 import { BREADBOARD_KITS } from "./board-types.js";
+import { holePosition, nodeOf, parseAddress } from "./breadboard.js";
 import { createAllocator } from "./column-allocator.js";
 import { captureDesign } from "./design-clip.js";
 import { DIP_PACKAGES } from "./footprints.js";
+import { partPinHoles } from "./occupancy.js";
 import { RAIL_TOKENS, parseMember, resolvePin } from "./pin-resolve.js";
+import { boxOf, crossingCount } from "./wire-crossing.js";
 
 const GAP = 1; // blank columns between parts, so nothing reads as one block
 const KIT_PITCH = 22; // vertical spacing when a design needs a second kit
@@ -308,6 +311,155 @@ function contactPairs(def) {
   return [...pairs.values()];
 }
 
+/**
+ * Seat order: NEIGHBOURS FIRST, so a part lands beside what it wires to.
+ *
+ * Placement used to follow the order the spec happened to list parts in, with
+ * the compiler's own interposed resistors appended after everything else. That
+ * is the worst possible order for exactly the parts it applies to: a pull-down
+ * array serves ONE switch bank and nothing else, so seating it last put it as
+ * far from that bank as the board allows — and once a board filled, onto the
+ * NEXT board entirely, turning eight short hops into eight wires across the
+ * desk. The layout was legal, simulated correctly, and looked like nobody had
+ * thought about it, because nobody had.
+ *
+ * So: greedy cluster growth. Start from the most connected part, then keep
+ * taking whichever unplaced part shares the most nets with what is already
+ * down. Since the seating loop fills one board before starting the next, an
+ * order in which neighbours are adjacent also keeps a net's parts on ONE board
+ * — the cross-board wires that remain are the genuinely least-connected seam,
+ * which is the best place for a design too big for one board to be cut.
+ *
+ * RAIL nets are deliberately not adjacency. Every part touches power, so
+ * counting VCC would make everything equally near everything else; and a rail
+ * net routes to the nearest rail hole rather than between its members, so
+ * sitting close buys it nothing.
+ *
+ * Ties break by the spec's own order, so the same spec always lays out the
+ * same way.
+ */
+export function orderByConnectivity(seated, nets) {
+  if (seated.length < 3) return seated;
+  const rank = new Map(seated.map((p, i) => [p.id, i]));
+  const shared = new Map(); // "a|b" → nets in common
+  const key = (a, b) => (a < b ? `${a}|${b}` : `${b}|${a}`);
+  const neighbours = new Map(seated.map((p) => [p.id, new Set()]));
+  for (const net of nets) {
+    if (net.rail) continue;
+    const ids = [...new Set(net.pins.map((q) => q.partId))].filter((id) =>
+      neighbours.has(id),
+    );
+    for (let i = 0; i < ids.length; i++) {
+      for (let j = i + 1; j < ids.length; j++) {
+        const k = key(ids[i], ids[j]);
+        shared.set(k, (shared.get(k) ?? 0) + 1);
+        neighbours.get(ids[i]).add(ids[j]);
+        neighbours.get(ids[j]).add(ids[i]);
+      }
+    }
+  }
+  const pull = (id, placed) => {
+    let n = 0;
+    for (const other of neighbours.get(id)) {
+      if (placed.has(other)) n += shared.get(key(id, other)) ?? 0;
+    }
+    return n;
+  };
+  const degree = (id) => pull(id, new Set(neighbours.keys()));
+
+  const placed = new Set();
+  const order = [];
+  while (order.length < seated.length) {
+    let best = null;
+    let score = -1;
+    for (const p of seated) {
+      if (placed.has(p.id)) continue;
+      // Seeding from the busiest part gives the growth a hub to grow from;
+      // after that it is pull toward what is already down.
+      const s = order.length ? pull(p.id, placed) : degree(p.id);
+      if (s > score || (s === score && rank.get(p.id) < rank.get(best.id))) {
+        best = p;
+        score = s;
+      }
+    }
+    order.push(best);
+    placed.add(best.id);
+  }
+  return order;
+}
+
+const GRID_HOLE_RE = /^([a-j])([1-9]\d*)$/;
+const isLowerRow = (row) => row >= "a" && row <= "e";
+
+/**
+ * Seat a pull pack IN the columns of the switch bank it pulls down.
+ *
+ * The bench move this reproduces: an rnet9 pushed into the same column-halves
+ * as the DIP switch above it needs no wires at all, because the board is
+ * already the connection. Eight wires and nine columns become zero — which for
+ * the 8-bit adder is the difference between one breadboard and two.
+ *
+ * Sharing a column-half is otherwise the exact disaster column-allocator.js
+ * exists to prevent, so nothing here is inferred:
+ *
+ *   * the NET EQUALITY is given, not guessed — the pull rule created one net
+ *     per pack pin and put the switch contact in it;
+ *   * the GEOMETRY is then PROVED, pin by pin, with `nodeOf` — the pack pin
+ *     must land on the very node its host pin sits on, not merely nearby;
+ *   * every column it touches must be free or the HOST's, so it can never
+ *     wander into a third part.
+ *
+ * Any of those failing returns null and the caller seats it the ordinary way,
+ * which is why this can only ever cost columns, never correctness. L4 checks
+ * the result regardless.
+ *
+ * @returns {{boardId:string, anchor:string, holes:Map}|null}
+ */
+function seatCompanion(part, links, { alloc, seatOf, boardType }) {
+  if (!links?.length) return null;
+  const hostId = links[0].hostId;
+  if (links.some((l) => l.hostId !== hostId)) return null; // one host only
+  const host = seatOf.get(hostId);
+  if (!host) return null; // not seated yet — take the ordinary path
+  const type = boardType.get(host.boardId);
+
+  // The pack's own pin 1 fixes the anchor: same column as the host pin it is
+  // equal to, and the row furthest from the trench so the two never collide.
+  const first = links.find((l) => l.pin === 1);
+  const seed = first && host.holes.get(first.hostPin);
+  const m = seed && GRID_HOLE_RE.exec(seed);
+  if (!m) return null;
+  const anchor = `${isLowerRow(m[1]) ? "a" : "j"}${m[2]}`;
+
+  const pins = partPinHoles(part.ref, anchor, {});
+  if (!pins) return null;
+  const holeOf = new Map(pins.map((q) => [q.pin, q.hole]));
+
+  // Prove the equality geometrically: same NODE, every linked pin.
+  for (const link of links) {
+    const mine = holeOf.get(link.pin);
+    const theirs = host.holes.get(link.hostPin);
+    if (!mine || !theirs) return null;
+    if (nodeOf(type, mine) !== nodeOf(type, theirs)) return null;
+  }
+  // …and touch nobody else's columns, including the pack's own spare pins.
+  for (const { hole } of pins) {
+    if (hole == null) continue;
+    const g = GRID_HOLE_RE.exec(hole);
+    if (!g) return null;
+    const owner = alloc.columnOwner(
+      host.boardId,
+      Number(g[2]),
+      isLowerRow(g[1]) ? "lower" : "upper",
+    );
+    if (owner != null && owner !== hostId) return null;
+  }
+
+  const r = alloc.seat(host.boardId, part.ref, anchor, {}, hostId);
+  if (!r.ok) return null;
+  return { boardId: host.boardId, anchor, holes: r.holes };
+}
+
 /** The pin every segment of a display shares — its common anode or cathode. */
 function commonLeg(def) {
   if (def.segments?.length) {
@@ -405,6 +557,7 @@ function assemble(resolved, title) {
   const roleOf = (q) =>
     parts.get(q.partId).def.pins?.find((r) => r.n === q.pin)?.role;
   const pulls = []; // { net, rail } — the rail the pull reaches
+  const companionOf = new Map(); // pack id → [{pin, hostId, hostPin}]
   for (const net of [...nets]) {
     // Already tied to a supply, already driven, or already pulled: a spec that
     // brought its own resistor network keeps it, rather than getting a second
@@ -445,6 +598,31 @@ function assemble(resolved, title) {
       chunk.forEach((net, k) => {
         net.pins.push({ partId: rid, kind: "pin", pin: lone ? 1 : k + 1 });
       });
+      // Which switch pin each pack pin is now electrically identical to. This
+      // is the "net equality proven first" that column-allocator.js asks for
+      // before one part may be seated in another's columns: these nets are not
+      // matched by name or guessed at from geometry, they were CREATED here,
+      // one per pack pin, each already holding that switch contact.
+      companionOf.set(
+        rid,
+        chunk
+          .map((net, k) => {
+            const host = net.pins.find(
+              (q) =>
+                q.kind === "pin" &&
+                q.partId !== rid &&
+                contactPairs(parts.get(q.partId).def).length,
+            );
+            return host
+              ? {
+                  pin: lone ? 1 : k + 1,
+                  hostId: host.partId,
+                  hostPin: host.pin,
+                }
+              : null;
+          })
+          .filter(Boolean),
+      );
       nets.push({
         name: `${rid}_${rail}`,
         pins: [{ partId: rid, kind: "pin", pin: lone ? 2 : 9 }],
@@ -489,6 +667,26 @@ function assemble(resolved, title) {
   }
 
   const alloc = createAllocator(boards);
+  const boardType = new Map(boards.map((b) => [b.id, b.type]));
+  const boardAt = new Map(boards.map((b) => [b.id, b]));
+
+  /** Desk position of any address the compiler can emit — hole or terminal. */
+  const worldOf = (address) => {
+    const parsed = parseAddress(address);
+    if (!parsed) return null;
+    const board = boardAt.get(parsed.boardId);
+    if (board) {
+      const at = holePosition(board.type, parsed.hole, board.rot ?? 0);
+      return at ? { x: board.x + at.x, y: board.y + at.y } : null;
+    }
+    const brick = components.find((c) => c.id === parsed.boardId);
+    const pad = partDef(brick?.ref)?.terminals?.find(
+      (t) => t.id === parsed.hole,
+    );
+    return pad ? { x: brick.x + pad.dx, y: brick.y + pad.dy } : null;
+  };
+  const distance = (a, b) =>
+    a && b ? Math.hypot(a.x - b.x, a.y - b.y) : Infinity;
   const components = [];
   const wires = [];
   let wireSeq = 0;
@@ -521,49 +719,12 @@ function assemble(resolved, title) {
     if (!wire(from, to, colour)) unpowered.push(what);
   };
 
-  // A NAMED line, which is what the bridges need — their whole job is to join
-  // one particular strip to another, so they cannot take just any free hole.
-  const railOf = (k, strip, polarity) =>
-    alloc.freeRail(kits[k].rails[strip], polarity);
-
-  // Top strip carries +, bottom carries − — a convention, then bridged so both
-  // polarities are reachable from either strip.
-  powerWire("psu1.+", railOf(0, 0, "+"), "red", "the PSU's + terminal");
-  powerWire("psu1.-", railOf(0, 1, "-"), "black", "the PSU's − terminal");
-  for (let k = 0; k < kits.length; k++) {
-    // Within a kit the two strips share no node, so bridge them…
-    powerWire(railOf(k, 0, "+"), railOf(k, 1, "+"), "red", `kit ${k + 1}'s +`);
-    powerWire(
-      railOf(k, 1, "-"),
-      railOf(k, 0, "-"),
-      "black",
-      `kit ${k + 1}'s −`,
-    );
-    // …and across kits, so a second board is powered too.
-    if (k > 0) {
-      powerWire(railOf(0, 0, "+"), railOf(k, 0, "+"), "red", `kit ${k + 1}`);
-      powerWire(railOf(0, 1, "-"), railOf(k, 1, "-"), "black", `kit ${k + 1}`);
-    }
-  }
-
-  // …and now that they are bridged, the supply is ONE node spread across every
-  // rail strip on the desk. Taking every hole from the first of them wasted the
-  // rest: a half kit ran dry after 25 taps with 25 identical holes sitting
-  // empty on the strip below, which is what turned a wide power net into a
-  // refusal (or, worse, a silent drop). Walk them all — the nearest free hole
-  // on any bridged line is electrically the same point, and it is the one a
-  // person reaches for.
-  const supply = (polarity) => {
-    for (const kit of kits) {
-      for (const id of kit.rails) {
-        const address = alloc.freeRail(id, polarity);
-        if (address) return address;
-      }
-    }
-    return null;
-  };
-  const plus = () => supply("+");
-  const minus = () => supply("-");
+  // The bridges and the PSU's own leads are wired AFTER the parts are seated
+  // (see `wirePower` below) — a bridge runs from the strip above the board to
+  // the strip below it, straight across the pin-board, so which column it picks
+  // decides whether it lands in a gap or straight over a chip. Before seating
+  // there is nothing to avoid; hole 1 was taken every time, and column 1 is
+  // exactly where the first part goes.
 
   // ── Bricks the spec declared (a clock, say) — to the right of the boards.
   const brickAt = new Map();
@@ -584,9 +745,11 @@ function assemble(resolved, title) {
     brickRow += 8;
   }
 
-  // ── Seat every board part, left to right, on the first kit that fits.
+  // ── Seat every board part, left to right, on the first kit that fits —
+  //    in CONNECTIVITY order, so neighbours end up beside each other and a
+  //    net's parts stay on one board.
   const seatOf = new Map(); // specId → {compId, boardId, holes}
-  for (const p of seated) {
+  for (const p of orderByConnectivity(seated, nets)) {
     const span = spanOf(p.def);
     if (!span) {
       return {
@@ -601,14 +764,22 @@ function assemble(resolved, title) {
       };
     }
     const row = p.def.package ? "e" : "a";
-    let placed = null;
+    // A pull pack goes UNDER the switch bank it pulls, in the very columns
+    // that bank owns — because its pins are already that bank's nets, so the
+    // board does the connecting. Eight wires and nine columns become none.
+    let placed = seatCompanion(p, companionOf.get(p.id), {
+      alloc,
+      seatOf,
+      boardType,
+    });
     for (const kit of kits) {
+      if (placed) break;
       // Reserve a blank column after the part as well, so neighbours do not
       // read as one block — the same courtesy a person building this leaves.
-      const start = alloc.reserveColumns(kit.pins, span + GAP);
+      const start = alloc.reserveColumns(kit.pins, span + GAP, "both", p.id);
       if (start == null) continue;
       const anchor = `${row}${start}`;
-      const r = alloc.seat(kit.pins, p.ref, anchor, {});
+      const r = alloc.seat(kit.pins, p.ref, anchor, {}, p.id);
       if (!r.ok) continue;
       placed = { boardId: kit.pins, anchor, holes: r.holes };
       break;
@@ -637,42 +808,7 @@ function assemble(resolved, title) {
     seatOf.set(p.id, { compId, ...placed });
   }
 
-  // ── Power every behavioural part from the rails.
-  for (const p of seated) {
-    const seat = seatOf.get(p.id);
-    const vcc = p.def.pins?.find((q) => q.role === "vcc");
-    const gnd = p.def.pins?.find((q) => q.role === "gnd");
-    if (vcc)
-      powerWire(
-        alloc.freeAt(seat.boardId, seat.holes.get(vcc.n)),
-        plus(),
-        "red",
-        `${p.id} (${p.ref}) VCC`,
-      );
-    if (gnd)
-      powerWire(
-        alloc.freeAt(seat.boardId, seat.holes.get(gnd.n)),
-        minus(),
-        "black",
-        `${p.id} (${p.ref}) GND`,
-      );
-  }
-
-  if (unpowered.length) {
-    return {
-      ok: false,
-      errors: [
-        err(
-          "SUPPLY_EXHAUSTED",
-          `Every rail hole on the desk is spoken for — ${unpowered.join(", ")} ` +
-            `could not reach the supply.`,
-          { kind: ABORT },
-        ),
-      ],
-    };
-  }
-
-  // ── Route.
+  // ── How a wire is routed — shared by the power wiring and the net router.
   //
   // A net is a TREE, and its shape is the subtle part: EVERY wire end needs its
   // own hole, the hub's included. A hub serving three spokes needs three free
@@ -690,28 +826,238 @@ function assemble(resolved, title) {
   // out, so a power net stays the plain star it has always been; a signal net
   // wider than a column-half's four spare holes becomes a chain — hopping pin
   // to pin, exactly as a person building it would — instead of a refusal.
+  //
+  // A port is keyed by its NODE, not by the pin that reached it. Two pins on
+  // one node are already joined by the board itself, so a wire between them is
+  // a wire from a node to itself: it consumes two holes, draws a loop, and
+  // connects nothing. That never came up while every part owned its own
+  // columns — and it is exactly what happens once a companion part is seated
+  // deliberately IN another's columns (below), so the router has to understand
+  // it before that is safe.
+  //
+  // Which hole of a node a wire leaves from is not a detail. The five holes of
+  // a column-half are five ROWS, the discretes all sit along row a, and taking
+  // "the first free hole" took row a every time — so wires ran the length of
+  // the board through the very row the resistor networks and LED bars occupy.
+  // A port therefore OFFERS its free holes and the router picks the pair, by
+  // length plus a penalty for every part the wire would fly over.
+  const partBoxes = new Map(); // specId → body box
+  for (const [specId, seat] of seatOf) {
+    const points = [];
+    for (const hole of seat.holes.values()) {
+      const at = worldOf(`${seat.boardId}.${hole}`);
+      if (at) points.push(at);
+    }
+    const box = boxOf(points);
+    if (box) partBoxes.set(specId, box);
+  }
+  // A wire ENDS on the part whose node it leaves from; that is attachment, not
+  // crossing, so those two parts are excluded from its own hit test.
+  const ownerOfNode = new Map(); // "board:node" → specId
+  for (const [specId, seat] of seatOf) {
+    for (const hole of seat.holes.values()) {
+      const node = nodeOf(boardType.get(seat.boardId), hole);
+      if (node) ownerOfNode.set(`${seat.boardId}:${node}`, specId);
+    }
+  }
+  /** The `ownerOfNode` key for an address, or "" for a brick terminal. */
+  const nodeKey = (address) => {
+    const parsed = parseAddress(address);
+    const type = parsed && boardType.get(parsed.boardId);
+    if (!type) return "";
+    const node = nodeOf(type, parsed.hole);
+    return node ? `${parsed.boardId}:${node}` : "";
+  };
+
+  /** The four-ish spare holes electrically common with a seated pin. */
+  const pinPort = (boardId, hole) => ({
+    node: `${boardId}:${nodeOf(boardType.get(boardId), hole)}`,
+    capacity: 4,
+    at: worldOf(`${boardId}.${hole}`),
+    options: () => alloc.freeHolesAt(boardId, hole),
+    take: (address) => alloc.claim(address),
+  });
+
   const portFor = (member) => {
     const brick = brickAt.get(member.partId);
     if (brick) {
       let spent = false;
       const address = `${brick}.${member.terminal}`;
       return {
+        node: address,
         capacity: 1,
-        next: () => (spent ? null : ((spent = true), address)),
+        at: worldOf(address),
+        options: () => (spent ? [] : [address]),
+        take: () => {
+          spent = true;
+        },
       };
     }
     const seat = seatOf.get(member.partId);
     const hole = seat?.holes.get(member.pin);
     if (hole == null) return null;
-    return { capacity: 4, next: () => alloc.freeAt(seat.boardId, hole) };
+    return pinPort(seat.boardId, hole);
   };
+  // Once bridged, the supply is ONE node spread across every rail strip on the
+  // desk, so EVERY free hole on every one of them is a candidate. Offering only
+  // the first strip's wasted the rest — a half kit ran dry after 25 taps with
+  // 25 identical holes sitting empty on the strip below — and offering them in
+  // order took the leftmost, which for a chip on the far right meant a supply
+  // lead the width of the board. Nearest wins, and "nearest" reaches the strip
+  // on the pin's own side of the trench without being told to.
   const railPort = (rail) => ({
+    node: `rail:${rail}`,
     capacity: Infinity,
-    next: () => (rail === "VCC" ? plus() : minus()),
+    at: null, // a rail runs the width of the desk; nearness decides the hole
+    options: () =>
+      kits.flatMap((kit) =>
+        kit.rails.flatMap((id) =>
+          alloc.freeRailHoles(id, rail === "VCC" ? "+" : "-"),
+        ),
+      ),
+    take: (address) => alloc.claim(address),
   });
+
+  // How many candidates to weigh per end. A rail offers ~50 holes per strip
+  // and every one is the same node, so the shortlist is by nearness to the
+  // other end — beyond a dozen the extras are all further away and all equal.
+  const SHORTLIST = 12;
+  const CROSSING_COST = 20; // pitch units — worth a long detour, not any detour
+
+  const shortlist = (port, toward) => {
+    const options = port.options();
+    if (!toward || options.length <= SHORTLIST) return options.slice(0, 64);
+    return options
+      .map((a) => [distance(worldOf(a), toward), a])
+      .sort((p, q) => p[0] - q[0])
+      .slice(0, SHORTLIST)
+      .map((p) => p[1]);
+  };
+
+  /** The best (from, to) pair between two ports, or null when either is dry. */
+  const bestPair = (hostPort, port) => {
+    const froms = shortlist(hostPort, port.at);
+    const tos = shortlist(port, hostPort.at);
+    if (!froms.length || !tos.length) return null;
+    const skip = new Set(
+      [ownerOfNode.get(hostPort.node), ownerOfNode.get(port.node)].filter(
+        Boolean,
+      ),
+    );
+    let best = null;
+    for (const from of froms) {
+      const a = worldOf(from);
+      for (const to of tos) {
+        const b = worldOf(to);
+        const cost =
+          distance(a, b) + CROSSING_COST * crossingCount(a, b, partBoxes, skip);
+        if (!best || cost < best.cost) best = { from, to, cost };
+      }
+    }
+    return best;
+  };
+
+  // ── Power every behavioural part from the rails.
+  //
+  // Through the SAME chooser the net router uses, which matters more here than
+  // anywhere: a kit has a rail strip above the board and one below, bridged, so
+  // either will do electrically — and taking the first free hole on the first
+  // strip sent a chip's ground lead up over the chip to the far rail, every
+  // chip, every time. Nearest-that-flies-over-nothing picks the rail on the
+  // pin's own side of the trench for free.
+  const railLink = (specId, pin, polarity, colour, what) => {
+    const seat = seatOf.get(specId);
+    const hole = seat?.holes.get(pin);
+    if (hole == null) {
+      unpowered.push(what);
+      return;
+    }
+    const from = pinPort(seat.boardId, hole);
+    const to = railPort(polarity === "+" ? "VCC" : "GND");
+    const pair = bestPair(from, to);
+    if (!pair) {
+      unpowered.push(what);
+      return;
+    }
+    from.take(pair.from);
+    to.take(pair.to);
+    wire(pair.from, pair.to, colour);
+  };
+
+  for (const p of seated) {
+    const vcc = p.def.pins?.find((q) => q.role === "vcc");
+    const gnd = p.def.pins?.find((q) => q.role === "gnd");
+    if (vcc) railLink(p.id, vcc.n, "+", "red", `${p.id} (${p.ref}) VCC`);
+    if (gnd) railLink(p.id, gnd.n, "-", "black", `${p.id} (${p.ref}) GND`);
+  }
+
+  // ── The supply's own plumbing: the PSU's two leads, and the bridges that
+  //    make both polarities reachable from either strip of a kit.
+  //
+  // Deferred to here so the bridges can see the parts. A bridge crosses the
+  // whole pin-board from the strip above to the strip below; run down column 1
+  // it goes straight over the first chip, every single time. Choosing the pair
+  // of rail holes the same way every other wire is chosen puts it in a gap.
+  const strip = (k, n) => kits[k].rails[n];
+  const bridge = (fromBoard, toBoard, polarity, colour, what) => {
+    const a = {
+      node: `bridge:${fromBoard}${polarity}`,
+      capacity: Infinity,
+      at: null,
+      options: () => alloc.freeRailHoles(fromBoard, polarity),
+      take: (address) => alloc.claim(address),
+    };
+    const b = { ...a, node: `bridge:${toBoard}${polarity}` };
+    b.options = () => alloc.freeRailHoles(toBoard, polarity);
+    const pair = bestPair(a, b);
+    if (!pair) return unpowered.push(what);
+    a.take(pair.from);
+    b.take(pair.to);
+    return wire(pair.from, pair.to, colour) || unpowered.push(what);
+  };
+
+  // The PSU brick stands off the RIGHT of the boards, and a rail is one node
+  // end to end, so its leads take the near end rather than hole 1.
+  powerWire(
+    "psu1.+",
+    alloc.freeRail(strip(0, 0), "+", { fromEnd: true }),
+    "red",
+    "the PSU's + terminal",
+  );
+  powerWire(
+    "psu1.-",
+    alloc.freeRail(strip(0, 1), "-", { fromEnd: true }),
+    "black",
+    "the PSU's − terminal",
+  );
+  for (let k = 0; k < kits.length; k++) {
+    // Within a kit the two strips share no node, so bridge them…
+    bridge(strip(k, 0), strip(k, 1), "+", "red", `kit ${k + 1}'s +`);
+    bridge(strip(k, 1), strip(k, 0), "-", "black", `kit ${k + 1}'s −`);
+    // …and across kits, so a second board is powered too.
+    if (k > 0) {
+      bridge(strip(0, 0), strip(k, 0), "+", "red", `kit ${k + 1}`);
+      bridge(strip(0, 1), strip(k, 1), "-", "black", `kit ${k + 1}`);
+    }
+  }
+
+  if (unpowered.length) {
+    return {
+      ok: false,
+      errors: [
+        err(
+          "SUPPLY_EXHAUSTED",
+          `Every rail hole on the desk is spoken for — ${unpowered.join(", ")} ` +
+            `could not reach the supply.`,
+          { kind: ABORT },
+        ),
+      ],
+    };
+  }
 
   for (const net of nets) {
     const ports = [];
+    const onNode = new Set();
     for (const m of net.pins) {
       const port = portFor(m);
       if (!port) {
@@ -726,6 +1072,9 @@ function assemble(resolved, title) {
           ],
         };
       }
+      // Already on a node this net has reached: the board is the wire.
+      if (onNode.has(port.node)) continue;
+      onNode.add(port.node);
       ports.push(port);
     }
     if (net.rail) ports.push(railPort(net.rail));
@@ -762,9 +1111,8 @@ function assemble(resolved, title) {
           ],
         };
       }
-      const from = ports[host].next();
-      const to = ports[i].next();
-      if (!from || !to) {
+      const pair = bestPair(ports[host], ports[i]);
+      if (!pair) {
         return {
           ok: false,
           errors: [
@@ -774,11 +1122,41 @@ function assemble(resolved, title) {
           ],
         };
       }
-      wire(from, to, colour);
+      ports[host].take(pair.from);
+      ports[i].take(pair.to);
+      wire(pair.from, pair.to, colour);
       room[host] -= 1;
       room[i] -= 1;
       joined.push(i);
     }
+  }
+
+  // ── What still flies over something, reported rather than hidden.
+  //
+  // Not every crossing can be routed away. A net joining a pin BELOW the trench
+  // to one ABOVE it has to get across, and if both ends sit inside part
+  // footprints there is no column left to cross in — a real bench routes the
+  // lead around the end of the chip, which a straight run between two holes
+  // cannot express. So this is a count, not a gate: the layout is honest about
+  // what it could not avoid instead of quietly looking tidy.
+  const crossed = wires.filter((w) => {
+    const a = worldOf(w.from);
+    const b = worldOf(w.to);
+    if (!a || !b) return false;
+    const skip = new Set(
+      [ownerOfNode.get(nodeKey(w.from)), ownerOfNode.get(nodeKey(w.to))].filter(
+        Boolean,
+      ),
+    );
+    return crossingCount(a, b, partBoxes, skip) > 0;
+  }).length;
+  if (crossed) {
+    warnings.push({
+      code: "WIRES_CROSS_PARTS",
+      message:
+        `${crossed} of ${wires.length} wires still run over a part — nets ` +
+        `that have to cross the trench where both ends sit under a chip.`,
+    });
   }
 
   return {
