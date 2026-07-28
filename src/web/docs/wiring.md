@@ -8,7 +8,7 @@ lay a whole marching group of wires — a data or address bus — as one
 gesture. This page covers the wire tool, colors, cross-board wiring,
 re-routing and deleting a wire, addresses, and buses.
 
-![Wiring a chip to power and an LED](images/wiring.png)
+![A chip wired to switches, power rails and LED read-outs](images/wiring.png)
 
 ## The wire tool
 

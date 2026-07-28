@@ -6,6 +6,8 @@ the desk. It uses *your own* AI connection — your key, your provider, your
 account — and Chip Hippo makes no network request of any kind until you've set
 one up and asked it for something.
 
+![The AI builder panel docked along the bottom of the window](images/ai-builder.png)
+
 The important thing to understand about it is what the model is and isn't
 allowed to decide. It never places a chip, never picks a hole, and never draws
 a wire. It answers one question — *which parts, and which of their pins are
@@ -17,6 +19,8 @@ uses. Nothing that fails is ever offered to you.
 
 Open **Settings** (`Cmd/Ctrl+,`) and pick the **AI** tab. There are four
 things there:
+
+![The AI tab of the Settings dialog](images/settings-ai.png)
 
 - **Provider** — **Anthropic**, or **OpenAI-compatible**. The second is
   deliberately not "OpenAI": the same request format is what Ollama, LM

@@ -56,6 +56,8 @@ the [AI circuit builder](ai-builder.md). Nothing here is required — the app
 works completely without it, and makes no outbound request of any kind until
 a connection is configured and you ask the builder for something.
 
+![The AI tab of the Settings dialog](images/settings-ai.png)
+
 - **Provider** — **Anthropic**, or **OpenAI-compatible**. The second covers
   Ollama, LM Studio, OpenRouter, vLLM and anything else speaking that request
   format; you supply the base URL.

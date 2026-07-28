@@ -6,7 +6,7 @@ around the desk and how breadboards actually work under the hood: they are
 not single parts but individual **strips** — a pin-board plus power rails —
 that snap and mate together the way real boards do on a bench.
 
-![A Full 830 breadboard on the desk](images/the-desk.png)
+![A Full 830 breadboard on the desk, with a spare power rail turned on end beside it](images/the-desk.png)
 
 ## Pan, zoom & fit to screen
 

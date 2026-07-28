@@ -9,6 +9,8 @@ That's what a **project** is for. A project is a workspace holding several
 its own — its own boards, chips, wiring, camera position, and undo history —
 and a design worked out on one can be copied straight onto another.
 
+![Desktops as tabs above the desk](images/project-tabs.png)
+
 **The project is the document.** One `.chiphippo` file holds all of it: every
 desktop, and the contents of every ROM you programmed. That's the whole design
 in a single file you can email, drop in a repo, or carry to another machine.
