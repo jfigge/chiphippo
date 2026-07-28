@@ -382,3 +382,224 @@ test("a design too big for the boards fails loudly rather than half-built", () =
     );
   }
 });
+
+// ── Supplies ────────────────────────────────────────────────────────────────
+//
+// The system prompt offers TWO ways to say "this net is the supply" — the
+// reserved net NAME and the member token — and a model reaches for the name.
+// Honouring only the token used to fail two ways, and the quiet one was worse:
+// a wide power net was refused outright, while a narrow one compiled into an
+// island of pins wired to each other and to no supply, which loads, settles and
+// passes the declared-vs-derived gate while doing nothing at all.
+
+/** The net id every one of `points` must share, asserted to be exactly one. */
+function oneNetAcross(netlist, points) {
+  const ids = new Set(points.map((p) => netlist.netOfPoint.get(p)));
+  assert.equal(ids.size, 1, `expected one net, got ${[...ids].join(", ")}`);
+  return [...ids][0];
+}
+
+for (const [form, netName, extra] of [
+  ["as a net NAME", "VCC", []],
+  ["as a member token", "A_SRC", ["VCC"]],
+]) {
+  test(`a supply reaches the rail ${form}`, () => {
+    const bits = ["1B", "2B", "3B", "4B", "5B", "6B", "7B", "8B"];
+    const { out, doc, netlist } = build({
+      parts: [
+        { id: "U1", ref: "74LS283" },
+        { id: "SW", ref: "sw-dip8" },
+      ],
+      nets: [
+        {
+          name: netName,
+          members: [...bits.map((b) => `SW.${b}`), ...extra],
+        },
+      ],
+    });
+    // Every switch pin must land on the SAME net as the PSU's + terminal —
+    // not merely on the same net as each other.
+    const sw = out.partMap.get("SW");
+    const points = bits.map((_, i) => pinAddress(doc, sw, 16 - i));
+    assert.ok(
+      points.every(Boolean),
+      "every switch B pin has a resolved address",
+    );
+    const net = oneNetAcross(netlist, [...points, "psu1.+"]);
+    assert.ok(net, "the switch commons share the PSU's net");
+
+    // …and it is really at +5 V, not just joined up.
+    const r = settle({ document: doc, netlist });
+    assert.equal(r.settled, true);
+    assert.equal(r.netLevels.get(net), H, "the supply net is HIGH");
+  });
+}
+
+test("the supply spans every bridged rail strip, not just the first", () => {
+  // Three switch banks want 24 taps on +5 V. One rail strip's line holds 25
+  // holes, and by then the PSU and the bridges have taken some — so drawing
+  // every tap from the FIRST strip ran dry with an identical, already-bridged
+  // 25 sitting empty on the strip below. It used to fail as NO_FREE_HOLE.
+  const A = ["1A", "2A", "3A", "4A", "5A", "6A", "7A", "8A"];
+  const { doc, netlist } = build({
+    parts: [
+      { id: "S1", ref: "sw-dip8" },
+      { id: "S2", ref: "sw-dip8" },
+      { id: "S3", ref: "sw-dip8" },
+    ],
+    nets: [
+      {
+        name: "VCC",
+        members: ["S1", "S2", "S3"].flatMap((s) => A.map((p) => `${s}.${p}`)),
+      },
+    ],
+  });
+
+  // It really did spill onto a second strip…
+  const strips = new Set();
+  for (const w of doc.wires) {
+    for (const a of [w.from, w.to]) {
+      const m = /^(bb\d+)\.\+/.exec(a);
+      if (m) strips.add(m[1]);
+    }
+  }
+  assert.ok(strips.size > 1, `+ taps landed on one strip only: ${[...strips]}`);
+
+  // …and the bridges mean that is still ONE supply, at +5 V. A rail the
+  // compiler forgot to bridge would show up right here as a second net.
+  const taps = [];
+  for (const c of doc.components.filter((x) => x.ref === "sw-dip8")) {
+    for (const p of partPinAddresses(doc, c)) {
+      if (p.pin <= 8) taps.push(p.address);
+    }
+  }
+  assert.equal(taps.length, 24);
+  const net = oneNetAcross(netlist, [...taps, "psu1.+"]);
+  const r = settle({ document: doc, netlist });
+  assert.equal(r.settled, true);
+  assert.equal(r.netLevels.get(net), H, "the pooled supply is HIGH");
+});
+
+test("a net named for one rail cannot also carry the other", () => {
+  fails(
+    {
+      parts: [{ id: "U1", ref: "74LS283" }],
+      nets: [{ name: "VCC", members: ["U1.A1", "GND"] }],
+    },
+    "NET_SHORTS_RAILS",
+  );
+});
+
+test("listing a power pin is refused, not silently wired twice", () => {
+  const errs = fails(
+    {
+      parts: [{ id: "U1", ref: "74LS283" }],
+      nets: [{ name: "PWR", members: ["U1.VCC", "VCC"] }],
+    },
+    "POWER_PIN_LISTED",
+  );
+  assert.equal(errs[0].path, "nets[0].members[0]");
+  assert.equal(errs[0].kind, "repair", "the spec's own mistake to fix");
+
+  // 74LS83 puts VCC on 5 and GND on 12 — the check is by ROLE, so a chip with
+  // non-standard power pins is caught with no special-casing.
+  fails(
+    {
+      parts: [{ id: "U1", ref: "74LS83" }],
+      nets: [{ name: "PWR", members: ["U1.#12", "GND"] }],
+    },
+    "POWER_PIN_LISTED",
+  );
+
+  // A BRICK's `gnd` is a terminal, not a role-bearing pin, and stays listable:
+  // nothing powers a clock source but the netlist.
+  const out = compileNetlist({
+    parts: [
+      { id: "CTR", ref: "74LS161" },
+      { id: "CLK", ref: "clock" },
+    ],
+    nets: [
+      { name: "CLOCK", members: ["CLK.out", "CTR.CLK"] },
+      { name: "CLKGND", members: ["CLK.gnd", "GND"] },
+    ],
+  });
+  assert.equal(out.ok, true);
+});
+
+// ── Fan-out ─────────────────────────────────────────────────────────────────
+
+test("a net wider than one node's spare holes chains instead of refusing", () => {
+  // One clock line to eight counters. A column-half holds five holes, one spent
+  // on the pin itself, so a star from any of them tops out at four spokes —
+  // this net has eight, and no rail to hang them on.
+  const parts = [{ id: "CLK", ref: "clock" }];
+  const members = ["CLK.out"];
+  for (let i = 1; i <= 8; i++) {
+    parts.push({ id: `U${i}`, ref: "74LS161" });
+    members.push(`U${i}.CLK`);
+  }
+  const { out, doc, netlist } = build({
+    parts,
+    nets: [
+      { name: "CLOCK", members },
+      { name: "CLKGND", members: ["CLK.gnd", "GND"] },
+    ],
+  });
+
+  const clkPins = [...Array(8)].map((_, i) =>
+    pinAddress(doc, out.partMap.get(`U${i + 1}`), 2),
+  );
+  oneNetAcross(netlist, [...clkPins, `${out.partMap.get("CLK")}.out`]);
+});
+
+test("points that hold one lead each cannot all be joined, and it aborts", () => {
+  // Three clock sources on one net: a brick terminal is exactly one point, so
+  // there is nothing with room to hop through. The model has no lever on that —
+  // it never chose a hole — so this must not go back to it as a repair.
+  const out = compileNetlist({
+    parts: [
+      { id: "C1", ref: "clock" },
+      { id: "C2", ref: "clock" },
+      { id: "C3", ref: "clock" },
+    ],
+    nets: [{ name: "N", members: ["C1.gnd", "C2.gnd", "C3.gnd"] }],
+  });
+  assert.equal(out.ok, false);
+  assert.equal(out.errors[0].code, "FANOUT_TOO_WIDE");
+  assert.equal(out.errors[0].kind, "abort");
+});
+
+test("a geometry refusal aborts; a spec mistake goes back for repair", () => {
+  // The split the panel's retry loop reads. Getting it wrong is not cosmetic:
+  // a geometry fault sent back as a repair burns every remaining round on an
+  // answer the model cannot change, then gives up.
+  const spec = (nets, parts) => compileNetlist({ parts, nets });
+
+  const repairs = [
+    [
+      [{ name: "N", members: ["U1.S0", "GND"] }],
+      [{ id: "U1", ref: "74LS283" }],
+    ],
+    [
+      [{ name: "N", members: ["U1.S1", "U2.S1"] }],
+      [
+        { id: "U1", ref: "74LS283" },
+        { id: "U2", ref: "74LS283" },
+      ],
+    ],
+    [[{ name: "N", members: ["U1.A1"] }], [{ id: "U1", ref: "74LS283" }]],
+  ];
+  for (const [nets, parts] of repairs) {
+    const out = spec(nets, parts);
+    assert.equal(out.ok, false);
+    for (const e of out.errors) {
+      assert.equal(e.kind, "repair", `${e.code} is the spec's to fix`);
+    }
+  }
+
+  const big = [...Array(40)].map((_, i) => ({ id: `U${i}`, ref: "w65c02" }));
+  const out = spec([{ name: "N", members: ["U0.RDY", "U1.RDY"] }], big);
+  if (!out.ok) {
+    for (const e of out.errors) assert.equal(e.kind, "abort");
+  }
+});

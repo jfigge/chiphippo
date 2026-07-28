@@ -96,7 +96,10 @@ function describeStatus(status, text) {
  * @param {string} opts.system
  * @param {Array}  opts.messages
  * @param {(delta:{text?:string}) => void} opts.onDelta
- * @returns {{requestId:string, done:Promise<{ok:boolean, text?:string, error?:string}>}}
+ * @returns {{requestId:string,
+ *            done:Promise<{ok:boolean, text?:string, error?:string,
+ *                          usage?:{input?:number, output?:number,
+ *                                  cacheWrite?:number, cacheRead?:number}}>}}
  */
 function start({ config, apiKey, system, messages, onDelta }) {
   const provider = providerFor(config?.provider);
@@ -122,6 +125,11 @@ function start({ config, apiKey, system, messages, onDelta }) {
 
   const controller = new AbortController();
   inflight.set(requestId, controller);
+
+  // Declared out here so the wrapper below can close over it. Whatever the
+  // request ends up doing — answering, refusing, erroring, being cancelled —
+  // the tokens it burned getting there are worth reporting.
+  let usage = null;
 
   const done = (async () => {
     let text = "";
@@ -151,6 +159,10 @@ function start({ config, apiKey, system, messages, onDelta }) {
         const ev = isSentinel ? json : provider.readEvent(json);
         if (ev.error) failure = ev.error;
         if (ev.refusal) refusal = ev.refusal;
+        // Last-wins per field, never additive: the counts a provider streams
+        // are cumulative, so summing `message_start`'s seed output with
+        // `message_delta`'s final total would over-report by a few tokens.
+        if (ev.usage) usage = { ...usage, ...ev.usage };
         if (ev.text) {
           text += ev.text;
           onDelta?.({ text: ev.text });
@@ -177,7 +189,7 @@ function start({ config, apiKey, system, messages, onDelta }) {
     } finally {
       inflight.delete(requestId);
     }
-  })();
+  })().then((result) => (usage ? { ...result, usage } : result));
 
   return { requestId, done };
 }

@@ -23,7 +23,7 @@
 //
 //   buildRequest({ apiKey, baseUrl, model, system, messages, maxTokens })
 //     → { url, headers, body }
-//   readEvent(json)  → { text?, done?, error?, refusal? }
+//   readEvent(json)  → { text?, done?, error?, refusal?, usage? }
 //   buildPing({ apiKey, baseUrl, model })  → { url, headers, body }
 //
 // The OpenAI-compatible shape is deliberately not "OpenAI": the same wire
@@ -131,6 +131,54 @@ const NETLIST_SCHEMA = Object.freeze({
 
 const trimBase = (url, fallback) => String(url || fallback).replace(/\/+$/, "");
 
+/**
+ * Keep only the counts that are actually numbers.
+ *
+ * An absent field must be OMITTED rather than set to `undefined`: the client
+ * merges usage across events with a spread, so `{ output: undefined }` would
+ * clobber a count it already knew. Returns null when there is nothing to
+ * report, which is what keeps a provider that sends no usage from showing a
+ * row of zeroes.
+ */
+function usageOf(fields) {
+  const out = {};
+  for (const [key, value] of Object.entries(fields)) {
+    if (Number.isFinite(value) && value >= 0) out[key] = value;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+/** Anthropic's names. `input_tokens` EXCLUDES both cache buckets. */
+const anthropicUsage = (u) =>
+  u
+    ? usageOf({
+        input: u.input_tokens,
+        output: u.output_tokens,
+        cacheWrite: u.cache_creation_input_tokens,
+        cacheRead: u.cache_read_input_tokens,
+      })
+    : null;
+
+/**
+ * OpenAI's names — and the one place the two providers disagree about meaning.
+ *
+ * `prompt_tokens` INCLUDES cached tokens; Anthropic's `input_tokens` excludes
+ * them. Subtracting here is what makes `input` mean the same thing downstream,
+ * rather than the same field silently counting the cache twice on one provider.
+ */
+const openaiUsage = (u) => {
+  if (!u) return null;
+  const cacheRead = u.prompt_tokens_details?.cached_tokens;
+  const prompt = u.prompt_tokens;
+  return usageOf({
+    input: Number.isFinite(prompt)
+      ? Math.max(0, prompt - (Number.isFinite(cacheRead) ? cacheRead : 0))
+      : NaN,
+    output: u.completion_tokens,
+    cacheRead,
+  });
+};
+
 const anthropic = Object.freeze({
   id: "anthropic",
   label: "Anthropic",
@@ -200,6 +248,10 @@ const anthropic = Object.freeze({
    * decline arrives as a normal 200 with `stop_reason: "refusal"` and empty or
    * partial content — so it is surfaced explicitly rather than left to look
    * like an empty answer.
+   *
+   * Usage arrives in TWO places and must be merged last-wins, not summed:
+   * `message_start` carries the prompt counts plus a token initial output
+   * count, and `message_delta` carries the CUMULATIVE final output count.
    */
   readEvent(json) {
     if (!json || typeof json !== "object") return {};
@@ -210,16 +262,21 @@ const anthropic = Object.freeze({
       }
       return {};
     }
+    if (json.type === "message_start") {
+      const usage = anthropicUsage(json.message?.usage);
+      return usage ? { usage } : {};
+    }
     if (json.type === "message_delta") {
-      const reason = json.delta?.stop_reason;
-      if (reason === "refusal") {
-        return {
-          refusal:
-            json.delta?.stop_details?.explanation ??
-            "The model declined this request.",
-        };
+      // Note the usage is a SIBLING of `delta`, not inside it — reading
+      // `json.delta.usage` finds nothing and silently reports no output.
+      const usage = anthropicUsage(json.usage);
+      const out = usage ? { usage } : {};
+      if (json.delta?.stop_reason === "refusal") {
+        out.refusal =
+          json.delta?.stop_details?.explanation ??
+          "The model declined this request.";
       }
-      return {};
+      return out;
     }
     if (json.type === "message_stop") return { done: true };
     if (json.type === "error") {
@@ -258,6 +315,11 @@ const openaiCompat = Object.freeze({
         model: model || this.defaultModel,
         max_tokens: maxTokens,
         stream: true,
+        // Ask for the trailing usage chunk. A server strict enough to reject an
+        // unknown field is already rejecting `response_format` below, which is
+        // the narrower compatibility bet of the two — so this costs nothing
+        // that was working. Drop this one line if a local server complains.
+        stream_options: { include_usage: true },
         response_format: {
           type: "json_schema",
           json_schema: {
@@ -291,12 +353,18 @@ const openaiCompat = Object.freeze({
     if (json.error) {
       return { error: json.error.message ?? "The provider reported an error." };
     }
+    // The usage chunk carries an EMPTY `choices` array, so this has to be read
+    // before the guard below rather than after it. Read it whenever it is
+    // offered, so a server that volunteers usage without being asked still
+    // reports.
+    const usage = openaiUsage(json.usage);
+    const out = usage ? { usage } : {};
     const choice = json.choices?.[0];
-    if (!choice) return {};
+    if (!choice) return out;
     const text = choice.delta?.content;
-    if (typeof text === "string" && text) return { text };
-    if (choice.finish_reason) return { done: true };
-    return {};
+    if (typeof text === "string" && text) out.text = text;
+    else if (choice.finish_reason) out.done = true;
+    return out;
   },
 });
 

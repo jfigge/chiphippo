@@ -43,12 +43,26 @@ import { BREADBOARD_KITS } from "./board-types.js";
 import { createAllocator } from "./column-allocator.js";
 import { captureDesign } from "./design-clip.js";
 import { DIP_PACKAGES } from "./footprints.js";
-import { parseMember, resolvePin } from "./pin-resolve.js";
+import { RAIL_TOKENS, parseMember, resolvePin } from "./pin-resolve.js";
 
 const GAP = 1; // blank columns between parts, so nothing reads as one block
 const KIT_PITCH = 22; // vertical spacing when a design needs a second kit
 
-const err = (code, message, extra = {}) => ({ code, message, ...extra });
+const REPAIR = "repair";
+const ABORT = "abort";
+
+// Compiler errors carry the same `kind` the verifier's faults do, so a repair
+// round does not have to know which stage refused. The default is REPAIR — the
+// spec's own mistake, which its author can fix. The GEOMETRY errors opt into
+// ABORT, because a model that is never asked for a hole cannot be asked for a
+// different one: sending "route it via a rail" back to something with no
+// coordinates in its vocabulary spends the user's tokens on an unchanged answer.
+const err = (code, message, extra = {}) => ({
+  code,
+  kind: REPAIR,
+  message,
+  ...extra,
+});
 
 /**
  * Compile a netlist spec into a document.
@@ -134,6 +148,15 @@ function resolveSpec(spec) {
     }
     const pins = [];
     const rails = new Set();
+    // A supply binds by NET NAME as well as by member token. The system prompt
+    // documents the name form (`{ "name": "VCC", members: [...] }`) and it is
+    // the form a model reaches for, so honouring only the member form is the
+    // worst kind of near-miss: a WIDE power net fails to route, and a NARROW
+    // one quietly compiles into an island of pins tied to each other and to no
+    // supply at all — which loads, settles, and passes the declared-vs-derived
+    // gate while the switches hanging off it do nothing.
+    const named = RAIL_TOKENS[name.toUpperCase()];
+    if (named) rails.add(named);
     members.forEach((m, j) => {
       const mPath = `${path}.members[${j}]`;
       const parsed = parseMember(m);
@@ -166,6 +189,26 @@ function resolveSpec(spec) {
           err(r.code, r.message, { path: mPath, candidates: r.candidates }),
         );
         return;
+      }
+      // The prompt says never to list a power pin, and until now nothing held
+      // the spec to it. Listing one is redundant at best — the compiler wires
+      // every part's VCC/GND from the rails regardless — and a SHORT at worst,
+      // when the pin lands in the net for the opposite rail. A brick's `gnd`
+      // is a TERMINAL, not a role-bearing pin, and stays listable: nothing
+      // powers a clock source but the netlist.
+      if (r.kind === "pin") {
+        const role = part.def.pins?.find((q) => q.n === r.pin)?.role;
+        if (role === "vcc" || role === "gnd") {
+          errors.push(
+            err(
+              "POWER_PIN_LISTED",
+              `"${m}" is ${part.ref}'s ${role.toUpperCase()} pin. The compiler ` +
+                `wires power itself — drop it from net "${name}".`,
+              { path: mPath },
+            ),
+          );
+          return;
+        }
       }
       const key = `${part.id}.${r.kind === "pin" ? r.pin : r.terminal}`;
       if (owner.has(key)) {
@@ -338,22 +381,61 @@ function assemble(resolved, title) {
     y: 0,
     params: { volts: 5 },
   });
+  // A dropped POWER wire is the one failure here that would be invisible:
+  // `wire` skips a null endpoint, so an exhausted supply leaves a chip
+  // unpowered in a document that still loads and still settles. The verifier
+  // catches it downstream at L5 — as CHIP_NOT_OK, kind REPAIR — and hands it
+  // back to the model as the spec's mistake, which it is not: a netlist never
+  // mentions power, so there is nothing there for anyone to fix. Recorded here,
+  // where it happened, and fatal.
+  const unpowered = [];
+  const powerWire = (from, to, colour, what) => {
+    if (!wire(from, to, colour)) unpowered.push(what);
+  };
+
+  // A NAMED line, which is what the bridges need — their whole job is to join
+  // one particular strip to another, so they cannot take just any free hole.
+  const railOf = (k, strip, polarity) =>
+    alloc.freeRail(kits[k].rails[strip], polarity);
+
   // Top strip carries +, bottom carries − — a convention, then bridged so both
   // polarities are reachable from either strip.
-  const plus = (k = 0) => alloc.freeRail(kits[k].rails[0], "+");
-  const minus = (k = 0) => alloc.freeRail(kits[k].rails[1], "-");
-  wire("psu1.+", plus(0), "red");
-  wire("psu1.-", minus(0), "black");
+  powerWire("psu1.+", railOf(0, 0, "+"), "red", "the PSU's + terminal");
+  powerWire("psu1.-", railOf(0, 1, "-"), "black", "the PSU's − terminal");
   for (let k = 0; k < kits.length; k++) {
     // Within a kit the two strips share no node, so bridge them…
-    wire(plus(k), alloc.freeRail(kits[k].rails[1], "+"), "red");
-    wire(minus(k), alloc.freeRail(kits[k].rails[0], "-"), "black");
+    powerWire(railOf(k, 0, "+"), railOf(k, 1, "+"), "red", `kit ${k + 1}'s +`);
+    powerWire(
+      railOf(k, 1, "-"),
+      railOf(k, 0, "-"),
+      "black",
+      `kit ${k + 1}'s −`,
+    );
     // …and across kits, so a second board is powered too.
     if (k > 0) {
-      wire(plus(0), plus(k), "red");
-      wire(minus(0), minus(k), "black");
+      powerWire(railOf(0, 0, "+"), railOf(k, 0, "+"), "red", `kit ${k + 1}`);
+      powerWire(railOf(0, 1, "-"), railOf(k, 1, "-"), "black", `kit ${k + 1}`);
     }
   }
+
+  // …and now that they are bridged, the supply is ONE node spread across every
+  // rail strip on the desk. Taking every hole from the first of them wasted the
+  // rest: a half kit ran dry after 25 taps with 25 identical holes sitting
+  // empty on the strip below, which is what turned a wide power net into a
+  // refusal (or, worse, a silent drop). Walk them all — the nearest free hole
+  // on any bridged line is electrically the same point, and it is the one a
+  // person reaches for.
+  const supply = (polarity) => {
+    for (const kit of kits) {
+      for (const id of kit.rails) {
+        const address = alloc.freeRail(id, polarity);
+        if (address) return address;
+      }
+    }
+    return null;
+  };
+  const plus = () => supply("+");
+  const minus = () => supply("-");
 
   // ── Bricks the spec declared (a clock, say) — to the right of the boards.
   const brickAt = new Map();
@@ -385,6 +467,7 @@ function assemble(resolved, title) {
           err(
             "UNPLACEABLE",
             `"${p.ref}" has no footprint the compiler can seat.`,
+            { kind: ABORT },
           ),
         ],
       };
@@ -409,6 +492,7 @@ function assemble(resolved, title) {
           err(
             "NO_ROOM",
             `Ran out of board for "${p.id}" (${p.ref}); the design needs more columns.`,
+            { kind: ABORT },
           ),
         ],
       };
@@ -431,27 +515,53 @@ function assemble(resolved, title) {
     const vcc = p.def.pins?.find((q) => q.role === "vcc");
     const gnd = p.def.pins?.find((q) => q.role === "gnd");
     if (vcc)
-      wire(alloc.freeAt(seat.boardId, seat.holes.get(vcc.n)), plus(0), "red");
-    if (gnd)
-      wire(
-        alloc.freeAt(seat.boardId, seat.holes.get(gnd.n)),
-        minus(0),
-        "black",
+      powerWire(
+        alloc.freeAt(seat.boardId, seat.holes.get(vcc.n)),
+        plus(),
+        "red",
+        `${p.id} (${p.ref}) VCC`,
       );
+    if (gnd)
+      powerWire(
+        alloc.freeAt(seat.boardId, seat.holes.get(gnd.n)),
+        minus(),
+        "black",
+        `${p.id} (${p.ref}) GND`,
+      );
+  }
+
+  if (unpowered.length) {
+    return {
+      ok: false,
+      errors: [
+        err(
+          "SUPPLY_EXHAUSTED",
+          `Every rail hole on the desk is spoken for — ${unpowered.join(", ")} ` +
+            `could not reach the supply.`,
+          { kind: ABORT },
+        ),
+      ],
+    };
   }
 
   // ── Route.
   //
-  // A net is a star from one hub, and the hub is the subtle part: EVERY wire
-  // end needs its own hole, the hub's included. A hub serving three spokes
-  // needs three free holes on its node, not one address used three times —
-  // that would be three leads in one hole, and the loader drops the extras
-  // silently, leaving a circuit that is a quiet open rather than a loud error.
+  // A net is a TREE, and its shape is the subtle part: EVERY wire end needs its
+  // own hole, the hub's included. A hub serving three spokes needs three free
+  // holes on its node, not one address used three times — that would be three
+  // leads in one hole, and the loader drops the extras silently, leaving a
+  // circuit that is a quiet open rather than a loud error.
   //
-  // So a member is modelled as a PORT that hands out fresh addresses, and the
-  // hub is whichever port has the most to give: a rail (one node of ~50 holes)
-  // beats a seated pin (five holes, one spent on the pin itself) beats a brick
-  // terminal (exactly one point, and no more).
+  // So a member is modelled as a PORT that hands out fresh addresses, and how
+  // many it can hand out is what decides the shape: a rail (one node of ~50
+  // holes) beats a seated pin (five holes, one spent on the pin itself) beats a
+  // brick terminal (exactly one point, and no more).
+  //
+  // The tree grows from the widest port, and every further member hangs off
+  // whichever ALREADY-JOINED port still has the most room. A rail never runs
+  // out, so a power net stays the plain star it has always been; a signal net
+  // wider than a column-half's four spare holes becomes a chain — hopping pin
+  // to pin, exactly as a person building it would — instead of a refusal.
   const portFor = (member) => {
     const brick = brickAt.get(member.partId);
     if (brick) {
@@ -469,7 +579,7 @@ function assemble(resolved, title) {
   };
   const railPort = (rail) => ({
     capacity: Infinity,
-    next: () => (rail === "VCC" ? plus(0) : minus(0)),
+    next: () => (rail === "VCC" ? plus() : minus()),
   });
 
   for (const net of nets) {
@@ -483,6 +593,7 @@ function assemble(resolved, title) {
             err(
               "UNREACHABLE_MEMBER",
               `Net "${net.name}" cannot reach ${m.partId} ${m.pin ?? m.terminal}.`,
+              { kind: ABORT },
             ),
           ],
         };
@@ -492,41 +603,53 @@ function assemble(resolved, title) {
     if (net.rail) ports.push(railPort(net.rail));
     if (ports.length < 2) continue;
 
-    let hub = 0;
-    for (let i = 1; i < ports.length; i++) {
-      if (ports[i].capacity > ports[hub].capacity) hub = i;
-    }
-    const spokes = ports.length - 1;
-    if (ports[hub].capacity < spokes) {
-      return {
-        ok: false,
-        errors: [
-          err(
-            "FANOUT_TOO_WIDE",
-            `Net "${net.name}" needs ${spokes} connections but its widest point ` +
-              `holds ${ports[hub].capacity}. Route it via a rail, or split it.`,
-          ),
-        ],
-      };
-    }
     const colour = net.rail
       ? net.rail === "VCC"
         ? "red"
         : "black"
       : colourFor(net.name);
-    for (let i = 0; i < ports.length; i++) {
-      if (i === hub) continue;
-      const from = ports[hub].next();
+
+    // Widest first, so the best hosts are joined early and are available to
+    // take the members behind them; index breaks a tie, so a rebuild of the
+    // same spec lays out identically.
+    const order = ports
+      .map((_, i) => i)
+      .sort((a, b) => ports[b].capacity - ports[a].capacity || a - b);
+    const room = ports.map((p) => p.capacity);
+    const joined = [order[0]];
+    for (let k = 1; k < order.length; k++) {
+      const i = order[k];
+      let host = joined[0];
+      for (const j of joined) if (room[j] > room[host]) host = j;
+      if (room[host] < 1) {
+        return {
+          ok: false,
+          errors: [
+            err(
+              "FANOUT_TOO_WIDE",
+              `Net "${net.name}" joins ${ports.length} points that hold one ` +
+                `lead each — there is nowhere left to hop through.`,
+              { kind: ABORT },
+            ),
+          ],
+        };
+      }
+      const from = ports[host].next();
       const to = ports[i].next();
       if (!from || !to) {
         return {
           ok: false,
           errors: [
-            err("NO_FREE_HOLE", `Net "${net.name}" ran out of free holes.`),
+            err("NO_FREE_HOLE", `Net "${net.name}" ran out of free holes.`, {
+              kind: ABORT,
+            }),
           ],
         };
       }
       wire(from, to, colour);
+      room[host] -= 1;
+      room[i] -= 1;
+      joined.push(i);
     }
   }
 

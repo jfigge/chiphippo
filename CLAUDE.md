@@ -658,6 +658,24 @@ Electron main process (src/app/main.js)
     user's tokens. `ai:delta`/`:done` are a SEPARATE message stream from the
     `ai:start` invoke result, so pushes that beat the reply back are held and
     replayed rather than dropped.
+  - **NO CONNECTION, NO SEGMENT.** The builder is the one tool that cannot work
+    on the user's own machine, so the toolbar's AI segment is **disabled** until
+    there is something to ask: `ai/connection.js` (pure) reads the settings' `ai`
+    config, the `ai:providers` list, and `ai:key:status` for the provider the
+    Settings picker would show — one `effectiveProvider` rule, so the button can
+    never be gated on a key for a provider the panel isn't showing. Validity is
+    decided WITHOUT asking the provider (nothing is sent anywhere until the user
+    asks for a build): a key is stored, the provider is one this build has an
+    adapter for, and a typed base URL parses as http(s). Whether the server would
+    ACCEPT that key is only the server's to say — Settings ▸ AI's Test connection
+    is where that is found. Every refusal carries the sentence the disabled
+    button shows as its tooltip. The two ways the answer changes are a settings
+    patch carrying `ai` and the key itself, which bypasses settings entirely —
+    hence the dialog's `chiphippo:ai-key-changed` broadcast, which says only THAT
+    it changed. The panel's remembered `aiOpen` is restored only once the answer
+    is known (an `aiOpen` from a session that HAD a key must not reopen a panel
+    whose button is now dead), and a key cleared while the panel is open closes
+    it — a panel no button can close would be stranded.
 - **Header toolbar**: two shapes, and no others. A **pill**
   (`.toolbar-pill`) groups buttons that read as ONE control — it carries the
   only border and the only background, its `.toolbar-pill-btn` segments are
@@ -668,7 +686,9 @@ Electron main process (src/app/main.js)
   actions, because it toggles a desk panel exactly as Analyzer does, and like
   Analyzer its armed state comes from the panel's own `onVisibilityChange`, so
   the segment tracks the panel however it was closed; the AI builder is the
-  same shape for the same reason), **File** (New · Open · Save · Save As, all
+  same shape for the same reason, and the one segment that is DISABLED when it
+  has nothing to offer — no API key, no builder; see the AI note above),
+  **File** (New · Open · Save · Save As, all
   aimed at the PROJECT, which is the document — every file action is its OWN
   icon-only segment rather than a row hidden behind a ▾, since they are peers
   and a toolbar's job is to show what is available; the name + accelerator live

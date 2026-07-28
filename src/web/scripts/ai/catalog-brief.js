@@ -97,7 +97,9 @@ design.
 * A net member is \`<partId>.<pin>\`. The pin may be its NAME (exactly as
   listed, case-sensitive) or its NUMBER. Use \`<partId>.#7\` to force the
   number when a chip has a pin *named* like a number.
-* \`VCC\` and \`GND\` are reserved NET NAMES that bind to the power rails.
+* \`VCC\` and \`GND\` bind to the power rails, either as a reserved NET NAME
+  (\`{ "name": "VCC", "members": [...] }\`) or as a member of a net of your own
+  name (\`{ "name": "A_SRC", "members": ["SW1.1B", "VCC"] }\`). Both work.
 * An optional field (\`title\`, \`label\`, \`set\`, \`edges\`, \`tests\`) may be
   \`null\` — the app reads null as absent.
 

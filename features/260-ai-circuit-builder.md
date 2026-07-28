@@ -266,7 +266,10 @@ verifiable on their own; do them first.
 - Every new pure module is DOM-free with a sibling `node --test` suite.
 - `main.js` handlers and `preload.js` exports stay in lockstep (`ipc-parity.test.js`);
   channels follow `area:noun[:verb]`, lowercase, hyphens only between alphanumerics.
-- Repair rounds capped at 2. Show an estimated-cost line — it is the user's key.
+- Repair rounds capped at 2. Report what an ask cost — it is the user's key. In
+  TOKENS, not dollars: a price table in the repo goes stale silently and the
+  panel starts lying about money, whereas the four buckets a provider reports
+  map one-to-one onto the console's price rows for anyone doing the sum.
 - Apache-2.0 header on every new file (`make license-headers`).
 
 ## Verify

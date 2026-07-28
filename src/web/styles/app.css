@@ -4250,6 +4250,16 @@ textarea.annotation-editor {
   white-space: nowrap;
 }
 
+/* The session's running token total. A SIBLING of `.ai-status` rather than a
+   second writer of it — `#setBusy` owns the status outright — and one step more
+   muted, because the status is about what is happening now and this is a total
+   the Clear button resets. */
+.ai-usage {
+  font: 11px / 1 var(--font-mono);
+  color: var(--color-muted);
+  white-space: nowrap;
+}
+
 .ai-btn {
   padding: 2px var(--space-2);
   font-size: 11px;

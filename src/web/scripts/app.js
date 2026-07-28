@@ -33,6 +33,7 @@ import { ProjectWorkspace } from "./components/project-workspace.js";
 import { BuildGuide } from "./components/build-guide.js";
 import { ScopeView } from "./components/scope-view.js";
 import { AiPanel } from "./components/ai-panel.js";
+import { checkConnection, effectiveProvider } from "./ai/connection.js";
 import { SimController, SPEEDS } from "./components/sim-controller.js";
 import { NetlistCache } from "./components/netlist-cache.js";
 import { MemoryBridge } from "./components/memory-bridge.js";
@@ -167,6 +168,11 @@ const ZOOM_OUT_SVG =
   '<circle cx="11" cy="11" r="8"/>' +
   '<line x1="21" y1="21" x2="16.65" y2="16.65"/>' +
   '<line x1="8" y1="11" x2="14" y2="11"/></svg>';
+
+/** The AI segment's tooltip while it is available (see `refreshAiReady`). */
+const AI_TITLE =
+  "AI circuit builder — describe a circuit and have it designed, " +
+  "built and tested for you";
 
 /** AI-builder icon: a four-point spark — the app-wide "generated" glyph. */
 const AI_SVG =
@@ -671,7 +677,50 @@ async function init() {
         .catch((err) => console.error("[renderer] settings:set failed:", err));
     },
   });
-  aiPanel.setVisible(settings.aiOpen === true);
+
+  // The AI segment is only offered when there is a connection to ask: a key
+  // stored for the chosen provider, a provider this build has an adapter for,
+  // and a base URL that could be reached (`ai/connection.js` decides, without
+  // a network call — nothing is sent anywhere until the user asks for a
+  // build). So the panel's restore waits for that answer rather than firing
+  // here: an `aiOpen` remembered from a session that HAD a key must not
+  // reopen a panel whose button is now dead, and must not be overwritten
+  // either — the key may well come back.
+  let aiProviders = null; // main's provider list, read once
+  let aiRestored = false; // whether the remembered `aiOpen` has been applied
+  const refreshAiReady = async () => {
+    let ready = { ok: false, reason: "The AI connection could not be read." };
+    try {
+      aiProviders ??= (await bridge.ai?.providers?.()) ?? [];
+      const config = currentSettings.ai ?? {};
+      // The key is asked about for the provider `checkConnection` will judge —
+      // one rule, so the button can never be gated on a key for a provider the
+      // Settings panel is not showing.
+      const provider = effectiveProvider(config, aiProviders)?.id;
+      const status = provider ? await bridge.ai?.key?.status(provider) : null;
+      ready = checkConnection(config, aiProviders, status);
+    } catch (err) {
+      console.error("[renderer] ai readiness check failed:", err);
+    }
+    if (aiBtn) {
+      aiBtn.disabled = !ready.ok;
+      aiBtn.title = ready.ok ? AI_TITLE : ready.reason;
+    }
+    if (ready.ok) {
+      // First pass only: honour the remembered state, never force the panel
+      // open under the user afterwards.
+      if (aiRestored === false) aiPanel.setVisible(settings.aiOpen === true);
+    } else if (aiPanel.visible) {
+      // A key cleared while the panel is open leaves a panel no button can
+      // close — so it goes with the connection it belonged to.
+      aiPanel.setVisible(false);
+    }
+    aiRestored = true;
+  };
+  // Settings ▸ AI changing the provider (a settings patch) or the key itself
+  // (which bypasses settings entirely, straight to the OS-encrypted store) are
+  // the two ways this answer changes.
+  window.addEventListener("chiphippo:ai-key-changed", () => refreshAiReady());
 
   const deskView = new DeskView(desk, {
     camera: settings.viewport,
@@ -1093,19 +1142,25 @@ async function init() {
   // tracks the panel however it was closed. It stays available while the
   // circuit runs — the panel itself refuses to build while the desk is frozen,
   // and saying so there is clearer than a dead button here.
+  //
+  // It is DISABLED, though, until there is a connection to ask at all: the
+  // builder is the one tool that cannot work on the user's own machine, so
+  // offering it with no API key configured would be offering nothing. It
+  // starts disabled and `refreshAiReady` (above) enables it once main has
+  // answered, replacing this tooltip with the reason whenever it is off.
   aiBtn = el("button", {
     class: "toolbar-pill-btn toolbar-pill-btn--icon",
     type: "button",
     "aria-label": "AI builder",
-    title:
-      "AI circuit builder — describe a circuit and have it designed, " +
-      "built and tested for you",
+    title: AI_TITLE,
+    disabled: true,
     "aria-pressed": String(aiPanel.visible),
     onClick: () => aiPanel.toggle(),
   });
   aiBtn.innerHTML = AI_SVG;
   aiBtn.classList.toggle("toolbar-btn--active", aiPanel.visible);
   toolPill.append(aiBtn);
+  refreshAiReady();
 
   // ── Simulation transport (Feature 90/100): Run/Stop, Pause, Step, speed ──
   const notifications = new NotificationStack(document.body);
@@ -1275,6 +1330,10 @@ async function init() {
   window.addEventListener("chiphippo:settings-changed", (e) => {
     currentSettings = { ...currentSettings, ...e.detail };
     applySettings(currentSettings);
+    // A different provider has a different key, and a base URL can be typed
+    // into something unreachable — either changes whether the AI segment has
+    // a connection to offer.
+    if (e.detail && "ai" in e.detail) refreshAiReady();
     bridge.settings
       .set(e.detail)
       .catch((err) => console.error("[renderer] settings:set failed:", err));

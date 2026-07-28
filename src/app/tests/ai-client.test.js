@@ -147,6 +147,169 @@ test("an unknown provider id resolves to nothing", () => {
   assert.equal(providerFor(undefined), null);
 });
 
+// ── Usage ───────────────────────────────────────────────────────────────────
+
+test("Anthropic usage is read from both places it arrives", () => {
+  const p = providerFor("anthropic");
+  assert.deepEqual(
+    p.readEvent({
+      type: "message_start",
+      message: {
+        usage: {
+          input_tokens: 20,
+          output_tokens: 1,
+          cache_read_input_tokens: 1000,
+          cache_creation_input_tokens: 3700,
+        },
+      },
+    }).usage,
+    { input: 20, output: 1, cacheRead: 1000, cacheWrite: 3700 },
+  );
+  // Usage is a SIBLING of `delta` on this event, not inside it.
+  assert.deepEqual(
+    p.readEvent({
+      type: "message_delta",
+      delta: { stop_reason: "end_turn" },
+      usage: { output_tokens: 250 },
+    }).usage,
+    { output: 250 },
+  );
+  // The shape that reads plausibly and finds nothing — pinned so a "tidy-up"
+  // that moves the read under `delta` fails here rather than in production.
+  assert.equal(
+    "usage" in
+      p.readEvent({ type: "message_delta", delta: { usage: { a: 1 } } }),
+    false,
+  );
+});
+
+test("the OpenAI-compatible adapter reads the trailing usage chunk", () => {
+  // That chunk carries `choices: []`, so it is dropped by any reader that
+  // looks at choices[0] first. `prompt_tokens` INCLUDES the cached tokens
+  // here, unlike Anthropic's `input_tokens` — hence 1200 - 1000 = 200.
+  const p = providerFor("openai-compat");
+  assert.deepEqual(
+    p.readEvent({
+      choices: [],
+      usage: {
+        prompt_tokens: 1200,
+        completion_tokens: 80,
+        prompt_tokens_details: { cached_tokens: 1000 },
+      },
+    }).usage,
+    { input: 200, output: 80, cacheRead: 1000 },
+  );
+});
+
+test("the OpenAI-compatible request asks for usage", () => {
+  const { body } = providerFor("openai-compat").buildRequest({
+    apiKey: "",
+    baseUrl: "",
+    system: "s",
+    messages: [],
+  });
+  assert.deepEqual(body.stream_options, { include_usage: true });
+});
+
+test("output tokens are last-wins, not summed", async () => {
+  // The whole reason the merge is a spread rather than an addition: 251 here
+  // instead of 250 means someone made it additive and every report is now a
+  // few tokens high.
+  await withFetch(
+    async () => ({
+      ok: true,
+      body: bodyOf([
+        sse(
+          {
+            type: "message_start",
+            message: {
+              usage: {
+                input_tokens: 20,
+                output_tokens: 1,
+                cache_read_input_tokens: 1000,
+              },
+            },
+          },
+          {
+            type: "content_block_delta",
+            delta: { type: "text_delta", text: "{}" },
+          },
+          { type: "message_delta", delta: {}, usage: { output_tokens: 250 } },
+          { type: "message_stop" },
+        ),
+      ]),
+    }),
+    async () => {
+      const { done } = start({
+        config: CONFIG,
+        apiKey: "k",
+        system: "s",
+        messages: [],
+      });
+      const r = await done;
+      assert.equal(r.ok, true);
+      assert.deepEqual(r.usage, { input: 20, output: 250, cacheRead: 1000 });
+    },
+  );
+});
+
+test("a refusal still reports what it spent", async () => {
+  // A refusal is billed for whatever streamed, and its usage rides the very
+  // event that reports the refusal — so the failure paths must carry it too.
+  await withFetch(
+    async () => ({
+      ok: true,
+      body: bodyOf([
+        sse({
+          type: "message_delta",
+          delta: { stop_reason: "refusal" },
+          usage: { output_tokens: 12 },
+        }),
+      ]),
+    }),
+    async () => {
+      const { done } = start({
+        config: CONFIG,
+        apiKey: "k",
+        system: "s",
+        messages: [],
+      });
+      const r = await done;
+      assert.equal(r.ok, false);
+      assert.equal(r.refusal, true);
+      assert.deepEqual(r.usage, { output: 12 });
+    },
+  );
+});
+
+test("a stream with no usage reports none rather than zeroes", async () => {
+  await withFetch(
+    async () => ({
+      ok: true,
+      body: bodyOf([
+        sse(
+          {
+            type: "content_block_delta",
+            delta: { type: "text_delta", text: "{}" },
+          },
+          { type: "message_stop" },
+        ),
+      ]),
+    }),
+    async () => {
+      const { done } = start({
+        config: CONFIG,
+        apiKey: "k",
+        system: "s",
+        messages: [],
+      });
+      const r = await done;
+      assert.equal(r.ok, true);
+      assert.equal("usage" in r, false, "absent, not a row of zeroes");
+    },
+  );
+});
+
 // ── SSE reading ─────────────────────────────────────────────────────────────
 
 test("events split across chunk boundaries are not lost", async () => {

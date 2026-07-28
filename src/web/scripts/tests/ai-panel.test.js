@@ -51,7 +51,13 @@ const COUNTER_SPEC = {
   tests: [{ name: "reset state", edges: 0, expect: { BAR: "00000000" } }],
 };
 
-/** Install a bridge that answers each `ai.start` with the next scripted reply. */
+/**
+ * Install a bridge that answers each `ai.start` with the next scripted reply.
+ *
+ * A reply is either a bare string (a successful answer, no usage reported — the
+ * shape every provider-less test uses) or a `{text, usage, ok, error}` object
+ * for the cases that care what a round cost or how it failed.
+ */
 function stubBridge(replies) {
   const sent = [];
   let seq = 0;
@@ -63,11 +69,15 @@ function stubBridge(replies) {
         // stored reference would show later turns as if they had been sent.
         sent.push({ requestId, config, system, messages: [...messages] });
         const reply = replies[seq - 1];
+        const detail =
+          typeof reply === "string"
+            ? { ok: true, text: reply }
+            : { ok: true, ...reply };
         // The real bridge answers first and pushes the result afterwards.
         queueMicrotask(() => {
           window.dispatchEvent(
             new window.CustomEvent("chiphippo:ai-done", {
-              detail: { requestId, ok: true, text: reply },
+              detail: { requestId, ...detail },
             }),
           );
         });
@@ -78,6 +88,12 @@ function stubBridge(replies) {
   };
   return sent;
 }
+
+/** The header's session total, or "" while it is hidden. */
+const total = (container) => {
+  const span = container.querySelector(".ai-usage");
+  return span.hidden ? "" : span.textContent;
+};
 
 /** Build a panel over a fresh container. */
 function mount(opts = {}) {
@@ -277,6 +293,106 @@ test("AiPanel: Clear forgets the conversation, so the next ask starts fresh", as
     [{ role: "user", content: "second" }],
     "the first exchange is gone",
   );
+});
+
+// ── Tokens ──────────────────────────────────────────────────────────────────
+
+const USAGE = { input: 1203, output: 2412, cacheRead: 11776 };
+
+test("AiPanel: a completed build reports what it cost", async () => {
+  resetDom();
+  stubBridge([{ text: JSON.stringify(COUNTER_SPEC), usage: USAGE }]);
+  const { container } = mount();
+
+  ask(container, "a counter");
+  await settleUi();
+
+  const notes = rows(container, "note").join(" ");
+  assert.match(notes, /Tokens: 1,203 in · 11,776 cache read · 2,412 out/);
+  assert.equal(total(container), "Session: 12,979 in · 2,412 out");
+});
+
+test("AiPanel: a repair round's tokens are added once, not per round", async () => {
+  // Two API calls, one ask. The failure this guards is reporting each round
+  // separately, which leaves the user adding up lines to learn what a design
+  // actually cost.
+  resetDom();
+  const broken = {
+    ...COUNTER_SPEC,
+    tests: [{ name: "backwards", edges: 1, expect: { BAR: "00000001" } }],
+  };
+  stubBridge([
+    { text: JSON.stringify(broken), usage: { input: 100, output: 200 } },
+    { text: JSON.stringify(COUNTER_SPEC), usage: { input: 50, output: 400 } },
+  ]);
+  const { container } = mount();
+
+  ask(container, "a counter");
+  await settleUi();
+  await settleUi();
+
+  const lines = rows(container, "note").filter((t) => t.startsWith("Tokens:"));
+  assert.equal(lines.length, 1, "one line per ask, not one per round");
+  assert.equal(lines[0], "Tokens: 150 in · 600 out · 2 calls");
+});
+
+test("AiPanel: a failed generation still reports what it spent", async () => {
+  // The case that matters most — a give-up is the most expensive outcome, so
+  // hiding its cost would understate spend exactly where it is highest.
+  resetDom();
+  stubBridge([{ ok: false, error: "Overloaded.", usage: { input: 900 } }]);
+  const { container } = mount();
+
+  ask(container, "a counter");
+  await settleUi();
+
+  assert.match(rows(container, "fail").join(" "), /Overloaded/);
+  assert.match(rows(container, "note").join(" "), /Tokens: 900 in/);
+});
+
+test("AiPanel: the session total accumulates, and Clear resets it", async () => {
+  resetDom();
+  stubBridge([
+    { text: JSON.stringify(COUNTER_SPEC), usage: { input: 100, output: 200 } },
+    { text: JSON.stringify(COUNTER_SPEC), usage: { input: 30, output: 70 } },
+  ]);
+  const { container } = mount();
+
+  ask(container, "first");
+  await settleUi();
+  assert.equal(total(container), "Session: 100 in · 200 out");
+
+  ask(container, "second");
+  await settleUi();
+  assert.equal(total(container), "Session: 130 in · 270 out");
+  assert.match(
+    container.querySelector(".ai-usage").title,
+    /across 2 sends/,
+    "the tooltip keeps the split the line drops",
+  );
+
+  [...container.querySelectorAll(".ai-btn")]
+    .find((b) => b.textContent === "Clear")
+    .dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  assert.equal(total(container), "", "Clear resets the total it owns");
+});
+
+test("AiPanel: a provider that reports no usage shows no tokens at all", async () => {
+  // Every other test in this file drives the bare-string reply shape, so this
+  // also pins that adding usage did not change what happens without it.
+  resetDom();
+  stubBridge([JSON.stringify(COUNTER_SPEC)]);
+  const { container } = mount();
+
+  ask(container, "a counter");
+  await settleUi();
+
+  assert.equal(
+    rows(container, "note").some((t) => t.startsWith("Tokens:")),
+    false,
+    "no line rather than a row of zeroes",
+  );
+  assert.equal(total(container), "");
 });
 
 test("AiPanel: a stale request's events are ignored", async () => {

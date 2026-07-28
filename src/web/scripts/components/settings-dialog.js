@@ -103,6 +103,19 @@ function emitSettings(patch) {
 }
 
 /**
+ * Announce that the stored API key changed.
+ *
+ * The key is the one control here that bypasses the settings patch (it goes
+ * straight to the OS-encrypted store), so a settings-changed event would never
+ * carry it — and whether a key exists is exactly what decides if the toolbar's
+ * AI segment is offered. The event says only THAT it changed: the value does
+ * not cross the bridge, let alone the app.
+ */
+function announceKeyChange() {
+  window.dispatchEvent(new CustomEvent("chiphippo:ai-key-changed"));
+}
+
+/**
  * Build the AI panel's rows once the provider list has arrived.
  *
  * The list comes from MAIN (`ai:providers`, projected from `app/ai/
@@ -228,6 +241,7 @@ function buildAiRows(settings, providers) {
       }
       result.textContent = "";
       refreshStatus();
+      announceKeyChange();
     },
   });
   const clearKey = el("button", {
@@ -239,6 +253,7 @@ function buildAiRows(settings, providers) {
       keyInput.value = "";
       result.textContent = "";
       refreshStatus();
+      announceKeyChange();
     },
   });
   const testBtn = el("button", {

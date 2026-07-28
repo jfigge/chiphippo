@@ -39,6 +39,7 @@
 import { el } from "../dom.js";
 import { buildRepairMessage, buildSystemPrompt } from "../ai/catalog-brief.js";
 import { buildFromReply, partitionFaults } from "../ai/generate.js";
+import { addUsage, formatTotal, formatUsage } from "../ai/usage.js";
 
 const MIN_PANEL_H = 160;
 const DEFAULT_PANEL_H = 280;
@@ -61,6 +62,7 @@ export class AiPanel {
   #send;
   #resize;
   #status;
+  #usage;
 
   #config;
   #onVisibilityChange;
@@ -77,6 +79,15 @@ export class AiPanel {
   #streamRow = null; // the "thinking…" row it is reported through
   #history = []; // the conversation sent to the provider
   #repairs = 0; // repair rounds spent on the current ask
+
+  // Tokens. Two scopes: what the ask in hand has cost across all its repair
+  // rounds, and what everything since the last Clear has cost. A repair round
+  // is a whole extra API call, so a design that took three tries is reported
+  // as one line saying so rather than three lines nobody adds up.
+  #sendUsage = null;
+  #calls = 0;
+  #session = null;
+  #sends = 0;
 
   // `ai:start` answers with the request id, but main's `ai:delta` / `ai:done`
   // pushes are a SEPARATE message stream — nothing guarantees the reply lands
@@ -138,6 +149,11 @@ export class AiPanel {
       "aria-live": "polite",
     });
     this.#status = el("span", { class: "ai-status", text: "" });
+    // Its own element rather than a second writer of `#status`, which `#setBusy`
+    // owns outright. It sits to the RIGHT of the status because `.ai-tools`
+    // packs to flex-end: width changes shift whatever is to their left, so this
+    // way the number does not slide sideways every time "Designing…" appears.
+    this.#usage = el("span", { class: "ai-usage", text: "", hidden: true });
 
     this.#input = el("textarea", {
       class: "ai-input",
@@ -171,6 +187,7 @@ export class AiPanel {
       el("span", { class: "ai-title", text: "AI circuit builder" }),
       el("div", { class: "ai-tools" }, [
         this.#status,
+        this.#usage,
         el("button", {
           class: "ai-btn",
           type: "button",
@@ -305,8 +322,44 @@ export class AiPanel {
     if (this.#requestId) this.#cancel();
     this.#history = [];
     this.#repairs = 0;
+    this.#sendUsage = null;
+    this.#calls = 0;
+    this.#session = null;
+    this.#sends = 0;
+    this.#paintTotal();
     this.#log.replaceChildren();
     this.#say("note", "Cleared. Describe a new circuit.");
+  }
+
+  // ── Tokens ─────────────────────────────────────────────────────────────────
+
+  /** Repaint the header total. Hidden when empty — `.ai-tools` has a gap, so an
+   *  empty-but-present span still costs a space. */
+  #paintTotal() {
+    const { text, title } = formatTotal(this.#session, this.#sends);
+    this.#usage.textContent = text;
+    this.#usage.title = title;
+    this.#usage.hidden = !text;
+  }
+
+  /**
+   * Close out one ask: report what it cost, and fold it into the session.
+   *
+   * Called at the END of every terminal branch rather than hooked onto
+   * `#setBusy(false)`, which fires at exactly the same five points but does so
+   * BEFORE `#accept` writes its summary — the cost belongs under the result it
+   * describes, not above it.
+   */
+  #settle() {
+    if (this.#sendUsage) {
+      const line = formatUsage(this.#sendUsage, this.#calls);
+      if (line) this.#say("note", line);
+      this.#session = addUsage(this.#session, this.#sendUsage);
+      this.#sends += 1;
+      this.#paintTotal();
+    }
+    this.#sendUsage = null;
+    this.#calls = 0;
   }
 
   #setBusy(busy, label = "") {
@@ -335,11 +388,21 @@ export class AiPanel {
     }
     this.#input.value = "";
     this.#repairs = 0;
+    this.#sendUsage = null;
+    this.#calls = 0;
     this.#history.push({ role: "user", content: prompt });
     this.#say("you", prompt);
     this.#request();
   }
 
+  /**
+   * Note the tokens a cancelled round already burned are not counted: nulling
+   * the id here is what makes `#onDone` drop the reply that follows, usage and
+   * all. A known undercount on a rare path, left alone deliberately — closing
+   * it means remembering the abandoned id and folding its usage in without
+   * writing to the transcript, which is more state machine than the accuracy
+   * is worth.
+   */
   #cancel() {
     const id = this.#requestId;
     this.#requestId = null;
@@ -376,6 +439,7 @@ export class AiPanel {
       this.#finishStream();
       this.#setBusy(false);
       this.#say("fail", started?.error ?? "The request could not be started.");
+      this.#settle();
       return;
     }
     this.#requestId = started.requestId;
@@ -413,11 +477,15 @@ export class AiPanel {
   #onDone(detail) {
     if (!detail || detail.requestId !== this.#requestId) return;
     this.#requestId = null;
+    // The single ingestion point: every round lands here, whatever it did.
+    this.#sendUsage = addUsage(this.#sendUsage, detail.usage);
+    this.#calls += 1;
     this.#finishStream();
     if (!detail.ok) {
       this.#setBusy(false);
       if (!detail.cancelled)
         this.#say("fail", detail.error ?? "The request failed.");
+      this.#settle();
       return;
     }
     this.#setBusy(true, "Building…");
@@ -434,6 +502,7 @@ export class AiPanel {
       this.#setBusy(false);
       this.#history.push({ role: "assistant", content: text });
       this.#accept(built);
+      this.#settle();
       return;
     }
 
@@ -448,6 +517,7 @@ export class AiPanel {
           "a fault in Chip Hippo's compiler, not in the design.",
         abort.map((f) => `${f.code}: ${f.message}`),
       );
+      this.#settle();
       return;
     }
 
@@ -458,6 +528,7 @@ export class AiPanel {
         `Gave up after ${MAX_REPAIRS} repair attempts. What is still wrong:`,
         repair.map((f) => `${f.code}: ${f.message}`),
       );
+      this.#settle();
       return;
     }
 
