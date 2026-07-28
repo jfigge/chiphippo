@@ -25,10 +25,12 @@
 //
 // THE STRIP IS ALWAYS THERE, because there is always a project: the app boots
 // onto one, so the strip always has at least one desktop to show, and the
-// "+" beside them is the route to another. It drops a two-item menu — **New
-// Desktop** and **Import Desktop…** — because those are the two ways a desktop
-// arrives and neither belongs to any particular tab, which is why they are
-// here rather than in a tab's own context menu.
+// "+" beside them is the route to another. A PRIMARY click on it does the
+// obvious thing — adds a desktop, no questions — and its SECONDARY click drops
+// the two-item menu (**New Desktop** · **Import Desktop…**), the same
+// primary-does-the-common-thing / right-click-offers-the-rest split a tab
+// itself has. Those two items live here rather than in a tab's own menu
+// because they are how a desktop ARRIVES: neither belongs to any tab.
 //
 // There is NO per-tab dirty marker. A desktop is not a file and cannot be
 // saved on its own — the project is the document — so a dot no action could
@@ -66,8 +68,9 @@ export class ProjectTabs {
    *   and the desk row, in app.js).
    * @param {object} callbacks
    * @param {(id: string) => void} callbacks.onSelect - a tab was clicked.
-   * @param {() => void} callbacks.onAdd - New Desktop, from the "+" menu.
-   * @param {() => void} callbacks.onImport - Import Desktop…, ditto.
+   * @param {() => void} callbacks.onAdd - New Desktop: the "+"'s own click,
+   *   and the leading item of its secondary-click menu.
+   * @param {() => void} callbacks.onImport - Import Desktop…, from that menu.
    * @param {(id: string) => void} callbacks.onProperties - Properties… on a
    *   tab (its Name/Description, through the app-wide shared dialog).
    * @param {(id: string) => void} callbacks.onDuplicate - Duplicate.
@@ -132,24 +135,28 @@ export class ProjectTabs {
         class: "project-tab-add",
         type: "button",
         text: "+",
-        title: "New or import a desktop",
-        "aria-label": "New or import a desktop",
-        "aria-haspopup": "menu",
-        onClick: (e) => this.#openAddMenu(e),
+        title: "New desktop (right-click to import one)",
+        "aria-label": "New desktop",
+        onClick: () => this.#onAdd?.(),
+        onContextMenu: (e) => {
+          e.preventDefault();
+          this.#openAddMenu(e);
+        },
       }),
     );
   }
 
   /**
-   * The "+" menu: the two ways another desktop arrives. Both are ADDITIONS
-   * that land you on the new desk — an import can no more replace what is on
-   * screen than a new desktop can.
+   * The "+"'s SECONDARY-click menu: the two ways another desktop arrives, with
+   * the primary click's own action leading it, exactly as a right-click
+   * anywhere else in the app offers what a plain click already did plus the
+   * rest. Both are ADDITIONS that land you on the new desk — an import can no
+   * more replace what is on screen than a new desktop can.
    */
   #openAddMenu(e) {
-    const rect = e.currentTarget.getBoundingClientRect();
     PopupManager.menu({
-      x: rect.left,
-      y: rect.bottom + 4,
+      x: e.clientX,
+      y: e.clientY,
       items: [
         { label: "New Desktop", onSelect: () => this.#onAdd?.() },
         { label: "Import Desktop…", onSelect: () => this.#onImport?.() },

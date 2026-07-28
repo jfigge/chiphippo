@@ -216,11 +216,15 @@ contextBridge.exposeInMainWorld("chiphippo", {
     toHost: (compId, msg) => ipcRenderer.invoke("memory:to-host", compId, msg),
   },
 
-  // ── Undo/redo menu state (Feature 200) ─────────────────────────────────────
-  // The renderer owns the document history; this pushes the current
-  // availability so main can enable/disable Edit ▸ Undo / Redo to match.
+  // ── Native menu state ──────────────────────────────────────────────────────
+  // The renderer owns what these items act on, so it is the authority on
+  // whether they apply: the document history behind Edit ▸ Undo / Redo
+  // (Feature 200), and the tab set + run lock behind Desktop ▸ Duplicate /
+  // Delete — which the tab strip already disables, so this is what keeps the
+  // two surfaces saying the same thing.
   menu: {
     setEditState: (state) => ipcRenderer.invoke("menu:edit-state", state),
+    setDesktopState: (state) => ipcRenderer.invoke("menu:desktop-state", state),
   },
 
   // ── User guide (Feature 230) ────────────────────────────────────────────────

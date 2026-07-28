@@ -29,6 +29,7 @@ import { DeskDoc, emptyDocument } from "../model/desk-doc.js";
 
 const { ProjectWorkspace } = await import("../components/project-workspace.js");
 const { ProjectTabs } = await import("../components/project-tabs.js");
+const { PopupManager } = await import("../popup-manager.js");
 
 /** The app's own working slot, as main lays it out (store/project-store.js). */
 const SAVES = "/data/saves";
@@ -162,12 +163,25 @@ function fakeBridge() {
     duplicate: async (doc) => ({ doc: reseat(doc) }),
   };
 
+  // What the renderer last told main the native Desktop menu may offer. The
+  // tab strip disables the same two items, so a test can hold the two answers
+  // against each other.
+  const desktopMenu = { canDelete: true, canDuplicate: true };
+
   return {
     bridge: {
       project,
       desktop,
       settings: { set: async (patch) => Object.assign(settings, patch) },
+      menu: {
+        setEditState: async () => true,
+        setDesktopState: async (state) => {
+          Object.assign(desktopMenu, state);
+          return true;
+        },
+      },
     },
+    desktopMenu,
     projects,
     settings,
     counts,
@@ -960,11 +974,33 @@ test("a desktop's description shows in its tab's tooltip", async () => {
   assert.equal(tab.title, "Desktop 1\nthe clock divider");
 });
 
-test("the + drops New Desktop and Import Desktop, in that order", async () => {
+/** The strip's "+", as a primary click and as a secondary one. */
+const addButton = (h) => h.tabs.element.querySelector(".project-tab-add");
+const clickAdd = (h) =>
+  addButton(h).dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+const rightClickAdd = (h) =>
+  addButton(h).dispatchEvent(
+    new window.MouseEvent("contextmenu", { bubbles: true, clientX: 9, clientY: 9 }), // prettier-ignore
+  );
+
+test("a primary click on the + adds a desktop straight away", async () => {
   const h = await harness();
-  h.tabs.element
-    .querySelector(".project-tab-add")
-    .dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  h.doc.load(someDesign());
+  clickAdd(h);
+  await settle();
+  assert.equal(
+    document.querySelector(".popup-menu-item"),
+    null,
+    "no menu — the common thing just happens",
+  );
+  assert.deepEqual(h.strip(), ["Desktop 1", "Desktop 2"]);
+  assert.equal(h.workspace.activeTab.name, "Desktop 2");
+  assert.deepEqual(h.doc.boards, [], "and it lands you on the new desk");
+});
+
+test("the +'s secondary click offers New Desktop then Import Desktop", async () => {
+  const h = await harness();
+  rightClickAdd(h);
   assert.deepEqual(
     [...document.querySelectorAll(".popup-menu-item")].map((i) =>
       i.textContent.trim(),
@@ -973,31 +1009,19 @@ test("the + drops New Desktop and Import Desktop, in that order", async () => {
   );
 });
 
-test("the + menu's New Desktop adds one; Import brings one in", async () => {
+test("Import from the +'s menu brings a desktop in as a new tab", async () => {
   const h = await harness();
-  const openAddMenu = () =>
-    h.tabs.element
-      .querySelector(".project-tab-add")
-      .dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-  const pick = (label) =>
-    [...document.querySelectorAll(".popup-menu-item")]
-      .find((i) => i.textContent.trim() === label)
-      .dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-
-  openAddMenu();
-  pick("New Desktop");
-  await settle();
-  assert.deepEqual(h.strip(), ["Desktop 1", "Desktop 2"]);
-
+  h.doc.load(someDesign("bb1"));
   h.control.importDesktop = { name: "Clock module", doc: someDesign("bb5") };
-  openAddMenu();
-  pick("Import Desktop…");
+  rightClickAdd(h);
+  [...document.querySelectorAll(".popup-menu-item")]
+    .find((i) => i.textContent.trim() === "Import Desktop…")
+    .dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
   await settle();
-  assert.deepEqual(h.strip(), ["Desktop 1", "Desktop 2", "Clock module"]);
+  assert.deepEqual(h.strip(), ["Desktop 1", "Clock module"]);
   assert.deepEqual(
     h.doc.boards.map((b) => b.id),
     ["bb5"],
-    "both land you on the new desk",
   );
 });
 
@@ -1021,6 +1045,75 @@ test("the tab menu offers Properties, Duplicate, Export and Delete", async () =>
     labels.includes("Pin Assignment"),
     false,
     "a desktop has no pins, so the board menu's shape is the right one",
+  );
+});
+
+/** Which of the tab menu's items the strip currently offers, by label. A menu
+    card has no header ×, so it is dismissed the way a click outside would —
+    otherwise the next reading would find the last menu's items still there. */
+function stripMenuEnabled(h, label) {
+  const tab = h.tabs.element.querySelector(".project-tab");
+  tab.dispatchEvent(
+    new window.MouseEvent("contextmenu", { bubbles: true, clientX: 5, clientY: 5 }), // prettier-ignore
+  );
+  const item = [...document.querySelectorAll(".popup-menu-item")].find(
+    (i) => i.textContent.trim() === label,
+  );
+  const enabled = item != null && !item.disabled;
+  PopupManager.close();
+  return enabled;
+}
+
+test("the native Desktop menu is told what the strip disables — Delete", async () => {
+  const h = await harness();
+  // One desktop: a project cannot run out of them, so neither surface offers it.
+  assert.equal(h.desktopMenu.canDelete, false);
+  assert.equal(stripMenuEnabled(h, "Delete Desktop"), false);
+
+  await h.workspace.addTab();
+  await settle();
+  assert.equal(h.desktopMenu.canDelete, true, "a second desktop enables it");
+  assert.equal(stripMenuEnabled(h, "Delete Desktop"), true);
+
+  // ...and back down again when the project is one desktop once more.
+  await h.workspace.deleteTab("t2");
+  await settle();
+  clickButton("Delete");
+  await settle();
+  assert.equal(h.desktopMenu.canDelete, false);
+  assert.equal(stripMenuEnabled(h, "Delete Desktop"), false);
+});
+
+test("the native Desktop menu is told what the strip disables — the run lock", async () => {
+  const h = await harness();
+  await twoDesktops(h);
+  h.workspace.setEditingLocked(true);
+  assert.deepEqual(h.desktopMenu, { canDelete: false, canDuplicate: false });
+  assert.equal(stripMenuEnabled(h, "Duplicate Desktop"), false);
+  assert.equal(stripMenuEnabled(h, "Delete Desktop"), false);
+
+  h.workspace.setEditingLocked(false);
+  assert.deepEqual(h.desktopMenu, { canDelete: true, canDuplicate: true });
+  assert.equal(stripMenuEnabled(h, "Duplicate Desktop"), true);
+  assert.equal(stripMenuEnabled(h, "Delete Desktop"), true);
+});
+
+test("opening another project re-reports what its desktops allow", async () => {
+  const h = await harness();
+  await twoDesktops(h);
+  assert.equal(h.desktopMenu.canDelete, true);
+  h.seedProject("/home/one.chiphippo", {
+    name: "One",
+    activeTab: "t1",
+    nextIndex: 2,
+    tabs: [{ id: "t1", name: "Only", doc: emptyDocument() }],
+  });
+  h.control.openProject = "/home/one.chiphippo";
+  await leaving(() => h.workspace.loadProject());
+  assert.equal(
+    h.desktopMenu.canDelete,
+    false,
+    "the incoming project has one desktop, and the menu says so",
   );
 });
 

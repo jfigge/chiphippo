@@ -539,12 +539,14 @@ Electron main process (src/app/main.js)
   dialog (`File ▸ Project Properties…`) plus one `"readonly"` **Location**,
   blank until it has been saved. **The strip is ALWAYS on screen** because
   there is always a project to fill it, and the `+` beside it needs nothing to
-  exist first. The `+` drops a TWO-ITEM menu — **New Desktop** · **Import
-  Desktop…** — because those are the two ways a desktop ARRIVES, and neither
-  belongs to any particular tab, which is why they are there and not in a tab's
-  own context menu. Both are additions that land on the new desk (an import can
-  no more replace what is on screen than a new desktop can), and both mirror
-  the Desktop menu's leading pair, so the wordings must stay in step.
+  exist first. The `+` splits the way a TAB does — a PRIMARY click does the
+  common thing (adds a desktop, no menu, no questions) and a SECONDARY click
+  drops the two-item menu, **New Desktop** · **Import Desktop…**. Those are the
+  two ways a desktop ARRIVES, and neither belongs to any particular tab, which
+  is why they live on the `+` and not in a tab's own menu; both are additions
+  that land on the new desk (an import can no more replace what is on screen
+  than a new desktop can), and both mirror the Desktop menu's leading pair, so
+  the wordings must stay in step.
   **v3 → v4** (`project-migrate.js`): a project that listed desktop PATHS has
   them inlined on read, NON-DESTRUCTIVELY — a desktop file the user saved
   somewhere of their own is read and left exactly where it is. A tab whose file
@@ -681,10 +683,18 @@ Electron main process (src/app/main.js)
   inside it — New Desktop · Duplicate · rule · Import… · Export… · rule ·
   Properties… · Delete, as `menu:desktop-*` → `chiphippo:desktop-*`, every one
   aimed at the ACTIVE desktop. The tab strip mirrors it in two halves, so the
-  labels must stay in step: the `+` menu carries the two ARRIVALS (New Desktop ·
-  Import Desktop…), which belong to no particular tab, and a tab's context menu
-  carries the rest for the one it was opened on. `app.js` hands all of them
-  straight to `ProjectWorkspace` — the only
+  labels must stay in step: the `+`'s secondary-click menu carries the two
+  ARRIVALS (New Desktop · Import Desktop…), which belong to no particular tab,
+  and a tab's context menu carries the rest for the one it was opened on. So
+  must their AVAILABILITY: **Duplicate** and **Delete** carry menu-item ids and
+  take their enabled state from the renderer over **`menu:desktop-state`**
+  (`{canDelete, canDuplicate}`), exactly as Edit ▸ Undo/Redo does over
+  `menu:edit-state` — the workspace owns the tab set and the run lock, and
+  pushes on every change to either (`#pushMenuState`, from `#renderTabs` and
+  `setEditingLocked`). `refreshAppMenu` replays it, since a fresh template
+  starts from its own defaults. Without that the menu bar would offer what the
+  strip forbids, and an item that silently does nothing is worse than a greyed
+  one. `app.js` hands all of them straight to `ProjectWorkspace` — the only
   side that knows what is open and what is unsaved. The toolbar's File pill
   dispatches the SAME `chiphippo:project-*` events, so the two can't drift.
   Open Recent is the one push carrying a **payload** (the project file its

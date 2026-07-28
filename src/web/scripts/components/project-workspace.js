@@ -130,6 +130,7 @@ export class ProjectWorkspace {
   #project = null; // the normalized meta (model/project-doc.js) + `location`
   #state = new Map(); // tabId → { history, camera }
   #saved = null; // the signature of the project as its file holds it
+  #locked = false; // editing frozen (the circuit is running)
 
   /**
    * Read the project this session opens with, BEFORE the desk is built — so
@@ -258,8 +259,12 @@ export class ProjectWorkspace {
     return this.#confirmLeaveProject({ quitting: true });
   }
 
-  /** Freeze the tab strip's destructive affordances while the circuit runs. */
+  /** Freeze the destructive desktop affordances while the circuit runs — on
+      the tab strip AND on the native Desktop menu, which must not offer what
+      the strip forbids. */
   setEditingLocked(locked) {
+    this.#locked = locked === true;
+    this.#pushMenuState();
     this.#tabsView?.setEditingLocked(locked);
   }
 
@@ -687,13 +692,32 @@ export class ProjectWorkspace {
     return true;
   }
 
-  /** Push the current desktops onto the strip. */
+  /** Push the current desktops onto the strip — and, with them, what the
+      native Desktop menu may offer (the tab set is half of that answer). */
   #renderTabs() {
-    if (!this.#project) {
-      this.#tabsView?.setTabs([], null);
-      return;
-    }
-    this.#tabsView?.setTabs(this.#project.tabs, this.#project.activeTab);
+    this.#tabsView?.setTabs(
+      this.#project?.tabs ?? [],
+      this.#project?.activeTab ?? null,
+    );
+    this.#pushMenuState();
+  }
+
+  /**
+   * Tell main which Desktop-menu items apply, so the menu bar and the tab
+   * strip can never disagree: Delete is off on the last remaining desktop (a
+   * project cannot run out of them) and both are off while the circuit runs.
+   * The conditions are the strip's own, stated once here and mirrored there.
+   */
+  #pushMenuState() {
+    const count = this.#project?.tabs.length ?? 0;
+    Promise.resolve(
+      this.#bridge?.menu?.setDesktopState?.({
+        canDelete: count > 1 && !this.#locked,
+        canDuplicate: count > 0 && !this.#locked,
+      }),
+    ).catch((err) =>
+      console.error("[renderer] menu:desktop-state failed:", err),
+    );
   }
 
   #forgetRecent(filePath) {

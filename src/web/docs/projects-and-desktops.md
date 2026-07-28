@@ -27,20 +27,22 @@ a second desktop.
 
 ## Adding desktops
 
-**Press +** at the end of the tab strip. It offers the two ways a desktop
-arrives:
+**Just press +** at the end of the tab strip. It asks you nothing: a new empty
+desktop appears beside the others, named `Desktop 2`, `Desktop 3`, and so on,
+and you land on it.
 
-- **New Desktop** — a blank one, named `Desktop 2`, `Desktop 3`, and so on.
+**Right-click the +** for the other way one arrives:
+
+- **New Desktop** — the same thing the plain click does.
 - **Import Desktop…** — one read in from a file (see *Moving a desktop between
   projects* below).
 
-Either way it's an addition — the new desktop appears beside the others and you
-land on it, and nothing that was already there is touched.
+Either way it's an addition, and nothing already there is touched.
 
 The **Desktop** menu has the same two plus the rest, acting on the desktop
 you're looking at:
 
-- **New Desktop** — the same thing as the **+**'s first item.
+- **New Desktop** — the same thing as pressing **+**.
 - **Duplicate Desktop** — a copy of this desk, landing right beside it. The
   copy is brand-new hardware: a ROM on it gets its own backing file, so
   programming the copy never touches the original.
@@ -145,10 +147,10 @@ Since a desktop isn't a file, moving one somewhere else is a **snapshot**:
   — its boards, parts and wiring, plus the contents of any ROM on it. The file
   is self-contained and has no link back: it is a copy, and nothing you do to
   the project afterwards changes it.
-- **Import Desktop…** — on the **Desktop** menu and on the tab strip's **+** —
-  reads one back as a **new** desktop, keeping the name it was exported under.
-  Import is always an addition, so no file operation can ever replace the desk
-  you're looking at.
+- **Import Desktop…** — on the **Desktop** menu, and by right-clicking the tab
+  strip's **+** — reads one back as a **new** desktop, keeping the name it was
+  exported under. Import is always an addition, so no file operation can ever
+  replace the desk you're looking at.
 
 An imported desktop is brand-new hardware in the same way a duplicate is: import
 the same file twice and the two copies' ROMs are independent. Opening a

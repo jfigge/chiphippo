@@ -883,6 +883,13 @@ function sendToMain(channel, payload) {
  *  template starts with both disabled. */
 let editMenuState = { canUndo: false, canRedo: false };
 
+/** The last Desktop-menu availability the renderer reported (see
+ *  setDesktopMenuState). Replayed on a rebuild for the same reason. The
+ *  template's own defaults are the PERMISSIVE ones — a project always has at
+ *  least one desktop to act on, and the renderer corrects this the moment it
+ *  knows better. */
+let desktopMenuState = { canDelete: true, canDuplicate: true };
+
 /**
  * File ▸ Open Recent's items, from main's own MRU list. An empty
  * list still renders one (disabled) row rather than an empty card, matching
@@ -968,9 +975,16 @@ function buildAppMenu() {
   // Save As / Open used to be — snapshots, with no link retained either way.
   // Every item acts on the ACTIVE desktop; the tab strip's context menu
   // mirrors them for a desktop that is not on screen.
+  //
+  // Two of them are not always available, and the tab strip disables exactly
+  // the same two — so they carry ids and take their enabled state from the
+  // renderer over `menu:desktop-state`, the way Edit ▸ Undo/Redo does. Without
+  // that the menu would offer what the strip forbids, and a menu item that
+  // silently does nothing is worse than one that is greyed out.
   const desktopItems = [
     { label: "New Desktop", click: () => sendToMain("menu:desktop-add") },
     {
+      id: "desktop-duplicate",
       label: "Duplicate Desktop",
       click: () => sendToMain("menu:desktop-duplicate"),
     },
@@ -989,6 +1003,7 @@ function buildAppMenu() {
       click: () => sendToMain("menu:desktop-properties"),
     },
     {
+      id: "desktop-delete",
       label: "Delete Desktop",
       click: () => sendToMain("menu:desktop-delete"),
     },
@@ -1112,12 +1127,13 @@ function buildAppMenu() {
 /**
  * Rebuild and install the application menu. File ▸ Open Recent is
  * baked into the template, so the MRU list changing means a whole new menu —
- * and a fresh template starts with Undo/Redo disabled, hence replaying the
- * edit state the renderer last reported.
+ * and a fresh template starts from its own defaults, hence replaying both
+ * states the renderer last reported.
  */
 function refreshAppMenu() {
   Menu.setApplicationMenu(buildAppMenu());
   setEditMenuState(editMenuState);
+  setDesktopMenuState(desktopMenuState);
 }
 
 /**
@@ -1132,6 +1148,29 @@ function setEditMenuState({ canUndo = false, canRedo = false } = {}) {
   const redo = menu?.getMenuItemById("edit-redo");
   if (undo) undo.enabled = Boolean(canUndo);
   if (redo) redo.enabled = Boolean(canRedo);
+}
+
+/**
+ * Enable/disable the two Desktop items that are not always available, so the
+ * menu bar and the tab strip say the SAME thing about them:
+ *
+ *   · Delete Desktop — off on the last remaining desktop (a project cannot run
+ *     out of them);
+ *   · Duplicate Desktop — off while the circuit runs (editing is frozen).
+ *
+ * The renderer is the authority, exactly as it is for Undo/Redo: it owns the
+ * tab set and the run lock and pushes this whenever either changes.
+ */
+function setDesktopMenuState({ canDelete = true, canDuplicate = true } = {}) {
+  desktopMenuState = {
+    canDelete: Boolean(canDelete),
+    canDuplicate: Boolean(canDuplicate),
+  };
+  const menu = Menu.getApplicationMenu();
+  const del = menu?.getMenuItemById("desktop-delete");
+  const dup = menu?.getMenuItemById("desktop-duplicate");
+  if (del) del.enabled = desktopMenuState.canDelete;
+  if (dup) dup.enabled = desktopMenuState.canDuplicate;
 }
 
 /** The native right-click menu for a pinout window (float toggle + close). */
@@ -1368,6 +1407,13 @@ function registerIpc() {
   // and pushes the current availability so Edit ▸ Undo / Redo match.
   ipcMain.handle("menu:edit-state", (_event, state) => {
     setEditMenuState(state);
+    return true;
+  });
+  // Desktop menu state: the renderer owns the tab set and the run lock, and
+  // pushes them so the menu bar and the tab strip agree about what is
+  // available (Delete on the last desktop, Duplicate while running).
+  ipcMain.handle("menu:desktop-state", (_event, state) => {
+    setDesktopMenuState(state);
     return true;
   });
 }
