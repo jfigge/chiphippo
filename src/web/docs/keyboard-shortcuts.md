@@ -45,7 +45,7 @@ are noted alongside the shortcut.
 | `Cmd+=` or `Cmd++` | Zoom in |
 | `Cmd+-` | Zoom out |
 | `Cmd+0` | Reset zoom |
-| `Cmd+A` | Toggle the Logic Analyzer panel |
+| `A` | Toggle the Logic Analyzer panel |
 | `Cmd+P` | Toggle the parts palette panel |
 
 ## Files & editing
@@ -56,6 +56,7 @@ are noted alongside the shortcut.
 | `Cmd+O` | Open… (load a saved project) |
 | `Cmd+S` | Save the project to its file |
 | `Cmd+Shift+S` | Save As… (give the project a new file) |
+| `Cmd+A` | Select All — every board, part and wire on the desk; in a text field, its text |
 | `Cmd+Z` | Undo |
 | `Cmd+Shift+Z` | Redo |
 

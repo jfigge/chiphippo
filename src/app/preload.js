@@ -54,6 +54,7 @@ for (const [channel, event] of [
   ["menu:build-guide", "chiphippo:build-guide"],
   ["menu:edit-undo", "chiphippo:edit-undo"],
   ["menu:edit-redo", "chiphippo:edit-redo"],
+  ["menu:edit-select-all", "chiphippo:edit-select-all"],
   // Not a menu item: main asking, before a close or a quit, whether anything
   // unsaved needs dealing with first. The renderer answers with closeReply().
   ["app:confirm-close", "chiphippo:confirm-close"],

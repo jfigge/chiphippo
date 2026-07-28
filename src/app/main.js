@@ -1046,6 +1046,9 @@ function buildAppMenu() {
   // editing — each pushes to the renderer, which owns the snapshot stack and
   // reports availability back over menu:edit-state (see setEditMenuState). They
   // start disabled; the renderer enables them once there is something to do.
+  // Select All is the same shape and for the same reason (see its own note):
+  // what "everything" means depends on where the focus is, and only the
+  // renderer knows. Cut/Copy/Paste stay native roles — text is text.
   template.push({
     label: "Edit",
     submenu: [
@@ -1067,6 +1070,28 @@ function buildAppMenu() {
       { role: "cut" },
       { role: "copy" },
       { role: "paste" },
+      { type: "separator" },
+      {
+        // NOT `role: "selectAll"`: on the desk, "everything" means every
+        // board, part and wire — a selection the renderer owns — and the
+        // native role would instead run the DOM's own select-all and
+        // highlight the page. So it pushes, and the renderer decides from
+        // where the focus is: a text field selects its text, the desk selects
+        // its contents.
+        //
+        // An AUXILIARY window (pinout, memory inspector, docs) has no desk and
+        // no listener, so there the native command is exactly right — and it
+        // must go to THAT window, not the main one `sendToMain` would reach.
+        label: "Select All",
+        accelerator: "CmdOrCtrl+A",
+        click: (_item, focusedWindow) => {
+          if (focusedWindow && focusedWindow !== mainWindow) {
+            focusedWindow.webContents.selectAll();
+            return;
+          }
+          sendToMain("menu:edit-select-all");
+        },
+      },
     ],
   });
   // View ▸ Toggle Developer Tools. A custom item (not the built-in role) so the

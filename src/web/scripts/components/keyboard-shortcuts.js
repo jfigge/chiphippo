@@ -64,6 +64,7 @@ const SHORTCUT_GROUPS = [
   {
     title: "Edit",
     rows: [
+      { desc: "Select all — the whole desk, or a text field's text", keys: `${MOD}+A` }, // prettier-ignore
       { desc: "Copy the selected component", keys: `${MOD}+C` },
       { desc: "Paste a duplicate", keys: `${MOD}+V` },
       { desc: "Delete the selection", keys: "Delete" },
@@ -78,7 +79,7 @@ const SHORTCUT_GROUPS = [
       { desc: "Breadboard ⇄ Schematic", keys: "Tab" },
       { desc: "Fade wires to a stub at each end", keys: "H" },
       { desc: "Toggle the parts palette", keys: `${MOD}+P` },
-      { desc: "Toggle the logic analyzer", keys: `${MOD}+A` },
+      { desc: "Toggle the logic analyzer", keys: "A" },
       { desc: "Fit to screen", keys: `${MOD}+F` },
       {
         desc: "Zoom all the way out (find a lost part)",

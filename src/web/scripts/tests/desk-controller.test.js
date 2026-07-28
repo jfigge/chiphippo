@@ -470,6 +470,71 @@ test("a component only PARTLY inside the marquee is not selected", () => {
   assert.ok(chip.id);
 });
 
+test("selectAll takes the WHOLE desk — boards, parts and wires alike", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  doc.addBoard("pins-full", 0, 30);
+  const { controller } = makeDesk(doc);
+  const a = controller.addComponentAt("74LS00", "bb1", "e5");
+  const b = controller.addComponentAt("74LS04", "bb1", "e20");
+  const wire = doc.addWire({ from: "bb1.a1", to: "bb1.a2" });
+
+  assert.equal(controller.selectAll(), true);
+  // The same set a marquee round everything would take, which is what makes
+  // ⌘A then ⌘C copy the desktop as one design clip.
+  assert.deepEqual(controller.multiSelectedIds.sort(), [a.id, b.id].sort());
+  assert.deepEqual(controller.multiSelectedWireIds, [wire.id]);
+  assert.deepEqual(
+    controller.multiSelectedBoardIds.sort(),
+    doc.boards.map((x) => x.id).sort(),
+  );
+});
+
+test("selectAll on an empty desk selects nothing and says so", () => {
+  resetDom();
+  const { controller } = makeDesk(new DeskDoc(null));
+  assert.equal(controller.selectAll(), false);
+  assert.deepEqual(controller.multiSelectedIds, []);
+  assert.deepEqual(controller.multiSelectedBoardIds, []);
+});
+
+test("selectAll is refused while the circuit runs, as a marquee is", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const { controller } = makeDesk(doc);
+  controller.addComponentAt("74LS00", "bb1", "e5");
+  controller.setEditingLocked(true);
+  assert.equal(controller.selectAll(), false);
+  assert.deepEqual(controller.multiSelectedIds, []);
+  controller.setEditingLocked(false);
+  assert.equal(controller.selectAll(), true);
+});
+
+test("selectAll replaces a single pick rather than adding to it", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const { surface, controller } = makeDesk(doc);
+  const chip = controller.addComponentAt("74LS00", "bb1", "e5");
+  const other = controller.addComponentAt("74LS04", "bb1", "e20");
+  controller.selectComponent(chip.id);
+  assert.equal(controller.selectedId, chip.id);
+
+  controller.selectAll();
+  assert.equal(controller.selectedId, null, "the marquee owns the selection");
+  assert.deepEqual(controller.multiSelectedIds.sort(), [chip.id, other.id].sort()); // prettier-ignore
+  // Dropping the single pick un-highlights the part it was on, so it has to
+  // happen BEFORE the set is highlighted — otherwise the already-selected
+  // part is the one that comes out looking unselected.
+  assert.deepEqual(
+    [...surface.querySelectorAll(".layer-parts > .part--selected")].length,
+    2,
+    "every selected part is highlighted, the previous pick included",
+  );
+});
+
 test("Delete removes the whole marquee selection in one doc-changed", () => {
   resetDom();
   const doc = new DeskDoc(null);

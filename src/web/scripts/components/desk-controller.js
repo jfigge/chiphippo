@@ -666,24 +666,49 @@ export class DeskController {
   /** Replace the marquee selection; a non-empty one clears the single pick. */
   #setMultiSelection(ids, wireIds = [], boardIds = []) {
     this.#clearMultiSelection();
-    for (const id of ids) {
-      if (!this.#partViews.has(id)) continue;
+    // What is actually still on the desk — the caller may name anything.
+    const parts = [...ids].filter((id) => this.#partViews.has(id));
+    const wires = [...wireIds].filter((id) => this.#doc.getWire(id));
+    const boards = [...boardIds].filter((id) => this.#views.has(id));
+    // The single pick is dropped FIRST, before anything is highlighted:
+    // `#select(null)` un-highlights the part it was on, and that part is very
+    // often IN the set about to be highlighted (a marquee drawn around the
+    // selected part, or Select All). Clearing afterwards would silently undo
+    // the highlight just applied to it.
+    if (parts.length || wires.length || boards.length) this.#select(null);
+    for (const id of parts) {
       this.#multi.add(id);
       this.#partViews.get(id).setSelected(true);
     }
-    for (const id of wireIds) {
-      if (this.#doc.getWire(id)) this.#multiWires.add(id);
-    }
-    for (const id of boardIds) {
-      if (this.#views.has(id)) this.#multiBoards.add(id);
-    }
+    for (const id of wires) this.#multiWires.add(id);
+    for (const id of boards) this.#multiBoards.add(id);
     if (this.#multiWires.size) {
       this.#wireLayer.setSelectedMany(this.#multiWires);
     }
-    if (this.#multiSize()) this.#select(null);
     // #select(null) already re-traces the outline, but only when something WAS
     // selected — refresh unconditionally so a marquee's boards light up.
     this.#refreshBoardOutline();
+  }
+
+  /**
+   * Select the WHOLE desktop — every board, every component seated on one (and
+   * every desk-level brick), and every wire — as though a marquee had been
+   * drawn around all of it. That is deliberately the same set a marquee
+   * captures, so `⌘A` then `⌘C` copies the entire desk as one design clip.
+   *
+   * Refused while the circuit runs, for the reason a marquee is: a selection
+   * applied into the frozen state would be one the user cannot act on.
+   *
+   * @returns {boolean} whether anything was selected.
+   */
+  selectAll() {
+    if (this.#editingLocked) return false;
+    const components = this.#doc.components.map((c) => c.id);
+    const wires = this.#doc.wires.map((w) => w.id);
+    const boards = this.#doc.boards.map((b) => b.id);
+    if (!components.length && !wires.length && !boards.length) return false;
+    this.#setMultiSelection(components, wires, boards);
+    return true;
   }
 
   selectBoard(id) {

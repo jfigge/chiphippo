@@ -331,21 +331,35 @@ function bindShortcuts(
       sim.toggle();
       return;
     }
+    // A — the logic analyzer, on a BARE key like the desk's other tool
+    // letters (W wire, B bus, I probe). Cmd/Ctrl+A is not this: it is
+    // Select All, which the native Edit menu owns.
+    if (
+      (e.key === "a" || e.key === "A") &&
+      !e.metaKey &&
+      !e.ctrlKey &&
+      !e.altKey
+    ) {
+      // prettier-ignore
+      const tag = e.target?.tagName;
+      if (
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        e.target?.isContentEditable
+      ) {
+        return;
+      }
+      e.preventDefault();
+      scopeView.toggle();
+      return;
+    }
     if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
-    // Cmd/Ctrl+A / +P / +R toggle app-chrome panels — not while typing (Cmd+A
-    // in particular used to be the native "select all" menu role; freeing it
-    // for the analyzer meant removing that role in main.js, so a text field's
-    // own native select-all still works, but this shortcut must stay out of
-    // its way).
+    // Cmd/Ctrl+P / +R / +F toggle app chrome — not while typing, where the
+    // browser's own bindings must win.
     const tag = e.target?.tagName;
     const typing =
       tag === "INPUT" || tag === "TEXTAREA" || e.target?.isContentEditable;
     if (!typing) {
-      if (e.key === "a" || e.key === "A") {
-        e.preventDefault();
-        scopeView.toggle();
-        return;
-      }
       if (e.key === "p" || e.key === "P") {
         e.preventDefault();
         togglePalette();
@@ -731,6 +745,29 @@ async function init() {
   });
   window.addEventListener("chiphippo:edit-redo", () => {
     if (!inTextField()) controller.redo();
+  });
+
+  // Edit ▸ Select All (⌘A). "Everything" depends on where the focus is, which
+  // is why main pushes rather than running the native role: a TEXT FIELD (the
+  // palette search, a Properties dialog, a name prompt) selects its own text,
+  // and the DESK selects every board, part and wire — the same set a marquee
+  // takes, so ⌘A ⌘C copies the whole desktop.
+  //
+  // With a dialog open and the focus NOT in a field there is nothing to do:
+  // selecting the desk underneath it would act on what the user cannot see.
+  window.addEventListener("chiphippo:edit-select-all", () => {
+    const target = document.activeElement;
+    const tag = target?.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA") {
+      target.select();
+      return;
+    }
+    if (target?.isContentEditable) {
+      document.execCommand("selectAll");
+      return;
+    }
+    if (PopupManager.isOpen()) return;
+    controller.selectAll();
   });
 
   const toolbar = document.getElementById("app-toolbar");
