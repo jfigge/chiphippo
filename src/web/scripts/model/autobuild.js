@@ -640,6 +640,11 @@ function assemble(resolved, title) {
   }
 
   // ── Boards. One pin-board's worth of columns per kit; spill to more kits.
+  // Deliberately PESSIMISTIC: it counts a pull pack's nine columns even though
+  // companion seating will usually fold it into the switch bank's own, because
+  // whether that succeeds is a geometric question this cannot answer yet.
+  // Guessing high costs a board that `#pruneKits` then takes back; guessing low
+  // costs a NO_ROOM refusal, and only one of those is recoverable.
   const budget = seated.reduce((n, p) => n + spanOf(p.def) + GAP, 0);
   const kitKey = budget <= 30 ? "half" : "full";
   const perKit = kitKey === "half" ? 30 : 63;
@@ -806,6 +811,37 @@ function assemble(resolved, title) {
       params: {},
     });
     seatOf.set(p.id, { compId, ...placed });
+  }
+
+  // ── Give back the boards nothing landed on.
+  //
+  // How many kits a design needs cannot be KNOWN before it is placed: the
+  // budget above has to assume a pull pack costs nine columns, and companion
+  // seating then usually costs it none, so a design that fits comfortably on
+  // one board can be handed two. The spare came out empty except for the
+  // bridge wires stitched across it — a whole breadboard on the desk whose
+  // only purpose was to be wired to.
+  //
+  // Nothing here tries to predict better. It books what it might need, seats,
+  // and then keeps only what it used — and because the power wiring and the
+  // routing both happen AFTER this point, the bridges and rail taps are never
+  // built for a board that is about to go. A design with no seated parts at
+  // all (a lone clock brick, say) keeps the first kit: the PSU still needs a
+  // rail to reach.
+  const usedBoards = new Set([...seatOf.values()].map((s) => s.boardId));
+  const survivors = kits.filter((kit) => usedBoards.has(kit.pins));
+  if (survivors.length && survivors.length < kits.length) {
+    const keep = new Set(survivors.flatMap((kit) => [kit.pins, ...kit.rails]));
+    for (const board of boards) {
+      if (keep.has(board.id)) continue;
+      boardAt.delete(board.id);
+      boardType.delete(board.id);
+    }
+    const kept = boards.filter((b) => keep.has(b.id));
+    boards.length = 0;
+    boards.push(...kept);
+    kits.length = 0;
+    kits.push(...survivors);
   }
 
   // ── How a wire is routed — shared by the power wiring and the net router.

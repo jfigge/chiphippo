@@ -1010,3 +1010,63 @@ test("what could NOT be routed clear is reported, not hidden", () => {
     assert.equal(warned, undefined, "and a clean layout says nothing");
   }
 });
+
+test("a board nothing landed on is given back, not shipped empty", () => {
+  // How many kits a design needs cannot be known before it is placed: the
+  // budget has to assume a pull pack costs nine columns, and companion seating
+  // then costs it none. This adder — the AI-generated shape, where the compiler
+  // inserts the pull-downs rather than the spec declaring them — was handed two
+  // breadboards and used one, and the spare shipped empty with bridge wires
+  // stitched across it.
+  const bits = (sw) => [...Array(8)].map((_, i) => `${sw}.${i + 1}B`);
+  const aPin = (i) => (i < 4 ? `U1.A${i + 1}` : `U2.A${i - 3}`);
+  const bPin = (i) => (i < 4 ? `U1.B${i + 1}` : `U2.B${i - 3}`);
+  const { doc } = build({
+    title: "8-bit adder, switches in, LED bar out",
+    parts: [
+      { id: "U1", ref: "74LS283" },
+      { id: "U2", ref: "74LS283" },
+      { id: "SWA", ref: "sw-dip8" },
+      { id: "SWB", ref: "sw-dip8" },
+      { id: "D1", ref: "bar8" },
+    ],
+    nets: [
+      { name: "VCCA", members: [...bits("SWA"), "VCC"] },
+      { name: "VCCB", members: [...bits("SWB"), "VCC"] },
+      { name: "CIN", members: ["U1.C0", "GND"] },
+      { name: "CARRY", members: ["U1.C4", "U2.C0"] },
+      ...[...Array(8)].map((_, i) => ({
+        name: `A${i}`,
+        members: [`SWA.${i + 1}A`, aPin(i)],
+      })),
+      ...[...Array(8)].map((_, i) => ({
+        name: `B${i}`,
+        members: [`SWB.${i + 1}A`, bPin(i)],
+      })),
+      ...[...Array(8)].map((_, i) => ({
+        name: `S${i}`,
+        members: [i < 4 ? `U1.S${i + 1}` : `U2.S${i - 3}`, `D1.${i + 1}`],
+      })),
+      { name: "BARK", members: ["D1.K", "GND"] },
+    ],
+  });
+  const pinBoards = doc.boards.filter((b) => b.type.startsWith("pins"));
+  assert.equal(pinBoards.length, 1, "one breadboard, not two");
+  for (const board of pinBoards) {
+    assert.ok(
+      doc.components.some((c) => c.board === board.id),
+      `${board.id} has something on it`,
+    );
+  }
+  // And no wire may lead to a board that is no longer there.
+  const ids = new Set(doc.boards.map((b) => b.id));
+  for (const w of doc.wires) {
+    for (const end of [w.from, w.to]) {
+      const owner = parseAddress(end).boardId;
+      assert.ok(
+        ids.has(owner) || doc.components.some((c) => c.id === owner),
+        `${end} points at something real`,
+      );
+    }
+  }
+});

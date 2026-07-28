@@ -644,6 +644,18 @@ Electron main process (src/app/main.js)
     - `freeRail(…, {fromEnd})` — the PSU brick stands off the RIGHT of the
       boards, and a rail is one node end to end, so reaching for hole 1 bought
       nothing but two wires the full width of the desk.
+    - **Kits are PRUNED, not predicted.** How many breadboards a design needs
+      cannot be known before it is placed: the column budget has to assume a
+      pull pack costs its nine columns, and companion seating then costs it
+      none — so a design that fits comfortably on one board was handed two, and
+      the spare shipped EMPTY with bridge wires stitched across it. Nothing
+      tries to estimate better (guessing low costs a `NO_ROOM` refusal, which
+      is not recoverable; guessing high costs a board that is simply given
+      back). Seat first, then keep only the kits something landed on. This is
+      the other reason the power wiring and the routing moved after seating:
+      the bridges and rail taps are never built for a board that is about to
+      go. A design with no seated parts at all keeps the first kit — the PSU
+      still needs a rail to reach.
   - **ROUTING minimises length AND crossings** (`model/wire-crossing.js`, pure).
     A layout can be short and still unreadable, because "short" says nothing
     about what a wire passes OVER. The geometry that makes it tractable: a DIP
