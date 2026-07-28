@@ -24,6 +24,7 @@ import assert from "node:assert/strict";
 import {
   buildFromReply,
   buildFromSpec,
+  buildStepsFromReply,
   parseNetlist,
   partitionFaults,
 } from "../ai/generate.js";
@@ -279,4 +280,44 @@ test("the repair message is structured faults, never prose", () => {
   assert.match(msg, /AMBIGUOUS_PIN at nets\[3\]\.members\[1\]/);
   assert.match(msg, /candidates: 7, 13/);
   assert.match(msg, /return the whole corrected JSON object/);
+});
+
+// ── Stepping ────────────────────────────────────────────────────────────────
+
+test("the stepped build and the drained one agree, all the way to the clip", () => {
+  // `buildFromReply` IS the drained generator, so this proves the seam rather
+  // than two implementations — but it is the assertion that would catch the
+  // day someone re-forks them.
+  const reply = JSON.stringify(COUNTER_SPEC);
+  const sync = buildFromReply(reply);
+
+  const it = buildStepsFromReply(reply);
+  const labels = [];
+  let step = it.next();
+  while (!step.done) {
+    labels.push(step.value.label);
+    step = it.next();
+  }
+  const stepped = step.value;
+
+  assert.equal(stepped.ok, true, JSON.stringify(stepped.faults));
+  assert.equal(stepped.ok, sync.ok);
+  assert.equal(stepped.title, sync.title);
+  assert.equal(stepped.clip.boards.length, sync.clip.boards.length);
+  assert.deepEqual(
+    stepped.results.map((r) => [r.name, r.ok]),
+    sync.results.map((r) => [r.name, r.ok]),
+  );
+  assert.match(labels[0], /Compiling/, "compiling is announced first");
+  assert.ok(labels.length > 1, "and the ladder's own gates follow");
+});
+
+test("a reply that will not parse yields nothing before it gives up", () => {
+  // There is nothing to narrate about text that is not a netlist, and a label
+  // that flashed "Compiling…" for an unparseable reply would be a small lie.
+  const it = buildStepsFromReply("not json at all");
+  const first = it.next();
+  assert.equal(first.done, true, "it refuses before any work is announced");
+  assert.equal(first.value.ok, false);
+  assert.equal(first.value.faults[0].code, "NOT_JSON");
 });

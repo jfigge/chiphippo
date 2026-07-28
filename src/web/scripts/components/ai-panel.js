@@ -38,7 +38,7 @@
 
 import { el } from "../dom.js";
 import { buildRepairMessage, buildSystemPrompt } from "../ai/catalog-brief.js";
-import { buildFromReply, partitionFaults } from "../ai/generate.js";
+import { buildStepsFromReply, partitionFaults } from "../ai/generate.js";
 import { addUsage, formatTotal, formatUsage } from "../ai/usage.js";
 
 const MIN_PANEL_H = 160;
@@ -47,6 +47,20 @@ const MAX_PANEL_FRAC = 0.6;
 
 /** How many times a failing netlist is handed back for repair. */
 const MAX_REPAIRS = 2;
+
+/**
+ * Hand the thread back so a label can paint, then continue.
+ *
+ * `scheduler.yield()` is the right primitive and resumes at the front of the
+ * queue, so stepping a ladder does not fall behind ordinary tasks.
+ * `requestAnimationFrame` is deliberately NOT used: it does not fire in a
+ * hidden window, so a build would stall the moment the user switched away —
+ * the one time they are most likely to leave it running.
+ */
+const yieldToPaint = () =>
+  globalThis.scheduler?.yield
+    ? globalThis.scheduler.yield()
+    : new Promise((resolve) => setTimeout(resolve, 0));
 
 const SEND_SVG =
   '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" ' +
@@ -79,6 +93,16 @@ export class AiPanel {
   #streamRow = null; // the "thinking…" row it is reported through
   #history = []; // the conversation sent to the provider
   #repairs = 0; // repair rounds spent on the current ask
+  #round = ""; // " (fix 1 of 2)", or "" on the first attempt
+
+  // The ladder in flight, or null. It exists for two reasons, and the SECOND
+  // is the important one: the build now spans many tasks, so there is a real
+  // window in which the panel is working with no `#requestId` set — and a send
+  // during that window would start a whole new PAID request. Today that is
+  // prevented only by accident (the input is cleared, so the click reads an
+  // empty prompt and returns), which is exactly the kind of safety that stops
+  // being true the moment someone changes something unrelated.
+  #building = null;
 
   // Tokens. Two scopes: what the ask in hand has cost across all its repair
   // rounds, and what everything since the last Clear has cost. A repair round
@@ -319,9 +343,10 @@ export class AiPanel {
   }
 
   #clear() {
-    if (this.#requestId) this.#cancel();
+    if (this.#requestId || this.#building) this.#cancel();
     this.#history = [];
     this.#repairs = 0;
+    this.#round = "";
     this.#sendUsage = null;
     this.#calls = 0;
     this.#session = null;
@@ -375,8 +400,10 @@ export class AiPanel {
 
   #onSend() {
     // While a generation is in flight the same button cancels it — one control
-    // for one activity, rather than a Stop that only exists sometimes.
-    if (this.#requestId) {
+    // for one activity, rather than a Stop that only exists sometimes. That now
+    // covers the BUILD as well as the request: the ladder spans many tasks, so
+    // "in flight" is no longer the same thing as "has a request id".
+    if (this.#requestId || this.#building) {
       this.#cancel();
       return;
     }
@@ -388,6 +415,7 @@ export class AiPanel {
     }
     this.#input.value = "";
     this.#repairs = 0;
+    this.#round = "";
     this.#sendUsage = null;
     this.#calls = 0;
     this.#history.push({ role: "user", content: prompt });
@@ -405,13 +433,18 @@ export class AiPanel {
    */
   #cancel() {
     const id = this.#requestId;
+    // Dropping the ladder is what `#build` checks for, so this abandons a
+    // build in progress too — impossible while it ran as one atomic task. No
+    // tokens come back (they were spent the moment the reply arrived); what it
+    // saves is waiting out a build you have already decided against.
+    this.#building = null;
     this.#requestId = null;
     this.#setBusy(false);
     if (this.#streamRow) {
       this.#streamRow.remove();
       this.#streamRow = null;
     }
-    window.chiphippo?.ai?.cancel(id);
+    if (id != null) window.chiphippo?.ai?.cancel(id);
     this.#say("note", "Cancelled.");
   }
 
@@ -419,8 +452,15 @@ export class AiPanel {
     this.#stream = "";
     this.#starting = true;
     this.#early = [];
+    // Name the repair round UP FRONT. It was previously announced only after
+    // the round it fixed had already failed, so the second request looked idle
+    // for its whole duration.
+    const round = this.#repairs
+      ? ` (fix ${this.#repairs} of ${MAX_REPAIRS})`
+      : "";
     this.#setBusy(true, "Designing…");
-    this.#streamRow = this.#say("working", "Designing the circuit…");
+    this.#streamRow = this.#say("working", `Designing the circuit${round}…`);
+    this.#round = round;
 
     let started;
     try {
@@ -463,7 +503,8 @@ export class AiPanel {
       // The reply is JSON, not prose, so showing it would be noise — the
       // character count is the honest progress signal.
       this.#streamRow.querySelector(".ai-row-text").textContent =
-        `Designing the circuit… (${this.#stream.length} characters)`;
+        `Designing the circuit${this.#round}… ` +
+        `(${this.#stream.length} characters)`;
     }
   }
 
@@ -489,15 +530,61 @@ export class AiPanel {
       return;
     }
     this.#setBusy(true, "Building…");
-    // Yield once so "Building…" paints before the compiler + engine run — the
-    // ladder settles a real circuit, which is not instant on a large design.
-    setTimeout(() => this.#consume(detail.text ?? this.#stream), 0);
+    this.#build(detail.text ?? this.#stream);
   }
 
   // ── The ladder ─────────────────────────────────────────────────────────────
 
-  #consume(text) {
-    const built = buildFromReply(text);
+  /**
+   * Step the build, painting each gate and yielding the thread between them.
+   *
+   * The ladder is where the time actually goes — L5 settles the whole circuit
+   * and L7 runs every acceptance test — so running it in one task means a
+   * frozen window under one unchanging word. A progress CALLBACK would not fix
+   * that: nothing repaints until the task ends. Only yielding does.
+   */
+  async #build(text) {
+    const steps = buildStepsFromReply(text);
+    this.#building = steps;
+    this.#streamRow = this.#say("working", "Building the circuit…");
+
+    let step;
+    try {
+      step = steps.next();
+      while (!step.done) {
+        if (this.#streamRow) {
+          this.#streamRow.querySelector(".ai-row-text").textContent =
+            step.value.label;
+        }
+        await yieldToPaint();
+        // Cancelled (or superseded) while we were away — drop the ladder on
+        // the floor. It is pure computation over its own copies, so abandoning
+        // it mid-way leaves nothing behind to clean up.
+        if (this.#building !== steps) return;
+        step = steps.next();
+      }
+    } catch (err) {
+      // Nothing in the ladder is supposed to throw — L7 already catches a
+      // failing test. But this runs across many tasks with nobody awaiting it,
+      // so an escape would otherwise be an unhandled rejection that left the
+      // panel busy forever, with no way back but reloading.
+      this.#building = null;
+      this.#finishStream();
+      this.#setBusy(false);
+      this.#say(
+        "fail",
+        `The build failed unexpectedly: ${err?.message ?? err}`,
+      );
+      this.#settle();
+      return;
+    }
+
+    this.#building = null;
+    this.#finishStream();
+    this.#consume(text, step.value);
+  }
+
+  #consume(text, built) {
     if (built.ok) {
       this.#setBusy(false);
       this.#history.push({ role: "assistant", content: text });

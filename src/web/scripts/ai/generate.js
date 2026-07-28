@@ -27,7 +27,14 @@
 // user should never be shown a generated circuit that has not been run.
 
 import { compileNetlist, designClipOf } from "../model/autobuild.js";
-import { verifyBuild } from "../model/autobuild-verify.js";
+import { verifySteps } from "../model/autobuild-verify.js";
+
+/** Drain a step generator to its return value. */
+function drain(iterator) {
+  let step = iterator.next();
+  while (!step.done) step = iterator.next();
+  return step.value;
+}
 
 /**
  * Fold a `[{target, value}]` pair list back into the `{target: value}` map the
@@ -153,6 +160,25 @@ export function parseNetlist(text) {
  *          |{ok:false, faults:Array, document?:object}}
  */
 export function buildFromSpec(spec) {
+  return drain(buildStepsFromSpec(spec));
+}
+
+/**
+ * The same build, reporting each stage before it runs.
+ *
+ * Compiling is one step; the ladder's gates come from `verifySteps` through
+ * `yield*`, so this narrates the whole pipeline without knowing what the gates
+ * are. Still DOM-free and still synchronous between yields — WHEN to resume is
+ * entirely the caller's business, which is what lets the panel paint in the
+ * gaps while a test suite drains it in one go.
+ *
+ * @param {object} spec
+ * @yields {{gate:string, label:string}}
+ * @returns the same result shape `buildFromSpec` returns
+ */
+export function* buildStepsFromSpec(spec) {
+  yield { gate: "compile", label: "Compiling the netlist…" };
+
   const compiled = compileNetlist(spec);
   if (!compiled.ok) {
     // Compiler errors and verifier faults are the same shape to the caller —
@@ -160,7 +186,7 @@ export function buildFromSpec(spec) {
     return { ok: false, faults: compiled.errors };
   }
 
-  const verdict = verifyBuild(compiled, spec);
+  const verdict = yield* verifySteps(compiled, spec);
   if (!verdict.ok) {
     return { ok: false, faults: verdict.faults, document: verdict.document };
   }
@@ -199,9 +225,20 @@ export function buildFromSpec(spec) {
  * @returns the `buildFromSpec` result, or its parse failure in the same shape.
  */
 export function buildFromReply(text) {
+  return drain(buildStepsFromReply(text));
+}
+
+/**
+ * The whole path, one stage at a time — what the panel drives.
+ *
+ * @param {string} text
+ * @yields {{gate:string, label:string}}
+ * @returns the same result shape `buildFromReply` returns
+ */
+export function* buildStepsFromReply(text) {
   const parsed = parseNetlist(text);
   if (!parsed.ok) return { ok: false, faults: parsed.errors };
-  const built = buildFromSpec(parsed.spec);
+  const built = yield* buildStepsFromSpec(parsed.spec);
   return built.ok ? { ...built, spec: parsed.spec } : built;
 }
 

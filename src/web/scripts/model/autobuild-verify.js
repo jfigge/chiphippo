@@ -42,6 +42,25 @@
 // L7 is the only gate that checks INTENT rather than internal consistency, and
 // it is the reason the DSL carries a `tests` block at all: a circuit can be
 // perfectly built, perfectly settled, and still add wrong.
+//
+// ── Why the ladder is a GENERATOR ──────────────────────────────────────────
+//
+// L5 settles the whole circuit and L7 runs every acceptance test (each its own
+// settle, plus a tick per clock edge on a sequential design). Run in one task
+// that is seconds of frozen UI under a single unchanging label, so the panel
+// needs to report which gate is running.
+//
+// It could not take a progress CALLBACK: everything here happens inside one
+// synchronous task, so the DOM would not repaint until the whole thing was
+// over and the callback would fire into a frozen window. Yielding is the only
+// thing that actually lets a paint happen between gates.
+//
+// So `verifySteps` is the implementation and `verifyBuild` drains it. That
+// keeps this module pure and DOM-free — it knows nothing about the panel, the
+// event loop, or how long a caller waits between `next()` calls — while the
+// twelve existing synchronous callers are completely unaffected. Deliberately
+// NOT two code paths: a second copy of the ladder is free to drift from this
+// one, and the drift would be silent.
 
 import { partDef } from "../catalog/index.js";
 import { normalizeDocument } from "./desk-doc.js";
@@ -63,6 +82,18 @@ const fault = (gate, kind, code, message, extra = {}) => ({
 });
 
 /**
+ * Drain a step generator to its return value.
+ *
+ * The one place the sync/stepped split is bridged, so every synchronous caller
+ * runs the SAME generator a stepping caller does.
+ */
+function drain(iterator) {
+  let step = iterator.next();
+  while (!step.done) step = iterator.next();
+  return step.value;
+}
+
+/**
  * Run the ladder over a compiled build.
  *
  * @param {object} compiled  the `compileNetlist` result (ok: true)
@@ -70,9 +101,29 @@ const fault = (gate, kind, code, message, extra = {}) => ({
  * @returns {{ok:boolean, faults:Array, document:object, netlist:object, results:Array}}
  */
 export function verifyBuild(compiled, spec = null) {
+  return drain(verifySteps(compiled, spec));
+}
+
+/**
+ * The ladder, one gate at a time.
+ *
+ * Yields `{gate, label}` BEFORE each gate runs — the label describes what is
+ * about to happen, so a caller that paints it and then hands back control shows
+ * the right thing while the work is in flight. The return value is exactly what
+ * `verifyBuild` returns; an early `return` inside still resolves as the drained
+ * value, which is what keeps the L3a and L4 short-circuits intact.
+ *
+ * @param {object} compiled  the `compileNetlist` result (ok: true)
+ * @param {object} [spec]    the original spec, for its `tests` block
+ * @yields {{gate:string, label:string}}
+ * @returns {{ok:boolean, faults:Array, document:object, netlist:object, results:Array}}
+ */
+export function* verifySteps(compiled, spec = null) {
   const faults = [];
   const raw = compiled.document;
   const doc = normalizeDocument(raw);
+
+  yield { gate: "L3", label: "Checking the build…" };
 
   // ── L3a: the loader is a silent filter, so compare counts. ────────────────
   for (const key of ["boards", "components", "wires"]) {
@@ -128,6 +179,8 @@ export function verifyBuild(compiled, spec = null) {
       );
     }
   }
+
+  yield { gate: "L4", label: "Checking connectivity…" };
 
   const netlist = buildNetlist(doc);
 
@@ -214,6 +267,8 @@ export function verifyBuild(compiled, spec = null) {
     return { ok: false, faults, document: doc, netlist };
   }
 
+  yield { gate: "L5", label: "Simulating…" };
+
   // ── L5: does it actually run? ─────────────────────────────────────────────
   //
   // Settle with every clock idle-low rather than unspecified. A clock source
@@ -254,6 +309,8 @@ export function verifyBuild(compiled, spec = null) {
     }
   }
 
+  yield { gate: "L6", label: "Checking for undriven nets…" };
+
   // ── L6: a declared signal net that never resolves is a dangling input. ────
   for (const net of compiled.nets ?? []) {
     if (net.rail) continue;
@@ -274,7 +331,11 @@ export function verifyBuild(compiled, spec = null) {
   }
 
   // ── L7: the spec's own acceptance tests. ─────────────────────────────────
-  const results = runFunctionalTests({
+  //
+  // `yield*` rather than a drain: L7 is the slowest gate — one settle per test,
+  // and a tick per clock edge on top — so it is the one that most needs to
+  // report per ITEM rather than going quiet for the whole block.
+  const results = yield* runFunctionalTestSteps({
     doc,
     netlist,
     partMap: compiled.partMap,
@@ -333,13 +394,32 @@ function pinAddresser(doc, partMap) {
  *
  * @returns {Array<{name:string, ok:boolean, detail:string}>}
  */
-export function runFunctionalTests({ doc, netlist, partMap, tests }) {
+export function runFunctionalTests(args) {
+  return drain(runFunctionalTestSteps(args));
+}
+
+/**
+ * The same runner, reporting each test before it runs.
+ *
+ * A spec with no `tests` block yields nothing at all — there is no work to
+ * narrate, and a lone "Running 0 tests…" would be a label for an empty pause.
+ *
+ * @yields {{gate:"L7", label:string, index:number, total:number}}
+ * @returns {Array<{name:string, ok:boolean, detail:string}>}
+ */
+export function* runFunctionalTestSteps({ doc, netlist, partMap, tests }) {
   if (!Array.isArray(tests) || !tests.length) return [];
   const results = [];
 
   for (const [i, t] of tests.entries()) {
     const name =
       typeof t?.name === "string" && t.name.trim() ? t.name : `tests[${i}]`;
+    yield {
+      gate: "L7",
+      label: `Running test ${i + 1} of ${tests.length}: ${name}`,
+      index: i,
+      total: tests.length,
+    };
     try {
       results.push({ name, ...runOne({ doc, netlist, partMap, test: t }) });
     } catch (e) {

@@ -117,8 +117,19 @@ const ask = (container, text) => {
     .dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
 };
 
-/** Drain microtasks + the panel's one deliberate `setTimeout` yield. */
-const settleUi = () => new Promise((r) => setTimeout(r, 5));
+/**
+ * Let one round finish.
+ *
+ * The build is no longer a single deferred call. `AiPanel` steps the verify
+ * ladder gate by gate and yields to the event loop between each so the label
+ * can paint, so a round spans one task per gate plus one per acceptance test —
+ * and a test awaiting a single timer would sample the panel mid-ladder.
+ * Draining a generous number of tasks keeps every call site meaning exactly
+ * what it always meant: "let the round complete".
+ */
+const settleUi = async (tasks = 24) => {
+  for (let i = 0; i < tasks; i++) await new Promise((r) => setTimeout(r, 0));
+};
 
 /** Every line of a row kind — its text AND the fault list under it. */
 const rows = (container, kind) =>
@@ -413,4 +424,123 @@ test("AiPanel: a stale request's events are ignored", async () => {
   );
   await settleUi();
   assert.equal(designs.length, 0, "a reply nobody asked for is dropped");
+});
+
+/**
+ * Every label the working row ever showed.
+ *
+ * Sampling on a timer misses the ones that live for less than a task — the
+ * streaming row is created and replaced inside a single synchronous stretch —
+ * so this observes the log instead, which catches each label at the microtask
+ * checkpoint after the write that set it.
+ */
+function watchWorking(container) {
+  const seen = new Set();
+  const sample = () => {
+    const row = container.querySelector(".ai-row--working .ai-row-text");
+    if (row?.textContent) seen.add(row.textContent);
+  };
+  const observer = new window.MutationObserver(sample);
+  observer.observe(container.querySelector(".ai-log"), {
+    childList: true,
+    characterData: true,
+    subtree: true,
+  });
+  sample();
+  return {
+    seen,
+    stop: () => {
+      observer.disconnect();
+      return [...seen].join(" | ");
+    },
+  };
+}
+
+// ── Progress, and the guard that comes with it ──────────────────────────────
+
+test("AiPanel: the build reports each gate as it runs", async () => {
+  resetDom();
+  stubBridge([JSON.stringify(COUNTER_SPEC)]);
+  const { container } = mount();
+
+  const watch = watchWorking(container);
+  ask(container, "a counter");
+  await settleUi();
+  const labels = watch.stop();
+  assert.match(labels, /Designing the circuit/, "the streaming phase");
+  assert.match(labels, /Compiling/, "then compiling");
+  assert.match(labels, /Simulating/, "and the gate that actually takes time");
+  assert.match(labels, /Running test 1 of/, "with L7 counted off per test");
+  assert.equal(
+    container.querySelector(".ai-row--working"),
+    null,
+    "and the row is gone once the build lands",
+  );
+});
+
+test("AiPanel: a second send during the build cannot start a paid request", async () => {
+  // The whole reason the build tracks itself. It spans many tasks now, so
+  // there is a real window with no request in flight — and a send landing in
+  // it used to be stopped only by the prompt happening to be empty.
+  resetDom();
+  const sent = stubBridge([
+    JSON.stringify(COUNTER_SPEC),
+    JSON.stringify(COUNTER_SPEC),
+  ]);
+  const { container } = mount();
+
+  ask(container, "a counter");
+  // One task in: the reply has landed and the ladder is stepping.
+  await new Promise((r) => setTimeout(r, 0));
+  await new Promise((r) => setTimeout(r, 0));
+  ask(container, "something else entirely");
+  await settleUi();
+
+  assert.equal(sent.length, 1, "the second ask never reached the provider");
+});
+
+test("AiPanel: a build can be cancelled part-way through", async () => {
+  resetDom();
+  const sent = stubBridge([JSON.stringify(COUNTER_SPEC)]);
+  const { container, designs } = mount();
+
+  ask(container, "a counter");
+  await new Promise((r) => setTimeout(r, 0));
+  await new Promise((r) => setTimeout(r, 0));
+  // The send button doubles as cancel while anything is in flight — which now
+  // includes the ladder, impossible to interrupt while it was one atomic task.
+  container
+    .querySelector(".ai-send")
+    .dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  await settleUi();
+
+  assert.equal(sent.length, 1, "no new request went out");
+  assert.equal(designs.length, 0, "the abandoned build offered nothing");
+  assert.match(rows(container, "note").join(" "), /Cancelled/);
+  assert.equal(
+    container.querySelector(".ai-row--working"),
+    null,
+    "and it did not leave the panel looking busy forever",
+  );
+});
+
+test("AiPanel: a repair round says so while it is happening, not after", async () => {
+  resetDom();
+  const broken = {
+    ...COUNTER_SPEC,
+    tests: [{ name: "backwards", edges: 1, expect: { BAR: "00000001" } }],
+  };
+  stubBridge([JSON.stringify(broken), JSON.stringify(COUNTER_SPEC)]);
+  const { container } = mount();
+
+  const watch = watchWorking(container);
+  ask(container, "a counter");
+  await settleUi();
+  await settleUi();
+
+  assert.match(
+    watch.stop(),
+    /Designing the circuit \(fix 1 of 2\)/,
+    "the second request names itself while it is running",
+  );
 });

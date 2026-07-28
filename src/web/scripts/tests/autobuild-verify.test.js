@@ -24,7 +24,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { compileNetlist } from "../model/autobuild.js";
-import { verifyBuild, runFunctionalTests } from "../model/autobuild-verify.js";
+import {
+  verifyBuild,
+  verifySteps,
+  runFunctionalTests,
+} from "../model/autobuild-verify.js";
 import { normalizeDocument } from "../model/desk-doc.js";
 import { partPinAddresses } from "../model/occupancy.js";
 import { buildNetlist } from "../sim/netlist.js";
@@ -317,5 +321,110 @@ test("runFunctionalTests reports per-test rather than throwing", () => {
   assert.deepEqual(
     results.map((r) => r.ok),
     [true, false, true],
+  );
+});
+
+// ── Stepping ────────────────────────────────────────────────────────────────
+//
+// The ladder is a generator so the panel can paint a label between gates (a
+// callback could not: it all runs in one task, so nothing repaints until the
+// end). `verifyBuild` drains that same generator, and these tests exist to
+// keep the two from ever meaning different things.
+
+/** Run a generator to completion, collecting what it yielded on the way. */
+function collect(iterator) {
+  const steps = [];
+  let step = iterator.next();
+  while (!step.done) {
+    steps.push(step.value);
+    step = iterator.next();
+  }
+  return { steps, value: step.value };
+}
+
+test("stepping and draining are the same verification", () => {
+  // The load-bearing test of the whole refactor: if a stepped run could differ
+  // from a drained one, every synchronous caller and the panel would be
+  // checking different things, and only one of them would be tested.
+  for (const [name, spec] of [
+    ["adder", ADDER],
+    ["counter", COUNTER],
+  ]) {
+    const sync = verifyBuild(compile(spec), spec);
+    const { value: stepped } = collect(verifySteps(compile(spec), spec));
+    assert.equal(stepped.ok, sync.ok, `${name}: same verdict`);
+    assert.deepEqual(stepped.faults, sync.faults, `${name}: same faults`);
+    assert.deepEqual(
+      stepped.results?.map((r) => [r.name, r.ok]),
+      sync.results?.map((r) => [r.name, r.ok]),
+      `${name}: same test results`,
+    );
+  }
+});
+
+test("a failing build steps and drains alike, faults in the same order", () => {
+  const wrong = {
+    ...ADDER,
+    tests: [
+      { name: "backwards", set: { SWA: 1, SWB: 0 }, expect: { "U1.S1": "L" } },
+    ],
+  };
+  const sync = verifyBuild(compile(wrong), wrong);
+  const { value: stepped } = collect(verifySteps(compile(wrong), wrong));
+  assert.equal(sync.ok, false, "the fixture really does fail");
+  assert.deepEqual(
+    stepped.faults.map((f) => `${f.gate}/${f.code}`),
+    sync.faults.map((f) => `${f.gate}/${f.code}`),
+  );
+});
+
+test("every gate reports itself, and L7 reports each test by name", () => {
+  const { steps } = collect(verifySteps(compile(ADDER), ADDER));
+  const gates = steps.map((s) => s.gate);
+  assert.deepEqual(
+    [...new Set(gates)],
+    ["L3", "L4", "L5", "L6", "L7"],
+    "in ladder order, each announced once before it runs",
+  );
+  const l7 = steps.filter((s) => s.gate === "L7");
+  assert.equal(l7.length, ADDER.tests.length, "one step per acceptance test");
+  assert.match(l7[0].label, /Running test 1 of 3/);
+  assert.equal(l7[1].index, 1);
+  assert.equal(l7[1].total, ADDER.tests.length);
+  assert.ok(
+    steps.every((s) => typeof s.label === "string" && s.label),
+    "every step carries something showable",
+  );
+});
+
+test("a spec with no tests yields no L7 steps at all", () => {
+  const noTests = { ...ADDER, tests: undefined };
+  const { steps, value } = collect(verifySteps(compile(noTests), noTests));
+  assert.equal(value.ok, true);
+  assert.equal(
+    steps.filter((s) => s.gate === "L7").length,
+    0,
+    "no work to narrate, so no label for an empty pause",
+  );
+});
+
+test("an early abort stops the ladder rather than narrating the rest", () => {
+  // L4 catches a severed net and returns immediately. The steps are what the
+  // user would SEE, so a run that abandoned the ladder must not have claimed
+  // to be simulating — the gate labels have to track the real control flow.
+  const out = compile(ADDER);
+  out.document.wires = out.document.wires.filter(
+    (w) => !/^bb\d+\.[a-j]/.test(w.from) || !/^bb\d+\.[a-j]/.test(w.to),
+  );
+  const { steps, value } = collect(verifySteps(out, ADDER));
+  assert.equal(value.ok, false);
+  assert.ok(
+    value.faults.some((f) => f.gate === "L4"),
+    JSON.stringify(value.faults.map((f) => f.code)),
+  );
+  assert.deepEqual(
+    steps.map((s) => s.gate),
+    ["L3", "L4"],
+    "it never announced L5/L6/L7 it was not going to run",
   );
 });
