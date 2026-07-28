@@ -1,62 +1,93 @@
-# Files, Autosave & Undo
+# Files, Saving & Undo
 
-Chip Hippo separates two things most apps blur together: the circuit you're
-currently poking at, which is saved for you continuously, and a named
-schematic file you deliberately save to organize or share a specific design.
-This page covers both, plus the discard-changes prompt, the title bar's dirty
-indicator, and undo/redo.
+Chip Hippo keeps your work in ordinary files you can see, move, and share —
+one for each **desktop** you build on, and one for the **project** that lists
+them. This page covers where those files live, the four commands that manage a
+desktop's file, the dirty marker, and undo/redo.
 
-## The autosaved working document
+## There is always a project
 
-Whatever is on the desk right now — every board, chip, wire, and part — lives
-in a **working document** that Chip Hippo saves automatically as you go.
-There's nothing to save manually for day-to-day tinkering: place a chip, lay
-a wire, quit the app, relaunch, and the desk comes back exactly as you left
-it. This is the same document that opens by default every time you launch
-Chip Hippo.
+The desk in front of you is always a **desktop of an open project**, from the
+very first launch. A brand-new project has no name, no home of its own, and
+exactly one desktop called `Desktop 1` — which is simply a desk to build on.
+See [Projects & Desktops](projects-and-desktops.md) for what a project is for
+and how to keep several desktops side by side.
 
-## Named files
+Two kinds of file follow from that:
 
-A **named file** (extension `.chiphippo`) is a snapshot of a schematic you've
-explicitly saved somewhere on disk — useful for organizing a design under a
-project name, keeping several circuits side by side, or sharing one with
-someone else. Once you've opened or saved a named file, it becomes the
-working document: further edits keep autosaving into it, and the title bar
-shows its filename.
+- a **desktop file** (`.desktop.chiphippo`) — one complete desk: its boards,
+  chips, wiring, and parts. It is an ordinary Chip Hippo design file, so it
+  opens on any desktop, in any project.
+- a **project file** (`.project.chiphippo`) — the small list of which desktops
+  the project has, what they are called, and where each one's file is.
+
+## Before you choose where things go
+
+Chip Hippo never stops you mid-thought to ask for a file name. Until you save
+something under a name of your own, it keeps the file for you in its own
+**saves folder** inside the app's data directory:
+
+- every new desktop gets a file there straight away, under a generated name
+  you are not meant to read — its Location, but a temporary one;
+- a project with no name lives in the one **default project file** there. It
+  is the work in progress, and it is what Chip Hippo opens when you launch it.
+
+Give either one a home of your own (**Save As** for a desktop, **Project ▸
+Save Project** for a project) and the file left behind in the saves folder is
+cleaned up — nothing but that one object ever pointed at it.
+
+That folder is Chip Hippo's to tidy, so **anything of yours kept in it is
+treated the same way**: a desktop whose file is in there — the generated one,
+or one you saved into the folder yourself — has that file deleted when you
+delete the desktop. Save a desktop anywhere else and the file is yours; Chip
+Hippo will never remove it, even when the desktop is gone.
+
+When you launch, Chip Hippo opens the unsaved project from its saves folder if
+there is one; otherwise it reopens the **project you used most recently**.
 
 ## New, Open, Save, Save As
 
-Four commands on the **File** menu cover the whole file lifecycle:
+Four commands — on the **File** menu, in the header toolbar's File pill, and
+under the usual shortcuts — manage the **active desktop's** file:
 
-- **New Schematic** (`Cmd/Ctrl+N`) — clears the desk back to an empty working
-  document, no file attached.
-- **Open Schematic…** (`Cmd/Ctrl+O`) — shows a native file picker; choose a
-  `.chiphippo` file and it becomes the working document.
-- **Save** (`Cmd/Ctrl+S`) — writes the current desk to the file it's already
-  associated with. If there isn't one yet, this falls back to **Save As…**.
-- **Save As…** (`Shift+Cmd/Ctrl+S`) — shows a native save dialog; writes the
-  current desk to the chosen path and adopts it as the working file from then
-  on.
+- **New Desktop** (`Cmd/Ctrl+N`) — empties the desk you're on. Its file keeps
+  whatever was last saved to it, so this is "start over here", not "delete".
+- **Open…** (`Cmd/Ctrl+O`) — shows a native file picker; the design you choose
+  is loaded onto the active desktop, and that file becomes the desktop's
+  Location. From then on, Save writes there.
+- **Save** (`Cmd/Ctrl+S`) — writes the desk back to the file its Location
+  names. No dialog: a desktop always has one.
+- **Save As…** (`Shift+Cmd/Ctrl+S`) — asks where to keep it and writes it
+  there, and that file becomes the desktop's Location. If the desktop was
+  still in the file Chip Hippo minted for it, the suggested name comes from
+  the **desktop's own name** ("Clock module.desktop.chiphippo"), and the
+  minted file is deleted once the design has a real home.
 
-The same four actions are also available as buttons in the header toolbar's
-schematic menu, alongside their keyboard shortcuts.
+If the file you pick already exists, your system's own save dialog asks
+whether to replace it, exactly as it does in any other app — Chip Hippo adds
+no second question of its own. Decline there and nothing is written.
 
-**New** and **Open** replace the whole desk, so the window refreshes to load
-it — a brief flash as everything rebuilds from the new document. Note that
-this resets any run-volatile simulation state (see below); it doesn't affect
-what's saved.
+Right-click a tab and choose **Properties…** to see a desktop's Location —
+alongside its Name and Description — without opening any dialog that writes.
 
 ## Unsaved changes
 
-The title bar shows the current file's name (or "Untitled" for a fresh
-document) with a leading dot — `• MyCircuit — Chip Hippo` — whenever the desk
-has changes that haven't been written to that file yet. Save clears the dot.
+A desktop's tab shows a dot when it has changes that aren't in its file yet,
+and the window title shows the same for the desk you're on:
+`• 6502 SBC — Clock module — Chip Hippo`. Save clears it. The title's dot also
+covers the **project's** own unsaved changes — a desktop added, something
+renamed — which **Project ▸ Save Project** writes.
 
-Because **New Schematic** and **Open Schematic…** both replace the working
-document outright, Chip Hippo won't silently throw away unsaved work: if the
-desk is dirty, it shows a **Discard unsaved changes?** prompt naming the
-current file and asking you to confirm before proceeding. Choose **Discard**
-to continue (losing those changes) or **Cancel** to back out and save first.
+Nothing that would lose those changes happens silently. Emptying a desktop or
+loading another design into it asks first; so does deleting a desktop, opening
+or starting another project, and quitting. Every one of those questions offers
+to **save** first — and choosing that carries the action through, so you are
+never made to ask twice.
+
+When the save is the app's idea rather than yours — quitting with a dot on a
+tab — nothing is asked about *where*: each desktop goes to the file it already
+has, and the project to its own (or, having none yet, to the app's default
+project file, where the next launch will find it).
 
 ## Undo & redo
 
@@ -84,9 +115,9 @@ moment in its simulated behavior.
 Chip Hippo's project repository ships a handful of ready-to-load example
 circuits as ordinary `.chiphippo` files — currently small W65C02-based
 breadboard computers built from 74xx glue logic, each paired with a `.hex`
-ROM image. Open one the same way as any saved file: **File ▸ Open
-Schematic…**, then load its matching `.hex` into the ROM chip via the memory
-inspector or the external programmer before pressing **Run**.
+ROM image. Open one the same way as any saved design: **File ▸ Open…** loads
+it onto the desktop you're on. Then load its matching `.hex` into the ROM chip
+via the memory inspector or the external programmer before pressing **Run**.
 
 ---
 

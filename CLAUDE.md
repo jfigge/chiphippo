@@ -22,7 +22,8 @@ and `make` toolchain (00); the infinite desk (10) — camera-transform pan/zoom
 (`DeskView` over the pure `desk-geometry.js`), dot grid, zoom controls, settings
 store; the breadboard domain model (20) — `board-types.js` + `breadboard.js`
 (holes ⇄ positions ⇄ nodes, 830/400/170), `DeskDoc`, desk store + migrations stub,
-`desk:load/save` autosave IPC, ipc-parity guard; breadboard rendering & placement
+the desk-document save IPC (since re-cut as `project:read-tab`/`:write-tab` —
+see below), ipc-parity guard; breadboard rendering & placement
 (30) — one static SVG per board (no per-hole DOM), `DeskController` (layers,
 add-flow ghost, select/drag/delete, hover addressing), ported popup manager; and
 the component framework & DIP chips (40) — `footprints.js` (DIP-14/16/20
@@ -106,11 +107,15 @@ relays context + live byte writes across the main↔inspector window boundary;
 and the **user guide** (230) — one Markdown source (`src/web/docs/*.md`)
 driving the in-app Help ▸ *Chip Hippo User Guide* window, the hosted website
 (`make docs`), and a PDF (`make pdf`); see the "User guide & docs" section
-below; and **projects & tabbed desktops** (240) — a named project of several
-PEER desktops as tabs (`Desktop N`; no privileged main desk), the document
-swapped in place per tab, plus the whole-design clip that carries a
-sub-assembly from one desktop onto another (see the "Projects & tabbed
-desktops" section below).
+below; and **projects & tabbed desktops** (240) — a project of several PEER
+desktops as tabs (`Desktop N`; no privileged main desk), the document swapped
+in place per tab, plus the whole-design clip that carries a sub-assembly from
+one desktop onto another. Its persistence was **redesigned after 240 landed**:
+there is ALWAYS a project open, a project and every desktop is a FILE the user
+can put anywhere (kept in `userData/saves/` until they do), and the app boots
+onto the unsaved project, else the most recent saved one, else a new one —
+`desk.json`, the working document, and the recent-DESKTOPS list are gone (see
+the "Projects & tabbed desktops" section below).
 When a stage is finished, move its plan file into `features/done/`.
 
 ## Naming & identity
@@ -229,33 +234,35 @@ website** (`make docs` → `website/docs/`), and a **PDF** (`make pdf` →
   `main.js` (window + lifecycle + ipcMain handlers), `preload.js` (the
   `window.chiphippo` bridge), `window-state.js` (bounds restore with display-fit
   check), and `store/` (`io.js` atomic-write primitives, `settings-store.js`,
-  `desk-store.js` + `migrations.js` for the desk document at `userData/desk.json`,
-  and `mem-store.js` — the atomic byte store behind a memory chip's `.bin`
-  sidecar, Feature 180).
-  **Schematic files**: `desk.json` is the always-autosaved WORKING document;
-  named `.chiphippo` files are the user's documents. `DeskStore.readFile`/
-  `writeFile` (+ the `desk:open`/`desk:save-as`/`desk:write` handlers with
-  native dialogs) do Open/Save/Save-As. **New and Open write the working
-  `desk.json` + persist `settings.currentFile`/`savedDoc`, then the renderer
-  `window.location.reload()`s** — reload is the app's one guaranteed teardown
-  path (no `dispose()` exists on the controller/collaborators), so it rebuilds
-  the whole scene cleanly; the only thing lost is run-volatile sim state.
-  Dirty = live document vs `settings.savedDoc` (the last-saved baseline); it
-  drives the `document.title` marker and the discard prompt (File menu ⌘N/⌘O/
-  ⌘S/⇧⌘S/⌘B push `menu:schematic-*` / `menu:build-guide` →
-  `chiphippo:schematic-*` / `chiphippo:build-guide`). **The header toolbar
-  mirrors that menu exactly** — one File **pill** whose five icon-only segments
-  (New · Open · Open Recent · Save · Save As) dispatch the SAME `chiphippo:*`
-  events, so the two can never drift; only **Open Recent** is toolbar-only, and
-  only **Bill Of Materials** sits elsewhere (it toggles a desk panel, so it is a
-  desk-tool segment — see the toolbar note below). That MRU is `settings.recentFiles`
-  (the last 10 paths, most recent first — `store/recent-files.js` is the pure
-  list arithmetic, `desk:recent:list`/`:open`/`:remove` the IPC), written by
-  main on every open/save-as/save. The list is also the **allowlist**:
-  `desk:recent:open` is the one read of a renderer-named path, and — like
-  `desk:write` — it only touches a path a prior dialog established, returning
-  `{ok:false, code:"missing"}` for an entry whose file has since gone so the
-  renderer can offer to forget it.
+  `desk-store.js` + `migrations.js` — one desk document read/written by PATH,
+  `project-store.js` (below), and `mem-store.js` — the atomic byte store behind
+  a memory chip's `.bin` sidecar, Feature 180).
+  **Schematic files**: there is no working document any more — **every desk on
+  screen is a DESKTOP of the open project**, and a desktop is a
+  `.desktop.chiphippo` file of its own (see "Projects & desktops" below).
+  `DeskStore` is down to `readFile`/`writeFile`; the desktop-level actions are
+  `desk:open` (a native Open dialog whose file the desktop ADOPTS as its
+  Location) plus `project:read-tab`/`:write-tab`/`:choose-path`. Nothing
+  reloads the window: a document swap goes through
+  `DeskController.loadDocument`'s `#rebuildScene`. Dirty = the live document vs
+  the per-tab baseline the workspace holds; it drives the `document.title`
+  marker, the • on the tab, and every discard prompt (File menu ⌘N/⌘O/⌘S/⇧⌘S/⌘B
+  push `menu:schematic-*` / `menu:build-guide` → `chiphippo:schematic-*` /
+  `chiphippo:build-guide`, which `app.js` forwards straight to the workspace).
+  **The header toolbar mirrors that menu exactly** — one File **pill** whose
+  four icon-only segments (New · Open · Save · Save As) dispatch the SAME
+  `chiphippo:*` events, so the two can never drift; only **Bill Of Materials**
+  sits elsewhere (it toggles a desk panel, so it is a desk-tool segment — see
+  the toolbar note below). There is **no recent-DESKTOPS list** (a desktop is
+  reached through its project); `settings.recentProjects` is the last 10
+  PROJECT paths, most recent first — `store/recent-files.js` is still the pure
+  list arithmetic, `project:recent:list`/`:remove` + `project:open-recent` the
+  IPC. That list is also the **allowlist** for the one read of a
+  renderer-named path no dialog mediated, returning `{ok:false,
+  code:"missing"}` for an entry whose file has since gone so the renderer can
+  offer to forget it. Every OTHER path crossing the bridge is gated by main's
+  `knownPath`: anything inside the app's saves folder, plus what a dialog (or
+  an opened project file) ESTABLISHED this session.
 - `src/web/` — **renderer** (Vanilla JS ES modules + plain CSS): the UI. Sandboxed;
   talks to main only through `window.chiphippo.*`. Entry points: `index.html` →
   `scripts/app.js`. Pure DOM-free logic lives under `scripts/desk/` (camera, wire
@@ -297,17 +304,21 @@ Do **not** modify anything under `build/` or `src/node_modules/`.
 
 ```
 Electron main process (src/app/main.js)
-  ├── Stores         (src/app/store/)        settings.json + desk.json (atomic io.js;
-  │                                          desk loads through migrations.js)
+  ├── Stores         (src/app/store/)        settings.json + project/desktop files
+  │                                          (atomic io.js; a desk document loads
+  │                                          through migrations.js)
   ├── Window state   (src/app/window-state.js)  bounds restore + debounced save
-  ├── IPC handlers   (app:*, settings:get/set, desk:load/save — more per stage)
+  ├── IPC handlers   (app:*, settings:get/set, project:* — more per stage)
   └── IPC bridge     (src/app/preload.js)   →  window.chiphippo.*
         └── Renderer / UI (src/web/scripts/app.js)
               ├── DeskView (components/desk-view.js) ← desk/desk-geometry.js (pure)
+              ├── ProjectWorkspace (components/project-workspace.js)
+              │     owns the open project + which desktop is on the desk
               └── DeskController (components/desk-controller.js)
                     owns DeskDoc (model/desk-doc.js ← model/breadboard.js, pure),
                     the surface layers (boards→parts→wires→overlay), and mounts
-                    BreadboardView children; autosave via `chiphippo:doc-changed`
+                    BreadboardView children; `chiphippo:doc-changed` re-derives
+                    the • dirty marker (a desktop is saved deliberately)
 ```
 
 - **Desk surface layers** (inside `.desk-surface`, established in Feature 30):
@@ -417,85 +428,108 @@ Electron main process (src/app/main.js)
   it). Intel HEX ⇄ bytes is the pure `model/hex-format.js`.
 - **Projects & tabbed desktops** (`app/store/project-store.js` +
   `components/project-workspace.js` + `components/project-tabs.js` +
-  `model/design-clip.js`, Feature 240). **A TAB IS A DOCUMENT, NOT A SECOND
+  `model/design-clip.js`). **A TAB IS A DOCUMENT, NOT A SECOND
   DESK**: there is still exactly one `DeskView` / `DeskController` /
   `SimController` / palette / guide / analyzer, and switching desktops SWAPS
   THE DOCUMENT in place through `DeskController.loadDocument` — the same
   `restore` + `#rebuildScene` path undo/redo has used since Feature 200 (which
-  is why a tab switch needs no `window.location.reload()`: reload is the
-  guaranteed teardown for a scene there is no other way to dismantle;
-  `#rebuildScene` IS the in-process one). `ProjectWorkspace` keeps, PER TAB,
+  is why a tab switch needs no `window.location.reload()`: reload was the
+  guaranteed teardown for a scene there was no other way to dismantle;
+  `#rebuildScene` IS the in-process one, and it is now the ONLY one — nothing
+  in the app reloads the window any more). `ProjectWorkspace` keeps, PER TAB,
   the document, the camera, the saved baseline (the • dirty marker), and its
   own `HistoryStore` — so ⌘Z after switching back undoes THAT desk's last
-  edit. A switch stops the sim and closes the aux windows (`c3` on Main is a
-  different chip from `c3` on another desktop); the controller's copy buffers
-  deliberately survive it, which is what makes a cross-desktop paste work. A
-  **project** is an app-managed FOLDER (`userData/projects/<slug>/` —
-  `project.json` tab list + one `.chiphippo` per tab), because the "name must
-  be unique" rule only means something against a directory the app owns; all
-  its I/O is main-side behind `project:*`, and the store alone turns a name /
-  tab id into a path inside the projects root. **A PROJECT IS NOT NAMED UNTIL
-  IT IS SAVED**: adding a desktop must never stop to ask, so a project starts
-  in the ONE reserved working folder (`__working/`, name `Untitled`, meta flag
-  `untitled` — an underscore never survives `slugify`, so no typed name can
-  collide with it, and `list()` skips it exactly as the recent-files list skips
-  `desk.json`). `Projects ▸ Save Project…` is the single place a name is asked
-  for: `saveAs(slug, name)` checks uniqueness and MOVES the folder to its slug,
-  so tab ids — and every per-tab state the workspace holds — survive it. There
-  is one working slot, so `createUntitled` replaces it. A name already taken
-  re-asks rather than offering to open that project — the work being saved
-  would be thrown away. **CHANGING PROJECTS** (New / Load) runs everything
-  through `#confirmLeaveProject`, which has one branch per state and, on
-  "save", LETS THE ACTION GO AHEAD (the user is not made to ask twice):
-  no project → the working desk's own dirt, saved through the shell's
-  `saveWorking` callback (app.js hands over `saveSchematic`, which owns the
-  Save-As dialog); untitled → save (`saveProject` names it AND writes every
-  desktop) / discard / cancel, asked whether or not the desktops are dirty;
-  named → the dirty-desktop question. Every one of them resolves `false` for a
-  cancel, and a save that never landed IS a cancel. `saveProject` therefore
-  returns a `Promise<boolean>` and `#askName`/`#notify` are promise-wrapped —
-  PopupManager fires its callbacks on EVERY dismissal path, mask click
-  included, so an awaiting caller can't hang. **A NEW PROJECT IS ALWAYS
-  EXACTLY ONE DESKTOP**, numbering started over at 1 — `createUntitled(doc)`
-  takes no count, so nothing can ask for more, and a project only ever grows
-  through `addTab`. New Project is a blank slate (that one desktop empty, the
-  desk reloaded through `#swapProject`); the "+" with no project open starts
-  the project AROUND the desk you are on (`#startProjectAroundDesk` — it
-  becomes that single desktop, so nothing is discarded) and then falls through
-  to the ordinary `addTab`, so "+" adds exactly one desktop and lands you on
-  it, as it does everywhere else. Load Project…
-  shows the picker BEFORE the guard, so backing out of the list costs
-  nothing. Tab documents follow the MANUAL
-  save model (the toolbar's New / Load / Save act on the active tab, silently,
-  since a tab owns its path); the project FILE autosaves whenever the tab set,
-  names/descriptions, or active tab change. **EVERY DESKTOP IS A PEER**: v1's
-  `kind: "main"|"sub"` split is gone (`PROJECT_VERSION` 2 — `_normalize` drops
-  the kinds and carries `nextSubIndex` forward as `nextIndex` when an old
-  `project.json` is read, leaving the user's own tab NAMES and files alone).
-  Any desktop can be renamed or deleted; the ONE rule is that a project keeps
-  at least one, enforced in `removeTab` and mirrored by the strip disabling
-  Delete on the last remaining tab. So there is no per-tab branching left
-  anywhere — one menu, one code path. A tab's context menu is the **board's**
-  two-item shape — Properties… · rule · Delete Desktop — NOT the part menu's
-  three: a desktop has no pins at all, so the leading Pin Assignment and its
-  separator are gone (`project-tabs.js`). Properties…
-  opens the app-wide `PartPropertiesDialog`, so a desktop carries the same
-  universal **Name/Description** pair every part, board, and wire does (the
-  description shows in the tab's tooltip — its only room on the strip). Both
-  ride the existing `project:save-meta`: `ProjectWorkspace#setTabProperty`
-  applies each field live, and the store's per-tab whitelist takes exactly
-  `name` + `description` (omit-when-empty, `file`/`kind` still re-derived from
-  disk). **The strip is ALWAYS on screen**, project or not: with none open
-  the workspace hands it the one synthetic `kind: "working"` tab standing for
-  the desk you are on (named `Desktop 1`, since New Project adopts that very
-  desk under that name), carrying the working file's own • marker via the
-  shell's `isWorkingDirty`. Its menu keeps the same two items with both
-  disabled — the working desk has no project file to keep a name in, and it is
-  the only desktop there is (the same last-one rule, not a special case). That
-  is the whole point: the `+` beside it, the only route to another desktop,
-  can't hide behind a project that has to exist first.
-  Everything else with no project open is unchanged — the working
-  `desk.json`, today's New/Open/Save. The **design clip**
+  edit. A switch stops the sim and closes the aux windows (`c3` on one desktop
+  is a different chip from `c3` on another); the controller's copy buffers
+  deliberately survive it, which is what makes a cross-desktop paste work.
+  **THERE IS ALWAYS A PROJECT**, from the first launch: `project:boot` answers
+  with one every time, so there is no second "working desk" mode beside it and
+  `app.js` has no project/no-project branch left anywhere.
+  **A PROJECT IS A FILE, AND SO IS EVERY DESKTOP** — `<name>.project.chiphippo`
+  (the tab list) and `<name>.desktop.chiphippo` (one document each), wherever
+  the user put them; a tab's `file` is an absolute PATH. Until the user chooses,
+  the app keeps them in its own **saves folder** (`userData/saves/`): a new
+  desktop is minted as `<guid>.desktop.chiphippo` and flagged `defaultFile:
+  true`, which means "this file is INSIDE the saves folder" and is DERIVED
+  from the path every time main hands one over (`_normalize`, and the
+  `appKept` a write / an open answers with) — so it cannot drift, and a
+  desktop the user saved into that folder counts as app-kept too. An unnamed
+  project — blank
+  `name`, blank `location` — lives in the ONE fixed `default.project.chiphippo`,
+  which is to a project exactly what `desk.json` used to be to a schematic.
+  **STARTUP** is that same fact read backwards (`bootProject`): the default
+  project file if it exists, else the head of `settings.recentProjects` that is
+  still on disk, else a brand-new project. So the default file exists exactly
+  while the open project is unsaved — `project:save` to a real path drops it
+  (`dropDefault`), and so does opening another project.
+  **A NEW PROJECT IS ALWAYS EXACTLY ONE DESKTOP**, numbering started over at 1
+  (`newProject()` takes no count, so nothing can ask for more); a project only
+  ever grows through `addTab`, which mints the next `Desktop N` (`nextIndex`
+  only counts up) with no dialog at all.
+  **SAVING.** A DESKTOP is a document and follows the MANUAL model: Save writes
+  it to its own `file`, Save As picks a new one — main's `chooseSavePath`
+  composes the suggestion (the renderer passes a NAME, never a path), using the
+  object's own name whenever the current file is app-kept, so a GUID is never
+  offered back to the user — and the app-minted file is dropped
+  (`project:drop-temp`, which refuses anything but a GUID file inside saves)
+  once the design has a real home. Open (`desk:open`) ADOPTS the file it read
+  as that desktop's Location, for the same reason. Replacing an existing file
+  is the NATIVE dialog's question and ONLY its question (`properties:
+  ["showOverwriteConfirmation"]` is how the Linux panel is told to ask) — a
+  prompt of ours on top would ask the user the same thing twice, so
+  `choosePath` returns a path or null and declining a replace simply reads
+  back as a cancel. The PROJECT FILE follows the same manual model: adding a
+  desktop, renaming one, moving between them are ITS unsaved changes
+  (`projectDirty` — the meta minus `activeTab` against the baseline captured
+  at load and at every save), and `Projects ▸ Save Project…` writes them along
+  with every desktop (it is also the moment a project gets a NAME and a HOME;
+  a named project's Save just writes it and bumps the MRU). TWO things are
+  still written the moment they happen, because holding them back would leave
+  a FILE lying rather than a change pending: a desktop's own file MOVING
+  (Save As / Open) or being DELETED — the project must not go on pointing at
+  a file that is gone — and anything at all about the UNSAVED project, whose
+  default project file is not a copy of it but IS it. Such a write carries
+  whatever else was pending (the file is written whole), which is the honest
+  trade for on-disk truth. **DISCARDING** the project's changes therefore has
+  to clean up after itself: a desktop ADDED since the last save is not in the
+  file the project reloads from, so `discardChanges` (main) diffs the live
+  meta against the project ON DISK — never against anything the renderer
+  remembers — and removes the app-kept file of every desktop the reload will
+  not have.
+  **CHANGING PROJECTS OR QUITTING** runs through `#confirmLeaveProject`, which
+  on "save" LETS THE ACTION GO AHEAD (the user is not made to ask twice).
+  Quitting is the silent case — no Save button was clicked, so nothing is asked
+  about WHERE: each dirty desktop goes to the file it already has and the
+  project to its location-or-default. Changing projects differs in exactly one
+  way: an unsaved project is living in the default file that the project taking
+  its place is about to claim, so "save" there means the full `saveProject`
+  (name + location). Every path resolves `false` for a cancel, and a save that
+  never landed IS a cancel — `saveProject`/`saveTab`/`saveTabAs` all return
+  `Promise<boolean>` and every dialog is promise-wrapped, since PopupManager
+  fires its callbacks on EVERY dismissal path (mask click included) so an
+  awaiting caller can't hang.
+  **EVERY DESKTOP IS A PEER**: any of them can be renamed, relocated, or
+  deleted; the ONE rule is that a project keeps at least one, mirrored by the
+  strip disabling Delete on the last remaining tab. **WHERE THE FILE IS
+  DECIDES WHETHER IT GOES**: removing a desktop (or moving it with Save As /
+  Open) deletes the file it leaves behind when that file is inside the saves
+  folder, and leaves anything else exactly where it is — `removeDesktopFile`
+  makes that call from the path alone and no-ops (rather than throwing) for a
+  file outside, so the renderer hands over every desktop's file and never
+  guesses. It is also why "Save and delete" on an app-kept desktop runs Save
+  AS: saving into the file the delete is about to remove would keep nothing. A tab's context
+  menu is the **board's** two-item shape — Properties… · rule · Delete
+  Desktop — NOT the part menu's three: a desktop has no pins at all, so the
+  leading Pin Assignment and its separator are gone (`project-tabs.js`).
+  **Properties…** opens the app-wide `PartPropertiesDialog`, so a desktop
+  carries the same universal **Name/Description** pair every part, board, and
+  wire does (the description shows in the tab's tooltip — its only room on the
+  strip), plus one `"readonly"` field below the separator: its **Location**.
+  The PROJECT has the same dialog (`Projects ▸ Project Properties…`) with the
+  same three, its Location blank until it has been saved. **The strip is
+  ALWAYS on screen** because there is always a project to fill it, and the `+`
+  beside it — the only route to another desktop — needs nothing to exist first.
+  The **design clip**
   (`model/design-clip.js`, pure) is `paste-cluster.js` one level up: it carries
   the BOARDS too (plus everything seated on them, selected desk bricks, every
   wire with BOTH ends inside, and the buses / net names / anchored labels
@@ -514,12 +548,13 @@ Electron main process (src/app/main.js)
   Analyzer · Fit · **BOM** — BOM lives here, not with the file actions, because
   it toggles a desk panel exactly as Analyzer does, and like Analyzer its armed
   state comes from the panel's own `onVisibilityChange`, so the segment tracks
-  the panel however it was closed), **File** (New · Open · Open Recent · Save ·
-  Save As — every file action is its OWN icon-only segment rather than a row
-  hidden behind a ▾, since they are peers and a toolbar's job is to show what is
-  available; the name + accelerator live in each segment's tooltip, and Open
-  Recent is the one that still drops a menu, because an MRU list can't be a
-  button), and the **transport** (`.toolbar-pill--transport`, Feature 90/100),
+  the panel however it was closed), **File** (New · Open · Save · Save As, all
+  aimed at the ACTIVE DESKTOP — every file action is its OWN icon-only segment
+  rather than a row hidden behind a ▾, since they are peers and a toolbar's job
+  is to show what is available; the name + accelerator live in each segment's
+  tooltip. There is no Open Recent here: the MRU is of PROJECTS, and it drops
+  its menu from the Projects button, because an MRU list can't be a button),
+  and the **transport** (`.toolbar-pill--transport`, Feature 90/100),
   which is the one pill whose SEGMENT COUNT changes: stopped it holds only
   **Run**, and running it becomes **Stop** with Pause · Step · speed unhidden
   beside it (`.toolbar-pill-btn[hidden]` collapses the rest), so the pill never
@@ -527,7 +562,7 @@ Electron main process (src/app/main.js)
   colour alone — the pill carries the only border, so no segment accents one of
   its own. Everything else is a plain `.toolbar-btn` / `.toolbar-icon-btn`.
   The pill is the APP's grouping shape, not the toolbar's alone — the desktop
-  tab strip (`.project-tabs`, Feature 240) is the same thing floating over the
+  tab strip (`.project-tabs`) is the same thing floating over the
   desk, its active tab filling exactly as an armed tool segment does.
   A pill segment may carry a **readout** — the Wire button's color dot, the
   Bus button's `8`/`16` badge — and a readout is exactly that: it shows the
@@ -548,15 +583,15 @@ Electron main process (src/app/main.js)
   fires a one-way `chiphippo:popup-closed` event so stateful dialogs can reset
   their open-guard however they were dismissed. Beyond `menu` / `confirm` /
   `prompt` / `notify` / `dialog` there is **`choose`** — the Cancel + N-choices
-  shape a "save, discard, or cancel" question needs (Feature 240's tab
-  delete), where "no" splits into two different answers; its `onChoose` fires
+  shape a "save, discard, or cancel" question needs (the tab delete, the
+  leave-a-project guard), where "no" splits into two different answers; its `onChoose` fires
   with `null` for every dismissal, so a caller can never miss one. `menu`'s
   item vocabulary is `{ label, disabled, danger, swatch, icon, accelerator,
   title, submenu + emptyLabel, onSelect, onRemove }` — a card where ANY item
   has an `icon` gives every item the 16 px slot (so labels line up), a
   `submenu` opens as a SIBLING card in the same dialog (hover or click; never
   nested, so it can't be clipped), and `onRemove` renders a trailing × that
-  drops its row IN PLACE and leaves the menu open (removing an Open Recent
+  drops its row IN PLACE and leaves the menu open (removing a recent-project
   entry is not a selection). `emptyLabel` is a CARD-level option — passed
   alongside `items` for the root card, or on the owning item for a submenu —
   and is both the placeholder for an empty list and what the last `onRemove`
@@ -579,7 +614,7 @@ Electron main process (src/app/main.js)
   A catalog def declares its own editable fields as data (`properties: [{
   key, label, type, options }]`) — the dialog is a pure renderer over that
   list (one `buildControl`/`buildRow` dispatch per `type`) and knows nothing
-  about any specific part. Three types today: `"color"` (every colored
+  about any specific part. Four types today: `"color"` (every colored
   discrete — LED, `seg8cc`/`seg8ca`, `bar8`/`bar8iso` — shares one
   `LED_COLOR_OPTIONS` list of 5 colors and a row of clickable swatches
   reusing the `--color-wire-<name>` tokens; any def with a `colors` list
@@ -594,7 +629,10 @@ Electron main process (src/app/main.js)
   `"Load image… (program)"`, appended by `#propertyFieldsFor` itself rather
   than the catalog, since a ROM's program action is additionally gated on
   `!#editingLocked`; clicking one closes the dialog and calls `onAction(key)`
-  instead of `onChange`). A future part's properties are purely a catalog
+  instead of `onChange`), and `"readonly"` (a value the dialog SHOWS but does
+  not edit — a project's or a desktop's **Location**, which Save As is what
+  changes; it takes the stacked full-width row a path needs).
+  A future part's properties are purely a catalog
   change (plus, only for a genuinely new control shape, one more `type` case
   in `buildControl`) — no changes to the dialog shell or the context-menu
   wiring. Like the Settings dialog, value fields apply live (`onChange(key,
@@ -609,7 +647,21 @@ Electron main process (src/app/main.js)
   (`menu:show-about` / `menu:open-settings` via `webContents.send`), which the
   preload re-dispatches as `chiphippo:show-about` / `chiphippo:open-settings`
   (the documented main→renderer broadcast pattern — the parity test ignores
-  push channels, only `ipcMain.handle`↔`ipcRenderer.invoke`). `app.js` opens the
+  push channels, only `ipcMain.handle`↔`ipcRenderer.invoke`). **The PROJECT
+  menu leads the bar** (before File, after the macOS app menu): New Project ·
+  Load Project… · Open Recent Project ▸ · rule · Save Project · Save Project
+  As… · rule · Project Properties… · Add Desktop, each a `menu:project-*`
+  push the preload re-dispatches as `chiphippo:project-*` and `app.js` hands
+  straight to `ProjectWorkspace` — the only side that knows what is open and
+  what is unsaved. **A project has NO toolbar button**: the menu is its one
+  route, as against the File pill, which mirrors the File (desktop) menu.
+  Open Recent is the one push carrying a **payload** (the project file its
+  item names), so the preload's re-dispatch passes `detail` through for every
+  channel; and it is baked into the menu TEMPLATE, so main rebuilds the whole
+  menu (`refreshAppMenu`) whenever the MRU list changes —
+  `setEditMenuState` therefore remembers the renderer's last Undo/Redo
+  availability and replays it, since a fresh template starts both disabled.
+  `app.js` opens the
   matching PopupManager modal: `components/about-dialog.js` (name/subtitle/desc
   + version info from `app:info:get`) and `components/settings-dialog.js`. The
   **Settings dialog is dumb**: it broadcasts a `chiphippo:settings-changed`

@@ -15,55 +15,30 @@
  */
 
 /**
- * desk-store.js — persistence for the single desk document (one per app for
- * now; named project files are backlog). Lives at userData/desk.json; writes
- * are atomic (io.js) and load() runs the schema migrations, so a first run
- * (or a quarantined corrupt file) yields the default empty desk.
+ * desk-store.js — persistence for ONE desk document: read it from a file,
+ * write it to a file, migrations included. Nothing more — there is no
+ * privileged "working" document any more (there is always a project, and every
+ * document on screen is one of its desktops, so project-store.js owns which
+ * file a document belongs to).
  *
- * The renderer owns the live document (model/desk-doc.js) and autosaves the
- * whole thing, debounced — documents are small; deltas are premature.
+ * Writes are atomic (io.js) and a read runs the schema migrations, so a
+ * missing or quarantined-corrupt file yields the default empty desk rather
+ * than an error: a desktop whose file has gone opens empty instead of
+ * refusing to open at all.
+ *
+ * The renderer owns the live document (model/desk-doc.js) and sends the whole
+ * thing — documents are small; deltas are premature.
  */
 "use strict";
 
-const path = require("path");
 const io = require("./io");
 const { migrateDeskDocument } = require("./migrations");
 
 class DeskStore {
   /**
-   * @param {string} dataDir - the app's userData directory.
-   */
-  constructor(dataDir) {
-    this._file = path.join(dataDir, "desk.json");
-  }
-
-  /**
-   * The persisted document, migrated to the current schema — or the default
-   * empty desk when the file is absent (first run) or was corrupt.
-   */
-  load() {
-    return migrateDeskDocument(io.readJSON(this._file));
-  }
-
-  /**
-   * Persist a document (the renderer sends its serialized DeskDoc). Returns
-   * the document; throws code INVALID_ARG on junk.
-   * @param {object} doc
-   */
-  save(doc) {
-    if (!doc || typeof doc !== "object" || Array.isArray(doc)) {
-      const err = new Error("desk document must be an object");
-      err.code = "INVALID_ARG";
-      throw err;
-    }
-    io.writeJSON(this._file, doc);
-    return doc;
-  }
-
-  /**
-   * Read a NAMED schematic file (from the Open dialog), migrated to the
-   * current schema so an older `.chiphippo` still opens. Returns the default
-   * empty desk when the file is absent or corrupt (same policy as load()).
+   * Read a schematic file, migrated to the current schema so an older
+   * `.chiphippo` still opens. Returns the default empty desk when the file is
+   * absent or corrupt.
    * @param {string} filePath
    */
   readFile(filePath) {
@@ -71,8 +46,8 @@ class DeskStore {
   }
 
   /**
-   * Write a document to a NAMED schematic file (Save / Save As). Throws code
-   * INVALID_ARG on a junk document or path. Returns the path written.
+   * Write a document to a schematic file. Throws code INVALID_ARG on a junk
+   * document or path. Returns the path written.
    * @param {string} filePath
    * @param {object} doc
    */

@@ -14,28 +14,26 @@
  * limitations under the License.
  */
 
-// project-tabs.js — the desktop tab strip (Feature 240): one tab per desktop
-// in the open project, sitting between the header and the desk. Every desktop
-// is the same — peers, not a build plus its benches — so every tab gets the
-// same menu, and any of them can be renamed or deleted.
+// project-tabs.js — the desktop tab strip: one tab per desktop in the open
+// project, sitting between the header and the desk. Every desktop is the
+// same — peers, not a build plus its benches — so every tab gets the same
+// menu, and any of them can be renamed or deleted.
 //
 // Pure chrome. It renders a tab list it is handed and reports intents to its
 // creator through constructor callbacks (the house rule for a parent-owned
 // widget) — it never touches the document, the store, or the controller.
 //
-// THE STRIP IS ALWAYS THERE. With no project open the workspace hands it the
-// one `kind: "working"` tab standing for the desk you are on, so the "+" —
-// the only way to reach another desktop — is visible from the first launch
-// instead of hiding behind a project that has to exist first.
+// THE STRIP IS ALWAYS THERE, because there is always a project: the app boots
+// onto one, so the strip always has at least one desktop to show, and the
+// "+" beside them is the only way to reach another.
 //
 // Right-clicking a tab opens the BOARD menu's shape — Properties…, a rule,
 // Delete — rather than the part menu's three items. A part's leading Pin
 // Assignment is meaningless here (a desktop has no pins at all, not even a
 // disabled-today set), so it is dropped along with its separator, exactly as
 // a board's menu drops it. As everywhere else, an item that doesn't apply
-// stays PRESENT but disabled — and there is no per-tab branching left: the
-// only desktop that can't be deleted is the LAST one, whichever it is, and
-// the only one with nowhere to keep a name is the working desk (no project).
+// stays PRESENT but disabled — and there is no per-tab branching at all: the
+// only desktop that can't be deleted is the LAST one, whichever it is.
 
 import { el } from "../dom.js";
 import { PopupManager } from "../popup-manager.js";
@@ -84,9 +82,8 @@ export class ProjectTabs {
   }
 
   /**
-   * Show the desktops on the strip. `tabs` are `{ id, name, description?,
-   * kind }` — either the open project's, or the single synthetic `working`
-   * tab standing for the desk when no project is open.
+   * Show the open project's desktops on the strip — `{ id, name,
+   * description?, file }` records, and which one is active.
    */
   setTabs(tabs, activeId) {
     this.#tabs = Array.isArray(tabs) ? tabs : [];
@@ -106,11 +103,6 @@ export class ProjectTabs {
     this.#render();
   }
 
-  /** A real project is open (rather than the lone synthetic working desk). */
-  get #hasProject() {
-    return this.#tabs.length > 0 && this.#tabs[0].kind !== "working";
-  }
-
   #render() {
     this.#root.replaceChildren(
       ...this.#tabs.map((tab) => this.#tabButton(tab)),
@@ -118,9 +110,7 @@ export class ProjectTabs {
         class: "project-tab-add",
         type: "button",
         text: "+",
-        title: this.#hasProject
-          ? "Add a desktop"
-          : "Add a desktop (creates a project around this desk)",
+        title: "Add a desktop",
         "aria-label": "Add a desktop",
         onClick: () => this.#onAdd?.(),
       }),
@@ -170,10 +160,9 @@ export class ProjectTabs {
       y: e.clientY,
       items: [
         {
+          // Name, Description, and the read-only Location of the file this
+          // desktop is saved in.
           label: "Properties…",
-          // The working desk has nowhere to keep a name or description —
-          // there is no project file yet — so the item stays but is inert.
-          disabled: tab.kind === "working",
           onSelect: () => this.#onProperties?.(tab.id),
         },
         { separator: true },

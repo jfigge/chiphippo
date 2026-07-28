@@ -76,7 +76,7 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
         <a class="doc-nav-link" href="logic-analyzer.html">Logic Analyzer &amp; Timing</a>
         <a class="doc-nav-link" href="build-guide.html">Build Guide, Wiring List &amp; BOM</a>
         <a class="doc-nav-link" href="schematic-view.html">Schematic View</a>
-        <a class="doc-nav-link" href="files-and-undo.html">Files, Autosave &amp; Undo</a>
+        <a class="doc-nav-link" href="files-and-undo.html">Files, Saving &amp; Undo</a>
         <a class="doc-nav-link doc-nav-link--active" href="projects-and-desktops.html">Projects &amp; Desktops</a>
         <a class="doc-nav-link" href="settings.html">Settings</a>
         <a class="doc-nav-link" href="keyboard-shortcuts.html">Keyboard Shortcuts</a>
@@ -94,64 +94,90 @@ and a design worked out on one can be copied straight onto another.</p>
 one: they are peers, all with the same menu, and which is the build and which
 is the bench is entirely up to you. Any of them can be renamed or deleted —
 the only rule is that a project always keeps at least one.</p>
-<p>The tab strip is <strong>always</strong> above the desk, project or not. With no project
-open it shows the single desk you&#39;re on, and the <strong>+</strong> beside it is how you
-get another.</p>
-<h2 id="starting-a-project">Starting a project</h2>
-<p><strong>Just press +.</strong> Adding a desktop never asks you anything: the desk you&#39;re on
-becomes the project&#39;s first desktop (so nothing you were working on is
-discarded), the desktop you asked for appears beside it, and you land on it.
-After that, every + adds one more. A project starts life <strong>Untitled</strong> — the
-window title says so.</p>
-<p>The <strong>Projects</strong> button in the header toolbar has the rest:</p>
+<p><strong>There is always a project open.</strong> From the first launch, the desk you are
+looking at is a desktop of one — a brand-new project with no name, no home of
+its own, and a single desktop called <code>Desktop 1</code>. Nothing has to be created
+before you can start building, and nothing has to be named before you can add
+a second desktop.</p>
+<h2 id="adding-desktops">Adding desktops</h2>
+<p><strong>Just press +</strong> at the end of the tab strip. It asks you nothing: the new
+desktop appears beside the others, named <code>Desktop 2</code>, <code>Desktop 3</code>, and so on,
+and you land on it. Chip Hippo keeps a file for it in its own saves folder
+until you give it one of your own with <strong>Save As</strong> — see
+<a href="files-and-undo.html">Files, Saving &amp; Undo</a>.</p>
+<p>The <strong>Project</strong> menu — the first menu in the menu bar, just before <strong>File</strong> —
+has the rest:</p>
 <ul>
-<li><strong>New Project</strong> — a blank slate: a fresh untitled project holding one new,
-empty desktop. No dialog. However many desktops you had, a new project
-always starts as a single one, numbered from <code>Desktop 1</code> again.</li>
-<li><strong>Load Project…</strong> — lists the projects you&#39;ve saved; pick one to open it.</li>
-<li><strong>Save Project…</strong> — the one and only place a name is asked for. See below.</li>
+<li><strong>New Project</strong> — a blank slate: a fresh unnamed project holding one new,
+empty desktop. However many desktops you had, a new project always starts as
+a single one, numbered from <code>Desktop 1</code> again.</li>
+<li><strong>Load Project…</strong> — pick a <code>.project.chiphippo</code> file to open.</li>
+<li><strong>Open Recent Project</strong> — the last ten projects you saved or opened, most
+recent first.</li>
+<li><strong>Save Project</strong> — save all of it, naming the project the first time. See
+below.</li>
+<li><strong>Save Project As…</strong> — the same save, but always to a new file. The project
+keeps its name; only where it lives changes.</li>
+<li><strong>Project Properties…</strong> — the project&#39;s <strong>Name</strong>, <strong>Description</strong>, and the
+read-only <strong>Location</strong> of its file (blank until it has been saved).</li>
 <li><strong>Add Desktop</strong> — the same thing as the <strong>+</strong> at the end of the tab strip.</li>
 </ul>
+<p>Everything about a project lives on that menu, and nowhere else: the toolbar
+carries the tools you reach for while building, not the paperwork.</p>
 <h2 id="saving-a-project">Saving a project</h2>
-<p><strong>Projects ▸ Save Project…</strong> asks for a name and keeps the project under it.
-Every desktop is written to its file first, so &quot;save the project&quot; means all of
-it, not just the tab list. Once a project is named, the item greys out: there
-is nothing left to do, because a saved project&#39;s desktops and tab list are
-already kept up to date.</p>
-<p>Project names must be unique. If you type one you&#39;ve already used, Chip Hippo
-says so and asks for a different one — it never merges two projects into one,
-and never offers to open the other (that would throw away the work you&#39;re
-saving).</p>
-<p>Saved projects are one folder per project, holding a small project file (the
-tab list) plus one ordinary <code>.chiphippo</code> file per desktop. Because a desktop is
-just a normal schematic file, anything you build on one can be opened outside
-the project too.</p>
+<p><strong>Project ▸ Save Project</strong> saves all of it: every desktop is written to its
+own file first, then the project file itself — so &quot;save the project&quot; never
+means just the tab list.</p>
+<p>A project that has never been saved is asked for two things, in order:</p>
+<ol>
+<li>a <strong>name</strong>, if it doesn&#39;t have one yet (you can also set it any time in
+Project Properties…);</li>
+<li><strong>where to keep it</strong> — a native save dialog, whose suggested file name comes
+from the name you just gave it. If a file is already there, that dialog asks
+about replacing it in your system&#39;s usual way.</li>
+</ol>
+<p>Cancel either question and nothing is saved. Once the project has a home, Save
+Project just writes it — no dialogs — and moves it to the top of the recent
+list. <strong>Save Project As…</strong> asks the location question every time, so it is how
+a project moves to a file of your choosing (or gets a copy kept somewhere
+else); it never asks for the name again.</p>
+<p>A saved project is two kinds of file: one small <code>.project.chiphippo</code> listing
+its desktops, and one <code>.desktop.chiphippo</code> per desktop, wherever each of them
+was saved. Because a desktop file is an ordinary Chip Hippo design, anything
+you build on one can be opened outside the project too.</p>
+<p>The <strong>tab list itself</strong> — which desktops there are and what they are called —
+is part of what Save Project saves. Add a desktop or rename one and the project
+has unsaved changes, exactly as a desk you have wired does; the window title
+shows a • for either.</p>
+<p><strong>Discard those changes and they are gone</strong>, which includes any desktop you
+added since the last save: it isn&#39;t in the file the project reloads from, so
+Chip Hippo also deletes the file it was keeping for that desktop rather than
+leaving one behind that nothing points at. A desktop you saved somewhere of
+your own keeps its file, as always.</p>
+<p>Two things are written for you the moment they happen, because the alternative
+is a project file that lies: a desktop&#39;s file <strong>moving</strong> (Save As, or Open) and
+a desktop being <strong>deleted</strong>. Either would otherwise leave the project pointing
+at a file that no longer exists.</p>
 <h2 id="changing-projects">Changing projects</h2>
 <p><strong>New Project</strong> and <strong>Load Project…</strong> both replace what&#39;s open, so nothing is
 allowed to go with it unasked:</p>
 <ul>
-<li>An <strong>untitled</strong> project has to be dealt with whether or not its desktops are
-saved — it lives in Chip Hippo&#39;s one working slot and has no name to come
-back to it by. You&#39;re asked to <strong>save it first</strong> (which names it and writes
-every desktop), <strong>discard</strong> it, or <strong>cancel</strong> the whole thing.</li>
-<li>A <strong>saved</strong> project with desktops you&#39;ve changed asks whether to <strong>save
-all</strong>, <strong>discard</strong>, or <strong>cancel</strong>.</li>
-<li>With no project open, the plain <strong>desk</strong> gets the same courtesy before a
-project takes the screen from it.</li>
+<li>A project that has <strong>never been saved</strong> has to be dealt with whether or not
+its desktops are saved — it lives in Chip Hippo&#39;s one working slot, and the
+project taking its place is about to claim it. You&#39;re asked to <strong>save</strong> it
+(which names it, gives it a home, and writes every desktop), <strong>discard</strong> it,
+or <strong>cancel</strong> the whole thing.</li>
+<li>A <strong>saved</strong> project with desktops you&#39;ve changed asks whether to <strong>save</strong>,
+<strong>discard</strong>, or <strong>cancel</strong>.</li>
 </ul>
 <p>Choose to save and it goes through, then the action you asked for carries on —
-you&#39;re never made to ask twice. Cancel, at that dialog or at the name dialog
-behind it, and nothing happens at all.</p>
-<p>Load Project… shows you the list of saved projects <strong>first</strong>; the question
-above comes once you&#39;ve picked one, so backing out of the list costs you
-nothing.</p>
+you&#39;re never made to ask twice. Cancel, at that dialog or at a dialog behind
+it, and nothing happens at all.</p>
 <h2 id="working-across-tabs">Working across tabs</h2>
 <p>Click a tab to put that desktop on the desk. Everything follows the active tab:</p>
 <ul>
-<li>The <strong>toolbar&#39;s New, Load and Save</strong> act on that desktop. Save writes the
-desktop&#39;s own file inside the project — no dialog, because a tab already
-knows where it lives. New empties that desktop; Load reads a <code>.chiphippo</code>
-into it.</li>
+<li>The <strong>toolbar&#39;s New, Open, Save and Save As</strong> act on that desktop and its own
+file (see <a href="files-and-undo.html">Files, Saving &amp; Undo</a>).</li>
 <li><strong>Undo/redo</strong> is per desktop. Switch away and back, and <code>Cmd/Ctrl+Z</code> still
 undoes that desk&#39;s last edit, not the other one&#39;s.</li>
 <li>Each desktop remembers <strong>where you were</strong> — its camera position comes back
@@ -168,14 +194,21 @@ and the active desktop.</p>
 <p>Right-click a tab for its menu:</p>
 <ul>
 <li><strong>Properties…</strong> opens the same dialog every part, board, and wire has, with
-the same two fields: a <strong>Name</strong> — what the tab reads — and a <strong>Description</strong>,
-a note on what this bench is for. Hover the tab to see the description; both
-are saved with the project as you type them.</li>
-<li><strong>Delete Desktop</strong> removes it, along with its file. Any desktop can go —
-there&#39;s nothing special about the first one — except the <strong>last</strong> one left,
-because a project with no desktops would have nothing to open. If the desktop
-has unsaved changes, you&#39;re asked whether to <strong>save and delete</strong>, <strong>delete
-anyway</strong>, or <strong>cancel</strong>.</li>
+the same two fields — a <strong>Name</strong>, which is what the tab reads, and a
+<strong>Description</strong>, a note on what this bench is for — plus the read-only
+<strong>Location</strong> of the file this desktop is saved in. Hover the tab to see the
+description; the name and description are saved with the project as you type
+them.</li>
+<li><strong>Delete Desktop</strong> removes it from the project. Any desktop can go — there&#39;s
+nothing special about the first one — except the <strong>last</strong> one left, because a
+project with no desktops would have nothing to open. <strong>Where its file is
+decides what happens to it</strong>: a file inside Chip Hippo&#39;s own saves folder is
+deleted along with the desktop (the one the app minted for it, or one you
+saved into that folder yourself), and a file you keep anywhere else is left
+exactly where it is. If the desktop has unsaved changes, you&#39;re asked whether
+to <strong>save and delete</strong>, <strong>delete anyway</strong>, or <strong>cancel</strong> — and if its file is
+one of the app&#39;s, saving it means choosing where it goes, since the delete
+would take that file with it.</li>
 </ul>
 <p>Desktop numbers only ever count up: deleting <code>Desktop 2</code> doesn&#39;t make the next
 one <code>Desktop 2</code> again, so a name you wrote in a note keeps meaning the same
@@ -211,13 +244,18 @@ file, so editing the copy never touches the original.</p>
 <p>The clipboard survives switching tabs, so you can paste the same design onto
 several desktops, or stamp it more than once on the same one.</p>
 <h2 id="leaving-a-project">Leaving a project</h2>
-<p>A project stays open between sessions — named or not: relaunch Chip Hippo and
-it comes back on the desktop you were last on. Starting or opening another one
-asks first about anything you&#39;d lose (see <em>Changing projects</em> above).</p>
-<p><strong>Closing the window or quitting asks the same question.</strong> Desktops are only
-written when you save them, so a tab still showing a dot would go with the
-window — Chip Hippo stops and offers to save it (or to name an untitled
-project) first. Cancel there and nothing closes at all.</p>
+<p>A project stays open between sessions — named or not. Relaunch Chip Hippo and
+it comes back on the desktop you were last on: the unsaved project from its
+saves folder if there is one, and otherwise the project you used most recently.
+Starting or opening another one asks first about anything you&#39;d lose (see
+<em>Changing projects</em> above).</p>
+<p><strong>Closing the window or quitting asks the same question</strong>, about the desktops
+you have changed and about the project itself. Because you didn&#39;t ask for a
+save, it doesn&#39;t ask you where anything goes: each desktop goes to the file it
+already has, and the project to its own (or, having none yet, to the app&#39;s
+default project file, where the next launch will find it). Discard instead and
+any desktop you had added is dropped along with the file Chip Hippo was keeping
+for it. Cancel and nothing closes at all.</p>
 
     </main>
   </div>

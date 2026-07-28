@@ -14,9 +14,11 @@
  * limitations under the License.
  */
 
-// Projects (Feature 240): a named workspace of desktops in an app-managed
-// folder. What matters here is the uniqueness rule, that a name can never
-// become a path outside the projects root, and the tab lifecycle.
+// Projects are FILES. What matters here: a new project is blank-named,
+// blank-located, and exactly one desktop; a desktop is minted as a GUID file
+// in the app's saves folder and carries the flag saying so; a project file
+// round-trips wherever it is written; and the app only ever deletes files it
+// minted itself.
 "use strict";
 
 const test = require("node:test");
@@ -28,27 +30,16 @@ const path = require("node:path");
 const { DeskStore } = require("../store/desk-store");
 const {
   ProjectStore,
-  slugify,
-  WORKING_SLUG,
+  suggestFileName,
+  PROJECT_VERSION,
+  DESKTOP_EXT,
 } = require("../store/project-store");
-
-function freshStore() {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "chiphippo-project-"));
-  return { dir, store: new ProjectStore(dir, new DeskStore(dir)) };
-}
-
-/**
- * A project with TWO desktops — what most of the lifecycle tests need. A new
- * project is always exactly one desk, so the second is added the only way
- * there is.
- */
-function twoDesktops(store, firstDoc = null) {
-  return store.addTab(store.createUntitled(firstDoc).id);
-}
+const { defaultDeskDocument } = require("../store/migrations");
 
 /** Run `fn` against a throwaway userData dir, cleaning up either way. */
 function withStore(fn) {
-  const { dir, store } = freshStore();
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "chiphippo-project-"));
+  const store = new ProjectStore(dir, new DeskStore());
   try {
     fn(store, dir);
   } finally {
@@ -56,375 +47,348 @@ function withStore(fn) {
   }
 }
 
-test("list on first run is empty (no projects folder yet)", () => {
-  withStore((store) => assert.deepEqual(store.list(), []));
-});
+const GUID_FILE = /^[0-9a-f-]{36}\.desktop\.chiphippo$/i;
 
-test("a new project is UNTITLED and is ALWAYS exactly one desktop", () => {
+test("a new project is blank-named, blank-located, and ONE desktop", () => {
   withStore((store, dir) => {
-    const meta = store.createUntitled({ boards: [] });
-    // Nothing was asked for and nothing was named — it lives in the one
-    // reserved working folder until the user saves it.
-    assert.equal(meta.id, WORKING_SLUG);
-    assert.equal(meta.untitled, true);
-    assert.equal(meta.name, "Untitled");
-    // One desk, numbering starting over — and no kind, because every desktop
-    // is the same thing.
-    assert.deepEqual(
-      meta.tabs.map((t) => [t.name, t.file, t.kind]),
-      [["Desktop 1", "desktop-1.chiphippo", undefined]],
-    );
+    const meta = store.newProject();
+    assert.equal(meta.name, "", "no name until it is saved");
+    assert.equal(meta.location, null, "and no home of its own");
+    assert.equal(meta.tabs.length, 1, "always exactly one desktop");
+    assert.equal(meta.tabs[0].name, "Desktop 1");
+    assert.equal(meta.activeTab, meta.tabs[0].id);
     assert.equal(meta.nextIndex, 2);
-    const folder = path.join(dir, "projects", WORKING_SLUG);
-    assert.ok(fs.existsSync(path.join(folder, "project.json")));
-    assert.ok(fs.existsSync(path.join(folder, "desktop-1.chiphippo")));
-    assert.equal(
-      fs.readdirSync(folder).filter((f) => f.endsWith(".chiphippo")).length,
-      1,
-      "no other desktop was written",
-    );
-    // It is NOT one of the user's saved projects.
-    assert.deepEqual(store.list(), []);
+    // Its desktop is an app-minted GUID file in the saves folder, flagged as
+    // the app's own so Save As knows it may be renamed away and deleted.
+    const file = meta.tabs[0].file;
+    assert.equal(path.dirname(file), path.join(dir, "saves"));
+    assert.ok(GUID_FILE.test(path.basename(file)), file);
+    assert.equal(meta.tabs[0].defaultFile, true);
+    assert.ok(fs.existsSync(file), "the document file exists");
+    // And the project itself lives in the ONE default project file, which is
+    // what the next launch looks for first.
+    assert.ok(store.hasDefaultProject());
+    assert.ok(fs.readFileSync(store.defaultProjectPath, "utf8").includes('"tabs"')); // prettier-ignore
   });
 });
 
-test("saveAs names an untitled project: the folder MOVES, documents and all", () => {
+test("a new desktop's document is a real empty desk, not {}", () => {
+  withStore((store) => {
+    const meta = store.newProject();
+    assert.deepEqual(store.readTab(meta.tabs[0].file), defaultDeskDocument());
+  });
+});
+
+test("starting another project replaces the one working slot", () => {
+  withStore((store) => {
+    const first = store.newProject();
+    const second = store.newProject();
+    assert.notEqual(first.tabs[0].file, second.tabs[0].file);
+    // The default project file now holds the SECOND project.
+    const read = store.read(store.defaultProjectPath);
+    assert.equal(read.tabs[0].file, second.tabs[0].file);
+    assert.equal(read.location, null, "the default file means no location");
+    // And the abandoned project's app-kept desktop went with it: nothing else
+    // ever pointed at that file.
+    assert.equal(fs.existsSync(first.tabs[0].file), false);
+    assert.ok(fs.existsSync(second.tabs[0].file));
+  });
+});
+
+test("abandoning the working project keeps the files the USER named", () => {
   withStore((store, dir) => {
-    const doc = { boards: [{ id: "bb1", type: "pins-full", x: 0, y: 0 }] };
-    const untitled = twoDesktops(store, doc);
-    const saved = store.saveAs(untitled.id, "6502 SBC");
+    const meta = store.addTab(store.newProject());
+    const theirs = path.join(dir, `theirs${DESKTOP_EXT}`);
+    store.writeTab(theirs, defaultDeskDocument());
+    const appKept = meta.tabs[0].file;
+    meta.tabs[1].file = theirs;
+    delete meta.tabs[1].defaultFile;
+    store.write(store.defaultProjectPath, meta);
 
-    assert.equal(saved.id, "6502-sbc");
-    assert.equal(saved.name, "6502 SBC");
-    assert.equal("untitled" in saved, false, "it is a real project now");
-    assert.deepEqual(
-      saved.tabs.map((t) => t.id),
-      untitled.tabs.map((t) => t.id),
-      "same tabs — nothing is re-minted, so per-tab state survives",
-    );
-    const root = path.join(dir, "projects");
-    assert.equal(fs.existsSync(path.join(root, WORKING_SLUG)), false, "moved");
-    assert.equal(store.readTab(saved.id, "desktop-1.chiphippo").boards.length, 1); // prettier-ignore
-    assert.deepEqual(
-      store.list().map((p) => p.name),
-      ["6502 SBC"],
-    );
-    assert.deepEqual(store.load(saved.id), saved, "and reloads as written");
+    assert.equal(store.discardDefaultProject(), true);
+    assert.equal(fs.existsSync(appKept), false, "the app's own file goes");
+    assert.ok(fs.existsSync(theirs), "the user's file is theirs");
+    assert.equal(store.hasDefaultProject(), false);
+    assert.equal(store.discardDefaultProject(), false, "nothing left to drop");
   });
 });
 
-test("saveAs refuses a name already saved, leaving the project where it is", () => {
-  withStore((store) => {
-    store.saveAs(store.createUntitled(null).id, "Clock");
-    const second = store.createUntitled(null);
-    assert.throws(() => store.saveAs(second.id, "clock"), {
-      code: "NAME_TAKEN",
-    });
-    assert.equal(store.load(WORKING_SLUG).untitled, true, "still untitled");
-    assert.equal(store.list().length, 1);
+test("saving a project out of the slot keeps its app-kept desktops", () => {
+  withStore((store, dir) => {
+    // `removeDefaultProject` is the OTHER half: the project moved to a real
+    // location, so its desktops — app-kept ones included — go on being used.
+    const meta = store.newProject();
+    store.write(path.join(dir, "saved.project.chiphippo"), meta);
+    assert.equal(store.removeDefaultProject(), true);
+    assert.ok(fs.existsSync(meta.tabs[0].file));
   });
-});
-
-test("starting another untitled project resets to one desktop, in the one slot", () => {
-  withStore((store) => {
-    // Three desktops deep, with work on the first.
-    const first = twoDesktops(store, { boards: [{ id: "bb1" }] });
-    store.addTab(first.id);
-    assert.equal(store.load(first.id).tabs.length, 3);
-    assert.equal(store.readTab(first.id, "desktop-1.chiphippo").boards.length, 1); // prettier-ignore
-
-    const second = store.createUntitled(null);
-    assert.equal(second.id, first.id, "one slot, not two");
-    assert.deepEqual(
-      second.tabs.map((t) => t.name),
-      ["Desktop 1"],
-      "always back to a single desk, numbering started over",
-    );
-    assert.deepEqual(
-      store.readTab(second.id, "desktop-1.chiphippo").boards,
-      [],
-    );
-    assert.equal(store.load(second.id).tabs.length, 1, "on disk too");
-  });
-});
-
-test("the first desktop adopts the desk it was created from", () => {
-  withStore((store) => {
-    const doc = { boards: [{ id: "bb1", type: "pins-full", x: 0, y: 0 }] };
-    const meta = twoDesktops(store, doc);
-    const first = store.readTab(meta.id, "desktop-1.chiphippo");
-    assert.equal(first.boards.length, 1);
-    assert.equal(first.boards[0].id, "bb1");
-    // The others start empty.
-    assert.deepEqual(store.readTab(meta.id, "desktop-2.chiphippo").boards, []);
-  });
-});
-
-test("a name already saved is refused, however it is spelled", () => {
-  withStore((store) => {
-    store.saveAs(store.createUntitled(null).id, "Clock Module");
-    assert.equal(store.exists("Clock Module"), true);
-    assert.equal(store.exists("clock  module"), true, "same project to a user");
-    const next = store.createUntitled(null).id;
-    assert.throws(() => store.saveAs(next, "clock module"), { code: "NAME_TAKEN" }); // prettier-ignore
-    assert.equal(store.list().length, 1);
-  });
-});
-
-test("a name with no letters or digits is refused (there is no folder to make)", () => {
-  withStore((store) => {
-    const id = store.createUntitled(null).id;
-    assert.throws(() => store.saveAs(id, "   "), { code: "INVALID_ARG" });
-    assert.throws(() => store.saveAs(id, "***"), { code: "INVALID_ARG" });
-    assert.throws(() => store.saveAs(id, "x".repeat(200)), {
-      code: "INVALID_ARG",
-    });
-  });
-});
-
-test("a project id can never escape the projects root", () => {
-  withStore((store) => {
-    for (const bad of ["..", "../..", "/etc", "a/b", "Main", ""]) {
-      assert.throws(() => store.load(bad), { code: "INVALID_ARG" }, `id: ${bad}`); // prettier-ignore
-    }
-  });
-});
-
-test("a tab file must be a bare .chiphippo inside the project folder", () => {
-  withStore((store) => {
-    const meta = twoDesktops(store);
-    for (const bad of [
-      "../desk.json",
-      "/etc/passwd",
-      "nested/sub.chiphippo",
-      "desktop-1.txt",
-    ]) {
-      assert.throws(() => store.readTab(meta.id, bad), { code: "INVALID_ARG" });
-    }
-  });
-});
-
-test("load returns null for a project that isn't there", () => {
-  withStore((store) => assert.equal(store.load("nothing-here"), null));
 });
 
 test("addTab appends the next desktop and makes it active", () => {
   withStore((store) => {
-    const created = twoDesktops(store);
-    const after = store.addTab(created.id);
+    const meta = store.addTab(store.newProject());
     assert.deepEqual(
-      after.tabs.map((t) => t.name),
-      ["Desktop 1", "Desktop 2", "Desktop 3"],
+      meta.tabs.map((t) => t.name),
+      ["Desktop 1", "Desktop 2"],
     );
-    assert.equal(after.activeTab, after.tabs[2].id);
-    // Reloading sees exactly what was written.
-    assert.deepEqual(store.load(created.id), after);
+    assert.equal(meta.activeTab, meta.tabs[1].id);
+    assert.equal(meta.nextIndex, 3);
+    assert.ok(fs.existsSync(meta.tabs[1].file));
+    assert.notEqual(meta.tabs[0].file, meta.tabs[1].file);
   });
 });
 
 test("desktop numbers only ever count up, even after a delete", () => {
   withStore((store) => {
-    const created = twoDesktops(store); // 1 + 2
-    const three = store.addTab(created.id); // 3
-    const removed = store.removeTab(created.id, three.tabs[2].id);
+    const three = store.addTab(store.addTab(store.newProject()));
+    // Delete "Desktop 2" (the renderer owns the tab list; the store is handed
+    // what is left) — the next desktop is still 4.
+    three.tabs = three.tabs.filter((t) => t.name !== "Desktop 2");
+    const next = store.addTab(three);
     assert.deepEqual(
-      removed.tabs.map((t) => t.name),
-      ["Desktop 1", "Desktop 2"],
+      next.tabs.map((t) => t.name),
+      ["Desktop 1", "Desktop 3", "Desktop 4"],
     );
-    const next = store.addTab(created.id);
-    assert.equal(next.tabs[2].name, "Desktop 4", "never reuses 3");
   });
 });
 
-test("removeTab deletes the tab's document — ANY desktop, first one included", () => {
+test("a project file round-trips wherever it is written", () => {
   withStore((store, dir) => {
-    const created = twoDesktops(store);
-    const [first, second] = created.tabs;
-    const file = path.join(dir, "projects", created.id, first.file);
-    assert.ok(fs.existsSync(file));
-    // The first desktop is no longer privileged: it goes like any other.
-    const after = store.removeTab(created.id, first.id);
-    assert.equal(fs.existsSync(file), false);
+    const meta = store.addTab(store.newProject());
+    meta.name = "6502 SBC";
+    meta.description = "the build";
+    meta.tabs[1].name = "Scratch";
+    meta.tabs[1].description = "trying things out";
+    const target = path.join(dir, "elsewhere", "6502 SBC.project.chiphippo");
+    store.write(target, meta);
+
+    const read = store.read(target);
+    assert.equal(read.version, PROJECT_VERSION);
+    assert.equal(read.name, "6502 SBC");
+    assert.equal(read.description, "the build");
+    assert.equal(read.location, target, "a saved project knows where it is");
     assert.deepEqual(
-      after.tabs.map((t) => t.id),
-      [second.id],
-    );
-    assert.throws(() => store.removeTab(created.id, "no-such-tab"), {
-      code: "NOT_FOUND",
-    });
-  });
-});
-
-test("the last desktop can never be removed — a project needs one", () => {
-  withStore((store) => {
-    const created = twoDesktops(store);
-    const left = store.removeTab(created.id, created.tabs[0].id);
-    assert.equal(left.tabs.length, 1);
-    assert.throws(() => store.removeTab(created.id, left.tabs[0].id), {
-      code: "INVALID_ARG",
-    });
-    assert.equal(store.load(created.id).tabs.length, 1, "still there");
-  });
-});
-
-test("removing the active tab moves the active mark to a surviving one", () => {
-  withStore((store) => {
-    const created = twoDesktops(store);
-    const second = created.tabs[1];
-    const after = store.removeTab(created.id, second.id);
-    assert.equal(after.activeTab, created.tabs[0].id);
-  });
-});
-
-test("saveMeta persists renames and the active tab — and only those", () => {
-  withStore((store) => {
-    const created = twoDesktops(store);
-    const saved = store.saveMeta(created.id, {
-      name: "Renamed",
-      activeTab: created.tabs[1].id,
-      tabs: [
-        { id: created.tabs[0].id, name: "Desktop 1" },
-        // A renamed desktop, trying to smuggle a path in with it.
-        {
-          id: created.tabs[1].id,
-          name: "Clock",
-          file: "../../escape.chiphippo",
-        },
+      read.tabs.map((t) => [t.name, t.description, t.defaultFile]),
+      [
+        ["Desktop 1", undefined, true],
+        ["Scratch", "trying things out", true],
       ],
-    });
-    assert.equal(saved.name, "Renamed");
-    assert.equal(saved.activeTab, created.tabs[1].id);
-    assert.equal(saved.tabs[1].name, "Clock");
-    assert.equal(saved.tabs[1].file, "desktop-2.chiphippo", "file is never taken from the caller"); // prettier-ignore
-  });
-});
-
-test("saveMeta stores a tab description, keeps it, and clears it on empty", () => {
-  withStore((store) => {
-    const created = twoDesktops(store);
-    const [first, second] = created.tabs;
-    const patch = (description) => ({
-      tabs: [{ id: first.id, name: first.name }, { id: second.id, name: second.name, description }], // prettier-ignore
-    });
-
-    let saved = store.saveMeta(created.id, patch("  The clock module  "));
-    assert.equal(saved.tabs[1].description, "The clock module", "trimmed");
-    assert.equal(saved.tabs[0].description, undefined, "only the tab patched");
-
-    // An absent key leaves what is stored — a rename must not drop it.
-    saved = store.saveMeta(created.id, {
-      tabs: [{ id: first.id }, { id: second.id, name: "Clock" }],
-    });
-    assert.equal(saved.tabs[1].name, "Clock");
-    assert.equal(saved.tabs[1].description, "The clock module");
-
-    // An empty string is the way to clear it (omit-when-empty on disk).
-    saved = store.saveMeta(created.id, patch("   "));
-    assert.equal("description" in saved.tabs[1], false);
-    assert.equal(store.load(created.id).tabs[1].description, undefined);
-  });
-});
-
-test("saveMeta ignores tabs this store never minted, and needs at least one", () => {
-  withStore((store) => {
-    const created = twoDesktops(store);
-    const saved = store.saveMeta(created.id, {
-      activeTab: "ghost",
-      tabs: [{ id: created.tabs[0].id, name: "Desktop 1" }, { id: "ghost", name: "Ghost" }], // prettier-ignore
-    });
-    assert.equal(saved.tabs.length, 1);
-    assert.equal(saved.activeTab, created.tabs[0].id, "falls back to a real tab"); // prettier-ignore
-    assert.throws(() => store.saveMeta(created.id, { tabs: [] }), {
-      code: "INVALID_ARG",
-    });
-  });
-});
-
-test("writeTab → readTab round-trips a tab's document", () => {
-  withStore((store) => {
-    const created = twoDesktops(store);
-    const doc = {
-      version: 6,
-      boards: [{ id: "bb1", type: "pins-half", x: 4, y: 5, group: null }],
-      components: [],
-      wires: [],
-    };
-    store.writeTab(created.id, created.tabs[1].file, doc);
-    const read = store.readTab(created.id, created.tabs[1].file);
-    assert.equal(read.boards[0].type, "pins-half");
-    assert.equal(read.boards[0].x, 4);
-  });
-});
-
-test("list reports every SAVED project by name — never the working one", () => {
-  withStore((store) => {
-    store.saveAs(twoDesktops(store).id, "Zeta");
-    store.saveAs(twoDesktops(store).id, "Alpha");
-    store.createUntitled(null); // untitled: not the user's, not listed
-    assert.deepEqual(
-      store.list().map((p) => p.name),
-      ["Alpha", "Zeta"],
     );
-    assert.equal(store.list()[0].tabs, 2);
   });
 });
 
-test("a v1 project comes forward: kinds dropped, Main deletable, names kept", () => {
+test("a desktop the user named is stored as its own absolute path", () => {
   withStore((store, dir) => {
-    // A project.json exactly as v1 wrote it (Main + one sub-desktop).
-    const folder = path.join(dir, "projects", "legacy");
-    fs.mkdirSync(folder, { recursive: true });
+    const meta = store.newProject();
+    const chosen = path.join(dir, "designs", `clock${DESKTOP_EXT}`);
+    meta.tabs[0].file = chosen;
+    delete meta.tabs[0].defaultFile;
+    const target = path.join(dir, "clock.project.chiphippo");
+    store.write(target, meta);
+
+    const read = store.read(target);
+    assert.equal(read.tabs[0].file, chosen);
+    assert.equal(read.tabs[0].defaultFile, undefined);
+  });
+});
+
+test("an app-kept desktop is rebased onto THIS machine's saves folder", () => {
+  withStore((store, dir) => {
+    // A project file written on another machine (or under a different
+    // --user-data-dir) still finds the desktops the app keeps for it.
+    const target = path.join(dir, "carried.project.chiphippo");
     fs.writeFileSync(
-      path.join(folder, "project.json"),
+      target,
       JSON.stringify({
-        version: 1,
-        name: "Legacy",
+        version: PROJECT_VERSION,
+        name: "Carried",
         activeTab: "t1",
-        nextSubIndex: 2,
+        nextIndex: 2,
         tabs: [
-          { id: "t1", name: "Main", kind: "main", file: "main.chiphippo" },
-          { id: "t2-1", name: "Sub-Desktop #1", kind: "sub", file: "sub-1.chiphippo" }, // prettier-ignore
+          {
+            id: "t1",
+            name: "Desktop 1",
+            file: "/somewhere/else/saves/abc.desktop.chiphippo",
+            defaultFile: true,
+          },
         ],
       }),
     );
-    for (const f of ["main.chiphippo", "sub-1.chiphippo"]) {
-      fs.writeFileSync(path.join(folder, f), JSON.stringify({ boards: [] }));
-    }
-
-    const meta = store.load("legacy");
-    assert.equal(meta.version, 2);
-    assert.equal(meta.nextSubIndex, undefined, "the old counter is gone");
-    assert.equal(meta.nextIndex, 2, "picking up where the old one left off");
-    // The user's names and files are theirs — untouched by the upgrade.
-    assert.deepEqual(
-      meta.tabs.map((t) => [t.name, t.file, t.kind]),
-      [
-        ["Main", "main.chiphippo", undefined],
-        ["Sub-Desktop #1", "sub-1.chiphippo", undefined],
-      ],
-    );
-
-    // A new desktop steps past ids/files the old scheme already used.
-    const added = store.addTab("legacy");
-    assert.deepEqual(added.tabs[2], {
-      id: "t2",
-      name: "Desktop 2",
-      file: "desktop-2.chiphippo",
-    });
-
-    // And Main is now just another desktop.
-    const after = store.removeTab("legacy", "t1");
-    assert.equal(fs.existsSync(path.join(folder, "main.chiphippo")), false);
-    assert.deepEqual(
-      after.tabs.map((t) => t.id),
-      ["t2-1", "t2"],
+    const read = store.read(target);
+    assert.equal(
+      read.tabs[0].file,
+      path.join(dir, "saves", "abc.desktop.chiphippo"),
     );
   });
 });
 
-test("slugify folds case and punctuation to one folder name", () => {
-  assert.equal(slugify("6502 SBC"), "6502-sbc");
-  assert.equal(slugify("  Trim/Me  "), "trim-me");
-  assert.equal(slugify("../escape"), "escape");
-  assert.equal(slugify("***"), "");
+test("read returns null for a file that is not a project", () => {
+  withStore((store, dir) => {
+    assert.equal(store.read(path.join(dir, "gone.project.chiphippo")), null);
+    const junk = path.join(dir, "junk.project.chiphippo");
+    fs.writeFileSync(junk, JSON.stringify({ hello: "world" }));
+    assert.equal(store.read(junk), null);
+    const empty = path.join(dir, "empty.project.chiphippo");
+    fs.writeFileSync(empty, JSON.stringify({ tabs: [] }));
+    assert.equal(store.read(empty), null, "a project needs a desktop");
+  });
+});
+
+test("a broken tab entry is dropped, and an id is never duplicated", () => {
+  withStore((store, dir) => {
+    const target = path.join(dir, "messy.project.chiphippo");
+    fs.writeFileSync(
+      target,
+      JSON.stringify({
+        version: PROJECT_VERSION,
+        activeTab: "nope",
+        tabs: [
+          { id: "t1", name: "One", file: "/a/one.desktop.chiphippo" },
+          { id: "t1", name: "Clash", file: "/a/two.desktop.chiphippo" },
+          { id: "t2", name: "No file" },
+          { name: "No id", file: "/a/three.desktop.chiphippo" },
+        ],
+      }),
+    );
+    const read = store.read(target);
+    assert.deepEqual(
+      read.tabs.map((t) => t.id),
+      ["t1"],
+    );
+    assert.equal(read.activeTab, "t1", "an unknown active tab falls back");
+    assert.equal(read.nextIndex, 2, "the counter clears what is taken");
+  });
+});
+
+test("write refuses a project with no desktops", () => {
+  withStore((store, dir) => {
+    assert.throws(
+      () => store.write(path.join(dir, "x.project.chiphippo"), { tabs: [] }),
+      { code: "INVALID_ARG" },
+    );
+  });
+});
+
+test("writeTab → readTab round-trips a desktop's document anywhere", () => {
+  withStore((store, dir) => {
+    const file = path.join(dir, "nested", `thing${DESKTOP_EXT}`);
+    const doc = { ...defaultDeskDocument(), nextBoardId: 7 };
+    assert.equal(store.writeTab(file, doc), file);
+    assert.deepEqual(store.readTab(file), doc);
+  });
+});
+
+test("a desktop file is deleted when — and only when — it is in saves", () => {
+  withStore((store, dir) => {
+    const meta = store.newProject();
+    const minted = meta.tabs[0].file;
+    assert.equal(store.removeDesktopFile(minted), true);
+    assert.equal(fs.existsSync(minted), false);
+    assert.equal(store.removeDesktopFile(minted), false, "gone already is fine"); // prettier-ignore
+
+    // A file the user saved INTO the app's folder is the app's to clean up
+    // too — the location decides, not how the file got its name.
+    const named = path.join(store.savesDir, `Clock module${DESKTOP_EXT}`);
+    store.writeTab(named, defaultDeskDocument());
+    assert.equal(store.removeDesktopFile(named), true);
+    assert.equal(fs.existsSync(named), false);
+
+    // Anywhere else it is the user's: not an error, just not ours.
+    const theirs = path.join(dir, `mine${DESKTOP_EXT}`);
+    fs.writeFileSync(theirs, "{}");
+    assert.equal(store.removeDesktopFile(theirs), false);
+    assert.equal(store.removeDesktopFile(""), false);
+    assert.ok(fs.existsSync(theirs), "and it is still there");
+
+    // A project file is not a desktop, whatever it is asked of.
+    assert.throws(() => store.removeDesktopFile(store.defaultProjectPath), {
+      code: "INVALID_ARG",
+    });
+  });
+});
+
+test("a desktop reports app-kept from WHERE it is, not what is stored", () => {
+  withStore((store, dir) => {
+    const target = path.join(dir, "derived.project.chiphippo");
+    const inside = path.join(store.savesDir, `Bench${DESKTOP_EXT}`);
+    const outside = path.join(dir, `theirs${DESKTOP_EXT}`);
+    store.write(target, {
+      activeTab: "t1",
+      nextIndex: 3,
+      // Neither carries the flag on disk; one of them is in the saves folder.
+      tabs: [
+        { id: "t1", name: "In", file: inside },
+        { id: "t2", name: "Out", file: outside },
+      ],
+    });
+    const read = store.read(target);
+    assert.deepEqual(
+      read.tabs.map((t) => t.defaultFile),
+      [true, undefined],
+    );
+  });
+});
+
+test("dropping the default project empties the working slot", () => {
+  withStore((store) => {
+    store.newProject();
+    assert.equal(store.hasDefaultProject(), true);
+    assert.equal(store.removeDefaultProject(), true);
+    assert.equal(store.hasDefaultProject(), false);
+    assert.equal(store.removeDefaultProject(), false, "gone already is fine");
+  });
+});
+
+test("suggestFileName builds a readable file name, never a path", () => {
+  assert.equal(
+    suggestFileName("6502 SBC", ".project.chiphippo"),
+    "6502 SBC.project.chiphippo",
+  );
+  // Anything an OS would choke on is stripped — including the separators that
+  // would make it a path.
+  assert.equal(
+    suggestFileName("../secret/thing?", ".desktop.chiphippo"),
+    "secret thing.desktop.chiphippo",
+  );
+  assert.equal(
+    suggestFileName("   ", ".project.chiphippo", "project"),
+    "project.project.chiphippo",
+  );
+});
+
+test("discarding a project's changes removes only the desktops it added", () => {
+  withStore((store, dir) => {
+    // A saved project of one desktop...
+    const saved = store.newProject();
+    const target = path.join(dir, "saved.project.chiphippo");
+    store.write(target, saved);
+    const original = saved.tabs[0].file;
+
+    // ...worked on since: one desktop added (app-kept), one saved somewhere of
+    // the user's own. Neither is in the file the project would reload from.
+    const live = store.addTab(store.read(target));
+    const addedAppKept = live.tabs[1].file;
+    const theirs = path.join(dir, `theirs${DESKTOP_EXT}`);
+    store.writeTab(theirs, defaultDeskDocument());
+    live.tabs.push({ id: "t9", name: "Theirs", file: theirs });
+
+    const removed = store.discardChanges(live, target);
+    assert.deepEqual(removed, [addedAppKept], "only the app-kept addition");
+    assert.equal(fs.existsSync(addedAppKept), false);
+    assert.ok(fs.existsSync(original), "the desktop it still lists is safe");
+    assert.ok(fs.existsSync(theirs), "and a file the user keeps is theirs");
+  });
+});
+
+test("discarding compares against the FILE, not what it is handed", () => {
+  withStore((store, dir) => {
+    const saved = store.newProject();
+    const target = path.join(dir, "truth.project.chiphippo");
+    store.write(target, saved);
+    // A live project claiming a desktop it does not have cannot make the
+    // store delete one the file still lists.
+    assert.deepEqual(store.discardChanges({ tabs: [] }, target), []);
+    assert.deepEqual(store.discardChanges(saved, target), []);
+    assert.ok(fs.existsSync(saved.tabs[0].file));
+  });
 });

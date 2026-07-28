@@ -41,7 +41,12 @@ const fs = require("fs");
 const { parseArgs } = require("./cli-args");
 const { SettingsStore } = require("./store/settings-store");
 const { DeskStore } = require("./store/desk-store");
-const { ProjectStore } = require("./store/project-store");
+const {
+  ProjectStore,
+  suggestFileName,
+  PROJECT_EXT,
+  DESKTOP_EXT,
+} = require("./store/project-store");
 const memStore = require("./store/mem-store");
 const {
   rememberRecent,
@@ -165,13 +170,14 @@ let _deskStore = null;
 
 /** @returns {DeskStore} */
 function getDeskStore() {
-  if (!_deskStore) _deskStore = new DeskStore(app.getPath("userData"));
+  if (!_deskStore) _deskStore = new DeskStore();
   return _deskStore;
 }
 
 let _projectStore = null;
 
-/** @returns {ProjectStore} — projects (Feature 240) live under userData/projects. */
+/** @returns {ProjectStore} — projects and desktops are files; the app's own
+    are kept in userData/saves until the user gives them a home. */
 function getProjectStore() {
   if (!_projectStore) {
     _projectStore = new ProjectStore(app.getPath("userData"), getDeskStore());
@@ -179,101 +185,273 @@ function getProjectStore() {
   return _projectStore;
 }
 
-// ─── Named schematic files (Open / Save As) ───────────────────────────────────
-// The working document lives in userData/desk.json (autosaved); these let the
-// user Open/Save named `.chiphippo` files anywhere. The renderer then makes the
-// chosen file the working document (see app.js).
+// ─── Project & desktop files ──────────────────────────────────────────────────
+// THERE IS ALWAYS A PROJECT (store/project-store.js): a project file lists its
+// desktops, and each desktop is a document file of its own. Both live wherever
+// the user saved them, or — until then — in the app's saves folder.
+//
+// Every path therefore travels over IPC, which the renderer must never be able
+// to aim wherever it likes. Two rules keep that honest:
+//
+//   · anything inside the app's own saves folder is fair game (the app minted
+//     it: a GUID desktop, the default project file);
+//   · every other path must be one main itself ESTABLISHED this session —
+//     returned by a native dialog, listed in a project file main opened, or
+//     drawn from the recent-projects list it owns.
+//
+// So the renderer can only ever ask main to touch a file the user has already
+// pointed at, exactly as `desk:write` once checked against the current file.
 const SCHEMATIC_FILTERS = [
-  { name: "Chip Hippo Schematic", extensions: ["chiphippo", "json"] },
+  { name: "Chip Hippo Design", extensions: ["chiphippo", "json"] },
+];
+const PROJECT_FILTERS = [
+  { name: "Chip Hippo Project", extensions: ["chiphippo"] },
 ];
 
-// ── Most recently used files ─────────────────────────────────────────────────
-// Every file the user opens or saves under a name lands at the head of
-// settings.recentFiles (store/recent-files.js caps + de-duplicates it). The
-// list doubles as the ALLOWLIST for desk:recent:open — the one channel that
-// reads a renderer-named path — so, exactly like desk:write, main only ever
-// touches a path a prior dialog legitimately established.
+/** Paths a dialog (or a project main opened) established this session. */
+const establishedPaths = new Set();
+
+/** Remember `filePath` as writable/readable for the rest of the session. */
+function establishPath(filePath) {
+  if (typeof filePath === "string" && filePath) {
+    establishedPaths.add(path.resolve(filePath));
+  }
+  return filePath;
+}
+
+/** Every desktop of a project main just read is established along with it. */
+function establishProject(meta, filePath) {
+  establishPath(filePath);
+  for (const tab of meta?.tabs ?? []) establishPath(tab.file);
+  return meta;
+}
+
+/**
+ * Gate every renderer-named path (see the section note). Returns the resolved
+ * path; throws INVALID_ARG for anything main has no business touching.
+ */
+function knownPath(filePath) {
+  const store = getProjectStore();
+  const resolved =
+    typeof filePath === "string" && filePath ? path.resolve(filePath) : "";
+  if (
+    !resolved ||
+    (!store.isInsideSaves(resolved) && !establishedPaths.has(resolved))
+  ) {
+    const err = new Error(`path was not established by a dialog: ${filePath}`);
+    err.code = "INVALID_ARG";
+    throw err;
+  }
+  return resolved;
+}
+
+// ── Most recently used PROJECTS ──────────────────────────────────────────────
+// Every project the user saves or opens lands at the head of
+// settings.recentProjects (store/recent-files.js caps it at 10 and
+// de-duplicates). The list is both the Open Recent menu and the allowlist for
+// `project:open-recent`. Desktops have no such list — a desktop is reached
+// through the project that owns it.
 
 /** The persisted MRU list, sanitized (never the frozen defaults array). */
-function recentFiles() {
+function recentProjects() {
   return sanitizeRecent(
-    safeCall("desk:recent", () => getSettingsStore().get().recentFiles, []),
+    safeCall("project:recent", () => getSettingsStore().get().recentProjects, []), // prettier-ignore
   );
 }
 
 /** Move `filePath` to the head of the MRU list. Returns the new list. */
-function rememberFile(filePath) {
-  const next = rememberRecent(recentFiles(), filePath);
-  safeCall("desk:recent:remember", () =>
-    getSettingsStore().set({ recentFiles: next }),
+function rememberProject(filePath) {
+  const current = recentProjects();
+  const next = rememberRecent(current, filePath);
+  // The project file is written whenever its tab list changes (a rename, a
+  // switch), so this runs often and usually changes nothing: leaving early
+  // keeps that off settings.json and off the menu rebuild below.
+  if (
+    next.length === current.length &&
+    next.every((p, i) => p === current[i])
+  ) {
+    return current;
+  }
+  safeCall("project:recent:remember", () =>
+    getSettingsStore().set({ recentProjects: next }),
   );
+  // Project ▸ Open Recent Project is part of the menu template, so the list
+  // changing means rebuilding it (a no-op before the menu is first installed).
+  safeCall("project:recent:menu", () => refreshAppMenu());
   return next;
 }
 
 /** Drop `filePath` from the MRU list. Returns the new list. */
-function forgetFile(filePath) {
-  const next = forgetRecent(recentFiles(), filePath);
-  safeCall("desk:recent:forget", () =>
-    getSettingsStore().set({ recentFiles: next }),
+function forgetProject(filePath) {
+  const next = forgetRecent(recentProjects(), filePath);
+  safeCall("project:recent:forget", () =>
+    getSettingsStore().set({ recentProjects: next }),
   );
+  safeCall("project:recent:menu", () => refreshAppMenu());
   return next;
 }
 
-/** Show the Open dialog; read + migrate the choice. Returns {path, doc}|null. */
-async function openSchematicDialog() {
+/**
+ * THE STARTUP RULE. The app always opens onto a project:
+ *
+ *   ① the app's saves folder holds the fixed default project file → that is
+ *     the session's project (it is the unsaved one, still without a name);
+ *   ② otherwise the project was saved somewhere, so the most recent one that
+ *     is still on disk opens;
+ *   ③ otherwise (a first run, or every remembered project has gone) a brand-new
+ *     project is created — blank name, blank location, one empty desktop.
+ */
+function bootProject() {
+  const store = getProjectStore();
+  store.ensureSaves();
+  if (store.hasDefaultProject()) {
+    const meta = safeCall("project:boot", () =>
+      store.read(store.defaultProjectPath),
+    );
+    if (meta) return establishProject(meta, store.defaultProjectPath);
+  }
+  for (const filePath of recentProjects()) {
+    if (
+      !safeCall("project:boot:exists", () => fs.existsSync(filePath), false)
+    ) {
+      continue;
+    }
+    const meta = safeCall("project:boot:recent", () => store.read(filePath));
+    if (meta) {
+      rememberProject(filePath);
+      return establishProject(meta, filePath);
+    }
+  }
+  return establishProject(store.newProject(), store.defaultProjectPath);
+}
+
+/** Show the Open dialog for a PROJECT file; read it. Returns the meta|null. */
+async function openProjectDialog() {
+  const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+  const opts = {
+    properties: ["openFile"],
+    filters: PROJECT_FILTERS,
+    defaultPath: getProjectStore().savesDir,
+  };
+  const result = win
+    ? await dialog.showOpenDialog(win, opts)
+    : await dialog.showOpenDialog(opts);
+  if (result.canceled || !result.filePaths?.[0]) return null;
+  return adoptProject(path.resolve(result.filePaths[0]));
+}
+
+/**
+ * Read a project file the user chose (a dialog, or the recent list) and make
+ * it the session's project: it goes to the head of the MRU list, and the
+ * working slot the project it replaces may have been living in is ABANDONED —
+ * its default project file and the desktop files the app was keeping for it —
+ * so the next launch opens THIS project rather than the one just left.
+ *
+ * (The renderer's guard has already offered to save that project; a project
+ * that took the offer is no longer in the slot, so there is nothing here to
+ * throw away.)
+ */
+function adoptProject(filePath) {
+  const store = getProjectStore();
+  const meta = store.read(filePath);
+  if (!meta) return null;
+  rememberProject(filePath);
+  if (path.resolve(filePath) !== path.resolve(store.defaultProjectPath)) {
+    safeCall("project:drop-default", () => store.discardDefaultProject());
+  }
+  return establishProject(meta, filePath);
+}
+
+/**
+ * Open a project the user picked from the MRU menu — the one read of a
+ * renderer-named path that no dialog mediated, so it is allowed ONLY for a
+ * path already on the list. A file that has since been moved or deleted comes
+ * back as `{ ok:false, code:"missing" }` so the renderer can offer to forget it.
+ * @param {string} filePath
+ */
+function openRecentProject(filePath) {
+  const wanted = typeof filePath === "string" ? path.resolve(filePath) : "";
+  if (!wanted || !recentProjects().includes(wanted)) {
+    return { ok: false, code: "unknown", error: "not a recent project" };
+  }
+  if (!safeCall("project:recent:exists", () => fs.existsSync(wanted), false)) {
+    return { ok: false, code: "missing", error: "file not found" };
+  }
+  try {
+    const project = adoptProject(wanted);
+    if (!project) {
+      return { ok: false, code: "error", error: "not a project file" };
+    }
+    return { ok: true, project };
+  } catch (err) {
+    return { ok: false, code: "error", error: err.message };
+  }
+}
+
+/**
+ * The Save-As location picker, for a project OR a desktop. It does NOT write
+ * anything — it only settles on a path, which the renderer then saves to.
+ *
+ * Replacing an existing file is the NATIVE dialog's question, not ours: every
+ * platform's own save panel asks it (`showOverwriteConfirmation` is how the
+ * Linux one is told to), and a second prompt on top would be asking the user
+ * the same thing twice. A cancelled replace simply comes back as a cancelled
+ * dialog.
+ *
+ * The renderer passes a NAME, never a path — main composes the suggestion, so
+ * path arithmetic stays on this side of the bridge:
+ *
+ *   · no current file, or one the APP minted (a GUID desktop, the default
+ *     project file) → `<saves>/<name>.<kind>.chiphippo`. A GUID was never
+ *     meant to be seen, so Save As offers the object's own name instead.
+ *   · a file the user chose → that same file, as any Save As does.
+ *
+ * @param {"project"|"desktop"} kind - which extension/filter to offer.
+ * @param {string} name - the project's / desktop's display name.
+ * @param {string} [current] - the file it is saved in now, if any.
+ * @returns {Promise<string|null>} the chosen path, or null when cancelled.
+ */
+async function chooseSavePath(kind, name, current) {
+  const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+  const store = getProjectStore();
+  const isProject = kind === "project";
+  const ext = isProject ? PROJECT_EXT : DESKTOP_EXT;
+  const from = typeof current === "string" && current ? path.resolve(current) : ""; // prettier-ignore
+  const appKept =
+    !from ||
+    store.isTempDesktop(from) ||
+    from === path.resolve(store.defaultProjectPath);
+  const defaultPath = appKept
+    ? path.join(store.savesDir, suggestFileName(name, ext, isProject ? "project" : "desktop")) // prettier-ignore
+    : from;
+  const opts = {
+    defaultPath,
+    filters: isProject ? PROJECT_FILTERS : SCHEMATIC_FILTERS,
+    properties: ["createDirectory", "showOverwriteConfirmation"],
+  };
+  const result = win
+    ? await dialog.showSaveDialog(win, opts)
+    : await dialog.showSaveDialog(opts);
+  if (result.canceled || !result.filePath) return null;
+  return establishPath(path.resolve(result.filePath));
+}
+
+/** Show the Open dialog for a DESIGN file (loaded into a desktop). */
+async function openDesignDialog() {
   const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
   const opts = { properties: ["openFile"], filters: SCHEMATIC_FILTERS };
   const result = win
     ? await dialog.showOpenDialog(win, opts)
     : await dialog.showOpenDialog(opts);
   if (result.canceled || !result.filePaths?.[0]) return null;
-  const filePath = path.resolve(result.filePaths[0]);
-  const doc = getDeskStore().readFile(filePath);
-  rememberFile(filePath);
-  return { path: filePath, doc };
-}
-
-/**
- * Open a file the user picked from the MRU menu. It is the only read of a
- * renderer-named path, so it is allowed ONLY for a path already on the list —
- * and a file that has since been moved/deleted comes back as
- * `{ ok:false, code:"missing" }` so the renderer can offer to forget it.
- * @param {string} filePath
- */
-function openRecentSchematic(filePath) {
-  const wanted = typeof filePath === "string" ? path.resolve(filePath) : "";
-  if (!wanted || !recentFiles().includes(wanted)) {
-    return { ok: false, code: "unknown", error: "not a recent file" };
-  }
-  if (!safeCall("desk:recent:exists", () => fs.existsSync(wanted), false)) {
-    return { ok: false, code: "missing", error: "file not found" };
-  }
-  try {
-    const doc = getDeskStore().readFile(wanted);
-    rememberFile(wanted);
-    return { ok: true, path: wanted, doc };
-  } catch (err) {
-    return { ok: false, code: "error", error: err.message };
-  }
-}
-
-/** Show the Save-As dialog; write `doc` to the choice. Returns the path|null. */
-async function saveSchematicDialog(doc, suggestedPath) {
-  const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
-  const opts = {
-    defaultPath:
-      typeof suggestedPath === "string" && suggestedPath
-        ? suggestedPath
-        : "schematic.chiphippo",
-    filters: SCHEMATIC_FILTERS,
+  const filePath = establishPath(path.resolve(result.filePaths[0]));
+  return {
+    path: filePath,
+    doc: getDeskStore().readFile(filePath),
+    // The desktop adopts this file as its Location, so it needs the same
+    // answer a write gives: is this one of the app's own to clean up later?
+    appKept: getProjectStore().isInsideSaves(filePath),
   };
-  const result = win
-    ? await dialog.showSaveDialog(win, opts)
-    : await dialog.showSaveDialog(opts);
-  if (result.canceled || !result.filePath) return null;
-  const written = getDeskStore().writeFile(path.resolve(result.filePath), doc);
-  rememberFile(written);
-  return written;
 }
 
 // ─── Datasheet folder + PDFs ──────────────────────────────────────────────────
@@ -649,10 +827,32 @@ function openDocsWindow() {
 // menu:open-settings); the preload re-dispatches each as a chiphippo:* event
 // and the renderer opens the corresponding PopupManager dialog. Everything
 // else is a standard Electron role.
-function sendToMain(channel) {
+function sendToMain(channel, payload) {
   if (mainWindow && !mainWindow.isDestroyed()) {
-    mainWindow.webContents.send(channel);
+    mainWindow.webContents.send(channel, payload);
   }
+}
+
+/** The last Undo/Redo availability the renderer reported (see
+ *  setEditMenuState) — replayed whenever the menu is rebuilt, since a fresh
+ *  template starts with both disabled. */
+let editMenuState = { canUndo: false, canRedo: false };
+
+/**
+ * Project ▸ Open Recent Project's items, from main's own MRU list. An empty
+ * list still renders one (disabled) row rather than an empty card, matching
+ * the renderer's `emptyLabel` menus.
+ */
+function recentProjectItems() {
+  const items = recentProjects().map((filePath) => ({
+    label: path.basename(filePath),
+    toolTip: filePath,
+    click: () => sendToMain("menu:project-open-recent", filePath),
+  }));
+  if (items.length === 0) {
+    return [{ label: "No recent projects", enabled: false }];
+  }
+  return items;
 }
 
 function buildAppMenu() {
@@ -667,11 +867,40 @@ function buildAppMenu() {
     click: () => sendToMain("menu:open-settings"),
   };
 
-  // Schematic file operations — each pushes to the renderer, which owns the
-  // document (New/Open reload the working desk; Save/Save As write a file).
-  // Same items, same order, same wording as the toolbar's File split-button
-  // menu; that menu adds only Open Recent (an MRU list the native menu would
-  // have to be rebuilt to carry).
+  // PROJECT operations — the project itself, as against the File menu below,
+  // which acts on the ONE DESKTOP on screen. It leads the menu bar (before
+  // File) because a desktop only exists inside a project. Like every other
+  // item here these are one-way pushes: the renderer owns the open project,
+  // so it is the only side that knows what is unsaved and what to ask about.
+  //
+  // Open Recent is baked into the template from main's own MRU list, so the
+  // menu is rebuilt (refreshAppMenu) whenever that list changes; its click
+  // carries the path, the one menu push with a payload.
+  const projectItems = [
+    { label: "New Project", click: () => sendToMain("menu:project-new") },
+    { label: "Load Project…", click: () => sendToMain("menu:project-open") },
+    { label: "Open Recent Project", submenu: recentProjectItems() },
+    { type: "separator" },
+    { label: "Save Project", click: () => sendToMain("menu:project-save") },
+    {
+      label: "Save Project As…",
+      click: () => sendToMain("menu:project-save-as"),
+    },
+    { type: "separator" },
+    {
+      label: "Project Properties…",
+      click: () => sendToMain("menu:project-properties"),
+    },
+    { label: "Add Desktop", click: () => sendToMain("menu:project-add-tab") },
+  ];
+
+  // Desktop file operations — each pushes to the renderer, which owns the
+  // document. They act on the ACTIVE DESKTOP of the open project: New empties
+  // it, Open loads a design into it (and it adopts that file), Save writes it
+  // back to its own location, Save As gives it a new one. Same items, same
+  // order, same wording as the toolbar's File pill, so the two can't drift.
+  // A PROJECT is saved from the Project menu above — the tab list is its own
+  // file.
   const schematicItems = [
     {
       label: "New Desktop",
@@ -722,8 +951,10 @@ function buildAppMenu() {
         { role: "quit" },
       ],
     });
+    template.push({ label: "Project", submenu: projectItems });
     template.push({ label: "File", submenu: schematicItems });
   } else {
+    template.push({ label: "Project", submenu: projectItems });
     template.push({
       label: "File",
       submenu: [
@@ -819,11 +1050,23 @@ function buildAppMenu() {
 }
 
 /**
+ * Rebuild and install the application menu. Project ▸ Open Recent Project is
+ * baked into the template, so the MRU list changing means a whole new menu —
+ * and a fresh template starts with Undo/Redo disabled, hence replaying the
+ * edit state the renderer last reported.
+ */
+function refreshAppMenu() {
+  Menu.setApplicationMenu(buildAppMenu());
+  setEditMenuState(editMenuState);
+}
+
+/**
  * Enable/disable Edit ▸ Undo / Redo to match the renderer's history state
  * (Feature 200). The renderer is the authority — it pushes this whenever undo
  * availability changes.
  */
 function setEditMenuState({ canUndo = false, canRedo = false } = {}) {
+  editMenuState = { canUndo: Boolean(canUndo), canRedo: Boolean(canRedo) };
   const menu = Menu.getApplicationMenu();
   const undo = menu?.getMenuItemById("edit-undo");
   const redo = menu?.getMenuItemById("edit-redo");
@@ -914,76 +1157,103 @@ function registerIpc() {
   // directory dialog); the renderer persists the chosen path via settings:set.
   ipcMain.handle("settings:choose-datasheet-dir", () => chooseDatasheetDir());
 
-  // Desk document (Feature 20): load runs the schema migrations; the
-  // renderer autosaves the whole document, debounced (~1 s).
-  ipcMain.handle("desk:load", () => getDeskStore().load());
-  ipcMain.handle("desk:save", (_event, doc) => getDeskStore().save(doc));
+  // Open a DESIGN file into the active desktop (the File pill's Open). A
+  // native dialog mediates the path, which the desktop then adopts as its own
+  // location — so this is also where that path becomes established.
+  ipcMain.handle("desk:open", () => openDesignDialog());
 
-  // Named schematic files (Open / Save As / Save). `desk:open` and
-  // `desk:save-as` show a native dialog and return null when cancelled;
-  // `desk:write` overwrites a known path (a re-Save with no prompt).
-  ipcMain.handle("desk:open", () => openSchematicDialog());
-  ipcMain.handle("desk:save-as", (_event, doc, suggestedPath) =>
-    saveSchematicDialog(doc, suggestedPath),
-  );
-  ipcMain.handle("desk:write", (_event, filePath, doc) => {
-    // Unlike desk:open/desk:save-as, there's no native dialog here to
-    // mediate the path — this call is a re-Save with no prompt, so it must
-    // only ever overwrite the path a PRIOR open/save-as legitimately
-    // established (persisted as settings.currentFile), never some other
-    // path the renderer hands over for this call.
-    const known = getSettingsStore().get().currentFile;
-    if (typeof known !== "string" || !known || known !== filePath) {
-      const err = new Error("desk:write: path is not the known current file");
-      err.code = "INVALID_ARG";
-      throw err;
-    }
-    const written = getDeskStore().writeFile(filePath, doc);
-    rememberFile(written); // a re-Save is a use — bump it up the MRU list
-    return written;
+  // Projects: the session's project, its desktops, and the files both live in.
+  // The renderer holds the project meta and hands it back to be written; main
+  // owns the saves folder, the dialogs, the recent list, and — through
+  // `knownPath` — which paths may be touched at all (see the section note).
+  //
+  // `project:boot` always answers with a project: the unsaved one in the saves
+  // folder, else the most recent saved one, else a brand-new one.
+  ipcMain.handle("project:boot", () => bootProject());
+  ipcMain.handle("project:new", () => {
+    const store = getProjectStore();
+    return establishProject(store.newProject(), store.defaultProjectPath);
   });
+  ipcMain.handle("project:open", () => openProjectDialog());
+  ipcMain.handle("project:open-recent", (_event, filePath) =>
+    openRecentProject(filePath),
+  );
+  // The new desktop's file is minted inside the saves folder, so it is
+  // writable on that ground alone — nothing here is established, or the
+  // renderer could smuggle a path in through a meta and have it blessed.
+  ipcMain.handle("project:add-tab", (_event, meta) =>
+    getProjectStore().addTab(meta),
+  );
+  // Write the project file. `filePath` null means "it has no location yet" —
+  // it goes to the fixed default project file, the working slot startup looks
+  // in first. `dropDefault` is the other half of Save: a project that HAD no
+  // location and now has a real one leaves that slot empty.
+  ipcMain.handle("project:save", (_event, meta, filePath, dropDefault) => {
+    const store = getProjectStore();
+    const target = filePath ? knownPath(filePath) : store.defaultProjectPath;
+    // Every desktop path the file will carry is checked too: a project file is
+    // read back — and its desktops established — on the next launch, so an
+    // unchecked path stored here would be a writable one tomorrow.
+    for (const tab of meta?.tabs ?? []) knownPath(tab?.file);
+    store.write(target, meta);
+    if (filePath) {
+      rememberProject(target);
+      if (
+        dropDefault === true &&
+        target !== path.resolve(store.defaultProjectPath)
+      ) {
+        // prettier-ignore
+        safeCall("project:save:drop-default", () =>
+          store.removeDefaultProject(),
+        );
+      }
+    }
+    return { ok: true, path: target };
+  });
+  // A desktop's document, read and written by its own path.
+  ipcMain.handle("project:read-tab", (_event, filePath) =>
+    getProjectStore().readTab(knownPath(filePath)),
+  );
+  // The write answers with `appKept` — whether the file it landed in is inside
+  // the app's own saves folder — because that is what decides whether removing
+  // the desktop later takes the file with it, and only main knows where that
+  // folder is.
+  ipcMain.handle("project:write-tab", (_event, filePath, doc) => {
+    const store = getProjectStore();
+    const written = store.writeTab(knownPath(filePath), doc);
+    return { path: written, appKept: store.isInsideSaves(written) };
+  });
+  // The Save-As location picker for a project or a desktop — it chooses a
+  // path, it does not write. Replacing an existing file is the native
+  // dialog's own question; declining it reads back as a plain cancel.
+  ipcMain.handle("project:choose-path", (_event, kind, name, current) =>
+    chooseSavePath(kind, name, current),
+  );
+  // The project's unsaved changes are being thrown away: clean up after the
+  // desktops that were added since it was last saved. Only their app-kept
+  // files go, and only those the project ON DISK does not list — main reads
+  // that file itself rather than trusting the renderer's idea of it.
+  ipcMain.handle(
+    "project:discard",
+    (_event, meta, filePath) =>
+    getProjectStore().discardChanges(meta, filePath ? knownPath(filePath) : null), // prettier-ignore
+  );
 
-  // Most recently used files (the toolbar's File ▸ Open Recent submenu): the
-  // list, one entry opened by path (allowlisted against the list itself), and
-  // one entry forgotten (its × / the "that file is gone" prompt).
-  ipcMain.handle("desk:recent:list", () => recentFiles());
-  ipcMain.handle("desk:recent:open", (_event, filePath) =>
-    openRecentSchematic(filePath),
-  );
-  ipcMain.handle("desk:recent:remove", (_event, filePath) =>
-    forgetFile(typeof filePath === "string" ? path.resolve(filePath) : ""),
+  // Delete a desktop's file, now that the desktop has been removed from its
+  // project — or has moved to a new home (Save As / Open). WHERE the file is
+  // decides: inside the app's saves folder it is the app's to clean up, and
+  // anywhere else it is the user's and is left alone (a no-op, not an error),
+  // so the renderer can hand over any desktop's file.
+  ipcMain.handle("project:drop-temp", (_event, filePath) =>
+    getProjectStore().removeDesktopFile(filePath),
   );
 
-  // Projects (Feature 240): a workspace of several desktops, each tab its own
-  // `.chiphippo` inside userData/projects/<id>/. The renderer passes a project
-  // id and a tab id/file — never a path; the store alone resolves those into
-  // the projects root and refuses anything that escapes it.
-  // `project:load` returns null for an unknown project (the session simply
-  // falls back to the plain working desk), so it is not an error path.
-  // A project is UNNAMED until `project:save-as` — `create-untitled` takes no
-  // name at all, so adding a desktop never has to stop and ask for one.
-  ipcMain.handle("project:list", () => getProjectStore().list());
-  ipcMain.handle("project:create-untitled", (_event, firstDoc) =>
-    getProjectStore().createUntitled(firstDoc),
-  );
-  ipcMain.handle("project:save-as", (_event, id, name) =>
-    getProjectStore().saveAs(id, name),
-  );
-  ipcMain.handle("project:load", (_event, id) => getProjectStore().load(id));
-  ipcMain.handle("project:save-meta", (_event, id, meta) =>
-    getProjectStore().saveMeta(id, meta),
-  );
-  ipcMain.handle("project:add-tab", (_event, id) =>
-    getProjectStore().addTab(id),
-  );
-  ipcMain.handle("project:remove-tab", (_event, id, tabId) =>
-    getProjectStore().removeTab(id, tabId),
-  );
-  ipcMain.handle("project:read-tab", (_event, id, file) =>
-    getProjectStore().readTab(id, file),
-  );
-  ipcMain.handle("project:write-tab", (_event, id, file, doc) =>
-    getProjectStore().writeTab(id, file, doc),
+  // Most recently used PROJECTS (Projects ▸ Open Recent): the list, and one
+  // entry forgotten (its × / the "that file is gone" prompt). Opening one goes
+  // through `project:open-recent` above, which allowlists against this list.
+  ipcMain.handle("project:recent:list", () => recentProjects());
+  ipcMain.handle("project:recent:remove", (_event, filePath) =>
+    forgetProject(typeof filePath === "string" ? path.resolve(filePath) : ""),
   );
   // Switching tabs replaces the whole desk, which orphans the auxiliary
   // windows exactly as New/Open does — a pinout or memory inspector would be
@@ -1264,7 +1534,7 @@ function bootstrap() {
         "system",
       ),
     );
-    Menu.setApplicationMenu(buildAppMenu());
+    refreshAppMenu();
     createWindow();
 
     app.on("activate", () => {

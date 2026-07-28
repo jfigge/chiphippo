@@ -31,73 +31,12 @@ const {
 
 function freshStore() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "chiphippo-desk-"));
-  return { dir, store: new DeskStore(dir) };
+  return { dir, store: new DeskStore() };
 }
 
-test("load on first run returns the default empty desk", () => {
-  const { dir, store } = freshStore();
-  try {
-    assert.deepEqual(store.load(), defaultDeskDocument());
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test("save → load round-trips a document across store instances", () => {
-  const { dir, store } = freshStore();
-  try {
-    const doc = {
-      version: DESK_DOC_VERSION,
-      boards: [{ id: "bb1", type: "pins-full", x: 2, y: 3, group: null }],
-      components: [],
-      wires: [],
-      buses: [],
-      netNames: [],
-      annotations: [],
-      nextBoardId: 2,
-      nextGroupId: 1,
-      nextComponentId: 1,
-      nextPsuId: 1,
-      nextClockId: 1,
-      nextLcdId: 1,
-      nextWireId: 1,
-      nextBusId: 1,
-      nextAnnotationId: 1,
-    };
-    store.save(doc);
-    assert.deepEqual(new DeskStore(dir).load(), doc);
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test("save rejects non-object documents", () => {
-  const { dir, store } = freshStore();
-  try {
-    for (const bad of [null, undefined, "desk", 7, [1]]) {
-      assert.throws(() => store.save(bad), { code: "INVALID_ARG" });
-    }
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-test("a corrupt desk.json degrades to the default document", () => {
-  const { dir, store } = freshStore();
-  try {
-    fs.writeFileSync(path.join(dir, "desk.json"), "{ not json");
-    assert.deepEqual(store.load(), defaultDeskDocument());
-    // The corrupt bytes were quarantined, not deleted.
-    const quarantined = fs
-      .readdirSync(dir)
-      .filter((f) => f.startsWith("desk.json.corrupt-"));
-    assert.equal(quarantined.length, 1);
-  } finally {
-    fs.rmSync(dir, { recursive: true, force: true });
-  }
-});
-
-// ── named schematic files (Open / Save As / Save) ─────────────────────────────
+// ── schematic files (a desktop's own document) ────────────────────────────────
+// There is no "working document" any more: every desk on screen is a desktop of
+// the open project, and DeskStore only reads and writes the file it is given.
 
 test("writeFile → readFile round-trips a named schematic anywhere", () => {
   const { dir, store } = freshStore();

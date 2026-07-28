@@ -31,8 +31,8 @@ breadboards, powered at 3 V / 5 V / 12 V, and watched settle live.
 - **A derived schematic view** — press `Tab` to flip between the physical
   breadboard and a logical diagram of chip symbols, routed named nets, and
   bus lines, kept in sync with the desk.
-- **Build guide & BOM export**, and **undo/redo** across every edit, with an
-  always-autosaved working document.
+- **Build guide & BOM export**, and **undo/redo** across every edit, per
+  desktop of the open project.
 
 ## Table of contents
 
@@ -69,9 +69,9 @@ breadboards, powered at 3 V / 5 V / 12 V, and watched settle live.
 
 - [Build Guide, Wiring List & BOM](build-guide.md) — deriving an assembly
   guide and bill of materials.
-- [Files, Autosave & Undo](files-and-undo.md) — the working document, saved
-  files, and undo/redo.
-- [Projects & Desktops](projects-and-desktops.md) — tabbed desktops, and
-  copying a design from one onto another.
+- [Files, Saving & Undo](files-and-undo.md) — where a desktop and a project
+  are kept, saving them, and undo/redo.
+- [Projects & Desktops](projects-and-desktops.md) — tabbed desktops, saving a
+  project, and copying a design from one desktop onto another.
 - [Settings](settings.md) — the settings dialog and its options.
 - [Keyboard Shortcuts](keyboard-shortcuts.md) — every shortcut in one place.

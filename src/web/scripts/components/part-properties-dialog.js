@@ -33,7 +33,9 @@
 // `"select"` (a dropdown over `options: [{value, label}]`), `"action"` (a
 // button that fires a named command rather than editing a value, e.g. a
 // memory chip's "Inspect memory…" — see desk-controller.js's
-// #propertyFieldsFor), and `"separator"` (a plain divider, no key/control).
+// #propertyFieldsFor), `"readonly"` (a value shown but not edited — a
+// project's or a desktop's Location, which Save As is what changes), and
+// `"separator"` (a plain divider, no key/control).
 //
 // Like the Settings dialog, it is deliberately dumb and applies live: every
 // value control commits `onChange(key, value)` (text/textarea commit on
@@ -111,10 +113,26 @@ function buildTextarea(field, value, onChange) {
   });
 }
 
+/** A value the dialog SHOWS but does not edit — a project's or a desktop's
+    Location, which Save As is what changes. The full text is on the title too,
+    since a path can be longer than the row. */
+function buildReadonly(field, value) {
+  const shown = value == null || value === "" ? "" : String(value);
+  return el("span", {
+    class: "properties-value properties-value--path",
+    text: shown,
+    title: shown,
+    "aria-label": field.label,
+  });
+}
+
 /** Build one field's control by its declared `type`. New types extend this
     switch alone — the dialog shell and every part's catalog def stay
     untouched. An unrecognized type falls back to a read-only value. */
 function buildControl(field, value, onChange) {
+  if (field.type === "readonly") {
+    return buildReadonly(field, value);
+  }
   if (field.type === "color") {
     return buildColorSwatches({
       colors: field.options,
@@ -137,7 +155,7 @@ function buildControl(field, value, onChange) {
 
 /** A plain divider between the universal Name/Description pair and a part's
     own catalog-declared properties. */
-const STACKED_TYPES = new Set(["text", "textarea"]);
+const STACKED_TYPES = new Set(["text", "textarea", "readonly"]);
 
 function buildRow(field, value, onChange, onAction) {
   if (field.type === "separator") {

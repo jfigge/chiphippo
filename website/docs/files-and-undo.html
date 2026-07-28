@@ -6,17 +6,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#2F855A" />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-  <title>Files, Autosave &amp; Undo · Chip Hippo Guide</title>
-  <meta name="description" content="Files, Autosave &amp; Undo — the Chip Hippo user guide." />
+  <title>Files, Saving &amp; Undo · Chip Hippo Guide</title>
+  <meta name="description" content="Files, Saving &amp; Undo — the Chip Hippo user guide." />
   <link rel="canonical" href="https://chiphippo.com/docs/files-and-undo.html" />
   <meta property="og:type" content="article" />
   <meta property="og:site_name" content="Chip Hippo" />
-  <meta property="og:title" content="Files, Autosave &amp; Undo · Chip Hippo Guide" />
-  <meta property="og:description" content="Files, Autosave &amp; Undo — the Chip Hippo user guide." />
+  <meta property="og:title" content="Files, Saving &amp; Undo · Chip Hippo Guide" />
+  <meta property="og:description" content="Files, Saving &amp; Undo — the Chip Hippo user guide." />
   <meta property="og:url" content="https://chiphippo.com/docs/files-and-undo.html" />
   <meta name="twitter:card" content="summary" />
-  <meta name="twitter:title" content="Files, Autosave &amp; Undo · Chip Hippo Guide" />
-  <meta name="twitter:description" content="Files, Autosave &amp; Undo — the Chip Hippo user guide." />
+  <meta name="twitter:title" content="Files, Saving &amp; Undo · Chip Hippo Guide" />
+  <meta name="twitter:description" content="Files, Saving &amp; Undo — the Chip Hippo user guide." />
   <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{--bg:#1c1c1c;--mantle:#161616;--crust:#101010;--surface-0:#2a2a2a;--surface-1:#383838;--overlay-0:#686868;--text:#e8e8e8;--subtext:#b0b0b0;--accent:#3fb950;--green:#56d364}
@@ -76,60 +76,88 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
         <a class="doc-nav-link" href="logic-analyzer.html">Logic Analyzer &amp; Timing</a>
         <a class="doc-nav-link" href="build-guide.html">Build Guide, Wiring List &amp; BOM</a>
         <a class="doc-nav-link" href="schematic-view.html">Schematic View</a>
-        <a class="doc-nav-link doc-nav-link--active" href="files-and-undo.html">Files, Autosave &amp; Undo</a>
+        <a class="doc-nav-link doc-nav-link--active" href="files-and-undo.html">Files, Saving &amp; Undo</a>
         <a class="doc-nav-link" href="projects-and-desktops.html">Projects &amp; Desktops</a>
         <a class="doc-nav-link" href="settings.html">Settings</a>
         <a class="doc-nav-link" href="keyboard-shortcuts.html">Keyboard Shortcuts</a>
     </nav>
     <main class="content">
-<h1>Files, Autosave &amp; Undo</h1>
-<p>Chip Hippo separates two things most apps blur together: the circuit you&#39;re
-currently poking at, which is saved for you continuously, and a named
-schematic file you deliberately save to organize or share a specific design.
-This page covers both, plus the discard-changes prompt, the title bar&#39;s dirty
-indicator, and undo/redo.</p>
-<h2 id="the-autosaved-working-document">The autosaved working document</h2>
-<p>Whatever is on the desk right now — every board, chip, wire, and part — lives
-in a <strong>working document</strong> that Chip Hippo saves automatically as you go.
-There&#39;s nothing to save manually for day-to-day tinkering: place a chip, lay
-a wire, quit the app, relaunch, and the desk comes back exactly as you left
-it. This is the same document that opens by default every time you launch
-Chip Hippo.</p>
-<h2 id="named-files">Named files</h2>
-<p>A <strong>named file</strong> (extension <code>.chiphippo</code>) is a snapshot of a schematic you&#39;ve
-explicitly saved somewhere on disk — useful for organizing a design under a
-project name, keeping several circuits side by side, or sharing one with
-someone else. Once you&#39;ve opened or saved a named file, it becomes the
-working document: further edits keep autosaving into it, and the title bar
-shows its filename.</p>
-<h2 id="new-open-save-save-as">New, Open, Save, Save As</h2>
-<p>Four commands on the <strong>File</strong> menu cover the whole file lifecycle:</p>
+<h1>Files, Saving &amp; Undo</h1>
+<p>Chip Hippo keeps your work in ordinary files you can see, move, and share —
+one for each <strong>desktop</strong> you build on, and one for the <strong>project</strong> that lists
+them. This page covers where those files live, the four commands that manage a
+desktop&#39;s file, the dirty marker, and undo/redo.</p>
+<h2 id="there-is-always-a-project">There is always a project</h2>
+<p>The desk in front of you is always a <strong>desktop of an open project</strong>, from the
+very first launch. A brand-new project has no name, no home of its own, and
+exactly one desktop called <code>Desktop 1</code> — which is simply a desk to build on.
+See <a href="projects-and-desktops.html">Projects &amp; Desktops</a> for what a project is for
+and how to keep several desktops side by side.</p>
+<p>Two kinds of file follow from that:</p>
 <ul>
-<li><strong>New Schematic</strong> (<code>Cmd/Ctrl+N</code>) — clears the desk back to an empty working
-document, no file attached.</li>
-<li><strong>Open Schematic…</strong> (<code>Cmd/Ctrl+O</code>) — shows a native file picker; choose a
-<code>.chiphippo</code> file and it becomes the working document.</li>
-<li><strong>Save</strong> (<code>Cmd/Ctrl+S</code>) — writes the current desk to the file it&#39;s already
-associated with. If there isn&#39;t one yet, this falls back to <strong>Save As…</strong>.</li>
-<li><strong>Save As…</strong> (<code>Shift+Cmd/Ctrl+S</code>) — shows a native save dialog; writes the
-current desk to the chosen path and adopts it as the working file from then
-on.</li>
+<li>a <strong>desktop file</strong> (<code>.desktop.chiphippo</code>) — one complete desk: its boards,
+chips, wiring, and parts. It is an ordinary Chip Hippo design file, so it
+opens on any desktop, in any project.</li>
+<li>a <strong>project file</strong> (<code>.project.chiphippo</code>) — the small list of which desktops
+the project has, what they are called, and where each one&#39;s file is.</li>
 </ul>
-<p>The same four actions are also available as buttons in the header toolbar&#39;s
-schematic menu, alongside their keyboard shortcuts.</p>
-<p><strong>New</strong> and <strong>Open</strong> replace the whole desk, so the window refreshes to load
-it — a brief flash as everything rebuilds from the new document. Note that
-this resets any run-volatile simulation state (see below); it doesn&#39;t affect
-what&#39;s saved.</p>
+<h2 id="before-you-choose-where-things-go">Before you choose where things go</h2>
+<p>Chip Hippo never stops you mid-thought to ask for a file name. Until you save
+something under a name of your own, it keeps the file for you in its own
+<strong>saves folder</strong> inside the app&#39;s data directory:</p>
+<ul>
+<li>every new desktop gets a file there straight away, under a generated name
+you are not meant to read — its Location, but a temporary one;</li>
+<li>a project with no name lives in the one <strong>default project file</strong> there. It
+is the work in progress, and it is what Chip Hippo opens when you launch it.</li>
+</ul>
+<p>Give either one a home of your own (<strong>Save As</strong> for a desktop, <strong>Project ▸
+Save Project</strong> for a project) and the file left behind in the saves folder is
+cleaned up — nothing but that one object ever pointed at it.</p>
+<p>That folder is Chip Hippo&#39;s to tidy, so <strong>anything of yours kept in it is
+treated the same way</strong>: a desktop whose file is in there — the generated one,
+or one you saved into the folder yourself — has that file deleted when you
+delete the desktop. Save a desktop anywhere else and the file is yours; Chip
+Hippo will never remove it, even when the desktop is gone.</p>
+<p>When you launch, Chip Hippo opens the unsaved project from its saves folder if
+there is one; otherwise it reopens the <strong>project you used most recently</strong>.</p>
+<h2 id="new-open-save-save-as">New, Open, Save, Save As</h2>
+<p>Four commands — on the <strong>File</strong> menu, in the header toolbar&#39;s File pill, and
+under the usual shortcuts — manage the <strong>active desktop&#39;s</strong> file:</p>
+<ul>
+<li><strong>New Desktop</strong> (<code>Cmd/Ctrl+N</code>) — empties the desk you&#39;re on. Its file keeps
+whatever was last saved to it, so this is &quot;start over here&quot;, not &quot;delete&quot;.</li>
+<li><strong>Open…</strong> (<code>Cmd/Ctrl+O</code>) — shows a native file picker; the design you choose
+is loaded onto the active desktop, and that file becomes the desktop&#39;s
+Location. From then on, Save writes there.</li>
+<li><strong>Save</strong> (<code>Cmd/Ctrl+S</code>) — writes the desk back to the file its Location
+names. No dialog: a desktop always has one.</li>
+<li><strong>Save As…</strong> (<code>Shift+Cmd/Ctrl+S</code>) — asks where to keep it and writes it
+there, and that file becomes the desktop&#39;s Location. If the desktop was
+still in the file Chip Hippo minted for it, the suggested name comes from
+the <strong>desktop&#39;s own name</strong> (&quot;Clock module.desktop.chiphippo&quot;), and the
+minted file is deleted once the design has a real home.</li>
+</ul>
+<p>If the file you pick already exists, your system&#39;s own save dialog asks
+whether to replace it, exactly as it does in any other app — Chip Hippo adds
+no second question of its own. Decline there and nothing is written.</p>
+<p>Right-click a tab and choose <strong>Properties…</strong> to see a desktop&#39;s Location —
+alongside its Name and Description — without opening any dialog that writes.</p>
 <h2 id="unsaved-changes">Unsaved changes</h2>
-<p>The title bar shows the current file&#39;s name (or &quot;Untitled&quot; for a fresh
-document) with a leading dot — <code>• MyCircuit — Chip Hippo</code> — whenever the desk
-has changes that haven&#39;t been written to that file yet. Save clears the dot.</p>
-<p>Because <strong>New Schematic</strong> and <strong>Open Schematic…</strong> both replace the working
-document outright, Chip Hippo won&#39;t silently throw away unsaved work: if the
-desk is dirty, it shows a <strong>Discard unsaved changes?</strong> prompt naming the
-current file and asking you to confirm before proceeding. Choose <strong>Discard</strong>
-to continue (losing those changes) or <strong>Cancel</strong> to back out and save first.</p>
+<p>A desktop&#39;s tab shows a dot when it has changes that aren&#39;t in its file yet,
+and the window title shows the same for the desk you&#39;re on:
+<code>• 6502 SBC — Clock module — Chip Hippo</code>. Save clears it. The title&#39;s dot also
+covers the <strong>project&#39;s</strong> own unsaved changes — a desktop added, something
+renamed — which <strong>Project ▸ Save Project</strong> writes.</p>
+<p>Nothing that would lose those changes happens silently. Emptying a desktop or
+loading another design into it asks first; so does deleting a desktop, opening
+or starting another project, and quitting. Every one of those questions offers
+to <strong>save</strong> first — and choosing that carries the action through, so you are
+never made to ask twice.</p>
+<p>When the save is the app&#39;s idea rather than yours — quitting with a dot on a
+tab — nothing is asked about <em>where</em>: each desktop goes to the file it already
+has, and the project to its own (or, having none yet, to the app&#39;s default
+project file, where the next launch will find it).</p>
 <h2 id="undo--redo">Undo &amp; redo</h2>
 <p><code>Cmd/Ctrl+Z</code> undoes the last edit; <code>Shift+Cmd/Ctrl+Z</code> redoes it. Undo/redo
 covers the full editing history of the circuit — placing and moving boards,
@@ -152,9 +180,9 @@ moment in its simulated behavior.</p>
 <p>Chip Hippo&#39;s project repository ships a handful of ready-to-load example
 circuits as ordinary <code>.chiphippo</code> files — currently small W65C02-based
 breadboard computers built from 74xx glue logic, each paired with a <code>.hex</code>
-ROM image. Open one the same way as any saved file: <strong>File ▸ Open
-Schematic…</strong>, then load its matching <code>.hex</code> into the ROM chip via the memory
-inspector or the external programmer before pressing <strong>Run</strong>.</p>
+ROM image. Open one the same way as any saved design: <strong>File ▸ Open…</strong> loads
+it onto the desktop you&#39;re on. Then load its matching <code>.hex</code> into the ROM chip
+via the memory inspector or the external programmer before pressing <strong>Run</strong>.</p>
 <hr>
 <p>See <a href="getting-started.html">Getting Started</a> for building your first circuit
 from scratch, and <a href="settings.html">Settings</a> for what else persists between

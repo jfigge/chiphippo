@@ -95,27 +95,18 @@ const DEFAULTS = Object.freeze({
   // opens that PDF natively. null → no directory (the default).
   datasheetDir: null,
 
-  // ── Current schematic (file-based New/Open/Save) ───────────────────────────
-  // The named file the working desk maps to (null → Untitled), and a JSON
-  // snapshot of the document as last saved to that file (or the empty/new
-  // baseline). The renderer compares the live document to `savedDoc` to know
-  // whether there are unsaved changes (the dirty marker + discard prompt).
-  currentFile: null,
-  savedDoc: null,
-
-  // The last 10 schematic files opened or saved, most recent first — the
-  // toolbar's File ▸ Open Recent submenu. Main owns this list (store/
-  // recent-files.js does the arithmetic): it is also the ALLOWLIST that
-  // desk:recent:open checks a path against, so the renderer can never ask
-  // main to read an arbitrary file.
-  recentFiles: Object.freeze([]),
-
-  // ── Current project (Feature 240) ─────────────────────────────────────────
-  // The id (folder slug) of the open project of desktops, or null when the
-  // session is on the plain working desk. Which of its tabs is active lives in
-  // the project's own file, not here — it belongs to the project, not to this
-  // machine's preferences.
-  currentProject: null,
+  // ── Recent projects ────────────────────────────────────────────────────────
+  // The last 10 PROJECT files saved or opened, most recent first. Main owns
+  // the list (store/recent-files.js does the arithmetic) and it does two jobs:
+  // it is the Projects ▸ Open Recent menu, and it is the ALLOWLIST that
+  // project:open-recent checks a path against, so the renderer can never ask
+  // main to read an arbitrary file. It is also where startup looks when the
+  // app's saves folder holds no unsaved (default) project — the head of this
+  // list is then the project the session opens with.
+  //
+  // There is deliberately no equivalent for DESKTOP files: a desktop is
+  // reached through the project that owns it, never from a recent list.
+  recentProjects: Object.freeze([]),
 });
 
 class SettingsStore {

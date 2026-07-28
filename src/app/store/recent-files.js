@@ -16,10 +16,10 @@
 
 /**
  * recent-files.js — the pure list arithmetic behind the "Open Recent" menu:
- * the last MAX_RECENT schematic files the user opened or saved, most recent
+ * the last MAX_RECENT PROJECT files the user opened or saved, most recent
  * first. No filesystem, no Electron — main.js owns reading/writing the list
- * (it lives in settings.json as `recentFiles`) and the existence checks; this
- * module only decides what the list becomes.
+ * (it lives in settings.json as `recentProjects`) and the existence checks;
+ * this module only decides what the list becomes.
  *
  * Every function returns a NEW array and never mutates its input, so the
  * frozen DEFAULTS array in settings-store.js is safe to pass in.

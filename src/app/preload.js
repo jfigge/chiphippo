@@ -28,14 +28,24 @@
 const { contextBridge, ipcRenderer } = require("electron");
 
 // ── Main → renderer menu pushes ─────────────────────────────────────────────
-// The application menu's About / Settings items are one-way pushes from main;
-// re-dispatch each as a global chiphippo:* CustomEvent the renderer listens
-// for (the documented main→renderer broadcast pattern). No payload — the
-// renderer opens the matching PopupManager dialog.
+// The application menu's items are one-way pushes from main; re-dispatch each
+// as a global chiphippo:* CustomEvent the renderer listens for (the documented
+// main→renderer broadcast pattern). Most carry no payload — the renderer opens
+// the matching dialog or acts on the desk it already owns. The one exception is
+// Open Recent Project, whose item names the project file it stands for; the
+// detail is passed through verbatim, so a payload-free push simply arrives with
+// `detail: undefined`.
 for (const [channel, event] of [
   ["menu:show-about", "chiphippo:show-about"],
   ["menu:open-settings", "chiphippo:open-settings"],
   ["menu:keyboard-shortcuts", "chiphippo:keyboard-shortcuts"],
+  ["menu:project-new", "chiphippo:project-new"],
+  ["menu:project-open", "chiphippo:project-open"],
+  ["menu:project-open-recent", "chiphippo:project-open-recent"],
+  ["menu:project-save", "chiphippo:project-save"],
+  ["menu:project-save-as", "chiphippo:project-save-as"],
+  ["menu:project-properties", "chiphippo:project-properties"],
+  ["menu:project-add-tab", "chiphippo:project-add-tab"],
   ["menu:schematic-new", "chiphippo:schematic-new"],
   ["menu:schematic-open", "chiphippo:schematic-open"],
   ["menu:schematic-save", "chiphippo:schematic-save"],
@@ -47,8 +57,8 @@ for (const [channel, event] of [
   // unsaved needs dealing with first. The renderer answers with closeReply().
   ["app:confirm-close", "chiphippo:confirm-close"],
 ]) {
-  ipcRenderer.on(channel, () => {
-    window.dispatchEvent(new CustomEvent(event));
+  ipcRenderer.on(channel, (_e, detail) => {
+    window.dispatchEvent(new CustomEvent(event, { detail }));
   });
 }
 
@@ -105,53 +115,58 @@ contextBridge.exposeInMainWorld("chiphippo", {
       ipcRenderer.invoke("settings:choose-datasheet-dir"),
   },
 
-  // ── Desk document (Feature 20) ─────────────────────────────────────────────
-  // The single persisted desk: boards (+ components/wires from later stages).
-  // The renderer keeps the live DeskDoc (model/desk-doc.js) and autosaves the
-  // WHOLE serialized document, debounced ~1 s — documents are small; deltas
-  // are premature. load() returns a migrated, ready-to-normalize document.
+  // ── Desk documents ─────────────────────────────────────────────────────────
+  // Open a saved design INTO the active desktop (the File pill's Open): a
+  // native dialog picks it, so the desktop can adopt that file as its own
+  // location. → { path, doc } | null when cancelled. Everything else about a
+  // desktop's file goes through `project` below, which knows where it lives.
   desk: {
-    load: () => ipcRenderer.invoke("desk:load"),
-    save: (doc) => ipcRenderer.invoke("desk:save", doc),
-    // Named schematic files. open() → {path, doc}|null (Open dialog);
-    // saveAs(doc) → path|null (Save-As dialog); write(path, doc) → path
-    // (silent re-Save to a known file).
     open: () => ipcRenderer.invoke("desk:open"),
-    saveAs: (doc, suggestedPath) =>
-      ipcRenderer.invoke("desk:save-as", doc, suggestedPath),
-    write: (filePath, doc) => ipcRenderer.invoke("desk:write", filePath, doc),
-    // The MRU list behind File ▸ Open Recent: `list()` → the last 10 paths,
-    // most recent first; `open(path)` → { ok:true, path, doc } or
-    // { ok:false, code } ("missing" when the file has been moved/deleted, so
-    // the renderer can offer to forget it); `remove(path)` → the new list.
-    // Main keeps the list and only opens a path that is ON it.
-    recent: {
-      list: () => ipcRenderer.invoke("desk:recent:list"),
-      open: (filePath) => ipcRenderer.invoke("desk:recent:open", filePath),
-      remove: (filePath) => ipcRenderer.invoke("desk:recent:remove", filePath),
-    },
   },
 
-  // ── Projects: tabbed desktops (Feature 240) ───────────────────────────────
-  // A project is a workspace of desktops, one `.chiphippo` per tab, kept in an
-  // app-managed folder. Every call names a project by ID and a tab by its
-  // id/file — never by path: main alone turns those into a location inside the
-  // projects root. A project is UNNAMED until `saveAs` (`createUntitled` asks
-  // for nothing), which throws NAME_TAKEN when that name is already saved —
-  // the renderer then asks for a different one.
+  // ── Projects & desktops ────────────────────────────────────────────────────
+  // THERE IS ALWAYS A PROJECT: `boot()` answers with one on every launch (the
+  // unsaved one in the app's saves folder, else the most recent saved one,
+  // else a brand-new one). The renderer holds the project meta — name,
+  // description, location, tabs — and hands it back to be written; main owns
+  // the saves folder, the native dialogs, the recent list, and which paths may
+  // be touched at all (anything inside the saves folder, plus whatever a
+  // dialog or an opened project established).
+  //
+  // `save(meta, path, dropDefault)` writes the project file: a null path means
+  // "no location yet" → the fixed default project file, and `dropDefault`
+  // clears that slot when a project moves out of it. `choosePath` only PICKS a
+  // location — the native save dialog asks about replacing an existing file
+  // itself, so a refusal comes back as a cancel (null); `dropTemp` deletes an
+  // app-minted GUID desktop file once the desktop has a real home.
   project: {
-    list: () => ipcRenderer.invoke("project:list"),
-    createUntitled: (firstDoc) =>
-      ipcRenderer.invoke("project:create-untitled", firstDoc),
-    saveAs: (id, name) => ipcRenderer.invoke("project:save-as", id, name),
-    load: (id) => ipcRenderer.invoke("project:load", id),
-    saveMeta: (id, meta) => ipcRenderer.invoke("project:save-meta", id, meta),
-    addTab: (id) => ipcRenderer.invoke("project:add-tab", id),
-    removeTab: (id, tabId) =>
-      ipcRenderer.invoke("project:remove-tab", id, tabId),
-    readTab: (id, file) => ipcRenderer.invoke("project:read-tab", id, file),
-    writeTab: (id, file, doc) =>
-      ipcRenderer.invoke("project:write-tab", id, file, doc),
+    boot: () => ipcRenderer.invoke("project:boot"),
+    create: () => ipcRenderer.invoke("project:new"),
+    open: () => ipcRenderer.invoke("project:open"),
+    openRecent: (filePath) =>
+      ipcRenderer.invoke("project:open-recent", filePath),
+    save: (meta, filePath, dropDefault) =>
+      ipcRenderer.invoke("project:save", meta, filePath, dropDefault),
+    addTab: (meta) => ipcRenderer.invoke("project:add-tab", meta),
+    // The guard's "Discard": clean up after the desktops added since the
+    // project was last saved — their app-kept files, which nothing will point
+    // at once the project is reloaded. Resolves to the files removed.
+    discard: (meta, filePath) =>
+      ipcRenderer.invoke("project:discard", meta, filePath),
+    readTab: (filePath) => ipcRenderer.invoke("project:read-tab", filePath),
+    writeTab: (filePath, doc) =>
+      ipcRenderer.invoke("project:write-tab", filePath, doc),
+    choosePath: (kind, name, current) =>
+      ipcRenderer.invoke("project:choose-path", kind, name, current),
+    dropTemp: (filePath) => ipcRenderer.invoke("project:drop-temp", filePath),
+    // The MRU list behind Projects ▸ Open Recent: `list()` → the last 10
+    // project paths, most recent first; `remove(path)` → the new list.
+    // Opening one is `openRecent` above (main allowlists against this list).
+    recent: {
+      list: () => ipcRenderer.invoke("project:recent:list"),
+      remove: (filePath) =>
+        ipcRenderer.invoke("project:recent:remove", filePath),
+    },
     // A tab switch swaps the whole desk — ask main to close the pinout /
     // memory windows that were pointing at the desk being left behind.
     closeAuxWindows: () => ipcRenderer.invoke("project:closed-aux"),

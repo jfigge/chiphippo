@@ -17,8 +17,8 @@
 // desk-doc.js — the in-memory desk document: the boards on the desk, the
 // components seated on them (chips now; discrete parts in Feature 60), and —
 // from Feature 50 — wires. Pure model, DOM-free; the renderer holds one
-// instance, mutates it through these methods, and autosaves the serialized
-// form over window.chiphippo.desk.save.
+// instance, mutates it through these methods, and writes the serialized form
+// to the active desktop's own file over window.chiphippo.project.writeTab.
 //
 // A "board" is one STRIP — a pin-board or a power rail (board-types.js). A
 // breadboard is a KIT of strips placed together in one action and joined by a

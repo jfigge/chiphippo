@@ -2668,6 +2668,16 @@ textarea.annotation-editor {
   color: var(--color-subtext);
 }
 
+/* A read-only Location: a file path, so it gets the stacked full-width row
+   (STACKED_TYPES) and breaks anywhere rather than stretching the dialog. An
+   object with no location yet shows an empty line, not a placeholder. */
+.properties-value--path {
+  min-height: 18px;
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+
 /* The shared color picker (components/color-swatches.js): clickable circle
    swatches over the same --color-wire-<name> tokens the wire tool and the
    LED body use. Used by both the Part Properties dialog's "color" field and

@@ -71,7 +71,7 @@ export const PAGES = [
   { slug: "logic-analyzer", title: "Logic Analyzer & Timing" },
   { slug: "build-guide", title: "Build Guide, Wiring List & BOM" },
   { slug: "schematic-view", title: "Schematic View" },
-  { slug: "files-and-undo", title: "Files, Autosave & Undo" },
+  { slug: "files-and-undo", title: "Files, Saving & Undo" },
   { slug: "projects-and-desktops", title: "Projects & Desktops" },
   { slug: "settings", title: "Settings" },
   { slug: "keyboard-shortcuts", title: "Keyboard Shortcuts" },

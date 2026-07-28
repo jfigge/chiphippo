@@ -41,18 +41,11 @@ import { PopupManager } from "./popup-manager.js";
 import { AboutDialog } from "./components/about-dialog.js";
 import { SettingsDialog } from "./components/settings-dialog.js";
 import { KeyboardShortcutsDialog } from "./components/keyboard-shortcuts.js";
-import {
-  BUS_WIDTHS as BUS_WIDTH_PRESETS,
-  DeskDoc,
-  emptyDocument,
-} from "./model/desk-doc.js";
+import { BUS_WIDTHS as BUS_WIDTH_PRESETS, DeskDoc } from "./model/desk-doc.js";
 import { partDef } from "./catalog/index.js";
 
 /** How long after the last camera change to persist the viewport. */
 const VIEWPORT_SAVE_DEBOUNCE_MS = 500;
-
-/** How long after the last document change to persist the desk. */
-const DOC_SAVE_DEBOUNCE_MS = 1000;
 
 /** Speed-selector labels (keyed by the SimController multiplier). */
 const SPEED_LABELS = { 0.25: "×¼", 1: "×1", 4: "×4" };
@@ -132,12 +125,6 @@ const SAVE_AS_SVG =
   '<polyline points="7 3 7 8 13 8"/>' +
   '<path d="M19 13a1.8 1.8 0 0 1 2.5 2.5L16.5 20.5l-3.5 1 1-3.5z"/></svg>';
 
-/** Open Recent — a clock, for the recently-opened list. */
-const RECENT_SVG =
-  ICON_SVG_OPEN +
-  '<circle cx="12" cy="12" r="9"/>' +
-  '<polyline points="12 7 12 12 16 14"/></svg>';
-
 /** Connectivity-probe icon for the Probe toolbar toggle: a probe tip landing
  * on a digital rising edge, with a cable trailing off the handle end. */
 const PROBE_SVG =
@@ -179,13 +166,6 @@ const ZOOM_OUT_SVG =
   '<circle cx="11" cy="11" r="8"/>' +
   '<line x1="21" y1="21" x2="16.65" y2="16.65"/>' +
   '<line x1="8" y1="11" x2="14" y2="11"/></svg>';
-
-/** Projects icon for the toolbar button that opens the projects menu — two
- * stacked desktops, the front one lifted off the back (Feature 240). */
-const PROJECTS_SVG =
-  ICON_SVG_OPEN +
-  '<rect x="3" y="7" width="13" height="10" rx="2"/>' +
-  '<path d="M8 7V5a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2h-2"/></svg>';
 
 /** Build-guide (clipboard-list) icon for the Guide toolbar toggle. */
 const GUIDE_SVG =
@@ -412,13 +392,14 @@ async function init() {
     console.error("[renderer] settings:get failed:", err);
   }
 
-  // Projects (Feature 240): when a project was open last session, its active
-  // desktop is the document the desk starts on. Read BEFORE anything mounts,
-  // so the app opens straight onto that desktop instead of painting the plain
-  // working desk and swapping it out a moment later.
+  // Projects: there is ALWAYS one, and its active desktop is the document the
+  // desk starts on. Read BEFORE anything mounts, so the app opens straight
+  // onto that desktop instead of painting a blank desk and swapping it out a
+  // moment later. Main decides which project that is (the unsaved one in its
+  // saves folder, the most recently used one, or a brand-new one).
   let projectBoot = null;
   try {
-    projectBoot = await ProjectWorkspace.boot(bridge, settings);
+    projectBoot = await ProjectWorkspace.boot(bridge);
   } catch (err) {
     console.error("[renderer] project boot failed:", err);
   }
@@ -431,35 +412,17 @@ async function init() {
   app.append(buildHeader(), main);
   let workspace = null;
 
-  // Desk document (Feature 20): the persisted boards/components/wires, held
-  // in one in-memory DeskDoc. Anything that mutates it dispatches a global
-  // `chiphippo:doc-changed` CustomEvent, which triggers the debounced
-  // whole-document autosave below. Feature 30 renders it.
-  let deskDoc;
-  try {
-    deskDoc = new DeskDoc(projectBoot?.doc ?? (await bridge.desk.load()));
-  } catch (err) {
-    console.error("[renderer] desk:load failed:", err);
-    deskDoc = new DeskDoc(null);
-  }
+  // Desk document (Feature 20): the boards/components/wires of the desktop on
+  // screen, held in one in-memory DeskDoc. Anything that mutates it dispatches
+  // a global `chiphippo:doc-changed` CustomEvent. The desk is a DESKTOP of the
+  // open project, and a desktop is a document: it is written to its own file
+  // deliberately (⌘S), never autosaved, so the • on its tab is what says the
+  // work is only on screen.
+  const deskDoc = new DeskDoc(projectBoot?.doc ?? null);
   // ONE netlist cache shared by every consumer (probe, sim, build guide,
   // schematic): a topology change rebuilds the partition once instead of once
   // per consumer, and they can never tint/route/list from divergent nets.
   const netlistCache = new NetlistCache(deskDoc);
-  let docSaveTimer = null;
-  window.addEventListener("chiphippo:doc-changed", () => {
-    // With a project open the desk belongs to a TAB, not to the working
-    // document: each desktop has its own file and is saved deliberately (⌘S),
-    // so autosaving it over desk.json would quietly replace the desk the user
-    // left behind before opening the project.
-    if (workspace?.isOpen) return;
-    clearTimeout(docSaveTimer);
-    docSaveTimer = setTimeout(() => {
-      bridge.desk
-        .save(deskDoc.toJSON())
-        .catch((err) => console.error("[renderer] desk:save failed:", err));
-    }, DOC_SAVE_DEBOUNCE_MS);
-  });
 
   // Debounced viewport persistence: every pan step emits a change, so writes
   // coalesce until the camera settles.
@@ -473,173 +436,61 @@ async function init() {
     }, VIEWPORT_SAVE_DEBOUNCE_MS);
   };
 
-  // ── Schematic files (New / Open / Save / Save As) ─────────────────────────
-  // The working document is desk.json (autosaved above); these map it to a
-  // named file. New/Open rewrite the working file and reload so the whole
-  // scene rebuilds cleanly (the app's one guaranteed teardown path); Save /
-  // Save As just write a file. Dirty is the live document vs `savedDocJson` —
-  // the snapshot as last written to the file (persisted so it survives the
-  // reload and across sessions).
-  let currentFile = settings.currentFile ?? null;
-  let savedDocJson = settings.savedDoc ?? JSON.stringify(deskDoc.toJSON());
-  const fileName = (p) => (p ? p.split(/[\\/]/).pop() : "Untitled");
-  const isDirty = () => JSON.stringify(deskDoc.toJSON()) !== savedDocJson;
-  const updateTitle = () => {
-    // With a project open the desk IS a tab, so the title names the project
-    // and the desktop rather than the working file (Feature 240).
-    if (workspace?.isOpen) {
-      const tab = workspace.activeTab;
-      const marker = workspace.activeDirty ? "• " : "";
-      document.title = `${marker}${workspace.projectName} — ${tab?.name ?? ""} — Chip Hippo`;
-      return;
-    }
-    document.title = `${isDirty() ? "• " : ""}${fileName(currentFile)} — Chip Hippo`;
-  };
-  updateTitle();
-  window.addEventListener("chiphippo:doc-changed", updateTitle);
-
-  const confirmDiscard = () =>
-    new Promise((resolve) => {
-      if (!isDirty()) return resolve(true);
-      PopupManager.confirm({
-        title: "Discard unsaved changes?",
-        message: `"${fileName(currentFile)}" has unsaved changes that will be lost.`,
-        confirmLabel: "Discard",
-        confirmClass: "btn--danger",
-        onConfirm: () => resolve(true),
-        onCancel: () => resolve(false),
-      });
-    });
-
-  // New/Open write the working desk.json + the new baseline, then reload.
-  // Cancel the debounced autosaves first so the OLD in-memory doc can't land
-  // on the freshly written working file after the awaits.
-  const reloadWith = async (doc, file) => {
-    clearTimeout(docSaveTimer);
-    clearTimeout(saveTimer);
-    await bridge.desk.save(doc);
-    await bridge.settings.set({
-      currentFile: file,
-      savedDoc: JSON.stringify(doc),
-    });
-    window.location.reload();
-  };
-
-  // With a project open, every file action targets the ACTIVE TAB and its own
-  // file inside the project folder — no reload (the tab machinery swaps the
-  // document in place) and no dialog (the tab already owns a path).
-  const newSchematic = async () => {
-    if (workspace?.isOpen) return workspace.newActiveTab();
-    if (!(await confirmDiscard())) return;
-    await reloadWith(emptyDocument(), null);
-  };
-
-  const openSchematic = async () => {
-    if (workspace?.isOpen) return workspace.loadIntoActiveTab();
-    if (!(await confirmDiscard())) return;
-    let res;
-    try {
-      res = await bridge.desk.open();
-    } catch (err) {
-      console.error("[renderer] desk:open failed:", err);
-      return;
-    }
-    if (!res) return; // cancelled
-    await reloadWith(res.doc, res.path);
-  };
-
-  // ── Open Recent (the MRU list) ────────────────────────────────────────────
-  // Main owns the list (settings.recentFiles) and only opens a path that is
-  // ON it. A file that has since been moved or deleted comes back as
-  // `code: "missing"`, and the user is offered its removal right there — the
-  // one moment they can be sure the entry is dead.
-  const forgetRecent = (filePath) =>
-    bridge.desk.recent
-      .remove(filePath)
-      .catch((err) => console.error("[renderer] desk:recent:remove:", err));
-
-  const offerForgetRecent = (filePath) =>
-    PopupManager.confirm({
-      title: "That file is no longer there",
-      message: `"${fileName(filePath)}" could not be found. Remove it from the recent files?`,
-      note: filePath,
-      confirmLabel: "Remove",
-      confirmClass: "btn--danger",
-      onConfirm: () => forgetRecent(filePath),
-    });
-
-  const openRecentSchematic = async (filePath) => {
-    let res;
-    try {
-      res = await bridge.desk.recent.open(filePath);
-    } catch (err) {
-      console.error("[renderer] desk:recent:open failed:", err);
-      return;
-    }
-    if (!res?.ok) {
-      if (res?.code === "missing") return offerForgetRecent(filePath);
-      return PopupManager.notify({
-        title: "Could not open that file",
-        message: res?.error ?? "The file could not be read.",
-      });
-    }
-    // Inside a project the desk is a TAB: the file is read INTO the active
-    // desktop (no reload, no re-pointing of the working file) exactly as
-    // Load… does there.
-    if (workspace?.isOpen) return workspace.loadDocIntoActiveTab(res.doc);
-    if (!(await confirmDiscard())) return;
-    await reloadWith(res.doc, res.path);
-  };
-
+  // ── Desktop files (New / Open / Save / Save As) ───────────────────────────
+  // Every one of them acts on the ACTIVE DESKTOP of the open project, which
+  // owns its own file: New empties it, Open loads a design into it (and the
+  // desktop adopts that file), Save writes it back to its Location, Save As
+  // gives it a new one. The workspace owns all of it — this is only the wiring
+  // from the toolbar and the native File menu, which dispatch the same events.
+  const newSchematic = () => workspace?.newActiveTab();
+  const openSchematic = () => workspace?.loadIntoActiveTab();
   // Both report whether the desktop actually reached a file — `false` for a
   // cancelled dialog or a failed write — so a caller that saves on the user's
   // behalf before doing something destructive can abort instead of discarding
   // work that was never written.
-  const saveAsSchematic = async () => {
-    const json = deskDoc.toJSON();
-    let path;
-    try {
-      path = await bridge.desk.saveAs(json, currentFile);
-    } catch (err) {
-      console.error("[renderer] desk:save-as failed:", err);
-      return false;
-    }
-    // Cancelled: nothing is written and no baseline moves, so the desktop
-    // stays exactly as dirty as it was.
-    if (!path) return false;
-    // Inside a project, Save As EXPORTS a copy of the desktop: the tab keeps
-    // its own file, so the working-file bookkeeping (and the dirty baseline)
-    // must not be re-pointed at the exported path.
-    if (workspace?.isOpen) return true;
-    currentFile = path;
-    savedDocJson = JSON.stringify(json);
-    await bridge.settings.set({ currentFile: path, savedDoc: savedDocJson });
-    updateTitle();
-    return true;
-  };
+  const saveSchematic = async () => (await workspace?.saveActiveTab()) === true;
+  const saveAsSchematic = async () =>
+    (await workspace?.saveActiveTabAs()) === true;
 
-  const saveSchematic = async () => {
-    if (workspace?.isOpen) return workspace.saveActiveTab();
-    // An Untitled desktop has no file to write to, so Save IS Save As: ask for
-    // one. Cancel that dialog and nothing is saved — the desk stays dirty.
-    if (!currentFile) return saveAsSchematic();
-    const json = deskDoc.toJSON();
-    try {
-      await bridge.desk.write(currentFile, json);
-    } catch (err) {
-      console.error("[renderer] desk:write failed:", err);
-      return false;
-    }
-    savedDocJson = JSON.stringify(json);
-    await bridge.settings.set({ savedDoc: savedDocJson });
-    updateTitle();
-    return true;
+  // The window title names the project and the desktop on screen. Its •
+  // leads the whole thing, so it stands for anything unsaved: the desktop's
+  // own design (the same marker its tab carries) or the project's list of
+  // desktops and their names.
+  const updateTitle = () => {
+    const tab = workspace?.activeTab;
+    const marker =
+      workspace?.activeDirty || workspace?.projectDirty ? "• " : "";
+    const project = workspace?.projectName || "Untitled";
+    document.title = tab
+      ? `${marker}${project} — ${tab.name} — Chip Hippo`
+      : "Chip Hippo";
   };
+  updateTitle();
+  window.addEventListener("chiphippo:doc-changed", updateTitle);
 
   window.addEventListener("chiphippo:schematic-new", newSchematic);
   window.addEventListener("chiphippo:schematic-open", openSchematic);
   window.addEventListener("chiphippo:schematic-save", saveSchematic);
   window.addEventListener("chiphippo:schematic-save-as", saveAsSchematic);
+
+  // ── The Project menu ──────────────────────────────────────────────────────
+  // The application's Project menu (main.js `buildAppMenu`) pushes one event
+  // per item; every one of them is the workspace's to answer, since it is the
+  // only side that knows what is open and what is unsaved. Open Recent is the
+  // one that carries a payload — the project file its item stands for.
+  for (const [event, run] of [
+    ["chiphippo:project-new", () => workspace?.newProject()],
+    ["chiphippo:project-open", () => workspace?.loadProject()],
+    ["chiphippo:project-save", () => workspace?.saveProject()],
+    ["chiphippo:project-save-as", () => workspace?.saveProjectAs()],
+    ["chiphippo:project-properties", () => workspace?.editProjectProperties()],
+    ["chiphippo:project-add-tab", () => workspace?.addTab()],
+  ]) {
+    window.addEventListener(event, () => void run());
+  }
+  window.addEventListener("chiphippo:project-open-recent", (e) => {
+    if (e.detail) void workspace?.openRecentProject(e.detail);
+  });
 
   // ── Closing the window / quitting ────────────────────────────────────────
   // Main prevents the close and asks HERE, because the unsaved state and the
@@ -652,7 +503,7 @@ async function init() {
   window.addEventListener("chiphippo:confirm-close", async () => {
     let ok = true;
     try {
-      ok = workspace ? await workspace.confirmClose() : await confirmDiscard();
+      ok = workspace ? await workspace.confirmClose() : true;
     } catch (err) {
       console.error("[renderer] close guard failed:", err);
     }
@@ -730,8 +581,8 @@ async function init() {
   const buildGuide = new BuildGuide(main, {
     deskDoc,
     netlist: netlistCache,
-    // The exported BOM file is named after the current schematic (no ext).
-    schemaName: () => fileName(currentFile).replace(/\.chiphippo$/i, ""),
+    // The exported BOM file is named after the desktop it was derived from.
+    schemaName: () => workspace?.activeTab?.name ?? "desktop",
     onVisibilityChange: (visible) => {
       guideBtn?.classList.toggle("toolbar-btn--active", visible);
       guideBtn?.setAttribute("aria-pressed", String(visible));
@@ -951,13 +802,6 @@ async function init() {
     title: `Open… (${accel("O")}) — load a saved design`,
     onClick: () => openSchematic(),
   });
-  const fileRecentBtn = fileBtn({
-    icon: RECENT_SVG,
-    label: "Open Recent",
-    title: "Open Recent — reopen one of the last designs you saved or opened",
-    haspopup: true,
-    onClick: () => openRecentMenu(),
-  });
   const fileSaveBtn = fileBtn({
     icon: SAVE_SVG,
     label: "Save",
@@ -974,54 +818,14 @@ async function init() {
   const filePill = el(
     "div",
     { class: "toolbar-pill", role: "group", "aria-label": "File" },
-    [fileNewBtn, fileOpenBtn, fileRecentBtn, fileSaveBtn, fileSaveAsBtn],
+    [fileNewBtn, fileOpenBtn, fileSaveBtn, fileSaveAsBtn],
   );
 
-  /** The MRU list, dropped under the Open Recent segment — the one file action
-      that can't be a single button. Fetched BEFORE the menu opens, so the items
-      are plain and static; no async menu. */
-  const openRecentMenu = async () => {
-    let recents = [];
-    try {
-      recents = (await bridge.desk.recent.list()) ?? [];
-    } catch (err) {
-      console.error("[renderer] desk:recent:list failed:", err);
-    }
-    const rect = fileRecentBtn.getBoundingClientRect();
-    PopupManager.menu({
-      x: rect.left,
-      y: rect.bottom + 4,
-      emptyLabel: "No recent files",
-      items: recents.map((filePath) => ({
-        label: fileName(filePath),
-        title: filePath,
-        onSelect: () => openRecentSchematic(filePath),
-        // The × drops the entry from the list without opening it (and without
-        // closing the menu).
-        onRemove: () => forgetRecent(filePath),
-        removeLabel: `Remove ${fileName(filePath)} from recent files`,
-      })),
-    });
-  };
-
-  // Projects (Feature 240): New / Load a project of desktops, or add another
-  // desktop to it. The menu itself lives on the workspace — it is the only
-  // thing that knows whether a project is open.
-  const projectsBtn = el("button", {
-    class: "toolbar-icon-btn",
-    type: "button",
-    "aria-label": "Projects",
-    "aria-haspopup": "menu",
-    title: "Projects — work a design out on one desktop, use it on another",
-    onClick: () => {
-      const rect = projectsBtn.getBoundingClientRect();
-      workspace?.openMenu({ x: rect.left, y: rect.bottom + 4 });
-    },
-  });
-  projectsBtn.innerHTML = PROJECTS_SVG;
-
+  // PROJECT actions have no toolbar button at all: New / Load / Open Recent /
+  // Save / Save As / Properties / Add Desktop are the application's **Project**
+  // menu (main.js `buildAppMenu`), which pushes to the workspace exactly as the
+  // File menu pushes here.
   toolbar.append(
-    projectsBtn,
     filePill,
     el("span", { class: "toolbar-divider", "aria-hidden": "true" }),
   );
@@ -1290,9 +1094,10 @@ async function init() {
     onTransportChange,
   });
 
-  // Projects & tabbed desktops (Feature 240): owns which desktop is on the
-  // desk, swapping the document (and its camera, baseline, and undo history)
-  // through the controller's load path. Built here because it needs the sim to
+  // Projects & tabbed desktops: owns which desktop is on the desk, swapping
+  // the document (and its camera, baseline, and undo history) through the
+  // controller's load path, and every project/desktop file action behind the
+  // Projects menu and the File pill. Built here because it needs the sim to
   // stop across a switch.
   workspace = new ProjectWorkspace({
     bridge,
@@ -1304,15 +1109,8 @@ async function init() {
     setCamera: (camera) => deskView.setCamera(camera),
     boot: projectBoot,
     onActiveChange: () => updateTitle(),
-    // With no project open the strip still shows the working desk, and its
-    // dirty marker is the working file's — the same test the title makes.
-    isWorkingDirty: () => isDirty(),
-    // …and starting a project takes the screen from that desk, so the guard
-    // can offer to save it first. Save owns the Save-As dialog when the desk
-    // has no file yet, and reports whether it actually landed.
-    saveWorking: () => saveSchematic(),
   });
-  updateTitle(); // the boot-restored project names the window
+  updateTitle(); // the booted project names the window
 
   // Memory-inspector coordinator (Feature 190): bridges inspector windows to the
   // document, the controller (programmer + undo/redo), and the running image.
