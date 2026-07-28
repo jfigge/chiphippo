@@ -259,6 +259,11 @@ test("the system prompt states the rules the compiler actually enforces", () => 
   assert.match(prompt, /at most one net/);
   assert.match(prompt, /Two outputs must not share a net/);
   assert.match(prompt, /series resistor/);
+  // The compiler adds the pull itself, so the netlist must not: a spec that
+  // brings its own gets it, and one that does not gets one anyway — but a
+  // model that thinks a bare switch DRIVES its input writes a circuit whose
+  // every test fails, which is the round this sentence exists to save.
+  assert.match(prompt, /Switches do NOT need a pull resistor/);
   assert.ok(prompt.length > 4000, "over the prompt-cache minimum");
 });
 

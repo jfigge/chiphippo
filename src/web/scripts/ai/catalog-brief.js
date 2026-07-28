@@ -114,9 +114,17 @@ design.
   reports it as a conflict.
 * Do not leave a used input floating. A floating TTL input reads HIGH, which
   is a real circuit's most convincing lie; tie it to VCC or GND explicitly.
+  An input fed from a switch is covered by the pull rule below.
 * LEDs and displays do NOT need you to add a series resistor — the compiler
   interposes one, because an unlimited LED burns rather than lights. Do not
   put one in the netlist.
+* Switches do NOT need a pull resistor either, and you should not add one. A
+  switch is a passive CONTACT, not a source: closed it joins its two pins,
+  open it joins nothing. So wire one side of each position to \`VCC\` and the
+  other to the input net, and the compiler adds the pull-down that holds that
+  input LOW while the switch is open (wire it to \`GND\` instead and it adds a
+  pull-up). A closed switch then reads HIGH — which is exactly what a \`1\` in
+  a \`set\` bit string means.
 * Rotated two-lead parts (a bare \`led\`/\`resistor\` placed at an angle) cannot
   be expressed as a netlist. Use the DIP-bodied displays (\`bar8\`, \`seg8cc\`)
   and switch banks (\`sw-dip8\`) instead.

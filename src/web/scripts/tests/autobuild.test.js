@@ -603,3 +603,136 @@ test("a geometry refusal aborts; a spec mistake goes back for repair", () => {
     for (const e of out.errors) assert.equal(e.kind, "abort");
   }
 });
+
+// ── The pull rule ───────────────────────────────────────────────────────────
+//
+// A switch is a CONTACT, not a source. The failure this guards against is the
+// quiet one: a design that compiles, seats, settles, and then does nothing when
+// you flip a switch, because the input it feeds was floating half the time and
+// a floating TTL input already reads HIGH.
+
+// 74LS04 input pin NUMBERS, in order: its pins alternate input/output, so a
+// reader that walked 1..4 would sample three outputs and call the circuit
+// broken. The netlist below names them (`1A`…`4A`); only address lookups,
+// which are by number, need this.
+const INV_IN = [1, 3, 5, 9];
+
+/** One `sw-dip4` position per gate input, tied to `rail` on its far side. */
+function switchedInputs(rail, count = 4) {
+  const nets = [
+    {
+      name: "SRC",
+      members: [...Array(count)].map((_, i) => `SW.${i + 1}B`).concat(rail),
+    },
+  ];
+  for (let i = 0; i < count; i++) {
+    nets.push({ name: `IN${i}`, members: [`SW.${i + 1}A`, `U1.${i + 1}A`] });
+  }
+  return {
+    parts: [
+      { id: "U1", ref: "74LS04" },
+      { id: "SW", ref: "sw-dip4" },
+    ],
+    nets,
+  };
+}
+
+test("a switched input is pulled to the far rail's opposite, so it is never floating", () => {
+  const { out, doc, netlist } = build(switchedInputs("VCC"));
+  assert.ok(
+    out.warnings.some((w) => w.code === "PULL_INSERTED"),
+    "the insertion is reported, not silent",
+  );
+  // Four pulls to one rail come as ONE bussed pack, the way a person builds it.
+  const added = doc.components.filter((c) => c.ref === "rnet9");
+  assert.equal(added.length, 1, "one resistor network, not four resistors");
+
+  const r = settle({ document: doc, netlist });
+  assert.deepEqual(r.warnings, [], "the pull never fights the supply");
+  for (let i = 0; i < 4; i++) {
+    const a = pinAddress(doc, out.partMap.get("U1"), INV_IN[i]);
+    assert.equal(
+      r.netLevels.get(netlist.netOfPoint.get(a)),
+      L,
+      `input ${i} is held LOW while its switch is open`,
+    );
+  }
+});
+
+test("closing a pulled switch still wins — a supply beats a resistor", () => {
+  const { out, doc } = build(switchedInputs("VCC"));
+  const sw = doc.components.find((c) => c.id === out.partMap.get("SW"));
+  sw.params = { ...sw.params, states: [true, false, true, false] };
+  const netlist = buildNetlist(doc);
+  const r = settle({ document: doc, netlist });
+  const level = (i) =>
+    r.netLevels.get(
+      netlist.netOfPoint.get(pinAddress(doc, out.partMap.get("U1"), INV_IN[i])),
+    );
+  assert.deepEqual([level(0), level(1), level(2), level(3)], [H, L, H, L]);
+});
+
+test("a GND-side switch gets a pull-UP, because the rail is read not assumed", () => {
+  // The whole reason the far side is inspected: guessing "pull-down" here would
+  // hold every input LOW and the switch would do nothing.
+  const { out, doc, netlist } = build(switchedInputs("GND"));
+  assert.equal(doc.components.filter((c) => c.ref === "rnet9").length, 1);
+  const r = settle({ document: doc, netlist });
+  for (let i = 0; i < 4; i++) {
+    const a = pinAddress(doc, out.partMap.get("U1"), INV_IN[i]);
+    assert.equal(r.netLevels.get(netlist.netOfPoint.get(a)), H, `input ${i}`);
+  }
+});
+
+test("a lone pull is a resistor, not nine columns of resistor network", () => {
+  const { doc } = build(switchedInputs("VCC", 1));
+  assert.equal(doc.components.filter((c) => c.ref === "rnet9").length, 0);
+  assert.equal(doc.components.filter((c) => c.ref === "resistor").length, 1);
+});
+
+test("a spec that brought its own pull-downs does not get a second set", () => {
+  // ADDER_SPEC wires two rnet9 packs itself. Adding parallel pulls would be
+  // harmless electrically and wrong in every other way — extra parts, extra
+  // columns, and a circuit that no longer matches what was asked for.
+  const { out, doc } = build(ADDER_SPEC);
+  assert.equal(
+    doc.components.filter((c) => c.ref === "rnet9").length,
+    2,
+    "the two the spec declared, and no more",
+  );
+  assert.ok(!out.warnings.some((w) => w.code === "PULL_INSERTED"));
+});
+
+test("a driven net is never pulled — a switch is not the only thing on a wire", () => {
+  const out = compileNetlist({
+    parts: [
+      { id: "U1", ref: "74LS04" },
+      { id: "SW", ref: "sw-dip1" },
+    ],
+    nets: [
+      { name: "SRC", members: ["SW.1B", "VCC"] },
+      // U1.1Y drives this net; the switch merely joins it to the supply, which
+      // is a bad idea but the SPEC's bad idea, and L5 reports it as a short.
+      { name: "OUT", members: ["SW.1A", "U1.1Y", "U1.2A"] },
+    ],
+  });
+  assert.equal(out.ok, true);
+  assert.ok(!out.warnings.some((w) => w.code === "PULL_INSERTED"));
+});
+
+test("a switch reaching no rail is left alone, for L6 to report", () => {
+  // Two switches in series reach a supply through nothing the compiler can see.
+  // Guessing a rail here would invent an intent the spec never stated.
+  const out = compileNetlist({
+    parts: [
+      { id: "U1", ref: "74LS04" },
+      { id: "SW", ref: "sw-dip2" },
+    ],
+    nets: [
+      { name: "MID", members: ["SW.1A", "SW.2B"] },
+      { name: "IN", members: ["SW.2A", "U1.1A"] },
+    ],
+  });
+  assert.equal(out.ok, true);
+  assert.ok(!out.warnings.some((w) => w.code === "PULL_INSERTED"));
+});

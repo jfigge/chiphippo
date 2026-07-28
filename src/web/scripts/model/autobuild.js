@@ -32,6 +32,9 @@
 //     strongly driven nets burns rather than lights. That is physics, not
 //     logic, so the netlist should not have to mention it: when a display's
 //     common leg heads for a rail, a series resistor is interposed.
+//   * SWITCHES NEED A PULL. A switch is a contact, not a source: open, it
+//     joins nothing, so an input fed from one FLOATS half the time. Same
+//     class of fact as the LED's resistor, and handled the same way.
 //   * ONE COLUMN-HALF, ONE PART. Enforced by column-allocator.js.
 //
 // The output is a plain document so it can go straight through
@@ -265,6 +268,46 @@ function spanOf(def) {
   return 0;
 }
 
+// Probe params for "every contact this part can ever close" / "every contact it
+// can ever open". Each def normalizes its own, so one raw object covers every
+// switch shape in the catalog: a bank's `states`, a slide switch's `pos`, a
+// latching button's `on`. 64 is simply more positions than any bank has.
+const ALL_CLOSED = Object.freeze({
+  states: Object.freeze(Array.from({ length: 64 }, () => true)),
+  pos: "2",
+  on: true,
+});
+const ALL_OPEN = Object.freeze({
+  states: Object.freeze([]),
+  pos: "1",
+  on: false,
+});
+
+/**
+ * The pin PAIRS a part can bridge in any position — its contacts.
+ *
+ * `internalBridges` answers which pairs conduct RIGHT NOW, and a switch at rest
+ * usually conducts nothing; what the pull rule needs is which pairs it could
+ * EVER join. There is deliberately no second catalog field saying so — one fact
+ * declared twice drifts — so the def's own function is probed at both extremes
+ * of its own parameter domain, plus a button held down (its state, not its
+ * params). A def that bridges nothing in any of them is not a switch, which is
+ * the right answer for an LED, a resistor and every chip.
+ */
+function contactPairs(def) {
+  if (typeof def?.internalBridges !== "function") return [];
+  const pairs = new Map();
+  for (const raw of [ALL_CLOSED, ALL_OPEN]) {
+    const params = def.normalizeParams ? def.normalizeParams(raw) : raw;
+    for (const state of [{ pressed: true }, {}]) {
+      for (const [a, b] of def.internalBridges(params, state) ?? []) {
+        pairs.set(a < b ? `${a}:${b}` : `${b}:${a}`, [a, b]);
+      }
+    }
+  }
+  return [...pairs.values()];
+}
+
 /** The pin every segment of a display shares — its common anode or cathode. */
 function commonLeg(def) {
   if (def.segments?.length) {
@@ -331,6 +374,91 @@ function assemble(resolved, title) {
         `Added a series resistor between ${p.id} and ${leg.rail} — an LED ` +
         `across two strongly driven nets burns instead of lighting.`,
     });
+  }
+
+  // ── The pull rule. A SWITCH DRIVES NOTHING.
+  //
+  // A switch is a CONTACT: closed it joins its two pins, open it joins nothing
+  // at all. So an input fed from a switch that reaches VCC is HIGH while the
+  // switch is closed and FLOATING while it is open — and a floating TTL input
+  // reads HIGH too (sim/levels.js). The result is a switch that appears to do
+  // nothing, which is the most convincing wrong answer this compiler can
+  // produce; the honest version, an undriven net, is what L6 rejects.
+  //
+  // That is the same class of fact as the LED's series resistor above: bench
+  // physics the netlist should not have to state, and the reason every real
+  // build of this circuit has a resistor pack next to the switch bank. So a
+  // signal net whose only path to a supply runs through a contact gets a pull
+  // to the OPPOSITE rail.
+  //
+  // Which rail is DERIVED, never assumed: it is read off the far side of the
+  // contact, so a GND-side switch gets a pull-UP and an active-high one a
+  // pull-DOWN. A net whose switches disagree — or whose far side reaches no
+  // rail at all — is left exactly as declared, for L6 to report against the
+  // spec rather than for this to guess at.
+  const netOfPin = new Map();
+  for (const net of nets) {
+    for (const q of net.pins) {
+      if (q.kind === "pin") netOfPin.set(`${q.partId}.${q.pin}`, net);
+    }
+  }
+  const roleOf = (q) =>
+    parts.get(q.partId).def.pins?.find((r) => r.n === q.pin)?.role;
+  const pulls = []; // { net, rail } — the rail the pull reaches
+  for (const net of [...nets]) {
+    // Already tied to a supply, already driven, or already pulled: a spec that
+    // brought its own resistor network keeps it, rather than getting a second
+    // one in parallel doing the same job.
+    if (net.rail) continue;
+    if (net.pins.some((q) => roleOf(q) === "output")) continue;
+    if (net.pins.some((q) => parts.get(q.partId).def.weakBridges)) continue;
+    const reaches = new Set();
+    for (const q of net.pins) {
+      if (q.kind !== "pin") continue;
+      for (const [a, b] of contactPairs(parts.get(q.partId).def)) {
+        const far = a === q.pin ? b : b === q.pin ? a : null;
+        if (far == null) continue;
+        const rail = netOfPin.get(`${q.partId}.${far}`)?.rail;
+        if (rail) reaches.add(rail);
+      }
+    }
+    if (reaches.size !== 1) continue;
+    pulls.push({ net, rail: [...reaches][0] === "VCC" ? "GND" : "VCC" });
+  }
+
+  // Materialize them in packs, exactly as a person would: one bussed `rnet9`
+  // per eight pulls to the same rail (its COM is the shared bus), and a bare
+  // resistor when a lone signal would otherwise burn nine columns on one
+  // element. Both are weak couplers, so a closed switch's supply still wins.
+  let pullSeq = 0;
+  for (const rail of ["GND", "VCC"]) {
+    const group = pulls.filter((p) => p.rail === rail).map((p) => p.net);
+    for (let i = 0; i < group.length; i += 8) {
+      const chunk = group.slice(i, i + 8);
+      const lone = chunk.length === 1;
+      const ref = lone ? "resistor" : "rnet9";
+      let rid = `PULL${++pullSeq}`;
+      while (parts.has(rid)) rid = `PULL${++pullSeq}`;
+      const part = { id: rid, ref, def: partDef(ref), label: null };
+      parts.set(rid, part);
+      seated.push(part);
+      chunk.forEach((net, k) => {
+        net.pins.push({ partId: rid, kind: "pin", pin: lone ? 1 : k + 1 });
+      });
+      nets.push({
+        name: `${rid}_${rail}`,
+        pins: [{ partId: rid, kind: "pin", pin: lone ? 2 : 9 }],
+        rail,
+      });
+      warnings.push({
+        code: "PULL_INSERTED",
+        message:
+          `Added a ${rail === "GND" ? "pull-down" : "pull-up"} on ` +
+          `${chunk.map((n) => `"${n.name}"`).join(", ")} — a switch joins its ` +
+          `pins, it does not drive them, so an open one leaves the input ` +
+          `floating.`,
+      });
+    }
   }
 
   // ── Boards. One pin-board's worth of columns per kit; spill to more kits.

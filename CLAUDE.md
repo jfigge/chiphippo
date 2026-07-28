@@ -587,7 +587,18 @@ Electron main process (src/app/main.js)
   wire. `sim/junction.js` (the LED burn rule, moved out of the view because it
   is PHYSICS, not logic) is why the compiler interposes a series resistor
   itself: an unlimited LED burns rather than lights, so a netlist must not have
-  to mention one.
+  to mention one. The **pull rule** is the same fact one step over: a switch
+  is a CONTACT, not a source, so an input fed from one floats whenever the
+  switch is open — and a floating TTL input reads HIGH, which is a switch that
+  appears to do nothing. So a signal net with no rail, no output driver and no
+  resistor of its own, whose only path to a supply runs through a contact, gets
+  a pull to the OPPOSITE rail (`contactPairs` probes each def's own
+  `internalBridges` at both extremes of its parameter domain rather than adding
+  a second catalog field that could drift). Which rail is READ off the far side
+  of the contact, never assumed — a GND-side switch gets a pull-UP — and a net
+  whose contacts disagree, or reach no rail at all, is left exactly as declared
+  for L6 to report. Pulls to one rail pack eight to an `rnet9`; a lone one is a
+  bare `resistor`.
   - **Compile** (`autobuild.js`): `compileNetlist(spec)` → `{document,
     warnings, partMap, nets}`. Power is DERIVED — every def declares
     `role:"vcc"|"gnd"`, so a spec never lists a power pin; the compiler wires
