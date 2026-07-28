@@ -33,18 +33,58 @@
 // constant.
 
 /**
+ * A `{ target: value }` map, expressed as a LIST of pairs.
+ *
+ * Structured outputs cannot express an open-ended map. `additionalProperties`
+ * must be `false` on every object, so the natural spelling — "any key, string
+ * value" — is rejected outright with `For 'object' type, 'additionalProperties:
+ * object' is not supported`. A pair list says the same thing in a closed shape,
+ * and `ai/generate.js` folds it back into the map the verifier reads, so the
+ * spec shape everything downstream sees is unchanged.
+ */
+const PIN_MAP = Object.freeze({
+  type: "array",
+  items: {
+    type: "object",
+    properties: {
+      target: { type: "string" },
+      value: { type: "string" },
+    },
+    required: ["target", "value"],
+    additionalProperties: false,
+  },
+});
+
+/**
+ * An optional field.
+ *
+ * The STRICTEST reading of structured outputs — OpenAI's `strict: true` — has
+ * no notion of an omitted property: every key in `properties` must also be in
+ * `required`. So "optional" is spelled as "required, but may be null", and
+ * `ai/generate.js` drops the nulls again. Anthropic does not demand this, but a
+ * schema that satisfies the stricter reader satisfies both, and one shared
+ * schema is the whole point of this file.
+ */
+const optional = (schema) =>
+  Object.freeze({ anyOf: [schema, { type: "null" }] });
+
+/**
  * A JSON Schema the model must fill. Structured outputs make a malformed
  * netlist a non-event — the schema is enforced server-side — so the renderer's
  * own validation is about MEANING (does this circuit work?) rather than shape.
  *
- * Kept deliberately flat: no recursion, `additionalProperties: false`
- * throughout, and no array-length constraints (those are checked in the
- * compiler, which can say *which* net is wrong).
+ * Kept deliberately flat: no recursion, and no array-length constraints (those
+ * are checked in the compiler, which can say *which* net is wrong). Two
+ * invariants are load-bearing rather than stylistic, and `ai-client.test.js`
+ * walks this whole object to hold both: `additionalProperties: false` on every
+ * object, and `required` naming every property. Break either and the provider
+ * rejects the REQUEST — which surfaces to the user as "the provider refused",
+ * with nothing pointing back at this file.
  */
 const NETLIST_SCHEMA = Object.freeze({
   type: "object",
   properties: {
-    title: { type: "string" },
+    title: optional({ type: "string" }),
     parts: {
       type: "array",
       items: {
@@ -52,9 +92,9 @@ const NETLIST_SCHEMA = Object.freeze({
         properties: {
           id: { type: "string" },
           ref: { type: "string" },
-          label: { type: "string" },
+          label: optional({ type: "string" }),
         },
-        required: ["id", "ref"],
+        required: ["id", "ref", "label"],
         additionalProperties: false,
       },
     },
@@ -70,22 +110,22 @@ const NETLIST_SCHEMA = Object.freeze({
         additionalProperties: false,
       },
     },
-    tests: {
+    tests: optional({
       type: "array",
       items: {
         type: "object",
         properties: {
           name: { type: "string" },
-          set: { type: "object", additionalProperties: { type: "string" } },
-          edges: { type: "integer" },
-          expect: { type: "object", additionalProperties: { type: "string" } },
+          set: optional(PIN_MAP),
+          edges: optional({ type: "integer" }),
+          expect: PIN_MAP,
         },
-        required: ["name", "expect"],
+        required: ["name", "set", "edges", "expect"],
         additionalProperties: false,
       },
-    },
+    }),
   },
-  required: ["parts", "nets"],
+  required: ["title", "parts", "nets", "tests"],
   additionalProperties: false,
 });
 

@@ -73,6 +73,38 @@ test("the Anthropic request carries the key, version and schema", () => {
   }
 });
 
+test("the schema stays legal under the strictest provider", () => {
+  // Both invariants are 400s at REQUEST time, not bad output: an open-ended
+  // map ("additionalProperties: object is not supported") on Anthropic, and a
+  // property missing from `required` under OpenAI's strict mode. Either reads
+  // to the user as "the provider refused the request", with nothing pointing
+  // back at this schema — so walk the whole tree rather than trusting the one
+  // leaf that broke last time.
+  const walk = (node, path) => {
+    if (!node || typeof node !== "object") return;
+    if (node.type === "object") {
+      assert.equal(
+        node.additionalProperties,
+        false,
+        `${path}: additionalProperties must be false, got ${JSON.stringify(
+          node.additionalProperties,
+        )}`,
+      );
+      assert.deepEqual(
+        [...(node.required ?? [])].sort(),
+        Object.keys(node.properties ?? {}).sort(),
+        `${path}: every property must be required (optional = anyOf null)`,
+      );
+    }
+    for (const [key, child] of Object.entries(node.properties ?? {})) {
+      walk(child, `${path}.${key}`);
+    }
+    if (node.items) walk(node.items, `${path}[]`);
+    (node.anyOf ?? []).forEach((child, i) => walk(child, `${path}|${i}`));
+  };
+  walk(NETLIST_SCHEMA, "netlist");
+});
+
 test("a trailing slash on the base URL does not double up", () => {
   const p = providerFor("anthropic");
   const { url } = p.buildRequest({

@@ -30,6 +30,74 @@ import { compileNetlist, designClipOf } from "../model/autobuild.js";
 import { verifyBuild } from "../model/autobuild-verify.js";
 
 /**
+ * Fold a `[{target, value}]` pair list back into the `{target: value}` map the
+ * verifier reads.
+ *
+ * The wire schema cannot express an open-ended map (see `PIN_MAP` in
+ * `app/ai/providers.js`), so a schema-constrained model emits pairs. A local
+ * OpenAI-compatible server may ignore the schema entirely and emit the map
+ * directly, so both are accepted — and the map is the only shape that leaves
+ * this module, which is why nothing downstream knows about the pair list.
+ *
+ * @returns the map, or undefined for anything unusable (an absent `set` must
+ *   stay absent rather than become an empty object the verifier then "applies").
+ */
+function pinMap(value) {
+  if (Array.isArray(value)) {
+    const out = {};
+    for (const pair of value) {
+      if (!pair || typeof pair !== "object") continue;
+      if (typeof pair.target !== "string" || !pair.target) continue;
+      out[pair.target] = String(pair.value ?? "");
+    }
+    return out;
+  }
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? value
+    : undefined;
+}
+
+/**
+ * Strip null-valued keys, everywhere.
+ *
+ * Strict structured outputs cannot express an omitted property — every key must
+ * appear in `required` — so "absent" is spelled as an explicit `null` (see
+ * `optional` in `app/ai/providers.js`). Dropping them here means the spec that
+ * leaves this module has exactly the shape it always had: a part with no label
+ * has no `label` key, not a null one. Nothing in a netlist is legitimately
+ * null, so this needs no exceptions.
+ */
+function dropNulls(value) {
+  if (Array.isArray(value)) return value.map(dropNulls);
+  if (!value || typeof value !== "object") return value;
+  const out = {};
+  for (const [key, v] of Object.entries(value)) {
+    if (v === null) continue;
+    out[key] = dropNulls(v);
+  }
+  return out;
+}
+
+/** A spec with every test's `set`/`expect` folded to map form. */
+function foldPinMaps(spec) {
+  if (!Array.isArray(spec.tests)) return spec;
+  return {
+    ...spec,
+    tests: spec.tests.map((t) => {
+      if (!t || typeof t !== "object") return t;
+      const out = { ...t };
+      for (const key of ["set", "expect"]) {
+        if (!(key in out)) continue;
+        const folded = pinMap(out[key]);
+        if (folded === undefined) delete out[key];
+        else out[key] = folded;
+      }
+      return out;
+    }),
+  };
+}
+
+/**
  * Pull the netlist object out of a reply.
  *
  * Structured output means the reply SHOULD be bare JSON, but a local
@@ -63,7 +131,7 @@ export function parseNetlist(text) {
     if (!spec || typeof spec !== "object" || Array.isArray(spec)) {
       throw new Error("not an object");
     }
-    return { ok: true, spec };
+    return { ok: true, spec: foldPinMaps(dropNulls(spec)) };
   } catch (err) {
     return {
       ok: false,

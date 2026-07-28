@@ -80,6 +80,60 @@ test("a fenced block or a leading sentence is tolerated", () => {
   }
 });
 
+test("a test's set/expect pair list folds back into a map", () => {
+  // The wire schema cannot express an open-ended map, so a constrained model
+  // emits pairs. Nothing past this seam should ever see the list form.
+  const r = parseNetlist(
+    JSON.stringify({
+      parts: [],
+      nets: [],
+      tests: [
+        {
+          name: "sum",
+          set: [{ target: "SW1", value: "1010" }],
+          expect: [
+            { target: "BAR", value: "0101" },
+            { target: "D1.A", value: "H" },
+          ],
+        },
+      ],
+    }),
+  );
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.spec.tests[0].set, { SW1: "1010" });
+  assert.deepEqual(r.spec.tests[0].expect, { BAR: "0101", "D1.A": "H" });
+});
+
+test("a server that ignores the schema and emits maps still parses", () => {
+  const r = parseNetlist(
+    JSON.stringify({
+      parts: [],
+      nets: [],
+      tests: [{ name: "sum", expect: { BAR: "0101" } }],
+    }),
+  );
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.spec.tests[0].expect, { BAR: "0101" });
+  assert.equal("set" in r.spec.tests[0], false, "an absent set stays absent");
+});
+
+test("a null optional reads as absent, not as a value", () => {
+  // Strict mode has no "omit" — every key is required, so the model spells an
+  // absent field as null. Downstream contracts never learned about that.
+  const r = parseNetlist(
+    JSON.stringify({
+      title: null,
+      parts: [{ id: "U1", ref: "74LS08", label: null }],
+      nets: [],
+      tests: [{ name: "t", set: null, edges: null, expect: [] }],
+    }),
+  );
+  assert.equal(r.ok, true);
+  assert.deepEqual(r.spec.parts[0], { id: "U1", ref: "74LS08" });
+  assert.equal("title" in r.spec, false);
+  assert.deepEqual(r.spec.tests[0], { name: "t", expect: {} });
+});
+
 test("a reply with no object in it fails rather than being guessed at", () => {
   for (const text of ["", "   ", "I cannot build that.", "[1,2,3]", null]) {
     const r = parseNetlist(text);

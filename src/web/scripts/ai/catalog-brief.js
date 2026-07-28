@@ -87,7 +87,9 @@ design.
   "title": "8-bit adder with carry",
   "parts": [{ "id": "U1", "ref": "74LS283", "label": "low nibble" }],
   "nets":  [{ "name": "A0", "members": ["U1.A1", "SW1.1A"] }],
-  "tests": [{ "name": "181 + 78", "set": {...}, "expect": {...} }]
+  "tests": [{ "name": "181 + 78",
+              "set":    [{ "target": "SW1", "value": "10110101" }],
+              "expect": [{ "target": "BAR", "value": "10000001" }] }]
 }
 
 * \`ref\` must be a catalog id from the list below, spelled exactly.
@@ -96,6 +98,8 @@ design.
   listed, case-sensitive) or its NUMBER. Use \`<partId>.#7\` to force the
   number when a chip has a pin *named* like a number.
 * \`VCC\` and \`GND\` are reserved NET NAMES that bind to the power rails.
+* An optional field (\`title\`, \`label\`, \`set\`, \`edges\`, \`tests\`) may be
+  \`null\` — the app reads null as absent.
 
 # Rules the compiler enforces
 
@@ -122,10 +126,12 @@ showing the user anything. It is the only check that catches a circuit that is
 built exactly as you described and still computes the wrong thing — an
 inverted LSB order, most often. Always include at least two.
 
-* \`set\` maps a switch-bank part id to a bit string, LSB FIRST.
+* \`set\` and \`expect\` are LISTS of \`{ "target": …, "value": … }\` pairs, not
+  objects — an object with arbitrary keys cannot be schema-constrained.
+* \`set\` drives a switch-bank part id with a bit string, LSB FIRST.
 * \`edges\` is how many clock edges to apply first (omit for combinational).
-* \`expect\` maps a part id to a bit string (LSB first), or a single pin
-  (\`"D1.A": "H"\`) to a level.
+* \`expect\` targets a part id with a bit string (LSB first), or a single pin
+  (\`{ "target": "D1.A", "value": "H" }\`) with a level.
 
 # Output
 
