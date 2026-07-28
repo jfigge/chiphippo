@@ -273,6 +273,54 @@ function addressOfMember(doc, out, member) {
     ?.address;
 }
 
+test("a switch thrown to a rail is the switch WORKING, not a short", () => {
+  // The regression the demo corpus found on its first run. An SPDT resting on
+  // +5 V is the ordinary way to source a logic input — every one of the 52
+  // bench demos does it — and it makes the conducting netlist report the signal
+  // net AS the rail, which is true. L4 compared that against the declared
+  // topology and called it NET_SHORTED_TO_RAIL, so EVERY slide-switch design
+  // aborted as a compiler fault: `abort` class, so no repair round, and nothing
+  // the model could have written differently.
+  const spec = {
+    parts: [
+      { id: "U1", ref: "74LS04" },
+      { id: "SW", ref: "sw-slide" },
+    ],
+    nets: [
+      { name: "SRC", members: ["SW.1", "VCC"] },
+      { name: "A", members: ["SW.C", "U1.1A"] },
+    ],
+  };
+  const out = compileNetlist(spec);
+  assert.equal(out.ok, true);
+  const v = verifyBuild(out, spec);
+  assert.equal(
+    v.ok,
+    true,
+    v.faults.map((f) => `${f.code}: ${f.message}`).join("; "),
+  );
+
+  // …and the check it was doing is still done: a REAL short still aborts.
+  const shorted = {
+    parts: [{ id: "U1", ref: "74LS04" }],
+    nets: [
+      { name: "A", members: ["U1.1A", "U1.2A"] },
+      { name: "B", members: ["U1.3A", "U1.4A"] },
+    ],
+  };
+  const s = compileNetlist(shorted);
+  assert.equal(s.ok, true);
+  // Drop every wire: two declared nets now collapse onto their own pins alone,
+  // which is a SEVERED net — the other half of the same comparison.
+  s.document.wires = [];
+  const sv = verifyBuild(s, shorted);
+  assert.equal(sv.ok, false);
+  assert.ok(
+    sv.faults.some((f) => f.code === "NET_SEVERED" && f.kind === "abort"),
+    `expected NET_SEVERED, got ${sv.faults.map((f) => f.code).join(", ")}`,
+  );
+});
+
 test("L3b catches a part that does not seat", () => {
   const out = compile(COUNTER);
   // Shove a chip off the end of its board. Counts still match; the loader is

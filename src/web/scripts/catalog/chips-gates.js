@@ -366,6 +366,11 @@ export const CHIPS_GATES = Object.freeze([
       "Four independent buffers with active-low output-enable (tri-state).",
     group: "Buffer",
     package: "DIP-14",
+    // ACTIVE-LOW output enable(s): one per buffer — each gates its own Y. Declared so the AI
+    // prompt can name them and the verifier can say "tie pin N low"
+    // instead of "nothing drives it"; proved against the evaluator
+    // in tests/chips-tristate.test.js.
+    outputEnable: Object.freeze([1, 4, 10, 13]),
     pins: [
       input(1, "1G"),
       input(2, "1A"),

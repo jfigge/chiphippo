@@ -618,7 +618,16 @@ Electron main process (src/app/main.js)
     retry loop needs. **L4 is the important one**: it compares the DECLARED net
     partition against the one `buildNetlist` DERIVES, which is the only thing
     that catches an accidental short (counts match, it loads clean, it settles,
-    and it computes something else). **L7 is the highest-value one**: the spec
+    and it computes something else). It derives that partition from **WIRING
+    ALONE** — `buildNetlist(doc, …, {bridges: false})`, every switch treated as
+    an open contact however it is set — because a switch thrown to a rail
+    genuinely does make its signal net that rail, and holding THAT against the
+    declared topology condemned the most ordinary input stage there is: L4
+    aborted every slide-switch design as `NET_SHORTED_TO_RAIL`, a fault the
+    model could neither cause nor repair. A severed net and two parts sharing a
+    column-half are both facts about wiring, which no switch position can hide
+    or invent; a real electrical short is L5's to report, from the conducting
+    netlist it keeps. **L7 is the highest-value one**: the spec
     states its own acceptance tests and the app RUNS them, so a perfectly-built
     adder with its bit order reversed is caught. Bit ordering in `set`/`expect`
     is PINNED by a test, not inferred. L5 settles with every clock idle-low —
@@ -636,8 +645,51 @@ Electron main process (src/app/main.js)
     `buildCatalogCard()` projects `PALETTE_DEFS` (ids, packages, exact
     `n:name` pin lists — `JSON.stringify` would silently drop the FUNCTION
     fields). A new 74xx part reaches the model the moment it lands in
-    `catalog/`. ~3.7 K tokens, over the prompt-cache minimum, so a repair round
-    re-reads rather than re-pays.
+    `catalog/`. ~4.4 K tokens, over the prompt-cache minimum, so a repair round
+    re-reads rather than re-pays. Each pin carries a one-character MARK
+    (`pinMark`): `>` an output, `<>` bidirectional, `!` an **active-low output
+    enable**. The first exists because "two outputs must not share a net" is a
+    rule the compiler ENFORCES, and a bare `n:name` list left the model
+    guessing which pins those were. The `!` is the one fact in the catalog
+    nothing else reveals — the pins are called `1G`, `OE`, `M`, `N`, with no
+    bar anywhere — and getting it wrong is silent: the part floats every
+    output it gates, an unwired enable reads HIGH, so a datasheet-correct
+    netlist comes up dead.
+  - **Tri-state is DECLARED, then PROVED** — `outputEnable: [pins]` on the nine
+    parts that have one, plus `tests/chips-tristate.test.js`. It is not derived
+    because the catalog expresses tri-state FOUR ways and only one is
+    introspectable: a `BUF3` unit ('125, '244), a `COMB` unit returning `Z`
+    ('240, '245, '257), a sequential `outputs()` returning `Z` ('173, '533,
+    '573, '595), and a memory image. So the test probes the REAL evaluator:
+    every declared pin must float an output that drives when it is LOW (which
+    also pins the active-low convention), and a behavioural sweep requires any
+    part that floats an output to declare one — that sweep is what found the
+    **'595**, whose title never says "tri-state". `74LS245`'s `DIR` is
+    deliberately NOT an enable (it picks which side drives; only `OE` stops
+    both), and the Memory/Interface groups are out of the sweep because a CPU
+    or PIA floats its bus on a PROTOCOL and its ports on a direction register,
+    neither of which is a pin anyone can tie. **L6** uses the same data: a net
+    that floats with a tri-state driver on it reports `OUTPUTS_DISABLED`,
+    naming the chip, the pin and "tie it to GND", instead of `NET_NOT_DRIVEN`
+    sending a repair round hunting for a wire that was never missing.
+  - **The compiler's corpus is the DEMO BENCHES** (`tests/autobuild-corpus.test.js`).
+    `scripts/demo-specs.mjs` describes 52 circuits — one per 74xx part in the
+    catalog, each proved through the real engine by `make demos` against a
+    datasheet truth table — and it is ALREADY coordinate-free (`inputs`,
+    `ties`, `links`, `clock`, `leds`), so a forward mapping turns each into a
+    netlist spec. Every one is compiled and verified on `make test`, with no
+    API key and no network: before this the compiler had ONE real circuit
+    holding it honest, and its bugs arrived one paid-for bad build at a time.
+    Deliberately a forward map from the SPECS, never a reverse-compile of the
+    committed documents — a document's derived netlist includes whatever its
+    switches are currently conducting, so reverse-compiling would promote a
+    transient switch position into declared topology (which is exactly the
+    confusion L4 above used to make). Two exception lists carry what the DSL
+    cannot say, each named and argued rather than skipped: the `route` demo
+    (a switch that STEERS a signal rather than sourcing it) and the seven
+    tri-state parts whose demo hangs an enable on a switch — a spec cannot
+    state a switch's RESTING position, and the answer is to tie the enable,
+    which the prompt now says and the corpus proves builds clean.
   - **The renderer makes NO network call** — its CSP is `default-src 'self'`
     with no `connect-src`, so the whole outbound path is main's, exactly as
     filesystem I/O is. `ai/client.js` uses Node's global `fetch` (no runtime

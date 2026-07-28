@@ -40,8 +40,29 @@ import { PALETTE_DEFS } from "../catalog/index.js";
  * chips distinguish inputs from outputs by case alone (74LS47's `A`–`D` inputs
  * versus its `a`–`g` segment outputs).
  */
+/**
+ * The one-character suffix a pin carries, or "" for a plain input.
+ *
+ * The card used to give the model a bare `n:name` list, which left it guessing
+ * at two things it is then held to. Which pins are OUTPUTS decides whether a
+ * net is a bus fight, and it is a rule the compiler enforces — asking the model
+ * to obey it while withholding the answer is a trap. Which pin is an active-LOW
+ * OUTPUT ENABLE is worse than a guess: nothing in the pin name says so (they
+ * are called `1G`, `OE`, `M`, `N`, with no bar), the part floats every output
+ * until it is tied LOW, and a floating enable reads HIGH — so the honest,
+ * datasheet-following design comes up dead and the model has no way to see why.
+ */
+function pinMark(def, p) {
+  if (def.outputEnable?.includes(p.n)) return "!";
+  if (p.role === "output") return ">";
+  if (p.role === "io") return "<>";
+  return "";
+}
+
 function partLine(def) {
-  const pins = (def.pins ?? []).map((p) => `${p.n}:${p.name}`).join(" ");
+  const pins = (def.pins ?? [])
+    .map((p) => `${p.n}:${p.name}${pinMark(def, p)}`)
+    .join(" ");
   const terminals = (def.terminals ?? []).map((t) => t.id).join(" ");
   const shape = def.package ? ` [${def.package}]` : "";
   const points = pins || terminals || "—";
@@ -115,9 +136,18 @@ design.
 * Do not leave a used input floating. A floating TTL input reads HIGH, which
   is a real circuit's most convincing lie; tie it to VCC or GND explicitly.
   An input fed from a switch is covered by the pull rule below.
+* Every \`!\` pin in the catalog needs wiring, and almost always to \`GND\`. It
+  is an active-LOW output enable: leave it out and the part's outputs float,
+  the circuit does nothing, and the fault you get back will name the pin.
+  Do NOT put one on a switch — a netlist cannot state which way a switch
+  RESTS, so the part comes up disabled. A circuit that only works after the
+  user finds the right switch is not one worth handing over.
 * LEDs and displays do NOT need you to add a series resistor — the compiler
   interposes one, because an unlimited LED burns rather than lights. Do not
   put one in the netlist.
+* An ACTIVE-LOW output gets its LED the other way up: anode to \`VCC\`, cathode
+  to the pin, so a LIT lamp still means "asserted". An active-high output takes
+  the usual way round — anode to the pin, cathode to \`GND\`.
 * Switches do NOT need a pull resistor either, and you should not add one. A
   switch is a passive CONTACT, not a source: closed it joins its two pins,
   open it joins nothing. So wire one side of each position to \`VCC\` and the
@@ -150,6 +180,19 @@ the catalog below, say so in \`title\` and return no parts rather than
 substituting a chip that does not exist.
 
 # Catalog
+
+Every part, then its pins as \`number:name\`. A pin's suffix says what it is:
+
+    (none)  an input
+    >       an output — it DRIVES. Two of these must never share a net.
+    <>      bidirectional: it drives in one direction and listens in the other.
+    !       an ACTIVE-LOW OUTPUT ENABLE — the one thing here you could not
+            guess from a pin name. The outputs it gates FLOAT, driving nothing
+            at all, until it is LOW; left unwired it reads HIGH, so the part
+            comes up dead and the netlist looks fine. Tie it to \`GND\` unless
+            the design genuinely takes the part off a shared bus. Where a part
+            has two, each may gate its own half (\`74LS244\`) or both may gate
+            everything (\`74LS173\`) — so wire EVERY \`!\` pin the part has.
 `.trim();
 
 /**

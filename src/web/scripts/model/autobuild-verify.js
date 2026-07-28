@@ -185,8 +185,23 @@ export function* verifySteps(compiled, spec = null) {
   const netlist = buildNetlist(doc);
 
   // ── L4: declared vs derived. ──────────────────────────────────────────────
+  //
+  // Compared by WIRING ALONE (`bridges: false`), because that is the only
+  // partition the compiler is answerable for. A switch is a contact: throw one
+  // to a rail — the ordinary way to source a logic input, and what all 52 demo
+  // benches do — and the conducting netlist quite correctly reports its signal
+  // net AS the rail. Held against the declared topology that reads as
+  // NET_SHORTED_TO_RAIL, so every slide-switch design aborted as a compiler
+  // fault the model could neither cause nor fix. What L4 exists to catch is a
+  // severed net or two parts sharing a column-half, and both are facts about
+  // wiring, which no switch position can hide or invent.
+  //
+  // L5 onwards keeps the CONDUCTING netlist: a real short is an electrical
+  // fact, and `settle` reports it as one.
+  const wiring = buildNetlist(doc, new Map(), { bridges: false });
   const addressOf = pinAddresser(doc, compiled.partMap);
-  const netIdOfDeclared = new Map(); // declared name → derived netId
+  const netIdOfDeclared = new Map(); // declared name → conducting netId (L6)
+  const wiredIdOfDeclared = new Map(); // declared name → wiring-only netId (L4)
   for (const net of compiled.nets ?? []) {
     const ids = new Set();
     let unreachable = false;
@@ -196,9 +211,13 @@ export function* verifySteps(compiled, spec = null) {
         unreachable = true;
         continue;
       }
-      const id = netlist.netOfPoint.get(address);
+      const id = wiring.netOfPoint.get(address);
       if (id == null) unreachable = true;
       else ids.add(id);
+      const live = netlist.netOfPoint.get(address);
+      if (live != null && !netIdOfDeclared.has(net.name)) {
+        netIdOfDeclared.set(net.name, live);
+      }
     }
     if (unreachable) {
       faults.push(
@@ -222,21 +241,21 @@ export function* verifySteps(compiled, spec = null) {
       );
       continue;
     }
-    if (ids.size === 1) netIdOfDeclared.set(net.name, [...ids][0]);
+    if (ids.size === 1) wiredIdOfDeclared.set(net.name, [...ids][0]);
   }
   // Two DIFFERENT declared nets landing on one derived net is a short. Rail
   // nets legitimately merge (every VCC member is one net), so only non-rail
   // nets are held apart — and held apart from the rails too.
   const railIds = new Set();
   for (const net of compiled.nets ?? []) {
-    if (net.rail && netIdOfDeclared.has(net.name)) {
-      railIds.add(netIdOfDeclared.get(net.name));
+    if (net.rail && wiredIdOfDeclared.has(net.name)) {
+      railIds.add(wiredIdOfDeclared.get(net.name));
     }
   }
   const seen = new Map(); // derived netId → declared name
   for (const net of compiled.nets ?? []) {
     if (net.rail) continue;
-    const id = netIdOfDeclared.get(net.name);
+    const id = wiredIdOfDeclared.get(net.name);
     if (id == null) continue;
     if (railIds.has(id)) {
       faults.push(
@@ -312,22 +331,42 @@ export function* verifySteps(compiled, spec = null) {
   yield { gate: "L6", label: "Checking for undriven nets…" };
 
   // ── L6: a declared signal net that never resolves is a dangling input. ────
+  //
+  // …unless there IS a driver on it and the driver is switched off, which is a
+  // different mistake with a different fix. "Nothing drives it" sent the model
+  // hunting for a missing wire when what the design needed was one pin tied
+  // LOW — and since a floating enable reads HIGH, the omission is invisible in
+  // the netlist it wrote. So a net whose only driver is a tri-state output
+  // names the enable pin instead, which is a fault a repair round can act on.
+  const disabledBy = tristateEnables(doc, netlist, first);
   for (const net of compiled.nets ?? []) {
     if (net.rail) continue;
     const id = netIdOfDeclared.get(net.name);
     if (id == null) continue;
     const level = first.netLevels.get(id);
-    if (level === undefined || level === "Z" || level === "X") {
-      faults.push(
-        fault(
-          "L6",
-          REPAIR,
-          "NET_NOT_DRIVEN",
-          `Net "${net.name}" settles to ${level ?? "nothing"} — nothing drives it.`,
-          { net: net.name },
-        ),
-      );
-    }
+    if (level !== undefined && level !== "Z" && level !== "X") continue;
+    const off = disabledBy.get(id);
+    faults.push(
+      off
+        ? fault(
+            "L6",
+            REPAIR,
+            "OUTPUTS_DISABLED",
+            `Net "${net.name}" floats because ${off.chip}'s outputs are ` +
+              `switched off: its active-LOW output ` +
+              `${off.plural ? "enables" : "enable"} ${off.pin} ` +
+              `${off.plural ? "are" : "is"} ${off.level}. ` +
+              `Tie ${off.plural ? "them" : "it"} to GND.`,
+            { net: net.name, chip: off.chip, pin: off.pin },
+          )
+        : fault(
+            "L6",
+            REPAIR,
+            "NET_NOT_DRIVEN",
+            `Net "${net.name}" settles to ${level ?? "nothing"} — nothing drives it.`,
+            { net: net.name },
+          ),
+    );
   }
 
   // ── L7: the spec's own acceptance tests. ─────────────────────────────────
@@ -357,6 +396,59 @@ export function* verifySteps(compiled, spec = null) {
 function describeWarning(w) {
   const where = w.chip ?? w.net ?? "";
   return `${w.type}${where ? ` at ${where}` : ""}`;
+}
+
+/**
+ * Which floating nets are floating because a tri-state part is switched off.
+ *
+ * A part declaring `outputEnable` (catalog data, proved against the evaluator
+ * in tests/chips-tristate.test.js) drives nothing at all while any of those
+ * pins is not LOW — and an unwired one reads HIGH, so the usual way to arrive
+ * here is to have forgotten the pin entirely. Every enable that is not asserted
+ * is named, because a part with two of them ('244) may be missing either or
+ * both, and "tie this pin low" is only useful if it is the right pin.
+ *
+ * @returns {Map<string, {chip:string, pin:string, level:string}>} netId → blame
+ */
+function tristateEnables(doc, netlist, settled) {
+  const out = new Map();
+  for (const comp of doc.components ?? []) {
+    const def = partDef(comp.ref);
+    if (!def?.outputEnable?.length) continue;
+    const pins = partPinAddresses(doc, comp);
+    if (!pins) continue;
+    const addressOf = new Map(pins.map((p) => [p.pin, p.address]));
+    const levelOf = (pin) => {
+      const address = addressOf.get(pin);
+      if (address == null) return undefined;
+      return settled.netLevels.get(netlist.netOfPoint.get(address));
+    };
+    // An enable at Z is an enable nobody wired: it reads HIGH, and the part is
+    // off. Anything but a solid L leaves the outputs floating.
+    const off = def.outputEnable.filter((n) => levelOf(n) !== L);
+    if (!off.length) continue;
+    const name = (n) => {
+      const p = def.pins.find((q) => q.n === n);
+      return `${p?.name ?? n} (pin ${n})`;
+    };
+    const unwired = off.every(
+      (n) => levelOf(n) === undefined || levelOf(n) === "Z",
+    );
+    const blame = {
+      chip: `${comp.id} (${comp.ref})`,
+      pin: off.map(name).join(" and "),
+      plural: off.length > 1,
+      level: unwired ? "not wired at all" : "HIGH",
+    };
+    for (const p of pins) {
+      const role = def.pins.find((q) => q.n === p.pin)?.role;
+      if (role !== "output" && role !== "io") continue;
+      if (p.address == null) continue;
+      const netId = netlist.netOfPoint.get(p.address);
+      if (netId != null && !out.has(netId)) out.set(netId, blame);
+    }
+  }
+  return out;
 }
 
 /** Resolve a compiled net member to a desk address. */

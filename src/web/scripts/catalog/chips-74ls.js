@@ -283,6 +283,11 @@ export const CHIPS_74LS = Object.freeze([
       "load), and an active-HIGH clear.",
     group: "Register",
     package: "DIP-16",
+    // ACTIVE-LOW output enable(s): M and N: either one HIGH floats all four Q. Declared so the AI
+    // prompt can name them and the verifier can say "tie pin N low"
+    // instead of "nothing drives it"; proved against the evaluator
+    // in tests/chips-tristate.test.js.
+    outputEnable: Object.freeze([1, 2]),
     pins: [
       input(1, "M"),
       input(2, "N"),
@@ -543,6 +548,11 @@ export const CHIPS_74LS = Object.freeze([
       "3-state outputs).",
     group: "Multiplexer",
     package: "DIP-16",
+    // ACTIVE-LOW output enable(s): OE floats all four Y. Declared so the AI
+    // prompt can name them and the verifier can say "tie pin N low"
+    // instead of "nothing drives it"; proved against the evaluator
+    // in tests/chips-tristate.test.js.
+    outputEnable: Object.freeze([15]),
     pins: [
       input(1, "S"),
       input(2, "1A"),
@@ -584,6 +594,11 @@ export const CHIPS_74LS = Object.freeze([
       "active-low output-enable; inputs and outputs on opposite package sides.",
     group: "Buffer",
     package: "DIP-20",
+    // ACTIVE-LOW output enable(s): 1G gates 1Y1-4, 2G gates 2Y1-4. Declared so the AI
+    // prompt can name them and the verifier can say "tie pin N low"
+    // instead of "nothing drives it"; proved against the evaluator
+    // in tests/chips-tristate.test.js.
+    outputEnable: Object.freeze([1, 19]),
     pins: [
       input(1, "1G"),
       input(2, "1A1"),
@@ -639,6 +654,11 @@ export const CHIPS_74LS = Object.freeze([
       "active-low output-enable; inputs and outputs on opposite package sides.",
     group: "Buffer",
     package: "DIP-20",
+    // ACTIVE-LOW output enable(s): 1G gates 1Y1-4, 2G gates 2Y1-4. Declared so the AI
+    // prompt can name them and the verifier can say "tie pin N low"
+    // instead of "nothing drives it"; proved against the evaluator
+    // in tests/chips-tristate.test.js.
+    outputEnable: Object.freeze([1, 19]),
     pins: [
       input(1, "1G"),
       input(2, "1A1"),
@@ -684,6 +704,11 @@ export const CHIPS_74LS = Object.freeze([
       "the catalog.",
     group: "Buffer",
     package: "DIP-20",
+    // ACTIVE-LOW output enable(s): OE floats BOTH ports; DIR only picks which one drives. Declared so the AI
+    // prompt can name them and the verifier can say "tie pin N low"
+    // instead of "nothing drives it"; proved against the evaluator
+    // in tests/chips-tristate.test.js.
+    outputEnable: Object.freeze([19]),
     pins: [
       input(1, "DIR"),
       io(2, "A1"),
@@ -1057,6 +1082,11 @@ export const CHIPS_74LS = Object.freeze([
       "active-low output-enable floats the pins.",
     group: "Latch",
     package: "DIP-20",
+    // ACTIVE-LOW output enable(s): OE floats all eight Q. Declared so the AI
+    // prompt can name them and the verifier can say "tie pin N low"
+    // instead of "nothing drives it"; proved against the evaluator
+    // in tests/chips-tristate.test.js.
+    outputEnable: Object.freeze([1]),
     pins: [
       input(1, "OE"),
       output(2, "1Q̄"),
@@ -1096,6 +1126,11 @@ export const CHIPS_74LS = Object.freeze([
       "latch-enable LE is transparent while high; active-low output-enable.",
     group: "Latch",
     package: "DIP-20",
+    // ACTIVE-LOW output enable(s): OE floats all eight Q. Declared so the AI
+    // prompt can name them and the verifier can say "tie pin N low"
+    // instead of "nothing drives it"; proved against the evaluator
+    // in tests/chips-tristate.test.js.
+    outputEnable: Object.freeze([1]),
     pins: [
       input(1, "OE"),
       input(2, "1D"),
@@ -1140,6 +1175,12 @@ export const CHIPS_74LS = Object.freeze([
       "a serial output (QH′) for daisy-chaining.",
     group: "Shift register",
     package: "DIP-16",
+    // ACTIVE-LOW output enable: OE floats the eight LATCHED outputs.
+    // QH' (pin 9, the serial hand-off to the next chip) keeps driving,
+    // which is why this is a pin list and not a whole-part flag. Nothing
+    // in the title says "tri-state" — the behavioural sweep in
+    // tests/chips-tristate.test.js is what found it.
+    outputEnable: Object.freeze([13]),
     pins: [
       output(1, "QB"),
       output(2, "QC"),

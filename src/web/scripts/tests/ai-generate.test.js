@@ -265,6 +265,20 @@ test("the system prompt states the rules the compiler actually enforces", () => 
   // model that thinks a bare switch DRIVES its input writes a circuit whose
   // every test fails, which is the round this sentence exists to save.
   assert.match(prompt, /Switches do NOT need a pull resistor/);
+  // Both proved against the demo corpus in autobuild-corpus.test.js: a
+  // switched enable leaves the outputs at Z and L6 rejects the design, and the
+  // flipped LED is how all 52 benches read an active-low output.
+  assert.match(prompt, /ACTIVE-LOW output gets its LED the other way up/);
+  // Tri-state: the card MARKS every output enable and the legend explains it,
+  // because nothing in a pin's name ("1G", "OE", "M") says active-low and a
+  // part whose enable is left out comes up driving nothing at all.
+  assert.match(prompt, /ACTIVE-LOW OUTPUT ENABLE/);
+  assert.match(
+    prompt,
+    /74LS244 \[DIP-20\][^\n]*1:1G!/,
+    "the mark is on the pin",
+  );
+  assert.match(prompt, /74LS244 \[DIP-20\][^\n]*18:1Y1>/, "outputs marked too");
   assert.ok(prompt.length > 4000, "over the prompt-cache minimum");
 });
 

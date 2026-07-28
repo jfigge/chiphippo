@@ -146,6 +146,35 @@ test("a slide switch bridges common↔pin1 or common↔pin3 by position", () => 
   assert.notEqual(netAt(doc, "bb2.b11"), netAt(doc, "bb2.b10"));
 });
 
+test("bridges: false partitions by WIRING alone, whatever a switch is set to", () => {
+  // The question a checker comparing an INTENDED topology against a BUILT one
+  // has to ask, and a different question from the simulator's. A switch thrown
+  // to a rail really does join its signal to that rail — but that is the switch
+  // working, not the wiring being wrong, and autobuild-verify's L4 aborted every
+  // slide-switch design until it stopped conflating the two.
+  const doc = fullKit();
+  doc.addComponent({
+    kind: "discrete",
+    ref: "sw-slide",
+    board: "bb2",
+    anchor: "b10", // pins b10 (1), b11 (common), b12 (3)
+    params: { pos: "1" },
+  });
+  const wiring = (a) =>
+    buildNetlist(doc.toJSON(), new Map(), { bridges: false }).netOfPoint.get(a);
+
+  // Conducting: the common IS pin 1's net. Wiring-only: three separate points.
+  assert.equal(netAt(doc, "bb2.b11"), netAt(doc, "bb2.b10"));
+  assert.notEqual(wiring("bb2.b11"), wiring("bb2.b10"));
+  assert.notEqual(wiring("bb2.b11"), wiring("bb2.b12"));
+
+  // …and the answer does not move when the switch does, which is the point.
+  const before = wiring("bb2.b11");
+  doc.setComponentParams("c1", { pos: "2" });
+  assert.equal(wiring("bb2.b11"), before);
+  assert.equal(netAt(doc, "bb2.b11"), netAt(doc, "bb2.b12"), "still conducts");
+});
+
 test("a push button bridges only while pressed (transient part state)", () => {
   const doc = fullKit();
   doc.addComponent({
