@@ -22,7 +22,6 @@ import assert from "node:assert/strict";
 import { resetDom } from "./jsdom-setup.js";
 import { CHIP_DEFS, PALETTE_DEFS } from "../catalog/index.js";
 import { ALL_KIT_KEYS } from "../model/board-types.js";
-import { hasBehavior } from "../sim/chip-eval.js";
 
 const { PalettePanel } = await import("../components/palette-panel.js");
 
@@ -66,21 +65,6 @@ test("lists the whole catalog grouped by function; picks report the ref", () => 
   host.querySelector('.palette-item[data-ref="74LS86"]').click();
   assert.deepEqual(picked, ["74LS86"]);
   assert.ok(panel.element);
-
-  // "sim-ready" badge (Feature 80): every chip with behavior shows it; the
-  // discrete parts / PSU (no logic block) do not.
-  const badgeRef = (sel) =>
-    [...host.querySelectorAll(sel)].map(
-      (b) => b.closest(".palette-item").dataset.ref,
-    );
-  const badged = new Set(badgeRef(".palette-item-badge"));
-  for (const def of PALETTE_DEFS) {
-    assert.equal(badged.has(def.id), hasBehavior(def), `${def.id} badge`);
-  }
-  assert.ok(badged.has("74LS00")); // combinational
-  assert.ok(badged.has("74LS74")); // sequential
-  assert.ok(!badged.has("led"));
-  assert.ok(!badged.has("clock"));
 });
 
 test("logic chips nest under CHIPS; Memory + parts are their own sections", () => {

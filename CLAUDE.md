@@ -52,8 +52,8 @@ tool (shortcut `I`) with the `NetHighlight` overlay + net-summary readout;
 and the 74xx behavioral library (80) — `sim/levels.js` (H/L/Z/X vocabulary,
 "floating reads HIGH", ternary gate primitives), the ONE generic
 `sim/chip-eval.js` evaluator, `logic` blocks (data, never per-chip code) on
-all 12 gate defs, the exhaustive truth-table harness (468 combinations), and
-the palette "sim-ready" badge; and the simulation engine v1 (90) — the pure
+all 12 gate defs, and the exhaustive truth-table harness (468 combinations);
+and the simulation engine v1 (90) — the pure
 `sim/resolve.js` (per-net driver → level with supply-beats-output strength
 precedence + short/conflict taxonomy) and `sim/engine.js` (power gating from
 VCC/GND nets, the warm-started settle loop with a 200-iteration oscillation

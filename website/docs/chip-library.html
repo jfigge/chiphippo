@@ -86,11 +86,11 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
 <h1>The 74xx Chip Library</h1>
 <p>The parts palette&#39;s <strong>CHIPS</strong> folder holds a broad shelf of 74xx-family DIP
 logic — everything from a single quad NAND gate up to octal shift registers
-and 4-bit counters — every one with a datasheet-accurate pinout and, where
-the simulator supports it, real behavior you can wire up and run. A separate
-<strong>Memory</strong> group sits alongside it for address-indexed ROM/RAM parts, which
-get their own dedicated page. This page is a tour of what&#39;s on the shelf and
-how to read a chip&#39;s pin-assignments window once you&#39;ve placed one.</p>
+and 4-bit counters — every one with a datasheet-accurate pinout and real
+behavior you can wire up and run. A separate <strong>Memory</strong> group sits alongside
+it for address-indexed ROM/RAM parts, which get their own dedicated page.
+This page is a tour of what&#39;s on the shelf and how to read a chip&#39;s
+pin-assignments window once you&#39;ve placed one.</p>
 <h2 id="combinational-gates">Combinational gates</h2>
 <p>The basic gate families — the classic 7400-series building blocks:</p>
 <table>
@@ -348,13 +348,6 @@ the catalog, but a non-volatile chip&#39;s contents live in a real file on disk
 and are programmed through a dedicated in-app tool rather than by the circuit
 itself. See <a href="memory.html">Memory Chips &amp; the Inspector</a> for the full story —
 file-backing, the external programmer, and the hex/ASCII inspector.</p>
-<h2 id="the-sim-ready-badge">The sim-ready badge</h2>
-<p>Every chip in the palette that has real behavior wired up — its truth table
-or state machine, not just its pinout — carries a small <strong>sim</strong> badge next to
-its name. Hover it for a reminder: <em>&quot;Behavior defined — ready for the
-simulator.&quot;</em> In practice this covers the whole 74xx shelf on this page;
-you&#39;ll only ever see a chip without the badge if a future part ships with a
-pinout but no behavior yet.</p>
 <h2 id="the-pin-assignments-window">The pin-assignments window</h2>
 <p>Right-click <strong>any</strong> chip — or a package-footprint discrete like the <code>bar8iso</code>
 LED bar, which seats and rotates exactly like a DIP chip even though it isn&#39;t

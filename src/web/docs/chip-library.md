@@ -2,11 +2,11 @@
 
 The parts palette's **CHIPS** folder holds a broad shelf of 74xx-family DIP
 logic — everything from a single quad NAND gate up to octal shift registers
-and 4-bit counters — every one with a datasheet-accurate pinout and, where
-the simulator supports it, real behavior you can wire up and run. A separate
-**Memory** group sits alongside it for address-indexed ROM/RAM parts, which
-get their own dedicated page. This page is a tour of what's on the shelf and
-how to read a chip's pin-assignments window once you've placed one.
+and 4-bit counters — every one with a datasheet-accurate pinout and real
+behavior you can wire up and run. A separate **Memory** group sits alongside
+it for address-indexed ROM/RAM parts, which get their own dedicated page.
+This page is a tour of what's on the shelf and how to read a chip's
+pin-assignments window once you've placed one.
 
 ## Combinational gates
 
@@ -105,15 +105,6 @@ the catalog, but a non-volatile chip's contents live in a real file on disk
 and are programmed through a dedicated in-app tool rather than by the circuit
 itself. See [Memory Chips & the Inspector](memory.md) for the full story —
 file-backing, the external programmer, and the hex/ASCII inspector.
-
-## The sim-ready badge
-
-Every chip in the palette that has real behavior wired up — its truth table
-or state machine, not just its pinout — carries a small **sim** badge next to
-its name. Hover it for a reminder: *"Behavior defined — ready for the
-simulator."* In practice this covers the whole 74xx shelf on this page;
-you'll only ever see a chip without the badge if a future part ships with a
-pinout but no behavior yet.
 
 ## The pin-assignments window
 

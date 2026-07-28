@@ -44,7 +44,6 @@ import {
   STRIP_KIT_KEYS,
 } from "../model/board-types.js";
 import { canRotate } from "../model/breadboard.js";
-import { hasBehavior } from "../sim/chip-eval.js";
 
 /** Every logic-chip group nests one level under this top-level folder. It
     collapses like a group, and no group shares its name. */
@@ -510,14 +509,6 @@ export class PalettePanel {
             [
               el("span", { class: "palette-item-id", text: def.id }),
               el("span", { class: "palette-item-title", text: def.title }),
-              // "sim-ready" badge for chips whose behavior is defined —
-              // combinational (Feature 80) or sequential (Feature 100).
-              hasBehavior(def) &&
-                el("span", {
-                  class: "palette-item-badge",
-                  text: "sim",
-                  title: "Behavior defined — ready for the simulator",
-                }),
             ],
           ),
         ),
