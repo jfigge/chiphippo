@@ -561,6 +561,14 @@ async function init() {
     // declared with the toolbar further below; this closure only runs on a
     // click, long after that.
     onToggle: () => togglePalette(),
+    // The tray's own width, dragged on its right edge. Persisted like the open
+    // flag — the panel reports, app.js writes.
+    width: settings.paletteWidth,
+    onWidthChange: (width) => {
+      bridge.settings
+        .set({ paletteWidth: width })
+        .catch((err) => console.error("[renderer] settings:set failed:", err));
+    },
     // Collapse state is deliberately NOT persisted — the palette opens with
     // every group shut, every launch (see PalettePanel).
   });

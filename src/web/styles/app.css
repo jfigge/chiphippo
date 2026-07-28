@@ -352,10 +352,16 @@
 }
 
 /* ── Parts palette (Feature 40) ──────────────────────────────────────────── */
+/* The width here is only the fallback: the renderer applies the user's own
+   (settings.paletteWidth) as an inline style. `max-width` is the same ceiling
+   the analyzer's `max-height: 50vh` is — it keeps a tray sized on a wide
+   display from swallowing the desk when the window is later made narrow. */
 .palette-panel {
+  position: relative;
   display: flex;
   flex-direction: column;
   width: 232px;
+  max-width: 50vw;
   flex: 0 0 auto;
   background: var(--color-mantle);
   border-right: 1px solid var(--color-crust);
@@ -364,6 +370,41 @@
 
 .palette-panel[hidden] {
   display: none;
+}
+
+/* The draggable right edge — the analyzer's resize seam stood on end (same
+   grip, same hover reveal, `ew-resize` instead of `ns-`). It straddles the
+   border rather than sitting inside the panel, so it never covers the parts
+   list's scrollbar; the 3 px reaching over the desk is grab room, and the
+   desk beneath is only ever panned, never dropped on, at that edge. */
+.palette-resize {
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  right: -3px;
+  width: 6px;
+  height: 100%;
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.palette-resize::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 3px;
+  height: 44px;
+  transform: translate(-50%, -50%);
+  border-radius: var(--radius-sm);
+  background: var(--color-overlay);
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.palette-resize:hover::after,
+.palette-resize--active::after {
+  opacity: 1;
 }
 
 .palette-header {

@@ -26,8 +26,17 @@
 // the desk's left edge — the same vertical line, so the control reads as one
 // thing sliding into the wall — opens it again. The flap floats over the desk
 // (the `.project-tabs` shape), so a closed tray costs no layout width at all.
+//
+// Its WIDTH is the user's: the tray's right edge is a drag handle, exactly as
+// the analyzer's top edge is, and the width it is left at is persisted
+// (`settings.paletteWidth`) so it survives a relaunch — and a close/reopen for
+// free, since shutting the tray HIDES the panel rather than rebuilding it, so
+// the applied width simply stays on it. How much of the desk a permanent left
+// column may eat is a judgement only the person looking at it can make: a long
+// part title elides at the default width, and a wide desk has room to spare.
 
 import { clear, el } from "../dom.js";
+import { beginPointerGesture } from "./pointer-gesture.js";
 import { PALETTE_DEFS } from "../catalog/index.js";
 import {
   BREADBOARD_KITS,
@@ -63,6 +72,15 @@ const COMPONENT_ORDER = [
 /** The board selector's foldable section name (pinned at the top). Folds like
     any section, and starts shut with the rest. */
 const BOARDS_FOLDER = "BOARDS";
+
+/** Tray sizing, in CSS px. The default matches the `.palette-panel` fallback;
+    the minimum is what the header still reads at (the filter box beside the
+    close chevron), and the tray may never take more than half the window —
+    the same ceiling the bottom-docked panels honour, so no dockable panel can
+    ever crowd the desk out entirely. */
+const DEFAULT_TRAY_W = 232;
+const MIN_TRAY_W = 180;
+const MAX_TRAY_FRAC = 0.5;
 
 /** The annotations section pinned at the BOTTOM (labels + notes). Not catalog
     parts — hardcoded here like the boards folder — so it folds like any
@@ -117,9 +135,15 @@ export class PalettePanel {
   #list;
   #container;
   #flap;
+  #resize; // the draggable right edge
   #onPickChip;
   #onPickBoard;
   #onPickAnnotation;
+  #onWidthChange;
+  #width = DEFAULT_TRAY_W;
+  #dragStartX = null; // pointer X at drag start (null = not resizing)
+  #dragStartW = 0; // tray width at drag start
+  #endDrag = null; // the pointer gesture's teardown
   #filter = "";
   // Every section starts shut, every launch. What the user opens lasts for
   // the session only — deliberately NOT persisted, so the panel always opens
@@ -138,15 +162,27 @@ export class PalettePanel {
    *   desk-edge flap was clicked. The panel does NOT flip itself: app.js owns
    *   the one toggle that also persists `paletteOpen`, exactly as the ⌘P
    *   shortcut does.
+   * @param {number} [callbacks.width] - restored tray width in CSS px.
+   * @param {(width: number) => void} [callbacks.onWidthChange] - persist the
+   *   width after a resize drag settles (app.js writes `paletteWidth`, the
+   *   same division of labour the open flag has).
    */
   constructor(
     container,
-    { onPickChip, onPickBoard, onPickAnnotation, onToggle } = {},
+    {
+      onPickChip,
+      onPickBoard,
+      onPickAnnotation,
+      onToggle,
+      width,
+      onWidthChange,
+    } = {},
   ) {
     this.#container = container;
     this.#onPickChip = onPickChip;
     this.#onPickBoard = onPickBoard;
     this.#onPickAnnotation = onPickAnnotation;
+    this.#onWidthChange = onWidthChange;
 
     const filterInput = el("input", {
       class: "palette-filter",
@@ -170,14 +206,27 @@ export class PalettePanel {
     collapseBtn.innerHTML = CHEVRON_LEFT;
 
     this.#list = el("div", { class: "palette-list" });
+
+    // The draggable right edge. Absolutely positioned rather than a flex row
+    // of its own (the panel is a column, and the seam runs the other way), so
+    // it straddles the border without taking a pixel from the list beside it.
+    this.#resize = el("div", {
+      class: "palette-resize",
+      title: "Drag to resize the parts tray",
+      "aria-hidden": "true",
+    });
+    this.#resize.addEventListener("pointerdown", (e) => this.#onResizeDown(e));
+
     this.#el = el(
       "aside",
       { class: "palette-panel", "aria-label": "Parts palette", hidden: true },
       [
         el("div", { class: "palette-header" }, [filterInput, collapseBtn]),
         this.#list,
+        this.#resize,
       ],
     );
+    this.#applyWidth(Number.isFinite(width) ? width : DEFAULT_TRAY_W);
 
     // The reopen flap: a sibling of the tray, not a child — the tray itself is
     // display:none when shut. It floats over the desk's left edge on the same
@@ -203,6 +252,10 @@ export class PalettePanel {
     return !this.#el.hidden;
   }
 
+  get width() {
+    return this.#width;
+  }
+
   setVisible(on) {
     this.#el.hidden = !on;
     // Exactly one of the two chevrons is ever showing.
@@ -210,6 +263,59 @@ export class PalettePanel {
     // The flap overlays the desk's top-left corner, which is where the
     // desktop tab strip starts — the modifier insets the tabs past it.
     this.#container?.classList.toggle("app-main--tray-closed", !on);
+  }
+
+  // ── Sizing (drag the right edge; the tray docks along the window's left) ────
+
+  /** The widest the tray may grow to: half the window, floored at the min. */
+  #maxWidth() {
+    const half = Math.floor((window.innerWidth || 0) * MAX_TRAY_FRAC);
+    return Math.max(MIN_TRAY_W, half);
+  }
+
+  /** Clamp a pixel width to [min, half-window] and apply it; returns applied. */
+  #applyWidth(w) {
+    const clamped = Math.round(
+      Math.min(this.#maxWidth(), Math.max(MIN_TRAY_W, w)),
+    );
+    this.#width = clamped;
+    this.#el.style.width = `${clamped}px`;
+    return clamped;
+  }
+
+  #onResizeDown(e) {
+    e.preventDefault();
+    this.#dragStartX = e.clientX;
+    // The applied width, not a measured rect: the panel is `flex: 0 0 auto` at
+    // exactly what #applyWidth set, and reading the box back would round the
+    // drag's own start point against it.
+    this.#dragStartW = this.#width;
+    this.#resize.classList.add("palette-resize--active");
+    // Window-level, capture-phase plumbing (see pointer-gesture.js): the drag
+    // ends on the release wherever it lands — over the desk, over another
+    // window — rather than depending on the pointer capture alone.
+    this.#endDrag = beginPointerGesture(this.#resize, e.pointerId, {
+      onMove: (ev) => this.#onResizeMove(ev),
+      onEnd: () => this.#onResizeEnd(),
+    });
+  }
+
+  #onResizeMove(e) {
+    if (this.#dragStartX == null) return;
+    // Dragging the handle RIGHT (a positive delta) grows the left-docked tray.
+    this.#applyWidth(this.#dragStartW + (e.clientX - this.#dragStartX));
+  }
+
+  /** End the drag and persist wherever it was left — including an abort (a
+      yanked capture, the window losing focus), since the tray is already
+      showing that width and quietly reverting it would be the surprise. */
+  #onResizeEnd() {
+    if (this.#dragStartX == null) return;
+    this.#dragStartX = null;
+    this.#endDrag?.();
+    this.#endDrag = null;
+    this.#resize.classList.remove("palette-resize--active");
+    this.#onWidthChange?.(this.#width);
   }
 
   #matches(def) {

@@ -44,8 +44,10 @@ test("the Settings-dialog keys carry their shipped defaults", () => {
   assert.equal(DEFAULTS.defaultLedColor, "red");
 });
 
-test("the parts tray opens by default", () => {
+test("the parts tray opens by default, at its shipped width", () => {
   assert.equal(DEFAULTS.paletteOpen, true);
+  // Matches the .palette-panel CSS fallback; the tray's right edge writes it.
+  assert.equal(DEFAULTS.paletteWidth, 232);
 });
 
 test("both bottom-docked panels ship shut, at the same height", () => {

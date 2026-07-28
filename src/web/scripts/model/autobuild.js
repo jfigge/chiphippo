@@ -432,6 +432,99 @@ export function orderByConnectivity(seated, nets) {
   return order;
 }
 
+/**
+ * Which board each part goes on, when a design needs more than one.
+ *
+ * Filling each board to its last column before starting the next leaves the
+ * layout lopsided — one board crammed, the next holding three parts — and puts
+ * everything that spilled as far from its neighbours as the desk allows. But
+ * cutting purely for an even split is worse: it will happily sever a byte-wide
+ * bus, and eight nets crossing the seam cost far more than a half-empty board.
+ *
+ * So the cut is chosen, not fallen into. Walking the connectivity order, every
+ * position that leaves the current board reasonably filled is a CANDIDATE, and
+ * the one that severs the fewest nets wins — a tie going to the evenest split.
+ * A net is severed when it has parts on both sides of the cut, which is exactly
+ * the wire that has to cross between boards.
+ *
+ * @param {Array} order parts, in connectivity order
+ * @param {Array} nets the resolved nets
+ * @param {(part:any) => number} costOf columns a part consumes
+ * @param {{boards:number, capacity:number}} opts
+ * @returns {Map<string, number>} spec part id → board index
+ */
+export function splitAcrossBoards(order, nets, costOf, { boards, capacity }) {
+  const assignment = new Map(order.map((p) => [p.id, 0]));
+  if (boards < 2 || order.length < 2) return assignment;
+
+  // Which parts each net touches, as positions in the order — a net is severed
+  // by a cut at i when it has a part before i and a part at or after it.
+  const seen = new Map(order.map((p, i) => [p.id, i]));
+  const spans = [];
+  for (const net of nets) {
+    if (net.rail) continue; // every part touches power; it severs nothing
+    const at = [...new Set(net.pins.map((q) => q.partId))]
+      .filter((id) => seen.has(id))
+      .map((id) => seen.get(id));
+    if (at.length > 1) spans.push([Math.min(...at), Math.max(...at)]);
+  }
+  const severed = (cut) =>
+    spans.reduce((n, [lo, hi]) => n + (lo < cut && hi >= cut ? 1 : 0), 0);
+
+  const cost = order.map(costOf);
+  const total = cost.reduce((a, b) => a + b, 0);
+  const target = total / boards;
+  // A board is "reasonably filled" from here on. Below this the split is not
+  // worth the nets it cuts; above `capacity` the parts do not fit at all.
+  const FLOOR = 0.55;
+
+  let start = 0;
+  let used = 0;
+  let board = 0;
+  for (let i = 0; i < order.length; i++) {
+    if (board >= boards - 1) break; // the last board takes whatever is left
+    const next = used + cost[i];
+    // Cutting BEFORE part i ends this board. Only worth weighing once the
+    // board holds enough to be worth ending, and forced once it cannot hold
+    // any more.
+    const full = next > capacity;
+    if (used >= target * FLOOR || full) {
+      let bestCut = i;
+      let bestScore = [severed(i), Math.abs(used - target)];
+      // Look ahead while the board still has room: a slightly fuller board
+      // that keeps a bus whole beats an even one that cuts it in half.
+      let ahead = used;
+      for (let j = i; j < order.length && !full; j++) {
+        ahead += cost[j];
+        if (ahead > capacity) break;
+        const score = [severed(j + 1), Math.abs(ahead - target)];
+        if (
+          score[0] < bestScore[0] ||
+          (score[0] === bestScore[0] && score[1] < bestScore[1])
+        ) {
+          bestCut = j + 1;
+          bestScore = score;
+        }
+      }
+      if (bestCut > start) {
+        for (let k = start; k < bestCut; k++) {
+          assignment.set(order[k].id, board);
+        }
+        start = bestCut;
+        used = 0;
+        board += 1;
+        i = bestCut - 1; // the loop's i++ resumes at the first part of the next
+        continue;
+      }
+    }
+    used = next;
+  }
+  for (let k = start; k < order.length; k++) {
+    assignment.set(order[k].id, Math.min(board, boards - 1));
+  }
+  return assignment;
+}
+
 const GRID_HOLE_RE = /^([a-j])([1-9]\d*)$/;
 const isLowerRow = (row) => row >= "a" && row <= "e";
 
@@ -740,7 +833,6 @@ function assemble(resolved, title, notes) {
     above = below; // the next board's TOP rail is this one's bottom rail
   }
 
-  const alloc = createAllocator(boards);
   const boardType = new Map(boards.map((b) => [b.id, b.type]));
   const boardAt = new Map(boards.map((b) => [b.id, b]));
 
@@ -764,7 +856,6 @@ function assemble(resolved, title, notes) {
   const components = [];
   const wires = [];
   let wireSeq = 0;
-  let compSeq = 0;
   const wire = (from, to, color = "black") => {
     if (!from || !to || from === to) return false;
     wires.push({ id: `w${++wireSeq}`, from, to, color });
@@ -819,68 +910,132 @@ function assemble(resolved, title, notes) {
     brickRow += 8;
   }
 
-  // ── Seat every board part, left to right, on the first kit that fits —
-  //    in CONNECTIVITY order, so neighbours end up beside each other and a
-  //    net's parts stay on one board.
-  const seatOf = new Map(); // specId → {compId, boardId, holes}
-  for (const p of orderByConnectivity(seated, nets)) {
-    const span = spanOf(p.def);
-    if (!span) {
-      return {
-        ok: false,
-        errors: [
-          err(
+  // ── Seat every board part, left to right, in CONNECTIVITY order, so
+  //    neighbours end up beside each other and a net's parts stay on one board.
+  //
+  // `assignment` names the board each part should go on. It is a PREFERENCE:
+  // the assigned board is tried first, and if it will not take the part every
+  // board is tried again ignoring it. So it can only change WHICH board a part
+  // lands on, never whether it lands at all — the layout is a preference, the
+  // fit is not.
+  const order = orderByConnectivity(seated, nets);
+  const seatPass = (assignment = null, gap = GAP) => {
+    const alloc = createAllocator(boards);
+    const seatOf = new Map(); // specId → {compId, boardId, holes}
+    const parts = [];
+    let seq = 0;
+    for (const p of order) {
+      const span = spanOf(p.def);
+      if (!span) {
+        return {
+          ok: false,
+          error: err(
             "UNPLACEABLE",
             `"${p.ref}" has no footprint the compiler can seat.`,
             { kind: ABORT },
           ),
-        ],
-      };
-    }
-    const row = p.def.package ? "e" : "a";
-    // A pull pack goes UNDER the switch bank it pulls, in the very columns
-    // that bank owns — because its pins are already that bank's nets, so the
-    // board does the connecting. Eight wires and nine columns become none.
-    let placed = seatCompanion(p, companionOf.get(p.id), {
-      alloc,
-      seatOf,
-      boardType,
-    });
-    for (const kit of kits) {
-      if (placed) break;
+        };
+      }
+      const row = p.def.package ? "e" : "a";
+      // A pull pack goes UNDER the switch bank it pulls, in the very columns
+      // that bank owns — because its pins are already that bank's nets, so the
+      // board does the connecting. Eight wires and nine columns become none.
+      // It costs no columns of its own: it is IN its host's.
+      let placed = seatCompanion(p, companionOf.get(p.id), {
+        alloc,
+        seatOf,
+        boardType,
+      });
       // Reserve a blank column after the part as well, so neighbours do not
       // read as one block — the same courtesy a person building this leaves.
-      const start = alloc.reserveColumns(kit.pins, span + GAP, "both", p.id);
-      if (start == null) continue;
-      const anchor = `${row}${start}`;
-      const r = alloc.seat(kit.pins, p.ref, anchor, {}, p.id);
-      if (!r.ok) continue;
-      placed = { boardId: kit.pins, anchor, holes: r.holes };
-      break;
-    }
-    if (!placed) {
-      return {
-        ok: false,
-        errors: [
-          err(
+      const cost = span + gap;
+      for (const honour of placed ? [] : [true, false]) {
+        if (placed) break;
+        for (const [k, kit] of kits.entries()) {
+          if (honour && assignment != null && assignment.get(p.id) !== k) {
+            continue;
+          }
+          const start = alloc.reserveColumns(kit.pins, cost, "both", p.id);
+          if (start == null) continue;
+          const anchor = `${row}${start}`;
+          const r = alloc.seat(kit.pins, p.ref, anchor, {}, p.id);
+          if (!r.ok) continue;
+          placed = { boardId: kit.pins, anchor, holes: r.holes };
+          break;
+        }
+      }
+      if (!placed) {
+        return {
+          ok: false,
+          error: err(
             "NO_ROOM",
             `Ran out of board for "${p.id}" (${p.ref}); the design needs more columns.`,
             { kind: ABORT },
           ),
-        ],
-      };
+        };
+      }
+      const compId = `c${++seq}`;
+      parts.push({
+        id: compId,
+        kind: p.def.kind,
+        ref: p.ref,
+        board: placed.boardId,
+        anchor: placed.anchor,
+        params: {},
+      });
+      seatOf.set(p.id, { compId, ...placed });
     }
-    const compId = `c${++compSeq}`;
-    components.push({
-      id: compId,
-      kind: p.def.kind,
-      ref: p.ref,
-      board: placed.boardId,
-      anchor: placed.anchor,
-      params: {},
-    });
-    seatOf.set(p.id, { compId, ...placed });
+    const used = new Set([...seatOf.values()].map((s) => s.boardId));
+    return { ok: true, alloc, seatOf, parts, used };
+  };
+
+  // TWO PASSES, and the second is what stops a spilled design reading as an
+  // accident. Pass 1 fills each board before starting the next, which is the
+  // only way to learn how many boards a design ACTUALLY needs — the budget
+  // above cannot know, for the same reason the prune step below exists. Once
+  // it IS known, pass 2 lays the same parts over exactly that many, cutting the
+  // connectivity order where it severs the fewest nets rather than wherever the
+  // first board happened to run out. A companion is seated in its host's own
+  // columns, so it costs nothing to place and nothing to split away from.
+  let seating = seatPass();
+  if (!seating.ok) return { ok: false, errors: [seating.error] };
+  let gap = GAP;
+
+  // Before accepting a second board, TRY HARDER TO AVOID ONE. The blank column
+  // between parts is a courtesy; a whole breadboard fetched to hold a single
+  // resistor is not a courtesy to anybody, and that is exactly what it bought —
+  // eight LEDs reserving a blank column each left two free at the right-hand
+  // edge and the last part needed three. A person short of room packs tighter
+  // rather than clipping on another board, so the gap is the first thing to go,
+  // and only when it actually saves a board.
+  if (seating.used.size > 1) {
+    const tight = seatPass(null, 0);
+    if (tight.ok && tight.used.size < seating.used.size) {
+      seating = tight;
+      gap = 0;
+    }
   }
+
+  if (seating.used.size > 1) {
+    // A companion rides its host's columns, so it must not be counted — and it
+    // must not be assigned a board of its own either; `seatCompanion` runs
+    // before the assignment is consulted, so it simply follows its host.
+    const companions = new Set(companionOf.keys());
+    const laid = seatPass(
+      splitAcrossBoards(
+        order,
+        nets,
+        (p) => (companions.has(p.id) ? 0 : spanOf(p.def) + gap),
+        { boards: seating.used.size, capacity: perKit },
+      ),
+      gap,
+    );
+    // An assignment is a preference, so it cannot refuse a part — but it can
+    // shuffle the packing, and a layout that needed MORE boards is not better.
+    if (laid.ok && laid.used.size <= seating.used.size) seating = laid;
+  }
+  const { alloc, seatOf } = seating;
+  components.push(...seating.parts);
 
   // ── Give back the boards nothing landed on.
   //

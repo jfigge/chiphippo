@@ -319,6 +319,15 @@ function buildAiRows(settings, providers) {
         "the operating system, never in settings.json. Leave Base URL and " +
         "Model blank to use the shown defaults.",
     }),
+    // Said HERE, where the connection is set up, because this is where the
+    // builder is first met — long before a design lands on the desk.
+    el("p", {
+      class: "settings-hint",
+      text:
+        "AI generation is experimental. Every design is verified against the " +
+        "simulator before it is offered, but it may not be the most optimal " +
+        "circuit or the tidiest layout — expect to review and adjust it.",
+    }),
   ];
 }
 

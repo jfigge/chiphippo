@@ -661,6 +661,40 @@ Electron main process (src/app/main.js)
     - `freeRail(…, {fromEnd})` — the PSU brick stands off the RIGHT of the
       boards, and a rail is one node end to end, so reaching for hole 1 bought
       nothing but two wires the full width of the desk.
+    - **SEATING IS TWO PASSES, and a second breadboard is a LAST RESORT.**
+      Pass 1 fills each board before starting the next — the only way to learn
+      how many boards a design ACTUALLY needs, which the column budget cannot
+      know (same reason the prune step exists). What happens next is decided
+      from that answer, and both halves matter because a spilled design used
+      to arrive as one board crammed to its last hole and another holding a
+      single resistor.
+      - **The blank column goes before the board does.** `GAP` is a courtesy —
+        so neighbours do not read as one block — but insisting on it fetched a
+        whole breadboard for a 1-column shortfall: eight LEDs reserving a
+        blank each left two columns free at the edge and the last part needed
+        three. So if pass 1 spilled, the design is re-seated with `gap = 0`,
+        and that is kept ONLY when it saves a board. This alone took the demo
+        corpus from **9 multi-board circuits to 1**.
+      - **The split is CHOSEN, not fallen into** (`splitAcrossBoards`, pure).
+        A design that genuinely needs two boards is cut where it severs the
+        FEWEST NETS, not at the halfway column — cutting for an even split
+        alone slices straight through a byte-wide bus, and 16 nets crossing
+        the seam cost far more than a half-empty board (measured: a naive
+        even split turned 8 cross-board wires into 22). Every position that
+        leaves the board reasonably filled (`FLOOR`) is a candidate, ties go
+        to the evenest. RAIL nets are excluded — every part touches power, so
+        they sever nothing. A companion costs 0, since it rides its host's
+        columns and follows it wherever it goes.
+      - The assignment is a **preference, never a refusal**: the assigned
+        board is tried first, then every board. So it can only change WHICH
+        board a part lands on, never whether it lands — and a re-seat that
+        needed MORE boards is discarded for the one that came before it.
+      Corpus-wide this was **−13% strips, −8% wire length, −11% crossings**.
+      Note a serpentine fill (alternate boards filling right-to-left) was
+      tried and REJECTED: it only helps when the first board is full to its
+      last column, and once the split is chosen properly it rarely is — with
+      a half-filled first board it puts the seam at opposite ends and made
+      the 8-bit bus port 43% longer.
     - **Kits are PRUNED, not predicted.** How many breadboards a design needs
       cannot be known before it is placed: the column budget has to assume a
       pull pack costs its nine columns, and companion seating then costs it
@@ -891,7 +925,15 @@ Electron main process (src/app/main.js)
   so the control reads as one thing sliding into the wall. Both, and ⌘P, route
   through app.js's one `togglePalette` (the only thing that persists
   `paletteOpen`); `PalettePanel.setVisible` flips the pair and stamps
-  `.app-main--tray-closed`, which insets `.project-tabs` past the flap.
+  `.app-main--tray-closed`, which insets `.project-tabs` past the flap. Its
+  WIDTH is the user's: `.palette-resize` is the analyzer's resize seam stood on
+  end (same grip, `ew-resize`, straddling the border so it never covers the
+  list's scrollbar), clamped to `[180, half the window]` and persisted as
+  `settings.paletteWidth` — reported by the panel, written by app.js, exactly
+  as the open flag is. It survives a close/reopen for free, since shutting the
+  tray HIDES the panel rather than rebuilding it. The drag runs on
+  `pointer-gesture.js` (unlike the two bottom-docked panels, which predate it),
+  so the release lands wherever the pointer is let go.
   `.toolbar-btn--active` remains the one class every
   toolbar button's armed state toggles, whatever its shape.
 - **Popups/menus**: `popup-manager.js` (ported from Port Hippo) is the only

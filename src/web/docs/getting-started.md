@@ -28,6 +28,10 @@ At the top of the tray is the **board selector** (Full / Half / Tiny
 breadboards, plus loose strips); below that, chips and components grouped by
 function, with a filter box to search by name.
 
+Drag the tray's **right edge** to make it wider or narrower — useful when a
+long part name is elided. The width you leave it at is remembered between
+launches, and across closing and reopening the tray.
+
 ## Add a breadboard
 
 In the palette's **BOARDS** section, click **Full-size** (830 tie points) —

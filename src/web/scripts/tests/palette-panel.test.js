@@ -390,6 +390,86 @@ test("the annotations section is pinned at the bottom and reports the kind", () 
   assert.equal(host.querySelector(".palette-annotations-folder"), null);
 });
 
+/** Drag the tray's right edge from `fromX` to `toX` and release there. The
+    gesture's move/up listeners live on `window` (pointer-gesture.js), which is
+    exactly what makes a release off the handle still land. */
+function dragEdge(host, fromX, toX, { release = true } = {}) {
+  const handle = host.querySelector(".palette-resize");
+  const at = (type, clientX, target) =>
+    target.dispatchEvent(
+      new window.MouseEvent(type, { clientX, bubbles: true }),
+    );
+  at("pointerdown", fromX, handle);
+  at("pointermove", toX, window);
+  if (release) at("pointerup", toX, window);
+  return handle;
+}
+
+test("the tray restores its width, and its right edge resizes it", () => {
+  resetDom();
+  const host = document.createElement("div");
+  document.body.append(host);
+  const widths = [];
+  const panel = new PalettePanel(host, {
+    width: 300,
+    onWidthChange: (w) => widths.push(w),
+  });
+
+  // The restored width is applied, not merely remembered.
+  assert.equal(panel.width, 300);
+  assert.equal(panel.element.style.width, "300px");
+
+  // Dragging the edge right widens the left-docked tray by the same delta…
+  const handle = dragEdge(host, 300, 380, { release: false });
+  assert.equal(panel.width, 380);
+  assert.equal(panel.element.style.width, "380px");
+  assert.ok(handle.classList.contains("palette-resize--active"));
+  // …and nothing is persisted until the drag settles.
+  assert.deepEqual(widths, []);
+
+  window.dispatchEvent(
+    new window.MouseEvent("pointerup", { clientX: 380, bubbles: true }),
+  );
+  assert.deepEqual(widths, [380]);
+  assert.equal(handle.classList.contains("palette-resize--active"), false);
+});
+
+test("the width is clamped to a legible minimum and half the window", () => {
+  resetDom();
+  const host = document.createElement("div");
+  document.body.append(host);
+  const panel = new PalettePanel(host, { width: 300 });
+  const half = Math.floor(window.innerWidth * 0.5);
+
+  dragEdge(host, 300, 0); // dragged shut past the minimum
+  assert.equal(panel.width, 180);
+
+  dragEdge(host, 180, 5000); // dragged out past the desk
+  assert.equal(panel.width, half);
+
+  // A width restored from a session on a wider display is clamped on arrival.
+  const host2 = document.createElement("div");
+  document.body.append(host2);
+  assert.equal(new PalettePanel(host2, { width: 4000 }).width, half);
+  // …as is a garbled one, which falls back to the shipped default.
+  const host3 = document.createElement("div");
+  document.body.append(host3);
+  assert.equal(new PalettePanel(host3, { width: null }).width, 232);
+});
+
+test("the width survives closing and reopening the tray", () => {
+  resetDom();
+  const host = document.createElement("div");
+  document.body.append(host);
+  const panel = new PalettePanel(host, { width: 320 });
+
+  panel.setVisible(true);
+  panel.setVisible(false); // shut: hidden, never rebuilt
+  panel.setVisible(true);
+  assert.equal(panel.width, 320);
+  assert.equal(panel.element.style.width, "320px");
+});
+
 test("setVisible toggles the hidden attribute", () => {
   resetDom();
   const host = document.createElement("div");

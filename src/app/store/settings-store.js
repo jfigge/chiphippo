@@ -43,6 +43,13 @@ const DEFAULTS = Object.freeze({
   // group shut on every launch, and what the user opens lasts the session.
   paletteOpen: true,
 
+  // How wide that tray is, in CSS px — written by its draggable right edge
+  // (the renderer clamps it to [180, half the window], and the panel's
+  // `max-width: 50vw` re-caps a width saved on a wider display). Unlike the
+  // collapse state this IS remembered: it is a working preference about how
+  // much of the desk a permanent left column may take, not a transient one.
+  paletteWidth: 232,
+
   // ── Pin-assignments window (Feature 100) ──────────────────────────────────
   // Whether a chip's pin-out window floats above the main app. A de-facto
   // global preference: the window's right-click menu toggles it, every open

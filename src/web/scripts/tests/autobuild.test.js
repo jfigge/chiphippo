@@ -37,7 +37,12 @@ import { holePosition, nodeOf, parseAddress } from "../model/breadboard.js";
 import { matingEdge } from "../model/mating.js";
 import { partDef } from "../catalog/index.js";
 import { wireCrossings } from "../model/wire-crossing.js";
-import { compileNetlist, designClipOf, wrapText } from "../model/autobuild.js";
+import {
+  compileNetlist,
+  designClipOf,
+  splitAcrossBoards,
+  wrapText,
+} from "../model/autobuild.js";
 
 // ── Specs ───────────────────────────────────────────────────────────────────
 
@@ -1070,6 +1075,87 @@ test("a board nothing landed on is given back, not shipped empty", () => {
       );
     }
   }
+});
+
+test("the blank column goes before a second breadboard does", () => {
+  // The gap between parts is a courtesy. Insisting on it bought a WHOLE extra
+  // breadboard to hold one resistor: eight LEDs reserving a blank column each
+  // left two free at the right-hand edge, and the last part needed three. A
+  // person short of room packs tighter rather than clipping on another board.
+  // Two '244s fed from one DIP switch, driving twelve LEDs: it overran a single
+  // board by a couple of columns, and twelve of those columns were blank ones
+  // reserved beside the LEDs.
+  const leds = [...Array(12)].map((_, i) => ({ id: `D${i}`, ref: "led" }));
+  const chan = (i, side) => {
+    const u = i < 8 ? "U1" : "U2";
+    const j = i % 8;
+    return j < 4 ? `${u}.1${side}${j + 1}` : `${u}.2${side}${j - 3}`;
+  };
+  const { doc } = build({
+    parts: [
+      { id: "U1", ref: "74LS244" },
+      { id: "U2", ref: "74LS244" },
+      { id: "SW", ref: "sw-dip8" },
+      ...leds,
+    ],
+    nets: [
+      { name: "SRC", members: [...Array(8)].map((_, i) => `SW.${i + 1}B`).concat("VCC") }, // prettier-ignore
+      ...[...Array(8)].map((_, i) => ({
+        name: `IN${i}`,
+        members: [`SW.${i + 1}A`, chan(i, "A"), chan(i + 8, "A")],
+      })),
+      ...leds.map((d, i) => ({
+        name: `OUT${i}`,
+        members: [chan(i, "Y"), `${d.id}.a`],
+      })),
+      { name: "K", members: [...leds.map((d) => `${d.id}.k`), "GND"] },
+      { name: "OE", members: ["U1.1G", "U1.2G", "U2.1G", "U2.2G", "GND"] },
+    ],
+  });
+  const pins = doc.boards.filter((b) => b.type.startsWith("pins"));
+  assert.equal(pins.length, 1, "one breadboard, packed, not two with a gap");
+});
+
+test("the split between boards is CHOSEN, not fallen into", () => {
+  // Cutting purely for an even split severs whatever happens to be at the
+  // halfway column — and for a byte-wide design that is the bus itself, eight
+  // nets crossing the seam. `splitAcrossBoards` weighs the cut instead.
+  const parts = [
+    { id: "A", ref: "74LS244" },
+    { id: "B", ref: "74LS244" },
+    { id: "C", ref: "74LS04" },
+    { id: "D", ref: "74LS04" },
+  ];
+  // A and B share eight nets; C and D share one each with their neighbour. The
+  // cheap cut is between B and C, not down the middle of the bus.
+  const nets = [
+    ...[...Array(4)].map((_, i) => ({
+      name: `BUS${i}`,
+      members: [`A.1Y${i + 1}`, `B.1A${i + 1}`],
+    })),
+    ...[...Array(4)].map((_, i) => ({
+      name: `BUS${i + 4}`,
+      members: [`A.2Y${i + 1}`, `B.2A${i + 1}`],
+    })),
+    { name: "OE", members: ["A.1G", "A.2G", "B.1G", "B.2G", "GND"] },
+    { name: "X", members: ["B.1Y1", "C.1A"] },
+    { name: "Y", members: ["C.1Y", "D.1A"] },
+    { name: "Z", members: ["D.1Y", "C.2A"] },
+  ];
+  const split = splitAcrossBoards(
+    [...parts].map((p) => ({ ...p, def: partDef(p.ref) })),
+    nets.map((n) => ({
+      ...n,
+      pins: n.members
+        .filter((m) => m.includes("."))
+        .map((m) => ({ partId: m.split(".")[0] })),
+    })),
+    () => 20, // every part the same width, so only the nets can decide
+    { boards: 2, capacity: 63 },
+  );
+  assert.equal(split.get("A"), split.get("B"), "the bus stays on one board");
+  assert.notEqual(split.get("B"), split.get("C"), "the cut is at the seam");
+  assert.equal(split.get("C"), split.get("D"), "and the rest travels together");
 });
 
 test("a generated kit arrives grouped, not as three loose strips", () => {
