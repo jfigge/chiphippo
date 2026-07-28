@@ -33,8 +33,8 @@ const SHORTCUT_GROUPS = [
   {
     title: "File",
     rows: [
-      { desc: "New desktop", keys: `${MOD}+N` },
-      { desc: "Open a schematic", keys: `${MOD}+O` },
+      { desc: "New project", keys: `${MOD}+N` },
+      { desc: "Open a project", keys: `${MOD}+O` },
       { desc: "Save", keys: `${MOD}+S` },
       { desc: "Save As…", keys: `${SHIFT}+${MOD}+S` },
       { desc: "Bill of materials (build guide)", keys: `${MOD}+B` },

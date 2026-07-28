@@ -25,15 +25,24 @@
 //
 // THE STRIP IS ALWAYS THERE, because there is always a project: the app boots
 // onto one, so the strip always has at least one desktop to show, and the
-// "+" beside them is the only way to reach another.
+// "+" beside them is the route to another. It drops a two-item menu — **New
+// Desktop** and **Import Desktop…** — because those are the two ways a desktop
+// arrives and neither belongs to any particular tab, which is why they are
+// here rather than in a tab's own context menu.
+//
+// There is NO per-tab dirty marker. A desktop is not a file and cannot be
+// saved on its own — the project is the document — so a dot no action could
+// clear would be a lie. The one dirty marker is the window title's.
 //
 // Right-clicking a tab opens the BOARD menu's shape — Properties…, a rule,
 // Delete — rather than the part menu's three items. A part's leading Pin
 // Assignment is meaningless here (a desktop has no pins at all, not even a
 // disabled-today set), so it is dropped along with its separator, exactly as
-// a board's menu drops it. As everywhere else, an item that doesn't apply
-// stays PRESENT but disabled — and there is no per-tab branching at all: the
-// only desktop that can't be deleted is the LAST one, whichever it is.
+// a board's menu drops it. Duplicate and Export join it as the two other
+// things one can do to a whole desktop; as everywhere else, an item that
+// doesn't apply stays PRESENT but disabled — and there is no per-tab
+// branching at all: the only desktop that can't be deleted is the LAST one,
+// whichever it is.
 
 import { el } from "../dom.js";
 import { PopupManager } from "../popup-manager.js";
@@ -42,11 +51,13 @@ export class ProjectTabs {
   #root;
   #onSelect;
   #onAdd;
+  #onImport;
   #onProperties;
   #onDelete;
+  #onDuplicate;
+  #onExport;
   #tabs = [];
   #activeId = null;
-  #dirtyIds = new Set();
   #locked = false; // editing frozen (the circuit is running)
 
   /**
@@ -55,15 +66,32 @@ export class ProjectTabs {
    *   and the desk row, in app.js).
    * @param {object} callbacks
    * @param {(id: string) => void} callbacks.onSelect - a tab was clicked.
-   * @param {() => void} callbacks.onAdd - the "+" affordance.
+   * @param {() => void} callbacks.onAdd - New Desktop, from the "+" menu.
+   * @param {() => void} callbacks.onImport - Import Desktop…, ditto.
    * @param {(id: string) => void} callbacks.onProperties - Properties… on a
    *   tab (its Name/Description, through the app-wide shared dialog).
+   * @param {(id: string) => void} callbacks.onDuplicate - Duplicate.
+   * @param {(id: string) => void} callbacks.onExport - Export Desktop….
    * @param {(id: string) => void} callbacks.onDelete - Delete on a tab.
    */
-  constructor(container, { onSelect, onAdd, onProperties, onDelete } = {}) {
+  constructor(
+    container,
+    {
+      onSelect,
+      onAdd,
+      onImport,
+      onProperties,
+      onDuplicate,
+      onExport,
+      onDelete,
+    } = {},
+  ) {
     this.#onSelect = onSelect;
     this.#onAdd = onAdd;
+    this.#onImport = onImport;
     this.#onProperties = onProperties;
+    this.#onDuplicate = onDuplicate;
+    this.#onExport = onExport;
     this.#onDelete = onDelete;
     this.#root = el("div", {
       class: "project-tabs",
@@ -83,17 +111,11 @@ export class ProjectTabs {
 
   /**
    * Show the open project's desktops on the strip — `{ id, name,
-   * description?, file }` records, and which one is active.
+   * description?, doc }` records, and which one is active.
    */
   setTabs(tabs, activeId) {
     this.#tabs = Array.isArray(tabs) ? tabs : [];
     this.#activeId = activeId ?? this.#tabs[0]?.id ?? null;
-    this.#render();
-  }
-
-  /** Mark which desktops have unsaved changes (the • on the tab). */
-  setDirty(ids) {
-    this.#dirtyIds = new Set(ids ?? []);
     this.#render();
   }
 
@@ -110,22 +132,37 @@ export class ProjectTabs {
         class: "project-tab-add",
         type: "button",
         text: "+",
-        title: "Add a desktop",
-        "aria-label": "Add a desktop",
-        onClick: () => this.#onAdd?.(),
+        title: "New or import a desktop",
+        "aria-label": "New or import a desktop",
+        "aria-haspopup": "menu",
+        onClick: (e) => this.#openAddMenu(e),
       }),
     );
   }
 
+  /**
+   * The "+" menu: the two ways another desktop arrives. Both are ADDITIONS
+   * that land you on the new desk — an import can no more replace what is on
+   * screen than a new desktop can.
+   */
+  #openAddMenu(e) {
+    const rect = e.currentTarget.getBoundingClientRect();
+    PopupManager.menu({
+      x: rect.left,
+      y: rect.bottom + 4,
+      items: [
+        { label: "New Desktop", onSelect: () => this.#onAdd?.() },
+        { label: "Import Desktop…", onSelect: () => this.#onImport?.() },
+      ],
+    });
+  }
+
   #tabButton(tab) {
     const active = tab.id === this.#activeId;
-    const dirty = this.#dirtyIds.has(tab.id);
     const classes = ["project-tab"];
     if (active) classes.push("project-tab--active");
-    if (dirty) classes.push("project-tab--dirty");
     // The tooltip is a desktop's Description's only visible surface — the strip
     // shows the name alone, and the tab is too narrow for anything more.
-    const head = dirty ? `${tab.name} — unsaved changes` : tab.name;
     return el(
       "button",
       {
@@ -133,7 +170,7 @@ export class ProjectTabs {
         type: "button",
         role: "tab",
         "aria-selected": String(active),
-        title: tab.description ? `${head}\n${tab.description}` : head,
+        title: tab.description ? `${tab.name}\n${tab.description}` : tab.name,
         dataset: { tabId: tab.id },
         onClick: () => {
           if (!active) this.#onSelect?.(tab.id);
@@ -143,27 +180,32 @@ export class ProjectTabs {
           this.#openMenu(tab, e);
         },
       },
-      [
-        el("span", { class: "project-tab-label", text: tab.name }),
-        // A drawn dot, not a "•" glyph — the marker is a shape, so CSS owns
-        // its size and color (the title carries the meaning for a reader).
-        dirty &&
-          el("span", { class: "project-tab-marker", "aria-hidden": "true" }),
-      ],
+      [el("span", { class: "project-tab-label", text: tab.name })],
     );
   }
 
-  /** The board menu's two items, in their tab form (see the file note). */
+  /** The board menu's shape, in its tab form (see the file note). */
   #openMenu(tab, e) {
     PopupManager.menu({
       x: e.clientX,
       y: e.clientY,
       items: [
         {
-          // Name, Description, and the read-only Location of the file this
-          // desktop is saved in.
+          // The universal Name/Description pair, nothing else: a desktop is
+          // not a file, so it has no Location to show.
           label: "Properties…",
           onSelect: () => this.#onProperties?.(tab.id),
+        },
+        {
+          label: "Duplicate Desktop",
+          disabled: this.#locked,
+          onSelect: () => this.#onDuplicate?.(tab.id),
+        },
+        {
+          // A snapshot, with no link back — read-only, so it stays available
+          // while the circuit runs.
+          label: "Export Desktop…",
+          onSelect: () => this.#onExport?.(tab.id),
         },
         { separator: true },
         {

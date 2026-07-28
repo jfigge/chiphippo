@@ -414,9 +414,9 @@ async function init() {
 
   // Desk document (Feature 20): the boards/components/wires of the desktop on
   // screen, held in one in-memory DeskDoc. Anything that mutates it dispatches
-  // a global `chiphippo:doc-changed` CustomEvent. The desk is a DESKTOP of the
-  // open project, and a desktop is a document: it is written to its own file
-  // deliberately (⌘S), never autosaved, so the • on its tab is what says the
+  // a global `chiphippo:doc-changed` CustomEvent. The desk is one DESKTOP of
+  // the open PROJECT, which is the document: it is written to its one file
+  // deliberately (⌘S), never autosaved, so the • in the title is what says the
   // work is only on screen.
   const deskDoc = new DeskDoc(projectBoot?.doc ?? null);
   // ONE netlist cache shared by every consumer (probe, sim, build guide,
@@ -436,30 +436,13 @@ async function init() {
     }, VIEWPORT_SAVE_DEBOUNCE_MS);
   };
 
-  // ── Desktop files (New / Open / Save / Save As) ───────────────────────────
-  // Every one of them acts on the ACTIVE DESKTOP of the open project, which
-  // owns its own file: New empties it, Open loads a design into it (and the
-  // desktop adopts that file), Save writes it back to its Location, Save As
-  // gives it a new one. The workspace owns all of it — this is only the wiring
-  // from the toolbar and the native File menu, which dispatch the same events.
-  const newSchematic = () => workspace?.newActiveTab();
-  const openSchematic = () => workspace?.loadIntoActiveTab();
-  // Both report whether the desktop actually reached a file — `false` for a
-  // cancelled dialog or a failed write — so a caller that saves on the user's
-  // behalf before doing something destructive can abort instead of discarding
-  // work that was never written.
-  const saveSchematic = async () => (await workspace?.saveActiveTab()) === true;
-  const saveAsSchematic = async () =>
-    (await workspace?.saveActiveTabAs()) === true;
-
-  // The window title names the project and the desktop on screen. Its •
-  // leads the whole thing, so it stands for anything unsaved: the desktop's
-  // own design (the same marker its tab carries) or the project's list of
-  // desktops and their names.
+  // The window title names the project and the desktop on screen. Its • leads
+  // the whole thing, and there is only one thing it can stand for now: the
+  // project is the document, so its dirty flag covers every desktop's design,
+  // the list of desktops, and their names alike.
   const updateTitle = () => {
     const tab = workspace?.activeTab;
-    const marker =
-      workspace?.activeDirty || workspace?.projectDirty ? "• " : "";
+    const marker = workspace?.dirty ? "• " : "";
     const project = workspace?.projectName || "Untitled";
     document.title = tab
       ? `${marker}${project} — ${tab.name} — Chip Hippo`
@@ -468,29 +451,38 @@ async function init() {
   updateTitle();
   window.addEventListener("chiphippo:doc-changed", updateTitle);
 
-  window.addEventListener("chiphippo:schematic-new", newSchematic);
-  window.addEventListener("chiphippo:schematic-open", openSchematic);
-  window.addEventListener("chiphippo:schematic-save", saveSchematic);
-  window.addEventListener("chiphippo:schematic-save-as", saveAsSchematic);
-
-  // ── The Project menu ──────────────────────────────────────────────────────
-  // The application's Project menu (main.js `buildAppMenu`) pushes one event
-  // per item; every one of them is the workspace's to answer, since it is the
-  // only side that knows what is open and what is unsaved. Open Recent is the
-  // one that carries a payload — the project file its item stands for.
+  // ── The File and Desktop menus ────────────────────────────────────────────
+  // The application menu (main.js `buildAppMenu`) pushes one event per item;
+  // every one of them is the workspace's to answer, since it is the only side
+  // that knows what is open and what is unsaved. FILE acts on the project —
+  // the document — and the toolbar's File pill dispatches the very same
+  // events, so the two can't drift. DESKTOP edits the structure inside it, and
+  // acts on whichever desktop is on screen. Open Recent is the one push that
+  // carries a payload: the project file its item stands for.
   for (const [event, run] of [
     ["chiphippo:project-new", () => workspace?.newProject()],
     ["chiphippo:project-open", () => workspace?.loadProject()],
-    ["chiphippo:project-save", () => workspace?.saveProject()],
-    ["chiphippo:project-save-as", () => workspace?.saveProjectAs()],
+    ["chiphippo:project-save", () => workspace?.save()],
+    ["chiphippo:project-save-as", () => workspace?.saveAs()],
     ["chiphippo:project-properties", () => workspace?.editProjectProperties()],
-    ["chiphippo:project-add-tab", () => workspace?.addTab()],
+    ["chiphippo:desktop-add", () => workspace?.addTab()],
+    ["chiphippo:desktop-import", () => workspace?.importTab()],
+    ["chiphippo:desktop-duplicate", () => activeDesktopAction("duplicateTab")],
+    ["chiphippo:desktop-export", () => activeDesktopAction("exportTab")],
+    ["chiphippo:desktop-properties", () => activeDesktopAction("editTabProperties")], // prettier-ignore
+    ["chiphippo:desktop-delete", () => activeDesktopAction("deleteTab")],
   ]) {
     window.addEventListener(event, () => void run());
   }
   window.addEventListener("chiphippo:project-open-recent", (e) => {
     if (e.detail) void workspace?.openRecentProject(e.detail);
   });
+
+  /** A Desktop-menu item aimed at whichever desktop is on screen. */
+  function activeDesktopAction(method) {
+    const id = workspace?.activeTab?.id;
+    if (id) return workspace[method](id);
+  }
 
   // ── Closing the window / quitting ────────────────────────────────────────
   // Main prevents the close and asks HERE, because the unsaved state and the
@@ -558,7 +550,10 @@ async function init() {
   const projectTabs = new ProjectTabs(stage, {
     onSelect: (id) => workspace?.selectTab(id),
     onAdd: () => workspace?.addTab(),
+    onImport: () => void workspace?.importTab(),
     onProperties: (id) => workspace?.editTabProperties(id),
+    onDuplicate: (id) => void workspace?.duplicateTab(id),
+    onExport: (id) => void workspace?.exportTab(id),
     onDelete: (id) => workspace?.deleteTab(id),
   });
   stage.append(desk);
@@ -769,14 +764,15 @@ async function init() {
     modeBtn.setAttribute("aria-pressed", String(schematic));
   }
 
-  // Schematic file actions — a PILL just right of the Projects button, the same
-  // shape the desk tools use: one border around a row of borderless segments.
-  // Every file action is its own segment rather than a row hidden behind a ▾:
-  // they're peers, and a toolbar's job is to show what's available. Each is
-  // icon-only with the name + accelerator in its tooltip, so five of them cost
-  // about what the old Save + ▾ pair did. Every one dispatches the SAME
-  // chiphippo:* event the native File menu pushes, so the two can't drift —
-  // except Open Recent, which is toolbar-only and drops its own menu.
+  // File actions — a PILL, the same shape the desk tools use: one border
+  // around a row of borderless segments. They act on the PROJECT, which is the
+  // document: one file holds every desktop, so New / Open / Save / Save As
+  // mean one thing each. Every file action is its own segment rather than a
+  // row hidden behind a ▾: they're peers, and a toolbar's job is to show
+  // what's available. Each is icon-only with the name + accelerator in its
+  // tooltip, and dispatches the SAME chiphippo:* event the native File menu
+  // pushes, so the two can't drift — Open Recent is menu-only, because an MRU
+  // list can't be a button.
   const fileBtn = ({ icon, label, title, haspopup = false, onClick }) => {
     const btn = el("button", {
       class: "toolbar-pill-btn toolbar-pill-btn--icon",
@@ -790,30 +786,33 @@ async function init() {
     return btn;
   };
 
+  /** Every segment fires the File menu's own push — one code path, two UIs. */
+  const fileAction = (event) => () =>
+    window.dispatchEvent(new CustomEvent(`chiphippo:${event}`));
+
   const fileNewBtn = fileBtn({
     icon: NEW_SVG,
-    label: "New Desktop",
-    title: `New Desktop (${accel("N")}) — start over on an empty desk`,
-    onClick: () => newSchematic(),
+    label: "New Project",
+    title: `New Project (${accel("N")}) — start over on an empty desk`,
+    onClick: fileAction("project-new"),
   });
   const fileOpenBtn = fileBtn({
     icon: LOAD_SVG,
     label: "Open",
-    title: `Open… (${accel("O")}) — load a saved design`,
-    onClick: () => openSchematic(),
+    title: `Open… (${accel("O")}) — load a saved project`,
+    onClick: fileAction("project-open"),
   });
   const fileSaveBtn = fileBtn({
     icon: SAVE_SVG,
     label: "Save",
-    title: `Save (${accel("S")}) — write the design back to its file`,
-    onClick: () =>
-      window.dispatchEvent(new CustomEvent("chiphippo:schematic-save")),
+    title: `Save (${accel("S")}) — write the project back to its file`,
+    onClick: fileAction("project-save"),
   });
   const fileSaveAsBtn = fileBtn({
     icon: SAVE_AS_SVG,
     label: "Save As",
-    title: `Save As… (${accel("S", true)}) — write the design to a new file`,
-    onClick: () => saveAsSchematic(),
+    title: `Save As… (${accel("S", true)}) — write the project to a new file`,
+    onClick: fileAction("project-save-as"),
   });
   const filePill = el(
     "div",
@@ -821,10 +820,11 @@ async function init() {
     [fileNewBtn, fileOpenBtn, fileSaveBtn, fileSaveAsBtn],
   );
 
-  // PROJECT actions have no toolbar button at all: New / Load / Open Recent /
-  // Save / Save As / Properties / Add Desktop are the application's **Project**
-  // menu (main.js `buildAppMenu`), which pushes to the workspace exactly as the
-  // File menu pushes here.
+  // DESKTOP actions have no toolbar button at all: Add / Duplicate / Import /
+  // Export / Properties / Delete are the application's **Desktop** menu
+  // (main.js `buildAppMenu`) and the tab strip's own context menu — a desktop
+  // is reached through its tab, so that is where the things one can do to it
+  // belong.
   toolbar.append(
     filePill,
     el("span", { class: "toolbar-divider", "aria-hidden": "true" }),
@@ -1094,11 +1094,11 @@ async function init() {
     onTransportChange,
   });
 
-  // Projects & tabbed desktops: owns which desktop is on the desk, swapping
-  // the document (and its camera, baseline, and undo history) through the
-  // controller's load path, and every project/desktop file action behind the
-  // Projects menu and the File pill. Built here because it needs the sim to
-  // stop across a switch.
+  // Projects & tabbed desktops: owns the open project — the document — which
+  // desktop is on the desk, and the swap (with its camera and undo history)
+  // through the controller's load path, plus every action behind the File and
+  // Desktop menus. Built here because it needs the sim to stop across a
+  // switch.
   workspace = new ProjectWorkspace({
     bridge,
     deskDoc,

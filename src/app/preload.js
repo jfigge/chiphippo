@@ -32,7 +32,7 @@ const { contextBridge, ipcRenderer } = require("electron");
 // as a global chiphippo:* CustomEvent the renderer listens for (the documented
 // main→renderer broadcast pattern). Most carry no payload — the renderer opens
 // the matching dialog or acts on the desk it already owns. The one exception is
-// Open Recent Project, whose item names the project file it stands for; the
+// File ▸ Open Recent, whose item names the project file it stands for; the
 // detail is passed through verbatim, so a payload-free push simply arrives with
 // `detail: undefined`.
 for (const [channel, event] of [
@@ -45,11 +45,12 @@ for (const [channel, event] of [
   ["menu:project-save", "chiphippo:project-save"],
   ["menu:project-save-as", "chiphippo:project-save-as"],
   ["menu:project-properties", "chiphippo:project-properties"],
-  ["menu:project-add-tab", "chiphippo:project-add-tab"],
-  ["menu:schematic-new", "chiphippo:schematic-new"],
-  ["menu:schematic-open", "chiphippo:schematic-open"],
-  ["menu:schematic-save", "chiphippo:schematic-save"],
-  ["menu:schematic-save-as", "chiphippo:schematic-save-as"],
+  ["menu:desktop-add", "chiphippo:desktop-add"],
+  ["menu:desktop-duplicate", "chiphippo:desktop-duplicate"],
+  ["menu:desktop-import", "chiphippo:desktop-import"],
+  ["menu:desktop-export", "chiphippo:desktop-export"],
+  ["menu:desktop-properties", "chiphippo:desktop-properties"],
+  ["menu:desktop-delete", "chiphippo:desktop-delete"],
   ["menu:build-guide", "chiphippo:build-guide"],
   ["menu:edit-undo", "chiphippo:edit-undo"],
   ["menu:edit-redo", "chiphippo:edit-redo"],
@@ -115,30 +116,22 @@ contextBridge.exposeInMainWorld("chiphippo", {
       ipcRenderer.invoke("settings:choose-datasheet-dir"),
   },
 
-  // ── Desk documents ─────────────────────────────────────────────────────────
-  // Open a saved design INTO the active desktop (the File pill's Open): a
-  // native dialog picks it, so the desktop can adopt that file as its own
-  // location. → { path, doc } | null when cancelled. Everything else about a
-  // desktop's file goes through `project` below, which knows where it lives.
-  desk: {
-    open: () => ipcRenderer.invoke("desk:open"),
-  },
-
-  // ── Projects & desktops ────────────────────────────────────────────────────
-  // THERE IS ALWAYS A PROJECT: `boot()` answers with one on every launch (the
-  // unsaved one in the app's saves folder, else the most recent saved one,
-  // else a brand-new one). The renderer holds the project meta — name,
-  // description, location, tabs — and hands it back to be written; main owns
-  // the saves folder, the native dialogs, the recent list, and which paths may
-  // be touched at all (anything inside the saves folder, plus whatever a
+  // ── Projects ───────────────────────────────────────────────────────────────
+  // THE PROJECT IS THE DOCUMENT: one file holds every desktop's document and
+  // every programmed ROM's bytes, so this is the app's only file surface.
+  // `boot()` answers with a project on every launch (the unsaved one in the
+  // app's saves folder, else the most recent saved one, else a brand-new one).
+  // The renderer holds the whole project — name, description, location, tabs,
+  // and each tab's `doc` — and hands it back to be written; main owns the
+  // saves folder, the native dialogs, the recent list, the ROM images, and
+  // which paths may be touched at all (the saves folder, plus whatever a
   // dialog or an opened project established).
   //
   // `save(meta, path, dropDefault)` writes the project file: a null path means
   // "no location yet" → the fixed default project file, and `dropDefault`
   // clears that slot when a project moves out of it. `choosePath` only PICKS a
   // location — the native save dialog asks about replacing an existing file
-  // itself, so a refusal comes back as a cancel (null); `dropTemp` deletes an
-  // app-minted GUID desktop file once the desktop has a real home.
+  // itself, so a refusal comes back as a cancel (null).
   project: {
     boot: () => ipcRenderer.invoke("project:boot"),
     create: () => ipcRenderer.invoke("project:new"),
@@ -147,21 +140,11 @@ contextBridge.exposeInMainWorld("chiphippo", {
       ipcRenderer.invoke("project:open-recent", filePath),
     save: (meta, filePath, dropDefault) =>
       ipcRenderer.invoke("project:save", meta, filePath, dropDefault),
-    addTab: (meta) => ipcRenderer.invoke("project:add-tab", meta),
-    // The guard's "Discard": clean up after the desktops added since the
-    // project was last saved — their app-kept files, which nothing will point
-    // at once the project is reloaded. Resolves to the files removed.
-    discard: (meta, filePath) =>
-      ipcRenderer.invoke("project:discard", meta, filePath),
-    readTab: (filePath) => ipcRenderer.invoke("project:read-tab", filePath),
-    writeTab: (filePath, doc) =>
-      ipcRenderer.invoke("project:write-tab", filePath, doc),
     choosePath: (kind, name, current) =>
       ipcRenderer.invoke("project:choose-path", kind, name, current),
-    dropTemp: (filePath) => ipcRenderer.invoke("project:drop-temp", filePath),
-    // The MRU list behind Projects ▸ Open Recent: `list()` → the last 10
-    // project paths, most recent first; `remove(path)` → the new list.
-    // Opening one is `openRecent` above (main allowlists against this list).
+    // The MRU list behind File ▸ Open Recent: `list()` → the last 10 project
+    // paths, most recent first; `remove(path)` → the new list. Opening one is
+    // `openRecent` above (main allowlists against this list).
     recent: {
       list: () => ipcRenderer.invoke("project:recent:list"),
       remove: (filePath) =>
@@ -170,6 +153,20 @@ contextBridge.exposeInMainWorld("chiphippo", {
     // A tab switch swaps the whole desk — ask main to close the pinout /
     // memory windows that were pointing at the desk being left behind.
     closeAuxWindows: () => ipcRenderer.invoke("project:closed-aux"),
+  },
+
+  // ── Desktop snapshots (Export / Import / Duplicate) ────────────────────────
+  // A desktop is structure inside the project file, not a file of its own, so
+  // moving one between projects is a SNAPSHOT: `export` picks a path and
+  // writes a self-contained `.desktop.chiphippo` (the document plus every
+  // programmed ROM's bytes); `import` reads one back. Both COPIES — import and
+  // duplicate — come back with freshly minted ROM guids and their own backing
+  // files, so no two chips can ever share one. Each resolves to null when its
+  // dialog was cancelled.
+  desktop: {
+    export: (desktop) => ipcRenderer.invoke("desktop:export", desktop),
+    import: () => ipcRenderer.invoke("desktop:import"),
+    duplicate: (doc) => ipcRenderer.invoke("desktop:duplicate", doc),
   },
 
   // ── Chip pin-assignments window (Feature 100) ──────────────────────────────

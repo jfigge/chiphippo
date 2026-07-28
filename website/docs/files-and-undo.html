@@ -83,87 +83,87 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
     </nav>
     <main class="content">
 <h1>Files, Saving &amp; Undo</h1>
-<p>Chip Hippo keeps your work in ordinary files you can see, move, and share —
-one for each <strong>desktop</strong> you build on, and one for the <strong>project</strong> that lists
-them. This page covers where those files live, the four commands that manage a
-desktop&#39;s file, the dirty marker, and undo/redo.</p>
-<h2 id="there-is-always-a-project">There is always a project</h2>
+<p>Chip Hippo keeps your work in <strong>one ordinary file</strong> you can see, move, and
+share. This page covers what&#39;s in it, the four commands that manage it, the
+dirty marker, and undo/redo.</p>
+<h2 id="one-file-is-the-whole-design">One file is the whole design</h2>
 <p>The desk in front of you is always a <strong>desktop of an open project</strong>, from the
 very first launch. A brand-new project has no name, no home of its own, and
 exactly one desktop called <code>Desktop 1</code> — which is simply a desk to build on.
-See <a href="projects-and-desktops.html">Projects &amp; Desktops</a> for what a project is for
-and how to keep several desktops side by side.</p>
-<p>Two kinds of file follow from that:</p>
+See <a href="projects-and-desktops.html">Projects &amp; Desktops</a> for keeping several
+desktops side by side.</p>
+<p><strong>The project is the document.</strong> A single <code>.chiphippo</code> file holds all of it:</p>
 <ul>
-<li>a <strong>desktop file</strong> (<code>.desktop.chiphippo</code>) — one complete desk: its boards,
-chips, wiring, and parts. It is an ordinary Chip Hippo design file, so it
-opens on any desktop, in any project.</li>
-<li>a <strong>project file</strong> (<code>.project.chiphippo</code>) — the small list of which desktops
-the project has, what they are called, and where each one&#39;s file is.</li>
+<li>every desktop — its boards, chips, wiring, parts, and net names;</li>
+<li>what those desktops are called, and which one you were on;</li>
+<li>the contents of every ROM you programmed.</li>
 </ul>
-<h2 id="before-you-choose-where-things-go">Before you choose where things go</h2>
-<p>Chip Hippo never stops you mid-thought to ask for a file name. Until you save
-something under a name of your own, it keeps the file for you in its own
-<strong>saves folder</strong> inside the app&#39;s data directory:</p>
-<ul>
-<li>every new desktop gets a file there straight away, under a generated name
-you are not meant to read — its Location, but a temporary one;</li>
-<li>a project with no name lives in the one <strong>default project file</strong> there. It
-is the work in progress, and it is what Chip Hippo opens when you launch it.</li>
-</ul>
-<p>Give either one a home of your own (<strong>Save As</strong> for a desktop, <strong>Project ▸
-Save Project</strong> for a project) and the file left behind in the saves folder is
-cleaned up — nothing but that one object ever pointed at it.</p>
-<p>That folder is Chip Hippo&#39;s to tidy, so <strong>anything of yours kept in it is
-treated the same way</strong>: a desktop whose file is in there — the generated one,
-or one you saved into the folder yourself — has that file deleted when you
-delete the desktop. Save a desktop anywhere else and the file is yours; Chip
-Hippo will never remove it, even when the desktop is gone.</p>
-<p>When you launch, Chip Hippo opens the unsaved project from its saves folder if
-there is one; otherwise it reopens the <strong>project you used most recently</strong>.</p>
+<p>Nothing else is needed to open a design. Copy that one file to another machine
+and it opens whole, ROM contents included — which is what makes a Chip Hippo
+design something you can actually send to someone.</p>
+<h2 id="before-you-choose-where-it-goes">Before you choose where it goes</h2>
+<p>Chip Hippo never stops you mid-thought to ask for a file name. A project that
+hasn&#39;t been given a home lives in a <strong>working slot</strong> inside the app&#39;s own data
+directory, and <code>Cmd/Ctrl+S</code> writes it there with no dialog at all. Design
+something, save, quit — it&#39;s there when you come back.</p>
+<p><strong>Save As…</strong> is what gives the project a real file, when you want one. From
+then on Save just writes that file. When you launch, Chip Hippo opens the
+unsaved project from its working slot if there is one; otherwise it reopens the
+<strong>project you used most recently</strong>.</p>
 <h2 id="new-open-save-save-as">New, Open, Save, Save As</h2>
 <p>Four commands — on the <strong>File</strong> menu, in the header toolbar&#39;s File pill, and
-under the usual shortcuts — manage the <strong>active desktop&#39;s</strong> file:</p>
+under the usual shortcuts — manage the project&#39;s file:</p>
 <ul>
-<li><strong>New Desktop</strong> (<code>Cmd/Ctrl+N</code>) — empties the desk you&#39;re on. Its file keeps
-whatever was last saved to it, so this is &quot;start over here&quot;, not &quot;delete&quot;.</li>
-<li><strong>Open…</strong> (<code>Cmd/Ctrl+O</code>) — shows a native file picker; the design you choose
-is loaded onto the active desktop, and that file becomes the desktop&#39;s
-Location. From then on, Save writes there.</li>
-<li><strong>Save</strong> (<code>Cmd/Ctrl+S</code>) — writes the desk back to the file its Location
-names. No dialog: a desktop always has one.</li>
+<li><strong>New Project</strong> (<code>Cmd/Ctrl+N</code>) — a fresh unnamed project with one empty
+desktop. What&#39;s open now is asked about first.</li>
+<li><strong>Open…</strong> (<code>Cmd/Ctrl+O</code>) — shows a native file picker. A <code>.chiphippo</code> project
+opens as itself; a loose design or an exported desktop opens as a new project
+of one desktop.</li>
+<li><strong>Save</strong> (<code>Cmd/Ctrl+S</code>) — writes the project to its file, or to the working
+slot when it hasn&#39;t got one yet. No dialog either way.</li>
 <li><strong>Save As…</strong> (<code>Shift+Cmd/Ctrl+S</code>) — asks where to keep it and writes it
-there, and that file becomes the desktop&#39;s Location. If the desktop was
-still in the file Chip Hippo minted for it, the suggested name comes from
-the <strong>desktop&#39;s own name</strong> (&quot;Clock module.desktop.chiphippo&quot;), and the
-minted file is deleted once the design has a real home.</li>
+there. An unnamed project takes its <strong>name from the file you pick</strong>, so
+there&#39;s no separate naming step.</li>
 </ul>
-<p>If the file you pick already exists, your system&#39;s own save dialog asks
-whether to replace it, exactly as it does in any other app — Chip Hippo adds
-no second question of its own. Decline there and nothing is written.</p>
-<p>Right-click a tab and choose <strong>Properties…</strong> to see a desktop&#39;s Location —
-alongside its Name and Description — without opening any dialog that writes.</p>
+<p>If the file you pick already exists, your system&#39;s own save dialog asks whether
+to replace it, exactly as it does in any other app — Chip Hippo adds no second
+question of its own. Decline there and nothing is written.</p>
+<p><strong>File ▸ Project Properties…</strong> shows the project&#39;s Location alongside its Name
+and Description, without opening any dialog that writes.</p>
 <h2 id="unsaved-changes">Unsaved changes</h2>
-<p>A desktop&#39;s tab shows a dot when it has changes that aren&#39;t in its file yet,
-and the window title shows the same for the desk you&#39;re on:
-<code>• 6502 SBC — Clock module — Chip Hippo</code>. Save clears it. The title&#39;s dot also
-covers the <strong>project&#39;s</strong> own unsaved changes — a desktop added, something
-renamed — which <strong>Project ▸ Save Project</strong> writes.</p>
-<p>Nothing that would lose those changes happens silently. Emptying a desktop or
-loading another design into it asks first; so does deleting a desktop, opening
-or starting another project, and quitting. Every one of those questions offers
-to <strong>save</strong> first — and choosing that carries the action through, so you are
-never made to ask twice.</p>
-<p>When the save is the app&#39;s idea rather than yours — quitting with a dot on a
-tab — nothing is asked about <em>where</em>: each desktop goes to the file it already
-has, and the project to its own (or, having none yet, to the app&#39;s default
-project file, where the next launch will find it).</p>
+<p>The window title shows a • when the project has changes that aren&#39;t in its file
+yet: <code>• 6502 SBC — Clock module — Chip Hippo</code>. Save clears it. There is one
+marker because there is one document — it covers every desktop&#39;s design <em>and</em>
+the desktops themselves, so adding one, renaming one, or deleting one shows up
+there exactly as wiring a board does.</p>
+<p><strong>Nothing is written until you save.</strong> Add a desktop, rename it, delete another
+— none of it touches the disk, and closing the project without saving takes all
+of it back. Tabs carry no marker of their own for the same reason: a desktop
+can&#39;t be saved on its own, so a dot on one would have nothing to clear it.</p>
+<p>Nothing that would lose your changes happens silently. Starting or opening
+another project asks first, and so does quitting. Both offer to <strong>save</strong> — and
+choosing that carries the action through, so you are never made to ask twice.</p>
+<p>A project still in the <strong>working slot</strong> is asked about every time, even when
+nothing is unsaved: the incoming project is about to claim that slot, so
+there&#39;s nowhere for this one to stay. <strong>Save</strong> there means Save As — a file of
+its own.</p>
+<p>When the save is the app&#39;s idea rather than yours — quitting with a • in the
+title — nothing is asked about <em>where</em>: the project goes to the file it already
+has, or to the working slot, where the next launch will find it.</p>
+<p>Two things that are deliberately <strong>not</strong> counted as changes: which desktop is on
+the desk, and where the camera is. Moving between tabs and panning around never
+mark a design dirty.</p>
 <h2 id="undo--redo">Undo &amp; redo</h2>
 <p><code>Cmd/Ctrl+Z</code> undoes the last edit; <code>Shift+Cmd/Ctrl+Z</code> redoes it. Undo/redo
 covers the full editing history of the circuit — placing and moving boards,
 chips, and discretes; wiring and unwiring; deleting anything; net names — as
 far back as your session&#39;s history allows, and both menu items disable
 themselves automatically when there&#39;s nothing left to undo or redo.</p>
+<p>Undo/redo is <strong>per desktop</strong>: switch away and back, and <code>Cmd/Ctrl+Z</code> still
+undoes that desk&#39;s last edit, not the other one&#39;s. Adding, deleting, renaming
+and importing a desktop are not on any undo stack — they&#39;re changes to the
+project&#39;s own structure, and what takes them back is closing the project
+without saving.</p>
 <p>Undo/redo does <strong>not</strong> cover simulation state. While the circuit is running,
 editing — and with it, recording new undo steps — is locked, so nothing that
 happens mid-run (sequential chip state, clock phase, a chip taking 12 V
@@ -181,7 +181,7 @@ moment in its simulated behavior.</p>
 circuits as ordinary <code>.chiphippo</code> files — currently small W65C02-based
 breadboard computers built from 74xx glue logic, each paired with a <code>.hex</code>
 ROM image. Open one the same way as any saved design: <strong>File ▸ Open…</strong> loads
-it onto the desktop you&#39;re on. Then load its matching <code>.hex</code> into the ROM chip
+it as a project of its own. Then load its matching <code>.hex</code> into the ROM chip
 via the memory inspector or the external programmer before pressing <strong>Run</strong>.</p>
 <hr>
 <p>See <a href="getting-started.html">Getting Started</a> for building your first circuit

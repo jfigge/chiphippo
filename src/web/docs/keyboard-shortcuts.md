@@ -52,10 +52,10 @@ are noted alongside the shortcut.
 
 | Shortcut | Action |
 |---|---|
-| `Cmd+N` | New Desktop (empty the desktop you're on) |
-| `Cmd+O` | Open… (load a design onto this desktop) |
-| `Cmd+S` | Save the desktop to its own file |
-| `Cmd+Shift+S` | Save As… (give the desktop a new file) |
+| `Cmd+N` | New Project (a blank slate, one empty desktop) |
+| `Cmd+O` | Open… (load a saved project) |
+| `Cmd+S` | Save the project to its file |
+| `Cmd+Shift+S` | Save As… (give the project a new file) |
 | `Cmd+Z` | Undo |
 | `Cmd+Shift+Z` | Redo |
 

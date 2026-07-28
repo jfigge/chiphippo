@@ -343,13 +343,9 @@
   color: var(--color-text);
 }
 
-/* Unsaved changes on THAT desktop (the tab's own dirty marker). */
-.project-tab-marker {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--color-success);
-}
+/* There is no per-tab dirty marker: the PROJECT is the document, so a desktop
+   cannot be saved on its own and a dot no action could clear would be a lie.
+   The one marker is the window title's. */
 
 .project-tab-add {
   color: var(--color-overlay);

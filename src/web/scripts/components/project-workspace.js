@@ -18,6 +18,17 @@
 // project is open, which desktop is on the desk, and everything that has to
 // happen when either changes.
 //
+// THE PROJECT IS THE DOCUMENT. One file holds every desktop and every
+// programmed ROM's bytes, so there is ONE dirty marker, ONE Save, ONE Save As,
+// and one recent list. A desktop is STRUCTURE INSIDE that document, not a file
+// of its own: adding, renaming, duplicating, importing and deleting one are
+// ordinary unsaved changes.
+//
+// NOTHING IS WRITTEN UNTIL YOU SAVE. Every eager write the previous design
+// carried existed so the filesystem would not lie about where a desktop was;
+// with no companion files there is nothing for it to lie about, so closing
+// without saving is now a complete, honest revert of the session.
+//
 // THERE IS ALWAYS A PROJECT. The app boots onto one (main's `project:boot`
 // answers with the unsaved one from the saves folder, the most recent saved
 // one, or a brand-new one), so there is no second "working desk" mode beside
@@ -32,56 +43,55 @@
 // scene it cannot otherwise dismantle, and `#rebuildScene` IS the in-process
 // one.
 //
-// What each tab keeps of its own while it is off-screen:
-//   · its document (live JSON, stashed on the way out),
+// The ACTIVE desktop's document lives in the shared `DeskDoc`, not in the
+// project meta — the meta's copy of it is a stash, refreshed by `#stash()`
+// whenever the whole project is needed (a save, a switch, an export). Every
+// OTHER desktop's document sits in `meta.tabs[].doc` exactly as its file will
+// hold it. What each tab keeps of its own besides that:
 //   · its camera, so a desktop is where you left it,
-//   · its saved baseline, so the • dirty marker is per desktop,
 //   · its own HistoryStore — switch away, switch back, and ⌘Z undoes THAT
 //     desk's last edit, not the other one's.
+// A camera is deliberately NOT in the file: panning must never mark a design
+// dirty.
 //
 // What never crosses a switch: the running simulation (run-volatile by
 // definition) and the auxiliary windows — a pinout or memory inspector is
-// pointing at a chip on the desk being left behind.
-//
-// What deliberately DOES cross: the controller's copy buffers. Carrying a
-// design worked out on one desktop onto another is the whole feature.
+// pointing at a chip on the desk being left behind. What deliberately DOES
+// cross: the controller's copy buffers. Carrying a design worked out on one
+// desktop onto another is the whole feature.
 //
 // Every desktop is a PEER — there is no privileged main desk. Any of them can
-// be renamed, relocated, or deleted; the only rule is that a project keeps at
-// least one.
+// be renamed, duplicated, exported or deleted; the only rule is that a project
+// keeps at least one.
 //
-// WHAT IS SAVED WHEN. A DESKTOP is a document and follows the manual model:
-// Save writes it back to its own Location, Save As gives it a new one, and
-// until then the • on its tab says the work is only on screen.
-//
-// The PROJECT FILE follows it: adding a desktop, renaming one, moving between
-// them — those are the project's own unsaved changes, and `Save Project`
-// writes them (along with every desktop). Discard them and they are GONE: a
-// desktop added since the last save is not in the file the project reloads
-// from, so the app-kept file it was using is cleaned up rather than left
-// behind pointed at by nothing (`#discardProjectChanges`).
-//
-// Two things are written the moment they happen, because holding them back
-// would leave a file lying rather than a change pending:
-//   · a desktop's own file MOVING (Save As / Open) or being deleted — the
-//     project must not go on pointing at a file that is gone;
-//   · anything at all about the UNSAVED project, whose default project file
-//     is not a copy of it but IS it: the only record, and what the next
-//     launch opens.
-// A write for either reason necessarily carries whatever else was pending —
-// the file is written whole — so a delete or a Save As commits the rename you
-// had not saved yet. That is the honest trade: what is on disk always matches
-// where the desktops actually are.
+// WHERE A SAVE GOES. An UNSAVED project (blank name, blank location) lives in
+// the app's one fixed working file, and ⌘S writes it there with no dialog at
+// all — designing a circuit and saving it must never require choosing a file.
+// SAVE AS is what gives the project a real home, and it names an untitled
+// project from the file the user picks, so there is no "name this project"
+// prompt in front of the save panel.
 
 import { PopupManager } from "../popup-manager.js";
 import { PartPropertiesDialog } from "./part-properties-dialog.js";
 import { HistoryStore } from "../model/history-store.js";
 import { DeskDoc, emptyDocument } from "../model/desk-doc.js";
+import {
+  activeDesktop,
+  addDesktop,
+  duplicateDesktop,
+  findDesktop,
+  importDesktop,
+  normalizeProject,
+  projectForFile,
+  projectSignature,
+  removeDesktop,
+  setActiveDesktop,
+  setDesktopDoc,
+  setDesktopField,
+  setProjectField,
+} from "../model/project-doc.js";
 
-/** The label the project name dialog suggests nothing for. */
-const NAME_PLACEHOLDER = "e.g. 6502 SBC";
-
-/** The one extra field the Properties dialog shows for a project/desktop. */
+/** The one extra field the Properties dialog shows for a PROJECT. */
 const LOCATION_FIELD = Object.freeze({
   key: "location",
   label: "Location",
@@ -94,12 +104,19 @@ const LOCATION_FIELD = Object.freeze({
  * differently from what `DeskDoc` normalizes it to, and the desk shows the
  * normalized version. Canonicalizing on the way IN is what lets the dirty
  * marker stay a plain string comparison instead of reporting every freshly
- * opened desktop as changed.
+ * opened project as changed.
  */
 const canonical = (raw) => new DeskDoc(raw).toJSON();
 
 /** The last path segment of a file path (for a menu label / a message). */
 const fileName = (p) => (p ? String(p).split(/[\\/]/).pop() : "");
+
+/** A chosen file's name, minus the extension — what Save As calls an
+    untitled project, so no separate name prompt is needed. */
+function nameFromPath(filePath) {
+  const base = fileName(filePath);
+  return base.replace(/\.chiphippo$/i, "").trim() || "Untitled";
+}
 
 export class ProjectWorkspace {
   #bridge;
@@ -110,47 +127,43 @@ export class ProjectWorkspace {
   #getCamera;
   #setCamera;
   #onActiveChange;
-  #project = null; // { name, description, location, tabs, activeTab, nextIndex }
-  #state = new Map(); // tabId → { doc, savedJson, history, camera }
-  #projectSaved = null; // the project as its file holds it (the dirty test)
+  #project = null; // the normalized meta (model/project-doc.js) + `location`
+  #state = new Map(); // tabId → { history, camera }
+  #saved = null; // the signature of the project as its file holds it
 
   /**
    * Read the project this session opens with, BEFORE the desk is built — so
    * the app paints the right desktop once instead of painting a blank one and
    * swapping it out a moment later. Main decides WHICH project that is (the
-   * unsaved one, the most recent, or a brand-new one); this only reads its
-   * active desktop's document.
+   * unsaved one, the most recent, or a brand-new one), and answers with the
+   * whole thing: every desktop's document is already in hand.
    *
-   * @returns {Promise<{project: object, doc: object}|null>} null only when
-   *   even creating a project failed — the app then runs on in a degraded
-   *   state rather than showing nothing at all.
+   * @returns {Promise<{project: object, doc: object, warnings: string[]}|null>}
+   *   null only when even creating a project failed — the app then runs on in
+   *   a degraded state rather than showing nothing at all.
    */
   static async boot(bridge) {
-    let project = null;
+    let raw = null;
     try {
-      project = await bridge?.project?.boot();
+      raw = await bridge?.project?.boot();
     } catch (err) {
       console.error("[renderer] project:boot failed:", err);
     }
-    if (!project?.tabs?.length) {
+    if (!raw?.tabs?.length) {
       try {
-        project = await bridge?.project?.create();
+        raw = await bridge?.project?.create();
       } catch (err) {
         console.error("[renderer] project:new failed:", err);
         return null;
       }
     }
-    if (!project?.tabs?.length) return null;
-    const active =
-      project.tabs.find((t) => t.id === project.activeTab) ?? project.tabs[0];
-    project.activeTab = active.id;
-    let doc = null;
-    try {
-      doc = await bridge.project.readTab(active.file);
-    } catch (err) {
-      console.error("[renderer] project:read-tab failed:", err);
-    }
-    return { project, doc };
+    const project = normalizeProject(raw);
+    if (!project) return null;
+    return {
+      project,
+      doc: activeDesktop(project).doc,
+      warnings: Array.isArray(raw.warnings) ? raw.warnings : [],
+    };
   }
 
   /**
@@ -165,7 +178,7 @@ export class ProjectWorkspace {
    * @param {(camera: object) => void} opts.setCamera
    * @param {object|null} [opts.boot] - the result of `ProjectWorkspace.boot`.
    * @param {(tab: object|null) => void} [opts.onActiveChange] - the active
-   *   desktop (or the project) changed: re-title, re-baseline, re-render.
+   *   desktop (or the project) changed: re-title and re-render.
    */
   constructor({
     bridge,
@@ -186,11 +199,12 @@ export class ProjectWorkspace {
     this.#getCamera = getCamera;
     this.#setCamera = setCamera;
     this.#onActiveChange = onActiveChange;
-    if (boot?.project) this.#adopt(boot.project, boot.doc);
-    else this.#renderTabs();
-    // The dirty marker is per desktop, so it re-derives on every edit — the
-    // same whole-document comparison the window title has always made.
-    window.addEventListener("chiphippo:doc-changed", () => this.refreshDirty());
+    if (boot?.project) {
+      this.#adopt(boot.project);
+      this.#warn(boot.warnings);
+    } else {
+      this.#renderTabs();
+    }
   }
 
   // ── What the shell asks about ───────────────────────────────────────────
@@ -205,45 +219,33 @@ export class ProjectWorkspace {
     return this.#project?.name || "";
   }
 
-  /** The project file's path, or null while it has never been saved. */
+  /** The project file's path, or null while it lives in the working slot. */
   get projectLocation() {
     return this.#project?.location ?? null;
   }
 
   /**
-   * Has this project never been given a name and a home? It is living in the
-   * app's one default project file, so starting or opening another replaces
-   * it — which is why leaving is guarded.
+   * Has this project never been given a home of its own? It is living in the
+   * app's one working file, so starting or opening another replaces it —
+   * which is why leaving is guarded.
    */
   get isUntitled() {
     return this.isOpen && !this.#project.location;
   }
 
-  /** The active tab record `{id, name, description?, file, defaultFile}`. */
+  /** The active tab record `{id, name, description?, doc}`. */
   get activeTab() {
-    if (!this.#project) return null;
-    return (
-      this.#project.tabs.find((t) => t.id === this.#project.activeTab) ?? null
-    );
+    return this.#project ? activeDesktop(this.#project) : null;
   }
 
   /**
-   * Does the PROJECT differ from what its file holds — a desktop added or
-   * renamed, the project itself renamed? (Which desktop is on the desk is
-   * deliberately not counted: moving between tabs is not a change to keep or
-   * throw away.) The unsaved project is never dirty in this sense — its file
-   * is written as it goes, because that file is the project.
+   * THE dirty flag — the whole project against what its file holds: every
+   * desktop's design, the desktops themselves, and their names. Which desktop
+   * is on screen is deliberately not counted, and neither is the camera:
+   * moving between tabs and panning are not changes to keep or throw away.
    */
-  get projectDirty() {
-    if (!this.#project || !this.#project.location) return false;
-    return this.#projectSignature() !== this.#projectSaved;
-  }
-
-  /** Does the active desktop differ from what its file holds? */
-  get activeDirty() {
-    const state = this.#state.get(this.#project?.activeTab);
-    if (!state) return false;
-    return JSON.stringify(this.#deskDoc.toJSON()) !== state.savedJson;
+  get dirty() {
+    return this.isOpen && this.#signature() !== this.#saved;
   }
 
   /**
@@ -261,70 +263,51 @@ export class ProjectWorkspace {
     this.#tabsView?.setEditingLocked(locked);
   }
 
-  /** Re-derive every tab's dirty marker (cheap enough: documents are small). */
-  refreshDirty() {
-    if (!this.#project) return;
-    this.#tabsView?.setDirty(this.#dirtyTabs().map((tab) => tab.id));
-  }
-
-  /** The desktops whose work is only on screen. */
-  #dirtyTabs() {
-    if (!this.#project) return [];
-    return this.#project.tabs.filter((tab) => {
-      const state = this.#state.get(tab.id);
-      if (!state) return false; // never visited — it is exactly its file
-      const json =
-        tab.id === this.#project.activeTab
-          ? JSON.stringify(this.#deskDoc.toJSON())
-          : JSON.stringify(state.doc);
-      return json !== state.savedJson;
-    });
-  }
-
-  // ── Project lifecycle ───────────────────────────────────────────────────
+  // ── The project: New / Open / Save / Save As ─────────────────────────────
   //
-  // Every one of these is reached from the application's **Project** menu
-  // (main.js `buildAppMenu`), which pushes `menu:project-*` and arrives here
-  // as a `chiphippo:project-*` event app.js forwards. The renderer owns the
-  // open project, so main never does more than name the action.
+  // Every one of these is reached from the application's **File** menu
+  // (main.js `buildAppMenu`) and from the toolbar's File pill, both of which
+  // dispatch the same `chiphippo:project-*` event. The renderer owns the open
+  // project, so main never does more than name the action.
 
   /**
-   * New Project: a blank slate — no name, no location, ONE new empty desktop,
-   * living in the app's default project file until it is saved. No dialog: a
-   * name is asked for once, at Save Project…, and never before. Whatever was
-   * open is dealt with first (`#confirmLeaveProject`).
+   * New Project: a blank slate — no name, no location, ONE empty desktop,
+   * living in the app's working file until it is saved somewhere real. No
+   * dialog: a project is named by Save As, and never before. Whatever was open
+   * is dealt with first (`#confirmLeaveProject`).
    */
   async newProject() {
     if (!(await this.#confirmLeaveProject())) return;
-    let project;
+    let raw;
     try {
-      project = await this.#bridge.project.create();
+      raw = await this.#bridge.project.create();
     } catch (err) {
       this.#fail("Could not start the project", err);
       return;
     }
-    await this.#swapProject(project);
+    await this.#swapProject(raw);
   }
 
-  /** Load Project…: pick a `.project.chiphippo` file. */
+  /** Open…: pick a `.chiphippo` project (or a loose design, which opens as a
+      project of one desktop). */
   async loadProject() {
     // The guard runs BEFORE the picker: opening a project takes over the
     // app's working slot, so nothing may be read until what is on screen has
     // been dealt with.
     if (!(await this.#confirmLeaveProject())) return;
-    let project;
+    let raw;
     try {
-      project = await this.#bridge.project.open();
+      raw = await this.#bridge.project.open();
     } catch (err) {
       this.#fail("Could not open the project", err);
       return;
     }
-    if (!project) return; // cancelled
-    if (!project.tabs?.length) {
+    if (!raw) return; // cancelled
+    if (!raw.tabs?.length) {
       this.#fail("Could not open the project", new Error("it has no desktops"));
       return;
     }
-    await this.#swapProject(project);
+    await this.#swapProject(raw);
   }
 
   /**
@@ -351,109 +334,52 @@ export class ProjectWorkspace {
     await this.#swapProject(res.project);
   }
 
-  /** Put a just-opened/just-created project on the desk, from scratch. */
-  async #swapProject(project) {
-    const active =
-      project.tabs.find((t) => t.id === project.activeTab) ?? project.tabs[0];
-    project.activeTab = active.id;
-    let doc;
-    try {
-      doc = await this.#bridge.project.readTab(active.file);
-    } catch (err) {
-      this.#fail("Could not open that desktop", err);
-      return;
-    }
-    this.#sim?.stop?.();
-    await this.#closeAuxWindows();
-    this.#state.clear();
-    this.#adopt(project, doc);
-    this.#controller.loadDocument(this.#state.get(project.activeTab).doc, {
-      history: this.#state.get(project.activeTab).history,
-    });
-    this.#announce();
-  }
-
   /**
-   * Save Project…: SAVES ALL OF IT — every desktop to its own file first (a
-   * project's changes are its desktops' changes), then the project itself.
+   * Save: the whole project — every desktop, and every programmed ROM's bytes
+   * — to the one file it lives in.
    *
-   * A project needs a NAME before it can have a home, so a blank one is asked
-   * for here; a project with no LOCATION then picks one, its suggested file
-   * name built from that name. Moving out of the app's default project file
-   * empties that slot (main deletes it), which is what makes the next launch
-   * open THIS project rather than the blank one that used to live there.
+   * A project that has never been given a home goes to the app's working file,
+   * silently. That is the point of the working slot: designing something and
+   * keeping it must never require choosing a file, and Save As is there for
+   * when the user wants one.
    *
-   * @returns {Promise<boolean>} whether the project is now saved. A caller
-   *   doing this on the user's behalf before something destructive must
-   *   honour a `false`: a dialog was cancelled or a write failed, so the work
-   *   is still only here.
+   * @returns {Promise<boolean>} whether it reached a file. A caller doing this
+   *   on the user's behalf before something destructive must honour a `false`.
    */
-  async saveProject() {
-    return this.#saveProject({ relocate: false });
+  async save() {
+    if (!this.isOpen) return false;
+    return this.#writeProject(this.#project.location ?? null, false);
   }
 
   /**
-   * Save Project As…: the same whole-project save, but ALWAYS to a new file.
-   * A named project keeps its name — a project's name and the file it lives
-   * in are two different things, exactly as a desktop's Save As leaves the
-   * desktop called what it was called.
+   * Save As…: the same whole-project save, but ALWAYS to a new file — and the
+   * moment an untitled project gets both a home and a NAME, taken from the
+   * file the user picked. Moving out of the app's working file empties that
+   * slot (main deletes it), which is what makes the next launch open THIS
+   * project rather than the blank one that used to live there.
    *
    * @returns {Promise<boolean>} whether the project reached the new file.
    */
-  async saveProjectAs() {
-    return this.#saveProject({ relocate: true });
-  }
-
-  /**
-   * The one whole-project save. `relocate` is the only difference between
-   * Save and Save As: Save picks a location only when there isn't one yet,
-   * Save As always asks.
-   */
-  async #saveProject({ relocate }) {
+  async saveAs() {
     if (!this.isOpen) return false;
-    for (const tab of this.#project.tabs) {
-      if (!(await this.saveTab(tab.id))) return false;
-    }
-    if (!this.#project.name) {
-      const name = await this.#askName();
-      if (!name) return false; // cancelled
-      this.#project.name = name;
-    }
     const current = this.#project.location;
-    const wasUntitled = !current;
-    let location = current;
-    if (relocate || !location) {
-      // A project that has never been saved lives in the app's default project
-      // file, which was never meant to be seen — main suggests a file name
-      // from the project's own name instead, so `null` rather than `current`.
-      location = await this.#pickLocation(
-        "project",
-        this.#project.name,
-        wasUntitled ? null : current,
-      );
-      if (!location) return false; // cancelled
+    const chosen = await this.#pickLocation(
+      "project",
+      this.#project.name || "Untitled",
+      current,
+    );
+    if (!chosen) return false; // cancelled
+    if (!this.#project.name) {
+      this.#project = { ...this.#project, name: nameFromPath(chosen) };
     }
-    let res;
-    try {
-      res = await this.#bridge.project.save(
-        this.#metaForFile(),
-        location,
-        wasUntitled,
-      );
-    } catch (err) {
-      this.#fail("Could not save the project", err);
-      return false;
-    }
-    this.#project.location = res?.path ?? location;
-    this.#projectSaved = this.#projectSignature(); // it is its file again
-    this.#announce();
-    return true;
+    return this.#writeProject(chosen, !current);
   }
 
   /**
    * Properties… for the PROJECT: the same shared dialog every part, board, and
    * desktop opens — the universal Name/Description pair, plus the read-only
-   * Location the project file is kept in (blank while it has never been saved).
+   * Location of the file it is kept in (blank while it lives in the working
+   * slot, since that file was never meant to be seen).
    */
   editProjectProperties() {
     if (!this.isOpen) return;
@@ -465,346 +391,300 @@ export class ProjectWorkspace {
         description: this.#project.description,
         location: this.#project.location ?? "",
       },
-      onChange: (key, value) => void this.#setProjectProperty(key, value),
+      onChange: (key, value) => this.#setProjectProperty(key, value),
     });
   }
 
   /** Apply one Properties-dialog field change to the project itself. */
-  async #setProjectProperty(key, value) {
+  #setProjectProperty(key, value) {
     if (!this.isOpen) return;
-    const text = typeof value === "string" ? value.trim() : "";
-    if (key === "name") {
-      if (text === (this.#project.name ?? "")) return;
-      this.#project.name = text;
-    } else if (key === "description") {
-      if (text === (this.#project.description ?? "")) return;
-      this.#project.description = text;
-    } else {
-      return; // Location is read-only: Save Project… is what changes it
-    }
-    await this.#noteProjectChanged();
+    const next = setProjectField(this.#project, key, value);
+    if (!next) return; // unchanged, or the read-only Location
+    this.#project = next;
     this.#announce();
   }
 
-  // ── Tabs ────────────────────────────────────────────────────────────────
+  // ── Desktops ────────────────────────────────────────────────────────────
 
-  /**
-   * Add a desktop: the next "Desktop N", in a freshly minted file in the app's
-   * saves folder until the user gives it one of their own with Save As.
-   */
+  /** Add a desktop: the next "Desktop N", empty, and land on it. */
   async addTab() {
     if (!this.#project) return;
-    let project;
-    try {
-      project = await this.#bridge.project.addTab(this.#metaForFile());
-    } catch (err) {
-      this.#fail("Could not add a desktop", err);
-      return;
-    }
-    const previous = this.#project.activeTab;
-    this.#project = {
-      ...project,
-      location: this.#project.location,
-      activeTab: previous,
-    };
+    this.#stash();
+    await this.#leaveActiveDesk();
+    this.#project = addDesktop(this.#project, canonical(emptyDocument())).meta;
+    this.#loadActive();
     this.#renderTabs();
-    // Land on the new desktop — the point of adding one is to work on it.
-    await this.selectTab(project.tabs[project.tabs.length - 1].id);
+    this.#announce();
   }
 
   /** Put another desktop on the desk. */
   async selectTab(id) {
     if (!this.#project || id === this.#project.activeTab) return;
-    const tab = this.#project.tabs.find((t) => t.id === id);
-    if (!tab) return;
-    // Stash the desk we are leaving, exactly as it stands.
-    const leaving = this.#state.get(this.#project.activeTab);
-    if (leaving) {
-      leaving.doc = this.#deskDoc.toJSON();
-      leaving.camera = this.#getCamera?.() ?? leaving.camera;
-    }
-    let state;
-    try {
-      state = await this.#stateFor(tab);
-    } catch (err) {
-      this.#fail("Could not open that desktop", err);
-      return;
-    }
-    this.#sim?.stop?.(); // run state never crosses documents
-    await this.#closeAuxWindows();
-    this.#project.activeTab = id;
-    this.#controller.loadDocument(state.doc, { history: state.history });
-    if (state.camera) this.#setCamera?.(state.camera);
+    if (!findDesktop(this.#project, id)) return;
+    this.#stash(); // the desk being left, exactly as it stands
+    await this.#leaveActiveDesk();
+    this.#project = setActiveDesktop(this.#project, id);
+    this.#loadActive();
     this.#renderTabs();
-    await this.#noteProjectChanged();
     this.#announce();
   }
 
   /**
+   * Copy a desktop, landing the copy right after it. Main reseats every memory
+   * chip onto a fresh GUID and a fresh backing file, so the copy can never
+   * share bytes with the original.
+   */
+  async duplicateTab(id) {
+    const tab = this.#project ? findDesktop(this.#project, id) : null;
+    if (!tab) return;
+    this.#stash(); // so duplicating the ACTIVE desktop copies what is on screen
+    let res;
+    try {
+      res = await this.#bridge.desktop.duplicate(
+        findDesktop(this.#project, id).doc,
+      );
+    } catch (err) {
+      this.#fail("Could not duplicate the desktop", err);
+      return;
+    }
+    const next = duplicateDesktop(this.#project, id, canonical(res?.doc));
+    if (!next) return;
+    await this.#leaveActiveDesk();
+    this.#project = next.meta;
+    this.#loadActive();
+    this.#renderTabs();
+    this.#announce();
+  }
+
+  /**
+   * Import Desktop…: read a `.desktop.chiphippo` snapshot (or a loose design)
+   * as a NEW desktop. Always an addition — no file operation can replace the
+   * desk you are looking at.
+   */
+  async importTab() {
+    if (!this.#project) return;
+    let res;
+    try {
+      res = await this.#bridge.desktop.import();
+    } catch (err) {
+      this.#fail("Could not import that desktop", err);
+      return;
+    }
+    if (!res) return; // cancelled
+    this.#stash();
+    const next = importDesktop(this.#project, {
+      name: res.name,
+      description: res.description,
+      doc: canonical(res.doc),
+    });
+    await this.#leaveActiveDesk();
+    this.#project = next.meta;
+    this.#loadActive();
+    this.#renderTabs();
+    this.#announce();
+  }
+
+  /**
+   * Export Desktop…: write one desktop out as a self-contained snapshot — its
+   * design and every programmed ROM's bytes — with no link retained. A copy
+   * cannot dangle, which is exactly why this replaced a desktop's own Save As.
+   *
+   * @returns {Promise<boolean>} whether a file was written.
+   */
+  async exportTab(id) {
+    const tab = this.#project ? findDesktop(this.#project, id) : null;
+    if (!tab) return false;
+    const doc =
+      id === this.#project.activeTab ? this.#deskDoc.toJSON() : tab.doc;
+    try {
+      const res = await this.#bridge.desktop.export({
+        name: tab.name,
+        description: tab.description ?? "",
+        doc,
+      });
+      return res != null; // null is a cancelled dialog, not a failure
+    } catch (err) {
+      this.#fail("Could not export the desktop", err);
+      return false;
+    }
+  }
+
+  /**
    * Properties… on a tab: the SAME shared dialog every part, board, and the
-   * project itself opens — Name/Description, plus the read-only Location of
-   * the file this desktop is saved in.
+   * project itself opens. A desktop has just the universal Name/Description
+   * pair — it is no longer a file, so there is no Location to show.
    */
   editTabProperties(id) {
-    const tab = this.#project?.tabs.find((t) => t.id === id);
+    const tab = this.#project ? findDesktop(this.#project, id) : null;
     if (!tab) return;
     PartPropertiesDialog.open({
       title: "Desktop Properties",
-      fields: [LOCATION_FIELD],
-      values: {
-        name: tab.name,
-        description: tab.description,
-        location: tab.file ?? "",
-      },
-      onChange: (key, value) => void this.#setTabProperty(id, key, value),
+      values: { name: tab.name, description: tab.description },
+      onChange: (key, value) => this.#setTabProperty(id, key, value),
     });
   }
 
   /**
    * Apply one Properties-dialog field change to a tab. The dialog applies live
    * (one change per control, on blur/Enter), so each field commits on its own.
-   *
-   * A desktop must keep a NAME: an empty one is ignored rather than stored, so
-   * the strip can never render a blank tab. A description follows the
-   * omit-when-empty convention DeskDoc.setComponentMeta uses.
    */
-  async #setTabProperty(id, key, value) {
-    const tab = this.#project?.tabs.find((t) => t.id === id);
-    if (!tab) return;
-    const text = typeof value === "string" ? value.trim() : "";
-    if (key === "name") {
-      if (!text || text === tab.name) return;
-      tab.name = text;
-    } else if (key === "description") {
-      if (text === (tab.description ?? "")) return;
-      if (text) tab.description = text;
-      else delete tab.description;
-    } else {
-      return; // Location is read-only: Save As is what changes it
-    }
+  #setTabProperty(id, key, value) {
+    const next = setDesktopField(this.#project, id, key, value);
+    if (!next) return; // unchanged, or a name that would blank the tab
+    this.#project = next;
     this.#renderTabs();
-    await this.#noteProjectChanged();
     this.#announce();
   }
 
   /**
    * Delete a desktop. Any of them can go, EXCEPT the last one — a project with
-   * no desktops has nothing to open. A desktop with unsaved changes asks the
-   * three-way question first — cancel, save it, or lose it — because the
-   * delete is the last chance to keep that work.
+   * no desktops has nothing to open.
+   *
+   * There is no save-or-lose question any more: the desktop is not a file, so
+   * deleting it writes nothing. It is an unsaved change like any other, and
+   * closing the project without saving brings it back.
    */
   async deleteTab(id) {
-    const tab = this.#project?.tabs.find((t) => t.id === id);
+    const tab = this.#project ? findDesktop(this.#project, id) : null;
     if (!tab || this.#project.tabs.length <= 1) return;
-    const dirty = this.#dirtyTabs().some((t) => t.id === id);
-    if (!dirty) {
-      PopupManager.confirm({
-        title: `Delete "${tab.name}"?`,
-        message: tab.defaultFile
-          ? `Its design is removed from the project, and the file the app is keeping for it is deleted (${tab.file}).`
-          : `Its design is removed from the project. The file it was saved in is left alone (${tab.file}).`,
-        confirmLabel: "Delete",
-        confirmClass: "btn--danger",
-        onConfirm: () => this.#doDeleteTab(id),
-      });
-      return;
-    }
-    PopupManager.choose({
+    PopupManager.confirm({
       title: `Delete "${tab.name}"?`,
-      message: tab.defaultFile
-        ? "It has unsaved changes, and its file is one the app is keeping — deleting the desktop deletes that file too, so saving it means choosing where it goes."
-        : "It has unsaved changes.",
-      choices: [
-        { label: "Save and delete", value: "save" },
-        { label: "Delete anyway", value: "discard", class: "btn--danger" },
-      ],
-      onChoose: async (answer) => {
-        if (answer == null) return; // cancelled — the desktop stays
-        // A save that never reached a file (a cancelled dialog, a failed
-        // write) must not become a delete: the desktop stays, still dirty.
-        // A desktop whose file is inside the app's own folder has to be given
-        // a home outside it first — the delete takes that file with it, so
-        // saving there would keep nothing.
-        if (answer === "save") {
-          const kept = tab.defaultFile
-            ? await this.saveTabAs(id)
-            : await this.saveTab(id);
-          if (!kept) return;
-        }
-        await this.#doDeleteTab(id);
-      },
+      message:
+        "Its design goes with it. Nothing is written until the project is " +
+        "saved, so closing the project without saving brings it back.",
+      confirmLabel: "Delete",
+      confirmClass: "btn--danger",
+      onConfirm: () => void this.#doDeleteTab(id),
     });
   }
 
   async #doDeleteTab(id) {
-    const tab = this.#project.tabs.find((t) => t.id === id);
-    if (!tab || this.#project.tabs.length <= 1) return;
+    if (!this.#project) return;
     const wasActive = this.#project.activeTab === id;
-    this.#project.tabs = this.#project.tabs.filter((t) => t.id !== id);
-    if (wasActive) this.#project.activeTab = this.#project.tabs[0].id;
+    this.#stash(); // whatever is on screen belongs to the ACTIVE desktop
+    const next = removeDesktop(this.#project, id);
+    if (!next) return;
+    if (wasActive) await this.#leaveActiveDesk();
+    this.#project = next;
     this.#state.delete(id);
-    this.#renderTabs();
-    await this.#persistProject();
-    // The file goes with the desktop when it lives in the app's own saves
-    // folder — whether the app minted it or the user saved it there. Main
-    // decides from the path alone and leaves anything else where it is, so
-    // the file is simply handed over.
-    await this.#dropTempFile(tab.file);
-    if (wasActive) {
-      // The desk still shows the deleted desktop — put the surviving active
-      // one on it. selectTab short-circuits on "already active", so load here.
-      const state = await this.#stateFor(this.activeTab);
-      this.#sim?.stop?.();
-      await this.#closeAuxWindows();
-      this.#controller.loadDocument(state.doc, { history: state.history });
-      if (state.camera) this.#setCamera?.(state.camera);
-    }
-    this.#announce();
-  }
-
-  // ── The toolbar's file actions, aimed at the active tab ──────────────────
-
-  /**
-   * Save the active desktop to the file its Location names.
-   * @returns {Promise<boolean>} whether it reached its file.
-   */
-  async saveActiveTab() {
-    return this.saveTab(this.#project?.activeTab);
-  }
-
-  /**
-   * Save one desktop to its own Location — the live document when it is the
-   * active one, the stashed copy otherwise (so "Save and delete" can save a
-   * desktop that is not on screen).
-   *
-   * @returns {Promise<boolean>} whether the document reached its file. A
-   *   caller that saves before discarding or deleting must honour a `false`.
-   */
-  async saveTab(id) {
-    const tab = this.#project?.tabs.find((t) => t.id === id);
-    if (!tab) return false;
-    const state = await this.#stateFor(tab);
-    const doc =
-      id === this.#project.activeTab ? this.#deskDoc.toJSON() : state.doc;
-    try {
-      await this.#bridge.project.writeTab(tab.file, doc);
-    } catch (err) {
-      this.#fail("Could not save the desktop", err);
-      return false;
-    }
-    state.doc = doc;
-    state.savedJson = JSON.stringify(doc);
-    this.#announce();
-    return true;
-  }
-
-  /** Save As on the active desktop. */
-  async saveActiveTabAs() {
-    return this.saveTabAs(this.#project?.activeTab);
-  }
-
-  /**
-   * Save As on a desktop: choose a new file for it, write the design there,
-   * and make that its Location from now on.
-   *
-   * The suggested file name comes from the DESKTOP'S NAME whenever the current
-   * location is the app's own (a GUID it minted when the desktop was added) —
-   * that name was never meant to be seen. And once the design has a real home,
-   * the app-kept file is deleted: nothing but this desktop ever pointed at it.
-   *
-   * @returns {Promise<boolean>} whether the document reached a file.
-   */
-  async saveTabAs(id) {
-    const tab = this.#project?.tabs.find((t) => t.id === id);
-    if (!tab) return false;
-    const chosen = await this.#pickLocation("desktop", tab.name, tab.file);
-    if (!chosen) return false; // cancelled
-    const state = await this.#stateFor(tab);
-    const doc =
-      id === this.#project.activeTab ? this.#deskDoc.toJSON() : state.doc;
-    let written;
-    try {
-      written = await this.#bridge.project.writeTab(chosen, doc);
-    } catch (err) {
-      this.#fail("Could not save the desktop", err);
-      return false;
-    }
-    const previous = tab.file;
-    tab.file = chosen;
-    // Whether the new home is one of the app's own is main's answer, not a
-    // guess: saving INTO the saves folder leaves the desktop app-kept.
-    this.#markAppKept(tab, written?.appKept);
-    state.doc = doc;
-    state.savedJson = JSON.stringify(doc);
-    // The project file must learn where this desktop lives BEFORE its old
-    // home is deleted, or a crash between the two would leave the project
-    // pointing at a file that is gone.
-    await this.#persistProject();
-    if (previous !== chosen) await this.#dropTempFile(previous);
+    if (wasActive) this.#loadActive();
     this.#renderTabs();
     this.#announce();
-    return true;
-  }
-
-  /** New: empty the active desktop (its file keeps whatever was last saved). */
-  async newActiveTab() {
-    if (!this.#project) return;
-    if (!(await this.#confirmDiscardActive())) return;
-    await this.#swapActiveDoc(emptyDocument());
-  }
-
-  /**
-   * Load…: read a design file into the active desktop. The desktop ADOPTS that
-   * file as its Location — a desktop is a document, and this is now the
-   * document it is — so the file it was in before is dropped if it was one of
-   * the app's own.
-   */
-  async loadIntoActiveTab() {
-    if (!this.#project) return;
-    if (!(await this.#confirmDiscardActive())) return;
-    let res;
-    try {
-      res = await this.#bridge.desk.open();
-    } catch (err) {
-      this.#fail("Could not open that design", err);
-      return;
-    }
-    if (!res) return; // cancelled
-    const tab = this.activeTab;
-    const previous = tab?.file;
-    if (tab && res.path && res.path !== previous) {
-      tab.file = res.path;
-      this.#markAppKept(tab, res.appKept);
-      await this.#persistProject();
-      await this.#dropTempFile(previous);
-      this.#renderTabs();
-    }
-    await this.#swapActiveDoc(res.doc, { saved: true });
   }
 
   // ── Internals ───────────────────────────────────────────────────────────
 
   /**
-   * Put `doc` on the desk as the active tab's document: stop the sim, drop the
-   * aux windows pointing at the desk being replaced, then swap it in through
-   * the controller's load path (keeping the tab's own undo history).
+   * Take a project as the open one, from scratch: canonicalize every desktop's
+   * document (so the dirty test is a plain string comparison), make it the
+   * baseline, and start each tab's session state over.
    *
-   * `saved` says the document is exactly what its file holds (it was just read
-   * from it), so the baseline moves with it and the tab shows no •.
+   * @returns {boolean} whether there was a project in it.
    */
-  async #swapActiveDoc(doc, { saved = false } = {}) {
-    const state = this.#state.get(this.#project.activeTab);
+  #adopt(raw) {
+    const meta = normalizeProject(raw);
+    if (!meta) return false;
+    this.#project = {
+      ...meta,
+      tabs: meta.tabs.map((tab) => ({ ...tab, doc: canonical(tab.doc) })),
+    };
+    // It came from its file, so it IS its file — the baseline every later
+    // change is measured against.
+    this.#saved = projectSignature(this.#project);
+    this.#state.clear();
+    this.#renderTabs();
+    return true;
+  }
+
+  /** Put a just-opened/just-created project on the desk. */
+  async #swapProject(raw) {
     this.#sim?.stop?.();
     await this.#closeAuxWindows();
-    const canon = canonical(doc);
-    this.#controller.loadDocument(canon, {
-      history: state?.history ?? new HistoryStore(),
-    });
-    if (state) {
-      state.doc = canon;
-      if (saved) state.savedJson = JSON.stringify(canon);
+    if (!this.#adopt(raw)) {
+      this.#fail("Could not open the project", new Error("it has no desktops"));
+      return;
     }
+    this.#loadActive();
     this.#announce();
+    this.#warn(raw?.warnings);
+  }
+
+  /**
+   * The live desk folded back into the project. The ACTIVE desktop's document
+   * lives in the shared DeskDoc, so anything that needs the WHOLE project — a
+   * save, the dirty test, a switch, an export — calls this first.
+   */
+  #stash() {
+    if (!this.#project) return;
+    const id = this.#project.activeTab;
+    this.#project = setDesktopDoc(this.#project, id, this.#deskDoc.toJSON());
+    const state = this.#state.get(id);
+    if (state) state.camera = this.#getCamera?.() ?? state.camera;
+  }
+
+  /** The project as its file would hold it right now (live desk included). */
+  #liveMeta() {
+    return setDesktopDoc(
+      this.#project,
+      this.#project.activeTab,
+      this.#deskDoc.toJSON(),
+    );
+  }
+
+  /** The dirty test's left-hand side. */
+  #signature() {
+    return projectSignature(this.#liveMeta());
+  }
+
+  /**
+   * Leaving the desk that is on screen: the simulation is run-volatile and
+   * never crosses documents, and an open pinout or memory inspector would be
+   * left pointing at a chip that is no longer there.
+   */
+  async #leaveActiveDesk() {
+    this.#sim?.stop?.();
+    await this.#closeAuxWindows();
+  }
+
+  /** Put the active desktop's document on the desk, with its own history. */
+  #loadActive() {
+    const id = this.#project.activeTab;
+    let state = this.#state.get(id);
+    if (!state) {
+      state = { history: new HistoryStore(), camera: null };
+      this.#state.set(id, state);
+    }
+    this.#controller.loadDocument(findDesktop(this.#project, id).doc, {
+      history: state.history,
+    });
+    if (state.camera) this.#setCamera?.(state.camera);
+  }
+
+  /**
+   * Write the project file and make it the new baseline.
+   *
+   * @param {string|null} location - null means the app's working file.
+   * @param {boolean} dropDefault - the project is moving OUT of the working
+   *   slot, so that file goes (main deletes it).
+   * @returns {Promise<boolean>} whether it reached a file.
+   */
+  async #writeProject(location, dropDefault) {
+    this.#stash(); // the file gets what is on screen, not the last stash
+    let res;
+    try {
+      res = await this.#bridge.project.save(
+        projectForFile(this.#project),
+        location,
+        dropDefault,
+      );
+    } catch (err) {
+      this.#fail("Could not save the project", err);
+      return false;
+    }
+    if (location) this.#project.location = res?.path ?? location;
+    this.#saved = projectSignature(this.#project);
+    this.#announce();
+    return true;
   }
 
   /** Push the current desktops onto the strip. */
@@ -814,137 +694,6 @@ export class ProjectWorkspace {
       return;
     }
     this.#tabsView?.setTabs(this.#project.tabs, this.#project.activeTab);
-  }
-
-  /** Take a loaded project as the open one, seeding its active tab's state. */
-  #adopt(project, doc) {
-    this.#project = {
-      description: "",
-      ...project,
-      location: project.location ?? null,
-    };
-    // It came from its file, so it IS its file — the baseline every later
-    // change is measured against.
-    this.#projectSaved = this.#projectSignature();
-    const canon = canonical(doc);
-    this.#state.set(project.activeTab, {
-      doc: canon,
-      savedJson: JSON.stringify(canon),
-      history: new HistoryStore(),
-      camera: null,
-    });
-    this.#renderTabs();
-    this.refreshDirty();
-  }
-
-  /** A tab's session state, reading its document from disk the first time. */
-  async #stateFor(tab) {
-    const known = this.#state.get(tab.id);
-    if (known) return known;
-    const raw = await this.#bridge.project.readTab(tab.file);
-    const doc = canonical(raw);
-    const state = {
-      doc,
-      savedJson: JSON.stringify(doc),
-      history: new HistoryStore(),
-      camera: null,
-    };
-    this.#state.set(tab.id, state);
-    return state;
-  }
-
-  /** The project as its file holds it (the fields the store keeps). */
-  #metaForFile() {
-    const project = this.#project;
-    return {
-      name: project.name ?? "",
-      description: project.description ?? "",
-      activeTab: project.activeTab,
-      nextIndex: project.nextIndex,
-      tabs: project.tabs.map((tab) => ({
-        id: tab.id,
-        name: tab.name,
-        description: tab.description ?? "",
-        file: tab.file,
-        defaultFile: tab.defaultFile === true,
-      })),
-    };
-  }
-
-  /**
-   * Write the project file NOW — to its own location, or to the app's default
-   * project file while it has none.
-   *
-   * Used only where NOT writing would leave the file lying: a desktop's own
-   * file has just moved (Save As / Open) or been deleted, so a project still
-   * pointing at where it used to be would lose it. Everything else that
-   * changes a project goes through `#noteProjectChanged`.
-   */
-  async #persistProject() {
-    if (!this.#project) return;
-    try {
-      await this.#bridge.project.save(
-        this.#metaForFile(),
-        this.#project.location,
-        false,
-      );
-      this.#projectSaved = this.#projectSignature();
-    } catch (err) {
-      console.error("[renderer] project:save failed:", err);
-    }
-  }
-
-  /**
-   * The project itself changed — a desktop added, something renamed, another
-   * tab put on the desk.
-   *
-   * For a SAVED project these are its unsaved changes, and they wait for a
-   * Save exactly as a desktop's design does: that is what makes them
-   * DISCARDABLE, and a desktop added and then discarded takes its app-kept
-   * file with it (`#discardProjectChanges`) rather than leaving one behind
-   * that nothing points at.
-   *
-   * The UNSAVED project is the exception, and has to be: the app's default
-   * project file is not a copy of it, it IS it — the only record, and what
-   * the next launch opens — so there is nothing to hold changes back from.
-   */
-  async #noteProjectChanged() {
-    if (!this.#project) return;
-    if (!this.#project.location) await this.#persistProject();
-  }
-
-  /** The project as its file holds it, minus which desktop is on screen —
-      moving between tabs is not a change to keep or throw away. */
-  #projectSignature() {
-    const { activeTab, ...rest } = this.#metaForFile();
-    void activeTab;
-    return JSON.stringify(rest);
-  }
-
-  /**
-   * `defaultFile` on a tab means "this file is inside the app's own saves
-   * folder", which is what decides whether removing the desktop takes the file
-   * with it. Only main knows where that folder is, so the answer always comes
-   * from there (a write, an open, or a project read) — never from a guess
-   * here. Omitted when false, the same omit-when-empty shape the file uses.
-   */
-  #markAppKept(tab, appKept) {
-    if (appKept === true) tab.defaultFile = true;
-    else delete tab.defaultFile;
-  }
-
-  /**
-   * Drop the file a desktop has left behind — removed from the project, or
-   * moved to a new home. Main deletes it only when it is inside the app's own
-   * saves folder; a file the user keeps elsewhere is left where it is.
-   */
-  async #dropTempFile(filePath) {
-    if (!filePath) return;
-    try {
-      await this.#bridge.project.dropTemp(filePath);
-    } catch (err) {
-      console.error("[renderer] project:drop-temp failed:", err);
-    }
   }
 
   #forgetRecent(filePath) {
@@ -971,11 +720,11 @@ export class ProjectWorkspace {
   }
 
   /**
-   * Ask WHERE to keep a project or a desktop. The native save dialog is the
-   * whole of it — including the "that file already exists, replace it?"
-   * question, which every platform's own dialog asks in its own way. There is
-   * deliberately no prompt of ours on top: it would be the second time the
-   * user was asked the same thing.
+   * Ask WHERE to keep a project (or where to export a desktop). The native
+   * save dialog is the whole of it — including the "that file already exists,
+   * replace it?" question, which every platform's own save panel asks in its
+   * own way. There is deliberately no prompt of ours on top: it would be the
+   * second time the user was asked the same thing.
    *
    * @param {"project"|"desktop"} kind
    * @param {string} name - the display name the suggested file name is built
@@ -993,39 +742,24 @@ export class ProjectWorkspace {
   }
 
   /**
-   * Ask for a project name.
-   * @returns {Promise<string|null>} null for every way of dismissing it, so a
-   *   caller waiting on the answer can never be left hanging.
-   */
-  #askName() {
-    return new Promise((resolve) => {
-      PopupManager.prompt({
-        title: "Save project",
-        message:
-          "Name this project to keep it. Its desktops are saved with it.",
-        label: "Project name",
-        placeholder: NAME_PLACEHOLDER,
-        confirmLabel: "Continue",
-        onConfirm: (name) => resolve(name?.trim() || null),
-        onCancel: () => resolve(null),
-      });
-    });
-  }
-
-  /**
-   * CHANGING PROJECTS — or QUITTING: everything unsaved must be saved,
-   * discarded, or the whole thing called off.
+   * CHANGING PROJECTS — or QUITTING: what is unsaved must be saved, discarded,
+   * or the whole thing called off.
    *
-   * QUITTING is the simple case, and rule for it is: the user did not click a
-   * Save button, so nothing is asked beyond the question itself — each dirty
-   * desktop goes to the file it already has, and the project file to its own
-   * location (or, having none, to the app's default project file, which is
-   * where the next launch will look for it).
+   * QUITTING is the simple case, and the rule for it is: the user did not
+   * click a Save button, so nothing is asked beyond the question itself — the
+   * project goes to the file it already has, or to the app's working file,
+   * which is where the next launch will look for it.
    *
-   * CHANGING PROJECTS is different in exactly one way: an UNNAMED project
-   * lives in that same default project file, and the project taking its place
-   * is about to claim it. There is nowhere else to keep it, so "Save" here
-   * means the full Save Project… — a name, and a home of its own.
+   * CHANGING PROJECTS differs in exactly one way, and it is the reason an
+   * UNTITLED project is ALWAYS asked about — dirty or not. It lives in the app's
+   * one working file, the project taking its place is about to claim that file,
+   * and there is nowhere else for it to go: replacing it is destructive whether
+   * or not anything is "unsaved" in the ordinary sense, and a ⌘S into the slot
+   * does not make it any less so. That is also why "Save" here means Save As, a
+   * home of its own.
+   *
+   * A SAVED project is the ordinary case: it has a file of its own that nothing
+   * is claiming, so it is asked about only when it is dirty.
    *
    * @param {{quitting?: boolean}} [opts]
    * @returns {Promise<boolean>} whether to proceed.
@@ -1036,32 +770,18 @@ export class ProjectWorkspace {
       return this.#askUnsaved({
         title: "This project hasn't been saved",
         message:
-          "It has no name yet, so starting or opening another project " +
-          "discards it — desktops and all.",
-        save: () => this.saveProject(),
+          "It has no home of its own yet, so starting or opening another " +
+          "project discards it — desktops and all.",
+        save: () => this.saveAs(),
       });
     }
-    const dirty = this.#dirtyTabs();
-    const project = this.projectDirty;
-    if (dirty.length === 0 && !project) return Promise.resolve(true);
+    if (!this.dirty) return Promise.resolve(true);
+    const what = this.projectName ? `"${this.projectName}"` : "This project";
     return this.#askUnsaved({
-      title: project && dirty.length === 0 ? "Unsaved project" : "Unsaved changes", // prettier-ignore
-      message: this.#unsavedMessage(dirty.length, project, quitting),
-      save: () => this.#saveDirtyInPlace(dirty),
+      title: "Unsaved changes",
+      message: `${what} has changes that aren't saved. ${quitting ? "Quitting" : "Leaving"} now loses them.`, // prettier-ignore
+      save: () => this.save(),
     });
-  }
-
-  /** What exactly is unsaved — desktops, the project itself, or both. */
-  #unsavedMessage(dirty, project, quitting) {
-    const parts = [];
-    if (dirty > 0) {
-      parts.push(`${dirty} desktop${dirty === 1 ? " has" : "s have"} unsaved changes`); // prettier-ignore
-    }
-    // "The project" means its list of desktops and their names — a desktop
-    // added since the last save is not in its file, so discarding drops it.
-    if (project) parts.push("the project itself has changes that aren't saved");
-    const what = parts.join(", and ");
-    return `${what[0].toUpperCase()}${what.slice(1)}. ${quitting ? "Quitting" : "Leaving"} now loses them.`; // prettier-ignore
   }
 
   /** The one save-or-discard-or-cancel question, in its wordings. */
@@ -1079,69 +799,23 @@ export class ProjectWorkspace {
           // A save that never landed IS a cancel: the work is still only on
           // screen, so the action that got here is called off.
           if (answer === "save" && !(await save())) return resolve(false);
-          if (answer === "discard") await this.#discardProjectChanges();
           resolve(true);
         },
       });
     });
   }
 
-  /**
-   * The project's unsaved changes are being thrown away. A desktop ADDED since
-   * the last save is not in the file the project reloads from, so it is not
-   * coming back — and the file the app was keeping for it would sit in the
-   * saves folder forever, pointed at by nothing. Main compares the live
-   * project against the one ON DISK and removes exactly those files (never a
-   * file the user keeps elsewhere, and never one the project still lists).
-   */
-  async #discardProjectChanges() {
-    if (!this.#project) return;
-    try {
-      await this.#bridge.project.discard(
-        this.#metaForFile(),
-        this.#project.location,
-      );
-    } catch (err) {
-      console.error("[renderer] project:discard failed:", err);
-    }
-  }
-
-  /** Write each dirty desktop back to the file it already has, then the
-      project file — no dialogs, because no Save button was clicked. */
-  async #saveDirtyInPlace(dirty) {
-    for (const tab of dirty) {
-      if (!(await this.saveTab(tab.id))) return false;
-    }
-    await this.#persistProject();
-    return true;
-  }
-
-  /** Guard replacing the ACTIVE desktop's document (New / Load into it). */
-  #confirmDiscardActive() {
-    if (!this.activeDirty) return Promise.resolve(true);
-    const tab = this.activeTab;
-    return new Promise((resolve) => {
-      PopupManager.choose({
-        title: "Discard unsaved changes?",
-        message: `"${tab?.name ?? "This desktop"}" has unsaved changes.`,
-        choices: [
-          { label: "Save first", value: "save" },
-          { label: "Discard", value: "discard", class: "btn--danger" },
-        ],
-        onChoose: async (answer) => {
-          if (answer == null) return resolve(false);
-          // "Save first" that did not save is a cancel, not a discard.
-          if (answer === "save" && !(await this.saveActiveTab())) {
-            return resolve(false);
-          }
-          resolve(true);
-        },
-      });
+  /** Surface what opening a project could not bring across (a v3 desktop file
+      that has gone missing, above all) — one notice, listing every one. */
+  #warn(warnings) {
+    if (!Array.isArray(warnings) || warnings.length === 0) return;
+    PopupManager.notify({
+      title: "Some desktops could not be restored",
+      message: warnings.join("\n"),
     });
   }
 
   #announce() {
-    this.refreshDirty();
     this.#onActiveChange?.(this.activeTab);
   }
 

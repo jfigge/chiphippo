@@ -48,6 +48,7 @@ const {
   DESKTOP_EXT,
 } = require("./store/project-store");
 const memStore = require("./store/mem-store");
+const { reseatImages } = require("./store/project-images");
 const {
   rememberRecent,
   forgetRecent,
@@ -185,27 +186,31 @@ function getProjectStore() {
   return _projectStore;
 }
 
-// ─── Project & desktop files ──────────────────────────────────────────────────
-// THERE IS ALWAYS A PROJECT (store/project-store.js): a project file lists its
-// desktops, and each desktop is a document file of its own. Both live wherever
-// the user saved them, or — until then — in the app's saves folder.
+// ─── Project files ────────────────────────────────────────────────────────────
+// THE PROJECT IS THE DOCUMENT (store/project-store.js): ONE file holds every
+// desktop and every programmed ROM's bytes. There are no companion files, so
+// there is exactly one kind of path crossing this bridge — a project file,
+// wherever the user saved it, or the app's own working slot until they do.
 //
-// Every path therefore travels over IPC, which the renderer must never be able
-// to aim wherever it likes. Two rules keep that honest:
+// The renderer must never be able to aim that path wherever it likes. Two
+// rules keep it honest:
 //
 //   · anything inside the app's own saves folder is fair game (the app minted
-//     it: a GUID desktop, the default project file);
+//     it: the default project file);
 //   · every other path must be one main itself ESTABLISHED this session —
-//     returned by a native dialog, listed in a project file main opened, or
-//     drawn from the recent-projects list it owns.
+//     returned by a native dialog, or drawn from the recent-projects list it
+//     owns.
 //
 // So the renderer can only ever ask main to touch a file the user has already
 // pointed at, exactly as `desk:write` once checked against the current file.
-const SCHEMATIC_FILTERS = [
-  { name: "Chip Hippo Design", extensions: ["chiphippo", "json"] },
-];
 const PROJECT_FILTERS = [
   { name: "Chip Hippo Project", extensions: ["chiphippo"] },
+];
+// Export/Import fragments. `.desktop.chiphippo` is the shape written, but the
+// dialog filter can only match the trailing extension — which also lets a
+// loose `.chiphippo` design be imported as a desktop.
+const DESKTOP_FILTERS = [
+  { name: "Chip Hippo Desktop", extensions: ["chiphippo", "json"] },
 ];
 
 /** Paths a dialog (or a project main opened) established this session. */
@@ -217,13 +222,6 @@ function establishPath(filePath) {
     establishedPaths.add(path.resolve(filePath));
   }
   return filePath;
-}
-
-/** Every desktop of a project main just read is established along with it. */
-function establishProject(meta, filePath) {
-  establishPath(filePath);
-  for (const tab of meta?.tabs ?? []) establishPath(tab.file);
-  return meta;
 }
 
 /**
@@ -275,7 +273,7 @@ function rememberProject(filePath) {
   safeCall("project:recent:remember", () =>
     getSettingsStore().set({ recentProjects: next }),
   );
-  // Project ▸ Open Recent Project is part of the menu template, so the list
+  // File ▸ Open Recent is part of the menu template, so the list
   // changing means rebuilding it (a no-op before the menu is first installed).
   safeCall("project:recent:menu", () => refreshAppMenu());
   return next;
@@ -304,11 +302,23 @@ function forgetProject(filePath) {
 function bootProject() {
   const store = getProjectStore();
   store.ensureSaves();
+  // First launch after the single-file redesign: the slot may still hold a v3
+  // project pointing at desktop files. Inline it before anything looks for it.
+  // Its warnings ride out on the meta below — the upgraded file cannot carry
+  // them, so this is the only chance to tell the user a desktop came back
+  // empty because its v3 file had already gone.
+  const upgraded = safeCall("project:boot:upgrade", () =>
+    store.upgradeLegacyDefault(),
+  );
   if (store.hasDefaultProject()) {
     const meta = safeCall("project:boot", () =>
       store.read(store.defaultProjectPath),
     );
-    if (meta) return establishProject(meta, store.defaultProjectPath);
+    if (meta) {
+      establishPath(store.defaultProjectPath);
+      if (upgraded?.length) meta.warnings = upgraded;
+      return meta;
+    }
   }
   for (const filePath of recentProjects()) {
     if (
@@ -319,10 +329,12 @@ function bootProject() {
     const meta = safeCall("project:boot:recent", () => store.read(filePath));
     if (meta) {
       rememberProject(filePath);
-      return establishProject(meta, filePath);
+      establishPath(filePath);
+      return meta;
     }
   }
-  return establishProject(store.newProject(), store.defaultProjectPath);
+  establishPath(store.defaultProjectPath);
+  return store.newProject();
 }
 
 /** Show the Open dialog for a PROJECT file; read it. Returns the meta|null. */
@@ -343,23 +355,27 @@ async function openProjectDialog() {
 /**
  * Read a project file the user chose (a dialog, or the recent list) and make
  * it the session's project: it goes to the head of the MRU list, and the
- * working slot the project it replaces may have been living in is ABANDONED —
- * its default project file and the desktop files the app was keeping for it —
+ * working slot the project it replaces may have been living in is ABANDONED,
  * so the next launch opens THIS project rather than the one just left.
  *
  * (The renderer's guard has already offered to save that project; a project
  * that took the offer is no longer in the slot, so there is nothing here to
  * throw away.)
+ *
+ * A file that is NOT a project — a loose design, an exported desktop — opens
+ * as a project of one desktop with no location, so Save As is what gives it a
+ * home. It is therefore not remembered as a recent PROJECT.
  */
 function adoptProject(filePath) {
   const store = getProjectStore();
   const meta = store.read(filePath);
   if (!meta) return null;
-  rememberProject(filePath);
+  if (meta.location) rememberProject(filePath);
   if (path.resolve(filePath) !== path.resolve(store.defaultProjectPath)) {
-    safeCall("project:drop-default", () => store.discardDefaultProject());
+    safeCall("project:drop-default", () => store.removeDefaultProject());
   }
-  return establishProject(meta, filePath);
+  establishPath(filePath);
+  return meta;
 }
 
 /**
@@ -417,16 +433,16 @@ async function chooseSavePath(kind, name, current) {
   const isProject = kind === "project";
   const ext = isProject ? PROJECT_EXT : DESKTOP_EXT;
   const from = typeof current === "string" && current ? path.resolve(current) : ""; // prettier-ignore
-  const appKept =
-    !from ||
-    store.isTempDesktop(from) ||
-    from === path.resolve(store.defaultProjectPath);
+  // The working slot's file name was never meant to be seen, so a project
+  // still living in it is offered its own name instead. An export has no
+  // "current file" at all — it is always a fresh copy.
+  const appKept = !from || from === path.resolve(store.defaultProjectPath);
   const defaultPath = appKept
     ? path.join(store.savesDir, suggestFileName(name, ext, isProject ? "project" : "desktop")) // prettier-ignore
     : from;
   const opts = {
     defaultPath,
-    filters: isProject ? PROJECT_FILTERS : SCHEMATIC_FILTERS,
+    filters: isProject ? PROJECT_FILTERS : DESKTOP_FILTERS,
     properties: ["createDirectory", "showOverwriteConfirmation"],
   };
   const result = win
@@ -436,21 +452,50 @@ async function chooseSavePath(kind, name, current) {
   return establishPath(path.resolve(result.filePath));
 }
 
-/** Show the Open dialog for a DESIGN file (loaded into a desktop). */
-async function openDesignDialog() {
+// ── Export / Import one desktop ──────────────────────────────────────────────
+// A desktop is not a file any more, so moving one between projects (or between
+// machines) is a SNAPSHOT: Export writes a self-contained
+// `.desktop.chiphippo` — the document plus every programmed ROM's bytes — and
+// Import reads one back as a new tab. There is no retained link either way, so
+// unlike v3's desktop file a snapshot can never dangle.
+
+/**
+ * Export ONE desktop. Picks a path, then writes the snapshot.
+ * @returns {Promise<{path: string}|null>} null when cancelled.
+ */
+async function exportDesktop({ name, description, doc }) {
+  const chosen = await chooseSavePath("desktop", name, null);
+  if (!chosen) return null;
+  return { path: getProjectStore().writeDesktopSnapshot(chosen, { name, description, doc }) }; // prettier-ignore
+}
+
+/**
+ * Import a desktop snapshot as a NEW desktop. Every memory chip on it is
+ * reseated onto a fresh GUID and a fresh backing file (`reseatImages`), so
+ * importing the same snapshot twice can never leave two chips sharing one
+ * file — the reason Import is a copy and not a link.
+ *
+ * @returns {Promise<{name: string, description: string, doc: object}|null>}
+ */
+async function importDesktop() {
   const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
-  const opts = { properties: ["openFile"], filters: SCHEMATIC_FILTERS };
+  const opts = { properties: ["openFile"], filters: DESKTOP_FILTERS };
   const result = win
     ? await dialog.showOpenDialog(win, opts)
     : await dialog.showOpenDialog(opts);
   if (result.canceled || !result.filePaths?.[0]) return null;
   const filePath = establishPath(path.resolve(result.filePaths[0]));
+  const snapshot = getProjectStore().readDesktopSnapshot(filePath);
+  if (!snapshot) {
+    throw Object.assign(new Error("that file holds no desktop"), {
+      code: "INVALID_ARG",
+    });
+  }
+  reseatImages(snapshot.doc, memoryDir(), snapshot.images);
   return {
-    path: filePath,
-    doc: getDeskStore().readFile(filePath),
-    // The desktop adopts this file as its Location, so it needs the same
-    // answer a write gives: is this one of the app's own to clean up later?
-    appKept: getProjectStore().isInsideSaves(filePath),
+    name: snapshot.name,
+    description: snapshot.description,
+    doc: snapshot.doc,
   };
 }
 
@@ -839,7 +884,7 @@ function sendToMain(channel, payload) {
 let editMenuState = { canUndo: false, canRedo: false };
 
 /**
- * Project ▸ Open Recent Project's items, from main's own MRU list. An empty
+ * File ▸ Open Recent's items, from main's own MRU list. An empty
  * list still renders one (disabled) row rather than an empty card, matching
  * the renderer's `emptyLabel` menus.
  */
@@ -867,61 +912,44 @@ function buildAppMenu() {
     click: () => sendToMain("menu:open-settings"),
   };
 
-  // PROJECT operations — the project itself, as against the File menu below,
-  // which acts on the ONE DESKTOP on screen. It leads the menu bar (before
-  // File) because a desktop only exists inside a project. Like every other
-  // item here these are one-way pushes: the renderer owns the open project,
-  // so it is the only side that knows what is unsaved and what to ask about.
+  // FILE — the PROJECT, because the project IS the document now. One file
+  // holds every desktop, so there is one New, one Open, one Save, one Save As,
+  // and the two-level menu (a Project menu beside a File menu, running the
+  // same four verbs at two levels) is gone with the second file. Same items,
+  // same order, same wording as the toolbar's File pill, so the two can't
+  // drift. Each is a one-way push: the renderer owns the open project, so it
+  // is the only side that knows what is unsaved and what to ask about.
   //
   // Open Recent is baked into the template from main's own MRU list, so the
   // menu is rebuilt (refreshAppMenu) whenever that list changes; its click
   // carries the path, the one menu push with a payload.
-  const projectItems = [
-    { label: "New Project", click: () => sendToMain("menu:project-new") },
-    { label: "Load Project…", click: () => sendToMain("menu:project-open") },
-    { label: "Open Recent Project", submenu: recentProjectItems() },
-    { type: "separator" },
-    { label: "Save Project", click: () => sendToMain("menu:project-save") },
+  const fileItems = [
     {
-      label: "Save Project As…",
+      label: "New Project",
+      accelerator: "CmdOrCtrl+N",
+      click: () => sendToMain("menu:project-new"),
+    },
+    {
+      label: "Open…",
+      accelerator: "CmdOrCtrl+O",
+      click: () => sendToMain("menu:project-open"),
+    },
+    { label: "Open Recent", submenu: recentProjectItems() },
+    { type: "separator" },
+    {
+      label: "Save",
+      accelerator: "CmdOrCtrl+S",
+      click: () => sendToMain("menu:project-save"),
+    },
+    {
+      label: "Save As…",
+      accelerator: "CmdOrCtrl+Shift+S",
       click: () => sendToMain("menu:project-save-as"),
     },
     { type: "separator" },
     {
       label: "Project Properties…",
       click: () => sendToMain("menu:project-properties"),
-    },
-    { label: "Add Desktop", click: () => sendToMain("menu:project-add-tab") },
-  ];
-
-  // Desktop file operations — each pushes to the renderer, which owns the
-  // document. They act on the ACTIVE DESKTOP of the open project: New empties
-  // it, Open loads a design into it (and it adopts that file), Save writes it
-  // back to its own location, Save As gives it a new one. Same items, same
-  // order, same wording as the toolbar's File pill, so the two can't drift.
-  // A PROJECT is saved from the Project menu above — the tab list is its own
-  // file.
-  const schematicItems = [
-    {
-      label: "New Desktop",
-      accelerator: "CmdOrCtrl+N",
-      click: () => sendToMain("menu:schematic-new"),
-    },
-    {
-      label: "Open…",
-      accelerator: "CmdOrCtrl+O",
-      click: () => sendToMain("menu:schematic-open"),
-    },
-    { type: "separator" },
-    {
-      label: "Save",
-      accelerator: "CmdOrCtrl+S",
-      click: () => sendToMain("menu:schematic-save"),
-    },
-    {
-      label: "Save As…",
-      accelerator: "CmdOrCtrl+Shift+S",
-      click: () => sendToMain("menu:schematic-save-as"),
     },
     { type: "separator" },
     {
@@ -930,6 +958,39 @@ function buildAppMenu() {
       label: "Bill Of Materials…",
       accelerator: "CmdOrCtrl+B",
       click: () => sendToMain("menu:build-guide"),
+    },
+  ];
+
+  // DESKTOP — structure INSIDE the open document, not file operations. Adding,
+  // duplicating and deleting a desktop change the project the same way moving
+  // a chip does: they are unsaved changes, and nothing reaches disk until the
+  // project is saved. Export/Import are the interchange route a desktop's own
+  // Save As / Open used to be — snapshots, with no link retained either way.
+  // Every item acts on the ACTIVE desktop; the tab strip's context menu
+  // mirrors them for a desktop that is not on screen.
+  const desktopItems = [
+    { label: "New Desktop", click: () => sendToMain("menu:desktop-add") },
+    {
+      label: "Duplicate Desktop",
+      click: () => sendToMain("menu:desktop-duplicate"),
+    },
+    { type: "separator" },
+    {
+      label: "Import Desktop…",
+      click: () => sendToMain("menu:desktop-import"),
+    },
+    {
+      label: "Export Desktop…",
+      click: () => sendToMain("menu:desktop-export"),
+    },
+    { type: "separator" },
+    {
+      label: "Desktop Properties…",
+      click: () => sendToMain("menu:desktop-properties"),
+    },
+    {
+      label: "Delete Desktop",
+      click: () => sendToMain("menu:desktop-delete"),
     },
   ];
 
@@ -951,14 +1012,12 @@ function buildAppMenu() {
         { role: "quit" },
       ],
     });
-    template.push({ label: "Project", submenu: projectItems });
-    template.push({ label: "File", submenu: schematicItems });
+    template.push({ label: "File", submenu: fileItems });
   } else {
-    template.push({ label: "Project", submenu: projectItems });
     template.push({
       label: "File",
       submenu: [
-        ...schematicItems,
+        ...fileItems,
         { type: "separator" },
         settings,
         { type: "separator" },
@@ -966,6 +1025,7 @@ function buildAppMenu() {
       ],
     });
   }
+  template.push({ label: "Desktop", submenu: desktopItems });
 
   // Undo / Redo drive the DOCUMENT history (Feature 200), not text-field
   // editing — each pushes to the renderer, which owns the snapshot stack and
@@ -1050,7 +1110,7 @@ function buildAppMenu() {
 }
 
 /**
- * Rebuild and install the application menu. Project ▸ Open Recent Project is
+ * Rebuild and install the application menu. File ▸ Open Recent is
  * baked into the template, so the MRU list changing means a whole new menu —
  * and a fresh template starts with Undo/Redo disabled, hence replaying the
  * edit state the renderer last reported.
@@ -1157,44 +1217,33 @@ function registerIpc() {
   // directory dialog); the renderer persists the chosen path via settings:set.
   ipcMain.handle("settings:choose-datasheet-dir", () => chooseDatasheetDir());
 
-  // Open a DESIGN file into the active desktop (the File pill's Open). A
-  // native dialog mediates the path, which the desktop then adopts as its own
-  // location — so this is also where that path becomes established.
-  ipcMain.handle("desk:open", () => openDesignDialog());
-
-  // Projects: the session's project, its desktops, and the files both live in.
-  // The renderer holds the project meta and hands it back to be written; main
-  // owns the saves folder, the dialogs, the recent list, and — through
-  // `knownPath` — which paths may be touched at all (see the section note).
+  // Projects: the session's project, and the one file it lives in. The
+  // renderer holds the project — name, description, tabs, and every desktop's
+  // document — and hands the whole thing back to be written; main owns the
+  // saves folder, the dialogs, the recent list, the ROM images that travel in
+  // the file, and — through `knownPath` — which paths may be touched at all.
   //
   // `project:boot` always answers with a project: the unsaved one in the saves
   // folder, else the most recent saved one, else a brand-new one.
   ipcMain.handle("project:boot", () => bootProject());
   ipcMain.handle("project:new", () => {
     const store = getProjectStore();
-    return establishProject(store.newProject(), store.defaultProjectPath);
+    establishPath(store.defaultProjectPath);
+    return store.newProject();
   });
   ipcMain.handle("project:open", () => openProjectDialog());
   ipcMain.handle("project:open-recent", (_event, filePath) =>
     openRecentProject(filePath),
   );
-  // The new desktop's file is minted inside the saves folder, so it is
-  // writable on that ground alone — nothing here is established, or the
-  // renderer could smuggle a path in through a meta and have it blessed.
-  ipcMain.handle("project:add-tab", (_event, meta) =>
-    getProjectStore().addTab(meta),
-  );
-  // Write the project file. `filePath` null means "it has no location yet" —
-  // it goes to the fixed default project file, the working slot startup looks
-  // in first. `dropDefault` is the other half of Save: a project that HAD no
-  // location and now has a real one leaves that slot empty.
+  // Write the project file, WHOLE — every desktop's document, and every
+  // programmed ROM's bytes collected out of the memory cache. `filePath` null
+  // means "it has no location yet" → the fixed default project file, the
+  // working slot startup looks in first. `dropDefault` is the other half of
+  // Save As: a project that HAD no location and now has a real one leaves that
+  // slot empty.
   ipcMain.handle("project:save", (_event, meta, filePath, dropDefault) => {
     const store = getProjectStore();
     const target = filePath ? knownPath(filePath) : store.defaultProjectPath;
-    // Every desktop path the file will carry is checked too: a project file is
-    // read back — and its desktops established — on the next launch, so an
-    // unchecked path stored here would be a writable one tomorrow.
-    for (const tab of meta?.tabs ?? []) knownPath(tab?.file);
     store.write(target, meta);
     if (filePath) {
       rememberProject(target);
@@ -1210,45 +1259,32 @@ function registerIpc() {
     }
     return { ok: true, path: target };
   });
-  // A desktop's document, read and written by its own path.
-  ipcMain.handle("project:read-tab", (_event, filePath) =>
-    getProjectStore().readTab(knownPath(filePath)),
-  );
-  // The write answers with `appKept` — whether the file it landed in is inside
-  // the app's own saves folder — because that is what decides whether removing
-  // the desktop later takes the file with it, and only main knows where that
-  // folder is.
-  ipcMain.handle("project:write-tab", (_event, filePath, doc) => {
-    const store = getProjectStore();
-    const written = store.writeTab(knownPath(filePath), doc);
-    return { path: written, appKept: store.isInsideSaves(written) };
-  });
-  // The Save-As location picker for a project or a desktop — it chooses a
-  // path, it does not write. Replacing an existing file is the native
+  // The Save-As location picker for a project or a desktop export — it chooses
+  // a path, it does not write. Replacing an existing file is the native
   // dialog's own question; declining it reads back as a plain cancel.
   ipcMain.handle("project:choose-path", (_event, kind, name, current) =>
     chooseSavePath(kind, name, current),
   );
-  // The project's unsaved changes are being thrown away: clean up after the
-  // desktops that were added since it was last saved. Only their app-kept
-  // files go, and only those the project ON DISK does not list — main reads
-  // that file itself rather than trusting the renderer's idea of it.
-  ipcMain.handle(
-    "project:discard",
-    (_event, meta, filePath) =>
-    getProjectStore().discardChanges(meta, filePath ? knownPath(filePath) : null), // prettier-ignore
-  );
 
-  // Delete a desktop's file, now that the desktop has been removed from its
-  // project — or has moved to a new home (Save As / Open). WHERE the file is
-  // decides: inside the app's saves folder it is the app's to clean up, and
-  // anywhere else it is the user's and is left alone (a no-op, not an error),
-  // so the renderer can hand over any desktop's file.
-  ipcMain.handle("project:drop-temp", (_event, filePath) =>
-    getProjectStore().removeDesktopFile(filePath),
+  // Desktops move between projects as SNAPSHOTS, never as links: export writes
+  // a self-contained `.desktop.chiphippo`, import reads one back, and both
+  // copies (import and duplicate) get their own freshly minted ROM guids and
+  // backing files so no two chips can ever share one.
+  ipcMain.handle("desktop:export", (_event, desktop) =>
+    exportDesktop(desktop ?? {}),
   );
+  ipcMain.handle("desktop:import", () => importDesktop());
+  ipcMain.handle("desktop:duplicate", (_event, doc) => {
+    if (!doc || typeof doc !== "object" || Array.isArray(doc)) {
+      throw Object.assign(new Error("a desktop needs a document"), {
+        code: "INVALID_ARG",
+      });
+    }
+    reseatImages(doc, memoryDir(), null);
+    return { doc };
+  });
 
-  // Most recently used PROJECTS (Projects ▸ Open Recent): the list, and one
+  // Most recently used PROJECTS (File ▸ Open Recent): the list, and one
   // entry forgotten (its × / the "that file is gone" prompt). Opening one goes
   // through `project:open-recent` above, which allowlists against this list.
   ipcMain.handle("project:recent:list", () => recentProjects());
@@ -1466,9 +1502,9 @@ function createWindow() {
 // Main owns the lifecycle; the RENDERER owns the unsaved state and the dialog
 // that asks about it (`chiphippo:confirm-close` → `app:close-reply`). So a
 // close or a quit is prevented ONCE, the renderer is asked, and the answer
-// resumes or abandons it. Desktop documents are written deliberately (⌘S /
-// Save Project), never autosaved, so this is the only thing standing between
-// an unsaved desktop and the window going away.
+// resumes or abandons it. A project is written deliberately (⌘S), never
+// autosaved, so this is the only thing standing between an unsaved design and
+// the window going away.
 //
 // There is deliberately NO timeout on the answer: the user may sit on that
 // dialog for as long as they like, and an app that quits out from under a

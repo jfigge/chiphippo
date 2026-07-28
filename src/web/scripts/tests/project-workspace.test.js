@@ -16,9 +16,10 @@
 
 // jsdom tests for the desktop tabs: the workspace against a fake project
 // store, driving the real tab strip and the real dialogs. What matters is that
-// there is ALWAYS a project, that a switch stashes the desk it leaves, that
-// each tab keeps its own baseline and history, that every file lands where its
-// Location says — and that nothing is lost without being asked.
+// there is ALWAYS a project, that THE PROJECT IS THE DOCUMENT (one file, one
+// dirty flag, one Save), that a switch stashes the desk it leaves and keeps
+// each tab's own history, that NOTHING is written until a save — and that
+// nothing is lost without being asked.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -29,66 +30,54 @@ import { DeskDoc, emptyDocument } from "../model/desk-doc.js";
 const { ProjectWorkspace } = await import("../components/project-workspace.js");
 const { ProjectTabs } = await import("../components/project-tabs.js");
 
-/** The app's own folders, as main lays them out (store/project-store.js). */
+/** The app's own working slot, as main lays it out (store/project-store.js). */
 const SAVES = "/data/saves";
-const DEFAULT_PROJECT = `${SAVES}/default.project.chiphippo`;
+const DEFAULT_PROJECT = `${SAVES}/default.chiphippo`;
 
 const clone = (v) => (v == null ? v : structuredClone(v));
 
+/** A desk document that is recognisably not the empty one. */
+const someDesign = (id = "bb1") => ({
+  ...emptyDocument(),
+  boards: [{ id, type: "pins-full", x: 2, y: 2, rot: 0, group: null }],
+  nextBoardId: 2,
+});
+
 /**
  * An in-memory stand-in for main's file-backed project store, over the same
- * IPC shape: two maps standing for the filesystem (project files and desktop
- * documents), and a `control` object for the answers the native dialogs would
- * give.
+ * IPC shape: ONE map standing for the filesystem (a project is one file), and
+ * a `control` object for the answers the native dialogs would give.
  */
 function fakeBridge() {
-  const projects = new Map(); // path → project meta
-  const docs = new Map(); // path → desk document
+  const projects = new Map(); // path → the whole project, docs and all
   const settings = {};
   const counts = { aux: 0 };
-  const dropped = [];
   let recent = [];
   const control = {
     failWrites: false, // a write that never reaches a file
     pickPaths: [], // what the Save-As dialog returns, in order
     openProject: null, // what the project Open dialog returns
-    openDesign: null, // what the design Open dialog returns
+    importDesktop: null, // what the Import dialog returns
+    lastPick: null,
+    lastExport: null,
   };
   let minted = 0;
-  const mintDesktop = () => `${SAVES}/guid-${++minted}.desktop.chiphippo`;
-  /** Is this file inside the app's own saves folder? (main's isInsideSaves) */
-  const appKept = (filePath) => String(filePath ?? "").startsWith(`${SAVES}/`);
 
   const remember = (filePath) => {
     recent = [filePath, ...recent.filter((p) => p !== filePath)].slice(0, 10);
   };
 
-  const addDesktop = (meta) => {
-    const index = meta.nextIndex;
-    meta.nextIndex = index + 1;
-    const tab = {
-      id: `t${index}`,
-      name: `Desktop ${index}`,
-      file: mintDesktop(),
-      defaultFile: true,
-    };
-    docs.set(tab.file, emptyDocument());
-    meta.tabs.push(tab);
-    return tab;
-  };
-
-  // A brand-new project: blank name, blank location, ONE desktop, kept in the
-  // app's one default project file until it is saved somewhere real.
+  // A brand-new project: blank name, blank location, ONE empty desktop, kept
+  // in the app's working file until it is saved somewhere real.
   const create = () => {
     const meta = {
       name: "",
       description: "",
-      activeTab: null,
-      nextIndex: 1,
-      tabs: [],
+      activeTab: "t1",
+      nextIndex: 2,
+      tabs: [{ id: "t1", name: "Desktop 1", doc: emptyDocument() }],
       location: null,
     };
-    meta.activeTab = addDesktop(meta).id;
     projects.set(DEFAULT_PROJECT, clone(meta));
     return clone(meta);
   };
@@ -124,6 +113,7 @@ function fakeBridge() {
       return { ok: true, project: adopt(filePath) };
     },
     save: async (meta, filePath, dropDefault) => {
+      if (control.failWrites) throw new Error("no file to write to");
       const target = filePath ?? DEFAULT_PROJECT;
       projects.set(target, clone(meta));
       if (filePath) {
@@ -134,46 +124,12 @@ function fakeBridge() {
       }
       return { ok: true, path: target };
     },
-    addTab: async (meta) => {
-      const next = clone(meta);
-      next.activeTab = addDesktop(next).id;
-      return next;
-    },
-    readTab: async (filePath) => clone(docs.get(filePath) ?? emptyDocument()),
-    // A write answers with where it landed AND whether that is inside the
-    // app's own saves folder — the renderer never works that out itself.
-    writeTab: async (filePath, doc) => {
-      if (control.failWrites) throw new Error("no file to write to");
-      docs.set(filePath, clone(doc));
-      return { path: filePath, appKept: appKept(filePath) };
-    },
     // The native Save-As dialog: the test queues the paths it answers with,
     // and an empty queue is a cancelled dialog. Replacing an existing file is
     // the native dialog's own question, so a path is all that comes back.
     choosePath: async (kind, name, current) => {
       control.lastPick = { kind, name, current };
       return control.pickPaths.shift() ?? null;
-    },
-    // The guard's Discard: every desktop the project ON DISK does not list
-    // loses its app-kept file (main's discardChanges).
-    discard: async (meta, filePath) => {
-      const onDisk = projects.get(filePath || DEFAULT_PROJECT);
-      const kept = new Set((onDisk?.tabs ?? []).map((t) => t.file));
-      const removed = [];
-      for (const tab of meta?.tabs ?? []) {
-        if (kept.has(tab.file) || !appKept(tab.file)) continue;
-        dropped.push(tab.file);
-        docs.delete(tab.file);
-        removed.push(tab.file);
-      }
-      return removed;
-    },
-    // WHERE the file is decides: inside the saves folder it is the app's to
-    // delete, anywhere else it is the user's and this is a no-op.
-    dropTemp: async (filePath) => {
-      if (!appKept(filePath)) return false;
-      dropped.push(filePath);
-      return docs.delete(filePath);
     },
     recent: {
       list: async () => [...recent],
@@ -187,31 +143,38 @@ function fakeBridge() {
     },
   };
 
+  // Every COPY of a desktop comes back from main with its memory reseated, so
+  // the fake marks the document it hands back — that is what a test asserts
+  // on. The marker has to be a REAL document field: everything on its way into
+  // the workspace is canonicalized through DeskDoc, which drops anything else.
+  const reseat = (doc) => ({ ...clone(doc), nextBoardId: 100 + (minted += 1) });
+
+  const desktop = {
+    export: async (snapshot) => {
+      control.lastExport = clone(snapshot);
+      const chosen = control.pickPaths.shift();
+      return chosen ? { path: chosen } : null;
+    },
+    import: async () =>
+      control.importDesktop
+        ? { ...clone(control.importDesktop), doc: reseat(control.importDesktop.doc) } // prettier-ignore
+        : null,
+    duplicate: async (doc) => ({ doc: reseat(doc) }),
+  };
+
   return {
     bridge: {
       project,
+      desktop,
       settings: { set: async (patch) => Object.assign(settings, patch) },
-      desk: {
-        open: async () =>
-          control.openDesign
-            ? {
-                path: control.openDesign,
-                doc: clone(docs.get(control.openDesign) ?? emptyDocument()),
-                appKept: appKept(control.openDesign),
-              }
-            : null,
-      },
     },
     projects,
-    docs,
     settings,
     counts,
     control,
-    dropped,
     recentList: () => [...recent],
     seedProject: (filePath, meta) => projects.set(filePath, clone(meta)),
     seedRecent: (filePath) => remember(filePath),
-    seedDoc: (filePath, doc) => docs.set(filePath, clone(doc)),
   };
 }
 
@@ -236,10 +199,21 @@ async function harness({ doc = new DeskDoc(null), fake = fakeBridge() } = {}) {
   let camera = { cx: 0, cy: 0, zoom: 1 };
   const host = win.document.createElement("div");
   win.document.body.append(host);
-  const tabs = new ProjectTabs(host, {});
+  // Wired exactly as app.js wires it — the strip is built BEFORE the workspace
+  // it reports to, so every callback reaches it through the same late binding.
+  let workspace = null;
+  const tabs = new ProjectTabs(host, {
+    onSelect: (id) => void workspace?.selectTab(id),
+    onAdd: () => void workspace?.addTab(),
+    onImport: () => void workspace?.importTab(),
+    onProperties: (id) => workspace?.editTabProperties(id),
+    onDuplicate: (id) => void workspace?.duplicateTab(id),
+    onExport: (id) => void workspace?.exportTab(id),
+    onDelete: (id) => void workspace?.deleteTab(id),
+  });
   const boot = await ProjectWorkspace.boot(fake.bridge);
   if (boot?.doc) doc.load(boot.doc);
-  const workspace = new ProjectWorkspace({
+  workspace = new ProjectWorkspace({
     bridge: fake.bridge,
     deskDoc: doc,
     controller,
@@ -267,16 +241,12 @@ async function harness({ doc = new DeskDoc(null), fake = fakeBridge() } = {}) {
     /** The project as it stands on "disk", wherever it lives. */
     stored: (filePath = DEFAULT_PROJECT) => fake.projects.get(filePath),
     tabsOf: (filePath = DEFAULT_PROJECT) => fake.projects.get(filePath)?.tabs,
+    /** The tab labels on the strip, in order. */
+    strip: () =>
+      [...tabs.element.querySelectorAll(".project-tab")].map((b) =>
+        b.textContent.trim(),
+      ),
   };
-}
-
-/** Type into the open prompt dialog and accept it. */
-function answerPrompt(text) {
-  const input = document.querySelector(".popup-prompt .popup-input");
-  assert.ok(input, "a prompt dialog is open");
-  input.value = text;
-  const ok = document.querySelector(".popup-prompt .btn--primary");
-  ok.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
 }
 
 /** Edit one field of the open Properties dialog. Its text controls commit on
@@ -313,16 +283,25 @@ const settle = async () => {
 const dialogTitle = () =>
   document.querySelector(".popup-title")?.textContent ?? "";
 
-/** Name the open project and give it a home — what Save Project… does, with
-    both of its questions answered. */
-const saveProjectAs = async (h, name, filePath) => {
+/** Give the open project a home — what Save As does, its one question
+    answered. There is no name prompt: the file names the project. */
+const saveAs = async (h, filePath) => {
   h.control.pickPaths.push(filePath);
-  const saving = h.workspace.saveProject();
-  await settle();
-  answerPrompt(name);
-  const ok = await saving;
+  const ok = await h.workspace.saveAs();
   await settle();
   return ok;
+};
+
+/** Run something that LEAVES the open project, discarding it at the guard.
+    An untitled project is always asked about — the working slot it lives in is
+    what the incoming project is about to claim. */
+const leaving = async (run) => {
+  const done = run();
+  await settle();
+  clickButton("Discard");
+  const out = await done;
+  await settle();
+  return out;
 };
 
 /** A project of TWO desktops, back on the first, with the setup's own switch
@@ -330,7 +309,7 @@ const saveProjectAs = async (h, name, filePath) => {
 const twoDesktops = async (h) => {
   await h.workspace.addTab();
   await settle();
-  await h.workspace.selectTab(h.workspace.activeTab.id === "t2" ? "t1" : "t2");
+  await h.workspace.selectTab("t1");
   await settle();
   h.sim.stops = 0;
   h.counts.aux = 0;
@@ -345,856 +324,716 @@ test("a first run boots onto a brand-new project of one desktop", async () => {
   assert.equal(h.workspace.projectLocation, null, "and no home of its own");
   assert.equal(h.workspace.isUntitled, true);
   assert.equal(h.workspace.activeTab.name, "Desktop 1");
-  // The strip shows it, with the "+" that is the only way to another desktop.
-  const shown = [...h.tabs.element.querySelectorAll(".project-tab")];
-  assert.deepEqual(
-    shown.map((b) => b.textContent.trim()),
-    ["Desktop 1"],
+  assert.deepEqual(h.strip(), ["Desktop 1"]);
+  assert.equal(
+    h.tabs.element.querySelector(".project-tab").classList.contains("project-tab--active"), // prettier-ignore
+    true,
   );
-  assert.equal(shown[0].classList.contains("project-tab--active"), true);
   assert.equal(h.tabs.element.querySelectorAll(".project-tab-add").length, 1);
-  // Its desktop is an app-kept file, and the project is in the working slot.
-  assert.equal(h.workspace.activeTab.defaultFile, true);
-  assert.ok(h.stored(DEFAULT_PROJECT), "the default project file was written");
+  // A desktop is a DOCUMENT, not a file.
+  assert.equal(h.workspace.activeTab.file, undefined);
+  assert.ok(h.stored(DEFAULT_PROJECT), "the working file was written");
 });
 
-test("boot puts the session back on the desktop it left", async () => {
+test("boot puts the session back on the desktop it left, design and all", async () => {
   const fake = fakeBridge();
-  const file = `${SAVES}/kept.desktop.chiphippo`;
-  fake.seedDoc(file, {
-    ...emptyDocument(),
-    boards: [{ id: "bb1", type: "pins-full", x: 2, y: 2, rot: 0, group: null }],
-  });
-  fake.seedProject("/home/six.project.chiphippo", {
+  fake.seedProject("/home/six.chiphippo", {
     name: "6502 SBC",
     activeTab: "t2",
     nextIndex: 3,
     tabs: [
-      { id: "t1", name: "Desktop 1", file: `${SAVES}/a.desktop.chiphippo`, defaultFile: true }, // prettier-ignore
-      { id: "t2", name: "Bench", file },
+      { id: "t1", name: "Desktop 1", doc: emptyDocument() },
+      { id: "t2", name: "Bench", doc: someDesign() },
     ],
   });
-  fake.seedRecent("/home/six.project.chiphippo");
-
+  fake.seedRecent("/home/six.chiphippo");
   const h = await harness({ fake });
   assert.equal(h.workspace.projectName, "6502 SBC");
-  assert.equal(h.workspace.projectLocation, "/home/six.project.chiphippo");
-  assert.equal(h.workspace.isUntitled, false);
+  assert.equal(h.workspace.projectLocation, "/home/six.chiphippo");
   assert.equal(h.workspace.activeTab.name, "Bench");
-  assert.equal(h.doc.boards.length, 1, "on the desk it was left on");
+  assert.deepEqual(
+    h.doc.boards.map((b) => b.id),
+    ["bb1"],
+    "the desk shows that desktop's design, straight from the one file",
+  );
+  assert.equal(h.workspace.dirty, false, "and it IS its file");
 });
 
-test("a project saved elsewhere wins only when the working slot is empty", async () => {
+test("a project that opens with warnings says so once", async () => {
   const fake = fakeBridge();
-  fake.seedProject("/home/old.project.chiphippo", {
-    name: "Old",
+  const meta = {
+    name: "Legacy",
     activeTab: "t1",
     nextIndex: 2,
-    tabs: [{ id: "t1", name: "Desktop 1", file: `${SAVES}/o.desktop.chiphippo` }], // prettier-ignore
-  });
-  fake.seedRecent("/home/old.project.chiphippo");
-  // An unsaved project is still in the app's default file, so THAT is the one
-  // the session opens with — it is the work in progress.
-  fake.seedProject(DEFAULT_PROJECT, {
-    name: "",
-    activeTab: "t1",
-    nextIndex: 2,
-    tabs: [{ id: "t1", name: "Desktop 1", file: `${SAVES}/w.desktop.chiphippo`, defaultFile: true }], // prettier-ignore
-  });
-  const h = await harness({ fake });
-  assert.equal(h.workspace.isUntitled, true);
-  assert.equal(h.workspace.projectName, "");
+    tabs: [{ id: "t1", name: "Gone", doc: emptyDocument() }],
+    warnings: ['"Gone" opens empty — its file is gone: /old/x.desktop.chiphippo'], // prettier-ignore
+  };
+  fake.seedProject(DEFAULT_PROJECT, meta);
+  await harness({ fake });
+  assert.match(dialogTitle(), /could not be restored/);
 });
 
-// ── Desktops ─────────────────────────────────────────────────────────────────
+// ── One document, one dirty flag ─────────────────────────────────────────────
 
-test("Add Desktop names the next one and lands you on it", async () => {
+test("editing ANY desktop makes the one project dirty", async () => {
+  const h = await harness();
+  assert.equal(h.workspace.dirty, false);
+  h.doc.load(someDesign());
+  assert.equal(h.workspace.dirty, true, "the desk on screen");
+
+  await h.workspace.save();
+  await settle();
+  assert.equal(h.workspace.dirty, false);
+
+  // A desktop that is NOT on screen counts exactly the same.
+  await h.workspace.addTab();
+  await settle();
+  assert.equal(h.workspace.dirty, true, "adding one is a change to the file");
+  await h.workspace.save();
+  await settle();
+  h.doc.load(someDesign("bb9"));
+  await h.workspace.selectTab("t1");
+  await settle();
+  assert.equal(h.workspace.dirty, true, "the desk it stashed on the way out");
+});
+
+test("renaming a desktop or the project is an unsaved change", async () => {
+  const h = await harness();
+  await h.workspace.save();
+  await settle();
+
+  h.workspace.editTabProperties("t1");
+  setProperty(".properties-text-input", "Clock module");
+  closePopup();
+  assert.equal(h.workspace.dirty, true);
+  assert.deepEqual(h.strip(), ["Clock module"]);
+
+  await h.workspace.save();
+  await settle();
+  h.workspace.editProjectProperties();
+  setProperty(".properties-text-input", "6502 SBC");
+  closePopup();
+  assert.equal(h.workspace.dirty, true);
+  assert.equal(h.workspace.projectName, "6502 SBC");
+});
+
+test("moving between desktops is not a change, and neither is panning", async () => {
+  const h = await harness();
+  await twoDesktops(h);
+  await h.workspace.save();
+  await settle();
+  await h.workspace.selectTab("t2");
+  await settle();
+  h.moveCamera({ cx: 90, cy: 90, zoom: 3 });
+  assert.equal(h.workspace.dirty, false);
+});
+
+test("the tab strip carries no dirty marker at all", async () => {
+  const h = await harness();
+  h.doc.load(someDesign());
+  assert.equal(h.workspace.dirty, true);
+  assert.equal(
+    h.tabs.element.querySelector(".project-tab-marker"),
+    null,
+    "a desktop cannot be saved on its own, so a dot would be a lie",
+  );
+});
+
+// ── Nothing is written until you save ────────────────────────────────────────
+
+test("adding, renaming and deleting a desktop write nothing", async () => {
+  const h = await harness();
+  await h.workspace.save(); // the baseline in the working file
+  await settle();
+  const before = JSON.stringify(h.stored());
+
+  await h.workspace.addTab();
+  await settle();
+  h.workspace.editTabProperties("t1");
+  setProperty(".properties-text-input", "Renamed");
+  closePopup();
+  await h.workspace.deleteTab("t2");
+  await settle();
+  clickButton("Delete");
+  await settle();
+
+  assert.equal(JSON.stringify(h.stored()), before, "the file never moved");
+  assert.equal(h.workspace.dirty, true, "it is all pending, and says so");
+});
+
+test("saving writes every desktop's design in one file", async () => {
+  const h = await harness();
+  h.doc.load(someDesign("bb1"));
+  await h.workspace.addTab();
+  await settle();
+  h.doc.load(someDesign("bb7"));
+  await h.workspace.save();
+  await settle();
+
+  const stored = h.stored();
+  assert.deepEqual(
+    stored.tabs.map((t) => t.doc.boards[0]?.id),
+    ["bb1", "bb7"],
+    "the desktop that was stashed AND the one on screen",
+  );
+  assert.equal(stored.tabs[0].file, undefined, "no companion files");
+});
+
+// ── Save, Save As, and the working slot ──────────────────────────────────────
+
+test("Save on an untitled project asks nothing — the working file is its home", async () => {
+  const h = await harness();
+  h.doc.load(someDesign());
+  assert.equal(await h.workspace.save(), true);
+  await settle();
+  assert.equal(h.control.lastPick, null, "no dialog was opened");
+  assert.equal(h.workspace.isUntitled, true, "and it is still untitled");
+  assert.equal(h.stored(DEFAULT_PROJECT).tabs[0].doc.boards.length, 1);
+});
+
+test("Save As names the project from the file, and empties the slot", async () => {
+  const h = await harness();
+  h.doc.load(someDesign());
+  assert.equal(await saveAs(h, "/home/6502 SBC.chiphippo"), true);
+  assert.equal(h.workspace.projectName, "6502 SBC", "no name prompt needed");
+  assert.equal(h.workspace.projectLocation, "/home/6502 SBC.chiphippo");
+  assert.equal(h.workspace.isUntitled, false);
+  assert.equal(h.workspace.dirty, false);
+  assert.equal(h.projects.has(DEFAULT_PROJECT), false, "the slot is free");
+  assert.deepEqual(h.recentList(), ["/home/6502 SBC.chiphippo"]);
+});
+
+test("Save As on a NAMED project keeps its name; the file is a separate thing", async () => {
+  const h = await harness();
+  await saveAs(h, "/home/first.chiphippo");
+  await saveAs(h, "/home/second.chiphippo");
+  assert.equal(h.workspace.projectName, "first");
+  assert.equal(h.workspace.projectLocation, "/home/second.chiphippo");
+  assert.equal(h.control.lastPick.current, "/home/first.chiphippo");
+});
+
+test("a cancelled Save As is a cancel, not a save", async () => {
+  const h = await harness();
+  h.doc.load(someDesign());
+  assert.equal(await h.workspace.saveAs(), false);
+  assert.equal(h.workspace.dirty, true);
+  assert.equal(h.workspace.projectLocation, null);
+});
+
+test("a failed write is reported and never claims to have saved", async () => {
+  const h = await harness();
+  h.doc.load(someDesign());
+  h.control.failWrites = true;
+  assert.equal(await h.workspace.save(), false);
+  await settle();
+  assert.match(dialogTitle(), /Could not save the project/);
+  assert.equal(h.workspace.dirty, true);
+});
+
+// ── Desktops: switching, history, the desk it leaves ─────────────────────────
+
+test("a switch stashes the desk it leaves and restores it on the way back", async () => {
+  const h = await harness();
+  h.doc.load(someDesign("bb1"));
+  await h.workspace.addTab();
+  await settle();
+  assert.deepEqual(h.doc.boards, [], "a new desktop is empty");
+  h.doc.load(someDesign("bb7"));
+
+  await h.workspace.selectTab("t1");
+  await settle();
+  assert.deepEqual(
+    h.doc.boards.map((b) => b.id),
+    ["bb1"],
+  );
+  await h.workspace.selectTab("t2");
+  await settle();
+  assert.deepEqual(
+    h.doc.boards.map((b) => b.id),
+    ["bb7"],
+    "exactly as it stood, with nothing written in between",
+  );
+});
+
+test("each desktop keeps its own undo history and its own camera", async () => {
   const h = await harness();
   await h.workspace.addTab();
   await settle();
-  assert.deepEqual(
-    h.tabsOf().map((t) => t.name),
-    ["Desktop 1", "Desktop 2"],
-  );
-  assert.equal(h.workspace.activeTab.name, "Desktop 2");
-  assert.equal(h.tabs.element.querySelectorAll(".project-tab").length, 2);
-  // Its file is the app's own, minted in the saves folder — no dialog asked.
-  assert.match(h.workspace.activeTab.file, /^\/data\/saves\/guid-\d+\.desktop\.chiphippo$/); // prettier-ignore
-  assert.equal(h.workspace.activeTab.defaultFile, true);
-  assert.equal(document.querySelector(".popup-dialog"), null, "nothing asked");
+  const second = h.controller.loads.at(-1).history;
+  h.moveCamera({ cx: 50, cy: 50, zoom: 2 });
+
+  await h.workspace.selectTab("t1");
+  await settle();
+  const first = h.controller.loads.at(-1).history;
+  assert.notEqual(first, second, "switching swaps the history too");
+
+  await h.workspace.selectTab("t2");
+  await settle();
+  assert.equal(h.controller.loads.at(-1).history, second, "the same one back");
+  assert.deepEqual(h.camera(), { cx: 50, cy: 50, zoom: 2 });
 });
 
-test("switching desktops stashes the one you leave and loads the other", async () => {
-  const h = await harness();
-  await twoDesktops(h);
-  h.doc.addBoard("pins-tiny", 0, 0);
-  h.moveCamera({ cx: 12, cy: 8, zoom: 2 });
-  const [first, second] = h.workspace.activeTab.id === "t1" ? ["t1", "t2"] : ["t2", "t1"]; // prettier-ignore
-
-  await h.workspace.selectTab(second);
-  assert.equal(h.workspace.activeTab.id, second);
-  assert.equal(h.doc.boards.length, 0, "the other desktop is its own empty desk"); // prettier-ignore
-  assert.equal(h.sim.stops, 1, "run state never crosses a switch");
-  assert.equal(h.counts.aux, 1, "the orphaned pinout/inspector windows close");
-
-  h.moveCamera({ cx: 0, cy: 0, zoom: 1 });
-  await h.workspace.selectTab(first);
-  assert.equal(h.doc.boards.length, 1);
-  assert.deepEqual(h.camera(), { cx: 12, cy: 8, zoom: 2 });
-});
-
-test("each desktop is handed its own undo history", async () => {
+test("a switch stops the sim and drops the aux windows", async () => {
   const h = await harness();
   await twoDesktops(h);
   await h.workspace.selectTab("t2");
-  const first = h.controller.loads.at(-1).history;
-  assert.ok(first, "a history store travelled with the document");
-  await h.workspace.selectTab("t1");
-  assert.notEqual(
-    h.controller.loads.at(-1).history,
-    first,
-    "one per desktop, not one shared",
-  );
+  await settle();
+  assert.equal(h.sim.stops, 1, "run state never crosses documents");
+  assert.equal(h.counts.aux, 1, "and neither does a pinout / inspector");
 });
 
-test("the dirty marker is per desktop, and Save writes its own file", async () => {
+test("selecting the desktop already on the desk does nothing at all", async () => {
   const h = await harness();
   await twoDesktops(h);
-  assert.equal(h.workspace.activeDirty, false);
-
-  h.doc.addBoard("pins-tiny", 0, 0);
-  h.workspace.refreshDirty();
-  assert.equal(h.workspace.activeDirty, true);
-  assert.equal(
-    h.tabs.element.querySelectorAll(".project-tab--dirty").length,
-    1,
-    "only the desktop that changed is marked",
-  );
-
-  const file = h.workspace.activeTab.file;
-  assert.equal(await h.workspace.saveActiveTab(), true);
-  assert.equal(h.workspace.activeDirty, false);
-  assert.equal(h.docs.get(file).boards.length, 1, "written to its Location");
-  assert.equal(
-    h.tabs.element.querySelectorAll(".project-tab--dirty").length,
-    0,
-  );
-  assert.equal(document.querySelector(".popup-dialog"), null, "and silently");
+  const loads = h.controller.loads.length;
+  await h.workspace.selectTab(h.workspace.activeTab.id);
+  await settle();
+  assert.equal(h.controller.loads.length, loads);
+  assert.equal(h.sim.stops, 0);
 });
 
-test("Save As gives a desktop a new home and drops the app-kept file", async () => {
+// ── Desktops: add, duplicate, import, export, delete ─────────────────────────
+
+test("adding a desktop lands on a new empty desk", async () => {
   const h = await harness();
-  h.doc.addBoard("pins-full", 0, 0);
-  const before = h.workspace.activeTab.file;
-  h.control.pickPaths.push("/home/clock.desktop.chiphippo");
-
-  assert.equal(await h.workspace.saveActiveTabAs(), true);
-  await settle();
-
-  // The dialog was seeded from the desktop's NAME, not the GUID it had.
-  assert.deepEqual(h.control.lastPick, {
-    kind: "desktop",
-    name: "Desktop 1",
-    current: before,
-  });
-  assert.equal(h.workspace.activeTab.file, "/home/clock.desktop.chiphippo");
-  assert.equal(h.workspace.activeTab.defaultFile, undefined);
-  assert.equal(h.docs.get("/home/clock.desktop.chiphippo").boards.length, 1);
-  assert.deepEqual(h.dropped, [before], "the temporary file is deleted");
-  assert.equal(h.workspace.activeDirty, false);
-  // The project file learned the new location without being asked to.
-  assert.equal(h.stored().tabs[0].file, "/home/clock.desktop.chiphippo");
-});
-
-test("a cancelled Save-As dialog writes nothing and keeps the old file", async () => {
-  const h = await harness();
-  h.doc.addBoard("pins-full", 0, 0);
-  const before = h.workspace.activeTab.file;
-
-  // Nothing queued: the native dialog came back cancelled — which is also how
-  // declining ITS "replace that file?" question arrives, since that prompt is
-  // the OS's and never ours.
-  assert.equal(await h.workspace.saveActiveTabAs(), false);
-  await settle();
-  assert.equal(document.querySelector(".popup-dialog"), null, "nothing asked");
-  assert.equal(h.workspace.activeTab.file, before, "it keeps its own file");
-  assert.deepEqual(h.dropped, [], "and its file was not dropped");
-  assert.equal(h.workspace.activeDirty, true, "the work is still unsaved");
-});
-
-test("Save As over an existing file just replaces it — the OS asked", async () => {
-  const h = await harness();
-  h.seedDoc("/home/taken.desktop.chiphippo", emptyDocument());
-  h.doc.addBoard("pins-tiny", 0, 0);
-  h.control.pickPaths.push("/home/taken.desktop.chiphippo");
-
-  assert.equal(await h.workspace.saveActiveTabAs(), true);
-  await settle();
-  assert.equal(document.querySelector(".popup-dialog"), null, "asked once, natively"); // prettier-ignore
-  assert.equal(h.docs.get("/home/taken.desktop.chiphippo").boards.length, 1);
-});
-
-test("Load… into a desktop adopts that file as its Location", async () => {
-  const h = await harness();
-  const before = h.workspace.activeTab.file;
-  h.seedDoc("/home/theirs.chiphippo", {
-    ...emptyDocument(),
-    boards: [{ id: "bb1", type: "pins-half", x: 0, y: 0, rot: 0, group: null }],
-  });
-  h.control.openDesign = "/home/theirs.chiphippo";
-
-  await h.workspace.loadIntoActiveTab();
-  await settle();
-
-  assert.equal(h.doc.boards.length, 1, "the design is on the desk");
-  assert.equal(h.workspace.activeTab.file, "/home/theirs.chiphippo");
-  assert.equal(h.workspace.activeDirty, false, "it IS that file now");
-  assert.deepEqual(h.dropped, [before], "the app-kept file is dropped");
-});
-
-test("New on a tab empties that desktop, and its file still holds the design", async () => {
-  const h = await harness();
-  h.doc.addBoard("pins-full", 0, 0);
-  await h.workspace.saveActiveTab();
-
-  await h.workspace.newActiveTab(); // clean — no prompt
-  await settle();
-  assert.equal(h.doc.boards.length, 0);
-  assert.equal(h.workspace.activeDirty, true, "the file still holds the board");
-  assert.equal(h.docs.get(h.workspace.activeTab.file).boards.length, 1);
-});
-
-test("'Save first' that never saves leaves the desktop alone", async () => {
-  const h = await harness();
-  h.doc.addBoard("pins-full", 0, 0);
-  h.workspace.refreshDirty();
-
-  h.control.failWrites = true;
-  const emptied = h.workspace.newActiveTab();
-  clickButton("Save first");
-  await emptied;
-  await settle();
-  assert.equal(h.doc.boards.length, 1, "the desktop was not emptied");
-  assert.equal(h.workspace.activeDirty, true, "and is still dirty");
-});
-
-// ── Deleting desktops ────────────────────────────────────────────────────────
-
-test("any desktop can be deleted — including the first", async () => {
-  const h = await harness();
-  await twoDesktops(h);
-  const removed = h.tabsOf()[0];
-
-  await h.workspace.deleteTab(removed.id);
-  clickButton("Delete");
-  await settle();
-  assert.deepEqual(
-    h.tabsOf().map((t) => t.name),
-    ["Desktop 2"],
-  );
-  assert.equal(h.workspace.activeTab.name, "Desktop 2", "the survivor is on the desk"); // prettier-ignore
-  assert.deepEqual(h.dropped, [removed.file], "its app-kept file goes too");
-});
-
-test("a desktop kept outside the app's folder keeps its file when deleted", async () => {
-  const h = await harness();
-  await twoDesktops(h);
-  h.control.pickPaths.push("/home/keepme.desktop.chiphippo");
-  await h.workspace.saveActiveTabAs();
-  await settle();
-  h.dropped.length = 0;
-  assert.equal(h.workspace.activeTab.defaultFile, undefined, "not app-kept");
-
-  await h.workspace.deleteTab(h.workspace.activeTab.id);
-  clickButton("Delete");
-  await settle();
-  assert.deepEqual(h.dropped, [], "a file the user keeps is theirs");
-  assert.ok(h.docs.has("/home/keepme.desktop.chiphippo"));
-});
-
-test("a desktop saved INTO the app's folder is deleted with the desktop", async () => {
-  const h = await harness();
-  await twoDesktops(h);
-  // Save As can land in the saves folder — it is what the dialog opens on —
-  // and a file there is the app's to clean up, GUID or not.
-  const inside = `${SAVES}/Clock module.desktop.chiphippo`;
-  h.control.pickPaths.push(inside);
-  await h.workspace.saveActiveTabAs();
-  await settle();
-  const tab = h.workspace.activeTab;
-  assert.equal(tab.file, inside);
-  assert.equal(tab.defaultFile, true, "still one of the app's own");
-  h.dropped.length = 0;
-
-  await h.workspace.deleteTab(tab.id);
-  assert.match(
-    document.querySelector(".popup-message").textContent,
-    /the app is keeping for it is deleted/,
-    "and the prompt says so",
-  );
-  clickButton("Delete");
-  await settle();
-  assert.deepEqual(h.dropped, [inside]);
-  assert.equal(h.docs.has(inside), false, "the file goes with it");
-});
-
-test("the last desktop is never deleted — the project would have nothing", async () => {
-  const h = await harness();
-  await h.workspace.deleteTab(h.workspace.activeTab.id);
-  assert.equal(document.querySelector(".popup-confirm"), null, "no dialog");
-  assert.equal(h.workspace.activeTab.name, "Desktop 1", "it stays");
-
-  // And the strip says so: Delete is disabled on the one tab left.
-  h.tabs.element
-    .querySelector(".project-tab")
-    .dispatchEvent(new window.MouseEvent("contextmenu", { bubbles: true }));
-  const del = [...document.querySelectorAll(".popup-menu-item")].find(
-    (b) => b.textContent.trim() === "Delete Desktop",
-  );
-  assert.equal(del.disabled, true);
-});
-
-test("deleting a desktop with unsaved changes asks the three-way question", async () => {
-  const h = await harness();
-  await twoDesktops(h);
-  const second = h.tabsOf()[1];
-  await h.workspace.selectTab(second.id);
-  h.doc.addBoard("pins-tiny", 0, 0); // unsaved work on that desktop
-  h.workspace.refreshDirty();
-
-  await h.workspace.deleteTab(second.id);
-  assert.deepEqual(
-    [...document.querySelectorAll(".popup-confirm button")].map((b) =>
-      b.textContent.trim(),
-    ),
-    ["Cancel", "Save and delete", "Delete anyway"],
-  );
-
-  clickButton("Cancel");
-  await settle();
-  assert.equal(h.tabsOf().length, 2, "cancelling keeps it and its work");
-
-  // It is still in the file the app minted for it, and the delete takes that
-  // file with it — so keeping the work means choosing where it goes.
-  h.control.pickPaths.push("/home/rescued.desktop.chiphippo");
-  await h.workspace.deleteTab(second.id);
-  clickButton("Save and delete");
-  await settle();
-  assert.equal(h.docs.get("/home/rescued.desktop.chiphippo").boards.length, 1);
-  assert.equal(h.tabsOf().length, 1);
-  assert.equal(h.workspace.activeTab.name, "Desktop 1");
-  assert.equal(h.doc.boards.length, 0, "and the desk shows its document");
-});
-
-test("Save and delete keeps the desktop when the save never reaches a file", async () => {
-  const h = await harness();
-  await twoDesktops(h);
-  const second = h.tabsOf()[1];
-  await h.workspace.selectTab(second.id);
-  h.doc.addBoard("pins-tiny", 0, 0);
-  h.workspace.refreshDirty();
-
-  // The save never lands: the Save-As dialog is cancelled (nothing queued).
-  await h.workspace.deleteTab(second.id);
-  clickButton("Save and delete");
-  await settle();
-  assert.equal(h.tabsOf().length, 2, "the desktop stays");
-  assert.equal(h.workspace.activeTab.id, second.id, "and is still on the desk");
-  assert.equal(h.doc.boards.length, 1, "with its work");
-  assert.equal(h.workspace.activeDirty, true, "still dirty");
-});
-
-// ── Saving the project ───────────────────────────────────────────────────────
-
-test("Save Project asks for a name, then for a home — and writes it all", async () => {
-  const h = await harness();
-  h.doc.addBoard("pins-full", 0, 0);
+  h.doc.load(someDesign());
   await h.workspace.addTab();
   await settle();
-  h.control.pickPaths.push("/home/6502 SBC.project.chiphippo");
-
-  const saving = h.workspace.saveProject();
-  await settle();
-  assert.match(dialogTitle(), /Save project/);
-  answerPrompt("6502 SBC");
-  assert.equal(await saving, true);
-  await settle();
-
-  assert.equal(h.workspace.projectName, "6502 SBC");
-  assert.equal(h.workspace.projectLocation, "/home/6502 SBC.project.chiphippo");
-  assert.equal(h.workspace.isUntitled, false);
-  // The location dialog was seeded from the name it had just been given.
-  assert.equal(h.control.lastPick.kind, "project");
-  assert.equal(h.control.lastPick.name, "6502 SBC");
-  // Every desktop was written on the way, and the working slot is empty — so
-  // the next launch opens THIS project, not a blank one.
-  const stored = h.stored("/home/6502 SBC.project.chiphippo");
-  assert.equal(stored.name, "6502 SBC");
-  assert.equal(h.docs.get(stored.tabs[0].file).boards.length, 1);
-  assert.equal(h.projects.has(DEFAULT_PROJECT), false);
-  assert.deepEqual(h.recentList(), ["/home/6502 SBC.project.chiphippo"]);
+  assert.deepEqual(h.strip(), ["Desktop 1", "Desktop 2"]);
+  assert.equal(h.workspace.activeTab.name, "Desktop 2");
+  assert.deepEqual(h.doc.boards, []);
+  assert.equal(h.sim.stops, 1);
 });
 
-test("Save Project on a named project writes silently, dialog-free", async () => {
+test("a duplicate copies the desk on screen, with its own memory", async () => {
   const h = await harness();
-  await saveProjectAs(h, "Kept", "/home/kept.project.chiphippo");
-
-  h.doc.addBoard("pins-tiny", 0, 0);
-  assert.equal(await h.workspace.saveProject(), true);
+  h.doc.load(someDesign("bb3"));
+  await h.workspace.duplicateTab("t1");
   await settle();
-  assert.equal(document.querySelector(".popup-dialog"), null, "nothing asked");
-  assert.equal(
-    h.docs.get(h.workspace.activeTab.file).boards.length,
-    1,
-    "the desktop was written too",
+  assert.deepEqual(h.strip(), ["Desktop 1", "Desktop 1 copy"]);
+  assert.equal(h.workspace.activeTab.name, "Desktop 1 copy");
+  assert.deepEqual(
+    h.doc.boards.map((b) => b.id),
+    ["bb3"],
+    "it duplicated what was on screen, not the last stash",
+  );
+  // Main reseated it: the copy's ROMs are its own files, never the source's.
+  await h.workspace.save();
+  await settle();
+  const [source, copy] = h.stored().tabs;
+  assert.ok(copy.doc.nextBoardId > 100, "the copy came back from main");
+  assert.ok(source.doc.nextBoardId < 100, "the source was never reseated");
+});
+
+test("an import arrives as a NEW desktop, keeping its snapshot's name", async () => {
+  const h = await harness();
+  h.doc.load(someDesign("bb1"));
+  h.control.importDesktop = {
+    name: "Clock module",
+    description: "the divider",
+    doc: someDesign("bb5"),
+  };
+  await h.workspace.importTab();
+  await settle();
+  assert.deepEqual(h.strip(), ["Desktop 1", "Clock module"]);
+  assert.deepEqual(
+    h.doc.boards.map((b) => b.id),
+    ["bb5"],
+  );
+  // Nothing was replaced: the desktop that was on screen is intact.
+  await h.workspace.selectTab("t1");
+  await settle();
+  assert.deepEqual(
+    h.doc.boards.map((b) => b.id),
+    ["bb1"],
   );
 });
 
-test("cancelling either question of Save Project saves nothing", async () => {
+test("importing the same snapshot twice gives each copy its own memory", async () => {
   const h = await harness();
-  // ① the name.
-  let saving = h.workspace.saveProject();
+  h.control.importDesktop = { name: "Bench", doc: someDesign() };
+  await h.workspace.importTab();
   await settle();
-  clickButton("Cancel");
-  assert.equal(await saving, false);
-  assert.equal(h.workspace.isUntitled, true);
-
-  // ② the location. The name it was given is kept — it is not the part that
-  // failed — but the project still has no home.
-  saving = h.workspace.saveProject();
+  await h.workspace.importTab();
   await settle();
-  answerPrompt("Bench");
-  assert.equal(await saving, false, "no location was chosen");
+  await h.workspace.save();
   await settle();
-  assert.equal(h.workspace.projectLocation, null);
-  assert.equal(h.projects.has(DEFAULT_PROJECT), true, "still in the slot");
+  const [, one, two] = h.stored().tabs;
+  assert.deepEqual([one.name, two.name], ["Bench", "Bench 2"]);
+  assert.notEqual(one.doc.nextBoardId, two.doc.nextBoardId);
 });
 
-test("Save Project As moves a named project to a new file, keeping its name", async () => {
+test("a cancelled import changes nothing", async () => {
   const h = await harness();
-  await saveProjectAs(h, "Kept", "/home/kept.project.chiphippo");
-  h.doc.addBoard("pins-tiny", 0, 0);
-
-  h.control.pickPaths.push("/home/elsewhere.project.chiphippo");
-  assert.equal(await h.workspace.saveProjectAs(), true);
+  h.control.importDesktop = null;
+  await h.workspace.importTab();
   await settle();
-
-  // The name is not what Save As changes — the file is.
-  assert.equal(document.querySelector(".popup-dialog"), null, "no name asked");
-  assert.equal(h.workspace.projectName, "Kept");
-  assert.equal(
-    h.workspace.projectLocation,
-    "/home/elsewhere.project.chiphippo",
-  );
-  // The dialog opened on the file it was in, as any Save As does.
-  assert.equal(h.control.lastPick.current, "/home/kept.project.chiphippo");
-  // Every desktop went with it, and the new file is the recent one.
-  const stored = h.stored("/home/elsewhere.project.chiphippo");
-  assert.equal(stored.name, "Kept");
-  assert.equal(h.docs.get(stored.tabs[0].file).boards.length, 1);
-  assert.equal(h.recentList()[0], "/home/elsewhere.project.chiphippo");
+  assert.deepEqual(h.strip(), ["Desktop 1"]);
 });
 
-test("Save Project As on an unsaved project asks for the name too", async () => {
+test("exporting hands over the desk on screen, name and all", async () => {
   const h = await harness();
-  h.control.pickPaths.push("/home/named.project.chiphippo");
-  const saving = h.workspace.saveProjectAs();
-  await settle();
-  assert.match(dialogTitle(), /Save project/, "an unnamed project still asks");
-  answerPrompt("Named");
-  assert.equal(await saving, true);
-  await settle();
-
-  assert.equal(h.workspace.projectName, "Named");
-  assert.equal(h.workspace.projectLocation, "/home/named.project.chiphippo");
-  // It came out of the app's working slot, exactly as Save Project would.
-  assert.equal(h.projects.has(DEFAULT_PROJECT), false);
-});
-
-test("cancelling Save Project As leaves the project where it was", async () => {
-  const h = await harness();
-  await saveProjectAs(h, "Stays", "/home/stays.project.chiphippo");
-
-  assert.equal(await h.workspace.saveProjectAs(), false, "no path chosen");
-  await settle();
-  assert.equal(h.workspace.projectLocation, "/home/stays.project.chiphippo");
-  assert.equal(h.projects.has("/home/stays.project.chiphippo"), true);
-});
-
-test("Project Properties shows Name, Description, and the Location", async () => {
-  const h = await harness();
-  h.workspace.editProjectProperties();
-  assert.equal(
-    document.querySelector(".properties-value--path").textContent,
-    "",
-    "an unsaved project shows no location",
-  );
-  setProperty(".properties-text-input", "Bench");
-  setProperty(".properties-textarea", "Where things get tried.");
+  h.doc.load(someDesign("bb4"));
+  h.workspace.editTabProperties("t1");
+  setProperty(".properties-text-input", "Clock module");
+  setProperty(".properties-textarea", "the divider");
   closePopup();
-  await settle();
-  assert.equal(h.workspace.projectName, "Bench");
-  assert.equal(h.stored().name, "Bench", "and both are persisted");
-  assert.equal(h.stored().description, "Where things get tried.");
 
-  // Once saved, the Location is the file it is in.
-  h.control.pickPaths.push("/home/bench.project.chiphippo");
-  await h.workspace.saveProject();
-  await settle();
-  h.workspace.editProjectProperties();
-  assert.equal(
-    document.querySelector(".properties-value--path").textContent,
-    "/home/bench.project.chiphippo",
+  h.control.pickPaths.push("/home/Clock module.desktop.chiphippo");
+  assert.equal(await h.workspace.exportTab("t1"), true);
+  assert.equal(h.control.lastExport.name, "Clock module");
+  assert.equal(h.control.lastExport.description, "the divider");
+  assert.deepEqual(
+    h.control.lastExport.doc.boards.map((b) => b.id),
+    ["bb4"],
+    "what is on screen, not the last stash",
   );
-  closePopup();
+  assert.equal(h.workspace.dirty, true, "an export is not a save");
+});
+
+test("exporting an inactive desktop takes ITS design", async () => {
+  const h = await harness();
+  h.doc.load(someDesign("bb1"));
+  await h.workspace.addTab();
+  await settle();
+  h.doc.load(someDesign("bb7"));
+
+  h.control.pickPaths.push("/home/one.desktop.chiphippo");
+  await h.workspace.exportTab("t1");
+  assert.deepEqual(
+    h.control.lastExport.doc.boards.map((b) => b.id),
+    ["bb1"],
+  );
+});
+
+test("a cancelled export reports false", async () => {
+  const h = await harness();
+  assert.equal(await h.workspace.exportTab("t1"), false);
+  assert.equal(await h.workspace.exportTab("t9"), false, "and an unknown tab");
+});
+
+test("deleting a desktop asks once, then removes it", async () => {
+  const h = await harness();
+  await twoDesktops(h);
+  await h.workspace.deleteTab("t2");
+  await settle();
+  assert.match(dialogTitle(), /Delete "Desktop 2"/);
+  clickButton("Delete");
+  await settle();
+  assert.deepEqual(h.strip(), ["Desktop 1"]);
+  // No save-or-lose question: a desktop is not a file, so nothing was written.
+  assert.equal(h.projects.has(DEFAULT_PROJECT), true);
+});
+
+test("deleting the ACTIVE desktop puts its neighbour on the desk", async () => {
+  const h = await harness();
+  h.doc.load(someDesign("bb1"));
+  await h.workspace.addTab();
+  await settle();
+  h.doc.load(someDesign("bb7"));
+  await h.workspace.deleteTab("t2");
+  await settle();
+  clickButton("Delete");
+  await settle();
+  assert.equal(h.workspace.activeTab.id, "t1");
+  assert.deepEqual(
+    h.doc.boards.map((b) => b.id),
+    ["bb1"],
+  );
+  assert.equal(h.sim.stops > 0, true);
+});
+
+test("the last desktop cannot be deleted, and the strip disables it", async () => {
+  const h = await harness();
+  await h.workspace.deleteTab("t1");
+  await settle();
+  assert.equal(dialogTitle(), "", "not even asked");
+  assert.deepEqual(h.strip(), ["Desktop 1"]);
 });
 
 // ── Leaving a project ────────────────────────────────────────────────────────
 
-test("changing projects guards the unsaved one — even with every desktop saved", async () => {
+test("an untitled project is ALWAYS asked about, even with nothing unsaved", async () => {
   const h = await harness();
-  await h.workspace.addTab();
+  assert.equal(h.workspace.dirty, false);
+  const done = h.workspace.newProject();
   await settle();
-  for (const tab of h.tabsOf()) await h.workspace.saveTab(tab.id);
-  assert.equal(h.workspace.activeDirty, false);
+  assert.match(
+    dialogTitle(),
+    /hasn't been saved/,
+    "replacing the working slot is destructive whether or not it is dirty",
+  );
+  clickButton("Discard");
+  await done;
+  await settle();
+  assert.deepEqual(h.strip(), ["Desktop 1"]);
+});
 
-  // Every desktop IS on disk, and it still has to be guarded: the working slot
-  // is about to be reused and there is no name to come back to it by.
-  const before = h.tabsOf().length;
-  const replaced = h.workspace.newProject();
+test("a SAVED project with nothing unsaved is not asked about", async () => {
+  const h = await harness();
+  await saveAs(h, "/home/six.chiphippo");
+  await h.workspace.newProject();
+  await settle();
+  assert.equal(
+    dialogTitle(),
+    "",
+    "it has a file of its own, and nothing is claiming it",
+  );
+  assert.equal(h.workspace.isUntitled, true, "and the new one is on the desk");
+});
+
+test("New Project offers to save the untitled work that is about to go", async () => {
+  const h = await harness();
+  h.doc.load(someDesign());
+  const done = h.workspace.newProject();
   await settle();
   assert.match(dialogTitle(), /hasn't been saved/);
-  clickButton("Cancel");
-  await replaced;
-  await settle();
-  assert.equal(h.tabsOf().length, before, "the project is untouched");
-  assert.equal(h.workspace.isUntitled, true);
-});
-
-test("'Save' on the way out names the project AND carries on", async () => {
-  const h = await harness();
-  h.doc.addBoard("pins-full", 0, 0);
-  await h.workspace.addTab();
-  await settle();
-  h.doc.addBoard("pins-tiny", 0, 20); // unsaved work on the desktop we are on
-  h.control.pickPaths.push("/home/bench.project.chiphippo");
-
-  const replaced = h.workspace.newProject();
-  await settle();
+  h.control.pickPaths.push("/home/kept.chiphippo");
   clickButton("Save");
-  await settle(); // the desktops are written, then the name is asked for
-  answerPrompt("Bench");
-  await replaced;
+  await done;
   await settle();
-
-  // The old project was saved under its name, desktops and all...
-  const saved = h.stored("/home/bench.project.chiphippo");
-  assert.ok(saved, "the project it was on is saved");
-  assert.equal(h.docs.get(saved.tabs[1].file).boards.length, 1, "with its unsaved desktop written"); // prettier-ignore
-  // ...and the action the user asked for went ahead anyway.
-  assert.equal(h.workspace.isUntitled, true, "now on a new unsaved project");
-  assert.equal(h.workspace.activeTab.name, "Desktop 1");
-  assert.deepEqual(h.doc.boards, [], "which is a blank desk");
+  // It went to a home of its own — the working slot is the NEW project's now.
+  assert.equal(h.projects.get("/home/kept.chiphippo").tabs[0].doc.boards.length, 1); // prettier-ignore
+  assert.equal(h.workspace.projectLocation, null, "and this is the new one");
+  assert.deepEqual(h.doc.boards, []);
 });
 
-test("a project that never got saved calls the whole action off", async () => {
+test("a ⌘S into the slot does not make replacing it any less destructive", async () => {
   const h = await harness();
-  await h.workspace.addTab();
+  h.doc.load(someDesign());
+  await h.workspace.save(); // into the working slot: nothing is "unsaved"
   await settle();
-  const before = h.tabsOf().length;
+  assert.equal(h.workspace.dirty, false);
 
-  const replaced = h.workspace.newProject();
+  const done = h.workspace.newProject();
   await settle();
-  clickButton("Save");
-  await settle();
-  clickButton("Cancel"); // the name dialog: nothing was saved
-  await replaced;
-  await settle();
-  assert.equal(h.tabsOf().length, before, "nothing was replaced");
-  assert.equal(h.workspace.isUntitled, true);
-});
-
-test("a saved project only asks about desktops whose work is on the desk", async () => {
-  const h = await harness();
-  await saveProjectAs(h, "Named", "/home/named.project.chiphippo");
-
-  // Nothing dirty: Load Project goes straight through to the picker.
-  h.control.openProject = null;
-  await h.workspace.loadProject();
-  await settle();
-  assert.equal(document.querySelector(".popup-dialog"), null, "not asked");
-
-  // Now with unsaved work, the question is about the desktop, not the name.
-  h.doc.addBoard("pins-tiny", 0, 0);
-  h.workspace.refreshDirty();
-  const loading = h.workspace.loadProject();
-  await settle();
-  assert.match(dialogTitle(), /Unsaved changes/);
-  clickButton("Save");
-  await loading;
-  await settle();
-  assert.equal(h.docs.get(h.workspace.activeTab.file).boards.length, 1);
-});
-
-test("a desktop added since the last save is discarded, file and all", async () => {
-  const h = await harness();
-  await saveProjectAs(h, "Named", "/home/named.project.chiphippo");
-  const savedTabs = h.stored("/home/named.project.chiphippo").tabs.length;
-
-  // Adding a desktop is now a change to the PROJECT, waiting for a save.
-  await h.workspace.addTab();
-  await settle();
-  const added = h.workspace.activeTab;
-  assert.equal(h.workspace.projectDirty, true);
-  assert.equal(
-    h.stored("/home/named.project.chiphippo").tabs.length,
-    savedTabs,
-    "its file does not have the new desktop yet",
+  assert.match(
+    dialogTitle(),
+    /hasn't been saved/,
+    "the slot is about to be claimed, so the work still needs a home",
   );
-
-  // Discarding: it is not coming back, so its app-kept file goes with it.
-  const replaced = h.workspace.newProject();
-  await settle();
-  assert.match(dialogTitle(), /Unsaved/);
   clickButton("Discard");
-  await replaced;
+  await done;
   await settle();
-  assert.equal(h.docs.has(added.file), false, "no file left pointed at by nothing"); // prettier-ignore
-  assert.deepEqual(
-    h.stored("/home/named.project.chiphippo").tabs.length,
-    savedTabs,
-    "and the project on disk is untouched",
-  );
 });
 
-test("discarding never touches a desktop the project still lists", async () => {
+test("Open… guards the untitled project the same way New Project does", async () => {
   const h = await harness();
-  await h.workspace.addTab();
-  await settle();
-  await saveProjectAs(h, "Kept", "/home/kept.project.chiphippo");
-  const files = h.workspace.activeTab ? h.tabsOf("/home/kept.project.chiphippo").map((t) => t.file) : []; // prettier-ignore
-
-  // Only a DOCUMENT is unsaved now — the tab list is exactly its file.
-  h.doc.addBoard("pins-tiny", 0, 0);
-  h.workspace.refreshDirty();
-  assert.equal(h.workspace.projectDirty, false);
-
-  const replaced = h.workspace.newProject();
-  await settle();
-  clickButton("Discard");
-  await replaced;
-  await settle();
-  for (const file of files) {
-    assert.ok(h.docs.has(file), `${file} survived the discard`);
-  }
-  assert.deepEqual(h.dropped, [], "nothing was deleted");
-});
-
-test("a desktop saved OUTSIDE the app's folder survives a discard", async () => {
-  const h = await harness();
-  await saveProjectAs(h, "Outside", "/home/outside.project.chiphippo");
-  await h.workspace.addTab();
-  await settle();
-  h.control.pickPaths.push("/home/extra.desktop.chiphippo");
-  await h.workspace.saveActiveTabAs();
-  await settle();
-
-  const replaced = h.workspace.newProject();
-  await settle();
-  if (document.querySelector(".popup-confirm")) clickButton("Discard");
-  await replaced;
-  await settle();
-  assert.ok(
-    h.docs.has("/home/extra.desktop.chiphippo"),
-    "a file the user keeps is never swept up",
-  );
-});
-
-test("Load Project puts the chosen one on the desk", async () => {
-  const h = await harness();
-  h.seedDoc("/home/other.desktop.chiphippo", {
-    ...emptyDocument(),
-    boards: [{ id: "bb1", type: "pins-full", x: 1, y: 1, rot: 0, group: null }],
-  });
-  h.seedProject("/home/other.project.chiphippo", {
+  h.seedProject("/home/other.chiphippo", {
     name: "Other",
     activeTab: "t1",
     nextIndex: 2,
-    tabs: [{ id: "t1", name: "Radio", file: "/home/other.desktop.chiphippo" }],
+    tabs: [{ id: "t1", name: "Theirs", doc: someDesign("bb9") }],
   });
-  await saveProjectAs(h, "Mine", "/home/mine.project.chiphippo");
-  h.control.openProject = "/home/other.project.chiphippo";
-
-  await h.workspace.loadProject();
+  h.control.openProject = "/home/other.chiphippo";
+  const done = h.workspace.loadProject();
+  await settle();
+  assert.match(
+    dialogTitle(),
+    /hasn't been saved/,
+    "the same claim on the slot",
+  );
+  clickButton("Discard");
+  await done;
   await settle();
   assert.equal(h.workspace.projectName, "Other");
-  assert.equal(h.workspace.activeTab.name, "Radio");
-  assert.equal(h.doc.boards.length, 1);
-  assert.equal(h.sim.stops >= 1, true, "the sim never crosses a project");
-  assert.equal(h.projects.has(DEFAULT_PROJECT), false, "the slot is released");
+});
+
+test("cancelling the guard calls the whole action off", async () => {
+  const h = await harness();
+  h.doc.load(someDesign());
+  const done = h.workspace.newProject();
+  await settle();
+  clickButton("Cancel"); // every dismissal path answers, so nothing hangs
+  await done;
+  await settle();
+  assert.deepEqual(
+    h.doc.boards.map((b) => b.id),
+    ["bb1"],
+    "the project on screen is untouched",
+  );
+});
+
+test("a save that never landed inside the guard is a cancel", async () => {
+  const h = await harness();
+  h.doc.load(someDesign());
+  const done = h.workspace.newProject();
+  await settle();
+  clickButton("Save"); // …and no path is queued: the dialog is cancelled
+  await done;
+  await settle();
+  assert.deepEqual(
+    h.doc.boards.map((b) => b.id),
+    ["bb1"],
+    "the work is still only here, so New Project did not happen",
+  );
+});
+
+test("a NAMED project's unsaved changes are offered on the way out", async () => {
+  const h = await harness();
+  await saveAs(h, "/home/six.chiphippo");
+  h.doc.load(someDesign());
+  const done = h.workspace.newProject();
+  await settle();
+  assert.match(dialogTitle(), /Unsaved changes/);
+  clickButton("Save");
+  await done;
+  await settle();
+  // Saved in place — no dialog, because it already has a home.
+  assert.equal(h.projects.get("/home/six.chiphippo").tabs[0].doc.boards.length, 1); // prettier-ignore
+});
+
+test("quitting saves in place, asking nothing about where", async () => {
+  const h = await harness();
+  h.doc.load(someDesign());
+  const closing = h.workspace.confirmClose();
+  await settle();
+  assert.match(dialogTitle(), /Unsaved changes/);
+  clickButton("Save");
+  assert.equal(await closing, true);
+  await settle();
+  assert.equal(h.control.lastPick, null, "no Save-As dialog when quitting");
+  assert.equal(h.stored(DEFAULT_PROJECT).tabs[0].doc.boards.length, 1);
+});
+
+test("quitting a clean project asks nothing", async () => {
+  const h = await harness();
+  assert.equal(await h.workspace.confirmClose(), true);
+  assert.equal(dialogTitle(), "");
+});
+
+// ── Opening another project ──────────────────────────────────────────────────
+
+test("opening a project swaps the whole desk", async () => {
+  const h = await harness();
+  h.seedProject("/home/other.chiphippo", {
+    name: "Other",
+    activeTab: "t1",
+    nextIndex: 2,
+    tabs: [{ id: "t1", name: "Theirs", doc: someDesign("bb9") }],
+  });
+  h.control.openProject = "/home/other.chiphippo";
+  await leaving(() => h.workspace.loadProject());
+  assert.equal(h.workspace.projectName, "Other");
+  assert.deepEqual(h.strip(), ["Theirs"]);
+  assert.deepEqual(
+    h.doc.boards.map((b) => b.id),
+    ["bb9"],
+  );
+  assert.equal(h.workspace.dirty, false);
+  assert.equal(h.sim.stops, 1);
+  assert.equal(h.counts.aux, 1);
 });
 
 test("a recent project that has gone offers to be forgotten", async () => {
   const h = await harness();
-  await saveProjectAs(h, "Mine", "/home/mine.project.chiphippo");
-  h.seedRecent("/home/vanished.project.chiphippo");
-  await h.workspace.openRecentProject("/home/vanished.project.chiphippo");
-  await settle();
+  h.seedRecent("/home/gone.chiphippo");
+  await leaving(() => h.workspace.openRecentProject("/home/gone.chiphippo"));
   assert.match(dialogTitle(), /no longer there/);
   clickButton("Remove");
   await settle();
-  assert.equal(
-    h.recentList().includes("/home/vanished.project.chiphippo"),
-    false,
-    "the dead entry is dropped; the live one stays",
-  );
+  assert.equal(h.recentList().includes("/home/gone.chiphippo"), false);
 });
 
-test("quitting saves each dirty desktop where it already lives", async () => {
+test("a recent project that is still there opens", async () => {
   const h = await harness();
-  await saveProjectAs(h, "Quitting", "/home/quit.project.chiphippo");
-
-  h.doc.addBoard("pins-tiny", 0, 0);
-  h.workspace.refreshDirty();
-  const asked = h.workspace.confirmClose();
-  await settle();
-  assert.match(dialogTitle(), /Unsaved changes/);
-  clickButton("Save");
-  assert.equal(await asked, true);
-  await settle();
-  // No dialog asked where to put it: the desktop and the project both already
-  // have a Location, and that is where they went.
-  assert.equal(document.querySelector(".popup-dialog"), null);
-  assert.equal(h.docs.get(h.workspace.activeTab.file).boards.length, 1);
-  assert.equal(h.control.pickPaths.length, 0);
-});
-
-test("cancelling the quit question stays put, and a clean desk never asks", async () => {
-  const h = await harness();
-  await saveProjectAs(h, "Stay", "/home/stay.project.chiphippo");
-
-  assert.equal(await h.workspace.confirmClose(), true, "nothing to lose");
-  assert.equal(document.querySelector(".popup-dialog"), null, "no dialog");
-
-  h.doc.addBoard("pins-tiny", 0, 0);
-  h.workspace.refreshDirty();
-  const asked = h.workspace.confirmClose();
-  await settle();
-  clickButton("Cancel");
-  assert.equal(await asked, false);
-});
-
-// ── The tab strip's own menu ─────────────────────────────────────────────────
-
-test("a tab's context menu is the board's two items — no Pin Assignment", () => {
-  const win = resetDom();
-  const host = win.document.createElement("div");
-  win.document.body.append(host);
-  const picked = [];
-  const strip = new ProjectTabs(host, {
-    onProperties: (id) => picked.push(`properties:${id}`),
-    onDelete: (id) => picked.push(`delete:${id}`),
+  h.seedProject("/home/six.chiphippo", {
+    name: "6502 SBC",
+    activeTab: "t1",
+    nextIndex: 2,
+    tabs: [{ id: "t1", name: "Main", doc: emptyDocument() }],
   });
-  strip.setTabs(
-    [
-      { id: "t1", name: "Desktop 1" },
-      { id: "t2", name: "Desktop 2" },
-    ],
-    "t1",
-  );
-
-  const second = strip.element.querySelectorAll(".project-tab")[1];
-  second.dispatchEvent(new win.MouseEvent("contextmenu", { bubbles: true }));
-  const items = [...document.querySelectorAll(".popup-menu-item")].map((b) =>
-    b.textContent.trim(),
-  );
-  assert.deepEqual(items, ["Properties…", "Delete Desktop"]);
-  assert.equal(
-    document.querySelectorAll(".popup-menu-separator").length,
-    1,
-    "one rule, between the two items",
-  );
-
-  const properties = [...document.querySelectorAll(".popup-menu-item")].find(
-    (b) => b.textContent.trim() === "Properties…",
-  );
-  properties.dispatchEvent(new win.MouseEvent("click", { bubbles: true }));
-  assert.deepEqual(picked, ["properties:t2"]);
+  h.seedRecent("/home/six.chiphippo");
+  await leaving(() => h.workspace.openRecentProject("/home/six.chiphippo"));
+  assert.equal(h.workspace.projectName, "6502 SBC");
+  assert.equal(h.workspace.projectLocation, "/home/six.chiphippo");
 });
 
-test("every tab gets the SAME menu — the first desktop included", () => {
-  const win = resetDom();
-  const host = win.document.createElement("div");
-  win.document.body.append(host);
-  const strip = new ProjectTabs(host, {});
-  strip.setTabs(
-    [
-      { id: "t1", name: "Desktop 1" },
-      { id: "t2", name: "Desktop 2" },
-    ],
-    "t1",
-  );
+// ── The strip ────────────────────────────────────────────────────────────────
 
-  const menuOf = (index) => {
-    const tab = strip.element.querySelectorAll(".project-tab")[index];
-    tab.dispatchEvent(new win.MouseEvent("contextmenu", { bubbles: true }));
-    return [...document.querySelectorAll(".popup-menu-item")].map((b) => [
-      b.textContent.trim(),
-      b.disabled,
-    ]);
-  };
-  assert.deepEqual(menuOf(0), menuOf(1), "no per-tab branching left");
-  assert.deepEqual(menuOf(0), [
-    ["Properties…", false],
-    ["Delete Desktop", false],
+test("a desktop's description shows in its tab's tooltip", async () => {
+  const h = await harness();
+  h.workspace.editTabProperties("t1");
+  setProperty(".properties-textarea", "the clock divider");
+  closePopup();
+  const tab = h.tabs.element.querySelector(".project-tab");
+  assert.equal(tab.title, "Desktop 1\nthe clock divider");
+});
+
+test("the + drops New Desktop and Import Desktop, in that order", async () => {
+  const h = await harness();
+  h.tabs.element
+    .querySelector(".project-tab-add")
+    .dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  assert.deepEqual(
+    [...document.querySelectorAll(".popup-menu-item")].map((i) =>
+      i.textContent.trim(),
+    ),
+    ["New Desktop", "Import Desktop…"],
+  );
+});
+
+test("the + menu's New Desktop adds one; Import brings one in", async () => {
+  const h = await harness();
+  const openAddMenu = () =>
+    h.tabs.element
+      .querySelector(".project-tab-add")
+      .dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  const pick = (label) =>
+    [...document.querySelectorAll(".popup-menu-item")]
+      .find((i) => i.textContent.trim() === label)
+      .dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+
+  openAddMenu();
+  pick("New Desktop");
+  await settle();
+  assert.deepEqual(h.strip(), ["Desktop 1", "Desktop 2"]);
+
+  h.control.importDesktop = { name: "Clock module", doc: someDesign("bb5") };
+  openAddMenu();
+  pick("Import Desktop…");
+  await settle();
+  assert.deepEqual(h.strip(), ["Desktop 1", "Desktop 2", "Clock module"]);
+  assert.deepEqual(
+    h.doc.boards.map((b) => b.id),
+    ["bb5"],
+    "both land you on the new desk",
+  );
+});
+
+test("the tab menu offers Properties, Duplicate, Export and Delete", async () => {
+  const h = await harness();
+  await twoDesktops(h);
+  const tab = h.tabs.element.querySelector(".project-tab");
+  tab.dispatchEvent(
+    new window.MouseEvent("contextmenu", { bubbles: true, clientX: 5, clientY: 5 }), // prettier-ignore
+  );
+  const labels = [...document.querySelectorAll(".popup-menu-item")].map((i) =>
+    i.textContent.trim(),
+  );
+  assert.deepEqual(labels, [
+    "Properties…",
+    "Duplicate Desktop",
+    "Export Desktop…",
+    "Delete Desktop",
   ]);
-});
-
-test("Properties… sets a desktop's Name and Description, and shows its file", async () => {
-  const h = await harness();
-  await twoDesktops(h);
-  const sub = h.tabsOf()[1];
-
-  h.workspace.editTabProperties(sub.id);
   assert.equal(
-    document.querySelector(".properties-value--path").textContent,
-    sub.file,
-    "the Location is the file it is saved in",
-  );
-  setProperty(".properties-text-input", "Clock module");
-  setProperty(".properties-textarea", "The 555 and its divider.");
-  closePopup();
-  await settle();
-  const saved = h.tabsOf()[1];
-  assert.equal(saved.name, "Clock module");
-  assert.equal(saved.description, "The 555 and its divider.");
-  const button = [...h.tabs.element.querySelectorAll(".project-tab")].find(
-    (b) => b.textContent.trim() === "Clock module",
-  );
-  assert.ok(button, "the strip shows the new name");
-  assert.match(
-    button.title,
-    /The 555 and its divider\./,
-    "and the description",
+    labels.includes("Pin Assignment"),
+    false,
+    "a desktop has no pins, so the board menu's shape is the right one",
   );
 });
 
-test("a desktop keeps its name when Properties… is left blank; an empty description clears", async () => {
+test("running the circuit freezes the strip's destructive items", async () => {
   const h = await harness();
   await twoDesktops(h);
-  const sub = h.tabsOf()[1];
-
-  h.workspace.editTabProperties(sub.id);
-  setProperty(".properties-textarea", "Scratch bench");
-  setProperty(".properties-text-input", "   ");
-  closePopup();
-  await settle();
-  assert.equal(h.tabsOf()[1].name, sub.name, "a desktop always has a name");
-  assert.equal(h.tabsOf()[1].description, "Scratch bench");
-
-  h.workspace.editTabProperties(sub.id);
-  setProperty(".properties-textarea", "");
-  closePopup();
-  await settle();
-  assert.equal(h.tabsOf()[1].description, "", "cleared, not kept");
+  h.workspace.setEditingLocked(true);
+  const tab = h.tabs.element.querySelector(".project-tab");
+  tab.dispatchEvent(
+    new window.MouseEvent("contextmenu", { bubbles: true, clientX: 5, clientY: 5 }), // prettier-ignore
+  );
+  const disabled = [...document.querySelectorAll(".popup-menu-item")]
+    .filter((i) => i.disabled || i.getAttribute("aria-disabled") === "true")
+    .map((i) => i.textContent.trim());
+  assert.deepEqual(disabled, ["Duplicate Desktop", "Delete Desktop"]);
 });

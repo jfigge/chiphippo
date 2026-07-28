@@ -15,86 +15,84 @@
  */
 
 /**
- * project-store.js — projects: a workspace of desktops, and the FILES they are
- * kept in.
+ * project-store.js — THE PROJECT IS THE DOCUMENT. One file holds the whole
+ * design: every desktop, and every ROM image those desktops were programmed
+ * with.
  *
- * THERE IS ALWAYS A PROJECT. The app opens onto one from its very first
- * launch, so there is no second "working desk" mode beside it: every document
- * on screen is a desktop of the open project.
+ *     <name>.chiphippo
+ *     {
+ *       version, name, description?, activeTab, nextIndex,
+ *       tabs:   [ { id, name, description?, doc } ],   // doc = a desk document
+ *       images: { <rom-guid>: <base64> }               // programmed ROMs only
+ *     }
  *
- * A PROJECT IS A FILE, NOT A FOLDER, and so is every desktop in it:
+ * Up to v3 a project was a list of PATHS — one `.desktop.chiphippo` per tab,
+ * anywhere on disk — and the ROM bytes were not in it at all. Two file
+ * lifetimes had to be kept referentially consistent, which is where the
+ * app-kept flags, the orphan collection, and the eager write-through all came
+ * from; and it could not do the one thing a real file was for, since a project
+ * carried to another machine had a dead path per tab and no ROM contents.
+ * v4 inlines the lot. `project-migrate.js` brings a v3 file forward.
  *
- *     <name>.project.chiphippo    the tab list (below), wherever the user put it
- *     <name>.desktop.chiphippo    one document per desktop, ditto
+ * WHAT IS LEFT HERE is only the shape of that one file:
  *
- * Neither has to live anywhere in particular — the user picks with a Save As
- * dialog. Until they do, the app keeps the file for them in its own SAVES
- * directory (`userData/saves/`):
+ *   · `newProject()` — a blank project, ONE desktop, written to the working
+ *     slot so the next launch finds it.
+ *   · `read` / `write` — the file, whole. Reading HYDRATES the memory cache
+ *     from `images`; writing COLLECTS it back (project-images.js). Nothing
+ *     outside the file is needed to open a design.
+ *   · the working slot — an UNSAVED project (blank name, blank location) lives
+ *     in the one fixed `saves/default.chiphippo`, which is to a project
+ *     exactly what desk.json once was to a schematic: the always-there slot
+ *     the app boots onto. `location` is never STORED — it IS the path, so it
+ *     cannot disagree with reality, and it reads back blank for that file.
+ *   · desktop SNAPSHOTS — the `.desktop.chiphippo` interchange fragment behind
+ *     Export/Import. A snapshot is a copy with no retained link, so unlike the
+ *     v3 desktop file it can never dangle.
  *
- *   · a brand-new desktop is minted as `<guid>.desktop.chiphippo` there. Any
- *     desktop whose file is IN that folder is the app's to clean up — the
- *     minted one, and equally one the user saved into it — so Save As, Open,
- *     and deleting a desktop all remove the file they leave behind there,
- *     while a file anywhere else is the user's and is never touched. That is
- *     what the `defaultFile` flag reports, and it is DERIVED from the path on
- *     the way out (`_normalize`), so it cannot drift from where the file is.
- *   · an unsaved PROJECT has a BLANK name and a BLANK location, and lives in
- *     the ONE fixed default project file, `saves/default.project.chiphippo`.
- *     It is to a project exactly what desk.json used to be to a schematic: the
- *     always-there working slot. Saving the project under a name moves it out
- *     and deletes the default file; starting a new project takes the slot over.
- *
- * That is also the whole of the startup rule (main.js's `bootProject`): if the
- * default project file exists it IS the session's project; if it doesn't, the
- * last project the user saved or opened is (the MRU list), and failing that a
- * brand-new one is created.
- *
- * The project file itself:
- *
- *     { version, name, description?, activeTab, nextIndex,
- *       tabs: [ { id, name, description?, file, defaultFile? } ] }
- *
- * `file` is an absolute path — a desktop can be anywhere. The one exception is
- * a `defaultFile` desktop, whose STORED path is REBASED onto this machine's
- * saves directory when it is read, so a project file carried to another
- * machine (or a different --user-data-dir) still finds its app-kept desktops.
- *
- * A tab's `description` is the second half of the Name/Description pair every
- * object in the app carries, and is optional in the same omit-when-empty way.
- *
- * This module owns the SHAPE of those files and the saves directory. It does
- * not own dialogs, the MRU list, or the decision of which path to write to —
- * main.js does, and it is the only caller.
+ * This module does not own dialogs, the MRU list, or the decision of which
+ * path to write to — main.js does, and it is the only caller.
  */
 "use strict";
 
 const fs = require("fs");
 const path = require("path");
-const { randomUUID } = require("crypto");
 const io = require("./io");
-const { defaultDeskDocument } = require("./migrations");
+const { defaultDeskDocument, migrateDeskDocument } = require("./migrations");
+const {
+  isProjectShape,
+  isLegacyProject,
+  migrateLegacyTabs,
+} = require("./project-migrate");
+const { collectImages, hydrateImages } = require("./project-images");
 
 /**
- * Schema version of a project file. v3 is the file-based redesign: projects
- * and desktops became real files at user-chosen paths, so the folder-per-
- * project layout (and its slug ids) is gone. Nothing migrates a v1/v2 folder
- * project — they never left the app's own directory.
+ * Schema version of a project file. v4 is the single-file redesign: every
+ * desktop's document and every programmed ROM's bytes moved INTO the file, so
+ * a project has no companion files at all. v3 (paths per tab) is migrated on
+ * read; the v1/v2 folder projects never left the app's own directory and are
+ * not migrated.
  */
-const PROJECT_VERSION = 3;
+const PROJECT_VERSION = 4;
 
 /** The app's own folder for files the user hasn't chosen a home for yet. */
 const SAVES_DIR = "saves";
 
-/** Extensions. Both end in `.chiphippo`, so one filter matches either. */
-const PROJECT_EXT = ".project.chiphippo";
+/** The memory cache `images` hydrates into (Feature 180's `.bin` sidecars). */
+const MEMORY_DIR = "memory";
+
+/** The project IS the document, so it takes the plain extension. */
+const PROJECT_EXT = ".chiphippo";
+
+/** The interchange fragment behind Export/Import — a snapshot, never a link. */
 const DESKTOP_EXT = ".desktop.chiphippo";
+
+/** v3's project extension. Still readable; never written. */
+const LEGACY_PROJECT_EXT = ".project.chiphippo";
 
 /** The one fixed file an UNSAVED (blank-name, blank-location) project lives in. */
 const DEFAULT_PROJECT_FILE = `default${PROJECT_EXT}`;
-
-/** A minted desktop file name: a GUID, so two of them can never collide. */
-const TEMP_DESKTOP_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.desktop\.chiphippo$/i;
+const LEGACY_DEFAULT_PROJECT_FILE = `default${LEGACY_PROJECT_EXT}`;
 
 /** How long a name may be (it becomes a suggested file name). */
 const MAX_NAME = 64;
@@ -113,8 +111,8 @@ function taggedError(message, code) {
 
 /**
  * A display name reduced to a safe file name — the DEFAULT a Save As dialog
- * opens with, never a path. Spaces survive ("6502 SBC.project.chiphippo" reads
- * better than a slug); only what an OS would choke on is stripped.
+ * opens with, never a path. Spaces survive ("6502 SBC.chiphippo" reads better
+ * than a slug); only what an OS would choke on is stripped.
  */
 function suggestFileName(name, ext, fallback = "untitled") {
   const clean = String(name ?? "")
@@ -126,6 +124,19 @@ function suggestFileName(name, ext, fallback = "untitled") {
   return `${clean || fallback}${ext}`;
 }
 
+/**
+ * A file name reduced to a display name — Save As names an untitled project
+ * from the file the user picked, so there is no separate "name this project"
+ * dialog to sit in front of the save panel.
+ */
+function nameFromFile(filePath) {
+  const base = path.basename(String(filePath ?? ""));
+  for (const ext of [DESKTOP_EXT, LEGACY_PROJECT_EXT, PROJECT_EXT, ".json"]) {
+    if (base.toLowerCase().endsWith(ext)) return base.slice(0, -ext.length);
+  }
+  return base;
+}
+
 /** Trim a user-supplied string field, or "" for anything that isn't one. */
 function text(value) {
   return typeof value === "string" ? value.trim() : "";
@@ -134,12 +145,13 @@ function text(value) {
 class ProjectStore {
   /**
    * @param {string} dataDir - the app's userData directory.
-   * @param {{readFile: Function, writeFile: Function}} deskStore - reads and
-   *   writes a desktop's document (migrations included), so this module never
-   *   parses a desk document itself.
+   * @param {{readFile: Function, writeFile: Function}} deskStore - reads a
+   *   desktop document from a legacy v3 file (migrations included), so this
+   *   module never parses one itself.
    */
   constructor(dataDir, deskStore) {
     this._saves = path.join(dataDir, SAVES_DIR);
+    this._memory = path.join(dataDir, MEMORY_DIR);
     this._desk = deskStore;
   }
 
@@ -148,9 +160,19 @@ class ProjectStore {
     return this._saves;
   }
 
+  /** The memory cache `images` is hydrated into / collected from. */
+  get memoryDir() {
+    return this._memory;
+  }
+
   /** Where an unsaved project (blank name, blank location) is kept. */
   get defaultProjectPath() {
     return path.join(this._saves, DEFAULT_PROJECT_FILE);
+  }
+
+  /** v3's working slot, upgraded in place on the first launch after v4. */
+  get legacyDefaultProjectPath() {
+    return path.join(this._saves, LEGACY_DEFAULT_PROJECT_FILE);
   }
 
   /** Create the saves directory if this is the app's first run. */
@@ -167,103 +189,85 @@ class ProjectStore {
     return resolved === root || resolved.startsWith(root + path.sep);
   }
 
-  /** Is `filePath` one of the GUID desktop files the app mints? (Save As
-      suggests a real name instead of showing a GUID back to the user.) */
-  isTempDesktop(filePath) {
-    return (
-      this.isInsideSaves(filePath) &&
-      TEMP_DESKTOP_RE.test(path.basename(String(filePath)))
-    );
-  }
-
   /** Is the unsaved project's fixed file on disk? (the startup question) */
   hasDefaultProject() {
-    return fs.existsSync(this.defaultProjectPath);
+    return existsSafe(this.defaultProjectPath);
   }
 
   /**
    * A brand-new project: BLANK name, BLANK location, exactly one desktop
-   * ("Desktop 1", in a freshly minted GUID file). Its home until it is saved
-   * is the fixed default project file, which this writes — so the next launch
-   * finds it there.
+   * ("Desktop 1", an empty desk). Its home until it is saved is the fixed
+   * default project file, which this writes — so the next launch finds it
+   * there, and a force-quit before the first save still opens onto it.
    *
    * @returns {object} the meta, `location: null`.
    */
   newProject() {
     this.ensureSaves();
-    // There is ONE working slot, and this takes it over: whatever unsaved
-    // project was in it is abandoned, app-kept desktop files and all (the
-    // caller has already offered to save it).
-    this.discardDefaultProject();
+    // There is ONE working slot, and this takes it over. Nothing but the file
+    // itself has to go now: a project has no companion files to collect.
+    this.removeDefaultProject();
     const meta = {
       version: PROJECT_VERSION,
       name: "",
       description: "",
-      activeTab: null,
-      nextIndex: 1,
-      tabs: [],
+      activeTab: "t1",
+      nextIndex: 2,
+      tabs: [{ id: "t1", name: "Desktop 1", doc: defaultDeskDocument() }],
     };
-    const only = this._appendTab(meta);
-    meta.activeTab = only.id;
     this.write(this.defaultProjectPath, meta);
     return { ...meta, location: null };
   }
 
   /**
-   * Add one desktop to a project the renderer is holding. The document file is
-   * written straight away (an empty desk, so the file a new desktop starts
-   * from reads back as exactly what the desk shows); the PROJECT file is not —
-   * a project is saved deliberately, so adding a desktop makes it dirty.
+   * Read a project file, WHOLE — every desktop's document with it, and the
+   * memory cache refilled from its `images` so a ROM's backing file is there
+   * before the renderer has seen the project.
    *
-   * @param {object} meta - the live project meta from the renderer.
-   * @returns {object} the meta with the new tab appended and active.
-   */
-  addTab(meta) {
-    this.ensureSaves();
-    const next = this._normalize(meta);
-    if (!next) throw taggedError("a project needs a desktop", "INVALID_ARG");
-    next.location = meta?.location ?? null;
-    const tab = this._appendTab(next);
-    next.activeTab = tab.id;
-    return next;
-  }
-
-  /**
-   * Append one desktop to `meta` (in memory) and write its document.
-   *
-   * The visible number comes from `nextIndex`, which only ever counts up —
-   * deleting "Desktop 2" never makes the next one Desktop 2 again, so a name
-   * in a note or a screenshot keeps meaning the same desk.
-   */
-  _appendTab(meta, doc = defaultDeskDocument()) {
-    const ids = new Set(meta.tabs.map((t) => t.id));
-    let index = Number.isInteger(meta.nextIndex) ? meta.nextIndex : 1;
-    while (ids.has(`t${index}`)) index += 1;
-    meta.nextIndex = index + 1;
-    const tab = {
-      id: `t${index}`,
-      name: `Desktop ${index}`,
-      file: path.join(this._saves, `${randomUUID()}${DESKTOP_EXT}`),
-      defaultFile: true,
-    };
-    meta.tabs.push(tab);
-    this._desk.writeFile(tab.file, doc);
-    return tab;
-  }
-
-  /**
-   * Read a project file. Returns null when the path holds no project (missing,
-   * corrupt, or some other JSON) — the caller falls back rather than failing.
+   * Three shapes come through here: a v4 project, a v3 project (inlined by
+   * project-migrate.js), and a bare desk document or desktop snapshot (a loose
+   * `.chiphippo` / `.desktop.chiphippo`), which becomes a project of one
+   * desktop. Returns null only when the file holds none of them.
    *
    * `location` is BLANK for the fixed default file: that project has never
    * been given a home, which is exactly what the Properties dialog shows.
+   * `warnings` (when present) is what the migration could not bring across —
+   * neither field is ever stored.
    */
   read(filePath) {
-    const meta = this._normalize(io.readJSON(filePath));
+    const raw = io.readJSON(filePath);
+    if (!raw || typeof raw !== "object") return null;
+    let meta = null;
+    let warnings = [];
+    const wasProject = isProjectShape(raw);
+    if (wasProject) {
+      if (isLegacyProject(raw)) {
+        const upgraded = migrateLegacyTabs(raw, {
+          deskStore: this._desk,
+          savesDir: this._saves,
+        });
+        warnings = upgraded.warnings;
+        meta = this._normalize({ ...raw, tabs: upgraded.tabs }, true);
+      } else {
+        meta = this._normalize(raw, true);
+      }
+    } else {
+      // Not a project at all: a loose design, or an exported desktop.
+      const snapshot = this._asSnapshot(raw, nameFromFile(filePath));
+      if (snapshot) meta = this._normalize(projectOf(snapshot), true);
+    }
     if (!meta) return null;
+    hydrateImages(raw.images, this._memory);
     const resolved = path.resolve(filePath);
+    // A project knows where it lives — EXCEPT in the working slot, which is
+    // what "no location" means. A loose design is not a project file at all,
+    // so it has no location either: Save As is what gives the project a home,
+    // and nothing can overwrite the design that was imported.
     meta.location =
-      resolved === path.resolve(this.defaultProjectPath) ? null : resolved;
+      !wasProject || resolved === path.resolve(this.defaultProjectPath)
+        ? null
+        : resolved;
+    if (warnings.length) meta.warnings = warnings;
     return meta;
   }
 
@@ -272,10 +276,14 @@ class ProjectStore {
    * default file for a project that has none); only the fields this module
    * owns are written, so `location` — which is the path itself — never becomes
    * a stored field that could disagree with reality.
+   *
+   * Every programmed ROM's bytes are collected out of the memory cache and
+   * written INTO the file, which is what makes it self-contained.
    */
   write(filePath, meta) {
     const clean = this._normalize(meta);
     if (!clean) throw taggedError("a project needs a desktop", "INVALID_ARG");
+    const images = collectImages(clean, this._memory);
     io.ensureDir(path.dirname(filePath));
     io.writeJSON(filePath, {
       version: PROJECT_VERSION,
@@ -287,15 +295,22 @@ class ProjectStore {
         id: tab.id,
         name: tab.name,
         ...(tab.description ? { description: tab.description } : {}),
-        file: tab.file,
-        ...(tab.defaultFile ? { defaultFile: true } : {}),
+        doc: tab.doc,
       })),
+      ...(Object.keys(images).length ? { images } : {}),
     });
     return filePath;
   }
 
-  /** Bring a stored (or renderer-supplied) project to the current shape. */
-  _normalize(raw) {
+  /**
+   * Bring a stored (or renderer-supplied) project to the current shape.
+   *
+   * `fromDisk` runs each desktop's document through the schema migrations, so
+   * an older desk inside a project file comes forward. It is deliberately NOT
+   * done on the way out: a write must store what the renderer holds, never a
+   * re-derived version of it.
+   */
+  _normalize(raw, fromDisk = false) {
     if (!raw || typeof raw !== "object" || !Array.isArray(raw.tabs)) {
       return null;
     }
@@ -303,29 +318,18 @@ class ProjectStore {
     const tabs = [];
     for (const tab of raw.tabs) {
       if (!tab || typeof tab !== "object") continue;
-      const file = text(tab.file);
       const id = text(tab.id);
-      if (!file || !id || ids.has(id)) continue;
+      if (!id || ids.has(id)) continue;
+      const doc = tab.doc;
+      if (!doc || typeof doc !== "object" || Array.isArray(doc)) continue;
       ids.add(id);
-      // The STORED flag means "the app was keeping this one", which is what
-      // says to rebase it onto THIS machine's saves directory — a project file
-      // that travelled still finds its app-kept desktops.
-      const resolved =
-        tab.defaultFile === true
-          ? path.join(this._saves, path.basename(file))
-          : path.resolve(file);
-      // The flag handed OUT is derived from where the file actually is, so it
-      // can never drift from the truth: a desktop the user saved into the
-      // app's own folder is app-kept too, whatever the file says.
-      const appKept = this.isInsideSaves(resolved);
       tabs.push({
         id,
         name: text(tab.name) || id,
         ...(text(tab.description)
           ? { description: text(tab.description) }
           : {}),
-        file: resolved,
-        ...(appKept ? { defaultFile: true } : {}),
+        doc: fromDisk ? migrateDeskDocument(doc) : doc,
       });
     }
     if (tabs.length === 0) return null;
@@ -348,137 +352,187 @@ class ProjectStore {
     };
   }
 
-  /** Read a desktop's document (migrated); an empty desk when it's missing. */
-  readTab(filePath) {
-    return this._desk.readFile(filePath);
-  }
-
-  /** Write a desktop's document. Returns the path written. */
-  writeTab(filePath, doc) {
-    io.ensureDir(path.dirname(filePath));
-    return this._desk.writeFile(filePath, doc);
-  }
+  // ── Desktop snapshots (Export / Import) ──────────────────────────────────
+  //
+  // A `.desktop.chiphippo` is a SNAPSHOT — one desktop, its ROM images with
+  // it, and no link back to the project it came from. That is the whole point:
+  // a copy cannot dangle, which is what the v3 desktop file could not promise.
 
   /**
-   * Delete a desktop's file — when the desktop is removed from its project,
-   * or when Save As / Open has given it a home somewhere else.
+   * Read a desktop snapshot for Import. Accepts a snapshot, a bare desk
+   * document (a loose `.chiphippo` design), or a whole project — from which
+   * the ACTIVE desktop is taken, since importing "a project" into a tab can
+   * only mean one of its desks.
    *
-   * THE LOCATION DECIDES, and nothing else: a file inside the app's own saves
-   * folder is the app's to clean up (whether it is the GUID one minted when
-   * the desktop was added, or one the user saved into that folder), and a file
-   * anywhere else is the user's and is left exactly where it is. A path
-   * outside is not an error — it is simply not ours — so callers can hand over
-   * any desktop's file and let this decide.
-   *
-   * @returns {boolean} whether a file was deleted.
+   * @returns {{name: string, description: string, doc: object,
+   *   images: object|null}|null}
    */
-  removeDesktopFile(filePath) {
-    if (typeof filePath !== "string" || !this.isInsideSaves(filePath)) {
-      return false; // the user's own file: not ours to remove
+  readDesktopSnapshot(filePath) {
+    const raw = io.readJSON(filePath);
+    if (!raw || typeof raw !== "object") return null;
+    if (isProjectShape(raw)) {
+      const meta = this.read(filePath); // migrates + hydrates, whatever it is
+      const tab = meta?.tabs.find((t) => t.id === meta.activeTab);
+      if (!tab) return null;
+      return {
+        name: tab.name,
+        description: tab.description ?? "",
+        doc: tab.doc,
+        // `read` has already hydrated the cache, so a reseat finds the files.
+        images: null,
+      };
     }
-    const resolved = path.resolve(filePath);
-    if (resolved.endsWith(PROJECT_EXT)) {
-      // A project file is not a desktop; removing one is a different act with
-      // a different method (removeDefaultProject), so refuse it here.
-      throw taggedError(`not a desktop file: ${filePath}`, "INVALID_ARG");
-    }
-    try {
-      fs.unlinkSync(resolved);
-      return true;
-    } catch (err) {
-      if (err.code === "ENOENT") return false; // already gone is fine
-      throw err;
-    }
+    return this._asSnapshot(raw, nameFromFile(filePath));
   }
 
   /**
-   * Drop the fixed default project file, and NOTHING else — the project that
-   * lived in the working slot has been saved somewhere real, so its desktops
-   * (app-kept files included) belong to it and go on being used. Startup then
-   * falls through to the MRU list.
+   * Write one desktop out as a self-contained snapshot: its document, and the
+   * bytes of every programmed ROM on it.
+   */
+  writeDesktopSnapshot(filePath, { name, description, doc }) {
+    if (!doc || typeof doc !== "object" || Array.isArray(doc)) {
+      throw taggedError("a desktop needs a document", "INVALID_ARG");
+    }
+    const images = collectImages({ doc }, this._memory);
+    io.ensureDir(path.dirname(filePath));
+    io.writeJSON(filePath, {
+      version: PROJECT_VERSION,
+      kind: "desktop",
+      name: text(name) || "Desktop",
+      ...(text(description) ? { description: text(description) } : {}),
+      doc,
+      ...(Object.keys(images).length ? { images } : {}),
+    });
+    return filePath;
+  }
+
+  /** A parsed file as a desktop snapshot: the explicit shape, or a bare doc. */
+  _asSnapshot(raw, fallbackName) {
+    if (raw.kind === "desktop" && raw.doc && typeof raw.doc === "object") {
+      return {
+        name: text(raw.name) || fallbackName || "Desktop",
+        description: text(raw.description),
+        doc: migrateDeskDocument(raw.doc),
+        images:
+          raw.images && typeof raw.images === "object" ? raw.images : null,
+      };
+    }
+    // A loose desk document. `migrateDeskDocument` answers with the default
+    // empty desk for junk, which would silently import a blank tab — so only
+    // a shape that actually looks like a desk gets through.
+    if (!Array.isArray(raw.boards) && !Array.isArray(raw.components)) {
+      return null;
+    }
+    return {
+      name: fallbackName || "Desktop",
+      description: "",
+      doc: migrateDeskDocument(raw),
+      images: null,
+    };
+  }
+
+  // ── The working slot ─────────────────────────────────────────────────────
+
+  /**
+   * Drop the fixed default project file — the project that lived in the
+   * working slot has been saved somewhere real (or replaced). There is nothing
+   * else to clean up: a v4 project has no companion files.
    *
    * @returns {boolean} whether a file was deleted.
    */
   removeDefaultProject() {
-    try {
-      fs.unlinkSync(this.defaultProjectPath);
-      return true;
-    } catch (err) {
-      if (err.code === "ENOENT") return false;
-      throw err;
-    }
+    return unlinkSafe(this.defaultProjectPath);
   }
 
   /**
-   * A project's unsaved changes are being THROWN AWAY (the leave/quit guard's
-   * "Discard"). Anything the reloaded project won't have is now garbage, so
-   * every desktop in the live `meta` that the project ON DISK does not list
-   * has its file removed — subject to the one rule that governs every desktop
-   * file: only inside the app's own saves folder.
+   * FIRST LAUNCH AFTER v4: the working slot may still be a v3
+   * `default.project.chiphippo` pointing at app-kept desktop files. Inline it
+   * into `default.chiphippo`, then — and only then — remove the v3 file and
+   * the desktop files it alone pointed at. A desktop the user had saved
+   * somewhere of their own is read and LEFT WHERE IT IS.
    *
-   * That is exactly the desktops ADDED since the project was last saved. A
-   * desktop the user saved somewhere of their own keeps its file, as always;
-   * one still in the app's folder would otherwise sit there forever, pointed
-   * at by nothing.
+   * The warnings come back rather than being written: they belong to this ONE
+   * migration, and the upgraded file has nothing to say about a desktop whose
+   * v3 path had already gone. Startup hands them to the renderer, which is the
+   * only chance the user gets to be told.
    *
-   * The comparison is against the FILE, never against anything the renderer
-   * remembers, so a desktop that is genuinely still in the project can never
-   * be swept up by a stale idea of what was saved.
-   *
-   * @param {object} meta - the live project, as the renderer holds it.
-   * @param {string|null} filePath - where the project is saved; null for the
-   *   unsaved one, whose file is the fixed default project file.
-   * @returns {Array<string>} the files removed.
+   * @returns {Array<string>|null} the migration's warnings (possibly empty),
+   *   or null when there was nothing to upgrade.
    */
-  discardChanges(meta, filePath) {
-    const onDisk = this.read(filePath || this.defaultProjectPath);
-    const kept = new Set((onDisk?.tabs ?? []).map((tab) => tab.file));
-    const removed = [];
-    for (const tab of meta?.tabs ?? []) {
-      const file = typeof tab?.file === "string" ? path.resolve(tab.file) : "";
-      if (!file || kept.has(file)) continue;
-      if (safeCall(() => this.removeDesktopFile(file))) removed.push(file);
+  upgradeLegacyDefault() {
+    const legacy = this.legacyDefaultProjectPath;
+    if (!existsSafe(legacy)) return null;
+    const raw = io.readJSON(legacy);
+    const meta = this.read(legacy);
+    if (!meta) {
+      unlinkSafe(legacy); // not a project at all; the slot is simply empty
+      return null;
     }
-    return removed;
-  }
-
-  /**
-   * ABANDON whatever is in the working slot — the unsaved project the user
-   * discarded when they started or opened another one. The default project
-   * file goes, and so do the desktop files the APP was keeping for it: nothing
-   * else ever pointed at them, so leaving them behind is pure litter. A
-   * desktop the USER saved somewhere is theirs and is left alone.
-   *
-   * @returns {boolean} whether there was a working project to abandon.
-   */
-  discardDefaultProject() {
-    const meta = this._normalize(io.readJSON(this.defaultProjectPath));
-    for (const tab of meta?.tabs ?? []) {
-      // A file outside the saves folder is the user's, and removeDesktopFile
-      // leaves it alone — so every tab can simply be handed over.
-      safeCall(() => this.removeDesktopFile(tab.file));
+    this.write(this.defaultProjectPath, meta);
+    unlinkSafe(legacy);
+    for (const tab of raw?.tabs ?? []) {
+      const stored = typeof tab?.file === "string" ? tab.file : "";
+      if (!stored) continue;
+      const file =
+        tab.defaultFile === true
+          ? path.join(this._saves, path.basename(stored))
+          : path.resolve(stored);
+      // The location decides, exactly as it always did: inside the app's own
+      // folder it was the app's to keep, and anywhere else it is the user's.
+      if (this.isInsideSaves(file)) unlinkSafe(file);
     }
-    return this.removeDefaultProject();
+    return meta.warnings ?? [];
   }
 }
 
-/** Best-effort cleanup: a file that can't be removed is not worth failing a
-    New Project over (it is litter, not data). */
-function safeCall(fn) {
+/** A one-desktop project around a snapshot (a loose design opened as one). */
+function projectOf(snapshot) {
+  return {
+    version: PROJECT_VERSION,
+    name: snapshot.name,
+    description: "",
+    activeTab: "t1",
+    nextIndex: 2,
+    tabs: [
+      {
+        id: "t1",
+        name: snapshot.name || "Desktop 1",
+        ...(snapshot.description ? { description: snapshot.description } : {}),
+        doc: snapshot.doc,
+      },
+    ],
+  };
+}
+
+/** fs.existsSync that can never throw a load. */
+function existsSafe(filePath) {
   try {
-    return fn();
+    return fs.existsSync(filePath);
+  } catch {
+    return false;
+  }
+}
+
+/** Delete a file; missing is not an error. Returns whether one went. */
+function unlinkSafe(filePath) {
+  try {
+    fs.unlinkSync(filePath);
+    return true;
   } catch (err) {
+    if (err.code === "ENOENT") return false;
     console.error("[store] project cleanup:", err && err.message);
-    return null;
+    return false;
   }
 }
 
 module.exports = {
   ProjectStore,
   suggestFileName,
+  nameFromFile,
   PROJECT_VERSION,
   PROJECT_EXT,
   DESKTOP_EXT,
+  LEGACY_PROJECT_EXT,
   DEFAULT_PROJECT_FILE,
   SAVES_DIR,
 };
