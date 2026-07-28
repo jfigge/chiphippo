@@ -1850,6 +1850,13 @@
   white-space: nowrap;
 }
 
+/* A label cannot wrap, so its width is intrinsic — the shared max-width would
+   only shrink the BOX (its selection outline and its grab area) under the text
+   it draws. It stays on .annotation--note, where it is what makes one wrap. */
+.annotation--label {
+  max-width: none;
+}
+
 .annotation--note {
   min-width: 80px;
   background: color-mix(in srgb, var(--color-surface-0) 88%, transparent);

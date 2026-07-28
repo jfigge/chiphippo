@@ -88,8 +88,15 @@ export function compileNetlist(spec) {
 // circuit and a shipped demo should read the same way on the desk.
 const CAPTION_LINE = 1.8; // vertical pitch between caption lines
 const CAPTION_BOTTOM = -2; // the last line sits just above the top rail
-const CAPTION_WIDTH = 42; // characters; a label is nowrap, so this is the wrap
-const CAPTION_MAX = 12; // lines, so a runaway note cannot bury the desk
+// A label is nowrap, so the width is not a style choice — it is how wide a line
+// may be drawn. 64 characters of 12 px sans is ~41 units, well inside a full
+// pin-board's 63 columns, so the block stays over the design's own footprint.
+const CAPTION_WIDTH = 64;
+// A GUARD, not a budget: 30 lines is ~1900 characters, past anything the prompt
+// asks for. It exists only so an essay cannot bury the circuit it explains, and
+// when it does fire the last line is marked — see CAPTION_CUT.
+const CAPTION_MAX = 30;
+const CAPTION_CUT = "…"; // appended to the last line when the cap trims
 const CAPTION_MUTED = "#808080";
 
 /**
@@ -1251,10 +1258,13 @@ function assemble(resolved, title, notes) {
       (worldOf(`${a.boardId}.${a.anchor}`)?.x ?? 0) -
       (worldOf(`${b.boardId}.${b.anchor}`)?.x ?? 0),
   )[0];
-  const caption = [...(title ? [String(title)] : []), ...wrapText(notes)].slice(
-    0,
-    CAPTION_MAX,
-  );
+  const written = [...(title ? [String(title)] : []), ...wrapText(notes)];
+  const caption = written.slice(0, CAPTION_MAX);
+  // A trim SAYS SO. Stopping mid-clause reads as a note that was written badly
+  // rather than one that was cut, and the reader has no way to tell which.
+  if (written.length > caption.length) {
+    caption[caption.length - 1] += CAPTION_CUT;
+  }
   if (leftmost && caption.length) {
     const left = Math.min(...boards.map((b) => b.x));
     caption.forEach((line, i) => {

@@ -167,6 +167,11 @@ the board, so write it for the person who is about to look at a circuit they
 did not build and cannot ask about. ONE paragraph, plain prose, no lists and
 no markdown.
 
+There is real room on the desk for it — write four to eight sentences and
+explain the thing properly. A one-line summary is a wasted caption: it tells
+the reader what they could already see. Do not pad it either; stop when the
+circuit is explained. Anything past about 1500 characters is trimmed.
+
 Say what the design DOES and why it is wired that way — the part that is not
 obvious from staring at it. Name the chips and the job each one has, say which
 pins are the inputs and what the read-out shows, and call out anything that

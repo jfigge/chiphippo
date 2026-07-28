@@ -1169,5 +1169,42 @@ test("a title alone still names the circuit; nothing at all says nothing", () =>
   // capped rather than covering the circuit it is meant to explain.
   const essay = "word ".repeat(600);
   const { doc } = build({ ...COUNTER_SPEC, notes: essay });
-  assert.ok(doc.annotations.length <= 12, `${doc.annotations.length} lines`);
+  assert.ok(doc.annotations.length <= 30, `${doc.annotations.length} lines`);
+  // And the trim SAYS SO — a caption that stops mid-clause reads as a note
+  // written badly rather than one that was cut.
+  assert.ok(
+    doc.annotations.at(-1).text.endsWith("…"),
+    "the cap marks what it dropped",
+  );
+});
+
+test("a full-length note is not truncated", () => {
+  // The regression this guards: the caption used to fit ~500 characters, so a
+  // note of the length the prompt asks for was cut off mid-sentence, silently.
+  const notes =
+    "This is a holding port for one byte: the eight input lines IN0-IN7 " +
+    "come from DIP switch SW1, each closed position pulling its line HIGH " +
+    "while the compiler's pull-downs hold the open ones LOW, and they are " +
+    "shown on the INBAR lamp row so you can see what is presently on the " +
+    "incoming bus. U1, a 74LS273 octal D flip-flop, watches those eight " +
+    "lines continuously but only stores them on a rising clock edge, and " +
+    "that edge is gated by U4, a 74LS11 3-input AND whose other two inputs " +
+    "are the write-enable and the chip-select, so nothing is captured until " +
+    "the byte is actually addressed. The stored byte drives the OUTBAR row " +
+    "through U2 and U3, a pair of 74LS08 buffers, so the captured value " +
+    "stays visible after the switches have moved on. CLR is tied HIGH " +
+    "because a reset line left floating would read HIGH anyway, and a tie " +
+    "says so deliberately.";
+  assert.ok(notes.length > 800, `${notes.length} characters`);
+  const { doc } = build({ ...COUNTER_SPEC, notes });
+  const caption = doc.annotations;
+  assert.equal(caption[0].text, COUNTER_SPEC.title, "the title still leads");
+  assert.equal(
+    caption
+      .slice(1)
+      .map((a) => a.text)
+      .join(" "),
+    notes,
+    "every word of it reaches the desk",
+  );
 });

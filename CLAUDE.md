@@ -713,10 +713,19 @@ Electron main process (src/app/main.js)
     anchored labels, on the rule that a free-floating one belongs to the desk
     it was written on rather than to the design, so an unanchored note would be
     silently dropped on the way to the ghost. `wrapText` breaks the paragraph
-    to 42 characters because a label is `white-space: nowrap` (a word longer
-    than that overflows rather than being cut — a split part number is worse
-    than a ragged edge), and the block caps at 12 lines so an essay cannot bury
-    the circuit it explains. The same paragraph is handed back on the build
+    to 64 characters because a label is `white-space: nowrap` — the width is
+    not a style choice but how wide a line may be DRAWN, and 64 stays inside a
+    full pin-board's own footprint (a word longer than that overflows rather
+    than being cut — a split part number is worse than a ragged edge; and
+    `.annotation--label` clears the shared `max-width`, which on a nowrap label
+    could only shrink the box under the text, not wrap it). The 30-line cap is
+    a GUARD, not a budget — ~1900 characters, past anything the prompt asks
+    for — so an essay cannot bury the circuit it explains; at 12 lines of 42 it
+    was a routine ceiling that cut an ordinary note off mid-sentence. A trim
+    now marks its last line with an ellipsis, because a caption that simply
+    stops reads as one written badly rather than one that was cut. The prompt
+    states the length it wants (four to eight sentences) — an unstated budget
+    is one the model cannot write to. The same paragraph is handed back on the build
     result, so the panel can say it while the user is still deciding whether
     to place the design. A `title` with no notes still captions the circuit
     with one line; neither gives no caption at all.
