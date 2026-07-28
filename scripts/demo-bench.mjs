@@ -14,12 +14,11 @@
  * limitations under the License.
  */
 
-// demo-bench.mjs — the LOGIC BENCH every chip demonstration in
-// demos/GateTests.chiphippo is laid out on: one full breadboard, a 5 V brick,
-// switched inputs on the left, the chip in the middle, LED read-outs on the
-// right. This is the pure builder — no file I/O, no validation (that's
-// make-gate-demos.mjs) and no per-chip knowledge at all (that's
-// demo-specs.mjs).
+// demo-bench.mjs — the LOGIC BENCH every chip demonstration in demos/ is laid
+// out on: one full breadboard, a 5 V brick, switched inputs on the left, the
+// chip in the middle, LED read-outs on the right. This is the pure builder —
+// no file I/O, no validation (that's demo-build.mjs) and no per-chip knowledge
+// at all (that's demo-specs.mjs).
 //
 // The bench exists because hand-placing a breadboard is where a demo goes
 // wrong: every hole here is DERIVED from the model (model/breadboard.js +
@@ -27,17 +26,19 @@
 // ONE occupancy set — so a collision is a build-time throw rather than a wire
 // the loader silently drops.
 //
-// The frame (matching the two hand-built desktops the file already carried):
+// The frame (matching the two hand-built desktops the demos began with):
 //
 //   y −23  ┌ psu1 / clk1 bricks
 //   y −14  ├ bb1  rail-full   (+ at −13, − at −12)
 //   y −11  ├ bb2  pins-full   (rows j…f at −10…−6, trench, rows e…a at −3…1)
 //   y   2  └ bb3  rail-full   (+ at 3, − at 4)
 //
-// Columns: switches 2…22 (pitch 6), chip at 26, LED read-outs 36…57 (pitch 3).
-// A block in the UPPER half (rows f–j) reaches the top rail, one in the LOWER
-// half (rows a–e) the bottom rail — the two are wired together at the far end,
-// so either reaches the same net.
+// Columns, left to right: an optional 8-way DIP-switch bank at 2, slide
+// switches after it (pitch 6, four to a half — two when the bank is there
+// too), the chip at 26, and the LED read-outs clear of whatever the chip's
+// package spans. A block in the UPPER half (rows f–j) reaches the top rail,
+// one in the LOWER half (rows a–e) the bottom rail — the two are wired
+// together at the far end, so either reaches the same net.
 
 import { holesOfNode, nodeOf } from "../src/web/scripts/model/breadboard.js";
 import {
@@ -58,13 +59,36 @@ export const PINS = "bb2";
 const TOP_RAIL = "bb1";
 const BOT_RAIL = "bb3";
 
-/** Where each block sits, in pin-board columns. */
+/**
+ * Where each block sits, in pin-board columns. The switch slots and the LED
+ * run are FUNCTIONS of what else is on the board — a bank pushes the slide
+ * switches right (and halves how many fit before the chip), and a wide package
+ * pushes the read-outs right — so a demo never has to state a column itself.
+ */
 export const LAYOUT = Object.freeze({
-  switchCol: (i) => 2 + 6 * i, // 2, 8, 14, 20 — three holes plus a gap
+  bankCol: 2, // the DIP switch bank + its resistor network: columns 2…10
   chipCol: 26,
-  ledCol: (i) => 36 + 3 * i, // 36…57 — eight read-outs per half
-  bankCol: 2,
   displayCol: 40,
+
+  /** Slot i of a switch row: which half it seats in, and at which column. */
+  switchSlot(i, banked) {
+    const perHalf = banked ? 2 : 4;
+    const first = banked ? 13 : 2; // clear of the bank's own columns
+    return {
+      half: i < perHalf ? "upper" : "lower",
+      col: first + 6 * (i % perHalf),
+    };
+  },
+
+  /** How many slide switches fit alongside (or without) a bank. */
+  switchCapacity(banked) {
+    return banked ? 4 : 8;
+  },
+
+  /** The LED run starts clear of the chip, whatever package it is in. */
+  ledCol(i, halfPins = 7) {
+    return LAYOUT.chipCol + halfPins + 3 + 3 * (i % 8);
+  },
 });
 
 /** The demo caption above the bench: line pitch, where the last line sits
@@ -305,7 +329,12 @@ export class Bench {
     const gnd = def.pins.find((p) => p.role === "gnd").n;
     this.wireToRail(holes.get(vcc), "+", WIRE.power);
     this.wireToRail(holes.get(gnd), "-", WIRE.ground);
-    return { id: comp.id, holeOf: (pin) => holes.get(pin) };
+    return {
+      id: comp.id,
+      holeOf: (pin) => holes.get(pin),
+      // How many columns the package spans — what the LED run clears.
+      halfPins: def.pins.length / 2,
+    };
   }
 
   /**
@@ -328,6 +357,31 @@ export class Bench {
       this.label(label, this.#world(`${PINS}.${anchor}`).x + 0.7, h.labelY);
     }
     return { id: sw.id, hole: `${h.switchRow}${col + 1}` };
+  }
+
+  /**
+   * A signal ROUTER rather than a source: the same SPDT switch, but its common
+   * carries a signal IN (a clock, say) and its two throws hand it to one of two
+   * chip pins. Neither throw is tied to a rail — the pin that isn't selected is
+   * left floating, which the sim reads HIGH, and HIGH is exactly the idle level
+   * an edge-triggered clock input wants. That is what lets one clock brick
+   * drive a '193's separate up and down clocks from a single switch.
+   *
+   * @returns {{id, common: string, throws: [string, string]}}
+   */
+  routeSwitch({ half, col, label, name, on = true }) {
+    const h = HALF[half];
+    const anchor = `${h.switchRow}${col}`;
+    const pos = on ? "1" : "2";
+    const sw = this.#part("discrete", "sw-slide", anchor, { pos }, name ? { name } : {}); // prettier-ignore
+    if (label) {
+      this.label(label, this.#world(`${PINS}.${anchor}`).x + 0.7, h.labelY);
+    }
+    return {
+      id: sw.id,
+      common: `${h.switchRow}${col + 1}`,
+      throws: [`${h.switchRow}${col}`, `${h.switchRow}${col + 2}`],
+    };
   }
 
   /**
@@ -358,10 +412,13 @@ export class Bench {
     }
     this.wireToRail(`h${col}`, "+", WIRE.power);
     this.wireToRail(`d${col + positions}`, "-", WIRE.ground); // rnet9 COM
+    // A bank's positions are ONE column apart, so their labels are staggered
+    // over two lines — "A0 A1 A2 A3" at 10 px a column would otherwise run
+    // into each other the moment a label is wider than one character.
     labels.forEach((text, i) => {
-      if (text) {
-        this.label(text, this.#world(`${PINS}.e${col + i}`).x - 0.3, HALF.upper.labelY); // prettier-ignore
-      }
+      if (!text) return;
+      const x = this.#world(`${PINS}.e${col + i}`).x - 0.3;
+      this.label(text, x, HALF.upper.labelY - (i % 2 === 0 ? 0 : 1.6));
     });
     return {
       id: bank.id,
