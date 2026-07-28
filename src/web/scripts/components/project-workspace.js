@@ -74,7 +74,7 @@
 import { PopupManager } from "../popup-manager.js";
 import { PartPropertiesDialog } from "./part-properties-dialog.js";
 import { HistoryStore } from "../model/history-store.js";
-import { DeskDoc, emptyDocument } from "../model/desk-doc.js";
+import { DeskDoc, emptyDocument, isEmptyDocument } from "../model/desk-doc.js";
 import {
   activeDesktop,
   addDesktop,
@@ -642,6 +642,26 @@ export class ProjectWorkspace {
   }
 
   /**
+   * Is there NOTHING in this project — the state a brand-new one is in until
+   * the user does something with it? No name, no description, one desktop, an
+   * empty desk, and nothing unsaved.
+   *
+   * This is the untitled guard's one exception, and it is deliberately the
+   * whole project rather than the desk alone: a design, a second desktop, or a
+   * project name are all things the working slot would be holding FOR the
+   * user. Both halves are needed — an unsaved change is caught by `dirty`, and
+   * one already ⌘S'd into the slot (which is not dirty at all) by the project
+   * still having something in it.
+   */
+  #isPristine() {
+    const meta = this.#project;
+    if (!meta || meta.name || meta.description) return false;
+    if (meta.tabs.length !== 1) return false;
+    if (this.dirty) return false;
+    return isEmptyDocument(this.#deskDoc.toJSON());
+  }
+
+  /**
    * Leaving the desk that is on screen: the simulation is run-volatile and
    * never crosses documents, and an open pinout or memory inspector would be
    * left pointing at a chip that is no longer there.
@@ -775,12 +795,18 @@ export class ProjectWorkspace {
    * which is where the next launch will look for it.
    *
    * CHANGING PROJECTS differs in exactly one way, and it is the reason an
-   * UNTITLED project is ALWAYS asked about — dirty or not. It lives in the app's
-   * one working file, the project taking its place is about to claim that file,
-   * and there is nowhere else for it to go: replacing it is destructive whether
-   * or not anything is "unsaved" in the ordinary sense, and a ⌘S into the slot
-   * does not make it any less so. That is also why "Save" here means Save As, a
-   * home of its own.
+   * UNTITLED project that HOLDS SOMETHING is asked about whether or not it is
+   * dirty. It lives in the app's one working file, the project taking its place
+   * is about to claim that file, and there is nowhere else for it to go:
+   * replacing it is destructive whether or not anything is "unsaved" in the
+   * ordinary sense, and a ⌘S into the slot does not make it any less so. That
+   * is also why "Save" here means Save As, a home of its own.
+   *
+   * The exception is the state the app BOOTS INTO: a brand-new project holds
+   * nothing at all, so there is nothing for the incoming one to destroy
+   * (`#isPristine`). Asking about it would put a save-or-discard question in
+   * front of the very first thing a session does — New Project, or Open… —
+   * over a blank desk nobody has touched.
    *
    * A SAVED project is the ordinary case: it has a file of its own that nothing
    * is claiming, so it is asked about only when it is dirty.
@@ -790,7 +816,7 @@ export class ProjectWorkspace {
    */
   #confirmLeaveProject({ quitting = false } = {}) {
     if (!this.#project) return Promise.resolve(true);
-    if (this.isUntitled && !quitting) {
+    if (this.isUntitled && !quitting && !this.#isPristine()) {
       return this.#askUnsaved({
         title: "This project hasn't been saved",
         message:

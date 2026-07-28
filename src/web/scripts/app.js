@@ -181,6 +181,27 @@ const AI_SVG =
   '<path d="M18.5 3.5 19.2 5.8 21.5 6.5 19.2 7.2 18.5 9.5 17.8 7.2 15.5 6.5 ' +
   '17.8 5.8Z"/></svg>';
 
+/** Schematic-view icon: what the view itself draws — two symbol boxes joined
+ * by one orthogonally routed net. */
+const SCHEMATIC_SVG =
+  ICON_SVG_OPEN +
+  '<rect x="2.5" y="3.5" width="7.5" height="6.5" rx="1"/>' +
+  '<rect x="14" y="14" width="7.5" height="6.5" rx="1"/>' +
+  '<path d="M10 6.75h2.25v10.5H14"/></svg>';
+
+/** Breadboard icon the Schematic toggle swaps to while the diagram is
+ * showing: a board's two rows of tie points either side of the trench. */
+const BREADBOARD_SVG =
+  ICON_SVG_OPEN +
+  '<rect x="2.5" y="4.5" width="19" height="15" rx="2"/>' +
+  '<line x1="2.5" y1="12" x2="21.5" y2="12"/>' +
+  '<line x1="7" y1="8" x2="7.01" y2="8"/>' +
+  '<line x1="12" y1="8" x2="12.01" y2="8"/>' +
+  '<line x1="17" y1="8" x2="17.01" y2="8"/>' +
+  '<line x1="7" y1="16" x2="7.01" y2="16"/>' +
+  '<line x1="12" y1="16" x2="12.01" y2="16"/>' +
+  '<line x1="17" y1="16" x2="17.01" y2="16"/></svg>';
+
 /** Build-guide (clipboard-list) icon for the Guide toolbar toggle. */
 const GUIDE_SVG =
   ICON_SVG_OPEN +
@@ -289,6 +310,7 @@ function bindShortcuts(
   scopeView,
   togglePalette,
   getActiveView,
+  fitActiveView,
   onToggleView,
 ) {
   window.addEventListener("keydown", (e) => {
@@ -389,7 +411,7 @@ function bindShortcuts(
         if (e.shiftKey) {
           getActiveView().zoomOutFull();
         } else {
-          controller.fitToScreen();
+          fitActiveView(); // the desk, or the schematic when it is showing
         }
         return;
       }
@@ -876,29 +898,25 @@ async function init() {
 
   const toolbar = document.getElementById("app-toolbar");
 
-  // Breadboard ⇄ Schematic view toggle (Feature 150) — leads the toolbar.
-  // Hidden for now: the schematic still works and Tab still toggles it, but the
-  // toolbar entry point is held back. Flip SHOW_SCHEMATIC_TOGGLE to re-enable.
-  const SHOW_SCHEMATIC_TOGGLE = false;
-  const modeBtn = el("button", {
-    class: "toolbar-btn",
-    type: "button",
-    text: "▧ Schematic",
-    title: "Show the logical schematic (Tab)",
-    "aria-pressed": "false",
-    onClick: () => setMode(mode === "desk" ? "schematic" : "desk"),
-  });
-  if (SHOW_SCHEMATIC_TOGGLE) {
-    toolbar.append(modeBtn, el("span", { class: "toolbar-divider" }));
-  }
+  // Breadboard ⇄ Schematic view toggle (Feature 150): a desk-tool pill segment
+  // built further down (between Bill Of Materials and AI). Unlike the panel
+  // toggles either side of it this one swaps the whole viewport, so its icon
+  // swaps too — it shows the view it would take you TO, the way the
+  // Fit/zoom-out segment previews its alternate action.
+  let modeBtn = null;
 
   function setMode(next) {
     mode = next === "schematic" ? "schematic" : "desk";
     const schematic = mode === "schematic";
     desk.hidden = schematic;
     schematicView?.setVisible(schematic);
+    if (!modeBtn) return;
     modeBtn.classList.toggle("toolbar-btn--active", schematic);
-    modeBtn.textContent = schematic ? "▦ Breadboard" : "▧ Schematic";
+    modeBtn.innerHTML = schematic ? BREADBOARD_SVG : SCHEMATIC_SVG;
+    modeBtn.setAttribute(
+      "aria-label",
+      schematic ? "Breadboard view" : "Schematic view",
+    );
     modeBtn.title = schematic
       ? "Back to the breadboard (Tab)"
       : "Show the logical schematic (Tab)";
@@ -1075,12 +1093,20 @@ async function init() {
   scopeBtn.classList.toggle("toolbar-btn--active", scopeView.visible);
   toolPill.append(scopeBtn);
 
-  // Fit to screen: frame every board/part/wire on the desk (find lost parts).
-  // A passive camera move, so it stays available while the circuit runs.
+  // Fit to screen: recentre the desk on the origin, then frame every
+  // board/part/wire on it (find lost parts). It stays available while the
+  // circuit runs — the recentre is a document edit, so it alone is skipped.
   // Shift previews the OTHER find-a-lost-part move (zoom out fully, ⌘⇧F): the
   // icon/tooltip swap while hovered+held is a pure preview (no click yet), so
   // it tracks hover and Shift independently and recomputes on either change.
   const getActiveView = () => (mode === "schematic" ? schematicView : deskView);
+  // Fit follows the view you are LOOKING at, like zoom-out-full does — but it
+  // is not a plain camera call on either: the desk's lives on the controller
+  // because it recentres the document as well, and the schematic's is the
+  // diagram's own (its symbol positions are derived, so there is nothing to
+  // move — fitting IS centring it).
+  const fitActiveView = () =>
+    mode === "schematic" ? schematicView.fit() : controller.fitToScreen();
   let locateHovered = false;
   let locateShiftHeld = false;
   const updateLocateIcon = () => {
@@ -1101,7 +1127,7 @@ async function init() {
     title: `Fit to screen — frame every board, part, and wire (${MOD_KEY}+F)`,
     onClick: (e) => {
       if (e.shiftKey) getActiveView().zoomOutFull();
-      else controller.fitToScreen();
+      else fitActiveView();
     },
   });
   locateBtn.innerHTML = LOCATE_SVG;
@@ -1150,6 +1176,23 @@ async function init() {
   guideBtn.innerHTML = GUIDE_SVG;
   guideBtn.classList.toggle("toolbar-btn--active", buildGuide.visible);
   toolPill.append(guideBtn);
+
+  // Breadboard ⇄ Schematic (Tab). The one segment that swaps the VIEWPORT
+  // rather than arming a tool or opening a panel, so its icon shows where it
+  // would take you; `setMode` (above) owns both states, and Tab drives the
+  // same function, so the key and the button can never disagree. It reads the
+  // desk rather than editing it — available while the circuit runs, like the
+  // analyzer and the BOM it sits between.
+  modeBtn = el("button", {
+    class: "toolbar-pill-btn toolbar-pill-btn--icon",
+    type: "button",
+    "aria-label": "Schematic view",
+    title: "Show the logical schematic (Tab)",
+    "aria-pressed": "false",
+    onClick: () => setMode(mode === "desk" ? "schematic" : "desk"),
+  });
+  modeBtn.innerHTML = SCHEMATIC_SVG;
+  toolPill.append(modeBtn);
 
   // AI builder: toggle the bottom-docked builder panel. Like the analyzer its
   // armed state comes from the panel's own onVisibilityChange, so the segment
@@ -1315,8 +1358,14 @@ async function init() {
   });
   setMode("desk"); // sync the initial toggle state
 
-  bindShortcuts(controller, sim, scopeView, togglePalette, getActiveView, () =>
-    setMode(mode === "desk" ? "schematic" : "desk"),
+  bindShortcuts(
+    controller,
+    sim,
+    scopeView,
+    togglePalette,
+    getActiveView,
+    fitActiveView,
+    () => setMode(mode === "desk" ? "schematic" : "desk"),
   );
 
   // The desk hub is always mounted but hidden until the "Show desk hub"

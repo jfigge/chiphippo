@@ -352,6 +352,17 @@ Electron main process (src/app/main.js)
   changes or live board drags (positions passed as overrides). NOTE: an `<svg>`
   with width/height 0 renders NOTHING per the SVG spec — zero-size anchors need
   a token 1×1 box + overflow: visible.
+  **FIT (⌘F) IS THE ONE CAMERA ACTION THAT EDITS THE DOCUMENT** — deliberately,
+  not by oversight. `#recentreDesk` slides the WHOLE desk onto the origin
+  (`DeskDoc.translateAll`: every board, brick, and label by one integer delta;
+  seated parts and wires are addresses, so they ride their board) before the
+  camera frames it, so a design built across a long session cannot creep ever
+  further out into the coordinate space. The move is RIGID, so it can neither
+  be refused nor break a mating; it rides `#emitDocChanged` as one undo step
+  and marks the project dirty; and it is skipped while the sim runs, where
+  topology is frozen. Fit follows the ACTIVE view (app.js's `fitActiveView`):
+  the schematic's own `fit()` is camera-only, since its symbol positions are
+  derived and there is nothing to move.
 - **Components**: `{ id, kind, ref, board, anchor, params }` with `c<n>` ids
   (kinds `chip` | `discrete`); desk-level **bricks** carry `{ id, kind, ref, x, y,
   params }` instead of a board anchor — PSUs (`psu<n>`, kind `"psu"`) and clock
@@ -519,11 +530,23 @@ Electron main process (src/app/main.js)
   on "save" LETS THE ACTION GO AHEAD (the user is not made to ask twice).
   Quitting is the silent case — no Save button was clicked, so nothing is asked
   about WHERE. Changing projects (New Project / Open… / Open Recent) differs in
-  one way, and it is why an UNTITLED project is **always** asked about, dirty or
-  not: it lives in the one working file the incoming project is about to claim,
-  and there is nowhere else for it to go, so replacing it is destructive whether
-  or not anything is "unsaved" — a ⌘S into the slot does not make it less so.
-  That is also why "save" there means `saveAs`, a home of its own. A SAVED
+  one way, and it is why an UNTITLED project **that holds something** is asked
+  about dirty or not: it lives in the one working file the incoming project is
+  about to claim, and there is nowhere else for it to go, so replacing it is
+  destructive whether or not anything is "unsaved" — a ⌘S into the slot does not
+  make it less so. That is also why "save" there means `saveAs`, a home of its
+  own. The exception is the state the app BOOTS INTO: a **PRISTINE** project
+  (`#isPristine` — no name, no description, ONE desktop, `isEmptyDocument`, and
+  not dirty) holds nothing for the incoming one to destroy, so it is let go
+  silently. Otherwise the very first thing a session does — New Project, or
+  Open… — would open with a save-or-discard question over a blank desk nobody
+  has touched. Both halves of the test are load-bearing: an unsaved change is
+  caught by `dirty`, and one already ⌘S'd into the slot (which is NOT dirty) by
+  the project still having something in it. `isEmptyDocument` reads only the
+  CONTENT lists (derived from `emptyDocument()`, so a list added later cannot be
+  forgotten) and never the `next*Id` counters — those say what a desk has ever
+  held, not what it holds, and a board placed then deleted leaves it as empty as
+  it started. A SAVED
   project has a file nothing is claiming, so it is asked about only when dirty.
   Every path resolves `false` for a cancel, and a save that never landed IS a
   cancel — `save` /
@@ -892,12 +915,19 @@ Electron main process (src/app/main.js)
   separated by spacing rather than by borders of their own (there is no
   split-button seam anywhere), and an armed segment FILLS instead of gaining
   an accent border. Three exist: the desk tools (Wire · Bus · Fade · Probe ·
-  Analyzer · Fit · **BOM** · **AI** — BOM lives here, not with the file
+  Analyzer · Fit · **BOM** · **Schematic** · **AI** — BOM lives here, not with
+  the file
   actions, because it toggles a desk panel exactly as Analyzer does, and like
   Analyzer its armed state comes from the panel's own `onVisibilityChange`, so
   the segment tracks the panel however it was closed; the AI builder is the
   same shape for the same reason, and the one segment that is DISABLED when it
-  has nothing to offer — no API key, no builder; see the AI note above),
+  has nothing to offer — no API key, no builder; see the AI note above. The
+  **Schematic** segment between them is the odd one: it arms no tool and opens
+  no panel, it SWAPS THE VIEWPORT, so its icon shows the view it would take
+  you TO — diagram boxes on the desk, a tie-point board on the schematic —
+  the way the Fit segment previews zoom-out-full while Shift is held. It is
+  `Tab`'s button: both call app.js's one `setMode`, which owns the icon,
+  tooltip, and armed state, so a key and a button can never disagree),
   **File** (New · Open · Save · Save As, all
   aimed at the PROJECT, which is the document — every file action is its OWN
   icon-only segment rather than a row hidden behind a ▾, since they are peers

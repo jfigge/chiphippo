@@ -232,6 +232,27 @@ export function emptyDocument() {
   };
 }
 
+/** Every list a desk's CONTENT lives in, read off the empty document itself so
+    a list added later can never be forgotten here. */
+const CONTENT_KEYS = Object.freeze(
+  Object.entries(emptyDocument())
+    .filter(([, value]) => Array.isArray(value))
+    .map(([key]) => key),
+);
+
+/**
+ * Is there NOTHING on this desk? No boards, parts, wires, buses, net names,
+ * labels, or scope channels — so there is nothing in it to keep or to lose.
+ *
+ * The `next*Id` counters are deliberately not read: they say what a desk has
+ * ever HELD, not what it holds. A board placed and then deleted leaves the
+ * desk as empty as it started, and this must say so.
+ */
+export function isEmptyDocument(doc) {
+  if (!doc || typeof doc !== "object") return true;
+  return CONTENT_KEYS.every((key) => (doc[key]?.length ?? 0) === 0);
+}
+
 /**
  * Coerce a loaded (possibly junk/foreign) document into a valid one: arrays
  * forced; board/component entries with bad ids, types/refs, coords, or
@@ -2163,6 +2184,48 @@ export class DeskDoc {
       this.restore(before); // a refused paste changes nothing at all
       throw err;
     }
+  }
+
+  // ── Whole-desk translation ───────────────────────────────────────────────
+
+  /**
+   * Slide the ENTIRE desk by an integer (dx, dy): every board, every desk-level
+   * brick, and every annotation. Seated parts and wires need nothing — they are
+   * stored as board addresses, not coordinates, so they ride their board.
+   *
+   * The move is RIGID, which is why there is no legality check and no way to
+   * refuse it: nothing changes its position relative to anything else, so
+   * nothing that was clear can start overlapping and nothing that was mated can
+   * come apart. It exists so a design that has wandered far from the origin can
+   * be pulled back around it (the fit-to-screen recentre) rather than drifting
+   * ever further out into the coordinate range.
+   *
+   * @returns {{dx:number, dy:number}} the rounded delta actually applied.
+   */
+  translateAll(dx, dy) {
+    if (!Number.isFinite(dx) || !Number.isFinite(dy)) {
+      throw taggedError("desk delta must be finite", "INVALID_ARG");
+    }
+    const [ix, iy] = [Math.round(dx), Math.round(dy)];
+    if (ix === 0 && iy === 0) return { dx: 0, dy: 0 };
+    for (const board of this.#doc.boards) {
+      board.x += ix;
+      board.y += iy;
+    }
+    for (const comp of this.#doc.components) {
+      // Bricks alone carry desk coordinates; a seated part has board + anchor.
+      if (comp.board == null && Number.isFinite(comp.x)) {
+        comp.x += ix;
+        comp.y += iy;
+      }
+    }
+    // A label's position is absolute even when it is anchored to a part (the
+    // anchor only makes it ride that part's drag), so every one moves.
+    for (const ann of this.#doc.annotations) {
+      ann.x += ix;
+      ann.y += iy;
+    }
+    return { dx: ix, dy: iy };
   }
 
   /** The serializable document (a deep copy — safe to hand to IPC). */

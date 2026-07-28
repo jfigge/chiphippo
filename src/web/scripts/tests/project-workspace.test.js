@@ -280,10 +280,16 @@ function closePopup() {
 }
 
 /** Click a button by its label in the open dialog. */
-function clickButton(label) {
-  const btn = [...document.querySelectorAll(".popup-dialog button")].find(
-    (b) => b.textContent.trim() === label,
+function findButton(label) {
+  return (
+    [...document.querySelectorAll(".popup-dialog button")].find(
+      (b) => b.textContent.trim() === label,
+    ) ?? null
   );
+}
+
+function clickButton(label) {
+  const btn = findButton(label);
   assert.ok(btn, `a "${label}" button is showing`);
   btn.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
 }
@@ -307,12 +313,13 @@ const saveAs = async (h, filePath) => {
 };
 
 /** Run something that LEAVES the open project, discarding it at the guard.
-    An untitled project is always asked about — the working slot it lives in is
-    what the incoming project is about to claim. */
+    An untitled project holding anything is asked about — the working slot it
+    lives in is what the incoming project is about to claim — while a pristine
+    one is let go silently, so the discard is conditional. */
 const leaving = async (run) => {
   const done = run();
   await settle();
-  clickButton("Discard");
+  if (findButton("Discard")) clickButton("Discard");
   const out = await done;
   await settle();
   return out;
@@ -767,20 +774,30 @@ test("the last desktop cannot be deleted, and the strip disables it", async () =
 
 // ── Leaving a project ────────────────────────────────────────────────────────
 
-test("an untitled project is ALWAYS asked about, even with nothing unsaved", async () => {
+test("a brand-new project is not asked about — it holds nothing to lose", async () => {
   const h = await harness();
   assert.equal(h.workspace.dirty, false);
+  await h.workspace.newProject();
+  await settle();
+  assert.equal(
+    dialogTitle(),
+    "",
+    "the very first thing a session does must not open with a save question",
+  );
+  assert.deepEqual(h.strip(), ["Desktop 1"]);
+  assert.equal(h.workspace.isUntitled, true, "and the new one is on the desk");
+});
+
+test("a second desktop is enough to be asked about", async () => {
+  const h = await harness();
+  await twoDesktops(h);
   const done = h.workspace.newProject();
   await settle();
-  assert.match(
-    dialogTitle(),
-    /hasn't been saved/,
-    "replacing the working slot is destructive whether or not it is dirty",
-  );
+  assert.match(dialogTitle(), /hasn't been saved/);
   clickButton("Discard");
   await done;
   await settle();
-  assert.deepEqual(h.strip(), ["Desktop 1"]);
+  assert.deepEqual(h.strip(), ["Desktop 1"], "one blank desktop again");
 });
 
 test("a SAVED project with nothing unsaved is not asked about", async () => {
@@ -833,6 +850,7 @@ test("a ⌘S into the slot does not make replacing it any less destructive", asy
 
 test("Open… guards the untitled project the same way New Project does", async () => {
   const h = await harness();
+  h.doc.load(someDesign()); // something in the slot for the guard to be about
   h.seedProject("/home/other.chiphippo", {
     name: "Other",
     activeTab: "t1",

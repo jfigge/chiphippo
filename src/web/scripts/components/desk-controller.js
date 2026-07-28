@@ -1951,8 +1951,12 @@ export class DeskController {
   }
 
   /** Centre + scale the camera so every board, part, and wire fits on
-      screen — how a lost component gets found again. */
+      screen — how a lost component gets found again. The desk itself is
+      recentred on the origin first (see #recentreDesk), so fitting is also
+      how a design that has drifted is brought back to the middle of the
+      coordinate space it lives in. */
   fitToScreen() {
+    this.#recentreDesk();
     const bounds = deskBounds(
       this.#doc.boards,
       this.#doc.components,
@@ -1973,6 +1977,48 @@ export class DeskController {
       cy: (bounds.minY + bounds.maxY) / 2,
       zoom,
     });
+  }
+
+  /**
+   * Slide the whole desk so what is on it straddles the origin — every board,
+   * brick, and label by one integer delta (DeskDoc.translateAll), which is
+   * rigid and so can neither refuse nor change what is mated to what.
+   *
+   * Fitting already centres the CAMERA on the design; centring the DESIGN
+   * itself is what keeps a desk that has been panned and built across for a
+   * long session from creeping ever further out, where the coordinates get
+   * large enough to strain what everything downstream assumes. It is a real
+   * document edit — one undo step, and it marks the project dirty — which is
+   * why it is skipped while the sim is running (topology is frozen).
+   */
+  #recentreDesk() {
+    if (this.#editingLocked) return;
+    const bounds = deskBounds(
+      this.#doc.boards,
+      this.#doc.components,
+      this.#doc.wires,
+    );
+    if (!bounds) return; // an empty desk is already centred
+    const delta = this.#doc.translateAll(
+      -(bounds.minX + bounds.maxX) / 2,
+      -(bounds.minY + bounds.maxY) / 2,
+    );
+    if (delta.dx === 0 && delta.dy === 0) return; // already on the origin
+    // Views hold their own position: boards and bricks move outright, seated
+    // parts follow the board they sit on, and the wires re-derive from both.
+    for (const board of this.#doc.boards) {
+      this.#views.get(board.id)?.setPosition(board.x, board.y);
+    }
+    for (const comp of this.#doc.components) {
+      const view = this.#partViews.get(comp.id);
+      if (!view) continue;
+      if (comp.board == null) view.setPosition(comp.x, comp.y);
+      else this.#placePartView(view, comp, this.#doc.getBoard(comp.board));
+    }
+    this.#wireLayer.render();
+    // Labels re-render from the document on doc-changed, which also re-traces
+    // the board outline and records the move as one undo step.
+    this.#emitDocChanged("recentre desk");
   }
 
   // ── Schematic view (Feature 150) ─────────────────────────────────────────

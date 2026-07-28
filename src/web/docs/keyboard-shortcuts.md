@@ -40,7 +40,7 @@ are noted alongside the shortcut.
 
 | Shortcut | Action |
 |---|---|
-| `Cmd+F` | Fit the whole desk to the window |
+| `Cmd+F` | Fit the desk (recentring it) — or the schematic, when it is showing |
 | `Cmd+Shift+F` | Zoom out to fit everything at once |
 | `Cmd+=` or `Cmd++` | Zoom in |
 | `Cmd+-` | Zoom out |
