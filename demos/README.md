@@ -1,11 +1,37 @@
 # Chip Hippo demos
 
-Ready-to-load 65xx breadboard computers. Each demo is a **`.chiphippo`** schematic
-(the wired-up circuit) plus a **`.hex`** ROM image (the program). They're generated
-and validated by `make demos` (which builds every wire from the model and then runs
-each circuit through the simulation engine to prove it actually works).
+Two kinds of ready-to-load design:
 
-## Running a demo
+- **`GateTests.chiphippo`** — one project whose **desktops are a 74xx chip each**,
+  wired up on a logic bench you can flip switches on (see below).
+- **`65xx-*`** — whole breadboard computers: a **`.chiphippo`** schematic (the
+  wired-up circuit) plus a **`.hex`** ROM image (the program).
+
+Both are generated and validated by `make demos`, which builds every wire from the
+model and then runs each circuit through the simulation engine to prove it actually
+works — a truth table enumerated switch by switch, or a program run clock by clock.
+
+## `GateTests` — a desktop per chip
+
+**File ▸ Open…** `GateTests.chiphippo`, then pick a chip from the **desktop tabs**
+along the top. Every desktop is the same bench, so once you can read one you can
+read all of them:
+
+- a **5 V brick** feeding both power rails, and (for the clocked parts) a **clock**;
+- **switched inputs** on the left — each slide switch throws between +5 V and a
+  10 kΩ pull-down, so an input is never left floating. Click one while the
+  simulation runs;
+- the **chip under test** in the middle, straddling the trench;
+- **LED read-outs** on the right, one per output, each through its own resistor.
+  An active-LOW output (the '138's, say) has its LED wired the other way up, so a
+  lit LED always means "this output is asserted";
+- a **caption** above the bench saying what the demo shows.
+
+Press **Run** (Space) and flip switches. The **74LS00** and **74LS02** desktops
+were built by hand; the rest are generated from `scripts/demo-specs.mjs`, and
+adding another chip is one more entry in that table.
+
+## Running a 65xx demo
 
 1. **File ▸ Open…** and pick the demo's `.chiphippo`.
 2. **Load the program into the ROM.** A fresh ROM comes up filled with random
@@ -22,7 +48,7 @@ each circuit through the simulation engine to prove it actually works).
 The W65C02 powers up already in reset and boots the moment you Run — no reset pulse
 needed. The clock is deliberately slow (a few Hz) so the output is visible.
 
-## The demos
+## The 65xx demos
 
 ### `65xx-blink` — CPU + ROM + VIA, blinking an LED
 
@@ -74,7 +100,15 @@ them into something bigger.
 make demos
 ```
 
-Rebuilds both `.chiphippo` + `.hex` pairs from `scripts/make-demos.mjs` and
-re-validates them through the engine. `tests/demos.test.js` (part of `make test`)
-also loads the committed files and runs them, so a catalog or engine change that
-breaks a demo fails CI.
+Rebuilds both `.chiphippo` + `.hex` pairs from `scripts/make-demos.mjs`, then the
+`GateTests` desktops from `scripts/make-gate-demos.mjs`, re-validating everything
+through the engine. Both are guarded by `make test` as well
+(`tests/demos.test.js` and `tests/gate-demos.test.js` load the committed files
+and run them), so a catalog or engine change that breaks a demo fails CI.
+
+Adding another chip to `GateTests` means adding an entry to
+`scripts/demo-specs.mjs` — which pins the switches feed, which pins get LEDs, and
+the truth table it must satisfy — and re-running `make demos`. The bench
+(`scripts/demo-bench.mjs`) works out every hole, rail and resistor from the model,
+and the build refuses any layout you could not have placed by hand. The two
+hand-built desktops are never regenerated.

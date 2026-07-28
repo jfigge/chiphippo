@@ -143,9 +143,15 @@ datasheets:
 # ROM image each). The generator computes every wire from the model and then runs
 # each demo through the simulation engine, asserting the LED blinks / the LCD
 # prints "HI" before writing the files. Plain Node — no Electron needed.
+#
+# The second generator does the same for the per-chip demonstration DESKTOPS of
+# demos/GateTests.chiphippo: one logic bench per 74xx part, each proved out by
+# enumerating its whole truth table (or clocking it edge by edge) through the
+# engine. It preserves the two hand-built desktops, so it is safe to re-run.
 demos:
 	@echo "Regenerating + validating the demo schematics..."
 	@node $(WORKSPACE)/scripts/make-demos.mjs
+	@node $(WORKSPACE)/scripts/make-gate-demos.mjs
 	@echo "--------------------------------"
 
 # ─── User guide (Feature 230) ───────────────────────────────────────────────────
