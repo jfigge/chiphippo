@@ -112,7 +112,11 @@ buffers/latches/transceivers/decoders/comparators/adders.)
   thin. This is the Port Hippo `card-canvas.js`/`grid-layout.js` discipline.
 - **Pointer-capture drag discipline.** Drags use pointer events + `setPointerCapture`
   with a ~4 px threshold separating click from drag (never native HTML5 DnD), per
-  `porthippo/src/web/scripts/components/card-canvas.js`.
+  `porthippo/src/web/scripts/components/card-canvas.js`. The capture carries the
+  MOVE stream only: every drag runs on `components/pointer-gesture.js`, which
+  listens for the release on `window` in the CAPTURE phase and resolves the drop
+  from the release event's own position — a coalesced move stream must never
+  decide where something lands.
 - **Everything is addressable.** Every hole, rail position, and component terminal has
   a stable string address (`bb1.f12`, `bb1.t+7`, `psu1.+`); model documents reference
   addresses, never pixels.

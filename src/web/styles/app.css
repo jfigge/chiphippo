@@ -1803,8 +1803,13 @@
 /* ── Hover addressing (ring + tooltip in the overlay layer) ─────────────── */
 .hole-ring {
   position: absolute;
-  width: 9px; /* 0.9 pitch in world px */
-  height: 9px;
+  /* Diameter in world px, box-sizing: border-box — so this IS the outer
+     circle. It must stay 2 × RING_RADIUS × PX_PER_UNIT: that constant is what
+     desk-controller / wire-tools / bus-tools / probe-inspector each offset the
+     ring by to centre it on the hole, and a mismatch shows up as a ring that
+     sits a pixel off the target rather than as anything obviously broken. */
+  width: 11px; /* 1.1 pitch in world px */
+  height: 11px;
   border: 1px solid var(--color-info);
   border-radius: 50%;
 }

@@ -57,8 +57,9 @@ import { beginPointerGesture, releaseWorld } from "./pointer-gesture.js";
 
 /** Pointer travel (px) below which a press stays a click, not a drag. */
 const DRAG_THRESHOLD = 4;
-/** Radius of the shared hover ring (pitch units). */
-const RING_RADIUS = 0.45;
+/** Radius of the shared hover ring (pitch units); keep 2× this in step with
+    `.hole-ring`'s diameter in app.css. See desk-controller.js. */
+const RING_RADIUS = 0.55;
 /** How far (pitch units) a search stays a cheap, TIGHT near-miss lookup
     instead of the full "always find the nearest, however far" one: a
     WHOLE-WIRE (rigid, both-ends-together) drop's only recovery margin (a

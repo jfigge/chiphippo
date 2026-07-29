@@ -98,6 +98,7 @@ import { SimOverlay } from "./sim-overlay.js";
 import { ProbeInspector } from "./probe-inspector.js";
 import { WireTools } from "./wire-tools.js";
 import { BusTools } from "./bus-tools.js";
+import { beginPointerGesture, releaseWorld } from "./pointer-gesture.js";
 import { BoardOutline } from "./board-outline.js";
 
 /** The static SVG for a desk brick (PSU / clock / LCD) by kind. */
@@ -133,8 +134,12 @@ const DRAG_THRESHOLD = 4;
 const HOVER_DWELL_MS = 150;
 const HOVER_MIN_ZOOM = 0.75;
 
-/** Radius of the hover ring (pitch units — a shade over one hole). */
-const RING_RADIUS = 0.45;
+/** Radius of the hover ring (pitch units — a shade over one hole): the "it
+    lands here" marker a drag shows over the hole it would drop on. Keep 2×
+    this in step with `.hole-ring`'s diameter in app.css — this is what the
+    ring is offset by to centre it, so a mismatch reads as a ring sitting a
+    pixel off the target rather than as anything obviously broken. */
+const RING_RADIUS = 0.55;
 
 /** World-unit margin fitToScreen() leaves around the desk's bounds, so the
     outermost board/part/wire doesn't sit flush against the viewport edge. */
@@ -530,21 +535,27 @@ export class DeskController {
   }
 
   /**
-   * Abort whichever direct-manipulation drag is in flight (Escape mid-drag,
-   * OR a real pointerup/pointercancel the OS/browser silently dropped — a
-   * fast release, a focus change mid-drag, capture lost with no matching
-   * event, all observed in practice, not hypothetical). Routes a synthetic
-   * `pointercancel` through the SAME up-handler the real pointer event would
-   * reach — every one of them already treats `e.type === "pointercancel"` as
-   * "tear down the capture/listeners, revert, never commit" (the same path a
-   * lost pointer capture takes), so this reuses that instead of duplicating
-   * the teardown here. Without this, Escape used to only clear selection,
-   * leaving the drag's capture and listeners alive to commit the move anyway
-   * on the next pointerup — or, if that pointerup never arrives, alive
-   * forever, stuck mid-drag with no way out but a reload. The wire/bus
-   * gestures live in their own collaborator modules (WireTools/BusTools), so
-   * they get a small public `cancelDrag()` each instead of a private
-   * up-handler reference here.
+   * Abort whichever direct-manipulation drag is in flight — Escape mid-drag,
+   * and #rebuildScene pulling the dragged views out from under one. Routes a
+   * synthetic `pointercancel` through the SAME up-handler the real pointer
+   * event would reach — every one of them already treats
+   * `e.type === "pointercancel"` as "tear down, revert, never commit" — so
+   * this reuses that instead of duplicating the teardown here. It is also
+   * exactly the shape `pointer-gesture.js` synthesizes for a yanked capture
+   * or a lost window focus, which is what makes those paths need no special
+   * case of their own. Without this, Escape used to only clear selection,
+   * leaving the drag alive to commit the move anyway on the next pointerup.
+   *
+   * NOTE this used to double as the rescue for a release the browser never
+   * delivered (a fast release, a focus change mid-drag, a capture lost with
+   * no matching event — all observed in practice, not hypothetical). It no
+   * longer has to: every gesture here now listens on `window` in the capture
+   * phase via `beginPointerGesture`, so the release arrives whether or not
+   * the capture held, and Escape is once again just Escape.
+   *
+   * The wire/bus gestures live in their own collaborator modules
+   * (WireTools/BusTools), so they get a small public `cancelDrag()` each
+   * instead of a private up-handler reference here.
    */
   #cancelDragGesture() {
     const m = this.#mode;
@@ -561,7 +572,7 @@ export class DeskController {
         this.#onPartPointerUp(fake);
         break;
       case "drag-annotation":
-        this.#onAnnotationPointerUp({ ...fake, currentTarget: m.elem });
+        this.#onAnnotationPointerUp(fake);
         break;
       case "marquee":
         this.#onMarqueePointerUp(fake);
@@ -1750,8 +1761,9 @@ export class DeskController {
   }
 
   /** Live single-end drag: the moving lead snaps to a hole, the other stays. */
-  #trackResistorEndDrag() {
-    const d = this.#mode;
+  // `d` defaults to the live drag, but the RELEASE passes its own copy — the
+  // up-handler clears #mode before it re-resolves at the release point.
+  #trackResistorEndDrag(d = this.#mode) {
     const hit = this.#holeAtWorld(d.lastWorld);
     d.target = null;
     let legal = false;
@@ -1790,8 +1802,8 @@ export class DeskController {
   /** Live resistor drag: rigid lattice-snapped translation, both ends checked.
       Pin 1 seats in whatever hole it lands on; the lead keeps its bend, so the
       far end may reach a NEIGHBOURING strip's rail. */
-  #trackResistorDrag() {
-    const d = this.#mode;
+  // `d` defaults to the live drag; see #trackResistorEndDrag.
+  #trackResistorDrag(d = this.#mode) {
     // ONE integer delta moves both ends, so length and angle never change.
     const dx = Math.round(d.lastWorld.x - d.startWorld.x);
     const dy = Math.round(d.lastWorld.y - d.startWorld.y);
@@ -2910,24 +2922,34 @@ export class DeskController {
       pointerId: e.pointerId,
       startClientX: e.clientX,
       startClientY: e.clientY,
-      startWorld: this.#deskView.worldFromEvent(e),
+      startWorld: world,
+      lastWorld: world,
       delta: { dx: 0, dy: 0 },
       legal: true,
       active: false,
+      teardown: null,
     };
     // …and the highlighter re-traces that set, so an Option grab shows the
     // torn-off run's edge rather than the whole group's.
     this.#refreshBoardOutline();
     // Closed hand from the moment the board is grabbed (before any drag).
     this.#viewport.classList.add("desk-viewport--dragging");
-    try {
-      view.element.setPointerCapture(e.pointerId);
-    } catch {
-      /* capture is best-effort (synthetic events) */
-    }
-    view.element.addEventListener("pointermove", this.#onBoardPointerMove);
-    view.element.addEventListener("pointerup", this.#onBoardPointerUp);
-    view.element.addEventListener("pointercancel", this.#onBoardPointerUp);
+    this.#mode.teardown = beginPointerGesture(view.element, e.pointerId, {
+      onMove: this.#onBoardPointerMove,
+      onEnd: this.#onBoardPointerUp,
+    });
+  }
+
+  /** The lattice-snapped, magnetically-pulled delta for a board set under a
+      pointer at `world`, writing d.delta/d.legal. Shared by the live drag and
+      the release. */
+  #resolveBoardDrag(d, world) {
+    const ids = d.members.map((m) => m.id);
+    d.delta = this.#pullToMate(ids, {
+      dx: Math.round(world.x - d.startWorld.x),
+      dy: Math.round(world.y - d.startWorld.y),
+    });
+    d.legal = this.#doc.canMoveBoardsBy(ids, d.delta.dx, d.delta.dy);
   }
 
   #onBoardPointerMove = (e) => {
@@ -2943,14 +2965,10 @@ export class DeskController {
       for (const m of d.members) this.#views.get(m.id)?.setDragging(true);
     }
     const w = this.#deskView.worldFromEvent(e);
+    d.lastWorld = w;
     // The group rides the pointer, snapped live to the pitch lattice, then
     // pulled the last pitch or two onto a strip it can dovetail with.
-    const ids = d.members.map((m) => m.id);
-    d.delta = this.#pullToMate(ids, {
-      dx: Math.round(w.x - d.startWorld.x),
-      dy: Math.round(w.y - d.startWorld.y),
-    });
-    d.legal = this.#doc.canMoveBoardsBy(ids, d.delta.dx, d.delta.dy);
+    this.#resolveBoardDrag(d, w);
     // Wires with an endpoint on any member follow it live.
     this.#wireLayer.render(this.#applyDragDelta(d, d.delta));
   };
@@ -2996,18 +3014,7 @@ export class DeskController {
     this.#mode = null;
     this.#viewport.classList.remove("desk-viewport--dragging");
 
-    const view = this.#views.get(d.id);
-    if (view) {
-      const boardEl = view.element;
-      boardEl.removeEventListener("pointermove", this.#onBoardPointerMove);
-      boardEl.removeEventListener("pointerup", this.#onBoardPointerUp);
-      boardEl.removeEventListener("pointercancel", this.#onBoardPointerUp);
-      try {
-        boardEl.releasePointerCapture(d.pointerId);
-      } catch {
-        /* already released */
-      }
-    }
+    d.teardown?.();
     for (const m of d.members) {
       const memberView = this.#views.get(m.id);
       memberView?.setDragging(false);
@@ -3018,6 +3025,12 @@ export class DeskController {
     // A drag that spans Run (editing locked mid-gesture) reverts, never
     // commits — the teardown above already ran, so this only skips the mutation.
     const cancelled = e.type === "pointercancel" || this.#editingLocked;
+    // Re-derive the delta at the RELEASE point. The magnetic #pullToMate snap
+    // re-runs there too, which is the correct semantic: the drop mates against
+    // where you let go, not where the last coalesced frame said you were.
+    if (!cancelled) {
+      this.#resolveBoardDrag(d, releaseWorld(this.#deskView, e, d.lastWorld));
+    }
     const moved = d.delta.dx !== 0 || d.delta.dy !== 0;
     if (!cancelled && d.legal && moved) {
       // Moving only part of a group tears the snap — desk-doc re-derives the
@@ -3186,11 +3199,13 @@ export class DeskController {
         startClientX: e.clientX,
         startClientY: e.clientY,
         startWorld: w,
+        lastWorld: w,
         origin: { x: comp.x, y: comp.y },
         pos: { x: comp.x, y: comp.y },
         hasAnchored: this.#hasAnchored(id),
         legal: true,
         active: false,
+        teardown: null,
       };
     } else {
       const board = this.#doc.getBoard(comp.board);
@@ -3212,6 +3227,8 @@ export class DeskController {
         pointerId: e.pointerId,
         startClientX: e.clientX,
         startClientY: e.clientY,
+        startWorld: w,
+        lastWorld: w,
         grabOffsetCols: seat.col - cursorCol,
         origin: { board: comp.board, anchor: comp.anchor },
         seat: { board: comp.board, anchor: comp.anchor },
@@ -3222,18 +3239,48 @@ export class DeskController {
         switchIndex: switchIndexFromEvent(e),
         legal: true,
         active: false,
+        teardown: null,
       };
     }
     // Closed hand from the moment the part is grabbed (before any drag).
     this.#viewport.classList.add("desk-viewport--dragging");
-    try {
-      view.element.setPointerCapture(e.pointerId);
-    } catch {
-      /* capture is best-effort */
+    this.#mode.teardown = beginPointerGesture(view.element, e.pointerId, {
+      onMove: this.#onPartPointerMove,
+      onEnd: this.#onPartPointerUp,
+    });
+  }
+
+  /** Where a desk brick lands for a pointer at `world` — snapped to whole
+      units, with occupancy legality. Shared by the live drag and the release,
+      so the preview and the drop can never disagree. */
+  #resolveBrickPos(d, world) {
+    d.pos = {
+      x: Math.round(d.origin.x + (world.x - d.startWorld.x)),
+      y: Math.round(d.origin.y + (world.y - d.startWorld.y)),
+    };
+    d.legal = this.#doc.canPlaceBrick(d.ref, d.pos.x, d.pos.y, {
+      ignoreId: d.id,
+    });
+  }
+
+  /** Which seat a footprint part lands in for a pointer at `world`, writing
+      d.seat/d.legal. Returns the seat, or null when the pointer is off-board
+      or off-row — in which case d.seat is deliberately LEFT at the last good
+      seat and only d.legal drops, so the part keeps drawing somewhere sane
+      mid-drag. That is also exactly why the release has to call this again:
+      see #onPartPointerUp. */
+  #resolvePartSeat(d, world) {
+    const seat = this.#partSeatAt(world, d.ref, d.grabOffsetCols, d.params);
+    if (seat) {
+      d.seat = seat;
+      d.legal = this.#doc.canPlacePart(d.ref, seat.board, seat.anchor, {
+        ignoreId: d.id,
+        params: d.params,
+      });
+    } else {
+      d.legal = false; // off-board / off-row: stay at the last seat
     }
-    view.element.addEventListener("pointermove", this.#onPartPointerMove);
-    view.element.addEventListener("pointerup", this.#onPartPointerUp);
-    view.element.addEventListener("pointercancel", this.#onPartPointerUp);
+    return seat;
   }
 
   #onPartPointerMove = (e) => {
@@ -3258,26 +3305,21 @@ export class DeskController {
     }
     const view = this.#partViews.get(d.id);
     const w = this.#deskView.worldFromEvent(e);
+    // Recorded for every kind — it is the fallback the release-point resolve
+    // falls back to when the "release" is a positionless synthetic abort.
+    d.lastWorld = w;
 
     if (d.kind === "drag-resistor") {
-      d.lastWorld = w;
       this.#trackResistorDrag();
       return;
     }
     if (d.kind === "drag-resistor-end") {
-      d.lastWorld = w;
       this.#trackResistorEndDrag();
       return;
     }
 
     if (d.kind === "drag-brick") {
-      d.pos = {
-        x: Math.round(d.origin.x + (w.x - d.startWorld.x)),
-        y: Math.round(d.origin.y + (w.y - d.startWorld.y)),
-      };
-      d.legal = this.#doc.canPlaceBrick(d.ref, d.pos.x, d.pos.y, {
-        ignoreId: d.id,
-      });
+      this.#resolveBrickPos(d, w);
       view?.setPosition(d.pos.x, d.pos.y);
       view?.setIllegal(!d.legal);
       // Wires on this PSU's terminals follow it live.
@@ -3293,18 +3335,10 @@ export class DeskController {
       return;
     }
 
-    const seat = this.#partSeatAt(w, d.ref, d.grabOffsetCols, d.params);
-    if (seat) {
-      // Ride the lattice, snapped; tint tells occupancy legality.
-      d.seat = seat;
-      d.legal = this.#doc.canPlacePart(d.ref, seat.board, seat.anchor, {
-        ignoreId: d.id,
-        params: d.params,
-      });
+    const seat = this.#resolvePartSeat(d, w);
+    // Ride the lattice, snapped; tint tells occupancy legality.
+    if (seat)
       view?.updatePlacement(this.#doc.getBoard(seat.board), seat.anchor);
-    } else {
-      d.legal = false; // off-board / off-row: stay at the last seat
-    }
     view?.setIllegal(!d.legal);
     // Labels anchored to this part ride it live, by its anchor-hole delta.
     if (d.hasAnchored) {
@@ -3335,17 +3369,9 @@ export class DeskController {
     this.#mode = null;
     this.#viewport.classList.remove("desk-viewport--dragging");
 
+    d.teardown?.();
     const view = this.#partViews.get(d.id);
     if (view) {
-      const partEl = view.element;
-      partEl.removeEventListener("pointermove", this.#onPartPointerMove);
-      partEl.removeEventListener("pointerup", this.#onPartPointerUp);
-      partEl.removeEventListener("pointercancel", this.#onPartPointerUp);
-      try {
-        partEl.releasePointerCapture(d.pointerId);
-      } catch {
-        /* already released */
-      }
       view.setDragging(false);
       view.setIllegal(false);
     }
@@ -3355,6 +3381,14 @@ export class DeskController {
     const cancelled = e.type === "pointercancel" || this.#editingLocked;
     if (d.kind === "drag-resistor-end") {
       if (!d.active) return; // plain click — the press already selected it
+      // Re-derive the lead at the RELEASE point. #trackResistorEndDrag reads
+      // d.lastWorld, so moving that is the whole re-resolve — and it must
+      // happen, since a stale sample doesn't merely misplace the lead: it can
+      // fail canPlacePart's minimum-span check and revert the drag outright.
+      if (!cancelled) {
+        d.lastWorld = releaseWorld(this.#deskView, e, d.lastWorld);
+        this.#trackResistorEndDrag(d);
+      }
       if (!cancelled && d.legal && d.target) {
         this.#doc.movePartEnds(
           d.id,
@@ -3372,6 +3406,12 @@ export class DeskController {
 
     if (d.kind === "drag-resistor") {
       if (!d.active) return; // plain click — the press already selected it
+      // Same re-resolve as the end drag: rewrite d.holes/d.legal at the
+      // release point rather than trusting the last coalesced move.
+      if (!cancelled) {
+        d.lastWorld = releaseWorld(this.#deskView, e, d.lastWorld);
+        this.#trackResistorDrag(d);
+      }
       if (!cancelled && d.legal && d.holes) {
         this.#doc.movePartEnds(
           d.id,
@@ -3389,9 +3429,17 @@ export class DeskController {
 
     if (d.kind === "drag-brick") {
       if (!d.active) return;
+      if (!cancelled) {
+        this.#resolveBrickPos(d, releaseWorld(this.#deskView, e, d.lastWorld));
+      }
       const moved = d.pos.x !== d.origin.x || d.pos.y !== d.origin.y;
       if (!cancelled && d.legal && moved) {
         this.#doc.moveBrick(d.id, d.pos.x, d.pos.y);
+        // A part view is NOT re-rendered by #emitDocChanged — its DOM position
+        // is written only here and in the move handler — so the re-resolved
+        // position has to be pushed to the element explicitly, or the document
+        // would commit the release point while the brick sat at the stale one.
+        view?.setPosition(d.pos.x, d.pos.y);
         if (d.hasAnchored) {
           this.#shiftAnchoredAnnotations(
             d.id,
@@ -3416,6 +3464,16 @@ export class DeskController {
         this.#toggleClickPart(d.id, d.switchIndex ?? null);
       }
       return;
+    }
+    // THE headline of this whole gesture: re-seat at the RELEASE point. The
+    // move handler leaves d.legal false whenever its sample fell off-board or
+    // off-row while KEEPING d.seat at the last good seat — so a fast release,
+    // whose final coalesced move caught the part mid-flight over the trench,
+    // used to revert an otherwise-perfect reseat with no cue but the snap-back.
+    // It flips legality both ways: a release over bare desk after a legal last
+    // move must not commit either.
+    if (!cancelled) {
+      this.#resolvePartSeat(d, releaseWorld(this.#deskView, e, d.lastWorld));
     }
     const moved =
       d.seat.board !== d.origin.board || d.seat.anchor !== d.origin.anchor;
@@ -3494,28 +3552,35 @@ export class DeskController {
     const ann = this.#doc.getAnnotation(id);
     if (!ann) return;
     const box = e.currentTarget;
+    const start = this.#deskView.worldFromEvent(e);
     this.#mode = {
       kind: "drag-annotation",
       id,
-      elem: box, // so a programmatic cancel (Escape mid-drag) can supply
-      // #onAnnotationPointerUp's expected e.currentTarget itself
+      elem: box, // the gesture's capture target (its teardown needs it)
       pointerId: e.pointerId,
       startClientX: e.clientX,
       startClientY: e.clientY,
-      startWorld: this.#deskView.worldFromEvent(e),
+      startWorld: start,
+      lastWorld: start,
       origin: { x: ann.x, y: ann.y },
       pos: { x: ann.x, y: ann.y },
       active: false,
+      teardown: null,
     };
     this.#viewport.classList.add("desk-viewport--dragging");
-    try {
-      box.setPointerCapture(e.pointerId);
-    } catch {
-      /* capture is best-effort (synthetic events) */
-    }
-    box.addEventListener("pointermove", this.#onAnnotationPointerMove);
-    box.addEventListener("pointerup", this.#onAnnotationPointerUp);
-    box.addEventListener("pointercancel", this.#onAnnotationPointerUp);
+    this.#mode.teardown = beginPointerGesture(box, e.pointerId, {
+      onMove: this.#onAnnotationPointerMove,
+      onEnd: this.#onAnnotationPointerUp,
+    });
+  }
+
+  /** A label follows the pointer freely — no lattice, no legality. Shared by
+      the live drag and the release. */
+  #resolveAnnotationPos(d, world) {
+    d.pos = {
+      x: d.origin.x + (world.x - d.startWorld.x),
+      y: d.origin.y + (world.y - d.startWorld.y),
+    };
   }
 
   #onAnnotationPointerMove = (e) => {
@@ -3530,10 +3595,8 @@ export class DeskController {
       d.active = true;
     }
     const w = this.#deskView.worldFromEvent(e);
-    d.pos = {
-      x: d.origin.x + (w.x - d.startWorld.x),
-      y: d.origin.y + (w.y - d.startWorld.y),
-    };
+    d.lastWorld = w;
+    this.#resolveAnnotationPos(d, w);
     this.#annotationLayer.setPosition(d.id, d.pos.x, d.pos.y);
   };
 
@@ -3542,19 +3605,19 @@ export class DeskController {
     if (d?.kind !== "drag-annotation" || e.pointerId !== d.pointerId) return;
     this.#mode = null;
     this.#viewport.classList.remove("desk-viewport--dragging");
-    const box = e.currentTarget;
-    box.removeEventListener("pointermove", this.#onAnnotationPointerMove);
-    box.removeEventListener("pointerup", this.#onAnnotationPointerUp);
-    box.removeEventListener("pointercancel", this.#onAnnotationPointerUp);
-    try {
-      box.releasePointerCapture(d.pointerId);
-    } catch {
-      /* already released */
-    }
+    d.teardown?.();
     if (!d.active) return; // plain click — the press already selected it
     // A drag that spans Run (editing locked mid-gesture) reverts, never
     // commits — the teardown above already ran, so this only skips the mutation.
     const cancelled = e.type === "pointercancel" || this.#editingLocked;
+    // Land where the pointer was LET GO, not where the last (coalesced)
+    // pointermove said it was.
+    if (!cancelled) {
+      this.#resolveAnnotationPos(
+        d,
+        releaseWorld(this.#deskView, e, d.lastWorld),
+      );
+    }
     const moved = d.pos.x !== d.origin.x || d.pos.y !== d.origin.y;
     if (!cancelled && moved) {
       this.#doc.updateAnnotation(d.id, { x: d.pos.x, y: d.pos.y });
@@ -3618,28 +3681,34 @@ export class DeskController {
       kind: "marquee",
       pointerId: e.pointerId,
       startWorld: world,
+      lastWorld: world,
       rect: { minX: world.x, minY: world.y, maxX: world.x, maxY: world.y },
+      teardown: null,
     };
-    try {
-      this.#viewport.setPointerCapture(e.pointerId);
-    } catch {
-      /* capture is best-effort (synthetic events) */
-    }
-    this.#viewport.addEventListener("pointermove", this.#onMarqueePointerMove);
-    this.#viewport.addEventListener("pointerup", this.#onMarqueePointerUp);
-    this.#viewport.addEventListener("pointercancel", this.#onMarqueePointerUp);
+    this.#mode.teardown = beginPointerGesture(this.#viewport, e.pointerId, {
+      onMove: this.#onMarqueePointerMove,
+      onEnd: this.#onMarqueePointerUp,
+    });
+  }
+
+  /** The rubber-band rect from the press point to `world` — shared by the
+      live preview and the release, so the box drawn and the box selected
+      from can never disagree. */
+  #marqueeRect(m, world) {
+    return {
+      minX: Math.min(m.startWorld.x, world.x),
+      minY: Math.min(m.startWorld.y, world.y),
+      maxX: Math.max(m.startWorld.x, world.x),
+      maxY: Math.max(m.startWorld.y, world.y),
+    };
   }
 
   #onMarqueePointerMove = (e) => {
     const m = this.#mode;
     if (m?.kind !== "marquee" || e.pointerId !== m.pointerId) return;
     const w = this.#deskView.worldFromEvent(e);
-    m.rect = {
-      minX: Math.min(m.startWorld.x, w.x),
-      minY: Math.min(m.startWorld.y, w.y),
-      maxX: Math.max(m.startWorld.x, w.x),
-      maxY: Math.max(m.startWorld.y, w.y),
-    };
+    m.lastWorld = w;
+    m.rect = this.#marqueeRect(m, w);
     const box = this.#marquee;
     if (!box) return;
     box.style.left = `${m.rect.minX * PX_PER_UNIT}px`;
@@ -3652,25 +3721,16 @@ export class DeskController {
     const m = this.#mode;
     if (m?.kind !== "marquee" || e.pointerId !== m.pointerId) return;
     this.#mode = null;
-    this.#viewport.removeEventListener(
-      "pointermove",
-      this.#onMarqueePointerMove,
-    );
-    this.#viewport.removeEventListener("pointerup", this.#onMarqueePointerUp);
-    this.#viewport.removeEventListener(
-      "pointercancel",
-      this.#onMarqueePointerUp,
-    );
-    try {
-      this.#viewport.releasePointerCapture(m.pointerId);
-    } catch {
-      /* already released */
-    }
+    m.teardown?.();
     this.#marquee?.remove();
     this.#marquee = null;
     this.#viewport.classList.remove("desk-viewport--selecting");
     // A marquee that spans Run applies no selection into the frozen state.
     if (e.type === "pointercancel" || this.#editingLocked) return;
+    // Re-band from the RELEASE point, not the last pointermove — a fast
+    // rubber-band that ends a few pitches short would otherwise silently drop
+    // whatever sat at the edge of the box, with no snap-back to hint at it.
+    m.rect = this.#marqueeRect(m, releaseWorld(this.#deskView, e, m.lastWorld));
     this.#setMultiSelection(
       this.#componentsWithin(m.rect),
       this.#wiresWithin(m.rect),
@@ -4075,6 +4135,12 @@ export class DeskController {
    * dropped; wires and the board outline re-render from the shared DeskDoc.
    */
   #rebuildScene() {
+    // A drag in flight must die HERE, before its views do. The gesture's
+    // listeners live on `window` (see pointer-gesture.js), so unlike the old
+    // element-scoped ones they SURVIVE the unmount below — a release arriving
+    // afterwards would commit against #views/#partViews entries that no longer
+    // exist. Undo/redo mid-drag and a tab switch mid-drag both land here.
+    if (this.#dragGestureActive) this.#cancelDragGesture();
     // Drop all selection state first (the views it points at are about to go).
     this.#selected = null;
     this.#multi.clear();

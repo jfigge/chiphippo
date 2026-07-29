@@ -302,7 +302,8 @@ website** (`make docs` → `website/docs/`), and a **PDF** (`make pdf` →
   drags + the per-wire context menu; it shares the controller's `#mode` through
   a host object so the viewport dispatcher's mode checks are unchanged — its
   drags and `bus-tools.js`' run on the shared `components/pointer-gesture.js`
-  plumbing, see the pointer-capture discipline note below). All the
+  plumbing — as, since the Feature 50 follow-up, do the controller's own seven,
+  see the pointer-capture discipline note below). All the
   world-coordinate/hit-test geometry the controller used to inline now lives in
   the pure, tested `model/part-geometry.js`. What remains in the controller is
   the direct-manipulation input state machine (the shared `#mode`, board
@@ -1387,9 +1388,12 @@ make clean     # Remove build/ and dist/
 - **Pointer-capture drag discipline**: drags use pointer events + `setPointerCapture`
   with a ~4 px threshold separating click from drag — never native HTML5 DnD (per
   `porthippo/src/web/scripts/components/card-canvas.js`). The capture is for the
-  MOVE stream only — never the sole delivery route for the RELEASE. The four
-  wire/bus drags go through **`components/pointer-gesture.js`**
-  (`beginPointerGesture` → one teardown): `pointerup`/`pointercancel` listen on
+  MOVE stream only — never the sole delivery route for the RELEASE. **EVERY
+  direct-manipulation desk drag** goes through
+  **`components/pointer-gesture.js`** (`beginPointerGesture` → one teardown) —
+  the wire/bus/palette gestures, and the seven DeskController owns (board,
+  part, brick, resistor body, resistor end, annotation, marquee):
+  `pointerup`/`pointercancel` listen on
   `window` in the CAPTURE phase, so a release reaches the gesture whether or not
   the capture held, and `lostpointercapture` + window `blur` end it too (the only
   signals for "this pointer isn't yours" with no up/cancel behind them). A drop
@@ -1397,6 +1401,19 @@ make clean     # Remove build/ and dist/
   the last `pointermove` — coalesced moves lag the cursor, and a stale sample
   used to silently lose the drop. `.desk-viewport` sets `touch-action: none` so
   the browser can't claim a gesture mid-drag and cancel it.
+  **The re-resolve is one function per drag, shared by the move and the
+  release** (`#resolveBoardDrag` / `#resolvePartSeat` / `#resolveBrickPos` /
+  `#resolveAnnotationPos` / `#marqueeRect`, and the two resistor trackers,
+  which take the drag as a defaulted argument because the up-handler clears
+  `#mode` before re-resolving) — so the preview and the drop can never
+  disagree. The part drag is why this matters most: its move handler leaves
+  `d.legal` false for an off-board sample while KEEPING `d.seat`, so before
+  this a fast release silently reverted a legal reseat. Because the listeners
+  now outlive the dragged element, **`#rebuildScene` cancels any live gesture
+  first** — undo/redo or a tab switch mid-drag would otherwise leave a release
+  to commit against unmounted views. `tests/desk-drag-release.test.js` holds
+  all seven to the three cases the old shape could not survive (release point
+  ≠ last move, release off the dragged element, yanked capture).
 - **Events vs callbacks**: a parent-owned widget reporting to the one parent that
   created it → **constructor callback**; an app-wide state change any number of panels
   may react to → a global **`chiphippo:*` `CustomEvent`**. No event-bus library.

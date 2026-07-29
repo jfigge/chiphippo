@@ -32,8 +32,10 @@ import { RESERVED_NET_NAMES } from "../model/desk-doc.js";
 import { NetlistCache } from "./netlist-cache.js";
 import { NetHighlight } from "./net-highlight.js";
 
-/** Radius of the shared hover ring (pitch units — a shade over one hole). */
-const RING_RADIUS = 0.45;
+/** Radius of the shared hover ring (pitch units — a shade over one hole);
+    keep 2× this in step with `.hole-ring`'s diameter in app.css. See
+    desk-controller.js. */
+const RING_RADIUS = 0.55;
 
 export class ProbeInspector {
   #doc;

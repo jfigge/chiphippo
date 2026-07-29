@@ -56,8 +56,9 @@ const DRAG_THRESHOLD = 4;
     release (#onBusUp calling #resolveBusDrop with no maxRadius) — never
     on every move; see #resolveBusDrop's own comment for why. */
 const SNAP_RADIUS = 2;
-/** Radius of the shared hover ring (pitch units). */
-const RING_RADIUS = 0.45;
+/** Radius of the shared hover ring (pitch units); keep 2× this in step with
+    `.hole-ring`'s diameter in app.css. See desk-controller.js. */
+const RING_RADIUS = 0.55;
 
 export class BusTools {
   #host;
