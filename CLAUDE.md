@@ -1039,20 +1039,26 @@ Electron main process (src/app/main.js)
   A catalog def declares its own editable fields as data (`properties: [{
   key, label, type, options }]`) — the dialog is a pure renderer over that
   list (one `buildControl`/`buildRow` dispatch per `type`) and knows nothing
-  about any specific part. Four types today: `"color"` (every colored
+  about any specific part. Five types today: `"color"` (every colored
   discrete — LED, `seg8cc`/`seg8ca`, `bar8`/`bar8iso` — shares one
   `LED_COLOR_OPTIONS` list of 5 colors and a row of clickable swatches
   reusing the `--color-wire-<name>` tokens; any def with a `colors` list
   arms placement directly with the "Default LED color" setting instead of a
   placement-time swatch popover, per `app.js`'s `onPickChip`), `"select"` (a
   `<select>` over `options: [{value, label}]` — the PSU's volts, the clock/
-  oscillator's Hz, the LCD's size, a wire's Layout Method (Direct / Routed,
-  the one whose value is DEFAULTED IN by its opener rather than read straight
-  off the record: a direct wire stores no `layout`, and a dropdown still has
-  to show something); a `<select>`'s value is always a STRING,
+  oscillator's Hz, the LCD's size; a `<select>`'s value is always a STRING,
   so `buildSelect`'s change handler looks the typed option value back up by
   its stringified match rather than handing the raw string on to
-  `normalizeParams`, which compares by `===`), and `"action"` (a full-width
+  `normalizeParams`, which compares by `===`), **`"segmented"`** (the SAME
+  `options` list shown as one bordered track instead — the shared
+  `components/segmented-picker.js` the Settings dialog's own pickers use,
+  which is the whole point: a wire's **Layout Method** and the app-wide
+  default for it are ONE choice met in two places, so they must not be a
+  dropdown here and a segmented picker there. Pick it over `"select"` for a
+  short, closed either/or set whose choices should be readable without
+  opening anything. It is also the one field whose value is DEFAULTED IN by
+  its opener rather than read straight off the record: a direct wire stores no
+  `layout`, and a picker still has to show something), and `"action"` (a full-width
   command button, not a value — a memory chip's `"Inspect memory…"` /
   `"Load image… (program)"`, appended by `#propertyFieldsFor` itself rather
   than the catalog, since a ROM's program action is additionally gated on
@@ -1112,8 +1118,12 @@ Electron main process (src/app/main.js)
   patch and `app.js`'s `applySettings` both persists it (`settings.set`) and
   applies it live. It is a **tabbed** master-detail card (left nav rail →
   panels). The **Appearance** tab (the first/default tab — there is no
-  General) leads with **`theme`** — a `.settings-segmented` picker (the
-  dialog's form of the toolbar pill) offering **System / Light / Dark**,
+  General) leads with **`theme`** — a **segmented picker**
+  (`components/segmented-picker.js`, a DIALOG's form of the toolbar pill:
+  one bordered track, borderless `.segmented-option`s, the chosen one filled.
+  Shared with the Part Properties dialog's `"segmented"` field exactly as
+  `color-swatches.js` is shared with its `"color"` field, which is why the
+  class names carry no `settings-` prefix) offering **System / Light / Dark**,
   default `"system"`. It is the ONE setting the renderer does not apply:
   main turns it into Electron's **`nativeTheme.themeSource`**, and everything
   follows from that — every window's `prefers-color-scheme` (so theme.css's
@@ -1128,11 +1138,13 @@ Electron main process (src/app/main.js)
   `catalog/parts.js`'s `LED_COLOR_OPTIONS`, default `"red"` — the color any
   newly placed colored discrete (LED, `seg8cc`/`seg8ca`, `bar8`/`bar8iso`)
   gets; not a live-apply setting, only read at placement time by `app.js`'s
-  `onPickChip`), and **`defaultWireLayout`** (a second `.settings-segmented`
-  picker — Direct / Routed, default `"direct"` — the layout a newly LAID wire
-  gets; the same not-live-apply rule as the LED colour, so `applySettings`
-  only keeps `DeskController.setDefaultWireLayout` current and the wire tool
-  reads it when it commits). The **Data Sheets** tab drives
+  `onPickChip`), and **`defaultWireLayout`** (a second segmented picker —
+  Direct / Routed, default `"direct"` — the layout a newly LAID wire gets;
+  the same not-live-apply rule as the LED colour, so `applySettings` only
+  keeps `DeskController.setDefaultWireLayout` current and the wire tool reads
+  it when it commits. A wire's OWN Layout Method is the same control again,
+  through the Properties dialog's `"segmented"` field, so the two places this
+  choice is met look and behave alike). The **Data Sheets** tab drives
   **`datasheetDir`** (the external datasheet-PDF folder, default null) — its
   Browse button calls the native `settings.chooseDatasheetDir` picker and
   emits the chosen path; no live apply

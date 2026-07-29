@@ -59,14 +59,14 @@ test("SettingsDialog: the theme picker leads Appearance, seeds, and emits", () =
 
   // Scoped to the THEME group: Appearance carries more than one segmented
   // picker now (Wire layout is the other).
-  const themeGroup = panel.querySelector('.settings-segmented[aria-label="Theme"]'); // prettier-ignore
-  const segments = [...themeGroup.querySelectorAll(".settings-segment")];
+  const themeGroup = panel.querySelector('.segmented-picker[aria-label="Theme"]'); // prettier-ignore
+  const segments = [...themeGroup.querySelectorAll(".segmented-option")];
   assert.deepEqual(
     segments.map((b) => b.textContent),
     ["System", "Light", "Dark"],
   );
   assert.deepEqual(
-    segments.filter((b) => b.classList.contains("settings-segment--active")),
+    segments.filter((b) => b.classList.contains("segmented-option--active")),
     [segments[1]],
     "seeded from the passed theme",
   );
@@ -86,7 +86,7 @@ test("SettingsDialog: the theme picker leads Appearance, seeds, and emits", () =
 /** The chosen segment of one named picker (Theme, Wire layout, …). */
 const activeSegment = (label) =>
   document.querySelector(
-    `.settings-segmented[aria-label="${label}"] .settings-segment--active`,
+    `.segmented-picker[aria-label="${label}"] .segmented-option--active`,
   );
 
 test("SettingsDialog: an absent or junk theme falls back to System", () => {
@@ -104,8 +104,8 @@ test("SettingsDialog: an absent or junk theme falls back to System", () => {
 test("SettingsDialog: the wire-layout picker seeds, emits, and falls back", () => {
   resetDom();
   SettingsDialog.open({ defaultWireLayout: "routed" });
-  const group = document.querySelector('.settings-segmented[aria-label="Wire layout"]'); // prettier-ignore
-  const segments = [...group.querySelectorAll(".settings-segment")];
+  const group = document.querySelector('.segmented-picker[aria-label="Wire layout"]'); // prettier-ignore
+  const segments = [...group.querySelectorAll(".segmented-option")];
   assert.deepEqual(
     segments.map((b) => b.textContent),
     ["Direct", "Routed"],
@@ -314,14 +314,14 @@ test("SettingsDialog: the AI tab builds its picker from main's provider list", a
 
   const panel = document.querySelector('.settings-panel[data-panel="ai"]');
   assert.ok(panel.hidden, "the AI panel starts hidden");
-  const segments = [...panel.querySelectorAll(".settings-segment")];
+  const segments = [...panel.querySelectorAll(".segmented-option")];
   assert.deepEqual(
     segments.map((b) => b.textContent),
     ["Anthropic", "OpenAI-compatible"],
     "the picker is the list main sent, not a renderer constant",
   );
   assert.equal(
-    segments.find((b) => b.classList.contains("settings-segment--active"))
+    segments.find((b) => b.classList.contains("segmented-option--active"))
       .textContent,
     "OpenAI-compatible",
     "seeded from settings.ai.provider",
@@ -363,7 +363,7 @@ test("SettingsDialog: an AI field emits the WHOLE ai object, on change not per k
   // settings.set shallow-merges, so an object-valued setting must be whole —
   // emitting only the changed field would erase the provider and base URL.
   document
-    .querySelectorAll(".settings-panel[data-panel='ai'] .settings-segment")[1]
+    .querySelectorAll(".settings-panel[data-panel='ai'] .segmented-option")[1]
     .click();
   assert.deepEqual(patches[1], {
     ai: {

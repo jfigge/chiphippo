@@ -30,7 +30,12 @@
 // caller's own `fields` (if any) are appended below a `"separator"` divider.
 // Field types: `"text"` (single-line input), `"textarea"` (multi-line,
 // stacked label-above-control layout), `"color"` (a row of swatches),
-// `"select"` (a dropdown over `options: [{value, label}]`), `"action"` (a
+// `"select"` (a dropdown over `options: [{value, label}]`), `"segmented"`
+// (the SAME options shown as one bordered track of segments — the shared
+// `segmented-picker.js` the Settings dialog's Theme and Wire layout pickers
+// use; pick it over `"select"` for a short, closed either/or set, where the
+// choices should be readable without opening anything, and `"select"` only
+// once the list is long enough that a track would not fit), `"action"` (a
 // button that fires a named command rather than editing a value, e.g. a
 // memory chip's "Inspect memory…" — see desk-controller.js's
 // #propertyFieldsFor), `"readonly"` (a value shown but not edited — a
@@ -49,6 +54,7 @@
 import { el } from "../dom.js";
 import { PopupManager } from "../popup-manager.js";
 import { buildColorSwatches } from "./color-swatches.js";
+import { buildSegmented } from "./segmented-picker.js";
 
 /** A dropdown over `field.options: [{value, label}]`. A <select>'s value is
     ALWAYS a string (`3` becomes `"3"`), but an option's real value may be a
@@ -143,6 +149,14 @@ function buildControl(field, value, onChange) {
   }
   if (field.type === "select") {
     return buildSelect(field, value, (v) => onChange(field.key, v));
+  }
+  if (field.type === "segmented") {
+    return buildSegmented({
+      options: field.options,
+      value,
+      ariaLabel: field.label,
+      onPick: (v) => onChange(field.key, v),
+    });
   }
   if (field.type === "text") {
     return buildTextInput(field, value, onChange);

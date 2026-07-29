@@ -31,6 +31,7 @@ import { el } from "../dom.js";
 import { PopupManager } from "../popup-manager.js";
 import { LED_COLOR_OPTIONS } from "../catalog/parts.js";
 import { buildColorSwatches } from "./color-swatches.js";
+import { buildSegmented } from "./segmented-picker.js";
 import { DatasheetDownloadDialog } from "./datasheet-download-dialog.js";
 
 /** A line-drawn book glyph for the "browse the datasheet folder" affordance. */
@@ -78,41 +79,6 @@ const WIRE_LAYOUT_OPTIONS = [
   { value: "direct", label: "Direct" },
   { value: "routed", label: "Routed" },
 ];
-
-/**
- * A segmented picker — the settings-dialog form of the toolbar's pill: one
- * bordered track holding borderless segments, the chosen one filled. Generic
- * over `{ value, label }` options, so the next either/or setting reuses it.
- */
-function buildSegmented({ options, value, ariaLabel, onPick }) {
-  const buttons = options.map((opt) =>
-    el("button", {
-      class: `settings-segment${opt.value === value ? " settings-segment--active" : ""}`,
-      type: "button",
-      role: "radio",
-      "aria-checked": String(opt.value === value),
-      "data-value": opt.value,
-      text: opt.label,
-      onClick: () => {
-        for (const b of buttons) {
-          const on = b.getAttribute("data-value") === opt.value;
-          b.classList.toggle("settings-segment--active", on);
-          b.setAttribute("aria-checked", String(on));
-        }
-        onPick?.(opt.value);
-      },
-    }),
-  );
-  return el(
-    "div",
-    {
-      class: "settings-segmented",
-      role: "radiogroup",
-      "aria-label": ariaLabel,
-    },
-    buttons,
-  );
-}
 
 /** Emit a settings patch for app.js to persist + apply. */
 function emitSettings(patch) {

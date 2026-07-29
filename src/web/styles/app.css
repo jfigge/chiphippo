@@ -2523,41 +2523,6 @@ textarea.annotation-editor {
   gap: var(--space-2);
 }
 
-/* Segmented picker (Appearance ▸ Theme): the dialog's form of the toolbar
-   pill — one bordered track, borderless segments, the chosen one filled. */
-.settings-segmented {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  flex-shrink: 0;
-  padding: var(--space-1);
-  background: var(--color-surface-0);
-  border: 1px solid var(--color-overlay);
-  border-radius: var(--radius-md);
-}
-
-.settings-segment {
-  height: 22px;
-  padding: 0 var(--space-3);
-  border: none;
-  border-radius: var(--radius-sm);
-  background: transparent;
-  color: var(--color-subtext);
-  font-size: 12px;
-  cursor: pointer;
-}
-
-.settings-segment:hover {
-  color: var(--color-text);
-  background: var(--color-surface-1);
-}
-
-.settings-segment--active,
-.settings-segment--active:hover {
-  background: var(--color-surface-1);
-  color: var(--color-text);
-}
-
 /* Datasheet-folder control: the current path (elided) above Clear/Browse. */
 .settings-folder {
   display: flex;
@@ -2842,6 +2807,44 @@ textarea.annotation-editor {
   overflow-wrap: anywhere;
   font-family: var(--font-mono);
   font-size: 12px;
+}
+
+/* The shared segmented picker (components/segmented-picker.js): a DIALOG's
+   form of the toolbar pill — one bordered track, borderless segments, the
+   chosen one filled. Used by the Settings dialog (Theme, Wire layout, AI
+   provider) and the Part Properties dialog's "segmented" field (a wire's
+   Layout Method), so a short either/or choice reads the same in both. */
+.segmented-picker {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex-shrink: 0;
+  padding: var(--space-1);
+  background: var(--color-surface-0);
+  border: 1px solid var(--color-overlay);
+  border-radius: var(--radius-md);
+}
+
+.segmented-option {
+  height: 22px;
+  padding: 0 var(--space-3);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-subtext);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.segmented-option:hover {
+  color: var(--color-text);
+  background: var(--color-surface-1);
+}
+
+.segmented-option--active,
+.segmented-option--active:hover {
+  background: var(--color-surface-1);
+  color: var(--color-text);
 }
 
 /* The shared color picker (components/color-swatches.js): clickable circle

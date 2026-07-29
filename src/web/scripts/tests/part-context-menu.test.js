@@ -347,36 +347,45 @@ test("a wire's Properties dialog switches its Layout Method both ways", () => {
   const { surface } = makeDesk(doc);
   const wire = addRenderedWire(doc, "bb1.a6", "bb1.a9");
 
+  // The SAME segmented picker Settings ▸ Appearance offers the default with —
+  // not a dropdown (components/segmented-picker.js).
   const openWireProps = () => {
     rightClick(wireEl(surface, wire.id));
     [...document.querySelectorAll(".popup-menu-item")]
       .find((b) => b.textContent.trim() === "Properties…")
       .click();
-    return document.querySelector(".properties-select");
+    return [
+      ...document.querySelectorAll(
+        '.segmented-picker[aria-label="Layout Method"] .segmented-option',
+      ),
+    ];
   };
+  const chosen = (segments) =>
+    segments.find((b) => b.classList.contains("segmented-option--active"));
 
-  const select = openWireProps();
+  let segments = openWireProps();
+  assert.equal(document.querySelector(".properties-select"), null, "no <select>"); // prettier-ignore
   assert.deepEqual(
-    [...select.options].map((o) => [o.value, o.textContent]),
+    segments.map((b) => [b.getAttribute("data-value"), b.textContent]),
     [
       ["direct", "Direct"],
       ["routed", "Routed"],
     ],
   );
-  assert.equal(select.value, "direct", "a wire with no layout reads Direct");
+  assert.equal(chosen(segments).textContent, "Direct", "no layout → Direct");
 
-  select.value = "routed";
-  select.dispatchEvent(new window.Event("change"));
+  segments[1].click();
   assert.equal(doc.getWire(wire.id).layout, "routed");
+  assert.equal(chosen(segments).textContent, "Routed", "the fill moves");
+  assert.equal(segments[0].getAttribute("aria-checked"), "false");
 
   // Bend it, then switch back: the bends go with the layout that held them.
   doc.addWirePoint(wire.id, 0, { x: 7, y: 20 });
   window.dispatchEvent(new window.CustomEvent("chiphippo:doc-changed"));
   PopupManager.close();
-  const reopened = openWireProps();
-  assert.equal(reopened.value, "routed", "seeded from the wire");
-  reopened.value = "direct";
-  reopened.dispatchEvent(new window.Event("change"));
+  segments = openWireProps();
+  assert.equal(chosen(segments).textContent, "Routed", "seeded from the wire");
+  segments[0].click();
   assert.equal(doc.getWire(wire.id).layout, undefined);
   assert.equal(doc.getWire(wire.id).points, undefined);
 });

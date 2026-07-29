@@ -3101,7 +3101,10 @@ export class DeskController {
         {
           key: "layout",
           label: "Layout Method",
-          type: "select",
+          // A segmented picker, not a dropdown — the SAME control Settings ▸
+          // Appearance offers the app-wide default with, so the two places a
+          // user meets this choice look and behave alike.
+          type: "segmented",
           options: [
             { value: "direct", label: "Direct" },
             { value: "routed", label: "Routed" },
