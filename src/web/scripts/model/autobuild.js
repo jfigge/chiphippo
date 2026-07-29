@@ -856,6 +856,11 @@ function assemble(resolved, title, notes) {
   const components = [];
   const wires = [];
   let wireSeq = 0;
+  // Every generated wire is DIRECT, whatever Settings ▸ Appearance ▸ "Wire
+  // layout" says: that setting seeds a wire the USER lays, and a routed wire's
+  // shape is a hand gesture. The compiler decides holes; it has no opinion
+  // about the path between them, and emitting one would be a route nobody
+  // drew. So no `layout` field here — the default IS the omission.
   const wire = (from, to, color = "black") => {
     if (!from || !to || from === to) return false;
     wires.push({ id: `w${++wireSeq}`, from, to, color });

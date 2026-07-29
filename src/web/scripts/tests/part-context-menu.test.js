@@ -340,6 +340,47 @@ test("a wire's Properties dialog shows Name/Description, a separator, then all 8
   assert.ok(changed > 0, "rides the doc-changed commit seam");
 });
 
+test("a wire's Properties dialog switches its Layout Method both ways", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const { surface } = makeDesk(doc);
+  const wire = addRenderedWire(doc, "bb1.a6", "bb1.a9");
+
+  const openWireProps = () => {
+    rightClick(wireEl(surface, wire.id));
+    [...document.querySelectorAll(".popup-menu-item")]
+      .find((b) => b.textContent.trim() === "Properties…")
+      .click();
+    return document.querySelector(".properties-select");
+  };
+
+  const select = openWireProps();
+  assert.deepEqual(
+    [...select.options].map((o) => [o.value, o.textContent]),
+    [
+      ["direct", "Direct"],
+      ["routed", "Routed"],
+    ],
+  );
+  assert.equal(select.value, "direct", "a wire with no layout reads Direct");
+
+  select.value = "routed";
+  select.dispatchEvent(new window.Event("change"));
+  assert.equal(doc.getWire(wire.id).layout, "routed");
+
+  // Bend it, then switch back: the bends go with the layout that held them.
+  doc.addWirePoint(wire.id, 0, { x: 7, y: 20 });
+  window.dispatchEvent(new window.CustomEvent("chiphippo:doc-changed"));
+  PopupManager.close();
+  const reopened = openWireProps();
+  assert.equal(reopened.value, "routed", "seeded from the wire");
+  reopened.value = "direct";
+  reopened.dispatchEvent(new window.Event("change"));
+  assert.equal(doc.getWire(wire.id).layout, undefined);
+  assert.equal(doc.getWire(wire.id).points, undefined);
+});
+
 test("a wire's Delete Component removes it", () => {
   resetDom();
   const doc = new DeskDoc(null);

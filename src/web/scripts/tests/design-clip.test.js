@@ -209,6 +209,29 @@ test("pasteDesign: fresh ids, remapped addresses, the source untouched", () => {
   assert.equal(source.components.length, 2);
 });
 
+test("a routed wire travels routed, and its bends ride the paste shift", () => {
+  const source = sourceDesign();
+  source.setWireLayout("w1", "routed");
+  source.addWirePoint("w1", 0, { x: 15, y: 30 });
+  const clip = captureDesign(view(source), { boardIds: ["bb1"] });
+  // The clip carries the shape as it stands; the ghost draws from it.
+  assert.equal(clip.wires[0].layout, "routed");
+  assert.deepEqual(clip.wires[0].points, [{ x: 15, y: 30 }]);
+  assert.deepEqual(clipScene(clip).wires[0].points, [{ x: 15, y: 30 }]);
+
+  const dest = new DeskDoc(null);
+  dest.addBoard("pins-full", 0, 0); // bb1 is taken here
+  const pasted = dest.pasteDesign(clip, { dx: 0, dy: 40 });
+  assert.equal(pasted.wires[0].layout, "routed");
+  assert.deepEqual(
+    pasted.wires[0].points,
+    [{ x: 15, y: 70 }],
+    "a waypoint is a desk coordinate, so it moves with the design",
+  );
+  // The clip is reusable: the shift must not have been written into it.
+  assert.deepEqual(clip.wires[0].points, [{ x: 15, y: 30 }]);
+});
+
 test("pasteDesign: an illegal landing changes nothing at all", () => {
   const source = sourceDesign();
   const clip = captureDesign(view(source), { boardIds: ["bb1"] });

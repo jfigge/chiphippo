@@ -1652,6 +1652,39 @@
   stroke-width: 5;
 }
 
+/* A ROUTED wire (its "Layout Method" property): the run is a straight
+   polyline, and pressing anywhere along it bends it — hence the grab cursor,
+   which is the only hint the plain line gives before it is touched. */
+.wire--routed .wire-hit {
+  cursor: grab;
+}
+
+/* One waypoint's knob. Hidden until the wire is hovered or picked, so a routed
+   wire at rest draws as the bare line it is; --active is the one under a
+   captured pointer mid-drag (CSS :hover can't follow it there), and --merging
+   says releasing now drops this point into the one it is sitting on. Same
+   knob-over-invisible-target idiom as a bus end handle, minus the target: a
+   waypoint is grabbed by geometry (WireTools), not by a DOM hit circle. */
+.wire-point {
+  fill: var(--color-surface-0);
+  stroke: var(--wire-color);
+  stroke-width: 1.2;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.1s ease;
+}
+
+.wire:hover .wire-point,
+.wire--selected .wire-point,
+.wire-point--active {
+  opacity: 1;
+}
+
+.wire-point--merging {
+  fill: var(--color-danger);
+  stroke: var(--color-danger);
+}
+
 /* Rubber-band preview while a wire is pending. */
 .wire-preview {
   opacity: 0.75;

@@ -25,7 +25,11 @@ import {
   SAG_MIN,
   SAG_RATIO,
   fadeRadius,
+  fadedPolyline,
   fadedWire,
+  nearestOnPolyline,
+  polylineLength,
+  polylinePath,
   wirePath,
   wireSag,
 } from "../desk/wire-path.js";
@@ -126,4 +130,88 @@ test("fadedWire: a short hop keeps its whole curve, faded from both ends", () =>
   const { d, radius } = fadedWire(a, b);
   assert.ok(PATH_RE.exec(d), `one unbroken curve: ${d}`);
   assert.ok(radius < FADE_REACH, "and it fades over less than the full reach");
+});
+
+// ── Routed wires: the straight run through a wire's own waypoints ───────────
+
+test("polylinePath: one move + a line per following point, rounded", () => {
+  assert.equal(
+    polylinePath([
+      { x: 0, y: 0 },
+      { x: 10, y: 20 },
+      { x: 30, y: 20 },
+    ]),
+    "M 0 0 L 10 20 L 30 20",
+  );
+  assert.equal(
+    polylinePath([
+      { x: 1.00049, y: 0 },
+      { x: 2, y: 3 },
+    ]),
+    "M 1 0 L 2 3",
+    "float noise is trimmed, as the curve's own path is",
+  );
+});
+
+test("polylineLength: the sum of its segments", () => {
+  assert.equal(
+    polylineLength([
+      { x: 0, y: 0 },
+      { x: 30, y: 40 }, // 50
+      { x: 30, y: 60 }, // 20
+    ]),
+    70,
+  );
+  assert.equal(polylineLength([{ x: 5, y: 5 }]), 0, "a lone point runs zero");
+});
+
+test("nearestOnPolyline: the closest point, and WHICH segment it belongs to", () => {
+  const run = [
+    { x: 0, y: 0 },
+    { x: 100, y: 0 },
+    { x: 100, y: 100 },
+  ];
+  const first = nearestOnPolyline(run, { x: 40, y: 8 });
+  assert.equal(first.index, 0, "over the first segment");
+  assert.deepEqual(first.point, { x: 40, y: 0 });
+  assert.equal(first.distance, 8);
+
+  const second = nearestOnPolyline(run, { x: 92, y: 70 });
+  assert.equal(second.index, 1, "over the second");
+  assert.deepEqual(second.point, { x: 100, y: 70 });
+
+  // Past an end belongs to that end, not to the infinite line through it.
+  const beyond = nearestOnPolyline(run, { x: -30, y: 0 });
+  assert.deepEqual(beyond.point, { x: 0, y: 0 });
+  assert.equal(beyond.distance, 30);
+
+  assert.equal(nearestOnPolyline([{ x: 0, y: 0 }], { x: 0, y: 0 }), null);
+});
+
+test("fadedPolyline: cut ALONG the run, past its own fade radius", () => {
+  // A long L: both stubs are cut well before the corner.
+  const run = [
+    { x: 0, y: 0 },
+    { x: 300, y: 0 },
+    { x: 300, y: 300 },
+  ];
+  const { d, radius } = fadedPolyline(run);
+  const subpaths = d.split("M ").filter(Boolean);
+  assert.equal(subpaths.length, 2, `one stub per end: ${d}`);
+  assert.equal(radius, FADE_REACH, "plenty of wire to fade over");
+  // Each stub starts exactly on its own end and outlasts the fade circle.
+  assert.ok(d.startsWith("M 0 0 L "), d);
+  assert.ok(d.endsWith("L 300 300"), d);
+  const headEnd = { x: Number(subpaths[0].trim().split(/[ L]+/)[2]), y: 0 };
+  assert.ok(dist({ x: 0, y: 0 }, headEnd) > radius, "the cut is invisible");
+});
+
+test("fadedPolyline: a short run keeps its whole shape, corner and all", () => {
+  const run = [
+    { x: 0, y: 0 },
+    { x: 6, y: 0 },
+    { x: 6, y: 6 },
+  ];
+  const { d } = fadedPolyline(run);
+  assert.equal(d, polylinePath(run), "nothing left to cut");
 });

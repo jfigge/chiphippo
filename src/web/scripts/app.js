@@ -1398,6 +1398,9 @@ async function init() {
   // applying it — for every window at once, not just this one.
   const applySettings = (s) => {
     hud?.setVisible(s.showDeskHub === true);
+    // The layout a NEW wire gets. Like the default LED colour it is read at
+    // placement time, so this only has to keep the controller's copy current.
+    controller?.setDefaultWireLayout(s.defaultWireLayout);
     const root = document.documentElement;
     if (s.selectionColor) {
       root.style.setProperty("--color-selection", s.selectionColor);

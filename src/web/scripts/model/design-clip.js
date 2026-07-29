@@ -123,17 +123,21 @@ export function captureDesign(doc, { boardIds = [], componentIds = [] } = {}) {
     const from = inside(w.from);
     const to = inside(w.to);
     if (!from || !to) continue;
-    wires.push(
-      withMeta(
-        {
-          key: w.id,
-          from: { owner: from.boardId, point: from.hole },
-          to: { owner: to.boardId, point: to.hole },
-          color: w.color,
-        },
-        w,
-      ),
-    );
+    const clipped = {
+      key: w.id,
+      from: { owner: from.boardId, point: from.hole },
+      to: { owner: to.boardId, point: to.hole },
+      color: w.color,
+    };
+    // A ROUTED wire's shape is part of the design — a sub-assembly whose wiring
+    // was taken around a board must arrive routed the same way. The waypoints
+    // travel in the CLIP's own coordinates (the capture origin), exactly as the
+    // boards do, so the paste shift moves them with everything else.
+    if (w.layout === "routed") {
+      clipped.layout = "routed";
+      if (w.points?.length) clipped.points = w.points.map((p) => ({ ...p }));
+    }
+    wires.push(withMeta(clipped, w));
   }
   const wireKeys = new Set(wires.map((w) => w.key));
   const buses = (doc.buses ?? [])
@@ -322,6 +326,12 @@ export function clipScene(clip) {
       from: formatAddress(w.from.owner, w.from.point),
       to: formatAddress(w.to.owner, w.to.point),
       color: w.color,
+      // Carried so the GHOST draws a routed wire routed — the ghost is the
+      // design, and a run that dodges a board must not straighten out for the
+      // one moment the user is deciding where to drop it.
+      ...(w.layout === "routed"
+        ? { layout: "routed", points: (w.points ?? []).map((p) => ({ ...p })) }
+        : null),
     })),
   };
 }

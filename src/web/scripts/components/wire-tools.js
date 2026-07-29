@@ -18,11 +18,21 @@
 // click-click wire TOOL (anchor a free point, click a second to lay a wire;
 // the colour STAYS put between wires — change it via the toolbar swatch),
 // grabbing a wire's END cap to re-route it, grabbing its BODY to translate it
-// rigidly, and the per-wire context menu — the SAME uniform shape every
+// rigidly — or, on a ROUTED wire, to BEND it — and the per-wire context menu —
+// the SAME uniform shape every
 // part/board menu has (Pin Assignment / Properties… / Delete Component; see
 // desk-controller.js's #onPartContextMenu), with Pin Assignment and
 // Properties… opening their dialogs through host callbacks so this file stays
 // wire-behaviour-only. Pulled out of DeskController so "wiring" is one module.
+//
+// BENDING a routed wire is the body drag one layout further on: pressing
+// anywhere along it and dragging INSERTS a waypoint at that point in the run
+// (dragging an existing waypoint moves it instead), and letting either go on
+// top of a neighbouring point — another waypoint, or one of the wire's own
+// ends — MERGES it away, which is how a bend is taken back out. That is why a
+// routed wire has no rigid whole-wire translate: its body drag is spoken for.
+// A wire only ever has MAX_WIRE_POINTS bends; the cap says so rather than
+// silently ignoring the drag.
 //
 // It reuses the controller's shared `#mode` (through the host) so the viewport
 // pointer dispatcher's mode checks stay exactly as they were — this is a home
@@ -32,12 +42,15 @@
 
 import { PopupManager } from "../popup-manager.js";
 import { PX_PER_UNIT } from "../desk/desk-geometry.js";
-import { WIRE_COLORS } from "../model/desk-doc.js";
+import { MAX_WIRE_POINTS, WIRE_COLORS } from "../model/desk-doc.js";
 import {
+  WIRE_POINT_MERGE_RADIUS,
   addressWorld,
   connectionPointAt,
   wireEndNear,
+  wirePointNear,
 } from "../model/part-geometry.js";
+import { nearestOnPolyline } from "../desk/wire-path.js";
 import { HANDLE_HIT_RADIUS, busEndHandleNear } from "../desk/ribbon-path.js";
 import { nearestLegalOffset } from "../model/nearest-legal.js";
 import { beginPointerGesture, releaseWorld } from "./pointer-gesture.js";
@@ -216,6 +229,11 @@ export class WireTools {
       from: m.from,
       to: m.hover.address,
       color: this.color,
+      // The app-wide default (Settings ▸ Appearance ▸ "Wire layout"), read at
+      // placement time exactly as the default LED colour is — it seeds a NEW
+      // wire and nothing more; an existing one is changed through its own
+      // Properties dialog.
+      layout: this.#host.defaultWireLayout ?? "direct",
     });
     // The colour STAYS put between wires — a chain of jumpers keeps the colour
     // you picked; change it deliberately via the toolbar swatch.
@@ -301,13 +319,189 @@ export class WireTools {
       this.#beginEndpointDrag(grab, e);
       return true;
     }
+    // An existing bend, before the body it sits on: a waypoint is the smaller,
+    // more specific target, so grabbing one moves it rather than laying
+    // another one beside it.
+    const point = wirePointNear(doc.wires, world);
+    if (point && !doc.busOfWire(point.wireId)) {
+      this.#beginPointDrag(point.wireId, point.index, false, e);
+      return true;
+    }
     const wireId = e.target?.closest?.(".wire")?.dataset.wireId;
     if (wireId && !doc.busOfWire(wireId)) {
+      // A ROUTED wire's body drag BENDS it (see the header) — the rigid
+      // whole-wire translate belongs to a direct wire, whose shape is not the
+      // user's to place.
+      if (doc.getWire(wireId)?.layout === "routed") {
+        this.#beginBodyBend(wireId, world, e);
+        return true;
+      }
       this.#beginWholeDrag(wireId, e);
       return true;
     }
     return false;
   }
+
+  /**
+   * Press on a ROUTED wire's body: work out which segment of its run was hit
+   * (that is where the new bend belongs) and start an INSERT drag there. At
+   * the waypoint cap nothing is inserted — the press still selects the wire,
+   * and the refusal is said out loud rather than read as a dead drag.
+   */
+  #beginBodyBend(wireId, world, e) {
+    const doc = this.#host.doc;
+    const wire = doc.getWire(wireId);
+    const poly = this.#routeWorld(wire);
+    if (!poly) return;
+    if ((wire.points?.length ?? 0) >= MAX_WIRE_POINTS) {
+      this.#host.selectWire(wireId);
+      PopupManager.notify({
+        title: "No more bends on this wire",
+        message:
+          `A routed wire carries at most ${MAX_WIRE_POINTS} points. Drag one ` +
+          "onto its neighbour to merge it away, then add another.",
+      });
+      return;
+    }
+    const hit = nearestOnPolyline(poly, world);
+    if (!hit) return;
+    this.#beginPointDrag(wireId, hit.index, true, e);
+  }
+
+  /**
+   * A routed wire's full run in WORLD (pitch) units — its two resolved
+   * endpoints with its waypoints between them, the same list WireLayer draws
+   * (which works in px). Null when either end doesn't resolve.
+   */
+  #routeWorld(wire) {
+    if (!wire) return null;
+    const a = this.#addressWorld(wire.from);
+    const b = this.#addressWorld(wire.to);
+    if (!a || !b) return null;
+    return [
+      { x: a.x, y: a.y },
+      ...(wire.points ?? []).map((p) => ({ ...p })),
+      { x: b.x, y: b.y },
+    ];
+  }
+
+  /**
+   * Where a dragged point of `wire` would MERGE if released at `world`: the
+   * index in its full run (endpoint 0, waypoint i+1, endpoint last) of the
+   * nearest OTHER point within WIRE_POINT_MERGE_RADIUS, or null. `self` is the
+   * run index the drag itself occupies, which can never be its own target.
+   */
+  #mergeTarget(poly, world, self) {
+    let best = null;
+    poly.forEach((p, i) => {
+      if (i === self) return;
+      const dist = Math.hypot(world.x - p.x, world.y - p.y);
+      if (dist > WIRE_POINT_MERGE_RADIUS) return;
+      if (!best || dist < best.dist) best = { index: i, point: p, dist };
+    });
+    return best;
+  }
+
+  /**
+   * Start a waypoint drag: `index` is the waypoint's own index, and `insert`
+   * says whether it exists yet (a body press inserts one at the segment it
+   * landed on; a knob press moves the one it grabbed). Nothing is written to
+   * the document until the release — an abandoned drag leaves no bend behind.
+   */
+  #beginPointDrag(wireId, index, insert, e) {
+    this.#host.hideHover();
+    this.#host.selectWire(wireId); // select on press (mode still null here)
+    const mode = {
+      kind: "drag-wire-point",
+      wireId,
+      index,
+      insert,
+      pointerId: e.pointerId,
+      startClientX: e.clientX,
+      startClientY: e.clientY,
+      active: false,
+      teardown: null,
+    };
+    this.#host.mode = mode;
+    mode.teardown = beginPointerGesture(
+      this.#host.wireLayer.element,
+      e.pointerId,
+      { onMove: this.#onPointMove, onEnd: this.#onPointUp },
+    );
+  }
+
+  #onPointMove = (e) => {
+    const m = this.#host.mode;
+    if (m?.kind !== "drag-wire-point" || e.pointerId !== m.pointerId) return;
+    if (!m.active) {
+      const travel = Math.hypot(
+        e.clientX - m.startClientX,
+        e.clientY - m.startClientY,
+      );
+      if (travel < DRAG_THRESHOLD) return; // separate a click from a drag
+      m.active = true;
+      this.#host.viewport.classList.add("desk-viewport--wire-dragging");
+    }
+    const world = this.#host.deskView.worldFromEvent(e);
+    m.lastWorld = world; // the fallback for a release with no position of its own
+    this.#previewPoint(m, world);
+  };
+
+  /** What the point being dragged would merge into if released at `world`
+      (null for none) — asked once per move for the preview, and again at the
+      release, so the drop and what it showed can never disagree. */
+  #resolveMerge(m, world) {
+    const poly = this.#routeWorld(this.#host.doc.getWire(m.wireId));
+    if (!poly) return null;
+    // The dragged point's own index in the full run: a moved waypoint already
+    // sits there (+1 for the leading endpoint); an inserted one does not exist
+    // in the run yet, so nothing is excluded from the merge search.
+    return this.#mergeTarget(poly, world, m.insert ? -1 : m.index + 1);
+  }
+
+  /** Draw the in-flight bend. A merge target PULLS the point onto itself, so
+      what the release does is what the preview showed. */
+  #previewPoint(m, world) {
+    const merge = this.#resolveMerge(m, world);
+    const at = merge ? merge.point : world;
+    this.#host.wireLayer.setPointDrag({
+      wireId: m.wireId,
+      index: m.index,
+      insert: m.insert,
+      world: { x: at.x * PX_PER_UNIT, y: at.y * PX_PER_UNIT },
+      merge: Boolean(merge),
+    });
+  }
+
+  #onPointUp = (e) => {
+    const m = this.#host.mode;
+    if (m?.kind !== "drag-wire-point" || e.pointerId !== m.pointerId) return;
+    this.#host.mode = null;
+    m.teardown?.();
+    this.#host.viewport.classList.remove("desk-viewport--wire-dragging");
+    this.#host.wireLayer.setPointDrag(null); // stop overriding; redraw from doc
+
+    if (!m.active) return; // plain click — the wire is already selected
+    if (e.type === "pointercancel") return; // aborted — never commit
+
+    // Resolve at the RELEASE point rather than trusting the last pointermove
+    // (see pointer-gesture.js's releaseWorld), then re-run the merge test
+    // there so the drop and the preview can never disagree.
+    const world = releaseWorld(this.#host.deskView, e, m.lastWorld);
+    const doc = this.#host.doc;
+    if (!doc.getWire(m.wireId)) return; // it went away under us (an undo)
+    if (this.#resolveMerge(m, world)) {
+      // Dropped onto a neighbour: an existing bend is merged away, and one
+      // that was never added simply isn't.
+      if (m.insert) return;
+      doc.removeWirePoint(m.wireId, m.index);
+      this.#host.emitDocChanged("merge wire point");
+      return;
+    }
+    if (m.insert) doc.addWirePoint(m.wireId, m.index, world);
+    else doc.moveWirePoint(m.wireId, m.index, world);
+    this.#host.emitDocChanged(m.insert ? "bend wire" : "move wire point");
+  };
 
   /**
    * Is `world` within `wireId`'s own bus's end-handle hit radius (false for
@@ -349,6 +543,7 @@ export class WireTools {
     const fake = { type: "pointercancel", pointerId: m?.pointerId };
     if (m?.kind === "drag-wire-end") this.#onEndpointUp(fake);
     else if (m?.kind === "drag-wire") this.#onWholeUp(fake);
+    else if (m?.kind === "drag-wire-point") this.#onPointUp(fake);
   }
 
   /**
@@ -492,10 +687,27 @@ export class WireTools {
       target = this.#resolveEndpointTarget(m.wireId, m.end, world);
     }
     if (target?.legal && target.address !== m.origin) {
+      // An END dropped onto one of its own wire's bends absorbs it: the wire
+      // now reaches where that waypoint was, so keeping it would leave a bend
+      // sitting under the cap doing nothing. One undo step for both — the user
+      // made one gesture.
+      const merged = this.#pointNearOnWire(m.wireId, world);
+      if (merged != null) this.#host.doc.removeWirePoint(m.wireId, merged);
       this.#host.doc.setWireEndpoint(m.wireId, m.end, target.address);
       this.#host.emitDocChanged("move wire"); // WireLayer re-renders from this
     }
   };
+
+  /** The index of `wireId`'s own waypoint within merge range of `world`, or
+      null — how an endpoint drop absorbs a bend it lands on. */
+  #pointNearOnWire(wireId, world) {
+    const hit = wirePointNear(
+      [this.#host.doc.getWire(wireId)].filter(Boolean),
+      world,
+      WIRE_POINT_MERGE_RADIUS,
+    );
+    return hit ? hit.index : null;
+  }
 
   #beginWholeDrag(wireId, e) {
     const wire = this.#host.doc.getWire(wireId);

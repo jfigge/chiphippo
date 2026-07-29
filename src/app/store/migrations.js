@@ -34,10 +34,12 @@
  * v7 → v8 adds an optional Name/Description pair to every wire too (the wire
  *   context menu now opens the same shared Properties dialog) — no doc-level
  *   state, a pure version bump; absence is valid.
+ * v8 → v9 adds a wire's optional `layout`/`points` (the Routed layout method) —
+ *   absence is the DIRECT default every wire had, so a pure version bump.
  */
 "use strict";
 
-const DESK_DOC_VERSION = 8;
+const DESK_DOC_VERSION = 9;
 
 /** A fresh, empty desk document (main's copy of the renderer's shape). */
 function defaultDeskDocument() {
@@ -326,6 +328,16 @@ function migrateV7ToV8(doc) {
   return { ...doc, version: 8 };
 }
 
+/**
+ * v8 → v9: a wire gains an optional `layout` ("routed") and, with it, the
+ * `points` it is bent through. A pure additive migration: absence IS the
+ * default (a wire with neither is the sagging direct curve every wire was),
+ * so there is nothing to fill in.
+ */
+function migrateV8ToV9(doc) {
+  return { ...doc, version: 9 };
+}
+
 /** version → one-step upgrade fn returning the doc at version + 1. */
 const MIGRATIONS = {
   1: migrateV1ToV2,
@@ -335,6 +347,7 @@ const MIGRATIONS = {
   5: migrateV5ToV6,
   6: migrateV6ToV7,
   7: migrateV7ToV8,
+  8: migrateV8ToV9,
 };
 
 /**

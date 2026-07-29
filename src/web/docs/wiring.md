@@ -75,6 +75,45 @@ To delete a wire, click it to select it, then press `Delete` or `Backspace`
 (the same shortcut removes whatever's currently selected — a part, a board,
 or a wire).
 
+## Wire layout: direct or routed
+
+Every wire is drawn one of two ways, its **Layout Method** — right-click a
+wire and choose **Properties…** to switch it:
+
+- **Direct** (the default) — the wire sags gently from one hole to the other,
+  the way a real jumper lead does. There is nothing to position: the shape
+  follows the two ends.
+- **Routed** — the wire runs as straight lines, and *you* decide where it
+  goes. This is the one to reach for when a run would otherwise cross the
+  middle of a chip, or when a tidy right-angled layout reads better than a
+  fan of curves.
+
+A routed wire starts as a single straight line. To bend it:
+
+- **Press anywhere along the wire and drag.** A new point is added where you
+  grabbed it, and the wire now runs start → point → end. Repeat to take it
+  around whatever is in the way — up to twenty points per wire.
+- **Hover an existing point** and its knob appears; drag it to move that
+  bend somewhere else.
+- **Drop a point onto a neighbouring point, or onto either end of the wire,**
+  and it merges away — that's how you take a bend back out. The point you are
+  dragging turns red as it lands, so you can see the merge before you release.
+- **Drop an end cap onto one of the wire's own points** and that point is
+  absorbed: the wire now reaches where the bend used to be, so the bend has
+  nothing left to do.
+
+Because a routed wire's body drag is spoken for, it has no rigid
+whole-wire translate — move it by its end caps instead. Switching a wire back
+to **Direct** deletes every point it carried and redraws it as the plain
+sagging curve; switching to **Routed** straightens it out, ready for points.
+Either way it's one undo step (`Cmd/Ctrl+Z`), as is every individual bend.
+
+Settings ▸ Appearance ▸ **Wire layout** picks which of the two a *newly laid*
+wire gets. It's read when the wire is laid, so changing it never disturbs
+wiring already on the desk. Circuits built by the
+[AI builder](ai-builder.md) always arrive direct, whatever that setting
+says — the builder places holes, not hand-drawn routes.
+
 ## Addresses
 
 Wires never store pixel positions — they store **addresses**, the one

@@ -203,6 +203,11 @@ export class ProjectWorkspace {
     this.#onActiveChange = onActiveChange;
     if (boot?.project) {
       this.#adopt(boot.project);
+      // The desk already holds the booted desktop — app.js builds the DeskDoc
+      // from `boot.doc` before there is a workspace to hand it to — so this is
+      // the same "finished loading" moment `#swapProject` marks, reached from
+      // the other end.
+      this.#markClean();
       this.#warn(boot.warnings);
     } else {
       this.#renderTabs();
@@ -680,11 +685,32 @@ export class ProjectWorkspace {
       tabs: meta.tabs.map((tab) => ({ ...tab, doc: canonical(tab.doc) })),
     };
     // It came from its file, so it IS its file — the baseline every later
-    // change is measured against.
+    // change is measured against. Taken here as well as after the load (see
+    // `#markClean`) so nothing in between — the doc-changed the load itself
+    // fires — can read `dirty` against the OUTGOING project's baseline and
+    // flash a • the user never earned.
     this.#saved = projectSignature(this.#project);
     this.#state.clear();
     this.#renderTabs();
     return true;
+  }
+
+  /**
+   * A JUST-LOADED project is CLEAN, by construction: whatever the desk made of
+   * the document on the way in becomes the baseline, so the • can only ever
+   * stand for an edit the user made.
+   *
+   * The distinction from `#adopt`'s own baseline is which side is authoritative.
+   * `#adopt` measures the project meta, because that is all there is until the
+   * document reaches the desk; from then on the DESK holds the active desktop
+   * and the dirty test reads it (`#liveMeta`), so the baseline has to be re-taken
+   * from there. Anything the load normalizes that the stored copy spelled
+   * differently is then part of the file as the app understands it — not an
+   * unsaved change nobody made, sitting in front of the next New or Open as a
+   * save-or-discard question about a project the user has not touched.
+   */
+  #markClean() {
+    if (this.#project) this.#saved = this.#signature();
   }
 
   /** Put a just-opened/just-created project on the desk. */
@@ -696,6 +722,7 @@ export class ProjectWorkspace {
       return;
     }
     this.#loadActive();
+    this.#markClean(); // it is its file, exactly as the desk now holds it
     this.#announce();
     this.#warn(raw?.warnings);
   }

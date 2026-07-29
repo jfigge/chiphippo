@@ -382,6 +382,35 @@ Electron main process (src/app/main.js)
   `WIRE_COLORS` (a `--color-wire-<name>` token each; LEDs share these tokens).
   `occupancy.js` is the single collision authority (one hole/terminal, one
   lead).
+- **Wire layout — direct or routed** (`WIRE_LAYOUTS`, the wire's own
+  Properties dialog). A **direct** wire is the sagging hole-to-hole curve
+  every wire has always been: its shape is DERIVED from its two ends, so
+  there is nothing to store and a direct wire carries no `layout` and no
+  `points` at all — absence IS the default, the same omit-when-default
+  convention as Name/Description, so a document that never routed anything
+  round-trips byte-identical. A **routed** wire adds `layout: "routed"` and up
+  to `MAX_WIRE_POINTS` (20) `points`, and the whole difference is that its
+  shape is the USER's: it draws as a straight polyline through them
+  (`desk/wire-path.js`'s `polylinePath`/`fadedPolyline`, `wirePath`'s
+  counterparts) and its BODY DRAG bends it instead of translating it —
+  pressing anywhere along the run inserts a waypoint at the segment
+  `nearestOnPolyline` names, dragging an existing knob moves it, and dropping
+  either onto a neighbouring point (a waypoint, or one of the wire's own ends)
+  MERGES it away, which is how a bend comes back out. So a routed wire has no
+  rigid whole-wire translate: the gesture that was it now bends. Waypoints are
+  the ONE part of a wire that is not an address — free desk coordinates to two
+  decimals, deliberately off the lattice (they sit in the space BETWEEN the
+  boards, so snapping them to a hole they have nothing to do with would be a
+  lie) — which is also why they are the one part that has to be moved by hand:
+  `translateAll` (⌘F's recentre) and `pasteDesign` shift them explicitly,
+  where every other part of a wire rides its board for free. Switching back to
+  Direct DELETES them (a curve has nowhere to keep a bend, and keeping them
+  would leave invisible state waiting to reappear). A BUS MEMBER is never
+  routed however it is set — its middle belongs to the ribbon, so its leads
+  win. Settings ▸ Appearance ▸ **Wire layout** (`defaultWireLayout`) seeds a
+  NEW wire only, read at placement time exactly as the default LED colour is;
+  the AI builder ignores it outright and emits nothing but direct wires, since
+  a compiler places holes and has no route to draw.
 - **Netlist** (`sim/netlist.js`, Feature 70): a pure union-find partition of every
   point into nets, keyed by the lexicographically smallest member address (stable
   across rebuilds). Part state (switch position / button pressed) is an INPUT — a
@@ -1017,7 +1046,10 @@ Electron main process (src/app/main.js)
   arms placement directly with the "Default LED color" setting instead of a
   placement-time swatch popover, per `app.js`'s `onPickChip`), `"select"` (a
   `<select>` over `options: [{value, label}]` — the PSU's volts, the clock/
-  oscillator's Hz, the LCD's size; a `<select>`'s value is always a STRING,
+  oscillator's Hz, the LCD's size, a wire's Layout Method (Direct / Routed,
+  the one whose value is DEFAULTED IN by its opener rather than read straight
+  off the record: a direct wire stores no `layout`, and a dropdown still has
+  to show something); a `<select>`'s value is always a STRING,
   so `buildSelect`'s change handler looks the typed option value back up by
   its stringified match rather than handing the raw string on to
   `normalizeParams`, which compares by `===`), and `"action"` (a full-width
@@ -1096,7 +1128,11 @@ Electron main process (src/app/main.js)
   `catalog/parts.js`'s `LED_COLOR_OPTIONS`, default `"red"` — the color any
   newly placed colored discrete (LED, `seg8cc`/`seg8ca`, `bar8`/`bar8iso`)
   gets; not a live-apply setting, only read at placement time by `app.js`'s
-  `onPickChip`). The **Data Sheets** tab drives
+  `onPickChip`), and **`defaultWireLayout`** (a second `.settings-segmented`
+  picker — Direct / Routed, default `"direct"` — the layout a newly LAID wire
+  gets; the same not-live-apply rule as the LED colour, so `applySettings`
+  only keeps `DeskController.setDefaultWireLayout` current and the wire tool
+  reads it when it commits). The **Data Sheets** tab drives
   **`datasheetDir`** (the external datasheet-PDF folder, default null) — its
   Browse button calls the native `settings.chooseDatasheetDir` picker and
   emits the chosen path; no live apply

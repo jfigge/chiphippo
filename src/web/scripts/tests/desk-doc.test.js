@@ -22,6 +22,7 @@ import assert from "node:assert/strict";
 import {
   DOC_VERSION,
   DeskDoc,
+  MAX_WIRE_POINTS,
   emptyDocument,
   isEmptyDocument,
   normalizeDocument,
@@ -1397,6 +1398,135 @@ test("recolorWire / removeWire; ids never reused across reload", () => {
 
   const reloaded = new DeskDoc(doc.toJSON());
   assert.equal(reloaded.addWire({ from: "bb1.a1", to: "bb1.a5" }).id, "w2");
+});
+
+// ── Wire layout: direct (the sagging curve) vs routed (bend it yourself) ────
+
+test("a wire is DIRECT by default, and says so by carrying nothing at all", () => {
+  const doc = docWithFull();
+  const wire = doc.addWire({ from: "bb1.a1", to: "bb1.a5" });
+  assert.equal("layout" in wire, false, "omit-when-default");
+  assert.equal("points" in wire, false);
+  assert.throws(
+    () => doc.addWire({ from: "bb1.b1", to: "bb1.b5", layout: "orthogonal" }),
+    { code: "INVALID_ARG" },
+  );
+});
+
+test("setWireLayout: routed keeps its bends, direct throws them away", () => {
+  const doc = docWithFull();
+  doc.addWire({ from: "bb1.a1", to: "bb1.a5" }); // w1
+  assert.equal(doc.setWireLayout("w1", "routed").layout, "routed");
+  doc.addWirePoint("w1", 0, { x: 3, y: 20 });
+  assert.deepEqual(doc.getWire("w1").points, [{ x: 3, y: 20 }]);
+
+  // Back to direct: a curve between two holes has nowhere to keep a bend, so
+  // the waypoints go rather than lying in wait for the next switch.
+  const back = doc.setWireLayout("w1", "direct");
+  assert.equal("layout" in back, false);
+  assert.equal("points" in back, false);
+  assert.equal("points" in doc.setWireLayout("w1", "routed"), false);
+
+  assert.throws(() => doc.setWireLayout("w1", "curvy"), {
+    code: "INVALID_ARG",
+  });
+  assert.throws(() => doc.setWireLayout("w9", "routed"), { code: "NOT_FOUND" });
+});
+
+test("waypoints: insert at a segment, move one, merge one away", () => {
+  const doc = docWithFull();
+  doc.addWire({ from: "bb1.a1", to: "bb1.a5" });
+  doc.setWireLayout("w1", "routed");
+
+  doc.addWirePoint("w1", 0, { x: 2, y: 20 });
+  doc.addWirePoint("w1", 1, { x: 4, y: 20 }); // after the first
+  doc.addWirePoint("w1", 0, { x: 1.5, y: 18 }); // before both
+  assert.deepEqual(
+    doc.getWire("w1").points,
+    [
+      { x: 1.5, y: 18 },
+      { x: 2, y: 20 },
+      { x: 4, y: 20 },
+    ],
+    "the index is the position in the run, not the order they were added",
+  );
+
+  doc.moveWirePoint("w1", 1, { x: 2.125, y: 21.5 });
+  assert.deepEqual(
+    doc.getWire("w1").points[1],
+    { x: 2.13, y: 21.5 },
+    "a waypoint is a free point, kept to two decimals",
+  );
+
+  doc.removeWirePoint("w1", 1);
+  assert.equal(doc.getWire("w1").points.length, 2);
+  doc.removeWirePoint("w1", 0);
+  doc.removeWirePoint("w1", 0);
+  assert.equal("points" in doc.getWire("w1"), false, "omitted when empty");
+});
+
+test("waypoints: a direct wire has none, and a routed one is capped at 20", () => {
+  const doc = docWithFull();
+  doc.addWire({ from: "bb1.a1", to: "bb1.a5" });
+  assert.throws(() => doc.addWirePoint("w1", 0, { x: 1, y: 1 }), {
+    code: "INVALID_ARG",
+  });
+
+  doc.setWireLayout("w1", "routed");
+  assert.throws(() => doc.addWirePoint("w1", 1, { x: 1, y: 1 }), {
+    code: "INVALID_ARG",
+  }); // past the end of an empty run
+  assert.throws(() => doc.addWirePoint("w1", 0, { x: 1, y: NaN }), {
+    code: "INVALID_ARG",
+  });
+
+  for (let i = 0; i < MAX_WIRE_POINTS; i += 1) {
+    doc.addWirePoint("w1", i, { x: i, y: 20 });
+  }
+  assert.throws(() => doc.addWirePoint("w1", 0, { x: 0, y: 0 }), {
+    code: "ILLEGAL_PLACEMENT",
+  });
+  assert.equal(doc.getWire("w1").points.length, MAX_WIRE_POINTS);
+});
+
+test("a routed wire round-trips, and junk waypoints are dropped not refused", () => {
+  const doc = docWithFull();
+  doc.addWire({ from: "bb1.a1", to: "bb1.a5" });
+  doc.setWireLayout("w1", "routed");
+  doc.addWirePoint("w1", 0, { x: 3, y: 20 });
+
+  const reloaded = new DeskDoc(doc.toJSON());
+  assert.equal(reloaded.getWire("w1").layout, "routed");
+  assert.deepEqual(reloaded.getWire("w1").points, [{ x: 3, y: 20 }]);
+
+  // A hand-edited document loses the bad bend, never its wire — and a wire
+  // that never said "routed" keeps no points at all.
+  const raw = doc.toJSON();
+  raw.wires[0].points = [{ x: 1, y: 2 }, { x: "3", y: 4 }, null, { y: 5 }];
+  assert.deepEqual(new DeskDoc(raw).getWire("w1").points, [{ x: 1, y: 2 }]);
+  raw.wires[0].layout = "direct";
+  assert.equal("points" in new DeskDoc(raw).getWire("w1"), false);
+});
+
+test("a wire's waypoints are copies — a caller cannot reach into the document", () => {
+  const doc = docWithFull();
+  doc.addWire({ from: "bb1.a1", to: "bb1.a5" });
+  doc.setWireLayout("w1", "routed");
+  doc.addWirePoint("w1", 0, { x: 3, y: 20 });
+
+  doc.getWire("w1").points[0].x = 999;
+  doc.wires[0].points[0].y = 999;
+  assert.deepEqual(doc.getWire("w1").points, [{ x: 3, y: 20 }]);
+});
+
+test("translateAll carries waypoints — they are the one part that isn't an address", () => {
+  const doc = docWithFull();
+  doc.addWire({ from: "bb1.a1", to: "bb1.a5" });
+  doc.setWireLayout("w1", "routed");
+  doc.addWirePoint("w1", 0, { x: 3, y: 20 });
+
+  doc.translateAll(-10, 5);
+  assert.deepEqual(doc.getWire("w1").points, [{ x: -7, y: 25 }]);
 });
 
 test("setWireMeta: sets, clears, and round-trips Name/Description", () => {

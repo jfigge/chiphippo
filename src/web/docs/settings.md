@@ -31,9 +31,15 @@ The **Appearance** tab is the one the dialog opens on:
   read when you place a part, so changing it doesn't recolour anything already
   on the desk. Any placed part's colour can still be changed from its
   **Properties…** dialog.
+- **Wire layout** — **Direct** (the default) or **Routed**, the layout method
+  a newly laid wire gets. Direct wires sag from hole to hole; routed wires run
+  straight and can be bent around obstacles by dragging points into them (see
+  [Wiring](wiring.md#wire-layout-direct-or-routed)). Like the LED colour it's
+  read when you lay a wire, so wires already on the desk keep the layout they
+  have — change one from its own **Properties…** dialog.
 
-Everything but the LED colour takes effect immediately — there's no separate
-Apply or OK step.
+Everything but the LED colour and the wire layout takes effect immediately —
+there's no separate Apply or OK step.
 
 ## Data Sheets
 

@@ -439,3 +439,87 @@ test("fading puts the ribbon away but keeps its members' leads aimed at it", () 
   assert.equal(group(ids[0]).getAttribute("mask"), null);
   assert.equal(coreD(ids[0]), leads);
 });
+
+// ── Routed wires (the "Layout Method" property) ─────────────────────────────
+
+test("a routed wire draws as a polyline through its waypoints, with knobs", () => {
+  resetDom();
+  const layer = document.createElement("div");
+  document.body.append(layer);
+  const doc = deskWithWire(); // w1: bb1.a1 → bb1.a5
+  doc.setWireLayout("w1", "routed");
+  doc.addWirePoint("w1", 0, { x: 3, y: 20 });
+  doc.addWirePoint("w1", 1, { x: 7, y: 24 });
+
+  new WireLayer(layer, doc, {});
+  const group = layer.querySelector(".wire");
+  assert.ok(group.classList.contains("wire--routed"));
+
+  const a = holePosition("pins-full", "a1");
+  const b = holePosition("pins-full", "a5");
+  assert.equal(
+    group.querySelector(".wire-core").getAttribute("d"),
+    `M ${a.x * PX_PER_UNIT} ${a.y * PX_PER_UNIT} L 30 200 L 70 240 ` +
+      `L ${b.x * PX_PER_UNIT} ${b.y * PX_PER_UNIT}`,
+    "straight segments, no sag, in world px",
+  );
+  // One knob per WAYPOINT — never on the endpoints, which have caps already.
+  assert.deepEqual(
+    [...group.querySelectorAll(".wire-point")].map((c) => [
+      Number(c.getAttribute("cx")),
+      Number(c.getAttribute("cy")),
+    ]),
+    [
+      [30, 200],
+      [70, 240],
+    ],
+  );
+});
+
+test("a routed wire's in-flight bend previews without touching the document", () => {
+  resetDom();
+  const layer = document.createElement("div");
+  document.body.append(layer);
+  const doc = deskWithWire();
+  doc.setWireLayout("w1", "routed");
+  const wires = new WireLayer(layer, doc, {});
+
+  // An INSERT drag: the point that would be added shows in the run…
+  wires.setPointDrag({
+    wireId: "w1",
+    index: 0,
+    insert: true,
+    world: { x: 44, y: 210 },
+    merge: false,
+  });
+  let group = layer.querySelector(".wire");
+  assert.match(group.querySelector(".wire-core").getAttribute("d"), /L 44 210/);
+  assert.equal(group.querySelectorAll(".wire-point").length, 1);
+  assert.ok(
+    group.querySelector(".wire-point").classList.contains("wire-point--active"),
+  );
+  assert.equal(doc.getWire("w1").points, undefined, "…but is not committed");
+
+  // A merge shows on the dragged knob — releasing there takes the bend out.
+  wires.setPointDrag({
+    wireId: "w1",
+    index: 0,
+    insert: true,
+    world: { x: 10, y: 120 },
+    merge: true,
+  });
+  assert.ok(
+    layer
+      .querySelector(".wire-point")
+      .classList.contains("wire-point--merging"),
+  );
+
+  // Dropping the preview redraws from the document — a straight run again.
+  wires.setPointDrag(null);
+  group = layer.querySelector(".wire");
+  assert.equal(group.querySelectorAll(".wire-point").length, 0);
+  assert.doesNotMatch(
+    group.querySelector(".wire-core").getAttribute("d"),
+    /L 44 210/,
+  );
+});

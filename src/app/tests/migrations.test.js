@@ -24,7 +24,10 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { migrateDeskDocument } = require("../store/migrations");
+const {
+  DESK_DOC_VERSION,
+  migrateDeskDocument,
+} = require("../store/migrations");
 
 /** A v1 document with one full board, wires on both rails, and parts. */
 function v1Doc() {
@@ -60,7 +63,7 @@ const byId = (doc, id) => doc.boards.find((b) => b.id === id);
 
 test("v1 → v2: a full board becomes three grouped strips", () => {
   const doc = migrateDeskDocument(v1Doc());
-  assert.equal(doc.version, 8); // migrateDeskDocument brings v1 fully current
+  assert.equal(doc.version, DESK_DOC_VERSION); // brought fully current
   assert.equal(doc.boards.length, 3);
 
   // The pin-board KEEPS the original id, which is what lets grid addresses
@@ -220,7 +223,7 @@ test("v2 → v3: net names + annotations arrays are added (additive)", () => {
     nextWireId: 1,
   };
   const doc = migrateDeskDocument(v2);
-  assert.equal(doc.version, 8);
+  assert.equal(doc.version, DESK_DOC_VERSION);
   assert.deepEqual(doc.netNames, []);
   assert.deepEqual(doc.annotations, []);
   assert.equal(doc.nextAnnotationId, 1);
@@ -244,7 +247,7 @@ test("v2 → v3: preserves already-present names + annotations", () => {
     nextClockId: 1,
     nextWireId: 1,
   });
-  assert.equal(doc.version, 8);
+  assert.equal(doc.version, DESK_DOC_VERSION);
   assert.deepEqual(doc.netNames, [{ address: "bb1.a5", name: "VCC" }]);
   assert.equal(doc.annotations.length, 1);
   assert.equal(doc.nextAnnotationId, 2);
@@ -266,7 +269,7 @@ test("v3 → v4: buses array + id counter are added (additive)", () => {
     nextWireId: 1,
     nextAnnotationId: 1,
   });
-  assert.equal(doc.version, 8);
+  assert.equal(doc.version, DESK_DOC_VERSION);
   assert.deepEqual(doc.buses, []);
   assert.equal(doc.nextBusId, 1);
 });
@@ -289,7 +292,7 @@ test("v3 → v4: preserves already-present buses + counter", () => {
     nextWireId: 2,
     nextAnnotationId: 1,
   });
-  assert.equal(doc.version, 8);
+  assert.equal(doc.version, DESK_DOC_VERSION);
   assert.equal(doc.buses.length, 1);
   assert.equal(doc.buses[0].id, "bus1");
   assert.equal(doc.nextBusId, 2);
@@ -316,7 +319,7 @@ test("v4 → v5: a pure version bump (schematic hints need no doc-level state)",
     nextAnnotationId: 1,
   };
   const doc = migrateDeskDocument(v4);
-  assert.equal(doc.version, 8);
+  assert.equal(doc.version, DESK_DOC_VERSION);
   // Everything else passes through untouched — nothing to default.
   assert.deepEqual(doc.components, v4.components);
   assert.deepEqual(doc.boards, v4.boards);
@@ -341,7 +344,7 @@ test("v5 → v6: the LCD brick id counter is added (additive)", () => {
     nextAnnotationId: 1,
   };
   const doc = migrateDeskDocument(v5);
-  assert.equal(doc.version, 8);
+  assert.equal(doc.version, DESK_DOC_VERSION);
   assert.equal(doc.nextLcdId, 1);
 });
 
@@ -364,7 +367,7 @@ test("v5 → v6: preserves an already-present LCD counter", () => {
     nextBusId: 1,
     nextAnnotationId: 1,
   });
-  assert.equal(doc.version, 8);
+  assert.equal(doc.version, DESK_DOC_VERSION);
   assert.equal(doc.nextLcdId, 4);
 });
 
@@ -398,7 +401,7 @@ test("v6 → v7: a pure version bump — Name/Description need no defaulting", (
     nextAnnotationId: 1,
   };
   const doc = migrateDeskDocument(v6);
-  assert.equal(doc.version, 8);
+  assert.equal(doc.version, DESK_DOC_VERSION);
   // Everything else passes through untouched — nothing to default.
   assert.deepEqual(doc.boards, v6.boards);
 });
@@ -425,7 +428,33 @@ test("v7 → v8: a pure version bump — wire Name/Description need no defaultin
     nextAnnotationId: 1,
   };
   const doc = migrateDeskDocument(v7);
-  assert.equal(doc.version, 8);
+  assert.equal(doc.version, DESK_DOC_VERSION);
   // Everything else passes through untouched — nothing to default.
   assert.deepEqual(doc.wires, v7.wires);
+});
+
+test("v8 → v9: a pure version bump — a wire with no layout IS a direct wire", () => {
+  const v8 = {
+    version: 8,
+    boards: [],
+    components: [],
+    wires: [{ id: "w1", from: "bb1.a1", to: "bb1.a5", color: "red" }],
+    buses: [],
+    netNames: [],
+    annotations: [],
+    nextBoardId: 1,
+    nextGroupId: 1,
+    nextComponentId: 1,
+    nextPsuId: 1,
+    nextClockId: 1,
+    nextLcdId: 1,
+    nextWireId: 2,
+    nextBusId: 1,
+    nextAnnotationId: 1,
+  };
+  const doc = migrateDeskDocument(v8);
+  assert.equal(doc.version, DESK_DOC_VERSION);
+  // Absence is the default, so the wire comes through with nothing added —
+  // no `layout`, no `points`, exactly the sagging wire it has always been.
+  assert.deepEqual(doc.wires, v8.wires);
 });

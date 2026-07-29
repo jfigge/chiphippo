@@ -427,6 +427,120 @@ test("whole-wire drag: both ends translate rigidly onto new holes", () => {
   );
 });
 
+// ── Routed wires: the body drag BENDS instead of translating ────────────────
+
+/** A routed wire, rendered — its body drag lays waypoints rather than moving
+    the whole run (see wire-tools.js). */
+function seedRoutedWire(doc, from, to) {
+  const wire = doc.addWire({ from, to });
+  doc.setWireLayout(wire.id, "routed");
+  window.dispatchEvent(new window.CustomEvent("chiphippo:doc-changed"));
+  return wire;
+}
+
+test("routed wire: dragging the body inserts a waypoint where it was grabbed", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { surface, controller } = makeDesk(doc, world);
+  controller.addBoardAt("pins-full", 0, 0);
+  const wire = seedRoutedWire(doc, "bb1.a1", "bb1.a5"); // (1,12) … (5,12)
+  const body = surface.querySelector(`.wire[data-wire-id="${wire.id}"]`);
+
+  let changes = 0;
+  window.addEventListener("chiphippo:doc-changed", () => changes++);
+  // Grab the middle of the run and pull it clear of the board.
+  world.x = 3;
+  world.y = 12;
+  fire(body, "pointerdown", { id: 9, client: [0, 0] });
+  world.x = 3;
+  world.y = 22;
+  fire(wireSvg(surface), "pointermove", { id: 9, client: [40, 40] });
+  fire(wireSvg(surface), "pointerup", { id: 9, client: [40, 40] });
+
+  const bent = doc.getWire(wire.id);
+  assert.deepEqual(bent.points, [{ x: 3, y: 22 }]);
+  assert.deepEqual(
+    { from: bent.from, to: bent.to },
+    { from: "bb1.a1", to: "bb1.a5" },
+    "the ends stay exactly where they were — a bend is not a move",
+  );
+  assert.equal(changes, 1, "one commit for the gesture");
+  assert.equal(controller.selectedId, wire.id);
+});
+
+test("routed wire: a sub-threshold press selects it and lays no bend", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { surface, controller } = makeDesk(doc, world);
+  controller.addBoardAt("pins-full", 0, 0);
+  const wire = seedRoutedWire(doc, "bb1.a1", "bb1.a5");
+  const body = surface.querySelector(`.wire[data-wire-id="${wire.id}"]`);
+
+  drag(body, world, { x: 3, y: 12 }, { x: 3, y: 22 }, { id: 9, clientTravel: 0 }); // prettier-ignore
+  assert.equal(doc.getWire(wire.id).points, undefined);
+  assert.equal(controller.selectedId, wire.id);
+});
+
+test("routed wire: an existing waypoint moves, and merges away onto a neighbour", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { viewport, surface, controller } = makeDesk(doc, world);
+  controller.addBoardAt("pins-full", 0, 0);
+  const wire = seedRoutedWire(doc, "bb1.a1", "bb1.a20"); // (1,12) … (20,12)
+  doc.addWirePoint(wire.id, 0, { x: 10, y: 22 });
+  window.dispatchEvent(new window.CustomEvent("chiphippo:doc-changed"));
+
+  // Grab the knob (a waypoint is found by geometry, so the press can land on
+  // the bare viewport) and drop it further out.
+  world.x = 10;
+  world.y = 22;
+  fire(viewport, "pointerdown", { id: 9, client: [0, 0] });
+  world.x = 14;
+  world.y = 30;
+  fire(wireSvg(surface), "pointermove", { id: 9, client: [40, 40] });
+  fire(wireSvg(surface), "pointerup", { id: 9, client: [40, 40] });
+  assert.deepEqual(doc.getWire(wire.id).points, [{ x: 14, y: 30 }]);
+
+  // Now drop it onto the wire's own 'from' end: merged away, bend undone.
+  world.x = 14;
+  world.y = 30;
+  fire(viewport, "pointerdown", { id: 9, client: [0, 0] });
+  world.x = 1.2;
+  world.y = 12;
+  fire(wireSvg(surface), "pointermove", { id: 9, client: [40, 40] });
+  fire(wireSvg(surface), "pointerup", { id: 9, client: [40, 40] });
+  assert.equal(doc.getWire(wire.id).points, undefined, "the bend is gone");
+  assert.equal(doc.getWire(wire.id).layout, "routed", "the layout is not");
+});
+
+test("routed wire: an END dropped on a waypoint absorbs it", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { viewport, surface, controller } = makeDesk(doc, world);
+  controller.addBoardAt("pins-full", 0, 0);
+  const wire = seedRoutedWire(doc, "bb1.a1", "bb1.a20"); // (1,12) … (20,12)
+  doc.addWirePoint(wire.id, 0, { x: 1, y: 11 }); // right over hole b1
+  window.dispatchEvent(new window.CustomEvent("chiphippo:doc-changed"));
+
+  // Drag the 'from' cap onto that waypoint: the wire now REACHES where the
+  // bend was, so the bend has nothing left to do.
+  world.x = 1;
+  world.y = 12;
+  fire(viewport, "pointerdown", { id: 9, client: [0, 0] });
+  world.x = 1;
+  world.y = 11;
+  fire(wireSvg(surface), "pointermove", { id: 9, client: [40, 40] });
+  fire(wireSvg(surface), "pointerup", { id: 9, client: [40, 40] });
+
+  const moved = doc.getWire(wire.id);
+  assert.equal(moved.from, "bb1.b1");
+  assert.equal(moved.points, undefined);
+});
+
 test("wire-endpoint grab beats the board: a press on a cap that sits on a hole drags the wire end", () => {
   resetDom();
   const doc = new DeskDoc(null);
@@ -533,6 +647,34 @@ test("wire tool: the colour STAYS put across a chain of wires", () => {
     color,
     "and the toolbar colour is unchanged",
   );
+  assert.equal(wires[0].layout, undefined, "direct unless the setting says so");
+});
+
+test("wire tool: a NEW wire takes the app-default layout, nothing else does", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { viewport, controller } = makeDesk(doc, world);
+  controller.addBoardAt("pins-full", 0, 0);
+  const before = doc.addWire({ from: "bb1.j1", to: "bb1.j5" });
+
+  controller.setDefaultWireLayout("routed");
+  controller.armWireTool();
+  placeClick(viewport, world, { x: 1, y: 12 }); // anchor bb1.a1
+  placeClick(viewport, world, { x: 5, y: 12 }); // commit  bb1.a1 → a5
+
+  assert.equal(doc.getWire("w2").layout, "routed");
+  assert.equal(
+    doc.getWire(before.id).layout,
+    undefined,
+    "a wire already on the desk keeps the layout it has",
+  );
+
+  // Junk (or an older settings file with no such key) falls back to direct.
+  controller.setDefaultWireLayout(undefined);
+  placeClick(viewport, world, { x: 1, y: 11 });
+  placeClick(viewport, world, { x: 5, y: 11 });
+  assert.equal(doc.getWire("w3").layout, undefined);
 });
 
 // ── Annotations (Feature 120) ─────────────────────────────────────────────────

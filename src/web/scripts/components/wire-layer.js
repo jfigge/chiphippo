@@ -21,6 +21,15 @@
 // invisible hit stroke with `pointer-events: stroke` for click-select and the
 // context menu (idiomatic SVG beats hand-rolled curve-distance math).
 //
+// ROUTED (the wire's own "Layout Method" property): the same three strokes,
+// but drawn as the straight run through the wire's waypoints instead of a
+// sagging curve, plus one knob per waypoint — the grab target WireTools bends
+// it by. The knobs only show on hover or selection, so an untouched routed
+// wire is just a straight line. Everything else about a wire is unchanged by
+// the choice, which is why nothing downstream of the `d` string knows about
+// it; a BUS MEMBER is the one exception, and it goes the other way — its leads
+// belong to the ribbon and win over any routing it carries.
+//
 // FADED (the toolbar's "Fade wires" toggle, setFaded): a dense board can end
 // up buried under its own wiring, so every wire can be cut back to a short stub
 // off each end that ramps away to nothing in between — enough to read where a
@@ -47,7 +56,9 @@ import { PX_PER_UNIT } from "../desk/desk-geometry.js";
 import {
   FADE_SOLID_FRACTION,
   fadeRadius,
+  fadedPolyline,
   fadedWire,
+  polylinePath,
   wirePath,
   wireSag,
 } from "../desk/wire-path.js";
@@ -63,6 +74,11 @@ import { partDef } from "../catalog/index.js";
 /** Endpoint cap radius (world px — scales with the camera); stroke widths
     live in app.css on the .wire-* classes. */
 const CAP_RADIUS = 2.4;
+
+/** A routed wire's waypoint knob (world px) — the grab target for bending the
+    run. It only SHOWS on hover/selection (app.css), so an unattended routed
+    wire draws as the plain straight line it is. */
+const POINT_KNOB_RADIUS = 3.5;
 
 /** A bus end-handle's visible knob (world px); HANDLE_HIT_RADIUS (its
     invisible grab radius) is shared with WireTools' own hit-testing — see
@@ -106,6 +122,7 @@ export class WireLayer {
   #busPreview = null; // preview band while the bus tool is pending
   #endpointDrag = null; // { wireId, end, world:{x,y} px, legal } while dragging an end
   #wholeDrag = null; // { wireId, from:{x,y} px, to:{x,y} px, legal } dragging a whole wire
+  #pointDrag = null; // { wireId, index, insert, world:{x,y} px, merge } bending a routed wire
   #busDrag = null; // { busId, memberIds:Set, end:"from"|"to"|null, dx, dy (px), legal } dragging a bus (or one end of it)
   #dragShift = []; // [{ el, illegal }] a RIGID bus drag translates — see setBusDrag
   #memberIds = new Set(); // wires that drew as a bus lead last render (see #raisedIds)
@@ -310,12 +327,21 @@ export class WireLayer {
       const leads =
         collars &&
         `${wirePath(collars.collarA, a)} ${wirePath(collars.collarB, b)}`;
+      // A ROUTED wire is the straight run through its own waypoints (plus the
+      // one being dragged, live) instead of the sagging curve. A BUS MEMBER is
+      // never routed however it is set: its middle belongs to the ribbon, so
+      // its two leads win — which is also why the ribbon and the routing never
+      // have to agree about anything.
+      const route =
+        !collars && wire.layout === "routed"
+          ? this.#routeGeometry(wire, a, b)
+          : null;
       // Faded (setFaded), unless this wire is picked — a selected wire is
       // deliberately shown whole. A bus member keeps the very leads it already
       // had, so it still points at the ribbon; every other wire is cut back to
       // a stub off each end. Either way a mask fades each end out over a circle
       // around its own hole, sized to how much wire runs off that end.
-      let d = leads || wirePath(a, b);
+      let d = leads || (route ? polylinePath(route.points) : wirePath(a, b));
       let fadeEnds = null;
       if (this.#faded && !selected) {
         if (collars) {
@@ -324,7 +350,7 @@ export class WireLayer {
             { ...b, r: fadeRadius(distance(b, collars.collarB)) },
           ];
         } else {
-          const fade = fadedWire(a, b);
+          const fade = route ? fadedPolyline(route.points) : fadedWire(a, b);
           d = fade.d;
           fadeEnds = [
             { ...a, r: fade.radius },
@@ -353,16 +379,22 @@ export class WireLayer {
         svgEl("circle", { class: "wire-cap", cx: a.x, cy: a.y, r: CAP_RADIUS }),
         svgEl("circle", { class: "wire-cap", cx: b.x, cy: b.y, r: CAP_RADIUS }),
       );
+      if (route) {
+        group.classList.add("wire--routed");
+        group.append(...this.#buildRoutePoints(route));
+      }
       // While dragging (one end or the whole wire), mute the hit stroke
       // (pointer is captured) and tint the wire red over an illegal drop,
       // mirroring the rubber band.
-      if (draggingEnd || draggingWhole || draggingBus) {
+      if (draggingEnd || draggingWhole || draggingBus || route?.dragging) {
         group.classList.add("wire--dragging");
+        // A waypoint drag has no legality to show: a bend lands wherever it is
+        // let go (it is not a connection), so it never tints.
         const legal = draggingEnd
           ? drag.legal
           : draggingWhole
             ? whole.legal
-            : busDrag.legal;
+            : (busDrag?.legal ?? true);
         group.classList.toggle("wire-preview--illegal", legal === false);
       }
       group.classList.toggle("wire--selected", selected);
@@ -386,6 +418,58 @@ export class WireLayer {
     if (busPreview) this.#svg.append(busPreview);
     if (preview) this.#svg.append(preview);
     if (rigidBus) this.#applyDragShift(busDrag);
+  }
+
+  /**
+   * One routed wire's live geometry: the full point list it draws through
+   * (world px — `a`, its waypoints, `b`), which of those waypoints is being
+   * dragged, and whether that drag is currently over a merge target.
+   *
+   * The in-flight waypoint is folded in HERE rather than written to the
+   * document, so a drag previews at full speed and an abandoned one leaves
+   * nothing behind: an INSERT drag shows the point that would be added, a move
+   * drag shows the existing one where the cursor is.
+   */
+  #routeGeometry(wire, a, b) {
+    const drag = this.#pointDrag?.wireId === wire.id ? this.#pointDrag : null;
+    const points = (wire.points ?? []).map((p) => ({
+      x: p.x * PX_PER_UNIT,
+      y: p.y * PX_PER_UNIT,
+    }));
+    let active = -1;
+    if (drag) {
+      if (drag.insert && drag.index <= points.length) {
+        points.splice(drag.index, 0, { ...drag.world });
+        active = drag.index;
+      } else if (!drag.insert && drag.index < points.length) {
+        points[drag.index] = { ...drag.world };
+        active = drag.index;
+      }
+    }
+    return {
+      points: [a, ...points, b],
+      active,
+      merging: Boolean(drag?.merge),
+      dragging: Boolean(drag),
+    };
+  }
+
+  /** The knobs on a routed wire's waypoints — one per interior point of its
+      run. `--active` is the one under the cursor mid-drag (a captured pointer
+      wanders off its own knob, so CSS :hover can't say it); `--merging` says
+      that releasing it now drops it into whatever it is sitting on. */
+  #buildRoutePoints(route) {
+    return route.points.slice(1, -1).map((p, i) =>
+      svgEl("circle", {
+        class:
+          "wire-point" +
+          (i === route.active ? " wire-point--active" : "") +
+          (i === route.active && route.merging ? " wire-point--merging" : ""),
+        cx: p.x,
+        cy: p.y,
+        r: POINT_KNOB_RADIUS,
+      }),
+    );
   }
 
   /**
@@ -627,6 +711,20 @@ export class WireLayer {
    */
   setWholeDrag(spec) {
     this.#wholeDrag = spec;
+    this.render();
+  }
+
+  /**
+   * Live-preview a routed wire's waypoint being dragged (the bend gesture):
+   * `index` is the waypoint's own index — the one being MOVED, or, with
+   * `insert`, the position a new one would take. `merge:true` shows it landing
+   * on a neighbour (releasing there takes the bend back out). Pass null to
+   * stop and redraw from the document.
+   * @param {{wireId:string, index:number, insert?:boolean,
+   *   world:{x:number,y:number}, merge?:boolean}|null} spec
+   */
+  setPointDrag(spec) {
+    this.#pointDrag = spec;
     this.render();
   }
 

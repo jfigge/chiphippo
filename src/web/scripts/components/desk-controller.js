@@ -32,7 +32,7 @@
 import { clear, el, svgEl } from "../dom.js";
 import { PopupManager } from "../popup-manager.js";
 import { PX_PER_UNIT, clampZoom } from "../desk/desk-geometry.js";
-import { wirePath } from "../desk/wire-path.js";
+import { polylinePath, wirePath } from "../desk/wire-path.js";
 import {
   ROTATIONS,
   boardSize,
@@ -65,7 +65,12 @@ import {
   resolveDesign,
   shiftFor,
 } from "../model/design-clip.js";
-import { BUS_WIDTHS, DeskDoc, WIRE_COLORS } from "../model/desk-doc.js";
+import {
+  BUS_WIDTHS,
+  DeskDoc,
+  WIRE_COLORS,
+  WIRE_LAYOUTS,
+} from "../model/desk-doc.js";
 import { nearestLegalOffset } from "../model/nearest-legal.js";
 import { HistoryStore } from "../model/history-store.js";
 import { partDef } from "../catalog/index.js";
@@ -184,6 +189,7 @@ export class DeskController {
   #wire; // WireTools: the wire tool + endpoint/whole-wire drags (shares #mode)
   #bus; // BusTools: the bus tool + whole-bus drag (Feature 130, shares #mode)
   #busName = "D[7:0]"; // the name the bus tool reads (driven by the toolbar input)
+  #defaultWireLayout = "direct"; // what a NEW wire gets (Settings ▸ Appearance)
   #lastDown = null; // last viewport pointerdown client pos (click-vs-pan)
   #hoverKey = null; // hover identity currently shown or pending
   #hoverTimer = null;
@@ -376,6 +382,9 @@ export class DeskController {
       },
       get probeArmed() {
         return self.#probe.armed;
+      },
+      get defaultWireLayout() {
+        return self.#defaultWireLayout;
       },
       doc: deskDoc,
       deskView,
@@ -1195,10 +1204,23 @@ export class DeskController {
       const a = addressWorld(scene.boards, scene.components, w.from);
       const b = addressWorld(scene.boards, scene.components, w.to);
       if (!a || !b) continue;
-      const d = wirePath(
+      const ends = [
         { x: a.x * PX_PER_UNIT, y: a.y * PX_PER_UNIT },
         { x: b.x * PX_PER_UNIT, y: b.y * PX_PER_UNIT },
-      );
+      ];
+      // A routed wire ghosts along its own waypoints — a design that dodges a
+      // board must not straighten out while it is being positioned.
+      const d =
+        w.layout === "routed"
+          ? polylinePath([
+              ends[0],
+              ...(w.points ?? []).map((p) => ({
+                x: p.x * PX_PER_UNIT,
+                y: p.y * PX_PER_UNIT,
+              })),
+              ends[1],
+            ])
+          : wirePath(ends[0], ends[1]);
       const group = svgEl("g", { class: "wire" }, [
         svgEl("path", { class: "wire-outline", d }),
         svgEl("path", { class: "wire-core", d }),
@@ -1910,6 +1932,17 @@ export class DeskController {
     if (next === this.#busName) return;
     this.#busName = next;
     this.#onBusNameChange?.(next);
+  }
+
+  /**
+   * The layout method a NEWLY laid wire gets (Settings ▸ Appearance ▸ "Wire
+   * layout" — see WIRE_LAYOUTS). Like the default LED colour this is read at
+   * placement time and applies to nothing already on the desk; an existing
+   * wire's layout is its own Properties dialog's business. An unknown value
+   * falls back to "direct" rather than refusing — a setting is not a command.
+   */
+  setDefaultWireLayout(layout) {
+    this.#defaultWireLayout = WIRE_LAYOUTS.includes(layout) ? layout : "direct";
   }
 
   armBusTool() {
@@ -3053,8 +3086,11 @@ export class DeskController {
   }
 
   /** Open the shared Properties dialog for a wire — Name/Description plus its
-      one catalog-style field, Color (all 8 WIRE_COLORS), matching every
-      other part's Properties dialog shape (see WireTools#onContextMenu). */
+      two catalog-style fields, Color (all 8 WIRE_COLORS) and Layout Method
+      (Direct / Routed), matching every other part's Properties dialog shape
+      (see WireTools#onContextMenu). The layout is defaulted in rather than
+      stored on every wire: a direct wire carries no `layout` at all, and a
+      dropdown still has to show something. */
   #onOpenWireProperties(id) {
     const wire = this.#doc.getWire(id);
     if (!wire) return;
@@ -3062,8 +3098,17 @@ export class DeskController {
       title: "Wire Properties",
       fields: [
         { key: "color", label: "Color", type: "color", options: WIRE_COLORS },
+        {
+          key: "layout",
+          label: "Layout Method",
+          type: "select",
+          options: [
+            { value: "direct", label: "Direct" },
+            { value: "routed", label: "Routed" },
+          ],
+        },
       ],
-      values: wire,
+      values: { ...wire, layout: wire.layout ?? "direct" },
       onChange: (key, value) => this.#setWireProperty(id, key, value),
     });
   }
@@ -3071,11 +3116,16 @@ export class DeskController {
   /** Apply one wire Properties-dialog field change. Color already has its own
       DeskDoc method/commit path (recolorWire — also driven by the color-
       cycling keyboard shortcut and the old flat context menu); Name/
-      Description route to the new setWireMeta. */
+      Description route to the new setWireMeta. Layout is NOT coalesced —
+      switching back to Direct throws every waypoint away, which is exactly the
+      kind of change a user wants one ⌘Z to bring back. */
   #setWireProperty(id, key, value) {
     if (key === "name" || key === "description") {
       this.#doc.setWireMeta(id, { [key]: value });
       this.#emitDocChanged("set wire properties", { coalesce: true });
+    } else if (key === "layout") {
+      this.#doc.setWireLayout(id, value);
+      this.#emitDocChanged("set wire layout");
     } else {
       this.recolorWire(id, value); // already commits + emits
     }

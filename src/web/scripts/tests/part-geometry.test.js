@@ -28,6 +28,7 @@ import {
   hoverHitAt,
   partPinsWorld,
   wireEndNear,
+  wirePointNear,
   wiresInRect,
 } from "../model/part-geometry.js";
 
@@ -103,6 +104,30 @@ test("wireEndNear: grabs the nearest endpoint within reach, else null", () => {
   assert.equal(grab.wireId, "w1");
   assert.equal(grab.end, "from");
   assert.equal(wireEndNear(BOARDS, [], wires, { x: 10, y: 12 }), null);
+});
+
+test("wirePointNear: only a ROUTED wire has waypoints to grab", () => {
+  const routed = {
+    id: "w1",
+    from: "bb1.a1",
+    to: "bb1.a20",
+    layout: "routed",
+    points: [
+      { x: 6, y: 20 },
+      { x: 15, y: 20 },
+    ],
+  };
+  // A waypoint is a DESK coordinate, so neither boards nor components matter.
+  const grab = wirePointNear([routed], { x: 15.2, y: 20.1 });
+  assert.equal(grab.wireId, "w1");
+  assert.equal(grab.index, 1, "the nearer of the two");
+  assert.deepEqual(grab.origin, { x: 15, y: 20 });
+  assert.equal(wirePointNear([routed], { x: 10, y: 20 }), null, "out of reach");
+
+  // The same points on a DIRECT wire are not there at all — its shape is the
+  // curve between its holes, which nothing can grab a middle of.
+  const direct = { ...routed, layout: undefined };
+  assert.equal(wirePointNear([direct], { x: 15, y: 20 }), null);
 });
 
 test("hoverHitAt: a pin outranks the hole under it; else the bare hole", () => {

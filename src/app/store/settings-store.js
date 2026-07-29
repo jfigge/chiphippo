@@ -86,6 +86,14 @@ const DEFAULTS = Object.freeze({
   // selected wire is always drawn whole.
   wiresFaded: false,
 
+  // How a NEWLY laid wire is drawn (Settings ▸ Appearance ▸ "Wire layout") —
+  // "direct" (the sagging hole-to-hole curve, the default) or "routed" (a
+  // straight run the user bends by dragging waypoints into it). Only the
+  // default for new wires: an existing one's layout is changed through its own
+  // Properties dialog, and the AI builder ignores this setting outright — a
+  // generated circuit is always direct.
+  defaultWireLayout: "direct",
+
   // ── Panels (Build guide / Logic analyzer) ──────────────────────────────────
   // Whether the right-docked build guide is shown.
   guideOpen: false,

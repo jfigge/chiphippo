@@ -70,6 +70,15 @@ const THEME_OPTIONS = [
   { value: "dark", label: "Dark" },
 ];
 
+/** Appearance ▸ Wire layout — how a NEWLY laid wire is drawn (see
+    model/desk-doc.js's WIRE_LAYOUTS). Read at placement time, exactly as the
+    default LED colour is: nothing already on the desk changes, and an existing
+    wire's layout is its own Properties dialog's business. */
+const WIRE_LAYOUT_OPTIONS = [
+  { value: "direct", label: "Direct" },
+  { value: "routed", label: "Routed" },
+];
+
 /**
  * A segmented picker — the settings-dialog form of the toolbar's pill: one
  * bordered track holding borderless segments, the chosen one filled. Generic
@@ -390,6 +399,18 @@ export class SettingsDialog {
       onInput: (e) => SettingsDialog.#emit({ selectionColor: e.target.value }),
     });
 
+    const wireLayoutPicker = buildSegmented({
+      options: WIRE_LAYOUT_OPTIONS,
+      value: WIRE_LAYOUT_OPTIONS.some(
+        (o) => o.value === settings.defaultWireLayout,
+      )
+        ? settings.defaultWireLayout
+        : "direct",
+      ariaLabel: "Wire layout",
+      onPick: (defaultWireLayout) =>
+        SettingsDialog.#emit({ defaultWireLayout }),
+    });
+
     const ledColorSwatches = buildColorSwatches({
       colors: LED_COLOR_OPTIONS,
       value: settings.defaultLedColor || "red",
@@ -524,6 +545,18 @@ export class SettingsDialog {
             }),
             ledColorSwatches,
           ]),
+          el("div", { class: "settings-row" }, [
+            el("label", { class: "settings-label", text: "Wire layout" }),
+            wireLayoutPicker,
+          ]),
+          el("p", {
+            class: "settings-hint",
+            text:
+              "How a new wire is drawn: Direct sags from hole to hole; Routed " +
+              "runs straight, and can be bent around the board by dragging " +
+              "points into it. Wires already on the desk keep the layout they " +
+              "have — change one through its own Properties dialog.",
+          }),
         ],
       ),
       datasheets: el(

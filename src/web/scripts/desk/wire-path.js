@@ -22,6 +22,15 @@
 // a short stub at each end, plus the gradient offsets that ramp that stub away
 // — the geometry and the fade are derived together so the drawn cut always
 // lands where the gradient has already reached zero.
+//
+// A ROUTED wire (the wire's "Layout Method" property — see model/desk-doc.js's
+// WIRE_LAYOUTS) is not a curve at all: it is the straight run through its own
+// waypoints, so it gets the `polyline*` half of this file. The two halves are
+// deliberately symmetric — a path, a faded pair of stubs, and the length math
+// behind both — so WireLayer picks a layout and nothing downstream of it cares
+// which it got. `nearestOnPolyline` is the one piece that serves INPUT rather
+// than drawing: it is how a press on a routed wire's body learns which of its
+// segments it landed on, hence where a new waypoint belongs.
 
 /** Sag as a fraction of the endpoint-to-endpoint run. */
 export const SAG_RATIO = 0.12;
@@ -53,6 +62,58 @@ export function wirePath(a, b) {
   const mx = (a.x + b.x) / 2;
   const my = (a.y + b.y) / 2 + sag;
   return `M ${a.x} ${a.y} Q ${mx} ${my} ${b.x} ${b.y}`;
+}
+
+/**
+ * The SVG path for a ROUTED wire: straight segments through every point in
+ * order (world px, two or more — the two endpoints with any waypoints between
+ * them). No sag: a routed wire is placed by hand, so it must go exactly where
+ * it was put.
+ *
+ * @param {Array<{x:number,y:number}>} points
+ * @returns {string} an SVG `d` attribute
+ */
+export function polylinePath(points) {
+  return points
+    .map((p, i) => `${i === 0 ? "M" : "L"} ${r3(p.x)} ${r3(p.y)}`)
+    .join(" ");
+}
+
+/** The total run length (world px) along a polyline. */
+export function polylineLength(points) {
+  let total = 0;
+  for (let i = 1; i < points.length; i += 1) {
+    total += Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y); // prettier-ignore
+  }
+  return total;
+}
+
+/**
+ * Where on a polyline a point lands: the closest point on the closest SEGMENT,
+ * as `{ index, point, distance }` — `index` being the segment's own index, so
+ * a waypoint inserted at that index falls exactly where the press was. Null
+ * for a degenerate (under two points) polyline.
+ *
+ * @param {Array<{x:number,y:number}>} points - world px
+ * @param {{x:number,y:number}} p - world px
+ */
+export function nearestOnPolyline(points, p) {
+  let best = null;
+  for (let i = 0; i < points.length - 1; i += 1) {
+    const a = points[i];
+    const b = points[i + 1];
+    const dx = b.x - a.x;
+    const dy = b.y - a.y;
+    const len2 = dx * dx + dy * dy;
+    // The projection onto the segment, clamped to it — a press past either end
+    // belongs to that end, not to the infinite line it sits on.
+    const t = len2 === 0 ? 0 : (p.x - a.x) * (dx / len2) + (p.y - a.y) * (dy / len2); // prettier-ignore
+    const clamped = Math.max(0, Math.min(1, t));
+    const point = { x: a.x + dx * clamped, y: a.y + dy * clamped };
+    const distance = Math.hypot(p.x - point.x, p.y - point.y);
+    if (!best || distance < best.distance) best = { index: i, point, distance };
+  }
+  return best;
 }
 
 /** How far from its hole a faded wire stays FULLY drawn (world px — 10 px is
@@ -143,4 +204,43 @@ export function fadedWire(a, b) {
       `${r3(b.x)} ${r3(b.y)}`,
     radius,
   };
+}
+
+/**
+ * The head of a polyline, cut at `len` px along its own run (always at least
+ * the first two points, so a cut shorter than nothing still draws something).
+ */
+function trimPolyline(points, len) {
+  const out = [points[0]];
+  let left = len;
+  for (let i = 1; i < points.length; i += 1) {
+    const seg = Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y); // prettier-ignore
+    if (seg >= left) {
+      out.push(lerp(points[i - 1], points[i], seg === 0 ? 0 : left / seg));
+      return out;
+    }
+    out.push(points[i]);
+    left -= seg;
+  }
+  return out;
+}
+
+/**
+ * A faded ROUTED wire — `fadedWire`'s counterpart for a polyline: the run cut
+ * back to a stub at each end, and the `radius` both ends fade over. The cut is
+ * measured ALONG the run (so a stub that turns a corner still reaches past its
+ * own fade circle) and, as with the curve, always runs past that radius, so its
+ * cut edge is already invisible.
+ *
+ * @param {Array<{x:number,y:number}>} points - world px, two or more
+ * @returns {{d: string, radius: number}}
+ */
+export function fadedPolyline(points) {
+  const run = polylineLength(points);
+  const radius = fadeRadius(run / 2);
+  const cut = radius * FADE_OVERCUT;
+  if (run <= cut * 2) return { d: polylinePath(points), radius }; // nothing to cut
+  const head = trimPolyline(points, cut);
+  const tail = trimPolyline([...points].reverse(), cut).reverse();
+  return { d: `${polylinePath(head)} ${polylinePath(tail)}`, radius };
 }

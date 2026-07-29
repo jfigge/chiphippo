@@ -85,6 +85,28 @@ export const WIRE_COLORS = Object.freeze([
   "purple",
 ]);
 
+/**
+ * How a wire gets from one end to the other — its "Layout Method" (the wire's
+ * own Properties dialog; the app-wide default for a NEW wire is Settings ▸
+ * Appearance ▸ "Wire layout").
+ *
+ * · `"direct"` — the sagging bezier every wire has always been: hole to hole,
+ *   nothing to decide, which is why it is the default and why the AI builder
+ *   emits nothing else (a compiler places holes, not hand-drawn routes).
+ * · `"routed"` — a straight run the user BENDS by dragging waypoints into it,
+ *   so a wire can be taken around a board instead of over it.
+ *
+ * Stored omit-when-default (a direct wire carries no `layout` and no `points`),
+ * the same convention as a wire's Name/Description — so a document that never
+ * routed anything round-trips to the shape it had before this existed.
+ */
+export const WIRE_LAYOUTS = Object.freeze(["direct", "routed"]);
+
+/** The most waypoints ONE routed wire may carry. A bend is a hand gesture, and
+    twenty of them is already far past what any real jumper needs — the cap is
+    what keeps a stuck drag from filling a document with them. */
+export const MAX_WIRE_POINTS = 20;
+
 /** The bus-width presets the bus tool's toolbar/keyboard shortcuts pick from —
     `name` is the grammar the tool parses (see parseBusName); 8-bit is the
     default. */
@@ -206,6 +228,47 @@ function taggedError(message, code) {
   const err = new Error(message);
   err.code = code;
   return err;
+}
+
+/** A routed wire's waypoint, in world pitch units. Unlike everything else on
+    the desk a waypoint is NOT on the lattice — it is a free point in the space
+    between the boards, so it keeps two decimals rather than rounding to a hole
+    it has nothing to do with. */
+function wireCoord(n) {
+  return Math.round(n * 100) / 100;
+}
+
+/** Coerce a raw waypoint list: real finite points only, capped at
+    MAX_WIRE_POINTS. Junk is dropped rather than refused — a hand-edited or
+    foreign document should lose a bad bend, not its wire. */
+function normalizeWirePoints(raw) {
+  if (!Array.isArray(raw)) return [];
+  const points = [];
+  for (const p of raw) {
+    if (!p || typeof p !== "object") continue;
+    if (!Number.isFinite(p.x) || !Number.isFinite(p.y)) continue;
+    points.push({ x: wireCoord(p.x), y: wireCoord(p.y) });
+    if (points.length === MAX_WIRE_POINTS) break;
+  }
+  return points;
+}
+
+/** Apply a wire's layout to a record, omit-when-default: a direct wire carries
+    neither field, so it stays byte-identical to a pre-routing document. */
+function applyWireLayout(record, layout, points) {
+  if (layout !== "routed") return record;
+  record.layout = "routed";
+  const list = normalizeWirePoints(points);
+  if (list.length > 0) record.points = list;
+  return record;
+}
+
+/** A defensive copy of a wire — its waypoints are copied too, so a caller can
+    never reach back into the document through the array it was handed. */
+function copyWire(wire) {
+  const copy = { ...wire };
+  if (wire.points) copy.points = wire.points.map((p) => ({ ...p }));
+  return copy;
 }
 
 /** A fresh, empty desk document. */
@@ -400,6 +463,7 @@ export function normalizeDocument(raw) {
       to: w.to,
       color: WIRE_COLORS.includes(w.color) ? w.color : WIRE_COLORS[0],
     };
+    applyWireLayout(wireRecord, w.layout, w.points);
     applyMeta(wireRecord, w);
     doc.wires.push(wireRecord);
   }
@@ -1491,20 +1555,20 @@ export class DeskDoc {
 
   /** Copies of the wires on the desk. */
   get wires() {
-    return this.#doc.wires.map((w) => ({ ...w }));
+    return this.#doc.wires.map(copyWire);
   }
 
   /** A copy of one wire, or null. */
   getWire(id) {
     const w = this.#doc.wires.find((x) => x.id === id);
-    return w ? { ...w } : null;
+    return w ? copyWire(w) : null;
   }
 
   /** Copies of the wires with an endpoint on one owner (board or PSU). */
   wiresTouching(ownerId) {
     return this.#doc.wires
       .filter((w) => this.#wireTouches(w, ownerId))
-      .map((w) => ({ ...w }));
+      .map(copyWire);
   }
 
   /** Back-compat alias (Feature 50 name). */
@@ -1533,13 +1597,25 @@ export class DeskDoc {
   }
 
   /**
-   * Connect two free holes. Throws INVALID_ARG (bad color) /
-   * ILLEGAL_PLACEMENT (either end unreal, occupied, or from === to).
+   * Connect two free holes. `layout` is the wire's drawing method (see
+   * WIRE_LAYOUTS — "direct" unless the app-wide default says otherwise), and
+   * `points` its waypoints, which only a routed wire keeps (a paste carries
+   * a design's existing routing across). Throws INVALID_ARG (bad color or
+   * layout) / ILLEGAL_PLACEMENT (either end unreal, occupied, or from === to).
    * Returns a copy of the new wire.
    */
-  addWire({ from, to, color = WIRE_COLORS[0] }) {
+  addWire({
+    from,
+    to,
+    color = WIRE_COLORS[0],
+    layout = "direct",
+    points = [],
+  }) {
     if (!WIRE_COLORS.includes(color)) {
       throw taggedError(`unknown wire color: ${color}`, "INVALID_ARG");
+    }
+    if (!WIRE_LAYOUTS.includes(layout)) {
+      throw taggedError(`unknown wire layout: ${layout}`, "INVALID_ARG");
     }
     if (!canPlaceWire(this.#doc, from, to)) {
       throw taggedError(
@@ -1548,8 +1624,9 @@ export class DeskDoc {
       );
     }
     const wire = { id: `w${this.#doc.nextWireId++}`, from, to, color };
+    applyWireLayout(wire, layout, points);
     this.#doc.wires.push(wire);
-    return { ...wire };
+    return copyWire(wire);
   }
 
   /**
@@ -1570,7 +1647,7 @@ export class DeskDoc {
       );
     }
     wire[end] = address;
-    return { ...wire };
+    return copyWire(wire);
   }
 
   /**
@@ -1589,7 +1666,7 @@ export class DeskDoc {
     }
     wire.from = from;
     wire.to = to;
-    return { ...wire };
+    return copyWire(wire);
   }
 
   /**
@@ -1700,7 +1777,7 @@ export class DeskDoc {
       throw taggedError(`unknown wire color: ${color}`, "INVALID_ARG");
     }
     wire.color = color;
-    return { ...wire };
+    return copyWire(wire);
   }
 
   /**
@@ -1721,7 +1798,91 @@ export class DeskDoc {
       if (patch.description) wire.description = patch.description;
       else delete wire.description;
     }
-    return { ...wire };
+    return copyWire(wire);
+  }
+
+  /**
+   * Set a wire's layout method (see WIRE_LAYOUTS). Going back to "direct"
+   * DROPS every waypoint: a direct wire is the curve between its two holes and
+   * has nowhere to keep a bend, so keeping them would leave invisible state
+   * that reappeared on a later switch. Throws NOT_FOUND / INVALID_ARG.
+   * Returns a copy.
+   */
+  setWireLayout(id, layout) {
+    const wire = this.#doc.wires.find((w) => w.id === id);
+    if (!wire) throw taggedError(`no wire ${id}`, "NOT_FOUND");
+    if (!WIRE_LAYOUTS.includes(layout)) {
+      throw taggedError(`unknown wire layout: ${layout}`, "INVALID_ARG");
+    }
+    if (layout === "routed") {
+      wire.layout = "routed";
+    } else {
+      delete wire.layout;
+      delete wire.points;
+    }
+    return copyWire(wire);
+  }
+
+  /** The routed wire `id`, or a thrown NOT_FOUND / INVALID_ARG — the one place
+      "a waypoint only exists on a routed wire" is enforced. */
+  #routedWire(id) {
+    const wire = this.#doc.wires.find((w) => w.id === id);
+    if (!wire) throw taggedError(`no wire ${id}`, "NOT_FOUND");
+    if (wire.layout !== "routed") {
+      throw taggedError(`wire ${id} is not routed`, "INVALID_ARG");
+    }
+    wire.points ??= [];
+    return wire;
+  }
+
+  /**
+   * Bend a routed wire: insert a waypoint at `index` (0 … points.length, the
+   * index of the SEGMENT the user grabbed). Throws NOT_FOUND / INVALID_ARG
+   * (not routed, bad index, unreal point) / ILLEGAL_PLACEMENT at
+   * MAX_WIRE_POINTS. Returns a copy of the wire.
+   */
+  addWirePoint(id, index, point) {
+    const wire = this.#routedWire(id);
+    if (!Number.isInteger(index) || index < 0 || index > wire.points.length) {
+      throw taggedError(`bad waypoint index: ${index}`, "INVALID_ARG");
+    }
+    if (!Number.isFinite(point?.x) || !Number.isFinite(point?.y)) {
+      throw taggedError("a waypoint needs finite coordinates", "INVALID_ARG");
+    }
+    if (wire.points.length >= MAX_WIRE_POINTS) {
+      throw taggedError(
+        `wire ${id} already has ${MAX_WIRE_POINTS} waypoints`,
+        "ILLEGAL_PLACEMENT",
+      );
+    }
+    wire.points.splice(index, 0, { x: wireCoord(point.x), y: wireCoord(point.y) }); // prettier-ignore
+    return copyWire(wire);
+  }
+
+  /** Move one existing waypoint. Throws NOT_FOUND / INVALID_ARG. Returns a
+      copy of the wire. */
+  moveWirePoint(id, index, point) {
+    const wire = this.#routedWire(id);
+    if (!Number.isInteger(index) || index < 0 || index >= wire.points.length) {
+      throw taggedError(`bad waypoint index: ${index}`, "INVALID_ARG");
+    }
+    if (!Number.isFinite(point?.x) || !Number.isFinite(point?.y)) {
+      throw taggedError("a waypoint needs finite coordinates", "INVALID_ARG");
+    }
+    wire.points[index] = { x: wireCoord(point.x), y: wireCoord(point.y) };
+    return copyWire(wire);
+  }
+
+  /** Drop one waypoint (it was dragged onto a neighbour, or onto an end).
+      Throws NOT_FOUND / INVALID_ARG. Returns a copy of the wire. */
+  removeWirePoint(id, index) {
+    const wire = this.#routedWire(id);
+    if (!Number.isInteger(index) || index < 0 || index >= wire.points.length) {
+      throw taggedError(`bad waypoint index: ${index}`, "INVALID_ARG");
+    }
+    wire.points.splice(index, 1);
+    if (wire.points.length === 0) delete wire.points; // omit-when-empty
+    return copyWire(wire);
   }
 
   /** Remove a wire. A bus that included it simply shrinks. Throws NOT_FOUND. */
@@ -2147,6 +2308,10 @@ export class DeskDoc {
           from: formatAddress(from, w.from.point),
           to: formatAddress(to, w.to.point),
           color: w.color,
+          layout: w.layout ?? "direct",
+          // Waypoints are desk coordinates, so unlike the addresses either
+          // side of them they have to ride the paste shift themselves.
+          points: (w.points ?? []).map((p) => ({ x: p.x + dx, y: p.y + dy })),
         });
         if (w.name || w.description) {
           this.setWireMeta(wire.id, {
@@ -2224,6 +2389,15 @@ export class DeskDoc {
     for (const ann of this.#doc.annotations) {
       ann.x += ix;
       ann.y += iy;
+    }
+    // A routed wire's waypoints are the one part of a wire that is NOT an
+    // address, so they are the one part that has to be moved by hand — leave
+    // them and a design slid to the origin would drag its routing behind it.
+    for (const wire of this.#doc.wires) {
+      for (const p of wire.points ?? []) {
+        p.x += ix;
+        p.y += iy;
+      }
     }
     return { dx: ix, dy: iy };
   }

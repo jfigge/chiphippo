@@ -205,8 +205,19 @@ function fakeBridge() {
   };
 }
 
-/** The pieces app.js normally wires up, as stubs the tests can inspect. */
-async function harness({ doc = new DeskDoc(null), fake = fakeBridge() } = {}) {
+/**
+ * The pieces app.js normally wires up, as stubs the tests can inspect.
+ *
+ * `onLoad` stands for whatever the DESK makes of a document on the way in that
+ * the stored copy spelled differently — a normalization, a migration, the
+ * fit-to-screen recentre. It runs on every load, boot included, exactly where
+ * the real controller's would.
+ */
+async function harness({
+  doc = new DeskDoc(null),
+  fake = fakeBridge(),
+  onLoad = null,
+} = {}) {
   const win = resetDom();
   const sim = {
     stops: 0,
@@ -221,6 +232,7 @@ async function harness({ doc = new DeskDoc(null), fake = fakeBridge() } = {}) {
     loadDocument(raw, opts = {}) {
       this.loads.push(opts);
       doc.load(raw);
+      onLoad?.(doc);
     },
   };
   let camera = { cx: 0, cy: 0, zoom: 1 };
@@ -239,7 +251,10 @@ async function harness({ doc = new DeskDoc(null), fake = fakeBridge() } = {}) {
     onDelete: (id) => void workspace?.deleteTab(id),
   });
   const boot = await ProjectWorkspace.boot(fake.bridge);
-  if (boot?.doc) doc.load(boot.doc);
+  if (boot?.doc) {
+    doc.load(boot.doc);
+    onLoad?.(doc);
+  }
   workspace = new ProjectWorkspace({
     bridge: fake.bridge,
     deskDoc: doc,
@@ -405,6 +420,57 @@ test("a project that opens with warnings says so once", async () => {
   fake.seedProject(DEFAULT_PROJECT, meta);
   await harness({ fake });
   assert.match(dialogTitle(), /could not be restored/);
+});
+
+// ── A just-loaded project is CLEAN ───────────────────────────────────────────
+//
+// Whatever the desk makes of a document on the way in — a normalization, a
+// migration brought forward, a recentre — is the file as the app understands
+// it, not an edit. The baseline is therefore taken from the DESK once it holds
+// the document, so a project nobody has touched can never meet the next New or
+// Open with a save-or-discard question.
+//
+// `onLoad` stands in for that: a rigid move of everything on the desk, which is
+// exactly the shape of the fit-to-screen recentre.
+
+test("boot is clean even when the desk moves the document loading it", async () => {
+  const fake = fakeBridge();
+  fake.seedProject("/home/six.chiphippo", {
+    name: "6502 SBC",
+    activeTab: "t1",
+    nextIndex: 2,
+    tabs: [{ id: "t1", name: "Bench", doc: someDesign() }],
+  });
+  fake.seedRecent("/home/six.chiphippo");
+  const h = await harness({
+    fake,
+    onLoad: (doc) => doc.translateAll(-20, -20),
+  });
+  assert.deepEqual(
+    h.doc.boards.map((b) => ({ x: b.x, y: b.y })),
+    [{ x: -18, y: -18 }],
+    "the desk did move it",
+  );
+  assert.equal(h.workspace.dirty, false, "and that is the baseline");
+});
+
+test("opening a project the desk moves loading it is clean too", async () => {
+  const h = await harness({ onLoad: (doc) => doc.translateAll(-20, -20) });
+  h.seedProject("/home/other.chiphippo", {
+    name: "Other",
+    activeTab: "t1",
+    nextIndex: 2,
+    tabs: [{ id: "t1", name: "Theirs", doc: someDesign("bb9") }],
+  });
+  h.control.openProject = "/home/other.chiphippo";
+  await leaving(() => h.workspace.loadProject());
+  assert.equal(h.workspace.projectName, "Other");
+  assert.equal(h.workspace.dirty, false);
+
+  // The baseline is the moved document, not the stored one — a save writes
+  // what is on the desk, and an edit after it still registers.
+  h.doc.load(someDesign("bb3"));
+  assert.equal(h.workspace.dirty, true, "a real edit still counts");
 });
 
 // ── One document, one dirty flag ─────────────────────────────────────────────

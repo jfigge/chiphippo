@@ -57,7 +57,10 @@ test("SettingsDialog: the theme picker leads Appearance, seeds, and emits", () =
     "the theme picker is the FIRST row of the Appearance panel",
   );
 
-  const segments = [...panel.querySelectorAll(".settings-segment")];
+  // Scoped to the THEME group: Appearance carries more than one segmented
+  // picker now (Wire layout is the other).
+  const themeGroup = panel.querySelector('.settings-segmented[aria-label="Theme"]'); // prettier-ignore
+  const segments = [...themeGroup.querySelectorAll(".settings-segment")];
   assert.deepEqual(
     segments.map((b) => b.textContent),
     ["System", "Light", "Dark"],
@@ -80,19 +83,47 @@ test("SettingsDialog: the theme picker leads Appearance, seeds, and emits", () =
   PopupManager.close();
 });
 
+/** The chosen segment of one named picker (Theme, Wire layout, …). */
+const activeSegment = (label) =>
+  document.querySelector(
+    `.settings-segmented[aria-label="${label}"] .settings-segment--active`,
+  );
+
 test("SettingsDialog: an absent or junk theme falls back to System", () => {
   resetDom();
   SettingsDialog.open({});
-  const active = document.querySelector(".settings-segment--active");
-  assert.equal(active.textContent, "System");
+  assert.equal(activeSegment("Theme").textContent, "System");
   PopupManager.close();
 
   resetDom();
   SettingsDialog.open({ theme: "solarized" });
-  assert.equal(
-    document.querySelector(".settings-segment--active").textContent,
-    "System",
+  assert.equal(activeSegment("Theme").textContent, "System");
+  PopupManager.close();
+});
+
+test("SettingsDialog: the wire-layout picker seeds, emits, and falls back", () => {
+  resetDom();
+  SettingsDialog.open({ defaultWireLayout: "routed" });
+  const group = document.querySelector('.settings-segmented[aria-label="Wire layout"]'); // prettier-ignore
+  const segments = [...group.querySelectorAll(".settings-segment")];
+  assert.deepEqual(
+    segments.map((b) => b.textContent),
+    ["Direct", "Routed"],
   );
+  assert.equal(activeSegment("Wire layout").textContent, "Routed");
+
+  const patches = [];
+  window.addEventListener("chiphippo:settings-changed", (e) =>
+    patches.push(e.detail),
+  );
+  segments[0].click();
+  assert.deepEqual(patches, [{ defaultWireLayout: "direct" }]);
+  PopupManager.close();
+
+  // Absent or junk falls back to Direct — the application default.
+  resetDom();
+  SettingsDialog.open({ defaultWireLayout: "orthogonal" });
+  assert.equal(activeSegment("Wire layout").textContent, "Direct");
   PopupManager.close();
 });
 

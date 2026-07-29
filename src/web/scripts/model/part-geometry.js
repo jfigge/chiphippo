@@ -42,6 +42,17 @@ export const PIN_HIT_RADIUS = 0.45;
 /** How close the cursor must come to a wire's end cap to grab it. */
 export const WIRE_END_GRAB_RADIUS = 0.6;
 
+/** How close it must come to a ROUTED wire's waypoint to grab THAT — a little
+    wider than an end cap, since a waypoint has no hole under it to aim at. */
+export const WIRE_POINT_GRAB_RADIUS = 0.75;
+
+/** How close a dragged point must be dropped to another point of the same wire
+    (a waypoint, or either end) to MERGE into it — the gesture that takes a bend
+    back out. Wider than the grab radius on purpose: merging is what a user
+    aiming "back onto the line" means, and a near miss that silently left a
+    waypoint a third of a hole away from its neighbour would read as a bug. */
+export const WIRE_POINT_MERGE_RADIUS = 1.1;
+
 /**
  * Every pin of a seated board part as `{ pin, address, x, y }` — the world
  * position each lead sits at (a bent lead by where it lands, floating or not)
@@ -237,6 +248,29 @@ export function wireEndNear(boards, components, wires, world) {
         best = { wireId: wire.id, end, origin: wire[end], dist };
       }
     }
+  }
+  return best;
+}
+
+/**
+ * The nearest ROUTED wire's waypoint within `radius` of a world point, as
+ * `{ wireId, index, origin, dist }`, or null — how a waypoint drag begins.
+ * A direct wire has no waypoints, so it can never answer here.
+ *
+ * Waypoints are DESK coordinates (the one part of a wire that isn't an
+ * address), so this needs neither boards nor components — only the wires.
+ */
+export function wirePointNear(wires, world, radius = WIRE_POINT_GRAB_RADIUS) {
+  let best = null;
+  for (const wire of wires) {
+    if (wire.layout !== "routed") continue;
+    (wire.points ?? []).forEach((p, index) => {
+      const dist = Math.hypot(world.x - p.x, world.y - p.y);
+      if (dist > radius) return;
+      if (!best || dist < best.dist) {
+        best = { wireId: wire.id, index, origin: { ...p }, dist };
+      }
+    });
   }
   return best;
 }
