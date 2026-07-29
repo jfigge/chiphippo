@@ -21,8 +21,6 @@ The **Appearance** tab is the one the dialog opens on:
   operating system's own setting; the other two pin it. The choice applies to
   every Chip Hippo window at once, including the floating pinout, memory
   inspector and user-guide windows, and to the native menus and dialogs.
-- **Show desk hub** — off by default. This toggles a debug overlay (the
-  `DeskHud`) on the desk; most users can leave it off.
 - **Selection border colour** — a `#rrggbb` colour picker for the outline
   drawn around whatever's selected on the desk. Leave it unset to use the
   theme's default accent colour instead of a custom one.
@@ -46,7 +44,7 @@ there's no separate Apply or OK step.
 The **Data Sheets** tab points Chip Hippo at an external folder of
 manufacturer datasheet PDFs on your machine. Click **Browse…** to pick a
 folder with the native file picker; the chosen path is shown next to it, with
-a trash-can button to clear it back to no folder selected.
+a **Clear** button that resets it to no folder selected.
 
 Name the PDFs in that folder after each chip's catalog reference (for
 example `74LS00.pdf`). When a chip's file is found there, its

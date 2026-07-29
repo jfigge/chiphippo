@@ -2124,27 +2124,6 @@ textarea.annotation-editor {
   cursor: default;
 }
 
-/* ── Debug HUD (dev only, bottom-left overlay) ───────────────────────────── */
-.desk-hud {
-  position: absolute;
-  left: var(--space-4);
-  bottom: var(--space-4);
-  padding: var(--space-1) var(--space-2);
-  background: var(--color-surface-0);
-  border: 1px solid var(--color-crust);
-  border-radius: var(--radius-sm);
-  color: var(--color-muted);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  pointer-events: none;
-  user-select: none;
-}
-
-/* The "Show desk hub" setting toggles the `hidden` attribute (desk-hud.js). */
-.desk-hud[hidden] {
-  display: none;
-}
-
 /* ── Popup host, dialogs & menus (popup-manager.js, ported pattern) ─────── */
 /* A bare top-layer host: the native <dialog> centres its .popup card via the
    UA default margins; the menu variant instead pins a .popup-menu at screen
@@ -2638,7 +2617,7 @@ textarea.annotation-editor {
   font-style: italic;
 }
 
-/* The trash + Browse buttons share a line under the input, aligned right. */
+/* The Clear + Browse buttons share a line under the input, aligned right. */
 .settings-folder-actions {
   display: flex;
   align-items: center;
@@ -2646,8 +2625,10 @@ textarea.annotation-editor {
   gap: var(--space-2);
 }
 
-.settings-folder-browse,
-.settings-folder-clear {
+/* The small action button of the Settings card, wherever a panel needs one:
+   Browse… / Clear / Download… on Data Sheets, Save key / Clear key / Test
+   connection on AI. */
+.settings-action {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
@@ -2665,21 +2646,20 @@ textarea.annotation-editor {
     border-color 0.15s ease;
 }
 
-.settings-folder-browse:hover {
+.settings-action:hover {
   border-color: var(--color-accent);
   color: var(--color-accent);
 }
 
-/* The clear action is a red, icon-only trash button (square, borderless at
-   rest; the danger colour signals it discards the chosen folder). */
-.settings-folder-clear {
-  padding: var(--space-2);
-  background: transparent;
-  border-color: transparent;
+/* The DESTRUCTIVE ones: same shape, the danger colour. Both throw away
+   something the user set up and cannot get back from here — the datasheet
+   folder, and the stored API key. Both --danger rules must stay AFTER the
+   base ones: same specificity, so source order is what makes red win. */
+.settings-action--danger {
   color: var(--color-danger);
 }
 
-.settings-folder-clear:hover {
+.settings-action--danger:hover {
   border-color: var(--color-danger);
   color: var(--color-danger);
   background: var(--color-surface-1);
@@ -2787,36 +2767,6 @@ textarea.annotation-editor {
   font-size: 12px;
   line-height: 1.5;
   color: var(--color-muted);
-}
-
-/* Checkbox → pill-slider toggle (scoped to the settings toggle so it doesn't
-   restyle checkboxes elsewhere). Ported from Rest Hippo's universal rule. */
-.settings-toggle {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 28px;
-  height: 17px;
-  flex-shrink: 0;
-  border-radius: var(--radius-lg);
-  background-color: var(--color-overlay);
-  background-image: radial-gradient(circle 5.5px, #fff 100%, transparent 0);
-  background-size: 13px 13px;
-  background-repeat: no-repeat;
-  background-position: 1.5px center;
-  cursor: pointer;
-  transition:
-    background-color 0.15s ease,
-    background-position 0.15s ease;
-}
-
-.settings-toggle:checked {
-  background-color: var(--color-success);
-  background-position: 13.5px center;
-}
-
-.settings-toggle:focus-visible {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
 }
 
 /* ── Part Properties dialog (context menu → "Properties…") ─────────────────

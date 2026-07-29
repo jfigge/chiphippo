@@ -39,7 +39,6 @@ test("get returns the defaults when nothing is stored", () => {
 });
 
 test("the Settings-dialog keys carry their shipped defaults", () => {
-  assert.equal(DEFAULTS.showDeskHub, false);
   assert.equal(DEFAULTS.selectionColor, "#d0804a");
   assert.equal(DEFAULTS.defaultLedColor, "red");
 });
@@ -72,16 +71,19 @@ test("the AI connection ships unconfigured, and carries NO key", () => {
   );
 });
 
-test("set persists a Settings-dialog patch (desk hub + selection colour)", () => {
+test("set persists a Settings-dialog patch (selection colour + LED colour)", () => {
   const { dir, store } = freshStore();
   try {
-    const next = store.set({ showDeskHub: true, selectionColor: "#ff8800" });
-    assert.equal(next.showDeskHub, true);
+    const next = store.set({
+      selectionColor: "#ff8800",
+      defaultLedColor: "green",
+    });
     assert.equal(next.selectionColor, "#ff8800");
+    assert.equal(next.defaultLedColor, "green");
     // A fresh reader sees the persisted values, other defaults intact.
     const reread = new SettingsStore(dir).get();
-    assert.equal(reread.showDeskHub, true);
     assert.equal(reread.selectionColor, "#ff8800");
+    assert.equal(reread.defaultLedColor, "green");
     assert.equal(reread.pinoutFloat, DEFAULTS.pinoutFloat);
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });

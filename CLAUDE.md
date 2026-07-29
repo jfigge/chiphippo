@@ -1199,8 +1199,7 @@ Electron main process (src/app/main.js)
   per-window plumbing and no flash), the native menus/dialogs, and each new
   `BrowserWindow`'s pre-paint `backgroundColor` (`windowBackground()`). The
   `:root[data-theme]` blocks in theme.css stay as a manual override only.
-  The tab also drives **`showDeskHub`** (off by default — toggles the
-  `DeskHud` overlay via `setVisible`), **`selectionColor`** (`#rrggbb` or null → sets
+  The tab also drives **`selectionColor`** (`#rrggbb` or null → sets
   the `--color-selection` custom property that `.board-outline-path` strokes
   with, falling back to `--color-accent`), and **`defaultLedColor`** (one of
   `catalog/parts.js`'s `LED_COLOR_OPTIONS`, default `"red"` — the color any

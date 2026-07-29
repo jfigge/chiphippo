@@ -24,7 +24,6 @@
 import { el } from "./dom.js";
 import { DeskView } from "./components/desk-view.js";
 import { ZoomControl } from "./components/zoom-control.js";
-import { DeskHud } from "./components/desk-hud.js";
 import { DeskController } from "./components/desk-controller.js";
 import { SchematicView } from "./components/schematic-view.js";
 import { PalettePanel } from "./components/palette-panel.js";
@@ -569,7 +568,6 @@ async function init() {
   });
 
   let zoomControl = null;
-  let hud = null;
   let controller = null;
 
   // Parts palette (left panel; visibility persists in settings). Any part
@@ -776,7 +774,6 @@ async function init() {
     camera: settings.viewport,
     onViewportChange: (camera) => {
       zoomControl?.setZoom(camera.zoom);
-      hud?.update(camera);
       controller?.onViewportChange(camera);
       scheduleViewportSave(camera);
     },
@@ -1391,10 +1388,6 @@ async function init() {
     () => setMode(mode === "desk" ? "schematic" : "desk"),
   );
 
-  // The desk hub is always mounted but hidden until the "Show desk hub"
-  // setting turns it on (applySettings below sets the initial visibility).
-  hud = new DeskHud(desk, deskView);
-
   // ── Settings (About / Settings dialogs + live application) ────────────────
   // The Settings dialog is deliberately dumb: it broadcasts a patch, and this
   // is where the app persists it (settings.set) and applies it live. Keep the
@@ -1403,7 +1396,6 @@ async function init() {
   // becomes nativeTheme.themeSource), so persisting the patch below IS
   // applying it — for every window at once, not just this one.
   const applySettings = (s) => {
-    hud?.setVisible(s.showDeskHub === true);
     // The layout a NEW wire gets. Like the default LED colour it is read at
     // placement time, so this only has to keep the controller's copy current.
     controller?.setDefaultWireLayout(s.defaultWireLayout);

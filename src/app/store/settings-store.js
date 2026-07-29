@@ -63,10 +63,6 @@ const DEFAULTS = Object.freeze({
   // dialogs — then follow, so there is ONE switch for the whole app.
   theme: "system",
 
-  // Whether the desk hub (the camera/cursor readout overlay) is shown. Off by
-  // default — the Settings dialog's "Show desk hub" toggle drives it.
-  showDeskHub: false,
-
   // The selection-border colour (`#rrggbb`), or null to use the theme accent.
   // Applied by the renderer as the `--color-selection` custom property.
   // Defaults to the house orange (the `--color-wire-orange` value): the theme

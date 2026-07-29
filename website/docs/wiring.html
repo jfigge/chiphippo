@@ -116,14 +116,19 @@ locked until you press <strong>Stop</strong>.</p>
 <h2 id="wire-colors">Wire colors</h2>
 <p>Chip Hippo ships eight wire colors: <strong>red, black, blue, green, yellow,
 orange, white,</strong> and <strong>purple</strong>. The active color is shown as a swatch dot on
-the toolbar&#39;s <strong>Wire</strong> button — click it to open the color palette, or, while
-the wire tool is armed, press a digit <code>1</code>–<code>8</code> to jump straight to that color
-(1 = red, 2 = black, and so on through the list above). The color you pick
-<strong>stays pinned</strong> between wires — laying a chain of jumpers keeps whatever
-color you last chose, so pick red for a supply run and black for ground and
-they&#39;ll stay that way until you deliberately switch.</p>
-<p>You can also recolor a wire after the fact: right-click it and choose a new
-color from the context menu (which also offers <strong>Remove wire</strong>).</p>
+the toolbar&#39;s <strong>Wire</strong> button — click the dot itself to open the palette and
+pick a different one (picking a color sets it <em>without</em> arming the tool, so
+you can set up a color before you start wiring). Clicking the word <strong>Wire</strong>
+beside it still arms the tool as usual. While the tool is armed you can also
+press a digit <code>1</code>–<code>8</code> to jump straight to a color (1 = red, 2 = black, and so
+on through the list above). The color you pick <strong>stays pinned</strong> between
+wires — laying a chain of jumpers keeps whatever color you last chose, so pick
+red for a supply run and black for ground and they&#39;ll stay that way until you
+deliberately switch.</p>
+<p>You can also recolor a wire after the fact: right-click it and choose
+<strong>Properties…</strong>, which offers the same eight swatches alongside the wire&#39;s
+name, description, and layout method. (<strong>Delete Component</strong> on that menu is
+how a wire is removed.)</p>
 <h2 id="cross-board-wires">Cross-board wires</h2>
 <p>A wire&#39;s endpoints don&#39;t care which board or brick they land on — you can
 run a wire from one breadboard to another, from a board to a PSU terminal, or
@@ -147,6 +152,42 @@ wire snaps back on release.</li>
 <p>To delete a wire, click it to select it, then press <code>Delete</code> or <code>Backspace</code>
 (the same shortcut removes whatever&#39;s currently selected — a part, a board,
 or a wire).</p>
+<h2 id="wire-layout-direct-or-routed">Wire layout: direct or routed</h2>
+<p>Every wire is drawn one of two ways, its <strong>Layout Method</strong> — right-click a
+wire and choose <strong>Properties…</strong> to switch it:</p>
+<ul>
+<li><strong>Direct</strong> (the default) — the wire sags gently from one hole to the other,
+the way a real jumper lead does. There is nothing to position: the shape
+follows the two ends.</li>
+<li><strong>Routed</strong> — the wire runs as straight lines, and <em>you</em> decide where it
+goes. This is the one to reach for when a run would otherwise cross the
+middle of a chip, or when a tidy right-angled layout reads better than a
+fan of curves.</li>
+</ul>
+<p>A routed wire starts as a single straight line. To bend it:</p>
+<ul>
+<li><strong>Press anywhere along the wire and drag.</strong> A new point is added where you
+grabbed it, and the wire now runs start → point → end. Repeat to take it
+around whatever is in the way — up to twenty points per wire.</li>
+<li><strong>Hover an existing point</strong> and its knob appears; drag it to move that
+bend somewhere else.</li>
+<li><strong>Drop a point onto a neighbouring point, or onto either end of the wire,</strong>
+and it merges away — that&#39;s how you take a bend back out. The point you are
+dragging turns red as it lands, so you can see the merge before you release.</li>
+<li><strong>Drop an end cap onto one of the wire&#39;s own points</strong> and that point is
+absorbed: the wire now reaches where the bend used to be, so the bend has
+nothing left to do.</li>
+</ul>
+<p>Because a routed wire&#39;s body drag is spoken for, it has no rigid
+whole-wire translate — move it by its end caps instead. Switching a wire back
+to <strong>Direct</strong> deletes every point it carried and redraws it as the plain
+sagging curve; switching to <strong>Routed</strong> straightens it out, ready for points.
+Either way it&#39;s one undo step (<code>Cmd/Ctrl+Z</code>), as is every individual bend.</p>
+<p>Settings ▸ Appearance ▸ <strong>Wire layout</strong> picks which of the two a <em>newly laid</em>
+wire gets. It&#39;s read when the wire is laid, so changing it never disturbs
+wiring already on the desk. Circuits built by the
+<a href="ai-builder.html">AI builder</a> always arrive direct, whatever that setting
+says — the builder places holes, not hand-drawn routes.</p>
 <h2 id="addresses">Addresses</h2>
 <p>Wires never store pixel positions — they store <strong>addresses</strong>, the one
 cross-module currency for anything wireable. An address is
@@ -168,16 +209,25 @@ correctly no matter how the boards around it get rearranged.</p>
 hand. It&#39;s click-click like the wire tool: anchor a start hole, then click a
 second point to lay the whole run in one go, rendered as a single fat band
 rather than a fan of individual wires.</p>
-<p>Before you click the second point, set what you&#39;re laying:</p>
-<ul>
-<li><strong>Name</strong> — type a bus name like <code>D[7:0]</code> or <code>A[0:15]</code> in the toolbar; the
-tool parses the bit range from it. Laying a run onto a <strong>chip pin group</strong>
-(a catalog-defined bus of pins, like a chip&#39;s data lines) instead fans the
-bus directly onto those pins in bit order.</li>
-<li><strong>Width</strong> — while the bus tool is armed, press <code>1</code> for an 8-bit bus
-(<code>D[7:0]</code>) or <code>2</code> for a 16-bit bus (<code>D[15:0]</code>), the same two presets the
-toolbar&#39;s width menu offers.</li>
-</ul>
+<p>Before you click, set the <strong>width</strong>. The circled number on the toolbar&#39;s
+<strong>Bus</strong> button shows the active one, and clicking it opens the presets in a
+row: 2, 3, 4, 5, 6, 7, 8 and 16 bits, the current one ringed. Picking one sets
+the width without arming the tool, so you can set up before you start. From
+the keyboard — while the bus tool is armed — <code>2</code>–<code>8</code> lay a bus that many bits
+wide (<code>4</code> → <code>D[3:0]</code>) and <code>1</code> lays the 16-bit bus (<code>D[15:0]</code>); no single digit
+can spell 16, and the widest bus is worth the first key. The width names the
+bus too (<code>D[3:0]</code>); rename a placed one from its context menu.</p>
+<p>Landing the second click on a <strong>chip pin group</strong> (a catalog-defined bus of
+pins, like a chip&#39;s data lines) fans the bus onto those pins in bit order,
+instead of marching it down a second run.</p>
+<p><strong>Both ends have to fit.</strong> A bus claims one hole per bit at each end, so as
+you move the cursor every hole it would take is ringed — in the hover color
+when they&#39;re all free and on the strip, in red when they&#39;re not, and a red set
+can&#39;t be clicked. Aim an 8-bit bus five columns from the end of a board and
+you&#39;ll see five red rings instead of eight, which is the whole explanation:
+the run doesn&#39;t fit there. That check runs on the <strong>first</strong> click as well, so
+a start that could never work is refused where you make it rather than looking
+like the far end is at fault.</p>
 <p>A bus is metadata layered over the individual wires it lays — right-click a
 placed bus to <strong>Rename</strong>, <strong>Recolor</strong> (which recolors every member wire
 too), <strong>Un-bundle</strong> (keep the wires, drop the bus grouping), or **Delete bus</p>

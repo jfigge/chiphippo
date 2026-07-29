@@ -25,26 +25,6 @@ const { PopupManager } = await import("../popup-manager.js");
 const { SettingsDialog } = await import("../components/settings-dialog.js");
 const { AboutDialog } = await import("../components/about-dialog.js");
 
-test("SettingsDialog: opens seeded, and a toggle broadcasts a patch", () => {
-  resetDom();
-  SettingsDialog.open({ showDeskHub: false, selectionColor: null });
-
-  const dialog = document.querySelector(".settings-popup");
-  assert.ok(dialog, "the settings dialog mounted");
-  const checkbox = dialog.querySelector("#set-show-hub");
-  assert.equal(checkbox.checked, false, "seeded from the passed settings");
-
-  const patches = [];
-  window.addEventListener("chiphippo:settings-changed", (e) =>
-    patches.push(e.detail),
-  );
-  checkbox.checked = true;
-  checkbox.dispatchEvent(new window.Event("change"));
-  assert.deepEqual(patches, [{ showDeskHub: true }], "emits a shallow patch");
-
-  PopupManager.close();
-});
-
 test("SettingsDialog: the theme picker leads Appearance, seeds, and emits", () => {
   resetDom();
   SettingsDialog.open({ theme: "light" });
@@ -129,7 +109,7 @@ test("SettingsDialog: the wire-layout picker seeds, emits, and falls back", () =
 
 test("SettingsDialog: the colour input seeds from selectionColor and emits on input", () => {
   resetDom();
-  SettingsDialog.open({ showDeskHub: false, selectionColor: "#ff8800" });
+  SettingsDialog.open({ selectionColor: "#ff8800" });
   const input = document.querySelector("#set-selection-color");
   assert.equal(input.value, "#ff8800");
 
@@ -175,6 +155,7 @@ test("SettingsDialog: Appearance is the first, default-visible tab", () => {
   resetDom();
   SettingsDialog.open({});
   const dialog = document.querySelector(".settings-popup");
+  assert.ok(dialog, "the settings dialog mounted");
   const appearance = dialog.querySelector(
     '[data-panel="appearance"].settings-panel',
   );
@@ -236,8 +217,13 @@ test("SettingsDialog: the datasheet folder seeds from settings and Clear resets 
   assert.equal(path.textContent, "/data/sheets", "seeded with the saved path");
   assert.ok(!path.classList.contains("settings-folder-path--empty"));
 
-  const clear = document.querySelector(".settings-folder-clear");
+  const clear = document.querySelector(".settings-action--danger");
   assert.ok(!clear.hidden, "Clear is offered when a folder is set");
+  assert.equal(
+    clear.textContent,
+    "Clear",
+    "it says so, rather than drawing it",
+  );
 
   const patches = [];
   window.addEventListener("chiphippo:settings-changed", (e) =>
@@ -257,7 +243,7 @@ test("SettingsDialog: with no datasheet folder, Clear is hidden and path is empt
   const path = document.querySelector(".settings-folder-path");
   assert.equal(path.textContent, "No folder selected");
   assert.ok(path.classList.contains("settings-folder-path--empty"));
-  assert.ok(document.querySelector(".settings-folder-clear").hidden);
+  assert.ok(document.querySelector(".settings-action--danger").hidden);
   PopupManager.close();
 });
 
@@ -391,7 +377,7 @@ test("SettingsDialog: the API key bypasses the settings patch entirely", async (
   const key = document.querySelector("#set-ai-key");
   assert.equal(key.type, "password");
   key.value = "sk-secret";
-  [...document.querySelectorAll(".settings-folder-browse")]
+  [...document.querySelectorAll(".settings-action")]
     .find((b) => b.textContent === "Save key")
     .dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
   await flush();

@@ -100,8 +100,6 @@ current settings, so it doesn&#39;t matter which you use.</p>
 operating system&#39;s own setting; the other two pin it. The choice applies to
 every Chip Hippo window at once, including the floating pinout, memory
 inspector and user-guide windows, and to the native menus and dialogs.</li>
-<li><strong>Show desk hub</strong> — off by default. This toggles a debug overlay (the
-<code>DeskHud</code>) on the desk; most users can leave it off.</li>
 <li><strong>Selection border colour</strong> — a <code>#rrggbb</code> colour picker for the outline
 drawn around whatever&#39;s selected on the desk. Leave it unset to use the
 theme&#39;s default accent colour instead of a custom one.</li>
@@ -110,14 +108,20 @@ seven-segment digit gets. Unlike the others this one isn&#39;t applied live; it&
 read when you place a part, so changing it doesn&#39;t recolour anything already
 on the desk. Any placed part&#39;s colour can still be changed from its
 <strong>Properties…</strong> dialog.</li>
+<li><strong>Wire layout</strong> — <strong>Direct</strong> (the default) or <strong>Routed</strong>, the layout method
+a newly laid wire gets. Direct wires sag from hole to hole; routed wires run
+straight and can be bent around obstacles by dragging points into them (see
+<a href="wiring.html#wire-layout-direct-or-routed">Wiring</a>). Like the LED colour it&#39;s
+read when you lay a wire, so wires already on the desk keep the layout they
+have — change one from its own <strong>Properties…</strong> dialog.</li>
 </ul>
-<p>Everything but the LED colour takes effect immediately — there&#39;s no separate
-Apply or OK step.</p>
+<p>Everything but the LED colour and the wire layout takes effect immediately —
+there&#39;s no separate Apply or OK step.</p>
 <h2 id="data-sheets">Data Sheets</h2>
 <p>The <strong>Data Sheets</strong> tab points Chip Hippo at an external folder of
 manufacturer datasheet PDFs on your machine. Click <strong>Browse…</strong> to pick a
 folder with the native file picker; the chosen path is shown next to it, with
-a trash-can button to clear it back to no folder selected.</p>
+a <strong>Clear</strong> button that resets it to no folder selected.</p>
 <p>Name the PDFs in that folder after each chip&#39;s catalog reference (for
 example <code>74LS00.pdf</code>). When a chip&#39;s file is found there, its
 <a href="chip-library.html">pin-assignments window</a> grows a button that opens the PDF

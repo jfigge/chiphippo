@@ -50,17 +50,6 @@ const DOWNLOAD_SVG =
   '<polyline points="7 10 12 15 17 10"/>' +
   '<line x1="12" y1="3" x2="12" y2="15"/></svg>';
 
-/** A line-drawn trash-can glyph for the "clear the datasheet folder" action. */
-const TRASH_SVG =
-  '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" ' +
-  'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
-  'stroke-linejoin="round" aria-hidden="true">' +
-  '<polyline points="3 6 5 6 21 6"/>' +
-  '<path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 ' +
-  '2 0 0 1 2 2v2"/>' +
-  '<line x1="10" y1="11" x2="10" y2="17"/>' +
-  '<line x1="14" y1="11" x2="14" y2="17"/></svg>';
-
 /** Appearance ▸ Theme. "System" follows the OS; the other two pin it. The
     choice is persisted like any other setting, and MAIN acts on it — it
     becomes Electron's `nativeTheme.themeSource`, which every window's
@@ -212,7 +201,7 @@ function buildAiRows(settings, providers) {
   // goes straight to main's OS-encrypted store, because settings.json is
   // plaintext and is handed back to this window in full on every read.
   const saveKey = el("button", {
-    class: "settings-folder-browse",
+    class: "settings-action",
     type: "button",
     text: "Save key",
     onClick: async () => {
@@ -230,7 +219,10 @@ function buildAiRows(settings, providers) {
     },
   });
   const clearKey = el("button", {
-    class: "settings-folder-browse",
+    // Destructive, and irreversibly so: the key is write-only from here (it is
+    // never read back into this window), so forgetting it means pasting it
+    // again from wherever the user got it.
+    class: "settings-action settings-action--danger",
     type: "button",
     text: "Clear key",
     onClick: async () => {
@@ -242,7 +234,7 @@ function buildAiRows(settings, providers) {
     },
   });
   const testBtn = el("button", {
-    class: "settings-folder-browse",
+    class: "settings-action",
     type: "button",
     text: "Test connection",
     onClick: async () => {
@@ -349,14 +341,6 @@ export class SettingsDialog {
       onPick: (theme) => SettingsDialog.#emit({ theme }),
     });
 
-    const showHub = el("input", {
-      class: "settings-toggle",
-      type: "checkbox",
-      id: "set-show-hub",
-      checked: Boolean(settings.showDeskHub),
-      onChange: (e) => SettingsDialog.#emit({ showDeskHub: e.target.checked }),
-    });
-
     const selColor = el("input", {
       class: "settings-color",
       type: "color",
@@ -393,10 +377,12 @@ export class SettingsDialog {
       title: hasDir ? settings.datasheetDir : "",
     });
     const clearBtn = el("button", {
-      class: "settings-folder-clear",
+      class: "settings-action settings-action--danger",
       type: "button",
+      // A WORD, not a glyph: it sits beside Browse… and reads as its peer, the
+      // same shape the AI tab's "Clear key" already uses.
+      text: "Clear",
       title: "Clear the datasheet folder",
-      "aria-label": "Clear the datasheet folder",
       hidden: !hasDir,
       onClick: () => {
         folderPath.textContent = "No folder selected";
@@ -406,9 +392,8 @@ export class SettingsDialog {
         SettingsDialog.#emit({ datasheetDir: null });
       },
     });
-    clearBtn.innerHTML = TRASH_SVG;
     const browseBtn = el("button", {
-      class: "settings-folder-browse",
+      class: "settings-action",
       type: "button",
       title: "Choose the datasheet folder",
       onClick: async () => {
@@ -434,7 +419,7 @@ export class SettingsDialog {
     // a second popup rather than stacking it, so the progress window would
     // otherwise sit invisibly behind this one until it was dismissed.
     const downloadBtn = el("button", {
-      class: "settings-folder-browse",
+      class: "settings-action",
       type: "button",
       title: "Download datasheets into the app's own folder",
       onClick: () => {
@@ -487,14 +472,6 @@ export class SettingsDialog {
           el("div", { class: "settings-row" }, [
             el("label", { class: "settings-label", text: "Theme" }),
             themePicker,
-          ]),
-          el("div", { class: "settings-row settings-row--toggle" }, [
-            el("label", {
-              class: "settings-label",
-              for: "set-show-hub",
-              text: "Show desk hub",
-            }),
-            showHub,
           ]),
           el("div", { class: "settings-row" }, [
             el("label", {

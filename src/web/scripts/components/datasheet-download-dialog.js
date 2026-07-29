@@ -87,7 +87,7 @@ export class DatasheetDownloadDialog {
     const failures = el("ul", { class: "datasheet-dl-failures", hidden: true });
 
     const actionBtn = el("button", {
-      class: "settings-folder-browse",
+      class: "settings-action",
       type: "button",
       text: "Cancel",
       onClick: () => {
