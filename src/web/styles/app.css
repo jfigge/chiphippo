@@ -2605,6 +2605,77 @@ textarea.annotation-editor {
   background: var(--color-surface-1);
 }
 
+/* ── Datasheet download progress (Settings ▸ Data Sheets ▸ Download…) ───────
+   Its own popup rather than a row in the settings card: the run takes real
+   time, can be cancelled, and can half-succeed, so it needs a counter, a bar,
+   and room to name what did not arrive. */
+.datasheet-dl-popup {
+  width: 380px;
+  max-width: 90vw;
+  /* The header owns its own padding (shared with .properties-popup below). */
+  padding: 0;
+}
+
+.datasheet-dl-status {
+  margin: 0;
+  font-size: 13px;
+  color: var(--color-text);
+}
+
+/* The track carries the border; the fill is the only moving part, so progress
+   costs one style write per file rather than a re-layout. */
+.datasheet-dl-bar {
+  margin-top: var(--space-3);
+  height: 6px;
+  overflow: hidden;
+  background: var(--color-surface-0);
+  border: 1px solid var(--color-overlay);
+  border-radius: var(--radius-lg);
+}
+
+.datasheet-dl-fill {
+  width: 0;
+  height: 100%;
+  background: var(--color-accent);
+  transition: width 0.15s ease;
+}
+
+/* The part in flight while running, the folder it all landed in when done. */
+.datasheet-dl-detail {
+  margin: var(--space-2) 0 0;
+  min-height: 16px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--color-muted);
+}
+
+/* Named failures, scrollable — a summary that says "38 of 41" without saying
+   which three is a folder listing the user has to do by hand. */
+.datasheet-dl-failures {
+  margin: var(--space-3) 0 0;
+  padding: 0 0 0 var(--space-4);
+  max-height: 120px;
+  overflow-y: auto;
+  font-size: 11px;
+  line-height: 1.6;
+  color: var(--color-danger);
+}
+
+.datasheet-dl-failures-head {
+  list-style: none;
+  margin-left: calc(-1 * var(--space-4));
+  color: var(--color-muted);
+}
+
+.datasheet-dl-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: var(--space-4);
+}
+
 /* A text/password field in a stacked row (AI ▸ base URL, model, API key).
    Matches .properties-text-input — same box, same focus ring — but scoped to
    the settings card, whose rows own their own spacing. */
@@ -2678,7 +2749,11 @@ textarea.annotation-editor {
   padding: 0;
 }
 
-.properties-popup .popup-header {
+/* Shared with the datasheet-download popup: the same small centred modal, so
+   it wants the same titled bar with its close button on the right rather than
+   a fourth copy of these rules. */
+.properties-popup .popup-header,
+.datasheet-dl-popup .popup-header {
   display: flex;
   align-items: center;
   gap: var(--space-3);
@@ -2688,7 +2763,8 @@ textarea.annotation-editor {
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
 }
 
-.properties-popup .popup-title {
+.properties-popup .popup-title,
+.datasheet-dl-popup .popup-title {
   flex: 1;
 }
 

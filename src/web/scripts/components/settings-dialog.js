@@ -31,6 +31,7 @@ import { el } from "../dom.js";
 import { PopupManager } from "../popup-manager.js";
 import { LED_COLOR_OPTIONS } from "../catalog/parts.js";
 import { buildColorSwatches } from "./color-swatches.js";
+import { DatasheetDownloadDialog } from "./datasheet-download-dialog.js";
 
 /** A line-drawn book glyph for the "browse the datasheet folder" affordance. */
 const FOLDER_SVG =
@@ -38,6 +39,15 @@ const FOLDER_SVG =
   'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
   'stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 ' +
   '2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>';
+
+/** A line-drawn tray-and-arrow glyph for the "download the datasheets" action. */
+const DOWNLOAD_SVG =
+  '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" ' +
+  'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+  'stroke-linejoin="round" aria-hidden="true">' +
+  '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>' +
+  '<polyline points="7 10 12 15 17 10"/>' +
+  '<line x1="12" y1="3" x2="12" y2="15"/></svg>';
 
 /** A line-drawn trash-can glyph for the "clear the datasheet folder" action. */
 const TRASH_SVG =
@@ -432,6 +442,21 @@ export class SettingsDialog {
     });
     browseBtn.innerHTML = `${FOLDER_SVG}<span>Browse…</span>`;
 
+    // Fill the app's own datasheet folder from the web and point the setting
+    // above at it. This CLOSES the settings dialog first: PopupManager queues
+    // a second popup rather than stacking it, so the progress window would
+    // otherwise sit invisibly behind this one until it was dismissed.
+    const downloadBtn = el("button", {
+      class: "settings-folder-browse",
+      type: "button",
+      title: "Download datasheets into the app's own folder",
+      onClick: () => {
+        PopupManager.close();
+        DatasheetDownloadDialog.open();
+      },
+    });
+    downloadBtn.innerHTML = `${DOWNLOAD_SVG}<span>Download…</span>`;
+
     // The AI panel is filled in once main answers with the provider list, so
     // the dialog itself stays synchronous. It is never the open tab, so the
     // placeholder is not something a user normally sees.
@@ -530,6 +555,23 @@ export class SettingsDialog {
               "after each chip (e.g. 74LS00.pdf). When a matching PDF is " +
               "found, a chip's pin-assignments window shows a button to open " +
               "it.",
+          }),
+          el("div", { class: "settings-row settings-row--stack" }, [
+            el("label", {
+              class: "settings-label",
+              text: "Get them automatically",
+            }),
+            el("div", { class: "settings-folder-actions" }, [downloadBtn]),
+          ]),
+          el("p", {
+            class: "settings-hint",
+            text:
+              "Downloads a datasheet for every part Chip Hippo has a " +
+              "published source on file for — the manufacturer's own " +
+              "document where there is one, otherwise a reference library — " +
+              "into Chip Hippo's own folder, and points the setting above at " +
+              "it. Parts with no source are skipped, and files already there " +
+              "are replaced.",
           }),
         ],
       ),

@@ -49,12 +49,44 @@ in your system's default viewer. This is separate from the small datasheet
 crop the pinout window already shows for most chips — the external folder is
 for the full manufacturer document, not the built-in crop.
 
+If you don't already have a collection, **Download…** fetches one for you. It
+pulls a datasheet for every part Chip Hippo has a published source on file
+for, names each file after the part it belongs to, and points the setting
+above at that folder when it's done — so the buttons appear with nothing else
+to set up. A progress window counts the files in and names anything that
+couldn't be fetched; closing it stops the download and keeps whatever already
+arrived. The sources are:
+
+- [Texas Instruments](https://www.ti.com/) — the current manufacturer's own
+  documents for much of the 74LS family;
+- [Microchip](https://www.microchip.com/) — the Atmel EEPROM parts;
+- [Alliance Memory](https://www.alliancememory.com/) — the large SRAM;
+- the [Western Design Center](https://www.westerndesigncenter.com/) — likewise
+  for the 65xx parts;
+- the [USC EE 459Lx reference
+  library](https://ece-classes.usc.edu/ee459/library/) — vendor scans of the
+  older 74LS parts, collected for a university course, plus the HD44780, the
+  memory parts and the DIP resistor/oscillator packages;
+- a datasheet archive, for the one part whose maker no longer publishes it.
+
+Expect a few tens of megabytes in total; the modern manufacturer PDFs are
+much larger than the old scans.
+
+Between them they don't carry every part in the catalog, so some chips will
+still have no PDF button. Press **Download…** again whenever you like — it
+replaces what it fetched last time. It always writes to Chip Hippo's own
+folder and never to one you picked yourself, so a collection of your own is
+never overwritten: **Browse…** and **Download…** are simply two ways of
+setting the same folder, and whichever you did last is the one in effect.
+
 ## AI
 
 The **AI** tab is where you point Chip Hippo at your own AI connection, for
 the [AI circuit builder](ai-builder.md). Nothing here is required — the app
-works completely without it, and makes no outbound request of any kind until
-a connection is configured and you ask the builder for something.
+works completely without it, and contacts no AI provider until a connection is
+configured and you ask the builder for something. (The only other time Chip
+Hippo reaches the network at all is the datasheet **Download…** button above,
+and only while you're pressing it.)
 
 ![The AI tab of the Settings dialog](images/settings-ai.png)
 

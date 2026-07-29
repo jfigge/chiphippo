@@ -3,8 +3,8 @@
 The **AI builder** is a bottom-docked panel where you describe a circuit in
 plain English and get a real, wired, **simulation-proven** design to place on
 the desk. It uses *your own* AI connection — your key, your provider, your
-account — and Chip Hippo makes no network request of any kind until you've set
-one up and asked it for something.
+account — and Chip Hippo contacts no AI provider until you've set one up and
+asked it for something.
 
 ![The AI builder panel docked along the bottom of the window](images/ai-builder.png)
 

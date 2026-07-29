@@ -84,6 +84,10 @@ for (const [channel, event] of [
   ["demo:host-inbound", "chiphippo:demo-host-inbound"],
   ["ai:delta", "chiphippo:ai-delta"],
   ["ai:done", "chiphippo:ai-done"],
+  // Settings ▸ Data Sheets ▸ Download counts its way through the table one
+  // part at a time; a single resolved promise at the end would leave the
+  // dialog with nothing to show for the minute it takes.
+  ["datasheet:progress", "chiphippo:datasheet-progress"],
 ]) {
   ipcRenderer.on(channel, (_e, detail) => {
     window.dispatchEvent(new CustomEvent(event, { detail }));
@@ -212,6 +216,19 @@ contextBridge.exposeInMainWorld("chiphippo", {
   // folder) in the OS PDF viewer. Used by the pinout window's "open datasheet"
   // button. Resolves to whether a file was opened.
   openDatasheet: (ref) => ipcRenderer.invoke("datasheet:open", ref),
+
+  // ── Downloading the datasheets ─────────────────────────────────────────────
+  // Settings ▸ Data Sheets ▸ Download. `download()` fetches every datasheet
+  // main's hard-coded table covers into the app's own folder and resolves with
+  // `{ dir, total, saved, cancelled, failures }` — the caller then persists
+  // `dir` as `datasheetDir` like any other setting. No URL and no path crosses
+  // this way: the renderer asks for "the datasheets" and is told where they
+  // went. Progress arrives meanwhile as `chiphippo:datasheet-progress` events
+  // carrying `{ done, total, ref, ok }`; `cancel()` stops the run in flight.
+  datasheets: {
+    download: () => ipcRenderer.invoke("datasheet:download"),
+    cancel: () => ipcRenderer.invoke("datasheet:download:cancel"),
+  },
 
   // ── Example circuits (Feature 270) ─────────────────────────────────────────
   // The demonstration bench `make demos` builds for every benchable 74xx part,

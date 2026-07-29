@@ -124,11 +124,41 @@ example <code>74LS00.pdf</code>). When a chip&#39;s file is found there, its
 in your system&#39;s default viewer. This is separate from the small datasheet
 crop the pinout window already shows for most chips — the external folder is
 for the full manufacturer document, not the built-in crop.</p>
+<p>If you don&#39;t already have a collection, <strong>Download…</strong> fetches one for you. It
+pulls a datasheet for every part Chip Hippo has a published source on file
+for, names each file after the part it belongs to, and points the setting
+above at that folder when it&#39;s done — so the buttons appear with nothing else
+to set up. A progress window counts the files in and names anything that
+couldn&#39;t be fetched; closing it stops the download and keeps whatever already
+arrived. The sources are:</p>
+<ul>
+<li><a href="https://www.ti.com/">Texas Instruments</a> — the current manufacturer&#39;s own
+documents for much of the 74LS family;</li>
+<li><a href="https://www.microchip.com/">Microchip</a> — the Atmel EEPROM parts;</li>
+<li><a href="https://www.alliancememory.com/">Alliance Memory</a> — the large SRAM;</li>
+<li>the <a href="https://www.westerndesigncenter.com/">Western Design Center</a> — likewise
+for the 65xx parts;</li>
+<li>the <a href="https://ece-classes.usc.edu/ee459/library/">USC EE 459Lx reference
+library</a> — vendor scans of the
+older 74LS parts, collected for a university course, plus the HD44780, the
+memory parts and the DIP resistor/oscillator packages;</li>
+<li>a datasheet archive, for the one part whose maker no longer publishes it.</li>
+</ul>
+<p>Expect a few tens of megabytes in total; the modern manufacturer PDFs are
+much larger than the old scans.</p>
+<p>Between them they don&#39;t carry every part in the catalog, so some chips will
+still have no PDF button. Press <strong>Download…</strong> again whenever you like — it
+replaces what it fetched last time. It always writes to Chip Hippo&#39;s own
+folder and never to one you picked yourself, so a collection of your own is
+never overwritten: <strong>Browse…</strong> and <strong>Download…</strong> are simply two ways of
+setting the same folder, and whichever you did last is the one in effect.</p>
 <h2 id="ai">AI</h2>
 <p>The <strong>AI</strong> tab is where you point Chip Hippo at your own AI connection, for
 the <a href="ai-builder.html">AI circuit builder</a>. Nothing here is required — the app
-works completely without it, and makes no outbound request of any kind until
-a connection is configured and you ask the builder for something.</p>
+works completely without it, and contacts no AI provider until a connection is
+configured and you ask the builder for something. (The only other time Chip
+Hippo reaches the network at all is the datasheet <strong>Download…</strong> button above,
+and only while you&#39;re pressing it.)</p>
 <p><img src="images/settings-ai.png" alt="The AI tab of the Settings dialog"></p>
 <ul>
 <li><strong>Provider</strong> — <strong>Anthropic</strong>, or <strong>OpenAI-compatible</strong>. The second covers

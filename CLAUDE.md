@@ -250,9 +250,11 @@ website** (`make docs` → `website/docs/`), and a **PDF** (`make pdf` →
   the by-PATH reader `project-migrate.js` uses to inline a v3 desktop file —
   `mem-store.js`, the atomic byte store behind a memory chip's `.bin`
   sidecar, Feature 180, and `credential-store.js`, the `safeStorage`-encrypted
-  API-key sidecar, Feature 260), plus `ai/` (`providers.js` + `client.js`) —
-  the app's ONLY outbound network call, in main because the renderer's CSP
-  forbids one.
+  API-key sidecar, Feature 260), plus `ai/` (`providers.js` + `client.js`)
+  and `datasheets/` (`sources.js` + `download.js`) — the app's ONLY two
+  outbound network calls, both in main because the renderer's CSP forbids one
+  (and both the same shape: a hard-coded table of where it may go, beside the
+  thing that goes there).
   **Files**: there is exactly ONE — the open PROJECT (`<name>.chiphippo`),
   which holds every desktop's document and every programmed ROM's bytes (see
   "Projects & tabbed desktops" below). The whole file surface is
@@ -1098,7 +1100,10 @@ Electron main process (src/app/main.js)
   **`datasheetDir`** (the external datasheet-PDF folder, default null) — its
   Browse button calls the native `settings.chooseDatasheetDir` picker and
   emits the chosen path; no live apply
-  (the pinout window reads it at open time). The **AI** tab drives the
+  (the pinout window reads it at open time). Beside it, **Download…** FILLS
+  that folder from the web (see the datasheet-download note below), and both
+  end in the same one-line patch — the setting is a path either way, and
+  nothing downstream knows which button produced it. The **AI** tab drives the
   NON-SECRET half of the user's connection (`ai: {provider, baseUrl, model}`,
   emitted WHOLE as an object-valued setting) and is the one panel built
   asynchronously — its picker comes from `ai:providers`, so it cannot drift
@@ -1141,6 +1146,78 @@ Electron main process (src/app/main.js)
   buttons are one box with two glyphs (`.pinout-header-btn`, one CSS rule), and
   they are the only two reasons the otherwise bridge-free pinout window loads
   `preload.js`.
+- **Downloading the datasheets** (`app/datasheets/sources.js` +
+  `app/datasheets/download.js` + `components/datasheet-download-dialog.js`):
+  Settings ▸ Data Sheets ▸ **Download…** FILLS the folder the tab points at,
+  so the external-PDF button above works with nothing for the user to find or
+  name. **THE RENDERER NAMES NO URL AND NO PATH.** It asks for "the
+  datasheets" and is told where they landed; the ref → URL table is
+  hard-coded in MAIN, which is the same rule that puts every path decision
+  there — a download button must not become a way to make the app fetch
+  something arbitrary. The table is **hand-written, never derived**: a part id
+  is not a file name anywhere in the world (the '86 is `sn74ls86a.pdf`, the
+  '139 lives inside the '138's file, WDC ships the '02 as `w65c02s.pdf`), so
+  guessing a vendor's naming buys a silent 404 per part. It is **ONE BLOCK PER
+  LIBRARY**, each owning its own `base` with its parts' paths RELATIVE to it,
+  and that is the whole extensibility story: a part whose datasheet lives on
+  another host is a line in a new block (TI, Microchip and Western Design
+  Center for the parts their makers still publish, USC's course library for
+  the older scans), never a special case in the downloader. Nothing about a
+  vendor's naming is patterned either, and BOTH ways it can bite are already
+  in the table: TI files a sheet under the DEVICE it was written around, so
+  the revision suffix is part of the name ('73A, '107A, '257B) and the '01
+  lives under its 54-series sibling; Microchip's `docNNNN` numbers say nothing
+  at all about the part, and several exist per part (doc0258 is the '16-T,
+  TSOP-only, against doc0540's mainline '16 with the DIP-24 this catalog
+  actually seats). A source is therefore VERIFIED — opened, and its part
+  number and package read (by RENDERING page 1 where the file is a scan with
+  no extractable text, which is how the '83 was confirmed as Motorola's
+  SN54/74LS83A and not the '283 that replaced it) — before it is written down,
+  and its host is chosen
+  for one that ANSWERS A PROGRAM rather than only a browser: distributor
+  mirrors and some vendor front-ends sit behind bot protection and return a
+  403, or an HTML challenge with status 200, so `ww1.microchip.com` is used
+  and not the `www…/content/dam/…` path the site itself links. Every block is
+  a MANUFACTURER's own file server bar one — the '83's, an archive, because
+  Motorola's TTL line went to a host that serves HTML and TI documents only
+  the '283; an archive link is the one expected to rot, which the run reports
+  by name rather than hiding and which costs one part, not the download. The
+  one entry
+  whose KEY is not its part number is `AS6C1024`, which is the catalog's name
+  for a chip Alliance Memory call the AS6C1008 (their `/as6c1024/` is a 404
+  falling through to the home page); the sheet is right, the catalog id is
+  the thing that is off, and a ref is stamped into saved documents so
+  correcting it is a migration rather than a rename. The
+  escape check is therefore PER ENTRY, against the
+  library it was declared in — `base` rides along on every flattened source —
+  since there is no single base left to compare against, and an absolute URL
+  pasted into a `parts` block is exactly what that check is for. It is
+  **deliberately partial**: a part with no entry is simply not downloaded.
+  `tests/datasheet-sources.test.js` holds every KEY against the real catalog
+  (imported, not copied) because a ref typo is invisible — the PDF downloads
+  fine under a name the `<ref>.pdf` lookup will never ask for — and it holds
+  each library to an `https://…/` base (a base with no trailing slash makes
+  `new URL` drop its last segment, turning every part in the block into a 404
+  that reads like the vendor moved their files) and forbids two blocks
+  claiming one part (the flatten would silently keep the later copy). The
+  destination is the app's OWN `userData/datasheets/` (a sibling of
+  `memory/`), never a folder the user picked — the run REPLACES what it finds,
+  and a button that overwrites files may only ever be aimed at a directory the
+  app made; Browse… and Download… then end in the same one-line
+  `{ datasheetDir }` patch, which is the only thing either leaves behind.
+  Fetching is **sequential** (the whole point is the `n/TOTAL` count, and a
+  counter that jumps is worse than one that takes longer) and every body is
+  checked for the `%PDF` magic before it is written, because a host that
+  answers a missing file with a friendly HTML page and status 200 would
+  otherwise land `74LS00.pdf` as something that opens as garbage. Progress is
+  a one-way `datasheet:progress` push (→ `chiphippo:datasheet-progress`),
+  separate from the `datasheet:download` invoke that resolves with the
+  summary, exactly as `ai:delta` is separate from `ai:start`. The dialog
+  REPLACES the Settings card rather than sitting on it (PopupManager QUEUES a
+  second popup rather than stacking it, so the caller closes Settings first),
+  DISMISSING IT CANCELS (it is the run's only user interface), and it NAMES
+  the parts that failed — "38 of 41" without saying which three leaves the
+  user to diff a folder by hand.
 - **Example circuits** (Feature 270): every benchable 74xx part's demonstration
   bench, shipped INSIDE the app as `src/web/demos/<ref>.json` and offered as a
   button on that part's pin-assignments window. **One build, two outputs**:

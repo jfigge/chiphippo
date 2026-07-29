@@ -52,6 +52,7 @@ const {
   DESKTOP_EXT,
 } = require("./store/project-store");
 const memStore = require("./store/mem-store");
+const datasheetDownload = require("./datasheets/download");
 const { reseatImages } = require("./store/project-images");
 const {
   rememberRecent,
@@ -541,6 +542,58 @@ async function openDatasheetPdf(ref) {
   const err = await shell.openPath(file); // "" on success, else a message
   if (err) console.error("[main] datasheet:open error:", err);
   return !err;
+}
+
+// ── Downloading the datasheets ────────────────────────────────────────────────
+// Settings ▸ Data Sheets ▸ Download fetches the PDFs named by
+// datasheets/sources.js into the app's OWN folder under userData, then the
+// renderer points `datasheetDir` at it. The folder is app-owned rather than
+// user-chosen deliberately: the download replaces what it finds, and a button
+// that overwrites files must only ever be pointed at a directory the app made.
+// A user who keeps their own collection elsewhere still has Browse…, and the
+// setting is a plain path either way — nothing downstream knows or cares which
+// of the two it came from.
+
+/** The folder the Download button fills (a sibling of memory/ under userData). */
+function datasheetDir() {
+  return path.join(app.getPath("userData"), "datasheets");
+}
+
+/** The run in flight, or null. One at a time: a second press while the first
+    is going would race two writers onto the same files. */
+let datasheetRun = null;
+
+/**
+ * Download every datasheet in the table, pushing `datasheet:progress` to the
+ * asking window as each lands. Resolves with the run's summary.
+ */
+async function startDatasheetDownload(sender) {
+  if (datasheetRun)
+    return { ok: false, error: "a download is already running" };
+  const controller = new AbortController();
+  datasheetRun = { controller };
+  const send = (payload) => {
+    if (sender && !sender.isDestroyed())
+      sender.send("datasheet:progress", payload);
+  };
+  try {
+    return await datasheetDownload.downloadAll({
+      dir: datasheetDir(),
+      signal: controller.signal,
+      onProgress: send,
+    });
+  } catch (err) {
+    return { ok: false, error: String(err?.message ?? err) };
+  } finally {
+    datasheetRun = null;
+  }
+}
+
+/** Stop the run in flight. Returns whether there was one to stop. */
+function cancelDatasheetDownload() {
+  if (!datasheetRun) return false;
+  datasheetRun.controller.abort();
+  return true;
 }
 
 // ─── Chip pin-assignments windows (Feature 100) ───────────────────────────────
@@ -1525,6 +1578,18 @@ function registerIpc() {
   // Data Sheets) in the OS PDF viewer. Requested by the pinout window's
   // "open datasheet" button; a no-op (returns false) when no PDF is on file.
   ipcMain.handle("datasheet:open", (_event, ref) => openDatasheetPdf(ref));
+
+  // Settings ▸ Data Sheets ▸ Download: fetch every datasheet the hard-coded
+  // table covers into the app's own folder. The renderer names no URL and no
+  // path — it asks for "the datasheets" and is told where they landed, then
+  // persists that as `datasheetDir` like any other setting. Progress arrives
+  // as one-way `datasheet:progress` pushes so the dialog can count them in.
+  ipcMain.handle("datasheet:download", (event) =>
+    startDatasheetDownload(event.sender),
+  );
+  ipcMain.handle("datasheet:download:cancel", () => ({
+    ok: cancelDatasheetDownload(),
+  }));
 
   // Example circuits (Feature 270). `demo:open` is the PINOUT window's — it has
   // only a ref, so main relays the request to the app window; `demo:read` is the
