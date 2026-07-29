@@ -202,6 +202,11 @@ function mount(popup) {
   document.body.appendChild(dialogEl);
   state.active = { popup, dialogEl };
   dialogEl.showModal();
+  // A POSITIONED popup (menu / popover) is placed only NOW: a card has to be
+  // mounted and shown before it can be measured, and a popup QUEUED behind
+  // another mounts long after its coordinates were named — placing it when it
+  // was asked for would clamp a node that is still unmounted and zero-size.
+  if (popup.place) placeCard(popup.element, popup.place.x, popup.place.y);
 
   const focusTarget =
     popup.element.querySelector("[data-autofocus]") ||
@@ -218,8 +223,12 @@ export const PopupManager = {
   /**
    * Mount a popup. If one is already open the new popup is QUEUED (shown when
    * the current one closes) rather than replacing it. Focuses the first
-   * `[data-autofocus]` control, or the first enabled button.
-   * @param {{ element: HTMLElement, onMaskClick?: () => void, onClose?: () => void, variant?: string }} popup
+   * `[data-autofocus]` control, or the first enabled button. `place` is what
+   * makes a popup POSITIONED rather than centred: its card is clamped to those
+   * viewport coordinates when it mounts (see mount()).
+   * @param {{ element: HTMLElement, onMaskClick?: () => void,
+   *   onClose?: () => void, variant?: string,
+   *   place?: {x: number, y: number} }} popup
    */
   open(popup) {
     if (!popup || !popup.element) return;
@@ -330,9 +339,28 @@ export const PopupManager = {
     };
 
     const menuEl = buildCard(items, emptyLabel, ctx);
-    this.open({ element: menuEl, variant: "menu" });
-    // Position after mount so the menu's size is measurable.
-    placeCard(menuEl, x, y);
+    this.open({ element: menuEl, variant: "menu", place: { x, y } });
+  },
+
+  /**
+   * A small POPOVER at screen coordinates: `menu`'s positioned, non-dimming
+   * host with the caller's OWN DOM in the card instead of an items array (the
+   * Wire button's color picker). Clamped into the viewport exactly as a menu
+   * is, and dismissed the same two ways — a click outside it, or Escape.
+   *
+   * The card is a plain SURFACE and adds no role of its own: whatever goes in
+   * brings its own semantics (the color picker is a `role="radiogroup"`), and
+   * wrapping that in an unnamed dialog layer would only bury it. For the same
+   * reason a popover never closes itself when something inside it is used —
+   * that is the content's call, so a picker calls `PopupManager.close()` in
+   * its own handler.
+   * @param {{ x: number, y: number, element: HTMLElement,
+   *   onClose?: () => void }} opts
+   */
+  popover({ x = 0, y = 0, element, onClose } = {}) {
+    if (!element) return;
+    const card = el("div", { class: "popup-popover" }, [element]);
+    this.open({ element: card, variant: "popover", place: { x, y }, onClose });
   },
 
   /**

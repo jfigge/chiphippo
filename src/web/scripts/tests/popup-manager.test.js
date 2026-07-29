@@ -22,6 +22,11 @@
 // slot every label lines up against, right-aligned accelerators, submenu
 // flyouts, and rows whose × removes the entry WITHOUT closing the menu (an
 // Open Recent entry).
+//
+// And the popover() shape (the Wire button's color picker): the caller's own
+// DOM in a positioned card, placed WHEN IT MOUNTS rather than when it was
+// asked for — which is the whole point of `place`, since a queued popup is
+// still unmounted and unmeasurable at request time.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -205,5 +210,72 @@ test("an empty submenu shows its placeholder from the start", () => {
     [...flyout.querySelectorAll(".popup-menu-item")].map(labelOf),
     ["No recent files"],
   );
+  PopupManager.close();
+});
+
+// ── popover(): the caller's own DOM, positioned ─────────────────────────────
+
+test("popover mounts the caller's DOM in a card placed at the given point", () => {
+  resetDom();
+  PopupManager.popover({
+    x: 40,
+    y: 60,
+    element: el("div", { class: "probe", text: "content" }),
+  });
+
+  const host = document.querySelector(".popup-dialog--popover");
+  assert.ok(host, "the non-dimming positioned host");
+  const card = host.querySelector(".popup-popover");
+  assert.ok(card.querySelector(".probe"), "the caller's node is inside it");
+  assert.equal(
+    card.getAttribute("role"),
+    null,
+    "the card adds no role — its content brings its own semantics",
+  );
+  // jsdom reports zero-size rects in a 1024×768 viewport, so placeCard's clamp
+  // leaves the asked-for point alone.
+  assert.equal(card.style.left, "40px");
+  assert.equal(card.style.top, "60px");
+  PopupManager.close();
+});
+
+test("a popover is dismissed by Escape and by a click outside it", () => {
+  resetDom();
+  let closed = 0;
+  const open = () =>
+    PopupManager.popover({
+      element: el("div", { class: "probe" }),
+      onClose: () => closed++,
+    });
+
+  open();
+  // Escape reaches a native <dialog> as `cancel`.
+  document
+    .querySelector("dialog")
+    .dispatchEvent(new window.Event("cancel", { cancelable: true }));
+  assert.equal(PopupManager.isOpen(), false, "Escape dismissed it");
+  assert.equal(closed, 1);
+
+  open();
+  // A click landing on the full-viewport host, not on the card, is "outside".
+  document
+    .querySelector("dialog")
+    .dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  assert.equal(PopupManager.isOpen(), false, "an outside click dismissed it");
+  assert.equal(closed, 2);
+});
+
+test("a QUEUED positioned popup is placed when it MOUNTS, not when asked for", () => {
+  resetDom();
+  PopupManager.open({ element: el("div") }); // the blocker
+  const card = el("div", { class: "probe" });
+  PopupManager.popover({ x: 40, y: 60, element: card });
+
+  const queued = card.closest(".popup-popover");
+  assert.equal(queued.style.left, "", "still unmounted — nothing to measure");
+
+  PopupManager.close(); // the blocker goes; the popover mounts now
+  assert.equal(queued.style.left, "40px");
+  assert.equal(queued.style.top, "60px");
   PopupManager.close();
 });

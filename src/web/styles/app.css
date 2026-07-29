@@ -225,14 +225,30 @@
   color: var(--color-danger);
 }
 
-/* The active wire color, DISPLAYED beside the Wire label (1–8 change it while
-   the tool is armed) — not a picker. */
+/* The active wire color, beside the Wire label. Unlike the Bus badge this
+   readout is also the PICKER for what it shows — clicking it opens the eight
+   swatches (components/wire-color-dot.js) — so it gets a hover ring of its
+   own: the segment's hover fill cannot say "this 12 px circle is a separate
+   target". A box-shadow costs no layout, so the pill never shifts. */
 .wire-swatch-dot {
   width: 12px;
   height: 12px;
   border: 1px solid var(--color-overlay);
   border-radius: 50%;
   background: var(--wire-color);
+}
+
+.wire-swatch-dot:hover {
+  box-shadow: 0 0 0 2px var(--color-accent);
+}
+
+/* While the circuit runs the Wire segment is disabled — but a disabled button
+   only suppresses its OWN activation, not clicks on what is inside it, so the
+   dot has to be taken out of the hit test explicitly (which drops its hover
+   ring with it). wire-color-dot.js guards the same case in JS, where the test
+   can see it; this is what makes the dead control look dead. */
+.toolbar-pill-btn:disabled .wire-swatch-dot {
+  pointer-events: none;
 }
 
 /* The active bus width, displayed beside the Bus label (1/2 change it). */
@@ -2970,15 +2986,19 @@ textarea.annotation-editor {
   color: var(--color-accent);
 }
 
-/* Context/dropdown menu: full-viewport transparent host, positioned card. */
-.popup-dialog--menu {
+/* Positioned popups (the context/dropdown menu and the popover): a
+   full-viewport transparent host — it still catches the outside click that
+   dismisses — holding a card PopupManager places at screen coordinates. */
+.popup-dialog--menu,
+.popup-dialog--popover {
   margin: 0;
   padding: 0;
   width: 100vw;
   height: 100vh;
 }
 
-.popup-dialog--menu::backdrop {
+.popup-dialog--menu::backdrop,
+.popup-dialog--popover::backdrop {
   background: transparent;
 }
 
@@ -2988,6 +3008,18 @@ textarea.annotation-editor {
   display: flex;
   flex-direction: column;
   padding: var(--space-1);
+  background: var(--color-surface-0);
+  border: 1px solid var(--color-overlay);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-1);
+}
+
+/* The popover card: the menu's surface, but sized to whatever it holds rather
+   than to a list of rows — hence no min-width and no column flex (the Wire
+   button's color picker is one row of eight swatches). */
+.popup-popover {
+  position: fixed;
+  padding: var(--space-2);
   background: var(--color-surface-0);
   border: 1px solid var(--color-overlay);
   border-radius: var(--radius-md);

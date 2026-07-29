@@ -39,6 +39,7 @@ import { NetlistCache } from "./components/netlist-cache.js";
 import { MemoryBridge } from "./components/memory-bridge.js";
 import { NotificationStack } from "./components/notification-stack.js";
 import { NetNameMonitor } from "./components/net-name-monitor.js";
+import { createWireColorDot } from "./components/wire-color-dot.js";
 import { PopupManager } from "./popup-manager.js";
 import { AboutDialog } from "./components/about-dialog.js";
 import { SettingsDialog } from "./components/settings-dialog.js";
@@ -787,7 +788,7 @@ async function init() {
 
   // Everything ON the desk (boards, chips, wires, placement, hover).
   let wireBtn = null;
-  let wireDot = null; // the active-color dot displayed inside the Wire button
+  let wireDot = null; // the Wire button's color dot: readout AND picker
   let busBtn = null;
   let busWidthLabel = null; // the "8"/"16" badge displayed inside the Bus button
   let probeBtn = null;
@@ -797,10 +798,11 @@ async function init() {
   const onWireStateChange = ({ armed, color }) => {
     wireBtn?.classList.toggle("toolbar-btn--active", armed);
     wireBtn?.setAttribute("aria-pressed", String(armed));
-    // The Wire button carries a dot showing the active color — a readout, not
-    // a picker (1–8 set it while the tool is armed).
-    wireDot?.style.setProperty("--wire-color", `var(--color-wire-${color})`);
-    if (wireDot) wireDot.title = `Wire color: ${color} (1–8 to change)`;
+    // The Wire button carries a dot showing the active color — and, uniquely
+    // among the pill's readouts, it is the picker for it too
+    // (components/wire-color-dot.js). Whatever set the color — a swatch, 1–8 —
+    // arrives here, so the dot has one repaint path.
+    wireDot?.setColor(color);
   };
   const onBusStateChange = ({ armed }) => {
     busBtn?.classList.toggle("toolbar-btn--active", armed);
@@ -1030,10 +1032,18 @@ async function init() {
   });
   toolbar.append(toolPill);
 
-  // Wire tool (shortcut W). The dot beside the label DISPLAYS the active wire
-  // color — it is not a picker: the color is chosen with 1–8 while the tool is
-  // armed, or on an already-placed wire through its Properties dialog.
-  wireDot = el("span", { class: "wire-swatch-dot", "aria-hidden": "true" });
+  // Wire tool (shortcut W). The dot beside the label shows the active wire
+  // color AND opens the eight-swatch picker when clicked — the one pill
+  // readout that is also a control. It is a <span> inside this one <button>
+  // (a nested <button> is invalid, and the pill has no split seam), so the dot
+  // itself stops that click from reaching the toggle; see wire-color-dot.js.
+  // Picking a color deliberately does NOT arm the tool — this is the only way
+  // to set the pending color without entering it. While the circuit runs the
+  // button is disabled, which makes the dot inert for free.
+  wireDot = createWireColorDot({
+    getColor: () => controller.wireColor,
+    onPick: (color) => controller.setWireColor(color),
+  });
   wireBtn = el(
     "button",
     {
@@ -1043,7 +1053,7 @@ async function init() {
       "aria-pressed": "false",
       onClick: () => controller.toggleWireTool(),
     },
-    [el("span", { text: "Wire" }), wireDot],
+    [el("span", { text: "Wire" }), wireDot.element],
   );
   toolPill.append(wireBtn);
   onWireStateChange({ armed: false, color: controller.wireColor });

@@ -983,10 +983,29 @@ Electron main process (src/app/main.js)
   tab strip (`.project-tabs`) is the same thing floating over the
   desk, its active tab filling exactly as an armed tool segment does.
   A pill segment may carry a **readout** — the Wire button's color dot, the
-  Bus button's `8`/`16` badge — and a readout is exactly that: it shows the
-  active option and is NOT a picker (1–8 set the wire color and 1/2 the bus
-  width while that tool is armed; a placed wire's color is changed through its
-  Properties dialog). The **parts tray is deliberately NOT in the toolbar**: it
+  Bus button's `8`/`16` badge. A readout SHOWS the active option, and normally
+  that is all it does: the segment has no split seam, so there is nowhere for
+  a second control to live (1/2 set the bus width while that tool is armed; a
+  placed wire's color is changed through its Properties dialog). The **Wire
+  dot is the ONE exception, deliberately** — clicking it opens a small
+  `PopupManager.popover` holding the SAME eight swatches the wire's Properties
+  dialog offers (`components/wire-color-dot.js`), and picking one sets the
+  color **without arming the tool**: the segment already arms when its label is
+  clicked, so the dot has to be the one place that does not, or there would be
+  no way to set the pending color without entering the tool (1–8, the keyboard
+  path, are themselves gated on the tool being armed). It stays a `<span>`
+  inside the one `<button>` — a nested `<button>` is invalid HTML and
+  re-splitting the segment is exactly what the redesign removed — so its own
+  listener `stopPropagation()`s the toggle, and it stays `aria-hidden`: an
+  interactive DESCENDANT of a button has no honest place in the accessibility
+  tree, so the dot is a pointer shortcut to something already reachable
+  another way, never the only way. That contract is why the dot is a module at
+  all rather than a few lines of app.js — which no test mounts. And while the
+  circuit RUNS the dot has to be taken out by hand: a DISABLED `<button>`
+  suppresses its OWN activation but still delivers a click to a descendant
+  (measured in the real app, not assumed), so the dot asks the button it is in
+  and CSS drops it from the hit test to match.
+  The **parts tray is deliberately NOT in the toolbar**: it
   carries its own chevron in the palette header's top-right corner and its own
   `.palette-flap` — a drawer pull absolutely positioned on the desk's left edge,
   so a shut tray costs zero layout width — with both on the SAME vertical line,
@@ -1011,7 +1030,19 @@ Electron main process (src/app/main.js)
   `prompt` / `notify` / `dialog` there is **`choose`** — the Cancel + N-choices
   shape a "save, discard, or cancel" question needs (the tab delete, the
   leave-a-project guard), where "no" splits into two different answers; its `onChoose` fires
-  with `null` for every dismissal, so a caller can never miss one. `menu`'s
+  with `null` for every dismissal, so a caller can never miss one — and
+  **`popover`**, `menu`'s positioned, non-dimming host with the caller's OWN
+  DOM in the card instead of an items array (the Wire button's color picker).
+  The popover card is a plain SURFACE and takes no role of its own: whatever
+  goes in brings its own semantics (the color picker is a `role="radiogroup"`),
+  and burying that under an unnamed dialog layer would help nobody. For the
+  same reason a popover never closes itself when its content is used — that is
+  the content's call. Both POSITIONED shapes hand their coordinates to `open()`
+  as `place`, and `mount()` clamps the card into the viewport right after
+  `showModal()`: a card has to be shown before it can be measured, and a popup
+  QUEUED behind another mounts long after its coordinates were named, so
+  placing it at request time would clamp a node that is still zero-size.
+  `menu`'s
   item vocabulary is `{ label, disabled, danger, swatch, icon, accelerator,
   title, submenu + emptyLabel, onSelect, onRemove }` — a card where ANY item
   has an `icon` gives every item the 16 px slot (so labels line up), a

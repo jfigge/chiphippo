@@ -38,15 +38,20 @@ locked until you press **Stop**.
 
 Chip Hippo ships eight wire colors: **red, black, blue, green, yellow,
 orange, white,** and **purple**. The active color is shown as a swatch dot on
-the toolbar's **Wire** button — click it to open the color palette, or, while
-the wire tool is armed, press a digit `1`–`8` to jump straight to that color
-(1 = red, 2 = black, and so on through the list above). The color you pick
-**stays pinned** between wires — laying a chain of jumpers keeps whatever
-color you last chose, so pick red for a supply run and black for ground and
-they'll stay that way until you deliberately switch.
+the toolbar's **Wire** button — click the dot itself to open the palette and
+pick a different one (picking a color sets it *without* arming the tool, so
+you can set up a color before you start wiring). Clicking the word **Wire**
+beside it still arms the tool as usual. While the tool is armed you can also
+press a digit `1`–`8` to jump straight to a color (1 = red, 2 = black, and so
+on through the list above). The color you pick **stays pinned** between
+wires — laying a chain of jumpers keeps whatever color you last chose, so pick
+red for a supply run and black for ground and they'll stay that way until you
+deliberately switch.
 
-You can also recolor a wire after the fact: right-click it and choose a new
-color from the context menu (which also offers **Remove wire**).
+You can also recolor a wire after the fact: right-click it and choose
+**Properties…**, which offers the same eight swatches alongside the wire's
+name, description, and layout method. (**Delete Component** on that menu is
+how a wire is removed.)
 
 ## Cross-board wires
 
