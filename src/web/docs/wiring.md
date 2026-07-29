@@ -144,19 +144,27 @@ hand. It's click-click like the wire tool: anchor a start hole, then click a
 second point to lay the whole run in one go, rendered as a single fat band
 rather than a fan of individual wires.
 
-Before you click the second point, set what you're laying:
+Before you click, set the **width**. The circled number on the toolbar's
+**Bus** button shows the active one, and clicking it opens the presets in a
+row: 2, 3, 4, 5, 6, 7, 8 and 16 bits, the current one ringed. Picking one sets
+the width without arming the tool, so you can set up before you start. From
+the keyboard — while the bus tool is armed — `2`–`8` lay a bus that many bits
+wide (`4` → `D[3:0]`) and `1` lays the 16-bit bus (`D[15:0]`); no single digit
+can spell 16, and the widest bus is worth the first key. The width names the
+bus too (`D[3:0]`); rename a placed one from its context menu.
 
-- **Name** — type a bus name like `D[7:0]` or `A[0:15]` in the toolbar; the
-  tool parses the bit range from it. Laying a run onto a **chip pin group**
-  (a catalog-defined bus of pins, like a chip's data lines) instead fans the
-  bus directly onto those pins in bit order.
-- **Width** — the circled number on the toolbar's **Bus** button shows the
-  active width, and clicking it opens the presets in a row: 2, 3, 4, 5, 6, 7,
-  8 and 16 bits, the current one ringed. Picking one sets the width without
-  arming the tool, so you can set up before you start. From the keyboard —
-  while the bus tool is armed — `2`–`8` lay a bus that many bits wide (`4` →
-  `D[3:0]`) and `1` lays the 16-bit bus (`D[15:0]`); no single digit can spell
-  16, and the widest bus is worth the first key.
+Landing the second click on a **chip pin group** (a catalog-defined bus of
+pins, like a chip's data lines) fans the bus onto those pins in bit order,
+instead of marching it down a second run.
+
+**Both ends have to fit.** A bus claims one hole per bit at each end, so as
+you move the cursor every hole it would take is ringed — in the hover color
+when they're all free and on the strip, in red when they're not, and a red set
+can't be clicked. Aim an 8-bit bus five columns from the end of a board and
+you'll see five red rings instead of eight, which is the whole explanation:
+the run doesn't fit there. That check runs on the **first** click as well, so
+a start that could never work is refused where you make it rather than looking
+like the far end is at fault.
 
 A bus is metadata layered over the individual wires it lays — right-click a
 placed bus to **Rename**, **Recolor** (which recolors every member wire

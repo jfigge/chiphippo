@@ -440,6 +440,9 @@ export class DeskController {
       viewport,
       wireLayer: this.#wireLayer,
       ring: this.#ring,
+      // A bus lands `width` leads at once, so it rings a SET of holes rather
+      // than the one shared ring — it needs the overlay layer to draw them in.
+      overlay: this.#layers.overlay,
       emitDocChanged: (label) => this.#emitDocChanged(label),
       hideHover: () => this.#hideHover(),
       selectBus: (id) => this.selectBus(id),
@@ -3988,6 +3991,9 @@ export class DeskController {
     this.#ring.hidden = true;
     this.#ring.classList.remove("hole-ring--illegal");
     this.#tooltip.hidden = true;
+    // The bus tool rings a SET of holes instead of the one ring above; the
+    // pointer leaving is over nothing for either of them.
+    this.#bus?.hideRings();
   }
 
   /**

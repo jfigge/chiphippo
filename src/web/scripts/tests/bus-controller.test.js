@@ -42,15 +42,32 @@ function makeDesk(deskDoc, world = { x: 0, y: 0 }) {
 
 /** Move the "cursor" to (x, y) pitch units and click the viewport there. */
 function clickAt(viewport, world, x, y) {
+  hoverAt(viewport, world, x, y);
+  viewport.dispatchEvent(
+    new window.PointerEvent("pointerdown", { bubbles: true, button: 0 }),
+  );
+  viewport.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+}
+
+/** Move the "cursor" to (x, y) pitch units without pressing. */
+function hoverAt(viewport, world, x, y) {
   world.x = x;
   world.y = y;
   viewport.dispatchEvent(
     new window.PointerEvent("pointermove", { bubbles: true }),
   );
-  viewport.dispatchEvent(
-    new window.PointerEvent("pointerdown", { bubbles: true, button: 0 }),
-  );
-  viewport.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+}
+
+/** The rings currently drawn on the desk: how many, and how many read illegal
+    (the bus tool rings EVERY hole its click would claim, so a count is the
+    thing under test — one ring per bit, or one per bit that exists). */
+function rings(surface) {
+  const shown = [...surface.querySelectorAll(".hole-ring:not([hidden])")];
+  return {
+    count: shown.length,
+    illegal: shown.filter((r) => r.classList.contains("hole-ring--illegal"))
+      .length,
+  };
 }
 
 test("arming the bus tool and clicking start→end lays width wires + a band", () => {
@@ -105,7 +122,7 @@ test("the bus tool refuses to lay onto occupied holes (illegal landing)", () => 
   doc.addBoard("pins-full", 0, 0);
   // Occupy a21 so a width-3 run from a10→a20 collides on its second bit.
   doc.addWire({ from: "bb1.a21", to: "bb1.j21", color: "red" });
-  const { viewport, controller, world } = makeDesk(doc);
+  const { viewport, surface, controller, world } = makeDesk(doc);
 
   controller.setBusName("D[2:0]"); // width 3 → a20, a21, a22
   controller.armBusTool();
@@ -114,4 +131,116 @@ test("the bus tool refuses to lay onto occupied holes (illegal landing)", () => 
 
   assert.equal(doc.buses.length, 0);
   assert.equal(doc.wires.length, 1, "only the pre-existing wire remains");
+  // All three destination holes ring, in the danger colour: the run is what
+  // was refused, not the one hole under the cursor.
+  assert.deepEqual(rings(surface), { count: 3, illegal: 3 });
+});
+
+// ── Ringing the whole run, at BOTH ends of the gesture ──────────────────────
+// A bus lands `width` leads at once, so the single hover ring the wire tool
+// uses can't state its case: it says "this hole" where the question is "these
+// eight". Every refusal below used to be silent — the click simply did
+// nothing — which is indistinguishable from a dead tool.
+
+test("hovering a start rings every hole the bus would claim", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const { viewport, surface, controller, world } = makeDesk(doc);
+
+  controller.setBusName("D[7:0]"); // width 8
+  controller.armBusTool();
+  hoverAt(viewport, world, 10, 12); // a10 … a17, all free
+
+  assert.deepEqual(rings(surface), { count: 8, illegal: 0 });
+});
+
+test("a start run that walks off the strip is REFUSED, ringing the shortfall", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0); // 63 columns
+  const { viewport, surface, controller, world } = makeDesk(doc);
+
+  controller.setBusName("D[7:0]"); // width 8 from a60 → only a60…a63 exist
+  controller.armBusTool();
+  clickAt(viewport, world, 60, 12);
+
+  assert.deepEqual(
+    rings(surface),
+    { count: 4, illegal: 4 },
+    "four rings where eight were asked for — the shortfall IS the explanation",
+  );
+  // Nothing anchored, so the next click anchors rather than landing a bus.
+  clickAt(viewport, world, 20, 12);
+  assert.equal(doc.wires.length, 0);
+  assert.equal(doc.buses.length, 0);
+});
+
+test("an occupied hole inside the start run refuses the anchor too", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  doc.addWire({ from: "bb1.a12", to: "bb1.j12", color: "red" }); // a12 taken
+  const { viewport, surface, controller, world } = makeDesk(doc);
+
+  controller.setBusName("D[3:0]"); // width 4 from a10 → a10, a11, a12, a13
+  controller.armBusTool();
+  clickAt(viewport, world, 10, 12);
+
+  assert.deepEqual(rings(surface), { count: 4, illegal: 4 });
+  // a10 never anchored, so this second click ANCHORS rather than landing a
+  // bus — which is the whole proof that the first one was refused.
+  clickAt(viewport, world, 30, 12);
+  assert.equal(doc.wires.length, 1, "only the pre-existing wire");
+  assert.equal(doc.buses.length, 0);
+
+  // Starting past the collision is fine — a13 … a16 are all free.
+  controller.disarmBusTool();
+  controller.armBusTool();
+  hoverAt(viewport, world, 13, 12);
+  assert.deepEqual(rings(surface), { count: 4, illegal: 0 });
+});
+
+test("a landing that walks off the strip rings the holes that exist", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const { viewport, surface, controller, world } = makeDesk(doc);
+
+  controller.setBusName("D[7:0]"); // width 8
+  controller.armBusTool();
+  clickAt(viewport, world, 10, 12); // anchor a10 (a10…a17 free)
+  assert.deepEqual(rings(surface), { count: 8, illegal: 0 }, "start is legal");
+
+  hoverAt(viewport, world, 60, 12); // j60…: only four columns left
+  assert.deepEqual(rings(surface), { count: 4, illegal: 4 });
+  clickAt(viewport, world, 60, 12);
+  assert.equal(doc.wires.length, 0, "an illegal landing lays nothing");
+
+  // A legal landing rings all eight destination holes, and lays them.
+  hoverAt(viewport, world, 30, 12);
+  assert.deepEqual(rings(surface), { count: 8, illegal: 0 });
+  clickAt(viewport, world, 30, 12);
+  assert.equal(doc.wires.length, 8);
+  assert.equal(doc.buses.length, 1);
+});
+
+test("the rings come off the desk when the pointer leaves the viewport", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const { viewport, surface, controller, world } = makeDesk(doc);
+
+  controller.setBusName("D[3:0]");
+  controller.armBusTool();
+  hoverAt(viewport, world, 10, 12);
+  assert.equal(rings(surface).count, 4);
+
+  viewport.dispatchEvent(new window.PointerEvent("pointerleave"));
+  assert.equal(rings(surface).count, 0);
+
+  // Disarming clears them too, however the tool was left.
+  hoverAt(viewport, world, 10, 12);
+  controller.disarmBusTool();
+  assert.equal(rings(surface).count, 0);
 });

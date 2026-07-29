@@ -41,6 +41,37 @@ import {
 import { partPinAddresses } from "./occupancy.js";
 
 /**
+ * The run of holes a `width`-wide bus would occupy from `start` — bit i at
+ * `start` shifted i steps along its run. BEST-EFFORT, and that is the point:
+ * where the run walks off the end of its strip it stops and reports the
+ * shortfall rather than answering null, so the tool can RING the holes that do
+ * exist (three rings where eight were asked for is the whole explanation of
+ * why the bus won't fit). Occupancy is not consulted — freeness is the
+ * caller's to check, as everywhere else in this module.
+ *
+ * @param {Array} boards
+ * @param {string} start address of bit 0's hole
+ * @param {number} width
+ * @returns {{ addresses: string[], fits: boolean }} `fits` is
+ *   `addresses.length === width`; a junk address or width gives an empty run.
+ */
+export function busRunHoles(boards, start, width) {
+  const ps = parseAddress(start);
+  if (!ps || !Number.isInteger(width) || width < 1) {
+    return { addresses: [], fits: false };
+  }
+  const board = (boards ?? []).find((b) => b.id === ps.boardId);
+  if (!board) return { addresses: [], fits: false };
+  const addresses = [];
+  for (let i = 0; i < width; i += 1) {
+    const hole = holeAlong(board.type, ps.hole, i);
+    if (!hole) break; // ran off the strip — report what there was
+    addresses.push(formatAddress(ps.boardId, hole));
+  }
+  return { addresses, fits: addresses.length === width };
+}
+
+/**
  * RUN mode: `width` `{ from, to }` pairs, bit i from `start` shifted i steps
  * along its run to `end` shifted i steps along its. Null if either run walks
  * off its strip before `width` holes, or an endpoint doesn't parse.
@@ -51,23 +82,13 @@ import { partPinAddresses } from "./occupancy.js";
  * @param {number} width
  */
 export function busRunAddresses(boards, start, end, width) {
-  const ps = parseAddress(start);
-  const pe = parseAddress(end);
-  if (!ps || !pe || !Number.isInteger(width) || width < 1) return null;
-  const bs = boards.find((b) => b.id === ps.boardId);
-  const be = boards.find((b) => b.id === pe.boardId);
-  if (!bs || !be) return null;
-  const pairs = [];
-  for (let i = 0; i < width; i += 1) {
-    const fromHole = holeAlong(bs.type, ps.hole, i);
-    const toHole = holeAlong(be.type, pe.hole, i);
-    if (!fromHole || !toHole) return null; // ran off a strip
-    pairs.push({
-      from: formatAddress(ps.boardId, fromHole),
-      to: formatAddress(pe.boardId, toHole),
-    });
-  }
-  return pairs;
+  const from = busRunHoles(boards, start, width);
+  const to = busRunHoles(boards, end, width);
+  if (!from.fits || !to.fits) return null; // ran off a strip
+  return from.addresses.map((address, i) => ({
+    from: address,
+    to: to.addresses[i],
+  }));
 }
 
 /**

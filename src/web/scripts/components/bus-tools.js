@@ -33,7 +33,11 @@
 import { PopupManager } from "../popup-manager.js";
 import { PX_PER_UNIT } from "../desk/desk-geometry.js";
 import { WIRE_COLORS, parseBusName } from "../model/desk-doc.js";
-import { busRunAddresses, busTapAddresses } from "../model/bus-layout.js";
+import {
+  busRunAddresses,
+  busRunHoles,
+  busTapAddresses,
+} from "../model/bus-layout.js";
 import { pinGroupContaining } from "../catalog/index.js";
 import {
   PIN_HIT_RADIUS,
@@ -42,6 +46,7 @@ import {
   partPinsWorld,
 } from "../model/part-geometry.js";
 import { nearestLegalOffset } from "../model/nearest-legal.js";
+import { HoleRings } from "./hole-rings.js";
 import { beginPointerGesture, releaseWorld } from "./pointer-gesture.js";
 
 /** Pointer travel (px) below which a press stays a click, not a drag. */
@@ -56,23 +61,24 @@ const DRAG_THRESHOLD = 4;
     release (#onBusUp calling #resolveBusDrop with no maxRadius) — never
     on every move; see #resolveBusDrop's own comment for why. */
 const SNAP_RADIUS = 2;
-/** Radius of the shared hover ring (pitch units); keep 2× this in step with
-    `.hole-ring`'s diameter in app.css. See desk-controller.js. */
-const RING_RADIUS = 0.55;
 
 export class BusTools {
   #host;
+  /** Every hole the pending gesture would claim, ringed at once — a bus lands
+      `width` leads, so the single shared hover ring cannot state its case. */
+  #rings;
 
   /**
    * @param {object} host - shared controller surface (see the ctor in
    *   desk-controller.js): mode get/set, doc, deskView, viewport, wireLayer,
-   *   ring, editingLocked, probeArmed, busName (from the toolbar badge),
-   *   busColor, emitDocChanged, hideHover, selectBus, deselect,
+   *   ring, overlay, editingLocked, probeArmed, busName (from the toolbar
+   *   badge), busColor, emitDocChanged, hideHover, selectBus, deselect,
    *   clearSelectionIfBus, cancelPlacement, disarmProbe, disarmWireTool,
    *   onStateChange.
    */
   constructor(host) {
     this.#host = host;
+    this.#rings = new HoleRings(host.overlay);
   }
 
   // ── Bus tool (click-click) ────────────────────────────────────────────────
@@ -100,7 +106,15 @@ export class BusTools {
     this.#host.viewport.classList.remove("desk-viewport--bus");
     this.#host.ring.hidden = true;
     this.#host.ring.classList.remove("hole-ring--illegal");
+    this.#rings.clear();
     this.#notifyState();
+  }
+
+  /** Take the ring set off the desk — the controller's own #hideHover, which
+      clears the shared single ring, has to clear this one with it (a pointer
+      that left the viewport is over nothing at all). */
+  hideRings() {
+    this.#rings.clear();
   }
 
   toggle() {
@@ -126,6 +140,7 @@ export class BusTools {
     m.from = null;
     m.plan = null;
     this.#host.wireLayer.setBusPreview(null);
+    this.#rings.clear();
   }
 
   #notifyState() {
@@ -166,8 +181,11 @@ export class BusTools {
   /**
    * Resolve the current plan (the `{ from, to }` address pairs) from the
    * anchored start to whatever the cursor is over — a chip pin group (TAP) or a
-   * bare hole (RUN). Returns { pairs, legal, endWorld } or null when there is
-   * nothing to preview.
+   * bare hole (RUN). Returns { pairs, legal, endWorld, ends } or null when
+   * there is nothing to preview; `ends` is every hole the LANDING would claim,
+   * for the ring set — the plan's destinations when there is a plan, and
+   * otherwise the best-effort run, so a landing that walks off the end of the
+   * strip rings the holes that DO exist and lets the shortfall show.
    */
   #resolvePlan(m, world) {
     const doc = this.#doc();
@@ -177,6 +195,7 @@ export class BusTools {
     const pin = this.#pinAt(world);
     let pairs = null;
     let endWorld = null;
+    let ends = null;
     if (pin) {
       const group = pinGroupContaining(pin.comp.ref, pin.pin);
       if (group) {
@@ -196,10 +215,29 @@ export class BusTools {
       if (hole) {
         pairs = busRunAddresses(doc.boards, m.from, hole.address, width);
         endWorld = { x: hole.x, y: hole.y };
+        ends = busRunHoles(doc.boards, hole.address, width).addresses;
       }
     }
-    if (!pairs) return { pairs: null, legal: false, endWorld };
-    return { pairs, legal: this.#planLegal(pairs), endWorld };
+    if (pairs) ends = pairs.map((p) => p.to);
+    if (!pairs) return { pairs: null, legal: false, endWorld, ends };
+    return { pairs, legal: this.#planLegal(pairs), endWorld, ends };
+  }
+
+  /**
+   * The START run a `width`-wide bus would occupy from `address`:
+   * `{ addresses, legal }`. Anchoring is a placement in its own right — the
+   * bus needs every one of those holes, on the strip and free — and until this
+   * was checked a start could be anchored where it could never fit, which then
+   * read as the LANDING being at fault wherever the second click went.
+   */
+  #startRun(address) {
+    const doc = this.#doc();
+    const width = parseBusName(this.#host.busName)?.width ?? 0;
+    const { addresses, fits } = busRunHoles(doc.boards, address, width);
+    return {
+      addresses,
+      legal: fits && addresses.every((a) => doc.isHoleFree(a)),
+    };
   }
 
   /** World position of a resolved chip pin. */
@@ -228,21 +266,21 @@ export class BusTools {
     return addressWorld(doc.boards, doc.components, address);
   }
 
-  /** Bus-mode pointermove: ring + legality + the rubber-band band. */
+  /** Bus-mode pointermove: rings + legality + the rubber-band band. Both
+      phases ring the WHOLE set of holes the click would claim, in the hover
+      colour when it can have them and the danger one when it can't — a bus is
+      `width` leads, and one ring on the hole under the cursor said nothing
+      about the other seven. */
   trackMove(e) {
     const m = this.#host.mode;
     const world = this.#host.deskView.worldFromEvent(e);
 
     if (!m.from) {
-      // Anchoring: the ring lands on a free board hole.
+      // Anchoring: the start run has to fit here, whole and free.
       const hole = this.#holeAt(world);
-      const legal = Boolean(hole) && this.#doc().isHoleFree(hole.address);
-      m.hover = hole ? { address: hole.address, legal } : null;
-      if (hole) {
-        this.#placeRing(hole.x, hole.y, legal);
-      } else {
-        this.#host.ring.hidden = true;
-      }
+      const run = hole ? this.#startRun(hole.address) : null;
+      m.hover = hole ? { address: hole.address, legal: run.legal } : null;
+      this.#showRings(this.#worldOf(run?.addresses), run?.legal);
       return;
     }
 
@@ -259,17 +297,28 @@ export class BusTools {
       color: this.#host.busColor,
       legal: end ? m.legal : true,
     });
-    // Ring on the hovered endpoint when there is one.
-    if (end) this.#placeRing(end.x, end.y, m.legal);
-    else this.#host.ring.hidden = true;
+    // The landing's own holes; failing that (a pin group that can't take the
+    // bus at all names no holes) the one point the cursor is on, so an
+    // illegal landing is never silent.
+    const ends = this.#worldOf(resolved?.ends);
+    if (!ends.length && end) ends.push(end);
+    this.#showRings(ends, m.legal);
   }
 
-  #placeRing(x, y, legal) {
-    const r = RING_RADIUS * PX_PER_UNIT;
-    this.#host.ring.style.left = `${x * PX_PER_UNIT - r}px`;
-    this.#host.ring.style.top = `${y * PX_PER_UNIT - r}px`;
-    this.#host.ring.classList.toggle("hole-ring--illegal", !legal);
-    this.#host.ring.hidden = false;
+  /** World centres for a list of addresses, dropping any that don't resolve. */
+  #worldOf(addresses) {
+    const doc = this.#doc();
+    const out = [];
+    for (const a of addresses ?? []) {
+      const p = addressWorld(doc.boards, doc.components, a);
+      if (p) out.push(p);
+    }
+    return out;
+  }
+
+  #showRings(points, legal) {
+    this.#host.ring.hidden = true; // bus mode rings through the SET, never the one
+    this.#rings.show(points?.length ? points : null, legal !== false);
   }
 
   /** Bus-mode click: anchor on the first free hole, commit the run on the next. */
@@ -277,6 +326,8 @@ export class BusTools {
     const m = this.#host.mode;
     this.trackMove(e); // legality/plan at the exact click point
     if (!m.from) {
+      // An anchor whose start run can't fit is refused, not deferred — the
+      // rings under the cursor are already red saying so.
       if (m.hover?.legal) m.from = m.hover.address;
       return;
     }

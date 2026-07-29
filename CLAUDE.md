@@ -344,7 +344,7 @@ Electron main process (src/app/main.js)
 
 - **Desk surface layers** (inside `.desk-surface`, established in Feature 30):
   `.layer-boards` → `.layer-parts` (chips) → `.layer-wires` (one shared SVG) →
-  `.layer-overlay` (ghosts, hover ring, tooltips — pointer-inert). Boards and
+  `.layer-overlay` (ghosts, hover ring(s), tooltips — pointer-inert). Boards and
   chips are one static inline SVG each; the tie-point/pin `<rect>`s that draw
   them carry **no id, no `data-*`, and no listener** — all hole/pin *interaction*
   is `holeAt()` / derived-pin math from pointer coordinates, never a per-hole
@@ -412,6 +412,29 @@ Electron main process (src/app/main.js)
   NEW wire only, read at placement time exactly as the default LED colour is;
   the AI builder ignores it outright and emits nothing but direct wires, since
   a compiler places holes and has no route to draw.
+- **Bus placement rings the WHOLE run, at BOTH ends** (`bus-tools.js` +
+  `components/hole-rings.js` + `bus-layout.js`'s `busRunHoles`). A bus lands
+  `width` leads in one click, so the single shared `.hole-ring` the wire tool
+  hovers with cannot state its case: it answers "this hole" where the question
+  is "these eight". `HoleRings` is that ring, MANY at once — the same element
+  and class (so there is one ring look in the app), pooled (a pointermove
+  redrawing eight divs to show the same eight circles is work with nothing to
+  show for it), in the pointer-inert overlay. Both phases of the gesture ring
+  every hole the click would claim: the hover colour when it can have them all,
+  `--illegal` when it can't, exactly as a part's placement ghost reddens.
+  Two rules follow, and the second is the one that was missing:
+  - **`busRunHoles` is BEST-EFFORT where `busRunAddresses` is all-or-nothing.**
+    A run that walks off the end of a strip reports the holes that DO exist
+    rather than answering null, because five red rings where eight were asked
+    for IS the explanation — "it doesn't fit" with nothing drawn is what a
+    silent refusal already looked like. `busRunAddresses` is now derived from
+    it (both ends, `fits` on each), so there is one walk.
+  - **ANCHORING IS A PLACEMENT, so it is checked like one.** The first click
+    used to test only the hole under the cursor, which let a start be anchored
+    where the bus could never fit — and every second click then reported
+    illegal, making the LANDING look like the fault wherever it went. The start
+    run is now checked whole (on the strip, every hole free) and refused where
+    it is made, red rings and all.
 - **Netlist** (`sim/netlist.js`, Feature 70): a pure union-find partition of every
   point into nets, keyed by the lexicographically smallest member address (stable
   across rebuilds). Part state (switch position / button pressed) is an INPUT — a

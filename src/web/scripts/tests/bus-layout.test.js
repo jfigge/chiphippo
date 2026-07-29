@@ -20,7 +20,11 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { DeskDoc, parseBusName } from "../model/desk-doc.js";
-import { busRunAddresses, busTapAddresses } from "../model/bus-layout.js";
+import {
+  busRunAddresses,
+  busRunHoles,
+  busTapAddresses,
+} from "../model/bus-layout.js";
 import { holeAlong, nodeOf, parseAddress } from "../model/breadboard.js";
 import { partPinAddresses } from "../model/occupancy.js";
 import { pinGroupContaining } from "../catalog/index.js";
@@ -51,6 +55,36 @@ test("busRunAddresses fails when a run walks off its strip", () => {
   doc.addKit("full", 0, 0);
   assert.equal(busRunAddresses(doc.boards, "bb2.a62", "bb2.j62", 4), null);
   assert.equal(busRunAddresses(doc.boards, "bb9.a1", "bb2.j1", 4), null);
+});
+
+test("busRunHoles reports the run it CAN name, and whether it fits", () => {
+  const doc = new DeskDoc(null);
+  doc.addKit("full", 0, 0); // bb2 = pins-full, 63 columns
+
+  assert.deepEqual(busRunHoles(doc.boards, "bb2.a1", 3), {
+    addresses: ["bb2.a1", "bb2.a2", "bb2.a3"],
+    fits: true,
+  });
+  // Off the end: the holes that DO exist come back, so the tool can ring the
+  // shortfall instead of refusing with nothing to show.
+  assert.deepEqual(busRunHoles(doc.boards, "bb2.a62", 4), {
+    addresses: ["bb2.a62", "bb2.a63"],
+    fits: false,
+  });
+  // A rail marches by index the same way.
+  assert.deepEqual(busRunHoles(doc.boards, "bb1.+49", 4), {
+    addresses: ["bb1.+49", "bb1.+50"],
+    fits: false,
+  });
+  // Junk in, empty out — never a throw and never a partial lie.
+  for (const bad of [
+    busRunHoles(doc.boards, "bb9.a1", 4), // no such board
+    busRunHoles(doc.boards, "nonsense", 4),
+    busRunHoles(doc.boards, "bb2.a1", 0),
+    busRunHoles(doc.boards, "bb2.a1", 1.5),
+  ]) {
+    assert.deepEqual(bad, { addresses: [], fits: false });
+  }
 });
 
 /** A full kit with a 74LS573 (octal latch) seated on the pin-board. */
