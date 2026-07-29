@@ -20,7 +20,12 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { parseBusName, MAX_BUS_WIDTH } from "../model/desk-doc.js";
+import {
+  parseBusName,
+  BUS_WIDTHS,
+  MAX_BUS_WIDTH,
+  busWidthForKey,
+} from "../model/desk-doc.js";
 
 test("D[7:0] is a width-8, msb-first bus", () => {
   const p = parseBusName("D[7:0]");
@@ -66,4 +71,18 @@ test("junk and over-wide names are rejected", () => {
   // A width past the guard would try to lay too many wires.
   assert.equal(parseBusName(`D[${MAX_BUS_WIDTH}:0]`), null); // width MAX+1
   assert.ok(parseBusName(`D[${MAX_BUS_WIDTH - 1}:0]`)); // width MAX — ok
+});
+
+test("every width preset parses to the width it claims", () => {
+  for (const preset of BUS_WIDTHS) {
+    assert.equal(parseBusName(preset.name)?.width, preset.bits, preset.name);
+  }
+});
+
+test("the digit keys pick 16-bit on 1 and their own width on 2-8", () => {
+  assert.equal(busWidthForKey(1).bits, 16);
+  for (let n = 2; n <= 8; n += 1) assert.equal(busWidthForKey(n).bits, n);
+  // Outside the presets — nothing to pick, so the tool leaves the width alone.
+  assert.equal(busWidthForKey(9), null);
+  assert.equal(busWidthForKey(0), null);
 });

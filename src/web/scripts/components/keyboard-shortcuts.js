@@ -58,7 +58,10 @@ const SHORTCUT_GROUPS = [
         desc: "Wire color — 1 Red 2 Black 3 Blue 4 Green 5 Yellow 6 Orange 7 White 8 Purple",
         keys: "1–8",
       },
-      { desc: "Bus width — 1 for 8-bit, 2 for 16-bit", keys: "1–2" },
+      {
+        desc: "Bus width — 2–8 for that many bits, 1 for 16-bit",
+        keys: "1–8",
+      },
     ],
   },
   {

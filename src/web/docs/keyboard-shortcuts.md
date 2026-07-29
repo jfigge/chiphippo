@@ -25,7 +25,7 @@ are noted alongside the shortcut.
 | `I` or `P` | Arm/disarm the probe tool (works even while the simulation is running) |
 | `M` | Disarm whichever of the wire/bus/probe tool is currently armed |
 | `1`–`8` | While the wire tool is armed, pick a wire color |
-| `1`–`2` | While the bus tool is armed, pick the bus width (8-bit / 16-bit) |
+| `1`–`8` | While the bus tool is armed, pick the bus width — `2`–`8` for that many bits, `1` for 16-bit |
 
 ## Placing & rotating parts
 

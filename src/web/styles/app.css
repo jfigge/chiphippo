@@ -251,20 +251,81 @@
   pointer-events: none;
 }
 
-/* The active bus width, displayed beside the Bus label (1/2 change it). */
+/* The active bus width, displayed beside the Bus label (the digit keys change
+   it). Like the Wire dot this readout is also the PICKER for what it shows
+   (components/bus-width-badge.js), so it gets a hover ring of its own — the
+   segment's hover fill cannot say "this circle is a separate target" — and it
+   is CIRCLED, which is the shape the popover's options repeat. A box-shadow
+   costs no layout, so the pill never shifts. */
 .bus-width-badge {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   min-width: 18px;
-  height: 16px;
+  height: 18px;
   padding: 0 3px;
+  box-sizing: border-box;
   background: var(--color-surface-1);
   border: 1px solid var(--color-overlay);
-  border-radius: var(--radius-sm);
+  border-radius: 999px;
   color: var(--color-subtext);
   font-size: 11px;
   font-variant-numeric: tabular-nums;
+}
+
+.bus-width-badge:hover {
+  box-shadow: 0 0 0 2px var(--color-accent);
+}
+
+/* Same story as the Wire dot above: a disabled Bus segment does not make the
+   badge inside it inert, so it leaves the hit test explicitly (and its hover
+   ring with it). bus-width-badge.js guards the same case in JS. */
+.toolbar-pill-btn:disabled .bus-width-badge {
+  pointer-events: none;
+}
+
+/* The width picker the badge opens: one circled number per preset, in a row —
+   the badge's own glyph, repeated at a size worth clicking. */
+.bus-width-options {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.bus-width-option {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 4px;
+  box-sizing: border-box;
+  border: 1px solid var(--color-overlay);
+  border-radius: 999px;
+  background: var(--color-surface-1);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  box-shadow: 0 0 0 2px transparent;
+  transition:
+    box-shadow 0.15s ease,
+    transform 0.15s ease;
+}
+
+.bus-width-option:hover {
+  transform: scale(1.1);
+}
+
+.bus-width-option--selected {
+  border-color: var(--color-accent);
+  color: var(--color-text);
+  box-shadow: 0 0 0 2px var(--color-accent);
+}
+
+.bus-width-option:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
 }
 
 /* Standalone toolbar buttons (the Schematic toggle) share the split-button

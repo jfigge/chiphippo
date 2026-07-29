@@ -66,7 +66,7 @@ export class BusTools {
   /**
    * @param {object} host - shared controller surface (see the ctor in
    *   desk-controller.js): mode get/set, doc, deskView, viewport, wireLayer,
-   *   ring, editingLocked, probeArmed, busName (from the toolbar input),
+   *   ring, editingLocked, probeArmed, busName (from the toolbar badge),
    *   busColor, emitDocChanged, hideHover, selectBus, deselect,
    *   clearSelectionIfBus, cancelPlacement, disarmProbe, disarmWireTool,
    *   onStateChange.

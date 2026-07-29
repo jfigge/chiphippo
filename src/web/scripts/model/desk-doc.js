@@ -109,11 +109,32 @@ export const MAX_WIRE_POINTS = 20;
 
 /** The bus-width presets the bus tool's toolbar/keyboard shortcuts pick from —
     `name` is the grammar the tool parses (see parseBusName); 8-bit is the
-    default. */
+    default. Listed narrowest-first, which is NOT the order the digit keys walk
+    (see busWidthForKey). */
 export const BUS_WIDTHS = Object.freeze([
+  Object.freeze({ bits: 2, name: "D[1:0]" }),
+  Object.freeze({ bits: 3, name: "D[2:0]" }),
+  Object.freeze({ bits: 4, name: "D[3:0]" }),
+  Object.freeze({ bits: 5, name: "D[4:0]" }),
+  Object.freeze({ bits: 6, name: "D[5:0]" }),
+  Object.freeze({ bits: 7, name: "D[6:0]" }),
   Object.freeze({ bits: 8, name: "D[7:0]" }),
   Object.freeze({ bits: 16, name: "D[15:0]" }),
 ]);
+
+/**
+ * The preset the digit keys 1–8 pick while the bus tool is armed. Every digit
+ * but one NAMES ITS OWN WIDTH — `4` lays a 4-bit run — which is the whole
+ * reason the mapping isn't the list's index order: a key you have to count to
+ * is a key you have to look up. `1` is the 16-bit bus, because no single digit
+ * can spell 16 and the widest bus is the one worth the first key.
+ *
+ * @returns {{bits:number, name:string}|null} null for a digit with no preset.
+ */
+export function busWidthForKey(digit) {
+  const bits = digit === 1 ? 16 : digit;
+  return BUS_WIDTHS.find((w) => w.bits === bits) ?? null;
+}
 
 /**
  * The common net names offered as quick-picks when naming a net (Feature 120).

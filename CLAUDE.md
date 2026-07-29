@@ -982,29 +982,42 @@ Electron main process (src/app/main.js)
   The pill is the APP's grouping shape, not the toolbar's alone — the desktop
   tab strip (`.project-tabs`) is the same thing floating over the
   desk, its active tab filling exactly as an armed tool segment does.
-  A pill segment may carry a **readout** — the Wire button's color dot, the
-  Bus button's `8`/`16` badge. A readout SHOWS the active option, and normally
-  that is all it does: the segment has no split seam, so there is nowhere for
-  a second control to live (1/2 set the bus width while that tool is armed; a
-  placed wire's color is changed through its Properties dialog). The **Wire
-  dot is the ONE exception, deliberately** — clicking it opens a small
-  `PopupManager.popover` holding the SAME eight swatches the wire's Properties
-  dialog offers (`components/wire-color-dot.js`), and picking one sets the
-  color **without arming the tool**: the segment already arms when its label is
-  clicked, so the dot has to be the one place that does not, or there would be
-  no way to set the pending color without entering the tool (1–8, the keyboard
-  path, are themselves gated on the tool being armed). It stays a `<span>`
-  inside the one `<button>` — a nested `<button>` is invalid HTML and
-  re-splitting the segment is exactly what the redesign removed — so its own
-  listener `stopPropagation()`s the toggle, and it stays `aria-hidden`: an
-  interactive DESCENDANT of a button has no honest place in the accessibility
-  tree, so the dot is a pointer shortcut to something already reachable
-  another way, never the only way. That contract is why the dot is a module at
-  all rather than a few lines of app.js — which no test mounts. And while the
-  circuit RUNS the dot has to be taken out by hand: a DISABLED `<button>`
-  suppresses its OWN activation but still delivers a click to a descendant
-  (measured in the real app, not assumed), so the dot asks the button it is in
-  and CSS drops it from the hit test to match.
+  A pill segment may carry a **readout** — the Wire button's color dot
+  (`components/wire-color-dot.js`), the Bus button's width badge
+  (`components/bus-width-badge.js`, `2`–`8`/`16`). A readout SHOWS the active
+  option, and **both of today's two are also the PICKER for what they show**
+  — clicking one opens a small `PopupManager.popover` (the wire dot the SAME
+  eight swatches the wire's Properties dialog offers; the bus badge one
+  circled number per `BUS_WIDTHS` preset, in a row, the badge's own glyph at a
+  size worth clicking). ONE contract, written once and applied twice, which is
+  why each is a module rather than a few lines of app.js — which no test
+  mounts:
+  - Picking **does not arm the tool**. The segment already arms when its label
+    is clicked, so the readout has to be the one place that does not, or there
+    would be no way to set the pending option without entering the tool (the
+    keyboard paths — 1–8 for either — are themselves gated on the tool being
+    armed). Hence its own listener `stopPropagation()`s the toggle.
+  - It stays a `<span>` inside the one `<button>` — a nested `<button>` is
+    invalid HTML and re-splitting the segment is exactly what the redesign
+    removed — and stays `aria-hidden`: an interactive DESCENDANT of a button
+    has no honest place in the accessibility tree, so a readout is a pointer
+    shortcut to something already reachable another way, never the only way.
+  - While the circuit RUNS it has to be taken out by hand: a DISABLED
+    `<button>` suppresses its OWN activation but still delivers a click to a
+    descendant (measured in the real app, not assumed), so the readout asks
+    the button it is in and CSS drops it from the hit test to match.
+  - The popover **closes FIRST, then reports** (the order `menu()`/`confirm()`
+    use, so a callback that opens something of its own is never QUEUED behind
+    it), and closes even when the option picked is the one already active —
+    the click answered the question.
+  The keyboard path is the same choice met without the pointer: 1–8 set the
+  bus width while that tool is armed — `2`–`8` name their own width and `1` is
+  the 16-bit bus, since no digit can spell 16 and the widest bus is worth the
+  first key (`busWidthForKey` in `model/desk-doc.js` owns that mapping, which
+  is why `BUS_WIDTHS` may stay in natural narrowest-first order — the picker
+  and the badge both walk it in that order). Either readout sets what the tool
+  lays NEXT and nothing already on the desk — a PLACED wire's color is changed
+  through its Properties dialog, a placed bus through its own context menu.
   The **parts tray is deliberately NOT in the toolbar**: it
   carries its own chevron in the palette header's top-right corner and its own
   `.palette-flap` — a drawer pull absolutely positioned on the desk's left edge,

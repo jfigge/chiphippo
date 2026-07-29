@@ -150,9 +150,13 @@ Before you click the second point, set what you're laying:
   tool parses the bit range from it. Laying a run onto a **chip pin group**
   (a catalog-defined bus of pins, like a chip's data lines) instead fans the
   bus directly onto those pins in bit order.
-- **Width** — while the bus tool is armed, press `1` for an 8-bit bus
-  (`D[7:0]`) or `2` for a 16-bit bus (`D[15:0]`), the same two presets the
-  toolbar's width menu offers.
+- **Width** — the circled number on the toolbar's **Bus** button shows the
+  active width, and clicking it opens the presets in a row: 2, 3, 4, 5, 6, 7,
+  8 and 16 bits, the current one ringed. Picking one sets the width without
+  arming the tool, so you can set up before you start. From the keyboard —
+  while the bus tool is armed — `2`–`8` lay a bus that many bits wide (`4` →
+  `D[3:0]`) and `1` lays the 16-bit bus (`D[15:0]`); no single digit can spell
+  16, and the widest bus is worth the first key.
 
 A bus is metadata layered over the individual wires it lays — right-click a
 placed bus to **Rename**, **Recolor** (which recolors every member wire

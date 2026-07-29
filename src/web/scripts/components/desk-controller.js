@@ -66,10 +66,10 @@ import {
   shiftFor,
 } from "../model/design-clip.js";
 import {
-  BUS_WIDTHS,
   DeskDoc,
   WIRE_COLORS,
   WIRE_LAYOUTS,
+  busWidthForKey,
 } from "../model/desk-doc.js";
 import { nearestLegalOffset } from "../model/nearest-legal.js";
 import { HistoryStore } from "../model/history-store.js";
@@ -193,7 +193,7 @@ export class DeskController {
   #mode = null;
   #wire; // WireTools: the wire tool + endpoint/whole-wire drags (shares #mode)
   #bus; // BusTools: the bus tool + whole-bus drag (Feature 130, shares #mode)
-  #busName = "D[7:0]"; // the name the bus tool reads (driven by the toolbar input)
+  #busName = "D[7:0]"; // the name the bus tool reads (the toolbar badge/digits)
   #defaultWireLayout = "direct"; // what a NEW wire gets (Settings ▸ Appearance)
   #lastDown = null; // last viewport pointerdown client pos (click-vs-pan)
   #hoverKey = null; // hover identity currently shown or pending
@@ -1925,19 +1925,20 @@ export class DeskController {
   // ── Bus tool (Feature 130) ───────────────────────────────────────────────
   // The bus subsystem lives in BusTools; these are the public shims app.js /
   // keyboard drive it through. The bus color rides the shared wire-color pick;
-  // the name comes from the toolbar input via setBusName.
+  // the name comes from the toolbar's width badge (or a digit key) via
+  // setBusName.
 
   get busToolArmed() {
     return this.#bus.armed;
   }
 
-  /** The name the bus tool will lay next (from the toolbar input). */
+  /** The name the bus tool will lay next (the toolbar badge shows its width). */
   get busName() {
     return this.#busName;
   }
 
-  /** Update the bus name the tool reads (the toolbar width menu or a keyboard
-      shortcut) — notifies onBusNameChange so the toolbar glyph stays in sync
+  /** Update the bus name the tool reads (the toolbar badge's width picker or a
+      digit key) — notifies onBusNameChange so the badge's glyph stays in sync
       regardless of which one drove the change. */
   setBusName(name) {
     const next = typeof name === "string" ? name : "";
@@ -2731,18 +2732,21 @@ export class DeskController {
       this.toggleBusTool();
       return true;
     }
-    // 1–8 pick the wire color while the wire tool is armed; 1–2 pick the bus
-    // width (8-bit / 16-bit) while the bus tool is armed — the same picks the
-    // toolbar's color swatch / width menu offer, without leaving the keyboard.
+    // 1–8 pick the wire color while the wire tool is armed; 1–8 pick the bus
+    // width while the bus tool is armed (2–8 name their own width, 1 is the
+    // 16-bit bus — see busWidthForKey), without leaving the keyboard.
     if (bareKey && !dragging && /^[1-9]$/.test(e.key)) {
       const n = Number(e.key);
       if (this.wireToolArmed && n <= WIRE_COLORS.length) {
         this.setWireColor(WIRE_COLORS[n - 1]);
         return true;
       }
-      if (this.busToolArmed && n <= BUS_WIDTHS.length) {
-        this.setBusName(BUS_WIDTHS[n - 1].name);
-        return true;
+      if (this.busToolArmed) {
+        const preset = busWidthForKey(n);
+        if (preset) {
+          this.setBusName(preset.name);
+          return true;
+        }
       }
     }
     // F flips LED polarity while its placement ghost is armed.

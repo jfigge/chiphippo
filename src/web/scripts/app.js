@@ -40,11 +40,12 @@ import { MemoryBridge } from "./components/memory-bridge.js";
 import { NotificationStack } from "./components/notification-stack.js";
 import { NetNameMonitor } from "./components/net-name-monitor.js";
 import { createWireColorDot } from "./components/wire-color-dot.js";
+import { createBusWidthBadge } from "./components/bus-width-badge.js";
 import { PopupManager } from "./popup-manager.js";
 import { AboutDialog } from "./components/about-dialog.js";
 import { SettingsDialog } from "./components/settings-dialog.js";
 import { KeyboardShortcutsDialog } from "./components/keyboard-shortcuts.js";
-import { BUS_WIDTHS as BUS_WIDTH_PRESETS, DeskDoc } from "./model/desk-doc.js";
+import { DeskDoc } from "./model/desk-doc.js";
 import { partDef } from "./catalog/index.js";
 
 /** How long after the last camera change to persist the viewport. */
@@ -77,11 +78,6 @@ function tickMsFor(deskDoc, sim) {
   if (!hzList.length) return null;
   return 1000 / (2 * Math.max(...hzList) * sim.speed);
 }
-
-/** The short badge glyph ("8"/"16") the Bus button displays for a bus name,
-    derived from the shared model presets; defaults to 8-bit. */
-const busWidthShort = (name) =>
-  BUS_WIDTH_PRESETS.find((w) => w.name === name)?.bits.toString() ?? "8";
 
 /** The system (settings) gear icon for the top-right header action. */
 const GEAR_SVG =
@@ -790,7 +786,7 @@ async function init() {
   let wireBtn = null;
   let wireDot = null; // the Wire button's color dot: readout AND picker
   let busBtn = null;
-  let busWidthLabel = null; // the "8"/"16" badge displayed inside the Bus button
+  let busWidth = null; // the Bus button's width badge: readout AND picker
   let probeBtn = null;
   let fadeBtn = null; // the "Fade wires" toggle
   let sim = null; // the SimController (created after the toolbar below)
@@ -828,11 +824,9 @@ async function init() {
     netlist: netlistCache,
     onWireStateChange,
     onBusStateChange,
-    // Keeps the Bus button's width badge ("8"/"16") in sync with the 1/2
-    // keyboard shortcut that sets it.
-    onBusNameChange: (name) => {
-      if (busWidthLabel) busWidthLabel.textContent = busWidthShort(name);
-    },
+    // The badge's one repaint path: whatever set the width — a digit key, or
+    // the badge's own picker — arrives here.
+    onBusNameChange: (name) => busWidth?.setName(name),
     onProbeStateChange,
     onWireFadeChange,
     // Probe context-menu → pin the net as an analyzer channel (and reveal it).
@@ -1059,12 +1053,14 @@ async function init() {
   onWireStateChange({ armed: false, color: controller.wireColor });
 
   // Bus tool (shortcut B) — lays a multi-bit run of wires in one gesture,
-  // riding the active wire color. The "8"/"16" badge likewise DISPLAYS the
-  // active width (8-bit D[7:0] / 16-bit D[15:0]), which 1/2 set while armed.
-  busWidthLabel = el("span", {
-    class: "bus-width-badge",
-    text: busWidthShort(controller.busName),
+  // riding the active wire color. Its badge shows the active width (2–8 or 16
+  // bits) and, like the Wire dot beside it, is also the PICKER for it: it opens
+  // the same presets the digit keys offer, without arming the tool.
+  busWidth = createBusWidthBadge({
+    getName: () => controller.busName,
+    onPick: (name) => controller.setBusName(name),
   });
+  busWidth.setName(controller.busName);
   busBtn = el(
     "button",
     {
@@ -1074,7 +1070,7 @@ async function init() {
       "aria-pressed": "false",
       onClick: () => controller.toggleBusTool(),
     },
-    [el("span", { text: "Bus" }), busWidthLabel],
+    [el("span", { text: "Bus" }), busWidth.element],
   );
   toolPill.append(busBtn);
 
