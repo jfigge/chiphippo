@@ -74,14 +74,14 @@ desk-level **clock source** brick (`clk<n>` ids, `out`/`gnd` terminals,
 1/2/5/10 Hz or manual) with `ClockView`, and the SimController **transport**
 (Run / Pause / Step / speed) whose `setInterval` drives clock edges while the
 engine stays pure and timerless; the derived logical **schematic view**
-(150 — landed out of tree order; its plan file still needs moving to
-`features/done/`) that flips in via `Tab` alongside the breadboard, drawing
-chip symbols + routed named nets + bus lines from the same `DeskDoc`
-(`components/schematic-view.js` + `model/schematic-layout.js` +
+(150 — landed out of tree order) that flips in via `Tab` alongside the
+breadboard, drawing chip symbols + routed named nets + bus lines from the same
+`DeskDoc` (`components/schematic-view.js` + `model/schematic-layout.js` +
 `catalog/symbols.js`), sharing the desk's camera/probe/live sim tint and
 persisting only a per-symbol `schematicPos` layout nudge — never a second
-source of truth; and (skipping the still-deferred 160/170 wave in the tree)
-**file-backed memory + inspector** (180/190). Volatility decides
+source of truth; and (skipping 160, still deferred — it is the one plan file
+under `features/deferred/`) **memory chips & wide DIPs + file-backed memory +
+inspector** (170/180/190). Volatility decides
 everything: a **volatile SRAM** (`ram-8k`/`HM62256`/`AS6C1024`, flagged
 `volatile` in the catalog) is never file-backed — run-volatile only; a
 **non-volatile ROM/EPROM/EEPROM** is backed by a real `.bin` in the app working
@@ -126,7 +126,13 @@ through the real engine, and only then arms it as a placement ghost. See the
 onto `model/autobuild.js`, is still open — note it now has `centreDocument` and
 a second output to honour); and **example circuits** (270) — every benchable
 74xx part's demonstration bench shipped inside the app and offered as a button
-on that part's pin-assignments window, landing as a `<ref> example` desktop.
+on that part's pin-assignments window, landing as a `<ref> example` desktop;
+and **auto-update** (280) — `electron-updater` against the release feed the
+Release workflow was already publishing, a **Settings ▸ About** tab to check
+on demand and opt into checking at launch (off by default — a check is an
+outbound call), a restart only ever taken with consent and through the normal
+unsaved-project guard, and ONE runtime `store-build.js` gate that turns the
+whole feature off in a Mac App Store build.
 When a stage is finished, move its plan file into `features/done/`.
 
 ## Naming & identity
@@ -250,11 +256,16 @@ website** (`make docs` → `website/docs/`), and a **PDF** (`make pdf` →
   the by-PATH reader `project-migrate.js` uses to inline a v3 desktop file —
   `mem-store.js`, the atomic byte store behind a memory chip's `.bin`
   sidecar, Feature 180, and `credential-store.js`, the `safeStorage`-encrypted
-  API-key sidecar, Feature 260), plus `ai/` (`providers.js` + `client.js`)
-  and `datasheets/` (`sources.js` + `download.js`) — the app's ONLY two
-  outbound network calls, both in main because the renderer's CSP forbids one
-  (and both the same shape: a hard-coded table of where it may go, beside the
-  thing that goes there).
+  API-key sidecar, Feature 260), plus `ai/` (`providers.js` + `client.js`),
+  `datasheets/` (`sources.js` + `download.js`) and `updater.js` — the app's
+  ONLY THREE outbound network calls, all in main because the renderer's CSP
+  forbids one, and all the same shape: a hard-coded statement of where it may
+  go, beside the thing that goes there (the provider table, the source table,
+  and electron-builder's `publish` block). All three are also OPT-IN — an AI
+  build is asked for, a download is pressed, and the update check is off until
+  Settings ▸ About turns it on — so a Chip Hippo nobody has configured never
+  reaches the network at all. Beside the updater, `store-build.js` is the one
+  place that answers "is this a store build?" (see the auto-update note below).
   **Files**: there is exactly ONE — the open PROJECT (`<name>.chiphippo`),
   which holds every desktop's document and every programmed ROM's bytes (see
   "Projects & tabbed desktops" below). The whole file surface is
@@ -923,8 +934,9 @@ Electron main process (src/app/main.js)
     which the prompt now says and the corpus proves builds clean.
   - **The renderer makes NO network call** — its CSP is `default-src 'self'`
     with no `connect-src`, so the whole outbound path is main's, exactly as
-    filesystem I/O is. `ai/client.js` uses Node's global `fetch` (no runtime
-    dependency; `src/package.json` still has no `dependencies` block) with an
+    filesystem I/O is. `ai/client.js` uses Node's global `fetch` — no runtime
+    dependency of its own (`electron-updater`, which arrived with auto-update,
+    is the only entry in `src/package.json`'s `dependencies`) — with an
     `AbortController` registry keyed by request id and an SSE reader that
     carries the tail across chunk boundaries. `ai/providers.js` holds BOTH
     adapters in one file behind `buildRequest`/`readEvent`/`buildPing`; nothing
@@ -1179,6 +1191,15 @@ Electron main process (src/app/main.js)
   menu (`refreshAppMenu`) whenever the MRU list changes —
   `setEditMenuState` therefore remembers the renderer's last Undo/Redo
   availability and replays it, since a fresh template starts both disabled.
+  **HELP** is User Guide ⌘/ · rule · Keyboard Shortcuts ⌘K · rule · Check for
+  Updates… (Feature 280) (with About and a second rule ahead of Shortcuts off macOS, where
+  there is no app menu to hold it). Check for Updates is the ONE item that
+  pushes nothing: it calls `updater.checkForUpdates({manual:true})` in main
+  directly, because the result comes back on the `updater:*` channels
+  regardless of who asked — so routing it through the window would add a hop
+  and a second path to the same status line. It is also the one item that can
+  be ABSENT rather than disabled: in a store build there is no updater at all,
+  and its separator goes with it, since a menu must not end on a rule.
   `app.js` opens the
   matching PopupManager modal: `components/about-dialog.js` (name/subtitle/desc
   + version info from `app:info:get`) and `components/settings-dialog.js`. The
@@ -1224,9 +1245,21 @@ Electron main process (src/app/main.js)
   asynchronously — its picker comes from `ai:providers`, so it cannot drift
   from `app/ai/providers.js`. Its API-key field is the ONE control in the
   dialog that bypasses `#emit` entirely, calling `ai.key.set` directly; see
-  the AI-circuit-builder note above for why. Window bounds and the desk camera
+  the AI-circuit-builder note above for why. The **About** tab (Feature 280) is the
+  auto-updater's UI and the one panel with LIVE state (see the auto-update
+  note below): the version from `app:info:get`, **`autoUpdateCheck`** as a
+  third segmented picker (On/Off, default Off), a Check button, and a status
+  line fed by the `chiphippo:updater-*` broadcasts — whose listeners belong to
+  the dialog's OPEN lifetime, so `buildAboutPanel` hands back a `dispose` that
+  `onClose` runs. Window bounds and the desk camera
   (incl. **zoom**) are already persisted in `settings.json` (`windowBounds` via
   `window-state.js`; `viewport` via the renderer's debounced save).
+  One CSS rule the whole card depends on: a settings element that sets a
+  `display` of its own must be listed in the shared **`[hidden]`** rule beside
+  `.settings-panel`, because a class selector outranks the UA sheet's
+  `[hidden] { display: none }` — without it `el.hidden = true` sets an
+  attribute that changes nothing, which is exactly how Data Sheets came to
+  offer a **Clear** button with no folder to clear.
 - **Pin-assignments window** (Feature 100): **Pin Assignment**, the item
   leading every part's context menu (`DeskController.#onPartContextMenu` →
   `#onOpenPinout(ref, rows, rot)` — offered even while the circuit runs; the
@@ -1374,6 +1407,46 @@ Electron main process (src/app/main.js)
   demonstrated by flipping switches at it, and the 65xx demos are excluded for
   a sharper reason still — their program lives in a separate `.hex`, so the
   document alone would arrive not working.
+- **Auto-update, and the store gate** (Feature 280 — `app/updater.js` +
+  `app/store-build.js` + `components/updater-monitor.js` + Settings ▸ About).
+  A thin wrapper over
+  `electron-updater`'s `autoUpdater`, pointed at the GitHub Releases feed the
+  Release workflow ALREADY publishes — `latest*.yml` has been uploaded beside
+  every installer since the workflow was written, so nothing about releasing
+  changed to turn this on. **NOTHING RESTARTS WITHOUT CONSENT**: an update
+  downloads in the background and installs on a normal quit
+  (`autoInstallOnAppQuit`) or through a clicked `quitAndInstall()` — which
+  still runs main's ordinary before-quit guard, so an unsaved project is asked
+  about first, and a cancelled quit simply leaves the update for next time.
+  - **The updater ANSWERS; it does not decide what to say.** Every lifecycle
+    event is a one-way `updater:*` push the preload re-dispatches as
+    `chiphippo:updater-*`, and the renderer owns every word: `UpdaterMonitor`
+    (the always-on toasts, session-long, one shared toast key so the stages of
+    one update replace each other rather than stacking) and the About panel's
+    inline status line (dialog-lifetime, hence its `dispose`). Each push
+    carries **`manual`** — main's record of whether a human pressed the button
+    — because the difference between "you're up to date" and silence is
+    entirely whether it answers a question that was asked. A `reason`
+    (`"store-build"` / `"dev-build"`) rides on not-available, so a build that
+    CANNOT update reports a fact rather than an error. `download-progress` is
+    deliberately never forwarded: there is no progress bar to feed.
+  - **A store build is gated at RUNTIME, never by branching the build**
+    (`store-build.js`, the only place that reads Electron's `process.mas` /
+    `process.windowsStore`). The Mac App Store updates its own apps,
+    electron-builder strips the feed from a MAS package, and the sandbox
+    forbids an app replacing itself — so `checkForUpdates` short-circuits, the
+    Help item is absent rather than disabled, and About hides its controls and
+    says why. The renderer learns this from **`app:info:get`'s
+    `distribution`** rather than a bridge flag of its own: main is the side
+    where `process.mas` is unambiguous, and the panel already awaits that
+    object before it draws anything.
+  - **The check is OPT-IN** (`autoUpdateCheck`, default false) — an outbound
+    call, and Chip Hippo makes none unasked. Off still leaves both manual
+    routes working; on adds one delayed check ~10 s after launch, off the busy
+    launch path. `require("electron-updater")` is deliberately LAZY (inside
+    the functions, not at module scope): reading the getter constructs the
+    platform updater, which dereferences Electron's native `autoUpdater` —
+    absent under `node --test`, where `main.js` is read but never run.
 
 - The main process owns all filesystem and native I/O. The renderer is sandboxed
   (`contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`) and

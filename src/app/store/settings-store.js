@@ -63,6 +63,16 @@ const DEFAULTS = Object.freeze({
   // dialogs — then follow, so there is ONE switch for the whole app.
   theme: "system",
 
+  // ── Auto-update (Feature 280; Settings ▸ About) ───────────────────────────
+  // Whether the app checks the release feed for a newer version shortly after
+  // launch. OFF by default, deliberately: an update check is an outbound call,
+  // and Chip Hippo makes none of those until it is asked to — the same stance
+  // the AI builder and the datasheet download take. Turning it off does not
+  // take the feature away; Settings ▸ About and Help ▸ Check for Updates…
+  // still check on demand. Ignored entirely in a Mac App Store build, where
+  // the store does the updating (see app/store-build.js).
+  autoUpdateCheck: false,
+
   // The selection-border colour (`#rrggbb`), or null to use the theme accent.
   // Applied by the renderer as the `--color-selection` custom property.
   // Defaults to the house orange (the `--color-wire-orange` value): the theme

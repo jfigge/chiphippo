@@ -187,7 +187,7 @@ test("SettingsDialog: the Data Sheets tab switches panels", () => {
     [...dialog.querySelectorAll(".settings-nav-item")].map(
       (b) => b.textContent,
     ),
-    ["Appearance", "Data Sheets", "AI"],
+    ["Appearance", "Data Sheets", "AI", "About"],
   );
 
   const appearance = dialog.querySelector(
@@ -403,6 +403,163 @@ test("SettingsDialog: with no OS credential store the key field is disabled and 
       .join(" "),
     /no secure credential store/i,
   );
+
+  PopupManager.close();
+});
+
+// ── Settings ▸ About (auto-update) ──────────────────────────────────────────
+// The About panel is the only one with LIVE state: a check reports itself over
+// the chiphippo:updater-* broadcasts, which arrive whether the check started
+// here, from the Help menu, or on its own at launch.
+
+/** Install a fake bridge whose getAppInfo answers with `info`. */
+function stubAppInfo(info) {
+  const calls = { check: 0, install: 0 };
+  window.chiphippo = {
+    getAppInfo: async () => info,
+    updater: {
+      check: async () => (calls.check += 1),
+      install: async () => (calls.install += 1),
+    },
+  };
+  return calls;
+}
+
+/** The About panel's status line (the only `role="status"` in the dialog). */
+const aboutStatus = () =>
+  document.querySelector('.settings-panel[data-panel="about"] [role="status"]');
+
+const fire = (name, detail) =>
+  window.dispatchEvent(new window.CustomEvent(name, { detail }));
+
+test("SettingsDialog: About shows the version and checks on demand", async () => {
+  resetDom();
+  const calls = stubAppInfo({ version: "1.2.3", distribution: "direct" });
+  SettingsDialog.open({});
+  await flush();
+
+  const panel = document.querySelector('.settings-panel[data-panel="about"]');
+  assert.ok(panel.hidden, "the About panel starts hidden");
+  assert.match(panel.textContent, /Chip Hippo 1\.2\.3/);
+  assert.equal(aboutStatus().textContent, "", "nothing claimed until asked");
+
+  const check = [...panel.querySelectorAll(".settings-action")].find(
+    (b) => b.textContent === "Check for updates",
+  );
+  check.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  assert.equal(calls.check, 1);
+  assert.match(aboutStatus().textContent, /Checking for updates/i);
+
+  PopupManager.close();
+});
+
+test("SettingsDialog: About tracks the updater broadcasts and offers Restart", async () => {
+  resetDom();
+  const calls = stubAppInfo({ version: "1.2.3", distribution: "direct" });
+  SettingsDialog.open({});
+  await flush();
+
+  const panel = document.querySelector('.settings-panel[data-panel="about"]');
+  const restart = [...panel.querySelectorAll(".settings-action")].find(
+    (b) => b.textContent === "Restart to update",
+  );
+  assert.ok(restart.hidden, "nothing to restart INTO until one is downloaded");
+
+  fire("chiphippo:updater-available", { version: "1.3.0", manual: true });
+  assert.match(aboutStatus().textContent, /1\.3\.0 is available/);
+
+  fire("chiphippo:updater-downloaded", { version: "1.3.0" });
+  assert.match(aboutStatus().textContent, /1\.3\.0 is ready to install/);
+  assert.ok(!restart.hidden, "and now there is");
+
+  restart.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  assert.equal(calls.install, 1);
+
+  // "store-build" / "dev-build" are ANSWERS, not failures.
+  fire("chiphippo:updater-not-available", {
+    manual: true,
+    reason: "dev-build",
+  });
+  assert.match(
+    aboutStatus().textContent,
+    /only available in installed builds/i,
+  );
+  fire("chiphippo:updater-not-available", { manual: true });
+  assert.match(aboutStatus().textContent, /latest version/i);
+
+  PopupManager.close();
+});
+
+test("SettingsDialog: About drops its updater listeners when the dialog closes", async () => {
+  resetDom();
+  stubAppInfo({ version: "1.2.3", distribution: "direct" });
+  SettingsDialog.open({});
+  await flush();
+  const status = aboutStatus();
+
+  PopupManager.close();
+  // The panel is detached but still reachable from here — if the listeners
+  // outlived the dialog they would keep writing into it, one more set every
+  // time Settings was opened.
+  fire("chiphippo:updater-checking", {});
+  assert.equal(status.textContent, "", "the closed panel is no longer written");
+});
+
+test("SettingsDialog: About auto-check seeds and emits", async () => {
+  resetDom();
+  stubAppInfo({ version: "1.2.3", distribution: "direct" });
+  SettingsDialog.open({ autoUpdateCheck: true });
+  await flush();
+
+  const group = document.querySelector(
+    '.segmented-picker[aria-label="Check for updates automatically"]',
+  );
+  const segments = [...group.querySelectorAll(".segmented-option")];
+  assert.deepEqual(
+    segments.map((b) => b.textContent),
+    ["On", "Off"],
+  );
+  assert.equal(
+    segments.find((b) => b.classList.contains("segmented-option--active"))
+      .textContent,
+    "On",
+  );
+
+  const patches = [];
+  window.addEventListener("chiphippo:settings-changed", (e) =>
+    patches.push(e.detail),
+  );
+  segments[1].click();
+  assert.deepEqual(patches, [{ autoUpdateCheck: false }]);
+
+  PopupManager.close();
+
+  // Absent means off — an update check is an outbound call, so it is opt-in.
+  resetDom();
+  stubAppInfo({ version: "1.2.3", distribution: "direct" });
+  SettingsDialog.open({});
+  await flush();
+  assert.equal(activeSegment("Check for updates automatically").textContent, "Off"); // prettier-ignore
+  PopupManager.close();
+});
+
+test("SettingsDialog: a store build offers no update controls at all", async () => {
+  resetDom();
+  stubAppInfo({ version: "1.2.3", distribution: "store" });
+  SettingsDialog.open({});
+  await flush();
+
+  const panel = document.querySelector('.settings-panel[data-panel="about"]');
+  assert.match(panel.textContent, /Chip Hippo 1\.2\.3/, "the version remains");
+  for (const row of panel.querySelectorAll(".settings-row")) {
+    const isVersion = row.textContent.includes("Version");
+    assert.equal(
+      row.hidden,
+      !isVersion,
+      "every row but the version is hidden in a store build",
+    );
+  }
+  assert.match(panel.textContent, /delivered through the App Store/i);
 
   PopupManager.close();
 });

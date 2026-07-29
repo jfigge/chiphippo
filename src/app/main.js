@@ -40,6 +40,8 @@ const path = require("path");
 const fs = require("fs");
 
 const { parseArgs } = require("./cli-args");
+const updater = require("./updater");
+const { isStoreBuild, distribution } = require("./store-build");
 const { CredentialStore } = require("./store/credential-store");
 const aiClient = require("./ai/client");
 const aiProviders = require("./ai/providers");
@@ -134,6 +136,12 @@ function collectAppInfo() {
     chrome: process.versions.chrome,
     node: process.versions.node,
     platform: `${process.platform} ${process.arch}`,
+    // Which channel produced this build — "store" for a Mac App Store package
+    // (which updates itself through the store), "direct" for a download from
+    // chiphippo.com. It rides here rather than on a bridge flag of its own
+    // because main is where `process.mas` is unambiguously true, and because
+    // Settings ▸ About already asks for this object before it draws anything.
+    distribution: distribution(),
   };
 }
 
@@ -1271,16 +1279,36 @@ function buildAppMenu() {
     accelerator: "CmdOrCtrl+/",
     click: () => openDocsWindow(),
   };
+  // On-demand update check. Triggered directly here — the updater pushes its
+  // result to the renderer, which owns the toast and the About status line, so
+  // this needs no round trip through the window. OMITTED ENTIRELY in a store
+  // build: the App Store delivers its own updates and the in-app updater is
+  // disabled, and a menu item that can only ever answer "not from here" is
+  // worse than no menu item (see store-build.js).
+  const checkUpdates = isStoreBuild()
+    ? []
+    : [
+        {
+          label: "Check for Updates…",
+          click: () => updater.checkForUpdates({ manual: true }),
+        },
+      ];
+  // A separator only where there is something under it to separate — in a
+  // store build the whole tail is gone, and a menu must not end on a rule.
+  const updateItems = checkUpdates.length
+    ? [{ type: "separator" }, ...checkUpdates]
+    : [];
   template.push({
     role: "help",
     submenu: isMac
-      ? [userGuide, { type: "separator" }, shortcuts]
+      ? [userGuide, { type: "separator" }, shortcuts, ...updateItems]
       : [
           userGuide,
           { type: "separator" },
           about,
           { type: "separator" },
           shortcuts,
+          ...updateItems,
         ],
   });
 
@@ -1418,6 +1446,21 @@ function registerIpc() {
   // Settings ▸ Data Sheets: pick the external datasheet-PDF folder (native
   // directory dialog); the renderer persists the chosen path via settings:set.
   ipcMain.handle("settings:choose-datasheet-dir", () => chooseDatasheetDir());
+
+  // Auto-update (Feature 280). The updater itself lives in updater.js; these two are the
+  // renderer's way in — Settings ▸ About's Check button and the Restart action
+  // on the "update ready" toast. Neither answers with a result: the check's
+  // outcome arrives on the `updater:*` push channels the same way whether it
+  // was asked for here or from the Help menu (which calls checkForUpdates
+  // directly), so there is one path to the status line rather than two.
+  ipcMain.handle("updater:check", () => {
+    updater.checkForUpdates({ manual: true });
+    return null;
+  });
+  ipcMain.handle("updater:install", () => {
+    updater.quitAndInstall();
+    return null;
+  });
 
   // Projects: the session's project, and the one file it lives in. The
   // renderer holds the project — name, description, tabs, and every desktop's
@@ -1865,6 +1908,22 @@ function bootstrap() {
     );
     refreshAppMenu();
     createWindow();
+
+    // Auto-update (Feature 280): point the updater at the live window so a manual check
+    // (Help ▸ Check for Updates… / Settings ▸ About) has somewhere to report,
+    // then run a delayed silent check — but ONLY if the user has opted in.
+    // The default is off, so a fresh install makes no outbound call of its own
+    // until asked to, and the delay keeps the check off the launch path, where
+    // the desk is still being built. A store or dev build no-ops either way.
+    updater.initUpdater(() => mainWindow);
+    const autoCheck = safeCall(
+      "settings:auto-update",
+      () => getSettingsStore().get().autoUpdateCheck === true,
+      false,
+    );
+    if (autoCheck) {
+      setTimeout(() => updater.checkForUpdates({ manual: false }), 10000);
+    }
 
     app.on("activate", () => {
       // macOS: clicking the dock re-shows (or recreates) the window.

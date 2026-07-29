@@ -88,6 +88,17 @@ for (const [channel, event] of [
   // part at a time; a single resolved promise at the end would leave the
   // dialog with nothing to show for the minute it takes.
   ["datasheet:progress", "chiphippo:datasheet-progress"],
+  // Auto-update (Feature 280). These are pushes rather than a resolved invoke for a reason
+  // the others share: a check can be started from the HELP MENU, which never
+  // touches this window, so its outcome cannot come back as anybody's return
+  // value. Each carries `{ manual }` — a check the user asked for reports
+  // itself, a silent startup one does not nag. `updater:not-available` may add
+  // a `reason` ("store-build" / "dev-build"), which is an answer, not a fault.
+  ["updater:checking", "chiphippo:updater-checking"],
+  ["updater:available", "chiphippo:updater-available"],
+  ["updater:not-available", "chiphippo:updater-not-available"],
+  ["updater:downloaded", "chiphippo:updater-downloaded"],
+  ["updater:error", "chiphippo:updater-error"],
 ]) {
   ipcRenderer.on(channel, (_e, detail) => {
     window.dispatchEvent(new CustomEvent(event, { detail }));
@@ -151,6 +162,19 @@ contextBridge.exposeInMainWorld("chiphippo", {
     start: (config, system, messages) =>
       ipcRenderer.invoke("ai:start", config, system, messages),
     cancel: (requestId) => ipcRenderer.invoke("ai:cancel", requestId),
+  },
+
+  // ── Auto-update (Feature 280) ──────────────────────────────────────────────
+  // `check` asks for an explicit check (Settings ▸ About's button; the Help
+  // menu's item runs the same check in main). `install` quits and installs an
+  // ALREADY-DOWNLOADED update — user-clicked only, and it still goes through
+  // the ordinary quit guard, so an unsaved project is asked about first.
+  // Neither resolves with anything: the outcome arrives as the
+  // `chiphippo:updater-*` events re-dispatched above. Both are inert in a
+  // store build and in `make debug`, which report why rather than failing.
+  updater: {
+    check: () => ipcRenderer.invoke("updater:check"),
+    install: () => ipcRenderer.invoke("updater:install"),
   },
 
   // ── Projects ───────────────────────────────────────────────────────────────

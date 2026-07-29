@@ -2547,7 +2547,17 @@ textarea.annotation-editor {
   flex-direction: column;
 }
 
-.settings-panel[hidden] {
+/* Anything in this card that sets a `display` of its own must opt BACK IN to
+   being hideable: a class selector outranks the UA sheet's
+   `[hidden] { display: none }`, so `el.hidden = true` otherwise sets an
+   attribute that changes nothing on screen. That is not theoretical — it is
+   why the Data Sheets tab showed a **Clear** button with no folder to clear,
+   and it caught About's **Restart to update** the same way, offered before
+   anything had been downloaded. Grouped in one rule so the next control with
+   a display and a hidden state is a line here, not another silent no-op. */
+.settings-panel[hidden],
+.settings-row[hidden],
+.settings-action[hidden] {
   display: none;
 }
 
@@ -3314,6 +3324,33 @@ textarea.annotation-editor {
 
 .toast-message {
   color: var(--color-subtext);
+}
+
+/* The one button a toast may carry, for a toast that OFFERS something rather
+   than only saying it ("Update ready" → Restart). Deliberately quiet — a
+   bordered chip, not a filled primary — because it appears unbidden in the
+   corner of the desk, and nothing arriving that way should look like the
+   next thing to click. Same shape as `.settings-action`, one size down. */
+.toast-action {
+  display: inline-flex;
+  align-items: center;
+  margin-top: var(--space-2);
+  padding: 3px var(--space-2);
+  border: 1px solid var(--color-overlay);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-1);
+  color: var(--color-text);
+  font-size: 11px;
+  font-weight: 500;
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.toast-action:hover {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
 }
 
 /* ── Chip pin-assignments dialog (wiring reference) ──────────────────────── */

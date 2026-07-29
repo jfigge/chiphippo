@@ -308,6 +308,175 @@ function buildAiRows(settings, providers) {
   ];
 }
 
+/** Settings ▸ About ▸ "Check automatically". An either/or, so the app's own
+    either/or control — the same segmented track Theme and Wire layout use,
+    rather than a checkbox this dialog has nowhere else. */
+const AUTO_UPDATE_OPTIONS = [
+  { value: true, label: "On" },
+  { value: false, label: "Off" },
+];
+
+/**
+ * Build the About panel: the version, whether to check for updates
+ * automatically, and an on-demand check.
+ *
+ * It is the one panel with LIVE state — a check reports itself over the
+ * `chiphippo:updater-*` broadcasts, which arrive whether the check started
+ * here, in the Help menu, or on its own at launch. Those listeners belong to
+ * the dialog's OPEN lifetime, not to the session (the app-wide toasts are the
+ * always-on surface), so this hands back a `dispose` for the close path.
+ *
+ * @param {object} settings the current settings document.
+ * @returns {{ rows: HTMLElement[], dispose: () => void }}
+ */
+function buildAboutPanel(settings) {
+  // The status line under the button. Blank until something happens: an
+  // untouched panel has nothing to report, and a stale line from the last time
+  // the dialog was open would be a claim about now.
+  const status = el("p", {
+    class: "settings-hint",
+    role: "status",
+    "aria-live": "polite",
+    text: "",
+  });
+  const say = (text) => {
+    status.textContent = text;
+  };
+
+  const version = el("span", {
+    class: "settings-folder-path settings-folder-path--empty",
+    text: "Reading version…",
+  });
+
+  const checkBtn = el("button", {
+    class: "settings-action",
+    type: "button",
+    text: "Check for updates",
+    onClick: () => {
+      say("Checking for updates…");
+      window.chiphippo?.updater?.check?.();
+    },
+  });
+
+  // Only ever shown once an update has actually been downloaded — restarting
+  // is not something to offer before there is anything to restart INTO.
+  const restartBtn = el("button", {
+    class: "settings-action",
+    type: "button",
+    text: "Restart to update",
+    hidden: true,
+    onClick: () => window.chiphippo?.updater?.install?.(),
+  });
+
+  const autoPicker = buildSegmented({
+    options: AUTO_UPDATE_OPTIONS,
+    value: settings.autoUpdateCheck === true,
+    ariaLabel: "Check for updates automatically",
+    onPick: (autoUpdateCheck) => emitSettings({ autoUpdateCheck }),
+  });
+
+  const autoRow = el("div", { class: "settings-row" }, [
+    el("label", { class: "settings-label", text: "Check automatically" }),
+    autoPicker,
+  ]);
+  const actionRow = el("div", { class: "settings-row settings-row--stack" }, [
+    el("div", { class: "settings-folder-actions" }, [checkBtn, restartBtn]),
+    status,
+  ]);
+  const hint = el("p", {
+    class: "settings-hint",
+    text:
+      "Chip Hippo can check github.com for a newer release. An update " +
+      "downloads in the background and is only installed when you say so — " +
+      "either by restarting here, or the next time you quit. Nothing but the " +
+      "check itself is sent, and with this off nothing is sent at all.",
+  });
+
+  // Every lifecycle event, one handler each, so they can all be removed again.
+  const onChecking = () => say("Checking for updates…");
+  const onAvailable = (e) => {
+    const v = e.detail?.version;
+    say(
+      v
+        ? `Version ${v} is available — downloading in the background…`
+        : "An update is available — downloading in the background…",
+    );
+  };
+  const onNotAvailable = (e) => {
+    // "store-build" / "dev-build" are ANSWERS, not failures: this build cannot
+    // update itself, and saying so beside the version is the honest report.
+    // Neither can reach here in practice — the panel hides its controls for
+    // both below — but the check can also come from the Help menu.
+    say(
+      e.detail?.reason === "store-build"
+        ? "Updates are delivered through the App Store."
+        : e.detail?.reason === "dev-build"
+          ? "Updates are only available in installed builds."
+          : "You're running the latest version of Chip Hippo.",
+    );
+  };
+  const onDownloaded = (e) => {
+    const v = e.detail?.version;
+    say(
+      v
+        ? `Version ${v} is ready to install.`
+        : "The update is ready to install.",
+    );
+    restartBtn.hidden = false;
+  };
+  const onError = () =>
+    say("Could not check for updates. Please try again later.");
+
+  const LISTENERS = [
+    ["chiphippo:updater-checking", onChecking],
+    ["chiphippo:updater-available", onAvailable],
+    ["chiphippo:updater-not-available", onNotAvailable],
+    ["chiphippo:updater-downloaded", onDownloaded],
+    ["chiphippo:updater-error", onError],
+  ];
+  for (const [event, fn] of LISTENERS) window.addEventListener(event, fn);
+
+  // The version — and, with it, whether this build updates itself at all.
+  // A store build is told BY MAIN (`distribution`), which is the only side
+  // where `process.mas` is unambiguous; a store delivers its own updates, so
+  // every control here would be a button that can't do anything.
+  Promise.resolve(window.chiphippo?.getAppInfo?.() ?? null).then(
+    (info) => {
+      version.textContent = info?.version
+        ? `Chip Hippo ${info.version}`
+        : "Chip Hippo";
+      version.classList.remove("settings-folder-path--empty");
+      if (info?.distribution === "store") {
+        autoRow.hidden = true;
+        actionRow.hidden = true;
+        hint.textContent =
+          "Updates for this copy of Chip Hippo are delivered through the " +
+          "App Store, so it never checks for them itself.";
+      }
+    },
+    (err) => {
+      console.error("[renderer] app:info:get failed:", err);
+      version.textContent = "Chip Hippo";
+    },
+  );
+
+  return {
+    rows: [
+      el("div", { class: "settings-row settings-row--stack" }, [
+        el("label", { class: "settings-label", text: "Version" }),
+        el("div", { class: "settings-folder-input" }, [version]),
+      ]),
+      autoRow,
+      actionRow,
+      hint,
+    ],
+    dispose: () => {
+      for (const [event, fn] of LISTENERS)
+        window.removeEventListener(event, fn);
+    },
+  };
+}
+
 /** The effective selection-border colour when none is stored (theme default). */
 function themeSelectionColor() {
   const v = getComputedStyle(document.documentElement)
@@ -460,6 +629,10 @@ export class SettingsDialog {
       },
     );
 
+    // Built before the panel map because it also hands back the teardown for
+    // the updater listeners it attaches, which onClose below has to run.
+    const about = buildAboutPanel(settings);
+
     const panels = {
       appearance: el(
         "section",
@@ -552,6 +725,16 @@ export class SettingsDialog {
         ],
       ),
       ai: aiPanel,
+      about: el(
+        "section",
+        {
+          class: "settings-panel",
+          role: "tabpanel",
+          "data-panel": "about",
+          hidden: true,
+        },
+        about.rows,
+      ),
     };
 
     // Left nav rail — one item per panel; clicking switches the visible panel.
@@ -559,6 +742,7 @@ export class SettingsDialog {
       { key: "appearance", label: "Appearance" },
       { key: "datasheets", label: "Data Sheets" },
       { key: "ai", label: "AI" },
+      { key: "about", label: "About" },
     ];
     const navItems = TABS.map(({ key, label }, i) =>
       el("button", {
@@ -590,6 +774,7 @@ export class SettingsDialog {
         panels.appearance,
         panels.datasheets,
         panels.ai,
+        panels.about,
       ]),
     ];
 
@@ -602,6 +787,11 @@ export class SettingsDialog {
       bodyClass: "settings-popup-body",
       body,
       onClose: () => {
+        // The About panel's updater listeners live for exactly as long as the
+        // dialog does — the app-wide toasts are the always-on surface, and a
+        // status line writing into a card that has been thrown away is a leak
+        // that grows by one set every time Settings is opened.
+        about.dispose();
         SettingsDialog.#open = false;
       },
     });

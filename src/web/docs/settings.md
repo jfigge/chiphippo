@@ -2,7 +2,7 @@
 
 Chip Hippo keeps its handful of app-wide preferences in one small **Settings**
 dialog — a tabbed master-detail card with a left nav rail and a panel on the
-right. It's deliberately minimal: three tabs, a few controls each, applied
+right. It's deliberately minimal: four tabs, a few controls each, applied
 live the moment you change them.
 
 ![The Settings dialog](images/settings.png)
@@ -88,9 +88,10 @@ setting the same folder, and whichever you did last is the one in effect.
 The **AI** tab is where you point Chip Hippo at your own AI connection, for
 the [AI circuit builder](ai-builder.md). Nothing here is required — the app
 works completely without it, and contacts no AI provider until a connection is
-configured and you ask the builder for something. (The only other time Chip
-Hippo reaches the network at all is the datasheet **Download…** button above,
-and only while you're pressing it.)
+configured and you ask the builder for something. (The only other times Chip
+Hippo reaches the network at all are the datasheet **Download…** button above,
+while you're pressing it, and the update check on the **About** tab below,
+which is switched off until you turn it on.)
 
 ![The AI tab of the Settings dialog](images/settings-ai.png)
 
@@ -112,6 +113,37 @@ it's never read back into the app's window afterwards; the dialog only learns
 *whether* a key is stored. If no secure store is available on your system,
 Chip Hippo **refuses to save the key** and says so rather than quietly writing
 it out in the clear.
+
+## About
+
+The **About** tab shows which version of Chip Hippo you're running, and is
+where updates are handled.
+
+- **Check automatically** — **On** or **Off**, and **Off** is the default. On,
+  Chip Hippo asks GitHub once, shortly after launch, whether there's a newer
+  release. Off, it never asks on its own — but the button below still works
+  whenever you want to know.
+- **Check for updates** — checks right now and says what it found on the line
+  underneath: that you're up to date, that a version is downloading, or that
+  the check couldn't be made.
+
+When an update is found it downloads quietly in the background; you can carry
+on working, and there's no progress bar in your way. Once it's ready a
+**Restart to update** button appears here, and a notice appears in the corner
+of the desk with a **Restart** button of its own. **Nothing is installed until
+you say so.** If you'd rather not stop what you're doing, ignore it — the
+update installs by itself the next time you quit Chip Hippo, and restarting
+here runs the same "you have unsaved changes" prompt that quitting does, so a
+design in progress is never lost to an update.
+
+The check itself is the only thing sent, and only to GitHub. Chip Hippo has no
+analytics and reports nothing about you or your circuits.
+
+You'll see this tab differently depending on where your copy came from. A copy
+installed from the **Mac App Store** updates through the App Store like every
+other app there, so this tab shows only the version and says so — there are no
+controls, because there'd be nothing for them to do. A development build says
+that updates are only available in installed builds.
 
 ## What else persists automatically
 

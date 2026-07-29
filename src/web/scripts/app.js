@@ -38,6 +38,7 @@ import { NetlistCache } from "./components/netlist-cache.js";
 import { MemoryBridge } from "./components/memory-bridge.js";
 import { NotificationStack } from "./components/notification-stack.js";
 import { NetNameMonitor } from "./components/net-name-monitor.js";
+import { UpdaterMonitor } from "./components/updater-monitor.js";
 import { createWireColorDot } from "./components/wire-color-dot.js";
 import { createBusWidthBadge } from "./components/bus-width-badge.js";
 import { PopupManager } from "./popup-manager.js";
@@ -1245,6 +1246,11 @@ async function init() {
   // Surface net-name merge conflicts (Feature 120) as toasts — a name that
   // loses a merge is reported, never silently dropped.
   new NetNameMonitor(netlistCache, notifications);
+
+  // Auto-update: the always-on surface for whatever the updater is doing. It
+  // is the only one that survives Settings being closed, which is why it lives
+  // here and not in the About panel's own listeners.
+  new UpdaterMonitor(notifications);
 
   // The transport is its own pill (the app's grouping shape), sitting apart
   // from the edit tools. Stopped it holds exactly ONE segment — Run; the

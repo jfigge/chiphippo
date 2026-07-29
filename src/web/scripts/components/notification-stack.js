@@ -42,9 +42,27 @@ export class NotificationStack {
    * Show a toast. `key` collapses repeats (the same standing warning refreshes
    * its timer instead of stacking). `variant` styles it
    * (info | warning | danger). `sticky` toasts don't auto-dismiss.
-   * @param {{ key?: string, variant?: string, title?: string, message: string, sticky?: boolean }} opts
+   *
+   * `actionLabel` + `onAction` add ONE button to the toast — the shape a toast
+   * needs when it is offering something rather than just saying something
+   * ("Update ready" → Restart). The whole toast is a dismiss target, so the
+   * button stops the click from propagating into it: exactly the discipline
+   * the toolbar's pill readouts follow, for the same reason — a control nested
+   * inside a bigger one must not also fire what it sits in. The toast dismisses
+   * itself afterwards, since the offer has been answered either way.
+   *
+   * @param {{ key?: string, variant?: string, title?: string, message: string,
+   *           sticky?: boolean, actionLabel?: string, onAction?: () => void }} opts
    */
-  notify({ key, variant = "info", title, message, sticky = false } = {}) {
+  notify({
+    key,
+    variant = "info",
+    title,
+    message,
+    sticky = false,
+    actionLabel,
+    onAction,
+  } = {}) {
     const id = key ?? `${variant}:${message}`;
     const existing = this.#live.get(id);
     if (existing) {
@@ -52,12 +70,25 @@ export class NotificationStack {
       if (!sticky) existing.timer = this.#arm(id);
       return;
     }
+    const action =
+      actionLabel &&
+      el("button", {
+        class: "toast-action",
+        type: "button",
+        text: actionLabel,
+        onClick: (e) => {
+          e.stopPropagation();
+          this.dismiss(id);
+          onAction?.();
+        },
+      });
     const toast = el(
       "div",
       { class: `toast toast--${variant}`, dataset: { key: id } },
       [
         title && el("div", { class: "toast-title", text: title }),
         el("div", { class: "toast-message", text: message }),
+        action,
       ].filter(Boolean),
     );
     toast.addEventListener("click", () => this.dismiss(id));

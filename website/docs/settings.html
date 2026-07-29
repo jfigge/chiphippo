@@ -86,7 +86,7 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
 <h1>Settings</h1>
 <p>Chip Hippo keeps its handful of app-wide preferences in one small <strong>Settings</strong>
 dialog — a tabbed master-detail card with a left nav rail and a panel on the
-right. It&#39;s deliberately minimal: three tabs, a few controls each, applied
+right. It&#39;s deliberately minimal: four tabs, a few controls each, applied
 live the moment you change them.</p>
 <p><img src="images/settings.png" alt="The Settings dialog"></p>
 <h2 id="opening-settings">Opening Settings</h2>
@@ -160,9 +160,10 @@ setting the same folder, and whichever you did last is the one in effect.</p>
 <p>The <strong>AI</strong> tab is where you point Chip Hippo at your own AI connection, for
 the <a href="ai-builder.html">AI circuit builder</a>. Nothing here is required — the app
 works completely without it, and contacts no AI provider until a connection is
-configured and you ask the builder for something. (The only other time Chip
-Hippo reaches the network at all is the datasheet <strong>Download…</strong> button above,
-and only while you&#39;re pressing it.)</p>
+configured and you ask the builder for something. (The only other times Chip
+Hippo reaches the network at all are the datasheet <strong>Download…</strong> button above,
+while you&#39;re pressing it, and the update check on the <strong>About</strong> tab below,
+which is switched off until you turn it on.)</p>
 <p><img src="images/settings-ai.png" alt="The AI tab of the Settings dialog"></p>
 <ul>
 <li><strong>Provider</strong> — <strong>Anthropic</strong>, or <strong>OpenAI-compatible</strong>. The second covers
@@ -183,6 +184,33 @@ it&#39;s never read back into the app&#39;s window afterwards; the dialog only l
 <em>whether</em> a key is stored. If no secure store is available on your system,
 Chip Hippo <strong>refuses to save the key</strong> and says so rather than quietly writing
 it out in the clear.</p>
+<h2 id="about">About</h2>
+<p>The <strong>About</strong> tab shows which version of Chip Hippo you&#39;re running, and is
+where updates are handled.</p>
+<ul>
+<li><strong>Check automatically</strong> — <strong>On</strong> or <strong>Off</strong>, and <strong>Off</strong> is the default. On,
+Chip Hippo asks GitHub once, shortly after launch, whether there&#39;s a newer
+release. Off, it never asks on its own — but the button below still works
+whenever you want to know.</li>
+<li><strong>Check for updates</strong> — checks right now and says what it found on the line
+underneath: that you&#39;re up to date, that a version is downloading, or that
+the check couldn&#39;t be made.</li>
+</ul>
+<p>When an update is found it downloads quietly in the background; you can carry
+on working, and there&#39;s no progress bar in your way. Once it&#39;s ready a
+<strong>Restart to update</strong> button appears here, and a notice appears in the corner
+of the desk with a <strong>Restart</strong> button of its own. <strong>Nothing is installed until
+you say so.</strong> If you&#39;d rather not stop what you&#39;re doing, ignore it — the
+update installs by itself the next time you quit Chip Hippo, and restarting
+here runs the same &quot;you have unsaved changes&quot; prompt that quitting does, so a
+design in progress is never lost to an update.</p>
+<p>The check itself is the only thing sent, and only to GitHub. Chip Hippo has no
+analytics and reports nothing about you or your circuits.</p>
+<p>You&#39;ll see this tab differently depending on where your copy came from. A copy
+installed from the <strong>Mac App Store</strong> updates through the App Store like every
+other app there, so this tab shows only the version and says so — there are no
+controls, because there&#39;d be nothing for them to do. A development build says
+that updates are only available in installed builds.</p>
 <h2 id="what-else-persists-automatically">What else persists automatically</h2>
 <p>A few things aren&#39;t part of this dialog but are remembered between sessions
 without any action on your part: the app window&#39;s position and size, the desk
