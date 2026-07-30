@@ -27,8 +27,9 @@
 // WIRE_LAYOUTS) is not a curve at all: it is the straight run through its own
 // waypoints, so it gets the `polyline*` half of this file. The two halves are
 // deliberately symmetric — a path, a faded pair of stubs, and the length math
-// behind both — so WireLayer picks a layout and nothing downstream of it cares
-// which it got. `nearestOnPolyline` is the one piece that serves INPUT rather
+// behind both (`wireLength` / `polylineLength`, which is what the wire's own
+// Properties dialog dimensions it by) — so WireLayer picks a layout and nothing
+// downstream of it cares which it got. `nearestOnPolyline` is the one piece that serves INPUT rather
 // than drawing: it is how a press on a routed wire's body learns which of its
 // segments it landed on, hence where a new waypoint belongs.
 
@@ -86,6 +87,30 @@ export function polylineLength(points) {
     total += Math.hypot(points[i].x - points[i - 1].x, points[i].y - points[i - 1].y); // prettier-ignore
   }
   return total;
+}
+
+/** How many straight samples `wireLength` measures the curve over. A quadratic
+    this shallow (the sag is at most SAG_RATIO of the run) is barely off its own
+    chord, so 24 is already finer than the tenth of a millimetre anything reads
+    the answer to. */
+const LENGTH_SAMPLES = 24;
+
+/**
+ * The length (world px) of the sagging curve `wirePath(a, b)` draws —
+ * `polylineLength`'s counterpart for the DIRECT layout, so "how long is this
+ * wire" is answered about the run on screen rather than about the straight line
+ * between its two holes (which is shorter than any real lead spanning them).
+ *
+ * @param {{x:number,y:number}} a - world px
+ * @param {{x:number,y:number}} b - world px
+ */
+export function wireLength(a, b) {
+  const c = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 + wireSag(a, b) };
+  const points = [];
+  for (let i = 0; i <= LENGTH_SAMPLES; i += 1) {
+    points.push(bezierAt(a, c, b, i / LENGTH_SAMPLES));
+  }
+  return polylineLength(points);
 }
 
 /**

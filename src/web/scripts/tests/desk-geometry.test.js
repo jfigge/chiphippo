@@ -23,6 +23,7 @@ import {
   GRID_COARSE_BELOW_ZOOM,
   GRID_COARSE_STEP,
   GRID_HIDE_BELOW_ZOOM,
+  MM_PER_UNIT,
   PX_PER_UNIT,
   ZOOM_MAX,
   ZOOM_MIN,
@@ -31,6 +32,7 @@ import {
   gridForCamera,
   normalizeCamera,
   panBy,
+  pxToMm,
   roundTransform,
   screenToWorld,
   stepZoom,
@@ -118,6 +120,14 @@ test("worldToScreen ∘ screenToWorld round-trips", () => {
     approx(back.x, p.x);
     approx(back.y, p.y);
   }
+});
+
+test("pxToMm: world px → real millimetres, whatever the zoom", () => {
+  // One breadboard pitch (PX_PER_UNIT world px) IS 0.1 in — the desk's units
+  // meeting real measure, which is what dimensions a wire.
+  approx(pxToMm(PX_PER_UNIT), MM_PER_UNIT);
+  approx(pxToMm(10 * PX_PER_UNIT), 25.4, 1e-9);
+  approx(pxToMm(0), 0);
 });
 
 test("worldToScreen: scales by PX_PER_UNIT × zoom", () => {

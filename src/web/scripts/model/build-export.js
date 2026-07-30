@@ -16,11 +16,16 @@
 
 // build-export.js — the pure exporter behind the build guide's download button.
 // It FORMATS the plain plan from model/build-plan.js into a Rich Text Format
-// (.rtf) document: a heading per tab (BOM / Wiring / Steps) followed by that
-// tab's data, so a builder gets a printable bill of materials + wiring list +
-// assembly checklist in one file. DOM-free and side-effect-free — the view
-// (components/build-guide.js) turns the returned string into a Blob and
-// downloads it; nothing here touches the document or the DOM.
+// (.rtf) document: a heading per tab (BOM / Steps) followed by that tab's data,
+// so a builder gets a printable bill of materials + assembly checklist in one
+// file. DOM-free and side-effect-free — the view (components/build-guide.js)
+// turns the returned string into a Blob and downloads it; nothing here touches
+// the document or the DOM.
+//
+// It MIRRORS THE PANEL's tabs, which is why the Wiring section went when the
+// Wiring tab did: the numbered BOM plus the steps carry the same information (a
+// step names its wire by the item number the BOM gave it), and a printed page
+// repeating it is the same duplication on paper.
 
 // The section/group headings and the empty-state lines come from build-plan.js,
 // which the PANEL reads too — they used to be a second copy of the same English
@@ -32,8 +37,7 @@ import {
   bomSectionLabel,
   stepGroupLabel,
   warningCount,
-  netTitle,
-  busHeading,
+  wireItemLabel,
 } from "./build-plan.js";
 
 /**
@@ -48,7 +52,6 @@ export function planToRtf(plan, { title } = {}) {
   const name = title ?? tf("common.untitled", "Untitled");
   const p = {
     bom: plan?.bom ?? {},
-    nets: plan?.nets ?? [],
     steps: plan?.steps ?? [],
     warnings: plan?.warnings ?? [],
   };
@@ -56,7 +59,6 @@ export function planToRtf(plan, { title } = {}) {
     h1(tf("guide.exportTitle", "{name} — Build Guide", { name })),
     warningsBlock(p.warnings),
     ...bomBlocks(p.bom),
-    ...wiringBlocks(p.nets),
     ...stepsBlocks(p.steps),
   ].join("");
   return (
@@ -88,35 +90,13 @@ function bomBlocks(bom) {
     if (!lines.length) continue;
     any = true;
     out.push(h3(bomSectionLabel(key)));
-    for (const line of lines) out.push(bullet(`${line.title}  ×${line.count}`));
+    for (const line of lines) {
+      // Wires carry a BOM item number the steps call out; nothing else does.
+      const item = line.item == null ? "" : `${wireItemLabel(line.item)} `;
+      out.push(bullet(`${item}${line.title}  ×${line.count}`));
+    }
   }
   if (!any) out.push(para(tf("guide.emptyBom", "Nothing on the desk yet.")));
-  return out;
-}
-
-/** Wiring tab: bus headings, then one line per net (title · members). */
-function wiringBlocks(nets) {
-  const out = [h2(tf("guide.tab.wiring", "Wiring"))];
-  if (!nets.length) {
-    out.push(para(tf("guide.emptyWiring", "No connections yet.")));
-    return out;
-  }
-  let busName = null;
-  for (const net of nets) {
-    if (net.bus && net.bus.name !== busName) {
-      busName = net.bus.name;
-      out.push(h3(busHeading(busName)));
-    }
-    if (!net.bus) busName = null;
-    const title = netTitle(net);
-    const members = (net.members ?? [])
-      .map((m) => esc(m.label))
-      .join(" \\u183? ");
-    const flag = net.isSingleton
-      ? ` (${tf("guide.singletonFlag", "only one connection")})`
-      : "";
-    out.push(`{\\pard\\sa60 {\\b ${esc(title + flag)}:} ${members}\\par}\n`);
-  }
   return out;
 }
 

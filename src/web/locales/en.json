@@ -575,14 +575,10 @@
     "exportTitle": "{name} — Build Guide",
     "tab": {
       "bom": "BOM",
-      "wiring": "Wiring",
       "steps": "Steps"
     },
     "emptyBom": "Nothing on the desk yet.",
-    "emptyWiring": "No connections yet.",
-    "emptySteps": "No build steps yet.",
-    "singletonTitle": "Only one connection",
-    "singletonFlag": "only one connection"
+    "emptySteps": "No build steps yet."
   },
   "plan": {
     "pinLabel": "{base} pin {pin}{suffix}",
@@ -601,16 +597,14 @@
       "one": "{count} warning",
       "other": "{count} warnings"
     },
-    "net": {
-      "bit": "bit {bit}",
-      "unnamed": "unnamed net",
-      "busHead": "{name} bus"
-    },
     "bom": {
       "boards": "Breadboards",
       "chips": "Chips",
       "discretes": "Discrete parts",
-      "power": "Power"
+      "power": "Power",
+      "wires": "Wires",
+      "wireLine": "Jumper wire ({color}, {length})",
+      "wireLinePlain": "Jumper wire ({color})"
     },
     "stepGroup": {
       "boards": "Place the boards",
@@ -624,7 +618,7 @@
       "placeBoard": "Place a {label} near column {x}, row {y}.",
       "psu": "Set up the {part} to {volts} V and place it on the desk.",
       "clock": "Set up the {part} ({rate}) and place it on the desk.",
-      "powerWire": "Run a {color} wire: {from} → {to}.",
+      "powerWire": "Run a {color} wire {item}: {from} → {to}.",
       "seatChip": "Seat a {ref} {where}.",
       "placePart": "Place a {part}{color} {where}.",
       "bus": "Lay the {name} bus ({wires}).",
@@ -848,6 +842,8 @@
     "deleteWithWires": "Delete bus + wires"
   },
   "wire": {
+    "lengthCm": "{value} cm",
+    "gaugeLabel": "Wire, {length} long",
     "tooManyBends": "No more bends on this wire",
     "tooManyBendsMessage": "A routed wire carries at most {max} points. Drag one onto its neighbour to merge it away, then add another."
   },

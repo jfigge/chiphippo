@@ -575,14 +575,10 @@
     "exportTitle": "{name} — Bauanleitung",
     "tab": {
       "bom": "Stückliste",
-      "wiring": "Verdrahtung",
       "steps": "Schritte"
     },
     "emptyBom": "Noch nichts auf der Arbeitsfläche.",
-    "emptyWiring": "Noch keine Verbindungen.",
-    "emptySteps": "Noch keine Montageschritte.",
-    "singletonTitle": "Nur eine Verbindung",
-    "singletonFlag": "nur eine Verbindung"
+    "emptySteps": "Noch keine Montageschritte."
   },
   "plan": {
     "pinLabel": "{base} Pin {pin}{suffix}",
@@ -601,16 +597,14 @@
       "one": "{count} Warnung",
       "other": "{count} Warnungen"
     },
-    "net": {
-      "bit": "Bit {bit}",
-      "unnamed": "unbenanntes Netz",
-      "busHead": "Bus {name}"
-    },
     "bom": {
       "boards": "Steckbretter",
       "chips": "Chips",
       "discretes": "Diskrete Bauteile",
-      "power": "Stromversorgung"
+      "power": "Stromversorgung",
+      "wires": "Drähte",
+      "wireLine": "Steckdraht ({color}, {length})",
+      "wireLinePlain": "Steckdraht ({color})"
     },
     "stepGroup": {
       "boards": "Steckbretter platzieren",
@@ -624,7 +618,7 @@
       "placeBoard": "Ein {label} bei Spalte {x}, Reihe {y} platzieren.",
       "psu": "{part} auf {volts} V einstellen und auf die Arbeitsfläche stellen.",
       "clock": "{part} ({rate}) einstellen und auf die Arbeitsfläche stellen.",
-      "powerWire": "Einen {color}en Draht legen: {from} → {to}.",
+      "powerWire": "Einen {color}en Draht {item} legen: {from} → {to}.",
       "seatChip": "Einen {ref} einsetzen, {where}.",
       "placePart": "Ein {part}{color} platzieren, {where}.",
       "bus": "Den Bus {name} legen ({wires}).",
@@ -848,6 +842,8 @@
     "deleteWithWires": "Bus + Drähte löschen"
   },
   "wire": {
+    "lengthCm": "{value} cm",
+    "gaugeLabel": "Draht, {length} lang",
     "tooManyBends": "Keine weiteren Knicke an diesem Draht",
     "tooManyBendsMessage": "Ein geführter Draht trägt höchstens {max} Punkte. Zieh einen auf seinen Nachbarn, um ihn zu verschmelzen, und füge dann einen neuen hinzu."
   },

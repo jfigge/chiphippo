@@ -39,8 +39,20 @@
 // button that fires a named command rather than editing a value, e.g. a
 // memory chip's "Inspect memory…" — see desk-controller.js's
 // #propertyFieldsFor), `"readonly"` (a value shown but not edited — a
-// project's or a desktop's Location, which Save As is what changes), and
-// `"separator"` (a plain divider, no key/control).
+// project's or a desktop's Location, which Save As is what changes),
+// `"wire-gauge"` (the workshop drawing of a wire, dimensioned in cm — see
+// below), and `"separator"` (a plain divider, no key/control).
+//
+// `"wire-gauge"` is the one field type named after what it draws rather than
+// after a KIND of control, and deliberately so: it is a picture, not an editor.
+// Like `"separator"` it carries no key and reads nothing out of `values` — the
+// caller states what to draw (`color`, and a `measure()` returning the wire's
+// hole-to-hole run in mm) in the descriptor itself — and it takes the whole row with no label,
+// because the dimension line under the wire already says what it is. Length is a
+// CALLBACK rather than a number because it is not a property of the record: it
+// is measured off the drawn wire, and a change made in this dialog can move it.
+// So the dialog re-asks after every change, and repaints on a colour pick — see
+// `open` for both, and wire-gauge.js for why each is one call and not a rebuild.
 //
 // Like the Settings dialog, it is deliberately dumb and applies live: every
 // value control commits `onChange(key, value)` (text/textarea commit on
@@ -56,6 +68,11 @@ import { el } from "../dom.js";
 import { PopupManager } from "../popup-manager.js";
 import { buildColorSwatches } from "./color-swatches.js";
 import { buildSegmented } from "./segmented-picker.js";
+import {
+  buildWireGauge,
+  setWireGaugeColor,
+  setWireGaugeRun,
+} from "./wire-gauge.js";
 
 /**
  * A field's own LABEL, and an option's, translated.
@@ -201,6 +218,13 @@ function buildRow(field, value, onChange, onAction) {
   if (field.type === "separator") {
     return el("hr", { class: "properties-separator" });
   }
+  if (field.type === "wire-gauge") {
+    // A drawing rather than a control: the full width of the card, no label
+    // column — it is dimensioned, so it states its own measurement.
+    return el("div", { class: "properties-row properties-row--figure" }, [
+      buildWireGauge({ color: field.color, runMm: field.measure() }),
+    ]);
+  }
   if (field.type === "action") {
     return el("div", { class: "properties-row properties-row--action" }, [
       buildActionButton(field, () => onAction(field.key)),
@@ -234,7 +258,7 @@ export class PartPropertiesDialog {
    * Name/Description always come first; `fields` (if any) follow a separator.
    * @param {object} opts
    * @param {string} opts.title - the dialog header (e.g. "LED Properties").
-   * @param {Array<{key:string,label:string,type:string,options?:Array<{value,label}>,actionLabel?:string}>} [opts.fields] -
+   * @param {Array<{key?:string,label?:string,type:string,options?:Array<{value,label}>,actionLabel?:string,color?:string,measure?:() => number}>} [opts.fields] -
    *   the part's catalog `properties` list (plus any instance-conditional
    *   action fields desk-controller.js appends) — empty/omitted for a board
    *   or a part with nothing beyond Name/Description.
@@ -256,9 +280,34 @@ export class PartPropertiesDialog {
       PopupManager.close();
       onAction?.(key);
     };
-    const rows = allFields.map((field) =>
-      buildRow(field, values[field.key], onChange, fireAction),
+    // A `"wire-gauge"` is a live PICTURE of two of the record's values, and this
+    // card applies changes live and never rebuilds its rows — so a change made
+    // here has to reach the drawing or it keeps showing what it opened with.
+    // Both halves are one call each, and every other field type is untouched:
+    //   • its COLOUR is one custom property (setWireGaugeColor);
+    //   • its RUN is re-asked for (`field.measure()`) after EVERY change, not
+    //     only the ones that look relevant. Switching Layout Method to Direct
+    //     throws a wire's bends away and shortens it, and the dialog has no
+    //     business knowing which field that was — the caller owns the
+    //     measurement, so the caller is asked again.
+    const gauges = [];
+    const colorKeys = new Set(
+      allFields.filter((f) => f.type === "color").map((f) => f.key),
     );
+    const change = (key, value) => {
+      onChange(key, value);
+      for (const { svg, field } of gauges) {
+        if (colorKeys.has(key)) setWireGaugeColor(svg, value);
+        setWireGaugeRun(svg, field.measure());
+      }
+    };
+    const rows = allFields.map((field) =>
+      buildRow(field, values[field.key], change, fireAction),
+    );
+    allFields.forEach((field, i) => {
+      const svg = rows[i].querySelector?.(".wire-gauge");
+      if (svg) gauges.push({ svg, field });
+    });
 
     // onClose fires only when THIS popup closes (not when a popup it was
     // queued behind closes), so the guard never resets while still up.

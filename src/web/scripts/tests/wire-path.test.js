@@ -30,6 +30,7 @@ import {
   nearestOnPolyline,
   polylineLength,
   polylinePath,
+  wireLength,
   wirePath,
   wireSag,
 } from "../desk/wire-path.js";
@@ -163,6 +164,28 @@ test("polylineLength: the sum of its segments", () => {
     70,
   );
   assert.equal(polylineLength([{ x: 5, y: 5 }]), 0, "a lone point runs zero");
+});
+
+test("wireLength: the sagging curve, always longer than its own chord", () => {
+  const a = { x: 0, y: 0 };
+  const b = { x: 200, y: 0 };
+  const chord = dist(a, b);
+  const run = wireLength(a, b);
+  assert.ok(run > chord, `${run} > ${chord}: a lead spans more than the gap`);
+  // A 200 px run sags 24 px (SAG_RATIO), a shallow parabola — a few percent
+  // over the chord, nowhere near the 2 × sag a triangle through the control
+  // point would give.
+  assert.ok(run < chord * 1.1, `${run} is a sag, not a detour`);
+  const triangle = 2 * Math.hypot(chord / 2, wireSag(a, b));
+  assert.ok(run < triangle, "the curve cuts inside its control polygon");
+
+  // Symmetric, and blind to which way round the desk the run goes.
+  assert.equal(run, wireLength(b, a));
+  assert.equal(run, wireLength({ x: 0, y: 50 }, { x: -200, y: 50 }));
+
+  // Two holes in one place still have SAG_MIN of wire hanging between them.
+  const nowhere = wireLength(a, a);
+  assert.ok(nowhere > 0 && nowhere <= 2 * SAG_MIN, `${nowhere}`);
 });
 
 test("nearestOnPolyline: the closest point, and WHICH segment it belongs to", () => {

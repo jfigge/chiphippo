@@ -575,14 +575,10 @@
     "exportTitle": "{name} — 組み立てガイド",
     "tab": {
       "bom": "部品表",
-      "wiring": "配線",
       "steps": "手順"
     },
     "emptyBom": "デスクにはまだ何もありません。",
-    "emptyWiring": "まだ接続がありません。",
-    "emptySteps": "まだ組み立て手順がありません。",
-    "singletonTitle": "接続が 1 つだけ",
-    "singletonFlag": "接続が 1 つだけ"
+    "emptySteps": "まだ組み立て手順がありません。"
   },
   "plan": {
     "pinLabel": "{base} の {pin} ピン{suffix}",
@@ -599,16 +595,14 @@
     "warningCount": {
       "other": "警告 {count} 件"
     },
-    "net": {
-      "bit": "ビット {bit}",
-      "unnamed": "名前のないネット",
-      "busHead": "{name} バス"
-    },
     "bom": {
       "boards": "ブレッドボード",
       "chips": "チップ",
       "discretes": "個別部品",
-      "power": "電源"
+      "power": "電源",
+      "wires": "ワイヤー",
+      "wireLine": "ジャンパーワイヤー（{color}、{length}）",
+      "wireLinePlain": "ジャンパーワイヤー（{color}）"
     },
     "stepGroup": {
       "boards": "ボードを置く",
@@ -622,7 +616,7 @@
       "placeBoard": "{x} 列 {y} 行の近くに{label}を置きます。",
       "psu": "{part}を {volts} V に設定してデスクに置きます。",
       "clock": "{part}を {rate} に設定してデスクに置きます。",
-      "powerWire": "{color}のワイヤーを敷きます：{from} → {to}。",
+      "powerWire": "{color}のワイヤー {item} を敷きます：{from} → {to}。",
       "seatChip": "{ref} を差します（{where}）。",
       "placePart": "{part}{color}を置きます（{where}）。",
       "bus": "{name} バスを敷きます（{wires}）。",
@@ -839,6 +833,8 @@
     "deleteWithWires": "バスとワイヤーを削除"
   },
   "wire": {
+    "lengthCm": "{value} cm",
+    "gaugeLabel": "長さ {length} のワイヤー",
     "tooManyBends": "このワイヤーにはこれ以上曲げを追加できません",
     "tooManyBendsMessage": "経路指定のワイヤーが持てる点は最大 {max} 個です。1 つを隣の点にドラッグして統合してから、別の点を追加してください。"
   },

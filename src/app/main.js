@@ -1821,13 +1821,31 @@ function registerIpc() {
 }
 
 // ─── Hot reload (dev only) ────────────────────────────────────────────────────
+// A MESSAGE CATALOG NEEDS MAIN'S CACHE DROPPED, NOT JUST A WINDOW RELOAD.
+// `locales/` sits under the watched tree, so editing one already triggers a
+// reload — but the renderer cannot read a catalog itself (file:// + a CSP with no
+// connect-src): it asks main over `i18n:load`, and main resolves the catalog ONCE
+// and holds it for the life of the process (activeCatalog). So a string added
+// mid-session kept rendering as its raw dotted key however many times the window
+// reloaded, which reads exactly like a bug in the code that asked for it rather
+// than like stale state. Dropping the cache before the reload also re-renders
+// main's OWN menu bar, which is built from the same catalog.
 function installHotReload(win) {
   const webDir = path.join(__dirname, "..", "web");
   let timer = null;
+  let catalogChanged = false;
   try {
-    const watcher = fs.watch(webDir, { recursive: true }, () => {
+    const watcher = fs.watch(webDir, { recursive: true }, (_type, filename) => {
+      // Flagged per EVENT, not read off the last one: the timer coalesces a burst
+      // (an editor's save is several events), so whichever arrives last says
+      // nothing about whether a catalog was among them.
+      if (filename?.startsWith("locales")) catalogChanged = true;
       clearTimeout(timer);
       timer = setTimeout(() => {
+        if (catalogChanged) {
+          catalogChanged = false;
+          reloadCatalog(); // main re-reads it on the reload's own i18n:load
+        }
         if (!win.isDestroyed()) win.webContents.reloadIgnoringCache();
       }, 120);
     });

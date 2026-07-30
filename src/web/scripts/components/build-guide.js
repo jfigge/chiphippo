@@ -30,14 +30,19 @@ import {
   bomSectionLabel,
   stepGroupLabel,
   warningCount,
-  netTitle,
-  busHeading,
+  wireItemLabel,
 } from "../model/build-plan.js";
 import { planToRtf } from "../model/build-export.js";
 import { NetlistCache } from "./netlist-cache.js";
 
-/** The three tab ids, in display order; each label is `guide.tab.<id>`. */
-const TAB_IDS = ["bom", "wiring", "steps"];
+/** The two tab ids, in display order; each label is `guide.tab.<id>`.
+ *
+ * There WAS a third, "wiring" — a net-centric list of every connection. The
+ * numbered BOM plus the steps replaced it: each step now names the wire to run by
+ * its own BOM item number and says where it goes, which is the same information
+ * where you actually need it, in the order you do it in. A separate tab saying it
+ * again is a second place to keep true. */
+const TAB_IDS = ["bom", "steps"];
 
 /** Download icon (Feather "download"), for the header export button. */
 const DOWNLOAD_SVG =
@@ -244,7 +249,6 @@ export class BuildGuide {
     clear(this.#body);
     this.#body.append(this.#warningsBlock());
     if (this.#tab === "bom") this.#body.append(this.#bomView());
-    else if (this.#tab === "wiring") this.#body.append(this.#wiringView());
     else this.#body.append(this.#stepsView());
   }
 
@@ -281,6 +285,13 @@ export class BuildGuide {
           { class: "build-guide-bom-list" },
           lines.map((line) =>
             el("li", { class: "build-guide-bom-line" }, [
+              // Only the wires are numbered, and their number is what the steps
+              // call out — so it leads the row, as an item number does.
+              line.item == null
+                ? null
+                : el("span", { class: "build-guide-bom-item" }, [
+                    wireItemLabel(line.item),
+                  ]),
               el("span", { class: "build-guide-bom-title" }, [line.title]),
               el("span", { class: "build-guide-count" }, [`×${line.count}`]),
             ]),
@@ -290,75 +301,6 @@ export class BuildGuide {
     }).filter(Boolean);
     if (!sections.length) return this.#empty(t("guide.emptyBom"));
     return el("div", {}, sections);
-  }
-
-  // ── Wiring tab (net-centric, buses grouped) ──────────────────────────────
-  #wiringView() {
-    const { nets } = this.#plan;
-    if (!nets.length) return this.#empty(t("guide.emptyWiring"));
-
-    const rows = [];
-    let busName = null;
-    for (const net of nets) {
-      if (net.bus && net.bus.name !== busName) {
-        busName = net.bus.name;
-        rows.push(
-          el("h3", { class: "build-guide-bus-head" }, [busHeading(busName)]),
-        );
-      }
-      if (!net.bus) busName = null;
-      rows.push(this.#netRow(net));
-    }
-    return el("div", { class: "build-guide-wiring" }, rows);
-  }
-
-  #netRow(net) {
-    const title = netTitle(net);
-    return el(
-      "div",
-      {
-        class:
-          "build-guide-net" +
-          (net.isSingleton ? " build-guide-net--singleton" : "") +
-          (net.name ? " build-guide-net--named" : ""),
-      },
-      [
-        el("div", { class: "build-guide-net-name" }, [
-          title,
-          net.isSingleton
-            ? el(
-                "span",
-                {
-                  class: "build-guide-net-flag",
-                  title: t("guide.singletonTitle"),
-                },
-                ["⚠"],
-              )
-            : null,
-        ]),
-        el(
-          "div",
-          { class: "build-guide-net-members" },
-          this.#joinMembers(net.members),
-        ),
-      ],
-    );
-  }
-
-  /** Member labels joined by a middot separator, each a pill by kind. */
-  #joinMembers(members) {
-    const out = [];
-    members.forEach((m, i) => {
-      if (i) out.push(el("span", { class: "build-guide-sep" }, ["·"]));
-      out.push(
-        el(
-          "span",
-          { class: `build-guide-member build-guide-member--${m.kind}` },
-          [m.label],
-        ),
-      );
-    });
-    return out;
   }
 
   // ── Steps tab (ordered checklist) ────────────────────────────────────────

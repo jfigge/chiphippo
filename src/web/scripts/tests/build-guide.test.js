@@ -63,7 +63,7 @@ test("BOM tab lists the chip with a count; warning badge shows the count", () =>
   assert.equal(badge.textContent, "1");
 });
 
-test("switching to the Wiring tab renders net members", () => {
+test("there are two tabs — a wire's number in the BOM is what the steps quote", () => {
   const { container, doc } = mount();
   doc.addComponent({
     kind: "chip",
@@ -74,12 +74,37 @@ test("switching to the Wiring tab renders net members", () => {
   doc.addWire({ from: "bb2.a5", to: "bb2.a20", color: "blue" });
   const guide = new BuildGuide(container, { deskDoc: doc });
   guide.setVisible(true);
-  const wiringTab = [...container.querySelectorAll(".build-guide-tab")].find(
-    (b) => b.textContent === "Wiring",
+
+  // The Wiring tab is gone: the steps say where every wire goes, and now WHICH
+  // wire, so a third tab repeating it would be a second place to keep true.
+  assert.deepEqual(
+    [...container.querySelectorAll(".build-guide-tab")].map((b) =>
+      b.textContent.trim(),
+    ),
+    ["BOM", "Steps"],
   );
-  wiringTab.dispatchEvent(new window.Event("click"));
+
+  // The BOM numbers the wire...
   const body = container.querySelector(".build-guide-body");
-  assert.match(body.textContent, /74LS00 pin 1 \(1A\)/);
+  const item = body.querySelector(".build-guide-bom-item");
+  assert.equal(item.textContent, "[1]", "the only wire line is item 1");
+  assert.match(
+    item.closest(".build-guide-bom-line").textContent,
+    /Jumper wire \(blue,/,
+  );
+
+  // ...and the step that runs it quotes that number.
+  const stepsTab = [...container.querySelectorAll(".build-guide-tab")].find(
+    (b) => b.textContent.trim() === "Steps",
+  );
+  stepsTab.dispatchEvent(new window.Event("click"));
+  const detail = [
+    ...container.querySelectorAll(".build-guide-step-detail li"),
+  ].map((li) => li.textContent);
+  assert.ok(
+    detail.some((d) => d.startsWith("[1] ") && d.includes("74LS00 pin 1 (1A)")),
+    `expected a "[1] …" run line, got ${JSON.stringify(detail)}`,
+  );
 });
 
 test("Steps tab groups the checklist and ticks a step visually", () => {

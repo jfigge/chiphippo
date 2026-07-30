@@ -31,30 +31,15 @@ function samplePlan() {
       chips: [{ key: "74LS00", title: "74LS00", count: 1 }],
       discretes: [{ key: "led:red", title: "LED (red)", count: 3 }],
       power: [{ key: "psu:5", title: "Power supply (5 V)", count: 1 }],
+      wires: [
+        {
+          key: "blue:61",
+          title: "Jumper wire (blue, 6.1 cm)",
+          count: 4,
+          item: 2,
+        },
+      ],
     },
-    nets: [
-      {
-        netId: "n1",
-        name: "clock",
-        bus: null,
-        members: [
-          { address: "bb1.a5", label: "74LS00 pin 1 (1A)", kind: "pin" },
-          { address: "clk1.out", label: "Clock out", kind: "terminal" },
-        ],
-        wires: ["w1"],
-        isSingleton: false,
-      },
-      {
-        netId: "n2",
-        name: null,
-        bus: null,
-        members: [
-          { address: "bb1.a9", label: "74LS00 pin 3 (1Y)", kind: "pin" },
-        ],
-        wires: ["w2"],
-        isSingleton: true,
-      },
-    ],
     steps: [
       {
         id: "step:boards:g1",
@@ -65,7 +50,7 @@ function samplePlan() {
         id: "step:wires:bus1",
         group: "wires",
         text: "Lay the D bus (2 wires).",
-        detail: ["bb1.a5 → bb2.a5", "bb1.a6 → bb2.a6"],
+        detail: ["[2] bb1.a5 → bb2.a5", "[2] bb1.a6 → bb2.a6"],
       },
     ],
     warnings: [
@@ -94,8 +79,10 @@ test("every tab head appears, with the schema name in the title", () => {
   // The em dash between name and "Build Guide" is escaped (U+2014 = 8212).
   assert.match(rtf, /my-circuit \\u8212\? Build Guide/);
   assert.match(rtf, /BOM/);
-  assert.match(rtf, /Wiring/);
   assert.match(rtf, /Steps/);
+  // The export MIRRORS the panel's tabs, and there is no Wiring tab: a numbered
+  // BOM plus the steps carry the same information.
+  assert.doesNotMatch(rtf, /Wiring/);
 });
 
 test("BOM data lands under the BOM head with counts", () => {
@@ -106,14 +93,19 @@ test("BOM data lands under the BOM head with counts", () => {
   assert.match(rtf, /74LS00/);
   assert.match(rtf, /LED \(red\)/);
   assert.match(rtf, /Power supply \(5 V\)/);
+  // The wires section rides in for free — both readers walk BOM_SECTION_KEYS, so
+  // a new section is one catalog entry and never a second list to keep in step.
+  assert.match(rtf, /Jumper wire \(blue, 6\.1 cm\)/);
 });
 
-test("wiring data lists members and flags a singleton net", () => {
+test("a wire's BOM line carries the item number its steps call out", () => {
   const rtf = planToRtf(samplePlan(), { title: "demo" });
-  assert.match(rtf, /74LS00 pin 1 \(1A\)/);
-  assert.match(rtf, /Clock out/);
-  assert.match(rtf, /clock/);
-  assert.match(rtf, /only one connection/);
+  // "[2] Jumper wire (blue, 6.1 cm)  ×4" — the callout leads the row, and the
+  // same "[2]" appears against the wire in the steps (see the fixture).
+  assert.match(rtf, /\[2\] Jumper wire \(blue, 6\.1 cm\)/);
+  assert.match(rtf, /\[2\] bb1\.a5/);
+  // Nothing else in the BOM is numbered.
+  assert.doesNotMatch(rtf, /\[\d\] Full breadboard/);
 });
 
 test("steps data appears with detail sub-items", () => {
@@ -127,7 +119,6 @@ test("steps data appears with detail sub-items", () => {
 test("RTF control characters in data are escaped", () => {
   const plan = {
     bom: { boards: [], chips: [{ key: "x", title: "a{b}c\\d", count: 1 }] },
-    nets: [],
     steps: [],
     warnings: [],
   };
@@ -135,9 +126,8 @@ test("RTF control characters in data are escaped", () => {
   assert.match(rtf, /a\\\{b\\\}c\\\\d/);
 });
 
-test("an empty plan still produces all three headed sections", () => {
+test("an empty plan still produces both headed sections", () => {
   const rtf = planToRtf({}, { title: "empty" });
   assert.match(rtf, /Nothing on the desk yet\./);
-  assert.match(rtf, /No connections yet\./);
   assert.match(rtf, /No build steps yet\./);
 });

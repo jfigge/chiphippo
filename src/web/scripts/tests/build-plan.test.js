@@ -24,6 +24,7 @@ import assert from "node:assert/strict";
 import { DeskDoc } from "../model/desk-doc.js";
 import { buildNetlist } from "../sim/netlist.js";
 import { buildPlan } from "../model/build-plan.js";
+import { wireCutMm, wireLengthLabel } from "../model/wire-length.js";
 
 /**
  * A small but representative desk: a full breadboard, a PSU, two chips, an LED,
@@ -112,6 +113,85 @@ test("BOM counts every part by catalog identity", () => {
     title: "Power supply (5 V)",
     count: 1,
   });
+});
+
+test("the wires are a NUMBERED cutting list: one line per colour AND length", () => {
+  const { bom } = plan();
+
+  // Colour and CUT length together, in the app's own colour order then shortest
+  // first — the same order the swatch pickers offer, so a row only moves when
+  // the desk changes. The item numbers follow that order, 1..n.
+  assert.deepEqual(
+    bom.wires.map((l) => [l.item, l.title]),
+    [
+      [1, "Jumper wire (red, 11.9 cm)"],
+      [2, "Jumper wire (black, 11.7 cm)"],
+      [3, "Jumper wire (blue, 4.8 cm)"],
+      [4, "Jumper wire (green, 12.5 cm)"],
+      [5, "Jumper wire (yellow, 1.9 cm)"],
+    ],
+  );
+
+  // The fixture's two bus members span the same three columns, so they are the
+  // same lead twice — one line, ×2, ONE number. That is the whole point of a
+  // cutting list: cut two, label both [5].
+  assert.deepEqual(findLine(bom.wires, "yellow:19"), {
+    key: "yellow:19",
+    title: "Jumper wire (yellow, 1.9 cm)",
+    count: 2,
+    item: 5,
+  });
+  // The KEY carries the stored colour token and whole millimetres, never a
+  // translated word: a language change must not split or merge a BOM row, and
+  // two wires that DISPLAY the same length have to land on the same line.
+  assert.deepEqual(
+    bom.wires.map((l) => l.key),
+    ["red:119", "black:117", "blue:48", "green:125", "yellow:19"],
+  );
+});
+
+test("a wire's BOM length is the same number its own drawing dimensions", () => {
+  // One measurement in the app (model/wire-length.js): the Properties dialog's
+  // dimension line and this row cannot disagree.
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const wire = doc.addWire({ from: "bb1.a1", to: "bb1.a2", color: "blue" });
+  const json = doc.toJSON();
+  const { bom } = buildPlan(json, buildNetlist(json));
+
+  assert.equal(
+    wireLengthLabel(wireCutMm(json, wire.id)),
+    "1.3 cm",
+    "one hole apart: 2.54 mm of run plus 5 mm of strip at each end",
+  );
+  assert.deepEqual(bom.wires, [
+    { key: "blue:13", title: "Jumper wire (blue, 1.3 cm)", count: 1, item: 1 },
+  ]);
+});
+
+test("every wire step calls out the BOM item number of the wire it runs", () => {
+  const { bom, steps } = plan();
+  const itemOf = new Map(bom.wires.map((l) => [l.key, l.item]));
+
+  // A power wire is one wire, so its callout sits in the step's own sentence.
+  const red = steps.find((s) => s.id === "step:power:w1");
+  assert.equal(
+    red.text,
+    `Run a red wire [${itemOf.get("red:119")}]: Power supply + → + rail (bb1).`,
+  );
+
+  // A bus or net step is several wires, so each callout LEADS its own run line.
+  const bus = steps.find((s) => s.group === "wires" && s.detail?.length === 2);
+  const yellow = itemOf.get("yellow:19");
+  assert.ok(
+    bus.detail.every((d) => d.startsWith(`[${yellow}] `)),
+    `both members are item ${yellow}: ${JSON.stringify(bus.detail)}`,
+  );
+
+  // Nothing that is not a wire quotes a number.
+  for (const step of steps.filter((s) => s.group === "chips")) {
+    assert.doesNotMatch(step.text, /\[\d+\]/, step.text);
+  }
 });
 
 test("the wiring list is net-centric with human, component-relative labels", () => {
@@ -236,7 +316,13 @@ test("warnings call out floating leads, unpowered chips, and lone nets", () => {
 test("an empty document yields an empty, well-formed plan", () => {
   const doc = new DeskDoc(null).toJSON();
   const p = buildPlan(doc, buildNetlist(doc));
-  assert.deepEqual(p.bom, { boards: [], chips: [], discretes: [], power: [] });
+  assert.deepEqual(p.bom, {
+    boards: [],
+    chips: [],
+    discretes: [],
+    power: [],
+    wires: [],
+  });
   assert.deepEqual(p.nets, []);
   assert.deepEqual(p.steps, []);
   assert.deepEqual(p.warnings, []);

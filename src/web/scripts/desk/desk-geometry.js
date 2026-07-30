@@ -31,6 +31,12 @@
 /** World px per world unit at zoom 1.0 (a Full board ≈ 650 px wide at 100%). */
 export const PX_PER_UNIT = 10;
 
+/** Millimetres per world unit — one breadboard pitch is 0.1 in. The ONE place
+    the desk's units meet real-world measure: nothing on the desk is dimensioned
+    except a wire, whose Properties dialog states how long a lead you would have
+    to cut for it (components/wire-gauge.js). */
+export const MM_PER_UNIT = 2.54;
+
 // 5% is also the floor "fit to screen" needs for a sprawling layout.
 export const ZOOM_MIN = 0.05;
 export const ZOOM_MAX = 4;
@@ -49,6 +55,12 @@ export const GRID_HIDE_BELOW_ZOOM = 0.3;
 
 /** Pitches per dot when the grid is coarse. */
 export const GRID_COARSE_STEP = 5;
+
+/** World px → millimetres: how long a run drawn that long really is. Zoom
+    doesn't enter into it — a wire is as long as it is however close you look. */
+export function pxToMm(px) {
+  return (px / PX_PER_UNIT) * MM_PER_UNIT;
+}
 
 /** Clamp a zoom factor to the allowed range (non-finite input → 1). */
 export function clampZoom(zoom) {

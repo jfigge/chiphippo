@@ -67,6 +67,7 @@ import {
   centroid,
   ribbonLayout,
   ribbonSpread,
+  ribbonWidth,
 } from "../desk/ribbon-path.js";
 import { holePosition, parseAddress } from "../model/breadboard.js";
 import { partDef } from "../catalog/index.js";
@@ -89,13 +90,6 @@ const HANDLE_KNOB_RADIUS = 4;
     (see #fadeDefs) — it is in objectBoundingBox units, so ONE definition
     serves every circle whatever its radius. */
 const FADE_GRADIENT_ID = "wire-fade-falloff";
-
-/** A bus ribbon's drawn width (world px), scaled modestly with bit count —
-    shared by #busGeometry (the leads' spread) and #buildBandCover (the
-    visible body), so the two always agree on how wide the pipe reads. */
-function ribbonWidth(memberCount) {
-  return Math.max(8, Math.min(24, 5 + memberCount));
-}
 
 /** Straight-line distance between two world-px points. */
 const distance = (p, q) => Math.hypot(q.x - p.x, q.y - p.y);

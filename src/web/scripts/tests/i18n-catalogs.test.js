@@ -37,12 +37,18 @@
  *   4. AN EMPTY STRING. A blank value passes a "does the key exist" check and
  *      renders as nothing at all — a button with no label.
  *
- * And the two ways the CODE goes out of step with the catalog:
+ * And the three ways the CODE goes out of step with the catalog:
  *
  *   5. A KEY THE SOURCE ASKS FOR THAT DOES NOT EXIST. `t("zoom.out")` with no
  *      such key renders the literal text `zoom.out` on screen. This scans every
  *      renderer module for `t("…")` and requires each key to be in en.json —
  *      which is a real bug this test caught the first time it was run.
+ *  5b. A `tf()` FALLBACK THAT DISAGREES WITH ITS OWN CATALOG ENTRY about
+ *      placeholders. `tf()` PREFERS the catalog, so adding a `{placeholder}` to
+ *      the fallback and forgetting the catalog silently drops the value: the
+ *      sentence still reads, it is just missing the thing the placeholder was
+ *      added to say. Check 2 above cannot see it — that holds the OTHER locales
+ *      to en.json, and here en.json is the stale one.
  *   6. A CATALOG PART WITH NO TRANSLATION KEY. A part's `title` reaches the UI
  *      through `tf("parts.<id>.title", def.title)` (see catalog/labels.js), so a
  *      part added without a catalog entry reads correctly but is never
@@ -287,6 +293,62 @@ test("every t()/tf() key in the source exists in en.json", () => {
     [],
     `${unknown.length} key(s) are asked for but not in en.json — each would ` +
       `render as its own dotted key on screen:\n  ${unknown.join("\n  ")}`,
+  );
+});
+
+// ── 5b. A tf() fallback and its catalog entry agree about placeholders ──────
+
+/**
+ * Every `tf("key", "English …")` in the source, as `key → {fallback, file}`.
+ *
+ * Whole-file (not line-by-line, unlike `usedKeys`) because prettier wraps a long
+ * call across lines, and the wrapped ones are exactly the long strings most
+ * likely to carry several placeholders. Only the plain-string-literal form
+ * matches: a fallback built by a ternary (`n === 1 ? "…" : "…"`, the plural
+ * helpers) or by concatenation isn't a single literal, and guessing at one would
+ * invent failures.
+ */
+function fallbacks() {
+  const found = new Map();
+  const re =
+    /\btf\(\s*"([a-z][A-Za-z0-9.\-_]*[A-Za-z0-9])"\s*,\s*"((?:[^"\\]|\\.)*)"/g;
+  for (const file of walk(SCRIPTS_DIR)) {
+    const src = fs.readFileSync(file, "utf8");
+    let m;
+    re.lastIndex = 0;
+    while ((m = re.exec(src))) {
+      if (!found.has(m[1])) {
+        found.set(m[1], { fallback: m[2], file: path.relative(SCRIPTS_DIR, file) }); // prettier-ignore
+      }
+    }
+  }
+  return found;
+}
+
+test("a tf() fallback's placeholders match its en.json entry's", () => {
+  // THE INVISIBLE ONE. `tf()` prefers the catalog, so adding a `{placeholder}` to
+  // the FALLBACK and forgetting the catalog silently drops it at runtime: the
+  // string renders, reads as a sentence, and is simply missing a value. That is
+  // how a wire step shipped without the BOM item number it exists to quote.
+  // Test 3 cannot see it — it holds the other locales to en.json, and en.json was
+  // the stale one.
+  const bad = [];
+  for (const [key, { fallback, file }] of fallbacks()) {
+    if (!EN_MAP.has(key)) continue; // test 5's business, not this one
+    const inCatalog = placeholders(EN_MAP.get(key));
+    const inSource = placeholders(fallback);
+    if (inCatalog.join() !== inSource.join()) {
+      bad.push(
+        `${key} (${file}): fallback has {${inSource.join("} {")}}, ` +
+          `en.json has {${inCatalog.join("} {")}}`,
+      );
+    }
+  }
+  assert.deepEqual(
+    bad.sort(),
+    [],
+    `${bad.length} fallback(s) disagree with the catalog — a placeholder in one ` +
+      `and not the other renders as a gap or as literal braces:\n  ${bad.join("\n  ")}`,
   );
 });
 

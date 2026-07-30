@@ -575,14 +575,10 @@
     "exportTitle": "{name} — Guide de montage",
     "tab": {
       "bom": "Nomenclature",
-      "wiring": "Câblage",
       "steps": "Étapes"
     },
     "emptyBom": "Rien sur le plan de travail pour l'instant.",
-    "emptyWiring": "Aucune connexion pour l'instant.",
-    "emptySteps": "Aucune étape de montage pour l'instant.",
-    "singletonTitle": "Une seule connexion",
-    "singletonFlag": "une seule connexion"
+    "emptySteps": "Aucune étape de montage pour l'instant."
   },
   "plan": {
     "pinLabel": "{base} broche {pin}{suffix}",
@@ -601,16 +597,14 @@
       "one": "{count} avertissement",
       "other": "{count} avertissements"
     },
-    "net": {
-      "bit": "bit {bit}",
-      "unnamed": "net sans nom",
-      "busHead": "bus {name}"
-    },
     "bom": {
       "boards": "Platines d'essai",
       "chips": "Puces",
       "discretes": "Composants discrets",
-      "power": "Alimentation"
+      "power": "Alimentation",
+      "wires": "Fils",
+      "wireLine": "Fil de liaison ({color}, {length})",
+      "wireLinePlain": "Fil de liaison ({color})"
     },
     "stepGroup": {
       "boards": "Placer les platines",
@@ -624,7 +618,7 @@
       "placeBoard": "Placer une {label} près de la colonne {x}, ligne {y}.",
       "psu": "Régler {part} sur {volts} V et la poser sur le plan de travail.",
       "clock": "Régler {part} ({rate}) et la poser sur le plan de travail.",
-      "powerWire": "Poser un fil {color} : {from} → {to}.",
+      "powerWire": "Poser un fil {color} {item} : {from} → {to}.",
       "seatChip": "Insérer un {ref} {where}.",
       "placePart": "Placer un {part}{color} {where}.",
       "bus": "Poser le bus {name} ({wires}).",
@@ -848,6 +842,8 @@
     "deleteWithWires": "Supprimer le bus et ses fils"
   },
   "wire": {
+    "lengthCm": "{value} cm",
+    "gaugeLabel": "Fil de {length} de long",
     "tooManyBends": "Plus de coudes possibles sur ce fil",
     "tooManyBendsMessage": "Un fil guidé porte au maximum {max} points. Glisse-en un sur son voisin pour les fusionner, puis ajoutes-en un autre."
   },

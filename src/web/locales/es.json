@@ -575,14 +575,10 @@
     "exportTitle": "{name} — Guía de montaje",
     "tab": {
       "bom": "Materiales",
-      "wiring": "Cableado",
       "steps": "Pasos"
     },
     "emptyBom": "Todavía no hay nada en la mesa.",
-    "emptyWiring": "Todavía no hay conexiones.",
-    "emptySteps": "Todavía no hay pasos de montaje.",
-    "singletonTitle": "Solo una conexión",
-    "singletonFlag": "solo una conexión"
+    "emptySteps": "Todavía no hay pasos de montaje."
   },
   "plan": {
     "pinLabel": "{base} pin {pin}{suffix}",
@@ -601,16 +597,14 @@
       "one": "{count} advertencia",
       "other": "{count} advertencias"
     },
-    "net": {
-      "bit": "bit {bit}",
-      "unnamed": "red sin nombre",
-      "busHead": "bus {name}"
-    },
     "bom": {
       "boards": "Placas de pruebas",
       "chips": "Chips",
       "discretes": "Componentes discretos",
-      "power": "Alimentación"
+      "power": "Alimentación",
+      "wires": "Cables",
+      "wireLine": "Cable puente ({color}, {length})",
+      "wireLinePlain": "Cable puente ({color})"
     },
     "stepGroup": {
       "boards": "Coloca las placas",
@@ -624,7 +618,7 @@
       "placeBoard": "Coloca una {label} cerca de la columna {x}, fila {y}.",
       "psu": "Ajusta la {part} a {volts} V y colócala en la mesa.",
       "clock": "Ajusta la {part} ({rate}) y colócala en la mesa.",
-      "powerWire": "Tiende un cable {color}: {from} → {to}.",
+      "powerWire": "Tiende un cable {color} {item}: {from} → {to}.",
       "seatChip": "Inserta un {ref} {where}.",
       "placePart": "Coloca un {part}{color} {where}.",
       "bus": "Tiende el bus {name} ({wires}).",
@@ -848,6 +842,8 @@
     "deleteWithWires": "Eliminar el bus y sus cables"
   },
   "wire": {
+    "lengthCm": "{value} cm",
+    "gaugeLabel": "Cable de {length} de largo",
     "tooManyBends": "No caben más codos en este cable",
     "tooManyBendsMessage": "Un cable guiado admite como máximo {max} puntos. Arrastra uno sobre su vecino para fusionarlo, y luego añade otro."
   },

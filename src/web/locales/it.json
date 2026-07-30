@@ -575,14 +575,10 @@
     "exportTitle": "{name} — Guida al montaggio",
     "tab": {
       "bom": "Distinta",
-      "wiring": "Collegamenti",
       "steps": "Passi"
     },
     "emptyBom": "Ancora niente sul piano di lavoro.",
-    "emptyWiring": "Ancora nessun collegamento.",
-    "emptySteps": "Ancora nessun passo di montaggio.",
-    "singletonTitle": "Un solo collegamento",
-    "singletonFlag": "un solo collegamento"
+    "emptySteps": "Ancora nessun passo di montaggio."
   },
   "plan": {
     "pinLabel": "{base} pin {pin}{suffix}",
@@ -601,16 +597,14 @@
       "one": "{count} avviso",
       "other": "{count} avvisi"
     },
-    "net": {
-      "bit": "bit {bit}",
-      "unnamed": "net senza nome",
-      "busHead": "bus {name}"
-    },
     "bom": {
       "boards": "Breadboard",
       "chips": "Chip",
       "discretes": "Componenti discreti",
-      "power": "Alimentazione"
+      "power": "Alimentazione",
+      "wires": "Fili",
+      "wireLine": "Filo ponte ({color}, {length})",
+      "wireLinePlain": "Filo ponte ({color})"
     },
     "stepGroup": {
       "boards": "Posiziona le breadboard",
@@ -624,7 +618,7 @@
       "placeBoard": "Posiziona una {label} vicino alla colonna {x}, riga {y}.",
       "psu": "Imposta {part} su {volts} V e appoggialo sul piano di lavoro.",
       "clock": "Imposta {part} ({rate}) e appoggialo sul piano di lavoro.",
-      "powerWire": "Posa un filo {color}: {from} → {to}.",
+      "powerWire": "Posa un filo {color} {item}: {from} → {to}.",
       "seatChip": "Inserisci un {ref} {where}.",
       "placePart": "Posiziona un {part}{color} {where}.",
       "bus": "Posa il bus {name} ({wires}).",
@@ -848,6 +842,8 @@
     "deleteWithWires": "Elimina il bus e i suoi fili"
   },
   "wire": {
+    "lengthCm": "{value} cm",
+    "gaugeLabel": "Filo lungo {length}",
     "tooManyBends": "Non ci stanno altre piegature su questo filo",
     "tooManyBendsMessage": "Un filo guidato porta al massimo {max} punti. Trascinane uno sul suo vicino per fonderlo, poi aggiungine un altro."
   },

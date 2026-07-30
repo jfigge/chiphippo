@@ -340,6 +340,106 @@ test("a wire's Properties dialog shows Name/Description, a separator, then all 8
   assert.ok(changed > 0, "rides the doc-changed commit seam");
 });
 
+test("a wire's Properties dialog ends with the wire itself, drawn and dimensioned", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const { surface } = makeDesk(doc);
+  // 20 pitch apart = 50.8 mm hole to hole; the sagging run it draws is a shade
+  // over that, and 5 mm of stripped lead at each end makes the wire ~6.1 cm.
+  const wire = addRenderedWire(doc, "bb1.a1", "bb1.a21");
+
+  rightClick(wireEl(surface, wire.id));
+  [...document.querySelectorAll(".popup-menu-item")]
+    .find((b) => b.textContent.trim() === "Properties…")
+    .click();
+
+  // It is the LAST row: a picture belongs below everything editable.
+  const rows = [...document.querySelectorAll(".properties-popup-body > *")];
+  assert.ok(rows.at(-1).querySelector(".wire-gauge"), "the drawing comes last");
+  const gauge = document.querySelector(".wire-gauge");
+  assert.equal(
+    gauge.style.getPropertyValue("--wire-color"),
+    "var(--color-wire-red)",
+    "drawn in the wire's own colour",
+  );
+  assert.match(
+    gauge.querySelector(".wire-gauge-length").textContent,
+    /^6\.[0-9] cm$/,
+    "dimensioned in cm: the run the WireLayer draws, plus both stripped ends",
+  );
+
+  // Picking a colour repaints the drawing in place — the dialog applies live and
+  // never rebuilds its rows, so nothing else would.
+  document.querySelector('.color-swatch[data-color="blue"]').click();
+  assert.equal(
+    document
+      .querySelector(".wire-gauge")
+      .style.getPropertyValue("--wire-color"),
+    "var(--color-wire-blue)",
+  );
+});
+
+test("the shortest wires: one hole apart is 1.3 cm of wire, two holes 1.5 cm", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const { surface } = makeDesk(doc);
+  // The bench figures, end to end through the real desk: a hop across ONE
+  // 2.54 mm pitch is 2.54 + 2 × 5 mm of wire (12.7, so 1.3 cm), and across two
+  // is 5.08 + 10 (15.2 → 1.5). Without the stripped ends these read 0.3 and 0.5,
+  // which is the run alone and not a length anybody could cut to.
+  for (const [to, expected] of [
+    ["bb1.a2", "1.3 cm"],
+    ["bb1.a3", "1.5 cm"],
+  ]) {
+    PopupManager.close();
+    for (const w of doc.wires) doc.removeWire(w.id);
+    const wire = addRenderedWire(doc, "bb1.a1", to);
+    rightClick(wireEl(surface, wire.id));
+    [...document.querySelectorAll(".popup-menu-item")]
+      .find((b) => b.textContent.trim() === "Properties…")
+      .click();
+    assert.equal(
+      document.querySelector(".wire-gauge-length").textContent,
+      expected,
+      `bb1.a1 → ${to}`,
+    );
+  }
+});
+
+test("the wire's drawing re-measures when a change in the dialog shortens it", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const { surface } = makeDesk(doc);
+  const wire = addRenderedWire(doc, "bb1.a1", "bb1.a21");
+  // Bend it well below the run, so switching back to Direct visibly shortens it.
+  doc.setWireLayout(wire.id, "routed");
+  doc.addWirePoint(wire.id, 0, { x: 10, y: 60 });
+  window.dispatchEvent(new window.CustomEvent("chiphippo:doc-changed"));
+
+  rightClick(wireEl(surface, wire.id));
+  [...document.querySelectorAll(".popup-menu-item")]
+    .find((b) => b.textContent.trim() === "Properties…")
+    .click();
+  const shown = () =>
+    Number(
+      document.querySelector(".wire-gauge-length").textContent.replace(/[^\d.]/g, ""), // prettier-ignore
+    );
+  const bent = shown();
+  assert.ok(bent > 12, `${bent} cm: the detour is part of the wire`);
+
+  // Direct throws the bend away — the dimension has to follow, in place.
+  document
+    .querySelector(
+      '.segmented-picker[aria-label="Layout Method"] .segmented-option[data-value="direct"]',
+    ) // prettier-ignore
+    .click();
+  assert.equal(doc.getWire(wire.id).points, undefined, "the bend is gone");
+  assert.ok(shown() < bent / 2, `${shown()} cm: re-measured, not stale`);
+});
+
 test("a wire's Properties dialog switches its Layout Method both ways", () => {
   resetDom();
   const doc = new DeskDoc(null);

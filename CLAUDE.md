@@ -1127,7 +1127,7 @@ Electron main process (src/app/main.js)
   A catalog def declares its own editable fields as data (`properties: [{
   key, label, type, options }]`) — the dialog is a pure renderer over that
   list (one `buildControl`/`buildRow` dispatch per `type`) and knows nothing
-  about any specific part. Five types today: `"color"` (every colored
+  about any specific part. Six types today: `"color"` (every colored
   discrete — LED, `seg8cc`/`seg8ca`, `bar8`/`bar8iso` — shares one
   `LED_COLOR_OPTIONS` list of 5 colors and a row of clickable swatches
   reusing the `--color-wire-<name>` tokens; any def with a `colors` list
@@ -1151,10 +1151,12 @@ Electron main process (src/app/main.js)
   `"Load image… (program)"`, appended by `#propertyFieldsFor` itself rather
   than the catalog, since a ROM's program action is additionally gated on
   `!#editingLocked`; clicking one closes the dialog and calls `onAction(key)`
-  instead of `onChange`), and `"readonly"` (a value the dialog SHOWS but does
+  instead of `onChange`), `"readonly"` (a value the dialog SHOWS but does
   not edit — the PROJECT's **Location**, which Save As is what changes; it
   takes the stacked full-width row a path needs. A desktop has none: it is not
-  a file).
+  a file), and **`"wire-gauge"`** (a PICTURE, not an editor — see the wire-gauge
+  note below; it is the one type named after what it draws rather than after a
+  kind of control, and deliberately so).
   A future part's properties are purely a catalog
   change (plus, only for a genuinely new control shape, one more `type` case
   in `buildControl`) — no changes to the dialog shell or the context-menu
@@ -1165,6 +1167,83 @@ Electron main process (src/app/main.js)
   a rotatable/span part like the LED only redraws through its span geometry,
   which `updateParams` alone skips) before committing through
   `#emitDocChanged` (coalesced) to ride undo/redo.
+- **The wire gauge — a wire's Properties dialog ends with the WIRE**
+  (`components/wire-gauge.js`, the dialog's `"wire-gauge"` field, last of the
+  wire's fields). The jumper is drawn straight across the full width of the card
+  in its own colour, its sleeve stripped back at both ends to the bare tinned
+  lead (`--color-chip-leg`, the same token the chips' legs use, because it is the
+  same material), with an arrowheaded **dimension line** under it stating the
+  length in centimetres. It answers the one question the desk cannot: WHICH LEAD
+  OUT OF THE DRAWER IS THIS — on the desk a wire is a curve between two holes at
+  whatever zoom the camera is at, so its length is unreadable there, and it is
+  exactly what you need before cutting one.
+  - **The RUN comes from the desk; the WIRE is the run plus two strips**
+    (`wireTotalMm`). A lead does not stop at the surface of the board — it has to
+    reach INTO both holes — so a jumper crossing one 2.54 mm pitch is
+    2.54 + 2 × `STRIP_MM` ≈ **13 mm** of wire, not 3 mm, and two pitches is
+    ≈ 15 mm. The caller therefore hands over the RUN (`runMm`) and the drawing
+    adds the strips itself, since `STRIP_MM` is its own constant: both halves then
+    agree with each other, because the SLEEVE covers exactly the run (what the
+    insulated part of a real jumper spans, hole to hole), the bare tips are the
+    strips, and the dimension line spans the lot — the length you cut.
+  - **ONE MEASUREMENT, in `model/wire-length.js`** — pure, DOM-free, over a plain
+    document, because two things state a wire's length (this drawing and the BOM's
+    cutting list) and a second implementation could quietly disagree with the
+    picture on the desk. It answers `wireRunMm` (hole to hole) and `wireCutMm`
+    (`= wireTotalMm(run)`, the length you cut), and owns `STRIP_MM` and the ONE
+    length FORMAT (`wireLengthLabel`, cm to a tenth, locale-formatted — `tf` so it
+    reads under `node --test`). The run is the DRAWN shape, never the chord: the
+    sagging curve's own ARC length for a direct wire, the polyline through the
+    waypoints for a routed one, and for a BUS MEMBER its lead + the whole ribbon +
+    its far lead, since a conductor in a ribbon cable is as long as the cable
+    however short the ends sticking out are. Which is why a `model/` module reaches
+    into `desk/` (the sag constants are px-space, hence `PX_PER_UNIT` → `pxToMm`
+    → `MM_PER_UNIT`, the one place the desk's units meet real measure) and why
+    `ribbonWidth` moved into `desk/ribbon-path.js` — WireLayer draws the leads
+    across that width and this measures them against it, so it can only have one
+    home. Live drags are ignored on purpose: a wire is measured as the DOCUMENT
+    has it.
+  - **TO SCALE, WITHIN REASON.** The drawing is a fixed width whatever the wire
+    measures, so the one thing it can be honest about is the RATIO: each
+    `STRIP_MM` is drawn as its share of the WHOLE wire, which is why a short hop
+    shows generous copper and a long haul a whisker. Two clamps — a bare end never
+    falls below `MIN_BARE` (a tip too small to see defeats the reason for drawing
+    one) and never takes more than `MAX_BARE_SHARE`, which is DERIVED from the
+    shortest wire the app can hold (`STRIP_MM / wireTotalMm(MM_PER_UNIT)`) so it
+    can never bind on a real one and exists only to stop a nonsense length drawing
+    an all-copper line. The dimension states the truth exactly either way.
+  - **The dialog repaints it on a colour pick.** The card applies live and never
+    rebuilds its rows, so a `"color"` field changed in the SAME dialog would
+    otherwise leave the drawing in the colour it opened in. Repainting is ONE
+    custom property (`setWireGaugeColor` → `--wire-color`, the same property every
+    wire on the desk and the toolbar's colour dot carry), so the geometry is
+    untouched. This is the only thing the dialog knows about the type.
+  - **The BOM's `wires` section is the same measurement as a NUMBERED CUTTING
+    LIST** (`wireCuttingList`, the fifth `BOM_SECTION_KEYS` entry, last — you wire
+    after you seat, as the step groups already order it). One line per COLOUR and
+    CUT LENGTH, tallied — "[3] Jumper wire (red, 6.1 cm) ×3" is three leads to cut
+    the same, which is how you work through a drawer or a spool, and it is why
+    length belongs in the line rather than beside it. Sorted by the app's own
+    colour order (what the swatch pickers offer) then shortest first, and NUMBERED
+    in that order, so an item number is stable against everything but a change to
+    the desk. Being one catalog entry, it reaches the panel AND the RTF export
+    with no second list to keep in step, and it needs no netlist — a BOM is a fact
+    about the desk, not about connectivity.
+  - **THE ITEM NUMBER IS A CROSS-REFERENCE, AND IT REPLACED A WHOLE TAB.** Every
+    step that runs a wire calls its number out (`wireItemLabel` → `[3]`, the
+    parts-drawing convention, punctuation around a numeral and so not translated):
+    in the SENTENCE for a power wire (`plan.step.powerWire`, one wire per step) and
+    LEADING each run line of a bus/net step (`wireRunLine`), where the callouts
+    form a column you read down while cutting. So the numbering is derived ONCE, in
+    `makeContext` (`ctx.wireBom` + `ctx.wireItem`), and handed to both the BOM and
+    the steps — two derivations could disagree, and a cross-reference that
+    disagrees is worse than none. **The build guide therefore has TWO tabs, BOM ·
+    Steps**: the third was *Wiring*, a net-centric list of every connection, and a
+    step that names its wire AND says where it goes is that list in the order you
+    do it in. The RTF export dropped its Wiring section with it — the export
+    mirrors the panel's tabs, so a printed page repeating it is the same
+    duplication on paper. `buildWiringList` itself stays: the single-member-net
+    WARNING is derived from it.
 - **Application menu + dialogs**: `main.js buildMenu()` installs the native app
   menu; its **About** / **Settings…** items are one-way pushes
   (`menu:show-about` / `menu:open-settings` via `webContents.send`), which the
@@ -1705,7 +1784,12 @@ on *System*). One JSON catalog per language under **`src/web/locales/`**, and
   those through **`m(key, fallback)`**. The payload is cached (the menu is
   rebuilt on every recent-list change, ~30 labels a time) and `settings:set`
   drops the cache when `locale` moves, which is what makes a language change
-  reach the menu bar with no restart. Cut/Copy/Paste stay native ROLES:
+  reach the menu bar with no restart. **`--hot-reload` drops it too, when the
+  changed file is under `locales/`** — that cache is process-lifetime, so a
+  window reload alone re-asked `i18n:load` and got the catalog read at LAUNCH:
+  a string added mid-session rendered as its raw dotted key however many times
+  the renderer reloaded, which reads like a bug in the code that asked for it
+  rather than like stale state. Cut/Copy/Paste stay native ROLES:
   Electron supplies the OS's own word for each, which beats anything this
   catalog could say. `PROJECT_FILTERS`/`DESKTOP_FILTERS` became FUNCTIONS for
   this — a `const` is evaluated at require time, long before `app` is ready.
@@ -1725,7 +1809,9 @@ on *System*). One JSON catalog per language under **`src/web/locales/`**, and
   translation; `#toggleGroup` is still called with the English), or a section
   would forget whether it was open the moment the language changed. A BOM line's
   tally key is built from stored tokens, so a language change can never split or
-  merge a row. Feature 270's `<ref> example` tab name is the example's whole
+  merge a row — a WIRE line's is its colour token plus whole MILLIMETRES, which is
+  also exactly the precision shown, so two wires that display the same length
+  cannot land on different rows (or vice versa). Feature 270's `<ref> example` tab name is the example's whole
   identity test, so it stays English. `Desktop N` IS translated — it is a
   default NAME, data from the moment it is created, like any name the user types.
 - **WHAT IS DELIBERATELY ENGLISH**, each because it is reference material or
@@ -1761,12 +1847,18 @@ match.
   guard.** Holds every locale to `en.json` in the four ways a translation
   silently goes wrong (a **missing key**; a **lost `{placeholder}`**, which
   renders as a gap; a **broken plural** shape; an **empty value**, which renders
-  as nothing) and the two ways the CODE drifts from the catalog: **a key the
+  as nothing) and the three ways the CODE drifts from the catalog: **a key the
   source asks for that does not exist** (`t("zoom.out")` renders the text
-  `zoom.out` — a real bug this caught on its first run), and **a catalog part,
+  `zoom.out` — a real bug this caught on its first run), **a `tf()` FALLBACK whose
+  `{placeholders}` differ from its own en.json entry's**, and **a catalog part,
   board kit, group or colour token with no entry**. Coverage must be EXACT in
   both directions: an extra key is a rename left behind, i.e. a translation
-  nothing will ever read.
+  nothing will ever read. The fallback check is the subtle one and it earned its
+  place the same way the first did: `tf()` PREFERS the catalog, so adding a
+  placeholder to the fallback and forgetting the catalog silently drops the value
+  at runtime — the sentence still reads, it is just missing the thing it was added
+  to say (a wire step shipped without the BOM item number it exists to quote). The
+  locale-parity check cannot see it, because en.json was the stale one.
 - **`web/scripts/tests/no-hardcoded-strings.test.js`** — the complement: a
   display literal that never entered the catalog at all. It scans for the
   assignment forms (`textContent`, `title`, `placeholder`, `setAttribute`) and,

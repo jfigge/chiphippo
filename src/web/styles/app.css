@@ -2152,11 +2152,21 @@ textarea.annotation-editor {
   box-shadow: var(--shadow-1);
 }
 
+/* Every popup header is a ROW: the title takes the slack, so whatever trails it
+   — dialog()'s close (×), the pinout window's datasheet/example buttons — sits
+   hard right with nothing per-dialog to say so. Four dialogs each carried their
+   own copy of these three lines, and the one that didn't (the keyboard-shortcuts
+   card) showed its × pressed up against the title. */
 .popup-header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
   padding: var(--space-4) var(--space-4) 0;
 }
 
 .popup-title {
+  flex: 1;
+  min-width: 0;
   font-size: 15px;
   font-weight: 600;
 }
@@ -2452,11 +2462,9 @@ textarea.annotation-editor {
   padding: 0;
 }
 
-/* Header: title + a close (×) button, over a ruled mantle bar. */
+/* Header: title + a close (×) button, over a ruled mantle bar. The row layout is
+   `.popup-header`'s own; this adds only the bar. */
 .settings-popup .popup-header {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
   padding: var(--space-3) var(--space-4);
   background: var(--color-mantle);
   border-bottom: 1px solid var(--color-crust);
@@ -2464,14 +2472,11 @@ textarea.annotation-editor {
   flex-shrink: 0;
 }
 
-.settings-popup .popup-title {
-  flex: 1;
-}
-
 .popup-close {
   display: flex;
   align-items: center;
   justify-content: center;
+  flex-shrink: 0;
   width: 24px;
   height: 24px;
   border: none;
@@ -2811,23 +2816,14 @@ textarea.annotation-editor {
   padding: 0;
 }
 
-/* Shared with the datasheet-download popup: the same small centred modal, so
-   it wants the same titled bar with its close button on the right rather than
-   a fourth copy of these rules. */
+/* Shared with the datasheet-download popup: the same small centred modal, so it
+   wants the same titled mantle bar rather than a second copy of these rules. */
 .properties-popup .popup-header,
 .datasheet-dl-popup .popup-header {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
   padding: var(--space-3) var(--space-4);
   background: var(--color-mantle);
   border-bottom: 1px solid var(--color-crust);
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
-}
-
-.properties-popup .popup-title,
-.datasheet-dl-popup .popup-title {
-  flex: 1;
 }
 
 .properties-popup-body {
@@ -3027,6 +3023,71 @@ textarea.annotation-editor {
 .properties-action:hover {
   border-color: var(--color-accent);
   color: var(--color-accent);
+}
+
+/* A drawing rather than a control (today: a wire's own dimensioned picture) —
+   the full width of the card, so no label column and no gap to hold one. */
+.properties-row--figure {
+  gap: 0;
+}
+
+/* ── The wire gauge (components/wire-gauge.js) ─────────────────────────────
+   A jumper drawn straight across the card in its own colour, stripped at both
+   ends, with a dimension line under it. The viewBox fixes its proportions; the
+   width is the card's and the height follows from the aspect ratio. */
+.wire-gauge {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+/* Bare tinned lead — the same token the chips' legs use, because it is the same
+   material: stripped, tinned copper. Round caps: a cut conductor has an end. */
+.wire-gauge-lead {
+  fill: none;
+  stroke: var(--color-chip-leg);
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+
+/* The insulation: the desk's own outline-under-core pair (.wire-outline /
+   .wire-core), scaled up for a drawing rather than a desk, and BUTT-capped so
+   each end reads as sleeve that was cut back. */
+.wire-gauge-sleeve-outline {
+  fill: none;
+  stroke: var(--color-wire-outline);
+  stroke-width: 11;
+  stroke-linecap: butt;
+}
+
+.wire-gauge-sleeve {
+  fill: none;
+  stroke: var(--wire-color, var(--color-wire-red));
+  stroke-width: 9;
+  stroke-linecap: butt;
+}
+
+/* Dimension furniture: hairlines, so the wire stays the subject of the drawing
+   and the measurement reads as an annotation over it. */
+.wire-gauge-witness,
+.wire-gauge-dim-line {
+  fill: none;
+  stroke: var(--color-subtext);
+  stroke-width: 1;
+  opacity: 0.6;
+}
+
+.wire-gauge-arrow {
+  fill: var(--color-subtext);
+  opacity: 0.6;
+}
+
+/* The measurement itself: mono, because it is a number that gets compared. */
+.wire-gauge-length {
+  fill: var(--color-text);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  user-select: none;
 }
 
 /* Positioned popups (the context/dropdown menu and the popover): a
@@ -3385,19 +3446,8 @@ textarea.annotation-editor {
    buttons: "open the example circuit" (shown when this part has a bundled
    demonstration bench) and "open the datasheet PDF" (shown when the user's
    datasheet folder holds a <id>.pdf for this part). ONE rule, one box — they
-   are the same affordance with different glyphs, and `.popup-title { flex: 1 }`
-   right-aligns however many of them there are. */
-.chip-pinout .popup-header {
-  display: flex;
-  align-items: center;
-  gap: var(--space-3);
-}
-
-.chip-pinout .popup-title {
-  flex: 1;
-  min-width: 0;
-}
-
+   are the same affordance with different glyphs, and `.popup-header`'s own row
+   layout right-aligns however many of them there are. */
 .pinout-header-btn {
   display: flex;
   align-items: center;
@@ -3789,75 +3839,30 @@ textarea.annotation-editor {
 .build-guide-bom-line {
   display: flex;
   align-items: baseline;
-  justify-content: space-between;
   gap: var(--space-2);
   padding: 3px 0;
+}
+
+/* The part title takes the slack, so the count sits hard right whether or not
+   the row carries an item number. */
+.build-guide-bom-title {
+  flex: 1;
+}
+
+/* A wire line's BOM ITEM NUMBER — the callout every wire step quotes
+   (build-plan.js's wireItemLabel). Mono and fixed-width-ish so a column of them
+   reads down the list; the accent marks it as a cross-reference rather than part
+   of the name. */
+.build-guide-bom-item {
+  font-family: var(--font-mono);
+  color: var(--color-accent);
+  white-space: nowrap;
 }
 
 .build-guide-count {
   font-family: var(--font-mono);
   color: var(--color-muted);
   white-space: nowrap;
-}
-
-/* Wiring list. */
-.build-guide-bus-head {
-  margin: var(--space-3) 0 var(--space-1);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  color: var(--color-accent);
-}
-
-.build-guide-net {
-  padding: var(--space-2) 0;
-  border-bottom: 1px solid var(--color-crust);
-}
-
-.build-guide-net-name {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  font-weight: 600;
-  margin-bottom: 2px;
-}
-
-.build-guide-net--named .build-guide-net-name {
-  color: var(--color-accent);
-}
-
-.build-guide-net-flag {
-  color: var(--color-warning);
-}
-
-.build-guide-net-members {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 3px;
-  color: var(--color-text);
-}
-
-.build-guide-member--pin {
-  font-family: var(--font-mono);
-}
-
-.build-guide-member--rail,
-.build-guide-member--terminal {
-  color: var(--color-muted);
-}
-
-.build-guide-member--hole {
-  font-family: var(--font-mono);
-  color: var(--color-muted);
-}
-
-.build-guide-sep {
-  color: var(--color-overlay);
-}
-
-.build-guide-net--singleton {
-  background: color-mix(in srgb, var(--color-warning) 10%, transparent);
 }
 
 /* Steps. */

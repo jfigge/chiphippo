@@ -575,14 +575,10 @@
     "exportTitle": "{name} — 装配指南",
     "tab": {
       "bom": "物料",
-      "wiring": "接线",
       "steps": "步骤"
     },
     "emptyBom": "工作台上还没有任何东西。",
-    "emptyWiring": "还没有任何连接。",
-    "emptySteps": "还没有装配步骤。",
-    "singletonTitle": "只有一个连接",
-    "singletonFlag": "只有一个连接"
+    "emptySteps": "还没有装配步骤。"
   },
   "plan": {
     "pinLabel": "{base} 第 {pin} 脚{suffix}",
@@ -599,16 +595,14 @@
     "warningCount": {
       "other": "{count} 条警告"
     },
-    "net": {
-      "bit": "第 {bit} 位",
-      "unnamed": "未命名网络",
-      "busHead": "{name} 总线"
-    },
     "bom": {
       "boards": "面包板",
       "chips": "芯片",
       "discretes": "分立元件",
-      "power": "电源"
+      "power": "电源",
+      "wires": "导线",
+      "wireLine": "跳线（{color}，{length}）",
+      "wireLinePlain": "跳线（{color}）"
     },
     "stepGroup": {
       "boards": "放置面包板",
@@ -622,7 +616,7 @@
       "placeBoard": "在第 {x} 列、第 {y} 行附近放置一块{label}。",
       "psu": "把{part}设为 {volts} V，然后放到工作台上。",
       "clock": "把{part}设为 {rate}，然后放到工作台上。",
-      "powerWire": "铺一根{color}导线：{from} → {to}。",
+      "powerWire": "铺一根{color}导线 {item}：{from} → {to}。",
       "seatChip": "插入一片 {ref}，{where}。",
       "placePart": "放置一个{part}{color}，{where}。",
       "bus": "铺设 {name} 总线（{wires}）。",
@@ -839,6 +833,8 @@
     "deleteWithWires": "删除总线及其导线"
   },
   "wire": {
+    "lengthCm": "{value} cm",
+    "gaugeLabel": "长度 {length} 的导线",
     "tooManyBends": "这根导线不能再加折点了",
     "tooManyBendsMessage": "一根布线导线最多带 {max} 个控制点。把其中一个拖到相邻点上以合并，然后再添加新的。"
   },

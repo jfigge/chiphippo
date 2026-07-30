@@ -35,6 +35,17 @@ import { wirePath, wireSag } from "./wire-path.js";
 /** How far (world px) a collar sits back from the bundle's true endpoint. */
 export const COLLAR_SETBACK = 16;
 
+/**
+ * A ribbon's drawn width (world px), scaled modestly with bit count. Every
+ * consumer of the pipe's width takes it from here — WireLayer's leads spread
+ * across it and its visible body is drawn to it, and model/wire-length.js
+ * measures a member's lead against the same spread — so nothing can disagree
+ * about how wide the pipe reads.
+ */
+export function ribbonWidth(memberCount) {
+  return Math.max(8, Math.min(24, 5 + memberCount));
+}
+
 /** An end handle's invisible grab radius (world px) — WireLayer draws the
     matching hit circle at this same radius; keep the two in lockstep. */
 export const HANDLE_HIT_RADIUS = 6;

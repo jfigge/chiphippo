@@ -73,6 +73,7 @@ import {
   busWidthForKey,
 } from "../model/desk-doc.js";
 import { nearestLegalOffset } from "../model/nearest-legal.js";
+import { wireRunMm } from "../model/wire-length.js";
 import { HistoryStore } from "../model/history-store.js";
 import { partDef } from "../catalog/index.js";
 import { kitLabel } from "../catalog/labels.js";
@@ -3108,10 +3109,22 @@ export class DeskController {
       (Direct / Routed), matching every other part's Properties dialog shape
       (see WireTools#onContextMenu). The layout is defaulted in rather than
       stored on every wire: a direct wire carries no `layout` at all, and a
-      dropdown still has to show something. */
+      dropdown still has to show something.
+
+      LAST comes the wire itself, drawn to length and dimensioned in cm
+      (components/wire-gauge.js) — a picture rather than a field, so it sits
+      below everything editable. What is handed over is the RUN the WireLayer
+      draws (`runLength`, world px → mm), never a second measurement of its own;
+      the drawing adds the stripped end at each end itself, since that is where
+      STRIP_MM lives. A wire whose ends don't resolve is simply not dimensioned.
+      `measure` is a callback rather than a number because switching Layout Method
+      to Direct throws the wire's bends away WHILE THE DIALOG IS OPEN, which
+      shortens it — it falls back to the run the dialog opened with, so a wire
+      that stops resolving mid-edit keeps its last honest figure. */
   #onOpenWireProperties(id) {
     const wire = this.#doc.getWire(id);
     if (!wire) return;
+    const runMm = wireRunMm(this.#doc, id);
     PartPropertiesDialog.open({
       title: t("desk.wirePropertiesTitle"),
       fields: [
@@ -3139,7 +3152,14 @@ export class DeskController {
             },
           ],
         },
-      ],
+        runMm == null
+          ? null
+          : {
+              type: "wire-gauge",
+              color: wire.color,
+              measure: () => wireRunMm(this.#doc, id) ?? runMm,
+            },
+      ].filter(Boolean),
       values: { ...wire, layout: wire.layout ?? "direct" },
       onChange: (key, value) => this.#setWireProperty(id, key, value),
     });

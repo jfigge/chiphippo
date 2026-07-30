@@ -44,12 +44,13 @@ import { wireColorName } from "./wire-colors.js";
 import { buildOccupancy, partPinAddresses, partPinHoles } from "./occupancy.js";
 import { nodeOf, parseAddress, parseHole } from "./breadboard.js";
 import { BOARD_TYPES } from "./board-types.js";
-import { parseBusName } from "./desk-doc.js";
+import { WIRE_COLORS, parseBusName } from "./desk-doc.js";
+import { wireCutMm, wireLengthLabel } from "./wire-length.js";
 
 /**
  * @typedef {object} BuildPlan
  * @property {{boards:BomLine[], chips:BomLine[], discretes:BomLine[],
- *   power:BomLine[]}} bom
+ *   power:BomLine[], wires:BomLine[]}} bom
  * @property {NetLine[]} nets  the wiring list, buses first
  * @property {Step[]} steps    the ordered assembly checklist
  * @property {Warning[]} warnings
@@ -82,7 +83,7 @@ export function buildPlan(document, netlist) {
   };
   const ctx = makeContext(doc, netlist);
   return {
-    bom: buildBom(doc),
+    bom: buildBom(doc, ctx),
     nets: buildWiringList(doc, netlist, ctx),
     steps: buildSteps(doc, netlist, ctx),
     warnings: buildWarnings(doc, netlist, ctx),
@@ -94,7 +95,9 @@ export function buildPlan(document, netlist) {
 /**
  * Pre-compute the maps every derivation shares: occupancy (hole → lead),
  * a hole → seated pin lookup keyed by NODE (so a bus tap beside a pin still
- * resolves to that pin), the wire index, and the netId → bus/bit assignment.
+ * resolves to that pin), the wire index, the netId → bus/bit assignment, and
+ * the WIRE CUTTING LIST — whose ITEM NUMBERS the BOM prints and every wire step
+ * calls out, which is exactly why it is derived once here rather than twice.
  */
 function makeContext(doc, netlist) {
   const occupancy = buildOccupancy(doc);
@@ -131,7 +134,18 @@ function makeContext(doc, netlist) {
     });
   }
 
-  return { occupancy, componentById, boardById, wireById, pinByNode, busOfNet };
+  const cuts = wireCuttingList(doc);
+
+  return {
+    occupancy,
+    componentById,
+    boardById,
+    wireById,
+    pinByNode,
+    busOfNet,
+    wireBom: cuts.lines,
+    wireItem: cuts.itemOf,
+  };
 }
 
 /** The node key ("<boardId> <node>") of a grid/rail hole address, or null. */
@@ -146,12 +160,14 @@ function nodeKeyOf(boardById, address) {
 // ── Bill of materials ───────────────────────────────────────────────────────
 
 /**
- * Group every board and component into counted line items. Boards count by
+ * Group every board, component and WIRE into counted line items. Boards count by
  * STRIP type (what is actually on the desk — Feature 110 made a breadboard a
  * kit of strips); components by catalog identity, with a variant split where it
- * matters (LEDs by colour, PSUs by voltage), so "LED (red) ×4" reads right.
+ * matters (LEDs by colour, PSUs by voltage), so "LED (red) ×4" reads right; wires
+ * by colour AND cut length, since that is what you take to the spool — see
+ * buildWireBom.
  */
-function buildBom(doc) {
+function buildBom(doc, ctx) {
   const boards = countBy(
     doc.boards,
     (b) => b.type,
@@ -186,7 +202,78 @@ function buildBom(doc) {
     chips: strip(chips),
     discretes: strip(discretes),
     power: strip(power),
+    wires: ctx.wireBom,
   };
+}
+
+/**
+ * The wires as a numbered CUTTING LIST: one line per colour and length, tallied
+ * — "[3] Jumper wire (red, 6.1 cm) ×3" is three leads to cut the same, which is
+ * how you'd work through a drawer or a spool.
+ *
+ * THE ITEM NUMBER IS THE POINT of returning `itemOf` alongside: the BOM prints
+ * it, and every step that runs a wire CALLS IT OUT (`wireItemLabel`), so the
+ * builder cuts the pile once, numbers it, and then never has to re-read a length
+ * mid-assembly — which is why the numbering has to be derived in one place and
+ * handed to both (see makeContext).
+ *
+ * The length is the CUT length, strips and all (model/wire-length.js), and it is
+ * formatted by the same function the wire's own drawing dimensions itself with,
+ * so a wire cannot read 6.1 cm in its Properties dialog and something else here.
+ *
+ * Tallying is by WHOLE MILLIMETRES, which is exactly the precision shown (a tenth
+ * of a cm): two wires that display the same length must land on one line, and two
+ * that display differently must not. Sorted by the app's own colour order (the
+ * same order the swatch pickers offer) and then shortest first, and NUMBERED IN
+ * THAT ORDER — so an item number is stable against everything except a change to
+ * the desk itself, and never moves because a colour was renamed or a language
+ * changed.
+ *
+ * @returns {{lines: BomLine[], itemOf: Map<string, number>}} the BOM lines (each
+ *   carrying its own `item`), and every wire id → the item number of its line.
+ */
+function wireCuttingList(doc) {
+  const tally = new Map();
+  for (const wire of doc.wires) {
+    const cut = wireCutMm(doc, wire.id);
+    // A wire whose ends don't resolve still needs buying; it just has no length
+    // to state. (Deleting a board cascades its wires away, so this is defensive.)
+    const mm = cut == null ? null : Math.round(cut);
+    const key = `${wire.color}:${mm ?? "?"}`;
+    const line = tally.get(key);
+    if (line) {
+      line.count += 1;
+      line.ids.push(wire.id);
+      continue;
+    }
+    const color = wireColorName(wire.color);
+    tally.set(key, {
+      key,
+      title:
+        mm == null
+          ? tf("plan.bom.wireLinePlain", "Jumper wire ({color})", { color })
+          : tf("plan.bom.wireLine", "Jumper wire ({color}, {length})", {
+              color,
+              length: wireLengthLabel(mm),
+            }),
+      count: 1,
+      // Bookkeeping only — stripped off below, exactly as the part tally's
+      // `bucket` is: two sort keys and the wires this line stands for.
+      order: WIRE_COLORS.indexOf(wire.color),
+      mm: mm ?? Infinity,
+      ids: [wire.id],
+    });
+  }
+  const sorted = [...tally.values()].sort(
+    (a, b) => a.order - b.order || a.mm - b.mm,
+  );
+  const itemOf = new Map();
+  const lines = sorted.map((line, i) => {
+    const item = i + 1;
+    for (const id of line.ids) itemOf.set(id, item);
+    return { key: line.key, title: line.title, count: line.count, item };
+  });
+  return { lines, itemOf };
 }
 
 /** A component's BOM key + human title, splitting on the variant that matters. */
@@ -466,11 +553,18 @@ function powerSteps(doc, ctx, steps) {
     steps.push({
       id: `step:power:${wire.id}`,
       group: "power",
-      text: tf("plan.step.powerWire", "Run a {color} wire: {from} → {to}.", {
-        color: wireColorName(wire.color),
-        from: localLabel(doc, ctx, wire.from),
-        to: localLabel(doc, ctx, wire.to),
-      }),
+      // The BOM item number rides along, so the wire to reach for is named
+      // rather than re-measured (see wireCuttingList).
+      text: tf(
+        "plan.step.powerWire",
+        "Run a {color} wire {item}: {from} → {to}.",
+        {
+          color: wireColorName(wire.color),
+          item: wireItemLabel(ctx.wireItem.get(wire.id)),
+          from: localLabel(doc, ctx, wire.from),
+          to: localLabel(doc, ctx, wire.to),
+        },
+      ),
     });
   }
 }
@@ -569,6 +663,17 @@ function seatingPhrase(doc, comp) {
   });
 }
 
+/**
+ * One wire, as a step's sub-item: its BOM item number, then where it goes. The
+ * callout LEADS here because a detail line is nothing but the run — so the
+ * numbers form a column you can read down while cutting.
+ */
+function wireRunLine(doc, ctx, wire) {
+  const from = localLabel(doc, ctx, wire.from);
+  const to = localLabel(doc, ctx, wire.to);
+  return `${wireItemLabel(ctx.wireItem.get(wire.id))} ${from} → ${to}`;
+}
+
 /** Run the signal wires: whole buses first, then remaining nets. */
 function wireSteps(doc, netlist, ctx, steps) {
   // Buses — one step each, a sub-item per bit.
@@ -581,10 +686,7 @@ function wireSteps(doc, netlist, ctx, steps) {
       // A power-rail member is already a Power step; don't list it twice (the
       // non-bus signal branch below excludes power wires for the same reason).
       .filter((w) => !isPowerWire(doc, ctx, w))
-      .map(
-        (w) =>
-          `${localLabel(doc, ctx, w.from)} → ${localLabel(doc, ctx, w.to)}`,
-      );
+      .map((w) => wireRunLine(doc, ctx, w));
     if (!detail.length) continue;
     steps.push({
       id: `step:wires:${bus.id}`,
@@ -616,9 +718,7 @@ function wireSteps(doc, netlist, ctx, steps) {
   });
   for (const netId of order) {
     const wires = byNet.get(netId);
-    const detail = wires.map(
-      (w) => `${localLabel(doc, ctx, w.from)} → ${localLabel(doc, ctx, w.to)}`,
-    );
+    const detail = wires.map((w) => wireRunLine(doc, ctx, w));
     const label = named(netId) ?? tf("plan.unnamedSignal", "signal");
     steps.push({
       id: `step:wires:net:${netId}`,
@@ -647,6 +747,7 @@ export const BOM_SECTION_KEYS = Object.freeze([
   "chips",
   "discretes",
   "power",
+  "wires",
 ]);
 
 /** Step group keys, in the order buildSteps emits them. */
@@ -663,6 +764,7 @@ const BOM_SECTION_EN = {
   chips: "Chips",
   discretes: "Discrete parts",
   power: "Power",
+  wires: "Wires",
 };
 
 const STEP_GROUP_EN = {
@@ -692,17 +794,19 @@ export function warningCount(n) {
   );
 }
 
-/** A net's own title in the wiring list: its bus bit, its name, or neither. */
-export function netTitle(net) {
-  if (net.bus) {
-    return tf("plan.net.bit", "bit {bit}", { bit: net.bus.bit });
-  }
-  return net.name ?? tf("plan.net.unnamed", "unnamed net");
-}
-
-/** A bus block's heading in the wiring list. */
-export function busHeading(name) {
-  return tf("plan.net.busHead", "{name} bus", { name });
+/**
+ * A wire's BOM ITEM NUMBER as a callout — `[3]`, the parts-drawing convention.
+ * The ONE place that notation lives: the BOM prints it beside the line it
+ * numbers and every wire step prints it beside the wire to run, and the two have
+ * to look alike or the cross-reference is not one.
+ *
+ * Deliberately NOT translated: it is punctuation around a numeral, like the `×`
+ * in a count or a keyboard glyph. `?` for a wire with no line, which cannot
+ * happen (the list tallies every wire in the same document) but reads as the bug
+ * it would be rather than as a blank.
+ */
+export function wireItemLabel(item) {
+  return `[${item ?? "?"}]`;
 }
 
 /** "3 wires" / "1 wire" — the plural the bus and net steps both count with. */
