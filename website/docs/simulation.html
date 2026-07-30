@@ -97,12 +97,11 @@ re-settle, and what you can still interact with while the circuit runs.</p>
 <strong>Stop</strong>, editing locks (you can&#39;t move parts, place new ones, or lay wires
 while running), and the engine cold-starts: it settles the circuit once from
 scratch and begins driving live views from the result.</p>
-<p>Press <strong>Stop</strong> (same shortcut) to freeze the simulation and return to
-editing. Stopping clears all run-volatile state — net levels, chip health
-badges, and any sequential state (counter values, shift-register contents,
-clock phase) reset. The only thing Stop doesn&#39;t discard is <strong>12 V chip
-damage</strong>, which is written into the circuit itself and persists until you
-replace the damaged chip.</p>
+<p>Press <strong>Stop</strong> (same shortcut) to freeze the simulation and return to editing.
+Stopping clears all run-volatile state — net levels, chip health badges, any
+sequential state (counter values, shift-register contents, clock phase), and
+<strong>12 V chip damage</strong>, so a chip you burnt out is whole again the moment you
+stop. Nothing that happens during a run outlives it.</p>
 <p><code>Space</code> is disabled while a placement, wire, or bus tool is armed (it might
 want the key for its own gesture) or while a text field has focus — use
 <code>Cmd/Ctrl+R</code> in that case, or just click <strong>Run</strong>.</p>
@@ -172,8 +171,8 @@ alone would happily light it.</li>
 chips show nothing extra, an <strong>underpowered</strong> chip (running at 3 V) gets
 an amber corner dot, and a chip killed by 12 V shows <strong>damaged</strong> — a red X
 with a smoke cue. Hover the badge for the exact reason (also unpowered or
-reversed VCC/GND). A damaged chip stays dead — including through Stop and
-a fresh Run — until you replace it from its right-click menu.</li>
+reversed VCC/GND). A damaged chip stays dead for the rest of that run, and
+<strong>Stop</strong> restores it — see <a href="power-and-clocks.html">Power &amp; Clock Sources</a>.</li>
 <li><strong>Probe highlights</strong> tint whatever net you hover by its live level. Full
 detail on reading and naming nets lives in
 <a href="probing.html">Probing &amp; Net Names</a> — this page won&#39;t duplicate it.</li>

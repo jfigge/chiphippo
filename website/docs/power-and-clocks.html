@@ -113,11 +113,12 @@ whose GND net is properly grounded runs exactly to its datasheet behavior.</li>
 <li><strong>3 V</strong> — underpowered. The chip is inert — every output floats/reads as if
 disconnected — but nothing is harmed. Useful for demonstrating what an
 underpowered chip looks like without any risk.</li>
-<li><strong>12 V</strong> — <strong>damage</strong>. This is Chip Hippo&#39;s &quot;magic smoke&quot; rule: any chip
-(or oscillator can, which is powered the same way) whose VCC net sees 12 V
-is immediately marked <strong>damaged</strong> and goes permanently inert, independent
-of anything else on the net. Damage is real bookkeeping, persisted with the
-circuit — it doesn&#39;t clear on its own, and it doesn&#39;t clear on Stop.</li>
+<li><strong>12 V</strong> — <strong>damage</strong>. This is Chip Hippo&#39;s &quot;magic smoke&quot; rule: any chip (or
+oscillator can, which is powered the same way) whose VCC net sees 12 V is
+immediately marked <strong>damaged</strong> and goes inert for the rest of that run,
+independent of anything else on the net. It stays dead while the run lasts —
+a failed chip doesn&#39;t recover while the power is still wrong — and <strong>Stop</strong>
+makes it whole again.</li>
 </ul>
 <p>A chip can also come up <strong>reversed</strong> — a PSU <code>−</code> on its VCC pin&#39;s net at the
 same time as a PSU <code>+</code> on its GND pin&#39;s net — which is reported separately
@@ -127,11 +128,15 @@ leads are swapped.</p>
 badge on each chip while running — see <a href="simulation.html">Running a Simulation</a>
 for how those badges and the rest of the settle model work. This page only
 covers what puts a chip into each state.</p>
-<h2 id="replacing-a-damaged-part">Replacing a damaged part</h2>
-<p>A damaged chip or oscillator can stays damaged and inert until you swap it
-out. There&#39;s no in-place repair — delete it (<strong>Delete Component</strong> on its
-context menu) and place a fresh one from the palette, then rewire it. 12 V is
-meant to sting a little, the same way it would on a real bench.</p>
+<h2 id="recovering-from-a-12-v-mistake">Recovering from a 12 V mistake</h2>
+<p>Press <strong>Stop</strong>. Every damaged chip on the desk is restored, and you can rewire
+and run again. You don&#39;t lose the part, and you don&#39;t have to delete and
+re-place anything.</p>
+<p>12 V is meant to be <em>noticed</em>, not to cost you the chip: the red badge and the
+warning are the point, and they&#39;ve done their job by the time you stop. Wiring a
+supply to the wrong rail is a mistake about the circuit — one you can see and
+fix — so it stays fixable. Find where 12 V is reaching a VCC net (the
+<a href="simulation.html">Probe tool</a> is the quick way), correct it, and press <strong>Run</strong>.</p>
 <h2 id="clock-sources">Clock sources</h2>
 <p>Add a <strong>Clock source</strong> from the palette (<strong>Power</strong> group) for a free-running
 or manually stepped square wave to drive a sequential chip&#39;s clock pin. Like

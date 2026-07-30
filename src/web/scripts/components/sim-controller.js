@@ -223,7 +223,7 @@ export class SimController {
     this.#scheduleClocks();
   }
 
-  /** Return to editing: clear run-volatile state, keep persisted damage. */
+  /** Return to editing: clear every scrap of run state, damage included. */
   stop() {
     if (this.#mode === TRANSPORT.STOPPED) return;
     this.#clearTimers();
@@ -241,6 +241,11 @@ export class SimController {
     this.#images = new Map();
     this.#memInfo = new Map();
     this.#notifications?.clear();
+    // BEFORE #onTransportChange: stopping re-baselines undo/redo against the
+    // live document (`#history.sync`), so the chips have to be whole by the
+    // time that runs — otherwise the baseline would hold the damage and a ⌘Z
+    // would bring the magic smoke back.
+    this.#clearAllDamage();
     this.#onTransportChange?.(this.#mode);
     this.#publish(null, null); // views clear from a not-running sim-state
     // Hand any open inspector windows the final image (→ back to editable).
@@ -521,8 +526,16 @@ export class SimController {
   }
 
   /**
-   * Persist a 12 V kill into params.damaged (inert until "Replace chip").
-   * "reversed" is deliberately NOT persisted — swapped power wires are an
+   * Latch a 12 V kill into params.damaged FOR THE REST OF THE RUN.
+   *
+   * The document is where it goes because the document is what the engine
+   * reads (`engine.js` `powerStatus`), and a chip that let its smoke out at
+   * tick 5 has to stay dead at tick 6 — a pure, timerless solver has nowhere
+   * else to remember that. It is not a saved property: `stop()` clears it and
+   * the load path drops it, so damage lives exactly as long as the run does,
+   * like sequential state and clock phase.
+   *
+   * "reversed" is deliberately NOT latched at all — swapped power wires are an
    * editing mistake, so fixing the wiring and re-running clears it.
    */
   #persistDamage(chipStatus) {
@@ -614,11 +627,28 @@ export class SimController {
     }
   }
 
-  /** Reset a damaged chip's `damaged` flag. No UI currently calls this —
-      delete + re-place is the in-app recovery path (see the notification
-      above) — but it stays a small, independently tested capability. */
-  replaceChip(id) {
-    this.#doc.setComponentParams(id, { damaged: false });
-    window.dispatchEvent(new CustomEvent("chiphippo:doc-changed"));
+  /**
+   * Every damaged chip made whole again — the other end of `#persistDamage`.
+   *
+   * A 12 V mistake is a WIRING mistake, and the circuit on the desk is the
+   * thing being edited: leaving a dead chip behind would mean an experiment
+   * could permanently spoil the design it was run on, recoverable only by
+   * deleting the chip and re-wiring it. So the smoke clears when the run ends.
+   * The warning it raised has already been seen, which is the part that was
+   * ever meant to teach anything.
+   */
+  #clearAllDamage() {
+    let changed = false;
+    for (const c of this.#doc.toJSON().components) {
+      if (c.params?.damaged !== true) continue;
+      this.#doc.setComponentParams(c.id, { damaged: false });
+      changed = true;
+    }
+    if (changed) window.dispatchEvent(new CustomEvent("chiphippo:doc-changed"));
   }
+
+  // `replaceChip(id)` used to live here — the single-chip version of
+  // #clearAllDamage, kept as the manual recovery path for a 12 V kill. It never
+  // had a UI caller, and a stop now clears every chip on its own, so there is
+  // nothing left for it to be the answer to.
 }

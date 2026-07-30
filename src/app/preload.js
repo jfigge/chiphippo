@@ -202,19 +202,32 @@ contextBridge.exposeInMainWorld("chiphippo", {
   // which paths may be touched at all (the saves folder, plus whatever a
   // dialog or an opened project established).
   //
-  // `save(meta, path, dropDefault)` writes the project file: a null path means
-  // "no location yet" → the fixed default project file, and `dropDefault`
-  // clears that slot when a project moves out of it. `choosePath` only PICKS a
-  // location — the native save dialog asks about replacing an existing file
-  // itself, so a refusal comes back as a cancel (null).
+  // `save(meta, path)` writes the project file: a null path means "no location
+  // yet" → the fixed default project file. A save to a real path always empties
+  // that slot, since the slot only ever holds what a project's own file does
+  // not. `choosePath` only PICKS a location — the native save dialog asks about
+  // replacing an existing file itself, so a refusal comes back as a cancel
+  // (null).
+  //
+  // `recovery.*` is the slot's other job: `write(meta, location)` stashes the
+  // open project there WITHOUT touching its own file, stamped with the path it
+  // belongs to, so a stamped slot at startup means the last session did not
+  // finish; `clear()` throws it away once a save has put everything in the file,
+  // or a clean quit has made it moot. There is no `restore` — `boot` hands one
+  // back already restored, flagged `restored` so it reads as unsaved.
   project: {
     boot: () => ipcRenderer.invoke("project:boot"),
     create: () => ipcRenderer.invoke("project:new"),
     open: () => ipcRenderer.invoke("project:open"),
     openRecent: (filePath) =>
       ipcRenderer.invoke("project:open-recent", filePath),
-    save: (meta, filePath, dropDefault) =>
-      ipcRenderer.invoke("project:save", meta, filePath, dropDefault),
+    save: (meta, filePath) =>
+      ipcRenderer.invoke("project:save", meta, filePath),
+    recovery: {
+      write: (meta, location) =>
+        ipcRenderer.invoke("project:recovery:write", meta, location),
+      clear: () => ipcRenderer.invoke("project:recovery:clear"),
+    },
     choosePath: (kind, name, current) =>
       ipcRenderer.invoke("project:choose-path", kind, name, current),
     // The MRU list behind File ▸ Open Recent: `list()` → the last 10 project

@@ -65,10 +65,27 @@ marker because there is one document — it covers every desktop's design *and*
 the desktops themselves, so adding one, renaming one, or deleting one shows up
 there exactly as wiring a board does.
 
-**Nothing is written until you save.** Add a desktop, rename it, delete another
-— none of it touches the disk, and closing the project without saving takes all
-of it back. Tabs carry no marker of their own for the same reason: a desktop
-can't be saved on its own, so a dot on one would have nothing to clear it.
+**Nothing is written to your file until you save.** Add a desktop, rename it,
+delete another — none of it touches your `.chiphippo`, and closing the project
+without saving takes all of it back. Tabs carry no marker of their own for the
+same reason: a desktop can't be saved on its own, so a dot on one would have
+nothing to clear it.
+
+**And nothing is lost to a crash either.** About every 30 seconds, Chip Hippo
+tucks a copy of whatever you're working on into its own private folder — not
+into your file. So both things are true at once: the • still means "not in my
+file yet", closing without saving still takes it all back, and a power cut or a
+crash still costs you half a minute at worst.
+
+If the app does go down unexpectedly, the next launch puts that work straight
+back on the desk and tells you so. It arrives **unsaved** — the • is showing —
+so you decide the same way you always would: save it, or close without saving to
+go back to what your file holds. A project you'd never saved anywhere is kept
+too; it was already living in that folder, and it still opens on its own.
+
+You can ignore all of it. There's no setting, no prompt to answer, and nothing
+appears while you work. ⌘S is still what commits your work to your file, and
+still worth pressing when you want it there *now*.
 
 Nothing that would lose your changes happens silently. Starting or opening
 another project asks first, and so does quitting. Both offer to **save** — and
@@ -103,16 +120,18 @@ without saving.
 
 Undo/redo does **not** cover simulation state. While the circuit is running,
 editing — and with it, recording new undo steps — is locked, so nothing that
-happens mid-run (sequential chip state, clock phase, a chip taking 12 V
-damage) ever becomes an undo step of its own. Sequential state and clock
-phase vanish outright the next time you press **Run**. 12 V damage is the one
-exception that outlives the run: it's written into the document, so stopping
-— or even quitting and reopening — doesn't clear it, and there's no `Cmd+Z`
-back to before it happened. The only way to clear a damaged chip is to delete
-it and place a fresh one (see [Power & Clock Sources](power-and-clocks.md))
-— which, taken while stopped, is a normal edit and undoes/redoes like any
-other. What undo/redo restores is always the circuit you built, never a
-moment in its simulated behavior.
+happens mid-run (sequential chip state, clock phase, a chip taking 12 V damage)
+ever becomes an undo step of its own. All of it is **run state**: it exists
+while the circuit is running and not a moment longer.
+
+That includes **12 V damage**. Feed a chip 12 V and it lets its smoke out on the
+spot — the warning appears, its badge goes red, and it stays dead for the rest of
+that run, because a chip that's failed doesn't come back while the power is still
+wrong. Press **Stop** and every damaged chip is whole again. Wiring 12 V to the
+wrong rail is a mistake about the *circuit*, and a mistake you can see and fix;
+it was never meant to cost you the chip, so it doesn't. Fix the wiring, run
+again. What undo/redo restores is always the circuit you built, never a moment in
+its simulated behavior.
 
 ## Example circuits
 

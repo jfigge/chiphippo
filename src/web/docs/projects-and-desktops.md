@@ -62,8 +62,8 @@ you're looking at:
 - **Delete Desktop** — remove it from the project.
 
 Adding, renaming, duplicating and deleting a desktop are ordinary unsaved
-changes, exactly like moving a chip: nothing is written to disk until you save
-the project, and closing without saving undoes all of it.
+changes, exactly like moving a chip: nothing reaches the project's file until you
+save it, and closing without saving undoes all of it.
 
 ## Saving
 
@@ -141,7 +141,7 @@ Right-click a tab for its menu:
 - **Delete Desktop** removes it from the project. Any desktop can go — there's
   nothing special about the first one — except the **last** one left, because a
   project with no desktops would have nothing to open. Its design goes with it,
-  but nothing is written: close the project without saving and it comes back.
+  but its file is untouched: close the project without saving and it comes back.
 
 Desktop numbers only ever count up: deleting `Desktop 2` doesn't make the next
 one `Desktop 2` again, so a name you wrote in a note keeps meaning the same

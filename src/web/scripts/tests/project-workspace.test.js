@@ -52,8 +52,13 @@ const someDesign = (id = "bb1") => ({
 function fakeBridge() {
   const projects = new Map(); // path → the whole project, docs and all
   const settings = {};
-  const counts = { aux: 0 };
+  const counts = { aux: 0, saves: 0, stashes: 0, clears: 0 };
   let recent = [];
+  // A write the test can HOLD OPEN, so an edit can land while one is in flight.
+  // That is the only way to exercise the baseline race: the bytes that went are
+  // decided at call time, and anything arriving before the write comes back must
+  // still read as unsaved.
+  let holdSave = null;
   const control = {
     failWrites: false, // a write that never reaches a file
     pickPaths: [], // what the Save-As dialog returns, in order
@@ -113,17 +118,41 @@ function fakeBridge() {
       }
       return { ok: true, project: adopt(filePath) };
     },
-    save: async (meta, filePath, dropDefault) => {
+    // A save to a REAL path always empties the working slot: the slot holds only
+    // what a project's own file does not, so once the file has everything there
+    // is nothing left to hold — whether it was an untitled project's home or a
+    // recovery copy stashed beside a saved one.
+    save: async (meta, filePath) => {
       if (control.failWrites) throw new Error("no file to write to");
+      counts.saves += 1; // counted where it STARTED, before any gate
+      if (holdSave) await holdSave;
       const target = filePath ?? DEFAULT_PROJECT;
       projects.set(target, clone(meta));
       if (filePath) {
         remember(target);
-        if (dropDefault === true && target !== DEFAULT_PROJECT) {
-          projects.delete(DEFAULT_PROJECT);
-        }
+        if (target !== DEFAULT_PROJECT) projects.delete(DEFAULT_PROJECT);
       }
       return { ok: true, path: target };
+    },
+    // The recovery slot's other job: the open project stashed in it WITHOUT its
+    // own file being touched, stamped with the path it belongs to.
+    recovery: {
+      write: async (meta, location) => {
+        if (control.failWrites) throw new Error("no file to write to");
+        counts.stashes += 1;
+        if (holdSave) await holdSave;
+        if (!location) throw new Error("a recovery copy needs a project path");
+        projects.set(DEFAULT_PROJECT, {
+          ...clone(meta),
+          recoveryFor: location,
+        });
+        return { ok: true };
+      },
+      clear: async () => {
+        counts.clears += 1;
+        projects.delete(DEFAULT_PROJECT);
+        return { ok: true };
+      },
     },
     // The native Save-As dialog: the test queues the paths it answers with,
     // and an empty queue is a cancelled dialog. Replacing an existing file is
@@ -199,6 +228,17 @@ function fakeBridge() {
     counts,
     control,
     recentList: () => [...recent],
+    /** Hold every write open until the returned release is called. */
+    gateSaves: () => {
+      let release;
+      holdSave = new Promise((r) => {
+        release = r;
+      });
+      return () => {
+        holdSave = null;
+        release();
+      };
+    },
     seedProject: (filePath, meta) => projects.set(filePath, clone(meta)),
     seedRecent: (filePath) => remember(filePath),
     seedExample: (ref, payload) => examples.set(ref, payload),
@@ -217,6 +257,10 @@ async function harness({
   doc = new DeskDoc(null),
   fake = fakeBridge(),
   onLoad = null,
+  // Auto-save OFF unless a test asks for it: every other test here asserts on
+  // what a DELIBERATE save wrote, and a background stash would move the working
+  // slot underneath it. `0` is the real off switch, not a test-only escape.
+  autoSaveMs = 0,
 } = {}) {
   const win = resetDom();
   const sim = {
@@ -255,6 +299,8 @@ async function harness({
     doc.load(boot.doc);
     onLoad?.(doc);
   }
+  // What app.js's `updateTitle` is wired to — the • marker's one refresh seam.
+  const announced = { count: 0 };
   workspace = new ProjectWorkspace({
     bridge: fake.bridge,
     deskDoc: doc,
@@ -266,6 +312,10 @@ async function harness({
       camera = c;
     },
     boot,
+    autoSaveMs,
+    onActiveChange: () => {
+      announced.count += 1;
+    },
   });
   return {
     ...fake,
@@ -276,6 +326,7 @@ async function harness({
     controller,
     sim,
     boot,
+    announced,
     camera: () => camera,
     moveCamera: (c) => {
       camera = c;
@@ -627,6 +678,372 @@ test("a failed write is reported and never claims to have saved", async () => {
   assert.equal(await h.workspace.save(), false);
   await settle();
   assert.match(dialogTitle(), /Could not save the project/);
+  assert.equal(h.workspace.dirty, true);
+});
+
+// ── An edit landing while a write is in flight ───────────────────────────────
+//
+// The baseline is the bytes that WENT, never `#project` as it stands when the
+// write comes back. A desk edit was always safe (the dirty test re-reads the
+// live DeskDoc); a META edit was not, because every one of them reassigns
+// `#project` — so signing it afterwards folded an unwritten change into the
+// baseline, the • cleared, and the leave guard stopped asking about it.
+
+test("a desk edit during a write stays unsaved, and lands on the next save", async () => {
+  const h = await harness();
+  const release = h.gateSaves();
+  const writing = h.workspace.save();
+  await settle();
+  h.doc.load(someDesign("bb9")); // arrives mid-write
+  release();
+  assert.equal(await writing, true);
+  await settle();
+
+  assert.equal(h.workspace.dirty, true, "it was never written");
+  assert.equal(h.stored().tabs[0].doc.boards.length, 0, "the file has neither");
+  await h.workspace.save();
+  await settle();
+  assert.equal(h.stored().tabs[0].doc.boards[0].id, "bb9");
+});
+
+test("a desktop ADDED during a write stays unsaved", async () => {
+  const h = await harness();
+  const release = h.gateSaves();
+  const writing = h.workspace.save();
+  await settle();
+  await h.workspace.addTab(); // reassigns #project mid-write
+  await settle();
+  release();
+  assert.equal(await writing, true);
+  await settle();
+
+  assert.equal(h.workspace.dirty, true, "the new desktop is not in the file");
+  assert.equal(h.tabsOf().length, 1, "and the file still shows one");
+  await h.workspace.save();
+  await settle();
+  assert.equal(h.tabsOf().length, 2, "the next save carries it");
+});
+
+test("a desktop RENAMED during a write stays unsaved", async () => {
+  const h = await harness();
+  const release = h.gateSaves();
+  const writing = h.workspace.save();
+  await settle();
+  h.workspace.editTabProperties("t1"); // #setTabProperty, no doc-changed at all
+  setProperty(".properties-text-input", "Renamed");
+  closePopup();
+  release();
+  assert.equal(await writing, true);
+  await settle();
+
+  assert.equal(h.workspace.dirty, true, "the rename is not in the file");
+  assert.equal(h.tabsOf()[0].name, "Desktop 1");
+});
+
+// ── Auto-save: the working slot's second job ─────────────────────────────────
+//
+// THE USER'S FILE IS WRITTEN ONLY WHEN THEY ASK. A tick stashes the project in
+// the app's own working slot instead, so a crash costs half a minute AND the •
+// still means "not in your file" AND "discard" is still a revert. The tests
+// drive `autoSaveNow()` directly — the decision is what matters, and a timer
+// only says when. One test covers the cadence itself.
+
+/** Give the project a home, then forget the setup's bookkeeping. */
+const homed = async (h, at = "/home/adder.chiphippo") => {
+  await saveAs(h, at);
+  h.counts.saves = 0;
+  h.counts.stashes = 0;
+  h.counts.clears = 0;
+  h.announced.count = 0;
+  return at;
+};
+
+test("a tick stashes a SAVED project without touching its file", async () => {
+  const h = await harness();
+  const at = await homed(h);
+  const onDisk = JSON.stringify(h.stored(at));
+  h.doc.load(someDesign("bb4"));
+
+  assert.equal(await h.workspace.autoSaveNow(), true);
+  await settle();
+  assert.equal(JSON.stringify(h.stored(at)), onDisk, "the FILE never moved");
+  assert.equal(h.workspace.dirty, true, "so the • still stands");
+  assert.equal(h.counts.saves, 0, "nothing went near the project file");
+  // …and the work is in the slot, stamped with the file it belongs to.
+  const slot = h.stored(DEFAULT_PROJECT);
+  assert.equal(slot.tabs[0].doc.boards[0].id, "bb4");
+  assert.equal(slot.recoveryFor, at, "the stamp says whose work this is");
+});
+
+test("a tick on an UNTITLED project is a real save — the slot is its home", async () => {
+  const h = await harness();
+  h.doc.load(someDesign("bb2"));
+
+  assert.equal(await h.workspace.autoSaveNow(), true);
+  await settle();
+  const slot = h.stored(DEFAULT_PROJECT);
+  assert.equal(slot.tabs[0].doc.boards[0].id, "bb2");
+  assert.equal(slot.recoveryFor, undefined, "not a stash — its actual file");
+  assert.equal(h.workspace.dirty, false, "so the • clears, honestly");
+  assert.equal(h.counts.stashes, 0, "it took the ordinary save path");
+});
+
+test("a tick with nothing changed writes nothing at all", async () => {
+  const h = await harness();
+  await homed(h);
+  assert.equal(await h.workspace.autoSaveNow(), false);
+  assert.equal(h.counts.stashes, 0, "the write was never even started");
+});
+
+test("a stashed project is not re-stashed until it changes again", async () => {
+  const h = await harness();
+  await homed(h);
+  h.doc.load(someDesign());
+  assert.equal(await h.workspace.autoSaveNow(), true);
+  await settle();
+
+  // The • is still up (the file has none of this), so a dirty-driven tick would
+  // rewrite the same bytes every 30 s forever. The stash baseline is what stops
+  // it — this is why there are two baselines and not one.
+  assert.equal(h.workspace.dirty, true);
+  assert.equal(await h.workspace.autoSaveNow(), false, "nothing new to stash");
+  assert.equal(h.counts.stashes, 1);
+
+  h.doc.load(someDesign("bb5"));
+  assert.equal(await h.workspace.autoSaveNow(), true, "…until it moves again");
+  assert.equal(h.counts.stashes, 2);
+});
+
+test("a desktop RENAME is stashed, though it fires no doc-changed", async () => {
+  const h = await harness();
+  const at = await homed(h);
+  h.workspace.editTabProperties("t1");
+  setProperty(".properties-text-input", "Adder");
+  closePopup();
+
+  assert.equal(await h.workspace.autoSaveNow(), true, "the rename is a change");
+  await settle();
+  assert.equal(h.stored(DEFAULT_PROJECT).tabs[0].name, "Adder");
+  assert.equal(h.stored(at).tabs[0].name, "Desktop 1", "not in the file yet");
+});
+
+test("saving throws the stash away — the file has everything now", async () => {
+  const h = await harness();
+  const at = await homed(h);
+  h.doc.load(someDesign());
+  await h.workspace.autoSaveNow();
+  await settle();
+  assert.equal(h.projects.has(DEFAULT_PROJECT), true, "a stash is waiting");
+
+  assert.equal(await h.workspace.save(), true);
+  await settle();
+  assert.equal(h.projects.has(DEFAULT_PROJECT), false, "and now it is moot");
+  assert.equal(h.workspace.dirty, false);
+  assert.equal(h.stored(at).tabs[0].doc.boards.length, 1);
+  assert.equal(await h.workspace.autoSaveNow(), false, "nothing to re-stash");
+});
+
+test("a quiet failure retires the tick rather than repeating a dialog", async () => {
+  const h = await harness();
+  await homed(h);
+  h.doc.load(someDesign());
+  h.control.failWrites = true;
+
+  assert.equal(await h.workspace.autoSaveNow(), false);
+  await settle();
+  assert.equal(dialogTitle(), "", "a write nobody asked for cannot interrupt");
+  assert.equal(h.workspace.dirty, true, "and the • stands as the only signal");
+
+  h.control.failWrites = false;
+  assert.equal(await h.workspace.autoSaveNow(), false, "retired");
+  assert.equal(h.counts.stashes, 0);
+  assert.equal(await h.workspace.save(), true, "⌘S is the way back");
+});
+
+test("a tick skips while a write is already in flight", async () => {
+  const h = await harness();
+  await homed(h);
+  h.doc.load(someDesign());
+  const release = h.gateSaves();
+  const saving = h.workspace.save();
+  await settle();
+
+  assert.equal(await h.workspace.autoSaveNow(), false, "let the one going win");
+  assert.equal(h.counts.stashes, 0);
+  release();
+  assert.equal(await saving, true);
+});
+
+test("a manual save during a tick still reports success", async () => {
+  const h = await harness();
+  const at = await homed(h);
+  h.doc.load(someDesign("bb1"));
+  const release = h.gateSaves();
+  const ticking = h.workspace.autoSaveNow();
+  await settle();
+  // ⌘S lands on top of the background stash. It must never read as a cancel —
+  // #askUnsaved treats a false as one, and would then keep the project open.
+  const manual = h.workspace.save();
+  release();
+  await settle();
+  assert.equal(await ticking, true);
+  assert.equal(await manual, true, "queued behind it, not refused");
+  assert.equal(h.workspace.dirty, false);
+  assert.equal(h.stored(at).tabs[0].doc.boards[0].id, "bb1");
+});
+
+test("no tick fires while the leave question is open", async () => {
+  const h = await harness();
+  await homed(h);
+  h.doc.load(someDesign());
+
+  const leavingNow = h.workspace.newProject();
+  await settle();
+  assert.match(dialogTitle(), /unsaved/i, "the question is out");
+  assert.equal(await h.workspace.autoSaveNow(), false, "nothing may write now");
+  assert.equal(
+    h.counts.stashes,
+    0,
+    "the discarded work never reached the slot",
+  );
+
+  clickButton("Discard");
+  await leavingNow;
+  await settle();
+  assert.equal(h.stored().tabs[0].doc.boards.length, 0, "discard stayed true");
+});
+
+test("a clean quit throws the stash away — that is the crash signal", async () => {
+  const h = await harness();
+  await homed(h);
+  h.doc.load(someDesign());
+  await h.workspace.autoSaveNow();
+  await settle();
+  assert.equal(h.projects.has(DEFAULT_PROJECT), true);
+
+  // Dirty, so it asks; discarding is still a real discard.
+  const closing = h.workspace.confirmClose();
+  await settle();
+  clickButton("Discard");
+  assert.equal(await closing, true);
+  await settle();
+  assert.equal(
+    h.projects.has(DEFAULT_PROJECT),
+    false,
+    "no stash survives a session that ended properly",
+  );
+  assert.equal(
+    await h.workspace.autoSaveNow(),
+    false,
+    "and nothing writes now",
+  );
+});
+
+test("a clean quit KEEPS an untitled project's slot — it is its home", async () => {
+  const h = await harness();
+  h.doc.load(someDesign());
+  await h.workspace.autoSaveNow(); // a real save, for an untitled project
+  await settle();
+
+  assert.equal(await h.workspace.confirmClose(), true, "clean: no question");
+  assert.equal(
+    h.stored(DEFAULT_PROJECT).tabs[0].doc.boards.length,
+    1,
+    "its work is in the slot and must still be there next launch",
+  );
+  assert.equal(h.counts.clears, 0);
+});
+
+test("a restored project arrives UNSAVED, so it can still be thrown away", async () => {
+  // What main hands over after finding a stamped slot: the recovery, already
+  // restored, flagged. It holds what its file does not, so the • has to be up.
+  const fake = fakeBridge();
+  fake.seedProject("/home/adder.chiphippo", {
+    name: "adder",
+    description: "",
+    activeTab: "t1",
+    nextIndex: 2,
+    tabs: [{ id: "t1", name: "Desktop 1", doc: someDesign("bb1") }],
+  });
+  fake.projects.delete(DEFAULT_PROJECT);
+  const boot = fake.bridge.project.boot;
+  fake.bridge.project.boot = async () => {
+    const meta = await boot();
+    void meta;
+    return {
+      name: "adder",
+      description: "",
+      activeTab: "t1",
+      nextIndex: 2,
+      tabs: [{ id: "t1", name: "Desktop 1", doc: someDesign("bb7") }],
+      location: "/home/adder.chiphippo",
+      // Main hands over the FACTS; the renderer says the words, in the user's
+      // own language (workspace.recovered*).
+      restored: {
+        name: "adder",
+        path: "/home/adder.chiphippo",
+        homeless: false,
+      },
+    };
+  };
+  const h = await harness({ fake });
+
+  assert.equal(h.workspace.projectLocation, "/home/adder.chiphippo");
+  assert.equal(
+    h.doc.toJSON().boards[0].id,
+    "bb7",
+    "the recovery is on the desk",
+  );
+  assert.equal(h.workspace.dirty, true, "and it is not in the file");
+  // The user is TOLD — a desk that silently disagreed with the file the title
+  // bar names would make the • unexplainable. The wording is the catalog's, so
+  // this asserts on the NAME it interpolated rather than the sentence.
+  assert.match(dialogTitle(), /Recovered/);
+  assert.match(
+    document.querySelector(".popup-message")?.textContent ?? "",
+    /adder/,
+  );
+  closePopup();
+  // The way back is the one that always existed.
+  assert.equal(await h.workspace.save(), true);
+  assert.equal(h.stored("/home/adder.chiphippo").tabs[0].doc.boards[0].id, "bb7"); // prettier-ignore
+});
+
+test("a memory write is stashed even when the document is unchanged", async () => {
+  const h = await harness();
+  await homed(h);
+  assert.equal(h.workspace.dirty, false, "nothing about the desk changed");
+
+  // What MemoryBridge reports after writing a ROM's bytes: the chip was already
+  // flagged programmed, so the document is identical and only the file moved.
+  h.workspace.markImagesChanged();
+  assert.equal(await h.workspace.autoSaveNow(), true, "the bytes must travel");
+  await settle();
+  assert.equal(await h.workspace.autoSaveNow(), false, "and only once");
+});
+
+test("the interval arms itself and keeps stashing", async () => {
+  const h = await harness({ autoSaveMs: 5 });
+  await saveAs(h, "/home/adder.chiphippo");
+  h.doc.load(someDesign("bb1"));
+  await new Promise((r) => setTimeout(r, 40));
+  assert.equal(h.stored(DEFAULT_PROJECT)?.tabs[0].doc.boards[0].id, "bb1");
+
+  h.doc.load(someDesign("bb2"));
+  await new Promise((r) => setTimeout(r, 40));
+  assert.equal(h.stored(DEFAULT_PROJECT)?.tabs[0].doc.boards[0].id, "bb2");
+  const closing = h.workspace.confirmClose();
+  await settle();
+  if (findButton("Discard")) clickButton("Discard");
+  assert.equal(await closing, true);
+});
+
+test("autoSaveMs 0 is a real off switch", async () => {
+  const h = await harness({ autoSaveMs: 0 });
+  await saveAs(h, "/home/adder.chiphippo");
+  h.doc.load(someDesign());
+  await new Promise((r) => setTimeout(r, 40));
+  assert.equal(h.projects.has(DEFAULT_PROJECT), false, "nothing was stashed");
   assert.equal(h.workspace.dirty, true);
 });
 

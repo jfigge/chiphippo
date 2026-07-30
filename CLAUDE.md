@@ -59,7 +59,8 @@ precedence + short/conflict taxonomy) and `sim/engine.js` (power gating from
 VCC/GND nets, the warm-started settle loop with a 200-iteration oscillation
 cap, damage bookkeeping — reported, never mutated by the pure engine), the
 renderer-side `SimController` (owns Run/Stop, re-settles on every input event,
-publishes `chiphippo:sim-state`, persists 12 V damage through `desk-doc`,
+publishes `chiphippo:sim-state`, latches 12 V damage through `desk-doc` FOR THE
+RUN and clears it on `stop()`,
 routes warnings to the `NotificationStack`), live views (LEDs light on
 anode-H/cathode-L, chip health badges, level-tinted probe highlights), and the
 header **Run/Stop** toggle (shortcut `Space`) that freezes editing while
@@ -491,11 +492,27 @@ Electron main process (src/app/main.js)
   run-volatile `state`/`pinLevels`, never mutating `params` and never touching a
   timer. The renderer's `SimController` owns the **transport** (Run / Pause / Step /
   speed), drives each free-running clock's edges from a `setInterval` (handing `tick`
-  each clock's current level via `clockPhase`), persists 12 V damage through
-  `desk-doc`, re-ticks on every input event, and publishes `chiphippo:sim-state`
+  each clock's current level via `clockPhase`), re-ticks on every input event, and
+  publishes `chiphippo:sim-state`
   (net levels + chip status + clock levels) that live views render from — views never
   query the engine. Sequential state and clock phases are **run-volatile** (reset on
   Run, never serialized).
+  **SO IS 12 V DAMAGE, and that took work to be true.** `#persistDamage` writes
+  `params.damaged` into the DOCUMENT because the document is what the pure engine
+  reads (`powerStatus`), and a chip that let its smoke out at tick 5 has to stay
+  dead at tick 6 — a timerless solver has nowhere else to remember that. But it is
+  not a property of the CIRCUIT: burning a chip is a WIRING mistake, and letting
+  an experiment permanently spoil the design it was run on was never the intent.
+  So `stop()` calls `#clearAllDamage()` — **before** `#onTransportChange`, because
+  stopping re-baselines undo/redo against the live document (`#history.sync`) and a
+  later clear would leave the baseline holding the damage for ⌘Z to bring back —
+  and `DeskDoc`'s **load path** drops the flag through `loadParams` (deliberately
+  NOT `normalizeParams`, which `setComponentParams` shares and the latch needs),
+  which covers a project ⌘S'd mid-run, any document written before this rule, and
+  every import and paste. `paste-cluster.js` and `design-clip.js` already stripped
+  it calling it "run state"; the run boundary was the last place that disagreed.
+  `SimController.replaceChip` is GONE — it was the single-chip manual recovery for
+  a kill that now recovers itself, and it never had a UI caller.
 - **Memory: file-backing + inspector** (`app/store/mem-store.js` +
   `components/memory-inspector.js` + `components/memory-bridge.js`, Features
   180/190). **Volatility is the whole axis.** A **volatile SRAM** (catalog flag
@@ -580,12 +597,64 @@ Electron main process (src/app/main.js)
   **A NEW PROJECT IS ALWAYS EXACTLY ONE DESKTOP**, numbering started over at 1;
   a project grows through `addDesktop`, which mints the next `Desktop N`
   (`nextIndex` only counts up) with no dialog at all.
-  **NOTHING IS WRITTEN UNTIL YOU SAVE.** Every eager write the multi-file
-  design carried existed so the filesystem would not lie about where a desktop
-  was; with no companion files there is nothing to lie about, so adding,
-  renaming, duplicating, importing and deleting a desktop are plain unsaved
-  changes and "close without saving" is a complete, honest revert of the
-  session. `save()` on an untitled project writes the working slot SILENTLY —
+  **NOTHING IS WRITTEN TO THE USER'S FILE UNTIL YOU SAVE.** Every eager write
+  the multi-file design carried existed so the filesystem would not lie about
+  where a desktop was; with no companion files there is nothing to lie about, so
+  adding, renaming, duplicating, importing and deleting a desktop are plain
+  unsaved changes and "close without saving" is a complete, honest revert of the
+  session.
+  **AND NOTHING IS LOST TO A CRASH, because those are different questions.**
+  Every `AUTO_SAVE_MS` (30 s) the open project is stashed in the app's own
+  WORKING SLOT — never in the user's file — so the • still means "not in your
+  file", "discard" still discards, and a power cut costs at most half a minute.
+  The slot therefore means one of TWO things, and a `recoveryFor` stamp is the
+  difference:
+  - **unstamped** — an untitled project's actual home, as it always was. For it a
+    stash IS a save, so the tick goes through the ordinary `#writeProject` and
+    the • CLEARS; there is no file for it to be pending against. A clean quit
+    keeps it.
+  - **stamped** — a copy of a project that HAS a file, holding work that file
+    does not. Dropped by any save to a real path (main enforces that, so a call
+    site cannot forget) and by a clean quit — which leaves "a stamped slot exists
+    at startup" meaning exactly "the last session did not finish". That is the
+    whole crash detector: no timestamps, which are the one thing cloud sync and a
+    corrected clock will both lie about.
+
+  **TWO BASELINES** follow: `#saved` is the project as its FILE holds it and
+  drives the •; `#stashed` is it as the SLOT holds it and is what the tick
+  compares. They part company the moment a stash gets ahead of the file, which
+  for a titled project is the normal state — and is why the tick cannot just
+  watch `dirty` (true from the first edit until ⌘S, so it would rewrite the same
+  bytes every 30 s forever). The tick also does NOT listen for
+  `chiphippo:doc-changed`: that event is wrong in BOTH directions —
+  `#setTabProperty`/`#setProjectProperty` never dispatch it (so a desktop or
+  project rename would never be stashed), and it fires on load and on every
+  undo/redo restore (where there is nothing to write). `#imagesTouched` is the
+  one change no signature can see: a ROM's bytes live in a sidecar, and
+  `setMemoryProgrammed` writes `programmed: true` over `true` for a chip being
+  RE-saved, so `MemoryBridge` reports it through an injected `onImagesChanged`.
+  **A RESTORE IS NOT A QUESTION.** `recoveryBoot` restores the stash outright and
+  the renderer says so (`workspace.recovered*`, localized — main hands over the
+  FACTS `{name, path, homeless}`, since `m()` is for text MAIN renders). Restored
+  work arrives UNSAVED (`#saved`/`#stashed` left null), so ⌘Z and
+  close-without-saving both still work: a launch modal would be asking for an
+  irreversible-looking decision about a reversible thing, with the destructive
+  button one mis-click away. A recovery whose own file has gone restores as
+  UNTITLED, so Save As re-homes it. Guards: `#busy` (a leave/quit question is
+  out, or a swap is mid-flight — a stash then would preserve the very work being
+  discarded), `#inFlight` (the write chain's tail; a tick SKIPS, a manual ⌘S
+  QUEUES, since `#askUnsaved` reads a `false` as a cancel), `#autoStopped` (a
+  STATE, not merely a cleared interval, because `autoSaveNow` is public), and
+  `#autoSaveFailed` — one quiet failure RETIRES the tick rather than reopening
+  the same modal every 30 s. `#writeProject`'s baseline is the BYTES THAT WENT
+  (`projectSignature(written)`), never `#project` after the await: a desk edit
+  landing mid-write was always safe (the dirty test re-reads the live `DeskDoc`),
+  but every META edit reassigns `#project`, so the old code folded an unwritten
+  rename into the baseline and lost it. `visibilitychange` flushes on the way out
+  of sight, and the interval `unref?.()`s — a number in the renderer, a real
+  `Timeout` under `node --test` that would keep the runner alive once per
+  constructed workspace. `autoSaveMs: 0` is the off switch the harness uses.
+  `save()` on an untitled project writes the working slot SILENTLY —
   designing something and keeping it must never require choosing a file —
   and `saveAs()` is what gives it a home, taking the project's NAME from the
   file picked (so there is no name prompt in front of the save panel).
@@ -1118,9 +1187,8 @@ Electron main process (src/app/main.js)
   when it has no fields; Delete Component while `#editingLocked`), so the
   menu's shape never changes, only its enabled state. There is no Rotate or
   "Replace chip" item any more — rotating an already-placed, selected part is
-  `R` only (`handleKeyDown`), and a damaged chip's only recovery is deleting
-  it and placing a fresh one (`SimController.replaceChip` still exists and is
-  still tested, just with no UI caller left).
+  `R` only (`handleKeyDown`), and a damaged chip needs no recovery item at all:
+  **Stop** restores every one of them (see the damage note above).
 - **Part Properties dialog** (`components/part-properties-dialog.js`): the ONE
   shared modal every part's **Properties…** item opens (enabled only when
   `DeskController.#propertyFieldsFor(comp, def)` returns at least one field).

@@ -17,12 +17,11 @@ Press **Run** in the header toolbar — or the shortcut `Space` / `Cmd+R`
 while running), and the engine cold-starts: it settles the circuit once from
 scratch and begins driving live views from the result.
 
-Press **Stop** (same shortcut) to freeze the simulation and return to
-editing. Stopping clears all run-volatile state — net levels, chip health
-badges, and any sequential state (counter values, shift-register contents,
-clock phase) reset. The only thing Stop doesn't discard is **12 V chip
-damage**, which is written into the circuit itself and persists until you
-replace the damaged chip.
+Press **Stop** (same shortcut) to freeze the simulation and return to editing.
+Stopping clears all run-volatile state — net levels, chip health badges, any
+sequential state (counter values, shift-register contents, clock phase), and
+**12 V chip damage**, so a chip you burnt out is whole again the moment you
+stop. Nothing that happens during a run outlives it.
 
 `Space` is disabled while a placement, wire, or bus tool is armed (it might
 want the key for its own gesture) or while a text field has focus — use
@@ -101,8 +100,8 @@ computed by the views themselves:
   chips show nothing extra, an **underpowered** chip (running at 3 V) gets
   an amber corner dot, and a chip killed by 12 V shows **damaged** — a red X
   with a smoke cue. Hover the badge for the exact reason (also unpowered or
-  reversed VCC/GND). A damaged chip stays dead — including through Stop and
-  a fresh Run — until you replace it from its right-click menu.
+  reversed VCC/GND). A damaged chip stays dead for the rest of that run, and
+  **Stop** restores it — see [Power & Clock Sources](power-and-clocks.md).
 - **Probe highlights** tint whatever net you hover by its live level. Full
   detail on reading and naming nets lives in
   [Probing & Net Names](probing.md) — this page won't duplicate it.

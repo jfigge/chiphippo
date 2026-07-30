@@ -1385,6 +1385,10 @@ async function init() {
     controller,
     bridge,
     notifications,
+    // A ROM's bytes travel IN the project file, but they live in a sidecar no
+    // signature comparison can see — and re-saving an already-programmed chip
+    // leaves the document identical. So the write says so itself.
+    onImagesChanged: () => workspace?.markImagesChanged(),
   });
 
   // The empty-desk hint disappears once the desk has boards.

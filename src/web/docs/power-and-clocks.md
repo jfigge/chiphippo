@@ -35,11 +35,12 @@ you can change voltage on the fly and watch the effect.
 - **3 V** — underpowered. The chip is inert — every output floats/reads as if
   disconnected — but nothing is harmed. Useful for demonstrating what an
   underpowered chip looks like without any risk.
-- **12 V** — **damage**. This is Chip Hippo's "magic smoke" rule: any chip
-  (or oscillator can, which is powered the same way) whose VCC net sees 12 V
-  is immediately marked **damaged** and goes permanently inert, independent
-  of anything else on the net. Damage is real bookkeeping, persisted with the
-  circuit — it doesn't clear on its own, and it doesn't clear on Stop.
+- **12 V** — **damage**. This is Chip Hippo's "magic smoke" rule: any chip (or
+  oscillator can, which is powered the same way) whose VCC net sees 12 V is
+  immediately marked **damaged** and goes inert for the rest of that run,
+  independent of anything else on the net. It stays dead while the run lasts —
+  a failed chip doesn't recover while the power is still wrong — and **Stop**
+  makes it whole again.
 
 A chip can also come up **reversed** — a PSU `−` on its VCC pin's net at the
 same time as a PSU `+` on its GND pin's net — which is reported separately
@@ -51,12 +52,17 @@ badge on each chip while running — see [Running a Simulation](simulation.md)
 for how those badges and the rest of the settle model work. This page only
 covers what puts a chip into each state.
 
-## Replacing a damaged part
+## Recovering from a 12 V mistake
 
-A damaged chip or oscillator can stays damaged and inert until you swap it
-out. There's no in-place repair — delete it (**Delete Component** on its
-context menu) and place a fresh one from the palette, then rewire it. 12 V is
-meant to sting a little, the same way it would on a real bench.
+Press **Stop**. Every damaged chip on the desk is restored, and you can rewire
+and run again. You don't lose the part, and you don't have to delete and
+re-place anything.
+
+12 V is meant to be *noticed*, not to cost you the chip: the red badge and the
+warning are the point, and they've done their job by the time you stop. Wiring a
+supply to the wrong rail is a mistake about the circuit — one you can see and
+fix — so it stays fixable. Find where 12 V is reaching a VCC net (the
+[Probe tool](simulation.md) is the quick way), correct it, and press **Run**.
 
 ## Clock sources
 

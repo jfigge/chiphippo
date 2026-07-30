@@ -227,7 +227,7 @@ test("reversed power warns but is NEVER persisted as damage", () => {
   assert.notEqual(deskDoc.getComponent("c1").params.damaged, true);
 });
 
-test("damage persists through Stop; Replace chip then resets it", () => {
+test("damage lasts the RUN and no longer: Stop makes every chip whole", () => {
   resetDom();
   const deskDoc = fakeDoc(poweredDoc(12));
   const sim = new SimController({
@@ -236,10 +236,55 @@ test("damage persists through Stop; Replace chip then resets it", () => {
   });
 
   sim.start();
+  assert.equal(
+    deskDoc.getComponent("c1").params.damaged,
+    true,
+    "latched for the run — the engine reads the document to stay dead",
+  );
+  sim.stop();
+  assert.equal(
+    deskDoc.getComponent("c1").params.damaged,
+    false,
+    "a 12 V mistake must not permanently spoil the circuit it was run on",
+  );
+});
+
+test("the damage clear lands BEFORE the transport change", () => {
+  resetDom();
+  const deskDoc = fakeDoc(poweredDoc(12));
+  // Stopping re-baselines undo/redo against the live document, and app.js
+  // drives that from onTransportChange — so the chips have to be whole by then
+  // or the baseline keeps the damage and a ⌘Z brings the smoke back.
+  const seen = [];
+  const sim = new SimController({
+    deskDoc,
+    notifications: fakeNotifications(),
+    onTransportChange: (mode) =>
+      seen.push([mode, deskDoc.getComponent("c1").params.damaged]),
+  });
+
+  sim.start();
+  sim.stop();
+  assert.deepEqual(seen.at(-1), ["stopped", false]);
+});
+
+test("a chip burnt mid-run stays dead until the run ends", () => {
+  resetDom();
+  const deskDoc = fakeDoc(poweredDoc(12));
+  const sim = new SimController({
+    deskDoc,
+    notifications: fakeNotifications(),
+  });
+
+  sim.start();
+  // Clearing the flag under a live 12 V rail cannot revive anything: the doc
+  // change re-ticks, the engine sees the same rail, and the latch goes back on.
+  // That is the point of the latch, and it is why the clear belongs to `stop`.
+  deskDoc.setComponentParams("c1", { damaged: false });
+  window.dispatchEvent(new window.CustomEvent("chiphippo:doc-changed"));
   assert.equal(deskDoc.getComponent("c1").params.damaged, true);
-  sim.stop(); // returning to editing keeps the damage
-  assert.equal(deskDoc.getComponent("c1").params.damaged, true);
-  sim.replaceChip("c1"); // clears the damage flag (not running)
+
+  sim.stop();
   assert.equal(deskDoc.getComponent("c1").params.damaged, false);
 });
 

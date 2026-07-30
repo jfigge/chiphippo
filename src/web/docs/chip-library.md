@@ -166,8 +166,9 @@ chosen to show the part doing something.
 
 A few practical notes:
 
-- It's an ordinary desktop and an ordinary unsaved change — nothing is written
-  until you save, and you can rename it, edit it, or delete it like any other.
+- It's an ordinary desktop and an ordinary unsaved change — it doesn't reach your
+  project's file until you save, and you can rename it, edit it, or delete it
+  like any other.
 - Asking for the same example twice doesn't make a second copy; you land back
   on the desktop you already have.
 - Adding it stops a running simulation, exactly as switching desktops does.

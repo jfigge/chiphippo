@@ -51,6 +51,7 @@ const { DeskStore } = require("./store/desk-store");
 const {
   ProjectStore,
   suggestFileName,
+  nameFromFile,
   PROJECT_EXT,
   DESKTOP_EXT,
 } = require("./store/project-store");
@@ -383,10 +384,65 @@ function forgetProject(filePath) {
 }
 
 /**
+ * A stamped working slot was found: the last session did not finish. RESTORE it
+ * — and say so — rather than asking.
+ *
+ * There is deliberately no "restore or discard?" question at launch, and the
+ * reason is that the answer costs nothing either way. Restored work arrives
+ * UNSAVED (`restored` below), so the • is showing and every existing route back
+ * still works: ⌘Z, or closing without saving, which under this design really
+ * does return the file to what it held. A modal in front of the user's own desk
+ * would be asking them to make an irreversible-looking choice about a reversible
+ * thing, with the destructive button one mis-click away.
+ *
+ * The one variable is whether the file it belongs to is still there:
+ *   · present → restore, and the project keeps that file as its home;
+ *   · gone (moved, deleted, an unplugged volume) → restore as an UNTITLED
+ *     project, so Save As is what re-homes it. Better an unhomed copy of the
+ *     work than nothing.
+ * Either way the warning names what happened, because the alternative is a
+ * desk that silently disagrees with the file the title bar points at.
+ *
+ * @returns {object|null} the meta to boot onto, or null if the slot is unreadable.
+ */
+function recoveryBoot(peeked, upgraded) {
+  const store = getProjectStore();
+  const target = peeked.recoveryFor;
+  const meta = safeCall("project:boot:recovery", () =>
+    store.read(store.defaultProjectPath),
+  );
+  if (!meta) return null;
+  establishPath(store.defaultProjectPath);
+  const name = peeked.name || nameFromFile(target);
+  const exists = safeCall("project:boot:recovery-stat", () =>
+    fs.existsSync(target), false); // prettier-ignore
+  if (exists) {
+    // `read` reports no location for the slot — true of the FILE it read, but
+    // the point of a recovery is that it belongs to another one.
+    meta.location = path.resolve(target);
+    rememberProject(target);
+    establishPath(target);
+  } else {
+    meta.location = null; // no home any more; Save As is the way back
+  }
+  // The FACTS, not the sentence. The notice is shown by the renderer, which is
+  // where `t()` and the dialog both live — main's own `m()` is for text main
+  // renders itself (the menu bar, window titles, native dialog filters), and a
+  // message crossing the bridge to be displayed is not that.
+  meta.restored = { name, path: target, homeless: !exists };
+  if (upgraded?.length) {
+    meta.warnings = [...upgraded, ...(meta.warnings ?? [])];
+  }
+  return meta;
+}
+
+/**
  * THE STARTUP RULE. The app always opens onto a project:
  *
  *   ① the app's saves folder holds the fixed default project file → that is
- *     the session's project (it is the unsaved one, still without a name);
+ *     the session's project (it is the unsaved one, still without a name), or,
+ *     when it is STAMPED as a recovery copy, the project it belongs to plus an
+ *     offer to restore it (see `recoveryBoot`);
  *   ② otherwise the project was saved somewhere, so the most recent one that
  *     is still on disk opens;
  *   ③ otherwise (a first run, or every remembered project has gone) a brand-new
@@ -403,7 +459,17 @@ function bootProject() {
   const upgraded = safeCall("project:boot:upgrade", () =>
     store.upgradeLegacyDefault(),
   );
-  if (store.hasDefaultProject()) {
+  // A RECOVERY copy in the slot means we went away without finishing (a save
+  // and a clean quit both drop it). Peek rather than read: the renderer has to
+  // be able to ASK before anything is hydrated, or a recovery the user then
+  // discards would already have overwritten the real project's ROM files.
+  const peeked = safeCall("project:boot:peek", () => store.peekRecovery());
+  if (peeked?.recoveryFor) {
+    const recovered = recoveryBoot(peeked, upgraded);
+    if (recovered) return recovered;
+    // Its own file has gone AND the recovery is unreadable: nothing to offer.
+    safeCall("project:boot:recovery-drop", () => store.removeDefaultProject());
+  } else if (store.hasDefaultProject()) {
     const meta = safeCall("project:boot", () =>
       store.read(store.defaultProjectPath),
     );
@@ -1595,19 +1661,21 @@ function registerIpc() {
   // Write the project file, WHOLE — every desktop's document, and every
   // programmed ROM's bytes collected out of the memory cache. `filePath` null
   // means "it has no location yet" → the fixed default project file, the
-  // working slot startup looks in first. `dropDefault` is the other half of
-  // Save As: a project that HAD no location and now has a real one leaves that
-  // slot empty.
-  ipcMain.handle("project:save", (_event, meta, filePath, dropDefault) => {
+  // working slot startup looks in first.
+  //
+  // A save to a REAL path always empties the slot, and that is one rule rather
+  // than a caller's option: the slot exists to hold what is not in a project's
+  // file, so the moment its file has everything there is nothing to hold. It
+  // covers both cases that used to be a `dropDefault` flag — Save As moving a
+  // project out of the slot, and a Save superseding a recovery copy stashed
+  // there — and neither can now be forgotten at a call site.
+  ipcMain.handle("project:save", (_event, meta, filePath) => {
     const store = getProjectStore();
     const target = filePath ? knownPath(filePath) : store.defaultProjectPath;
     store.write(target, meta);
     if (filePath) {
       rememberProject(target);
-      if (
-        dropDefault === true &&
-        target !== path.resolve(store.defaultProjectPath)
-      ) {
+      if (target !== path.resolve(store.defaultProjectPath)) {
         // prettier-ignore
         safeCall("project:save:drop-default", () =>
           store.removeDefaultProject(),
@@ -1615,6 +1683,33 @@ function registerIpc() {
       }
     }
     return { ok: true, path: target };
+  });
+
+  // ── Crash recovery ────────────────────────────────────────────────────────
+  // The other half of the slot's job, and only two verbs: `write` stashes the
+  // open project there WITHOUT touching its own file, stamped with the path it
+  // belongs to, and `clear` throws that stash away once its file has everything
+  // (a save) or the session ended properly (a clean quit). Reading one back is
+  // not a channel at all — `bootProject` restores it outright, since restored
+  // work arrives unsaved and needs no question (see `recoveryBoot`).
+  ipcMain.handle("project:recovery:write", (_event, meta, location) => {
+    const store = getProjectStore();
+    const target = location ? knownPath(location) : null;
+    if (!target) {
+      // No file of its own: the slot IS its home, so this is a plain save and
+      // must not be stamped — a stamp would turn its own home into a question
+      // at the next launch. `project:save` is the channel for that.
+      const err = new Error("a recovery copy needs the project's own path");
+      err.code = "INVALID_ARG";
+      throw err;
+    }
+    store.writeRecovery(meta, target);
+    return { ok: true };
+  });
+  ipcMain.handle("project:recovery:clear", () => {
+    const store = getProjectStore();
+    safeCall("project:recovery:clear", () => store.removeDefaultProject());
+    return { ok: true };
   });
   // The Save-As location picker for a project or a desktop export — it chooses
   // a path, it does not write. Replacing an existing file is the native

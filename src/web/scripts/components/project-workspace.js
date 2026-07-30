@@ -24,10 +24,16 @@
 // of its own: adding, renaming, duplicating, importing and deleting one are
 // ordinary unsaved changes.
 //
-// NOTHING IS WRITTEN UNTIL YOU SAVE. Every eager write the previous design
-// carried existed so the filesystem would not lie about where a desktop was;
-// with no companion files there is nothing for it to lie about, so closing
-// without saving is now a complete, honest revert of the session.
+// NOTHING IS WRITTEN TO YOUR FILE UNTIL YOU SAVE. Every eager write the
+// previous design carried existed so the filesystem would not lie about where a
+// desktop was; with no companion files there is nothing for it to lie about, so
+// closing without saving is a complete, honest revert of the session.
+//
+// AND YET NOTHING IS LOST TO A CRASH, because those are different questions.
+// Every AUTO_SAVE_MS the open project is stashed in the app's own WORKING SLOT
+// — not in the user's file — so the • still means "not in your file", "discard"
+// still discards, and a power cut still costs at most half a minute. See the
+// Auto-save section below; the slot's two jobs are the whole trick.
 //
 // THERE IS ALWAYS A PROJECT. The app boots onto one (main's `project:boot`
 // answers with the unsaved one from the saves folder, the most recent saved
@@ -92,6 +98,17 @@ import {
   setProjectField,
 } from "../model/project-doc.js";
 
+/**
+ * How often the open project is stashed for crash recovery.
+ *
+ * A ceiling on what a crash can cost, not a promise about when: the tick only
+ * writes when something changed, and Chromium clamps timers in a minimized or
+ * occluded window — so the guarantee is "at most this much, while the window is
+ * visible". A window nobody can see is not being edited, and `visibilitychange`
+ * flushes on the way out of sight anyway.
+ */
+const AUTO_SAVE_MS = 30_000;
+
 /** The one extra field the Properties dialog shows for a PROJECT. A function
     rather than a frozen constant because its label is translated, and `t()` must
     never run at module scope (see i18n.js). */
@@ -132,9 +149,18 @@ export class ProjectWorkspace {
   #onActiveChange;
   #project = null; // the normalized meta (model/project-doc.js) + `location`
   #state = new Map(); // tabId → { history, camera }
-  #saved = null; // the signature of the project as its file holds it
+  #saved = null; // the signature of the project as its FILE holds it → the •
+  #stashed = null; // …as the RECOVERY SLOT holds it → what the tick watches
   #locked = false; // editing frozen (the circuit is running)
   #examples = new Map(); // ref → the in-flight openExample promise
+  #inFlight = null; // the write chain's tail, or null when nothing is writing
+  #busy = false; // a leave/quit question is out, or a project is being swapped
+  #autoSaveMs = 0; // 0 = off
+  #autoTimer = null;
+  #autoStopped = false; // the app is going away; nothing more may write
+  #autoSaveFailed = false; // one quiet failure retires it (see autoSaveNow)
+  #imagesTouched = false; // a ROM's bytes changed without the document changing
+  #onHide = null; // the window-hidden flush listener, for teardown
 
   /**
    * Read the project this session opens with, BEFORE the desk is built — so
@@ -168,6 +194,11 @@ export class ProjectWorkspace {
       project,
       doc: activeDesktop(project).doc,
       warnings: Array.isArray(raw.warnings) ? raw.warnings : [],
+      // Main recovered a stash left by a session that did not finish, and hands
+      // over the FACTS of it — `{name, path, homeless}`. It holds what the
+      // project's file does not, so it must arrive UNSAVED: the • and the leave
+      // guard are what let the user keep it or throw it away.
+      restored: raw.restored ?? null,
     };
   }
 
@@ -195,6 +226,7 @@ export class ProjectWorkspace {
     setCamera,
     boot = null,
     onActiveChange,
+    autoSaveMs = AUTO_SAVE_MS,
   }) {
     this.#bridge = bridge;
     this.#deskDoc = deskDoc;
@@ -204,17 +236,51 @@ export class ProjectWorkspace {
     this.#getCamera = getCamera;
     this.#setCamera = setCamera;
     this.#onActiveChange = onActiveChange;
+    this.#autoSaveMs = Number(autoSaveMs) > 0 ? Number(autoSaveMs) : 0;
     if (boot?.project) {
       this.#adopt(boot.project);
-      // The desk already holds the booted desktop — app.js builds the DeskDoc
-      // from `boot.doc` before there is a workspace to hand it to — so this is
-      // the same "finished loading" moment `#swapProject` marks, reached from
-      // the other end.
-      this.#markClean();
+      if (boot.restored) {
+        // A RESTORED project is unsaved by definition: it holds what its file
+        // did not, which is why it was stashed. So it must read dirty — the •,
+        // and the guard that stops it being thrown away a second time. Both
+        // baselines are left null: the file is behind (hence dirty), and the
+        // stash still matches, but saying so would need the file's own signature
+        // and a null simply makes the first tick re-stash. Cheap and honest.
+        this.#saved = null;
+        this.#stashed = null;
+      } else {
+        // The desk already holds the booted desktop — app.js builds the DeskDoc
+        // from `boot.doc` before there is a workspace to hand it to — so this is
+        // the same "finished loading" moment `#swapProject` marks, reached from
+        // the other end.
+        this.#markClean();
+      }
       this.#warn(boot.warnings);
+      this.#notifyRestored(boot.restored);
     } else {
       this.#renderTabs();
     }
+    this.#startAutoSave(); // after the baseline, so the first tick sees the truth
+  }
+
+  /**
+   * Tell the user their unsaved work came back, in their own language.
+   *
+   * They have to be told, because the desk deliberately disagrees with the file
+   * the title bar names — without a word for it the • is unexplainable. Its own
+   * notice rather than `#warn`'s: that one is titled for desktops a migration
+   * could not bring across, which this is the opposite of. The two cases differ
+   * in what the way forward IS — a plain save, or a Save As, the project's own
+   * file having gone.
+   */
+  #notifyRestored(restored) {
+    if (!restored) return;
+    PopupManager.notify({
+      title: t("workspace.recoveredTitle"),
+      message: restored.homeless
+        ? t("workspace.recoveredHomeless", { path: restored.path })
+        : t("workspace.recovered", { name: restored.name }),
+    });
   }
 
   // ── What the shell asks about ───────────────────────────────────────────
@@ -265,7 +331,37 @@ export class ProjectWorkspace {
    * @returns {Promise<boolean>} whether it is safe to go.
    */
   confirmClose() {
-    return this.#confirmLeaveProject({ quitting: true });
+    return this.#exclusive(async () => {
+      const go = await this.#confirmLeaveProject({ quitting: true });
+      if (!go) return false;
+      // Going away for GOOD, and cleanly. Stop the timer first so nothing
+      // writes behind a window on its way out, then throw away the stash — its
+      // absence at the next launch is what says we finished properly. An
+      // UNTITLED project keeps its slot: that is its home, not a stash of one.
+      this.#stopAutoSave();
+      if (!this.isUntitled) await this.#clearRecovery();
+      return true;
+    });
+  }
+
+  /**
+   * Run something that MUST NOT have a background write land inside it: the
+   * leave/quit question, and the project swap behind it.
+   *
+   * The question can sit open indefinitely — the user is entitled to think about
+   * it — and a stash arriving while it is out would preserve the very work they
+   * are about to discard, into the slot the incoming project is about to claim.
+   * "Discard" would stop being true, which is the one thing it has to be. The
+   * swap is inside the window too: `#swapProject` awaits `#closeAuxWindows()`,
+   * and the project on screen is being replaced across that await.
+   */
+  async #exclusive(run) {
+    this.#busy = true;
+    try {
+      return await run();
+    } finally {
+      this.#busy = false;
+    }
   }
 
   /** Freeze the destructive desktop affordances while the circuit runs — on
@@ -291,37 +387,42 @@ export class ProjectWorkspace {
    * is dealt with first (`#confirmLeaveProject`).
    */
   async newProject() {
-    if (!(await this.#confirmLeaveProject())) return;
-    let raw;
-    try {
-      raw = await this.#bridge.project.create();
-    } catch (err) {
-      this.#fail(t("workspace.failStart"), err);
-      return;
-    }
-    await this.#swapProject(raw);
+    return this.#exclusive(async () => {
+      if (!(await this.#confirmLeaveProject())) return;
+      let raw;
+      try {
+        raw = await this.#bridge.project.create();
+      } catch (err) {
+        this.#fail(t("workspace.failStart"), err);
+        return;
+      }
+      await this.#swapProject(raw);
+    });
   }
 
   /** Open…: pick a `.chiphippo` project (or a loose design, which opens as a
       project of one desktop). */
   async loadProject() {
-    // The guard runs BEFORE the picker: opening a project takes over the
-    // app's working slot, so nothing may be read until what is on screen has
-    // been dealt with.
-    if (!(await this.#confirmLeaveProject())) return;
-    let raw;
-    try {
-      raw = await this.#bridge.project.open();
-    } catch (err) {
-      this.#fail(t("workspace.failOpen"), err);
-      return;
-    }
-    if (!raw) return; // cancelled
-    if (!raw.tabs?.length) {
-      this.#fail(t("workspace.failOpen"), new Error(t("workspace.noDesktops")));
-      return;
-    }
-    await this.#swapProject(raw);
+    return this.#exclusive(async () => {
+      // The guard runs BEFORE the picker: opening a project takes over the
+      // app's working slot, so nothing may be read until what is on screen has
+      // been dealt with.
+      if (!(await this.#confirmLeaveProject())) return;
+      let raw;
+      try {
+        raw = await this.#bridge.project.open();
+      } catch (err) {
+        this.#fail(t("workspace.failOpen"), err);
+        return;
+      }
+      if (!raw) return; // cancelled
+      if (!raw.tabs?.length) {
+        const err = new Error(t("workspace.noDesktops"));
+        this.#fail(t("workspace.failOpen"), err);
+        return;
+      }
+      await this.#swapProject(raw);
+    });
   }
 
   /**
@@ -330,22 +431,24 @@ export class ProjectWorkspace {
    * `missing` — the one moment the user can be sure the entry is dead.
    */
   async openRecentProject(filePath) {
-    if (!(await this.#confirmLeaveProject())) return;
-    let res;
-    try {
-      res = await this.#bridge.project.openRecent(filePath);
-    } catch (err) {
-      this.#fail(t("workspace.failOpen"), err);
-      return;
-    }
-    if (!res?.ok) {
-      if (res?.code === "missing") return this.#offerForgetRecent(filePath);
-      return PopupManager.notify({
-        title: t("workspace.openFailTitle"),
-        message: res?.error ?? t("workspace.unreadable"),
-      });
-    }
-    await this.#swapProject(res.project);
+    return this.#exclusive(async () => {
+      if (!(await this.#confirmLeaveProject())) return;
+      let res;
+      try {
+        res = await this.#bridge.project.openRecent(filePath);
+      } catch (err) {
+        this.#fail(t("workspace.failOpen"), err);
+        return;
+      }
+      if (!res?.ok) {
+        if (res?.code === "missing") return this.#offerForgetRecent(filePath);
+        return PopupManager.notify({
+          title: t("workspace.openFailTitle"),
+          message: res?.error ?? t("workspace.unreadable"),
+        });
+      }
+      await this.#swapProject(res.project);
+    });
   }
 
   /**
@@ -362,7 +465,119 @@ export class ProjectWorkspace {
    */
   async save() {
     if (!this.isOpen) return false;
-    return this.#writeProject(this.#project.location ?? null, false);
+    return this.#writeProject(this.#project.location ?? null);
+  }
+
+  // ── Auto-save: the working slot's second job ──────────────────────────────
+  //
+  // THE USER'S FILE IS WRITTEN ONLY WHEN THEY ASK. Every AUTO_SAVE_MS the open
+  // project is stashed in the app's own working slot instead, so all three of
+  // these keep working at once: a crash costs at most half a minute, the • still
+  // means "not in your file", and "close without saving" is still a revert. It
+  // is the one place the two questions — "is my work safe?" and "have I
+  // committed to it?" — get different answers, which is what they deserve.
+  //
+  // The slot therefore means one of two things, and the stamp is the difference:
+  //   · UNSTAMPED — an untitled project's actual home, as it always was. For it,
+  //     a stash IS a save, so the tick goes through `#writeProject` and the •
+  //     clears. There is no file for it to be pending against.
+  //   · STAMPED with `recoveryFor` — a copy of a project that has a file,
+  //     holding work that file does not have. Dropped by a save and by a clean
+  //     quit, so finding one at startup means the last session did not finish.
+  //     That is the whole crash detector: no timestamps, which are the one thing
+  //     cloud sync and a corrected clock will both lie about.
+  //
+  // TWO BASELINES follow from that. `#saved` is the project as its FILE holds it
+  // and drives the •; `#stashed` is the project as the SLOT holds it and is what
+  // the tick compares against. They are the same after any save, and they part
+  // company the moment a stash gets ahead of the file — which for a titled
+  // project is the normal state of affairs, and is exactly why the tick cannot
+  // just watch `dirty`: that stays true from the first edit until ⌘S, so a
+  // dirty-driven tick would rewrite the same bytes every 30 s forever.
+  //
+  // What it does NOT do is listen for `chiphippo:doc-changed`. That event is
+  // wrong in both directions: `#setTabProperty` and `#setProjectProperty` never
+  // dispatch it, so renaming a desktop or the project would never be stashed;
+  // and it fires on load and on every undo/redo restore, where there is nothing
+  // to write. A signature comparison is already right on all of those paths, and
+  // costs ~0.3 ms on a real 8-desktop design.
+
+  /** Begin the cadence. Idempotent; a no-op when `autoSaveMs` is 0. */
+  #startAutoSave() {
+    if (this.#autoTimer || this.#autoSaveMs <= 0) return;
+    this.#autoStopped = false;
+    this.#autoTimer = setInterval(() => void this.autoSaveNow(), this.#autoSaveMs); // prettier-ignore
+    // In the renderer this is a number and `unref` does not exist — hence the
+    // `?.`. Under `node --test` it is a real Timeout that would hold the event
+    // loop open, and every test constructing a workspace would leak one.
+    this.#autoTimer.unref?.();
+    // Switching away is the cheapest moment to be safe: the user is done for
+    // now, nothing is mid-gesture, and the alternative is leaving up to a whole
+    // interval unprotected while the machine does something else.
+    this.#onHide = () => {
+      if (document.visibilityState === "hidden") void this.autoSaveNow();
+    };
+    document.addEventListener("visibilitychange", this.#onHide);
+  }
+
+  /**
+   * Stop for good. This is a STATE, not merely an absent timer: `autoSaveNow` is
+   * public, so "the app has agreed to close" has to be answerable by anything
+   * that calls in, not only by the interval that no longer fires.
+   */
+  #stopAutoSave() {
+    if (this.#autoTimer) clearInterval(this.#autoTimer);
+    this.#autoTimer = null;
+    this.#autoStopped = true;
+    if (this.#onHide) {
+      document.removeEventListener("visibilitychange", this.#onHide);
+      this.#onHide = null;
+    }
+  }
+
+  /**
+   * One auto-save tick. Public so tests can drive the decision without a timer.
+   *
+   * @returns {Promise<boolean>} whether it wrote.
+   */
+  async autoSaveNow() {
+    if (!this.isOpen) return false;
+    if (this.#autoStopped) return false; // the window is on its way out
+    if (this.#autoSaveFailed) return false; // retired; ⌘S is the way back
+    if (this.#busy) return false; // a leave/quit question is out
+    if (this.#inFlight) return false; // a write is already going; let it
+    if (!(this.#stale || this.#imagesTouched)) return false;
+    // Cleared BEFORE the write, so a ROM saved while it is in flight re-sets the
+    // flag and the next tick carries the newer bytes. Clearing it after would
+    // swallow that write until something else changed the document.
+    this.#imagesTouched = false;
+    const ok = this.isUntitled
+      ? await this.#writeProject(null, { quiet: true })
+      : await this.#writeRecovery({ quiet: true });
+    // A failure here is not the user's doing and they never asked for the write,
+    // so it cannot open a dialog — and it must not come back every
+    // AUTO_SAVE_MS either. It retires instead, leaving the • standing as the
+    // only honest signal that the work is not in the file.
+    if (!ok) this.#autoSaveFailed = true;
+    return ok;
+  }
+
+  /** Is the project different from what the RECOVERY SLOT holds? */
+  get #stale() {
+    return this.#signature() !== this.#stashed;
+  }
+
+  /**
+   * A memory chip's BYTES changed, though the document may not have. Called
+   * from MemoryBridge after a successful programmer load or inspector save.
+   *
+   * `params.programmed` is already `true` on a chip being re-saved, so the
+   * document comes out byte-identical while the bytes the file has to carry are
+   * new. Without this the edit would sit only in the userData cache, and the
+   * next open would overwrite it with the stale copy the file still held.
+   */
+  markImagesChanged() {
+    this.#imagesTouched = true;
   }
 
   /**
@@ -386,7 +601,10 @@ export class ProjectWorkspace {
     if (!this.#project.name) {
       this.#project = { ...this.#project, name: nameFromPath(chosen) };
     }
-    return this.#writeProject(chosen, !current);
+    // The slot is emptied by main on any save to a real path, so a project
+    // moving out of it — and a recovery copy standing for one — both go with
+    // this one write, which is why there is no `dropDefault` to pass any more.
+    return this.#writeProject(chosen);
   }
 
   /**
@@ -711,7 +929,9 @@ export class ProjectWorkspace {
    * save-or-discard question about a project the user has not touched.
    */
   #markClean() {
-    if (this.#project) this.#saved = this.#signature();
+    if (!this.#project) return;
+    this.#saved = this.#signature();
+    this.#stashed = this.#saved; // nothing pending, so nothing to re-stash
   }
 
   /** Put a just-opened/just-created project on the desk. */
@@ -802,26 +1022,107 @@ export class ProjectWorkspace {
   /**
    * Write the project file and make it the new baseline.
    *
+   * WRITES ARE SERIALIZED, and a queued one takes its OWN snapshot when its turn
+   * comes rather than joining the one ahead of it — the later caller's bytes are
+   * the newer ones. (This is why it differs from `openExample`'s in-flight map,
+   * which joins: two clicks there want ONE desktop, whereas two writes want the
+   * SECOND state on disk.) It matters because a background stash can now be in
+   * flight when ⌘S arrives, and `#askUnsaved` reads a `false` as a cancel — so a
+   * manual save must never fail merely for being second.
+   *
    * @param {string|null} location - null means the app's working file.
-   * @param {boolean} dropDefault - the project is moving OUT of the working
-   *   slot, so that file goes (main deletes it).
+   * @param {object} [opts]
+   * @param {boolean} [opts.quiet] - report a failure to the console only.
    * @returns {Promise<boolean>} whether it reached a file.
    */
-  async #writeProject(location, dropDefault) {
+  #writeProject(location, opts = {}) {
+    return this.#serialize(() => this.#doWrite(location, opts));
+  }
+
+  /**
+   * Stash the open project in the recovery slot, leaving its own file alone.
+   *
+   * Only for a project that HAS a file: an untitled one lives in that same slot,
+   * so for it a stash and a save are the same write and `#writeProject` is the
+   * one to use (which is what makes the • clear for an untitled project and stay
+   * for a titled one — the slot really is the untitled project's file).
+   *
+   * @returns {Promise<boolean>} whether it reached the slot.
+   */
+  #writeRecovery({ quiet = false } = {}) {
+    return this.#serialize(async () => {
+      this.#stash();
+      const written = projectForFile(this.#project);
+      try {
+        await this.#bridge.project.recovery.write(
+          written,
+          this.#project.location,
+        );
+      } catch (err) {
+        this.#fail(t("workspace.failSave"), err, { quiet });
+        return false;
+      }
+      // `#saved` is deliberately untouched: the project's own FILE has not
+      // changed, so the • stands and "discard" is still the truth.
+      this.#stashed = projectSignature(written);
+      return true;
+    });
+  }
+
+  /** Throw away the stash — its project's file now holds everything. */
+  async #clearRecovery() {
+    try {
+      await this.#bridge.project?.recovery?.clear?.();
+    } catch (err) {
+      console.error("[renderer] project:recovery:clear failed:", err);
+    }
+  }
+
+  /** Run `task` after any write already going, and never concurrently with one. */
+  #serialize(task) {
+    const prior = this.#inFlight;
+    const run = (async () => {
+      if (prior) await prior; // never rejects — a write answers, it doesn't throw
+      return task();
+    })();
+    this.#inFlight = run;
+    const clear = () => {
+      if (this.#inFlight === run) this.#inFlight = null;
+    };
+    run.then(clear, clear); // observed here, so the bookkeeping can't go unhandled
+    return run;
+  }
+
+  /**
+   * One write to the project's file, start to finish.
+   *
+   * THE BASELINE IS THE BYTES THAT WENT, not `#project` as it stands when the
+   * write comes back. The two differ whenever an edit lands during the await,
+   * and only one of them is safe: signing `#project` afterwards would fold that
+   * edit into the baseline without ever having written it — the • would clear,
+   * the leave/quit guard would stop asking, and the edit would be gone. A DESK
+   * edit survived that anyway, because the dirty test re-reads the live
+   * `DeskDoc` (`#liveMeta`); a META edit did not, because every one of them
+   * (`addTab`, `#doDeleteTab`, `importTab`, `duplicateTab`, `#setTabProperty`,
+   * `#setProjectProperty`) REASSIGNS `#project`. So the snapshot is taken once,
+   * written, and signed — and anything that arrived while it was in flight stays
+   * dirty, which is exactly what the next write is for.
+   */
+  async #doWrite(location, { quiet = false } = {}) {
     this.#stash(); // the file gets what is on screen, not the last stash
+    const written = projectForFile(this.#project);
     let res;
     try {
-      res = await this.#bridge.project.save(
-        projectForFile(this.#project),
-        location,
-        dropDefault,
-      );
+      res = await this.#bridge.project.save(written, location);
     } catch (err) {
-      this.#fail(t("workspace.failSave"), err);
+      this.#fail(t("workspace.failSave"), err, { quiet });
       return false;
     }
     if (location) this.#project.location = res?.path ?? location;
-    this.#saved = projectSignature(this.#project);
+    // Both baselines: the file now holds this, and main dropped any stash that
+    // was standing for it — so there is nothing for the next tick to catch up.
+    this.#saved = projectSignature(written);
+    this.#stashed = this.#saved;
     this.#announce();
     return true;
   }
@@ -985,8 +1286,14 @@ export class ProjectWorkspace {
     this.#onActiveChange?.(this.activeTab);
   }
 
-  #fail(title, err) {
+  /**
+   * Report a failure. `quiet` keeps the console line and drops the modal — for a
+   * write nobody asked for, where a dialog would be the first the user hears of
+   * a feature meant to be invisible, and would come back every AUTO_SAVE_MS.
+   */
+  #fail(title, err, { quiet = false } = {}) {
     console.error(`[renderer] ${title}:`, err);
+    if (quiet) return;
     PopupManager.notify({ title, message: err?.message ?? String(err) });
   }
 }

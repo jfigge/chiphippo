@@ -883,6 +883,40 @@ test("addComponent: seats a chip with a fresh c<n> id", () => {
   assert.equal(doc.components.length, 2);
 });
 
+test("a stored `damaged` flag never loads back in", () => {
+  // 12 V damage is RUN state that happens to live in the document, because the
+  // pure engine reads the document to keep a dead chip dead. Two ways one can
+  // be in a file — a project saved mid-run, and any document written before a
+  // stop started clearing them — and neither may put a permanently dead chip on
+  // the desk. `rot: 180` rides along to prove only `damaged` is dropped.
+  const doc = docWithFull();
+  const raw = doc.toJSON();
+  raw.components = [
+    {
+      id: "c1",
+      kind: "chip",
+      ref: "74LS00",
+      board: "bb1",
+      anchor: "e5",
+      params: { damaged: true, rot: 180 },
+    },
+  ];
+  raw.nextComponentId = 2;
+
+  const loaded = new DeskDoc(raw);
+  assert.deepEqual(loaded.getComponent("c1").params, { rot: 180 });
+  assert.equal(loaded.toJSON().components[0].params.damaged, undefined);
+});
+
+test("the run's own latch still gets in while it matters", () => {
+  // The complement: the load path drops it, but setComponentParams must not —
+  // that is how a chip stays dead from the tick it burnt to the end of the run.
+  const doc = docWithFull();
+  doc.addComponent({ kind: "chip", ref: "74LS00", board: "bb1", anchor: "e5" });
+  doc.setComponentParams("c1", { damaged: true });
+  assert.equal(doc.getComponent("c1").params.damaged, true);
+});
+
 test("setSchematicPos: sets, clears, and round-trips a Feature 150 nudge", () => {
   const doc = docWithFull();
   doc.addComponent({ kind: "chip", ref: "74LS00", board: "bb1", anchor: "e5" });

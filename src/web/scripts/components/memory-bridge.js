@@ -41,6 +41,7 @@ export class MemoryBridge {
   #controller;
   #bridge;
   #notifications;
+  #onImagesChanged;
 
   /**
    * @param {object} opts
@@ -49,13 +50,25 @@ export class MemoryBridge {
    * @param {import('./desk-controller.js').DeskController} opts.controller
    * @param {object} opts.bridge - window.chiphippo (`mem.*` + `memory.*`).
    * @param {import('./notification-stack.js').NotificationStack} [opts.notifications]
+   * @param {() => void} [opts.onImagesChanged] - a ROM's BYTES changed. The
+   *   document may not have: `params.programmed` is already true on a chip being
+   *   re-saved, so a signature comparison cannot see it, and the bytes have to
+   *   travel in the project file. See `ProjectWorkspace.markImagesChanged`.
    */
-  constructor({ deskDoc, sim, controller, bridge, notifications }) {
+  constructor({
+    deskDoc,
+    sim,
+    controller,
+    bridge,
+    notifications,
+    onImagesChanged,
+  }) {
     this.#doc = deskDoc;
     this.#sim = sim;
     this.#controller = controller;
     this.#bridge = bridge;
     this.#notifications = notifications;
+    this.#onImagesChanged = onImagesChanged;
     window.addEventListener(
       "chiphippo:memory-host-inbound",
       this.#onHostInbound,
@@ -119,6 +132,7 @@ export class MemoryBridge {
       return this.#warn("danger", "Program failed", res.error);
     }
     this.#controller?.setMemoryProgrammed(compId, true);
+    this.#onImagesChanged?.();
     this.#sendContext(compId); // the window reloads from the programmed file
   }
 
@@ -159,6 +173,7 @@ export class MemoryBridge {
       return this.#warn("danger", "Save failed", res.error);
     }
     this.#controller?.setMemoryProgrammed(compId, true);
+    this.#onImagesChanged?.();
   }
 
   /** Create a ROM's backing file if missing; a programmed chip losing its file

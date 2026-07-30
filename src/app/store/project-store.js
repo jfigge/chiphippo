@@ -280,7 +280,7 @@ class ProjectStore {
    * Every programmed ROM's bytes are collected out of the memory cache and
    * written INTO the file, which is what makes it self-contained.
    */
-  write(filePath, meta) {
+  write(filePath, meta, { recoveryFor = null } = {}) {
     const clean = this._normalize(meta);
     if (!clean) throw taggedError("a project needs a desktop", "INVALID_ARG");
     const images = collectImages(clean, this._memory);
@@ -298,8 +298,51 @@ class ProjectStore {
         doc: tab.doc,
       })),
       ...(Object.keys(images).length ? { images } : {}),
+      // Only ever in the working slot, and only when the project it belongs to
+      // has a file of its own (see `writeRecovery`).
+      ...(recoveryFor ? { recoveryFor } : {}),
     });
     return filePath;
+  }
+
+  /**
+   * Stash the open project in the working slot as a RECOVERY copy, without
+   * touching the file it belongs to.
+   *
+   * `recoveryFor` is the path of that file, and it is what makes the slot mean
+   * something different from its usual job. Normally the slot IS an unsaved
+   * project's home; stamped, it is a copy of a project that has a home already,
+   * holding work that is not in it yet. So the stamp is also the CRASH FLAG:
+   * the slot is dropped by a save and by a clean quit, which leaves "a stamped
+   * slot exists at startup" meaning exactly "we went away without finishing".
+   * No timestamps to compare — mtimes are the one thing cloud sync and a
+   * corrected clock will both lie about.
+   *
+   * ROM bytes ride along like any other write, so a recovered project is whole.
+   */
+  writeRecovery(meta, recoveryFor) {
+    this.ensureSaves();
+    return this.write(this.defaultProjectPath, meta, { recoveryFor });
+  }
+
+  /**
+   * What the working slot is, WITHOUT reading it properly: null when there is
+   * no slot, `{recoveryFor, name}` when it holds a recovery copy, and
+   * `{recoveryFor: null, name}` when it is an ordinary unsaved project.
+   *
+   * Deliberately does not go through `read`, which HYDRATES the file's ROM
+   * images into the memory cache. Startup has to know whether a recovery is
+   * waiting before it can ask about it, and a recovery the user then DISCARDS
+   * must not have overwritten the real project's ROM files on the way past.
+   */
+  peekRecovery() {
+    const raw = io.readJSON(this.defaultProjectPath);
+    if (!raw || typeof raw !== "object") return null;
+    const recoveryFor =
+      typeof raw.recoveryFor === "string" && raw.recoveryFor
+        ? raw.recoveryFor
+        : null;
+    return { recoveryFor, name: typeof raw.name === "string" ? raw.name : "" };
   }
 
   /**

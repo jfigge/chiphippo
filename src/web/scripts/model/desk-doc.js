@@ -222,6 +222,28 @@ function normalizeParams(def, raw) {
 }
 
 /**
+ * Params coerced on the way IN from a stored document, which is the same thing
+ * MINUS the run state.
+ *
+ * `damaged` is a chip's 12 V kill, and it is in the document only because the
+ * pure engine reads the document — it is the latch that keeps a chip dead for
+ * the rest of the run (see `SimController#persistDamage`). It is not a property
+ * of the CIRCUIT, and a stop clears it, so a document must never load one in:
+ * that would be a dead chip nothing could revive short of deleting it. Two ways
+ * one can be in a file at all — a project saved mid-run, and any document
+ * written before damage became run-volatile — and this covers both, along with
+ * every import and paste, since everything reaches the desk through here.
+ *
+ * Deliberately NOT folded into `normalizeParams` itself: `setComponentParams`
+ * shares that path, and the latch has to be able to get in while running.
+ */
+function loadParams(def, raw) {
+  const params = normalizeParams(def, raw);
+  delete params.damaged;
+  return params;
+}
+
+/**
  * A component's optional `schematicPos` nudge (Feature 150): a finite `{x,y}`
  * or undefined. Purely a layout hint for the derived schematic view — the desk
  * placement is unaffected.
@@ -418,7 +440,7 @@ export function normalizeDocument(raw) {
     // {offset} rather than a hole and may legally resolve to nothing, which is
     // the documented state a part falls into when a rail moves out from under
     // it. Floating is a state you fall into, never one you load into.
-    const params = normalizeParams(def, c.params);
+    const params = loadParams(def, c.params);
     const seat = partPinHoles(c.ref, c.anchor, params);
     if (!seat) continue; // anchor doesn't fit the footprint at all
     const seatBoard = doc.boards.find((b) => b.id === c.board);
