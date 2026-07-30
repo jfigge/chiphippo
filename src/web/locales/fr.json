@@ -703,8 +703,8 @@
     "autoLayout": "Disposition automatique"
   },
   "desk": {
-    "lockWheel": "Verrouiller le plan de travail — la molette ne le déplace plus",
-    "unlockWheel": "Déverrouiller le plan de travail — la molette le déplace à nouveau",
+    "lockWheel": "Verrouiller le plan de travail — la molette ne le déplace plus ({mod}+L)",
+    "unlockWheel": "Déverrouiller le plan de travail — la molette le déplace à nouveau ({mod}+L)",
     "brick": {
       "psu": "alimentation",
       "clock": "horloge",
@@ -908,7 +908,8 @@
       "analyzer": "Afficher ou masquer l'analyseur logique",
       "fit": "Ajuster à la fenêtre",
       "zoomOut": "Dézoomer au maximum (retrouver un composant perdu)",
-      "zoom": "Zoomer / dézoomer / réinitialiser"
+      "zoom": "Zoomer / dézoomer / réinitialiser",
+        "lockDesk": "Verrouiller / déverrouiller le défilement du plan de travail"
     },
     "simulation": {
       "run": "Exécuter / arrêter le circuit",

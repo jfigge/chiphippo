@@ -379,7 +379,8 @@ Electron main process (src/app/main.js)
   with width/height 0 renders NOTHING per the SVG spec — zero-size anchors need
   a token 1×1 box + overflow: visible.
   **THE DESK PADLOCK LOCKS AN INPUT, NOT THE CAMERA**
-  (`components/desk-lock.js` → `DeskView.setWheelLocked`). Top-right of the
+  (`components/desk-lock.js` → `DeskView.setWheelLocked`, shortcut **⌘L** —
+  which was free). Top-right of the
   viewport, across from the tab strip and lined up with it, with a TRANSPARENT
   background — it sits directly on the desk rather than in a card of its own, so
   an empty corner still looks empty. Shut, the wheel stops reaching the camera;
@@ -394,7 +395,10 @@ Electron main process (src/app/main.js)
   new session with a desk that ignores the wheel and no memory of having been
   told to. Its icon changes SHAPE, not just tint (open shackle vs shut) — at
   20 px on a busy desk a colour alone is not a state — and its label says what a
-  CLICK would do while `aria-pressed` says what it IS. The schematic keeps its
+  CLICK would do (with its accelerator, `{mod}` as every other title takes it)
+  while `aria-pressed` says what it IS. ⌘L goes through the padlock's own
+  `toggle()` rather than straight to `setWheelLocked`, so the key and the button
+  drive ONE path and the icon can never disagree with the wheel. The schematic keeps its
   own DeskView and its own wheel: there is no padlock over there, and so no
   invisible lock either.
   **FIT (⌘F) IS THE ONE CAMERA ACTION THAT EDITS THE DOCUMENT** — deliberately,

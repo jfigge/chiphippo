@@ -703,8 +703,8 @@
     "autoLayout": "Auto-layout"
   },
   "desk": {
-    "lockWheel": "Lock the desk — the mouse wheel stops moving it",
-    "unlockWheel": "Unlock the desk — the mouse wheel moves it again",
+    "lockWheel": "Lock the desk — the mouse wheel stops moving it ({mod}+L)",
+    "unlockWheel": "Unlock the desk — the mouse wheel moves it again ({mod}+L)",
     "brick": {
       "psu": "power supply",
       "clock": "clock",
@@ -908,7 +908,8 @@
       "analyzer": "Toggle the logic analyzer",
       "fit": "Fit to screen",
       "zoomOut": "Zoom all the way out (find a lost part)",
-      "zoom": "Zoom in / out / reset"
+      "zoom": "Zoom in / out / reset",
+        "lockDesk": "Lock / unlock desk scrolling"
     },
     "simulation": {
       "run": "Run / Stop the circuit",

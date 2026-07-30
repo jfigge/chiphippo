@@ -703,8 +703,8 @@
     "autoLayout": "Trazado automático"
   },
   "desk": {
-    "lockWheel": "Bloquear el escritorio: la rueda del ratón deja de moverlo",
-    "unlockWheel": "Desbloquear el escritorio: la rueda del ratón vuelve a moverlo",
+    "lockWheel": "Bloquear el escritorio: la rueda del ratón deja de moverlo ({mod}+L)",
+    "unlockWheel": "Desbloquear el escritorio: la rueda del ratón vuelve a moverlo ({mod}+L)",
     "brick": {
       "psu": "fuente de alimentación",
       "clock": "reloj",
@@ -908,7 +908,8 @@
       "analyzer": "Mostrar u ocultar el analizador lógico",
       "fit": "Ajustar a la pantalla",
       "zoomOut": "Alejar todo lo posible (encontrar un componente perdido)",
-      "zoom": "Acercar / alejar / restablecer"
+      "zoom": "Acercar / alejar / restablecer",
+        "lockDesk": "Bloquear / desbloquear el desplazamiento del escritorio"
     },
     "simulation": {
       "run": "Ejecutar / detener el circuito",

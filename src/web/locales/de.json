@@ -703,8 +703,8 @@
     "autoLayout": "Auto-Layout"
   },
   "desk": {
-    "lockWheel": "Arbeitsfläche sperren — das Mausrad bewegt sie nicht mehr",
-    "unlockWheel": "Arbeitsfläche entsperren — das Mausrad bewegt sie wieder",
+    "lockWheel": "Arbeitsfläche sperren — das Mausrad bewegt sie nicht mehr ({mod}+L)",
+    "unlockWheel": "Arbeitsfläche entsperren — das Mausrad bewegt sie wieder ({mod}+L)",
     "brick": {
       "psu": "Netzteil",
       "clock": "Taktgeber",
@@ -908,7 +908,8 @@
       "analyzer": "Logikanalysator ein-/ausblenden",
       "fit": "An Fenster anpassen",
       "zoomOut": "Ganz herauszoomen (ein verlorenes Bauteil finden)",
-      "zoom": "Vergrößern / verkleinern / zurücksetzen"
+      "zoom": "Vergrößern / verkleinern / zurücksetzen",
+        "lockDesk": "Scrollen der Arbeitsfläche sperren / entsperren"
     },
     "simulation": {
       "run": "Schaltung starten / stoppen",

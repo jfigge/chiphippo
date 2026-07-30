@@ -703,8 +703,8 @@
     "autoLayout": "Disposizione automatica"
   },
   "desk": {
-    "lockWheel": "Blocca il piano di lavoro: la rotellina non lo muove più",
-    "unlockWheel": "Sblocca il piano di lavoro: la rotellina lo muove di nuovo",
+    "lockWheel": "Blocca il piano di lavoro: la rotellina non lo muove più ({mod}+L)",
+    "unlockWheel": "Sblocca il piano di lavoro: la rotellina lo muove di nuovo ({mod}+L)",
     "brick": {
       "psu": "alimentatore",
       "clock": "clock",
@@ -908,7 +908,8 @@
       "analyzer": "Mostra o nascondi l'analizzatore logico",
       "fit": "Adatta alla finestra",
       "zoomOut": "Riduci al massimo (ritrova un componente perduto)",
-      "zoom": "Ingrandisci / riduci / ripristina"
+      "zoom": "Ingrandisci / riduci / ripristina",
+        "lockDesk": "Blocca / sblocca lo scorrimento del piano di lavoro"
     },
     "simulation": {
       "run": "Esegui / arresta il circuito",

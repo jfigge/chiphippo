@@ -308,8 +308,8 @@ function buildSchematicViewport() {
 /**
  * Central keyboard shortcuts: desk keys (Esc / Delete via DeskController)
  * first, then Space to toggle Run/Stop (only when no tool is armed), then the
- * app-chrome accelerators (analyzer / palette / run toggle), then cmd/ctrl
- * +, −, 0 for the desk zoom.
+ * app-chrome accelerators (analyzer / palette / run toggle / desk lock), then
+ * cmd/ctrl +, −, 0 for the desk zoom.
  */
 function bindShortcuts(
   controller,
@@ -319,6 +319,7 @@ function bindShortcuts(
   getActiveView,
   fitActiveView,
   onToggleView,
+  onToggleLock,
 ) {
   window.addEventListener("keydown", (e) => {
     // A dialog/menu owns the keyboard while it's open — its own handlers
@@ -397,7 +398,7 @@ function bindShortcuts(
       return;
     }
     if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
-    // Cmd/Ctrl+P / +R / +F toggle app chrome — not while typing, where the
+    // Cmd/Ctrl+P / +R / +F / +L toggle app chrome — not while typing, where the
     // browser's own bindings must win.
     const tag = e.target?.tagName;
     const typing =
@@ -411,6 +412,14 @@ function bindShortcuts(
       if (e.key === "r" || e.key === "R") {
         e.preventDefault();
         sim.toggle();
+        return;
+      }
+      // The desk padlock. It goes through the padlock's own toggle rather than
+      // straight to setWheelLocked, so the key and the button drive the one
+      // path and the icon can never disagree with the wheel.
+      if (e.key === "l" || e.key === "L") {
+        e.preventDefault();
+        onToggleLock();
         return;
       }
       if (e.key === "f" || e.key === "F") {
@@ -1412,6 +1421,7 @@ async function init() {
   // Session-only and open at launch — see DeskLock for why it is not remembered,
   // and DeskView.setWheelLocked for why it locks the wheel and nothing else.
   deskLock = new DeskLock(desk, {
+    mod: MOD_KEY,
     onChange: (locked) => deskView.setWheelLocked(locked),
   });
 
@@ -1434,6 +1444,7 @@ async function init() {
     getActiveView,
     fitActiveView,
     () => setMode(mode === "desk" ? "schematic" : "desk"),
+    () => deskLock.toggle(),
   );
 
   // ── Changing the language, in place ──────────────────────────────────────

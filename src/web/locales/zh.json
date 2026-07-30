@@ -700,8 +700,8 @@
     "autoLayout": "自动布局"
   },
   "desk": {
-    "lockWheel": "锁定桌面 — 滚轮不再移动桌面",
-    "unlockWheel": "解锁桌面 — 滚轮可再次移动桌面",
+    "lockWheel": "锁定桌面 — 滚轮不再移动桌面（{mod}+L）",
+    "unlockWheel": "解锁桌面 — 滚轮可再次移动桌面（{mod}+L）",
     "brick": {
       "psu": "电源",
       "clock": "时钟",
@@ -899,7 +899,8 @@
       "analyzer": "显示或隐藏逻辑分析仪",
       "fit": "适应窗口",
       "zoomOut": "缩到最小（找回丢失的元件）",
-      "zoom": "放大／缩小／还原"
+      "zoom": "放大／缩小／还原",
+        "lockDesk": "锁定 / 解锁桌面滚动"
     },
     "simulation": {
       "run": "运行／停止电路",

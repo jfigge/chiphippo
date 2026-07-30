@@ -88,6 +88,7 @@ const shortcutGroups = () => [
       { desc: t("shortcuts.view.fit"), keys: `${MOD}+F` },
       { desc: t("shortcuts.view.zoomOut"), keys: `${SHIFT}+${MOD}+F` },
       { desc: t("shortcuts.view.zoom"), keys: `${MOD}+ / ${MOD}- / ${MOD}0` },
+      { desc: t("shortcuts.view.lockDesk"), keys: `${MOD}+L` },
     ],
   },
   {
