@@ -80,7 +80,10 @@ export class BuildGuide {
     this.#doc = deskDoc;
     this.#netlist = netlist ?? new NetlistCache(deskDoc);
     this.#onVisibilityChange = onVisibilityChange;
-    this.#schemaName = schemaName ?? (() => "Untitled");
+    // No English default of its own: the one place this is read already falls
+    // back to `t("common.untitled")`, and a hardcoded one here would win over
+    // it (a truthy string) and ship English to every other language.
+    this.#schemaName = schemaName ?? null;
 
     const tabs = el("div", { class: "build-guide-tabs", role: "tablist" });
     for (const id of TAB_IDS) {

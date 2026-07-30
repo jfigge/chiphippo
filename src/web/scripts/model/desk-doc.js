@@ -371,6 +371,9 @@ export function normalizeDocument(raw) {
   const doc = emptyDocument();
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return doc;
 
+  // The board outlines accepted so far — see the OVERLAP note below.
+  const taken = [];
+
   let maxBoardSeq = 0;
   let maxGroupSeq = 0;
   const boardIds = new Set();
@@ -381,11 +384,8 @@ export function normalizeDocument(raw) {
     if (!m || boardIds.has(b.id)) continue;
     if (!BOARD_TYPES[b.type]) continue;
     if (!Number.isFinite(b.x) || !Number.isFinite(b.y)) continue;
-    boardIds.add(b.id);
-    maxBoardSeq = Math.max(maxBoardSeq, Number(m[1]));
     // A junk group id degrades to a loose strip rather than dropping it.
     const g = typeof b.group === "string" ? GROUP_ID_RE.exec(b.group) : null;
-    if (g) maxGroupSeq = Math.max(maxGroupSeq, Number(g[1]));
     const board = {
       id: b.id,
       type: b.type,
@@ -394,6 +394,25 @@ export function normalizeDocument(raw) {
       rot: normalizeRotation(b.type, b.rot),
       group: g ? b.group : null,
     };
+    // OVERLAP IS AS LOADABLE AS ANY OTHER NONSENSE, so it is checked here like
+    // the rest. `canPlace` refuses it at placement time and `canMoveBoardsBy`
+    // at drop time, but neither runs on the way in — so a hand-edited or
+    // corrupt file could seat two strips through each other, and then NEITHER
+    // could ever be moved: every drag re-checks against the other and is
+    // refused, with no cue but a drop that will not take. Exactly the shape of
+    // the seated-component check below ("a DIP anchored past the end of a strip
+    // used to load clean … while the chip sat there electrically dead") — a
+    // desk you cannot rearrange is the same bug wearing geometry.
+    //
+    // First-wins, like every other dedupe here. Dropping the LATER strip also
+    // cascades correctly for free: its seated parts fail `boardIds.has`, and
+    // its wires fail `validEndpoint`.
+    const rect = outlineRect(board);
+    if (taken.some((r) => rectsOverlap(rect, r))) continue;
+    taken.push(rect);
+    boardIds.add(b.id);
+    maxBoardSeq = Math.max(maxBoardSeq, Number(m[1]));
+    if (g) maxGroupSeq = Math.max(maxGroupSeq, Number(g[1]));
     applyMeta(board, b);
     doc.boards.push(board);
   }
@@ -421,6 +440,15 @@ export function normalizeDocument(raw) {
         y: Math.round(c.y),
         params: normalizeParams(def, c.params),
       };
+      // A BRICK's footprint is deliberately NOT checked here, though
+      // `canPlaceBrick` refuses one over a board. The shipped `65xx-lcd` demo
+      // has its LCD module squarely on top of a breadboard — so either the
+      // demo builder reaches past that rule or the rule is stricter than the
+      // bench is, and until that is settled a loader that dropped the brick
+      // would delete a working demo's display. Overlap is a nuisance for a
+      // brick (it cannot be dragged over a board) and a DEADLOCK for a board
+      // (neither of the pair can move at all), which is the asymmetry this
+      // check follows.
       applyMeta(brickRecord, c);
       doc.components.push(brickRecord);
       continue;
@@ -662,6 +690,19 @@ function rectsOverlap(a, b) {
     b.x < a.x + a.width &&
     a.y < b.y + b.height &&
     b.y < a.y + a.height
+  );
+}
+
+/** Is a desk point inside a rect? INCLUSIVE of every edge — unlike
+    rectsOverlap, which has to let two strips sit flush without intersecting,
+    this asks which strip a free coordinate is drawn over, and a bend right on
+    a board's edge is better carried by it than left behind. */
+function pointInRect(p, rect) {
+  return (
+    p.x >= rect.x &&
+    p.x <= rect.x + rect.width &&
+    p.y >= rect.y &&
+    p.y <= rect.y + rect.height
   );
 }
 
@@ -1059,12 +1100,53 @@ export class DeskDoc {
   }
 
   /**
+   * Which routed waypoints a move of `ids` CARRIES: every point lying over one
+   * of those strips' footprints, as `Map<wireId, number[]>` — indices into
+   * that wire's own `points`, ascending, wires with none omitted.
+   *
+   * A wire's ENDS are addresses, so they ride their board for free; its
+   * waypoints are free desk coordinates and are therefore the one part of a
+   * wire a board move has to carry BY HAND (the same reason `translateAll`
+   * and `pasteDesign` shift them explicitly). Leave them and dragging a board
+   * drags its wiring out of the routing the user drew.
+   *
+   * The rule is geometric and PER POINT, because position is the only thing a
+   * waypoint has to say where it belongs: a bend drawn over a board was drawn
+   * around what is ON that board and travels with it, while one out in the
+   * free space between two boards belongs to the gap that just changed size
+   * and stays where it was put. So a wire may well carry some of its bends and
+   * not others. Containment is inclusive — a point exactly on the moving set's
+   * edge rides, since carrying it is the lesser surprise.
+   *
+   * Pure: nothing is mutated, and the answer is about where the points sit
+   * NOW, so a caller previewing a drag must read it BEFORE anything moves.
+   */
+  wirePointsOverBoards(ids) {
+    const moving = new Set(ids);
+    const rects = this.#doc.boards
+      .filter((b) => moving.has(b.id))
+      .map(outlineRect);
+    const carried = new Map();
+    if (rects.length === 0) return carried;
+    for (const wire of this.#doc.wires) {
+      const indices = [];
+      (wire.points ?? []).forEach((p, i) => {
+        if (rects.some((r) => pointInRect(p, r))) indices.push(i);
+      });
+      if (indices.length > 0) carried.set(wire.id, indices);
+    }
+    return carried;
+  }
+
+  /**
    * Translate exactly `ids` by (dx, dy) — the rigid move behind a directional
    * break. When the set is only PART of a group, the snap breaks: both halves
    * are re-grouped from what is still mated within each, so a run that stays
    * whole keeps travelling as a unit and a strip left on its own goes loose.
-   * A group id is never reused across a break. Throws NOT_FOUND /
-   * INVALID_ARG / OVERLAP — nothing moves on failure.
+   * A group id is never reused across a break. Every routed waypoint over the
+   * moving strips travels with them (`wirePointsOverBoards`), in the SAME
+   * mutation, so a board and the routing drawn over it are one undo step.
+   * Throws NOT_FOUND / INVALID_ARG / OVERLAP — nothing moves on failure.
    *
    * @returns {Array<object>} copies of every moved strip, document order.
    */
@@ -1087,12 +1169,22 @@ export class DeskDoc {
     ].filter((g) =>
       this.#doc.boards.some((b) => b.group === g && !moving.has(b.id)),
     );
+    // Which bends ride, read BEFORE the translation — the rule is where each
+    // point sits now, not where the strips are about to be.
+    const carried = this.wirePointsOverBoards(ids);
     const moved = [];
     for (const b of this.#doc.boards) {
       if (!moving.has(b.id)) continue;
       b.x += Math.round(dx);
       b.y += Math.round(dy);
       moved.push(b);
+    }
+    for (const [wireId, indices] of carried) {
+      const points = this.#doc.wires.find((w) => w.id === wireId)?.points ?? [];
+      for (const i of indices) {
+        points[i].x = wireCoord(points[i].x + Math.round(dx));
+        points[i].y = wireCoord(points[i].y + Math.round(dy));
+      }
     }
     for (const group of torn) this.#regroupAfterBreak(group, moving);
     return moved.map((b) => ({ ...b }));
@@ -1123,8 +1215,11 @@ export class DeskDoc {
   }
 
   /**
-   * Move a board (coordinates snapped to integers). Throws NOT_FOUND /
-   * INVALID_ARG / OVERLAP. Returns a copy of the updated board.
+   * Move a board to an absolute position (coordinates snapped to integers).
+   * Throws NOT_FOUND / INVALID_ARG / OVERLAP. Returns a copy of the updated
+   * board. Unlike `moveBoardsBy` — which is what the drag gesture commits
+   * through — this carries no routed waypoints with it; anything that moves a
+   * strip a USER is looking at wants the relative form.
    */
   moveBoard(id, x, y) {
     const board = this.#doc.boards.find((b) => b.id === id);

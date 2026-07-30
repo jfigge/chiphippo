@@ -688,7 +688,27 @@
       "l3": "Vérification du montage…",
       "l4": "Vérification de la connectivité…",
       "l5": "Simulation…",
-      "l6": "Recherche de nets non pilotés…"
+      "l6": "Recherche de nets non pilotés…",
+      "l7": "Exécution du test {index} sur {total} : {name}"
+    },
+    "usage": {
+      "tokens": "Jetons : {parts}",
+      "session": "Session : {parts}",
+      "sessionTitle": "Total de la session sur {sends} — {detail}. Effacer le remet à zéro.",
+      "sends": {
+        "one": "{count} envoi",
+        "other": "{count} envois"
+      },
+      "calls": {
+        "one": "{count} appel",
+        "other": "{count} appels"
+      },
+      "in": "{n} entrée",
+      "out": "{n} sortie",
+      "cacheRead": "{n} lecture de cache",
+      "cacheWrite": "{n} écriture de cache",
+      "uncachedInput": "{n} entrée non mise en cache",
+      "output": "{n} sortie"
     },
     "reason": {
       "noProvider": "Aucun fournisseur d'IA n'est disponible dans cette version.",
@@ -705,12 +725,21 @@
   "desk": {
     "lockWheel": "Verrouiller le plan de travail — la molette ne le déplace plus ({mod}+L)",
     "unlockWheel": "Déverrouiller le plan de travail — la molette le déplace à nouveau ({mod}+L)",
+    "hover": {
+      "pin": "{ref} broche {pin} · {name} → {address}",
+      "floating": "en l’air",
+      "psuPlus": "+{volts} V",
+      "psuMinus": "0 V",
+      "clockOut": "sortie horloge",
+      "clockGnd": "masse"
+    },
     "brick": {
       "psu": "alimentation",
       "clock": "horloge",
       "display": "afficheur"
     },
     "boardPropertiesTitle": "Propriétés de {board}",
+    "partPropertiesTitle": "Propriétés de {part}",
     "wirePropertiesTitle": "Propriétés du fil",
     "wireColor": "Couleur",
     "wireLayout": "Méthode de tracé",
@@ -788,6 +817,7 @@
     "failStart": "Le projet n'a pas pu être démarré",
     "failOpen": "Le projet n'a pas pu être ouvert",
     "failSave": "Le projet n'a pas pu être enregistré",
+    "failClose": "Impossible de vérifier les modifications non enregistrées — enregistrez votre travail avant de quitter",
     "failLocation": "Aucun emplacement n'a pu être choisi",
     "failDuplicate": "Le bureau n'a pas pu être dupliqué",
     "failImport": "Ce bureau n'a pas pu être importé",
@@ -909,7 +939,7 @@
       "fit": "Ajuster à la fenêtre",
       "zoomOut": "Dézoomer au maximum (retrouver un composant perdu)",
       "zoom": "Zoomer / dézoomer / réinitialiser",
-        "lockDesk": "Verrouiller / déverrouiller le défilement du plan de travail"
+      "lockDesk": "Verrouiller / déverrouiller le défilement du plan de travail"
     },
     "simulation": {
       "run": "Exécuter / arrêter le circuit",

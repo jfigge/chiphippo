@@ -685,7 +685,25 @@
       "l3": "組み立て結果を検査中…",
       "l4": "接続を検査中…",
       "l5": "シミュレーション中…",
-      "l6": "駆動されていないネットを探索中…"
+      "l6": "駆動されていないネットを探索中…",
+      "l7": "テスト {index}/{total} を実行中: {name}"
+    },
+    "usage": {
+      "tokens": "トークン: {parts}",
+      "session": "セッション: {parts}",
+      "sessionTitle": "{sends} のセッション合計 — {detail}。クリアでリセットされます。",
+      "sends": {
+        "other": "{count} 回の送信"
+      },
+      "calls": {
+        "other": "{count} 回の呼び出し"
+      },
+      "in": "入力 {n}",
+      "out": "出力 {n}",
+      "cacheRead": "キャッシュ読み取り {n}",
+      "cacheWrite": "キャッシュ書き込み {n}",
+      "uncachedInput": "キャッシュなし入力 {n}",
+      "output": "出力 {n}"
     },
     "reason": {
       "noProvider": "このビルドで利用できる AI プロバイダはありません。",
@@ -702,12 +720,21 @@
   "desk": {
     "lockWheel": "デスクをロック — マウスホイールで動かなくなります（{mod}+L）",
     "unlockWheel": "デスクのロックを解除 — マウスホイールでまた動かせます（{mod}+L）",
+    "hover": {
+      "pin": "{ref} ピン {pin} · {name} → {address}",
+      "floating": "未接続",
+      "psuPlus": "+{volts} V",
+      "psuMinus": "0 V",
+      "clockOut": "クロック出力",
+      "clockGnd": "グランド"
+    },
     "brick": {
       "psu": "電源",
       "clock": "クロック",
       "display": "表示器"
     },
     "boardPropertiesTitle": "{board} の情報",
+    "partPropertiesTitle": "{part} の情報",
     "wirePropertiesTitle": "ワイヤーの情報",
     "wireColor": "色",
     "wireLayout": "引き方",
@@ -780,6 +807,7 @@
     "failStart": "プロジェクトを開始できませんでした",
     "failOpen": "プロジェクトを開けませんでした",
     "failSave": "プロジェクトを保存できませんでした",
+    "failClose": "未保存の変更を確認できませんでした — 終了する前に作業を保存してください",
     "failLocation": "保存場所を選べませんでした",
     "failDuplicate": "デスクトップを複製できませんでした",
     "failImport": "そのデスクトップを読み込めませんでした",
@@ -900,7 +928,7 @@
       "fit": "画面に合わせる",
       "zoomOut": "いちばん縮小（見失った部品を探す）",
       "zoom": "拡大／縮小／リセット",
-        "lockDesk": "デスクのスクロールをロック / 解除"
+      "lockDesk": "デスクのスクロールをロック / 解除"
     },
     "simulation": {
       "run": "回路を実行／停止",

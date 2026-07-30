@@ -446,8 +446,30 @@ Electron main process (src/app/main.js)
   decimals, deliberately off the lattice (they sit in the space BETWEEN the
   boards, so snapping them to a hole they have nothing to do with would be a
   lie) — which is also why they are the one part that has to be moved by hand:
-  `translateAll` (⌘F's recentre) and `pasteDesign` shift them explicitly,
-  where every other part of a wire rides its board for free. Switching back to
+  `translateAll` (⌘F's recentre), `pasteDesign` and `moveBoardsBy` (the board
+  drag) shift them explicitly, where every other part of a wire rides its board
+  for free.
+  **A BOARD DRAG CARRIES THE BENDS DRAWN OVER IT, PER POINT**
+  (`DeskDoc.wirePointsOverBoards`). Leave them and dragging a board drags its
+  wiring out of the routing the user drew: the ends follow the holes, the bends
+  stay behind, and the shape is gone. The rule is GEOMETRIC — a waypoint rides
+  when it lies over one of the moving strips' footprints (inclusive of the
+  edge) — because position is the only thing a bend has to say where it
+  belongs: one drawn over a board was drawn around what is ON that board, while
+  one out in the free space between two boards belongs to a gap that just
+  changed size and stays where it was put. So a single wire may well carry some
+  of its bends and not others, which is why the riding set is per POINT and not
+  per wire (unlike a PART drag, whose riders are decided per END by the node
+  rule). The set is read at **pointerdown and frozen**, exactly as the part
+  drag freezes its riders: re-derived per sample it would grow and shrink as
+  the strips slid under other wires' bends, so the drop would depend on the
+  path taken to it. The preview reaches `WireLayer.render`'s second argument
+  beside the board `overrides` — the ends ride an override because they are
+  addresses, the bends ride the shift because they are not — and the commit
+  re-derives the same answer inside `moveBoardsBy` (the document does not move
+  during a drag, so the two cannot disagree) in the SAME mutation as the
+  boards, hence ONE undo step. `moveBoard`, the absolute form, deliberately
+  carries nothing: it has no user gesture behind it. Switching back to
   Direct DELETES them (a curve has nowhere to keep a bend, and keeping them
   would leave invisible state waiting to reappear). A BUS MEMBER is never
   routed however it is set — its middle belongs to the ribbon, so its leads
@@ -722,6 +744,35 @@ Electron main process (src/app/main.js)
   `saveAs` / `exportTab` all return `Promise<boolean>` and every dialog is
   promise-wrapped, since PopupManager fires its callbacks on EVERY dismissal
   path (mask click included) so an awaiting caller can't hang.
+  **THE GUARD MUST ANSWER, AND ANSWERING IS THREE SEPARATE PROMISES** — main
+  waits on `confirmClose()` with NO TIMEOUT and LATCHES `closePending` until the
+  reply lands, so anything less than an answer is an app that can never be
+  closed again:
+  - **it settles.** PopupManager fires a callback and DISCARDS what it returns,
+    so `#askUnsaved`'s `async onChoose` rejecting skipped its own `resolve` and
+    left the promise pending for the life of the process. It now catches and
+    resolves FALSE.
+  - **it never rejects.** `confirmClose()` reads the live document (the dirty
+    test), which can throw before any dialog is up; that rejected straight out.
+    It catches, reports through `#fail`, and answers false.
+  - **it never answers TRUE by accident.** `app.js`'s handler defaulted `ok` to
+    `true` on a throw — reasoning that a broken guard must not wedge the app,
+    but trading the user's unsaved project for it. Main's latch is per-attempt,
+    so blocking costs ONE refused ⌘Q while proceeding costs the work; the
+    default is `false`. A failed guard is never permission to discard.
+
+  Underneath, `#doWrite` / `#writeRecovery` put their WHOLE body in the try
+  (`#stash()` and `projectForFile()` included) so "a write answers, it doesn't
+  throw" is enforced rather than asserted, and `#serialize` awaits its
+  predecessor as `prior.catch(() => {})` so one failed write can never reject
+  the chain queued behind it. `PopupManager` routes every callback through
+  `fire()`, which reports a throw or a rejection instead of dropping it — it
+  cannot invent the answer a broken callback failed to give, but it makes the
+  next one a console line rather than a wedged app. Main's own backstop is
+  `watchRendererForClose`: a renderer that CRASHES mid-question releases the
+  latch, since it will never reply. A renderer that is alive and simply silent
+  is invisible from there, which is why the guarantee lives on the renderer
+  side.
   **EXPORT / IMPORT replaced a desktop's Save As / Open.** A
   `.desktop.chiphippo` is a SNAPSHOT — the document plus its ROM bytes, with no
   link retained — so unlike a v3 desktop file it can never dangle. Import is
@@ -1723,6 +1774,26 @@ Electron main process (src/app/main.js)
 - **Keep `main.js` ipcMain handlers and the `preload.js` exposure in lockstep** —
   enforced by `app/tests/ipc-parity.test.js` (add new `ipc/*.js` files to its scan
   list; channels follow `area:noun[:verb]`, lowercase + hyphenated).
+- **`normalizeDocument` ENFORCES the placement rules, not just the schema.** A
+  document arrives from a file, so it can say things the app itself would have
+  refused — and the loader's job is to land a desk you can actually work on,
+  not merely one that parses. It already drops a part whose footprint does not
+  fit its anchor, a wire whose endpoint is not a real free point, a bus member
+  that is not a wire. It now also drops a **board that overlaps one already
+  loaded** (first wins, as every other dedupe here does; the strip's seated
+  parts and wires cascade away for free through `boardIds` / `validEndpoint`).
+  That one is not cosmetic: `canPlace` refuses an overlap at placement time and
+  `canMoveBoardsBy` at drop time, so an overlapping PAIR **deadlocks** — every
+  drag of either re-checks against the other and is refused, and neither strip
+  can ever be moved again, with no cue but a drop that will not take. The test
+  is the same strict `rectsOverlap`, so flush strips still MATE (the whole
+  dovetail rule depends on them touching edge-to-edge). A **brick** is
+  deliberately NOT held to this, even though `canPlaceBrick` refuses one over a
+  board: the shipped `65xx-lcd` demo has its LCD module squarely on top of a
+  breadboard, so either the demo builder reaches past that rule or the rule is
+  stricter than the bench is — and until that is settled, a loader that dropped
+  the brick would delete a working demo's display. Overlap is a nuisance for a
+  brick and a deadlock for a board, which is the asymmetry the check follows.
 - **Addresses are the only cross-module currency for holes** (`bb1.f12`); nothing
   outside `model/breadboard.js` does row/column arithmetic by hand. Renderer and
   model call its lattice primitives (`holeAt`, `columnAt`, `rowNear`,
@@ -1985,7 +2056,28 @@ on *System*). One JSON catalog per language under **`src/web/locales/`**, and
   opens and therefore speaks the current language for free. Three of the calls
   are relabel functions the app already had for their own reasons — `setMode`,
   `updateLocateIcon`, `onTransportChange` each own a button whose label depends
-  on state, so re-running them unchanged IS a relabel.
+  on state, so re-running them unchanged IS a relabel. It ends by dispatching
+  **`chiphippo:locale-changed`** — fired only AFTER `i18n.init()` has re-read
+  the catalog, so a listener can rebuild in the language it is being told about.
+- **THE SETTINGS DIALOG IS THE ONE DIALOG THAT RELOCALIZES ITSELF**, and for one
+  reason: the Language picker is INSIDE it, so it is the only card that can
+  still be on screen when the language changes — every other transient surface
+  is built when it opens. Leaving it in the language just left makes the setting
+  look like it did nothing. It listens for `chiphippo:locale-changed` for its
+  OPEN LIFETIME (the same rule the About panel's updater listeners follow, and
+  dropped in the same `onClose`) and **closes and reopens itself** rather than
+  re-labelling in place: the header title, the nav rail, every row and the
+  asynchronously-built AI panel are all `t()` at build time, so a relabel path
+  would be a second, hand-maintained copy of the whole card that could silently
+  fall behind it. `PopupManager.close()` runs `onClose` synchronously — dropping
+  the listener and clearing the open guard — before it drains the queue, so the
+  reopen mounts cleanly; it is the same close-then-open the Data Sheets
+  Download button already uses. Two pieces of state survive the rebuild and both
+  are load-bearing: `#settings`, the dialog's own copy patched by every `#emit`,
+  so the picker shows the language JUST CHOSEN rather than springing back to the
+  one being left; and `#tab`, so the user is put back on the panel they were
+  reading (a FRESH open still starts on Appearance — `#relabelling` is what
+  tells the two apart).
 - **IDENTITY IS NEVER TRANSLATED.** A palette section's English name stays its
   collapse-state key and its grouping key (`sectionLabel()` shows the
   translation; `#toggleGroup` is still called with the English), or a section
@@ -2066,6 +2158,34 @@ match.
 test, so the existing English assertions both keep working and start exercising
 the catalog: a key deleted from `en.json` now fails the test that reads it,
 rather than quietly rendering a dotted key to the user.
+
+**WHAT THE GUARDS STILL CANNOT SEE, and the answer to it.** Both scanners match
+a UI-bearing property followed by a **quote**, so a string built with a TEMPLATE
+LITERAL or chosen by a TERNARY in the same position is invisible to them — which
+is exactly how a set of leaks survived every green run: the desk's own hover
+tooltip (``label: `${comp.ref} pin ${pin} …` ``, the most-read string on the
+desk), the part Properties dialog's title (`` `${def.title} Properties` `` —
+which also reached past `partTitle()` to the def's raw ENGLISH SOURCE), the
+annotation ghost's `"Note"`/`"Label"` while `palette.annotation.*` sat unused,
+the AI token readout in `ai/usage.js`, and three hardcoded `"Untitled"`s beside
+an existing `common.untitled`. A whole-FILE exclusion hid one more:
+`autobuild-verify.js` is skipped for its fault messages (they are the model's
+repair instruction, English by construction), and the L7 progress label was
+sitting inside that exclusion untranslated while its own stated reason said the
+ladder's progress labels were localized.
+
+Widening the regexes to reach inside a template is not the fix — it would
+match every interpolated identifier in the app. The answer is a TEST THAT
+RENDERS: install a stub (or a real) catalog with `applyCatalog`, call the thing,
+and assert the catalog's words came out. `part-geometry.test.js`,
+`part-context-menu.test.js`, `ai-usage.test.js`, `autobuild-verify.test.js` and
+`settings-dialog.test.js` each carry one now. Prefer a stub catalog with
+bracketed markers over a shipped translation: it asserts that the KEY is
+consulted without tying the test to someone's choice of wording. Two things
+those tests also pin that a scanner never could — that a NUMBER moves with the
+words (`ai/usage.js` groups through `formatNumber`, since a hand-grouped
+`5,200` states five point two to a German reader), and that a `tf()` call
+still reads correctly under `node --test` with no catalog at all.
 
 ## License headers
 

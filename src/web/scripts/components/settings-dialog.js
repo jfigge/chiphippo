@@ -469,9 +469,65 @@ function themeSelectionColor() {
 export class SettingsDialog {
   static #open = false;
 
-  /** Emit a settings patch for app.js to persist + apply. */
+  /**
+   * The settings this dialog is showing, patched as it emits.
+   *
+   * `open()` is handed a snapshot, and a card that changes a setting then has
+   * to be rebuilt (see `#relabel`) must not rebuild from the state it opened
+   * in — the Language row would spring back to the language just left.
+   */
+  static #settings = {};
+
+  /** Which panel is showing, so a rebuild puts the user back on it. */
+  static #tab = "appearance";
+
+  /** True across a language rebuild, so `open()` keeps the tab rather than
+      starting over on Appearance the way a fresh open should. */
+  static #relabelling = false;
+
+  /** Emit a settings patch for app.js to persist + apply — and keep our own
+      copy current, since a rebuild is seeded from it. */
   static #emit(patch) {
+    SettingsDialog.#settings = { ...SettingsDialog.#settings, ...patch };
     emitSettings(patch);
+  }
+
+  /**
+   * Rebuild the whole card in the language just chosen.
+   *
+   * THE ONE DIALOG THAT HAS TO RELOCALIZE ITSELF. Every other transient
+   * surface in the app — menus, popovers, notifications, the other dialogs —
+   * is built when it opens and therefore speaks the current language for free.
+   * This one is different for exactly one reason: the Language picker is
+   * INSIDE it, so it is the only card that can still be on screen when the
+   * language changes, and leaving it in the old one makes the setting look
+   * like it did nothing.
+   *
+   * Closing and reopening rather than re-labelling in place, because the header
+   * title, the nav rail, every row and the asynchronously-built AI panel are all
+   * `t()` at build time — re-labelling would be a second, hand-maintained copy
+   * of the whole card that could silently fall behind it. `PopupManager.close()`
+   * runs `onClose` synchronously (dropping this listener and clearing the open
+   * guard) before the queue is drained, so the reopen mounts cleanly; it is the
+   * same close-then-open the Download button already uses.
+   */
+  static #relabel() {
+    // MOUNTED, not merely open: `PopupManager.open` QUEUES a popup raised
+    // behind another rather than stacking it, so the guard alone can be true
+    // for a card that is not on screen — and `close()` would then dismiss
+    // somebody else's popup and leave this one to mount in the old language.
+    // Unreachable today (the picker that fires this is in this card, so the
+    // card is showing), which is exactly why it is worth stating.
+    if (!SettingsDialog.#open) return;
+    if (!document.querySelector(".settings-popup")) return;
+    const settings = SettingsDialog.#settings;
+    SettingsDialog.#relabelling = true;
+    try {
+      PopupManager.close();
+      SettingsDialog.open(settings);
+    } finally {
+      SettingsDialog.#relabelling = false;
+    }
   }
 
   /**
@@ -481,6 +537,10 @@ export class SettingsDialog {
   static open(settings = {}) {
     if (SettingsDialog.#open) return;
     SettingsDialog.#open = true;
+    SettingsDialog.#settings = { ...settings };
+    // A fresh open starts on Appearance; a language rebuild resumes where the
+    // user was.
+    if (!SettingsDialog.#relabelling) SettingsDialog.#tab = "appearance";
 
     // The UI language. A <select> rather than a segmented track: eight choices
     // is past what one bordered row can show, and unlike Theme these are not an
@@ -767,13 +827,12 @@ export class SettingsDialog {
       { key: "ai", label: t("settings.nav.ai") },
       { key: "about", label: t("settings.nav.about") },
     ];
-    const navItems = TABS.map(({ key, label }, i) =>
+    const navItems = TABS.map(({ key, label }) =>
       el("button", {
-        class:
-          "settings-nav-item" + (i === 0 ? " settings-nav-item--active" : ""),
+        class: "settings-nav-item",
         type: "button",
         role: "tab",
-        "aria-selected": String(i === 0),
+        "aria-selected": "false",
         "data-panel": key,
         text: label,
         onClick: () => select(key),
@@ -781,6 +840,10 @@ export class SettingsDialog {
     );
 
     const select = (key) => {
+      // Remembered on the class, not just in this closure: a language change
+      // rebuilds the card and has to put the user back on the panel they were
+      // reading.
+      SettingsDialog.#tab = key;
       for (const item of navItems) {
         const on = item.getAttribute("data-panel") === key;
         item.classList.toggle("settings-nav-item--active", on);
@@ -790,6 +853,9 @@ export class SettingsDialog {
         panel.hidden = panelKey !== key;
       }
     };
+    // Apply the starting panel through the same one path a click takes, so the
+    // nav rail and the panels cannot disagree about which is showing.
+    select(panels[SettingsDialog.#tab] ? SettingsDialog.#tab : "appearance");
 
     const body = [
       el("nav", { class: "settings-nav", role: "tablist" }, navItems),
@@ -800,6 +866,12 @@ export class SettingsDialog {
         panels.about,
       ]),
     ];
+
+    // The Language picker is in THIS card, so this is the one dialog that can
+    // still be on screen when the language changes. app.js fires this only once
+    // the new catalog is loaded, so the rebuild below reads the new one.
+    const onLocaleChanged = () => SettingsDialog.#relabel();
+    window.addEventListener("chiphippo:locale-changed", onLocaleChanged);
 
     // onClose fires only when THIS popup closes (not when a popup it was queued
     // behind closes), so the guard never resets while the dialog is still up.
@@ -815,6 +887,7 @@ export class SettingsDialog {
         // status line writing into a card that has been thrown away is a leak
         // that grows by one set every time Settings is opened.
         about.dispose();
+        window.removeEventListener("chiphippo:locale-changed", onLocaleChanged);
         SettingsDialog.#open = false;
       },
     });

@@ -596,11 +596,19 @@ async function init() {
   // dialog that deals with it both live in the renderer. Desktops are written
   // deliberately, never autosaved, so without this a • on a tab dies with the
   // window. It must reply EXACTLY once, whatever happens: main waits for the
-  // answer with no timeout (the user is entitled to think about it), so a
-  // guard that threw would leave an app that cannot be quit — hence letting
-  // the close proceed on an error rather than blocking it.
+  // answer with no timeout (the user is entitled to think about it), and it
+  // LATCHES until the reply comes — so a guard that never answered would leave
+  // an app that cannot be closed at all. `confirmClose()` therefore guarantees
+  // both that it settles and that it never rejects.
+  //
+  // The default here used to be `true` — let the close proceed if the guard
+  // threw — on the reasoning that a broken guard must not wedge the app. But
+  // main's reply latch is per-attempt, so blocking is only ever ONE refused
+  // ⌘Q, while proceeding is the project gone: `true` was trading the user's
+  // unsaved work for an inconvenience. There is nothing here that can tell a
+  // failed question from an answered one, so it has to assume the worst.
   window.addEventListener("chiphippo:confirm-close", async () => {
-    let ok = true;
+    let ok = false;
     try {
       ok = workspace ? await workspace.confirmClose() : true;
     } catch (err) {

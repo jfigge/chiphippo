@@ -20,6 +20,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import { applyCatalog } from "../i18n.js";
 import {
   addressWorld,
   componentsInRect,
@@ -150,6 +151,83 @@ test("hoverHitAt: a brick terminal is hoverable and labelled with its voltage", 
   assert.equal(hit.key, "psu1#+");
   assert.equal(hit.address, "psu1.+");
   assert.match(hit.label, /\+5 V/);
+});
+
+// ── The hover label goes through the catalog ────────────────────────────────
+// It is the most-read string on the desk and it used to be built by hand, so
+// it stayed English in all six other languages while everything around it
+// changed. English is what every assertion above proves (no catalog is loaded,
+// so `tf()` serves its own fallback); this proves the seam is really there.
+
+const CLOCK = { id: "clk1", kind: "clock", ref: "clock", x: 80, y: 0, params: { hz: 1 } }; // prettier-ignore
+
+test("hoverHitAt: every word of a hover label comes from the catalog", (t) => {
+  // A stub catalog rather than a shipped one: this asserts that the KEYS are
+  // consulted, which a real translation would prove no better and would tie
+  // the test to someone's choice of wording.
+  applyCatalog({
+    active: "xx",
+    lang: "xx",
+    messages: {
+      desk: {
+        hover: {
+          pin: "[{ref}·{pin}·{name}·{address}]",
+          floating: "[nowhere]",
+          psuPlus: "[+{volts}V]",
+          psuMinus: "[0V]",
+          clockOut: "[clk]",
+          clockGnd: "[gnd]",
+        },
+      },
+    },
+  });
+  // Restore the "no catalog" state the rest of the file runs in, whatever
+  // happens below — module state outlives a test.
+  t.after(() => applyCatalog({}));
+
+  // A seated pin: the ref and the pin name stay as the catalog for PARTS
+  // spells them; the sentence around them is the desk's own.
+  assert.equal(
+    hoverHitAt(BOARDS, [CHIP], { x: 5, y: 8 }).label,
+    "[74LS00·1·1A·bb1.e5]",
+  );
+  // A brick terminal's note — the voltage keeps its unit, which is the same
+  // in every language, but the words either side of it do not.
+  assert.equal(hoverHitAt(BOARDS, [PSU], { x: 82, y: 4 }).label, "psu1.+ · [+5V]"); // prettier-ignore
+  assert.equal(
+    hoverHitAt(BOARDS, [PSU], { x: 86, y: 4 }).label,
+    "psu1.- · [0V]",
+  );
+  assert.equal(hoverHitAt(BOARDS, [CLOCK], { x: 82, y: 4 }).label, "clk1.out · [clk]"); // prettier-ignore
+  assert.equal(hoverHitAt(BOARDS, [CLOCK], { x: 86, y: 4 }).label, "clk1.gnd · [gnd]"); // prettier-ignore
+});
+
+test("hoverHitAt: a floating lead says so in the catalog's words", (t) => {
+  applyCatalog({
+    active: "xx",
+    lang: "xx",
+    messages: { desk: { hover: { pin: "{address}", floating: "[nowhere]" } } },
+  });
+  t.after(() => applyCatalog({}));
+
+  // A resistor bent up onto a rail that has since been pulled away: pin 1 is
+  // still seated, pin 2 now reaches nothing. Legal, and exactly the state the
+  // word exists to name.
+  const resistor = {
+    id: "c9",
+    kind: "discrete",
+    ref: "resistor",
+    board: "bb1",
+    anchor: "j5",
+    params: { rot: 90, end: { dx: 0, dy: -4 } },
+  };
+  const pins = partPinsWorld(BOARDS, resistor);
+  const floating = pins.find((p) => p.address == null);
+  assert.ok(floating, "pin 2 hangs off the board, so it resolves to no hole");
+  assert.equal(
+    hoverHitAt(BOARDS, [resistor], { x: floating.x, y: floating.y }).label,
+    "[nowhere]",
+  );
 });
 
 test("deskBounds: null on an empty desk", () => {

@@ -685,7 +685,25 @@
       "l3": "正在检查搭建结果…",
       "l4": "正在检查连通性…",
       "l5": "正在仿真…",
-      "l6": "正在查找无驱动的网络…"
+      "l6": "正在查找无驱动的网络…",
+      "l7": "正在运行测试 {index}/{total}：{name}"
+    },
+    "usage": {
+      "tokens": "令牌：{parts}",
+      "session": "会话：{parts}",
+      "sessionTitle": "{sends} 的会话总计 — {detail}。清除即可重置。",
+      "sends": {
+        "other": "{count} 次发送"
+      },
+      "calls": {
+        "other": "{count} 次调用"
+      },
+      "in": "输入 {n}",
+      "out": "输出 {n}",
+      "cacheRead": "缓存读取 {n}",
+      "cacheWrite": "缓存写入 {n}",
+      "uncachedInput": "未缓存输入 {n}",
+      "output": "输出 {n}"
     },
     "reason": {
       "noProvider": "此版本没有可用的 AI 服务商。",
@@ -702,12 +720,21 @@
   "desk": {
     "lockWheel": "锁定桌面 — 滚轮不再移动桌面（{mod}+L）",
     "unlockWheel": "解锁桌面 — 滚轮可再次移动桌面（{mod}+L）",
+    "hover": {
+      "pin": "{ref} 引脚 {pin} · {name} → {address}",
+      "floating": "悬空",
+      "psuPlus": "+{volts} V",
+      "psuMinus": "0 V",
+      "clockOut": "时钟输出",
+      "clockGnd": "接地"
+    },
     "brick": {
       "psu": "电源",
       "clock": "时钟",
       "display": "显示器"
     },
     "boardPropertiesTitle": "{board} 属性",
+    "partPropertiesTitle": "{part} 属性",
     "wirePropertiesTitle": "导线属性",
     "wireColor": "颜色",
     "wireLayout": "走线方式",
@@ -780,6 +807,7 @@
     "failStart": "无法启动项目",
     "failOpen": "无法打开项目",
     "failSave": "无法保存项目",
+    "failClose": "无法检查未保存的更改 — 请在退出前保存您的工作",
     "failLocation": "无法选择保存位置",
     "failDuplicate": "无法复制该桌面",
     "failImport": "无法导入该桌面",
@@ -900,7 +928,7 @@
       "fit": "适应窗口",
       "zoomOut": "缩到最小（找回丢失的元件）",
       "zoom": "放大／缩小／还原",
-        "lockDesk": "锁定 / 解锁桌面滚动"
+      "lockDesk": "锁定 / 解锁桌面滚动"
     },
     "simulation": {
       "run": "运行／停止电路",

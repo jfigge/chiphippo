@@ -212,10 +212,14 @@ export class WireLayer {
   /**
    * Rebuild every wire from the document (documents are small; a full
    * rebuild is simple and correct). `overrides` supplies in-flight board
-   * positions during a drag so wires stay glued to their holes live.
+   * positions during a drag so wires stay glued to their holes live, and
+   * `pointRide` the routed waypoints travelling with those same boards (an
+   * end is an address and rides for free; a bend is a free coordinate and has
+   * to be carried — see DeskDoc.wirePointsOverBoards).
    * @param {Map<string, {x:number,y:number}>} [overrides]
+   * @param {{points: Map<string, number[]>, dx:number, dy:number}} [pointRide]
    */
-  render(overrides) {
+  render(overrides, pointRide) {
     const preview = this.#preview; // survives rebuilds (appended last)
     const busPreview = this.#busPreview;
     const drag = this.#endpointDrag;
@@ -348,7 +352,7 @@ export class WireLayer {
       // have to agree about anything.
       const route =
         !collars && wire.layout === "routed"
-          ? this.#routeGeometry(wire, a, b)
+          ? this.#routeGeometry(wire, a, b, pointRide)
           : null;
       // Faded (setFaded), unless this wire is picked — a selected wire is
       // deliberately shown whole. A bus member keeps the very leads it already
@@ -452,15 +456,22 @@ export class WireLayer {
    * nothing behind: an INSERT drag shows the point that would be added, a move
    * drag shows the existing one where the cursor is.
    */
-  #routeGeometry(wire, a, b) {
+  #routeGeometry(wire, a, b, pointRide) {
     const drag = this.#pointDrag?.wireId === wire.id ? this.#pointDrag : null;
     // A wire riding a part drag by BOTH ends translates rigidly, bend and all —
     // the shift is in desk units, like the stored waypoints themselves.
     const ride = this.#partDrag?.shifts.get(wire.id)?.points;
-    const points = (wire.points ?? []).map((p) => ({
-      x: (p.x + (ride?.dx ?? 0)) * PX_PER_UNIT,
-      y: (p.y + (ride?.dy ?? 0)) * PX_PER_UNIT,
-    }));
+    // A BOARD drag carries only the bends drawn over the strips it is moving,
+    // so that one is per point rather than per wire (at most MAX_WIRE_POINTS
+    // of them, hence the linear lookup).
+    const carried = pointRide?.points.get(wire.id);
+    const points = (wire.points ?? []).map((p, i) => {
+      const over = carried?.includes(i);
+      return {
+        x: (p.x + (ride?.dx ?? 0) + (over ? pointRide.dx : 0)) * PX_PER_UNIT,
+        y: (p.y + (ride?.dy ?? 0) + (over ? pointRide.dy : 0)) * PX_PER_UNIT,
+      };
+    });
     let active = -1;
     if (drag) {
       if (drag.insert && drag.index <= points.length) {

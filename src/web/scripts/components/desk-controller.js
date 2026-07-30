@@ -76,7 +76,7 @@ import { nearestLegalOffset } from "../model/nearest-legal.js";
 import { wireRunMm } from "../model/wire-length.js";
 import { HistoryStore } from "../model/history-store.js";
 import { partDef } from "../catalog/index.js";
-import { kitLabel } from "../catalog/labels.js";
+import { kitLabel, partTitle } from "../catalog/labels.js";
 import { isMemory, isRomChip, memoryConfig } from "../sim/chip-eval.js";
 import {
   BreadboardView,
@@ -2244,7 +2244,14 @@ export class DeskController {
     ghost.append(
       el("div", {
         class: "annotation-text annotation-text--empty",
-        text: kind === "note" ? "Note" : "Label",
+        // The palette's own words for the two kinds — the ghost is the pick
+        // the user just made, so it has to read as the thing they clicked.
+        // Two literal keys rather than one computed one, so the catalog guard
+        // can see both (tests/i18n-catalogs.test.js reads literals only).
+        text:
+          kind === "note"
+            ? t("palette.annotation.note")
+            : t("palette.annotation.label"),
       }),
     );
     this.#enterPlacement({
@@ -2664,7 +2671,12 @@ export class DeskController {
     const def = partDef(comp.ref);
     const fields = this.#propertyFieldsFor(comp, def);
     PartPropertiesDialog.open({
-      title: `${def.title} Properties`,
+      // `partTitle`, never the def's raw `title`: that field is the ENGLISH
+      // SOURCE the catalog translates through, and every other place a part is
+      // named already goes through it (the palette, the pinout, the BOM).
+      title: t("desk.partPropertiesTitle", {
+        part: def ? partTitle(def) : comp.ref,
+      }),
       fields,
       // Name/Description live OUTSIDE params (see setComponentMeta) — merge
       // them in so the dialog's values[field.key] lookup finds every field,
@@ -2986,6 +2998,13 @@ export class DeskController {
       kind: "drag",
       id,
       members: members.map((b) => ({ id: b.id, ox: b.x, oy: b.y })),
+      // The routed bends drawn over that set travel with it. Read ONCE here,
+      // as a part drag freezes its riders: re-derived per sample the set would
+      // grow and shrink as the strips slid under other wires' bends, so the
+      // drop would depend on the path taken to it. Nothing moves in the
+      // document during the drag, so this is exactly what moveBoardsBy will
+      // find at the release.
+      ridingPoints: this.#doc.wirePointsOverBoards(members.map((b) => b.id)),
       pointerId: e.pointerId,
       startClientX: e.clientX,
       startClientY: e.clientY,
@@ -3036,9 +3055,20 @@ export class DeskController {
     // The group rides the pointer, snapped live to the pitch lattice, then
     // pulled the last pitch or two onto a strip it can dovetail with.
     this.#resolveBoardDrag(d, w);
-    // Wires with an endpoint on any member follow it live.
-    this.#wireLayer.render(this.#applyDragDelta(d, d.delta));
+    // Wires with an endpoint on any member follow it live — and so do the
+    // routed bends drawn over it.
+    this.#wireLayer.render(
+      this.#applyDragDelta(d, d.delta),
+      this.#pointRide(d, d.delta),
+    );
   };
+
+  /** The waypoint shift a board drag previews with: the riders frozen at
+      pointer-down and the delta they are travelling by (null when this set
+      carries no routing, which is the usual case). */
+  #pointRide(d, { dx, dy }) {
+    return d.ridingPoints.size > 0 ? { points: d.ridingPoints, dx, dy } : null;
+  }
 
   /**
    * Magnetic mating: a set dragged within a pitch or two of an edge it can

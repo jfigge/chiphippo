@@ -2041,6 +2041,10 @@ function createWindow() {
     askBeforeClose(win);
   });
 
+  // A renderer that dies mid-question will never reply — release the latch so
+  // the next close is not silently refused for ever (see askBeforeClose).
+  watchRendererForClose(win);
+
   win.on("closed", () => {
     if (mainWindow === win) mainWindow = null;
     // Close the orphaned pinout/inspector windows so they don't outlive the
@@ -2088,11 +2092,45 @@ function canAskRenderer(win) {
   );
 }
 
-/** Put the question to the renderer (once). */
+/**
+ * Put the question to the renderer (once).
+ *
+ * `closePending` is a LATCH with exactly one key — the reply — and that is what
+ * makes a renderer that never answers unrecoverable rather than merely slow:
+ * every later close is prevented and no question is ever re-asked, so the app
+ * cannot be closed at all. There is no timeout to fall back on, deliberately
+ * (see the section note), so the latch has to be released by the only other
+ * thing that ends the wait: the renderer going away. `watchRendererForClose`
+ * below does that; the renderer's own guarantee that it always replies is in
+ * `ProjectWorkspace#askUnsaved`.
+ */
 function askBeforeClose(win) {
   if (closePending) return;
   closePending = true;
   win.webContents.send("app:confirm-close");
+}
+
+/**
+ * Release the close latch if the renderer we are waiting on dies.
+ *
+ * A crashed or destroyed renderer will never send `app:close-reply`, and with
+ * the latch still set `askBeforeClose` would decline to ask anyone else — so
+ * the window could not be closed even though there was no longer a question
+ * out. Clearing it puts us back in the state the section note describes:
+ * nobody to ask, so the close simply proceeds (`canAskRenderer` is false by
+ * then, so `win.on("close")` stops preventing).
+ *
+ * Note this does NOT cover the case it was written for — a renderer that is
+ * alive and simply failed to answer. Main cannot see that from here, which is
+ * exactly why the guarantee lives on the renderer side; this is the backstop
+ * for the failure main CAN see.
+ */
+function watchRendererForClose(win) {
+  const release = () => {
+    closePending = false;
+  };
+  win.webContents.on("render-process-gone", release);
+  win.webContents.on("destroyed", release);
 }
 
 /** Show and focus the window (the single-instance / dock-activate path). */

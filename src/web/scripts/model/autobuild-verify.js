@@ -509,7 +509,16 @@ export function* runFunctionalTestSteps({ doc, netlist, partMap, tests }) {
       typeof t?.name === "string" && t.name.trim() ? t.name : `tests[${i}]`;
     yield {
       gate: "L7",
-      label: `Running test ${i + 1} of ${tests.length}: ${name}`,
+      // A PROGRESS label, not a fault message — the ladder's faults stay
+      // English because `buildRepairMessage` sends them back to the model as
+      // its repair instruction, and this is never sent anywhere. It is the one
+      // gate label that was left out when L3–L6 were localized; the file-level
+      // exclusion in tests/no-hardcoded-strings.test.js is what hid it.
+      label: tf("ai.gate.l7", "Running test {index} of {total}: {name}", {
+        index: i + 1,
+        total: tests.length,
+        name,
+      }),
       index: i,
       total: tests.length,
     };

@@ -135,7 +135,7 @@ const fileName = (p) => (p ? String(p).split(/[\\/]/).pop() : "");
     untitled project, so no separate name prompt is needed. */
 function nameFromPath(filePath) {
   const base = fileName(filePath);
-  return base.replace(/\.chiphippo$/i, "").trim() || "Untitled";
+  return base.replace(/\.chiphippo$/i, "").trim() || t("common.untitled");
 }
 
 export class ProjectWorkspace {
@@ -328,6 +328,16 @@ export class ProjectWorkspace {
    * QUITTING (or closing the window): the same question changing projects
    * asks. Main waits on the answer, so this always settles.
    *
+   * IT ALSO NEVER REJECTS, and that is a separate promise from settling. Main
+   * waits on the reply with no timeout, and `app.js`'s handler cannot tell a
+   * rejection from a refusal — it has one `ok` to send either way. So an
+   * unexpected throw in here (the dirty test reads the live document, which is
+   * a real thing that can fail) has to resolve to something, and the something
+   * is FALSE: a guard that broke is not permission to throw the user's work
+   * away. That costs a ⌘Q that appears to do nothing, which is recoverable —
+   * main clears its latch on the reply, so the next one asks again — where
+   * defaulting the other way costs the project.
+   *
    * @returns {Promise<boolean>} whether it is safe to go.
    */
   confirmClose() {
@@ -341,6 +351,11 @@ export class ProjectWorkspace {
       this.#stopAutoSave();
       if (!this.isUntitled) await this.#clearRecovery();
       return true;
+    }).catch((err) => {
+      // Loud, not quiet: a ⌘Q that silently declines is indistinguishable from
+      // a wedged app, and the user needs to know to save by hand.
+      this.#fail(t("workspace.failClose"), err);
+      return false;
     });
   }
 
@@ -594,7 +609,7 @@ export class ProjectWorkspace {
     const current = this.#project.location;
     const chosen = await this.#pickLocation(
       "project",
-      this.#project.name || "Untitled",
+      this.#project.name || t("common.untitled"),
       current,
     );
     if (!chosen) return false; // cancelled
@@ -1051,21 +1066,24 @@ export class ProjectWorkspace {
    */
   #writeRecovery({ quiet = false } = {}) {
     return this.#serialize(async () => {
-      this.#stash();
-      const written = projectForFile(this.#project);
+      // The WHOLE body is inside the try, `#stash()` and `projectForFile()`
+      // included — see `#doWrite` for why "a write answers, it doesn't throw"
+      // has to be enforced rather than assumed.
       try {
+        this.#stash();
+        const written = projectForFile(this.#project);
         await this.#bridge.project.recovery.write(
           written,
           this.#project.location,
         );
+        // `#saved` is deliberately untouched: the project's own FILE has not
+        // changed, so the • stands and "discard" is still the truth.
+        this.#stashed = projectSignature(written);
+        return true;
       } catch (err) {
         this.#fail(t("workspace.failSave"), err, { quiet });
         return false;
       }
-      // `#saved` is deliberately untouched: the project's own FILE has not
-      // changed, so the • stands and "discard" is still the truth.
-      this.#stashed = projectSignature(written);
-      return true;
     });
   }
 
@@ -1082,7 +1100,14 @@ export class ProjectWorkspace {
   #serialize(task) {
     const prior = this.#inFlight;
     const run = (async () => {
-      if (prior) await prior; // never rejects — a write answers, it doesn't throw
+      // A write ANSWERS — it resolves false rather than throwing (see
+      // `#doWrite`). The `.catch` is the belt to that brace: were one ever to
+      // reject, awaiting it bare here would reject THIS call too, and every
+      // later one queued behind it, turning one failed write into a chain of
+      // rejected promises — the shape that left the close guard pending.
+      // A failed predecessor is also no reason to refuse a fresh save: each
+      // task takes its own snapshot when its turn comes.
+      if (prior) await prior.catch(() => {});
       return task();
     })();
     this.#inFlight = run;
@@ -1107,24 +1132,32 @@ export class ProjectWorkspace {
    * `#setProjectProperty`) REASSIGNS `#project`. So the snapshot is taken once,
    * written, and signed — and anything that arrived while it was in flight stays
    * dirty, which is exactly what the next write is for.
+   *
+   * A WRITE ANSWERS; IT DOES NOT THROW. Every caller reads a `false` as "it did
+   * not land" and acts on that — `#askUnsaved` treats it as a cancel, the
+   * auto-save tick retires on it. A REJECTION means none of them hear anything:
+   * it propagates out through `#serialize` into whatever was awaiting, and the
+   * close guard's promise is left pending for good. So the whole body sits in
+   * the try, `#stash()` and `projectForFile()` included — they are plain data
+   * work today, which is exactly the kind of "it cannot throw" that stops being
+   * true one refactor later.
    */
   async #doWrite(location, { quiet = false } = {}) {
-    this.#stash(); // the file gets what is on screen, not the last stash
-    const written = projectForFile(this.#project);
-    let res;
     try {
-      res = await this.#bridge.project.save(written, location);
+      this.#stash(); // the file gets what is on screen, not the last stash
+      const written = projectForFile(this.#project);
+      const res = await this.#bridge.project.save(written, location);
+      if (location) this.#project.location = res?.path ?? location;
+      // Both baselines: the file now holds this, and main dropped any stash
+      // that was standing for it — nothing for the next tick to catch up.
+      this.#saved = projectSignature(written);
+      this.#stashed = this.#saved;
+      this.#announce();
+      return true;
     } catch (err) {
       this.#fail(t("workspace.failSave"), err, { quiet });
       return false;
     }
-    if (location) this.#project.location = res?.path ?? location;
-    // Both baselines: the file now holds this, and main dropped any stash that
-    // was standing for it — so there is nothing for the next tick to catch up.
-    this.#saved = projectSignature(written);
-    this.#stashed = this.#saved;
-    this.#announce();
-    return true;
   }
 
   /** Push the current desktops onto the strip — and, with them, what the
@@ -1251,7 +1284,21 @@ export class ProjectWorkspace {
     });
   }
 
-  /** The one save-or-discard-or-cancel question, in its wordings. */
+  /**
+   * The one save-or-discard-or-cancel question, in its wordings.
+   *
+   * THIS PROMISE MUST SETTLE, ALWAYS. `confirmClose()` is awaited by main
+   * through `app:confirm-close`, which has no timeout by design — the user may
+   * sit on this dialog as long as they like — so a promise that never settles
+   * is not a slow answer, it is an app that can never be closed again (main
+   * latches `closePending` until the reply arrives). The dangling path was real:
+   * `PopupManager` fires `onChoose` and DISCARDS what it returns, so an async
+   * callback that rejected — a `save()` that threw rather than answering false —
+   * skipped `resolve` entirely and left this pending for the life of the
+   * process. Hence the explicit catch: a question that broke resolves FALSE,
+   * which cancels the close. Never true — a guard that failed is not permission
+   * to throw the user's work away.
+   */
   #askUnsaved({ title, message, save }) {
     return new Promise((resolve) => {
       PopupManager.choose({
@@ -1261,13 +1308,17 @@ export class ProjectWorkspace {
           { label: t("common.save"), value: "save" },
           { label: t("workspace.discard"), value: "discard", class: "btn--danger" }, // prettier-ignore
         ],
-        onChoose: async (answer) => {
-          if (answer == null) return resolve(false); // cancelled
-          // A save that never landed IS a cancel: the work is still only on
-          // screen, so the action that got here is called off.
-          if (answer === "save" && !(await save())) return resolve(false);
-          resolve(true);
-        },
+        onChoose: (answer) =>
+          (async () => {
+            if (answer == null) return resolve(false); // cancelled
+            // A save that never landed IS a cancel: the work is still only on
+            // screen, so the action that got here is called off.
+            if (answer === "save" && !(await save())) return resolve(false);
+            resolve(true);
+          })().catch((err) => {
+            this.#fail(t("workspace.failSave"), err, { quiet: true });
+            resolve(false);
+          }),
       });
     });
   }

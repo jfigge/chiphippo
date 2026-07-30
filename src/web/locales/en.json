@@ -688,7 +688,27 @@
       "l3": "Checking the build…",
       "l4": "Checking connectivity…",
       "l5": "Simulating…",
-      "l6": "Checking for undriven nets…"
+      "l6": "Checking for undriven nets…",
+      "l7": "Running test {index} of {total}: {name}"
+    },
+    "usage": {
+      "tokens": "Tokens: {parts}",
+      "session": "Session: {parts}",
+      "sessionTitle": "Session total across {sends} — {detail}. Clear resets it.",
+      "sends": {
+        "one": "{count} send",
+        "other": "{count} sends"
+      },
+      "calls": {
+        "one": "{count} call",
+        "other": "{count} calls"
+      },
+      "in": "{n} in",
+      "out": "{n} out",
+      "cacheRead": "{n} cache read",
+      "cacheWrite": "{n} cache write",
+      "uncachedInput": "{n} uncached input",
+      "output": "{n} output"
     },
     "reason": {
       "noProvider": "No AI provider is available in this build.",
@@ -705,12 +725,21 @@
   "desk": {
     "lockWheel": "Lock the desk — the mouse wheel stops moving it ({mod}+L)",
     "unlockWheel": "Unlock the desk — the mouse wheel moves it again ({mod}+L)",
+    "hover": {
+      "pin": "{ref} pin {pin} · {name} → {address}",
+      "floating": "floating",
+      "psuPlus": "+{volts} V",
+      "psuMinus": "0 V",
+      "clockOut": "clock out",
+      "clockGnd": "gnd"
+    },
     "brick": {
       "psu": "power supply",
       "clock": "clock",
       "display": "display"
     },
     "boardPropertiesTitle": "{board} Properties",
+    "partPropertiesTitle": "{part} Properties",
     "wirePropertiesTitle": "Wire Properties",
     "wireColor": "Color",
     "wireLayout": "Layout Method",
@@ -788,6 +817,7 @@
     "failStart": "Could not start the project",
     "failOpen": "Could not open the project",
     "failSave": "Could not save the project",
+    "failClose": "Could not check for unsaved changes — save your work before quitting",
     "failLocation": "Could not choose a location",
     "failDuplicate": "Could not duplicate the desktop",
     "failImport": "Could not import that desktop",
@@ -909,7 +939,7 @@
       "fit": "Fit to screen",
       "zoomOut": "Zoom all the way out (find a lost part)",
       "zoom": "Zoom in / out / reset",
-        "lockDesk": "Lock / unlock desk scrolling"
+      "lockDesk": "Lock / unlock desk scrolling"
     },
     "simulation": {
       "run": "Run / Stop the circuit",

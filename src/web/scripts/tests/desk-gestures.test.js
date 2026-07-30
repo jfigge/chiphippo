@@ -30,6 +30,7 @@ import assert from "node:assert/strict";
 
 import { resetDom } from "./jsdom-setup.js";
 import { DeskDoc } from "../model/desk-doc.js";
+import { PX_PER_UNIT } from "../desk/desk-geometry.js";
 
 const { DeskController } = await import("../components/desk-controller.js");
 
@@ -180,6 +181,75 @@ test("board drag: Option tears the forward chain off and re-groups both halves",
   const g = doc.getBoard("bb2").group;
   assert.ok(g != null && g !== g0, "torn-off pair minted a fresh group id");
   assert.equal(doc.getBoard("bb3").group, g);
+});
+
+test("board drag: a routed bend over the board rides it, live and on the drop", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { surface, controller } = makeDesk(doc, world);
+  controller.addKitAt("full", 0, 0); // bb1 rail@0 · bb2 pins y3..16 · bb3 rail@16
+  const wire = doc.addWire({
+    from: "bb2.a1",
+    to: "bb2.a5",
+    layout: "routed",
+    points: [
+      { x: 20, y: 8 }, // drawn over the pin-board
+      { x: 100, y: 8 }, // out on the bare desk, past the kit's right edge
+    ],
+  });
+  window.dispatchEvent(new window.CustomEvent("chiphippo:doc-changed"));
+  const el = boardEl(surface, "bb2");
+
+  world.x = 5;
+  world.y = 8;
+  fire(el, "pointerdown", { client: [0, 0] });
+  world.x = 5;
+  world.y = 48;
+  fire(el, "pointermove", { client: [40, 40] });
+
+  // Mid-drag the knobs preview the ride — the one over the board has followed
+  // it 40 down, the one over the bare desk has not — with the document itself
+  // still untouched.
+  assert.deepEqual(
+    [...surface.querySelectorAll(".wire-point")].map((k) =>
+      Number(k.getAttribute("cy")),
+    ),
+    [48 * PX_PER_UNIT, 8 * PX_PER_UNIT],
+  );
+  assert.deepEqual(doc.getWire(wire.id).points, [
+    { x: 20, y: 8 },
+    { x: 100, y: 8 },
+  ]);
+
+  fire(el, "pointerup", { client: [40, 40] });
+  assert.deepEqual(doc.getWire(wire.id).points, [
+    { x: 20, y: 48 },
+    { x: 100, y: 8 },
+  ]);
+});
+
+test("board drag: an illegal drop leaves the routing exactly where it was", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { surface, controller } = makeDesk(doc, world);
+  controller.addBoardAt("pins-tiny", 0, 0); // bb1
+  controller.addBoardAt("pins-tiny", 0, 20); // bb2, clear below it
+  const wire = doc.addWire({
+    from: "bb1.a1",
+    to: "bb1.a5",
+    layout: "routed",
+    points: [{ x: 5, y: 5 }],
+  });
+  window.dispatchEvent(new window.CustomEvent("chiphippo:doc-changed"));
+
+  // Drop bb1 straight on top of bb2 — refused, so nothing moves, bends least
+  // of all.
+  drag(boardEl(surface, "bb1"), world, { x: 2, y: 2 }, { x: 2, y: 22 });
+
+  assert.equal(doc.getBoard("bb1").y, 0);
+  assert.deepEqual(doc.getWire(wire.id).points, [{ x: 5, y: 5 }]);
 });
 
 test("board drag: the view tracks the pointer live, before the drop commits", () => {

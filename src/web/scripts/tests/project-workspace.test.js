@@ -1515,6 +1515,109 @@ test("quitting a clean project asks nothing", async () => {
   assert.equal(dialogTitle(), "");
 });
 
+// ── The guard always ANSWERS ─────────────────────────────────────────────────
+// `confirmClose()` is what main waits on before it lets the window go, and it
+// waits with NO TIMEOUT by design — the user is entitled to sit on the question.
+// So a promise that never settles is not a slow answer: main latches
+// `closePending`, refuses every later close, and the app can never be quit
+// again. The dangling path was real — PopupManager fires `onChoose` and
+// DISCARDS what it returns, so an async callback that REJECTED skipped its
+// `resolve` entirely.
+
+/** Resolve to "hung" instead of waiting for ever, so a regression is a FAILED
+    assertion rather than a test run that never finishes. */
+const answered = async (promise) => {
+  const hung = Symbol("hung");
+  const out = await Promise.race([
+    promise,
+    (async () => {
+      await settle();
+      await settle();
+      return hung;
+    })(),
+  ]);
+  return out === hung ? "hung" : out;
+};
+
+/** Make the live document unreadable for the next `times` reads — the shape of
+    "something in the write path threw instead of answering". `#stash()` and the
+    dirty test both go through `toJSON()`, so this reaches either. */
+const breakDocument = (h, times = 1) => {
+  const real = h.doc.toJSON.bind(h.doc);
+  let left = times;
+  h.doc.toJSON = () => {
+    if (left-- <= 0) return real();
+    throw new Error("the document could not be read");
+  };
+};
+
+test("a save that THROWS is a cancel, not a hung close guard", async () => {
+  const h = await harness();
+  h.doc.load(someDesign());
+
+  const closing = h.workspace.confirmClose();
+  await settle();
+  assert.match(dialogTitle(), /Unsaved changes/);
+  // Broken only now, so the throw lands in the SAVE rather than in the dirty
+  // test that put the question up. The bridge's own failure is already caught
+  // and reported as false; this is the other half — `#stash()` reads the live
+  // document, and a throw there used to escape `#doWrite` and reject all the
+  // way out through `#serialize`, past the `resolve` in `#askUnsaved`.
+  breakDocument(h);
+  clickButton("Save");
+
+  assert.equal(
+    await answered(closing),
+    false,
+    "it answers — and answers FALSE: a guard that broke is not permission " +
+      "to throw the work away",
+  );
+});
+
+test("the close guard answers even when it cannot read the document at all", async () => {
+  // The throw before any dialog: `confirmClose` asks `dirty` first, which reads
+  // the live document. That used to REJECT out of `confirmClose` — and app.js
+  // could not tell a rejection from a refusal, so it defaulted to letting the
+  // close proceed. A guard that failed was silently discarding the project.
+  const h = await harness();
+  h.doc.load(someDesign());
+  breakDocument(h, 99);
+  assert.equal(await answered(h.workspace.confirmClose()), false);
+});
+
+test("a write that rejected does not poison the next one", async () => {
+  const h = await harness();
+  const at = await homed(h);
+  h.doc.load(someDesign());
+
+  // `#serialize` chains each write behind the last. A bare `await prior` on a
+  // rejected predecessor rejects THIS call too — one failure becoming a chain
+  // of them, which is the shape that left the guard pending.
+  breakDocument(h);
+
+  assert.equal(await answered(h.workspace.save()), false, "the first fails");
+  await settle();
+  assert.equal(
+    await answered(h.workspace.save()),
+    true,
+    "and the one behind it still goes through on its own snapshot",
+  );
+  await settle();
+  assert.equal(h.stored(at).tabs[0].doc.boards.length, 1);
+});
+
+test("a bridge write that fails is reported, and still answers false", async () => {
+  // The ordinary failure — unchanged by the above, and worth holding: the
+  // difference between "it did not land" and "nobody heard" is the whole point.
+  const h = await harness();
+  h.doc.load(someDesign());
+  h.control.failWrites = true;
+  const closing = h.workspace.confirmClose();
+  await settle();
+  clickButton("Save");
+  assert.equal(await answered(closing), false);
+});
+
 // ── Opening another project ──────────────────────────────────────────────────
 
 test("opening a project swaps the whole desk", async () => {

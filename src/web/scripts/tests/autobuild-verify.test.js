@@ -23,6 +23,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import { applyCatalog } from "../i18n.js";
 import { compileNetlist } from "../model/autobuild.js";
 import {
   verifyBuild,
@@ -443,6 +444,45 @@ test("every gate reports itself, and L7 reports each test by name", () => {
     steps.every((s) => typeof s.label === "string" && s.label),
     "every step carries something showable",
   );
+});
+
+test("every gate label goes through the catalog, L7 included", (t) => {
+  // L7 was the one that did not: L3–L6 have been `tf("ai.gate.l…")` since the
+  // ladder was written, while L7 built its label with a template literal — and
+  // the file-level exclusion in tests/no-hardcoded-strings.test.js, whose own
+  // reason says "the ladder's own progress labels ARE localized", is what kept
+  // that invisible. The FAULT messages stay English by decision (they are the
+  // model's repair instruction), which is what that exclusion is really for.
+  applyCatalog({
+    active: "xx",
+    lang: "xx",
+    messages: {
+      ai: {
+        gate: {
+          l3: "[l3]",
+          l4: "[l4]",
+          l5: "[l5]",
+          l6: "[l6]",
+          l7: "[l7 {index}/{total} {name}]",
+        },
+      },
+    },
+  });
+  t.after(() => applyCatalog({}));
+
+  const { steps } = collect(verifySteps(compile(ADDER), ADDER));
+  assert.deepEqual(
+    steps.filter((s) => s.gate !== "L7").map((s) => s.label),
+    ["[l3]", "[l4]", "[l5]", "[l6]"],
+  );
+  const l7 = steps.filter((s) => s.gate === "L7");
+  assert.equal(l7[0].label, `[l7 1/${ADDER.tests.length} ${ADDER.tests[0].name}]`); // prettier-ignore
+  assert.match(
+    l7[1].label,
+    /^\[l7 2\//,
+    "the label counts from 1 while `index` stays 0-based for the caller",
+  );
+  assert.equal(l7[1].index, 1);
 });
 
 test("a spec with no tests yields no L7 steps at all", () => {

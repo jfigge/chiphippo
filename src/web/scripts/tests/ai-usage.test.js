@@ -19,6 +19,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import { applyCatalog } from "../i18n.js";
 import { addUsage, formatTotal, formatUsage } from "../ai/usage.js";
 
 // ── addUsage ────────────────────────────────────────────────────────────────
@@ -123,4 +124,47 @@ test("an empty total renders neither text nor tooltip", () => {
       JSON.stringify(u),
     );
   }
+});
+
+// ── Both readouts go through the catalog ────────────────────────────────────
+// Every assertion above runs with NO catalog loaded, so it proves the English
+// FALLBACKS — which is what these lines were before, hardcoded. These prove
+// the seam is really there, and that the NUMBER moves with the words: a
+// hand-grouped "5,200" shown to a German reader states five point two.
+
+test("every word and every separator follows the active locale", (t) => {
+  applyCatalog({
+    active: "de", // its thousands separator is "." and its decimal ","
+    lang: "de",
+    messages: {
+      ai: {
+        usage: {
+          tokens: "[T {parts}]",
+          session: "[S {parts}]",
+          sessionTitle: "[{sends} — {detail}]",
+          sends: { one: "{count} Anfrage", other: "{count} Anfragen" },
+          calls: { one: "{count} Aufruf", other: "{count} Aufrufe" },
+          in: "{n} rein",
+          out: "{n} raus",
+          cacheRead: "{n} Cache gelesen",
+          uncachedInput: "{n} ungecacht",
+          output: "{n} Ausgabe",
+        },
+      },
+    },
+  });
+  // Module state outlives a test — put the rest of the file back on English.
+  t.after(() => applyCatalog({}));
+
+  assert.equal(
+    formatUsage({ input: 1203, cacheRead: 11776, output: 2412 }, 3),
+    "[T 1.203 rein · 11.776 Cache gelesen · 2.412 raus · 3 Aufrufe]",
+  );
+  const { text, title } = formatTotal({ input: 1200, cacheRead: 4000, output: 340 }, 1); // prettier-ignore
+  assert.equal(text, "[S 5.200 rein · 340 raus]");
+  assert.equal(
+    title,
+    "[1 Anfrage — 1.200 ungecacht · 4.000 Cache gelesen · 340 Ausgabe]",
+    "one send picks the singular form, and the count phrase is built whole",
+  );
 });

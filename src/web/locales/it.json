@@ -688,7 +688,27 @@
       "l3": "Verifica del montaggio…",
       "l4": "Verifica dei collegamenti…",
       "l5": "Simulazione…",
-      "l6": "Ricerca di net non pilotati…"
+      "l6": "Ricerca di net non pilotati…",
+      "l7": "Esecuzione del test {index} di {total}: {name}"
+    },
+    "usage": {
+      "tokens": "Token: {parts}",
+      "session": "Sessione: {parts}",
+      "sessionTitle": "Totale della sessione su {sends} — {detail}. Cancella lo azzera.",
+      "sends": {
+        "one": "{count} invio",
+        "other": "{count} invii"
+      },
+      "calls": {
+        "one": "{count} chiamata",
+        "other": "{count} chiamate"
+      },
+      "in": "{n} ingresso",
+      "out": "{n} uscita",
+      "cacheRead": "{n} lettura cache",
+      "cacheWrite": "{n} scrittura cache",
+      "uncachedInput": "{n} ingresso non in cache",
+      "output": "{n} uscita"
     },
     "reason": {
       "noProvider": "In questa versione non è disponibile alcun fornitore di IA.",
@@ -705,12 +725,21 @@
   "desk": {
     "lockWheel": "Blocca il piano di lavoro: la rotellina non lo muove più ({mod}+L)",
     "unlockWheel": "Sblocca il piano di lavoro: la rotellina lo muove di nuovo ({mod}+L)",
+    "hover": {
+      "pin": "{ref} pin {pin} · {name} → {address}",
+      "floating": "flottante",
+      "psuPlus": "+{volts} V",
+      "psuMinus": "0 V",
+      "clockOut": "uscita clock",
+      "clockGnd": "massa"
+    },
     "brick": {
       "psu": "alimentatore",
       "clock": "clock",
       "display": "display"
     },
     "boardPropertiesTitle": "Proprietà di {board}",
+    "partPropertiesTitle": "Proprietà di {part}",
     "wirePropertiesTitle": "Proprietà del filo",
     "wireColor": "Colore",
     "wireLayout": "Metodo di tracciato",
@@ -788,6 +817,7 @@
     "failStart": "Non è stato possibile avviare il progetto",
     "failOpen": "Non è stato possibile aprire il progetto",
     "failSave": "Non è stato possibile salvare il progetto",
+    "failClose": "Non è stato possibile verificare le modifiche non salvate: salva il lavoro prima di uscire",
     "failLocation": "Non è stato possibile scegliere una posizione",
     "failDuplicate": "Non è stato possibile duplicare la scrivania",
     "failImport": "Non è stato possibile importare quella scrivania",
@@ -909,7 +939,7 @@
       "fit": "Adatta alla finestra",
       "zoomOut": "Riduci al massimo (ritrova un componente perduto)",
       "zoom": "Ingrandisci / riduci / ripristina",
-        "lockDesk": "Blocca / sblocca lo scorrimento del piano di lavoro"
+      "lockDesk": "Blocca / sblocca lo scorrimento del piano di lavoro"
     },
     "simulation": {
       "run": "Esegui / arresta il circuito",

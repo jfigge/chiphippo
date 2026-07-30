@@ -24,6 +24,10 @@
 // `{id,kind,ref,board,anchor,params,x,y}`), so a test builds a scene as data.
 // A missing/unresolvable part contributes nothing — it never throws.
 
+// `tf`, not `t`: this is model code, read under `node --test` with no catalog
+// loaded, so every string carries its English along (the build-plan.js rule —
+// see catalog/labels.js).
+import { tf } from "../i18n.js";
 import { formatAddress, holePosition, parseAddress } from "./breadboard.js";
 // holePosition drives partPinsWorld below; addressWorld uses the canonical
 // worldOfAddress from occupancy.
@@ -299,15 +303,26 @@ function pinHitAt(boards, components, world) {
         const y = comp.y + t.dy;
         if (Math.hypot(world.x - x, world.y - y) > PIN_HIT_RADIUS) continue;
         const address = formatAddress(comp.id, t.id);
-        let note = "";
+        // What this terminal IS, in the reader's own language — the address
+        // beside it already says what it is CALLED. A voltage keeps its unit
+        // symbol, which is the same in all seven.
+        let note = null;
         if (comp.kind === "psu") {
-          note = t.id === "+" ? ` · +${comp.params.volts} V` : " · 0 V";
+          note =
+            t.id === "+"
+              ? tf("desk.hover.psuPlus", "+{volts} V", {
+                  volts: comp.params.volts,
+                })
+              : tf("desk.hover.psuMinus", "0 V");
         } else if (comp.kind === "clock") {
-          note = t.id === "out" ? " · clock out" : " · gnd";
+          note =
+            t.id === "out"
+              ? tf("desk.hover.clockOut", "clock out")
+              : tf("desk.hover.clockGnd", "gnd");
         }
         return {
           key: `${comp.id}#${t.id}`,
-          label: `${address}${note}`,
+          label: note ? `${address} · ${note}` : address,
           address,
           x,
           y,
@@ -322,8 +337,15 @@ function pinHitAt(boards, components, world) {
       const name = def.pins.find((p) => p.n === pin)?.name ?? "?";
       return {
         key: `${comp.id}#${pin}`,
-        // A floating lead is still hoverable — it just has no net to name.
-        label: `${comp.ref} pin ${pin} · ${name} → ${address ?? "floating"}`,
+        // The ref and the pin NAME are the part's own identifiers and stay as
+        // the catalog spells them; the sentence around them is the desk's.
+        label: tf("desk.hover.pin", "{ref} pin {pin} · {name} → {address}", {
+          ref: comp.ref,
+          pin,
+          name,
+          // A floating lead is still hoverable — it just has no net to name.
+          address: address ?? tf("desk.hover.floating", "floating"),
+        }),
         address, // a pin resolves to the net of its seated hole
         x,
         y,

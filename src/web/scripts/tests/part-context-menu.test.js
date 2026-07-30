@@ -24,8 +24,17 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import fs from "node:fs";
+
 import { resetDom } from "./jsdom-setup.js";
+import { applyCatalog } from "../i18n.js";
 import { DeskDoc, WIRE_COLORS } from "../model/desk-doc.js";
+
+/** A shipped catalog, read the same way jsdom-setup reads en.json. */
+const catalog = (lang) =>
+  JSON.parse(
+    fs.readFileSync(new URL(`../../locales/${lang}.json`, import.meta.url), "utf8"), // prettier-ignore
+  );
 
 const { DeskController } = await import("../components/desk-controller.js");
 const { PopupManager } = await import("../popup-manager.js");
@@ -171,6 +180,78 @@ test("a chip's Properties dialog shows only Name/Description, no separator", () 
   assert.equal(doc.getComponent(id).name, "U1");
   assert.equal(doc.getComponent(id).description, "the reset NAND");
   assert.ok(changed > 0, "rides the doc-changed commit seam");
+});
+
+test("a part's Properties dialog is titled through the catalog, part name and all", (t) => {
+  // It used to be built as `${def.title} Properties` — the def's `title` is the
+  // ENGLISH SOURCE the catalog translates through, so a German user got an
+  // English part name under an English word, in a dialog whose every other row
+  // was translated. The BOARD dialog beside it had been doing this correctly
+  // all along, which is the shape this now follows.
+  const en = catalog("en");
+  const de = catalog("de");
+  resetDom();
+  t.after(() => {
+    PopupManager.close();
+    applyCatalog({ active: "en", lang: "en", messages: en, fallback: en });
+  });
+
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const { surface, controller } = makeDesk(doc);
+  controller.addComponentAt("74LS00", "bb1", "e5");
+
+  // The menu item is itself translated, so it cannot be found by an English
+  // label once the catalog has moved — ask the catalog what it says.
+  const openPropsIn = (cat) => {
+    PopupManager.close();
+    rightClick(surface.querySelector(".part-chip"));
+    [...document.querySelectorAll(".popup-menu-item")]
+      .find((b) => b.textContent.trim() === cat.desk.menu.properties)
+      .click();
+    return document.querySelector(".popup-title").textContent;
+  };
+
+  assert.equal(
+    openPropsIn(en),
+    "Quad 2-input NAND Properties",
+    "English: the catalog's own wording, unchanged",
+  );
+
+  applyCatalog({ active: "de", lang: "de", messages: de, fallback: en });
+  assert.equal(
+    openPropsIn(de),
+    "Eigenschaften: Vierfach-NAND, 2 Eingänge",
+    "German: BOTH the part's name and the word around it",
+  );
+});
+
+test("the annotation placement ghost is labelled in the catalog's words", (t) => {
+  // The ghost is the palette pick the user just made, so it has to read as the
+  // thing they clicked — it used to say a hardcoded "Label" / "Note" beside a
+  // palette row that was translated.
+  const en = catalog("en");
+  const de = catalog("de");
+  resetDom();
+  t.after(() =>
+    applyCatalog({ active: "en", lang: "en", messages: en, fallback: en }),
+  );
+
+  const { controller } = makeDesk(new DeskDoc(null));
+  const ghostText = () =>
+    document.querySelector(".annotation-ghost .annotation-text").textContent;
+
+  controller.armAnnotationPlacement("label");
+  assert.equal(ghostText(), en.palette.annotation.label);
+  controller.armAnnotationPlacement("note");
+  assert.equal(ghostText(), en.palette.annotation.note);
+
+  applyCatalog({ active: "de", lang: "de", messages: de, fallback: en });
+  controller.armAnnotationPlacement("label");
+  assert.equal(ghostText(), "Beschriftung");
+  controller.armAnnotationPlacement("note");
+  assert.equal(ghostText(), "Notiz");
+  controller.cancelPlacement();
 });
 
 test("the LED's Properties dialog shows Name/Description, a separator, then Color", () => {

@@ -688,7 +688,27 @@
       "l3": "Comprobando el montaje…",
       "l4": "Comprobando la conectividad…",
       "l5": "Simulando…",
-      "l6": "Buscando redes sin excitar…"
+      "l6": "Buscando redes sin excitar…",
+      "l7": "Ejecutando la prueba {index} de {total}: {name}"
+    },
+    "usage": {
+      "tokens": "Tokens: {parts}",
+      "session": "Sesión: {parts}",
+      "sessionTitle": "Total de la sesión en {sends} — {detail}. Borrar lo reinicia.",
+      "sends": {
+        "one": "{count} envío",
+        "other": "{count} envíos"
+      },
+      "calls": {
+        "one": "{count} llamada",
+        "other": "{count} llamadas"
+      },
+      "in": "{n} entrada",
+      "out": "{n} salida",
+      "cacheRead": "{n} lectura de caché",
+      "cacheWrite": "{n} escritura de caché",
+      "uncachedInput": "{n} entrada sin caché",
+      "output": "{n} salida"
     },
     "reason": {
       "noProvider": "No hay ningún proveedor de IA disponible en esta versión.",
@@ -705,12 +725,21 @@
   "desk": {
     "lockWheel": "Bloquear el escritorio: la rueda del ratón deja de moverlo ({mod}+L)",
     "unlockWheel": "Desbloquear el escritorio: la rueda del ratón vuelve a moverlo ({mod}+L)",
+    "hover": {
+      "pin": "{ref} pin {pin} · {name} → {address}",
+      "floating": "flotante",
+      "psuPlus": "+{volts} V",
+      "psuMinus": "0 V",
+      "clockOut": "salida de reloj",
+      "clockGnd": "masa"
+    },
     "brick": {
       "psu": "fuente de alimentación",
       "clock": "reloj",
       "display": "display"
     },
     "boardPropertiesTitle": "Propiedades de {board}",
+    "partPropertiesTitle": "Propiedades de {part}",
     "wirePropertiesTitle": "Propiedades del cable",
     "wireColor": "Color",
     "wireLayout": "Método de trazado",
@@ -788,6 +817,7 @@
     "failStart": "No se pudo iniciar el proyecto",
     "failOpen": "No se pudo abrir el proyecto",
     "failSave": "No se pudo guardar el proyecto",
+    "failClose": "No se pudieron comprobar los cambios sin guardar: guarda tu trabajo antes de salir",
     "failLocation": "No se pudo elegir una ubicación",
     "failDuplicate": "No se pudo duplicar el escritorio",
     "failImport": "No se pudo importar ese escritorio",
@@ -909,7 +939,7 @@
       "fit": "Ajustar a la pantalla",
       "zoomOut": "Alejar todo lo posible (encontrar un componente perdido)",
       "zoom": "Acercar / alejar / restablecer",
-        "lockDesk": "Bloquear / desbloquear el desplazamiento del escritorio"
+      "lockDesk": "Bloquear / desbloquear el desplazamiento del escritorio"
     },
     "simulation": {
       "run": "Ejecutar / detener el circuito",

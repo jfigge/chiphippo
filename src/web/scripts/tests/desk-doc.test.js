@@ -388,6 +388,80 @@ test("normalizeDocument drops a part that does not seat on its board", () => {
   );
 });
 
+test("normalizeDocument drops a board that overlaps one already loaded", () => {
+  // The one invariant the loader used to skip. `canPlace` refuses an overlap
+  // at placement time and `canMoveBoardsBy` at drop time, so the app cannot
+  // produce this — but a hand-edited file could, and the result was a DEADLOCK:
+  // every drag of either strip re-checked against the other and was refused,
+  // so neither could ever be moved, with no cue but a drop that would not take.
+  const doc = normalizeDocument({
+    boards: [
+      { id: "bb1", type: "pins-full", x: 0, y: 0 },
+      { id: "bb2", type: "pins-full", x: 1, y: 1 }, // straight through bb1
+      { id: "bb3", type: "pins-full", x: 0, y: 20 }, // clear of both
+    ],
+  });
+  assert.deepEqual(
+    doc.boards.map((b) => b.id),
+    ["bb1", "bb3"],
+    "first wins, as every other dedupe here does",
+  );
+  // And the desk it leaves behind is one you can actually rearrange.
+  const live = new DeskDoc(doc);
+  assert.equal(live.canMoveBoardsBy(["bb1"], 0, 1), true);
+});
+
+test("normalizeDocument: flush boards are NOT an overlap — that is a mating", () => {
+  // The whole dovetail rule depends on strips touching edge-to-edge, so the
+  // check has to be the same strict one `canPlace` uses. A kit is three strips
+  // stacked flush; treating that as an overlap would eat every saved desk.
+  const kit = new DeskDoc(null);
+  kit.addKit("full", 0, 0);
+  const raw = kit.toJSON();
+  assert.equal(raw.boards.length, 3);
+  assert.equal(
+    normalizeDocument(raw).boards.length,
+    3,
+    "a placed kit round-trips whole",
+  );
+});
+
+test("normalizeDocument: an overlapping board takes its own contents with it", () => {
+  // Dropping the strip has to drop what was seated on it and wired to it too,
+  // or the document comes back referring to a board that is not there. That
+  // falls out of the existing machinery (`boardIds`, `validEndpoint`) — this
+  // pins that it really does.
+  const doc = normalizeDocument({
+    boards: [
+      { id: "bb1", type: "pins-full", x: 0, y: 0 },
+      { id: "bb2", type: "pins-full", x: 2, y: 2 },
+    ],
+    components: [
+      { id: "c1", kind: "chip", ref: "74LS00", board: "bb1", anchor: "e5" },
+      { id: "c2", kind: "chip", ref: "74LS00", board: "bb2", anchor: "e5" },
+    ],
+    wires: [
+      { id: "w1", from: "bb1.a1", to: "bb1.a2", color: "red" },
+      { id: "w2", from: "bb2.a1", to: "bb2.a2", color: "red" },
+      { id: "w3", from: "bb1.a3", to: "bb2.a3", color: "red" },
+    ],
+  });
+  assert.deepEqual(
+    doc.boards.map((b) => b.id),
+    ["bb1"],
+  );
+  assert.deepEqual(
+    doc.components.map((c) => c.id),
+    ["c1"],
+    "the chip on the dropped strip goes with it",
+  );
+  assert.deepEqual(
+    doc.wires.map((w) => w.id),
+    ["w1"],
+    "and so does every wire with an end on it, crossing ones included",
+  );
+});
+
 test("normalizeDocument drops a part whose anchor defies its footprint", () => {
   // A DIP straddles the trench, so its anchor is a row-e hole. Row a is not a
   // seat a chip can take, and `typeof anchor === "string"` never noticed.
@@ -785,6 +859,67 @@ test("moveBoardsBy: guards unknown ids, junk deltas, and overlaps", () => {
       [40, null],
     ],
   );
+});
+
+/** Two full kits, well clear of one another, and one routed wire whose four
+    bends sit over four different things: the pin-board it is wired to, the
+    bare desk, that kit's bottom rail, and the OTHER kit entirely. */
+function docWithRoutedBends() {
+  const doc = new DeskDoc(null);
+  doc.addKit("full", 0, 0); // bb1 rail y0..3 · bb2 pins y3..16 · bb3 rail y16..19
+  doc.addKit("full", 0, 30); // bb4 y30..33 · bb5 pins y33..46 · bb6 y46..49
+  doc.addWire({
+    from: "bb2.a1",
+    to: "bb2.a5",
+    layout: "routed",
+    points: [
+      { x: 20, y: 8 }, // over bb2
+      { x: 100, y: 8 }, // out in the free desk to the right — over nothing
+      { x: 20, y: 17 }, // over bb3, the same kit's bottom rail
+      { x: 20, y: 34 }, // over bb5, the other kit
+    ],
+  });
+  return doc;
+}
+
+test("wirePointsOverBoards: the bends drawn over a set ride it, PER POINT", () => {
+  const doc = docWithRoutedBends();
+
+  // Only the two over the named strips — a wire carries some of its bends and
+  // not others, which is the whole point of the rule being geometric.
+  assert.deepEqual([...doc.wirePointsOverBoards(["bb2", "bb3"])], [["w1", [0, 2]]]); // prettier-ignore
+  assert.deepEqual([...doc.wirePointsOverBoards(["bb5"])], [["w1", [3]]]);
+  // A strip with nothing drawn over it carries nothing, and neither does an
+  // empty set. Wires with no riders are left out of the map entirely.
+  assert.equal(doc.wirePointsOverBoards(["bb1"]).size, 0);
+  assert.equal(doc.wirePointsOverBoards([]).size, 0);
+});
+
+test("moveBoardsBy: a bend over the moving strips travels with them", () => {
+  const doc = docWithRoutedBends();
+  doc.moveBoardsBy(["bb1", "bb2", "bb3"], 5, 7);
+
+  assert.deepEqual(doc.wires[0].points, [
+    { x: 25, y: 15 }, // rode bb2
+    { x: 100, y: 8 }, // over nothing: the gap changed size, the bend stays
+    { x: 25, y: 24 }, // rode bb3
+    { x: 20, y: 34 }, // over the kit that did NOT move
+  ]);
+});
+
+test("moveBoardsBy: the riders are read BEFORE the strips move", () => {
+  const doc = docWithRoutedBends();
+  // Slide the first kit RIGHT, far enough that it lands on top of the bend
+  // that was out in the free desk. A bend rides because of where it sat when
+  // the move began, never because of where the strip ends up — otherwise a
+  // board could scoop up routing it was never under.
+  doc.moveBoardsBy(["bb1", "bb2", "bb3"], 40, 0); // bb2 now spans x40..104
+  assert.deepEqual(doc.wires[0].points, [
+    { x: 60, y: 8 }, // rode bb2
+    { x: 100, y: 8 }, // the strip arrived under it — it still stays
+    { x: 60, y: 17 }, // rode bb3
+    { x: 20, y: 34 },
+  ]);
 });
 
 test("groupMembers: the whole kit for a grouped strip, itself for a loose one", () => {

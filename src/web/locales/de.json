@@ -688,7 +688,27 @@
       "l3": "Der Aufbau wird geprüft…",
       "l4": "Die Verbindungen werden geprüft…",
       "l5": "Simulation läuft…",
-      "l6": "Es wird nach ungetriebenen Netzen gesucht…"
+      "l6": "Es wird nach ungetriebenen Netzen gesucht…",
+      "l7": "Test {index} von {total} wird ausgeführt: {name}"
+    },
+    "usage": {
+      "tokens": "Tokens: {parts}",
+      "session": "Sitzung: {parts}",
+      "sessionTitle": "Sitzungssumme über {sends} — {detail}. Löschen setzt sie zurück.",
+      "sends": {
+        "one": "{count} Anfrage",
+        "other": "{count} Anfragen"
+      },
+      "calls": {
+        "one": "{count} Aufruf",
+        "other": "{count} Aufrufe"
+      },
+      "in": "{n} Eingabe",
+      "out": "{n} Ausgabe",
+      "cacheRead": "{n} Cache gelesen",
+      "cacheWrite": "{n} Cache geschrieben",
+      "uncachedInput": "{n} ungecachte Eingabe",
+      "output": "{n} Ausgabe"
     },
     "reason": {
       "noProvider": "In dieser Version ist kein KI-Anbieter verfügbar.",
@@ -705,12 +725,21 @@
   "desk": {
     "lockWheel": "Arbeitsfläche sperren — das Mausrad bewegt sie nicht mehr ({mod}+L)",
     "unlockWheel": "Arbeitsfläche entsperren — das Mausrad bewegt sie wieder ({mod}+L)",
+    "hover": {
+      "pin": "{ref} Pin {pin} · {name} → {address}",
+      "floating": "unbeschaltet",
+      "psuPlus": "+{volts} V",
+      "psuMinus": "0 V",
+      "clockOut": "Taktausgang",
+      "clockGnd": "Masse"
+    },
     "brick": {
       "psu": "Netzteil",
       "clock": "Taktgeber",
       "display": "Anzeige"
     },
     "boardPropertiesTitle": "Eigenschaften: {board}",
+    "partPropertiesTitle": "Eigenschaften: {part}",
     "wirePropertiesTitle": "Drahteigenschaften",
     "wireColor": "Farbe",
     "wireLayout": "Verlaufsart",
@@ -788,6 +817,7 @@
     "failStart": "Das Projekt konnte nicht gestartet werden",
     "failOpen": "Das Projekt konnte nicht geöffnet werden",
     "failSave": "Das Projekt konnte nicht gespeichert werden",
+    "failClose": "Ungespeicherte Änderungen konnten nicht geprüft werden — speichern Sie Ihre Arbeit vor dem Beenden",
     "failLocation": "Es konnte kein Ort gewählt werden",
     "failDuplicate": "Das Arbeitsblatt konnte nicht dupliziert werden",
     "failImport": "Dieses Arbeitsblatt konnte nicht importiert werden",
@@ -909,7 +939,7 @@
       "fit": "An Fenster anpassen",
       "zoomOut": "Ganz herauszoomen (ein verlorenes Bauteil finden)",
       "zoom": "Vergrößern / verkleinern / zurücksetzen",
-        "lockDesk": "Scrollen der Arbeitsfläche sperren / entsperren"
+      "lockDesk": "Scrollen der Arbeitsfläche sperren / entsperren"
     },
     "simulation": {
       "run": "Schaltung starten / stoppen",

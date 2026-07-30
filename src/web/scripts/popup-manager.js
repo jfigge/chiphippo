@@ -31,6 +31,34 @@ const state = {
   queue: [], // popups waiting behind the active one — QUEUED, never dropped
 };
 
+/**
+ * Run one of a popup's callbacks, and REPORT a failure rather than dropping it.
+ *
+ * Every callback here is fired for effect and its return value discarded, which
+ * for an `async` one means a rejection has nowhere to go: the popup closes, the
+ * caller's own bookkeeping never runs, and nothing anywhere says so. That is not
+ * hypothetical — it is how the close guard came to hang. `ProjectWorkspace
+ * #askUnsaved` wraps its `onChoose` in a promise, and a `save()` that threw
+ * instead of answering skipped the `resolve`, leaving main waiting on a reply
+ * that could never arrive (there is deliberately no timeout on it, so the app
+ * could not be closed again at all).
+ *
+ * The callback's OWN correctness is still its own business — this cannot invent
+ * the answer it failed to give. What it does is make the failure loud, so the
+ * next one is a console line instead of a wedged app.
+ */
+function fire(fn, ...args) {
+  if (typeof fn !== "function") return;
+  try {
+    const out = fn(...args);
+    if (out && typeof out.then === "function") {
+      out.then(null, (err) => console.error("[popup] callback failed:", err));
+    }
+  } catch (err) {
+    console.error("[popup] callback failed:", err);
+  }
+}
+
 /** A close "×" glyph for a dialog()'s header button. */
 const CLOSE_SVG =
   '<svg viewBox="0 0 16 16" width="13" height="13" fill="none" ' +
@@ -106,7 +134,7 @@ function menuItemNode(item, ctx) {
           return;
         }
         ctx.close();
-        item.onSelect?.();
+        fire(item.onSelect);
       },
     },
     [
@@ -146,7 +174,7 @@ function menuItemNode(item, ctx) {
       const row = event.currentTarget.closest(".popup-menu-row");
       const card = row?.parentElement;
       row?.remove();
-      item.onRemove();
+      fire(item.onRemove);
       if (card && !card.querySelector(".popup-menu-item")) {
         const label = card.dataset.emptyLabel;
         if (label) card.append(emptyMenuItem(label));
@@ -268,7 +296,7 @@ export const PopupManager = {
       // broadcast — a stateful dialog QUEUED behind another popup would reset
       // its guard when the OTHER popup closed (just before it mounts), leaving
       // it visible-but-unguarded and stackable.
-      active.popup.onClose?.();
+      fire(active.popup.onClose);
       // The un-scoped broadcast is retained for any incidental listener, but the
       // guard reset above no longer depends on it.
       window.dispatchEvent(new CustomEvent("chiphippo:popup-closed"));
@@ -446,7 +474,7 @@ export const PopupManager = {
   } = {}) {
     const done = (fn) => () => {
       this.close();
-      fn?.();
+      fire(fn);
     };
 
     // A destructive confirm (btn--danger) autofocuses Cancel, not Confirm, so a
@@ -525,7 +553,7 @@ export const PopupManager = {
   } = {}) {
     const done = (value) => () => {
       this.close();
-      onChoose?.(value);
+      fire(onChoose, value);
     };
     const element = el(
       "div",
@@ -600,11 +628,11 @@ export const PopupManager = {
     const submit = () => {
       const text = input.value.trim();
       this.close();
-      onConfirm?.(text);
+      fire(onConfirm, text);
     };
     const cancel = () => {
       this.close();
-      onCancel?.();
+      fire(onCancel);
     };
 
     input.addEventListener("keydown", (event) => {
@@ -709,7 +737,7 @@ export const PopupManager = {
             text: okLabel,
             onClick: () => {
               this.close();
-              onClose?.();
+              fire(onClose);
             },
             "data-autofocus": true,
           }),
@@ -721,7 +749,7 @@ export const PopupManager = {
       element,
       onMaskClick: () => {
         this.close();
-        onClose?.();
+        fire(onClose);
       },
     });
   },

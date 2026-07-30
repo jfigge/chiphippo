@@ -32,10 +32,18 @@
 // four buckets map one-to-one onto the console's price rows for anyone who
 // wants to do the multiplication.
 
+// `tf`, not `t`: this module is pure and its test imports it with no catalog
+// loaded, so every string carries its English along (the build-plan.js rule).
+import { formatNumber, tf } from "../i18n.js";
+
 const FIELDS = ["input", "output", "cacheWrite", "cacheRead"];
 
-/** Thousands separators, without dragging in locale-dependent formatting. */
-const group = (n) => String(n).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+/** Thousands separators, IN THE READER'S OWN CONVENTION. This used to group by
+    hand to avoid "dragging in locale-dependent formatting" — but once the words
+    around the number are translated, a hand-grouped `5,200` shown to a German
+    reader states five point two. The separator is part of the number's meaning,
+    not decoration on it. */
+const group = (n) => formatNumber(n);
 
 /** A field's value, or 0 — usage objects carry only the fields they know. */
 const at = (usage, key) => (Number.isFinite(usage?.[key]) ? usage[key] : 0);
@@ -74,17 +82,24 @@ export function addUsage(a, b) {
  * @returns {string} "" when there is nothing to report.
  */
 export function formatUsage(usage, calls = 1) {
+  // Written out rather than driven from a table: a LITERAL key is one the
+  // catalog guard can check (tests/i18n-catalogs.test.js reads literals only),
+  // and this module's own test runs with no catalog, so it proves the
+  // fallbacks and nothing about the keys.
   const parts = [];
-  const add = (key, label) => {
-    if (at(usage, key) > 0) parts.push(`${group(usage[key])} ${label}`);
-  };
-  add("input", "in");
-  add("cacheRead", "cache read");
-  add("cacheWrite", "cache write");
-  add("output", "out");
+  const n = (key) => ({ n: group(usage[key]) });
+  if (at(usage, "input") > 0) parts.push(tf("ai.usage.in", "{n} in", n("input"))); // prettier-ignore
+  if (at(usage, "cacheRead") > 0) parts.push(tf("ai.usage.cacheRead", "{n} cache read", n("cacheRead"))); // prettier-ignore
+  if (at(usage, "cacheWrite") > 0) parts.push(tf("ai.usage.cacheWrite", "{n} cache write", n("cacheWrite"))); // prettier-ignore
+  if (at(usage, "output") > 0) parts.push(tf("ai.usage.out", "{n} out", n("output"))); // prettier-ignore
   if (!parts.length) return "";
-  if (calls > 1) parts.push(`${calls} calls`);
-  return `Tokens: ${parts.join(" · ")}`;
+  // Only ever pushed above one, so the fallback needs no singular — but the
+  // catalog entry is still a plural object, since a language may inflect at a
+  // boundary English does not.
+  if (calls > 1) {
+    parts.push(tf("ai.usage.calls", "{count} calls", { count: calls }));
+  }
+  return tf("ai.usage.tokens", "Tokens: {parts}", { parts: parts.join(" · ") });
 }
 
 /**
@@ -105,22 +120,33 @@ export function formatTotal(usage, sends) {
   if (!inputs && !output) return { text: "", title: "" };
 
   const parts = [];
-  if (inputs) parts.push(`${group(inputs)} in`);
-  if (output) parts.push(`${group(output)} out`);
+  if (inputs) parts.push(tf("ai.usage.in", "{n} in", { n: group(inputs) }));
+  if (output) parts.push(tf("ai.usage.out", "{n} out", { n: group(output) }));
 
   const detail = [];
-  const add = (key, label) => {
-    if (at(usage, key) > 0) detail.push(`${group(usage[key])} ${label}`);
-  };
-  add("input", "uncached input");
-  add("cacheRead", "cache read");
-  add("cacheWrite", "cache write");
-  add("output", "output");
+  const n = (key) => ({ n: group(usage[key]) });
+  if (at(usage, "input") > 0) detail.push(tf("ai.usage.uncachedInput", "{n} uncached input", n("input"))); // prettier-ignore
+  if (at(usage, "cacheRead") > 0) detail.push(tf("ai.usage.cacheRead", "{n} cache read", n("cacheRead"))); // prettier-ignore
+  if (at(usage, "cacheWrite") > 0) detail.push(tf("ai.usage.cacheWrite", "{n} cache write", n("cacheWrite"))); // prettier-ignore
+  if (at(usage, "output") > 0) detail.push(tf("ai.usage.output", "{n} output", n("output"))); // prettier-ignore
 
   return {
-    text: `Session: ${parts.join(" · ")}`,
-    title:
-      `Session total across ${sends} ${sends === 1 ? "send" : "sends"} — ` +
-      `${detail.join(" · ")}. Clear resets it.`,
+    text: tf("ai.usage.session", "Session: {parts}", {
+      parts: parts.join(" · "),
+    }),
+    title: tf(
+      "ai.usage.sessionTitle",
+      "Session total across {sends} — {detail}. Clear resets it.",
+      {
+        // The count phrase is built first and interpolated whole, so a language
+        // that puts it elsewhere in the sentence can.
+        sends: tf(
+          "ai.usage.sends",
+          sends === 1 ? "{count} send" : "{count} sends",
+          { count: sends },
+        ),
+        detail: detail.join(" · "),
+      },
+    ),
   };
 }

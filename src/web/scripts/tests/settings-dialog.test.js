@@ -18,8 +18,22 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
 
 import { resetDom } from "./jsdom-setup.js";
+import { applyCatalog } from "../i18n.js";
+
+/** A shipped catalog, read the same way jsdom-setup reads en.json. */
+const catalog = (lang) =>
+  JSON.parse(
+    fs.readFileSync(new URL(`../../locales/${lang}.json`, import.meta.url), "utf8"), // prettier-ignore
+  );
+const EN = catalog("en");
+const DE = catalog("de");
+const LOCALES = [
+  { code: "en", nativeName: "English" },
+  { code: "de", nativeName: "Deutsch" },
+];
 
 const { PopupManager } = await import("../popup-manager.js");
 const { SettingsDialog } = await import("../components/settings-dialog.js");
@@ -252,6 +266,131 @@ test("SettingsDialog: the Data Sheets tab switches panels", () => {
   assert.equal(sheetsTab.getAttribute("aria-selected"), "true");
 
   PopupManager.close();
+});
+
+// ── A language change rebuilds the card ─────────────────────────────────────
+// The Language picker is IN this dialog, so it is the ONE card that can still
+// be on screen when the language changes. Every other transient surface is
+// built when it opens and speaks the current language for free; leaving this
+// one in the language just left makes the setting look like it did nothing.
+
+/** app.js's half of the handshake: it loads the new catalog and only THEN
+    announces it, so the rebuild reads the language it is being told about. */
+function switchToGerman(window) {
+  applyCatalog({
+    active: "de",
+    lang: "de",
+    messages: DE,
+    fallback: EN,
+    locales: LOCALES,
+  });
+  window.dispatchEvent(new window.CustomEvent("chiphippo:locale-changed"));
+}
+
+test("SettingsDialog: a language change rebuilds the card in the new language", (t) => {
+  const window = resetDom({ locales: LOCALES });
+  t.after(() => {
+    PopupManager.close();
+    applyCatalog({ active: "en", lang: "en", messages: EN, fallback: EN, locales: LOCALES }); // prettier-ignore
+  });
+  SettingsDialog.open({ locale: "en" });
+  assert.equal(
+    document.querySelector(".popup-title").textContent,
+    EN.settings.title,
+  );
+
+  // Pick German the way a user does — the dialog emits, app.js persists and
+  // reloads the catalog, then announces.
+  const select = document.querySelector("#set-language");
+  select.value = "de";
+  select.dispatchEvent(new window.Event("change"));
+  switchToGerman(window);
+
+  // ONE card, not two: the rebuild closes before it reopens, so nothing is
+  // left queued behind a card the user can no longer see.
+  assert.equal(document.querySelectorAll(".settings-popup").length, 1);
+  assert.equal(
+    document.querySelector(".popup-title").textContent,
+    DE.settings.title,
+    "the header title is rebuilt, not just the panels",
+  );
+  assert.deepEqual(
+    [...document.querySelectorAll(".settings-nav-item")].map(
+      (b) => b.textContent,
+    ),
+    [
+      DE.settings.nav.appearance,
+      DE.settings.nav.datasheets,
+      DE.settings.nav.ai,
+      DE.settings.nav.about,
+    ],
+    "and so is the nav rail",
+  );
+  assert.equal(
+    document.querySelector('[data-panel="appearance"] .settings-label')
+      .textContent,
+    DE.settings.appearance.language,
+    "and so are the rows",
+  );
+
+  // THE ONE THAT MATTERS: the picker still shows the language just chosen. A
+  // rebuild from the snapshot `open()` was handed would spring back to the
+  // language being left, which reads as the setting refusing to take.
+  assert.equal(document.querySelector("#set-language").value, "de");
+});
+
+test("SettingsDialog: a rebuild keeps the panel the user was reading", (t) => {
+  const window = resetDom({ locales: LOCALES });
+  t.after(() => {
+    PopupManager.close();
+    applyCatalog({ active: "en", lang: "en", messages: EN, fallback: EN, locales: LOCALES }); // prettier-ignore
+  });
+  SettingsDialog.open({});
+  document
+    .querySelector('.settings-nav-item[data-panel="datasheets"]')
+    .dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+
+  switchToGerman(window);
+
+  const sheetsTab = document.querySelector(
+    '.settings-nav-item[data-panel="datasheets"]',
+  );
+  assert.equal(
+    sheetsTab.getAttribute("aria-selected"),
+    "true",
+    "the rebuilt nav rail is still on Data Sheets",
+  );
+  assert.ok(
+    !document.querySelector('[data-panel="datasheets"].settings-panel').hidden,
+    "and so is the panel — a rebuild must not dump the user back on Appearance",
+  );
+  assert.ok(
+    document.querySelector('[data-panel="appearance"].settings-panel').hidden,
+  );
+
+  // A FRESH open starts over on Appearance, as it always did — the resumed
+  // panel belongs to the rebuild, not to the dialog for ever after.
+  PopupManager.close();
+  SettingsDialog.open({});
+  assert.ok(
+    !document.querySelector('[data-panel="appearance"].settings-panel').hidden,
+  );
+});
+
+test("SettingsDialog: a language change after it closes does not reopen it", (t) => {
+  const window = resetDom({ locales: LOCALES });
+  t.after(
+    () =>
+    applyCatalog({ active: "en", lang: "en", messages: EN, fallback: EN, locales: LOCALES }), // prettier-ignore
+  );
+  SettingsDialog.open({});
+  PopupManager.close();
+
+  // The listener belongs to the dialog's OPEN lifetime — the same rule the
+  // About panel's updater listeners follow. A leaked one would put the card
+  // back on screen out of nowhere, and leak another every time Settings opened.
+  switchToGerman(window);
+  assert.equal(document.querySelectorAll(".settings-popup").length, 0);
 });
 
 test("SettingsDialog: the datasheet folder seeds from settings and Clear resets it", () => {
