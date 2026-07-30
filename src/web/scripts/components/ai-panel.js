@@ -37,6 +37,7 @@
 // so re-asking would only spend the user's tokens.
 
 import { el } from "../dom.js";
+import { t } from "../i18n.js";
 import { buildRepairMessage, buildSystemPrompt } from "../ai/catalog-brief.js";
 import { buildStepsFromReply, partitionFaults } from "../ai/generate.js";
 import { addUsage, formatTotal, formatUsage } from "../ai/usage.js";
@@ -196,10 +197,8 @@ export class AiPanel {
     this.#input = el("textarea", {
       class: "ai-input",
       rows: "2",
-      placeholder:
-        "Describe a circuit — e.g. “add two 8-bit numbers with a carry, " +
-        "switches for the inputs and an LED bar for the sum”",
-      "aria-label": "Describe the circuit to build",
+      placeholder: t("ai.inputPlaceholder"),
+      "aria-label": t("ai.inputLabel"),
     });
     // Enter sends; Shift+Enter is a newline. A multi-line description is
     // normal here, so the modifier is on the newline rather than the send.
@@ -221,30 +220,30 @@ export class AiPanel {
     this.#send = el("button", {
       class: "ai-send",
       type: "button",
-      title: "Build this circuit (Enter)",
-      "aria-label": "Build this circuit",
+      title: t("ai.buildTitle"),
+      "aria-label": t("ai.build"),
       onClick: () => this.#onSend(),
     });
     this.#send.innerHTML = SEND_SVG;
 
     const header = el("div", { class: "ai-header" }, [
-      el("span", { class: "ai-title", text: "AI circuit builder" }),
+      el("span", { class: "ai-title", text: t("ai.title") }),
       el("div", { class: "ai-tools" }, [
         this.#status,
         this.#usage,
         el("button", {
           class: "ai-btn",
           type: "button",
-          text: "Clear",
-          title: "Clear the conversation and start a new design",
+          text: t("common.clear"),
+          title: t("ai.clearTitle"),
           onClick: () => this.#clear(),
         }),
       ]),
       el("button", {
         class: "ai-close",
         type: "button",
-        title: "Close the AI builder",
-        "aria-label": "Close the AI builder",
+        title: t("ai.close"),
+        "aria-label": t("ai.close"),
         text: "×",
         onClick: () => this.setVisible(false),
       }),
@@ -252,7 +251,7 @@ export class AiPanel {
 
     this.#resize = el("div", {
       class: "ai-resize",
-      title: "Drag to resize the AI builder",
+      title: t("ai.resize"),
       "aria-hidden": "true",
     });
     this.#resize.addEventListener("pointerdown", (e) => this.#onResizeDown(e));
@@ -261,7 +260,7 @@ export class AiPanel {
 
     this.#el = el(
       "aside",
-      { class: "ai-panel", "aria-label": "AI circuit builder", hidden: true },
+      { class: "ai-panel", "aria-label": t("ai.title"), hidden: true },
       [
         this.#resize,
         header,
@@ -270,16 +269,42 @@ export class AiPanel {
       ],
     );
 
-    this.#say(
-      "note",
-      "Describe a circuit and it will be designed, built, simulated and " +
-        "tested before you are offered it to place. Set up your own AI " +
-        "connection first in Settings ▸ AI.",
-    );
+    this.#say("note", t("ai.intro"));
   }
 
   get element() {
     return this.#el;
+  }
+
+  /**
+   * Re-render the panel's CHROME in the new language (see app.js's
+   * `relabelChrome`).
+   *
+   * The conversation LOG is deliberately left exactly as it is. Those rows are a
+   * transcript — what was asked, and what the build reported at the time — and a
+   * transcript is a record, not a label: re-wording it would be rewriting
+   * history, and half of it (a provider's error text, a fault's message) has no
+   * catalog key to re-resolve anyway. New rows arrive in the new language.
+   */
+  relocalize() {
+    this.#input.placeholder = t("ai.inputPlaceholder");
+    this.#input.setAttribute("aria-label", t("ai.inputLabel"));
+    this.#send.title = t("ai.buildTitle");
+    this.#send.setAttribute("aria-label", t("ai.build"));
+    this.#el.setAttribute("aria-label", t("ai.title"));
+    this.#resize.title = t("ai.resize");
+    const title = this.#el.querySelector(".ai-title");
+    if (title) title.textContent = t("ai.title");
+    const clear = this.#el.querySelector(".ai-btn");
+    if (clear) {
+      clear.textContent = t("common.clear");
+      clear.title = t("ai.clearTitle");
+    }
+    const close = this.#el.querySelector(".ai-close");
+    if (close) {
+      close.title = t("ai.close");
+      close.setAttribute("aria-label", t("ai.close"));
+    }
   }
 
   get visible() {
@@ -377,7 +402,7 @@ export class AiPanel {
     this.#sends = 0;
     this.#paintTotal();
     this.#log.replaceChildren();
-    this.#say("note", "Cleared. Describe a new circuit.");
+    this.#say("note", t("ai.cleared"));
   }
 
   // ── Tokens ─────────────────────────────────────────────────────────────────
@@ -415,9 +440,7 @@ export class AiPanel {
     this.#status.textContent = label;
     this.#input.disabled = busy;
     this.#send.classList.toggle("ai-send--busy", busy);
-    this.#send.title = busy
-      ? "Cancel this build"
-      : "Build this circuit (Enter)";
+    this.#send.title = busy ? t("ai.cancelTitle") : t("ai.buildTitle");
   }
 
   // ── History ────────────────────────────────────────────────────────────────
@@ -474,7 +497,7 @@ export class AiPanel {
     const prompt = this.#input.value.trim();
     if (!prompt) return;
     if (this.#isLocked()) {
-      this.#say("fail", "Stop the simulation before building a new circuit.");
+      this.#say("fail", t("ai.lockedRunning"));
       return;
     }
     this.#input.value = "";
@@ -518,7 +541,7 @@ export class AiPanel {
       this.#streamRow = null;
     }
     if (id != null) window.chiphippo?.ai?.cancel(id);
-    this.#say("note", "Cancelled.");
+    this.#say("note", t("ai.cancelled"));
   }
 
   async #request() {
@@ -529,10 +552,10 @@ export class AiPanel {
     // the round it fixed had already failed, so the second request looked idle
     // for its whole duration.
     const round = this.#repairs
-      ? ` (fix ${this.#repairs} of ${MAX_REPAIRS})`
+      ? ` ${t("ai.fixRound", { n: this.#repairs, total: MAX_REPAIRS })}`
       : "";
-    this.#setBusy(true, "Designing…");
-    this.#streamRow = this.#say("working", `Designing the circuit${round}…`);
+    this.#setBusy(true, t("ai.designing"));
+    this.#streamRow = this.#say("working", t("ai.designingRow", { round }));
     this.#round = round;
 
     let started;
@@ -551,7 +574,7 @@ export class AiPanel {
     if (!started?.ok) {
       this.#finishStream();
       this.#setBusy(false);
-      this.#say("fail", started?.error ?? "The request could not be started.");
+      this.#say("fail", started?.error ?? t("ai.startFailed"));
       this.#settle();
       return;
     }
@@ -598,11 +621,11 @@ export class AiPanel {
     if (!detail.ok) {
       this.#setBusy(false);
       if (!detail.cancelled)
-        this.#say("fail", detail.error ?? "The request failed.");
+        this.#say("fail", detail.error ?? t("ai.requestFailed"));
       this.#settle();
       return;
     }
-    this.#setBusy(true, "Building…");
+    this.#setBusy(true, t("ai.building"));
     this.#build(detail.text ?? this.#stream);
   }
 
@@ -619,7 +642,7 @@ export class AiPanel {
   async #build(text) {
     const steps = buildStepsFromReply(text);
     this.#building = steps;
-    this.#streamRow = this.#say("working", "Building the circuit…");
+    this.#streamRow = this.#say("working", t("ai.buildingRow"));
 
     let step;
     try {
@@ -644,10 +667,7 @@ export class AiPanel {
       this.#building = null;
       this.#finishStream();
       this.#setBusy(false);
-      this.#say(
-        "fail",
-        `The build failed unexpectedly: ${err?.message ?? err}`,
-      );
+      this.#say("fail", t("ai.buildCrashed", { message: err?.message ?? err }));
       this.#settle();
       return;
     }
@@ -673,8 +693,7 @@ export class AiPanel {
       this.#setBusy(false);
       this.#sayList(
         "fail",
-        "The circuit was described correctly but could not be built. This is " +
-          "a fault in Chip Hippo's compiler, not in the design.",
+        t("ai.compilerFault"),
         abort.map((f) => `${f.code}: ${f.message}`),
       );
       this.#settle();
@@ -685,7 +704,7 @@ export class AiPanel {
       this.#setBusy(false);
       this.#sayList(
         "fail",
-        `Gave up after ${MAX_REPAIRS} repair attempts. What is still wrong:`,
+        t("ai.gaveUp", { total: MAX_REPAIRS }),
         repair.map((f) => `${f.code}: ${f.message}`),
       );
       this.#settle();
@@ -695,7 +714,7 @@ export class AiPanel {
     this.#repairs += 1;
     this.#sayList(
       "note",
-      `That design did not pass — asking for a fix (attempt ${this.#repairs} of ${MAX_REPAIRS}):`,
+      t("ai.retrying", { n: this.#repairs, total: MAX_REPAIRS }),
       repair.map((f) => `${f.code}: ${f.message}`),
     );
     this.#history.push({ role: "assistant", content: text });
@@ -708,9 +727,12 @@ export class AiPanel {
     const tested = built.results.length;
     const doc = built.document;
     const summary =
-      `${built.title || "Circuit"} — ${doc.components.length} parts, ` +
-      `${doc.wires.length} wires, ${doc.boards.length} board strips.` +
-      (tested ? ` ${passed}/${tested} of its own tests passed.` : "");
+      t("ai.summary", {
+        title: built.title || t("ai.untitledCircuit"),
+        parts: doc.components.length,
+        wires: doc.wires.length,
+        strips: doc.boards.length,
+      }) + (tested ? ` ${t("ai.testsPassed", { passed, tested })}` : "");
 
     this.#sayList(
       "ok",
@@ -724,11 +746,11 @@ export class AiPanel {
     if (built.warnings.length) {
       this.#sayList(
         "note",
-        "Built with notes:",
+        t("ai.builtWithNotes"),
         built.warnings.map((w) => w.message ?? String(w)),
       );
     }
-    this.#say("note", "Click to place it on the desk, or press Escape.");
+    this.#say("note", t("ai.placeHint"));
     this.#onDesign?.(built.clip);
   }
 }

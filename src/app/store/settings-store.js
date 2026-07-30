@@ -63,6 +63,15 @@ const DEFAULTS = Object.freeze({
   // dialogs — then follow, so there is ONE switch for the whole app.
   theme: "system",
 
+  // The UI language: "system" (follow the OS locale, the default) or a language
+  // subtag a catalog ships for ("en", "de", "es", "fr", "it", "ja", "zh" — see
+  // app/i18n.js's LOCALES). Main resolves it, because it owns both the OS locale
+  // and the files the catalogs live in; a language with no catalog falls back to
+  // English rather than failing. Like `theme` this is main's to act on, so
+  // settings:set re-resolves the catalog and rebuilds the native menu when it
+  // changes; the renderer relabels its own chrome off `chiphippo:locale-changed`.
+  locale: "system",
+
   // ── Auto-update (Feature 280; Settings ▸ About) ───────────────────────────
   // Whether the app checks the release feed for a newer version shortly after
   // launch. OFF by default, deliberately: an update check is an outbound call,

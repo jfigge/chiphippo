@@ -25,17 +25,61 @@ const { PopupManager } = await import("../popup-manager.js");
 const { SettingsDialog } = await import("../components/settings-dialog.js");
 const { AboutDialog } = await import("../components/about-dialog.js");
 
-test("SettingsDialog: the theme picker leads Appearance, seeds, and emits", () => {
+test("SettingsDialog: the language picker leads Appearance and emits a locale", () => {
+  // The languages a catalog ships for reach the picker on the loaded catalog
+  // payload (main's own table), so the harness installs them the same way.
+  resetDom({
+    locales: [
+      { code: "en", nativeName: "English" },
+      { code: "de", nativeName: "Deutsch" },
+    ],
+  });
+  SettingsDialog.open({ locale: "de" });
+
+  const panel = document.querySelector('.settings-panel[data-panel="appearance"]'); // prettier-ignore
+  assert.equal(
+    panel.firstElementChild.querySelector(".settings-label").textContent,
+    "Language",
+    "language is the FIRST row of the Appearance panel",
+  );
+
+  const select = panel.querySelector("#set-language");
+  assert.deepEqual(
+    [...select.options].map((o) => o.value),
+    ["system", "en", "de"],
+    "System leads, then one option per shipped catalog",
+  );
+  assert.deepEqual(
+    [...select.options].map((o) => o.textContent),
+    ["System", "English", "Deutsch"],
+    "a language names itself, untranslated",
+  );
+  assert.equal(select.value, "de", "seeded from the stored preference");
+
+  const patches = [];
+  window.addEventListener("chiphippo:settings-changed", (e) =>
+    patches.push(e.detail),
+  );
+  select.value = "en";
+  select.dispatchEvent(new window.Event("change"));
+  assert.deepEqual(patches, [{ locale: "en" }]);
+
+  PopupManager.close();
+});
+
+test("SettingsDialog: an absent locale preference shows System", () => {
+  resetDom({ locales: [] });
+  SettingsDialog.open({});
+  assert.equal(document.querySelector("#set-language").value, "system");
+  PopupManager.close();
+});
+
+test("SettingsDialog: the theme picker follows Language, seeds, and emits", () => {
   resetDom();
   SettingsDialog.open({ theme: "light" });
 
   // `.settings-panel` qualified: the NAV ITEM carries the same data-panel.
   const panel = document.querySelector('.settings-panel[data-panel="appearance"]'); // prettier-ignore
-  assert.equal(
-    panel.firstElementChild.querySelector(".settings-label").textContent,
-    "Theme",
-    "the theme picker is the FIRST row of the Appearance panel",
-  );
 
   // Scoped to the THEME group: Appearance carries more than one segmented
   // picker now (Wire layout is the other).

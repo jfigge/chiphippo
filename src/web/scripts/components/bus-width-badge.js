@@ -41,6 +41,7 @@
 // too) a bus width is picked in exactly one place.
 
 import { el } from "../dom.js";
+import { t } from "../i18n.js";
 import { PopupManager } from "../popup-manager.js";
 import { BUS_WIDTHS } from "../model/desk-doc.js";
 
@@ -79,7 +80,7 @@ function buildOptions(value, onPick) {
     {
       class: "bus-width-options",
       role: "radiogroup",
-      "aria-label": "Bus width",
+      "aria-label": t("toolbar.bus.widthLabel"),
     },
     buttons,
   );

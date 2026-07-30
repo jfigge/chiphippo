@@ -28,6 +28,7 @@
 // applySettings; nothing else needs to know.
 
 import { el } from "../dom.js";
+import { t, getLocales } from "../i18n.js";
 import { PopupManager } from "../popup-manager.js";
 import { LED_COLOR_OPTIONS } from "../catalog/parts.js";
 import { buildColorSwatches } from "./color-swatches.js";
@@ -54,19 +55,19 @@ const DOWNLOAD_SVG =
     choice is persisted like any other setting, and MAIN acts on it — it
     becomes Electron's `nativeTheme.themeSource`, which every window's
     `prefers-color-scheme` (and the native menus/dialogs) then follow. */
-const THEME_OPTIONS = [
-  { value: "system", label: "System" },
-  { value: "light", label: "Light" },
-  { value: "dark", label: "Dark" },
+const themeOptions = () => [
+  { value: "system", label: t("settings.appearance.themeSystem") },
+  { value: "light", label: t("settings.appearance.themeLight") },
+  { value: "dark", label: t("settings.appearance.themeDark") },
 ];
 
 /** Appearance ▸ Wire layout — how a NEWLY laid wire is drawn (see
     model/desk-doc.js's WIRE_LAYOUTS). Read at placement time, exactly as the
     default LED colour is: nothing already on the desk changes, and an existing
     wire's layout is its own Properties dialog's business. */
-const WIRE_LAYOUT_OPTIONS = [
-  { value: "direct", label: "Direct" },
-  { value: "routed", label: "Routed" },
+const wireLayoutOptions = () => [
+  { value: "direct", label: t("settings.appearance.wireLayoutDirect") },
+  { value: "routed", label: t("settings.appearance.wireLayoutRouted") },
 ];
 
 /** Emit a settings patch for app.js to persist + apply. */
@@ -126,7 +127,7 @@ function buildAiRows(settings, providers) {
     id: "set-ai-key",
     autocomplete: "off",
     spellcheck: false,
-    placeholder: "Paste a key to store it",
+    placeholder: t("settings.ai.keyPlaceholder"),
   });
   const result = el("p", { class: "settings-hint", text: "" });
 
@@ -140,16 +141,14 @@ function buildAiRows(settings, providers) {
       s = null;
     }
     if (s && s.encryptionAvailable === false) {
-      status.textContent =
-        "This system has no secure credential store, so a key cannot be " +
-        "saved. Point the base URL at a local server that needs no key.";
+      status.textContent = t("settings.ai.noSecureStore");
       keyInput.disabled = true;
       return;
     }
     keyInput.disabled = false;
     status.textContent = s?.configured
-      ? `A key is stored for ${label}. It is encrypted by the OS and is never read back into this window.`
-      : `No key stored for ${label}.`;
+      ? t("settings.ai.keyStored", { provider: label })
+      : t("settings.ai.keyMissing", { provider: label });
   };
 
   const baseUrl = el("input", {
@@ -174,7 +173,7 @@ function buildAiRows(settings, providers) {
   const keyLabel = el("label", {
     class: "settings-label",
     for: "set-ai-key",
-    text: "API key",
+    text: t("settings.ai.apiKey"),
   });
 
   /** Placeholders show what an empty field falls back to. */
@@ -182,13 +181,13 @@ function buildAiRows(settings, providers) {
     const p = chosen();
     baseUrl.placeholder = p?.defaultBaseUrl ?? "";
     model.placeholder = p?.defaultModel ?? "";
-    keyLabel.textContent = p?.keyLabel ?? "API key";
+    keyLabel.textContent = p?.keyLabel ?? t("settings.ai.apiKey");
   };
 
   const picker = buildSegmented({
     options: providers.map((p) => ({ value: p.id, label: p.label })),
     value: config.provider,
-    ariaLabel: "AI provider",
+    ariaLabel: t("settings.ai.provider"),
     onPick: (provider) => {
       emit({ provider });
       showDefaults();
@@ -203,14 +202,14 @@ function buildAiRows(settings, providers) {
   const saveKey = el("button", {
     class: "settings-action",
     type: "button",
-    text: "Save key",
+    text: t("settings.ai.saveKey"),
     onClick: async () => {
       const value = keyInput.value.trim();
       if (!value) return;
       const r = await bridge?.key?.set(config.provider, value);
       keyInput.value = "";
       if (r && r.ok === false) {
-        result.textContent = r.error ?? "The key could not be stored.";
+        result.textContent = r.error ?? t("settings.ai.keyStoreFailed");
         return;
       }
       result.textContent = "";
@@ -224,7 +223,7 @@ function buildAiRows(settings, providers) {
     // again from wherever the user got it.
     class: "settings-action settings-action--danger",
     type: "button",
-    text: "Clear key",
+    text: t("settings.ai.clearKey"),
     onClick: async () => {
       await bridge?.key?.clear(config.provider);
       keyInput.value = "";
@@ -236,10 +235,10 @@ function buildAiRows(settings, providers) {
   const testBtn = el("button", {
     class: "settings-action",
     type: "button",
-    text: "Test connection",
+    text: t("settings.ai.testConnection"),
     onClick: async () => {
       testBtn.disabled = true;
-      result.textContent = "Testing…";
+      result.textContent = t("settings.ai.testing");
       let r;
       try {
         r = await bridge?.test({ ...config });
@@ -248,8 +247,8 @@ function buildAiRows(settings, providers) {
       }
       testBtn.disabled = false;
       result.textContent = r?.ok
-        ? "Connected."
-        : (r?.error ?? "The connection could not be tested.");
+        ? t("settings.ai.connected")
+        : (r?.error ?? t("settings.ai.testFailed"));
     },
   });
 
@@ -258,14 +257,14 @@ function buildAiRows(settings, providers) {
 
   return [
     el("div", { class: "settings-row" }, [
-      el("label", { class: "settings-label", text: "Provider" }),
+      el("label", { class: "settings-label", text: t("settings.ai.provider") }),
       picker,
     ]),
     el("div", { class: "settings-row settings-row--stack" }, [
       el("label", {
         class: "settings-label",
         for: "set-ai-base-url",
-        text: "Base URL",
+        text: t("settings.ai.baseUrl"),
       }),
       baseUrl,
     ]),
@@ -273,7 +272,7 @@ function buildAiRows(settings, providers) {
       el("label", {
         class: "settings-label",
         for: "set-ai-model",
-        text: "Model",
+        text: t("settings.ai.model"),
       }),
       model,
     ]),
@@ -288,32 +287,19 @@ function buildAiRows(settings, providers) {
       status,
       result,
     ]),
-    el("p", {
-      class: "settings-hint",
-      text:
-        "Chip Hippo uses your own connection — nothing is sent anywhere until " +
-        "you ask it to build something, and the key is stored encrypted by " +
-        "the operating system, never in settings.json. Leave Base URL and " +
-        "Model blank to use the shown defaults.",
-    }),
+    el("p", { class: "settings-hint", text: t("settings.ai.hint") }),
     // Said HERE, where the connection is set up, because this is where the
     // builder is first met — long before a design lands on the desk.
-    el("p", {
-      class: "settings-hint",
-      text:
-        "AI generation is experimental. Every design is verified against the " +
-        "simulator before it is offered, but it may not be the most optimal " +
-        "circuit or the tidiest layout — expect to review and adjust it.",
-    }),
+    el("p", { class: "settings-hint", text: t("settings.ai.experimental") }),
   ];
 }
 
 /** Settings ▸ About ▸ "Check automatically". An either/or, so the app's own
     either/or control — the same segmented track Theme and Wire layout use,
     rather than a checkbox this dialog has nowhere else. */
-const AUTO_UPDATE_OPTIONS = [
-  { value: true, label: "On" },
-  { value: false, label: "Off" },
+const autoUpdateOptions = () => [
+  { value: true, label: t("settings.about.autoOn") },
+  { value: false, label: t("settings.about.autoOff") },
 ];
 
 /**
@@ -345,15 +331,15 @@ function buildAboutPanel(settings) {
 
   const version = el("span", {
     class: "settings-folder-path settings-folder-path--empty",
-    text: "Reading version…",
+    text: t("settings.about.readingVersion"),
   });
 
   const checkBtn = el("button", {
     class: "settings-action",
     type: "button",
-    text: "Check for updates",
+    text: t("settings.about.check"),
     onClick: () => {
-      say("Checking for updates…");
+      say(t("settings.about.checking"));
       window.chiphippo?.updater?.check?.();
     },
   });
@@ -363,20 +349,22 @@ function buildAboutPanel(settings) {
   const restartBtn = el("button", {
     class: "settings-action",
     type: "button",
-    text: "Restart to update",
+    text: t("settings.about.restart"),
     hidden: true,
     onClick: () => window.chiphippo?.updater?.install?.(),
   });
 
   const autoPicker = buildSegmented({
-    options: AUTO_UPDATE_OPTIONS,
+    options: autoUpdateOptions(),
     value: settings.autoUpdateCheck === true,
-    ariaLabel: "Check for updates automatically",
+    // Deliberately fuller than the visible label beside it: the row's own text
+    // reads "Check automatically", which only makes sense next to the heading.
+    ariaLabel: t("settings.about.autoAria"),
     onPick: (autoUpdateCheck) => emitSettings({ autoUpdateCheck }),
   });
 
   const autoRow = el("div", { class: "settings-row" }, [
-    el("label", { class: "settings-label", text: "Check automatically" }),
+    el("label", { class: "settings-label", text: t("settings.about.autoLabel") }), // prettier-ignore
     autoPicker,
   ]);
   const actionRow = el("div", { class: "settings-row settings-row--stack" }, [
@@ -385,21 +373,17 @@ function buildAboutPanel(settings) {
   ]);
   const hint = el("p", {
     class: "settings-hint",
-    text:
-      "Chip Hippo can check github.com for a newer release. An update " +
-      "downloads in the background and is only installed when you say so — " +
-      "either by restarting here, or the next time you quit. Nothing but the " +
-      "check itself is sent, and with this off nothing is sent at all.",
+    text: t("settings.about.hint"),
   });
 
   // Every lifecycle event, one handler each, so they can all be removed again.
-  const onChecking = () => say("Checking for updates…");
+  const onChecking = () => say(t("settings.about.checking"));
   const onAvailable = (e) => {
     const v = e.detail?.version;
     say(
       v
-        ? `Version ${v} is available — downloading in the background…`
-        : "An update is available — downloading in the background…",
+        ? t("settings.about.availableVersion", { version: v })
+        : t("settings.about.available"),
     );
   };
   const onNotAvailable = (e) => {
@@ -409,23 +393,22 @@ function buildAboutPanel(settings) {
     // both below — but the check can also come from the Help menu.
     say(
       e.detail?.reason === "store-build"
-        ? "Updates are delivered through the App Store."
+        ? t("settings.about.storeBuild")
         : e.detail?.reason === "dev-build"
-          ? "Updates are only available in installed builds."
-          : "You're running the latest version of Chip Hippo.",
+          ? t("settings.about.devBuild")
+          : t("settings.about.upToDate"),
     );
   };
   const onDownloaded = (e) => {
     const v = e.detail?.version;
     say(
       v
-        ? `Version ${v} is ready to install.`
-        : "The update is ready to install.",
+        ? t("settings.about.readyVersion", { version: v })
+        : t("settings.about.ready"),
     );
     restartBtn.hidden = false;
   };
-  const onError = () =>
-    say("Could not check for updates. Please try again later.");
+  const onError = () => say(t("settings.about.error"));
 
   const LISTENERS = [
     ["chiphippo:updater-checking", onChecking],
@@ -449,9 +432,7 @@ function buildAboutPanel(settings) {
       if (info?.distribution === "store") {
         autoRow.hidden = true;
         actionRow.hidden = true;
-        hint.textContent =
-          "Updates for this copy of Chip Hippo are delivered through the " +
-          "App Store, so it never checks for them itself.";
+        hint.textContent = t("settings.about.storeHint");
       }
     },
     (err) => {
@@ -463,7 +444,7 @@ function buildAboutPanel(settings) {
   return {
     rows: [
       el("div", { class: "settings-row settings-row--stack" }, [
-        el("label", { class: "settings-label", text: "Version" }),
+        el("label", { class: "settings-label", text: t("settings.about.version") }), // prettier-ignore
         el("div", { class: "settings-folder-input" }, [version]),
       ]),
       autoRow,
@@ -501,12 +482,44 @@ export class SettingsDialog {
     if (SettingsDialog.#open) return;
     SettingsDialog.#open = true;
 
+    // The UI language. A <select> rather than a segmented track: eight choices
+    // is past what one bordered row can show, and unlike Theme these are not an
+    // either/or the user is comparing. "System" leads, then one row per shipped
+    // catalog IN ITS OWN LANGUAGE — a language names itself the same way
+    // whatever the UI is currently speaking, which is the whole reason a picker
+    // is usable when you have accidentally set one you cannot read.
+    //
+    // The list comes off the loaded catalog payload (main's own table), so a
+    // language cannot be offered here with no catalog behind it.
+    const languageSelect = el(
+      "select",
+      {
+        class: "settings-select",
+        id: "set-language",
+        onChange: (e) => SettingsDialog.#emit({ locale: e.target.value }),
+      },
+      [
+        el("option", {
+          value: "system",
+          text: t("settings.appearance.languageSystem"),
+          selected: (settings.locale ?? "system") === "system",
+        }),
+        ...getLocales().map((loc) =>
+          el("option", {
+            value: loc.code,
+            text: loc.nativeName,
+            selected: settings.locale === loc.code,
+          }),
+        ),
+      ],
+    );
+
     const themePicker = buildSegmented({
-      options: THEME_OPTIONS,
-      value: THEME_OPTIONS.some((o) => o.value === settings.theme)
+      options: themeOptions(),
+      value: themeOptions().some((o) => o.value === settings.theme)
         ? settings.theme
         : "system",
-      ariaLabel: "Theme",
+      ariaLabel: t("settings.appearance.theme"),
       onPick: (theme) => SettingsDialog.#emit({ theme }),
     });
 
@@ -519,13 +532,13 @@ export class SettingsDialog {
     });
 
     const wireLayoutPicker = buildSegmented({
-      options: WIRE_LAYOUT_OPTIONS,
-      value: WIRE_LAYOUT_OPTIONS.some(
+      options: wireLayoutOptions(),
+      value: wireLayoutOptions().some(
         (o) => o.value === settings.defaultWireLayout,
       )
         ? settings.defaultWireLayout
         : "direct",
-      ariaLabel: "Wire layout",
+      ariaLabel: t("settings.appearance.wireLayout"),
       onPick: (defaultWireLayout) =>
         SettingsDialog.#emit({ defaultWireLayout }),
     });
@@ -533,7 +546,7 @@ export class SettingsDialog {
     const ledColorSwatches = buildColorSwatches({
       colors: LED_COLOR_OPTIONS,
       value: settings.defaultLedColor || "red",
-      ariaLabel: "Default LED color",
+      ariaLabel: t("settings.appearance.ledColor"),
       onPick: (color) => SettingsDialog.#emit({ defaultLedColor: color }),
     });
 
@@ -542,7 +555,7 @@ export class SettingsDialog {
       typeof settings.datasheetDir === "string" && settings.datasheetDir;
     const folderPath = el("span", {
       class: `settings-folder-path${hasDir ? "" : " settings-folder-path--empty"}`,
-      text: hasDir ? settings.datasheetDir : "No folder selected",
+      text: hasDir ? settings.datasheetDir : t("settings.datasheets.noFolder"),
       title: hasDir ? settings.datasheetDir : "",
     });
     const clearBtn = el("button", {
@@ -550,11 +563,11 @@ export class SettingsDialog {
       type: "button",
       // A WORD, not a glyph: it sits beside Browse… and reads as its peer, the
       // same shape the AI tab's "Clear key" already uses.
-      text: "Clear",
-      title: "Clear the datasheet folder",
+      text: t("common.clear"),
+      title: t("settings.datasheets.clearTitle"),
       hidden: !hasDir,
       onClick: () => {
-        folderPath.textContent = "No folder selected";
+        folderPath.textContent = t("settings.datasheets.noFolder");
         folderPath.title = "";
         folderPath.classList.add("settings-folder-path--empty");
         clearBtn.hidden = true;
@@ -564,7 +577,7 @@ export class SettingsDialog {
     const browseBtn = el("button", {
       class: "settings-action",
       type: "button",
-      title: "Choose the datasheet folder",
+      title: t("settings.datasheets.browseTitle"),
       onClick: async () => {
         let dir;
         try {
@@ -581,7 +594,12 @@ export class SettingsDialog {
         SettingsDialog.#emit({ datasheetDir: dir });
       },
     });
-    browseBtn.innerHTML = `${FOLDER_SVG}<span>Browse…</span>`;
+    // The glyph is markup, the label is text — so the icon goes in as HTML and
+    // the word is APPENDED as a node rather than interpolated into the template
+    // it used to share. A translation is user-visible text, and text that has
+    // been through innerHTML is text that could carry markup.
+    browseBtn.innerHTML = FOLDER_SVG;
+    browseBtn.append(el("span", { text: t("common.browse") }));
 
     // Fill the app's own datasheet folder from the web and point the setting
     // above at it. This CLOSES the settings dialog first: PopupManager queues
@@ -590,13 +608,14 @@ export class SettingsDialog {
     const downloadBtn = el("button", {
       class: "settings-action",
       type: "button",
-      title: "Download datasheets into the app's own folder",
+      title: t("settings.datasheets.downloadTitle"),
       onClick: () => {
         PopupManager.close();
         DatasheetDownloadDialog.open();
       },
     });
-    downloadBtn.innerHTML = `${DOWNLOAD_SVG}<span>Download…</span>`;
+    downloadBtn.innerHTML = DOWNLOAD_SVG;
+    downloadBtn.append(el("span", { text: t("common.download") }));
 
     // The AI panel is filled in once main answers with the provider list, so
     // the dialog itself stays synchronous. It is never the open tab, so the
@@ -609,7 +628,7 @@ export class SettingsDialog {
         "data-panel": "ai",
         hidden: true,
       },
-      [el("p", { class: "settings-hint", text: "Loading providers…" })],
+      [el("p", { class: "settings-hint", text: t("settings.ai.loading") })],
     );
     Promise.resolve(window.chiphippo?.ai?.providers?.() ?? []).then(
       (providers) => {
@@ -619,7 +638,7 @@ export class SettingsDialog {
             : [
                 el("p", {
                   class: "settings-hint",
-                  text: "No AI providers are available in this build.",
+                  text: t("settings.ai.noProviders"),
                 }),
               ]),
         );
@@ -643,35 +662,49 @@ export class SettingsDialog {
         },
         [
           el("div", { class: "settings-row" }, [
-            el("label", { class: "settings-label", text: "Theme" }),
+            el("label", {
+              class: "settings-label",
+              for: "set-language",
+              text: t("settings.appearance.language"),
+            }),
+            languageSelect,
+          ]),
+          el("p", {
+            class: "settings-hint",
+            text: t("settings.appearance.languageHint"),
+          }),
+          el("div", { class: "settings-row" }, [
+            el("label", {
+              class: "settings-label",
+              text: t("settings.appearance.theme"),
+            }),
             themePicker,
           ]),
           el("div", { class: "settings-row" }, [
             el("label", {
               class: "settings-label",
               for: "set-selection-color",
-              text: "Selection border colour",
+              text: t("settings.appearance.selectionColor"),
             }),
             selColor,
           ]),
           el("div", { class: "settings-row" }, [
             el("label", {
               class: "settings-label",
-              text: "Default LED color",
+              text: t("settings.appearance.ledColor"),
             }),
             ledColorSwatches,
           ]),
           el("div", { class: "settings-row" }, [
-            el("label", { class: "settings-label", text: "Wire layout" }),
+            el("label", {
+              class: "settings-label",
+              text: t("settings.appearance.wireLayout"),
+            }),
             wireLayoutPicker,
           ]),
           el("p", {
             class: "settings-hint",
-            text:
-              "How a new wire is drawn: Direct sags from hole to hole; Routed " +
-              "runs straight, and can be bent around the board by dragging " +
-              "points into it. Wires already on the desk keep the layout they " +
-              "have — change one through its own Properties dialog.",
+            text: t("settings.appearance.wireLayoutHint"),
           }),
         ],
       ),
@@ -687,7 +720,7 @@ export class SettingsDialog {
           el("div", { class: "settings-row settings-row--stack" }, [
             el("label", {
               class: "settings-label",
-              text: "Datasheet folder",
+              text: t("settings.datasheets.folder"),
             }),
             el("div", { class: "settings-folder" }, [
               el("div", { class: "settings-folder-input" }, [folderPath]),
@@ -699,28 +732,18 @@ export class SettingsDialog {
           ]),
           el("p", {
             class: "settings-hint",
-            text:
-              "Point this at a folder of manufacturer datasheet PDFs named " +
-              "after each chip (e.g. 74LS00.pdf). When a matching PDF is " +
-              "found, a chip's pin-assignments window shows a button to open " +
-              "it.",
+            text: t("settings.datasheets.folderHint"),
           }),
           el("div", { class: "settings-row settings-row--stack" }, [
             el("label", {
               class: "settings-label",
-              text: "Get them automatically",
+              text: t("settings.datasheets.auto"),
             }),
             el("div", { class: "settings-folder-actions" }, [downloadBtn]),
           ]),
           el("p", {
             class: "settings-hint",
-            text:
-              "Downloads a datasheet for every part Chip Hippo has a " +
-              "published source on file for — the manufacturer's own " +
-              "document where there is one, otherwise a reference library — " +
-              "into Chip Hippo's own folder, and points the setting above at " +
-              "it. Parts with no source are skipped, and files already there " +
-              "are replaced.",
+            text: t("settings.datasheets.autoHint"),
           }),
         ],
       ),
@@ -739,10 +762,10 @@ export class SettingsDialog {
 
     // Left nav rail — one item per panel; clicking switches the visible panel.
     const TABS = [
-      { key: "appearance", label: "Appearance" },
-      { key: "datasheets", label: "Data Sheets" },
-      { key: "ai", label: "AI" },
-      { key: "about", label: "About" },
+      { key: "appearance", label: t("settings.nav.appearance") },
+      { key: "datasheets", label: t("settings.nav.datasheets") },
+      { key: "ai", label: t("settings.nav.ai") },
+      { key: "about", label: t("settings.nav.about") },
     ];
     const navItems = TABS.map(({ key, label }, i) =>
       el("button", {
@@ -781,8 +804,8 @@ export class SettingsDialog {
     // onClose fires only when THIS popup closes (not when a popup it was queued
     // behind closes), so the guard never resets while the dialog is still up.
     PopupManager.dialog({
-      title: "Settings",
-      closeAriaLabel: "Close settings",
+      title: t("settings.title"),
+      closeAriaLabel: t("settings.close"),
       className: "settings-popup",
       bodyClass: "settings-popup-body",
       body,

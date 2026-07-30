@@ -24,6 +24,7 @@
 // the engine directly. Pulled out of DeskController so "what net is this, and
 // draw it" lives in one place instead of threaded through the controller.
 
+import { t } from "../i18n.js";
 import { el } from "../dom.js";
 import { PopupManager } from "../popup-manager.js";
 import { PX_PER_UNIT } from "../desk/desk-geometry.js";
@@ -285,20 +286,20 @@ export class ProbeInspector {
     const current = this.#netlist.nameOf(netId);
     const items = [
       {
-        label: current ? "Rename net…" : "Name this net…",
+        label: current ? t("probe.renameNet") : t("probe.nameNet"),
         onSelect: () => this.#promptName(address, netId, current),
       },
     ];
     if (current) {
       items.push({
-        label: "Clear name",
+        label: t("probe.clearName"),
         onSelect: () => this.#clearName(netId),
       });
     }
     if (this.#onAddToScope) {
       items.push({ separator: true });
       items.push({
-        label: "Add to analyzer",
+        label: t("probe.addToAnalyzer"),
         onSelect: () => this.#onAddToScope(address),
       });
     }
@@ -315,10 +316,10 @@ export class ProbeInspector {
 
   #promptName(address, netId, current) {
     PopupManager.prompt({
-      title: current ? "Rename net" : "Name this net",
-      label: "Net name",
+      title: current ? t("probe.renameNetTitle") : t("probe.nameNetTitle"),
+      label: t("probe.nameLabel"),
       value: current ?? "",
-      placeholder: "e.g. VCC, GND, CLK, D0…",
+      placeholder: t("probe.namePlaceholder"),
       quickPicks: RESERVED_NET_NAMES,
       onConfirm: (name) => {
         if (!name) return;

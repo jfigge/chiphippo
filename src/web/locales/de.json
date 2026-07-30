@@ -1,0 +1,1004 @@
+{
+  "_meta": {
+    "language": "Deutsch",
+    "note": "Generated from en.json's key set; every leaf key and every {placeholder} matches it (tests/i18n-catalogs.test.js)."
+  },
+  "common": {
+    "ok": "OK",
+    "cancel": "Abbrechen",
+    "save": "Speichern",
+    "close": "Schließen",
+    "delete": "Löschen",
+    "clear": "Leeren",
+    "browse": "Durchsuchen…",
+    "download": "Herunterladen…",
+    "rename": "Umbenennen",
+    "untitled": "Unbenannt",
+    "none": "Keine",
+    "confirm": "Bestätigen"
+  },
+  "app": {
+    "header": "Anwendungskopfzeile",
+    "actions": "Anwendungsaktionen",
+    "about": "Über Chip Hippo",
+    "settings": "Einstellungen",
+    "openSettings": "Einstellungen öffnen",
+    "desk": "Arbeitsfläche",
+    "schematic": "Schaltplan",
+    "deskHint": "Öffne die Bauteilablage und füge ein Steckbrett hinzu, um zu beginnen"
+  },
+  "menu": {
+    "app": {
+      "about": "Über Chip Hippo",
+      "settings": "Einstellungen…"
+    },
+    "file": {
+      "title": "Datei",
+      "new": "Neues Projekt",
+      "open": "Öffnen…",
+      "openRecent": "Zuletzt geöffnet",
+      "noRecent": "Keine kürzlichen Projekte",
+      "save": "Speichern",
+      "saveAs": "Speichern unter…",
+      "properties": "Projekteigenschaften…",
+      "bom": "Stückliste…"
+    },
+    "desktop": {
+      "title": "Arbeitsblatt",
+      "new": "Neues Arbeitsblatt",
+      "duplicate": "Arbeitsblatt duplizieren",
+      "import": "Arbeitsblatt importieren…",
+      "export": "Arbeitsblatt exportieren…",
+      "properties": "Arbeitsblatteigenschaften…",
+      "delete": "Arbeitsblatt löschen"
+    },
+    "edit": {
+      "title": "Bearbeiten",
+      "undo": "Widerrufen",
+      "redo": "Wiederholen",
+      "selectAll": "Alles auswählen"
+    },
+    "view": {
+      "title": "Ansicht",
+      "devTools": "Entwicklerwerkzeuge ein-/ausschalten"
+    },
+    "window": {
+      "title": "Fenster"
+    },
+    "help": {
+      "title": "Hilfe",
+      "userGuide": "Chip Hippo Benutzerhandbuch",
+      "shortcuts": "Tastaturkürzel",
+      "checkUpdates": "Nach Updates suchen…"
+    },
+    "pinout": {
+      "float": "Über anderen Fenstern halten",
+      "close": "Fenster schließen"
+    }
+  },
+  "window": {
+    "pinout": "Pinbelegung",
+    "memory": "Speicher-Inspektor"
+  },
+  "dialog": {
+    "filter": {
+      "project": "Chip-Hippo-Projekt",
+      "desktop": "Chip-Hippo-Arbeitsblatt",
+      "memImage": "Speicherabbild",
+      "binImage": "Binärabbild",
+      "intelHex": "Intel HEX",
+      "allFiles": "Alle Dateien"
+    }
+  },
+  "toolbar": {
+    "file": {
+      "group": "Datei",
+      "new": "Neues Projekt",
+      "newTitle": "Neues Projekt ({accel}) — auf einer leeren Arbeitsfläche neu beginnen",
+      "open": "Öffnen",
+      "openTitle": "Öffnen… ({accel}) — ein gespeichertes Projekt laden",
+      "save": "Speichern",
+      "saveTitle": "Speichern ({accel}) — das Projekt in seine Datei zurückschreiben",
+      "saveAs": "Speichern unter",
+      "saveAsTitle": "Speichern unter… ({accel}) — das Projekt in eine neue Datei schreiben"
+    },
+    "tools": {
+      "group": "Werkzeuge"
+    },
+    "wire": {
+      "label": "Draht",
+      "title": "Drahtwerkzeug — zwei freie Kontakte anklicken, um sie zu verbinden (W)",
+      "colorLabel": "Drahtfarbe"
+    },
+    "bus": {
+      "label": "Bus",
+      "title": "Buswerkzeug — mehrere Drähte in einer Bewegung legen (B)",
+      "widthLabel": "Busbreite"
+    },
+    "fade": {
+      "label": "Drähte ausblenden",
+      "title": "Drähte ausblenden — nur ein Stummel an jedem Ende, damit das Steckbrett lesbar bleibt (H)"
+    },
+    "probe": {
+      "label": "Prüfspitze",
+      "title": "Durchgangsprüfer — zum Hervorheben eines Netzes darüberfahren, zum Anheften klicken (P)"
+    },
+    "analyzer": {
+      "label": "Analysator",
+      "title": "Logikanalysator — Signalverläufe über die Zeit aufzeichnen und ansehen ({mod}+A)"
+    },
+    "fit": {
+      "label": "An Fenster anpassen",
+      "title": "An Fenster anpassen — jedes Steckbrett, Bauteil und jeden Draht einrahmen ({mod}+F)"
+    },
+    "zoomOut": {
+      "label": "Ganz herauszoomen",
+      "title": "Ganz herauszoomen — ein verlorenes Bauteil finden ({mod}+Shift+F)"
+    },
+    "bom": {
+      "label": "Stückliste",
+      "title": "Stückliste — Bauteilliste, Drahtliste und Montageschritte ({mod}+B)"
+    },
+    "mode": {
+      "schematic": "Schaltplanansicht",
+      "schematicTitle": "Den logischen Schaltplan zeigen (Tab)",
+      "breadboard": "Steckbrettansicht",
+      "breadboardTitle": "Zurück zum Steckbrett (Tab)"
+    },
+    "ai": {
+      "label": "KI-Baumeister",
+      "title": "KI-Schaltungsbaumeister — beschreibe eine Schaltung und lass sie entwerfen, aufbauen und testen",
+      "unreadable": "Die KI-Verbindung konnte nicht gelesen werden."
+    },
+    "transport": {
+      "group": "Simulationssteuerung",
+      "run": "Start",
+      "runTitle": "Schaltung starten (Leertaste oder {mod}+R)",
+      "stop": "Stopp",
+      "stopTitle": "Anhalten und zum Bearbeiten zurückkehren (Leertaste oder {mod}+R)",
+      "pause": "Pause",
+      "pauseTitle": "Takt anhalten / fortsetzen",
+      "resume": "Fortsetzen",
+      "step": "Schritt",
+      "stepTitle": "Eine Takthalbperiode weiter",
+      "speedTitle": "Taktgeschwindigkeit (klicken für ¼ / 1 / 4)"
+    }
+  },
+  "zoom": {
+    "out": "Verkleinern",
+    "in": "Vergrößern",
+    "reset": "Zoom auf 100 % zurücksetzen"
+  },
+  "settings": {
+    "title": "Einstellungen",
+    "close": "Einstellungen schließen",
+    "nav": {
+      "appearance": "Erscheinungsbild",
+      "datasheets": "Datenblätter",
+      "ai": "KI",
+      "about": "Über"
+    },
+    "appearance": {
+      "language": "Sprache",
+      "languageSystem": "System",
+      "languageHint": "Die Sprache, in der Chip Hippos eigene Menüs, Panels und Dialoge angezeigt werden. Das Benutzerhandbuch ist nur auf Englisch verfügbar.",
+      "theme": "Erscheinungsbild",
+      "themeSystem": "System",
+      "themeLight": "Hell",
+      "themeDark": "Dunkel",
+      "selectionColor": "Farbe des Auswahlrahmens",
+      "ledColor": "Standard-LED-Farbe",
+      "wireLayout": "Drahtverlauf",
+      "wireLayoutDirect": "Direkt",
+      "wireLayoutRouted": "Geführt",
+      "wireLayoutHint": "Wie ein neuer Draht gezeichnet wird: Direkt hängt von Kontakt zu Kontakt durch; Geführt läuft gerade und kann durch hineingezogene Punkte um das Steckbrett gebogen werden. Drähte, die bereits liegen, behalten ihren Verlauf — ändere einen über seinen eigenen Eigenschaftsdialog."
+    },
+    "datasheets": {
+      "folder": "Datenblattordner",
+      "noFolder": "Kein Ordner ausgewählt",
+      "clearTitle": "Den Datenblattordner zurücksetzen",
+      "browseTitle": "Den Datenblattordner wählen",
+      "folderHint": "Zeige hier auf einen Ordner mit Hersteller-Datenblatt-PDFs, die nach dem jeweiligen Chip benannt sind (z. B. 74LS00.pdf). Wird ein passendes PDF gefunden, zeigt das Pinbelegungsfenster eines Chips eine Schaltfläche zum Öffnen.",
+      "auto": "Automatisch beziehen",
+      "downloadTitle": "Datenblätter in den eigenen Ordner der App herunterladen",
+      "autoHint": "Lädt für jedes Bauteil, für das Chip Hippo eine veröffentlichte Quelle hinterlegt hat, ein Datenblatt in den eigenen Ordner der App — das Dokument des Herstellers, wo es eines gibt, sonst eine Referenzbibliothek — und richtet die obige Einstellung darauf. Bauteile ohne Quelle werden übersprungen, bereits vorhandene Dateien ersetzt."
+    },
+    "ai": {
+      "loading": "Anbieter werden geladen…",
+      "noProviders": "In dieser Version sind keine KI-Anbieter verfügbar.",
+      "provider": "Anbieter",
+      "baseUrl": "Basis-URL",
+      "model": "Modell",
+      "apiKey": "API-Schlüssel",
+      "keyPlaceholder": "Schlüssel einfügen, um ihn zu speichern",
+      "saveKey": "Schlüssel speichern",
+      "clearKey": "Schlüssel löschen",
+      "testConnection": "Verbindung testen",
+      "testing": "Wird getestet…",
+      "connected": "Verbunden.",
+      "testFailed": "Die Verbindung konnte nicht getestet werden.",
+      "keyStoreFailed": "Der Schlüssel konnte nicht gespeichert werden.",
+      "keyStored": "Für {provider} ist ein Schlüssel gespeichert. Er wird vom Betriebssystem verschlüsselt und niemals in dieses Fenster zurückgelesen.",
+      "keyMissing": "Für {provider} ist kein Schlüssel gespeichert.",
+      "noSecureStore": "Dieses System hat keinen sicheren Schlüsselspeicher, daher kann kein Schlüssel gespeichert werden. Richte die Basis-URL auf einen lokalen Server, der keinen Schlüssel braucht.",
+      "hint": "Chip Hippo nutzt deine eigene Verbindung — es wird nichts irgendwohin gesendet, bis du um einen Aufbau bittest, und der Schlüssel liegt vom Betriebssystem verschlüsselt, nie in settings.json. Lass Basis-URL und Modell leer, um die angezeigten Standardwerte zu verwenden.",
+      "experimental": "Die KI-Generierung ist experimentell. Jeder Entwurf wird vor dem Anbieten gegen den Simulator geprüft, aber er ist vielleicht nicht die optimalste Schaltung oder das ordentlichste Layout — rechne damit, ihn zu prüfen und anzupassen."
+    },
+    "about": {
+      "version": "Version",
+      "readingVersion": "Version wird gelesen…",
+      "autoLabel": "Automatisch suchen",
+      "autoAria": "Automatisch nach Updates suchen",
+      "autoOn": "Ein",
+      "autoOff": "Aus",
+      "check": "Nach Updates suchen",
+      "checking": "Suche nach Updates…",
+      "restart": "Neu starten und aktualisieren",
+      "available": "Ein Update ist verfügbar — wird im Hintergrund geladen…",
+      "availableVersion": "Version {version} ist verfügbar — wird im Hintergrund geladen…",
+      "ready": "Das Update ist installationsbereit.",
+      "readyVersion": "Version {version} ist installationsbereit.",
+      "upToDate": "Du verwendest die neueste Version von Chip Hippo.",
+      "storeBuild": "Updates werden über den App Store ausgeliefert.",
+      "devBuild": "Updates sind nur in installierten Versionen verfügbar.",
+      "error": "Es konnte nicht nach Updates gesucht werden. Bitte versuche es später erneut.",
+      "hint": "Chip Hippo kann github.com nach einer neueren Version fragen. Ein Update wird im Hintergrund geladen und erst installiert, wenn du es sagst — entweder durch einen Neustart hier oder beim nächsten Beenden. Es wird nichts außer der Abfrage selbst gesendet, und mit dieser Option aus gar nichts.",
+      "storeHint": "Updates für diese Ausgabe von Chip Hippo werden über den App Store ausgeliefert, daher sucht sie selbst nie danach."
+    }
+  },
+  "palette": {
+    "label": "Bauteilpalette",
+    "filter": "Bauteile filtern",
+    "filterPlaceholder": "Bauteile filtern…",
+    "noMatches": "Keine passenden Bauteile.",
+    "hide": "Bauteilablage ausblenden",
+    "hideTitle": "Bauteilablage ausblenden ({mod}+P)",
+    "show": "Bauteilablage einblenden",
+    "showTitle": "Bauteilablage einblenden ({mod}+P)",
+    "resize": "Ziehen, um die Bauteilablage zu verbreitern",
+    "board": {
+      "title": "{label} — {points} Kontakte",
+      "titleRotates": "{label} — {points} Kontakte (R zum Drehen)"
+    },
+    "annotation": {
+      "label": "Beschriftung",
+      "labelHint": "eine einzeilige Bildunterschrift",
+      "note": "Notiz",
+      "noteHint": "ein mehrzeiliges Notizfeld"
+    },
+    "group": {
+      "and": "AND",
+      "annotations": "ANMERKUNGEN",
+      "arithmetic": "Arithmetik",
+      "boards": "STECKBRETTER",
+      "buffer": "Puffer",
+      "chips": "CHIPS",
+      "comparator": "Komparator",
+      "components": "BAUTEILE",
+      "counter": "Zähler",
+      "decoder": "Dekoder",
+      "displaydriver": "Anzeigetreiber",
+      "displays": "Anzeigen",
+      "encoder": "Kodierer",
+      "flipflop": "Flipflop",
+      "interface": "Schnittstelle",
+      "inverter": "Inverter",
+      "latch": "Latch",
+      "leds": "LEDs",
+      "memory": "Speicher",
+      "multiplexer": "Multiplexer",
+      "nand": "NAND",
+      "nor": "NOR",
+      "or": "OR",
+      "oscillators": "Oszillatoren",
+      "power": "Stromversorgung",
+      "register": "Register",
+      "resistors": "Widerstände",
+      "shiftregister": "Schieberegister",
+      "switches": "Schalter",
+      "xor": "XOR"
+    }
+  },
+  "boards": {
+    "full": "Volle Größe",
+    "half": "Halbe Größe",
+    "tiny": "Klein",
+    "pins-full": "Kontaktfeld, ganz",
+    "pins-half": "Kontaktfeld, halb",
+    "rail-full": "Stromschiene, ganz",
+    "rail-half": "Stromschiene, halb"
+  },
+  "parts": {
+    "74LS00": {
+      "title": "Vierfach-NAND, 2 Eingänge"
+    },
+    "74LS02": {
+      "title": "Vierfach-NOR, 2 Eingänge"
+    },
+    "74LS04": {
+      "title": "Sechsfach-Inverter"
+    },
+    "74LS08": {
+      "title": "Vierfach-AND, 2 Eingänge"
+    },
+    "74LS10": {
+      "title": "Dreifach-NAND, 3 Eingänge"
+    },
+    "74LS11": {
+      "title": "Dreifach-AND, 3 Eingänge"
+    },
+    "74LS20": {
+      "title": "Zweifach-NAND, 4 Eingänge"
+    },
+    "74LS27": {
+      "title": "Dreifach-NOR, 3 Eingänge"
+    },
+    "74LS30": {
+      "title": "NAND, 8 Eingänge"
+    },
+    "74LS32": {
+      "title": "Vierfach-OR, 2 Eingänge"
+    },
+    "74LS86": {
+      "title": "Vierfach-XOR, 2 Eingänge"
+    },
+    "74LS125": {
+      "title": "Vierfach-Bustreiber, Tri-State"
+    },
+    "74LS73": {
+      "title": "Zweifach-JK-Flipflop, Rücksetzen"
+    },
+    "74LS74": {
+      "title": "Zweifach-D-Flipflop, Setzen & Rücksetzen"
+    },
+    "74LS75": {
+      "title": "4-Bit-Latch, bistabil"
+    },
+    "74LS76": {
+      "title": "Zweifach-JK-Flipflop, Setzen & Rücksetzen"
+    },
+    "74LS107": {
+      "title": "Zweifach-JK-Flipflop, Rücksetzen"
+    },
+    "74LS175": {
+      "title": "Vierfach-D-Flipflop"
+    },
+    "74LS161": {
+      "title": "Synchroner 4-Bit-Binärzähler"
+    },
+    "74LS193": {
+      "title": "Synchroner 4-Bit-Vor-/Rückwärtszähler"
+    },
+    "74LS164": {
+      "title": "8-Bit-Schieberegister SIPO"
+    },
+    "74LS165": {
+      "title": "8-Bit-Schieberegister PISO"
+    },
+    "74LS138": {
+      "title": "1-aus-8-Dekoder"
+    },
+    "74LS139": {
+      "title": "Zweifach-1-aus-4-Dekoder"
+    },
+    "74LS01": {
+      "title": "Vierfach-NAND, 2 Eingänge (offener Kollektor)"
+    },
+    "74LS03": {
+      "title": "Vierfach-NAND, 2 Eingänge (offener Kollektor)"
+    },
+    "74LS05": {
+      "title": "Sechsfach-Inverter (offener Kollektor)"
+    },
+    "74LS14": {
+      "title": "Sechsfach-Inverter mit Schmitt-Trigger"
+    },
+    "74LS112": {
+      "title": "Zweifach-JK-Flipflop, Setzen & Rücksetzen"
+    },
+    "74LS173": {
+      "title": "4-Bit-D-Register, Tri-State"
+    },
+    "74LS174": {
+      "title": "Sechsfach-D-Flipflop"
+    },
+    "74LS273": {
+      "title": "Achtfach-D-Flipflop, Rücksetzen"
+    },
+    "74LS279": {
+      "title": "Vierfach-S̄R̄-Latch"
+    },
+    "74LS151": {
+      "title": "1-aus-8-Multiplexer"
+    },
+    "74LS153": {
+      "title": "Zweifach-1-aus-4-Multiplexer"
+    },
+    "74LS157": {
+      "title": "Vierfach-1-aus-2-Umschalter"
+    },
+    "74LS257": {
+      "title": "Vierfach-1-aus-2-Umschalter, Tri-State"
+    },
+    "74LS240": {
+      "title": "Achtfach-Bustreiber, invertierend, Tri-State"
+    },
+    "74LS244": {
+      "title": "Achtfach-Bustreiber, Tri-State"
+    },
+    "74LS245": {
+      "title": "Achtfach-Bustransceiver, Tri-State"
+    },
+    "74LS47": {
+      "title": "BCD-zu-7-Segment-Dekoder/-Treiber"
+    },
+    "74LS85": {
+      "title": "4-Bit-Größenkomparator"
+    },
+    "74LS148": {
+      "title": "8-zu-3-Prioritätskodierer"
+    },
+    "74LS283": {
+      "title": "4-Bit-Volladdierer"
+    },
+    "74LS83": {
+      "title": "4-Bit-Binäraddierer (ursprüngliche Pinbelegung)"
+    },
+    "74LS181": {
+      "title": "4-Bit-Rechenwerk (ALU)"
+    },
+    "74LS169": {
+      "title": "Synchroner 4-Bit-Vor-/Rückwärtszähler"
+    },
+    "74LS259": {
+      "title": "8-Bit-Latch, adressierbar"
+    },
+    "74LS533": {
+      "title": "Achtfach-Transparent-Latch, invertierend, Tri-State"
+    },
+    "74LS573": {
+      "title": "Achtfach-Transparent-Latch, Tri-State"
+    },
+    "74LS595": {
+      "title": "8-Bit-Schieberegister mit Ausgangs-Latch"
+    },
+    "74LS90": {
+      "title": "Dekadenzähler (÷10), asynchron"
+    },
+    "rom-8k": {
+      "title": "8K×8-ROM"
+    },
+    "ram-8k": {
+      "title": "8K×8-SRAM"
+    },
+    "28C16": {
+      "title": "2K×8-EEPROM"
+    },
+    "HM62256": {
+      "title": "32K×8-SRAM"
+    },
+    "AS6C1024": {
+      "title": "128K×8-SRAM"
+    },
+    "AM27C1024": {
+      "title": "64K×16-EPROM"
+    },
+    "w65c21": {
+      "title": "W65C21 PIA"
+    },
+    "w65c22": {
+      "title": "W65C22 VIA"
+    },
+    "w65c02": {
+      "title": "W65C02 CPU"
+    },
+    "sw-slide": {
+      "title": "Schiebeschalter (Umschalter)"
+    },
+    "sw-push": {
+      "title": "Taster (tastend)"
+    },
+    "sw-toggle": {
+      "title": "Taster (rastend)"
+    },
+    "sw-dip1": {
+      "title": "DIP-Schalter (1-fach)"
+    },
+    "sw-dip2": {
+      "title": "DIP-Schalter (2-fach)"
+    },
+    "sw-dip4": {
+      "title": "DIP-Schalter (4-fach)"
+    },
+    "sw-dip8": {
+      "title": "DIP-Schalter (8-fach)"
+    },
+    "led": {
+      "title": "LED"
+    },
+    "seg8cc": {
+      "title": "8-Segment-Ziffer (gemeinsame Kathode)"
+    },
+    "seg8ca": {
+      "title": "8-Segment-Ziffer (gemeinsame Anode)"
+    },
+    "bar8": {
+      "title": "8-Segment-LED-Balken"
+    },
+    "bar8iso": {
+      "title": "8-Segment-LED-Balken (getrennt)"
+    },
+    "resistor": {
+      "title": "Widerstand"
+    },
+    "rnet9": {
+      "title": "Widerstandsnetzwerk (gebündelt, 9-polig)"
+    },
+    "psu": {
+      "title": "Netzteil"
+    },
+    "clock": {
+      "title": "Taktgeber"
+    },
+    "osc-full": {
+      "title": "Oszillator (ganzes Gehäuse)"
+    },
+    "osc-half": {
+      "title": "Oszillator (halbes Gehäuse)"
+    },
+    "lcd": {
+      "title": "Zeichen-LCD (HD44780)"
+    }
+  },
+  "colors": {
+    "red": "rot",
+    "black": "schwarz",
+    "blue": "blau",
+    "green": "grün",
+    "yellow": "gelb",
+    "orange": "orange",
+    "white": "weiß",
+    "purple": "violett"
+  },
+  "tabs": {
+    "label": "Arbeitsblätter",
+    "add": "Neues Arbeitsblatt",
+    "addTitle": "Neues Arbeitsblatt (rechtsklicken, um eines zu importieren)",
+    "properties": "Eigenschaften…"
+  },
+  "guide": {
+    "title": "Bauanleitung",
+    "close": "Bauanleitung schließen",
+    "warnBadge": "Entwurfswarnungen",
+    "download": "Stückliste herunterladen",
+    "downloadTitle": "Stückliste herunterladen (.rtf)",
+    "exportTitle": "{name} — Bauanleitung",
+    "tab": {
+      "bom": "Stückliste",
+      "wiring": "Verdrahtung",
+      "steps": "Schritte"
+    },
+    "emptyBom": "Noch nichts auf der Arbeitsfläche.",
+    "emptyWiring": "Noch keine Verbindungen.",
+    "emptySteps": "Noch keine Montageschritte.",
+    "singletonTitle": "Nur eine Verbindung",
+    "singletonFlag": "nur eine Verbindung"
+  },
+  "plan": {
+    "pinLabel": "{base} Pin {pin}{suffix}",
+    "railLabel": "Schiene {rail} ({board})",
+    "manualClock": "manuell",
+    "flipped": "um 180° gedreht",
+    "straddling": "über den Graben von {from} bis {to}, Pin 1 auf {anchor}{flip}",
+    "withLeads": "mit Anschlüssen auf {leads}{flip}",
+    "floatingLead": "frei",
+    "unnamedSignal": "Signal",
+    "wireCount": {
+      "one": "{count} Draht",
+      "other": "{count} Drähte"
+    },
+    "warningCount": {
+      "one": "{count} Warnung",
+      "other": "{count} Warnungen"
+    },
+    "net": {
+      "bit": "Bit {bit}",
+      "unnamed": "unbenanntes Netz",
+      "busHead": "Bus {name}"
+    },
+    "bom": {
+      "boards": "Steckbretter",
+      "chips": "Chips",
+      "discretes": "Diskrete Bauteile",
+      "power": "Stromversorgung"
+    },
+    "stepGroup": {
+      "boards": "Steckbretter platzieren",
+      "power": "Stromversorgung",
+      "chips": "Chips einsetzen",
+      "discretes": "Diskrete Bauteile hinzufügen",
+      "wires": "Signaldrähte verlegen"
+    },
+    "step": {
+      "assembleBoard": "Ein Steckbrett ({parts}) bei Spalte {x}, Reihe {y} zusammensetzen.",
+      "placeBoard": "Ein {label} bei Spalte {x}, Reihe {y} platzieren.",
+      "psu": "{part} auf {volts} V einstellen und auf die Arbeitsfläche stellen.",
+      "clock": "{part} ({rate}) einstellen und auf die Arbeitsfläche stellen.",
+      "powerWire": "Einen {color}en Draht legen: {from} → {to}.",
+      "seatChip": "Einen {ref} einsetzen, {where}.",
+      "placePart": "Ein {part}{color} platzieren, {where}.",
+      "bus": "Den Bus {name} legen ({wires}).",
+      "net": "Das Netz {name} verdrahten ({wires})."
+    },
+    "warn": {
+      "floatingLead": "{base} ({id}) Pin {pin}{suffix} ist frei — sein Anschluss liegt über keinem Kontakt.",
+      "noPower": "{ref} ({id}) hat keine {pins}-Verbindung — er wird nicht mit Strom versorgt.",
+      "singleMember": "Das Netz „{name}“ verbindet nur einen Punkt — wahrscheinlich eine vergessene Verbindung."
+    }
+  },
+  "scope": {
+    "title": "Logikanalysator",
+    "close": "Logikanalysator schließen",
+    "resize": "Ziehen, um den Analysator zu vergrößern",
+    "channel": "Kanal",
+    "addTitle": "Ein benanntes Netz oder einen Bus als Kanal hinzufügen",
+    "clearTitle": "Die Aufzeichnung leeren",
+    "exportSvg": "Das Zeitdiagramm als SVG exportieren",
+    "exportPng": "Das Zeitdiagramm als PNG exportieren",
+    "emptyBefore": "Noch keine Kanäle — ",
+    "emptyLink": "ein Netz oder einen Bus hinzufügen",
+    "emptyAfter": ", oder ein geprüftes Netz rechtsklicken → „Zum Analysator hinzufügen“.",
+    "moveUp": "Nach oben",
+    "moveDown": "Nach unten",
+    "removeChannel": "Kanal entfernen",
+    "noNets": "Noch keine benannten Netze oder Busse",
+    "busSuffix": "Bus",
+    "missingRef": "{ref} (fehlt)",
+    "tickCount": {
+      "one": "{count} Takt",
+      "other": "{count} Takte"
+    }
+  },
+  "ai": {
+    "title": "KI-Schaltungsbaumeister",
+    "close": "KI-Baumeister schließen",
+    "resize": "Ziehen, um den KI-Baumeister zu vergrößern",
+    "clearTitle": "Das Gespräch leeren und einen neuen Entwurf beginnen",
+    "inputLabel": "Beschreibe die zu bauende Schaltung",
+    "inputPlaceholder": "Beschreibe eine Schaltung — z. B. „addiere zwei 8-Bit-Zahlen mit Übertrag, Schalter für die Eingänge und ein LED-Balken für die Summe“",
+    "build": "Diese Schaltung bauen",
+    "buildTitle": "Diese Schaltung bauen (Eingabetaste)",
+    "cancelTitle": "Diesen Aufbau abbrechen",
+    "intro": "Beschreibe eine Schaltung; sie wird entworfen, aufgebaut, simuliert und getestet, bevor sie dir zum Platzieren angeboten wird. Richte zuerst deine eigene KI-Verbindung in Einstellungen ▸ KI ein.",
+    "cleared": "Geleert. Beschreibe eine neue Schaltung.",
+    "cancelled": "Abgebrochen.",
+    "lockedRunning": "Beende die Simulation, bevor du eine neue Schaltung baust.",
+    "designing": "Entwurf läuft…",
+    "designingRow": "Die Schaltung wird entworfen{round}…",
+    "fixRound": "(Korrektur {n} von {total})",
+    "building": "Aufbau läuft…",
+    "buildingRow": "Die Schaltung wird aufgebaut…",
+    "startFailed": "Die Anfrage konnte nicht gestartet werden.",
+    "requestFailed": "Die Anfrage ist fehlgeschlagen.",
+    "buildCrashed": "Der Aufbau ist unerwartet fehlgeschlagen: {message}",
+    "compilerFault": "Die Schaltung wurde richtig beschrieben, konnte aber nicht aufgebaut werden. Das ist ein Fehler in Chip Hippos Compiler, nicht im Entwurf.",
+    "gaveUp": "Nach {total} Korrekturversuchen aufgegeben. Was noch falsch ist:",
+    "retrying": "Dieser Entwurf ist nicht bestanden — es wird um eine Korrektur gebeten (Versuch {n} von {total}):",
+    "untitledCircuit": "Schaltung",
+    "summary": "{title} — {parts} Bauteile, {wires} Drähte, {strips} Steckbrettstreifen.",
+    "testsPassed": "{passed}/{tested} der eigenen Tests bestanden.",
+    "builtWithNotes": "Mit Anmerkungen aufgebaut:",
+    "placeHint": "Klicken, um sie auf der Arbeitsfläche zu platzieren, oder Escape drücken.",
+    "gate": {
+      "compile": "Die Netzliste wird übersetzt…",
+      "l3": "Der Aufbau wird geprüft…",
+      "l4": "Die Verbindungen werden geprüft…",
+      "l5": "Simulation läuft…",
+      "l6": "Es wird nach ungetriebenen Netzen gesucht…"
+    },
+    "reason": {
+      "noProvider": "In dieser Version ist kein KI-Anbieter verfügbar.",
+      "unknownProvider": "„{provider}“ ist kein Anbieter, den diese Version erreichen kann. Wähle einen in Einstellungen ▸ KI.",
+      "noSecureStore": "Dieses System hat keinen sicheren Schlüsselspeicher, daher kann kein API-Schlüssel gespeichert werden. Siehe Einstellungen ▸ KI.",
+      "noKey": "Für {provider} ist kein API-Schlüssel eingerichtet. Füge einen in Einstellungen ▸ KI hinzu.",
+      "badBaseUrl": "Die KI-Basis-URL „{url}“ ist keine gültige http(s)-Adresse. Korrigiere oder leere sie in Einstellungen ▸ KI."
+    }
+  },
+  "schematic": {
+    "hint": "Füge Chips auf die Arbeitsfläche, um den Schaltplan zu sehen",
+    "autoLayout": "Auto-Layout"
+  },
+  "desk": {
+    "brick": {
+      "psu": "Netzteil",
+      "clock": "Taktgeber",
+      "display": "Anzeige"
+    },
+    "boardPropertiesTitle": "Eigenschaften: {board}",
+    "wirePropertiesTitle": "Drahteigenschaften",
+    "wireColor": "Farbe",
+    "wireLayout": "Verlaufsart",
+    "count": {
+      "and": " und ",
+      "parts": {
+        "one": "{count} Bauteil",
+        "other": "{count} Bauteile"
+      },
+      "wires": {
+        "one": "{count} Draht",
+        "other": "{count} Drähte"
+      },
+      "boards": {
+        "one": "{count} Steckbrett",
+        "other": "{count} Steckbretter"
+      },
+      "moreParts": {
+        "one": "{count} weiteres Bauteil",
+        "other": "{count} weitere Bauteile"
+      },
+      "moreWires": {
+        "one": "{count} weiterer Draht",
+        "other": "{count} weitere Drähte"
+      }
+    },
+    "menu": {
+      "pinAssignment": "Pinbelegung",
+      "properties": "Eigenschaften…",
+      "deleteComponent": "Bauteil löschen",
+      "removeBoard": "Steckbrett entfernen",
+      "editText": "Text bearbeiten…",
+      "remove": "Entfernen"
+    },
+    "remove": {
+      "confirm": "Entfernen",
+      "boardTitle": "Steckbrett entfernen?",
+      "boardsTitle": "Steckbretter entfernen?",
+      "boardMessage": "An {id} hängen {what} — mit dem Steckbrett gehen sie mit.",
+      "boardsMessage": "An diesen {count} verbundenen Steckbrettern hängen {what} — mit ihnen gehen sie mit.",
+      "brickTitle": "{noun} entfernen?",
+      "brickMessage": "An {id} hängen {what} — damit gehen sie mit.",
+      "selectionTitle": "{what} entfernen?",
+      "selectionMessage": "{extra} daran werden ebenfalls entfernt."
+    },
+    "paste": {
+      "failTitle": "Der Entwurf konnte nicht eingefügt werden",
+      "overlap": "Ein Teil davon landet auf etwas, das schon auf dieser Arbeitsfläche liegt.",
+      "noRoom": "Etwas, das er braucht, ist auf dieser Arbeitsfläche nicht frei."
+    }
+  },
+  "workspace": {
+    "location": "Ort",
+    "projectProperties": "Projekteigenschaften",
+    "desktopProperties": "Arbeitsblatteigenschaften",
+    "defaultDesktopName": "Arbeitsblatt {n}",
+    "openFailTitle": "Dieses Projekt konnte nicht geöffnet werden",
+    "unreadable": "Die Datei konnte nicht gelesen werden.",
+    "deleteTabTitle": "„{name}“ löschen?",
+    "deleteTabMessage": "Sein Entwurf geht mit. Nichts wird geschrieben, bis das Projekt gespeichert wird — das Projekt ohne Speichern zu schließen bringt es also zurück.",
+    "missingTitle": "Dieses Projekt ist nicht mehr da",
+    "missingMessage": "„{name}“ wurde nicht gefunden. Aus den kürzlichen Projekten entfernen?",
+    "untitledTitle": "Dieses Projekt wurde nicht gespeichert",
+    "untitledMessage": "Es hat noch kein eigenes Zuhause; ein neues oder anderes Projekt zu öffnen verwirft es — mit allen Arbeitsblättern.",
+    "dirtyTitle": "Nicht gespeicherte Änderungen",
+    "thisProject": "Dieses Projekt",
+    "dirtyQuitting": "{what} hat nicht gespeicherte Änderungen. Jetzt zu beenden verliert sie.",
+    "dirtyLeaving": "{what} hat nicht gespeicherte Änderungen. Jetzt zu wechseln verliert sie.",
+    "discard": "Verwerfen",
+    "restoreWarnTitle": "Einige Arbeitsblätter konnten nicht wiederhergestellt werden",
+    "noDesktops": "es hat keine Arbeitsblätter",
+    "failStart": "Das Projekt konnte nicht gestartet werden",
+    "failOpen": "Das Projekt konnte nicht geöffnet werden",
+    "failSave": "Das Projekt konnte nicht gespeichert werden",
+    "failLocation": "Es konnte kein Ort gewählt werden",
+    "failDuplicate": "Das Arbeitsblatt konnte nicht dupliziert werden",
+    "failImport": "Dieses Arbeitsblatt konnte nicht importiert werden",
+    "failExport": "Das Arbeitsblatt konnte nicht exportiert werden",
+    "failExample": "Das Beispiel {ref} konnte nicht geöffnet werden"
+  },
+  "sim": {
+    "memNotLoaded": "Speicher nicht geladen",
+    "memNotLoadedMessage": "{chip}: {error}. Läuft mit Nullen.",
+    "memLost": "Speicherdaten verloren",
+    "memLostMessage": "{chip} war programmiert, aber seine Datendatei fehlte — er enthält jetzt Zufallsrauschen. Lade ein Abbild neu.",
+    "short": "Kurzschluss",
+    "shortMessage": "Gegensätzliche Versorgungen treffen auf einem Netz zusammen ({net}).",
+    "conflict": "Treiberkonflikt",
+    "conflictMessage": "Zwei Ausgänge kämpfen auf einem Netz ({net}).",
+    "oscillation": "Schwingung",
+    "oscillationMessage": {
+      "one": "Die Schaltung kommt nicht zur Ruhe ({count} instabiles Netz).",
+      "other": "Die Schaltung kommt nicht zur Ruhe ({count} instabile Netze)."
+    },
+    "underpowered": "Unterversorgt",
+    "underpoweredMessage": "{chip} liegt an 3 V — läuft untätig.",
+    "reversed": "Versorgung verpolt",
+    "reversedMessage": "Bei {chip} sind VCC und GND vertauscht.",
+    "damaged": "Magischer Rauch!",
+    "damagedMessage": "{chip} wurde durch 12 V beschädigt. Lösche ihn und setze einen neuen ein, um weiterzumachen."
+  },
+  "about": {
+    "subtitle": "TTL-Steckbrett-Entwurf & -Simulation",
+    "description": "Entwirf und simuliere Logikschaltungen der 74xx-Familie auf virtuellen lötfreien Steckbrettern — setze Chips, Drähte, Schalter, LEDs und Stromversorgung, und sieh zu, wie sich der Strom durch jedes Netz einstellt.",
+    "versionInfo": "Versionsinformationen",
+    "version": "Version",
+    "platform": "Plattform",
+    "devBuild": "Entwicklungsversion"
+  },
+  "netNames": {
+    "conflict": "Netznamen-Konflikt",
+    "conflictMessage": "„{winner}“ und „{loser}“ benennen dasselbe Netz — „{winner}“ wird verwendet."
+  },
+  "updater": {
+    "available": "Update verfügbar",
+    "downloading": "Das Update wird im Hintergrund geladen…",
+    "downloadingVersion": "{version} wird im Hintergrund geladen…",
+    "ready": "Update bereit",
+    "downloaded": "Das Update wurde heruntergeladen.",
+    "downloadedVersion": "Version {version} wurde heruntergeladen.",
+    "restart": "Neu starten",
+    "upToDate": "Aktuell",
+    "checkFailed": "Updatesuche fehlgeschlagen"
+  },
+  "bus": {
+    "rename": "Bus umbenennen…",
+    "renameTitle": "Bus umbenennen",
+    "nameLabel": "Busname",
+    "namePlaceholder": "z. B. D[7:0], A[0:15]",
+    "unbundle": "Bündelung auflösen (Drähte behalten)",
+    "deleteWithWires": "Bus + Drähte löschen"
+  },
+  "wire": {
+    "tooManyBends": "Keine weiteren Knicke an diesem Draht",
+    "tooManyBendsMessage": "Ein geführter Draht trägt höchstens {max} Punkte. Zieh einen auf seinen Nachbarn, um ihn zu verschmelzen, und füge dann einen neuen hinzu."
+  },
+  "probe": {
+    "nameNet": "Dieses Netz benennen…",
+    "renameNet": "Netz umbenennen…",
+    "nameNetTitle": "Dieses Netz benennen",
+    "renameNetTitle": "Netz umbenennen",
+    "nameLabel": "Netzname",
+    "namePlaceholder": "z. B. VCC, GND, CLK, D0…",
+    "clearName": "Namen löschen",
+    "addToAnalyzer": "Zum Analysator hinzufügen"
+  },
+  "shortcuts": {
+    "title": "Tastaturkürzel",
+    "close": "Tastaturkürzel schließen",
+    "group": {
+      "file": "Datei",
+      "tools": "Werkzeuge",
+      "wireBus": "Draht & Bus (während das Werkzeug aktiv ist)",
+      "edit": "Bearbeiten",
+      "view": "Ansicht",
+      "simulation": "Simulation"
+    },
+    "file": {
+      "new": "Neues Projekt",
+      "open": "Ein Projekt öffnen",
+      "save": "Speichern",
+      "saveAs": "Speichern unter…",
+      "bom": "Stückliste (Bauanleitung)"
+    },
+    "tools": {
+      "wire": "Drahtwerkzeug",
+      "bus": "Buswerkzeug",
+      "probe": "Prüfspitze",
+      "putAway": "Draht-/Bus-/Prüfwerkzeug weglegen",
+      "rotate": "Ein Bauteil drehen / eine Schiene aufstellen",
+      "flip": "LED-Polarität beim Platzieren umdrehen"
+    },
+    "wireBus": {
+      "color": "Drahtfarbe — 1 Rot 2 Schwarz 3 Blau 4 Grün 5 Gelb 6 Orange 7 Weiß 8 Violett",
+      "width": "Busbreite — 2–8 für so viele Bits, 1 für 16 Bit"
+    },
+    "edit": {
+      "selectAll": "Alles auswählen — die ganze Arbeitsfläche oder der Text eines Eingabefelds",
+      "copy": "Das ausgewählte Bauteil kopieren",
+      "paste": "Eine Kopie einfügen",
+      "delete": "Die Auswahl löschen",
+      "undo": "Widerrufen",
+      "redo": "Wiederholen",
+      "cancel": "Das aktive Werkzeug abbrechen / Auswahl aufheben"
+    },
+    "view": {
+      "toggleView": "Steckbrett ⇄ Schaltplan",
+      "fadeWires": "Drähte auf einen Stummel an jedem Ende ausblenden",
+      "palette": "Bauteilpalette ein-/ausblenden",
+      "analyzer": "Logikanalysator ein-/ausblenden",
+      "fit": "An Fenster anpassen",
+      "zoomOut": "Ganz herauszoomen (ein verlorenes Bauteil finden)",
+      "zoom": "Vergrößern / verkleinern / zurücksetzen"
+    },
+    "simulation": {
+      "run": "Schaltung starten / stoppen",
+      "runKeys": "Leertaste oder {mod}+R"
+    }
+  },
+  "properties": {
+    "close": "Eigenschaften schließen",
+    "name": "Name",
+    "description": "Beschreibung",
+    "field": {
+      "color": "Farbe",
+      "volts": "Spannung",
+      "hz": "Frequenz",
+      "size": "Größe"
+    },
+    "option": {
+      "manual": "Manuell"
+    },
+    "action": {
+      "inspectMemory": "Speicher untersuchen…",
+      "programMemory": "Abbild laden… (programmieren)"
+    }
+  },
+  "memory": {
+    "offset": "Offset",
+    "titleSuffix": "Speicher",
+    "noChip": "Kein Speicherchip für „{ref}“.",
+    "stopped": "Gestoppt",
+    "statusRunning": "Läuft · nur lesen",
+    "statusVolatile": "Gestoppt · flüchtig (nur lesen)",
+    "statusEditable": "Gestoppt · bearbeitbar",
+    "volatileNote": "Flüchtig (SRAM) — keine Datei dahinter",
+    "copyPath": "Pfad kopieren",
+    "loadImage": "Abbild laden… (programmieren)",
+    "exportBin": ".bin exportieren",
+    "exportHex": "HEX exportieren",
+    "goto": "Gehe zu",
+    "gotoAddress": "Zu Adresse gehen",
+    "addrPlaceholder": "Adr. (hex)",
+    "fill": "Füllen",
+    "fillStart": "Füllen ab",
+    "fillEnd": "Füllen bis",
+    "fillValue": "Füllwert",
+    "loadFailed": "Datei dahinter konnte nicht geladen werden"
+  },
+  "datasheets": {
+    "title": "Datenblätter herunterladen",
+    "starting": "Wird gestartet…",
+    "downloading": "Datenblätter werden geladen…",
+    "progress": "Datenblätter werden geladen — {done} von {total}",
+    "startFailed": "Der Download konnte nicht gestartet werden.",
+    "cancelled": "Abgebrochen — {saved} von {total} geladen",
+    "done": "{saved} von {total} Datenblättern geladen",
+    "failed": "fehlgeschlagen",
+    "failedHead": {
+      "one": "{count} konnte nicht geholt werden:",
+      "other": "{count} konnten nicht geholt werden:"
+    }
+  },
+  "pinout": {
+    "ariaLabel": "Pinbelegung {id}",
+    "openDatasheet": "Das Datenblatt-PDF öffnen",
+    "openExample": "Die Beispielschaltung öffnen",
+    "openExampleTitle": "Die Beispielschaltung dieses Bauteils als neues Arbeitsblatt öffnen",
+    "datasheetCaption": "Datenblatt — Innenschaltbild & Funktionstabelle",
+    "subPackage": "{package} · Pinbelegung",
+    "subLinear": "{count} Kontakte in einer Rasterreihe · Pinbelegung",
+    "subCan": "{holes} Kontakte, Beine an den 4 Ecken · Pinbelegung",
+    "subTerminals": "Anschlussbelegung",
+    "subWire": "2 Enden · Pinbelegung",
+    "wireTitle": "Draht",
+    "wireAria": "Pinbelegung des Drahts",
+    "anchorHole": "Ankerkontakt",
+    "holeOffset": {
+      "one": "+{count} Kontakt",
+      "other": "+{count} Kontakte"
+    },
+    "corner": {
+      "bottomLeft": "Ecke unten links",
+      "bottomRight": "Ecke unten rechts",
+      "topLeft": "Ecke oben links",
+      "topRight": "Ecke oben rechts"
+    },
+    "cornerAnchor": "{corner} (der Anker, Pin 1)",
+    "noAssignments": "Keine Pinbelegung für „{ref}“.",
+    "noPart": "Kein Bauteil ausgewählt."
+  },
+  "popup": {
+    "closeNamed": "{title} schließen",
+    "removeNamed": "{label} entfernen",
+    "enterValue": "Einen Wert eingeben"
+  }
+}

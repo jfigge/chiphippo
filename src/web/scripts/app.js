@@ -22,6 +22,8 @@
 // no flash of the default view. Boards arrive with Features 20–30.
 
 import { el } from "./dom.js";
+import * as i18n from "./i18n.js";
+import { t } from "./i18n.js";
 import { DeskView } from "./components/desk-view.js";
 import { ZoomControl } from "./components/zoom-control.js";
 import { DeskController } from "./components/desk-controller.js";
@@ -166,10 +168,10 @@ const ZOOM_OUT_SVG =
   '<line x1="21" y1="21" x2="16.65" y2="16.65"/>' +
   '<line x1="8" y1="11" x2="14" y2="11"/></svg>';
 
-/** The AI segment's tooltip while it is available (see `refreshAiReady`). */
-const AI_TITLE =
-  "AI circuit builder — describe a circuit and have it designed, " +
-  "built and tested for you";
+/** The AI segment's tooltip while it is available (see `refreshAiReady`). A
+    function, not a const: `t()` must never be called at module scope, where the
+    catalog is not loaded yet (see i18n.js). */
+const aiTitle = () => t("toolbar.ai.title");
 
 /** AI-builder icon: a four-point spark — the app-wide "generated" glyph. */
 const AI_SVG =
@@ -210,10 +212,17 @@ const GUIDE_SVG =
   '<line x1="8" y1="11" x2="8.01" y2="11"/>' +
   '<line x1="8" y1="16" x2="8.01" y2="16"/></svg>';
 
+/**
+ * The header bar. Returns the elements whose LABELS have to be re-applied when
+ * the language changes (`relabelChrome` in init()) rather than just the finished
+ * node — Chip Hippo never reloads the window, so a locale change has to be
+ * applied to the chrome that is already on screen.
+ * @returns {{header: HTMLElement, iconBtn: HTMLElement, settingsBtn: HTMLElement}}
+ */
 function buildHeader() {
   const header = document.createElement("header");
   header.className = "app-header";
-  header.setAttribute("aria-label", "Application header");
+  header.setAttribute("aria-label", t("app.header"));
 
   const brand = document.createElement("div");
   brand.className = "app-header-brand";
@@ -231,8 +240,8 @@ function buildHeader() {
   const iconBtn = document.createElement("button");
   iconBtn.className = "app-header-icon-btn";
   iconBtn.type = "button";
-  iconBtn.title = "About Chip Hippo";
-  iconBtn.setAttribute("aria-label", "About Chip Hippo");
+  iconBtn.title = t("app.about");
+  iconBtn.setAttribute("aria-label", t("app.about"));
   iconBtn.append(icon);
   iconBtn.addEventListener("click", () => AboutDialog.open());
 
@@ -253,13 +262,13 @@ function buildHeader() {
   const actions = document.createElement("div");
   actions.className = "header-icon-panel";
   actions.setAttribute("role", "toolbar");
-  actions.setAttribute("aria-label", "Application actions");
+  actions.setAttribute("aria-label", t("app.actions"));
 
   const settingsBtn = document.createElement("button");
   settingsBtn.className = "icon-btn header-icon-btn";
   settingsBtn.type = "button";
-  settingsBtn.title = "Settings";
-  settingsBtn.setAttribute("aria-label", "Open settings");
+  settingsBtn.title = t("app.settings");
+  settingsBtn.setAttribute("aria-label", t("app.openSettings"));
   settingsBtn.innerHTML = GEAR_SVG;
   settingsBtn.addEventListener("click", () =>
     window.dispatchEvent(new CustomEvent("chiphippo:open-settings")),
@@ -267,19 +276,19 @@ function buildHeader() {
   actions.append(settingsBtn);
 
   header.append(brand, toolbar, actions);
-  return header;
+  return { header, iconBtn, settingsBtn };
 }
 
 function buildDesk() {
   const desk = document.createElement("section");
   desk.className = "desk-viewport";
-  desk.setAttribute("aria-label", "Desk");
+  desk.setAttribute("aria-label", t("app.desk"));
 
   // Inert overlay hint (pointer-events: none) — Feature 30's "add board"
   // flow replaces it.
   const hint = document.createElement("p");
   hint.className = "desk-hint";
-  hint.textContent = "Open the parts tray and add a breadboard to get started";
+  hint.textContent = t("app.deskHint");
 
   desk.append(hint);
   return desk;
@@ -290,7 +299,7 @@ function buildDesk() {
 function buildSchematicViewport() {
   const view = document.createElement("section");
   view.className = "schematic-viewport";
-  view.setAttribute("aria-label", "Schematic");
+  view.setAttribute("aria-label", t("app.schematic"));
   view.hidden = true;
   return view;
 }
@@ -430,6 +439,14 @@ function bindShortcuts(
 async function init() {
   const bridge = window.chiphippo;
 
+  // Resolve the active language and load its catalog BEFORE anything renders,
+  // so the very first `t()` call — in buildHeader, below — resolves against the
+  // right catalog rather than painting English and correcting itself. Main
+  // decides which language that is (the persisted preference, else the OS
+  // locale, else English) because it owns both the setting and the files; this
+  // also sets <html lang>. See i18n.js.
+  await i18n.init();
+
   // Load settings BEFORE mounting the desk so the saved viewport applies on
   // the first paint (acceptable to proceed with defaults if the read fails).
   let settings = {};
@@ -456,7 +473,8 @@ async function init() {
   // Main row below the header: the parts palette (left, toggleable) beside
   // the full-bleed desk.
   const main = el("div", { class: "app-main" });
-  app.append(buildHeader(), main);
+  const header = buildHeader();
+  app.append(header.header, main);
   let workspace = null;
 
   // Desk document (Feature 20): the boards/components/wires of the desktop on
@@ -490,7 +508,7 @@ async function init() {
   const updateTitle = () => {
     const tab = workspace?.activeTab;
     const marker = workspace?.dirty ? "• " : "";
-    const project = workspace?.projectName || "Untitled";
+    const project = workspace?.projectName || t("common.untitled");
     document.title = tab
       ? `${marker}${project} — ${tab.name} — Chip Hippo`
       : "Chip Hippo";
@@ -738,7 +756,7 @@ async function init() {
   let aiProviders = null; // main's provider list, read once
   let aiRestored = false; // whether the remembered `aiOpen` has been applied
   const refreshAiReady = async () => {
-    let ready = { ok: false, reason: "The AI connection could not be read." };
+    let ready = { ok: false, reason: t("toolbar.ai.unreadable") };
     try {
       aiProviders ??= (await bridge.ai?.providers?.()) ?? [];
       const config = currentSettings.ai ?? {};
@@ -753,7 +771,7 @@ async function init() {
     }
     if (aiBtn) {
       aiBtn.disabled = !ready.ok;
-      aiBtn.title = ready.ok ? AI_TITLE : ready.reason;
+      aiBtn.title = ready.ok ? aiTitle() : ready.reason;
     }
     if (ready.ok) {
       // First pass only: honour the remembered state, never force the panel
@@ -926,11 +944,11 @@ async function init() {
     modeBtn.innerHTML = schematic ? BREADBOARD_SVG : SCHEMATIC_SVG;
     modeBtn.setAttribute(
       "aria-label",
-      schematic ? "Breadboard view" : "Schematic view",
+      schematic ? t("toolbar.mode.breadboard") : t("toolbar.mode.schematic"),
     );
     modeBtn.title = schematic
-      ? "Back to the breadboard (Tab)"
-      : "Show the logical schematic (Tab)";
+      ? t("toolbar.mode.breadboardTitle")
+      : t("toolbar.mode.schematicTitle");
     modeBtn.setAttribute("aria-pressed", String(schematic));
   }
 
@@ -962,31 +980,35 @@ async function init() {
 
   const fileNewBtn = fileBtn({
     icon: NEW_SVG,
-    label: "New Project",
-    title: `New Project (${accel("N")}) — start over on an empty desk`,
+    label: t("toolbar.file.new"),
+    title: t("toolbar.file.newTitle", { accel: accel("N") }),
     onClick: fileAction("project-new"),
   });
   const fileOpenBtn = fileBtn({
     icon: LOAD_SVG,
-    label: "Open",
-    title: `Open… (${accel("O")}) — load a saved project`,
+    label: t("toolbar.file.open"),
+    title: t("toolbar.file.openTitle", { accel: accel("O") }),
     onClick: fileAction("project-open"),
   });
   const fileSaveBtn = fileBtn({
     icon: SAVE_SVG,
-    label: "Save",
-    title: `Save (${accel("S")}) — write the project back to its file`,
+    label: t("toolbar.file.save"),
+    title: t("toolbar.file.saveTitle", { accel: accel("S") }),
     onClick: fileAction("project-save"),
   });
   const fileSaveAsBtn = fileBtn({
     icon: SAVE_AS_SVG,
-    label: "Save As",
-    title: `Save As… (${accel("S", true)}) — write the project to a new file`,
+    label: t("toolbar.file.saveAs"),
+    title: t("toolbar.file.saveAsTitle", { accel: accel("S", true) }),
     onClick: fileAction("project-save-as"),
   });
   const filePill = el(
     "div",
-    { class: "toolbar-pill", role: "group", "aria-label": "File" },
+    {
+      class: "toolbar-pill",
+      role: "group",
+      "aria-label": t("toolbar.file.group"),
+    },
     [fileNewBtn, fileOpenBtn, fileSaveBtn, fileSaveAsBtn],
   );
 
@@ -1020,7 +1042,7 @@ async function init() {
   const toolPill = el("div", {
     class: "toolbar-pill",
     role: "group",
-    "aria-label": "Desk tools",
+    "aria-label": t("toolbar.tools.group"),
   });
   toolbar.append(toolPill);
 
@@ -1041,11 +1063,11 @@ async function init() {
     {
       class: "toolbar-pill-btn",
       type: "button",
-      title: "Wire tool — click two free holes to connect them (W)",
+      title: t("toolbar.wire.title"),
       "aria-pressed": "false",
       onClick: () => controller.toggleWireTool(),
     },
-    [el("span", { text: "Wire" }), wireDot.element],
+    [el("span", { text: t("toolbar.wire.label") }), wireDot.element],
   );
   toolPill.append(wireBtn);
   onWireStateChange({ armed: false, color: controller.wireColor });
@@ -1064,11 +1086,11 @@ async function init() {
     {
       class: "toolbar-pill-btn",
       type: "button",
-      title: "Bus tool — lay a multi-bit run of wires in one gesture (B)",
+      title: t("toolbar.bus.title"),
       "aria-pressed": "false",
       onClick: () => controller.toggleBusTool(),
     },
-    [el("span", { text: "Bus" }), busWidth.element],
+    [el("span", { text: t("toolbar.bus.label") }), busWidth.element],
   );
   toolPill.append(busBtn);
 
@@ -1078,9 +1100,8 @@ async function init() {
   fadeBtn = el("button", {
     class: "toolbar-pill-btn toolbar-pill-btn--icon",
     type: "button",
-    "aria-label": "Fade wires",
-    title:
-      "Fade wires — draw only a stub at each end so the board stays readable (H)",
+    "aria-label": t("toolbar.fade.label"),
+    title: t("toolbar.fade.title"),
     "aria-pressed": "false",
     onClick: () => controller.toggleWiresFaded(),
   });
@@ -1092,8 +1113,8 @@ async function init() {
   probeBtn = el("button", {
     class: "toolbar-pill-btn toolbar-pill-btn--icon",
     type: "button",
-    "aria-label": "Probe",
-    title: "Connectivity probe — hover to highlight a net, click to pin (P)",
+    "aria-label": t("toolbar.probe.label"),
+    title: t("toolbar.probe.title"),
     "aria-pressed": "false",
     onClick: () => controller.toggleProbe(),
   });
@@ -1105,8 +1126,8 @@ async function init() {
   scopeBtn = el("button", {
     class: "toolbar-pill-btn toolbar-pill-btn--icon",
     type: "button",
-    "aria-label": "Analyzer",
-    title: `Logic analyzer — record and view signal waveforms over time (${MOD_KEY}+A)`,
+    "aria-label": t("toolbar.analyzer.label"),
+    title: t("toolbar.analyzer.title", { mod: MOD_KEY }),
     "aria-pressed": String(scopeView.visible),
     onClick: () => scopeView.toggle(),
   });
@@ -1135,17 +1156,17 @@ async function init() {
     locateBtn.innerHTML = zoomOutFull ? ZOOM_OUT_SVG : LOCATE_SVG;
     locateBtn.setAttribute(
       "aria-label",
-      zoomOutFull ? "Zoom out fully" : "Fit to screen",
+      zoomOutFull ? t("toolbar.zoomOut.label") : t("toolbar.fit.label"),
     );
     locateBtn.title = zoomOutFull
-      ? `Zoom all the way out — find a lost part (${MOD_KEY}+Shift+F)`
-      : `Fit to screen — frame every board, part, and wire (${MOD_KEY}+F)`;
+      ? t("toolbar.zoomOut.title", { mod: MOD_KEY })
+      : t("toolbar.fit.title", { mod: MOD_KEY });
   };
   const locateBtn = el("button", {
     class: "toolbar-pill-btn toolbar-pill-btn--icon",
     type: "button",
-    "aria-label": "Fit to screen",
-    title: `Fit to screen — frame every board, part, and wire (${MOD_KEY}+F)`,
+    "aria-label": t("toolbar.fit.label"),
+    title: t("toolbar.fit.title", { mod: MOD_KEY }),
     onClick: (e) => {
       if (e.shiftKey) getActiveView().zoomOutFull();
       else fitActiveView();
@@ -1189,8 +1210,8 @@ async function init() {
   guideBtn = el("button", {
     class: "toolbar-pill-btn toolbar-pill-btn--icon",
     type: "button",
-    "aria-label": "Bill Of Materials",
-    title: `Bill Of Materials — parts list, wiring list, and assembly steps (${MOD_KEY}+B)`,
+    "aria-label": t("toolbar.bom.label"),
+    title: t("toolbar.bom.title", { mod: MOD_KEY }),
     "aria-pressed": String(buildGuide.visible),
     onClick: () => buildGuide.toggle(),
   });
@@ -1207,8 +1228,8 @@ async function init() {
   modeBtn = el("button", {
     class: "toolbar-pill-btn toolbar-pill-btn--icon",
     type: "button",
-    "aria-label": "Schematic view",
-    title: "Show the logical schematic (Tab)",
+    "aria-label": t("toolbar.mode.schematic"),
+    title: t("toolbar.mode.schematicTitle"),
     "aria-pressed": "false",
     onClick: () => setMode(mode === "desk" ? "schematic" : "desk"),
   });
@@ -1229,8 +1250,8 @@ async function init() {
   aiBtn = el("button", {
     class: "toolbar-pill-btn toolbar-pill-btn--icon",
     type: "button",
-    "aria-label": "AI builder",
-    title: AI_TITLE,
+    "aria-label": t("toolbar.ai.label"),
+    title: aiTitle(),
     disabled: true,
     "aria-pressed": String(aiPanel.visible),
     onClick: () => aiPanel.toggle(),
@@ -1259,29 +1280,32 @@ async function init() {
   const transportPill = el("div", {
     class: "toolbar-pill toolbar-pill--transport",
     role: "group",
-    "aria-label": "Simulation transport",
+    "aria-label": t("toolbar.transport.group"),
   });
+  // The glyph leads each transport label and is NOT part of the translation:
+  // ▶ / ⏸ / ⇥ / ■ mean the same thing in every language, so a catalog carrying
+  // them would only give six chances to lose one.
   const runBtn = el("button", {
     class: "toolbar-pill-btn toolbar-pill-btn--run",
     type: "button",
-    text: "▶ Run",
-    title: `Run the circuit (Space or ${MOD_KEY}+R)`,
+    text: `▶ ${t("toolbar.transport.run")}`,
+    title: t("toolbar.transport.runTitle", { mod: MOD_KEY }),
     "aria-pressed": "false",
     onClick: () => sim.toggle(),
   });
   const pauseBtn = el("button", {
     class: "toolbar-pill-btn",
     type: "button",
-    text: "⏸ Pause",
-    title: "Pause / resume the clock",
+    text: `⏸ ${t("toolbar.transport.pause")}`,
+    title: t("toolbar.transport.pauseTitle"),
     hidden: true,
     onClick: () => sim.togglePause(),
   });
   const stepBtn = el("button", {
     class: "toolbar-pill-btn",
     type: "button",
-    text: "⇥ Step",
-    title: "Advance one clock half-period",
+    text: `⇥ ${t("toolbar.transport.step")}`,
+    title: t("toolbar.transport.stepTitle"),
     hidden: true,
     onClick: () => sim.step(),
   });
@@ -1289,7 +1313,7 @@ async function init() {
     class: "toolbar-pill-btn",
     type: "button",
     text: "×1",
-    title: "Clock speed (click to cycle ¼ / 1 / 4)",
+    title: t("toolbar.transport.speedTitle"),
     hidden: true,
     onClick: () => {
       const i = (SPEEDS.indexOf(sim.speed) + 1) % SPEEDS.length;
@@ -1313,13 +1337,18 @@ async function init() {
     const stopped = mode === "stopped";
     controller.setEditingLocked(!stopped);
     workspace?.setEditingLocked(!stopped);
-    runBtn.textContent = stopped ? "▶ Run" : "■ Stop";
+    runBtn.textContent = stopped
+      ? `▶ ${t("toolbar.transport.run")}`
+      : `■ ${t("toolbar.transport.stop")}`;
     runBtn.title = stopped
-      ? `Run the circuit (Space or ${MOD_KEY}+R)`
-      : `Stop and return to editing (Space or ${MOD_KEY}+R)`;
+      ? t("toolbar.transport.runTitle", { mod: MOD_KEY })
+      : t("toolbar.transport.stopTitle", { mod: MOD_KEY });
     runBtn.setAttribute("aria-pressed", String(!stopped));
     runBtn.classList.toggle("toolbar-btn--running", !stopped);
-    pauseBtn.textContent = mode === "paused" ? "▶ Resume" : "⏸ Pause";
+    pauseBtn.textContent =
+      mode === "paused"
+        ? `▶ ${t("toolbar.transport.resume")}`
+        : `⏸ ${t("toolbar.transport.pause")}`;
     for (const btn of [pauseBtn, stepBtn, speedBtn]) btn.hidden = stopped;
     for (const btn of editButtons) btn.disabled = !stopped;
   };
@@ -1394,6 +1423,84 @@ async function init() {
     () => setMode(mode === "desk" ? "schematic" : "desk"),
   );
 
+  // ── Changing the language, in place ──────────────────────────────────────
+  // Chip Hippo NEVER reloads the window — an unsaved project lives only in
+  // memory, so a reload would throw the user's work away to change a label. So
+  // a language change is applied to the chrome that is already on screen.
+  //
+  // Only PERSISTENT chrome needs this. Everything transient — every dialog,
+  // context menu, popover, notification and the palette's own part rows — is
+  // built when it opens and therefore speaks the current language for free; the
+  // native menu bar is main's, and it rebuilds itself off the same setting.
+  // What is left is this toolbar, the docked panels, and the window title.
+  //
+  // Three of these are relabel functions the app ALREADY had, for their own
+  // reasons: `setMode`, `updateLocateIcon` and `onTransportChange` each own a
+  // button whose label depends on state, so re-running them with the state
+  // unchanged is exactly a relabel. `refreshAiReady` is the same for the AI
+  // segment, whose tooltip is either the description or the reason it is off.
+  const relabelChrome = () => {
+    header.header.setAttribute("aria-label", t("app.header"));
+    header.iconBtn.title = t("app.about");
+    header.iconBtn.setAttribute("aria-label", t("app.about"));
+    header.settingsBtn.title = t("app.settings");
+    header.settingsBtn.setAttribute("aria-label", t("app.openSettings"));
+
+    desk.setAttribute("aria-label", t("app.desk"));
+    hint.textContent = t("app.deskHint");
+    schematicViewport.setAttribute("aria-label", t("app.schematic"));
+
+    filePill.setAttribute("aria-label", t("toolbar.file.group"));
+    for (const [btn, label, title, params] of [
+      [fileNewBtn, "new", "newTitle", { accel: accel("N") }],
+      [fileOpenBtn, "open", "openTitle", { accel: accel("O") }],
+      [fileSaveBtn, "save", "saveTitle", { accel: accel("S") }],
+      [fileSaveAsBtn, "saveAs", "saveAsTitle", { accel: accel("S", true) }],
+    ]) {
+      btn.setAttribute("aria-label", t(`toolbar.file.${label}`));
+      btn.title = t(`toolbar.file.${title}`, params);
+    }
+
+    toolPill.setAttribute("aria-label", t("toolbar.tools.group"));
+    wireBtn.title = t("toolbar.wire.title");
+    wireBtn.querySelector("span:not(.wire-color-dot)").textContent =
+      t("toolbar.wire.label");
+    busBtn.title = t("toolbar.bus.title");
+    busBtn.querySelector("span:not(.bus-width-badge)").textContent =
+      t("toolbar.bus.label");
+    for (const [btn, key, params] of [
+      [fadeBtn, "fade", null],
+      [probeBtn, "probe", null],
+      [scopeBtn, "analyzer", { mod: MOD_KEY }],
+      [guideBtn, "bom", { mod: MOD_KEY }],
+    ]) {
+      btn.setAttribute("aria-label", t(`toolbar.${key}.label`));
+      btn.title = t(`toolbar.${key}.title`, params ?? undefined);
+    }
+    aiBtn.setAttribute("aria-label", t("toolbar.ai.label"));
+    updateLocateIcon(); // Fit / Zoom-out-fully, whichever it is showing
+    setMode(mode); // Breadboard ⇄ Schematic, whichever it would go to
+    refreshAiReady(); // the description, or the reason the segment is off
+
+    transportPill.setAttribute("aria-label", t("toolbar.transport.group"));
+    stepBtn.textContent = `⇥ ${t("toolbar.transport.step")}`;
+    stepBtn.title = t("toolbar.transport.stepTitle");
+    speedBtn.title = t("toolbar.transport.speedTitle");
+    pauseBtn.title = t("toolbar.transport.pauseTitle");
+    onTransportChange(transportMode); // Run/Stop + Pause/Resume text and titles
+
+    // The docked panels and the surfaces each own their own chrome, so each
+    // re-renders its own rather than app.js reaching into them.
+    palette.relocalize();
+    projectTabs.relocalize();
+    buildGuide.relocalize();
+    scopeView.relocalize();
+    aiPanel.relocalize();
+    zoomControl.relocalize();
+    schematicView.relocalize();
+    updateTitle();
+  };
+
   // ── Settings (About / Settings dialogs + live application) ────────────────
   // The Settings dialog is deliberately dumb: it broadcasts a patch, and this
   // is where the app persists it (settings.set) and applies it live. Keep the
@@ -1415,15 +1522,27 @@ async function init() {
   applySettings(currentSettings);
 
   window.addEventListener("chiphippo:settings-changed", (e) => {
+    const prevLocale = currentSettings.locale ?? "system";
     currentSettings = { ...currentSettings, ...e.detail };
     applySettings(currentSettings);
     // A different provider has a different key, and a base URL can be typed
     // into something unreachable — either changes whether the AI segment has
     // a connection to offer.
     if (e.detail && "ai" in e.detail) refreshAiReady();
-    bridge.settings
+    const write = bridge.settings
       .set(e.detail)
       .catch((err) => console.error("[renderer] settings:set failed:", err));
+    // A language change is the one setting that needs re-reading rather than
+    // just applying: main resolves the catalog FROM the stored preference, so
+    // the write has to land before the reload asks for it. It rebuilds its own
+    // menu bar off the same write; this window relabels what is on screen.
+    if (e.detail && "locale" in e.detail && e.detail.locale !== prevLocale) {
+      void write.then(async () => {
+        await i18n.init();
+        relabelChrome();
+        window.dispatchEvent(new CustomEvent("chiphippo:locale-changed"));
+      });
+    }
   });
   window.addEventListener("chiphippo:show-about", () => AboutDialog.open());
   window.addEventListener("chiphippo:open-settings", () =>

@@ -28,6 +28,8 @@
 // this ever noticing, since it neither shared that state nor listened for the
 // event at all.
 
+import { t } from "../i18n.js";
+
 export class NetNameMonitor {
   #netlist;
   #notifications;
@@ -51,8 +53,11 @@ export class NetNameMonitor {
         // Keyed on the net so a re-settle refreshes rather than stacks.
         key: `netname-conflict:${c.netId}`,
         variant: "warning",
-        title: "Net name conflict",
-        message: `"${c.winner}" and "${c.name}" name the same net — using "${c.winner}".`,
+        title: t("netNames.conflict"),
+        message: t("netNames.conflictMessage", {
+          winner: c.winner,
+          loser: c.name,
+        }),
       });
     }
   }

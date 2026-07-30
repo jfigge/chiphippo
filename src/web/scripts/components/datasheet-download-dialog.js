@@ -32,6 +32,7 @@
 // a network run going with nothing on screen to stop it would be worse than
 // stopping it, and whatever already landed is kept either way.
 
+import { t } from "../i18n.js";
 import { el } from "../dom.js";
 import { PopupManager } from "../popup-manager.js";
 
@@ -70,7 +71,7 @@ export class DatasheetDownloadDialog {
 
     const status = el("p", {
       class: "datasheet-dl-status",
-      text: "Starting…",
+      text: t("datasheets.starting"),
     });
     const fill = el("div", { class: "datasheet-dl-fill" });
     const bar = el(
@@ -89,7 +90,7 @@ export class DatasheetDownloadDialog {
     const actionBtn = el("button", {
       class: "settings-action",
       type: "button",
-      text: "Cancel",
+      text: t("common.cancel"),
       onClick: () => {
         // Running → stop it (the run's own resolve then draws the summary);
         // finished → the button is just Close.
@@ -102,8 +103,8 @@ export class DatasheetDownloadDialog {
       if (!running) return;
       const { done = 0, total = 0, ref = null } = e.detail ?? {};
       status.textContent = total
-        ? `Downloading datasheets — ${done} of ${total}`
-        : "Downloading datasheets…";
+        ? t("datasheets.progress", { done, total })
+        : t("datasheets.downloading");
       bar.setAttribute("aria-valuemax", String(total));
       bar.setAttribute("aria-valuenow", String(done));
       fill.style.width = total ? `${Math.round((done / total) * 100)}%` : "0%";
@@ -118,12 +119,12 @@ export class DatasheetDownloadDialog {
       const { total = 0, saved = 0, cancelled = false, dir } = result ?? {};
       const failed = result?.failures ?? [];
       if (result?.error) {
-        status.textContent = "The download could not be started.";
+        status.textContent = t("datasheets.startFailed");
         detail.textContent = result.error;
       } else {
         status.textContent = cancelled
-          ? `Cancelled — ${saved} of ${total} downloaded`
-          : `Downloaded ${saved} of ${total} datasheets`;
+          ? t("datasheets.cancelled", { saved, total })
+          : t("datasheets.done", { saved, total });
         detail.textContent = saved && dir ? dir : "";
       }
       if (failed.length) {
@@ -131,14 +132,16 @@ export class DatasheetDownloadDialog {
         failures.replaceChildren(
           el("li", {
             class: "datasheet-dl-failures-head",
-            text: `${failed.length} could not be fetched:`,
+            text: t("datasheets.failedHead", { count: failed.length }),
           }),
           ...failed.map((f) =>
-            el("li", { text: `${f.ref} — ${f.error ?? "failed"}` }),
+            el("li", {
+              text: `${f.ref} — ${f.error ?? t("datasheets.failed")}`,
+            }),
           ),
         );
       }
-      actionBtn.textContent = "Close";
+      actionBtn.textContent = t("common.close");
       actionBtn.focus();
       // Point the setting at the folder as soon as anything is IN it: a
       // cancelled run that fetched thirty sheets is still thirty sheets the
@@ -147,8 +150,8 @@ export class DatasheetDownloadDialog {
     };
 
     PopupManager.dialog({
-      title: "Download datasheets",
-      closeAriaLabel: "Close",
+      title: t("datasheets.title"),
+      closeAriaLabel: t("common.close"),
       className: "datasheet-dl-popup",
       body: [
         status,

@@ -71,6 +71,7 @@
 // project from the file the user picks, so there is no "name this project"
 // prompt in front of the save panel.
 
+import { t } from "../i18n.js";
 import { PopupManager } from "../popup-manager.js";
 import { PartPropertiesDialog } from "./part-properties-dialog.js";
 import { HistoryStore } from "../model/history-store.js";
@@ -91,10 +92,12 @@ import {
   setProjectField,
 } from "../model/project-doc.js";
 
-/** The one extra field the Properties dialog shows for a PROJECT. */
-const LOCATION_FIELD = Object.freeze({
+/** The one extra field the Properties dialog shows for a PROJECT. A function
+    rather than a frozen constant because its label is translated, and `t()` must
+    never run at module scope (see i18n.js). */
+const locationField = () => ({
   key: "location",
-  label: "Location",
+  label: t("workspace.location"),
   type: "readonly",
 });
 
@@ -293,7 +296,7 @@ export class ProjectWorkspace {
     try {
       raw = await this.#bridge.project.create();
     } catch (err) {
-      this.#fail("Could not start the project", err);
+      this.#fail(t("workspace.failStart"), err);
       return;
     }
     await this.#swapProject(raw);
@@ -310,12 +313,12 @@ export class ProjectWorkspace {
     try {
       raw = await this.#bridge.project.open();
     } catch (err) {
-      this.#fail("Could not open the project", err);
+      this.#fail(t("workspace.failOpen"), err);
       return;
     }
     if (!raw) return; // cancelled
     if (!raw.tabs?.length) {
-      this.#fail("Could not open the project", new Error("it has no desktops"));
+      this.#fail(t("workspace.failOpen"), new Error(t("workspace.noDesktops")));
       return;
     }
     await this.#swapProject(raw);
@@ -332,14 +335,14 @@ export class ProjectWorkspace {
     try {
       res = await this.#bridge.project.openRecent(filePath);
     } catch (err) {
-      this.#fail("Could not open the project", err);
+      this.#fail(t("workspace.failOpen"), err);
       return;
     }
     if (!res?.ok) {
       if (res?.code === "missing") return this.#offerForgetRecent(filePath);
       return PopupManager.notify({
-        title: "Could not open that project",
-        message: res?.error ?? "The file could not be read.",
+        title: t("workspace.openFailTitle"),
+        message: res?.error ?? t("workspace.unreadable"),
       });
     }
     await this.#swapProject(res.project);
@@ -395,8 +398,8 @@ export class ProjectWorkspace {
   editProjectProperties() {
     if (!this.isOpen) return;
     PartPropertiesDialog.open({
-      title: "Project Properties",
-      fields: [LOCATION_FIELD],
+      title: t("workspace.projectProperties"),
+      fields: [locationField()],
       values: {
         name: this.#project.name,
         description: this.#project.description,
@@ -455,7 +458,7 @@ export class ProjectWorkspace {
         findDesktop(this.#project, id).doc,
       );
     } catch (err) {
-      this.#fail("Could not duplicate the desktop", err);
+      this.#fail(t("workspace.failDuplicate"), err);
       return;
     }
     const next = duplicateDesktop(this.#project, id, canonical(res?.doc));
@@ -478,7 +481,7 @@ export class ProjectWorkspace {
     try {
       res = await this.#bridge.desktop.import();
     } catch (err) {
-      this.#fail("Could not import that desktop", err);
+      this.#fail(t("workspace.failImport"), err);
       return;
     }
     if (!res) return; // cancelled
@@ -542,7 +545,7 @@ export class ProjectWorkspace {
       return "switched";
     }
     const failed = (err) => {
-      this.#fail(`Could not open the ${ref} example`, err);
+      this.#fail(t("workspace.failExample", { ref }), err);
       return null;
     };
     let demo;
@@ -600,7 +603,7 @@ export class ProjectWorkspace {
       });
       return res != null; // null is a cancelled dialog, not a failure
     } catch (err) {
-      this.#fail("Could not export the desktop", err);
+      this.#fail(t("workspace.failExport"), err);
       return false;
     }
   }
@@ -614,7 +617,7 @@ export class ProjectWorkspace {
     const tab = this.#project ? findDesktop(this.#project, id) : null;
     if (!tab) return;
     PartPropertiesDialog.open({
-      title: "Desktop Properties",
+      title: t("workspace.desktopProperties"),
       values: { name: tab.name, description: tab.description },
       onChange: (key, value) => this.#setTabProperty(id, key, value),
     });
@@ -644,11 +647,9 @@ export class ProjectWorkspace {
     const tab = this.#project ? findDesktop(this.#project, id) : null;
     if (!tab || this.#project.tabs.length <= 1) return;
     PopupManager.confirm({
-      title: `Delete "${tab.name}"?`,
-      message:
-        "Its design goes with it. Nothing is written until the project is " +
-        "saved, so closing the project without saving brings it back.",
-      confirmLabel: "Delete",
+      title: t("workspace.deleteTabTitle", { name: tab.name }),
+      message: t("workspace.deleteTabMessage"),
+      confirmLabel: t("common.delete"),
       confirmClass: "btn--danger",
       onConfirm: () => void this.#doDeleteTab(id),
     });
@@ -718,7 +719,7 @@ export class ProjectWorkspace {
     this.#sim?.stop?.();
     await this.#closeAuxWindows();
     if (!this.#adopt(raw)) {
-      this.#fail("Could not open the project", new Error("it has no desktops"));
+      this.#fail(t("workspace.failOpen"), new Error(t("workspace.noDesktops")));
       return;
     }
     this.#loadActive();
@@ -816,7 +817,7 @@ export class ProjectWorkspace {
         dropDefault,
       );
     } catch (err) {
-      this.#fail("Could not save the project", err);
+      this.#fail(t("workspace.failSave"), err);
       return false;
     }
     if (location) this.#project.location = res?.path ?? location;
@@ -861,10 +862,10 @@ export class ProjectWorkspace {
 
   #offerForgetRecent(filePath) {
     PopupManager.confirm({
-      title: "That project is no longer there",
-      message: `"${fileName(filePath)}" could not be found. Remove it from the recent projects?`,
+      title: t("workspace.missingTitle"),
+      message: t("workspace.missingMessage", { name: fileName(filePath) }),
       note: filePath,
-      confirmLabel: "Remove",
+      confirmLabel: t("desk.remove.confirm"),
       confirmClass: "btn--danger",
       onConfirm: () => this.#forgetRecent(filePath),
     });
@@ -893,7 +894,7 @@ export class ProjectWorkspace {
     try {
       return (await this.#bridge.project.choosePath(kind, name, current)) ?? null; // prettier-ignore
     } catch (err) {
-      this.#fail("Could not choose a location", err);
+      this.#fail(t("workspace.failLocation"), err);
       return null;
     }
   }
@@ -931,18 +932,20 @@ export class ProjectWorkspace {
     if (!this.#project) return Promise.resolve(true);
     if (this.isUntitled && !quitting && !this.#isPristine()) {
       return this.#askUnsaved({
-        title: "This project hasn't been saved",
-        message:
-          "It has no home of its own yet, so starting or opening another " +
-          "project discards it — desktops and all.",
+        title: t("workspace.untitledTitle"),
+        message: t("workspace.untitledMessage"),
         save: () => this.saveAs(),
       });
     }
     if (!this.dirty) return Promise.resolve(true);
-    const what = this.projectName ? `"${this.projectName}"` : "This project";
+    const what = this.projectName
+      ? `"${this.projectName}"`
+      : t("workspace.thisProject");
     return this.#askUnsaved({
-      title: "Unsaved changes",
-      message: `${what} has changes that aren't saved. ${quitting ? "Quitting" : "Leaving"} now loses them.`, // prettier-ignore
+      title: t("workspace.dirtyTitle"),
+      message: quitting
+        ? t("workspace.dirtyQuitting", { what })
+        : t("workspace.dirtyLeaving", { what }),
       save: () => this.save(),
     });
   }
@@ -954,8 +957,8 @@ export class ProjectWorkspace {
         title,
         message,
         choices: [
-          { label: "Save", value: "save" },
-          { label: "Discard", value: "discard", class: "btn--danger" },
+          { label: t("common.save"), value: "save" },
+          { label: t("workspace.discard"), value: "discard", class: "btn--danger" }, // prettier-ignore
         ],
         onChoose: async (answer) => {
           if (answer == null) return resolve(false); // cancelled
@@ -973,7 +976,7 @@ export class ProjectWorkspace {
   #warn(warnings) {
     if (!Array.isArray(warnings) || warnings.length === 0) return;
     PopupManager.notify({
-      title: "Some desktops could not be restored",
+      title: t("workspace.restoreWarnTitle"),
       message: warnings.join("\n"),
     });
   }

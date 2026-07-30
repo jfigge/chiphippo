@@ -40,6 +40,7 @@
 // from the pure model/part-geometry.js helpers; the host supplies the shared
 // surface (doc, deskView, wire layer, hover ring) and coordination hooks.
 
+import { t } from "../i18n.js";
 import { PopupManager } from "../popup-manager.js";
 import { PX_PER_UNIT } from "../desk/desk-geometry.js";
 import { MAX_WIRE_POINTS, WIRE_COLORS } from "../model/desk-doc.js";
@@ -276,17 +277,17 @@ export class WireTools {
       y: e.clientY,
       items: [
         {
-          label: "Pin Assignment",
+          label: t("desk.menu.pinAssignment"),
           onSelect: () => this.#host.onOpenPinout(id),
         },
         { separator: true },
         {
-          label: "Properties…",
+          label: t("desk.menu.properties"),
           onSelect: () => this.#host.onOpenProperties(id),
         },
         { separator: true },
         {
-          label: "Delete Component",
+          label: t("desk.menu.deleteComponent"),
           danger: true,
           onSelect: () => this.removeWire(id),
         },
@@ -357,10 +358,8 @@ export class WireTools {
     if ((wire.points?.length ?? 0) >= MAX_WIRE_POINTS) {
       this.#host.selectWire(wireId);
       PopupManager.notify({
-        title: "No more bends on this wire",
-        message:
-          `A routed wire carries at most ${MAX_WIRE_POINTS} points. Drag one ` +
-          "onto its neighbour to merge it away, then add another.",
+        title: t("wire.tooManyBends"),
+        message: t("wire.tooManyBendsMessage", { max: MAX_WIRE_POINTS }),
       });
       return;
     }

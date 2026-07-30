@@ -23,6 +23,7 @@
 //
 // This is the only app-wide dialog/menu seam in the renderer.
 
+import { t } from "./i18n.js";
 import { el } from "./dom.js";
 
 const state = {
@@ -130,7 +131,8 @@ function menuItemNode(item, ctx) {
   }
   if (!item.onRemove) return button;
 
-  const removeLabel = item.removeLabel ?? `Remove ${item.label}`;
+  const removeLabel =
+    item.removeLabel ?? t("popup.removeNamed", { label: item.label });
   const removeBtn = el("button", {
     class: "popup-menu-remove",
     type: "button",
@@ -395,8 +397,8 @@ export const PopupManager = {
     const closeBtn = el("button", {
       class: "popup-close",
       type: "button",
-      title: "Close",
-      "aria-label": closeAriaLabel ?? `Close ${title}`,
+      title: t("common.close"),
+      "aria-label": closeAriaLabel ?? t("popup.closeNamed", { title }),
       onClick: () => this.close(),
       "data-autofocus": true,
     });
@@ -436,8 +438,8 @@ export const PopupManager = {
     title,
     message,
     note,
-    confirmLabel = "Confirm",
-    cancelLabel = "Cancel",
+    confirmLabel = t("common.confirm"),
+    cancelLabel = t("common.cancel"),
     confirmClass = "btn--primary",
     onConfirm,
     onCancel,
@@ -518,7 +520,7 @@ export const PopupManager = {
     message,
     note,
     choices = [],
-    cancelLabel = "Cancel",
+    cancelLabel = t("common.cancel"),
     onChoose,
   } = {}) {
     const done = (value) => () => {
@@ -582,8 +584,8 @@ export const PopupManager = {
     value = "",
     placeholder = "",
     quickPicks = [],
-    confirmLabel = "OK",
-    cancelLabel = "Cancel",
+    confirmLabel = t("common.ok"),
+    cancelLabel = t("common.cancel"),
     onConfirm,
     onCancel,
   } = {}) {
@@ -636,7 +638,7 @@ export const PopupManager = {
         class: "popup popup-prompt",
         role: "dialog",
         "aria-modal": "true",
-        "aria-label": title || label || "Enter a value",
+        "aria-label": title || label || t("popup.enterValue"),
       },
       [
         title &&

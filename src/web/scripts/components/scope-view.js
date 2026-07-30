@@ -28,6 +28,7 @@
 // through the DeskController callbacks so they ride the one undo/redo seam.
 
 import { clear, el } from "../dom.js";
+import { t } from "../i18n.js";
 import { parseBusName } from "../model/desk-doc.js";
 import { ScopeRecorder, decodeBus, readNet } from "../model/scope-recorder.js";
 import { PopupManager } from "../popup-manager.js";
@@ -87,6 +88,7 @@ export class ScopeView {
   #svg;
   #empty;
   #delta; // the cursor Δ readout in the header
+  #chrome = []; // built-once header/resize labels, for relocalize()
   #resize; // the draggable top edge
   #onHeightChange;
   #height = DEFAULT_PANEL_H;
@@ -156,38 +158,51 @@ export class ScopeView {
 
   #buildDom() {
     this.#delta = el("span", { class: "scope-delta", text: "" });
+    // Kept so `relocalize()` can re-apply their text/titles: they are built once
+    // here and never re-rendered (unlike the gutter and lanes, which are).
+    this.#chrome = [];
 
     const addBtn = el("button", {
       class: "scope-btn",
       type: "button",
-      text: "+ Channel",
-      title: "Add a named net or bus as a channel",
+      // The "+" is a glyph, so only the word after it is translated.
+      text: `+ ${t("scope.channel")}`,
+      title: t("scope.addTitle"),
       onClick: (e) => this.#openAddMenu(e),
     });
     const clearBtn = el("button", {
       class: "scope-btn",
       type: "button",
-      text: "Clear",
-      title: "Clear the recorded trace",
+      text: t("common.clear"),
+      title: t("scope.clearTitle"),
       onClick: () => this.#clearTrace(),
     });
     const svgBtn = el("button", {
       class: "scope-btn",
       type: "button",
       text: "SVG",
-      title: "Export the timing diagram as SVG",
+      title: t("scope.exportSvg"),
       onClick: () => this.#export(false),
     });
     const pngBtn = el("button", {
       class: "scope-btn",
       type: "button",
       text: "PNG",
-      title: "Export the timing diagram as PNG",
+      title: t("scope.exportPng"),
       onClick: () => this.#export(true),
     });
 
+    const title = el("span", { class: "scope-title", text: t("scope.title") });
+    const closeBtn = el("button", {
+      class: "scope-close",
+      type: "button",
+      title: t("scope.close"),
+      "aria-label": t("scope.close"),
+      text: "×",
+      onClick: () => this.setVisible(false),
+    });
     const header = el("div", { class: "scope-header" }, [
-      el("span", { class: "scope-title", text: "Logic analyzer" }),
+      title,
       el("div", { class: "scope-tools" }, [
         addBtn,
         clearBtn,
@@ -196,14 +211,7 @@ export class ScopeView {
         pngBtn,
         this.#delta,
       ]),
-      el("button", {
-        class: "scope-close",
-        type: "button",
-        title: "Close the logic analyzer",
-        "aria-label": "Close the logic analyzer",
-        text: "×",
-        onClick: () => this.setVisible(false),
-      }),
+      closeBtn,
     ]);
 
     this.#gutter = el("div", { class: "scope-gutter" });
@@ -214,15 +222,18 @@ export class ScopeView {
     this.#svg.addEventListener("pointermove", (e) => this.#onCursorMove(e));
     this.#svg.addEventListener("pointerup", (e) => this.#onCursorUp(e));
 
+    // Three fragments around one button — the sentence is split by the LINK in
+    // the middle of it, so each side is its own key rather than markup smuggled
+    // through a translation.
     this.#empty = el("div", { class: "scope-empty" }, [
-      "No channels yet — ",
+      t("scope.emptyBefore"),
       el("button", {
         class: "scope-link",
         type: "button",
-        text: "add a net or bus",
+        text: t("scope.emptyLink"),
         onClick: (e) => this.#openAddMenu(e),
       }),
-      ", or right-click a probed net → “Add to analyzer”.",
+      t("scope.emptyAfter"),
     ]);
 
     this.#body = el("div", { class: "scope-body" }, [
@@ -234,7 +245,7 @@ export class ScopeView {
     // competes with the header controls or the desk above for pointer events.
     this.#resize = el("div", {
       class: "scope-resize",
-      title: "Drag to resize the analyzer",
+      title: t("scope.resize"),
       "aria-hidden": "true",
     });
     this.#resize.addEventListener("pointerdown", (e) => this.#onResizeDown(e));
@@ -243,9 +254,52 @@ export class ScopeView {
 
     this.#el = el(
       "aside",
-      { class: "scope-panel", "aria-label": "Logic analyzer", hidden: true },
+      { class: "scope-panel", "aria-label": t("scope.title"), hidden: true },
       [this.#resize, header, this.#body, this.#empty],
     );
+
+    // One entry per piece of built-once chrome: the element, and how to label it
+    // again. Listed here rather than re-queried in relocalize() so a class
+    // rename can't silently stop a label from following the language.
+    this.#chrome = [
+      [addBtn, () => `+ ${t("scope.channel")}`, () => t("scope.addTitle")],
+      [clearBtn, () => t("common.clear"), () => t("scope.clearTitle")],
+      [svgBtn, null, () => t("scope.exportSvg")],
+      [pngBtn, null, () => t("scope.exportPng")],
+      [title, () => t("scope.title"), null],
+      [closeBtn, null, () => t("scope.close")],
+      [this.#resize, null, () => t("scope.resize")],
+    ];
+  }
+
+  /**
+   * Re-render in the new language (see app.js's `relabelChrome`). The gutter,
+   * lanes and Δ readout are redrawn from the document on every `#render()`; only
+   * the header and the empty-state sentence are built once, so those are the two
+   * things this has to say again by hand.
+   */
+  relocalize() {
+    for (const [node, text, title] of this.#chrome) {
+      if (text) node.textContent = text();
+      if (title) {
+        node.title = title();
+        if (node.hasAttribute("aria-label")) {
+          node.setAttribute("aria-label", title());
+        }
+      }
+    }
+    this.#el.setAttribute("aria-label", t("scope.title"));
+    this.#empty.replaceChildren(
+      t("scope.emptyBefore"),
+      el("button", {
+        class: "scope-link",
+        type: "button",
+        text: t("scope.emptyLink"),
+        onClick: (e) => this.#openAddMenu(e),
+      }),
+      t("scope.emptyAfter"),
+    );
+    if (this.visible) this.#render();
   }
 
   get element() {
@@ -427,7 +481,7 @@ export class ScopeView {
               class: "scope-mini",
               type: "button",
               text: "↑",
-              title: "Move up",
+              title: t("scope.moveUp"),
               disabled: i === 0,
               onClick: () => this.#onMoveChannel?.(ch.id, i - 1),
             }),
@@ -435,7 +489,7 @@ export class ScopeView {
               class: "scope-mini",
               type: "button",
               text: "↓",
-              title: "Move down",
+              title: t("scope.moveDown"),
               disabled: i === channels.length - 1,
               onClick: () => this.#onMoveChannel?.(ch.id, i + 1),
             }),
@@ -443,7 +497,7 @@ export class ScopeView {
               class: "scope-mini scope-mini--del",
               type: "button",
               text: "×",
-              title: "Remove channel",
+              title: t("scope.removeChannel"),
               onClick: () => this.#onRemoveChannel?.(ch.id),
             }),
           ]),
@@ -688,7 +742,7 @@ export class ScopeView {
     if (ch.label) return ch.label;
     if (ch.kind === "bus") {
       const bus = this.#doc.getBus(ch.ref);
-      return bus ? bus.name : `${ch.ref} (missing)`;
+      return bus ? bus.name : t("scope.missingRef", { ref: ch.ref });
     }
     const netId = this.#netlist.netOf(ch.ref);
     return this.#netlist.nameOf(netId) || ch.ref;
@@ -710,7 +764,8 @@ export class ScopeView {
     const ms = this.#tickMs();
     const msPart =
       ms != null && ms > 0 ? ` · ${(dTicks * ms).toFixed(1)} ms` : "";
-    this.#delta.textContent = `Δ ${dTicks} ${dTicks === 1 ? "tick" : "ticks"}${msPart}`;
+    // Δ is a glyph; only the tick plural and the separator are catalog text.
+    this.#delta.textContent = `Δ ${t("scope.tickCount", { count: dTicks })}${msPart}`;
   }
 
   // ── Cursors ─────────────────────────────────────────────────────────────────
@@ -777,12 +832,12 @@ export class ScopeView {
     if (nets.length && buses.length) items.push({ separator: true });
     for (const b of buses) {
       items.push({
-        label: `${b.name}  ·  bus`,
+        label: `${b.name}  ·  ${t("scope.busSuffix")}`,
         onSelect: () => this.addBusChannel(b.id),
       });
     }
     if (!items.length) {
-      items.push({ label: "No named nets or buses yet", disabled: true });
+      items.push({ label: t("scope.noNets"), disabled: true });
     }
     const rect = e.currentTarget.getBoundingClientRect();
     PopupManager.menu({ x: rect.left, y: rect.bottom + 4, items });

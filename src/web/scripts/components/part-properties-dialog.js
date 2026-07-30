@@ -51,10 +51,28 @@
 // closes the dialog — it's a command, not a value the dialog needs to keep
 // showing.
 
+import { t, tf } from "../i18n.js";
 import { el } from "../dom.js";
 import { PopupManager } from "../popup-manager.js";
 import { buildColorSwatches } from "./color-swatches.js";
 import { buildSegmented } from "./segmented-picker.js";
+
+/**
+ * A field's own LABEL, and an option's, translated.
+ *
+ * A catalog def declares its `properties` as pure module-level DATA (see
+ * catalog/labels.js for why `t()` cannot be used there), so the English label
+ * travels with the field and is resolved HERE — the one consumer of that list.
+ * `properties.field.<key>` names the row ("Color", "Voltage", "Rate", "Size");
+ * `properties.option.<value>` names a choice, which in practice means the one
+ * word among them ("manual" → "Manual"), since the rest are numbers with a unit
+ * ("5 V", "1 Hz", "16×2") that read the same in every language and fall back to
+ * the catalog's own text.
+ */
+const fieldLabel = (field) =>
+  tf(`properties.field.${field.key}`, field.label ?? field.key);
+const optionLabel = (opt) =>
+  tf(`properties.option.${opt.value}`, opt.label ?? String(opt.value));
 
 /** A dropdown over `field.options: [{value, label}]`. A <select>'s value is
     ALWAYS a string (`3` becomes `"3"`), but an option's real value may be a
@@ -76,7 +94,7 @@ function buildSelect(field, value, onPick) {
     field.options.map((opt) =>
       el("option", {
         value: opt.value,
-        text: opt.label,
+        text: optionLabel(opt),
         selected: opt.value === value,
       }),
     ),
@@ -89,7 +107,12 @@ function buildActionButton(field, onFire) {
   return el("button", {
     class: "properties-action",
     type: "button",
-    text: field.actionLabel ?? field.label,
+    // `actionLabel` is the English source when the field came from a catalog
+    // def; a field minted in the app carries none, and the key alone names it.
+    text: tf(
+      `properties.action.${field.key}`,
+      field.actionLabel ?? field.label ?? "",
+    ),
     onClick: onFire,
   });
 }
@@ -102,7 +125,7 @@ function buildTextInput(field, value, onChange) {
     type: "text",
     class: "properties-text-input",
     value: value ?? "",
-    "aria-label": field.label,
+    "aria-label": fieldLabel(field),
     onChange: (e) => onChange(field.key, e.target.value),
   });
 }
@@ -114,7 +137,7 @@ function buildTextarea(field, value, onChange) {
     class: "properties-textarea",
     rows: 3,
     value: value ?? "",
-    "aria-label": field.label,
+    "aria-label": fieldLabel(field),
     onChange: (e) => onChange(field.key, e.target.value),
   });
 }
@@ -128,7 +151,7 @@ function buildReadonly(field, value) {
     class: "properties-value properties-value--path",
     text: shown,
     title: shown,
-    "aria-label": field.label,
+    "aria-label": fieldLabel(field),
   });
 }
 
@@ -143,7 +166,7 @@ function buildControl(field, value, onChange) {
     return buildColorSwatches({
       colors: field.options,
       value,
-      ariaLabel: field.label,
+      ariaLabel: fieldLabel(field),
       onPick: (v) => onChange(field.key, v),
     });
   }
@@ -152,9 +175,12 @@ function buildControl(field, value, onChange) {
   }
   if (field.type === "segmented") {
     return buildSegmented({
-      options: field.options,
+      options: field.options.map((opt) => ({
+        ...opt,
+        label: optionLabel(opt),
+      })),
       value,
-      ariaLabel: field.label,
+      ariaLabel: fieldLabel(field),
       onPick: (v) => onChange(field.key, v),
     });
   }
@@ -186,7 +212,7 @@ function buildRow(field, value, onChange, onAction) {
     ? "properties-row properties-row--stacked"
     : "properties-row";
   return el("div", { class: rowClass }, [
-    el("span", { class: "properties-label", text: field.label }),
+    el("span", { class: "properties-label", text: fieldLabel(field) }),
     buildControl(field, value, onChange),
   ]);
 }
@@ -194,9 +220,9 @@ function buildRow(field, value, onChange, onAction) {
 /** Every part and every board gets these two fields, always, at the top of
     the dialog — this is the one place that rule lives, so neither caller
     (desk-controller.js's part or board flow) has to repeat it. */
-const NAME_DESCRIPTION_FIELDS = [
-  { key: "name", label: "Name", type: "text" },
-  { key: "description", label: "Description", type: "textarea" },
+const nameDescriptionFields = () => [
+  { key: "name", label: t("properties.name"), type: "text" },
+  { key: "description", label: t("properties.description"), type: "textarea" },
 ];
 
 export class PartPropertiesDialog {
@@ -224,8 +250,8 @@ export class PartPropertiesDialog {
     PartPropertiesDialog.#open = true;
 
     const allFields = fields.length
-      ? [...NAME_DESCRIPTION_FIELDS, { type: "separator" }, ...fields]
-      : NAME_DESCRIPTION_FIELDS;
+      ? [...nameDescriptionFields(), { type: "separator" }, ...fields]
+      : nameDescriptionFields();
     const fireAction = (key) => {
       PopupManager.close();
       onAction?.(key);
@@ -238,7 +264,7 @@ export class PartPropertiesDialog {
     // queued behind closes), so the guard never resets while still up.
     PopupManager.dialog({
       title,
-      closeAriaLabel: "Close properties",
+      closeAriaLabel: t("properties.close"),
       className: "properties-popup",
       bodyClass: "properties-popup-body",
       body: rows,

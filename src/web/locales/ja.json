@@ -1,0 +1,993 @@
+{
+  "_meta": {
+    "language": "日本語",
+    "note": "Generated from en.json's key set; every leaf key and every {placeholder} matches it (tests/i18n-catalogs.test.js)."
+  },
+  "common": {
+    "ok": "OK",
+    "cancel": "キャンセル",
+    "save": "保存",
+    "close": "閉じる",
+    "delete": "削除",
+    "clear": "クリア",
+    "browse": "参照…",
+    "download": "ダウンロード…",
+    "rename": "名前を変更",
+    "untitled": "名称未設定",
+    "none": "なし",
+    "confirm": "確認"
+  },
+  "app": {
+    "header": "アプリケーションヘッダー",
+    "actions": "アプリケーションの操作",
+    "about": "Chip Hippo について",
+    "settings": "設定",
+    "openSettings": "設定を開く",
+    "desk": "デスク",
+    "schematic": "回路図",
+    "deskHint": "部品トレイを開いてブレッドボードを追加すると始められます"
+  },
+  "menu": {
+    "app": {
+      "about": "Chip Hippo について",
+      "settings": "設定…"
+    },
+    "file": {
+      "title": "ファイル",
+      "new": "新規プロジェクト",
+      "open": "開く…",
+      "openRecent": "最近使ったプロジェクトを開く",
+      "noRecent": "最近使ったプロジェクトはありません",
+      "save": "保存",
+      "saveAs": "別名で保存…",
+      "properties": "プロジェクトの情報…",
+      "bom": "部品表…"
+    },
+    "desktop": {
+      "title": "デスクトップ",
+      "new": "新規デスクトップ",
+      "duplicate": "デスクトップを複製",
+      "import": "デスクトップを読み込む…",
+      "export": "デスクトップを書き出す…",
+      "properties": "デスクトップの情報…",
+      "delete": "デスクトップを削除"
+    },
+    "edit": {
+      "title": "編集",
+      "undo": "取り消す",
+      "redo": "やり直す",
+      "selectAll": "すべてを選択"
+    },
+    "view": {
+      "title": "表示",
+      "devTools": "開発者ツールの表示を切り替える"
+    },
+    "window": {
+      "title": "ウインドウ"
+    },
+    "help": {
+      "title": "ヘルプ",
+      "userGuide": "Chip Hippo ユーザーガイド",
+      "shortcuts": "キーボードショートカット",
+      "checkUpdates": "アップデートを確認…"
+    },
+    "pinout": {
+      "float": "ほかのウインドウの手前に表示",
+      "close": "ウインドウを閉じる"
+    }
+  },
+  "window": {
+    "pinout": "ピン配置",
+    "memory": "メモリインスペクタ"
+  },
+  "dialog": {
+    "filter": {
+      "project": "Chip Hippo プロジェクト",
+      "desktop": "Chip Hippo デスクトップ",
+      "memImage": "メモリイメージ",
+      "binImage": "バイナリイメージ",
+      "intelHex": "Intel HEX",
+      "allFiles": "すべてのファイル"
+    }
+  },
+  "toolbar": {
+    "file": {
+      "group": "ファイル",
+      "new": "新規プロジェクト",
+      "newTitle": "新規プロジェクト（{accel}）— 空のデスクでやり直します",
+      "open": "開く",
+      "openTitle": "開く…（{accel}）— 保存したプロジェクトを読み込みます",
+      "save": "保存",
+      "saveTitle": "保存（{accel}）— プロジェクトを元のファイルに書き戻します",
+      "saveAs": "別名で保存",
+      "saveAsTitle": "別名で保存…（{accel}）— プロジェクトを新しいファイルに書き出します"
+    },
+    "tools": {
+      "group": "デスクツール"
+    },
+    "wire": {
+      "label": "ワイヤー",
+      "title": "ワイヤーツール — 空いている穴を 2 つクリックしてつなぎます（W）",
+      "colorLabel": "ワイヤーの色"
+    },
+    "bus": {
+      "label": "バス",
+      "title": "バスツール — 複数ビット分のワイヤーを一度に敷きます（B）",
+      "widthLabel": "バス幅"
+    },
+    "fade": {
+      "label": "ワイヤーを淡く表示",
+      "title": "ワイヤーを淡く表示 — 両端だけを描いてボードを見やすく保ちます（H）"
+    },
+    "probe": {
+      "label": "プローブ",
+      "title": "導通プローブ — ポインタを乗せるとネットを強調、クリックで固定します（P）"
+    },
+    "analyzer": {
+      "label": "アナライザ",
+      "title": "ロジックアナライザ — 信号の波形を時間軸で記録して表示します（{mod}+A）"
+    },
+    "fit": {
+      "label": "画面に合わせる",
+      "title": "画面に合わせる — すべてのボード・部品・ワイヤーを収めます（{mod}+F）"
+    },
+    "zoomOut": {
+      "label": "いちばん縮小",
+      "title": "いちばん縮小 — 見失った部品を探します（{mod}+Shift+F）"
+    },
+    "bom": {
+      "label": "部品表",
+      "title": "部品表 — 部品リスト・配線リスト・組み立て手順（{mod}+B）"
+    },
+    "mode": {
+      "schematic": "回路図表示",
+      "schematicTitle": "論理回路図を表示（Tab）",
+      "breadboard": "ブレッドボード表示",
+      "breadboardTitle": "ブレッドボードに戻る（Tab）"
+    },
+    "ai": {
+      "label": "AI ビルダー",
+      "title": "AI 回路ビルダー — 回路を説明すると、設計・組み立て・テストまでしてくれます",
+      "unreadable": "AI 接続設定を読み取れませんでした。"
+    },
+    "transport": {
+      "group": "シミュレーション操作",
+      "run": "実行",
+      "runTitle": "回路を実行（スペースまたは {mod}+R）",
+      "stop": "停止",
+      "stopTitle": "停止して編集に戻る（スペースまたは {mod}+R）",
+      "pause": "一時停止",
+      "pauseTitle": "クロックを一時停止／再開",
+      "resume": "再開",
+      "step": "ステップ",
+      "stepTitle": "クロックの半周期だけ進める",
+      "speedTitle": "クロック速度（クリックで ¼ / 1 / 4 を切り替え）"
+    }
+  },
+  "zoom": {
+    "out": "縮小",
+    "in": "拡大",
+    "reset": "ズームを 100% に戻す"
+  },
+  "settings": {
+    "title": "設定",
+    "close": "設定を閉じる",
+    "nav": {
+      "appearance": "外観",
+      "datasheets": "データシート",
+      "ai": "AI",
+      "about": "情報"
+    },
+    "appearance": {
+      "language": "言語",
+      "languageSystem": "システムに従う",
+      "languageHint": "Chip Hippo 自身のメニュー・パネル・ダイアログを表示する言語です。ユーザーガイドは英語版のみです。",
+      "theme": "テーマ",
+      "themeSystem": "システムに従う",
+      "themeLight": "ライト",
+      "themeDark": "ダーク",
+      "selectionColor": "選択枠の色",
+      "ledColor": "LED の既定の色",
+      "wireLayout": "ワイヤーの引き方",
+      "wireLayoutDirect": "直結",
+      "wireLayoutRouted": "経路指定",
+      "wireLayoutHint": "新しいワイヤーの描き方です。直結は穴から穴へたわんで垂れ、経路指定はまっすぐ走り、点をドラッグして差し込むことでボードを避けて曲げられます。すでにデスクにあるワイヤーは今の引き方を保ちます — 変えるにはそのワイヤー自身の情報ダイアログを使ってください。"
+    },
+    "datasheets": {
+      "folder": "データシートのフォルダ",
+      "noFolder": "フォルダが選択されていません",
+      "clearTitle": "データシートのフォルダをクリア",
+      "browseTitle": "データシートのフォルダを選ぶ",
+      "folderHint": "各チップの名前を付けたメーカー製データシート PDF（例：74LS00.pdf）が入ったフォルダを指定してください。一致する PDF が見つかると、チップのピン配置ウインドウにそれを開くボタンが表示されます。",
+      "auto": "自動で取得する",
+      "downloadTitle": "データシートをアプリ専用のフォルダにダウンロード",
+      "autoHint": "Chip Hippo が公開元を把握している部品それぞれについて、データシートを 1 つずつ — メーカー自身の文書があればそれを、なければ参考資料ライブラリから — Chip Hippo 専用のフォルダにダウンロードし、上の設定をそこに向けます。公開元のない部品は飛ばし、すでにあるファイルは置き換えます。"
+    },
+    "ai": {
+      "loading": "プロバイダを読み込み中…",
+      "noProviders": "このビルドで利用できる AI プロバイダはありません。",
+      "provider": "プロバイダ",
+      "baseUrl": "ベース URL",
+      "model": "モデル",
+      "apiKey": "API キー",
+      "keyPlaceholder": "キーを貼り付けると保存されます",
+      "saveKey": "キーを保存",
+      "clearKey": "キーを消去",
+      "testConnection": "接続をテスト",
+      "testing": "テスト中…",
+      "connected": "接続できました。",
+      "testFailed": "接続をテストできませんでした。",
+      "keyStoreFailed": "キーを保存できませんでした。",
+      "keyStored": "{provider} 用のキーが保存されています。OS によって暗号化され、このウインドウに読み戻されることはありません。",
+      "keyMissing": "{provider} 用のキーは保存されていません。",
+      "noSecureStore": "このシステムには安全な資格情報ストアがないため、キーを保存できません。キーの要らないローカルサーバーにベース URL を向けてください。",
+      "hint": "Chip Hippo はあなた自身の接続を使います。何かを組み立てるよう頼むまで、どこにも送信はされません。キーは OS によって暗号化して保存され、settings.json には決して書きません。ベース URL とモデルを空にすると、表示されている既定値を使います。",
+      "experimental": "AI による生成は実験的な機能です。どの設計も提示前にシミュレータで検証されますが、最適な回路や最もきれいな配置とは限りません — 確認して手直しするつもりでお使いください。"
+    },
+    "about": {
+      "version": "バージョン",
+      "readingVersion": "バージョンを読み取り中…",
+      "autoLabel": "自動で確認",
+      "autoAria": "アップデートを自動で確認",
+      "autoOn": "オン",
+      "autoOff": "オフ",
+      "check": "アップデートを確認",
+      "checking": "アップデートを確認中…",
+      "restart": "再起動して更新",
+      "available": "アップデートがあります — バックグラウンドでダウンロード中…",
+      "availableVersion": "バージョン {version} が利用できます — バックグラウンドでダウンロード中…",
+      "ready": "アップデートをインストールする準備ができました。",
+      "readyVersion": "バージョン {version} をインストールする準備ができました。",
+      "upToDate": "お使いの Chip Hippo は最新バージョンです。",
+      "storeBuild": "アップデートは App Store から配信されます。",
+      "devBuild": "アップデートはインストール済みのビルドでのみ利用できます。",
+      "error": "アップデートを確認できませんでした。後でもう一度お試しください。",
+      "hint": "Chip Hippo は github.com に新しいリリースがないか問い合わせできます。アップデートはバックグラウンドでダウンロードされ、あなたが指示したときにだけ — ここで再起動するか、次に終了するときに — インストールされます。問い合わせ自体以外は何も送信されず、この設定をオフにすれば何も送信されません。",
+      "storeHint": "この Chip Hippo のアップデートは App Store から配信されるため、自分で確認することはありません。"
+    }
+  },
+  "palette": {
+    "label": "部品パレット",
+    "filter": "部品を絞り込む",
+    "filterPlaceholder": "部品を絞り込む…",
+    "noMatches": "一致する部品はありません。",
+    "hide": "部品トレイを隠す",
+    "hideTitle": "部品トレイを隠す（{mod}+P）",
+    "show": "部品トレイを表示",
+    "showTitle": "部品トレイを表示（{mod}+P）",
+    "resize": "ドラッグして部品トレイの幅を変える",
+    "board": {
+      "title": "{label} — 接続点 {points} 個",
+      "titleRotates": "{label} — 接続点 {points} 個（R で回転）"
+    },
+    "annotation": {
+      "label": "ラベル",
+      "labelHint": "1 行のキャプション",
+      "note": "ノート",
+      "noteHint": "複数行のノート枠"
+    },
+    "group": {
+      "and": "AND",
+      "annotations": "注釈",
+      "arithmetic": "演算",
+      "boards": "ボード",
+      "buffer": "バッファ",
+      "chips": "チップ",
+      "comparator": "コンパレータ",
+      "components": "部品",
+      "counter": "カウンタ",
+      "decoder": "デコーダ",
+      "displaydriver": "表示ドライバ",
+      "displays": "表示器",
+      "encoder": "エンコーダ",
+      "flipflop": "フリップフロップ",
+      "interface": "インタフェース",
+      "inverter": "インバータ",
+      "latch": "ラッチ",
+      "leds": "LED",
+      "memory": "メモリ",
+      "multiplexer": "マルチプレクサ",
+      "nand": "NAND",
+      "nor": "NOR",
+      "or": "OR",
+      "oscillators": "発振器",
+      "power": "電源",
+      "register": "レジスタ",
+      "resistors": "抵抗",
+      "shiftregister": "シフトレジスタ",
+      "switches": "スイッチ",
+      "xor": "XOR"
+    }
+  },
+  "boards": {
+    "full": "フルサイズ",
+    "half": "ハーフサイズ",
+    "tiny": "ミニ",
+    "pins-full": "フルサイズのピンボード",
+    "pins-half": "ハーフサイズのピンボード",
+    "rail-full": "フルサイズの電源レール",
+    "rail-half": "ハーフサイズの電源レール"
+  },
+  "parts": {
+    "74LS00": {
+      "title": "2 入力 NAND × 4"
+    },
+    "74LS02": {
+      "title": "2 入力 NOR × 4"
+    },
+    "74LS04": {
+      "title": "インバータ × 6"
+    },
+    "74LS08": {
+      "title": "2 入力 AND × 4"
+    },
+    "74LS10": {
+      "title": "3 入力 NAND × 3"
+    },
+    "74LS11": {
+      "title": "3 入力 AND × 3"
+    },
+    "74LS20": {
+      "title": "4 入力 NAND × 2"
+    },
+    "74LS27": {
+      "title": "3 入力 NOR × 3"
+    },
+    "74LS30": {
+      "title": "8 入力 NAND"
+    },
+    "74LS32": {
+      "title": "2 入力 OR × 4"
+    },
+    "74LS86": {
+      "title": "2 入力 XOR × 4"
+    },
+    "74LS125": {
+      "title": "バスバッファ × 4、3ステート"
+    },
+    "74LS73": {
+      "title": "JK フリップフロップ × 2、クリア付き"
+    },
+    "74LS74": {
+      "title": "D フリップフロップ × 2、プリセット・クリア付き"
+    },
+    "74LS75": {
+      "title": "4 ビット双安定ラッチ"
+    },
+    "74LS76": {
+      "title": "JK フリップフロップ × 2、プリセット・クリア付き"
+    },
+    "74LS107": {
+      "title": "JK フリップフロップ × 2、クリア付き"
+    },
+    "74LS175": {
+      "title": "D フリップフロップ × 4"
+    },
+    "74LS161": {
+      "title": "同期式 4 ビットバイナリカウンタ"
+    },
+    "74LS193": {
+      "title": "同期式 4 ビットアップ／ダウンカウンタ"
+    },
+    "74LS164": {
+      "title": "8 ビット SIPO シフトレジスタ"
+    },
+    "74LS165": {
+      "title": "8 ビット PISO シフトレジスタ"
+    },
+    "74LS138": {
+      "title": "3 対 8 ラインデコーダ"
+    },
+    "74LS139": {
+      "title": "2 対 4 ラインデコーダ × 2"
+    },
+    "74LS01": {
+      "title": "2 入力 NAND × 4（オープンコレクタ）"
+    },
+    "74LS03": {
+      "title": "2 入力 NAND × 4（オープンコレクタ）"
+    },
+    "74LS05": {
+      "title": "インバータ × 6（オープンコレクタ）"
+    },
+    "74LS14": {
+      "title": "シュミットトリガ入力インバータ × 6"
+    },
+    "74LS112": {
+      "title": "JK フリップフロップ × 2、プリセット・クリア付き"
+    },
+    "74LS173": {
+      "title": "4 ビット D レジスタ、3ステート"
+    },
+    "74LS174": {
+      "title": "D フリップフロップ × 6"
+    },
+    "74LS273": {
+      "title": "D フリップフロップ × 8、クリア付き"
+    },
+    "74LS279": {
+      "title": "S̄R̄ ラッチ × 4"
+    },
+    "74LS151": {
+      "title": "8 対 1 ラインマルチプレクサ"
+    },
+    "74LS153": {
+      "title": "4 対 1 マルチプレクサ × 2"
+    },
+    "74LS157": {
+      "title": "2 対 1 セレクタ × 4"
+    },
+    "74LS257": {
+      "title": "2 対 1 セレクタ × 4、3ステート"
+    },
+    "74LS240": {
+      "title": "8 ビットバッファ／ラインドライバ、反転、3ステート"
+    },
+    "74LS244": {
+      "title": "8 ビットバッファ／ラインドライバ、3ステート"
+    },
+    "74LS245": {
+      "title": "8 ビットバストランシーバ、3ステート"
+    },
+    "74LS47": {
+      "title": "BCD-7 セグメントデコーダ／ドライバ"
+    },
+    "74LS85": {
+      "title": "4 ビットマグニチュードコンパレータ"
+    },
+    "74LS148": {
+      "title": "8 対 3 プライオリティエンコーダ"
+    },
+    "74LS283": {
+      "title": "4 ビットバイナリ全加算器"
+    },
+    "74LS83": {
+      "title": "4 ビットバイナリ加算器（旧ピン配置）"
+    },
+    "74LS181": {
+      "title": "4 ビット算術論理演算ユニット"
+    },
+    "74LS169": {
+      "title": "同期式 4 ビットアップ／ダウンカウンタ"
+    },
+    "74LS259": {
+      "title": "8 ビットアドレス指定ラッチ"
+    },
+    "74LS533": {
+      "title": "8 ビットトランスペアレントラッチ、反転、3ステート"
+    },
+    "74LS573": {
+      "title": "8 ビットトランスペアレントラッチ、3ステート"
+    },
+    "74LS595": {
+      "title": "8 ビットシフトレジスタ、出力ラッチ付き"
+    },
+    "74LS90": {
+      "title": "デケード（÷10）非同期カウンタ"
+    },
+    "rom-8k": {
+      "title": "8K×8 ROM"
+    },
+    "ram-8k": {
+      "title": "8K×8 SRAM"
+    },
+    "28C16": {
+      "title": "2K×8 EEPROM"
+    },
+    "HM62256": {
+      "title": "32K×8 スタティック RAM"
+    },
+    "AS6C1024": {
+      "title": "128K×8 スタティック RAM"
+    },
+    "AM27C1024": {
+      "title": "64K×16 EPROM"
+    },
+    "w65c21": {
+      "title": "W65C21 PIA"
+    },
+    "w65c22": {
+      "title": "W65C22 VIA"
+    },
+    "w65c02": {
+      "title": "W65C02 CPU"
+    },
+    "sw-slide": {
+      "title": "スライドスイッチ（SPDT）"
+    },
+    "sw-push": {
+      "title": "プッシュボタン（モーメンタリ）"
+    },
+    "sw-toggle": {
+      "title": "プッシュボタン（オルタネート）"
+    },
+    "sw-dip1": {
+      "title": "DIP スイッチ（1 回路）"
+    },
+    "sw-dip2": {
+      "title": "DIP スイッチ（2 回路）"
+    },
+    "sw-dip4": {
+      "title": "DIP スイッチ（4 回路）"
+    },
+    "sw-dip8": {
+      "title": "DIP スイッチ（8 回路）"
+    },
+    "led": {
+      "title": "LED"
+    },
+    "seg8cc": {
+      "title": "8 セグメント数字表示（カソードコモン）"
+    },
+    "seg8ca": {
+      "title": "8 セグメント数字表示（アノードコモン）"
+    },
+    "bar8": {
+      "title": "8 セグメント LED バー"
+    },
+    "bar8iso": {
+      "title": "8 セグメント LED バー（独立）"
+    },
+    "resistor": {
+      "title": "抵抗"
+    },
+    "rnet9": {
+      "title": "集合抵抗（コモン端子式、9 ピン）"
+    },
+    "psu": {
+      "title": "電源"
+    },
+    "clock": {
+      "title": "クロック源"
+    },
+    "osc-full": {
+      "title": "発振器（フルサイズパッケージ）"
+    },
+    "osc-half": {
+      "title": "発振器（ハーフサイズパッケージ）"
+    },
+    "lcd": {
+      "title": "キャラクタ LCD（HD44780）"
+    }
+  },
+  "colors": {
+    "red": "赤",
+    "black": "黒",
+    "blue": "青",
+    "green": "緑",
+    "yellow": "黄",
+    "orange": "オレンジ",
+    "white": "白",
+    "purple": "紫"
+  },
+  "tabs": {
+    "label": "デスクトップ",
+    "add": "新規デスクトップ",
+    "addTitle": "新規デスクトップ（右クリックで読み込み）",
+    "properties": "情報…"
+  },
+  "guide": {
+    "title": "組み立てガイド",
+    "close": "組み立てガイドを閉じる",
+    "warnBadge": "設計上の警告",
+    "download": "部品表をダウンロード",
+    "downloadTitle": "部品表をダウンロード（.rtf）",
+    "exportTitle": "{name} — 組み立てガイド",
+    "tab": {
+      "bom": "部品表",
+      "wiring": "配線",
+      "steps": "手順"
+    },
+    "emptyBom": "デスクにはまだ何もありません。",
+    "emptyWiring": "まだ接続がありません。",
+    "emptySteps": "まだ組み立て手順がありません。",
+    "singletonTitle": "接続が 1 つだけ",
+    "singletonFlag": "接続が 1 つだけ"
+  },
+  "plan": {
+    "pinLabel": "{base} の {pin} ピン{suffix}",
+    "railLabel": "{rail} レール（{board}）",
+    "manualClock": "手動",
+    "flipped": "180° 反転",
+    "straddling": "{from}–{to} をまたぎ、1 ピンは {anchor}{flip}",
+    "withLeads": "リードは {leads}{flip}",
+    "floatingLead": "浮いている",
+    "unnamedSignal": "信号",
+    "wireCount": {
+      "other": "ワイヤー {count} 本"
+    },
+    "warningCount": {
+      "other": "警告 {count} 件"
+    },
+    "net": {
+      "bit": "ビット {bit}",
+      "unnamed": "名前のないネット",
+      "busHead": "{name} バス"
+    },
+    "bom": {
+      "boards": "ブレッドボード",
+      "chips": "チップ",
+      "discretes": "個別部品",
+      "power": "電源"
+    },
+    "stepGroup": {
+      "boards": "ボードを置く",
+      "power": "電源",
+      "chips": "チップを差す",
+      "discretes": "個別部品を追加する",
+      "wires": "信号ワイヤーを敷く"
+    },
+    "step": {
+      "assembleBoard": "{x} 列 {y} 行の近くにブレッドボード（{parts}）を組み立てます。",
+      "placeBoard": "{x} 列 {y} 行の近くに{label}を置きます。",
+      "psu": "{part}を {volts} V に設定してデスクに置きます。",
+      "clock": "{part}を {rate} に設定してデスクに置きます。",
+      "powerWire": "{color}のワイヤーを敷きます：{from} → {to}。",
+      "seatChip": "{ref} を差します（{where}）。",
+      "placePart": "{part}{color}を置きます（{where}）。",
+      "bus": "{name} バスを敷きます（{wires}）。",
+      "net": "{name} ネットを配線します（{wires}）。"
+    },
+    "warn": {
+      "floatingLead": "{base}（{id}）の {pin} ピン{suffix}が浮いています — リードがどの穴の上にもありません。",
+      "noPower": "{ref}（{id}）に {pins} の接続がありません — 電源が入りません。",
+      "singleMember": "ネット「{name}」は 1 点にしかつながっていません — 接続を忘れている可能性があります。"
+    }
+  },
+  "scope": {
+    "title": "ロジックアナライザ",
+    "close": "ロジックアナライザを閉じる",
+    "resize": "ドラッグしてアナライザの高さを変える",
+    "channel": "チャンネル",
+    "addTitle": "名前付きのネットかバスをチャンネルとして追加",
+    "clearTitle": "記録した波形を消す",
+    "exportSvg": "タイミング図を SVG で書き出す",
+    "exportPng": "タイミング図を PNG で書き出す",
+    "emptyBefore": "まだチャンネルがありません — ",
+    "emptyLink": "ネットかバスを追加",
+    "emptyAfter": "、またはプローブしたネットを右クリック →「アナライザに追加」。",
+    "moveUp": "上へ",
+    "moveDown": "下へ",
+    "removeChannel": "チャンネルを削除",
+    "noNets": "名前付きのネットもバスもまだありません",
+    "busSuffix": "バス",
+    "missingRef": "{ref}（見つかりません）",
+    "tickCount": {
+      "other": "{count} ティック"
+    }
+  },
+  "ai": {
+    "title": "AI 回路ビルダー",
+    "close": "AI ビルダーを閉じる",
+    "resize": "ドラッグして AI ビルダーの高さを変える",
+    "clearTitle": "会話を消して新しい設計を始める",
+    "inputLabel": "組み立てる回路を説明してください",
+    "inputPlaceholder": "回路を説明してください — 例：「8 ビットの数を 2 つ、桁上げ付きで足し合わせ、入力はスイッチ、和は LED バーで表示」",
+    "build": "この回路を組み立てる",
+    "buildTitle": "この回路を組み立てる（Enter）",
+    "cancelTitle": "この組み立てをキャンセル",
+    "intro": "回路を説明すると、設計・組み立て・シミュレーション・テストを済ませてから、配置するかどうか尋ねられます。まず「設定 ▸ AI」であなた自身の AI 接続を設定してください。",
+    "cleared": "消しました。新しい回路を説明してください。",
+    "cancelled": "キャンセルしました。",
+    "lockedRunning": "新しい回路を組み立てる前にシミュレーションを停止してください。",
+    "designing": "設計中…",
+    "designingRow": "回路を設計中{round}…",
+    "fixRound": "（修正 {n}／{total} 回目）",
+    "building": "組み立て中…",
+    "buildingRow": "回路を組み立て中…",
+    "startFailed": "リクエストを開始できませんでした。",
+    "requestFailed": "リクエストが失敗しました。",
+    "buildCrashed": "組み立てが予期せず失敗しました：{message}",
+    "compilerFault": "回路の説明は正しかったのですが、組み立てられませんでした。これは設計ではなく Chip Hippo のコンパイラ側の不具合です。",
+    "gaveUp": "{total} 回の修正を試みて中止しました。まだ問題が残っています：",
+    "retrying": "その設計は通りませんでした — 修正を依頼します（{n}／{total} 回目）：",
+    "untitledCircuit": "回路",
+    "summary": "{title} — 部品 {parts} 個、ワイヤー {wires} 本、ボード {strips} 枚。",
+    "testsPassed": "自前のテストに {passed}/{tested} 合格。",
+    "builtWithNotes": "注意点付きで組み立てました：",
+    "placeHint": "クリックしてデスクに置くか、Esc を押してください。",
+    "gate": {
+      "compile": "ネットリストをコンパイル中…",
+      "l3": "組み立て結果を検査中…",
+      "l4": "接続を検査中…",
+      "l5": "シミュレーション中…",
+      "l6": "駆動されていないネットを探索中…"
+    },
+    "reason": {
+      "noProvider": "このビルドで利用できる AI プロバイダはありません。",
+      "unknownProvider": "「{provider}」はこのビルドが接続できるプロバイダではありません。「設定 ▸ AI」で選んでください。",
+      "noSecureStore": "このシステムには安全な資格情報ストアがないため、API キーを保存できません。「設定 ▸ AI」をご覧ください。",
+      "noKey": "{provider} 用の API キーが設定されていません。「設定 ▸ AI」で追加してください。",
+      "badBaseUrl": "AI のベース URL「{url}」は有効な http(s) アドレスではありません。「設定 ▸ AI」で直すか空にしてください。"
+    }
+  },
+  "schematic": {
+    "hint": "デスクにチップを追加すると回路図が表示されます",
+    "autoLayout": "自動配置"
+  },
+  "desk": {
+    "brick": {
+      "psu": "電源",
+      "clock": "クロック",
+      "display": "表示器"
+    },
+    "boardPropertiesTitle": "{board} の情報",
+    "wirePropertiesTitle": "ワイヤーの情報",
+    "wireColor": "色",
+    "wireLayout": "引き方",
+    "count": {
+      "and": "と",
+      "parts": {
+        "other": "部品 {count} 個"
+      },
+      "wires": {
+        "other": "ワイヤー {count} 本"
+      },
+      "boards": {
+        "other": "ボード {count} 枚"
+      },
+      "moreParts": {
+        "other": "さらに部品 {count} 個"
+      },
+      "moreWires": {
+        "other": "さらにワイヤー {count} 本"
+      }
+    },
+    "menu": {
+      "pinAssignment": "ピン配置",
+      "properties": "情報…",
+      "deleteComponent": "部品を削除",
+      "removeBoard": "ボードを取り外す",
+      "editText": "テキストを編集…",
+      "remove": "取り外す"
+    },
+    "remove": {
+      "confirm": "取り外す",
+      "boardTitle": "ボードを取り外しますか？",
+      "boardsTitle": "ボードを取り外しますか？",
+      "boardMessage": "{id} には {what} が付いています — ボードを外すとそれらも外れます。",
+      "boardsMessage": "つながった {count} 枚のボードには {what} が付いています — 外すとそれらも外れます。",
+      "brickTitle": "{noun}を取り外しますか？",
+      "brickMessage": "{id} には {what} が付いています — 外すとそれらも外れます。",
+      "selectionTitle": "{what} を取り外しますか？",
+      "selectionMessage": "それらに付いている {extra} も一緒に外れます。"
+    },
+    "paste": {
+      "failTitle": "この設計を貼り付けられませんでした",
+      "overlap": "一部がこのデスクにすでにあるものの上に重なります。",
+      "noRoom": "必要な場所がこのデスクで空いていません。"
+    }
+  },
+  "workspace": {
+    "location": "場所",
+    "projectProperties": "プロジェクトの情報",
+    "desktopProperties": "デスクトップの情報",
+    "defaultDesktopName": "デスクトップ {n}",
+    "openFailTitle": "そのプロジェクトを開けませんでした",
+    "unreadable": "ファイルを読み取れませんでした。",
+    "deleteTabTitle": "「{name}」を削除しますか？",
+    "deleteTabMessage": "その設計も一緒に消えます。プロジェクトを保存するまで何も書き込まれないので、保存せずにプロジェクトを閉じれば元に戻ります。",
+    "missingTitle": "そのプロジェクトはもうありません",
+    "missingMessage": "「{name}」が見つかりませんでした。最近使ったプロジェクトから外しますか？",
+    "untitledTitle": "このプロジェクトは保存されていません",
+    "untitledMessage": "まだ自分の置き場所がないため、別のプロジェクトを作ったり開いたりすると破棄されます — デスクトップもすべてです。",
+    "dirtyTitle": "保存していない変更",
+    "thisProject": "このプロジェクト",
+    "dirtyQuitting": "{what} に保存していない変更があります。ここで終了すると失われます。",
+    "dirtyLeaving": "{what} に保存していない変更があります。ここで離れると失われます。",
+    "discard": "破棄",
+    "restoreWarnTitle": "復元できなかったデスクトップがあります",
+    "noDesktops": "デスクトップがありません",
+    "failStart": "プロジェクトを開始できませんでした",
+    "failOpen": "プロジェクトを開けませんでした",
+    "failSave": "プロジェクトを保存できませんでした",
+    "failLocation": "保存場所を選べませんでした",
+    "failDuplicate": "デスクトップを複製できませんでした",
+    "failImport": "そのデスクトップを読み込めませんでした",
+    "failExport": "デスクトップを書き出せませんでした",
+    "failExample": "{ref} の例を開けませんでした"
+  },
+  "sim": {
+    "memNotLoaded": "メモリを読み込めませんでした",
+    "memNotLoadedMessage": "{chip}：{error}。すべてゼロで実行します。",
+    "memLost": "メモリのデータが失われました",
+    "memLostMessage": "{chip} は書き込み済みでしたが、データファイルが見つかりませんでした — 現在はランダムなノイズが入っています。イメージを読み込み直してください。",
+    "short": "ショート",
+    "shortMessage": "逆向きの電源が同じネットで出会っています（{net}）。",
+    "conflict": "ドライバの衝突",
+    "conflictMessage": "2 つの出力が同じネットで競合しています（{net}）。",
+    "oscillation": "発振",
+    "oscillationMessage": {
+      "other": "回路が収束しません（不安定なネット {count} 個）。"
+    },
+    "underpowered": "電圧不足",
+    "underpoweredMessage": "{chip} は 3 V です — 動作しません。",
+    "reversed": "電源が逆",
+    "reversedMessage": "{chip} の VCC と GND が入れ替わっています。",
+    "damaged": "煙が出ました！",
+    "damagedMessage": "{chip} は 12 V で壊れました。削除して新しいものを置くと続けられます。"
+  },
+  "about": {
+    "subtitle": "TTL ブレッドボード設計・シミュレータ",
+    "description": "はんだ付け不要の仮想ブレッドボード上で 74xx ファミリの論理回路を設計・シミュレーションします — チップ、ワイヤー、スイッチ、LED、電源を置いて、すべてのネットで電気が落ち着くまでを眺めましょう。",
+    "versionInfo": "バージョン情報",
+    "version": "バージョン",
+    "platform": "プラットフォーム",
+    "devBuild": "開発ビルド"
+  },
+  "netNames": {
+    "conflict": "ネット名の衝突",
+    "conflictMessage": "「{winner}」と「{loser}」が同じネットを指しています — 「{winner}」を使います。"
+  },
+  "updater": {
+    "available": "アップデートがあります",
+    "downloading": "アップデートをバックグラウンドでダウンロード中…",
+    "downloadingVersion": "{version} をバックグラウンドでダウンロード中…",
+    "ready": "アップデートの準備ができました",
+    "downloaded": "アップデートをダウンロードしました。",
+    "downloadedVersion": "バージョン {version} をダウンロードしました。",
+    "restart": "再起動",
+    "upToDate": "最新です",
+    "checkFailed": "アップデートの確認に失敗しました"
+  },
+  "bus": {
+    "rename": "バスの名前を変更…",
+    "renameTitle": "バスの名前を変更",
+    "nameLabel": "バス名",
+    "namePlaceholder": "例：D[7:0]、A[0:15]",
+    "unbundle": "束をほどく（ワイヤーは残す）",
+    "deleteWithWires": "バスとワイヤーを削除"
+  },
+  "wire": {
+    "tooManyBends": "このワイヤーにはこれ以上曲げを追加できません",
+    "tooManyBendsMessage": "経路指定のワイヤーが持てる点は最大 {max} 個です。1 つを隣の点にドラッグして統合してから、別の点を追加してください。"
+  },
+  "probe": {
+    "nameNet": "このネットに名前を付ける…",
+    "renameNet": "ネットの名前を変更…",
+    "nameNetTitle": "このネットに名前を付ける",
+    "renameNetTitle": "ネットの名前を変更",
+    "nameLabel": "ネット名",
+    "namePlaceholder": "例：VCC、GND、CLK、D0…",
+    "clearName": "名前を消す",
+    "addToAnalyzer": "アナライザに追加"
+  },
+  "shortcuts": {
+    "title": "キーボードショートカット",
+    "close": "キーボードショートカットを閉じる",
+    "group": {
+      "file": "ファイル",
+      "tools": "ツール",
+      "wireBus": "ワイヤーとバス（そのツールが有効なとき）",
+      "edit": "編集",
+      "view": "表示",
+      "simulation": "シミュレーション"
+    },
+    "file": {
+      "new": "新規プロジェクト",
+      "open": "プロジェクトを開く",
+      "save": "保存",
+      "saveAs": "別名で保存…",
+      "bom": "部品表（組み立てガイド）"
+    },
+    "tools": {
+      "wire": "ワイヤーツール",
+      "bus": "バスツール",
+      "probe": "プローブツール",
+      "putAway": "ワイヤー／バス／プローブツールをしまう",
+      "rotate": "部品を回転／レールを立てる",
+      "flip": "配置中に LED の極性を反転"
+    },
+    "wireBus": {
+      "color": "ワイヤーの色 — 1 赤 2 黒 3 青 4 緑 5 黄 6 オレンジ 7 白 8 紫",
+      "width": "バス幅 — 2–8 はそのビット数、1 は 16 ビット"
+    },
+    "edit": {
+      "selectAll": "すべてを選択 — デスク全体、または入力欄のテキスト",
+      "copy": "選択した部品をコピー",
+      "paste": "複製を貼り付け",
+      "delete": "選択したものを削除",
+      "undo": "取り消す",
+      "redo": "やり直す",
+      "cancel": "使用中のツールを解除／選択を解除"
+    },
+    "view": {
+      "toggleView": "ブレッドボード ⇄ 回路図",
+      "fadeWires": "ワイヤーを両端だけの表示に淡くする",
+      "palette": "部品パレットの表示を切り替え",
+      "analyzer": "ロジックアナライザの表示を切り替え",
+      "fit": "画面に合わせる",
+      "zoomOut": "いちばん縮小（見失った部品を探す）",
+      "zoom": "拡大／縮小／リセット"
+    },
+    "simulation": {
+      "run": "回路を実行／停止",
+      "runKeys": "スペースまたは {mod}+R"
+    }
+  },
+  "properties": {
+    "close": "情報を閉じる",
+    "name": "名前",
+    "description": "説明",
+    "field": {
+      "color": "色",
+      "volts": "電圧",
+      "hz": "周波数",
+      "size": "サイズ"
+    },
+    "option": {
+      "manual": "手動"
+    },
+    "action": {
+      "inspectMemory": "メモリを調べる…",
+      "programMemory": "イメージを読み込む…（書き込み）"
+    }
+  },
+  "memory": {
+    "offset": "オフセット",
+    "titleSuffix": "メモリ",
+    "noChip": "「{ref}」に対応するメモリチップはありません。",
+    "stopped": "停止中",
+    "statusRunning": "実行中 · 読み取り専用",
+    "statusVolatile": "停止中 · 揮発性（読み取り専用）",
+    "statusEditable": "停止中 · 編集可能",
+    "volatileNote": "揮発性（SRAM）— 裏付けファイルはありません",
+    "copyPath": "パスをコピー",
+    "loadImage": "イメージを読み込む…（書き込み）",
+    "exportBin": ".bin で書き出す",
+    "exportHex": "HEX で書き出す",
+    "goto": "移動",
+    "gotoAddress": "アドレスへ移動",
+    "addrPlaceholder": "アドレス（16 進）",
+    "fill": "埋める",
+    "fillStart": "埋め始め",
+    "fillEnd": "埋め終わり",
+    "fillValue": "埋める値",
+    "loadFailed": "裏付けファイルを読み込めませんでした"
+  },
+  "datasheets": {
+    "title": "データシートをダウンロード",
+    "starting": "開始中…",
+    "downloading": "データシートをダウンロード中…",
+    "progress": "データシートをダウンロード中 — {total} 件中 {done} 件",
+    "startFailed": "ダウンロードを開始できませんでした。",
+    "cancelled": "キャンセルしました — {total} 件中 {saved} 件をダウンロード",
+    "done": "{total} 件中 {saved} 件のデータシートをダウンロードしました",
+    "failed": "失敗",
+    "failedHead": {
+      "other": "{count} 件を取得できませんでした："
+    }
+  },
+  "pinout": {
+    "ariaLabel": "{id} のピン配置",
+    "openDatasheet": "データシートの PDF を開く",
+    "openExample": "例の回路を開く",
+    "openExampleTitle": "この部品の例の回路を新しいデスクトップとして開く",
+    "datasheetCaption": "データシート — 内部図と機能表",
+    "subPackage": "{package} · ピン配置",
+    "subLinear": "グリッド 1 行に穴 {count} 個 · ピン配置",
+    "subCan": "穴 {holes} 個、四隅に脚 · ピン配置",
+    "subTerminals": "端子の割り当て",
+    "subWire": "端点 2 つ · ピン配置",
+    "wireTitle": "ワイヤー",
+    "wireAria": "ワイヤーのピン配置",
+    "anchorHole": "基点の穴",
+    "holeOffset": {
+      "other": "+{count} 穴"
+    },
+    "corner": {
+      "bottomLeft": "左下の角",
+      "bottomRight": "右下の角",
+      "topLeft": "左上の角",
+      "topRight": "右上の角"
+    },
+    "cornerAnchor": "{corner}（基点、1 ピン）",
+    "noAssignments": "「{ref}」のピン配置はありません。",
+    "noPart": "部品が選択されていません。"
+  },
+  "popup": {
+    "closeNamed": "{title}を閉じる",
+    "removeNamed": "{label} を削除",
+    "enterValue": "値を入力してください"
+  }
+}

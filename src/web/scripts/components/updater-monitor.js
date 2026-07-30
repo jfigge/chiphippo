@@ -30,6 +30,8 @@
 // usefully carry.
 
 /** The one key every updater toast uses — see UpdaterMonitor#show. */
+import { t } from "../i18n.js";
+
 const TOAST_KEY = "updater";
 
 export class UpdaterMonitor {
@@ -45,10 +47,10 @@ export class UpdaterMonitor {
       const version = e.detail?.version;
       this.#show({
         variant: "info",
-        title: "Update available",
+        title: t("updater.available"),
         message: version
-          ? `Downloading ${version} in the background…`
-          : "Downloading the update in the background…",
+          ? t("updater.downloadingVersion", { version })
+          : t("updater.downloading"),
       });
     });
 
@@ -62,11 +64,11 @@ export class UpdaterMonitor {
       this.#show({
         variant: "info",
         sticky: true,
-        title: "Update ready",
+        title: t("updater.ready"),
         message: version
-          ? `Version ${version} has been downloaded.`
-          : "The update has been downloaded.",
-        actionLabel: "Restart",
+          ? t("updater.downloadedVersion", { version })
+          : t("updater.downloaded"),
+        actionLabel: t("updater.restart"),
         onAction: () => window.chiphippo?.updater?.install?.(),
       });
     });
@@ -79,8 +81,8 @@ export class UpdaterMonitor {
       if (!e.detail?.manual || e.detail?.reason) return;
       this.#show({
         variant: "info",
-        title: "Up to date",
-        message: "You're running the latest version of Chip Hippo.",
+        title: t("updater.upToDate"),
+        message: t("settings.about.upToDate"),
       });
     });
 
@@ -88,8 +90,8 @@ export class UpdaterMonitor {
       if (!e.detail?.manual) return;
       this.#show({
         variant: "warning",
-        title: "Update check failed",
-        message: "Could not check for updates. Please try again later.",
+        title: t("updater.checkFailed"),
+        message: t("settings.about.error"),
       });
     });
   }

@@ -48,6 +48,8 @@
  * @param {Array<{id:string, label?:string}>} providers
  * @returns {{id:string, label?:string}|null}
  */
+import { tf } from "../i18n.js";
+
 export function effectiveProvider(config, providers) {
   const list = Array.isArray(providers) ? providers : [];
   if (!config?.provider) return list[0] ?? null;
@@ -70,16 +72,18 @@ export function effectiveProvider(config, providers) {
 export function checkConnection(config, providers, keyStatus) {
   const list = Array.isArray(providers) ? providers : [];
   if (!list.length) {
-    return { ok: false, reason: "No AI provider is available in this build." };
+    return { ok: false, reason: tf("ai.reason.noProvider", "No AI provider is available in this build.") }; // prettier-ignore
   }
 
   const chosen = effectiveProvider(config, list);
   if (!chosen) {
     return {
       ok: false,
-      reason:
-        `“${config.provider}” is not a provider this build can reach. ` +
-        "Choose one in Settings ▸ AI.",
+      reason: tf(
+        "ai.reason.unknownProvider",
+        "“{provider}” is not a provider this build can reach. Choose one in Settings ▸ AI.",
+        { provider: config.provider },
+      ),
     };
   }
   const label = chosen.label ?? chosen.id;
@@ -87,15 +91,20 @@ export function checkConnection(config, providers, keyStatus) {
   if (keyStatus?.encryptionAvailable === false) {
     return {
       ok: false,
-      reason:
-        "This system has no secure credential store, so an API key cannot be " +
-        "saved. See Settings ▸ AI.",
+      reason: tf(
+        "ai.reason.noSecureStore",
+        "This system has no secure credential store, so an API key cannot be saved. See Settings ▸ AI.",
+      ),
     };
   }
   if (!keyStatus?.configured) {
     return {
       ok: false,
-      reason: `No API key is configured for ${label}. Add one in Settings ▸ AI.`,
+      reason: tf(
+        "ai.reason.noKey",
+        "No API key is configured for {provider}. Add one in Settings ▸ AI.",
+        { provider: label },
+      ),
     };
   }
 
@@ -106,9 +115,11 @@ export function checkConnection(config, providers, keyStatus) {
   if (baseUrl && !isHttpUrl(baseUrl)) {
     return {
       ok: false,
-      reason:
-        `The AI base URL “${baseUrl}” is not a valid http(s) address. ` +
-        "Fix or clear it in Settings ▸ AI.",
+      reason: tf(
+        "ai.reason.badBaseUrl",
+        "The AI base URL “{url}” is not a valid http(s) address. Fix or clear it in Settings ▸ AI.",
+        { url: baseUrl },
+      ),
     };
   }
 

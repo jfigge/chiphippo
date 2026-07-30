@@ -29,7 +29,10 @@
 // app window. Main owns the window itself (float-above default + the
 // right-click toggle).
 
+import * as i18n from "./i18n.js";
+import { t } from "./i18n.js";
 import { partDef } from "./catalog/index.js";
+import { partTitle } from "./catalog/labels.js";
 import {
   buildPartPinout,
   buildWirePinout,
@@ -75,6 +78,12 @@ function addDatasheetButton(pinoutEl, partRef) {
   );
 }
 
+// This window is its own sandboxed renderer, so it loads its own catalog before
+// it builds anything — exactly as app.js does. Top-level await in a module is
+// the whole mechanism: nothing below runs until the catalog is in place, so no
+// `t()` here can resolve against an empty one.
+await i18n.init();
+
 const root = document.getElementById("pinout-root");
 const params = new URLSearchParams(location.search);
 const ref = params.get("ref");
@@ -104,7 +113,9 @@ window.addEventListener("keydown", (event) => {
 });
 
 if (pinout) {
-  document.title = isWire ? "Wire" : `${def.id} · ${def.title}`;
+  document.title = isWire
+    ? t("pinout.wireTitle")
+    : `${def.id} · ${partTitle(def)}`;
   // Order is deliberate: the datasheet button is the incumbent and stays at the
   // far right, where a hand already goes. The example button — the one with a
   // consequence — sits inside it.
@@ -112,11 +123,11 @@ if (pinout) {
   if (hasPdf) addDatasheetButton(pinout, ref);
   root.append(pinout);
 } else {
-  document.title = "Pin assignments";
+  document.title = t("window.pinout");
   const msg = document.createElement("p");
   msg.className = "pinout-empty";
   msg.textContent = ref
-    ? `No pin assignments for “${ref}”.`
-    : "No part selected.";
+    ? t("pinout.noAssignments", { ref })
+    : t("pinout.noPart");
   root.append(msg);
 }

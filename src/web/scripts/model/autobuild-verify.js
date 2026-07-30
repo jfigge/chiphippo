@@ -62,6 +62,7 @@
 // NOT two code paths: a second copy of the ladder is free to drift from this
 // one, and the drift would be silent.
 
+import { tf } from "../i18n.js";
 import { partDef } from "../catalog/index.js";
 import { normalizeDocument } from "./desk-doc.js";
 import { canPlacePart, partPinAddresses } from "./occupancy.js";
@@ -123,7 +124,7 @@ export function* verifySteps(compiled, spec = null) {
   const raw = compiled.document;
   const doc = normalizeDocument(raw);
 
-  yield { gate: "L3", label: "Checking the build…" };
+  yield { gate: "L3", label: tf("ai.gate.l3", "Checking the build…") };
 
   // ── L3a: the loader is a silent filter, so compare counts. ────────────────
   for (const key of ["boards", "components", "wires"]) {
@@ -180,7 +181,7 @@ export function* verifySteps(compiled, spec = null) {
     }
   }
 
-  yield { gate: "L4", label: "Checking connectivity…" };
+  yield { gate: "L4", label: tf("ai.gate.l4", "Checking connectivity…") };
 
   const netlist = buildNetlist(doc);
 
@@ -286,7 +287,7 @@ export function* verifySteps(compiled, spec = null) {
     return { ok: false, faults, document: doc, netlist };
   }
 
-  yield { gate: "L5", label: "Simulating…" };
+  yield { gate: "L5", label: tf("ai.gate.l5", "Simulating…") };
 
   // ── L5: does it actually run? ─────────────────────────────────────────────
   //
@@ -328,7 +329,7 @@ export function* verifySteps(compiled, spec = null) {
     }
   }
 
-  yield { gate: "L6", label: "Checking for undriven nets…" };
+  yield { gate: "L6", label: tf("ai.gate.l6", "Checking for undriven nets…") };
 
   // ── L6: a declared signal net that never resolves is a dangling input. ────
   //

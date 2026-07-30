@@ -112,6 +112,25 @@ test: test-license-headers
 		"web/scripts/tests/**/*.test.js"
 	@echo "--------------------------------"
 
+# The language guards on their own — the fast loop while translating. All five
+# also run as part of `make test` (the globs above pick them up); this target
+# exists so a catalog edit can be checked in a second rather than a minute.
+#   · i18n            — the resolver (main) and the t()/tf() seam (renderer)
+#   · i18n-catalogs   — THE UNTRANSLATED-STRING GUARD: every locale covers
+#                       en.json exactly, keeps its {placeholders} and plural
+#                       shapes, and every key the source asks for exists
+#   · no-hardcoded-*  — the two leak scanners: a display literal that never
+#                       entered the catalog, in the renderer and in main
+test-i18n:
+	@echo "Running language tests (catalog completeness + hardcoded-string guards)..."
+	@cd $(SRC_DIR) && node --test --test-timeout=$(TEST_TIMEOUT) \
+		app/tests/i18n.test.js \
+		app/tests/no-hardcoded-native-strings.test.js \
+		web/scripts/tests/i18n.test.js \
+		web/scripts/tests/i18n-catalogs.test.js \
+		web/scripts/tests/no-hardcoded-strings.test.js
+	@echo "--------------------------------"
+
 # Guard: every first-party src/ JS+CSS file and build script must carry the
 # Apache 2.0 header. Fix any failure with `make license-headers`.
 test-license-headers:

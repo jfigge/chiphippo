@@ -23,8 +23,7 @@
 // this is the only place that knows how to turn that into DOM.
 
 import { el } from "../dom.js";
-
-const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+import { wireColorLabel } from "../model/wire-colors.js";
 
 /**
  * Build a row of clickable color swatches, one per `colors` entry. Clicking
@@ -44,8 +43,8 @@ export function buildColorSwatches({ colors, value, onPick, ariaLabel }) {
         "color-swatch" + (color === value ? " color-swatch--selected" : ""),
       type: "button",
       dataset: { color },
-      title: capitalize(color),
-      "aria-label": capitalize(color),
+      title: wireColorLabel(color),
+      "aria-label": wireColorLabel(color),
       "aria-pressed": String(color === value),
       onClick: () => {
         for (const b of buttons) {

@@ -30,6 +30,7 @@
 // wires them to the document, the camera, and symbol-drag.
 
 import { el, svgEl } from "../dom.js";
+import { t } from "../i18n.js";
 import { PX_PER_UNIT, clampZoom } from "../desk/desk-geometry.js";
 import { layout } from "../model/schematic-layout.js";
 import { DeskView } from "./desk-view.js";
@@ -559,7 +560,7 @@ export class SchematicView {
 
     this.#hint = el("p", {
       class: "schematic-hint",
-      text: "Add chips to the desk to see the schematic",
+      text: t("schematic.hint"),
       hidden: true,
     });
     viewport.append(this.#hint);
@@ -569,7 +570,7 @@ export class SchematicView {
           el("button", {
             class: "schematic-tool-btn",
             type: "button",
-            text: "Auto-layout",
+            text: t("schematic.autoLayout"),
             onClick: () => this.#onAutoLayout?.(),
           }),
         ]),
@@ -584,6 +585,18 @@ export class SchematicView {
     window.addEventListener("chiphippo:net-probed", this.#onProbed);
 
     this.#deskView.surface.addEventListener("pointerdown", this.#onPointerDown);
+    this.#render();
+  }
+
+  /**
+   * Re-render in the new language (see app.js's `relabelChrome`). The diagram
+   * itself is redrawn from the document, and its symbol captions come from the
+   * catalog through `partTitle()`, so a repaint is most of the job.
+   */
+  relocalize() {
+    this.#hint.textContent = t("schematic.hint");
+    const auto = this.#hint.parentElement?.querySelector(".schematic-tool-btn");
+    if (auto) auto.textContent = t("schematic.autoLayout");
     this.#render();
   }
 

@@ -27,6 +27,7 @@
 // Topology is FROZEN while running (the app locks editing tools); switch/clock
 // changes are part state, not topology, so the netlist still rebuilds on them.
 
+import { t } from "../i18n.js";
 import { tick } from "../sim/engine.js";
 import { H, L } from "../sim/levels.js";
 import { partDef } from "../catalog/index.js";
@@ -364,8 +365,11 @@ export class SimController {
         key: `mem-load:${compId}`,
         variant: "danger",
         sticky: true,
-        title: "Memory not loaded",
-        message: `${this.#refName(compId)}: ${err.message}. Running with zeros.`,
+        title: t("sim.memNotLoaded"),
+        message: t("sim.memNotLoadedMessage", {
+          chip: this.#refName(compId),
+          error: err.message,
+        }),
       });
     }
   }
@@ -400,8 +404,8 @@ export class SimController {
       key: `mem-lost:${compId}`,
       variant: "danger",
       sticky: true,
-      title: "Memory data lost",
-      message: `${this.#refName(compId)} was programmed, but its data file was missing — it now holds random noise. Re-load an image.`,
+      title: t("sim.memLost"),
+      message: t("sim.memLostMessage", { chip: this.#refName(compId) }),
     });
   }
 
@@ -566,43 +570,45 @@ export class SimController {
         this.#notifications.notify({
           key: `short:${w.net}`,
           variant: "danger",
-          title: "Short circuit",
-          message: `Opposing supplies meet on one net (${w.net}).`,
+          title: t("sim.short"),
+          message: t("sim.shortMessage", { net: w.net }),
         });
       } else if (w.type === "conflict") {
         this.#notifications.notify({
           key: `conflict:${w.net}`,
           variant: "warning",
-          title: "Driver conflict",
-          message: `Two outputs are fighting on one net (${w.net}).`,
+          title: t("sim.conflict"),
+          message: t("sim.conflictMessage", { net: w.net }),
         });
       } else if (w.type === "oscillation") {
         this.#notifications.notify({
           key: "oscillation",
           variant: "warning",
-          title: "Oscillation",
-          message: `The circuit won't settle (${w.nets.length} unstable nets).`,
+          title: t("sim.oscillation"),
+          message: t("sim.oscillationMessage", { count: w.nets.length }),
         });
       } else if (w.type === "underpowered") {
         this.#notifications.notify({
           key: `under:${w.chip}`,
           variant: "warning",
-          title: "Underpowered",
-          message: `${this.#refName(w.chip)} is at 3 V — running inert.`,
+          title: t("sim.underpowered"),
+          message: t("sim.underpoweredMessage", {
+            chip: this.#refName(w.chip),
+          }),
         });
       } else if (w.type === "reversed") {
         this.#notifications.notify({
           key: `reversed:${w.chip}`,
           variant: "danger",
-          title: "Power reversed",
-          message: `${this.#refName(w.chip)} has VCC and GND swapped.`,
+          title: t("sim.reversed"),
+          message: t("sim.reversedMessage", { chip: this.#refName(w.chip) }),
         });
       } else if (w.type === "damaged") {
         this.#notifications.notify({
           key: `smoke:${w.chip}`,
           variant: "danger",
-          title: "Magic smoke!",
-          message: `${this.#refName(w.chip)} was damaged by 12 V. Delete it and place a fresh one to continue.`,
+          title: t("sim.damaged"),
+          message: t("sim.damagedMessage", { chip: this.#refName(w.chip) }),
         });
       }
     }

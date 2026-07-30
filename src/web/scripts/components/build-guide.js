@@ -22,15 +22,22 @@
 // only reads the DeskDoc and renders what buildPlan() returns.
 
 import { clear, el } from "../dom.js";
-import { buildPlan } from "../model/build-plan.js";
+import { t } from "../i18n.js";
+import {
+  buildPlan,
+  BOM_SECTION_KEYS,
+  STEP_GROUP_KEYS,
+  bomSectionLabel,
+  stepGroupLabel,
+  warningCount,
+  netTitle,
+  busHeading,
+} from "../model/build-plan.js";
 import { planToRtf } from "../model/build-export.js";
 import { NetlistCache } from "./netlist-cache.js";
 
-const TABS = [
-  { id: "bom", label: "BOM" },
-  { id: "wiring", label: "Wiring" },
-  { id: "steps", label: "Steps" },
-];
+/** The three tab ids, in display order; each label is `guide.tab.<id>`. */
+const TAB_IDS = ["bom", "wiring", "steps"];
 
 /** Download icon (Feather "download"), for the header export button. */
 const DOWNLOAD_SVG =
@@ -40,23 +47,6 @@ const DOWNLOAD_SVG =
   '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>' +
   '<polyline points="7 10 12 15 17 10"/>' +
   '<line x1="12" y1="15" x2="12" y2="3"/></svg>';
-
-/** The BOM sections, in display order (skip a section with no line items). */
-const BOM_SECTIONS = [
-  { key: "boards", label: "Breadboards" },
-  { key: "chips", label: "Chips" },
-  { key: "discretes", label: "Discrete parts" },
-  { key: "power", label: "Power" },
-];
-
-/** Human names for the step groups, in the order buildPlan emits them. */
-const STEP_GROUPS = [
-  { key: "boards", label: "Place the boards" },
-  { key: "power", label: "Power" },
-  { key: "chips", label: "Seat the chips" },
-  { key: "discretes", label: "Add discrete parts" },
-  { key: "wires", label: "Run the signal wires" },
-];
 
 export class BuildGuide {
   #doc;
@@ -88,12 +78,13 @@ export class BuildGuide {
     this.#schemaName = schemaName ?? (() => "Untitled");
 
     const tabs = el("div", { class: "build-guide-tabs", role: "tablist" });
-    for (const { id, label } of TABS) {
+    for (const id of TAB_IDS) {
       const btn = el("button", {
         class: "build-guide-tab",
         type: "button",
         role: "tab",
-        text: label,
+        text: t(`guide.tab.${id}`),
+        dataset: { tab: id },
         "aria-selected": String(id === this.#tab),
         onClick: () => this.#selectTab(id),
       });
@@ -104,14 +95,14 @@ export class BuildGuide {
     this.#warnBadge = el("span", {
       class: "build-guide-warn-badge",
       hidden: true,
-      title: "Design warnings",
+      title: t("guide.warnBadge"),
     });
 
     const downloadBtn = el("button", {
       class: "build-guide-download",
       type: "button",
-      title: "Download the bill of materials (.rtf)",
-      "aria-label": "Download the bill of materials",
+      title: t("guide.downloadTitle"),
+      "aria-label": t("guide.download"),
       onClick: () => this.#downloadBom(),
     });
     downloadBtn.innerHTML = DOWNLOAD_SVG;
@@ -119,7 +110,10 @@ export class BuildGuide {
     const header = el("div", { class: "build-guide-header" }, [
       el("div", { class: "build-guide-header-left" }, [
         el("span", { class: "build-guide-title" }, [
-          "Build guide",
+          el("span", {
+            class: "build-guide-title-text",
+            text: t("guide.title"),
+          }),
           this.#warnBadge,
         ]),
         downloadBtn,
@@ -127,8 +121,8 @@ export class BuildGuide {
       el("button", {
         class: "build-guide-close",
         type: "button",
-        title: "Close the build guide",
-        "aria-label": "Close the build guide",
+        title: t("guide.close"),
+        "aria-label": t("guide.close"),
         text: "×",
         onClick: () => this.setVisible(false),
       }),
@@ -137,7 +131,7 @@ export class BuildGuide {
     this.#body = el("div", { class: "build-guide-body" });
     this.#el = el(
       "aside",
-      { class: "build-guide", "aria-label": "Build guide", hidden: true },
+      { class: "build-guide", "aria-label": t("guide.title"), hidden: true },
       [header, tabs, this.#body],
     );
     container.append(this.#el);
@@ -170,6 +164,30 @@ export class BuildGuide {
 
   toggle() {
     this.setVisible(!this.visible);
+  }
+
+  /**
+   * Re-render in the new language (see app.js's `relabelChrome`). The plan is
+   * WORDED by build-plan.js, which resolves its own strings through `tf()` on
+   * every call — so the panel has to mark itself dirty rather than repaint the
+   * plan it already derived, or the body would keep the old language's steps.
+   */
+  relocalize() {
+    for (const [id, btn] of this.#tabButtons) {
+      btn.textContent = t(`guide.tab.${id}`);
+    }
+    this.#warnBadge.title = t("guide.warnBadge");
+    const title = this.#el.querySelector(".build-guide-title-text");
+    if (title) title.textContent = t("guide.title");
+    this.#el.setAttribute("aria-label", t("guide.title"));
+    const download = this.#el.querySelector(".build-guide-download");
+    download.title = t("guide.downloadTitle");
+    download.setAttribute("aria-label", t("guide.download"));
+    const close = this.#el.querySelector(".build-guide-close");
+    close.title = t("guide.close");
+    close.setAttribute("aria-label", t("guide.close"));
+    this.#dirty = true;
+    if (this.visible) this.#render();
   }
 
   #selectTab(id) {
@@ -205,7 +223,7 @@ export class BuildGuide {
 
   /** Format the live plan as an .rtf document and download it. */
   #downloadBom() {
-    const name = this.#schemaName?.() || "Untitled";
+    const name = this.#schemaName?.() || t("common.untitled");
     const rtf = planToRtf(this.#ensurePlan(), { title: name });
     this.#download(
       new Blob([rtf], { type: "application/rtf" }),
@@ -236,7 +254,7 @@ export class BuildGuide {
     if (!warnings.length) return el("div", { hidden: true });
     return el("div", { class: "build-guide-warnings", role: "alert" }, [
       el("div", { class: "build-guide-warnings-head" }, [
-        `${warnings.length} warning${warnings.length === 1 ? "" : "s"}`,
+        warningCount(warnings.length),
       ]),
       el(
         "ul",
@@ -253,11 +271,11 @@ export class BuildGuide {
   // ── BOM tab ──────────────────────────────────────────────────────────────
   #bomView() {
     const { bom } = this.#plan;
-    const sections = BOM_SECTIONS.map(({ key, label }) => {
+    const sections = BOM_SECTION_KEYS.map((key) => {
       const lines = bom[key] ?? [];
       if (!lines.length) return null;
       return el("section", { class: "build-guide-section" }, [
-        el("h3", { class: "build-guide-section-head" }, [label]),
+        el("h3", { class: "build-guide-section-head" }, [bomSectionLabel(key)]),
         el(
           "ul",
           { class: "build-guide-bom-list" },
@@ -270,14 +288,14 @@ export class BuildGuide {
         ),
       ]);
     }).filter(Boolean);
-    if (!sections.length) return this.#empty("Nothing on the desk yet.");
+    if (!sections.length) return this.#empty(t("guide.emptyBom"));
     return el("div", {}, sections);
   }
 
   // ── Wiring tab (net-centric, buses grouped) ──────────────────────────────
   #wiringView() {
     const { nets } = this.#plan;
-    if (!nets.length) return this.#empty("No connections yet.");
+    if (!nets.length) return this.#empty(t("guide.emptyWiring"));
 
     const rows = [];
     let busName = null;
@@ -285,7 +303,7 @@ export class BuildGuide {
       if (net.bus && net.bus.name !== busName) {
         busName = net.bus.name;
         rows.push(
-          el("h3", { class: "build-guide-bus-head" }, [`${busName} bus`]),
+          el("h3", { class: "build-guide-bus-head" }, [busHeading(busName)]),
         );
       }
       if (!net.bus) busName = null;
@@ -295,7 +313,7 @@ export class BuildGuide {
   }
 
   #netRow(net) {
-    const title = net.bus ? `bit ${net.bus.bit}` : (net.name ?? "unnamed net");
+    const title = netTitle(net);
     return el(
       "div",
       {
@@ -310,7 +328,10 @@ export class BuildGuide {
           net.isSingleton
             ? el(
                 "span",
-                { class: "build-guide-net-flag", title: "Only one connection" },
+                {
+                  class: "build-guide-net-flag",
+                  title: t("guide.singletonTitle"),
+                },
                 ["⚠"],
               )
             : null,
@@ -343,13 +364,13 @@ export class BuildGuide {
   // ── Steps tab (ordered checklist) ────────────────────────────────────────
   #stepsView() {
     const { steps } = this.#plan;
-    if (!steps.length) return this.#empty("No build steps yet.");
+    if (!steps.length) return this.#empty(t("guide.emptySteps"));
 
-    const sections = STEP_GROUPS.map(({ key, label }) => {
+    const sections = STEP_GROUP_KEYS.map((key) => {
       const groupSteps = steps.filter((s) => s.group === key);
       if (!groupSteps.length) return null;
       return el("section", { class: "build-guide-section" }, [
-        el("h3", { class: "build-guide-section-head" }, [label]),
+        el("h3", { class: "build-guide-section-head" }, [stepGroupLabel(key)]),
         el(
           "ol",
           { class: "build-guide-steps" },

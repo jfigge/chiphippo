@@ -37,7 +37,10 @@
 // (bb1)"), and only then the bare address. Nets lead with their user NAME
 // (Feature 120) when they have one.
 
+import { tf } from "../i18n.js";
 import { partDef } from "../catalog/index.js";
+import { partTitle, kitLabel } from "../catalog/labels.js";
+import { wireColorName } from "./wire-colors.js";
 import { buildOccupancy, partPinAddresses, partPinHoles } from "./occupancy.js";
 import { nodeOf, parseAddress, parseHole } from "./breadboard.js";
 import { BOARD_TYPES } from "./board-types.js";
@@ -152,7 +155,7 @@ function buildBom(doc) {
   const boards = countBy(
     doc.boards,
     (b) => b.type,
-    (b) => BOARD_TYPES[b.type]?.label ?? b.type,
+    (b) => kitLabel(b.type, BOARD_TYPES[b.type]),
   );
 
   const chips = [];
@@ -189,23 +192,27 @@ function buildBom(doc) {
 /** A component's BOM key + human title, splitting on the variant that matters. */
 function bomVariant(def, comp) {
   const p = comp.params ?? {};
+  // The KEY is built from the stored tokens and stays language-independent —
+  // it is what tallies two identical parts into one line, so a language change
+  // must never split or merge a BOM row. Only the TITLE is translated.
   if (def.kind === "psu") {
     return {
       key: `${comp.ref}:${p.volts}`,
-      title: `${def.title} (${p.volts} V)`,
+      title: `${partTitle(def)} (${p.volts} V)`,
     };
   }
   if (def.kind === "clock") {
-    const rate = p.hz === "manual" ? "manual" : `${p.hz} Hz`;
-    return { key: `${comp.ref}:${p.hz}`, title: `${def.title} (${rate})` };
+    const rate =
+      p.hz === "manual" ? tf("plan.manualClock", "manual") : `${p.hz} Hz`;
+    return { key: `${comp.ref}:${p.hz}`, title: `${partTitle(def)} (${rate})` };
   }
   if (def.colors && p.color) {
     return {
       key: `${comp.ref}:${p.color}`,
-      title: `${def.title} (${p.color})`,
+      title: `${partTitle(def)} (${wireColorName(p.color)})`,
     };
   }
-  return { key: comp.ref, title: def.title };
+  return { key: comp.ref, title: partTitle(def) };
 }
 
 /** Count `items` by a key fn into sorted `{ key, title, count }` lines. */
@@ -310,9 +317,9 @@ function pinMember({ componentId, ref, pin, name, hole }) {
 /** "74LS00 pin 3 (1Y)" — the type identity + pin number + its datasheet name. */
 function pinLabel(ref, pin, name) {
   const def = partDef(ref);
-  const base = def?.package ? ref : (def?.title ?? ref);
+  const base = def?.package ? ref : def ? partTitle(def) : ref;
   const suffix = name && name !== String(pin) ? ` (${name})` : "";
-  return `${base} pin ${pin}${suffix}`;
+  return tf("plan.pinLabel", "{base} pin {pin}{suffix}", { base, pin, suffix });
 }
 
 /** A PSU/clock terminal member ("Power supply +"). */
@@ -320,14 +327,19 @@ function terminalMember(doc, address) {
   const parsed = parseAddress(address);
   const comp = parsed && doc.components.find((c) => c.id === parsed.boardId);
   const def = comp && partDef(comp.ref);
-  const label = def ? `${def.title} ${parsed.hole}` : address;
+  const label = def ? `${partTitle(def)} ${parsed.hole}` : address;
   return { address, label, kind: "terminal", componentId: comp?.id };
 }
 
 /** A collapsed power-rail member ("+ rail (bb1)"). */
 function railMember(railKey) {
   const parsed = parseAddress(railKey);
-  const label = parsed ? `${parsed.hole} rail (${parsed.boardId})` : railKey;
+  const label = parsed
+    ? tf("plan.railLabel", "{rail} rail ({board})", {
+        rail: parsed.hole,
+        board: parsed.boardId,
+      })
+    : railKey;
   return { address: railKey, label, kind: "rail" };
 }
 
@@ -394,18 +406,26 @@ function boardSteps(doc, steps) {
       const strips = doc.boards.filter((b) => b.group === board.group);
       const x = Math.min(...strips.map((b) => b.x));
       const y = Math.min(...strips.map((b) => b.y));
-      const parts = strips.map((b) => BOARD_TYPES[b.type]?.label ?? b.type);
+      const parts = strips.map((b) => kitLabel(b.type, BOARD_TYPES[b.type]));
       steps.push({
         id: `step:boards:${board.group}`,
         group: "boards",
-        text: `Assemble a breadboard (${parts.join(" + ")}) near column ${x}, row ${y}.`,
+        text: tf(
+          "plan.step.assembleBoard",
+          "Assemble a breadboard ({parts}) near column {x}, row {y}.",
+          { parts: parts.join(" + "), x, y },
+        ),
       });
     } else {
-      const label = BOARD_TYPES[board.type]?.label ?? board.type;
+      const label = kitLabel(board.type, BOARD_TYPES[board.type]);
       steps.push({
         id: `step:boards:${board.id}`,
         group: "boards",
-        text: `Place a ${label} near column ${board.x}, row ${board.y}.`,
+        text: tf(
+          "plan.step.placeBoard",
+          "Place a {label} near column {x}, row {y}.",
+          { label, x: board.x, y: board.y },
+        ),
       });
     }
   }
@@ -419,15 +439,25 @@ function powerSteps(doc, ctx, steps) {
       steps.push({
         id: `step:power:${comp.id}`,
         group: "power",
-        text: `Set up the ${def.title} to ${comp.params?.volts ?? 5} V and place it on the desk.`,
+        text: tf(
+          "plan.step.psu",
+          "Set up the {part} to {volts} V and place it on the desk.",
+          { part: partTitle(def), volts: comp.params?.volts ?? 5 },
+        ),
       });
     } else if (def?.kind === "clock") {
       const rate =
-        comp.params?.hz === "manual" ? "manual" : `${comp.params?.hz} Hz`;
+        comp.params?.hz === "manual"
+          ? tf("plan.manualClock", "manual")
+          : `${comp.params?.hz} Hz`;
       steps.push({
         id: `step:power:${comp.id}`,
         group: "power",
-        text: `Set up the ${def.title} (${rate}) and place it on the desk.`,
+        text: tf(
+          "plan.step.clock",
+          "Set up the {part} ({rate}) and place it on the desk.",
+          { part: partTitle(def), rate },
+        ),
       });
     }
   }
@@ -436,7 +466,11 @@ function powerSteps(doc, ctx, steps) {
     steps.push({
       id: `step:power:${wire.id}`,
       group: "power",
-      text: `Run a ${wire.color} wire: ${localLabel(doc, ctx, wire.from)} → ${localLabel(doc, ctx, wire.to)}.`,
+      text: tf("plan.step.powerWire", "Run a {color} wire: {from} → {to}.", {
+        color: wireColorName(wire.color),
+        from: localLabel(doc, ctx, wire.from),
+        to: localLabel(doc, ctx, wire.to),
+      }),
     });
   }
 }
@@ -460,7 +494,10 @@ function chipSteps(doc, steps) {
     steps.push({
       id: `step:chips:${comp.id}`,
       group: "chips",
-      text: `Seat a ${comp.ref} ${seatingPhrase(doc, comp)}.`,
+      text: tf("plan.step.seatChip", "Seat a {ref} {where}.", {
+        ref: comp.ref,
+        where: seatingPhrase(doc, comp),
+      }),
     });
   }
 }
@@ -471,11 +508,17 @@ function discreteSteps(doc, steps) {
     const def = partDef(comp.ref);
     if (def?.kind !== "discrete") continue;
     const color =
-      def.colors && comp.params?.color ? ` (${comp.params.color})` : "";
+      def.colors && comp.params?.color
+        ? ` (${wireColorName(comp.params.color)})`
+        : "";
     steps.push({
       id: `step:discretes:${comp.id}`,
       group: "discretes",
-      text: `Place a ${def.title}${color} ${seatingPhrase(doc, comp)}.`,
+      text: tf("plan.step.placePart", "Place a {part}{color} {where}.", {
+        part: partTitle(def),
+        color,
+        where: seatingPhrase(doc, comp),
+      }),
     });
   }
 }
@@ -488,7 +531,8 @@ function discreteSteps(doc, steps) {
 function seatingPhrase(doc, comp) {
   const def = partDef(comp.ref);
   const board = doc.boards.find((b) => b.id === comp.board);
-  const flip = comp.params?.rot === 180 ? " (flipped 180°)" : "";
+  const flip =
+    comp.params?.rot === 180 ? ` (${tf("plan.flipped", "flipped 180°")})` : "";
   if (def?.package && board) {
     const holeList = (partPinHoles(comp.ref, comp.anchor, comp.params) ?? [])
       .map((h) => h.hole)
@@ -502,13 +546,27 @@ function seatingPhrase(doc, comp) {
       const hi = Math.max(...cols);
       const a = rows[0];
       const b = rows[rows.length - 1];
-      return `straddling ${a}${lo}–${b}${hi}, pin 1 at ${comp.board}.${comp.anchor}${flip}`;
+      return tf(
+        "plan.straddling",
+        "straddling {from}–{to}, pin 1 at {anchor}{flip}",
+        {
+          from: `${a}${lo}`,
+          to: `${b}${hi}`,
+          anchor: `${comp.board}.${comp.anchor}`,
+          flip,
+        },
+      );
     }
   }
   // A linear (or rotated) part: list its resolved lead addresses.
   const pins = partPinAddresses(doc, comp) ?? [];
-  const leads = pins.map((p) => p.address ?? "floating");
-  return `with leads at ${leads.join(", ")}${flip}`;
+  const leads = pins.map(
+    (p) => p.address ?? tf("plan.floatingLead", "floating"),
+  );
+  return tf("plan.withLeads", "with leads at {leads}{flip}", {
+    leads: leads.join(", "),
+    flip,
+  });
 }
 
 /** Run the signal wires: whole buses first, then remaining nets. */
@@ -531,7 +589,10 @@ function wireSteps(doc, netlist, ctx, steps) {
     steps.push({
       id: `step:wires:${bus.id}`,
       group: "wires",
-      text: `Lay the ${bus.name} bus (${detail.length} ${detail.length === 1 ? "wire" : "wires"}).`,
+      text: tf("plan.step.bus", "Lay the {name} bus ({wires}).", {
+        name: bus.name,
+        wires: wireCount(detail.length),
+      }),
       detail,
     });
   }
@@ -558,14 +619,97 @@ function wireSteps(doc, netlist, ctx, steps) {
     const detail = wires.map(
       (w) => `${localLabel(doc, ctx, w.from)} → ${localLabel(doc, ctx, w.to)}`,
     );
-    const label = named(netId) ?? "signal";
+    const label = named(netId) ?? tf("plan.unnamedSignal", "signal");
     steps.push({
       id: `step:wires:net:${netId}`,
       group: "wires",
-      text: `Wire the ${label} net (${detail.length} ${detail.length === 1 ? "wire" : "wires"}).`,
+      text: tf("plan.step.net", "Wire the {name} net ({wires}).", {
+        name: label,
+        wires: wireCount(detail.length),
+      }),
       detail,
     });
   }
+}
+
+// ── Shared plan wording ─────────────────────────────────────────────────────
+// The BOM section headings, the step-group headings, and the empty/flag lines
+// used to be duplicated between the PANEL (components/build-guide.js) and the
+// RTF EXPORT (model/build-export.js) — two copies of the same eleven English
+// strings. Localizing them made keeping the copies in step a losing game, so
+// they live here, beside the plan whose shape they describe, and both readers
+// call the same function. The keys are the plan's own group keys, so a new
+// section is one catalog entry, not two arrays.
+
+/** BOM section keys, in display order. */
+export const BOM_SECTION_KEYS = Object.freeze([
+  "boards",
+  "chips",
+  "discretes",
+  "power",
+]);
+
+/** Step group keys, in the order buildSteps emits them. */
+export const STEP_GROUP_KEYS = Object.freeze([
+  "boards",
+  "power",
+  "chips",
+  "discretes",
+  "wires",
+]);
+
+const BOM_SECTION_EN = {
+  boards: "Breadboards",
+  chips: "Chips",
+  discretes: "Discrete parts",
+  power: "Power",
+};
+
+const STEP_GROUP_EN = {
+  boards: "Place the boards",
+  power: "Power",
+  chips: "Seat the chips",
+  discretes: "Add discrete parts",
+  wires: "Run the signal wires",
+};
+
+/** A BOM section's heading. @param {string} key @returns {string} */
+export function bomSectionLabel(key) {
+  return tf(`plan.bom.${key}`, BOM_SECTION_EN[key] ?? key);
+}
+
+/** A step group's heading. @param {string} key @returns {string} */
+export function stepGroupLabel(key) {
+  return tf(`plan.stepGroup.${key}`, STEP_GROUP_EN[key] ?? key);
+}
+
+/** "3 warnings" / "1 warning" — the roll-up head both readers show. */
+export function warningCount(n) {
+  return tf(
+    "plan.warningCount",
+    n === 1 ? "{count} warning" : "{count} warnings",
+    { count: n },
+  );
+}
+
+/** A net's own title in the wiring list: its bus bit, its name, or neither. */
+export function netTitle(net) {
+  if (net.bus) {
+    return tf("plan.net.bit", "bit {bit}", { bit: net.bus.bit });
+  }
+  return net.name ?? tf("plan.net.unnamed", "unnamed net");
+}
+
+/** A bus block's heading in the wiring list. */
+export function busHeading(name) {
+  return tf("plan.net.busHead", "{name} bus", { name });
+}
+
+/** "3 wires" / "1 wire" — the plural the bus and net steps both count with. */
+function wireCount(n) {
+  return tf("plan.wireCount", n === 1 ? "{count} wire" : "{count} wires", {
+    count: n,
+  });
 }
 
 // ── Warnings ────────────────────────────────────────────────────────────────
@@ -590,7 +734,7 @@ function floatingLeadWarnings(doc, warnings) {
     if (!def || (comp.kind !== "chip" && comp.kind !== "discrete")) continue;
     const pins = partPinAddresses(doc, comp);
     if (!pins) continue;
-    const base = def.package ? comp.ref : def.title;
+    const base = def.package ? comp.ref : partTitle(def);
     for (const { pin, address } of pins) {
       if (address != null) continue;
       const name = def.pins.find((p) => p.n === pin)?.name;
@@ -600,7 +744,11 @@ function floatingLeadWarnings(doc, warnings) {
         componentId: comp.id,
         ref: comp.ref,
         pin,
-        message: `${base} (${comp.id}) pin ${pin}${suffix} is floating — its lead is over no hole.`,
+        message: tf(
+          "plan.warn.floatingLead",
+          "{base} ({id}) pin {pin}{suffix} is floating — its lead is over no hole.",
+          { base, id: comp.id, pin, suffix },
+        ),
       });
     }
   }
@@ -630,7 +778,11 @@ function unpoweredChipWarnings(doc, netlist, warnings) {
         kind: "unpowered-chip",
         componentId: comp.id,
         ref: comp.ref,
-        message: `${comp.ref} (${comp.id}) has no ${unconnected.join(" / ")} connection — it will not power up.`,
+        message: tf(
+          "plan.warn.noPower",
+          "{ref} ({id}) has no {pins} connection — it will not power up.",
+          { ref: comp.ref, id: comp.id, pins: unconnected.join(" / ") },
+        ),
       });
     }
   }
@@ -655,7 +807,11 @@ function singleMemberNetWarnings(doc, netlist, ctx, warnings) {
     warnings.push({
       kind: "single-member-net",
       netId: line.netId,
-      message: `Net "${who}" connects to only one point — a likely-forgotten connection.`,
+      message: tf(
+        "plan.warn.singleMember",
+        'Net "{name}" connects to only one point — a likely-forgotten connection.',
+        { name: who },
+      ),
     });
   }
 }

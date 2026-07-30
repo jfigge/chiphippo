@@ -144,6 +144,20 @@ contextBridge.exposeInMainWorld("chiphippo", {
       ipcRenderer.invoke("settings:choose-datasheet-dir"),
   },
 
+  // ── Language ───────────────────────────────────────────────────────────────
+  // `load()` resolves the ACTIVE message catalog (the persisted preference, else
+  // the OS locale, else English) plus the English catalog as a fallback. Every
+  // window calls it once, before it renders anything: a renderer is sandboxed,
+  // served from file://, and its CSP has no `connect-src`, so it cannot read or
+  // fetch a catalog itself — main is the only route, exactly as it is for every
+  // other file read. The payload also carries `locales` — the languages a
+  // catalog actually ships for, from the same table the reader resolves against
+  // — so the Settings picker needs no second call and can never offer a
+  // language with nothing behind it.
+  i18n: {
+    load: () => ipcRenderer.invoke("i18n:load"),
+  },
+
   // ── AI circuit builder (Feature 260) ───────────────────────────────────────
   // The user's own connection. Non-secret config (provider, base URL, model)
   // lives in settings; the KEY does not, and never crosses back over this

@@ -25,6 +25,7 @@
 // setEditable / gotoAddress / fillRange, receiving edits via the `onEdit`
 // callback.
 
+import { t } from "../i18n.js";
 import { el } from "../dom.js";
 
 /** Bytes per row (the canonical hex-dump width). */
@@ -157,13 +158,14 @@ export class MemoryInspector {
     // Column header: the offset gutter label + 00..0F + ASCII.
     this.#header = el("div", { class: "mem-header" });
     this.#header.append(
-      el("span", { class: "mem-off mem-head-off", text: "Offset" }),
+      el("span", { class: "mem-off mem-head-off", text: t("memory.offset") }),
     );
     for (let c = 0; c < ROW_BYTES; c++) {
       this.#header.append(
         el("span", { class: "mem-hx mem-head-hx", text: hex2(c) }),
       );
     }
+    // ASCII is a standard's name, not a word — the same in every language.
     this.#header.append(el("span", { class: "mem-asc-head", text: "ASCII" }));
 
     // Scroll viewport → tall spacer canvas → absolutely-positioned rows.

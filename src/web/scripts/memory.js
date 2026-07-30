@@ -27,6 +27,8 @@
 // — the window is a read-only live viewer (watch writes while running; the
 // final image when stopped) with Export only.
 
+import * as i18n from "./i18n.js";
+import { t } from "./i18n.js";
 import { el } from "./dom.js";
 import { partDef } from "./catalog/index.js";
 import { memoryConfig, isVolatileMemory } from "./sim/chip-eval.js";
@@ -40,15 +42,21 @@ const ref = params.get("ref");
 const def = ref ? partDef(ref) : null;
 const mem = def ? memoryConfig(def) : null;
 
+// Its own sandboxed renderer, so it loads its own catalog first (see pinout.js).
+await i18n.init();
+
 const root = document.getElementById("memory-root");
 
 if (!def || !mem) {
-  document.title = "Memory inspector";
+  document.title = t("window.memory");
   root.append(
-    el("p", { class: "mem-empty", text: `No memory chip for “${ref ?? ""}”.` }),
+    el("p", {
+      class: "mem-empty",
+      text: t("memory.noChip", { ref: ref ?? "" }),
+    }),
   );
 } else {
-  document.title = `${def.id} · Memory`;
+  document.title = `${def.id} · ${t("memory.titleSuffix")}`;
   startInspector();
 }
 
@@ -61,22 +69,25 @@ function startInspector() {
   let dirty = false;
 
   // ── Toolbar ─────────────────────────────────────────────────────────────────
-  const statusLabel = el("span", { class: "mem-status", text: "Stopped" });
+  const statusLabel = el("span", {
+    class: "mem-status",
+    text: t("memory.stopped"),
+  });
   const pathLabel = el("span", { class: "mem-binding" });
-  const copyBtn = button("Copy path", copyPath);
+  const copyBtn = button(t("memory.copyPath"), copyPath);
 
-  const loadBtn = button("Load image… (program)", program);
-  const saveBtn = button("Save", save);
-  const exportBinBtn = button("Export .bin", () => exportImage(false));
-  const exportHexBtn = button("Export HEX", () => exportImage(true));
+  const loadBtn = button(t("memory.loadImage"), program);
+  const saveBtn = button(t("common.save"), save);
+  const exportBinBtn = button(t("memory.exportBin"), () => exportImage(false));
+  const exportHexBtn = button(t("memory.exportHex"), () => exportImage(true));
 
   const gotoInput = el("input", {
     class: "mem-input",
     type: "text",
-    placeholder: "addr (hex)",
-    "aria-label": "Go to address",
+    placeholder: t("memory.addrPlaceholder"),
+    "aria-label": t("memory.gotoAddress"),
   });
-  const gotoBtn = button("Go to", () => {
+  const gotoBtn = button(t("memory.goto"), () => {
     const a = Number.parseInt(gotoInput.value, 16);
     if (!Number.isNaN(a)) grid.gotoAddress(a);
   });
@@ -84,11 +95,11 @@ function startInspector() {
     if (e.key === "Enter") gotoBtn.click();
   });
 
-  const fillStart = fillInput("start", "Fill start");
-  const fillEnd = fillInput("end", "Fill end");
-  const fillVal = fillInput("val", "Fill value");
+  const fillStart = fillInput("start", t("memory.fillStart"));
+  const fillEnd = fillInput("end", t("memory.fillEnd"));
+  const fillVal = fillInput("val", t("memory.fillValue"));
   fillVal.classList.add("mem-input--val");
-  const fillBtn = button("Fill", () => {
+  const fillBtn = button(t("memory.fill"), () => {
     const sel = grid.selection;
     const start = orHex(fillStart.value, sel?.start ?? 0);
     const end = orHex(fillEnd.value, sel?.end ?? start);
@@ -111,11 +122,11 @@ function startInspector() {
       exportHexBtn,
     ]),
     el("div", { class: "mem-toolrow" }, [
-      el("span", { class: "mem-tool-label", text: "Go to" }),
+      el("span", { class: "mem-tool-label", text: t("memory.goto") }),
       gotoInput,
       gotoBtn,
       el("span", { class: "mem-tool-gap" }),
-      el("span", { class: "mem-tool-label", text: "Fill" }),
+      el("span", { class: "mem-tool-label", text: t("memory.fill") }),
       fillStart,
       fillEnd,
       fillVal,
@@ -131,14 +142,14 @@ function startInspector() {
   // ── State → UI ──────────────────────────────────────────────────────────────
   function updateUI() {
     statusLabel.textContent = running
-      ? "Running · read-only"
+      ? t("memory.statusRunning")
       : chipVolatile
-        ? "Stopped · volatile (read-only)"
-        : "Stopped · editable";
+        ? t("memory.statusVolatile")
+        : t("memory.statusEditable");
     statusLabel.classList.toggle("mem-status--running", running);
 
     if (chipVolatile) {
-      pathLabel.textContent = "Volatile (SRAM) — no backing file";
+      pathLabel.textContent = t("memory.volatileNote");
       pathLabel.classList.remove("mem-binding--bound");
       copyBtn.hidden = true;
     } else {
@@ -211,7 +222,7 @@ function startInspector() {
         showError(null);
       } else {
         grid.setBytes(new Uint8Array(byteLength));
-        showError(res?.error ?? "could not load backing file");
+        showError(res?.error ?? t("memory.loadFailed"));
       }
     } else {
       grid.setBytes(new Uint8Array(byteLength)); // volatile stopped → cleared

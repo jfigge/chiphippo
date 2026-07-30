@@ -36,6 +36,8 @@
 // part title elides at the default width, and a wide desk has room to spare.
 
 import { clear, el } from "../dom.js";
+import { t, tf } from "../i18n.js";
+import { partTitle, kitLabel } from "../catalog/labels.js";
 import { beginPointerGesture } from "./pointer-gesture.js";
 import { PALETTE_DEFS } from "../catalog/index.js";
 import {
@@ -109,9 +111,27 @@ function modKey() {
 }
 
 const ANNOTATION_KINDS = [
-  { kind: "label", glyph: "T", label: "Label", hint: "a one-line caption" },
-  { kind: "note", glyph: "≡", label: "Note", hint: "a multi-line note box" },
+  { kind: "label", glyph: "T" },
+  { kind: "note", glyph: "≡" },
 ];
+
+/**
+ * A section's DISPLAY name, translated — while the English name it is derived
+ * from stays the section's IDENTITY (the collapse-state key, the grouping key,
+ * and what `#toggleGroup` is called with). Translating the identity would make
+ * a section forget whether it was open the moment the language changed.
+ *
+ * The leaf is derived rather than mapped ("Shift register" → `shiftregister`),
+ * so a new catalog group needs no second table here — only a catalog entry,
+ * which `tests/i18n-catalog.test.js` requires. Falling back to the English name
+ * means a group added without one still reads correctly, just untranslated.
+ * @param {string} name the catalog group / folder name
+ * @returns {string}
+ */
+function sectionLabel(name) {
+  const leaf = name.toLowerCase().replace(/[^a-z0-9]+/g, "");
+  return tf(`palette.group.${leaf}`, name);
+}
 
 /**
  * Every collapsible section name — the boards folder, the chips folder, the
@@ -186,8 +206,8 @@ export class PalettePanel {
     const filterInput = el("input", {
       class: "palette-filter",
       type: "search",
-      placeholder: "Filter parts…",
-      "aria-label": "Filter parts",
+      placeholder: t("palette.filterPlaceholder"),
+      "aria-label": t("palette.filter"),
       onInput: (e) => {
         this.#filter = e.target.value;
         this.#render();
@@ -198,8 +218,8 @@ export class PalettePanel {
     const collapseBtn = el("button", {
       class: "palette-collapse",
       type: "button",
-      title: `Hide the parts tray (${mod}+P)`,
-      "aria-label": "Hide the parts tray",
+      title: t("palette.hideTitle", { mod }),
+      "aria-label": t("palette.hide"),
       onClick: () => onToggle?.(),
     });
     collapseBtn.innerHTML = CHEVRON_LEFT;
@@ -211,14 +231,18 @@ export class PalettePanel {
     // it straddles the border without taking a pixel from the list beside it.
     this.#resize = el("div", {
       class: "palette-resize",
-      title: "Drag to resize the parts tray",
+      title: t("palette.resize"),
       "aria-hidden": "true",
     });
     this.#resize.addEventListener("pointerdown", (e) => this.#onResizeDown(e));
 
     this.#el = el(
       "aside",
-      { class: "palette-panel", "aria-label": "Parts palette", hidden: true },
+      {
+        class: "palette-panel",
+        "aria-label": t("palette.label"),
+        hidden: true,
+      },
       [
         el("div", { class: "palette-header" }, [filterInput, collapseBtn]),
         this.#list,
@@ -233,8 +257,8 @@ export class PalettePanel {
     this.#flap = el("button", {
       class: "palette-flap",
       type: "button",
-      title: `Show the parts tray (${mod}+P)`,
-      "aria-label": "Show the parts tray",
+      title: t("palette.showTitle", { mod }),
+      "aria-label": t("palette.show"),
       onClick: () => onToggle?.(),
     });
     this.#flap.innerHTML = CHEVRON_RIGHT;
@@ -320,7 +344,10 @@ export class PalettePanel {
   #matches(def) {
     const q = this.#filter.trim().toLowerCase();
     if (!q) return true;
-    return [def.id, def.title, def.blurb].some((s) =>
+    // The TRANSLATED title is searched alongside the English one: a French user
+    // types what the row in front of them says, and an English part number is
+    // still the fastest way in whatever the UI is speaking.
+    return [def.id, def.title, partTitle(def), def.blurb].some((s) =>
       s.toLowerCase().includes(q),
     );
   }
@@ -337,7 +364,7 @@ export class PalettePanel {
     const defs = PALETTE_DEFS.filter((def) => this.#matches(def));
     if (defs.length === 0) {
       this.#list.append(
-        el("p", { class: "palette-empty", text: "No matching parts." }),
+        el("p", { class: "palette-empty", text: t("palette.noMatches") }),
       );
       return;
     }
@@ -394,19 +421,22 @@ export class PalettePanel {
       el(
         "div",
         { class: "palette-group-items", hidden: collapsed },
-        ANNOTATION_KINDS.map(({ kind, glyph, label, hint }) =>
+        ANNOTATION_KINDS.map(({ kind, glyph }) =>
           el(
             "button",
             {
               class: "palette-annotation-item",
               type: "button",
-              title: hint,
+              title: t(`palette.annotation.${kind}Hint`),
               dataset: { annotation: kind },
               onClick: () => this.#onPickAnnotation?.(kind),
             },
             [
               el("span", { class: "palette-item-id", text: glyph }),
-              el("span", { class: "palette-item-title", text: label }),
+              el("span", {
+                class: "palette-item-title",
+                text: t(`palette.annotation.${kind}`),
+              }),
             ],
           ),
         ),
@@ -427,19 +457,24 @@ export class PalettePanel {
       // A kit made purely of rails can stand on end as a signal bus (R spins
       // the ghost) — flag it in the tooltip, or nobody finds R.
       const rotates = kit.strips.every((s) => canRotate(s.type));
-      const hint = rotates ? " (R to rotate)" : "";
+      const label = kitLabel(key, kit);
       return el(
         "button",
         {
           class: "palette-board-item",
           type: "button",
-          title: `${kit.label} — ${kit.tiePoints} tie points${hint}`,
+          title: rotates
+            ? t("palette.board.titleRotates", {
+                label,
+                points: kit.tiePoints,
+              })
+            : t("palette.board.title", { label, points: kit.tiePoints }),
           dataset: { kit: key },
           onClick: () => this.#onPickBoard?.(key),
         },
         [
           el("span", { class: "palette-item-id", text: String(kit.tiePoints) }),
-          el("span", { class: "palette-item-title", text: kit.label }),
+          el("span", { class: "palette-item-title", text: label }),
         ],
       );
     };
@@ -452,8 +487,10 @@ export class PalettePanel {
     );
   }
 
-  /** A collapsible section header (folder or group), keyed by `name`. The caret
-      glyph is a CSS pseudo-element, so textContent stays exactly `name`. */
+  /** A collapsible section header (folder or group). `name` is the IDENTITY —
+      the collapse-state key `#toggleGroup` is called with — and the label shown
+      is its translation, so a language change cannot make a section forget
+      whether it was open. The caret glyph is a CSS pseudo-element. */
   #sectionHeader(baseClass, name, collapsed) {
     return el(
       "button",
@@ -465,7 +502,10 @@ export class PalettePanel {
       },
       [
         el("span", { class: "palette-group-caret", "aria-hidden": true }),
-        el("span", { class: "palette-group-label", text: name }),
+        el("span", {
+          class: "palette-group-label",
+          text: sectionLabel(name),
+        }),
       ],
     );
   }
@@ -502,18 +542,44 @@ export class PalettePanel {
             {
               class: "palette-item",
               type: "button",
+              // The blurb is the part's DATASHEET prose and stays English (see
+              // CLAUDE.md → "Language support"); its title is translated.
               title: def.blurb,
               dataset: { ref: def.id },
               onClick: (e) => this.#onPickChip?.(def.id, e),
             },
             [
               el("span", { class: "palette-item-id", text: def.id }),
-              el("span", { class: "palette-item-title", text: def.title }),
+              el("span", {
+                class: "palette-item-title",
+                text: partTitle(def),
+              }),
             ],
           ),
         ),
       ),
     );
+  }
+
+  /**
+   * Re-render in the new language (see app.js's `relabelChrome`). The tray's
+   * whole body is derived from the catalog on every `#render()`, so the list
+   * needs nothing but a redraw — only the header/flap controls, which are built
+   * once in the constructor, have to be relabelled by hand.
+   */
+  relocalize() {
+    const mod = modKey();
+    const filter = this.#el.querySelector(".palette-filter");
+    filter.placeholder = t("palette.filterPlaceholder");
+    filter.setAttribute("aria-label", t("palette.filter"));
+    const collapse = this.#el.querySelector(".palette-collapse");
+    collapse.title = t("palette.hideTitle", { mod });
+    collapse.setAttribute("aria-label", t("palette.hide"));
+    this.#resize.title = t("palette.resize");
+    this.#el.setAttribute("aria-label", t("palette.label"));
+    this.#flap.title = t("palette.showTitle", { mod });
+    this.#flap.setAttribute("aria-label", t("palette.show"));
+    this.#render();
   }
 
   #toggleGroup(group) {

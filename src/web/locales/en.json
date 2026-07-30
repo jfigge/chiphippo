@@ -1,0 +1,1004 @@
+{
+  "_meta": {
+    "language": "English",
+    "note": "en.json is the REFERENCE catalog: every other locale must cover exactly its leaf keys (tests/i18n-catalogs.test.js). Keys are area.component.label; {name} placeholders must survive translation verbatim."
+  },
+  "common": {
+    "ok": "OK",
+    "cancel": "Cancel",
+    "save": "Save",
+    "close": "Close",
+    "delete": "Delete",
+    "clear": "Clear",
+    "browse": "Browse…",
+    "download": "Download…",
+    "rename": "Rename",
+    "untitled": "Untitled",
+    "none": "None",
+    "confirm": "Confirm"
+  },
+  "app": {
+    "header": "Application header",
+    "actions": "Application actions",
+    "about": "About Chip Hippo",
+    "settings": "Settings",
+    "openSettings": "Open settings",
+    "desk": "Desk",
+    "schematic": "Schematic",
+    "deskHint": "Open the parts tray and add a breadboard to get started"
+  },
+  "menu": {
+    "app": {
+      "about": "About Chip Hippo",
+      "settings": "Settings…"
+    },
+    "file": {
+      "title": "File",
+      "new": "New Project",
+      "open": "Open…",
+      "openRecent": "Open Recent",
+      "noRecent": "No recent projects",
+      "save": "Save",
+      "saveAs": "Save As…",
+      "properties": "Project Properties…",
+      "bom": "Bill Of Materials…"
+    },
+    "desktop": {
+      "title": "Desktop",
+      "new": "New Desktop",
+      "duplicate": "Duplicate Desktop",
+      "import": "Import Desktop…",
+      "export": "Export Desktop…",
+      "properties": "Desktop Properties…",
+      "delete": "Delete Desktop"
+    },
+    "edit": {
+      "title": "Edit",
+      "undo": "Undo",
+      "redo": "Redo",
+      "selectAll": "Select All"
+    },
+    "view": {
+      "title": "View",
+      "devTools": "Toggle Developer Tools"
+    },
+    "window": {
+      "title": "Window"
+    },
+    "help": {
+      "title": "Help",
+      "userGuide": "Chip Hippo User Guide",
+      "shortcuts": "Keyboard Shortcuts",
+      "checkUpdates": "Check for Updates…"
+    },
+    "pinout": {
+      "float": "Float above other windows",
+      "close": "Close window"
+    }
+  },
+  "window": {
+    "pinout": "Pin assignments",
+    "memory": "Memory inspector"
+  },
+  "dialog": {
+    "filter": {
+      "project": "Chip Hippo Project",
+      "desktop": "Chip Hippo Desktop",
+      "memImage": "Memory image",
+      "binImage": "Binary image",
+      "intelHex": "Intel HEX",
+      "allFiles": "All files"
+    }
+  },
+  "toolbar": {
+    "file": {
+      "group": "File",
+      "new": "New Project",
+      "newTitle": "New Project ({accel}) — start over on an empty desk",
+      "open": "Open",
+      "openTitle": "Open… ({accel}) — load a saved project",
+      "save": "Save",
+      "saveTitle": "Save ({accel}) — write the project back to its file",
+      "saveAs": "Save As",
+      "saveAsTitle": "Save As… ({accel}) — write the project to a new file"
+    },
+    "tools": {
+      "group": "Desk tools"
+    },
+    "wire": {
+      "label": "Wire",
+      "title": "Wire tool — click two free holes to connect them (W)",
+      "colorLabel": "Wire color"
+    },
+    "bus": {
+      "label": "Bus",
+      "title": "Bus tool — lay a multi-bit run of wires in one gesture (B)",
+      "widthLabel": "Bus width"
+    },
+    "fade": {
+      "label": "Fade wires",
+      "title": "Fade wires — draw only a stub at each end so the board stays readable (H)"
+    },
+    "probe": {
+      "label": "Probe",
+      "title": "Connectivity probe — hover to highlight a net, click to pin (P)"
+    },
+    "analyzer": {
+      "label": "Analyzer",
+      "title": "Logic analyzer — record and view signal waveforms over time ({mod}+A)"
+    },
+    "fit": {
+      "label": "Fit to screen",
+      "title": "Fit to screen — frame every board, part, and wire ({mod}+F)"
+    },
+    "zoomOut": {
+      "label": "Zoom out fully",
+      "title": "Zoom all the way out — find a lost part ({mod}+Shift+F)"
+    },
+    "bom": {
+      "label": "Bill Of Materials",
+      "title": "Bill Of Materials — parts list, wiring list, and assembly steps ({mod}+B)"
+    },
+    "mode": {
+      "schematic": "Schematic view",
+      "schematicTitle": "Show the logical schematic (Tab)",
+      "breadboard": "Breadboard view",
+      "breadboardTitle": "Back to the breadboard (Tab)"
+    },
+    "ai": {
+      "label": "AI builder",
+      "title": "AI circuit builder — describe a circuit and have it designed, built and tested for you",
+      "unreadable": "The AI connection could not be read."
+    },
+    "transport": {
+      "group": "Simulation transport",
+      "run": "Run",
+      "runTitle": "Run the circuit (Space or {mod}+R)",
+      "stop": "Stop",
+      "stopTitle": "Stop and return to editing (Space or {mod}+R)",
+      "pause": "Pause",
+      "pauseTitle": "Pause / resume the clock",
+      "resume": "Resume",
+      "step": "Step",
+      "stepTitle": "Advance one clock half-period",
+      "speedTitle": "Clock speed (click to cycle ¼ / 1 / 4)"
+    }
+  },
+  "zoom": {
+    "out": "Zoom out",
+    "in": "Zoom in",
+    "reset": "Reset zoom to 100%"
+  },
+  "settings": {
+    "title": "Settings",
+    "close": "Close settings",
+    "nav": {
+      "appearance": "Appearance",
+      "datasheets": "Data Sheets",
+      "ai": "AI",
+      "about": "About"
+    },
+    "appearance": {
+      "language": "Language",
+      "languageSystem": "System",
+      "languageHint": "The language Chip Hippo's own menus, panels and dialogs are shown in. The user guide is only available in English.",
+      "theme": "Theme",
+      "themeSystem": "System",
+      "themeLight": "Light",
+      "themeDark": "Dark",
+      "selectionColor": "Selection border colour",
+      "ledColor": "Default LED color",
+      "wireLayout": "Wire layout",
+      "wireLayoutDirect": "Direct",
+      "wireLayoutRouted": "Routed",
+      "wireLayoutHint": "How a new wire is drawn: Direct sags from hole to hole; Routed runs straight, and can be bent around the board by dragging points into it. Wires already on the desk keep the layout they have — change one through its own Properties dialog."
+    },
+    "datasheets": {
+      "folder": "Datasheet folder",
+      "noFolder": "No folder selected",
+      "clearTitle": "Clear the datasheet folder",
+      "browseTitle": "Choose the datasheet folder",
+      "folderHint": "Point this at a folder of manufacturer datasheet PDFs named after each chip (e.g. 74LS00.pdf). When a matching PDF is found, a chip's pin-assignments window shows a button to open it.",
+      "auto": "Get them automatically",
+      "downloadTitle": "Download datasheets into the app's own folder",
+      "autoHint": "Downloads a datasheet for every part Chip Hippo has a published source on file for — the manufacturer's own document where there is one, otherwise a reference library — into Chip Hippo's own folder, and points the setting above at it. Parts with no source are skipped, and files already there are replaced."
+    },
+    "ai": {
+      "loading": "Loading providers…",
+      "noProviders": "No AI providers are available in this build.",
+      "provider": "Provider",
+      "baseUrl": "Base URL",
+      "model": "Model",
+      "apiKey": "API key",
+      "keyPlaceholder": "Paste a key to store it",
+      "saveKey": "Save key",
+      "clearKey": "Clear key",
+      "testConnection": "Test connection",
+      "testing": "Testing…",
+      "connected": "Connected.",
+      "testFailed": "The connection could not be tested.",
+      "keyStoreFailed": "The key could not be stored.",
+      "keyStored": "A key is stored for {provider}. It is encrypted by the OS and is never read back into this window.",
+      "keyMissing": "No key stored for {provider}.",
+      "noSecureStore": "This system has no secure credential store, so a key cannot be saved. Point the base URL at a local server that needs no key.",
+      "hint": "Chip Hippo uses your own connection — nothing is sent anywhere until you ask it to build something, and the key is stored encrypted by the operating system, never in settings.json. Leave Base URL and Model blank to use the shown defaults.",
+      "experimental": "AI generation is experimental. Every design is verified against the simulator before it is offered, but it may not be the most optimal circuit or the tidiest layout — expect to review and adjust it."
+    },
+    "about": {
+      "version": "Version",
+      "readingVersion": "Reading version…",
+      "autoLabel": "Check automatically",
+      "autoAria": "Check for updates automatically",
+      "autoOn": "On",
+      "autoOff": "Off",
+      "check": "Check for updates",
+      "checking": "Checking for updates…",
+      "restart": "Restart to update",
+      "available": "An update is available — downloading in the background…",
+      "availableVersion": "Version {version} is available — downloading in the background…",
+      "ready": "The update is ready to install.",
+      "readyVersion": "Version {version} is ready to install.",
+      "upToDate": "You're running the latest version of Chip Hippo.",
+      "storeBuild": "Updates are delivered through the App Store.",
+      "devBuild": "Updates are only available in installed builds.",
+      "error": "Could not check for updates. Please try again later.",
+      "hint": "Chip Hippo can check github.com for a newer release. An update downloads in the background and is only installed when you say so — either by restarting here, or the next time you quit. Nothing but the check itself is sent, and with this off nothing is sent at all.",
+      "storeHint": "Updates for this copy of Chip Hippo are delivered through the App Store, so it never checks for them itself."
+    }
+  },
+  "palette": {
+    "label": "Parts palette",
+    "filter": "Filter parts",
+    "filterPlaceholder": "Filter parts…",
+    "noMatches": "No matching parts.",
+    "hide": "Hide the parts tray",
+    "hideTitle": "Hide the parts tray ({mod}+P)",
+    "show": "Show the parts tray",
+    "showTitle": "Show the parts tray ({mod}+P)",
+    "resize": "Drag to resize the parts tray",
+    "board": {
+      "title": "{label} — {points} tie points",
+      "titleRotates": "{label} — {points} tie points (R to rotate)"
+    },
+    "annotation": {
+      "label": "Label",
+      "labelHint": "a one-line caption",
+      "note": "Note",
+      "noteHint": "a multi-line note box"
+    },
+    "group": {
+      "and": "AND",
+      "annotations": "ANNOTATIONS",
+      "arithmetic": "Arithmetic",
+      "boards": "BOARDS",
+      "buffer": "Buffer",
+      "chips": "CHIPS",
+      "comparator": "Comparator",
+      "components": "COMPONENTS",
+      "counter": "Counter",
+      "decoder": "Decoder",
+      "displaydriver": "Display driver",
+      "displays": "Displays",
+      "encoder": "Encoder",
+      "flipflop": "Flip-flop",
+      "interface": "Interface",
+      "inverter": "Inverter",
+      "latch": "Latch",
+      "leds": "LEDs",
+      "memory": "Memory",
+      "multiplexer": "Multiplexer",
+      "nand": "NAND",
+      "nor": "NOR",
+      "or": "OR",
+      "oscillators": "Oscillators",
+      "power": "Power",
+      "register": "Register",
+      "resistors": "Resistors",
+      "shiftregister": "Shift register",
+      "switches": "Switches",
+      "xor": "XOR"
+    }
+  },
+  "boards": {
+    "full": "Full-size",
+    "half": "Half-size",
+    "tiny": "Tiny",
+    "pins-full": "Full pin-board",
+    "pins-half": "Half pin-board",
+    "rail-full": "Full power rail",
+    "rail-half": "Half power rail"
+  },
+  "parts": {
+    "74LS00": {
+      "title": "Quad 2-input NAND"
+    },
+    "74LS02": {
+      "title": "Quad 2-input NOR"
+    },
+    "74LS04": {
+      "title": "Hex inverter"
+    },
+    "74LS08": {
+      "title": "Quad 2-input AND"
+    },
+    "74LS10": {
+      "title": "Triple 3-input NAND"
+    },
+    "74LS11": {
+      "title": "Triple 3-input AND"
+    },
+    "74LS20": {
+      "title": "Dual 4-input NAND"
+    },
+    "74LS27": {
+      "title": "Triple 3-input NOR"
+    },
+    "74LS30": {
+      "title": "8-input NAND"
+    },
+    "74LS32": {
+      "title": "Quad 2-input OR"
+    },
+    "74LS86": {
+      "title": "Quad 2-input XOR"
+    },
+    "74LS125": {
+      "title": "Quad bus buffer, tri-state"
+    },
+    "74LS73": {
+      "title": "Dual JK flip-flop, clear"
+    },
+    "74LS74": {
+      "title": "Dual D flip-flop, preset & clear"
+    },
+    "74LS75": {
+      "title": "4-bit bistable latch"
+    },
+    "74LS76": {
+      "title": "Dual JK flip-flop, preset & clear"
+    },
+    "74LS107": {
+      "title": "Dual JK flip-flop, clear"
+    },
+    "74LS175": {
+      "title": "Quad D flip-flop"
+    },
+    "74LS161": {
+      "title": "Sync 4-bit binary counter"
+    },
+    "74LS193": {
+      "title": "Sync up/down 4-bit counter"
+    },
+    "74LS164": {
+      "title": "8-bit SIPO shift register"
+    },
+    "74LS165": {
+      "title": "8-bit PISO shift register"
+    },
+    "74LS138": {
+      "title": "3-to-8 line decoder"
+    },
+    "74LS139": {
+      "title": "Dual 2-to-4 line decoder"
+    },
+    "74LS01": {
+      "title": "Quad 2-input NAND (open-collector)"
+    },
+    "74LS03": {
+      "title": "Quad 2-input NAND (open-collector)"
+    },
+    "74LS05": {
+      "title": "Hex inverter (open-collector)"
+    },
+    "74LS14": {
+      "title": "Hex Schmitt-trigger inverter"
+    },
+    "74LS112": {
+      "title": "Dual JK flip-flop, preset & clear"
+    },
+    "74LS173": {
+      "title": "4-bit D register, tri-state"
+    },
+    "74LS174": {
+      "title": "Hex D flip-flop"
+    },
+    "74LS273": {
+      "title": "Octal D flip-flop, clear"
+    },
+    "74LS279": {
+      "title": "Quad S̄R̄ latch"
+    },
+    "74LS151": {
+      "title": "8-to-1 line multiplexer"
+    },
+    "74LS153": {
+      "title": "Dual 4-to-1 multiplexer"
+    },
+    "74LS157": {
+      "title": "Quad 2-to-1 selector"
+    },
+    "74LS257": {
+      "title": "Quad 2-to-1 selector, tri-state"
+    },
+    "74LS240": {
+      "title": "Octal buffer/line driver, inverting, tri-state"
+    },
+    "74LS244": {
+      "title": "Octal buffer/line driver, tri-state"
+    },
+    "74LS245": {
+      "title": "Octal bus transceiver, tri-state"
+    },
+    "74LS47": {
+      "title": "BCD to 7-segment decoder/driver"
+    },
+    "74LS85": {
+      "title": "4-bit magnitude comparator"
+    },
+    "74LS148": {
+      "title": "8-to-3 priority encoder"
+    },
+    "74LS283": {
+      "title": "4-bit binary full adder"
+    },
+    "74LS83": {
+      "title": "4-bit binary adder (original pinout)"
+    },
+    "74LS181": {
+      "title": "4-bit Arithmetic Logic Unit"
+    },
+    "74LS169": {
+      "title": "Sync 4-bit up/down counter"
+    },
+    "74LS259": {
+      "title": "8-bit addressable latch"
+    },
+    "74LS533": {
+      "title": "Octal transparent latch, inverting, tri-state"
+    },
+    "74LS573": {
+      "title": "Octal transparent latch, tri-state"
+    },
+    "74LS595": {
+      "title": "8-bit shift register, output latch"
+    },
+    "74LS90": {
+      "title": "Decade (÷10) ripple counter"
+    },
+    "rom-8k": {
+      "title": "8K×8 ROM"
+    },
+    "ram-8k": {
+      "title": "8K×8 SRAM"
+    },
+    "28C16": {
+      "title": "2K×8 EEPROM"
+    },
+    "HM62256": {
+      "title": "32K×8 static RAM"
+    },
+    "AS6C1024": {
+      "title": "128K×8 static RAM"
+    },
+    "AM27C1024": {
+      "title": "64K×16 EPROM"
+    },
+    "w65c21": {
+      "title": "W65C21 PIA"
+    },
+    "w65c22": {
+      "title": "W65C22 VIA"
+    },
+    "w65c02": {
+      "title": "W65C02 CPU"
+    },
+    "sw-slide": {
+      "title": "Slide switch (SPDT)"
+    },
+    "sw-push": {
+      "title": "Push button (momentary)"
+    },
+    "sw-toggle": {
+      "title": "Push button (toggle)"
+    },
+    "sw-dip1": {
+      "title": "DIP switch (1-position)"
+    },
+    "sw-dip2": {
+      "title": "DIP switch (2-position)"
+    },
+    "sw-dip4": {
+      "title": "DIP switch (4-position)"
+    },
+    "sw-dip8": {
+      "title": "DIP switch (8-position)"
+    },
+    "led": {
+      "title": "LED"
+    },
+    "seg8cc": {
+      "title": "8-segment digit (common cathode)"
+    },
+    "seg8ca": {
+      "title": "8-segment digit (common anode)"
+    },
+    "bar8": {
+      "title": "8-segment LED bar"
+    },
+    "bar8iso": {
+      "title": "8-segment LED bar (isolated)"
+    },
+    "resistor": {
+      "title": "Resistor"
+    },
+    "rnet9": {
+      "title": "Resistor array (bussed, 9-pin)"
+    },
+    "psu": {
+      "title": "Power supply"
+    },
+    "clock": {
+      "title": "Clock source"
+    },
+    "osc-full": {
+      "title": "Oscillator (full can)"
+    },
+    "osc-half": {
+      "title": "Oscillator (half can)"
+    },
+    "lcd": {
+      "title": "Character LCD (HD44780)"
+    }
+  },
+  "colors": {
+    "red": "red",
+    "black": "black",
+    "blue": "blue",
+    "green": "green",
+    "yellow": "yellow",
+    "orange": "orange",
+    "white": "white",
+    "purple": "purple"
+  },
+  "tabs": {
+    "label": "Desktops",
+    "add": "New desktop",
+    "addTitle": "New desktop (right-click to import one)",
+    "properties": "Properties…"
+  },
+  "guide": {
+    "title": "Build guide",
+    "close": "Close the build guide",
+    "warnBadge": "Design warnings",
+    "download": "Download the bill of materials",
+    "downloadTitle": "Download the bill of materials (.rtf)",
+    "exportTitle": "{name} — Build Guide",
+    "tab": {
+      "bom": "BOM",
+      "wiring": "Wiring",
+      "steps": "Steps"
+    },
+    "emptyBom": "Nothing on the desk yet.",
+    "emptyWiring": "No connections yet.",
+    "emptySteps": "No build steps yet.",
+    "singletonTitle": "Only one connection",
+    "singletonFlag": "only one connection"
+  },
+  "plan": {
+    "pinLabel": "{base} pin {pin}{suffix}",
+    "railLabel": "{rail} rail ({board})",
+    "manualClock": "manual",
+    "flipped": "flipped 180°",
+    "straddling": "straddling {from}–{to}, pin 1 at {anchor}{flip}",
+    "withLeads": "with leads at {leads}{flip}",
+    "floatingLead": "floating",
+    "unnamedSignal": "signal",
+    "wireCount": {
+      "one": "{count} wire",
+      "other": "{count} wires"
+    },
+    "warningCount": {
+      "one": "{count} warning",
+      "other": "{count} warnings"
+    },
+    "net": {
+      "bit": "bit {bit}",
+      "unnamed": "unnamed net",
+      "busHead": "{name} bus"
+    },
+    "bom": {
+      "boards": "Breadboards",
+      "chips": "Chips",
+      "discretes": "Discrete parts",
+      "power": "Power"
+    },
+    "stepGroup": {
+      "boards": "Place the boards",
+      "power": "Power",
+      "chips": "Seat the chips",
+      "discretes": "Add discrete parts",
+      "wires": "Run the signal wires"
+    },
+    "step": {
+      "assembleBoard": "Assemble a breadboard ({parts}) near column {x}, row {y}.",
+      "placeBoard": "Place a {label} near column {x}, row {y}.",
+      "psu": "Set up the {part} to {volts} V and place it on the desk.",
+      "clock": "Set up the {part} ({rate}) and place it on the desk.",
+      "powerWire": "Run a {color} wire: {from} → {to}.",
+      "seatChip": "Seat a {ref} {where}.",
+      "placePart": "Place a {part}{color} {where}.",
+      "bus": "Lay the {name} bus ({wires}).",
+      "net": "Wire the {name} net ({wires})."
+    },
+    "warn": {
+      "floatingLead": "{base} ({id}) pin {pin}{suffix} is floating — its lead is over no hole.",
+      "noPower": "{ref} ({id}) has no {pins} connection — it will not power up.",
+      "singleMember": "Net \"{name}\" connects to only one point — a likely-forgotten connection."
+    }
+  },
+  "scope": {
+    "title": "Logic analyzer",
+    "close": "Close the logic analyzer",
+    "resize": "Drag to resize the analyzer",
+    "channel": "Channel",
+    "addTitle": "Add a named net or bus as a channel",
+    "clearTitle": "Clear the recorded trace",
+    "exportSvg": "Export the timing diagram as SVG",
+    "exportPng": "Export the timing diagram as PNG",
+    "emptyBefore": "No channels yet — ",
+    "emptyLink": "add a net or bus",
+    "emptyAfter": ", or right-click a probed net → “Add to analyzer”.",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "removeChannel": "Remove channel",
+    "noNets": "No named nets or buses yet",
+    "busSuffix": "bus",
+    "missingRef": "{ref} (missing)",
+    "tickCount": {
+      "one": "{count} tick",
+      "other": "{count} ticks"
+    }
+  },
+  "ai": {
+    "title": "AI circuit builder",
+    "close": "Close the AI builder",
+    "resize": "Drag to resize the AI builder",
+    "clearTitle": "Clear the conversation and start a new design",
+    "inputLabel": "Describe the circuit to build",
+    "inputPlaceholder": "Describe a circuit — e.g. “add two 8-bit numbers with a carry, switches for the inputs and an LED bar for the sum”",
+    "build": "Build this circuit",
+    "buildTitle": "Build this circuit (Enter)",
+    "cancelTitle": "Cancel this build",
+    "intro": "Describe a circuit and it will be designed, built, simulated and tested before you are offered it to place. Set up your own AI connection first in Settings ▸ AI.",
+    "cleared": "Cleared. Describe a new circuit.",
+    "cancelled": "Cancelled.",
+    "lockedRunning": "Stop the simulation before building a new circuit.",
+    "designing": "Designing…",
+    "designingRow": "Designing the circuit{round}…",
+    "fixRound": "(fix {n} of {total})",
+    "building": "Building…",
+    "buildingRow": "Building the circuit…",
+    "startFailed": "The request could not be started.",
+    "requestFailed": "The request failed.",
+    "buildCrashed": "The build failed unexpectedly: {message}",
+    "compilerFault": "The circuit was described correctly but could not be built. This is a fault in Chip Hippo's compiler, not in the design.",
+    "gaveUp": "Gave up after {total} repair attempts. What is still wrong:",
+    "retrying": "That design did not pass — asking for a fix (attempt {n} of {total}):",
+    "untitledCircuit": "Circuit",
+    "summary": "{title} — {parts} parts, {wires} wires, {strips} board strips.",
+    "testsPassed": "{passed}/{tested} of its own tests passed.",
+    "builtWithNotes": "Built with notes:",
+    "placeHint": "Click to place it on the desk, or press Escape.",
+    "gate": {
+      "compile": "Compiling the netlist…",
+      "l3": "Checking the build…",
+      "l4": "Checking connectivity…",
+      "l5": "Simulating…",
+      "l6": "Checking for undriven nets…"
+    },
+    "reason": {
+      "noProvider": "No AI provider is available in this build.",
+      "unknownProvider": "“{provider}” is not a provider this build can reach. Choose one in Settings ▸ AI.",
+      "noSecureStore": "This system has no secure credential store, so an API key cannot be saved. See Settings ▸ AI.",
+      "noKey": "No API key is configured for {provider}. Add one in Settings ▸ AI.",
+      "badBaseUrl": "The AI base URL “{url}” is not a valid http(s) address. Fix or clear it in Settings ▸ AI."
+    }
+  },
+  "schematic": {
+    "hint": "Add chips to the desk to see the schematic",
+    "autoLayout": "Auto-layout"
+  },
+  "desk": {
+    "brick": {
+      "psu": "power supply",
+      "clock": "clock",
+      "display": "display"
+    },
+    "boardPropertiesTitle": "{board} Properties",
+    "wirePropertiesTitle": "Wire Properties",
+    "wireColor": "Color",
+    "wireLayout": "Layout Method",
+    "count": {
+      "and": " and ",
+      "parts": {
+        "one": "{count} part",
+        "other": "{count} parts"
+      },
+      "wires": {
+        "one": "{count} wire",
+        "other": "{count} wires"
+      },
+      "boards": {
+        "one": "{count} board",
+        "other": "{count} boards"
+      },
+      "moreParts": {
+        "one": "{count} more part",
+        "other": "{count} more parts"
+      },
+      "moreWires": {
+        "one": "{count} more wire",
+        "other": "{count} more wires"
+      }
+    },
+    "menu": {
+      "pinAssignment": "Pin Assignment",
+      "properties": "Properties…",
+      "deleteComponent": "Delete Component",
+      "removeBoard": "Remove board",
+      "editText": "Edit text…",
+      "remove": "Remove"
+    },
+    "remove": {
+      "confirm": "Remove",
+      "boardTitle": "Remove board?",
+      "boardsTitle": "Remove boards?",
+      "boardMessage": "{id} has {what} attached — removing the board removes them too.",
+      "boardsMessage": "These {count} joined boards have {what} attached — removing them removes those too.",
+      "brickTitle": "Remove {noun}?",
+      "brickMessage": "{id} has {what} attached — removing it removes them too.",
+      "selectionTitle": "Remove {what}?",
+      "selectionMessage": "{extra} attached to them will be removed too."
+    },
+    "paste": {
+      "failTitle": "Could not paste the design",
+      "overlap": "Part of it lands on something already on this desk.",
+      "noRoom": "Something it needs is not free on this desk."
+    }
+  },
+  "workspace": {
+    "location": "Location",
+    "projectProperties": "Project Properties",
+    "desktopProperties": "Desktop Properties",
+    "defaultDesktopName": "Desktop {n}",
+    "openFailTitle": "Could not open that project",
+    "unreadable": "The file could not be read.",
+    "deleteTabTitle": "Delete \"{name}\"?",
+    "deleteTabMessage": "Its design goes with it. Nothing is written until the project is saved, so closing the project without saving brings it back.",
+    "missingTitle": "That project is no longer there",
+    "missingMessage": "\"{name}\" could not be found. Remove it from the recent projects?",
+    "untitledTitle": "This project hasn't been saved",
+    "untitledMessage": "It has no home of its own yet, so starting or opening another project discards it — desktops and all.",
+    "dirtyTitle": "Unsaved changes",
+    "thisProject": "This project",
+    "dirtyQuitting": "{what} has changes that aren't saved. Quitting now loses them.",
+    "dirtyLeaving": "{what} has changes that aren't saved. Leaving now loses them.",
+    "discard": "Discard",
+    "restoreWarnTitle": "Some desktops could not be restored",
+    "noDesktops": "it has no desktops",
+    "failStart": "Could not start the project",
+    "failOpen": "Could not open the project",
+    "failSave": "Could not save the project",
+    "failLocation": "Could not choose a location",
+    "failDuplicate": "Could not duplicate the desktop",
+    "failImport": "Could not import that desktop",
+    "failExport": "Could not export the desktop",
+    "failExample": "Could not open the {ref} example"
+  },
+  "sim": {
+    "memNotLoaded": "Memory not loaded",
+    "memNotLoadedMessage": "{chip}: {error}. Running with zeros.",
+    "memLost": "Memory data lost",
+    "memLostMessage": "{chip} was programmed, but its data file was missing — it now holds random noise. Re-load an image.",
+    "short": "Short circuit",
+    "shortMessage": "Opposing supplies meet on one net ({net}).",
+    "conflict": "Driver conflict",
+    "conflictMessage": "Two outputs are fighting on one net ({net}).",
+    "oscillation": "Oscillation",
+    "oscillationMessage": {
+      "one": "The circuit won't settle ({count} unstable net).",
+      "other": "The circuit won't settle ({count} unstable nets)."
+    },
+    "underpowered": "Underpowered",
+    "underpoweredMessage": "{chip} is at 3 V — running inert.",
+    "reversed": "Power reversed",
+    "reversedMessage": "{chip} has VCC and GND swapped.",
+    "damaged": "Magic smoke!",
+    "damagedMessage": "{chip} was damaged by 12 V. Delete it and place a fresh one to continue."
+  },
+  "about": {
+    "subtitle": "TTL breadboard designer & simulator",
+    "description": "Design and simulate 74xx-family logic circuits on virtual solderless breadboards — place chips, wires, switches, LEDs and power, then watch electricity settle through every net.",
+    "versionInfo": "Version information",
+    "version": "Version",
+    "platform": "Platform",
+    "devBuild": "dev build"
+  },
+  "netNames": {
+    "conflict": "Net name conflict",
+    "conflictMessage": "\"{winner}\" and \"{loser}\" name the same net — using \"{winner}\"."
+  },
+  "updater": {
+    "available": "Update available",
+    "downloading": "Downloading the update in the background…",
+    "downloadingVersion": "Downloading {version} in the background…",
+    "ready": "Update ready",
+    "downloaded": "The update has been downloaded.",
+    "downloadedVersion": "Version {version} has been downloaded.",
+    "restart": "Restart",
+    "upToDate": "Up to date",
+    "checkFailed": "Update check failed"
+  },
+  "bus": {
+    "rename": "Rename bus…",
+    "renameTitle": "Rename bus",
+    "nameLabel": "Bus name",
+    "namePlaceholder": "e.g. D[7:0], A[0:15]",
+    "unbundle": "Un-bundle (keep wires)",
+    "deleteWithWires": "Delete bus + wires"
+  },
+  "wire": {
+    "tooManyBends": "No more bends on this wire",
+    "tooManyBendsMessage": "A routed wire carries at most {max} points. Drag one onto its neighbour to merge it away, then add another."
+  },
+  "probe": {
+    "nameNet": "Name this net…",
+    "renameNet": "Rename net…",
+    "nameNetTitle": "Name this net",
+    "renameNetTitle": "Rename net",
+    "nameLabel": "Net name",
+    "namePlaceholder": "e.g. VCC, GND, CLK, D0…",
+    "clearName": "Clear name",
+    "addToAnalyzer": "Add to analyzer"
+  },
+  "shortcuts": {
+    "title": "Keyboard Shortcuts",
+    "close": "Close keyboard shortcuts",
+    "group": {
+      "file": "File",
+      "tools": "Tools",
+      "wireBus": "Wire & bus (while that tool is armed)",
+      "edit": "Edit",
+      "view": "View",
+      "simulation": "Simulation"
+    },
+    "file": {
+      "new": "New project",
+      "open": "Open a project",
+      "save": "Save",
+      "saveAs": "Save As…",
+      "bom": "Bill of materials (build guide)"
+    },
+    "tools": {
+      "wire": "Wire tool",
+      "bus": "Bus tool",
+      "probe": "Probe tool",
+      "putAway": "Put away the wire / bus / probe tool",
+      "rotate": "Rotate a part / stand a rail on end",
+      "flip": "Flip LED polarity while placing"
+    },
+    "wireBus": {
+      "color": "Wire color — 1 Red 2 Black 3 Blue 4 Green 5 Yellow 6 Orange 7 White 8 Purple",
+      "width": "Bus width — 2–8 for that many bits, 1 for 16-bit"
+    },
+    "edit": {
+      "selectAll": "Select all — the whole desk, or a text field's text",
+      "copy": "Copy the selected component",
+      "paste": "Paste a duplicate",
+      "delete": "Delete the selection",
+      "undo": "Undo",
+      "redo": "Redo",
+      "cancel": "Cancel the current tool / deselect"
+    },
+    "view": {
+      "toggleView": "Breadboard ⇄ Schematic",
+      "fadeWires": "Fade wires to a stub at each end",
+      "palette": "Toggle the parts palette",
+      "analyzer": "Toggle the logic analyzer",
+      "fit": "Fit to screen",
+      "zoomOut": "Zoom all the way out (find a lost part)",
+      "zoom": "Zoom in / out / reset"
+    },
+    "simulation": {
+      "run": "Run / Stop the circuit",
+      "runKeys": "Space or {mod}+R"
+    }
+  },
+  "properties": {
+    "close": "Close properties",
+    "name": "Name",
+    "description": "Description",
+    "field": {
+      "color": "Color",
+      "volts": "Voltage",
+      "hz": "Rate",
+      "size": "Size"
+    },
+    "option": {
+      "manual": "Manual"
+    },
+    "action": {
+      "inspectMemory": "Inspect memory…",
+      "programMemory": "Load image… (program)"
+    }
+  },
+  "memory": {
+    "offset": "Offset",
+    "titleSuffix": "Memory",
+    "noChip": "No memory chip for “{ref}”.",
+    "stopped": "Stopped",
+    "statusRunning": "Running · read-only",
+    "statusVolatile": "Stopped · volatile (read-only)",
+    "statusEditable": "Stopped · editable",
+    "volatileNote": "Volatile (SRAM) — no backing file",
+    "copyPath": "Copy path",
+    "loadImage": "Load image… (program)",
+    "exportBin": "Export .bin",
+    "exportHex": "Export HEX",
+    "goto": "Go to",
+    "gotoAddress": "Go to address",
+    "addrPlaceholder": "addr (hex)",
+    "fill": "Fill",
+    "fillStart": "Fill start",
+    "fillEnd": "Fill end",
+    "fillValue": "Fill value",
+    "loadFailed": "could not load backing file"
+  },
+  "datasheets": {
+    "title": "Download datasheets",
+    "starting": "Starting…",
+    "downloading": "Downloading datasheets…",
+    "progress": "Downloading datasheets — {done} of {total}",
+    "startFailed": "The download could not be started.",
+    "cancelled": "Cancelled — {saved} of {total} downloaded",
+    "done": "Downloaded {saved} of {total} datasheets",
+    "failed": "failed",
+    "failedHead": {
+      "one": "{count} could not be fetched:",
+      "other": "{count} could not be fetched:"
+    }
+  },
+  "pinout": {
+    "ariaLabel": "{id} pin assignments",
+    "openDatasheet": "Open the datasheet PDF",
+    "openExample": "Open the example circuit",
+    "openExampleTitle": "Open this part's example circuit as a new desktop",
+    "datasheetCaption": "Datasheet — internal diagram & function table",
+    "subPackage": "{package} · pin assignments",
+    "subLinear": "{count} holes along one grid row · pin assignments",
+    "subCan": "{holes} holes, legs at the 4 corners · pin assignments",
+    "subTerminals": "terminal assignments",
+    "subWire": "2 endpoints · pin assignments",
+    "wireTitle": "Wire",
+    "wireAria": "Wire pin assignments",
+    "anchorHole": "anchor hole",
+    "holeOffset": {
+      "one": "+{count} hole",
+      "other": "+{count} holes"
+    },
+    "corner": {
+      "bottomLeft": "bottom-left corner",
+      "bottomRight": "bottom-right corner",
+      "topLeft": "top-left corner",
+      "topRight": "top-right corner"
+    },
+    "cornerAnchor": "{corner} (the anchor, pin 1)",
+    "noAssignments": "No pin assignments for “{ref}”.",
+    "noPart": "No part selected."
+  },
+  "popup": {
+    "closeNamed": "Close {title}",
+    "removeNamed": "Remove {label}",
+    "enterValue": "Enter a value"
+  }
+}

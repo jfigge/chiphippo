@@ -20,14 +20,66 @@
 // window-level listeners between tests) and returns it so the test can attach
 // `window.chiphippo` stubs.
 
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { JSDOM } from "jsdom";
+
+import { applyCatalog } from "../i18n.js";
+
+// ── The English catalog, loaded once for every component test ────────────────
+// In the app, `app.js` awaits `i18n.init()` before anything renders, so a
+// component always builds against a real catalog. A test that mounted one
+// without doing the same would see `t()` return raw KEYS, and every assertion
+// about on-screen text would be asserting the key rather than the string.
+//
+// So the setup every component test already imports installs the real
+// `locales/en.json` — the same file the app ships. That keeps the existing
+// English assertions meaningful AND makes them exercise the catalog: a key
+// deleted from en.json now fails the test that reads it, rather than quietly
+// rendering the key to the user.
+//
+// Read with fs rather than a JSON import so this works whatever the running
+// Node's import-attributes support.
+const EN_CATALOG = JSON.parse(
+  fs.readFileSync(
+    path.join(
+      path.dirname(fileURLToPath(import.meta.url)),
+      "..",
+      "..",
+      "locales",
+      "en.json",
+    ),
+    "utf8",
+  ),
+);
+
+/** The languages `resetDom()` reports as shipped, unless a test says otherwise.
+    A stand-in for main's own LOCALES table (app/i18n.js is CommonJS, so it
+    cannot be imported here) — two entries is enough to prove a list renders. */
+const DEFAULT_LOCALES = [
+  { code: "en", nativeName: "English" },
+  { code: "de", nativeName: "Deutsch" },
+];
 
 /**
  * Install a clean jsdom document on the Node globals and return its `window`.
  * Call at the top of every test that mounts a component.
+ * @param {{locales?: Array<{code: string, nativeName: string}>}} [opts]
+ *   `locales` overrides the shipped-language list the Settings picker builds
+ *   from — it arrives on the catalog payload in the app, so it is installed here
+ *   with the catalog rather than set separately (a second `applyCatalog` call
+ *   from a test would replace the whole payload and wipe the messages).
  * @returns {Window}
  */
-export function resetDom() {
+export function resetDom({ locales = DEFAULT_LOCALES } = {}) {
+  applyCatalog({
+    active: "en",
+    lang: "en",
+    messages: EN_CATALOG,
+    fallback: EN_CATALOG,
+    locales,
+  });
   const dom = new JSDOM("<!doctype html><html><body></body></html>", {
     url: "http://localhost/",
     pretendToBeVisual: true,

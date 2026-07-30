@@ -22,22 +22,19 @@
 // (components/build-guide.js) turns the returned string into a Blob and
 // downloads it; nothing here touches the document or the DOM.
 
-/** BOM section keys → display headings, in emit order (mirrors the panel). */
-const BOM_SECTIONS = [
-  { key: "boards", label: "Breadboards" },
-  { key: "chips", label: "Chips" },
-  { key: "discretes", label: "Discrete parts" },
-  { key: "power", label: "Power" },
-];
-
-/** Step group keys → display headings, in the order buildPlan emits them. */
-const STEP_GROUPS = [
-  { key: "boards", label: "Place the boards" },
-  { key: "power", label: "Power" },
-  { key: "chips", label: "Seat the chips" },
-  { key: "discretes", label: "Add discrete parts" },
-  { key: "wires", label: "Run the signal wires" },
-];
+// The section/group headings and the empty-state lines come from build-plan.js,
+// which the PANEL reads too — they used to be a second copy of the same English
+// here, and two copies of a translated string is two chances to drift.
+import { tf } from "../i18n.js";
+import {
+  BOM_SECTION_KEYS,
+  STEP_GROUP_KEYS,
+  bomSectionLabel,
+  stepGroupLabel,
+  warningCount,
+  netTitle,
+  busHeading,
+} from "./build-plan.js";
 
 /**
  * Render a build plan as a Rich Text Format document.
@@ -47,7 +44,8 @@ const STEP_GROUPS = [
  *   (the schema name); defaults to "Untitled".
  * @returns {string} the full RTF document text.
  */
-export function planToRtf(plan, { title = "Untitled" } = {}) {
+export function planToRtf(plan, { title } = {}) {
+  const name = title ?? tf("common.untitled", "Untitled");
   const p = {
     bom: plan?.bom ?? {},
     nets: plan?.nets ?? [],
@@ -55,7 +53,7 @@ export function planToRtf(plan, { title = "Untitled" } = {}) {
     warnings: plan?.warnings ?? [],
   };
   const body = [
-    h1(`${title} — Build Guide`),
+    h1(tf("guide.exportTitle", "{name} — Build Guide", { name })),
     warningsBlock(p.warnings),
     ...bomBlocks(p.bom),
     ...wiringBlocks(p.nets),
@@ -75,44 +73,48 @@ export function planToRtf(plan, { title = "Untitled" } = {}) {
 /** The warnings roll-up (omitted entirely when the design is clean). */
 function warningsBlock(warnings) {
   if (!warnings.length) return "";
-  const head = `${warnings.length} warning${warnings.length === 1 ? "" : "s"}`;
-  return h2(head) + warnings.map((w) => bullet(w.message)).join("");
+  return (
+    h2(warningCount(warnings.length)) +
+    warnings.map((w) => bullet(w.message)).join("")
+  );
 }
 
 /** BOM tab: a heading, then a sub-heading + counted list per non-empty group. */
 function bomBlocks(bom) {
-  const out = [h2("BOM")];
+  const out = [h2(tf("guide.tab.bom", "BOM"))];
   let any = false;
-  for (const { key, label } of BOM_SECTIONS) {
+  for (const key of BOM_SECTION_KEYS) {
     const lines = bom[key] ?? [];
     if (!lines.length) continue;
     any = true;
-    out.push(h3(label));
+    out.push(h3(bomSectionLabel(key)));
     for (const line of lines) out.push(bullet(`${line.title}  ×${line.count}`));
   }
-  if (!any) out.push(para("Nothing on the desk yet."));
+  if (!any) out.push(para(tf("guide.emptyBom", "Nothing on the desk yet.")));
   return out;
 }
 
 /** Wiring tab: bus headings, then one line per net (title · members). */
 function wiringBlocks(nets) {
-  const out = [h2("Wiring")];
+  const out = [h2(tf("guide.tab.wiring", "Wiring"))];
   if (!nets.length) {
-    out.push(para("No connections yet."));
+    out.push(para(tf("guide.emptyWiring", "No connections yet.")));
     return out;
   }
   let busName = null;
   for (const net of nets) {
     if (net.bus && net.bus.name !== busName) {
       busName = net.bus.name;
-      out.push(h3(`${busName} bus`));
+      out.push(h3(busHeading(busName)));
     }
     if (!net.bus) busName = null;
-    const title = net.bus ? `bit ${net.bus.bit}` : (net.name ?? "unnamed net");
+    const title = netTitle(net);
     const members = (net.members ?? [])
       .map((m) => esc(m.label))
       .join(" \\u183? ");
-    const flag = net.isSingleton ? " (only one connection)" : "";
+    const flag = net.isSingleton
+      ? ` (${tf("guide.singletonFlag", "only one connection")})`
+      : "";
     out.push(`{\\pard\\sa60 {\\b ${esc(title + flag)}:} ${members}\\par}\n`);
   }
   return out;
@@ -120,15 +122,15 @@ function wiringBlocks(nets) {
 
 /** Steps tab: a sub-heading + numbered checklist per non-empty group. */
 function stepsBlocks(steps) {
-  const out = [h2("Steps")];
+  const out = [h2(tf("guide.tab.steps", "Steps"))];
   if (!steps.length) {
-    out.push(para("No build steps yet."));
+    out.push(para(tf("guide.emptySteps", "No build steps yet.")));
     return out;
   }
-  for (const { key, label } of STEP_GROUPS) {
+  for (const key of STEP_GROUP_KEYS) {
     const group = steps.filter((s) => s.group === key);
     if (!group.length) continue;
-    out.push(h3(label));
+    out.push(h3(stepGroupLabel(key)));
     group.forEach((step, i) => {
       out.push(numbered(i + 1, step.text));
       for (const d of step.detail ?? []) out.push(detail(d));

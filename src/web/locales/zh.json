@@ -1,0 +1,993 @@
+{
+  "_meta": {
+    "language": "中文（简体）",
+    "note": "Generated from en.json's key set; every leaf key and every {placeholder} matches it (tests/i18n-catalogs.test.js)."
+  },
+  "common": {
+    "ok": "确定",
+    "cancel": "取消",
+    "save": "保存",
+    "close": "关闭",
+    "delete": "删除",
+    "clear": "清除",
+    "browse": "浏览…",
+    "download": "下载…",
+    "rename": "重命名",
+    "untitled": "未命名",
+    "none": "无",
+    "confirm": "确认"
+  },
+  "app": {
+    "header": "应用标题栏",
+    "actions": "应用操作",
+    "about": "关于 Chip Hippo",
+    "settings": "设置",
+    "openSettings": "打开设置",
+    "desk": "工作台",
+    "schematic": "原理图",
+    "deskHint": "打开元件库并添加一块面包板即可开始"
+  },
+  "menu": {
+    "app": {
+      "about": "关于 Chip Hippo",
+      "settings": "设置…"
+    },
+    "file": {
+      "title": "文件",
+      "new": "新建项目",
+      "open": "打开…",
+      "openRecent": "打开最近使用的项目",
+      "noRecent": "没有最近使用的项目",
+      "save": "保存",
+      "saveAs": "另存为…",
+      "properties": "项目属性…",
+      "bom": "物料清单…"
+    },
+    "desktop": {
+      "title": "桌面",
+      "new": "新建桌面",
+      "duplicate": "复制桌面",
+      "import": "导入桌面…",
+      "export": "导出桌面…",
+      "properties": "桌面属性…",
+      "delete": "删除桌面"
+    },
+    "edit": {
+      "title": "编辑",
+      "undo": "撤销",
+      "redo": "重做",
+      "selectAll": "全选"
+    },
+    "view": {
+      "title": "视图",
+      "devTools": "切换开发者工具"
+    },
+    "window": {
+      "title": "窗口"
+    },
+    "help": {
+      "title": "帮助",
+      "userGuide": "Chip Hippo 用户指南",
+      "shortcuts": "键盘快捷键",
+      "checkUpdates": "检查更新…"
+    },
+    "pinout": {
+      "float": "置于其他窗口之上",
+      "close": "关闭窗口"
+    }
+  },
+  "window": {
+    "pinout": "引脚分配",
+    "memory": "存储器查看器"
+  },
+  "dialog": {
+    "filter": {
+      "project": "Chip Hippo 项目",
+      "desktop": "Chip Hippo 桌面",
+      "memImage": "存储器映像",
+      "binImage": "二进制映像",
+      "intelHex": "Intel HEX",
+      "allFiles": "所有文件"
+    }
+  },
+  "toolbar": {
+    "file": {
+      "group": "文件",
+      "new": "新建项目",
+      "newTitle": "新建项目（{accel}）— 在空白工作台上重新开始",
+      "open": "打开",
+      "openTitle": "打开…（{accel}）— 载入已保存的项目",
+      "save": "保存",
+      "saveTitle": "保存（{accel}）— 将项目写回原文件",
+      "saveAs": "另存为",
+      "saveAsTitle": "另存为…（{accel}）— 将项目写入新文件"
+    },
+    "tools": {
+      "group": "工作台工具"
+    },
+    "wire": {
+      "label": "导线",
+      "title": "导线工具 — 依次点击两个空闲插孔即可连接（W）",
+      "colorLabel": "导线颜色"
+    },
+    "bus": {
+      "label": "总线",
+      "title": "总线工具 — 一次操作铺设多位导线（B）",
+      "widthLabel": "总线位宽"
+    },
+    "fade": {
+      "label": "淡化导线",
+      "title": "淡化导线 — 每端只画一小段，让面包板保持清晰（H）"
+    },
+    "probe": {
+      "label": "探针",
+      "title": "连通性探针 — 悬停高亮一个网络，点击可固定（P）"
+    },
+    "analyzer": {
+      "label": "分析仪",
+      "title": "逻辑分析仪 — 记录并查看信号随时间的波形（{mod}+A）"
+    },
+    "fit": {
+      "label": "适应窗口",
+      "title": "适应窗口 — 框住每块面包板、元件和导线（{mod}+F）"
+    },
+    "zoomOut": {
+      "label": "完全缩小",
+      "title": "缩到最小 — 找回丢失的元件（{mod}+Shift+F）"
+    },
+    "bom": {
+      "label": "物料清单",
+      "title": "物料清单 — 元件清单、接线表与装配步骤（{mod}+B）"
+    },
+    "mode": {
+      "schematic": "原理图视图",
+      "schematicTitle": "显示逻辑原理图（Tab）",
+      "breadboard": "面包板视图",
+      "breadboardTitle": "回到面包板（Tab）"
+    },
+    "ai": {
+      "label": "AI 构建器",
+      "title": "AI 电路构建器 — 描述一个电路，让它替你设计、搭建并测试",
+      "unreadable": "无法读取 AI 连接设置。"
+    },
+    "transport": {
+      "group": "仿真控制",
+      "run": "运行",
+      "runTitle": "运行电路（空格或 {mod}+R）",
+      "stop": "停止",
+      "stopTitle": "停止并回到编辑（空格或 {mod}+R）",
+      "pause": "暂停",
+      "pauseTitle": "暂停或继续时钟",
+      "resume": "继续",
+      "step": "单步",
+      "stepTitle": "前进半个时钟周期",
+      "speedTitle": "时钟速度（点击在 ¼ / 1 / 4 间切换）"
+    }
+  },
+  "zoom": {
+    "out": "缩小",
+    "in": "放大",
+    "reset": "把缩放恢复为 100%"
+  },
+  "settings": {
+    "title": "设置",
+    "close": "关闭设置",
+    "nav": {
+      "appearance": "外观",
+      "datasheets": "数据手册",
+      "ai": "AI",
+      "about": "关于"
+    },
+    "appearance": {
+      "language": "语言",
+      "languageSystem": "跟随系统",
+      "languageHint": "Chip Hippo 自身的菜单、面板和对话框所用的语言。用户指南仅提供英文版。",
+      "theme": "主题",
+      "themeSystem": "跟随系统",
+      "themeLight": "浅色",
+      "themeDark": "深色",
+      "selectionColor": "选中边框颜色",
+      "ledColor": "默认 LED 颜色",
+      "wireLayout": "导线走线",
+      "wireLayoutDirect": "直连",
+      "wireLayoutRouted": "布线",
+      "wireLayoutHint": "新导线的画法：直连会从一个插孔垂到另一个插孔；布线则走直线，并可通过拖入控制点绕开面包板。已经放好的导线保持原有走线 — 要修改就用它自己的属性对话框。"
+    },
+    "datasheets": {
+      "folder": "数据手册文件夹",
+      "noFolder": "未选择文件夹",
+      "clearTitle": "清除数据手册文件夹",
+      "browseTitle": "选择数据手册文件夹",
+      "folderHint": "把这里指向一个存放厂商数据手册 PDF 的文件夹，文件按芯片命名（例如 74LS00.pdf）。找到匹配的 PDF 后，芯片的引脚分配窗口会显示一个打开按钮。",
+      "auto": "自动获取",
+      "downloadTitle": "把数据手册下载到应用自己的文件夹",
+      "autoHint": "为 Chip Hippo 记录了公开来源的每个元件下载一份数据手册 — 有厂商自己的文档就用它，否则用参考资料库 — 存入 Chip Hippo 自己的文件夹，并把上面的设置指向那里。没有来源的元件会跳过，已有的文件会被替换。"
+    },
+    "ai": {
+      "loading": "正在载入服务商…",
+      "noProviders": "此版本没有可用的 AI 服务商。",
+      "provider": "服务商",
+      "baseUrl": "基础 URL",
+      "model": "模型",
+      "apiKey": "API 密钥",
+      "keyPlaceholder": "粘贴密钥以保存",
+      "saveKey": "保存密钥",
+      "clearKey": "清除密钥",
+      "testConnection": "测试连接",
+      "testing": "正在测试…",
+      "connected": "已连接。",
+      "testFailed": "无法测试连接。",
+      "keyStoreFailed": "无法保存密钥。",
+      "keyStored": "已为 {provider} 保存了一个密钥。它由操作系统加密，绝不会被读回本窗口。",
+      "keyMissing": "尚未为 {provider} 保存密钥。",
+      "noSecureStore": "本系统没有安全的凭据存储，因此无法保存密钥。请把基础 URL 指向一个不需要密钥的本地服务器。",
+      "hint": "Chip Hippo 使用你自己的连接 — 在你要求它搭建电路之前不会向任何地方发送数据，密钥由操作系统加密保存，绝不写入 settings.json。基础 URL 和模型留空即使用所显示的默认值。",
+      "experimental": "AI 生成功能仍在试验阶段。每个设计在提供给你之前都会用仿真器验证，但它可能不是最优的电路或最整齐的布局 — 请预期需要检查和调整。"
+    },
+    "about": {
+      "version": "版本",
+      "readingVersion": "正在读取版本…",
+      "autoLabel": "自动检查",
+      "autoAria": "自动检查更新",
+      "autoOn": "开",
+      "autoOff": "关",
+      "check": "检查更新",
+      "checking": "正在检查更新…",
+      "restart": "重启以更新",
+      "available": "有可用更新 — 正在后台下载…",
+      "availableVersion": "版本 {version} 可用 — 正在后台下载…",
+      "ready": "更新已准备好安装。",
+      "readyVersion": "版本 {version} 已准备好安装。",
+      "upToDate": "你使用的已是 Chip Hippo 的最新版本。",
+      "storeBuild": "更新通过 App Store 发布。",
+      "devBuild": "更新仅在已安装的版本中可用。",
+      "error": "无法检查更新。请稍后再试。",
+      "hint": "Chip Hippo 可以向 github.com 查询是否有更新版本。更新会在后台下载，只有在你同意时才安装 — 或在此处重启，或在下次退出时。除查询本身外不会发送任何内容，关闭此项则完全不发送。",
+      "storeHint": "此份 Chip Hippo 的更新通过 App Store 发布，因此它自己从不检查更新。"
+    }
+  },
+  "palette": {
+    "label": "元件库",
+    "filter": "筛选元件",
+    "filterPlaceholder": "筛选元件…",
+    "noMatches": "没有匹配的元件。",
+    "hide": "隐藏元件库",
+    "hideTitle": "隐藏元件库（{mod}+P）",
+    "show": "显示元件库",
+    "showTitle": "显示元件库（{mod}+P）",
+    "resize": "拖动以调整元件库宽度",
+    "board": {
+      "title": "{label} — {points} 个连接点",
+      "titleRotates": "{label} — {points} 个连接点（按 R 旋转）"
+    },
+    "annotation": {
+      "label": "标签",
+      "labelHint": "单行说明文字",
+      "note": "备注",
+      "noteHint": "多行备注框"
+    },
+    "group": {
+      "and": "AND",
+      "annotations": "标注",
+      "arithmetic": "运算",
+      "boards": "面包板",
+      "buffer": "缓冲器",
+      "chips": "芯片",
+      "comparator": "比较器",
+      "components": "元件",
+      "counter": "计数器",
+      "decoder": "译码器",
+      "displaydriver": "显示驱动",
+      "displays": "显示器",
+      "encoder": "编码器",
+      "flipflop": "触发器",
+      "interface": "接口",
+      "inverter": "反相器",
+      "latch": "锁存器",
+      "leds": "LED",
+      "memory": "存储器",
+      "multiplexer": "多路选择器",
+      "nand": "NAND",
+      "nor": "NOR",
+      "or": "OR",
+      "oscillators": "振荡器",
+      "power": "电源",
+      "register": "寄存器",
+      "resistors": "电阻",
+      "shiftregister": "移位寄存器",
+      "switches": "开关",
+      "xor": "XOR"
+    }
+  },
+  "boards": {
+    "full": "全尺寸",
+    "half": "半尺寸",
+    "tiny": "迷你",
+    "pins-full": "全尺寸插件区",
+    "pins-half": "半尺寸插件区",
+    "rail-full": "全尺寸电源轨",
+    "rail-half": "半尺寸电源轨"
+  },
+  "parts": {
+    "74LS00": {
+      "title": "四路二输入 NAND"
+    },
+    "74LS02": {
+      "title": "四路二输入 NOR"
+    },
+    "74LS04": {
+      "title": "六路反相器"
+    },
+    "74LS08": {
+      "title": "四路二输入 AND"
+    },
+    "74LS10": {
+      "title": "三路三输入 NAND"
+    },
+    "74LS11": {
+      "title": "三路三输入 AND"
+    },
+    "74LS20": {
+      "title": "双路四输入 NAND"
+    },
+    "74LS27": {
+      "title": "三路三输入 NOR"
+    },
+    "74LS30": {
+      "title": "八输入 NAND"
+    },
+    "74LS32": {
+      "title": "四路二输入 OR"
+    },
+    "74LS86": {
+      "title": "四路二输入 XOR"
+    },
+    "74LS125": {
+      "title": "四路总线缓冲器，三态"
+    },
+    "74LS73": {
+      "title": "双 JK 触发器，带清零"
+    },
+    "74LS74": {
+      "title": "双 D 触发器，带预置和清零"
+    },
+    "74LS75": {
+      "title": "4 位双稳态锁存器"
+    },
+    "74LS76": {
+      "title": "双 JK 触发器，带预置和清零"
+    },
+    "74LS107": {
+      "title": "双 JK 触发器，带清零"
+    },
+    "74LS175": {
+      "title": "四 D 触发器"
+    },
+    "74LS161": {
+      "title": "同步 4 位二进制计数器"
+    },
+    "74LS193": {
+      "title": "同步 4 位可逆计数器"
+    },
+    "74LS164": {
+      "title": "8 位串入并出移位寄存器"
+    },
+    "74LS165": {
+      "title": "8 位并入串出移位寄存器"
+    },
+    "74LS138": {
+      "title": "3 线转 8 线译码器"
+    },
+    "74LS139": {
+      "title": "双 2 线转 4 线译码器"
+    },
+    "74LS01": {
+      "title": "四路二输入 NAND（集电极开路）"
+    },
+    "74LS03": {
+      "title": "四路二输入 NAND（集电极开路）"
+    },
+    "74LS05": {
+      "title": "六路反相器（集电极开路）"
+    },
+    "74LS14": {
+      "title": "六路施密特触发反相器"
+    },
+    "74LS112": {
+      "title": "双 JK 触发器，带预置和清零"
+    },
+    "74LS173": {
+      "title": "4 位 D 寄存器，三态"
+    },
+    "74LS174": {
+      "title": "六 D 触发器"
+    },
+    "74LS273": {
+      "title": "八 D 触发器，带清零"
+    },
+    "74LS279": {
+      "title": "四 S̄R̄ 锁存器"
+    },
+    "74LS151": {
+      "title": "8 选 1 多路选择器"
+    },
+    "74LS153": {
+      "title": "双 4 选 1 多路选择器"
+    },
+    "74LS157": {
+      "title": "四路 2 选 1 选择器"
+    },
+    "74LS257": {
+      "title": "四路 2 选 1 选择器，三态"
+    },
+    "74LS240": {
+      "title": "八路缓冲器／线驱动器，反相，三态"
+    },
+    "74LS244": {
+      "title": "八路缓冲器／线驱动器，三态"
+    },
+    "74LS245": {
+      "title": "八路总线收发器，三态"
+    },
+    "74LS47": {
+      "title": "BCD 转七段译码器／驱动器"
+    },
+    "74LS85": {
+      "title": "4 位数值比较器"
+    },
+    "74LS148": {
+      "title": "8 线转 3 线优先编码器"
+    },
+    "74LS283": {
+      "title": "4 位二进制全加器"
+    },
+    "74LS83": {
+      "title": "4 位二进制加法器（原始引脚排列）"
+    },
+    "74LS181": {
+      "title": "4 位算术逻辑单元"
+    },
+    "74LS169": {
+      "title": "同步 4 位可逆计数器"
+    },
+    "74LS259": {
+      "title": "8 位可寻址锁存器"
+    },
+    "74LS533": {
+      "title": "八路透明锁存器，反相，三态"
+    },
+    "74LS573": {
+      "title": "八路透明锁存器，三态"
+    },
+    "74LS595": {
+      "title": "8 位移位寄存器，带输出锁存"
+    },
+    "74LS90": {
+      "title": "十进制（÷10）异步计数器"
+    },
+    "rom-8k": {
+      "title": "8K×8 ROM"
+    },
+    "ram-8k": {
+      "title": "8K×8 SRAM"
+    },
+    "28C16": {
+      "title": "2K×8 EEPROM"
+    },
+    "HM62256": {
+      "title": "32K×8 静态 RAM"
+    },
+    "AS6C1024": {
+      "title": "128K×8 静态 RAM"
+    },
+    "AM27C1024": {
+      "title": "64K×16 EPROM"
+    },
+    "w65c21": {
+      "title": "W65C21 PIA"
+    },
+    "w65c22": {
+      "title": "W65C22 VIA"
+    },
+    "w65c02": {
+      "title": "W65C02 CPU"
+    },
+    "sw-slide": {
+      "title": "滑动开关（单刀双掷）"
+    },
+    "sw-push": {
+      "title": "按钮（点动）"
+    },
+    "sw-toggle": {
+      "title": "按钮（自锁）"
+    },
+    "sw-dip1": {
+      "title": "DIP 开关（1 位）"
+    },
+    "sw-dip2": {
+      "title": "DIP 开关（2 位）"
+    },
+    "sw-dip4": {
+      "title": "DIP 开关（4 位）"
+    },
+    "sw-dip8": {
+      "title": "DIP 开关（8 位）"
+    },
+    "led": {
+      "title": "LED"
+    },
+    "seg8cc": {
+      "title": "8 段数码管（共阴）"
+    },
+    "seg8ca": {
+      "title": "8 段数码管（共阳）"
+    },
+    "bar8": {
+      "title": "8 段 LED 条"
+    },
+    "bar8iso": {
+      "title": "8 段 LED 条（独立）"
+    },
+    "resistor": {
+      "title": "电阻"
+    },
+    "rnet9": {
+      "title": "排阻（共端，9 脚）"
+    },
+    "psu": {
+      "title": "电源"
+    },
+    "clock": {
+      "title": "时钟源"
+    },
+    "osc-full": {
+      "title": "振荡器（全尺寸金属壳）"
+    },
+    "osc-half": {
+      "title": "振荡器（半尺寸金属壳）"
+    },
+    "lcd": {
+      "title": "字符 LCD（HD44780）"
+    }
+  },
+  "colors": {
+    "red": "红色",
+    "black": "黑色",
+    "blue": "蓝色",
+    "green": "绿色",
+    "yellow": "黄色",
+    "orange": "橙色",
+    "white": "白色",
+    "purple": "紫色"
+  },
+  "tabs": {
+    "label": "桌面",
+    "add": "新建桌面",
+    "addTitle": "新建桌面（右键点击可导入一个）",
+    "properties": "属性…"
+  },
+  "guide": {
+    "title": "装配指南",
+    "close": "关闭装配指南",
+    "warnBadge": "设计警告",
+    "download": "下载物料清单",
+    "downloadTitle": "下载物料清单（.rtf）",
+    "exportTitle": "{name} — 装配指南",
+    "tab": {
+      "bom": "物料",
+      "wiring": "接线",
+      "steps": "步骤"
+    },
+    "emptyBom": "工作台上还没有任何东西。",
+    "emptyWiring": "还没有任何连接。",
+    "emptySteps": "还没有装配步骤。",
+    "singletonTitle": "只有一个连接",
+    "singletonFlag": "只有一个连接"
+  },
+  "plan": {
+    "pinLabel": "{base} 第 {pin} 脚{suffix}",
+    "railLabel": "{rail} 电源轨（{board}）",
+    "manualClock": "手动",
+    "flipped": "已旋转 180°",
+    "straddling": "跨越 {from}–{to}，第 1 脚在 {anchor}{flip}",
+    "withLeads": "引脚位于 {leads}{flip}",
+    "floatingLead": "悬空",
+    "unnamedSignal": "信号",
+    "wireCount": {
+      "other": "{count} 根导线"
+    },
+    "warningCount": {
+      "other": "{count} 条警告"
+    },
+    "net": {
+      "bit": "第 {bit} 位",
+      "unnamed": "未命名网络",
+      "busHead": "{name} 总线"
+    },
+    "bom": {
+      "boards": "面包板",
+      "chips": "芯片",
+      "discretes": "分立元件",
+      "power": "电源"
+    },
+    "stepGroup": {
+      "boards": "放置面包板",
+      "power": "电源",
+      "chips": "插入芯片",
+      "discretes": "添加分立元件",
+      "wires": "铺设信号导线"
+    },
+    "step": {
+      "assembleBoard": "在第 {x} 列、第 {y} 行附近拼装一块面包板（{parts}）。",
+      "placeBoard": "在第 {x} 列、第 {y} 行附近放置一块{label}。",
+      "psu": "把{part}设为 {volts} V，然后放到工作台上。",
+      "clock": "把{part}设为 {rate}，然后放到工作台上。",
+      "powerWire": "铺一根{color}导线：{from} → {to}。",
+      "seatChip": "插入一片 {ref}，{where}。",
+      "placePart": "放置一个{part}{color}，{where}。",
+      "bus": "铺设 {name} 总线（{wires}）。",
+      "net": "连接 {name} 网络（{wires}）。"
+    },
+    "warn": {
+      "floatingLead": "{base}（{id}）第 {pin} 脚{suffix}悬空 — 它的引脚不在任何插孔上。",
+      "noPower": "{ref}（{id}）没有 {pins} 连接 — 它不会通电。",
+      "singleMember": "网络“{name}”只连到一个点 — 很可能漏了一条连接。"
+    }
+  },
+  "scope": {
+    "title": "逻辑分析仪",
+    "close": "关闭逻辑分析仪",
+    "resize": "拖动以调整分析仪高度",
+    "channel": "通道",
+    "addTitle": "添加一个已命名的网络或总线作为通道",
+    "clearTitle": "清除已记录的波形",
+    "exportSvg": "把时序图导出为 SVG",
+    "exportPng": "把时序图导出为 PNG",
+    "emptyBefore": "还没有通道 — ",
+    "emptyLink": "添加一个网络或总线",
+    "emptyAfter": "，或右键点击已探测的网络 →“添加到分析仪”。",
+    "moveUp": "上移",
+    "moveDown": "下移",
+    "removeChannel": "移除通道",
+    "noNets": "还没有已命名的网络或总线",
+    "busSuffix": "总线",
+    "missingRef": "{ref}（已不存在）",
+    "tickCount": {
+      "other": "{count} 个时钟节拍"
+    }
+  },
+  "ai": {
+    "title": "AI 电路构建器",
+    "close": "关闭 AI 构建器",
+    "resize": "拖动以调整 AI 构建器高度",
+    "clearTitle": "清空对话并开始新的设计",
+    "inputLabel": "描述要搭建的电路",
+    "inputPlaceholder": "描述一个电路 — 例如“把两个 8 位数相加并带进位，输入用开关，和用 LED 条显示”",
+    "build": "搭建这个电路",
+    "buildTitle": "搭建这个电路（回车）",
+    "cancelTitle": "取消本次搭建",
+    "intro": "描述一个电路，它会先被设计、搭建、仿真并测试，然后才交给你放置。请先在“设置 ▸ AI”里配置你自己的 AI 连接。",
+    "cleared": "已清空。请描述一个新电路。",
+    "cancelled": "已取消。",
+    "lockedRunning": "请先停止仿真，再搭建新电路。",
+    "designing": "正在设计…",
+    "designingRow": "正在设计电路{round}…",
+    "fixRound": "（第 {n} 次修正，共 {total} 次）",
+    "building": "正在搭建…",
+    "buildingRow": "正在搭建电路…",
+    "startFailed": "无法发起请求。",
+    "requestFailed": "请求失败。",
+    "buildCrashed": "搭建意外失败：{message}",
+    "compilerFault": "电路描述是正确的，但无法搭建。这是 Chip Hippo 编译器的缺陷，不是设计的问题。",
+    "gaveUp": "尝试修正 {total} 次后放弃。仍然存在的问题：",
+    "retrying": "该设计未通过 — 正在请求修正（第 {n} 次，共 {total} 次）：",
+    "untitledCircuit": "电路",
+    "summary": "{title} — {parts} 个元件、{wires} 根导线、{strips} 块板条。",
+    "testsPassed": "自带测试通过 {passed}/{tested} 项。",
+    "builtWithNotes": "搭建完成，附注意事项：",
+    "placeHint": "点击即可放到工作台上，或按 Esc 取消。",
+    "gate": {
+      "compile": "正在编译网表…",
+      "l3": "正在检查搭建结果…",
+      "l4": "正在检查连通性…",
+      "l5": "正在仿真…",
+      "l6": "正在查找无驱动的网络…"
+    },
+    "reason": {
+      "noProvider": "此版本没有可用的 AI 服务商。",
+      "unknownProvider": "“{provider}”不是此版本能连接的服务商。请在“设置 ▸ AI”中选择一个。",
+      "noSecureStore": "本系统没有安全的凭据存储，因此无法保存 API 密钥。请参见“设置 ▸ AI”。",
+      "noKey": "尚未为 {provider} 配置 API 密钥。请在“设置 ▸ AI”中添加一个。",
+      "badBaseUrl": "AI 基础 URL“{url}”不是有效的 http(s) 地址。请在“设置 ▸ AI”中修正或清空它。"
+    }
+  },
+  "schematic": {
+    "hint": "在工作台上添加芯片即可看到原理图",
+    "autoLayout": "自动布局"
+  },
+  "desk": {
+    "brick": {
+      "psu": "电源",
+      "clock": "时钟",
+      "display": "显示器"
+    },
+    "boardPropertiesTitle": "{board} 属性",
+    "wirePropertiesTitle": "导线属性",
+    "wireColor": "颜色",
+    "wireLayout": "走线方式",
+    "count": {
+      "and": "和",
+      "parts": {
+        "other": "{count} 个元件"
+      },
+      "wires": {
+        "other": "{count} 根导线"
+      },
+      "boards": {
+        "other": "{count} 块面包板"
+      },
+      "moreParts": {
+        "other": "另外 {count} 个元件"
+      },
+      "moreWires": {
+        "other": "另外 {count} 根导线"
+      }
+    },
+    "menu": {
+      "pinAssignment": "引脚分配",
+      "properties": "属性…",
+      "deleteComponent": "删除元件",
+      "removeBoard": "移除面包板",
+      "editText": "编辑文字…",
+      "remove": "移除"
+    },
+    "remove": {
+      "confirm": "移除",
+      "boardTitle": "移除面包板？",
+      "boardsTitle": "移除这些面包板？",
+      "boardMessage": "{id} 上还连着 {what} — 移除面包板会把它们一起移除。",
+      "boardsMessage": "这 {count} 块拼接的面包板上还连着 {what} — 移除它们会把这些一起移除。",
+      "brickTitle": "移除{noun}？",
+      "brickMessage": "{id} 上还连着 {what} — 移除它会把它们一起移除。",
+      "selectionTitle": "移除 {what}？",
+      "selectionMessage": "连在它们上的 {extra} 也会被一起移除。"
+    },
+    "paste": {
+      "failTitle": "无法粘贴该设计",
+      "overlap": "它的一部分会落在这个工作台上已有的东西上。",
+      "noRoom": "它需要的位置在这个工作台上没有空出来。"
+    }
+  },
+  "workspace": {
+    "location": "位置",
+    "projectProperties": "项目属性",
+    "desktopProperties": "桌面属性",
+    "defaultDesktopName": "桌面 {n}",
+    "openFailTitle": "无法打开该项目",
+    "unreadable": "无法读取该文件。",
+    "deleteTabTitle": "删除“{name}”？",
+    "deleteTabMessage": "它的设计会一并消失。在保存项目之前什么都不会写入磁盘，所以不保存就关闭项目可以让它回来。",
+    "missingTitle": "该项目已经不在了",
+    "missingMessage": "找不到“{name}”。要把它从最近使用的项目中移除吗？",
+    "untitledTitle": "此项目尚未保存",
+    "untitledMessage": "它还没有自己的存放位置，因此新建或打开另一个项目会丢弃它 — 连同所有桌面。",
+    "dirtyTitle": "有未保存的更改",
+    "thisProject": "此项目",
+    "dirtyQuitting": "{what} 有未保存的更改。现在退出会丢失它们。",
+    "dirtyLeaving": "{what} 有未保存的更改。现在离开会丢失它们。",
+    "discard": "放弃",
+    "restoreWarnTitle": "有些桌面无法恢复",
+    "noDesktops": "它没有任何桌面",
+    "failStart": "无法启动项目",
+    "failOpen": "无法打开项目",
+    "failSave": "无法保存项目",
+    "failLocation": "无法选择保存位置",
+    "failDuplicate": "无法复制该桌面",
+    "failImport": "无法导入该桌面",
+    "failExport": "无法导出该桌面",
+    "failExample": "无法打开 {ref} 的示例"
+  },
+  "sim": {
+    "memNotLoaded": "存储器未载入",
+    "memNotLoadedMessage": "{chip}：{error}。将以全零运行。",
+    "memLost": "存储器数据丢失",
+    "memLostMessage": "{chip} 曾被编程，但它的数据文件已丢失 — 现在里面是随机噪声。请重新载入映像。",
+    "short": "短路",
+    "shortMessage": "两个相反的电源汇到了同一个网络上（{net}）。",
+    "conflict": "驱动冲突",
+    "conflictMessage": "两个输出在同一个网络上互相争抢（{net}）。",
+    "oscillation": "振荡",
+    "oscillationMessage": {
+      "other": "电路无法稳定（{count} 个网络不稳定）。"
+    },
+    "underpowered": "供电不足",
+    "underpoweredMessage": "{chip} 只有 3 V — 处于不工作状态。",
+    "reversed": "电源接反",
+    "reversedMessage": "{chip} 的 VCC 与 GND 接反了。",
+    "damaged": "冒烟了！",
+    "damagedMessage": "{chip} 被 12 V 损坏了。请删除它并放一片新的以继续。"
+  },
+  "about": {
+    "subtitle": "TTL 面包板设计与仿真工具",
+    "description": "在虚拟免焊面包板上设计并仿真 74xx 系列逻辑电路 — 放上芯片、导线、开关、LED 和电源，然后看电流在每个网络中稳定下来。",
+    "versionInfo": "版本信息",
+    "version": "版本",
+    "platform": "平台",
+    "devBuild": "开发版"
+  },
+  "netNames": {
+    "conflict": "网络名冲突",
+    "conflictMessage": "“{winner}”和“{loser}”指向同一个网络 — 采用“{winner}”。"
+  },
+  "updater": {
+    "available": "有可用更新",
+    "downloading": "正在后台下载更新…",
+    "downloadingVersion": "正在后台下载 {version}…",
+    "ready": "更新已就绪",
+    "downloaded": "更新已下载完成。",
+    "downloadedVersion": "版本 {version} 已下载完成。",
+    "restart": "重启",
+    "upToDate": "已是最新",
+    "checkFailed": "检查更新失败"
+  },
+  "bus": {
+    "rename": "重命名总线…",
+    "renameTitle": "重命名总线",
+    "nameLabel": "总线名称",
+    "namePlaceholder": "例如 D[7:0]、A[0:15]",
+    "unbundle": "解散总线（保留导线）",
+    "deleteWithWires": "删除总线及其导线"
+  },
+  "wire": {
+    "tooManyBends": "这根导线不能再加折点了",
+    "tooManyBendsMessage": "一根布线导线最多带 {max} 个控制点。把其中一个拖到相邻点上以合并，然后再添加新的。"
+  },
+  "probe": {
+    "nameNet": "为该网络命名…",
+    "renameNet": "重命名网络…",
+    "nameNetTitle": "为该网络命名",
+    "renameNetTitle": "重命名网络",
+    "nameLabel": "网络名称",
+    "namePlaceholder": "例如 VCC、GND、CLK、D0…",
+    "clearName": "清除名称",
+    "addToAnalyzer": "添加到分析仪"
+  },
+  "shortcuts": {
+    "title": "键盘快捷键",
+    "close": "关闭键盘快捷键",
+    "group": {
+      "file": "文件",
+      "tools": "工具",
+      "wireBus": "导线与总线（该工具启用时）",
+      "edit": "编辑",
+      "view": "视图",
+      "simulation": "仿真"
+    },
+    "file": {
+      "new": "新建项目",
+      "open": "打开一个项目",
+      "save": "保存",
+      "saveAs": "另存为…",
+      "bom": "物料清单（装配指南）"
+    },
+    "tools": {
+      "wire": "导线工具",
+      "bus": "总线工具",
+      "probe": "探针工具",
+      "putAway": "收起导线／总线／探针工具",
+      "rotate": "旋转元件／把电源轨立起来",
+      "flip": "放置时翻转 LED 极性"
+    },
+    "wireBus": {
+      "color": "导线颜色 — 1 红 2 黑 3 蓝 4 绿 5 黄 6 橙 7 白 8 紫",
+      "width": "总线位宽 — 2–8 对应相应位数，1 表示 16 位"
+    },
+    "edit": {
+      "selectAll": "全选 — 整个工作台，或输入框中的文字",
+      "copy": "复制选中的元件",
+      "paste": "粘贴一个副本",
+      "delete": "删除所选内容",
+      "undo": "撤销",
+      "redo": "重做",
+      "cancel": "取消当前工具／取消选择"
+    },
+    "view": {
+      "toggleView": "面包板 ⇄ 原理图",
+      "fadeWires": "把导线淡化为每端一小段",
+      "palette": "显示或隐藏元件库",
+      "analyzer": "显示或隐藏逻辑分析仪",
+      "fit": "适应窗口",
+      "zoomOut": "缩到最小（找回丢失的元件）",
+      "zoom": "放大／缩小／还原"
+    },
+    "simulation": {
+      "run": "运行／停止电路",
+      "runKeys": "空格或 {mod}+R"
+    }
+  },
+  "properties": {
+    "close": "关闭属性",
+    "name": "名称",
+    "description": "说明",
+    "field": {
+      "color": "颜色",
+      "volts": "电压",
+      "hz": "频率",
+      "size": "尺寸"
+    },
+    "option": {
+      "manual": "手动"
+    },
+    "action": {
+      "inspectMemory": "查看存储器…",
+      "programMemory": "载入映像…（编程）"
+    }
+  },
+  "memory": {
+    "offset": "偏移",
+    "titleSuffix": "存储器",
+    "noChip": "没有对应“{ref}”的存储芯片。",
+    "stopped": "已停止",
+    "statusRunning": "运行中 · 只读",
+    "statusVolatile": "已停止 · 易失（只读）",
+    "statusEditable": "已停止 · 可编辑",
+    "volatileNote": "易失（SRAM）— 没有后备文件",
+    "copyPath": "复制路径",
+    "loadImage": "载入映像…（编程）",
+    "exportBin": "导出 .bin",
+    "exportHex": "导出 HEX",
+    "goto": "跳转",
+    "gotoAddress": "跳转到地址",
+    "addrPlaceholder": "地址（十六进制）",
+    "fill": "填充",
+    "fillStart": "填充起始",
+    "fillEnd": "填充结束",
+    "fillValue": "填充值",
+    "loadFailed": "无法载入后备文件"
+  },
+  "datasheets": {
+    "title": "下载数据手册",
+    "starting": "正在开始…",
+    "downloading": "正在下载数据手册…",
+    "progress": "正在下载数据手册 — 第 {done} 份，共 {total} 份",
+    "startFailed": "无法开始下载。",
+    "cancelled": "已取消 — 已下载 {saved} 份，共 {total} 份",
+    "done": "已下载 {saved} 份数据手册，共 {total} 份",
+    "failed": "失败",
+    "failedHead": {
+      "other": "有 {count} 份无法获取："
+    }
+  },
+  "pinout": {
+    "ariaLabel": "{id} 引脚分配",
+    "openDatasheet": "打开数据手册 PDF",
+    "openExample": "打开示例电路",
+    "openExampleTitle": "把该元件的示例电路作为新桌面打开",
+    "datasheetCaption": "数据手册 — 内部框图与功能表",
+    "subPackage": "{package} · 引脚分配",
+    "subLinear": "沿一行栅格占 {count} 个插孔 · 引脚分配",
+    "subCan": "{holes} 个插孔，四角有引脚 · 引脚分配",
+    "subTerminals": "端子分配",
+    "subWire": "2 个端点 · 引脚分配",
+    "wireTitle": "导线",
+    "wireAria": "导线引脚分配",
+    "anchorHole": "锚点插孔",
+    "holeOffset": {
+      "other": "+{count} 个插孔"
+    },
+    "corner": {
+      "bottomLeft": "左下角",
+      "bottomRight": "右下角",
+      "topLeft": "左上角",
+      "topRight": "右上角"
+    },
+    "cornerAnchor": "{corner}（锚点，第 1 脚）",
+    "noAssignments": "没有“{ref}”的引脚分配。",
+    "noPart": "未选择任何元件。"
+  },
+  "popup": {
+    "closeNamed": "关闭{title}",
+    "removeNamed": "移除 {label}",
+    "enterValue": "输入一个值"
+  }
+}

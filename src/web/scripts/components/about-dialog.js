@@ -21,16 +21,12 @@
 // popover, subtitle, description, credit, and a prominent Close button. Build
 // metadata loads asynchronously from the main process (getAppInfo).
 
+import { t } from "../i18n.js";
 import { el } from "../dom.js";
 import { PopupManager } from "../popup-manager.js";
 
+/** The product name — never translated, in any language. */
 const NAME = "Chip Hippo";
-const SUBTITLE = "TTL breadboard designer & simulator";
-const DESCRIPTION =
-  "Design and simulate 74xx-family logic circuits on virtual solderless " +
-  "breadboards — place chips, wires, switches, LEDs and power, then watch " +
-  "electricity settle through every net.";
-const CREDIT = "Copyright © 2026 Jason Figge";
 
 /** A small "i" glyph for the info toggle (the button supplies the circle). */
 const INFO_SVG =
@@ -57,8 +53,8 @@ export class AboutDialog {
       type: "button",
       "aria-controls": "about-build",
       "aria-expanded": "false",
-      "aria-label": "Version information",
-      title: "Version information",
+      "aria-label": t("about.versionInfo"),
+      title: t("about.versionInfo"),
       onClick: () => {
         const show = build.hasAttribute("hidden");
         build.toggleAttribute("hidden", !show);
@@ -73,7 +69,7 @@ export class AboutDialog {
         class: "popup about-dialog",
         role: "dialog",
         "aria-modal": "true",
-        "aria-label": `About ${NAME}`,
+        "aria-label": t("app.about"),
       },
       [
         el("img", {
@@ -88,13 +84,18 @@ export class AboutDialog {
           infoBtn,
           build,
         ]),
-        el("p", { class: "about-subtitle", text: SUBTITLE }),
-        el("p", { class: "about-desc", text: DESCRIPTION }),
-        el("p", { class: "about-credit", text: CREDIT }),
+        el("p", { class: "about-subtitle", text: t("about.subtitle") }),
+        el("p", { class: "about-desc", text: t("about.description") }),
+        // The copyright line is a legal notice, not prose — the same words in
+        // every language, like the product name above it.
+        el("p", {
+          class: "about-credit",
+          text: "Copyright © 2026 Jason Figge",
+        }),
         el("button", {
           class: "about-close",
           type: "button",
-          text: "Close",
+          text: t("common.close"),
           onClick: () => PopupManager.close(),
           "data-autofocus": true,
         }),
@@ -121,15 +122,17 @@ export class AboutDialog {
     } catch {
       /* dev build without the bridge — show version-less */
     }
+    // Electron / Chromium / Node / Platform are product names, so only the row
+    // LABEL "Version" is catalog text.
     const rows = info
       ? [
-          ["Version", info.version],
+          [t("about.version"), info.version],
           ["Electron", info.electron],
           ["Chromium", info.chrome],
           ["Node", info.node],
-          ["Platform", info.platform],
+          [t("about.platform"), info.platform],
         ]
-      : [["Version", "dev build"]];
+      : [[t("about.version"), t("about.devBuild")]];
     for (const [label, value] of rows) {
       build.append(
         el("div", { class: "about-build-row" }, [

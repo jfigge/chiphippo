@@ -30,6 +30,8 @@
 // it shares the controller's `#mode` through the host so the viewport
 // dispatcher is unchanged.
 
+import { t } from "../i18n.js";
+import { wireColorLabel } from "../model/wire-colors.js";
 import { PopupManager } from "../popup-manager.js";
 import { PX_PER_UNIT } from "../desk/desk-geometry.js";
 import { WIRE_COLORS, parseBusName } from "../model/desk-doc.js";
@@ -600,18 +602,24 @@ export class BusTools {
       x: e.clientX,
       y: e.clientY,
       items: [
-        { label: "Rename bus…", onSelect: () => this.#rename(id, bus.name) },
         {
-          label: "Un-bundle (keep wires)",
+          label: t("bus.rename"),
+          onSelect: () => this.#rename(id, bus.name),
+        },
+        {
+          label: t("bus.unbundle"),
           onSelect: () => this.removeBus(id, false),
         },
         {
-          label: "Delete bus + wires",
+          label: t("bus.deleteWithWires"),
           danger: true,
           onSelect: () => this.removeBus(id, true),
         },
         ...WIRE_COLORS.map((color) => ({
-          label: color[0].toUpperCase() + color.slice(1),
+          // Sentence-cased in whatever language names it — CSS `::first-letter`
+          // cannot reach a menu label, and a colour that reads "red" beside
+          // "Rename bus…" looks like a bug rather than a swatch.
+          label: wireColorLabel(color),
           swatch: `var(--color-wire-${color})`,
           onSelect: () => this.recolorBus(id, color),
         })),
@@ -621,10 +629,10 @@ export class BusTools {
 
   #rename(id, current) {
     PopupManager.prompt({
-      title: "Rename bus",
-      label: "Bus name",
+      title: t("bus.renameTitle"),
+      label: t("bus.nameLabel"),
       value: current,
-      placeholder: "e.g. D[7:0], A[0:15]",
+      placeholder: t("bus.namePlaceholder"),
       onConfirm: (name) => {
         if (!parseBusName(name)) return; // junk name — leave it be
         this.#doc().updateBus(id, { name });

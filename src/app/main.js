@@ -40,6 +40,7 @@ const path = require("path");
 const fs = require("fs");
 
 const { parseArgs } = require("./cli-args");
+const i18n = require("./i18n");
 const updater = require("./updater");
 const { isStoreBuild, distribution } = require("./store-build");
 const { CredentialStore } = require("./store/credential-store");
@@ -167,6 +168,67 @@ function windowBackground() {
   return nativeTheme.shouldUseDarkColors ? "#1c1c1c" : "#f4f4f4";
 }
 
+// ─── Language ─────────────────────────────────────────────────────────────────
+// Main resolves the active locale for the WHOLE app (app/i18n.js): it owns the
+// filesystem the catalogs live on and the OS locale they default from, and every
+// window is served from file:// under a CSP that forbids fetching anything — so
+// this is the only route a catalog can travel. Each renderer asks once, at
+// startup, over `i18n:load`.
+//
+// Main also renders user-facing text ITSELF in three places no renderer's t()
+// can reach — the application menu, the native dialogs' file-type filters, and
+// each auxiliary window's title bar — so it keeps the resolved catalog to hand
+// and reads those through `m()`.
+//
+// The payload is CACHED because the menu is rebuilt on every recent-list change
+// and each rebuild reads ~30 labels; `settings:set` drops the cache when the
+// preference moves, which is also what makes a language change reach the menu
+// bar with no restart.
+let _catalog = null;
+
+/** The active catalog payload (settings.locale → OS locale → English). */
+function activeCatalog() {
+  if (!_catalog) {
+    let requested = "system";
+    try {
+      requested = getSettingsStore().get().locale ?? "system";
+    } catch {
+      // A settings read that fails must not take the menu bar with it.
+    }
+    _catalog = i18n.loadCatalog({
+      requested,
+      systemLocale: app.getLocale?.() ?? "en",
+    });
+  }
+  return _catalog;
+}
+
+/**
+ * A native-UI label: the active catalog's string for `key`, falling back to the
+ * English catalog and then to `fallback`. Every user-facing literal main renders
+ * goes through this — `app/tests/no-hardcoded-native-strings.test.js` is what
+ * keeps it that way.
+ * @param {string} key
+ * @param {string} fallback
+ * @param {object} [params]
+ * @returns {string}
+ */
+function m(key, fallback, params) {
+  return i18n.label(activeCatalog(), key, fallback, params);
+}
+
+/**
+ * Forget the resolved catalog and re-render everything main drew with it. Called
+ * when `settings.locale` changes: the MENU BAR is the visible half (it is built
+ * from `m()` calls), and an already-open auxiliary window keeps the title it was
+ * given — retitling a window whose CONTENT is a pin map is not worth a second
+ * bookkeeping path, and the next one it opens is correct.
+ */
+function reloadCatalog() {
+  _catalog = null;
+  refreshAppMenu();
+}
+
 // ─── Storage ──────────────────────────────────────────────────────────────────
 // Built lazily on first use so app.getPath("userData") is resolvable (it
 // honours a --user-data-dir override once Electron has processed it).
@@ -229,14 +291,19 @@ function getProjectStore() {
 //
 // So the renderer can only ever ask main to touch a file the user has already
 // pointed at, exactly as `desk:write` once checked against the current file.
-const PROJECT_FILTERS = [
-  { name: "Chip Hippo Project", extensions: ["chiphippo"] },
+//
+// The filter NAMES are shown in the dialog's file-type dropdown, so they are
+// localized — which is why these are functions rather than the module-level
+// constants they used to be: a `const` is evaluated at require time, long before
+// `app` is ready and the settings store can say which language to speak.
+const projectFilters = () => [
+  { name: m("dialog.filter.project", "Chip Hippo Project"), extensions: ["chiphippo"] }, // prettier-ignore
 ];
 // Export/Import fragments. `.desktop.chiphippo` is the shape written, but the
 // dialog filter can only match the trailing extension — which also lets a
 // loose `.chiphippo` design be imported as a desktop.
-const DESKTOP_FILTERS = [
-  { name: "Chip Hippo Desktop", extensions: ["chiphippo", "json"] },
+const desktopFilters = () => [
+  { name: m("dialog.filter.desktop", "Chip Hippo Desktop"), extensions: ["chiphippo", "json"] }, // prettier-ignore
 ];
 
 /** Paths a dialog (or a project main opened) established this session. */
@@ -368,7 +435,7 @@ async function openProjectDialog() {
   const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
   const opts = {
     properties: ["openFile"],
-    filters: PROJECT_FILTERS,
+    filters: projectFilters(),
     defaultPath: getProjectStore().savesDir,
   };
   const result = win
@@ -468,7 +535,7 @@ async function chooseSavePath(kind, name, current) {
     : from;
   const opts = {
     defaultPath,
-    filters: isProject ? PROJECT_FILTERS : DESKTOP_FILTERS,
+    filters: isProject ? projectFilters() : desktopFilters(),
     properties: ["createDirectory", "showOverwriteConfirmation"],
   };
   const result = win
@@ -505,7 +572,7 @@ async function exportDesktop({ name, description, doc }) {
  */
 async function importDesktop() {
   const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
-  const opts = { properties: ["openFile"], filters: DESKTOP_FILTERS };
+  const opts = { properties: ["openFile"], filters: desktopFilters() };
   const result = win
     ? await dialog.showOpenDialog(win, opts)
     : await dialog.showOpenDialog(opts);
@@ -675,7 +742,7 @@ function openPinoutWindow(ref, opts = {}) {
     alwaysOnTop: pinoutFloatPref(),
     backgroundColor: windowBackground(),
     icon: appIcon,
-    title: "Pin assignments",
+    title: m("window.pinout", "Pin assignments"),
     fullscreenable: false,
     webPreferences: {
       // The pinout page is otherwise bridge-free, but it needs the narrow
@@ -824,8 +891,8 @@ async function pickMemoryImage() {
   const opts = {
     properties: ["openFile"],
     filters: [
-      { name: "Memory image", extensions: ["bin", "hex", "rom", "dat"] },
-      { name: "All files", extensions: ["*"] },
+      { name: m("dialog.filter.memImage", "Memory image"), extensions: ["bin", "hex", "rom", "dat"] }, // prettier-ignore
+      { name: m("dialog.filter.allFiles", "All files"), extensions: ["*"] },
     ],
   };
   const r = win
@@ -865,9 +932,9 @@ async function exportMemoryFile(bytes, suggestedName) {
         ? suggestedName
         : "memory.bin",
     filters: [
-      { name: "Binary image", extensions: ["bin"] },
-      { name: "Intel HEX", extensions: ["hex"] },
-      { name: "All files", extensions: ["*"] },
+      { name: m("dialog.filter.binImage", "Binary image"), extensions: ["bin"] }, // prettier-ignore
+      { name: m("dialog.filter.intelHex", "Intel HEX"), extensions: ["hex"] },
+      { name: m("dialog.filter.allFiles", "All files"), extensions: ["*"] },
     ],
   };
   const r = win
@@ -901,7 +968,7 @@ function openMemoryWindow(compId, ref) {
     // An editor you type into, so it does NOT float over the app by default.
     backgroundColor: windowBackground(),
     icon: appIcon,
-    title: "Memory inspector",
+    title: m("window.memory", "Memory inspector"),
     fullscreenable: false,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
@@ -983,7 +1050,9 @@ function openDocsWindow() {
     // like the memory inspector, not always-on-top like a pinout diagram.
     backgroundColor: windowBackground(),
     icon: appIcon,
-    title: "Chip Hippo User Guide",
+    // The same key the Help menu item uses, so the title bar and the item that
+    // opened it always read alike.
+    title: m("menu.help.userGuide", "Chip Hippo User Guide"),
     fullscreenable: false,
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
@@ -1048,7 +1117,9 @@ function recentProjectItems() {
     click: () => sendToMain("menu:project-open-recent", filePath),
   }));
   if (items.length === 0) {
-    return [{ label: "No recent projects", enabled: false }];
+    return [
+      { label: m("menu.file.noRecent", "No recent projects"), enabled: false },
+    ];
   }
   return items;
 }
@@ -1056,11 +1127,11 @@ function recentProjectItems() {
 function buildAppMenu() {
   const isMac = process.platform === "darwin";
   const about = {
-    label: "About Chip Hippo",
+    label: m("menu.app.about", "About Chip Hippo"),
     click: () => sendToMain("menu:show-about"),
   };
   const settings = {
-    label: "Settings…",
+    label: m("menu.app.settings", "Settings…"),
     accelerator: "CmdOrCtrl+,",
     click: () => sendToMain("menu:open-settings"),
   };
@@ -1078,37 +1149,40 @@ function buildAppMenu() {
   // carries the path, the one menu push with a payload.
   const fileItems = [
     {
-      label: "New Project",
+      label: m("menu.file.new", "New Project"),
       accelerator: "CmdOrCtrl+N",
       click: () => sendToMain("menu:project-new"),
     },
     {
-      label: "Open…",
+      label: m("menu.file.open", "Open…"),
       accelerator: "CmdOrCtrl+O",
       click: () => sendToMain("menu:project-open"),
     },
-    { label: "Open Recent", submenu: recentProjectItems() },
+    {
+      label: m("menu.file.openRecent", "Open Recent"),
+      submenu: recentProjectItems(),
+    },
     { type: "separator" },
     {
-      label: "Save",
+      label: m("menu.file.save", "Save"),
       accelerator: "CmdOrCtrl+S",
       click: () => sendToMain("menu:project-save"),
     },
     {
-      label: "Save As…",
+      label: m("menu.file.saveAs", "Save As…"),
       accelerator: "CmdOrCtrl+Shift+S",
       click: () => sendToMain("menu:project-save-as"),
     },
     { type: "separator" },
     {
-      label: "Project Properties…",
+      label: m("menu.file.properties", "Project Properties…"),
       click: () => sendToMain("menu:project-properties"),
     },
     { type: "separator" },
     {
       // The right-docked build guide (BOM / wiring list / assembly steps).
       // Read-only, so it stays available while the circuit runs.
-      label: "Bill Of Materials…",
+      label: m("menu.file.bom", "Bill Of Materials…"),
       accelerator: "CmdOrCtrl+B",
       click: () => sendToMain("menu:build-guide"),
     },
@@ -1128,29 +1202,32 @@ function buildAppMenu() {
   // that the menu would offer what the strip forbids, and a menu item that
   // silently does nothing is worse than one that is greyed out.
   const desktopItems = [
-    { label: "New Desktop", click: () => sendToMain("menu:desktop-add") },
+    {
+      label: m("menu.desktop.new", "New Desktop"),
+      click: () => sendToMain("menu:desktop-add"),
+    },
     {
       id: "desktop-duplicate",
-      label: "Duplicate Desktop",
+      label: m("menu.desktop.duplicate", "Duplicate Desktop"),
       click: () => sendToMain("menu:desktop-duplicate"),
     },
     { type: "separator" },
     {
-      label: "Import Desktop…",
+      label: m("menu.desktop.import", "Import Desktop…"),
       click: () => sendToMain("menu:desktop-import"),
     },
     {
-      label: "Export Desktop…",
+      label: m("menu.desktop.export", "Export Desktop…"),
       click: () => sendToMain("menu:desktop-export"),
     },
     { type: "separator" },
     {
-      label: "Desktop Properties…",
+      label: m("menu.desktop.properties", "Desktop Properties…"),
       click: () => sendToMain("menu:desktop-properties"),
     },
     {
       id: "desktop-delete",
-      label: "Delete Desktop",
+      label: m("menu.desktop.delete", "Delete Desktop"),
       click: () => sendToMain("menu:desktop-delete"),
     },
   ];
@@ -1173,10 +1250,10 @@ function buildAppMenu() {
         { role: "quit" },
       ],
     });
-    template.push({ label: "File", submenu: fileItems });
+    template.push({ label: m("menu.file.title", "File"), submenu: fileItems });
   } else {
     template.push({
-      label: "File",
+      label: m("menu.file.title", "File"),
       submenu: [
         ...fileItems,
         { type: "separator" },
@@ -1186,7 +1263,10 @@ function buildAppMenu() {
       ],
     });
   }
-  template.push({ label: "Desktop", submenu: desktopItems });
+  template.push({
+    label: m("menu.desktop.title", "Desktop"),
+    submenu: desktopItems,
+  });
 
   // Undo / Redo drive the DOCUMENT history (Feature 200), not text-field
   // editing — each pushes to the renderer, which owns the snapshot stack and
@@ -1196,23 +1276,26 @@ function buildAppMenu() {
   // what "everything" means depends on where the focus is, and only the
   // renderer knows. Cut/Copy/Paste stay native roles — text is text.
   template.push({
-    label: "Edit",
+    label: m("menu.edit.title", "Edit"),
     submenu: [
       {
         id: "edit-undo",
-        label: "Undo",
+        label: m("menu.edit.undo", "Undo"),
         accelerator: "CmdOrCtrl+Z",
         enabled: false,
         click: () => sendToMain("menu:edit-undo"),
       },
       {
         id: "edit-redo",
-        label: "Redo",
+        label: m("menu.edit.redo", "Redo"),
         accelerator: "Shift+CmdOrCtrl+Z",
         enabled: false,
         click: () => sendToMain("menu:edit-redo"),
       },
       { type: "separator" },
+      // Cut / Copy / Paste stay native ROLES: Electron supplies the OS's own
+      // localized label for each, which is better than anything this catalog
+      // could say — they are the platform's words, not the app's.
       { role: "cut" },
       { role: "copy" },
       { role: "paste" },
@@ -1228,7 +1311,7 @@ function buildAppMenu() {
         // An AUXILIARY window (pinout, memory inspector, docs) has no desk and
         // no listener, so there the native command is exactly right — and it
         // must go to THAT window, not the main one `sendToMain` would reach.
-        label: "Select All",
+        label: m("menu.edit.selectAll", "Select All"),
         accelerator: "CmdOrCtrl+A",
         click: (_item, focusedWindow) => {
           if (focusedWindow && focusedWindow !== mainWindow) {
@@ -1245,10 +1328,10 @@ function buildAppMenu() {
   // auto-open — and so the accelerator is the familiar Option+Cmd+I (Alt+Ctrl+I
   // off macOS). Targets the focused window, falling back to the main one.
   template.push({
-    label: "View",
+    label: m("menu.view.title", "View"),
     submenu: [
       {
-        label: "Toggle Developer Tools",
+        label: m("menu.view.devTools", "Toggle Developer Tools"),
         accelerator: "Alt+CmdOrCtrl+I",
         click: (_item, focusedWindow) => {
           const win = focusedWindow || mainWindow;
@@ -1261,7 +1344,7 @@ function buildAppMenu() {
     ],
   });
   template.push({
-    label: "Window",
+    label: m("menu.window.title", "Window"),
     submenu: [
       { role: "minimize" },
       { role: "zoom" },
@@ -1270,12 +1353,15 @@ function buildAppMenu() {
     ],
   });
   const shortcuts = {
-    label: "Keyboard Shortcuts",
+    label: m("menu.help.shortcuts", "Keyboard Shortcuts"),
     accelerator: "CmdOrCtrl+K",
     click: () => sendToMain("menu:keyboard-shortcuts"),
   };
+  // The guide itself is English-only (one Markdown source drives the in-app
+  // viewer, the website and the PDF), so the ITEM is localized but the pages it
+  // opens are not — see CLAUDE.md's "User guide & docs".
   const userGuide = {
-    label: "Chip Hippo User Guide",
+    label: m("menu.help.userGuide", "Chip Hippo User Guide"),
     accelerator: "CmdOrCtrl+/",
     click: () => openDocsWindow(),
   };
@@ -1289,7 +1375,7 @@ function buildAppMenu() {
     ? []
     : [
         {
-          label: "Check for Updates…",
+          label: m("menu.help.checkUpdates", "Check for Updates…"),
           click: () => updater.checkForUpdates({ manual: true }),
         },
       ];
@@ -1299,7 +1385,12 @@ function buildAppMenu() {
     ? [{ type: "separator" }, ...checkUpdates]
     : [];
   template.push({
+    // The ROLE stays (on macOS it is what gives the menu its Help-search
+    // integration), but the label is ours: Electron localizes a role's own title
+    // from the OS language, which is independent of `settings.locale` — so
+    // without this the bar reads German with one English title in it.
     role: "help",
+    label: m("menu.help.title", "Help"),
     submenu: isMac
       ? [userGuide, { type: "separator" }, shortcuts, ...updateItems]
       : [
@@ -1369,13 +1460,13 @@ function showPinoutMenu(win) {
   const floating = win.isAlwaysOnTop();
   Menu.buildFromTemplate([
     {
-      label: "Float above other windows",
+      label: m("menu.pinout.float", "Float above other windows"),
       type: "checkbox",
       checked: floating,
       click: () => setPinoutFloat(!floating),
     },
     { type: "separator" },
-    { label: "Close window", role: "close" },
+    { label: m("menu.pinout.close", "Close window"), role: "close" },
   ]).popup({ window: win });
 }
 
@@ -1438,14 +1529,35 @@ function registerIpc() {
   ipcMain.handle("settings:get", () => getSettingsStore().get());
   ipcMain.handle("settings:set", (_event, patch) => {
     const next = getSettingsStore().set(patch);
-    // Appearance is the one setting main itself acts on: `theme` becomes the
-    // native theme source, which every window (and the native chrome) follows.
+    // Appearance holds the two settings main itself acts on. `theme` becomes the
+    // native theme source, which every window (and the native chrome) follows;
+    // `locale` decides which catalog main answers `i18n:load` with AND which
+    // language its own menu bar speaks, so a change re-resolves both.
     if (patch && Object.hasOwn(patch, "theme")) applyThemeSource(next.theme);
+    if (patch && Object.hasOwn(patch, "locale")) reloadCatalog();
     return next;
   });
   // Settings ▸ Data Sheets: pick the external datasheet-PDF folder (native
   // directory dialog); the renderer persists the chosen path via settings:set.
   ipcMain.handle("settings:choose-datasheet-dir", () => chooseDatasheetDir());
+
+  // ── Language ───────────────────────────────────────────────────────────────
+  // Every window asks for its catalog ONCE at startup: it is sandboxed, served
+  // from file://, and its CSP forbids fetching anything, so main is the only
+  // side that can read the bundled JSON — the same rule that puts every other
+  // file read here. `load` answers with the ACTIVE catalog plus the English one
+  // as a fallback, so a key missing from a translation still renders.
+  //
+  // The shipped-language LIST rides along on the same payload rather than
+  // getting a channel of its own: it comes from the very table the reader
+  // resolves against (app/i18n.js's LOCALES), so a language cannot appear in
+  // the Settings picker with no catalog behind it — and one round trip at
+  // startup means the picker can be built SYNCHRONOUSLY when the dialog opens,
+  // instead of the default panel filling in a moment late.
+  ipcMain.handle("i18n:load", () => ({
+    ...activeCatalog(),
+    locales: i18n.LOCALES,
+  }));
 
   // Auto-update (Feature 280). The updater itself lives in updater.js; these two are the
   // renderer's way in — Settings ▸ About's Check button and the Restart action

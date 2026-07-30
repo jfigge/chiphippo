@@ -18,6 +18,7 @@
 // readout that clicks back to 100%, and +. Pure chrome: it reports intents to
 // its creator via constructor callbacks and mirrors state via setZoom().
 
+import { t } from "../i18n.js";
 import { ZOOM_MAX, ZOOM_MIN } from "../desk/desk-geometry.js";
 
 const EPSILON = 1e-9;
@@ -38,17 +39,15 @@ export class ZoomControl {
     const cluster = document.createElement("div");
     cluster.className = "desk-zoom";
 
-    this.#outBtn = this.#button("desk-zoom-btn", "−", "Zoom out");
+    // The three GLYPHS (− / % / +) are the same in every language; only the
+    // labels behind them are translated, which `relocalize()` re-applies.
+    this.#outBtn = this.#button("desk-zoom-btn", "−", "zoom.out");
     this.#outBtn.addEventListener("click", () => onZoomOut?.());
 
-    this.#readout = this.#button(
-      "desk-zoom-readout",
-      "100%",
-      "Reset zoom to 100%",
-    );
+    this.#readout = this.#button("desk-zoom-readout", "100%", "zoom.reset");
     this.#readout.addEventListener("click", () => onReset?.());
 
-    this.#inBtn = this.#button("desk-zoom-btn", "+", "Zoom in");
+    this.#inBtn = this.#button("desk-zoom-btn", "+", "zoom.in");
     this.#inBtn.addEventListener("click", () => onZoomIn?.());
 
     cluster.append(this.#outBtn, this.#readout, this.#inBtn);
@@ -62,13 +61,29 @@ export class ZoomControl {
     this.#inBtn.disabled = zoom >= ZOOM_MAX - EPSILON;
   }
 
-  #button(className, text, label) {
+  /** Re-apply the button labels after a language change (see app.js). */
+  relocalize() {
+    for (const btn of [this.#outBtn, this.#readout, this.#inBtn]) {
+      const label = t(btn.dataset.labelKey);
+      btn.title = label;
+      btn.setAttribute("aria-label", label);
+    }
+  }
+
+  /**
+   * @param {string} className
+   * @param {string} text     the glyph (untranslated)
+   * @param {string} labelKey the catalog key for its title/aria-label, KEPT on
+   *   the element so `relocalize()` can resolve it again in the new language.
+   */
+  #button(className, text, labelKey) {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.className = className;
     btn.textContent = text;
-    btn.title = label;
-    btn.setAttribute("aria-label", label);
+    btn.dataset.labelKey = labelKey;
+    btn.title = t(labelKey);
+    btn.setAttribute("aria-label", t(labelKey));
     return btn;
   }
 }

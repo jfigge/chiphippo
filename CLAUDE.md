@@ -132,7 +132,12 @@ Release workflow was already publishing, a **Settings ▸ About** tab to check
 on demand and opt into checking at launch (off by default — a check is an
 outbound call), a restart only ever taken with consent and through the normal
 unsaved-project guard, and ONE runtime `store-build.js` gate that turns the
-whole feature off in a Mac App Store build.
+whole feature off in a Mac App Store build; and **language support** — the app
+in seven languages (English, German, Spanish, French, Italian, Japanese, Chinese)
+off one JSON catalog each, with main resolving the locale for every window and a
+change applied to the chrome IN PLACE, since nothing here reloads; the user guide
+stays English by decision. See the "Language support" section below, including
+the five guards that make an untranslated string fail the suite rather than ship.
 When a stage is finished, move its plan file into `features/done/`.
 
 ## Naming & identity
@@ -322,6 +327,9 @@ website** (`make docs` → `website/docs/`), and a **PDF** (`make pdf` →
   gestures, mounting, selection, doc mutations, and the one viewport pointer
   dispatcher) — one responsibility, exercised by the characterization suite in
   `tests/desk-gestures.test.js`.
+- `src/web/locales/` — one bundled message catalog per language (`en.json` is the
+  reference; see "Language support"). Read by MAIN and handed to each renderer
+  over `i18n:load` — a renderer never reads or fetches one itself.
 - `src/web/fonts/` — bundled Inter variable font; never load fonts from a CDN.
 - `src/web/styles/` — `theme.css` (design tokens + reset) and `app.css` (shell). Use
   the tokens; don't hardcode colours/sizes.
@@ -1479,6 +1487,7 @@ make fmt       # Format JS/CSS/HTML via Prettier
 make fmt-check # Check formatting without writing
 make lint      # Lint JS via ESLint
 make test      # License-header guard + Node unit tests (node --test)
+make test-i18n # Just the language guards (catalog completeness + string leaks)
 make icons     # Regenerate app-icon rasters from the SVG sources (see below)
 make datasheets # Regenerate the pinout-window datasheet crops (see below)
 make demos     # Regenerate + engine-validate demos/ AND src/web/demos/ (see below)
@@ -1647,6 +1656,142 @@ make clean     # Remove build/ and dist/
   nothing resolves to `null` and **floats** — legal, and what happens when a rail
   is moved or deleted; the part keeps its exact position. Deleting a strip removes
   only what is *seated* on it (`comp.board === id`), never a neighbour's lead.
+
+## Language support
+
+The app speaks **English, German, Spanish, French, Italian, Japanese and
+Chinese (Simplified)**, chosen in Settings ▸ Appearance ▸ **Language** (or left
+on *System*). One JSON catalog per language under **`src/web/locales/`**, and
+`en.json` is the REFERENCE: every other file must cover its leaf keys exactly.
+
+- **MAIN RESOLVES THE LOCALE FOR THE WHOLE APP** (`app/i18n.js`). It owns the
+  filesystem the catalogs live on and the OS locale they default from, and every
+  window is `file://` under a CSP with no `connect-src` — so a renderer cannot
+  read or fetch a catalog, and this is the only route one can travel. The order
+  is `settings.locale` (unless `"system"`) → `app.getLocale()` → English, and a
+  language with no shipped catalog falls back to English rather than failing.
+  `readCatalog` validates the subtag against `^[a-z]{2,3}$` before it touches a
+  path, which is what stops a crafted locale escaping the locales directory.
+  Each renderer asks ONCE over **`i18n:load`**, whose payload is `{active, lang,
+  messages, fallback, locales}` — the English catalog always rides along as the
+  fallback, and the shipped-language LIST rides along too (from the same
+  `LOCALES` table the reader resolves against) so the Settings picker can be
+  built synchronously and can never offer a language with nothing behind it.
+- **The renderer's seam is `t()`** (`web/scripts/i18n.js`): dotted keys against
+  the nested catalog, `{name}` interpolation, CLDR plurals through
+  `Intl.PluralRules` when a numeric `count` is passed, and the resolution chain
+  active → English → **the key itself**, so a missing string is visible rather
+  than blank. `app.js` awaits `i18n.init()` **before anything renders**; so do
+  `pinout.js` and `memory.js`, each its own sandboxed renderer, with a top-level
+  `await`. **NEVER call `t()` at module scope** — the catalog is not loaded yet,
+  and a top-level call freezes the English key into a module constant. That is
+  why every options list that used to be a `const` (`THEME_OPTIONS`,
+  `SHORTCUT_GROUPS`, …) is now a function.
+- **`tf(key, fallback)` is `t()` for a string whose English lives somewhere
+  else.** The parts CATALOG is pure data evaluated at import time, so its
+  `title`/`label` fields cannot be `t()` calls — and they are not only UI text
+  either (the BOM export, `scripts/demo-specs.mjs` and the catalog's own
+  integrity tests read them under Node). So the English stays there as the DATA,
+  the translations live under `parts.*` / `boards.*`, and **`catalog/labels.js`**
+  is the one place that resolves them (`partTitle`, `kitLabel`) — falling back to
+  the def's own English rather than to a raw key, so a part added without an
+  entry reads correctly, just untranslated. `model/wire-colors.js` is the same
+  shape for the eight stored colour TOKENS (`wireColorName` /
+  `wireColorLabel`) — the token is what a document stores and what CSS suffixes,
+  and only the word shown is translated.
+- **MAIN RENDERS TEXT ITSELF in three places no `t()` can reach** — the
+  application menu, each auxiliary window's title bar, and the native dialogs'
+  file-type filter names — so it keeps the resolved catalog to hand and reads
+  those through **`m(key, fallback)`**. The payload is cached (the menu is
+  rebuilt on every recent-list change, ~30 labels a time) and `settings:set`
+  drops the cache when `locale` moves, which is what makes a language change
+  reach the menu bar with no restart. Cut/Copy/Paste stay native ROLES:
+  Electron supplies the OS's own word for each, which beats anything this
+  catalog could say. `PROJECT_FILTERS`/`DESKTOP_FILTERS` became FUNCTIONS for
+  this — a `const` is evaluated at require time, long before `app` is ready.
+- **A LANGUAGE CHANGE IS APPLIED IN PLACE, because nothing here reloads the
+  window** (an unsaved project lives only in memory; a reload to change a label
+  would throw the user's work away). `app.js`'s **`relabelChrome`** re-applies
+  the header, both pills, the transport and the window title, and calls
+  `relocalize()` on the palette, the tab strip, the build guide, the analyzer,
+  the AI panel, the zoom cluster and the schematic. Only PERSISTENT chrome needs
+  it: every dialog, context menu, popover and notification is built when it
+  opens and therefore speaks the current language for free. Three of the calls
+  are relabel functions the app already had for their own reasons — `setMode`,
+  `updateLocateIcon`, `onTransportChange` each own a button whose label depends
+  on state, so re-running them unchanged IS a relabel.
+- **IDENTITY IS NEVER TRANSLATED.** A palette section's English name stays its
+  collapse-state key and its grouping key (`sectionLabel()` shows the
+  translation; `#toggleGroup` is still called with the English), or a section
+  would forget whether it was open the moment the language changed. A BOM line's
+  tally key is built from stored tokens, so a language change can never split or
+  merge a row. Feature 270's `<ref> example` tab name is the example's whole
+  identity test, so it stays English. `Desktop N` IS translated — it is a
+  default NAME, data from the moment it is created, like any name the user types.
+- **WHAT IS DELIBERATELY ENGLISH**, each because it is reference material or
+  protocol rather than the application's own words:
+  - the **user guide** — one Markdown source drives the in-app viewer, the
+    website and the PDF, so `docs-viewer.js`'s chrome stays English to match the
+    pages it lists (Settings says so: "The user guide is only available in
+    English");
+  - a part's **`blurb`** and the pinout window's per-pin **`detail`** text and
+    `ROLE_TAG` abbreviations — datasheet prose about the part, which sits with
+    the guide on the reference side of the line. The rule is statable: *short
+    names and labels are translated; per-pin and per-part datasheet descriptions
+    are not.* `partBlurb()` exists anyway so that decision has exactly one place
+    to be revisited;
+  - the **AI ladder's fault messages** (`autobuild.js`, `autobuild-verify.js`,
+    `generate.js`) — `buildRepairMessage` sends them BACK TO THE MODEL as the
+    repair instruction, and the system prompt and catalog card they answer are
+    English by construction. Translating them would degrade the repair round;
+    the panel shows each beside a fault CODE, which is what the user acts on.
+    The ladder's own progress labels are localized (`ai.gate.*`);
+  - the product name, the copyright line, format names (SVG/PNG/Intel HEX),
+    "ASCII", and every keyboard glyph (⌘, Tab, Esc, W) — the modifier already
+    varies by PLATFORM, never by locale.
+
+### The guards (`make test-i18n`, and part of `make test`)
+
+Five tests, and the point of them is that an i18n regression is otherwise
+**invisible**: `t()` falls back to English, so a missing translation looks like
+a proper noun, and a hardcoded literal looks like a translation that happens to
+match.
+
+- **`web/scripts/tests/i18n-catalogs.test.js` — the untranslated-string
+  guard.** Holds every locale to `en.json` in the four ways a translation
+  silently goes wrong (a **missing key**; a **lost `{placeholder}`**, which
+  renders as a gap; a **broken plural** shape; an **empty value**, which renders
+  as nothing) and the two ways the CODE drifts from the catalog: **a key the
+  source asks for that does not exist** (`t("zoom.out")` renders the text
+  `zoom.out` — a real bug this caught on its first run), and **a catalog part,
+  board kit, group or colour token with no entry**. Coverage must be EXACT in
+  both directions: an extra key is a rename left behind, i.e. a translation
+  nothing will ever read.
+- **`web/scripts/tests/no-hardcoded-strings.test.js`** — the complement: a
+  display literal that never entered the catalog at all. It scans for the
+  assignment forms (`textContent`, `title`, `placeholder`, `setAttribute`) and,
+  most valuably, the **UI-bearing object properties** (`label:`, `message:`,
+  `confirmLabel:`, …) that are how `el()` and every PopupManager dialog RECEIVE
+  their text. It is a ratchet over `no-hardcoded-strings.baseline.json` — which
+  **is currently empty**, so there is no debt to shrink; regenerate with
+  `UPDATE_HARDCODED_BASELINE=1`. Every exclusion in `SKIP_FILES` /`INTENTIONAL`
+  carries its reason in place, because an exclusion is a stated decision and not
+  somewhere to put an inconvenience.
+- **`app/tests/no-hardcoded-native-strings.test.js`** — the same for main, whose
+  strings the renderer scanner cannot see. A localized call reads
+  `label: m("menu.file.new", "New Project")`, so its English sits as the
+  FALLBACK ARGUMENT, invisible to the rules; drop the `m()` wrapper and the
+  literal lands right after the key again and this fails. Its second half is the
+  converse — that the menu really is built from ~30 `m()` calls and that every
+  key exists, since a wrong key silently makes the fallback the only thing
+  anybody ever sees.
+- **`app/tests/i18n.test.js`** (the resolution order + path safety) and
+  **`web/scripts/tests/i18n.test.js`** (the `t()`/`tf()`/plural/format contract).
+
+`tests/jsdom-setup.js` installs the REAL `locales/en.json` for every component
+test, so the existing English assertions both keep working and start exercising
+the catalog: a key deleted from `en.json` now fails the test that reads it,
+rather than quietly rendering a dotted key to the user.
 
 ## License headers
 

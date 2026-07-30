@@ -27,6 +27,8 @@
 // electrical logic, no modal chrome (the native window frame owns the title
 // bar + close).
 
+import { t } from "../i18n.js";
+import { partTitle } from "../catalog/labels.js";
 import { el } from "../dom.js";
 import { rotateOffset } from "../model/breadboard.js";
 import { flippedPin } from "../model/footprints.js";
@@ -57,8 +59,8 @@ export function datasheetButton(onOpen) {
   const btn = el("button", {
     class: "pinout-header-btn",
     type: "button",
-    title: "Open the datasheet PDF",
-    "aria-label": "Open the datasheet PDF",
+    title: t("pinout.openDatasheet"),
+    "aria-label": t("pinout.openDatasheet"),
     onClick: () => onOpen?.(),
   });
   btn.innerHTML = DATASHEET_SVG;
@@ -96,15 +98,22 @@ export function exampleButton(onOpen) {
   const btn = el("button", {
     class: "pinout-header-btn",
     type: "button",
-    title: "Open this part's example circuit as a new desktop",
-    "aria-label": "Open the example circuit",
+    title: t("pinout.openExampleTitle"),
+    "aria-label": t("pinout.openExample"),
     onClick: () => onOpen?.(),
   });
   btn.innerHTML = EXAMPLE_SVG;
   return btn;
 }
 
-/** Short role tag shown beside each pin/terminal name. */
+/**
+ * Short role tag shown beside each pin/terminal name.
+ *
+ * NOT translated, deliberately: these are the abbreviations a datasheet's own
+ * pin table uses, and they sit with the per-pin `detail` descriptions below and
+ * a part's `blurb` on the reference-documentation side of the line CLAUDE.md's
+ * "Language support" draws.
+ */
 const ROLE_TAG = Object.freeze({
   input: "in",
   output: "out",
@@ -166,7 +175,9 @@ const TERMINAL_INFO = Object.freeze({
 
 /** The offset of a discrete pin from its anchor hole, as a label. */
 const offsetLabel = (offset) =>
-  offset === 0 ? "anchor hole" : `+${offset} hole${offset === 1 ? "" : "s"}`;
+  offset === 0
+    ? t("pinout.anchorHole")
+    : t("pinout.holeOffset", { count: offset });
 
 /** The role-colored name span (label + short role tag). */
 function nameSpan(name, role) {
@@ -184,11 +195,14 @@ function pinoutShell(def, subtitle, body, extra) {
       class: "popup chip-pinout",
       role: "dialog",
       "aria-modal": "true",
-      "aria-label": `${def.id} pin assignments`,
+      "aria-label": t("pinout.ariaLabel", { id: def.id }),
     },
     [
       el("div", { class: "popup-header" }, [
-        el("span", { class: "popup-title", text: `${def.id} · ${def.title}` }),
+        el("span", {
+          class: "popup-title",
+          text: `${def.id} · ${partTitle(def)}`,
+        }),
       ]),
       el("div", { class: "chip-pinout-sub", text: subtitle }),
       body,
@@ -210,7 +224,7 @@ function datasheetFigure(def) {
   const figure = el("figure", { class: "chip-pinout-datasheet" }, [
     el("figcaption", {
       class: "chip-pinout-datasheet-cap",
-      text: "Datasheet — internal diagram & function table",
+      text: t("pinout.datasheetCaption"),
     }),
     el("img", {
       class: "chip-pinout-datasheet-img",
@@ -270,7 +284,7 @@ export function buildChipPinout(def, rot = 0) {
 
   return pinoutShell(
     def,
-    `${def.package} · pin assignments`,
+    t("pinout.subPackage", { package: def.package }),
     el("div", { class: "chip-pinout-dip" }, [
       el("div", { class: "chip-pinout-notch", "aria-hidden": "true" }),
       el("div", { class: "chip-pinout-grid" }, rows),
@@ -311,7 +325,7 @@ export function buildDiscretePinout(def) {
   );
   return pinoutShell(
     def,
-    `${span} holes along one grid row · pin assignments`,
+    t("pinout.subLinear", { count: span }),
     el("div", { class: "part-pinout-list" }, rows),
   );
 }
@@ -344,18 +358,20 @@ export function buildCanPinout(def, rot = 0) {
   ];
   const rows = def.pins.map((p, i) => {
     const { dx, dy } = rotateOffset(cornerOffsets[i], rot);
-    const corner = `${dy > 0 ? "bottom" : "top"}-${dx > 0 ? "right" : "left"} corner`;
+    const corner = t(
+      `pinout.corner.${dy > 0 ? "bottom" : "top"}${dx > 0 ? "Right" : "Left"}`,
+    );
     return listRow({
       tag: p.n,
       name: p.name,
       role: p.role,
-      detail: i === 0 ? `${corner} (the anchor, pin 1)` : corner,
+      detail: i === 0 ? t("pinout.cornerAnchor", { corner }) : corner,
     });
   });
   const holes = `${width + 1} × ${height + 1}`;
   return pinoutShell(
     def,
-    `${holes} holes, legs at the 4 corners · pin assignments`,
+    t("pinout.subCan", { holes }),
     el("div", { class: "part-pinout-list" }, rows),
   );
 }
@@ -378,7 +394,7 @@ export function buildTerminalPinout(def) {
   });
   return pinoutShell(
     def,
-    "terminal assignments",
+    t("pinout.subTerminals"),
     el("div", { class: "part-pinout-list" }, rows),
   );
 }
@@ -396,7 +412,7 @@ export function buildWirePinout() {
     el("div", { class: "part-pinout-line" }, [
       el("span", { class: "chip-pinout-num", text: String(offset + 1) }),
       el("span", { class: "chip-pinout-name" }, [
-        el("span", { class: "chip-pinout-label", text: "Wire" }),
+        el("span", { class: "chip-pinout-label", text: t("pinout.wireTitle") }),
       ]),
       el("span", { class: "part-pinout-detail", text: offsetLabel(offset) }),
     ]),
@@ -407,15 +423,15 @@ export function buildWirePinout() {
       class: "popup chip-pinout",
       role: "dialog",
       "aria-modal": "true",
-      "aria-label": "Wire pin assignments",
+      "aria-label": t("pinout.wireAria"),
     },
     [
       el("div", { class: "popup-header" }, [
-        el("span", { class: "popup-title", text: "Wire" }),
+        el("span", { class: "popup-title", text: t("pinout.wireTitle") }),
       ]),
       el("div", {
         class: "chip-pinout-sub",
-        text: "2 endpoints · pin assignments",
+        text: t("pinout.subWire"),
       }),
       el("div", { class: "part-pinout-list" }, rows),
     ],

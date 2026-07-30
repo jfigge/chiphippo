@@ -26,6 +26,7 @@
 // and offers the model the faults back. That is the point of the ladder: the
 // user should never be shown a generated circuit that has not been run.
 
+import { tf } from "../i18n.js";
 import { compileNetlist, designClipOf } from "../model/autobuild.js";
 import { verifySteps } from "../model/autobuild-verify.js";
 
@@ -177,7 +178,10 @@ export function buildFromSpec(spec) {
  * @returns the same result shape `buildFromSpec` returns
  */
 export function* buildStepsFromSpec(spec) {
-  yield { gate: "compile", label: "Compiling the netlist…" };
+  yield {
+    gate: "compile",
+    label: tf("ai.gate.compile", "Compiling the netlist…"),
+  };
 
   const compiled = compileNetlist(spec);
   if (!compiled.ok) {

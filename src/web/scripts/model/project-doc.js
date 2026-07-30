@@ -38,6 +38,8 @@
 export const PROJECT_VERSION = 4;
 
 /** How long a project or desktop name may be (it suggests a file name). */
+import { tf } from "../i18n.js";
+
 const MAX_NAME = 64;
 
 /** Trim a user-supplied string field, or "" for anything that isn't one. */
@@ -138,7 +140,11 @@ function insertDesktop(meta, { doc, name, description }, at = -1) {
   const index = mintIndex(meta);
   const tab = makeTab(
     `t${index}`,
-    uniqueName(meta, text(name) || `Desktop ${index}`),
+    uniqueName(
+      meta,
+      text(name) ||
+        tf("workspace.defaultDesktopName", "Desktop {n}", { n: index }),
+    ),
     description,
     doc,
   );

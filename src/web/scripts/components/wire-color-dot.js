@@ -43,6 +43,7 @@
 // path while the tool is DISARMED — is what it was before this existed.
 
 import { el } from "../dom.js";
+import { t } from "../i18n.js";
 import { PopupManager } from "../popup-manager.js";
 import { WIRE_COLORS } from "../model/desk-doc.js";
 import { buildColorSwatches } from "./color-swatches.js";
@@ -55,7 +56,7 @@ function openPicker(anchor, color, onPick) {
   const swatches = buildColorSwatches({
     colors: WIRE_COLORS,
     value: color,
-    ariaLabel: "Wire color",
+    ariaLabel: t("toolbar.wire.colorLabel"),
     onPick: (picked) => {
       // Close FIRST, then report — the order menu()/confirm() use, so a
       // callback that opens something of its own is never QUEUED behind this

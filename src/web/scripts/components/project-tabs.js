@@ -47,6 +47,7 @@
 // whichever it is.
 
 import { el } from "../dom.js";
+import { t } from "../i18n.js";
 import { PopupManager } from "../popup-manager.js";
 
 export class ProjectTabs {
@@ -99,7 +100,7 @@ export class ProjectTabs {
     this.#root = el("div", {
       class: "project-tabs",
       role: "tablist",
-      "aria-label": "Desktops",
+      "aria-label": t("tabs.label"),
     });
     container.append(this.#root);
     // The "+" is the strip's whole reason for always being here, so it exists
@@ -135,8 +136,8 @@ export class ProjectTabs {
         class: "project-tab-add",
         type: "button",
         text: "+",
-        title: "New desktop (right-click to import one)",
-        "aria-label": "New desktop",
+        title: t("tabs.addTitle"),
+        "aria-label": t("tabs.add"),
         onClick: () => this.#onAdd?.(),
         onContextMenu: (e) => {
           e.preventDefault();
@@ -158,8 +159,8 @@ export class ProjectTabs {
       x: e.clientX,
       y: e.clientY,
       items: [
-        { label: "New Desktop", onSelect: () => this.#onAdd?.() },
-        { label: "Import Desktop…", onSelect: () => this.#onImport?.() },
+        { label: t("menu.desktop.new"), onSelect: () => this.#onAdd?.() },
+        { label: t("menu.desktop.import"), onSelect: () => this.#onImport?.() },
       ],
     });
   }
@@ -191,6 +192,16 @@ export class ProjectTabs {
     );
   }
 
+  /**
+   * Re-render in the new language (see app.js's `relabelChrome`). Every tab is
+   * drawn from the project's own records, so a redraw is the whole job — the
+   * two context menus are built when they open and need nothing.
+   */
+  relocalize() {
+    this.#root.setAttribute("aria-label", t("tabs.label"));
+    this.#render();
+  }
+
   /** The board menu's shape, in its tab form (see the file note). */
   #openMenu(tab, e) {
     PopupManager.menu({
@@ -200,23 +211,23 @@ export class ProjectTabs {
         {
           // The universal Name/Description pair, nothing else: a desktop is
           // not a file, so it has no Location to show.
-          label: "Properties…",
+          label: t("tabs.properties"),
           onSelect: () => this.#onProperties?.(tab.id),
         },
         {
-          label: "Duplicate Desktop",
+          label: t("menu.desktop.duplicate"),
           disabled: this.#locked,
           onSelect: () => this.#onDuplicate?.(tab.id),
         },
         {
           // A snapshot, with no link back — read-only, so it stays available
           // while the circuit runs.
-          label: "Export Desktop…",
+          label: t("menu.desktop.export"),
           onSelect: () => this.#onExport?.(tab.id),
         },
         { separator: true },
         {
-          label: "Delete Desktop",
+          label: t("menu.desktop.delete"),
           danger: true,
           // Every desktop is deletable; a project just can't run out of them.
           disabled: this.#tabs.length <= 1 || this.#locked,

@@ -30,6 +30,7 @@
 // camera stays DeskView's job — this class only reads worldFromEvent/camera.
 
 import { clear, el, svgEl } from "../dom.js";
+import { t } from "../i18n.js";
 import { PopupManager } from "../popup-manager.js";
 import { PX_PER_UNIT, clampZoom } from "../desk/desk-geometry.js";
 import { polylinePath, wirePath } from "../desk/wire-path.js";
@@ -74,6 +75,7 @@ import {
 import { nearestLegalOffset } from "../model/nearest-legal.js";
 import { HistoryStore } from "../model/history-store.js";
 import { partDef } from "../catalog/index.js";
+import { kitLabel } from "../catalog/labels.js";
 import { isMemory, isRomChip, memoryConfig } from "../sim/chip-eval.js";
 import {
   BreadboardView,
@@ -1326,11 +1328,11 @@ export class DeskController {
       // rather than leaving the click looking ignored.
       if (notify) {
         PopupManager.notify({
-          title: "Could not paste the design",
+          title: t("desk.paste.failTitle"),
           message:
             err?.code === "OVERLAP"
-              ? "Part of it lands on something already on this desk."
-              : "Something it needs is not free on this desk.",
+              ? t("desk.paste.overlap")
+              : t("desk.paste.noRoom"),
         });
       }
       return null;
@@ -2429,17 +2431,20 @@ export class DeskController {
     }
     const many = boardIds.length > 1;
     const bits = [];
-    if (partIds.size > 0)
-      bits.push(`${partIds.size} part${partIds.size === 1 ? "" : "s"}`);
-    if (wireIds.size > 0)
-      bits.push(`${wireIds.size} wire${wireIds.size === 1 ? "" : "s"}`);
+    if (partIds.size > 0) bits.push(t("desk.count.parts", { count: partIds.size })); // prettier-ignore
+    if (wireIds.size > 0) bits.push(t("desk.count.wires", { count: wireIds.size })); // prettier-ignore
     PopupManager.confirm({
-      title: many ? "Remove boards?" : "Remove board?",
-      message:
-        `${many ? `These ${boardIds.length} joined boards have` : `${id} has`} ` +
-        `${bits.join(" and ")} attached — removing ` +
-        `${many ? "them removes those" : "the board removes them"} too.`,
-      confirmLabel: "Remove",
+      title: many ? t("desk.remove.boardsTitle") : t("desk.remove.boardTitle"),
+      message: many
+        ? t("desk.remove.boardsMessage", {
+            count: boardIds.length,
+            what: bits.join(t("desk.count.and")),
+          })
+        : t("desk.remove.boardMessage", {
+            id,
+            what: bits.join(t("desk.count.and")),
+          }),
+      confirmLabel: t("desk.remove.confirm"),
       confirmClass: "btn--danger",
       onConfirm: () => this.#doRemoveBoards(boardIds),
     });
@@ -2495,20 +2500,16 @@ export class DeskController {
     // A desk-level brick (PSU / clock / LCD) takes its wired terminals with it,
     // so confirm first when any are attached.
     if (comp?.board == null) {
-      const noun =
-        comp.kind === "psu"
-          ? "power supply"
-          : comp.kind === "clock"
-            ? "clock"
-            : "display";
+      const noun = t(`desk.brick.${comp.kind === "psu" ? "psu" : comp.kind === "clock" ? "clock" : "display"}`); // prettier-ignore
       const wires = this.#doc.wiresTouching(id).length;
       if (wires > 0) {
         PopupManager.confirm({
-          title: `Remove ${noun}?`,
-          message:
-            `${id} has ${wires} wire${wires === 1 ? "" : "s"} attached — ` +
-            `removing it removes them too.`,
-          confirmLabel: "Remove",
+          title: t("desk.remove.brickTitle", { noun }),
+          message: t("desk.remove.brickMessage", {
+            id,
+            what: t("desk.count.wires", { count: wires }),
+          }),
+          confirmLabel: t("desk.remove.confirm"),
           confirmClass: "btn--danger",
           onConfirm: () => this.#doRemoveComponent(id),
         });
@@ -2577,19 +2578,14 @@ export class DeskController {
       fields (its own kind/ROM check, not catalog data — a chip's write
       affordance depends on whether the sim is running). */
   #propertyFieldsFor(comp, def) {
+    // No `actionLabel`: unlike a catalog def's own fields, these two are minted
+    // HERE, so there is no English source for them to carry — the dialog names
+    // them straight from `properties.action.<key>` (part-properties-dialog.js).
     const fields = [...(def?.properties ?? [])];
     if (comp?.kind === "chip" && isMemory(def)) {
-      fields.push({
-        key: "inspectMemory",
-        type: "action",
-        actionLabel: "Inspect memory…",
-      });
+      fields.push({ key: "inspectMemory", type: "action" });
       if (isRomChip(def) && !this.#editingLocked) {
-        fields.push({
-          key: "programMemory",
-          type: "action",
-          actionLabel: "Load image… (program)",
-        });
+        fields.push({ key: "programMemory", type: "action" });
       }
     }
     return fields;
@@ -3072,12 +3068,12 @@ export class DeskController {
       y: e.clientY,
       items: [
         {
-          label: "Properties…",
+          label: t("desk.menu.properties"),
           onSelect: () => this.#onOpenBoardProperties(id),
         },
         { separator: true },
         {
-          label: "Remove board",
+          label: t("desk.menu.removeBoard"),
           danger: true,
           onSelect: () => this.removeBoard(id),
         },
@@ -3092,7 +3088,9 @@ export class DeskController {
     const board = this.#doc.getBoard(id);
     if (!board) return;
     PartPropertiesDialog.open({
-      title: `${spec(board.type).label} Properties`,
+      title: t("desk.boardPropertiesTitle", {
+        board: kitLabel(board.type, spec(board.type)),
+      }),
       values: board,
       onChange: (key, value) => this.#setBoardProperty(id, key, value),
     });
@@ -3115,19 +3113,30 @@ export class DeskController {
     const wire = this.#doc.getWire(id);
     if (!wire) return;
     PartPropertiesDialog.open({
-      title: "Wire Properties",
+      title: t("desk.wirePropertiesTitle"),
       fields: [
-        { key: "color", label: "Color", type: "color", options: WIRE_COLORS },
+        {
+          key: "color",
+          label: t("desk.wireColor"),
+          type: "color",
+          options: WIRE_COLORS,
+        },
         {
           key: "layout",
-          label: "Layout Method",
+          label: t("desk.wireLayout"),
           // A segmented picker, not a dropdown — the SAME control Settings ▸
           // Appearance offers the app-wide default with, so the two places a
           // user meets this choice look and behave alike.
           type: "segmented",
           options: [
-            { value: "direct", label: "Direct" },
-            { value: "routed", label: "Routed" },
+            {
+              value: "direct",
+              label: t("settings.appearance.wireLayoutDirect"),
+            },
+            {
+              value: "routed",
+              label: t("settings.appearance.wireLayoutRouted"),
+            },
           ],
         },
       ],
@@ -3526,18 +3535,18 @@ export class DeskController {
     const rows = this.#pinoutRows(def);
     const items = [
       {
-        label: "Pin Assignment",
+        label: t("desk.menu.pinAssignment"),
         disabled: rows == null,
         onSelect: () => this.#onOpenPinout?.(comp.ref, rows, comp.params?.rot),
       },
       { separator: true },
       {
-        label: "Properties…",
+        label: t("desk.menu.properties"),
         onSelect: () => this.#onOpenProperties(id),
       },
       { separator: true },
       {
-        label: "Delete Component",
+        label: t("desk.menu.deleteComponent"),
         danger: true,
         disabled: this.#editingLocked,
         onSelect: () => this.removeComponent(id),
@@ -3644,11 +3653,11 @@ export class DeskController {
       y: e.clientY,
       items: [
         {
-          label: "Edit text…",
+          label: t("desk.menu.editText"),
           onSelect: () => this.#annotationLayer.beginEdit(id),
         },
         {
-          label: "Remove",
+          label: t("desk.menu.remove"),
           danger: true,
           onSelect: () => this.removeAnnotation(id),
         },
@@ -3782,24 +3791,24 @@ export class DeskController {
       this.#doRemoveSelected(ids, wireIds, boardIds);
       return;
     }
-    const count = (n, noun) => `${n} ${noun}${n === 1 ? "" : "s"}`;
+    const count = (n, kind) => t(`desk.count.${kind}`, { count: n });
     const what = [
-      boardIds.length && count(boardIds.length, "board"),
-      ids.length && count(ids.length, "part"),
-      wireIds.length && count(wireIds.length, "wire"),
+      boardIds.length && count(boardIds.length, "boards"),
+      ids.length && count(ids.length, "parts"),
+      wireIds.length && count(wireIds.length, "wires"),
     ]
       .filter(Boolean)
       .join(", ");
     const extra = [
-      parts.size && count(parts.size, "more part"),
-      wires.size && count(wires.size, "more wire"),
+      parts.size && count(parts.size, "moreParts"),
+      wires.size && count(wires.size, "moreWires"),
     ]
       .filter(Boolean)
-      .join(" and ");
+      .join(t("desk.count.and"));
     PopupManager.confirm({
-      title: `Remove ${what}?`,
-      message: `${extra} attached to them will be removed too.`,
-      confirmLabel: "Remove",
+      title: t("desk.remove.selectionTitle", { what }),
+      message: t("desk.remove.selectionMessage", { extra }),
+      confirmLabel: t("desk.remove.confirm"),
       confirmClass: "btn--danger",
       onConfirm: () => this.#doRemoveSelected(ids, wireIds, boardIds),
     });
