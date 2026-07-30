@@ -281,22 +281,38 @@ export function columnAt(type, localX) {
 }
 
 /**
- * The hole `delta` steps further along `hole`'s own run — a grid hole moves
+ * `hole` on `fromType`, shifted `delta` steps along its own run, validated as a
+ * hole of `toType` — the CROSS-STRIP form of `holeAlong`. A grid hole moves
  * along its row (column ± delta), a rail hole along its rail (index ± delta).
- * Returns null when `hole` is malformed for the type or the shifted hole runs
- * off the strip. This is the ONE lattice primitive the bus tool marches a run
- * of consecutive holes with, so no caller does column/index arithmetic by hand.
+ * Null when `hole` doesn't exist on `fromType`, or the shifted id doesn't exist
+ * on `toType`.
+ *
+ * Two types, because a part re-seated onto a NARROWER strip carries its wiring
+ * with it (Feature 290): a hole at column 52 of a full board shifted by −47
+ * lands at column 5, which a half board has — but the same-type form would
+ * refuse that trip at its ORIGIN (`a52` is not a half-board hole), which is not
+ * the question being asked.
  */
-export function holeAlong(type, hole, delta) {
+export function holeAlongTo(fromType, toType, hole, delta) {
   if (!Number.isInteger(delta)) return null;
-  const parsed = parseHole(type, hole);
+  const parsed = parseHole(fromType, hole);
   if (!parsed) return null;
   const next =
     parsed.kind === "grid"
       ? `${parsed.row}${parsed.col + delta}`
       : `${parsed.railId}${parsed.index + delta}`;
-  // parseHole re-validates the bounds (col ≤ cols / index ≤ railHoles, ≥ 1).
-  return parseHole(type, next) ? next : null;
+  // parseHole re-validates the bounds on the DESTINATION type (col ≤ cols /
+  // index ≤ railHoles, and ≥ 1 — the regexes reject `a0` and `a-1` outright).
+  return parseHole(toType, next) ? next : null;
+}
+
+/**
+ * The hole `delta` steps further along `hole`'s own run, on ONE strip. This is
+ * the lattice primitive the bus tool marches a run of consecutive holes with,
+ * so no caller does column/index arithmetic by hand.
+ */
+export function holeAlong(type, hole, delta) {
+  return holeAlongTo(type, type, hole, delta);
 }
 
 /**

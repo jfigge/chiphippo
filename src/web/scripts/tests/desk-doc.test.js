@@ -1055,6 +1055,59 @@ test("moveComponent: re-seats (same or other board), self-overlap allowed", () =
   });
 });
 
+test("moveComponentWithWires: the part and its wiring are ONE mutation", () => {
+  const doc = docWithFull();
+  doc.addComponent({ kind: "chip", ref: "74LS00", board: "bb1", anchor: "e5" });
+  doc.addWire({ from: "bb1.a5", to: "bb1.a40" }); // rides by `from`
+  doc.addWire({ from: "bb1.j11", to: "bb1.j40" }); // rides by `from`
+
+  const riding = doc.wiresRidingPart("c1");
+  const plan = doc.planPartMove("c1", "bb1", "e3", riding);
+  const { component, wires } = doc.moveComponentWithWires(
+    "c1",
+    "bb1",
+    "e3",
+    plan,
+  );
+  assert.equal(component.anchor, "e3");
+  assert.equal(wires.length, 2);
+  assert.equal(doc.getWire("w1").from, "bb1.a3");
+  assert.equal(doc.getWire("w2").from, "bb1.j9");
+  assert.equal(doc.getWire("w1").to, "bb1.a40", "the far end never moves");
+});
+
+test("moveComponentWithWires: a refused batch rolls the WHOLE move back", () => {
+  const doc = docWithFull();
+  doc.addComponent({ kind: "chip", ref: "74LS00", board: "bb1", anchor: "e5" });
+  doc.addWire({ from: "bb1.a11", to: "bb1.a40" }); // rides
+  doc.addWire({ from: "bb1.a13", to: "bb1.a41" }); // in the way, and not riding
+  const before = doc.toJSON();
+
+  const riding = doc.wiresRidingPart("c1");
+  const plan = doc.planPartMove("c1", "bb1", "e7", riding);
+  assert.throws(() => doc.moveComponentWithWires("c1", "bb1", "e7", plan), {
+    code: "ILLEGAL_PLACEMENT",
+  });
+  // Half a move would have left the chip re-seated with its wires behind it —
+  // exactly the silent rewiring the feature exists to prevent.
+  assert.deepEqual(doc.toJSON(), before);
+});
+
+test("moveComponentWithWires: a routed rider's bend translates with it", () => {
+  const doc = docWithFull();
+  doc.addComponent({ kind: "chip", ref: "74LS00", board: "bb1", anchor: "e5" });
+  doc.addWire({
+    from: "bb1.a5",
+    to: "bb1.d9", // both ends in the chip's own nodes → rigid
+    layout: "routed",
+    points: [{ x: 10, y: 20 }],
+  });
+  const riding = doc.wiresRidingPart("c1");
+  const plan = doc.planPartMove("c1", "bb1", "e7", riding);
+  doc.moveComponentWithWires("c1", "bb1", "e7", plan);
+  assert.deepEqual(doc.getWire("w1").points, [{ x: 12, y: 20 }]);
+});
+
 test("addComponent: seats a rotated resistor by an anchor plus a lead bend", () => {
   const doc = docWithFull();
   doc.addBoard("rail-full", 0, -4); // bb2 — a rail strip above the pin-board

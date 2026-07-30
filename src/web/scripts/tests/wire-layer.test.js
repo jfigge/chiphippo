@@ -188,6 +188,120 @@ test("setWholeDrag overrides BOTH endpoints; null restores the doc", () => {
   assert.ok(!layer.querySelector(".wire").classList.contains("wire--dragging"));
 });
 
+test("setPartDrag previews MANY riding wires, by the address each lands on", () => {
+  resetDom();
+  const layer = document.createElement("div");
+  document.body.append(layer);
+  const doc = deskWithWire(); // w1: bb1.a1 → bb1.a5
+  doc.addWire({ from: "bb1.j1", to: "bb1.j5" }); // w2 — not riding
+  const wires = new WireLayer(layer, doc, {});
+
+  // Unlike the single-wire channels above, a part carries a SET — and each end
+  // is an ADDRESS, not a cursor point, because a riding end always lands in a
+  // hole, so the preview resolves it exactly as the committed wire will.
+  wires.setPartDrag({
+    shifts: new Map([["w1", { from: "bb1.a3", to: "bb1.a7" }]]),
+    legal: true,
+  });
+  const [w1, w2] = layer.querySelectorAll(".wire");
+  const a3 = holePosition("pins-full", "a3");
+  assert.ok(
+    w1
+      .querySelector(".wire-core")
+      .getAttribute("d")
+      .startsWith(`M ${a3.x * PX_PER_UNIT} ${a3.y * PX_PER_UNIT}`),
+  );
+  assert.ok(w1.classList.contains("wire--dragging"));
+  assert.ok(!w1.classList.contains("wire-preview--illegal"));
+  assert.ok(!w2.classList.contains("wire--dragging"), "w2 is uninvolved");
+
+  // One `legal` covers the lot — the drop is all-or-nothing, so every rider
+  // tints with the same red the dragged part shows. An entry with no addresses
+  // is the refused plan: the wire is still drawn where it is, but marked.
+  wires.setPartDrag({ shifts: new Map([["w1", {}]]), legal: false });
+  const tinted = layer.querySelector(".wire");
+  const home = holePosition("pins-full", "a1");
+  assert.ok(tinted.classList.contains("wire-preview--illegal"));
+  assert.ok(
+    tinted
+      .querySelector(".wire-core")
+      .getAttribute("d")
+      .startsWith(`M ${home.x * PX_PER_UNIT} ${home.y * PX_PER_UNIT}`),
+  );
+
+  wires.setPartDrag(null);
+  assert.ok(!layer.querySelector(".wire").classList.contains("wire--dragging"));
+});
+
+test("a ROUTED rider's bend previews translated, in desk units", () => {
+  resetDom();
+  const layer = document.createElement("div");
+  document.body.append(layer);
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  doc.addWire({
+    from: "bb1.a1",
+    to: "bb1.a5",
+    layout: "routed",
+    points: [{ x: 10, y: 20 }],
+  });
+  const wires = new WireLayer(layer, doc, {});
+
+  wires.setPartDrag({
+    shifts: new Map([
+      ["w1", { from: "bb1.a3", to: "bb1.a7", points: { dx: 2, dy: 0 } }],
+    ]),
+    legal: true,
+  });
+  // The waypoint knob sits at the SHIFTED point — a both-ends rider translates
+  // rigidly, bend and all, and the shift is in the same units the doc stores.
+  const knob = layer.querySelector(".wire-point");
+  assert.equal(Number(knob.getAttribute("cx")), 12 * PX_PER_UNIT);
+  assert.equal(Number(knob.getAttribute("cy")), 20 * PX_PER_UNIT);
+
+  wires.setPartDrag(null);
+  assert.equal(
+    Number(layer.querySelector(".wire-point").getAttribute("cx")),
+    10 * PX_PER_UNIT,
+  );
+});
+
+test("a riding BUS MEMBER carries the ribbon with it", () => {
+  resetDom();
+  const layer = document.createElement("div");
+  document.body.append(layer);
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const members = [];
+  for (let i = 0; i < 4; i++) {
+    members.push(
+      doc.addWire({ from: `bb1.a${1 + i}`, to: `bb1.j${20 + i}` }).id,
+    );
+  }
+  doc.addBus("D[3:0]", members);
+  const wires = new WireLayer(layer, doc, {});
+  const band = () => layer.querySelector(".bus-band").innerHTML;
+  const before = band();
+
+  // A ribbon's collars are the centroid of its members' endpoints, so shifting
+  // every near end shifts the body too — with no bus code at all. That is the
+  // whole reason #wireEnds is shared with #busGeometry rather than inlined in
+  // the wire loop: otherwise the leads would move and the ribbon would not.
+  wires.setPartDrag({
+    shifts: new Map(
+      members.map((id, i) => [
+        id,
+        { from: `bb1.a${9 + i}`, to: `bb1.j${20 + i}` },
+      ]),
+    ),
+    legal: true,
+  });
+  assert.notEqual(band(), before, "the ribbon followed its leads");
+
+  wires.setPartDrag(null);
+  assert.equal(band(), before);
+});
+
 test("setPreview shows, retints, and hides the rubber band", () => {
   resetDom();
   const layer = document.createElement("div");

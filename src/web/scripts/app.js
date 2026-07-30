@@ -321,6 +321,21 @@ function bindShortcuts(
   onToggleView,
   onToggleLock,
 ) {
+  // Option held over a selected part rings the wire ends an Option-drag would
+  // carry (Feature 290). Its own listeners rather than a `handleKeyDown` case,
+  // because that method's contract is "did I CONSUME this key" and a modifier
+  // must not: Option is still a modifier for everything else while it is down.
+  // Same trio as the Fit button's Shift-held zoom-out preview, blur included —
+  // a modifier released outside the window never fires our own keyup.
+  const ridePreview = (on) => controller.setRidePreview(on);
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Alt") ridePreview(true);
+  });
+  window.addEventListener("keyup", (e) => {
+    if (e.key === "Alt") ridePreview(false);
+  });
+  window.addEventListener("blur", () => ridePreview(false));
+
   window.addEventListener("keydown", (e) => {
     // A dialog/menu owns the keyboard while it's open — its own handlers
     // (native Escape-to-cancel, button activation) must be the only thing

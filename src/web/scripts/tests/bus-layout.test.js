@@ -25,7 +25,12 @@ import {
   busRunHoles,
   busTapAddresses,
 } from "../model/bus-layout.js";
-import { holeAlong, nodeOf, parseAddress } from "../model/breadboard.js";
+import {
+  holeAlong,
+  holeAlongTo,
+  nodeOf,
+  parseAddress,
+} from "../model/breadboard.js";
 import { partPinAddresses } from "../model/occupancy.js";
 import { pinGroupContaining } from "../catalog/index.js";
 
@@ -36,6 +41,23 @@ test("holeAlong marches a grid row and a rail, off-strip → null", () => {
   assert.equal(holeAlong("pins-full", "a1", -1), null); // before the first
   assert.equal(holeAlong("rail-full", "+1", 4), "+5");
   assert.equal(holeAlong("pins-full", "zz", 1), null); // malformed
+});
+
+test("holeAlongTo judges the trip by where it LANDS, not where it started", () => {
+  // Feature 290: a part carrying its wiring onto a NARROWER strip. Column 52 is
+  // a full board's hole and not a half board's, but the question is only whether
+  // the DESTINATION exists — the same-type form would refuse this at its origin.
+  assert.equal(holeAlongTo("pins-full", "pins-half", "a52", -47), "a5");
+  assert.equal(
+    holeAlong("pins-half", "a52", -47),
+    null,
+    "the old form refuses",
+  );
+  // The destination is still bounds-checked, on the type it is landing on.
+  assert.equal(holeAlongTo("pins-full", "pins-tiny", "a20", -2), null); // 18 > 17
+  assert.equal(holeAlongTo("pins-full", "pins-tiny", "a20", -5), "a15");
+  // One type is the ordinary case, and holeAlong is exactly that.
+  assert.equal(holeAlongTo("pins-full", "pins-full", "a1", 3), "a4");
 });
 
 test("busRunAddresses lays width pairs down two aligned runs", () => {

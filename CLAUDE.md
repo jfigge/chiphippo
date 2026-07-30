@@ -1202,6 +1202,97 @@ Electron main process (src/app/main.js)
   and is both the placeholder for an empty list and what the last `onRemove`
   falls back to; without one, an empty list opens an empty card. Everything is opt-in: an item with none of them
   renders exactly as it always did.
+- **OPTION-DRAGGING A PART TAKES ITS WIRING WITH IT** (`model/part-move.js`,
+  Feature 290). A plain part drag re-seats the part alone, which on a WIRED
+  part is a **silent rewiring**: rows e/f are free in the new columns so
+  `canPlacePart` has no reason to refuse, every wire stays in the hole it was
+  laid in, and the wire that fed pin 1 now feeds pin 3. Option is the other
+  option, and it is the same key the board drag already uses for the same
+  idea — **Option changes what this drag takes with it** (there it narrows the
+  set to a torn-off run; here it widens it to the wiring). Shift could not be:
+  it rubber-bands a marquee, which is exactly why `#onPartPointerDown` and
+  `#onBoardPointerDown` both bail on `e.shiftKey` and let it bubble.
+  - **RIDING IS A NODE RULE.** A wire end rides when its hole is in a node
+    (one 5-hole column-half, `nodeOf`) that one of the part's pins occupies,
+    keyed per BOARD. For a DIP that equals "any column it spans", but for a
+    footprint that SKIPS columns it does not — a push button at `a5` owns
+    `c5L` and `c7L` and has nothing to do with `c6L` — and the node rule is
+    the electrically true one. GRID nodes only: a rail is one node for its
+    whole length, so counting it would pick up the board's entire power
+    distribution rather than the part's neighbourhood.
+  - **HOLDING OPTION OVER A SELECTED PART RINGS WHAT WOULD RIDE**, before any
+    gesture — `setRidePreview(on)` + `#refreshRidePreview`, drawn with the
+    shared pooled `HoleRings` the bus tool uses (MANY holes at once is exactly
+    what that class is; the single `.hole-ring` answers "this hole"). A wire
+    riding by BOTH ends gets TWO rings, which is the useful part: it shows
+    which ends travel and which stay. The hint stands down while the drag is in
+    flight (the moving wires answer it better, and rings on holes being vacated
+    would say the opposite), while the circuit RUNS, and for anything that is
+    not a single selected part. The state is PUSHED IN from `app.js` rather
+    than read off `handleKeyDown`, whose contract is "did I CONSUME this key" —
+    a modifier must not, since Option is still a modifier for everything else.
+    Its listeners are the same trio the Fit button's Shift-held preview uses,
+    **blur included**: a modifier released outside the window never fires our
+    own keyup, and a ring left behind is a lie about a key nobody is holding.
+    `#refreshRidePreview` re-derives from whatever is true now and is called
+    from every transition that can change the answer (selection, doc edit, drag
+    start/end, run lock, scene rebuild); it costs nothing when Option is up,
+    which is the overwhelmingly common case.
+  - **The set is read at POINTERDOWN and FROZEN**, as the board drag reads
+    `e.altKey` and walks `matedChain` once. Recomputed per sample it would
+    grow and shrink as the part slid over other wires' holes, so the drop
+    would depend on the path taken to it rather than where it landed.
+  - **PIN HOLES AND RIDING HOLES ARE DISJOINT, which is why the two legality
+    checks compose instead of interfering.** A riding end is by construction
+    in a NON-pin row at its column offset (the pin's own hole is taken — one
+    hole, one lead), and a rigid column shift preserves each hole's row while
+    the footprint's pin rows at a given offset are fixed. So no rider can ever
+    land on a hole this part's pins want, at any offset, including a move onto
+    overlapping columns: `canPlacePart(…, {ignoreId})` stays exactly as it is,
+    and `prepareWireBatchMove` needs no notion of the moving part. That is the
+    invariant `part-move.test.js` sweeps rather than a comment.
+  - **`DeskDoc.prepareWireBatchMove` is the whole legality story**, hoisted
+    ONCE per gesture exactly as its own docstring asks: it lifts every mover
+    out, so riders may shuffle among the holes they collectively vacate (a
+    two-column shift), and a per-wire `isFreeHole` would have been wrong.
+    `#resolvePartSeat` folds its verdict into the SAME `d.legal` the part's own
+    tint reads — one refusal, one visual language, and preview and drop
+    re-derived by one function so they cannot disagree.
+  - **`resolved:false` refuses rather than inventing a hole**, and covers more
+    than running off a strip: re-seating ACROSS THE TRENCH flips which half of
+    each column the pins are in, so a rider that kept its row would no longer
+    be on the pin's node. Stated generally (every landing address must be in a
+    node the part occupies AFTER the move), so that case and any the footprint
+    vocabulary grows are caught by construction. A pure ROW move within one
+    half moves no wire at all — `moves` is empty, which is why it is either
+    empty or one entry per rider, never partial (the prepared predicate is
+    length-checked against the frozen set).
+  - **`holeAlongTo(fromType, toType, …)`** is `holeAlong` with the destination
+    named separately, because a part carried onto a NARROWER strip has riders
+    whose ORIGIN column may not exist there (`a52` full → `a5` half); the
+    same-type form refused that trip at the wrong end. All column arithmetic
+    stays in `breadboard.js`.
+  - **BUS MEMBERS RIDE AND THE RIBBON FOLLOWS FOR NOTHING** — a bus is
+    metadata over wires and its collars are the centroid of its members'
+    endpoints, so `WireLayer#wireEnds` (shared by the wire loop AND
+    `#busGeometry`, which is the point of factoring it) moves body with leads.
+    `setPartDrag` is the layer's one MANY-wire preview channel, and its ends
+    are ADDRESSES rather than cursor points because a rider always lands in a
+    hole — so the preview resolves through the path the committed wire will.
+  - **A routed rider translates its waypoints only when BOTH ends ride.** With
+    one end pinned the user's bend still belongs where they put it; both ends
+    is a rigid translation. Waypoints are the one part of a wire that is not an
+    address, hence moved by hand here as in `translateAll`/`pasteDesign`.
+  - **NET NAMES STAY PUT — the name follows the HOLE, not the signal.** No
+    other move gesture re-binds one, and a re-seat is not a rename.
+  - **ONE mutation, ONE undo step**: `moveComponentWithWires` wraps
+    `moveComponent` + `moveWiresBatch` + the waypoint shifts in the
+    snapshot/restore transaction `pasteDesign` uses, so ⌘Z restores the part
+    and its wiring together — they were never two edits.
+  - **Out of scope by construction**: LEDs and resistors take the
+    `drag-resistor` gestures (two free ends, no column delta), and a PSU/clock
+    brick needs nothing — its wires end at a terminal address that already
+    rides it.
 - **Part context menu — ONE shape for every kind**: `DeskController.#onPartContextMenu`
   builds the exact same three items, always, in this order: **Pin
   Assignment**, **Properties…**, **Delete Component**. No per-kind branching

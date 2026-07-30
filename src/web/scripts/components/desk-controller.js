@@ -103,6 +103,7 @@ import { WireTools } from "./wire-tools.js";
 import { BusTools } from "./bus-tools.js";
 import { beginPointerGesture, releaseWorld } from "./pointer-gesture.js";
 import { BoardOutline } from "./board-outline.js";
+import { HoleRings } from "./hole-rings.js";
 
 /** The static SVG for a desk brick (PSU / clock / LCD) by kind. */
 function brickSvg(kind, params) {
@@ -212,6 +213,10 @@ export class DeskController {
   #multiWires = new Set(); // wire ids from the same marquee
   #multiBoards = new Set(); // board ids from the same marquee (Feature 240)
   #marquee = null; // the rubber-band element while shift-dragging
+  // Feature 290: Option held over a selected part rings the wire ends an
+  // Option-drag would carry, so the answer arrives BEFORE the gesture.
+  #optionHeld = false;
+  #rideRings;
   #simOverlay; // live LEDs / badges / clock lamps + net-level lookups
   // Undo/redo (Feature 200): a bounded snapshot history the doc-changed choke
   // point feeds. `#restoring` suppresses re-recording while a restore replays.
@@ -321,6 +326,11 @@ export class DeskController {
 
     // Board selection is drawn as ONE path around the whole snapped set.
     this.#boardOutline = new BoardOutline(this.#layers.overlay);
+
+    // The wire ends an Option-drag would carry (Feature 290) — MANY holes at
+    // once, which is exactly what HoleRings is: the same `.hole-ring` look as
+    // the single hover ring above, pooled, and pointer-inert.
+    this.#rideRings = new HoleRings(this.#layers.overlay);
 
     // All wires render into one SVG in the wires layer.
     this.#wireLayer = new WireLayer(this.#layers.wires, deskDoc, {
@@ -616,6 +626,57 @@ export class DeskController {
     this.#selected = sel;
     this.#applySelection(this.#selected, true);
     this.#refreshBoardOutline();
+    this.#refreshRidePreview(); // Option may be held over the NEW selection
+  }
+
+  // ── The Option-drag hint (Feature 290) ──────────────────────────────────
+
+  /**
+   * Option is down (or up). While it is down over a SELECTED part, every wire
+   * end an Option-drag would carry is ringed, so "what comes with it?" is
+   * answered BEFORE the gesture rather than discovered during it — the same
+   * shape as the Fit button previewing zoom-out-full while Shift is held.
+   *
+   * The state is pushed in rather than read off events because a keyup is not
+   * the only way it ends: app.js drops it on `blur` too, since a modifier
+   * released outside the window never fires our own keyup and a ring left
+   * behind would be a lie about a key nobody is holding.
+   */
+  setRidePreview(on) {
+    const next = Boolean(on);
+    if (next === this.#optionHeld) return;
+    this.#optionHeld = next;
+    this.#refreshRidePreview();
+  }
+
+  /** Re-derive the hint from whatever is true now. Called from every transition
+      that can change the answer — the selection, a doc edit, a drag starting or
+      ending, the run lock — and cheap when Option isn't held, which is the
+      overwhelmingly common case. */
+  #refreshRidePreview() {
+    this.#rideRings.show(this.#ridePreviewPoints());
+  }
+
+  /** World points of the wire ends riding the selected part, or null. A wire
+      riding by BOTH ends gets two rings — which is the useful part: it shows
+      which ends travel and which stay put. */
+  #ridePreviewPoints() {
+    if (!this.#optionHeld) return null;
+    // A drag in flight already shows the answer by moving the wires, and the
+    // topology is frozen while the circuit runs.
+    if (this.#mode || this.#editingLocked) return null;
+    if (this.#selected?.kind !== "part") return null;
+    const points = [];
+    for (const { wireId, ends } of this.#doc.wiresRidingPart(
+      this.#selected.id,
+    )) {
+      const wire = this.#doc.getWire(wireId);
+      for (const end of ends) {
+        const p = this.#addressWorld(wire?.[end]);
+        if (p) points.push(p);
+      }
+    }
+    return points.length > 0 ? points : null;
   }
 
   /** A board's world-px box, at an overridden position while dragging. */
@@ -2296,6 +2357,8 @@ export class DeskController {
       this.#history.unfreeze();
       this.#history.sync(this.#doc.snapshot());
     }
+    // Nothing can be dragged while running, so the hint must not offer to.
+    this.#refreshRidePreview();
     this.#notifyHistoryState();
   }
 
@@ -3255,6 +3318,16 @@ export class DeskController {
         return;
       }
       const cursorCol = columnAt(board.type, w.x - board.x);
+      // OPTION TAKES THE WIRING WITH IT (Feature 290). Both halves of this are
+      // read ONCE, here, and frozen for the gesture: the riding set, because
+      // recomputing it per sample would grow and shrink it as the part slid over
+      // other wires' holes (so the drop would depend on the path taken to it),
+      // and the batch check, because the reduced-occupancy build it hoists is
+      // precisely what `prepareWireBatchMove` exists to keep out of a live
+      // drag's loop. Option held over a part with nothing attached is just a
+      // plain drag — hence the empty set collapsing to null.
+      const attached = e.altKey ? this.#doc.wiresRidingPart(id) : [];
+      const riding = attached.length > 0 ? attached : null;
       this.#mode = {
         kind: "drag-part",
         id,
@@ -3269,6 +3342,11 @@ export class DeskController {
         origin: { board: comp.board, anchor: comp.anchor },
         seat: { board: comp.board, anchor: comp.anchor },
         hasAnchored: this.#hasAnchored(id),
+        riding,
+        checkBatch: riding
+          ? this.#doc.prepareWireBatchMove(riding.map((r) => r.wireId))
+          : null,
+        plan: null,
         // Read NOW: pointer capture (below) retargets every later event on
         // this pointerId to the part's root element, so a switch-bank click
         // resolved at pointerup would always see the body, never an actuator.
@@ -3278,6 +3356,9 @@ export class DeskController {
         teardown: null,
       };
     }
+    // The hint has done its job: from here the wires themselves show what is
+    // coming, so the rings would only sit on holes being vacated.
+    this.#refreshRidePreview();
     // Closed hand from the moment the part is grabbed (before any drag).
     this.#viewport.classList.add("desk-viewport--dragging");
     this.#mode.teardown = beginPointerGesture(view.element, e.pointerId, {
@@ -3316,7 +3397,46 @@ export class DeskController {
     } else {
       d.legal = false; // off-board / off-row: stay at the last seat
     }
+    // An Option-drag re-plans its riding wires for THIS seat and checks the
+    // whole batch as one. It rides the same `d.legal` the part's own tint reads,
+    // so an unseatable wire reddens the drop exactly as an unseatable pin does —
+    // one refusal, one visual language. Planned against `d.seat` even when the
+    // pointer fell off-board, so the wires keep drawing where the part does.
+    if (d.riding) {
+      d.plan = this.#doc.planPartMove(
+        d.id,
+        d.seat.board,
+        d.seat.anchor,
+        d.riding,
+      );
+      const batchLegal =
+        d.plan.resolved &&
+        (d.plan.moves.length === 0 || d.checkBatch(d.plan.moves));
+      if (!batchLegal) d.legal = false;
+    }
     return seat;
+  }
+
+  /** The wire layer's riding-wire preview for a `drag-part` in flight, or null
+      for a plain drag. Every riding wire gets an entry — one with no addresses
+      when the plan didn't resolve, so a refused drop still tints the wires it
+      would have carried rather than leaving them looking uninvolved. */
+  #partDragPreview(d) {
+    if (!d.riding) return null;
+    const shifts = new Map();
+    for (const { wireId } of d.riding) shifts.set(wireId, {});
+    for (const move of d.plan?.moves ?? []) {
+      const entry = shifts.get(move.id);
+      if (entry) {
+        entry.from = move.from;
+        entry.to = move.to;
+      }
+    }
+    for (const { id, dx, dy } of d.plan?.points ?? []) {
+      const entry = shifts.get(id);
+      if (entry) entry.points = { dx, dy };
+    }
+    return { shifts, legal: d.legal };
   }
 
   #onPartPointerMove = (e) => {
@@ -3376,6 +3496,8 @@ export class DeskController {
     if (seat)
       view?.updatePlacement(this.#doc.getBoard(seat.board), seat.anchor);
     view?.setIllegal(!d.legal);
+    // An Option-drag's wires follow live (a plain drag never touches the layer).
+    if (d.riding) this.#wireLayer.setPartDrag(this.#partDragPreview(d));
     // Labels anchored to this part ride it live, by its anchor-hole delta.
     if (d.hasAnchored) {
       const shift = this.#anchorDelta(d.origin, d.seat);
@@ -3404,6 +3526,11 @@ export class DeskController {
     }
     this.#mode = null;
     this.#viewport.classList.remove("desk-viewport--dragging");
+    // With the drag over, the hint comes back if Option is still down — from
+    // here, so every exit below (a plain click, a refused drop, a commit) is
+    // covered by one call. A commit refreshes it again through #emitDocChanged,
+    // which is what moves the rings onto the holes the wires actually landed in.
+    this.#refreshRidePreview();
 
     d.teardown?.();
     const view = this.#partViews.get(d.id);
@@ -3411,6 +3538,12 @@ export class DeskController {
       view.setDragging(false);
       view.setIllegal(false);
     }
+    // Put the riding-wire preview away BEFORE any mutation: this redraws the
+    // layer from the document, which is already the right picture for a revert,
+    // and a commit below re-renders it again through #emitDocChanged. Doing it
+    // here means every exit from this handler is covered by one call — including
+    // the synthetic pointercancel #rebuildScene routes through it.
+    this.#wireLayer.setPartDrag(null);
 
     // A drag that spans Run (editing locked mid-gesture) reverts, never
     // commits — the teardown above already ran, so this only skips the mutation.
@@ -3518,7 +3651,19 @@ export class DeskController {
     const flipped = !cancelled && d.flip === true;
     if (flipped) this.#doc.rotateComponent(d.id);
     if (!cancelled && d.legal && moved) {
-      this.#doc.moveComponent(d.id, d.seat.board, d.seat.anchor);
+      // An Option-drag commits the part AND its wiring as ONE mutation, so ⌘Z
+      // restores them together — they were never two edits. A plain drag takes
+      // the same path with nothing to carry.
+      if (d.riding) {
+        this.#doc.moveComponentWithWires(
+          d.id,
+          d.seat.board,
+          d.seat.anchor,
+          d.plan,
+        );
+      } else {
+        this.#doc.moveComponent(d.id, d.seat.board, d.seat.anchor);
+      }
       view?.updatePlacement(this.#doc.getBoard(d.seat.board), d.seat.anchor);
       if (d.hasAnchored) {
         const shift = this.#anchorDelta(d.origin, d.seat);
@@ -4039,6 +4184,9 @@ export class DeskController {
     // Boards may have moved, been torn out of a group, or been deleted —
     // re-trace the highlighter before anyone renders from the new document.
     this.#refreshBoardOutline();
+    // The same for the Option hint: a wire it rings may have just been deleted,
+    // moved, or laid. No-ops unless Option is actually down.
+    this.#refreshRidePreview();
     if (!this.#restoring) {
       const dropped = this.#history.record(
         this.#doc.snapshot(),
@@ -4189,6 +4337,7 @@ export class DeskController {
     this.#wireLayer.setSelectedMany([]);
     this.#annotationLayer.setSelected(null);
     this.#hideHover();
+    this.#refreshRidePreview(); // the selection it ringed has just gone
     // Unmount every board and part view (keep the Map objects — collaborators
     // hold references to them).
     for (const view of this.#views.values()) view.remove();

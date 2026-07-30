@@ -34,6 +34,7 @@ import { spec } from "../model/breadboard.js";
 import { deskBounds } from "../model/part-geometry.js";
 import { PX_PER_UNIT } from "../desk/desk-geometry.js";
 import { OUTLINE_MARGIN } from "../components/board-outline.js";
+import { RING_RADIUS } from "../components/hole-rings.js";
 
 const { DeskController } = await import("../components/desk-controller.js");
 const { PopupManager } = await import("../popup-manager.js");
@@ -470,6 +471,156 @@ test("a component only PARTLY inside the marquee is not selected", () => {
   marquee(viewport, world, { x: 4, y: 4 }, { x: 8, y: 9 });
   assert.deepEqual(controller.multiSelectedIds, []);
   assert.ok(chip.id);
+});
+
+// ── The Option-drag hint (Feature 290) ──────────────────────────────────────
+
+/** Ring centres currently on the desk, as world points, sorted for comparison.
+    The shared hover ring is the same `.hole-ring` class, so it would show up
+    here too — these tests never hover, so it stays hidden. */
+function ringCentres(surface) {
+  return [...surface.querySelectorAll(".hole-ring:not([hidden])")]
+    .map((r) => ({
+      x: (parseFloat(r.style.left) + RING_RADIUS * PX_PER_UNIT) / PX_PER_UNIT,
+      y: (parseFloat(r.style.top) + RING_RADIUS * PX_PER_UNIT) / PX_PER_UNIT,
+    }))
+    .map((p) => `${Math.round(p.x)},${Math.round(p.y)}`)
+    .sort();
+}
+
+const holeAt = (doc, address) =>
+  (({ x, y }) => `${Math.round(x)},${Math.round(y)}`)(
+    worldOfAddress(doc.boards, address),
+  );
+
+/** A chip at e5 with two riders (one end each) and one wire that doesn't ride. */
+function wiredChipDesk() {
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const world = { x: 0, y: 0 };
+  const desk = makeDesk(doc, world);
+  const chip = desk.controller.addComponentAt("74LS00", "bb1", "e5");
+  doc.addWire({ from: "bb1.a5", to: "bb1.a40" }); // rides by `from`
+  doc.addWire({ from: "bb1.j11", to: "bb1.j40" }); // rides by `from`
+  doc.addWire({ from: "bb1.a20", to: "bb1.a30" }); // outside the chip's nodes
+  return { ...desk, doc, chip };
+}
+
+test("Option over a selected part rings the wire ends that would ride", () => {
+  resetDom();
+  const { surface, controller, doc, chip } = wiredChipDesk();
+  controller.selectComponent(chip.id);
+
+  assert.deepEqual(ringCentres(surface), [], "nothing until Option is down");
+  controller.setRidePreview(true);
+  assert.deepEqual(
+    ringCentres(surface),
+    [holeAt(doc, "bb1.a5"), holeAt(doc, "bb1.j11")].sort(),
+    "the two riding ends, and not their far ends",
+  );
+
+  controller.setRidePreview(false);
+  assert.deepEqual(ringCentres(surface), [], "released, and put away");
+});
+
+test("a wire riding by BOTH ends gets two rings — which ends travel, which stay", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const { surface, controller } = makeDesk(doc);
+  const chip = controller.addComponentAt("74LS00", "bb1", "e5");
+  doc.addWire({ from: "bb1.a5", to: "bb1.d9" }); // both ends in the chip's nodes
+
+  controller.selectComponent(chip.id);
+  controller.setRidePreview(true);
+  assert.deepEqual(
+    ringCentres(surface),
+    [holeAt(doc, "bb1.a5"), holeAt(doc, "bb1.d9")].sort(),
+  );
+});
+
+test("the hint answers only for a part that could actually be Option-dragged", () => {
+  resetDom();
+  const { surface, controller, doc, chip } = wiredChipDesk();
+  controller.deselect(); // addComponentAt selects what it places
+  controller.setRidePreview(true);
+  assert.deepEqual(ringCentres(surface), [], "nothing is selected");
+
+  controller.selectBoard("bb1");
+  assert.deepEqual(ringCentres(surface), [], "a board carries no riders");
+
+  controller.selectComponent(chip.id);
+  assert.equal(ringCentres(surface).length, 2);
+
+  // Topology is frozen while the circuit runs, so the hint must not offer it.
+  controller.setEditingLocked(true);
+  assert.deepEqual(ringCentres(surface), []);
+  controller.setEditingLocked(false);
+  assert.equal(ringCentres(surface).length, 2);
+
+  // And it tracks the document: delete the wire it was ringing.
+  controller.removeWire("w1");
+  assert.deepEqual(ringCentres(surface), [holeAt(doc, "bb1.j11")]);
+});
+
+test("the hint stands down while the drag it describes is in flight", () => {
+  resetDom();
+  const { surface, controller, doc, chip, world } = wiredChipDesk();
+  controller.selectComponent(chip.id);
+  controller.setRidePreview(true);
+  assert.equal(ringCentres(surface).length, 2);
+
+  const el = surface.querySelector(`[data-component-id="${chip.id}"]`);
+  world.x = 8;
+  world.y = 6.5;
+  el.dispatchEvent(
+    new window.PointerEvent("pointerdown", {
+      bubbles: true,
+      button: 0,
+      pointerId: 5,
+      altKey: true,
+      clientX: 0,
+      clientY: 0,
+    }),
+  );
+  // From here the moving wires answer the question themselves; rings sitting on
+  // the holes being vacated would say the opposite.
+  assert.deepEqual(ringCentres(surface), []);
+
+  world.x = 13;
+  for (const type of ["pointermove", "pointerup"]) {
+    el.dispatchEvent(
+      new window.PointerEvent(type, {
+        bubbles: true,
+        button: 0,
+        pointerId: 5,
+        clientX: 40,
+        clientY: 0,
+      }),
+    );
+  }
+  // Option is still down, so the hint comes back — on the holes the wires
+  // actually landed in.
+  assert.deepEqual(
+    ringCentres(surface),
+    [holeAt(doc, "bb1.a10"), holeAt(doc, "bb1.j16")].sort(),
+  );
+});
+
+test("a marquee started ON a part is still a marquee — Shift is selection", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const world = { x: 0, y: 0 };
+  const { surface, controller } = makeDesk(doc, world);
+  const chip = controller.addComponentAt("74LS00", "bb1", "e5"); // cols 5–11
+
+  // The part's pointerdown bails on Shift and lets it bubble to the viewport —
+  // which is why Feature 290's wire-carrying drag took OPTION instead. A press
+  // landing on the chip must not become a part drag.
+  const el = surface.querySelector(`[data-component-id="${chip.id}"]`);
+  marquee(el, world, { x: 4, y: 4 }, { x: 12, y: 9 });
+  assert.deepEqual(controller.multiSelectedIds, [chip.id]);
 });
 
 test("selectAll takes the WHOLE desk — boards, parts and wires alike", () => {

@@ -91,10 +91,16 @@ function fire(el, type, { id = 5, client = [0, 0], mods = {} } = {}) {
  * `upOn` defaults to the grabbed element; pass the viewport to also prove the
  * release does not depend on the capture holding.
  */
-function dragReleasingAt(el, world, { from, stale, at, upOn = el, id = 5 }) {
+function dragReleasingAt(
+  el,
+  world,
+  { from, stale, at, upOn = el, id = 5, downMods = {} },
+) {
   world.x = from.x;
   world.y = from.y;
-  fire(el, "pointerdown", { id, client: [0, 0] });
+  // `downMods` goes on the PRESS alone — every modifier a desk drag reads is
+  // read there and frozen (the board drag's tear-off, the part drag's wiring).
+  fire(el, "pointerdown", { id, client: [0, 0], mods: downMods });
   world.x = stale.x;
   world.y = stale.y;
   fire(el, "pointermove", { id, client: [40, 40] });
@@ -209,6 +215,92 @@ test("part drag: a release over BARE DESK does not commit a legal last move", ()
   });
 
   assert.equal(doc.getComponent(chip.id).anchor, "e5", "stayed put");
+});
+
+test("OPTION part drag: the riding wires land at the RELEASE point too", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { surface, controller } = makeDesk(doc, world);
+  controller.addBoardAt("pins-full", 0, 0);
+  const chip = controller.addComponentAt("74LS00", "bb1", "e5"); // cols 5–11
+  doc.addWire({ from: "bb1.a5", to: "bb1.a40" }); // rides under pin 1
+
+  // The whole point of this suite, now with a batch behind it: the plan is
+  // re-derived at the release point, so a stale off-board sample cannot commit
+  // the wires to where the part merely passed through.
+  dragReleasingAt(partEl(surface, chip.id), world, {
+    from: { x: 8, y: 6.5 },
+    stale: { x: 13, y: 60 }, // nowhere near a row
+    at: { x: 13, y: 6.5 }, // e10 — five columns right
+    downMods: { altKey: true },
+  });
+
+  assert.equal(doc.getComponent(chip.id).anchor, "e10");
+  assert.equal(doc.getWire("w1").from, "bb1.a10", "the rider came along");
+  assert.equal(doc.getWire("w1").to, "bb1.a40", "the far end stayed put");
+});
+
+test("OPTION part drag: an unseatable rider reverts the WHOLE drop", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { surface, controller } = makeDesk(doc, world);
+  controller.addBoardAt("pins-full", 0, 0);
+  const chip = controller.addComponentAt("74LS00", "bb1", "e5");
+  doc.addWire({ from: "bb1.a11", to: "bb1.a40" }); // rides, from the last column
+  doc.addWire({ from: "bb1.a16", to: "bb1.a41" }); // squarely where it would land
+
+  dragReleasingAt(partEl(surface, chip.id), world, {
+    from: { x: 8, y: 6.5 },
+    stale: { x: 13, y: 6.5 },
+    at: { x: 13, y: 6.5 }, // e10 — the rider would need a16
+    downMods: { altKey: true },
+  });
+
+  // The chip's OWN seat is perfectly legal there; it is refused because its
+  // wiring cannot follow, and half a move is no move.
+  assert.equal(doc.getComponent(chip.id).anchor, "e5", "the part stayed put");
+  assert.equal(doc.getWire("w1").from, "bb1.a11", "and so did its wire");
+});
+
+test("OPTION part drag: the modifier is read at PRESS, then frozen", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { surface, controller } = makeDesk(doc, world);
+  controller.addBoardAt("pins-full", 0, 0);
+  const chip = controller.addComponentAt("74LS00", "bb1", "e5");
+  doc.addWire({ from: "bb1.a5", to: "bb1.a40" });
+
+  // Option down for the press, released before the move and the drop: the wiring
+  // still comes, because what a drag carries is settled when it is picked up.
+  dragReleasingAt(partEl(surface, chip.id), world, {
+    from: { x: 8, y: 6.5 },
+    stale: { x: 13, y: 6.5 },
+    at: { x: 13, y: 6.5 },
+    downMods: { altKey: true },
+  });
+  assert.equal(doc.getWire("w1").from, "bb1.a10");
+});
+
+test("part drag WITHOUT Option leaves the wiring where it was", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { surface, controller } = makeDesk(doc, world);
+  controller.addBoardAt("pins-full", 0, 0);
+  const chip = controller.addComponentAt("74LS00", "bb1", "e5");
+  doc.addWire({ from: "bb1.a5", to: "bb1.a40" });
+
+  dragReleasingAt(partEl(surface, chip.id), world, {
+    from: { x: 8, y: 6.5 },
+    stale: { x: 13, y: 6.5 },
+    at: { x: 13, y: 6.5 },
+  });
+
+  assert.equal(doc.getComponent(chip.id).anchor, "e10");
+  assert.equal(doc.getWire("w1").from, "bb1.a5", "a plain drag is unchanged");
 });
 
 test("part drag: a release over the bare desk viewport still re-seats", () => {

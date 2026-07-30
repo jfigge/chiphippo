@@ -58,6 +58,7 @@ import {
   snapCorrection,
 } from "./mating.js";
 import { snapDesign } from "./design-clip.js";
+import { planPartMove, wiresRidingPart } from "./part-move.js";
 import {
   addressAtWorld,
   buildOccupancy,
@@ -1301,6 +1302,60 @@ export class DeskDoc {
     comp.board = boardId;
     comp.anchor = anchor;
     return { ...comp };
+  }
+
+  // ── Re-seating a part WITH its wiring (Feature 290, the Option-drag) ──────
+
+  /**
+   * The wires riding part `id` — every wire end sitting in a node one of its
+   * pins occupies, as `[{ wireId, ends }]`. Read once at pointerdown and frozen
+   * for the gesture; see model/part-move.js for why the set must not be
+   * recomputed per pointer sample.
+   */
+  wiresRidingPart(id) {
+    return wiresRidingPart(this.#doc, id);
+  }
+
+  /**
+   * Where `riding` lands when part `id` re-seats at `boardId`.`anchor`:
+   * `{ moves, points, resolved }`. Pure planning — nothing is mutated, and a
+   * plan is not a legality verdict: the caller still runs `moves` past a
+   * prepared batch check (occupancy) before committing.
+   */
+  planPartMove(id, boardId, anchor, riding) {
+    return planPartMove(this.#doc, { id, riding, board: boardId, anchor });
+  }
+
+  /**
+   * Re-seat a part AND carry its riding wires, as ONE mutation — so ⌘Z restores
+   * the part and its wiring together, because they were never two edits.
+   * Rolls back wholly on any refusal (the `pasteDesign` idiom): half a move
+   * would cut the wires it left behind.
+   *
+   * `plan` is a `planPartMove` result. An empty `moves` is the ordinary
+   * no-address-change case (a discrete slid along its own column-half), not an
+   * error. Throws whatever `moveComponent` / `moveWiresBatch` throw.
+   *
+   * @returns {{component:object, wires:Array}} copies of what moved.
+   */
+  moveComponentWithWires(id, boardId, anchor, plan) {
+    const before = this.snapshot();
+    try {
+      const component = this.moveComponent(id, boardId, anchor);
+      const moves = plan?.moves ?? [];
+      const wires = moves.length > 0 ? this.moveWiresBatch(moves) : [];
+      for (const { id: wireId, dx, dy } of plan?.points ?? []) {
+        const wire = this.#doc.wires.find((w) => w.id === wireId);
+        for (const p of wire?.points ?? []) {
+          p.x = wireCoord(p.x + dx);
+          p.y = wireCoord(p.y + dy);
+        }
+      }
+      return { component, wires };
+    } catch (err) {
+      this.restore(before); // a refused re-seat changes nothing at all
+      throw err;
+    }
   }
 
   /**

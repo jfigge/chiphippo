@@ -113,6 +113,52 @@ depending on whether you're still placing it:
 `F` while an LED's placement ghost is armed to flip which lead is the anode
 and which is the cathode, before you click it down.
 
+## Moving a seated part — with or without its wiring
+
+Dragging a placed part re-seats the part and **leaves every wire where it
+was**. That is often what you want while a circuit is still bare, but once
+it's wired it quietly changes the circuit: the pins land on different
+column-halves, the wires stay in the holes you laid them in, and what was
+pin 1's input is now pin 3's.
+
+So, exactly as with pulling a mated strip out of a board group, hold a
+modifier while you start the drag:
+
+- **Option-drag** — moves the part **and its wiring together**. Every wire
+  end sitting in a column-half one of the part's pins occupies comes along,
+  keeping its own row and its offset from the part, so the circuit after the
+  move is the circuit before it. The far end of each wire stays put.
+
+Only the wires actually connected to the part come — a wire in a column the
+part merely spans without having a pin there (a push button reaches two holes
+three columns apart, not the one between them) is left alone, because it was
+never connected to it.
+
+**To see what would come, hold Option.** With a part selected, holding Option
+rings every wire end that would travel with it, and releasing Option puts the
+rings away — so you can check before you commit to the drag rather than
+discover it during one. A wire connected to the part at *both* ends gets two
+rings; a wire connected at one end gets one, on the end that moves. A part
+with nothing attached simply shows nothing.
+
+The drop is **all or nothing**. If any of those wire ends has nowhere to go —
+its hole is taken by something that isn't moving, or it would run off the end
+of the strip — the part *and* every wire it would have carried turn red, and
+releasing puts everything back. Half a move would silently cut the
+connections it left behind, which is the very thing the gesture exists to
+avoid.
+
+Two details worth knowing:
+
+- Whether the wiring comes is decided when you **press**, not when you let
+  go. Once the part is in hand, the set is fixed.
+- A part can't be Option-dragged **across the trench** while it's wired —
+  rows `a`–`e` and `f`–`j` are separate nodes, so a wire that kept its row
+  would no longer be connected to the pin beside it. That drop is refused.
+
+`Shift` is not this modifier: Shift-drag always rubber-bands a selection,
+including when the press lands on top of a part.
+
 ## Occupancy — one hole, one lead
 
 Every hole on a breadboard — and every terminal on a power/clock brick —

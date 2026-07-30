@@ -118,6 +118,7 @@ export class WireLayer {
   #wholeDrag = null; // { wireId, from:{x,y} px, to:{x,y} px, legal } dragging a whole wire
   #pointDrag = null; // { wireId, index, insert, world:{x,y} px, merge } bending a routed wire
   #busDrag = null; // { busId, memberIds:Set, end:"from"|"to"|null, dx, dy (px), legal } dragging a bus (or one end of it)
+  #partDrag = null; // { shifts: Map<wireId, {from?, to? (ADDRESS), points?:{dx,dy}}>, legal } — wires riding a part drag
   #dragShift = []; // [{ el, illegal }] a RIGID bus drag translates — see setBusDrag
   #memberIds = new Set(); // wires that drew as a bus lead last render (see #raisedIds)
 
@@ -187,6 +188,24 @@ export class WireLayer {
     return {
       x: (origin.x + terminal.dx) * PX_PER_UNIT,
       y: (origin.y + terminal.dy) * PX_PER_UNIT,
+    };
+  }
+
+  /**
+   * A wire's two endpoints this render, as `{ a, b }` world-px (either null when
+   * it doesn't resolve). The ONE place a wire's ends are located, so the main
+   * loop and `#busGeometry` cannot read a wire differently — which matters for a
+   * part drag whose riding wires are bus members: the leads move, and the ribbon
+   * they enter is derived from these same points, so it moves with them.
+   *
+   * A riding end is stated as the ADDRESS it is landing on, not a cursor point,
+   * so the preview resolves through exactly the path the committed wire will.
+   */
+  #wireEnds(wire, overrides) {
+    const shift = this.#partDrag?.shifts.get(wire.id);
+    return {
+      a: this.#endpointWorld(shift?.from ?? wire.from, overrides),
+      b: this.#endpointWorld(shift?.to ?? wire.to, overrides),
     };
   }
 
@@ -289,14 +308,15 @@ export class WireLayer {
     this.#memberIds = ribbons ? new Set(wireCollars.keys()) : new Set();
 
     for (const wire of wires) {
-      let a = this.#endpointWorld(wire.from, overrides);
-      let b = this.#endpointWorld(wire.to, overrides);
+      // #wireEnds already applies a part drag's riding shift (by address).
+      let { a, b } = this.#wireEnds(wire, overrides);
       // A dragged endpoint follows the cursor (world px) instead of its hole;
       // a whole-wire drag overrides BOTH ends (rigid translation); a whole-bus
       // drag rigidly offsets every member wire.
       const draggingEnd = drag && drag.wireId === wire.id;
       const draggingWhole = whole && whole.wireId === wire.id;
       const draggingBus = busDrag && busDrag.memberIds.has(wire.id);
+      const ridingPart = Boolean(this.#partDrag?.shifts.has(wire.id));
       if (draggingEnd) {
         if (drag.end === "from") a = drag.world;
         else b = drag.world;
@@ -380,7 +400,13 @@ export class WireLayer {
       // While dragging (one end or the whole wire), mute the hit stroke
       // (pointer is captured) and tint the wire red over an illegal drop,
       // mirroring the rubber band.
-      if (draggingEnd || draggingWhole || draggingBus || route?.dragging) {
+      if (
+        draggingEnd ||
+        draggingWhole ||
+        draggingBus ||
+        ridingPart ||
+        route?.dragging
+      ) {
         group.classList.add("wire--dragging");
         // A waypoint drag has no legality to show: a bend lands wherever it is
         // let go (it is not a connection), so it never tints.
@@ -388,7 +414,9 @@ export class WireLayer {
           ? drag.legal
           : draggingWhole
             ? whole.legal
-            : (busDrag?.legal ?? true);
+            : ridingPart
+              ? this.#partDrag.legal
+              : (busDrag?.legal ?? true);
         group.classList.toggle("wire-preview--illegal", legal === false);
       }
       group.classList.toggle("wire--selected", selected);
@@ -426,9 +454,12 @@ export class WireLayer {
    */
   #routeGeometry(wire, a, b) {
     const drag = this.#pointDrag?.wireId === wire.id ? this.#pointDrag : null;
+    // A wire riding a part drag by BOTH ends translates rigidly, bend and all —
+    // the shift is in desk units, like the stored waypoints themselves.
+    const ride = this.#partDrag?.shifts.get(wire.id)?.points;
     const points = (wire.points ?? []).map((p) => ({
-      x: p.x * PX_PER_UNIT,
-      y: p.y * PX_PER_UNIT,
+      x: (p.x + (ride?.dx ?? 0)) * PX_PER_UNIT,
+      y: (p.y + (ride?.dy ?? 0)) * PX_PER_UNIT,
     }));
     let active = -1;
     if (drag) {
@@ -563,8 +594,9 @@ export class WireLayer {
     for (const wid of bus.members) {
       const wire = wiresById.get(wid);
       if (!wire) continue;
-      let a = this.#endpointWorld(wire.from, overrides);
-      let b = this.#endpointWorld(wire.to, overrides);
+      // Through #wireEnds, so a member riding a part drag carries the ribbon
+      // with it — a bus is metadata over wires, and this is where that pays.
+      let { a, b } = this.#wireEnds(wire, overrides);
       if (!a || !b) continue;
       if (off) {
         if (!off.end || off.end === "from")
@@ -719,6 +751,27 @@ export class WireLayer {
    */
   setPointDrag(spec) {
     this.#pointDrag = spec;
+    this.render();
+  }
+
+  /**
+   * Live-preview the wires RIDING a part drag (Feature 290's Option-drag): each
+   * entry restates the end(s) that move as the ADDRESS they are landing on, plus
+   * a desk-unit `points` shift for a routed wire riding by both ends. One
+   * `legal` covers the lot, because the drop is all-or-nothing — the same red
+   * the dragged part itself shows. Pass null to stop and redraw from the
+   * document.
+   *
+   * Unlike the single-wire channels above this one names MANY wires, which is
+   * what a part carries; the ends are addresses rather than cursor points
+   * because a riding end always lands in a hole (see #wireEnds).
+   *
+   * @param {{shifts: Map<string, {from?:string, to?:string,
+   *   points?:{dx:number,dy:number}}>, legal?:boolean}|null} spec
+   */
+  setPartDrag(spec) {
+    if (!spec && !this.#partDrag) return; // idle → idle: nothing to redraw
+    this.#partDrag = spec;
     this.render();
   }
 
