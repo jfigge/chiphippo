@@ -703,6 +703,8 @@
     "autoLayout": "Auto-Layout"
   },
   "desk": {
+    "lockWheel": "Arbeitsfläche sperren — das Mausrad bewegt sie nicht mehr",
+    "unlockWheel": "Arbeitsfläche entsperren — das Mausrad bewegt sie wieder",
     "brick": {
       "psu": "Netzteil",
       "clock": "Taktgeber",

@@ -378,6 +378,25 @@ Electron main process (src/app/main.js)
   changes or live board drags (positions passed as overrides). NOTE: an `<svg>`
   with width/height 0 renders NOTHING per the SVG spec — zero-size anchors need
   a token 1×1 box + overflow: visible.
+  **THE DESK PADLOCK LOCKS AN INPUT, NOT THE CAMERA**
+  (`components/desk-lock.js` → `DeskView.setWheelLocked`). Top-right of the
+  viewport, across from the tab strip and lined up with it, with a TRANSPARENT
+  background — it sits directly on the desk rather than in a card of its own, so
+  an empty corner still looks empty. Shut, the wheel stops reaching the camera;
+  drag-to-pan, the zoom cluster, the keyboard and Fit all still move the desk,
+  which is the whole distinction: the reason it exists is a **Magic Mouse**,
+  whose touch surface reports a scroll from a finger merely resting on it, so
+  the wheel is the one input that moves the desk without being asked to. Two
+  consequences follow. `#onWheel` calls `preventDefault` BEFORE the lock check —
+  what a locked desk must not do is drift, not fall through to whatever the
+  browser makes of a wheel (ctrl+wheel is page zoom). And the state is
+  SESSION-ONLY and open at launch: a lock that remembered itself would greet a
+  new session with a desk that ignores the wheel and no memory of having been
+  told to. Its icon changes SHAPE, not just tint (open shackle vs shut) — at
+  20 px on a busy desk a colour alone is not a state — and its label says what a
+  CLICK would do while `aria-pressed` says what it IS. The schematic keeps its
+  own DeskView and its own wheel: there is no padlock over there, and so no
+  invisible lock either.
   **FIT (⌘F) IS THE ONE CAMERA ACTION THAT EDITS THE DOCUMENT** — deliberately,
   not by oversight. `#recentreDesk` slides the WHOLE desk onto the origin
   (`DeskDoc.translateAll`: every board, brick, and label by one integer delta;
@@ -1866,7 +1885,7 @@ on *System*). One JSON catalog per language under **`src/web/locales/`**, and
   would throw the user's work away). `app.js`'s **`relabelChrome`** re-applies
   the header, both pills, the transport and the window title, and calls
   `relocalize()` on the palette, the tab strip, the build guide, the analyzer,
-  the AI panel, the zoom cluster and the schematic. Only PERSISTENT chrome needs
+  the AI panel, the zoom cluster, the desk padlock and the schematic. Only PERSISTENT chrome needs
   it: every dialog, context menu, popover and notification is built when it
   opens and therefore speaks the current language for free. Three of the calls
   are relabel functions the app already had for their own reasons — `setMode`,

@@ -703,6 +703,8 @@
     "autoLayout": "Trazado automático"
   },
   "desk": {
+    "lockWheel": "Bloquear el escritorio: la rueda del ratón deja de moverlo",
+    "unlockWheel": "Desbloquear el escritorio: la rueda del ratón vuelve a moverlo",
     "brick": {
       "psu": "fuente de alimentación",
       "clock": "reloj",

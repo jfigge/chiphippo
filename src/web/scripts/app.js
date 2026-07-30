@@ -26,6 +26,7 @@ import * as i18n from "./i18n.js";
 import { t } from "./i18n.js";
 import { DeskView } from "./components/desk-view.js";
 import { ZoomControl } from "./components/zoom-control.js";
+import { DeskLock } from "./components/desk-lock.js";
 import { DeskController } from "./components/desk-controller.js";
 import { SchematicView } from "./components/schematic-view.js";
 import { PalettePanel } from "./components/palette-panel.js";
@@ -587,6 +588,7 @@ async function init() {
   });
 
   let zoomControl = null;
+  let deskLock = null;
   let controller = null;
 
   // Parts palette (left panel; visibility persists in settings). Any part
@@ -1406,6 +1408,13 @@ async function init() {
   });
   zoomControl.setZoom(deskView.camera.zoom);
 
+  // The desk padlock (top-right): shut, the mouse wheel stops moving the desk.
+  // Session-only and open at launch — see DeskLock for why it is not remembered,
+  // and DeskView.setWheelLocked for why it locks the wheel and nothing else.
+  deskLock = new DeskLock(desk, {
+    onChange: (locked) => deskView.setWheelLocked(locked),
+  });
+
   // The derived schematic (Feature 150): the same document as chip symbols +
   // routed nets. Symbol nudges and the auto-layout reset commit through the
   // controller so they ride the one undo/redo seam.
@@ -1501,6 +1510,7 @@ async function init() {
     scopeView.relocalize();
     aiPanel.relocalize();
     zoomControl.relocalize();
+    deskLock.relocalize();
     schematicView.relocalize();
     updateTitle();
   };

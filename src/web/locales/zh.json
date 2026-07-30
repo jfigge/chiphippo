@@ -700,6 +700,8 @@
     "autoLayout": "自动布局"
   },
   "desk": {
+    "lockWheel": "锁定桌面 — 滚轮不再移动桌面",
+    "unlockWheel": "解锁桌面 — 滚轮可再次移动桌面",
     "brick": {
       "psu": "电源",
       "clock": "时钟",

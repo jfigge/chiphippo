@@ -703,6 +703,8 @@
     "autoLayout": "Auto-layout"
   },
   "desk": {
+    "lockWheel": "Lock the desk — the mouse wheel stops moving it",
+    "unlockWheel": "Unlock the desk — the mouse wheel moves it again",
     "brick": {
       "psu": "power supply",
       "clock": "clock",

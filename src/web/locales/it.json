@@ -703,6 +703,8 @@
     "autoLayout": "Disposizione automatica"
   },
   "desk": {
+    "lockWheel": "Blocca il piano di lavoro: la rotellina non lo muove più",
+    "unlockWheel": "Sblocca il piano di lavoro: la rotellina lo muove di nuovo",
     "brick": {
       "psu": "alimentatore",
       "clock": "clock",

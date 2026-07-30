@@ -350,7 +350,10 @@
 /* The desk column: the tab strip stacked over whichever surface is showing.
    It is a row item of .app-main, so it starts to the right of the parts
    palette — the tabs line up with the desk, not with the palette. */
+/* The desk padlock's own box, declared here because the desktop tab strip has
+   to stop short of it (both live over the desk's top edge). */
 .app-stage {
+  --desk-lock-size: 24px;
   position: relative;
   display: flex;
   flex-direction: column;
@@ -375,7 +378,11 @@
   display: flex;
   align-items: center;
   gap: var(--space-1);
-  max-width: calc(100% - 2 * var(--space-3));
+  /* Stop clear of the padlock in the opposite corner (see .desk-lock) — with a
+     transparent background it has nothing to hide an overlap behind. */
+  max-width: calc(
+    100% - 2 * var(--space-3) - var(--desk-lock-size) - var(--space-2)
+  );
   padding: var(--space-1);
   background: var(--color-mantle);
   border: 1px solid var(--color-crust);
@@ -2075,6 +2082,43 @@ textarea.annotation-editor {
 }
 
 /* ── Zoom control cluster (bottom-right overlay) ─────────────────────────── */
+/* ── The desk padlock (components/desk-lock.js) ──────────────────────────────
+   Top-right of the desk, and TRANSPARENT: it sits directly on the desk with no
+   card of its own, so a mostly-empty corner stays empty-looking. It lines up
+   with the tab strip's top edge across the desk from it. */
+.desk-lock {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-3);
+  display: grid;
+  place-items: center;
+  width: var(--desk-lock-size);
+  height: var(--desk-lock-size);
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  /* Muted at rest so an unlocked desk reads as having no control on it at all;
+     the whole point of the thing is to be out of the way until wanted. */
+  color: var(--color-muted);
+  cursor: pointer;
+}
+
+.desk-lock:hover {
+  color: var(--color-text);
+}
+
+/* Shut: the accent, so the state is legible from across the desk — and the icon
+   itself changes shape, since colour alone is not a state (see desk-lock.js). */
+.desk-lock--locked {
+  color: var(--color-accent);
+}
+
+.desk-lock:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
 .desk-zoom {
   position: absolute;
   right: var(--space-4);

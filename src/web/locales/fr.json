@@ -703,6 +703,8 @@
     "autoLayout": "Disposition automatique"
   },
   "desk": {
+    "lockWheel": "Verrouiller le plan de travail — la molette ne le déplace plus",
+    "unlockWheel": "Déverrouiller le plan de travail — la molette le déplace à nouveau",
     "brick": {
       "psu": "alimentation",
       "clock": "horloge",

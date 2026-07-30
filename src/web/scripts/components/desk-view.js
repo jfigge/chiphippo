@@ -45,6 +45,9 @@ export class DeskView {
   #onViewportChange;
   #size = { width: 0, height: 0 };
   #resizeObserver;
+  // The desk padlock (components/desk-lock.js) shut: the wheel stops moving the
+  // camera. Every other route still works — see setWheelLocked.
+  #wheelLocked = false;
   // Active pan: { pointerId, lastX, lastY, startX, startY, active }.
   #drag = null;
 
@@ -216,10 +219,30 @@ export class DeskView {
     this.#viewport.classList.toggle("desk-viewport--panning", on);
   }
 
+  /**
+   * Lock the WHEEL out of the camera, or let it back in — what the desk's
+   * padlock toggles (components/desk-lock.js).
+   *
+   * It is deliberately the one INPUT and not the camera: drag-to-pan, the zoom
+   * cluster, the keyboard and Fit all still move the desk while it is locked.
+   * The reason is a Magic Mouse, whose touch surface reports a scroll from a
+   * finger merely resting on it, so the wheel is the one input that moves the
+   * desk without having been asked to.
+   *
+   * @param {boolean} on
+   */
+  setWheelLocked(on) {
+    this.#wheelLocked = on === true;
+  }
+
   // ── Wheel: plain scroll pans; ctrl/cmd-wheel and pinch zoom at the cursor ──
 
   #onWheel = (e) => {
+    // preventDefault FIRST, locked or not: what the wheel must not do while the
+    // desk is locked is drift the camera, not fall through to whatever the
+    // browser would otherwise make of it (ctrl+wheel is page zoom).
     e.preventDefault();
+    if (this.#wheelLocked) return;
     if (e.ctrlKey || e.metaKey) {
       // Trackpad pinch arrives as a ctrlKey wheel stream in Chromium.
       const rect = this.#viewport.getBoundingClientRect();
