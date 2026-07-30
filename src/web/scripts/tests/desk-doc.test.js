@@ -27,6 +27,7 @@ import {
   isEmptyDocument,
   normalizeDocument,
 } from "../model/desk-doc.js";
+import { buildOccupancy } from "../model/occupancy.js";
 
 test("a fresh DeskDoc serializes to the empty document shape", () => {
   assert.deepEqual(new DeskDoc(null).toJSON(), {
@@ -409,6 +410,65 @@ test("normalizeDocument drops a board that overlaps one already loaded", () => {
   // And the desk it leaves behind is one you can actually rearrange.
   const live = new DeskDoc(doc);
   assert.equal(live.canMoveBoardsBy(["bb1"], 0, 1), true);
+});
+
+test("normalizeDocument drops a part seated in holes another already claims", () => {
+  // The same rule as the board check above, one level down — and the half the
+  // seating check could not see. That one proves each pin's hole EXISTS; this
+  // proves it is FREE. `addComponent` has always refused an overlap, so only a
+  // hand-edited file carries one, and it loaded clean: `buildOccupancy` is
+  // last-writer-wins, so the loser's pins were masked ENTIRELY and the hover
+  // readout, the probe and the build guide all named one chip where two sat.
+  const doc = normalizeDocument({
+    boards: [{ id: "bb1", type: "pins-full", x: 0, y: 0 }],
+    components: [
+      { id: "c1", kind: "chip", ref: "74LS00", board: "bb1", anchor: "e10" },
+      { id: "c2", kind: "chip", ref: "74LS02", board: "bb1", anchor: "e10" }, // dead on top
+      { id: "c3", kind: "chip", ref: "74LS04", board: "bb1", anchor: "e16" }, // pin 1 on c1's pin 7
+      { id: "c4", kind: "chip", ref: "74LS08", board: "bb1", anchor: "e30" }, // clear
+    ],
+  });
+  assert.deepEqual(
+    doc.components.map((c) => c.id),
+    ["c1", "c4"],
+    "first wins, and a PARTIAL overlap counts",
+  );
+  assert.equal(
+    buildOccupancy(doc).size,
+    28,
+    "14 pins per surviving chip — nothing masked",
+  );
+});
+
+test("normalizeDocument: a rotated part's BENT lead claims its hole too", () => {
+  // A bent lead resolves geometrically against whatever strip lies under it,
+  // which is as real a claim on that hole as a footprint pin's — so the check
+  // reads addresses, not the footprint's own holes.
+  const seed = new DeskDoc(null);
+  seed.addBoard("pins-full", 0, 0);
+  seed.addComponent({
+    kind: "discrete",
+    ref: "resistor",
+    board: "bb1",
+    anchor: "a10",
+    params: { rot: 90, end: { dx: 0, dy: -3 } }, // a10 -> d10
+  });
+  const raw = seed.toJSON();
+  assert.equal(normalizeDocument(raw).components.length, 1, "it round-trips");
+
+  // A second part reaching for d10 — the FREE end of the first — is refused.
+  raw.components.push({
+    id: "c2",
+    kind: "discrete",
+    ref: "resistor",
+    board: "bb1",
+    anchor: "d10",
+    params: { rot: 90, end: { dx: 0, dy: -3 } },
+  });
+  assert.deepEqual(
+    normalizeDocument(raw).components.map((c) => c.id),
+    ["c1"],
+  );
 });
 
 test("normalizeDocument: flush boards are NOT an overlap — that is a mating", () => {

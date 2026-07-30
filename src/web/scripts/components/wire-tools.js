@@ -168,6 +168,22 @@ export class WireTools {
     this.#host.onStateChange?.({ armed: this.armed, color: this.color });
   }
 
+  /**
+   * Must this release be thrown away rather than committed? Two reasons, and
+   * the second is the one that is easy to miss: a real `pointercancel` (or the
+   * synthetic one `cancelDrag` routes through), OR a drag that SPANNED Run.
+   *
+   * Space and ⌘R reach the transport while a drag is in flight — app.js only
+   * declines them for an armed TOOL, and a drag is not one — so the circuit can
+   * start under a gesture that began while editing was still allowed. Every
+   * DeskController drag has always treated that as a cancel; these did not, and
+   * quietly committed a topology edit into a running circuit. `disarm()` cannot
+   * catch it either: `armed` is false once a drag owns `#mode`.
+   */
+  #aborted(e) {
+    return e.type === "pointercancel" || this.#host.editingLocked;
+  }
+
   #wirePointAt(world) {
     const doc = this.#host.doc;
     return connectionPointAt(doc.boards, doc.components, world);
@@ -482,7 +498,7 @@ export class WireTools {
     this.#host.wireLayer.setPointDrag(null); // stop overriding; redraw from doc
 
     if (!m.active) return; // plain click — the wire is already selected
-    if (e.type === "pointercancel") return; // aborted — never commit
+    if (this.#aborted(e)) return; // aborted — never commit
 
     // Resolve at the RELEASE point rather than trusting the last pointermove
     // (see pointer-gesture.js's releaseWorld), then re-run the merge test
@@ -669,7 +685,7 @@ export class WireTools {
     this.#host.wireLayer.setEndpointDrag(null); // stop overriding; redraw
 
     if (!m.active) return; // plain click — the wire is already selected
-    if (e.type === "pointercancel") return; // aborted — never commit
+    if (this.#aborted(e)) return; // aborted — never commit
 
     // Resolve at the RELEASE point, not from whatever the last pointermove
     // left in `m.hover` (see pointer-gesture.js's releaseWorld): the tight
@@ -814,7 +830,7 @@ export class WireTools {
     this.#host.wireLayer.setWholeDrag(null); // stop overriding; redraw from doc
 
     if (!m.active) return; // plain click — the wire is already selected
-    if (e.type === "pointercancel") return; // aborted — never commit
+    if (this.#aborted(e)) return; // aborted — never commit
 
     // Resolve at the RELEASE point rather than trusting the last pointermove's
     // preview — see pointer-gesture.js's releaseWorld.

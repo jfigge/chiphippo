@@ -24,6 +24,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import { applyCatalog, t as message } from "../i18n.js";
 import { resetDom } from "./jsdom-setup.js";
 
 const { AiPanel } = await import("../components/ai-panel.js");
@@ -735,5 +736,54 @@ test("AiPanel: Clear forgets the conversation but never the prompt history", () 
     promptBox(container).value,
     "an earlier ask",
     "the history is the user's, not the conversation's",
+  );
+});
+
+// ── Language ────────────────────────────────────────────────────────────────
+// A stub catalog with bracketed markers rather than a shipped translation: it
+// asserts the KEY is consulted without tying the test to someone's wording.
+
+const speakStub = () =>
+  applyCatalog({
+    active: "xx",
+    lang: "xx",
+    messages: { ai: { intro: "[intro]", cleared: "[cleared]" } },
+  });
+
+test("AiPanel: a language change re-words the intro, which is not transcript", (t) => {
+  resetDom();
+  t.after(() => resetDom());
+  stubBridge([]);
+  const { panel, container } = mount();
+  const english = message("ai.intro");
+  const row = container.querySelector(".ai-row--note .ai-row-text");
+  assert.equal(row.textContent, english, "it starts in the app's language");
+
+  speakStub();
+  panel.relocalize();
+  assert.equal(row.textContent, "[intro]", "the same row, re-worded in place");
+  assert.equal(
+    container.querySelectorAll(".ai-row").length,
+    1,
+    "re-worded, not said again",
+  );
+});
+
+test("AiPanel: a cleared panel is not re-introduced by a language change", (t) => {
+  resetDom();
+  t.after(() => resetDom());
+  stubBridge([]);
+  const { panel, container } = mount();
+  const cleared = message("ai.cleared");
+  container
+    .querySelectorAll(".ai-btn")
+    .forEach((b) => b.textContent === message("common.clear") && b.click());
+
+  speakStub();
+  panel.relocalize();
+  assert.deepEqual(
+    [...container.querySelectorAll(".ai-row-text")].map((p) => p.textContent),
+    [cleared],
+    "the detached intro stays gone; the transcript keeps its own words",
   );
 });

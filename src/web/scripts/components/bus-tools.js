@@ -535,7 +535,14 @@ export class BusTools {
     this.#host.viewport.classList.remove("desk-viewport--wire-dragging");
     this.#host.wireLayer.setBusDrag(null);
     if (!m.active) return; // a plain click — the bus is already selected
-    if (e.type === "pointercancel") return; // aborted — never commit
+    // Aborted — never commit. Two reasons: a real (or synthetic) pointercancel,
+    // and a drag that SPANNED Run. Space/⌘R reach the transport mid-gesture
+    // (app.js only declines them for an armed TOOL, and a drag is not one), so
+    // a bus grabbed while editing was allowed could otherwise commit a topology
+    // edit into a running circuit — which every DeskController drag treats as a
+    // cancel. `disarm()` cannot catch it: `armed` is false once a drag owns
+    // `#mode`.
+    if (e.type === "pointercancel" || this.#host.editingLocked) return;
 
     // Resolve the drop from the RELEASE point itself, not from whatever the
     // last pointermove happened to leave behind. Moves are coalesced (and on

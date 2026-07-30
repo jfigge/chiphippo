@@ -79,6 +79,7 @@ export class AiPanel {
   #resize;
   #status;
   #usage;
+  #intro;
 
   #config;
   #onVisibilityChange;
@@ -269,7 +270,8 @@ export class AiPanel {
       ],
     );
 
-    this.#say("note", t("ai.intro"));
+    // The one row in the log that is NOT transcript — see `relocalize`.
+    this.#intro = this.#say("note", t("ai.intro"));
   }
 
   get element() {
@@ -285,8 +287,21 @@ export class AiPanel {
    * transcript is a record, not a label: re-wording it would be rewriting
    * history, and half of it (a provider's error text, a fault's message) has no
    * catalog key to re-resolve anyway. New rows arrive in the new language.
+   *
+   * The INTRO row is the exception, because it is not a record of anything: it
+   * is standing text the panel says about ITSELF, present before a word has
+   * been exchanged, and it happens to be drawn as a log row only because that
+   * is where the panel's prose goes. Left alone it was the one line of an
+   * otherwise translated panel still in the language the app launched in — and
+   * the most conspicuous one, since it is all an untouched panel holds. It is
+   * re-worded only while it is still IN the log: Clear replaces the whole
+   * transcript, and a cleared panel says `ai.cleared` instead.
    */
   relocalize() {
+    if (this.#intro?.isConnected) {
+      const text = this.#intro.querySelector(".ai-row-text");
+      if (text) text.textContent = t("ai.intro");
+    }
     this.#input.placeholder = t("ai.inputPlaceholder");
     this.#input.setAttribute("aria-label", t("ai.inputLabel"));
     this.#send.title = t("ai.buildTitle");

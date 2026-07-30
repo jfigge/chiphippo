@@ -256,7 +256,9 @@ website** (`make docs` → `website/docs/`), and a **PDF** (`make pdf` →
   IPC handlers. All native I/O (filesystem, dialogs) lives here. Key entry points:
   `main.js` (window + lifecycle + ipcMain handlers), `preload.js` (the
   `window.chiphippo` bridge), `window-state.js` (bounds restore with display-fit
-  check), and `store/` (`io.js` atomic-write primitives, `settings-store.js`,
+  check), `close-guard.js` (the close/quit handshake's own state machine, pure
+  so it can be tested — see the close guard below), and `store/` (`io.js`
+  atomic-write primitives, `settings-store.js`,
   `project-store.js` + `project-images.js` + `project-migrate.js` (below),
   `desk-store.js` + `migrations.js` — the desk-document schema migrations, plus
   the by-PATH reader `project-migrate.js` uses to inline a v3 desktop file —
@@ -773,6 +775,16 @@ Electron main process (src/app/main.js)
   latch, since it will never reply. A renderer that is alive and simply silent
   is invisible from there, which is why the guarantee lives on the renderer
   side.
+  **MAIN'S HALF IS `app/close-guard.js`** — the three flags and their
+  transitions with no Electron in them, so `main.js` keeps only the event
+  wiring and the handshake can be tested. **THE CONFIRMATION AUTHORISES ONE
+  CLOSE AND NO OTHER**, which is what `closed()` is for: it used to be a
+  one-way latch, and on macOS — where closing the last window does NOT quit —
+  that was silent data loss. Close the window, answer "discard", click the dock
+  icon, and the fresh window inherited a latch that was still set; every later
+  close and ⌘Q then skipped the guard entirely and threw an unsaved project
+  away without asking. The window going away is what clears it, which puts the
+  next window back where the first one started.
   **EXPORT / IMPORT replaced a desktop's Save As / Open.** A
   `.desktop.chiphippo` is a SNAPSHOT — the document plus its ROM bytes, with no
   link retained — so unlike a v3 desktop file it can never dangle. Import is
@@ -1794,6 +1806,20 @@ Electron main process (src/app/main.js)
   stricter than the bench is — and until that is settled, a loader that dropped
   the brick would delete a working demo's display. Overlap is a nuisance for a
   brick and a deadlock for a board, which is the asymmetry the check follows.
+  **ONE HOLE, ONE LEAD is the same rule one level down**, and it is the half the
+  seating check could not see: that one proves each pin's hole EXISTS, so two
+  parts seated in the SAME columns loaded clean. `buildOccupancy` is
+  last-writer-wins, so the loser's pins were masked ENTIRELY — two 14-pin DIPs
+  in one set of columns produced 14 occupancy entries, and the hover readout,
+  the probe and the build guide all named one chip where two sat, while the
+  netlist joined both. The claim is read through `partPinAddresses`, not the
+  footprint's own holes, so a rotated part's BENT lead counts too: it lands on
+  whatever strip lies under it, which is as real a claim as a footprint pin's
+  (a lead resolving to nothing claims nothing — floating stays legal). First
+  wins, and nothing cascades: dropping the loser FREES holes rather than
+  removing any, so every wire that was legal stays legal, which is why the wire
+  loop still re-derives occupancy from the survivors instead of reading that
+  set.
 - **Addresses are the only cross-module currency for holes** (`bb1.f12`); nothing
   outside `model/breadboard.js` does row/column arithmetic by hand. Renderer and
   model call its lattice primitives (`holeAt`, `columnAt`, `rowNear`,
@@ -1894,6 +1920,23 @@ make clean     # Remove build/ and dist/
   to commit against unmounted views. `tests/desk-drag-release.test.js` holds
   all seven to the three cases the old shape could not survive (release point
   ≠ last move, release off the dragged element, yanked capture).
+  **"IS A DRAG IN FLIGHT?" IS DERIVED FROM THE KIND'S NAME, never a hand-kept
+  list.** `#dragGestureActive` WAS a list, and it fell silently behind: the
+  wire and bus tools mint their own kinds in their own modules, so when routed
+  wires added `drag-wire-point` a bend drag was invisible to the controller —
+  Escape stopped cancelling one, `#rebuildScene` stopped killing one (an undo
+  or a tab switch mid-bend left the gesture alive, window listeners and all, to
+  commit into the document that replaced it), and the mid-drag shortcut guard
+  stopped applying. Every drag anywhere in the app names itself `drag…`; the
+  marquee is the one that does not.
+  **AND A DRAG THAT SPANS RUN REVERTS, WHOEVER OWNS IT.** Space and ⌘R reach
+  the transport mid-gesture — `app.js` only declines them for an armed TOOL,
+  and a drag is not one — so a gesture begun while editing was allowed can be
+  released into a RUNNING circuit. The controller's seven have always folded
+  `#editingLocked` into their `cancelled` test; the wire/bus drags did not, and
+  quietly committed a topology edit with the simulation live (`disarm()` cannot
+  catch it either — `armed` is false once a drag owns `#mode`).
+  `tests/wire-drag-abort.test.js` and `bus-drag.test.js` hold both rules.
 - **Events vs callbacks**: a parent-owned widget reporting to the one parent that
   created it → **constructor callback**; an app-wide state change any number of panels
   may react to → a global **`chiphippo:*` `CustomEvent`**. No event-bus library.

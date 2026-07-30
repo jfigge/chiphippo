@@ -40,6 +40,7 @@ const path = require("path");
 const fs = require("fs");
 
 const { parseArgs } = require("./cli-args");
+const { CloseGuard } = require("./close-guard");
 const i18n = require("./i18n");
 const updater = require("./updater");
 const { isStoreBuild, distribution } = require("./store-build");
@@ -1576,15 +1577,10 @@ function registerIpc() {
   // deferred to the next tick so this reply reaches the renderer before the
   // teardown it triggers.
   ipcMain.handle("app:close-reply", (_event, ok) => {
-    closePending = false;
-    if (!ok) {
-      quitRequested = false; // a cancelled quit is not a pending one
-      return false;
-    }
-    closeConfirmed = true;
-    const quitting = quitRequested;
+    const next = closeGuard.reply(ok);
+    if (next === "stay") return false;
     setImmediate(() => {
-      if (quitting) app.quit();
+      if (next === "quit") app.quit();
       else if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close();
     });
     return true;
@@ -2036,7 +2032,7 @@ function createWindow() {
   // covers the window's own button, and on macOS the two are not the same
   // event at all.
   win.on("close", (event) => {
-    if (closeConfirmed || !canAskRenderer(win)) return;
+    if (closeGuard.allows() || !canAskRenderer(win)) return;
     event.preventDefault();
     askBeforeClose(win);
   });
@@ -2047,6 +2043,18 @@ function createWindow() {
 
   win.on("closed", () => {
     if (mainWindow === win) mainWindow = null;
+    // THE CONFIRMATION AUTHORISED THIS CLOSE AND NO OTHER. On macOS the app
+    // outlives its last window, so without this a "discard" answered here would
+    // still be latched when the dock re-opens one — and that window's every
+    // later close and ⌘Q would skip the guard entirely, throwing an unsaved
+    // project away with no question asked.
+    closeGuard.closed();
+    // Abandon any generation still streaming. There is nobody left to deliver
+    // it to (`sendToMain` no-ops on a destroyed window), and on macOS the app
+    // lives on after its last window closes — so without this an in-flight
+    // request would keep running, and keep spending the user's tokens, for a
+    // panel that no longer exists.
+    aiClient.cancelAll();
     // Close the orphaned pinout/inspector windows so they don't outlive the
     // desk they belong to — and, on Windows/Linux, so `window-all-closed` can
     // actually fire and quit the app instead of hanging on a stray inspector.
@@ -2076,14 +2084,9 @@ function createWindow() {
 // question is worse than one that waits. If the renderer is gone or crashed
 // there is nobody to ask, so the close simply proceeds.
 
-/** The renderer has answered "yes, go" — the next close/quit is let through. */
-let closeConfirmed = false;
-
-/** A question is already out; a second close must not stack another dialog. */
-let closePending = false;
-
-/** The close came from a QUIT (⌘Q / menu), not from the window's own button. */
-let quitRequested = false;
+/** The handshake's own state machine (close-guard.js) — three flags and their
+    transitions, kept out of here so they can be tested without Electron. */
+const closeGuard = new CloseGuard();
 
 /** Is there a live renderer to put the question to? */
 function canAskRenderer(win) {
@@ -2095,18 +2098,17 @@ function canAskRenderer(win) {
 /**
  * Put the question to the renderer (once).
  *
- * `closePending` is a LATCH with exactly one key — the reply — and that is what
- * makes a renderer that never answers unrecoverable rather than merely slow:
- * every later close is prevented and no question is ever re-asked, so the app
- * cannot be closed at all. There is no timeout to fall back on, deliberately
- * (see the section note), so the latch has to be released by the only other
- * thing that ends the wait: the renderer going away. `watchRendererForClose`
- * below does that; the renderer's own guarantee that it always replies is in
- * `ProjectWorkspace#askUnsaved`.
+ * The guard's `pending` is a LATCH with exactly one key — the reply — and that
+ * is what makes a renderer that never answers unrecoverable rather than merely
+ * slow: every later close is prevented and no question is ever re-asked, so the
+ * app cannot be closed at all. There is no timeout to fall back on,
+ * deliberately (see the section note), so the latch has to be released by the
+ * only other thing that ends the wait: the renderer going away.
+ * `watchRendererForClose` below does that; the renderer's own guarantee that it
+ * always replies is in `ProjectWorkspace#askUnsaved`.
  */
-function askBeforeClose(win) {
-  if (closePending) return;
-  closePending = true;
+function askBeforeClose(win, { quitting = false } = {}) {
+  if (!closeGuard.ask({ quitting })) return;
   win.webContents.send("app:confirm-close");
 }
 
@@ -2126,9 +2128,7 @@ function askBeforeClose(win) {
  * for the failure main CAN see.
  */
 function watchRendererForClose(win) {
-  const release = () => {
-    closePending = false;
-  };
+  const release = () => closeGuard.rendererGone();
   win.webContents.on("render-process-gone", release);
   win.webContents.on("destroyed", release);
 }
@@ -2198,10 +2198,9 @@ function bootstrap() {
   // leaves the app exactly as it was rather than half torn down (the auxiliary
   // windows close in the same sequence).
   app.on("before-quit", (event) => {
-    if (closeConfirmed || !canAskRenderer(mainWindow)) return;
+    if (closeGuard.allows() || !canAskRenderer(mainWindow)) return;
     event.preventDefault();
-    quitRequested = true;
-    askBeforeClose(mainWindow);
+    askBeforeClose(mainWindow, { quitting: true });
   });
 
   // Chip Hippo is a foreground document app: closing the last window quits

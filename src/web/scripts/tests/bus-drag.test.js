@@ -132,6 +132,34 @@ test("whole-bus drag (grab the ribbon body): both ends translate together", () =
   ]);
 });
 
+test("a bus drag released into a RUNNING circuit reverts instead of committing", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { viewport, surface, controller } = makeDesk(doc, world);
+  controller.addBoardAt("pins-full", 0, 0);
+  layBus(viewport, world, controller);
+  const bus = doc.buses[0];
+  const before = pairsOf(doc, bus);
+
+  const band = surface.querySelector(`.bus-band[data-bus-id="${bus.id}"]`);
+  world.x = 100;
+  world.y = 100;
+  fire(band, "pointerdown");
+  world.x = 100;
+  world.y = 97;
+  fire(wireSvg(surface), "pointermove", { client: [40, 40] });
+
+  // Space / ⌘R reach the transport mid-gesture — app.js only declines them for
+  // an armed TOOL, and a drag is not one. Every DeskController drag treats a
+  // run starting under it as a cancel; this one used to commit anyway, moving
+  // eight wire ends with the simulation already live.
+  controller.setEditingLocked(true);
+  fire(wireSvg(surface), "pointerup", { client: [40, 40] });
+
+  assert.deepEqual(pairsOf(doc, bus), before, "topology is frozen while running"); // prettier-ignore
+});
+
 test("end-handle drag: grabbing the 'to' end moves only that side, in parallel", () => {
   resetDom();
   const doc = new DeskDoc(null);

@@ -534,20 +534,20 @@ export class DeskController {
    * (W/B), copy/paste, or delete shortcut must NOT run here: it would overwrite
    * #mode out from under that pointerup, orphaning the capture + listeners and
    * freezing the dragged item in its grabbed visual state.
+   *
+   * DERIVED FROM THE NAME, never a hand-kept list. It WAS a list, and it fell
+   * silently behind: `WireTools` mints its own kinds in its own module, so when
+   * routed wires added `drag-wire-point` this answered false for a live drag —
+   * Escape stopped cancelling a bend, `#rebuildScene` stopped killing one (an
+   * undo mid-bend left the gesture alive to commit into the swapped document),
+   * and the shortcut guard below stopped applying. Every drag anywhere in the
+   * app already names itself `drag…`; the marquee is the one that does not.
    */
   get #dragGestureActive() {
-    return [
-      "drag",
-      "drag-part",
-      "drag-brick",
-      "drag-annotation",
-      "drag-resistor",
-      "drag-resistor-end",
-      "marquee",
-      "drag-wire-end",
-      "drag-wire",
-      "drag-bus",
-    ].includes(this.#mode?.kind);
+    const kind = this.#mode?.kind;
+    return Boolean(
+      kind === "marquee" || kind === "drag" || kind?.startsWith("drag-"),
+    );
   }
 
   /**
@@ -595,6 +595,7 @@ export class DeskController {
         break;
       case "drag-wire-end":
       case "drag-wire":
+      case "drag-wire-point":
         this.#wire.cancelDrag();
         break;
       case "drag-bus":

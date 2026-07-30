@@ -69,6 +69,7 @@ import {
   canReendWire,
   isFreeHole,
   isRealPoint,
+  partPinAddresses,
   partPinHoles,
 } from "./occupancy.js";
 
@@ -420,6 +421,10 @@ export function normalizeDocument(raw) {
   let maxCompSeq = 0;
   const maxBrickSeq = { psu: 0, clock: 0, lcd: 0 };
   const compIds = new Set();
+  // Every hole an accepted part's pins already claim — see the ONE HOLE, ONE
+  // LEAD note below. Bricks are absent by construction: a terminal (`psu1.+`)
+  // is its own address space and can never collide with a board hole.
+  const claimedPoints = new Set();
   const components = Array.isArray(raw.components) ? raw.components : [];
   for (const c of components) {
     if (!c || typeof c !== "object" || compIds.has(c.id)) continue;
@@ -478,8 +483,6 @@ export function normalizeDocument(raw) {
     ) {
       continue;
     }
-    compIds.add(c.id);
-    maxCompSeq = Math.max(maxCompSeq, Number(m[1]));
     const record = {
       id: c.id,
       kind: c.kind,
@@ -488,6 +491,33 @@ export function normalizeDocument(raw) {
       anchor: c.anchor,
       params,
     };
+    // ONE HOLE, ONE LEAD — the other half of "seated", and the half the check
+    // above cannot see. That one proves each pin's hole EXISTS; this proves it
+    // is FREE. `addComponent` has always refused an overlap (`canPlacePart`),
+    // so only a hand-edited or corrupt file can carry one — and it loaded
+    // clean, with `buildOccupancy`'s last-writer-wins silently masking the
+    // loser's pins ENTIRELY: two 14-pin DIPs in one set of columns produced 14
+    // occupancy entries, so the hover readout, the probe and the build guide
+    // all named one chip where two sat, while the netlist joined both. Exactly
+    // the shape of the board OVERLAP check above, one level down.
+    //
+    // Resolved through `partPinAddresses` rather than the `seat` holes, so a
+    // rotated part's BENT lead is checked too — it lands on whatever strip lies
+    // under it, which is as real a claim on that hole as a footprint pin's. A
+    // lead resolving to nothing claims nothing (floating is legal).
+    //
+    // First wins, like every other dedupe here. Nothing cascades: dropping the
+    // loser FREES holes rather than removing any, so every wire that was legal
+    // stays legal — which is why the wire loop below still re-derives occupancy
+    // from the surviving parts instead of reading this set.
+    const claims = [];
+    for (const { address } of partPinAddresses(doc, record) ?? []) {
+      if (address != null) claims.push(address);
+    }
+    if (claims.some((a) => claimedPoints.has(a))) continue;
+    for (const a of claims) claimedPoints.add(a);
+    compIds.add(c.id);
+    maxCompSeq = Math.max(maxCompSeq, Number(m[1]));
     const schematicPos = normalizeSchematicPos(c.schematicPos);
     if (schematicPos) record.schematicPos = schematicPos; // Feature 150 nudge
     applyMeta(record, c);
