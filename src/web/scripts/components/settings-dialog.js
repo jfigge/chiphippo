@@ -101,9 +101,11 @@ function announceKeyChange() {
  *
  * @param {object} settings the current settings document.
  * @param {Array} providers `[{id, label, defaultBaseUrl, defaultModel, keyLabel}]`.
+ * @param {(patch: object) => void} emitPatch the dialog's own patch emitter, so
+ *   what this panel changes is remembered for a rebuild (SettingsDialog.#emit).
  * @returns {HTMLElement[]} the panel's children.
  */
-function buildAiRows(settings, providers) {
+function buildAiRows(settings, providers, emitPatch) {
   const bridge = window.chiphippo?.ai;
   // A patch replaces the `ai` object whole (the object-valued-setting
   // convention), so every control emits the WHOLE config, not its own field.
@@ -116,7 +118,7 @@ function buildAiRows(settings, providers) {
   };
   const emit = (patch) => {
     config = { ...config, ...patch };
-    emitSettings({ ai: { ...config } });
+    emitPatch({ ai: { ...config } });
   };
   const chosen = () => providers.find((p) => p.id === config.provider);
 
@@ -313,9 +315,11 @@ const autoUpdateOptions = () => [
  * always-on surface), so this hands back a `dispose` for the close path.
  *
  * @param {object} settings the current settings document.
+ * @param {(patch: object) => void} emitPatch the dialog's own patch emitter, so
+ *   what this panel changes is remembered for a rebuild (SettingsDialog.#emit).
  * @returns {{ rows: HTMLElement[], dispose: () => void }}
  */
-function buildAboutPanel(settings) {
+function buildAboutPanel(settings, emitPatch) {
   // The status line under the button. Blank until something happens: an
   // untouched panel has nothing to report, and a stale line from the last time
   // the dialog was open would be a claim about now.
@@ -360,7 +364,7 @@ function buildAboutPanel(settings) {
     // Deliberately fuller than the visible label beside it: the row's own text
     // reads "Check automatically", which only makes sense next to the heading.
     ariaLabel: t("settings.about.autoAria"),
-    onPick: (autoUpdateCheck) => emitSettings({ autoUpdateCheck }),
+    onPick: (autoUpdateCheck) => emitPatch({ autoUpdateCheck }),
   });
 
   const autoRow = el("div", { class: "settings-row" }, [
@@ -694,7 +698,7 @@ export class SettingsDialog {
       (providers) => {
         aiPanel.replaceChildren(
           ...(Array.isArray(providers) && providers.length
-            ? buildAiRows(settings, providers)
+            ? buildAiRows(settings, providers, SettingsDialog.#emit)
             : [
                 el("p", {
                   class: "settings-hint",
@@ -710,7 +714,7 @@ export class SettingsDialog {
 
     // Built before the panel map because it also hands back the teardown for
     // the updater listeners it attaches, which onClose below has to run.
-    const about = buildAboutPanel(settings);
+    const about = buildAboutPanel(settings, SettingsDialog.#emit);
 
     const panels = {
       appearance: el(

@@ -54,6 +54,7 @@ are noted alongside the shortcut.
 |---|---|
 | `Cmd+N` | New Project (a blank slate, one empty desktop) |
 | `Cmd+O` | Open… (load a saved project) |
+| `Cmd+Shift+O` | Recent projects (the same menu a right-click on the toolbar's Open button drops) |
 | `Cmd+S` | Save the project to its file |
 | `Cmd+Shift+S` | Save As… (give the project a new file) |
 | `Cmd+A` | Select All — every board, part and wire on the desk; in a text field, its text |

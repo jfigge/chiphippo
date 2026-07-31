@@ -96,7 +96,7 @@
       "new": "Nuovo progetto",
       "newTitle": "Nuovo progetto ({accel}) — ricomincia su un piano di lavoro vuoto",
       "open": "Apri",
-      "openTitle": "Apri… ({accel}) — carica un progetto salvato",
+      "openTitle": "Apri… ({accel}) — carica un progetto salvato ({recent} o clic destro per i progetti recenti)",
       "save": "Salva",
       "saveTitle": "Salva ({accel}) — riscrivi il progetto nel suo file",
       "saveAs": "Salva con nome",
@@ -906,6 +906,7 @@
     "file": {
       "new": "Nuovo progetto",
       "open": "Apri un progetto",
+      "openRecent": "Apri un progetto recente",
       "save": "Salva",
       "saveAs": "Salva con nome…",
       "bom": "Distinta base (guida al montaggio)"

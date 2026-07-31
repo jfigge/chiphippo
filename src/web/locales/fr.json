@@ -96,7 +96,7 @@
       "new": "Nouveau projet",
       "newTitle": "Nouveau projet ({accel}) — repartir sur un plan de travail vide",
       "open": "Ouvrir",
-      "openTitle": "Ouvrir… ({accel}) — charger un projet enregistré",
+      "openTitle": "Ouvrir… ({accel}) — charger un projet enregistré ({recent} ou clic droit pour les projets récents)",
       "save": "Enregistrer",
       "saveTitle": "Enregistrer ({accel}) — réécrire le projet dans son fichier",
       "saveAs": "Enregistrer sous",
@@ -906,6 +906,7 @@
     "file": {
       "new": "Nouveau projet",
       "open": "Ouvrir un projet",
+      "openRecent": "Ouvrir un projet récent",
       "save": "Enregistrer",
       "saveAs": "Enregistrer sous…",
       "bom": "Nomenclature (guide de montage)"

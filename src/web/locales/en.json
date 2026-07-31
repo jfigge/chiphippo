@@ -96,7 +96,7 @@
       "new": "New Project",
       "newTitle": "New Project ({accel}) — start over on an empty desk",
       "open": "Open",
-      "openTitle": "Open… ({accel}) — load a saved project",
+      "openTitle": "Open… ({accel}) — load a saved project ({recent} or right-click for recent projects)",
       "save": "Save",
       "saveTitle": "Save ({accel}) — write the project back to its file",
       "saveAs": "Save As",
@@ -906,6 +906,7 @@
     "file": {
       "new": "New project",
       "open": "Open a project",
+      "openRecent": "Open a recent project",
       "save": "Save",
       "saveAs": "Save As…",
       "bom": "Bill of materials (build guide)"

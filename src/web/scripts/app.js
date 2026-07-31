@@ -308,8 +308,9 @@ function buildSchematicViewport() {
 /**
  * Central keyboard shortcuts: desk keys (Esc / Delete via DeskController)
  * first, then Space to toggle Run/Stop (only when no tool is armed), then the
- * app-chrome accelerators (analyzer / palette / run toggle / desk lock), then
- * cmd/ctrl +, −, 0 for the desk zoom.
+ * one FILE accelerator the native menu doesn't own (⇧⌘O, the recent projects),
+ * then the app-chrome accelerators (analyzer / palette / run toggle / desk
+ * lock), then cmd/ctrl +, −, 0 for the desk zoom.
  */
 function bindShortcuts(
   controller,
@@ -320,6 +321,7 @@ function bindShortcuts(
   fitActiveView,
   onToggleView,
   onToggleLock,
+  onOpenRecent,
 ) {
   // Option held over a selected part rings the wire ends an Option-drag would
   // carry (Feature 290). Its own listeners rather than a `handleKeyDown` case,
@@ -413,6 +415,15 @@ function bindShortcuts(
       return;
     }
     if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
+    // ⇧⌘O — the recent projects, the same menu the toolbar's Open segment drops
+    // on a secondary click. It sits AHEAD of the typing guard below, beside the
+    // ⌘O it shadows: a file action is aimed at the app, not at whatever has
+    // focus, and no browser binding claims this chord.
+    if (e.shiftKey && (e.key === "o" || e.key === "O")) {
+      e.preventDefault();
+      onOpenRecent?.();
+      return;
+    }
     // Cmd/Ctrl+P / +R / +F / +L toggle app chrome — not while typing, where the
     // browser's own bindings must win.
     const tag = e.target?.tagName;
@@ -993,9 +1004,18 @@ async function init() {
   // row hidden behind a ▾: they're peers, and a toolbar's job is to show
   // what's available. Each is icon-only with the name + accelerator in its
   // tooltip, and dispatches the SAME chiphippo:* event the native File menu
-  // pushes, so the two can't drift — Open Recent is menu-only, because an MRU
-  // list can't be a button.
-  const fileBtn = ({ icon, label, title, haspopup = false, onClick }) => {
+  // pushes, so the two can't drift — an MRU list still can't be a BUTTON, but
+  // it is what Open's SECONDARY click offers (see below), the same split the
+  // tab strip's "+" uses: a primary click does the common thing, a secondary
+  // one drops the menu behind it.
+  const fileBtn = ({
+    icon,
+    label,
+    title,
+    haspopup = false,
+    onClick,
+    onContextMenu = null,
+  }) => {
     const btn = el("button", {
       class: "toolbar-pill-btn toolbar-pill-btn--icon",
       type: "button",
@@ -1003,6 +1023,7 @@ async function init() {
       "aria-label": label,
       "aria-haspopup": haspopup ? "menu" : null,
       onClick,
+      onContextMenu,
     });
     btn.innerHTML = icon;
     return btn;
@@ -1021,8 +1042,22 @@ async function init() {
   const fileOpenBtn = fileBtn({
     icon: LOAD_SVG,
     label: t("toolbar.file.open"),
-    title: t("toolbar.file.openTitle", { accel: accel("O") }),
+    // Two accelerators in one tooltip: the segment's own, and the chord that
+    // drops the menu its secondary click does (bindShortcuts).
+    title: t("toolbar.file.openTitle", {
+      accel: accel("O"),
+      recent: accel("O", true),
+    }),
     onClick: fileAction("project-open"),
+    // Open's secondary click IS File ▸ Open Recent, off main's own MRU list.
+    // It goes straight to the workspace rather than through a chiphippo:*
+    // push: the native menu bakes its recent list into the menu template, so
+    // there is no menu item here to drift from — only the same list, asked for
+    // at the moment the card opens.
+    onContextMenu: (e) => {
+      e.preventDefault();
+      void workspace?.openRecentMenu(e.clientX, e.clientY);
+    },
   });
   const fileSaveBtn = fileBtn({
     icon: SAVE_SVG,
@@ -1468,6 +1503,13 @@ async function init() {
     fitActiveView,
     () => setMode(mode === "desk" ? "schematic" : "desk"),
     () => deskLock.toggle(),
+    // ⇧⌘O drops the recent-projects menu under the Open segment — the same
+    // place a secondary click on it would, so the key and the pointer put the
+    // card in one spot rather than two.
+    () => {
+      const r = fileOpenBtn.getBoundingClientRect();
+      void workspace?.openRecentMenu(r.left, r.bottom);
+    },
   );
 
   // ── Changing the language, in place ──────────────────────────────────────

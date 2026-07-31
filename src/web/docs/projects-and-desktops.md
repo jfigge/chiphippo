@@ -75,14 +75,17 @@ there is:
   always starts as a single one, numbered from `Desktop 1` again.
 - **Open…** (`Cmd/Ctrl+O`) — pick a `.chiphippo` project to open.
 - **Open Recent** — the last ten projects you saved or opened, most recent
-  first.
+  first. The same list is one keystroke away as `Shift+Cmd/Ctrl+O`, or a
+  right-click on the toolbar's **Open** button; each entry's × forgets it
+  without opening it.
 - **Save** (`Cmd/Ctrl+S`) — write the project to its file.
 - **Save As…** (`Shift+Cmd/Ctrl+S`) — write it to a new one.
 - **Project Properties…** — the project's **Name**, **Description**, and the
   read-only **Location** of its file (blank until it has been saved).
 
-The toolbar's four file buttons are the same four actions, and the window
-title's • means the project has changes you haven't saved.
+The toolbar's four file buttons are the same four actions (with the recent list
+behind a right-click on **Open**), and the window title's • means the project
+has changes you haven't saved.
 
 **You never have to choose a file.** A project that has never been given a home
 lives in Chip Hippo's own working slot, and `Cmd/Ctrl+S` writes it there with

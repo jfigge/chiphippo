@@ -96,7 +96,7 @@
       "new": "Neues Projekt",
       "newTitle": "Neues Projekt ({accel}) — auf einer leeren Arbeitsfläche neu beginnen",
       "open": "Öffnen",
-      "openTitle": "Öffnen… ({accel}) — ein gespeichertes Projekt laden",
+      "openTitle": "Öffnen… ({accel}) — ein gespeichertes Projekt laden ({recent} oder rechtsklicken für zuletzt geöffnete Projekte)",
       "save": "Speichern",
       "saveTitle": "Speichern ({accel}) — das Projekt in seine Datei zurückschreiben",
       "saveAs": "Speichern unter",
@@ -906,6 +906,7 @@
     "file": {
       "new": "Neues Projekt",
       "open": "Ein Projekt öffnen",
+      "openRecent": "Ein zuletzt geöffnetes Projekt öffnen",
       "save": "Speichern",
       "saveAs": "Speichern unter…",
       "bom": "Stückliste (Bauanleitung)"

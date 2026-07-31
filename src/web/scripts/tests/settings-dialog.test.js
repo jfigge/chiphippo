@@ -715,6 +715,27 @@ test("SettingsDialog: About auto-check seeds and emits", async () => {
   segments[1].click();
   assert.deepEqual(patches, [{ autoUpdateCheck: false }]);
 
+  // THE ONE THAT MATTERS FOR A BOOLEAN PICKER: the segment clicked has to light
+  // up. The active state used to be re-derived by matching each button's
+  // `data-value` ATTRIBUTE against the chosen value — and `el()` renders a
+  // `false` prop as a MISSING attribute and `true` as an empty one, so neither
+  // segment ever matched: clicking left the whole track blank. It read as a
+  // setting that would not stay set, though it was stored correctly all along.
+  assert.equal(
+    segments.find((b) => b.classList.contains("segmented-option--active"))
+      ?.textContent,
+    "Off",
+  );
+  assert.deepEqual(
+    segments.map((b) => b.getAttribute("aria-checked")),
+    ["false", "true"],
+  );
+  assert.deepEqual(
+    segments.map((b) => b.getAttribute("data-value")),
+    ["true", "false"],
+    "a boolean option still round-trips as an attribute (through dataset)",
+  );
+
   PopupManager.close();
 
   // Absent means off — an update check is an outbound call, so it is opt-in.
@@ -724,6 +745,40 @@ test("SettingsDialog: About auto-check seeds and emits", async () => {
   await flush();
   assert.equal(activeSegment("Check for updates automatically").textContent, "Off"); // prettier-ignore
   PopupManager.close();
+});
+
+test("SettingsDialog: a rebuild keeps an About change, not just an Appearance one", async (t) => {
+  const window = resetDom({ locales: LOCALES });
+  t.after(() => {
+    PopupManager.close();
+    applyCatalog({ active: "en", lang: "en", messages: EN, fallback: EN, locales: LOCALES }); // prettier-ignore
+  });
+  stubAppInfo({ version: "1.2.3", distribution: "direct" });
+  SettingsDialog.open({ locale: "en", autoUpdateCheck: false });
+  await flush();
+
+  document
+    .querySelector('.settings-nav-item[data-panel="about"]')
+    .dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  document
+    .querySelectorAll(
+      '.settings-panel[data-panel="about"] .segmented-option',
+    )[0]
+    .click();
+
+  // The About panel used to emit through the module-level helper, which tells
+  // app.js but not the dialog — so a rebuild reseeded it from the snapshot
+  // `open()` was handed, and the setting sprang back to the value being left.
+  // The Language picker is in this same card, so that is a reachable sequence,
+  // not a hypothetical one.
+  switchToGerman(window);
+  await flush();
+  assert.equal(
+    document.querySelector(
+      '.settings-panel[data-panel="about"] .segmented-option--active',
+    ).textContent,
+    DE.settings.about.autoOn,
+  );
 });
 
 test("SettingsDialog: a store build offers no update controls at all", async () => {

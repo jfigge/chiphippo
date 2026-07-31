@@ -46,17 +46,25 @@ export function buildSegmented({ options, value, ariaLabel, onPick }) {
       type: "button",
       role: "radio",
       "aria-checked": String(opt.value === value),
-      "data-value": opt.value,
+      // Through `dataset`, not as a bare `data-value` prop: `el()` treats a
+      // prop worth `false` as an absent attribute and `true` as a valueless
+      // one, so a BOOLEAN option would land as `data-value=""` or as nothing
+      // at all. The dataset branch stringifies whatever it is given.
+      dataset: { value: opt.value },
       text: opt.label,
       onClick: () => {
-        for (const b of buttons) {
-          // A `data-` attribute is always a STRING, so the chosen value is
-          // stringified to match it — a numeric option (a future rate or
-          // width) would otherwise never light up.
-          const on = b.getAttribute("data-value") === String(opt.value);
+        // Compare the OPTIONS, never their rendered attributes: an attribute
+        // is a string, and every non-string value has to survive a round trip
+        // through it to match itself back. Settings ▸ About's auto-check is
+        // `true`/`false`, and under the old `data-value` comparison NEITHER
+        // segment matched — clicking one left the whole track unchecked, which
+        // read as a setting that would not stay set (it was stored fine). The
+        // buttons are built from `options` in order, so the index IS identity.
+        buttons.forEach((b, i) => {
+          const on = options[i] === opt;
           b.classList.toggle("segmented-option--active", on);
           b.setAttribute("aria-checked", String(on));
-        }
+        });
         onPick?.(opt.value);
       },
     }),

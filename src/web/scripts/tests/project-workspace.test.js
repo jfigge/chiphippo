@@ -1665,6 +1665,93 @@ test("a recent project that is still there opens", async () => {
   assert.equal(h.workspace.projectLocation, "/home/six.chiphippo");
 });
 
+// ── The Open button's recent menu ────────────────────────────────────────────
+//
+// What a SECONDARY click on the toolbar's Open segment drops: the same MRU
+// list File ▸ Open Recent holds, since both read main's one list.
+
+/** Open the recent menu and hand back its rows (the placeholder is not one). */
+const recentMenu = async (h) => {
+  const done = h.workspace.openRecentMenu(4, 4);
+  await settle();
+  await done;
+  return [
+    ...document.querySelectorAll(
+      ".popup-menu-item:not(.popup-menu-item--empty)",
+    ),
+  ];
+};
+
+const menuPlaceholder = () =>
+  document.querySelector(".popup-menu-item--empty")?.textContent.trim() ?? null;
+
+test("the recent menu lists the recent projects, newest first", async () => {
+  const h = await harness();
+  h.seedRecent("/home/six.chiphippo");
+  h.seedRecent("/home/clock.chiphippo");
+  const rows = await recentMenu(h);
+  assert.deepEqual(
+    rows.map((r) => r.textContent.trim()),
+    ["clock.chiphippo", "six.chiphippo"],
+  );
+  // The name alone is the label; the whole path is what tells two projects of
+  // the same name apart, so it is the tooltip.
+  assert.deepEqual(
+    rows.map((r) => r.title),
+    ["/home/clock.chiphippo", "/home/six.chiphippo"],
+  );
+  assert.equal(menuPlaceholder(), null);
+});
+
+test("a recent menu with nothing in it still opens, and says so", async () => {
+  const h = await harness();
+  assert.deepEqual(await recentMenu(h), []);
+  // A card answering the click, rather than a button that did nothing.
+  assert.equal(menuPlaceholder(), "No recent projects");
+});
+
+test("picking a project from the recent menu opens it", async () => {
+  const h = await harness();
+  h.seedProject("/home/six.chiphippo", {
+    name: "6502 SBC",
+    activeTab: "t1",
+    nextIndex: 2,
+    tabs: [{ id: "t1", name: "Main", doc: emptyDocument() }],
+  });
+  h.seedRecent("/home/six.chiphippo");
+  const [row] = await recentMenu(h);
+  await leaving(() => {
+    row.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+    return settle();
+  });
+  assert.equal(h.workspace.projectName, "6502 SBC");
+  assert.equal(h.workspace.projectLocation, "/home/six.chiphippo");
+});
+
+test("the recent menu's × forgets an entry and stays open", async () => {
+  const h = await harness();
+  h.seedRecent("/home/six.chiphippo");
+  h.seedRecent("/home/clock.chiphippo");
+  await recentMenu(h);
+  document
+    .querySelector(".popup-menu-remove")
+    .dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  await settle();
+  assert.deepEqual(h.recentList(), ["/home/six.chiphippo"]);
+  // Dropping an entry is not a selection: the card is still up, one row down,
+  // so several can go in one visit.
+  assert.equal(PopupManager.isOpen(), true);
+  assert.deepEqual(
+    [
+      ...document.querySelectorAll(
+        ".popup-menu-item:not(.popup-menu-item--empty)",
+      ),
+    ].map((r) => r.textContent.trim()),
+    ["six.chiphippo"],
+  );
+  assert.equal(h.workspace.projectName, "", "and nothing was opened");
+});
+
 // ── The strip ────────────────────────────────────────────────────────────────
 
 test("a desktop's description shows in its tab's tooltip", async () => {

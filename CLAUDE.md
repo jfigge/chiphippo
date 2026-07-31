@@ -1168,8 +1168,27 @@ Electron main process (src/app/main.js)
   aimed at the PROJECT, which is the document — every file action is its OWN
   icon-only segment rather than a row hidden behind a ▾, since they are peers
   and a toolbar's job is to show what is available; the name + accelerator live
-  in each segment's tooltip. There is no Open Recent here — an MRU list can't
-  be a button, so it stays a File-menu submenu), and the **transport**
+  in each segment's tooltip. An MRU list still can't be a BUTTON, but it is
+  what **Open's SECONDARY click** offers — the same split the tab strip's `+`
+  uses, a primary click doing the common thing and a secondary one dropping the
+  menu behind it — and what **⇧⌘O** drops, anchored under that same segment so
+  the key and the pointer put the card in one place rather than two. That chord
+  is the ONE file accelerator `bindShortcuts` owns rather than the native menu
+  (an Electron accelerator on a submenu PARENT would swallow the key without
+  opening anything), which is also why it sits ahead of the typing guard the
+  chrome toggles observe: a file action is aimed at the app, not at whatever
+  has focus. `ProjectWorkspace.openRecentMenu(x, y)` builds it from main's
+  ONE list (`project:recent:list`, which is also the allowlist the open is
+  checked against), asked for as the card opens rather than remembered here —
+  main rewrites it on every save and every open, so a copy on this side could
+  only fall behind. An EMPTY list still opens a card carrying the same disabled
+  placeholder the native submenu shows (`menu.file.noRecent`): a menu saying
+  "nothing yet" answers the click, where a click that did nothing would read as
+  a dead button. Each row is the file NAME with the whole path as its tooltip
+  (the only thing telling two projects of the same name apart) and carries the
+  × `PopupManager` renders for an `onRemove` — the use that vocabulary was
+  written for; dropping an entry is not a selection, so the menu stays open),
+  and the **transport**
   (`.toolbar-pill--transport`, Feature 90/100),
   which is the one pill whose SEGMENT COUNT changes: stopped it holds only
   **Run**, and running it becomes **Stop** with Pause · Step · speed unhidden

@@ -96,7 +96,7 @@
       "new": "Nuevo proyecto",
       "newTitle": "Nuevo proyecto ({accel}) — empezar de nuevo en una mesa vacía",
       "open": "Abrir",
-      "openTitle": "Abrir… ({accel}) — cargar un proyecto guardado",
+      "openTitle": "Abrir… ({accel}) — cargar un proyecto guardado ({recent} o clic derecho para los proyectos recientes)",
       "save": "Guardar",
       "saveTitle": "Guardar ({accel}) — escribir el proyecto en su archivo",
       "saveAs": "Guardar como",
@@ -906,6 +906,7 @@
     "file": {
       "new": "Proyecto nuevo",
       "open": "Abrir un proyecto",
+      "openRecent": "Abrir un proyecto reciente",
       "save": "Guardar",
       "saveAs": "Guardar como…",
       "bom": "Lista de materiales (guía de montaje)"

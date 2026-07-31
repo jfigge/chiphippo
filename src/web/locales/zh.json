@@ -96,7 +96,7 @@
       "new": "新建项目",
       "newTitle": "新建项目（{accel}）— 在空白工作台上重新开始",
       "open": "打开",
-      "openTitle": "打开…（{accel}）— 载入已保存的项目",
+      "openTitle": "打开…（{accel}）— 载入已保存的项目（{recent} 或右键点击可查看最近使用的项目）",
       "save": "保存",
       "saveTitle": "保存（{accel}）— 将项目写回原文件",
       "saveAs": "另存为",
@@ -895,6 +895,7 @@
     "file": {
       "new": "新建项目",
       "open": "打开一个项目",
+      "openRecent": "打开最近使用的项目",
       "save": "保存",
       "saveAs": "另存为…",
       "bom": "物料清单（装配指南）"

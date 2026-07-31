@@ -467,6 +467,47 @@ export class ProjectWorkspace {
   }
 
   /**
+   * The recent projects as a MENU — what the toolbar's Open button offers on a
+   * secondary click, and the same list File ▸ Open Recent holds, since both
+   * read main's one MRU (which is also the allowlist the open is checked
+   * against).
+   *
+   * The list is asked for as the card opens rather than kept here: main
+   * rewrites it on every save and every open, so anything remembered on this
+   * side would be a second copy that could only fall behind.
+   *
+   * An EMPTY list still opens a card, carrying the disabled placeholder the
+   * native submenu shows — a menu saying "nothing yet" is the answer to the
+   * click, where a click that did nothing at all would read as a dead button.
+   * Each row also carries the × `PopupManager` renders for an `onRemove`: an
+   * entry whose project has been moved or deleted is otherwise only
+   * discoverable by opening it, and dropping one is not a selection, so the
+   * menu stays open.
+   */
+  async openRecentMenu(x = 0, y = 0) {
+    let paths = [];
+    try {
+      paths = (await this.#bridge.project.recent.list()) ?? [];
+    } catch (err) {
+      console.error("[renderer] project:recent:list failed:", err);
+    }
+    PopupManager.menu({
+      x,
+      y,
+      emptyLabel: t("menu.file.noRecent"),
+      items: paths.map((filePath) => ({
+        label: fileName(filePath),
+        // The whole path is the only thing that tells two projects of the same
+        // name apart; the row shows the file name alone, as the native submenu
+        // does, and says where it lives on hover.
+        title: filePath,
+        onSelect: () => void this.openRecentProject(filePath),
+        onRemove: () => void this.#forgetRecent(filePath),
+      })),
+    });
+  }
+
+  /**
    * Save: the whole project — every desktop, and every programmed ROM's bytes
    * — to the one file it lives in.
    *

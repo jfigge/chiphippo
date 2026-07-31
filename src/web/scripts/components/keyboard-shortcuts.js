@@ -43,6 +43,7 @@ const shortcutGroups = () => [
     rows: [
       { desc: t("shortcuts.file.new"), keys: `${MOD}+N` },
       { desc: t("shortcuts.file.open"), keys: `${MOD}+O` },
+      { desc: t("shortcuts.file.openRecent"), keys: `${SHIFT}+${MOD}+O` },
       { desc: t("shortcuts.file.save"), keys: `${MOD}+S` },
       { desc: t("shortcuts.file.saveAs"), keys: `${SHIFT}+${MOD}+S` },
       { desc: t("shortcuts.file.bom"), keys: `${MOD}+B` },
