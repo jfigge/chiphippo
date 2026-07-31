@@ -21,6 +21,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import { spec } from "../model/breadboard.js";
 import { resetDom } from "./jsdom-setup.js";
 import { DeskDoc } from "../model/desk-doc.js";
 
@@ -70,6 +71,12 @@ function rings(surface) {
   };
 }
 
+// Grid rows moved when the vertical geometry became MEASURED (board-types.js):
+// a pin-board's plastic is 35.6 mm, so its rows sit 1.51 pitch below the top
+// edge rather than 1, and row a is at 12.51. Fixtures name the row instead of
+// its old integer y, so a re-measurement moves them all at once.
+const ROW = spec("pins-full").rowY;
+
 test("arming the bus tool and clicking start→end lays width wires + a band", () => {
   resetDom();
   const doc = new DeskDoc(null);
@@ -83,9 +90,9 @@ test("arming the bus tool and clicking start→end lays width wires + a band", (
   controller.toggleBusTool();
   assert.equal(controller.busToolArmed, true);
 
-  clickAt(viewport, world, 10, 12); // anchor start on a10
+  clickAt(viewport, world, 10, ROW.a); // anchor start on a10
   assert.equal(doc.wires.length, 0, "nothing laid on the first click");
-  clickAt(viewport, world, 20, 12); // land the run on a20
+  clickAt(viewport, world, 20, ROW.a); // land the run on a20
 
   // Four member wires, one bus, wired a10→a20 … a13→a23 in order.
   assert.equal(doc.wires.length, 4);
@@ -126,8 +133,8 @@ test("the bus tool refuses to lay onto occupied holes (illegal landing)", () => 
 
   controller.setBusName("D[2:0]"); // width 3 → a20, a21, a22
   controller.armBusTool();
-  clickAt(viewport, world, 10, 12); // start a10
-  clickAt(viewport, world, 20, 12); // a21 is taken → illegal, nothing lays
+  clickAt(viewport, world, 10, ROW.a); // start a10
+  clickAt(viewport, world, 20, ROW.a); // a21 is taken → illegal, nothing lays
 
   assert.equal(doc.buses.length, 0);
   assert.equal(doc.wires.length, 1, "only the pre-existing wire remains");
@@ -150,7 +157,7 @@ test("hovering a start rings every hole the bus would claim", () => {
 
   controller.setBusName("D[7:0]"); // width 8
   controller.armBusTool();
-  hoverAt(viewport, world, 10, 12); // a10 … a17, all free
+  hoverAt(viewport, world, 10, ROW.a); // a10 … a17, all free
 
   assert.deepEqual(rings(surface), { count: 8, illegal: 0 });
 });
@@ -163,7 +170,7 @@ test("a start run that walks off the strip is REFUSED, ringing the shortfall", (
 
   controller.setBusName("D[7:0]"); // width 8 from a60 → only a60…a63 exist
   controller.armBusTool();
-  clickAt(viewport, world, 60, 12);
+  clickAt(viewport, world, 60, ROW.a);
 
   assert.deepEqual(
     rings(surface),
@@ -171,7 +178,7 @@ test("a start run that walks off the strip is REFUSED, ringing the shortfall", (
     "four rings where eight were asked for — the shortfall IS the explanation",
   );
   // Nothing anchored, so the next click anchors rather than landing a bus.
-  clickAt(viewport, world, 20, 12);
+  clickAt(viewport, world, 20, ROW.a);
   assert.equal(doc.wires.length, 0);
   assert.equal(doc.buses.length, 0);
 });
@@ -185,19 +192,19 @@ test("an occupied hole inside the start run refuses the anchor too", () => {
 
   controller.setBusName("D[3:0]"); // width 4 from a10 → a10, a11, a12, a13
   controller.armBusTool();
-  clickAt(viewport, world, 10, 12);
+  clickAt(viewport, world, 10, ROW.a);
 
   assert.deepEqual(rings(surface), { count: 4, illegal: 4 });
   // a10 never anchored, so this second click ANCHORS rather than landing a
   // bus — which is the whole proof that the first one was refused.
-  clickAt(viewport, world, 30, 12);
+  clickAt(viewport, world, 30, ROW.a);
   assert.equal(doc.wires.length, 1, "only the pre-existing wire");
   assert.equal(doc.buses.length, 0);
 
   // Starting past the collision is fine — a13 … a16 are all free.
   controller.disarmBusTool();
   controller.armBusTool();
-  hoverAt(viewport, world, 13, 12);
+  hoverAt(viewport, world, 13, ROW.a);
   assert.deepEqual(rings(surface), { count: 4, illegal: 0 });
 });
 
@@ -209,18 +216,18 @@ test("a landing that walks off the strip rings the holes that exist", () => {
 
   controller.setBusName("D[7:0]"); // width 8
   controller.armBusTool();
-  clickAt(viewport, world, 10, 12); // anchor a10 (a10…a17 free)
+  clickAt(viewport, world, 10, ROW.a); // anchor a10 (a10…a17 free)
   assert.deepEqual(rings(surface), { count: 8, illegal: 0 }, "start is legal");
 
-  hoverAt(viewport, world, 60, 12); // j60…: only four columns left
+  hoverAt(viewport, world, 60, ROW.a); // j60…: only four columns left
   assert.deepEqual(rings(surface), { count: 4, illegal: 4 });
-  clickAt(viewport, world, 60, 12);
+  clickAt(viewport, world, 60, ROW.a);
   assert.equal(doc.wires.length, 0, "an illegal landing lays nothing");
 
   // A legal landing rings all eight destination holes, and lays them.
-  hoverAt(viewport, world, 30, 12);
+  hoverAt(viewport, world, 30, ROW.a);
   assert.deepEqual(rings(surface), { count: 8, illegal: 0 });
-  clickAt(viewport, world, 30, 12);
+  clickAt(viewport, world, 30, ROW.a);
   assert.equal(doc.wires.length, 8);
   assert.equal(doc.buses.length, 1);
 });
@@ -233,14 +240,14 @@ test("the rings come off the desk when the pointer leaves the viewport", () => {
 
   controller.setBusName("D[3:0]");
   controller.armBusTool();
-  hoverAt(viewport, world, 10, 12);
+  hoverAt(viewport, world, 10, ROW.a);
   assert.equal(rings(surface).count, 4);
 
   viewport.dispatchEvent(new window.PointerEvent("pointerleave"));
   assert.equal(rings(surface).count, 0);
 
   // Disarming clears them too, however the tool was left.
-  hoverAt(viewport, world, 10, 12);
+  hoverAt(viewport, world, 10, ROW.a);
   controller.disarmBusTool();
   assert.equal(rings(surface).count, 0);
 });

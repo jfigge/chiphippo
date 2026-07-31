@@ -26,12 +26,16 @@
 // ONE occupancy set — so a collision is a build-time throw rather than a wire
 // the loader silently drops.
 //
-// The frame (matching the two hand-built desktops the demos began with):
+// The frame (matching the two hand-built desktops the demos began with). The
+// strips stack at their MEASURED heights — a rail is 3.70 pitch (9.4 mm) and a
+// pin-board 14.02 (35.6), see board-types.js — so the offsets are DERIVED here
+// as everywhere else: a literal would leave the stack overlapping, and
+// `normalizeDocument` drops a board that overlaps its neighbour.
 //
-//   y −23  ┌ psu1 / clk1 bricks
-//   y −14  ├ bb1  rail-full   (+ at −13, − at −12)
-//   y −11  ├ bb2  pins-full   (rows j…f at −10…−6, trench, rows e…a at −3…1)
-//   y   2  └ bb3  rail-full   (+ at 3, − at 4)
+//   y −23    ┌ psu1 / clk1 bricks
+//   y −14    ├ bb1  rail-full
+//   y −10.30 ├ bb2  pins-full  (rows j…f, the channel, rows e…a)
+//   y   3.72 └ bb3  rail-full
 //
 // Columns, left to right: an optional 8-way DIP-switch bank at 2, slide
 // switches after it (pitch 6, four to a half — two when the bank is there
@@ -40,7 +44,11 @@
 // one in the LOWER half (rows a–e) the bottom rail — the two are wired
 // together at the far end, so either reaches the same net.
 
-import { holesOfNode, nodeOf } from "../src/web/scripts/model/breadboard.js";
+import {
+  holesOfNode,
+  nodeOf,
+  spec,
+} from "../src/web/scripts/model/breadboard.js";
 import {
   partPinHoles,
   worldOfAddress,
@@ -48,11 +56,28 @@ import {
 import { partDef } from "../src/web/scripts/catalog/index.js";
 import { DOC_VERSION } from "../src/web/scripts/model/desk-doc.js";
 
-/** The breadboard kit every bench is built on, at the file's existing origin. */
+/** The breadboard kit every bench is built on, at the file's existing origin —
+    the top rail's y, with the two strips below it stacked flush by height. */
+const KIT_Y = -14;
+const q = (n) => Math.round(n * 100) / 100;
 const BOARDS = Object.freeze([
-  { id: "bb1", type: "rail-full", x: -37, y: -14, rot: 0, group: "g1" },
-  { id: "bb2", type: "pins-full", x: -37, y: -11, rot: 0, group: "g1" },
-  { id: "bb3", type: "rail-full", x: -37, y: 2, rot: 0, group: "g1" },
+  { id: "bb1", type: "rail-full", x: -37, y: KIT_Y, rot: 0, group: "g1" },
+  {
+    id: "bb2",
+    type: "pins-full",
+    x: -37,
+    y: q(KIT_Y + spec("rail-full").height),
+    rot: 0,
+    group: "g1",
+  },
+  {
+    id: "bb3",
+    type: "rail-full",
+    x: -37,
+    y: q(KIT_Y + spec("rail-full").height + spec("pins-full").height),
+    rot: 0,
+    group: "g1",
+  },
 ]);
 
 export const PINS = "bb2";

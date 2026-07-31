@@ -25,14 +25,35 @@
 // BREADBOARD_KITS below describes the preset stacks the palette offers.
 //
 // All geometry is in PITCH UNITS (1 = 0.1 in = 2.54 mm), y increasing
-// downward from the strip's top-left origin. Hole lattices are INTEGER
-// offsets within the outline, and kit offsets are integers too, so a strip
-// snapped to integers puts every hole on the global 0.1-in lattice.
+// downward from the strip's top-left origin. HORIZONTALLY everything is on the
+// integer lattice — a column IS a pitch — which is why board origins stay
+// integers and every hole in a row of strips lines up.
 //
-// Layout (top → bottom):
-//   rail strip: `+` (red) at y=1, `-` (blue) at y=2 — height 3.
-//   pin-board:  rows j i h g f · trench (2 rows; DIP chips straddle it, pins
-//               in f and e) · rows e d c b a — height 13.
+// VERTICALLY IT IS NOT, BECAUSE A REAL BREADBOARD IS NOT. The measurements
+// below are off a physical 830 (see VERTICAL_MM): a rail is 8.9 mm tall and a
+// pin-board 35.6 mm, neither of which is a whole number of pitches, and the
+// channel is 2.3 mm — barely a third of the 7.62 mm between the hole rows it
+// separates. Rounding those to 3 and 13 pitches (which is what this table used
+// to do) compressed a 53.4 mm board into 48.3 mm: every hole was in the right
+// place ACROSS the board and 5 mm out DOWN it, which is exactly what you see
+// when you lay a real board against the screen.
+//
+// So the two axes are quantized differently, and only vertically is a strip's
+// height fractional: heights and row offsets are exact multiples of 0.01 pitch
+// (the same 2-decimal quantum wire waypoints use), so a stack of strips lands
+// on values that survive a JSON round-trip and stay flush.
+//
+// WHAT STAYS INTEGER, DELIBERATELY: the pitch WITHIN a group of five rows (1),
+// the spacing between a strip's two RAILS (1 = 2.54 mm), and the row spacing
+// ACROSS the channel (3 = 7.62 mm = the 0.3-in row spacing every DIP is
+// manufactured to — measured at 7.6, i.e. the same number). Every footprint
+// that straddles the channel therefore stays exactly as it was; what moved is
+// the plastic around the holes, not the holes.
+//
+// Layout (top → bottom), heights in pitch units (mm):
+//   rail strip: `+` (red) at y=1.25, `-` (blue) at y=2.25 — height 3.50 (8.9).
+//   pin-board:  rows j i h g f · channel (DIP chips straddle it, pins in f and
+//               e) · rows e d c b a — height 14.02 (35.6).
 //
 // Rail holes come in groups of `railGroup` with ONE EXTRA pitch of gap
 // between groups: hole k (1-based) sits at
@@ -41,43 +62,108 @@
 // Tie-point counts per kit (locked by tests):
 //   Full 63×10 + 2×(2×50) = 830 · Half 30×10 + 2×(2×25) = 400 · Tiny 17×10 = 170.
 
-/** Row letter → y, shared by every pin-board (they differ only in width). */
-const PIN_ROW_Y = Object.freeze({
-  j: 1,
-  i: 2,
-  h: 3,
-  g: 4,
-  f: 5,
-  e: 8,
-  d: 9,
-  c: 10,
-  b: 11,
-  a: 12,
+import { MM_PER_UNIT } from "../desk/desk-geometry.js";
+
+/**
+ * The vertical geometry, MEASURED off a physical 830 breadboard in
+ * millimetres — the form a ruler reads and the only form these can be checked
+ * in. Everything below is derived from this block, so correcting a figure here
+ * moves the drawing, the holes, the kit stack and the channel together.
+ *
+ *   total 53.4 = rail 8.9 + pinBoard 35.6 + rail 8.9 ✓
+ *
+ * THREE MEASUREMENTS, and the fourth number a ruler can reach — the 7.0 mm
+ * between the closest pins either side of a rail↔pin-board join — is left
+ * DERIVED, as the check that the two strips' margins agree with each other:
+ * a rail's own margin (1.25) plus the pin-board's (1.51) is 2.76 pitch, 7.01 mm
+ * (`tests/breadboard.test.js` holds it to that). It used to be an input, back
+ * when the rail was 9.4 mm and its two rows fell out 3.05 mm apart; at 8.9 they
+ * fall out exactly one pitch, which is what a rail really is.
+ */
+const VERTICAL_MM = Object.freeze({
+  rail: 8.9,
+  pinBoard: 35.6,
+  channel: 2.3,
 });
 
-/** The trench, shared by every pin-board. */
-const PIN_TRENCH = Object.freeze({ centerY: 6.5, height: 2 });
+/** The 0.01-unit grid every vertical dimension here sits on (see the header: a
+    fractional height has to survive a JSON round-trip and still leave a stack
+    of strips flush). */
+const q = (n) => Math.round(n * 100) / 100;
+
+/** Millimetres → pitch units, on that grid. */
+const u = (mm) => q(mm / MM_PER_UNIT);
+
+/**
+ * Heights are the measured plastic, not a count of pitches — 8.9 mm and
+ * 35.6 mm, to the 0.01 unit. A stacked kit is 3.50 + 14.02 + 3.50 = 21.02
+ * (53.39 mm against a real board's 53.4).
+ */
+const RAIL_HEIGHT = u(VERTICAL_MM.rail); // 3.50 — 8.9 mm
+const PINS_HEIGHT = u(VERTICAL_MM.pinBoard); // 14.02 — 35.6 mm
+
+/**
+ * Row spacing ACROSS the channel, in pitch units. Integer on purpose: 3
+ * pitches is 7.62 mm, which is the 0.3-in row spacing every DIP is made to and
+ * (measured at 7.6 mm) what the board is drilled to. Keeping it whole is what
+ * lets every trench-straddling footprint — the chips, the DIP switch banks,
+ * bar8iso — stay exactly as they were while the plastic around them changes.
+ */
+const CHANNEL_SPAN = 3;
+
+/** Plastic above row j / below row a: the pin-board's height less the 11
+    pitches its ten rows span, halved — 1.51 units, 3.84 mm. */
+const PIN_MARGIN = q((PINS_HEIGHT - (8 + CHANNEL_SPAN)) / 2);
+
+/** Row letter → y, shared by every pin-board (they differ only in width). */
+const PIN_ROW_Y = Object.freeze({
+  j: PIN_MARGIN,
+  i: PIN_MARGIN + 1,
+  h: PIN_MARGIN + 2,
+  g: PIN_MARGIN + 3,
+  f: PIN_MARGIN + 4,
+  e: PIN_MARGIN + 4 + CHANNEL_SPAN,
+  d: PIN_MARGIN + 5 + CHANNEL_SPAN,
+  c: PIN_MARGIN + 6 + CHANNEL_SPAN,
+  b: PIN_MARGIN + 7 + CHANNEL_SPAN,
+  a: PIN_MARGIN + 8 + CHANNEL_SPAN,
+});
+
+/**
+ * The channel, shared by every pin-board: centred between rows f and e, and
+ * only 2.3 mm wide — a THIRD of the 7.62 mm between those rows, where it used
+ * to be drawn 5.08 mm and all but touch them. The rows do not move, so nothing
+ * that straddles it moves either; there is simply plastic where there was a
+ * groove.
+ */
+const PIN_TRENCH = Object.freeze({
+  centerY: PIN_MARGIN + 4 + CHANNEL_SPAN / 2,
+  height: u(VERTICAL_MM.channel), // 0.91 — 2.3 mm
+});
+
+/**
+ * The two rails of a strip are ONE PITCH apart (2.54 mm) — whole, like the
+ * spacing within a group of grid rows and across the channel, and for the same
+ * reason: it is what the part is drilled to. Everything a user does between the
+ * two rails then lands square, most visibly a resistor or LED bridging `+` to
+ * `-`, whose one-pitch bend reaches the hole exactly rather than near it.
+ */
+const RAIL_SPAN = 1;
+
+/** Plastic above the `+` row / below the `-` row: the rest of the strip's
+    8.9 mm, halved, so the pair sits centred — 1.25 units, 3.18 mm. Which also
+    settles the gap ACROSS a dovetail, this margin plus the pin-board's own:
+    2.76 pitch, 7.01 mm, against 7.0 on the real part. */
+const RAIL_MARGIN = q((RAIL_HEIGHT - RAIL_SPAN) / 2);
 
 /**
  * A rail strip carries BOTH polarities, as the real part does — ids are the
  * bare polarity (`+`, `-`), so a rail hole address reads `bb2.+7`.
  */
 const STRIP_RAILS = Object.freeze([
-  Object.freeze({ id: "+", y: 1, polarity: "+" }),
-  Object.freeze({ id: "-", y: 2, polarity: "-" }),
+  Object.freeze({ id: "+", y: RAIL_MARGIN, polarity: "+" }),
+  Object.freeze({ id: "-", y: q(RAIL_MARGIN + RAIL_SPAN), polarity: "-" }),
 ]);
-
-/**
- * Heights chosen so the holes sit CENTRED in their plastic.
- *   Rail: rows at y=1,2 → midpoint 1.5 = 3/2. With the colour stripes (which
- *         reach 0.8 above the `+` row and 0.8 below the `-` row) the inked
- *         content spans 0.2 … 2.8, leaving equal 0.2 margins.
- *   Pins: rows at y=1…12 → midpoint 6.5 = 13/2, and the trench's centreY 6.5
- *         lands on the same axis.
- * A stacked kit is therefore 3 + 13 + 3 = 19 tall.
- */
-const RAIL_HEIGHT = 3;
-const PINS_HEIGHT = 13;
 
 /** Fields a strip with no grid still has to carry for the derivations. */
 const NO_GRID = Object.freeze({
@@ -180,13 +266,13 @@ export const BOARD_TYPE_KEYS = Object.freeze(Object.keys(BOARD_TYPES));
 
 /**
  * The preset breadboards the palette offers: a size key → the strips it is
- * built from, at integer offsets from the kit's origin. Placing a kit seats
- * every strip in one group, pre-snapped, exactly as a boxed breadboard
- * arrives assembled.
+ * built from, at offsets from the kit's origin. Placing a kit seats every strip
+ * in one group, pre-snapped, exactly as a boxed breadboard arrives assembled.
  *
- * The full/half offsets reproduce the classic rail rows — top `+` at y=1,
- * bottom `+` at y=19 — so a kit is visually identical to the old one-piece
- * board (22 tall rather than 21.7, which buys integer strip origins).
+ * `dx` is an integer (the horizontal lattice); `dy` is each strip's measured
+ * height, so the stack is 0 · 3.70 · 17.72 and the whole kit 21.42 units —
+ * 54.41 mm, a real 830. Quantized through `q` so the stored value is the same
+ * clean 2-decimal number whichever way it was summed.
  */
 export const BREADBOARD_KITS = Object.freeze({
   full: Object.freeze({
@@ -199,7 +285,7 @@ export const BREADBOARD_KITS = Object.freeze({
       Object.freeze({
         type: "rail-full",
         dx: 0,
-        dy: RAIL_HEIGHT + PINS_HEIGHT,
+        dy: q(RAIL_HEIGHT + PINS_HEIGHT),
       }),
     ]),
   }),
@@ -214,7 +300,7 @@ export const BREADBOARD_KITS = Object.freeze({
       Object.freeze({
         type: "rail-half",
         dx: 0,
-        dy: RAIL_HEIGHT + PINS_HEIGHT,
+        dy: q(RAIL_HEIGHT + PINS_HEIGHT),
       }),
     ]),
   }),

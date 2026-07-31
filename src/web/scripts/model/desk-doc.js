@@ -281,6 +281,43 @@ function wireCoord(n) {
   return Math.round(n * 100) / 100;
 }
 
+/**
+ * A board coordinate on the grid the document STORES boards on: two decimals,
+ * the same quantum a wire waypoint keeps.
+ *
+ * It used to be whole pitches, which was right while every strip was a whole
+ * number of them tall. It is not any more: board-types.js measures a rail at
+ * 3.70 pitches and a pin-board at 14.02, so the strips of an ordinary 830 kit
+ * sit at y 0, 3.70 and 17.72 — and `Math.round` here would jam each of them
+ * back into the one above it. Every vertical dimension in board-types.js is an
+ * exact multiple of 0.01, so a stack lands on this grid exactly and stays
+ * flush through a save and a reload.
+ *
+ * WHAT KEEPS THE COLUMNS LINED UP is not this function but the two things that
+ * feed it: a board is PLACED at a whole-pitch x (`placeX`), and a drag moves it
+ * by a whole-pitch delta. The only thing that ever puts a board on a fractional
+ * x is a dovetail against something whose width is fractional — an upright rail
+ * is 3.70 wide — which is precisely a case where the exact value is the point.
+ */
+function boardCoord(n) {
+  return Math.round(n * 100) / 100;
+}
+
+/** Where a board is PLACED: x snaps to the integer column lattice, so a strip
+    dropped anywhere on the desk lines its columns up with every other. */
+function placeX(n) {
+  return Math.round(n);
+}
+
+/** A magnetic pull, on the same grid. `snapCorrection` is pure rect geometry
+    and works in whatever the caller hands it, so the difference of two measured
+    strip heights comes back as 2.0000000000000036 — true enough to snap with,
+    but not something to store or to state. Quantizing here lands the drop
+    exactly flush and keeps the reported pull readable. */
+function quantizePull({ dx, dy }) {
+  return { dx: boardCoord(dx), dy: boardCoord(dy) };
+}
+
 /** Coerce a raw waypoint list: real finite points only, capped at
     MAX_WIRE_POINTS. Junk is dropped rather than refused — a hand-edited or
     foreign document should lose a bad bend, not its wire. */
@@ -387,8 +424,8 @@ export function normalizeDocument(raw) {
     const board = {
       id: b.id,
       type: b.type,
-      x: Math.round(b.x),
-      y: Math.round(b.y),
+      x: boardCoord(b.x),
+      y: boardCoord(b.y),
       rot: normalizeRotation(b.type, b.rot),
       group: g ? b.group : null,
     };
@@ -821,7 +858,10 @@ export class DeskDoc {
    */
   canPlace(type, x, y, { ignoreId = null, rot = 0 } = {}) {
     const { width, height } = boardSize(type, normalizeRotation(type, rot));
-    const rect = { x: Math.round(x), y: Math.round(y), width, height };
+    // x takes the column lattice (as a placement will); y keeps its two
+    // decimals, because a kit's own strips arrive on fractional offsets and
+    // rounding them here would check a rect the board will never occupy.
+    const rect = { x: placeX(x), y: boardCoord(y), width, height };
     return (
       this.#doc.boards.every(
         (b) => b.id === ignoreId || !rectsOverlap(rect, outlineRect(b)),
@@ -854,15 +894,15 @@ export class DeskDoc {
     const turn = normalizeRotation(type, rot);
     if (!this.canPlace(type, x, y, { rot: turn })) {
       throw taggedError(
-        `a ${type} board at ${Math.round(x)},${Math.round(y)} overlaps an existing board`,
+        `a ${type} board at ${placeX(x)},${boardCoord(y)} overlaps an existing board`,
         "OVERLAP",
       );
     }
     const board = {
       id: `bb${this.#doc.nextBoardId++}`,
       type,
-      x: Math.round(x),
-      y: Math.round(y),
+      x: placeX(x),
+      y: boardCoord(y),
       rot: turn,
       group: null,
     };
@@ -881,8 +921,8 @@ export class DeskDoc {
   static kitPlacements(kitKey, x, y, rot = 0) {
     const kit = BREADBOARD_KITS[kitKey];
     if (!kit) throw taggedError(`unknown kit: ${kitKey}`, "INVALID_TYPE");
-    const ox = Math.round(x);
-    const oy = Math.round(y);
+    const ox = placeX(x);
+    const oy = boardCoord(y);
     // A kit turns only if EVERY strip in it can: in practice the lone-rail
     // kits. An assembled board holds a pin-board, so it stays flat, and the
     // preset offsets are only ever meaningful at 0.
@@ -890,7 +930,7 @@ export class DeskDoc {
     return kit.strips.map((s) => ({
       type: s.type,
       x: ox + s.dx,
-      y: oy + s.dy,
+      y: boardCoord(oy + s.dy),
       rot: turn,
     }));
   }
@@ -906,9 +946,14 @@ export class DeskDoc {
   static kitOutline(kitKey, rot = 0) {
     const strips = DeskDoc.kitPlacements(kitKey, 0, 0, rot);
     const sized = strips.map((s) => ({ s, size: boardSize(s.type, s.rot) }));
+    // Quantized like a board origin: the height is a sum of measured strips
+    // (3.70 + 14.02 + 3.70), which in binary lands a hair under 21.42 — and
+    // this outline is compared against, and drawn, as a stated size.
     return {
       width: Math.max(...sized.map(({ s, size }) => s.x + size.width)),
-      height: Math.max(...sized.map(({ s, size }) => s.y + size.height)),
+      height: boardCoord(
+        Math.max(...sized.map(({ s, size }) => s.y + size.height)),
+      ),
     };
   }
 
@@ -933,7 +978,7 @@ export class DeskDoc {
     const placements = DeskDoc.kitPlacements(kitKey, x, y, rot);
     if (!this.canPlaceKit(kitKey, x, y, rot)) {
       throw taggedError(
-        `a ${kitKey} breadboard at ${Math.round(x)},${Math.round(y)} overlaps an existing board`,
+        `a ${kitKey} breadboard at ${placeX(x)},${boardCoord(y)} overlaps an existing board`,
         "OVERLAP",
       );
     }
@@ -1053,15 +1098,27 @@ export class DeskDoc {
   }
 
   /**
-   * Would translating exactly `ids` by (dx, dy) — integers — clear every
-   * board and brick that is NOT moving? False when any id is unknown.
+   * Would translating exactly `ids` by (dx, dy) clear every board and brick
+   * that is NOT moving? False when any id is unknown.
+   *
+   * The delta is NOT rounded to whole pitches here (nor in `moveBoardsBy`,
+   * which must land on exactly the position this cleared). A gesture supplies
+   * a whole-pitch delta of its own accord — that is what makes a board drag
+   * step pitch by pitch — but the magnetic pull is then ADDED to it, and a
+   * dovetail is only ever flush at an exact value: against a 3.70-tall rail
+   * that value is fractional, and rounding it away here is a snap that lands a
+   * hundredth of a pitch short and silently fails to mate.
    */
   canMoveBoardsBy(ids, dx, dy) {
     const moving = new Set(ids);
     const members = this.#doc.boards.filter((b) => moving.has(b.id));
     if (members.length === 0 || members.length !== moving.size) return false;
     const rects = members.map((b) =>
-      outlineRect({ ...b, x: b.x + Math.round(dx), y: b.y + Math.round(dy) }),
+      outlineRect({
+        ...b,
+        x: boardCoord(b.x + dx),
+        y: boardCoord(b.y + dy),
+      }),
     );
     const others = this.#doc.boards.filter((b) => !moving.has(b.id));
     return rects.every(
@@ -1087,19 +1144,24 @@ export class DeskDoc {
       this.#doc.boards.filter((b) => !moving.has(b.id)),
     ];
     if (members.length === 0) return { dx: 0, dy: 0 };
-    return snapCorrection(
-      members.map((b) =>
-        outlineRect({ ...b, x: b.x + Math.round(dx), y: b.y + Math.round(dy) }),
+    return quantizePull(
+      snapCorrection(
+        members.map(
+          (b) =>
+          outlineRect({ ...b, x: boardCoord(b.x + dx), y: boardCoord(b.y + dy) }), // prettier-ignore
+        ),
+        others.map(outlineRect),
       ),
-      others.map(outlineRect),
     );
   }
 
   /** The same magnetic pull, for a kit not yet placed (the ghost). */
   snapKitAt(kitKey, x, y, rot = 0) {
-    return snapCorrection(
-      DeskDoc.kitPlacements(kitKey, x, y, rot).map(outlineRect),
-      this.#doc.boards.map(outlineRect),
+    return quantizePull(
+      snapCorrection(
+        DeskDoc.kitPlacements(kitKey, x, y, rot).map(outlineRect),
+        this.#doc.boards.map(outlineRect),
+      ),
     );
   }
 
@@ -1200,15 +1262,15 @@ export class DeskDoc {
     const moved = [];
     for (const b of this.#doc.boards) {
       if (!moving.has(b.id)) continue;
-      b.x += Math.round(dx);
-      b.y += Math.round(dy);
+      b.x = boardCoord(b.x + dx);
+      b.y = boardCoord(b.y + dy);
       moved.push(b);
     }
     for (const [wireId, indices] of carried) {
       const points = this.#doc.wires.find((w) => w.id === wireId)?.points ?? [];
       for (const i of indices) {
-        points[i].x = wireCoord(points[i].x + Math.round(dx));
-        points[i].y = wireCoord(points[i].y + Math.round(dy));
+        points[i].x = wireCoord(points[i].x + dx);
+        points[i].y = wireCoord(points[i].y + dy);
       }
     }
     for (const group of torn) this.#regroupAfterBreak(group, moving);
@@ -1256,13 +1318,13 @@ export class DeskDoc {
     // upright rail sweeps a 3×64 box, not a 64×3 one.
     if (!this.canPlace(board.type, x, y, { ignoreId: id, rot: board.rot })) {
       throw taggedError(
-        `moving ${id} to ${Math.round(x)},${Math.round(y)} overlaps another board`,
+        `moving ${id} to ${placeX(x)},${boardCoord(y)} overlaps another board`,
         "OVERLAP",
       );
     }
     const group = board.group;
-    board.x = Math.round(x);
-    board.y = Math.round(y);
+    board.x = placeX(x);
+    board.y = boardCoord(y);
     // Moving one strip of a group can open a gap the group id would still span,
     // dragging the now-disconnected strips as one unit. Tear it out and
     // re-derive both halves from what is still mated (as moveBoardsBy does).
@@ -2589,11 +2651,20 @@ export class DeskDoc {
     if (!Number.isFinite(dx) || !Number.isFinite(dy)) {
       throw taggedError("desk delta must be finite", "INVALID_ARG");
     }
-    const [ix, iy] = [Math.round(dx), Math.round(dy)];
+    // x rounds to the column lattice; y takes the same 0.01 grid a board is
+    // stored on, there being no vertical lattice to round to any more. A
+    // recentre that rounded y would leave the desk up to half a pitch off the
+    // origin — visible on a fit, and enough to leave `make demos` reporting an
+    // uncentred bench.
+    const [ix, iy] = [Math.round(dx), boardCoord(dy)];
     if (ix === 0 && iy === 0) return { dx: 0, dy: 0 };
     for (const board of this.#doc.boards) {
-      board.x += ix;
-      board.y += iy;
+      // Quantized, not accumulated: a board's y is fractional now (a kit's
+      // middle strip sits at 3.70), and `+=` down a session of recentres would
+      // walk it off the grid one ulp at a time until a dovetail stopped being
+      // flush. The delta itself is a whole pitch, so nothing else moves.
+      board.x = boardCoord(board.x + ix);
+      board.y = boardCoord(board.y + iy);
     }
     for (const comp of this.#doc.components) {
       // Bricks alone carry desk coordinates; a seated part has board + anchor.

@@ -25,6 +25,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import { holePosition } from "../model/breadboard.js";
 import { resetDom } from "./jsdom-setup.js";
 import { framebufferOf, hd44780Unit } from "../sim/hd44780.js";
 import { partDef } from "../catalog/index.js";
@@ -117,10 +118,12 @@ test("the module seats by its body box, like every other discrete", () => {
   view.updatePlacement(board, "j1");
   const box = partDef("lcd16x2").characterDisplay.body;
   const el = layer.querySelector(".part-discrete");
-  // Board origin + pin 1's hole + the box offset (holePosition puts row j's
-  // column 1 at local 1,1 on a pin-board).
-  assert.equal(el.style.left, `${(10 + 1 + box.minX) * 10}px`);
-  assert.equal(el.style.top, `${(20 + 1 + box.minY) * 10}px`);
+  // Board origin + pin 1's hole + the box offset. The hole's own position is
+  // asked for rather than assumed: row j sits 1.51 below the top edge on a
+  // measured pin-board (board-types.js), not 1.
+  const hole = holePosition("pins-full", "j1");
+  assert.equal(el.style.left, `${(10 + hole.x + box.minX) * 10}px`);
+  assert.equal(el.style.top, `${(20 + hole.y + box.minY) * 10}px`);
 });
 
 test("the canvas covers the active area and models its character grid", () => {

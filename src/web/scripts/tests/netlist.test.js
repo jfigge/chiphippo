@@ -18,6 +18,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import { spec } from "../model/breadboard.js";
 import { performance } from "node:perf_hooks";
 
 import { DeskDoc } from "../model/desk-doc.js";
@@ -298,11 +299,25 @@ test("a 180°-flipped chip labels each hole with its ROTATED pin", () => {
 
 /**
  * A resistor seated on the pin-board with its far lead bent DOWN onto the
- * bottom rail strip: anchor `bb2.a10` (world 10,15), lead at +3 pitches of y
- * → `bb3.-7` (world 10,18) — rail hole 7 shares column 10's x. Its ends are a
- * {dx, dy} bend, not a hole id. The bend is also exactly the resistor's
- * minSpan, so it is the tightest legal reach from row a to the `-` rail.
+ * bottom rail strip: anchor `bb2.a10`, lead bent to `bb3.-7` (rail hole 7
+ * shares column 10's x). Its ends are a {dx, dy} bend, not a hole id, and the
+ * bend is DERIVED — from row a to the `-` rail is 3.96 pitch on a measured
+ * board (board-types.js), which no fixture may write down by hand.
  */
+/** The bend itself: row a of a kit's pin-board down to the bottom rail's `-`
+    row. DERIVED, because on a measured board it is 3.96 pitch and not a round
+    number anyone should be writing into a fixture. */
+const RAIL_BEND = Object.freeze({
+  dx: 0,
+  dy:
+    Math.round(
+      (spec("pins-full").height +
+        spec("rail-full").rails[1].y -
+        spec("pins-full").rowY.a) *
+        100,
+    ) / 100,
+});
+
 function railBentResistor() {
   const doc = fullKit(); // bb1 rail · bb2 pins · bb3 rail
   doc.addComponent({
@@ -310,7 +325,7 @@ function railBentResistor() {
     ref: "resistor",
     board: "bb2",
     anchor: "a10",
-    params: { rot: 90, end: { dx: 0, dy: 3 } },
+    params: { rot: 90, end: { ...RAIL_BEND } },
   });
   return doc;
 }
@@ -354,7 +369,7 @@ test("pulling the rail out from under a lead floats it; the part survives", () =
     ref: "resistor",
     board: "bb2",
     anchor: "a10",
-    params: { ohms: 10000, rot: 90, end: { dx: 0, dy: 3 } },
+    params: { ohms: 10000, rot: 90, end: RAIL_BEND },
   });
   // Its anchored lead still belongs to its column's net…
   assert.deepEqual(

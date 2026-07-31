@@ -306,8 +306,13 @@ test("led: color/flip coercion and polarity contract", () => {
       0,
     ),
   );
+  // A FRACTIONAL bend is kept, quantized to the 0.01 grid: the vertical
+  // geometry is measured now (board-types.js), so the reach from a grid row to
+  // a dovetailed rail's nearest row is 2.76 — refusing it stood the part back
+  // up. Junk is still dropped.
+  assert.deepEqual(def.normalizeParams({ rot: 90, end: { dx: 0, dy: 2.756 } }).end, { dx: 0, dy: 2.76 }); // prettier-ignore
   assert.equal(
-    def.normalizeParams({ rot: 90, end: { dx: 1.5, dy: 0 } }).end,
+    def.normalizeParams({ rot: 90, end: { dx: NaN, dy: 0 } }).end,
     null,
   );
   assert.equal(

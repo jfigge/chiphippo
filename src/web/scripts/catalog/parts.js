@@ -274,9 +274,17 @@ function normalizeLcdParams(raw) {
  * nonsense.
  */
 export function normalizeLeadOffset(raw) {
-  const dx = Number(raw?.dx);
-  const dy = Number(raw?.dy);
-  if (!Number.isInteger(dx) || !Number.isInteger(dy)) return null;
+  const q = (n) => Math.round(n * 100) / 100;
+  const dx = q(Number(raw?.dx));
+  const dy = q(Number(raw?.dy));
+  // Two decimals, not whole pitches. A bend is the vector between two HOLES,
+  // and since board-types.js started measuring the vertical geometry that is
+  // not always a whole number: row a to a dovetailed rail's nearest row is
+  // 2.76 (7.0 mm on a real board). Rounding it to 3 drew the lead 0.6 mm past
+  // the hole it is electrically in; REFUSING it (which this did) dropped the
+  // bend altogether and stood the part back up. Horizontally the vector is
+  // still whole, because columns are.
+  if (!Number.isFinite(dx) || !Number.isFinite(dy)) return null;
   if (dx === 0 && dy === 0) return null;
   // Rotating a bend negates a component, and negating zero gives -0: equal to
   // 0 under ===, distinct under Object.is, so it survives into the saved
@@ -749,9 +757,15 @@ export const PART_DEFS = Object.freeze(
       // footprint-offset to a free lead, so pin 2 can reach ANY hole at any
       // angle — including one on a neighbouring strip, e.g. a power rail.
       rotatable: true,
-      // Leads can't be bent closer than the body is long: the two ends must sit
-      // at least this far apart (pitch units) — the horizontal footprint's span.
-      minSpan: 3,
+      // Leads can't be bent closer than the body is long: the two ends must
+      // sit at least this far apart (pitch units). 2.5 is a quarter-watt body
+      // (~6.3 mm) and NOT the 3 it used to be, which was a lattice artefact:
+      // the closest pins across a rail↔pin-board dovetail are 2.76 apart
+      // (7.0 mm, measured — board-types.js), so a whole-pitch minimum forbade
+      // the commonest bench move there is, taking power off the rail into a
+      // row. In-row spans are unaffected: two columns is still 2, still too
+      // close, and three is still the shortest that fits.
+      minSpan: 2.5,
       pins: [
         { n: 1, name: "1", role: "lead" },
         { n: 2, name: "2", role: "lead" },

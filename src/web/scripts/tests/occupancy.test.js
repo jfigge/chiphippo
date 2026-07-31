@@ -19,6 +19,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import { spec } from "../model/breadboard.js";
 import {
   buildOccupancy,
   canMoveWire,
@@ -82,10 +83,21 @@ test("partPinHoles: a rotated resistor derives a seated pin plus a free lead", (
       { pin: 2, offset: { dx: 0, dy: -4 } },
     ],
   );
-  // Rotated with no bend, or an off-lattice one → unresolvable.
+  // Rotated with no bend → unresolvable. A FRACTIONAL bend is not junk any
+  // more, though: the vertical geometry is measured (board-types.js), so the
+  // vector from a grid row to a dovetailed rail's nearest row is 2.76 and
+  // demanding whole pitches refused the very reach this form exists for.
   assert.equal(partPinHoles("resistor", "j3", { rot: 90, end: null }), null);
+  assert.deepEqual(
+    partPinHoles("resistor", "j3", { rot: 90, end: { dx: 0, dy: 2.76 } }),
+    [
+      { pin: 1, hole: "j3" },
+      { pin: 2, offset: { dx: 0, dy: 2.76 } },
+    ],
+  );
+  // Junk still is junk.
   assert.equal(
-    partPinHoles("resistor", "j3", { rot: 90, end: { dx: 0.5, dy: 1 } }),
+    partPinHoles("resistor", "j3", { rot: 90, end: { dx: NaN, dy: 1 } }),
     null,
   );
   // A turned two-terminal part may ANCHOR on a rail too, so BOTH leads can
@@ -197,12 +209,16 @@ test("canPlacePart: a resistor's ends must be at least minSpan apart", () => {
       anchor,
       params: { rot: 90, end },
     });
-  // a10 sits at (10, 12); the minimum span is 3 pitch units.
-  assert.equal(at("a10", { dx: 3, dy: 0 }), true); // a13, exactly 3 → allowed
+  // The minimum span is 2.5 pitch — a quarter-watt body (~6.3 mm), not a
+  // whole number of pitches (see the resistor's def: the closest pins across a
+  // rail dovetail are 2.76 apart, and a resistor does bridge them).
+  assert.equal(at("a10", { dx: 3, dy: 0 }), true); // a13, 3 → allowed
   assert.equal(at("a10", { dx: 2, dy: 0 }), false); // a12, 2 → too close
   assert.equal(at("a10", { dx: 1, dy: 0 }), false); // a11, 1 → too close
-  // Diagonals use true distance, not row/column counts: a10→c12 is √8 ≈ 2.83.
-  assert.equal(at("a10", { dx: 2, dy: -2 }), false);
+  // Diagonals use true distance, not row/column counts: a10→c12 is √8 ≈ 2.83,
+  // which clears the body length even though it is two rows and two columns.
+  assert.equal(at("a10", { dx: 2, dy: -2 }), true);
+  assert.equal(at("a10", { dx: 1, dy: -2 }), false); // √5 ≈ 2.24 → too close
   assert.equal(at("a10", { dx: 3, dy: -2 }), true); // c13, √13 ≈ 3.6 → allowed
   // Any distance BEYOND the minimum is fine — including clear across the trench.
   assert.equal(at("a10", { dx: -9, dy: -11 }), true); // j1
@@ -650,19 +666,24 @@ test("isFreeHole resolves PSU terminals; wires occupy them", () => {
 // ── holeAtWorld: the one "what is under this point" scan ────────────────────
 
 test("holeAtWorld: reports the board, the hole, and its exact world position", () => {
-  const hit = holeAtWorld([FULL, TINY], 5, 1);
+  const ROW = spec("pins-full").rowY;
+  const hit = holeAtWorld([FULL, TINY], 5, ROW.j);
   assert.equal(hit.board.id, "bb1");
   assert.equal(hit.hole, "j5");
   // The position is the HOLE's, snapped off the lattice — not the query point.
-  assert.deepEqual({ x: hit.x, y: hit.y }, { x: 5, y: 1 });
-  assert.equal(holeAtWorld([FULL], 5, 6.5), null); // the trench
+  assert.deepEqual({ x: hit.x, y: hit.y }, { x: 5, y: ROW.j });
+  assert.equal(
+    holeAtWorld([FULL], 5, spec("pins-full").trench.centerY),
+    null, // the channel
+  );
   assert.equal(holeAtWorld([FULL], 500, 500), null); // bare desk
-  assert.equal(holeAtWorld([], 5, 1), null);
+  assert.equal(holeAtWorld([], 5, ROW.j), null);
 });
 
 test("holeAtWorld: a junk board type is skipped, not thrown over", () => {
   const junk = { id: "bb8", type: "not-a-board", x: 0, y: 0 };
-  assert.equal(holeAtWorld([junk, FULL], 5, 1)?.hole, "j5");
+  const ROW = spec("pins-full").rowY;
+  assert.equal(holeAtWorld([junk, FULL], 5, ROW.j)?.hole, "j5");
 });
 
 test("a linear (footprint) part can never seat on a rail — the offsets are grid arithmetic", () => {

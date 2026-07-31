@@ -21,6 +21,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import { spec } from "../model/breadboard.js";
 import { DeskDoc } from "../model/desk-doc.js";
 import {
   captureCluster,
@@ -62,11 +63,13 @@ test("captureCluster: fresh members keep the arrangement, drop run-state", () =>
     false,
     "damage stripped",
   );
-  // Anchor world points are the source hole positions (col c → x = c, row e → y 8).
-  assert.deepEqual(cluster.members[0].anchorWorld, { x: 5, y: 8 });
-  assert.deepEqual(cluster.members[1].anchorWorld, { x: 20, y: 8 });
+  // Anchor world points are the source hole positions (col c → x = c; row e
+  // is 8.51 down a measured pin-board, so it is asked for, not assumed).
+  const eY = spec("pins-full").rowY.e;
+  assert.deepEqual(cluster.members[0].anchorWorld, { x: 5, y: eY });
+  assert.deepEqual(cluster.members[1].anchorWorld, { x: 20, y: eY });
   // The grab reference is the arrangement's bounding-box centre.
-  assert.deepEqual(cluster.center, { x: 12.5, y: 8 });
+  assert.deepEqual(cluster.center, { x: 12.5, y: eY });
 });
 
 test("captureCluster returns null when nothing resolves", () => {
@@ -189,7 +192,7 @@ test("resolveCluster: a chip nudged off row e (into the trench) is illegal", () 
 test("resolveCluster: a turned resistor translates rigidly, both leads re-checked", () => {
   const doc = new DeskDoc(null);
   doc.addBoard("pins-full", 0, 0); // bb1
-  doc.addBoard("rail-full", 0, 14); // bb2 — a rail below row a
+  doc.addBoard("rail-full", 0, spec("pins-full").height); // bb2 — a rail below row a
   // A resistor stood on end: pin 1 on the grid, pin 2 bent down onto the rail.
   doc.addComponent({
     kind: "discrete",

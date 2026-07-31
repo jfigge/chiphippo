@@ -60,6 +60,7 @@ function v1Doc() {
 }
 
 const byId = (doc, id) => doc.boards.find((b) => b.id === id);
+const round2 = (n) => Math.round(n * 100) / 100;
 
 test("v1 → v2: a full board becomes three grouped strips", () => {
   const doc = migrateDeskDocument(v1Doc());
@@ -68,9 +69,13 @@ test("v1 → v2: a full board becomes three grouped strips", () => {
 
   // The pin-board KEEPS the original id, which is what lets grid addresses
   // and every component's board ref survive untouched.
+  // NOTE these are the positions a v1 document arrives at FULLY CURRENT: the
+  // v1 → v2 split put the strips at 20 / 23 / 36, and v10 → v11 re-flowed them
+  // at the strips' measured heights (3.50 and 14.02). Every test here migrates
+  // the whole chain, so it states the end of it.
   const pins = byId(doc, "bb1");
   assert.equal(pins.type, "pins-full");
-  assert.deepEqual({ x: pins.x, y: pins.y }, { x: 10, y: 23 });
+  assert.deepEqual({ x: pins.x, y: pins.y }, { x: 10, y: 23.5 });
 
   const rails = doc.boards.filter((b) => b.type === "rail-full");
   assert.equal(rails.length, 2);
@@ -78,7 +83,7 @@ test("v1 → v2: a full board becomes three grouped strips", () => {
     rails.map((r) => ({ x: r.x, y: r.y })).sort((a, b) => a.y - b.y),
     [
       { x: 10, y: 20 },
-      { x: 10, y: 36 },
+      { x: 10, y: 37.52 },
     ],
   );
 
@@ -95,11 +100,15 @@ test("v1 → v2: the three strips tile without gap or overlap", () => {
     .filter((b) => b.type === "rail-full")
     .sort((a, b) => a.y - b.y);
 
-  // Heights are 3 / 13 / 3, so each strip's bottom edge is the next one's
-  // top edge — the assembly reads as one board with no seam of bare desk.
-  assert.equal(top.y + 3, pins.y);
-  assert.equal(pins.y + 13, bottom.y);
-  assert.equal(bottom.y + 3 - top.y, 19); // a full kit is 19 tall
+  // Heights are 3.50 / 14.02 / 3.50 (measured — 8.9 and 35.6 mm), so each
+  // strip's bottom edge is the next one's top edge and the assembly reads as
+  // one board with no seam of bare desk.
+  // Rounded on both sides: the stack is stored on the 0.01 grid, and a sum of
+  // two measured heights lands a hair off it in binary — which is precisely why
+  // the live mating rule compares flush edges with a tolerance.
+  assert.equal(round2(top.y + 3.5), pins.y);
+  assert.equal(round2(pins.y + 14.02), bottom.y);
+  assert.equal(round2(bottom.y + 3.5 - top.y), 21.02); // a full kit, 53.4 mm
   // Every strip shares the left edge, so the stack is flush.
   assert.equal(new Set(doc.boards.map((b) => b.x)).size, 1);
 });
@@ -111,14 +120,15 @@ test("v1 → v2: rail and grid rows keep their order and spacing", () => {
     .filter((b) => b.type === "rail-full")
     .sort((a, b) => a.y - b.y);
 
-  // Absolute rows after centring: `+`/`-` at strip+1/+2, grid j…a at +1…+12.
-  const topMinus = top.y + 2;
-  const rowJ = pins.y + 1;
-  const rowA = pins.y + 12;
-  const bottomPlus = bottom.y + 1;
+  // Absolute rows: a rail's `+`/`-` at strip+1.25/+2.25 (one pitch apart), grid
+  // j…a at +1.51…+12.51 (board-types.js measures the plastic around them).
+  const topMinus = top.y + 2.25;
+  const rowJ = pins.y + 1.51;
+  const rowA = pins.y + 12.51;
+  const bottomPlus = bottom.y + 1.25;
   assert.ok(topMinus < rowJ, "top rail sits above the grid");
   assert.ok(rowA < bottomPlus, "bottom rail sits below the grid");
-  assert.equal(rowA - rowJ, 11); // ten rows plus the two-pitch trench
+  assert.equal(round2(rowA - rowJ), 11); // ten rows plus the channel
 });
 
 test("v1 → v2: rail wire endpoints re-owner; grid endpoints do not", () => {
@@ -470,4 +480,122 @@ test("v8 → v9: a pure version bump — a wire with no layout IS a direct wire"
   // Absence is the default, so the wire comes through with nothing added —
   // no `layout`, no `points`, exactly the sagging wire it has always been.
   assert.deepEqual(doc.wires, v8.wires);
+});
+
+// ── v10 → v11: the strips stopped being whole pitches tall ───────────────────
+
+/** A v10 document holding `boards`, with every other field at its default. */
+function v10With(boards) {
+  return {
+    version: 10,
+    boards,
+    components: [],
+    wires: [],
+    buses: [],
+    netNames: [],
+    annotations: [],
+    nextBoardId: boards.length + 1,
+    nextGroupId: 2,
+    nextComponentId: 1,
+    nextPsuId: 1,
+    nextClockId: 1,
+    nextWireId: 1,
+    nextBusId: 1,
+    nextAnnotationId: 1,
+  };
+}
+
+test("v10 → v11: an 830 kit is re-stacked at the strips' measured heights", () => {
+  // The old stack: rail 3 tall, pin-board 13. Under the new heights (3.50 and
+  // 14.02) the pin-board would reach straight through the bottom rail, and the
+  // renderer drops a board that overlaps one already loaded — silently taking
+  // its seated parts and wires with it.
+  const doc = migrateDeskDocument(
+    v10With([
+      { id: "bb1", type: "rail-full", x: 10, y: 0, rot: 0, group: "g1" },
+      { id: "bb2", type: "pins-full", x: 10, y: 3, rot: 0, group: "g1" },
+      { id: "bb3", type: "rail-full", x: 10, y: 16, rot: 0, group: "g1" },
+    ]),
+  );
+  assert.equal(doc.version, DESK_DOC_VERSION);
+  // The top strip stays where the user put it; the rest re-flow under it.
+  assert.deepEqual(
+    doc.boards.map((b) => [b.id, b.x, b.y]),
+    [
+      ["bb1", 10, 0],
+      ["bb2", 10, 3.5],
+      ["bb3", 10, 17.52],
+    ],
+  );
+  // Nothing else about a board is touched.
+  assert.deepEqual(
+    doc.boards.map((b) => b.group),
+    ["g1", "g1", "g1"],
+  );
+});
+
+test("v10 → v11: only FLUSH runs re-flow; a gap is a gap and stays one", () => {
+  const doc = migrateDeskDocument(
+    v10With([
+      { id: "bb1", type: "pins-full", x: 0, y: 0, rot: 0, group: null },
+      // Two pitch of daylight below it — not a dovetail, so not this step's
+      // business. The strips' own growth (1.02) stays clear of it.
+      { id: "bb2", type: "pins-full", x: 0, y: 15, rot: 0, group: null },
+      // Side by side rather than stacked: same y, so nothing to re-flow.
+      { id: "bb3", type: "pins-full", x: 64, y: 0, rot: 0, group: null },
+    ]),
+  );
+  assert.deepEqual(
+    doc.boards.map((b) => b.y),
+    [0, 15, 0],
+  );
+});
+
+test("v10 → v11: runs re-flow from their own top, wherever that is", () => {
+  // A rail dovetailed ABOVE a pin-board: the rail is the head, so it keeps its
+  // y and the board moves down to meet its new bottom edge.
+  const doc = migrateDeskDocument(
+    v10With([
+      { id: "bb1", type: "pins-half", x: 0, y: 3, rot: 0, group: "g1" },
+      { id: "bb2", type: "rail-half", x: 0, y: 0, rot: 0, group: "g1" },
+    ]),
+  );
+  assert.deepEqual(
+    doc.boards.map((b) => [b.id, b.y]),
+    [
+      ["bb1", 3.5],
+      ["bb2", 0],
+    ],
+  );
+});
+
+test("v10 → v11: idempotent, because a v10 dovetail cannot exist at v11", () => {
+  // Every pair flush under the OLD heights OVERLAPS under the new ones, which
+  // is exactly the breakage this step repairs — so a document already at the
+  // new geometry has no run for it to find, and re-running changes nothing.
+  const once = migrateDeskDocument(
+    v10With([
+      { id: "bb1", type: "rail-full", x: 0, y: 0, rot: 0, group: "g1" },
+      { id: "bb2", type: "pins-full", x: 0, y: 3, rot: 0, group: "g1" },
+      { id: "bb3", type: "rail-full", x: 0, y: 16, rot: 0, group: "g1" },
+    ]),
+  );
+  const twice = migrateDeskDocument({ ...once, version: 10 });
+  assert.deepEqual(twice.boards, once.boards);
+});
+
+test("v10 → v11: an upright rail keeps its own footprint", () => {
+  // A rail stood on end is 3.50 WIDE and 64 tall, so it stacks with nothing of
+  // a pin-board's width — the size table has to honour the rotation, or the
+  // step would invent a dovetail and shove a signal bus down the desk.
+  const doc = migrateDeskDocument(
+    v10With([
+      { id: "bb1", type: "rail-full", x: 0, y: 0, rot: 90, group: null },
+      { id: "bb2", type: "pins-full", x: 4, y: 0, rot: 0, group: null },
+    ]),
+  );
+  assert.deepEqual(
+    doc.boards.map((b) => b.y),
+    [0, 0],
+  );
 });

@@ -42,7 +42,7 @@
  */
 "use strict";
 
-const DESK_DOC_VERSION = 10;
+const DESK_DOC_VERSION = 11;
 
 /** A fresh, empty desk document (main's copy of the renderer's shape). */
 function defaultDeskDocument() {
@@ -357,6 +357,95 @@ function migrateV9ToV10(doc) {
   return { ...rest, version: 10 };
 }
 
+/**
+ * v10 → v11: the vertical geometry stopped being whole pitches and started
+ * being MEASURED (src/web/scripts/model/board-types.js). A rail was 3 pitches
+ * tall and is 3.50 (8.9 mm); a pin-board was 13 and is 14.02 (35.6). So every
+ * stack of strips in an existing desk is now too short for its own contents:
+ * the 830 kit that sat at y 0 · 3 · 16 has its pin-board reaching 3 → 17.02,
+ * straight through the bottom rail at 16 — and the renderer's
+ * `normalizeDocument` DROPS a board that overlaps one already loaded, taking
+ * everything seated on it with it. Without this step, opening a saved desk
+ * silently deletes a rail and every wire that reached it.
+ *
+ * The fix is the only one that can be stated without knowing what the desk
+ * MEANT: re-flow each flush vertical run at the new heights, keeping its
+ * topmost strip where the user put it. Boards that merely sit near each other
+ * are left alone — a gap is a gap, and the strips' own growth is under a
+ * quarter of one.
+ *
+ * THE GEOMETRY IS FROZEN HERE, BOTH SIDES OF IT, as every migration's is: this
+ * step is a snapshot of one transition, and importing the live specs would
+ * make it silently re-interpret itself the next time a strip is re-measured.
+ */
+const V10_SIZE = {
+  "pins-full": { width: 64, height: 13 },
+  "pins-half": { width: 31, height: 13 },
+  "pins-tiny": { width: 18, height: 13 },
+  "rail-full": { width: 64, height: 3 },
+  "rail-half": { width: 31, height: 3 },
+};
+const V11_SIZE = {
+  "pins-full": { width: 64, height: 14.02 },
+  "pins-half": { width: 31, height: 14.02 },
+  "pins-tiny": { width: 18, height: 14.02 },
+  "rail-full": { width: 64, height: 3.5 },
+  "rail-half": { width: 31, height: 3.5 },
+};
+
+/** A strip's footprint at its placed rotation — width and height swap on a
+    quarter turn, exactly as `boardSize` does on the live side. */
+function stripSize(table, board) {
+  const size = table[board?.type];
+  if (!size) return null;
+  const turned = board.rot === 90 || board.rot === 270;
+  return turned
+    ? { width: size.height, height: size.width }
+    : { width: size.width, height: size.height };
+}
+
+const q2 = (n) => Math.round(n * 100) / 100;
+
+function migrateV10ToV11(doc) {
+  const boards = Array.isArray(doc.boards) ? doc.boards : [];
+  const sized = boards
+    .map((b) => ({ b, was: stripSize(V10_SIZE, b), now: stripSize(V11_SIZE, b) }))
+    .filter((e) => e.was && e.now && Number.isFinite(e.b.x) && Number.isFinite(e.b.y)); // prettier-ignore
+  if (sized.length === 0) return { ...doc, version: 11 };
+
+  // Who sits flush UNDER whom, in the v10 frame — the same test the live
+  // mating rule uses (same x, same width, bottom edge meets top edge).
+  const below = new Map();
+  const hasAbove = new Set();
+  for (const a of sized) {
+    for (const b of sized) {
+      if (a === b || below.has(a)) continue;
+      if (a.b.x !== b.b.x || a.was.width !== b.was.width) continue;
+      if (a.b.y + a.was.height !== b.b.y) continue;
+      below.set(a, b);
+      hasAbove.add(b);
+    }
+  }
+
+  // Re-flow each run from its top strip down. A strip in no run keeps its y,
+  // and so does the top of every run: the user placed that one.
+  const moved = new Map();
+  for (const head of sized) {
+    if (hasAbove.has(head)) continue; // not the top of its run
+    let y = head.b.y;
+    for (let e = head; e; e = below.get(e)) {
+      moved.set(e.b, q2(y));
+      y = q2(y + e.now.height);
+    }
+  }
+
+  return {
+    ...doc,
+    version: 11,
+    boards: boards.map((b) => (moved.has(b) ? { ...b, y: moved.get(b) } : b)),
+  };
+}
+
 /** version → one-step upgrade fn returning the doc at version + 1. */
 const MIGRATIONS = {
   1: migrateV1ToV2,
@@ -368,6 +457,7 @@ const MIGRATIONS = {
   7: migrateV7ToV8,
   8: migrateV8ToV9,
   9: migrateV9ToV10,
+  10: migrateV10ToV11,
 };
 
 /**

@@ -19,6 +19,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import { MM_PER_UNIT } from "../desk/desk-geometry.js";
 import {
   ALL_KIT_KEYS,
   BOARD_TYPES,
@@ -162,16 +163,53 @@ test("holePosition ⇄ holeAt round-trips for every hole of every type", () => {
   }
 });
 
-test("every hole lies at integer offsets inside the outline", () => {
+test("holes sit on the integer lattice ACROSS a strip, the 0.01 grid down it", () => {
+  // The two axes are quantized differently and deliberately (board-types.js):
+  // a column IS a pitch, so x is whole; vertically a real strip is 8.9 / 35.6
+  // mm, which is no whole number of pitches at all, so y keeps two decimals.
   for (const key of BOARD_TYPE_KEYS) {
     const s = spec(key);
     for (const hole of holes(key)) {
       const { x, y } = holePosition(key, hole);
-      assert.ok(Number.isInteger(x) && Number.isInteger(y), `${key} ${hole}`);
+      assert.ok(Number.isInteger(x), `${key} ${hole} x=${x} off the lattice`);
+      assert.ok(
+        Math.abs(y * 100 - Math.round(y * 100)) < 1e-9,
+        `${key} ${hole} y=${y} off the 0.01 grid`,
+      );
       assert.ok(x > 0 && x < s.width, `${key} ${hole} x=${x}`);
       assert.ok(y > 0 && y < s.height, `${key} ${hole} y=${y}`);
     }
   }
+});
+
+test("a strip measures what a ruler says it does", () => {
+  // The whole point of the vertical geometry: an 830 kit is 53.4 mm tall, its
+  // rails 8.9 and its pin-board 35.6, and the channel between rows f and e is
+  // 2.3 — a third of the 7.62 mm the rows themselves are apart.
+  const mm = (units) => units * MM_PER_UNIT;
+  const pins = spec("pins-full");
+  const rail = spec("rail-full");
+  const near = (got, want, what) =>
+    assert.ok(
+      Math.abs(got - want) < 0.05,
+      `${what}: ${got.toFixed(2)} mm, expected ${want}`,
+    );
+
+  near(mm(rail.height), 8.9, "rail height");
+  near(mm(pins.height), 35.6, "pin-board height");
+  near(mm(2 * rail.height + pins.height), 53.4, "assembled 830");
+  near(mm(pins.trench.height), 2.3, "channel");
+  near(mm(pins.rowY.e - pins.rowY.f), 7.62, "rows either side of the channel");
+  near(mm(pins.rowY.a - pins.rowY.b), 2.54, "rows within a group");
+  near(mm(rail.rails[1].y - rail.rails[0].y), 2.54, "a strip's two rails");
+  // The closest pins across a rail↔pin-board dovetail: the rail's inner row to
+  // row j. Measured on the real part, and the one number that ties the two
+  // strips' margins together.
+  near(
+    mm(rail.height - rail.rails[1].y + pins.rowY.j),
+    7.0,
+    "rail row to row j across the join",
+  );
 });
 
 test("holeAt is forgiving within the hit radius", () => {
@@ -320,10 +358,11 @@ test("normalizeRotation: junk and un-turnable types fall back to 0", () => {
 });
 
 test("boardSize: width and height swap on a quarter turn", () => {
-  assert.deepEqual(boardSize("rail-full", 0), { width: 64, height: 3 });
-  assert.deepEqual(boardSize("rail-full", 90), { width: 3, height: 64 });
-  assert.deepEqual(boardSize("rail-full", 180), { width: 64, height: 3 });
-  assert.deepEqual(boardSize("rail-full", 270), { width: 3, height: 64 });
+  const h = BOARD_TYPES["rail-full"].height; // 3.70 — a measured 9.4 mm
+  assert.deepEqual(boardSize("rail-full", 0), { width: 64, height: h });
+  assert.deepEqual(boardSize("rail-full", 90), { width: h, height: 64 });
+  assert.deepEqual(boardSize("rail-full", 180), { width: 64, height: h });
+  assert.deepEqual(boardSize("rail-full", 270), { width: h, height: 64 });
 });
 
 test("rotatePoint / unrotatePoint are inverses at every quarter turn", () => {

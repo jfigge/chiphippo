@@ -43,18 +43,35 @@ export function boardRect(board) {
 }
 
 /**
+ * How far apart two edges may be and still count as flush (pitch units).
+ *
+ * Flushness used to be exact `===`, which was safe while every strip height was
+ * a whole pitch: a stack landed on integers and integers add exactly. Vertical
+ * geometry is measured now (board-types.js), so a 3.70-tall rail under a
+ * 14.02-tall board meets it at 17.72 — a sum of two values neither of which is
+ * exactly representable in binary, and which can therefore land an ulp away
+ * from the same number written down or read back from a file. A dovetail that
+ * fails by 10^-15 of a millimetre is a kit that silently comes apart into
+ * separate groups, so the test is a tolerance: far under a hole's own size, far
+ * over any accumulation of float error.
+ */
+const FLUSH_EPS = 1e-6;
+
+const near = (a, b) => Math.abs(a - b) <= FLUSH_EPS;
+
+/**
  * Which edge of the rect `a` the rect `b` dovetails onto.
  *
  * @returns {"above"|"below"|"left"|"right"|null} null when they do not mate.
  */
 export function rectMatingEdge(a, b) {
-  if (a.x === b.x && a.width === b.width) {
-    if (b.y + b.height === a.y) return "above";
-    if (a.y + a.height === b.y) return "below";
+  if (near(a.x, b.x) && near(a.width, b.width)) {
+    if (near(b.y + b.height, a.y)) return "above";
+    if (near(a.y + a.height, b.y)) return "below";
   }
-  if (a.y === b.y && a.height === b.height) {
-    if (b.x + b.width === a.x) return "left";
-    if (a.x + a.width === b.x) return "right";
+  if (near(a.y, b.y) && near(a.height, b.height)) {
+    if (near(b.x + b.width, a.x)) return "left";
+    if (near(a.x + a.width, b.x)) return "right";
   }
   return null;
 }
@@ -71,12 +88,12 @@ export function matingEdge(a, b) {
  */
 function candidates(m, s) {
   const out = [];
-  if (m.width === s.width) {
+  if (near(m.width, s.width)) {
     // Stacked: share the left edge, meet along one horizontal.
     out.push({ dx: s.x - m.x, dy: s.y + s.height - m.y }); // m below s
     out.push({ dx: s.x - m.x, dy: s.y - m.height - m.y }); // m above s
   }
-  if (m.height === s.height) {
+  if (near(m.height, s.height)) {
     // Side by side: share the top edge, meet along one vertical.
     out.push({ dx: s.x + s.width - m.x, dy: s.y - m.y }); // m right of s
     out.push({ dx: s.x - m.width - m.x, dy: s.y - m.y }); // m left of s
@@ -106,9 +123,20 @@ export function snapCorrection(moving, stationary, range = SNAP_RANGE) {
   for (const m of moving) {
     for (const s of stationary) {
       for (const c of candidates(m, s)) {
-        if (Math.abs(c.dx) > range || Math.abs(c.dy) > range) continue;
+        // The tolerance matters here too: a correction that lands a strip
+        // flush against a MEASURED one is a difference of fractional heights,
+        // so an exactly-in-range pull can come out as 2.0000000000000036 and
+        // be discarded — the magnet silently dying at its own limit.
+        if (
+          Math.abs(c.dx) > range + FLUSH_EPS ||
+          Math.abs(c.dy) > range + FLUSH_EPS
+        )
+          continue;
         // Already dovetailed: leave the drag exactly where the user put it.
-        if (c.dx === 0 && c.dy === 0) return none;
+        // Same tolerance as the flush test — a pair that `rectMatingEdge` calls
+        // mated must not still read as pullable here, or a drag of an assembled
+        // kit would be nudged by a rounding error every time it moved.
+        if (near(c.dx, 0) && near(c.dy, 0)) return none;
         const cost = Math.abs(c.dx) + Math.abs(c.dy);
         if (cost < bestCost) {
           best = c;

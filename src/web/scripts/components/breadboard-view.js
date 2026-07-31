@@ -35,9 +35,15 @@ const BODY_RADIUS = 0.6;
 const HOLE_SIZE = 0.44;
 const HOLE_RADIUS = 0.08;
 
-/** Rail color stripe: thickness and end overhang past the outer holes. */
+/** Rail color stripe: thickness, end overhang past the outer holes, and how
+    far its outer edge sits from the strip's own edge. Pinned to the EDGE
+    rather than offset from the hole row, because that is where the printed
+    line runs on the real part — and because the plastic outside a rail's rows
+    is 3.2 mm of it (board-types.js measures the strip at 9.4 mm), so a stripe
+    hung off the row would float in the middle of it. */
 const STRIPE_HEIGHT = 0.22;
 const STRIPE_OVERHANG = 0.7;
+const STRIPE_EDGE_GAP = 0.32;
 
 /**
  * Build a board's complete SVG from its Feature 20 spec. Pure DOM
@@ -84,16 +90,22 @@ export function buildBoardSvg(type) {
   }
 
   // Rail color stripes: red beside each `+` row, blue beside each `-` row,
-  // running the length of the rail's holes (outer side of each rail pair).
+  // running the length of the rail's holes, each hugging the strip edge its
+  // own row faces (which row that is comes from the row's own y, so a strip
+  // that ever listed its rails the other way round still prints them
+  // outermost-first rather than crossing them over the holes).
   for (const rail of s.rails) {
     const first = holePosition(type, `${rail.id}1`);
     const last = holePosition(type, `${rail.id}${s.railHoles}`);
     const plus = rail.polarity === "+";
+    const outward = rail.y < s.height / 2;
     svg.append(
       svgEl("rect", {
         class: `board-rail-stripe board-rail-stripe--${plus ? "plus" : "minus"}`,
         x: first.x - STRIPE_OVERHANG,
-        y: plus ? rail.y - 0.8 : rail.y + 0.58,
+        y: outward
+          ? STRIPE_EDGE_GAP
+          : s.height - STRIPE_EDGE_GAP - STRIPE_HEIGHT,
         width: last.x - first.x + 2 * STRIPE_OVERHANG,
         height: STRIPE_HEIGHT,
       }),

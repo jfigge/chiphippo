@@ -28,6 +28,19 @@ import {
   normalizeDocument,
 } from "../model/desk-doc.js";
 import { buildOccupancy } from "../model/occupancy.js";
+import { spec } from "../model/breadboard.js";
+
+// Strip heights are MEASURED, not whole pitches (board-types.js): a rail is
+// 3.70 units tall (9.4 mm) and a pin-board 14.02 (35.6), so a kit stacks at
+// y 0 · 3.70 · 17.72 and stands 21.42 tall. Every fixture below stacks by
+// these rather than by a literal, and `q` is the 0.01 grid a board origin is
+// stored on — a sum of two measured heights is not exactly representable, and
+// the document quantizes what it stores.
+const q = (n) => Math.round(n * 100) / 100;
+const RAIL_H = spec("rail-full").height;
+const PINS_H = spec("pins-full").height;
+const TINY_H = spec("pins-tiny").height;
+const KIT_H = q(2 * RAIL_H + PINS_H);
 
 test("a fresh DeskDoc serializes to the empty document shape", () => {
   assert.deepEqual(new DeskDoc(null).toJSON(), {
@@ -68,14 +81,17 @@ test("isEmptyDocument: nothing on the desk, whatever the counters say", () => {
   assert.equal(isEmptyDocument(bare), true, "and the desk is empty regardless");
 });
 
-test("addBoard: fresh bb<n> ids and integer snapping", () => {
+test("addBoard: fresh bb<n> ids, x on the lattice, y to two decimals", () => {
   const doc = new DeskDoc(null);
+  // The axes snap differently and deliberately: a column IS a pitch, so x is
+  // whole; vertically there is no lattice to snap to (a rail is 3.70 tall), so
+  // y keeps the 0.01 grid the document stores boards on.
   const b1 = doc.addBoard("pins-full", 3.4, -2.6);
   assert.deepEqual(b1, {
     id: "bb1",
     type: "pins-full",
     x: 3,
-    y: -3,
+    y: -2.6,
     rot: 0,
     group: null, // a strip added on its own is loose
   });
@@ -141,8 +157,9 @@ test("addBoard: rejects overlap with an existing board's outline", () => {
   // Snapping happens BEFORE the check: 64.7 snaps to 65 → touching, allowed.
   const beside = doc.addBoard("pins-half", 64.7, 0);
   assert.deepEqual([beside.x, beside.y], [65, 0]);
-  // Edge-to-edge below (14-tall outline → y 14 clears it).
-  doc.addBoard("rail-full", 0, 14);
+  // Edge-to-edge below: a pin-board is 14.02 tall, so that is where a rail
+  // dovetails onto it — 14 would be a hundredth of a pitch INTO it.
+  doc.addBoard("rail-full", 0, PINS_H);
   assert.equal(doc.boards.length, 3);
 });
 
@@ -168,7 +185,7 @@ test("moveBoard: snaps, ignores its own footprint, rejects other overlaps", () =
     id: "bb1",
     type: "pins-tiny",
     x: 1,
-    y: 0,
+    y: 0.4,
     rot: 0,
     group: null,
   });
@@ -178,7 +195,7 @@ test("moveBoard: snaps, ignores its own footprint, rejects other overlaps", () =
     id: "bb1",
     type: "pins-tiny",
     x: 1,
-    y: 0,
+    y: 0.4,
     rot: 0,
     group: null,
   });
@@ -266,11 +283,11 @@ test("canPlace mirrors the add/move overlap rule", () => {
   const doc = new DeskDoc(null);
   doc.addBoard("pins-full", 0, 0);
   assert.equal(doc.canPlace("pins-tiny", 5, 5), false);
-  assert.equal(doc.canPlace("pins-tiny", 0, 14), true);
+  assert.equal(doc.canPlace("pins-tiny", 0, PINS_H), true);
   assert.equal(doc.canPlace("pins-full", 0.4, 0, { ignoreId: "bb1" }), true);
 });
 
-test("normalizeDocument: junk → empty; bad boards dropped; coords rounded", () => {
+test("normalizeDocument: junk → empty; bad boards dropped; coords quantized", () => {
   assert.deepEqual(normalizeDocument(null), emptyDocument());
   assert.deepEqual(normalizeDocument("junk"), emptyDocument());
   assert.deepEqual(normalizeDocument([1, 2]), emptyDocument());
@@ -294,8 +311,11 @@ test("normalizeDocument: junk → empty; bad boards dropped; coords rounded", ()
     ],
     wires: "not-an-array",
   });
+  // Quantized to the storage grid, NOT re-snapped to whole pitches: a strip
+  // dovetailed against an upright rail (3.70 wide) legitimately sits on a
+  // fraction, and rounding on the way in would shove it out of its own joint.
   assert.deepEqual(doc.boards, [
-    { id: "bb2", type: "pins-half", x: 4, y: 1, rot: 0, group: null },
+    { id: "bb2", type: "pins-half", x: 3.6, y: 1.2, rot: 0, group: null },
   ]);
   assert.deepEqual(doc.components, [
     {
@@ -621,13 +641,13 @@ test("toJSON is a deep copy — later mutations don't leak into it", () => {
 
 test("kitPlacements / kitOutline describe a kit without touching the desk", () => {
   assert.deepEqual(DeskDoc.kitPlacements("half", 10.4, -2.6), [
-    { type: "rail-half", x: 10, y: -3, rot: 0 },
-    { type: "pins-half", x: 10, y: 0, rot: 0 },
-    { type: "rail-half", x: 10, y: 13, rot: 0 },
+    { type: "rail-half", x: 10, y: -2.6, rot: 0 },
+    { type: "pins-half", x: 10, y: q(-2.6 + RAIL_H), rot: 0 },
+    { type: "rail-half", x: 10, y: q(-2.6 + RAIL_H + PINS_H), rot: 0 },
   ]);
-  // Rail (4) + pin-board (14) + rail (4) stacked.
-  assert.deepEqual(DeskDoc.kitOutline("full"), { width: 64, height: 19 });
-  assert.deepEqual(DeskDoc.kitOutline("tiny"), { width: 18, height: 13 });
+  // Rail (9.4 mm) + pin-board (35.6) + rail (9.4) stacked = a real 830.
+  assert.deepEqual(DeskDoc.kitOutline("full"), { width: 64, height: KIT_H });
+  assert.deepEqual(DeskDoc.kitOutline("tiny"), { width: 18, height: TINY_H });
   assert.throws(() => DeskDoc.kitPlacements("mega", 0, 0), {
     code: "INVALID_TYPE",
   });
@@ -637,8 +657,15 @@ test("addKit: seats every strip at its preset offset, sharing one group", () => 
   const doc = new DeskDoc(null);
   assert.deepEqual(doc.addKit("full", 2, 5), [
     { id: "bb1", type: "rail-full", x: 2, y: 5, rot: 0, group: "g1" },
-    { id: "bb2", type: "pins-full", x: 2, y: 8, rot: 0, group: "g1" },
-    { id: "bb3", type: "rail-full", x: 2, y: 21, rot: 0, group: "g1" },
+    {
+      id: "bb2",
+      type: "pins-full",
+      x: 2,
+      y: q(5 + RAIL_H),
+      rot: 0,
+      group: "g1",
+    },
+    { id: "bb3", type: "rail-full", x: 2, y: q(5 + RAIL_H + PINS_H), rot: 0, group: "g1" }, // prettier-ignore
   ]);
   // The next kit is its own rigid unit, with its own group id.
   assert.deepEqual(
@@ -655,7 +682,7 @@ test("addKit: a tiny breadboard is a single loose strip", () => {
   const doc = new DeskDoc(null);
   // The real 170-point part is a bare pin-board — nothing to group it with.
   assert.deepEqual(doc.addKit("tiny", 0.4, -0.4), [
-    { id: "bb1", type: "pins-tiny", x: 0, y: 0, rot: 0, group: null },
+    { id: "bb1", type: "pins-tiny", x: 0, y: -0.4, rot: 0, group: null },
   ]);
   assert.equal(doc.toJSON().nextGroupId, 1); // no group id burned
 });
@@ -693,10 +720,10 @@ test("addKit: a loose strip is placeable on its own, ungrouped", () => {
 
 test("matingStrips: same width and left edge, edge-to-edge in y", () => {
   const doc = new DeskDoc(null);
-  doc.addBoard("pins-full", 0, 4); // bb1 — spans y 4…17
-  doc.addBoard("rail-full", 0, 1); // bb2 — abuts bb1's top edge
-  doc.addBoard("rail-full", 0, 17); // bb3 — abuts bb1's bottom edge
-  doc.addBoard("rail-full", 0, 21); // bb4 — one pitch of daylight below bb3
+  doc.addBoard("pins-full", 0, 4); // bb1 — spans y 4…18.02
+  doc.addBoard("rail-full", 0, q(4 - RAIL_H)); // bb2 — abuts bb1's top edge
+  doc.addBoard("rail-full", 0, q(4 + PINS_H)); // bb3 — abuts bb1's bottom edge
+  doc.addBoard("rail-full", 0, q(4 + PINS_H + RAIL_H + 1)); // bb4 — a pitch of daylight below bb3 // prettier-ignore
   doc.addBoard("rail-half", 70, 4); // bb5 — elsewhere entirely
   assert.deepEqual(
     doc.matingStrips("bb1").map((b) => b.id),
@@ -707,15 +734,15 @@ test("matingStrips: same width and left edge, edge-to-edge in y", () => {
     [], // a gap is a gap, however small
   );
   // Width has to match, as the real dovetail does.
-  doc.addBoard("pins-half", 0, -12); // bb6 — abuts bb2's top (y 1), wrong width
+  doc.addBoard("pins-half", 0, q(4 - RAIL_H - PINS_H)); // bb6 — abuts bb2's top, wrong width // prettier-ignore
   assert.deepEqual(doc.matingStrips("bb6"), []);
   assert.deepEqual(doc.matingStrips("bb9"), []);
 });
 
 test("joinMatedGroup: a loose strip adopts the group it dovetails into", () => {
   const doc = new DeskDoc(null);
-  doc.addKit("half", 0, 0); // bb1..bb3, group g1 — spans y 0…19
-  doc.addBoard("rail-half", 0, 19); // bb4 — flush under the kit's bottom rail
+  doc.addKit("half", 0, 0); // bb1..bb3, group g1 — spans y 0…21.42
+  doc.addBoard("rail-half", 0, KIT_H); // bb4 — flush under the kit's bottom rail
   assert.equal(doc.joinMatedGroup("bb4"), "g1");
   assert.deepEqual(
     doc.groupMembers("bb4").map((b) => b.id),
@@ -727,7 +754,7 @@ test("joinMatedGroup: a loose strip adopts the group it dovetails into", () => {
 test("joinMatedGroup: loose strips mint a group; touching nothing is a no-op", () => {
   const doc = new DeskDoc(null);
   doc.addBoard("pins-full", 0, 4); // bb1, loose
-  doc.addBoard("rail-full", 0, 1); // bb2, loose — flush above it
+  doc.addBoard("rail-full", 0, q(4 - RAIL_H)); // bb2, loose — flush above it
   doc.addBoard("rail-full", 40, 40); // bb3 — off on its own
   assert.equal(doc.joinMatedGroup("bb2"), "g1");
   assert.deepEqual(
@@ -741,9 +768,9 @@ test("joinMatedGroup: loose strips mint a group; touching nothing is a no-op", (
 
 test("joinMatedGroup: a strip bridging two groups merges them into one", () => {
   const doc = new DeskDoc(null);
-  doc.addKit("full", 0, 0); // bb1..bb3, g1 — spans y 0…19
-  doc.addKit("full", 0, 22); // bb4..bb6, g2 — spans y 22…41
-  doc.addBoard("rail-full", 0, 19); // bb7 — fills the gap, touching both
+  doc.addKit("full", 0, 0); // bb1..bb3, g1 — spans y 0…21.42
+  doc.addKit("full", 0, q(KIT_H + RAIL_H)); // bb4..bb6, g2 — one rail lower
+  doc.addBoard("rail-full", 0, KIT_H); // bb7 — fills the gap, touching both
   const group = doc.joinMatedGroup("bb7");
   assert.deepEqual(
     doc.groupMembers("bb7").map((b) => b.id),
@@ -755,17 +782,17 @@ test("joinMatedGroup: a strip bridging two groups merges them into one", () => {
 
 test("matingStrips: boards dovetail side by side too, not just stacked", () => {
   const doc = new DeskDoc(null);
-  doc.addBoard("pins-full", 0, 0); // bb1 — 64 wide, 13 tall (spans x 0…64)
+  doc.addBoard("pins-full", 0, 0); // bb1 — 64 wide, 14.02 tall (spans x 0…64)
   doc.addBoard("pins-full", 64, 0); // bb2 — flush against bb1's right edge
   doc.addBoard("pins-full", 129, 0); // bb3 — a pitch of daylight past bb2
-  doc.addBoard("pins-half", 0, 13); // bb4 — below bb1 but half the width
+  doc.addBoard("pins-half", 0, PINS_H); // bb4 — below bb1 but half the width
   assert.deepEqual(
     doc.matingStrips("bb1").map((b) => b.id),
     ["bb2"], // bb4 is flush below, but too narrow to dovetail
   );
   // Side-by-side mating needs matching HEIGHT, as stacking needs matching
   // width — a rail never dovetails onto a pin-board's end.
-  doc.addBoard("rail-full", 193, 0); // flush right of bb3, but 3 tall
+  doc.addBoard("rail-full", 193, 0); // flush right of bb3, but 3.70 tall
   assert.deepEqual(doc.matingStrips("bb3"), []);
 });
 
@@ -786,13 +813,13 @@ test("snapBoardsBy: the pull that lands a dragged set flush", () => {
 
 test("snapKitAt: the same pull, for a kit that is not placed yet", () => {
   const doc = new DeskDoc(null);
-  doc.addKit("full", 0, 0); // bb1…bb3, spanning y 0…19
+  doc.addKit("full", 0, 0); // bb1…bb3, spanning y 0…21.42
 
-  assert.deepEqual(doc.snapKitAt("full", 0, 21), { dx: 0, dy: -2 });
-  assert.deepEqual(doc.snapKitAt("full", 0, 19), { dx: 0, dy: 0 });
+  assert.deepEqual(doc.snapKitAt("full", 0, q(KIT_H + 2)), { dx: 0, dy: -2 });
+  assert.deepEqual(doc.snapKitAt("full", 0, KIT_H), { dx: 0, dy: 0 });
   assert.deepEqual(doc.snapKitAt("full", 0, 40), { dx: 0, dy: 0 });
   // A tiny board is the wrong width to stack under a full one.
-  assert.deepEqual(doc.snapKitAt("tiny", 0, 21), { dx: 0, dy: 0 });
+  assert.deepEqual(doc.snapKitAt("tiny", 0, q(KIT_H + 2)), { dx: 0, dy: 0 });
 });
 
 test("matedChain: walks one way only, and never leaves the group", () => {
@@ -813,7 +840,7 @@ test("matedChain: walks one way only, and never leaves the group", () => {
     ["bb3"],
   );
   // A strip resting flush but never snapped is NOT part of the chain.
-  doc.addBoard("rail-full", 0, 19); // loose, mated geometrically to bb3
+  doc.addBoard("rail-full", 0, KIT_H); // loose, mated geometrically to bb3
   assert.deepEqual(
     doc.matedChain("bb3", "forward").map((b) => b.id),
     ["bb3"],
@@ -853,8 +880,8 @@ test("moveBoardsBy: a partial move tears the snap and re-groups both halves", ()
     doc.boards.map((b) => [b.id, b.y]),
     [
       ["bb1", 0], // left behind, exactly where it was
-      ["bb2", 33],
-      ["bb3", 46],
+      ["bb2", q(RAIL_H + 30)],
+      ["bb3", q(RAIL_H + PINS_H + 30)],
     ],
   );
   // Both halves are re-derived from what is still mated. The pair that
@@ -871,7 +898,7 @@ test("moveBoardsBy: a partial move tears the snap and re-groups both halves", ()
 test("moveBoardsBy: a torn group never leaves both halves sharing an id", () => {
   const doc = new DeskDoc(null);
   doc.addKit("full", 0, 0); // bb1..bb3, g1
-  doc.addBoard("rail-full", 0, 19); // bb4
+  doc.addBoard("rail-full", 0, KIT_H); // bb4
   doc.joinMatedGroup("bb4"); // a four-strip stack, still g1
 
   // Tear it in the middle: two strips travel, two stay — and each pair is
@@ -913,8 +940,8 @@ test("moveBoardsBy: guards unknown ids, junk deltas, and overlaps", () => {
     doc.boards.map((b) => [b.y, b.group]),
     [
       [0, "g1"],
-      [3, "g1"],
-      [16, "g1"],
+      [RAIL_H, "g1"],
+      [q(RAIL_H + PINS_H), "g1"],
       [40, null],
     ],
   );
@@ -997,17 +1024,19 @@ test("groupMembers: the whole kit for a grouped strip, itself for a loose one", 
 
 test("moveBoardBy: translates every member, preserving relative offsets", () => {
   const doc = new DeskDoc(null);
-  doc.addKit("full", 0, 0); // strips at y 0 / 4 / 18
-  // Dragging ANY member drags the kit; the delta snaps to integers.
+  doc.addKit("full", 0, 0); // strips at y 0 / 3.70 / 17.72
+  // Dragging ANY member drags the kit. The delta is NOT rounded here — the
+  // gesture rounds its own (that is what makes a drag step pitch by pitch),
+  // and a magnetic pull onto a measured strip is fractional by nature.
   assert.deepEqual(doc.moveBoardBy("bb2", 4, -3.4), [
-    { id: "bb1", type: "rail-full", x: 4, y: -3, rot: 0, group: "g1" },
-    { id: "bb2", type: "pins-full", x: 4, y: 0, rot: 0, group: "g1" },
-    { id: "bb3", type: "rail-full", x: 4, y: 13, rot: 0, group: "g1" },
+    { id: "bb1", type: "rail-full", x: 4, y: -3.4, rot: 0, group: "g1" },
+    { id: "bb2", type: "pins-full", x: 4, y: q(RAIL_H - 3.4), rot: 0, group: "g1" }, // prettier-ignore
+    { id: "bb3", type: "rail-full", x: 4, y: q(RAIL_H + PINS_H - 3.4), rot: 0, group: "g1" }, // prettier-ignore
   ]);
   // The stack stays assembled — same offsets from the top strip as before.
   assert.deepEqual(
-    doc.boards.map((b) => b.y - doc.getBoard("bb1").y),
-    [0, 3, 16],
+    doc.boards.map((b) => q(b.y - doc.getBoard("bb1").y)),
+    [0, RAIL_H, q(RAIL_H + PINS_H)],
   );
   // A loose strip moves alone.
   doc.addBoard("pins-tiny", 70, 0); // bb4
@@ -1021,21 +1050,21 @@ test("moveBoardBy: translates every member, preserving relative offsets", () => 
 
 test("canMoveBoardBy: fellow members never collide; outsiders do", () => {
   const doc = new DeskDoc(null);
-  doc.addKit("full", 0, 0); // bb1..bb3 at y 0 / 4 / 18
-  doc.addBoard("pins-tiny", 0, 30); // bb4, loose, y 30..44
+  doc.addKit("full", 0, 0); // bb1..bb3 at y 0 / 3.70 / 17.72
+  doc.addBoard("pins-tiny", 0, 30); // bb4, loose, y 30…44.02
   // A one-unit nudge slides each strip over a fellow member's OLD outline —
   // allowed, because the group translates as one rigid unit.
   assert.equal(doc.canMoveBoardBy("bb1", 0, 1), true);
   assert.deepEqual(
     doc.moveBoardBy("bb3", 0, 1).map((b) => b.y),
-    [1, 4, 17],
+    [1, q(RAIL_H + 1), q(RAIL_H + PINS_H + 1)],
   );
   // …but sliding the kit down onto the loose strip is rejected, unmoved.
   assert.equal(doc.canMoveBoardBy("bb2", 0, 12), false);
   assert.throws(() => doc.moveBoardBy("bb2", 0, 12), { code: "OVERLAP" });
   assert.deepEqual(
     doc.boards.map((b) => b.y),
-    [1, 4, 17, 30],
+    [1, q(RAIL_H + 1), q(RAIL_H + PINS_H + 1), 30],
   );
   assert.equal(doc.canMoveBoardBy("bb9", 0, 0), false);
 });
@@ -2451,8 +2480,8 @@ test("translateAll: boards, bricks, and labels all slide by one integer delta", 
     doc.boards.map((b) => [b.id, b.x, b.y]),
     [
       ["bb1", -40, -10],
-      ["bb2", -40, -7],
-      ["bb3", -40, 6],
+      ["bb2", -40, q(RAIL_H - 10)],
+      ["bb3", -40, q(RAIL_H + PINS_H - 10)],
     ],
   );
   assert.deepEqual(
@@ -2478,19 +2507,24 @@ test("translateAll: a seated part rides its board, addresses untouched", () => {
   ]);
 });
 
-test("translateAll: rounds the delta and no-ops on zero", () => {
+test("translateAll: quantizes the delta per axis, and no-ops on zero", () => {
   const doc = docToSlide();
-  assert.deepEqual(doc.translateAll(2.4, -3.6), { dx: 2, dy: -4 });
+  // x rounds to the column lattice; y takes the 0.01 grid a board is stored on
+  // — there is no vertical lattice to round to (board-types.js), and rounding
+  // one in would leave a recentred desk up to half a pitch off the origin.
+  assert.deepEqual(doc.translateAll(2.4, -3.6), { dx: 2, dy: -3.6 });
   assert.deepEqual(
     doc.boards.map((b) => [b.x, b.y]),
     [
-      [102, 196],
-      [102, 199],
-      [102, 212],
+      [102, 196.4],
+      [102, q(RAIL_H + 196.4)],
+      [102, q(RAIL_H + PINS_H + 196.4)],
     ],
   );
+  // A sub-pitch nudge still moves nothing on x, and nothing at all under the
+  // grid's own quantum.
   const untouched = doc.snapshot();
-  assert.deepEqual(doc.translateAll(0, 0.4), { dx: 0, dy: 0 });
+  assert.deepEqual(doc.translateAll(0.4, 0.004), { dx: 0, dy: 0 });
   assert.deepEqual(doc.snapshot(), untouched);
   assert.throws(() => doc.translateAll(NaN, 0), { code: "INVALID_ARG" });
 });

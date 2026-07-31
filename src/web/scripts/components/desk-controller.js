@@ -1843,10 +1843,10 @@ export class DeskController {
       const anchor = movingA ? hit.hole : d.anchor;
       const from = movingA ? hit : d.fixed;
       const to = movingA ? d.fixed : hit;
-      const end = {
-        dx: Math.round(to.x - from.x),
-        dy: Math.round(to.y - from.y),
-      };
+      // Both points are resolved HOLES, so the bend is exactly the vector
+      // between them — no rounding, or the lead would be drawn short of the
+      // hole it landed in (a rail's rows are not on the pin-board's lattice).
+      const end = { dx: to.x - from.x, dy: to.y - from.y };
       // canPlacePart enforces free + distinct + the minimum lead span.
       legal = this.#doc.canPlacePart(d.ref, boardId, anchor, {
         ignoreId: d.id,
@@ -1876,10 +1876,9 @@ export class DeskController {
     const p1 = { x: d.p1.x + dx, y: d.p1.y + dy };
     const p2 = { x: p1.x + d.orient.dx, y: p1.y + d.orient.dy };
     const a = this.#holeAtWorld(p1);
-    const end = {
-      dx: Math.round(d.orient.dx),
-      dy: Math.round(d.orient.dy),
-    };
+    // The bend is carried through a rigid translation untouched — rounding it
+    // here would quietly re-bend a lead every time the part was dragged.
+    const end = { dx: d.orient.dx, dy: d.orient.dy };
     // canPlacePart resolves the bent lead against the whole desk, so it is the
     // one authority on whether the far end found a free hole.
     const legal =

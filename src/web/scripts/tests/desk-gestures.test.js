@@ -28,6 +28,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import { spec } from "../model/breadboard.js";
 import { resetDom } from "./jsdom-setup.js";
 import { DeskDoc } from "../model/desk-doc.js";
 import { PX_PER_UNIT } from "../desk/desk-geometry.js";
@@ -91,6 +92,12 @@ function drag(
 
 // ── Board drag ──────────────────────────────────────────────────────────────
 
+// Grid rows moved when the vertical geometry became MEASURED (board-types.js):
+// a pin-board's plastic is 35.6 mm, so its rows sit 1.51 pitch below the top
+// edge rather than 1, and row a is at 12.51. Fixtures name the row instead of
+// its old integer y, so a re-measurement moves them all at once.
+const ROW = spec("pins-full").rowY;
+
 test("board drag: the whole snapped group moves together and commits once", () => {
   resetDom();
   const doc = new DeskDoc(null);
@@ -102,11 +109,14 @@ test("board drag: the whole snapped group moves together and commits once", () =
   let changes = 0;
   window.addEventListener("chiphippo:doc-changed", () => changes++);
   // Grab the centre pin-board; travel +10 x, +40 y (clear of everything).
-  drag(boardEl(surface, "bb2"), world, { x: 5, y: 8 }, { x: 15, y: 48 });
+  drag(boardEl(surface, "bb2"), world, { x: 5, y: ROW.e }, { x: 15, y: ROW.e + 40 }); // prettier-ignore
 
   for (const id of ["bb1", "bb2", "bb3"]) {
     assert.equal(doc.getBoard(id).x, 10, `${id} x`);
-    assert.equal(doc.getBoard(id).y, startYs[id] + 40, `${id} y`);
+    // Rounded: a strip's y is fractional and the document stores it on the
+    // 0.01 grid, so the expectation has to land on that grid too.
+    const want = Math.round((startYs[id] + 40) * 100) / 100;
+    assert.equal(doc.getBoard(id).y, want, `${id} y`);
   }
   assert.equal(changes, 1, "one batched doc-changed for the whole set");
 });
@@ -124,7 +134,7 @@ test("board drag: a press that never crosses the threshold is a click, not a mov
   drag(
     boardEl(surface, "bb1"),
     world,
-    { x: 5, y: 5 },
+    { x: 5, y: ROW.f },
     { x: 40, y: 40 },
     {
       clientTravel: 0,
@@ -147,7 +157,7 @@ test("board drag: an illegal drop (onto another board) reverts, doc untouched", 
   let changes = 0;
   window.addEventListener("chiphippo:doc-changed", () => changes++);
   // Drag bb1 right so it would land squarely on top of bb2.
-  drag(boardEl(surface, "bb1"), world, { x: 2, y: 2 }, { x: 42, y: 2 });
+  drag(boardEl(surface, "bb1"), world, { x: 2, y: ROW.i }, { x: 42, y: ROW.i });
 
   assert.deepEqual([doc.getBoard("bb1").x, doc.getBoard("bb1").y], [0, 0]);
   assert.equal(changes, 0, "an illegal drop writes nothing");
@@ -158,7 +168,7 @@ test("board drag: Option tears the forward chain off and re-groups both halves",
   const doc = new DeskDoc(null);
   const world = { x: 0, y: 0 };
   const { surface, controller } = makeDesk(doc, world);
-  controller.addKitAt("full", 0, 0); // bb1 rail@0 · bb2 pins@3 · bb3 rail@16
+  controller.addKitAt("full", 0, 0); // bb1 rail@0 · bb2 pins@3.70 · bb3 @17.72
   const g0 = doc.getBoard("bb2").group;
 
   // Option-grab the pin-board: the forward chain (down/right) is bb2 + bb3;
@@ -166,8 +176,8 @@ test("board drag: Option tears the forward chain off and re-groups both halves",
   drag(
     boardEl(surface, "bb2"),
     world,
-    { x: 5, y: 8 },
-    { x: 5, y: 48 },
+    { x: 5, y: ROW.e },
+    { x: 5, y: ROW.e + 40 },
     {
       mods: { altKey: true },
     },
@@ -176,8 +186,12 @@ test("board drag: Option tears the forward chain off and re-groups both halves",
   // bb1 left where it was and now loose; bb2+bb3 travelled as a fresh group.
   assert.equal(doc.getBoard("bb1").y, 0);
   assert.equal(doc.getBoard("bb1").group, null);
-  assert.equal(doc.getBoard("bb2").y, 43);
-  assert.equal(doc.getBoard("bb3").y, 56);
+  const q = (n) => Math.round(n * 100) / 100;
+  assert.equal(doc.getBoard("bb2").y, q(spec("rail-full").height + 40));
+  assert.equal(
+    doc.getBoard("bb3").y,
+    q(spec("rail-full").height + spec("pins-full").height + 40),
+  );
   const g = doc.getBoard("bb2").group;
   assert.ok(g != null && g !== g0, "torn-off pair minted a fresh group id");
   assert.equal(doc.getBoard("bb3").group, g);
@@ -194,18 +208,18 @@ test("board drag: a routed bend over the board rides it, live and on the drop", 
     to: "bb2.a5",
     layout: "routed",
     points: [
-      { x: 20, y: 8 }, // drawn over the pin-board
-      { x: 100, y: 8 }, // out on the bare desk, past the kit's right edge
+      { x: 20, y: ROW.e }, // drawn over the pin-board
+      { x: 100, y: ROW.e }, // out on the bare desk, past the kit's right edge
     ],
   });
   window.dispatchEvent(new window.CustomEvent("chiphippo:doc-changed"));
   const el = boardEl(surface, "bb2");
 
   world.x = 5;
-  world.y = 8;
+  world.y = ROW.e;
   fire(el, "pointerdown", { client: [0, 0] });
   world.x = 5;
-  world.y = 48;
+  world.y = ROW.e + 40;
   fire(el, "pointermove", { client: [40, 40] });
 
   // Mid-drag the knobs preview the ride — the one over the board has followed
@@ -215,17 +229,17 @@ test("board drag: a routed bend over the board rides it, live and on the drop", 
     [...surface.querySelectorAll(".wire-point")].map((k) =>
       Number(k.getAttribute("cy")),
     ),
-    [48 * PX_PER_UNIT, 8 * PX_PER_UNIT],
+    [(ROW.e + 40) * PX_PER_UNIT, ROW.e * PX_PER_UNIT],
   );
   assert.deepEqual(doc.getWire(wire.id).points, [
-    { x: 20, y: 8 },
-    { x: 100, y: 8 },
+    { x: 20, y: ROW.e },
+    { x: 100, y: ROW.e },
   ]);
 
   fire(el, "pointerup", { client: [40, 40] });
   assert.deepEqual(doc.getWire(wire.id).points, [
-    { x: 20, y: 48 },
-    { x: 100, y: 8 },
+    { x: 20, y: ROW.e + 40 }, // rode the board
+    { x: 100, y: ROW.e }, // stayed on the bare desk
   ]);
 });
 
@@ -240,16 +254,16 @@ test("board drag: an illegal drop leaves the routing exactly where it was", () =
     from: "bb1.a1",
     to: "bb1.a5",
     layout: "routed",
-    points: [{ x: 5, y: 5 }],
+    points: [{ x: 5, y: ROW.f }],
   });
   window.dispatchEvent(new window.CustomEvent("chiphippo:doc-changed"));
 
   // Drop bb1 straight on top of bb2 — refused, so nothing moves, bends least
   // of all.
-  drag(boardEl(surface, "bb1"), world, { x: 2, y: 2 }, { x: 2, y: 22 });
+  drag(boardEl(surface, "bb1"), world, { x: 2, y: ROW.i }, { x: 2, y: 22 });
 
   assert.equal(doc.getBoard("bb1").y, 0);
-  assert.deepEqual(doc.getWire(wire.id).points, [{ x: 5, y: 5 }]);
+  assert.deepEqual(doc.getWire(wire.id).points, [{ x: 5, y: ROW.f }]);
 });
 
 test("board drag: the view tracks the pointer live, before the drop commits", () => {
@@ -261,7 +275,7 @@ test("board drag: the view tracks the pointer live, before the drop commits", ()
   const el = boardEl(surface, "bb1");
 
   world.x = 2;
-  world.y = 2;
+  world.y = ROW.i;
   fire(el, "pointerdown", { client: [0, 0] });
   world.x = 12;
   world.y = 22;
@@ -353,7 +367,7 @@ test("brick drag: a PSU moves to the dropped position and commits once", () => {
 
   let changes = 0;
   window.addEventListener("chiphippo:doc-changed", () => changes++);
-  drag(partEl(surface, psu.id), world, { x: 1, y: 1 }, { x: 21, y: 11 });
+  drag(partEl(surface, psu.id), world, { x: 1, y: ROW.j }, { x: 21, y: ROW.b });
 
   const moved = doc.getComponent(psu.id);
   assert.equal(moved.x, x0 + 20);
@@ -382,11 +396,11 @@ test("wire-endpoint drag: re-ends a grabbed cap onto a new free hole", () => {
 
   // Grab the 'from' cap: viewport pointerdown at world (1,12).
   world.x = 1;
-  world.y = 12;
+  world.y = ROW.a;
   fire(viewport, "pointerdown", { id: 9, client: [0, 0] });
   // Drag it to the free hole b1 (1,11); move/up ride the persistent wire SVG.
   world.x = 1;
-  world.y = 11;
+  world.y = ROW.b;
   fire(wireSvg(surface), "pointermove", { id: 9, client: [40, 40] });
   fire(wireSvg(surface), "pointerup", { id: 9, client: [40, 40] });
 
@@ -409,10 +423,10 @@ test("wire-endpoint drag: a near-miss onto an occupied hole snaps to the nearest
   // exact spot is illegal. The nearest free hole to a1 (SNAP_RADIUS
   // recovery, wire-tools.js) is b1, one pitch unit up.
   world.x = 20;
-  world.y = 12;
+  world.y = ROW.a;
   fire(viewport, "pointerdown", { id: 9, client: [0, 0] });
   world.x = 1;
-  world.y = 12;
+  world.y = ROW.a;
   fire(wireSvg(surface), "pointermove", { id: 9, client: [40, 40] });
   fire(wireSvg(surface), "pointerup", { id: 9, client: [40, 40] });
 
@@ -437,10 +451,10 @@ test("wire-endpoint drag: a release well beyond SNAP_RADIUS still finds the near
   // A single move+up (no intermediate moves) exercises exactly that
   // fallback, not just the cheap live-preview path.
   world.x = 20;
-  world.y = 12;
+  world.y = ROW.a;
   fire(viewport, "pointerdown", { id: 9, client: [0, 0] });
   world.x = 100;
-  world.y = 12;
+  world.y = ROW.a;
   fire(wireSvg(surface), "pointermove", { id: 9, client: [40, 40] });
   fire(wireSvg(surface), "pointerup", { id: 9, client: [40, 40] });
 
@@ -462,7 +476,7 @@ test("wire-endpoint drag: a target with nothing legal anywhere nearby reverts", 
   // endpoint drag's unbounded search's DEFAULT_SEARCH_RADIUS from every
   // hole on the board, so there's genuinely nothing to recover onto.
   world.x = 20;
-  world.y = 12;
+  world.y = ROW.a;
   fire(viewport, "pointerdown", { id: 9, client: [0, 0] });
   world.x = 1000;
   world.y = 1000;
@@ -484,10 +498,10 @@ test("whole-wire drag: both ends translate rigidly onto new holes", () => {
   // Grab the body at its midpoint (3,12) — clear of both caps — and shift it
   // three rows up: a(y12) → d(y9), so a1→d1 and a5→d5.
   world.x = 3;
-  world.y = 12;
+  world.y = ROW.a;
   fire(body, "pointerdown", { id: 9, client: [0, 0] });
   world.x = 3;
-  world.y = 9;
+  world.y = ROW.d;
   fire(wireSvg(surface), "pointermove", { id: 9, client: [40, 40] });
   fire(wireSvg(surface), "pointerup", { id: 9, client: [40, 40] });
 
@@ -521,7 +535,7 @@ test("routed wire: dragging the body inserts a waypoint where it was grabbed", (
   window.addEventListener("chiphippo:doc-changed", () => changes++);
   // Grab the middle of the run and pull it clear of the board.
   world.x = 3;
-  world.y = 12;
+  world.y = ROW.a;
   fire(body, "pointerdown", { id: 9, client: [0, 0] });
   world.x = 3;
   world.y = 22;
@@ -548,7 +562,7 @@ test("routed wire: a sub-threshold press selects it and lays no bend", () => {
   const wire = seedRoutedWire(doc, "bb1.a1", "bb1.a5");
   const body = surface.querySelector(`.wire[data-wire-id="${wire.id}"]`);
 
-  drag(body, world, { x: 3, y: 12 }, { x: 3, y: 22 }, { id: 9, clientTravel: 0 }); // prettier-ignore
+  drag(body, world, { x: 3, y: ROW.a }, { x: 3, y: 22 }, { id: 9, clientTravel: 0 }); // prettier-ignore
   assert.equal(doc.getWire(wire.id).points, undefined);
   assert.equal(controller.selectedId, wire.id);
 });
@@ -579,7 +593,7 @@ test("routed wire: an existing waypoint moves, and merges away onto a neighbour"
   world.y = 30;
   fire(viewport, "pointerdown", { id: 9, client: [0, 0] });
   world.x = 1.2;
-  world.y = 12;
+  world.y = ROW.a;
   fire(wireSvg(surface), "pointermove", { id: 9, client: [40, 40] });
   fire(wireSvg(surface), "pointerup", { id: 9, client: [40, 40] });
   assert.equal(doc.getWire(wire.id).points, undefined, "the bend is gone");
@@ -593,16 +607,16 @@ test("routed wire: an END dropped on a waypoint absorbs it", () => {
   const { viewport, surface, controller } = makeDesk(doc, world);
   controller.addBoardAt("pins-full", 0, 0);
   const wire = seedRoutedWire(doc, "bb1.a1", "bb1.a20"); // (1,12) … (20,12)
-  doc.addWirePoint(wire.id, 0, { x: 1, y: 11 }); // right over hole b1
+  doc.addWirePoint(wire.id, 0, { x: 1, y: ROW.b }); // right over hole b1
   window.dispatchEvent(new window.CustomEvent("chiphippo:doc-changed"));
 
   // Drag the 'from' cap onto that waypoint: the wire now REACHES where the
   // bend was, so the bend has nothing left to do.
   world.x = 1;
-  world.y = 12;
+  world.y = ROW.a;
   fire(viewport, "pointerdown", { id: 9, client: [0, 0] });
   world.x = 1;
-  world.y = 11;
+  world.y = ROW.b;
   fire(wireSvg(surface), "pointermove", { id: 9, client: [40, 40] });
   fire(wireSvg(surface), "pointerup", { id: 9, client: [40, 40] });
 
@@ -623,11 +637,11 @@ test("wire-endpoint grab beats the board: a press on a cap that sits on a hole d
   // The 'from' cap sits ON hole a1, so a press there lands on the BOARD SVG,
   // not the wire — the exact case the fix guards. Grab it via the board element.
   world.x = 1;
-  world.y = 12;
+  world.y = ROW.a;
   fire(boardEl(surface, "bb1"), "pointerdown", { id: 9, client: [0, 0] });
   // The endpoint drag rides the persistent wire SVG; re-end onto b1 (1,11).
   world.x = 1;
-  world.y = 11;
+  world.y = ROW.b;
   fire(wireSvg(surface), "pointermove", { id: 9, client: [40, 40] });
   fire(wireSvg(surface), "pointerup", { id: 9, client: [40, 40] });
 
@@ -699,10 +713,10 @@ test("wire tool: the colour STAYS put across a chain of wires", () => {
   controller.armWireTool();
   const color = controller.wireColor;
   // Two wires, anchor-then-commit each; the tool stays armed for chaining.
-  placeClick(viewport, world, { x: 1, y: 12 }); // anchor bb1.a1
-  placeClick(viewport, world, { x: 5, y: 12 }); // commit  bb1.a1 → a5
-  placeClick(viewport, world, { x: 1, y: 11 }); // anchor bb1.b1
-  placeClick(viewport, world, { x: 5, y: 11 }); // commit  bb1.b1 → b5
+  placeClick(viewport, world, { x: 1, y: ROW.a }); // anchor bb1.a1
+  placeClick(viewport, world, { x: 5, y: ROW.a }); // commit  bb1.a1 → a5
+  placeClick(viewport, world, { x: 1, y: ROW.b }); // anchor bb1.b1
+  placeClick(viewport, world, { x: 5, y: ROW.b }); // commit  bb1.b1 → b5
 
   const wires = doc.wires;
   assert.equal(wires.length, 2);
@@ -730,8 +744,8 @@ test("wire tool: a NEW wire takes the app-default layout, nothing else does", ()
 
   controller.setDefaultWireLayout("routed");
   controller.armWireTool();
-  placeClick(viewport, world, { x: 1, y: 12 }); // anchor bb1.a1
-  placeClick(viewport, world, { x: 5, y: 12 }); // commit  bb1.a1 → a5
+  placeClick(viewport, world, { x: 1, y: ROW.a }); // anchor bb1.a1
+  placeClick(viewport, world, { x: 5, y: ROW.a }); // commit  bb1.a1 → a5
 
   assert.equal(doc.getWire("w2").layout, "routed");
   assert.equal(
@@ -742,8 +756,8 @@ test("wire tool: a NEW wire takes the app-default layout, nothing else does", ()
 
   // Junk (or an older settings file with no such key) falls back to direct.
   controller.setDefaultWireLayout(undefined);
-  placeClick(viewport, world, { x: 1, y: 11 });
-  placeClick(viewport, world, { x: 5, y: 11 });
+  placeClick(viewport, world, { x: 1, y: ROW.b });
+  placeClick(viewport, world, { x: 5, y: ROW.b });
   assert.equal(doc.getWire("w3").layout, undefined);
 });
 
@@ -757,12 +771,12 @@ test("annotation placement: arming a label and clicking drops it at the cursor",
 
   controller.armAnnotationPlacement("label");
   assert.ok(controller.placementArmed);
-  placeClick(viewport, world, { x: 4, y: 5 });
+  placeClick(viewport, world, { x: 4, y: ROW.f });
 
   assert.equal(doc.annotations.length, 1);
   const [ann] = doc.annotations;
   assert.equal(ann.kind, "label");
-  assert.deepEqual({ x: ann.x, y: ann.y }, { x: 4, y: 5 });
+  assert.deepEqual({ x: ann.x, y: ann.y }, { x: 4, y: ROW.f });
   assert.equal(ann.anchor, undefined); // dropped over empty desk
   assert.ok(!controller.placementArmed);
 });
@@ -776,7 +790,7 @@ test("annotation placement over a part anchors it to that part", () => {
   const chip = controller.addComponentAt("74LS00", "bb1", "e5"); // cols 5–11
 
   controller.armAnnotationPlacement("note");
-  placeClick(viewport, world, { x: 8, y: 8 }); // over the chip body
+  placeClick(viewport, world, { x: 8, y: ROW.e }); // over the chip body
   const [ann] = doc.annotations;
   assert.equal(ann.anchor, chip.id);
 });

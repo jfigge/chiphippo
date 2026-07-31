@@ -39,15 +39,20 @@ import { settle } from "../sim/engine.js";
 import { buildNetlist } from "../sim/netlist.js";
 import { normalizeDocument } from "../model/desk-doc.js";
 import { partPinHoles } from "../model/occupancy.js";
-import { holesOfNode, nodeOf } from "../model/breadboard.js";
+import { spec, holesOfNode, nodeOf } from "../model/breadboard.js";
 
 // ── Fixture builders (shared shape with engine-ripple/engine-seq) ────────────
 
 const BOARD = "pins-full";
+// A kit's own stack, at the strips' MEASURED heights (board-types.js): a rail
+// is 3.70 pitch tall and a pin-board 14.02, so nothing here is a whole number
+// and nothing here may be written as one — `normalizeDocument` drops a board
+// that overlaps its neighbour, which is what a stale literal would produce.
+const RAIL_H = spec("rail-full").height;
 const boards = [
   { id: "bb1", type: "rail-full", x: 0, y: 0 },
-  { id: "bb2", type: BOARD, x: 0, y: 4 },
-  { id: "bb3", type: "rail-full", x: 0, y: 18 },
+  { id: "bb2", type: BOARD, x: 0, y: RAIL_H },
+  { id: "bb3", type: "rail-full", x: 0, y: RAIL_H + spec(BOARD).height },
 ];
 
 let wireSeq = 0;

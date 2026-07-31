@@ -20,6 +20,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import { spec } from "../model/breadboard.js";
 import { applyCatalog } from "../i18n.js";
 import {
   addressWorld,
@@ -34,7 +35,7 @@ import {
 } from "../model/part-geometry.js";
 
 const BOARDS = [{ id: "bb1", type: "pins-full", x: 0, y: 0 }];
-// 74LS00 at e5: pin 1 in hole e5 (world 5, 8). A PSU brick with + / − terminals.
+// 74LS00 at e5: pin 1 in hole e5 (world 5, row e). A PSU brick with + / − terminals.
 const CHIP = {
   id: "c1",
   kind: "chip",
@@ -51,18 +52,22 @@ const PSU = {
   params: { volts: 5 },
 };
 
+// Rows are MEASURED now (board-types.js): a pin-board's plastic is 35.6 mm, so
+// row e sits at 8.51 rather than 8. Name the row, never its y.
+const ROW = spec("pins-full").rowY;
+
 test("partPinsWorld: pin 1 sits in its seated hole", () => {
   const pins = partPinsWorld(BOARDS, CHIP);
   const p1 = pins.find((p) => p.pin === 1);
   assert.deepEqual(
     { address: p1.address, x: p1.x, y: p1.y },
-    { address: "bb1.e5", x: 5, y: 8 },
+    { address: "bb1.e5", x: 5, y: ROW.e },
   );
   assert.equal(partPinsWorld(BOARDS, { ...CHIP, ref: "nope" }), null);
 });
 
 test("addressWorld: holes resolve rotation-aware; brick terminals resolve too", () => {
-  assert.deepEqual(addressWorld(BOARDS, [], "bb1.a1"), { x: 1, y: 12 });
+  assert.deepEqual(addressWorld(BOARDS, [], "bb1.a1"), { x: 1, y: ROW.a });
   // The + terminal sits at the brick origin + its offset (2, 4).
   assert.deepEqual(addressWorld(BOARDS, [PSU], "psu1.+"), { x: 82, y: 4 });
   assert.equal(addressWorld(BOARDS, [], "bb1.zz9"), null);
@@ -70,10 +75,10 @@ test("addressWorld: holes resolve rotation-aware; brick terminals resolve too", 
 });
 
 test("connectionPointAt: a hole wins; a terminal matches within the radius", () => {
-  assert.deepEqual(connectionPointAt(BOARDS, [], { x: 1, y: 12 }), {
+  assert.deepEqual(connectionPointAt(BOARDS, [], { x: 1, y: ROW.a }), {
     address: "bb1.a1",
     x: 1,
-    y: 12,
+    y: ROW.a,
   });
   // Just off the + terminal (52, 4) but within PIN_HIT_RADIUS.
   assert.equal(
@@ -101,10 +106,10 @@ test("wiresInRect: a wire counts only when BOTH ends are inside", () => {
 
 test("wireEndNear: grabs the nearest endpoint within reach, else null", () => {
   const wires = [{ id: "w1", from: "bb1.a1", to: "bb1.a20" }]; // (1,12),(20,12)
-  const grab = wireEndNear(BOARDS, [], wires, { x: 1.1, y: 12 });
+  const grab = wireEndNear(BOARDS, [], wires, { x: 1.1, y: ROW.a });
   assert.equal(grab.wireId, "w1");
   assert.equal(grab.end, "from");
-  assert.equal(wireEndNear(BOARDS, [], wires, { x: 10, y: 12 }), null);
+  assert.equal(wireEndNear(BOARDS, [], wires, { x: 10, y: ROW.a }), null);
 });
 
 test("wirePointNear: only a ROUTED wire has waypoints to grab", () => {
@@ -133,12 +138,12 @@ test("wirePointNear: only a ROUTED wire has waypoints to grab", () => {
 
 test("hoverHitAt: a pin outranks the hole under it; else the bare hole", () => {
   // Over pin 1 of the chip (world 5, 8 = hole e5): the pin wins, and names it.
-  const onPin = hoverHitAt(BOARDS, [CHIP], { x: 5, y: 8 });
+  const onPin = hoverHitAt(BOARDS, [CHIP], { x: 5, y: ROW.e });
   assert.equal(onPin.key, "c1#1");
   assert.equal(onPin.address, "bb1.e5");
   assert.match(onPin.label, /74LS00 pin 1/);
   // Over an empty hole: the bare address.
-  const onHole = hoverHitAt(BOARDS, [CHIP], { x: 1, y: 12 });
+  const onHole = hoverHitAt(BOARDS, [CHIP], { x: 1, y: ROW.a });
   assert.deepEqual(
     { key: onHole.key, address: onHole.address },
     { key: "bb1.a1", address: "bb1.a1" },
@@ -188,7 +193,7 @@ test("hoverHitAt: every word of a hover label comes from the catalog", (t) => {
   // A seated pin: the ref and the pin name stay as the catalog for PARTS
   // spells them; the sentence around them is the desk's own.
   assert.equal(
-    hoverHitAt(BOARDS, [CHIP], { x: 5, y: 8 }).label,
+    hoverHitAt(BOARDS, [CHIP], { x: 5, y: ROW.e }).label,
     "[74LS00·1·1A·bb1.e5]",
   );
   // A brick terminal's note — the voltage keeps its unit, which is the same
@@ -240,7 +245,7 @@ test("deskBounds: frames just the board when nothing else exists", () => {
     minX: 0,
     minY: 0,
     maxX: 64,
-    maxY: 13,
+    maxY: spec("pins-full").height, // 14.02 — a measured 35.6 mm
   });
 });
 
@@ -252,6 +257,6 @@ test("deskBounds: grows past the board for a brick's terminals and a wire to it"
     minX: 0,
     minY: 0,
     maxX: 86,
-    maxY: 13,
+    maxY: spec("pins-full").height, // 14.02 — a measured 35.6 mm
   });
 });

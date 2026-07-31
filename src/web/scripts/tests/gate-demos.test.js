@@ -123,7 +123,14 @@ for (const [group, ids] of GROUPS) {
       // without emitting, leaving no undo step on a brand-new desk.
       const b = deskBounds(tab.doc.boards, tab.doc.components, tab.doc.wires);
       assert.equal(b.minX + b.maxX, 0, `${id}: not centred on x`);
-      assert.equal(b.minY + b.maxY, 0, `${id}: not centred on y`);
+      // y within one quantum: a board's y is stored to 0.01 (there is no
+      // vertical lattice — board-types.js measures the strips), so a centre
+      // that lands mid-quantum is as centred as the document can be, and
+      // `translateAll` will report a zero delta for it exactly as x does.
+      assert.ok(
+        Math.abs(b.minY + b.maxY) <= 0.01,
+        `${id}: not centred on y (${b.minY + b.maxY})`,
+      );
     });
   });
 }

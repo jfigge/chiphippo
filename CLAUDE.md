@@ -2094,17 +2094,54 @@ make clean     # Remove build/ and dist/
 
 ## Domain reference (shared vocabulary — used by every stage)
 
-- **World unit = one breadboard pitch = 0.1 in (2.54 mm).** All board geometry,
-  footprints, snapping, and desk coordinates are integer-friendly in pitch units.
+- **World unit = one breadboard pitch = 0.1 in (2.54 mm)** — but THE TWO AXES
+  ARE QUANTIZED DIFFERENTLY, because a real breadboard is. **Horizontally a
+  pitch IS the lattice**: a column is one unit, board x snaps to an integer, and
+  every strip on the desk lines its columns up with every other.
+  **Vertically there is no lattice**, and pretending there was compressed a
+  53.4 mm board into 48.3: a rail is 8.9 mm tall (3.50 pitch) and a pin-board
+  35.6 (14.02), the channel is 2.3 (0.91) — not one of them a whole number.
+  `board-types.js` states those THREE measurements in MILLIMETRES (its
+  `VERTICAL_MM` block) and derives every strip height, row offset and rail row
+  from them, on a **0.01-unit grid** (`desk-doc.js`'s `boardCoord`, the same
+  quantum a wire waypoint keeps). The fourth number a ruler reaches — the
+  7.0 mm between the closest pins across a rail↔pin-board dovetail — is left
+  DERIVED (2.76 pitch, 7.01 mm), as the check that the two strips' margins
+  agree with each other. So a board's y is fractional, a kit stacks at
+  0 · 3.50 · 17.52, and nothing may round it: `Math.round` on a board y jams
+  every kit's lower strips into the neighbour above, and `normalizeDocument`
+  then DROPS the overlap. Two things keep the desk tidy anyway — a board is
+  PLACED at a whole-pitch x, and a drag moves it by a whole-pitch delta — so
+  the only thing that ever puts a board on a fraction is a dovetail, where the
+  exact value is the point. `mating.js` compares flush edges with a tolerance
+  (`FLUSH_EPS`) for the same reason: 3.70 + 14.02 is not exactly 17.72 in
+  binary, and a joint that fails by an ulp is a kit that silently comes apart.
+  What stays INTEGER, deliberately: the pitch within a group of five rows, the
+  spacing between a strip's two RAILS (1 = 2.54 mm, so a lead bridging `+` to
+  `-` lands square), and the 3 pitches ACROSS the channel — 7.62 mm, the 0.3-in
+  row spacing every DIP is made to (measured at 7.6). So every
+  trench-straddling footprint is exactly what it was; what moved is the plastic
+  around the holes, not the holes.
+  Two consequences worth knowing: a resistor's `minSpan` is **2.5** (a
+  quarter-watt body, ~6.3 mm) and not the old whole 3, or the 2.76 reach from
+  row a to the rail beside it would be refused — the commonest bench move there
+  is; and a bent lead's `{dx, dy}` is quantized rather than required whole, so
+  it lands ON the hole it reaches instead of 0.6 mm past it. Existing desks are
+  re-stacked on load by the **v10 → v11** migration (`app/store/migrations.js`),
+  which re-flows each flush vertical run at the new heights and leaves anything
+  merely near something else alone.
 - **A breadboard is not one part — it is STRIPS** (Feature 110), as on a real bench:
   a centre **pin-board** plus dovetailed **power-rail** strips. Each strip is its own
   entity in `doc.boards`; a "breadboard" is a **kit** of them placed in one action.
   - **Strip types** — `pins-full` (63 cols, 630 pts) · `pins-half` (30, 300) ·
     `pins-tiny` (17, 170) · `rail-full` (2 rails × 50) · `rail-half` (2 × 25).
-    Pin-boards are 13 tall, rails 3; all three pin-boards share ONE row map.
-  - **Kits** (`BREADBOARD_KITS`) — Full 830 = rail@0 · pins@3 · rail@16; Half 400
-    likewise; **Tiny 170 is a bare pin-board** (the real part has no rails).
-    Offsets are integers, so every hole stays on the global 0.1-in lattice.
+    Pin-boards are 14.02 tall (35.6 mm), rails 3.50 (8.9) with their two rails
+    one pitch apart, centred; all three pin-boards share ONE row map, its rows
+    1.51 in from each edge.
+  - **Kits** (`BREADBOARD_KITS`) — Full 830 = rail@0 · pins@3.50 · rail@17.52,
+    21.02 tall in all (53.4 mm); Half 400 likewise; **Tiny 170 is a bare
+    pin-board** (the real part has no rails). `dx` is an integer (the column
+    lattice); `dy` is each strip's measured height, quantized to 0.01.
   - **Rotation — power rails ONLY** (`canRotate` = `kind === "rail"`). A rail is
     two lines of holes, so it reads the same stood on end: turned 90° beside a
     breadboard it becomes a **signal bus** (a clock line, say) that can tap into

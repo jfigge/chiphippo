@@ -127,7 +127,12 @@ export function partPinHoles(ref, anchor, params) {
     // caller's parseHole check (partPinAddresses), as ever.
     if (def.rotatable && params?.rot === 90) {
       const end = params.end;
-      if (!end || !Number.isInteger(end.dx) || !Number.isInteger(end.dy)) {
+      // Finite, not integer: a bend is the vector between two HOLES, and the
+      // vertical geometry is measured (board-types.js) — row a to a dovetailed
+      // rail's nearest row is 2.76. Demanding whole pitches here refused the
+      // very reach this branch exists for. `normalizeLeadOffset` is what puts
+      // it on the 0.01 grid; this only asks that it be a real vector.
+      if (!end || !Number.isFinite(end.dx) || !Number.isFinite(end.dy)) {
         return null;
       }
       if (!LEAD_ANCHOR_RE.test(anchor)) return null;

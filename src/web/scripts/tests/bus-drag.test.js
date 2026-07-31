@@ -35,6 +35,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import { spec } from "../model/breadboard.js";
 import { resetDom } from "./jsdom-setup.js";
 import { DeskDoc } from "../model/desk-doc.js";
 import { PX_PER_UNIT } from "../desk/desk-geometry.js";
@@ -88,8 +89,8 @@ const wireSvg = (surface) => surface.querySelector(".wire-svg");
 function layBus(viewport, world, controller) {
   controller.setBusName("D[3:0]");
   controller.armBusTool();
-  clickAt(viewport, world, 10, 12); // anchor a10
-  clickAt(viewport, world, 20, 12); // land a20
+  clickAt(viewport, world, 10, ROW.a); // anchor a10
+  clickAt(viewport, world, 20, ROW.a); // land a20
   controller.disarmBusTool();
 }
 
@@ -99,6 +100,12 @@ function pairsOf(doc, bus) {
     return [w.from, w.to];
   });
 }
+
+// Grid rows moved when the vertical geometry became MEASURED (board-types.js):
+// a pin-board's plastic is 35.6 mm, so its rows sit 1.51 pitch below the top
+// edge rather than 1, and row a is at 12.51. Fixtures name the row instead of
+// its old integer y, so a re-measurement moves them all at once.
+const ROW = spec("pins-full").rowY;
 
 test("whole-bus drag (grab the ribbon body): both ends translate together", () => {
   resetDom();
@@ -335,10 +342,10 @@ test("a member's cap right at the bus's own collar still declines its drag", () 
   // layout (the centroid of a20..a23 is 21.5, and the collar sits 1.6 pitch
   // back from that, toward a20) — the exact overlap the handle must win.
   world.x = 20;
-  world.y = 12;
+  world.y = ROW.a;
   fire(viewport, "pointerdown");
   world.x = 20;
-  world.y = 11;
+  world.y = ROW.b;
   fire(wireSvg(surface), "pointermove", { client: [40, 40] });
   fire(wireSvg(surface), "pointerup", { client: [40, 40] });
 
@@ -359,10 +366,10 @@ test("a member's cap FAR from any collar drags exactly like an ordinary wire", (
   // bit0's 'from' cap (a10) sits ~31 world px from the 'from' collar (~13.1)
   // — well clear of HANDLE_HIT_RADIUS — so it re-routes like any wire's end.
   world.x = 10;
-  world.y = 12;
+  world.y = ROW.a;
   fire(viewport, "pointerdown");
   world.x = 10;
-  world.y = 11;
+  world.y = ROW.b;
   fire(wireSvg(surface), "pointermove", { client: [40, 40] });
   fire(wireSvg(surface), "pointerup", { client: [40, 40] });
 
@@ -387,10 +394,10 @@ test("a member wire's body is no longer draggable (whole-wire translate is a no-
 
   // Grab the rendered lead's body (not either cap) and try to translate it.
   world.x = 15;
-  world.y = 12;
+  world.y = ROW.a;
   fire(body, "pointerdown");
   world.x = 15;
-  world.y = 9;
+  world.y = ROW.d;
   fire(wireSvg(surface), "pointermove", { client: [40, 40] });
   fire(wireSvg(surface), "pointerup", { client: [40, 40] });
 
@@ -418,10 +425,10 @@ test("a press on a member's cap re-routes the wire, never the board beneath it",
   // special-cases for wires: give the (far-from-any-collar, so undeclined)
   // wire endpoint priority over the board underneath it.
   world.x = 10;
-  world.y = 12;
+  world.y = ROW.a;
   fire(board, "pointerdown");
   world.x = 10;
-  world.y = 9;
+  world.y = ROW.d;
   fire(wireSvg(surface), "pointermove", { client: [40, 40] });
   fire(wireSvg(surface), "pointerup", { client: [40, 40] });
 
@@ -446,10 +453,10 @@ test("a press on a NEAR-COLLAR member's cap absorbs without a board drag either"
   // press (WireTools#capNear is membership-blind) rather than falling
   // through to a board drag.
   world.x = 20;
-  world.y = 12;
+  world.y = ROW.a;
   fire(board, "pointerdown");
   world.x = 20;
-  world.y = 9;
+  world.y = ROW.d;
   fire(wireSvg(surface), "pointermove", { client: [40, 40] });
   fire(wireSvg(surface), "pointerup", { client: [40, 40] });
 
@@ -572,10 +579,10 @@ test("Escape mid whole-wire (non-bus) drag aborts it — the shared plumbing", (
   const body = surface.querySelector(`.wire[data-wire-id="${wire.id}"]`);
 
   world.x = 3;
-  world.y = 12;
+  world.y = ROW.a;
   fire(body, "pointerdown");
   world.x = 3;
-  world.y = 9;
+  world.y = ROW.d;
   fire(wireSvg(surface), "pointermove", { client: [40, 40] });
 
   controller.handleKeyDown(

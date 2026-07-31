@@ -19,6 +19,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import { spec } from "../model/breadboard.js";
 import {
   SNAP_RANGE,
   boardRect,
@@ -29,9 +30,18 @@ import {
 
 const rect = (x, y, width, height) => ({ x, y, width, height });
 
-/** A pin-board and a rail, in the real proportions. */
+/** A pin-board-shaped rect and a rail-shaped one. Whole pitches on purpose:
+    everything down to `matingEdge` is pure RECT arithmetic, and round numbers
+    make the expected pulls below readable. The real strips are 14.02 and 3.70
+    tall (board-types.js measures them); the tests that use the actual types say
+    so by asking the spec. */
 const PINS = (x, y) => rect(x, y, 64, 13);
 const RAIL = (x, y) => rect(x, y, 64, 3);
+
+/** The real measured heights, for the type-based tests below. */
+const RAIL_H = spec("rail-full").height; // 3.70
+const PINS_H = spec("pins-full").height; // 14.02
+const TINY_H = spec("pins-tiny").height;
 
 test("rectMatingEdge: flush and matching mates; a gap does not", () => {
   const a = PINS(0, 3);
@@ -53,16 +63,20 @@ test("rectMatingEdge: sizes must match across the shared edge", () => {
 
 test("matingEdge: the same rule, stated in board types", () => {
   const board = (type, x, y) => ({ type, x, y });
+  // A kit's own stack: rail at 0, pin-board at the rail's height under it.
   assert.equal(
-    matingEdge(board("pins-full", 0, 3), board("rail-full", 0, 0)),
+    matingEdge(board("pins-full", 0, RAIL_H), board("rail-full", 0, 0)),
     "above",
   );
   // A half rail is the wrong width to stack under a full pin-board.
   assert.equal(
-    matingEdge(board("pins-full", 0, 3), board("rail-half", 0, 16)),
+    matingEdge(
+      board("pins-full", 0, RAIL_H),
+      board("rail-half", 0, RAIL_H + PINS_H),
+    ),
     null,
   );
-  assert.deepEqual(boardRect(board("pins-tiny", 5, 7)), rect(5, 7, 18, 13));
+  assert.deepEqual(boardRect(board("pins-tiny", 5, 7)), rect(5, 7, 18, TINY_H));
 });
 
 test("snapCorrection: nothing to pull towards", () => {
@@ -131,9 +145,9 @@ test("snapCorrection: the range is configurable", () => {
 });
 
 test("an upright rail never snaps to a flat one — orientation is the rect", () => {
-  const flat = { type: "rail-full", x: 0, y: 0, rot: 0 }; // 64 × 3
-  const upright = { type: "rail-full", x: 64, y: 0, rot: 90 }; // 3 × 64
-  assert.deepEqual(boardRect(upright), rect(64, 0, 3, 64));
+  const flat = { type: "rail-full", x: 0, y: 0, rot: 0 }; // 64 × 3.70
+  const upright = { type: "rail-full", x: 64, y: 0, rot: 90 }; // 3.70 × 64
+  assert.deepEqual(boardRect(upright), rect(64, 0, RAIL_H, 64));
   // Flush along the shared edge, but no edge they MATCH on: no mate, no pull.
   assert.equal(matingEdge(flat, upright), null);
   assert.deepEqual(snapCorrection([boardRect(upright)], [boardRect(flat)]), {
@@ -143,19 +157,21 @@ test("an upright rail never snaps to a flat one — orientation is the rect", ()
 });
 
 test("two upright rails of the same size snap side by side and end to end", () => {
-  const a = { type: "rail-full", x: 0, y: 0, rot: 90 }; // occupies x 0…3
+  const a = { type: "rail-full", x: 0, y: 0, rot: 90 }; // occupies x 0…3.70
   assert.equal(
-    matingEdge(a, { type: "rail-full", x: 3, y: 0, rot: 90 }),
+    matingEdge(a, { type: "rail-full", x: RAIL_H, y: 0, rot: 90 }),
     "right",
   );
   assert.equal(
     matingEdge(a, { type: "rail-full", x: 0, y: 64, rot: 90 }),
     "below",
   );
-  // …and the magnet closes a two-pitch gap between them.
+  // …and the magnet closes a two-pitch gap between them. An upright rail is
+  // 3.70 wide, so the pull that lands one flush against another is fractional
+  // — which is exactly why neither the flush test nor the drag may round.
   assert.deepEqual(
     snapCorrection(
-      [boardRect({ type: "rail-full", x: 5, y: 0, rot: 90 })],
+      [boardRect({ type: "rail-full", x: RAIL_H + 2, y: 0, rot: 90 })],
       [boardRect(a)],
     ),
     { dx: -2, dy: 0 },

@@ -158,7 +158,7 @@ test("the wires are a NUMBERED cutting list: one line per colour AND length", ()
     bom.wires.map((l) => [l.item, l.title]),
     [
       [1, "Jumper wire (red, 11.9 cm)"],
-      [2, "Jumper wire (black, 11.7 cm)"],
+      [2, "Jumper wire (black, 11.6 cm)"],
       [3, "Jumper wire (blue, 4.8 cm)"],
       [4, "Jumper wire (green, 12.5 cm)"],
       [5, "Jumper wire (yellow, 1.9 cm)"],
@@ -179,7 +179,7 @@ test("the wires are a NUMBERED cutting list: one line per colour AND length", ()
   // two wires that DISPLAY the same length have to land on the same line.
   assert.deepEqual(
     bom.wires.map((l) => l.key),
-    ["red:119", "black:117", "blue:48", "green:125", "yellow:19"],
+    ["red:119", "black:116", "blue:48", "green:125", "yellow:19"],
   );
 });
 

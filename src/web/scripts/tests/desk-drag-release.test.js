@@ -44,6 +44,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import { spec } from "../model/breadboard.js";
 import { resetDom } from "./jsdom-setup.js";
 import { DeskDoc } from "../model/desk-doc.js";
 import { partPinAddresses } from "../model/occupancy.js";
@@ -110,6 +111,12 @@ function dragReleasingAt(
 }
 
 // ── Board drag ──────────────────────────────────────────────────────────────
+
+// Grid rows moved when the vertical geometry became MEASURED (board-types.js):
+// a pin-board's plastic is 35.6 mm, so its rows sit 1.51 pitch below the top
+// edge rather than 1, and row a is at 12.51. Fixtures name the row instead of
+// its old integer y, so a re-measurement moves them all at once.
+const ROW = spec("pins-full").rowY;
 
 test("board drag: the drop lands at the RELEASE point, not the last move", () => {
   resetDom();
@@ -360,9 +367,9 @@ test("brick drag: the PSU lands at the release point, element included", () => {
   const { x: x0, y: y0 } = doc.getComponent(psu.id);
 
   dragReleasingAt(partEl(surface, psu.id), world, {
-    from: { x: 1, y: 1 },
+    from: { x: 1, y: ROW.j },
     stale: { x: 11, y: 6 },
-    at: { x: 21, y: 11 },
+    at: { x: 21, y: ROW.b },
   });
 
   const moved = doc.getComponent(psu.id);
@@ -408,9 +415,9 @@ test("resistor end drag: a stale sample INSIDE the minimum span must not revert 
   // where a stale move doesn't merely misplace the lead: it fails the span
   // check and throws the whole drag away.
   dragReleasingAt(partEl(surface, r.id), world, {
-    from: { x: 13, y: 12 }, // grab pin 2
-    stale: { x: 11, y: 12 }, // illegal — too close
-    at: { x: 15, y: 12 }, // released well clear
+    from: { x: 13, y: ROW.a }, // grab pin 2
+    stale: { x: 11, y: ROW.a }, // illegal — too close
+    at: { x: 15, y: ROW.a }, // released well clear
   });
 
   const comp = doc.getComponent(r.id);
@@ -433,7 +440,7 @@ test("annotation drag: the label lands where it was let go", () => {
 
   dragReleasingAt(annEl(surface, ann.id), world, {
     from: { x: 0, y: 0 },
-    stale: { x: 4, y: 4 },
+    stale: { x: 4, y: ROW.g },
     at: { x: 9, y: 7 },
   });
 
@@ -478,12 +485,12 @@ test("marquee: the band is re-drawn at the release point before selecting", () =
 
   const mods = { shiftKey: true };
   world.x = 4;
-  world.y = 4;
+  world.y = ROW.g;
   fire(viewport, "pointerdown", { id: 7, mods });
   // The last move stops at column 8 — the chip's right-hand pins fall outside,
   // so a rect taken from it selects NOTHING.
   world.x = 8;
-  world.y = 9;
+  world.y = ROW.d;
   fire(viewport, "pointermove", { id: 7, client: [60, 60], mods });
   // The band was actually let go past the chip's far edge.
   world.x = 12;
@@ -502,10 +509,10 @@ test("marquee: a release outside the viewport still applies the selection", () =
 
   const mods = { shiftKey: true };
   world.x = 4;
-  world.y = 4;
+  world.y = ROW.g;
   fire(viewport, "pointerdown", { id: 7, mods });
   world.x = 12;
-  world.y = 9;
+  world.y = ROW.d;
   fire(document.body, "pointermove", { id: 7, client: [60, 60], mods });
   fire(document.body, "pointerup", { id: 7, client: [60, 60], mods });
 

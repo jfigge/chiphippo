@@ -56,6 +56,25 @@ function makeDesk(deskDoc, world = { x: 0, y: 0 }) {
   return { viewport, surface, controller, deskView, world };
 }
 
+// Strip heights are MEASURED, not whole pitches (board-types.js): a rail is
+// 3.70 units (9.4 mm), a pin-board 14.02 (35.6), so a kit stacks 0 · 3.70 ·
+// 17.72 and stands 21.42 tall — and grid rows sit 1.51 below the board's top
+// edge, not 1. Fixtures derive from the specs so a re-measurement moves them
+// all together. `q` is the 0.01 grid a board origin is stored on.
+const q = (n) => Math.round(n * 100) / 100;
+const RAIL_H = spec("rail-full").height;
+const PINS_H = spec("pins-full").height;
+const KIT_H = q(2 * RAIL_H + PINS_H);
+const PINS_Y = q(RAIL_H); // a kit's pin-board, relative to the kit origin
+const LOW_RAIL_Y = q(RAIL_H + PINS_H); // and its bottom rail
+const ROW = spec("pins-full").rowY; // row letter → y within a pin-board
+
+/** World y of a rail strip's `+` / `-` row, for a rail placed at `boardY`. A
+    rail is 3.70 tall and its rows sit 1.25 in from each edge — none of which is
+    a whole pitch, so no fixture may compute one by hand. */
+const railRowY = (boardY, id) =>
+  q(boardY + spec("rail-full").rails.find((r) => r.id === id).y);
+
 test("constructor creates the surface layers in order and mounts doc boards", () => {
   resetDom();
   const doc = new DeskDoc(null);
@@ -89,12 +108,14 @@ test("addBoardAt mounts, selects, and emits chiphippo:doc-changed", () => {
   let changes = 0;
   window.addEventListener("chiphippo:doc-changed", () => changes++);
 
+  // x snaps to the column lattice; y keeps two decimals, there being no
+  // vertical lattice to snap to any more (board-types.js).
   const board = controller.addBoardAt("pins-half", 2.4, 3.6);
   assert.deepEqual(board, {
     id: "bb1",
     type: "pins-half",
     x: 2,
-    y: 4,
+    y: 3.6,
     rot: 0, // pin-boards never turn
     group: null, // a strip added on its own is loose
   });
@@ -300,14 +321,15 @@ test("Cmd+V keeps a rotatable part's turned orientation and lead vector", () => 
   resetDom();
   const doc = new DeskDoc(null);
   doc.addBoard("pins-full", 0, 0); // bb1
-  doc.addBoard("rail-full", 0, 14); // bb2 — a rail below row a
+  doc.addBoard("rail-full", 0, PINS_H); // bb2 — a rail below row a
   const world = { x: 0, y: 0 };
   const { viewport, controller } = makeDesk(doc, world);
 
-  // Source: a resistor stood on end, its lead reaching down onto the rail.
+  // Source: a resistor stood on end, its lead reaching down onto the rail's
+  // `+` row — a bend, so it is stated as the vector from row a to that row.
   const src = controller.addComponentAt("resistor", "bb1", "a10", {
     rot: 90,
-    end: { dx: 0, dy: 3 },
+    end: { dx: 0, dy: q(railRowY(PINS_H, "+") - ROW.a) },
   });
   assert.equal(doc.getComponent(src.id).params.rot, 90);
 
@@ -318,7 +340,7 @@ test("Cmd+V keeps a rotatable part's turned orientation and lead vector", () => 
   // Track + drop the duplicate a few columns over; pin 1 rides the cursor. Land
   // it on a column whose rail hole exists (rails skip every fifth position).
   world.x = 25;
-  world.y = 12; // hole a25
+  world.y = ROW.a; // hole a25
   viewport.dispatchEvent(
     new window.PointerEvent("pointermove", { bubbles: true }),
   );
@@ -356,11 +378,11 @@ test("addKitAt: a loose strip dropped flush mates with the board it touches", ()
   resetDom();
   const doc = new DeskDoc(null);
   const { surface, controller } = makeDesk(doc);
-  controller.addKitAt("half", 0, 0); // bb1..bb3, group g1 — spans y 0…19
+  controller.addKitAt("half", 0, 0); // bb1..bb3, group g1 — spans y 0…21.42
 
   // A spare rail seated against the kit's bottom edge joins its group, so the
   // whole stack drags as one unit from here on.
-  const [rail] = controller.addKitAt("rail-half", 0, 19);
+  const [rail] = controller.addKitAt("rail-half", 0, KIT_H);
   assert.equal(rail.type, "rail-half");
   assert.equal(controller.selectedId, rail.id); // the new strip is selected
   assert.deepEqual(
@@ -870,7 +892,7 @@ test("a plain board grab lights and moves the whole snapped unit", () => {
   const doc = new DeskDoc(null);
   const world = { x: 0, y: 0 };
   const { surface, controller } = makeDesk(doc, world);
-  controller.addKitAt("full", 0, 0); // bb1 rail@0 · bb2 pins@3 · bb3 rail@16
+  controller.addKitAt("full", 0, 0); // bb1 rail@0 · bb2 pins@3.70 · bb3 @17.72
 
   const lit = dragBoard(surface, world, "bb2", 0, 30);
   assert.deepEqual(lit, ["bb1", "bb2", "bb3"]);
@@ -878,8 +900,8 @@ test("a plain board grab lights and moves the whole snapped unit", () => {
     doc.boards.map((b) => [b.id, b.y, b.group]),
     [
       ["bb1", 30, "g1"],
-      ["bb2", 33, "g1"],
-      ["bb3", 46, "g1"],
+      ["bb2", q(PINS_Y + 30), "g1"],
+      ["bb3", q(LOW_RAIL_Y + 30), "g1"],
     ],
   );
   assert.deepEqual(dragSetIds(surface), []); // the highlight clears on release
@@ -915,6 +937,19 @@ function outlineBox(surface) {
 }
 
 /** The world-px extent of `ids`, grown by the highlighter's margin. */
+/** Board geometry is fractional now, so a box derived two ways can differ in
+    the last bit of a double. Compare at a thousandth of a pixel — far finer
+    than anything drawn, far coarser than float noise. */
+function boxNear(got, want, what = "outline") {
+  assert.ok(got, `${what}: no box`);
+  for (const k of ["x", "y", "right", "bottom"]) {
+    assert.ok(
+      Math.abs(got[k] - want[k]) < 1e-3,
+      `${what}.${k}: ${got[k]} vs ${want[k]}`,
+    );
+  }
+}
+
 function expectedBox(doc, ids) {
   const boxes = ids.map((id) => {
     const b = doc.getBoard(id);
@@ -960,7 +995,7 @@ test("a loose strip is highlighted on its own", () => {
   controller.addKitAt("full", 0, 0);
   controller.addBoardAt("pins-tiny", 0, 40); // clear of the kit, ungrouped
 
-  assert.deepEqual(outlineBox(surface), expectedBox(doc, ["bb4"]));
+  boxNear(outlineBox(surface), expectedBox(doc, ["bb4"]));
 });
 
 test("an Option grab re-traces the highlighter around the torn-off run", () => {
@@ -973,7 +1008,7 @@ test("an Option grab re-traces the highlighter around the torn-off run", () => {
   // Mid-gesture: the set is bb2 + bb3, so the top rail is outside the edge.
   const el = boardEl(surface, "bb2");
   pointerAt(el, "pointerdown", 0, 0, { altKey: true });
-  assert.deepEqual(outlineBox(surface), expectedBox(doc, ["bb2", "bb3"]));
+  boxNear(outlineBox(surface), expectedBox(doc, ["bb2", "bb3"]));
   pointerAt(el, "pointerup", 0, 0, { altKey: true });
 });
 
@@ -1012,13 +1047,13 @@ test("strips that do not match across the edge never snap together", () => {
   const doc = new DeskDoc(null);
   const world = { x: 0, y: 0 };
   const { surface, controller } = makeDesk(doc, world);
-  controller.addBoardAt("pins-full", 0, 0); // 64 wide, spans y 0…13
+  controller.addBoardAt("pins-full", 0, 0); // 64 wide, spans y 0…14.02
   controller.addBoardAt("rail-half", 0, 20); // only 31 wide
 
-  // Dropped one pitch under the full board: flush would be y = 13, but a
+  // Dropped one pitch under the full board: flush would be y = 14.02, but a
   // half-width rail does not dovetail onto a full-width board at all.
-  dragBoard(surface, world, "bb2", 0, -6);
-  assert.equal(doc.getBoard("bb2").y, 14);
+  dragBoard(surface, world, "bb2", 0, -5);
+  assert.equal(doc.getBoard("bb2").y, 15);
   assert.equal(doc.getBoard("bb2").group, null);
 });
 
@@ -1027,14 +1062,15 @@ test("a whole kit dropped against another board mates, all six strips", () => {
   const doc = new DeskDoc(null);
   const world = { x: 0, y: 0 };
   const { surface, controller } = makeDesk(doc, world);
-  controller.addKitAt("full", 0, 0); // bb1…bb3, spanning y 0…19
+  controller.addKitAt("full", 0, 0); // bb1…bb3, spanning y 0…21.42
   controller.addKitAt("full", 0, 30); // bb4…bb6, clear below it
 
   // Grab the second kit's pin-board and drop the kit two pitch shy of flush.
-  dragBoard(surface, world, "bb5", 0, -9);
+  dragBoard(surface, world, "bb5", 0, -7);
   assert.deepEqual(
     doc.boards.map((b) => b.y),
-    [0, 3, 16, 19, 22, 35], // the second kit pulled up onto the first
+    // the second kit pulled up onto the first
+    [0, PINS_Y, LOW_RAIL_Y, KIT_H, q(KIT_H + PINS_Y), q(KIT_H + LOW_RAIL_Y)],
   );
   assert.equal(new Set(doc.boards.map((b) => b.group)).size, 1);
   assert.equal(doc.groupMembers("bb1").length, 6);
@@ -1045,7 +1081,7 @@ test("placing a kit flush against a board mates it, exactly as a drop does", () 
   const doc = new DeskDoc(null);
   const { controller } = makeDesk(doc);
   controller.addKitAt("full", 0, 0);
-  controller.addKitAt("full", 0, 19); // seated on the first kit's bottom edge
+  controller.addKitAt("full", 0, KIT_H); // seated on the first kit's bottom edge // prettier-ignore
 
   assert.equal(doc.groupMembers("bb1").length, 6);
 });
@@ -1055,7 +1091,7 @@ test("Option-drag takes the run BELOW the grab and tears off the rest", () => {
   const doc = new DeskDoc(null);
   const world = { x: 0, y: 0 };
   const { surface, controller } = makeDesk(doc, world);
-  controller.addKitAt("full", 0, 0); // bb1 rail@0 · bb2 pins@3 · bb3 rail@16
+  controller.addKitAt("full", 0, 0); // bb1 rail@0 · bb2 pins@3.70 · bb3 @17.72
 
   const lit = dragBoard(surface, world, "bb2", 0, 30, { altKey: true });
   assert.deepEqual(lit, ["bb2", "bb3"]); // the top rail is not in the set
@@ -1063,8 +1099,8 @@ test("Option-drag takes the run BELOW the grab and tears off the rest", () => {
     doc.boards.map((b) => [b.id, b.y]),
     [
       ["bb1", 0], // left exactly where it was
-      ["bb2", 33],
-      ["bb3", 46],
+      ["bb2", q(PINS_Y + 30)],
+      ["bb3", q(LOW_RAIL_Y + 30)],
     ],
   );
   // The snap is broken: the pair that travelled is its own unit now, and the
@@ -1092,8 +1128,8 @@ test("Option+Shift-drag takes the run ABOVE the grab instead", () => {
     doc.boards.map((b) => [b.id, b.y]),
     [
       ["bb1", -30],
-      ["bb2", -27],
-      ["bb3", 16], // the bottom rail stays put
+      ["bb2", q(PINS_Y - 30)],
+      ["bb3", LOW_RAIL_Y], // the bottom rail stays put
     ],
   );
   assert.equal(doc.getBoard("bb3").group, null);
@@ -1110,7 +1146,7 @@ test("Shift alone on a board still falls through to the marquee", () => {
   assert.deepEqual(lit, []); // no drag set — the board was never grabbed
   assert.deepEqual(
     doc.boards.map((b) => b.y),
-    [0, 3, 16], // nothing moved
+    [0, PINS_Y, LOW_RAIL_Y], // nothing moved
   );
 });
 
@@ -1119,8 +1155,8 @@ test("an Option-drag that lands illegally reverts and keeps the snap", () => {
   const doc = new DeskDoc(null);
   const world = { x: 0, y: 0 };
   const { surface, controller } = makeDesk(doc, world);
-  controller.addKitAt("full", 0, 0); // bb1..bb3, spans y 0…19
-  controller.addKitAt("full", 0, 22); // bb4..bb6, spans y 22…41
+  controller.addKitAt("full", 0, 0); // bb1..bb3, spans y 0…21.42
+  controller.addKitAt("full", 0, 24); // bb4..bb6, spans y 24…45.42
 
   // Push the bottom run down onto the second board — no room, so nothing
   // commits and the group must survive intact.
@@ -1129,11 +1165,11 @@ test("an Option-drag that lands illegally reverts and keeps the snap", () => {
     doc.boards.map((b) => [b.id, b.y, b.group]),
     [
       ["bb1", 0, "g1"],
-      ["bb2", 3, "g1"],
-      ["bb3", 16, "g1"],
-      ["bb4", 22, "g2"],
-      ["bb5", 25, "g2"],
-      ["bb6", 38, "g2"],
+      ["bb2", PINS_Y, "g1"],
+      ["bb3", LOW_RAIL_Y, "g1"],
+      ["bb4", 24, "g2"],
+      ["bb5", q(24 + PINS_Y), "g2"],
+      ["bb6", q(24 + LOW_RAIL_Y), "g2"],
     ],
   );
 });
@@ -1210,10 +1246,10 @@ test("dragging ONE end reaches a NEIGHBOURING strip's rail; the other stays put"
   resetDom();
   const doc = new DeskDoc(null);
   doc.addBoard("pins-full", 0, 0); // bb1
-  doc.addBoard("rail-full", 0, -4); // bb2 — a rail strip along the top edge
+  doc.addBoard("rail-full", 0, -RAIL_H); // bb2 — a rail flush above the board
   const world = { x: 0, y: 0 };
   const { surface, controller } = makeDesk(doc, world);
-  // Pin 1 at a10 (world 10, 12); pin 2 at a13.
+  // Pin 1 at a10 (row a, column 10); pin 2 at a13.
   const r = controller.addComponentAt("resistor", "bb1", "a10");
 
   const el = partEl(surface, r.id);
@@ -1221,10 +1257,10 @@ test("dragging ONE end reaches a NEIGHBOURING strip's rail; the other stays put"
   // strip onto the rail above — a span the fixed-length whole-drag could
   // never reach, and a hole this part is not even seated on.
   world.x = 13;
-  world.y = 12;
+  world.y = ROW.a;
   pointerAt(el, "pointerdown", 0, 0);
-  world.x = 10; // the `-` rail's hole 7 sits at world (10, −2)
-  world.y = -2;
+  world.x = 10; // the `-` rail's hole 7 sits in this column
+  world.y = railRowY(-RAIL_H, "-");
   pointerAt(el, "pointermove", 40, 40);
   pointerAt(el, "pointerup", 40, 40);
 
@@ -1233,7 +1269,10 @@ test("dragging ONE end reaches a NEIGHBOURING strip's rail; the other stays put"
   assert.equal(comp.anchor, "a10"); // …and the untouched end never moved
   assert.equal(comp.params.rot, 90);
   // …while the lead is stored as a bend, and resolves onto the other strip.
-  assert.deepEqual(comp.params.end, { dx: 0, dy: -14 });
+  assert.deepEqual(comp.params.end, {
+    dx: 0,
+    dy: q(railRowY(-RAIL_H, "-") - ROW.a),
+  });
   assert.deepEqual(partPinAddresses(doc, comp), [
     { pin: 1, address: "bb1.a10" },
     { pin: 2, address: "bb2.-7" },
@@ -1250,10 +1289,10 @@ test("an end dropped closer than the minimum lead span springs back", () => {
 
   const el = partEl(surface, r.id);
   world.x = 13; // grab pin 2
-  world.y = 12;
+  world.y = ROW.a;
   pointerAt(el, "pointerdown", 0, 0);
   world.x = 11; // only 1 hole from pin 1 — inside the 3-unit minimum
-  world.y = 12;
+  world.y = ROW.a;
   pointerAt(el, "pointermove", 40, 0);
   pointerAt(el, "pointerup", 40, 0);
 
@@ -1268,10 +1307,10 @@ test("an LED rotates and drags an end like a resistor", () => {
   resetDom();
   const doc = new DeskDoc(null);
   doc.addBoard("pins-full", 0, 0); // bb1
-  doc.addBoard("rail-full", 0, -4); // bb2 — a rail strip along the top edge
+  doc.addBoard("rail-full", 0, -RAIL_H); // bb2 — a rail flush above the board
   const world = { x: 0, y: 0 };
   const { surface, controller } = makeDesk(doc, world);
-  // Pin 1 (anode) at a10 (world 10, 12); pin 2 (cathode) alongside at a11.
+  // Pin 1 (anode) at a10; pin 2 (cathode) alongside at a11.
   const led = controller.addComponentAt("led", "bb1", "a10", {
     color: "green",
   });
@@ -1290,16 +1329,19 @@ test("an LED rotates and drags an end like a resistor", () => {
   // Drag the cathode end up onto the rail strip.
   const el = partEl(surface, led.id);
   world.x = 10; // grab pin 2 (same column, one row up from a10 → world y 11)
-  world.y = 11;
+  world.y = ROW.b;
   pointerAt(el, "pointerdown", 0, 0);
-  world.y = -2; // the rail strip's `-` rail
+  world.y = railRowY(-RAIL_H, "-"); // the rail strip's `-` rail
   pointerAt(el, "pointermove", 0, 60);
   pointerAt(el, "pointerup", 0, 60);
 
   const after = doc.getComponent(led.id);
   assert.equal(after.board, "bb1"); // seated here, only REACHING the rail
   assert.equal(after.anchor, "a10"); // the anode never moved
-  assert.deepEqual(after.params.end, { dx: 0, dy: -14 });
+  assert.deepEqual(after.params.end, {
+    dx: 0,
+    dy: q(railRowY(-RAIL_H, "-") - ROW.a),
+  });
   assert.deepEqual(partPinAddresses(doc, after), [
     { pin: 1, address: "bb1.a10" },
     { pin: 2, address: "bb2.-7" },
@@ -1320,10 +1362,10 @@ test("an LED's legs may sit side by side (no gap required)", () => {
   // one pitch unit away, which an LED allows but a resistor would reject.
   const el = partEl(surface, led.id);
   world.x = 11;
-  world.y = 12;
+  world.y = ROW.a;
   pointerAt(el, "pointerdown", 0, 0);
   world.x = 10;
-  world.y = 11; // b10 — adjacent to the anode at a10
+  world.y = ROW.b; // b10 — adjacent to the anode at a10
   pointerAt(el, "pointermove", 40, 40);
   pointerAt(el, "pointerup", 40, 40);
 
@@ -1378,7 +1420,7 @@ test("R during a non-rotatable part's drag does nothing and keeps the drag", () 
   const btn = controller.addComponentAt("sw-push", "bb1", "a10");
 
   const el = partEl(surface, btn.id);
-  world.y = 12; // row a
+  world.y = ROW.a; // row a
   pointerAt(el, "pointerdown", 0, 0);
   world.x = 2;
   pointerAt(el, "pointermove", 50, 0);
@@ -1425,8 +1467,8 @@ test("a ghost rotated with R places in the two-ends form", () => {
   resetDom();
   const doc = new DeskDoc(null);
   doc.addBoard("pins-full", 0, 0); // bb1
-  doc.addBoard("rail-full", 0, 14); // bb2 — a rail strip along the bottom edge
-  const world = { x: 10, y: 12 }; // hole a10
+  doc.addBoard("rail-full", 0, PINS_H); // bb2 — a rail flush below the board
+  const world = { x: 10, y: ROW.a }; // hole a10
   const { viewport, controller } = makeDesk(doc, world);
 
   controller.armPartPlacement("resistor");
@@ -1640,7 +1682,7 @@ test("R during a resistor END drag is a no-op, not a rotate-behind-the-drag", ()
 
   const el = partEl(surface, r.id);
   world.x = 13; // grab pin 2's lead
-  world.y = 12;
+  world.y = ROW.a;
   pointerAt(el, "pointerdown", 0, 0);
   world.x = 16;
   pointerAt(el, "pointermove", 40, 0);
@@ -1669,7 +1711,7 @@ test("R during a marquee drag leaves the selected part alone", () => {
 
   // Start a marquee, then press R mid-drag.
   world.x = 40;
-  world.y = 2;
+  world.y = ROW.i;
   viewport.dispatchEvent(
     new window.PointerEvent("pointerdown", {
       bubbles: true,
@@ -1776,13 +1818,13 @@ test("R stands a rail on end while placing, and the placed strip stays upright",
     controller.handleKeyDown(new window.KeyboardEvent("keydown", { key: "r" }));
 
   const ghost = () => surface.querySelector(".board-ghost");
-  // Flat to begin with: 64 wide, 3 tall.
+  // Flat to begin with: 64 wide, 3.70 tall (9.4 mm of plastic).
   assert.equal(ghost().style.width, `${64 * PX_PER_UNIT}px`);
 
   assert.equal(R(), true, "R consumed");
   assert.ok(controller.placementArmed, "STILL armed — rotating is not placing");
   // Turned: the ghost is now tall and thin, and its strip carries the spin.
-  assert.equal(ghost().style.width, `${3 * PX_PER_UNIT}px`);
+  assert.equal(ghost().style.width, `${RAIL_H * PX_PER_UNIT}px`);
   assert.equal(ghost().style.height, `${64 * PX_PER_UNIT}px`);
   assert.match(
     ghost().querySelector(".board-ghost-strip").style.transform,
@@ -1980,7 +2022,7 @@ test("Cmd+C on a marquee selection pastes the whole cluster onto clear holes", (
 
   // Slide the pair 35 columns right (centre 12.5 → 47.5), onto empty board.
   world.x = 47.5;
-  world.y = 8;
+  world.y = ROW.e;
   viewport.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
 
   assert.ok(!controller.placementArmed);
@@ -2018,7 +2060,7 @@ test("a cluster paste including a DIP-packaged discrete doesn't throw (bar8iso/s
   );
 
   world.x = 47.5;
-  world.y = 8;
+  world.y = ROW.e;
   viewport.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
 
   assert.ok(!controller.placementArmed);
@@ -2047,7 +2089,7 @@ test("a cluster paste seats the valid members and discards the invalid ones", ()
   // Slide 45 columns right: the first (e5→e50) still fits the 63-column board;
   // the second (e20→e65) runs off the end and is discarded.
   world.x = 57.5;
-  world.y = 8;
+  world.y = ROW.e;
   viewport.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
 
   assert.ok(!controller.placementArmed);
@@ -2073,7 +2115,7 @@ test("a cluster ghost shades an unseatable member red while dragging", () => {
   // Same off-the-end shift, but hovering — the first member seats (green), the
   // second is off the board (red). Ghost order follows member order.
   world.x = 57.5;
-  world.y = 8;
+  world.y = ROW.e;
   viewport.dispatchEvent(
     new window.PointerEvent("pointermove", { bubbles: true }),
   );
