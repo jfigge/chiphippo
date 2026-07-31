@@ -73,6 +73,17 @@ export function stepZoom(zoom, steps = 1) {
   return clampZoom(clampZoom(zoom) * ZOOM_STEP ** steps);
 }
 
+/** Step the zoom by whole PERCENTAGE POINTS off the readout — Option-clicking
+    the zoom cluster's ±. The coarse step is multiplicative so steps compose;
+    the fine step's whole job is to land on an exact percentage, so it reads the
+    ROUNDED readout and moves that by one. Hence it snaps: from 137.4% one step
+    up is 138%, not 138.4% — a step that kept the fractional tail could never
+    reach a round number, which is the only reason to want a fine step. */
+export function finePercentZoom(zoom, steps = 1) {
+  const percent = Math.round(clampZoom(zoom) * 100);
+  return clampZoom((percent + steps) / 100);
+}
+
 /** Map a wheel/pinch delta to a new zoom factor (clamped). */
 export function wheelZoom(zoom, deltaY) {
   const dy = Number.isFinite(deltaY) ? deltaY : 0;

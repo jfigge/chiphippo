@@ -29,6 +29,7 @@ import {
   ZOOM_MIN,
   ZOOM_STEP,
   clampZoom,
+  finePercentZoom,
   gridForCamera,
   normalizeCamera,
   panBy,
@@ -68,6 +69,28 @@ test("stepZoom: exponential steps that compose and clamp", () => {
   approx(stepZoom(1, 3), ZOOM_STEP ** 3);
   assert.equal(stepZoom(ZOOM_MAX, 1), ZOOM_MAX);
   assert.equal(stepZoom(ZOOM_MIN, -1), ZOOM_MIN);
+});
+
+test("finePercentZoom: the readout moves by exactly one point", () => {
+  approx(finePercentZoom(1, 1), 1.01);
+  approx(finePercentZoom(1, -1), 0.99);
+  // Additive on the readout, NOT multiplicative: 200% → 201%, not 202%.
+  approx(finePercentZoom(2, 1), 2.01);
+});
+
+test("finePercentZoom: SNAPS a fractional zoom to a whole percent", () => {
+  // 137.4% reads as "137%", so one step up is 138% — not 138.4%. Landing on a
+  // round number is the only reason to want a fine step.
+  approx(finePercentZoom(1.374, 1), 1.38);
+  approx(finePercentZoom(1.374, -1), 1.36);
+  approx(finePercentZoom(1.374, 0), 1.37);
+});
+
+test("finePercentZoom: clamps at both ends and defaults junk to 1", () => {
+  assert.equal(finePercentZoom(ZOOM_MAX, 1), ZOOM_MAX);
+  assert.equal(finePercentZoom(ZOOM_MIN, -1), ZOOM_MIN);
+  approx(finePercentZoom(NaN, 1), 1.01);
+  approx(finePercentZoom(undefined, -1), 0.99);
 });
 
 test("wheelZoom: negative deltaY zooms in, positive zooms out, clamps", () => {

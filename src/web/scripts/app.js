@@ -1504,8 +1504,8 @@ async function init() {
   window.addEventListener("chiphippo:doc-changed", updateHint);
 
   zoomControl = new ZoomControl(desk, {
-    onZoomIn: () => deskView.zoomIn(),
-    onZoomOut: () => deskView.zoomOut(),
+    onZoomIn: (opts) => deskView.zoomIn(opts),
+    onZoomOut: (opts) => deskView.zoomOut(opts),
     onReset: () => deskView.resetZoom(),
   });
   zoomControl.setZoom(deskView.camera.zoom);

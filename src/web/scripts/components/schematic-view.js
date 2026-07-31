@@ -609,12 +609,12 @@ export class SchematicView {
     }
   }
 
-  zoomIn() {
-    this.#deskView.zoomIn();
+  zoomIn(opts) {
+    this.#deskView.zoomIn(opts);
   }
 
-  zoomOut() {
-    this.#deskView.zoomOut();
+  zoomOut(opts) {
+    this.#deskView.zoomOut(opts);
   }
 
   resetZoom() {

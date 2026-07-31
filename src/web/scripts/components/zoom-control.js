@@ -31,8 +31,8 @@ export class ZoomControl {
   /**
    * @param {HTMLElement} container - overlay parent (the `.desk-viewport`).
    * @param {object} callbacks
-   * @param {() => void} callbacks.onZoomIn
-   * @param {() => void} callbacks.onZoomOut
+   * @param {(opts?: {fine: boolean}) => void} callbacks.onZoomIn
+   * @param {(opts?: {fine: boolean}) => void} callbacks.onZoomOut
    * @param {() => void} callbacks.onReset
    */
   constructor(container, { onZoomIn, onZoomOut, onReset }) {
@@ -41,14 +41,31 @@ export class ZoomControl {
 
     // The three GLYPHS (− / % / +) are the same in every language; only the
     // labels behind them are translated, which `relocalize()` re-applies.
+    //
+    // OPTION is the FINE step (one percentage point) — reported as a plain
+    // option so the cluster still hands its creator an intent, never a DOM
+    // event. It is deliberately silent: the labels say nothing about it.
+    //
+    // SHIFT CANNOT BE THE MODIFIER HERE, however conventional it is for a fine
+    // adjustment. This cluster sits INSIDE `.desk-viewport`, and the desk's own
+    // `#onViewportPointerDown` rubber-bands a marquee on any shift-press there
+    // without looking at the target — it captures the pointer on the viewport,
+    // so the release retargets and no `click` is ever generated. A shift-click
+    // on these buttons delivers a `pointerdown` and nothing else. Option is
+    // also already the app's "this gesture takes something different with it"
+    // modifier (the torn-off board run, the wiring that rides a part).
     this.#outBtn = this.#button("desk-zoom-btn", "−", "zoom.out");
-    this.#outBtn.addEventListener("click", () => onZoomOut?.());
+    this.#outBtn.addEventListener("click", (e) =>
+      onZoomOut?.({ fine: e.altKey }),
+    );
 
     this.#readout = this.#button("desk-zoom-readout", "100%", "zoom.reset");
     this.#readout.addEventListener("click", () => onReset?.());
 
     this.#inBtn = this.#button("desk-zoom-btn", "+", "zoom.in");
-    this.#inBtn.addEventListener("click", () => onZoomIn?.());
+    this.#inBtn.addEventListener("click", (e) =>
+      onZoomIn?.({ fine: e.altKey }),
+    );
 
     cluster.append(this.#outBtn, this.#readout, this.#inBtn);
     container.append(cluster);

@@ -23,6 +23,7 @@
 // background mutate.
 
 import {
+  finePercentZoom,
   gridForCamera,
   normalizeCamera,
   panBy,
@@ -114,12 +115,17 @@ export class DeskView {
     );
   }
 
-  zoomIn() {
-    this.#zoomAtCenter(stepZoom(this.#camera.zoom, 1));
+  /** @param {{fine?: boolean}} [opts] `fine` steps the readout by ONE percentage
+      point (Option-clicking the zoom cluster) instead of one exponential step. */
+  zoomIn({ fine = false } = {}) {
+    const z = this.#camera.zoom;
+    this.#zoomAtCenter(fine ? finePercentZoom(z, 1) : stepZoom(z, 1));
   }
 
-  zoomOut() {
-    this.#zoomAtCenter(stepZoom(this.#camera.zoom, -1));
+  /** @param {{fine?: boolean}} [opts] see zoomIn(). */
+  zoomOut({ fine = false } = {}) {
+    const z = this.#camera.zoom;
+    this.#zoomAtCenter(fine ? finePercentZoom(z, -1) : stepZoom(z, -1));
   }
 
   resetZoom() {
