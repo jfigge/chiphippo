@@ -165,6 +165,176 @@ test("SettingsDialog: the wire-layout picker seeds, emits, and falls back", () =
   PopupManager.close();
 });
 
+test("SettingsDialog: the font-size picker seeds, emits a NUMBER, and repairs", () => {
+  resetDom();
+  SettingsDialog.open({ fontSize: 16 });
+  const group = document.querySelector('.segmented-picker[aria-label="Editor font size"]'); // prettier-ignore
+  const segments = [...group.querySelectorAll(".segmented-option")];
+  assert.deepEqual(
+    segments.map((b) => b.textContent),
+    ["11", "12", "13", "14", "16", "18"],
+  );
+  assert.equal(activeSegment("Editor font size").textContent, "16");
+
+  const patches = [];
+  window.addEventListener("chiphippo:settings-changed", (e) =>
+    patches.push(e.detail),
+  );
+  segments[5].click();
+  // A NUMBER, not the string the DOM would round-trip: the whole type scale is
+  // derived from this value as a px length.
+  assert.deepEqual(patches, [{ fontSize: 18 }]);
+  assert.equal(typeof patches[0].fontSize, "number");
+  PopupManager.close();
+
+  // Absent falls back to the shipped 13 …
+  resetDom();
+  SettingsDialog.open({});
+  assert.equal(activeSegment("Editor font size").textContent, "13");
+  PopupManager.close();
+
+  // … but an off-ladder value is REPAIRED toward what it asked for rather than
+  // reset, so a hand-edited settings.json keeps its intent.
+  resetDom();
+  SettingsDialog.open({ fontSize: 15 });
+  assert.equal(activeSegment("Editor font size").textContent, "16");
+  PopupManager.close();
+});
+
+test("SettingsDialog: Language stays the Appearance panel's first row", () => {
+  // The font-size row went in UNDER Language and its hint; the language picker
+  // has to lead, since it is the one control a user who cannot read the current
+  // language needs to find first.
+  resetDom();
+  SettingsDialog.open({});
+  const panel = document.querySelector('.settings-panel[data-panel="appearance"]'); // prettier-ignore
+  assert.equal(
+    panel.firstElementChild.querySelector(".settings-label").textContent,
+    "Language",
+  );
+  const labels = [...panel.querySelectorAll(".settings-label")].map(
+    (l) => l.textContent,
+  );
+  assert.deepEqual(labels.slice(0, 3), [
+    "Language",
+    "Editor font size",
+    "Theme",
+  ]);
+  PopupManager.close();
+});
+
+test("SettingsDialog: a row's note is disclosed by its (i), not shown permanently", () => {
+  resetDom();
+  SettingsDialog.open({});
+  const panel = document.querySelector('.settings-panel[data-panel="appearance"]'); // prettier-ignore
+
+  // Nothing explanatory is on screen until it is asked for.
+  const notes = [...panel.querySelectorAll(".settings-note")];
+  assert.ok(notes.length >= 3, "Language, Editor font size and Wire layout");
+  assert.ok(
+    notes.every((n) => n.hasAttribute("hidden")),
+    "every note starts closed",
+  );
+
+  // The (i) sits beside the label it documents, inside the same row.
+  const fontRow = [...panel.querySelectorAll(".settings-row")].find(
+    (r) => r.querySelector(".settings-label")?.textContent === "Editor font size", // prettier-ignore
+  );
+  const info = fontRow.querySelector(".settings-label-group .info-btn");
+  assert.ok(info, "the (i) is a sibling of the label, not inside it");
+  assert.equal(info.getAttribute("aria-expanded"), "false");
+
+  const note = document.getElementById(info.getAttribute("aria-controls"));
+  assert.ok(fontRow.contains(note), "the note is positioned against its row");
+  info.dispatchEvent(new window.Event("click"));
+  assert.ok(!note.hasAttribute("hidden"), "the (i) opens it");
+  assert.equal(info.getAttribute("aria-expanded"), "true");
+  assert.match(note.textContent, /scale with the desk zoom/);
+
+  info.dispatchEvent(new window.Event("click"));
+  assert.ok(note.hasAttribute("hidden"), "and closes it again");
+  assert.equal(info.getAttribute("aria-expanded"), "false");
+  PopupManager.close();
+});
+
+test("SettingsDialog: Escape closes an open note, NOT the dialog under it", () => {
+  // The note lives inside a native modal <dialog>, where Escape is the
+  // browser's close-request for the whole card. If the note did not take that
+  // key first, reading a note and dismissing it would throw Settings away.
+  resetDom();
+  SettingsDialog.open({});
+  const panel = document.querySelector('.settings-panel[data-panel="appearance"]'); // prettier-ignore
+  const info = panel.querySelector(".info-btn");
+  const note = document.getElementById(info.getAttribute("aria-controls"));
+  info.dispatchEvent(new window.Event("click"));
+  assert.ok(!note.hasAttribute("hidden"));
+
+  const esc = new window.KeyboardEvent("keydown", {
+    key: "Escape",
+    bubbles: true,
+    cancelable: true,
+  });
+  document.dispatchEvent(esc);
+  assert.ok(note.hasAttribute("hidden"), "Escape closed the note");
+  assert.equal(info.getAttribute("aria-expanded"), "false");
+  assert.ok(esc.defaultPrevented, "and swallowed the dialog's close-request");
+  assert.ok(
+    document.querySelector(".settings-popup"),
+    "so Settings is still open",
+  );
+
+  // With the note shut, the key is nobody's but the dialog's again.
+  const again = new window.KeyboardEvent("keydown", {
+    key: "Escape",
+    bubbles: true,
+    cancelable: true,
+  });
+  document.dispatchEvent(again);
+  assert.equal(again.defaultPrevented, false, "the next Escape passes through");
+  PopupManager.close();
+});
+
+test("SettingsDialog: a click outside an open note closes it", () => {
+  resetDom();
+  SettingsDialog.open({});
+  const panel = document.querySelector('.settings-panel[data-panel="appearance"]'); // prettier-ignore
+  const info = panel.querySelector(".info-btn");
+  const note = document.getElementById(info.getAttribute("aria-controls"));
+  info.dispatchEvent(new window.Event("click"));
+  assert.ok(!note.hasAttribute("hidden"));
+
+  // Inside the note is not outside it — reading does not dismiss.
+  note.dispatchEvent(new window.Event("pointerdown", { bubbles: true }));
+  assert.ok(!note.hasAttribute("hidden"), "a click IN the note keeps it open");
+
+  panel.dispatchEvent(new window.Event("pointerdown", { bubbles: true }));
+  assert.ok(note.hasAttribute("hidden"), "a click outside closes it");
+  PopupManager.close();
+});
+
+test("SettingsDialog: every (i) is labelled by the row it documents", () => {
+  // The button carries no text, so its accessible name is the only thing
+  // telling one (i) from the four others on the same panel.
+  resetDom();
+  SettingsDialog.open({});
+  const panel = document.querySelector('.settings-panel[data-panel="appearance"]'); // prettier-ignore
+  const names = [...panel.querySelectorAll(".info-btn")].map((b) =>
+    b.getAttribute("aria-label"),
+  );
+  assert.deepEqual(names, [
+    "More about Language",
+    "More about Editor font size",
+    "More about Wire layout",
+  ]);
+  assert.ok(
+    [...panel.querySelectorAll(".info-btn")].every(
+      (b) => b.getAttribute("title") === b.getAttribute("aria-label"),
+    ),
+    "the tooltip says what the screen reader says",
+  );
+  PopupManager.close();
+});
+
 test("SettingsDialog: the colour input seeds from selectionColor and emits on input", () => {
   resetDom();
   SettingsDialog.open({ selectionColor: "#ff8800" });
@@ -816,7 +986,7 @@ test("AboutDialog: the (i) toggle reveals the build popover", () => {
   resetDom();
   AboutDialog.open();
   const build = document.querySelector(".about-build");
-  const info = document.querySelector(".about-info-btn");
+  const info = document.querySelector(".info-btn");
   assert.ok(build.hasAttribute("hidden"), "build details start hidden");
   info.dispatchEvent(new window.Event("click"));
   assert.ok(!build.hasAttribute("hidden"), "the (i) button reveals them");

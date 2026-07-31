@@ -68,7 +68,7 @@
 }
 
 .app-logo {
-  font-size: 15px;
+  font-size: var(--font-size-xl);
   font-weight: 600;
   letter-spacing: 0.01em;
 }
@@ -86,12 +86,12 @@
 .toolbar-btn {
   display: inline-flex;
   align-items: center;
-  height: 28px;
+  height: var(--toolbar-height);
   padding: 0 var(--space-3);
   background: var(--color-surface-0);
   border: 1px solid var(--color-overlay);
   color: var(--color-text);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
 }
 
 .toolbar-btn:hover {
@@ -103,8 +103,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: var(--toolbar-height);
+  height: var(--toolbar-height);
   padding: 0;
   background: var(--color-surface-0);
   border: 1px solid var(--color-overlay);
@@ -147,7 +147,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-1);
-  height: 28px;
+  height: var(--toolbar-height);
   padding: 0 var(--space-1);
   background: var(--color-surface-0);
   border: 1px solid var(--color-overlay);
@@ -158,13 +158,13 @@
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  height: 22px;
+  height: var(--segment-height);
   padding: 0 var(--space-2);
   border: none;
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--color-text);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   cursor: pointer;
 }
 
@@ -172,7 +172,7 @@
    is square and de-emphasized. */
 .toolbar-pill-btn--icon {
   justify-content: center;
-  width: 24px;
+  width: calc(var(--segment-height) + 2px);
   padding: 0;
   color: var(--color-subtext);
 }
@@ -261,15 +261,15 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 18px;
-  height: 18px;
+  min-width: calc(var(--font-size) + 5px);
+  height: calc(var(--font-size) + 5px);
   padding: 0 3px;
   box-sizing: border-box;
   background: var(--color-surface-1);
   border: 1px solid var(--color-overlay);
   border-radius: 4px;
   color: var(--color-subtext);
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   font-variant-numeric: tabular-nums;
 }
 
@@ -295,8 +295,8 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 26px;
-  height: 26px;
+  min-width: calc(var(--font-size) + 13px);
+  height: calc(var(--font-size) + 13px);
   padding: 0 4px;
   box-sizing: border-box;
   border: 1px solid var(--color-overlay);
@@ -304,7 +304,7 @@
   background: var(--color-surface-1);
   color: var(--color-text);
   font-family: var(--font-sans);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   font-variant-numeric: tabular-nums;
   cursor: pointer;
   box-shadow: 0 0 0 2px transparent;
@@ -403,7 +403,7 @@
   display: flex;
   align-items: center;
   gap: var(--space-2);
-  height: 24px;
+  min-height: calc(var(--font-size) + 11px);
   padding: 0 var(--space-3);
   border: 0;
   border-radius: var(--radius-sm);
@@ -586,7 +586,7 @@
   background: transparent;
   text-align: left;
   cursor: pointer;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -636,7 +636,7 @@
   background: transparent;
   text-align: left;
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   font-weight: 700;
   letter-spacing: 0.02em;
   color: var(--color-muted);
@@ -702,7 +702,7 @@
   background: transparent;
   text-align: left;
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   font-weight: 700;
   letter-spacing: 0.02em;
   color: var(--color-muted);
@@ -734,7 +734,7 @@
   background: transparent;
   text-align: left;
   cursor: pointer;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   font-weight: 700;
   letter-spacing: 0.02em;
   color: var(--color-muted);
@@ -746,19 +746,19 @@
 
 .palette-item-id {
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   font-weight: 600;
 }
 
 .palette-item-title {
   flex: 1 1 auto;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   color: var(--color-subtext);
 }
 
 .palette-empty {
   color: var(--color-muted);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   padding: var(--space-2);
 }
 
@@ -795,8 +795,8 @@
 }
 
 .header-icon-btn {
-  width: 28px;
-  height: 28px;
+  width: var(--toolbar-height);
+  height: var(--toolbar-height);
 }
 
 /* ── Desk viewport (Feature 10) ──────────────────────────────────────────── */
@@ -869,7 +869,7 @@
   display: grid;
   place-items: center;
   color: var(--color-muted);
-  font-size: 14px;
+  font-size: var(--font-size-lg);
   user-select: none;
   pointer-events: none;
 }
@@ -984,6 +984,15 @@
   fill: var(--color-rail-minus);
 }
 
+/* THE FIRST OF THE DESK'S OWN TYPE, AND NONE OF IT IS ON THE TYPE SCALE.
+   Every `font-size` from here down through `.bus-band-label` is stated in SVG
+   USER UNITS — one unit is one breadboard pitch — so it is markings PRINTED ON
+   THE CIRCUIT, not chrome: it scales with the desk camera, and Settings ▸
+   Appearance ▸ Editor font size must never touch it. A `--font-size-*` token
+   here would put a screen-pixel size into world space and slide the label off
+   the part it names. The tell is the fractional value: a sub-pixel font-size is
+   always world units. (`.annotation-text` and `.wire-gauge-length` are exempt
+   for the same reason and say so in place.) */
 .board-row-label,
 .board-col-label {
   fill: var(--color-board-label);
@@ -1957,7 +1966,7 @@
   border: 1px solid var(--color-net-glow);
   border-radius: var(--radius-sm);
   color: var(--color-text);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   font-variant-numeric: tabular-nums;
   pointer-events: none;
   user-select: none;
@@ -1985,6 +1994,11 @@
   user-select: none;
 }
 
+/* Deliberately OFF the type scale, here and on the editor below: an annotation
+   is DOCUMENT CONTENT living in the zoom-scaled world layer, not chrome. On the
+   scale, the same saved desk would read differently on two machines at the same
+   zoom — the note would no longer sit where its author placed it. It grows with
+   the desk camera, as the chip labels it is written beside do. */
 .annotation-text {
   padding: 2px 6px;
   font-family: var(--font-sans);
@@ -2077,7 +2091,7 @@ textarea.annotation-editor {
   border-radius: var(--radius-sm);
   padding: 2px 6px;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   white-space: nowrap;
 }
 
@@ -2137,7 +2151,7 @@ textarea.annotation-editor {
 .desk-zoom-readout {
   display: grid;
   place-items: center;
-  height: 24px;
+  height: calc(var(--font-size) + 11px);
   border: none;
   background: transparent;
   border-radius: var(--radius-sm);
@@ -2145,15 +2159,15 @@ textarea.annotation-editor {
 }
 
 .desk-zoom-btn {
-  width: 24px;
-  font-size: 14px;
+  width: calc(var(--font-size) + 11px);
+  font-size: var(--font-size-lg);
   line-height: 1;
 }
 
 .desk-zoom-readout {
   min-width: 48px;
   padding: 0 var(--space-1);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   font-variant-numeric: tabular-nums;
 }
 
@@ -2211,7 +2225,7 @@ textarea.annotation-editor {
 .popup-title {
   flex: 1;
   min-width: 0;
-  font-size: 15px;
+  font-size: var(--font-size-xl);
   font-weight: 600;
 }
 
@@ -2220,14 +2234,14 @@ textarea.annotation-editor {
 }
 
 .popup-message {
-  font-size: 13px;
+  font-size: var(--font-size);
   color: var(--color-text);
 }
 
 .popup-note {
   margin-top: var(--space-2);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   color: var(--color-muted);
   word-break: break-all;
 }
@@ -2243,7 +2257,7 @@ textarea.annotation-editor {
 .popup-label {
   display: block;
   margin-bottom: var(--space-1);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   color: var(--color-subtext);
 }
 
@@ -2256,7 +2270,7 @@ textarea.annotation-editor {
   border: 1px solid var(--color-overlay);
   border-radius: var(--radius-sm);
   font-family: var(--font-sans);
-  font-size: 13px;
+  font-size: var(--font-size);
 }
 
 .popup-input:focus {
@@ -2284,7 +2298,7 @@ textarea.annotation-editor {
   border-radius: var(--radius-sm);
   background: var(--color-surface-1);
   color: var(--color-text);
-  font-size: 13px;
+  font-size: var(--font-size);
 }
 
 .btn:hover {
@@ -2319,7 +2333,7 @@ textarea.annotation-editor {
 
 .shortcuts-group-title {
   margin: 0 0 var(--space-2);
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.04em;
@@ -2344,7 +2358,7 @@ textarea.annotation-editor {
 }
 
 .shortcuts-desc {
-  font-size: 13px;
+  font-size: var(--font-size);
   color: var(--color-text);
 }
 
@@ -2356,7 +2370,7 @@ textarea.annotation-editor {
   background: var(--color-surface-1);
   color: var(--color-subtext);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   white-space: nowrap;
 }
 
@@ -2388,19 +2402,23 @@ textarea.annotation-editor {
 
 .about-name {
   margin: 0;
-  font-size: 24px;
+  font-size: var(--font-size-display);
   font-weight: 700;
   color: var(--color-accent);
   letter-spacing: -0.02em;
 }
 
-.about-info-btn {
+/* The (i) beside a label (components/info-button.js). Sized off the type scale
+   with a floor, like the ramp itself: it sits next to words, so it has to grow
+   when they do — but it is already small at the default and must not shrink
+   into an untargetable dot at the bottom of the range. */
+.info-btn {
   flex: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: max(12px, calc(var(--font-size) - 1px));
+  height: max(12px, calc(var(--font-size) - 1px));
   padding: 0;
   color: var(--color-accent);
   border: 1px solid var(--color-accent);
@@ -2412,8 +2430,8 @@ textarea.annotation-editor {
     color 0.15s ease;
 }
 
-.about-info-btn:hover,
-.about-info-btn[aria-expanded="true"] {
+.info-btn:hover,
+.info-btn[aria-expanded="true"] {
   background: var(--color-accent);
   color: var(--color-crust);
 }
@@ -2435,7 +2453,7 @@ textarea.annotation-editor {
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-1);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   white-space: nowrap;
   text-align: left;
 }
@@ -2461,26 +2479,26 @@ textarea.annotation-editor {
 
 .about-subtitle {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--font-size);
   color: var(--color-text);
 }
 
 .about-desc {
   margin: 0;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   color: var(--color-subtext);
 }
 
 .about-credit {
   margin: var(--space-1) 0 0;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   color: var(--color-muted);
 }
 
 .about-close {
   margin-top: var(--space-4);
   padding: var(--space-2) var(--space-6);
-  font-size: 13px;
+  font-size: var(--font-size);
   font-weight: 600;
   color: var(--color-crust);
   background: var(--color-accent);
@@ -2495,12 +2513,24 @@ textarea.annotation-editor {
 }
 
 /* ── Settings dialog (styled after Rest Hippo: master-detail card) ────────── */
+/* The card is sized in LINES, not pixels — 43 wide by 34 tall, which is exactly
+   560×440 at the shipped 13px. A fixed card would keep its width as the type
+   grew, squeezing every label column until a label broke over three lines beside
+   its own control; and this is the one dialog a user resizing the app is
+   certainly looking at. Proportional rather than the additive law the CONTROLS
+   follow, because a card holds paragraphs: its line LENGTH should scale with the
+   type, where a button is one line plus constant padding.
+   It grows but never SHRINKS (`max()`): the labels scale with the type while the
+   nav rail and the controls' own padding do not, so a card that shrank in
+   proportion at 11px squeezed the label column harder than 13px ever did — the
+   same reason the type ramp itself carries a floor. `max-*` still clamps it to
+   the window. */
 .settings-popup {
   display: flex;
   flex-direction: column;
-  width: 560px;
+  width: max(560px, calc(var(--font-size) * 43));
   max-width: 90vw;
-  height: 440px;
+  height: max(440px, calc(var(--font-size) * 34));
   max-height: 85vh;
   overflow: hidden;
   padding: 0;
@@ -2547,7 +2577,8 @@ textarea.annotation-editor {
 }
 
 .settings-nav {
-  flex: 0 0 148px;
+  flex: 0 0 auto;
+  min-width: 148px;
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
@@ -2566,7 +2597,7 @@ textarea.annotation-editor {
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--color-subtext);
-  font-size: 13px;
+  font-size: var(--font-size);
   font-weight: 500;
   cursor: pointer;
   transition:
@@ -2606,11 +2637,14 @@ textarea.annotation-editor {
    a display and a hidden state is a line here, not another silent no-op. */
 .settings-panel[hidden],
 .settings-row[hidden],
+.settings-note[hidden],
 .settings-action[hidden] {
   display: none;
 }
 
 .settings-row {
+  /* The containing block for this row's own note card (see .settings-note). */
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--space-4);
@@ -2619,9 +2653,46 @@ textarea.annotation-editor {
 
 .settings-label {
   flex: 1;
-  font-size: 13px;
+  font-size: var(--font-size);
   color: var(--color-text);
   cursor: default;
+}
+
+/* A label plus the (i) that discloses its note. Takes the flex the bare label
+   would have, so the control still sits hard right — and the label inside stops
+   flexing, or the (i) would be pushed away from the words it belongs to. */
+.settings-label-group {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex: 1;
+  min-width: 0;
+}
+
+.settings-label-group .settings-label {
+  flex: 0 1 auto;
+}
+
+/* The note itself — a card FLOATING under its row, not a block pushing the rows
+   below it down: a note that reflowed the panel would move the very control the
+   reader is about to reach for. Positioned against `.settings-row`, which is why
+   the note is a child of the row rather than its sibling. It is drawn like a
+   popup card (surface, border, shadow) so it reads as something that opened
+   rather than as part of the form; `z-index` clears the rows it covers. */
+.settings-note {
+  position: absolute;
+  top: calc(100% - var(--space-2));
+  left: 0;
+  right: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  background: var(--color-surface-1);
+  border: 1px solid var(--color-overlay);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-1);
 }
 
 .settings-color {
@@ -2648,7 +2719,7 @@ textarea.annotation-editor {
   border: 1px solid var(--color-overlay);
   border-radius: var(--radius-sm);
   font-family: var(--font-sans);
-  font-size: 13px;
+  font-size: var(--font-size);
   cursor: pointer;
 }
 
@@ -2663,6 +2734,31 @@ textarea.annotation-editor {
   flex-direction: column;
   align-items: stretch;
   gap: var(--space-2);
+}
+
+/* A row whose control is a TEXT FIELD, laid out like every other row — label
+   left, control right — rather than stacked. Stacked, a field costs two lines
+   apiece, which is what ran the AI tab off the bottom of the card.
+   The label takes its natural width but never less than a quarter of the row,
+   so the fields on a tab line up in one column; a longer label in another
+   language grows past that instead of wrapping under it, and `min-width: 0` is
+   what lets the field give the space back. */
+.settings-row--field .settings-label {
+  flex: 0 0 auto;
+  min-width: 25%;
+}
+
+.settings-row--field .settings-text-input {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+/* Buttons that act on the row above them, so they hug it and sit under the
+   field rather than under the label. */
+.settings-row--actions {
+  justify-content: flex-end;
+  gap: var(--space-2);
+  padding-top: 0;
 }
 
 /* Datasheet-folder control: the current path (elided) above Clear/Browse. */
@@ -2686,7 +2782,7 @@ textarea.annotation-editor {
   white-space: nowrap;
   padding: var(--space-2) var(--space-3);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   color: var(--color-text);
   background: var(--color-surface-0);
   border: 1px solid var(--color-overlay);
@@ -2718,7 +2814,7 @@ textarea.annotation-editor {
   border-radius: var(--radius-sm);
   background: var(--color-surface-1);
   color: var(--color-text);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   cursor: pointer;
   transition:
@@ -2759,7 +2855,7 @@ textarea.annotation-editor {
 
 .datasheet-dl-status {
   margin: 0;
-  font-size: 13px;
+  font-size: var(--font-size);
   color: var(--color-text);
 }
 
@@ -2789,7 +2885,7 @@ textarea.annotation-editor {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   color: var(--color-muted);
 }
 
@@ -2800,7 +2896,7 @@ textarea.annotation-editor {
   padding: 0 0 0 var(--space-4);
   max-height: 120px;
   overflow-y: auto;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   line-height: 1.6;
   color: var(--color-danger);
 }
@@ -2830,7 +2926,7 @@ textarea.annotation-editor {
   border: 1px solid var(--color-overlay);
   border-radius: var(--radius-sm);
   font-family: var(--font-sans);
-  font-size: 13px;
+  font-size: var(--font-size);
 }
 
 .settings-text-input:focus-visible {
@@ -2845,7 +2941,7 @@ textarea.annotation-editor {
 
 .settings-hint {
   margin: var(--space-2) 0 0;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   line-height: 1.5;
   color: var(--color-muted);
 }
@@ -2894,12 +2990,12 @@ textarea.annotation-editor {
 
 .properties-label {
   flex: 1;
-  font-size: 13px;
+  font-size: var(--font-size);
   color: var(--color-text);
 }
 
 .properties-value {
-  font-size: 13px;
+  font-size: var(--font-size);
   color: var(--color-subtext);
 }
 
@@ -2910,7 +3006,7 @@ textarea.annotation-editor {
   min-height: 18px;
   overflow-wrap: anywhere;
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
 }
 
 /* The shared segmented picker (components/segmented-picker.js): a DIALOG's
@@ -2930,14 +3026,24 @@ textarea.annotation-editor {
 }
 
 .segmented-option {
-  height: 22px;
+  height: var(--segment-height);
   padding: 0 var(--space-3);
   border: none;
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--color-subtext);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   cursor: pointer;
+}
+
+/* A track of NUMERALS rather than words (Appearance ▸ Editor font size). Two
+   digits need less room around them than a word does, and this track carries
+   six segments where the others carry two or three — at the shared padding it
+   came out 246px wide and, since the track never shrinks, pushed its own label
+   onto a second line. Tabular figures so the six segments are the same width. */
+.segmented-picker--numeric .segmented-option {
+  padding: 0 var(--space-2);
+  font-variant-numeric: tabular-nums;
 }
 
 .segmented-option:hover {
@@ -2998,7 +3104,7 @@ textarea.annotation-editor {
   border: 1px solid var(--color-overlay);
   border-radius: var(--radius-sm);
   font-family: var(--font-sans);
-  font-size: 13px;
+  font-size: var(--font-size);
   cursor: pointer;
 }
 
@@ -3019,7 +3125,7 @@ textarea.annotation-editor {
   border: 1px solid var(--color-overlay);
   border-radius: var(--radius-sm);
   font-family: var(--font-sans);
-  font-size: 13px;
+  font-size: var(--font-size);
 }
 
 .properties-text-input {
@@ -3060,7 +3166,7 @@ textarea.annotation-editor {
   color: var(--color-text);
   border: 1px solid var(--color-overlay);
   border-radius: var(--radius-sm);
-  font-size: 13px;
+  font-size: var(--font-size);
   cursor: pointer;
 }
 
@@ -3126,7 +3232,11 @@ textarea.annotation-editor {
   opacity: 0.6;
 }
 
-/* The measurement itself: mono, because it is a number that gets compared. */
+/* The measurement itself: mono, because it is a number that gets compared.
+   OFF the type scale, like the stroke widths above it: this is a `<text>` in a
+   300×62 viewBox drawn at `width: 100%`, so 12 is USER UNITS, not screen px —
+   it scales with the card, and a token here would break the drawing's own
+   proportions rather than resize a label. */
 .wire-gauge-length {
   fill: var(--color-text);
   font-family: var(--font-mono);
@@ -3184,7 +3294,7 @@ textarea.annotation-editor {
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-sm);
   color: var(--color-text);
-  font-size: 13px;
+  font-size: var(--font-size);
 }
 
 .popup-menu-item:enabled:hover,
@@ -3236,7 +3346,7 @@ textarea.annotation-editor {
   flex: 0 0 auto;
   padding-left: var(--space-4);
   color: var(--color-muted);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
 }
 
 .popup-menu-chevron {
@@ -3428,7 +3538,7 @@ textarea.annotation-editor {
   border-radius: var(--radius-sm);
   box-shadow: var(--shadow-1);
   color: var(--color-text);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   cursor: pointer;
 }
 
@@ -3467,7 +3577,7 @@ textarea.annotation-editor {
   border-radius: var(--radius-sm);
   background: var(--color-surface-1);
   color: var(--color-text);
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   font-weight: 500;
   cursor: pointer;
   transition:
@@ -3525,7 +3635,7 @@ textarea.annotation-editor {
 .chip-pinout-sub {
   padding: 2px var(--space-4) var(--space-2);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   color: var(--color-muted);
 }
 
@@ -3542,7 +3652,7 @@ textarea.annotation-editor {
 .chip-pinout-datasheet-cap {
   padding-bottom: var(--space-2);
   font-family: var(--font-mono);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   color: var(--color-muted);
 }
 
@@ -3642,14 +3752,14 @@ textarea.annotation-editor {
 
 .chip-pinout-num {
   flex: 0 0 auto;
-  min-width: 20px;
-  height: 18px;
+  min-width: calc(var(--font-size) + 7px);
+  height: calc(var(--font-size) + 5px);
   padding: 0 4px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   color: var(--color-subtext);
   background: var(--color-surface-1);
   border: 1px solid var(--color-overlay);
@@ -3663,14 +3773,14 @@ textarea.annotation-editor {
 }
 
 .chip-pinout-label {
-  font-size: 13px;
+  font-size: var(--font-size);
   font-weight: 600;
   color: var(--color-text);
 }
 
 .chip-pinout-role {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: var(--font-size-xs);
   color: var(--color-muted);
   text-transform: uppercase;
 }
@@ -3719,7 +3829,7 @@ textarea.annotation-editor {
 .part-pinout-detail {
   margin-left: auto;
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   color: var(--color-muted);
 }
 
@@ -3788,13 +3898,13 @@ textarea.annotation-editor {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 18px;
-  height: 18px;
+  min-width: calc(var(--font-size) + 5px);
+  height: calc(var(--font-size) + 5px);
   padding: 0 5px;
-  border-radius: 9px;
+  border-radius: 999px;
   background: var(--color-warning);
   color: var(--color-crust);
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   font-weight: 700;
 }
 
@@ -3806,14 +3916,14 @@ textarea.annotation-editor {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 22px;
-  height: 22px;
+  width: var(--segment-height);
+  height: var(--segment-height);
   padding: 0;
   border: none;
   border-radius: var(--radius-sm);
   background: transparent;
   color: var(--color-muted);
-  font-size: 18px;
+  font-size: var(--font-size-xl);
   line-height: 1;
   cursor: pointer;
 }
@@ -3837,7 +3947,7 @@ textarea.annotation-editor {
   background: transparent;
   color: var(--color-muted);
   font: inherit;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   cursor: pointer;
 }
 
@@ -3854,7 +3964,7 @@ textarea.annotation-editor {
   flex: 1 1 auto;
   overflow-y: auto;
   padding: var(--space-3);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
 }
 
 /* Section headers, shared by BOM + Steps (mirrors the palette group heads). */
@@ -3864,7 +3974,7 @@ textarea.annotation-editor {
 
 .build-guide-section-head {
   margin: 0 0 var(--space-2);
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
@@ -3935,7 +4045,7 @@ textarea.annotation-editor {
   margin: 2px 0 4px calc(var(--space-4) + 2px);
   color: var(--color-muted);
   font-family: var(--font-mono);
-  font-size: 11px;
+  font-size: var(--font-size-xs);
 }
 
 .build-guide-step-detail li {
@@ -4142,7 +4252,7 @@ textarea.annotation-editor {
   display: grid;
   place-items: center;
   color: var(--color-muted);
-  font-size: 14px;
+  font-size: var(--font-size-lg);
   user-select: none;
   pointer-events: none;
 }
@@ -4166,7 +4276,7 @@ textarea.annotation-editor {
   border-radius: var(--radius-sm);
   background: var(--color-surface-0);
   color: var(--color-text);
-  font-size: 13px;
+  font-size: var(--font-size);
   cursor: pointer;
 }
 
@@ -4299,7 +4409,7 @@ textarea.annotation-editor {
 
 .scope-title {
   font-weight: 600;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   color: var(--color-text);
   flex: 0 0 auto;
 }
@@ -4320,14 +4430,14 @@ textarea.annotation-editor {
 
 .scope-delta {
   margin-left: auto;
-  font: 11px / 1 var(--font-mono);
+  font: var(--font-size-xs) / 1 var(--font-mono);
   color: var(--color-subtext);
   white-space: nowrap;
 }
 
 .scope-btn {
   padding: 2px var(--space-2);
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   color: var(--color-text);
   background: var(--color-surface-0);
   border: 1px solid var(--color-overlay);
@@ -4341,10 +4451,10 @@ textarea.annotation-editor {
 
 .scope-close {
   flex: 0 0 auto;
-  width: 22px;
-  height: 22px;
+  width: var(--segment-height);
+  height: var(--segment-height);
   padding: 0;
-  font-size: 16px;
+  font-size: var(--font-size-xl);
   line-height: 1;
   color: var(--color-muted);
   background: transparent;
@@ -4390,7 +4500,7 @@ textarea.annotation-editor {
 
 .scope-chan-name {
   flex: 1 1 auto;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   color: var(--color-text);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -4398,7 +4508,7 @@ textarea.annotation-editor {
 }
 
 .scope-chan-value {
-  font: 11px / 1 var(--font-mono);
+  font: var(--font-size-xs) / 1 var(--font-mono);
   color: var(--color-subtext);
   min-width: 4ch;
   text-align: right;
@@ -4411,10 +4521,10 @@ textarea.annotation-editor {
 }
 
 .scope-mini {
-  width: 18px;
-  height: 18px;
+  width: calc(var(--font-size) + 5px);
+  height: calc(var(--font-size) + 5px);
   padding: 0;
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   line-height: 1;
   color: var(--color-muted);
   background: transparent;
@@ -4456,7 +4566,7 @@ textarea.annotation-editor {
   gap: 4px;
   flex-wrap: wrap;
   padding: var(--space-4);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   color: var(--color-muted);
   text-align: center;
 }
@@ -4537,7 +4647,7 @@ textarea.annotation-editor {
 
 .ai-title {
   font-weight: 600;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   color: var(--color-text);
   flex: 0 0 auto;
 }
@@ -4551,7 +4661,7 @@ textarea.annotation-editor {
 }
 
 .ai-status {
-  font: 11px / 1 var(--font-mono);
+  font: var(--font-size-xs) / 1 var(--font-mono);
   color: var(--color-subtext);
   white-space: nowrap;
 }
@@ -4561,14 +4671,14 @@ textarea.annotation-editor {
    muted, because the status is about what is happening now and this is a total
    the Clear button resets. */
 .ai-usage {
-  font: 11px / 1 var(--font-mono);
+  font: var(--font-size-xs) / 1 var(--font-mono);
   color: var(--color-muted);
   white-space: nowrap;
 }
 
 .ai-btn {
   padding: 2px var(--space-2);
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   color: var(--color-text);
   background: var(--color-surface-0);
   border: 1px solid var(--color-overlay);
@@ -4582,10 +4692,10 @@ textarea.annotation-editor {
 
 .ai-close {
   flex: 0 0 auto;
-  width: 22px;
-  height: 22px;
+  width: var(--segment-height);
+  height: var(--segment-height);
   padding: 0;
-  font-size: 16px;
+  font-size: var(--font-size-xl);
   line-height: 1;
   color: var(--color-muted);
   background: transparent;
@@ -4619,7 +4729,7 @@ textarea.annotation-editor {
 
 .ai-row-text {
   margin: 0;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   line-height: 1.5;
   color: var(--color-subtext);
   white-space: pre-wrap;
@@ -4628,7 +4738,7 @@ textarea.annotation-editor {
 .ai-row-list {
   margin: var(--space-1) 0 0;
   padding-left: var(--space-4);
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   line-height: 1.5;
   color: var(--color-muted);
 }
@@ -4684,7 +4794,7 @@ textarea.annotation-editor {
   border: 1px solid var(--color-overlay);
   border-radius: var(--radius-sm);
   font-family: var(--font-sans);
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   line-height: 1.5;
 }
 

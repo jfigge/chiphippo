@@ -170,6 +170,7 @@
     "reset": "Réinitialiser le zoom à 100 %"
   },
   "settings": {
+    "noteToggle": "En savoir plus sur {label}",
     "title": "Réglages",
     "close": "Fermer les réglages",
     "nav": {
@@ -182,6 +183,8 @@
       "language": "Langue",
       "languageSystem": "Système",
       "languageHint": "La langue dans laquelle s'affichent les menus, panneaux et boîtes de dialogue propres à Chip Hippo. Le guide de l'utilisateur n'existe qu'en anglais.",
+      "fontSize": "Taille de police de l'éditeur",
+      "fontSizeHint": "La taille du texte dans les barres d'outils, panneaux et boîtes de dialogue propres à Chip Hippo, en pixels. Les inscriptions des composants et des platines sur le plan de travail font partie du circuit : elles suivent le zoom du plan de travail.",
       "theme": "Thème",
       "themeSystem": "Système",
       "themeLight": "Clair",
@@ -940,6 +943,7 @@
       "fit": "Ajuster à la fenêtre",
       "zoomOut": "Dézoomer au maximum (retrouver un composant perdu)",
       "zoom": "Zoomer / dézoomer / réinitialiser",
+      "fontSize": "Taille de police de l'éditeur : augmenter / réduire / réinitialiser",
       "lockDesk": "Verrouiller / déverrouiller le défilement du plan de travail"
     },
     "simulation": {

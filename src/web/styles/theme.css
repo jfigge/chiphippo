@@ -107,7 +107,23 @@
     "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   --font-mono:
     ui-monospace, "SF Mono", "Cascadia Code", "Roboto Mono", Menlo, monospace;
+  /* ONE base — `--font-size`, the Appearance tab's "Editor font size" (11–18,
+     default 13) — and a ramp of fixed ±1px steps off it. ADDITIVE, not
+     proportional: a UI step is one pixel at every base, so a caption stays
+     exactly one step under the label above it however large the app is set.
+     The ramp FLATTENS at the bottom (`max()`) because there is a floor under
+     which chrome text stops being readable at all; it is never capped at the
+     top, which is the direction this setting exists for.
+     Desk artwork is deliberately NOT on this scale — chip labels, board
+     markings and schematic symbols are drawn in WORLD units (1 unit = one
+     breadboard pitch); they are part of the circuit and scale with the desk
+     camera. Anything sized in world units stays a bare number here. */
   --font-size: 13px;
+  --font-size-xs: max(10px, calc(var(--font-size) - 2px));
+  --font-size-sm: max(11px, calc(var(--font-size) - 1px));
+  --font-size-lg: calc(var(--font-size) + 1px);
+  --font-size-xl: calc(var(--font-size) + 2px);
+  --font-size-display: calc(var(--font-size) + 11px); /* the About app name */
   --line-height: 1.5;
 
   /* ── Spacing scale ───────────────────────────────────────────────────── */
@@ -125,8 +141,22 @@
   --shadow-1: 0 1px 3px rgba(0, 0, 0, 0.4);
 
   /* ── Layout ──────────────────────────────────────────────────────────── */
-  --header-height: 48px;
-  --control-height: 32px; /* text inputs, selects, and default buttons */
+  /* Height is ONE LINE OF TEXT plus constant chrome, so a control grows with
+     the type rather than clipping it. The px term is the padding, not the box.
+     The toolbar row gets its own pair because a header of mixed text and icon
+     buttons has to stay FLUSH: sized by content instead, the text buttons would
+     grow and the icon ones would not, and the row would come out ragged. */
+  --header-height: calc(var(--font-size) + 35px); /* 48 at the default 13 */
+  --control-height: calc(
+    var(--font-size) + 19px
+  ); /* 32; inputs, selects, buttons */
+  --toolbar-height: calc(var(--font-size) + 15px); /* 28; buttons and pills */
+  /* One segment of a segmented control — a toolbar pill's, and the Settings /
+     Properties dialogs' segmented picker, which is deliberately the same shape
+     in a card. Hence no `toolbar-` in the name: it is the app's, not the
+     header's. Also the square close (×) buttons, which are one glyph in a box
+     of exactly this size. */
+  --segment-height: calc(var(--font-size) + 9px); /* 22 at the default 13 */
 }
 
 /* Light palette, reached two ways.

@@ -72,6 +72,26 @@ const DEFAULTS = Object.freeze({
   // changes; the renderer relabels its own chrome off `chiphippo:locale-changed`.
   locale: "system",
 
+  // The size, in CSS px, of Chip Hippo's OWN text — its toolbars, panels,
+  // menus and dialogs, in every window at once (Settings ▸ Appearance ▸
+  // "Editor font size", or ⌥⌘= / ⌥⌘− / ⌥⌘0). One of six steps — 11, 12, 13,
+  // 14, 16, 18; web/scripts/font-scale.js owns the list and the renderer
+  // normalizes anything else, since this store has no validation layer by
+  // design. 13 is the shipped value and reproduces the app's original type
+  // scale exactly.
+  //
+  // A NUMBER, not a multiplier: theme.css derives its whole type scale
+  // additively off this one px value, so the setting IS the base of the scale.
+  // Like `theme` and `locale` it is main's to act on — but it is the only one
+  // of the three with no native mechanism to ride (there is no font-size
+  // equivalent of `nativeTheme.themeSource`), so settings:set fans it out to
+  // every window by hand.
+  //
+  // What it does NOT touch is the desk: chip labels, board markings, schematic
+  // symbols and annotations are drawn in world units and follow the desk
+  // camera, because they are printed on the circuit rather than being chrome.
+  fontSize: 13,
+
   // ── Auto-update (Feature 280; Settings ▸ About) ───────────────────────────
   // Whether the app checks the release feed for a newer version shortly after
   // launch. OFF by default, deliberately: an update check is an outbound call,

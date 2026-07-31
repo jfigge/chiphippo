@@ -29,6 +29,7 @@
 
 import * as i18n from "./i18n.js";
 import { t } from "./i18n.js";
+import { followFontSize } from "./font-scale.js";
 import { el } from "./dom.js";
 import { partDef } from "./catalog/index.js";
 import { memoryConfig, isVolatileMemory } from "./sim/chip-eval.js";
@@ -44,6 +45,10 @@ const mem = def ? memoryConfig(def) : null;
 
 // Its own sandboxed renderer, so it loads its own catalog first (see pinout.js).
 await i18n.init();
+// And its own text size, for the same reason — awaited BEFORE the grid is
+// built, since MemoryInspector measures its row height off `--font-size` at
+// construction.
+await followFontSize(window.chiphippo);
 
 const root = document.getElementById("memory-root");
 
@@ -138,6 +143,12 @@ function startInspector() {
   root.append(toolbar);
 
   const grid = new MemoryInspector(root, { onEdit: () => markDirty() });
+  // The CSS follows `--font-size` on its own, but this grid is VIRTUALIZED —
+  // its row height is arithmetic, not layout — so it has to re-measure. Fires
+  // after followFontSize's own listener, which has already applied the size.
+  window.addEventListener("chiphippo:font-size-changed", () =>
+    grid.refreshMetrics(),
+  );
 
   // ── State → UI ──────────────────────────────────────────────────────────────
   function updateUI() {

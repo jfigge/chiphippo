@@ -64,7 +64,7 @@ body {
 
 .docs-nav-title {
   padding: var(--space-1) var(--space-3) var(--space-2);
-  font-size: 11px;
+  font-size: var(--font-size-xs);
   font-weight: 600;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -81,7 +81,7 @@ body {
   background: transparent;
   color: var(--color-subtext);
   font-family: inherit;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   font-weight: 500;
   cursor: pointer;
   transition:
@@ -109,7 +109,7 @@ body {
   min-height: 0;
   overflow-y: auto;
   padding: var(--space-5) var(--space-6);
-  font-size: 14px;
+  font-size: var(--font-size-lg);
   line-height: 1.6;
   outline: none;
 }
@@ -200,7 +200,7 @@ body {
 
 .docs-content pre code {
   padding: 0;
-  font-size: 12px;
+  font-size: var(--font-size-sm);
   background: none;
 }
 

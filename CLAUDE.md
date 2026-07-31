@@ -335,7 +335,11 @@ website** (`make docs` → `website/docs/`), and a **PDF** (`make pdf` →
   over `i18n:load` — a renderer never reads or fetches one itself.
 - `src/web/fonts/` — bundled Inter variable font; never load fonts from a CDN.
 - `src/web/styles/` — `theme.css` (design tokens + reset) and `app.css` (shell). Use
-  the tokens; don't hardcode colours/sizes.
+  the tokens; don't hardcode colours/sizes. **For type there is no third case**:
+  a `font-size` is either one of the `--font-size-*` tokens or a world/SVG user
+  unit with a comment saying so, because the Editor font size setting works by
+  deriving every rank off one base and a bare px is simply a piece of the app
+  that stops resizing (`tests/type-scale.test.js` enforces it).
 - `scripts/` — build tooling (`license-header.mjs`).
 - `Makefile` — the authoritative list of dev/build/test commands.
 - `src/package.json` — Node dependencies and the electron-builder `build` config.
@@ -1583,7 +1587,70 @@ Electron main process (src/app/main.js)
   keeps `DeskController.setDefaultWireLayout` current and the wire tool reads
   it when it commits. A wire's OWN Layout Method is the same control again,
   through the Properties dialog's `"segmented"` field, so the two places this
-  choice is met look and behave alike). The **Data Sheets** tab drives
+  choice is met look and behave alike).
+  **AND `fontSize` — ONE BASE, AND EVERY OTHER SIZE DERIVED FROM IT**
+  (`web/scripts/font-scale.js` + the type scale in `theme.css`). Settings ▸
+  Appearance ▸ **Editor font size** — six steps, `11 · 12 · 13 · 14 · 16 · 18`,
+  default 13, a third segmented picker sitting under Language, plus
+  **⌘= / ⌘− / ⌘0**. `theme.css` derives the whole ramp off `--font-size`
+  (`-xs`/`-sm`/`-lg`/`-xl`/`-display`) **additively** — a UI step is one pixel
+  at every base, so a caption stays exactly one step under its label however
+  large the app is set, and the shipped 13 reproduces the app's original values
+  exactly. The two small ranks carry a `max()` FLOOR: the ramp flattens at the
+  bottom, because there is a size under which chrome text stops being readable
+  at all, and it is never capped at the top, which is the direction the setting
+  exists for. `--header-height` / `--control-height` / `--toolbar-height` /
+  `--segment-height` derive from it too, on the law that a box is ONE LINE OF
+  TEXT PLUS CONSTANT CHROME — the px term is the padding, not the box — so a
+  control grows with its text instead of clipping it. (The toolbar gets its own
+  pair because a row of mixed text and icon buttons has to stay FLUSH: sized by
+  content, the text ones would grow and the icon ones would not.)
+  **ONLY CHROME SCALES.** The desk's own type is stated in SVG **user units**
+  (one unit = one breadboard pitch) — `.part-chip-label`, `.board-row-label`,
+  `.bus-band-label`, every `font-size` ATTRIBUTE `schematic-view.js` writes —
+  plus `.annotation-text`/`.annotation-editor` (document content inside the
+  zoom-scaled layer) and `.wire-gauge-length` (a viewBox's own coordinates).
+  All of it stays literal: it is printed ON THE CIRCUIT, it scales with the
+  desk camera, and a screen-pixel token there would slide a label off the part
+  it names — and would make one saved desk read differently on two machines.
+  `tests/type-scale.test.js` is the ratchet, since a bare px looks completely
+  normal and renders perfectly at 13; every exemption is a SELECTOR with its
+  reason, checked in both directions so a stale one fails too.
+  It is the **third** setting main acts on and the only one with nothing native
+  to ride (there is no font-size `nativeTheme.themeSource`), so `settings:set`
+  fans `fontSize` out itself as `settings:font-size` → `chiphippo:font-size-changed`,
+  to every window BUT the sender — which already applied it — and by
+  `getAllWindows()` rather than the aux-window registries, so a later window
+  type follows for free. The three auxiliary renderers have no settings UI and
+  only ever follow, hence `followFontSize(bridge)`: one awaited line each,
+  before they paint. `MemoryInspector` is the one place the size feeds
+  ARITHMETIC rather than layout — its grid is virtualized, so `#rowH` decides
+  how many rows exist and which one a scroll offset lands on; it measures
+  `--font-size` at construction and `refreshMetrics()` re-measures on the push.
+  Under `node --test` there is no stylesheet to read, so it falls back to
+  exactly the shipped 22 and the existing tests see the geometry they always
+  did.
+  **THE APP HAS TWO SCALES AND OPTION IS THE WHOLE DIFFERENCE BETWEEN THEM**,
+  which is why ONE pure `scaleStepForEvent` decides both rather than two
+  modules that could drift into overlapping chords: **⌘=/−/0 resize the app's
+  own TEXT**, **⌥⌘=/−/0 zoom the desk CAMERA**. Bare ⌘ is the text because that
+  is what a reader who cannot see the screen reaches for first, and the desk
+  already has a zoom cluster, a Fit button and the scroll wheel. Both are
+  matched on **`e.code`**, the one place in the app that cannot use the usual
+  `e.key`: with Option held macOS reports the alt-layout CHARACTER (`⌥=` is
+  `≠`, `⌥-` is `–`, `⌥0` is `º`), so a key-name match would make the DESK pair
+  a chord that silently never fires — hence a pure function, so that trap is
+  tested. The block sits AHEAD of `bindShortcuts`' Cmd gate (which discards
+  every Alt chord, so the desk pair could reach nothing past it) and ahead of
+  the typing guard (a view scale is aimed at the app, as ⇧⌘O is), but UNDER the
+  `PopupManager.isOpen()` guard: a dialog owns the keyboard while it is open,
+  and the Settings dialog is precisely the one that would be, where its own
+  picker would then be showing a size the app had stopped using. A font step
+  that saturates at 11 or 18 changes nothing and says nothing — the resizing is
+  the feedback. NOTE macOS's own Zoom binds `⌥⌘=`/`⌥⌘−` when *Use keyboard
+  shortcuts to zoom* is on and takes them first, which now costs the DESK zoom
+  rather than the text size — the zoom cluster and ⌘F are its other routes.
+  The **Data Sheets** tab drives
   **`datasheetDir`** (the external datasheet-PDF folder, default null) — its
   Browse button calls the native `settings.chooseDatasheetDir` picker and
   emits the chosen path; no live apply
@@ -1605,12 +1672,40 @@ Electron main process (src/app/main.js)
   `onClose` runs. Window bounds and the desk camera
   (incl. **zoom**) are already persisted in `settings.json` (`windowBounds` via
   `window-state.js`; `viewport` via the renderer's debounced save).
+  **EVERY EXPLANATORY NOTE IS BEHIND AN (i), NOT PRINTED UNDER ITS ROW**
+  (`rowWithNote()` + `components/info-button.js`). Eight of them across the four
+  tabs, several a full paragraph, turned each panel into more prose than
+  settings — so the note now opens as a **popover** from a circled (i) beside
+  the label it documents, and a panel you are not reading one in is a list of
+  controls. It FLOATS over the rows below rather than pushing them down: a note
+  that reflowed the panel would move the very control the reader is about to
+  reach for. That is also why the note is a CHILD of its `.settings-row`
+  (`position: relative`) rather than its sibling — the row is what positions it,
+  and hiding a row takes its note with it (a store build hides two).
+  It is deliberately **not** a `PopupManager.popover`: PopupManager QUEUES a
+  second popup rather than stacking it, so a card raised from inside the
+  Settings modal would not appear until Settings closed. Hence
+  `info-button.js` — un-prefixed and shared, as `segmented-picker.js` and
+  `color-swatches.js` are, because the About dialog's version details are the
+  same control. **ESCAPE IS THE WHOLE REASON IT IS A MODULE.** Both callers sit
+  inside a native modal `<dialog>`, where Escape fires `cancel` and closes the
+  WHOLE card — so a note could only be dismissed by throwing Settings away with
+  it. The keydown is caught in the **capture** phase and `preventDefault`ed,
+  which stops the browser's own close-request before the dialog sees it: the
+  first Escape closes the note, the next closes the dialog. A click outside and
+  the (i) again dismiss it too, and the listeners self-remove if the card's
+  dialog is torn down while it is open. The target's `hidden` attribute is the
+  single source of truth — nothing keeps a flag beside it. The one note that
+  is NOT behind an (i) is About's **store-build** message: there it is the only
+  thing on the panel (it explains why every control above it is gone), so there
+  would be nothing left to click the (i) beside.
   One CSS rule the whole card depends on: a settings element that sets a
   `display` of its own must be listed in the shared **`[hidden]`** rule beside
   `.settings-panel`, because a class selector outranks the UA sheet's
   `[hidden] { display: none }` — without it `el.hidden = true` sets an
   attribute that changes nothing, which is exactly how Data Sheets came to
-  offer a **Clear** button with no folder to clear.
+  offer a **Clear** button with no folder to clear. `.settings-note` is on that
+  list for exactly this reason (it sets `display: flex`).
 - **Pin-assignments window** (Feature 100): **Pin Assignment**, the item
   leading every part's context menu (`DeskController.#onPartContextMenu` →
   `#onOpenPinout(ref, rows, rot)` — offered even while the circuit runs; the

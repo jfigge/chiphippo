@@ -24,6 +24,13 @@
 import { el } from "./dom.js";
 import * as i18n from "./i18n.js";
 import { t } from "./i18n.js";
+import {
+  applyFontSize,
+  scaleStepForEvent,
+  normalizeFontSize,
+  stepFontSize,
+  DEFAULT_FONT_SIZE,
+} from "./font-scale.js";
 import { DeskView } from "./components/desk-view.js";
 import { ZoomControl } from "./components/zoom-control.js";
 import { DeskLock } from "./components/desk-lock.js";
@@ -310,7 +317,13 @@ function buildSchematicViewport() {
  * first, then Space to toggle Run/Stop (only when no tool is armed), then the
  * one FILE accelerator the native menu doesn't own (⇧⌘O, the recent projects),
  * then the app-chrome accelerators (analyzer / palette / run toggle / desk
- * lock), then cmd/ctrl +, −, 0 for the desk zoom.
+ * lock).
+ *
+ * The app's two SCALES share one block: ⌘+, −, 0 resize Chip Hippo's own TEXT,
+ * and ⌥⌘+, −, 0 zoom the desk CAMERA. Deliberately different things — one
+ * resizes the chrome, the other zooms the circuit inside it.
+ *
+ * @param {(step: "in"|"out"|"reset") => void} onFontSize
  */
 function bindShortcuts(
   controller,
@@ -322,6 +335,7 @@ function bindShortcuts(
   onToggleView,
   onToggleLock,
   onOpenRecent,
+  onFontSize,
 ) {
   // Option held over a selected part rings the wire ends an Option-drag would
   // carry (Feature 290). Its own listeners rather than a `handleKeyDown` case,
@@ -414,6 +428,38 @@ function bindShortcuts(
       scopeView.toggle();
       return;
     }
+    // The app's TWO SCALES, one block, because they differ by one modifier:
+    // ⌘= / ⌘− / ⌘0 resize Chip Hippo's own text, and ⌥⌘= / ⌥⌘− / ⌥⌘0 zoom the
+    // desk camera. Bare ⌘ is the TEXT because that is what a reader who cannot
+    // see the screen reaches for first; the desk already has a zoom cluster, a
+    // Fit button and the scroll wheel.
+    //
+    // AHEAD of the Cmd gate below, which discards every Alt chord — so the
+    // desk pair could not reach anything past that line. Matched on `e.code`
+    // inside `scaleStepForEvent`, not `e.key`: macOS rewrites the key NAME
+    // under Option (⌥= is "≠"), so these are the one place in the app that
+    // cannot use the usual convention.
+    //
+    // NOT typing-guarded, unlike the chrome toggles below: a view scale is
+    // aimed at the app rather than at whatever has focus — the same reasoning
+    // that puts ⇧⌘O ahead of that guard — and no field binding claims either
+    // chord. Both stay UNDER the popup guard above, though: a dialog owns the
+    // keyboard while it is open, and the Settings dialog is precisely the one
+    // that would be, where its own picker would then be showing a size the app
+    // had stopped using.
+    const scale = scaleStepForEvent(e);
+    if (scale) {
+      e.preventDefault();
+      if (scale.target === "font") {
+        onFontSize(scale.step);
+      } else {
+        const view = getActiveView();
+        if (scale.step === "in") view.zoomIn();
+        else if (scale.step === "out") view.zoomOut();
+        else view.resetZoom();
+      }
+      return;
+    }
     if (!(e.metaKey || e.ctrlKey) || e.altKey) return;
     // ⇧⌘O — the recent projects, the same menu the toolbar's Open segment drops
     // on a secondary click. It sits AHEAD of the typing guard below, beside the
@@ -457,17 +503,6 @@ function bindShortcuts(
         }
         return;
       }
-    }
-    const view = getActiveView();
-    if (e.key === "=" || e.key === "+") {
-      e.preventDefault();
-      view.zoomIn();
-    } else if (e.key === "-" || e.key === "_") {
-      e.preventDefault();
-      view.zoomOut();
-    } else if (e.key === "0") {
-      e.preventDefault();
-      view.resetZoom();
     }
   });
 }
@@ -1510,6 +1545,24 @@ async function init() {
       const r = fileOpenBtn.getBoundingClientRect();
       void workspace?.openRecentMenu(r.left, r.bottom);
     },
+    // ⌥⌘=/−/0. Dispatches the SAME event the Settings dialog emits rather than
+    // writing the property itself, so persistence, the live apply and main's
+    // fan-out to the other windows all stay on the one seam. A step that
+    // saturates changes nothing and says nothing: at 11 or 18 the press is
+    // simply a no-op, by the user's own choice of silent feedback.
+    (step) => {
+      const now = normalizeFontSize(currentSettings.fontSize);
+      const next =
+        step === "reset"
+          ? DEFAULT_FONT_SIZE
+          : stepFontSize(now, step === "in" ? 1 : -1);
+      if (next === now) return;
+      window.dispatchEvent(
+        new CustomEvent("chiphippo:settings-changed", {
+          detail: { fontSize: next },
+        }),
+      );
+    },
   );
 
   // ── Changing the language, in place ──────────────────────────────────────
@@ -1602,6 +1655,10 @@ async function init() {
     // The layout a NEW wire gets. Like the default LED colour it is read at
     // placement time, so this only has to keep the controller's copy current.
     controller?.setDefaultWireLayout(s.defaultWireLayout);
+    // The base of the type scale. This window applies it itself — main fans the
+    // same value out to the three auxiliary windows, which have no settings UI
+    // and only ever follow.
+    applyFontSize(s.fontSize);
     const root = document.documentElement;
     if (s.selectionColor) {
       root.style.setProperty("--color-selection", s.selectionColor);

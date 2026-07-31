@@ -31,6 +31,7 @@
 
 import * as i18n from "./i18n.js";
 import { t } from "./i18n.js";
+import { followFontSize } from "./font-scale.js";
 import { partDef } from "./catalog/index.js";
 import { partTitle } from "./catalog/labels.js";
 import {
@@ -83,6 +84,10 @@ function addDatasheetButton(pinoutEl, partRef) {
 // the whole mechanism: nothing below runs until the catalog is in place, so no
 // `t()` here can resolve against an empty one.
 await i18n.init();
+// Settings ▸ Appearance ▸ Editor font size. Awaited beside the catalog and for
+// the same reason: this window has no settings UI, it only follows, and it
+// should not paint at one size and correct itself at another.
+await followFontSize(window.chiphippo);
 
 const root = document.getElementById("pinout-root");
 const params = new URLSearchParams(location.search);

@@ -31,7 +31,9 @@ import { el } from "../dom.js";
 import { t, getLocales } from "../i18n.js";
 import { PopupManager } from "../popup-manager.js";
 import { LED_COLOR_OPTIONS } from "../catalog/parts.js";
+import { FONT_SIZES, normalizeFontSize } from "../font-scale.js";
 import { buildColorSwatches } from "./color-swatches.js";
+import { buildInfoButton } from "./info-button.js";
 import { buildSegmented } from "./segmented-picker.js";
 import { DatasheetDownloadDialog } from "./datasheet-download-dialog.js";
 
@@ -61,6 +63,14 @@ const themeOptions = () => [
   { value: "dark", label: t("settings.appearance.themeDark") },
 ];
 
+/** Appearance ▸ Editor font size — the base of the app's type scale. Digits,
+    not words: a size names itself the same in every language, so the track's
+    width never depends on the locale (which "Small / Medium / Large" could not
+    promise). The list is font-scale.js's, so this picker and the ⌥⌘=/− chord
+    can never come to offer different steps. */
+const fontSizeOptions = () =>
+  FONT_SIZES.map((px) => ({ value: px, label: String(px) }));
+
 /** Appearance ▸ Wire layout — how a NEWLY laid wire is drawn (see
     model/desk-doc.js's WIRE_LAYOUTS). Read at placement time, exactly as the
     default LED colour is: nothing already on the desk changes, and an existing
@@ -69,6 +79,72 @@ const wireLayoutOptions = () => [
   { value: "direct", label: t("settings.appearance.wireLayoutDirect") },
   { value: "routed", label: t("settings.appearance.wireLayoutRouted") },
 ];
+
+/** Unique ids for the notes below, so each (i) can `aria-controls` its own. */
+let noteSeq = 0;
+
+/**
+ * A settings row whose label carries an (i) disclosing the row's note.
+ *
+ * The notes used to sit PERMANENTLY under their rows, and there are eight of
+ * them across four tabs — several of them a full paragraph — so a panel read as
+ * more prose than settings and the controls themselves were what you had to
+ * hunt for. Disclosed instead: the explanation is one click away, beside the
+ * thing it explains, and a panel you are not reading it in is a list of
+ * controls.
+ *
+ * A POPOVER, not a tooltip — the same `components/info-button.js` the About
+ * dialog's version details use, so the note is reachable by keyboard, stays put
+ * while it is read, holds more than one paragraph, and is dismissed by Escape,
+ * a click outside it, or the (i) again. It floats over the rows below rather
+ * than pushing them down: a note that reflowed the panel would move the very
+ * control the reader is about to reach for.
+ *
+ * @param {object} opts
+ * @param {string} opts.label - the row's label text.
+ * @param {HTMLElement} opts.control - what the row sets.
+ * @param {string[]} opts.notes - one entry per paragraph of the note.
+ * @param {string} [opts.htmlFor] - `for`, when the control has an id.
+ * @param {boolean} [opts.stack] - lay the row out stacked (label above).
+ * @returns {HTMLElement} the row, the note card positioned inside it.
+ */
+function rowWithNote({ label, control, notes, htmlFor, stack = false }) {
+  const note = el(
+    "div",
+    {
+      class: "settings-note",
+      id: `settings-note-${++noteSeq}`,
+      role: "note",
+      hidden: true,
+    },
+    notes.map((text) => el("p", { class: "settings-hint", text })),
+  );
+  const info = buildInfoButton({
+    target: note,
+    label: t("settings.noteToggle", { label }),
+  });
+  return el(
+    "div",
+    { class: `settings-row${stack ? " settings-row--stack" : ""}` },
+    [
+      // The (i) is a SIBLING of the <label>, never inside it: a button in a
+      // label is activated by clicking the label, so opening the note would
+      // also toggle whatever the label points at.
+      el("div", { class: "settings-label-group" }, [
+        el("label", {
+          class: "settings-label",
+          text: label,
+          ...(htmlFor ? { for: htmlFor } : {}),
+        }),
+        info,
+      ]),
+      control,
+      // Inside the row so it can be positioned against it — and so hiding the
+      // row (a store build hides two of them) takes its note with it.
+      note,
+    ],
+  );
+}
 
 /** Emit a settings patch for app.js to persist + apply. */
 function emitSettings(patch) {
@@ -258,11 +334,20 @@ function buildAiRows(settings, providers, emitPatch) {
   refreshStatus();
 
   return [
-    el("div", { class: "settings-row" }, [
-      el("label", { class: "settings-label", text: t("settings.ai.provider") }),
-      picker,
-    ]),
-    el("div", { class: "settings-row settings-row--stack" }, [
+    // Both of the tab's notes hang off Provider — the row that names the
+    // feature and the one every other row on the tab is a detail of. Said
+    // HERE, where the connection is set up, because this is where the builder
+    // is first met, long before a design lands on the desk.
+    rowWithNote({
+      label: t("settings.ai.provider"),
+      control: picker,
+      notes: [t("settings.ai.hint"), t("settings.ai.experimental")],
+    }),
+    // The four connection rows are INLINE — label left, field right — rather
+    // than stacked. Stacked, each field cost two lines and the tab ran off the
+    // bottom of the card before the key status was reached, which is the one
+    // line here that answers a question the user actually asked.
+    el("div", { class: "settings-row settings-row--field" }, [
       el("label", {
         class: "settings-label",
         for: "set-ai-base-url",
@@ -270,7 +355,7 @@ function buildAiRows(settings, providers, emitPatch) {
       }),
       baseUrl,
     ]),
-    el("div", { class: "settings-row settings-row--stack" }, [
+    el("div", { class: "settings-row settings-row--field" }, [
       el("label", {
         class: "settings-label",
         for: "set-ai-model",
@@ -278,21 +363,19 @@ function buildAiRows(settings, providers, emitPatch) {
       }),
       model,
     ]),
-    el("div", { class: "settings-row settings-row--stack" }, [
+    el("div", { class: "settings-row settings-row--field" }, [
       keyLabel,
       keyInput,
-      el("div", { class: "settings-folder-actions" }, [
-        clearKey,
-        saveKey,
-        testBtn,
-      ]),
-      status,
-      result,
     ]),
-    el("p", { class: "settings-hint", text: t("settings.ai.hint") }),
-    // Said HERE, where the connection is set up, because this is where the
-    // builder is first met — long before a design lands on the desk.
-    el("p", { class: "settings-hint", text: t("settings.ai.experimental") }),
+    // The key's three buttons get their own row, under the field they act on —
+    // inside it they would have had to share the line with the input.
+    el("div", { class: "settings-row settings-row--actions" }, [
+      clearKey,
+      saveKey,
+      testBtn,
+    ]),
+    status,
+    result,
   ];
 }
 
@@ -367,17 +450,22 @@ function buildAboutPanel(settings, emitPatch) {
     onPick: (autoUpdateCheck) => emitPatch({ autoUpdateCheck }),
   });
 
-  const autoRow = el("div", { class: "settings-row" }, [
-    el("label", { class: "settings-label", text: t("settings.about.autoLabel") }), // prettier-ignore
-    autoPicker,
-  ]);
+  const autoRow = rowWithNote({
+    label: t("settings.about.autoLabel"),
+    control: autoPicker,
+    notes: [t("settings.about.hint")],
+  });
   const actionRow = el("div", { class: "settings-row settings-row--stack" }, [
     el("div", { class: "settings-folder-actions" }, [checkBtn, restartBtn]),
     status,
   ]);
-  const hint = el("p", {
+  // The store-build message is NOT a note behind an (i): there, it is the only
+  // thing on the panel — it explains why every control above it is gone — so a
+  // reader would have nothing left to click the (i) beside.
+  const storeHint = el("p", {
     class: "settings-hint",
-    text: t("settings.about.hint"),
+    text: t("settings.about.storeHint"),
+    hidden: true,
   });
 
   // Every lifecycle event, one handler each, so they can all be removed again.
@@ -436,7 +524,7 @@ function buildAboutPanel(settings, emitPatch) {
       if (info?.distribution === "store") {
         autoRow.hidden = true;
         actionRow.hidden = true;
-        hint.textContent = t("settings.about.storeHint");
+        storeHint.hidden = false;
       }
     },
     (err) => {
@@ -453,7 +541,7 @@ function buildAboutPanel(settings, emitPatch) {
       ]),
       autoRow,
       actionRow,
-      hint,
+      storeHint,
     ],
     dispose: () => {
       for (const [event, fn] of LISTENERS)
@@ -577,6 +665,18 @@ export class SettingsDialog {
         ),
       ],
     );
+
+    // `normalizeFontSize` IS the seeding fallback here, and a stronger one than
+    // the `options.some(...) ? … : default` idiom its neighbours use: a stored
+    // 15 shows as 16 rather than springing back to the default, so a
+    // hand-edited settings.json is repaired toward what it asked for.
+    const fontSizePicker = buildSegmented({
+      options: fontSizeOptions(),
+      value: normalizeFontSize(settings.fontSize),
+      ariaLabel: t("settings.appearance.fontSize"),
+      className: "segmented-picker--numeric",
+      onPick: (fontSize) => SettingsDialog.#emit({ fontSize }),
+    });
 
     const themePicker = buildSegmented({
       options: themeOptions(),
@@ -725,17 +825,21 @@ export class SettingsDialog {
           "data-panel": "appearance",
         },
         [
-          el("div", { class: "settings-row" }, [
-            el("label", {
-              class: "settings-label",
-              for: "set-language",
-              text: t("settings.appearance.language"),
-            }),
-            languageSelect,
-          ]),
-          el("p", {
-            class: "settings-hint",
-            text: t("settings.appearance.languageHint"),
+          rowWithNote({
+            label: t("settings.appearance.language"),
+            htmlFor: "set-language",
+            control: languageSelect,
+            notes: [t("settings.appearance.languageHint")],
+          }),
+          // Under Language, and ahead of Theme: the two settings that decide
+          // how the app READS come first. Six segments is more than the
+          // short either/or the picker was written for, and it is still the
+          // right control — a <select> would make the one setting for text
+          // you cannot read require opening a menu to read it.
+          rowWithNote({
+            label: t("settings.appearance.fontSize"),
+            control: fontSizePicker,
+            notes: [t("settings.appearance.fontSizeHint")],
           }),
           el("div", { class: "settings-row" }, [
             el("label", {
@@ -759,16 +863,10 @@ export class SettingsDialog {
             }),
             ledColorSwatches,
           ]),
-          el("div", { class: "settings-row" }, [
-            el("label", {
-              class: "settings-label",
-              text: t("settings.appearance.wireLayout"),
-            }),
-            wireLayoutPicker,
-          ]),
-          el("p", {
-            class: "settings-hint",
-            text: t("settings.appearance.wireLayoutHint"),
+          rowWithNote({
+            label: t("settings.appearance.wireLayout"),
+            control: wireLayoutPicker,
+            notes: [t("settings.appearance.wireLayoutHint")],
           }),
         ],
       ),
@@ -781,33 +879,25 @@ export class SettingsDialog {
           hidden: true,
         },
         [
-          el("div", { class: "settings-row settings-row--stack" }, [
-            el("label", {
-              class: "settings-label",
-              text: t("settings.datasheets.folder"),
-            }),
-            el("div", { class: "settings-folder" }, [
+          rowWithNote({
+            label: t("settings.datasheets.folder"),
+            stack: true,
+            control: el("div", { class: "settings-folder" }, [
               el("div", { class: "settings-folder-input" }, [folderPath]),
               el("div", { class: "settings-folder-actions" }, [
                 clearBtn,
                 browseBtn,
               ]),
             ]),
-          ]),
-          el("p", {
-            class: "settings-hint",
-            text: t("settings.datasheets.folderHint"),
+            notes: [t("settings.datasheets.folderHint")],
           }),
-          el("div", { class: "settings-row settings-row--stack" }, [
-            el("label", {
-              class: "settings-label",
-              text: t("settings.datasheets.auto"),
-            }),
-            el("div", { class: "settings-folder-actions" }, [downloadBtn]),
-          ]),
-          el("p", {
-            class: "settings-hint",
-            text: t("settings.datasheets.autoHint"),
+          rowWithNote({
+            label: t("settings.datasheets.auto"),
+            stack: true,
+            control: el("div", { class: "settings-folder-actions" }, [
+              downloadBtn,
+            ]),
+            notes: [t("settings.datasheets.autoHint")],
           }),
         ],
       ),

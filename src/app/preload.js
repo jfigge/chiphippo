@@ -99,6 +99,10 @@ for (const [channel, event] of [
   ["updater:not-available", "chiphippo:updater-not-available"],
   ["updater:downloaded", "chiphippo:updater-downloaded"],
   ["updater:error", "chiphippo:updater-error"],
+  // Settings ▸ Appearance ▸ Editor font size, carrying `{ size }`. A push, not
+  // something each window polls: the setting is app-wide, and the three
+  // auxiliary windows have no settings UI of their own — they only ever follow.
+  ["settings:font-size", "chiphippo:font-size-changed"],
 ]) {
   ipcRenderer.on(channel, (_e, detail) => {
     window.dispatchEvent(new CustomEvent(event, { detail }));

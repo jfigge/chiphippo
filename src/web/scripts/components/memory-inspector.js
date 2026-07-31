@@ -30,8 +30,16 @@ import { el } from "../dom.js";
 
 /** Bytes per row (the canonical hex-dump width). */
 const ROW_BYTES = 16;
-/** Row height in px — applied inline so the layout needs no matching CSS. */
-const ROW_H = 22;
+/** Row height in px at the shipped font size — applied inline, so the layout
+ *  needs no matching CSS. This is the ONE place the app's text size feeds
+ *  ARITHMETIC rather than layout: the grid is virtualized, so `#rowH` decides
+ *  how many rows exist, which one a scroll offset lands on, and how tall the
+ *  spacer is. A row that doesn't match its own measure doesn't merely look
+ *  wrong — rows overlap or vanish as you scroll, which in a window showing ROM
+ *  bytes reads as corrupted data. Hence a measured field rather than a
+ *  constant; see `#syncRowH`. */
+const BASE_ROW_H = 22;
+const BASE_FONT_PX = 13;
 /** Extra rows rendered above/below the viewport so scrolling never flashes. */
 const OVERSCAN = 6;
 
@@ -62,6 +70,7 @@ export class MemoryInspector {
   #onEdit;
   #onSelect;
   #fallbackRows;
+  #rowH = BASE_ROW_H;
 
   /**
    * @param {HTMLElement} container
@@ -76,7 +85,36 @@ export class MemoryInspector {
     this.#onEdit = onEdit;
     this.#onSelect = onSelect;
     this.#fallbackRows = fallbackRows;
+    this.#syncRowH();
     this.#build(container);
+  }
+
+  /**
+   * Re-measure the row height against the app's current text size and redraw.
+   * The window calls this when Settings ▸ Appearance ▸ Editor font size moves
+   * (`chiphippo:font-size-changed`) — the CSS follows on its own, but the
+   * virtualization arithmetic above has to be told.
+   */
+  refreshMetrics() {
+    const before = this.#rowH;
+    this.#syncRowH();
+    if (this.#rowH !== before) this.#paint();
+  }
+
+  /**
+   * Read `--font-size` off the document root and scale the row to it. Falls
+   * back to the shipped 22 when there is no computed value to read — which is
+   * every `node --test` run, since jsdom parses no stylesheet, so the tests see
+   * exactly the geometry they always have.
+   */
+  #syncRowH(root = document.documentElement) {
+    const px = parseFloat(
+      getComputedStyle(root).getPropertyValue("--font-size"),
+    );
+    this.#rowH =
+      Number.isFinite(px) && px > 0
+        ? Math.round((px * BASE_ROW_H) / BASE_FONT_PX)
+        : BASE_ROW_H;
   }
 
   // ── Public API (driven by the window) ──────────────────────────────────────
@@ -126,7 +164,7 @@ export class MemoryInspector {
     const a = clamp(Math.floor(addr) || 0, 0, this.#bytes.length - 1);
     this.#setSelection(a, a);
     const row = Math.floor(a / ROW_BYTES);
-    this.#scroll.scrollTop = Math.max(0, row * ROW_H - ROW_H * 2);
+    this.#scroll.scrollTop = Math.max(0, row * this.#rowH - this.#rowH * 2);
     this.#paint();
   }
 
@@ -185,7 +223,7 @@ export class MemoryInspector {
 
   #visibleRowCount() {
     const h = this.#scroll.clientHeight;
-    const rows = h > 0 ? Math.ceil(h / ROW_H) : this.#fallbackRows;
+    const rows = h > 0 ? Math.ceil(h / this.#rowH) : this.#fallbackRows;
     return rows + OVERSCAN;
   }
 
@@ -196,7 +234,6 @@ export class MemoryInspector {
       row.style.position = "absolute";
       row.style.left = "0";
       row.style.right = "0";
-      row.style.height = `${ROW_H}px`;
       const off = el("span", { class: "mem-off" });
       const hex = [];
       const asc = [];
@@ -221,11 +258,12 @@ export class MemoryInspector {
   /** Reposition + refill the pool to cover the current scroll offset. */
   #paint() {
     const total = this.#totalRows();
-    this.#canvas.style.height = `${total * ROW_H}px`;
+    this.#canvas.style.height = `${total * this.#rowH}px`;
     this.#ensurePool(this.#visibleRowCount());
     const first = Math.max(
       0,
-      Math.floor(this.#scroll.scrollTop / ROW_H) - Math.floor(OVERSCAN / 2),
+      Math.floor(this.#scroll.scrollTop / this.#rowH) -
+        Math.floor(OVERSCAN / 2),
     );
     for (let i = 0; i < this.#pool.length; i++) {
       const row = this.#pool[i];
@@ -235,7 +273,8 @@ export class MemoryInspector {
         continue;
       }
       row.el.style.display = "";
-      row.el.style.top = `${rowIndex * ROW_H}px`;
+      row.el.style.height = `${this.#rowH}px`;
+      row.el.style.top = `${rowIndex * this.#rowH}px`;
       this.#fillRow(row, rowIndex);
     }
   }

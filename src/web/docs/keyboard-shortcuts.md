@@ -42,11 +42,27 @@ are noted alongside the shortcut.
 |---|---|
 | `Cmd+F` | Fit the desk (recentring it) — or the schematic, when it is showing |
 | `Cmd+Shift+F` | Zoom out to fit everything at once |
-| `Cmd+=` or `Cmd++` | Zoom in |
-| `Cmd+-` | Zoom out |
-| `Cmd+0` | Reset zoom |
+| `Cmd+=` or `Cmd++` | Increase the interface text size |
+| `Cmd+-` | Decrease the interface text size |
+| `Cmd+0` | Reset the interface text size (13 px) |
+| `Option+Cmd+=` | Zoom the desk in |
+| `Option+Cmd+-` | Zoom the desk out |
+| `Option+Cmd+0` | Reset the desk zoom |
 | `A` | Toggle the Logic Analyzer panel |
 | `Cmd+P` | Toggle the parts palette panel |
+
+The two families above do different jobs. `Cmd+=` and friends change **Chip
+Hippo's own text**: toolbars, panels, menus and dialogs, in every window at
+once — the same setting as Settings ▸ Appearance ▸ **Editor font size**. Hold
+**Option** as well and you move the **desk camera** instead, zooming the
+circuit, chips, boards, wires and all. Markings on the desk are printed on the
+circuit, so they follow the desk zoom rather than the text size.
+
+> **On a Mac**, `Option+Cmd+=` and `Option+Cmd+-` are also macOS's own
+> Zoom shortcuts (System Settings ▸ Accessibility ▸ Zoom ▸ *Use keyboard
+> shortcuts to zoom*). If you have that turned on, the system takes the keys
+> first and Chip Hippo never sees them — use the zoom cluster in the bottom
+> corner of the desk, or `Cmd+F` to fit, instead.
 
 ## Files & editing
 

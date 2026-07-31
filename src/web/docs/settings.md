@@ -13,10 +13,25 @@ Open the dialog with `Cmd/Ctrl+,`, or click the gear icon in the top-right
 corner of the header. Both routes lead to the same dialog seeded with your
 current settings, so it doesn't matter which you use.
 
+Several settings carry a small **ⓘ** beside their label. Click it for a note
+explaining what the setting does and what it doesn't touch; `Esc`, a click
+anywhere outside the note, or the ⓘ again closes it. The first `Esc` closes
+the note and the next one closes Settings, so you never lose the dialog by
+dismissing a note.
+
 ## Appearance
 
 The **Appearance** tab is the one the dialog opens on:
 
+- **Editor font size** — how big Chip Hippo's own text is drawn, in pixels:
+  **11**, **12**, **13**, **14**, **16** or **18**, default **13**. It applies
+  to every window at once, including the floating pinout, memory inspector and
+  user-guide windows, and to the boxes around the text — buttons and panels
+  grow with it rather than clipping it. `Cmd+=` and `Cmd+-` step through the
+  sizes from the keyboard and `Cmd+0` restores the default. What it does *not*
+  change is the desk itself: chip labels, board addressing and your own
+  annotations are printed on the circuit and drawn to the breadboard's scale,
+  so they grow with the desk zoom (`Option+Cmd+=`) instead.
 - **Theme** — **System**, **Light** or **Dark**. System follows your
   operating system's own setting; the other two pin it. The choice applies to
   every Chip Hippo window at once, including the floating pinout, memory

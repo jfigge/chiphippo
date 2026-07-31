@@ -28,6 +28,7 @@ import { PopupManager } from "../popup-manager.js";
 const isMac = window.chiphippo?.platform === "darwin";
 const MOD = isMac ? "⌘" : "Ctrl";
 const SHIFT = isMac ? "⇧" : "Shift";
+const ALT = isMac ? "⌥" : "Alt";
 
 /**
  * Grouped shortcut rows — the single source of truth this dialog renders.
@@ -88,7 +89,16 @@ const shortcutGroups = () => [
       { desc: t("shortcuts.view.analyzer"), keys: "A" },
       { desc: t("shortcuts.view.fit"), keys: `${MOD}+F` },
       { desc: t("shortcuts.view.zoomOut"), keys: `${SHIFT}+${MOD}+F` },
-      { desc: t("shortcuts.view.zoom"), keys: `${MOD}+ / ${MOD}- / ${MOD}0` },
+      {
+        desc: t("shortcuts.view.fontSize"),
+        keys: `${MOD}+ / ${MOD}- / ${MOD}0`,
+      },
+      // Beside the text size above, because the pair IS the distinction: that
+      // one resizes the app's own text, this one zooms the circuit.
+      {
+        desc: t("shortcuts.view.zoom"),
+        keys: `${ALT}${MOD}+ / ${ALT}${MOD}- / ${ALT}${MOD}0`,
+      },
       { desc: t("shortcuts.view.lockDesk"), keys: `${MOD}+L` },
     ],
   },

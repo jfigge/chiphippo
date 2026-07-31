@@ -24,16 +24,12 @@
 import { t } from "../i18n.js";
 import { el } from "../dom.js";
 import { PopupManager } from "../popup-manager.js";
+import { buildInfoButton } from "./info-button.js";
 
 /** The product name — never translated, in any language. */
 const NAME = "Chip Hippo";
 
 /** A small "i" glyph for the info toggle (the button supplies the circle). */
-const INFO_SVG =
-  '<svg viewBox="0 0 16 16" width="12" height="12" aria-hidden="true">' +
-  '<circle cx="8" cy="4" r="1.25" fill="currentColor"/>' +
-  '<rect x="7" y="6.5" width="2" height="6" rx="1" fill="currentColor"/></svg>';
-
 export class AboutDialog {
   static #open = false;
 
@@ -48,20 +44,10 @@ export class AboutDialog {
       hidden: true,
     });
 
-    const infoBtn = el("button", {
-      class: "about-info-btn",
-      type: "button",
-      "aria-controls": "about-build",
-      "aria-expanded": "false",
-      "aria-label": t("about.versionInfo"),
-      title: t("about.versionInfo"),
-      onClick: () => {
-        const show = build.hasAttribute("hidden");
-        build.toggleAttribute("hidden", !show);
-        infoBtn.setAttribute("aria-expanded", String(show));
-      },
+    const infoBtn = buildInfoButton({
+      target: build,
+      label: t("about.versionInfo"),
     });
-    infoBtn.innerHTML = INFO_SVG;
 
     const element = el(
       "div",

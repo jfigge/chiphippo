@@ -26,6 +26,12 @@
 "use strict";
 
 import { DocsViewer } from "./components/docs-viewer.js";
+import { followFontSize } from "./font-scale.js";
+
+// Settings ▸ Appearance ▸ Editor font size, before the guide paints: this is
+// the most text-heavy window in the app, so correcting the size after mounting
+// would reflow the whole page in front of the reader.
+await followFontSize(window.chiphippo);
 
 const root = document.getElementById("docs-root");
 new DocsViewer().mount(root);

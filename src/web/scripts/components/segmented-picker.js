@@ -38,8 +38,16 @@ import { el } from "../dom.js";
  * @param {any} opts.value - the currently chosen option's value.
  * @param {(value: any) => void} opts.onPick - fires on click.
  * @param {string} [opts.ariaLabel] - label for the radiogroup.
+ * @param {string} [opts.className] - an extra class on the track, for a variant
+ *   that needs different metrics (see `--numeric`).
  */
-export function buildSegmented({ options, value, ariaLabel, onPick }) {
+export function buildSegmented({
+  options,
+  value,
+  ariaLabel,
+  onPick,
+  className,
+}) {
   const buttons = options.map((opt) =>
     el("button", {
       class: `segmented-option${opt.value === value ? " segmented-option--active" : ""}`, // prettier-ignore
@@ -71,7 +79,11 @@ export function buildSegmented({ options, value, ariaLabel, onPick }) {
   );
   return el(
     "div",
-    { class: "segmented-picker", role: "radiogroup", "aria-label": ariaLabel },
+    {
+      class: `segmented-picker${className ? ` ${className}` : ""}`,
+      role: "radiogroup",
+      "aria-label": ariaLabel,
+    },
     buttons,
   );
 }

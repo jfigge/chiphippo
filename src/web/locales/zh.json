@@ -170,6 +170,7 @@
     "reset": "把缩放恢复为 100%"
   },
   "settings": {
+    "noteToggle": "关于{label}的说明",
     "title": "设置",
     "close": "关闭设置",
     "nav": {
@@ -182,6 +183,8 @@
       "language": "语言",
       "languageSystem": "跟随系统",
       "languageHint": "Chip Hippo 自身的菜单、面板和对话框所用的语言。用户指南仅提供英文版。",
+      "fontSize": "编辑器字体大小",
+      "fontSizeHint": "Chip Hippo 自身的工具栏、面板和对话框中文字的大小（像素）。桌面上元件与面包板上的标记属于电路本身，因此它们随桌面缩放而变化。",
       "theme": "主题",
       "themeSystem": "跟随系统",
       "themeLight": "浅色",
@@ -929,6 +932,7 @@
       "fit": "适应窗口",
       "zoomOut": "缩到最小（找回丢失的元件）",
       "zoom": "放大／缩小／还原",
+      "fontSize": "编辑器字体大小 放大／缩小／还原",
       "lockDesk": "锁定 / 解锁桌面滚动"
     },
     "simulation": {

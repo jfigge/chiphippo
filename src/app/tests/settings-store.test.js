@@ -41,6 +41,9 @@ test("get returns the defaults when nothing is stored", () => {
 test("the Settings-dialog keys carry their shipped defaults", () => {
   assert.equal(DEFAULTS.selectionColor, "#d0804a");
   assert.equal(DEFAULTS.defaultLedColor, "red");
+  // The base of the type scale. Held here as well as in font-scale.js's own
+  // test because this is the value a first launch actually comes up at.
+  assert.equal(DEFAULTS.fontSize, 13);
 });
 
 test("the parts tray opens by default, at its shipped width", () => {

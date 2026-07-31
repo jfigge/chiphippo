@@ -1537,6 +1537,24 @@ function showPinoutMenu(win) {
   ]).popup({ window: win });
 }
 
+/**
+ * Push the chosen UI text size to every window BUT the one that asked for it.
+ * Settings ▸ Appearance ▸ Editor font size is one thing the whole app agrees
+ * on, like the theme — but the theme rides `nativeTheme.themeSource` and this
+ * has no such native mechanism, so it is a plain fan-out.
+ *
+ * The sender is skipped because it applied the size the moment it emitted the
+ * patch; telling it again would only be a second path to the same pixel.
+ * `getAllWindows` rather than the pinout/memory/docs registries, so a window
+ * type added later follows for free.
+ */
+function broadcastFontSize(size, sender) {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (win.isDestroyed() || win.webContents === sender) continue;
+    win.webContents.send("settings:font-size", { size });
+  }
+}
+
 /** Toggle float on EVERY open pinout window + persist the global default. */
 function setPinoutFloat(on) {
   safeCall("pinout:set-float", () =>
@@ -1589,14 +1607,21 @@ function registerIpc() {
   // App settings (Feature 10): the desk viewport + window bounds live here;
   // later stages add their own keys. Writes are atomic (store/io.js).
   ipcMain.handle("settings:get", () => getSettingsStore().get());
-  ipcMain.handle("settings:set", (_event, patch) => {
+  ipcMain.handle("settings:set", (event, patch) => {
     const next = getSettingsStore().set(patch);
-    // Appearance holds the two settings main itself acts on. `theme` becomes the
-    // native theme source, which every window (and the native chrome) follows;
-    // `locale` decides which catalog main answers `i18n:load` with AND which
-    // language its own menu bar speaks, so a change re-resolves both.
+    // Appearance holds the three settings main itself acts on. `theme` becomes
+    // the native theme source, which every window (and the native chrome)
+    // follows; `locale` decides which catalog main answers `i18n:load` with AND
+    // which language its own menu bar speaks, so a change re-resolves both.
     if (patch && Object.hasOwn(patch, "theme")) applyThemeSource(next.theme);
     if (patch && Object.hasOwn(patch, "locale")) reloadCatalog();
+    // `fontSize` is the third, and the only one with nothing native to ride:
+    // there is no font-size equivalent of `nativeTheme.themeSource`, so main
+    // fans it out by hand. Doing it HERE rather than in the renderer means
+    // whichever window writes the key, every window follows.
+    if (patch && Object.hasOwn(patch, "fontSize")) {
+      broadcastFontSize(next.fontSize, event.sender);
+    }
     return next;
   });
   // Settings ▸ Data Sheets: pick the external datasheet-PDF folder (native

@@ -170,6 +170,7 @@
     "reset": "Reset zoom to 100%"
   },
   "settings": {
+    "noteToggle": "More about {label}",
     "title": "Settings",
     "close": "Close settings",
     "nav": {
@@ -182,6 +183,8 @@
       "language": "Language",
       "languageSystem": "System",
       "languageHint": "The language Chip Hippo's own menus, panels and dialogs are shown in. The user guide is only available in English.",
+      "fontSize": "Editor font size",
+      "fontSizeHint": "The size of text in Chip Hippo's own toolbars, panels and dialogs, in pixels. Part and board markings on the desk belong to the circuit, so they scale with the desk zoom instead.",
       "theme": "Theme",
       "themeSystem": "System",
       "themeLight": "Light",
@@ -940,6 +943,7 @@
       "fit": "Fit to screen",
       "zoomOut": "Zoom all the way out (find a lost part)",
       "zoom": "Zoom in / out / reset",
+      "fontSize": "Editor font size in / out / reset",
       "lockDesk": "Lock / unlock desk scrolling"
     },
     "simulation": {
