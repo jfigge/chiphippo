@@ -32,6 +32,14 @@
       "y": 36,
       "rot": 0,
       "group": null
+    },
+    {
+      "id": "bb5",
+      "type": "pins-full",
+      "x": 0,
+      "y": 52,
+      "rot": 0,
+      "group": null
     }
   ],
   "components": [
@@ -53,16 +61,6 @@
       "y": 12,
       "params": {
         "hz": 5
-      }
-    },
-    {
-      "id": "lcd1",
-      "kind": "lcd",
-      "ref": "lcd",
-      "x": 34,
-      "y": 40,
-      "params": {
-        "size": "16x2"
       }
     },
     {
@@ -95,6 +93,14 @@
       "ref": "74LS08",
       "board": "bb4",
       "anchor": "e20",
+      "params": {}
+    },
+    {
+      "id": "c5",
+      "kind": "discrete",
+      "ref": "lcd16x2",
+      "board": "bb5",
+      "anchor": "a10",
       "params": {}
     }
   ],
@@ -167,13 +173,13 @@
     },
     {
       "id": "w12",
-      "from": "lcd1.VDD",
+      "from": "bb5.b11",
       "to": "bb1.+6",
       "color": "red"
     },
     {
       "id": "w13",
-      "from": "lcd1.VSS",
+      "from": "bb5.b10",
       "to": "bb1.-7",
       "color": "black"
     },
@@ -258,7 +264,7 @@
     {
       "id": "w27",
       "from": "bb2.b11",
-      "to": "lcd1.RS",
+      "to": "bb5.b13",
       "color": "green"
     },
     {
@@ -270,7 +276,7 @@
     {
       "id": "w29",
       "from": "bb3.b11",
-      "to": "lcd1.DB0",
+      "to": "bb5.b16",
       "color": "blue"
     },
     {
@@ -282,7 +288,7 @@
     {
       "id": "w31",
       "from": "bb3.b12",
-      "to": "lcd1.DB1",
+      "to": "bb5.b17",
       "color": "blue"
     },
     {
@@ -294,7 +300,7 @@
     {
       "id": "w33",
       "from": "bb3.b13",
-      "to": "lcd1.DB2",
+      "to": "bb5.b18",
       "color": "blue"
     },
     {
@@ -306,7 +312,7 @@
     {
       "id": "w35",
       "from": "bb3.b14",
-      "to": "lcd1.DB3",
+      "to": "bb5.b19",
       "color": "blue"
     },
     {
@@ -318,7 +324,7 @@
     {
       "id": "w37",
       "from": "bb3.b15",
-      "to": "lcd1.DB4",
+      "to": "bb5.b20",
       "color": "blue"
     },
     {
@@ -330,7 +336,7 @@
     {
       "id": "w39",
       "from": "bb3.h14",
-      "to": "lcd1.DB5",
+      "to": "bb5.b21",
       "color": "blue"
     },
     {
@@ -342,7 +348,7 @@
     {
       "id": "w41",
       "from": "bb3.h13",
-      "to": "lcd1.DB6",
+      "to": "bb5.b22",
       "color": "blue"
     },
     {
@@ -354,7 +360,7 @@
     {
       "id": "w43",
       "from": "bb3.h12",
-      "to": "lcd1.DB7",
+      "to": "bb5.b23",
       "color": "blue"
     },
     {
@@ -396,13 +402,13 @@
     {
       "id": "w50",
       "from": "bb4.a22",
-      "to": "lcd1.E",
+      "to": "bb5.b15",
       "color": "white"
     },
     {
       "id": "w51",
       "from": "bb2.g9",
-      "to": "lcd1.RW",
+      "to": "bb5.b14",
       "color": "white"
     },
     {
@@ -445,7 +451,7 @@
   "buses": [],
   "netNames": [],
   "annotations": [],
-  "nextBoardId": 5,
+  "nextBoardId": 6,
   "nextGroupId": 1,
   "nextComponentId": 8,
   "nextPsuId": 2,

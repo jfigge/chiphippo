@@ -25,6 +25,7 @@
 // No electrical logic lives in views, and none in the netlist yet.
 
 import { hd44780Unit } from "../sim/hd44780.js";
+import { MM_PER_UNIT } from "../desk/desk-geometry.js";
 import { ROTATIONS } from "../model/breadboard.js";
 
 /** The shared color choices for every colored discrete (LED, and the
@@ -47,40 +48,215 @@ export const OSCILLATOR_HZ = Object.freeze(
   CLOCK_HZ.filter((hz) => hz !== "manual"),
 );
 
-/** Character-LCD module sizes (HD44780). ONE controller drives both — the size
-    is a runtime param (visible-window only), never two separate parts. */
-export const LCD_SIZES = Object.freeze(["16x2", "20x4"]);
-
-/** The visible character grid (columns × rows) for an LCD size. */
-export function lcdGeometry(size) {
-  return size === "20x4" ? { cols: 20, rows: 4 } : { cols: 16, rows: 2 };
-}
-
 /**
- * The HD44780 module's 16-pin interface, in datasheet order. Both the `pins`
- * array (roles for power-gating + logic) and the wireable `terminals` derive
- * from this ONE table so they can never drift. VDD/VSS are real power (the sim
+ * The HD44780 module's 16-pin interface, in datasheet order — the ONE table
+ * BOTH module sizes read, because the pin assignment is identical across them
+ * (it is the controller's, not the panel's). VDD/VSS are real power (the sim
  * power-gates the module like a chip); V0 (contrast) and A/K (backlight) are
  * inert `nc`; RS/RW/E are control inputs; DB0–DB7 are the bidirectional bus.
+ *
+ * `detail` is the datasheet's own prose for the pin, shown by the pin-
+ * assignments window. Untranslated by the standing rule: per-pin datasheet
+ * descriptions sit on the reference side of the line CLAUDE.md's "Language
+ * support" draws, beside a part's `blurb`.
+ *
+ * NOTE both real modules run 16 signals through a 2.54 mm header, but neither
+ * numbers it the way this app draws it: the 16×2's silkscreen counts
+ * 14…1, 15, 16 left to right, and the 20×4's header is 18-way (17/18 are NC).
+ * Pin 1 is at the LEFT end here, as it is for every other part in the app.
  */
 const LCD_PINOUT = [
-  { n: 1, name: "VSS", role: "gnd" },
-  { n: 2, name: "VDD", role: "vcc" },
-  { n: 3, name: "V0", role: "nc" },
-  { n: 4, name: "RS", role: "input" },
-  { n: 5, name: "RW", role: "input" },
-  { n: 6, name: "E", role: "input" },
-  { n: 7, name: "DB0", role: "io" },
-  { n: 8, name: "DB1", role: "io" },
-  { n: 9, name: "DB2", role: "io" },
-  { n: 10, name: "DB3", role: "io" },
-  { n: 11, name: "DB4", role: "io" },
-  { n: 12, name: "DB5", role: "io" },
-  { n: 13, name: "DB6", role: "io" },
-  { n: 14, name: "DB7", role: "io" },
-  { n: 15, name: "A", role: "nc" },
-  { n: 16, name: "K", role: "nc" },
+  { n: 1, name: "VSS", role: "gnd", detail: "0 V ground" },
+  { n: 2, name: "VDD", role: "vcc", detail: "+5 V supply" },
+  { n: 3, name: "V0", role: "nc", detail: "contrast (cosmetic here)" },
+  {
+    n: 4,
+    name: "RS",
+    role: "input",
+    detail: "register select — 0 cmd / 1 data",
+  },
+  { n: 5, name: "RW", role: "input", detail: "0 = write, 1 = read" },
+  {
+    n: 6,
+    name: "E",
+    role: "input",
+    detail: "enable strobe — latches on falling edge",
+  },
+  { n: 7, name: "DB0", role: "io", detail: "data bus bit 0 (LSB)" },
+  { n: 8, name: "DB1", role: "io", detail: "data bus bit 1" },
+  { n: 9, name: "DB2", role: "io", detail: "data bus bit 2" },
+  { n: 10, name: "DB3", role: "io", detail: "data bus bit 3" },
+  {
+    n: 11,
+    name: "DB4",
+    role: "io",
+    detail: "data bus bit 4 (low nibble in 4-bit mode)",
+  },
+  { n: 12, name: "DB5", role: "io", detail: "data bus bit 5" },
+  { n: 13, name: "DB6", role: "io", detail: "data bus bit 6" },
+  {
+    n: 14,
+    name: "DB7",
+    role: "io",
+    detail: "data bus bit 7 (MSB / busy flag)",
+  },
+  { n: 15, name: "A", role: "nc", detail: "backlight anode (cosmetic here)" },
+  { n: 16, name: "K", role: "nc", detail: "backlight cathode (cosmetic here)" },
 ];
+
+/**
+ * The datasheet crop BOTH module sizes show, `web/datasheets/HD44780.png` —
+ * named here rather than derived from the id, which is why `datasheet` exists
+ * at all. A chip's sheet IS its id, but a module has two documents (the maker's
+ * and the CONTROLLER's) and the controller's is the one this app wants: the pin
+ * assignment, the bus protocol and the address maps are all the HD44780's, and
+ * they are identical across the two sizes. So it is ONE file named twice, not
+ * two copies of one picture — the same call the download table makes for the
+ * PDF (app/datasheets/sources.js).
+ */
+const LCD_DATASHEET = "HD44780";
+
+/** The 16-way header, as a linear footprint: 16 holes along one grid row. */
+const LCD_FOOTPRINT = Object.freeze({
+  offsets: Object.freeze(Array.from({ length: 16 }, (_, i) => i)),
+});
+
+/*
+ * `characterDisplay` — the ONE data hook generic code branches on to recognise
+ * a character-LCD module (never a ref or an id test; the same house rule as
+ * `switchBank` and `segments`). It carries the character grid AND the module's
+ * mechanical drawing, because the view, the placement ghost, the footprint box
+ * and the framebuffer all have to agree and there must be exactly one source
+ * for them.
+ *
+ *   cols/rows   the character grid
+ *   headerEdge  which PCB edge the 16-way header runs along, and therefore
+ *               which way the body reaches off the hole row: "bottom" → it
+ *               stands UP (seat it on a top row); "top" → it hangs DOWN (a
+ *               bottom row). DERIVED from pin 1, never declared — see below
+ *   body        the bare PCB — also the part's box in discrete-view.js
+ *   window      the display module bonded to it (the metal frame)
+ *   screen      the visible glass; the live character canvas sits exactly here
+ *   charPitch   one character cell, centre to centre
+ *
+ * Every rectangle is in PITCH UNITS with the ORIGIN AT PIN 1's HOLE — the frame
+ * components/discrete-view.js draws every seated part in.
+ */
+
+/** One HD44780 character cell as the panel lays it out: 5 × 8 dots, with a
+    one-dot gap to the next cell. lcd-view.js's backing buffer is the same
+    model, which is what keeps the drawn cells on the module's own pitch. */
+const LCD_CELL = Object.freeze({ w: 5, h: 8, gap: 1 });
+
+/** Millimetres → pitch units, to the 5 decimals a mechanical drawing is worth
+    (0.03 µm — far below anything the desk can express or a ruler can read). */
+const mm = (v) => Math.round((v / MM_PER_UNIT) * 1e5) / 1e5;
+
+/**
+ * Build a character-LCD module's mechanical drawing from the numbers a RULER
+ * gives you — millimetres off the real part, which is the only form these
+ * measurements ever arrive in:
+ *
+ *   pcb     the bare board: the module's outline, and the part's own box
+ *   module  the display module bonded to it (the metal frame), CENTRED on it
+ *   screen  the visible glass, CENTRED in the module
+ *   pin1    the first header hole, in mm from the PCB's TOP-LEFT CORNER
+ *
+ * CONCENTRIC-AND-CENTRED IS THE WHOLE POSITIONING RULE. There is no fourth
+ * offset to measure, and no way for two of the three rectangles to disagree
+ * about where they sit — which is exactly what a hand-typed set of coordinates
+ * could do (and did: the numbers these replaced were a different, much larger
+ * industrial module's, scaled by nothing).
+ *
+ * Everything is then restated about PIN 1, because that is the origin the rest
+ * of the app works in (discrete-view.js draws a seated part about its first
+ * hole), so the PCB's own minX/minY come out negative.
+ *
+ * `pin1.y` is ALSO what says which edge the header runs along — nearer the top
+ * of the PCB and the body hangs DOWN off the hole row, nearer the bottom and it
+ * stands UP. Deriving `headerEdge` rather than declaring it beside the geometry
+ * is what stops a module being drawn one way round and seated the other.
+ *
+ * `charPitch` is DERIVED, not measured: the active area is the character grid
+ * with its own TRAILING inter-character gap trimmed, so a span of n characters
+ * is `n · (cell + gap) − gap` dots wide and one cell is `(cell + gap)` of them.
+ * That is the same arithmetic lcd-view.js sizes its backing buffer with, which
+ * is what lands the drawn dots on the module's pitch instead of near it.
+ */
+function characterDisplay({ cols, rows, pcb, module: mod, screen, pin1 }) {
+  const pitch = (span, n, cell) =>
+    mm(
+      (span / (n * (cell + LCD_CELL.gap) - LCD_CELL.gap)) *
+        (cell + LCD_CELL.gap),
+    );
+  const modX = (pcb.w - mod.w) / 2;
+  const modY = (pcb.h - mod.h) / 2;
+  const screenX = modX + (mod.w - screen.w) / 2;
+  const screenY = modY + (mod.h - screen.h) / 2;
+  return Object.freeze({
+    cols,
+    rows,
+    headerEdge: pin1.y < pcb.h / 2 ? "top" : "bottom",
+    body: Object.freeze({
+      minX: mm(-pin1.x),
+      minY: mm(-pin1.y),
+      width: mm(pcb.w),
+      height: mm(pcb.h),
+    }),
+    window: Object.freeze({
+      x: mm(modX - pin1.x),
+      y: mm(modY - pin1.y),
+      width: mm(mod.w),
+      height: mm(mod.h),
+    }),
+    screen: Object.freeze({
+      x: mm(screenX - pin1.x),
+      y: mm(screenY - pin1.y),
+      width: mm(screen.w),
+      height: mm(screen.h),
+    }),
+    charPitch: Object.freeze({
+      x: pitch(screen.w, cols, LCD_CELL.w),
+      y: pitch(screen.h, rows, LCD_CELL.h),
+    }),
+  });
+}
+
+/** ONE controller drives both module sizes, so the behavior is declared once
+    and referenced by both defs. DB0–DB7 are pins 7–14. */
+const HD44780_LOGIC = hd44780Unit({
+  rs: 4,
+  rw: 5,
+  e: 6,
+  db: [7, 8, 9, 10, 11, 12, 13, 14],
+});
+
+/** The Properties dialog field both module sizes share. */
+const LCD_PROPERTIES = [
+  {
+    key: "color",
+    label: "Color",
+    type: "color",
+    options: LED_COLOR_OPTIONS,
+  },
+];
+
+/**
+ * Coerce a character-LCD module's params: the backlight colour, plus the same
+ * `damaged` bookkeeping a chip's 12 V magic smoke needs.
+ *
+ * The damage latch is NOT optional here, unlike every other coloured discrete:
+ * the engine power-gates this module like a chip (sim/engine.js powerStatus
+ * reads params.damaged), and SimController#persistDamage round-trips the latch
+ * back through here. Drop it and a smoked module revives on the next tick.
+ */
+function normalizeLcdParams(raw) {
+  const params = {
+    color: LED_COLOR_OPTIONS.includes(raw?.color) ? raw.color : "green",
+  };
+  if (raw?.damaged === true) params.damaged = true;
+  return params;
+}
 
 /**
  * Coerce a rotated part's far lead to a `{dx, dy}` PITCH OFFSET from its
@@ -771,57 +947,84 @@ export const PART_DEFS = Object.freeze(
       },
     },
     {
-      id: "lcd",
-      kind: "lcd",
-      title: "Character LCD (HD44780)",
+      id: "lcd16x2",
+      kind: "discrete",
+      title: "Character LCD 16×2 (HD44780)",
       blurb:
-        "Hitachi HD44780 character-LCD module (16×2 or 20×4). Wire VDD/VSS to " +
-        "a 5 V rail, then drive it over the parallel bus: put a command or " +
-        "character code on DB0–DB7, set RS (0 = instruction, 1 = data) and " +
-        "R/W (0 = write), and pulse E — the byte latches on E's falling edge. " +
-        "Right-click ▸ Properties… to switch between 16×2 and 20×4. V0 " +
-        "(contrast) and A/K " +
-        "(backlight) are cosmetic here. During a read the module drives " +
-        "DB0–DB7, so tri-state whatever else is on the bus.",
+        "Hitachi HD44780 character-LCD module, 16 columns × 2 rows (the " +
+        "standard 1602A, 80 × 36 mm). Its 16-way header runs along the " +
+        "module's TOP edge and plugs into 16 holes along one row, so the body " +
+        "hangs BELOW that row — seat it on a bottom row (a) and it clears the " +
+        "board it is plugged into. Wire " +
+        "VDD/VSS to a 5 V rail, then drive it over the parallel bus: put a " +
+        "command or character code on DB0–DB7, set RS (0 = instruction, " +
+        "1 = data) and R/W (0 = write), and pulse E — the byte latches on E's " +
+        "falling edge. V0 (contrast) and A/K (backlight) are cosmetic here. " +
+        "During a read the module drives DB0–DB7, so tri-state whatever else " +
+        "is on the bus.",
       group: "Displays",
-      // Fixed desk footprint (pitch units) sized for the LARGER 20×4 grid, so
-      // switching size never re-checks overlap. Terminal pads sit at integer
-      // offsets so wired terminals land on the global 0.1-in lattice.
-      size: Object.freeze({ width: 26, height: 14 }),
-      terminals: LCD_PINOUT.map((p) =>
-        Object.freeze({ id: p.name, pin: p.n, dx: 4 + p.n, dy: 12 }),
-      ),
-      pins: LCD_PINOUT.map((p) =>
-        Object.freeze({ n: p.n, name: p.name, role: p.role }),
-      ),
-      // The Properties dialog — a live setting, so it applies while running.
-      properties: [
-        {
-          key: "size",
-          label: "Size",
-          type: "select",
-          options: LCD_SIZES.map((s) => ({
-            value: s,
-            label: s.replace("x", "×"),
-          })),
-        },
-      ],
-      normalizeParams(raw) {
-        const params = {
-          size: LCD_SIZES.includes(raw?.size) ? raw.size : "16x2",
-        };
-        // 12 V magic-smoke persists like a chip (Feature 90 power-gating).
-        if (raw?.damaged === true) params.damaged = true;
-        return params;
-      },
-      // The controller behavior (data, referencing the pure builder — like a
-      // chip def references a family builder). DB0–DB7 are pins 7–14.
-      logic: hd44780Unit({
-        rs: 4,
-        rw: 5,
-        e: 6,
-        db: [7, 8, 9, 10, 11, 12, 13, 14],
+      footprint: LCD_FOOTPRINT,
+      pins: LCD_PINOUT.map((p) => Object.freeze({ ...p })),
+      datasheet: LCD_DATASHEET,
+      // Measured off a real 1602A: 80 × 36 mm of PCB, a 71 × 24 mm module, and
+      // 65 × 15 mm of visible glass, with pin 1's centre 7.5 mm in from the left
+      // edge and 2.5 mm down from the top one.
+      characterDisplay: characterDisplay({
+        cols: 16,
+        rows: 2,
+        pcb: { w: 80, h: 36 },
+        module: { w: 71, h: 24 },
+        screen: { w: 65, h: 15 },
+        pin1: { x: 7.5, y: 2.5 },
       }),
+      colors: LED_COLOR_OPTIONS,
+      properties: LCD_PROPERTIES,
+      normalizeParams: normalizeLcdParams,
+      internalBridges() {
+        return []; // a module is a device, not a bridge — Feature 90's job
+      },
+      logic: HD44780_LOGIC,
+    },
+    {
+      id: "lcd20x4",
+      kind: "discrete",
+      title: "Character LCD 20×4 (HD44780)",
+      blurb:
+        "Hitachi HD44780 character-LCD module, 20 columns × 4 rows (the " +
+        "standard 2004A, 98 × 60 mm). The pin assignment is identical to the " +
+        "16×2's, and so is the seating: the header is along the module's TOP " +
+        "edge, so the body hangs BELOW the row it plugs into — seat it on a " +
+        "bottom row (a) and it clears the board. Wire VDD/VSS to a 5 V rail, " +
+        "then drive it over " +
+        "the parallel bus: put a command or character code on DB0–DB7, set RS " +
+        "(0 = instruction, 1 = data) and R/W (0 = write), and pulse E — the " +
+        "byte latches on E's falling edge. V0 (contrast) and A/K (backlight) " +
+        "are cosmetic here. During a read the module drives DB0–DB7, so " +
+        "tri-state whatever else is on the bus.",
+      group: "Displays",
+      footprint: LCD_FOOTPRINT,
+      pins: LCD_PINOUT.map((p) => Object.freeze({ ...p })),
+      datasheet: LCD_DATASHEET,
+      // Measured off a real 2004A: 98 × 60 mm of PCB, a 97 × 40 mm module (it
+      // spans very nearly the full width — the bands the header and the badge
+      // live in are the ones above and below it), and 77 × 26 mm of glass. The
+      // header sits the SAME 2.5 mm off its edge as the 16×2's: the boards are
+      // different sizes, the row of pins is the same part on both.
+      characterDisplay: characterDisplay({
+        cols: 20,
+        rows: 4,
+        pcb: { w: 98, h: 60 },
+        module: { w: 97, h: 40 },
+        screen: { w: 77, h: 26 },
+        pin1: { x: 8.5, y: 2.5 },
+      }),
+      colors: LED_COLOR_OPTIONS,
+      properties: LCD_PROPERTIES,
+      normalizeParams: normalizeLcdParams,
+      internalBridges() {
+        return [];
+      },
+      logic: HD44780_LOGIC,
     },
   ].map(Object.freeze),
 );

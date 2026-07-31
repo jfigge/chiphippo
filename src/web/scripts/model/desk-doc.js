@@ -202,7 +202,6 @@ const GROUP_ID_RE = /^g([1-9]\d*)$/;
 const COMPONENT_ID_RE = /^c([1-9]\d*)$/;
 const PSU_ID_RE = /^psu([1-9]\d*)$/;
 const CLOCK_ID_RE = /^clk([1-9]\d*)$/;
-const LCD_ID_RE = /^lcd([1-9]\d*)$/;
 const WIRE_ID_RE = /^w([1-9]\d*)$/;
 const ANNOTATION_ID_RE = /^an([1-9]\d*)$/;
 const BUS_ID_RE = /^bus([1-9]\d*)$/;
@@ -215,7 +214,6 @@ const SCOPE_CHANNEL_KINDS = new Set(["net", "bus"]);
 const BRICKS = Object.freeze({
   psu: { re: PSU_ID_RE, prefix: "psu", counter: "nextPsuId" },
   clock: { re: CLOCK_ID_RE, prefix: "clk", counter: "nextClockId" },
-  lcd: { re: LCD_ID_RE, prefix: "lcd", counter: "nextLcdId" },
 });
 
 /** Params coerced through the def's own contract (chips have none). */
@@ -332,7 +330,6 @@ export function emptyDocument() {
     nextComponentId: 1,
     nextPsuId: 1,
     nextClockId: 1,
-    nextLcdId: 1,
     nextWireId: 1,
     nextBusId: 1,
     nextAnnotationId: 1,
@@ -419,7 +416,7 @@ export function normalizeDocument(raw) {
   }
 
   let maxCompSeq = 0;
-  const maxBrickSeq = { psu: 0, clock: 0, lcd: 0 };
+  const maxBrickSeq = { psu: 0, clock: 0 };
   const compIds = new Set();
   // Every hole an accepted part's pins already claim — see the ONE HOLE, ONE
   // LEAD note below. Bricks are absent by construction: a terminal (`psu1.+`)
@@ -446,14 +443,15 @@ export function normalizeDocument(raw) {
         params: normalizeParams(def, c.params),
       };
       // A BRICK's footprint is deliberately NOT checked here, though
-      // `canPlaceBrick` refuses one over a board. The shipped `65xx-lcd` demo
-      // has its LCD module squarely on top of a breadboard — so either the
-      // demo builder reaches past that rule or the rule is stricter than the
-      // bench is, and until that is settled a loader that dropped the brick
-      // would delete a working demo's display. Overlap is a nuisance for a
-      // brick (it cannot be dragged over a board) and a DEADLOCK for a board
-      // (neither of the pair can move at all), which is the asymmetry this
-      // check follows.
+      // `canPlaceBrick` refuses one over a board — because the two overlaps
+      // are not the same problem. Two overlapping BOARDS deadlock: every drag
+      // of either re-checks against the other and is refused, so neither can
+      // ever be moved again. An overlapping brick is only a nuisance — it
+      // cannot be dragged over a board, but it can always be dragged off one —
+      // and dropping it on load would be a silent deletion to fix a nuisance.
+      // (The `65xx-lcd` demo used to be the live example, its LCD module
+      // sitting squarely on a breadboard; that module is a SEATED part now,
+      // so no shipped document relies on this leniency any more.)
       applyMeta(brickRecord, c);
       doc.components.push(brickRecord);
       continue;
@@ -691,9 +689,6 @@ export function normalizeDocument(raw) {
       ? raw.nextClockId
       : 1;
   doc.nextClockId = Math.max(storedNextClock, maxBrickSeq.clock + 1);
-  const storedNextLcd =
-    Number.isInteger(raw.nextLcdId) && raw.nextLcdId > 0 ? raw.nextLcdId : 1;
-  doc.nextLcdId = Math.max(storedNextLcd, maxBrickSeq.lcd + 1);
   const storedNextWire =
     Number.isInteger(raw.nextWireId) && raw.nextWireId > 0 ? raw.nextWireId : 1;
   doc.nextWireId = Math.max(storedNextWire, maxWireSeq + 1);
@@ -1407,7 +1402,7 @@ export class DeskDoc {
     const comp = this.#doc.components.find((c) => c.id === id);
     if (!comp) throw taggedError(`no component ${id}`, "NOT_FOUND");
     if (comp.board == null) {
-      // A desk-level brick (PSU / clock / LCD) is repositioned with moveBrick.
+      // A desk-level brick (PSU / clock) is repositioned with moveBrick.
       throw taggedError(`use moveBrick for ${id}`, "INVALID_KIND");
     }
     if (!this.#doc.boards.some((b) => b.id === boardId)) {
@@ -1705,7 +1700,7 @@ export class DeskDoc {
     const [removed] = this.#doc.components.splice(i, 1);
     this.#detachAnnotations(id); // an anchored label falls free, keeping its spot
     if (removed.board == null) {
-      // A desk-level brick (PSU, clock, LCD) takes its attached wires with it.
+      // A desk-level brick (PSU, clock) takes its attached wires with it.
       this.#doc.wires = this.#doc.wires.filter(
         (w) => !this.#wireTouches(w, id),
       );

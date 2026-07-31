@@ -86,9 +86,26 @@
   --color-part-smoke: #565b62;
   --color-psu-body: #2e3238; /* power brick */
   --color-psu-badge: #e4e6ea; /* voltage badge text */
-  --color-lcd-bezel: #20242a; /* HD44780 module frame (dark plastic) */
-  --color-lcd-screen: #7cbf5a; /* classic green LCD backlight */
-  --color-lcd-dot: #16261a; /* a lit dot on the green field */
+  /* An HD44780 module is three materials, and at its true size the tones are
+     what tell them apart: a green board, the dark metal frame bonded to it,
+     and the backlit glass inside that. */
+  --color-lcd-pcb: #256147; /* the module's own soldermask-green PCB */
+  --color-lcd-bezel: #20242a; /* the display module's frame (dark) */
+  /* The backlit field, one per LED_COLOR_OPTIONS name — an LCD module picks
+     its colour from the same list every other lit part does. */
+  --color-lcd-screen-green: #7cbf5a; /* the classic yellow-green STN panel */
+  --color-lcd-screen-blue: #2b5fd9;
+  --color-lcd-screen-red: #b8443c;
+  --color-lcd-screen-yellow: #d9c24a;
+  --color-lcd-screen-white: #dfe6ea;
+  /* A LIT DOT. Every panel but blue is positive-mode — dark dots on a tinted
+     field — and the blue one is negative-mode, light dots on blue, which is
+     what the real part looks like and why this can't be a single token. */
+  --color-lcd-dot-green: #16261a;
+  --color-lcd-dot-blue: #eaf2ff;
+  --color-lcd-dot-red: #2a1010;
+  --color-lcd-dot-yellow: #2a2410;
+  --color-lcd-dot-white: #1b1f24;
 
   /* ── Jumper-wire palette (Feature 50 — one token per WIRE_COLORS name;
         LEDs share these same color tokens — house rule) ─────────────────── */

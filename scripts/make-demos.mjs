@@ -31,11 +31,7 @@ import {
   DOC_VERSION,
 } from "../src/web/scripts/model/desk-doc.js";
 import { partPinHoles } from "../src/web/scripts/model/occupancy.js";
-import {
-  nodeOf,
-  holesOfNode,
-  formatAddress,
-} from "../src/web/scripts/model/breadboard.js";
+import { nodeOf, holesOfNode } from "../src/web/scripts/model/breadboard.js";
 import { buildNetlist } from "../src/web/scripts/sim/netlist.js";
 import { tick } from "../src/web/scripts/sim/engine.js";
 import { partPinAddresses } from "../src/web/scripts/model/occupancy.js";
@@ -174,6 +170,15 @@ const VIA = {
 };
 // 74LS04 hex inverter — inverter #1: 1A=1 (in) → 1Y=2 (out); GND=7, VCC=14.
 const INV = { A: 1, Y: 2, GND: 7, VCC: 14 };
+// HD44780 character-LCD module — the same 16 pins whatever the panel size.
+const LCD = {
+  VSS: 1,
+  VDD: 2,
+  RS: 4,
+  RW: 5,
+  E: 6,
+  DB: [7, 8, 9, 10, 11, 12, 13, 14], // DB0…DB7
+};
 
 const BLINK_PROGRAM = [
   0xa9,
@@ -326,31 +331,38 @@ const LCD_PROGRAM = [
 
 function buildLcd() {
   const b = builder();
+  // The LCD board sits BELOW the stack: a real 1602A carries its header along
+  // its TOP edge, so its 14-unit body hangs DOWN off the row it plugs into.
+  // Seated on row a of the bottom board, the module hangs off the bench exactly
+  // as a real one would, its own wiring holes (rows b–e) above it and clear —
+  // anywhere else in this stack it would cover the board below.
   b.board("bb1", "rail-full", 0, 0);
   b.board("bb2", "pins-full", 0, 4); // CPU
   b.board("bb3", "pins-full", 0, 20); // ROM
   b.board("bb4", "pins-full", 0, 36); // 74LS04 + 74LS08 decode
+  b.board("bb5", "pins-full", 0, 52); // LCD
 
   b.brick("psu1", "psu", "psu", 70, 0, { volts: 5 });
   b.brick("clk1", "clock", "clock", 70, 12, { hz: 5 });
-  b.brick("lcd1", "lcd", "lcd", 34, 40, { size: "16x2" });
 
   b.part("c1", "chip", "w65c02", "bb2", "e3");
   b.part("c2", "chip", "rom-8k", "bb3", "e3");
   b.part("c3", "chip", "74LS04", "bb4", "e3");
   b.part("c4", "chip", "74LS08", "bb4", "e20");
+  b.part("c5", "discrete", "lcd16x2", "bb5", "a10");
 
   const cpu = b.holesOfPart("w65c02", "e3");
   const rom = b.holesOfPart("rom-8k", "e3");
   const inv = b.holesOfPart("74LS04", "e3");
   const and = b.holesOfPart("74LS08", "e20");
+  const lcdPins = b.holesOfPart("lcd16x2", "a10");
   const cpuAt = (pin) => b.freeAt("bb2", cpu.get(pin));
   const romAt = (pin) => b.freeAt("bb3", rom.get(pin));
   const invAt = (pin) => b.freeAt("bb4", inv.get(pin));
   const andAt = (pin) => b.freeAt("bb4", and.get(pin));
+  const lcdAt = (pin) => b.freeAt("bb5", lcdPins.get(pin));
   const plus = () => b.freeAt("bb1", "+1");
   const minus = () => b.freeAt("bb1", "-1");
-  const lcd = (t) => formatAddress("lcd1", t);
 
   // Power.
   b.wire("psu1.+", plus(), "red");
@@ -365,18 +377,18 @@ function buildLcd() {
     b.wire(b.freeAt(id, holes.get(pinV)), plus(), "red");
     b.wire(b.freeAt(id, holes.get(pinG)), minus(), "black");
   }
-  b.wire(lcd("VDD"), plus(), "red");
-  b.wire(lcd("VSS"), minus(), "black");
+  b.wire(lcdAt(LCD.VDD), plus(), "red");
+  b.wire(lcdAt(LCD.VSS), minus(), "black");
 
   // Address: A0–A12 → ROM; A0 → LCD RS.
   for (let i = 0; i < 13; i++)
     b.wire(cpuAt(CPU.A[i]), romAt(ROM.A[i]), "green");
-  b.wire(cpuAt(CPU.A[0]), lcd("RS"), "green");
+  b.wire(cpuAt(CPU.A[0]), lcdAt(LCD.RS), "green");
 
   // Data bus: CPU ↔ ROM ↔ LCD DB0–DB7.
   for (let i = 0; i < 8; i++) {
     b.wire(cpuAt(CPU.D[i]), romAt(ROM.Q[i]), "blue");
-    b.wire(romAt(ROM.Q[i]), lcd(`DB${i}`), "blue");
+    b.wire(romAt(ROM.Q[i]), lcdAt(LCD.DB[i]), "blue");
   }
 
   // Decode: /A15 → ROM /CE and one AND input; PHI2 → the other AND input;
@@ -387,8 +399,8 @@ function buildLcd() {
   b.wire(romAt(ROM.OE), minus(), "black");
   b.wire("clk1.out", cpuAt(CPU.PHI2), "purple");
   b.wire(cpuAt(CPU.PHI2), andAt(AND.B), "purple");
-  b.wire(andAt(AND.Y), lcd("E"), "white");
-  b.wire(cpuAt(CPU.RWB), lcd("RW"), "white");
+  b.wire(andAt(AND.Y), lcdAt(LCD.E), "white");
+  b.wire(cpuAt(CPU.RWB), lcdAt(LCD.RW), "white");
 
   // Active-low CPU control inputs tied high.
   for (const pin of [CPU.RESB, CPU.BE, CPU.RDY, CPU.IRQB, CPU.NMIB, CPU.SOB]) {
@@ -417,7 +429,7 @@ function validateLcd(doc) {
     state = r.state;
     prev = r.pinLevels;
   }
-  const lcd = state.get("lcd1");
+  const lcd = state.get("c5");
   if (!lcd) throw new Error("lcd: controller never ran");
   const text = String.fromCharCode(lcd.ddram[0], lcd.ddram[1]);
   if (!lcd.displayOn || text !== "HI") {

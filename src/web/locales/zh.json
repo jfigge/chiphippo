@@ -549,8 +549,11 @@
     "osc-half": {
       "title": "振荡器（半尺寸金属壳）"
     },
-    "lcd": {
-      "title": "字符 LCD（HD44780）"
+    "lcd16x2": {
+      "title": "字符 LCD 16×2（HD44780）"
+    },
+    "lcd20x4": {
+      "title": "字符 LCD 20×4（HD44780）"
     }
   },
   "colors": {
@@ -733,8 +736,7 @@
     },
     "brick": {
       "psu": "电源",
-      "clock": "时钟",
-      "display": "显示器"
+      "clock": "时钟"
     },
     "boardPropertiesTitle": "{board} 属性",
     "partPropertiesTitle": "{part} 属性",
@@ -999,6 +1001,7 @@
     "openExample": "打开示例电路",
     "openExampleTitle": "把该元件的示例电路作为新桌面打开",
     "datasheetCaption": "数据手册 — 内部框图与功能表",
+    "datasheetCaptionModule": "数据手册 — 模块接线图",
     "subPackage": "{package} · 引脚分配",
     "subLinear": "沿一行栅格占 {count} 个插孔 · 引脚分配",
     "subCan": "{holes} 个插孔，四角有引脚 · 引脚分配",

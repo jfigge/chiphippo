@@ -83,6 +83,28 @@ export function partDef(ref) {
   return ALL_BY_ID.get(ref) ?? null;
 }
 
+/**
+ * The committed datasheet crop for a def — the basename of
+ * `web/datasheets/<name>.png` — or null when the part has none.
+ *
+ * A DIP-packaged part's crop is named by its own ID: every chip has a datasheet
+ * and that is the name the crop is committed under. Anything ELSE has to NAME
+ * its sheet (`def.datasheet`), and both halves of that are deliberate — most
+ * discretes are parts no datasheet describes, so keying them by id would ask
+ * every LED and switch pinout for a file that will never exist; and where a
+ * document does exist it need not be per-id, since the two character-LCD
+ * modules share the ONE controller sheet (HD44780).
+ *
+ * The one place this is not the whole story is the pinout WINDOW's default
+ * size, which main sizes against the same file — main has no catalog, so the
+ * renderer hands it this name (see app.js's `onOpenPinout`).
+ * @param {object|null} def - a catalog def.
+ * @returns {string|null}
+ */
+export function datasheetCrop(def) {
+  return def?.datasheet ?? (def?.package ? def.id : null);
+}
+
 /** A chip's `pinGroups` (Feature 130 bus taps), or an empty list. */
 export function pinGroupsOf(ref) {
   return partDef(ref)?.pinGroups ?? [];

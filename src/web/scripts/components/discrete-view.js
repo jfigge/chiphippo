@@ -113,6 +113,11 @@ function canBox(def, rot) {
 export function discreteBox(ref, rot = 0) {
   const def = partDef(ref);
   if (def?.can) return canBox(def, rot);
+  // A character-LCD module's box is DATASHEET DATA, not hand-tuned padding, so
+  // it lives on the def beside the window/screen rects it has to agree with —
+  // three rectangles cut from one mechanical drawing, which is exactly the
+  // thing a second home could let drift.
+  if (def?.characterDisplay) return def.characterDisplay.body;
   const box = BOXES[ref];
   if (box) return box;
   // A DIP-packaged discrete with no hand-tuned BOXES entry (a DIP switch
@@ -715,6 +720,193 @@ function buildDipSwitchBank(svg, def, params) {
   }
 }
 
+/** How far a hole's centre may sit from the LCD body's header edge before the
+    hit rect gives way — half a pitch, so the next hole row stays wireable. */
+const LCD_HIT_CLEAR = 0.5;
+/** Stroke inset, so the body outline isn't clipped by the viewBox. */
+const LCD_BODY_INSET = 0.05;
+/** A Ø1.0 mm plated-through hole, in pitch units. */
+const LCD_HOLE_R = 0.197;
+/** A corner mounting hole: Ø2.5 mm, its centre 2.5 mm in from both edges. */
+const LCD_MOUNT_R = 0.492;
+const LCD_MOUNT_INSET = 0.984;
+/** How far the silkscreen size badge is held off the right edge — clear of the
+    mounting holes that now sit in that corner (2.5 mm + its radius, rounded
+    up), so the two never overlap on the narrower 16×2 board. */
+const LCD_BADGE_INSET = 2.4;
+
+/**
+ * A character-LCD module (HD44780), drawn as the three things a real one IS:
+ * a bare PCB, the display module bonded to it, and the glass inside that —
+ * plus the 16-way header printed where it plugs in, and the corner mounting
+ * holes. Every rectangle comes from the def's `characterDisplay`, i.e. from
+ * the measured module, so this function decides no geometry of its own and a
+ * second module size is a catalog entry and nothing else.
+ *
+ * THE THREE RECTANGLES ARE THREE MATERIALS, and each gets its own tone: green
+ * board, dark metal frame, backlit glass. The PCB and the frame used to share
+ * the one dark bezel token, which read as a single black slab — survivable
+ * while the drawing was a much larger industrial module's, half again the size
+ * of the part it stood in for, because the slab was big enough to see the
+ * opening inside it. At the real module's size the tones are what tell the
+ * three apart.
+ *
+ * Deliberately NO leg stubs, unlike the digit/bar displays: those bodies stop
+ * short of their hole row and a stub bridges the gap, but a real LCD module's
+ * own PCB runs PAST its header — 0.98 units on both, since both carry the same
+ * row of pins 2.5 mm off the same edge — so there is no gap for one to bridge.
+ * Same situation `bar8iso` documents.
+ *
+ * The live characters are NOT drawn here — LcdView overlays a <canvas> on the
+ * `.part-lcd-panel` rect, so this stays pure static DOM the placement ghost
+ * can reuse.
+ */
+function buildCharacterDisplay(svg, def, params) {
+  const cd = def.characterDisplay;
+  const { body, window: win, screen } = cd;
+  const headerBelowBody = cd.headerEdge === "bottom";
+
+  // The backlight tint is the ONE thing params change here, and it goes
+  // through a custom property (the buildDigitDisplay precedent) so a colour
+  // change is a repaint rather than a different drawing.
+  svg.style.setProperty(
+    "--lcd-screen",
+    `var(--color-lcd-screen-${params.color})`,
+  );
+
+  svg.append(
+    svgEl("rect", {
+      class: "part-lcd-body",
+      x: body.minX + LCD_BODY_INSET,
+      y: body.minY + LCD_BODY_INSET,
+      width: body.width - 2 * LCD_BODY_INSET,
+      height: body.height - 2 * LCD_BODY_INSET,
+      rx: 0.5,
+    }),
+    svgEl("rect", {
+      class: "part-lcd-window",
+      x: win.x,
+      y: win.y,
+      width: win.width,
+      height: win.height,
+      rx: 0.2,
+    }),
+    svgEl("rect", {
+      class: "part-lcd-panel",
+      x: screen.x,
+      y: screen.y,
+      width: screen.width,
+      height: screen.height,
+    }),
+  );
+
+  // The four corner mounting holes — the one silkscreen feature that says
+  // "this is a board", and the reason the badge below is held off the corner.
+  for (const cx of [
+    body.minX + LCD_MOUNT_INSET,
+    body.minX + body.width - LCD_MOUNT_INSET,
+  ]) {
+    for (const cy of [
+      body.minY + LCD_MOUNT_INSET,
+      body.minY + body.height - LCD_MOUNT_INSET,
+    ]) {
+      svg.append(
+        svgEl("circle", { class: "part-lcd-mount", cx, cy, r: LCD_MOUNT_R }),
+      );
+    }
+  }
+
+  // The header, at the local origin in both sizes: a solder strip, 16 plated
+  // holes on the 0.1-in pitch, and a square pad on pin 1 — the silkscreen
+  // convention, and the only thing saying which end of the run is pin 1.
+  svg.append(
+    svgEl("rect", {
+      class: "part-lcd-header",
+      x: -0.6,
+      y: -0.6,
+      width: 16.2,
+      height: 1.2,
+      rx: 0.25,
+    }),
+  );
+  for (let i = 0; i < 16; i++) {
+    svg.append(
+      svgEl(i === 0 ? "rect" : "circle", {
+        class: "part-lcd-hole",
+        ...(i === 0
+          ? {
+              x: -LCD_HOLE_R,
+              y: -LCD_HOLE_R,
+              width: 2 * LCD_HOLE_R,
+              height: 2 * LCD_HOLE_R,
+            }
+          : { cx: i, cy: 0, r: LCD_HOLE_R }),
+      }),
+    );
+  }
+  // The "1" goes BESIDE pin 1, not above or below it: at the module's real
+  // size the band between the header and the PCB edge is ~1.5 mm, so a label
+  // stacked on that side would spill off the board (and, on the header side,
+  // onto the breadboard). There is room to the LEFT of the strip on both
+  // modules, and it needs no headerEdge branch to find it.
+  const pinLabel = svgEl("text", {
+    class: "part-lcd-pin1-label",
+    x: -0.95,
+    y: 0.2,
+    "text-anchor": "middle",
+  });
+  pinLabel.textContent = "1";
+  svg.append(pinLabel);
+
+  // Silkscreen size badge, in the wide bare band on the side AWAY from the
+  // header — the one place on either module guaranteed to be clear.
+  const badge = svgEl("text", {
+    class: "part-lcd-size",
+    x: body.minX + body.width - LCD_BADGE_INSET,
+    y: headerBelowBody ? body.minY + 1.2 : body.minY + body.height - 0.7,
+    "text-anchor": "end",
+  });
+  badge.textContent = `${cd.cols}×${cd.rows}`;
+  svg.append(badge);
+
+  // Body-only hit target, held clear of the hole row on the header side. The
+  // full body would cover it: the PCB reaches 0.98 units past the header, which
+  // stops just short of the next row's hole CENTRES but well inside the holes
+  // themselves, so a click meant for a wire would start a drag instead.
+  const hitTop = headerBelowBody ? body.minY + LCD_BODY_INSET : LCD_HIT_CLEAR;
+  const hitBottom = headerBelowBody
+    ? -LCD_HIT_CLEAR
+    : body.minY + body.height - LCD_BODY_INSET;
+  svg.append(
+    svgEl("rect", {
+      class: "part-display-hit",
+      x: body.minX + LCD_BODY_INSET,
+      y: hitTop,
+      width: body.width - 2 * LCD_BODY_INSET,
+      height: hitBottom - hitTop,
+    }),
+  );
+
+  // Fault symbols over the glass, outside the hit rect so they never swallow a
+  // click (same shape the oscillator can uses; DiscreteView.setStatus fills in
+  // the <title>).
+  const status = svgEl("g", { class: "part-can-status" });
+  status.append(
+    svgEl("title"),
+    buildWarnOverlay(
+      screen.x + screen.width / 2,
+      screen.y + screen.height / 2,
+      0.9,
+    ),
+    buildBurnOverlay(
+      screen.x + screen.width / 2,
+      screen.y + screen.height / 2,
+      0.9,
+    ),
+  );
+  svg.append(status);
+}
+
 /**
  * Build a discrete part's SVG from its catalog def + params. Pure DOM
  * construction (unit-testable under jsdom).
@@ -844,6 +1036,8 @@ export function buildDiscreteSvg(ref, params = {}) {
     buildBarArrayDisplay(svg, normalized.color);
   } else if (ref === "osc-full" || ref === "osc-half") {
     buildOscillatorCan(svg, def, normalized);
+  } else if (def.characterDisplay) {
+    buildCharacterDisplay(svg, def, normalized);
   } else if (ref === "rnet9") {
     buildResistorNetwork(svg, normalized.ohms);
   } else if (def.switchBank) {

@@ -94,21 +94,6 @@ function powerStatus({ vccVolts, vccMinus, gndVolts, gnd, damaged }) {
   return CHIP_STATUS.UNPOWERED;
 }
 
-/**
- * The pin→address map for a behavioral desk BRICK (board == null — the HD44780
- * LCD): each `pins[].n` resolves to its terminal's wire address (`lcd1.RS`), or
- * null when a pin has no terminal. Board parts (chips/discretes) go through
- * occupancy's partPinAddresses instead. Generic — any future behavioral brick
- * with `pins` + `terminals` participates with no further engine change.
- */
-function brickPinAddresses(comp, def) {
-  if (!def.terminals) return null;
-  return def.pins.map((p) => {
-    const t = def.terminals.find((x) => x.pin === p.n);
-    return { pin: p.n, address: t ? formatAddress(comp.id, t.id) : null };
-  });
-}
-
 function mapsEqual(a, b) {
   if (a.size !== b.size) return false;
   for (const [k, v] of a) if (b.get(k) !== v) return false;
@@ -197,12 +182,11 @@ function buildContext(doc, netlist) {
     ) {
       continue;
     }
-    // A desk-level brick (board == null) resolves its pins from terminal
-    // addresses; a board part from its footprint/occupancy.
-    const pins =
-      comp.board == null
-        ? brickPinAddresses(comp, def)
-        : partPinAddresses(doc, comp);
+    // Every behavioral part is a BOARD part: the only desk-level bricks left
+    // are the PSU and the clock, and both are excluded above. (The HD44780 LCD
+    // used to be the exception — a brick resolving its pins from terminal
+    // addresses — until it became two seated modules.)
+    const pins = partPinAddresses(doc, comp);
     if (!pins) continue;
     const pinNet = new Map();
     for (const { pin, address } of pins) {

@@ -1366,7 +1366,9 @@
 .part-discrete--sw-dip1,
 .part-discrete--sw-dip2,
 .part-discrete--sw-dip4,
-.part-discrete--sw-dip8 {
+.part-discrete--sw-dip8,
+.part-discrete--lcd16x2,
+.part-discrete--lcd20x4 {
   pointer-events: none;
 }
 
@@ -1583,16 +1585,46 @@
 }
 
 /* ── Character-LCD module (HD44780) ──────────────────────────────────────── */
+/* The bare PCB the module is bonded to — green, so it reads as a board and not
+   as part of the black display above it. */
 .part-lcd-body {
-  fill: var(--color-lcd-bezel);
+  fill: var(--color-lcd-pcb);
   stroke: var(--color-part-inset);
   stroke-width: 0.1;
 }
 
+/* The display module itself: the dark metal frame the glass is recessed into,
+   sitting proud of the green board around it. */
+.part-lcd-window {
+  fill: var(--color-lcd-bezel);
+  stroke: var(--color-part-inset);
+  stroke-width: 0.06;
+}
+
+/* Corner mounting holes — plated, like the header's. */
+.part-lcd-mount {
+  fill: var(--color-board-hole);
+  stroke: var(--color-chip-leg);
+  stroke-width: 0.09;
+}
+
+/* The backlit field. --lcd-screen is set per module by buildCharacterDisplay,
+   so a colour change is one custom property and no redrawn geometry. */
 .part-lcd-panel {
-  fill: var(--color-lcd-screen);
+  fill: var(--lcd-screen, var(--color-lcd-screen-green));
   stroke: var(--color-part-inset);
   stroke-width: 0.08;
+}
+
+/* The 16-way header, printed where the module plugs into the board. */
+.part-lcd-header {
+  fill: color-mix(in srgb, var(--color-lcd-bezel) 60%, #ffffff);
+  stroke: var(--color-part-inset);
+  stroke-width: 0.06;
+}
+
+.part-lcd-hole {
+  fill: var(--color-chip-leg);
 }
 
 /* The live characters are drawn onto a canvas sitting over the panel. Nearest-
@@ -1604,28 +1636,7 @@
   pointer-events: none;
 }
 
-.part-lcd-terminal {
-  stroke: var(--color-part-inset);
-  stroke-width: 0.06;
-}
-
-.part-lcd-terminal--power {
-  fill: var(--color-wire-red);
-}
-
-.part-lcd-terminal--ctrl {
-  fill: var(--color-wire-yellow);
-}
-
-.part-lcd-terminal--data {
-  fill: var(--color-wire-blue);
-}
-
-.part-lcd-terminal--aux {
-  fill: var(--color-part-smoke);
-}
-
-.part-lcd-terminal-label {
+.part-lcd-pin1-label {
   fill: var(--color-psu-badge);
   font-family: var(--font-mono);
   font-size: 0.55px;
@@ -1642,14 +1653,15 @@
   pointer-events: none;
 }
 
-/* Power faults dim the screen (mirrors the chip fault feedback). */
-.part-lcd--unpowered .part-lcd-panel,
-.part-lcd--underpowered .part-lcd-panel {
+/* Power faults dim the screen (mirrors the chip fault feedback). The status
+   classes come from DiscreteView.setStatus, like every other seated part's. */
+.part-discrete--unpowered .part-lcd-panel,
+.part-discrete--underpowered .part-lcd-panel {
   opacity: 0.4;
 }
 
-.part-lcd--reversed .part-lcd-panel,
-.part-lcd--damaged .part-lcd-panel {
+.part-discrete--reversed .part-lcd-panel,
+.part-discrete--damaged .part-lcd-panel {
   fill: var(--color-part-smoke);
 }
 

@@ -219,7 +219,7 @@ export class SimOverlay {
    */
   #updateLcds() {
     for (const comp of this.#doc.components) {
-      if (comp.kind !== "lcd") continue;
+      if (!partDef(comp.ref)?.characterDisplay) continue;
       const view = this.#partViews.get(comp.id);
       if (!view?.renderFramebuffer) continue;
       view.renderFramebuffer(

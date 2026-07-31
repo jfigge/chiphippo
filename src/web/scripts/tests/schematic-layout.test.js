@@ -318,3 +318,34 @@ test("discretes and bricks become nodes and route to their chips", () => {
   assert.ok(led.x > chip.x, "the LED sinks to the right of the chip");
   assert.ok(clk.x <= chip.x, "the clock source feeds from the left");
 });
+
+// A character-LCD module used to render here as an UNCONNECTED box: it was a
+// desk brick with `pins` but no `terminals`, so a port resolved through neither
+// the terminal path nor the hole path and every net came back null. Seating it
+// gives it holes, and the ordinary pinNet lookup finds them.
+test("a seated LCD module's ports resolve to real nets", () => {
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0); // bb1
+  doc.addComponent({ kind: "chip", ref: "74LS00", board: "bb1", anchor: "e5" }); // c1
+  doc.addComponent({
+    kind: "discrete",
+    ref: "lcd16x2",
+    board: "bb1",
+    anchor: "j20",
+  }); // c2
+  doc.addWire({ from: "bb1.a7", to: "bb1.i23" }); // chip 1Y → LCD pin 4 (RS)
+
+  const json = doc.toJSON();
+  const out = layout(json, buildNetlist(json));
+  const lcd = out.nodes.find((n) => n.ref === "lcd16x2");
+  const chip = out.nodes.find((n) => n.ref === "74LS00");
+  assert.ok(lcd, "the module is a symbol");
+  // Its 16 pins all resolve — and pin 4 (RS) is on the SAME net as the gate
+  // output feeding it, which is the connection that used to be invisible here.
+  assert.equal(Object.keys(lcd.portNets).length, 16);
+  assert.deepEqual(lcd.portNets["pin:4"], chip.portNets["pin:3"]);
+  assert.ok(
+    out.edges.some((e) => !e.bus && e.segments.length),
+    "and the connection routes",
+  );
+});

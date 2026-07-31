@@ -549,8 +549,11 @@
     "osc-half": {
       "title": "Oscillatore (mezzo contenitore)"
     },
-    "lcd": {
-      "title": "LCD alfanumerico (HD44780)"
+    "lcd16x2": {
+      "title": "LCD alfanumerico 16×2 (HD44780)"
+    },
+    "lcd20x4": {
+      "title": "LCD alfanumerico 20×4 (HD44780)"
     }
   },
   "colors": {
@@ -738,8 +741,7 @@
     },
     "brick": {
       "psu": "alimentatore",
-      "clock": "clock",
-      "display": "display"
+      "clock": "clock"
     },
     "boardPropertiesTitle": "Proprietà di {board}",
     "partPropertiesTitle": "Proprietà di {part}",
@@ -1011,6 +1013,7 @@
     "openExample": "Apri il circuito di esempio",
     "openExampleTitle": "Apri il circuito di esempio di questo componente come nuova scrivania",
     "datasheetCaption": "Scheda tecnica — schema interno e tabella delle funzioni",
+    "datasheetCaptionModule": "Scheda tecnica — schema di collegamento del modulo",
     "subPackage": "{package} · piedinatura",
     "subLinear": "{count} fori su una riga della griglia · piedinatura",
     "subCan": "{holes} fori, piedini ai 4 angoli · piedinatura",

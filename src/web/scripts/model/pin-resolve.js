@@ -248,11 +248,13 @@ function oneOf(matches, ref, token) {
 /**
  * Brick terminals (`psu1.+`, `clk1.out`) — a small, exact namespace.
  *
- * The LCD is the one part that declares BOTH: 16 pins for the pinout window
- * and the simulator, and 16 terminals whose ids are exactly those pin names.
- * A brick is addressed by terminal, so that is what resolves — but a datasheet
- * pin NUMBER should still get you there, which is what the numeric branch is
- * for (`lcd1.4` → `RS`).
+ * The numeric branch is the generic escape hatch for a part declaring BOTH
+ * pins and terminals: a brick is addressed by TERMINAL, but a datasheet pin
+ * NUMBER should still get you there. No shipped def is that shape today (the
+ * HD44780 LCD was, until it became two board-seated modules whose pins are
+ * holes), so the branch is unexercised by the catalog — kept because the cost
+ * is three lines and the alternative is a confusing failure for the next brick
+ * that grows a datasheet pin table.
  */
 function resolveTerminal(def, ref, token) {
   const exact = def.terminals.find((t) => t.id === token);

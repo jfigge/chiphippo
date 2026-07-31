@@ -504,7 +504,6 @@ export class Bench {
       nextComponentId: this.#compSeq + 1,
       nextPsuId: 2,
       nextClockId: 2,
-      nextLcdId: 1,
       nextWireId: this.#wireSeq + 1,
       nextBusId: 1,
       nextAnnotationId: this.#annSeq + 1,

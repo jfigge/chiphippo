@@ -325,50 +325,63 @@ test("v4 → v5: a pure version bump (schematic hints need no doc-level state)",
   assert.deepEqual(doc.boards, v4.boards);
 });
 
-test("v5 → v6: the LCD brick id counter is added (additive)", () => {
-  const v5 = {
-    version: 5,
-    boards: [],
+// The LCD brick counter was added at v6 and retired at v10, when the HD44780
+// stopped being a desk brick and became two board-seated modules. Both steps
+// are history now, so what the chain has to get right is that a v5 document
+// arrives with the field GONE — whether or not it was carrying one.
+for (const [what, nextLcdId] of [
+  ["never had one", undefined],
+  ["was carrying one", 4],
+]) {
+  test(`v5 → current: the LCD brick counter is retired (doc ${what})`, () => {
+    const doc = migrateDeskDocument({
+      version: 5,
+      boards: [],
+      components: [],
+      wires: [],
+      buses: [],
+      netNames: [],
+      annotations: [],
+      nextBoardId: 1,
+      nextGroupId: 1,
+      nextComponentId: 1,
+      nextPsuId: 1,
+      nextClockId: 1,
+      ...(nextLcdId === undefined ? {} : { nextLcdId }),
+      nextWireId: 1,
+      nextBusId: 1,
+      nextAnnotationId: 1,
+    });
+    assert.equal(doc.version, DESK_DOC_VERSION);
+    assert.ok(!("nextLcdId" in doc));
+  });
+}
+
+test("v9 → v10: drops nextLcdId and touches nothing else", () => {
+  const v9 = {
+    version: 9,
+    boards: [{ id: "bb1", type: "pins-full", x: 0, y: 0 }],
     components: [],
     wires: [],
     buses: [],
     netNames: [],
     annotations: [],
-    nextBoardId: 1,
+    nextBoardId: 2,
     nextGroupId: 1,
     nextComponentId: 1,
     nextPsuId: 1,
     nextClockId: 1,
+    nextLcdId: 7,
     nextWireId: 1,
     nextBusId: 1,
     nextAnnotationId: 1,
   };
-  const doc = migrateDeskDocument(v5);
+  const doc = migrateDeskDocument(v9);
   assert.equal(doc.version, DESK_DOC_VERSION);
-  assert.equal(doc.nextLcdId, 1);
-});
-
-test("v5 → v6: preserves an already-present LCD counter", () => {
-  const doc = migrateDeskDocument({
-    version: 5,
-    boards: [],
-    components: [],
-    wires: [],
-    buses: [],
-    netNames: [],
-    annotations: [],
-    nextBoardId: 1,
-    nextGroupId: 1,
-    nextComponentId: 1,
-    nextPsuId: 1,
-    nextClockId: 1,
-    nextLcdId: 4,
-    nextWireId: 1,
-    nextBusId: 1,
-    nextAnnotationId: 1,
-  });
-  assert.equal(doc.version, DESK_DOC_VERSION);
-  assert.equal(doc.nextLcdId, 4);
+  assert.ok(!("nextLcdId" in doc));
+  const { version: _v, nextLcdId: _n, ...restBefore } = v9;
+  const { version: _v2, ...restAfter } = doc;
+  assert.deepEqual(restAfter, restBefore);
 });
 
 test("v6 → v7: a pure version bump — Name/Description need no defaulting", () => {

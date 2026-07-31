@@ -243,6 +243,40 @@ test("discretes and bricks carry no datasheet figure", () => {
   }
 });
 
+test("a discrete that NAMES a sheet shows it — both LCDs share HD44780", () => {
+  resetDom();
+  // The crop is not keyed by id here: one file, named twice. A discrete showing
+  // a datasheet at all is the point — the figure used to be the DIP layout's.
+  for (const id of ["lcd16x2", "lcd20x4"]) {
+    const el = buildPartPinout(partDef(id));
+    const img = el.querySelector(".chip-pinout-datasheet img");
+    assert.ok(img, `${id} carries a datasheet figure`);
+    assert.equal(img.getAttribute("src"), "datasheets/HD44780.png");
+  }
+});
+
+test("the figure's caption says what THAT figure is — crop vs module drawing", () => {
+  resetDom();
+  // A chip's crop really does carry a function table; the LCD's drawing has no
+  // table in it at all, which is the whole reason the wording splits.
+  const capOf = (id) =>
+    buildPartPinout(partDef(id)).querySelector(".chip-pinout-datasheet-cap")
+      ?.textContent;
+  assert.equal(
+    capOf("74LS595"),
+    "Datasheet — internal diagram & function table",
+  );
+  assert.equal(capOf("lcd16x2"), "Datasheet — module connection diagram");
+  // The alt is the same sentence rather than a second, English-only one.
+  const img = buildPartPinout(partDef("lcd16x2")).querySelector(
+    ".chip-pinout-datasheet img",
+  );
+  assert.equal(
+    img.getAttribute("alt"),
+    "lcd16x2 — Datasheet — module connection diagram",
+  );
+});
+
 test("a discrete (LED) renders a linear pin list with roles + offsets", () => {
   resetDom();
   const el = buildPartPinout(partDef("led"));

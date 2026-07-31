@@ -188,6 +188,34 @@ live in the user's datasheet folder — override with `DATASHEETS_DIR`); only th
 datasheet (74164, 74193, 7427, 7476) have no crop — the window shows only their
 pin map (see the Pin-assignments window architecture note).
 
+**A CROP IS NAMED BY THE CATALOG, NOT BY THE ID** — `catalog/index.js`'s
+**`datasheetCrop(def)`**, the one place that rule lives. A DIP-packaged part's
+sheet IS its id (every chip has a datasheet, and that is the name the file is
+committed under), but anything ELSE has to NAME its sheet with a **`datasheet`**
+field, and both halves are deliberate. Most discretes are parts no datasheet
+describes, so keying them by id would ask every LED and switch pinout for a file
+that can never exist; and where a document DOES exist it need not be per-id —
+both character-LCD modules show the ONE controller sheet (`HD44780.png`), since
+what a user asks a sheet about (RS/RW/E, the bus, the address maps) is the
+controller's and is identical across the two sizes. So it is one file named
+twice, the same call `app/datasheets/sources.js` makes for the PDF. The figure
+therefore moved into the shared `pinoutShell`: every layout gets one on the same
+terms rather than the DIP layout alone, which is what lets a MODULE show a
+datasheet without being a chip. It stays self-removing on load error, because a
+crop is a committed file and not a catalog field — a def can name one that isn't
+there (the four chips above). Main sizes the window against the same file and
+has no catalog, so the renderer hands it the name (`sheet` in `pinout:open`'s
+opts, validated exactly like a ref), as it already hands over `rows`.
+**THE CAPTION SPLITS WITH THE FIGURE**, since the two are not the same kind of
+picture: a chip's is a REGION of a datasheet page (`pinout.datasheetCaption` —
+"internal diagram & function table"), a module's is a whole connection drawing
+with no table in it at all (`pinout.datasheetCaptionModule`). It is keyed on
+`def.package`, deliberately NOT on which of the two named the file — naming a
+sheet is not what makes a figure a module drawing, and a chip may well come to
+name one (the '138 and the '139 already share a PDF in the download table). The
+`alt` is that same sentence after the id rather than a second, hand-written
+English one: a template literal is exactly what the i18n scanner cannot see.
+
 ## User guide & docs
 
 **One Markdown source drives three outputs that can never diverge**:
@@ -1402,7 +1430,7 @@ Electron main process (src/app/main.js)
   arms placement directly with the "Default LED color" setting instead of a
   placement-time swatch popover, per `app.js`'s `onPickChip`), `"select"` (a
   `<select>` over `options: [{value, label}]` — the PSU's volts, the clock/
-  oscillator's Hz, the LCD's size; a `<select>`'s value is always a STRING,
+  oscillator's Hz; a `<select>`'s value is always a STRING,
   so `buildSelect`'s change handler looks the typed option value back up by
   its stringified match rather than handing the raw string on to
   `normalizeParams`, which compares by `===`), **`"segmented"`** (the SAME
@@ -1721,12 +1749,16 @@ Electron main process (src/app/main.js)
   right-click menu toggles that for every open pinout and persists it as
   `settings.pinoutFloat` (a de-facto global, ready for a future settings
   dialog). Pure DOM, no modal chrome — the native window frame owns the title
-  bar + close. Below the pin map, a **chip** pinout also shows the manufacturer
-  **datasheet crop** — the connection-diagram / function-table region cut from
-  the source PDF (`web/datasheets/<id>.png`, built by `make datasheets`, see
-  below). The `<img>` loads lazily and its `<figure>` REMOVES ITSELF on load
-  error, so the four chips with no datasheet (and every discrete/brick) simply
-  show the pin map; main widens the window when a crop exists for the ref.
+  bar + close. Every one of them is at least **`PINOUT_MIN_WIDTH`** (500 px)
+  wide, and the plain default sits ON that floor: a pin line is `badge · name ·
+  role` against a right-aligned detail, so a window narrow enough to wrap it
+  reads as two unrelated columns rather than one row. Below the pin map, a part
+  with a committed **datasheet crop** also shows it — for a chip, the
+  connection-diagram / function-table region cut from the source PDF
+  (`web/datasheets/<id>.png`, built by `make datasheets`, see below). The `<img>`
+  loads lazily and its `<figure>` REMOVES ITSELF on load error, so the four chips
+  with no datasheet (and every part that names no sheet) simply show the pin map;
+  main widens the window (640) when the crop exists.
   Separately, the user can point **Settings ▸ Data Sheets** at an external
   folder of manufacturer datasheet PDFs (`settings.datasheetDir`, default null,
   chosen via the native `settings:choose-datasheet-dir` picker). When that
@@ -1915,11 +1947,14 @@ Electron main process (src/app/main.js)
   is the same strict `rectsOverlap`, so flush strips still MATE (the whole
   dovetail rule depends on them touching edge-to-edge). A **brick** is
   deliberately NOT held to this, even though `canPlaceBrick` refuses one over a
-  board: the shipped `65xx-lcd` demo has its LCD module squarely on top of a
-  breadboard, so either the demo builder reaches past that rule or the rule is
-  stricter than the bench is — and until that is settled, a loader that dropped
-  the brick would delete a working demo's display. Overlap is a nuisance for a
-  brick and a deadlock for a board, which is the asymmetry the check follows.
+  board — because the two overlaps are not the same problem. An overlapping
+  brick is only a nuisance: it cannot be dragged over a board, but it can
+  always be dragged off one, so dropping it on load would be a silent deletion
+  to fix an inconvenience. Overlap is a nuisance for a brick and a deadlock for
+  a board, which is the asymmetry the check follows. (The `65xx-lcd` demo used
+  to be the live example, its LCD module sitting squarely on a breadboard; the
+  module is a SEATED part now, so no shipped document relies on this leniency
+  any more.)
   **ONE HOLE, ONE LEAD is the same rule one level down**, and it is the half the
   seating check could not see: that one proves each pin's hole EXISTS, so two
   parts seated in the SAME columns loaded clean. `buildOccupancy` is

@@ -55,7 +55,7 @@ const WORLD_UNITS = new Map([
   [".part-psu-terminal-glyph", "printed on the brick, SVG user units"],
   [".part-clock-badge", "printed on the brick, SVG user units"],
   [".part-clock-terminal-glyph", "printed on the brick, SVG user units"],
-  [".part-lcd-terminal-label", "printed on the module, SVG user units"],
+  [".part-lcd-pin1-label", "printed on the module, SVG user units"],
   [".part-lcd-size", "printed on the module, SVG user units"],
   [".bus-band-label", "drawn on the ribbon, world px"],
   [".annotation-text", "document content inside the zoom-scaled world layer"],

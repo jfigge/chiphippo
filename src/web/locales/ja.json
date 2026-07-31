@@ -549,8 +549,11 @@
     "osc-half": {
       "title": "発振器（ハーフサイズパッケージ）"
     },
-    "lcd": {
-      "title": "キャラクタ LCD（HD44780）"
+    "lcd16x2": {
+      "title": "キャラクタ LCD 16×2（HD44780）"
+    },
+    "lcd20x4": {
+      "title": "キャラクタ LCD 20×4（HD44780）"
     }
   },
   "colors": {
@@ -733,8 +736,7 @@
     },
     "brick": {
       "psu": "電源",
-      "clock": "クロック",
-      "display": "表示器"
+      "clock": "クロック"
     },
     "boardPropertiesTitle": "{board} の情報",
     "partPropertiesTitle": "{part} の情報",
@@ -999,6 +1001,7 @@
     "openExample": "例の回路を開く",
     "openExampleTitle": "この部品の例の回路を新しいデスクトップとして開く",
     "datasheetCaption": "データシート — 内部図と機能表",
+    "datasheetCaptionModule": "データシート — モジュールの接続図",
     "subPackage": "{package} · ピン配置",
     "subLinear": "グリッド 1 行に穴 {count} 個 · ピン配置",
     "subCan": "穴 {holes} 個、四隅に脚 · ピン配置",

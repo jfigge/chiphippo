@@ -749,6 +749,10 @@ function cancelDatasheetDownload() {
 const pinoutWindows = new Map(); // part ref → BrowserWindow
 // Catalog ids: chips ("74LS00"), discretes ("sw-slide", "led"), bricks ("psu").
 const PINOUT_REF_RE = /^[a-z0-9][a-z0-9-]{1,11}$/i;
+// The narrowest a pin-assignments window may be dragged — every one of them,
+// whatever it lists. Below this the pin rows stop reading as rows (see the
+// window's own sizing below).
+const PINOUT_MIN_WIDTH = 500;
 
 /** The persisted float-above preference (defaults true). */
 function pinoutFloatPref() {
@@ -795,16 +799,30 @@ function openPinoutWindow(ref, opts = {}) {
   // `rows` is the renderer's layout row count (DIP wraps to pins/2; discretes
   // and bricks list every pin/terminal). Clamp defensively.
   const rows = Math.min(12, Math.max(2, Number(opts.rows) || 8));
-  // Parts with a committed datasheet crop (make datasheets → web/datasheets/
-  // <ref>.png) get a wider, taller default window so the diagram + truth table
-  // are legible without an immediate resize; it stays freely resizable.
+  // Parts with a committed datasheet crop (web/datasheets/<sheet>.png) get a
+  // wider, taller default window so the diagram + truth table are legible
+  // without an immediate resize; it stays freely resizable.
+  //
+  // The crop is named by the CATALOG, which is the renderer's (`sheet`) — the
+  // ref for nearly every part, but not always: both character-LCD modules show
+  // the ONE controller sheet, HD44780. Validated exactly like a ref, since it
+  // becomes a path here; anything else falls back to the ref, which is what
+  // every caller predating this sent.
+  const sheet =
+    typeof opts.sheet === "string" && PINOUT_REF_RE.test(opts.sheet)
+      ? opts.sheet
+      : ref;
   const hasDatasheet = fs.existsSync(
-    path.join(__dirname, "..", "web", "datasheets", `${ref}.png`),
+    path.join(__dirname, "..", "web", "datasheets", `${sheet}.png`),
   );
+  // PINOUT_MIN_WIDTH is the floor for every pinout window, crop or no crop, and
+  // the plain default sits ON it: a pin line is `badge · name · role` against a
+  // right-aligned detail, so a window narrow enough to wrap that reads as two
+  // unrelated columns rather than one row.
   const win = new BrowserWindow({
-    width: hasDatasheet ? 640 : 400,
+    width: hasDatasheet ? 640 : PINOUT_MIN_WIDTH,
     height: 150 + rows * 30 + (hasDatasheet ? 430 : 0),
-    minWidth: 300,
+    minWidth: PINOUT_MIN_WIDTH,
     minHeight: 220,
     alwaysOnTop: pinoutFloatPref(),
     backgroundColor: windowBackground(),

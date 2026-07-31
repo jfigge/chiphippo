@@ -181,24 +181,32 @@ test("a near-miss is never silently repaired", () => {
 
 // ── The whole catalog stays addressable ─────────────────────────────────────
 
-test("the LCD is addressed by terminal, by name or by datasheet pin number", () => {
-  // The one def declaring both pins and terminals. It is a desk brick, so a
-  // terminal is the addressable thing; the pin list exists for the pinout
-  // window and the simulator.
-  assert.deepEqual(resolvePin("lcd", "RS"), {
-    ok: true,
-    kind: "terminal",
-    terminal: "RS",
-  });
-  assert.equal(resolvePin("lcd", "4").terminal, "RS", "pin 4 is RS");
-  assert.equal(resolvePin("lcd", "#4").terminal, "RS");
-  assert.equal(resolvePin("lcd", "DB7").terminal, "DB7");
-  assert.equal(err("lcd", "NOPE").code, "UNKNOWN_TERMINAL");
+test("the LCD is addressed by pin name, number, or power role", () => {
+  // A board-seated module: its pins are holes, so every rung of the ordinary
+  // pin resolver applies — which is one more than the brick's terminal path
+  // offered, since VCC/GND now resolve by ROLE.
+  for (const ref of ["lcd16x2", "lcd20x4"]) {
+    assert.deepEqual(resolvePin(ref, "RS"), { ok: true, kind: "pin", pin: 4 });
+    assert.equal(resolvePin(ref, "4").pin, 4, "pin 4 is RS");
+    assert.equal(resolvePin(ref, "#4").pin, 4);
+    assert.equal(resolvePin(ref, "DB7").pin, 14);
+    assert.equal(
+      resolvePin(ref, "A").pin,
+      15,
+      "exact case beats the role rung",
+    );
+    assert.equal(resolvePin(ref, "K").pin, 16);
+    // The two the terminal path could never reach: VDD/VSS are named for the
+    // datasheet, but they ARE the power pins.
+    assert.equal(resolvePin(ref, "VCC").pin, 2);
+    assert.equal(resolvePin(ref, "GND").pin, 1);
+    assert.equal(err(ref, "NOPE").code, "UNKNOWN_PIN");
+  }
 });
 
 test("every pin of every catalog part resolves by its own name and number", () => {
   for (const def of PALETTE_DEFS) {
-    // A def with terminals is addressed through them (see the LCD test above).
+    // A def with terminals is addressed through them (the PSU / clock bricks).
     if (def.terminals?.length) continue;
     for (const p of def.pins ?? []) {
       // A bare number is the pin number wherever nothing competes for it.

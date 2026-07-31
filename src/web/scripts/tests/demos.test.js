@@ -137,7 +137,10 @@ test("demo 65xx-blink: the CPU program toggles the VIA port and lights the LED",
 test("demo 65xx-lcd: the CPU program initialises the HD44780 and prints HI", () => {
   const { doc, images } = loadDemo("65xx-lcd");
   const { state } = run(doc, images, 300);
-  const lcd = state.get("lcd1");
+  // By REF, not by a hard-coded id: the module is an ordinary seated part now,
+  // so its id moves with the demo's component numbering.
+  const id = doc.components.find((c) => c.ref === "lcd16x2")?.id;
+  const lcd = id && state.get(id);
   assert.ok(lcd, "the LCD controller ran");
   assert.equal(lcd.displayOn, true, "display turned on");
   assert.equal(

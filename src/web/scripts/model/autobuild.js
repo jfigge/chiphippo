@@ -900,8 +900,7 @@ function assemble(resolved, title, notes) {
   const brickAt = new Map();
   let brickRow = 12;
   for (const b of bricks) {
-    const kindSeq =
-      { clock: "clk", lcd: "lcd", psu: "psu" }[b.def.kind] ?? "brk";
+    const kindSeq = { clock: "clk", psu: "psu" }[b.def.kind] ?? "brk";
     const id = `${kindSeq}${brickAt.size + 1}`;
     components.push({
       id,
@@ -941,7 +940,16 @@ function assemble(resolved, title, notes) {
           ),
         };
       }
-      const row = p.def.package ? "e" : "a";
+      // A DIP straddles the trench; everything else lies along one row. A
+      // character-LCD module is the one part whose row is not a free choice:
+      // its body reaches off the header edge, so a body-UP module (the 16×2,
+      // header along its bottom edge) has to go on the TOP row or it buries
+      // the board it is plugged into, and its own wiring holes with it.
+      const row = p.def.package
+        ? "e"
+        : p.def.characterDisplay?.headerEdge === "bottom"
+          ? "j"
+          : "a";
       // A pull pack goes UNDER the switch bank it pulls, in the very columns
       // that bank owns — because its pins are already that bank's nets, so the
       // board does the connecting. Eight wires and nine columns become none.

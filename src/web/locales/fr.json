@@ -549,8 +549,11 @@
     "osc-half": {
       "title": "Oscillateur (demi-boîtier)"
     },
-    "lcd": {
-      "title": "Afficheur LCD alphanumérique (HD44780)"
+    "lcd16x2": {
+      "title": "Afficheur LCD alphanumérique 16×2 (HD44780)"
+    },
+    "lcd20x4": {
+      "title": "Afficheur LCD alphanumérique 20×4 (HD44780)"
     }
   },
   "colors": {
@@ -738,8 +741,7 @@
     },
     "brick": {
       "psu": "alimentation",
-      "clock": "horloge",
-      "display": "afficheur"
+      "clock": "horloge"
     },
     "boardPropertiesTitle": "Propriétés de {board}",
     "partPropertiesTitle": "Propriétés de {part}",
@@ -1011,6 +1013,7 @@
     "openExample": "Ouvrir le circuit d'exemple",
     "openExampleTitle": "Ouvrir le circuit d'exemple de ce composant dans un nouveau bureau",
     "datasheetCaption": "Fiche technique — schéma interne et table de fonctions",
+    "datasheetCaptionModule": "Fiche technique — schéma de raccordement du module",
     "subPackage": "{package} · brochage",
     "subLinear": "{count} trous sur une ligne de la grille · brochage",
     "subCan": "{holes} trous, pattes aux 4 coins · brochage",

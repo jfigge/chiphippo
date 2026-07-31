@@ -519,8 +519,11 @@ export class SimController {
   #displayState(doc, state) {
     const displays = new Map();
     for (const c of doc.components) {
-      if (c.kind !== "lcd") continue;
-      displays.set(c.id, framebufferOf(state.get(c.id), c.params));
+      // The def's data hook, never a kind or ref test — a character display is
+      // an ordinary seated discrete that happens to have a screen.
+      const grid = partDef(c.ref)?.characterDisplay;
+      if (!grid) continue;
+      displays.set(c.id, framebufferOf(state.get(c.id), grid));
     }
     return displays;
   }

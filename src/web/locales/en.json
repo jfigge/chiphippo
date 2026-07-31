@@ -549,8 +549,11 @@
     "osc-half": {
       "title": "Oscillator (half can)"
     },
-    "lcd": {
-      "title": "Character LCD (HD44780)"
+    "lcd16x2": {
+      "title": "Character LCD 16×2 (HD44780)"
+    },
+    "lcd20x4": {
+      "title": "Character LCD 20×4 (HD44780)"
     }
   },
   "colors": {
@@ -738,8 +741,7 @@
     },
     "brick": {
       "psu": "power supply",
-      "clock": "clock",
-      "display": "display"
+      "clock": "clock"
     },
     "boardPropertiesTitle": "{board} Properties",
     "partPropertiesTitle": "{part} Properties",
@@ -1011,6 +1013,7 @@
     "openExample": "Open the example circuit",
     "openExampleTitle": "Open this part's example circuit as a new desktop",
     "datasheetCaption": "Datasheet — internal diagram & function table",
+    "datasheetCaptionModule": "Datasheet — module connection diagram",
     "subPackage": "{package} · pin assignments",
     "subLinear": "{count} holes along one grid row · pin assignments",
     "subCan": "{holes} holes, legs at the 4 corners · pin assignments",

@@ -115,6 +115,39 @@ test("BOM counts every part by catalog identity", () => {
   });
 });
 
+// As a desk brick the LCD had NEITHER: no placement step at all, and one
+// un-split BOM line. Seating it puts it through the ordinary discrete path, so
+// both come for free — which is worth pinning, because "for free" is exactly
+// what a later refactor removes without noticing.
+test("an LCD module gets a discrete build step and a colour-split BOM line", () => {
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0); // bb1
+  doc.addComponent({
+    kind: "discrete",
+    ref: "lcd16x2",
+    board: "bb1",
+    anchor: "j1",
+    params: { color: "blue" },
+  });
+  doc.addComponent({
+    kind: "discrete",
+    ref: "lcd20x4",
+    board: "bb1",
+    anchor: "a1",
+    params: { color: "green" },
+  });
+  const json = doc.toJSON();
+  const { bom, steps } = buildPlan(json, buildNetlist(json));
+
+  assert.equal(findLine(bom.discretes, "lcd16x2:blue").count, 1);
+  assert.match(findLine(bom.discretes, "lcd16x2:blue").title, /16×2.*\(blue\)/);
+  assert.equal(findLine(bom.discretes, "lcd20x4:green").count, 1);
+
+  const seated = steps.filter((s) => s.group === "discretes");
+  assert.equal(seated.length, 2, "one placement step per module");
+  assert.match(seated[0].text, /bb1\.j1/);
+});
+
 test("the wires are a NUMBERED cutting list: one line per colour AND length", () => {
   const { bom } = plan();
 

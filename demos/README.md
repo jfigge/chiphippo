@@ -114,6 +114,10 @@ a byte; **`RS = A0`** (0 = instruction, 1 = data) and **`RW = RWB`**.
 
 - **Memory map:** ROM at `$8000–$FFFF`, LCD at `$0000–$7FFF` (any low-memory write
   clocks the LCD).
+- **Boards:** four, and the LCD's own is the top one. The module's 16-way header
+  is along its BOTTOM edge, so its body stands UP off the row it plugs into —
+  seated on row `j` of a board with clear desk above it, it hangs off the bench
+  as a real one would instead of covering the board below.
 - **Program:** the HD44780 init sequence (function set, display on, clear, entry
   mode) then two data writes — the screen shows **`HI`**.
 

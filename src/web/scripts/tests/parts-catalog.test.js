@@ -18,6 +18,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
 
 import {
   LED_COLOR_OPTIONS,
@@ -25,10 +26,13 @@ import {
   PSU_VOLTS,
   CLOCK_HZ,
   OSCILLATOR_HZ,
-  LCD_SIZES,
-  lcdGeometry,
 } from "../catalog/parts.js";
-import { partDef, chipDef, PALETTE_DEFS } from "../catalog/index.js";
+import {
+  partDef,
+  chipDef,
+  datasheetCrop,
+  PALETTE_DEFS,
+} from "../catalog/index.js";
 import { packageSpec } from "../model/footprints.js";
 import { isOscillator, hasBehavior } from "../sim/chip-eval.js";
 
@@ -37,7 +41,8 @@ test("the part catalog carries the Feature 60 inventory", () => {
     "bar8",
     "bar8iso",
     "clock",
-    "lcd",
+    "lcd16x2",
+    "lcd20x4",
     "led",
     "osc-full",
     "osc-half",
@@ -58,9 +63,9 @@ test("the part catalog carries the Feature 60 inventory", () => {
   assert.ok(partDef("sw-slide"));
   assert.ok(partDef("74LS00"));
   assert.ok(partDef("clock"));
-  assert.ok(partDef("lcd"));
+  assert.ok(partDef("lcd16x2"));
   assert.equal(chipDef("sw-slide"), null);
-  assert.equal(PALETTE_DEFS.length, 80); // 61 chips (24 + 28 LS + 6 memory + 3 io) + 19 parts
+  assert.equal(PALETTE_DEFS.length, 81); // 61 chips (24 + 28 LS + 6 memory + 3 io) + 20 parts
 });
 
 for (const def of PART_DEFS.filter((d) => d.kind === "discrete")) {
@@ -577,54 +582,37 @@ test("clock: hz enum (+manual), isAuto contract, Properties field", () => {
   ]);
 });
 
-test("lcd: 16-pin brick, size coercion, pins↔terminals in sync", () => {
-  const def = partDef("lcd");
-  assert.equal(def.kind, "lcd");
-  assert.ok(!def.package && !def.footprint); // a brick, not a board part
-  // Size coerces to the enum (default 16×2); geometry maps each size.
-  assert.deepEqual(LCD_SIZES, ["16x2", "20x4"]);
-  assert.deepEqual(def.normalizeParams({}), { size: "16x2" });
-  assert.deepEqual(def.normalizeParams({ size: "20x4" }), { size: "20x4" });
-  assert.deepEqual(def.normalizeParams({ size: "99x9" }), { size: "16x2" });
-  // Magic-smoke persists like a chip.
-  assert.deepEqual(def.normalizeParams({ size: "20x4", damaged: true }), {
-    size: "20x4",
-    damaged: true,
-  });
-  assert.deepEqual(lcdGeometry("16x2"), { cols: 16, rows: 2 });
-  assert.deepEqual(lcdGeometry("20x4"), { cols: 20, rows: 4 });
-  // The Properties dialog (context menu → "Properties…") — a live setting.
-  assert.deepEqual(def.properties, [
-    {
-      key: "size",
-      label: "Size",
-      type: "select",
-      options: [
-        { value: "16x2", label: "16×2" },
-        { value: "20x4", label: "20×4" },
-      ],
-    },
-  ]);
-  // 16 pins and 16 terminals, one terminal per pin, integer offsets inside body.
-  assert.equal(def.pins.length, 16);
-  assert.equal(def.terminals.length, 16);
-  assert.deepEqual(
-    def.pins.map((p) => p.n),
-    Array.from({ length: 16 }, (_, i) => i + 1),
-  );
-  const pinNums = new Set(def.pins.map((p) => p.n));
-  const termPins = new Set();
-  for (const t of def.terminals) {
-    assert.ok(pinNums.has(t.pin), `terminal ${t.id} → pin ${t.pin}`);
-    termPins.add(t.pin);
-    assert.ok(Number.isInteger(t.dx) && Number.isInteger(t.dy), t.id);
-    assert.ok(t.dx > 0 && t.dx < def.size.width);
-    assert.ok(t.dy > 0 && t.dy < def.size.height);
+test("lcd: both sizes are seated 16-hole discretes sharing ONE pinout", () => {
+  const a = partDef("lcd16x2");
+  const b = partDef("lcd20x4");
+  for (const def of [a, b]) {
+    // A board part, not a brick — this is the whole point of the split.
+    assert.equal(def.kind, "discrete");
+    assert.ok(!def.size && !def.terminals, "no desk-brick geometry survives");
+    assert.ok(!def.package && !def.can, "seats along ONE grid row");
+    assert.deepEqual(
+      [...def.footprint.offsets],
+      Array.from({ length: 16 }, (_, i) => i),
+    );
+    assert.equal(def.pins.length, 16);
+    // The controller is stateful, so the engine must see behavior on it.
+    assert.ok(hasBehavior(def));
   }
-  assert.equal(termPins.size, 16, "every pin has exactly one terminal");
+
+  // ONE pinout table drives both: the pin assignment is the controller's, not
+  // the panel's, so a difference here would be a bug in the shared table.
+  const pinout = (def) => def.pins.map((p) => [p.n, p.name, p.role, p.detail]);
+  assert.deepEqual(pinout(a), pinout(b));
+
+  // …and ONE datasheet for the same reason, named rather than derived from the
+  // id: what a user asks a sheet about here (RS/RW/E, the bus, the address
+  // maps) is the controller's, and it is the same document for both sizes.
+  assert.equal(datasheetCrop(a), "HD44780");
+  assert.equal(datasheetCrop(b), "HD44780");
+
   // Power roles wire into the sim's power-gating; DB0–7 are the bidirectional
   // bus (io); RS/RW/E are control inputs; V0/A/K are inert.
-  const role = (name) => def.pins.find((p) => p.name === name)?.role;
+  const role = (name) => a.pins.find((p) => p.name === name)?.role;
   assert.equal(role("VDD"), "vcc");
   assert.equal(role("VSS"), "gnd");
   assert.equal(role("RS"), "input");
@@ -632,4 +620,100 @@ test("lcd: 16-pin brick, size coercion, pins↔terminals in sync", () => {
   assert.equal(role("DB0"), "io");
   assert.equal(role("DB7"), "io");
   assert.equal(role("V0"), "nc");
+
+  // The Properties dialog offers the shared LED colour set — no size field:
+  // the size IS the part now.
+  assert.deepEqual(a.properties, [
+    {
+      key: "color",
+      label: "Color",
+      type: "color",
+      options: LED_COLOR_OPTIONS,
+    },
+  ]);
+  assert.deepEqual(a.normalizeParams({}), { color: "green" });
+  assert.deepEqual(a.normalizeParams({ color: "puce" }), { color: "green" });
+  // Magic smoke persists like a chip — SimController#persistDamage round-trips
+  // the 12 V latch through normalizeParams, so dropping it revives the module.
+  assert.deepEqual(a.normalizeParams({ color: "blue", damaged: true }), {
+    color: "blue",
+    damaged: true,
+  });
+});
+
+test("a def that NAMES a datasheet crop has that file committed", () => {
+  // A named crop is the one kind that fails SILENTLY: a def keyed by its own id
+  // is checked by every other id assertion here, but a typo'd `datasheet` just
+  // renders a figure that removes itself, so the pinout window looks exactly as
+  // it did before the sheet was added. (Deliberately only the NAMED ones — a
+  // chip whose crop is missing is a known, accepted gap.)
+  const named = PALETTE_DEFS.filter((def) => def.datasheet);
+  assert.ok(named.length, "at least one def names a sheet (the LCD modules)");
+  for (const def of named) {
+    const png = new URL(
+      `../../datasheets/${datasheetCrop(def)}.png`,
+      import.meta.url,
+    );
+    assert.ok(existsSync(png), `${def.id}: ${def.datasheet}.png is committed`);
+  }
+});
+
+test("lcd: the characterDisplay drawing is self-consistent", () => {
+  // Every rect is stated the same way except `body`, which doubles as the
+  // part's discrete-view box and so uses that shape's minX/minY names.
+  const contains = (outer, inner) =>
+    inner.x >= outer.x - 1e-6 &&
+    inner.y >= outer.y - 1e-6 &&
+    inner.x + inner.width <= outer.x + outer.width + 1e-6 &&
+    inner.y + inner.height <= outer.y + outer.height + 1e-6;
+
+  // The PCB and the module, in MILLIMETRES — the form these were measured in,
+  // and the only form a ruler can check them against. Both real modules carry
+  // their header along the TOP edge, so both hang below the row they plug into.
+  for (const [id, cols, rows, edge, pcbMm, moduleMm] of [
+    ["lcd16x2", 16, 2, "top", [80, 36], [71, 24]],
+    ["lcd20x4", 20, 4, "top", [98, 60], [97, 40]],
+  ]) {
+    const cd = partDef(id).characterDisplay;
+    assert.equal(cd.cols, cols);
+    assert.equal(cd.rows, rows);
+    assert.equal(cd.headerEdge, edge);
+    const mm = (u) => Math.round(u * 2.54 * 10) / 10;
+    assert.deepEqual([mm(cd.body.width), mm(cd.body.height)], pcbMm, id);
+    assert.deepEqual([mm(cd.window.width), mm(cd.window.height)], moduleMm, id);
+    // body ⊃ window ⊃ screen — the glass is inside the frame is inside the PCB.
+    const body = { x: cd.body.minX, y: cd.body.minY, ...cd.body };
+    assert.ok(contains(body, cd.window), `${id}: window inside body`);
+    assert.ok(contains(cd.window, cd.screen), `${id}: screen inside window`);
+    // …and each is CENTRED in the one outside it, which is the whole
+    // positioning rule: equal margins on both axes, to the µm.
+    for (const [outer, inner, what] of [
+      [body, cd.window, "module in PCB"],
+      [cd.window, cd.screen, "screen in module"],
+    ]) {
+      assert.ok(
+        Math.abs(inner.x - outer.x - (outer.width - inner.width) / 2) < 1e-4 &&
+          Math.abs(inner.y - outer.y - (outer.height - inner.height) / 2) <
+            1e-4,
+        `${id}: ${what} is centred`,
+      );
+    }
+    // The active area is the character grid with the TRAILING inter-character
+    // gap trimmed, so it spans (n-1) full pitches plus one character: strictly
+    // between (n-1)·pitch and n·pitch. That is the invariant lcd-view.js sizes
+    // its backing buffer from, and it is what makes the cells land on pitch.
+    for (const [span, n, pitch, axis] of [
+      [cd.screen.width, cols, cd.charPitch.x, "width"],
+      [cd.screen.height, rows, cd.charPitch.y, "height"],
+    ]) {
+      assert.ok(span > (n - 1) * pitch, `${id} ${axis}: ${span}`);
+      assert.ok(span < n * pitch, `${id} ${axis}: ${span}`);
+    }
+    // Pin 1's hole (the local origin) sits just INSIDE the PCB on the declared
+    // header edge — which is why neither module draws leg stubs: its own board
+    // covers its pins, so there is no gap for a stub to bridge.
+    const overhang =
+      edge === "bottom" ? cd.body.minY + cd.body.height : -cd.body.minY;
+    assert.ok(overhang > 0 && overhang < 2.5, `${id}: overhang ${overhang}`);
+  }
 });

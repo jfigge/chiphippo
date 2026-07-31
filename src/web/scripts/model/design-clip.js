@@ -32,7 +32,7 @@
 //   · those boards (type, rotation, position, group, name/description),
 //   · EVERY component seated on them — the whole board comes, not just what a
 //     marquee happened to touch,
-//   · the desk bricks (PSU / clock / LCD) explicitly named in the selection,
+//   · the desk bricks (PSU / clock) explicitly named in the selection,
 //   · every wire whose BOTH endpoints land on a captured owner (a wire with one
 //     end outside would have to be cut, so it is simply not part of the design),
 //   · and the metadata riding those wires and parts — buses whose members are

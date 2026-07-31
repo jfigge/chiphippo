@@ -93,7 +93,7 @@ import {
 } from "./discrete-view.js";
 import { PsuView, buildPsuSvg } from "./psu-view.js";
 import { ClockView, buildClockSvg } from "./clock-view.js";
-import { LcdView, buildLcdSvg } from "./lcd-view.js";
+import { LcdView } from "./lcd-view.js";
 import { WireLayer } from "./wire-layer.js";
 import { PartPropertiesDialog } from "./part-properties-dialog.js";
 import { AnnotationLayer } from "./annotation-layer.js";
@@ -105,11 +105,9 @@ import { beginPointerGesture, releaseWorld } from "./pointer-gesture.js";
 import { BoardOutline } from "./board-outline.js";
 import { HoleRings } from "./hole-rings.js";
 
-/** The static SVG for a desk brick (PSU / clock / LCD) by kind. */
+/** The static SVG for a desk brick (PSU / clock) by kind. */
 function brickSvg(kind, params) {
-  if (kind === "psu") return buildPsuSvg(params);
-  if (kind === "clock") return buildClockSvg(params);
-  return buildLcdSvg(params);
+  return kind === "psu" ? buildPsuSvg(params) : buildClockSvg(params);
 }
 
 /** A non-volatile memory chip's backing-file size in bytes (address space ×
@@ -921,7 +919,7 @@ export class DeskController {
     }
     const normalized = def.normalizeParams ? def.normalizeParams(params) : {};
     const ghost = el("div", { class: "part-ghost", hidden: true });
-    if (def.kind === "psu" || def.kind === "clock" || def.kind === "lcd") {
+    if (def.kind === "psu" || def.kind === "clock") {
       ghost.append(brickSvg(def.kind, normalized));
       this.#enterPlacement({
         kind: "place-brick",
@@ -2569,10 +2567,10 @@ export class DeskController {
    */
   removeComponent(id) {
     const comp = this.#doc.getComponent(id);
-    // A desk-level brick (PSU / clock / LCD) takes its wired terminals with it,
+    // A desk-level brick (PSU / clock) takes its wired terminals with it,
     // so confirm first when any are attached.
     if (comp?.board == null) {
-      const noun = t(`desk.brick.${comp.kind === "psu" ? "psu" : comp.kind === "clock" ? "clock" : "display"}`); // prettier-ignore
+      const noun = t(`desk.brick.${comp.kind === "psu" ? "psu" : "clock"}`);
       const wires = this.#doc.wiresTouching(id).length;
       if (wires > 0) {
         PopupManager.confirm({
@@ -2644,8 +2642,8 @@ export class DeskController {
   }
 
   /** Every field the Properties dialog shows for one component: the catalog
-      def's static `properties` list (PSU volts, clock/oscillator rate, LCD
-      size, the LED's color — all live settings, so nothing here is filtered
+      def's static `properties` list (PSU volts, clock/oscillator rate, the
+      LED's and LCD's color — all live settings, so nothing here is filtered
       by #editingLocked) plus a memory chip's instance-conditional action
       fields (its own kind/ROM check, not catalog data — a chip's write
       affordance depends on whether the sim is running). */
@@ -2893,10 +2891,14 @@ export class DeskController {
       view = new PsuView(this.#layers.parts, component, callbacks);
     } else if (component.kind === "clock") {
       view = new ClockView(this.#layers.parts, component, callbacks);
-    } else if (component.kind === "lcd") {
-      view = new LcdView(this.#layers.parts, component, callbacks);
     } else if (component.kind === "discrete") {
-      view = new DiscreteView(this.#layers.parts, component, callbacks);
+      // A character-LCD module is an ordinary seated discrete that also owns a
+      // live canvas (its own controller's output) — picked off the def's data
+      // hook, never off the ref.
+      const Seat = partDef(component.ref)?.characterDisplay
+        ? LcdView
+        : DiscreteView;
+      view = new Seat(this.#layers.parts, component, callbacks);
       this.#placePartView(view, component, this.#doc.getBoard(component.board));
     } else {
       view = new ChipView(this.#layers.parts, component, callbacks);
@@ -3715,7 +3717,7 @@ export class DeskController {
 
   /** Every part's context menu is the SAME three items, always, in this
       order — no more per-kind branching: a picker (PSU volts, clock/
-      oscillator rate, LCD size, ROM programming, memory inspection…) is a
+      oscillator rate, LCD colour, ROM programming, memory inspection…) is a
       Properties-dialog field now, never a menu item of its own (see
       #propertyFieldsFor). Properties… is always enabled — every part has at
       least Name/Description. Items that don't currently apply otherwise stay

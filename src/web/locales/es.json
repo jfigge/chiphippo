@@ -549,8 +549,11 @@
     "osc-half": {
       "title": "Oscilador (medio encapsulado)"
     },
-    "lcd": {
-      "title": "LCD de caracteres (HD44780)"
+    "lcd16x2": {
+      "title": "LCD de caracteres 16×2 (HD44780)"
+    },
+    "lcd20x4": {
+      "title": "LCD de caracteres 20×4 (HD44780)"
     }
   },
   "colors": {
@@ -738,8 +741,7 @@
     },
     "brick": {
       "psu": "fuente de alimentación",
-      "clock": "reloj",
-      "display": "display"
+      "clock": "reloj"
     },
     "boardPropertiesTitle": "Propiedades de {board}",
     "partPropertiesTitle": "Propiedades de {part}",
@@ -1011,6 +1013,7 @@
     "openExample": "Abrir el circuito de ejemplo",
     "openExampleTitle": "Abrir el circuito de ejemplo de este componente como un escritorio nuevo",
     "datasheetCaption": "Hoja de datos — diagrama interno y tabla de funciones",
+    "datasheetCaptionModule": "Hoja de datos — diagrama de conexiones del módulo",
     "subPackage": "{package} · asignación de pines",
     "subLinear": "{count} orificios en una fila de la rejilla · asignación de pines",
     "subCan": "{holes} orificios, patas en las 4 esquinas · asignación de pines",

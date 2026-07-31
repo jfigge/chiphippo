@@ -583,7 +583,6 @@
         "nextComponentId": 20,
         "nextPsuId": 2,
         "nextClockId": 2,
-        "nextLcdId": 1,
         "nextWireId": 27,
         "nextBusId": 1,
         "nextAnnotationId": 15,

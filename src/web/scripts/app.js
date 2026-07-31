@@ -56,7 +56,7 @@ import { AboutDialog } from "./components/about-dialog.js";
 import { SettingsDialog } from "./components/settings-dialog.js";
 import { KeyboardShortcutsDialog } from "./components/keyboard-shortcuts.js";
 import { DeskDoc } from "./model/desk-doc.js";
-import { partDef } from "./catalog/index.js";
+import { datasheetCrop, partDef } from "./catalog/index.js";
 
 /** How long after the last camera change to persist the viewport. */
 const VIEWPORT_SAVE_DEBOUNCE_MS = 500;
@@ -938,9 +938,21 @@ async function init() {
     // buildCanPinout; `kind: "wire"` routes main to the query flag pinout.js
     // reads instead of resolving `ref` against the catalog — a wire has no
     // catalog def, so `ref` is just its own id, e.g. "w12").
+    //
+    // `sheet` is the basename of the part's committed datasheet crop, which
+    // main sizes the window against (a diagram wants a wide one). It is the ref
+    // for nearly every part and so main could once derive it — but not always:
+    // both character-LCD modules show the ONE controller sheet, HD44780. Main
+    // has no catalog, so the side that HAS one names the file, exactly as it
+    // names `rows`; main still validates it and turns it into the path.
     onOpenPinout: (ref, rows, rot, kind) =>
       bridge
-        .openPinout?.(ref, { rows, rot, kind })
+        .openPinout?.(ref, {
+          rows,
+          rot,
+          kind,
+          sheet: datasheetCrop(partDef(ref)),
+        })
         .catch((err) => console.error("[renderer] pinout:open failed:", err)),
     // A memory chip's "Inspect memory…" context-menu item → its hex inspector
     // window.

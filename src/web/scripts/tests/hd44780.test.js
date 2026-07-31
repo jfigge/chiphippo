@@ -72,7 +72,7 @@ test("writes land in DDRAM, advance the address counter, and render", () => {
   assert.equal(s.ac, 2);
   assert.equal(s.displayOn, true);
 
-  const fb = framebufferOf(s, { size: "16x2" });
+  const fb = framebufferOf(s, { cols: 16, rows: 2 });
   assert.equal(fb.cols, 16);
   assert.equal(fb.rows, 2);
   assert.equal(fb.chars[0], 0x48);
@@ -104,7 +104,7 @@ test("Set DDRAM address selects the second line (0x40)", () => {
   assert.equal(s.ac, 0x40);
   s = writeChar(u, s, 0x58); // 'X'
   assert.equal(s.ddram[0x40], 0x58);
-  const fb = framebufferOf(s, { size: "16x2" });
+  const fb = framebufferOf(s, { cols: 16, rows: 2 });
   assert.equal(fb.chars[16], 0x58); // row 1, col 0
 });
 
@@ -125,12 +125,12 @@ test("display shift moves the text the way the datasheet R/L bit says", () => {
   let s = initDisplay(u);
   s = cmd(u, s, 0x80 | 5); // AC → col 5
   s = writeChar(u, s, 0x41); // 'A' at DDRAM 5
-  assert.equal(framebufferOf(s, { size: "16x2" }).chars[5], 0x41);
+  assert.equal(framebufferOf(s, { cols: 16, rows: 2 }).chars[5], 0x41);
 
   // 0x18 = display shift LEFT (S/C=1, R/L=0): the text slides toward col 0.
   let left = cmd(u, s, 0x18);
   assert.equal(
-    framebufferOf(left, { size: "16x2" }).chars[4],
+    framebufferOf(left, { cols: 16, rows: 2 }).chars[4],
     0x41,
     "shift-left moves 'A' from col 5 to col 4",
   );
@@ -138,7 +138,7 @@ test("display shift moves the text the way the datasheet R/L bit says", () => {
   // 0x1C = display shift RIGHT (S/C=1, R/L=1): the text slides toward col 15.
   let right = cmd(u, s, 0x1c);
   assert.equal(
-    framebufferOf(right, { size: "16x2" }).chars[6],
+    framebufferOf(right, { cols: 16, rows: 2 }).chars[6],
     0x41,
     "shift-right moves 'A' from col 5 to col 6",
   );
@@ -148,12 +148,12 @@ test("cursor/blink flags flow into the framebuffer", () => {
   const u = unit();
   let s = initDisplay(u);
   s = cmd(u, s, 0x0f); // display on, cursor on, blink on
-  const fb = framebufferOf(s, { size: "16x2" });
+  const fb = framebufferOf(s, { cols: 16, rows: 2 });
   assert.equal(fb.cursor.on, true);
   assert.equal(fb.cursor.blink, true);
   // Display off blanks the panel (view checks displayOn).
   s = cmd(u, s, 0x08);
-  assert.equal(framebufferOf(s, { size: "16x2" }).displayOn, false);
+  assert.equal(framebufferOf(s, { cols: 16, rows: 2 }).displayOn, false);
 });
 
 test("CGRAM: custom glyph bytes store and pass through to the framebuffer", () => {
@@ -166,7 +166,7 @@ test("CGRAM: custom glyph bytes store and pass through to the framebuffer", () =
   // Put custom code 0 on screen; the framebuffer carries the cgram for the view.
   s = cmd(u, s, 0x80); // DDRAM address 0
   s = writeChar(u, s, 0x00);
-  const fb = framebufferOf(s, { size: "16x2" });
+  const fb = framebufferOf(s, { cols: 16, rows: 2 });
   assert.equal(fb.chars[0], 0x00);
   for (let i = 0; i < 8; i++) assert.equal(fb.cgram[i], glyph[i]);
 });
@@ -251,7 +251,7 @@ test("20x4: the four visible lines map to the classic DDRAM starts", () => {
     s = cmd(u, s, 0x80 | starts[r]);
     s = writeChar(u, s, 0x31 + r); // '1','2','3','4'
   }
-  const fb = framebufferOf(s, { size: "20x4" });
+  const fb = framebufferOf(s, { cols: 20, rows: 4 });
   assert.equal(fb.cols, 20);
   assert.equal(fb.rows, 4);
   for (let r = 0; r < 4; r++) {
@@ -260,7 +260,7 @@ test("20x4: the four visible lines map to the classic DDRAM starts", () => {
 });
 
 test("the catalog def wires the builder to the datasheet pins", () => {
-  const def = partDef("lcd");
+  const def = partDef("lcd16x2");
   assert.equal(typeof def.logic.step, "function");
   assert.equal(typeof def.logic.outputs, "function");
   // Drive it through the def's own logic block: a command then a char.

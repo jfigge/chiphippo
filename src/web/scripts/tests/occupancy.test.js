@@ -456,6 +456,58 @@ test("partPinHoles: linear discretes in any grid row", () => {
   assert.equal(partPinHoles("psu", "b1"), null); // psu has terminals, not pins
 });
 
+// The character-LCD modules are the widest linear footprint the app has (16
+// holes), which puts them at two boundaries worth pinning: a pins-tiny board
+// fits them by exactly ONE column, and 16 holes is a lot of ways for a run to
+// be blocked.
+test("an LCD module's 16-way header seats along one row, and claims all 16", () => {
+  assert.deepEqual(
+    partPinHoles("lcd16x2", "j10"),
+    Array.from({ length: 16 }, (_, i) => ({ pin: i + 1, hole: `j${10 + i}` })),
+  );
+  // Both sizes share the one header — the panel differs, the footprint doesn't.
+  assert.deepEqual(
+    partPinHoles("lcd20x4", "a3"),
+    partPinHoles("lcd16x2", "a3"),
+  );
+  assert.equal(partPinHoles("lcd16x2", "+3"), null); // grid rows only
+
+  const doc = docWith({ boards: [FULL] });
+  assert.equal(
+    canPlacePart(doc, { ref: "lcd16x2", board: "bb1", anchor: "j1" }),
+    true,
+  );
+  // …and one occupied hole anywhere in the run refuses the whole placement.
+  const blocked = docWith({
+    boards: [FULL],
+    components: [
+      { id: "c9", kind: "discrete", ref: "led", board: "bb1", anchor: "j8" },
+    ],
+  });
+  assert.equal(
+    canPlacePart(blocked, { ref: "lcd16x2", board: "bb1", anchor: "j1" }),
+    false,
+  );
+});
+
+test("a 16-hole footprint fits pins-tiny by exactly one column", () => {
+  // clampColumn refuses when cols < span + 1: tiny has 17 columns against a
+  // span of 15, so anchors 1 and 2 fit and nothing else does. It works, and it
+  // is one column from not working — which is the whole reason to pin it.
+  const doc = docWith({ boards: [TINY] });
+  for (const [anchor, ok] of [
+    ["a1", true],
+    ["a2", true],
+    ["a3", false],
+  ]) {
+    assert.equal(
+      canPlacePart(doc, { ref: "lcd20x4", board: "bb2", anchor }),
+      ok,
+      anchor,
+    );
+  }
+});
+
 test("partPinHoles: a DIP switch bank straddles the trench like a chip", () => {
   // sw-dip4 (DIP-8): switch k's two pins face each other across a column —
   // pin 1↔8, 2↔7, 3↔6, 4↔5, exactly the internalBridges pairing.

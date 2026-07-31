@@ -7,3 +7,11 @@ file in the root of this distribution).
 This software bundles third-party components, each distributed under its own
 license. Their copyright notices and license terms are retained within the
 respective files under src/node_modules/ (development and runtime dependencies).
+
+Third-party artwork:
+
+  src/web/datasheets/HD44780.png — the character-LCD pin-assignment diagram
+  shown in the pin-assignments window for the lcd16x2 and lcd20x4 modules. Per
+  the notice printed within the image itself, the LCD module artwork is
+  originally designed by Adafruit Industries and licensed CC-BY-SA; see
+  https://github.com/adafruit/Fritzing-Library.

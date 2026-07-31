@@ -409,7 +409,6 @@
         "nextComponentId": 12,
         "nextPsuId": 2,
         "nextClockId": 2,
-        "nextLcdId": 1,
         "nextWireId": 25,
         "nextBusId": 1,
         "nextAnnotationId": 10,

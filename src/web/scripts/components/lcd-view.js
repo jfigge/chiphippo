@@ -14,49 +14,20 @@
  * limitations under the License.
  */
 
-// lcd-view.js — an HD44780 character-LCD module on the desk (.layer-parts): a
-// bezel body, a green display panel, and the 16 wireable terminal pads (the
-// addressable wire points lcd1.VDD / lcd1.RS / lcd1.DB0 …). The static body +
-// terminals are `buildLcdSvg` (shared with the placement ghost); the live
-// characters are drawn onto an overlaid `<canvas>` by `renderFramebuffer`,
-// which the SimOverlay feeds from chiphippo:sim-state. The controller logic,
-// font, and cursor blink live elsewhere — this view only paints what it's told.
+// lcd-view.js — the LIVE half of an HD44780 character-LCD module. The module
+// itself is an ordinary board-seated discrete: its PCB, bezel, glass and 16-way
+// header are drawn by discrete-view.js's buildCharacterDisplay (shared with the
+// placement ghost), and it seats, drags, selects and reports its power status
+// through DiscreteView like any other part. All this subclass adds is the
+// <canvas> laid over the display glass and `renderFramebuffer`, which the
+// SimOverlay feeds from chiphippo:sim-state. The controller logic, the font and
+// the cursor blink live elsewhere — this view only paints what it's told.
 
-import { el, svgEl } from "../dom.js";
+import { el } from "../dom.js";
 import { PX_PER_UNIT } from "../desk/desk-geometry.js";
 import { partDef } from "../catalog/index.js";
-import { lcdGeometry } from "../catalog/parts.js";
 import { glyphRows } from "../sim/hd44780-cgrom.js";
-import { BrickView } from "./brick-view.js";
-
-/** Character cell size on the desk (pitch units). Fixed across LCD sizes so a
-    16×2 and a 20×4 draw the SAME-sized characters — the panel shrinks with the
-    grid, not the glyphs. Chosen so a 20×4 grid fills the legacy 22×8 panel. */
-const CELL_UNIT_W = 1.1;
-const CELL_UNIT_H = 2;
-
-/** The band within the body (pitch units) the panel is centred in — the region
-    above the terminal row. Sized so a 20×4 panel still lands at the legacy x/y. */
-const PANEL_BAND = Object.freeze({ x: 0, w: 26, top: 1.5, bottom: 9.5 });
-
-/**
- * The green display panel rectangle (pitch units) for a given LCD size, derived
- * from its character grid so cells stay the same physical size across sizes and
- * the panel is centred within the fixed 26×14 body. A 16×2 renders a visibly
- * smaller panel than a 20×4 while occupying the SAME desk footprint (option #1:
- * cosmetic only — occupancy is unchanged). The canvas sits exactly over this.
- */
-export function lcdPanel(size) {
-  const { cols, rows } = lcdGeometry(size);
-  const w = cols * CELL_UNIT_W;
-  const h = rows * CELL_UNIT_H;
-  return {
-    x: PANEL_BAND.x + (PANEL_BAND.w - w) / 2,
-    y: PANEL_BAND.top + (PANEL_BAND.bottom - PANEL_BAND.top - h) / 2,
-    w,
-    h,
-  };
-}
+import { DiscreteView } from "./discrete-view.js";
 
 /** HD44780 5×8 character cell (dots) + a one-dot gap between cells. */
 const CELL_W = 5;
@@ -65,123 +36,59 @@ const CELL_GAP = 1;
 /** Device px per dot in the canvas buffer (bigger = crisper, scaled by CSS). */
 const DOT_PX = 3;
 
-/** Terminal id → colour family (power / control / data / aux) for the pad CSS. */
-function terminalKind(id) {
-  if (id === "VSS" || id === "VDD") return "power";
-  if (id === "RS" || id === "RW" || id === "E") return "ctrl";
-  if (id.startsWith("DB")) return "data";
-  return "aux";
-}
+export class LcdView extends DiscreteView {
+  #canvas = null;
+  #grid = { cols: 16, rows: 2 };
+  #fb = null; // last framebuffer (re-rendered on resize/recolour)
+  #dotColor = null; // resolved from the theme token, cached per COLOUR
+  #dotColorFor = null;
 
-/**
- * Build the LCD module's static SVG (body + panel + terminal pads). Pure DOM,
- * unit-testable under jsdom; the ghost uses it directly (no live canvas).
- */
-export function buildLcdSvg(params = {}) {
-  const def = partDef("lcd");
-  const { width, height } = def.size;
-  const { size } = def.normalizeParams(params);
-  const panel = lcdPanel(size);
-
-  const svg = svgEl("svg", {
-    class: "part-lcd-svg",
-    viewBox: `0 0 ${width} ${height}`,
-    width: width * PX_PER_UNIT,
-    height: height * PX_PER_UNIT,
-    "aria-hidden": "true",
-  });
-
-  svg.append(
-    svgEl("rect", {
-      class: "part-lcd-body",
-      x: 0.1,
-      y: 0.1,
-      width: width - 0.2,
-      height: height - 0.2,
-      rx: 0.6,
-    }),
-    svgEl("rect", {
-      class: "part-lcd-panel",
-      x: panel.x,
-      y: panel.y,
-      width: panel.w,
-      height: panel.h,
-      rx: 0.3,
-    }),
-  );
-
-  // Size badge in the top margin (like the PSU volts / clock rate badges).
-  const badge = svgEl("text", {
-    class: "part-lcd-size",
-    x: width - 0.5,
-    y: 1.2,
-    "text-anchor": "end",
-  });
-  badge.textContent = size.replace("x", "×");
-  svg.append(badge);
-
-  for (const t of def.terminals) {
-    svg.append(
-      svgEl("circle", {
-        class: `part-lcd-terminal part-lcd-terminal--${terminalKind(t.id)}`,
-        cx: t.dx,
-        cy: t.dy,
-        r: 0.5,
-      }),
-    );
-    const label = svgEl("text", {
-      class: "part-lcd-terminal-label",
-      x: t.dx,
-      y: t.dy - 0.9,
-      "text-anchor": "middle",
-    });
-    label.textContent = String(t.pin);
-    svg.append(label);
-  }
-  return svg;
-}
-
-export class LcdView extends BrickView {
-  #canvas;
-  #cols = 16;
-  #rows = 2;
-  #fb = null; // last framebuffer (re-rendered on resize)
-  #dotColor = null; // resolved from --color-lcd-dot on first paint (cached)
-
-  /**
-   * @param {HTMLElement} layer - the `.layer-parts` element.
-   * @param {{id:string,x:number,y:number,params:object}} lcd
-   * @param {object} [callbacks]
-   * @param {(id: string, e: PointerEvent) => void} [callbacks.onPointerDown]
-   * @param {(id: string, e: MouseEvent) => void} [callbacks.onContextMenu]
-   */
-  constructor(layer, lcd, callbacks = {}) {
-    super(layer, lcd, "part-lcd", callbacks);
+  constructor(layer, component, callbacks = {}) {
+    super(layer, component, callbacks);
+    // DiscreteView's constructor calls updateParams() before this line runs
+    // (the same super()-ordering hazard brick-view.js documents), so the
+    // override below no-ops on that first pass. Build the canvas and re-run it.
     this.#canvas = el("canvas", { class: "part-lcd-screen" });
-    this.updateParams(lcd.params);
+    this.updateParams(component.params);
   }
 
-  /** Rebuild the body SVG and size the character canvas for the chosen grid. */
+  /** Rebuild the module SVG, then re-lay the character canvas over its glass. */
   updateParams(params) {
-    const { size } = partDef("lcd").normalizeParams(params);
-    const geo = lcdGeometry(size);
-    this.#cols = geo.cols;
-    this.#rows = geo.rows;
+    super.updateParams(params);
+    // Called from super(), this subclass's fields do not exist yet — and a
+    // private field that has not been installed does not read as undefined,
+    // it THROWS. Hence the brand check rather than a plain null test.
+    if (!(#canvas in this) || !this.#canvas) return;
 
-    this.element.querySelector("svg")?.remove();
-    this.element.prepend(buildLcdSvg(params));
+    const def = partDef(this.ref);
+    const cd = def.characterDisplay;
+    const { color } = def.normalizeParams(params);
+    this.#grid = { cols: cd.cols, rows: cd.rows };
+    // The lit-dot colour is per-module, so the cache has to be too: a red
+    // module recoloured blue would otherwise keep painting dark dots on a blue
+    // field until something remounted it.
+    if (color !== this.#dotColorFor) {
+      this.#dotColor = null;
+      this.#dotColorFor = color;
+    }
+
     if (!this.element.contains(this.#canvas)) this.element.append(this.#canvas);
 
-    // Position the canvas over the panel (world px) and give it a crisp,
-    // grid-proportioned backing buffer (device px). The panel is sized from the
-    // grid, so a 16×2 is smaller than a 20×4 but the character cells match.
-    const panel = lcdPanel(size);
-    this.#canvas.style.left = `${panel.x * PX_PER_UNIT}px`;
-    this.#canvas.style.top = `${panel.y * PX_PER_UNIT}px`;
-    this.#canvas.style.width = `${panel.w * PX_PER_UNIT}px`;
-    this.#canvas.style.height = `${panel.h * PX_PER_UNIT}px`;
-    this.#canvas.width = this.#cols * (CELL_W + CELL_GAP) * DOT_PX;
-    this.#canvas.height = this.#rows * (CELL_H + CELL_GAP) * DOT_PX;
+    // Position the canvas over the ACTIVE AREA (world px; the part element's
+    // top-left IS the body box's origin) and give it a grid-proportioned
+    // backing buffer (device px).
+    const { body, screen } = cd;
+    this.#canvas.style.left = `${(screen.x - body.minX) * PX_PER_UNIT}px`;
+    this.#canvas.style.top = `${(screen.y - body.minY) * PX_PER_UNIT}px`;
+    this.#canvas.style.width = `${screen.width * PX_PER_UNIT}px`;
+    this.#canvas.style.height = `${screen.height * PX_PER_UNIT}px`;
+    // The buffer models the active area, so it drops its own TRAILING
+    // inter-character gap exactly as the real active area does. Without that
+    // the CSS stretch squeezes every cell by one gap's worth. It is the same
+    // arithmetic the catalog derives `charPitch` with, which is what keeps the
+    // drawn cells on the module's own pitch rather than near it.
+    this.#canvas.width = (cd.cols * (CELL_W + CELL_GAP) - CELL_GAP) * DOT_PX;
+    this.#canvas.height = (cd.rows * (CELL_H + CELL_GAP) - CELL_GAP) * DOT_PX;
 
     this.renderFramebuffer(this.#fb);
   }
@@ -193,18 +100,18 @@ export class LcdView extends BrickView {
    */
   renderFramebuffer(fb) {
     this.#fb = fb;
-    const ctx = this.#canvas.getContext?.("2d");
+    const ctx = this.#canvas?.getContext?.("2d");
     if (!ctx) return; // jsdom canvas has no 2d context — safe no-op
     const W = this.#canvas.width;
     const H = this.#canvas.height;
     ctx.clearRect(0, 0, W, H);
-    if (!fb || !fb.displayOn) return; // blank green panel shows through
+    if (!fb || !fb.displayOn) return; // the blank backlit panel shows through
 
-    const cols = Math.min(fb.cols, this.#cols);
-    const rows = Math.min(fb.rows, this.#rows);
+    const cols = Math.min(fb.cols, this.#grid.cols);
+    const rows = Math.min(fb.rows, this.#grid.rows);
     const cellW = (CELL_W + CELL_GAP) * DOT_PX;
     const cellH = (CELL_H + CELL_GAP) * DOT_PX;
-    ctx.fillStyle = this.#resolveDotColor(); // lit dot (dark on the green field)
+    ctx.fillStyle = this.#resolveDotColor(); // a lit dot, on the backlit field
 
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
@@ -233,20 +140,18 @@ export class LcdView extends BrickView {
     }
   }
 
-  /** The lit-dot colour from the theme token, resolved once and cached. */
+  /**
+   * The lit-dot colour for THIS module's backlight, from the theme token.
+   * Every panel but blue is positive-mode (dark dots on a tinted field); the
+   * classic blue one is negative-mode, light dots on blue — which is why the
+   * colour can't be one token, and why this is read rather than assumed.
+   */
   #resolveDotColor() {
     if (this.#dotColor) return this.#dotColor;
     const v = getComputedStyle(this.element)
-      .getPropertyValue("--color-lcd-dot")
+      .getPropertyValue(`--color-lcd-dot-${this.#dotColorFor}`)
       .trim();
     this.#dotColor = v || "#16261a";
     return this.#dotColor;
-  }
-
-  /** Reflect power/health (Feature 90): mirror the chip fault classes. */
-  setStatus(status) {
-    for (const s of ["unpowered", "underpowered", "reversed", "damaged"]) {
-      this.element.classList.toggle(`part-lcd--${s}`, status === s);
-    }
   }
 }

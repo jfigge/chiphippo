@@ -28,6 +28,7 @@
 // bar + close).
 
 import { t } from "../i18n.js";
+import { datasheetCrop } from "../catalog/index.js";
 import { partTitle } from "../catalog/labels.js";
 import { el } from "../dom.js";
 import { rotateOffset } from "../model/breadboard.js";
@@ -137,40 +138,6 @@ const TERMINAL_INFO = Object.freeze({
     out: { name: "OUT", role: "output", detail: "square-wave clock signal" },
     gnd: { name: "GND", role: "gnd", detail: "ground reference" },
   },
-  lcd: {
-    VSS: { name: "VSS", role: "gnd", detail: "0 V ground" },
-    VDD: { name: "VDD", role: "vcc", detail: "+5 V supply" },
-    V0: { name: "V0", role: "nc", detail: "contrast (cosmetic here)" },
-    RS: {
-      name: "RS",
-      role: "input",
-      detail: "register select — 0 cmd / 1 data",
-    },
-    RW: { name: "R/W", role: "input", detail: "0 = write, 1 = read" },
-    E: {
-      name: "E",
-      role: "input",
-      detail: "enable strobe — latches on falling edge",
-    },
-    DB0: { name: "DB0", role: "io", detail: "data bus bit 0 (LSB)" },
-    DB1: { name: "DB1", role: "io", detail: "data bus bit 1" },
-    DB2: { name: "DB2", role: "io", detail: "data bus bit 2" },
-    DB3: { name: "DB3", role: "io", detail: "data bus bit 3" },
-    DB4: {
-      name: "DB4",
-      role: "io",
-      detail: "data bus bit 4 (low nibble in 4-bit mode)",
-    },
-    DB5: { name: "DB5", role: "io", detail: "data bus bit 5" },
-    DB6: { name: "DB6", role: "io", detail: "data bus bit 6" },
-    DB7: {
-      name: "DB7",
-      role: "io",
-      detail: "data bus bit 7 (MSB / busy flag)",
-    },
-    A: { name: "A", role: "nc", detail: "backlight anode (cosmetic here)" },
-    K: { name: "K", role: "nc", detail: "backlight cathode (cosmetic here)" },
-  },
 });
 
 /** The offset of a discrete pin from its anchor hole, as a label. */
@@ -187,8 +154,11 @@ function nameSpan(name, role) {
   ]);
 }
 
-/** The outer popup shell: header (id · title) + subtitle + body [+ extra]. */
-function pinoutShell(def, subtitle, body, extra) {
+/** The outer popup shell: header (id · title) + subtitle + body + the part's
+    datasheet figure, which is null for a part that has no crop — so EVERY
+    layout below gets one on the same terms, and a module that carries a
+    datasheet does not have to be a chip to show it. */
+function pinoutShell(def, subtitle, body) {
   return el(
     "div",
     {
@@ -206,30 +176,60 @@ function pinoutShell(def, subtitle, body, extra) {
       ]),
       el("div", { class: "chip-pinout-sub", text: subtitle }),
       body,
-      extra,
+      datasheetFigure(def),
     ],
   );
 }
 
 /**
+ * What the datasheet figure says it IS, which is not one thing.
+ *
+ * A CHIP's crop is a region cut out of a manufacturer datasheet page — the
+ * connection diagram and the function/truth table beside it. A part that had to
+ * NAME its sheet is showing something else: today that is the two character-LCD
+ * modules, whose figure is a whole connection diagram of the module, with no
+ * function table anywhere in it, so the chip caption was simply describing a
+ * picture that wasn't there.
+ *
+ * Keyed on the PACKAGE rather than on which of the two named the file, because
+ * naming a sheet is not what makes a figure a module drawing — a chip may well
+ * come to name one (the '138 and the '139 already share a PDF in the download
+ * table) and it would still be showing a datasheet crop.
+ */
+function datasheetCaption(def) {
+  return def.package
+    ? t("pinout.datasheetCaption")
+    : t("pinout.datasheetCaptionModule");
+}
+
+/**
  * The manufacturer-datasheet figure: the connection diagram / function-table
- * crop for this part, committed to web/datasheets/<id>.png by `make datasheets`.
- * The image loads lazily and the whole figure REMOVES ITSELF if there is no
- * crop for this part (the handful of chips with no datasheet on file), so the
- * caller can add it unconditionally.
+ * crop for this part, committed to web/datasheets/<name>.png — the name being
+ * the def's own (`catalog/index.js`'s `datasheetCrop`, the ONE place that rule
+ * lives, since main sizes the window against the same file).
+ *
+ * Null for a part with no crop AT ALL, and even then the image loads lazily and
+ * the whole figure REMOVES ITSELF on error — the crop is a committed file, not
+ * a catalog field, so a def can name one that isn't there (the handful of chips
+ * with no datasheet on file). Both together are why the shell can add it
+ * unconditionally.
  * @param {object} def - a catalog def with an `id`.
- * @returns {HTMLElement}
+ * @returns {HTMLElement|null}
  */
 function datasheetFigure(def) {
+  const crop = datasheetCrop(def);
+  if (!crop) return null;
+  const caption = datasheetCaption(def);
   const figure = el("figure", { class: "chip-pinout-datasheet" }, [
-    el("figcaption", {
-      class: "chip-pinout-datasheet-cap",
-      text: t("pinout.datasheetCaption"),
-    }),
+    el("figcaption", { class: "chip-pinout-datasheet-cap", text: caption }),
     el("img", {
       class: "chip-pinout-datasheet-img",
-      src: `datasheets/${encodeURIComponent(def.id)}.png`,
-      alt: `${def.id} datasheet connection diagram and function table`,
+      // The caption again, after the id: it is the one sentence that already
+      // describes THIS figure, so an alt of its own could only repeat it or
+      // contradict it — and this way the alt is localized, where a hand-written
+      // English one sat where no i18n guard can see a template literal.
+      src: `datasheets/${encodeURIComponent(crop)}.png`,
+      alt: `${def.id} — ${caption}`,
       loading: "lazy",
       onerror: () => figure.remove(),
     }),
@@ -289,7 +289,6 @@ export function buildChipPinout(def, rot = 0) {
       el("div", { class: "chip-pinout-notch", "aria-hidden": "true" }),
       el("div", { class: "chip-pinout-grid" }, rows),
     ]),
-    datasheetFigure(def),
   );
 }
 
@@ -309,6 +308,11 @@ function listRow({ tag, name, role, detail }) {
 /**
  * Discrete part layout: a linear list of pins keyed to their anchor-hole
  * offsets (a discrete seats along one grid row, pin 1 at the anchor).
+ *
+ * A pin carrying its own datasheet `detail` (the HD44780's RS/E/DB prose) has
+ * it appended to the offset — the offset says WHERE the pin is, the detail
+ * says what it does, and a 16-signal module needs both. Untranslated, like
+ * every other per-pin description here.
  * @param {object} def - a discrete def ({ id, title, pins, footprint }).
  * @returns {HTMLElement}
  */
@@ -320,7 +324,9 @@ export function buildDiscretePinout(def) {
       tag: p.n,
       name: p.name,
       role: p.role,
-      detail: offsetLabel(offsets[i]),
+      detail: p.detail
+        ? `${offsetLabel(offsets[i])} · ${p.detail}`
+        : offsetLabel(offsets[i]),
     }),
   );
   return pinoutShell(

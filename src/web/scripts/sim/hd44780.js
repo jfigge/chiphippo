@@ -256,15 +256,17 @@ export function hd44780Unit({ rs, rw, e, db }) {
  * `cgram` is passed through so the view can render custom glyphs (codes 0x00–
  * 0x0F). Pure.
  * @param {object} state - an hd44780Unit state (or undefined → blank).
- * @param {{size?: string}} params
+ * @param {{cols?: number, rows?: number}} grid - the module's character grid,
+ *   i.e. its def's `characterDisplay`. A grid with no line mapping falls back
+ *   to the 16×2 one rather than failing: the DDRAM layout is the controller's,
+ *   and every panel it drives is one of these two shapes.
  * @returns {{cols:number, rows:number, chars:Uint8Array, cgram:Uint8Array,
  *   cursor:{row:number,col:number,on:boolean,blink:boolean}, displayOn:boolean}}
  */
-export function framebufferOf(state, params) {
-  const size = params?.size === "20x4" ? "20x4" : "16x2";
-  const cols = size === "20x4" ? 20 : 16;
-  const rows = size === "20x4" ? 4 : 2;
-  const starts = LINE_STARTS[size];
+export function framebufferOf(state, grid) {
+  const cols = grid?.cols ?? 16;
+  const rows = grid?.rows ?? 2;
+  const starts = LINE_STARTS[`${cols}x${rows}`] ?? LINE_STARTS["16x2"];
   const chars = new Uint8Array(cols * rows);
 
   if (!state) {

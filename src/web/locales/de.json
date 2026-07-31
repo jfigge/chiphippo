@@ -549,8 +549,11 @@
     "osc-half": {
       "title": "Oszillator (halbes Gehäuse)"
     },
-    "lcd": {
-      "title": "Zeichen-LCD (HD44780)"
+    "lcd16x2": {
+      "title": "Zeichen-LCD 16×2 (HD44780)"
+    },
+    "lcd20x4": {
+      "title": "Zeichen-LCD 20×4 (HD44780)"
     }
   },
   "colors": {
@@ -738,8 +741,7 @@
     },
     "brick": {
       "psu": "Netzteil",
-      "clock": "Taktgeber",
-      "display": "Anzeige"
+      "clock": "Taktgeber"
     },
     "boardPropertiesTitle": "Eigenschaften: {board}",
     "partPropertiesTitle": "Eigenschaften: {part}",
@@ -1011,6 +1013,7 @@
     "openExample": "Die Beispielschaltung öffnen",
     "openExampleTitle": "Die Beispielschaltung dieses Bauteils als neues Arbeitsblatt öffnen",
     "datasheetCaption": "Datenblatt — Innenschaltbild & Funktionstabelle",
+    "datasheetCaptionModule": "Datenblatt — Anschlussplan des Moduls",
     "subPackage": "{package} · Pinbelegung",
     "subLinear": "{count} Kontakte in einer Rasterreihe · Pinbelegung",
     "subCan": "{holes} Kontakte, Beine an den 4 Ecken · Pinbelegung",

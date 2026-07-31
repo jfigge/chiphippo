@@ -287,34 +287,43 @@ const LIBRARIES = Object.freeze([
     },
   },
   {
-    id: "sparkfun",
-    name: "SparkFun document library",
-    base: "https://cdn.sparkfun.com/assets/",
-    // The character LCD is the one catalog part that is a MODULE, and a module
-    // has TWO datasheets: the maker's (its header, dimensions, backlight) and
-    // the CONTROLLER's. The controller's is the one this app wants. Every
-    // question the part poses here is the bus protocol — RS, R/W, E, DB0-DB7,
-    // the instruction set, the DDRAM/CGRAM address maps — which is what the
-    // catalog blurb teaches and what the simulation models; the plastic around
-    // it is not simulated at all. A specific module's sheet also PINS the part
-    // to that module, and the ones still published are backlight variants whose
-    // pin tables run past 16 (an RGB module numbers 16-18 R/G/B where this
-    // catalog's LCD_PINOUT says 16 = K), so it would contradict the pin map
-    // drawn directly above the button.
+    id: "adafruit",
+    name: "Adafruit document library",
+    base: "https://cdn-shop.adafruit.com/datasheets/",
+    // The character LCDs are the catalog's only MODULES, and a module has TWO
+    // datasheets: the maker's (its header, dimensions, backlight) and the
+    // CONTROLLER's. The controller's is the one this app wants, and BOTH sizes
+    // point at it — because the pin assignment, the bus protocol and the
+    // instruction set they share are the controller's, which is exactly why
+    // they are one entry twice rather than two different files.
+    //
+    // The maker's half of that pair is answered somewhere else and by something
+    // better than a datasheet: the two defs' `characterDisplay` blocks are the
+    // 1602A and 2004A modules MEASURED (80 × 36 mm and 98 × 60 mm of PCB), which
+    // is what makes each draw at its true size. A generic module has no one
+    // maker's drawing to be right about, and every catalog that claims otherwise
+    // disagrees with the next; a ruler does not. What a datasheet BUTTON is for
+    // is the question the user has while wiring — RS, R/W, E, DB0-DB7, the
+    // DDRAM/CGRAM address maps — and that is the controller's document.
     //
     // Verified by extracting page 1: Hitachi "HD44780U (LCD-II), Dot Matrix
     // Liquid Crystal Display Controller/Driver", ADE-207-272(Z) Rev 0.0 — the
-    // full 67-page document, not an application-note excerpt.
+    // full 60-page document, not an application-note excerpt.
     //
     // WHY A DISTRIBUTOR CDN: Hitachi's LCD line went to Renesas, who no longer
     // publish this part at all, so there is no manufacturer host left to prefer
-    // — the same position the '83 is in. SparkFun's asset CDN is chosen among
-    // the mirrors because it ANSWERS A PROGRAM: 200 with `application/pdf` and
-    // the `%PDF` magic, no bot challenge. Its hashed asset path is opaque, so
-    // like any mirror this is a link expected to rot eventually — which the run
-    // reports by name, and which costs this one part rather than the download.
+    // — the same position the '83 is in. Among the mirrors that ANSWER A
+    // PROGRAM (200 with `application/pdf` and the `%PDF` magic, no bot
+    // challenge), Adafruit's is chosen for its path: `/datasheets/HD44780.pdf`
+    // names the document, where SparkFun's asset CDN holds the SAME FILE (same
+    // 329,795 bytes, same MD5) behind an opaque hash. Both are mirrors and so
+    // both are links expected to rot eventually — the run reports that by name,
+    // and it costs this one part rather than the download — but a named path is
+    // the one a person can check by eye, and the one likelier to survive a
+    // re-upload.
     parts: {
-      lcd: "9/5/f/7/b/HD44780.pdf",
+      lcd16x2: "HD44780.pdf",
+      lcd20x4: "HD44780.pdf",
     },
   },
   {

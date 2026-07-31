@@ -36,10 +36,13 @@
  *   state, a pure version bump; absence is valid.
  * v8 → v9 adds a wire's optional `layout`/`points` (the Routed layout method) —
  *   absence is the DIRECT default every wire had, so a pure version bump.
+ * v9 → v10 RETIRES `nextLcdId`: the HD44780 stopped being a desk brick and
+ *   became two board-seated modules, so its brick counter has nothing left to
+ *   count. Subtractive — the only migration so far that takes a field away.
  */
 "use strict";
 
-const DESK_DOC_VERSION = 9;
+const DESK_DOC_VERSION = 10;
 
 /** A fresh, empty desk document (main's copy of the renderer's shape). */
 function defaultDeskDocument() {
@@ -56,7 +59,6 @@ function defaultDeskDocument() {
     nextComponentId: 1,
     nextPsuId: 1,
     nextClockId: 1,
-    nextLcdId: 1,
     nextWireId: 1,
     nextBusId: 1,
     nextAnnotationId: 1,
@@ -338,6 +340,23 @@ function migrateV8ToV9(doc) {
   return { ...doc, version: 9 };
 }
 
+/**
+ * v9 → v10: the HD44780 character LCD stops being a desk BRICK (a free {x, y}
+ * module wired by terminal) and becomes two board-seated parts, lcd16x2 and
+ * lcd20x4, whose pins are breadboard holes. So `nextLcdId` — the brick id
+ * counter v6 added — has nothing left to count.
+ *
+ * The LCD COMPONENTS need no step here, deliberately: the renderer's
+ * normalizeDocument drops any component whose ref has left the catalog and
+ * cascades its wires with it, which is exactly the right outcome for a brick
+ * that can no longer be represented (a migration cannot invent the board and
+ * anchor a seated part needs). This only takes the dead field out of the shape.
+ */
+function migrateV9ToV10(doc) {
+  const { nextLcdId: _retired, ...rest } = doc;
+  return { ...rest, version: 10 };
+}
+
 /** version → one-step upgrade fn returning the doc at version + 1. */
 const MIGRATIONS = {
   1: migrateV1ToV2,
@@ -348,6 +367,7 @@ const MIGRATIONS = {
   6: migrateV6ToV7,
   7: migrateV7ToV8,
   8: migrateV8ToV9,
+  9: migrateV9ToV10,
 };
 
 /**

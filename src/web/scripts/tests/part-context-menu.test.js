@@ -105,16 +105,20 @@ test("a PSU brick's context menu matches too, with no voltage picker of its own"
   assert.deepEqual(menuLabels(), CORE_MENU);
 });
 
-test("a clock brick, an LCD brick, and an oscillator can all match too", () => {
+test("a clock brick, an LCD module, and an oscillator can all match too", () => {
   resetDom();
   const doc = new DeskDoc(null);
   doc.addBoard("pins-full", 0, 0);
   const { surface, controller } = makeDesk(doc);
   controller.addBrickAt("clock", -12, 4);
-  controller.addBrickAt("lcd", -12, 20);
-  controller.addComponentAt("osc-half", "bb1", "g5");
+  controller.addComponentAt("lcd16x2", "bb1", "j1");
+  controller.addComponentAt("osc-half", "bb1", "g30");
 
-  for (const selector of [".part-clock", ".part-lcd", ".part-discrete"]) {
+  for (const selector of [
+    ".part-clock",
+    ".part-discrete--lcd16x2",
+    ".part-discrete--osc-half",
+  ]) {
     rightClick(surface.querySelector(selector));
     assert.deepEqual(menuLabels(), CORE_MENU, selector);
   }
