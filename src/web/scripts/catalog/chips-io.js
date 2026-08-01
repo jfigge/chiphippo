@@ -23,14 +23,14 @@
 // standard sequential contract" pattern the HD44780 uses. Datasheet-exact
 // 40-pin DIP pinouts (WDC W65C21 / W65C22 data sheets, Figure 2 / Figure 3-1).
 //
-// There is no CPU in this catalog, so the bus is driven BY HAND: set the address
-// (RSx), chip selects, RWB, and (for a write) D0–D7, then pulse PHI2 — the
-// transfer commits on PHI2's falling edge, exactly as the LCD latches on E.
+// The bus can be driven BY HAND: set the address (RSx), chip selects, RWB, and
+// (for a write) D0–D7, then pulse PHI2 — the transfer commits on PHI2's falling
+// edge, exactly as the LCD latches on E. Or wire a CPU to it: the W65C02 in
+// catalog/chips-cpu.js drives precisely this protocol.
 
 import { w65c21Unit } from "../sim/w65c21.js";
 import { w65c22Unit } from "../sim/w65c22.js";
-import { w65c02Unit } from "../sim/w65c02.js";
-import { input, output, io, nc, gnd, vcc } from "./pin-builders.js";
+import { input, output, io, gnd, vcc } from "./pin-builders.js";
 
 export const CHIPS_IO = Object.freeze([
   {
@@ -186,86 +186,6 @@ export const CHIPS_IO = Object.freeze([
     pinGroups: [
       { name: "PA", pins: [2, 3, 4, 5, 6, 7, 8, 9], dir: "io" },
       { name: "PB", pins: [10, 11, 12, 13, 14, 15, 16, 17], dir: "io" },
-      { name: "D", pins: [33, 32, 31, 30, 29, 28, 27, 26], dir: "io" },
-    ],
-  },
-  {
-    id: "W65C02",
-    title: "W65C02 CPU",
-    blurb:
-      "WDC W65C02S 8-bit microprocessor — the heart of the 65xx computer. Wire " +
-      "A0–A15 to the address bus, D0–D7 to the data bus, RWB to RAM/ROM " +
-      "write/output-enable logic, and clock PHI2: one memory access per cycle, " +
-      "so the address bus advances as it runs. Boots from the reset vector at " +
-      "$FFFC/$FFFD (it powers up in reset — wire RESB to a button to hold it). " +
-      "IRQB/NMIB are the maskable / non-maskable interrupt inputs; SYNC pulses " +
-      "high on each opcode fetch. Logic-level, bus-access-accurate.",
-    group: "Interface",
-    package: "DIP-40",
-    pins: [
-      output(1, "VPB"),
-      input(2, "RDY"),
-      output(3, "PHI1O"),
-      input(4, "IRQB"),
-      output(5, "MLB"),
-      input(6, "NMIB"),
-      output(7, "SYNC"),
-      vcc(8, "VDD"),
-      output(9, "A0"),
-      output(10, "A1"),
-      output(11, "A2"),
-      output(12, "A3"),
-      output(13, "A4"),
-      output(14, "A5"),
-      output(15, "A6"),
-      output(16, "A7"),
-      output(17, "A8"),
-      output(18, "A9"),
-      output(19, "A10"),
-      output(20, "A11"),
-      gnd(21, "VSS"),
-      output(22, "A12"),
-      output(23, "A13"),
-      output(24, "A14"),
-      output(25, "A15"),
-      io(26, "D7"),
-      io(27, "D6"),
-      io(28, "D5"),
-      io(29, "D4"),
-      io(30, "D3"),
-      io(31, "D2"),
-      io(32, "D1"),
-      io(33, "D0"),
-      output(34, "RWB"),
-      nc(35),
-      input(36, "BE"),
-      input(37, "PHI2"),
-      input(38, "SOB"),
-      output(39, "PHI2O"),
-      input(40, "RESB"),
-    ],
-    logic: w65c02Unit({
-      addr: [9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 22, 23, 24, 25],
-      data: [33, 32, 31, 30, 29, 28, 27, 26], // D0…D7
-      rwb: 34,
-      sync: 7,
-      phi2: 37,
-      resb: 40,
-      irqb: 4,
-      nmib: 6,
-      rdy: 2,
-      be: 36,
-      vpb: 1,
-      mlb: 5,
-      phi1o: 3,
-      phi2o: 39,
-    }),
-    pinGroups: [
-      {
-        name: "A",
-        pins: [9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 22, 23, 24, 25],
-        dir: "out",
-      },
       { name: "D", pins: [33, 32, 31, 30, 29, 28, 27, 26], dir: "io" },
     ],
   },

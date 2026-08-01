@@ -66,8 +66,9 @@ Press **Run** (Space) and flip switches. Each desktop opens in a state chosen to
 show the part doing something — the '47 reading `5`, the '125 with exactly one
 dark lamp, the '148 encoding line 5.
 
-The **Memory** and **Interface** groups have no project: a RAM or a CPU can't be
-demonstrated by flipping switches at it, which is what the 65xx demos below are.
+The **Memory**, **Interface** and **PROCESSOR** groups have no project: a RAM or
+a CPU can't be demonstrated by flipping switches at it, which is what the 65xx
+demos below are.
 
 ## Running a 65xx demo
 

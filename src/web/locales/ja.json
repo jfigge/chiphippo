@@ -295,6 +295,7 @@
       "or": "OR",
       "oscillators": "発振器",
       "power": "電源",
+      "processor": "プロセッサ",
       "register": "レジスタ",
       "resistors": "抵抗",
       "shiftregister": "シフトレジスタ",
@@ -497,6 +498,9 @@
     },
     "W65C02": {
       "title": "W65C02 CPU"
+    },
+    "Z80A": {
+      "title": "Z80A CPU"
     },
     "sw-slide": {
       "title": "スライドスイッチ（SPDT）"

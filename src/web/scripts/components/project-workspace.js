@@ -832,10 +832,10 @@ export class ProjectWorkspace {
       return failed(new Error("no example circuit is bundled for that part"));
     }
     // A COPIED desktop is reseated, with no exception. No shipped example
-    // carries a memory chip today (the Memory and Interface groups have no
-    // bench), but "two chips can never share a ROM guid" is a rule that must
-    // not have a door in it — opening the same example twice would walk
-    // straight through one.
+    // carries a memory chip today (the Memory, Interface and PROCESSOR groups
+    // have no bench), but "two chips can never share a ROM guid" is a rule
+    // that must not have a door in it — opening the same example twice would
+    // walk straight through one.
     let doc;
     try {
       doc = (await this.#bridge.desktop.duplicate(demo.doc))?.doc;

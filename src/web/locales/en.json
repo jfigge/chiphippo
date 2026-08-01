@@ -295,6 +295,7 @@
       "or": "OR",
       "oscillators": "Oscillators",
       "power": "Power",
+      "processor": "PROCESSOR",
       "register": "Register",
       "resistors": "Resistors",
       "shiftregister": "Shift register",
@@ -497,6 +498,9 @@
     },
     "W65C02": {
       "title": "W65C02 CPU"
+    },
+    "Z80A": {
+      "title": "Z80A CPU"
     },
     "sw-slide": {
       "title": "Slide switch (SPDT)"

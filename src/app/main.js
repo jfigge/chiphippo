@@ -954,10 +954,10 @@ const DEMOS_DIR = path.join(__dirname, "..", "web", "demos");
 
 /**
  * Absolute path to a part's bundled example circuit, or null when it has none —
- * the Memory/Interface chips (a RAM or a CPU cannot be demonstrated by flipping
- * switches at it), every discrete, every brick, and a wire. Two layers of
- * validation as `readDocsPage` has: the ref pattern forbids a dot or a
- * separator outright, AND the resolved path is proved to be inside DEMOS_DIR.
+ * the Memory/Interface/PROCESSOR chips (a RAM or a CPU cannot be demonstrated
+ * by flipping switches at it), every discrete, every brick, and a wire. Two
+ * layers of validation as `readDocsPage` has: the ref pattern forbids a dot or
+ * a separator outright, AND the resolved path is proved to be inside DEMOS_DIR.
  */
 function demoDocPath(ref) {
   if (typeof ref !== "string" || !PINOUT_REF_RE.test(ref)) return null;

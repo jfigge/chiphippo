@@ -116,12 +116,25 @@ const MEM_WAVE = [
 // The 65xx peripheral-interface wave: the W65C21 PIA + W65C22 VIA. Bus-addressed
 // register-file peripherals whose sequential `outputs` drive bidirectional `io`
 // pins (the data bus, the I/O ports, CA2/CB2/CB1) — not just strict outputs.
-const IO_WAVE = ["W65C21", "W65C22", "W65C02"];
+const IO_WAVE = ["W65C21", "W65C22"];
+// The CPU wave: two 8-bit microprocessors, each a full instruction-set
+// simulation behind the same sequential contract. They disagree about the
+// clock — the 65xx commits one bus access per PHI2 cycle, where the Z80 runs a
+// real M-cycle/T-state machine off a single CLK — which is exactly why they are
+// two files in sim/ and not one shared shape.
+const CPU_WAVE = ["W65C02", "Z80A"];
 
-test("the catalog contains the gate wave plus the sequential/MSI + 74LS + memory + io waves", () => {
+test("the catalog contains the gate wave plus the sequential/MSI + 74LS + memory + io + cpu waves", () => {
   assert.deepEqual(
     CHIP_DEFS.map((d) => d.id).sort(),
-    [...GATE_WAVE, ...SEQ_WAVE, ...LS_WAVE, ...MEM_WAVE, ...IO_WAVE].sort(),
+    [
+      ...GATE_WAVE,
+      ...SEQ_WAVE,
+      ...LS_WAVE,
+      ...MEM_WAVE,
+      ...IO_WAVE,
+      ...CPU_WAVE,
+    ].sort(),
   );
   for (const id of [
     ...GATE_WAVE,
@@ -129,6 +142,7 @@ test("the catalog contains the gate wave plus the sequential/MSI + 74LS + memory
     ...LS_WAVE,
     ...MEM_WAVE,
     ...IO_WAVE,
+    ...CPU_WAVE,
   ]) {
     assert.ok(chipDef(id), id);
   }

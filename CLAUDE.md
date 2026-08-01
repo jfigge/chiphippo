@@ -555,6 +555,43 @@ Electron main process (src/app/main.js)
   can't be expressed, extend the vocabulary, never fork. Zero-delay, power-agnostic;
   the truth-table harness enumerates every gate unit exhaustively, sequential/MSI
   parts prove out in circuit fixtures.
+- **The CPUs, and the PROCESSOR group** (`catalog/chips-cpu.js` + `sim/w65c02.js`
+  + `sim/z80.js` + `sim/z80-ops.js`). A CPU is the far end of the "genuine
+  per-part code behind the STANDARD sequential contract" pattern the 65xx
+  peripherals and the HD44780 established — a whole instruction set behind
+  `{ state0, step, outputs }`. Both live in their OWN group, which is why the
+  W65C02 left `chips-io.js`: that file is the 65xx PERIPHERAL wave, and its
+  header used to end "there is no CPU in this catalog". The group is
+  `PROGRAM_ONLY` (`scripts/demo-build.mjs`) so it gets no bench demo and no
+  example button, and it is in `PROTOCOL_GROUPS` (`chips-tristate.test.js`)
+  because a CPU floats pins on a BUS PROTOCOL, not on any pin you can tie.
+  **THE TWO DISAGREE ABOUT THE CLOCK, and that is the whole design difference.**
+  A 6502 IS one bus access per PHI2 cycle, so `w65c02.js` collapses to exactly
+  that and loses nothing. A Z80 is not — an opcode fetch is four T-states with a
+  REFRESH cycle glued to its back half, a read is three, an I/O cycle four — so
+  `z80.js` runs a real M-cycle/T-state machine, which is the only way `/M1`,
+  `/RFSH` and `/WAIT` mean anything. It is affordable because the transport
+  ticks the engine once per clock EDGE (`sim-controller.js`'s
+  `1000 / (2 * hz * speed)`), i.e. HALF-T resolution — exactly what the Z80's
+  timing diagrams are drawn at — and because `outputs` may read the LIVE clock
+  off its own input pins, so the state carries only WHICH T-state it is in and
+  `outputs` derives the half. `SIGNALS` is then the datasheet's timing diagram
+  transcribed as DATA, not code.
+  **AND THEY LATCH THE DATA BYTE FROM OPPOSITE PLACES, for one stated reason.**
+  `w65c02.js` reads from `prev` because a 65xx peripheral gates its bus drivers
+  on PHI2 — an INPUT that has already flipped by the time the falling-edge
+  settle runs. `z80.js` reads from `ins`, because it enables the device with
+  `/MREQ` + `/RD`, its OWN outputs, still asserted in the picture the pre-settle
+  produced. The corollary is the subtle one: the byte is taken on the edge
+  ENTERING the sampling T-state (`t + 1 === sample`), since an M1 releases
+  `/MREQ`//`/RD` and puts the REFRESH address up at T3's rising edge — sample a
+  tick later and every fetch reads a deselected memory, i.e. `$FF`.
+  Both cores keep a small `log` of the bytes already returned for the current
+  instruction and RE-RUN a clean interpreter from the committed registers each
+  M-cycle, throwing at the first new access: plain data, no generators, so the
+  engine's structural `sameState` still works. `step` MUST be edge-gated and
+  return its state VERBATIM off-edge, or the tick's step fixpoint never settles
+  and the circuit is reported as oscillating.
 - **Simulation engine** (`sim/resolve.js` + `sim/engine.js`, Feature 90): pure and
   DOM-free. `resolveNet` picks a net's level by strength precedence (supply beats
   chip output; opposing supplies → `X`+short; disagreeing outputs → `X`+conflict;
@@ -1105,9 +1142,11 @@ Electron main process (src/app/main.js)
     part that floats an output to declare one — that sweep is what found the
     **'595**, whose title never says "tri-state". `74LS245`'s `DIR` is
     deliberately NOT an enable (it picks which side drives; only `OE` stops
-    both), and the Memory/Interface groups are out of the sweep because a CPU
-    or PIA floats its bus on a PROTOCOL and its ports on a direction register,
-    neither of which is a pin anyone can tie. **L6** uses the same data: a net
+    both), and the Memory/Interface/PROCESSOR groups are out of the sweep
+    because a CPU or PIA floats its bus on a PROTOCOL and its ports on a
+    direction register, neither of which is a pin anyone can tie — and a Z80
+    handed a `/BUSRQ`, or held in reset, floats its ADDRESS bus and every
+    control line at once, which is a hand-over rather than an enable. **L6** uses the same data: a net
     that floats with a tri-state driver on it reports `OUTPUTS_DISABLED`,
     naming the chip, the pin and "tie it to GND", instead of `NET_NOT_DRIVEN`
     sending a repair round hunting for a wire that was never missing.
@@ -1788,9 +1827,13 @@ Electron main process (src/app/main.js)
   guessing a vendor's naming buys a silent 404 per part. It is **ONE BLOCK PER
   LIBRARY**, each owning its own `base` with its parts' paths RELATIVE to it,
   and that is the whole extensibility story: a part whose datasheet lives on
-  another host is a line in a new block (TI, Microchip and Western Design
-  Center for the parts their makers still publish, USC's course library for
-  the older scans), never a special case in the downloader. Nothing about a
+  another host is a line in a new block (TI, Microchip, Western Design Center
+  and Zilog for the parts their makers still publish, USC's course library for
+  the older scans), never a special case in the downloader. A block need not
+  hold a DATASHEET either — Zilog's entry is the Z80 family USER MANUAL
+  (`um0080.pdf`, ~1.6 MB), which is why it is named for a document number and
+  not for a part, and why it is the one entry most likely to report a timeout
+  on a slow link (`download.js` gives each request 45 s). Nothing about a
   vendor's naming is patterned either, and BOTH ways it can bite are already
   in the table: TI files a sheet under the DEVICE it was written around, so
   the revision suffix is part of the name ('73A, '107A, '257B) and the '01
@@ -1882,8 +1925,8 @@ Electron main process (src/app/main.js)
   check and the insert are separated by awaits, which is exactly where a
   duplicate gets in). The answer is three-valued (`"added"`/`"switched"`/null)
   because `app.js` frames it with `fitActiveView` — framing a brand-new desk is
-  help, re-framing one the user has arranged is interference. Memory/Interface
-  chips get no example and therefore no button: a RAM or a CPU cannot be
+  help, re-framing one the user has arranged is interference.
+  Memory/Interface/PROCESSOR chips get no example and therefore no button: a RAM or a CPU cannot be
   demonstrated by flipping switches at it, and the 65xx demos are excluded for
   a sharper reason still — their program lives in a separate `.hex`, so the
   document alone would arrive not working.

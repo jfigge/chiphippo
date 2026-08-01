@@ -295,6 +295,7 @@
       "or": "OR",
       "oscillators": "Oszillatoren",
       "power": "Stromversorgung",
+      "processor": "PROZESSOR",
       "register": "Register",
       "resistors": "Widerstände",
       "shiftregister": "Schieberegister",
@@ -497,6 +498,9 @@
     },
     "W65C02": {
       "title": "W65C02 CPU"
+    },
+    "Z80A": {
+      "title": "Z80A CPU"
     },
     "sw-slide": {
       "title": "Schiebeschalter (Umschalter)"

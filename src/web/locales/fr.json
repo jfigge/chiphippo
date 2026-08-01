@@ -295,6 +295,7 @@
       "or": "OR",
       "oscillators": "Oscillateurs",
       "power": "Alimentation",
+      "processor": "PROCESSEUR",
       "register": "Registre",
       "resistors": "Résistances",
       "shiftregister": "Registre à décalage",
@@ -497,6 +498,9 @@
     },
     "W65C02": {
       "title": "Processeur W65C02"
+    },
+    "Z80A": {
+      "title": "Processeur Z80A"
     },
     "sw-slide": {
       "title": "Interrupteur à glissière (inverseur)"

@@ -56,7 +56,7 @@ const SEQUENTIAL_EDGES = 20;
  * them — a RAM or a CPU needs a program, which is what demos/65xx-* are. They
  * get no group project, and no spec is expected for their chips.
  */
-export const PROGRAM_ONLY = new Set(["Memory", "Interface"]);
+export const PROGRAM_ONLY = new Set(["Memory", "Interface", "PROCESSOR"]);
 
 /** A group's demo file name: its own name, spaces closed up. */
 export const fileNameOf = (group) => `${group.replace(/\s+/g, "-")}.chiphippo`;

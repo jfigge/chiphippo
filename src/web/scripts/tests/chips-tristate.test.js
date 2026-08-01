@@ -111,14 +111,17 @@ test("every declared output enable is one — and it is ACTIVE LOW", () => {
  *
  * A CPU or a PIA floats its data bus on a BUS PROTOCOL — chip select, R/W and
  * the clock phase together — and its port lines on a direction REGISTER the
- * program writes, neither of which is a pin anyone can tie. An open-drain IRQ
- * floats as one of its two ordinary logic states. `outputEnable` would be a
- * lie on all of them, so the sweep below stops at the 74xx logic family: the
- * parts the AI builder actually composes, and the ones whose demos this
- * catalog carries. (The demos README draws the same line — the Memory and
- * Interface groups have no bench project, for the same reason.)
+ * program writes, neither of which is a pin anyone can tie. A CPU goes further
+ * still: a Z80 handed a /BUSRQ floats its ADDRESS bus and every control line
+ * at once, and so does one held in reset, which is a hand-over rather than an
+ * output enable. An open-drain IRQ floats as one of its two ordinary logic
+ * states. `outputEnable` would be a lie on all of them, so the sweep below
+ * stops at the 74xx logic family: the parts the AI builder actually composes,
+ * and the ones whose demos this catalog carries. (The demos README draws the
+ * same line — the Memory, Interface and PROCESSOR groups have no bench
+ * project, for the same reason.)
  */
-const PROTOCOL_GROUPS = new Set(["Memory", "Interface"]);
+const PROTOCOL_GROUPS = new Set(["Memory", "Interface", "PROCESSOR"]);
 
 test("a part that can float an output DECLARES what enables it", () => {
   // The anti-drift half, and the one that matters when a new tri-state part

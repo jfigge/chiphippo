@@ -295,6 +295,7 @@
       "or": "OR",
       "oscillators": "振荡器",
       "power": "电源",
+      "processor": "处理器",
       "register": "寄存器",
       "resistors": "电阻",
       "shiftregister": "移位寄存器",
@@ -497,6 +498,9 @@
     },
     "W65C02": {
       "title": "W65C02 CPU"
+    },
+    "Z80A": {
+      "title": "Z80A CPU"
     },
     "sw-slide": {
       "title": "滑动开关（单刀双掷）"

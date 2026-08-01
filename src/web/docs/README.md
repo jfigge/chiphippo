@@ -16,9 +16,10 @@ decoders, multiplexers), sequential logic (flip-flops, counters, shift
 registers), a free-running or manually stepped clock, and small memory
 circuits backed by ROM/RAM chips — all wired across Full/Half/Tiny
 breadboards, powered at 3 V / 5 V / 12 V, and watched settle live. Beyond
-the 74xx shelf there is a **65xx interface group** — a W65C02 CPU, a PIA and
-a VIA — for building a small single-board computer out of the same glue
-logic.
+the 74xx shelf there is a **PROCESSOR group** — a W65C02 and a Zilog Z80A,
+each a full instruction-set simulation — and an **Interface group** of 65xx
+peripherals (a PIA and a VIA), for building a small single-board computer out
+of the same glue logic.
 
 ## Highlights
 
@@ -60,8 +61,8 @@ logic.
   wires, and multi-bit buses.
 - [Power & Clock Sources](power-and-clocks.md) — PSU bricks, voltage and the
   12 V damage rule, and clock sources.
-- [The Chip Library](chip-library.md) — the catalog: 74xx logic, memory and
-  the 65xx interface parts, and the pin-assignments/datasheet window.
+- [The Chip Library](chip-library.md) — the catalog: 74xx logic, memory, the
+  65xx interface parts and the CPUs, and the pin-assignments/datasheet window.
 
 ### Simulating & inspecting
 

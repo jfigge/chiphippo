@@ -346,6 +346,21 @@ const LIBRARIES = Object.freeze([
       W65C22: "w65c22.pdf",
     },
   },
+  {
+    id: "zilog",
+    name: "Zilog",
+    base: "https://www.zilog.com/docs/z80/",
+    // The Z80 family USER MANUAL rather than a data sheet — which is why the
+    // file is named for a document number and not for a part. It is the right
+    // document anyway: the pin descriptions, the CPU timing diagrams every
+    // M-cycle in sim/z80.js is transcribed from, and the whole instruction set,
+    // from the company that still publishes it. ~1.6 MB, the largest entry in
+    // this table by a wide margin, so it is also the one most likely to report
+    // a timeout on a slow link (download.js gives each request 45 s).
+    parts: {
+      Z80A: "um0080.pdf",
+    },
+  },
 ]);
 
 /**

@@ -94,6 +94,7 @@ arrived. The sources are:
 - [Alliance Memory](https://www.alliancememory.com/) — the large SRAM;
 - the [Western Design Center](https://www.westerndesigncenter.com/) — likewise
   for the 65xx parts;
+- [Zilog](https://www.zilog.com/) — the Z80 family user manual;
 - the [USC EE 459Lx reference
   library](https://ece-classes.usc.edu/ee459/library/) — vendor scans of the
   older 74LS parts, collected for a university course, plus the HD44780, the

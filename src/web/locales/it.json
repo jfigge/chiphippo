@@ -295,6 +295,7 @@
       "or": "OR",
       "oscillators": "Oscillatori",
       "power": "Alimentazione",
+      "processor": "PROCESSORE",
       "register": "Registro",
       "resistors": "Resistenze",
       "shiftregister": "Registro a scorrimento",
@@ -497,6 +498,9 @@
     },
     "W65C02": {
       "title": "CPU W65C02"
+    },
+    "Z80A": {
+      "title": "CPU Z80A"
     },
     "sw-slide": {
       "title": "Interruttore a slitta (deviatore)"

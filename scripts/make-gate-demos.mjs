@@ -29,9 +29,9 @@
 // with no spec for one of its chips fails the run: the point of grouping by
 // the catalog is that the coverage question has one answer.
 //
-// The Memory and Interface groups are deliberately NOT here — a RAM or a CPU
-// cannot be demonstrated by flipping switches at it; those are demos/65xx-*,
-// which carry a program to run.
+// The Memory, Interface and PROCESSOR groups are deliberately NOT here — a RAM
+// or a CPU cannot be demonstrated by flipping switches at it; those are
+// demos/65xx-*, which carry a program to run.
 //
 // TWO OUTPUTS, ONE BUILD. Every desktop is also written on its own to
 // src/web/demos/<ref>.json — the copy that ships INSIDE the app, which a
