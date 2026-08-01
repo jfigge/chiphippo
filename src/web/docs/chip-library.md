@@ -1,12 +1,13 @@
-# The 74xx Chip Library
+# The Chip Library
 
 The parts palette's **CHIPS** folder holds a broad shelf of 74xx-family DIP
 logic — everything from a single quad NAND gate up to octal shift registers
 and 4-bit counters — every one with a datasheet-accurate pinout and real
-behavior you can wire up and run. A separate **Memory** group sits alongside
-it for address-indexed ROM/RAM parts, which get their own dedicated page.
-This page is a tour of what's on the shelf and how to read a chip's
-pin-assignments window once you've placed one.
+behavior you can wire up and run. An **Interface** group at the end of the
+same folder carries the 65xx parts (a CPU, a PIA and a VIA), and a separate
+**Memory** group sits below it for the address-indexed ROM/RAM parts, which
+get their own dedicated page. This page is a tour of what's on the shelf and
+how to read a chip's pin-assignments window once you've placed one.
 
 ## Combinational gates
 
@@ -15,7 +16,9 @@ The basic gate families — the classic 7400-series building blocks:
 | Part | Description |
 | --- | --- |
 | `74LS00` | Quad 2-input NAND |
+| `74LS01` | Quad 2-input NAND, open-collector — outputs on 1/4/10/13, *not* the classic quad-NAND layout |
 | `74LS02` | Quad 2-input NOR |
+| `74LS03` | Quad 2-input NAND, open-collector — the variant that *does* keep the classic layout (outputs on 3/6/8/11) |
 | `74LS08` | Quad 2-input AND |
 | `74LS10` | Triple 3-input NAND |
 | `74LS11` | Triple 3-input AND |
@@ -24,6 +27,11 @@ The basic gate families — the classic 7400-series building blocks:
 | `74LS30` | 8-input NAND |
 | `74LS32` | Quad 2-input OR |
 | `74LS86` | Quad 2-input XOR |
+
+Open-collector parts (`74LS01`, `74LS03`, `74LS05`) pull their outputs low
+only and assume an external pull-up on a real bench. Chip Hippo models them
+as plain gates, so they behave correctly without one — but wire the pull-up
+anyway if you're prototyping something you intend to build.
 
 Alongside them, the inverter and buffer/bus-driver parts:
 
@@ -95,6 +103,40 @@ GND on the package corners, and neither do these.
 | `74LS85` | 4-bit magnitude comparator |
 | `74LS148` | 8-to-3 priority encoder |
 | `74LS283` | 4-bit binary full adder |
+| `74LS83` | The same adder on its **original** pinout — VCC on pin 5, GND on pin 12, not the later JEDEC corners |
+| `74LS181` | 4-bit arithmetic logic unit (DIP-24) — 16 logic or 16 arithmetic operations selected by `S0`–`S3` and `M`, with carry generate/propagate outputs for cascading |
+
+## Interface chips (65xx)
+
+Past the 74xx groups, the **Interface** group carries three Western Design
+Center 65xx parts — all DIP-40, all clocked off `PHI2`, all wired the same
+way you'd wire them on a real single-board computer:
+
+| Part | Description |
+| --- | --- |
+| `W65C02` | W65C02S 8-bit CPU — 16-bit address bus (`A0`–`A15`), 8-bit data bus (`D0`–`D7`), `RWB`, `RESB`, `IRQB`/`NMIB`, and `SYNC` pulsing high on each opcode fetch |
+| `W65C21` | W65C21 PIA (CMOS 6521/6821) — two 8-bit bidirectional ports with per-line data-direction registers, plus four handshake/interrupt lines |
+| `W65C22` | W65C22 VIA (CMOS 6522) — the same two ports plus two 16-bit interval timers, an 8-bit shift register, and four handshake lines |
+
+They're **logic-level and bus-access-accurate**, not cycle-accurate: the CPU
+performs one memory access per clock cycle, so the address bus advances as it
+runs and you can watch a program fetch and execute, but nothing here models
+wall-clock timing. The VIA's timers count `PHI2` cycles rather than seconds
+for the same reason.
+
+A few practical notes for building with them:
+
+- **The CPU powers up in reset.** Wire `RESB` to a push button and press it
+  to start; it then boots from the reset vector at `$FFFC`/`$FFFD`.
+- **Address one of the peripherals** by holding its chip selects (`CS0`·`CS1`
+  high and `CS2B` low on the PIA; `CS1` high and `CS2B` low on the VIA),
+  picking a register with `RS0`–`RS1` (PIA) or `RS0`–`RS3` (VIA), setting
+  `RWB`, and pulsing `PHI2` — writes latch on the falling edge.
+- **`IRQB` is open-drain** on both peripherals, so give it a pull-up.
+- These parts have **no example circuit** (see below) — you can't demonstrate
+  a CPU by flipping switches at it. What you want instead are the worked
+  65xx machines shipped as ordinary project files; see
+  [Files, Saving & Undo](files-and-undo.md#example-circuits).
 
 ## Memory chips
 

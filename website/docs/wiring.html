@@ -69,12 +69,12 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
         <a class="doc-nav-link" href="components.html">Chips &amp; Components</a>
         <a class="doc-nav-link doc-nav-link--active" href="wiring.html">Wiring, Nets &amp; Buses</a>
         <a class="doc-nav-link" href="power-and-clocks.html">Power &amp; Clock Sources</a>
-        <a class="doc-nav-link" href="chip-library.html">The 74xx Chip Library</a>
+        <a class="doc-nav-link" href="chip-library.html">The Chip Library</a>
         <a class="doc-nav-link" href="simulation.html">Running a Simulation</a>
         <a class="doc-nav-link" href="probing.html">Probing &amp; Net Names</a>
         <a class="doc-nav-link" href="memory.html">Memory Chips &amp; the Inspector</a>
         <a class="doc-nav-link" href="logic-analyzer.html">Logic Analyzer &amp; Timing</a>
-        <a class="doc-nav-link" href="build-guide.html">Build Guide, Wiring List &amp; BOM</a>
+        <a class="doc-nav-link" href="build-guide.html">Build Guide &amp; BOM</a>
         <a class="doc-nav-link" href="schematic-view.html">Schematic View</a>
         <a class="doc-nav-link" href="ai-builder.html">AI Circuit Builder</a>
         <a class="doc-nav-link" href="files-and-undo.html">Files, Saving &amp; Undo</a>
@@ -127,8 +127,34 @@ red for a supply run and black for ground and they&#39;ll stay that way until yo
 deliberately switch.</p>
 <p>You can also recolor a wire after the fact: right-click it and choose
 <strong>Properties…</strong>, which offers the same eight swatches alongside the wire&#39;s
-name, description, and layout method. (<strong>Delete Component</strong> on that menu is
-how a wire is removed.)</p>
+name, description, layout method, and the drawing of the wire itself
+described below. (<strong>Delete Component</strong> on that menu is how a wire is
+removed.)</p>
+<h2 id="wire-length">Wire length</h2>
+<p>The last thing in a wire&#39;s <strong>Properties…</strong> dialog isn&#39;t a field at all — it&#39;s
+a <strong>picture of the wire</strong>, drawn across the card in its own colour with the
+sleeve stripped back at both ends to bare tinned lead, and a dimensioned line
+underneath giving its length in centimetres.</p>
+<p>It answers the one question the desk can&#39;t. On the desk a wire is a curve
+between two holes at whatever zoom you&#39;re at, so its length is unreadable —
+and its length is exactly what you need before cutting one off a spool.</p>
+<p>Two things about that figure:</p>
+<ul>
+<li>It&#39;s the <strong>cut</strong> length, not the run. A real jumper doesn&#39;t stop at the
+surface of the board — it has to reach <em>into</em> both holes — so a wire
+crossing a single 0.1 in pitch is about 13 mm of wire, not 3. The sleeve in
+the drawing spans the run; the bare tips are the two stripped ends; the
+dimension spans the lot.</li>
+<li>The length follows the <strong>drawn shape</strong>, not the straight-line distance: the
+sagging curve&#39;s own arc for a direct wire, the polyline through the
+waypoints for a routed one, and for a bus member its lead plus the whole
+ribbon plus its far lead — a conductor inside a ribbon cable is as long as
+the cable, however short the ends sticking out of it are.</li>
+</ul>
+<p>It&#39;s the same measurement, and the same wording, as the <strong>Wires</strong> cutting
+list in the <a href="build-guide.html#the-cutting-list">build guide</a> — so a wire can&#39;t
+read one length here and another there. Recolor the wire in this same dialog
+and the drawing repaints to match.</p>
 <h2 id="cross-board-wires">Cross-board wires</h2>
 <p>A wire&#39;s endpoints don&#39;t care which board or brick they land on — you can
 run a wire from one breadboard to another, from a board to a PSU terminal, or

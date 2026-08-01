@@ -405,7 +405,7 @@ test("a net joining the rails, or with one member, is rejected", () => {
 
 test("a design too big for the boards fails loudly rather than half-built", () => {
   // Far more DIP-40s than any number of kits the planner will mint.
-  const parts = [...Array(40)].map((_, i) => ({ id: `U${i}`, ref: "w65c02" }));
+  const parts = [...Array(40)].map((_, i) => ({ id: `U${i}`, ref: "W65C02" }));
   const out = compileNetlist({
     parts,
     nets: [{ name: "N", members: ["U0.RDY", "U1.RDY"] }],
@@ -635,7 +635,7 @@ test("a geometry refusal aborts; a spec mistake goes back for repair", () => {
     }
   }
 
-  const big = [...Array(40)].map((_, i) => ({ id: `U${i}`, ref: "w65c02" }));
+  const big = [...Array(40)].map((_, i) => ({ id: `U${i}`, ref: "W65C02" }));
   const out = spec([{ name: "N", members: ["U0.RDY", "U1.RDY"] }], big);
   if (!out.ok) {
     for (const e of out.errors) assert.equal(e.kind, "abort");

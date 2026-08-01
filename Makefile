@@ -37,6 +37,29 @@ export $(DEV_ENV_VARS)
 # notarization off. Signed builds arrive with the packaging backlog stage.
 UNSIGNED_ENV := CSC_IDENTITY_AUTO_DISCOVERY=false
 
+# A Mac App Store build signs with the Apple Distribution (the .app) and Mac
+# Installer Distribution (the .pkg) identities, both of which live in the login
+# keychain. A Developer ID .p12 handed over in CSC_LINK — which is what the
+# direct/release builds use — is INVALID for MAS: electron-builder would sign
+# with it and fall back to an ad-hoc signature the store rejects and macOS will
+# not launch. So locally we strip CSC_LINK and let keychain auto-discovery find
+# the right ones. In CI the store job supplies real MAS certs and sets
+# MAS_PROVISIONING_PROFILE_BASE64; that marker is how we know not to strip.
+ifeq ($(strip $(MAS_PROVISIONING_PROFILE_BASE64)),)
+MAS_SIGN_ENV := env -u CSC_LINK -u CSC_KEY_PASSWORD CSC_IDENTITY_AUTO_DISCOVERY=true
+else
+MAS_SIGN_ENV :=
+endif
+
+# electron-builder applies ONE name qualifier to BOTH identity searches — the
+# .app's and the .pkg installer's — so it has to be the substring common to
+# "Apple Distribution: Jason Figge (2C564TQ2FY)" and "3rd Party Mac Developer
+# Installer: Jason Figge (2C564TQ2FY)". Anything more specific (e.g. "Apple
+# Distribution") filters the installer search down to nothing and the build
+# dies with "Cannot find valid 3rd Party Mac Developer Installer". Override
+# per-account.
+MAS_CSC_NAME ?= Jason Figge (2C564TQ2FY)
+
 # ─── Version / Info ───────────────────────────────────────────────────────────
 version:
 	@echo "Version: $(VERSION)"
@@ -285,6 +308,53 @@ dist-win: build-setup build-install
 	@echo "  → $(BUILD_DIR)/src/dist/"
 	@echo "--------------------------------"
 
+# ─── Store distributions ──────────────────────────────────────────────────────
+# The Mac App Store channel. Unlike the direct builds these need Apple-issued
+# material that cannot live in the repo — a provisioning profile per flavour,
+# git-ignored under src/packaging/ (see STORE-PUBLISHING.md). Both targets GATE
+# on their profile and skip cleanly without one, so a fresh clone still builds
+# everything else. The gate and the build are ONE shell line (`; \` after the
+# `fi`) so `exit 0` aborts the whole target rather than just its first line.
+#
+# What makes a store build different at RUNTIME is one gate, not a branch:
+# src/app/store-build.js reads Electron's process.mas, and the self-updater
+# switches itself off (Feature 280).
+
+mas:
+	@if [ ! -f "$(SRC_DIR)/packaging/embedded.provisionprofile" ]; then \
+		echo "No MAS provisioning profile (src/packaging/embedded.provisionprofile) — skipping Mac App Store build."; \
+		exit 0; \
+	fi; \
+	$(MAKE) build-setup build-install && \
+	echo "Building Mac App Store package (.pkg, universal)..." && \
+	( cd $(BUILD_DIR)/src && $(MAS_SIGN_ENV) CSC_NAME="$(MAS_CSC_NAME)" npx electron-builder --mac mas --universal --publish never -c.mac.notarize=false ) && \
+	echo "  → $(BUILD_DIR)/src/dist/  (upload the .pkg with Transporter)" && \
+	echo "--------------------------------"
+
+# The local sandbox smoke-test: same entitlements, same sandbox, signed for
+# development so it runs on THIS machine without going near the store. Run it
+# before `make mas` — it is the only way to find out what the sandbox denies.
+#
+# It deliberately does NOT pin CSC_NAME the way `mas` does: the development
+# profile embeds "Apple Development: Jason Figge (F457H24AUH)", and that
+# parenthetical is NOT A TEAM ID and NOT A MISMATCH — Apple names development
+# certificates after a per-developer identifier, where the distribution ones
+# carry the team. Both certs are under team 2C564TQ2FY (it is the OU field:
+# `security find-certificate -c "<CN>" -p | openssl x509 -noout -subject`).
+# What matters here is only that the STRING differs, so pinning the
+# distribution name would filter out the one certificate this profile
+# authorizes.
+mas-dev:
+	@if [ ! -f "$(SRC_DIR)/packaging/development.provisionprofile" ]; then \
+		echo "No MAS development profile (src/packaging/development.provisionprofile) — skipping MAS dev build."; \
+		exit 0; \
+	fi; \
+	$(MAKE) build-setup build-install && \
+	echo "Building Mac App Store DEV package (local sandbox smoke-test)..." && \
+	( cd $(BUILD_DIR)/src && $(MAS_SIGN_ENV) npx electron-builder --mac mas-dev --publish never -c.mac.notarize=false ) && \
+	echo "  → $(BUILD_DIR)/src/dist/" && \
+	echo "--------------------------------"
+
 # ─── Release ──────────────────────────────────────────────────────────────────
 # Cut a release (Model A — "shipped pointer"):
 #   validate -> preflight (on main, clean, in sync with origin) -> gate on tests
@@ -409,6 +479,8 @@ help:
 	@echo "    dist-mac      Build macOS installer (dmg + zip; signed if a cert is present)"
 	@echo "    dist-linux    Build Linux installer (AppImage + deb)"
 	@echo "    dist-win      Build Windows installer (nsis + portable)"
+	@echo "    mas           Build the Mac App Store package (.pkg; skips without a profile)"
+	@echo "    mas-dev       Build a local MAS sandbox smoke-test (skips without a profile)"
 	@echo "    site          Regenerate website/versions.json from GitHub Releases"
 	@echo "    clean         Remove build and dist directories"
 	@echo "    version       Print version string"
@@ -417,4 +489,5 @@ help:
 .PHONY: version info install debug fmt fmt-check lint license-headers icons \
         datasheets demos vendor-markdown docs pdf test test-license-headers \
         build build-mac build-linux build-win dmg release dist dist-mac \
-        dist-linux dist-win site build-setup build-install clean help
+        dist-linux dist-win mas mas-dev site build-setup build-install clean \
+        help

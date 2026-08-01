@@ -86,3 +86,78 @@ test("atomicWrite: leaves no temp files behind", () => {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// ── The Mac App Store write fallback ─────────────────────────────────────────
+// A sandboxed build's grant on a user-chosen file does not extend to its
+// folder, so the sibling temp file is denied and `atomicWrite` writes in place
+// instead. Simulated here by taking write permission off the DIRECTORY while
+// leaving it on the file — the same shape the sandbox produces (creating a new
+// entry fails, writing the existing one succeeds), reachable without a signed
+// build.
+
+const canSimulateSandbox =
+  process.platform !== "win32" && process.getuid?.() !== 0;
+
+/** Run `fn` with process.mas forced, restoring it afterwards. */
+function withMas(value, fn) {
+  const had = "mas" in process ? process.mas : undefined;
+  try {
+    process.mas = value;
+    fn();
+  } finally {
+    process.mas = had;
+  }
+}
+
+/** A read-only directory holding one writable file, and its cleanup. */
+function lockedDir() {
+  const dir = tempDir();
+  const file = path.join(dir, "doc.json");
+  fs.writeFileSync(file, "old", "utf8");
+  fs.chmodSync(dir, 0o500);
+  return {
+    file,
+    cleanup() {
+      fs.chmodSync(dir, 0o700);
+      fs.rmSync(dir, { recursive: true, force: true });
+    },
+  };
+}
+
+test(
+  "atomicWrite: a direct build still throws when the temp cannot be made",
+  {
+    skip: !canSimulateSandbox && "needs POSIX permissions and a non-root user",
+  },
+  () => {
+    const { file, cleanup } = lockedDir();
+    try {
+      withMas(undefined, () => {
+        // Unchanged behaviour: no store build, no fallback, and the error is the
+        // filesystem's own.
+        assert.throws(() => io.atomicWrite(file, "new"), { code: "EACCES" });
+        assert.equal(fs.readFileSync(file, "utf8"), "old");
+      });
+    } finally {
+      cleanup();
+    }
+  },
+);
+
+test(
+  "atomicWrite: a store build falls back to writing in place",
+  {
+    skip: !canSimulateSandbox && "needs POSIX permissions and a non-root user",
+  },
+  () => {
+    const { file, cleanup } = lockedDir();
+    try {
+      withMas(true, () => {
+        io.atomicWrite(file, "new bytes");
+        assert.equal(fs.readFileSync(file, "utf8"), "new bytes");
+      });
+    } finally {
+      cleanup();
+    }
+  },
+);

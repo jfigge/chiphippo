@@ -1,10 +1,10 @@
 # Chips & Components
 
 Everything that isn't a breadboard strip lives in the **Parts** palette on the
-left: 74xx logic chips, memory chips, switches, LEDs, displays, resistors,
-oscillators, and power/clock bricks. This page covers finding a part,
-seating it on a board, and the (surprisingly varied) ways different parts
-rotate and flip once they're down.
+left: 74xx logic chips, 65xx interface chips, memory chips, switches, LEDs,
+displays, resistors, oscillators, and power/clock bricks. This page covers
+finding a part, seating it on a board, and the (surprisingly varied) ways
+different parts rotate and flip once they're down.
 
 ![Chips and discretes placed on a breadboard](images/components.png)
 
@@ -12,10 +12,16 @@ rotate and flip once they're down.
 
 The palette opens with every section collapsed, grouped by function:
 
-- **CHIPS** — every 74xx logic family, folder-grouped, plus a separate
-  **Memory** group for ROM/RAM chips.
+- **BOARDS** — the breadboard kits and loose strips, pinned at the top (see
+  [The Desk & Breadboards](the-desk.md)).
+- **CHIPS** — every 74xx logic family, folder-grouped, ending with the
+  **Interface** group (the 65xx CPU/PIA/VIA).
 - **COMPONENTS** — **Switches**, **Resistors**, **LEDs**, **Displays**,
   **Oscillators**, and **Power**, in that shelf order.
+- **Memory** — the ROM/RAM chips, pulled out of CHIPS into a top-level group
+  of their own.
+- **ANNOTATIONS** — labels and notes, pinned at the bottom (see
+  [Probing & Net Names](probing.md#annotations)).
 
 The tray's right edge is a drag handle: pull it out to give long part names
 more room, and the width you leave it at is remembered.
@@ -63,6 +69,35 @@ A few parts don't fit that linear model:
   can 4 holes square, with legs only at the four corners. A can can seat
   anywhere on the grid, including straddling the trench, since its shape
   (not a row) determines its footprint.
+- **Character LCD modules** (**lcd16x2**, **lcd20x4**) *are* linear — a
+  16-way header along 16 adjacent holes in one row — but the module itself
+  is much bigger than that row. See below.
+
+## Character LCD modules
+
+The **Displays** group holds two HD44780 character-LCD modules: a 16×2
+(the standard 1602A) and a 20×4 (the 2004A). They're drawn to their real
+sizes — 80 × 36 mm and 98 × 60 mm of PCB — and their screens are **live**:
+run the circuit, drive the module, and the characters appear on the glass.
+
+Both plug in through a **16-way header along one row**, and the pin
+assignment is identical between them, so what you learn wiring one applies
+to the other. The header runs along the module's **top** edge, which means
+the body hangs **below** the row it plugs into — so seat one on a **bottom
+row (`a`)** and it clears the board it's plugged into rather than covering
+it. The placement ghost shows you the whole module, so you can see this
+before you click.
+
+Driving one is the ordinary HD44780 parallel bus: put a command or character
+code on `DB0`–`DB7`, set `RS` (0 = instruction, 1 = data) and `R/W`
+(0 = write), and pulse `E` — the byte latches on `E`'s falling edge. Wire
+`VDD`/`VSS` to a 5 V rail. `V0` (contrast) and `A`/`K` (backlight) are
+present on the pinout but cosmetic here. During a *read* the module drives
+`DB0`–`DB7` itself, so tri-state anything else sharing that bus.
+
+Both modules show the same controller datasheet in their pin-assignments
+window — it's one document, because `RS`/`R/W`/`E`, the bus and the address
+maps are the controller's and are identical across the two sizes.
 
 ## Rotating & flipping
 
@@ -185,7 +220,7 @@ stays fixed at its canonical layout no matter how you've flipped it on the
 desk (it matches the physical part, not the placement); a DIP-packaged
 discrete — `bar8iso` or any DIP switch bank — is the exception: its diagram
 reflects its current `R` flip, since it has no real notch of its own. See
-[The 74xx Chip Library](chip-library.md) for the full
+[The Chip Library](chip-library.md) for the full
 detail on what the window shows and how it sources its datasheet crops.
 
 ---

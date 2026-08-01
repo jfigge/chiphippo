@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Inherited App Sandbox entitlements for the nested helper executables of the
+  Mac App Store build (electron-builder's build.mas.entitlementsInherit): the
+  renderer, GPU and utility processes.
+
+  Exactly two keys, and no more: a helper INHERITS the main app's sandbox
+  container, and `com.apple.security.inherit` is the single key that grants
+  that. Repeating the main app's entitlements here would not widen anything —
+  an inheriting process takes the parent's — it would only invite the question
+  of why a renderer asks for network access of its own. (It does not: Chip
+  Hippo's renderer runs under a CSP with no connect-src at all.)
+-->
+<plist version="1.0">
+  <dict>
+    <key>com.apple.security.app-sandbox</key>
+    <true/>
+    <key>com.apple.security.inherit</key>
+    <true/>
+  </dict>
+</plist>

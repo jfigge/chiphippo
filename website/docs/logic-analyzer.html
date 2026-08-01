@@ -69,12 +69,12 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
         <a class="doc-nav-link" href="components.html">Chips &amp; Components</a>
         <a class="doc-nav-link" href="wiring.html">Wiring, Nets &amp; Buses</a>
         <a class="doc-nav-link" href="power-and-clocks.html">Power &amp; Clock Sources</a>
-        <a class="doc-nav-link" href="chip-library.html">The 74xx Chip Library</a>
+        <a class="doc-nav-link" href="chip-library.html">The Chip Library</a>
         <a class="doc-nav-link" href="simulation.html">Running a Simulation</a>
         <a class="doc-nav-link" href="probing.html">Probing &amp; Net Names</a>
         <a class="doc-nav-link" href="memory.html">Memory Chips &amp; the Inspector</a>
         <a class="doc-nav-link doc-nav-link--active" href="logic-analyzer.html">Logic Analyzer &amp; Timing</a>
-        <a class="doc-nav-link" href="build-guide.html">Build Guide, Wiring List &amp; BOM</a>
+        <a class="doc-nav-link" href="build-guide.html">Build Guide &amp; BOM</a>
         <a class="doc-nav-link" href="schematic-view.html">Schematic View</a>
         <a class="doc-nav-link" href="ai-builder.html">AI Circuit Builder</a>
         <a class="doc-nav-link" href="files-and-undo.html">Files, Saving &amp; Undo</a>
@@ -93,7 +93,8 @@ badges already render from, so opening it, closing it, or adding channels
 never changes how the circuit behaves.</p>
 <p><img src="images/logic-analyzer.png" alt="The logic analyzer panel, docked along the bottom of the window"></p>
 <h2 id="opening-the-analyzer">Opening the analyzer</h2>
-<p>Click <strong>Analyzer</strong> in the toolbar, or press <code>Cmd/Ctrl+A</code>, to dock the panel
+<p>Click <strong>Analyzer</strong> in the toolbar, or press <code>A</code> — a bare key, like the desk&#39;s
+other tool letters, since <code>Cmd/Ctrl+A</code> is Select All — to dock the panel
 along the bottom of the window. Click the button again, press the shortcut
 again, or click the panel&#39;s <strong>×</strong> to close it — the panel remembers whether
 it was open and how tall you left it (drag its top edge to resize, from a
@@ -116,7 +117,7 @@ to name. Using it also opens the panel automatically if it was closed.</li>
 fixed palette unless the channel has its own color), the net or bus name,
 its current value, and three small controls — <strong>↑</strong> / <strong>↓</strong> to reorder the
 channel, and <strong>×</strong> to remove it. Channels are saved with the document
-(<code>doc.scopeChannels</code>), so a schematic reopens with its analyzer setup
+(<code>doc.scopeChannels</code>), so a desktop reopens with its analyzer setup
 intact, and adding/removing/reordering a channel rides the normal undo/redo
 stack. A channel that loses its target (the net was deleted, the bus was
 removed) simply reads as undriven rather than disappearing — it comes back

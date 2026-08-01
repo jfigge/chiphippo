@@ -16,8 +16,11 @@ circuit in front of you.
 - **Pan**: click-drag an empty patch of desk, or two-finger scroll on a
   trackpad.
 - **Zoom**: scroll/pinch to zoom, centered on the pointer, or use the
-  **+** / **−** buttons in the zoom control. Keyboard: `Cmd/Ctrl+=` (zoom in),
-  `Cmd/Ctrl+-` (zoom out), `Cmd/Ctrl+0` (reset to 100%).
+  **+** / **−** buttons in the zoom control (bottom-right of the desk).
+  Keyboard: `Option+Cmd/Ctrl+=` (zoom in), `Option+Cmd/Ctrl+-` (zoom out),
+  `Option+Cmd/Ctrl+0` (reset to 100%). **Option is what makes these the
+  desk's**: the same keys *without* it resize Chip Hippo's own text instead
+  (see [Settings](settings.md#appearance)).
 - **Fit to screen**: `Cmd/Ctrl+F` frames everything currently on the desk in
   the viewport — the fastest way to find your circuit after panning away. It
   also slides the whole design back around the middle of the desk, keeping a
@@ -31,6 +34,26 @@ A faint **dot grid** marks the 0.1 in hole pitch under everything you place;
 it coarsens at low zoom and disappears entirely once you're zoomed out too
 far for individual holes to matter. Zoom and pan position are remembered
 between sessions.
+
+## The desk padlock
+
+A padlock sits in the desk's **top-right corner**, across from the tab strip.
+Click it (or press `Cmd/Ctrl+L`) to shut it, and the **scroll wheel stops
+reaching the desk**.
+
+It exists for one input in particular. A Magic Mouse — and some trackpads —
+reports a scroll from a finger merely resting on the surface, so the wheel is
+the one thing that moves the desk without being asked to; midway through
+seating a chip, that's a circuit that slides out from under you. Everything
+else still works while it's locked: drag-to-pan, the zoom cluster, the
+keyboard shortcuts above, and **Fit**. It's the wheel that's locked, not the
+camera.
+
+The padlock's shape changes rather than just its colour — an open shackle when
+the wheel is live, a shut one when it isn't. The state lasts for the session
+only and starts **open** every launch, so a new session never greets you with
+a desk that ignores the wheel for a reason you've forgotten. The schematic
+view has a wheel of its own and no padlock over it.
 
 ## Breadboards are strips
 

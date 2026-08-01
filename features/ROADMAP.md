@@ -96,7 +96,7 @@ buffers/latches/transceivers/decoders/comparators/adders.)
 | More discrete parts | DIP-switch banks, real resistors/pull-ups (drop the idealized-LED rule), buzzer, potentiometer |
 | Interactive build mode | Tick off Feature 140's build-guide steps live, highlighting the target holes on the desk as you go |
 | Assembler / HEX toolchain hooks | Import listing files that map addresses to source lines in the memory inspector |
-| Packaging & distribution | What is left of the port of Port Hippo's Feature 70, now that GitHub Actions, the signed multi-platform builds, the download site and auto-update (Feature 280) have all landed: **notarization** (`make dist-mac` still passes `-c.mac.notarize=false`, and it needs hardenedRuntime + entitlements), and finishing the **Mac App Store** channel `make mas` builds for |
+| Packaging & distribution | What is left of the port of Port Hippo's Feature 70, now that GitHub Actions, the signed multi-platform builds, the download site, auto-update (Feature 280) and the Mac App Store channel (Feature 310) have all landed: **notarization** of the direct build (`make dist-mac` still passes `-c.mac.notarize=false`, and it needs hardenedRuntime + its own entitlements plist), and the CI job that builds and submits the store package (see APP_STORE_TODO.md) |
 | i18n | Locale catalogs + `t()` seam (mirror the siblings) |
 
 ## Cross-cutting conventions (apply in every stage)

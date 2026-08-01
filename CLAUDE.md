@@ -291,8 +291,10 @@ website** (`make docs` → `website/docs/`), and a **PDF** (`make pdf` →
   `desk-store.js` + `migrations.js` — the desk-document schema migrations, plus
   the by-PATH reader `project-migrate.js` uses to inline a v3 desktop file —
   `mem-store.js`, the atomic byte store behind a memory chip's `.bin`
-  sidecar, Feature 180, and `credential-store.js`, the `safeStorage`-encrypted
-  API-key sidecar, Feature 260), plus `ai/` (`providers.js` + `client.js`),
+  sidecar, Feature 180, `credential-store.js`, the `safeStorage`-encrypted
+  API-key sidecar, Feature 260, and `bookmark-store.js`, the security-scoped
+  bookmarks a Mac App Store build needs to re-open a path from an earlier
+  session, Feature 310), plus `ai/` (`providers.js` + `client.js`),
   `datasheets/` (`sources.js` + `download.js`) and `updater.js` — the app's
   ONLY THREE outbound network calls, all in main because the renderer's CSP
   forbids one, and all the same shape: a hard-coded statement of where it may
@@ -1782,7 +1784,7 @@ Electron main process (src/app/main.js)
   there — a download button must not become a way to make the app fetch
   something arbitrary. The table is **hand-written, never derived**: a part id
   is not a file name anywhere in the world (the '86 is `sn74ls86a.pdf`, the
-  '139 lives inside the '138's file, WDC ships the '02 as `w65c02s.pdf`), so
+  '139 lives inside the '138's file, WDC ships the '02 as `W65C02s.pdf`), so
   guessing a vendor's naming buys a silent 404 per part. It is **ONE BLOCK PER
   LIBRARY**, each owning its own `base` with its parts' paths RELATIVE to it,
   and that is the whole extensibility story: a part whose datasheet lives on
@@ -1925,6 +1927,70 @@ Electron main process (src/app/main.js)
     the functions, not at module scope): reading the getter constructs the
     platform updater, which dereferences Electron's native `autoUpdater` —
     absent under `node --test`, where `main.js` is read but never run.
+- **Mac App Store packaging** (Feature 310 — `src/packaging/` + the `mas`/`masDev`
+  blocks in `src/package.json` + `make mas` / `make mas-dev` +
+  `app/store/bookmark-store.js`). ONE codebase down every channel, as Feature 280
+  established: a store build is the same code with `store-build.js`'s runtime gate
+  turning the updater off, never a branched build. `make mas` signs a universal
+  `.pkg` (Apple Distribution for the app, 3rd Party Mac Developer Installer for the
+  installer) and `make mas-dev` a locally-runnable sandboxed build to try first;
+  both SKIP with a message and exit 0 when their git-ignored
+  `src/packaging/*.provisionprofile` is absent, so a fresh clone still builds
+  everything else. See STORE-PUBLISHING.md for the submission itself.
+  - **THE SANDBOX FORGETS EVERY LAUNCH, and two features depend on remembering.** A
+    sandboxed app may touch a path only if a native dialog handed it over in THIS
+    process — which breaks Open Recent (`settings.recentProjects`, read again at
+    `bootProject` and `openRecentProject`) and the external datasheet folder
+    (`settings.datasheetDir`, read when a pinout window opens). The answer is
+    **security-scoped bookmarks**: minted by the dialog that granted the path
+    (`dialogOpts` + `captureOpen`/`captureSave` — note the save panel's SINGULAR
+    `bookmark` against the open panel's array), redeemed through `withAccess` for a
+    one-shot read or `hold("project", …)` for the open project's whole session, and
+    stopped on `will-quit`. They live in a MAIN-ONLY sidecar
+    (`userData/bookmarks.json`), never in `settings.json`, which is handed to the
+    renderer whole on every read — and there is no IPC channel and no preload
+    export at all, so `ipc-parity.test.js` is untouched and the renderer never
+    learns bookmarks exist. `knownPath` is unchanged and unbypassed: it answers
+    whether the RENDERER may aim main at a path, a bookmark answers whether the
+    KERNEL will allow it, and both still have to say yes.
+  - **STALENESS IS NOT A NEW FAILURE MODE.** Electron hands back a stop function,
+    not a resolved path, so nothing can ask whether a bookmark still points where it
+    did — and nothing needs to: every caller's next step is already an `existsSync`
+    on the stored path, which answers false for a file that moved, and
+    `{ok:false, code:"missing"}` (the renderer's "that file is gone — forget it?"
+    prompt) is already what happens then. A blob the OS refuses outright is dropped
+    on the spot and the read runs unscoped, landing in the same place.
+  - **`atomicWrite` CANNOT BE ATOMIC IN A STORE BUILD, and that is not a bookmark
+    problem.** `io.js` writes `<file>.chiphippotmp-N.tmp` beside its target and
+    renames over it; a save panel's grant covers the chosen FILE, not the folder
+    holding it, and that temp name is not in the same-basename form the sandbox
+    forgives as a related item. So under `isMas()` ONLY, and only after a genuine
+    `EPERM`/`EACCES`/`EROFS`, it falls back to a durable in-place write — a direct
+    build's atomicity is byte-for-byte what it was. The cost is real and stated
+    where it is paid: a store build's writes to USER-CHOSEN files are no longer
+    crash-atomic. Everything the app owns is under `userData`, inside the container,
+    where the atomic path still works — including the 30-second autosave slot, so
+    the work is still recoverable.
+  - **`mas-dev` DELIBERATELY DOES NOT PIN `CSC_NAME` the way `mas` does.**
+    electron-builder applies one name qualifier to BOTH the `.app` and `.pkg`
+    identity searches, so `mas` pins the substring common to *Apple Distribution:
+    Jason Figge (2C564TQ2FY)* and *3rd Party Mac Developer Installer: …(2C564TQ2FY)*
+    — anything more specific finds no installer certificate at all. The development
+    profile embeds *Apple Development: Jason Figge (**F457H24AUH**)*, whose
+    parenthetical is NOT a team id and NOT a mismatch: Apple names development
+    certificates after a per-developer identifier where the distribution ones carry
+    the team, and both are under `2C564TQ2FY` (the cert's OU field). Only the string
+    differs — which is enough for the pin to filter out the one certificate that
+    profile authorizes.
+  - The entitlements are five keys and no more (`entitlements.mas.plist`, committed
+    and commented): `app-sandbox`, `cs.allow-jit`,
+    `files.user-selected.read-write`, `files.bookmarks.app-scope` — **without which
+    the dialogs return EMPTY bookmark strings and the two features above quietly
+    stop working a launch after install** — and `network.client` for the AI builder
+    and the datasheet download. `app/tests/packaging.test.js` holds the config to
+    them, and to their absences (`disable-library-validation` is forbidden under the
+    sandbox; `network.server` would be asking for something nothing listens on), on
+    every platform and with no Apple material present.
 
 - The main process owns all filesystem and native I/O. The renderer is sandboxed
   (`contextIsolation: true`, `nodeIntegration: false`, `sandbox: true`) and

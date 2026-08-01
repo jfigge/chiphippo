@@ -12,7 +12,8 @@ never changes how the circuit behaves.
 
 ## Opening the analyzer
 
-Click **Analyzer** in the toolbar, or press `Cmd/Ctrl+A`, to dock the panel
+Click **Analyzer** in the toolbar, or press `A` — a bare key, like the desk's
+other tool letters, since `Cmd/Ctrl+A` is Select All — to dock the panel
 along the bottom of the window. Click the button again, press the shortcut
 again, or click the panel's **×** to close it — the panel remembers whether
 it was open and how tall you left it (drag its top edge to resize, from a
@@ -38,7 +39,7 @@ Each channel gets a row in the left-hand gutter: a color dot (cycled from a
 fixed palette unless the channel has its own color), the net or bus name,
 its current value, and three small controls — **↑** / **↓** to reorder the
 channel, and **×** to remove it. Channels are saved with the document
-(`doc.scopeChannels`), so a schematic reopens with its analyzer setup
+(`doc.scopeChannels`), so a desktop reopens with its analyzer setup
 intact, and adding/removing/reordering a channel rides the normal undo/redo
 stack. A channel that loses its target (the net was deleted, the bus was
 removed) simply reads as undriven rather than disappearing — it comes back

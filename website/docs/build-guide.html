@@ -6,17 +6,17 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#2F855A" />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-  <title>Build Guide, Wiring List &amp; BOM · Chip Hippo Guide</title>
-  <meta name="description" content="Build Guide, Wiring List &amp; BOM — the Chip Hippo user guide." />
+  <title>Build Guide &amp; BOM · Chip Hippo Guide</title>
+  <meta name="description" content="Build Guide &amp; BOM — the Chip Hippo user guide." />
   <link rel="canonical" href="https://chiphippo.com/docs/build-guide.html" />
   <meta property="og:type" content="article" />
   <meta property="og:site_name" content="Chip Hippo" />
-  <meta property="og:title" content="Build Guide, Wiring List &amp; BOM · Chip Hippo Guide" />
-  <meta property="og:description" content="Build Guide, Wiring List &amp; BOM — the Chip Hippo user guide." />
+  <meta property="og:title" content="Build Guide &amp; BOM · Chip Hippo Guide" />
+  <meta property="og:description" content="Build Guide &amp; BOM — the Chip Hippo user guide." />
   <meta property="og:url" content="https://chiphippo.com/docs/build-guide.html" />
   <meta name="twitter:card" content="summary" />
-  <meta name="twitter:title" content="Build Guide, Wiring List &amp; BOM · Chip Hippo Guide" />
-  <meta name="twitter:description" content="Build Guide, Wiring List &amp; BOM — the Chip Hippo user guide." />
+  <meta name="twitter:title" content="Build Guide &amp; BOM · Chip Hippo Guide" />
+  <meta name="twitter:description" content="Build Guide &amp; BOM — the Chip Hippo user guide." />
   <style>
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
 :root{--bg:#1c1c1c;--mantle:#161616;--crust:#101010;--surface-0:#2a2a2a;--surface-1:#383838;--overlay-0:#686868;--text:#e8e8e8;--subtext:#b0b0b0;--accent:#3fb950;--green:#56d364}
@@ -69,12 +69,12 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
         <a class="doc-nav-link" href="components.html">Chips &amp; Components</a>
         <a class="doc-nav-link" href="wiring.html">Wiring, Nets &amp; Buses</a>
         <a class="doc-nav-link" href="power-and-clocks.html">Power &amp; Clock Sources</a>
-        <a class="doc-nav-link" href="chip-library.html">The 74xx Chip Library</a>
+        <a class="doc-nav-link" href="chip-library.html">The Chip Library</a>
         <a class="doc-nav-link" href="simulation.html">Running a Simulation</a>
         <a class="doc-nav-link" href="probing.html">Probing &amp; Net Names</a>
         <a class="doc-nav-link" href="memory.html">Memory Chips &amp; the Inspector</a>
         <a class="doc-nav-link" href="logic-analyzer.html">Logic Analyzer &amp; Timing</a>
-        <a class="doc-nav-link doc-nav-link--active" href="build-guide.html">Build Guide, Wiring List &amp; BOM</a>
+        <a class="doc-nav-link doc-nav-link--active" href="build-guide.html">Build Guide &amp; BOM</a>
         <a class="doc-nav-link" href="schematic-view.html">Schematic View</a>
         <a class="doc-nav-link" href="ai-builder.html">AI Circuit Builder</a>
         <a class="doc-nav-link" href="files-and-undo.html">Files, Saving &amp; Undo</a>
@@ -83,15 +83,15 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
         <a class="doc-nav-link" href="keyboard-shortcuts.html">Keyboard Shortcuts</a>
     </nav>
     <main class="content">
-<h1>Build Guide, Wiring List &amp; BOM</h1>
+<h1>Build Guide &amp; BOM</h1>
 <p>Once a circuit is wired up on the desk, Chip Hippo can turn it into the
-paperwork you&#39;d actually want on the bench: a bill of materials (what to
-buy, and how many), a human-addressed wiring list (what connects to what, in
-words a person can follow with a real breadboard in hand), and an ordered
-assembly checklist. None of this is stored on the document — it&#39;s derived
-fresh from the live desk every time you open or change it, so it never
-drifts out of sync with what you&#39;ve actually built.</p>
-<p><img src="images/build-guide.png" alt="The build guide with a BOM and wiring list"></p>
+paperwork you&#39;d actually want on the bench: a bill of materials (what to buy,
+and how many — down to a numbered cutting list of every jumper), and an
+ordered assembly checklist that names each of those jumpers as you come to
+run it. None of this is stored on the document — it&#39;s derived fresh from the
+live desk every time you open or change it, so it never drifts out of sync
+with what you&#39;ve actually built.</p>
+<p><img src="images/build-guide.png" alt="The build guide showing a BOM"></p>
 <h2 id="opening-the-build-guide">Opening the build guide</h2>
 <p>Click the <strong>Bill Of Materials</strong> clipboard button at the right-hand end of the
 desk-tools pill, or press <code>Ctrl+B</code> / <code>⌘B</code>, to open
@@ -99,8 +99,8 @@ the build guide as a right-docked panel. Clicking it again, or the panel&#39;s o
 <strong>×</strong> close button, hides it — and the button stays lit for as long as the
 panel is open, however you opened or closed it. The panel&#39;s open/closed
 state is remembered between launches, same as the parts palette. It has
-three tabs — <strong>BOM</strong>, <strong>Wiring</strong>, and <strong>Steps</strong> — and is read-only, so it
-stays available even while a simulation is running.</p>
+two tabs — <strong>BOM</strong> and <strong>Steps</strong> — and is read-only, so it stays available
+even while a simulation is running.</p>
 <p>The guide re-derives itself automatically whenever the document changes
 while it&#39;s open (adding/removing a part or wire, renaming a net, flipping a
 switch) — there&#39;s nothing to refresh by hand.</p>
@@ -117,39 +117,32 @@ usually means a connection you meant to make and didn&#39;t.</li>
 </ul>
 <h2 id="the-bill-of-materials">The bill of materials</h2>
 <p>The <strong>BOM</strong> tab lists everything on the desk as counted line items, grouped
-into four sections (only the non-empty ones show): <strong>Breadboards</strong>, <strong>Chips</strong>,
-<strong>Discrete parts</strong>, and <strong>Power</strong>. Boards are counted by strip type (a Full
-830 kit counts as its constituent rail/pin strips, not as one line), and
-components are counted by catalog identity — with a few splits that matter
+into five sections (only the non-empty ones show): <strong>Breadboards</strong>, <strong>Chips</strong>,
+<strong>Discrete parts</strong>, <strong>Power</strong>, and <strong>Wires</strong>. Boards are counted by strip type
+(a Full 830 kit counts as its constituent rail/pin strips, not as one line),
+and components are counted by catalog identity — with a few splits that matter
 for actually buying the right part: LEDs split by color, PSU bricks by
 voltage, and clock sources by rate. Each line reads as <code>title ×count</code>.</p>
-<h2 id="the-wiring-list">The wiring list</h2>
-<p>The <strong>Wiring</strong> tab is net-centric, not wire-centric: instead of listing raw
-wire endpoints, it lists every electrically-interesting <strong>net</strong> and what&#39;s
-connected to it. A net only shows up here if you actually connected
-something to it — either it carries a wire, or it has two or more members —
-so a freshly-placed 14-pin chip with nothing wired to it doesn&#39;t spam the
-list with fourteen empty rows.</p>
-<p>Each net&#39;s members are resolved to the friendliest label available, in this
-priority order:</p>
-<ol>
-<li>A component pin at the hole — <code>&quot;74LS00 pin 3 (1Y)&quot;</code> (part + pin number +
-datasheet pin name, when the pin has one).</li>
-<li>A pin sharing the hole&#39;s 5-hole node — a bus tap lands <em>beside</em> a pin
-rather than on it, and still resolves to that pin.</li>
-<li>A PSU or clock terminal — <code>&quot;Power supply +&quot;</code>.</li>
-<li>A power rail — <code>&quot;+ rail (bb1)&quot;</code>.</li>
-<li>The bare hole address, as a last resort.</li>
-</ol>
-<p>A net you&#39;ve named (see <a href="probing.html">Probing &amp; Net Names</a>) leads with that
-name instead of an anonymous net id, and buses group under a <code>&lt;bus name&gt; bus</code>
-heading with each row labeled by bit — so naming your nets up front, before
-opening the guide, makes this tab read far more like a real wiring diagram
-and far less like an address dump. See
-<a href="wiring.html">Wiring, Nets &amp; Buses</a> for how wires, colors, and buses work in
-the first place.</p>
-<p>A net that only reaches one salient member is flagged with a small warning
-icon right in its row (and rolled into the warnings banner above).</p>
+<h3 id="the-cutting-list">The cutting list</h3>
+<p><strong>Wires</strong> comes last, because you wire after you seat, and it&#39;s a different
+kind of list: a numbered <strong>cutting list</strong>, one line per colour <em>and cut
+length</em>, tallied.</p>
+<pre><code>[3] Jumper wire (red, 6.1 cm)  ×3
+</code></pre>
+<p>That&#39;s three leads to cut the same, which is how you&#39;d actually work through
+a drawer or a spool — so the length belongs in the line rather than beside
+it. The length is the <strong>cut</strong> length: the run from hole to hole plus the
+stripped end that goes down into each hole, so a jumper crossing a single
+0.1 in pitch is about 13 mm of wire, not 3. It&#39;s the same measurement, and
+the same wording, as the drawing at the bottom of a wire&#39;s own
+<strong>Properties…</strong> dialog (see <a href="wiring.html#wire-length">Wiring, Nets &amp; Buses</a>) —
+a wire can&#39;t read one length there and another here.</p>
+<p>Lines are sorted by the app&#39;s colour order, then shortest first, and
+<strong>numbered in that order</strong>. The number is a cross-reference: every assembly
+step that runs a wire calls it out as <code>[3]</code>, so you cut the pile once, number
+it, and never have to re-measure anything mid-build. It only moves if the
+desk itself changes — never because a colour was renamed or the language
+switched.</p>
 <h2 id="assembly-steps">Assembly steps</h2>
 <p>The <strong>Steps</strong> tab is an ordered checklist for building the circuit from
 scratch, grouped in the order you&#39;d actually work: <strong>Place the boards</strong>,
@@ -168,18 +161,36 @@ bb1.e5&quot;</em> (plus a flipped note if it&#39;s rotated 180°); a linear disc
 lists its resolved lead addresses instead.</li>
 <li>Signal wires are grouped last: whole buses first (one step per bus, one
 detail line per bit), then the remaining signal nets, each with its wires
-listed as <code>from → to</code> using the same friendly local labels as the wiring
-list.</li>
+listed as <code>[n] from → to</code>. The leading <code>[n]</code> is that wire&#39;s item number
+from the cutting list above, so the callouts form a column you can read
+down while you cut.</li>
 </ul>
+<h3 id="how-an-endpoint-is-named">How an endpoint is named</h3>
+<p>A wire&#39;s two ends are resolved to the friendliest label available rather than
+printed as raw addresses, in this priority order:</p>
+<ol>
+<li>A component pin at the hole — <code>&quot;74LS00 pin 3 (1Y)&quot;</code> (part + pin number +
+datasheet pin name, when the pin has one).</li>
+<li>A pin sharing the hole&#39;s 5-hole node — a bus tap lands <em>beside</em> a pin
+rather than on it, and still resolves to that pin.</li>
+<li>A PSU or clock terminal — <code>&quot;Power supply +&quot;</code>.</li>
+<li>A power rail — <code>&quot;+ rail (bb1)&quot;</code>.</li>
+<li>The bare hole address, as a last resort.</li>
+</ol>
+<p>A net you&#39;ve named (see <a href="probing.html">Probing &amp; Net Names</a>) leads its step with
+that name instead of an anonymous net id, so naming your nets up front, before
+opening the guide, makes the whole tab read far more like a real assembly
+sheet and far less like an address dump.</p>
 <h2 id="downloading-the-bom">Downloading the BOM</h2>
 <p>The download icon in the panel header exports the <strong>whole current plan</strong> —
-BOM, wiring list, and assembly steps together, headings and all — as a
-Rich Text Format (<code>.rtf</code>) document, named <code>&lt;schematic name&gt;-bom.rtf</code> after
-your current schematic file. It&#39;s a plain browser download (no save dialog,
-no main-process IPC involved) generated entirely in the renderer, so it
-reflects exactly what the panel is showing at the moment you click it. <code>.rtf</code>
-opens in any word processor, which makes it easy to print or hand off as a
-build sheet alongside the physical parts.</p>
+the BOM and the assembly steps together, headings, item numbers and all — as
+a Rich Text Format (<code>.rtf</code>) document, named <code>&lt;project name&gt;-bom.rtf</code>. It
+mirrors the panel&#39;s tabs, so what you get on paper is what you were looking
+at. It&#39;s a plain browser download (no save dialog, no main-process IPC
+involved) generated entirely in the renderer, so it reflects exactly what the
+panel is showing at the moment you click it. <code>.rtf</code> opens in any word
+processor, which makes it easy to print or hand off as a build sheet
+alongside the physical parts.</p>
 
     </main>
   </div>

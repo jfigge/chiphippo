@@ -69,12 +69,12 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
         <a class="doc-nav-link doc-nav-link--active" href="components.html">Chips &amp; Components</a>
         <a class="doc-nav-link" href="wiring.html">Wiring, Nets &amp; Buses</a>
         <a class="doc-nav-link" href="power-and-clocks.html">Power &amp; Clock Sources</a>
-        <a class="doc-nav-link" href="chip-library.html">The 74xx Chip Library</a>
+        <a class="doc-nav-link" href="chip-library.html">The Chip Library</a>
         <a class="doc-nav-link" href="simulation.html">Running a Simulation</a>
         <a class="doc-nav-link" href="probing.html">Probing &amp; Net Names</a>
         <a class="doc-nav-link" href="memory.html">Memory Chips &amp; the Inspector</a>
         <a class="doc-nav-link" href="logic-analyzer.html">Logic Analyzer &amp; Timing</a>
-        <a class="doc-nav-link" href="build-guide.html">Build Guide, Wiring List &amp; BOM</a>
+        <a class="doc-nav-link" href="build-guide.html">Build Guide &amp; BOM</a>
         <a class="doc-nav-link" href="schematic-view.html">Schematic View</a>
         <a class="doc-nav-link" href="ai-builder.html">AI Circuit Builder</a>
         <a class="doc-nav-link" href="files-and-undo.html">Files, Saving &amp; Undo</a>
@@ -85,18 +85,24 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
     <main class="content">
 <h1>Chips &amp; Components</h1>
 <p>Everything that isn&#39;t a breadboard strip lives in the <strong>Parts</strong> palette on the
-left: 74xx logic chips, memory chips, switches, LEDs, displays, resistors,
-oscillators, and power/clock bricks. This page covers finding a part,
-seating it on a board, and the (surprisingly varied) ways different parts
-rotate and flip once they&#39;re down.</p>
+left: 74xx logic chips, 65xx interface chips, memory chips, switches, LEDs,
+displays, resistors, oscillators, and power/clock bricks. This page covers
+finding a part, seating it on a board, and the (surprisingly varied) ways
+different parts rotate and flip once they&#39;re down.</p>
 <p><img src="images/components.png" alt="Chips and discretes placed on a breadboard"></p>
 <h2 id="the-parts-palette">The parts palette</h2>
 <p>The palette opens with every section collapsed, grouped by function:</p>
 <ul>
-<li><strong>CHIPS</strong> — every 74xx logic family, folder-grouped, plus a separate
-<strong>Memory</strong> group for ROM/RAM chips.</li>
+<li><strong>BOARDS</strong> — the breadboard kits and loose strips, pinned at the top (see
+<a href="the-desk.html">The Desk &amp; Breadboards</a>).</li>
+<li><strong>CHIPS</strong> — every 74xx logic family, folder-grouped, ending with the
+<strong>Interface</strong> group (the 65xx CPU/PIA/VIA).</li>
 <li><strong>COMPONENTS</strong> — <strong>Switches</strong>, <strong>Resistors</strong>, <strong>LEDs</strong>, <strong>Displays</strong>,
 <strong>Oscillators</strong>, and <strong>Power</strong>, in that shelf order.</li>
+<li><strong>Memory</strong> — the ROM/RAM chips, pulled out of CHIPS into a top-level group
+of their own.</li>
+<li><strong>ANNOTATIONS</strong> — labels and notes, pinned at the bottom (see
+<a href="probing.html#annotations">Probing &amp; Net Names</a>).</li>
 </ul>
 <p>The tray&#39;s right edge is a drag handle: pull it out to give long part names
 more room, and the width you leave it at is remembered.</p>
@@ -137,7 +143,31 @@ shapes rather than a line of pins — a full can is 7 holes by 4, a half
 can 4 holes square, with legs only at the four corners. A can can seat
 anywhere on the grid, including straddling the trench, since its shape
 (not a row) determines its footprint.</li>
+<li><strong>Character LCD modules</strong> (<strong>lcd16x2</strong>, <strong>lcd20x4</strong>) <em>are</em> linear — a
+16-way header along 16 adjacent holes in one row — but the module itself
+is much bigger than that row. See below.</li>
 </ul>
+<h2 id="character-lcd-modules">Character LCD modules</h2>
+<p>The <strong>Displays</strong> group holds two HD44780 character-LCD modules: a 16×2
+(the standard 1602A) and a 20×4 (the 2004A). They&#39;re drawn to their real
+sizes — 80 × 36 mm and 98 × 60 mm of PCB — and their screens are <strong>live</strong>:
+run the circuit, drive the module, and the characters appear on the glass.</p>
+<p>Both plug in through a <strong>16-way header along one row</strong>, and the pin
+assignment is identical between them, so what you learn wiring one applies
+to the other. The header runs along the module&#39;s <strong>top</strong> edge, which means
+the body hangs <strong>below</strong> the row it plugs into — so seat one on a <strong>bottom
+row (<code>a</code>)</strong> and it clears the board it&#39;s plugged into rather than covering
+it. The placement ghost shows you the whole module, so you can see this
+before you click.</p>
+<p>Driving one is the ordinary HD44780 parallel bus: put a command or character
+code on <code>DB0</code>–<code>DB7</code>, set <code>RS</code> (0 = instruction, 1 = data) and <code>R/W</code>
+(0 = write), and pulse <code>E</code> — the byte latches on <code>E</code>&#39;s falling edge. Wire
+<code>VDD</code>/<code>VSS</code> to a 5 V rail. <code>V0</code> (contrast) and <code>A</code>/<code>K</code> (backlight) are
+present on the pinout but cosmetic here. During a <em>read</em> the module drives
+<code>DB0</code>–<code>DB7</code> itself, so tri-state anything else sharing that bus.</p>
+<p>Both modules show the same controller datasheet in their pin-assignments
+window — it&#39;s one document, because <code>RS</code>/<code>R/W</code>/<code>E</code>, the bus and the address
+maps are the controller&#39;s and are identical across the two sizes.</p>
 <h2 id="rotating--flipping">Rotating &amp; flipping</h2>
 <p>Rotation behavior is <strong>not one rule for every part</strong> — it depends on what
 kind of part it is. This is the part worth reading carefully.</p>
@@ -243,7 +273,7 @@ stays fixed at its canonical layout no matter how you&#39;ve flipped it on the
 desk (it matches the physical part, not the placement); a DIP-packaged
 discrete — <code>bar8iso</code> or any DIP switch bank — is the exception: its diagram
 reflects its current <code>R</code> flip, since it has no real notch of its own. See
-<a href="chip-library.html">The 74xx Chip Library</a> for the full
+<a href="chip-library.html">The Chip Library</a> for the full
 detail on what the window shows and how it sources its datasheet crops.</p>
 <hr>
 <p>See also: <a href="the-desk.html">The Desk &amp; Breadboards</a> for how boards and strips

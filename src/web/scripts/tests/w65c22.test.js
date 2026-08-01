@@ -58,7 +58,7 @@ const IER = 0xe;
 
 class Via {
   constructor() {
-    this.u = chipDef("w65c22").logic;
+    this.u = chipDef("W65C22").logic;
     this.state = this.u.state0();
     this.prev = null;
     this.pins = new Map();

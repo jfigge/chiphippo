@@ -131,7 +131,7 @@ function builder() {
 // its own pin-board (no packing) with shared power rails; buses are wired
 // pin-to-pin. The program lives in the ROM's .bin — ship the .hex and Import it.
 
-// CPU pins (see catalog/chips-io.js "w65c02").
+// CPU pins (see catalog/chips-io.js "W65C02").
 const CPU = {
   A: [9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 22, 23, 24, 25], // A0…A15
   D: [33, 32, 31, 30, 29, 28, 27, 26], // D0…D7
@@ -155,7 +155,7 @@ const ROM = {
   VCC: 28,
   GND: 14,
 };
-// VIA pins (w65c22).
+// VIA pins (W65C22).
 const VIA = {
   RS: [38, 37, 36, 35], // RS0…RS3 ← A0…A3
   D: [33, 32, 31, 30, 29, 28, 27, 26], // D0…D7
@@ -210,16 +210,16 @@ function buildBlink() {
   b.brick("psu1", "psu", "psu", 70, 0, { volts: 5 });
   b.brick("clk1", "clock", "clock", 70, 12, { hz: 2 });
 
-  b.part("c1", "chip", "w65c02", "bb2", "e3");
+  b.part("c1", "chip", "W65C02", "bb2", "e3");
   b.part("c2", "chip", "rom-8k", "bb3", "e3");
-  b.part("c3", "chip", "w65c22", "bb4", "e3");
+  b.part("c3", "chip", "W65C22", "bb4", "e3");
   b.part("c4", "chip", "74LS04", "bb5", "e3");
   b.part("c5", "discrete", "resistor", "bb5", "a30", { ohms: 330 });
   b.part("c6", "discrete", "led", "bb5", "a40", { color: "red" });
 
-  const cpu = b.holesOfPart("w65c02", "e3");
+  const cpu = b.holesOfPart("W65C02", "e3");
   const rom = b.holesOfPart("rom-8k", "e3");
-  const via = b.holesOfPart("w65c22", "e3");
+  const via = b.holesOfPart("W65C22", "e3");
   const inv = b.holesOfPart("74LS04", "e3");
   const res = b.holesOfPart("resistor", "a30", { ohms: 330 });
   const led = b.holesOfPart("led", "a40", { color: "red" });
@@ -345,13 +345,13 @@ function buildLcd() {
   b.brick("psu1", "psu", "psu", 70, 0, { volts: 5 });
   b.brick("clk1", "clock", "clock", 70, 12, { hz: 5 });
 
-  b.part("c1", "chip", "w65c02", "bb2", "e3");
+  b.part("c1", "chip", "W65C02", "bb2", "e3");
   b.part("c2", "chip", "rom-8k", "bb3", "e3");
   b.part("c3", "chip", "74LS04", "bb4", "e3");
   b.part("c4", "chip", "74LS08", "bb4", "e20");
   b.part("c5", "discrete", "lcd16x2", "bb5", "a10");
 
-  const cpu = b.holesOfPart("w65c02", "e3");
+  const cpu = b.holesOfPart("W65C02", "e3");
   const rom = b.holesOfPart("rom-8k", "e3");
   const inv = b.holesOfPart("74LS04", "e3");
   const and = b.holesOfPart("74LS08", "e20");

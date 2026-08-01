@@ -67,6 +67,9 @@
     "mac": {
       "icon": "web/chiphippo-mac-icon.png",
       "category": "public.app-category.developer-tools",
+      "extendInfo": {
+        "ITSAppUsesNonExemptEncryption": false
+      },
       "target": [
         {
           "target": "dmg",
@@ -83,6 +86,33 @@
           ]
         }
       ]
+    },
+    "mas": {
+      "type": "distribution",
+      "icon": "web/chiphippo-mac-icon.png",
+      "category": "public.app-category.developer-tools",
+      "extendInfo": {
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "notarize": false,
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "entitlements": "packaging/entitlements.mas.plist",
+      "entitlementsInherit": "packaging/entitlements.mas.inherit.plist",
+      "provisioningProfile": "packaging/embedded.provisionprofile",
+      "target": [
+        {
+          "target": "pkg",
+          "arch": ["universal"]
+        }
+      ]
+    },
+    "masDev": {
+      "type": "development",
+      "notarize": false,
+      "entitlements": "packaging/entitlements.mas.plist",
+      "entitlementsInherit": "packaging/entitlements.mas.inherit.plist",
+      "provisioningProfile": "packaging/development.provisionprofile"
     },
     "win": {
       "icon": "web/chiphippo-icon.ico",

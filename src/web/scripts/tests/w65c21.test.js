@@ -44,7 +44,7 @@ const IRQAB = 38;
 
 class Pia {
   constructor() {
-    this.u = chipDef("w65c21").logic;
+    this.u = chipDef("W65C21").logic;
     this.state = this.u.state0();
     this.prev = null;
     // Baseline: everything floats HIGH (asInput of an unconnected pin), PHI2

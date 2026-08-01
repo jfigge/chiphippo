@@ -23,6 +23,11 @@
  * single-threaded process (there is no separate async write queue to reason
  * about).
  *
+ * The ONE exception is a Mac App Store build writing to a file the user chose:
+ * the sandbox denies the sibling temp file, so `atomicWrite` falls back to a
+ * durable in-place write. See `sandboxDenied` below for why, and what it
+ * costs.
+ *
  * Ported from Port Hippo's storage layer (src/app/store/io.js); the schema
  * migrations hook arrives with Feature 20's desk-document store.
  */
@@ -31,6 +36,8 @@
 const fs = require("fs");
 const path = require("path");
 const { randomUUID } = require("crypto");
+
+const { isMas } = require("../store-build");
 
 // ── Directory helpers ─────────────────────────────────────────────────────────
 
@@ -158,27 +165,69 @@ function renameWithRetry(from, to) {
  * @param {string|Buffer} data
  */
 function atomicWrite(filePath, data) {
-  ensureDir(path.dirname(filePath));
-  const tmpPath = tempPathFor(filePath);
   try {
-    // Open an fd so the contents can be fsync'd before the rename;
-    // writeFileSync(path, …) would close the fd internally with no flush.
-    const fd = fs.openSync(tmpPath, "w");
+    ensureDir(path.dirname(filePath));
+    const tmpPath = tempPathFor(filePath);
     try {
-      fs.writeFileSync(fd, data, "utf8");
-      fs.fsyncSync(fd);
-    } finally {
-      fs.closeSync(fd);
+      // Open an fd so the contents can be fsync'd before the rename;
+      // writeFileSync(path, …) would close the fd internally with no flush.
+      const fd = fs.openSync(tmpPath, "w");
+      try {
+        fs.writeFileSync(fd, data, "utf8");
+        fs.fsyncSync(fd);
+      } finally {
+        fs.closeSync(fd);
+      }
+      renameWithRetry(tmpPath, filePath);
+      fsyncDir(path.dirname(filePath));
+    } catch (err) {
+      try {
+        fs.unlinkSync(tmpPath);
+      } catch {
+        /* ignore */
+      }
+      throw err;
     }
-    renameWithRetry(tmpPath, filePath);
-    fsyncDir(path.dirname(filePath));
   } catch (err) {
-    try {
-      fs.unlinkSync(tmpPath);
-    } catch {
-      /* ignore */
-    }
-    throw err;
+    if (!sandboxDenied(err)) throw err;
+    writeInPlace(filePath, data);
+  }
+}
+
+/**
+ * Is this the App Sandbox refusing the temp file, rather than a real failure?
+ *
+ * A Mac App Store build gets its access to a user's file from the save panel
+ * that chose it — and that grant covers THAT FILE, not the folder holding it.
+ * So creating `<file>.chiphippotmp-N.tmp` beside it is denied, and the temp
+ * name is not in the same-basename form the sandbox would forgive as a related
+ * item. Only a store build is ever let down this path: a direct build's
+ * atomicity is untouched, and a genuine EACCES there still throws as it always
+ * did.
+ */
+function sandboxDenied(err) {
+  const code = err?.code;
+  return isMas() && (code === "EPERM" || code === "EACCES" || code === "EROFS");
+}
+
+/**
+ * The store build's fallback: truncate the existing file and write through it,
+ * fsync'd so the bytes are durable.
+ *
+ * THIS IS NOT ATOMIC, and that is the cost of shipping to the Mac App Store —
+ * a crash mid-write leaves a truncated file where the rename strategy would
+ * have left the old one intact. It applies ONLY to files the user chose
+ * themselves; everything the app owns lives under `userData`, inside the
+ * container, where the atomic path above works normally. That includes the
+ * 30-second autosave slot, so the work is still recoverable.
+ */
+function writeInPlace(filePath, data) {
+  const fd = fs.openSync(filePath, "w");
+  try {
+    fs.writeFileSync(fd, data, "utf8");
+    fs.fsyncSync(fd);
+  } finally {
+    fs.closeSync(fd);
   }
 }
 

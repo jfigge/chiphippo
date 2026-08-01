@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  App Sandbox entitlements for the Mac App Store (MAS) build of Chip Hippo.
+
+  A MAS build runs under Apple's App Sandbox, NOT the hardened runtime — the two
+  are mutually exclusive, which is why build.mas sets hardenedRuntime:false.
+  Kept to the minimum the app actually needs, because every key here is
+  something a reviewer may ask about:
+
+    * app-sandbox              required of every App Store app.
+    * cs.allow-jit             V8's JIT compiler.
+    * files.user-selected.*    read/write the files the user picks through the
+                               native dialogs — opening and saving a project,
+                               exporting/importing a desktop, loading or
+                               exporting a ROM image, writing the build guide's
+                               RTF, and choosing the datasheet folder. The
+                               sandbox grants access only to what the user
+                               selected, which is exactly how those flows work.
+    * files.bookmarks.app-scope
+                               THE ONE THAT IS NOT OBVIOUS. Chip Hippo re-opens
+                               paths from an earlier session: the Open Recent
+                               list, and the Settings ▸ Data Sheets folder read
+                               when a pin-assignments window opens. A dialog's
+                               grant dies with the process, so those need
+                               security-scoped bookmarks (app/store/bookmark-
+                               store.js) — and WITHOUT this key the dialogs hand
+                               back empty bookmark strings and every one of
+                               those features quietly stops working a launch
+                               later.
+    * network.client           the app's only outbound calls: the AI circuit
+                               builder and the datasheet download. Both are
+                               opt-in, and the auto-updater — the third — is
+                               switched off in a store build (store-build.js).
+
+  Deliberately ABSENT, and why:
+    * network.server           nothing listens; there is no loopback server.
+    * disable-library-validation
+                               forbidden under the App Sandbox.
+    * cs.allow-unsigned-executable-memory
+                               a hardened-runtime key, meaningless here.
+    * files.bookmarks.document-scope
+                               that is for bookmarks stored INSIDE a document.
+                               Ours live in an app-owned sidecar under
+                               userData, so app-scope is the right one.
+    * print, device.*, files.downloads.*
+                               unused surface is unused.
+
+  Everything the app writes for itself — the working slot, ROM .bin files,
+  downloaded datasheets, settings, the encrypted API key — lives under
+  userData, inside the sandbox container, and needs no entitlement at all.
+-->
+<plist version="1.0">
+  <dict>
+    <key>com.apple.security.app-sandbox</key>
+    <true/>
+    <key>com.apple.security.cs.allow-jit</key>
+    <true/>
+    <key>com.apple.security.files.user-selected.read-write</key>
+    <true/>
+    <key>com.apple.security.files.bookmarks.app-scope</key>
+    <true/>
+    <key>com.apple.security.network.client</key>
+    <true/>
+  </dict>
+</plist>

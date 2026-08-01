@@ -125,7 +125,7 @@
     },
     "analyzer": {
       "label": "Analizador",
-      "title": "Analizador lógico — registra y observa las formas de onda a lo largo del tiempo ({mod}+A)"
+      "title": "Analizador lógico — registra y observa las formas de onda a lo largo del tiempo (A)"
     },
     "fit": {
       "label": "Ajustar a la pantalla",
@@ -137,7 +137,7 @@
     },
     "bom": {
       "label": "Lista de materiales",
-      "title": "Lista de materiales — componentes, cableado y pasos de montaje ({mod}+B)"
+      "title": "Lista de materiales — componentes, corte de cables y pasos de montaje ({mod}+B)"
     },
     "mode": {
       "schematic": "Vista de esquema",
@@ -486,13 +486,13 @@
     "AM27C1024": {
       "title": "EPROM de 64K×16"
     },
-    "w65c21": {
+    "W65C21": {
       "title": "PIA W65C21"
     },
-    "w65c22": {
+    "W65C22": {
       "title": "VIA W65C22"
     },
-    "w65c02": {
+    "W65C02": {
       "title": "CPU W65C02"
     },
     "sw-slide": {

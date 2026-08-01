@@ -15,7 +15,10 @@ Anything a 74xx TTL breadboard bench can hold: combinational logic (gates,
 decoders, multiplexers), sequential logic (flip-flops, counters, shift
 registers), a free-running or manually stepped clock, and small memory
 circuits backed by ROM/RAM chips — all wired across Full/Half/Tiny
-breadboards, powered at 3 V / 5 V / 12 V, and watched settle live.
+breadboards, powered at 3 V / 5 V / 12 V, and watched settle live. Beyond
+the 74xx shelf there is a **65xx interface group** — a W65C02 CPU, a PIA and
+a VIA — for building a small single-board computer out of the same glue
+logic.
 
 ## Highlights
 
@@ -31,8 +34,11 @@ breadboards, powered at 3 V / 5 V / 12 V, and watched settle live.
 - **A derived schematic view** — press `Tab` to flip between the physical
   breadboard and a logical diagram of chip symbols, routed named nets, and
   bus lines, kept in sync with the desk.
-- **Build guide & BOM export**, and **undo/redo** across every edit, per
-  desktop of the open project.
+- **Build guide & BOM export** — including a numbered cutting list of every
+  jumper — and **undo/redo** across every edit, per desktop of the open
+  project.
+- **Seven languages** — English, German, Spanish, French, Italian, Japanese
+  and Chinese, chosen in Settings ▸ Appearance (this guide is English only).
 - **An AI circuit builder** — describe a circuit in words, using your own AI
   connection, and get a wired design that has already been built and run
   before you're offered it.
@@ -54,8 +60,8 @@ breadboards, powered at 3 V / 5 V / 12 V, and watched settle live.
   wires, and multi-bit buses.
 - [Power & Clock Sources](power-and-clocks.md) — PSU bricks, voltage and the
   12 V damage rule, and clock sources.
-- [The 74xx Chip Library](chip-library.md) — the catalog, chip families, and
-  the pin-assignments/datasheet window.
+- [The Chip Library](chip-library.md) — the catalog: 74xx logic, memory and
+  the 65xx interface parts, and the pin-assignments/datasheet window.
 
 ### Simulating & inspecting
 
@@ -72,8 +78,8 @@ breadboards, powered at 3 V / 5 V / 12 V, and watched settle live.
 
 ### Files & reference
 
-- [Build Guide, Wiring List & BOM](build-guide.md) — deriving an assembly
-  guide and bill of materials.
+- [Build Guide & BOM](build-guide.md) — deriving a bill of materials, a
+  jumper cutting list, and an ordered assembly checklist.
 - [Files, Saving & Undo](files-and-undo.md) — where a desktop and a project
   are kept, saving them, and undo/redo.
 - [Projects & Desktops](projects-and-desktops.md) — tabbed desktops, saving a

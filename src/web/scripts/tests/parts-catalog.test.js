@@ -18,7 +18,7 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 
 import {
   LED_COLOR_OPTIONS,
@@ -661,6 +661,41 @@ test("a def that NAMES a datasheet crop has that file committed", () => {
     );
     assert.ok(existsSync(png), `${def.id}: ${def.datasheet}.png is committed`);
   }
+});
+
+test("every committed crop is named in the case the app asks for it in", () => {
+  // THE ONE CHECK `existsSync` CANNOT MAKE. macOS and Windows resolve a path
+  // case-insensitively, so a crop committed as `W65C02.png` answers a request
+  // for `W65C02.png` on the machine it was built on and 404s on Linux — where
+  // the <img> quietly removes its own <figure> and the window just shows the
+  // pin map, looking exactly like one of the parts that legitimately has no
+  // sheet. So the comparison has to be against the DIRECTORY LISTING, which is
+  // the only place the real spelling survives.
+  //
+  // Deliberately conditional on the file being there AT ALL: a chip with no
+  // crop is a known, accepted gap (the four 74LS parts with no matching
+  // datasheet, and the whole memory group), and this test is about the name,
+  // not about coverage.
+  const dir = new URL("../../datasheets/", import.meta.url);
+  const onDisk = readdirSync(dir);
+  const exact = new Set(onDisk);
+  const insensitive = new Map(onDisk.map((f) => [f.toLowerCase(), f]));
+
+  let checked = 0;
+  for (const def of PALETTE_DEFS) {
+    const crop = datasheetCrop(def);
+    if (!crop) continue;
+    const want = `${crop}.png`;
+    const found = insensitive.get(want.toLowerCase());
+    if (!found) continue; // no crop for this part — fine
+    checked += 1;
+    assert.equal(
+      found,
+      want,
+      `${def.id}: the app requests datasheets/${want}, but the committed file is ${found}`,
+    );
+  }
+  assert.ok(checked > 40, "the sweep actually reached the committed crops");
 });
 
 test("lcd: the characterDisplay drawing is self-consistent", () => {

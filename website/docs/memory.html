@@ -69,12 +69,12 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
         <a class="doc-nav-link" href="components.html">Chips &amp; Components</a>
         <a class="doc-nav-link" href="wiring.html">Wiring, Nets &amp; Buses</a>
         <a class="doc-nav-link" href="power-and-clocks.html">Power &amp; Clock Sources</a>
-        <a class="doc-nav-link" href="chip-library.html">The 74xx Chip Library</a>
+        <a class="doc-nav-link" href="chip-library.html">The Chip Library</a>
         <a class="doc-nav-link" href="simulation.html">Running a Simulation</a>
         <a class="doc-nav-link" href="probing.html">Probing &amp; Net Names</a>
         <a class="doc-nav-link doc-nav-link--active" href="memory.html">Memory Chips &amp; the Inspector</a>
         <a class="doc-nav-link" href="logic-analyzer.html">Logic Analyzer &amp; Timing</a>
-        <a class="doc-nav-link" href="build-guide.html">Build Guide, Wiring List &amp; BOM</a>
+        <a class="doc-nav-link" href="build-guide.html">Build Guide &amp; BOM</a>
         <a class="doc-nav-link" href="schematic-view.html">Schematic View</a>
         <a class="doc-nav-link" href="ai-builder.html">AI Circuit Builder</a>
         <a class="doc-nav-link" href="files-and-undo.html">Files, Saving &amp; Undo</a>
@@ -101,17 +101,20 @@ time you press <strong>Run</strong>, whatever the circuit writes stays readable 
 you <strong>Stop</strong>, and then it&#39;s gone. Nothing is ever saved to disk for these
 parts — there&#39;s no image to lose, because there was never a file.</li>
 <li><strong>Non-volatile (ROM/EPROM/EEPROM)</strong> — <code>rom-8k</code>, <code>28C16</code> (2K×8 EEPROM),
-<code>AM27C1024</code> (64K×16 EPROM). These chips are backed by a real file on disk
-in the app&#39;s own working folder, so their contents persist across runs and
-across closing and reopening the document. An unprogrammed chip reads back
-random noise too — just like an unprogrammed EPROM off the shelf — until
-you program it. (Exactly which file backs which chip is an internal
-bookkeeping detail you never need to touch by hand.)</li>
+<code>AM27C1024</code> (64K×16 EPROM). These chips hold a real byte image that
+persists across runs, and <strong>travels inside the project file</strong>: save the
+project and every programmed ROM&#39;s contents are written into the
+<code>.chiphippo</code> alongside the design, so copying that one file to another
+machine takes the ROMs with it. An unprogrammed chip reads back random
+noise too — just like an unprogrammed EPROM off the shelf — until you
+program it. (Between saves the bytes are kept in a working file in the
+app&#39;s own data folder; which file backs which chip is internal bookkeeping
+you never need to touch by hand.)</li>
 </ul>
 <p>The chip&#39;s <strong>blurb</strong> in the parts palette and pin-assignments window always
 says which kind it is, and its behavior — read timing, chip-enable/output-
 enable pins, address/data bus width — is otherwise ordinary combinational
-logic. See <a href="chip-library.html">The 74xx Chip Library</a> for the full catalog and
+logic. See <a href="chip-library.html">The Chip Library</a> for the full catalog and
 the pin-assignments window.</p>
 <h2 id="programming-a-rom">Programming a ROM</h2>
 <p>The circuit itself can never write a non-volatile chip. An EEPROM or EPROM&#39;s
@@ -174,10 +177,10 @@ Chip Hippo finds a chip flagged <strong>programmed</strong> but its backing file
 it recreates the file as fresh noise and warns you that the chip&#39;s data was
 lost, so you know to reload the image rather than trusting stale contents.</p>
 <hr>
-<p>See also <a href="chip-library.html">The 74xx Chip Library</a> for the memory chips in
+<p>See also <a href="chip-library.html">The Chip Library</a> for the memory chips in
 context with the rest of the catalog, and
-<a href="files-and-undo.html">Files, Autosave &amp; Undo</a> for how the desk document itself
-is saved and versioned.</p>
+<a href="files-and-undo.html">Files, Saving &amp; Undo</a> for how the project itself is
+saved.</p>
 
     </main>
   </div>

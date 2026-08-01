@@ -53,6 +53,13 @@ bottom of the window (drag its top edge to resize it; it remembers whether it
 was open and how tall you left it). Type a description and press `Enter` —
 `Shift+Enter` gives you a newline for a longer brief.
 
+The toolbar button is **disabled until there's a connection to ask** — no
+key stored, or a base URL that doesn't parse, and it greys out with the
+reason as its tooltip. It's the one tool in Chip Hippo that can't work on
+your own machine alone, so the button says so rather than failing after you
+press it. (Whether the server will actually *accept* your key is only the
+server's to say — that's what **Test connection** above is for.)
+
 Descriptions that work well are the ones an engineer would accept:
 
 > add two 8-bit numbers together with a carry, switches for the inputs and an

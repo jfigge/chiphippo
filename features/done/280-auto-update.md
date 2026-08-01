@@ -17,7 +17,7 @@ opt-in stance, the same runtime store gate. Where the two apps differ the port f
 Chip Hippo's own vocabulary (see the design decisions below), never Rest Hippo's.
 
 The gate matters now rather than later because the **Mac App Store** channel is being
-stood up alongside the direct downloads (`make mas`, `src/build-resources/`). A
+stood up alongside the direct downloads (`make mas`, `src/packaging/` — Feature 310). A
 sandboxed MAS build cannot replace itself, the App Store updates it anyway, and
 electron-builder strips the feed from the package — so shipping a self-updater without
 the gate is a rejection, and an app that quietly fails to update is worse than one that

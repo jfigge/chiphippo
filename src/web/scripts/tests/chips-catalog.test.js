@@ -115,7 +115,7 @@ const MEM_WAVE = [
 // The 65xx peripheral-interface wave: the W65C21 PIA + W65C22 VIA. Bus-addressed
 // register-file peripherals whose sequential `outputs` drive bidirectional `io`
 // pins (the data bus, the I/O ports, CA2/CB2/CB1) — not just strict outputs.
-const IO_WAVE = ["w65c21", "w65c22", "w65c02"];
+const IO_WAVE = ["W65C21", "W65C22", "W65C02"];
 
 test("the catalog contains the gate wave plus the sequential/MSI + 74LS + memory + io waves", () => {
   assert.deepEqual(

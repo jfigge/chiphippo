@@ -84,8 +84,8 @@ test("demo 65xx-blink: the CPU program toggles the VIA port and lights the LED",
   const { doc, images } = loadDemo("65xx-blink");
   const netlist = buildNetlist(doc);
 
-  const via = doc.components.find((c) => c.ref === "w65c22");
-  const pb0Hole = partPinHoles("w65c22", via.anchor).find(
+  const via = doc.components.find((c) => c.ref === "W65C22");
+  const pb0Hole = partPinHoles("W65C22", via.anchor).find(
     (p) => p.pin === 10,
   ).hole;
   const pb0Net = netlist.netOfPoint.get(`${via.board}.${pb0Hole}`);

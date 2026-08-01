@@ -69,12 +69,12 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
         <a class="doc-nav-link" href="components.html">Chips &amp; Components</a>
         <a class="doc-nav-link" href="wiring.html">Wiring, Nets &amp; Buses</a>
         <a class="doc-nav-link" href="power-and-clocks.html">Power &amp; Clock Sources</a>
-        <a class="doc-nav-link" href="chip-library.html">The 74xx Chip Library</a>
+        <a class="doc-nav-link" href="chip-library.html">The Chip Library</a>
         <a class="doc-nav-link" href="simulation.html">Running a Simulation</a>
         <a class="doc-nav-link" href="probing.html">Probing &amp; Net Names</a>
         <a class="doc-nav-link" href="memory.html">Memory Chips &amp; the Inspector</a>
         <a class="doc-nav-link" href="logic-analyzer.html">Logic Analyzer &amp; Timing</a>
-        <a class="doc-nav-link" href="build-guide.html">Build Guide, Wiring List &amp; BOM</a>
+        <a class="doc-nav-link" href="build-guide.html">Build Guide &amp; BOM</a>
         <a class="doc-nav-link" href="schematic-view.html">Schematic View</a>
         <a class="doc-nav-link doc-nav-link--active" href="ai-builder.html">AI Circuit Builder</a>
         <a class="doc-nav-link" href="files-and-undo.html">Files, Saving &amp; Undo</a>
@@ -127,6 +127,12 @@ just set the base URL.</p>
 bottom of the window (drag its top edge to resize it; it remembers whether it
 was open and how tall you left it). Type a description and press <code>Enter</code> —
 <code>Shift+Enter</code> gives you a newline for a longer brief.</p>
+<p>The toolbar button is <strong>disabled until there&#39;s a connection to ask</strong> — no
+key stored, or a base URL that doesn&#39;t parse, and it greys out with the
+reason as its tooltip. It&#39;s the one tool in Chip Hippo that can&#39;t work on
+your own machine alone, so the button says so rather than failing after you
+press it. (Whether the server will actually <em>accept</em> your key is only the
+server&#39;s to say — that&#39;s what <strong>Test connection</strong> above is for.)</p>
 <p>Descriptions that work well are the ones an engineer would accept:</p>
 <blockquote>
 <p>add two 8-bit numbers together with a carry, switches for the inputs and an

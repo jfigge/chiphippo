@@ -125,7 +125,7 @@
     },
     "analyzer": {
       "label": "Analysator",
-      "title": "Logikanalysator — Signalverläufe über die Zeit aufzeichnen und ansehen ({mod}+A)"
+      "title": "Logikanalysator — Signalverläufe über die Zeit aufzeichnen und ansehen (A)"
     },
     "fit": {
       "label": "An Fenster anpassen",
@@ -137,7 +137,7 @@
     },
     "bom": {
       "label": "Stückliste",
-      "title": "Stückliste — Bauteilliste, Drahtliste und Montageschritte ({mod}+B)"
+      "title": "Stückliste — Bauteilliste, Drahtzuschnittliste und Montageschritte ({mod}+B)"
     },
     "mode": {
       "schematic": "Schaltplanansicht",
@@ -486,13 +486,13 @@
     "AM27C1024": {
       "title": "64K×16-EPROM"
     },
-    "w65c21": {
+    "W65C21": {
       "title": "W65C21 PIA"
     },
-    "w65c22": {
+    "W65C22": {
       "title": "W65C22 VIA"
     },
-    "w65c02": {
+    "W65C02": {
       "title": "W65C02 CPU"
     },
     "sw-slide": {

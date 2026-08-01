@@ -70,9 +70,9 @@ it's worth a glance if a net you named seems to have picked up its neighbor's
 label instead.
 
 Naming isn't just cosmetic: a named net is what makes the [Schematic
-View](schematic-view.md) and the [Build Guide, Wiring List &
-BOM](build-guide.md) readable — `VCC`/`GND`/`CLK` and your own signal names
-carry through instead of raw hole addresses.
+View](schematic-view.md) and the [Build Guide & BOM](build-guide.md)
+readable — `VCC`/`GND`/`CLK` and your own signal names carry through instead
+of raw hole addresses.
 
 ## Annotations
 

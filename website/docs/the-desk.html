@@ -69,12 +69,12 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
         <a class="doc-nav-link" href="components.html">Chips &amp; Components</a>
         <a class="doc-nav-link" href="wiring.html">Wiring, Nets &amp; Buses</a>
         <a class="doc-nav-link" href="power-and-clocks.html">Power &amp; Clock Sources</a>
-        <a class="doc-nav-link" href="chip-library.html">The 74xx Chip Library</a>
+        <a class="doc-nav-link" href="chip-library.html">The Chip Library</a>
         <a class="doc-nav-link" href="simulation.html">Running a Simulation</a>
         <a class="doc-nav-link" href="probing.html">Probing &amp; Net Names</a>
         <a class="doc-nav-link" href="memory.html">Memory Chips &amp; the Inspector</a>
         <a class="doc-nav-link" href="logic-analyzer.html">Logic Analyzer &amp; Timing</a>
-        <a class="doc-nav-link" href="build-guide.html">Build Guide, Wiring List &amp; BOM</a>
+        <a class="doc-nav-link" href="build-guide.html">Build Guide &amp; BOM</a>
         <a class="doc-nav-link" href="schematic-view.html">Schematic View</a>
         <a class="doc-nav-link" href="ai-builder.html">AI Circuit Builder</a>
         <a class="doc-nav-link" href="files-and-undo.html">Files, Saving &amp; Undo</a>
@@ -97,8 +97,11 @@ circuit in front of you.</p>
 <li><strong>Pan</strong>: click-drag an empty patch of desk, or two-finger scroll on a
 trackpad.</li>
 <li><strong>Zoom</strong>: scroll/pinch to zoom, centered on the pointer, or use the
-<strong>+</strong> / <strong>−</strong> buttons in the zoom control. Keyboard: <code>Cmd/Ctrl+=</code> (zoom in),
-<code>Cmd/Ctrl+-</code> (zoom out), <code>Cmd/Ctrl+0</code> (reset to 100%).</li>
+<strong>+</strong> / <strong>−</strong> buttons in the zoom control (bottom-right of the desk).
+Keyboard: <code>Option+Cmd/Ctrl+=</code> (zoom in), <code>Option+Cmd/Ctrl+-</code> (zoom out),
+<code>Option+Cmd/Ctrl+0</code> (reset to 100%). <strong>Option is what makes these the
+desk&#39;s</strong>: the same keys <em>without</em> it resize Chip Hippo&#39;s own text instead
+(see <a href="settings.html#appearance">Settings</a>).</li>
 <li><strong>Fit to screen</strong>: <code>Cmd/Ctrl+F</code> frames everything currently on the desk in
 the viewport — the fastest way to find your circuit after panning away. It
 also slides the whole design back around the middle of the desk, keeping a
@@ -112,6 +115,22 @@ locating a part on a very large or sprawling layout.</li>
 it coarsens at low zoom and disappears entirely once you&#39;re zoomed out too
 far for individual holes to matter. Zoom and pan position are remembered
 between sessions.</p>
+<h2 id="the-desk-padlock">The desk padlock</h2>
+<p>A padlock sits in the desk&#39;s <strong>top-right corner</strong>, across from the tab strip.
+Click it (or press <code>Cmd/Ctrl+L</code>) to shut it, and the <strong>scroll wheel stops
+reaching the desk</strong>.</p>
+<p>It exists for one input in particular. A Magic Mouse — and some trackpads —
+reports a scroll from a finger merely resting on the surface, so the wheel is
+the one thing that moves the desk without being asked to; midway through
+seating a chip, that&#39;s a circuit that slides out from under you. Everything
+else still works while it&#39;s locked: drag-to-pan, the zoom cluster, the
+keyboard shortcuts above, and <strong>Fit</strong>. It&#39;s the wheel that&#39;s locked, not the
+camera.</p>
+<p>The padlock&#39;s shape changes rather than just its colour — an open shackle when
+the wheel is live, a shut one when it isn&#39;t. The state lasts for the session
+only and starts <strong>open</strong> every launch, so a new session never greets you with
+a desk that ignores the wheel for a reason you&#39;ve forgotten. The schematic
+view has a wheel of its own and no padlock over it.</p>
 <h2 id="breadboards-are-strips">Breadboards are strips</h2>
 <p>A real solderless breadboard is not one molded part — it&#39;s a centre
 <strong>pin-board</strong> with one or two <strong>power-rail</strong> strips dovetailed onto its top

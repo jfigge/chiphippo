@@ -69,12 +69,12 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
         <a class="doc-nav-link" href="components.html">Chips &amp; Components</a>
         <a class="doc-nav-link" href="wiring.html">Wiring, Nets &amp; Buses</a>
         <a class="doc-nav-link" href="power-and-clocks.html">Power &amp; Clock Sources</a>
-        <a class="doc-nav-link" href="chip-library.html">The 74xx Chip Library</a>
+        <a class="doc-nav-link" href="chip-library.html">The Chip Library</a>
         <a class="doc-nav-link" href="simulation.html">Running a Simulation</a>
         <a class="doc-nav-link" href="probing.html">Probing &amp; Net Names</a>
         <a class="doc-nav-link" href="memory.html">Memory Chips &amp; the Inspector</a>
         <a class="doc-nav-link" href="logic-analyzer.html">Logic Analyzer &amp; Timing</a>
-        <a class="doc-nav-link" href="build-guide.html">Build Guide, Wiring List &amp; BOM</a>
+        <a class="doc-nav-link" href="build-guide.html">Build Guide &amp; BOM</a>
         <a class="doc-nav-link" href="schematic-view.html">Schematic View</a>
         <a class="doc-nav-link" href="ai-builder.html">AI Circuit Builder</a>
         <a class="doc-nav-link" href="files-and-undo.html">Files, Saving &amp; Undo</a>
@@ -101,6 +101,16 @@ dismissing a note.</p>
 <h2 id="appearance">Appearance</h2>
 <p>The <strong>Appearance</strong> tab is the one the dialog opens on:</p>
 <ul>
+<li><strong>Language</strong> — the language Chip Hippo&#39;s own menus, panels, dialogs and
+tooltips are shown in: <strong>System</strong>, <strong>English</strong>, <strong>Deutsch</strong>, <strong>Español</strong>,
+<strong>Français</strong>, <strong>Italiano</strong>, <strong>日本語</strong> or <strong>中文（简体）</strong>. <em>System</em> follows
+your operating system&#39;s own language, falling back to English if Chip Hippo
+doesn&#39;t ship that one. Every language names itself in its own words rather
+than in the one you&#39;re currently reading, so the list stays usable if you
+land on one you can&#39;t. The change applies <strong>immediately and everywhere</strong> —
+the menu bar and every open window included, with no restart and nothing
+reloaded, so an unsaved design is never at risk. This user guide is only
+available in English.</li>
 <li><strong>Editor font size</strong> — how big Chip Hippo&#39;s own text is drawn, in pixels:
 <strong>11</strong>, <strong>12</strong>, <strong>13</strong>, <strong>14</strong>, <strong>16</strong> or <strong>18</strong>, default <strong>13</strong>. It applies
 to every window at once, including the floating pinout, memory inspector and
@@ -130,7 +140,9 @@ read when you lay a wire, so wires already on the desk keep the layout they
 have — change one from its own <strong>Properties…</strong> dialog.</li>
 </ul>
 <p>Everything but the LED colour and the wire layout takes effect immediately —
-there&#39;s no separate Apply or OK step.</p>
+there&#39;s no separate Apply or OK step. (Changing the language is the one
+setting that closes and reopens this dialog, so the card you&#39;re looking at
+comes back in the language you just picked, on the tab you were reading.)</p>
 <h2 id="data-sheets">Data Sheets</h2>
 <p>The <strong>Data Sheets</strong> tab points Chip Hippo at an external folder of
 manufacturer datasheet PDFs on your machine. Click <strong>Browse…</strong> to pick a
@@ -229,9 +241,12 @@ that updates are only available in installed builds.</p>
 <p>A few things aren&#39;t part of this dialog but are remembered between sessions
 without any action on your part: the app window&#39;s position and size, the desk
 camera — your current pan position and zoom level — and which panels you left
-open (the parts tray, the build guide, the analyzer, the AI builder) along with
-the height you dragged each docked one to. Close Chip Hippo and reopen it, and
-you&#39;re back exactly where you left off.</p>
+open (the parts tray, the build guide, the analyzer, the AI builder). The ones
+you can resize remember that too: the parts tray&#39;s <strong>width</strong>, and the analyzer
+and AI builder&#39;s <strong>height</strong>. Close Chip Hippo and reopen it, and you&#39;re back
+exactly where you left off.</p>
+<p>The desk padlock is the deliberate exception — it&#39;s session-only and starts
+open every launch (see <a href="the-desk.html#the-desk-padlock">The Desk &amp; Breadboards</a>).</p>
 <p>See <a href="files-and-undo.html">Files, Saving &amp; Undo</a> for how your circuit itself
 is saved.</p>
 

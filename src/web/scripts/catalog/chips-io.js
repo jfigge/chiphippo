@@ -34,7 +34,7 @@ import { input, output, io, nc, gnd, vcc } from "./pin-builders.js";
 
 export const CHIPS_IO = Object.freeze([
   {
-    id: "w65c21",
+    id: "W65C21",
     title: "W65C21 PIA",
     blurb:
       "WDC W65C21 Peripheral Interface Adapter (CMOS 6521/6821): two 8-bit " +
@@ -113,7 +113,7 @@ export const CHIPS_IO = Object.freeze([
     ],
   },
   {
-    id: "w65c22",
+    id: "W65C22",
     title: "W65C22 VIA",
     blurb:
       "WDC W65C22 Versatile Interface Adapter (CMOS 6522): two 8-bit " +
@@ -190,7 +190,7 @@ export const CHIPS_IO = Object.freeze([
     ],
   },
   {
-    id: "w65c02",
+    id: "W65C02",
     title: "W65C02 CPU",
     blurb:
       "WDC W65C02S 8-bit microprocessor — the heart of the 65xx computer. Wire " +

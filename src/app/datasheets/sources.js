@@ -27,7 +27,7 @@
 // WHY A TABLE AND NOT A SEARCH: nothing here is derived. A part id is not a
 // file name anywhere in the world — USC's library holds the '86 as
 // `sn74ls86a.pdf`, the '74 as `DM74LS74A.pdf`, and the '139 inside the '138's
-// file; WDC ships the '02 as `w65c02s.pdf` — so the mapping is stated once, by
+// file; WDC ships the '02 as `W65C02s.pdf` — so the mapping is stated once, by
 // hand, and proved by app/tests/datasheet-sources.test.js (every key is a real
 // catalog id, every path stays inside its own library). Deriving it would mean
 // guessing at a vendor's file naming, and a guess that misses is a silent 404.
@@ -333,9 +333,9 @@ const LIBRARIES = Object.freeze([
     // The 65xx parts, from the company that still makes them — so these are
     // the CURRENT manufacturer's documents, not a scan of an old databook.
     parts: {
-      w65c02: "w65c02s.pdf", // the 'S' (static CMOS) part the catalog models
-      w65c21: "w65c21.pdf",
-      w65c22: "w65c22.pdf",
+      W65C02: "W65C02s.pdf", // the 'S' (static CMOS) part the catalog models
+      W65C21: "W65C21.pdf",
+      W65C22: "W65C22.pdf",
     },
   },
 ]);

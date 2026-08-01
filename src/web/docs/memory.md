@@ -19,17 +19,20 @@ matters more than the pinout:
   you **Stop**, and then it's gone. Nothing is ever saved to disk for these
   parts — there's no image to lose, because there was never a file.
 - **Non-volatile (ROM/EPROM/EEPROM)** — `rom-8k`, `28C16` (2K×8 EEPROM),
-  `AM27C1024` (64K×16 EPROM). These chips are backed by a real file on disk
-  in the app's own working folder, so their contents persist across runs and
-  across closing and reopening the document. An unprogrammed chip reads back
-  random noise too — just like an unprogrammed EPROM off the shelf — until
-  you program it. (Exactly which file backs which chip is an internal
-  bookkeeping detail you never need to touch by hand.)
+  `AM27C1024` (64K×16 EPROM). These chips hold a real byte image that
+  persists across runs, and **travels inside the project file**: save the
+  project and every programmed ROM's contents are written into the
+  `.chiphippo` alongside the design, so copying that one file to another
+  machine takes the ROMs with it. An unprogrammed chip reads back random
+  noise too — just like an unprogrammed EPROM off the shelf — until you
+  program it. (Between saves the bytes are kept in a working file in the
+  app's own data folder; which file backs which chip is internal bookkeeping
+  you never need to touch by hand.)
 
 The chip's **blurb** in the parts palette and pin-assignments window always
 says which kind it is, and its behavior — read timing, chip-enable/output-
 enable pins, address/data bus width — is otherwise ordinary combinational
-logic. See [The 74xx Chip Library](chip-library.md) for the full catalog and
+logic. See [The Chip Library](chip-library.md) for the full catalog and
 the pin-assignments window.
 
 ## Programming a ROM
@@ -106,7 +109,7 @@ lost, so you know to reload the image rather than trusting stale contents.
 
 ---
 
-See also [The 74xx Chip Library](chip-library.md) for the memory chips in
+See also [The Chip Library](chip-library.md) for the memory chips in
 context with the rest of the catalog, and
-[Files, Autosave & Undo](files-and-undo.md) for how the desk document itself
-is saved and versioned.
+[Files, Saving & Undo](files-and-undo.md) for how the project itself is
+saved.

@@ -62,7 +62,7 @@ re-place anything.
 warning are the point, and they've done their job by the time you stop. Wiring a
 supply to the wrong rail is a mistake about the circuit — one you can see and
 fix — so it stays fixable. Find where 12 V is reaching a VCC net (the
-[Probe tool](simulation.md) is the quick way), correct it, and press **Run**.
+[probe tool](probing.md) is the quick way), correct it, and press **Run**.
 
 ## Clock sources
 

@@ -23,6 +23,16 @@ dismissing a note.
 
 The **Appearance** tab is the one the dialog opens on:
 
+- **Language** — the language Chip Hippo's own menus, panels, dialogs and
+  tooltips are shown in: **System**, **English**, **Deutsch**, **Español**,
+  **Français**, **Italiano**, **日本語** or **中文（简体）**. *System* follows
+  your operating system's own language, falling back to English if Chip Hippo
+  doesn't ship that one. Every language names itself in its own words rather
+  than in the one you're currently reading, so the list stays usable if you
+  land on one you can't. The change applies **immediately and everywhere** —
+  the menu bar and every open window included, with no restart and nothing
+  reloaded, so an unsaved design is never at risk. This user guide is only
+  available in English.
 - **Editor font size** — how big Chip Hippo's own text is drawn, in pixels:
   **11**, **12**, **13**, **14**, **16** or **18**, default **13**. It applies
   to every window at once, including the floating pinout, memory inspector and
@@ -52,7 +62,9 @@ The **Appearance** tab is the one the dialog opens on:
   have — change one from its own **Properties…** dialog.
 
 Everything but the LED colour and the wire layout takes effect immediately —
-there's no separate Apply or OK step.
+there's no separate Apply or OK step. (Changing the language is the one
+setting that closes and reopens this dialog, so the card you're looking at
+comes back in the language you just picked, on the tab you were reading.)
 
 ## Data Sheets
 
@@ -165,9 +177,13 @@ that updates are only available in installed builds.
 A few things aren't part of this dialog but are remembered between sessions
 without any action on your part: the app window's position and size, the desk
 camera — your current pan position and zoom level — and which panels you left
-open (the parts tray, the build guide, the analyzer, the AI builder) along with
-the height you dragged each docked one to. Close Chip Hippo and reopen it, and
-you're back exactly where you left off.
+open (the parts tray, the build guide, the analyzer, the AI builder). The ones
+you can resize remember that too: the parts tray's **width**, and the analyzer
+and AI builder's **height**. Close Chip Hippo and reopen it, and you're back
+exactly where you left off.
+
+The desk padlock is the deliberate exception — it's session-only and starts
+open every launch (see [The Desk & Breadboards](the-desk.md#the-desk-padlock)).
 
 See [Files, Saving & Undo](files-and-undo.md) for how your circuit itself
 is saved.

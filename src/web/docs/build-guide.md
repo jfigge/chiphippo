@@ -1,14 +1,14 @@
-# Build Guide, Wiring List & BOM
+# Build Guide & BOM
 
 Once a circuit is wired up on the desk, Chip Hippo can turn it into the
-paperwork you'd actually want on the bench: a bill of materials (what to
-buy, and how many), a human-addressed wiring list (what connects to what, in
-words a person can follow with a real breadboard in hand), and an ordered
-assembly checklist. None of this is stored on the document — it's derived
-fresh from the live desk every time you open or change it, so it never
-drifts out of sync with what you've actually built.
+paperwork you'd actually want on the bench: a bill of materials (what to buy,
+and how many — down to a numbered cutting list of every jumper), and an
+ordered assembly checklist that names each of those jumpers as you come to
+run it. None of this is stored on the document — it's derived fresh from the
+live desk every time you open or change it, so it never drifts out of sync
+with what you've actually built.
 
-![The build guide with a BOM and wiring list](images/build-guide.png)
+![The build guide showing a BOM](images/build-guide.png)
 
 ## Opening the build guide
 
@@ -18,8 +18,8 @@ the build guide as a right-docked panel. Clicking it again, or the panel's own
 **×** close button, hides it — and the button stays lit for as long as the
 panel is open, however you opened or closed it. The panel's open/closed
 state is remembered between launches, same as the parts palette. It has
-three tabs — **BOM**, **Wiring**, and **Steps** — and is read-only, so it
-stays available even while a simulation is running.
+two tabs — **BOM** and **Steps** — and is read-only, so it stays available
+even while a simulation is running.
 
 The guide re-derives itself automatically whenever the document changes
 while it's open (adding/removing a part or wire, renaming a net, flipping a
@@ -40,43 +40,38 @@ when there's something to see:
 ## The bill of materials
 
 The **BOM** tab lists everything on the desk as counted line items, grouped
-into four sections (only the non-empty ones show): **Breadboards**, **Chips**,
-**Discrete parts**, and **Power**. Boards are counted by strip type (a Full
-830 kit counts as its constituent rail/pin strips, not as one line), and
-components are counted by catalog identity — with a few splits that matter
+into five sections (only the non-empty ones show): **Breadboards**, **Chips**,
+**Discrete parts**, **Power**, and **Wires**. Boards are counted by strip type
+(a Full 830 kit counts as its constituent rail/pin strips, not as one line),
+and components are counted by catalog identity — with a few splits that matter
 for actually buying the right part: LEDs split by color, PSU bricks by
 voltage, and clock sources by rate. Each line reads as `title ×count`.
 
-## The wiring list
+### The cutting list
 
-The **Wiring** tab is net-centric, not wire-centric: instead of listing raw
-wire endpoints, it lists every electrically-interesting **net** and what's
-connected to it. A net only shows up here if you actually connected
-something to it — either it carries a wire, or it has two or more members —
-so a freshly-placed 14-pin chip with nothing wired to it doesn't spam the
-list with fourteen empty rows.
+**Wires** comes last, because you wire after you seat, and it's a different
+kind of list: a numbered **cutting list**, one line per colour *and cut
+length*, tallied.
 
-Each net's members are resolved to the friendliest label available, in this
-priority order:
+```
+[3] Jumper wire (red, 6.1 cm)  ×3
+```
 
-1. A component pin at the hole — `"74LS00 pin 3 (1Y)"` (part + pin number +
-   datasheet pin name, when the pin has one).
-2. A pin sharing the hole's 5-hole node — a bus tap lands *beside* a pin
-   rather than on it, and still resolves to that pin.
-3. A PSU or clock terminal — `"Power supply +"`.
-4. A power rail — `"+ rail (bb1)"`.
-5. The bare hole address, as a last resort.
+That's three leads to cut the same, which is how you'd actually work through
+a drawer or a spool — so the length belongs in the line rather than beside
+it. The length is the **cut** length: the run from hole to hole plus the
+stripped end that goes down into each hole, so a jumper crossing a single
+0.1 in pitch is about 13 mm of wire, not 3. It's the same measurement, and
+the same wording, as the drawing at the bottom of a wire's own
+**Properties…** dialog (see [Wiring, Nets & Buses](wiring.md#wire-length)) —
+a wire can't read one length there and another here.
 
-A net you've named (see [Probing & Net Names](probing.md)) leads with that
-name instead of an anonymous net id, and buses group under a `<bus name> bus`
-heading with each row labeled by bit — so naming your nets up front, before
-opening the guide, makes this tab read far more like a real wiring diagram
-and far less like an address dump. See
-[Wiring, Nets & Buses](wiring.md) for how wires, colors, and buses work in
-the first place.
-
-A net that only reaches one salient member is flagged with a small warning
-icon right in its row (and rolled into the warnings banner above).
+Lines are sorted by the app's colour order, then shortest first, and
+**numbered in that order**. The number is a cross-reference: every assembly
+step that runs a wire calls it out as `[3]`, so you cut the pile once, number
+it, and never have to re-measure anything mid-build. It only moves if the
+desk itself changes — never because a colour was renamed or the language
+switched.
 
 ## Assembly steps
 
@@ -98,16 +93,36 @@ A few notable details in how steps are phrased:
   lists its resolved lead addresses instead.
 - Signal wires are grouped last: whole buses first (one step per bus, one
   detail line per bit), then the remaining signal nets, each with its wires
-  listed as `from → to` using the same friendly local labels as the wiring
-  list.
+  listed as `[n] from → to`. The leading `[n]` is that wire's item number
+  from the cutting list above, so the callouts form a column you can read
+  down while you cut.
+
+### How an endpoint is named
+
+A wire's two ends are resolved to the friendliest label available rather than
+printed as raw addresses, in this priority order:
+
+1. A component pin at the hole — `"74LS00 pin 3 (1Y)"` (part + pin number +
+   datasheet pin name, when the pin has one).
+2. A pin sharing the hole's 5-hole node — a bus tap lands *beside* a pin
+   rather than on it, and still resolves to that pin.
+3. A PSU or clock terminal — `"Power supply +"`.
+4. A power rail — `"+ rail (bb1)"`.
+5. The bare hole address, as a last resort.
+
+A net you've named (see [Probing & Net Names](probing.md)) leads its step with
+that name instead of an anonymous net id, so naming your nets up front, before
+opening the guide, makes the whole tab read far more like a real assembly
+sheet and far less like an address dump.
 
 ## Downloading the BOM
 
 The download icon in the panel header exports the **whole current plan** —
-BOM, wiring list, and assembly steps together, headings and all — as a
-Rich Text Format (`.rtf`) document, named `<schematic name>-bom.rtf` after
-your current schematic file. It's a plain browser download (no save dialog,
-no main-process IPC involved) generated entirely in the renderer, so it
-reflects exactly what the panel is showing at the moment you click it. `.rtf`
-opens in any word processor, which makes it easy to print or hand off as a
-build sheet alongside the physical parts.
+the BOM and the assembly steps together, headings, item numbers and all — as
+a Rich Text Format (`.rtf`) document, named `<project name>-bom.rtf`. It
+mirrors the panel's tabs, so what you get on paper is what you were looking
+at. It's a plain browser download (no save dialog, no main-process IPC
+involved) generated entirely in the renderer, so it reflects exactly what the
+panel is showing at the moment you click it. `.rtf` opens in any word
+processor, which makes it easy to print or hand off as a build sheet
+alongside the physical parts.

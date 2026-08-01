@@ -1243,7 +1243,9 @@ async function init() {
     class: "toolbar-pill-btn toolbar-pill-btn--icon",
     type: "button",
     "aria-label": t("toolbar.analyzer.label"),
-    title: t("toolbar.analyzer.title", { mod: MOD_KEY }),
+    // No `mod` to interpolate: the analyzer is a BARE `A`, like the desk's
+    // other tool letters — ⌘A is Select All, which the native Edit menu owns.
+    title: t("toolbar.analyzer.title"),
     "aria-pressed": String(scopeView.visible),
     onClick: () => scopeView.toggle(),
   });

@@ -922,7 +922,7 @@ function beginNextOp(committed, base, nmiPending, ctl) {
       sync: cur === "instr",
     };
   }
-  throw new Error("w65c02: op produced no bus access");
+  throw new Error("W65C02: op produced no bus access");
 }
 
 /**

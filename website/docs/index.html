@@ -69,12 +69,12 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
         <a class="doc-nav-link" href="components.html">Chips &amp; Components</a>
         <a class="doc-nav-link" href="wiring.html">Wiring, Nets &amp; Buses</a>
         <a class="doc-nav-link" href="power-and-clocks.html">Power &amp; Clock Sources</a>
-        <a class="doc-nav-link" href="chip-library.html">The 74xx Chip Library</a>
+        <a class="doc-nav-link" href="chip-library.html">The Chip Library</a>
         <a class="doc-nav-link" href="simulation.html">Running a Simulation</a>
         <a class="doc-nav-link" href="probing.html">Probing &amp; Net Names</a>
         <a class="doc-nav-link" href="memory.html">Memory Chips &amp; the Inspector</a>
         <a class="doc-nav-link" href="logic-analyzer.html">Logic Analyzer &amp; Timing</a>
-        <a class="doc-nav-link" href="build-guide.html">Build Guide, Wiring List &amp; BOM</a>
+        <a class="doc-nav-link" href="build-guide.html">Build Guide &amp; BOM</a>
         <a class="doc-nav-link" href="schematic-view.html">Schematic View</a>
         <a class="doc-nav-link" href="ai-builder.html">AI Circuit Builder</a>
         <a class="doc-nav-link" href="files-and-undo.html">Files, Saving &amp; Undo</a>
@@ -96,7 +96,10 @@ through the circuit exactly like a real breadboard would.</p>
 decoders, multiplexers), sequential logic (flip-flops, counters, shift
 registers), a free-running or manually stepped clock, and small memory
 circuits backed by ROM/RAM chips — all wired across Full/Half/Tiny
-breadboards, powered at 3 V / 5 V / 12 V, and watched settle live.</p>
+breadboards, powered at 3 V / 5 V / 12 V, and watched settle live. Beyond
+the 74xx shelf there is a <strong>65xx interface group</strong> — a W65C02 CPU, a PIA and
+a VIA — for building a small single-board computer out of the same glue
+logic.</p>
 <h2 id="highlights">Highlights</h2>
 <ul>
 <li><strong>Breadboard-accurate placement</strong> — chips, wires, and discretes snap to the
@@ -111,8 +114,11 @@ program with an in-app programmer, plus a live hex/ASCII viewer.</li>
 <li><strong>A derived schematic view</strong> — press <code>Tab</code> to flip between the physical
 breadboard and a logical diagram of chip symbols, routed named nets, and
 bus lines, kept in sync with the desk.</li>
-<li><strong>Build guide &amp; BOM export</strong>, and <strong>undo/redo</strong> across every edit, per
-desktop of the open project.</li>
+<li><strong>Build guide &amp; BOM export</strong> — including a numbered cutting list of every
+jumper — and <strong>undo/redo</strong> across every edit, per desktop of the open
+project.</li>
+<li><strong>Seven languages</strong> — English, German, Spanish, French, Italian, Japanese
+and Chinese, chosen in Settings ▸ Appearance (this guide is English only).</li>
 <li><strong>An AI circuit builder</strong> — describe a circuit in words, using your own AI
 connection, and get a wired design that has already been built and run
 before you&#39;re offered it.</li>
@@ -133,8 +139,8 @@ discretes, placement and rotation.</li>
 wires, and multi-bit buses.</li>
 <li><a href="power-and-clocks.html">Power &amp; Clock Sources</a> — PSU bricks, voltage and the
 12 V damage rule, and clock sources.</li>
-<li><a href="chip-library.html">The 74xx Chip Library</a> — the catalog, chip families, and
-the pin-assignments/datasheet window.</li>
+<li><a href="chip-library.html">The Chip Library</a> — the catalog: 74xx logic, memory and
+the 65xx interface parts, and the pin-assignments/datasheet window.</li>
 </ul>
 <h3 id="simulating--inspecting">Simulating &amp; inspecting</h3>
 <ul>
@@ -151,8 +157,8 @@ simulation-proven design, using your own AI connection.</li>
 </ul>
 <h3 id="files--reference">Files &amp; reference</h3>
 <ul>
-<li><a href="build-guide.html">Build Guide, Wiring List &amp; BOM</a> — deriving an assembly
-guide and bill of materials.</li>
+<li><a href="build-guide.html">Build Guide &amp; BOM</a> — deriving a bill of materials, a
+jumper cutting list, and an ordered assembly checklist.</li>
 <li><a href="files-and-undo.html">Files, Saving &amp; Undo</a> — where a desktop and a project
 are kept, saving them, and undo/redo.</li>
 <li><a href="projects-and-desktops.html">Projects &amp; Desktops</a> — tabbed desktops, saving a

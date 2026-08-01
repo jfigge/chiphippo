@@ -9,6 +9,12 @@ certs/
 #    writes into src/web/docs/images/ are committed) ───────────────────────────
 .docs-build/
 
+# ── Mac App Store provisioning profiles ───────────────────────────────────────
+# Per-developer, and they embed a team-specific certificate. Dropped into
+# src/packaging/ for `make mas` / `make mas-dev` (see STORE-PUBLISHING.md).
+# Never commit them.
+*.provisionprofile
+
 # ── Node / npm ────────────────────────────────────────────────────────────────
 src/node_modules/
 src/npm-debug.log*

@@ -69,12 +69,12 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
         <a class="doc-nav-link" href="components.html">Chips &amp; Components</a>
         <a class="doc-nav-link" href="wiring.html">Wiring, Nets &amp; Buses</a>
         <a class="doc-nav-link" href="power-and-clocks.html">Power &amp; Clock Sources</a>
-        <a class="doc-nav-link" href="chip-library.html">The 74xx Chip Library</a>
+        <a class="doc-nav-link" href="chip-library.html">The Chip Library</a>
         <a class="doc-nav-link" href="simulation.html">Running a Simulation</a>
         <a class="doc-nav-link" href="probing.html">Probing &amp; Net Names</a>
         <a class="doc-nav-link" href="memory.html">Memory Chips &amp; the Inspector</a>
         <a class="doc-nav-link" href="logic-analyzer.html">Logic Analyzer &amp; Timing</a>
-        <a class="doc-nav-link" href="build-guide.html">Build Guide, Wiring List &amp; BOM</a>
+        <a class="doc-nav-link" href="build-guide.html">Build Guide &amp; BOM</a>
         <a class="doc-nav-link" href="schematic-view.html">Schematic View</a>
         <a class="doc-nav-link" href="ai-builder.html">AI Circuit Builder</a>
         <a class="doc-nav-link" href="files-and-undo.html">Files, Saving &amp; Undo</a>
@@ -111,7 +111,7 @@ are noted alongside the shortcut.</p>
 </tr>
 <tr>
 <td><code>Escape</code></td>
-<td>Unpin a probed net, then disarm the probe, then cancel a pending wire/bus, then cancel a placement in hand, then deselect — whichever applies first</td>
+<td>Abandon a drag in flight, then unpin a probed net, then disarm the probe, then cancel a pending wire/bus, then cancel a placement in hand, then deselect — whichever applies first</td>
 </tr>
 <tr>
 <td><code>Delete</code> / <code>Backspace</code></td>
@@ -141,6 +141,10 @@ are noted alongside the shortcut.</p>
 <tr>
 <td><code>M</code></td>
 <td>Disarm whichever of the wire/bus/probe tool is currently armed</td>
+</tr>
+<tr>
+<td><code>H</code></td>
+<td>Fade the wires down to a stub at each end, and back (works while running — it only changes what&#39;s drawn)</td>
 </tr>
 <tr>
 <td><code>1</code>–<code>8</code></td>
@@ -193,7 +197,7 @@ are noted alongside the shortcut.</p>
 <td>Zoom out to fit everything at once</td>
 </tr>
 <tr>
-<td><code>Cmd+=</code> or <code>Cmd++</code></td>
+<td><code>Cmd+=</code></td>
 <td>Increase the interface text size</td>
 </tr>
 <tr>
@@ -217,6 +221,10 @@ are noted alongside the shortcut.</p>
 <td>Reset the desk zoom</td>
 </tr>
 <tr>
+<td><code>Cmd+L</code></td>
+<td>Lock or unlock the desk against the scroll wheel</td>
+</tr>
+<tr>
 <td><code>A</code></td>
 <td>Toggle the Logic Analyzer panel</td>
 </tr>
@@ -225,6 +233,9 @@ are noted alongside the shortcut.</p>
 <td>Toggle the parts palette panel</td>
 </tr>
 </tbody></table>
+<p>Both scale shortcuts want the <strong>unshifted</strong> key. On a layout where <code>+</code>
+needs <code>Shift</code>, use <code>Cmd+=</code> rather than <code>Cmd+Shift+=</code> — the shifted chord is
+deliberately ignored, so it can&#39;t collide with anything else.</p>
 <p>The two families above do different jobs. <code>Cmd+=</code> and friends change <strong>Chip
 Hippo&#39;s own text</strong>: toolbars, panels, menus and dialogs, in every window at
 once — the same setting as Settings ▸ Appearance ▸ <strong>Editor font size</strong>. Hold
@@ -265,6 +276,10 @@ corner of the desk, or <code>Cmd+F</code> to fit, instead.</p>
 <tr>
 <td><code>Cmd+Shift+S</code></td>
 <td>Save As… (give the project a new file)</td>
+</tr>
+<tr>
+<td><code>Cmd+B</code></td>
+<td>Toggle the build guide (Bill Of Materials) panel</td>
 </tr>
 <tr>
 <td><code>Cmd+A</code></td>

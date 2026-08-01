@@ -166,7 +166,7 @@ class Bench {
 
 // Pin numbers, keyed for the bench (see catalog/chips-io.js).
 const PINS = {
-  w65c21: {
+  W65C21: {
     VCC: 20,
     GND: 1,
     CS0: 22,
@@ -180,7 +180,7 @@ const PINS = {
     D: [33, 32, 31, 30, 29, 28, 27, 26],
     PA: [2, 3, 4, 5, 6, 7, 8, 9],
   },
-  w65c22: {
+  W65C22: {
     VCC: 20,
     GND: 1,
     CS1: 24,
@@ -201,7 +201,7 @@ const PINS = {
 
 /** RS=00 with CRA bit 2 = 0 (reset) selects DDRA. Write 0x2A there. */
 function piaWrite(opts) {
-  return bench("w65c21", {
+  return bench("W65C21", {
     ctl: {
       CS0: "H",
       CS1: "H",
@@ -243,12 +243,12 @@ test("12 V smokes the PIA (damaged) and it latches nothing", () => {
 
 test("a PIA drives its Port A output lines onto the breadboard nets", () => {
   // Seed DDRA = 0xFF (all outputs), ORA = 0x5A; the chip should drive PA to 0x5A.
-  const b = bench("w65c21", {
+  const b = bench("W65C21", {
     ctl: { CS2B: "H", RESB: "H", PHI2: "clk" }, // deselected; just holding
     seed: { ddra: 0xff, ora: 0x5a },
   });
   b.tick(L);
-  const P = PINS.w65c21;
+  const P = PINS.W65C21;
   P.PA.forEach((pin, i) =>
     assert.equal(b.level(pin), (0x5a >> i) & 1 ? H : L, `PA${i}`),
   );
@@ -258,7 +258,7 @@ test("a PIA drives its Port A output lines onto the breadboard nets", () => {
 
 test("a powered VIA drives the data bus during a read (IER reads 0x80)", () => {
   // RS = 0xE (IER); a reset VIA reads IER as 0x80 (bit 7 forced high).
-  const b = bench("w65c22", {
+  const b = bench("W65C22", {
     ctl: {
       CS1: "H",
       CS2B: "L",
@@ -275,12 +275,12 @@ test("a powered VIA drives the data bus during a read (IER reads 0x80)", () => {
   assert.equal(b.status(), CHIP_STATUS.OK);
   assert.equal(b.busWord(), 0x80);
   b.tick(L); // PHI2 low → the bus is released
-  for (const pin of PINS.w65c22.D)
+  for (const pin of PINS.W65C22.D)
     assert.equal(b.level(pin), Z, `D pin ${pin}`);
 });
 
 test("an unpowered VIA never drives the bus", () => {
-  const b = bench("w65c22", {
+  const b = bench("W65C22", {
     ctl: {
       CS1: "H",
       CS2B: "L",
@@ -296,16 +296,16 @@ test("an unpowered VIA never drives the bus", () => {
   });
   b.tick(H);
   assert.equal(b.status(), CHIP_STATUS.UNPOWERED);
-  for (const pin of PINS.w65c22.D) assert.equal(b.level(pin), Z);
+  for (const pin of PINS.W65C22.D) assert.equal(b.level(pin), Z);
 });
 
 test("a VIA drives its Port B output lines onto the breadboard nets", () => {
-  const b = bench("w65c22", {
+  const b = bench("W65C22", {
     ctl: { CS2B: "H", RESB: "H", PHI2: "clk" },
     seed: { ddrb: 0xff, orb: 0x3c },
   });
   b.tick(L);
-  PINS.w65c22.PB.forEach((pin, i) =>
+  PINS.W65C22.PB.forEach((pin, i) =>
     assert.equal(b.level(pin), (0x3c >> i) & 1 ? H : L, `PB${i}`),
   );
 });
@@ -325,7 +325,7 @@ const RAM_D = [9, 10, 11, 12, 13, 17, 18, 19];
 
 class Computer {
   constructor(image) {
-    const cpu = holesOf("w65c02", "e10");
+    const cpu = holesOf("W65C02", "e10");
     const ram = holesOf("ram-8k", "e35");
     const cAt = (pin) => `bb1.${mates(cpu.get(pin))[0]}`;
     const rAt = (pin) => `bb1.${mates(ram.get(pin))[0]}`;
@@ -356,7 +356,7 @@ class Computer {
       components: [
         psu("psu1", 80),
         clock("clk1", 90),
-        chip("c1", "w65c02", "e10"),
+        chip("c1", "W65C02", "e10"),
         chip("c2", "ram-8k", "e35"),
       ],
       wires: w,

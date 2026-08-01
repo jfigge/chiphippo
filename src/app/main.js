@@ -45,6 +45,7 @@ const i18n = require("./i18n");
 const updater = require("./updater");
 const { isStoreBuild, distribution } = require("./store-build");
 const { CredentialStore } = require("./store/credential-store");
+const { BookmarkStore } = require("./store/bookmark-store");
 const aiClient = require("./ai/client");
 const aiProviders = require("./ai/providers");
 const { SettingsStore } = require("./store/settings-store");
@@ -265,6 +266,18 @@ function getCredentialStore() {
   return _credentialStore;
 }
 
+let _bookmarkStore = null;
+
+/** @returns {BookmarkStore} — how a Mac App Store build is allowed to re-open
+    a path it was given in an earlier session (the recent projects, the
+    datasheet folder). Inert in every other build, so nothing else branches. */
+function getBookmarks() {
+  if (!_bookmarkStore) {
+    _bookmarkStore = new BookmarkStore(app.getPath("userData"), app);
+  }
+  return _bookmarkStore;
+}
+
 let _projectStore = null;
 
 /** @returns {ProjectStore} — projects and desktops are files; the app's own
@@ -352,6 +365,17 @@ function recentProjects() {
   );
 }
 
+/**
+ * Keep bookmarks only for the paths still worth one: the MRU list, plus the
+ * datasheet folder. Everything else was a one-off — a Save As, a desktop
+ * export — whose grant died with the dialog that gave it. Inert off MAS.
+ * @param {string[]} recent - the MRU list AFTER the change being made.
+ */
+function pruneBookmarks(recent) {
+  const dir = datasheetSetting();
+  getBookmarks().prune([...(recent ?? []), ...(dir ? [dir] : [])]);
+}
+
 /** Move `filePath` to the head of the MRU list. Returns the new list. */
 function rememberProject(filePath) {
   const current = recentProjects();
@@ -368,6 +392,7 @@ function rememberProject(filePath) {
   safeCall("project:recent:remember", () =>
     getSettingsStore().set({ recentProjects: next }),
   );
+  safeCall("project:recent:prune-bookmarks", () => pruneBookmarks(next));
   // File ▸ Open Recent is part of the menu template, so the list
   // changing means rebuilding it (a no-op before the menu is first installed).
   safeCall("project:recent:menu", () => refreshAppMenu());
@@ -380,6 +405,7 @@ function forgetProject(filePath) {
   safeCall("project:recent:forget", () =>
     getSettingsStore().set({ recentProjects: next }),
   );
+  safeCall("project:recent:prune-bookmarks", () => pruneBookmarks(next));
   safeCall("project:recent:menu", () => refreshAppMenu());
   return next;
 }
@@ -415,14 +441,18 @@ function recoveryBoot(peeked, upgraded) {
   if (!meta) return null;
   establishPath(store.defaultProjectPath);
   const name = peeked.name || nameFromFile(target);
+  // A recovery names a file no dialog mediated THIS launch, so the sandboxed
+  // build reaches it through its bookmark or not at all — and "not at all"
+  // already has an answer below (restore it homeless).
   const exists = safeCall("project:boot:recovery-stat", () =>
-    fs.existsSync(target), false); // prettier-ignore
+    getBookmarks().withAccess(target, () => fs.existsSync(target)), false); // prettier-ignore
   if (exists) {
     // `read` reports no location for the slot — true of the FILE it read, but
     // the point of a recovery is that it belongs to another one.
     meta.location = path.resolve(target);
     rememberProject(target);
     establishPath(target);
+    getBookmarks().hold("project", target);
   } else {
     meta.location = null; // no home any more; Save As is the way back
   }
@@ -481,15 +511,17 @@ function bootProject() {
     }
   }
   for (const filePath of recentProjects()) {
-    if (
-      !safeCall("project:boot:exists", () => fs.existsSync(filePath), false)
-    ) {
-      continue;
-    }
-    const meta = safeCall("project:boot:recent", () => store.read(filePath));
+    // Both the stat and the read are inside the bookmark's scope: this is a
+    // path from an earlier session, which is exactly what the sandbox forgets.
+    const meta = safeCall("project:boot:recent", () =>
+      getBookmarks().withAccess(filePath, () =>
+        fs.existsSync(filePath) ? store.read(filePath) : null,
+      ),
+    );
     if (meta) {
       rememberProject(filePath);
       establishPath(filePath);
+      getBookmarks().hold("project", filePath);
       return meta;
     }
   }
@@ -500,15 +532,18 @@ function bootProject() {
 /** Show the Open dialog for a PROJECT file; read it. Returns the meta|null. */
 async function openProjectDialog() {
   const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
-  const opts = {
+  const opts = getBookmarks().dialogOpts({
     properties: ["openFile"],
     filters: projectFilters(),
     defaultPath: getProjectStore().savesDir,
-  };
+  });
   const result = win
     ? await dialog.showOpenDialog(win, opts)
     : await dialog.showOpenDialog(opts);
   if (result.canceled || !result.filePaths?.[0]) return null;
+  // Mint here, while the panel's grant is fresh — this is what lets a LATER
+  // session open the same file from the recent list.
+  getBookmarks().captureOpen(result);
   return adoptProject(path.resolve(result.filePaths[0]));
 }
 
@@ -535,6 +570,9 @@ function adoptProject(filePath) {
     safeCall("project:drop-default", () => store.removeDefaultProject());
   }
   establishPath(filePath);
+  // ⌘S writes back to this file minutes or hours from now, so the sandboxed
+  // build holds access for the session rather than per read.
+  getBookmarks().hold("project", filePath);
   return meta;
 }
 
@@ -550,11 +588,18 @@ function openRecentProject(filePath) {
   if (!wanted || !recentProjects().includes(wanted)) {
     return { ok: false, code: "unknown", error: "not a recent project" };
   }
-  if (!safeCall("project:recent:exists", () => fs.existsSync(wanted), false)) {
+  // A bookmark that no longer resolves leaves the stat to answer false, which
+  // is the SAME "missing" the renderer already offers to forget — one failure
+  // mode for a file that moved, whichever way it went.
+  const bookmarks = getBookmarks();
+  if (
+    !safeCall("project:recent:exists", () =>
+      bookmarks.withAccess(wanted, () => fs.existsSync(wanted)), false) // prettier-ignore
+  ) {
     return { ok: false, code: "missing", error: "file not found" };
   }
   try {
-    const project = adoptProject(wanted);
+    const project = bookmarks.withAccess(wanted, () => adoptProject(wanted));
     if (!project) {
       return { ok: false, code: "error", error: "not a project file" };
     }
@@ -600,15 +645,18 @@ async function chooseSavePath(kind, name, current) {
   const defaultPath = appKept
     ? path.join(store.savesDir, suggestFileName(name, ext, isProject ? "project" : "desktop")) // prettier-ignore
     : from;
-  const opts = {
+  const opts = getBookmarks().dialogOpts({
     defaultPath,
     filters: isProject ? projectFilters() : desktopFilters(),
     properties: ["createDirectory", "showOverwriteConfirmation"],
-  };
+  });
   const result = win
     ? await dialog.showSaveDialog(win, opts)
     : await dialog.showSaveDialog(opts);
   if (result.canceled || !result.filePath) return null;
+  // NOTE the SINGULAR `bookmark`/`filePath` a save panel returns, against the
+  // open panel's arrays — see bookmark-store.js.
+  getBookmarks().captureSave(result);
   return establishPath(path.resolve(result.filePath));
 }
 
@@ -664,15 +712,33 @@ async function importDesktop() {
 // datasheet PDFs; a pinout window then offers to open `<folder>/<partId>.pdf`
 // in the OS PDF viewer. The folder path lives in settings (`datasheetDir`).
 
+/** The configured datasheet folder, or null. The ONE read of the setting, so
+    the folder whose bookmark is redeemed is always the folder being used. */
+function datasheetSetting() {
+  const dir = safeCall(
+    "datasheet:dir",
+    () => getSettingsStore().get().datasheetDir,
+    null,
+  );
+  return typeof dir === "string" && dir ? dir : null;
+}
+
 /** Native folder picker for the datasheet directory. Returns the chosen
     absolute path, or null when cancelled. */
 async function chooseDatasheetDir() {
   const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
-  const opts = { properties: ["openDirectory", "createDirectory"] };
+  const opts = getBookmarks().dialogOpts({
+    properties: ["openDirectory", "createDirectory"],
+  });
   const result = win
     ? await dialog.showOpenDialog(win, opts)
     : await dialog.showOpenDialog(opts);
   if (result.canceled || !result.filePaths?.[0]) return null;
+  // A FOLDER bookmark covers what is inside it, so `<dir>/<ref>.pdf` needs no
+  // bookmark of its own — which is just as well, since no dialog ever names
+  // one. The renderer separately persists the plain path as a setting; the
+  // capability stays on this side.
+  getBookmarks().captureOpen(result);
   return result.filePaths[0];
 }
 
@@ -681,7 +747,11 @@ async function chooseDatasheetDir() {
 async function openDatasheetPdf(ref) {
   const file = datasheetPdfPath(ref);
   if (!file) return false;
-  const err = await shell.openPath(file); // "" on success, else a message
+  // Access is held across the await, not merely up to it: LaunchServices can
+  // only hand the receiving PDF app a file we can still reach ourselves.
+  const err = await getBookmarks().withAccess(datasheetSetting(), () =>
+    shell.openPath(file),
+  ); // "" on success, else a message
   if (err) console.error("[main] datasheet:open error:", err);
   return !err;
 }
@@ -775,14 +845,14 @@ function pinoutFloatPref() {
  */
 function datasheetPdfPath(ref) {
   if (typeof ref !== "string" || !PINOUT_REF_RE.test(ref)) return null;
-  const dir = safeCall(
-    "datasheet:dir",
-    () => getSettingsStore().get().datasheetDir,
-    null,
-  );
-  if (typeof dir !== "string" || !dir) return null;
+  const dir = datasheetSetting();
+  if (!dir) return null;
   const file = path.join(dir, `${ref}.pdf`);
-  return safeCall("datasheet:exists", () => fs.existsSync(file), false)
+  // Scoped to the FOLDER, which is what the picker granted — and the folder's
+  // grant covers the PDF inside it. Fixed here rather than at the two callers
+  // (openDatasheetPdf, openPinoutWindow), so both are right for free.
+  return safeCall("datasheet:exists", () =>
+    getBookmarks().withAccess(dir, () => fs.existsSync(file)), false) // prettier-ignore
     ? file
     : null;
 }
@@ -2244,6 +2314,14 @@ function bootstrap() {
     if (closeGuard.allows() || !canAskRenderer(mainWindow)) return;
     event.preventDefault();
     askBeforeClose(mainWindow, { quitting: true });
+  });
+
+  // Every security-scoped access we hold is stopped on the way out — matched
+  // one for one with the starts, rather than left for the kernel to reclaim.
+  // `will-quit` rather than `before-quit`: by here the quit is settled, so a
+  // quit the user cancelled never releases the project it is still holding.
+  app.on("will-quit", () => {
+    safeCall("bookmarks:release", () => getBookmarks().releaseAll());
   });
 
   // Chip Hippo is a foreground document app: closing the last window quits

@@ -50,8 +50,38 @@ deliberately switch.
 
 You can also recolor a wire after the fact: right-click it and choose
 **Properties…**, which offers the same eight swatches alongside the wire's
-name, description, and layout method. (**Delete Component** on that menu is
-how a wire is removed.)
+name, description, layout method, and the drawing of the wire itself
+described below. (**Delete Component** on that menu is how a wire is
+removed.)
+
+## Wire length
+
+The last thing in a wire's **Properties…** dialog isn't a field at all — it's
+a **picture of the wire**, drawn across the card in its own colour with the
+sleeve stripped back at both ends to bare tinned lead, and a dimensioned line
+underneath giving its length in centimetres.
+
+It answers the one question the desk can't. On the desk a wire is a curve
+between two holes at whatever zoom you're at, so its length is unreadable —
+and its length is exactly what you need before cutting one off a spool.
+
+Two things about that figure:
+
+- It's the **cut** length, not the run. A real jumper doesn't stop at the
+  surface of the board — it has to reach *into* both holes — so a wire
+  crossing a single 0.1 in pitch is about 13 mm of wire, not 3. The sleeve in
+  the drawing spans the run; the bare tips are the two stripped ends; the
+  dimension spans the lot.
+- The length follows the **drawn shape**, not the straight-line distance: the
+  sagging curve's own arc for a direct wire, the polyline through the
+  waypoints for a routed one, and for a bus member its lead plus the whole
+  ribbon plus its far lead — a conductor inside a ribbon cable is as long as
+  the cable, however short the ends sticking out of it are.
+
+It's the same measurement, and the same wording, as the **Wires** cutting
+list in the [build guide](build-guide.md#the-cutting-list) — so a wire can't
+read one length here and another there. Recolor the wire in this same dialog
+and the drawing repaints to match.
 
 ## Cross-board wires
 
