@@ -186,6 +186,14 @@ const LIBRARIES = Object.freeze([
     // hand-written, VERIFIED table over any pattern.
     parts: {
       "28C16": "doc0540.pdf", // AT28C16 — 2K × 8 EEPROM, 24-lead PDIP
+      // AT28C256 — "256K (32K x 8) Paged Parallel EEPROM", the part Ben Eater's
+      // 6502 boots from. Verified by extracting page 2: its 28-lead
+      // Cerdip/PDIP view matches this catalog def PIN FOR PIN — A14 1, A12 2,
+      // A7-A0 3-10, I/O0-I/O2 11-13, GND 14, I/O3-I/O7 15-19, CE 20, A10 21,
+      // OE 22, A11 23, A9 24, A8 25, A13 26, WE 27, VCC 28. Which is also the
+      // 62256 SRAM's pinout exactly, as the sheet's own "accessed like a Static
+      // RAM" puts it — the reason one socket takes either part.
+      AT28C256: "doc0006.pdf",
       // AT28C64 — "8,192 words by 8-bit ... electrically erasable and
       // programmable read only memory", JEDEC byte-wide DIP-28. The catalog's
       // generic 8K×8 ROM is exactly this seat, and the app treats an EEPROM
@@ -333,9 +341,9 @@ const LIBRARIES = Object.freeze([
     // The 65xx parts, from the company that still makes them — so these are
     // the CURRENT manufacturer's documents, not a scan of an old databook.
     parts: {
-      W65C02: "W65C02s.pdf", // the 'S' (static CMOS) part the catalog models
-      W65C21: "W65C21.pdf",
-      W65C22: "W65C22.pdf",
+      W65C02: "w65c02s.pdf", // the 'S' (static CMOS) part the catalog models
+      W65C21: "w65c21.pdf",
+      W65C22: "w65c22.pdf",
     },
   },
 ]);

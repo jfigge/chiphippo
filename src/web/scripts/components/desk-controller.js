@@ -2446,6 +2446,38 @@ export class DeskController {
     this.#onCreateMemoryFile?.(guid, memByteLength(def));
   }
 
+  /**
+   * Give every file-backed memory on a freshly LOADED desk a GUID and a backing
+   * file if it arrived without one.
+   *
+   * A ROM gets its store when it is PLACED, and a pasted one gets a fresh store
+   * of its own — but a document read from a FILE was never placed, and a chip in
+   * it may name no store at all. Nothing downstream copes with that on its own:
+   * a GUID is main's only handle on the bytes, so `MemoryBridge` answers
+   * `#romInfo` with null and the programmer, Save and the inspector's own
+   * file-backed path all fall silently through their `if (!info) return`. That
+   * is a chip you cannot load an image into and are told nothing about — the
+   * shipped `demos/65xx-*` computers, whose ROMs are generated rather than
+   * placed, and any document written before this rule.
+   *
+   * So the invariant — a non-volatile memory on the desk HAS a store — is
+   * established at every seam a chip can arrive through, this being the third.
+   * `SimController`'s own defensive mint on Run then goes back to being
+   * defensive rather than the only thing standing the invariant up (which is
+   * also why the button worked after a Run and not before it, the asymmetry
+   * this removes).
+   *
+   * Runs BEFORE `#rebuildScene` and before the history baseline is seeded, so
+   * the mounted view sees its own store and ⌘Z has nothing to unwind it to.
+   */
+  #adoptUnbackedMemories() {
+    for (const comp of this.#doc.components) {
+      if (comp.params?.storage?.guid) continue;
+      if (!isRomChip(partDef(comp.ref))) continue;
+      this.#provisionMemory(comp);
+    }
+  }
+
   /** Delete a ROM chip's backing file as it's removed (a no-op for SRAM). */
   #releaseMemory(comp) {
     const guid = comp?.params?.storage?.guid;
@@ -4318,6 +4350,7 @@ export class DeskController {
     this.#restoring = true; // a load is not an edit — never record it
     try {
       this.#doc.load(raw);
+      this.#adoptUnbackedMemories();
       if (history) this.#history = history;
       if (this.#history.size === 0) this.#history.clear(this.#doc.snapshot());
       this.#rebuildScene();

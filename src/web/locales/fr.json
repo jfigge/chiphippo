@@ -480,6 +480,9 @@
     "HM62256": {
       "title": "RAM statique 32K×8"
     },
+    "AT28C256": {
+      "title": "EEPROM 32K×8"
+    },
     "AS6C1024": {
       "title": "RAM statique 128K×8"
     },

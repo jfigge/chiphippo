@@ -2399,3 +2399,121 @@ test("fitToScreen on an empty desk changes nothing", () => {
   assert.equal(changes, 0);
   assert.deepEqual(deskView.camera, { cx: 0, cy: 0, zoom: 1 });
 });
+
+// ── A loaded ROM's backing store (the shipped 65xx demos) ────────────────────
+// A ROM gets its GUID + noise file when it is PLACED or PASTED. A document read
+// from a FILE was never either, so a chip in it may name no store — and without
+// one main has no handle on the bytes, so MemoryBridge's programmer, Save and
+// file-backed inspector path all fall silently through `if (!info) return`.
+// That was a "Load image…" that did nothing, on every shipped 65xx demo.
+
+/** A one-ROM document as `make-demos.mjs` writes it: no `params.storage`. */
+const romDocument = () => {
+  const doc = new DeskDoc(null);
+  doc.addKit("full", 0, 0);
+  const rom = doc.addComponent({
+    kind: "chip",
+    ref: "rom-8k",
+    board: "bb2",
+    anchor: "e3",
+    params: {},
+  });
+  const raw = doc.snapshot();
+  // addComponent does NOT provision (that is the controller's job), so this is
+  // the generator's shape exactly — assert it, or the fixture could go stale
+  // and quietly stop testing anything.
+  const seated = raw.components.find((c) => c.id === rom.id);
+  assert.equal(seated.params?.storage, undefined, "fixture ROM has no store");
+  return raw;
+};
+
+test("loadDocument gives a ROM that arrived without one its own backing store", () => {
+  resetDom();
+  const raw = romDocument();
+  const doc = new DeskDoc(null);
+  const viewport = document.createElement("section");
+  const surface = document.createElement("div");
+  viewport.append(surface);
+  document.body.append(viewport);
+  const created = [];
+  const controller = new DeskController({
+    viewport,
+    deskView: {
+      surface,
+      camera: { cx: 0, cy: 0, zoom: 1 },
+      worldFromEvent: () => ({ x: 0, y: 0 }),
+      setCamera: () => {},
+    },
+    deskDoc: doc,
+    onCreateMemoryFile: (guid, byteLength) => created.push([guid, byteLength]),
+  });
+
+  controller.loadDocument(raw);
+
+  const rom = doc.components.find((c) => c.ref === "rom-8k");
+  const guid = rom.params?.storage?.guid;
+  assert.ok(guid, "the loaded ROM was given a GUID");
+  // Only a `true` is stored (omit-when-default), so "not programmed" is the
+  // flag's ABSENCE — a fresh noise file has nothing in it to claim otherwise.
+  assert.notEqual(rom.params.programmed, true, "not claimed as programmed");
+  assert.deepEqual(
+    created,
+    [[guid, 8192]],
+    "its noise-filled backing file was created, at the part's own size",
+  );
+
+  // The baseline is seeded AFTER the mint, so ⌘Z cannot unwind the desk to a
+  // state whose ROM has no store again.
+  assert.equal(controller.undo(), false, "the load left nothing to undo");
+  assert.equal(
+    doc.components.find((c) => c.ref === "rom-8k").params.storage.guid,
+    guid,
+  );
+});
+
+test("loadDocument leaves an existing store alone and never touches SRAM", () => {
+  resetDom();
+  const raw = romDocument();
+  const rom = raw.components.find((c) => c.ref === "rom-8k");
+  // A REAL UUID: the loader validates the shape (catalog `normalizeStorage`),
+  // so a malformed one is dropped and would be re-minted here — correctly, but
+  // it would stop this test from testing what it says it does.
+  const KEPT = "11111111-2222-3333-4444-555555555555";
+  rom.params = { storage: { guid: KEPT }, programmed: true };
+  // A volatile SRAM is never file-backed, so it must not be given a store.
+  raw.components.push({
+    id: "c9",
+    kind: "chip",
+    ref: "HM62256",
+    board: "bb2",
+    anchor: "e30",
+    params: {},
+  });
+
+  const doc = new DeskDoc(null);
+  const viewport = document.createElement("section");
+  const surface = document.createElement("div");
+  viewport.append(surface);
+  document.body.append(viewport);
+  const created = [];
+  const controller = new DeskController({
+    viewport,
+    deskView: {
+      surface,
+      camera: { cx: 0, cy: 0, zoom: 1 },
+      worldFromEvent: () => ({ x: 0, y: 0 }),
+      setCamera: () => {},
+    },
+    deskDoc: doc,
+    onCreateMemoryFile: (guid, byteLength) => created.push([guid, byteLength]),
+  });
+
+  controller.loadDocument(raw);
+
+  const loaded = doc.components.find((c) => c.ref === "rom-8k");
+  assert.equal(loaded.params.storage.guid, KEPT, "store untouched");
+  assert.equal(loaded.params.programmed, true, "and still programmed");
+  const sram = doc.components.find((c) => c.ref === "HM62256");
+  assert.equal(sram.params?.storage, undefined, "volatile SRAM gets no store");
+  assert.deepEqual(created, [], "nothing was created");
+});

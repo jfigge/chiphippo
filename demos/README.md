@@ -5,8 +5,9 @@ Two kinds of ready-to-load design:
 - **One project per chip GROUP** — `NAND.chiphippo`, `Flip-flop.chiphippo`,
   `Multiplexer.chiphippo` and so on: **every 74xx part in the catalog**, one
   desktop each, wired up on a logic bench you can flip switches on (see below).
-- **`65xx-*`** — whole breadboard computers: a **`.chiphippo`** schematic (the
-  wired-up circuit) plus a **`.hex`** ROM image (the program).
+- **`65xx-*`** and **`eater-*`** — whole breadboard computers: a
+  **`.chiphippo`** schematic (the wired-up circuit) plus a **`.hex`** ROM image
+  (the program).
 
 Both are generated and validated by `make demos`, which builds every wire from the
 model and then runs each circuit through the simulation engine to prove it actually
@@ -76,8 +77,11 @@ demonstrated by flipping switches at it, which is what the 65xx demos below are.
    - Double-click the **ROM** chip to open its memory inspector, then **Import**
      the matching `.hex` — or use the external **programmer** menu action and pick
      the `.hex`.
-   - The `.hex` is the whole 8 KiB image: the program at the bottom **and** the
-     reset vector at `$1FFC/$1FFD`, so the CPU boots straight into it.
+   - The `.hex` is the whole ROM image: the program at the bottom **and** the
+     reset vector in the last four bytes, so the CPU boots straight into it. The
+     CPU fetches that vector from `$FFFC`, which is the image's `$1FFC` on the
+     8 KiB parts (mirrored eight times through `$8000–$FFFF`) and `$7FFC` on the
+     32 KiB AT28C256, which covers the half exactly.
 3. **Press Run** (Space). The clock starts and the CPU executes — one memory
    access per clock cycle, so you can watch the address bus advance (or **Step**
    the clock by hand).
@@ -131,9 +135,90 @@ LDA #'I' : STA $0001   ; data
 JMP *                  ; done
 ```
 
-Both programs are **stack-free** on purpose: there's no RAM in these minimal
-computers, so nothing may touch page 1. Add a RAM chip (and a stack) when you grow
-them into something bigger.
+Both of those programs are **stack-free** on purpose: there's no RAM in either
+minimal computer, so nothing may touch page 1. `eater-core` below is what adding
+the RAM chip buys you.
+
+### `eater-core` — the Ben Eater 65C02 computer, CPU + ROM + RAM
+
+The core of [Ben Eater's 6502 computer](https://eater.net/6502): a **W65C02**, an
+**AT28C256** 32 K EEPROM, a **62256** 32 K SRAM, and **one 74LS00** doing the
+whole address decode. This is step one — the VIA, the LCD, the buttons and the
+address/data bus LEDs hang off it and change none of its wiring.
+
+- **Memory map:** **RAM** `$0000–$3FFF` (A15 = 0, A14 = 0) · **VIA**
+  `$4000–$7FFF` (decoded here, wired when the VIA lands) · **ROM**
+  `$8000–$FFFF` (A15 = 1).
+- **The decode is four NAND gates**, which is the whole reason a quad NAND is
+  the one glue chip on the board:
+
+  | Gate | Function | Drives |
+  | --- | --- | --- |
+  | G1 | `NAND(A15, A15)` = `/A15` | ROM `/CE` |
+  | G2 | `NAND(A14, A14)` = `/A14` | — |
+  | G3 | `NAND(/A15, /A14)` | RAM `/CE` (low iff A15 = 0 **and** A14 = 0) |
+  | G4 | `NAND(/A15, A14)` | VIA `/CS2B` (spare until the VIA arrives) |
+
+- **The two memories share one pin map.** The AT28C256 and the 62256 are
+  pin-for-pin identical, which is why a real board takes either in the same
+  socket — the generator states that map once rather than typing it twice.
+- **Strapping**, as a real board does it: both `/OE` tied low (a deselected part
+  floats on `/CE` alone, and a RAM mid-write floats on `/WE`), the EEPROM's
+  `/WE` tied **high** because the circuit never programs it, and the RAM's `/WE`
+  straight off the CPU's `R/W̄`.
+- **Program:** count to five in RAM — through a **subroutine**, so the return
+  address goes onto a stack that only exists because the RAM is there.
+
+```asm
+        LDX #$FF
+        TXS              ; stack pointer → $01FF, in the SRAM
+        LDA #$00
+        STA $0200        ; RAM counter := 0
+loop:   JSR bump         ; pushes the return address into RAM
+        LDA $0200
+        CMP #$05
+        BNE loop
+        JMP *            ; halt
+bump:   INC $0200        ; read-modify-write in RAM
+        RTS              ; pulls the return address back out
+```
+
+The build asserts all of it through the engine: `$0200` reaches 5, **and** the
+return address `$800A` is sitting at `$01FE/$01FF` — which the CPU has no memory
+of its own to fake.
+
+### `eater-io` — the same machine with its VIA, LCD and buttons
+
+`eater-core` plus the I/O that makes it Ben Eater's computer: a **W65C22 VIA** at
+`$6000` driving a **16×2 HD44780** off its two ports, and **five buttons** on
+PA0–PA4. Not a wire of the core changes — the VIA's chip select is the decoder's
+fourth gate, which step one left spare for exactly this.
+
+| VIA | Wired to |
+| --- | --- |
+| PB0–PB7 | LCD DB0–DB7 — the data byte |
+| PA7 · PA6 · PA5 | LCD RS · RW · E — the strobe the program pulses by hand |
+| PA0–PA4 | SW1–SW5, each held high by a pull-up and shorted to GND when pressed |
+
+- **The LCD is driven by software, not by the bus.** In `65xx-lcd` above, `E`
+  comes from an AND gate, so a write to low memory clocks the display. Here the
+  program owns all three control lines: it puts a byte on port B, raises `E`, and
+  drops it again — the controller latches on that **falling** edge.
+- **Program:** bring the VIA up (`DDRB = $FF`, `DDRA = $E0` — PA5–7 out, PA0–4
+  in), run the HD44780 init, print `Hello, world!`, then poll the buttons for
+  ever. A press prints its digit `1`–`5` and waits for release.
+- **Validated twice**, because a button's pressed-ness is transient runtime
+  state rather than anything the document can hold: once untouched (the screen
+  must read `Hello, world!`) and once holding **SW3** (it must read
+  `Hello, world!3`). That one character is the whole input path — the pull-up
+  holds PA2 high, the press pulls it low against that pull, the VIA reads the
+  pin back on IRA, and the program's bit scan turns the right bit into the right
+  digit. A wrong digit means the buttons are on the wrong port pins, which
+  nothing else would notice.
+
+The program is assembled by a **20-line two-pass assembler** in
+`make-demos.mjs` (`asm`/`at`/`rel`): with six forward references, a hand-counted
+branch offset is a byte you cannot check by reading.
 
 ## Regenerating
 
@@ -141,7 +226,7 @@ them into something bigger.
 make demos
 ```
 
-Rebuilds both `.chiphippo` + `.hex` pairs from `scripts/make-demos.mjs`, then
+Rebuilds every `.chiphippo` + `.hex` pair from `scripts/make-demos.mjs`, then
 every group project **and every bundled per-chip example** from
 `scripts/make-gate-demos.mjs` — one `buildDemo` call feeding both outputs, so
 `demos/<Group>.chiphippo` and `src/web/demos/<ref>.json` come from the same build

@@ -480,6 +480,9 @@
     "HM62256": {
       "title": "32K×8 static RAM"
     },
+    "AT28C256": {
+      "title": "32K×8 EEPROM"
+    },
     "AS6C1024": {
       "title": "128K×8 static RAM"
     },

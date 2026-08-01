@@ -38,7 +38,7 @@ const demo = (name) =>
 const readDemo = (name) => readFileSync(demo(name), "utf8");
 
 /** Load a demo doc + its hex ROM image; assert the loader drops nothing. */
-function loadDemo(base) {
+function loadDemo(base, { romRef = "rom-8k", romSize = 8192 } = {}) {
   const doc = JSON.parse(readDemo(`${base}.chiphippo`));
   const norm = normalizeDocument(doc);
   assert.equal(norm.boards.length, doc.boards.length, `${base} boards`);
@@ -50,15 +50,22 @@ function loadDemo(base) {
   assert.equal(norm.wires.length, doc.wires.length, `${base} wires`);
 
   const parsed = parseIntelHex(readDemo(`${base}.hex`));
-  const image = new Uint8Array(8192);
+  const image = new Uint8Array(romSize);
   image.set(parsed.subarray(0, image.length));
-  const rom = doc.components.find((c) => c.ref === "rom-8k");
+  const rom = doc.components.find((c) => c.ref === romRef);
   return { doc, images: new Map([[rom.id, image]]) };
 }
 
-/** Run the engine for `cycles` full clock periods; return the last result. */
-function run(doc, images, cycles) {
-  const netlist = buildNetlist(doc);
+/**
+ * Run the engine for `cycles` full clock periods; return the last result.
+ * The engine REPORTS memory writes and never applies them (that is the
+ * SimController's job), so `writable` names the component ids whose image a
+ * write may land in — a volatile SRAM. Anything else is dropped, exactly as
+ * the app drops a write aimed at a file-backed ROM.
+ */
+function run(doc, images, cycles, { writable = new Set(), partStates } = {}) {
+  const states = partStates ?? new Map();
+  const netlist = buildNetlist(doc, states);
   let warm = new Map();
   let state = new Map();
   let prev = new Map();
@@ -72,10 +79,14 @@ function run(doc, images, cycles) {
       prevPinLevels: prev,
       clockPhase: new Map([["clk1", i % 2 === 0 ? H : L]]),
       images,
+      partStates: states,
     });
     warm = last.netLevels;
     state = last.state;
     prev = last.pinLevels;
+    for (const w of last.memWrites) {
+      if (writable.has(w.compId)) images.get(w.compId)[w.addr] = w.value;
+    }
   }
   return { netlist, state, sample: last };
 }
@@ -148,4 +159,72 @@ test("demo 65xx-lcd: the CPU program initialises the HD44780 and prints HI", () 
     "HI",
     "DDRAM holds the printed text",
   );
+});
+
+test("demo eater-core: the CPU runs out of ROM and keeps its stack in RAM", () => {
+  const { doc, images } = loadDemo("eater-core", {
+    romRef: "AT28C256",
+    romSize: 32768,
+  });
+  const ram = doc.components.find((c) => c.ref === "HM62256");
+  assert.ok(ram, "the SRAM is on the desk");
+  images.set(ram.id, new Uint8Array(32768));
+
+  run(doc, images, 450, { writable: new Set([ram.id]) });
+  const bytes = images.get(ram.id);
+
+  // The program counts to 5 in RAM at $0200 through a subroutine, so this one
+  // byte proves the whole path: ROM fetch, RAM write, RAM read-back, and the
+  // 74LS00 decode keeping the two memories off each other's bus.
+  assert.equal(bytes[0x0200], 5, "the RAM counter reached 5");
+  // JSR at $8008 pushes the address of its last operand byte, $800A. Finding it
+  // on the stack page proves the stack is REALLY in the SRAM — the CPU has no
+  // memory of its own to fake it with.
+  assert.equal(bytes[0x01ff], 0x80, "return address high byte on the stack");
+  assert.equal(bytes[0x01fe], 0x0a, "return address low byte on the stack");
+});
+
+test("demo eater-io: the CPU prints through the VIA and reads the buttons", () => {
+  const load = () =>
+    loadDemo("eater-io", { romRef: "AT28C256", romSize: 32768 });
+  const screen = (doc, state) => {
+    const id = doc.components.find((c) => c.ref === "lcd16x2")?.id;
+    const lcd = id && state.get(id);
+    assert.ok(lcd, "the LCD controller ran");
+    assert.equal(lcd.displayOn, true, "display turned on");
+    return String.fromCharCode(...lcd.ddram.subarray(0, 16)).replace(
+      /\s+$/,
+      "",
+    );
+  };
+  const withRam = (doc, images) => {
+    const ram = doc.components.find((c) => c.ref === "HM62256");
+    images.set(ram.id, new Uint8Array(32768));
+    return new Set([ram.id]);
+  };
+
+  // Untouched: the CPU brings the VIA up and prints through its two ports.
+  {
+    const { doc, images } = load();
+    const writable = withRam(doc, images);
+    const { state } = run(doc, images, 900, { writable });
+    assert.equal(screen(doc, state), "Hello, world!");
+  }
+
+  // Holding SW3 must print '3'. That single character is the whole input path:
+  // the pull-up holds PA2 high, the press pulls it low against that pull, the
+  // VIA reads the PIN back on IRA, and the program's bit scan turns the right
+  // bit into the right digit. A press is transient runtime state, so it comes
+  // in as `partStates` — exactly how the app supplies a held button.
+  {
+    const { doc, images } = load();
+    const writable = withRam(doc, images);
+    const buttons = doc.components.filter((c) => c.ref === "sw-push");
+    assert.equal(buttons.length, 5, "five buttons on the desk");
+    const { state } = run(doc, images, 900, {
+      writable,
+      partStates: new Map([[buttons[2].id, { pressed: true }]]),
+    });
+    assert.equal(screen(doc, state), "Hello, world!3");
+  }
 });

@@ -1,0 +1,580 @@
+{
+  "version": 6,
+  "boards": [
+    {
+      "id": "bb1",
+      "type": "rail-full",
+      "x": 0,
+      "y": 0,
+      "rot": 0,
+      "group": null
+    },
+    {
+      "id": "bb2",
+      "type": "pins-full",
+      "x": 0,
+      "y": 4,
+      "rot": 0,
+      "group": null
+    },
+    {
+      "id": "bb3",
+      "type": "pins-full",
+      "x": 0,
+      "y": 20,
+      "rot": 0,
+      "group": null
+    },
+    {
+      "id": "bb4",
+      "type": "pins-full",
+      "x": 0,
+      "y": 36,
+      "rot": 0,
+      "group": null
+    },
+    {
+      "id": "bb5",
+      "type": "pins-full",
+      "x": 0,
+      "y": 52,
+      "rot": 0,
+      "group": null
+    }
+  ],
+  "components": [
+    {
+      "id": "psu1",
+      "kind": "psu",
+      "ref": "psu",
+      "x": 70,
+      "y": 0,
+      "params": {
+        "volts": 5
+      }
+    },
+    {
+      "id": "clk1",
+      "kind": "clock",
+      "ref": "clock",
+      "x": 70,
+      "y": 12,
+      "params": {
+        "hz": 2
+      }
+    },
+    {
+      "id": "c1",
+      "kind": "chip",
+      "ref": "W65C02",
+      "board": "bb2",
+      "anchor": "e3",
+      "params": {}
+    },
+    {
+      "id": "c2",
+      "kind": "chip",
+      "ref": "AT28C256",
+      "board": "bb3",
+      "anchor": "e3",
+      "params": {}
+    },
+    {
+      "id": "c3",
+      "kind": "chip",
+      "ref": "HM62256",
+      "board": "bb4",
+      "anchor": "e3",
+      "params": {}
+    },
+    {
+      "id": "c4",
+      "kind": "chip",
+      "ref": "74LS00",
+      "board": "bb5",
+      "anchor": "e3",
+      "params": {}
+    }
+  ],
+  "wires": [
+    {
+      "id": "w1",
+      "from": "psu1.+",
+      "to": "bb1.+1",
+      "color": "red"
+    },
+    {
+      "id": "w2",
+      "from": "psu1.-",
+      "to": "bb1.-1",
+      "color": "black"
+    },
+    {
+      "id": "w3",
+      "from": "clk1.gnd",
+      "to": "bb1.-2",
+      "color": "black"
+    },
+    {
+      "id": "w4",
+      "from": "bb2.a10",
+      "to": "bb1.+2",
+      "color": "red"
+    },
+    {
+      "id": "w5",
+      "from": "bb2.g22",
+      "to": "bb1.-3",
+      "color": "black"
+    },
+    {
+      "id": "w6",
+      "from": "bb3.g3",
+      "to": "bb1.+3",
+      "color": "red"
+    },
+    {
+      "id": "w7",
+      "from": "bb3.a16",
+      "to": "bb1.-4",
+      "color": "black"
+    },
+    {
+      "id": "w8",
+      "from": "bb4.g3",
+      "to": "bb1.+4",
+      "color": "red"
+    },
+    {
+      "id": "w9",
+      "from": "bb4.a16",
+      "to": "bb1.-5",
+      "color": "black"
+    },
+    {
+      "id": "w10",
+      "from": "bb5.g3",
+      "to": "bb1.+5",
+      "color": "red"
+    },
+    {
+      "id": "w11",
+      "from": "bb5.a9",
+      "to": "bb1.-6",
+      "color": "black"
+    },
+    {
+      "id": "w12",
+      "from": "bb2.a11",
+      "to": "bb3.a12",
+      "color": "green"
+    },
+    {
+      "id": "w13",
+      "from": "bb2.b11",
+      "to": "bb4.a12",
+      "color": "green"
+    },
+    {
+      "id": "w14",
+      "from": "bb2.a12",
+      "to": "bb3.a11",
+      "color": "green"
+    },
+    {
+      "id": "w15",
+      "from": "bb2.b12",
+      "to": "bb4.a11",
+      "color": "green"
+    },
+    {
+      "id": "w16",
+      "from": "bb2.a13",
+      "to": "bb3.a10",
+      "color": "green"
+    },
+    {
+      "id": "w17",
+      "from": "bb2.b13",
+      "to": "bb4.a10",
+      "color": "green"
+    },
+    {
+      "id": "w18",
+      "from": "bb2.a14",
+      "to": "bb3.a9",
+      "color": "green"
+    },
+    {
+      "id": "w19",
+      "from": "bb2.b14",
+      "to": "bb4.a9",
+      "color": "green"
+    },
+    {
+      "id": "w20",
+      "from": "bb2.a15",
+      "to": "bb3.a8",
+      "color": "green"
+    },
+    {
+      "id": "w21",
+      "from": "bb2.b15",
+      "to": "bb4.a8",
+      "color": "green"
+    },
+    {
+      "id": "w22",
+      "from": "bb2.a16",
+      "to": "bb3.a7",
+      "color": "green"
+    },
+    {
+      "id": "w23",
+      "from": "bb2.b16",
+      "to": "bb4.a7",
+      "color": "green"
+    },
+    {
+      "id": "w24",
+      "from": "bb2.a17",
+      "to": "bb3.a6",
+      "color": "green"
+    },
+    {
+      "id": "w25",
+      "from": "bb2.b17",
+      "to": "bb4.a6",
+      "color": "green"
+    },
+    {
+      "id": "w26",
+      "from": "bb2.a18",
+      "to": "bb3.a5",
+      "color": "green"
+    },
+    {
+      "id": "w27",
+      "from": "bb2.b18",
+      "to": "bb4.a5",
+      "color": "green"
+    },
+    {
+      "id": "w28",
+      "from": "bb2.a19",
+      "to": "bb3.g6",
+      "color": "green"
+    },
+    {
+      "id": "w29",
+      "from": "bb2.b19",
+      "to": "bb4.g6",
+      "color": "green"
+    },
+    {
+      "id": "w30",
+      "from": "bb2.a20",
+      "to": "bb3.g7",
+      "color": "green"
+    },
+    {
+      "id": "w31",
+      "from": "bb2.b20",
+      "to": "bb4.g7",
+      "color": "green"
+    },
+    {
+      "id": "w32",
+      "from": "bb2.a21",
+      "to": "bb3.g10",
+      "color": "green"
+    },
+    {
+      "id": "w33",
+      "from": "bb2.b21",
+      "to": "bb4.g10",
+      "color": "green"
+    },
+    {
+      "id": "w34",
+      "from": "bb2.a22",
+      "to": "bb3.g8",
+      "color": "green"
+    },
+    {
+      "id": "w35",
+      "from": "bb2.b22",
+      "to": "bb4.g8",
+      "color": "green"
+    },
+    {
+      "id": "w36",
+      "from": "bb2.g21",
+      "to": "bb3.a4",
+      "color": "green"
+    },
+    {
+      "id": "w37",
+      "from": "bb2.h21",
+      "to": "bb4.a4",
+      "color": "green"
+    },
+    {
+      "id": "w38",
+      "from": "bb2.g20",
+      "to": "bb3.g5",
+      "color": "green"
+    },
+    {
+      "id": "w39",
+      "from": "bb2.h20",
+      "to": "bb4.g5",
+      "color": "green"
+    },
+    {
+      "id": "w40",
+      "from": "bb2.g19",
+      "to": "bb3.a3",
+      "color": "green"
+    },
+    {
+      "id": "w41",
+      "from": "bb2.h19",
+      "to": "bb4.a3",
+      "color": "green"
+    },
+    {
+      "id": "w42",
+      "from": "bb2.g10",
+      "to": "bb3.a13",
+      "color": "blue"
+    },
+    {
+      "id": "w43",
+      "from": "bb3.b13",
+      "to": "bb4.a13",
+      "color": "blue"
+    },
+    {
+      "id": "w44",
+      "from": "bb2.g11",
+      "to": "bb3.a14",
+      "color": "blue"
+    },
+    {
+      "id": "w45",
+      "from": "bb3.b14",
+      "to": "bb4.a14",
+      "color": "blue"
+    },
+    {
+      "id": "w46",
+      "from": "bb2.g12",
+      "to": "bb3.a15",
+      "color": "blue"
+    },
+    {
+      "id": "w47",
+      "from": "bb3.b15",
+      "to": "bb4.a15",
+      "color": "blue"
+    },
+    {
+      "id": "w48",
+      "from": "bb2.g13",
+      "to": "bb3.g16",
+      "color": "blue"
+    },
+    {
+      "id": "w49",
+      "from": "bb3.h16",
+      "to": "bb4.g16",
+      "color": "blue"
+    },
+    {
+      "id": "w50",
+      "from": "bb2.g14",
+      "to": "bb3.g15",
+      "color": "blue"
+    },
+    {
+      "id": "w51",
+      "from": "bb3.h15",
+      "to": "bb4.g15",
+      "color": "blue"
+    },
+    {
+      "id": "w52",
+      "from": "bb2.g15",
+      "to": "bb3.g14",
+      "color": "blue"
+    },
+    {
+      "id": "w53",
+      "from": "bb3.h14",
+      "to": "bb4.g14",
+      "color": "blue"
+    },
+    {
+      "id": "w54",
+      "from": "bb2.g16",
+      "to": "bb3.g13",
+      "color": "blue"
+    },
+    {
+      "id": "w55",
+      "from": "bb3.h13",
+      "to": "bb4.g13",
+      "color": "blue"
+    },
+    {
+      "id": "w56",
+      "from": "bb2.g17",
+      "to": "bb3.g12",
+      "color": "blue"
+    },
+    {
+      "id": "w57",
+      "from": "bb3.h12",
+      "to": "bb4.g12",
+      "color": "blue"
+    },
+    {
+      "id": "w58",
+      "from": "bb2.g18",
+      "to": "bb5.a3",
+      "color": "yellow"
+    },
+    {
+      "id": "w59",
+      "from": "bb5.b3",
+      "to": "bb5.a4",
+      "color": "yellow"
+    },
+    {
+      "id": "w60",
+      "from": "bb2.i19",
+      "to": "bb5.a6",
+      "color": "yellow"
+    },
+    {
+      "id": "w61",
+      "from": "bb5.b6",
+      "to": "bb5.a7",
+      "color": "yellow"
+    },
+    {
+      "id": "w62",
+      "from": "bb5.a5",
+      "to": "bb5.g8",
+      "color": "orange"
+    },
+    {
+      "id": "w63",
+      "from": "bb5.a8",
+      "to": "bb5.g7",
+      "color": "orange"
+    },
+    {
+      "id": "w64",
+      "from": "bb5.b5",
+      "to": "bb5.g5",
+      "color": "orange"
+    },
+    {
+      "id": "w65",
+      "from": "bb5.c6",
+      "to": "bb5.g4",
+      "color": "orange"
+    },
+    {
+      "id": "w66",
+      "from": "bb5.c5",
+      "to": "bb3.g11",
+      "color": "orange"
+    },
+    {
+      "id": "w67",
+      "from": "bb5.g9",
+      "to": "bb4.g11",
+      "color": "orange"
+    },
+    {
+      "id": "w68",
+      "from": "bb3.g9",
+      "to": "bb1.-7",
+      "color": "black"
+    },
+    {
+      "id": "w69",
+      "from": "bb3.g4",
+      "to": "bb1.+6",
+      "color": "red"
+    },
+    {
+      "id": "w70",
+      "from": "bb4.g9",
+      "to": "bb1.-8",
+      "color": "black"
+    },
+    {
+      "id": "w71",
+      "from": "bb2.g9",
+      "to": "bb4.g4",
+      "color": "white"
+    },
+    {
+      "id": "w72",
+      "from": "clk1.out",
+      "to": "bb2.g6",
+      "color": "purple"
+    },
+    {
+      "id": "w73",
+      "from": "bb2.g3",
+      "to": "bb1.+7",
+      "color": "red"
+    },
+    {
+      "id": "w74",
+      "from": "bb2.g7",
+      "to": "bb1.+8",
+      "color": "red"
+    },
+    {
+      "id": "w75",
+      "from": "bb2.a4",
+      "to": "bb1.+9",
+      "color": "red"
+    },
+    {
+      "id": "w76",
+      "from": "bb2.a6",
+      "to": "bb1.+10",
+      "color": "red"
+    },
+    {
+      "id": "w77",
+      "from": "bb2.a8",
+      "to": "bb1.+11",
+      "color": "red"
+    },
+    {
+      "id": "w78",
+      "from": "bb2.g5",
+      "to": "bb1.+12",
+      "color": "red"
+    }
+  ],
+  "buses": [],
+  "netNames": [],
+  "annotations": [],
+  "nextBoardId": 6,
+  "nextGroupId": 1,
+  "nextComponentId": 7,
+  "nextPsuId": 2,
+  "nextClockId": 2,
+  "nextWireId": 79,
+  "nextBusId": 1,
+  "nextAnnotationId": 1
+}

@@ -275,3 +275,73 @@ test("stopped mem-state hands a volatile chip its final image bytes", async () =
   assert.equal(ctx.volatile, true);
   assert.deepEqual([...ctx.bytes], [9, 8]);
 });
+
+// ── The shipped demos, end to end ────────────────────────────────────────────
+// The unit tests above hand the bridge a chip that already HAS a store, which
+// is why none of them caught this: a ROM in a document read from a FILE was
+// never placed or pasted, so it had none, `#romInfo` answered null, and every
+// entry point fell through its own `if (!info) return`. "Load image…" opened
+// nothing and said nothing. This drives the REAL `demos/65xx-lcd.chiphippo`
+// through the REAL controller, which is the only shape that reproduces it.
+
+test("a shipped demo's ROM can be programmed straight after opening it", async () => {
+  resetDom();
+  const { DeskDoc } = await import("../model/desk-doc.js");
+  const { DeskController } = await import("../components/desk-controller.js");
+  const { readFileSync } = await import("node:fs");
+  const { fileURLToPath } = await import("node:url");
+  const demo = (n) => fileURLToPath(new URL(`../../../../demos/${n}`, import.meta.url)); // prettier-ignore
+
+  const hex = readFileSync(demo("65xx-lcd.hex"), "utf8");
+  const { calls } = install({
+    picked: {
+      ok: true,
+      name: "65xx-lcd.hex",
+      bytes: new TextEncoder().encode(hex),
+    },
+  });
+
+  const doc = new DeskDoc(null);
+  const viewport = document.createElement("section");
+  const surface = document.createElement("div");
+  viewport.append(surface);
+  document.body.append(viewport);
+  const controller = new DeskController({
+    viewport,
+    deskView: {
+      surface,
+      camera: { cx: 0, cy: 0, zoom: 1 },
+      worldFromEvent: () => ({ x: 0, y: 0 }),
+      setCamera: () => {},
+    },
+    deskDoc: doc,
+    onCreateMemoryFile: () => {},
+  });
+  controller.loadDocument(JSON.parse(readFileSync(demo("65xx-lcd.chiphippo"), "utf8"))); // prettier-ignore
+
+  const rom = doc.components.find((c) => c.ref === "rom-8k");
+  const guid = rom.params?.storage?.guid;
+  assert.ok(guid, "opening the demo gave its ROM a backing store");
+
+  const bridge = new MemoryBridge({
+    deskDoc: doc,
+    sim: { running: false },
+    controller,
+    bridge: window.chiphippo,
+    notifications: { notify: () => {} },
+  });
+  await bridge.program(rom.id);
+  await settle();
+
+  assert.equal(calls.pickImage, 1, "the file picker opened");
+  assert.deepEqual(
+    calls.program,
+    [[guid, 8192]],
+    "and the whole 8 KiB image went to the chip's own file",
+  );
+  assert.equal(
+    doc.getComponent(rom.id).params.programmed,
+    true,
+    "the chip is flagged programmed, so the sim will load it on Run",
+  );
+});

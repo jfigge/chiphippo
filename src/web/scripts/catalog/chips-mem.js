@@ -269,6 +269,67 @@ export const CHIPS_MEM = Object.freeze([
     ],
   },
   {
+    id: "AT28C256",
+    title: "32K×8 EEPROM",
+    blurb:
+      "Atmel AT28C256 32K×8 parallel EEPROM (600-mil DIP-28) — pin-for-pin the " +
+      "62256 SRAM above, which is why one socket takes either: CE·OE low reads " +
+      "the addressed byte, data pins float when deselected. Non-volatile, so " +
+      "the circuit never writes it — program it from a .bin with the external " +
+      "programmer and tie WE high, as a real board does.",
+    group: "Memory",
+    package: "DIP-28",
+    pins: [
+      input(1, "A14"),
+      input(2, "A12"),
+      input(3, "A7"),
+      input(4, "A6"),
+      input(5, "A5"),
+      input(6, "A4"),
+      input(7, "A3"),
+      input(8, "A2"),
+      input(9, "A1"),
+      input(10, "A0"),
+      io(11, "DQ0"),
+      io(12, "DQ1"),
+      io(13, "DQ2"),
+      gnd(14),
+      io(15, "DQ3"),
+      io(16, "DQ4"),
+      io(17, "DQ5"),
+      io(18, "DQ6"),
+      io(19, "DQ7"),
+      input(20, "CE"),
+      input(21, "A10"),
+      input(22, "OE"),
+      input(23, "A11"),
+      input(24, "A9"),
+      input(25, "A8"),
+      input(26, "A13"),
+      input(27, "WE"),
+      vcc(28),
+    ],
+    logic: memUnit({
+      size: 32768,
+      width: 8,
+      addr: [10, 9, 8, 7, 6, 5, 4, 3, 25, 24, 21, 23, 2, 26, 1],
+      data: [11, 12, 13, 15, 16, 17, 18, 19],
+      ceN: 20,
+      oeN: 22,
+      weN: 27,
+      // No `volatile` flag: an EEPROM keeps its bytes, so it is file-backed and
+      // the SimController drops every write the engine reports for it.
+    }),
+    pinGroups: [
+      {
+        name: "A",
+        pins: [10, 9, 8, 7, 6, 5, 4, 3, 25, 24, 21, 23, 2, 26, 1],
+        dir: "in",
+      },
+      { name: "DQ", pins: [11, 12, 13, 15, 16, 17, 18, 19], dir: "io" },
+    ],
+  },
+  {
     id: "AS6C1024",
     title: "128K×8 static RAM",
     blurb:

@@ -23,6 +23,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { initialCpu, cpuCycle } from "../sim/w65c02.js";
+import { partDef } from "../catalog/index.js";
 
 // Status-flag masks (mirror the module).
 const C = 0x01;
@@ -245,4 +246,61 @@ test("a counter program increments a RAM cell each pass", () => {
     m.runTo(0x8000); // complete one INC+JMP pass, back to the top
     assert.equal(m.mem[0x20], want, `pass ${want}`);
   }
+});
+
+// ── The PHI2 wrapper: WHEN the data bus is sampled ───────────────────────────
+// Everything above drives `cpuCycle` directly against a flat array, which is
+// why none of it could see this: the bug was in the `w65c02Unit` wrapper that
+// sits between the core and the engine's two-phase tick. It sampled the bus in
+// the FALLING edge's own settle, but a 65xx peripheral gates its bus drivers on
+// PHI2 and has already let go by then — so every VIA and PIA register read as a
+// floating $FF, and a button wired to a VIA port could never read as pressed.
+// An asynchronous ROM/SRAM drives on /CE alone and reads the same either way,
+// which is exactly why three shipped demos ran perfectly on top of it.
+
+test("a read latches the byte from the PHI2-HIGH phase, not the falling edge", () => {
+  const unit = partDef("W65C02").logic;
+  const P = {
+    A: [9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 22, 23, 24, 25],
+    D: [33, 32, 31, 30, 29, 28, 27, 26],
+    RWB: 34,
+    PHI2: 37,
+    RESB: 40,
+    BE: 36,
+    RDY: 2,
+    IRQB: 4,
+    NMIB: 6,
+  };
+  // $FFFC/$FFFD hold the reset vector $9ABC; everything else reads $EA (NOP).
+  const mem = new Uint8Array(0x10000).fill(0xea);
+  mem[0xfffc] = 0xbc;
+  mem[0xfffd] = 0x9a;
+
+  const levels = (state, phi2, dataByte) => {
+    const m = new Map();
+    for (const pin of [P.RESB, P.BE, P.RDY, P.IRQB, P.NMIB]) m.set(pin, "H");
+    m.set(P.PHI2, phi2);
+    P.A.forEach((pin, i) => m.set(pin, (state.addr >> i) & 1 ? "H" : "L"));
+    P.D.forEach((pin, i) => m.set(pin, (dataByte >> i) & 1 ? "H" : "L"));
+    return m;
+  };
+
+  let state = unit.state0();
+  let firstFetch = null;
+  for (let cycle = 0; cycle < 12 && firstFetch === null; cycle++) {
+    // PHI2 HIGH: the addressed part drives the real byte. This is the tick a
+    // peripheral answers in, and the only one where the value is on the bus.
+    const high = levels(state, "H", state.rw === "r" ? mem[state.addr] : 0xff);
+    state = unit.step(state, high, levels(state, "L", 0x00)) ?? state;
+    // PHI2 LOW: the bus has been RELEASED. $FF is what a floating one reads,
+    // and taking the byte from here is precisely the bug — so poison it.
+    state = unit.step(state, levels(state, "L", 0xff), high) ?? state;
+    if (state.sync && state.cur === "instr") firstFetch = state.addr & 0xffff;
+  }
+
+  assert.equal(
+    firstFetch,
+    0x9abc,
+    "the CPU booted to the vector it was shown during PHI2 high",
+  );
 });

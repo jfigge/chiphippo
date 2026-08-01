@@ -36,7 +36,9 @@
 //
 // ── Bus protocol ─────────────────────────────────────────────────────────────
 // The CPU drives A0–A15 + RWB from its pending access every cycle. On a READ it
-// floats D0–D7 (memory drives them) and latches the byte on PHI2's FALLING edge;
+// floats D0–D7 (memory drives them) and latches, at PHI2's FALLING edge, the
+// byte that was on the bus during the HIGH phase (see `step` — a PHI2-gated
+// peripheral has already let go by the time the falling edge settles);
 // on a WRITE it drives D0–D7 with RWB low. SYNC is high during an opcode fetch.
 // Reset boots from the $FFFC/$FFFD vector; IRQ ($FFFE), NMI ($FFFA), and BRK are
 // serviced at instruction boundaries. The chip powers up already IN reset, so it
@@ -1030,7 +1032,19 @@ export function w65c02Unit(pins) {
         nmi: ins.get(nmib) === L,
         ready: ins.get(rdy) !== L,
       };
-      return cpuCycle(state, readData(ins), ctl);
+      // The byte is taken from `prev` — the bus as it stood while PHI2 was
+      // still HIGH — not from `ins`, which is this falling edge's own settle.
+      // A 6502 samples read data on PHI2's TRAILING edge, i.e. the value the
+      // addressed part was holding up during the high phase, and the two are
+      // not the same thing here: an ASYNCHRONOUS part (ROM, SRAM) drives on
+      // /CE alone and so reads the same either way, but every 65xx PERIPHERAL
+      // gates its bus drivers on PHI2 and has already released by the time
+      // this settle runs. Reading `ins` therefore returned a floating bus —
+      // $FF — for every VIA and PIA register in the app, which is why a
+      // button read as "not pressed" however it was wired. The address and
+      // R/W̄ are unchanged across both phases of a cycle (they are committed
+      // at the PREVIOUS falling edge), so `prev` names the same access.
+      return cpuCycle(state, readData(prev), ctl);
     },
 
     outputs(state, ins) {
