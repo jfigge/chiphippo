@@ -3,8 +3,9 @@
 <head>
   <meta charset="UTF-8" />
   <!-- GitHub Pages can't set response headers, so the CSP rides in a meta tag.
-       No inline/executable scripts on this page (downloads.js is the only script,
-       same-origin); inline styles need 'unsafe-inline' for style-src only. -->
+       No inline/executable scripts on this page (downloads.js and
+       hero-carousel.js are the only scripts, both same-origin); inline styles
+       need 'unsafe-inline' for style-src only. -->
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#2F855A" />
@@ -260,7 +261,106 @@
       box-shadow: 0 40px 100px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255,255,255,0.04);
     }
 
-    .app-shot { display: block; width: 100%; height: auto; }
+    /* ── Hero carousel ─────────────────────────────────────────────────────── */
+
+    /* The frame is sized to the LARGEST width and the LARGEST height in the
+       slide set, so it never resizes as slides advance; each image is then drawn
+       at its own scale relative to that box and centred in it. hero-carousel.js
+       measures the slides and writes --hero-max-w / --hero-ratio; the values
+       here are the FIRST slide's, which is all a visitor with JS off sees. */
+    .hero-carousel {
+      --hero-max-w: 1342px;
+      --hero-ratio: 1342 / 1642;
+      position: relative;
+      overflow: hidden;
+      max-width: var(--hero-max-w);
+      aspect-ratio: var(--hero-ratio);
+      margin: 0 auto;
+    }
+
+    .hero-track {
+      display: flex;
+      height: 100%;
+      transition: transform 0.55s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    /* One full-frame cell per slide, so the track steps by exactly one frame
+       while the image inside keeps its own scale. The cells are built by
+       hero-carousel.js; with JS off the lone .hero-slide is the flex item. */
+    .hero-cell {
+      flex: 0 0 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .hero-slide {
+      width: 100%;
+      height: auto;
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+    }
+
+    /* Only with JS off, where the slides are the track's own flex items: hold
+       each at a full frame so they overflow and are clipped, rather than
+       shrinking to share the row. The visitor sees the first slide, alone. */
+    .hero-track > .hero-slide { flex: 0 0 100%; }
+
+    .hero-nav {
+      position: absolute;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 40px;
+      height: 40px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      border: 1px solid var(--surface-1);
+      background: color-mix(in srgb, var(--crust) 70%, transparent);
+      color: var(--subtext);
+      cursor: pointer;
+      transition: color 0.15s, border-color 0.15s, background 0.15s;
+    }
+
+    .hero-nav:hover {
+      color: var(--text);
+      border-color: var(--accent);
+      background: color-mix(in srgb, var(--crust) 88%, transparent);
+    }
+
+    .hero-nav:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .hero-nav--prev { left: 12px; }
+    .hero-nav--next { right: 12px; }
+
+    .hero-dots {
+      display: flex;
+      justify-content: center;
+      gap: 4px;
+      margin-top: 12px;
+    }
+
+    .hero-dot {
+      width: 9px;
+      height: 9px;
+      padding: 0;
+      border-radius: 50%;
+      background-color: var(--surface-2);
+      cursor: pointer;
+      /* The circle is 9px; the transparent border makes the target 25px. Every
+         state below sets background-COLOR — the shorthand would reset
+         background-clip and paint the dot across its whole hit target. */
+      box-sizing: content-box;
+      background-clip: content-box;
+      border: 8px solid transparent;
+      transition: background-color 0.15s;
+    }
+
+    .hero-dot:hover { background-color: var(--overlay-0); }
+    .hero-dot[aria-current="true"] { background-color: var(--accent); }
+    .hero-dot:focus-visible { outline: 2px solid var(--accent); outline-offset: -6px; }
 
     /* ── Sections ──────────────────────────────────────────────────────────── */
 
@@ -468,6 +568,15 @@
       .mock-wrap { margin-top: 36px; padding: 0 1rem; }
       .section { padding: 64px 1rem; }
       .os-grid { grid-template-columns: 1fr; }
+      .hero-nav { width: 32px; height: 32px; }
+      .hero-nav--prev { left: 6px; }
+      .hero-nav--next { right: 6px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      /* The script separately declines to auto-advance; this covers the
+         arrows, the dots, and a swipe. */
+      .hero-track { transition: none; }
     }
   </style>
 </head>
@@ -565,8 +674,23 @@
 <!-- ── App screenshot ──────────────────────────────────────────────────────── -->
 <div class="mock-wrap">
   <div class="app-window">
-    <img class="app-shot" src="/hero-breadboard.png" width="1726" height="1254" loading="lazy"
-         alt="A Chip Hippo circuit: a 5 V supply and a 1 Hz clock feeding a 74LS00 and a 74LS08 across stacked breadboards, wired with jumpers, resistors, slide switches, and lit LEDs." />
+    <!-- Hero carousel. To add an image: drop the PNG in website/ and add one
+         <img class="hero-slide"> line below, with its real pixel width/height
+         and its own alt text. The frame sizes itself to the largest width and
+         the largest height in the set, and each image is centred in it at its
+         own scale; the arrows and dots appear on their own once there is more
+         than one slide (hero-carousel.js). -->
+    <div class="hero-carousel" role="group" aria-roledescription="carousel"
+         aria-label="Chip Hippo screenshots">
+      <div class="hero-track">
+        <img class="hero-slide" src="/hero-breadboard1.png" width="1342" height="1642" fetchpriority="high"
+             alt="A Chip Hippo circuit: a W65C02 CPU with an AT28C EEPROM and an HM62256 SRAM across four stacked breadboards, fed by a 5 V supply and a 10 Hz clock, driving a 16x2 character LCD part-way through printing Hello, world." />
+        <img class="hero-slide" src="/hero-breadboard2.png" width="1306" height="802" loading="lazy"
+             alt="A 74LS00 quad 2-input NAND bench: four slide switches labelled A to D feed the four gates through pull-down resistors, and the four outputs 1Y to 4Y drive LEDs, all on one breadboard from a 5 V supply." />
+        <img class="hero-slide" src="/hero-breadboard3.png" width="1376" height="1310" loading="lazy"
+             alt="Two builds of the same Chip Hippo circuit on one desk: a W65C02 CPU, an 8K ROM, a W65C22 VIA and a 74LS04 across stacked breadboards, each with a 5 V supply and a 10 Hz clock. The lower copy has its wires faded back so the board beneath them shows through." />
+      </div>
+    </div>
   </div>
 </div>
 
@@ -811,5 +935,6 @@
 </footer>
 
 <script src="downloads.js" defer></script>
+<script src="hero-carousel.js" defer></script>
 </body>
 </html>
