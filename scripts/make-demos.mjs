@@ -30,8 +30,15 @@ import {
   normalizeDocument,
   DOC_VERSION,
 } from "../src/web/scripts/model/desk-doc.js";
-import { partPinHoles } from "../src/web/scripts/model/occupancy.js";
-import { nodeOf, holesOfNode } from "../src/web/scripts/model/breadboard.js";
+import {
+  partPinHoles,
+  worldOfAddress,
+} from "../src/web/scripts/model/occupancy.js";
+import {
+  nodeOf,
+  holesOfNode,
+  spec,
+} from "../src/web/scripts/model/breadboard.js";
 import { buildNetlist } from "../src/web/scripts/sim/netlist.js";
 import { tick } from "../src/web/scripts/sim/engine.js";
 import { partPinAddresses } from "../src/web/scripts/model/occupancy.js";
@@ -40,6 +47,12 @@ import { emitIntelHex } from "../src/web/scripts/model/hex-format.js";
 const H = "H";
 const L = "L";
 const OUT_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "demos");
+
+/** The desk's own quantum for a board coordinate (desk-doc.js `boardCoord`, and
+    demo-bench.mjs's `q`). A strip's measured height is fractional, so a stack
+    that does not round the same way its loader does is a stack that overlaps —
+    and `normalizeDocument` DROPS a board overlapping one already loaded. */
+const q = (n) => Math.round(n * 100) / 100;
 
 // ── A tiny doc builder: places boards/parts and wires nodes, tracking one lead
 //    per hole so wire endpoints never collide (the loader would drop them). ────
@@ -50,9 +63,10 @@ function builder() {
   const claimed = new Set(); // every occupied hole/terminal address
   const boardType = new Map();
   let wireSeq = 0;
+  let boardSeq = 0;
 
-  const board = (id, type, x, y) => {
-    boards.push({ id, type, x, y, rot: 0, group: null });
+  const board = (id, type, x, y, group = null) => {
+    boards.push({ id, type, x, y, rot: 0, group });
     boardType.set(id, type);
   };
   const brick = (id, kind, ref, x, y, params = {}) =>
@@ -96,8 +110,180 @@ function builder() {
     wires.push({ id: `w${++wireSeq}`, from, to, color });
   };
 
+  const world = (address) => {
+    const pos = worldOfAddress(boards, address);
+    if (!pos) throw new Error(`no such hole: ${address}`);
+    return pos;
+  };
+
+  /**
+   * Lay a RUN of breadboards — `rail · pins · rail · pins · rail` — flush, in
+   * one group, the rail between two boards SHARED by both. This is the ONLY way
+   * to put a board on the desk here (`board` is deliberately not exported), so
+   * rule 1 holds by construction rather than by everyone remembering it.
+   *
+   * The heights are DERIVED (`spec(type).height`), never typed: a rail is 3.50
+   * pitch and a pin-board 14.02, so a literal leaves a gap — the strips do not
+   * mate, the run comes apart when dragged, and a chip four boards down has
+   * nowhere near to reach for power. The run's y quantum is the desk's own
+   * (`q`), because `normalizeDocument` drops a board that overlaps its
+   * neighbour and `boardRect` is the exact height with no margin.
+   *
+   * Returns the handle every build wires through: `tie` for a part's power
+   * (rule 3), `tap` for a brick's, and `spine` for the rail-to-rail run
+   * (rule 2). See CLAUDE.md, "Power layout".
+   *
+   * `open` leaves the run ending on a PIN-BOARD rather than a rail, for the one
+   * case that earns it: a bottom-mounted module (an HD44780 panel) plugs into
+   * row a and its body hangs DOWN off the bench, so a rail dovetailed under it
+   * is a strip you can neither see nor reach. Rule 1 is about the rails
+   * BETWEEN boards and is untouched by this.
+   */
+  const stack = (count, { x = 0, group = "g1", open = false } = {}) => {
+    const pins = [];
+    const rails = [];
+    let y = 0;
+    const strip = (type, into) => {
+      const id = `bb${++boardSeq}`;
+      board(id, type, x, q(y), group);
+      y = q(y + spec(type).height);
+      into.push(id);
+      return id;
+    };
+    /** Grow the run downward, the current last rail serving as the new board's
+        top one — the shared strip, not a second one stacked against it. */
+    const extend = (n, { open: openEnd = false } = {}) => {
+      const added = [];
+      for (let i = 0; i < n; i++) {
+        added.push(strip("pins-full", pins));
+        if (!openEnd || i < n - 1) strip("rail-full", rails);
+      }
+      return added;
+    };
+    strip("rail-full", rails);
+    extend(count, { open });
+
+    /** Which rail a hole faces: rows f–j the strip above, rows a–e the one
+        below. The two are one net once `spine` has tied them, so reaching for
+        the far one buys nothing and costs a lead over the chip it powers —
+        unless the facing side has no rail at all (an `open` run's last board),
+        where the other one is not a preference but the only rail there is. */
+    const railFor = (boardId, hole) => {
+      const i = pins.indexOf(boardId);
+      if (i < 0) throw new Error(`${boardId} is not in this run`);
+      return "fghij".includes(hole[0])
+        ? (rails[i] ?? rails[i + 1])
+        : (rails[i + 1] ?? rails[i]);
+    };
+
+    /** The free hole of one rail line nearest a world x, claimed. The rails'
+        grouped lattice means a column rarely sits exactly over a hole, so the
+        caller takes what is nearest. */
+    const railNear = (railId, polarity, worldX) => {
+      let best = null;
+      for (const hole of holesOfNode(boardType.get(railId), polarity) ?? []) {
+        const address = `${railId}.${hole}`;
+        if (claimed.has(address)) continue;
+        const d = Math.abs(world(address).x - worldX);
+        if (!best || d < best.d) best = { address, d };
+      }
+      if (!best) throw new Error(`no free hole on ${railId} rail ${polarity}`);
+      claimed.add(best.address);
+      return best.address;
+    };
+
+    /** RULE 3 — a part's power lead, to the rail on its own side of the trench
+        at its own column. The colour is derived from the polarity (a supply
+        wire is red and a ground wire black, always), so no call site says it. */
+    const tie = (boardId, hole, polarity) => {
+      const from = freeAt(boardId, hole);
+      const to = railNear(railFor(boardId, hole), polarity, world(from).x);
+      wire(from, to, polarity === "+" ? "red" : "black");
+      return to;
+    };
+
+    /** A desk brick's lead: the rail nearest its y, taken from the RIGHT end —
+        the bricks stand off the right of the run, and a rail is one node end to
+        end, so hole 1 would run the wire the width of the desk to reach it. */
+    const tap = (atY, polarity) => {
+      let near = null;
+      for (const id of rails) {
+        const d = Math.abs(boards.find((b) => b.id === id).y - atY);
+        if (!near || d < near.d) near = { id, d };
+      }
+      const holes = holesOfNode(boardType.get(near.id), polarity) ?? [];
+      for (let i = holes.length - 1; i >= 0; i--) {
+        const address = `${near.id}.${holes[i]}`;
+        if (!claimed.has(address)) {
+          claimed.add(address);
+          return address;
+        }
+      }
+      throw new Error(`no free hole on ${near.id} rail ${polarity}`);
+    };
+
+    /**
+     * RULE 2 — tie the run's rails into one supply, as a vertical spine down
+     * the END of the boards. Called ONCE, after the last board is laid, which
+     * is what lets a build hand its run on to be `extend`ed first.
+     *
+     * TWO ADJACENT COLUMNS, not one: a middle rail is the bottom end of the
+     * segment above it AND the top end of the segment below, so a single column
+     * would put two leads in one hole and the loader would drop the second. The
+     * spine therefore steps one column per board, leaning the same way all the
+     * way down — which is what a real bench looks like, not a compromise.
+     *
+     * Searched from the RIGHT, so it lands on the end the boards are empty at
+     * (parts seat from column 1) and beside the PSU rather than across the desk
+     * from it; a blocked pair steps one column left rather than starting over.
+     *
+     * The two polarities take DIFFERENT columns, `−` to the left of `+`. A rail
+     * strip's two lines are one pitch apart, so run down the same columns the
+     * supply and the ground wire lie a single pitch from each other over their
+     * whole 14-unit length and read as ONE line — which is the one thing a
+     * power spine must not look like.
+     */
+    const spine = () => {
+      /** The rightmost column pair, at or left of `from`, free on EVERY rail. */
+      const pairAt = (from, polarity) => {
+        for (let k = from; k >= 2; k--) {
+          const free = rails.every(
+            (id) =>
+              !claimed.has(`${id}.${polarity}${k}`) &&
+              !claimed.has(`${id}.${polarity}${k - 1}`),
+          );
+          if (free) return k;
+        }
+        throw new Error(`no free column pair for the ${polarity} spine`);
+      };
+      let from = spec(boardType.get(rails[0])).railHoles;
+      for (const polarity of ["+", "-"]) {
+        const col = pairAt(from, polarity);
+        for (let i = 0; i + 1 < rails.length; i++) {
+          wire(
+            `${rails[i]}.${polarity}${col}`,
+            `${rails[i + 1]}.${polarity}${col - 1}`,
+            polarity === "+" ? "red" : "black",
+          );
+        }
+        from = col - 2; // the next polarity runs clear to the left of this one
+      }
+    };
+
+    return {
+      boards: pins,
+      rails,
+      right: x + spec("pins-full").width,
+      extend,
+      railFor,
+      tie,
+      tap,
+      spine,
+    };
+  };
+
   return {
-    board,
+    stack,
     brick,
     part,
     freeAt,
@@ -113,7 +299,7 @@ function builder() {
       netNames: [],
       annotations: [],
       nextBoardId: boards.length + 1,
-      nextGroupId: 1,
+      nextGroupId: 2, // the run is `g1`
       nextComponentId: components.length + 1,
       nextPsuId: 2,
       nextClockId: 2,
@@ -260,22 +446,20 @@ const BLINK_PROGRAM = [
 
 function buildBlink() {
   const b = builder();
-  // Boards: one shared rail strip (both + and − rails) + a pin-board per chip.
-  b.board("bb1", "rail-full", 0, 0); // power rails
-  b.board("bb2", "pins-full", 0, 4); // CPU
-  b.board("bb3", "pins-full", 0, 20); // ROM
-  b.board("bb4", "pins-full", 0, 36); // VIA
-  b.board("bb5", "pins-full", 0, 52); // inverter + LED
+  // One RUN of strips — rail · pins · rail · pins · rail — a pin-board per chip
+  // with a shared rail between each pair, so every chip has power beside it.
+  const st = b.stack(4);
+  const [cpuB, romB, viaB, outB] = st.boards;
 
-  b.brick("psu1", "psu", "psu", 70, 0, { volts: 5 });
-  b.brick("clk1", "clock", "clock", 70, 12, { hz: 2 });
+  b.brick("psu1", "psu", "psu", st.right + 6, 0, { volts: 5 });
+  b.brick("clk1", "clock", "clock", st.right + 6, 12, { hz: 2 });
 
-  b.part("c1", "chip", "W65C02", "bb2", "e3");
-  b.part("c2", "chip", "rom-8k", "bb3", "e3");
-  b.part("c3", "chip", "W65C22", "bb4", "e3");
-  b.part("c4", "chip", "74LS04", "bb5", "e3");
-  b.part("c5", "discrete", "resistor", "bb5", "a30", { ohms: 330 });
-  b.part("c6", "discrete", "led", "bb5", "a40", { color: "red" });
+  b.part("c1", "chip", "W65C02", cpuB, "e3");
+  b.part("c2", "chip", "rom-8k", romB, "e3");
+  b.part("c3", "chip", "W65C22", viaB, "e3");
+  b.part("c4", "chip", "74LS04", outB, "e3");
+  b.part("c5", "discrete", "resistor", outB, "a30", { ohms: 330 });
+  b.part("c6", "discrete", "led", outB, "a40", { color: "red" });
 
   const cpu = b.holesOfPart("W65C02", "e3");
   const rom = b.holesOfPart("rom-8k", "e3");
@@ -284,27 +468,25 @@ function buildBlink() {
   const res = b.holesOfPart("resistor", "a30", { ohms: 330 });
   const led = b.holesOfPart("led", "a40", { color: "red" });
 
-  const cpuAt = (pin) => b.freeAt("bb2", cpu.get(pin));
-  const romAt = (pin) => b.freeAt("bb3", rom.get(pin));
-  const viaAt = (pin) => b.freeAt("bb4", via.get(pin));
-  const invAt = (pin) => b.freeAt("bb5", inv.get(pin));
-  const resAt = (pin) => b.freeAt("bb5", res.get(pin));
-  const ledAt = (pin) => b.freeAt("bb5", led.get(pin));
-  const plus = () => b.freeAt("bb1", "+1");
-  const minus = () => b.freeAt("bb1", "-1");
+  const cpuAt = (pin) => b.freeAt(cpuB, cpu.get(pin));
+  const romAt = (pin) => b.freeAt(romB, rom.get(pin));
+  const viaAt = (pin) => b.freeAt(viaB, via.get(pin));
+  const invAt = (pin) => b.freeAt(outB, inv.get(pin));
+  const resAt = (pin) => b.freeAt(outB, res.get(pin));
+  const ledAt = (pin) => b.freeAt(outB, led.get(pin));
 
-  // Power: PSU → rails; every chip's VCC/GND → rails.
-  b.wire("psu1.+", plus(), "red");
-  b.wire("psu1.-", minus(), "black");
-  b.wire("clk1.gnd", minus(), "black");
+  // Power: the bricks tap the near rail; every chip reaches the rail beside it.
+  b.wire("psu1.+", st.tap(0, "+"), "red");
+  b.wire("psu1.-", st.tap(0, "-"), "black");
+  b.wire("clk1.gnd", st.tap(12, "-"), "black");
   for (const [pinV, pinG, id, holes] of [
-    [CPU.VCC, CPU.GND, "bb2", cpu],
-    [ROM.VCC, ROM.GND, "bb3", rom],
-    [VIA.VDD, VIA.VSS, "bb4", via],
-    [INV.VCC, INV.GND, "bb5", inv],
+    [CPU.VCC, CPU.GND, cpuB, cpu],
+    [ROM.VCC, ROM.GND, romB, rom],
+    [VIA.VDD, VIA.VSS, viaB, via],
+    [INV.VCC, INV.GND, outB, inv],
   ]) {
-    b.wire(b.freeAt(id, holes.get(pinV)), plus(), "red");
-    b.wire(b.freeAt(id, holes.get(pinG)), minus(), "black");
+    st.tie(id, holes.get(pinV), "+");
+    st.tie(id, holes.get(pinG), "-");
   }
 
   // Address bus: A0–A12 → ROM; A0–A3 → VIA RS0–RS3.
@@ -324,24 +506,25 @@ function buildBlink() {
   b.wire(cpuAt(CPU.A[15]), viaAt(VIA.CS2B), "yellow"); // A15 → VIA CS2B
   b.wire(invAt(INV.Y), romAt(ROM.CE), "orange"); // /A15 → ROM /CE
   b.wire(invAt(INV.Y), viaAt(VIA.CS1), "orange"); // /A15 → VIA CS1
-  b.wire(romAt(ROM.OE), minus(), "black"); // ROM /OE tied low
+  st.tie(romB, rom.get(ROM.OE), "-"); // ROM /OE tied low
 
   // Control: RWB, PHI2 (fanned CPU→VIA), and the active-low inputs tied high.
   b.wire(cpuAt(CPU.RWB), viaAt(VIA.RWB), "white");
   b.wire("clk1.out", cpuAt(CPU.PHI2), "purple");
   b.wire(cpuAt(CPU.PHI2), viaAt(VIA.PHI2), "purple");
   for (const pin of [CPU.RESB, CPU.BE, CPU.RDY, CPU.IRQB, CPU.NMIB, CPU.SOB]) {
-    b.wire(cpuAt(pin), plus(), "red");
+    st.tie(cpuB, cpu.get(pin), "+");
   }
-  b.wire(viaAt(VIA.RESB), plus(), "red");
+  st.tie(viaB, via.get(VIA.RESB), "+");
 
   // Output: PB0 → resistor → LED → GND (the resistor makes the LED read as lit).
   b.wire(viaAt(VIA.PB[0]), resAt(1), "white");
   b.wire(resAt(2), ledAt(1), "white"); // resistor → LED anode
-  b.wire(ledAt(2), minus(), "black"); // LED cathode → GND
+  st.tie(outB, led.get(2), "-"); // LED cathode → GND
 
+  st.spine();
   // The address to probe for the blink (VIA PB0's hole).
-  const pb0 = `bb4.${via.get(VIA.PB[0])}`;
+  const pb0 = `${viaB}.${via.get(VIA.PB[0])}`;
   return { doc: b.doc(), pb0 };
 }
 
@@ -391,54 +574,52 @@ const LCD_PROGRAM = [
 
 function buildLcd() {
   const b = builder();
-  // The LCD board sits BELOW the stack: a real 1602A carries its header along
-  // its TOP edge, so its 14-unit body hangs DOWN off the row it plugs into.
-  // Seated on row a of the bottom board, the module hangs off the bench exactly
-  // as a real one would, its own wiring holes (rows b–e) above it and clear —
-  // anywhere else in this stack it would cover the board below.
-  b.board("bb1", "rail-full", 0, 0);
-  b.board("bb2", "pins-full", 0, 4); // CPU
-  b.board("bb3", "pins-full", 0, 20); // ROM
-  b.board("bb4", "pins-full", 0, 36); // 74LS04 + 74LS08 decode
-  b.board("bb5", "pins-full", 0, 52); // LCD
+  // One run of strips, a rail between each pair of boards — except the last,
+  // which the run leaves OPEN. A real 1602A carries its header along its TOP
+  // edge, so its 14-unit body hangs DOWN off the row it plugs into: seated on
+  // row a of the bottom board it overhangs the bench exactly as a real one
+  // does, with its own wiring holes (rows b–e) above it and clear. A rail
+  // dovetailed under it would be a strip nothing could see or reach, so the
+  // run simply ends on the pin-board; the module's own supply leads then take
+  // the rail ABOVE, which is the only one there is.
+  const st = b.stack(4, { open: true });
+  const [cpuB, romB, decB, lcdB] = st.boards;
 
-  b.brick("psu1", "psu", "psu", 70, 0, { volts: 5 });
-  b.brick("clk1", "clock", "clock", 70, 12, { hz: 5 });
+  b.brick("psu1", "psu", "psu", st.right + 6, 0, { volts: 5 });
+  b.brick("clk1", "clock", "clock", st.right + 6, 12, { hz: 5 });
 
-  b.part("c1", "chip", "W65C02", "bb2", "e3");
-  b.part("c2", "chip", "rom-8k", "bb3", "e3");
-  b.part("c3", "chip", "74LS04", "bb4", "e3");
-  b.part("c4", "chip", "74LS08", "bb4", "e20");
-  b.part("c5", "discrete", "lcd16x2", "bb5", "a10");
+  b.part("c1", "chip", "W65C02", cpuB, "e3");
+  b.part("c2", "chip", "rom-8k", romB, "e3");
+  b.part("c3", "chip", "74LS04", decB, "e3");
+  b.part("c4", "chip", "74LS08", decB, "e20");
+  b.part("c5", "discrete", "lcd16x2", lcdB, "a10");
 
   const cpu = b.holesOfPart("W65C02", "e3");
   const rom = b.holesOfPart("rom-8k", "e3");
   const inv = b.holesOfPart("74LS04", "e3");
   const and = b.holesOfPart("74LS08", "e20");
   const lcdPins = b.holesOfPart("lcd16x2", "a10");
-  const cpuAt = (pin) => b.freeAt("bb2", cpu.get(pin));
-  const romAt = (pin) => b.freeAt("bb3", rom.get(pin));
-  const invAt = (pin) => b.freeAt("bb4", inv.get(pin));
-  const andAt = (pin) => b.freeAt("bb4", and.get(pin));
-  const lcdAt = (pin) => b.freeAt("bb5", lcdPins.get(pin));
-  const plus = () => b.freeAt("bb1", "+1");
-  const minus = () => b.freeAt("bb1", "-1");
+  const cpuAt = (pin) => b.freeAt(cpuB, cpu.get(pin));
+  const romAt = (pin) => b.freeAt(romB, rom.get(pin));
+  const invAt = (pin) => b.freeAt(decB, inv.get(pin));
+  const andAt = (pin) => b.freeAt(decB, and.get(pin));
+  const lcdAt = (pin) => b.freeAt(lcdB, lcdPins.get(pin));
 
-  // Power.
-  b.wire("psu1.+", plus(), "red");
-  b.wire("psu1.-", minus(), "black");
-  b.wire("clk1.gnd", minus(), "black");
+  // Power: the bricks tap the near rail; every part reaches the rail beside it.
+  b.wire("psu1.+", st.tap(0, "+"), "red");
+  b.wire("psu1.-", st.tap(0, "-"), "black");
+  b.wire("clk1.gnd", st.tap(12, "-"), "black");
   for (const [pinV, pinG, id, holes] of [
-    [CPU.VCC, CPU.GND, "bb2", cpu],
-    [ROM.VCC, ROM.GND, "bb3", rom],
-    [INV.VCC, INV.GND, "bb4", inv],
-    [AND.VCC, AND.GND, "bb4", and],
+    [CPU.VCC, CPU.GND, cpuB, cpu],
+    [ROM.VCC, ROM.GND, romB, rom],
+    [INV.VCC, INV.GND, decB, inv],
+    [AND.VCC, AND.GND, decB, and],
   ]) {
-    b.wire(b.freeAt(id, holes.get(pinV)), plus(), "red");
-    b.wire(b.freeAt(id, holes.get(pinG)), minus(), "black");
+    st.tie(id, holes.get(pinV), "+");
+    st.tie(id, holes.get(pinG), "-");
   }
-  b.wire(lcdAt(LCD.VDD), plus(), "red");
-  b.wire(lcdAt(LCD.VSS), minus(), "black");
+  st.tie(lcdB, lcdPins.get(LCD.VDD), "+");
+  st.tie(lcdB, lcdPins.get(LCD.VSS), "-");
 
   // Address: A0–A12 → ROM; A0 → LCD RS.
   for (let i = 0; i < 13; i++)
@@ -456,7 +637,7 @@ function buildLcd() {
   b.wire(cpuAt(CPU.A[15]), invAt(INV.A), "yellow");
   b.wire(invAt(INV.Y), romAt(ROM.CE), "orange");
   b.wire(invAt(INV.Y), andAt(AND.A), "orange");
-  b.wire(romAt(ROM.OE), minus(), "black");
+  st.tie(romB, rom.get(ROM.OE), "-");
   b.wire("clk1.out", cpuAt(CPU.PHI2), "purple");
   b.wire(cpuAt(CPU.PHI2), andAt(AND.B), "purple");
   b.wire(andAt(AND.Y), lcdAt(LCD.E), "white");
@@ -464,8 +645,9 @@ function buildLcd() {
 
   // Active-low CPU control inputs tied high.
   for (const pin of [CPU.RESB, CPU.BE, CPU.RDY, CPU.IRQB, CPU.NMIB, CPU.SOB]) {
-    b.wire(cpuAt(pin), plus(), "red");
+    st.tie(cpuB, cpu.get(pin), "+");
   }
+  st.spine();
   return { doc: b.doc() };
 }
 
@@ -534,43 +716,41 @@ const CORE_PROGRAM = [
  */
 function eaterCore({ tieIrq = true } = {}) {
   const b = builder();
-  b.board("bb1", "rail-full", 0, 0); // power rails
-  b.board("bb2", "pins-full", 0, 4); // CPU
-  b.board("bb3", "pins-full", 0, 20); // ROM
-  b.board("bb4", "pins-full", 0, 36); // RAM
-  b.board("bb5", "pins-full", 0, 52); // 74LS00 address decoder
+  // One run of strips, a shared rail between each pair of boards. A stage that
+  // adds more calls `st.extend`, which grows the SAME run downward rather than
+  // standing a second stack beside it.
+  const st = b.stack(4);
+  const [cpuB, romB, ramB, decB] = st.boards;
 
-  b.brick("psu1", "psu", "psu", 70, 0, { volts: 5 });
-  b.brick("clk1", "clock", "clock", 70, 12, { hz: 2 });
+  b.brick("psu1", "psu", "psu", st.right + 6, 0, { volts: 5 });
+  b.brick("clk1", "clock", "clock", st.right + 6, 12, { hz: 2 });
 
-  b.part("c1", "chip", "W65C02", "bb2", "e3");
-  b.part("c2", "chip", "AT28C256", "bb3", "e3");
-  b.part("c3", "chip", "HM62256", "bb4", "e3");
-  b.part("c4", "chip", "74LS00", "bb5", "e3");
+  b.part("c1", "chip", "W65C02", cpuB, "e3");
+  b.part("c2", "chip", "AT28C256", romB, "e3");
+  b.part("c3", "chip", "HM62256", ramB, "e3");
+  b.part("c4", "chip", "74LS00", decB, "e3");
 
   const cpu = b.holesOfPart("W65C02", "e3");
   const rom = b.holesOfPart("AT28C256", "e3");
   const ram = b.holesOfPart("HM62256", "e3");
   const dec = b.holesOfPart("74LS00", "e3");
-  const cpuAt = (pin) => b.freeAt("bb2", cpu.get(pin));
-  const romAt = (pin) => b.freeAt("bb3", rom.get(pin));
-  const ramAt = (pin) => b.freeAt("bb4", ram.get(pin));
-  const decAt = (pin) => b.freeAt("bb5", dec.get(pin));
-  const plus = () => b.freeAt("bb1", "+1");
-  const minus = () => b.freeAt("bb1", "-1");
+  const cpuAt = (pin) => b.freeAt(cpuB, cpu.get(pin));
+  const romAt = (pin) => b.freeAt(romB, rom.get(pin));
+  const ramAt = (pin) => b.freeAt(ramB, ram.get(pin));
+  const decAt = (pin) => b.freeAt(decB, dec.get(pin));
 
-  // Power.
-  b.wire("psu1.+", plus(), "red");
-  b.wire("psu1.-", minus(), "black");
-  b.wire("clk1.gnd", minus(), "black");
+  // Power: the bricks tap the near rail; every chip reaches the rail beside it.
+  b.wire("psu1.+", st.tap(0, "+"), "red");
+  b.wire("psu1.-", st.tap(0, "-"), "black");
+  b.wire("clk1.gnd", st.tap(12, "-"), "black");
   for (const [pinV, pinG, id, holes] of [
-    [CPU.VCC, CPU.GND, "bb2", cpu],
-    [MEM28.VCC, MEM28.GND, "bb3", rom],
-    [MEM28.VCC, MEM28.GND, "bb4", ram],
-    [NAND_PWR.VCC, NAND_PWR.GND, "bb5", dec],
+    [CPU.VCC, CPU.GND, cpuB, cpu],
+    [MEM28.VCC, MEM28.GND, romB, rom],
+    [MEM28.VCC, MEM28.GND, ramB, ram],
+    [NAND_PWR.VCC, NAND_PWR.GND, decB, dec],
   ]) {
-    b.wire(b.freeAt(id, holes.get(pinV)), plus(), "red");
-    b.wire(b.freeAt(id, holes.get(pinG)), minus(), "black");
+    st.tie(id, holes.get(pinV), "+");
+    st.tie(id, holes.get(pinG), "-");
   }
 
   // Address bus: A0–A14 to BOTH memories (A15 is decode only, never addressing).
@@ -607,9 +787,9 @@ function eaterCore({ tieIrq = true } = {}) {
   // deselected part floats on /CE alone, and a RAM mid-write floats on /WE), the
   // EEPROM's /WE tied high because the CIRCUIT never programs it, and the RAM's
   // /WE straight off the CPU's R/W̄.
-  b.wire(romAt(MEM28.OE), minus(), "black");
-  b.wire(romAt(MEM28.WE), plus(), "red");
-  b.wire(ramAt(MEM28.OE), minus(), "black");
+  st.tie(romB, rom.get(MEM28.OE), "-");
+  st.tie(romB, rom.get(MEM28.WE), "+");
+  st.tie(ramB, ram.get(MEM28.OE), "-");
   b.wire(cpuAt(CPU.RWB), ramAt(MEM28.WE), "white");
 
   // Clock and the active-low control inputs tied high. IRQB is the one that
@@ -621,14 +801,19 @@ function eaterCore({ tieIrq = true } = {}) {
   const held = tieIrq
     ? [CPU.RESB, CPU.BE, CPU.RDY, CPU.IRQB, CPU.NMIB, CPU.SOB]
     : [CPU.RESB, CPU.BE, CPU.RDY, CPU.NMIB, CPU.SOB];
-  for (const pin of held) b.wire(cpuAt(pin), plus(), "red");
+  for (const pin of held) st.tie(cpuB, cpu.get(pin), "+");
 
-  return { b, cpu, cpuAt, rom, romAt, ram, ramAt, dec, decAt, plus, minus };
+  // The run is handed BACK rather than closed off with `spine()`: a stage that
+  // extends it has to add its boards before the rails are tied, or the last
+  // segment of the spine would stop where the core happened to end.
+  return { b, st, cpuB, cpu, cpuAt, rom, romAt, ram, ramAt, dec, decAt };
 }
 
 /** Step one on its own: the core, with nothing hung off it. */
 function buildEaterCore() {
-  return { doc: eaterCore().b.doc() };
+  const { b, st } = eaterCore();
+  st.spine();
+  return { doc: b.doc() };
 }
 
 // ── Step two: the VIA, the LCD and the buttons ───────────────────────────────
@@ -745,50 +930,44 @@ const IO_PROGRAM = asm(0x8000, [
 function buildEaterIo() {
   // IRQB is pulled up rather than tied: the VIA's is open-drain (see eaterCore).
   const core = eaterCore({ tieIrq: false });
-  const { b, cpuAt, ramAt, decAt, plus, minus } = core;
+  const { b, st, cpuB, cpuAt, ramAt, decAt } = core;
 
-  // A second rail strip serves the lower half of the bench, bridged to the
-  // first — a wire from the bottom board to a rail five boards up is a wire
-  // nobody would run, and a rail is one node whichever end you feed it.
-  b.board("bb6", "rail-full", 0, 68); // lower power rails
-  b.board("bb7", "pins-full", 0, 72); // VIA
-  b.board("bb8", "pins-full", 0, 88); // buttons + their pull-ups
-  b.board("bb9", "pins-full", 0, 104); // LCD
+  // The core's run grows DOWNWARD by three more boards — its own last rail
+  // serves the first of them, so there is a rail between every pair the whole
+  // way down and nothing has to reach for one five boards up. The run ends
+  // open, on the LCD's board: see buildLcd for why a hanging module gets no
+  // rail under it.
+  const [viaB, btnB, lcdB] = st.extend(3, { open: true });
 
-  b.part("c5", "chip", "W65C22", "bb7", "e3");
+  b.part("c5", "chip", "W65C22", viaB, "e3");
   // R1 — the IRQ pull-up, on the CPU's own board beside it.
-  b.part("c6", "discrete", "resistor", "bb2", "a30", { ohms: 3300 });
+  b.part("c6", "discrete", "resistor", cpuB, "a30", { ohms: 3300 });
   // SW1–SW5 with their pull-ups (R6–R10). Per button: the resistor lies along
   // row a from the rail side into column `c+3`, and the button sits on row b of
   // that SAME column — one node, two holes — and shorts it to ground. So the
   // pin reads high through the resistor until a press pulls it hard low.
   const BTN_COLS = [3, 11, 19, 27, 35];
   BTN_COLS.forEach((c, i) => {
-    b.part(`c${7 + i}`, "discrete", "resistor", "bb8", `a${c}`, {
+    b.part(`c${7 + i}`, "discrete", "resistor", btnB, `a${c}`, {
       ohms: 10000,
     });
-    b.part(`c${12 + i}`, "discrete", "sw-push", "bb8", `b${c + 3}`);
+    b.part(`c${12 + i}`, "discrete", "sw-push", btnB, `b${c + 3}`);
   });
-  b.part("c17", "discrete", "lcd16x2", "bb9", "a10", { color: "green" });
+  b.part("c17", "discrete", "lcd16x2", lcdB, "a10", { color: "green" });
 
   const via = b.holesOfPart("W65C22", "e3");
   const lcd = b.holesOfPart("lcd16x2", "a10");
-  const viaAt = (pin) => b.freeAt("bb7", via.get(pin));
-  const lcdAt = (pin) => b.freeAt("bb9", lcd.get(pin));
-  const plus2 = () => b.freeAt("bb6", "+1");
-  const minus2 = () => b.freeAt("bb6", "-1");
+  const viaAt = (pin) => b.freeAt(viaB, via.get(pin));
+  const lcdAt = (pin) => b.freeAt(lcdB, lcd.get(pin));
 
-  // Bridge the two rail strips, then power everything below from the lower one.
-  b.wire(plus(), plus2(), "red");
-  b.wire(minus(), minus2(), "black");
-  b.wire(viaAt(VIA.VDD), plus2(), "red");
-  b.wire(viaAt(VIA.VSS), minus2(), "black");
-  b.wire(viaAt(VIA.RESB), plus2(), "red");
+  st.tie(viaB, via.get(VIA.VDD), "+");
+  st.tie(viaB, via.get(VIA.VSS), "-");
+  st.tie(viaB, via.get(VIA.RESB), "+");
 
   // R1: CPU IRQB ── R ── +5, with the VIA's open-drain IRQB on the same node.
-  b.wire(cpuAt(CPU.IRQB), b.freeAt("bb2", "a30"), "yellow");
-  b.wire(b.freeAt("bb2", "a33"), plus(), "red");
-  b.wire(viaAt(VIA.IRQB), b.freeAt("bb2", "a30"), "yellow");
+  b.wire(cpuAt(CPU.IRQB), b.freeAt(cpuB, "a30"), "yellow");
+  st.tie(cpuB, "a33", "+");
+  b.wire(viaAt(VIA.IRQB), b.freeAt(cpuB, "a30"), "yellow");
 
   // The VIA on the bus: data carries on from the RAM (CPU → ROM → RAM → VIA),
   // RS0–RS3 take A0–A3, and the register select is the decoder's spare gate.
@@ -810,21 +989,22 @@ function buildEaterIo() {
   b.wire(viaAt(VIA.PA[7]), lcdAt(LCD.RS), "white");
   b.wire(viaAt(VIA.PA[6]), lcdAt(LCD.RW), "white");
   b.wire(viaAt(VIA.PA[5]), lcdAt(LCD.E), "white");
-  b.wire(lcdAt(LCD.VDD), plus2(), "red");
-  b.wire(lcdAt(LCD.VSS), minus2(), "black");
+  st.tie(lcdB, lcd.get(LCD.VDD), "+");
+  st.tie(lcdB, lcd.get(LCD.VSS), "-");
   // V0 is the contrast tap — a trimmer (RV1) on the schematic. There is no
   // analog here for a divider to divide, so it goes to ground: full contrast.
-  b.wire(lcdAt(LCD.V0), minus2(), "black");
-  b.wire(lcdAt(LCD.A), plus2(), "red"); // backlight
-  b.wire(lcdAt(LCD.K), minus2(), "black");
+  st.tie(lcdB, lcd.get(LCD.V0), "-");
+  st.tie(lcdB, lcd.get(LCD.A), "+"); // backlight
+  st.tie(lcdB, lcd.get(LCD.K), "-");
 
   // The five buttons onto PA0–PA4.
   BTN_COLS.forEach((c, i) => {
-    b.wire(b.freeAt("bb8", `a${c}`), plus2(), "red"); // pull-up to +5
-    b.wire(b.freeAt("bb8", `a${c + 3}`), viaAt(VIA.PA[i]), "green");
-    b.wire(b.freeAt("bb8", `b${c + 5}`), minus2(), "black"); // press → GND
+    st.tie(btnB, `a${c}`, "+"); // pull-up to +5
+    b.wire(b.freeAt(btnB, `a${c + 3}`), viaAt(VIA.PA[i]), "green");
+    st.tie(btnB, `b${c + 5}`, "-"); // press → GND
   });
 
+  st.spine();
   return { doc: b.doc() };
 }
 

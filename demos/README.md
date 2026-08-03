@@ -119,10 +119,14 @@ a byte; **`RS = A0`** (0 = instruction, 1 = data) and **`RW = RWB`**.
 
 - **Memory map:** ROM at `$8000–$FFFF`, LCD at `$0000–$7FFF` (any low-memory write
   clocks the LCD).
-- **Boards:** four, and the LCD's own is the top one. The module's 16-way header
-  is along its BOTTOM edge, so its body stands UP off the row it plugs into —
-  seated on row `j` of a board with clear desk above it, it hangs off the bench
-  as a real one would instead of covering the board below.
+- **Boards:** four pin-boards in one dovetailed run, with a shared power rail
+  between each pair, so every chip reaches a rail beside it and the supply runs
+  as a spine down the right-hand end (see "Power layout" in `CLAUDE.md`). The
+  LCD's is the LAST board and the run ends OPEN there: the module's 16-way
+  header is along its TOP edge, so its body hangs DOWN off the row it plugs
+  into — seated on row `a` with clear desk below it, it overhangs the bench as
+  a real one would, and a rail dovetailed under it would be a strip nothing
+  could see or reach.
 - **Program:** the HD44780 init sequence (function set, display on, clear, entry
   mode) then two data writes — the screen shows **`HI`**.
 

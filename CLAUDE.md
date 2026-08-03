@@ -940,7 +940,9 @@ Electron main process (src/app/main.js)
     (a rail is ∞), and a port is keyed by its NODE so two pins already sharing
     one are never wired to each other.
   - **THE BOARDS SNAP TOGETHER, AND A STACKED PAIR SHARES THE RAIL BETWEEN
-    THEM.** A bench dovetails two 830s and the strip in the middle serves the
+    THEM** — rule 1 of "Power layout" below, which the compiler shares with
+    every other generator here (`railSpineOrder` is its rule 2, `railLink` its
+    rule 3). A bench dovetails two 830s and the strip in the middle serves the
     board above it and the board below it — you do not fit a second one against
     it — so the compiler emits one RUN of strips,
     `rail · pins · rail · pins · rail`, not N self-contained kits with a gap
@@ -2326,6 +2328,86 @@ make clean     # Remove build/ and dist/
   nothing resolves to `null` and **floats** — legal, and what happens when a rail
   is moved or deleted; the part keeps its exact position. Deleting a strip removes
   only what is *seated* on it (`comp.board === id`), never a neighbour's lead.
+
+## Power layout — the three rules every GENERATED circuit follows
+
+These bind everything this repo GENERATES — `model/autobuild.js` (the AI
+compiler), `scripts/make-demos.mjs` (the 65xx computers) and
+`scripts/demo-bench.mjs` (the 52 gate benches). They do **not** constrain what a
+user builds by hand: the desk lets you wire anything anywhere and should. They
+exist because a generator has no eye — it will happily emit a circuit that
+simulates perfectly and looks like nothing anyone would build, and the three
+failures below are the ones it makes on its own.
+
+1. **BOARDS ARE SPANNED, AND THE RAIL BETWEEN TWO OF THEM IS SHARED.** A bench
+   dovetails two 830s and the strip in the middle serves the board above it and
+   the board below it — you do not fit a second one against it. So a stack is
+   ONE flush run, `rail · pins · rail · pins · rail`, never N self-contained
+   kits with a gap between them, and the shared strip belongs to both boards.
+   Everything else falls out of that: the rail-to-rail links CHAIN instead of
+   leaping, so nothing has to be run the height of a whole breadboard over
+   everything on it; the run carries ONE group, so it drags as a unit and the
+   selection outline traces the assembly rather than one strip of it; and every
+   row of every board has a rail 2.76 pitch away, which is what makes rule 3
+   possible at all. ONE rail strip serving four pin-boards is the shape this
+   replaced, and it is not a shape a breadboard can be in — the heights are
+   fractional (rail 3.50, pins 14.02), so a typed y leaves a gap, nothing mates,
+   and a chip four boards down has nowhere near to reach for power.
+   The one sanctioned exception is an **open bottom**: a run may end on a
+   pin-board rather than a rail where a bottom-mounted module (an HD44780
+   panel) plugs into row `a` and its body hangs DOWN off the bench, because a
+   rail dovetailed under it is a strip you can neither see nor reach. Rule 1 is
+   about the rails BETWEEN boards and is untouched by that.
+
+2. **THE SUPPLY IS A VERTICAL SPINE DOWN THE END OF THE RUN — the RIGHT end for
+   preference, then the LEFT, then the middle.** Two rail strips share no node,
+   so something has to tie them, and where that wire goes is the whole question:
+   a rail-to-rail wire crosses the pin-board, and it is the one wire that cannot
+   be routed around, because both ends are fixed to a hole and the chips are in
+   between. The ends are where the boards are EMPTY — parts seat from column 1,
+   and a design that runs out of room is SPLIT rather than packed to the last
+   column. Right first because that is where the PSU brick stands, so the supply
+   reads as one block instead of two ends of a desk; left next because it is the
+   only other edge; the middle only when both ends are genuinely blocked, and
+   then in from the right so the run stays as near the spine as it can. "The
+   end" means the line's last GROUP of holes, not its last hole — that is the
+   unit the part is drilled in (`railGroup`), and it is what makes a blocked
+   hole 50 step to 49 rather than across the whole desk to hole 1.
+   Two consequences of *one hole, one lead*. A middle rail is the bottom end of
+   the segment above it AND the top end of the segment below, so its incoming
+   and outgoing leads sit in ADJACENT holes: the spine steps one column per
+   board, leaning the same way all the way down, which is a bench fact and not a
+   compromise. And the two POLARITIES take different columns — a rail strip's
+   `+` and `−` lines are one pitch apart, so run down the same columns the
+   supply and the ground wire lie a single pitch from each other over their
+   whole length and read as ONE line, which is the one thing a power spine must
+   not look like.
+
+3. **A POWER LEAD TAKES THE SHORTEST ROUTE — the rail on its own side of the
+   trench, nearest its own column.** Rows f–j face the rail above and rows a–e
+   the rail below, and once rule 2 has tied them the two are the same net — so
+   reaching for the far one buys nothing and costs a lead straight over the chip
+   it is powering. "Nearest column" is the other half: a rail is one node end to
+   end, so its leftmost free hole is exactly as correct as the nearest one, and
+   just as much a wire dragged the width of the board. Neither half is a special
+   case anywhere — `autobuild.js` picks a supply hole with the SAME `bestPair`
+   chooser the signal router uses (`distance + 20 × crossings`), nothing tells
+   it which side of the trench to prefer, and nearest-that-flies-over-nothing
+   arrives there on its own. The one place the FACING rail loses is when there
+   is none (an open-bottom run's last board), where the other one is not a
+   preference but the only rail there is.
+
+**Where they are enforced.** `model/autobuild.js` — `assemble`'s strip run
+(rule 1), `railSpineOrder` + `bridge` (rule 2), `railLink` → `bestPair(pinPort,
+railPort)` (rule 3). `scripts/make-demos.mjs` — the builder's `stack` / `extend`
+(1), `spine` (2), `tie` (3); `stack` is the ONLY way to put a board on the desk
+there (`board` is not exported from `builder()`), so rule 1 holds by
+construction rather than by everyone remembering it. `scripts/demo-bench.mjs` —
+`BOARDS`, `#railFor` / `railNear` / `wireToRail` (its bench is a single kit, so
+rules 1 and 2 have nothing to decide). Held by `autobuild.test.js` (883, 964,
+1174), by each generator's own `assertClean` — a non-flush board is DROPPED by
+`normalizeDocument` as an overlap, so the arithmetic cannot drift silently — and
+by `demos.test.js`, which runs the shipped files through the real engine.
 
 ## Language support
 

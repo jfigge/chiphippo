@@ -46,7 +46,13 @@
 
 import { partDef } from "../catalog/index.js";
 import { BREADBOARD_KITS } from "./board-types.js";
-import { boardSize, holePosition, nodeOf, parseAddress } from "./breadboard.js";
+import {
+  boardSize,
+  holePosition,
+  nodeOf,
+  parseAddress,
+  spec,
+} from "./breadboard.js";
 import { createAllocator } from "./column-allocator.js";
 import { captureDesign } from "./design-clip.js";
 import { DIP_PACKAGES } from "./footprints.js";
@@ -55,6 +61,53 @@ import { RAIL_TOKENS, parseMember, resolvePin } from "./pin-resolve.js";
 import { boxOf, crossingCount } from "./wire-crossing.js";
 
 const GAP = 1; // blank columns between parts, so nothing reads as one block
+
+const RAIL_INDEX_RE = /[+-](\d+)$/;
+
+/**
+ * Rail-hole addresses reordered as the SUPPLY SPINE wants them: the right-hand
+ * end of the strip first, then the left-hand end, then in from the right
+ * through the middle.
+ *
+ * This is a TIE-BREAK, and it is the whole of rule 2 (see CLAUDE.md, "Power
+ * layout"). A rail-to-rail link's two ports both carry `at: null`, so
+ * `shortlist` hands `bestPair` every free hole on both strips unpruned — and
+ * the two strips are the same type at the same x, so hole `+k` sits EXACTLY
+ * above hole `+k`. Every vertical pair therefore scores an identical
+ * `distance`, the only thing that separates them is `crossingCount`, and
+ * `bestPair` breaks a tie strictly — first enumerated wins. `freeRailHoles`
+ * walks `k = 1…` upward, so the enumeration order WAS the decision, and it put
+ * the supply down column 1: the far end from the PSU, and exactly where the
+ * first chip is seated.
+ *
+ * Nothing else moves. The candidate SET is untouched (a rail line is 50 holes,
+ * inside `shortlist`'s cap), and `bestPair` still scores every pair against the
+ * same cost — so no link this reorders can come out longer, or cross more, than
+ * it did before.
+ *
+ * "The end" is the line's last GROUP of holes, not its last hole. A strict
+ * rightmost-then-leftmost zip ranks hole 49 BELOW hole 1, so one blocked column
+ * would throw the link the whole width of the desk; a group of five is what the
+ * part is actually drilled in, and what the eye reads as the end, so a blocked
+ * hole 50 steps to 49 instead.
+ *
+ * @param {string[]} addresses - free rail-hole addresses, any order
+ * @param {number} holes - holes per rail line (`spec(type).railHoles`)
+ * @param {number} group - holes per drilled group (`spec(type).railGroup`)
+ */
+function railSpineOrder(addresses, holes, group) {
+  const rank = (address) => {
+    const k = Number(RAIL_INDEX_RE.exec(address)?.[1]);
+    if (!Number.isFinite(k)) return [3, 0];
+    if (k > holes - group) return [0, holes - k]; // right end, outward in
+    if (k <= group) return [1, k]; // left end, outward in
+    return [2, holes - k]; // the middle, in from the right
+  };
+  return addresses
+    .map((address) => [rank(address), address])
+    .sort((a, b) => a[0][0] - b[0][0] || a[0][1] - b[0][1])
+    .map((entry) => entry[1]);
+}
 
 const REPAIR = "repair";
 const ABORT = "abort";
@@ -1278,15 +1331,27 @@ function assemble(resolved, title, notes) {
   // of rail holes the same way every other wire is chosen puts it in a gap.
   const strip = (k, n) => kits[k].rails[n];
   const bridge = (fromBoard, toBoard, polarity, colour, what) => {
+    // Offered END-FIRST (`railSpineOrder`): right, then left, then in from the
+    // right — rule 2. Both ends are `at: null`, so this ordering is the only
+    // thing separating one vertical run from another; see the helper for why.
+    const line = (boardId) => {
+      const s = spec(boardType.get(boardId));
+      return () =>
+        railSpineOrder(
+          alloc.freeRailHoles(boardId, polarity),
+          s.railHoles,
+          s.railGroup,
+        );
+    };
     const a = {
       node: `bridge:${fromBoard}${polarity}`,
       capacity: Infinity,
       at: null,
-      options: () => alloc.freeRailHoles(fromBoard, polarity),
+      options: line(fromBoard),
       take: (address) => alloc.claim(address),
     };
     const b = { ...a, node: `bridge:${toBoard}${polarity}` };
-    b.options = () => alloc.freeRailHoles(toBoard, polarity);
+    b.options = line(toBoard);
     const pair = bestPair(a, b);
     if (!pair) return unpowered.push(what);
     a.take(pair.from);
