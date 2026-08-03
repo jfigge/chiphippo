@@ -214,6 +214,45 @@ the DIP-bodied displays (<code>bar8</code>, <code>seg8cc</code>) and switch bank
 instead, which is what it will reach for anyway.</li>
 <li><strong>Multi-corner cans</strong> — the oscillator packages.</li>
 </ul>
+<h2 id="review-asking-whats-wrong-with-a-circuit">Review: asking what&#39;s wrong with a circuit</h2>
+<p>The panel has two modes, picked with the <strong>Build / Review</strong> switch in its
+header. Everything above is <strong>Build</strong>. <strong>Review</strong> turns the panel around: it
+reads the desktop you already have, runs Chip Hippo&#39;s own checks over it, and
+explains what it found.</p>
+<p>Type a question and press <code>Enter</code> — or just press <code>Enter</code> with the box empty,
+which asks <em>&quot;what is wrong with this circuit?&quot;</em>.</p>
+<p><strong>Chip Hippo finds the faults; the model explains them.</strong> This is the same
+division of labour that keeps Build honest. The app derives every finding
+itself, from the real netlist and a real settle of the exact circuit on your
+desk — the model is never asked to read a wiring list and decide whether
+something is shorted, because a wrong answer to that would be indistinguishable
+from a right one. What it <em>is</em> good at is the sentence afterwards: what a fault
+means for your design, which one to fix first, and what to do about it.</p>
+<p>The checks it runs are the ones that leave a circuit looking perfectly wired
+and quietly not working:</p>
+<ul>
+<li><strong>Nothing is powered</strong> — no supply on the desk, a chip whose power pins go
+nowhere, or one whose VCC net never reaches a rail.</li>
+<li><strong>An input nothing drives.</strong> The most convincing lie a real circuit tells: a
+floating TTL input reads HIGH, so the chip <em>works</em>, just not as designed.
+Only inputs that are actually in use are reported — an unused gate on a quad
+package is idle, not broken.</li>
+<li><strong>A part switched off.</strong> An active-low output enable left unwired reads HIGH,
+so the chip drives nothing at all while its wiring looks flawless.</li>
+<li><strong>Two outputs on one net</strong>, whatever they happen to be driving today.</li>
+<li><strong>Shorts, driver conflicts, and a circuit that won&#39;t settle</strong>, straight from
+the engine.</li>
+<li><strong>A chip at 3 V or 12 V</strong>, and <strong>an LED with nothing limiting its current</strong>.</li>
+</ul>
+<p>The findings appear in the transcript immediately, before the request even goes
+out — so if the connection fails you still have the app&#39;s own answer.</p>
+<p><strong>Review never changes anything.</strong> No part is placed, no wire is moved, and
+there is nothing to undo afterwards. That&#39;s also why it&#39;s the one thing here
+that works <strong>while the simulation is running</strong>: a review can&#39;t be refused by a
+frozen desk, and a running circuit is often exactly when you want to ask what
+it&#39;s doing.</p>
+<p>Switching between Build and Review starts a fresh conversation — the two ask
+the model quite different things — but your transcript stays where it is.</p>
 <h2 id="leds-and-resistors">LEDs and resistors</h2>
 <p>You never need to ask for a current-limiting resistor, and you shouldn&#39;t put
 one in your description. Chip Hippo models the <em>physical</em> requirement, not just
@@ -229,7 +268,11 @@ most of each request is sent in a form your provider can cache, so a repair
 attempt costs far less than the first ask.</p>
 <p>The panel won&#39;t build while the simulation is <strong>running</strong> — press <strong>Stop</strong>
 first. A generated circuit is a document edit like any other, and the desk is
-frozen while the circuit runs.</p>
+frozen while the circuit runs. <strong>Review</strong> is exempt: it changes nothing, so
+there is nothing for a frozen desk to refuse.</p>
+<p>A review sends a compact description of your circuit — the parts, which pins
+are joined, and the findings — but never the layout, and never anything about
+your project beyond the desktop you asked about.</p>
 <h2 id="see-also">See also</h2>
 <ul>
 <li><a href="settings.html">Settings</a> — the AI tab in full, alongside every other

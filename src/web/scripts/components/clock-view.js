@@ -15,7 +15,7 @@
  */
 
 // clock-view.js — a clock source brick on the desk (.layer-parts): a body with
-// a rate badge (1/2/5/10 Hz or MAN), a pulse indicator that lights while the
+// a rate badge (any of CLOCK_HZ, or MAN), a pulse indicator that lights while the
 // output is HIGH, and the `out` / `gnd` terminal pads (the addressable wire
 // points clk1.out / clk1.gnd). The blink is driven from chiphippo:sim-state
 // (setLevel) — the timer itself lives in the SimController, never here. In
@@ -63,10 +63,18 @@ export function buildClockSvg(params = {}) {
     }),
   );
 
+  // The rate gets a LINE OF ITS OWN, between the wave and the terminals. It
+  // used to sit beside the wave on the same baseline, and the two overlapped at
+  // every rate the app has ever offered — "2 Hz" already drew as ⎍2⎍Hz, with the
+  // glyph running through the digits (it is in the shipped user-guide
+  // screenshot). An 8-unit-wide brick has no room for a 2.4-unit glyph and a
+  // 4-unit string side by side, and "100 Hz" is the widest the badge can now be,
+  // so the fix is vertical: lamp + wave read as "this is a clock" across the
+  // top, the value below them, the terminals under that.
   const badge = svgEl("text", {
     class: "part-clock-badge",
-    x: width / 2 + 0.6,
-    y: 1.85,
+    x: width / 2,
+    y: 3.2,
     "text-anchor": "middle",
   });
   badge.textContent = rateLabel(hz);

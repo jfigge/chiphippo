@@ -93,9 +93,11 @@ its own — its own boards, chips, wiring, camera position, and undo history —
 and a design worked out on one can be copied straight onto another.</p>
 <p><img src="images/project-tabs.png" alt="Desktops as tabs above the desk"></p>
 <p><strong>The project is the document.</strong> One <code>.chiphippo</code> file holds all of it: every
-desktop, and the contents of every ROM you programmed. That&#39;s the whole design
-in a single file you can email, drop in a repo, or carry to another machine.
-There are no companion files to keep together and nothing to go missing.</p>
+desktop, and the contents of every ROM you programmed — each image stored once
+however many chips across however many desktops are holding it. That&#39;s the
+whole design in a single file you can email, drop in a repo, or carry to
+another machine. There are no companion files to keep together and nothing to
+go missing.</p>
 <p><strong>Every desktop is the same.</strong> There is no special &quot;main&quot; desk and no lesser
 one: they are peers, all with the same menu, and which is the build and which
 is the bench is entirely up to you. Any of them can be renamed, duplicated, or
@@ -236,7 +238,9 @@ of one desktop.</p>
 <ol>
 <li>On the desktop holding it, <strong>shift-drag a marquee</strong> around the design — the
 boards, the chips on them, and the wiring. A marquee takes in any board it
-encloses <em>completely</em>, and the selected set is outlined as one block.</li>
+encloses <em>completely</em>, and the selected set is outlined as one block.
+<code>Cmd/Ctrl</code>-click adds or removes an individual item afterwards, so a box
+that caught one thing too many (or one too few) doesn&#39;t have to be redrawn.</li>
 <li>Press <code>Cmd/Ctrl+C</code>. The whole sub-assembly is copied: the boards, everything
 seated on them (whether or not the box touched it), every wire with <strong>both</strong>
 ends inside the set, and the buses, net names, and anchored labels riding

@@ -31,6 +31,7 @@ import { t } from "../i18n.js";
 import { tick } from "../sim/engine.js";
 import { H, L } from "../sim/levels.js";
 import { partDef } from "../catalog/index.js";
+import { CLOCK_HZ } from "../catalog/parts.js";
 import {
   isMemory,
   isVolatileMemory,
@@ -124,8 +125,22 @@ export const TRANSPORT = Object.freeze({
 /** Speed multipliers the selector cycles. */
 export const SPEEDS = Object.freeze([0.25, 1, 4]);
 
-/** A clock timer never fires faster than this (keeps 10 Hz × 4 sane). */
-const MIN_HALF_PERIOD_MS = 20;
+/**
+ * The floor on a clock timer's half-period — DERIVED from the fastest rate the
+ * catalog offers, never typed, because a hand-picked floor is exactly how a
+ * picker comes to offer a rate the app does not actually run: at the old flat
+ * 20 ms a "100 Hz" clock would have ticked at 25 and said nothing about it.
+ * Tying the two together makes the ceiling equal the top of CLOCK_HZ, so a rate
+ * at ×1 is always exact and only the SPEED multiplier can saturate — which it
+ * already did (10 Hz × ×4 asks for 40 and got 25).
+ *
+ * It is still a real ceiling: every edge runs a full engine tick and publishes
+ * a sim-state, so this is the app's cap on that work — ~200 ticks/second, which
+ * the heaviest shipped demo (~0.6 ms/tick) clears with room to spare. Offering a
+ * rate past that is a question about the tick budget, not about this line.
+ */
+const MIN_HALF_PERIOD_MS =
+  1000 / (2 * Math.max(...CLOCK_HZ.filter((hz) => typeof hz === "number")));
 
 export class SimController {
   #doc;

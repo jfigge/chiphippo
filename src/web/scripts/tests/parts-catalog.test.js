@@ -561,7 +561,7 @@ test("psu: volts enum, source contract, integer terminal offsets", () => {
 
 test("clock: hz enum (+manual), isAuto contract, Properties field", () => {
   const def = partDef("clock");
-  assert.deepEqual(CLOCK_HZ, [1, 2, 5, 10, "manual"]);
+  assert.deepEqual(CLOCK_HZ, [1, 2, 5, 10, 20, 50, 100, "manual"]);
   assert.deepEqual(def.normalizeParams({}), { hz: 1 });
   assert.deepEqual(def.normalizeParams({ hz: 10 }), { hz: 10 });
   assert.deepEqual(def.normalizeParams({ hz: "manual" }), { hz: "manual" });
@@ -582,6 +582,9 @@ test("clock: hz enum (+manual), isAuto contract, Properties field", () => {
         { value: 2, label: "2 Hz" },
         { value: 5, label: "5 Hz" },
         { value: 10, label: "10 Hz" },
+        { value: 20, label: "20 Hz" },
+        { value: 50, label: "50 Hz" },
+        { value: 100, label: "100 Hz" },
         { value: "manual", label: "Manual" },
       ],
     },

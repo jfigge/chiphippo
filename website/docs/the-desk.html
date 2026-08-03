@@ -178,6 +178,40 @@ group (or merges two groups into one, if it bridges a gap). When several
 strips are mated, clicking any one of them highlights the whole set — the
 outline traces the union of the group&#39;s strips, so flush neighbours read as
 one board rather than showing a seam between them.</p>
+<h2 id="selecting-things">Selecting things</h2>
+<p>Clicking a board, part, wire, bus or note selects that one thing, and clicking
+empty desk clears the selection. There are two ways to select <strong>several</strong> at
+once, and they are complementary:</p>
+<ul>
+<li><strong>Shift-drag a marquee</strong> anywhere on the desk. It <em>replaces</em> the selection
+with everything the box encloses <strong>completely</strong> — any board wholly inside,
+any part whose every pin is inside, and any wire with <strong>both</strong> ends inside.
+Half-covered things are left out on purpose: a wire with one end outside the
+box would have to be cut to come along.</li>
+<li><strong><code>Cmd</code>-click</strong> (<code>Ctrl</code>-click on Windows and Linux) an individual item to
+<em>add</em> it to the selection, or to take it back out if it&#39;s already in. This is
+how you pick up the four chips you actually want without drawing a box around
+the eight that are next to each other, and how you drop the one thing a
+marquee caught that you didn&#39;t mean.</li>
+</ul>
+<p><code>Cmd/Ctrl</code>-clicking a <strong>board</strong> takes its whole snapped group, the same set a
+plain click selects. Clicking a <strong>bus</strong> takes all of its member wires — a bus
+is bookkeeping over wires, and the wires are what a delete or a copy acts on.
+Clicking <strong>empty desk</strong> with the modifier held leaves the selection alone
+rather than clearing it: an add that landed on nothing has nothing to add.</p>
+<p>Notes and labels are the one thing a multi-selection can&#39;t hold, so
+<code>Cmd/Ctrl</code>-clicking one does nothing; a plain click still selects it.</p>
+<blockquote>
+<p><strong>On macOS this is <code>Cmd</code>, not <code>Ctrl</code></strong> — the modifier the rest of the
+platform&#39;s lists use. <code>Ctrl</code>-click there is the system&#39;s secondary click, and
+it keeps that job: it still opens an item&#39;s context menu.</p>
+</blockquote>
+<p>Either way the result is one selection: <code>Delete</code> removes all of it in a single
+step, <code>Cmd/Ctrl+C</code> copies it (as a whole design, if it includes boards — see
+<a href="projects-and-desktops.html">Projects &amp; Desktops</a>), and <code>Esc</code> clears it.
+<code>Cmd/Ctrl+A</code> selects the entire desk.</p>
+<p>Nothing can be selected while the simulation is <strong>running</strong> — the topology is
+frozen, so a selection would be one you couldn&#39;t act on.</p>
 <h2 id="groups--breaking-a-snap">Groups &amp; breaking a snap</h2>
 <p>Grabbing a mated strip normally drags the <strong>whole group</strong> together. To pull
 just part of a group apart, hold a modifier while you start the drag:</p>

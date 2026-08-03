@@ -26,6 +26,7 @@ import assert from "node:assert/strict";
 import { resetDom } from "./jsdom-setup.js";
 import { partPinAddresses, partPinHoles } from "../model/occupancy.js";
 import { holesOfNode, nodeOf } from "../model/breadboard.js";
+import { CLOCK_HZ } from "../catalog/parts.js";
 
 const { SimController } = await import("../components/sim-controller.js");
 
@@ -341,6 +342,70 @@ test("a manual clock toggles on manualToggle", () => {
   assert.equal(events.at(-1).clockLevels.get("clk1"), "L");
   sim.manualToggle("clk1");
   assert.equal(events.at(-1).clockLevels.get("clk1"), "H");
+  sim.stop();
+});
+
+/** Every half-period `setInterval` is asked for while `fn()` runs. */
+function captureIntervals(fn) {
+  const real = globalThis.setInterval;
+  const periods = [];
+  globalThis.setInterval = (_cb, ms) => {
+    periods.push(ms);
+    // A handle stop()'s clearInterval can take, that never fires and never
+    // holds the test runner open.
+    const h = real(() => {}, 1e9);
+    h?.unref?.();
+    return h;
+  };
+  try {
+    fn();
+  } finally {
+    globalThis.setInterval = real;
+  }
+  return periods;
+}
+
+test("every rate the picker offers is a rate the timer really runs", () => {
+  // The floor on a timer's half-period is DERIVED from the top of CLOCK_HZ, so
+  // a rate can never be offered that the transport quietly runs slower than —
+  // which is exactly what a hand-picked floor let happen (at a flat 20 ms,
+  // "50 Hz" and "100 Hz" would both have ticked at 25 and said nothing).
+  for (const hz of CLOCK_HZ.filter((v) => typeof v === "number")) {
+    resetDom();
+    const sim = new SimController({
+      deskDoc: fakeDoc(clockDoc(hz)),
+      notifications: fakeNotifications(),
+    });
+    const periods = captureIntervals(() => sim.start());
+    assert.deepEqual(periods, [1000 / (2 * hz)], `${hz} Hz at ×1`);
+    sim.stop();
+  }
+});
+
+test("the SPEED multiplier saturates at the fastest offered rate, both ways", () => {
+  resetDom();
+  const fastest = Math.max(...CLOCK_HZ.filter((v) => typeof v === "number"));
+  const floor = 1000 / (2 * fastest);
+  const sim = new SimController({
+    deskDoc: fakeDoc(clockDoc(fastest)),
+    notifications: fakeNotifications(),
+  });
+
+  sim.setSpeed(4);
+  assert.deepEqual(
+    captureIntervals(() => sim.start()),
+    [floor],
+    "×4 on the top rate asks for more edges than the app runs — it clamps",
+  );
+  sim.stop();
+
+  // ×¼ is below the floor and so is honoured exactly: the clamp is a ceiling
+  // on edge RATE, never a floor on the period the user asked for.
+  sim.setSpeed(0.25);
+  assert.deepEqual(
+    captureIntervals(() => sim.start()),
+    [floor * 4],
+  );
   sim.stop();
 });
 

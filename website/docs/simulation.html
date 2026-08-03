@@ -150,7 +150,9 @@ edge and watch each bit change. A manually-toggled clock steps only on its
 own click, not on <strong>Step</strong>.</li>
 <li><strong>Speed</strong> (<code>×¼</code> / <code>×1</code> / <code>×4</code>) — click to cycle the free-running clock rate
 up or down. It scales every clock brick on the desk together, so a design
-with more than one clock keeps their relative timing.</li>
+with more than one clock keeps their relative timing. A clock never runs
+faster than 100 Hz, the top of its own rate list, so <code>×4</code> applied to a rate
+that is already a quarter of the way there has nothing further to give.</li>
 </ul>
 <p>See <a href="power-and-clocks.html">Power &amp; Clock Sources</a> for placing and configuring
 a clock brick, and <a href="logic-analyzer.html">Logic Analyzer &amp; Timing</a> for

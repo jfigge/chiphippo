@@ -40,8 +40,14 @@ export const LED_COLOR_OPTIONS = Object.freeze([
 ]);
 export const PSU_VOLTS = Object.freeze([3, 5, 12]);
 /** Clock rates (Hz) plus click-to-toggle "manual"; the timer lives in the
-    renderer's SimController — the def carries only the pure contract. */
-export const CLOCK_HZ = Object.freeze([1, 2, 5, 10, "manual"]);
+    renderer's SimController — the def carries only the pure contract. A 1-2-5
+    ladder up two decades: the slow end is for watching an edge land, the fast
+    end for letting a counter or a CPU actually get somewhere. The TOP of this
+    list is what sets the SimController's timer floor (MIN_HALF_PERIOD_MS is
+    derived from it), so a rate offered here is a rate the app really runs —
+    adding a faster one means asking whether the engine can still keep up with
+    it, not just typing a number. */
+export const CLOCK_HZ = Object.freeze([1, 2, 5, 10, 20, 50, 100, "manual"]);
 /** An oscillator can is always free-running — a real crystal has no
     click-to-toggle pin — so it picks from CLOCK_HZ minus "manual". */
 export const OSCILLATOR_HZ = Object.freeze(
@@ -873,8 +879,9 @@ export const PART_DEFS = Object.freeze(
       kind: "clock",
       title: "Clock source",
       blurb:
-        "Square-wave clock (1 / 2 / 5 / 10 Hz, or manual click-to-toggle) with " +
-        "an `out` terminal and a `gnd` reference — wire it to a chip's clock pin.",
+        "Square-wave clock (1 / 2 / 5 / 10 / 20 / 50 / 100 Hz, or manual " +
+        "click-to-toggle) with an `out` terminal and a `gnd` reference — wire " +
+        "it to a chip's clock pin.",
       group: "Power",
       size: Object.freeze({ width: 8, height: 5 }),
       terminals: [

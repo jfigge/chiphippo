@@ -42,6 +42,46 @@ test("a manual clock badges MAN", () => {
   assert.equal(svg.querySelector(".part-clock-badge").textContent, "MAN");
 });
 
+test("the rate badge has a LINE OF ITS OWN: clear of the wave and the pads", () => {
+  // It used to share the wave's baseline, and the two collided at every rate
+  // the app has ever offered — "2 Hz" drew as ⎍2⎍Hz. jsdom measures no text, so
+  // the check is on the BAND the badge sits in: below everything in the top row
+  // and above the terminal pads. Both bounds are read off the drawing rather
+  // than typed, so moving the wave or the pads re-checks the badge for free.
+  resetDom();
+  const svg = buildClockSvg({ hz: 100 });
+  const num = (el, attr) => Number(el.getAttribute(attr));
+
+  // The wave path's lowest point, straight out of its `d`.
+  const d = svg.querySelector(".part-clock-wave").getAttribute("d");
+  const waveBottom = Math.max(
+    ...[...d.matchAll(/[ML]\s*[\d.]+\s+([\d.]+)/g)].map((m) => Number(m[1])),
+  );
+  const lamp = svg.querySelector(".part-clock-lamp");
+  const topRowBottom = Math.max(waveBottom, num(lamp, "cy") + num(lamp, "r"));
+  const padTop = Math.min(
+    ...[...svg.querySelectorAll(".part-clock-terminal")].map(
+      (c) => num(c, "cy") - num(c, "r"),
+    ),
+  );
+
+  const badge = svg.querySelector(".part-clock-badge");
+  const baseline = num(badge, "y");
+  assert.ok(
+    baseline > topRowBottom,
+    `badge baseline ${baseline} must clear the lamp/wave row (${topRowBottom})`,
+  );
+  assert.ok(
+    baseline <= padTop,
+    `badge baseline ${baseline} must sit above the terminal pads (${padTop})`,
+  );
+  // ...and centred in the body, so the longest rate string ("100 Hz") stays
+  // inside it however wide the glyphs measure.
+  assert.equal(baseline, 3.2);
+  assert.equal(num(badge, "x"), 4);
+  assert.equal(badge.getAttribute("text-anchor"), "middle");
+});
+
 test("setLevel toggles the pulse-lamp class; updateParams re-badges", () => {
   resetDom();
   const layer = document.createElement("div");

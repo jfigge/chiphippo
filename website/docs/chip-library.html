@@ -87,11 +87,12 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
 <p>The parts palette&#39;s <strong>CHIPS</strong> folder holds a broad shelf of 74xx-family DIP
 logic — everything from a single quad NAND gate up to octal shift registers
 and 4-bit counters — every one with a datasheet-accurate pinout and real
-behavior you can wire up and run. An <strong>Interface</strong> group at the end of the
-same folder carries the 65xx parts (a CPU, a PIA and a VIA), and a separate
-<strong>Memory</strong> group sits below it for the address-indexed ROM/RAM parts, which
-get their own dedicated page. This page is a tour of what&#39;s on the shelf and
-how to read a chip&#39;s pin-assignments window once you&#39;ve placed one.</p>
+behavior you can wire up and run. Past them, an <strong>Interface</strong> group carries
+the 65xx peripherals (a PIA and a VIA) and a <strong>PROCESSOR</strong> group carries the
+CPUs, while a separate <strong>Memory</strong> group sits below for the address-indexed
+ROM/RAM parts, which get their own dedicated page. This page is a tour of what&#39;s
+on the shelf and how to read a chip&#39;s pin-assignments window once you&#39;ve placed
+one.</p>
 <h2 id="combinational-gates">Combinational gates</h2>
 <p>The basic gate families — the classic 7400-series building blocks:</p>
 <table>
@@ -362,9 +363,41 @@ GND on the package corners, and neither do these.</p>
 </tr>
 </tbody></table>
 <h2 id="interface-chips-65xx">Interface chips (65xx)</h2>
-<p>Past the 74xx groups, the <strong>Interface</strong> group carries three Western Design
-Center 65xx parts — all DIP-40, all clocked off <code>PHI2</code>, all wired the same
-way you&#39;d wire them on a real single-board computer:</p>
+<p>Past the 74xx groups, the <strong>Interface</strong> group carries two Western Design
+Center 65xx peripherals — both DIP-40, both clocked off <code>PHI2</code>, both wired the
+same way you&#39;d wire them on a real single-board computer:</p>
+<table>
+<thead>
+<tr>
+<th>Part</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>W65C21</code></td>
+<td>W65C21 PIA (CMOS 6521/6821) — two 8-bit bidirectional ports with per-line data-direction registers, plus four handshake/interrupt lines</td>
+</tr>
+<tr>
+<td><code>W65C22</code></td>
+<td>W65C22 VIA (CMOS 6522) — the same two ports plus two 16-bit interval timers, an 8-bit shift register, and four handshake lines</td>
+</tr>
+</tbody></table>
+<p>They&#39;re <strong>logic-level</strong>, not cycle-accurate: nothing here models wall-clock
+timing, so the VIA&#39;s timers count <code>PHI2</code> cycles rather than seconds.</p>
+<p>A few practical notes for building with them:</p>
+<ul>
+<li><strong>Address one of the peripherals</strong> by holding its chip selects (<code>CS0</code>·<code>CS1</code>
+high and <code>CS2B</code> low on the PIA; <code>CS1</code> high and <code>CS2B</code> low on the VIA),
+picking a register with <code>RS0</code>–<code>RS1</code> (PIA) or <code>RS0</code>–<code>RS3</code> (VIA), setting
+<code>RWB</code>, and pulsing <code>PHI2</code> — writes latch on the falling edge.</li>
+<li><strong><code>IRQB</code> is open-drain</strong> on both peripherals, so give it a pull-up.</li>
+<li>You can drive the bus <strong>by hand</strong> — set the address, selects and <code>RWB</code>, then
+pulse <code>PHI2</code> — or wire a CPU to it from the group below.</li>
+</ul>
+<h2 id="processors">Processors</h2>
+<p>The <strong>PROCESSOR</strong> group carries the two 8-bit CPUs, both DIP-40. Each is a full
+instruction-set simulation, so a program in a ROM or RAM really does fetch and
+execute one instruction at a time:</p>
 <table>
 <thead>
 <tr>
@@ -377,28 +410,34 @@ way you&#39;d wire them on a real single-board computer:</p>
 <td>W65C02S 8-bit CPU — 16-bit address bus (<code>A0</code>–<code>A15</code>), 8-bit data bus (<code>D0</code>–<code>D7</code>), <code>RWB</code>, <code>RESB</code>, <code>IRQB</code>/<code>NMIB</code>, and <code>SYNC</code> pulsing high on each opcode fetch</td>
 </tr>
 <tr>
-<td><code>W65C21</code></td>
-<td>W65C21 PIA (CMOS 6521/6821) — two 8-bit bidirectional ports with per-line data-direction registers, plus four handshake/interrupt lines</td>
-</tr>
-<tr>
-<td><code>W65C22</code></td>
-<td>W65C22 VIA (CMOS 6522) — the same two ports plus two 16-bit interval timers, an 8-bit shift register, and four handshake lines</td>
+<td><code>Z80A</code></td>
+<td>Zilog Z80A 8-bit CPU — the same 16-bit address and 8-bit data buses, plus <code>/MREQ</code>, <code>/IORQ</code>, <code>/RD</code>, <code>/WR</code>, <code>/M1</code>, <code>/RFSH</code>, <code>/HALT</code>, <code>/WAIT</code> and <code>/BUSRQ</code>//<code>/BUSACK</code></td>
 </tr>
 </tbody></table>
-<p>They&#39;re <strong>logic-level and bus-access-accurate</strong>, not cycle-accurate: the CPU
-performs one memory access per clock cycle, so the address bus advances as it
-runs and you can watch a program fetch and execute, but nothing here models
-wall-clock timing. The VIA&#39;s timers count <code>PHI2</code> cycles rather than seconds
-for the same reason.</p>
-<p>A few practical notes for building with them:</p>
+<p><strong>They disagree about the clock, and it shows in how you wire them.</strong> The
+W65C02 makes exactly one bus access per <code>PHI2</code> cycle, so its address bus
+advances once per clock. The Z80 does not: an opcode fetch is four T-states
+with a memory-refresh cycle glued to its back half, a plain read is three, and
+an I/O cycle is four — so a Z80 instruction takes several clock cycles, <code>/M1</code>
+marks which cycle is the opcode fetch, and <code>/RFSH</code> pulses behind it.</p>
+<p>A few practical notes:</p>
 <ul>
-<li><strong>The CPU powers up in reset.</strong> Wire <code>RESB</code> to a push button and press it
-to start; it then boots from the reset vector at <code>$FFFC</code>/<code>$FFFD</code>.</li>
-<li><strong>Address one of the peripherals</strong> by holding its chip selects (<code>CS0</code>·<code>CS1</code>
-high and <code>CS2B</code> low on the PIA; <code>CS1</code> high and <code>CS2B</code> low on the VIA),
-picking a register with <code>RS0</code>–<code>RS1</code> (PIA) or <code>RS0</code>–<code>RS3</code> (VIA), setting
-<code>RWB</code>, and pulsing <code>PHI2</code> — writes latch on the falling edge.</li>
-<li><strong><code>IRQB</code> is open-drain</strong> on both peripherals, so give it a pull-up.</li>
+<li><strong>Both power up in reset.</strong> Wire the reset pin to a push button to hold it.
+The W65C02 then boots from the reset vector at <code>$FFFC</code>/<code>$FFFD</code>; the Z80 has
+<strong>no reset vector at all</strong> and simply starts fetching at <code>$0000</code>.</li>
+<li><strong>Every Z80 control line is active LOW</strong>, which is what the leading slash in
+its pin names records — the app has no way to draw an overbar.</li>
+<li><strong>The Z80 gives you real chip-select and strobe lines.</strong> Wire <code>/MREQ</code> to a
+memory&#39;s <code>/CE</code>, <code>/RD</code> to its <code>/OE</code> and <code>/WR</code> to its <code>/WE</code>. That combination
+matters: during the refresh half of a fetch <code>/MREQ</code> pulses low again while
+<code>/RD</code> stays high, so a correctly wired memory does not drive the bus against
+the CPU&#39;s own refresh address.</li>
+<li><strong><code>/IORQ</code> selects a separate 256-port I/O space</strong>, reached with <code>IN</code>/<code>OUT</code>
+and entirely distinct from memory. The 65xx bus has no equivalent — there,
+peripherals are memory-mapped.</li>
+<li><strong>Z80 addressing is a little scrambled on the package.</strong> <code>A0</code>–<code>A10</code> sit on
+pins 30–40 and <code>A11</code>–<code>A15</code> wrap round to pins 1–5; the data bus is not in pin
+order either. The pin-assignments window is worth keeping open.</li>
 <li>These parts have <strong>no example circuit</strong> (see below) — you can&#39;t demonstrate
 a CPU by flipping switches at it. What you want instead are the worked
 65xx machines shipped as ordinary project files; see

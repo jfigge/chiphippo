@@ -145,9 +145,13 @@ two addressable terminals: <strong><code>out</code></strong> and <strong><code>g
 Wire <code>out</code> to a chip&#39;s clock input and <code>gnd</code> to your circuit&#39;s ground.</p>
 <p>Right-click a clock brick and choose <strong>Properties…</strong> to set its rate:</p>
 <ul>
-<li><strong>1 / 2 / 5 / 10 Hz</strong> — free-running. Once the simulation is running, the
-brick toggles its <code>out</code> level on its own at the chosen rate; a small lamp
-on the body lights while the output is HIGH.</li>
+<li><strong>1 / 2 / 5 / 10 / 20 / 50 / 100 Hz</strong> — free-running. Once the simulation is
+running, the brick toggles its <code>out</code> level on its own at the chosen rate; a
+small lamp on the body lights while the output is HIGH. The slow end is for
+watching a single edge land; the fast end is for letting a counter or a CPU
+actually get somewhere while you watch. Above about 20 Hz the lamp and any
+LEDs on the circuit blur into a steady glow — that&#39;s the point at which the
+<a href="logic-analyzer.html">logic analyzer</a> becomes the way to see what happened.</li>
 <li><strong>Manual</strong> — click-to-toggle. No timer runs it; instead, while the
 simulation is running, clicking the brick&#39;s body flips <code>out</code> from LOW to
 HIGH (or back) once per click — handy for single-stepping a counter or

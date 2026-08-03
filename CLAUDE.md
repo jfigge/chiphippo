@@ -72,9 +72,19 @@ sync + up-down counters / SIPO+PISO shift, plus `COMB` decoder/mux units), the
 14-chip datasheet-exact wave in `catalog/chips-seq.js` (7473/74/75/76, 74107,
 74138/139/151/157/161/164/165/175/193 — non-standard power pins and all), the
 desk-level **clock source** brick (`clk<n>` ids, `out`/`gnd` terminals,
-1/2/5/10 Hz or manual) with `ClockView`, and the SimController **transport**
-(Run / Pause / Step / speed) whose `setInterval` drives clock edges while the
-engine stays pure and timerless; the derived logical **schematic view**
+`CLOCK_HZ` — a 1-2-5 ladder from 1 to 100 Hz, or manual; the oscillator cans
+take the same list minus `manual`) with `ClockView`, and the SimController
+**transport** (Run / Pause / Step / speed) whose `setInterval` drives clock
+edges while the engine stays pure and timerless. **THE TIMER'S FLOOR IS
+DERIVED FROM THE TOP OF `CLOCK_HZ`**, never typed: every edge is a full engine
+tick plus a `sim-state` publish, so there IS a ceiling on edge rate — but a
+hand-picked one is exactly how a picker comes to offer a rate the app quietly
+runs slower than (at the old flat 20 ms, a "100 Hz" clock would have ticked at
+25 and said nothing). Tying the two together makes the ceiling equal the
+fastest rate on offer, so a rate at ×1 is always exact and only the SPEED
+multiplier can saturate — which it already did. Offering a rate past ~100 Hz is
+a question about the tick budget (the heaviest shipped demo settles in ~0.6 ms),
+not about that constant. The derived logical **schematic view**
 (150 — landed out of tree order) that flips in via `Tab` alongside the
 breadboard, drawing chip symbols + routed named nets + bus lines from the same
 `DeskDoc` (`components/schematic-view.js` + `model/schematic-layout.js` +

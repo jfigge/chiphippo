@@ -135,6 +135,11 @@ alone; if it&#39;s larger, it&#39;s truncated to fit — either way you get a wa
 telling you what happened. Once programmed, the chip is flagged
 <strong>programmed</strong>, which rides undo/redo like any other edit, and the chip
 keeps its new contents the next time you open the document or press Run.</p>
+<p>The chip also <strong>remembers which file you loaded</strong>. The Properties dialog
+shows it as <strong>Image file</strong>, so you can tell at a glance whether a ROM holds
+the monitor image or last week&#39;s experiment. If you go on to edit the bytes
+by hand in the inspector, the file is still shown — marked <em>(edited)</em>, since
+it is where the data came from but no longer what the chip holds.</p>
 <p>Programming is only available while editing is unlocked (i.e. the
 simulation is stopped) — see <a href="simulation.html">Running a Simulation</a>.</p>
 <h2 id="the-memory-inspector">The memory inspector</h2>
@@ -159,9 +164,10 @@ simulator&#39;s own byte image. Bytes the circuit writes are tinted as they
 change, so you can watch a counter or a shift register fill memory in real
 time. Editing resumes once you stop.</li>
 </ul>
-<p>The inspector also shows the chip&#39;s backing-file path for a non-volatile
-part (handy for locating the raw <code>.bin</code> outside the app), and stays open and
-live-updating as long as the desk document does.</p>
+<p>For a non-volatile part the inspector also names the file its image came
+from, with <strong>Copy path</strong> beside it; hover that line to see where the app is
+keeping the raw bytes on disk. It stays open and live-updating as long as the
+desk document does.</p>
 <h2 id="import--export-intel-hex">Import &amp; export (Intel HEX)</h2>
 <p>Beyond loading a raw <code>.bin</code>, the inspector&#39;s toolbar can <strong>Export</strong> the
 current contents as either a raw <code>.bin</code> or an <strong>Intel HEX</strong> <code>.hex</code> file —

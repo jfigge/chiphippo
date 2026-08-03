@@ -77,7 +77,9 @@ cluster next to **Run** the moment you start:
   own click, not on **Step**.
 - **Speed** (`×¼` / `×1` / `×4`) — click to cycle the free-running clock rate
   up or down. It scales every clock brick on the desk together, so a design
-  with more than one clock keeps their relative timing.
+  with more than one clock keeps their relative timing. A clock never runs
+  faster than 100 Hz, the top of its own rate list, so `×4` applied to a rate
+  that is already a quarter of the way there has nothing further to give.
 
 See [Power & Clock Sources](power-and-clocks.md) for placing and configuring
 a clock brick, and [Logic Analyzer & Timing](logic-analyzer.md) for
