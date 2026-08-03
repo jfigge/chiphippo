@@ -829,6 +829,168 @@ test("Escape clears a marquee selection", () => {
   assert.deepEqual(controller.multiSelectedIds, []);
 });
 
+// ── Additive selection (⌘/Ctrl-click) ─────────────────────────────────────
+//
+// `window.chiphippo.platform` is unset under the test harness, so the desk
+// answers to Ctrl here — the ⌘ half of the split is pinned by the pure
+// predicate's own suite (selection-toggle.test.js).
+
+/** Modifier-click an element: the press (parts, boards) and the click (wires,
+    bus bands) both carry the chord, so one helper covers every target. */
+function toggleClick(el, { pointerId = 21 } = {}) {
+  for (const type of ["pointerdown", "click"]) {
+    el.dispatchEvent(
+      new window.PointerEvent(type, {
+        bubbles: true,
+        button: 0,
+        pointerId,
+        ctrlKey: true,
+        clientX: 0,
+        clientY: 0,
+      }),
+    );
+  }
+}
+
+test("Ctrl-click adds a part to the selection and takes it back out", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const { surface, controller } = makeDesk(doc);
+  const a = controller.addComponentAt("74LS00", "bb1", "e5");
+  const b = controller.addComponentAt("74LS04", "bb1", "e20");
+
+  controller.selectComponent(a.id);
+  assert.equal(controller.selectedId, a.id);
+
+  // The single pick is what the chord EXTENDS — it has to end up in the set.
+  toggleClick(partEl(surface, b.id));
+  assert.deepEqual(controller.multiSelectedIds.sort(), [a.id, b.id].sort());
+  assert.equal(controller.selectedId, null);
+
+  // Clicked again it leaves, and the one item left COLLAPSES back to the
+  // ordinary single pick — so R, Properties… and the Option hint still work.
+  toggleClick(partEl(surface, b.id));
+  assert.deepEqual(controller.multiSelectedIds, []);
+  assert.equal(controller.selectedId, a.id);
+
+  // The last one out leaves nothing selected at all.
+  toggleClick(partEl(surface, a.id));
+  assert.equal(controller.selectedId, null);
+  assert.deepEqual(controller.multiSelectedIds, []);
+});
+
+test("Ctrl-clicking a part starts no drag — the press is the whole gesture", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const world = { x: 0, y: 0 };
+  const { surface, controller } = makeDesk(doc, world);
+  const chip = controller.addComponentAt("74LS00", "bb1", "e5");
+  const el = partEl(surface, chip.id);
+
+  world.x = 8;
+  world.y = 6.5;
+  controller.deselect(); // addComponentAt selects what it placed
+  toggleClick(el);
+  assert.equal(controller.selectedId, chip.id); // one item → the single pick
+
+  // A move + release with no drag in flight must leave the seat alone.
+  world.x = 20;
+  for (const type of ["pointermove", "pointerup"]) {
+    el.dispatchEvent(
+      new window.PointerEvent(type, {
+        bubbles: true,
+        button: 0,
+        pointerId: 21,
+        clientX: 200,
+        clientY: 0,
+      }),
+    );
+  }
+  assert.equal(doc.getComponent(chip.id).anchor, "e5");
+});
+
+test("Ctrl-clicking one strip of a kit toggles the WHOLE snapped group", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const { surface, controller } = makeDesk(doc);
+  const kit = controller.addKitAt("full", 0, 0);
+  const ids = kit.map((b) => b.id);
+  assert.equal(ids.length, 3);
+  controller.deselect(); // addKitAt selects the pin-board
+
+  toggleClick(surface.querySelector(`[data-board-id="${ids[1]}"]`));
+  assert.deepEqual(controller.multiSelectedBoardIds.sort(), [...ids].sort());
+
+  toggleClick(surface.querySelector(`[data-board-id="${ids[1]}"]`));
+  assert.deepEqual(controller.multiSelectedBoardIds, []);
+  assert.equal(controller.selectedId, null);
+});
+
+test("Ctrl-click adds a wire, and a bus adds every member wire", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const { surface, controller } = makeDesk(doc);
+  const loose = doc.addWire({ from: "bb1.a6", to: "bb1.a9" });
+  const m0 = doc.addWire({ from: "bb1.b6", to: "bb1.b9" });
+  const m1 = doc.addWire({ from: "bb1.c6", to: "bb1.c9" });
+  const bus = doc.addBus("D[1:0]", [m0.id, m1.id]);
+  window.dispatchEvent(new window.CustomEvent("chiphippo:doc-changed")); // draw
+
+  toggleClick(surface.querySelector(`.wire[data-wire-id="${loose.id}"]`));
+  assert.equal(controller.selectedId, loose.id); // one item → the single pick
+
+  // A bus is metadata over wires, so it joins as its MEMBERS — the selection
+  // has no bus set of its own, and the wires are what a delete would act on.
+  toggleClick(surface.querySelector(`.bus-band[data-bus-id="${bus.id}"]`));
+  assert.deepEqual(
+    controller.multiSelectedWireIds.sort(),
+    [loose.id, m0.id, m1.id].sort(),
+  );
+
+  toggleClick(surface.querySelector(`.bus-band[data-bus-id="${bus.id}"]`));
+  assert.deepEqual(controller.multiSelectedWireIds, []);
+  assert.equal(controller.selectedId, loose.id);
+});
+
+test("Ctrl-click on empty desk keeps the selection — a plain click clears it", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const { viewport, surface, controller } = makeDesk(doc);
+  const a = controller.addComponentAt("74LS00", "bb1", "e5");
+  const b = controller.addComponentAt("74LS04", "bb1", "e20");
+  controller.selectComponent(a.id);
+  toggleClick(partEl(surface, b.id));
+  const both = [a.id, b.id].sort();
+  assert.deepEqual(controller.multiSelectedIds.sort(), both);
+
+  // An ADD that landed on nothing has nothing to add — which is not the same
+  // as being asked to clear the selection.
+  toggleClick(viewport);
+  assert.deepEqual(controller.multiSelectedIds.sort(), both);
+
+  pointerAt(viewport, "pointerdown", 0, 0);
+  assert.deepEqual(controller.multiSelectedIds, []);
+  assert.equal(controller.selectedId, null);
+});
+
+test("Ctrl-click is refused while the circuit runs, as the marquee is", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const { surface, controller } = makeDesk(doc);
+  const chip = controller.addComponentAt("74LS00", "bb1", "e5");
+  controller.deselect(); // addComponentAt selects what it placed
+
+  controller.setEditingLocked(true);
+  toggleClick(partEl(surface, chip.id));
+  assert.deepEqual(controller.multiSelectedIds, []);
+  assert.equal(controller.selectedId, null);
+});
+
 test("every resistor renders as a span; rotateComponent swings the lead", () => {
   resetDom();
   const doc = new DeskDoc(null);
@@ -2385,6 +2547,34 @@ test("fitToScreen is camera-only while the sim runs — topology stays put", () 
     "a running circuit is never rearranged under the user",
   );
   assert.ok(deskView.camera.cx > 0, "but the camera still frames it");
+});
+
+test("fitLoadedDesk centres a just-loaded desk with nothing left to undo", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addKit("full", 400, 300);
+  doc.addComponent({ kind: "chip", ref: "74LS00", board: "bb2", anchor: "e5" });
+  const { controller, deskView } = makeDesk(doc);
+
+  let changes = 0;
+  window.addEventListener("chiphippo:doc-changed", () => changes++);
+  controller.fitLoadedDesk();
+
+  // It really is the fit: the desk straddles the origin and the camera is on it.
+  const bounds = deskBounds(doc.boards, doc.components, doc.wires);
+  assert.ok(Math.abs(bounds.minX + bounds.maxX) <= 1, "centred on x");
+  assert.ok(Math.abs(bounds.minY + bounds.maxY) <= 1, "centred on y");
+  assert.ok(Math.abs(deskView.camera.cx) <= 1);
+  // Everyone still hears about it — the dirty marker, the sim, the panels.
+  assert.equal(changes, 1);
+  // But it belongs to the LOAD, not to the user: there is no undo step, and
+  // the history's baseline is the centred desk, not the one in the file.
+  assert.equal(controller.canUndo, false);
+  const centred = { ...doc.getBoard("bb2") };
+  controller.addBoardAt("pins-half", 900, 900);
+  controller.undo();
+  assert.deepEqual(doc.getBoard("bb2"), centred, "undo lands on the centred desk"); // prettier-ignore
+  assert.equal(doc.boards.length, 3, "and takes the edit off it");
 });
 
 test("fitToScreen on an empty desk changes nothing", () => {

@@ -978,6 +978,8 @@
     },
     "edit": {
       "selectAll": "Seleziona tutto — l'intero piano di lavoro, o il testo di un campo",
+      "toggleSelect": "Aggiungi / togli un singolo elemento dalla selezione",
+      "toggleSelectKeys": "{mod}+Clic",
       "copy": "Copia il componente selezionato",
       "paste": "Incolla un duplicato",
       "delete": "Elimina la selezione",

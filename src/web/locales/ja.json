@@ -963,6 +963,8 @@
     },
     "edit": {
       "selectAll": "すべてを選択 — デスク全体、または入力欄のテキスト",
+      "toggleSelect": "項目を 1 つ選択に追加／選択から除外",
+      "toggleSelectKeys": "{mod}+クリック",
       "copy": "選択した部品をコピー",
       "paste": "複製を貼り付け",
       "delete": "選択したものを削除",

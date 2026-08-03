@@ -978,6 +978,8 @@
     },
     "edit": {
       "selectAll": "Select all — the whole desk, or a text field's text",
+      "toggleSelect": "Add / remove one item from the selection",
+      "toggleSelectKeys": "{mod}+Click",
       "copy": "Copy the selected component",
       "paste": "Paste a duplicate",
       "delete": "Delete the selection",

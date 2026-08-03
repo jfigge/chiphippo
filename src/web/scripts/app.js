@@ -617,18 +617,12 @@ async function init() {
   // A part's EXAMPLE CIRCUIT, asked for from its pin-assignments window. That
   // window has a ref and nothing else — no project, no desk — so main relays
   // the request here, where both live (the memory inspector's host relay is the
-  // same pipe). The desktop arrives through the workspace; it is FRAMED here,
-  // because framing follows the ACTIVE view and only app.js knows which that
-  // is. The fit is camera-only: `make demos` writes every example already
-  // centred on the origin, so ⌘F's recentre half finds a zero delta and leaves
-  // no undo step behind on a desk nobody has touched. A desktop that was
-  // already open is not re-framed — its camera is the user's.
+  // same pipe). The workspace does the rest: a NEW example desktop is centred,
+  // framed (through the `fitView` callback below) and left clean, and one that
+  // was already open is simply put back on the desk, camera and all.
   window.addEventListener("chiphippo:demo-host-inbound", (e) => {
     const ref = e.detail?.ref;
-    if (!ref) return;
-    void workspace?.openExample(ref).then((res) => {
-      if (res === "added") fitActiveView();
-    });
+    if (ref) void workspace?.openExample(ref);
   });
 
   /** A Desktop-menu item aimed at whichever desktop is on screen. */
@@ -1273,6 +1267,17 @@ async function init() {
   // move — fitting IS centring it).
   const fitActiveView = () =>
     mode === "schematic" ? schematicView.fit() : controller.fitToScreen();
+  // The same move for a desk that has JUST BEEN LOADED — a project opening, an
+  // example desktop landing. The DESK is always recentred and framed, whichever
+  // view is showing: centring is a fact about the document, and the schematic's
+  // own fit is camera-only (its symbol positions are derived). It goes through
+  // the controller's load-time form, which keeps the recentre out of undo/redo;
+  // the workspace clears the dirty flag straight after, for the same reason —
+  // nobody moved the design, the app did, putting it where it can be seen.
+  const frameLoadedView = () => {
+    controller.fitLoadedDesk();
+    if (mode === "schematic") schematicView.fit();
+  };
   let locateHovered = false;
   let locateShiftHeld = false;
   const updateLocateIcon = () => {
@@ -1496,6 +1501,7 @@ async function init() {
     tabs: projectTabs,
     getCamera: () => deskView.camera,
     setCamera: (camera) => deskView.setCamera(camera),
+    fitView: frameLoadedView,
     boot: projectBoot,
     onActiveChange: () => updateTitle(),
   });

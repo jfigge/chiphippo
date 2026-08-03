@@ -978,6 +978,8 @@
     },
     "edit": {
       "selectAll": "Seleccionar todo — la mesa entera, o el texto de un campo",
+      "toggleSelect": "Añadir / quitar un elemento de la selección",
+      "toggleSelectKeys": "{mod}+Clic",
       "copy": "Copiar el componente seleccionado",
       "paste": "Pegar un duplicado",
       "delete": "Eliminar la selección",

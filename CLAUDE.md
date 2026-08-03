@@ -451,6 +451,20 @@ Electron main process (src/app/main.js)
   topology is frozen. Fit follows the ACTIVE view (app.js's `fitActiveView`):
   the schematic's own `fit()` is camera-only, since its symbol positions are
   derived and there is nothing to move.
+  **THE SAME MOVE HAPPENS ON EVERY LOAD, and there it is nobody's edit**
+  (`DeskController.fitLoadedDesk` ← app.js's `frameLoadedView` ←
+  `ProjectWorkspace#frameLoaded`). A file holds a design wherever it was built
+  and a brand-new desktop's camera is nobody's yet, so a PROJECT that opens
+  (boot, Open…, Open Recent, New) and a NEW EXAMPLE DESKTOP are both centred
+  and framed before they are looked at. What differs from ⌘F is whose move it
+  is: the load's, not the user's. So it is neither recorded (`#restoring`) nor
+  left as the first thing ⌘Z would undo (the history's present entry is
+  re-baselined to the centred document), and the workspace takes its clean
+  baseline straight after (`#markClean`) — putting a design where it can be
+  seen must never earn a •, or a save-or-discard question about a project
+  nobody has touched. A tab SWITCH deliberately does neither: that desk's
+  camera and state are the user's. The desk is recentred whichever view is
+  showing, since centring is a fact about the DOCUMENT.
 - **Components**: `{ id, kind, ref, board, anchor, params }` with `c<n>` ids
   (kinds `chip` | `discrete`); desk-level **bricks** carry `{ id, kind, ref, x, y,
   params }` instead of a board anchor — PSUs (`psu<n>`, kind `"psu"`) and clock
@@ -1397,6 +1411,54 @@ Electron main process (src/app/main.js)
   and is both the placeholder for an empty list and what the last `onRemove`
   falls back to; without one, an empty list opens an empty card. Everything is opt-in: an item with none of them
   renders exactly as it always did.
+- **THE SELECTION IS BUILT TWO WAYS, AND THE MODIFIER IS THE DIFFERENCE**
+  (`model/selection-toggle.js`, pure). A **Shift-drag marquee** REPLACES the
+  selection with everything a box wholly encloses; a **⌘/Ctrl-click** ADDS one
+  item to it, or takes one back out. Both fill the same three sets
+  (`#multi` / `#multiWires` / `#multiBoards`), so Delete, ⌘C's cluster/design
+  clip and the board highlighter are untouched by the second one existing.
+  - **⌘ ON macOS, Ctrl EVERYWHERE ELSE** — each platform's own additive-select
+    modifier, and the split the shortcut glyphs already make. **CTRL CANNOT BE
+    IT ON A MAC**, and that is worth keeping written down because Ctrl is the
+    obvious key to reach for (it was asked for, tried, and backed out of):
+    there Ctrl-click IS the system's secondary click, so admitting it means the
+    press arriving as **button 2** and raising a **`contextmenu`** the desk
+    then has to SWALLOW — one press must not both toggle the selection and open
+    a menu over the top of it — which costs Ctrl-click its context menus
+    everywhere on the desk. ⌘ costs none of that. Only the PRIMARY button
+    counts, so Ctrl+right-click off a Mac stays a right-click. Shift and Option
+    are excluded rather than ignored — each belongs to a gesture of its own
+    (the marquee; the wiring-carrying part drag / the torn-off board run), so a
+    chord carrying either must not be claimed here. The predicate is pure
+    because the app only ever runs ONE side of its platform branch.
+  - **A WIRE AND A BUS TOGGLE ON THE PRESS**, from the viewport's pointerdown,
+    so every kind of item joins the selection at the moment a part and a board
+    do. Their own click listeners therefore merely STAND DOWN for the chord —
+    the click that still follows would otherwise replace the selection just
+    toggled.
+  - **ONE ITEM COLLAPSES TO THE ORDINARY SINGLE PICK** (`singlePick`). A
+    one-item multi-selection would look identical on screen and quietly do
+    none of what a single pick does — R would not rotate it, Properties… would
+    not open, the Option ride hint would not ring its wires.
+  - **A TOGGLE IS ALL-OR-NOTHING over the ids it is given**, which is what lets
+    a BOARD toggle its whole snapped GROUP (the set a plain click already
+    selects and the highlighter already outlines) and a BUS toggle its member
+    WIRES (a bus is metadata over wires; the selection holds no bus of its
+    own). A group only PARTLY selected completes rather than half-clearing —
+    that is an answer the next click can undo.
+  - **THE SINGLE PICK IS FOLDED IN** (`#selectionSets`), since it is what a
+    modifier-click most often extends. Annotations are the one kind left out:
+    they are none of the three sets, so the chord leaves the selection exactly
+    as it was rather than trading it for the note.
+  - Refused while `#mode` owns the pointer and while the circuit RUNS, for the
+    reason the marquee is — including on a running switch, which the press must
+    not fall through and FLIP instead. A modifier-press starts NO drag (the
+    wire/bus grabs in the viewport dispatcher stand down for it), and
+    landing on **empty desk does not deselect** — an add that found nothing has
+    nothing to add, which is not a request to clear. A press near a wire's END
+    CAP toggles that WIRE (`WireTools.wireIdNear`), never the board under it:
+    a cap is not a pointer target, so the wire's own click listener never runs
+    for a press the board absorbed.
 - **OPTION-DRAGGING A PART TAKES ITS WIRING WITH IT** (`model/part-move.js`,
   Feature 290). A plain part drag re-seats the part alone, which on a WIRED
   part is a **silent rewiring**: rows e/f are free in the new columns so
@@ -1967,8 +2029,13 @@ Electron main process (src/app/main.js)
   An in-flight map keyed by ref makes a double-click ONE desktop (the name
   check and the insert are separated by awaits, which is exactly where a
   duplicate gets in). The answer is three-valued (`"added"`/`"switched"`/null)
-  because `app.js` frames it with `fitActiveView` — framing a brand-new desk is
-  help, re-framing one the user has arranged is interference.
+  because a NEW example desktop is centred, framed and left CLEAN on the terms
+  a loaded project is (see the load-time fit above) while one already open is
+  none of those — its camera and whatever the user has since made of it are
+  theirs. Clean is the deliberate half: an example is a SHIPPED circuit a click
+  away from its part's pinout window, so looking one up is not work to keep or
+  throw away, and it must not put a save-or-discard question in front of the
+  next New or Open. Editing it is an unsaved change like any other.
   Memory/Interface/PROCESSOR chips get no example and therefore no button: a RAM or a CPU cannot be
   demonstrated by flipping switches at it, and the 65xx demos are excluded for
   a sharper reason still — their program lives in a separate `.hex`, so the

@@ -146,6 +146,7 @@ export class ProjectWorkspace {
   #tabsView;
   #getCamera;
   #setCamera;
+  #fitView;
   #onActiveChange;
   #project = null; // the normalized meta (model/project-doc.js) + `location`
   #state = new Map(); // tabId → { history, camera }
@@ -212,6 +213,9 @@ export class ProjectWorkspace {
    * @param {import('./project-tabs.js').ProjectTabs} opts.tabs - the strip.
    * @param {() => object} opts.getCamera - the desk's current camera.
    * @param {(camera: object) => void} opts.setCamera
+   * @param {() => void} [opts.fitView] - centre + frame a JUST-LOADED desk
+   *   (app.js's load-time fit — the workspace has no opinion about which view
+   *   is on screen). See `#frameLoaded`.
    * @param {object|null} [opts.boot] - the result of `ProjectWorkspace.boot`.
    * @param {(tab: object|null) => void} [opts.onActiveChange] - the active
    *   desktop (or the project) changed: re-title and re-render.
@@ -224,6 +228,7 @@ export class ProjectWorkspace {
     tabs,
     getCamera,
     setCamera,
+    fitView,
     boot = null,
     onActiveChange,
     autoSaveMs = AUTO_SAVE_MS,
@@ -235,10 +240,13 @@ export class ProjectWorkspace {
     this.#tabsView = tabs;
     this.#getCamera = getCamera;
     this.#setCamera = setCamera;
+    this.#fitView = fitView;
     this.#onActiveChange = onActiveChange;
     this.#autoSaveMs = Number(autoSaveMs) > 0 ? Number(autoSaveMs) : 0;
     if (boot?.project) {
       this.#adopt(boot.project);
+      // Centre and frame what booted, before the baseline below is taken.
+      this.#frameLoaded();
       if (boot.restored) {
         // A RESTORED project is unsaved by definition: it holds what its file
         // did not, which is why it was stashed. So it must read dirty — the •,
@@ -787,10 +795,10 @@ export class ProjectWorkspace {
    * the honest answer, since the project schema keeps no per-tab marker a
    * rename could not erase.
    *
-   * The caller FRAMES it (app.js's `fitActiveView`), because framing follows
-   * the active view and the workspace has no opinion about which one is on
-   * screen. Which is also why the answer is three-valued: framing a brand-new
-   * desk is help, and re-framing one the user has already arranged is not.
+   * A NEW example desktop is centred and framed on the way in and lands CLEAN
+   * (`#frameLoaded` + `#markClean`, exactly as a loaded project does); one
+   * that was already open is neither, since its camera and its state are the
+   * user's. Which is what the three-valued answer is for.
    *
    * @param {string} ref - a catalog id ("74LS00").
    * @returns {Promise<"added"|"switched"|null>} null when it could not (already
@@ -852,6 +860,14 @@ export class ProjectWorkspace {
     await this.#leaveActiveDesk();
     this.#project = next.meta;
     this.#loadActive();
+    this.#frameLoaded();
+    // An example is a SHIPPED circuit, reproducible from its part's pinout
+    // window in one click — so it arrives on the same terms a loaded project
+    // does: centred, and clean. Looking one up is not work to keep or throw
+    // away, and it must not put a save-or-discard question in front of the
+    // next New or Open. (A desktop that was already open keeps its camera and
+    // whatever the user has since made of it — this path is a NEW one.)
+    this.#markClean();
     this.#renderTabs();
     this.#announce();
     return "added";
@@ -999,9 +1015,33 @@ export class ProjectWorkspace {
       return;
     }
     this.#loadActive();
+    this.#frameLoaded();
     this.#markClean(); // it is its file, exactly as the desk now holds it
     this.#announce();
     this.#warn(raw?.warnings);
+  }
+
+  /**
+   * Centre and frame a desk that has just been LOADED — a project opening, or
+   * an example desktop landing.
+   *
+   * A file holds a design wherever it was built, and a fresh desktop's camera
+   * is nobody's yet, so what arrives is put in the middle before it is looked
+   * at. The move belongs to the LOAD, not to the user: every caller takes the
+   * clean baseline (`#markClean`) straight after, and the controller keeps it
+   * out of undo/redo (`fitLoadedDesk`), so a design nobody has touched can
+   * never meet the next New or Open with a save-or-discard question about
+   * having been centred.
+   *
+   * The callback is app.js's, because framing follows the ACTIVE view and the
+   * workspace has no opinion about which one is on screen.
+   */
+  #frameLoaded() {
+    try {
+      this.#fitView?.();
+    } catch (err) {
+      console.error("[renderer] fitting the loaded desk failed:", err);
+    }
   }
 
   /**

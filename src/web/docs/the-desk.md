@@ -111,6 +111,44 @@ strips are mated, clicking any one of them highlights the whole set — the
 outline traces the union of the group's strips, so flush neighbours read as
 one board rather than showing a seam between them.
 
+## Selecting things
+
+Clicking a board, part, wire, bus or note selects that one thing, and clicking
+empty desk clears the selection. There are two ways to select **several** at
+once, and they are complementary:
+
+- **Shift-drag a marquee** anywhere on the desk. It *replaces* the selection
+  with everything the box encloses **completely** — any board wholly inside,
+  any part whose every pin is inside, and any wire with **both** ends inside.
+  Half-covered things are left out on purpose: a wire with one end outside the
+  box would have to be cut to come along.
+- **`Cmd`-click** (`Ctrl`-click on Windows and Linux) an individual item to
+  *add* it to the selection, or to take it back out if it's already in. This is
+  how you pick up the four chips you actually want without drawing a box around
+  the eight that are next to each other, and how you drop the one thing a
+  marquee caught that you didn't mean.
+
+`Cmd/Ctrl`-clicking a **board** takes its whole snapped group, the same set a
+plain click selects. Clicking a **bus** takes all of its member wires — a bus
+is bookkeeping over wires, and the wires are what a delete or a copy acts on.
+Clicking **empty desk** with the modifier held leaves the selection alone
+rather than clearing it: an add that landed on nothing has nothing to add.
+
+Notes and labels are the one thing a multi-selection can't hold, so
+`Cmd/Ctrl`-clicking one does nothing; a plain click still selects it.
+
+> **On macOS this is `Cmd`, not `Ctrl`** — the modifier the rest of the
+> platform's lists use. `Ctrl`-click there is the system's secondary click, and
+> it keeps that job: it still opens an item's context menu.
+
+Either way the result is one selection: `Delete` removes all of it in a single
+step, `Cmd/Ctrl+C` copies it (as a whole design, if it includes boards — see
+[Projects & Desktops](projects-and-desktops.md)), and `Esc` clears it.
+`Cmd/Ctrl+A` selects the entire desk.
+
+Nothing can be selected while the simulation is **running** — the topology is
+frozen, so a selection would be one you couldn't act on.
+
 ## Groups & breaking a snap
 
 Grabbing a mated strip normally drags the **whole group** together. To pull

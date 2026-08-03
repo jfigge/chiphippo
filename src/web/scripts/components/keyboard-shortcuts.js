@@ -72,6 +72,13 @@ const shortcutGroups = () => [
     title: t("shortcuts.group.edit"),
     rows: [
       { desc: t("shortcuts.edit.selectAll"), keys: `${MOD}+A` },
+      // The one MOUSE chord in here, and it earns its place beside Select All:
+      // the marquee replaces a selection, this adds to one. Its keys ARE
+      // catalog text — unlike a bare glyph, "Click" is a word.
+      {
+        desc: t("shortcuts.edit.toggleSelect"),
+        keys: t("shortcuts.edit.toggleSelectKeys", { mod: MOD }),
+      },
       { desc: t("shortcuts.edit.copy"), keys: `${MOD}+C` },
       { desc: t("shortcuts.edit.paste"), keys: `${MOD}+V` },
       { desc: t("shortcuts.edit.delete"), keys: "Delete" },

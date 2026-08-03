@@ -963,6 +963,8 @@
     },
     "edit": {
       "selectAll": "全选 — 整个工作台，或输入框中的文字",
+      "toggleSelect": "将单个项目加入／移出选择",
+      "toggleSelectKeys": "{mod}+点击",
       "copy": "复制选中的元件",
       "paste": "粘贴一个副本",
       "delete": "删除所选内容",

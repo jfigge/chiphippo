@@ -178,6 +178,8 @@ For a *part* of a desk rather than the whole of it, copy and paste:
 1. On the desktop holding it, **shift-drag a marquee** around the design — the
    boards, the chips on them, and the wiring. A marquee takes in any board it
    encloses *completely*, and the selected set is outlined as one block.
+   `Cmd/Ctrl`-click adds or removes an individual item afterwards, so a box
+   that caught one thing too many (or one too few) doesn't have to be redrawn.
 2. Press `Cmd/Ctrl+C`. The whole sub-assembly is copied: the boards, everything
    seated on them (whether or not the box touched it), every wire with **both**
    ends inside the set, and the buses, net names, and anchored labels riding

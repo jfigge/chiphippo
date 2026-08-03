@@ -249,14 +249,20 @@ function fakeBridge() {
  * The pieces app.js normally wires up, as stubs the tests can inspect.
  *
  * `onLoad` stands for whatever the DESK makes of a document on the way in that
- * the stored copy spelled differently — a normalization, a migration, the
- * fit-to-screen recentre. It runs on every load, boot included, exactly where
- * the real controller's would.
+ * the stored copy spelled differently — a normalization, a migration brought
+ * forward. It runs on every load, boot included, exactly where the real
+ * controller's would.
+ *
+ * `fitView` is app.js's load-time fit (`frameLoadedView`), which the workspace
+ * calls for a project it opens and for a NEW example desktop. It is handed the
+ * live document, so a test can make it MOVE the desk — which is what the real
+ * one does (the recentre half of the fit).
  */
 async function harness({
   doc = new DeskDoc(null),
   fake = fakeBridge(),
   onLoad = null,
+  fitView = null,
   // Auto-save OFF unless a test asks for it: every other test here asserts on
   // what a DELIBERATE save wrote, and a background stash would move the working
   // slot underneath it. `0` is the real off switch, not a test-only escape.
@@ -301,6 +307,7 @@ async function harness({
   }
   // What app.js's `updateTitle` is wired to — the • marker's one refresh seam.
   const announced = { count: 0 };
+  const fits = { count: 0 };
   workspace = new ProjectWorkspace({
     bridge: fake.bridge,
     deskDoc: doc,
@@ -310,6 +317,10 @@ async function harness({
     getCamera: () => camera,
     setCamera: (c) => {
       camera = c;
+    },
+    fitView: () => {
+      fits.count += 1;
+      fitView?.(doc);
     },
     boot,
     autoSaveMs,
@@ -327,6 +338,7 @@ async function harness({
     sim,
     boot,
     announced,
+    fits,
     camera: () => camera,
     moveCamera: (c) => {
       camera = c;
@@ -522,6 +534,65 @@ test("opening a project the desk moves loading it is clean too", async () => {
   // what is on the desk, and an edit after it still registers.
   h.doc.load(someDesign("bb3"));
   assert.equal(h.workspace.dirty, true, "a real edit still counts");
+});
+
+// ── A loaded desk is CENTRED, and the centring is nobody's edit ──────────────
+//
+// A file holds a design wherever it was built, and a fresh desktop's camera is
+// nobody's yet, so what arrives is centred and framed before it is looked at
+// (app.js's `frameLoadedView`, reached through the `fitView` seam). The move is
+// the app's, not the user's: the clean baseline is taken straight after it, so
+// putting a design where it can be seen can never earn a • — or a
+// save-or-discard question about a project nobody has touched.
+
+test("boot centres the desk it opens with, and stays clean", async () => {
+  const fake = fakeBridge();
+  fake.seedProject(DEFAULT_PROJECT, {
+    name: "",
+    activeTab: "t1",
+    nextIndex: 2,
+    tabs: [{ id: "t1", name: "Desktop 1", doc: someDesign() }],
+  });
+  const h = await harness({
+    fake,
+    fitView: (doc) => doc.translateAll(-20, -20),
+  });
+  assert.equal(h.fits.count, 1, "the booted desktop was framed");
+  assert.deepEqual(
+    h.doc.boards.map((b) => ({ x: b.x, y: b.y })),
+    [{ x: -18, y: -18 }],
+    "and centring really moved it",
+  );
+  assert.equal(h.workspace.dirty, false, "which is the baseline, not a change");
+});
+
+test("opening a project centres it, and that is not an unsaved change", async () => {
+  const h = await harness({ fitView: (doc) => doc.translateAll(-20, -20) });
+  const atBoot = h.fits.count;
+  h.seedProject("/home/other.chiphippo", {
+    name: "Other",
+    activeTab: "t1",
+    nextIndex: 2,
+    tabs: [{ id: "t1", name: "Theirs", doc: someDesign("bb9") }],
+  });
+  h.control.openProject = "/home/other.chiphippo";
+  await leaving(() => h.workspace.loadProject());
+  assert.equal(h.fits.count, atBoot + 1, "the project it opened was framed");
+  assert.deepEqual(
+    h.doc.boards.map((b) => ({ x: b.x, y: b.y })),
+    [{ x: -18, y: -18 }],
+  );
+  assert.equal(h.workspace.dirty, false);
+});
+
+test("switching between desktops never re-centres — that camera is the user's", async () => {
+  const h = await harness();
+  await h.workspace.addTab();
+  await settle();
+  const after = h.fits.count;
+  await h.workspace.selectTab("t1");
+  await settle();
+  assert.equal(h.fits.count, after, "a desk you have already arranged is left");
 });
 
 // ── One document, one dirty flag ─────────────────────────────────────────────
@@ -1247,13 +1318,43 @@ test("an example is reseated like any other copy of a desktop", async () => {
   assert.equal(h.doc.toJSON().nextBoardId, 101);
 });
 
-test("an example is an unsaved change like any other desktop", async () => {
+// An example is a SHIPPED circuit, one click away from its part's pinout
+// window — so it arrives on the same terms a loaded project does: centred, and
+// clean. Looking one up is not work to keep or throw away, and it must not put
+// a save-or-discard question in front of the next New or Open.
+test("a NEW example desktop is centred and lands clean", async () => {
+  const h = await harness({ fitView: (doc) => doc.translateAll(-20, -20) });
+  h.seedExample("74LS00", { ref: "74LS00", title: "NAND", doc: someDesign() });
+  const atBoot = h.fits.count;
+  await h.workspace.openExample("74LS00");
+  await settle();
+  assert.equal(h.fits.count, atBoot + 1, "the example desk was framed");
+  assert.deepEqual(
+    h.doc.boards.map((b) => ({ x: b.x, y: b.y })),
+    [{ x: -18, y: -18 }],
+    "and centring really moved it",
+  );
+  assert.equal(h.workspace.dirty, false);
+  assert.equal(h.tabsOf().length, 1, "nothing was written either");
+
+  // Editing it is still an unsaved change, exactly like any other desktop.
+  h.doc.load(someDesign("bb3"));
+  assert.equal(h.workspace.dirty, true);
+});
+
+test("switching back to an open example neither re-centres nor re-baselines", async () => {
   const h = await harness();
   h.seedExample("74LS00", { ref: "74LS00", title: "NAND", doc: someDesign() });
   await h.workspace.openExample("74LS00");
   await settle();
-  assert.equal(h.workspace.dirty, true);
-  assert.equal(h.tabsOf().length, 1, "nothing was written");
+  await h.workspace.selectTab("t1");
+  await settle();
+  h.doc.load(someDesign("bb3")); // a real edit on the desktop being left
+  const fits = h.fits.count;
+  assert.equal(await h.workspace.openExample("74LS00"), "switched");
+  await settle();
+  assert.equal(h.fits.count, fits, "its camera is the user's now");
+  assert.equal(h.workspace.dirty, true, "and the edit is still unsaved");
 });
 
 test("a part with no bundled example is reported and changes nothing", async () => {

@@ -73,6 +73,11 @@ import {
   busWidthForKey,
 } from "../model/desk-doc.js";
 import { nearestLegalOffset } from "../model/nearest-legal.js";
+import {
+  isToggleSelectEvent,
+  singlePick,
+  toggleSelection,
+} from "../model/selection-toggle.js";
 import { wireRunMm } from "../model/wire-length.js";
 import { HistoryStore } from "../model/history-store.js";
 import { partDef } from "../catalog/index.js";
@@ -104,6 +109,11 @@ import { BusTools } from "./bus-tools.js";
 import { beginPointerGesture, releaseWorld } from "./pointer-gesture.js";
 import { BoardOutline } from "./board-outline.js";
 import { HoleRings } from "./hole-rings.js";
+
+/** Which platform's additive-select modifier the desk answers to — ⌘ on
+    macOS, Ctrl elsewhere. See model/selection-toggle.js for why Ctrl cannot be
+    it on a Mac. Read once, as every other platform-glyph site does. */
+const IS_MAC = globalThis.window?.chiphippo?.platform === "darwin";
 
 /** The static SVG for a desk brick (PSU / clock) by kind. */
 function brickSvg(kind, params) {
@@ -332,10 +342,19 @@ export class DeskController {
 
     // All wires render into one SVG in the wires layer.
     this.#wireLayer = new WireLayer(this.#layers.wires, deskDoc, {
-      onSelect: (id) => this.selectWire(id),
+      // A wire and a bus are ordinarily CLICKED rather than pressed, but the
+      // additive chord is answered on the PRESS (the viewport dispatcher), so
+      // that every kind toggles at the same moment a part and a board do.
+      // These two therefore only have to stand down for it — the click that
+      // still follows would otherwise replace the selection just toggled.
+      onSelect: (id, e) => {
+        if (!isToggleSelectEvent(e, IS_MAC)) this.selectWire(id);
+      },
       onContextMenu: (id, e) => this.#wire.onContextMenu(id, e),
       onHover: (id) => this.#probe.onWireHover(id),
-      onSelectBus: (id) => this.selectBus(id),
+      onSelectBus: (id, e) => {
+        if (!isToggleSelectEvent(e, IS_MAC)) this.selectBus(id);
+      },
       onBusContextMenu: (id, e) => this.#bus.onContextMenu(id, e),
     });
 
@@ -825,6 +844,84 @@ export class DeskController {
   deselect() {
     this.#clearMultiSelection();
     this.#select(null);
+  }
+
+  // ── Additive selection (⌘/Ctrl-click) ───────────────────────────────────
+  //
+  // The marquee REPLACES a selection; this ADDS one item to it, or takes one
+  // back out. Both build the same three sets, so everything downstream —
+  // Delete, ⌘C's cluster/design clip, the board highlighter — is untouched.
+  //
+  // Annotations are deliberately absent: they are not one of those three sets
+  // (a marquee cannot take one either), so a modifier-click on a label leaves
+  // the selection exactly as it was rather than silently throwing it away in
+  // exchange for the note. A plain click still selects one.
+
+  /** The selection as the three sets, with the single pick folded in — that
+      pick is what a modifier-click most often EXTENDS, so it has to be part of
+      what is being toggled against. A selected board contributes its whole
+      snapped group, which is the set its highlighter is already drawing. */
+  #selectionSets() {
+    const sets = {
+      parts: new Set(this.#multi),
+      wires: new Set(this.#multiWires),
+      boards: new Set(this.#multiBoards),
+    };
+    const sel = this.#selected;
+    if (sel?.kind === "part") sets.parts.add(sel.id);
+    else if (sel?.kind === "wire") sets.wires.add(sel.id);
+    else if (sel?.kind === "board") {
+      for (const b of this.#doc.groupMembers(sel.id)) sets.boards.add(b.id);
+    }
+    return sets;
+  }
+
+  /**
+   * Toggle a set of ids of one kind in and out of the selection.
+   *
+   * Refused while a tool or a drag owns `#mode` (a click is not a select
+   * then — the same guard selectWire/selectBus carry) and while the circuit
+   * runs, for the reason a marquee is: a selection applied into the frozen
+   * state is one the user cannot act on.
+   *
+   * @param {"parts"|"wires"|"boards"} kind
+   * @param {string[]} ids
+   */
+  #toggleSelection(kind, ids) {
+    if (this.#mode || this.#editingLocked) return;
+    const next = toggleSelection(this.#selectionSets(), kind, ids);
+    const one = singlePick(next);
+    if (one)
+      this.#select(one); // collapse — see singlePick's own note
+    else if (next.parts.length || next.wires.length || next.boards.length) {
+      this.#setMultiSelection(next.parts, next.wires, next.boards);
+    } else this.deselect();
+  }
+
+  /** ⌘/Ctrl-click a part or brick: in or out of the selection. */
+  toggleComponentSelection(id) {
+    if (this.#partViews.has(id)) this.#toggleSelection("parts", [id]);
+  }
+
+  /** ⌘/Ctrl-click a wire: in or out of the selection. */
+  toggleWireSelection(id) {
+    if (this.#doc.getWire(id)) this.#toggleSelection("wires", [id]);
+  }
+
+  /** ⌘/Ctrl-click a bus: its MEMBER WIRES go in or out together — a bus is
+      metadata over wires and the selection holds no bus of its own. */
+  toggleBusSelection(id) {
+    const members = this.#doc.getBus(id)?.members ?? [];
+    if (members.length) this.#toggleSelection("wires", members);
+  }
+
+  /** ⌘/Ctrl-click a board: the WHOLE snapped group goes in or out, which is
+      the set a plain click already selects and the highlighter already
+      outlines — a kit joins a design clip as the assembly it is. */
+  toggleBoardSelection(id) {
+    if (!this.#views.has(id)) return;
+    const members = this.#doc.groupMembers(id).map((b) => b.id);
+    this.#toggleSelection("boards", members.length ? members : [id]);
   }
 
   /** Drop the selection if it is this wire (WireTools calls this on remove). */
@@ -2091,6 +2188,29 @@ export class DeskController {
   }
 
   /**
+   * Frame a desk that has JUST BEEN LOADED — the same recentre + fit ⌘F does,
+   * but as part of the LOAD rather than as an edit sitting on top of it.
+   *
+   * A file may hold a design built anywhere in the coordinate space, so a
+   * project (or an example desktop) that arrives is centred and framed before
+   * the user ever sees it. That move is not theirs: it is the document as the
+   * app understands it, exactly like a normalization or a migration brought
+   * forward. So it is neither recorded (`#restoring`) nor left standing as the
+   * first thing ⌘Z would undo — the history's present entry is re-baselined to
+   * the recentred document instead. The caller clears the dirty flag for the
+   * same reason (ProjectWorkspace's `#markClean`).
+   */
+  fitLoadedDesk() {
+    this.#restoring = true;
+    try {
+      this.fitToScreen();
+    } finally {
+      this.#restoring = false;
+    }
+    this.#history.sync(this.#doc.snapshot());
+  }
+
+  /**
    * Slide the whole desk so what is on it straddles the origin — every board,
    * brick, and label by one integer delta (DeskDoc.translateAll), which is
    * rigid and so can neither refuse nor change what is mated to what.
@@ -3100,6 +3220,19 @@ export class DeskController {
     // must still absorb the press — otherwise it falls through to a board
     // drag right here, since #capNear doesn't care whether a grab started.
     const world = this.#deskView.worldFromEvent(e);
+    // ⌘/Ctrl-click adds this board's group to the selection (or takes it out)
+    // and starts no drag. Checked BEFORE the drags below and with the same
+    // wire-end priority: a cap sits on a board hole and is not a pointer
+    // target, so the wire's own click listener never runs here — without this
+    // a modifier-click aimed at a wire end would pull in a whole breadboard.
+    if (isToggleSelectEvent(e, IS_MAC)) {
+      e.stopPropagation();
+      this.#hideHover();
+      const capWire = this.#wire.wireIdNear(world);
+      if (capWire) this.toggleWireSelection(capWire);
+      else this.toggleBoardSelection(id);
+      return;
+    }
     if (this.#wire.tryBeginDrag(e, world)) return;
     if (this.#wire.capNear(world)) return;
     this.#hideHover();
@@ -3403,11 +3536,18 @@ export class DeskController {
 
   #onPartPointerDown(id, e) {
     if (e.button !== 0) return;
+    const toggling = isToggleSelectEvent(e, IS_MAC);
     if (e.shiftKey) return; // shift-drag is the viewport's marquee
     if (this.#mode || this.#probe.armed) return; // no part drags while probing
     // While running, only click-toggle parts stay interactive (click to
     // flip); every other part is frozen in place.
     if (this.#editingLocked) {
+      // A modifier-press is a SELECT, and selection is refused while running —
+      // it must not fall through and flip a switch instead.
+      if (toggling) {
+        e.stopPropagation();
+        return;
+      }
       // While running, only live interactions remain: a slide switch or
       // toggle button flips, and a manual clock toggles one edge.
       const comp = this.#doc.getComponent(id);
@@ -3418,6 +3558,14 @@ export class DeskController {
         e.stopPropagation();
         this.#onClockToggle?.(id);
       }
+      return;
+    }
+    // ⌘/Ctrl-click adds this part to the selection (or takes it out) and
+    // starts no drag — the press is the whole gesture.
+    if (toggling) {
+      e.stopPropagation();
+      this.#hideHover();
+      this.toggleComponentSelection(id);
       return;
     }
     this.#hideHover();
@@ -3881,6 +4029,13 @@ export class DeskController {
     // No annotation drags while placing/dragging, probing (clicks pin nets),
     // or running (topology + decoration frozen).
     if (this.#mode || this.#probe.armed || this.#editingLocked) return;
+    // An annotation cannot join a multi-selection (it is none of the three
+    // sets a marquee builds), so the additive chord leaves the selection
+    // alone here rather than trading it for the note. A plain click selects.
+    if (isToggleSelectEvent(e, IS_MAC)) {
+      e.stopPropagation();
+      return;
+    }
     this.#hideHover();
     this.selectAnnotation(id);
     const ann = this.#doc.getAnnotation(id);
@@ -4157,23 +4312,45 @@ export class DeskController {
   #onViewportPointerDown = (e) => {
     this.#lastDown = { x: e.clientX, y: e.clientY };
     if (this.#mode || e.button !== 0) return; // busy (tool/drag) or non-left
+    // A wire and a bus are toggled from HERE rather than from their own click
+    // listeners, so that every kind of item joins the selection on the press,
+    // as a part and a board do.
+    const toggling = isToggleSelectEvent(e, IS_MAC);
+    if (toggling) {
+      const wireId = e.target?.closest?.(".wire")?.dataset.wireId;
+      // A wire's own hit stroke sits ABOVE the bus band, so whichever the
+      // press landed on is what the event target already says.
+      const busId = wireId
+        ? null
+        : e.target?.closest?.(".bus-band")?.dataset.busId;
+      if (wireId || busId) {
+        this.#hideHover();
+        if (wireId) this.toggleWireSelection(wireId);
+        else this.toggleBusSelection(busId);
+        return;
+      }
+    }
     // Shift-drag anywhere rubber-bands a multi-selection (never a pan — DeskView
     // skips shift-left too). Not while probing or running.
     if (e.shiftKey && !this.#probe.armed && !this.#editingLocked) {
       this.#beginMarquee(e);
       return;
     }
+    // The additive chord is a SELECT, never a drag — so the wire and bus grabs
+    // below stand down for it (the toggle above has already had its say).
     // Not while probing (clicks pin nets) or running (topology frozen). A
     // press near a wire cap re-routes its end; on the body, translates it; on a
     // bundle band (below the wires), it drags the whole bus.
-    if (!this.#probe.armed && !this.#editingLocked) {
+    if (!this.#probe.armed && !this.#editingLocked && !toggling) {
       const world = this.#deskView.worldFromEvent(e);
       if (this.#wire.tryBeginDrag(e, world)) return;
       if (this.#bus.tryBeginDrag(e, world)) return;
     }
     // Click on truly empty desk (the viewport itself — layers are zero-size
-    // and overlay children are pointer-inert) deselects.
-    if (e.target === this.#viewport) this.deselect();
+    // and overlay children are pointer-inert) deselects. Held modifier and it
+    // does not: an ADD that landed on nothing has nothing to add, which is not
+    // the same as asking for the selection to be cleared.
+    if (e.target === this.#viewport && !toggling) this.deselect();
   };
 
   #onViewportClick = (e) => {

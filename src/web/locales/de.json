@@ -978,6 +978,8 @@
     },
     "edit": {
       "selectAll": "Alles auswählen — die ganze Arbeitsfläche oder der Text eines Eingabefelds",
+      "toggleSelect": "Ein einzelnes Element zur Auswahl hinzufügen / daraus entfernen",
+      "toggleSelectKeys": "{mod}+Klick",
       "copy": "Das ausgewählte Bauteil kopieren",
       "paste": "Eine Kopie einfügen",
       "delete": "Die Auswahl löschen",

@@ -570,8 +570,18 @@ export class WireTools {
    * a bus member whose own `tryBeginDrag` deliberately declines to grab it.
    */
   capNear(world) {
+    return Boolean(this.wireIdNear(world));
+  }
+
+  /** The wire whose end cap `world` is on/near, or null — `capNear` with the
+      answer kept. A modifier-click there toggles THAT wire's selection, since
+      the cap is not a pointer target and the wire's own click listener never
+      runs for a press that landed on the board beneath it. */
+  wireIdNear(world) {
     const doc = this.#host.doc;
-    return Boolean(wireEndNear(doc.boards, doc.components, doc.wires, world));
+    return (
+      wireEndNear(doc.boards, doc.components, doc.wires, world)?.wireId ?? null
+    );
   }
 
   #beginEndpointDrag(grab, e) {

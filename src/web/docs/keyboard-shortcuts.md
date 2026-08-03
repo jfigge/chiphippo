@@ -15,6 +15,8 @@ are noted alongside the shortcut.
 | `Tab` | Switch between the Breadboard and Schematic views (not while typing) |
 | `Escape` | Abandon a drag in flight, then unpin a probed net, then disarm the probe, then cancel a pending wire/bus, then cancel a placement in hand, then deselect — whichever applies first |
 | `Delete` / `Backspace` | Remove the current selection (a part, wire, bus, annotation, board, or a whole marquee selection) |
+| `Shift`-drag | Rubber-band a selection — it replaces whatever was selected |
+| `Cmd`-click | Add one item to the selection, or take it back out |
 
 ## Tools
 
