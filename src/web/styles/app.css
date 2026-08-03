@@ -3193,6 +3193,70 @@ textarea.annotation-editor {
   gap: 0;
 }
 
+/* ── The warnings section (part-properties-dialog.js) ──────────────────────
+   The faults a part is showing on the desk, spelled out under everything the
+   dialog can edit. Its divider is this block's own `border-top` rather than a
+   second `<hr>`, so hiding the section takes the rule with it. It comes and
+   goes with the fault, which is why it needs its own `[hidden]` rule: this
+   block sets a `display`, and a class selector outranks the UA sheet's
+   `[hidden] { display: none }` — without the override, `hidden = true` would
+   set an attribute that changes nothing at all. */
+.properties-warnings {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--color-crust);
+}
+
+.properties-warnings[hidden] {
+  display: none;
+}
+
+.properties-warnings-title {
+  font-size: var(--font-size-sm);
+  font-weight: 600;
+  color: var(--color-warning);
+}
+
+.properties-warning-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.properties-warning {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  font-size: var(--font-size-sm);
+  color: var(--color-subtext);
+}
+
+/* The same sign the part draws, at text size — the triangle is stroked and
+   the bang inside it filled, so it reads at 13 px the way the desk's does at
+   its own scale. */
+.properties-warning-icon {
+  flex: none;
+  margin-top: 1px;
+  overflow: visible;
+}
+
+.properties-warning-icon path {
+  fill: none;
+  stroke: var(--color-warning);
+  stroke-width: 1.6;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.properties-warning-icon circle {
+  fill: var(--color-warning);
+}
+
 /* ── The wire gauge (components/wire-gauge.js) ─────────────────────────────
    A jumper drawn straight across the card in its own colour, stripped at both
    ends, with a dimension line under it. The viewBox fixes its proportions; the

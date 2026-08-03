@@ -54,6 +54,24 @@
 // So the dialog re-asks after every change, and repaints on a colour pick — see
 // `open` for both, and wire-gauge.js for why each is one call and not a rebuild.
 //
+// BELOW every field sits the one section that is not a property at all: the
+// part's live WARNINGS — the same faults its badge is drawing on the desk
+// (unpowered, underpowered, reversed, damaged, an unprogrammed ROM), written
+// out as sentences under a rule of their own. It is the shell's own structure
+// rather than a field type, exactly as the Name/Description pair at the top
+// is: "last, under a separator, only when there is something to say" is one
+// rule, and a caller appending its own separator would double the one `open()`
+// already inserts between Name/Description and a def's fields. The desk can
+// only draw a triangle; this is where it says what the triangle MEANS, next to
+// the properties that may be what fixes it (a PSU's volts, a ROM's Load
+// image…).
+//
+// It is a CALLBACK (`warnings()`), not a list, for the reason the wire gauge's
+// `measure()` is one: a run is a moving target. The dialog re-asks on every
+// `chiphippo:sim-state` for its OPEN LIFETIME — a chip that lets its smoke out
+// while the card is up says so — and rebuilds only when the text actually
+// changes, since that event fires on every tick.
+//
 // Like the Settings dialog, it is deliberately dumb and applies live: every
 // value control commits `onChange(key, value)` (text/textarea commit on
 // blur/Enter via the `change` event, not per keystroke, so they don't spam
@@ -64,7 +82,7 @@
 // showing.
 
 import { t, tf } from "../i18n.js";
-import { el } from "../dom.js";
+import { el, svgEl } from "../dom.js";
 import { PopupManager } from "../popup-manager.js";
 import { buildColorSwatches } from "./color-swatches.js";
 import { buildSegmented } from "./segmented-picker.js";
@@ -241,6 +259,34 @@ function buildRow(field, value, onChange, onAction) {
   ]);
 }
 
+/** The warning triangle, drawn small enough to sit in a line of text — the
+    same sign the part is showing on the desk (part-symbols.js draws that one
+    in pitch units, so it can't be the same node). Decorative: the sentence
+    beside it is the accessible content. */
+const warningIcon = () =>
+  svgEl(
+    "svg",
+    {
+      class: "properties-warning-icon",
+      viewBox: "0 0 16 16",
+      width: 13,
+      height: 13,
+      "aria-hidden": "true",
+    },
+    [
+      svgEl("path", { d: "M8 2 L15 14 H1 Z" }),
+      svgEl("path", { d: "M8 6.5 V9.5" }),
+      svgEl("circle", { cx: 8, cy: 11.6, r: 0.85 }),
+    ],
+  );
+
+/** One fault, as a triangle and the sentence explaining it. */
+const warningLine = (message) =>
+  el("li", { class: "properties-warning" }, [
+    warningIcon(),
+    el("span", { class: "properties-warning-text", text: message }),
+  ]);
+
 /** Every part and every board gets these two fields, always, at the top of
     the dialog — this is the one place that rule lives, so neither caller
     (desk-controller.js's part or board flow) has to repeat it. */
@@ -268,8 +314,20 @@ export class PartPropertiesDialog {
    *   once per value-field control change (text/textarea: on blur/Enter).
    * @param {(key: string) => void} [opts.onAction] - fires once when an
    *   `"action"`-type field's button is clicked; the dialog closes first.
+   * @param {() => string[]} [opts.warnings] - the faults the part is showing
+   *   right now, as sentences. Re-asked on every sim tick for the dialog's
+   *   open lifetime; an empty list keeps the section out of the card
+   *   entirely. Omit it for a subject that can't have a fault at all — a
+   *   board, a wire, a desktop, the project.
    */
-  static open({ title, fields = [], values = {}, onChange, onAction }) {
+  static open({
+    title,
+    fields = [],
+    values = {},
+    onChange,
+    onAction,
+    warnings,
+  }) {
     if (PartPropertiesDialog.#open) return;
     PartPropertiesDialog.#open = true;
 
@@ -309,6 +367,47 @@ export class PartPropertiesDialog {
       if (svg) gauges.push({ svg, field });
     });
 
+    // The warnings section (see the note at the top of this file): the LAST
+    // thing in the card, gone entirely while the part is healthy. Its divider
+    // is its own `border-top` rather than a second `<hr>` — one element to
+    // hide, and nothing left behind claiming to separate two things when only
+    // one of them is showing. `hidden` is the single source of truth, which is
+    // why `.properties-warnings[hidden]` exists in the stylesheet: a class that
+    // sets a `display` outranks the UA sheet's `[hidden]` rule, so without it
+    // the attribute would change nothing.
+    //
+    // A subject that cannot have a fault at all (a board, a wire, a desktop,
+    // the project) passes no callback and gets no node — not an empty one kept
+    // hidden, which would leave a card ending in something nobody can see.
+    const warningList =
+      warnings && el("ul", { class: "properties-warning-list" });
+    const warningBox =
+      warnings &&
+      el("div", { class: "properties-warnings", hidden: true }, [
+        el("span", {
+          class: "properties-warnings-title",
+          text: t("properties.warnings"),
+        }),
+        warningList,
+      ]);
+    let shown = null; // last rendered text: a tick that changes nothing costs nothing
+    const refreshWarnings = () => {
+      if (!warningBox) return;
+      const messages = warnings() ?? [];
+      const key = messages.join("\n");
+      if (key === shown) return;
+      shown = key;
+      warningList.replaceChildren(...messages.map(warningLine));
+      warningBox.hidden = messages.length === 0;
+    };
+    refreshWarnings();
+    // Every tick republishes the fault set, so the card can't go stale under a
+    // running circuit. Dropped in onClose, like the About panel's updater
+    // listeners — the subscription belongs to the dialog's open lifetime.
+    if (warningBox) {
+      window.addEventListener("chiphippo:sim-state", refreshWarnings);
+    }
+
     // onClose fires only when THIS popup closes (not when a popup it was
     // queued behind closes), so the guard never resets while still up.
     PopupManager.dialog({
@@ -316,8 +415,9 @@ export class PartPropertiesDialog {
       closeAriaLabel: t("properties.close"),
       className: "properties-popup",
       bodyClass: "properties-popup-body",
-      body: rows,
+      body: warningBox ? [...rows, warningBox] : rows,
       onClose: () => {
+        window.removeEventListener("chiphippo:sim-state", refreshWarnings);
         PartPropertiesDialog.#open = false;
       },
     });

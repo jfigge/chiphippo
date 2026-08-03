@@ -976,6 +976,14 @@
     "action": {
       "inspectMemory": "Inspect memory…",
       "programMemory": "Load image… (program)"
+    },
+    "warnings": "Warnings",
+    "warning": {
+      "unpowered": "Unpowered — no supply reaches VCC and GND, so this part computes nothing.",
+      "underpowered": "Underpowered — VCC is at 3 V, so this part runs inert.",
+      "reversed": "Power reversed — VCC and GND are swapped.",
+      "damaged": "Damaged — 12 V let the smoke out. Stopping the simulation restores it.",
+      "unprogrammed": "Not programmed — no image is loaded, so this chip reads random noise."
     }
   },
   "memory": {

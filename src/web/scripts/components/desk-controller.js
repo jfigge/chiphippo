@@ -2692,6 +2692,38 @@ export class DeskController {
     return fields;
   }
 
+  /**
+   * The faults one part is showing RIGHT NOW, as sentences for the Properties
+   * dialog's warnings section — the same set its badge draws on the desk, so
+   * the two can never say different things:
+   *   • the engine's live power/health status (running only — the overlay
+   *     answers null when stopped, and never for a healthy part);
+   *   • an unprogrammed ROM, which is derived from params alone and therefore
+   *     stands at design time too, exactly as ChipView#refresh has it.
+   *
+   * A chip can hold both at once (a dead ROM is still an empty one) and both
+   * are listed: the desk suppresses one triangle behind the other because it
+   * has one place to draw, which a list does not.
+   *
+   * Empty is the common answer, and it is what keeps the section out of the
+   * card altogether.
+   */
+  #partWarnings(id) {
+    const comp = this.#doc.getComponent(id);
+    if (!comp) return [];
+    const keys = [];
+    const status = this.#simOverlay.statusOf(id);
+    if (status) keys.push(status);
+    if (
+      isRomChip(partDef(comp.ref)) &&
+      Boolean(comp.params?.storage?.guid) &&
+      comp.params?.programmed !== true
+    ) {
+      keys.push("unprogrammed");
+    }
+    return keys.map((key) => t(`properties.warning.${key}`));
+  }
+
   /** Open the shared Properties dialog (context menu → "Properties…") for a
       part — see #propertyFieldsFor. Every part gets Name/Description (the
       dialog itself prepends those), so this is never a no-op. */
@@ -2718,6 +2750,9 @@ export class DeskController {
       },
       onChange: (key, value) => this.#setComponentProperty(id, key, value),
       onAction: (key) => this.#onPropertyAction(id, key),
+      // A CALLBACK, not a list: the dialog re-asks on every sim tick, so a
+      // chip that lets its smoke out while the card is open says so.
+      warnings: () => this.#partWarnings(id),
     });
   }
 

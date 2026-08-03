@@ -27,6 +27,7 @@
 
 import { partDef } from "../catalog/index.js";
 import { partPinAddresses } from "../model/occupancy.js";
+import { CHIP_STATUS } from "../sim/engine.js";
 import { isLit, junctionState } from "../sim/junction.js";
 import { H } from "../sim/levels.js";
 
@@ -35,6 +36,7 @@ export class SimOverlay {
   #partViews; // componentId → view (shared, live)
 
   #running = false;
+  #status = new Map(); // compId → { status } (the last badge set; empty when stopped)
   #levels = new Map(); // netId → level
   #strong = new Map(); // netId → level from supplies/outputs only (no pulls)
   #netlist = null; // the netlist those levels are keyed against
@@ -82,12 +84,13 @@ export class SimOverlay {
     this.#netlist = netlist ?? null;
     this.#displays = displayState ?? new Map();
 
-    // Chip status badges (cleared when not running).
+    // Chip status badges (cleared when not running). The map is KEPT as well as
+    // applied: statusOf() answers "what fault is this part showing?" for the
+    // Properties dialog, which has a component id and no view.
+    this.#status = running ? (chipStatus ?? new Map()) : new Map();
     for (const view of this.#partViews.values()) view.setStatus?.(null);
-    if (running) {
-      for (const [id, { status }] of chipStatus ?? new Map()) {
-        this.#partViews.get(id)?.setStatus?.(status);
-      }
+    for (const [id, { status }] of this.#status) {
+      this.#partViews.get(id)?.setStatus?.(status);
     }
 
     // Clock pulse lamps track their live output level.
@@ -101,6 +104,17 @@ export class SimOverlay {
     this.#updateLeds();
     this.#updateDisplays();
     this.#updateLcds();
+  }
+
+  /**
+   * The fault one part's badge is drawing — the engine's last power/health
+   * status for it — or null when the sim is stopped or the part is healthy.
+   * Keyed by component id rather than by view because the reader (the
+   * Properties dialog's warnings section) has an id and nothing mounted.
+   */
+  statusOf(id) {
+    const status = this.#status.get(id)?.status;
+    return status && status !== CHIP_STATUS.OK ? status : null;
   }
 
   /** The level of a net by id, or "Z" when it isn't driven (running only). */

@@ -976,6 +976,14 @@
     "action": {
       "inspectMemory": "Ispeziona la memoria…",
       "programMemory": "Carica un'immagine… (programma)"
+    },
+    "warnings": "Avvisi",
+    "warning": {
+      "unpowered": "Senza alimentazione — a VCC e GND non arriva tensione, quindi questo componente non calcola nulla.",
+      "underpowered": "Alimentazione insufficiente — VCC è a 3 V, quindi questo componente funziona inerte.",
+      "reversed": "Alimentazione invertita — VCC e GND sono scambiati.",
+      "damaged": "Danneggiato — 12 V hanno fatto uscire il fumo. Fermando la simulazione viene ripristinato.",
+      "unprogrammed": "Non programmato — non è caricata nessuna immagine, quindi questo chip legge rumore casuale."
     }
   },
   "memory": {

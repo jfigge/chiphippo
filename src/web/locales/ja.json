@@ -965,6 +965,14 @@
     "action": {
       "inspectMemory": "メモリを調べる…",
       "programMemory": "イメージを読み込む…（書き込み）"
+    },
+    "warnings": "警告",
+    "warning": {
+      "unpowered": "電源なし — VCC と GND に電圧が届いていないため、この部品は何も計算しません。",
+      "underpowered": "電圧不足 — VCC が 3 V のため、この部品は動作しません。",
+      "reversed": "電源が逆 — VCC と GND が入れ替わっています。",
+      "damaged": "破損 — 12 V で煙が出ました。シミュレーションを停止すると元に戻ります。",
+      "unprogrammed": "未書き込み — イメージが読み込まれていないため、このチップはランダムなノイズを読み出します。"
     }
   },
   "memory": {

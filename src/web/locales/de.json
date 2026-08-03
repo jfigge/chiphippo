@@ -976,6 +976,14 @@
     "action": {
       "inspectMemory": "Speicher untersuchen…",
       "programMemory": "Abbild laden… (programmieren)"
+    },
+    "warnings": "Warnungen",
+    "warning": {
+      "unpowered": "Ohne Versorgung — an VCC und GND liegt keine Spannung, das Bauteil rechnet nichts.",
+      "underpowered": "Unterversorgt — VCC liegt an 3 V, das Bauteil läuft untätig.",
+      "reversed": "Versorgung verpolt — VCC und GND sind vertauscht.",
+      "damaged": "Beschädigt — 12 V haben den Rauch herausgelassen. Beim Anhalten der Simulation wird es wiederhergestellt.",
+      "unprogrammed": "Nicht programmiert — es ist kein Abbild geladen, der Chip liest zufälliges Rauschen."
     }
   },
   "memory": {

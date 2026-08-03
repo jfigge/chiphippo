@@ -976,6 +976,14 @@
     "action": {
       "inspectMemory": "Inspecter la mémoire…",
       "programMemory": "Charger une image… (programmer)"
+    },
+    "warnings": "Avertissements",
+    "warning": {
+      "unpowered": "Non alimenté — aucune tension n'atteint VCC ni GND, donc ce composant ne calcule rien.",
+      "underpowered": "Sous-alimenté — VCC est sous 3 V, donc ce composant tourne inerte.",
+      "reversed": "Alimentation inversée — VCC et GND sont intervertis.",
+      "damaged": "Détruit — 12 V ont fait sortir la fumée. Arrêter la simulation le rétablit.",
+      "unprogrammed": "Non programmé — aucune image n'est chargée, donc cette puce lit du bruit aléatoire."
     }
   },
   "memory": {

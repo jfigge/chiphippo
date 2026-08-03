@@ -965,6 +965,14 @@
     "action": {
       "inspectMemory": "查看存储器…",
       "programMemory": "载入映像…（编程）"
+    },
+    "warnings": "警告",
+    "warning": {
+      "unpowered": "未供电 — VCC 与 GND 上没有电压，因此该元件不进行任何运算。",
+      "underpowered": "供电不足 — VCC 只有 3 V，因此该元件处于不工作状态。",
+      "reversed": "电源接反 — VCC 与 GND 接反了。",
+      "damaged": "已损坏 — 12 V 让它冒了烟。停止仿真即可恢复。",
+      "unprogrammed": "未编程 — 尚未载入映像，因此该芯片读出的是随机噪声。"
     }
   },
   "memory": {
