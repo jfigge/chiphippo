@@ -805,6 +805,12 @@ async function init() {
     height: settings.aiHeight,
     history: settings.aiHistory,
     isLocked: () => transportMode !== "stopped",
+    // Review mode (Feature 320) reads the desk: the document through the shared
+    // DeskDoc and the nets through the ONE netlist cache, the same pair the
+    // build guide and the analyzer take — so a review can never disagree with
+    // the BOM or the probe about the same circuit.
+    deskDoc,
+    netlist: netlistCache,
     onDesign: (clip) => controller?.armGeneratedDesign(clip),
     onHistoryChange: (entries) => {
       bridge.settings

@@ -1894,13 +1894,20 @@ function registerIpc() {
   // Begin a generation. Returns a request id immediately; the answer streams
   // back as one-way `ai:delta` pushes and lands with `ai:done`, so a long
   // generation shows progress and stays cancellable.
-  ipcMain.handle("ai:start", (_event, config, system, messages) => {
+  //
+  // `opts.format` is the ONE thing a caller may say about the answer's shape:
+  // `"prose"` (Feature 320's desk review, read by a person) drops the netlist
+  // schema, anything else keeps it. A named format rather than a caller-supplied
+  // schema on purpose — main decides what the model may be asked for, exactly as
+  // it decides which URLs may be reached.
+  ipcMain.handle("ai:start", (_event, config, system, messages, opts) => {
     const provider = config?.provider;
     const { requestId, done } = aiClient.start({
       config,
       apiKey: getCredentialStore().get(provider) ?? "",
       system: String(system ?? ""),
       messages: Array.isArray(messages) ? messages : [],
+      ...(opts?.format === "prose" ? { schema: null } : {}),
       onDelta: (delta) => sendToMain("ai:delta", { requestId, ...delta }),
     });
     done.then(

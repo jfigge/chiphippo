@@ -4728,6 +4728,15 @@ textarea.annotation-editor {
   flex: 0 0 auto;
 }
 
+/* The Build/Review picker (Feature 320). It holds the app's shared segmented
+   track, so there is nothing to style but its place in the header: fixed width,
+   left-packed beside the title, with .ai-tools the elastic member that pushes
+   the status and the close button right. */
+.ai-mode {
+  display: flex;
+  flex: 0 0 auto;
+}
+
 .ai-tools {
   display: flex;
   align-items: center;
@@ -4847,6 +4856,13 @@ textarea.annotation-editor {
 
 .ai-row--working .ai-row-text {
   font-style: italic;
+}
+
+/* A review's answer (Feature 320). The one row whose CONTENT is the point
+   rather than a status about it, so it reads at full text colour — but with no
+   accent rule, because the accent marks what the USER said. */
+.ai-row--reply .ai-row-text {
+  color: var(--color-text);
 }
 
 /* The compose row: a growable prompt beside a single send/cancel button. */

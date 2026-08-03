@@ -95,13 +95,16 @@ function describeStatus(status, text) {
  * @param {string} opts.apiKey
  * @param {string} opts.system
  * @param {Array}  opts.messages
+ * @param {object|null} [opts.schema] the shape the answer must take. Defaults
+ *   to the provider's netlist schema; `null` asks for prose (Feature 320's
+ *   review, which is read by a person rather than by a compiler).
  * @param {(delta:{text?:string}) => void} opts.onDelta
  * @returns {{requestId:string,
  *            done:Promise<{ok:boolean, text?:string, error?:string,
  *                          usage?:{input?:number, output?:number,
  *                                  cacheWrite?:number, cacheRead?:number}}>}}
  */
-function start({ config, apiKey, system, messages, onDelta }) {
+function start({ config, apiKey, system, messages, schema, onDelta }) {
   const provider = providerFor(config?.provider);
   const requestId = `ai${++seq}`;
   if (!provider) {
@@ -141,6 +144,11 @@ function start({ config, apiKey, system, messages, onDelta }) {
         model: config.model,
         system,
         messages,
+        // Passed through only when the caller said something: `undefined` has
+        // to reach the adapter's default parameter, and an explicit `null` has
+        // to reach it as null. Spelling it as `schema: schema ?? DEFAULT` here
+        // would put the netlist schema back on a prose request.
+        ...(schema === undefined ? {} : { schema }),
       });
       const res = await fetch(url, {
         method: "POST",

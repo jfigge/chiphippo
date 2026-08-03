@@ -73,6 +73,37 @@ test("the Anthropic request carries the key, version and schema", () => {
   }
 });
 
+test("a prose answer drops the schema and keeps the effort", () => {
+  // Feature 320's desk review is read by a person, not by a compiler, so it
+  // asks for no shape. What it must NOT drop is the reasoning: `effort` and
+  // `thinking` are independent of the format, and a review that thought less
+  // hard than a build would be the wrong trade entirely.
+  const { body } = providerFor("anthropic").buildRequest({
+    apiKey: "sk-test",
+    baseUrl: "",
+    model: "",
+    system: "SYS",
+    messages: [{ role: "user", content: "what is wrong?" }],
+    schema: null,
+  });
+  assert.equal("format" in body.output_config, false, "no schema is imposed");
+  assert.equal(body.output_config.effort, "high");
+  assert.deepEqual(body.thinking, { type: "adaptive" });
+
+  const compat = providerFor("openai-compat").buildRequest({
+    apiKey: "",
+    baseUrl: "",
+    system: "SYS",
+    messages: [],
+    schema: null,
+  }).body;
+  // The FIELD goes, rather than being set to some permissive shape — a local
+  // server that does not implement `response_format` then sees a request it
+  // can serve.
+  assert.equal("response_format" in compat, false);
+  assert.deepEqual(compat.stream_options, { include_usage: true });
+});
+
 test("the schema stays legal under the strictest provider", () => {
   // Both invariants are 400s at REQUEST time, not bad output: an open-ended
   // map ("additionalProperties: object is not supported") on Anthropic, and a

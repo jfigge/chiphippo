@@ -177,8 +177,10 @@ contextBridge.exposeInMainWorld("chiphippo", {
       status: (providerId) => ipcRenderer.invoke("ai:key:status", providerId),
     },
     test: (config) => ipcRenderer.invoke("ai:test", config),
-    start: (config, system, messages) =>
-      ipcRenderer.invoke("ai:start", config, system, messages),
+    // `opts` is `{ format: "prose" }` for the desk review (Feature 320) and
+    // absent for a netlist build.
+    start: (config, system, messages, opts) =>
+      ipcRenderer.invoke("ai:start", config, system, messages, opts),
     cancel: (requestId) => ipcRenderer.invoke("ai:cancel", requestId),
   },
 

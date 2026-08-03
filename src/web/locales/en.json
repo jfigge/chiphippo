@@ -643,6 +643,23 @@
       "singleMember": "Net \"{name}\" connects to only one point — a likely-forgotten connection."
     }
   },
+  "review": {
+    "pinNamed": "{name} (pin {n})",
+    "pinNumber": "pin {n}",
+    "noSupply": "There is no power supply on the desk, so nothing can run. Add one from the parts tray and wire it to the board's power rails.",
+    "unpowered": "{ref} ({id}) is wired but never reaches a supply — its VCC/GND nets carry no power.",
+    "outputsDisabledUnwired": {
+      "one": "{chip} drives nothing: its active-low output enable {pin} is not wired at all, and an unwired input reads HIGH. Tie it to GND.",
+      "other": "{chip} drives nothing: its active-low output enables {pin} are not wired at all, and an unwired input reads HIGH. Tie them to GND."
+    },
+    "outputsDisabledHigh": {
+      "one": "{chip} is switched off right now: its active-low output enable {pin} is HIGH, so its outputs float. Drive it LOW to enable them.",
+      "other": "{chip} is switched off right now: its active-low output enables {pin} are HIGH, so its outputs float. Drive them LOW to enable them."
+    },
+    "inputFloating": "{ref} ({id}) has inputs nothing drives: {pins}. A floating TTL input reads HIGH, so the chip works — just not as designed. Tie each one to VCC or GND, or wire it to whatever should drive it.",
+    "busFight": "{drivers} are wired to the same net ({net}). Two outputs must never share a net — one drives HIGH while the other drives LOW and they fight.",
+    "ledUnlimited": "{ref} ({id}) is conducting with nothing limiting the current — on a real bench it would burn out rather than light. Put a resistor in series with it."
+  },
   "scope": {
     "title": "Logic analyzer",
     "close": "Close the logic analyzer",
@@ -729,6 +746,30 @@
       "noSecureStore": "This system has no secure credential store, so an API key cannot be saved. See Settings ▸ AI.",
       "noKey": "No API key is configured for {provider}. Add one in Settings ▸ AI.",
       "badBaseUrl": "The AI base URL “{url}” is not a valid http(s) address. Fix or clear it in Settings ▸ AI."
+    },
+    "modeLabel": "What to ask the AI for",
+    "modeBuild": "Build",
+    "modeReview": "Review",
+    "review": "Review the desktop",
+    "reviewTitle": "Review this desktop (Enter)",
+    "reviewPlaceholder": "Ask about the circuit on the desk — or just press Enter and it will look for problems",
+    "reviewInputLabel": "Ask about the circuit on the desk",
+    "reviewIntro": "Review reads the desktop in front of you, runs Chip Hippo's own checks over it, and explains what it found. It changes nothing — no part is placed and no wire is moved.",
+    "reviewDefaultAsk": "What is wrong with this circuit?",
+    "reviewEmptyDesk": "There is nothing on this desktop to review yet.",
+    "reviewNoNetlist": "The circuit's connectivity could not be read.",
+    "reviewCrashed": "The review failed unexpectedly: {message}",
+    "reviewClean": "Every check passed: the circuit is powered, it settles, nothing is shorted, and no input in use is left floating.",
+    "reviewFound": {
+      "one": "Chip Hippo found {count} thing to look at:",
+      "other": "Chip Hippo found {count} things to look at:"
+    },
+    "reviewNoAnswer": "The model had nothing to say about it.",
+    "reading": "Reading…",
+    "readingRow": "Reading the circuit…",
+    "designingChars": {
+      "one": "Designing the circuit{round}… ({count} character)",
+      "other": "Designing the circuit{round}… ({count} characters)"
     }
   },
   "schematic": {

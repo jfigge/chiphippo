@@ -154,6 +154,52 @@ rather than guess:
   instead, which is what it will reach for anyway.
 - **Multi-corner cans** — the oscillator packages.
 
+## Review: asking what's wrong with a circuit
+
+The panel has two modes, picked with the **Build / Review** switch in its
+header. Everything above is **Build**. **Review** turns the panel around: it
+reads the desktop you already have, runs Chip Hippo's own checks over it, and
+explains what it found.
+
+Type a question and press `Enter` — or just press `Enter` with the box empty,
+which asks *"what is wrong with this circuit?"*.
+
+**Chip Hippo finds the faults; the model explains them.** This is the same
+division of labour that keeps Build honest. The app derives every finding
+itself, from the real netlist and a real settle of the exact circuit on your
+desk — the model is never asked to read a wiring list and decide whether
+something is shorted, because a wrong answer to that would be indistinguishable
+from a right one. What it *is* good at is the sentence afterwards: what a fault
+means for your design, which one to fix first, and what to do about it.
+
+The checks it runs are the ones that leave a circuit looking perfectly wired
+and quietly not working:
+
+- **Nothing is powered** — no supply on the desk, a chip whose power pins go
+  nowhere, or one whose VCC net never reaches a rail.
+- **An input nothing drives.** The most convincing lie a real circuit tells: a
+  floating TTL input reads HIGH, so the chip *works*, just not as designed.
+  Only inputs that are actually in use are reported — an unused gate on a quad
+  package is idle, not broken.
+- **A part switched off.** An active-low output enable left unwired reads HIGH,
+  so the chip drives nothing at all while its wiring looks flawless.
+- **Two outputs on one net**, whatever they happen to be driving today.
+- **Shorts, driver conflicts, and a circuit that won't settle**, straight from
+  the engine.
+- **A chip at 3 V or 12 V**, and **an LED with nothing limiting its current**.
+
+The findings appear in the transcript immediately, before the request even goes
+out — so if the connection fails you still have the app's own answer.
+
+**Review never changes anything.** No part is placed, no wire is moved, and
+there is nothing to undo afterwards. That's also why it's the one thing here
+that works **while the simulation is running**: a review can't be refused by a
+frozen desk, and a running circuit is often exactly when you want to ask what
+it's doing.
+
+Switching between Build and Review starts a fresh conversation — the two ask
+the model quite different things — but your transcript stays where it is.
+
 ## LEDs and resistors
 
 You never need to ask for a current-limiting resistor, and you shouldn't put
@@ -173,7 +219,12 @@ attempt costs far less than the first ask.
 
 The panel won't build while the simulation is **running** — press **Stop**
 first. A generated circuit is a document edit like any other, and the desk is
-frozen while the circuit runs.
+frozen while the circuit runs. **Review** is exempt: it changes nothing, so
+there is nothing for a frozen desk to refuse.
+
+A review sends a compact description of your circuit — the parts, which pins
+are joined, and the findings — but never the layout, and never anything about
+your project beyond the desktop you asked about.
 
 ## See also
 

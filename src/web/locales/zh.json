@@ -641,6 +641,21 @@
       "singleMember": "网络“{name}”只连到一个点 — 很可能漏了一条连接。"
     }
   },
+  "review": {
+    "pinNamed": "{name}（引脚 {n}）",
+    "pinNumber": "引脚 {n}",
+    "noSupply": "工作台上没有电源，因此什么都无法运行。请从元件抽屉中添加一个电源，并将其连接到面包板的电源轨。",
+    "unpowered": "{ref}（{id}）已接线但没有连到任何电源——它的 VCC/GND 网络上没有电压。",
+    "outputsDisabledUnwired": {
+      "other": "{chip} 没有驱动任何东西：其低电平有效的输出使能 {pin} 完全没有接线，而未接线的输入会被读作 HIGH。请将其接到 GND。"
+    },
+    "outputsDisabledHigh": {
+      "other": "{chip} 目前处于关闭状态：其低电平有效的输出使能 {pin} 为 HIGH，因此输出处于高阻态。将其拉低即可使能。"
+    },
+    "inputFloating": "{ref}（{id}）有无人驱动的输入：{pins}。悬空的 TTL 输入会被读作 HIGH，所以芯片能工作——只是与设计不符。请把每一个接到 VCC 或 GND，或接到应当驱动它的信号。",
+    "busFight": "{drivers} 接在同一个网络（{net}）上。两个输出绝不能共用一个网络——一个驱动 HIGH，另一个驱动 LOW，二者会互相冲突。",
+    "ledUnlimited": "{ref}（{id}）在没有任何限流的情况下导通——在真实面包板上它会烧毁而不是发光。请给它串联一个电阻。"
+  },
   "scope": {
     "title": "逻辑分析仪",
     "close": "关闭逻辑分析仪",
@@ -724,6 +739,28 @@
       "noSecureStore": "本系统没有安全的凭据存储，因此无法保存 API 密钥。请参见“设置 ▸ AI”。",
       "noKey": "尚未为 {provider} 配置 API 密钥。请在“设置 ▸ AI”中添加一个。",
       "badBaseUrl": "AI 基础 URL“{url}”不是有效的 http(s) 地址。请在“设置 ▸ AI”中修正或清空它。"
+    },
+    "modeLabel": "让 AI 做什么",
+    "modeBuild": "构建",
+    "modeReview": "检查",
+    "review": "检查桌面",
+    "reviewTitle": "检查此桌面（Enter）",
+    "reviewPlaceholder": "询问工作台上的电路——或直接按 Enter，它会去找问题",
+    "reviewInputLabel": "询问工作台上的电路",
+    "reviewIntro": "检查会读取你面前的桌面，对其运行 Chip Hippo 自己的检查，并解释发现了什么。它不会做任何改动——不放置元件，也不移动导线。",
+    "reviewDefaultAsk": "这个电路哪里有问题？",
+    "reviewEmptyDesk": "此桌面上还没有可检查的内容。",
+    "reviewNoNetlist": "无法读取电路的连接关系。",
+    "reviewCrashed": "检查意外失败：{message}",
+    "reviewClean": "所有检查均已通过：电路已供电、能够稳定、没有短路，也没有正在使用的输入处于悬空状态。",
+    "reviewFound": {
+      "other": "Chip Hippo 发现了 {count} 处值得留意的地方："
+    },
+    "reviewNoAnswer": "模型对此没有可说的内容。",
+    "reading": "正在读取…",
+    "readingRow": "正在读取电路…",
+    "designingChars": {
+      "other": "正在设计电路{round}…（{count} 个字符）"
     }
   },
   "schematic": {

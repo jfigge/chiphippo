@@ -643,6 +643,23 @@
       "singleMember": "Das Netz „{name}“ verbindet nur einen Punkt — wahrscheinlich eine vergessene Verbindung."
     }
   },
+  "review": {
+    "pinNamed": "{name} (Pin {n})",
+    "pinNumber": "Pin {n}",
+    "noSupply": "Auf dem Tisch liegt kein Netzteil, deshalb kann nichts laufen. Fügen Sie eines aus der Bauteilablage hinzu und verdrahten Sie es mit den Stromschienen des Boards.",
+    "unpowered": "{ref} ({id}) ist verdrahtet, erreicht aber keine Versorgung — auf den VCC/GND-Netzen liegt keine Spannung.",
+    "outputsDisabledUnwired": {
+      "one": "{chip} treibt nichts: Der Low-aktive Ausgangsfreigabe-Pin {pin} ist gar nicht verdrahtet, und ein unverdrahteter Eingang liest HIGH. Legen Sie ihn auf GND.",
+      "other": "{chip} treibt nichts: Die Low-aktiven Ausgangsfreigabe-Pins {pin} sind gar nicht verdrahtet, und ein unverdrahteter Eingang liest HIGH. Legen Sie sie auf GND."
+    },
+    "outputsDisabledHigh": {
+      "one": "{chip} ist gerade abgeschaltet: Der Low-aktive Ausgangsfreigabe-Pin {pin} ist HIGH, deshalb sind die Ausgänge hochohmig. Ziehen Sie ihn auf LOW, um sie freizugeben.",
+      "other": "{chip} ist gerade abgeschaltet: Die Low-aktiven Ausgangsfreigabe-Pins {pin} sind HIGH, deshalb sind die Ausgänge hochohmig. Ziehen Sie sie auf LOW, um sie freizugeben."
+    },
+    "inputFloating": "{ref} ({id}) hat Eingänge, die nichts treibt: {pins}. Ein offener TTL-Eingang liest HIGH, der Baustein arbeitet also — nur nicht wie geplant. Legen Sie jeden auf VCC oder GND oder verdrahten Sie ihn mit dem, was ihn treiben soll.",
+    "busFight": "{drivers} liegen am selben Netz ({net}). Zwei Ausgänge dürfen sich niemals ein Netz teilen — einer treibt HIGH, der andere LOW, und sie arbeiten gegeneinander.",
+    "ledUnlimited": "{ref} ({id}) leitet, ohne dass der Strom begrenzt wird — auf einem echten Steckbrett würde das Bauteil durchbrennen statt zu leuchten. Schalten Sie einen Widerstand in Reihe."
+  },
   "scope": {
     "title": "Logikanalysator",
     "close": "Logikanalysator schließen",
@@ -729,6 +746,30 @@
       "noSecureStore": "Dieses System hat keinen sicheren Schlüsselspeicher, daher kann kein API-Schlüssel gespeichert werden. Siehe Einstellungen ▸ KI.",
       "noKey": "Für {provider} ist kein API-Schlüssel eingerichtet. Füge einen in Einstellungen ▸ KI hinzu.",
       "badBaseUrl": "Die KI-Basis-URL „{url}“ ist keine gültige http(s)-Adresse. Korrigiere oder leere sie in Einstellungen ▸ KI."
+    },
+    "modeLabel": "Wonach die KI gefragt wird",
+    "modeBuild": "Bauen",
+    "modeReview": "Prüfen",
+    "review": "Desktop prüfen",
+    "reviewTitle": "Diesen Desktop prüfen (Eingabe)",
+    "reviewPlaceholder": "Fragen Sie etwas über die Schaltung auf dem Tisch — oder drücken Sie einfach die Eingabetaste, dann wird nach Problemen gesucht",
+    "reviewInputLabel": "Etwas über die Schaltung auf dem Tisch fragen",
+    "reviewIntro": "Prüfen liest den Desktop vor Ihnen, führt Chip Hippos eigene Prüfungen darüber aus und erklärt die Befunde. Es ändert nichts — kein Bauteil wird platziert und kein Draht bewegt.",
+    "reviewDefaultAsk": "Was stimmt mit dieser Schaltung nicht?",
+    "reviewEmptyDesk": "Auf diesem Desktop gibt es noch nichts zu prüfen.",
+    "reviewNoNetlist": "Die Verbindungen der Schaltung konnten nicht gelesen werden.",
+    "reviewCrashed": "Die Prüfung ist unerwartet fehlgeschlagen: {message}",
+    "reviewClean": "Alle Prüfungen bestanden: Die Schaltung ist versorgt, sie kommt zur Ruhe, nichts ist kurzgeschlossen, und kein genutzter Eingang bleibt offen.",
+    "reviewFound": {
+      "one": "Chip Hippo hat {count} Punkt gefunden, den Sie sich ansehen sollten:",
+      "other": "Chip Hippo hat {count} Punkte gefunden, die Sie sich ansehen sollten:"
+    },
+    "reviewNoAnswer": "Das Modell hatte dazu nichts zu sagen.",
+    "reading": "Wird gelesen…",
+    "readingRow": "Die Schaltung wird gelesen…",
+    "designingChars": {
+      "one": "Die Schaltung wird entworfen{round}… ({count} Zeichen)",
+      "other": "Die Schaltung wird entworfen{round}… ({count} Zeichen)"
     }
   },
   "schematic": {

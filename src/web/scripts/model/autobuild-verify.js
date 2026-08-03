@@ -409,9 +409,14 @@ function describeWarning(w) {
  * is named, because a part with two of them ('244) may be missing either or
  * both, and "tie this pin low" is only useful if it is the right pin.
  *
+ * Exported because it is a question about a DOCUMENT, not about a generated
+ * one: `model/desk-review.js` asks it of the desk the user built by hand, where
+ * the same omission produces the same dead circuit and the same wrong diagnosis
+ * ("nothing drives this net") if it goes unasked.
+ *
  * @returns {Map<string, {chip:string, pin:string, level:string}>} netId → blame
  */
-function tristateEnables(doc, netlist, settled) {
+export function tristateEnables(doc, netlist, settled) {
   const out = new Map();
   for (const comp of doc.components ?? []) {
     const def = partDef(comp.ref);
@@ -437,6 +442,11 @@ function tristateEnables(doc, netlist, settled) {
     );
     const blame = {
       chip: `${comp.id} (${comp.ref})`,
+      // The id on its own, beside the pre-formatted `chip` string the repair
+      // message quotes: `desk-review.js` names a part the way the rest of the
+      // desk names it (ref first, then id) and needs the finding to carry an id
+      // a caller can select by. Additive — nothing here reads it.
+      componentId: comp.id,
       pin: off.map(name).join(" and "),
       plural: off.length > 1,
       level: unwired ? "not wired at all" : "HIGH",

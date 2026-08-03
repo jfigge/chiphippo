@@ -643,6 +643,23 @@
       "singleMember": "Le net « {name} » ne rejoint qu'un seul point — probablement une connexion oubliée."
     }
   },
+  "review": {
+    "pinNamed": "{name} (broche {n})",
+    "pinNumber": "broche {n}",
+    "noSupply": "Il n'y a aucune alimentation sur le bureau, donc rien ne peut fonctionner. Ajoutez-en une depuis le tiroir de composants et reliez-la aux rails d'alimentation de la platine.",
+    "unpowered": "{ref} ({id}) est câblé mais n'atteint aucune alimentation — ses nets VCC/GND ne portent aucune tension.",
+    "outputsDisabledUnwired": {
+      "one": "{chip} ne pilote rien : sa validation de sortie active à l'état bas {pin} n'est pas câblée du tout, et une entrée non câblée se lit HIGH. Reliez-la à GND.",
+      "other": "{chip} ne pilote rien : ses validations de sortie actives à l'état bas {pin} ne sont pas câblées du tout, et une entrée non câblée se lit HIGH. Reliez-les à GND."
+    },
+    "outputsDisabledHigh": {
+      "one": "{chip} est désactivé pour l'instant : sa validation de sortie active à l'état bas {pin} est à HIGH, donc ses sorties flottent. Mettez-la à LOW pour les activer.",
+      "other": "{chip} est désactivé pour l'instant : ses validations de sortie actives à l'état bas {pin} sont à HIGH, donc ses sorties flottent. Mettez-les à LOW pour les activer."
+    },
+    "inputFloating": "{ref} ({id}) a des entrées que rien ne pilote : {pins}. Une entrée TTL flottante se lit HIGH, donc le circuit fonctionne — mais pas comme prévu. Reliez chacune à VCC ou GND, ou câblez-la à ce qui doit la piloter.",
+    "busFight": "{drivers} sont reliés au même net ({net}). Deux sorties ne doivent jamais partager un net : l'une pilote HIGH pendant que l'autre pilote LOW, et elles se combattent.",
+    "ledUnlimited": "{ref} ({id}) conduit sans rien pour limiter le courant — sur une vraie platine il grillerait au lieu de s'allumer. Mettez une résistance en série."
+  },
   "scope": {
     "title": "Analyseur logique",
     "close": "Fermer l'analyseur logique",
@@ -729,6 +746,30 @@
       "noSecureStore": "Ce système n'a pas de coffre d'identifiants sécurisé, donc aucune clé d'API ne peut être enregistrée. Voir Réglages ▸ IA.",
       "noKey": "Aucune clé d'API n'est configurée pour {provider}. Ajoutes-en une dans Réglages ▸ IA.",
       "badBaseUrl": "L'URL de base IA « {url} » n'est pas une adresse http(s) valide. Corrige-la ou efface-la dans Réglages ▸ IA."
+    },
+    "modeLabel": "Ce qu'il faut demander à l'IA",
+    "modeBuild": "Construire",
+    "modeReview": "Examiner",
+    "review": "Examiner le bureau",
+    "reviewTitle": "Examiner ce bureau (Entrée)",
+    "reviewPlaceholder": "Posez une question sur le circuit posé sur le bureau — ou appuyez simplement sur Entrée pour chercher des problèmes",
+    "reviewInputLabel": "Poser une question sur le circuit posé sur le bureau",
+    "reviewIntro": "Examiner lit le bureau qui est devant vous, y applique les vérifications propres à Chip Hippo et explique ce qu'il a trouvé. Rien n'est modifié : aucun composant n'est posé et aucun fil n'est déplacé.",
+    "reviewDefaultAsk": "Qu'est-ce qui ne va pas dans ce circuit ?",
+    "reviewEmptyDesk": "Il n'y a encore rien à examiner sur ce bureau.",
+    "reviewNoNetlist": "La connectivité du circuit n'a pas pu être lue.",
+    "reviewCrashed": "L'examen a échoué de façon inattendue : {message}",
+    "reviewClean": "Toutes les vérifications sont passées : le circuit est alimenté, il se stabilise, rien n'est en court-circuit et aucune entrée utilisée ne reste flottante.",
+    "reviewFound": {
+      "one": "Chip Hippo a trouvé {count} point à examiner :",
+      "other": "Chip Hippo a trouvé {count} points à examiner :"
+    },
+    "reviewNoAnswer": "Le modèle n'avait rien à en dire.",
+    "reading": "Lecture…",
+    "readingRow": "Lecture du circuit…",
+    "designingChars": {
+      "one": "Conception du circuit{round}… ({count} caractère)",
+      "other": "Conception du circuit{round}… ({count} caractères)"
     }
   },
   "schematic": {

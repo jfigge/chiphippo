@@ -197,6 +197,7 @@ const anthropic = Object.freeze({
     system,
     messages,
     maxTokens = 16000,
+    schema = NETLIST_SCHEMA,
   }) {
     return {
       url: `${trimBase(baseUrl, this.defaultBaseUrl)}/v1/messages`,
@@ -210,11 +211,14 @@ const anthropic = Object.freeze({
         max_tokens: maxTokens,
         stream: true,
         // Adaptive thinking with a high effort: this is a reasoning task
-        // (which chips, wired how) rather than a transcription one.
+        // (which chips, wired how) rather than a transcription one. Both halves
+        // of `output_config` are independent — the EFFORT applies whatever
+        // shape the answer takes, so a prose reply (Feature 320's review) drops
+        // only the format and thinks exactly as hard.
         thinking: { type: "adaptive" },
         output_config: {
           effort: "high",
-          format: { type: "json_schema", schema: NETLIST_SCHEMA },
+          ...(schema ? { format: { type: "json_schema", schema } } : {}),
         },
         system: [
           { type: "text", text: system, cache_control: { type: "ephemeral" } },
@@ -306,6 +310,7 @@ const openaiCompat = Object.freeze({
     system,
     messages,
     maxTokens = 16000,
+    schema = NETLIST_SCHEMA,
   }) {
     const headers = { "content-type": "application/json" };
     // A local Ollama/LM Studio needs no key; a hosted endpoint does. Sending
@@ -324,14 +329,17 @@ const openaiCompat = Object.freeze({
         // the narrower compatibility bet of the two — so this costs nothing
         // that was working. Drop this one line if a local server complains.
         stream_options: { include_usage: true },
-        response_format: {
-          type: "json_schema",
-          json_schema: {
-            name: "netlist",
-            schema: NETLIST_SCHEMA,
-            strict: true,
-          },
-        },
+        // No schema means a prose answer, and the field goes rather than being
+        // set to some "any" shape — a local server that does not implement
+        // `response_format` at all then sees a request it can serve.
+        ...(schema
+          ? {
+              response_format: {
+                type: "json_schema",
+                json_schema: { name: "netlist", schema, strict: true },
+              },
+            }
+          : {}),
         messages: [{ role: "system", content: system }, ...messages],
       },
     };

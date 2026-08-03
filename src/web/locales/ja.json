@@ -641,6 +641,21 @@
       "singleMember": "ネット「{name}」は 1 点にしかつながっていません — 接続を忘れている可能性があります。"
     }
   },
+  "review": {
+    "pinNamed": "{name}（ピン {n}）",
+    "pinNumber": "ピン {n}",
+    "noSupply": "デスク上に電源がないため、何も動作しません。部品トレイから電源を追加し、ボードの電源レールに配線してください。",
+    "unpowered": "{ref}（{id}）は配線されていますが電源に届いていません。VCC/GND のネットに電圧がありません。",
+    "outputsDisabledUnwired": {
+      "other": "{chip} は何も駆動していません。負論理の出力イネーブル {pin} がまったく配線されておらず、未配線の入力は HIGH として読まれます。GND に接続してください。"
+    },
+    "outputsDisabledHigh": {
+      "other": "{chip} は現在オフです。負論理の出力イネーブル {pin} が HIGH のため、出力はハイインピーダンスになっています。LOW に駆動して有効にしてください。"
+    },
+    "inputFloating": "{ref}（{id}）には何も駆動していない入力があります: {pins}。TTL の未接続入力は HIGH として読まれるため、チップは動作しますが設計どおりではありません。それぞれを VCC か GND に接続するか、駆動すべき信号に配線してください。",
+    "busFight": "{drivers} が同じネット（{net}）に配線されています。2 つの出力が 1 つのネットを共有してはいけません。一方が HIGH を、もう一方が LOW を駆動して競合します。",
+    "ledUnlimited": "{ref}（{id}）は電流を制限するものなしで導通しています。実際のブレッドボードでは点灯せずに焼き切れます。直列に抵抗を入れてください。"
+  },
   "scope": {
     "title": "ロジックアナライザ",
     "close": "ロジックアナライザを閉じる",
@@ -724,6 +739,28 @@
       "noSecureStore": "このシステムには安全な資格情報ストアがないため、API キーを保存できません。「設定 ▸ AI」をご覧ください。",
       "noKey": "{provider} 用の API キーが設定されていません。「設定 ▸ AI」で追加してください。",
       "badBaseUrl": "AI のベース URL「{url}」は有効な http(s) アドレスではありません。「設定 ▸ AI」で直すか空にしてください。"
+    },
+    "modeLabel": "AI に何を頼むか",
+    "modeBuild": "作成",
+    "modeReview": "点検",
+    "review": "デスクトップを点検",
+    "reviewTitle": "このデスクトップを点検（Enter）",
+    "reviewPlaceholder": "デスク上の回路について質問してください。そのまま Enter を押せば問題を探します",
+    "reviewInputLabel": "デスク上の回路について質問する",
+    "reviewIntro": "点検は目の前のデスクトップを読み取り、Chip Hippo 自身のチェックを実行して、見つかったことを説明します。何も変更しません — 部品も置かず、配線も動かしません。",
+    "reviewDefaultAsk": "この回路のどこがおかしいですか。",
+    "reviewEmptyDesk": "このデスクトップにはまだ点検するものがありません。",
+    "reviewNoNetlist": "回路の接続を読み取れませんでした。",
+    "reviewCrashed": "点検が予期せず失敗しました: {message}",
+    "reviewClean": "すべてのチェックに合格しました。回路には電源が供給され、収束し、短絡はなく、使用中の入力が未接続のまま残ってもいません。",
+    "reviewFound": {
+      "other": "Chip Hippo が確認すべき点を {count} 件見つけました:"
+    },
+    "reviewNoAnswer": "モデルからの回答はありませんでした。",
+    "reading": "読み取り中…",
+    "readingRow": "回路を読み取っています…",
+    "designingChars": {
+      "other": "回路を設計しています{round}…（{count} 文字）"
     }
   },
   "schematic": {

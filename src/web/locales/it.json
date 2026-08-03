@@ -643,6 +643,23 @@
       "singleMember": "Il net «{name}» raggiunge un solo punto — probabilmente un collegamento dimenticato."
     }
   },
+  "review": {
+    "pinNamed": "{name} (pin {n})",
+    "pinNumber": "pin {n}",
+    "noSupply": "Sulla scrivania non c'è nessun alimentatore, quindi niente può funzionare. Aggiungine uno dal cassetto dei componenti e collegalo ai binari di alimentazione della basetta.",
+    "unpowered": "{ref} ({id}) è cablato ma non raggiunge nessuna alimentazione: le sue reti VCC/GND non portano tensione.",
+    "outputsDisabledUnwired": {
+      "one": "{chip} non pilota nulla: il suo abilitatore di uscita attivo basso {pin} non è cablato affatto, e un ingresso non cablato viene letto come HIGH. Collegalo a GND.",
+      "other": "{chip} non pilota nulla: i suoi abilitatori di uscita attivi bassi {pin} non sono cablati affatto, e un ingresso non cablato viene letto come HIGH. Collegali a GND."
+    },
+    "outputsDisabledHigh": {
+      "one": "{chip} è spento in questo momento: il suo abilitatore di uscita attivo basso {pin} è HIGH, quindi le sue uscite sono flottanti. Portalo a LOW per abilitarle.",
+      "other": "{chip} è spento in questo momento: i suoi abilitatori di uscita attivi bassi {pin} sono HIGH, quindi le sue uscite sono flottanti. Portali a LOW per abilitarle."
+    },
+    "inputFloating": "{ref} ({id}) ha ingressi che nulla pilota: {pins}. Un ingresso TTL flottante viene letto come HIGH, quindi il chip funziona — ma non come previsto. Collega ciascuno a VCC o GND, oppure cablalo a ciò che dovrebbe pilotarlo.",
+    "busFight": "{drivers} sono collegati alla stessa rete ({net}). Due uscite non devono mai condividere una rete: una pilota HIGH mentre l'altra pilota LOW e si contendono la linea.",
+    "ledUnlimited": "{ref} ({id}) conduce senza nulla che limiti la corrente: su una basetta vera si brucerebbe invece di accendersi. Metti una resistenza in serie."
+  },
   "scope": {
     "title": "Analizzatore logico",
     "close": "Chiudi l'analizzatore logico",
@@ -729,6 +746,30 @@
       "noSecureStore": "Questo sistema non ha un archivio sicuro per le credenziali, quindi non è possibile salvare una chiave API. Vedi Impostazioni ▸ IA.",
       "noKey": "Nessuna chiave API configurata per {provider}. Aggiungine una in Impostazioni ▸ IA.",
       "badBaseUrl": "L'URL di base IA «{url}» non è un indirizzo http(s) valido. Correggilo o cancellalo in Impostazioni ▸ IA."
+    },
+    "modeLabel": "Cosa chiedere all'IA",
+    "modeBuild": "Costruisci",
+    "modeReview": "Esamina",
+    "review": "Esamina la scrivania",
+    "reviewTitle": "Esamina questa scrivania (Invio)",
+    "reviewPlaceholder": "Fai una domanda sul circuito sulla scrivania — oppure premi Invio e cercherà i problemi",
+    "reviewInputLabel": "Fai una domanda sul circuito sulla scrivania",
+    "reviewIntro": "Esamina legge la scrivania che hai davanti, esegue i controlli di Chip Hippo su di essa e spiega ciò che ha trovato. Non cambia nulla: nessun componente viene posato e nessun filo spostato.",
+    "reviewDefaultAsk": "Cosa non va in questo circuito?",
+    "reviewEmptyDesk": "Su questa scrivania non c'è ancora nulla da esaminare.",
+    "reviewNoNetlist": "Non è stato possibile leggere la connettività del circuito.",
+    "reviewCrashed": "L'esame è fallito in modo imprevisto: {message}",
+    "reviewClean": "Tutti i controlli sono passati: il circuito è alimentato, si stabilizza, non c'è nessun corto e nessun ingresso in uso resta flottante.",
+    "reviewFound": {
+      "one": "Chip Hippo ha trovato {count} cosa da guardare:",
+      "other": "Chip Hippo ha trovato {count} cose da guardare:"
+    },
+    "reviewNoAnswer": "Il modello non aveva nulla da dire in merito.",
+    "reading": "Lettura…",
+    "readingRow": "Lettura del circuito…",
+    "designingChars": {
+      "one": "Progettazione del circuito{round}… ({count} carattere)",
+      "other": "Progettazione del circuito{round}… ({count} caratteri)"
     }
   },
   "schematic": {

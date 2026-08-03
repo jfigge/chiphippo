@@ -35,13 +35,39 @@
 // faults, capped at two rounds. A failure that is OUR fault (a severed net, an
 // unseated part) is not sent back at all — the model cannot fix the compiler,
 // so re-asking would only spend the user's tokens.
+//
+// ── AND THE OTHER DIRECTION: REVIEW (Feature 320) ──────────────────────────
+//
+// The same panel, asked to LOOK at a circuit instead of build one. Everything
+// above inverts:
+//
+//   • The desk is INPUT, not output. `model/desk-review.js` settles the
+//     document and derives the faults; `ai/desk-brief.js` describes the circuit
+//     coordinate-free. The model is asked what they MEAN, never to find them.
+//   • Nothing is placed. No ladder, no repair rounds, no ghost — the answer is
+//     a paragraph, so the reply is asked for as prose and streamed straight
+//     into the transcript rather than hidden behind a character count.
+//   • It is NOT locked out while the simulation runs. A build ends in a
+//     placement the desk would refuse; a review changes nothing, and a running
+//     circuit is exactly when somebody wants to ask about it.
+//
+// Switching mode clears the provider CONVERSATION (the two run under different
+// system prompts and a mixed thread is incoherent) but never the transcript,
+// which is a record, or the prompt history, which is the user's.
 
 import { el } from "../dom.js";
-import { t } from "../i18n.js";
-import { buildRepairMessage, buildSystemPrompt } from "../ai/catalog-brief.js";
+import { t, getLocale, getLocales } from "../i18n.js";
+import {
+  buildRepairMessage,
+  buildSystemPrompt,
+  buildReviewSystemPrompt,
+} from "../ai/catalog-brief.js";
 import { buildStepsFromReply, partitionFaults } from "../ai/generate.js";
+import { buildDeskBrief } from "../ai/desk-brief.js";
+import { reviewDesk, isEmptyDesk, FAULT } from "../model/desk-review.js";
 import { addUsage, formatTotal, formatUsage } from "../ai/usage.js";
 import { PromptHistory } from "../ai/prompt-history.js";
+import { buildSegmented } from "./segmented-picker.js";
 
 const MIN_PANEL_H = 160;
 const DEFAULT_PANEL_H = 280;
@@ -71,6 +97,10 @@ const SEND_SVG =
   '<line x1="22" y1="2" x2="11" y2="13"/>' +
   '<polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>';
 
+/** What the panel is being asked for. */
+const BUILD = "build";
+const REVIEW = "review";
+
 export class AiPanel {
   #el;
   #log;
@@ -80,6 +110,7 @@ export class AiPanel {
   #status;
   #usage;
   #intro;
+  #modeSlot;
 
   #config;
   #onVisibilityChange;
@@ -87,6 +118,17 @@ export class AiPanel {
   #onDesign;
   #isLocked;
   #onHistoryChange;
+
+  // The desk, for Review. Read through `toJSON()` (a deep copy) and the ONE
+  // shared netlist cache, exactly as the build guide and the analyzer read it —
+  // never through the controller, which exposes no document at all.
+  #deskDoc;
+  #netlist;
+
+  // Session-only, and deliberately not a setting: the picker shows which mode
+  // is armed, so there is nothing for a remembered one to buy, and Build is
+  // what an unconfigured panel should offer.
+  #mode = BUILD;
 
   // What the user has asked for before, and where they are in it. The cursor
   // and the parked draft live in the model, not here — see prompt-history.js.
@@ -138,7 +180,10 @@ export class AiPanel {
    * @param {(clip:object)=>void} opts.onDesign - hand a verified design clip to
    *   the desk (the controller arms it as a ghost).
    * @param {()=>boolean} [opts.isLocked] - true while the sim is running, when
-   *   the desk refuses edits and a build could not be placed anyway.
+   *   the desk refuses edits and a build could not be placed anyway. Review
+   *   ignores it: it places nothing, so there is nothing to refuse.
+   * @param {object} [opts.deskDoc] - the live DeskDoc, for Review to read.
+   * @param {object} [opts.netlist] - the shared NetlistCache.
    * @param {number} [opts.height]
    * @param {Array<string>} [opts.history] - `settings.aiHistory`, newest first.
    *   The user's own prompt history, kept in the APP's settings rather than the
@@ -153,6 +198,8 @@ export class AiPanel {
       config,
       onDesign,
       isLocked,
+      deskDoc,
+      netlist,
       height,
       history,
       onHistoryChange,
@@ -163,6 +210,8 @@ export class AiPanel {
     this.#config = config ?? (() => ({}));
     this.#onDesign = onDesign;
     this.#isLocked = isLocked ?? (() => false);
+    this.#deskDoc = deskDoc ?? null;
+    this.#netlist = netlist ?? null;
     this.#onVisibilityChange = onVisibilityChange;
     this.#onHeightChange = onHeightChange;
     this.#past = new PromptHistory(history);
@@ -227,8 +276,15 @@ export class AiPanel {
     });
     this.#send.innerHTML = SEND_SVG;
 
+    // A holder rather than the picker itself: `buildSegmented` resolves its
+    // labels through `t()` when it is BUILT, so a language change is a rebuild,
+    // and rebuilding into a slot keeps the header's flex order fixed.
+    this.#modeSlot = el("div", { class: "ai-mode" });
+    this.#paintModePicker();
+
     const header = el("div", { class: "ai-header" }, [
       el("span", { class: "ai-title", text: t("ai.title") }),
+      this.#modeSlot,
       el("div", { class: "ai-tools" }, [
         this.#status,
         this.#usage,
@@ -274,8 +330,68 @@ export class AiPanel {
     this.#intro = this.#say("note", t("ai.intro"));
   }
 
+  /** (Re)render the Build/Review track into its slot. */
+  #paintModePicker() {
+    this.#modeSlot.replaceChildren(
+      buildSegmented({
+        options: [
+          { value: BUILD, label: t("ai.modeBuild") },
+          { value: REVIEW, label: t("ai.modeReview") },
+        ],
+        value: this.#mode,
+        ariaLabel: t("ai.modeLabel"),
+        onPick: (mode) => this.setMode(mode),
+      }),
+    );
+  }
+
   get element() {
     return this.#el;
+  }
+
+  /** Which question the panel is asking — `"build"` or `"review"`. */
+  get mode() {
+    return this.#mode;
+  }
+
+  /**
+   * Switch what the panel asks for.
+   *
+   * The provider CONVERSATION goes with it: the two modes run under different
+   * system prompts, so replies from one are not context the other can use, and
+   * a thread that mixed them would be answering the wrong question with the
+   * wrong rules. The transcript stays — it is a record of what happened, and
+   * rewriting history is not what a mode switch means. Anything in flight is
+   * cancelled, since it belongs to the mode being left.
+   */
+  setMode(mode) {
+    const next = mode === REVIEW ? REVIEW : BUILD;
+    if (next === this.#mode) return;
+    if (this.#requestId || this.#building) this.#cancel();
+    this.#mode = next;
+    this.#history = [];
+    this.#repairs = 0;
+    this.#round = "";
+    this.#paintModePicker();
+    this.#relabelCompose();
+    this.#say("note", next === REVIEW ? t("ai.reviewIntro") : t("ai.intro"));
+  }
+
+  /** The compose box and send button say what THIS mode does with them. */
+  #relabelCompose() {
+    const review = this.#mode === REVIEW;
+    this.#input.placeholder = review
+      ? t("ai.reviewPlaceholder")
+      : t("ai.inputPlaceholder");
+    this.#input.setAttribute(
+      "aria-label",
+      review ? t("ai.reviewInputLabel") : t("ai.inputLabel"),
+    );
+    this.#send.title = review ? t("ai.reviewTitle") : t("ai.buildTitle");
+    this.#send.setAttribute(
+      "aria-label",
+      review ? t("ai.review") : t("ai.build"),
+    );
   }
 
   /**
@@ -287,6 +403,10 @@ export class AiPanel {
    * transcript is a record, not a label: re-wording it would be rewriting
    * history, and half of it (a provider's error text, a fault's message) has no
    * catalog key to re-resolve anyway. New rows arrive in the new language.
+   *
+   * The MODE PICKER and the compose box are re-rendered rather than re-worded:
+   * `buildSegmented` resolves its labels at build time, and the compose box's
+   * text depends on the mode anyway.
    *
    * The INTRO row is the exception, because it is not a record of anything: it
    * is standing text the panel says about ITSELF, present before a word has
@@ -302,10 +422,8 @@ export class AiPanel {
       const text = this.#intro.querySelector(".ai-row-text");
       if (text) text.textContent = t("ai.intro");
     }
-    this.#input.placeholder = t("ai.inputPlaceholder");
-    this.#input.setAttribute("aria-label", t("ai.inputLabel"));
-    this.#send.title = t("ai.buildTitle");
-    this.#send.setAttribute("aria-label", t("ai.build"));
+    this.#relabelCompose();
+    this.#paintModePicker();
     this.#el.setAttribute("aria-label", t("ai.title"));
     this.#resize.title = t("ai.resize");
     const title = this.#el.querySelector(".ai-title");
@@ -376,7 +494,7 @@ export class AiPanel {
 
   // ── The transcript ─────────────────────────────────────────────────────────
 
-  /** Append a row. `kind` ∈ you | note | working | ok | fail. */
+  /** Append a row. `kind` ∈ you | note | working | ok | fail | reply. */
   #say(kind, text) {
     const row = el("div", { class: `ai-row ai-row--${kind}` }, [
       el("p", { class: "ai-row-text", text }),
@@ -455,7 +573,8 @@ export class AiPanel {
     this.#status.textContent = label;
     this.#input.disabled = busy;
     this.#send.classList.toggle("ai-send--busy", busy);
-    this.#send.title = busy ? t("ai.cancelTitle") : t("ai.buildTitle");
+    if (busy) this.#send.title = t("ai.cancelTitle");
+    else this.#relabelCompose();
   }
 
   // ── History ────────────────────────────────────────────────────────────────
@@ -510,8 +629,14 @@ export class AiPanel {
       return;
     }
     const prompt = this.#input.value.trim();
-    if (!prompt) return;
-    if (this.#isLocked()) {
+    // Review accepts an EMPTY box — "just look at it" is the commonest ask, and
+    // there is nothing to describe the way a build has to be described.
+    if (!prompt && this.#mode !== REVIEW) return;
+    // The run lock is a BUILD constraint: it exists because a finished build
+    // arms a placement ghost, and the desk refuses edits while the sim runs.
+    // A review places nothing, and a running circuit is exactly when somebody
+    // wants to ask what it is doing.
+    if (this.#mode !== REVIEW && this.#isLocked()) {
       this.#say("fail", t("ai.lockedRunning"));
       return;
     }
@@ -523,15 +648,97 @@ export class AiPanel {
     // Two statements ON PURPOSE. Folded into `#onHistoryChange?.(remember(…))`
     // the optional call short-circuits WITHOUT EVALUATING ITS ARGUMENT, so a
     // panel nobody is listening to would quietly stop recording anything.
-    const entries = this.#past.remember(prompt);
-    this.#onHistoryChange?.(entries);
+    if (prompt) {
+      const entries = this.#past.remember(prompt);
+      this.#onHistoryChange?.(entries);
+    }
     this.#repairs = 0;
     this.#round = "";
     this.#sendUsage = null;
     this.#calls = 0;
+    if (this.#mode === REVIEW) {
+      this.#review(prompt);
+      return;
+    }
     this.#history.push({ role: "user", content: prompt });
     this.#say("you", prompt);
     this.#request();
+  }
+
+  // ── Review ─────────────────────────────────────────────────────────────────
+
+  /**
+   * Read the desk, report what the app found, and ask the model to explain it.
+   *
+   * The order matters: the findings are printed BEFORE the request goes out, so
+   * the user has the app's own answer immediately and the model's explanation
+   * arrives on top of it. If the connection fails or the reply is nonsense, the
+   * grounded half is still there.
+   */
+  #review(question) {
+    const doc = this.#deskDoc?.toJSON?.() ?? null;
+    if (!doc || isEmptyDesk(doc)) {
+      this.#say("note", t("ai.reviewEmptyDesk"));
+      return;
+    }
+    this.#say("you", question || t("ai.reviewDefaultAsk"));
+
+    const netlist = this.#netlist?.get?.() ?? null;
+    if (!netlist) {
+      this.#say("fail", t("ai.reviewNoNetlist"));
+      return;
+    }
+
+    let found;
+    try {
+      found = reviewDesk(doc, netlist);
+    } catch (err) {
+      // The review settles a real circuit, so it can meet anything the engine
+      // can. Report it rather than leaving the panel silent — and do not send:
+      // there would be no findings to explain.
+      this.#say(
+        "fail",
+        t("ai.reviewCrashed", { message: err?.message ?? err }),
+      );
+      return;
+    }
+    this.#sayFindings(found.findings);
+
+    this.#history.push({
+      role: "user",
+      content: this.#reviewMessage(doc, netlist, found, question),
+    });
+    this.#request();
+  }
+
+  /** The app's own verdict, as a transcript row. */
+  #sayFindings(findings) {
+    if (!findings.length) {
+      this.#say("ok", t("ai.reviewClean"));
+      return;
+    }
+    const faults = findings.filter((f) => f.severity === FAULT).length;
+    this.#sayList(
+      faults ? "fail" : "note",
+      t("ai.reviewFound", { count: findings.length }),
+      findings.map((f) => f.message),
+    );
+  }
+
+  /** The brief plus whatever the user actually asked. */
+  #reviewMessage(doc, netlist, found, question) {
+    const brief = buildDeskBrief(doc, netlist, found);
+    const ask = question || t("ai.reviewDefaultAsk");
+    return `${brief}\n\n## The question\n\n${ask}`;
+  }
+
+  /** The language to answer a review in, named the way it names itself. */
+  #answerLanguage() {
+    const lang = getLocale();
+    const match = getLocales().find(
+      (l) => l.code === lang || lang.startsWith(`${l.code}-`),
+    );
+    return match?.nativeName ?? "";
   }
 
   /**
@@ -569,16 +776,23 @@ export class AiPanel {
     const round = this.#repairs
       ? ` ${t("ai.fixRound", { n: this.#repairs, total: MAX_REPAIRS })}`
       : "";
-    this.#setBusy(true, t("ai.designing"));
-    this.#streamRow = this.#say("working", t("ai.designingRow", { round }));
+    const review = this.#mode === REVIEW;
+    this.#setBusy(true, review ? t("ai.reading") : t("ai.designing"));
+    this.#streamRow = this.#say(
+      "working",
+      review ? t("ai.readingRow") : t("ai.designingRow", { round }),
+    );
     this.#round = round;
 
     let started;
     try {
       started = await window.chiphippo?.ai?.start(
         { ...this.#config() },
-        buildSystemPrompt(),
+        review
+          ? buildReviewSystemPrompt(undefined, this.#answerLanguage())
+          : buildSystemPrompt(),
         this.#history,
+        review ? { format: "prose" } : undefined,
       );
     } catch (err) {
       started = { ok: false, error: String(err?.message ?? err) };
@@ -610,13 +824,18 @@ export class AiPanel {
   #onDelta(detail) {
     if (!detail || detail.requestId !== this.#requestId) return;
     this.#stream += detail.text ?? "";
-    if (this.#streamRow) {
-      // The reply is JSON, not prose, so showing it would be noise — the
-      // character count is the honest progress signal.
-      this.#streamRow.querySelector(".ai-row-text").textContent =
-        `Designing the circuit${this.#round}… ` +
-        `(${this.#stream.length} characters)`;
-    }
+    if (!this.#streamRow) return;
+    // A BUILD's reply is JSON, so showing it would be noise — the character
+    // count is the honest progress signal. A REVIEW's reply is prose written
+    // for the person watching, so it is simply shown, and the row it is
+    // streaming into becomes the answer when it lands.
+    this.#streamRow.querySelector(".ai-row-text").textContent =
+      this.#mode === REVIEW
+        ? this.#stream
+        : t("ai.designingChars", {
+            round: this.#round,
+            count: this.#stream.length,
+          });
   }
 
   #finishStream() {
@@ -632,7 +851,15 @@ export class AiPanel {
     // The single ingestion point: every round lands here, whatever it did.
     this.#sendUsage = addUsage(this.#sendUsage, detail.usage);
     this.#calls += 1;
-    this.#finishStream();
+    // A REVIEW's row is the answer, so it is KEPT and promoted rather than
+    // discarded — the build's row is a progress line with nothing in it worth
+    // reading once the ladder starts.
+    const answer = this.#mode === REVIEW ? (detail.text ?? this.#stream) : "";
+    if (this.#mode === REVIEW && detail.ok && answer.trim()) {
+      this.#promoteStreamRow(answer);
+    } else {
+      this.#finishStream();
+    }
     if (!detail.ok) {
       this.#setBusy(false);
       if (!detail.cancelled)
@@ -640,8 +867,29 @@ export class AiPanel {
       this.#settle();
       return;
     }
+    if (this.#mode === REVIEW) {
+      this.#setBusy(false);
+      this.#history.push({ role: "assistant", content: answer });
+      if (!answer.trim()) this.#say("note", t("ai.reviewNoAnswer"));
+      this.#settle();
+      return;
+    }
     this.#setBusy(true, t("ai.building"));
     this.#build(detail.text ?? this.#stream);
+  }
+
+  /** Turn the streaming progress row into the finished reply. */
+  #promoteStreamRow(text) {
+    const row = this.#streamRow;
+    this.#streamRow = null;
+    if (!row) {
+      this.#say("reply", text);
+      return;
+    }
+    row.classList.remove("ai-row--working");
+    row.classList.add("ai-row--reply");
+    row.querySelector(".ai-row-text").textContent = text;
+    this.#log.scrollTop = this.#log.scrollHeight;
   }
 
   // ── The ladder ─────────────────────────────────────────────────────────────

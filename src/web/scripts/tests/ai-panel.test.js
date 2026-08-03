@@ -26,8 +26,12 @@ import assert from "node:assert/strict";
 
 import { applyCatalog, t as message } from "../i18n.js";
 import { resetDom } from "./jsdom-setup.js";
+import { DeskDoc } from "../model/desk-doc.js";
+import { partDef } from "../catalog/index.js";
+import { partPinAddresses } from "../model/occupancy.js";
 
 const { AiPanel } = await import("../components/ai-panel.js");
+const { NetlistCache } = await import("../components/netlist-cache.js");
 
 const COUNTER_SPEC = {
   title: "4-bit counter on an LED bar",
@@ -64,11 +68,11 @@ function stubBridge(replies) {
   let seq = 0;
   window.chiphippo = {
     ai: {
-      start: async (config, system, messages) => {
+      start: async (config, system, messages, opts) => {
         const requestId = `r${++seq}`;
         // Snapshot: the panel keeps appending to the same history array, so a
         // stored reference would show later turns as if they had been sent.
-        sent.push({ requestId, config, system, messages: [...messages] });
+        sent.push({ requestId, config, system, messages: [...messages], opts });
         const reply = replies[seq - 1];
         const detail =
           typeof reply === "string"
@@ -785,5 +789,191 @@ test("AiPanel: a cleared panel is not re-introduced by a language change", (t) =
     [...container.querySelectorAll(".ai-row-text")].map((p) => p.textContent),
     [cleared],
     "the detached intro stays gone; the transcript keeps its own words",
+  );
+});
+
+// ── Review mode (Feature 320) ──────────────────────────────────────────────
+//
+// The inversion of everything above: the desk is INPUT, the answer is prose,
+// and nothing is placed. What these guard is that the two modes stay separate —
+// a review must never reach the ladder, never arm a ghost, and never carry the
+// builder's conversation with it.
+
+/** A desk with a real fault on it: a powered 74LS00 whose 1Y drives an LED. */
+function brokenDesk() {
+  const doc = new DeskDoc(null);
+  doc.addKit("full", 0, 0);
+  doc.addPsu(0, 40, { volts: 5 });
+  doc.addWire({ from: "psu1.+", to: "bb1.+1", color: "red" });
+  doc.addWire({ from: "psu1.-", to: "bb1.-1", color: "black" });
+  const chip = doc.addComponent({
+    kind: "chip",
+    ref: "74LS00",
+    board: "bb2",
+    anchor: "e5",
+  });
+  const json = doc.toJSON();
+  const pins = new Map(
+    partPinAddresses(
+      json,
+      json.components.find((c) => c.id === chip.id),
+    ).map((p) => [p.pin, p.address]),
+  );
+  const def = partDef("74LS00");
+  const hole = (a) => a.replace(/\.[a-j]/, "abcde".includes(a.split(".")[1][0]) ? ".a" : ".j"); // prettier-ignore
+  const at = (role) => hole(pins.get(def.pins.find((p) => p.role === role).n));
+  doc.addWire({ from: at("vcc"), to: "bb1.+2", color: "red" });
+  doc.addWire({ from: at("gnd"), to: "bb1.-2", color: "black" });
+  // Gate 1 is in use, so its floating inputs are a real finding.
+  const out = def.logic.units[0].output;
+  doc.addWire({ from: hole(pins.get(out)), to: "bb2.a40", color: "blue" });
+  return { deskDoc: doc, netlist: new NetlistCache(doc) };
+}
+
+/** Mount a panel in Review mode over a desk. */
+function mountReview(opts = {}) {
+  const desk = brokenDesk();
+  const m = mount({ ...desk, ...opts });
+  m.panel.setMode("review");
+  return { ...m, ...desk };
+}
+
+test("AiPanel: Review asks for prose about the desk and places nothing", async () => {
+  resetDom();
+  const sent = stubBridge(["The 1A and 1B inputs are floating."]);
+  const { container, designs } = mountReview();
+
+  ask(container, "why is the output stuck high?");
+  await settleUi();
+
+  assert.equal(sent.length, 1, "one request went out");
+  assert.deepEqual(sent[0].opts, { format: "prose" }, "no schema is imposed");
+  assert.match(sent[0].system, /Do NOT re-derive/, "the review system prompt");
+  const asked = sent[0].messages.at(-1).content;
+  assert.match(asked, /# The circuit currently on the desk/, "the brief rode along"); // prettier-ignore
+  assert.match(asked, /74LS00/, "with the parts on the desk");
+  assert.match(asked, /why is the output stuck high\?/, "and the question");
+
+  assert.equal(designs.length, 0, "REVIEW NEVER PLACES ANYTHING");
+  assert.match(
+    rows(container, "reply").join(" "),
+    /inputs are floating/,
+    "the model's answer is shown as the reply",
+  );
+});
+
+test("AiPanel: the app's own findings are shown before the model answers", async () => {
+  resetDom();
+  stubBridge(["…"]);
+  const { container } = mountReview();
+
+  ask(container, "");
+  // The findings are printed synchronously, before the request is even sent.
+  const listed = rows(container, "note").concat(rows(container, "fail"));
+  assert.match(
+    listed.join(" "),
+    /inputs nothing drives/,
+    "the engine-derived finding is in the transcript straight away",
+  );
+});
+
+test("AiPanel: an empty desk is reported rather than sent", async () => {
+  resetDom();
+  const sent = stubBridge(["should not be reached"]);
+  const doc = new DeskDoc(null);
+  const { container, panel } = mount({
+    deskDoc: doc,
+    netlist: new NetlistCache(doc),
+  });
+  panel.setMode("review");
+
+  ask(container, "what's wrong?");
+  await settleUi();
+
+  assert.equal(sent.length, 0, "no tokens spent on an empty desk");
+  assert.match(rows(container, "note").join(" "), /nothing on this desktop/i);
+});
+
+test("AiPanel: Review works while the simulation is running", async () => {
+  resetDom();
+  const sent = stubBridge(["It is counting."]);
+  const { container } = mountReview({ isLocked: () => true });
+
+  ask(container, "what is it doing?");
+  await settleUi();
+
+  assert.equal(sent.length, 1, "a read-only review is not locked out");
+  assert.equal(
+    rows(container, "fail").join(" ").includes(message("ai.lockedRunning")),
+    false,
+  );
+});
+
+test("AiPanel: Build is still locked out while the simulation runs", async () => {
+  resetDom();
+  const sent = stubBridge([JSON.stringify(COUNTER_SPEC)]);
+  const { container } = mount({ isLocked: () => true });
+
+  ask(container, "a 4-bit counter");
+  await settleUi();
+
+  assert.equal(sent.length, 0, "a build would end in a placement the desk refuses"); // prettier-ignore
+  assert.match(rows(container, "fail").join(" "), /Stop the simulation/);
+});
+
+test("AiPanel: switching mode drops the thread but keeps the transcript", async () => {
+  resetDom();
+  const sent = stubBridge([
+    JSON.stringify(COUNTER_SPEC),
+    "Nothing much is wrong.",
+  ]);
+  const desk = brokenDesk();
+  const { container, panel } = mount(desk);
+
+  ask(container, "a 4-bit counter");
+  await settleUi();
+  const before = container.querySelectorAll(".ai-row").length;
+
+  panel.setMode("review");
+  ask(container, "and now?");
+  await settleUi();
+
+  assert.equal(sent.length, 2);
+  assert.equal(
+    sent[1].messages.length,
+    1,
+    "the review starts a fresh conversation — no build turns carried over",
+  );
+  assert.ok(
+    container.querySelectorAll(".ai-row").length > before,
+    "the transcript is a record: it grew rather than being replaced",
+  );
+  assert.match(
+    rows(container, "ok").join(" "),
+    /counter/,
+    "what the build said is still there",
+  );
+});
+
+test("AiPanel: the mode picker and the compose box agree", () => {
+  resetDom();
+  stubBridge([]);
+  const { container, panel } = mount(brokenDesk());
+  const track = container.querySelector(".ai-mode .segmented-picker");
+  assert.ok(track, "the shared segmented picker is in the header");
+
+  const options = [...track.querySelectorAll(".segmented-option")];
+  assert.deepEqual(
+    options.map((b) => b.textContent),
+    [message("ai.modeBuild"), message("ai.modeReview")],
+  );
+  assert.equal(panel.mode, "build");
+
+  options[1].click();
+  assert.equal(panel.mode, "review");
+  assert.equal(
+    container.querySelector(".ai-input").placeholder,
+    message("ai.reviewPlaceholder"),
+    "the compose box says what THIS mode does with it",
   );
 });

@@ -643,6 +643,23 @@
       "singleMember": "La red «{name}» conecta con un solo punto — probablemente una conexión olvidada."
     }
   },
+  "review": {
+    "pinNamed": "{name} (pin {n})",
+    "pinNumber": "pin {n}",
+    "noSupply": "No hay ninguna fuente de alimentación en el escritorio, así que nada puede funcionar. Añada una desde la bandeja de piezas y conéctela a los raíles de alimentación de la placa.",
+    "unpowered": "{ref} ({id}) está cableado pero no llega a ninguna fuente: sus redes VCC/GND no tienen tensión.",
+    "outputsDisabledUnwired": {
+      "one": "{chip} no excita nada: su habilitación de salida activa a nivel bajo {pin} no está cableada, y una entrada sin cablear se lee como HIGH. Conéctela a GND.",
+      "other": "{chip} no excita nada: sus habilitaciones de salida activas a nivel bajo {pin} no están cableadas, y una entrada sin cablear se lee como HIGH. Conéctelas a GND."
+    },
+    "outputsDisabledHigh": {
+      "one": "{chip} está desactivado ahora mismo: su habilitación de salida activa a nivel bajo {pin} está en HIGH, así que sus salidas quedan flotantes. Póngala a LOW para habilitarlas.",
+      "other": "{chip} está desactivado ahora mismo: sus habilitaciones de salida activas a nivel bajo {pin} están en HIGH, así que sus salidas quedan flotantes. Póngalas a LOW para habilitarlas."
+    },
+    "inputFloating": "{ref} ({id}) tiene entradas que nada excita: {pins}. Una entrada TTL flotante se lee como HIGH, así que el chip funciona, pero no como se pretendía. Conecte cada una a VCC o GND, o cablee la que deba excitarla.",
+    "busFight": "{drivers} están conectados a la misma red ({net}). Dos salidas nunca deben compartir una red: una excita a HIGH mientras la otra excita a LOW y se pelean.",
+    "ledUnlimited": "{ref} ({id}) conduce sin nada que limite la corriente; en una placa real se quemaría en lugar de iluminarse. Ponga una resistencia en serie."
+  },
   "scope": {
     "title": "Analizador lógico",
     "close": "Cerrar el analizador lógico",
@@ -729,6 +746,30 @@
       "noSecureStore": "Este sistema no tiene un almacén seguro de credenciales, así que no se puede guardar una clave de API. Consulta Ajustes ▸ IA.",
       "noKey": "No hay ninguna clave de API configurada para {provider}. Añade una en Ajustes ▸ IA.",
       "badBaseUrl": "La URL base de IA «{url}» no es una dirección http(s) válida. Corrígela o bórrala en Ajustes ▸ IA."
+    },
+    "modeLabel": "Qué pedirle a la IA",
+    "modeBuild": "Construir",
+    "modeReview": "Revisar",
+    "review": "Revisar el escritorio",
+    "reviewTitle": "Revisar este escritorio (Intro)",
+    "reviewPlaceholder": "Pregunte sobre el circuito del escritorio — o pulse Intro y buscará problemas",
+    "reviewInputLabel": "Preguntar sobre el circuito del escritorio",
+    "reviewIntro": "Revisar lee el escritorio que tiene delante, aplica las comprobaciones propias de Chip Hippo y explica lo que encuentra. No cambia nada: no coloca ninguna pieza ni mueve ningún cable.",
+    "reviewDefaultAsk": "¿Qué falla en este circuito?",
+    "reviewEmptyDesk": "Todavía no hay nada que revisar en este escritorio.",
+    "reviewNoNetlist": "No se ha podido leer la conectividad del circuito.",
+    "reviewCrashed": "La revisión falló de forma inesperada: {message}",
+    "reviewClean": "Todas las comprobaciones pasaron: el circuito está alimentado, se estabiliza, nada está cortocircuitado y ninguna entrada en uso queda flotante.",
+    "reviewFound": {
+      "one": "Chip Hippo encontró {count} cosa que revisar:",
+      "other": "Chip Hippo encontró {count} cosas que revisar:"
+    },
+    "reviewNoAnswer": "El modelo no tenía nada que decir al respecto.",
+    "reading": "Leyendo…",
+    "readingRow": "Leyendo el circuito…",
+    "designingChars": {
+      "one": "Diseñando el circuito{round}… ({count} carácter)",
+      "other": "Diseñando el circuito{round}… ({count} caracteres)"
     }
   },
   "schematic": {
