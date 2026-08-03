@@ -166,6 +166,59 @@ test("setMemoryProgrammed flags a ROM (and only a memory chip)", () => {
   assert.equal(doc.getComponent(id).params.programmed, undefined, "cleared");
 });
 
+test("setMemoryProgrammed records which file a ROM was loaded from", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const { controller } = makeDesk(doc, { onCreateMemoryFile: () => {} });
+  controller.addComponentAt("rom-8k", "bb1", "e5");
+  const id = chipId(doc, "rom-8k");
+  const guid = doc.getComponent(id).params.storage.guid;
+  const storage = () => doc.getComponent(id).params.storage;
+
+  // A load records the file, and never disturbs the guid that names the
+  // backing store (the patch merges shallowly, so storage goes over whole).
+  controller.setMemoryProgrammed(id, true, { source: "/roms/blink.bin" });
+  assert.deepEqual(storage(), { guid, source: "/roms/blink.bin" });
+
+  // A hand-edit in the inspector KEEPS the file and marks it: it is still
+  // where the bytes came from, they have just moved on from it.
+  controller.setMemoryProgrammed(id, true, { edited: true });
+  assert.deepEqual(storage(), {
+    guid,
+    source: "/roms/blink.bin",
+    edited: true,
+  });
+
+  // Loading again clears the mark — these ARE that file's bytes once more.
+  controller.setMemoryProgrammed(id, true, { source: "/roms/other.bin" });
+  assert.deepEqual(storage(), { guid, source: "/roms/other.bin" });
+
+  // Un-programming drops both: the chip holds noise, and noise came from
+  // nowhere.
+  controller.setMemoryProgrammed(id, false);
+  assert.deepEqual(storage(), { guid });
+});
+
+test("a program lands the flag and the file label in ONE undo step", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const { controller } = makeDesk(doc, { onCreateMemoryFile: () => {} });
+  controller.addComponentAt("rom-8k", "bb1", "e5");
+  const id = chipId(doc, "rom-8k");
+
+  let changes = 0;
+  const count = () => (changes += 1);
+  window.addEventListener("chiphippo:doc-changed", count);
+  try {
+    controller.setMemoryProgrammed(id, true, { source: "/roms/blink.bin" });
+  } finally {
+    window.removeEventListener("chiphippo:doc-changed", count);
+  }
+  assert.equal(changes, 1, "one edit, so ⌘Z takes back both halves together");
+});
+
 test('setMemoryProgrammed refreshes the chip\'s own "unprogrammed" warning triangle immediately', () => {
   resetDom();
   const doc = new DeskDoc(null);

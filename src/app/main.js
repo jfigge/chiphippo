@@ -1040,7 +1040,10 @@ function withMemoryPath(guid, fn) {
 }
 
 /** Open a `.bin`/`.hex` image for the external programmer — returns its RAW
-    bytes; the renderer decides bin-vs-hex by extension and parses HEX itself. */
+    bytes and the path they came from; the renderer decides bin-vs-hex by
+    extension and parses HEX itself, and keeps the path on the chip as a label
+    so the user can see which file is loaded. Main does nothing else with it:
+    the bytes are read HERE, and nothing ever resolves that string again. */
 async function pickMemoryImage() {
   const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
   const opts = {
@@ -1067,11 +1070,7 @@ async function pickMemoryImage() {
         error: `file is too large (${size} bytes, max ${memStore.MAX_BYTES})`,
       };
     }
-    return {
-      ok: true,
-      name: path.basename(filePath),
-      bytes: fs.readFileSync(filePath),
-    };
+    return { ok: true, path: filePath, bytes: fs.readFileSync(filePath) };
   } catch (err) {
     return { ok: false, error: err.message };
   }

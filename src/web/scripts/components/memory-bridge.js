@@ -22,8 +22,9 @@
 //
 // It also owns the two file operations that touch the DOCUMENT: the in-app
 // EXTERNAL PROGRAMMER (pick a `.bin`/`.hex` → copy to the chip's file, flag it
-// programmed) and Save (write hand-edits). Both run through the DeskController
-// so the `programmed` flag rides undo/redo. The bridge owns no state.
+// programmed, and RECORD WHICH FILE it was) and Save (write hand-edits, which
+// keeps that record and marks it edited). Both run through the DeskController
+// so the flag and the label ride undo/redo together. The bridge owns no state.
 
 import { partDef } from "../catalog/index.js";
 import { isMemory, isVolatileMemory, memoryConfig } from "../sim/chip-eval.js";
@@ -51,9 +52,10 @@ export class MemoryBridge {
    * @param {object} opts.bridge - window.chiphippo (`mem.*` + `memory.*`).
    * @param {import('./notification-stack.js').NotificationStack} [opts.notifications]
    * @param {() => void} [opts.onImagesChanged] - a ROM's BYTES changed. The
-   *   document may not have: `params.programmed` is already true on a chip being
-   *   re-saved, so a signature comparison cannot see it, and the bytes have to
-   *   travel in the project file. See `ProjectWorkspace.markImagesChanged`.
+   *   document may not have: re-loading the SAME file leaves both `programmed`
+   *   and `storage.source` exactly as they were, so a signature comparison
+   *   cannot see it, and the bytes have to travel in the project file. See
+   *   `ProjectWorkspace.markImagesChanged`.
    */
   constructor({
     deskDoc,
@@ -107,7 +109,7 @@ export class MemoryBridge {
       return this.#warn("danger", "Import failed", picked.error);
     }
     let bytes = picked.bytes;
-    if (/\.hex$/i.test(picked.name ?? "")) {
+    if (/\.hex$/i.test(picked.path ?? "")) {
       try {
         bytes = parseIntelHex(new TextDecoder().decode(picked.bytes));
       } catch (err) {
@@ -131,7 +133,12 @@ export class MemoryBridge {
     if (res?.ok === false) {
       return this.#warn("danger", "Program failed", res.error);
     }
-    this.#controller?.setMemoryProgrammed(compId, true);
+    // The file is recorded on the chip, so the inspector and the Properties
+    // card can both say which image is loaded — a `<guid>.bin` under userData
+    // is a cache path and answers nothing.
+    this.#controller?.setMemoryProgrammed(compId, true, {
+      source: picked.path ?? null,
+    });
     this.#onImagesChanged?.();
     this.#sendContext(compId); // the window reloads from the programmed file
   }
@@ -172,7 +179,10 @@ export class MemoryBridge {
     if (res?.ok === false) {
       return this.#warn("danger", "Save failed", res.error);
     }
-    this.#controller?.setMemoryProgrammed(compId, true);
+    // The source file KEEPS its place and is marked instead: it is still where
+    // these bytes came from, which is what the label is for — they have simply
+    // moved on from it since.
+    this.#controller?.setMemoryProgrammed(compId, true, { edited: true });
     this.#onImagesChanged?.();
   }
 
@@ -205,6 +215,10 @@ export class MemoryBridge {
       volatile,
       guid,
       programmed: comp.params?.programmed === true,
+      // Which file the image was loaded from, and whether it has been edited
+      // since. A volatile chip has no `storage` and so answers null/false.
+      source: comp.params?.storage?.source ?? null,
+      edited: comp.params?.storage?.edited === true,
       running,
     };
     if (!volatile && guid) {

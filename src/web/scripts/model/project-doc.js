@@ -35,7 +35,7 @@
 // only module that interprets it is DeskDoc.
 
 /** Schema version of a project, matching app/store/project-store.js. */
-export const PROJECT_VERSION = 4;
+export const PROJECT_VERSION = 5;
 
 /** How long a project or desktop name may be (it suggests a file name). */
 import { tf } from "../i18n.js";

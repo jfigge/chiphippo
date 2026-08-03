@@ -39,8 +39,8 @@
  *   · `newProject()` — a blank project, ONE desktop, written to the working
  *     slot so the next launch finds it.
  *   · `read` / `write` — the file, whole. Reading HYDRATES the memory cache
- *     from `images`; writing COLLECTS it back (project-images.js). Nothing
- *     outside the file is needed to open a design.
+ *     from the image tables; writing COLLECTS it back (project-images.js).
+ *     Nothing outside the file is needed to open a design.
  *   · the working slot — an UNSAVED project (blank name, blank location) lives
  *     in the one fixed `saves/default.chiphippo`, which is to a project
  *     exactly what desk.json once was to a schematic: the always-there slot
@@ -64,16 +64,19 @@ const {
   isLegacyProject,
   migrateLegacyTabs,
 } = require("./project-migrate");
-const { collectImages, hydrateImages } = require("./project-images");
+const { collectImages, imagesOf, hydrateImages } = require("./project-images");
 
 /**
- * Schema version of a project file. v4 is the single-file redesign: every
+ * Schema version of a project file. v4 was the single-file redesign: every
  * desktop's document and every programmed ROM's bytes moved INTO the file, so
- * a project has no companion files at all. v3 (paths per tab) is migrated on
- * read; the v1/v2 folder projects never left the app's own directory and are
- * not migrated.
+ * a project has no companion files at all. v5 splits those bytes into a
+ * content-addressed `blobs` table every desktop shares, leaving `images` as
+ * one small reference per chip (project-images.js). A v4 file still reads —
+ * `imagesOf` tells the two shapes apart — and v3 (paths per tab) is migrated
+ * on read; the v1/v2 folder projects never left the app's own directory and
+ * are not migrated.
  */
-const PROJECT_VERSION = 4;
+const PROJECT_VERSION = 5;
 
 /** The app's own folder for files the user hasn't chosen a home for yet. */
 const SAVES_DIR = "saves";
@@ -257,7 +260,7 @@ class ProjectStore {
       if (snapshot) meta = this._normalize(projectOf(snapshot), true);
     }
     if (!meta) return null;
-    hydrateImages(raw.images, this._memory);
+    hydrateImages(imagesOf(raw), this._memory);
     const resolved = path.resolve(filePath);
     // A project knows where it lives — EXCEPT in the working slot, which is
     // what "no location" means. A loose design is not a project file at all,
@@ -278,12 +281,13 @@ class ProjectStore {
    * a stored field that could disagree with reality.
    *
    * Every programmed ROM's bytes are collected out of the memory cache and
-   * written INTO the file, which is what makes it self-contained.
+   * written INTO the file, which is what makes it self-contained — once each,
+   * however many chips across however many desktops hold the same image.
    */
   write(filePath, meta, { recoveryFor = null } = {}) {
     const clean = this._normalize(meta);
     if (!clean) throw taggedError("a project needs a desktop", "INVALID_ARG");
-    const images = collectImages(clean, this._memory);
+    const { images, blobs } = collectImages(clean, this._memory);
     io.ensureDir(path.dirname(filePath));
     io.writeJSON(filePath, {
       version: PROJECT_VERSION,
@@ -297,7 +301,9 @@ class ProjectStore {
         ...(tab.description ? { description: tab.description } : {}),
         doc: tab.doc,
       })),
-      ...(Object.keys(images).length ? { images } : {}),
+      // `images` is non-empty exactly when `blobs` is, so one guard covers the
+      // pair and an image-less project still writes neither key.
+      ...(Object.keys(images).length ? { images, blobs } : {}),
       // Only ever in the working slot, and only when the project it belongs to
       // has a file of its own (see `writeRecovery`).
       ...(recoveryFor ? { recoveryFor } : {}),
@@ -436,7 +442,7 @@ class ProjectStore {
     if (!doc || typeof doc !== "object" || Array.isArray(doc)) {
       throw taggedError("a desktop needs a document", "INVALID_ARG");
     }
-    const images = collectImages({ doc }, this._memory);
+    const { images, blobs } = collectImages({ doc }, this._memory);
     io.ensureDir(path.dirname(filePath));
     io.writeJSON(filePath, {
       version: PROJECT_VERSION,
@@ -444,7 +450,7 @@ class ProjectStore {
       name: text(name) || "Desktop",
       ...(text(description) ? { description: text(description) } : {}),
       doc,
-      ...(Object.keys(images).length ? { images } : {}),
+      ...(Object.keys(images).length ? { images, blobs } : {}),
     });
     return filePath;
   }
@@ -456,8 +462,9 @@ class ProjectStore {
         name: text(raw.name) || fallbackName || "Desktop",
         description: text(raw.description),
         doc: migrateDeskDocument(raw.doc),
-        images:
-          raw.images && typeof raw.images === "object" ? raw.images : null,
+        // Flattened to the plain `guid → base64` map a reseat expects, from
+        // whichever shape the snapshot was written in.
+        images: imagesOf(raw),
       };
     }
     // A loose desk document. `migrateDeskDocument` answers with the default

@@ -15,10 +15,12 @@
  */
 
 // The ROM bytes that travel INSIDE a project file. What matters: only a
-// PROGRAMMED chip is collected (noise does not need to travel), a hydrate
-// refills the cache so a project opens whole on a machine that has never seen
-// it, and a COPIED desktop is reseated onto its own guids and its own files —
-// two chips sharing one backing file is the bug this exists to prevent.
+// PROGRAMMED chip is collected (noise does not need to travel), identical
+// bytes are stored ONCE however many chips hold them (and bytes that differ
+// never share a blob), a hydrate refills the cache so a project opens whole on
+// a machine that has never seen it — from a v5 file OR a v4 one — and a COPIED
+// desktop is reseated onto its own guids and its own files, two chips sharing
+// one backing file being the bug this exists to prevent.
 "use strict";
 
 const test = require("node:test");
@@ -29,6 +31,7 @@ const path = require("node:path");
 
 const {
   collectImages,
+  imagesOf,
   hydrateImages,
   reseatImages,
 } = require("../store/project-images");
@@ -60,6 +63,10 @@ const docOf = (...chips) => ({
   })),
 });
 
+/** The bytes one collected chip points at, through the blob table. */
+const blobFor = ({ images, blobs }, guid) =>
+  Array.from(Buffer.from(blobs[images[guid].blob], "base64"));
+
 test("collect takes the programmed chips' bytes and nothing else", () => {
   withMemDir((dir) => {
     seed(dir, GUID_A, [1, 2]);
@@ -70,16 +77,16 @@ test("collect takes the programmed chips' bytes and nothing else", () => {
         { doc: docOf([GUID_B, false]) }, // unprogrammed: noise stays home
       ],
     };
-    const images = collectImages(meta, dir);
-    assert.deepEqual(Object.keys(images), [GUID_A]);
-    assert.deepEqual(Array.from(Buffer.from(images[GUID_A], "base64")), [1, 2]);
+    const collected = collectImages(meta, dir);
+    assert.deepEqual(Object.keys(collected.images), [GUID_A]);
+    assert.deepEqual(blobFor(collected, GUID_A), [1, 2]);
   });
 });
 
 test("collect walks a bare {doc} snapshot too", () => {
   withMemDir((dir) => {
     seed(dir, GUID_A, [7]);
-    assert.deepEqual(Object.keys(collectImages({ doc: docOf([GUID_A, true]) }, dir)), [GUID_A]); // prettier-ignore
+    assert.deepEqual(Object.keys(collectImages({ doc: docOf([GUID_A, true]) }, dir).images), [GUID_A]); // prettier-ignore
   });
 });
 
@@ -91,7 +98,54 @@ test("a missing or hostile sidecar is skipped, never a failed save", () => {
         { doc: docOf(["../../etc/passwd", true]) }, // not a guid
       ],
     };
-    assert.deepEqual(collectImages(meta, dir), {});
+    assert.deepEqual(collectImages(meta, dir), { images: {}, blobs: {} });
+  });
+});
+
+test("two desktops holding the same image store it ONCE", () => {
+  withMemDir((dir) => {
+    // Two chips, two guids, identical bytes — the reason the table exists.
+    seed(dir, GUID_A, [4, 5, 6]);
+    seed(dir, GUID_B, [4, 5, 6]);
+    const meta = {
+      tabs: [{ doc: docOf([GUID_A, true]) }, { doc: docOf([GUID_B, true]) }],
+    };
+    const { images, blobs } = collectImages(meta, dir);
+    assert.deepEqual(Object.keys(images).sort(), [GUID_A, GUID_B].sort());
+    assert.equal(Object.keys(blobs).length, 1);
+    assert.equal(images[GUID_A].blob, images[GUID_B].blob);
+  });
+});
+
+test("the same file MODIFIED between two loads is two blobs", () => {
+  withMemDir((dir) => {
+    // One desktop loaded rom.bin, the other loaded it after an edit. The
+    // bytes decide, so nothing has to remember which file either came from.
+    seed(dir, GUID_A, [4, 5, 6]);
+    seed(dir, GUID_B, [4, 5, 7]);
+    const meta = {
+      tabs: [{ doc: docOf([GUID_A, true]) }, { doc: docOf([GUID_B, true]) }],
+    };
+    const { images, blobs } = collectImages(meta, dir);
+    assert.equal(Object.keys(blobs).length, 2);
+    assert.notEqual(images[GUID_A].blob, images[GUID_B].blob);
+    assert.deepEqual(blobFor({ images, blobs }, GUID_A), [4, 5, 6]);
+    assert.deepEqual(blobFor({ images, blobs }, GUID_B), [4, 5, 7]);
+  });
+});
+
+test("a blob key is the content's digest, stable across saves", () => {
+  withMemDir((dir) => {
+    seed(dir, GUID_A, [0x68, 0x69]); // "hi"
+    const once = collectImages({ doc: docOf([GUID_A, true]) }, dir);
+    const twice = collectImages({ doc: docOf([GUID_A, true]) }, dir);
+    // Content-addressed, so re-saving an unchanged project is byte-identical.
+    assert.deepEqual(once, twice);
+    // Pinned, so changing the digest is a deliberate act and not a surprise.
+    assert.equal(
+      once.images[GUID_A].blob,
+      "sha256-8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4",
+    );
   });
 });
 
@@ -114,12 +168,46 @@ test("hydrate refills the cache, overwriting a stale entry", () => {
 test("collect → hydrate is a round trip", () => {
   withMemDir((from) => {
     seed(from, GUID_A, [10, 20, 30]);
-    const images = collectImages({ doc: docOf([GUID_A, true]) }, from);
+    const written = collectImages({ doc: docOf([GUID_A, true]) }, from);
     withMemDir((to) => {
-      hydrateImages(images, to);
+      hydrateImages(imagesOf(written), to);
       assert.deepEqual(bytesOf(to, GUID_A), [10, 20, 30]);
     });
   });
+});
+
+test("imagesOf resolves a v5 file's chips through the blob table", () => {
+  const encoded = Buffer.from([1, 2]).toString("base64");
+  const flat = imagesOf({
+    images: { [GUID_A]: { blob: "sha256-x" }, [GUID_B]: { blob: "sha256-x" } },
+    blobs: { "sha256-x": encoded },
+  });
+  assert.deepEqual(flat, { [GUID_A]: encoded, [GUID_B]: encoded });
+  // The shared blob is ALIASED, not copied: dedup survives in memory too.
+  assert.equal(flat[GUID_A], flat[GUID_B]);
+});
+
+test("imagesOf reads a v4 file's inline block unchanged", () => {
+  const images = { [GUID_A]: Buffer.from([9]).toString("base64") };
+  assert.deepEqual(imagesOf({ version: 4, images }), images);
+});
+
+test("imagesOf answers null for a file carrying no images", () => {
+  // `_asSnapshot` hands this straight on as its documented `object|null`.
+  assert.equal(imagesOf({ version: 5, tabs: [] }), null);
+  assert.equal(imagesOf(null), null);
+});
+
+test("imagesOf drops an entry no blob answers, rather than emptying a ROM", () => {
+  // A dangling reference or a shape from some later version: writing nothing
+  // would read back as a programmed chip full of zeros, which is a lie. The
+  // chip keeps its flag and the renderer's own "file is missing" warning is
+  // what tells the user.
+  const flat = imagesOf({
+    images: { [GUID_A]: { blob: "sha256-gone" }, [GUID_B]: "just-a-string" },
+    blobs: {},
+  });
+  assert.deepEqual(flat, {});
 });
 
 test("a copied desktop gets its own guids and its own files", () => {
@@ -175,6 +263,21 @@ test("a chip with no bytes anywhere is reseated with no file at all", () => {
     // Un-programmed: the controller provisions it as noise on placement, and
     // an empty copy is exactly right.
     assert.equal(fs.existsSync(path.join(dir, `${guid}.bin`)), false);
+  });
+});
+
+test("a reseated chip still knows which file its bytes came from", () => {
+  withMemDir((dir) => {
+    seed(dir, GUID_A, [1]);
+    const doc = docOf([GUID_A, true]);
+    doc.components[0].params.storage.source = "/roms/blink.bin";
+    reseatImages(doc, dir, null);
+    const { guid, source } = doc.components[0].params.storage;
+    // Only the GUID is re-minted: an imported desktop's chip is a new chip
+    // with its own file, but it holds the same image and came from the same
+    // place, so the label travels with it.
+    assert.notEqual(guid, GUID_A);
+    assert.equal(source, "/roms/blink.bin");
   });
 });
 

@@ -101,10 +101,13 @@ per-component hex/ASCII window (`web/memory.html` → `scripts/memory.js`) on th
 virtualized `components/memory-inspector.js` grid (offset · hex · ASCII, a reused
 row pool so a 32 KiB image is ~30 rows in the DOM), pure `model/hex-format.js`
 (Intel HEX ⇄ bytes) for Import/Export, editable-when-stopped (ROM only) /
-read-only-live-when-running, showing the ROM's backing-file path; the
-renderer-side `components/memory-bridge.js` coordinator runs the programmer +
-Save through the DeskController (so the `programmed` flag rides undo/redo) and
-relays context + live byte writes across the main↔inspector window boundary;
+read-only-live-when-running, naming the FILE the ROM's image was loaded from
+(Feature 330 — the `<guid>.bin` sidecar is a cache the app rebuilds on every
+open, so it moved to the hover); the renderer-side
+`components/memory-bridge.js` coordinator runs the programmer + Save through
+the DeskController (so the `programmed` flag and that label ride undo/redo
+together) and relays context + live byte writes across the main↔inspector
+window boundary;
 and the **user guide** (230) — one Markdown source (`src/web/docs/*.md`)
 driving the in-app Help ▸ *Chip Hippo User Guide* window, the hosted website
 (`make docs`), and a PDF (`make pdf`); see the "User guide & docs" section
@@ -637,12 +640,17 @@ Electron main process (src/app/main.js)
   `volatile`, via `isVolatileMemory`) is NEVER file-backed — run-volatile only.
   A **non-volatile** chip (ROM/EPROM/EEPROM) is backed by a real `.bin` **sidecar**
   in the app working folder (`userData/memory/<guid>.bin`); the desk document
-  stores only `params.storage = { guid }` (a `crypto.randomUUID()` minted on
-  placement) plus a `programmed` flag — never the bytes, never a user-chosen
-  path. Since Feature 250 that folder is a **cache**, not the source of truth:
-  a programmed chip's bytes are collected into the PROJECT file on save and
-  hydrated back on open (`app/store/project-images.js`), so a design carries
-  its ROMs with it. The
+  stores only `params.storage = { guid, source?, edited? }` (a
+  `crypto.randomUUID()` minted on placement, plus — Feature 330 — the file its
+  image was loaded from) and a `programmed` flag — never the bytes. `source` is
+  a LABEL, NEVER A PATH: nothing resolves it, opens it, or hands it to `fs`,
+  which is what makes it safe to keep an absolute path written on somebody
+  else's machine; `edited` marks bytes hand-changed in the inspector since (the
+  file is still where they CAME from, they have moved on from it). Since
+  Feature 250 that folder is a **cache**, not the source of truth: a programmed
+  chip's bytes are collected into the PROJECT file on save and hydrated back on
+  open (`app/store/project-images.js`), so a design carries its ROMs with it.
+  The
   CIRCUIT can never write a file-backed chip: EEPROM/EPROM are treated as ROMs
   (the app can't drive a write cycle), so the SimController **drops** any reported
   write to a non-volatile chip; a ROM is programmed only by the in-app **external
@@ -661,8 +669,9 @@ Electron main process (src/app/main.js)
   (`open`/`to-inspector`/`to-host`, re-dispatched by preload as
   `chiphippo:memory-inbound` / `chiphippo:memory-host-inbound`). The main-window
   `MemoryBridge` answers a window's `ready` with its chip context (kind + GUID +
-  display path, or the live image bytes while running), runs the programmer +
-  Save through the controller (so `programmed` rides undo/redo), and streams
+  display path + the image's source file and whether it has been edited since,
+  or the live image bytes while running), runs the programmer + Save through the
+  controller (so `programmed` and the source label ride undo/redo), and streams
   `chiphippo:mem-state` byte writes out to open windows. The grid is
   **virtualized** (a reused row pool — only ~viewport rows in the DOM), **editable
   when stopped** for a ROM (Save writes its file) and a **read-only live viewer**
@@ -678,9 +687,10 @@ Electron main process (src/app/main.js)
   A desktop is STRUCTURE INSIDE that document, not a file:
 
   ```jsonc
-  { version: 4, name, description?, activeTab, nextIndex,
+  { version: 5, name, description?, activeTab, nextIndex,
     tabs:   [ { id, name, description?, doc } ],
-    images: { "<rom-guid>": "<base64>" } }   // programmed ROMs only
+    images: { "<rom-guid>": { "blob": "sha256-<hex>" } },  // programmed ROMs only
+    blobs:  { "sha256-<hex>": "<base64>" } }               // stored once, shared
   ```
 
   **A TAB IS A DOCUMENT, NOT A SECOND DESK**: there is still exactly one
@@ -749,8 +759,12 @@ Electron main process (src/app/main.js)
   project rename would never be stashed), and it fires on load and on every
   undo/redo restore (where there is nothing to write). `#imagesTouched` is the
   one change no signature can see: a ROM's bytes live in a sidecar, and
-  `setMemoryProgrammed` writes `programmed: true` over `true` for a chip being
-  RE-saved, so `MemoryBridge` reports it through an injected `onImagesChanged`.
+  `setMemoryProgrammed` writes `programmed: true` over `true` — and, for a
+  RE-load of the SAME file, an identical `storage` too — so `MemoryBridge`
+  reports it through an injected `onImagesChanged`. Feature 330's `source`
+  narrowed this without removing it: loading a NEW path does move the
+  signature, but re-loading the same one (the case a blob table exists for) and
+  every inspector Save after the first are byte-identical documents.
   **A RESTORE IS NOT A QUESTION.** `recoveryBoot` restores the stash outright and
   the renderer says so (`workspace.recovered*`, localized — main hands over the
   FACTS `{name, path, homeless}`, since `m()` is for text MAIN renders). Restored
@@ -780,16 +794,40 @@ Electron main process (src/app/main.js)
   question (`properties: ["showOverwriteConfirmation"]` is how the Linux panel
   is told to ask); `choosePath` returns a path or null, so declining a replace
   reads back as a cancel.
-  **ROM BYTES TRAVEL IN THE FILE** (`project-images.js`). `userData/memory/`
-  demotes to a working CACHE that a project open rebuilds in full: `write`
-  COLLECTS every chip flagged `programmed` into `images` (noise does not need
-  to travel), `read` HYDRATES them back before the renderer sees the project,
-  and `reseatImages` gives a COPIED desktop (Import, Duplicate) fresh guids and
-  fresh files so two chips can never share one. This is the second place in
-  main with document knowledge after `migrations.js`, and equally narrow — it
-  reads `components[].params.storage.guid` + `params.programmed` and nothing
-  else. The cache is never SWEPT: a `.bin` left by a deleted chip is dead
-  weight in userData and can never re-enter a project file.
+  **ROM BYTES TRAVEL IN THE FILE, CONTENT-ADDRESSED** (`project-images.js`).
+  `userData/memory/` demotes to a working CACHE that a project open rebuilds in
+  full: `write` COLLECTS every chip flagged `programmed`, HASHES its bytes, and
+  records chip → blob (noise does not need to travel); `read` HYDRATES them back
+  before the renderer sees the project; `reseatImages` gives a COPIED desktop
+  (Import, Duplicate) fresh guids and fresh files so two chips can never share
+  one. This is the second place in main with document knowledge after
+  `migrations.js`, and equally narrow — it reads
+  `components[].params.storage.guid` + `params.programmed` and nothing else.
+  **THE BYTES ARE THE KEY** (Feature 330), which answers both halves of the
+  dedup question with one rule and nothing to keep in sync: identical images
+  name ONE blob however many chips or desktops hold them (four desktops sharing
+  an 8 KiB ROM: 14 916 bytes against v4's 47 688), and a file re-read after
+  being edited on disk hashes differently and becomes a SECOND blob.
+  **THE HASH IS MAIN'S, TAKEN AT SAVE TIME FROM THE REAL SIDECAR** — never
+  stored in the document, where it would have to be re-derived on every
+  hand-edit and a stale one would restore the WRONG BYTES. It is a DEDUP KEY,
+  not a checksum: the read path must never verify it and skip on a mismatch,
+  since the only useful response to one is to write the bytes anyway.
+  **THE PER-CHIP ENTRY IS AN OBJECT, AND THAT IS LOAD-BEARING**: an OLDER build
+  runs `Buffer.from(value, "base64")` over `images`, and a bare hash string
+  decodes to 53 non-zero bytes — past the zero-length guard, over a good
+  sidecar, and collected back by that build's next save. An object is not a
+  string, so the old loop SKIPS it and the existing "programmed, but its data
+  file is missing" warning explains itself. Honest degradation, not corruption.
+  **DEDUP LIVES IN THE FILE, NEVER IN THE CACHE** — one `.bin` per chip is what
+  keeps `#releaseMemory`'s unconditional delete-by-guid correct with no
+  refcounting. A v4 file (inline base64, no `blobs`) still reads: `imagesOf`
+  flattens EITHER shape into the `guid → base64` map every consumer already
+  speaks — dispatching on the structural tell, as `project-migrate.js` does,
+  and aliasing rather than copying a shared blob — so `hydrateImages`,
+  `reseatImages` and `copyImage` are untouched. The cache is never SWEPT: a
+  `.bin` left by a deleted chip is dead weight in userData and can never
+  re-enter a project file.
   **CHANGING PROJECTS OR QUITTING** runs through `#confirmLeaveProject`, which
   on "save" LETS THE ACTION GO AHEAD (the user is not made to ask twice).
   Quitting is the silent case — no Save button was clicked, so nothing is asked
@@ -1491,9 +1529,12 @@ Electron main process (src/app/main.js)
   than the catalog, since a ROM's program action is additionally gated on
   `!#editingLocked`; clicking one closes the dialog and calls `onAction(key)`
   instead of `onChange`), `"readonly"` (a value the dialog SHOWS but does
-  not edit — the PROJECT's **Location**, which Save As is what changes; it
-  takes the stacked full-width row a path needs. A desktop has none: it is not
-  a file), and **`"wire-gauge"`** (a PICTURE, not an editor — see the wire-gauge
+  not edit — the PROJECT's **Location**, which Save As is what changes, and a
+  memory chip's **Image file**, which the programmer is; both take the stacked
+  full-width row a path needs, and both are DERIVED rather than stored, so they
+  are supplied through the dialog's `values` rather than read off `params`. A
+  desktop has neither: it is not a file, and it holds no image), and
+  **`"wire-gauge"`** (a PICTURE, not an editor — see the wire-gauge
   note below; it is the one type named after what it draws rather than after a
   kind of control, and deliberately so).
   A future part's properties are purely a catalog

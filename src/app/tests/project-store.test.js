@@ -39,6 +39,7 @@ const {
   LEGACY_PROJECT_EXT,
 } = require("../store/project-store");
 const { defaultDeskDocument } = require("../store/migrations");
+const { reseatImages } = require("../store/project-images");
 
 /** Run `fn` against a throwaway userData dir, cleaning up either way. */
 function withStore(fn) {
@@ -204,6 +205,86 @@ test("only a PROGRAMMED rom's bytes travel", () => {
 
     const onDisk = JSON.parse(fs.readFileSync(target, "utf8"));
     assert.deepEqual(Object.keys(onDisk.images), [GUID_A]);
+    assert.equal(Object.keys(onDisk.blobs).length, 1);
+  });
+});
+
+test("two desktops holding one image write it once, and both point at it", () => {
+  withStore((store, dir) => {
+    seedRom(store, GUID_A, [3, 1, 4, 1, 5]);
+    seedRom(store, GUID_B, [3, 1, 4, 1, 5]); // the same image, a second chip
+    const meta = store.newProject();
+    meta.tabs[0].doc = docWithRom(GUID_A);
+    meta.tabs.push({ id: "t2", name: "Two", doc: docWithRom(GUID_B) });
+    const target = path.join(dir, `shared${PROJECT_EXT}`);
+    store.write(target, meta);
+
+    const onDisk = JSON.parse(fs.readFileSync(target, "utf8"));
+    assert.equal(onDisk.version, 5);
+    assert.equal(Object.keys(onDisk.blobs).length, 1, "stored once");
+    assert.deepEqual(
+      Object.keys(onDisk.images).sort(),
+      [GUID_A, GUID_B].sort(),
+    );
+    // The per-chip entry is an OBJECT, deliberately: an older build decodes a
+    // bare string as base64 and would write junk over a good sidecar, where a
+    // non-string is simply skipped. See project-images.js.
+    assert.equal(typeof onDisk.images[GUID_A].blob, "string");
+    assert.equal(onDisk.images[GUID_A].blob, onDisk.images[GUID_B].blob);
+
+    // ...and both chips still get their bytes back on another machine.
+    withStore((elsewhere) => {
+      elsewhere.read(target);
+      assert.deepEqual(romBytes(elsewhere, GUID_A), [3, 1, 4, 1, 5]);
+      assert.deepEqual(romBytes(elsewhere, GUID_B), [3, 1, 4, 1, 5]);
+    });
+  });
+});
+
+test("a v4 project's inline images still open", () => {
+  withStore((store, dir) => {
+    // Hand-written in the shape that shipped before the blob table: `images`
+    // holding base64 directly, and no `blobs` at all.
+    const target = path.join(dir, `old${PROJECT_EXT}`);
+    fs.writeFileSync(
+      target,
+      JSON.stringify({
+        version: 4,
+        name: "Old",
+        activeTab: "t1",
+        nextIndex: 2,
+        tabs: [{ id: "t1", name: "Desktop 1", doc: docWithRom(GUID_A) }],
+        images: { [GUID_A]: Buffer.from([2, 7, 1, 8]).toString("base64") },
+      }),
+    );
+
+    const read = store.read(target);
+    assert.equal(read.name, "Old");
+    assert.deepEqual(romBytes(store, GUID_A), [2, 7, 1, 8]);
+    // ...and saving it again writes the file forward.
+    store.write(target, read);
+    const onDisk = JSON.parse(fs.readFileSync(target, "utf8"));
+    assert.equal(onDisk.version, 5);
+    assert.equal(typeof onDisk.images[GUID_A].blob, "string");
+  });
+});
+
+test("a chip's source file survives a write and read", () => {
+  withStore((store, dir) => {
+    seedRom(store, GUID_A, [1]);
+    const meta = store.newProject();
+    const doc = docWithRom(GUID_A);
+    doc.components[0].params.storage.source = "/roms/blink.bin";
+    meta.tabs[0].doc = doc;
+    const target = path.join(dir, `sourced${PROJECT_EXT}`);
+    store.write(target, meta);
+
+    const read = store.read(target);
+    assert.equal(
+      read.tabs[0].doc.components[0].params.storage.source,
+      "/roms/blink.bin",
+      "main stores the document whole and strips nothing from it",
+    );
   });
 });
 
@@ -327,13 +408,42 @@ test("a desktop snapshot round-trips, ROM bytes included", () => {
     const onDisk = JSON.parse(fs.readFileSync(file, "utf8"));
     assert.equal(onDisk.kind, "desktop");
     assert.deepEqual(Object.keys(onDisk.images), [GUID_A]);
+    assert.equal(typeof onDisk.images[GUID_A].blob, "string");
 
     withStore((elsewhere) => {
       const snap = elsewhere.readDesktopSnapshot(file);
       assert.equal(snap.name, "Clock module");
       assert.equal(snap.description, "the divider");
       assert.equal(snap.doc.components[0].params.storage.guid, GUID_A);
+      // Handed back FLAT, whichever shape the file was written in — that is
+      // the contract `reseatImages` reads a snapshot's bytes through.
       assert.deepEqual(Object.keys(snap.images), [GUID_A]);
+      assert.deepEqual(
+        Array.from(Buffer.from(snap.images[GUID_A], "base64")),
+        [5, 6, 7],
+      );
+    });
+  });
+});
+
+test("a snapshot imports on a machine that has never seen it", () => {
+  withStore((store, dir) => {
+    seedRom(store, GUID_A, [1, 1, 2, 3]);
+    const file = path.join(dir, `adder${DESKTOP_EXT}`);
+    store.writeDesktopSnapshot(file, {
+      name: "Adder",
+      description: "",
+      doc: docWithRom(GUID_A),
+    });
+
+    withStore((elsewhere) => {
+      // The whole Import path: read the snapshot, then reseat it onto fresh
+      // guids and fresh files sourced from the snapshot's OWN bytes.
+      const snap = elsewhere.readDesktopSnapshot(file);
+      reseatImages(snap.doc, elsewhere.memoryDir, snap.images);
+      const guid = snap.doc.components[0].params.storage.guid;
+      assert.notEqual(guid, GUID_A, "an import is a copy, never a link");
+      assert.deepEqual(romBytes(elsewhere, guid), [1, 1, 2, 3]);
     });
   });
 });

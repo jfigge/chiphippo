@@ -39,6 +39,7 @@ function install({ files = new Map(), picked } = {}) {
     path: [],
     pickImage: 0,
     program: [],
+    programBytes: [],
     write: [],
   };
   window.chiphippo = {
@@ -64,6 +65,10 @@ function install({ files = new Map(), picked } = {}) {
       pickImage: () => (calls.pickImage++, Promise.resolve(picked ?? null)),
       program: (g, b, l) => (
         calls.program.push([g, l]),
+        // Kept apart from the tuple above so the many tests that assert the
+        // `[guid, byteLength]` shape stay readable — this is what proves an
+        // Intel HEX pick was PARSED rather than written as its own text.
+        calls.programBytes.push(b),
         Promise.resolve({ ok: true })
       ),
       write: (g, b) => (
@@ -90,8 +95,8 @@ function makeBridge({ running = false, image = null, comp } = {}) {
   const doc = { getComponent: (id) => (comp && comp.id === id ? comp : null) };
   const controller = {
     calls: [],
-    setMemoryProgrammed(id, v) {
-      this.calls.push([id, v]);
+    setMemoryProgrammed(id, v, binding) {
+      this.calls.push([id, v, binding]);
     },
   };
   const sim = { running, imageBytesOf: () => image };
@@ -148,11 +153,32 @@ test("a ROM's `ready` ensures its file, then sends a stopped context (path, no b
   assert.equal(ctx.volatile, false);
   assert.equal(ctx.guid, GUID);
   assert.equal(ctx.path, `/mem/${GUID}.bin`, "carries the display path");
+  assert.equal(ctx.source, null, "never programmed, so no image file to name");
+  assert.equal(ctx.edited, false);
   assert.equal(
     ctx.bytes,
     undefined,
     "the window loads the file itself while stopped",
   );
+});
+
+test("the context carries the image file a chip was loaded from", async () => {
+  resetDom();
+  const { calls } = install({ files: new Map([[GUID, new Uint8Array(8192)]]) });
+  makeBridge({
+    comp: rom({
+      storage: { guid: GUID, source: "/roms/blink.bin", edited: true },
+      programmed: true,
+    }),
+  });
+
+  hostInbound("c1", { kind: "ready" });
+  await settle();
+  const ctx = calls.toInspector.at(-1)[1];
+  assert.equal(ctx.source, "/roms/blink.bin");
+  assert.equal(ctx.edited, true);
+  // The sidecar is still sent: it is what the inspector keeps as the hover.
+  assert.equal(ctx.path, `/mem/${GUID}.bin`);
 });
 
 test("a `ready` while running hands over the live image bytes", async () => {
@@ -191,7 +217,7 @@ test("the programmer picks an image, writes it, flags the chip, reloads", async 
   resetDom();
   const { calls } = install({
     files: new Map([[GUID, new Uint8Array(8192)]]),
-    picked: { ok: true, name: "prog.bin", bytes: new Uint8Array(8192) },
+    picked: { ok: true, path: "/roms/prog.bin", bytes: new Uint8Array(8192) },
   });
   const { bridge, controller } = makeBridge({
     comp: rom({ storage: { guid: GUID } }),
@@ -202,8 +228,8 @@ test("the programmer picks an image, writes it, flags the chip, reloads", async 
   assert.deepEqual(calls.program, [[GUID, 8192]], "programmed the file");
   assert.deepEqual(
     controller.calls,
-    [["c1", true]],
-    "flagged the chip programmed",
+    [["c1", true, { source: "/roms/prog.bin" }]],
+    "flagged the chip programmed, and recorded which file it holds",
   );
   assert.ok(
     calls.toInspector.some(([, m]) => m.kind === "context"),
@@ -215,7 +241,7 @@ test("the programmer warns on a size mismatch but still programs", async () => {
   resetDom();
   const { calls } = install({
     files: new Map([[GUID, new Uint8Array(8192)]]),
-    picked: { ok: true, name: "small.bin", bytes: new Uint8Array(100) },
+    picked: { ok: true, path: "/roms/small.bin", bytes: new Uint8Array(100) },
   });
   const { bridge, notifications } = makeBridge({
     comp: rom({ storage: { guid: GUID } }),
@@ -229,7 +255,7 @@ test("the programmer warns on a size mismatch but still programs", async () => {
 test("the programmer is a no-op for a volatile SRAM (no file)", async () => {
   resetDom();
   const { calls } = install({
-    picked: { ok: true, name: "x.bin", bytes: new Uint8Array(8192) },
+    picked: { ok: true, path: "/roms/x.bin", bytes: new Uint8Array(8192) },
   });
   const { bridge } = makeBridge({ comp: sram({}) });
 
@@ -246,7 +272,9 @@ test("a save writes the file and flags the chip programmed", async () => {
   hostInbound("c1", { kind: "save", bytes: [1, 2, 3] });
   await settle();
   assert.deepEqual(calls.write, [[GUID, [1, 2, 3]]]);
-  assert.deepEqual(controller.calls, [["c1", true]]);
+  // No `source`: a hand-edit does not change where the image came from, it
+  // marks that the bytes have moved on from it.
+  assert.deepEqual(controller.calls, [["c1", true, { edited: true }]]);
 });
 
 test("running mem-state streams per-chip byte changes to inspectors", () => {
@@ -293,12 +321,9 @@ test("a shipped demo's ROM can be programmed straight after opening it", async (
   const demo = (n) => fileURLToPath(new URL(`../../../../demos/${n}`, import.meta.url)); // prettier-ignore
 
   const hex = readFileSync(demo("65xx-lcd.hex"), "utf8");
+  const hexText = new TextEncoder().encode(hex);
   const { calls } = install({
-    picked: {
-      ok: true,
-      name: "65xx-lcd.hex",
-      bytes: new TextEncoder().encode(hex),
-    },
+    picked: { ok: true, path: "/roms/65xx-lcd.hex", bytes: hexText },
   });
 
   const doc = new DeskDoc(null);
@@ -339,6 +364,11 @@ test("a shipped demo's ROM can be programmed straight after opening it", async (
     [[guid, 8192]],
     "and the whole 8 KiB image went to the chip's own file",
   );
+  // The extension is read off the PICKED PATH, so a `.hex` is decoded to its
+  // bytes rather than written as the text it is — invisible in the tuple
+  // above, whose byteLength comes from the part def either way.
+  assert.notEqual(calls.programBytes[0].length, hexText.length);
+  assert.ok(calls.programBytes[0].length <= 8192);
   assert.equal(
     doc.getComponent(rom.id).params.programmed,
     true,

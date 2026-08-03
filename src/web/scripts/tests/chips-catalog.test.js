@@ -323,3 +323,57 @@ for (const def of CHIP_DEFS) {
     }
   });
 }
+
+// ── The memory chip param whitelist ────────────────────────────────────────
+//
+// `normalizeParams` is the choke point every document goes through on load and
+// on every `DeskDoc.toJSON()` round trip, so anything it does not name is
+// silently dropped — which is exactly how a new field goes missing without a
+// single test failing.
+
+const GUID = "11111111-2222-3333-4444-555555555555";
+const romParams = (storage) => chipDef("rom-8k").normalizeParams({ storage });
+
+test("a ROM's storage keeps its guid, source file, and edited mark", () => {
+  assert.deepEqual(romParams({ guid: GUID }), { storage: { guid: GUID } });
+  assert.deepEqual(
+    romParams({ guid: GUID, source: "/roms/blink.bin", edited: true }),
+    { storage: { guid: GUID, source: "/roms/blink.bin", edited: true } },
+  );
+});
+
+test("a ROM's storage drops anything else it is handed", () => {
+  // A malformed guid takes the whole reference with it — without one there is
+  // no backing file for the rest to describe.
+  assert.deepEqual(romParams({ guid: "nope", source: "/roms/x.bin" }), {});
+  // Non-strings, blanks, and a non-`true` mark are not values.
+  assert.deepEqual(romParams({ guid: GUID, source: 42 }), {
+    storage: { guid: GUID },
+  });
+  assert.deepEqual(romParams({ guid: GUID, source: "" }), {
+    storage: { guid: GUID },
+  });
+  assert.deepEqual(romParams({ guid: GUID, edited: "yes" }), {
+    storage: { guid: GUID },
+  });
+  // And a field nobody declared never reaches a saved document.
+  assert.deepEqual(romParams({ guid: GUID, mystery: 1 }), {
+    storage: { guid: GUID },
+  });
+});
+
+test("a ROM's source is capped, so no document can carry an essay", () => {
+  const long = "/roms/" + "x".repeat(4000);
+  const { storage } = romParams({ guid: GUID, source: long });
+  assert.equal(storage.source.length, 1024);
+});
+
+test("a chip with no source round-trips byte-identical", () => {
+  // The omit-when-empty rule the project's one dirty test depends on: an
+  // absent field must not normalize into a present-but-empty one, or every
+  // load would look like an edit.
+  const params = romParams({ guid: GUID });
+  assert.deepEqual(chipDef("rom-8k").normalizeParams(params), params);
+  assert.equal("source" in params.storage, false);
+  assert.equal("edited" in params.storage, false);
+});

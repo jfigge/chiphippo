@@ -2484,16 +2484,51 @@ export class DeskController {
     if (guid && isRomChip(partDef(comp.ref))) this.#onRemoveMemoryFile?.(guid);
   }
 
-  /** Set/clear a ROM chip's `programmed` flag (the in-app programmer wrote
-      it) and refresh its view so the "not programmed" warning triangle
-      (Feature 190 follow-up) clears/reappears immediately, not just on the
-      next remount. */
-  setMemoryProgrammed(id, programmed) {
+  /**
+   * Set/clear a ROM chip's `programmed` flag (the in-app programmer wrote it),
+   * and with it the record of WHICH FILE the bytes came from. The view is
+   * refreshed so the "not programmed" warning triangle (Feature 190 follow-up)
+   * clears/reappears immediately, not just on the next remount.
+   *
+   * `binding` is the one thing the programmer and the inspector's Save say
+   * differently, and both land in ONE doc-changed so the flag and the label
+   * ride a single undo step:
+   *   · `{ source }` — a fresh load. The path is recorded (null forgets it, so
+   *     a label can never name a file that is not what the chip holds) and any
+   *     `edited` mark is cleared: these ARE that file's bytes again.
+   *   · `{ edited: true }` — hand-edits saved from the inspector. The source is
+   *     KEPT and marked, because "blink.bin, changed since" answers more than
+   *     nothing does.
+   * Omitting a key leaves that half alone; `programmed: false` drops both,
+   * since an unprogrammed chip holds noise and noise came from nowhere.
+   *
+   * @param {string} id
+   * @param {boolean} programmed
+   * @param {{source?: string|null, edited?: boolean}} [binding]
+   */
+  setMemoryProgrammed(id, programmed, binding = {}) {
     const comp = this.#doc.getComponent(id);
     if (!comp || !isRomChip(partDef(comp.ref))) return;
-    const updated = this.#doc.setComponentParams(id, {
-      programmed: programmed === true,
-    });
+    const patch = { programmed: programmed === true };
+    const storage = comp.params?.storage;
+    if (storage) {
+      // setComponentParams merges SHALLOWLY, so storage goes over whole or the
+      // guid — the one thing that names the backing file — would be erased.
+      const next = { ...storage };
+      if (programmed !== true) {
+        delete next.source;
+        delete next.edited;
+      } else {
+        if (binding.source !== undefined) {
+          if (binding.source) next.source = binding.source;
+          else delete next.source;
+          delete next.edited;
+        }
+        if (binding.edited === true) next.edited = true;
+      }
+      patch.storage = next;
+    }
+    const updated = this.#doc.setComponentParams(id, patch);
     this.#partViews.get(id)?.updateParams(updated.params);
     this.#emitDocChanged("program memory");
   }
@@ -2675,21 +2710,37 @@ export class DeskController {
   /** Every field the Properties dialog shows for one component: the catalog
       def's static `properties` list (PSU volts, clock/oscillator rate, the
       LED's and LCD's color — all live settings, so nothing here is filtered
-      by #editingLocked) plus a memory chip's instance-conditional action
-      fields (its own kind/ROM check, not catalog data — a chip's write
-      affordance depends on whether the sim is running). */
+      by #editingLocked) plus a memory chip's instance-conditional fields (its
+      own kind/ROM check, not catalog data — a chip's write affordance depends
+      on whether the sim is running). The ROM's image file is READ FIRST, so
+      the card says what is loaded before it offers to change it. */
   #propertyFieldsFor(comp, def) {
-    // No `actionLabel`: unlike a catalog def's own fields, these two are minted
-    // HERE, so there is no English source for them to carry — the dialog names
-    // them straight from `properties.action.<key>` (part-properties-dialog.js).
+    // No `label`/`actionLabel`: unlike a catalog def's own fields, these are
+    // minted HERE, so there is no English source for them to carry — the dialog
+    // names them from `properties.field.<key>` / `properties.action.<key>`
+    // (part-properties-dialog.js).
     const fields = [...(def?.properties ?? [])];
     if (comp?.kind === "chip" && isMemory(def)) {
+      // A volatile SRAM is never loaded from a file, so it never has one.
+      if (isRomChip(def)) fields.push({ key: "imageSource", type: "readonly" });
       fields.push({ key: "inspectMemory", type: "action" });
       if (isRomChip(def) && !this.#editingLocked) {
         fields.push({ key: "programMemory", type: "action" });
       }
     }
     return fields;
+  }
+
+  /** The file a ROM's bytes came from, for the Properties card's readonly row:
+      the path it was programmed from, marked when they have been hand-edited
+      since, and "None" for a chip that has never been given one — quietly,
+      because the card's own `unprogrammed` warning already says that louder. */
+  #memorySourceLabel(comp) {
+    const storage = comp?.params?.storage;
+    if (!storage?.source) return t("common.none");
+    return storage.edited === true
+      ? t("memory.sourceEdited", { path: storage.source })
+      : storage.source;
   }
 
   /**
@@ -2747,6 +2798,9 @@ export class DeskController {
         name: comp.name,
         description: comp.description,
         ...comp.params,
+        // A readonly whose value is DERIVED rather than stored — `values` is
+        // the established route for one (the project's Location does the same).
+        imageSource: this.#memorySourceLabel(comp),
       },
       onChange: (key, value) => this.#setComponentProperty(id, key, value),
       onAction: (key) => this.#onPropertyAction(id, key),

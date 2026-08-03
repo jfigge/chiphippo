@@ -12,9 +12,11 @@ and a design worked out on one can be copied straight onto another.
 ![Desktops as tabs above the desk](images/project-tabs.png)
 
 **The project is the document.** One `.chiphippo` file holds all of it: every
-desktop, and the contents of every ROM you programmed. That's the whole design
-in a single file you can email, drop in a repo, or carry to another machine.
-There are no companion files to keep together and nothing to go missing.
+desktop, and the contents of every ROM you programmed — each image stored once
+however many chips across however many desktops are holding it. That's the
+whole design in a single file you can email, drop in a repo, or carry to
+another machine. There are no companion files to keep together and nothing to
+go missing.
 
 **Every desktop is the same.** There is no special "main" desk and no lesser
 one: they are peers, all with the same menu, and which is the build and which

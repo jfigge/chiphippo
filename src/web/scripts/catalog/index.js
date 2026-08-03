@@ -28,23 +28,40 @@ import { PART_DEFS } from "./parts.js";
 
 /**
  * Coerce a non-volatile memory chip's backing-file reference (Feature 190) to a
- * `{ guid }`, or null. The GUID (a `crypto.randomUUID()` the renderer minted on
- * placement) names a `.bin` sidecar in the app working folder; main is the only
- * place that maps it to a path. A malformed GUID drops the reference.
+ * `{ guid, source?, edited? }`, or null. The GUID (a `crypto.randomUUID()` the
+ * renderer minted on placement) names a `.bin` sidecar in the app working
+ * folder; main is the only place that maps it to a path. A malformed GUID drops
+ * the whole reference — without one there is nothing for the rest to describe.
+ *
+ * `source` is the file the in-app programmer last loaded, and it is a LABEL,
+ * NEVER A PATH: nothing resolves it, opens it, or hands it to `fs`, which is
+ * what makes it safe to keep an absolute path written on somebody else's
+ * machine. It is capped because a hand-edited document could otherwise put a
+ * megabyte of text through a `title` attribute. `edited` marks bytes that have
+ * been changed in the inspector since — the file is still where they came
+ * from, which is what was asked, but it is no longer what the chip holds.
  */
 const GUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const MAX_SOURCE = 1024;
 function normalizeStorage(raw) {
   const guid = raw?.storage?.guid;
-  return typeof guid === "string" && GUID_RE.test(guid) ? { guid } : null;
+  if (typeof guid !== "string" || !GUID_RE.test(guid)) return null;
+  const storage = { guid };
+  const source = raw.storage.source;
+  if (typeof source === "string" && source) {
+    storage.source = source.slice(0, MAX_SOURCE);
+  }
+  if (raw.storage.edited === true) storage.edited = true;
+  return storage;
 }
 
 /** Every chip def, in palette display order (combinational gates, then the
     sequential & MSI wave). `kind` is stamped uniformly, and a
     `normalizeParams` that preserves the `damaged` flag (Feature 90's
     magic-smoke bookkeeping) and, for a non-volatile memory chip, its backing-
-    file `storage.guid` + `programmed` flag (Feature 190) — chips otherwise
-    carry no params. */
+    file `storage` (the guid, plus the file its image was loaded from) and its
+    `programmed` flag (Feature 190) — chips otherwise carry no params. */
 export const CHIP_DEFS = Object.freeze(
   [
     ...CHIPS_GATES,

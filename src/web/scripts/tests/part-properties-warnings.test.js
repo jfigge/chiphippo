@@ -219,3 +219,60 @@ test("the warnings are written in the active catalog's words", (t) => {
     de.properties.warnings,
   );
 });
+
+// ── The memory chip's "Image file" row ─────────────────────────────────────
+//
+// A readonly row, so nothing about it is clickable and a scanner sees only a
+// key — these render the card and read what came out.
+
+/** The readonly value shown against a label, or null when there is no row. */
+const readonlyRow = (label) => {
+  const row = [...document.querySelectorAll(".properties-row")].find(
+    (r) => r.querySelector(".properties-label")?.textContent.trim() === label,
+  );
+  return row?.querySelector(".properties-value")?.textContent ?? null;
+};
+
+test("a ROM's Properties card names the file its image came from", () => {
+  resetDom();
+  const en = catalog("en");
+  const label = en.properties.field.imageSource;
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const { surface, controller } = makeDesk(doc);
+  controller.addComponentAt("rom-8k", "bb1", "e5");
+  const id = doc.components[0].id;
+
+  // Never programmed: quietly "None". The card's own `unprogrammed` warning
+  // is what says it louder, and saying it twice would be noise.
+  openProperties(surface, ".part-chip");
+  assert.equal(readonlyRow(label), en.common.none);
+
+  // Loaded: the whole path, which is what tells two `rom.bin`s apart.
+  controller.setMemoryProgrammed(id, true, { source: "/roms/blink.bin" });
+  openProperties(surface, ".part-chip");
+  assert.equal(readonlyRow(label), "/roms/blink.bin");
+
+  // Hand-edited since: still that file, and said to have moved on from it.
+  controller.setMemoryProgrammed(id, true, { edited: true });
+  openProperties(surface, ".part-chip");
+  assert.equal(
+    readonlyRow(label),
+    en.memory.sourceEdited.replace("{path}", "/roms/blink.bin"),
+  );
+  PopupManager.close();
+});
+
+test("a volatile SRAM's card has no image-file row at all", () => {
+  resetDom();
+  const en = catalog("en");
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const { surface, controller } = makeDesk(doc);
+  controller.addComponentAt("ram-8k", "bb1", "e5");
+
+  // An SRAM is never loaded from a file, so there is nothing for a row to say.
+  openProperties(surface, ".part-chip");
+  assert.equal(readonlyRow(en.properties.field.imageSource), null);
+  PopupManager.close();
+});

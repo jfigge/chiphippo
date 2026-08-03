@@ -161,12 +161,19 @@ function startInspector() {
 
     if (chipVolatile) {
       pathLabel.textContent = t("memory.volatileNote");
+      pathLabel.title = "";
       pathLabel.classList.remove("mem-binding--bound");
       copyBtn.hidden = true;
     } else {
-      pathLabel.textContent = path || "…";
+      // The SOURCE file leads when there is one: since Feature 250 the
+      // `<guid>.bin` sidecar is explicitly a CACHE the app rebuilds on every
+      // open, so naming it as THE binding while a real image file exists
+      // answers the wrong question. The sidecar stays one hover away.
+      const shown = bindingLabel();
+      pathLabel.textContent = shown || "…";
+      pathLabel.title = path ?? "";
       pathLabel.classList.add("mem-binding--bound");
-      copyBtn.hidden = !path;
+      copyBtn.hidden = !shown;
     }
 
     // A ROM is editable only when stopped; SRAM is never editable (volatile).
@@ -191,6 +198,16 @@ function startInspector() {
   }
 
   let path = null;
+  let source = null;
+  let sourceEdited = false;
+
+  /** What the binding line says: the image file this chip was loaded from
+      (marked when its bytes have been hand-edited since), else the backing
+      sidecar. */
+  function bindingLabel() {
+    if (!source) return path;
+    return sourceEdited ? t("memory.sourceEdited", { path: source }) : source;
+  }
 
   // ── Actions ─────────────────────────────────────────────────────────────────
   function program() {
@@ -214,7 +231,9 @@ function startInspector() {
     await bridge?.mem?.export(payload, `${def.id}.${asHex ? "hex" : "bin"}`);
   }
   async function copyPath() {
-    if (path) await navigator.clipboard?.writeText(path).catch(() => {});
+    // Whatever is on the line — but the bare path, never the "(edited)" note.
+    const target = source ?? path;
+    if (target) await navigator.clipboard?.writeText(target).catch(() => {});
   }
 
   // ── Context ─────────────────────────────────────────────────────────────────
@@ -222,6 +241,8 @@ function startInspector() {
     running = ctx.running === true;
     guid = ctx.guid ?? null;
     path = ctx.path ?? null;
+    source = ctx.source ?? null;
+    sourceEdited = ctx.edited === true;
     updateUI();
     if (ctx.bytes) {
       grid.setBytes(toBytes(ctx.bytes)); // running snapshot / SRAM final image

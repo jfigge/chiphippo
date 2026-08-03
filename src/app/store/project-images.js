@@ -20,21 +20,56 @@
  * A non-volatile memory chip (Feature 180) keeps its bytes in a `.bin` sidecar
  * under `userData/memory/<guid>.bin`, and the document stores only the GUID.
  * That was fine while a design never left this machine; it is not fine now
- * that one file is meant to BE the design. So a project file carries an
- * `images` block — `{ <guid>: <base64> }` — and `userData/memory/` demotes to
- * a working CACHE that a project open can rebuild in full:
+ * that one file is meant to BE the design. So a project file carries its ROM
+ * bytes, and `userData/memory/` demotes to a working CACHE that a project open
+ * can rebuild in full.
  *
- *   · `collectImages` — on save, read each programmed ROM's file into the
- *     block. Only a chip flagged `programmed` is collected: an unprogrammed
- *     ROM holds random noise, and noise does not need to travel.
- *   · `hydrateImages` — on open, write the block back into the cache before
+ * THE BYTES ARE CONTENT-ADDRESSED, IN A TABLE EVERY DESKTOP SHARES (v5):
+ *
+ *   images: { "<guid>": { "blob": "sha256-<hex>" } }   // whose bytes are whose
+ *   blobs:  { "sha256-<hex>": "<base64>" }             // stored once, shared
+ *
+ * Keyed by GUID alone — as v4 was — the same 32 KiB ROM on two desktops cost
+ * two full copies, because nothing in the file looked at the BYTES. Hashing
+ * them answers both halves of the question at once and keeps nothing in sync:
+ * two chips holding identical images name one blob, and the same file re-read
+ * after being edited on disk hashes differently and becomes a second one.
+ *
+ * THE HASH IS MAIN'S, COMPUTED AT SAVE TIME FROM THE REAL SIDECAR — never
+ * stored in the document. A hash in the document would have to be re-derived
+ * on every hand-edit in the inspector, and a stale one restores the WRONG
+ * BYTES, which is the worst failure this code could have. It is also a DEDUP
+ * KEY and not a checksum: `hydrateImages` must never verify it, because the
+ * only response to a mismatch would be to write the bytes anyway.
+ *
+ * THE PER-CHIP ENTRY IS AN OBJECT, AND THAT IS LOAD-BEARING. An older build
+ * reading a v5 file runs its own `hydrateImages` over `images`, and a bare
+ * `"sha256-…"` string decodes as base64 to 53 bytes of junk — past the
+ * zero-length guard, straight over the sidecar, and collected back into the
+ * file by the next save from that build. An object value is not a string, so
+ * the old loop SKIPS it and the chip's existing "programmed, but its data file
+ * is missing" warning explains itself. Honest degradation, not corruption.
+ *
+ *   · `collectImages` — on save, read each programmed ROM's file, hash it, and
+ *     record chip → blob. Only a chip flagged `programmed` is collected: an
+ *     unprogrammed ROM holds random noise, and noise does not need to travel.
+ *   · `imagesOf` — on read, flatten either shape (v5's two tables, or a v4
+ *     file's inline `{ <guid>: <base64> }`) into the flat map everything
+ *     below already speaks. Aliasing a shared blob string costs nothing, so
+ *     the dedup survives in memory as well.
+ *   · `hydrateImages` — on open, write that map back into the cache before
  *     the renderer sees the project, so the SimController's Run-time load and
  *     the inspector both find real files exactly as they always did.
  *   · `reseatImages` — a desktop being COPIED (Import, Duplicate) must not
  *     share backing files with the original, or two chips would write one
  *     file. Every storage-bearing component gets a fresh GUID and a fresh
- *     file, sourced from the snapshot's own `images` when it has one and
+ *     file, sourced from the snapshot's own images when it has one and
  *     copied from the old GUID's cached file when it does not.
+ *
+ * DEDUP LIVES IN THE FILE, NEVER IN THE CACHE. One `.bin` per chip is what
+ * keeps `DeskController#releaseMemory`'s unconditional delete-by-GUID correct
+ * with no reference counting: a chip's file is its own, however many other
+ * chips happen to hold the same bytes.
  *
  * This is the second place in main with document knowledge, after
  * migrations.js, and like it the knowledge is deliberately narrow: it reads
@@ -51,7 +86,7 @@
 
 const fs = require("fs");
 const path = require("path");
-const { randomUUID } = require("crypto");
+const { randomUUID, createHash } = require("crypto");
 const io = require("./io");
 
 /** A crypto.randomUUID() the renderer minted for a memory chip. Anchored so a
@@ -61,6 +96,14 @@ const MEM_GUID_RE =
 
 /** Same ceiling mem-store enforces: far above any modelled memory part. */
 const MAX_BYTES = 1 << 24; // 16 MiB
+
+/** A blob's content-addressed name. The digest IS the key, so identical bytes
+    name one blob and a file edited between two loads names two — the whole
+    dedup rule, with nothing to keep in step. The `sha256-` prefix makes the
+    file self-describing and leaves room to change digest without ambiguity. */
+function blobKey(buf) {
+  return `sha256-${createHash("sha256").update(buf).digest("hex")}`;
+}
 
 /** A chip GUID resolved to its cached backing file, or null for a bad GUID. */
 function guidPath(memDir, guid) {
@@ -83,8 +126,9 @@ function* documentsOf(meta) {
 }
 
 /**
- * The `images` block for a project (or a desktop snapshot): every PROGRAMMED
- * chip's cached bytes, base64-encoded, keyed by GUID.
+ * The two image tables for a project (or a desktop snapshot): every PROGRAMMED
+ * chip pointed at a content-addressed blob, and each distinct set of bytes
+ * base64-encoded exactly once however many chips or desktops hold it.
  *
  * A file that is missing, unreadable, or absurdly large is skipped rather than
  * failing the save — a save that refuses to write because one sidecar went
@@ -92,10 +136,13 @@ function* documentsOf(meta) {
  *
  * @param {object} meta - a project meta (`tabs[].doc`) or a `{doc}` snapshot.
  * @param {string} memDir - the memory cache directory.
- * @returns {Record<string,string>} guid → base64 (omitted entirely when empty).
+ * @returns {{images: Record<string,{blob:string}>, blobs: Record<string,string>}}
+ *   `images` is guid → blob reference, `blobs` is key → base64. `images` is
+ *   non-empty exactly when `blobs` is, so one guard covers both.
  */
 function collectImages(meta, memDir) {
   const images = {};
+  const blobs = {};
   for (const doc of documentsOf(meta)) {
     for (const { comp, guid } of storageChips(doc)) {
       if (comp?.params?.programmed !== true) continue; // noise stays home
@@ -105,7 +152,9 @@ function collectImages(meta, memDir) {
       try {
         const buf = fs.readFileSync(file);
         if (buf.length > MAX_BYTES) continue;
-        images[guid] = buf.toString("base64");
+        const key = blobKey(buf);
+        if (!Object.hasOwn(blobs, key)) blobs[key] = buf.toString("base64");
+        images[guid] = { blob: key };
       } catch {
         // Missing or unreadable: the chip keeps its `programmed` flag, and the
         // renderer's own "was programmed but its file is gone" warning is what
@@ -113,7 +162,37 @@ function collectImages(meta, memDir) {
       }
     }
   }
-  return images;
+  return { images, blobs };
+}
+
+/**
+ * A parsed project or snapshot file's images as the flat `guid → base64` map
+ * every consumer below already speaks — from either v5's two tables or a v4
+ * file's inline block.
+ *
+ * The shape is told apart STRUCTURALLY (does it carry a `blobs` table?) rather
+ * than by the stored `version`, the same rule project-migrate.js follows: the
+ * tell is the thing that actually decides how to read the bytes.
+ *
+ * Flattening does not undo the dedup — `flat[guid] = blobs[key]` aliases one
+ * JS string — so eight chips sharing a 16 MiB image still hold one copy.
+ *
+ * @param {object} raw - the parsed file, NOT a normalized meta.
+ * @returns {Record<string,string>|null} null when the file carries no images.
+ */
+function imagesOf(raw) {
+  const images = raw?.images;
+  if (!images || typeof images !== "object") return null;
+  const blobs = raw?.blobs;
+  if (!blobs || typeof blobs !== "object") return images; // v4: inline base64
+  const flat = {};
+  for (const [guid, entry] of Object.entries(images)) {
+    const encoded = blobs[entry?.blob];
+    // A dangling reference is dropped rather than written as nothing: an empty
+    // sidecar reads back as a programmed chip full of zeros, which is a lie.
+    if (typeof encoded === "string") flat[guid] = encoded;
+  }
+  return flat;
 }
 
 /**
@@ -163,7 +242,8 @@ function hydrateImages(images, memDir) {
  *
  * @param {object} doc - MUTATED in place (it is main's own parsed copy).
  * @param {string} memDir
- * @param {Record<string,string>|null} [images] - the snapshot's own block.
+ * @param {Record<string,string>|null} [images] - the snapshot's own bytes, as
+ *   `imagesOf` flattens them: guid → base64, whichever shape the file used.
  * @returns {Map<string,string>} old GUID → new GUID.
  */
 function reseatImages(doc, memDir, images = null) {
@@ -203,8 +283,10 @@ function copyImage(from, to, memDir, images) {
 
 module.exports = {
   collectImages,
+  imagesOf,
   hydrateImages,
   reseatImages,
+  blobKey,
   MEM_GUID_RE,
   MAX_BYTES,
 };

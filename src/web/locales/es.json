@@ -1009,7 +1009,8 @@
       "color": "Color",
       "volts": "Tensión",
       "hz": "Frecuencia",
-      "size": "Tamaño"
+      "size": "Tamaño",
+      "imageSource": "Archivo de imagen"
     },
     "option": {
       "manual": "Manual"
@@ -1037,6 +1038,7 @@
     "statusEditable": "Detenido · editable",
     "volatileNote": "Volátil (SRAM) — sin archivo de respaldo",
     "copyPath": "Copiar la ruta",
+    "sourceEdited": "{path} (editado)",
     "loadImage": "Cargar una imagen… (programar)",
     "exportBin": "Exportar .bin",
     "exportHex": "Exportar HEX",

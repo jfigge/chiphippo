@@ -57,6 +57,12 @@ telling you what happened. Once programmed, the chip is flagged
 **programmed**, which rides undo/redo like any other edit, and the chip
 keeps its new contents the next time you open the document or press Run.
 
+The chip also **remembers which file you loaded**. The Properties dialog
+shows it as **Image file**, so you can tell at a glance whether a ROM holds
+the monitor image or last week's experiment. If you go on to edit the bytes
+by hand in the inspector, the file is still shown — marked *(edited)*, since
+it is where the data came from but no longer what the chip holds.
+
 Programming is only available while editing is unlocked (i.e. the
 simulation is stopped) — see [Running a Simulation](simulation.md).
 
@@ -85,9 +91,10 @@ of chip it is:
   change, so you can watch a counter or a shift register fill memory in real
   time. Editing resumes once you stop.
 
-The inspector also shows the chip's backing-file path for a non-volatile
-part (handy for locating the raw `.bin` outside the app), and stays open and
-live-updating as long as the desk document does.
+For a non-volatile part the inspector also names the file its image came
+from, with **Copy path** beside it; hover that line to see where the app is
+keeping the raw bytes on disk. It stays open and live-updating as long as the
+desk document does.
 
 ## Import & export (Intel HEX)
 

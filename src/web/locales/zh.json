@@ -994,7 +994,8 @@
       "color": "颜色",
       "volts": "电压",
       "hz": "频率",
-      "size": "尺寸"
+      "size": "尺寸",
+      "imageSource": "映像文件"
     },
     "option": {
       "manual": "手动"
@@ -1022,6 +1023,7 @@
     "statusEditable": "已停止 · 可编辑",
     "volatileNote": "易失（SRAM）— 没有后备文件",
     "copyPath": "复制路径",
+    "sourceEdited": "{path}（已编辑）",
     "loadImage": "载入映像…（编程）",
     "exportBin": "导出 .bin",
     "exportHex": "导出 HEX",

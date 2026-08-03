@@ -994,7 +994,8 @@
       "color": "色",
       "volts": "電圧",
       "hz": "周波数",
-      "size": "サイズ"
+      "size": "サイズ",
+      "imageSource": "イメージファイル"
     },
     "option": {
       "manual": "手動"
@@ -1022,6 +1023,7 @@
     "statusEditable": "停止中 · 編集可能",
     "volatileNote": "揮発性（SRAM）— 裏付けファイルはありません",
     "copyPath": "パスをコピー",
+    "sourceEdited": "{path}（編集済み）",
     "loadImage": "イメージを読み込む…（書き込み）",
     "exportBin": ".bin で書き出す",
     "exportHex": "HEX で書き出す",
