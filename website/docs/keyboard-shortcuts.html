@@ -115,15 +115,56 @@ are noted alongside the shortcut.</p>
 </tr>
 <tr>
 <td><code>Delete</code> / <code>Backspace</code></td>
-<td>Remove the current selection (a part, wire, bus, annotation, board, or a whole marquee selection)</td>
+<td>Remove the current selection (a part, wire, bus, annotation, board, or a whole multi-selection)</td>
 </tr>
+</tbody></table>
+<h2 id="selecting--moving">Selecting &amp; moving</h2>
+<p>These are mouse chords rather than keystrokes, but they are the modifiers the
+desk answers to. <a href="the-desk.html#selecting-things">The Desk</a> covers building a
+selection; <a href="components.html#moving-several-parts-at-once">Chips &amp; Components</a>
+covers moving one.</p>
+<table>
+<thead>
 <tr>
+<th>Chord</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody><tr>
 <td><code>Shift</code>-drag</td>
 <td>Rubber-band a selection — it replaces whatever was selected</td>
 </tr>
 <tr>
 <td><code>Cmd</code>-click</td>
-<td>Add one item to the selection, or take it back out</td>
+<td>Add one item to the selection, or take it back out (<code>Ctrl</code>-click on Windows/Linux; on a Mac <code>Ctrl</code>-click stays the context menu)</td>
+</tr>
+<tr>
+<td>drag a part</td>
+<td>Re-seat that part alone, leaving every wire where it was</td>
+</tr>
+<tr>
+<td><code>Option</code>-drag a part</td>
+<td>Move it <strong>with everything plugged into it</strong> — the wire ends, and the legs of the resistors and LEDs, in the column-halves its pins occupy</td>
+</tr>
+<tr>
+<td>drag any member of a selection</td>
+<td>Move the whole selection as one rigid unit</td>
+</tr>
+<tr>
+<td><code>Option</code>-drag a member of a selection</td>
+<td>The same, carrying everything riding any member of it</td>
+</tr>
+<tr>
+<td>hold <code>Option</code> over a selection</td>
+<td>Ring every hole an <code>Option</code>-drag would carry, before committing to the drag (a selected part, or a whole multi-selection)</td>
+</tr>
+<tr>
+<td><code>Option</code>-drag a board</td>
+<td>Tear off the run of mated strips reachable forward (below/right) from the one you grabbed</td>
+</tr>
+<tr>
+<td><code>Option</code>+<code>Shift</code>-drag a board</td>
+<td>The same, running backward (above/left)</td>
 </tr>
 </tbody></table>
 <h2 id="tools">Tools</h2>
@@ -181,7 +222,7 @@ are noted alongside the shortcut.</p>
 </tr>
 <tr>
 <td><code>Cmd+C</code></td>
-<td>Copy the selected part</td>
+<td>Copy the selection — one part, a whole multi-selection of parts, or (if it includes boards) the whole sub-assembly</td>
 </tr>
 <tr>
 <td><code>Cmd+V</code></td>

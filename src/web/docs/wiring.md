@@ -93,6 +93,14 @@ the whole wire stretches and re-sags live, riding the move; nothing needs to
 be re-laid. Deleting a board cascades: any wire with an end seated on that
 board is removed along with it.
 
+Moving a **part** is different, because a part's pins can land somewhere its
+wires can't follow: an ordinary part drag leaves every wire in the hole you laid
+it in, which on a wired part quietly rewires the circuit. Hold **Option** as you
+press and the wire ends plugged into it come along instead — for one part, or
+for a whole selection of them. See [Chips &
+Components](components.md#moving-several-parts-at-once) for the rules, and for
+what the Option-held preview rings show you before you commit.
+
 ## Re-routing & deleting a wire
 
 Grab a wire two different ways:

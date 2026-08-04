@@ -14,9 +14,26 @@ are noted alongside the shortcut.
 | `Cmd+R` | Run / Stop the simulation |
 | `Tab` | Switch between the Breadboard and Schematic views (not while typing) |
 | `Escape` | Abandon a drag in flight, then unpin a probed net, then disarm the probe, then cancel a pending wire/bus, then cancel a placement in hand, then deselect — whichever applies first |
-| `Delete` / `Backspace` | Remove the current selection (a part, wire, bus, annotation, board, or a whole marquee selection) |
+| `Delete` / `Backspace` | Remove the current selection (a part, wire, bus, annotation, board, or a whole multi-selection) |
+
+## Selecting & moving
+
+These are mouse chords rather than keystrokes, but they are the modifiers the
+desk answers to. [The Desk](the-desk.md#selecting-things) covers building a
+selection; [Chips & Components](components.md#moving-several-parts-at-once)
+covers moving one.
+
+| Chord | Action |
+|---|---|
 | `Shift`-drag | Rubber-band a selection — it replaces whatever was selected |
-| `Cmd`-click | Add one item to the selection, or take it back out |
+| `Cmd`-click | Add one item to the selection, or take it back out (`Ctrl`-click on Windows/Linux; on a Mac `Ctrl`-click stays the context menu) |
+| drag a part | Re-seat that part alone, leaving every wire where it was |
+| `Option`-drag a part | Move it **with everything plugged into it** — the wire ends, and the legs of the resistors and LEDs, in the column-halves its pins occupy |
+| drag any member of a selection | Move the whole selection as one rigid unit |
+| `Option`-drag a member of a selection | The same, carrying everything riding any member of it |
+| hold `Option` over a selection | Ring every hole an `Option`-drag would carry, before committing to the drag (a selected part, or a whole multi-selection) |
+| `Option`-drag a board | Tear off the run of mated strips reachable forward (below/right) from the one you grabbed |
+| `Option`+`Shift`-drag a board | The same, running backward (above/left) |
 
 ## Tools
 
@@ -36,7 +53,7 @@ are noted alongside the shortcut.
 |---|---|
 | `R` | Rotate or flip the part being placed or selected — see [Chips & Components](components.md) for the exact behavior per part type |
 | `F` | Flip an LED's polarity while its placement ghost is armed |
-| `Cmd+C` | Copy the selected part |
+| `Cmd+C` | Copy the selection — one part, a whole multi-selection of parts, or (if it includes boards) the whole sub-assembly |
 | `Cmd+V` | Paste a copy as a new placement ghost |
 
 ## View

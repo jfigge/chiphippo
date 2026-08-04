@@ -210,6 +210,19 @@ it keeps that job: it still opens an item&#39;s context menu.</p>
 step, <code>Cmd/Ctrl+C</code> copies it (as a whole design, if it includes boards — see
 <a href="projects-and-desktops.html">Projects &amp; Desktops</a>), and <code>Esc</code> clears it.
 <code>Cmd/Ctrl+A</code> selects the entire desk.</p>
+<p><strong>A selection also moves as one.</strong> Grab any part in it and the whole set
+travels by the same amount, keeping the arrangement you built; hold <strong>Option</strong>
+as you press and the wiring comes too — every wire end, and every resistor or
+LED leg, plugged into any member. The drop is all or nothing, and the move is
+one <code>Cmd/Ctrl+Z</code>. See <a href="components.html#moving-several-parts-at-once">Moving several parts at
+once</a> for the whole of it.</p>
+<p>Boards are the exception, and it&#39;s the one thing to know before you drag a
+mixed selection. A <strong>board</strong> in the set makes a press on a part do nothing at
+all — strips have their own drag, which carries everything seated on them under
+mating and overlap rules a part re-seat knows nothing about — and the selection
+is left untouched so you can <code>Cmd/Ctrl</code>-click the board back out. Grabbing the
+<strong>board</strong> instead drags that board&#39;s own group (and everything seated on it) in
+the usual way, replacing the selection as any plain click does.</p>
 <p>Nothing can be selected while the simulation is <strong>running</strong> — the topology is
 frozen, so a selection would be one you couldn&#39;t act on.</p>
 <h2 id="groups--breaking-a-snap">Groups &amp; breaking a snap</h2>

@@ -172,7 +172,13 @@ test("headings get GitHub-style ids so #anchor links resolve", async () => {
   await settle();
 
   const h2 = viewer.element.querySelector(".docs-content h2");
-  assert.equal(h2.id, "power-clocks");
+  // TWO hyphens: the `&` is dropped as punctuation and the spaces either side
+  // of it each become one, which is GitHub's rule and therefore the website's
+  // and the PDF's. This assertion read `power-clocks` while the viewer kept a
+  // slugger of its own that collapsed the run — the id the app stamped and the
+  // id every other output stamped were different, and an author had no way to
+  // write a #fragment that worked in both. See heading-slug.js.
+  assert.equal(h2.id, "power--clocks");
 });
 
 test("a stale in-flight load never clobbers a newer one (loadToken race guard)", async () => {

@@ -146,6 +146,21 @@ step, `Cmd/Ctrl+C` copies it (as a whole design, if it includes boards — see
 [Projects & Desktops](projects-and-desktops.md)), and `Esc` clears it.
 `Cmd/Ctrl+A` selects the entire desk.
 
+**A selection also moves as one.** Grab any part in it and the whole set
+travels by the same amount, keeping the arrangement you built; hold **Option**
+as you press and the wiring comes too — every wire end, and every resistor or
+LED leg, plugged into any member. The drop is all or nothing, and the move is
+one `Cmd/Ctrl+Z`. See [Moving several parts at
+once](components.md#moving-several-parts-at-once) for the whole of it.
+
+Boards are the exception, and it's the one thing to know before you drag a
+mixed selection. A **board** in the set makes a press on a part do nothing at
+all — strips have their own drag, which carries everything seated on them under
+mating and overlap rules a part re-seat knows nothing about — and the selection
+is left untouched so you can `Cmd/Ctrl`-click the board back out. Grabbing the
+**board** instead drags that board's own group (and everything seated on it) in
+the usual way, replacing the selection as any plain click does.
+
 Nothing can be selected while the simulation is **running** — the topology is
 frozen, so a selection would be one you couldn't act on.
 

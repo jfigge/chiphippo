@@ -300,9 +300,15 @@ be a rearrangement you never asked for.</li>
 <p>A <strong>board</strong> in the selection is the one case that declines: strips have their
 own drag, which carries everything seated on them under rules a part re-seat
 knows nothing about. Pressing a part then does nothing and leaves the
-selection alone — <code>Cmd</code>/<code>Ctrl</code>-click the board back out, or grab a board
-instead. And a plain click inside a selection narrows it to the part you
-clicked, exactly as clicking a part outside one does.</p>
+selection alone — <code>Cmd</code>/<code>Ctrl</code>-click the board back out and drag the parts, or
+grab the board itself, which drags its own snapped group with everything seated
+on it and replaces the selection the way any plain click does. And a plain
+click inside a selection narrows it to the part you clicked, exactly as
+clicking a part outside one does.</p>
+<p>One thing a selection does <strong>not</strong> carry: a <strong>wire</strong> you selected that isn&#39;t
+plugged into any of the parts moving. Wires travel because they ride a pin, not
+because they are highlighted — so a wire selected on its own (to delete or
+recolor it) stays exactly where it is while the parts move around it.</p>
 <h2 id="occupancy--one-hole-one-lead">Occupancy — one hole, one lead</h2>
 <p>Every hole on a breadboard — and every terminal on a power/clock brick —
 holds <strong>at most one lead</strong>, whether that&#39;s a chip pin or a wire end. Placing

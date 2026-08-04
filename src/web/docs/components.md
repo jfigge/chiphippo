@@ -247,9 +247,16 @@ Everything above applies unchanged, just to the whole group:
 A **board** in the selection is the one case that declines: strips have their
 own drag, which carries everything seated on them under rules a part re-seat
 knows nothing about. Pressing a part then does nothing and leaves the
-selection alone — `Cmd`/`Ctrl`-click the board back out, or grab a board
-instead. And a plain click inside a selection narrows it to the part you
-clicked, exactly as clicking a part outside one does.
+selection alone — `Cmd`/`Ctrl`-click the board back out and drag the parts, or
+grab the board itself, which drags its own snapped group with everything seated
+on it and replaces the selection the way any plain click does. And a plain
+click inside a selection narrows it to the part you clicked, exactly as
+clicking a part outside one does.
+
+One thing a selection does **not** carry: a **wire** you selected that isn't
+plugged into any of the parts moving. Wires travel because they ride a pin, not
+because they are highlighted — so a wire selected on its own (to delete or
+recolor it) stays exactly where it is while the parts move around it.
 
 ## Occupancy — one hole, one lead
 

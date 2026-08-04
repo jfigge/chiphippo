@@ -46,6 +46,7 @@
 "use strict";
 
 import renderMarkdown from "../vendor/markdown.js";
+import { slugifyHeading } from "../heading-slug.js";
 
 /**
  * Contents list, in display order. `slug` is the stable identity used for the
@@ -80,16 +81,6 @@ export const PAGES = [
 const FILE_TO_SLUG = Object.fromEntries(
   PAGES.map((p) => [(p.file ?? p.slug).toLowerCase(), p.slug]),
 );
-
-/** GitHub-style heading slug: lowercased, punctuation stripped, spaces → hyphens. */
-function slugifyHeading(text) {
-  return (text ?? "")
-    .toLowerCase()
-    .trim()
-    .replace(/[^\w\s-]/g, "")
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-");
-}
 
 export class DocsViewer {
   /** @type {HTMLElement} */

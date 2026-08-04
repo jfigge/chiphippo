@@ -246,6 +246,24 @@ website** (`make docs` → `website/docs/`), and a **PDF** (`make pdf` →
 `file` override, title) is **hand-duplicated, not shared**, between
 `src/web/scripts/components/docs-viewer.js` (browser) and
 `scripts/build-docs.mjs` (Node) — keep the two in sync when adding a page.
+**THE HEADING ID RULE IS NOT, AND THAT DISTINCTION IS THE POINT**
+(`web/scripts/heading-slug.js`, imported by BOTH — dependency-free renderer
+ESM, and `src/web/scripts` is `{"type": "module"}`, so plain Node imports it
+by path exactly as the browser loads it over `file://`). A missing PAGES entry
+is a page that visibly does not appear; a slug rule that disagrees with itself
+is INVISIBLE until a heading contains punctuation. It was two copies, and they
+did disagree — the website's followed GitHub, the viewer's collapsed runs of
+hyphens on top of it, so `## Moving a part — with its wiring` was
+`…part--with…` on the site, the PDF and GitHub and `…part-with…` in the app,
+and no author-written `#fragment` could work in both. **GitHub's rule wins**:
+the same `.md` files are read on GitHub as they are, so its slugger is the one
+of the four that cannot be changed — lowercase, trim, drop everything but word
+characters / whitespace / hyphen, then EACH whitespace character to one hyphen,
+consecutive hyphens NEVER collapsed. `tests/heading-slug.test.js` pins that,
+sweeps every `#fragment` in the guide against the real headings (a dead anchor
+renders as an ordinary link that goes nowhere), and ratchets against a third
+copy appearing. Note `docs-viewer.test.js` asserted the collapsed id under the
+heading "GitHub-style ids", which is how the divergence outlived a green suite.
 - **In-app**: `web/docs.html` + `scripts/docs-window.js` mount
   `components/docs-viewer.js` (`DocsViewer`) into a **non-modal** floating OS
   window (`openDocsWindow()` in `main.js`, a true singleton — unlike
@@ -1503,8 +1521,13 @@ Electron main process (src/app/main.js)
     riding by BOTH ends gets TWO rings, which is the useful part: it shows
     which ends travel and which stay. The hint stands down while the drag is in
     flight (the moving wires answer it better, and rings on holes being vacated
-    would say the opposite), while the circuit RUNS, and for anything that is
-    not a single selected part. The state is PUSHED IN from `app.js` rather
+    would say the opposite), and while the circuit RUNS. **Since Feature 340 a
+    MULTI-selection rings every member's riders too** (deduped — two members
+    can share a node), but only when the press would actually START a drag: a
+    selection holding a BOARD refuses (`#beginClusterDrag`), so ringing its
+    riders would promise a move the app declines to make. Anything else — no
+    selection, a selected wire, a lone annotation — rings nothing. The state is
+    PUSHED IN from `app.js` rather
     than read off `handleKeyDown`, whose contract is "did I CONSUME this key" —
     a modifier must not, since Option is still a modifier for everything else.
     Its listeners are the same trio the Fit button's Shift-held preview uses,
@@ -2459,8 +2482,8 @@ make clean     # Remove build/ and dist/
   MOVE stream only — never the sole delivery route for the RELEASE. **EVERY
   direct-manipulation desk drag** goes through
   **`components/pointer-gesture.js`** (`beginPointerGesture` → one teardown) —
-  the wire/bus/palette gestures, and the seven DeskController owns (board,
-  part, brick, resistor body, resistor end, annotation, marquee):
+  the wire/bus/palette gestures, and the eight DeskController owns (board,
+  part, brick, **cluster**, resistor body, resistor end, annotation, marquee):
   `pointerup`/`pointercancel` listen on
   `window` in the CAPTURE phase, so a release reaches the gesture whether or not
   the capture held, and `lostpointercapture` + window `blur` end it too (the only
@@ -2480,7 +2503,7 @@ make clean     # Remove build/ and dist/
   now outlive the dragged element, **`#rebuildScene` cancels any live gesture
   first** — undo/redo or a tab switch mid-drag would otherwise leave a release
   to commit against unmounted views. `tests/desk-drag-release.test.js` holds
-  all seven to the three cases the old shape could not survive (release point
+  all eight to the three cases the old shape could not survive (release point
   ≠ last move, release off the dragged element, yanked capture).
   **"IS A DRAG IN FLIGHT?" IS DERIVED FROM THE KIND'S NAME, never a hand-kept
   list.** `#dragGestureActive` WAS a list, and it fell silently behind: the

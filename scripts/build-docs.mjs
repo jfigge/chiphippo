@@ -30,6 +30,11 @@ import {
 } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+// THE heading id rule, shared with the in-app viewer rather than copied — see
+// that module's header for what the two copies used to disagree about. It is
+// dependency-free renderer code, and src/web/scripts is `{"type":"module"}`,
+// so plain Node imports it here exactly as the browser loads it there.
+import { slugifyHeadingHtml } from "../src/web/scripts/heading-slug.js";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export const SRC = resolve(ROOT, "src/web/docs");
@@ -81,30 +86,6 @@ export const PAGES = [
 const outFile = (p) =>
   p.slug === "overview" ? "index.html" : `${p.slug}.html`;
 
-// Decode the HTML entities marked emits in heading text, so the slug is built
-// from the *raw* characters (e.g. "Power &amp; Clocks" → "Power & Clocks")
-// rather than the escaped form (which would leak a literal "amp" into the id).
-function decodeEntities(s) {
-  return s
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&#0?39;/g, "'")
-    .replace(/&amp;/g, "&"); // last, so the others aren't double-decoded
-}
-
-// Match GitHub's heading slugger so author-written #fragment links resolve:
-// strip tags, decode entities, lowercase, drop punctuation, and turn each
-// whitespace char into a single hyphen. Note: consecutive hyphens are NOT
-// collapsed — "Power & Clocks" → "power--clocks", exactly as GitHub does.
-function slugifyHeading(text) {
-  return decodeEntities(text.replace(/<[^>]+>/g, ""))
-    .toLowerCase()
-    .trim()
-    .replace(/[^\w\s-]/g, "")
-    .replace(/\s/g, "-");
-}
-
 function esc(s) {
   return s
     .replace(/&/g, "&amp;")
@@ -132,7 +113,7 @@ export function renderBody(md) {
   html = html.replace(
     /<h([2-6])>([\s\S]*?)<\/h\1>/g,
     (_m, lvl, inner) =>
-      `<h${lvl} id="${slugifyHeading(inner)}">${inner}</h${lvl}>`,
+      `<h${lvl} id="${slugifyHeadingHtml(inner)}">${inner}</h${lvl}>`,
   );
   // Rewrite .md links to .html (and README → index, project README → GitHub).
   html = html.replace(

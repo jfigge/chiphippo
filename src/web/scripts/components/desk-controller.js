@@ -219,9 +219,12 @@ export class DeskController {
   // Simulation (Feature 90): editing is locked while running; live net levels
   // arrive over chiphippo:sim-state and drive LEDs / chip badges / probe tint.
   #editingLocked = false;
-  #multi = new Set(); // component ids from a marquee selection
-  #multiWires = new Set(); // wire ids from the same marquee
-  #multiBoards = new Set(); // board ids from the same marquee (Feature 240)
+  // The multi-selection, filled EITHER way (Feature 340's selection-toggle.js):
+  // a Shift-drag marquee replaces these sets, a ⌘/Ctrl-click adds to or removes
+  // from them. Everything downstream reads them without caring which built it.
+  #multi = new Set(); // component ids
+  #multiWires = new Set(); // wire ids
+  #multiBoards = new Set(); // board ids (Feature 240)
   #marquee = null; // the rubber-band element while shift-dragging
   // Feature 290: Option held over a selected part rings the wire ends an
   // Option-drag would carry, so the answer arrives BEFORE the gesture.
@@ -763,17 +766,17 @@ export class DeskController {
     this.#boardOutline.show(rects, drag ? !drag.legal : false);
   }
 
-  /** The component ids currently marquee-selected (empty when none). */
+  /** The component ids in the multi-selection (empty when none). */
   get multiSelectedIds() {
     return [...this.#multi];
   }
 
-  /** The wire ids currently marquee-selected (empty when none). */
+  /** The wire ids in the multi-selection (empty when none). */
   get multiSelectedWireIds() {
     return [...this.#multiWires];
   }
 
-  /** The board ids currently marquee-selected (empty when none). */
+  /** The board ids in the multi-selection (empty when none). */
   get multiSelectedBoardIds() {
     return [...this.#multiBoards];
   }
@@ -797,7 +800,7 @@ export class DeskController {
     }
   }
 
-  /** Replace the marquee selection; a non-empty one clears the single pick. */
+  /** Replace the multi-selection; a non-empty one clears the single pick. */
   #setMultiSelection(ids, wireIds = [], boardIds = []) {
     this.#clearMultiSelection();
     // What is actually still on the desk — the caller may name anything.
