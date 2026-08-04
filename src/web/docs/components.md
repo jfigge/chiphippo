@@ -160,40 +160,96 @@ pin 1's input is now pin 3's.
 So, exactly as with pulling a mated strip out of a board group, hold a
 modifier while you start the drag:
 
-- **Option-drag** — moves the part **and its wiring together**. Every wire
-  end sitting in a column-half one of the part's pins occupies comes along,
-  keeping its own row and its offset from the part, so the circuit after the
-  move is the circuit before it. The far end of each wire stays put.
+- **Option-drag** — moves the part **and everything plugged into it**. Every
+  wire end sitting in a column-half one of the part's pins occupies comes
+  along, keeping its own row and its offset from the part, so the circuit
+  after the move is the circuit before it. The far end of each wire stays put.
 
-Only the wires actually connected to the part come — a wire in a column the
-part merely spans without having a pin there (a push button reaches two holes
-three columns apart, not the one between them) is left alone, because it was
-never connected to it.
+**A resistor or LED plugged into the part comes too — by the leg that is
+connected to it.** A leg in one of the part's column-halves is attached to it
+exactly as a jumper in the next hole along is, so it travels; the other leg
+stays exactly where it is and the part simply **bends** around it, the way a
+resistor's legs bend on a real bench. Plugged in at *both* legs, it travels
+whole instead. (A chip's pins can't bend, so a chip next door is never dragged
+along — it isn't a lead, it's a body.)
+
+Only what is actually connected to the part comes — a wire or a leg in a
+column the part merely spans without having a pin there (a push button reaches
+two holes three columns apart, not the one between them) is left alone,
+because it was never connected to it. And nothing chases further than one
+step: what travels lands in the same column-half its pin lands in, so a rider
+never leaves anything of its own stranded behind it.
 
 **To see what would come, hold Option.** With a part selected, holding Option
-rings every wire end that would travel with it, and releasing Option puts the
-rings away — so you can check before you commit to the drag rather than
-discover it during one. A wire connected to the part at *both* ends gets two
-rings; a wire connected at one end gets one, on the end that moves. A part
-with nothing attached simply shows nothing.
+rings every wire end and every leg that would travel with it, and releasing
+Option puts the rings away — so you can check before you commit to the drag
+rather than discover it during one. Something connected at *both* ends gets
+two rings, so a resistor that will travel whole reads differently from one
+that will bend; something connected at one end gets one ring, on the end that
+moves. A part with nothing attached simply shows nothing.
 
-The drop is **all or nothing**. If any of those wire ends has nowhere to go —
-its hole is taken by something that isn't moving, or it would run off the end
-of the strip — the part *and* every wire it would have carried turn red, and
-releasing puts everything back. Half a move would silently cut the
-connections it left behind, which is the very thing the gesture exists to
-avoid.
+The drop is **all or nothing**. If any of those has nowhere to go — its hole
+is taken by something that isn't moving, it would run off the end of the
+strip, or the bend would squeeze a resistor's legs closer than its body is
+long — the part *and* everything it would have carried turn red, and releasing
+puts everything back. Half a move would silently cut the connections it left
+behind, which is the very thing the gesture exists to avoid.
+
+A resistor or LED is dragged by its two ends rather than by a footprint, and
+that makes one distinction: dragging its **body** moves both legs together, so
+Option carries its wiring exactly as for any other part; dragging **one leg**
+is a re-bend, and carries nothing — that leg can land in any hole, at any
+angle, on any strip, so there is nothing for a wire to follow. (An LED lying
+flat is only one hole wide, so there is no body to grab between its legs;
+stand it up with `R`, or move it as part of a selection.)
 
 Two details worth knowing:
 
 - Whether the wiring comes is decided when you **press**, not when you let
   go. Once the part is in hand, the set is fixed.
-- A part can't be Option-dragged **across the trench** while it's wired —
-  rows `a`–`e` and `f`–`j` are separate nodes, so a wire that kept its row
-  would no longer be connected to the pin beside it. That drop is refused.
+- Moving **across the trench** takes the wiring over with it, keeping the
+  arrangement. Rows `a`–`e` and `f`–`j` are separate nodes, so a wire that
+  stayed in its row would be left in the half its pin had just left — it
+  travels the same number of holes the part did instead, so a wire two holes
+  from the part is still two holes from it, on the same side. Drag far enough
+  that the wiring would run off the edge of the board and the drop is refused;
+  a row nearer the trench fits.
+- Moving to **another board** works the same way — the wiring lands in the
+  matching holes over there, and anything the wires reach back to stays where
+  it is. While the part is over the gap between two boards there is nowhere for
+  it to land, so the wiring sits where it really is and turns red until the
+  part is over holes again.
 
 `Shift` is not this modifier: Shift-drag always rubber-bands a selection,
 including when the press lands on top of a part.
+
+### Moving several parts at once
+
+A selection drags as one unit. Marquee a group of parts (Shift-drag), or add
+them one at a time with `Cmd`/`Ctrl`-click, then drag any one of them: every
+selected part travels by the same amount, keeping the arrangement exactly as
+you built it. Power and clock bricks count as parts here, and come too.
+
+Everything above applies unchanged, just to the whole group:
+
+- **Option** takes the wiring with it — every wire, and every resistor or LED
+  leg, riding *any* member. A wire between two selected parts travels at both
+  ends; one that leaves the group keeps its far end where it is; a resistor
+  plugged into a member bends after it exactly as above.
+- Holding Option **rings** every end and leg that would travel, across all of
+  them.
+- The drop is **all or nothing**. If one part, or one wire end, or one leg has
+  nowhere to land, every member and everything riding it turns red and
+  releasing puts the lot back — a group that dropped some of its members would
+  be a rearrangement you never asked for.
+- The whole move is **one undo step**.
+
+A **board** in the selection is the one case that declines: strips have their
+own drag, which carries everything seated on them under rules a part re-seat
+knows nothing about. Pressing a part then does nothing and leaves the
+selection alone — `Cmd`/`Ctrl`-click the board back out, or grab a board
+instead. And a plain click inside a selection narrows it to the part you
+clicked, exactly as clicking a part outside one does.
 
 ## Occupancy — one hole, one lead
 

@@ -520,6 +520,148 @@ test("marquee: a release outside the viewport still applies the selection", () =
   assert.ok(!viewport.classList.contains("desk-viewport--selecting"));
 });
 
+// ── Cluster drag (a multi-selection moved as one) ───────────────────────────
+
+/** ⌘/Ctrl-click each id in turn — from nothing, since placing a part leaves it
+    selected and a toggle would take it back OUT of the set. */
+function selectMany(controller, ids) {
+  controller.deselect();
+  for (const id of ids) controller.toggleComponentSelection(id);
+}
+
+/** A chip, a push button, and a wire joining them. */
+function clusterDesk(surface, controller, doc) {
+  controller.addBoardAt("pins-full", 0, 0);
+  const chip = controller.addComponentAt("74LS00", "bb1", "e5"); // cols 5–11
+  const btn = controller.addComponentAt("sw-push", "bb1", "a30");
+  doc.addWire({ from: "bb1.a5", to: "bb1.b30" }); // rides BOTH members
+  selectMany(controller, [chip.id, btn.id]);
+  return { chip, btn, el: partEl(surface, chip.id) };
+}
+
+test("cluster drag: the whole group lands at the RELEASE point", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { surface, controller } = makeDesk(doc, world);
+  const { chip, btn, el } = clusterDesk(surface, controller, doc);
+
+  dragReleasingAt(el, world, {
+    from: { x: 8, y: 6.5 },
+    stale: { x: 11, y: 6.5 }, // the last frame the app got to process…
+    at: { x: 13, y: 6.5 }, // …but it was let go two columns further on
+  });
+
+  assert.equal(doc.getComponent(chip.id).anchor, "e10");
+  assert.equal(doc.getComponent(btn.id).anchor, "a35");
+});
+
+test("cluster drag: a release over bare desk commits nothing at all", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { surface, controller } = makeDesk(doc, world);
+  const { chip, btn, el } = clusterDesk(surface, controller, doc);
+
+  dragReleasingAt(el, world, {
+    from: { x: 8, y: 6.5 },
+    stale: { x: 13, y: 6.5 }, // e10 — legal
+    at: { x: 13, y: 60 }, // let go off the board
+  });
+
+  assert.equal(doc.getComponent(chip.id).anchor, "e5", "stayed put");
+  assert.equal(doc.getComponent(btn.id).anchor, "a30");
+});
+
+test("OPTION cluster drag: the riding wires land at the RELEASE point too", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { surface, controller } = makeDesk(doc, world);
+  const { chip, btn, el } = clusterDesk(surface, controller, doc);
+
+  dragReleasingAt(el, world, {
+    from: { x: 8, y: 6.5 },
+    stale: { x: 13, y: 60 }, // nowhere near a row
+    at: { x: 13, y: 6.5 }, // e10 — five columns right
+    downMods: { altKey: true },
+  });
+
+  assert.equal(doc.getComponent(chip.id).anchor, "e10");
+  assert.equal(doc.getComponent(btn.id).anchor, "a35");
+  assert.equal(doc.getWire("w1").from, "bb1.a10");
+  assert.equal(doc.getWire("w1").to, "bb1.b35", "carried by both members");
+});
+
+test("OPTION cluster drag: an unseatable rider reverts the WHOLE group", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { surface, controller } = makeDesk(doc, world);
+  controller.addBoardAt("pins-full", 0, 0);
+  const chip = controller.addComponentAt("74LS00", "bb1", "e5");
+  const btn = controller.addComponentAt("sw-push", "bb1", "a30");
+  doc.addWire({ from: "bb1.a11", to: "bb1.a40" }); // rides the chip's last column
+  doc.addWire({ from: "bb1.a16", to: "bb1.a41" }); // squarely where it would land
+  selectMany(controller, [chip.id, btn.id]);
+
+  dragReleasingAt(partEl(surface, chip.id), world, {
+    from: { x: 8, y: 6.5 },
+    stale: { x: 13, y: 6.5 },
+    at: { x: 13, y: 6.5 }, // e10 — the rider would need a16
+    downMods: { altKey: true },
+  });
+
+  // Every member's OWN seat is legal there; the group is refused because one
+  // wire cannot follow, and half a move is no move.
+  assert.equal(doc.getComponent(chip.id).anchor, "e5");
+  assert.equal(
+    doc.getComponent(btn.id).anchor,
+    "a30",
+    "and the button with it",
+  );
+  assert.equal(doc.getWire("w1").from, "bb1.a11");
+});
+
+test("cluster drag: the release still lands when the CAPTURE is yanked", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { viewport, surface, controller } = makeDesk(doc, world);
+  const { chip, btn, el } = clusterDesk(surface, controller, doc);
+
+  dragReleasingAt(el, world, {
+    from: { x: 8, y: 6.5 },
+    stale: { x: 11, y: 6.5 },
+    at: { x: 13, y: 6.5 },
+    upOn: viewport, // the release never reaches the grabbed part
+  });
+
+  assert.equal(doc.getComponent(chip.id).anchor, "e10");
+  assert.equal(doc.getComponent(btn.id).anchor, "a35");
+});
+
+test("cluster drag: a scene rebuild mid-drag kills the gesture", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { viewport, surface, controller } = makeDesk(doc, world);
+  const { chip, el } = clusterDesk(surface, controller, doc);
+
+  world.x = 8;
+  world.y = 6.5;
+  fire(el, "pointerdown");
+  world.x = 13;
+  fire(el, "pointermove", { client: [40, 40] });
+
+  controller.undo(); // unmounts every view the gesture was drawing into
+  assert.ok(!viewport.classList.contains("desk-viewport--dragging"));
+
+  world.x = 20;
+  fire(viewport, "pointerup", { client: [40, 40] });
+  assert.equal(doc.getComponent(chip.id)?.anchor, "e5", "no late commit");
+});
+
 // ── The risk the migration itself introduces ────────────────────────────────
 
 test("a scene rebuild mid-drag kills the gesture before its views go", () => {

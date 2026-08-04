@@ -151,7 +151,14 @@ in seven languages (English, German, Spanish, French, Italian, Japanese, Chinese
 off one JSON catalog each, with main resolving the locale for every window and a
 change applied to the chrome IN PLACE, since nothing here reloads; the user guide
 stays English by decision. See the "Language support" section below, including
-the five guards that make an untranslated string fail the suite rather than ship.
+the five guards that make an untranslated string fail the suite rather than ship;
+and **cluster drags** (340) — a MULTI-SELECTION drags as one rigid unit and
+**Option** carries everything riding any member of it, which is Feature 290 one
+level up: the wires, and the LEADS of the two-terminal parts plugged into them
+(one leg riding BENDS the part around the other), all-or-nothing, one undo step,
+a board in the set refusing the press outright, and the ride rule restated per
+PIN rather than per anchor so a rail-anchored LED or resistor can carry its
+wiring at last.
 When a stage is finished, move its plan file into `features/done/`.
 
 ## Naming & identity
@@ -347,8 +354,10 @@ website** (`make docs` → `website/docs/`), and a **PDF** (`make pdf` →
   `scripts/app.js`. Pure DOM-free logic lives under `scripts/desk/` (camera, wire
   path, and `rect-outline.js` union-boundary math), `scripts/model/` (breadboard
   specs/addressing/connectivity, `DeskDoc`, `footprints.js`, `occupancy.js`,
-  `mating.js`, and `seating.js` — the world-point → `{board, anchor}` placement
-  search), and `scripts/sim/` (the engine package:
+  `mating.js`, `seating.js` — the world-point → `{board, anchor}` placement
+  search — and the two move rules, `part-move.js` (which wires ride ONE part,
+  and where they land) and `cluster-move.js` (a whole selection dragged as one
+  rigid group, built on it)), and `scripts/sim/` (the engine package:
   `union-find.js`, `netlist.js`, `levels.js`, `chip-eval.js`, `sequential.js`,
   `resolve.js`, `engine.js`) and `scripts/ai/` (the renderer half of the AI
   builder: `catalog-brief.js` derives the system prompt from the catalog,
@@ -1525,15 +1534,11 @@ Electron main process (src/app/main.js)
     `#resolvePartSeat` folds its verdict into the SAME `d.legal` the part's own
     tint reads — one refusal, one visual language, and preview and drop
     re-derived by one function so they cannot disagree.
-  - **`resolved:false` refuses rather than inventing a hole**, and covers more
-    than running off a strip: re-seating ACROSS THE TRENCH flips which half of
-    each column the pins are in, so a rider that kept its row would no longer
-    be on the pin's node. Stated generally (every landing address must be in a
-    node the part occupies AFTER the move), so that case and any the footprint
-    vocabulary grows are caught by construction. A pure ROW move within one
-    half moves no wire at all — `moves` is empty, which is why it is either
-    empty or one entry per rider, never partial (the prepared predicate is
-    length-checked against the frozen set).
+  - **`resolved:false` refuses rather than inventing a hole** — when neither a
+    rider's own row nor the row the pin's own delta puts it in is a hole of the
+    pin's new node. Stated generally (every landing address must be in a node the
+    part occupies AFTER the move) rather than as a list of ways to fail, so
+    anything the footprint vocabulary grows is caught by construction.
   - **`holeAlongTo(fromType, toType, …)`** is `holeAlong` with the destination
     named separately, because a part carried onto a NARROWER strip has riders
     whose ORIGIN column may not exist there (`a52` full → `a5` half); the
@@ -1552,14 +1557,193 @@ Electron main process (src/app/main.js)
     address, hence moved by hand here as in `translateAll`/`pasteDesign`.
   - **NET NAMES STAY PUT — the name follows the HOLE, not the signal.** No
     other move gesture re-binds one, and a re-seat is not a rename.
-  - **ONE mutation, ONE undo step**: `moveComponentWithWires` wraps
-    `moveComponent` + `moveWiresBatch` + the waypoint shifts in the
-    snapshot/restore transaction `pasteDesign` uses, so ⌘Z restores the part
-    and its wiring together — they were never two edits.
-  - **Out of scope by construction**: LEDs and resistors take the
-    `drag-resistor` gestures (two free ends, no column delta), and a PSU/clock
-    brick needs nothing — its wires end at a terminal address that already
-    rides it.
+  - **ONE mutation, ONE undo step** — and ONE rule for both gestures: a solo
+    Option-drag IS a one-member cluster, so `moveComponentWithWires` is
+    `moveClusterWithWires` with the dragged part at the head of the placements,
+    and its legality is the same `prepareClusterMove` predicate (which is what
+    lets a riding LEAD, whose params change, be checked and committed at all).
+    ⌘Z restores the part and everything riding it together — they were never two
+    edits.
+  - **A WIRE END IS NOT THE ONLY THING IN A NODE — A TWO-TERMINAL PART'S LEAD
+    RIDES TOO** (`leadsRiding` / `planRidingLead`). A resistor with one leg in
+    the column-half a moving pin occupies is connected to it exactly as a jumper
+    laid in the next hole along is, so leaving it behind is the same silent
+    rewiring this whole gesture exists to prevent. Riding by ONE leg is a BEND —
+    the other leg stays exactly where it is and the part is rewritten into the
+    two-free-ends form, because only that form can express one (a rot-0 LED
+    therefore stands up, exactly as dragging one of its legs by hand makes it);
+    riding by BOTH is a rigid translation that keeps whichever form it is stored
+    in. Only a `rotatable` part qualifies: it is the only kind whose leads move
+    independently, where "carry the chip next door because a wire's worth of
+    copper joins them" would be a different gesture — and one that cascades.
+    **THE RULE CLOSES AT ONE HOP**, which is why nothing recurses: a riding lead
+    lands in the node its pin lands in and every OTHER rider in that node travels
+    with it, while a lead that stays put leaves its own node untouched — so a
+    rider never strands anything behind it and there is nothing further to
+    follow. A transitive closure would pick up the whole circuit from one nudge.
+    A bend the body cannot physically make is the BATCH's refusal, not the
+    plan's: `planRidingLead` answers where the leg goes, and `canPlacePart`'s
+    `minSpan` is what says a quarter-watt body will not fit in two columns.
+  - **A RIDER CROSSES THE TRENCH WITH ITS PIN, KEEPING THE ARRANGEMENT**
+    (`holeAcross` + `rowsBetween`). The lookup tries the rider's OWN row first
+    and, only if that no longer reaches the pin's node, the row the PIN's OWN ROW
+    DELTA puts it in — so a wire two holes from a part is still two holes from it
+    afterwards, on the same side. Two candidates, not a search, and staying put
+    wins whenever staying put works, which is every within-half move (those are
+    bit-for-bit what they were). Without the second one a rider was stranded in
+    the half its pin had just left and the plan could only refuse — which read as
+    "there is no room over there" when there was plenty, and made a whole
+    SELECTION undroppable on the far half. Rows are counted as HOLES, not as
+    distance (`e` + 1 is `f`, straight across a gap three pitches wide), which is
+    what makes "the same number of holes apart" survive the crossing. It is one
+    RIGID row shift of the pins and their riders together, so the disjointness
+    invariant below survives it — a MIRROR (`a`↔`j`, `c`↔`h`) would not, and
+    would swap which side of the part each rider came out on. Run the wiring off
+    the end of the board and it refuses, which is honest: dropping a row nearer
+    the trench fits, and that is what the red is saying.
+  - **A RIDER FOLLOWS THE PIN WHOSE NODE IT SITS IN, not the part's anchor**
+    (`partRideShift`, which `planPartMove` is now stated in terms of). For a
+    footprint part the two are the same thing — every pin is on one board and
+    shifts by one column delta, the anchor's — but they part company the moment
+    a part's pins do not: a rotatable part seats pin 1 in ANY hole and measures
+    pin 2 as a bend from it, so the two can be on different strips and pin 1 may
+    well be on a RAIL, which owns no node at all. Read off the anchor, that part
+    was refused outright even though its GRID pin had an ordinary neighbourhood
+    to carry. Per pin is a strict superset, so nothing about a chip's drag
+    changed, across-the-trench refusal included.
+  - **`moves` NAMES EVERY RIDING WIRE, ALWAYS** — including one that does not
+    actually move (a discrete slid along its own column-half stays in the same
+    node, so its riders stay in their holes). The no-op entry is not noise: it
+    is what tells a batch check the hole is still SPOKEN FOR, which the cluster
+    drag below depends on, and it leaves every caller one convention instead of
+    two. `points` takes its shift from the END delta rather than the anchor's,
+    because a rider keeps its ROW and shifts by a COLUMN — `a5 → c7` moves the
+    riders (2, 0) while the anchor moves (2, 2).
+  - **A ROTATABLE PART'S BODY DRAG CARRIES ITS WIRING; ITS END DRAG DOES NOT.**
+    A body drag (`drag-resistor`) moves both leads by ONE delta — the same rigid
+    move a footprint part makes — so the ride rule applies unchanged, and the
+    plan is told the FORM the part is landing in (`planPartMove`'s `params`),
+    since a body drag rewrites a footprint-form part into the two-free-ends one.
+    An END drag (`drag-resistor-end`) deliberately carries nothing: that lead
+    lands at any hole, at any angle, on any strip, so there is no column delta
+    for a rider to follow — it is a re-bend, not a move. Note a rot-0 LED is one
+    pitch wide against `WIRE_END_GRAB_RADIUS` 0.6, so it has no body region at
+    all and every press on one is an end grab; stood up (or in a cluster) it
+    behaves like everything else.
+    **PIN 1 IS LOOKED UP TWICE, AND THE RAW POINT IS WHY A SPANNED RUN WORKS.**
+    Rounding the travel to whole pitches assumes a lattice, and there is one
+    only HORIZONTALLY (see the domain reference: a column is one unit, but the
+    vertical heights are MEASURED). A spanned run therefore puts the next
+    pin-board 17.52 pitch down, so a rounded `dy` lands pin 1 **0.48** off the
+    hole it aimed at — past `HOLE_HIT_RADIUS` 0.45 — and the part could not be
+    dropped on the other board AT ALL: wire a resistor to the rails, drag it to
+    the board below, and nothing moved, wires included. So the RAW translated
+    point is tried first (it is where the part actually is, and it is what the
+    placement GHOST has always used) and the rounded one is the fallback,
+    which keeps a same-board drag exactly as it was — including the sliver
+    between two rows where the raw point is nearest to nothing. On one board
+    the two always name the same hole whenever either does. The part is then
+    drawn from the hole it FOUND, so the preview is the seat that will be
+    committed.
+  - **A RIDER WITH NOWHERE TO LAND DRAWS FROM THE DOCUMENT**, in red — so the
+    plan is re-derived on EVERY sample, including the ones that resolve to
+    nothing, and a rider the plan did not place is drawn where the document has
+    it. The two drags differ in what they do with an unresolvable sample, and
+    that is where this bites: a FOOTPRINT drag stops at its last good seat, so a
+    stale plan still describes the picture on screen, but a ROTATABLE part is
+    drawn at the RAW CURSOR whatever the position, so it walks away from a plan
+    that stopped being re-derived. Over the gap between two dovetailed boards
+    the riders then sat at a hole the part had long since left and jumped when
+    it found ground again — dragging an LED across looked like its wiring simply
+    stopped following it. The document position says the true thing instead:
+    nothing is moving, and the red says it will not be dropped here.
+  - **Out of scope by construction**: a PSU/clock brick needs nothing — its
+    wires end at a terminal address that already rides it.
+- **A MULTI-SELECTION DRAGS AS ONE UNIT, AND OPTION WIDENS WHAT IT CARRIES**
+  (`model/cluster-move.js` + `DeskDoc.prepareClusterMove` /
+  `moveClusterWithWires` + the controller's `drag-cluster`). Grab any member of
+  a marquee/⌘-click selection and every selected component travels by one rigid
+  delta; hold Option and everything riding ANY of them travels too — the wires,
+  and the LEADS of the two-terminal parts plugged into them (a resistor bridging
+  two members travels whole, one bridging a member and a fixed part bends).
+  Option means here exactly what it means one level up — it changes what the
+  drag TAKES WITH IT, never which items move.
+  - **THE DELTA IS THE GRABBED MEMBER'S OWN**, resolved by the same three
+    resolvers a solo drag uses (`partSeatAt` for a footprint, snap-pin-1-to-a-
+    hole for a lead, whole units for a brick), so the thing under the finger
+    behaves exactly as it would alone — clamp at the end of a strip included.
+    Rounding the POINTER's travel to whole pitches instead cannot express the
+    one move that matters most: a dovetailed stack puts the board below at
+    17.52 pitch, so an integer delta could never carry a selection from one
+    board to the next. A member on a board at some OTHER offset lands between
+    holes and the drop reddens, which is honest — two strips at different
+    offsets share no lattice, so no rigid move seats parts on both.
+    **A BRICK GRAB HAS NO LATTICE OF ITS OWN, so it borrows a seated member's.**
+    A PSU stands on the DESK rather than in a board, so its resolver answers in
+    whole units — right for the brick and wrong for everyone behind it, since
+    21.02 is not a whole number: grabbing the brick of a selection spanning a
+    dovetailed stack rounded the delta to 21 and put every seated member a fifth
+    of a pitch off its holes. The brick branch therefore offers the RAW vector
+    to the first seated member and reports whatever hole THAT member lands in,
+    so the brick still moves in whole units (its own answer, one hole away) and
+    the parts land square. A selection of nothing but bricks keeps the raw
+    vector; one whose seated member lands nowhere refuses, as every other
+    unresolvable sample does. **BOTH SNAPPING BRANCHES TRY THE RAW TRAVEL
+    BEFORE THE ROUNDED ONE**, the same two candidates the solo body drag uses
+    and for the same reason: rounding is a HORIZONTAL rule, and a spanned run's
+    17.52 puts the anchor 0.48 off — past `HOLE_HIT_RADIUS` — so a selection
+    could not cross between two boards at all.
+  - **A CLAIM SET IS THE ALL-OR-NOTHING AUTHORITY, not the rigid-translation
+    proof.** `paste-cluster.js`'s module note argues a rigid integer translation
+    needs no member-vs-member check; that does NOT carry here, because riders
+    keep their ROW and shift by a COLUMN, so "parts + riders" is not a rigid
+    body. A pure row move slides the pins two rows and the riders not at all,
+    and a pin can land on a stationary rider's hole. One shared `claimed` set
+    over every landing address — each moving pin, both ends of each wire move —
+    catches that, mover-vs-mover, and pin-vs-a-rider's-far-end, with no proof
+    obligation at all. What survives of the paste-cluster argument is brick-vs-
+    brick rects, which a claim set cannot express and which are checked as rects.
+  - **TWO DOCUMENTS, DELIBERATELY.** `prepareClusterMove` builds occupancy from
+    the doc as if every mover — components AND wires — were gone, since a member
+    landing in a hole a travelling companion is vacating is the ordinary case
+    rather than a collision (which is exactly why `prepareWireBatchMove`, which
+    lifts out only the wires, could not be reused). But REALNESS is asked of the
+    FULL component list: `isRealPoint` resolves `psu1.+` through the components,
+    and a PSU does not stop existing because it is in the air. It is hoisted
+    once per gesture for `prepareWireBatchMove`'s own reason — `canPlacePart`
+    rebuilds the whole occupancy index per call, which for N members would be N
+    rebuilds a frame — hence the one new `occupancy` option on it. A placement
+    may also bring its own **`params`**, which is how a bending lead is judged:
+    the check has to see the part as it will BE, not as it is.
+  - **THE COMMIT VALIDATES THE WHOLE BATCH, THEN WRITES.** `moveComponent`,
+    `moveBrick` and `moveWiresBatch` each re-check against the LIVE document, so
+    replaying them member by member throws the moment two members swap holes,
+    and `moveWiresBatch`'s wires-only reduction would refuse a rider heading for
+    a hole a part is vacating. So `moveClusterWithWires` runs the SAME prepared
+    predicate over the whole batch and then writes the fields, inside the
+    `pasteDesign` snapshot/restore — ONE mutation, ONE undo step.
+  - **A BOARD IN THE SELECTION REFUSES THE PRESS**, and starts nothing. A strip
+    has its own drag, one that carries everything seated on it under overlap and
+    mating rules a part re-seat knows nothing about; a part grab can neither
+    honour that nor sensibly ignore it. The selection is left intact to narrow
+    or to grab by a board, which a silent collapse would have thrown away.
+  - **THE COLLAPSE MOVED TO THE RELEASE.** A press on a member cannot call
+    `selectComponent` (a single pick replaces a marquee — `#select`), so a
+    sub-threshold CLICK does it instead: the selection narrows to the part
+    pressed, and a `CLICK_TOGGLE_REFS` part still flips the position under the
+    finger. Without that a click inside a selection would do nothing at all.
+  - **A CLUSTER KEEPS A ROTATABLE MEMBER'S STORED FORM.** A solo body drag
+    converts a rot-0 LED to the two-free-ends form (`rot: 90` + an explicit
+    bend); the cluster writes board and anchor only, so it comes out as it went
+    in — a bend is measured FROM the anchor, so a rigid translation needs no
+    rewrite. Deliberately different, and the better behaviour. A part riding by
+    ONE leg is the one case that does rewrite the form, because it BENDS.
+  - The wire layer needed no schema change — `setPartDrag`'s `shifts` map is
+    keyed by WIRE, so N members' riders merge into one map; it gained only a
+    second `overrides` argument, for the one thing an address cannot express (a
+    wire ending on a MOVING brick's terminal follows a position, not a new
+    address). `AnnotationLayer.render`'s shift became an `anchorIds` SET, the
+    shape `#shiftAnchoredAnnotations` already committed with.
 - **Part context menu — ONE shape for every kind**: `DeskController.#onPartContextMenu`
   builds the exact same three items, always, in this order: **Pin
   Assignment**, **Properties…**, **Delete Component**. No per-kind branching

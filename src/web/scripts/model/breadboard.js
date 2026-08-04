@@ -316,6 +316,39 @@ export function holeAlong(type, hole, delta) {
 }
 
 /**
+ * `hole` shifted `delta` ROWS up its own column — the `holeAlong` of the other
+ * axis. Null for a rail hole (a rail has no rows) or when the shift walks off
+ * the top or bottom of the grid.
+ *
+ * Rows are counted as HOLES, not as distance: `e` + 1 is `f`, straight across
+ * the trench, even though that gap is three pitches wide and every other is
+ * one. Anything moving by rows is moving by holes — it is what a hand does on
+ * the real part — and it is what keeps two things a fixed number of holes apart
+ * still that far apart after a move that crosses.
+ */
+export function holeAcross(type, hole, delta) {
+  if (!Number.isInteger(delta)) return null;
+  const parsed = parseHole(type, hole);
+  if (parsed?.kind !== "grid") return null;
+  const i = ROW_LETTERS.indexOf(parsed.row) + delta;
+  const row = i >= 0 ? ROW_LETTERS[i] : undefined;
+  if (!row) return null;
+  const next = `${row}${parsed.col}`;
+  return parseHole(type, next) ? next : null;
+}
+
+/**
+ * How many ROWS apart two grid rows are, `to` minus `from` — `a`→`c` is +2, and
+ * `e`→`f` is +1, counting holes rather than distance (see `holeAcross`). Null
+ * when either is not a grid row.
+ */
+export function rowsBetween(fromRow, toRow) {
+  const a = ROW_LETTERS.indexOf(fromRow);
+  const b = ROW_LETTERS.indexOf(toRow);
+  return a < 0 || b < 0 ? null : b - a;
+}
+
+/**
  * Clamp an anchor column so a footprint spanning `span` columns past it still
  * fits on the strip. Returns null when the type is too narrow to hold it.
  */

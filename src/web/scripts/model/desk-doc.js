@@ -58,7 +58,14 @@ import {
   snapCorrection,
 } from "./mating.js";
 import { snapDesign } from "./design-clip.js";
-import { planPartMove, wiresRidingPart } from "./part-move.js";
+import {
+  clusterMembers,
+  partsRidingCluster,
+  planClusterRiders,
+  resolveClusterTargets,
+  wiresRidingCluster,
+} from "./cluster-move.js";
+import { partsRidingPart, planPartMove, wiresRidingPart } from "./part-move.js";
 import {
   addressAtWorld,
   buildOccupancy,
@@ -839,11 +846,15 @@ export class DeskDoc {
     return { ...board };
   }
 
-  /** The desk rectangles of every brick (PSU, clock) from its def size. */
-  #brickRects({ ignoreId = null } = {}) {
+  /** The desk rectangles of every brick (PSU, clock) from its def size.
+      `ignoreIds` lifts a whole moving SET out at once — a pair of bricks
+      dragged together each land over the other's old rect, so ignoring one at
+      a time would refuse a move that is perfectly legal. */
+  #brickRects({ ignoreId = null, ignoreIds = null } = {}) {
+    const skip = ignoreIds ?? (ignoreId == null ? null : new Set([ignoreId]));
     return this.#doc.components
       .filter(
-        (c) => c.board == null && c.id !== ignoreId && partDef(c.ref)?.size,
+        (c) => c.board == null && !skip?.has(c.id) && partDef(c.ref)?.size,
       )
       .map((c) => {
         const { width, height } = partDef(c.ref).size;
@@ -873,12 +884,14 @@ export class DeskDoc {
    * Would a brick (`ref` sizing) fit at (x, y) — after integer snapping —
    * without covering a board or another brick?
    */
-  canPlaceBrick(ref, x, y, { ignoreId = null } = {}) {
+  canPlaceBrick(ref, x, y, { ignoreId = null, ignoreIds = null } = {}) {
     const { width, height } = partDef(ref).size;
     const rect = { x: Math.round(x), y: Math.round(y), width, height };
     return (
       this.#doc.boards.every((b) => !rectsOverlap(rect, outlineRect(b))) &&
-      this.#brickRects({ ignoreId }).every((r) => !rectsOverlap(rect, r))
+      this.#brickRects({ ignoreId, ignoreIds }).every(
+        (r) => !rectsOverlap(rect, r),
+      )
     );
   }
 
@@ -1498,46 +1511,43 @@ export class DeskDoc {
     return wiresRidingPart(this.#doc, id);
   }
 
-  /**
-   * Where `riding` lands when part `id` re-seats at `boardId`.`anchor`:
-   * `{ moves, points, resolved }`. Pure planning — nothing is mutated, and a
-   * plan is not a legality verdict: the caller still runs `moves` past a
-   * prepared batch check (occupancy) before committing.
-   */
-  planPartMove(id, boardId, anchor, riding) {
-    return planPartMove(this.#doc, { id, riding, board: boardId, anchor });
+  /** The two-terminal PARTS riding part `id` — a rotatable part with a LEAD in
+      one of its nodes, as `[{ id, pins }]`. Frozen with the wires. */
+  partsRidingPart(id) {
+    return partsRidingPart(this.#doc, id);
   }
 
   /**
-   * Re-seat a part AND carry its riding wires, as ONE mutation — so ⌘Z restores
-   * the part and its wiring together, because they were never two edits.
-   * Rolls back wholly on any refusal (the `pasteDesign` idiom): half a move
-   * would cut the wires it left behind.
+   * Where `target.riding`/`target.ridingParts` land when part `id` re-seats at
+   * `target.board`.`target.anchor`: `{ moves, points, parts, resolved }`. Pure
+   * planning — nothing is mutated, and a plan is not a legality verdict: the
+   * caller still runs it past a prepared batch check (occupancy) before
+   * committing. `target.params` is for the one mover whose FORM changes as it
+   * moves (a rotatable part's body drag); see model/part-move.js.
+   */
+  planPartMove(id, target) {
+    return planPartMove(this.#doc, { id, ...target });
+  }
+
+  /**
+   * Re-seat a part AND carry everything riding it — wires, and the leads of the
+   * two-terminal parts attached to it — as ONE mutation, so ⌘Z restores them
+   * together, because they were never two edits. Rolls back wholly on any
+   * refusal: half a move would cut the connections it left behind.
    *
-   * `plan` is a `planPartMove` result. An empty `moves` is the ordinary
-   * no-address-change case (a discrete slid along its own column-half), not an
-   * error. Throws whatever `moveComponent` / `moveWiresBatch` throw.
+   * A solo Option-drag IS a one-member cluster, so this is the cluster commit
+   * with the dragged part put at the head of the placements — one transaction
+   * rule and one legality rule for both gestures rather than two that could
+   * drift apart. `plan` is a `planPartMove` result. Throws ILLEGAL_PLACEMENT.
    *
    * @returns {{component:object, wires:Array}} copies of what moved.
    */
   moveComponentWithWires(id, boardId, anchor, plan) {
-    const before = this.snapshot();
-    try {
-      const component = this.moveComponent(id, boardId, anchor);
-      const moves = plan?.moves ?? [];
-      const wires = moves.length > 0 ? this.moveWiresBatch(moves) : [];
-      for (const { id: wireId, dx, dy } of plan?.points ?? []) {
-        const wire = this.#doc.wires.find((w) => w.id === wireId);
-        for (const p of wire?.points ?? []) {
-          p.x = wireCoord(p.x + dx);
-          p.y = wireCoord(p.y + dy);
-        }
-      }
-      return { component, wires };
-    } catch (err) {
-      this.restore(before); // a refused re-seat changes nothing at all
-      throw err;
-    }
+    const { components, wires } = this.moveClusterWithWires(
+      [{ id, board: boardId, anchor }, ...(plan?.parts ?? [])],
+      plan,
+    );
+    return { component: components[0], wires };
   }
 
   /**
@@ -2047,6 +2057,243 @@ export class DeskDoc {
       moved.push({ ...wire });
     }
     return moved;
+  }
+
+  // ── Moving a whole SELECTION at once (the cluster drag) ──────────────────
+
+  /**
+   * The whole legality story for a cluster move, hoisted ONCE per gesture — the
+   * sibling of `prepareWireBatchMove` above, and prepared for the same reason:
+   * a live drag asks it per pointer sample, and `canPlacePart` rebuilds the
+   * document's entire occupancy index on every call, which for N members would
+   * be N rebuilds a frame.
+   *
+   * TWO DOCUMENTS, DELIBERATELY. Occupancy comes from the doc as if every
+   * mover — components AND wires — were gone, because a member landing in a
+   * hole one of its travelling companions is vacating is the ordinary case, not
+   * a collision (this is exactly why `prepareWireBatchMove`, which lifts out
+   * only the wires, cannot be reused here). But REALNESS is asked of the full
+   * component list: a riding wire's far end may sit on a moving brick's
+   * terminal (`psu1.+`), and a PSU does not stop existing because it is in the
+   * air.
+   *
+   * ONE CLAIM SET DECIDES EVERYTHING ELSE. Every landing address — each moving
+   * pin, both ends of each wire move — is claimed once and may be claimed once.
+   * That is what catches a mover wanting a hole another mover wants, and a pin
+   * landing on a rider that is STAYING PUT (which happens whenever a part slides
+   * along its own column-half: its pins move a row, its riders don't move at
+   * all). Note the riders' addresses are lifted out of `occupied`, so nothing
+   * else would notice.
+   *
+   * Valid only while the document is unchanged — a gesture holds one for its own
+   * duration, and `moveClusterWithWires` prepares a fresh one to commit through.
+   *
+   * @param {{componentIds?: string[], wireIds?: string[]}} movers
+   * @returns {(placements: Array, wireMoves?: Array) => boolean}
+   *   placement: brick → `{id, x, y}`; board part → `{id, board, anchor}`
+   */
+  prepareClusterMove({ componentIds = [], wireIds = [] } = {}) {
+    const compIds = new Set(componentIds);
+    const movingWires = new Set(wireIds);
+    const byId = new Map(this.#doc.components.map((c) => [c.id, c]));
+    const knownWires = new Set(this.#doc.wires.map((w) => w.id));
+    // A mover named twice, or one that isn't in the document, can never make a
+    // legal batch — resolve that up front rather than per candidate.
+    const usable =
+      compIds.size === componentIds.length &&
+      movingWires.size === wireIds.length &&
+      componentIds.every((id) => byId.has(id)) &&
+      wireIds.every((id) => knownWires.has(id));
+    if (!usable) return () => false;
+
+    const reduced = {
+      boards: this.#doc.boards,
+      components: this.#doc.components.filter((c) => !compIds.has(c.id)),
+      wires: this.#doc.wires.filter((w) => !movingWires.has(w.id)),
+    };
+    const occupied = buildOccupancy(reduced);
+    const real = { boards: this.#doc.boards, components: this.#doc.components };
+    const movingBricks = new Set(
+      [...compIds].filter((id) => byId.get(id).board == null),
+    );
+
+    return (placements, wireMoves = []) => {
+      if (placements.length !== componentIds.length) return false;
+      if (wireMoves.length !== wireIds.length) return false;
+      const seen = new Set();
+      const claimed = new Set();
+      const bricks = []; // the rects the moving bricks are claiming
+      for (const p of placements) {
+        if (!compIds.has(p.id) || seen.has(p.id)) return false;
+        seen.add(p.id);
+        const comp = byId.get(p.id);
+        if (comp.board == null) {
+          // A brick claims desk AREA, not holes — the one thing the claim set
+          // can't express, so its movers check each other by rect.
+          const { width, height } = partDef(comp.ref).size;
+          const rect = {
+            x: Math.round(p.x),
+            y: Math.round(p.y),
+            width,
+            height,
+          };
+          if (bricks.some((r) => rectsOverlap(rect, r))) return false;
+          if (
+            !this.canPlaceBrick(comp.ref, p.x, p.y, { ignoreIds: movingBricks })
+          ) {
+            return false;
+          }
+          bricks.push(rect);
+          continue;
+        }
+        if (p.board == null || p.anchor == null) return false;
+        // A placement may bring its own PARAMS: a two-terminal part riding by
+        // one leg bends, which is a change of form (and of the holes it lands
+        // on), so the check has to judge the part as it will BE, not as it is.
+        const seat = {
+          ref: comp.ref,
+          board: p.board,
+          anchor: p.anchor,
+          params: p.params ?? comp.params,
+        };
+        if (!canPlacePart(reduced, { ...seat, occupancy: occupied })) {
+          return false;
+        }
+        const pins = partPinAddresses(reduced, seat);
+        if (!pins) return false;
+        for (const { address } of pins) {
+          if (address == null || claimed.has(address)) return false;
+          claimed.add(address);
+        }
+      }
+      const moved = new Set();
+      for (const { id, from, to } of wireMoves) {
+        if (!movingWires.has(id) || moved.has(id)) return false;
+        moved.add(id);
+        if (from === to) return false;
+        for (const address of [from, to]) {
+          if (claimed.has(address)) return false; // two leads into one hole
+          if (!isRealPoint(real, address) || occupied.has(address))
+            return false;
+          claimed.add(address);
+        }
+      }
+      return true;
+    };
+  }
+
+  /**
+   * Move a whole selection AND everything riding it — wires, and the leads of
+   * the two-terminal parts attached to it — as ONE mutation, so ⌘Z restores the
+   * group and its wiring together, because they were never several edits.
+   *
+   * It validates the WHOLE batch through `prepareClusterMove` and only then
+   * writes, rather than replaying `moveComponent` / `moveBrick` /
+   * `moveWiresBatch` member by member: each of those re-checks against the LIVE
+   * document, so the first member to move lands on top of a sibling that hasn't
+   * moved yet, and `moveWiresBatch`'s wires-only reduction would refuse a rider
+   * heading for a hole a part is vacating. The snapshot still wraps the writes,
+   * so a mutation added to this loop later can't leave half a move behind.
+   *
+   * Throws ILLEGAL_PLACEMENT (the batch isn't collectively legal — nothing
+   * moves). Returns copies of what moved.
+   *
+   * @param {Array} placements - brick `{id, x, y}` / board part
+   *   `{id, board, anchor, params?}` (params only when the part's FORM changes)
+   * @param {{moves?:Array, points?:Array}} [plan] - from planClusterRiders
+   * @returns {{components: Array, wires: Array}}
+   */
+  moveClusterWithWires(placements, plan = null) {
+    const wireMoves = plan?.moves ?? [];
+    const check = this.prepareClusterMove({
+      componentIds: placements.map((p) => p.id),
+      wireIds: wireMoves.map((m) => m.id),
+    });
+    if (!check(placements, wireMoves)) {
+      throw taggedError("cluster move is illegal", "ILLEGAL_PLACEMENT");
+    }
+    const before = this.snapshot();
+    try {
+      const byId = new Map(this.#doc.components.map((c) => [c.id, c]));
+      const components = placements.map((p) => {
+        const comp = byId.get(p.id);
+        if (comp.board == null) {
+          comp.x = Math.round(p.x);
+          comp.y = Math.round(p.y);
+        } else {
+          // Board and anchor, and PARAMS only when the placement brings them.
+          // A rotatable member otherwise keeps whichever form it is stored in —
+          // its bend is measured FROM the anchor, so a rigid translation needs
+          // no rewrite (a SOLO body drag converts a rot-0 part to the
+          // two-free-ends form; a group drag deliberately doesn't). A part
+          // riding by ONE leg is the case that does bring them: it BENDS, and
+          // only that form can say so.
+          comp.board = p.board;
+          comp.anchor = p.anchor;
+          if (p.params) comp.params = normalizeParams(partDef(comp.ref), p.params); // prettier-ignore
+        }
+        return { ...comp };
+      });
+      const wireById = new Map(this.#doc.wires.map((w) => [w.id, w]));
+      const wires = wireMoves.map(({ id, from, to }) => {
+        const wire = wireById.get(id);
+        wire.from = from;
+        wire.to = to;
+        return copyWire(wire);
+      });
+      for (const { id, dx, dy } of plan?.points ?? []) {
+        for (const p of wireById.get(id)?.points ?? []) {
+          p.x = wireCoord(p.x + dx);
+          p.y = wireCoord(p.y + dy);
+        }
+      }
+      return { components, wires };
+    } catch (err) {
+      this.restore(before); // a refused move changes nothing at all
+      throw err;
+    }
+  }
+
+  /**
+   * The selection as draggable members, in document order — or null when any id
+   * fails to resolve, which is the press declining to start a drag at all.
+   */
+  clusterMembers(ids) {
+    return clusterMembers(this.#doc, ids);
+  }
+
+  /** Where every member lands under one rigid world delta. */
+  resolveClusterTargets(members, delta) {
+    return resolveClusterTargets(this.#doc.boards, members, delta);
+  }
+
+  /**
+   * The wires riding a whole selection, each end attributed to the member it
+   * rides. Read once at pointerdown and frozen for the gesture; see
+   * model/cluster-move.js.
+   */
+  wiresRidingCluster(ids) {
+    return wiresRidingCluster(this.#doc, ids);
+  }
+
+  /** The two-terminal PARTS riding a whole selection, each riding lead
+      attributed to the member it follows. Frozen with the wires. */
+  partsRidingCluster(ids) {
+    return partsRidingCluster(this.#doc, ids);
+  }
+
+  /**
+   * Where those riders land — `{ moves, points, parts, resolved }`. Pure
+   * planning: a plan is not a legality verdict, and the caller still runs it
+   * past a `prepareClusterMove` predicate before committing.
+   */
+  planClusterRiders(members, targets, riding, ridingParts) {
+    return planClusterRiders(this.#doc, {
+      members,
+      targets,
+      riding,
+      ridingParts,
+    });
   }
 
   /** Change a wire's color. Throws NOT_FOUND / INVALID_ARG. */

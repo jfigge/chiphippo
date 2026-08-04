@@ -24,7 +24,9 @@
 //
 // Pure decoration: annotations are ignored by occupancy, the netlist, and the
 // engine. Position (x/y, world pitch units) is absolute; an `anchor` (a
-// component id) makes it ride that part's drag via render()'s `shift`.
+// component id) makes it ride that part's drag via render()'s `shift` — which
+// names a SET of anchors, since a selection dragged as one carries every label
+// hung on any of its members.
 
 import { clear, el } from "../dom.js";
 import { PX_PER_UNIT } from "../desk/desk-geometry.js";
@@ -64,10 +66,14 @@ export class AnnotationLayer {
 
   /**
    * Rebuild every annotation from the document. `shift` (an anchored-drag
-   * override) nudges only the annotations whose `anchor` matches by (dx, dy)
-   * world pitch units, so a label rides its chip live. Skipped while an inline
-   * editor is open, so a mid-edit doc-changed can't tear the editor down.
-   * @param {{anchorId: string, dx: number, dy: number}|null} [shift]
+   * override) nudges only the annotations anchored to one of `anchorIds` by
+   * (dx, dy) world pitch units, so a label rides its chip live. Skipped while an
+   * inline editor is open, so a mid-edit doc-changed can't tear the editor down.
+   *
+   * A SET rather than one id, because a whole selection dragged together moves
+   * by one delta and may carry several labels — the same shape
+   * `DeskController#shiftAnchoredAnnotations` already commits with.
+   * @param {{anchorIds: Set<string>, dx: number, dy: number}|null} [shift]
    */
   render(shift = null) {
     if (this.#editing) return;
@@ -83,7 +89,7 @@ export class AnnotationLayer {
   #build(ann, shift) {
     let x = ann.x;
     let y = ann.y;
-    if (shift && ann.anchor === shift.anchorId) {
+    if (shift && ann.anchor && shift.anchorIds.has(ann.anchor)) {
       x += shift.dx;
       y += shift.dy;
     }

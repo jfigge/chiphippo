@@ -22,6 +22,7 @@ import assert from "node:assert/strict";
 
 import {
   partNodeKeys,
+  partsRidingPart,
   planPartMove,
   wiresRidingPart,
 } from "../model/part-move.js";
@@ -33,14 +34,34 @@ const HALF = { id: "bb2", type: "pins-half", x: 80, y: 0 };
 const TINY = { id: "bb3", type: "pins-tiny", x: 160, y: 0 };
 const RAIL = { id: "bb4", type: "rail-full", x: 0, y: -4 };
 
-/** A 74LS00 (DIP-14) at `anchor`, plus whatever wires are listed. */
-function scene({ boards = [FULL], anchor = "e5", ref = "74LS00", wires = [] }) {
+/** A 74LS00 (DIP-14) at `anchor`, plus whatever parts and wires are listed. */
+function scene({
+  boards = [FULL],
+  anchor = "e5",
+  ref = "74LS00",
+  parts = [],
+  wires = [],
+}) {
   return {
     boards,
-    components: [{ id: "c1", kind: "chip", ref, board: "bb1", anchor }],
+    components: [
+      { id: "c1", kind: "chip", ref, board: "bb1", anchor },
+      ...parts,
+    ],
     wires: wires.map((w, i) => ({ id: `w${i + 1}`, color: "red", ...w })),
   };
 }
+
+/** A resistor standing on its two free ends: pin 1 in `anchor`, pin 2 `end`
+    away from it. The form a lead has to be in to bend at all. */
+const resistor = (id, anchor, end, board = "bb1") => ({
+  id,
+  kind: "discrete",
+  ref: "resistor",
+  board,
+  anchor,
+  params: { rot: 90, end, ohms: 220 },
+});
 
 const ridingOf = (doc) => wiresRidingPart(doc, "c1");
 
@@ -203,9 +224,11 @@ test("THE INVARIANT: a riding destination is never a hole this part's pins want"
   }
 });
 
-test("a pure ROW move within one column-half moves no wire at all", () => {
+test("a pure ROW move within one column-half re-addresses no wire", () => {
   // A push button slid from row a to row c keeps every pin on the same node, so
-  // its riders are already exactly where they belong.
+  // its riders are already exactly where they belong. The plan still NAMES each
+  // of them — restating the address it is staying in, which is what tells a
+  // batch check the hole is spoken for — it just doesn't move any of them.
   const doc = scene({
     ref: "sw-push",
     anchor: "a5",
@@ -218,12 +241,92 @@ test("a pure ROW move within one column-half moves no wire at all", () => {
     anchor: "c5",
   });
   assert.equal(plan.resolved, true);
-  assert.deepEqual(plan.moves, [], "nothing to re-address");
+  assert.deepEqual(
+    plan.moves,
+    [{ id: "w1", from: "bb1.b5", to: "bb1.b40" }],
+    "named, and exactly where it was",
+  );
 });
 
-test("re-seating ACROSS THE TRENCH is refused — the half flips under the wire", () => {
-  // Rows a and g are the same column, opposite halves. A rider that keeps its
-  // row is no longer on the pin's node, so the connection would silently break.
+test("re-seating ACROSS THE TRENCH takes the wiring over, keeping the SPACING", () => {
+  // Rows a and g are the same column, opposite halves — separate nodes. A rider
+  // that only kept its row would be stranded in the half its pin had just left,
+  // so it travels by the pin's own row delta instead: the wire is one hole from
+  // the part before and one hole from it after, wherever the part lands.
+  const doc = scene({
+    ref: "sw-push",
+    anchor: "a5",
+    wires: [{ from: "bb1.b5", to: "bb1.b40" }],
+  });
+  for (const [anchor, landed] of [
+    ["f5", "g5"],
+    ["g5", "h5"],
+    ["h5", "i5"],
+    ["i5", "j5"],
+  ]) {
+    const plan = planPartMove(doc, {
+      id: "c1",
+      riding: ridingOf(doc),
+      board: "bb1",
+      anchor,
+    });
+    assert.equal(plan.resolved, true, anchor);
+    assert.deepEqual(
+      plan.moves,
+      [{ id: "w1", from: `bb1.${landed}`, to: "bb1.b40" }],
+      `${anchor}: the near end crossed, the far end did not`,
+    );
+  }
+});
+
+test("…and it never MIRRORS — the wiring keeps the side of the part it was on", () => {
+  // Two riders straddling the part: one row below it, one row above. Reflecting
+  // them across the trench would swap which side of the part each ends up on;
+  // travelling with it keeps the arrangement the user built.
+  const doc = scene({
+    ref: "sw-push",
+    anchor: "c5", // pins c5 and c7, so b and d are its neighbours
+    wires: [
+      { from: "bb1.b5", to: "bb1.b40" }, // one row toward the bottom edge
+      { from: "bb1.d7", to: "bb1.d40" }, // one row toward the trench
+    ],
+  });
+  const plan = planPartMove(doc, {
+    id: "c1",
+    riding: ridingOf(doc),
+    board: "bb1",
+    anchor: "h8", // three columns right and over the trench
+  });
+  assert.equal(plan.resolved, true);
+  // c → h is +5 rows, so b → g and d → i: still one either side, same order.
+  assert.deepEqual(plan.moves, [
+    { id: "w1", from: "bb1.g8", to: "bb1.b40" },
+    { id: "w2", from: "bb1.i10", to: "bb1.d40" },
+  ]);
+});
+
+test("…and it refuses rather than squash the arrangement to make it fit", () => {
+  // Row a to row j is nine rows, so a rider in b would need a tenth that isn't
+  // there. Refusing says so; landing it anywhere free would quietly rearrange
+  // the circuit the user is trying to carry intact. One row nearer the trench
+  // fits, which is the fix and is what the red is telling them.
+  const doc = scene({
+    ref: "sw-push",
+    anchor: "a5",
+    wires: [{ from: "bb1.b5", to: "bb1.b40" }],
+  });
+  const off = planPartMove(doc, {
+    id: "c1",
+    riding: ridingOf(doc),
+    board: "bb1",
+    anchor: "j5",
+  });
+  assert.equal(off.resolved, false);
+});
+
+test("a WITHIN-half move still leaves every rider exactly where it is", () => {
+  // The mirror is reached only when the pin actually changes half: its own row
+  // is tried first, and while that still lands in the pin's node it wins.
   const doc = scene({
     ref: "sw-push",
     anchor: "a5",
@@ -233,9 +336,9 @@ test("re-seating ACROSS THE TRENCH is refused — the half flips under the wire"
     id: "c1",
     riding: ridingOf(doc),
     board: "bb1",
-    anchor: "g5",
+    anchor: "d5",
   });
-  assert.equal(plan.resolved, false);
+  assert.deepEqual(plan.moves, [{ id: "w1", from: "bb1.b5", to: "bb1.b40" }]);
 });
 
 test("a riding end shifted off the end of the strip refuses the whole plan", () => {
@@ -340,7 +443,156 @@ test("an empty riding set plans trivially — Option over an unwired part", () =
     board: "bb1",
     anchor: "e9",
   });
-  assert.deepEqual(plan, { moves: [], points: [], resolved: true });
+  assert.deepEqual(plan, { moves: [], points: [], parts: [], resolved: true });
+});
+
+// ── Riding PARTS: a two-terminal lead is in a node like anything else ───────
+
+test("a resistor with a LEG in one of the part's nodes rides it", () => {
+  // The bench case: a resistor plugged into the same column-half as a pin is
+  // connected to it exactly as a jumper in the next hole along is.
+  const doc = scene({
+    parts: [resistor("c2", "a7", { dx: 13, dy: 0 })], // a7 (c7L) … a20 (c20L)
+  });
+  assert.deepEqual(partsRidingPart(doc, "c1"), [
+    { id: "c2", pins: [{ pin: 1, memberId: "c1" }] },
+  ]);
+});
+
+test("only a ROTATABLE part rides — a DIP's pins are not leads", () => {
+  const doc = scene({
+    parts: [
+      { id: "c2", kind: "chip", ref: "74LS00", board: "bb1", anchor: "e7" },
+      {
+        id: "c3",
+        kind: "discrete",
+        ref: "sw-push",
+        board: "bb1",
+        anchor: "a7",
+      },
+    ],
+  });
+  assert.deepEqual(partsRidingPart(doc, "c1"), []);
+});
+
+test("a resistor bridging TWO of the part's nodes rides by both legs", () => {
+  // a7 is in c7L and j7 in c7U — both halves of a column the chip spans.
+  const doc = scene({ parts: [resistor("c2", "a7", { dx: 0, dy: -11 })] });
+  assert.deepEqual(partsRidingPart(doc, "c1"), [
+    {
+      id: "c2",
+      pins: [
+        { pin: 1, memberId: "c1" },
+        { pin: 2, memberId: "c1" },
+      ],
+    },
+  ]);
+});
+
+test("ONE leg riding BENDS the part — the other stays exactly where it is", () => {
+  const doc = scene({ parts: [resistor("c2", "a7", { dx: 13, dy: 0 })] });
+  const plan = planPartMove(doc, {
+    id: "c1",
+    riding: [],
+    ridingParts: partsRidingPart(doc, "c1"),
+    board: "bb1",
+    anchor: "e8", // three columns right
+  });
+  assert.equal(plan.resolved, true);
+  assert.equal(plan.parts.length, 1);
+  const [seat] = plan.parts;
+  assert.equal(seat.anchor, "a10", "the connected leg followed the pin");
+  assert.equal(seat.params.rot, 90);
+  // Pin 2 was at a20 and has not moved: the bend is now three shorter.
+  assert.deepEqual(seat.params.end, { dx: 10, dy: 0 });
+});
+
+test("BOTH legs riding TRANSLATES it — same form, same bend", () => {
+  const doc = scene({ parts: [resistor("c2", "a7", { dx: 0, dy: -11 })] });
+  const plan = planPartMove(doc, {
+    id: "c1",
+    riding: [],
+    ridingParts: partsRidingPart(doc, "c1"),
+    board: "bb1",
+    anchor: "e8",
+  });
+  assert.equal(plan.resolved, true);
+  assert.equal(plan.parts[0].anchor, "a10");
+  assert.deepEqual(plan.parts[0].params.end, { dx: 0, dy: -11 }, "untouched");
+});
+
+test("a footprint-form part riding by one leg is rewritten so it CAN bend", () => {
+  // A rot-0 LED has both legs in adjacent holes of one row. Only one is in the
+  // chip's node, so it has to become the two-free-ends form to follow it.
+  const doc = scene({
+    parts: [
+      {
+        id: "c2",
+        kind: "discrete",
+        ref: "led",
+        board: "bb1",
+        anchor: "a11", // legs a11 (c11L, the chip's) and a12 (c12L, not)
+        params: { rot: 0, color: "red" },
+      },
+    ],
+  });
+  const plan = planPartMove(doc, {
+    id: "c1",
+    riding: [],
+    ridingParts: partsRidingPart(doc, "c1"),
+    board: "bb1",
+    anchor: "e7", // two columns right
+  });
+  assert.equal(plan.resolved, true);
+  const [seat] = plan.parts;
+  assert.equal(seat.anchor, "a13", "the connected leg moved with the pin");
+  assert.equal(seat.params.rot, 90, "and the LED stood up to reach back");
+  assert.deepEqual(seat.params.end, { dx: -1, dy: 0 }, "a12 is where it was");
+});
+
+test("a bend the part can't physically make is the BATCH's refusal, not the plan's", () => {
+  // A plan is not a legality verdict. Squeezing a resistor's legs to one column
+  // apart is a perfectly well-defined answer to "where does this leg go" — it
+  // is `canPlacePart`'s minimum-span rule that says the body won't fit, and it
+  // says so through the prepared batch check like every other refusal.
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  doc.addComponent({ kind: "chip", ref: "74LS00", board: "bb1", anchor: "e5" });
+  doc.addComponent({
+    kind: "discrete",
+    ref: "resistor",
+    board: "bb1",
+    anchor: "a11", // the chip's last column…
+    params: { rot: 90, end: { dx: 3, dy: 0 }, ohms: 220 },
+  }); // …and a14, three clear of it
+
+  const ridingParts = doc.partsRidingPart("c1");
+  assert.equal(ridingParts.length, 1);
+  const check = doc.prepareClusterMove({ componentIds: ["c1", "c2"] });
+
+  const ok = doc.planPartMove("c1", {
+    board: "bb1",
+    anchor: "e6",
+    ridingParts,
+  });
+  assert.equal(ok.resolved, true);
+  assert.deepEqual(ok.parts[0].params.end, { dx: 2, dy: 0 }, "still 2 apart");
+  assert.equal(
+    check([{ id: "c1", board: "bb1", anchor: "e6" }, ...ok.parts], []),
+    false,
+    "and 2 is already under the quarter-watt body's 2.5",
+  );
+
+  const fine = doc.planPartMove("c1", {
+    board: "bb1",
+    anchor: "e4",
+    ridingParts,
+  });
+  assert.deepEqual(fine.parts[0].params.end, { dx: 4, dy: 0 }, "the other way");
+  assert.equal(
+    check([{ id: "c1", board: "bb1", anchor: "e4" }, ...fine.parts], []),
+    true,
+  );
 });
 
 // ── Against the real document: occupancy and the netlist ────────────────────
@@ -374,7 +626,7 @@ test("the riding set may shuffle among the holes it collectively vacates", () =>
   const riding = doc.wiresRidingPart("c1");
   assert.equal(riding.length, 8);
 
-  const plan = doc.planPartMove("c1", "bb1", "e7", riding);
+  const plan = doc.planPartMove("c1", { board: "bb1", anchor: "e7", riding });
   assert.equal(plan.resolved, true);
   assert.equal(plan.moves.length, 8);
   assert.equal(
@@ -395,7 +647,7 @@ test("a rider's destination held by a NON-moving lead refuses the batch", () => 
 
   const riding = doc.wiresRidingPart("c1");
   assert.deepEqual(riding, [{ wireId: "w1", ends: ["from"] }]);
-  const plan = doc.planPartMove("c1", "bb1", "e7", riding);
+  const plan = doc.planPartMove("c1", { board: "bb1", anchor: "e7", riding });
   assert.equal(plan.resolved, true, "the plan resolves — the holes all exist");
   assert.equal(
     doc.prepareWireBatchMove(riding.map((r) => r.wireId))(plan.moves),
@@ -440,7 +692,7 @@ test("THE POINT OF THE FEATURE: the wiring after the move is the wiring before",
   assert.deepEqual(before["bb1.g44"], [14], "and the one above pin 14");
 
   const riding = doc.wiresRidingPart("c1");
-  const plan = doc.planPartMove("c1", "bb1", "e3", riding);
+  const plan = doc.planPartMove("c1", { board: "bb1", anchor: "e3", riding });
   doc.moveComponentWithWires("c1", "bb1", "e3", plan);
 
   assert.deepEqual(wiringOf(doc), before);

@@ -75,13 +75,34 @@ test("render(shift) nudges only the matching anchored annotation", () => {
   doc.addAnnotation("label", 20, 20, "stays");
   const { layer, view } = mount(doc);
 
-  view.render({ anchorId: "c1", dx: 2, dy: 3 });
+  view.render({ anchorIds: new Set(["c1"]), dx: 2, dy: 3 });
   const boxes = layer.querySelectorAll(".annotation");
   // Anchored one shifts by (dx, dy); the free one is untouched.
   assert.equal(boxes[0].style.left, `${(5 + 2) * PX_PER_UNIT}px`);
   assert.equal(boxes[0].style.top, `${(5 + 3) * PX_PER_UNIT}px`);
   assert.equal(boxes[1].style.left, `${20 * PX_PER_UNIT}px`);
   assert.ok(boxes[0].classList.contains("annotation--anchored"));
+});
+
+test("render(shift) carries EVERY anchor in the set — a cluster drag", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addAnnotation("label", 5, 5, "on c1", { anchor: "c1" });
+  doc.addAnnotation("label", 9, 9, "on c2", { anchor: "c2" });
+  doc.addAnnotation("label", 20, 20, "on c3", { anchor: "c3" });
+  const { layer, view } = mount(doc);
+
+  // One delta, several anchors: a selection dragged as one unit.
+  view.render({ anchorIds: new Set(["c1", "c2"]), dx: 2, dy: 3 });
+  const boxes = layer.querySelectorAll(".annotation");
+  assert.equal(boxes[0].style.left, `${(5 + 2) * PX_PER_UNIT}px`);
+  assert.equal(boxes[1].style.left, `${(9 + 2) * PX_PER_UNIT}px`);
+  assert.equal(boxes[1].style.top, `${(9 + 3) * PX_PER_UNIT}px`);
+  assert.equal(
+    boxes[2].style.left,
+    `${20 * PX_PER_UNIT}px`,
+    "c3 is not moving",
+  );
 });
 
 test("setSelected + setPosition affect the live box", () => {

@@ -1285,7 +1285,7 @@ test("moveComponentWithWires: the part and its wiring are ONE mutation", () => {
   doc.addWire({ from: "bb1.j11", to: "bb1.j40" }); // rides by `from`
 
   const riding = doc.wiresRidingPart("c1");
-  const plan = doc.planPartMove("c1", "bb1", "e3", riding);
+  const plan = doc.planPartMove("c1", { board: "bb1", anchor: "e3", riding });
   const { component, wires } = doc.moveComponentWithWires(
     "c1",
     "bb1",
@@ -1307,7 +1307,7 @@ test("moveComponentWithWires: a refused batch rolls the WHOLE move back", () => 
   const before = doc.toJSON();
 
   const riding = doc.wiresRidingPart("c1");
-  const plan = doc.planPartMove("c1", "bb1", "e7", riding);
+  const plan = doc.planPartMove("c1", { board: "bb1", anchor: "e7", riding });
   assert.throws(() => doc.moveComponentWithWires("c1", "bb1", "e7", plan), {
     code: "ILLEGAL_PLACEMENT",
   });
@@ -1326,7 +1326,7 @@ test("moveComponentWithWires: a routed rider's bend translates with it", () => {
     points: [{ x: 10, y: 20 }],
   });
   const riding = doc.wiresRidingPart("c1");
-  const plan = doc.planPartMove("c1", "bb1", "e7", riding);
+  const plan = doc.planPartMove("c1", { board: "bb1", anchor: "e7", riding });
   doc.moveComponentWithWires("c1", "bb1", "e7", plan);
   assert.deepEqual(doc.getWire("w1").points, [{ x: 12, y: 20 }]);
 });

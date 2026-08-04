@@ -629,6 +629,66 @@ test("the hint stands down while the drag it describes is in flight", () => {
   );
 });
 
+test("Option over a MULTI-selection rings every member's riders", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const { surface, controller } = makeDesk(doc);
+  const chip = controller.addComponentAt("74LS00", "bb1", "e5"); // cols 5–11
+  const btn = controller.addComponentAt("sw-push", "bb1", "a30");
+  doc.addWire({ from: "bb1.a5", to: "bb1.b30" }); // rides BOTH, one end each
+  doc.addWire({ from: "bb1.j11", to: "bb1.j40" }); // rides the chip alone
+  doc.addWire({ from: "bb1.c20", to: "bb1.c25" }); // rides neither
+
+  controller.deselect();
+  controller.toggleComponentSelection(chip.id);
+  controller.toggleComponentSelection(btn.id);
+  controller.setRidePreview(true);
+  assert.deepEqual(
+    ringCentres(surface),
+    [holeAt(doc, "bb1.a5"), holeAt(doc, "bb1.b30"), holeAt(doc, "bb1.j11")].sort(), // prettier-ignore
+    "both ends of the wire between them, plus the chip's own rider",
+  );
+});
+
+test("the multi-selection hint stays quiet when the press would REFUSE", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const { surface, controller } = makeDesk(doc);
+  const chip = controller.addComponentAt("74LS00", "bb1", "e5");
+  const btn = controller.addComponentAt("sw-push", "bb1", "a30");
+  doc.addWire({ from: "bb1.a5", to: "bb1.b30" });
+
+  controller.deselect();
+  controller.toggleComponentSelection(chip.id);
+  controller.toggleComponentSelection(btn.id);
+  controller.setRidePreview(true);
+  assert.equal(ringCentres(surface).length, 2);
+
+  // A board in the set refuses the press, so ringing wires it would carry is a
+  // promise the app will not keep.
+  controller.toggleBoardSelection("bb1");
+  assert.deepEqual(ringCentres(surface), []);
+});
+
+test("a node two members share is ringed ONCE, not twice", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const { surface, controller } = makeDesk(doc);
+  // A chip pin at e5 and a button pin at a5 are both in bb1|c5L.
+  const chip = controller.addComponentAt("74LS00", "bb1", "e5");
+  const btn = controller.addComponentAt("sw-push", "bb1", "a5");
+  doc.addWire({ from: "bb1.c5", to: "bb1.c40" });
+
+  controller.deselect();
+  controller.toggleComponentSelection(chip.id);
+  controller.toggleComponentSelection(btn.id);
+  controller.setRidePreview(true);
+  assert.deepEqual(ringCentres(surface), [holeAt(doc, "bb1.c5")]);
+});
+
 test("a marquee started ON a part is still a marquee — Shift is selection", () => {
   resetDom();
   const doc = new DeskDoc(null);

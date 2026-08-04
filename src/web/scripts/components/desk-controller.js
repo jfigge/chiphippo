@@ -60,6 +60,7 @@ import {
   memberForm,
   resolveCluster,
 } from "../model/paste-cluster.js";
+import { clusterDelta } from "../model/cluster-move.js";
 import {
   captureDesign,
   clipScene,
@@ -199,6 +200,7 @@ export class DeskController {
   //   { kind: "drag", id, … }                                 (board drag)
   //   { kind: "drag-part", id, … }                            (chip/discrete)
   //   { kind: "drag-brick", id, … }
+  //   { kind: "drag-cluster", grabId, members, … }            (a multi-selection)
   //   { kind: "place-annotation", annKind, ghost, pos, anchor } (label / note)
   //   { kind: "drag-annotation", id, … }                      (label / note)
   //   { kind: "wire", from, hover }                           (wire tool)
@@ -600,6 +602,7 @@ export class DeskController {
         break;
       case "drag-part":
       case "drag-brick":
+      case "drag-cluster":
       case "drag-resistor":
       case "drag-resistor-end":
         this.#onPartPointerUp(fake);
@@ -675,23 +678,48 @@ export class DeskController {
     this.#rideRings.show(this.#ridePreviewPoints());
   }
 
-  /** World points of the wire ends riding the selected part, or null. A wire
-      riding by BOTH ends gets two rings — which is the useful part: it shows
-      which ends travel and which stay put. */
+  /** World points of everything riding what is selected, or null — each wire
+      end, and each two-terminal part's LEAD, that an Option-drag would carry. A
+      rider held by BOTH ends gets two rings, which is the useful part: it shows
+      what travels and what stays put, so a resistor that will bend reads
+      differently from one that will translate.
+
+      A MULTI-selection rings every member's riders, since Option would carry
+      them all. Only when the press would actually start a drag, though: a
+      selection holding a board refuses (see #beginClusterDrag), and ringing
+      riders for it would be a promise the app won't keep. Riders are deduped
+      because two members can share a node. */
   #ridePreviewPoints() {
     if (!this.#optionHeld) return null;
-    // A drag in flight already shows the answer by moving the wires, and the
+    // A drag in flight already shows the answer by moving the riders, and the
     // topology is frozen while the circuit runs.
     if (this.#mode || this.#editingLocked) return null;
-    if (this.#selected?.kind !== "part") return null;
+    let riding = null;
+    let legs = null;
+    if (this.#selected?.kind === "part") {
+      riding = this.#doc.wiresRidingPart(this.#selected.id);
+      legs = this.#doc.partsRidingPart(this.#selected.id);
+    } else if (this.#multi.size >= 2 && this.#multiBoards.size === 0) {
+      riding = this.#doc
+        .wiresRidingCluster(this.#multi)
+        .map(({ wireId, ends }) => ({ wireId, ends: ends.map((r) => r.end) }));
+      legs = this.#doc.partsRidingCluster(this.#multi);
+    }
+    if (!riding) return null;
     const points = [];
-    for (const { wireId, ends } of this.#doc.wiresRidingPart(
-      this.#selected.id,
-    )) {
+    for (const { wireId, ends } of riding) {
       const wire = this.#doc.getWire(wireId);
       for (const end of ends) {
         const p = this.#addressWorld(wire?.[end]);
         if (p) points.push(p);
+      }
+    }
+    for (const { id, pins } of legs ?? []) {
+      const comp = this.#doc.getComponent(id);
+      const world = comp && partPinsWorld(this.#doc.boards, comp);
+      for (const { pin } of pins) {
+        const at = world?.find((p) => p.pin === pin);
+        if (at) points.push({ x: at.x, y: at.y });
       }
     }
     return points.length > 0 ? points : null;
@@ -794,6 +822,7 @@ export class DeskController {
     // #select(null) already re-traces the outline, but only when something WAS
     // selected — refresh unconditionally so a marquee's boards light up.
     this.#refreshBoardOutline();
+    this.#refreshRidePreview(); // Option may be held over the NEW selection
   }
 
   /**
@@ -1826,12 +1855,34 @@ export class DeskController {
    * with R. Returns null when its pins don't resolve (then a press just
    * selects). Works for both forms — the horizontal footprint and the two-end
    * span — since pin holes are always derived.
+   *
+   * OPTION CARRIES ITS WIRING HERE TOO. A body drag moves both leads by one
+   * delta, which is the same rigid move a footprint part makes, so the ride rule
+   * applies unchanged — and without this an LED carried its wiring as a member
+   * of a selection but not when dragged on its own, which is one part with two
+   * answers. The END drag (#resistorEndDragMode) deliberately carries nothing:
+   * that lead lands at any hole, at any angle, on any strip, so there is no
+   * column delta for a rider to follow.
    */
   #resistorDragMode(comp, ends, e, world) {
+    const attached = e.altKey ? this.#doc.wiresRidingPart(comp.id) : [];
+    const legs = e.altKey ? this.#doc.partsRidingPart(comp.id) : [];
+    const riding = attached.length > 0 ? attached : null;
+    const ridingParts = legs.length > 0 ? legs : null;
     return {
       kind: "drag-resistor",
       id: comp.id,
       ref: comp.ref,
+      riding,
+      ridingParts,
+      checkBatch:
+        riding || ridingParts
+          ? this.#doc.prepareClusterMove({
+              componentIds: [comp.id, ...legs.map((r) => r.id)],
+              wireIds: attached.map((r) => r.wireId),
+            })
+          : null,
+      plan: null,
       pointerId: e.pointerId,
       startClientX: e.clientX,
       startClientY: e.clientY,
@@ -1965,30 +2016,86 @@ export class DeskController {
   /** Live resistor drag: rigid lattice-snapped translation, both ends checked.
       Pin 1 seats in whatever hole it lands on; the lead keeps its bend, so the
       far end may reach a NEIGHBOURING strip's rail. */
-  // `d` defaults to the live drag; see #trackResistorEndDrag.
-  #trackResistorDrag(d = this.#mode) {
-    // ONE integer delta moves both ends, so length and angle never change.
-    const dx = Math.round(d.lastWorld.x - d.startWorld.x);
-    const dy = Math.round(d.lastWorld.y - d.startWorld.y);
-    const p1 = { x: d.p1.x + dx, y: d.p1.y + dy };
+  // `d` defaults to the live drag; see #trackResistorEndDrag. `preview` is off
+  // on the RELEASE re-resolve: the handler has already put the riding-wire
+  // preview away, and re-establishing it there would leave the committed wires
+  // drawn as a drag that has ended.
+  #trackResistorDrag(d = this.#mode, { preview = true } = {}) {
+    // ONE delta moves both ends, so length and angle never change.
+    //
+    // TWO CANDIDATES FOR PIN 1, and the raw one is why a spanned run works.
+    // Rounding the travel to whole pitches assumes a lattice, and there is only
+    // one HORIZONTALLY: vertically the heights are MEASURED, so the next
+    // pin-board of a spanned run sits 17.52 pitch down and a rounded dy lands
+    // pin 1 0.48 off the hole it aimed at — past holeAt's 0.45 radius, so the
+    // part could not be dropped on the other board AT ALL and its wiring never
+    // went either. The raw point is where the part actually is, so it is tried
+    // first; the rounded one is the fallback that keeps a same-board drag
+    // exactly as it was, including the sliver between two rows where the raw
+    // point is nearest to nothing. On one board the two always name the same
+    // hole whenever either does.
+    const tx = d.lastWorld.x - d.startWorld.x;
+    const ty = d.lastWorld.y - d.startWorld.y;
+    const snapped = { x: d.p1.x + Math.round(tx), y: d.p1.y + Math.round(ty) };
+    const a =
+      this.#holeAtWorld({ x: d.p1.x + tx, y: d.p1.y + ty }) ??
+      this.#holeAtWorld(snapped);
+    // Drawn from the HOLE it found, so the preview is the seat that will be
+    // committed; over bare desk there is none, and it follows the cursor.
+    const p1 = a ? { x: a.x, y: a.y } : snapped;
     const p2 = { x: p1.x + d.orient.dx, y: p1.y + d.orient.dy };
-    const a = this.#holeAtWorld(p1);
     // The bend is carried through a rigid translation untouched — rounding it
     // here would quietly re-bend a lead every time the part was dragged.
     const end = { dx: d.orient.dx, dy: d.orient.dy };
     // canPlacePart resolves the bent lead against the whole desk, so it is the
     // one authority on whether the far end found a free hole.
-    const legal =
+    const params = { rot: 90, end };
+    let legal =
       Boolean(a) &&
       this.#doc.canPlacePart(d.ref, a.board.id, a.hole, {
         ignoreId: d.id,
-        params: { rot: 90, end },
+        params,
       });
     d.holes = legal ? { boardId: a.board.id, anchor: a.hole, end } : null;
+    // An Option-drag re-plans its riders for THIS position and checks the whole
+    // batch as one, exactly as a footprint part's does — one refusal, one visual
+    // language. Note the plan is told the FORM the part is landing in: a body
+    // drag rewrites a footprint-form part into the two-free-ends one, and the
+    // ride rule has to read the pins it will actually have.
+    //
+    // The plan is re-derived on EVERY sample, including the ones with nowhere to
+    // land — that is what the null branch is for. This part is drawn at the raw
+    // cursor whatever the position (unlike a footprint drag, which stops at its
+    // last good seat), so leaving a stale plan in place left the riders frozen
+    // at a hole the part had long since left: drag an LED over the gap between
+    // two boards and its wiring simply stopped following it. With no plan they
+    // draw from the DOCUMENT instead — where they actually are — in red, which
+    // is the truth: nothing is moving.
+    if (d.riding || d.ridingParts) {
+      d.plan = d.holes
+        ? this.#doc.planPartMove(d.id, {
+            board: d.holes.boardId,
+            anchor: d.holes.anchor,
+            params,
+            riding: d.riding,
+            ridingParts: d.ridingParts,
+          })
+        : null;
+      const placements = d.plan && [
+        { id: d.id, board: d.holes.boardId, anchor: d.holes.anchor, params },
+        ...d.plan.parts,
+      ];
+      if (!(d.plan?.resolved && d.checkBatch(placements, d.plan.moves))) {
+        legal = false;
+      }
+    }
     d.legal = legal;
     const view = this.#partViews.get(d.id);
     view?.updateSpanWorld(p1, p2);
     view?.setIllegal(!legal);
+    if (!preview) return;
+    if (d.riding) this.#wireLayer.setPartDrag(this.#partDragPreview(d));
+    if (d.ridingParts) this.#applyLeadRiders(d);
   }
 
   /** Rebuild a part's view from the document — the horizontal SVG and the
@@ -3569,6 +3676,19 @@ export class DeskController {
       return;
     }
     this.#hideHover();
+    // A press on a MEMBER of a multi-selection drags the whole selection, so
+    // it must not go through selectComponent — a single pick replaces a marquee
+    // (#select), which would throw the group away with the press that is about
+    // to move it. The collapse still happens, at the release, if the press
+    // turns out to be a plain click (#onPartPointerUp).
+    if (this.#multi.has(id) && this.#multi.size >= 2) {
+      if (this.#beginClusterDrag(id, e)) return;
+      // Refused (a board is in the set, or a member won't resolve): the press
+      // is absorbed and the selection is left exactly as it was. Falling
+      // through would collapse it, which is the one thing a refusal must not do.
+      e.stopPropagation();
+      return;
+    }
     this.selectComponent(id);
 
     const comp = this.#doc.getComponent(id);
@@ -3619,16 +3739,19 @@ export class DeskController {
         return;
       }
       const cursorCol = columnAt(board.type, w.x - board.x);
-      // OPTION TAKES THE WIRING WITH IT (Feature 290). Both halves of this are
-      // read ONCE, here, and frozen for the gesture: the riding set, because
-      // recomputing it per sample would grow and shrink it as the part slid over
-      // other wires' holes (so the drop would depend on the path taken to it),
-      // and the batch check, because the reduced-occupancy build it hoists is
-      // precisely what `prepareWireBatchMove` exists to keep out of a live
-      // drag's loop. Option held over a part with nothing attached is just a
-      // plain drag — hence the empty set collapsing to null.
+      // OPTION TAKES THE WIRING WITH IT (Feature 290) — the wires in the nodes
+      // this part's pins occupy, and the LEADS of the two-terminal parts in
+      // them. All of it is read ONCE, here, and frozen for the gesture: the
+      // riding sets, because recomputing them per sample would grow and shrink
+      // them as the part slid over other holes (so the drop would depend on the
+      // path taken to it), and the batch check, because the reduced-occupancy
+      // build it hoists is precisely what a prepared check exists to keep out of
+      // a live drag's loop. Option held over a part with nothing attached is
+      // just a plain drag — hence the empty sets collapsing to null.
       const attached = e.altKey ? this.#doc.wiresRidingPart(id) : [];
+      const legs = e.altKey ? this.#doc.partsRidingPart(id) : [];
       const riding = attached.length > 0 ? attached : null;
+      const ridingParts = legs.length > 0 ? legs : null;
       this.#mode = {
         kind: "drag-part",
         id,
@@ -3644,9 +3767,16 @@ export class DeskController {
         seat: { board: comp.board, anchor: comp.anchor },
         hasAnchored: this.#hasAnchored(id),
         riding,
-        checkBatch: riding
-          ? this.#doc.prepareWireBatchMove(riding.map((r) => r.wireId))
-          : null,
+        ridingParts,
+        // A solo Option-drag is a one-member cluster, so it is checked by the
+        // one predicate that understands both wires and parts.
+        checkBatch:
+          riding || ridingParts
+            ? this.#doc.prepareClusterMove({
+                componentIds: [id, ...legs.map((r) => r.id)],
+                wireIds: attached.map((r) => r.wireId),
+              })
+            : null,
         plan: null,
         // Read NOW: pointer capture (below) retargets every later event on
         // this pointerId to the part's root element, so a switch-bank click
@@ -3666,6 +3796,214 @@ export class DeskController {
       onMove: this.#onPartPointerMove,
       onEnd: this.#onPartPointerUp,
     });
+  }
+
+  /**
+   * Begin the multi-selection drag — the whole selection moves as one, and with
+   * Option so does every wire riding any of it. Returns false when the press
+   * must NOT start a drag, and then starts nothing at all.
+   *
+   * The two refusals are the same answer for different reasons. A BOARD in the
+   * set has its own gesture, one that carries strips and everything seated on
+   * them under overlap and mating rules a part re-seat knows nothing about; a
+   * part grab can neither honour that nor sensibly ignore it, so it declines and
+   * leaves the selection for the user to narrow (⌘-click) or to grab by a board
+   * instead. A member that won't RESOLVE (an unknown ref, an anchor naming no
+   * hole) would make a gesture that is red wherever it goes, which is worse than
+   * a press that does nothing.
+   */
+  #beginClusterDrag(grabId, e) {
+    if (this.#multiBoards.size > 0) return false;
+    const members = this.#doc.clusterMembers(this.#multi);
+    const grab = members?.find((m) => m.id === grabId);
+    const view = this.#partViews.get(grabId);
+    if (!members || !grab || !view) return false;
+    const w = this.#deskView.worldFromEvent(e);
+    // The grab column keeps the pressed point under the finger for a footprint
+    // member, exactly as the solo drag does; the other two forms track their
+    // own anchor and need no offset.
+    let grabOffsetCols = 0;
+    if (grab.form === "footprint") {
+      const board = this.#doc.getBoard(grab.board);
+      const seat = parseHole(board.type, grab.anchor);
+      if (seat?.kind !== "grid") return false;
+      grabOffsetCols = seat.col - columnAt(board.type, w.x - board.x);
+    }
+    // OPTION TAKES THE WIRING WITH IT — here, for the WHOLE selection (Feature
+    // 290 one level up): the wires in the nodes any member's pins occupy, and
+    // the LEADS of the two-terminal parts in them. All of it is read ONCE and
+    // frozen for the gesture: the riding sets, because re-deriving them per
+    // sample would grow and shrink them as the parts slid over other holes (so
+    // the drop would depend on the path taken to it), and the batch check,
+    // because the reduced-occupancy build it hoists is precisely what must stay
+    // out of a live drag's loop. Option over a selection with nothing attached
+    // is just a plain group drag — hence the empty sets collapsing to null.
+    const attached = e.altKey ? this.#doc.wiresRidingCluster(this.#multi) : [];
+    const legs = e.altKey ? this.#doc.partsRidingCluster(this.#multi) : [];
+    const riding = attached.length > 0 ? attached : null;
+    const ridingParts = legs.length > 0 ? legs : null;
+    this.#mode = {
+      kind: "drag-cluster",
+      grabId,
+      members,
+      byId: new Map(members.map((m) => [m.id, m])),
+      // The GRABBED member's own resolver decides the delta the whole group
+      // travels by; see model/cluster-move.js for why it is not the pointer's.
+      form: grab.form,
+      ref: grab.ref,
+      params: grab.params,
+      anchorWorld: grab.anchorWorld,
+      grabOffsetCols,
+      pointerId: e.pointerId,
+      startClientX: e.clientX,
+      startClientY: e.clientY,
+      startWorld: w,
+      lastWorld: w,
+      delta: { dx: 0, dy: 0 },
+      targets: [],
+      riding,
+      ridingParts,
+      checkBatch: this.#doc.prepareClusterMove({
+        componentIds: [...members.map((m) => m.id), ...legs.map((r) => r.id)],
+        wireIds: attached.map((r) => r.wireId),
+      }),
+      plan: null,
+      // Every member that carries a label, so the whole set of them rides the
+      // one delta — a group drag can be carrying several.
+      anchorIds: new Set(
+        members.filter((m) => this.#hasAnchored(m.id)).map((m) => m.id),
+      ),
+      // Read NOW, for the reason the solo drag reads it now: pointer capture
+      // retargets every later event to the grabbed part's root element.
+      switchIndex: switchIndexFromEvent(e),
+      legal: true,
+      active: false,
+      teardown: null,
+    };
+    this.#refreshRidePreview();
+    this.#viewport.classList.add("desk-viewport--dragging");
+    this.#mode.teardown = beginPointerGesture(view.element, e.pointerId, {
+      onMove: this.#onPartPointerMove,
+      onEnd: this.#onPartPointerUp,
+    });
+    return true;
+  }
+
+  /**
+   * Where the whole cluster lands for a pointer at `world`, writing
+   * d.delta/d.targets/d.plan/d.legal. Shared by the live drag and the release,
+   * so the preview and the drop can never disagree.
+   *
+   * ONE `legal` for the lot, deliberately: the group is rigid, so a drop that
+   * seated some members and left the rest behind would be a silent edit of the
+   * arrangement the user built. A member with nowhere to land, a rider with
+   * nowhere to land, and a hole already spoken for are one refusal in one visual
+   * language — every member and every riding wire reddens together.
+   *
+   * A delta of null (the grabbed member is over bare desk) KEEPS the last good
+   * one, as #resolvePartSeat keeps its last good seat: the group carries on
+   * drawing somewhere sane while the drop reddens.
+   */
+  #resolveClusterMove(d, world) {
+    const delta = clusterDelta(this.#doc.boards, d, world, d.members);
+    if (delta) d.delta = delta;
+    const { targets, resolved } = this.#doc.resolveClusterTargets(
+      d.members,
+      d.delta,
+    );
+    d.targets = targets;
+    d.plan =
+      d.riding || d.ridingParts
+        ? this.#doc.planClusterRiders(
+            d.members,
+            targets,
+            d.riding,
+            d.ridingParts,
+          )
+        : null;
+    d.legal =
+      Boolean(delta) &&
+      resolved &&
+      (d.plan?.resolved ?? true) &&
+      d.checkBatch(this.#clusterPlacements(d), d.plan?.moves ?? []);
+  }
+
+  /** Everything the cluster's commit moves, in the order `prepareClusterMove`
+      was prepared with: the members, then the parts riding them. */
+  #clusterPlacements(d) {
+    return [...d.targets, ...(d.plan?.parts ?? [])];
+  }
+
+  /** The riding-wire preview for a cluster drag, or null for a plain one.
+      Every riding wire gets an entry — one with no addresses when the plan
+      didn't resolve, so a refused drop tints the wires it would have carried
+      rather than leaving them looking uninvolved. */
+  #clusterDragPreview(d) {
+    if (!d.riding) return null;
+    const shifts = new Map();
+    for (const { wireId } of d.riding) shifts.set(wireId, {});
+    for (const move of d.plan?.moves ?? []) {
+      const entry = shifts.get(move.id);
+      if (entry) {
+        entry.from = move.from;
+        entry.to = move.to;
+      }
+    }
+    for (const { id, dx, dy } of d.plan?.points ?? []) {
+      const entry = shifts.get(id);
+      if (entry) entry.points = { dx, dy };
+    }
+    return { shifts, legal: d.legal };
+  }
+
+  /** Live positions for the cluster's desk BRICKS, or null when it holds none.
+      A wire ending on a brick's terminal is anchored to the component rather
+      than to a hole, so it follows a position override and not an address. */
+  #clusterBrickOverrides(d) {
+    const overrides = new Map();
+    for (const t of d.targets) {
+      if (t.form === "brick") overrides.set(t.id, { x: t.x, y: t.y });
+    }
+    return overrides.size > 0 ? overrides : null;
+  }
+
+  /** Draw every member at its target seat and tint the lot on the one verdict. */
+  #applyClusterPreview(d) {
+    for (const t of d.targets) {
+      const view = this.#partViews.get(t.id);
+      if (!view) continue;
+      if (t.form === "brick") {
+        view.setPosition(t.x, t.y);
+      } else if (t.board != null) {
+        // #placePartView owns the footprint/two-ends branch (and the floating
+        // cue), so a rotatable member's bend rides for free.
+        const member = d.byId.get(t.id);
+        this.#placePartView(
+          view,
+          { ...member, board: t.board, anchor: t.anchor },
+          this.#doc.getBoard(t.board),
+        );
+      }
+      view.setIllegal(!d.legal);
+    }
+    // …and the legs of the parts riding them bend live too.
+    this.#applyLeadRiders(d);
+  }
+
+  /** Redraw every member and every riding part from the DOCUMENT — the
+      snap-back after a refused drop, and equally the settle after a committed
+      one (a part view is not re-rendered by #emitDocChanged; its position is
+      written only here and in the move handler). */
+  #restoreClusterViews(d) {
+    for (const m of d.members) {
+      const view = this.#partViews.get(m.id);
+      const comp = this.#doc.getComponent(m.id);
+      if (!view || !comp) continue;
+      if (comp.board == null) view.setPosition(comp.x, comp.y);
+      else this.#placePartView(view, comp, this.#doc.getBoard(comp.board));
+      view.setIllegal(false);
+    }
+    this.#restoreLeadRiders(d);
   }
 
   /** Where a desk brick lands for a pointer at `world` — snapped to whole
@@ -3698,24 +4036,60 @@ export class DeskController {
     } else {
       d.legal = false; // off-board / off-row: stay at the last seat
     }
-    // An Option-drag re-plans its riding wires for THIS seat and checks the
-    // whole batch as one. It rides the same `d.legal` the part's own tint reads,
-    // so an unseatable wire reddens the drop exactly as an unseatable pin does —
-    // one refusal, one visual language. Planned against `d.seat` even when the
-    // pointer fell off-board, so the wires keep drawing where the part does.
-    if (d.riding) {
-      d.plan = this.#doc.planPartMove(
-        d.id,
-        d.seat.board,
-        d.seat.anchor,
-        d.riding,
-      );
-      const batchLegal =
-        d.plan.resolved &&
-        (d.plan.moves.length === 0 || d.checkBatch(d.plan.moves));
-      if (!batchLegal) d.legal = false;
+    // An Option-drag re-plans its riders for THIS seat and checks the whole
+    // batch as one. They ride the same `d.legal` the part's own tint reads, so
+    // an unseatable wire (or a resistor leg with nowhere to bend to) reddens the
+    // drop exactly as an unseatable pin does — one refusal, one visual language.
+    // Planned against `d.seat` even when the pointer fell off-board, so the
+    // riders keep drawing where the part does.
+    if (d.riding || d.ridingParts) {
+      d.plan = this.#doc.planPartMove(d.id, {
+        board: d.seat.board,
+        anchor: d.seat.anchor,
+        riding: d.riding,
+        ridingParts: d.ridingParts,
+      });
+      const placements = [
+        { id: d.id, board: d.seat.board, anchor: d.seat.anchor },
+        ...d.plan.parts,
+      ];
+      if (!(d.plan.resolved && d.checkBatch(placements, d.plan.moves))) {
+        d.legal = false;
+      }
     }
     return seat;
+  }
+
+  /** Draw every part riding a drag at its planned seat, tinted on the one
+      verdict — `#placePartView` owns the footprint/two-ends branch, so a leg
+      that has bent redraws through its span geometry for free.
+
+      A rider the plan didn't place (it refused, or there is no plan for this
+      sample) is drawn from the DOCUMENT, where it actually is. Leaving it at
+      the seat some earlier sample gave it would show a leg bent to a part that
+      has since moved on. */
+  #applyLeadRiders(d) {
+    const seats = new Map((d.plan?.parts ?? []).map((s) => [s.id, s]));
+    for (const { id } of d.ridingParts ?? []) {
+      const view = this.#partViews.get(id);
+      const comp = this.#doc.getComponent(id);
+      if (!view || !comp) continue;
+      const at = { ...comp, ...(seats.get(id) ?? {}) };
+      this.#placePartView(view, at, this.#doc.getBoard(at.board));
+      view.setIllegal(!d.legal);
+    }
+  }
+
+  /** Put every part riding a drag back where the DOCUMENT has it — the
+      snap-back after a refused drop, and the settle after a committed one. */
+  #restoreLeadRiders(d) {
+    for (const { id } of d.ridingParts ?? []) {
+      const view = this.#partViews.get(id);
+      const comp = this.#doc.getComponent(id);
+      if (!view || !comp) continue;
+      this.#placePartView(view, comp, this.#doc.getBoard(comp.board));
+      view.setIllegal(false);
+    }
   }
 
   /** The wire layer's riding-wire preview for a `drag-part` in flight, or null
@@ -3745,6 +4119,7 @@ export class DeskController {
     if (
       (d?.kind !== "drag-part" &&
         d?.kind !== "drag-brick" &&
+        d?.kind !== "drag-cluster" &&
         d?.kind !== "drag-resistor" &&
         d?.kind !== "drag-resistor-end") ||
       e.pointerId !== d.pointerId
@@ -3758,13 +4133,37 @@ export class DeskController {
       );
       if (travel < DRAG_THRESHOLD) return;
       d.active = true;
-      this.#partViews.get(d.id)?.setDragging(true);
+      if (d.kind === "drag-cluster") {
+        for (const m of d.members) this.#partViews.get(m.id)?.setDragging(true);
+      } else {
+        this.#partViews.get(d.id)?.setDragging(true);
+      }
     }
     const view = this.#partViews.get(d.id);
     const w = this.#deskView.worldFromEvent(e);
     // Recorded for every kind — it is the fallback the release-point resolve
     // falls back to when the "release" is a positionless synthetic abort.
     d.lastWorld = w;
+
+    if (d.kind === "drag-cluster") {
+      this.#resolveClusterMove(d, w);
+      this.#applyClusterPreview(d);
+      // One call carries both channels: the riding wires' new addresses and the
+      // live positions of any bricks whose terminals wires end on.
+      this.#wireLayer.setPartDrag(
+        this.#clusterDragPreview(d),
+        this.#clusterBrickOverrides(d),
+      );
+      // Every label hung on any member rides the one delta.
+      if (d.anchorIds.size > 0) {
+        this.#annotationLayer.render({
+          anchorIds: d.anchorIds,
+          dx: d.delta.dx,
+          dy: d.delta.dy,
+        });
+      }
+      return;
+    }
 
     if (d.kind === "drag-resistor") {
       this.#trackResistorDrag();
@@ -3784,7 +4183,7 @@ export class DeskController {
       // Labels anchored to this brick ride it live.
       if (d.hasAnchored) {
         this.#annotationLayer.render({
-          anchorId: d.id,
+          anchorIds: new Set([d.id]),
           dx: d.pos.x - d.origin.x,
           dy: d.pos.y - d.origin.y,
         });
@@ -3799,10 +4198,14 @@ export class DeskController {
     view?.setIllegal(!d.legal);
     // An Option-drag's wires follow live (a plain drag never touches the layer).
     if (d.riding) this.#wireLayer.setPartDrag(this.#partDragPreview(d));
+    // …and so do the legs of the parts attached to it.
+    if (d.ridingParts) this.#applyLeadRiders(d);
     // Labels anchored to this part ride it live, by its anchor-hole delta.
     if (d.hasAnchored) {
       const shift = this.#anchorDelta(d.origin, d.seat);
-      if (shift) this.#annotationLayer.render({ anchorId: d.id, ...shift });
+      if (shift) {
+        this.#annotationLayer.render({ anchorIds: new Set([d.id]), ...shift });
+      }
     }
   };
 
@@ -3819,6 +4222,7 @@ export class DeskController {
     if (
       (d?.kind !== "drag-part" &&
         d?.kind !== "drag-brick" &&
+        d?.kind !== "drag-cluster" &&
         d?.kind !== "drag-resistor" &&
         d?.kind !== "drag-resistor-end") ||
       e.pointerId !== d.pointerId
@@ -3834,6 +4238,13 @@ export class DeskController {
     this.#refreshRidePreview();
 
     d.teardown?.();
+    if (d.kind === "drag-cluster") {
+      for (const m of d.members) {
+        const memberView = this.#partViews.get(m.id);
+        memberView?.setDragging(false);
+        memberView?.setIllegal(false);
+      }
+    }
     const view = this.#partViews.get(d.id);
     if (view) {
       view.setDragging(false);
@@ -3849,6 +4260,48 @@ export class DeskController {
     // A drag that spans Run (editing locked mid-gesture) reverts, never
     // commits — the teardown above already ran, so this only skips the mutation.
     const cancelled = e.type === "pointercancel" || this.#editingLocked;
+
+    if (d.kind === "drag-cluster") {
+      if (!d.active) {
+        // A plain click on a member is the collapse the PRESS deferred: the
+        // selection narrows to the one part, exactly as a press on a non-member
+        // does. Without it a click inside a selection would do nothing at all,
+        // which reads as a dead press.
+        this.selectComponent(d.grabId);
+        const comp = this.#doc.getComponent(d.grabId);
+        if (CLICK_TOGGLE_REFS.has(comp?.ref)) {
+          this.#toggleClickPart(d.grabId, d.switchIndex ?? null);
+        }
+        return;
+      }
+      // Re-resolve at the RELEASE point, for the reason the solo drag does: a
+      // fast release whose last coalesced move caught the group mid-flight
+      // would otherwise revert a perfectly good drop, and a release over bare
+      // desk after a legal last move must not commit.
+      if (!cancelled) {
+        this.#resolveClusterMove(
+          d,
+          releaseWorld(this.#deskView, e, d.lastWorld),
+        );
+      }
+      const moved = d.delta.dx !== 0 || d.delta.dy !== 0;
+      if (!cancelled && d.legal && moved) {
+        // Every member AND everything riding it in ONE mutation, so ⌘Z restores
+        // the whole arrangement — it was never several edits.
+        this.#doc.moveClusterWithWires(this.#clusterPlacements(d), d.plan);
+        if (d.anchorIds.size > 0) {
+          this.#shiftAnchoredAnnotations(d.anchorIds, d.delta.dx, d.delta.dy);
+        }
+        this.#restoreClusterViews(d); // now the document's own positions
+        this.#emitDocChanged("move parts");
+      } else {
+        this.#restoreClusterViews(d); // an illegal drop wrote nothing
+        this.#wireLayer.render();
+        if (d.anchorIds.size > 0) this.#annotationLayer.render();
+      }
+      return;
+    }
+
     if (d.kind === "drag-resistor-end") {
       if (!d.active) return; // plain click — the press already selected it
       // Re-derive the lead at the RELEASE point. #trackResistorEndDrag reads
@@ -3880,20 +4333,39 @@ export class DeskController {
       // release point rather than trusting the last coalesced move.
       if (!cancelled) {
         d.lastWorld = releaseWorld(this.#deskView, e, d.lastWorld);
-        this.#trackResistorDrag(d);
+        this.#trackResistorDrag(d, { preview: false });
       }
       if (!cancelled && d.legal && d.holes) {
-        this.#doc.movePartEnds(
-          d.id,
-          d.holes.boardId,
-          d.holes.anchor,
-          d.holes.end,
-        );
+        // An Option-drag commits the part AND everything riding it as ONE
+        // mutation (the same transaction a footprint part's does); a plain drag
+        // takes the two-ends path with nothing to carry.
+        if (d.riding || d.ridingParts) {
+          this.#doc.moveClusterWithWires(
+            [
+              {
+                id: d.id,
+                board: d.holes.boardId,
+                anchor: d.holes.anchor,
+                params: { rot: 90, end: d.holes.end },
+              },
+              ...d.plan.parts,
+            ],
+            d.plan,
+          );
+        } else {
+          this.#doc.movePartEnds(
+            d.id,
+            d.holes.boardId,
+            d.holes.anchor,
+            d.holes.end,
+          );
+        }
         this.#emitDocChanged("move part");
       }
       // Commit or not, redraw from the document — an illegal drop leaves the
       // document untouched, so this snaps the resistor back to its origin.
       this.#remountPart(d.id);
+      this.#restoreLeadRiders(d);
       return;
     }
 
@@ -3952,10 +4424,10 @@ export class DeskController {
     const flipped = !cancelled && d.flip === true;
     if (flipped) this.#doc.rotateComponent(d.id);
     if (!cancelled && d.legal && moved) {
-      // An Option-drag commits the part AND its wiring as ONE mutation, so ⌘Z
-      // restores them together — they were never two edits. A plain drag takes
-      // the same path with nothing to carry.
-      if (d.riding) {
+      // An Option-drag commits the part AND everything riding it as ONE
+      // mutation, so ⌘Z restores them together — they were never two edits. A
+      // plain drag takes the same path with nothing to carry.
+      if (d.riding || d.ridingParts) {
         this.#doc.moveComponentWithWires(
           d.id,
           d.seat.board,
@@ -3966,6 +4438,7 @@ export class DeskController {
         this.#doc.moveComponent(d.id, d.seat.board, d.seat.anchor);
       }
       view?.updatePlacement(this.#doc.getBoard(d.seat.board), d.seat.anchor);
+      this.#restoreLeadRiders(d); // now the document's own positions
       if (d.hasAnchored) {
         const shift = this.#anchorDelta(d.origin, d.seat);
         if (shift) this.#shiftAnchoredAnnotations(d.id, shift.dx, shift.dy);
@@ -3978,6 +4451,7 @@ export class DeskController {
         this.#doc.getBoard(d.origin.board),
         d.origin.anchor,
       );
+      this.#restoreLeadRiders(d); // an illegal drop wrote nothing
     }
     // Sync the drawn orientation to the document (undoes a cancelled preview).
     if (d.flip) view?.updateParams(this.#doc.getComponent(d.id)?.params ?? {});

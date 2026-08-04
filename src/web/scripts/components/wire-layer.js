@@ -775,15 +775,24 @@ export class WireLayer {
    *
    * Unlike the single-wire channels above this one names MANY wires, which is
    * what a part carries; the ends are addresses rather than cursor points
-   * because a riding end always lands in a hole (see #wireEnds).
+   * because a riding end always lands in a hole (see #wireEnds). It is keyed by
+   * WIRE, so a whole SELECTION of parts dragged together merges into one map
+   * with nothing to change here.
+   *
+   * `overrides` rides along for the one thing an address can't express: a wire
+   * ending on a moving BRICK's terminal (`psu1.+`) is anchored to the component
+   * rather than to a hole, so it follows a position override instead of a new
+   * address. A cluster can carry both at once, hence one call.
    *
    * @param {{shifts: Map<string, {from?:string, to?:string,
    *   points?:{dx:number,dy:number}}>, legal?:boolean}|null} spec
+   * @param {Map<string, {x:number,y:number}>|null} [overrides] - live positions
    */
-  setPartDrag(spec) {
-    if (!spec && !this.#partDrag) return; // idle → idle: nothing to redraw
+  setPartDrag(spec, overrides = null) {
+    // idle → idle: nothing to redraw
+    if (!spec && !this.#partDrag && !overrides) return;
     this.#partDrag = spec;
-    this.render();
+    this.render(overrides ?? undefined);
   }
 
   /** Are wires drawn as fading stubs? */

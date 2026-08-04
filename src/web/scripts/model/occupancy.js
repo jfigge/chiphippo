@@ -403,12 +403,26 @@ export function worldOfAddress(boards, address) {
  * Floating is a state a part falls into when a strip is moved or deleted out
  * from under it — never one you can deliberately place into.
  *
+ * `occupancy` is a prebuilt `buildOccupancy(doc)` map for a caller checking MANY
+ * placements against ONE document — this function otherwise rebuilds the whole
+ * index per call, which a live drag over a cluster of parts would pay for once
+ * per member per pointer sample. It must be the index OF `doc`; the hoist is a
+ * cache, never a second opinion.
+ *
  * @param {{ boards: Array, components: Array }} doc
- * @param {{ ref: string, board: string, anchor: string, ignoreId?: string|null }} opts
+ * @param {{ ref: string, board: string, anchor: string, ignoreId?: string|null,
+ *   occupancy?: Map<string, object>|null }} opts
  */
 export function canPlacePart(
   doc,
-  { ref, board: boardId, anchor, params = null, ignoreId = null },
+  {
+    ref,
+    board: boardId,
+    anchor,
+    params = null,
+    ignoreId = null,
+    occupancy = null,
+  },
 ) {
   const boards = doc.boards ?? [];
   if (!boards.some((b) => b.id === boardId)) return false;
@@ -428,9 +442,9 @@ export function canPlacePart(
     if (!pa || !pb) return false;
     if (Math.hypot(pb.x - pa.x, pb.y - pa.y) < def.minSpan) return false;
   }
-  const occupancy = buildOccupancy(doc);
+  const index = occupancy ?? buildOccupancy(doc);
   for (const { address } of pins) {
-    const occupant = occupancy.get(address);
+    const occupant = index.get(address);
     if (occupant && occupant.componentId !== ignoreId) return false;
   }
   return true;
