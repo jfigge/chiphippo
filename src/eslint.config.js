@@ -90,6 +90,33 @@ module.exports = [
     },
   },
 
+  // ── The marketing site (website/*.js, outside src/) ────────────────────────
+  // Two classic browser IIFEs served as plain <script src> off a static page:
+  // no modules, no bundler, no bridge, so `sourceType: "script"` and browser
+  // globals with nothing else. They were unlinted and unformatted until now for
+  // the same reason scripts/ was — outside the invocation's base path, silently
+  // skipped — and that is exactly where five of the seven bugs in this area
+  // lived. Their tests are src/web/scripts/tests/website-*.test.js, which the
+  // renderer blocks above already cover.
+  {
+    files: ["website/**/*.js"],
+    ...js.configs.recommended,
+    languageOptions: {
+      ecmaVersion: 2022,
+      sourceType: "script",
+      globals: {
+        ...globals.browser,
+      },
+    },
+    rules: {
+      ...js.configs.recommended.rules,
+      "no-unused-vars": [
+        "warn",
+        { argsIgnorePattern: "^_", ignoreRestSiblings: true },
+      ],
+    },
+  },
+
   // ── Build/dev tooling (scripts/*.mjs, outside src/) ─────────────────────────
   // Plain Node ESM scripts (some run under Electron via `npx electron
   // scripts/*.mjs`, but as far as syntax/globals go they're just Node).

@@ -682,7 +682,6 @@ test("every committed crop is named in the case the app asks for it in", () => {
   // not about coverage.
   const dir = new URL("../../datasheets/", import.meta.url);
   const onDisk = readdirSync(dir);
-  const exact = new Set(onDisk);
   const insensitive = new Map(onDisk.map((f) => [f.toLowerCase(), f]));
 
   let checked = 0;

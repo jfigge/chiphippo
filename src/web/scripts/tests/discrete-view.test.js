@@ -120,7 +120,7 @@ test("buildDiscreteSvg: an oscillator can still draws its 4 legs + body at rot 9
 
 test("discreteBox rejects unknown refs", () => {
   resetDom();
-  assert.throws(() => discreteBox("capacitor"), { code: "INVALID_REF" });
+  assert.throws(() => discreteBox("nonesuch"), { code: "INVALID_REF" });
 });
 
 test("discreteBox: a DIP-packaged discrete with no BOXES entry falls back to chipBox", () => {

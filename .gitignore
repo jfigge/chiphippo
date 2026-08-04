@@ -9,6 +9,12 @@ certs/
 #    writes into src/web/docs/images/ are committed) ───────────────────────────
 .docs-build/
 
+# ── The one package `make docs` needs, when it is installed on its own ────────
+# deploy-site.yml drops `marked` here and points MARKED_DIR at it, rather than
+# installing src/'s devDependencies (which would pull Electron) just to render
+# Markdown. Run the same two lines locally and this is what you get.
+.docs-deps/
+
 # ── Mac App Store provisioning profiles ───────────────────────────────────────
 # Per-developer, and they embed a team-specific certificate. Dropped into
 # src/packaging/ for `make mas` / `make mas-dev` (see STORE-PUBLISHING.md).

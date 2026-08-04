@@ -91,7 +91,8 @@ fmt:
 	@cd $(SRC_DIR) && npx prettier --write \
 		"web/**/*.{js,css,html}" \
 		"app/**/*.js" \
-		"../scripts/*.mjs" > /dev/null
+		"../scripts/*.mjs" \
+		"../website/**/*.js" > /dev/null
 	@echo "--------------------------------"
 
 fmt-check:
@@ -99,7 +100,8 @@ fmt-check:
 	@cd $(SRC_DIR) && npx prettier --check \
 		"web/**/*.{js,css,html}" \
 		"app/**/*.js" \
-		"../scripts/*.mjs"
+		"../scripts/*.mjs" \
+		"../website/**/*.js"
 	@echo "--------------------------------"
 
 # ─── Linting ──────────────────────────────────────────────────────────────────
@@ -112,7 +114,8 @@ lint:
 		--config $(SRC_DIR)/eslint.config.js \
 		"src/web/scripts/**/*.js" \
 		"src/app/**/*.js" \
-		"scripts/**/*.mjs"
+		"scripts/**/*.mjs" \
+		"website/**/*.js"
 	@echo "--------------------------------"
 
 # ─── License headers ──────────────────────────────────────────────────────────
@@ -171,13 +174,25 @@ icons:
 	@echo "--------------------------------"
 
 # ─── Datasheets ───────────────────────────────────────────────────────────────
-# Regenerate the datasheet connection-diagram / function-table crops shown in
-# the pin-assignments window, one committed PNG per catalog chip that has a
-# datasheet. Reads the crop manifest (scripts/datasheet-crops.mjs) and the
-# source PDFs (not in the repo — override the folder with DATASHEETS_DIR).
+# REPORT which datasheet crops the pin-assignments window wants and does not
+# have, so they can be produced by hand. It does NOT generate anything.
+#
+# This target used to re-crop every PNG under src/web/datasheets/ out of the
+# source PDFs, under Electron via pdfjs. It never cropped them well enough to
+# ship — the crops are cut by hand and committed — so the generator and its crop
+# manifest are gone (the manifest went in c398291, which left the generator
+# importing a file that no longer existed, i.e. the target has been broken
+# rather than merely imprecise ever since).
+#
+# What was actually wanted from the tooling is the bookkeeping: a part with no
+# crop is INVISIBLE, because chip-pinout.js drops the <figure> on a load error
+# and the window looks exactly like one for a part that never had a datasheet.
+# So this walks the catalog, checks the committed files, and names the gaps in
+# both directions — missing crops to cut, and orphaned files no part asks for.
+# Plain Node: no PDFs, no Electron, no network, and nothing is written.
 datasheets:
-	@echo "Regenerating datasheet crops for the pinout window..."
-	@cd $(SRC_DIR) && npx electron $(WORKSPACE)/scripts/make-datasheets.mjs
+	@echo "Checking datasheet crops for the pinout window..."
+	@node $(WORKSPACE)/scripts/check-datasheets.mjs
 	@echo "--------------------------------"
 
 # ─── Demos ────────────────────────────────────────────────────────────────────
@@ -465,7 +480,7 @@ help:
 	@echo "    test          Run license-header guard + JS unit tests"
 	@echo "    license-headers  Stamp the Apache 2.0 header on any file missing it"
 	@echo "    icons         Regenerate app-icon rasters from the SVG sources"
-	@echo "    datasheets    Regenerate datasheet crops for the pinout window"
+	@echo "    datasheets    Report datasheet crops missing from the pinout window"
 	@echo "    demos         Regenerate + validate demos/ and the bundled examples"
 	@echo "    vendor-markdown  Rebuild the bundled marked+DOMPurify renderer"
 	@echo "    docs          Build the hosted user guide (website/docs/)"

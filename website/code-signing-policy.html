@@ -3,6 +3,12 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- GitHub Pages can't set response headers, so the CSP rides in a meta tag,
+       as index.html's does. This page has no scripts at all, so script-src is
+       'none' rather than 'self'; the inline <style> below is what needs
+       'unsafe-inline', and style-src alone. No frame-ancestors — the spec
+       ignores it in a meta CSP, and it logged an error every load. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'" />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <meta name="description" content="Chip Hippo's code signing policy: how release binaries are built and signed, and how to verify a download you received is genuine." />
   <title>Code Signing Policy — Chip Hippo</title>
@@ -62,7 +68,20 @@
     .footer-name { font-size: 1.1rem; font-weight: 800; color: var(--text); }
     footer p { color: var(--overlay-0); font-size: 0.83rem; line-height: 1.8; }
     footer a { color: var(--accent); text-decoration: none; }
-    @media (max-width: 640px) { nav { padding: 0 1rem; } .nav-right .nav-link { display: none; } .page { padding: 44px 1rem 64px; } }
+    /* The nav wraps onto a second row rather than hiding its links, as
+       index.html's does — a phone was left with a logo and a Download button.
+       Not sticky down here: a two-row header pinned to a short screen is a
+       lot of viewport spent on navigation. */
+    @media (max-width: 640px) {
+      nav {
+        position: static; height: auto; flex-wrap: wrap;
+        justify-content: center; gap: 10px; padding: 10px 1rem;
+      }
+      .nav-right { width: 100%; flex-wrap: wrap; justify-content: center; gap: 10px 1.1rem; }
+      .nav-link { font-size: 0.82rem; }
+      .nav-right .btn { padding: 7px 14px; }
+      .page { padding: 44px 1rem 64px; }
+    }
   </style>
 </head>
 <body>
@@ -93,7 +112,7 @@
 <main class="page">
   <p class="page-tag">Security</p>
   <h1>Code Signing Policy</h1>
-  <p class="updated">Last updated: July 22, 2026</p>
+  <p class="updated">Last updated: August 4, 2026</p>
 
   <div class="tldr" role="note">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -104,8 +123,9 @@
       its installers are <strong>not yet code-signed</strong>. macOS and Windows will warn
       you before running an unsigned app — that's expected. Every build is produced in the
       open by GitHub Actions straight from the public source, so you can verify it yourself
-      or build from source. Signing is wired into the release pipeline and switches on once
-      certificates are configured.
+      or build from source. macOS signing and notarization are already wired into the
+      release pipeline and switch on once a certificate is configured; Windows signing
+      still needs both a certificate and a build step.
     </p>
   </div>
 
@@ -151,26 +171,36 @@
 
   <h2>3. When signing turns on</h2>
   <p>
-    The release pipeline already contains the signing steps; they are gated on
-    credentials being present, so they activate without any code change once the
-    certificates are configured:
+    Signing is not a single switch, and the two platforms are at different stages. What
+    follows is what the release workflow does <em>today</em> rather than a roadmap — you
+    can read it yourself in
+    <a href="https://github.com/jfigge/chiphippo/blob/main/.github/workflows/release.yml" rel="noopener noreferrer"><code>.github/workflows/release.yml</code></a>.
   </p>
   <ul>
     <li>
-      <strong>macOS</strong> — builds will be signed with an Apple <strong>Developer ID</strong>
-      certificate and notarized by Apple, so Gatekeeper opens them without a warning.
+      <strong>macOS — wired, waiting on a certificate.</strong> The workflow already
+      signs with an Apple <strong>Developer ID</strong> certificate and notarizes through
+      Apple's <code>notarytool</code>; both are gated on repository secrets being present,
+      so they activate without any code change once those are configured. Until then every
+      macOS build is unsigned and Gatekeeper warns. Note that signing on its own is
+      <em>not</em> enough: a signed but un-notarized app is still blocked the first time
+      you open it, so both halves have to be in place before the warning goes away.
     </li>
     <li>
-      <strong>Windows</strong> — installers will be Authenticode-signed and timestamped.
-      When signing is provided through a foundation program for open-source projects, the
-      verified publisher Windows shows may be that foundation rather than “Jason Figge” —
-      that is normal and is itself a trust signal that the build came through the reviewed
-      release pipeline.
+      <strong>Windows — not built yet.</strong> There is no Authenticode signing step in
+      the release workflow at all, so unlike macOS this is not a matter of adding a
+      secret: it needs a certificate <em>and</em> the step itself. When it arrives,
+      installers will be Authenticode-signed and timestamped. If the certificate comes
+      through a foundation program for open-source projects, the verified publisher
+      Windows shows may be that foundation rather than “Jason Figge” — that is normal and
+      is itself a trust signal that the build came through the reviewed release pipeline.
     </li>
   </ul>
   <p>
     This page will be updated with the exact signing details (and the expected publisher
-    name) when signing is enabled.
+    name) as each one is enabled. If it ever claims more than the workflow above actually
+    does, the workflow is the authority — please
+    <a href="https://github.com/jfigge/chiphippo/issues" rel="noopener noreferrer">open an issue</a>.
   </p>
 
   <h2>4. Where to get genuine builds</h2>

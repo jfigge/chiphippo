@@ -190,23 +190,34 @@ Chip Hippo icon, never the default Electron one. All rasters are committed.
 
 The pin-assignments window shows each **chip's** manufacturer datasheet region
 (connection diagram + function/truth table, or the internal logic diagram for
-parts with no table) as a committed PNG under **`src/web/datasheets/<id>.png`**
-— regenerate them with **`make datasheets`**. Like `make icons`, the script
-(`scripts/make-datasheets.mjs`) runs **under Electron** (`npx electron …`): it
-renders the source PDF page at 216 DPI with **`pdfjs-dist`** (a build-only dev
-dependency) inside a hidden Chromium window, then crops to the per-chip
-rectangle. Electron is required because the diagrams are **JBIG2-encoded
-bitmaps** — pdfjs decodes those through a WASM module and a same-origin worker,
-so the harness loads a real `file://` page and wires up pdfjs' `wasmUrl` /
-`standardFontDataUrl` / `cMapUrl`. The crop manifest is data, not code:
-**`scripts/datasheet-crops.mjs`** maps each catalog id → `{ file, page, crop }`
-where `crop` is `{x,y,w,h}` as FRACTIONS of the rendered page (hand-tuned per
-datasheet — Fairchild/TI/Motorola layouts all differ; some diagrams live on
-page 2 or behind a Jameco cover). The **source PDFs are NOT in the repo** (they
-live in the user's datasheet folder — override with `DATASHEETS_DIR`); only the
-46 cropped PNGs are committed. The four catalog chips with no matching `74LS*`
-datasheet (74164, 74193, 7427, 7476) have no crop — the window shows only their
-pin map (see the Pin-assignments window architecture note).
+parts with no table) as a committed PNG under **`src/web/datasheets/<id>.png`**.
+**THE CROPS ARE CUT BY HAND.** There was a generator — `make datasheets` under
+Electron, rendering the source PDF with `pdfjs-dist` and cropping to a
+per-chip rectangle from a manifest — and it never cropped well enough to ship:
+Fairchild/TI/Motorola lay their pages out differently, some diagrams sit on
+page 2 or behind a Jameco cover, and every rectangle ended up hand-tuned
+anyway. The manifest went in `c398291`, which left the generator importing a
+file that no longer existed, so the target was broken rather than merely
+imprecise for some time before it was removed. The **source PDFs are not in
+the repo** either way (they live in the user's datasheet folder — see Settings
+▸ Data Sheets, and the auto-download note below); only the cropped PNGs are
+committed.
+
+**`make datasheets` NOW REPORTS RATHER THAN GENERATES**
+(`scripts/check-datasheets.mjs`, plain Node — no PDFs, no Electron, no network,
+and it writes nothing). The bookkeeping is what was actually wanted from the
+tooling, because a part with no crop is **invisible**: `chip-pinout.js` removes
+the `<figure>` on a load error, so the window shows a pin map and looks exactly
+like one for a part that never had a datasheet at all. So it walks the catalog
+through the ONE naming rule below, checks the committed files, and names the
+gaps in both directions — **missing** crops to cut, and **orphaned** PNGs no
+catalog part asks for any more (a chip dropped from the catalog leaves its file
+behind and nothing else would ever mention it again; three are sitting there
+today). `--strict` exits 1 on a missing crop; the default exits 0, since some
+parts have nothing to crop. That last set is the script's ONE hand-kept list:
+the four chips with no matching `74LS*` datasheet (74LS164, 74LS193, 74LS27,
+74LS76) are listed as excused rather than reported every run, and moving a name
+in or out of `NO_DATASHEET` is how a part leaves or rejoins the to-do list.
 
 **A CROP IS NAMED BY THE CATALOG, NOT BY THE ID** — `catalog/index.js`'s
 **`datasheetCrop(def)`**, the one place that rule lives. A DIP-packaged part's
@@ -2118,7 +2129,8 @@ Electron main process (src/app/main.js)
   reads as two unrelated columns rather than one row. Below the pin map, a part
   with a committed **datasheet crop** also shows it — for a chip, the
   connection-diagram / function-table region cut from the source PDF
-  (`web/datasheets/<id>.png`, built by `make datasheets`, see below). The `<img>`
+  (`web/datasheets/<id>.png`, cut by hand and committed — `make datasheets`
+  reports which are missing, see above). The `<img>`
   loads lazily and its `<figure>` REMOVES ITSELF on load error, so the four chips
   with no datasheet (and every part that names no sheet) simply show the pin map;
   main widens the window (640) when the crop exists.
@@ -2432,7 +2444,7 @@ make lint      # Lint JS via ESLint
 make test      # License-header guard + Node unit tests (node --test)
 make test-i18n # Just the language guards (catalog completeness + string leaks)
 make icons     # Regenerate app-icon rasters from the SVG sources (see below)
-make datasheets # Regenerate the pinout-window datasheet crops (see below)
+make datasheets # Report which pinout-window datasheet crops are missing
 make demos     # Regenerate + engine-validate demos/ AND src/web/demos/ (see below)
 make build     # Build the Electron app for macOS (dir only, unsigned)
 make dmg       # Build an unsigned macOS .dmg (bare `make` default)

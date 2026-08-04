@@ -25,7 +25,7 @@
   function reducedMotion() {
     try {
       return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    } catch (e) {
+    } catch {
       return false;
     }
   }
@@ -87,7 +87,19 @@
 
   measure();
   for (var s = 0; s < slides.length; s++) {
-    if (!slides[s].complete) slides[s].addEventListener("load", measure);
+    // `error` as well as `load`: a slide that shipped without width/height
+    // attributes contributes 0 to the frame until it decodes, so if it never
+    // decodes, re-measuring is how the frame settles on the slides that did.
+    if (!slides[s].complete) {
+      slides[s].addEventListener("load", measure);
+      slides[s].addEventListener("error", measure);
+    }
+    // A drag that starts on an <img> is a native image drag: the browser takes
+    // the pointer, fires pointercancel, and shows a ghost of the picture — so on
+    // a desktop the swipe below did nothing except peel the screenshot off the
+    // page. Set here rather than in the markup so a new slide stays one <img>
+    // line with nothing to remember.
+    slides[s].draggable = false;
   }
 
   // ── Controls ─────────────────────────────────────────────────────────────
@@ -103,7 +115,11 @@
     return b;
   }
 
-  var prev = button("hero-nav hero-nav--prev", "Previous image", "15 18 9 12 15 6");
+  var prev = button(
+    "hero-nav hero-nav--prev",
+    "Previous image",
+    "15 18 9 12 15 6",
+  );
   var next = button("hero-nav hero-nav--next", "Next image", "9 18 15 12 9 6");
   carousel.appendChild(prev);
   carousel.appendChild(next);
@@ -115,7 +131,10 @@
     var dot = document.createElement("button");
     dot.type = "button";
     dot.className = "hero-dot";
-    dot.setAttribute("aria-label", "Show image " + (i + 1) + " of " + slides.length);
+    dot.setAttribute(
+      "aria-label",
+      "Show image " + (i + 1) + " of " + slides.length,
+    );
     dotRow.appendChild(dot);
     dots.push(dot);
     (function (n) {
@@ -129,10 +148,31 @@
   // Under the framed screenshot, not over it — dots overlaid on a busy
   // breadboard would be unreadable.
   var frame = carousel.closest ? carousel.closest(".app-window") : null;
-  if (frame && frame.parentNode) frame.parentNode.insertBefore(dotRow, frame.nextSibling);
+  if (frame && frame.parentNode)
+    frame.parentNode.insertBefore(dotRow, frame.nextSibling);
   else carousel.appendChild(dotRow);
 
   // ── Moving ───────────────────────────────────────────────────────────────
+
+  // Wake the two slides an advance can land on — next and previous — so a lazy
+  // one is never a blank frame.
+  //
+  // DELIBERATELY NOT DONE DURING THE OPENING go(0). Every slide is within one
+  // step of every other once there are three of them (forwards to the next,
+  // backwards wrapping to the last), so waking from the first render marked the
+  // WHOLE set eager and `loading="lazy"` deferred precisely nothing: the entire
+  // hero payload — 1.3 MB of PNG, all above the fold — was fetched before first
+  // paint. Waiting for `load` keeps the first paint to the one visible slide and
+  // still has both neighbours in flight long before anyone can reach an arrow.
+  function wakeNeighbours() {
+    var i;
+    for (i = -1; i <= 1; i += 2) {
+      var img = slides[(index + i + slides.length) % slides.length];
+      if (img.loading === "lazy") img.loading = "eager";
+    }
+  }
+
+  var painted = false; // until first paint, waking is what defeats loading="lazy"
 
   function go(n) {
     index = (n + slides.length) % slides.length;
@@ -140,10 +180,8 @@
     for (var i = 0; i < slides.length; i++) {
       slides[i].setAttribute("aria-hidden", i === index ? "false" : "true");
       dots[i].setAttribute("aria-current", i === index ? "true" : "false");
-      // Wake the neighbours so a lazy slide is never a blank frame.
-      var near = Math.abs(i - index) <= 1 || Math.abs(i - index) === slides.length - 1;
-      if (near && slides[i].loading === "lazy") slides[i].loading = "eager";
     }
+    if (painted) wakeNeighbours();
   }
 
   // The visitor took control: stop advancing on our own (the WCAG 2.2.2 way out
@@ -155,7 +193,15 @@
   }
 
   function play() {
-    if (timer || stopped || hovered || focused || document.hidden || reducedMotion()) return;
+    if (
+      timer ||
+      stopped ||
+      hovered ||
+      focused ||
+      document.hidden ||
+      reducedMotion()
+    )
+      return;
     timer = window.setInterval(function () {
       go(index + 1);
     }, ADVANCE_MS);
@@ -236,4 +282,13 @@
 
   go(0);
   play();
+
+  // This script is deferred, so it always runs before `load`. Once the visible
+  // slide has had the network to itself, start the two an arrow could reach.
+  function ready() {
+    painted = true;
+    wakeNeighbours();
+  }
+  if (document.readyState === "complete") ready();
+  else window.addEventListener("load", ready, { once: true });
 })();

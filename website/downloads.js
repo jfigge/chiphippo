@@ -31,7 +31,7 @@
         h.endsWith(".github.com") ||
         h.endsWith(".githubusercontent.com");
       return ok ? p.href : RELEASES_URL;
-    } catch (e) {
+    } catch {
       return RELEASES_URL;
     }
   }
@@ -50,8 +50,12 @@
   function fmtDate(iso) {
     if (!iso) return "";
     try {
-      return new Date(iso).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
-    } catch (e) {
+      return new Date(iso).toLocaleDateString(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      });
+    } catch {
       return "";
     }
   }
@@ -66,84 +70,151 @@
     var a = el(
       '<a class="dl-row"><span class="dl-icon">' +
         DL_ICON +
-        '</span><div class="dl-info"><div class="dl-label"></div><div class="dl-meta"></div></div><span class="dl-arch"></span></a>'
+        '</span><div class="dl-info"><div class="dl-label"></div><div class="dl-meta"></div></div><span class="dl-arch"></span></a>',
     );
     a.href = safeUrl(asset.url);
     a.querySelector(".dl-label").textContent = asset.label;
-    a.querySelector(".dl-meta").textContent = asset.name + (asset.size ? " · " + mb(asset.size) : "");
-    a.querySelector(".dl-arch").textContent = asset.arch;
+    a.querySelector(".dl-meta").textContent =
+      asset.name + (asset.size ? " · " + mb(asset.size) : "");
+    // build-versions.mjs answers null for an architecture it cannot name rather
+    // than guessing one; an empty badge is a styled grey pill with nothing in
+    // it, so drop the element instead of printing the absence.
+    var badge = a.querySelector(".dl-arch");
+    if (asset.arch) badge.textContent = asset.arch;
+    else badge.remove();
     return a;
   }
 
   // Order within an OS/arch group: recommended installer first, archives last.
-  var KIND_RANK = { dmg: 0, setup: 0, appimage: 0, deb: 1, portable: 2, zip: 3 };
+  var KIND_RANK = {
+    dmg: 0,
+    setup: 0,
+    appimage: 0,
+    deb: 1,
+    portable: 2,
+    zip: 3,
+  };
   function byPreferred(a, b) {
     var ra = KIND_RANK[a.kind] != null ? KIND_RANK[a.kind] : 5;
     var rb = KIND_RANK[b.kind] != null ? KIND_RANK[b.kind] : 5;
     return ra - rb;
   }
 
-  function renderMac(list, assets) {
-    var groups = [
-      { arch: "arm64", label: "Apple Silicon (M1 / M2 / M3)" },
-      { arch: "x64", label: "Intel" },
-    ];
-    var any = false;
-    groups.forEach(function (g) {
-      var items = assets.filter(function (a) { return a.arch === g.arch; }).sort(byPreferred);
-      if (!items.length) return;
-      any = true;
-      list.appendChild(sep(g.label));
-      items.forEach(function (a) { list.appendChild(row(a)); });
-    });
-    return any;
-  }
+  // One grouped renderer for every card: the only thing that differs between
+  // them is which architectures they name and what they call them. Linux used to
+  // be the odd one out — a single flat "64-bit" heading over both arches, sorted
+  // by installer kind alone, so an arm64 AppImage sat between the two x64 builds
+  // under a heading that was wrong for it, with the small arch badge the only
+  // thing telling them apart.
+  //
+  // Anything whose arch is not named still gets a row, under a generic heading,
+  // rather than being dropped: a build the release published and the site
+  // silently never offered is the worse failure. (fillCard's empty-render guard
+  // stays as the backstop for a card where even that comes to nothing.)
+  var OTHER_ARCH = "Other architectures";
 
-  function renderWin(list, assets) {
-    var groups = [
-      { arch: "x64", label: "Intel / AMD (64-bit)" },
-      { arch: "arm64", label: "ARM (arm64)" },
-    ];
-    var any = false;
-    groups.forEach(function (g) {
-      var items = assets.filter(function (a) { return a.arch === g.arch; }).sort(byPreferred);
-      if (!items.length) return;
-      any = true;
-      list.appendChild(sep(g.label));
-      items.forEach(function (a) { list.appendChild(row(a)); });
-    });
-    return any;
-  }
-
-  function renderFlat(label) {
+  function renderGroups(groups) {
     return function (list, assets) {
-      if (!assets.length) return false;
-      list.appendChild(sep(label));
-      assets.sort(byPreferred).forEach(function (a) { list.appendChild(row(a)); });
-      return true;
+      var named = function (a) {
+        return groups.some(function (g) {
+          return g.arch === a.arch;
+        });
+      };
+      var placed = 0;
+      var emit = function (label, items) {
+        if (!items.length) return;
+        list.appendChild(sep(label));
+        items.sort(byPreferred).forEach(function (a) {
+          list.appendChild(row(a));
+          placed++;
+        });
+      };
+      groups.forEach(function (g) {
+        emit(
+          g.label,
+          assets.filter(function (a) {
+            return a.arch === g.arch;
+          }),
+        );
+      });
+      emit(
+        OTHER_ARCH,
+        assets.filter(function (a) {
+          return !named(a);
+        }),
+      );
+      return placed > 0;
     };
   }
 
+  var INTEL_64 = "Intel / AMD (64-bit)";
+  var ARM_64 = "ARM (arm64)";
+
+  // A mac universal build is the ONLY build when it exists, so it leads. The
+  // Windows combined installer is not: it ships beside the per-arch ones and is
+  // twice the size (219 MB against 110 MB — it holds both), so it goes last,
+  // where it reads as the fallback for someone unsure which machine they have
+  // rather than as the recommended download. Both were previously badged x64.
+  var COMBINED = { arch: "universal", label: "Combined (x64 + ARM)" };
+
+  var renderMac = renderGroups([
+    { arch: "universal", label: "Apple Silicon & Intel (universal)" },
+    { arch: "arm64", label: "Apple Silicon (M1 / M2 / M3)" },
+    { arch: "x64", label: "Intel" },
+  ]);
+  var renderWin = renderGroups([
+    { arch: "x64", label: INTEL_64 },
+    { arch: "arm64", label: ARM_64 },
+    COMBINED,
+  ]);
+  var renderLinux = renderGroups([
+    { arch: "x64", label: INTEL_64 },
+    { arch: "arm64", label: ARM_64 },
+    COMBINED,
+  ]);
+
+  // Render into a fragment and only swap it in once the renderer says it
+  // produced something. Clearing the card first would destroy the static
+  // "Latest release on GitHub" fallback whenever a renderer emits nothing —
+  // which is exactly what an asset outside this card's arch groups does (a
+  // universal mac build, say). Every renderer above returns that boolean; this
+  // is the one place it is read.
   function fillCard(id, latestAssets, render) {
     var list = document.getElementById(id);
     if (!list) return;
     var os = list.getAttribute("data-os");
-    var assets = latestAssets.filter(function (a) { return a.platform === os; });
+    var assets = latestAssets.filter(function (a) {
+      return a.platform === os;
+    });
     if (!assets.length) return; // no asset for this OS in the latest release — keep the fallback
+    var frag = document.createDocumentFragment();
+    if (!render(frag, assets)) return; // nothing rendered — keep the fallback
     list.textContent = "";
-    render(list, assets);
+    list.appendChild(frag);
   }
 
-  function renderHistory(releases) {
+  // PREVIOUS releases only. The three cards above ARE the latest one, under a
+  // line that already names its version, so listing it again here said the same
+  // thing a third time and made the newest entry look like something you had
+  // not seen yet. Excluded by IDENTITY rather than by version string: `latest`
+  // is whichever object apply() resolved, so this cannot disagree with the
+  // cards even if two releases somehow carry the same version.
+  function renderHistory(releases, latest) {
     var wrap = document.getElementById("version-history");
     var listEl = document.getElementById("version-history-list");
-    if (!wrap || !listEl || releases.length < 2) return; // nothing to show beyond "latest"
-    releases.forEach(function (r) {
+    if (!wrap || !listEl) return;
+    var previous = releases.filter(function (r) {
+      return r !== latest;
+    });
+    if (!previous.length) return; // the first release has no history behind it
+    listEl.textContent = ""; // this one APPENDS, so it must not stack on a re-render
+    previous.forEach(function (r) {
       var a = el(
-        '<a class="vh-row"><span class="vh-ver"></span><span class="vh-date"></span><span class="vh-link">View release →</span></a>'
+        '<a class="vh-row"><span class="vh-ver"></span><span class="vh-date"></span><span class="vh-link">View release →</span></a>',
       );
       a.href = safeUrl(r.url);
-      a.querySelector(".vh-ver").textContent = "v" + r.version + (r.prerelease ? " · pre-release" : "");
+      a.querySelector(".vh-ver").textContent =
+        "v" + r.version + (r.prerelease ? " · pre-release" : "");
       a.querySelector(".vh-date").textContent = fmtDate(r.publishedAt);
       listEl.appendChild(a);
     });
@@ -182,7 +253,10 @@
 
   function apply(data) {
     var releases = data.releases || [];
-    var latest = releases.find(function (r) { return r.version === data.latest; }) || releases[0];
+    var latest =
+      releases.find(function (r) {
+        return r.version === data.latest;
+      }) || releases[0];
     if (!latest) return;
     var assets = latest.assets || [];
     setText("hero-version", "v" + latest.version);
@@ -190,8 +264,8 @@
     setText("footer-version", "v" + latest.version);
     fillCard("dl-list-mac", assets, renderMac);
     fillCard("dl-list-win", assets, renderWin);
-    fillCard("dl-list-linux", assets, renderFlat("64-bit"));
-    renderHistory(releases);
+    fillCard("dl-list-linux", assets, renderLinux);
+    renderHistory(releases, latest);
     updatePrereleaseBanner(latest);
   }
 
@@ -199,20 +273,36 @@
   // network blip would otherwise strand the whole page load on the static
   // fallback. Retry a few times with a short backoff, and let the final attempt
   // accept a cached copy, before giving up to the static "on GitHub" links.
+  //
+  // ONLY THE FETCH IS RETRIED. apply() runs after the data has arrived, so a
+  // throw in there is not a transient anything — re-fetching would hand the
+  // same bad payload to the same code and render it a SECOND time on top of the
+  // first attempt's output. Hence the rejection handler sits beside apply
+  // (covering the fetch, the HTTP status and the JSON parse) rather than after
+  // it, and the trailing .catch reports an apply failure instead of looping on
+  // it. Whatever landed before the throw stays on screen; the rest keeps the
+  // static fallback.
   function load(attempt) {
     fetch("versions.json", { cache: attempt < 3 ? "no-cache" : "force-cache" })
       .then(function (r) {
         if (!r.ok) throw new Error("versions.json " + r.status);
         return r.json();
       })
-      .then(apply)
-      .catch(function () {
+      .then(apply, function () {
         if (attempt < 3) {
-          setTimeout(function () {
-            load(attempt + 1);
-          }, 300 * (attempt + 1));
+          setTimeout(
+            function () {
+              load(attempt + 1);
+            },
+            300 * (attempt + 1),
+          );
         }
         /* final attempt failed → keep the static fallback links → */ void RELEASES_URL;
+      })
+      .catch(function (err) {
+        if (window.console && window.console.error) {
+          window.console.error("versions.json could not be applied", err);
+        }
       });
   }
 

@@ -14,9 +14,26 @@ name: Release
 #   CSC_LINK           base64 of the Developer ID Application .p12
 #   CSC_KEY_PASSWORD   its export password
 #
-# Windows and Linux artifacts ship unsigned for now (see the website's
-# code-signing policy). The installer's internal version comes from
-# src/package.json ("version"), so bump that to match the tag before tagging.
+# SIGNING ALONE IS NOT ENOUGH FOR GATEKEEPER. A signed but un-notarized app is
+# still blocked on first open once it carries the download quarantine flag, so
+# the website's code-signing policy would be promising something these two
+# secrets cannot deliver. Add these three as well and electron-builder notarizes
+# through notarytool with no further config (the `mac` block deliberately sets
+# no `notarize` key, so it stays at the default rather than being pinned off —
+# unlike `mas`/`masDev`, where false is correct because App Store review does it):
+#
+#   APPLE_ID                     the Apple ID of the Developer Program account
+#   APPLE_APP_SPECIFIC_PASSWORD  an app-specific password for that Apple ID
+#   APPLE_TEAM_ID                the 10-character team id
+#
+# Windows and Linux artifacts ship unsigned; Authenticode signing needs a
+# certificate and a signing step that does not exist here yet. Keep the
+# website's code-signing policy in step with whatever this file actually does —
+# that page makes public promises about the block above, and
+# src/app/tests/release-signing.test.js fails on `make test` if this file stops
+# keeping them (including, deliberately, when Windows signing is ADDED).
+# The installer's internal version comes from src/package.json ("version"), so
+# bump that to match the tag before tagging.
 on:
   push:
     tags:
@@ -95,11 +112,25 @@ jobs:
         env:
           INPUT_CSC_LINK: ${{ secrets.CSC_LINK }}
           INPUT_CSC_KEY_PASSWORD: ${{ secrets.CSC_KEY_PASSWORD }}
+          INPUT_APPLE_ID: ${{ secrets.APPLE_ID }}
+          INPUT_APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          INPUT_APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           if [ -n "$INPUT_CSC_LINK" ]; then
             export CSC_LINK="$INPUT_CSC_LINK"
             export CSC_KEY_PASSWORD="$INPUT_CSC_KEY_PASSWORD"
             export CSC_IDENTITY_AUTO_DISCOVERY=true
+            # Notarization is exported INSIDE the signing branch on purpose:
+            # notarytool rejects an unsigned app, so credentials without a
+            # certificate would turn a working unsigned build into a failed one.
+            # All three or none — electron-builder throws on a partial set, which
+            # is the right answer (a half-configured notarization that silently
+            # skipped would ship exactly the build this is meant to prevent).
+            if [ -n "$INPUT_APPLE_ID" ]; then
+              export APPLE_ID="$INPUT_APPLE_ID"
+              export APPLE_APP_SPECIFIC_PASSWORD="$INPUT_APPLE_APP_SPECIFIC_PASSWORD"
+              export APPLE_TEAM_ID="$INPUT_APPLE_TEAM_ID"
+            fi
           else
             export CSC_IDENTITY_AUTO_DISCOVERY=false
           fi

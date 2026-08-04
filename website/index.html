@@ -3,10 +3,16 @@
 <head>
   <meta charset="UTF-8" />
   <!-- GitHub Pages can't set response headers, so the CSP rides in a meta tag.
-       No inline/executable scripts on this page (downloads.js and
-       hero-carousel.js are the only scripts, both same-origin); inline styles
-       need 'unsafe-inline' for style-src only. -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'" />
+       No inline/executable scripts on this page (downloads.js, hero-carousel.js
+       and nav.js are the only scripts, all same-origin); inline styles need
+       'unsafe-inline' for style-src only.
+       NO frame-ancestors: the spec IGNORES it (along with report-uri and
+       sandbox) when the policy arrives in a meta element, so it protected
+       nothing and logged a console error on every single page load.
+       Clickjacking cover needs a real response header, which Pages cannot
+       send — better to not claim it than to ship a directive the browser
+       throws away unread. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'none'" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#2F855A" />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
@@ -18,9 +24,20 @@
   <meta property="og:title" content="Chip Hippo — TTL Breadboard Designer & Simulator" />
   <meta property="og:description" content="Design and simulate 74xx TTL logic circuits on a virtual desktop. Place chips, wire them, hit Run, and watch the circuit come alive — all offline." />
   <meta property="og:url" content="https://chiphippo.com/" />
-  <meta name="twitter:card" content="summary" />
+  <!-- Share card. The URL must be ABSOLUTE: a crawler or chat client resolves
+       these against nothing. It reuses a hero screenshot rather than shipping a
+       separate asset — for a tool like this the product is the picture — and
+       declaring the real pixel size lets a client reserve the space instead of
+       reflowing the preview when the image lands. -->
+  <meta property="og:image" content="https://chiphippo.com/hero-breadboard2.png" />
+  <meta property="og:image:width" content="1306" />
+  <meta property="og:image:height" content="802" />
+  <meta property="og:image:alt" content="A Chip Hippo breadboard: four slide switches feed a 74LS00 quad NAND through pull-down resistors, and its four outputs drive LEDs." />
+  <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="Chip Hippo — TTL Breadboard Designer & Simulator" />
   <meta name="twitter:description" content="Design and simulate 74xx TTL logic circuits on a virtual desktop — for macOS, Windows, and Linux, all offline." />
+  <meta name="twitter:image" content="https://chiphippo.com/hero-breadboard2.png" />
+  <meta name="twitter:image:alt" content="A Chip Hippo breadboard: four slide switches feed a 74LS00 quad NAND through pull-down resistors, and its four outputs drive LEDs." />
   <script type="application/ld+json">
   {
     "@context": "https://schema.org",
@@ -253,11 +270,16 @@
 
     .mock-wrap { max-width: 980px; margin: 56px auto 0; padding: 0 2rem; }
 
+    /* fit-content, because --hero-max-h below can make the carousel NARROWER
+       than the column: a full-width frame around a narrowed slide is a framed
+       window with 400px of empty desk down each side. The frame hugs it. */
     .app-window {
       background: var(--mantle);
       border: 1px solid var(--surface-0);
       border-radius: 14px;
       overflow: hidden;
+      width: fit-content;
+      margin: 0 auto;
       box-shadow: 0 40px 100px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(255,255,255,0.04);
     }
 
@@ -267,14 +289,34 @@
        slide set, so it never resizes as slides advance; each image is then drawn
        at its own scale relative to that box and centred in it. hero-carousel.js
        measures the slides and writes --hero-max-w / --hero-ratio; the values
-       here are the FIRST slide's, which is all a visitor with JS off sees. */
+       here are the FIRST slide's, which is all a visitor with JS off sees.
+
+       --hero-max-h CAPS THE RESULT, because the widest slide and the tallest one
+       need not be the same slide: a portrait screenshot beside a landscape one
+       gives a box taller than either, and at the 916px this layout actually
+       grants it that came out 1093px tall — 121% of a 13" laptop viewport, so
+       the hero screenshot could not be seen whole without scrolling and pushed
+       Features most of a screen further down (measured: 1942px). The cap is a
+       max-HEIGHT and not a letterbox: with aspect-ratio set and width auto, the
+       height constraint transfers back through the ratio, so the whole frame
+       scales down keeping its shape and every slide keeps its own relative
+       scale. Nothing is cropped and nothing is distorted.
+
+       It is deliberately loose enough to bite ONLY where the hero would
+       otherwise overrun the window — a large monitor and a phone measure
+       identical to no cap at all, a 13" laptop lands at 588x702 with Features
+       at 1554px. The empty space around a LANDSCAPE slide is untouched by any
+       of this and no cap fixes it: one fixed box cannot hold a 0.82 portrait
+       and a 1.63 landscape snugly. Consistent screenshot aspect is what would. */
     .hero-carousel {
       --hero-max-w: 1342px;
       --hero-ratio: 1342 / 1642;
+      --hero-max-h: 78vh;
       position: relative;
       overflow: hidden;
       max-width: var(--hero-max-w);
       aspect-ratio: var(--hero-ratio);
+      max-height: var(--hero-max-h);
       margin: 0 auto;
     }
 
@@ -562,8 +604,37 @@
 
     @media (max-width: 640px) {
       .prerelease-banner { padding: 9px 1rem; font-size: 0.74rem; }
-      nav { padding: 0 1rem; }
-      .nav-right .nav-link, .nav-right .nav-dropdown { display: none; }
+
+      /* The nav USED TO hide every link and the dropdown here, leaving a phone
+         with a logo and a Download button — the guide, the source and the
+         donate link reachable only by scrolling to the footer. It wraps onto a
+         second row instead: nothing is removed, and the links simply flow.
+         No hamburger, so no toggle to build, nothing duplicated in the markup,
+         and no third state to get wrong.
+         It also stops being STICKY down here, because a two-row header pinned
+         to the top of a 667px phone is a fifth of the screen spent on
+         navigation. */
+      nav {
+        position: static;
+        height: auto;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 10px;
+        padding: 10px 1rem;
+      }
+      .nav-right {
+        width: 100%;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 10px 1.1rem;
+      }
+      .nav-link { font-size: 0.82rem; }
+      .nav-right .btn { padding: 7px 14px; }
+      /* The dropdown card is anchored to its summary, which is now somewhere in
+         the middle of a centred row — pin it to the viewport edge instead of
+         letting it hang off one. */
+      .nav-dropdown-menu { right: auto; left: 50%; transform: translateX(-50%); }
+
       .hero { padding: 64px 1rem 48px; }
       .mock-wrap { margin-top: 36px; padding: 0 1rem; }
       .section { padding: 64px 1rem; }
@@ -583,7 +654,14 @@
 <body>
 
 <!-- ── Pre-release notice ──────────────────────────────────────────────────── -->
-<div class="prerelease-banner" role="alert">
+<!-- NO role="alert" (and no role="status"). Both are LIVE REGIONS, for content
+     that appears or changes after the page has settled; this banner is in the
+     markup from the first byte, so an assertive one interrupted every screen
+     reader on load with a message that was never news. Left as plain content it
+     is announced in reading order, first thing, which is where it already is.
+     downloads.js only ever HIDES it (display:none at a stable 1.0), and a live
+     region is not needed to stop announcing something. -->
+<div class="prerelease-banner">
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
     <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
   </svg>
@@ -887,9 +965,10 @@
       or <a href="https://github.com/jfigge/chiphippo" rel="noopener noreferrer">build from source</a>.
     </p>
 
-    <!-- Version history — populated by downloads.js; stays hidden until 2+ releases exist -->
+    <!-- Version history — populated by downloads.js with the releases BEFORE
+         the one above, so it stays hidden until a second release exists. -->
     <div id="version-history" class="version-history" hidden>
-      <p class="vh-head">Recent releases</p>
+      <p class="vh-head">Previous releases</p>
       <div id="version-history-list" class="vh-list"></div>
     </div>
   </div>
@@ -936,5 +1015,6 @@
 
 <script src="downloads.js" defer></script>
 <script src="hero-carousel.js" defer></script>
+<script src="nav.js" defer></script>
 </body>
 </html>

@@ -2156,7 +2156,7 @@ test("normalizeDocument: discretes + PSUs survive; junk dropped/coerced", () => 
       {
         id: "c2",
         kind: "discrete",
-        ref: "capacitor",
+        ref: "nonesuch",
         board: "bb1",
         anchor: "b8",
       }, // bad ref

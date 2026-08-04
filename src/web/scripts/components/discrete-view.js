@@ -34,6 +34,7 @@ import { PX_PER_UNIT } from "../desk/desk-geometry.js";
 import { holePosition, rotateOffset } from "../model/breadboard.js";
 import { partDef } from "../catalog/index.js";
 import { packageSpec } from "../model/footprints.js";
+import { formatOhms } from "../model/ohm-format.js";
 import { chipBox, CHIP_BODY_TOP, CHIP_BODY_BOTTOM } from "./chip-view.js";
 import {
   buildBurnOverlay,
@@ -545,13 +546,6 @@ function buildOscillatorCan(svg, def, params) {
     buildBurnOverlay(center.dx, center.dy, 0.6),
   );
   svg.append(status);
-}
-
-/** A compact ohms label: 10000 → "10k", 4700000 → "4.7M", 220 → "220". */
-function formatOhms(ohms) {
-  if (ohms >= 1e6) return `${+(ohms / 1e6).toFixed(2)}M`;
-  if (ohms >= 1e3) return `${+(ohms / 1e3).toFixed(2)}k`;
-  return String(ohms);
 }
 
 /**

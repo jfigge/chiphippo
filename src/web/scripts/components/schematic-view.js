@@ -33,6 +33,7 @@ import { el, svgEl } from "../dom.js";
 import { t } from "../i18n.js";
 import { PX_PER_UNIT, clampZoom } from "../desk/desk-geometry.js";
 import { layout } from "../model/schematic-layout.js";
+import { formatOhms } from "../model/ohm-format.js";
 import { DeskView } from "./desk-view.js";
 import { NetlistCache } from "./netlist-cache.js";
 
@@ -195,12 +196,6 @@ function buildEdge(edge) {
 }
 
 // ── Distinctive-shape parts (LED / resistor / switch / button / PSU / clock) ──
-
-/** Human ohms, e.g. 10000 → "10k", 220 → "220". */
-function formatOhms(n) {
-  if (!Number.isFinite(n)) return "";
-  return n >= 1000 ? `${n / 1000}k` : `${n}`;
-}
 
 /** The small value text for a shape symbol (volts / ohms / Hz), or "". */
 function shapeText(shape, params) {

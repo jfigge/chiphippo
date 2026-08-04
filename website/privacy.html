@@ -3,6 +3,12 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <!-- GitHub Pages can't set response headers, so the CSP rides in a meta tag,
+       as index.html's does. This page has no scripts at all, so script-src is
+       'none' rather than 'self'; the inline <style> below is what needs
+       'unsafe-inline', and style-src alone. No frame-ancestors — the spec
+       ignores it in a meta CSP, and it logged an error every load. -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'" />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   <meta name="description" content="Chip Hippo's privacy statement: no accounts, no telemetry, no tracking. Your circuit designs stay on your own device, and this website sets no cookies." />
   <title>Privacy — Chip Hippo</title>
@@ -61,7 +67,20 @@
     .footer-name { font-size: 1.1rem; font-weight: 800; color: var(--text); }
     footer p { color: var(--overlay-0); font-size: 0.83rem; line-height: 1.8; }
     footer a { color: var(--accent); text-decoration: none; }
-    @media (max-width: 640px) { nav { padding: 0 1rem; } .nav-right .nav-link { display: none; } .page { padding: 44px 1rem 64px; } }
+    /* The nav wraps onto a second row rather than hiding its links, as
+       index.html's does — a phone was left with a logo and a Download button.
+       Not sticky down here: a two-row header pinned to a short screen is a
+       lot of viewport spent on navigation. */
+    @media (max-width: 640px) {
+      nav {
+        position: static; height: auto; flex-wrap: wrap;
+        justify-content: center; gap: 10px; padding: 10px 1rem;
+      }
+      .nav-right { width: 100%; flex-wrap: wrap; justify-content: center; gap: 10px 1.1rem; }
+      .nav-link { font-size: 0.82rem; }
+      .nav-right .btn { padding: 7px 14px; }
+      .page { padding: 44px 1rem 64px; }
+    }
   </style>
 </head>
 <body>
@@ -92,7 +111,7 @@
 <main class="page">
   <p class="page-tag">Legal</p>
   <h1>Privacy Statement</h1>
-  <p class="updated">Last updated: July 22, 2026</p>
+  <p class="updated">Last updated: August 4, 2026</p>
 
   <div class="tldr" role="note">
     <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
@@ -101,8 +120,9 @@
     <p class="tldr-body">
       <strong>The short version:</strong> Chip Hippo has no accounts, no telemetry, and
       no third-party tracking. Everything you build — boards, chips, wires, and whole
-      designs — stays on your own device as plain files. This website sets no cookies and
-      runs no analytics.
+      designs — stays on your own device as plain files. The app makes no network
+      connection at all unless you switch one on, and the three you can switch on are
+      listed below. This website sets no cookies and runs no analytics.
     </p>
   </div>
 
@@ -124,22 +144,56 @@
     move it, or delete it yourself at any time.
   </p>
 
-  <h3>Fully offline simulation</h3>
+  <h3>Fully offline by default</h3>
   <p>
-    Chip Hippo designs and simulates circuits entirely on your machine. The app makes no
-    network requests to run — placing parts, wiring, and the whole simulation engine are
-    local computation. It does not send your designs anywhere.
+    Chip Hippo designs and simulates circuits entirely on your machine. Placing parts,
+    wiring, the simulation engine, the schematic view, and every file you save are local
+    computation on local files. A freshly installed Chip Hippo that you have not
+    configured makes <strong>no network connection at all</strong> — there is no server
+    behind it, and nothing is uploaded to us at any point.
   </p>
 
-  <h3>Software updates (optional)</h3>
+  <h3>Optional connections you can turn on</h3>
   <p>
-    If update checks are offered and you use them — or download a new version manually —
-    the app or your browser contacts
-    <a href="https://github.com" rel="noopener noreferrer">GitHub</a> to look for and fetch
-    new releases. That connection reaches GitHub's servers and is subject to
-    <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement" rel="noopener noreferrer">GitHub's privacy statement</a>.
-    You can always download new versions yourself instead.
+    There are exactly three features that reach the network, and none of them is on until
+    you turn it on or press the button that starts it. All three talk to third parties
+    directly — not to us, and not by way of anything we run.
   </p>
+  <ul>
+    <li>
+      <strong>Update checks (off by default).</strong> Settings ▸ About can check
+      <a href="https://github.com" rel="noopener noreferrer">GitHub</a> for a newer
+      release, and Help ▸ <em>Check for Updates…</em> does it once on demand. That
+      connection reaches GitHub's servers and is subject to
+      <a href="https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement" rel="noopener noreferrer">GitHub's privacy statement</a>.
+      Nothing about your designs is sent — it asks what the latest version is and, if you
+      agree, downloads it. You can always download new versions yourself instead, and
+      builds installed from the Mac App Store have no updater at all.
+    </li>
+    <li>
+      <strong>The AI circuit assistant (off until you add a key).</strong> If you supply
+      your own API key, the assistant can build a circuit from a description or review the
+      one on your desk. What is sent, to the provider <em>you</em> choose, is: the text
+      you type, a list of the parts in Chip Hippo's catalogue, and — when you ask for a
+      <em>review</em> — a written description of the circuit currently on the desk,
+      including its parts, their names and descriptions, and how they are connected.
+      <strong>That is your design leaving your machine</strong>, so treat a review the way
+      you would treat pasting a design into any third-party service. The provider is
+      whichever endpoint you configure — <a href="https://www.anthropic.com/legal/privacy" rel="noopener noreferrer">Anthropic</a>,
+      or any OpenAI-compatible endpoint, which may be a model running locally on your own
+      machine — and its handling of that text is governed by its own privacy policy, not
+      ours. Your API key is stored on your device, encrypted with your operating system's
+      credential store, is never written to a settings file in plain text, and is sent
+      only to that provider. If your OS offers no credential store, Chip Hippo refuses to
+      save the key rather than storing it unprotected.
+    </li>
+    <li>
+      <strong>Datasheet downloads (on demand).</strong> Settings ▸ Data Sheets ▸
+      <em>Download…</em> fetches manufacturer PDFs from their publishers' and archives'
+      own web servers, so the pinout windows can link to them. It sends nothing but the
+      file requests themselves, and only when you press the button.
+    </li>
+  </ul>
 
   <h3>No telemetry</h3>
   <p>
@@ -184,8 +238,14 @@
     <li>We don't sell, rent, or share your personal data — we don't collect it to begin with.</li>
     <li>We don't run ads or embed third-party trackers, in the app or on this site.</li>
     <li>We don't require or create user accounts.</li>
-    <li>We don't collect, transmit, or store your circuit designs.</li>
+    <li>We don't collect, receive, or store your circuit designs — there is nowhere for
+      them to go, because we run no server.</li>
   </ul>
+  <p>
+    The one thing that <em>can</em> send a design off your machine is the AI assistant's
+    review, described above — and it goes to the provider you configured, on a key you
+    supplied, at the moment you ask for it. It never comes to us.
+  </p>
 
   <h2>4. Your data and your rights</h2>
   <p>

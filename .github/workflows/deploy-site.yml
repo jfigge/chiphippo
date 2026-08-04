@@ -51,6 +51,44 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: node scripts/build-versions.mjs --repo "${{ github.repository }}" --out website/versions.json
 
+      # website/docs/ is a BUILD OUTPUT of src/web/docs/*.md that also happens to
+      # be committed, so before this step the deployed guide was only as fresh as
+      # the last hand-run of `make docs`. It went stale twice that way — da4e5d4
+      # and 981c257 both edited the Markdown without regenerating, and the site
+      # served the previous build until 3a7d4fb caught up. Building it here makes
+      # the deployed guide a function of the Markdown and nothing else, which is
+      # the same argument the "no paths filter" note above makes: a few seconds
+      # every push beats a silently stale site.
+      #
+      # marked is ESM-only and lives in src/'s devDependencies; build-docs.mjs
+      # accepts MARKED_DIR precisely so CI can install that ONE package (~480 KB)
+      # instead of the whole src/ tree, which would drag in Electron.
+      #
+      # THE PIN MATTERS MORE THAN THE CACHE. Installing bare `marked` resolved
+      # the range in package.json, so CI could render the site with a different
+      # patch release than `make docs` produces locally and than the in-app
+      # viewer bundles — a silent divergence between the same Markdown rendered
+      # three ways. Reading the EXACT version out of the lockfile is what `npm
+      # ci` would have installed, so all three now agree by construction, and it
+      # doubles as an honest cache key: a marked bump busts it on its own.
+      - name: Pin the Markdown renderer to src/'s own resolved version
+        id: marked
+        run: |
+          echo "version=$(node -p "require('./src/package-lock.json').packages['node_modules/marked'].version")" >> "$GITHUB_OUTPUT"
+
+      - name: Cache the Markdown renderer
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: .docs-deps
+          key: docs-deps-${{ runner.os }}-marked-${{ steps.marked.outputs.version }}
+
+      - name: Build the hosted user guide
+        run: |
+          [ -d .docs-deps/node_modules/marked ] || \
+            npm install --no-save --no-audit --no-fund \
+              --prefix .docs-deps "marked@${{ steps.marked.outputs.version }}"
+          MARKED_DIR="$PWD/.docs-deps/node_modules" make docs
+
       - name: Configure Pages
         uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5
         with:
