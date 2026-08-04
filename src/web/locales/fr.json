@@ -88,6 +88,10 @@
       "binImage": "Image binaire",
       "intelHex": "Intel HEX",
       "allFiles": "Tous les fichiers"
+    },
+    "regrant": {
+      "message": "Confirmer l'accès à ce projet",
+      "button": "Autoriser l'accès"
     }
   },
   "toolbar": {
@@ -855,6 +859,10 @@
     "deleteTabMessage": "Sa conception part avec lui. Rien n'est écrit avant l'enregistrement du projet : fermer le projet sans enregistrer le ramène donc.",
     "missingTitle": "Ce projet n'est plus là",
     "missingMessage": "« {name} » est introuvable. Le retirer des projets récents ?",
+    "deniedTitle": "macOS demande une confirmation d'accès",
+    "deniedMessage": "macOS n'autorisera pas Chip Hippo à ouvrir « {name} » tant que vous ne l'aurez pas confirmé. Sélectionnez-le une fois et il s'ouvrira normalement ensuite.",
+    "deniedConfirm": "Confirmer l'accès…",
+    "deniedMismatch": "Il s'agissait d'un autre fichier. Sélectionnez « {name} » lui-même pour en confirmer l'accès.",
     "untitledTitle": "Ce projet n'a pas été enregistré",
     "untitledMessage": "Il n'a pas encore de place à lui : créer ou ouvrir un autre projet l'abandonne — bureaux compris.",
     "dirtyTitle": "Modifications non enregistrées",

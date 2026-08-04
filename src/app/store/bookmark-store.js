@@ -40,11 +40,25 @@
 // question with a different answer (`knownPath` in main.js), and a bookmark
 // never bypasses it.
 //
-// A BOOKMARK GOES STALE and there is no API to ask whether it did — Electron
-// hands back a stop function, not a resolved path. So nothing here reports
-// staleness: every caller's next step is already an `existsSync` on the path it
-// asked about, which answers false for a file that moved, and the existing
-// "that file is gone — forget it?" flow takes over. One failure mode, not two.
+// A BOOKMARK GOES STALE and Electron will not say so — `startAccessing…` hands
+// back a stop function, not a resolved path, so a dead blob and a live one are
+// the same value. That was once treated as "staleness is somebody else's
+// problem": every caller's next step is an `existsSync`, which was taken to
+// answer false for anything unreachable.
+//
+// IT DOES NOT. The sandbox answers metadata questions about paths it refuses to
+// open, so `existsSync` reports TRUE for a file that then raises EPERM — and
+// the app went on believing it held access it did not have. Worse, the commonest
+// bookmark in the app is stale by construction: a SAVE panel with
+// `securityScopedBookmarks` creates a blank file and mints a bookmark against
+// it that never resolves again (electron/electron#32544, open upstream), so
+// every project created with Save As failed to reopen on the next launch.
+//
+// So the scope is PROVED, by the read the caller is about to do (`readable`
+// below). A blob that does not survive that is dropped on the spot, and
+// `canAccess` lets a caller tell "gone" from "denied" — which need opposite
+// offers: forget the entry, or re-grant it through an open panel (an OPEN
+// panel's bookmarks are sound, which is what makes the repair permanent).
 //
 // Outside a MAS build every method is inert, so no call site branches: a direct
 // build's dialogs, reads and writes behave exactly as they always have.
@@ -56,6 +70,7 @@
 "use strict";
 
 const path = require("path");
+const fs = require("fs");
 
 const io = require("./io");
 const { isMas } = require("../store-build");
@@ -63,6 +78,43 @@ const { isMas } = require("../store-build");
 /** Schema version of the sidecar, so a later format change has a hinge. The
     shape is `{ version, bookmarks: { <absolute path>: <base64 blob> } }`. */
 const VERSION = 1;
+
+/**
+ * Can this path be READ — really, by the operation that would be used on it?
+ *
+ * Deliberately not `existsSync`/`accessSync`: the App Sandbox answers metadata
+ * questions about paths it will not open, so both report success for a file
+ * that is about to raise EPERM. A directory is probed by listing it and a file
+ * by opening it, because those are the calls the app actually makes.
+ *
+ * @param {string} target An absolute path.
+ * @returns {boolean}
+ */
+function readable(target) {
+  try {
+    if (fs.statSync(target).isDirectory()) {
+      fs.readdirSync(target);
+      return true;
+    }
+  } catch {
+    return false; // gone, or not even stat-able
+  }
+  let fd;
+  try {
+    fd = fs.openSync(target, "r");
+    return true;
+  } catch {
+    return false;
+  } finally {
+    if (fd !== undefined) {
+      try {
+        fs.closeSync(fd);
+      } catch {
+        /* ignore */
+      }
+    }
+  }
+}
 
 class BookmarkStore {
   /**
@@ -188,12 +240,49 @@ class BookmarkStore {
     const key = path.resolve(filePath);
     const blob = this._read()[key];
     if (typeof blob !== "string" || !blob) return null;
+    let stop;
     try {
-      const stop = this._app.startAccessingSecurityScopedResource(blob);
-      return typeof stop === "function" ? stop : null;
+      stop = this._app.startAccessingSecurityScopedResource(blob);
     } catch {
       this._drop(key);
       return null;
+    }
+    if (typeof stop !== "function") return null;
+    // THE SCOPE IS VERIFIED, NOT ASSUMED. `startAccessingSecurityScopedResource`
+    // hands back a stop function whether or not the blob actually resolved, so
+    // a STALE bookmark is indistinguishable from a live one at this line — and
+    // a bookmark minted by the SAVE panel for a file that did not yet exist is
+    // stale from the very next launch (electron/electron#32544: the panel
+    // creates a blank file, and the bookmark it mints against it never resolves
+    // again). Believing it cost the caller an EPERM several frames later, with
+    // nothing to attribute it to.
+    //
+    // `existsSync` is NOT the check: the sandbox permits stat() on paths it
+    // denies open() on, so it answers true for a file we cannot read. Only a
+    // real read proves a real grant.
+    if (readable(key)) return stop;
+    stop();
+    this._drop(key);
+    return null;
+  }
+
+  /**
+   * Whether `filePath` can actually be READ right now — scope redeemed if there
+   * is a bookmark for it, and proved with a real read either way.
+   *
+   * This is what separates "that file is gone" from "macOS will not let us
+   * touch it", which look identical from outside and need opposite offers: one
+   * is forgotten, the other is re-granted through an open panel. With no
+   * bookmark (every path inside the container, and every path in a direct
+   * build) it is simply the read, which is the right answer there.
+   */
+  canAccess(filePath) {
+    if (typeof filePath !== "string" || !filePath) return false;
+    const stop = this._start(filePath);
+    try {
+      return readable(path.resolve(filePath));
+    } finally {
+      stop?.();
     }
   }
 

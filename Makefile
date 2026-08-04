@@ -466,6 +466,11 @@ clean:
 	@rm -rf $(BUILD_DIR) $(DIST_DIR)
 	@echo "--------------------------------"
 
+upload:
+	API_PRIVATE_KEYS_DIR=certs xcrun altool --upload-app -t macos \
+  		-f "build/src/dist/mas-universal/Chip-Hippo-1.0.0-universal.pkg" \
+  		--apiKey X3M2YK7357 --apiIssuer 245bb0e6-5b7e-47e4-946b-60e8ee1bc19c
+
 # ─── Help ─────────────────────────────────────────────────────────────────────
 help:
 	@echo ""

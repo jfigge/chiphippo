@@ -2335,13 +2335,31 @@ Electron main process (src/app/main.js)
     learns bookmarks exist. `knownPath` is unchanged and unbypassed: it answers
     whether the RENDERER may aim main at a path, a bookmark answers whether the
     KERNEL will allow it, and both still have to say yes.
-  - **STALENESS IS NOT A NEW FAILURE MODE.** Electron hands back a stop function,
-    not a resolved path, so nothing can ask whether a bookmark still points where it
-    did — and nothing needs to: every caller's next step is already an `existsSync`
-    on the stored path, which answers false for a file that moved, and
-    `{ok:false, code:"missing"}` (the renderer's "that file is gone — forget it?"
-    prompt) is already what happens then. A blob the OS refuses outright is dropped
-    on the spot and the read runs unscoped, landing in the same place.
+  - **A SCOPE IS PROVED, NOT ASSUMED — and this was got wrong once, expensively.**
+    Electron hands back a stop function, not a resolved path, so a dead blob and a
+    live one are the same value at that line. That was originally read as
+    "staleness is somebody else's problem", on the reasoning that every caller's
+    next step is an `existsSync` which would answer false for anything unreachable.
+    **IT DOES NOT.** The App Sandbox answers metadata questions about paths it
+    refuses to open, so `existsSync` returns TRUE for a file that then raises
+    `EPERM` — and the app went on believing it held access it did not have. Worse,
+    the commonest bookmark in the app is stale BY CONSTRUCTION: a SAVE panel with
+    `securityScopedBookmarks` creates a blank file and mints a bookmark against it
+    that never resolves again (**electron/electron#32544**, open upstream since
+    2022), so every project created with Save As failed to reopen on the next
+    launch with a raw `EPERM` in a dialog. So `_start` now VERIFIES the scope it
+    just obtained with the read the caller is about to do (`readable` — a
+    `readdirSync` for a directory, an `openSync` for a file, because those are the
+    calls that are actually made; `existsSync`/`accessSync` are the ones that lie),
+    stops and drops a blob that fails, and `canAccess` lets a caller tell **gone**
+    from **denied**. They need opposite offers, which is the whole point of
+    splitting them: a file that moved is forgotten, a file merely out of reach is
+    **re-granted** through `project:regrant` — an OPEN panel aimed at that exact
+    path, whose bookmark does survive, so the repair is permanent and asked once
+    per project rather than once per launch. The panel's answer is checked against
+    the path that was asked about: picking a different file is refused, never
+    reinterpreted, or a permission prompt would become an open-any-file gesture
+    that skipped the MRU allowlist.
   - **`atomicWrite` CANNOT BE ATOMIC IN A STORE BUILD, and that is not a bookmark
     problem.** `io.js` writes `<file>.chiphippotmp-N.tmp` beside its target and
     renames over it; a save panel's grant covers the chosen FILE, not the folder

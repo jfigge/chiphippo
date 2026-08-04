@@ -88,6 +88,10 @@
       "binImage": "二进制映像",
       "intelHex": "Intel HEX",
       "allFiles": "所有文件"
+    },
+    "regrant": {
+      "message": "确认对该项目的访问权限",
+      "button": "授予访问权限"
     }
   },
   "toolbar": {
@@ -841,6 +845,10 @@
     "deleteTabMessage": "它的设计会一并消失。在保存项目之前什么都不会写入磁盘，所以不保存就关闭项目可以让它回来。",
     "missingTitle": "该项目已经不在了",
     "missingMessage": "找不到“{name}”。要把它从最近使用的项目中移除吗？",
+    "deniedTitle": "macOS 需要你确认访问权限",
+    "deniedMessage": "在你确认之前，macOS 不会允许 Chip Hippo 打开“{name}”。选择它一次，之后就能正常打开了。",
+    "deniedConfirm": "确认访问…",
+    "deniedMismatch": "那是另一个文件。请选择“{name}”本身，以确认对它的访问权限。",
     "untitledTitle": "此项目尚未保存",
     "untitledMessage": "它还没有自己的存放位置，因此新建或打开另一个项目会丢弃它 — 连同所有桌面。",
     "dirtyTitle": "有未保存的更改",

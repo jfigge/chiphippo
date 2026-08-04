@@ -580,7 +580,9 @@ function adoptProject(filePath) {
  * Open a project the user picked from the MRU menu — the one read of a
  * renderer-named path that no dialog mediated, so it is allowed ONLY for a
  * path already on the list. A file that has since been moved or deleted comes
- * back as `{ ok:false, code:"missing" }` so the renderer can offer to forget it.
+ * back as `{ ok:false, code:"missing" }` so the renderer can offer to forget it,
+ * and one that exists but cannot be reached as `{ ok:false, code:"denied" }` so
+ * it can offer to re-grant it instead (`regrantProject` below).
  * @param {string} filePath
  */
 function openRecentProject(filePath) {
@@ -588,21 +590,79 @@ function openRecentProject(filePath) {
   if (!wanted || !recentProjects().includes(wanted)) {
     return { ok: false, code: "unknown", error: "not a recent project" };
   }
-  // A bookmark that no longer resolves leaves the stat to answer false, which
-  // is the SAME "missing" the renderer already offers to forget — one failure
-  // mode for a file that moved, whichever way it went.
+  // GONE and DENIED ARE DIFFERENT ANSWERS, and they used to be the same one.
+  // A file that moved is forgotten; a file we merely cannot reach is re-granted
+  // through an open panel — and in a store build the second is the common case,
+  // because a Save-As bookmark is stale from the next launch (see
+  // bookmark-store.js). `existsSync` cannot tell them apart: the sandbox lets it
+  // answer true for a file it will not open, which is how this arrived at the
+  // renderer as a raw EPERM instead of an offer.
   const bookmarks = getBookmarks();
-  if (
-    !safeCall("project:recent:exists", () =>
-      bookmarks.withAccess(wanted, () => fs.existsSync(wanted)), false) // prettier-ignore
-  ) {
+  if (!safeCall("project:recent:exists", () => fs.existsSync(wanted), false)) {
     return { ok: false, code: "missing", error: "file not found" };
+  }
+  if (
+    !safeCall("project:recent:access", () => bookmarks.canAccess(wanted), false)
+  ) {
+    // prettier-ignore
+    return { ok: false, code: "denied", error: "permission denied" };
   }
   try {
     const project = bookmarks.withAccess(wanted, () => adoptProject(wanted));
     if (!project) {
       return { ok: false, code: "error", error: "not a project file" };
     }
+    return { ok: true, project };
+  } catch (err) {
+    return { ok: false, code: "error", error: err.message };
+  }
+}
+
+/**
+ * Re-grant access to a recent project the sandbox will not let us open, by
+ * asking for it through an OPEN panel — the only way to mint a bookmark that
+ * lasts, since Electron offers no way to make one from a path we already hold
+ * (and the save panel's own is the thing that went stale).
+ *
+ * The panel opens ON the file, so the user's whole job is to confirm it. What
+ * comes back is checked against the path we asked about: picking a DIFFERENT
+ * file is not a re-grant, and silently opening whatever was chosen would turn a
+ * permission prompt into an open-any-file gesture that skipped the MRU
+ * allowlist. It is refused rather than reinterpreted.
+ *
+ * Allowed, like `openRecentProject`, only for a path already on the MRU list.
+ * @param {string} filePath
+ */
+async function regrantProject(filePath) {
+  const wanted = typeof filePath === "string" ? path.resolve(filePath) : "";
+  if (!wanted || !recentProjects().includes(wanted)) {
+    return { ok: false, code: "unknown", error: "not a recent project" };
+  }
+  const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
+  const opts = getBookmarks().dialogOpts({
+    properties: ["openFile"],
+    filters: projectFilters(),
+    defaultPath: wanted,
+    message: m("dialog.regrant.message", "Confirm access to this project"),
+    buttonLabel: m("dialog.regrant.button", "Grant Access"),
+  });
+  const result = win
+    ? await dialog.showOpenDialog(win, opts)
+    : await dialog.showOpenDialog(opts);
+  if (result.canceled || !result.filePaths?.[0]) return { ok: false, code: "cancelled" }; // prettier-ignore
+  if (path.resolve(result.filePaths[0]) !== wanted) {
+    return {
+      ok: false,
+      code: "mismatch",
+      error: "a different file was chosen",
+    };
+  }
+  // Mint from THIS panel — an open panel's bookmark resolves on later launches,
+  // which is what makes the repair permanent rather than good for one session.
+  getBookmarks().captureOpen(result);
+  try {
+    const project = adoptProject(wanted);
+    if (!project) return { ok: false, code: "error", error: "not a project file" }; // prettier-ignore
     return { ok: true, project };
   } catch (err) {
     return { ok: false, code: "error", error: err.message };
@@ -1763,6 +1823,9 @@ function registerIpc() {
     return store.newProject();
   });
   ipcMain.handle("project:open", () => openProjectDialog());
+  ipcMain.handle("project:regrant", (_event, filePath) =>
+    regrantProject(filePath),
+  );
   ipcMain.handle("project:open-recent", (_event, filePath) =>
     openRecentProject(filePath),
   );

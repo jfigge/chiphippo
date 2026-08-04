@@ -60,6 +60,18 @@ const masStore = (dir, app) => new BookmarkStore(dir, app, { enabled: true });
 
 const sidecar = (dir) => path.join(dir, "bookmarks.json");
 
+/**
+ * A REAL file to redeem a bookmark for. A scope is now proved by reading the
+ * path (see `readable` in the module), so a redeem test cannot use an invented
+ * name — an unreadable path is exactly what a stale bookmark looks like, which
+ * is the case the tests below the minting section pin deliberately.
+ */
+function realFile(dir, name) {
+  const file = path.join(dir, name);
+  fs.writeFileSync(file, "{}");
+  return file;
+}
+
 // ── The direct build touches nothing ─────────────────────────────────────────
 
 test("outside a store build every method is inert", () => {
@@ -158,13 +170,16 @@ test("bookmarks live in their own sidecar, never in settings.json", () => {
 
 test("withAccess starts the stored blob and stops it exactly once", () => {
   const app = fakeApp();
-  const store = masStore(tmpDir(), app);
-  store.captureSave({ filePath: "/tmp/p.chiphippo", bookmark: "the-blob" });
+  const dir = tmpDir();
+  const store = masStore(dir, app);
+  const file = realFile(dir, "p.chiphippo");
+  store.captureSave({ filePath: file, bookmark: "the-blob" });
 
-  const out = store.withAccess("/tmp/p.chiphippo", () => "value");
+  const out = store.withAccess(file, () => "value");
   assert.equal(out, "value");
   assert.deepEqual(app.calls.started, ["the-blob"]);
   assert.equal(app.calls.stopped, 1);
+  assert.equal(store.has(file), true, "a scope that worked is kept");
 });
 
 test("withAccess on a path with no bookmark starts nothing (userData)", () => {
@@ -179,12 +194,14 @@ test("withAccess on a path with no bookmark starts nothing (userData)", () => {
 
 test("access is stopped when the work throws, and the error still lands", () => {
   const app = fakeApp();
-  const store = masStore(tmpDir(), app);
-  store.captureSave({ filePath: "/tmp/p", bookmark: "blob" });
+  const dir = tmpDir();
+  const store = masStore(dir, app);
+  const file = realFile(dir, "p");
+  store.captureSave({ filePath: file, bookmark: "blob" });
 
   assert.throws(
     () =>
-      store.withAccess("/tmp/p", () => {
+      store.withAccess(file, () => {
         throw new Error("read failed");
       }),
     /read failed/,
@@ -194,19 +211,21 @@ test("access is stopped when the work throws, and the error still lands", () => 
 
 test("access is held across an await and stopped when the promise settles", async () => {
   const app = fakeApp();
-  const store = masStore(tmpDir(), app);
-  store.captureSave({ filePath: "/tmp/p", bookmark: "blob" });
+  const dir = tmpDir();
+  const store = masStore(dir, app);
+  const file = realFile(dir, "p");
+  store.captureSave({ filePath: file, bookmark: "blob" });
 
   // Resolution: the stop waits for the promise, which is what makes holding
   // access across `await shell.openPath(...)` work.
-  const pending = store.withAccess("/tmp/p", () => Promise.resolve("ok"));
+  const pending = store.withAccess(file, () => Promise.resolve("ok"));
   assert.equal(app.calls.stopped, 0, "not stopped while still in flight");
   assert.equal(await pending, "ok");
   assert.equal(app.calls.stopped, 1);
 
   // Rejection stops it too, and re-throws.
   await assert.rejects(
-    store.withAccess("/tmp/p", () => Promise.reject(new Error("nope"))),
+    store.withAccess(file, () => Promise.reject(new Error("nope"))),
     /nope/,
   );
   assert.equal(app.calls.stopped, 2);
@@ -229,27 +248,80 @@ test("a blob the OS refuses is dropped, and the work still runs", () => {
   assert.equal(app.calls.stopped, 0);
 });
 
+// ── A scope is PROVED, not assumed ───────────────────────────────────────────
+//
+// The bug this section exists for: Electron hands back a stop function whether
+// or not the blob resolved, so a STALE bookmark looked exactly like a live one
+// and the caller found out several frames later, as an EPERM it could not
+// attribute to anything. A save panel's bookmark is stale from the next launch
+// (electron/electron#32544), so this was every project made with Save As.
+
+test("a bookmark that does not actually grant access is stopped and dropped", () => {
+  const app = fakeApp();
+  const dir = tmpDir();
+  const store = masStore(dir, app);
+  // Minted, stored, and pointing at nothing readable — a stale blob exactly as
+  // the save panel produces one.
+  const gone = path.join(dir, "stale.chiphippo");
+  store.captureSave({ filePath: gone, bookmark: "stale-blob" });
+  assert.equal(store.has(gone), true);
+
+  assert.equal(
+    store.withAccess(gone, () => "ran unscoped"),
+    "ran unscoped",
+    "the work still runs — withAccess does not invent a failure",
+  );
+  assert.deepEqual(app.calls.started, ["stale-blob"], "it was tried");
+  assert.equal(app.calls.stopped, 1, "and released rather than leaked");
+  assert.equal(store.has(gone), false, "a blob that grants nothing is dropped");
+});
+
+test("canAccess separates a file that is gone from one that is merely denied", () => {
+  const app = fakeApp();
+  const dir = tmpDir();
+  const store = masStore(dir, app);
+  const live = realFile(dir, "live.chiphippo");
+  store.captureSave({ filePath: live, bookmark: "good-blob" });
+
+  assert.equal(store.canAccess(live), true);
+  assert.equal(app.calls.stopped, 1, "the probe releases what it started");
+
+  // No bookmark at all is the userData case: the read itself is the answer.
+  const plain = realFile(dir, "plain.json");
+  assert.equal(store.canAccess(plain), true);
+  assert.equal(store.canAccess(path.join(dir, "never-existed")), false);
+  assert.equal(store.canAccess(""), false);
+});
+
+test("canAccess is true for a readable DIRECTORY, which is what a folder bookmark is for", () => {
+  // settings.datasheetDir is a folder, granted by an open panel; a file probe
+  // would be the wrong call on it.
+  const dir = tmpDir();
+  const store = masStore(dir, fakeApp());
+  assert.equal(store.canAccess(dir), true);
+});
+
 // ── Session holds ────────────────────────────────────────────────────────────
 
 test("hold keeps access for a slot, and replacing it stops the previous once", () => {
   const app = fakeApp();
-  const store = masStore(tmpDir(), app);
-  store.captureOpen({
-    filePaths: ["/tmp/a.chiphippo", "/tmp/b.chiphippo"],
-    bookmarks: ["blob-a", "blob-b"],
-  });
+  const dir = tmpDir();
+  const store = masStore(dir, app);
+  const a = realFile(dir, "a.chiphippo");
+  const b = realFile(dir, "b.chiphippo");
+  store.captureOpen({ filePaths: [a, b], bookmarks: ["blob-a", "blob-b"] });
 
-  store.hold("project", "/tmp/a.chiphippo");
+  store.hold("project", a);
   assert.deepEqual(app.calls.started, ["blob-a"]);
   assert.equal(app.calls.stopped, 0, "held for the session");
 
   // Re-holding the SAME path is a no-op — adoptProject calls this on every
   // open, including re-opening what is already open.
-  store.hold("project", "/tmp/a.chiphippo");
+  store.hold("project", a);
   assert.deepEqual(app.calls.started, ["blob-a"]);
   assert.equal(app.calls.stopped, 0);
 
-  store.hold("project", "/tmp/b.chiphippo");
+  store.hold("project", b);
   assert.deepEqual(app.calls.started, ["blob-a", "blob-b"]);
   assert.equal(app.calls.stopped, 1, "the previous hold was released");
 
@@ -261,9 +333,11 @@ test("hold keeps access for a slot, and replacing it stops the previous once", (
 
 test("holding a path with no bookmark still releases the previous one", () => {
   const app = fakeApp();
-  const store = masStore(tmpDir(), app);
-  store.captureSave({ filePath: "/tmp/a", bookmark: "blob-a" });
-  store.hold("project", "/tmp/a");
+  const dir = tmpDir();
+  const store = masStore(dir, app);
+  const a = realFile(dir, "a");
+  store.captureSave({ filePath: a, bookmark: "blob-a" });
+  store.hold("project", a);
   store.hold("project", "/inside/the/container");
   assert.equal(app.calls.stopped, 1);
   store.releaseAll();
@@ -274,16 +348,19 @@ test("holding a path with no bookmark still releases the previous one", () => {
 
 test("prune keeps the named paths and forgets the rest, holds untouched", () => {
   const app = fakeApp();
-  const store = masStore(tmpDir(), app);
+  const dir = tmpDir();
+  const store = masStore(dir, app);
+  const keep = realFile(dir, "keep");
+  const drop = realFile(dir, "drop");
   store.captureOpen({
-    filePaths: ["/tmp/keep", "/tmp/drop"],
+    filePaths: [keep, drop],
     bookmarks: ["blob-keep", "blob-drop"],
   });
-  store.hold("project", "/tmp/drop");
+  store.hold("project", drop);
 
-  store.prune(["/tmp/keep"]);
-  assert.equal(store.has("/tmp/keep"), true);
-  assert.equal(store.has("/tmp/drop"), false);
+  store.prune([keep]);
+  assert.equal(store.has(keep), true);
+  assert.equal(store.has(drop), false);
   // Forgetting the bookmark is not revoking access already in use.
   assert.equal(app.calls.stopped, 0);
   store.releaseAll();

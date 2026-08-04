@@ -137,8 +137,22 @@ paths it stored earlier — the recent-projects list and the datasheet folder �
 are backed by **security-scoped bookmarks**: minted by the dialog that granted the path,
 stored in the main-only sidecar `userData/bookmarks.json`, and redeemed for access when
 the path is used again. `src/app/store/bookmark-store.js` is the only place that does
-any of it, and it is inert outside a store build. A bookmark that no longer resolves
-leaves the ordinary "that file is gone — forget it?" prompt to handle it.
+any of it, and it is inert outside a store build.
+
+**A SAVE PANEL'S BOOKMARK DOES NOT SURVIVE, and only a store build can see it.**
+`showSaveDialog` with `securityScopedBookmarks` creates a blank file and mints a
+bookmark against it that is stale from the next launch
+([electron/electron#32544](https://github.com/electron/electron/issues/32544), open
+upstream). `startAccessingSecurityScopedResource` returns a stop function either way,
+so nothing detects it at the call — and `existsSync` cannot either, because the sandbox
+answers metadata questions about files it will not open. Left alone, every project made
+with Save As reopened as a raw `EPERM`. So a redeem is **proved** with a real read, a
+blob that fails is dropped, and the recent list reports **`denied`** separately from
+**`missing`**: the renderer offers to *re-grant* the file through an open panel (whose
+bookmark does last) rather than to forget it. Asked once per project, not once per
+launch. **This is exactly the class of bug `make mas-dev` exists to find — it cannot
+reproduce in a direct build, and the quit-and-relaunch step is the only thing that
+surfaces it.**
 
 **Writes to a user-chosen file are not atomic in a store build.** The sandbox denies the
 sibling temp file `atomicWrite` normally renames into place, so under `isMas()` — and

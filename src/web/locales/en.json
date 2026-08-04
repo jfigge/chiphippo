@@ -88,6 +88,10 @@
       "binImage": "Binary image",
       "intelHex": "Intel HEX",
       "allFiles": "All files"
+    },
+    "regrant": {
+      "message": "Confirm access to this project",
+      "button": "Grant Access"
     }
   },
   "toolbar": {
@@ -855,6 +859,10 @@
     "deleteTabMessage": "Its design goes with it. Nothing is written until the project is saved, so closing the project without saving brings it back.",
     "missingTitle": "That project is no longer there",
     "missingMessage": "\"{name}\" could not be found. Remove it from the recent projects?",
+    "deniedTitle": "macOS needs you to confirm access",
+    "deniedMessage": "macOS will not let Chip Hippo open \"{name}\" until you confirm it. Choose it once and it will open normally from then on.",
+    "deniedConfirm": "Confirm Access…",
+    "deniedMismatch": "That was a different file. Choose \"{name}\" itself to confirm access to it.",
     "untitledTitle": "This project hasn't been saved",
     "untitledMessage": "It has no home of its own yet, so starting or opening another project discards it — desktops and all.",
     "dirtyTitle": "Unsaved changes",

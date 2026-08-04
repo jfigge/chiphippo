@@ -88,6 +88,10 @@
       "binImage": "Immagine binaria",
       "intelHex": "Intel HEX",
       "allFiles": "Tutti i file"
+    },
+    "regrant": {
+      "message": "Conferma l'accesso a questo progetto",
+      "button": "Concedi accesso"
     }
   },
   "toolbar": {
@@ -855,6 +859,10 @@
     "deleteTabMessage": "Il suo progetto va via con lei. Nulla viene scritto finché il progetto non è salvato, quindi chiudere il progetto senza salvare la riporta.",
     "missingTitle": "Quel progetto non c'è più",
     "missingMessage": "«{name}» non è stato trovato. Rimuoverlo dai progetti recenti?",
+    "deniedTitle": "macOS richiede una conferma di accesso",
+    "deniedMessage": "macOS non consentirà a Chip Hippo di aprire «{name}» finché non lo confermi. Selezionalo una volta e da quel momento si aprirà normalmente.",
+    "deniedConfirm": "Conferma accesso…",
+    "deniedMismatch": "Quello era un file diverso. Seleziona «{name}» per confermare l'accesso a quel file.",
     "untitledTitle": "Questo progetto non è stato salvato",
     "untitledMessage": "Non ha ancora una casa propria, quindi crearne o aprirne un altro lo scarta — scrivanie comprese.",
     "dirtyTitle": "Modifiche non salvate",

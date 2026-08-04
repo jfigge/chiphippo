@@ -227,6 +227,13 @@ contextBridge.exposeInMainWorld("chiphippo", {
     open: () => ipcRenderer.invoke("project:open"),
     openRecent: (filePath) =>
       ipcRenderer.invoke("project:open-recent", filePath),
+    // `openRecent` answering `denied` means the file is there but the sandbox
+    // will not open it — a Save-As bookmark goes stale on the next launch
+    // (electron/electron#32544). `regrant` re-asks for it through an OPEN panel,
+    // whose bookmark survives, and opens it. Same MRU allowlist as `openRecent`;
+    // resolves `{ok:false, code:"cancelled"|"mismatch"}` when the user declines
+    // or picks a different file.
+    regrant: (filePath) => ipcRenderer.invoke("project:regrant", filePath),
     save: (meta, filePath) =>
       ipcRenderer.invoke("project:save", meta, filePath),
     recovery: {

@@ -88,6 +88,10 @@
       "binImage": "バイナリイメージ",
       "intelHex": "Intel HEX",
       "allFiles": "すべてのファイル"
+    },
+    "regrant": {
+      "message": "このプロジェクトへのアクセスを確認",
+      "button": "アクセスを許可"
     }
   },
   "toolbar": {
@@ -841,6 +845,10 @@
     "deleteTabMessage": "その設計も一緒に消えます。プロジェクトを保存するまで何も書き込まれないので、保存せずにプロジェクトを閉じれば元に戻ります。",
     "missingTitle": "そのプロジェクトはもうありません",
     "missingMessage": "「{name}」が見つかりませんでした。最近使ったプロジェクトから外しますか？",
+    "deniedTitle": "macOS がアクセスの確認を求めています",
+    "deniedMessage": "確認するまで、macOS は Chip Hippo が「{name}」を開くことを許可しません。一度選択すれば、以降は通常どおり開けます。",
+    "deniedConfirm": "アクセスを確認…",
+    "deniedMismatch": "別のファイルが選択されました。「{name}」自体を選択して、そのファイルへのアクセスを確認してください。",
     "untitledTitle": "このプロジェクトは保存されていません",
     "untitledMessage": "まだ自分の置き場所がないため、別のプロジェクトを作ったり開いたりすると破棄されます — デスクトップもすべてです。",
     "dirtyTitle": "保存していない変更",

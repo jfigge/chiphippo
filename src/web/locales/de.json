@@ -88,6 +88,10 @@
       "binImage": "Binärabbild",
       "intelHex": "Intel HEX",
       "allFiles": "Alle Dateien"
+    },
+    "regrant": {
+      "message": "Zugriff auf dieses Projekt bestätigen",
+      "button": "Zugriff gewähren"
     }
   },
   "toolbar": {
@@ -855,6 +859,10 @@
     "deleteTabMessage": "Sein Entwurf geht mit. Nichts wird geschrieben, bis das Projekt gespeichert wird — das Projekt ohne Speichern zu schließen bringt es also zurück.",
     "missingTitle": "Dieses Projekt ist nicht mehr da",
     "missingMessage": "„{name}“ wurde nicht gefunden. Aus den kürzlichen Projekten entfernen?",
+    "deniedTitle": "macOS verlangt eine Bestätigung des Zugriffs",
+    "deniedMessage": "macOS lässt Chip Hippo „{name}“ erst öffnen, wenn Sie es bestätigen. Wählen Sie die Datei einmal aus, danach lässt sie sich normal öffnen.",
+    "deniedConfirm": "Zugriff bestätigen…",
+    "deniedMismatch": "Das war eine andere Datei. Wählen Sie „{name}“ selbst aus, um den Zugriff darauf zu bestätigen.",
     "untitledTitle": "Dieses Projekt wurde nicht gespeichert",
     "untitledMessage": "Es hat noch kein eigenes Zuhause; ein neues oder anderes Projekt zu öffnen verwirft es — mit allen Arbeitsblättern.",
     "dirtyTitle": "Nicht gespeicherte Änderungen",

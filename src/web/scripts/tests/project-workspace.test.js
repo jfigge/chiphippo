@@ -66,6 +66,10 @@ function fakeBridge() {
     importDesktop: null, // what the Import dialog returns
     lastPick: null,
     lastExport: null,
+    // Paths the sandbox will not open — a Save-As bookmark gone stale. The file
+    // is THERE, which is what makes this a different answer from `missing`.
+    denied: new Set(),
+    regrantPick: null, // what the re-grant open panel returns (null → cancelled)
   };
   let minted = 0;
 
@@ -116,6 +120,20 @@ function fakeBridge() {
       if (!projects.has(filePath)) {
         return { ok: false, code: "missing", error: "file not found" };
       }
+      if (control.denied.has(filePath)) {
+        return { ok: false, code: "denied", error: "permission denied" };
+      }
+      return { ok: true, project: adopt(filePath) };
+    },
+    // The open panel that repairs a stale bookmark. Confirming the SAME file
+    // grants access for good; anything else is refused rather than opened.
+    regrant: async (filePath) => {
+      const picked = control.regrantPick;
+      if (!picked) return { ok: false, code: "cancelled" };
+      if (picked !== filePath) {
+        return { ok: false, code: "mismatch", error: "a different file" };
+      }
+      control.denied.delete(filePath);
       return { ok: true, project: adopt(filePath) };
     },
     // A save to a REAL path always empties the working slot: the slot holds only
@@ -1750,6 +1768,69 @@ test("a recent project that has gone offers to be forgotten", async () => {
   clickButton("Remove");
   await settle();
   assert.equal(h.recentList().includes("/home/gone.chiphippo"), false);
+});
+
+// ── A denied project is re-granted, never forgotten ──────────────────────────
+//
+// In a store build a Save-As bookmark is stale from the next launch
+// (electron/electron#32544), so the file is sitting there intact and the
+// sandbox simply will not open it. Offering to FORGET it would throw away a
+// project over a permission — the opposite of what is needed.
+
+/** A project that exists but that the sandbox refuses to open. */
+const seedDenied = (h, filePath) => {
+  h.seedProject(filePath, {
+    name: "Locked",
+    activeTab: "t1",
+    nextIndex: 2,
+    tabs: [{ id: "t1", name: "Main", doc: emptyDocument() }],
+  });
+  h.seedRecent(filePath);
+  h.control.denied.add(filePath);
+};
+
+test("a recent project the sandbox denies offers to re-grant, not to forget", async () => {
+  const h = await harness();
+  seedDenied(h, "/home/locked.chiphippo");
+  await leaving(() => h.workspace.openRecentProject("/home/locked.chiphippo"));
+  assert.match(dialogTitle(), /confirm access/i);
+
+  h.control.regrantPick = "/home/locked.chiphippo";
+  clickButton("Confirm Access…");
+  await settle();
+  assert.equal(h.workspace.projectName, "Locked");
+  assert.equal(h.workspace.projectLocation, "/home/locked.chiphippo");
+  // The entry is kept throughout — it was never the thing that was wrong.
+  assert.equal(h.recentList().includes("/home/locked.chiphippo"), true);
+});
+
+test("declining the re-grant leaves the recent entry exactly where it was", async () => {
+  const h = await harness();
+  seedDenied(h, "/home/locked.chiphippo");
+  await leaving(() => h.workspace.openRecentProject("/home/locked.chiphippo"));
+
+  h.control.regrantPick = null; // the user dismissed the panel
+  clickButton("Confirm Access…");
+  await settle();
+  assert.equal(h.recentList().includes("/home/locked.chiphippo"), true);
+  assert.notEqual(h.workspace.projectName, "Locked");
+});
+
+test("re-granting a DIFFERENT file is refused rather than opened", async () => {
+  const h = await harness();
+  seedDenied(h, "/home/locked.chiphippo");
+  h.seedProject("/home/other.chiphippo", {
+    name: "Other",
+    activeTab: "t1",
+    nextIndex: 2,
+    tabs: [{ id: "t1", name: "Main", doc: emptyDocument() }],
+  });
+  await leaving(() => h.workspace.openRecentProject("/home/locked.chiphippo"));
+
+  h.control.regrantPick = "/home/other.chiphippo";
+  clickButton("Confirm Access…");
+  await settle();
+  assert.notEqual(h.workspace.projectName, "Other", "the wrong file is not opened"); // prettier-ignore
 });
 
 test("a recent project that is still there opens", async () => {

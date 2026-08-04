@@ -465,9 +465,54 @@ export class ProjectWorkspace {
       }
       if (!res?.ok) {
         if (res?.code === "missing") return this.#offerForgetRecent(filePath);
+        if (res?.code === "denied") return this.#offerRegrantRecent(filePath);
         return PopupManager.notify({
           title: t("workspace.openFailTitle"),
           message: res?.error ?? t("workspace.unreadable"),
+        });
+      }
+      await this.#swapProject(res.project);
+    });
+  }
+
+  /**
+   * The file is there, but the sandbox will not open it — so the offer is to
+   * re-grant it, NOT to forget it. Anything else throws away a project that is
+   * sitting on disk intact.
+   *
+   * Confirming opens a native open panel on the file; agreeing to it mints a
+   * bookmark that lasts, so this is asked once per project and not once per
+   * launch. Declining leaves the entry exactly where it was, because a
+   * permission the user did not feel like granting now is not a dead entry.
+   */
+  #offerRegrantRecent(filePath) {
+    PopupManager.confirm({
+      title: t("workspace.deniedTitle"),
+      message: t("workspace.deniedMessage", { name: fileName(filePath) }),
+      note: filePath,
+      confirmLabel: t("workspace.deniedConfirm"),
+      onConfirm: () => void this.#regrantRecent(filePath),
+    });
+  }
+
+  async #regrantRecent(filePath) {
+    return this.#exclusive(async () => {
+      if (!(await this.#confirmLeaveProject())) return;
+      let res;
+      try {
+        res = await this.#bridge.project.regrant(filePath);
+      } catch (err) {
+        this.#fail(t("workspace.failOpen"), err);
+        return;
+      }
+      if (res?.code === "cancelled") return; // the panel is its own answer
+      if (!res?.ok) {
+        return PopupManager.notify({
+          title: t("workspace.openFailTitle"),
+          message:
+            res?.code === "mismatch"
+              ? t("workspace.deniedMismatch", { name: fileName(filePath) })
+              : (res?.error ?? t("workspace.unreadable")),
         });
       }
       await this.#swapProject(res.project);

@@ -88,6 +88,10 @@
       "binImage": "Imagen binaria",
       "intelHex": "Intel HEX",
       "allFiles": "Todos los archivos"
+    },
+    "regrant": {
+      "message": "Confirma el acceso a este proyecto",
+      "button": "Conceder acceso"
     }
   },
   "toolbar": {
@@ -855,6 +859,10 @@
     "deleteTabMessage": "Su diseño se va con él. No se escribe nada hasta que se guarda el proyecto, así que cerrar el proyecto sin guardar lo devuelve.",
     "missingTitle": "Ese proyecto ya no está ahí",
     "missingMessage": "No se encontró «{name}». ¿Quitarlo de los proyectos recientes?",
+    "deniedTitle": "macOS necesita que confirmes el acceso",
+    "deniedMessage": "macOS no permitirá que Chip Hippo abra «{name}» hasta que lo confirmes. Selecciónalo una vez y a partir de entonces se abrirá con normalidad.",
+    "deniedConfirm": "Confirmar acceso…",
+    "deniedMismatch": "Ese era otro archivo. Selecciona «{name}» para confirmar el acceso a ese archivo.",
     "untitledTitle": "Este proyecto no se ha guardado",
     "untitledMessage": "Todavía no tiene un sitio propio, así que crear o abrir otro proyecto lo descarta — con todos sus escritorios.",
     "dirtyTitle": "Cambios sin guardar",
