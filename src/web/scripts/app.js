@@ -527,6 +527,28 @@ async function init() {
     console.error("[renderer] settings:get failed:", err);
   }
 
+  // ── The application menu's own two items ──────────────────────────────────
+  // The live settings document, and About / Settings / Keyboard Shortcuts,
+  // registered HERE — before the project boots, before one panel is built.
+  //
+  // Everything below this point can fail. If it does, the window is still up
+  // with a full menu bar on it, and items registered at the END of init()
+  // would be dead in every one of them at once — an app that appears to
+  // ignore the mouse rather than one that failed to load something. These
+  // three depend on nothing but the settings just read, so they can always
+  // answer, and the About card is where the version and the support address
+  // are. `currentSettings` lives here rather than beside the Settings dialog
+  // below because the AI panel also reads `ai` off it on every send — that is
+  // how a Settings change reaches the panel with no wiring between them.
+  let currentSettings = settings;
+  window.addEventListener("chiphippo:show-about", () => AboutDialog.open());
+  window.addEventListener("chiphippo:open-settings", () =>
+    SettingsDialog.open(currentSettings),
+  );
+  window.addEventListener("chiphippo:keyboard-shortcuts", () =>
+    KeyboardShortcutsDialog.open(),
+  );
+
   // Projects: there is ALWAYS one, and its active desktop is the document the
   // desk starts on. Read BEFORE anything mounts, so the app opens straight
   // onto that desktop instead of painting a blank desk and swapping it out a
@@ -781,10 +803,6 @@ async function init() {
   });
   scopeView.setVisible(settings.scopeOpen === true);
 
-  // The live settings document. Declared here rather than beside the Settings
-  // dialog below because the AI panel reads `ai` from it on every send — that
-  // is how a Settings change reaches the panel with no wiring between them.
-  let currentSettings = settings;
   // The transport's last reported mode, kept because several panels need to
   // know the desk is frozen and `sim` itself is built further down.
   let transportMode = "stopped";
@@ -1717,15 +1735,16 @@ async function init() {
       });
     }
   });
-  window.addEventListener("chiphippo:show-about", () => AboutDialog.open());
-  window.addEventListener("chiphippo:open-settings", () =>
-    SettingsDialog.open(currentSettings),
-  );
-  window.addEventListener("chiphippo:keyboard-shortcuts", () =>
-    KeyboardShortcutsDialog.open(),
-  );
-  // The app version is no longer shown in the header — it lives in the About
-  // dialog (the (i) toggle), which fetches it over the IPC bridge.
+  // About / Settings / Keyboard Shortcuts are registered at the TOP of init()
+  // (see the note there), so that the application menu answers even when
+  // something below it has failed to build. The app version is no longer
+  // shown in the header — it lives in the About dialog (the (i) toggle),
+  // which fetches it over the IPC bridge.
 }
 
-init();
+// A THROWN init() USED TO BE SILENT, and silence is the worst thing it can
+// be: index.html carries no markup of its own, so a boot that died partway
+// left a blank (or half-built) window and a menu bar whose items did nothing,
+// with no record anywhere of why. The rejected build could not have said what
+// went wrong even if someone had been watching.
+init().catch((err) => console.error("[renderer] app failed to start:", err));

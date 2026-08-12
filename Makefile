@@ -60,6 +60,19 @@ endif
 # per-account.
 MAS_CSC_NAME ?= Jason Figge (2C564TQ2FY)
 
+# App Store Connect refuses a second upload carrying a build number it has
+# already seen, and the MARKETING version cannot be the thing that moves: the
+# version record was created against CFBundleShortVersionString exactly, so
+# bumping `version` in src/package.json orphans the build from the record it
+# belongs to. What moves is CFBundleVersion, which is what this sets — e.g.
+#
+#     make mas MAS_BUILD_VERSION=1.0.0.1
+#
+# Empty by default, in which case electron-builder uses `version` for both and
+# a first upload of a version needs no ceremony.
+MAS_BUILD_VERSION ?=
+MAS_BUILD_VERSION_ARG := $(if $(MAS_BUILD_VERSION),-c.mac.bundleVersion=$(MAS_BUILD_VERSION),)
+
 # ─── Version / Info ───────────────────────────────────────────────────────────
 version:
 	@echo "Version: $(VERSION)"
@@ -342,7 +355,7 @@ mas:
 	fi; \
 	$(MAKE) build-setup build-install && \
 	echo "Building Mac App Store package (.pkg, universal)..." && \
-	( cd $(BUILD_DIR)/src && $(MAS_SIGN_ENV) CSC_NAME="$(MAS_CSC_NAME)" npx electron-builder --mac mas --universal --publish never -c.mac.notarize=false ) && \
+	( cd $(BUILD_DIR)/src && $(MAS_SIGN_ENV) CSC_NAME="$(MAS_CSC_NAME)" npx electron-builder --mac mas --universal --publish never -c.mac.notarize=false $(MAS_BUILD_VERSION_ARG) ) && \
 	echo "  → $(BUILD_DIR)/src/dist/  (upload the .pkg with Transporter)" && \
 	echo "--------------------------------"
 

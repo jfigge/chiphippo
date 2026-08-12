@@ -80,6 +80,13 @@ const {
 // Any dev-ish launch gets the dev renderer flag (gates the desk debug HUD).
 const isDevLike = isDev || isHotReload || isDevTools;
 
+// The support address behind Help ▸ Chip Hippo Support. An IDENTITY, not prose,
+// so it is a constant rather than a catalog entry — the same characters in
+// every language. Duplicated in `web/scripts/components/about-dialog.js`, which
+// shows it on the About card; the two processes share no module, so keep them
+// in step.
+const SUPPORT_EMAIL = "hippoherd@gmail.com";
+
 // ── App icon ──────────────────────────────────────────────────────────────────
 // Resolved once at startup; used for the macOS dock and every BrowserWindow (so
 // a `make debug` run shows the Chip Hippo icon, not the default Electron one).
@@ -1579,6 +1586,21 @@ function buildAppMenu() {
     accelerator: "CmdOrCtrl+/",
     click: () => openDocsWindow(),
   };
+  // The one route from inside the app to a human. App Store Review Guideline
+  // 1.5 asks the APP to carry a contact route, not merely the store listing's
+  // Support URL — and in a store build the update item below is gone, so
+  // without this Help would offer nothing but a manual and a key list. A
+  // mailto rather than a page because it is the shortest path to a message;
+  // the About card shows the SAME address as selectable text for a machine
+  // with no mail client configured. It sits beside the guide (both are "get
+  // help") and above the rule, so it is never the item a store build strands
+  // under a trailing separator.
+  const support = {
+    label: m("menu.help.support", "Chip Hippo Support"),
+    click: () => {
+      shell.openExternal(`mailto:${SUPPORT_EMAIL}`).catch(() => {});
+    },
+  };
   // On-demand update check. Triggered directly here — the updater pushes its
   // result to the renderer, which owns the toast and the About status line, so
   // this needs no round trip through the window. OMITTED ENTIRELY in a store
@@ -1606,9 +1628,10 @@ function buildAppMenu() {
     role: "help",
     label: m("menu.help.title", "Help"),
     submenu: isMac
-      ? [userGuide, { type: "separator" }, shortcuts, ...updateItems]
+      ? [userGuide, support, { type: "separator" }, shortcuts, ...updateItems]
       : [
           userGuide,
+          support,
           { type: "separator" },
           about,
           { type: "separator" },
@@ -2133,6 +2156,15 @@ function installHotReload(win) {
 }
 
 // ─── Window ───────────────────────────────────────────────────────────────────
+
+/** How long a LOADED window waits for its first paint before showing itself
+ *  anyway, and how long a window waits for the load itself (see
+ *  createWindow). Long enough that a slow first launch still takes the tidy
+ *  `ready-to-show` path, short enough that nobody watches a dock icon bounce
+ *  into nothing. */
+const PAINT_GRACE_MS = 2000;
+const WINDOW_SHOW_TIMEOUT_MS = 8000;
+
 let mainWindow = null;
 
 function createWindow() {
@@ -2205,9 +2237,75 @@ function createWindow() {
   // empty).
   win.webContents.on("did-navigate", () => closeAuxWindows());
 
-  win.loadFile(path.join(__dirname, "..", "web", "index.html")).catch(() => {});
+  // SHOWING THE WINDOW MUST NOT REST ON ONE EVENT.
+  //
+  // `ready-to-show` is the tidy signal — it fires on the renderer's first
+  // frame, so the window never flashes empty — but it is not a guarantee. It
+  // never fires if the load fails, if the renderer dies before its first
+  // frame, or on a machine where compositing never produces one (a virtual
+  // display, remote session or VM, which is how a review machine is often
+  // driven). And the app is built to survive exactly that: `show: false`
+  // leaves a running app with a menu bar and NO WINDOW, so every menu item
+  // pushes into a window nobody can see and the whole menu reads as dead —
+  // which is precisely how such a launch gets reported.
+  //
+  // So the FIRST of ready-to-show / did-finish-load / did-fail-load / a
+  // deadline wins, and the window is shown whichever arrives. A window shown
+  // early is a cosmetic flash; a window never shown is an app that does
+  // nothing at all.
+  let shown = false;
+  let showTimer = null;
+  const showOnce = (why) => {
+    if (shown || win.isDestroyed()) return;
+    shown = true;
+    clearTimeout(showTimer);
+    // The tidy path is silent; every other one says which fallback caught it,
+    // since by definition the intended signal did not arrive.
+    if (why !== "ready-to-show") {
+      console.error(`[main] window shown via fallback: ${why}`);
+    }
+    win.show();
+  };
+  win.once("ready-to-show", () => showOnce("ready-to-show"));
+  // Registered BEFORE the load, so neither can be missed by a load that
+  // resolves faster than this function runs on.
+  //
+  // A finished load does NOT show the window — it starts a short grace period
+  // for the paint to arrive. The two are not interchangeable: the document is
+  // an empty <div> that app.js fills only after several awaits, so the load
+  // routinely finishes well before the first frame, and showing on it would
+  // trade a window that never appears for a themed empty rectangle every
+  // launch. The grace period is what turns "the paint is late" into "the
+  // paint is not coming".
+  win.webContents.once("did-finish-load", () => {
+    if (shown) return;
+    clearTimeout(showTimer);
+    showTimer = setTimeout(() => showOnce("paint-timeout"), PAINT_GRACE_MS);
+    showTimer.unref?.();
+  });
+  win.webContents.on("did-fail-load", (_e, code, desc, url, isMainFrame) => {
+    if (!isMainFrame) return;
+    console.error(`[main] renderer load failed: ${url} — ${desc} (${code})`);
+    showOnce("did-fail-load");
+  });
+  // A renderer that dies before its first frame fires neither of the above.
+  win.webContents.on("render-process-gone", (_e, details) => {
+    console.error(`[main] renderer gone: ${details?.reason}`);
+    showOnce("render-process-gone");
+  });
+  // The backstop for a load that never finishes at all, and so never reaches
+  // the grace period above.
+  showTimer = setTimeout(
+    () => showOnce("load-timeout"),
+    WINDOW_SHOW_TIMEOUT_MS,
+  );
+  // Under `node --test` a real Timeout would keep the runner alive.
+  showTimer.unref?.();
 
-  win.once("ready-to-show", () => win.show());
+  win
+    .loadFile(path.join(__dirname, "..", "web", "index.html"))
+    // Swallowed, this is an app that launches to nothing and says nothing.
+    .catch((err) => console.error("[main] index.html failed to load:", err));
 
   // Closing the window loses every desktop that is only in the renderer, so
   // ask first (see the close/quit guard above). `before-quit` covers ⌘Q; this
@@ -2225,21 +2323,23 @@ function createWindow() {
 
   win.on("closed", () => {
     if (mainWindow === win) mainWindow = null;
-    // THE CONFIRMATION AUTHORISED THIS CLOSE AND NO OTHER. On macOS the app
-    // outlives its last window, so without this a "discard" answered here would
-    // still be latched when the dock re-opens one — and that window's every
-    // later close and ⌘Q would skip the guard entirely, throwing an unsaved
-    // project away with no question asked.
+    // THE CONFIRMATION AUTHORISED THIS CLOSE AND NO OTHER. Closing the window
+    // now quits (see `window-all-closed`), so the case this was written for —
+    // a "discard" still latched when the dock re-opens a window — is closed off
+    // at the other end as well. It stays because the latch's correctness must
+    // not depend on that: it is cleared where the window it authorised actually
+    // goes away, which is true whatever happens next.
     closeGuard.closed();
     // Abandon any generation still streaming. There is nobody left to deliver
-    // it to (`sendToMain` no-ops on a destroyed window), and on macOS the app
-    // lives on after its last window closes — so without this an in-flight
-    // request would keep running, and keep spending the user's tokens, for a
-    // panel that no longer exists.
+    // it to (`sendToMain` no-ops on a destroyed window), and the quit that
+    // follows is not instantaneous — so without this an in-flight request would
+    // keep running, and keep spending the user's tokens, for a panel that no
+    // longer exists.
     aiClient.cancelAll();
     // Close the orphaned pinout/inspector windows so they don't outlive the
-    // desk they belong to — and, on Windows/Linux, so `window-all-closed` can
-    // actually fire and quit the app instead of hanging on a stray inspector.
+    // desk they belong to — and so `window-all-closed` can actually fire and
+    // quit the app instead of hanging on a stray inspector. That second reason
+    // now applies on every platform, macOS included.
     closeAuxWindows();
     // The guide carries no document state (unlike pinout/inspector windows),
     // so it survives New/Open — but it must not outlive the app itself.
@@ -2393,10 +2493,22 @@ function bootstrap() {
     safeCall("bookmarks:release", () => getBookmarks().releaseAll());
   });
 
-  // Chip Hippo is a foreground document app: closing the last window quits
-  // (the normal Electron default), except on macOS where the app stays active
-  // in the dock until an explicit Quit.
+  // CLOSING THE WINDOW QUITS THE APP, on every platform including macOS.
+  //
+  // The usual macOS convention — the app outliving its last window, waiting in
+  // the dock for a ⌘N — is for apps that open MANY documents. Chip Hippo opens
+  // exactly one: a project holds every desktop as a tab, so there is only ever
+  // one main window, and an app sitting in the dock with nothing on screen is
+  // just a process the user has no way to see they are still running.
+  //
+  // It is safe to quit from here because the window's own `close` handler has
+  // ALREADY put the unsaved question (see the close guard above) — a cancelled
+  // close never gets this far, and `confirmClose()` is what stops the autosave
+  // timer and drops the recovery stamp, so this path still exits cleanly and
+  // the next launch does not read it as a crash. By the time this fires the
+  // aux windows are closed too (the `closed` handler above), which is what
+  // lets it fire at all.
   app.on("window-all-closed", () => {
-    if (process.platform !== "darwin") app.quit();
+    app.quit();
   });
 }

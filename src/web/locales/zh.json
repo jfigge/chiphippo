@@ -68,6 +68,7 @@
     "help": {
       "title": "帮助",
       "userGuide": "Chip Hippo 用户指南",
+      "support": "Chip Hippo 支持",
       "shortcuts": "键盘快捷键",
       "checkUpdates": "检查更新…"
     },
@@ -894,6 +895,7 @@
   "about": {
     "subtitle": "TTL 面包板设计与仿真工具",
     "description": "在虚拟免焊面包板上设计并仿真 74xx 系列逻辑电路 — 放上芯片、导线、开关、LED 和电源，然后看电流在每个网络中稳定下来。",
+    "support": "支持：",
     "versionInfo": "版本信息",
     "version": "版本",
     "platform": "平台",

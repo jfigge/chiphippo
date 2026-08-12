@@ -68,6 +68,7 @@
     "help": {
       "title": "Help",
       "userGuide": "Chip Hippo User Guide",
+      "support": "Chip Hippo Support",
       "shortcuts": "Keyboard Shortcuts",
       "checkUpdates": "Check for Updates…"
     },
@@ -909,6 +910,7 @@
   "about": {
     "subtitle": "TTL breadboard designer & simulator",
     "description": "Design and simulate 74xx-family logic circuits on virtual solderless breadboards — place chips, wires, switches, LEDs and power, then watch electricity settle through every net.",
+    "support": "Support:",
     "versionInfo": "Version information",
     "version": "Version",
     "platform": "Platform",

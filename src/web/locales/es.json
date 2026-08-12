@@ -68,6 +68,7 @@
     "help": {
       "title": "Ayuda",
       "userGuide": "Guía del usuario de Chip Hippo",
+      "support": "Soporte de Chip Hippo",
       "shortcuts": "Atajos de teclado",
       "checkUpdates": "Buscar actualizaciones…"
     },
@@ -909,6 +910,7 @@
   "about": {
     "subtitle": "Diseño y simulación de TTL en placa de pruebas",
     "description": "Diseña y simula circuitos lógicos de la familia 74xx en placas de pruebas virtuales sin soldadura — coloca chips, cables, interruptores, LED y alimentación, y observa cómo la electricidad se estabiliza por cada red.",
+    "support": "Soporte:",
     "versionInfo": "Información de la versión",
     "version": "Versión",
     "platform": "Plataforma",

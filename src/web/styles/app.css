@@ -2501,6 +2501,37 @@ textarea.annotation-editor {
   color: var(--color-subtext);
 }
 
+/* The support line. `--space-1` of gap rather than a space in the catalog
+   string, so a translation cannot lose the separator between the label and the
+   address (and a language that ends its label with a full-width colon does not
+   get a stray Latin space after it). */
+.about-support {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: center;
+  gap: var(--space-1);
+  margin: var(--space-1) 0 0;
+  font-size: var(--font-size-xs);
+  /* The card sets `user-select: none`; the address is the one thing on it a
+     user needs to be able to select and copy. */
+  user-select: text;
+}
+
+.about-support-label {
+  color: var(--color-subtext);
+}
+
+.about-support-link {
+  color: var(--color-accent);
+  text-decoration: none;
+}
+
+.about-support-link:hover,
+.about-support-link:focus-visible {
+  text-decoration: underline;
+}
+
 .about-credit {
   margin: var(--space-1) 0 0;
   font-size: var(--font-size-xs);

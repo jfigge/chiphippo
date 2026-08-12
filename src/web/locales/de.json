@@ -68,6 +68,7 @@
     "help": {
       "title": "Hilfe",
       "userGuide": "Chip Hippo Benutzerhandbuch",
+      "support": "Chip Hippo Support",
       "shortcuts": "Tastaturkürzel",
       "checkUpdates": "Nach Updates suchen…"
     },
@@ -909,6 +910,7 @@
   "about": {
     "subtitle": "TTL-Steckbrett-Entwurf & -Simulation",
     "description": "Entwirf und simuliere Logikschaltungen der 74xx-Familie auf virtuellen lötfreien Steckbrettern — setze Chips, Drähte, Schalter, LEDs und Stromversorgung, und sieh zu, wie sich der Strom durch jedes Netz einstellt.",
+    "support": "Support:",
     "versionInfo": "Versionsinformationen",
     "version": "Version",
     "platform": "Plattform",

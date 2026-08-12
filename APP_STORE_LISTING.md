@@ -131,6 +131,30 @@ Available in English, German, Spanish, French, Italian, Japanese and Chinese.
 https://github.com/jfigge/chiphippo/issues
 ```
 
+**1.0.0 was rejected under guideline 1.5 (Developer Information) with this URL
+in place, so the URL was never the problem — the APP was.** The guideline reads
+"make sure *your app* and its Support URL include an easy way to contact you",
+and the app carried no contact route at all: the About card ended at the
+copyright line and Help offered a manual and a key list (in a store build the
+update item is stripped, so a reviewer saw a two-item Help menu with no way out
+to a human). Fixed for the re-submission:
+
+- **About ▸ Support: hippoherd@gmail.com** — a `mailto:` link, shown as
+  selectable text so it is readable on a machine with no mail client.
+- **Help ▸ Chip Hippo Support** — the same address, opened through
+  `shell.openExternal`.
+- The website footer now offers **Contact** (`mailto:`) beside **Issues**, so
+  the Support URL's own page reaches a human without a GitHub account.
+
+The address is `SUPPORT_EMAIL`, declared once in `app/main.js` and once in
+`web/scripts/components/about-dialog.js` (the processes share no module).
+`settings-dialog.test.js` pins the About row so it cannot quietly go away
+again.
+
+Consider pointing the Support URL at `https://chiphippo.com/` instead: filing a
+GitHub issue needs an account, which reviewers have been known to treat as a
+barrier on its own.
+
 ## Marketing URL
 
 ```

@@ -18,8 +18,9 @@
 // icon or the application menu (menu:show-about → chiphippo:show-about). A
 // renderer PopupManager modal styled like the Rest Hippo About card: a large
 // rounded logo, the name with an (i) toggle revealing a floating version/build
-// popover, subtitle, description, credit, and a prominent Close button. Build
-// metadata loads asynchronously from the main process (getAppInfo).
+// popover, subtitle, description, support address, credit, and a prominent
+// Close button. Build metadata loads asynchronously from the main process
+// (getAppInfo).
 
 import { t } from "../i18n.js";
 import { el } from "../dom.js";
@@ -28,6 +29,16 @@ import { buildInfoButton } from "./info-button.js";
 
 /** The product name — never translated, in any language. */
 const NAME = "Chip Hippo";
+
+// The support address. An IDENTITY, not prose — the same characters in every
+// language, like the name above and the copyright line below, so it is a code
+// constant and not a catalog entry. It is duplicated in `app/main.js` (Help ▸
+// Chip Hippo Support) because the two processes share no module; keep them in
+// step. App Store Review Guideline 1.5 requires the APP to carry a contact
+// route, not merely the store listing's Support URL — which is why this is
+// here at all, and why it is TEXT as well as a link: a machine with no mail
+// client configured must still be able to read the address off the card.
+const SUPPORT_EMAIL = "hippoherd@gmail.com";
 
 /** A small "i" glyph for the info toggle (the button supplies the circle). */
 export class AboutDialog {
@@ -72,6 +83,23 @@ export class AboutDialog {
         ]),
         el("p", { class: "about-subtitle", text: t("about.subtitle") }),
         el("p", { class: "about-desc", text: t("about.description") }),
+        // `target="_blank"` is what routes the click to the OS mail client:
+        // main's setWindowOpenHandler passes a mailto: window-open to
+        // shell.openExternal, where a bare in-frame navigation would try to
+        // move the desk's own document.
+        el("p", { class: "about-support" }, [
+          el("span", {
+            class: "about-support-label",
+            text: t("about.support"),
+          }),
+          el("a", {
+            class: "about-support-link",
+            href: `mailto:${SUPPORT_EMAIL}`,
+            target: "_blank",
+            rel: "noopener noreferrer",
+            text: SUPPORT_EMAIL,
+          }),
+        ]),
         // The copyright line is a legal notice, not prose — the same words in
         // every language, like the product name above it.
         el("p", {

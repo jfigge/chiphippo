@@ -98,14 +98,17 @@ Then attach the build to a version in App Store Connect and submit for review. U
 only makes the build APPEAR in App Store Connect — *Submit for Review* stays a
 deliberate click.
 
-**Re-uploading the same version needs a unique build number.** Either bump `version` in
-`src/package.json`, or pass a build number on the command line:
+**Re-uploading needs a unique build number**, which is `MAS_BUILD_VERSION`:
 
 ```sh
-make mas MAS_CSC_NAME="$MAS_CSC_NAME"   # …then rebuild with, e.g.
-cd build/src && npx electron-builder --mac mas --universal --publish never \
-  -c.mac.notarize=false -c.mac.bundleVersion=0.9.1.1
+make mas MAS_BUILD_VERSION=1.0.0.1
 ```
+
+It sets `CFBundleVersion` alone. **Do not bump `version` in `src/package.json` to get
+past this** — that moves `CFBundleShortVersionString`, which the App Store Connect
+version record was created to match exactly, so the build arrives belonging to no
+version. The marketing version moves when the RELEASE moves; the build number moves
+every time bytes go up. A first upload of a version needs neither.
 
 ## 4. Signing identities
 

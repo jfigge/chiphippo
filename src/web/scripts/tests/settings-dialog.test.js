@@ -982,6 +982,55 @@ test("AboutDialog: mounts with the product name and closes cleanly", () => {
   assert.equal(document.querySelector(".about-dialog"), null);
 });
 
+// App Store Review Guideline 1.5 asks the APP to carry a contact route, not
+// merely the store listing's Support URL — its absence is what got 1.0.0
+// rejected. So this is a COMPLIANCE test, not a cosmetic one: it fails if the
+// only way to reach a human is taken back out of the card.
+test("AboutDialog: carries a support contact route", () => {
+  resetDom();
+  AboutDialog.open();
+
+  const link = document.querySelector(".about-support-link");
+  assert.ok(link, "the About card offers a contact link");
+  assert.match(
+    link.getAttribute("href"),
+    /^mailto:.+@.+\..+/,
+    "it is a mailto",
+  );
+  assert.equal(
+    link.textContent,
+    link.getAttribute("href").replace("mailto:", ""),
+    "the address is READABLE too — a machine with no mail client still needs it",
+  );
+  assert.equal(
+    link.getAttribute("target"),
+    "_blank",
+    "target=_blank is what routes it to setWindowOpenHandler → shell.openExternal",
+  );
+
+  PopupManager.close();
+});
+
+test("AboutDialog: the support LABEL is catalog text, the address is not", () => {
+  resetDom();
+  applyCatalog({ active: "de", lang: "de", messages: DE, fallback: EN, locales: LOCALES }); // prettier-ignore
+  AboutDialog.open();
+
+  assert.equal(
+    document.querySelector(".about-support-label").textContent,
+    DE.about.support,
+    "the label follows the active catalog",
+  );
+  assert.equal(
+    document.querySelector(".about-support-link").textContent,
+    "hippoherd@gmail.com",
+    "the address is an identity — the same characters in every language",
+  );
+
+  PopupManager.close();
+  applyCatalog({ active: "en", lang: "en", messages: EN, fallback: EN, locales: LOCALES }); // prettier-ignore
+});
+
 test("AboutDialog: the (i) toggle reveals the build popover", () => {
   resetDom();
   AboutDialog.open();

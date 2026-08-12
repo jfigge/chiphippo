@@ -68,6 +68,7 @@
     "help": {
       "title": "Aide",
       "userGuide": "Guide de l'utilisateur de Chip Hippo",
+      "support": "Assistance Chip Hippo",
       "shortcuts": "Raccourcis clavier",
       "checkUpdates": "Rechercher les mises à jour…"
     },
@@ -909,6 +910,7 @@
   "about": {
     "subtitle": "Conception et simulation TTL sur platine d'essai",
     "description": "Conçois et simule des circuits logiques de la famille 74xx sur des platines d'essai virtuelles sans soudure — pose des puces, des fils, des interrupteurs, des LED et l'alimentation, puis regarde l'électricité se stabiliser dans chaque net.",
+    "support": "Assistance :",
     "versionInfo": "Informations de version",
     "version": "Version",
     "platform": "Plateforme",

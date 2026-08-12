@@ -19,7 +19,8 @@ left.
 | Dev signing cert | Apple Development: Jason Figge (F457H24AUH) |
 | Built package | `build/src/dist/mas-universal/Chip-Hippo-<version>-universal.pkg` |
 | First upload | **1.0.0 uploaded 2026-08-04** — delivery UUID `6cc4e2ff-3ae3-4459-a913-96d90befe83b` |
-| First submission | **1.0.0 submitted for review 2026-08-04** |
+| First submission | **1.0.0 submitted for review 2026-08-04** — REJECTED |
+| Current build | **1.0.0 (`CFBundleVersion` 1.0.0.1)**, built 2026-08-12 with the 1.5.0 + 2.1(a) fixes |
 
 ## Done
 
@@ -91,10 +92,43 @@ four are a single click; only Content Rights is a decision.
   every pin-assignments window) and DOWNLOADS manufacturer PDFs on request, so
   "no third-party content" would be untrue.
 
+## Rejections to clear
+
+`1.0.0` (submitted 2026-08-04) came back with several. Tracked here as they are
+worked; the wording of each fix is in
+[APP_STORE_LISTING.md](APP_STORE_LISTING.md).
+
+- [x] **1.5.0 Safety: Developer Information (macOS)** — the app carried no
+      contact route. Added About ▸ *Support:* and Help ▸ *Chip Hippo Support*
+      (both `hippoherd@gmail.com`), plus a `mailto:` Contact link in the
+      website footer. Localized in all seven catalogs and pinned by a test.
+- [x] **2.1(a) Performance: App Completeness** — *"all buttons in the app menu
+      were unresponsive"* (MacBook Air 15" M3, macOS 26.6). **Not reproduced**:
+      the menu wiring was verified end to end (template → `sendToMain` →
+      preload re-dispatch → renderer listener → a real `ProjectWorkspace`
+      method), a sandboxed `mas-dev` build boots clean from a fresh container
+      on macOS 15.6, and the universal `mas` artifact is well formed (one
+      `app.asar`, x86_64 + arm64, `embedded.provisionprofile` present, signed
+      *Apple Distribution*). What the symptom DOES fit exactly is a window that
+      never appeared: `show: false` plus `win.once("ready-to-show", …)` as the
+      **only** route to `show()`, with `loadFile`'s rejection swallowed. That
+      leaves a running app with a full menu bar and no window, so every item
+      pushes into something nobody can see. Measured here: `did-finish-load`
+      beats `ready-to-show` on this machine, i.e. the paint is genuinely the
+      late signal, and it is the one that was being waited on. Fixed by making
+      the window's appearance unconditional — first of `ready-to-show` /
+      a paint grace period after load / `did-fail-load` / `render-process-gone`
+      / an 8 s backstop — and by logging every fallback and every load failure.
+      Separately, About / Settings / Keyboard Shortcuts now register at the TOP
+      of `init()` rather than its last lines, so the application menu answers
+      even when something below has failed to build.
+
 ## Known gotchas
 
-- **A re-upload of the same version needs a unique build number** — bump `version` or
-  pass `-c.mac.bundleVersion=<version>.<n>` (STORE-PUBLISHING.md §3).
+- **A re-upload of the same version needs a unique build number** —
+  `make mas MAS_BUILD_VERSION=<version>.<n>` (STORE-PUBLISHING.md §3). Never bump
+  `version` to get past it: that moves `CFBundleShortVersionString` away from the
+  App Store Connect version record it has to match.
 - **A re-issued certificate invalidates the profile that embeds it.** Regenerate and
   re-download the profile, or the build passes locally and fails validation.
 - **`pkgutil` labels the installer cert "issued by Apple (Development)"** — cosmetic,

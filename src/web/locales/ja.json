@@ -68,6 +68,7 @@
     "help": {
       "title": "ヘルプ",
       "userGuide": "Chip Hippo ユーザーガイド",
+      "support": "Chip Hippo サポート",
       "shortcuts": "キーボードショートカット",
       "checkUpdates": "アップデートを確認…"
     },
@@ -894,6 +895,7 @@
   "about": {
     "subtitle": "TTL ブレッドボード設計・シミュレータ",
     "description": "はんだ付け不要の仮想ブレッドボード上で 74xx ファミリの論理回路を設計・シミュレーションします — チップ、ワイヤー、スイッチ、LED、電源を置いて、すべてのネットで電気が落ち着くまでを眺めましょう。",
+    "support": "サポート:",
     "versionInfo": "バージョン情報",
     "version": "バージョン",
     "platform": "プラットフォーム",
