@@ -624,25 +624,32 @@
 
     /* ── Responsive ────────────────────────────────────────────────────────── */
 
-    @media (max-width: 640px) {
-      .prerelease-banner { padding: 9px 1rem; font-size: 0.74rem; }
+    /* The NAV runs out of room well before the phone breakpoint, so it gets a
+       width of its own. The row is a wordmark, six links and a Download button
+       — about 810px of content — and it used to wrap at 640 with everything
+       else, which meant that between here and there the links did not reflow:
+       they were SQUEEZED, and "Visit the Herd" broke onto a second line inside
+       its own slot and pushed the 58px bar out of shape. The number is what the
+       content measures, not a device: add or rename a link and this is the rule
+       to re-measure.
 
-      /* The nav USED TO hide every link and the dropdown here, leaving a phone
-         with a logo and a Download button — the guide, the source and the
-         donate link reachable only by scrolling to the footer. It wraps onto a
-         second row instead: nothing is removed, and the links simply flow.
-         No hamburger, so no toggle to build, nothing duplicated in the markup,
-         and no third state to get wrong.
-         It also stops being STICKY down here, because a two-row header pinned
-         to the top of a 667px phone is a fifth of the screen spent on
-         navigation. */
+       The nav USED TO hide every link and the dropdown on a phone, leaving a
+       logo and a Download button — the guide, the source and the donate link
+       reachable only by scrolling to the footer. It wraps onto a second row
+       instead: nothing is removed, and the links simply flow. No hamburger, so
+       no toggle to build, nothing duplicated in the markup, and no third state
+       to get wrong.
+       It also stops being STICKY once it is two rows tall, because a two-row
+       header pinned to the top of a short screen is a fifth of it spent on
+       navigation. */
+    @media (max-width: 820px) {
       nav {
         position: static;
         height: auto;
         flex-wrap: wrap;
         justify-content: center;
         gap: 10px;
-        padding: 10px 1rem;
+        padding: 10px 2rem;
       }
       .nav-right {
         width: 100%;
@@ -650,12 +657,18 @@
         justify-content: center;
         gap: 10px 1.1rem;
       }
-      .nav-link { font-size: 0.82rem; }
-      .nav-right .btn { padding: 7px 14px; }
       /* The dropdown card is anchored to its summary, which is now somewhere in
          the middle of a centred row — pin it to the viewport edge instead of
          letting it hang off one. */
       .nav-dropdown-menu { right: auto; left: 50%; transform: translateX(-50%); }
+    }
+
+    @media (max-width: 640px) {
+      .prerelease-banner { padding: 9px 1rem; font-size: 0.74rem; }
+
+      nav { padding: 10px 1rem; }
+      .nav-link { font-size: 0.82rem; }
+      .nav-right .btn { padding: 7px 14px; }
 
       .hero { padding: 64px 1rem 48px; }
       .mock-wrap { margin-top: 36px; padding: 0 1rem; }
@@ -711,6 +724,7 @@
   <div class="nav-right">
     <a class="nav-link" href="#features">Features</a>
     <a class="nav-link" href="/docs/">Guide</a>
+    <a class="nav-link" href="#feedback">Feedback</a>
     <a class="nav-link" href="https://hippoherd.com" rel="noopener noreferrer">Visit the Herd</a>
     <a class="nav-link" href="https://github.com/jfigge/chiphippo" rel="noopener noreferrer">GitHub</a>
     <a class="nav-link" href="https://github.com/sponsors/jfigge" rel="noopener noreferrer">Donate</a>
