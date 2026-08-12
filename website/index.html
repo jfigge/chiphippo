@@ -564,6 +564,28 @@
     .dl-note a { color: var(--accent); text-decoration: none; }
     .dl-note a:hover { text-decoration: underline; }
 
+    /* ── Feedback ──────────────────────────────────────────────────────────── */
+
+    /* Sits on --bg between two --crust bands (Downloads above, the footer
+       below), so it reads as its own strip without needing a border of its
+       own. Centred, because it is one ask and not a grid of them. */
+    .feedback-section { background: var(--bg); text-align: center; padding: 72px 2rem; }
+    .feedback-section .section-inner { max-width: 640px; }
+    .feedback-section .section-body { margin: 0 auto; }
+
+    .feedback-actions {
+      display: flex;
+      gap: 12px;
+      justify-content: center;
+      flex-wrap: wrap;
+      margin-top: 30px;
+    }
+    .feedback-actions .btn { padding: 12px 24px; font-size: 0.925rem; }
+
+    .feedback-note { font-size: 0.8rem; color: var(--overlay-0); margin-top: 18px; }
+    .feedback-note a { color: var(--accent); text-decoration: none; }
+    .feedback-note a:hover { text-decoration: underline; }
+
     /* ── Footer ────────────────────────────────────────────────────────────── */
 
     footer {
@@ -955,6 +977,41 @@
   </div>
 </section>
 
+<!-- ── Feedback ─────────────────────────────────────────────────────────────── -->
+<!-- The request goes to GitHub Issues, which is where the work is tracked — the
+     site has no backend and no forms (the CSP sets form-action 'none'), so a
+     link out is the only honest route. The `labels=enhancement` query lands it
+     in the right bucket where the visitor has permission to set one, and is
+     silently ignored where they do not, so the link never fails on it. -->
+<section class="section feedback-section" id="feedback">
+  <div class="section-inner">
+    <p class="section-tag">Feedback</p>
+    <h2 class="section-title">Got an idea for Chip Hippo?</h2>
+    <p class="section-body">
+      Missing a 74xx part, a tool, or a workflow you rely on at the bench? Feature
+      requests are tracked on GitHub, out in the open — open one and it goes on the list.
+    </p>
+    <div class="feedback-actions">
+      <a class="btn btn-primary" href="https://github.com/jfigge/chiphippo/issues/new?labels=enhancement" rel="noopener noreferrer">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+        </svg>
+        Request a Feature
+      </a>
+      <a class="btn btn-ghost" href="https://github.com/jfigge/chiphippo/issues" rel="noopener noreferrer">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+        </svg>
+        Browse Open Issues
+      </a>
+    </div>
+    <p class="feedback-note">
+      Found a bug instead? <a href="https://github.com/jfigge/chiphippo/issues/new?labels=bug" rel="noopener noreferrer">Report it the same way</a>.
+      A GitHub account is required to post.
+    </p>
+  </div>
+</section>
+
 <!-- ── Footer ───────────────────────────────────────────────────────────────── -->
 <footer>
   <div class="footer-inner">
@@ -985,6 +1042,8 @@
       <a href="/privacy.html">Privacy</a>
       &nbsp;·&nbsp;
       <a href="/code-signing-policy.html">Code Signing</a>
+      &nbsp;·&nbsp;
+      <a href="https://github.com/jfigge/chiphippo/issues/new?labels=enhancement" rel="noopener noreferrer">Request a Feature</a>
       &nbsp;·&nbsp;
       <a href="https://github.com/jfigge/chiphippo/issues" rel="noopener noreferrer">Issues</a>
       &nbsp;·&nbsp;
