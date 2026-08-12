@@ -486,10 +486,32 @@ clean:
 	@rm -rf $(BUILD_DIR) $(DIST_DIR)
 	@echo "--------------------------------"
 
+# ─── Mac App Store upload ─────────────────────────────────────────────────────
+# Hand the built .pkg to App Store Connect. The CI job (release.yml store-mas)
+# runs the same altool call; this is the manual route for a build made here.
+#
+# The path is DERIVED from what is on disk, never typed: electron-builder names
+# the package after CFBundleShortVersionString, so a hardcoded name silently
+# uploads a stale package the moment the version moves — and once it no longer
+# exists at all, altool fails naming a file rather than the reason.
+#
+# Auth is an App Store Connect API key (an app-specific password cannot do this
+# headless under 2FA). The .p8 is found under ~/.appstoreconnect/private_keys.
+ASC_KEY_ID    ?= X3M2YK7357
+ASC_ISSUER_ID ?= 245bb0e6-5b7e-47e4-946b-60e8ee1bc19c
+
 upload:
-	API_PRIVATE_KEYS_DIR=certs xcrun altool --upload-app -t macos \
-  		-f "build/src/dist/mas-universal/Chip-Hippo-1.0.0-universal.pkg" \
-  		--apiKey X3M2YK7357 --apiIssuer 245bb0e6-5b7e-47e4-946b-60e8ee1bc19c
+	@PKG=$$(ls -t "$(BUILD_DIR)/src/dist/mas-universal"/*.pkg 2>/dev/null | head -1); \
+	if [ -z "$$PKG" ]; then \
+		echo "No .pkg under $(BUILD_DIR)/src/dist/mas-universal — run 'make mas' first."; \
+		exit 1; \
+	fi; \
+	echo "Uploading $$(basename "$$PKG") to App Store Connect..."; \
+	xcrun altool --upload-app -t macos -f "$$PKG" \
+		--apiKey $(ASC_KEY_ID) --apiIssuer $(ASC_ISSUER_ID) && \
+	echo "  → uploaded; it must finish PROCESSING before it can be attached" && \
+	echo "  → node scripts/asc-release.mjs status" && \
+	echo "--------------------------------"
 
 # ─── Help ─────────────────────────────────────────────────────────────────────
 help:
@@ -521,6 +543,7 @@ help:
 	@echo "    dist-win      Build Windows installer (nsis + portable)"
 	@echo "    mas           Build the Mac App Store package (.pkg; skips without a profile)"
 	@echo "    mas-dev       Build a local MAS sandbox smoke-test (skips without a profile)"
+	@echo "    upload        Upload the built store .pkg to App Store Connect"
 	@echo "    site          Regenerate website/versions.json from GitHub Releases"
 	@echo "    clean         Remove build and dist directories"
 	@echo "    version       Print version string"
@@ -529,5 +552,5 @@ help:
 .PHONY: version info install debug fmt fmt-check lint license-headers icons \
         datasheets demos vendor-markdown docs pdf test test-license-headers \
         build build-mac build-linux build-win dmg release dist dist-mac \
-        dist-linux dist-win mas mas-dev site build-setup build-install clean \
-        help
+        dist-linux dist-win mas mas-dev upload site build-setup build-install \
+        clean help

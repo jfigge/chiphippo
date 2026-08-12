@@ -82,6 +82,30 @@ jobs:
           cache: npm
           cache-dependency-path: src/package-lock.json
 
+      # The same guard ci.yml carries, which this workflow was missing:
+      # electron-builder fetches the Electron binary (~100 MB) fresh on every
+      # runner, and app-builder's downloader has NO retry (DownloadNoRetry in
+      # its stack trace), so one reset connection sinks the job — and here that
+      # also blocks `Publish GitHub Release`, which is how v1.0.1 failed on the
+      # Linux leg with a bare `EOF` while macOS and Windows sailed through.
+      # Keyed on the lockfile, so an Electron bump fetches once then caches.
+      # Unlike ci.yml all three legs are active here, so every platform's cache
+      # location is listed; actions/cache skips the paths that don't exist on
+      # the runner it's on, and `runner.os` in the key keeps them separate.
+      - name: Cache Electron download
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/.cache/electron
+            ~/.cache/electron-builder
+            ~/Library/Caches/electron
+            ~/Library/Caches/electron-builder
+            ~/AppData/Local/electron/Cache
+            ~/AppData/Local/electron-builder/Cache
+          key: electron-${{ runner.os }}-${{ hashFiles('src/package-lock.json') }}
+          restore-keys: |
+            electron-${{ runner.os }}-
+
       # Windows runners lack make/rsync/bash; MSYS2 provides them so the same
       # `make dist-win` recipe runs unchanged (see ci.yml for the rationale).
       - name: Set up MSYS2 (Windows)
@@ -95,7 +119,23 @@ jobs:
       - name: Build installers (Windows)
         if: runner.os == 'Windows'
         shell: "msys2 {0}"
-        run: make ${{ matrix.target }}
+        # A warm cache removes the download, but the run that POPULATES it still
+        # fetches over the network with no retry underneath it — so the first
+        # build after an Electron bump is exactly as fragile as v1.0.1's was.
+        # Three attempts with a widening pause covers the transient reset; a
+        # genuine build error still fails, just three times over.
+        run: |
+          for attempt in 1 2 3; do
+            if make ${{ matrix.target }}; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "::warning::Build attempt ${attempt} failed; retrying in $(( attempt * 20 ))s"
+              sleep $(( attempt * 20 ))
+            fi
+          done
+          echo "::error::Build failed after 3 attempts"
+          exit 1
 
       - name: Build installers (macOS / Linux)
         if: runner.os != 'Windows'
@@ -134,7 +174,21 @@ jobs:
           else
             export CSC_IDENTITY_AUTO_DISCOVERY=false
           fi
-          make ${{ matrix.target }}
+          # Retried for the reason given on the Windows step above. The signing
+          # exports stay OUTSIDE the loop: they are pure environment setup, and
+          # re-exporting them per attempt would only widen what a retry can
+          # change between runs.
+          for attempt in 1 2 3; do
+            if make ${{ matrix.target }}; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "::warning::Build attempt ${attempt} failed; retrying in $(( attempt * 20 ))s"
+              sleep $(( attempt * 20 ))
+            fi
+          done
+          echo "::error::Build failed after 3 attempts"
+          exit 1
 
       - name: Upload installers
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
@@ -198,3 +252,254 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: gh workflow run deploy-site.yml --ref main --repo "${{ github.repository }}"
+
+  # ── Mac App Store: build, sign, upload ──────────────────────────────────────
+  # The store channel is the SAME codebase down a different pipe: `make mas`
+  # here is the identical recipe run locally, so a CI store build and a desk one
+  # cannot drift. It is gated on `vars.MAS_ENABLED` rather than on the secrets
+  # existing, because a half-configured signing setup should fail loudly, not
+  # skip silently and leave you believing a build went up.
+  #
+  # REQUIRED SECRETS (none of which can be derived — see STORE-PUBLISHING.md §4):
+  #   MAS_CSC_LINK                    base64 .p12 of "Apple Distribution"
+  #   MAS_CSC_KEY_PASSWORD            its export passphrase
+  #   MAS_INSTALLER_CSC_LINK          base64 .p12 of "3rd Party Mac Developer Installer"
+  #   MAS_INSTALLER_CSC_KEY_PASSWORD  its export passphrase
+  #   MAS_PROVISIONING_PROFILE_BASE64 base64 src/packaging/embedded.provisionprofile
+  #   APPLE_API_KEY_ID / APPLE_API_ISSUER / APPLE_API_KEY_BASE64   ASC API key
+  #
+  # RUNS ON A MANUAL DISPATCH TOO, deliberately — and that is the only way the
+  # signing secrets are ever provable. They are four opaque base64 blobs and two
+  # passphrases; nothing local can tell you they were exported correctly, so
+  # without this the first test of a store credential is a real release, where a
+  # bad one costs the tag. A dispatch run builds, signs and VERIFIES exactly as a
+  # tagged one does, and stops short of the upload (guarded below) — so it proves
+  # the certificates against App Store Connect's own rules while touching nothing.
+  store-mas:
+    name: Mac App Store build
+    needs: build
+    if: >-
+      (startsWith(github.ref, 'refs/tags/') || github.event_name == 'workflow_dispatch')
+      && vars.MAS_ENABLED == 'true'
+    runs-on: macos-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: src/package-lock.json
+
+      - name: Cache Electron download
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4
+        with:
+          path: |
+            ~/Library/Caches/electron
+            ~/Library/Caches/electron-builder
+          key: electron-${{ runner.os }}-${{ hashFiles('src/package-lock.json') }}
+          restore-keys: |
+            electron-${{ runner.os }}-
+
+      # Setting this is ALSO the marker the Makefile's MAS_SIGN_ENV reads to know
+      # it is in CI and must NOT strip CSC_LINK (locally it strips it, because
+      # there CSC_LINK names a Developer ID cert that is invalid for the store).
+      - name: Install provisioning profile
+        env:
+          PROFILE: ${{ secrets.MAS_PROVISIONING_PROFILE_BASE64 }}
+        run: |
+          if [ -z "$PROFILE" ]; then
+            echo "::error::MAS_ENABLED is true but MAS_PROVISIONING_PROFILE_BASE64 is unset"
+            exit 1
+          fi
+          printf '%s' "$PROFILE" | base64 --decode > src/packaging/embedded.provisionprofile
+          echo "profile installed ($(wc -c < src/packaging/embedded.provisionprofile) bytes)"
+
+      # CFBundleVersion is AT MOST THREE integers (a fourth is rejected on
+      # upload — see STORE-PUBLISHING.md §3), and must be unique and ascending
+      # within its version train. `run_number` is the only counter here that is
+      # monotonic across the whole repo and can never be reused, so it takes the
+      # third slot under the marketing version's major.minor.
+      - name: Compute build number
+        id: buildno
+        run: |
+          MARKETING=$(node -p "require('./src/package.json').version")
+          MAJOR_MINOR=$(echo "$MARKETING" | cut -d. -f1,2)
+          echo "marketing=$MARKETING" >> "$GITHUB_OUTPUT"
+          echo "build=${MAJOR_MINOR}.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+          echo "Marketing $MARKETING, CFBundleVersion ${MAJOR_MINOR}.${{ github.run_number }}"
+
+      - name: Build signed .pkg
+        env:
+          CSC_LINK: ${{ secrets.MAS_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAS_CSC_KEY_PASSWORD }}
+          CSC_INSTALLER_LINK: ${{ secrets.MAS_INSTALLER_CSC_LINK }}
+          CSC_INSTALLER_KEY_PASSWORD: ${{ secrets.MAS_INSTALLER_CSC_KEY_PASSWORD }}
+          MAS_PROVISIONING_PROFILE_BASE64: ${{ secrets.MAS_PROVISIONING_PROFILE_BASE64 }}
+        run: |
+          for attempt in 1 2 3; do
+            if make mas MAS_BUILD_VERSION=${{ steps.buildno.outputs.build }}; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "::warning::MAS build attempt ${attempt} failed; retrying in $(( attempt * 20 ))s"
+              sleep $(( attempt * 20 ))
+            fi
+          done
+          echo "::error::MAS build failed after 3 attempts"
+          exit 1
+
+      # The same checks STORE-PUBLISHING.md §2 asks for by hand. A store build
+      # that is signed with the WRONG identity still produces a .pkg — it is
+      # rejected minutes later by App Store Connect, with a message that does not
+      # name the cause — so the identity is asserted here rather than eyeballed.
+      - name: Verify the artifact
+        run: |
+          APP="build/src/dist/mas-universal/Chip Hippo.app"
+          PKG=$(ls build/src/dist/mas-universal/*.pkg)
+          codesign -dvvv "$APP" 2>&1 | grep -q "Authority=Apple Distribution" \
+            || { echo "::error::app is not signed by Apple Distribution"; exit 1; }
+          lipo -archs "$APP/Contents/MacOS/Chip Hippo" | grep -q "x86_64" \
+            && lipo -archs "$APP/Contents/MacOS/Chip Hippo" | grep -q "arm64" \
+            || { echo "::error::binary is not universal"; exit 1; }
+          test -f "$APP/Contents/embedded.provisionprofile" \
+            || { echo "::error::no embedded provisioning profile"; exit 1; }
+          codesign -d --entitlements - --xml "$APP" 2>/dev/null | grep -q "app-sandbox" \
+            || { echo "::error::app is not sandboxed"; exit 1; }
+          pkgutil --check-signature "$PKG" | grep -q "3rd Party Mac Developer Installer" \
+            || { echo "::error::installer is not signed by the Mac Installer cert"; exit 1; }
+          echo "verified $PKG"
+
+      # TAGS ONLY. A dispatch run has proved the certificates by this point, and
+      # an upload is the one step here that is not free to repeat: every upload
+      # burns a build number permanently, and a build number cannot be reused
+      # even after the build it named is deleted.
+      - name: Upload to App Store Connect
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          KEY_B64: ${{ secrets.APPLE_API_KEY_BASE64 }}
+        run: |
+          KEY=~/.appstoreconnect/private_keys/AuthKey_${KEY_ID}.p8
+          mkdir -p ~/.appstoreconnect/private_keys
+          # Removed on the way out however this step ends — a plain `rm` on the
+          # last line never runs when altool fails, which is exactly the run you
+          # least want leaving a private key on disk behind it.
+          trap 'rm -f "$KEY"' EXIT
+          printf '%s' "$KEY_B64" | base64 --decode > "$KEY"
+          PKG=$(ls build/src/dist/mas-universal/*.pkg)
+          xcrun altool --upload-app -t macos -f "$PKG" --apiKey "$KEY_ID" --apiIssuer "$ISSUER"
+
+      - name: Note that a dispatch run stops here
+        if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        run: echo "::notice::Signed and verified, not uploaded - a manual dispatch is a credential check. Push a tag with 'make release VERSION=x.y.z' to upload."
+
+      # Kept as a run artifact, NOT attached to the GitHub Release: the Release
+      # globs `installers-*` and a store .pkg is not a thing anyone should be
+      # downloading from there (it only installs through the store).
+      - name: Keep the .pkg as a run artifact
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: mas-pkg
+          path: build/src/dist/mas-universal/*.pkg
+          if-no-files-found: error
+          retention-days: 7
+
+  # ── Mac App Store: prepare the version record and submit for review ─────────
+  # Split from the build job because it WAITS: a freshly uploaded build sits in
+  # PROCESSING for anywhere from a few minutes to an hour, and nothing can be
+  # attached to a version until it turns VALID. Gated separately from
+  # MAS_ENABLED so that "upload every release" and "submit every release" stay
+  # independent decisions — uploading is reversible, submitting is a queue you
+  # join and a human review at the other end.
+  store-submit:
+    name: Mac App Store submit
+    needs: store-mas
+    if: startsWith(github.ref, 'refs/tags/') && vars.STORE_SUBMIT_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          fetch-depth: 0 # full history so the notes range resolves
+
+      - name: Set up Node.js
+        uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      # The release notes ARE the commit subjects between the previous tag and
+      # this one, with the release plumbing dropped — a "Release v1.0.1" line is
+      # noise to a reader of the App Store's What's New. If there is no previous
+      # tag this is the first release and the field is left for a human.
+      - name: Collect release notes from commits
+        id: notes
+        run: |
+          TAG="${GITHUB_REF_NAME}"
+          PREV=$(git describe --tags --abbrev=0 "${TAG}^" 2>/dev/null || echo "")
+          if [ -z "$PREV" ]; then
+            echo "::warning::No previous tag; leaving What's New for a human"
+            echo "have=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git log --format='%s' "${PREV}..${TAG}" \
+            | grep -viE '^(release v?[0-9]|releasing [0-9]|bump|merge |wip\b)' \
+            | sed 's/^/• /' > release-notes.txt
+          if [ ! -s release-notes.txt ]; then
+            echo "::warning::No user-facing commits between ${PREV} and ${TAG}"
+            echo "have=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "have=true" >> "$GITHUB_OUTPUT"
+          echo "Notes from ${PREV}..${TAG}:"; cat release-notes.txt
+
+      # Poll rather than sleep a fixed time: processing is minutes on a good day
+      # and most of an hour on a bad one, and a fixed wait is wrong in both
+      # directions. `prepare` refuses a build that is not VALID, so this loop is
+      # the thing that decides how long we are willing to wait for one.
+      - name: Wait for the build to finish processing
+        env:
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
+        run: |
+          MARKETING=$(node -p "require('./src/package.json').version")
+          MAJOR_MINOR=$(echo "$MARKETING" | cut -d. -f1,2)
+          BUILD="${MAJOR_MINOR}.${{ github.run_number }}"
+          for i in $(seq 1 60); do
+            if node scripts/asc-release.mjs status | grep -q "short ${MARKETING} .*build ${BUILD} .*VALID"; then
+              echo "build ${BUILD} is VALID"; exit 0
+            fi
+            echo "waiting for build ${BUILD} to process (${i}/60)..."
+            sleep 60
+          done
+          echo "::error::build ${BUILD} did not become VALID within 60 minutes"
+          exit 1
+
+      - name: Prepare the version record
+        env:
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
+        run: |
+          MARKETING=$(node -p "require('./src/package.json').version")
+          MAJOR_MINOR=$(echo "$MARKETING" | cut -d. -f1,2)
+          node scripts/asc-release.mjs prepare \
+            --version "$MARKETING" \
+            --build "${MAJOR_MINOR}.${{ github.run_number }}" \
+            ${{ steps.notes.outputs.have == 'true' && '--notes-file release-notes.txt' || '' }}
+
+      - name: Submit for review
+        env:
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          APPLE_API_KEY_BASE64: ${{ secrets.APPLE_API_KEY_BASE64 }}
+        run: |
+          node scripts/asc-release.mjs submit --version "$(node -p "require('./src/package.json').version")"

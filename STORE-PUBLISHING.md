@@ -87,16 +87,39 @@ development cert.
 
 ## 3. Upload and submit
 
-Upload the `.pkg` with **Transporter** (free on the Mac App Store) or:
+**On a tagged release CI does all of this** — `store-mas` builds, verifies and uploads;
+`store-submit` waits out processing, attaches the build, writes What's New from the
+commit subjects since the last tag, and submits. Both are gated on repository variables
+(`MAS_ENABLED`, `STORE_SUBMIT_ENABLED`); see APP_STORE_TODO.md for the switches and for
+the manual-dispatch dry run that proves the signing secrets without cutting a release.
+
+By hand, for a build made here:
+
+```sh
+make upload                                  # the .pkg under build/src/dist/mas-universal
+node scripts/asc-release.mjs status          # is it VALID yet?
+node scripts/asc-release.mjs prepare --version 1.0.1 --build 1.0.2 \
+  --notes-file notes.txt                     # attach + What's New
+node scripts/asc-release.mjs submit --version 1.0.1
+```
+
+`asc-release.mjs` is the SAME tool the CI job runs, deliberately: a release path that is
+automated down one route and hand-run down another is two paths that will disagree, and
+the disagreement surfaces as a botched submission. It also carries the **promotional
+text** forward — that field is per-VERSION, starts empty on every new record, and sits
+below the fold on the version page, so it is silently lost on exactly the releases nobody
+is watching closely.
+
+Uploading only makes the build APPEAR in App Store Connect; attaching and submitting are
+separate, and `submit` refuses when a review submission is already open.
+
+Or upload with **Transporter** (free on the Mac App Store), or the raw call `make upload`
+wraps:
 
 ```sh
 xcrun altool --upload-app -t macos -f <pkg> \
   --apiKey "$APPLE_API_KEY_ID" --apiIssuer "$APPLE_API_ISSUER"
 ```
-
-Then attach the build to a version in App Store Connect and submit for review. Uploading
-only makes the build APPEAR in App Store Connect — *Submit for Review* stays a
-deliberate click.
 
 **Re-uploading needs a unique build number**, which is `MAS_BUILD_VERSION`:
 

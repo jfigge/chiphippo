@@ -22,6 +22,11 @@ left.
 | First submission | **1.0.0 submitted for review 2026-08-04** — REJECTED |
 | Rejected upload | **`CFBundleVersion` 1.0.0.1, 2026-08-12** — refused: a build number is three components at most, not four |
 | Current build | **1.0.0 (`CFBundleVersion` 1.0.1)**, built 2026-08-12 with the 1.5.0 + 2.1(a) fixes. Verified: Apple Distribution, universal, sandboxed, profile embedded. |
+| Second upload | **`CFBundleVersion` 1.0.1 uploaded 2026-08-12** — delivery UUID `71cd2385-ea5b-44b5-bae7-d54d085d9876`, processed **VALID**. |
+| Second submission | **1.0.0 (build 1.0.1) submitted 2026-08-12 17:54 UTC** — `WAITING_FOR_REVIEW`, submission `fa5a89e4-b871-4a64-bb95-b000b9ae7225`. Submitted by hand in the console. |
+| Next binary | **1.0.1 (`CFBundleVersion` 1.0.2)** built 2026-08-12, at `build/src/dist/mas-universal/`. **Not uploaded** — see "Shipping 1.0.1" below. |
+| ASC app id | `6797996411`; version record `1.0.0` is `70269974-2ad1-49af-a123-3bb3bc9a09ed` |
+| API key | `X3M2YK7357`, issuer `245bb0e6-5b7e-47e4-946b-60e8ee1bc19c`; `.p8` in `certs/` (⇄ `~/.appstoreconnect/private_keys/`) |
 
 ## Done
 
@@ -58,21 +63,16 @@ left.
       an external folder holding only `74LS00.pdf` and confirming 74LS10 stayed absent
       (a fallback to the app's own folder would have shown one, since it has 74LS10).
 - [x] Decide the marketing version — shipped as `1.0.0`.
-- [ ] Screenshots (macOS, 2560×1600 or 2880×1800). The desk with a wired 74LS-series
-      circuit running, the schematic view, the build guide, and the AI builder are the
-      four that show what the app is.
-- [ ] Description, keywords, support URL, marketing URL (chiphippo.com), category
-      (Developer Tools). **Drafted in [APP_STORE_LISTING.md](APP_STORE_LISTING.md)**,
-      with the review notes, privacy answers and screenshot shot list beside them.
-- [ ] **Privacy answers.** Chip Hippo collects nothing and has no analytics. The one
-      thing to declare carefully: an AI build sends the user's prompt to *their own*
-      provider account, using a key they supplied — no data reaches us at any point.
-- [ ] **Export compliance.** Standard TLS only (HTTPS to the AI provider and the
-      datasheet hosts) plus the OS keychain via `safeStorage` — exempt.
-      `ITSAppUsesNonExemptEncryption: false` is already in the build, so the
-      per-submission prompt should not appear.
-- [ ] Review notes: say that the in-app updater is absent **on purpose** in a store
-      build, so a reviewer does not report it as a missing feature.
+- [x] Screenshots — **6 uploaded, all `COMPLETE`** in the `APP_DESKTOP` set.
+- [x] Description (3106 chars), keywords, support URL, marketing URL — all set on the
+      `en-US` version localization. Categories are **Developer Tools** (primary) +
+      **Education** (secondary).
+- [x] **Privacy answers**, **export compliance** and **review notes** — all answered.
+      Not individually re-checked here, but the submission reached `WAITING_FOR_REVIEW`,
+      which App Store Connect refuses until every app-level setting below exists.
+
+**Verified live 2026-08-12 via `scripts/asc-release.mjs` + the ASC API**, not from
+memory — this section had gone stale and was claiming work that was already done.
 
 ## App-level settings (not per-version — done once, block "Add for Review")
 
@@ -135,25 +135,78 @@ worked; the wording of each fix is in
   is what happened to the 2026-08-12 re-upload. It is its own ascending counter,
   unrelated in shape to the marketing version: `1.0.1` under a `1.0.0` marketing
   version is correct.
+- **A build belongs to the TRAIN of its `CFBundleShortVersionString`, permanently.** Both
+  builds uploaded on 2026-08-12 are in the `1.0.0` train, so neither can ever attach to a
+  `1.0.1` version record however high its build number is. Shipping `1.0.1` needs a binary
+  built *after* the `src/package.json` bump — bumping `MAS_BUILD_VERSION` alone is not it.
+- **Only one version record may be editable at a time.** While one sits in
+  `WAITING_FOR_REVIEW` / `IN_REVIEW`, the next version cannot be created beside it.
 - **A re-issued certificate invalidates the profile that embeds it.** Regenerate and
   re-download the profile, or the build passes locally and fails validation.
 - **`pkgutil` labels the installer cert "issued by Apple (Development)"** — cosmetic,
   not a wrong certificate.
 
-## Later — CI
+## Shipping 1.0.1 — blocked until 1.0.0 clears review
 
-Not wired up yet. The shape, when it is (mirroring Rest Hippo's `store-mas` job):
+The 1.0.1 binary exists (short `1.0.1`, `CFBundleVersion` 1.0.2) and is built. It
+**cannot be shipped yet**, and the reason is not a missing step:
 
-- A `store-mas` job in `.github/workflows/release.yml`, gated
-  `if: vars.MAS_ENABLED == 'true'`, on `macos-latest`.
-- Secrets: `MAS_CSC_LINK` / `MAS_CSC_KEY_PASSWORD` (Apple Distribution `.p12`),
-  `MAS_INSTALLER_CSC_LINK` / `MAS_INSTALLER_CSC_KEY_PASSWORD` (Mac Installer),
-  `MAS_PROVISIONING_PROFILE_BASE64` — decoded into
-  `src/packaging/embedded.provisionprofile` before `make mas`. Setting that last one is
-  also the marker `MAS_SIGN_ENV` uses to know it is in CI and must NOT strip `CSC_LINK`.
-- Upload the `.pkg` as a run artifact (not attached to the public Release, which globs
-  `installers-*`).
-- A separate submit step gated on BOTH a tag push and `vars.STORE_SUBMIT_ENABLED`, using
-  an App Store Connect API key (`APPLE_API_KEY_ID` / `APPLE_API_ISSUER` /
-  `APPLE_API_KEY_BASE64`) — app-specific passwords do not work headless with 2FA. Even
-  then, *Submit for Review* stays a manual click.
+- App Store Connect allows **exactly one version record in an editable state**, and
+  `1.0.0` is currently `WAITING_FOR_REVIEW`. A `1.0.1` record cannot be added beside it.
+- Making room means **removing 1.0.0 from review** (developer-reject), which forfeits its
+  place in the queue — days of waiting, to ship a build whose fixes are the ones already
+  under review. Not worth it.
+- Both uploaded builds (`1.0.0`, `1.0.1`) live in the **`1.0.0` short-version train**, so
+  neither can ever attach to a `1.0.1` record. The already-built 1.0.2 binary is the one
+  that can.
+
+So: **wait for the 1.0.0 verdict.**
+
+- *Approved* → create the `1.0.1` record, `make upload`, then
+  `node scripts/asc-release.mjs prepare --version 1.0.1 --build 1.0.2 --notes-file …`
+  and `submit`. Or just push the tag once CI is fully configured (below).
+- *Rejected* → the record returns to an editable state, and 1.0.1 becomes the natural
+  answer to whatever came back.
+
+## CI — wired, awaiting four secrets
+
+`.github/workflows/release.yml` carries **`store-mas`** (build → verify → upload) and
+**`store-submit`** (wait for processing → prepare → submit), both triggered by the tag
+`make release VERSION=x.y.z` pushes. `scripts/asc-release.mjs` is the App Store Connect
+client, used by **both** CI and a human at a terminal so the two paths cannot diverge.
+
+All eight secrets are configured:
+
+- [x] `MAS_PROVISIONING_PROFILE_BASE64`, `APPLE_API_KEY_ID`, `APPLE_API_ISSUER`,
+      `APPLE_API_KEY_BASE64` — pushed 2026-08-12 17:53.
+- [x] `MAS_CSC_LINK` / `MAS_CSC_KEY_PASSWORD` (*Apple Distribution*) and
+      `MAS_INSTALLER_CSC_LINK` / `MAS_INSTALLER_CSC_KEY_PASSWORD` (*3rd Party Mac
+      Developer Installer*) — pushed 2026-08-12 19:07–19:09.
+
+Then the two switches. The jobs are gated on these **variables** rather than on the
+secrets existing, so a half-configured signing setup fails loudly instead of skipping
+silently:
+
+```bash
+gh variable set MAS_ENABLED --body true          # build + upload every tagged release
+gh variable set STORE_SUBMIT_ENABLED --body true # also submit it for review
+```
+
+Keep them independent: uploading is reversible, submitting joins a review queue.
+
+### Proving the credentials without cutting a release
+
+Six of the eight secrets are opaque blobs, and **nothing local can tell you a `.p12` was
+exported correctly** — so `store-mas` also runs on a **manual dispatch**, where it builds,
+signs and verifies exactly as a tagged run does but stops short of the upload:
+
+```bash
+gh variable set MAS_ENABLED --body true
+gh workflow run release.yml --ref main
+```
+
+A green run means the certificates, the passphrases and the profile are all good. Do this
+**before** trusting a tagged release to them — otherwise the first test of a store
+credential is a real release, and a bad one costs the tag. The upload is tag-only because
+it is the one step that cannot be repeated: every upload burns a build number
+permanently, and a build number cannot be reused even after its build is deleted.
