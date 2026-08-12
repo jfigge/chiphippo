@@ -101,8 +101,16 @@ deliberate click.
 **Re-uploading needs a unique build number**, which is `MAS_BUILD_VERSION`:
 
 ```sh
-make mas MAS_BUILD_VERSION=1.0.0.1
+make mas MAS_BUILD_VERSION=1.0.1
 ```
+
+**`CFBundleVersion` takes AT MOST THREE components.** Apple defines it as a
+period-separated list of at most three non-negative integers, so the obvious
+`<marketing>.<n>` form — `1.0.0.1` — is four and App Store Connect rejects the upload.
+(Chip Hippo's second submission bounced on exactly this.) The build number is its own
+three-part counter: it only has to be UNIQUE and ASCENDING against what that version
+record has already seen. It does not have to resemble the marketing version, so
+`CFBundleVersion 1.0.1` under `CFBundleShortVersionString 1.0.0` is correct and normal.
 
 It sets `CFBundleVersion` alone. **Do not bump `version` in `src/package.json` to get
 past this** — that moves `CFBundleShortVersionString`, which the App Store Connect

@@ -66,7 +66,14 @@ MAS_CSC_NAME ?= Jason Figge (2C564TQ2FY)
 # bumping `version` in src/package.json orphans the build from the record it
 # belongs to. What moves is CFBundleVersion, which is what this sets — e.g.
 #
-#     make mas MAS_BUILD_VERSION=1.0.0.1
+#     make mas MAS_BUILD_VERSION=1.0.1
+#
+# THREE COMPONENTS AT MOST. Apple defines CFBundleVersion as a period-separated
+# list of at most three non-negative integers, and App Store Connect REJECTS a
+# fourth: a `<marketing>.<n>` build number (1.0.0.1) reads as four and bounces
+# on upload. So the build number is its own three-part counter that only has to
+# be unique and ascending — it does NOT have to look like the marketing version,
+# and 1.0.1 as a build number under a 1.0.0 marketing version is correct.
 #
 # Empty by default, in which case electron-builder uses `version` for both and
 # a first upload of a version needs no ceremony.

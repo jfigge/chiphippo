@@ -20,7 +20,8 @@ left.
 | Built package | `build/src/dist/mas-universal/Chip-Hippo-<version>-universal.pkg` |
 | First upload | **1.0.0 uploaded 2026-08-04** — delivery UUID `6cc4e2ff-3ae3-4459-a913-96d90befe83b` |
 | First submission | **1.0.0 submitted for review 2026-08-04** — REJECTED |
-| Current build | **1.0.0 (`CFBundleVersion` 1.0.0.1)**, built 2026-08-12 with the 1.5.0 + 2.1(a) fixes |
+| Rejected upload | **`CFBundleVersion` 1.0.0.1, 2026-08-12** — refused: a build number is three components at most, not four |
+| Current build | **1.0.0 (`CFBundleVersion` 1.0.1)**, built 2026-08-12 with the 1.5.0 + 2.1(a) fixes. Verified: Apple Distribution, universal, sandboxed, profile embedded. |
 
 ## Done
 
@@ -126,9 +127,14 @@ worked; the wording of each fix is in
 ## Known gotchas
 
 - **A re-upload of the same version needs a unique build number** —
-  `make mas MAS_BUILD_VERSION=<version>.<n>` (STORE-PUBLISHING.md §3). Never bump
+  `make mas MAS_BUILD_VERSION=<x.y.z>` (STORE-PUBLISHING.md §3). Never bump
   `version` to get past it: that moves `CFBundleShortVersionString` away from the
   App Store Connect version record it has to match.
+- **The build number is THREE components, never four.** `CFBundleVersion` is at
+  most three period-separated integers, so `1.0.0.1` is rejected on upload — which
+  is what happened to the 2026-08-12 re-upload. It is its own ascending counter,
+  unrelated in shape to the marketing version: `1.0.1` under a `1.0.0` marketing
+  version is correct.
 - **A re-issued certificate invalidates the profile that embeds it.** Regenerate and
   re-download the profile, or the build passes locally and fails validation.
 - **`pkgutil` labels the installer cert "issued by Apple (Development)"** — cosmetic,
