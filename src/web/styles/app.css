@@ -1250,11 +1250,11 @@
 }
 
 /* The LED's leads are a thin span right where its wires attach, so the lead
-   line makes a poor grab handle. The bulb rides a unit above the leads over
-   empty space — make it a second pointer target so a click on the dome selects
-   and drags the whole LED, leaving the lead line (and the wires there) free to
-   click. Placed LEDs only: the placement ghost lives in the pointer-inert
-   overlay and must stay that way. */
+   line makes a poor grab handle. Make the dome (centred on the pin-to-pin
+   midpoint) a second pointer target so a click on it selects and drags the
+   whole LED, leaving the lead line (and the wires there) free to click.
+   Placed LEDs only: the placement ghost lives in the pointer-inert overlay
+   and must stay that way. */
 .part-discrete--led .part-led-dome {
   pointer-events: fill;
   cursor: grab;

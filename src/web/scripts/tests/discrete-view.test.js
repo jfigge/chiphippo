@@ -210,10 +210,10 @@ test("buildSpanSvg: an LED spans with a centred dome and cathode cue", () => {
   assert.ok(svg.querySelector(".part-led-dome--green"));
   assert.ok(svg.querySelector(".part-span-lead"));
   assert.ok(svg.querySelector(".part-span-hit"));
-  // The dome sits over the MIDPOINT (1.5, 2), lifted 1 unit off the leads.
+  // The dome sits centred on the MIDPOINT (1.5, 2) — both axes.
   const dome = svg.querySelector(".part-led-dome");
   assert.equal(dome.getAttribute("cx"), "1.5");
-  assert.equal(dome.getAttribute("cy"), "1");
+  assert.equal(dome.getAttribute("cy"), "2");
   // …and the whole body is rotated to the lead angle about that midpoint.
   assert.match(dome.parentNode.getAttribute("transform"), /^rotate\(53\./);
 

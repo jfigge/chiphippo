@@ -57,7 +57,7 @@ const BOXES = Object.freeze({
     width: 3.4,
     height: 2.8,
   }),
-  led: Object.freeze({ minX: -0.7, minY: -1.9, width: 2.4, height: 2.9 }),
+  led: Object.freeze({ minX: -0.7, minY: -1.2, width: 2.4, height: 2.4 }),
   resistor: Object.freeze({ minX: -0.7, minY: -1.1, width: 4.4, height: 2.2 }),
   // A 9-pin SIP standing over one row of holes (like the displays), body above
   // so every hole stays clickable for wiring.
@@ -164,21 +164,22 @@ const SPAN_BODIES = Object.freeze({
       ),
     ],
   }),
-  // Dome above the leads with the flat chord marking the CATHODE side — pin 2
-  // by default, mirrored to pin 1's side when flipped.
+  // Dome centred on the pin-to-pin midpoint (both axes — swapping which hole
+  // either pin lands in never moves it) with the flat chord marking the
+  // CATHODE side — pin 2 by default, mirrored to pin 1's side when flipped.
   led: Object.freeze({
-    pad: 2, // dome centre 1 off the leads + radius 0.85, plus a hair
+    pad: 1, // radius 0.85, plus a hair
     build: (m, params) => [
       svgEl("circle", {
         class: `part-led-dome part-led-dome--${params.color ?? "red"}`,
         cx: m.x,
-        cy: m.y - 1,
+        cy: m.y,
         r: 0.85,
       }),
       svgEl("rect", {
         class: "part-led-flat",
         x: m.x + (params.flip ? -0.65 : 0.65) - 0.07,
-        y: m.y - 1.75,
+        y: m.y - 0.75,
         width: 0.14,
         height: 1.5,
       }),
@@ -245,12 +246,11 @@ export function buildSpanSvg(ref, dx, dy, params = {}) {
     svg.append(body);
   }
   // Burn-out overlay (CSS shows it only on .part-discrete--burnt): a red X over
-  // the LED plus smoke. The dome sits one unit off the leads, so after the
-  // body's rotation it lands here — smoke must rise in SCREEN space, not the
-  // rotated frame, so it's built outside the rotated group.
+  // the LED plus smoke, centred on the same midpoint the dome is. Smoke must
+  // rise in SCREEN space, not the rotated frame, so it's built outside the
+  // rotated group.
   if (ref === "led") {
-    const rad = (angle * Math.PI) / 180;
-    svg.append(buildBurnOverlay(midX + Math.sin(rad), midY - Math.cos(rad)));
+    svg.append(buildBurnOverlay(midX, midY));
   }
   return svg;
 }
@@ -1037,35 +1037,22 @@ export function buildDiscreteSvg(ref, params = {}) {
   } else if (def.switchBank) {
     buildDipSwitchBank(svg, def, normalized);
   } else {
-    // LED dome over the two holes; the flat chord marks the CATHODE side
-    // (right by default — pin 2; params.flip mirrors it to the left).
+    // LED dome centred on the two holes (both axes — so swapping which hole
+    // either pin lands in never moves it); the flat chord marks the CATHODE
+    // side (right by default — pin 2; params.flip mirrors it to the left).
     const cathodeRight = !normalized.flip;
     const flatX = cathodeRight ? 1.15 : -0.15;
     svg.append(
-      svgEl("rect", {
-        class: "part-led-leg",
-        x: -0.12,
-        y: -0.7,
-        width: 0.24,
-        height: 0.85,
-      }),
-      svgEl("rect", {
-        class: "part-led-leg",
-        x: 0.88,
-        y: -0.7,
-        width: 0.24,
-        height: 0.85,
-      }),
       svgEl("circle", {
         class: `part-led-dome part-led-dome--${normalized.color}`,
         cx: 0.5,
-        cy: -1,
+        cy: 0,
         r: 0.85,
       }),
       svgEl("rect", {
         class: "part-led-flat",
         x: flatX,
-        y: -1.75,
+        y: -0.75,
         width: 0.14,
         height: 1.5,
       }),
