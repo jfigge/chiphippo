@@ -653,6 +653,53 @@ test("kitPlacements / kitOutline describe a kit without touching the desk", () =
   });
 });
 
+test("canFlipKitRails: only an assembled kit with rails may flip them", () => {
+  assert.equal(DeskDoc.canFlipKitRails("full"), true);
+  assert.equal(DeskDoc.canFlipKitRails("half"), true);
+  assert.equal(DeskDoc.canFlipKitRails("tiny"), false, "no rails at all");
+  assert.equal(
+    DeskDoc.canFlipKitRails("rail-full"),
+    false,
+    "a loose rail already owns R for its own whole-kit rotation",
+  );
+});
+
+test("kitPlacements(flipRails: true) turns only the rail strips, 180°, same footprint", () => {
+  const flat = DeskDoc.kitPlacements("full", 2, 5);
+  const flipped = DeskDoc.kitPlacements("full", 2, 5, 0, true);
+  assert.deepEqual(flipped, [
+    { type: "rail-full", x: 2, y: 5, rot: 180 },
+    { type: "pins-full", x: 2, y: q(5 + RAIL_H), rot: 0 },
+    { type: "rail-full", x: 2, y: q(5 + RAIL_H + PINS_H), rot: 180 },
+  ]);
+  // Position of every strip is untouched by the flip — only `rot` differs.
+  assert.deepEqual(
+    flipped.map(({ rot, ...rest }) => rest),
+    flat.map(({ rot, ...rest }) => rest),
+  );
+  // A kit with no rails (or a loose rail, which already owns whole-kit
+  // rotation) ignores the flag rather than mis-turning its pin-board.
+  assert.deepEqual(
+    DeskDoc.kitPlacements("tiny", 0, 0, 0, true),
+    DeskDoc.kitPlacements("tiny", 0, 0),
+  );
+});
+
+test("addKit(flipRails: true) stores 180° on the rails only, and still mates", () => {
+  const doc = new DeskDoc(null);
+  const [railTop, pins, railBottom] = doc.addKit("full", 2, 5, 0, true);
+  assert.equal(railTop.rot, 180);
+  assert.equal(pins.rot, 0);
+  assert.equal(railBottom.rot, 180);
+  // A flipped kit dovetails with a second one exactly as an unflipped one
+  // would — boardSize doesn't change, so mating is blind to the flip.
+  const below = doc.addKit("full", 2, q(5 + KIT_H), 0, true);
+  // railBottom dovetails with its OWN pin-board above it and the new kit's
+  // top rail below it — both edge-to-edge, both the same width.
+  assert.equal(doc.matingStrips(railBottom.id).length, 2, "still mates below");
+  assert.equal(below[0].rot, 180);
+});
+
 test("addKit: seats every strip at its preset offset, sharing one group", () => {
   const doc = new DeskDoc(null);
   assert.deepEqual(doc.addKit("full", 2, 5), [

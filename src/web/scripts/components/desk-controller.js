@@ -1001,6 +1001,7 @@ export class DeskController {
       pos: null,
       legal: false,
       rot: 0,
+      flipRails: false,
     };
     this.#renderBoardGhost(mode);
     this.#enterPlacement(mode);
@@ -1018,7 +1019,7 @@ export class DeskController {
     // the legal/illegal outline and tint are drawn on this element.
     m.ghost.style.width = `${outline.width * PX_PER_UNIT}px`;
     m.ghost.style.height = `${outline.height * PX_PER_UNIT}px`;
-    for (const p of DeskDoc.kitPlacements(m.kit, 0, 0, m.rot)) {
+    for (const p of DeskDoc.kitPlacements(m.kit, 0, 0, m.rot, m.flipRails)) {
       const strip = el("div", { class: "board-ghost-strip" });
       strip.style.left = `${p.x * PX_PER_UNIT}px`;
       strip.style.top = `${p.y * PX_PER_UNIT}px`;
@@ -1615,7 +1616,7 @@ export class DeskController {
       m.rot,
     );
     m.pos = { x, y };
-    m.legal = this.#doc.canPlaceKit(m.kit, x, y, m.rot);
+    m.legal = this.#doc.canPlaceKit(m.kit, x, y, m.rot, m.flipRails);
     m.ghost.hidden = false;
     m.ghost.style.left = `${x * PX_PER_UNIT}px`;
     m.ghost.style.top = `${y * PX_PER_UNIT}px`;
@@ -1790,6 +1791,17 @@ export class DeskController {
     // pin-board and never turn.
     if (m?.kind === "place" && DeskDoc.canRotateKit(m.kit)) {
       m.rot = ROTATIONS[(ROTATIONS.indexOf(m.rot) + 1) % ROTATIONS.length];
+      this.#renderBoardGhost(m);
+      if (m.lastEvent) this.#trackBoardGhost(m.lastEvent);
+      return true;
+    }
+    // Placing an assembled kit that carries its own rails: R leaves the
+    // pin-board untouched and flips just the rail strips 180° in place —
+    // same footprint (mating is unaffected), reversed +/- row order, for
+    // users who want the opposite polarity nearest the pin-board. A toggle,
+    // not a cycle: pressing R again restores the default order.
+    if (m?.kind === "place" && DeskDoc.canFlipKitRails(m.kit)) {
+      m.flipRails = !m.flipRails;
       this.#renderBoardGhost(m);
       if (m.lastEvent) this.#trackBoardGhost(m.lastEvent);
       return true;
@@ -2614,8 +2626,8 @@ export class DeskController {
    *
    * @returns {Array<object>} the new strips, in kit order.
    */
-  addKitAt(kit, x, y, rot = 0) {
-    const strips = this.#doc.addKit(kit, x, y, rot);
+  addKitAt(kit, x, y, rot = 0, flipRails = false) {
+    const strips = this.#doc.addKit(kit, x, y, rot, flipRails);
     for (const strip of strips) this.#mountBoard(strip);
     // Anything dropped flush against a board mates with it, as the real
     // dovetailed part does — the strips join that board's group and drag as
@@ -4875,7 +4887,7 @@ export class DeskController {
     if (!m.legal) return; // stay armed, the tint explains why
     this.cancelPlacement();
     if (m.kind === "place") {
-      this.addKitAt(m.kit, m.pos.x, m.pos.y, m.rot);
+      this.addKitAt(m.kit, m.pos.x, m.pos.y, m.rot, m.flipRails);
     } else if (m.kind === "place-brick") {
       this.addBrickAt(m.ref, m.pos.x, m.pos.y, m.params);
     } else if (m.kind === "place-annotation") {

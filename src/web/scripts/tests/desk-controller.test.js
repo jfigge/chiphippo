@@ -2062,7 +2062,15 @@ test("R stands a rail on end while placing, and the placed strip stays upright",
   );
 });
 
-test("R does nothing to an assembled kit — it holds a pin-board", () => {
+test("addKitAt's rot argument never turns an assembled kit's strips", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const { controller } = makeDesk(doc);
+  const [rail] = controller.addKitAt("full", 0, 0, 90);
+  assert.equal(rail.rot, 0, "an assembled kit ignores a whole-kit rotation");
+});
+
+test("R flips a kit's rail strips 180° while placing, leaving the pin-board fixed", () => {
   resetDom();
   const doc = new DeskDoc(null);
   const { surface, controller } = makeDesk(doc, { x: 20, y: 20 });
@@ -2071,11 +2079,65 @@ test("R does nothing to an assembled kit — it holds a pin-board", () => {
   surface.dispatchEvent(
     new window.PointerEvent("pointermove", { bubbles: true, clientX: 1 }),
   );
+  const ghost = () => surface.querySelector(".board-ghost");
+  const stripEls = () => [...ghost().querySelectorAll(".board-ghost-strip")];
+  const size = () => ({ width: ghost().style.width, height: ghost().style.height }); // prettier-ignore
+  const before = size();
+  assert.equal(stripEls().length, 3, "rail, pins, rail");
+  assert.equal(stripEls()[0].style.transform, "", "flat to start");
+
+  const R = () =>
+    controller.handleKeyDown(new window.KeyboardEvent("keydown", { key: "r" }));
+  assert.equal(R(), true, "R consumed");
+  assert.ok(controller.placementArmed, "still armed — flipping is not placing");
+  // Same footprint either way — a rail's boardSize is identical at 0/180,
+  // so mating is unaffected by the flip.
+  assert.deepEqual(size(), before);
+  const [railTop, pins, railBottom] = stripEls();
+  assert.match(railTop.style.transform, /rotate\(180deg\)/);
+  assert.equal(pins.style.transform, "", "the pin-board never turns");
+  assert.match(railBottom.style.transform, /rotate\(180deg\)/);
+
+  // A second press is a TOGGLE, not a cycle: it restores the default order.
+  assert.equal(R(), true);
+  assert.equal(stripEls()[0].style.transform, "");
+  assert.equal(stripEls()[2].style.transform, "");
+
+  // Flip once more and commit — the placed rails carry it, the pin-board doesn't.
+  R();
+  const [bottomRail, pinBoard, topRail] = controller.addKitAt(
+    "full",
+    0,
+    0,
+    0,
+    true,
+  );
+  assert.equal(bottomRail.rot, 180);
+  assert.equal(pinBoard.rot, 0);
+  assert.equal(topRail.rot, 180);
+  assert.match(
+    boardEl(surface, bottomRail.id).style.transform,
+    /rotate\(180deg\)/,
+  );
+  assert.equal(boardEl(surface, pinBoard.id).style.transform, "");
+});
+
+test("R does nothing while placing a bare pin-board — no rails to flip", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const { surface, controller } = makeDesk(doc, { x: 20, y: 20 });
+
+  controller.armPlacement("tiny");
+  surface.dispatchEvent(
+    new window.PointerEvent("pointermove", { bubbles: true, clientX: 1 }),
+  );
   const before = surface.querySelector(".board-ghost").style.width;
-  controller.handleKeyDown(new window.KeyboardEvent("keydown", { key: "r" }));
+  const consumed = controller.handleKeyDown(
+    new window.KeyboardEvent("keydown", { key: "r" }),
+  );
+  assert.equal(consumed, false, "nothing to rotate or flip");
   assert.equal(surface.querySelector(".board-ghost").style.width, before);
-  // …and the document refuses the rotation even if asked directly.
-  assert.equal(controller.addKitAt("full", 0, 0, 90)[0].rot, 0);
+  assert.equal(controller.addKitAt("tiny", 40, 40, 0, true)[0].rot, 0);
 });
 
 test("an upright rail resolves its holes down the desk, and wires reach them", () => {

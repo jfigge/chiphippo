@@ -931,20 +931,25 @@ export class DeskDoc {
    *
    * @returns {Array<{type:string,x:number,y:number}>}
    */
-  static kitPlacements(kitKey, x, y, rot = 0) {
+  static kitPlacements(kitKey, x, y, rot = 0, flipRails = false) {
     const kit = BREADBOARD_KITS[kitKey];
     if (!kit) throw taggedError(`unknown kit: ${kitKey}`, "INVALID_TYPE");
     const ox = placeX(x);
     const oy = boardCoord(y);
     // A kit turns only if EVERY strip in it can: in practice the lone-rail
     // kits. An assembled board holds a pin-board, so it stays flat, and the
-    // preset offsets are only ever meaningful at 0.
+    // preset offsets are only ever meaningful at 0. An assembled kit's own
+    // rail strips may instead be FLIPPED 180° independently of the pin-board
+    // — same footprint (boardSize is identical at 0/180), reversed polarity
+    // order — which is what `flipRails` asks for. `turn` wins over a flip
+    // when both are somehow asked for; in practice a loose-rail "kit" (the
+    // only one `turn` ever applies to) never sets `flipRails`.
     const turn = DeskDoc.canRotateKit(kitKey) ? normalizeRotation(kit.strips[0].type, rot) : 0; // prettier-ignore
     return kit.strips.map((s) => ({
       type: s.type,
       x: ox + s.dx,
       y: boardCoord(oy + s.dy),
-      rot: turn,
+      rot: turn !== 0 ? turn : flipRails && canRotate(s.type) ? 180 : 0,
     }));
   }
 
@@ -953,6 +958,21 @@ export class DeskDoc {
     const kit = BREADBOARD_KITS[kitKey];
     if (!kit) throw taggedError(`unknown kit: ${kitKey}`, "INVALID_TYPE");
     return kit.strips.every((s) => canRotate(s.type));
+  }
+
+  /**
+   * Can this kit's own rail strips be flipped 180° independently, leaving
+   * the pin-board fixed? True for an assembled kit with at least one rail
+   * (Full 830, Half 400) — false for a bare pin-board (Tiny 170, no rails to
+   * flip) and false for a loose single-strip kit (rail-full / rail-half),
+   * which already owns R for its own whole-kit rotation via `canRotateKit`.
+   */
+  static canFlipKitRails(kitKey) {
+    const kit = BREADBOARD_KITS[kitKey];
+    if (!kit) throw taggedError(`unknown kit: ${kitKey}`, "INVALID_TYPE");
+    return (
+      !DeskDoc.canRotateKit(kitKey) && kit.strips.some((s) => canRotate(s.type))
+    );
   }
 
   /** The bounding box of a kit, for centring the placement ghost. */
@@ -971,25 +991,28 @@ export class DeskDoc {
   }
 
   /** Would every strip of a kit fit at (x, y)? All-or-nothing. */
-  canPlaceKit(kitKey, x, y, rot = 0) {
-    return DeskDoc.kitPlacements(kitKey, x, y, rot).every((s) =>
+  canPlaceKit(kitKey, x, y, rot = 0, flipRails = false) {
+    return DeskDoc.kitPlacements(kitKey, x, y, rot, flipRails).every((s) =>
       this.canPlace(s.type, s.x, s.y, { rot: s.rot }),
     );
   }
 
   /**
    * Place a whole breadboard: every strip of the kit, seated at its preset
-   * offset and joined into one group so they drag as a unit. Throws
+   * offset and joined into one group so they drag as a unit. `flipRails`
+   * mirrors the kit's own rail strips 180° in place (positive/negative row
+   * order reversed) while the pin-board stays put — a ghost-only choice
+   * baked in at drop time, never editable on a placed board. Throws
    * INVALID_TYPE / INVALID_ARG / OVERLAP — nothing is added on failure.
    *
    * @returns {Array<object>} copies of the new strips, in kit order.
    */
-  addKit(kitKey, x, y, rot = 0) {
+  addKit(kitKey, x, y, rot = 0, flipRails = false) {
     if (!Number.isFinite(x) || !Number.isFinite(y)) {
       throw taggedError("kit position must be finite", "INVALID_ARG");
     }
-    const placements = DeskDoc.kitPlacements(kitKey, x, y, rot);
-    if (!this.canPlaceKit(kitKey, x, y, rot)) {
+    const placements = DeskDoc.kitPlacements(kitKey, x, y, rot, flipRails);
+    if (!this.canPlaceKit(kitKey, x, y, rot, flipRails)) {
       throw taggedError(
         `a ${kitKey} breadboard at ${placeX(x)},${boardCoord(y)} overlaps an existing board`,
         "OVERLAP",
