@@ -313,20 +313,31 @@ function listRow({ tag, name, role, detail }) {
  * it appended to the offset — the offset says WHERE the pin is, the detail
  * says what it does, and a 16-signal module needs both. Untranslated, like
  * every other per-pin description here.
+ *
+ * `rot` is a `reversible` part's placed half lap (the bussed resistor array
+ * turned end-for-end): the holes are unchanged and the NUMBERING reverses, so
+ * every offset this window states reverses with it. It has to be honoured
+ * here — the offset IS the whole content of the row, and a window telling
+ * someone the common bus is at the anchor while it sits eight holes along is
+ * worse than no window. A non-reversible def has nothing to turn and ignores
+ * it, exactly as a chip's own dialog stays at the canonical rot 0.
  * @param {object} def - a discrete def ({ id, title, pins, footprint }).
+ * @param {number} [rot] - 0 or 180.
  * @returns {HTMLElement}
  */
-export function buildDiscretePinout(def) {
+export function buildDiscretePinout(def, rot = 0) {
   const offsets = def.footprint.offsets;
   const span = offsets[offsets.length - 1] + 1;
+  const flipped = def.reversible === true && rot === 180;
+  const offsetOf = (i) => offsets[flipped ? offsets.length - 1 - i : i];
   const rows = def.pins.map((p, i) =>
     listRow({
       tag: p.n,
       name: p.name,
       role: p.role,
       detail: p.detail
-        ? `${offsetLabel(offsets[i])} · ${p.detail}`
-        : offsetLabel(offsets[i]),
+        ? `${offsetLabel(offsetOf(i))} · ${p.detail}`
+        : offsetLabel(offsetOf(i)),
     }),
   );
   return pinoutShell(
@@ -451,14 +462,15 @@ export function buildWirePinout() {
  *   always uses it (see buildCanPinout). A `def.package` layout uses it only
  *   for a non-`chip` part (e.g. bar8iso) — a real chip's dialog stays at the
  *   canonical rot 0, matching its fixed physical pin-1 marking and datasheet
- *   crop (see buildChipPinout).
+ *   crop (see buildChipPinout). A `def.footprint` layout uses it only for a
+ *   `reversible` part (see buildDiscretePinout).
  * @returns {HTMLElement|null}
  */
 export function buildPartPinout(def, rot = 0) {
   if (!def) return null;
   if (def.package) return buildChipPinout(def, def.kind === "chip" ? 0 : rot);
   if (def.can) return buildCanPinout(def, rot);
-  if (def.footprint) return buildDiscretePinout(def);
+  if (def.footprint) return buildDiscretePinout(def, rot);
   if (def.terminals) return buildTerminalPinout(def);
   return null;
 }

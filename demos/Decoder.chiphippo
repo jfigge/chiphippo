@@ -10,7 +10,7 @@
       "name": "74LS138",
       "description": "3-to-8 line decoder",
       "doc": {
-        "version": 6,
+        "version": 12,
         "boards": [
           {
             "id": "bb1",
@@ -660,7 +660,7 @@
       "name": "74LS139",
       "description": "Dual 2-to-4 line decoder",
       "doc": {
-        "version": 6,
+        "version": 12,
         "boards": [
           {
             "id": "bb1",

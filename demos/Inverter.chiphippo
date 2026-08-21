@@ -10,7 +10,7 @@
       "name": "74LS04",
       "description": "Hex inverter",
       "doc": {
-        "version": 6,
+        "version": 12,
         "boards": [
           {
             "id": "bb1",
@@ -482,7 +482,7 @@
       "name": "74LS05",
       "description": "Hex inverter (open-collector)",
       "doc": {
-        "version": 6,
+        "version": 12,
         "boards": [
           {
             "id": "bb1",
@@ -993,7 +993,7 @@
       "name": "74LS14",
       "description": "Hex Schmitt-trigger inverter",
       "doc": {
-        "version": 6,
+        "version": 12,
         "boards": [
           {
             "id": "bb1",

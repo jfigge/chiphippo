@@ -10,7 +10,7 @@
       "name": "74LS73",
       "description": "Dual JK flip-flop, clear",
       "doc": {
-        "version": 6,
+        "version": 12,
         "boards": [
           {
             "id": "bb1",
@@ -504,7 +504,7 @@
       "name": "74LS74",
       "description": "Dual D flip-flop",
       "doc": {
-        "version": 6,
+        "version": 12,
         "boards": [
           {
             "id": "bb1",
@@ -920,7 +920,7 @@
       "name": "74LS76",
       "description": "Dual JK flip-flop, preset & clear",
       "doc": {
-        "version": 6,
+        "version": 12,
         "boards": [
           {
             "id": "bb1",
@@ -1434,7 +1434,7 @@
       "name": "74LS107",
       "description": "Dual JK flip-flop, clear",
       "doc": {
-        "version": 6,
+        "version": 12,
         "boards": [
           {
             "id": "bb1",
@@ -1928,7 +1928,7 @@
       "name": "74LS175",
       "description": "Quad D flip-flop",
       "doc": {
-        "version": 6,
+        "version": 12,
         "boards": [
           {
             "id": "bb1",
@@ -2488,7 +2488,7 @@
       "name": "74LS112",
       "description": "Dual JK flip-flop, preset & clear",
       "doc": {
-        "version": 6,
+        "version": 12,
         "boards": [
           {
             "id": "bb1",
@@ -2994,7 +2994,7 @@
       "name": "74LS174",
       "description": "Hex D flip-flop",
       "doc": {
-        "version": 6,
+        "version": 12,
         "boards": [
           {
             "id": "bb1",
@@ -3728,7 +3728,7 @@
       "name": "74LS273",
       "description": "Octal D flip-flop, clear",
       "doc": {
-        "version": 6,
+        "version": 12,
         "boards": [
           {
             "id": "bb1",
@@ -3808,7 +3808,7 @@
             "kind": "discrete",
             "ref": "rnet9",
             "board": "bb2",
-            "anchor": "b2",
+            "anchor": "b1",
             "params": {
               "ohms": 10000
             }
@@ -4165,8 +4165,8 @@
           },
           {
             "id": "w16",
-            "from": "bb2.a10",
-            "to": "bb3.-7",
+            "from": "bb2.a1",
+            "to": "bb3.-1",
             "color": "black"
           },
           {

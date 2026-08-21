@@ -54,6 +54,7 @@ import {
   spec,
 } from "./breadboard.js";
 import { createAllocator } from "./column-allocator.js";
+import { DOC_VERSION } from "./desk-doc.js";
 import { captureDesign } from "./design-clip.js";
 import { DIP_PACKAGES } from "./footprints.js";
 import { partPinHoles } from "./occupancy.js";
@@ -611,17 +612,65 @@ function seatCompanion(part, links, { alloc, seatOf, boardType }) {
   if (links.some((l) => l.hostId !== hostId)) return null; // one host only
   const host = seatOf.get(hostId);
   if (!host) return null; // not seated yet — take the ordinary path
-  const type = boardType.get(host.boardId);
 
-  // The pack's own pin 1 fixes the anchor: same column as the host pin it is
-  // equal to, and the row furthest from the trench so the two never collide.
-  const first = links.find((l) => l.pin === 1);
-  const seed = first && host.holes.get(first.hostPin);
+  // A reversible part is tried BOTH WAYS ROUND, as it comes first.
+  //
+  // The bussed array is nine pins over a host of eight: COM has no switch
+  // position to sit under, so one column falls outside the host's run, and
+  // only the RIGHT-hand one is ever available — seating runs left to right, so
+  // the column after a part is either its own blank courtesy column or not yet
+  // spoken for, while the column before it belongs to the part already seated
+  // there. So the array goes in turned round, dot and common at the right-hand
+  // end, which is also how a person plugs one in: the marked end towards the
+  // room the wire to the rail needs.
+  //
+  // It is TRIED rather than assumed. Each orientation is put through the same
+  // node-by-node proof below, so an arrangement that does not line up is
+  // refused rather than seated wrong — this can cost columns, never
+  // correctness.
+  const orientations =
+    part.def.reversible === true ? [undefined, { rot: 180 }] : [undefined];
+  for (const params of orientations) {
+    const seat = companionSeat(part, links, {
+      alloc,
+      host,
+      hostId,
+      type: boardType.get(host.boardId),
+      params,
+    });
+    if (seat) return seat;
+  }
+  return null;
+}
+
+/**
+ * The seat itself: derive the anchor, prove every linked pin lands on its
+ * host's node, prove the columns are free, the host's, or a blank courtesy
+ * column, and claim it. Null if any of that fails — the caller then falls back
+ * to the ordinary seating path, so this can cost columns, never correctness.
+ */
+function companionSeat(part, links, { alloc, host, hostId, type, params }) {
+  // One linked pin fixes the anchor: it must land in the same COLUMN as the
+  // host pin it is electrically equal to, in the row furthest from the trench
+  // so the two never collide. The anchor is that column MINUS the pin's own
+  // footprint offset AT THIS ORIENTATION — which is 0 only when pin 1 itself
+  // is linked, and the array's is not. Any link serves; every one of them is
+  // then proved against `nodeOf` below, so this only has to get the arithmetic
+  // right, not the choice.
+  const first = links[0];
+  const seed = host.holes.get(first.hostPin);
   const m = seed && GRID_HOLE_RE.exec(seed);
   if (!m) return null;
-  const anchor = `${isLowerRow(m[1]) ? "a" : "j"}${m[2]}`;
+  const offsets = part.def.footprint?.offsets;
+  const idx = part.def.pins.findIndex((p) => p.n === first.pin);
+  if (!offsets || idx < 0) return null;
+  const offset = offsets[params?.rot === 180 ? offsets.length - 1 - idx : idx];
+  if (offset == null) return null;
+  const col = Number(m[2]) - offset;
+  if (col < 1) return null; // it would start off the left of the board
+  const anchor = `${isLowerRow(m[1]) ? "a" : "j"}${col}`;
 
-  const pins = partPinHoles(part.ref, anchor, {});
+  const pins = partPinHoles(part.ref, anchor, params);
   if (!pins) return null;
   const holeOf = new Map(pins.map((q) => [q.pin, q.hole]));
 
@@ -633,6 +682,9 @@ function seatCompanion(part, links, { alloc, seatOf, boardType }) {
     if (nodeOf(type, mine) !== nodeOf(type, theirs)) return null;
   }
   // …and touch nobody else's columns, including the pack's own spare pins.
+  // The array's COM is exactly such a spare: it has no switch position to sit
+  // under, so it lands in the blank courtesy column the host reserved after
+  // itself — the host's, hence allowed, and blank, hence connected to nothing.
   for (const { hole } of pins) {
     if (hole == null) continue;
     const g = GRID_HOLE_RE.exec(hole);
@@ -645,9 +697,9 @@ function seatCompanion(part, links, { alloc, seatOf, boardType }) {
     if (owner != null && owner !== hostId) return null;
   }
 
-  const r = alloc.seat(host.boardId, part.ref, anchor, {}, hostId);
+  const r = alloc.seat(host.boardId, part.ref, anchor, params, hostId);
   if (!r.ok) return null;
-  return { boardId: host.boardId, anchor, holes: r.holes };
+  return { boardId: host.boardId, anchor, holes: r.holes, params };
 }
 
 /** The pin every segment of a display shares — its common anode or cathode. */
@@ -785,8 +837,18 @@ function assemble(resolved, title, notes) {
       const part = { id: rid, ref, def: partDef(ref), label: null };
       parts.set(rid, part);
       seated.push(part);
+      // A pack's elements are pins 2–9 (pin 1 is COM, the shared bus); a lone
+      // resistor's are 1 and 2.
+      //
+      // The elements are handed out BACKWARDS — net 0 to pin 9, net 7 to pin 2
+      // — and they are interchangeable, so this costs nothing and buys the
+      // seat: `seatCompanion` puts the array in TURNED ROUND, and numbering it
+      // from the far end back is what then lands element k on net k. Why it
+      // must go in turned round is argued there; the short version is that the
+      // odd ninth pin can only overhang to the RIGHT, so COM has to be the
+      // right-hand end.
       chunk.forEach((net, k) => {
-        net.pins.push({ partId: rid, kind: "pin", pin: lone ? 1 : k + 1 });
+        net.pins.push({ partId: rid, kind: "pin", pin: lone ? 1 : 9 - k });
       });
       // Which switch pin each pack pin is now electrically identical to. This
       // is the "net equality proven first" that column-allocator.js asks for
@@ -805,7 +867,7 @@ function assemble(resolved, title, notes) {
             );
             return host
               ? {
-                  pin: lone ? 1 : k + 1,
+                  pin: lone ? 1 : 9 - k,
                   hostId: host.partId,
                   hostPin: host.pin,
                 }
@@ -815,7 +877,7 @@ function assemble(resolved, title, notes) {
       );
       nets.push({
         name: `${rid}_${rail}`,
-        pins: [{ partId: rid, kind: "pin", pin: lone ? 2 : 9 }],
+        pins: [{ partId: rid, kind: "pin", pin: lone ? 2 : 1 }],
         rail,
       });
       warnings.push({
@@ -1047,7 +1109,10 @@ function assemble(resolved, title, notes) {
         ref: p.ref,
         board: placed.boardId,
         anchor: placed.anchor,
-        params: {},
+        // A companion may have been seated turned END-FOR-END, and then the
+        // orientation IS the seat: its pins land where they land because of it.
+        // Every other path seats a part as it comes (`{}`).
+        params: placed.params ?? {},
       });
       seatOf.set(p.id, { compId, ...placed });
     }
@@ -1549,7 +1614,11 @@ function assemble(resolved, title, notes) {
   return {
     ok: true,
     document: {
-      version: 6,
+      // The renderer's current schema version, never a literal: this document
+      // is handed to normalizeDocument and can reach a file through the clip
+      // it becomes, and a stale number there is a migration re-running on a
+      // document that was born current.
+      version: DOC_VERSION,
       title: title ?? null,
       boards,
       components,

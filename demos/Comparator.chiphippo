@@ -10,7 +10,7 @@
       "name": "74LS85",
       "description": "4-bit magnitude comparator",
       "doc": {
-        "version": 6,
+        "version": 12,
         "boards": [
           {
             "id": "bb1",
@@ -80,7 +80,7 @@
             "kind": "discrete",
             "ref": "rnet9",
             "board": "bb2",
-            "anchor": "b2",
+            "anchor": "b1",
             "params": {
               "ohms": 10000
             }
@@ -260,8 +260,8 @@
           },
           {
             "id": "w15",
-            "from": "bb2.a10",
-            "to": "bb3.-7",
+            "from": "bb2.a1",
+            "to": "bb3.-1",
             "color": "black"
           },
           {

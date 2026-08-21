@@ -10,7 +10,7 @@
       "name": "74LS75",
       "description": "4-bit bistable latch",
       "doc": {
-        "version": 6,
+        "version": 12,
         "boards": [
           {
             "id": "bb1",
@@ -554,7 +554,7 @@
       "name": "74LS279",
       "description": "Quad S̄R̄ latch",
       "doc": {
-        "version": 6,
+        "version": 12,
         "boards": [
           {
             "id": "bb1",
@@ -1013,7 +1013,7 @@
       "name": "74LS259",
       "description": "8-bit addressable latch",
       "doc": {
-        "version": 6,
+        "version": 12,
         "boards": [
           {
             "id": "bb1",
@@ -1772,7 +1772,7 @@
       "name": "74LS533",
       "description": "Octal transparent latch (inverting)",
       "doc": {
-        "version": 6,
+        "version": 12,
         "boards": [
           {
             "id": "bb1",
@@ -1842,7 +1842,7 @@
             "kind": "discrete",
             "ref": "rnet9",
             "board": "bb2",
-            "anchor": "b2",
+            "anchor": "b1",
             "params": {
               "ohms": 10000
             }
@@ -2219,8 +2219,8 @@
           },
           {
             "id": "w15",
-            "from": "bb2.a10",
-            "to": "bb3.-7",
+            "from": "bb2.a1",
+            "to": "bb3.-1",
             "color": "black"
           },
           {
@@ -2530,7 +2530,7 @@
       "name": "74LS573",
       "description": "Octal transparent latch",
       "doc": {
-        "version": 6,
+        "version": 12,
         "boards": [
           {
             "id": "bb1",
@@ -2600,7 +2600,7 @@
             "kind": "discrete",
             "ref": "rnet9",
             "board": "bb2",
-            "anchor": "b2",
+            "anchor": "b1",
             "params": {
               "ohms": 10000
             }
@@ -2977,8 +2977,8 @@
           },
           {
             "id": "w15",
-            "from": "bb2.a10",
-            "to": "bb3.-7",
+            "from": "bb2.a1",
+            "to": "bb3.-1",
             "color": "black"
           },
           {

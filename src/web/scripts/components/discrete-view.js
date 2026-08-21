@@ -551,12 +551,21 @@ function buildOscillatorCan(svg, def, params) {
 /**
  * The bussed resistor array (rnet9): a 9-pin SIP standing over one row of
  * holes, its beige body printed with the value and a dot marking the common
- * bus (pin 9, x=8). Like the displays, the body stands ABOVE the legs so every
- * hole underneath stays clickable.
+ * bus. Like the displays, the body stands ABOVE the legs so every hole
+ * underneath stays clickable.
+ *
+ * THE DOT IS OVER PIN 1, always — which is what the dot means on the real
+ * part, and pin 1 is the common bus. So it is derived from the same `rot` the
+ * pin mapping is (model/occupancy.js): at rot 0 pin 1 is the anchor hole, and
+ * a part turned end-for-end has it at the far end. The body itself is
+ * symmetric, so the dot is the ONLY thing that moves — which is exactly why it
+ * has to be right: it is the one mark on the desk saying which end the eight
+ * elements bus to.
  */
-function buildResistorNetwork(svg, ohms) {
+function buildResistorNetwork(svg, ohms, rot) {
   const edgeY = -0.6;
   const bodyY = -2.4;
+  const comX = rot === 180 ? 8 : 0;
   appendDisplayLegs(svg, edgeY); // nine legs down to holes 0…8
   svg.append(
     svgEl("rect", {
@@ -568,11 +577,11 @@ function buildResistorNetwork(svg, ohms) {
       rx: 0.25,
     }),
   );
-  // A dot over pin 9 marks the shared/common bus end.
+  // The dot marks pin 1 — the common bus.
   svg.append(
     svgEl("circle", {
       class: "part-rnet-dot",
-      cx: 8,
+      cx: comX,
       cy: bodyY + 0.42,
       r: 0.22,
     }),
@@ -1033,7 +1042,7 @@ export function buildDiscreteSvg(ref, params = {}) {
   } else if (def.characterDisplay) {
     buildCharacterDisplay(svg, def, normalized);
   } else if (ref === "rnet9") {
-    buildResistorNetwork(svg, normalized.ohms);
+    buildResistorNetwork(svg, normalized.ohms, normalized.rot);
   } else if (def.switchBank) {
     buildDipSwitchBank(svg, def, normalized);
   } else {

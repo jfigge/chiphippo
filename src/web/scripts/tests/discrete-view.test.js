@@ -66,6 +66,36 @@ test("buildDiscreteSvg: resistor has two leads and a banded body", () => {
   assert.ok(svg.querySelectorAll(".part-resistor-band").length >= 1);
 });
 
+test("buildDiscreteSvg: the resistor array's dot marks pin 1, and follows the flip", () => {
+  resetDom();
+  const dotX = (params) =>
+    Number(
+      buildDiscreteSvg("rnet9", params)
+        .querySelector(".part-rnet-dot")
+        .getAttribute("cx"),
+    );
+  // Pin 1 is the common bus, and the printed dot is the only thing on the desk
+  // saying WHICH end of nine identical legs it is — so it has to track the
+  // same rot the pin mapping does (model/occupancy.js), or the drawing tells
+  // the user the opposite of what the netlist does.
+  assert.equal(dotX({ ohms: 10000 }), 0, "over the anchor leg");
+  assert.equal(dotX({ ohms: 10000, rot: 180 }), 8, "over the far leg");
+  // The body is symmetric — only the dot moves.
+  const body = (params) =>
+    buildDiscreteSvg("rnet9", params).querySelector(".part-rnet-body");
+  assert.equal(
+    body({ ohms: 10000 }).getAttribute("x"),
+    body({ ohms: 10000, rot: 180 }).getAttribute("x"),
+  );
+  assert.equal(
+    buildDiscreteSvg("rnet9", { ohms: 10000, rot: 180 }).querySelectorAll(
+      ".part-led-leg",
+    ).length,
+    9,
+    "nine legs either way round",
+  );
+});
+
 test("buildDiscreteSvg: osc-full/osc-half draw only the 4 real legs + a metal can body", () => {
   resetDom();
   const full = buildDiscreteSvg("osc-full", { hz: 2 });

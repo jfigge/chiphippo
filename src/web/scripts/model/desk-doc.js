@@ -80,7 +80,20 @@ import {
   partPinHoles,
 } from "./occupancy.js";
 
-export const DOC_VERSION = 6;
+/**
+ * The schema version stamped on every document this side writes.
+ *
+ * It MUST equal main's `DESK_DOC_VERSION` (app/store/migrations.js), and
+ * `app/tests/migrations.test.js` holds the two together. `normalizeDocument`
+ * rebuilds from `emptyDocument()` and never carries a loaded document's own
+ * version forward, so this number is what EVERY saved desk claims — which is
+ * what lets a migration tell a document written before its change from one
+ * written after. Left behind at 6 while the chain reached 11, it silently
+ * meant the opposite: every desk the app wrote re-entered the chain five
+ * steps back, so a migration keyed on a version could never fire once and
+ * once only.
+ */
+export const DOC_VERSION = 12;
 
 /** The fixed jumper-wire palette (theme.css defines a token per name). */
 export const WIRE_COLORS = Object.freeze([
@@ -1676,8 +1689,11 @@ export class DeskDoc {
     }
     // A DIP chip turns a half lap in place: its footprint maps onto itself, so
     // the holes (and every occupancy check) are unchanged — only the pin
-    // numbering reverses. Nothing can block it.
-    if (def?.package) {
+    // numbering reverses. Nothing can block it. A `reversible` linear discrete
+    // (the bussed resistor array) is the same move on one row: evenly spaced
+    // holes, so it covers exactly the nine it already covers and only the
+    // numbering — hence which end is the common bus — turns round.
+    if (def?.package || def?.reversible) {
       comp.params = normalizeParams(def, {
         ...comp.params,
         rot: comp.params?.rot === 180 ? 0 : 180,

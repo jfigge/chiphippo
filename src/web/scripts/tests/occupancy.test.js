@@ -67,6 +67,40 @@ test("chipPinHoles: unknown ref or non-e anchor is null", () => {
   assert.equal(chipPinHoles("74LS00", null), null);
 });
 
+test("partPinHoles: a reversible part turned round keeps its holes, reverses its pins", () => {
+  // The bussed resistor array's half lap. Nine evenly spaced holes, so the
+  // turned part covers EXACTLY the nine it covered before — what changes is
+  // which pin is in each, and therefore which end is the common bus. This is
+  // the linear form of the DIP flip, and the reason a saved desk can be
+  // migrated to the renumbered part by simply stamping rot 180 on it.
+  const flat = partPinHoles("rnet9", "a10");
+  const turned = partPinHoles("rnet9", "a10", { rot: 180 });
+  assert.deepEqual(
+    turned.map((p) => p.hole),
+    flat.map((p) => p.hole),
+    "the same nine holes",
+  );
+  assert.deepEqual(
+    turned.map((p) => p.pin),
+    flat.map((p) => p.pin).reverse(),
+    "numbered the other way round",
+  );
+  // Stated positively, since this is the fact everything else rests on:
+  // COM (pin 1) sits at the anchor unturned, and at the far end turned.
+  const holeOf = (pins, n) => pins.find((p) => p.pin === n).hole;
+  assert.equal(holeOf(flat, 1), "a10");
+  assert.equal(holeOf(flat, 9), "a18");
+  assert.equal(holeOf(turned, 1), "a18");
+  assert.equal(holeOf(turned, 9), "a10");
+  // A part that is NOT reversible ignores the flag rather than reversing —
+  // its footprint has no second reading (a resistor's rot means something
+  // else entirely, and a push button's would land pins in the wrong holes).
+  assert.deepEqual(
+    partPinHoles("sw-push", "a10", { rot: 180 }),
+    partPinHoles("sw-push", "a10"),
+  );
+});
+
 test("partPinHoles: a rotated resistor derives a seated pin plus a free lead", () => {
   // Horizontal (no rot) still uses the footprint offsets.
   assert.deepEqual(partPinHoles("resistor", "a5"), [

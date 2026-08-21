@@ -10,7 +10,7 @@
       "name": "74LS47",
       "description": "BCD to 7-segment decoder",
       "doc": {
-        "version": 6,
+        "version": 12,
         "boards": [
           {
             "id": "bb1",

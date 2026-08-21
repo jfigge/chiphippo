@@ -1829,6 +1829,18 @@ export class DeskController {
       if (m.lastWorld) this.#trackSeatedGhostAt(m.lastWorld);
       return true;
     }
+    // Placing a reversible linear discrete (the bussed resistor array): R turns
+    // the ghost end-for-end. Same nine holes either way, so this can never make
+    // the seat under the cursor illegal — it only decides which end the common
+    // bus (and the dot marking it) lands on, which is the whole reason to press
+    // it BEFORE dropping rather than after.
+    if (m?.kind === "place-part" && partDef(m.ref)?.reversible) {
+      m.params = { ...m.params, rot: m.params?.rot === 180 ? 0 : 180 };
+      m.ghost.querySelector("svg")?.remove();
+      m.ghost.append(buildDiscreteSvg(m.ref, m.params));
+      if (m.lastWorld) this.#trackSeatedGhostAt(m.lastWorld);
+      return true;
+    }
     // Placing a rotatable part: R turns the ghost a quarter lap IN PLACE — the
     // placement stays armed, and the orientation carries into the drop. A pasted
     // ghost carries an explicit lead vector (m.orient), so spin THAT 90°
@@ -1846,11 +1858,12 @@ export class DeskController {
     }
     // Not placing: rotate a selected placed part in situ (any DIP-packaged
     // part — a chip OR a package-footprint discrete like bar8iso — flips
-    // 180°; desk-doc.js's rotateComponent gates on `def.package`, not kind).
+    // 180°, and so does a `reversible` linear one; desk-doc.js's
+    // rotateComponent gates on the def's shape, not on kind).
     if (this.#selected?.kind === "part") {
       const comp = this.#doc.getComponent(this.#selected.id);
       const def = partDef(comp?.ref);
-      if (def?.rotatable || def?.can || def?.package) {
+      if (def?.rotatable || def?.can || def?.package || def?.reversible) {
         this.rotateComponent(this.#selected.id);
         return true;
       }
@@ -2129,11 +2142,12 @@ export class DeskController {
 
   /** Rotate a placed part in place — 90° for a rotatable two-lead part
       (resistor) or a square can (half-can oscillator); 180° for a non-square
-      can (full-can oscillator) or a DIP-packaged part (a chip, or a
-      package-footprint discrete like bar8iso — its own inverse, since the
-      footprint maps onto itself and only the pin numbering turns); see
+      can (full-can oscillator), a DIP-packaged part (a chip, or a
+      package-footprint discrete like bar8iso) or a `reversible` linear one
+      (the bussed resistor array) — the last two its own inverse, since the
+      footprint maps onto itself and only the pin numbering turns; see
       desk-doc.js. No-op if it can't fit (nothing free at the rotated
-      position — a DIP flip never fails). */
+      position — a flip in place never fails). */
   rotateComponent(id) {
     try {
       this.#doc.rotateComponent(id);

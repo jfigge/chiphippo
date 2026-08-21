@@ -91,7 +91,7 @@ const BOT_RAIL = "bb3";
  * pushes the read-outs right — so a demo never has to state a column itself.
  */
 export const LAYOUT = Object.freeze({
-  bankCol: 2, // the DIP switch bank + its resistor network: columns 2…10
+  bankCol: 2, // the DIP switch bank: columns 2…9 (its array reaches back to 1)
   chipCol: 26,
   displayCol: 40,
 
@@ -423,7 +423,12 @@ export class Bench {
     const bank = this.#part("discrete", `sw-dip${positions}`, `e${col}`, {
       states: Array.from({ length: positions }, (_, i) => states[i] === true),
     });
-    this.#part("discrete", "rnet9", `b${col}`, { ohms: 10000 });
+    // The array is anchored ONE COLUMN LEFT of the bank, because its pin 1 is
+    // the common bus (the end the dot marks) and pins 2–9 are the elements —
+    // so its anchor column holds COM and the eight elements land square under
+    // the eight switch positions. `col` is never 1 (LAYOUT.bankCol), which is
+    // what leaves a column there to hold it.
+    this.#part("discrete", "rnet9", `b${col - 1}`, { ohms: 10000 });
 
     for (let i = 0; i < positions - 1; i++) {
       // Alternating rows, so the run reads as one tidy chain rather than a
@@ -436,7 +441,7 @@ export class Bench {
       );
     }
     this.wireToRail(`h${col}`, "+", WIRE.power);
-    this.wireToRail(`d${col + positions}`, "-", WIRE.ground); // rnet9 COM
+    this.wireToRail(`d${col - 1}`, "-", WIRE.ground); // rnet9 COM (pin 1)
     // A bank's positions are ONE column apart, so their labels are staggered
     // over two lines — "A0 A1 A2 A3" at 10 px a column would otherwise run
     // into each other the moment a label is wider than one character.

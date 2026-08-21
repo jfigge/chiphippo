@@ -59,8 +59,10 @@ function operandNets(sw, rn, prefix, pinOf) {
   ];
   for (let i = 0; i < 8; i++) {
     nets.push({
+      // The array's ELEMENTS are pins 2–9 — pin 1 is COM, wired to the rail
+      // by the `_PULLDOWN` net above, exactly as the real part is numbered.
       name: `${prefix}${i}`,
-      members: [`${sw}.${i + 1}A`, `${rn}.${i + 1}`, pinOf(i)],
+      members: [`${sw}.${i + 1}A`, `${rn}.${i + 2}`, pinOf(i)],
     });
   }
   return nets;
@@ -820,16 +822,35 @@ test("a pull pack seats UNDER the switch it pulls, sharing its columns", () => {
     /^a/,
     "in the bottom row, clear of the switch's pins",
   );
+  // TURNED ROUND, because its ninth pin is the common bus and the only column
+  // to spare is the blank one to the RIGHT (see seatCompanion): the array
+  // covers the switch's eight columns plus that one, dot at the far end.
+  assert.equal(rn.params?.rot, 180, "seated end-for-end");
 
   // The claim that makes it legal: pin for pin, the board already joins them,
   // so the eight pull-downs cost zero wires. Node sharing is normally the
   // exact disaster column-allocator.js exists to prevent, which is why this is
   // asserted rather than assumed.
+  //
+  // The array is numbered from the far end back (element 9 serves the first
+  // net), which is the half of the arrangement that lets it go in turned round
+  // at all — so switch pin k faces pack pin 9 − k + 1.
   for (let k = 1; k <= 8; k++) {
     assert.equal(
-      netlist.netOfPoint.get(pinAddress(doc, rn.id, k)),
+      netlist.netOfPoint.get(pinAddress(doc, rn.id, 10 - k)),
       netlist.netOfPoint.get(pinAddress(doc, sw.id, k)),
-      `pack pin ${k} IS switch pin ${k}'s node`,
+      `pack pin ${10 - k} IS switch pin ${k}'s node`,
+    );
+  }
+
+  // …and the COMMON is on none of them: it is the pack's own bus, and it is
+  // wired to a rail rather than sitting on a switch's node.
+  const com = netlist.netOfPoint.get(pinAddress(doc, rn.id, 1));
+  for (let k = 1; k <= 8; k++) {
+    assert.notEqual(
+      com,
+      netlist.netOfPoint.get(pinAddress(doc, sw.id, k)),
+      `COM is not switch pin ${k}'s node`,
     );
   }
 });

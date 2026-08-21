@@ -10,7 +10,7 @@
       "name": "74LS161",
       "description": "Synchronous 4-bit counter",
       "doc": {
-        "version": 6,
+        "version": 12,
         "boards": [
           {
             "id": "bb1",
@@ -521,7 +521,7 @@
       "name": "74LS193",
       "description": "Synchronous up/down counter",
       "doc": {
-        "version": 6,
+        "version": 12,
         "boards": [
           {
             "id": "bb1",
@@ -1014,7 +1014,7 @@
       "name": "74LS169",
       "description": "Synchronous up/down counter",
       "doc": {
-        "version": 6,
+        "version": 12,
         "boards": [
           {
             "id": "bb1",
@@ -1486,7 +1486,7 @@
       "name": "74LS90",
       "description": "Decade (÷10) ripple counter",
       "doc": {
-        "version": 6,
+        "version": 12,
         "boards": [
           {
             "id": "bb1",

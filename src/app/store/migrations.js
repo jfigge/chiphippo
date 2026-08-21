@@ -39,10 +39,16 @@
  * v9 → v10 RETIRES `nextLcdId`: the HD44780 stopped being a desk brick and
  *   became two board-seated modules, so its brick counter has nothing left to
  *   count. Subtractive — the only migration so far that takes a field away.
+ * v10 → v11 re-stacks dovetailed strips onto the MEASURED vertical heights.
+ * v11 → v12 turns every `rnet9` end-for-end, because its pin numbering was
+ *   renumbered to the real part's: the common bus moved from pin 9 to pin 1,
+ *   which also moved it from the last hole to the anchor. Stamping `rot: 180`
+ *   reverses the numbering back, so the common stays in the very hole the user
+ *   wired it to — the part is renumbered, the CIRCUIT is untouched.
  */
 "use strict";
 
-const DESK_DOC_VERSION = 11;
+const DESK_DOC_VERSION = 12;
 
 /** A fresh, empty desk document (main's copy of the renderer's shape). */
 function defaultDeskDocument() {
@@ -446,6 +452,38 @@ function migrateV10ToV11(doc) {
   };
 }
 
+/**
+ * v11 → v12 — the bussed resistor array's pins were renumbered to match the
+ * part in the drawer: COM is pin 1 (the end the printed dot marks) and the
+ * eight elements are pins 2–9, where COM used to be pin 9 and the elements
+ * 1–8.
+ *
+ * Pin 1 is the ANCHOR hole, so that renumbering also swaps which END of the
+ * nine holes is the common bus — and a desk saved before it has a wire running
+ * from a rail to the hole that WAS the common and is now an element. Turning
+ * each array end-for-end (`rot: 180`, the same half lap a DIP flip stores)
+ * reverses the numbering back over the same nine holes: every lead keeps the
+ * hole it is plugged into, the common bus keeps its wire, and nothing moves on
+ * the desk. What changes is the label on each pin and the dot's end — which is
+ * the point of the renumbering.
+ *
+ * Not conditional on finding one: a document with no array is a plain version
+ * bump, and `components` may be absent or junk (this runs before the renderer's
+ * normalizeDocument ever sees it).
+ */
+function migrateV11ToV12(doc) {
+  const components = Array.isArray(doc.components) ? doc.components : [];
+  return {
+    ...doc,
+    version: 12,
+    components: components.map((c) =>
+      c && typeof c === "object" && c.ref === "rnet9"
+        ? { ...c, params: { ...c.params, rot: 180 } }
+        : c,
+    ),
+  };
+}
+
 /** version → one-step upgrade fn returning the doc at version + 1. */
 const MIGRATIONS = {
   1: migrateV1ToV2,
@@ -458,6 +496,7 @@ const MIGRATIONS = {
   8: migrateV8ToV9,
   9: migrateV9ToV10,
   10: migrateV10ToV11,
+  11: migrateV11ToV12,
 };
 
 /**

@@ -10,7 +10,7 @@
       "name": "74LS08",
       "description": "Quad 2-input AND",
       "doc": {
-        "version": 6,
+        "version": 12,
         "boards": [
           {
             "id": "bb1",
@@ -519,7 +519,7 @@
       "name": "74LS11",
       "description": "Triple 3-input AND",
       "doc": {
-        "version": 6,
+        "version": 12,
         "boards": [
           {
             "id": "bb1",

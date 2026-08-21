@@ -64,7 +64,9 @@ const ADDER = {
           name: `${side}${i}`,
           members: [
             `${sw}.${i + 1}A`,
-            `${rn}.${i + 1}`,
+            // The array's elements are pins 2–9; pin 1 is COM, tied to GND by
+            // the `_PD` net above.
+            `${rn}.${i + 2}`,
             `U${i < 4 ? 1 : 2}.${side}${(i % 4) + 1}`,
           ],
         });

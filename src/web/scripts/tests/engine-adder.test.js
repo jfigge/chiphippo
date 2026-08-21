@@ -30,6 +30,12 @@
 // the SAME start column as its switch bank in row `e`, so its eight elements
 // land on the same lower nodes (c<col>L) as the bank's row-e pins. Eight
 // pull-downs for one wire (COM → −rail) instead of eight.
+//
+// It goes in TURNED ROUND (`rot: 180`), which is what puts the eight elements
+// over the bank and leaves the common bus overhanging one column clear of it —
+// pin 1 is COM on a bussed SIP, at the end the printed dot marks, so the other
+// way round would sit COM on switch position 1's node and the elements one
+// column adrift. It is the same way round model/autobuild.js seats one.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -117,6 +123,9 @@ const ADD = {
 const AT = { U1: 3, U2: 12, SWA: 22, RNA: 22, SWB: 32, RNB: 32 };
 
 /** The full adder document, with both operand banks set from `a` and `b`. */
+/** Both arrays go in end-for-end — see the header note. */
+const TURNED = Object.freeze({ rot: 180 });
+
 function buildAdder(a, b) {
   wireSeq = 0;
   const bits = (v) => Array.from({ length: 8 }, (_, i) => ((v >> i) & 1) === 1);
@@ -125,8 +134,8 @@ function buildAdder(a, b) {
   const u2 = holesOf("74LS283", `e${AT.U2}`);
   const swa = holesOf("sw-dip8", `e${AT.SWA}`);
   const swb = holesOf("sw-dip8", `e${AT.SWB}`);
-  const rna = holesOf("rnet9", `a${AT.RNA}`);
-  const rnb = holesOf("rnet9", `a${AT.RNB}`);
+  const rna = holesOf("rnet9", `a${AT.RNA}`, TURNED);
+  const rnb = holesOf("rnet9", `a${AT.RNB}`, TURNED);
 
   const components = [
     { id: "psu1", kind: "psu", ref: "psu", x: 70, y: 0, params: { volts: 5 } },
@@ -168,7 +177,7 @@ function buildAdder(a, b) {
       ref: "rnet9",
       board: "bb2",
       anchor: `a${AT.RNA}`,
-      params: {},
+      params: TURNED,
     },
     {
       id: "c6",
@@ -176,7 +185,7 @@ function buildAdder(a, b) {
       ref: "rnet9",
       board: "bb2",
       anchor: `a${AT.RNB}`,
-      params: {},
+      params: TURNED,
     },
   ];
 
@@ -198,9 +207,9 @@ function buildAdder(a, b) {
     // the high nibble.
     wire(at(u1, ADD.C0), LO(5), "black"),
     wire(at(u1, ADD.C4), at(u2, ADD.C0), "green"),
-    // Pull-down commons (pin 9 = COM on each rnet9).
-    wire(at(rna, 9), LO(6), "black"),
-    wire(at(rnb, 9), LO(7), "black"),
+    // Pull-down commons (pin 1 = COM on each rnet9).
+    wire(at(rna, 1), LO(6), "black"),
+    wire(at(rnb, 1), LO(7), "black"),
   ];
 
   // Operand bits. A closed switch position k bridges its row-e pin k to its

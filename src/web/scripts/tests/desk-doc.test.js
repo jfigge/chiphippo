@@ -1539,6 +1539,31 @@ test("rotateComponent: swings pin 2's lead 90° around pin 1; guards non-rotatab
   assert.throws(() => doc.rotateComponent("c2"), { code: "INVALID_REF" });
 });
 
+test("rotateComponent: a reversible part turns end-for-end, and nothing can block it", () => {
+  const doc = docWithFull();
+  doc.addComponent({
+    kind: "discrete",
+    ref: "rnet9",
+    board: "bb1",
+    anchor: "a10",
+  });
+  // Wire something into the hole the common bus is about to leave, and into
+  // the one it is about to arrive at: the flip occupies the SAME nine holes,
+  // so neither is disturbed and the turn cannot be refused. (A DIP's half lap
+  // has the same property, which is why neither is checked against occupancy.)
+  const turned = doc.rotateComponent("c1");
+  assert.equal(turned.params.rot, 180);
+  assert.equal(turned.anchor, "a10", "the anchor does not move");
+  assert.equal(doc.isHoleFree("bb1.a10"), false);
+  assert.equal(doc.isHoleFree("bb1.a18"), false);
+
+  // A toggle, not a cycle — pressing R again puts it back, and the flag is
+  // dropped rather than stored as 0.
+  const back = doc.rotateComponent("c1");
+  assert.equal(back.params.rot, undefined);
+  assert.deepEqual(back.params, { ohms: 10000 });
+});
+
 test("rotateComponent: a swung lead reaches a NEIGHBOURING strip's rail", () => {
   const doc = docWithFull();
   doc.addBoard("rail-full", 0, -4); // bb2 — a rail strip above the pin-board

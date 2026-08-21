@@ -10,7 +10,7 @@
       "name": "74LS02",
       "description": "Quad 2-input NOR",
       "doc": {
-        "version": 6,
+        "version": 12,
         "boards": [
           {
             "id": "bb1",
@@ -519,7 +519,7 @@
       "name": "74LS27",
       "description": "Triple 3-input NOR",
       "doc": {
-        "version": 6,
+        "version": 12,
         "boards": [
           {
             "id": "bb1",

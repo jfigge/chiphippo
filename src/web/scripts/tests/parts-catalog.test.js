@@ -502,30 +502,72 @@ test("resistor: weakly bridges 1↔2, never a hard bridge; ohms coerce", () => {
 test("rnet9: bussed array — 8 weak pulls to the common pin, no hard bridge", () => {
   const def = partDef("rnet9");
   assert.equal(def.kind, "discrete");
-  // Nine holes on one row; pins 1–8 leads, pin 9 the common bus.
+  // Nine holes on one row, numbered as the real part is: pin 1 is the common
+  // bus AT THE ANCHOR (the end the dot marks), pins 2–9 the elements.
   assert.deepEqual(def.footprint.offsets, [0, 1, 2, 3, 4, 5, 6, 7, 8]);
   assert.equal(def.pins.length, 9);
-  for (let i = 0; i < 8; i++) assert.equal(def.pins[i].role, "lead");
-  assert.equal(def.pins[8].role, "common");
-  assert.equal(def.pins[8].name, "COM");
+  assert.equal(def.pins[0].n, 1);
+  assert.equal(def.pins[0].role, "common");
+  assert.equal(def.pins[0].name, "COM");
+  for (let i = 1; i < 9; i++) {
+    assert.equal(def.pins[i].n, i + 1);
+    assert.equal(def.pins[i].role, "lead");
+    // Named for its own pin number — pin-resolve.js reports an ambiguity when
+    // a part's pin names and numbers disagree, and there is nothing to gain
+    // by manufacturing one here (see its "name and number agree" test).
+    assert.equal(def.pins[i].name, String(i + 1));
+  }
   // Never a hard connection (like the single resistor): the coupling is weak.
   assert.deepEqual(def.internalBridges({ ohms: 220 }), []);
-  // Each of pins 1–8 weakly couples to the common bus (pin 9) — eight pulls.
+  // Each of pins 2–9 weakly couples to the common bus (pin 1) — eight pulls.
   assert.deepEqual(def.weakBridges({ ohms: 220 }), [
-    [1, 9],
-    [2, 9],
-    [3, 9],
-    [4, 9],
-    [5, 9],
-    [6, 9],
-    [7, 9],
-    [8, 9],
+    [2, 1],
+    [3, 1],
+    [4, 1],
+    [5, 1],
+    [6, 1],
+    [7, 1],
+    [8, 1],
+    [9, 1],
   ]);
   // Ohms are cosmetic but coerced to a positive number (default 10k).
   assert.deepEqual(def.normalizeParams({}), { ohms: 10000 });
   assert.deepEqual(def.normalizeParams({ ohms: 470 }), { ohms: 470 });
   assert.deepEqual(def.normalizeParams({ ohms: -5 }), { ohms: 10000 });
   assert.deepEqual(def.normalizeParams({ ohms: "junk" }), { ohms: 10000 });
+  // Turns end-for-end; the flag is kept only when set, so an unturned array
+  // round-trips byte-identical (the sw-dip8 / bar8iso convention).
+  assert.equal(def.reversible, true);
+  assert.deepEqual(def.normalizeParams({ rot: 180 }), {
+    ohms: 10000,
+    rot: 180,
+  });
+  assert.deepEqual(def.normalizeParams({ rot: 0 }), { ohms: 10000 });
+  assert.deepEqual(def.normalizeParams({ rot: 90 }), { ohms: 10000 });
+});
+
+test("a reversible def's offsets are palindromic — the flip maps onto itself", () => {
+  // model/occupancy.js turns a reversible part end-for-end by REVERSING which
+  // pin sits in each of the same holes. That is only the same part turned
+  // round when the gaps between the holes read the same both ways; an
+  // asymmetric offset list (say [0, 1, 4]) would need a mirrored FOOTPRINT,
+  // which nothing here derives. So the invariant is checked rather than
+  // assumed — a future reversible part with an uneven pin pitch fails here
+  // instead of quietly seating its pins in the wrong holes.
+  const reversible = PART_DEFS.filter((d) => d.reversible === true);
+  assert.ok(reversible.length > 0, "no reversible parts — is the hook gone?");
+  for (const def of reversible) {
+    assert.ok(def.footprint, `${def.id}: reversible needs a footprint`);
+    const offsets = def.footprint.offsets;
+    assert.equal(
+      offsets.length,
+      def.pins.length,
+      `${def.id}: one offset per pin`,
+    );
+    const span = offsets[offsets.length - 1];
+    const mirrored = offsets.map((o) => span - o).reverse();
+    assert.deepEqual(mirrored, [...offsets], `${def.id}: offsets palindromic`);
+  }
 });
 
 test("psu: volts enum, source contract, integer terminal offsets", () => {

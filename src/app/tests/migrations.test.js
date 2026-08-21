@@ -26,6 +26,7 @@ const assert = require("node:assert/strict");
 
 const {
   DESK_DOC_VERSION,
+  defaultDeskDocument,
   migrateDeskDocument,
 } = require("../store/migrations");
 
@@ -598,4 +599,95 @@ test("v10 → v11: an upright rail keeps its own footprint", () => {
     doc.boards.map((b) => b.y),
     [0, 0],
   );
+});
+
+// ── v11 → v12: the bussed resistor array's renumbering ──────────────────────
+
+/** A v11 document holding the given components. */
+function v11With(components) {
+  return {
+    ...defaultDeskDocument(),
+    version: 11,
+    boards: [{ id: "bb1", type: "pins-full", x: 0, y: 0, rot: 0, group: null }],
+    components,
+    nextComponentId: components.length + 1,
+  };
+}
+
+test("v11 → v12: every rnet9 is turned end-for-end, and nothing else moves", () => {
+  // The renumbering moved the common bus from pin 9 to pin 1 — and since pin 1
+  // is the ANCHOR hole, that also moved it from the far end of the nine to the
+  // near one. A desk saved before the change has a wire running from a rail to
+  // the hole that WAS the common. Stamping the half lap reverses the numbering
+  // back over the same nine holes, so that wire still lands on the common and
+  // every element still lands on the hole it was plugged into.
+  const doc = migrateDeskDocument(
+    v11With([
+      {
+        id: "c1",
+        kind: "discrete",
+        ref: "rnet9",
+        board: "bb1",
+        anchor: "a10",
+        params: { ohms: 4700 },
+      },
+      {
+        id: "c2",
+        kind: "discrete",
+        ref: "resistor",
+        board: "bb1",
+        anchor: "a30",
+        params: { ohms: 220 },
+      },
+    ]),
+  );
+  assert.equal(doc.version, DESK_DOC_VERSION);
+  assert.deepEqual(doc.components[0].params, { ohms: 4700, rot: 180 });
+  assert.equal(doc.components[0].anchor, "a10", "it does not move a hole");
+  assert.deepEqual(doc.components[1].params, { ohms: 220 }, "nothing else");
+});
+
+test("v11 → v12: an array already turned round stays turned; junk params survive", () => {
+  // A v11 desk could not carry a rot on this part at all (normalizeParams
+  // dropped it), so `rot: 180` is what EVERY one of them becomes — there is no
+  // pre-existing orientation to preserve and none to double-flip.
+  const doc = migrateDeskDocument(
+    v11With([
+      { id: "c1", kind: "discrete", ref: "rnet9", board: "bb1", anchor: "a1" },
+      {
+        id: "c2",
+        kind: "discrete",
+        ref: "rnet9",
+        board: "bb1",
+        anchor: "a20",
+        params: { ohms: 1000, rot: 180 },
+      },
+    ]),
+  );
+  assert.deepEqual(doc.components[0].params, { rot: 180 });
+  assert.deepEqual(doc.components[1].params, { ohms: 1000, rot: 180 });
+});
+
+test("v11 → v12: a document with no components is a plain version bump", () => {
+  const doc = migrateDeskDocument({ ...defaultDeskDocument(), version: 11 });
+  assert.equal(doc.version, DESK_DOC_VERSION);
+  assert.deepEqual(doc.components, []);
+  // …and junk in the field does not throw on the way through.
+  const junk = migrateDeskDocument({
+    ...defaultDeskDocument(),
+    version: 11,
+    components: [null, "nope", 7],
+  });
+  assert.equal(junk.version, DESK_DOC_VERSION);
+});
+
+test("the renderer stamps the SAME version main migrates to", () => {
+  // These two numbers are one contract in two files, and they DRIFTED once —
+  // the renderer sat at 6 while the chain reached 11, so every desk the app
+  // saved re-entered the chain five steps back. That is invisible while the
+  // steps between are pure bumps, and it makes a migration keyed on a version
+  // fire on documents written AFTER the change it exists to repair.
+  return import("../../web/scripts/model/desk-doc.js").then((m) => {
+    assert.equal(m.DOC_VERSION, DESK_DOC_VERSION);
+  });
 });

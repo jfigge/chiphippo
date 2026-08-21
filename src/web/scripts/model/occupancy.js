@@ -146,8 +146,16 @@ export function partPinHoles(ref, anchor, params) {
     if (!m) return null;
     const [, row, colStr] = m;
     const col = Number(colStr);
+    // Turned end-for-end (`reversible`, params.rot 180): the SAME holes, in the
+    // same order, hosting the pin numbering backwards — the linear form of the
+    // DIP half lap above. It maps onto itself only because a reversible def's
+    // offsets are palindromic (asserted in tests/parts-catalog.test.js), so
+    // there is no second geometry to derive: pins[i] and pins[n-1-i] simply
+    // trade places.
+    const flipped = def.reversible === true && params?.rot === 180;
+    const last = def.pins.length - 1;
     return def.footprint.offsets.map((offset, i) => ({
-      pin: def.pins[i].n,
+      pin: def.pins[flipped ? last - i : i].n,
       hole: `${row}${col + offset}`,
     }));
   }

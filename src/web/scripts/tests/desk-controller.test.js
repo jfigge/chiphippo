@@ -1760,6 +1760,88 @@ test("R flips a chip 180°: same holes, pin numbering reversed", () => {
   assert.equal(holesOf().find((p) => p.pin === 1).hole, "e5");
 });
 
+test("R turns a seated resistor array end-for-end: same holes, common at the other end", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const { controller } = makeDesk(doc);
+  const rn = controller.addComponentAt("rnet9", "bb1", "a5"); // auto-selected
+  const holesOf = () =>
+    partPinHoles("rnet9", "a5", doc.getComponent(rn.id).params);
+  const holeOfPin = (n) => holesOf().find((p) => p.pin === n).hole;
+
+  // As it comes: pin 1 is the common bus, at the anchor.
+  assert.equal(holeOfPin(1), "a5");
+  assert.equal(holeOfPin(9), "a13");
+
+  const consumed = controller.handleKeyDown(
+    new window.KeyboardEvent("keydown", { key: "r" }),
+  );
+  assert.equal(consumed, true);
+  assert.equal(doc.getComponent(rn.id).params.rot, 180);
+
+  // Turned: the common is now the far hole, and the nine holes are the SAME
+  // nine — so this can never fail to fit, exactly like a DIP's half lap.
+  assert.equal(holeOfPin(1), "a13");
+  assert.equal(holeOfPin(9), "a5");
+  assert.deepEqual(
+    holesOf()
+      .map((p) => p.hole)
+      .sort(),
+    partPinHoles("rnet9", "a5")
+      .map((p) => p.hole)
+      .sort(),
+    "occupies exactly the same holes",
+  );
+
+  // And back again — a toggle, not a cycle.
+  controller.handleKeyDown(new window.KeyboardEvent("keydown", { key: "r" }));
+  assert.equal(doc.getComponent(rn.id).params.rot, undefined);
+  assert.equal(holeOfPin(1), "a5");
+});
+
+test("R turns the resistor array's PLACEMENT GHOST, and the turn rides to the drop", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const world = { x: 10, y: ROW.a }; // hole a10
+  const { viewport, controller } = makeDesk(doc, world);
+
+  controller.armPartPlacement("rnet9");
+  viewport.dispatchEvent(
+    new window.PointerEvent("pointermove", { bubbles: true }),
+  );
+  // Pressed BEFORE dropping, which is when it matters: which end the common
+  // bus lands on decides where the wire to the rail has to go.
+  const consumed = controller.handleKeyDown(
+    new window.KeyboardEvent("keydown", { key: "r" }),
+  );
+  assert.equal(consumed, true);
+  assert.ok(controller.placementArmed, "still placing");
+
+  viewport.dispatchEvent(
+    new window.PointerEvent("pointerdown", { bubbles: true, button: 0 }),
+  );
+  viewport.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+
+  const placed = doc.components[0];
+  assert.ok(placed, "an array landed");
+  assert.equal(placed.params.rot, 180, "the turn rode to the drop");
+  // The turn does not move the part — it decides which of its nine holes the
+  // common bus is in. So the ghost seats where it would have anyway, with COM
+  // at the FAR end rather than the anchor.
+  const holes = partPinHoles("rnet9", placed.anchor, placed.params);
+  assert.deepEqual(
+    holes.map((h) => h.hole),
+    partPinHoles("rnet9", placed.anchor).map((h) => h.hole),
+  );
+  assert.equal(
+    holes.find((h) => h.pin === 1).hole,
+    holes[holes.length - 1].hole,
+    "the common bus is at the far end, as the ghost showed it",
+  );
+});
+
 test("R flips bar8iso 180°, same as a chip: same holes, pin numbering reversed", () => {
   resetDom();
   const doc = new DeskDoc(null);

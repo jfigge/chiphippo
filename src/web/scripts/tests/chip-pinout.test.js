@@ -136,6 +136,39 @@ test("buildChipPinout: rot 180 turns the DIP a half lap — bar8iso's K8/A1 swap
   assert.deepEqual(rowSide(rows[7], "right"), { num: 1, name: "A1" });
 });
 
+test("buildDiscretePinout: a reversible part's offsets turn with it", () => {
+  resetDom();
+  const offsets = (rot) =>
+    [...buildPartPinout(partDef("rnet9"), rot).querySelectorAll(".part-pinout-line")] // prettier-ignore
+      .map((row) => ({
+        num: row.querySelector(".chip-pinout-num").textContent,
+        detail: row.querySelector(".part-pinout-detail").textContent,
+      }));
+
+  // Unturned: pin 1 (COM) IS the anchor hole, pin 9 eight holes along.
+  const flat = offsets(0);
+  assert.equal(flat[0].num, "1");
+  assert.match(flat[0].detail, /anchor/i);
+  assert.equal(flat[8].num, "9");
+
+  // Turned: the same rows, in the same order, with the offsets reversed — the
+  // window has to say where each pin IS, and after a half lap the common bus
+  // is the far hole. Getting this wrong is worse than showing nothing: the
+  // offset is the entire content of the row.
+  const turned = offsets(180);
+  assert.deepEqual(
+    turned.map((r) => r.num),
+    flat.map((r) => r.num),
+    "the pins are listed in the same order either way",
+  );
+  assert.deepEqual(
+    turned.map((r) => r.detail),
+    flat.map((r) => r.detail).reverse(),
+    "…keyed to the holes the other way round",
+  );
+  assert.match(turned[8].detail, /anchor/i, "pin 9 is now at the anchor");
+});
+
 test("buildPartPinout: a real chip's dialog ignores rot — its pin-1 marking is fixed", () => {
   resetDom();
   const unflipped = buildPartPinout(chipDef("74LS00"));

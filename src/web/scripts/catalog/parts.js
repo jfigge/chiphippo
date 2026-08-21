@@ -807,38 +807,60 @@ export const PART_DEFS = Object.freeze(
       kind: "discrete",
       title: "Resistor array (bussed, 9-pin)",
       blurb:
-        "Bussed resistor network in a 9-pin SIP: pin 9 (COM) is the shared " +
-        "bus, and pins 1–8 each reach it through their own resistor. Tie COM " +
-        "to ground for eight pull-downs, or to +V for eight pull-ups — like " +
-        "the single resistor, each element is a WEAK coupler (below any chip " +
-        "output), never a hard connection. The ohms value is cosmetic.",
+        "Bussed resistor network in a 9-pin SIP, numbered as the real part " +
+        "is: pin 1 (COM) is the shared bus — the end the printed dot marks — " +
+        "and pins 2–9 each reach it through their own resistor. Tie COM to " +
+        "ground for eight pull-downs, or to +V for eight pull-ups — like the " +
+        "single resistor, each element is a WEAK coupler (below any chip " +
+        "output), never a hard connection. Press R while placing, or with it " +
+        "selected, to turn it end-for-end: the dot, pin 1 and the common bus " +
+        "all move to the other end. The ohms value is cosmetic.",
       group: "Resistors",
-      // Nine holes along one grid row: eight resistor pins then the common bus.
+      // Nine holes along one grid row: the common bus first (pin 1, at the
+      // anchor — the marked end), then the eight resistor pins.
       footprint: Object.freeze({
         offsets: Object.freeze([0, 1, 2, 3, 4, 5, 6, 7, 8]),
       }),
+      // Turns end-for-end in place (params.rot 180). The holes are evenly
+      // spaced, so the flipped part covers the SAME nine — only the numbering
+      // reverses, exactly as a DIP's half lap does (model/occupancy.js). The
+      // hook is data, so nothing branches on the id; the catalog test holds
+      // every `reversible` def to a palindromic offset list, which is what
+      // makes "same holes, reversed pins" true.
+      reversible: true,
       pins: [
+        { n: 1, name: "COM", role: "common" },
         ...Array.from({ length: 8 }, (_, i) => ({
-          n: i + 1,
-          name: `${i + 1}`,
+          n: i + 2,
+          name: `${i + 2}`,
+          // Named for its own pin number, so `rnet9.4` has one reading —
+          // model/pin-resolve.js reports an ambiguity when a part's names and
+          // numbers disagree, and a bussed SIP's element pins have no other
+          // name on any datasheet.
           role: "lead",
         })),
-        { n: 9, name: "COM", role: "common" },
       ],
       normalizeParams(raw) {
         const ohms = Number(raw?.ohms);
-        return { ohms: Number.isFinite(ohms) && ohms > 0 ? ohms : 10000 };
+        return {
+          ohms: Number.isFinite(ohms) && ohms > 0 ? ohms : 10000,
+          // Stored only when set (as sw-dip8 and bar8iso do), so an unturned
+          // part round-trips byte-identical.
+          ...(raw?.rot === 180 ? { rot: 180 } : {}),
+        };
       },
       // Like the single resistor, an element never hard-bridges — its two ends
       // stay separate nets (the coupling is weak, below any chip output).
       internalBridges() {
         return [];
       },
-      // …instead each of pins 1–8 is WEAKLY coupled to the common bus (pin 9):
+      // …instead each of pins 2–9 is WEAKLY coupled to the common bus (pin 1):
       // the simulator's PULL tier conducts COM's strong level out to every free
       // pin at the weakest strength. Eight independent pulls, one shared bus.
+      // Stated in PIN numbers, so a flipped part needs nothing here — the pins
+      // move, the elements they name do not.
       weakBridges() {
-        return Array.from({ length: 8 }, (_, i) => [i + 1, 9]);
+        return Array.from({ length: 8 }, (_, i) => [i + 2, 1]);
       },
     },
     {

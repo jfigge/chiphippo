@@ -35,9 +35,11 @@ let wireSeq = 0;
 const wire = (from, to) => ({ id: `w${++wireSeq}`, from, to, color: "black" });
 
 /** Pin number → its seated hole (e.g. 14 → "f10") for a chip at `anchor`. */
-function chipHoles(ref, anchor) {
+function chipHoles(ref, anchor, params) {
   const map = new Map();
-  for (const { pin, hole } of partPinHoles(ref, anchor)) map.set(pin, hole);
+  for (const { pin, hole } of partPinHoles(ref, anchor, params)) {
+    map.set(pin, hole);
+  }
   return map;
 }
 
@@ -447,31 +449,61 @@ test("a pull-down resistor makes a floating chip input read LOW", () => {
 });
 
 test("a bussed resistor array pulls every free pin toward its grounded common", () => {
-  // rnet9 seated at a10 → pins 1–8 at a10…a17, common (pin 9) at a18.
+  // rnet9 seated at a10 → common (pin 1) at the anchor a10, elements 2–9 at
+  // a11…a18. Pin 1 is the marked end, exactly as the part is numbered.
   const r = chipHoles("rnet9", "a10");
+  assert.equal(r.get(1), "a10"); // COM at the anchor
+  assert.equal(r.get(9), "a18"); // the last element at the far end
   const { levelAt, strongAt } = simulate({
     boards,
     components: [psu("psu1", 80), part("r1", "rnet9", "a10")],
     wires: [
-      // Ground the common bus (pin 9) via the bottom − rail.
+      // Ground the common bus (pin 1) via the bottom − rail.
       wire("psu1.-", "bb3.-2"),
-      wire("bb3.-3", `bb1.${mates(r.get(9))[0]}`),
-      // Strongly drive one element pin (pin 3, a12) HIGH straight off the + rail.
+      wire("bb3.-3", `bb1.${mates(r.get(1))[0]}`),
+      // Strongly drive one element pin (pin 4, a13) HIGH straight off the + rail.
       wire("psu1.+", "bb2.+2"),
-      wire("bb2.+3", `bb1.${mates(r.get(3))[0]}`),
+      wire("bb2.+3", `bb1.${mates(r.get(4))[0]}`),
     ],
   });
   // Every OTHER (free) pin floats to LOW through its own resistor to the
   // grounded common — eight independent pull-downs, one shared bus.
   assert.equal(levelAt("bb1.a11"), L); // pin 2
-  assert.equal(levelAt("bb1.a17"), L); // pin 8
+  assert.equal(levelAt("bb1.a18"), L); // pin 9
   // …but only WEAKLY: nothing strongly drives them (the PULL tier, not a rail).
   assert.notEqual(strongAt("bb1.a11"), L);
   // A strongly-driven pin overrides its own weak pull and stays HIGH; the weak
   // pull it exerts back on the bus can't flip the strongly-grounded common.
-  assert.equal(levelAt("bb1.a12"), H); // pin 3, wired to +5
-  assert.equal(strongAt("bb1.a12"), H);
-  assert.equal(levelAt("bb1.a18"), L); // common stays grounded
+  assert.equal(levelAt("bb1.a13"), H); // pin 4, wired to +5
+  assert.equal(strongAt("bb1.a13"), H);
+  assert.equal(levelAt("bb1.a10"), L); // common stays grounded
+});
+
+test("a bussed array turned end-for-end busses the OTHER end, same nine holes", () => {
+  // The half lap the user presses R for: the array covers exactly the holes it
+  // covered before, and only the numbering turns round — so the common bus is
+  // now the FAR hole. Wire that one to ground and the eight elements pull down
+  // from the other end of the same part.
+  const r = chipHoles("rnet9", "a10", { rot: 180 });
+  assert.equal(r.get(1), "a18"); // COM at the far end now
+  assert.equal(r.get(9), "a10"); // …and the last element at the anchor
+  const { levelAt } = simulate({
+    boards,
+    components: [
+      psu("psu1", 80),
+      { ...part("r1", "rnet9", "a10"), params: { ohms: 10000, rot: 180 } },
+    ],
+    wires: [
+      wire("psu1.-", "bb3.-2"),
+      wire("bb3.-3", `bb1.${mates(r.get(1))[0]}`), // ground COM, now at a18
+      wire("psu1.+", "bb2.+2"),
+      wire("bb2.+3", `bb1.${mates(r.get(4))[0]}`), // drive pin 4, now a15
+    ],
+  });
+  assert.equal(levelAt("bb1.a17"), L); // pin 2, pulled down
+  assert.equal(levelAt("bb1.a10"), L); // pin 9, pulled down
+  assert.equal(levelAt("bb1.a15"), H); // pin 4, strongly driven
+  assert.equal(levelAt("bb1.a18"), L); // the common, grounded
 });
 
 test("strongLevels separate a direct rail feed from one through a resistor", () => {
