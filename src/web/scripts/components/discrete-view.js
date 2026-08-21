@@ -35,7 +35,7 @@ import { holePosition, rotateOffset } from "../model/breadboard.js";
 import { partDef } from "../catalog/index.js";
 import { packageSpec } from "../model/footprints.js";
 import { formatOhms } from "../model/ohm-format.js";
-import { chipBox, CHIP_BODY_TOP, CHIP_BODY_BOTTOM } from "./chip-view.js";
+import { chipBox } from "./chip-view.js";
 import {
   buildBurnOverlay,
   buildWarnOverlay,
@@ -607,12 +607,45 @@ function buildResistorNetwork(svg, ohms, rot) {
 }
 
 /**
+ * A DIP switch's body is TALLER than a chip's, because the real part is: a
+ * 0.3-in DIP switch measures around 9.9 mm across its body against a plastic
+ * DIP's 6.35, so it stands proud of its own pin rows where a chip sits well
+ * inside them. That extra height is what the part is FOR — it is the actuator
+ * travel, and squeezed into a chip's slab there was barely a nub's worth of it.
+ *
+ * It cannot overhang as far as the real part does: rows e and f sit at y 0 and
+ * -3 and their hole squares are 0.44 across, so the body stops DIP_HOLE_GAP
+ * short of them and the legs still show which columns are seated. Unlike the
+ * character-LCD module — which insets its hit rect so the holes it covers stay
+ * wireable — the hit rects here follow the body, because EVERY hole under a
+ * bank's body is one of its own pins (pin i+1 in row e, pin 2n-i in row f) and
+ * so is already spoken for. There is nothing under there to click.
+ */
+// Row f's centre (-3) + the hole square's half-width (0.22, breadboard-view's
+// HOLE_SIZE) + 0.08 of board left showing, and the mirror of that at row e —
+// so the two are symmetric about y -1.5, the centre the 180° flip turns about.
+const DIP_BODY_TOP = -2.7;
+const DIP_BODY_BOTTOM = -0.3;
+/** How far a leg reaches past its hole's centre, so the seat still reads. */
+const DIP_LEG_OVERSHOOT = 0.1;
+
+/** The ON band: a printed strip along the edge the nub closes toward, deep
+    enough to carry the word. It is the one cue that does NOT depend on colour
+    — a green nub and a red one are the same nub to a colourblind reader, but
+    "the nub is up against the ON band" is legible to anyone. */
+const DIP_BAND_HEIGHT = 0.58;
+/** How far the slot and its nub are held off the band and the body's far edge. */
+const DIP_SLOT_INSET = 0.1;
+const DIP_NUB_INSET = 0.06;
+const DIP_NUB_HEIGHT = 0.64;
+
+/**
  * A DIP switch bank (sw-dip1/2/4/8): a DIP-2n body straddling the trench with
  * n slide actuators in a row. Switch i's actuator sits over column i — its
- * OWN pin pair (pin i+1 in row e, pin 2n-i in row f, the pins facing each
- * other across the trench per model/footprints.js's pinOffset), so what you
- * click and what conducts are the same column. The nub sits toward the
- * row-f edge (marked by the ON bar) when closed.
+ * OWN pin pair (the pins facing each other across the trench per
+ * model/footprints.js's pinOffset), so what you click and what conducts are
+ * the same column. The nub sits toward the row-f edge (the ON band) when
+ * closed.
  *
  * Each actuator carries `data-switch-index` and NO listener of its own: a
  * bank position is a DURABLE param, so the CONTROLLER owns the write (the
@@ -625,13 +658,21 @@ function buildDipSwitchBank(svg, def, params) {
   const { halfPins: n } = packageSpec(def.package);
   const box = chipBox(def.package);
   const states = params.states ?? [];
-  const bodyHeight = CHIP_BODY_BOTTOM - CHIP_BODY_TOP;
+  const bodyX = box.minX + 0.1;
+  const bodyWidth = box.width - 0.2;
+  const bodyHeight = DIP_BODY_BOTTOM - DIP_BODY_TOP;
+  // The slot runs from under the ON band to the body's far edge; the nub
+  // travels within it, and CLOSED is the end against the band.
+  const slotY = DIP_BODY_TOP + DIP_BAND_HEIGHT + DIP_SLOT_INSET;
+  const slotHeight = DIP_BODY_BOTTOM - DIP_SLOT_INSET - slotY;
 
-  // Legs: the same stubs a chip draws, one pair per column.
+  // Legs: the same stubs a chip draws, one pair per column — stated off the
+  // body's own edges, so they stay tucked under it however tall it is.
   for (let dcol = 0; dcol < n; dcol++) {
     for (const [y, h] of [
-      [CHIP_BODY_BOTTOM - 0.05, 0.6], // down over the row-e holes
-      [-3.1, CHIP_BODY_TOP + 3.1], // up from the row-f holes to the body
+      // down over the row-e holes, and up from the row-f holes to the body
+      [DIP_BODY_BOTTOM - 0.05, 0.05 + DIP_LEG_OVERSHOOT - DIP_BODY_BOTTOM],
+      [-3 - DIP_LEG_OVERSHOOT, DIP_BODY_TOP + 3 + DIP_LEG_OVERSHOOT],
     ]) {
       svg.append(
         svgEl("rect", {
@@ -648,30 +689,42 @@ function buildDipSwitchBank(svg, def, params) {
   svg.append(
     svgEl("rect", {
       class: "part-body",
-      x: box.minX + 0.1,
-      y: CHIP_BODY_TOP,
-      width: box.width - 0.2,
+      x: bodyX,
+      y: DIP_BODY_TOP,
+      width: bodyWidth,
       height: bodyHeight,
       rx: 0.18,
     }),
-    // The ON bar marks which edge is "closed" — the row-f side.
+    // The ON band marks which edge is "closed" — the row-f side.
     svgEl("rect", {
       class: "part-dip-on-bar",
-      x: box.minX + 0.1,
-      y: CHIP_BODY_TOP,
-      width: box.width - 0.2,
-      height: 0.22,
+      x: bodyX,
+      y: DIP_BODY_TOP,
+      width: bodyWidth,
+      height: DIP_BAND_HEIGHT,
     }),
     // Body-only hit target: a press outside every actuator still drags the
     // package, same trick every wide discrete above uses.
     svgEl("rect", {
       class: "part-display-hit",
-      x: box.minX + 0.1,
-      y: CHIP_BODY_TOP,
-      width: box.width - 0.2,
+      x: bodyX,
+      y: DIP_BODY_TOP,
+      width: bodyWidth,
       height: bodyHeight,
     }),
   );
+
+  // "ON" printed at the band's left end, exactly as the real part carries it —
+  // the marking that says which way is closed without asking anyone to read a
+  // colour. It rides the 180° flip below with the rest of the silkscreen, so a
+  // bank seated backwards reads upside down and ON stays on the closing edge.
+  const onLabel = svgEl("text", {
+    class: "part-dip-on-label",
+    x: bodyX + 0.16,
+    y: DIP_BODY_TOP + DIP_BAND_HEIGHT - 0.15,
+  });
+  onLabel.textContent = "ON";
+  svg.append(onLabel);
 
   // One slot + nub + hit target per switch, appended LAST so they win
   // hit-testing over the body-wide hit rect.
@@ -685,23 +738,25 @@ function buildDipSwitchBank(svg, def, params) {
       svgEl("rect", {
         class: "part-dip-slot",
         x: i - 0.24,
-        y: CHIP_BODY_TOP + 0.34,
+        y: slotY,
         width: 0.48,
-        height: 1.42,
+        height: slotHeight,
         rx: 0.08,
       }),
       svgEl("rect", {
         class: on ? "part-dip-nub part-dip-nub--on" : "part-dip-nub",
         x: i - 0.18,
-        y: on ? CHIP_BODY_TOP + 0.4 : CHIP_BODY_TOP + 1.1,
+        y: on
+          ? slotY + DIP_NUB_INSET
+          : slotY + slotHeight - DIP_NUB_INSET - DIP_NUB_HEIGHT,
         width: 0.36,
-        height: 0.6,
+        height: DIP_NUB_HEIGHT,
         rx: 0.06,
       }),
       svgEl("rect", {
         class: "part-display-hit",
         x: i - 0.45,
-        y: CHIP_BODY_TOP,
+        y: DIP_BODY_TOP,
         width: 0.9,
         height: bodyHeight,
       }),

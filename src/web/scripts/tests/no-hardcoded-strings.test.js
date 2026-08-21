@@ -106,7 +106,12 @@ const RULES = [
 // Shown verbatim in every language, and each for a reason:
 //   • the product's own name, and the legal notice under it;
 //   • interchange-FORMAT names, which are what the file actually is;
-//   • "ASCII", a standard's name rather than a word.
+//   • "ASCII", a standard's name rather than a word;
+//   • "ON", the SILKSCREEN on a DIP switch bank's body. It is a marking on the
+//     physical object, like the "1" beside pin 1 and the part number printed
+//     across a chip — every DIP switch in the world carries those two letters,
+//     whoever made it and wherever it is sold, so translating it would print
+//     something no real part says.
 const INTENTIONAL = new Set([
   "Chip Hippo",
   "Copyright © 2026 Jason Figge",
@@ -114,6 +119,7 @@ const INTENTIONAL = new Set([
   "PNG",
   "ASCII",
   "Intel HEX",
+  "ON",
 ]);
 
 // `tests/` is not product code; `vendor/` is a generated bundle (and is exempt

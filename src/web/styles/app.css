@@ -1161,11 +1161,21 @@
   transform-box: fill-box;
 }
 
-/* DIP switch bank (sw-dip1/2/4/8): a chip-shaped body with n slide actuators,
-   each in its own .part-dip-switch group (see discrete-view.js's
-   buildDipSwitchBank). The ON bar marks the row-f edge as "closed". */
+/* DIP switch bank (sw-dip1/2/4/8): a chip-shaped body — taller, as the real
+   part is — with n slide actuators, each in its own .part-dip-switch group
+   (see discrete-view.js's buildDipSwitchBank). The ON band marks the row-f
+   edge as "closed", and carries the word, so which way is ON never rests on
+   telling the green nub from the red one. */
 .part-dip-on-bar {
   fill: var(--color-part-inset);
+}
+
+.part-dip-on-label {
+  fill: var(--color-chip-label);
+  font-family: var(--font-mono);
+  font-size: 0.44px; /* SVG user units = pitch units */
+  letter-spacing: 0.03px;
+  user-select: none;
 }
 
 .part-dip-slot {

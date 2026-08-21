@@ -175,6 +175,33 @@ test("buildDiscreteSvg: a DIP switch bank draws n actuators + 2n legs + a body",
   assert.equal(svg.querySelectorAll(".part-body").length, 1);
   assert.equal(svg.querySelectorAll(".part-dip-on-bar").length, 1);
 
+  // The body stands taller than a chip's slab (the real part does) and its
+  // ON band carries the word — the one cue for which way is closed that does
+  // not ask the reader to tell a green nub from a red one.
+  const body = svg.querySelector(".part-body");
+  const bodyTop = Number(body.getAttribute("y"));
+  const bodyHeight = Number(body.getAttribute("height"));
+  const chip = chipBox("DIP-16");
+  assert.ok(bodyHeight > 2.1, `body ${bodyHeight} should exceed a chip's 2.1`);
+  // …but stops clear of both hole rows (y 0 and -3), so the legs still show.
+  assert.ok(bodyTop > -3 + 0.22 && bodyTop + bodyHeight < 0 - 0.22);
+  // And stays inside the footprint box that positions and clips it.
+  assert.ok(
+    bodyTop > chip.minY && bodyTop + bodyHeight < chip.minY + chip.height,
+  );
+  // Symmetric about y -1.5, the centre the 180° flip turns about, so a bank
+  // seated backwards lands on exactly the same rectangle.
+  assert.ok(Math.abs(bodyTop + bodyHeight / 2 - -1.5) < 1e-9);
+  const on = svg.querySelector(".part-dip-on-label");
+  assert.equal(on.textContent, "ON");
+  // Printed ON the band, at its left end — the "top left corner" of the part.
+  const bandHeight = Number(
+    svg.querySelector(".part-dip-on-bar").getAttribute("height"),
+  );
+  const onY = Number(on.getAttribute("y"));
+  assert.ok(onY > bodyTop && onY <= bodyTop + bandHeight);
+  assert.ok(Number(on.getAttribute("x")) < 0.5);
+
   // sw-dip1: the one-switch edge case.
   const one = buildDiscreteSvg("sw-dip1", {});
   assert.equal(one.querySelectorAll("[data-switch-index]").length, 1);
@@ -190,10 +217,16 @@ test("buildDiscreteSvg: a switch bank's nub reflects params.states", () => {
   const nubOf = (g) => g.querySelector(".part-dip-nub");
   assert.ok(nubOf(groups[0]).classList.contains("part-dip-nub--on"));
   assert.ok(!nubOf(groups[1]).classList.contains("part-dip-nub--on"));
-  // The closed (on) nub sits nearer the row-e edge than the open one.
+  // The closed (on) nub sits against the ON band — the row-f edge, up-screen.
   const onY = Number(nubOf(groups[0]).getAttribute("y"));
   const offY = Number(nubOf(groups[1]).getAttribute("y"));
   assert.ok(onY < offY);
+  // The nub travels inside the slot, never past either end of it.
+  const slot = groups[0].querySelector(".part-dip-slot");
+  const slotY = Number(slot.getAttribute("y"));
+  const slotEnd = slotY + Number(slot.getAttribute("height"));
+  const nubH = Number(nubOf(groups[0]).getAttribute("height"));
+  assert.ok(onY >= slotY && offY + nubH <= slotEnd);
 });
 
 test("buildDiscreteSvg: a switch bank flips 180° like a chip, indices unchanged", () => {

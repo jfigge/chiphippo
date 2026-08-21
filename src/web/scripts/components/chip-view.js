@@ -48,11 +48,13 @@ export function chipBox(pkg) {
   };
 }
 
-/** Body edges (pitch units, local coords): between the rows, inset. Exported
-    for discrete-view.js's DIP-packaged discretes (a DIP switch bank) that
-    draw a chip-shaped body but aren't chips. */
-export const CHIP_BODY_TOP = -2.55;
-export const CHIP_BODY_BOTTOM = -0.45;
+/** Body edges (pitch units, local coords): between the rows, inset a full
+    HOLE_HIT_RADIUS, so a chip's slab never covers a point the board would
+    resolve to a hole. (A DIP SWITCH bank is drawn chip-shaped but states its
+    own, taller edges — see discrete-view.js's DIP_BODY_TOP: the holes under
+    its overhang are all its own pins, so it has nothing to keep clear of.) */
+const CHIP_BODY_TOP = -2.55;
+const CHIP_BODY_BOTTOM = -0.45;
 const LEG_WIDTH = 0.28;
 
 /**
