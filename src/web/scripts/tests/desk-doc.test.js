@@ -28,7 +28,7 @@ import {
   normalizeDocument,
 } from "../model/desk-doc.js";
 import { buildOccupancy } from "../model/occupancy.js";
-import { spec } from "../model/breadboard.js";
+import { boardSize, spec } from "../model/breadboard.js";
 
 // Strip heights are MEASURED, not whole pitches (board-types.js): a rail is
 // 3.70 units tall (9.4 mm) and a pin-board 14.02 (35.6), so a kit stacks at
@@ -491,8 +491,8 @@ test("normalizeDocument: a rotated part's BENT lead claims its hole too", () => 
 });
 
 test("normalizeDocument: flush boards are NOT an overlap — that is a mating", () => {
-  // The whole dovetail rule depends on strips touching edge-to-edge, so the
-  // check has to be the same strict one `canPlace` uses. A kit is three strips
+  // The whole dovetail rule depends on strips touching edge-to-edge, so a
+  // shared edge must never read as an intersection. A kit is three strips
   // stacked flush; treating that as an overlap would eat every saved desk.
   const kit = new DeskDoc(null);
   kit.addKit("full", 0, 0);
@@ -503,6 +503,82 @@ test("normalizeDocument: flush boards are NOT an overlap — that is a mating", 
     3,
     "a placed kit round-trips whole",
   );
+});
+
+test("normalizeDocument: a flush joint survives WHEREVER the kit sits", () => {
+  // THE ONE ABOVE PASSED THROUGHOUT THE BUG, because a kit at y 0 happens to
+  // add up exactly. Vertical geometry is MEASURED, not lattice — a rail is 3.50
+  // and a pin-board 14.02 — so at most offsets the sums are not exactly
+  // representable: a rail at -9.03 ends at -5.529999999999999 against a board
+  // starting at -5.53, and the strict `<` called that an overlap and DELETED
+  // the board, with everything seated on it. It struck roughly one joint in
+  // six, and Fit's whole-desk recentre re-rolled the dice on every load.
+  //
+  // So the assertion is a SWEEP, not a placement: every offset a desk can
+  // actually be at, including the fractional ones a dovetailed stack produces.
+  const failures = [];
+  for (let i = -60; i <= 60; i++) {
+    for (const frac of [0, 0.01, 0.49, 0.5, 0.51, 0.99]) {
+      const y = i + frac;
+      const doc = new DeskDoc(null);
+      doc.addKit("full", 0, y);
+      const kept = normalizeDocument(doc.toJSON()).boards.length;
+      if (kept !== 3) failures.push(`y=${y} kept ${kept}/3`);
+    }
+  }
+  assert.deepEqual(
+    failures.slice(0, 10),
+    [],
+    `a flush kit lost strips at ${failures.length} offsets — see rectsOverlap`,
+  );
+});
+
+test("normalizeDocument: the desk this was REPORTED on loads whole", () => {
+  // Three 830 kits down the desk — a real saved project (an error-correcting
+  // Hamming circuit), at the exact coordinates it was saved at. Eight of its
+  // nine strips round harmlessly; the rail at -9.03 ends at -5.529999999999999
+  // against the pin-board starting at -5.53, and that one joint took the board
+  // out and 17 parts and 35 wires with it. Kept as literal numbers rather than
+  // rebuilt from the kit table, because the point is these values.
+  const boards = [
+    ["bb14", "rail-full", -32.53],
+    ["bb7", "pins-full", -29.03],
+    ["bb25", "rail-full", -15.01],
+    ["bb22", "rail-full", -9.03],
+    ["bb23", "pins-full", -5.53], // ← the one that disappeared
+    ["bb24", "rail-full", 8.49],
+    ["bb29", "rail-full", 15],
+    ["bb30", "pins-full", 18.5],
+    ["bb31", "rail-full", 32.52],
+  ];
+  const raw = {
+    ...emptyDocument(),
+    boards: boards.map(([id, type, y]) => ({ id, type, x: -32, y, rot: 0 })),
+    nextBoardId: 32,
+  };
+  const kept = normalizeDocument(raw).boards.map((b) => b.id);
+  assert.deepEqual(
+    kept,
+    boards.map(([id]) => id),
+    "every strip of a saved three-kit stack survives the loader",
+  );
+});
+
+test("rectsOverlap still catches a REAL overlap, at the document's own quantum", () => {
+  // The tolerance must not become a licence. A board coordinate is held to 0.01
+  // (boardCoord), so the smallest overlap that can be expressed is 0.01 — four
+  // orders of magnitude above FLUSH_EPS — and it must still be refused, or the
+  // deadlock normalizeDocument exists to prevent comes straight back.
+  const doc = new DeskDoc(null);
+  const a = doc.addBoard("pins-full", 0, 0);
+  const h = boardSize("pins-full", 0).height;
+  assert.equal(doc.canPlace("pins-full", 0, h), true, "flush below is legal");
+  assert.equal(
+    doc.canPlace("pins-full", 0, h - 0.01),
+    false,
+    "one quantum INTO it is an overlap",
+  );
+  assert.ok(a);
 });
 
 test("normalizeDocument: an overlapping board takes its own contents with it", () => {

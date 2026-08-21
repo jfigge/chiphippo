@@ -133,12 +133,13 @@ test("every #fragment in the user guide resolves to a real heading", () => {
 
 // ── The ratchet ─────────────────────────────────────────────────────────────
 
+const CONSUMERS = [
+  path.join(SCRIPTS_DIR, "components/docs-viewer.js"),
+  path.join(ROOT, "scripts/build-docs.mjs"),
+];
+
 test("nothing keeps a slugger of its own — there is one rule, imported", () => {
-  const consumers = [
-    path.join(SCRIPTS_DIR, "components/docs-viewer.js"),
-    path.join(ROOT, "scripts/build-docs.mjs"),
-  ];
-  for (const file of consumers) {
+  for (const file of CONSUMERS) {
     const src = fs.readFileSync(file, "utf8");
     assert.match(
       src,
@@ -151,5 +152,48 @@ test("nothing keeps a slugger of its own — there is one rule, imported", () =>
       `${path.basename(file)} has grown a slugger of its own again — the two ` +
         `copies disagreed about collapsing hyphen runs; see heading-slug.js`,
     );
+  }
+});
+
+// The same ratchet one field over. WHICH PAGES EXIST used to be hand-duplicated
+// between the viewer and the build script, kept in step by a comment in each
+// asking the next author to remember — the identical arrangement the slug rule
+// had when its two copies silently disagreed. Here the failure is asymmetric
+// and equally quiet: a page added to one copy alone ships in the app and is
+// missing from the website and the PDF, or the reverse, and neither side shows
+// it. So: one module, imported, and no literal list anywhere else.
+test("nothing keeps a contents list of its own — there is one PAGES, imported", () => {
+  for (const file of CONSUMERS) {
+    const src = fs.readFileSync(file, "utf8");
+    assert.match(
+      src,
+      /import \{[^}]*PAGES[^}]*\} from "[^"]*docs-pages\.js"/,
+      `${path.basename(file)} must import the shared contents list`,
+    );
+    assert.doesNotMatch(
+      src,
+      /(const|let|var)\s+PAGES\s*=/,
+      `${path.basename(file)} has grown a contents list of its own again — a ` +
+        `page in one copy and not the other is invisible from both; see ` +
+        `docs-pages.js`,
+    );
+  }
+});
+
+test("every listed page has the Markdown file it names", async () => {
+  // The other half of "the list and the sources agree", which no amount of
+  // sharing can prove: one module now says which pages exist, so it had better
+  // name files that are there. Imported from the shared module directly — it is
+  // dependency-free, so this needs no DOM.
+  const { PAGES } = await import("../docs-pages.js");
+  assert.ok(PAGES.length > 0);
+  assert.deepEqual(
+    PAGES.map((p) => p.slug),
+    [...new Set(PAGES.map((p) => p.slug))],
+    "every page slug must be unique",
+  );
+  for (const page of PAGES) {
+    const md = path.join(DOCS_DIR, `${page.file ?? page.slug}.md`);
+    assert.ok(fs.existsSync(md), `${page.slug} → missing ${path.basename(md)}`);
   }
 });

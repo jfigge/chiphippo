@@ -49,6 +49,14 @@ function installDocs(pages) {
   return reads;
 }
 
+test("PAGES is the SHARED list, not a copy the viewer happens to agree with", async () => {
+  // A re-export that quietly wrapped, sliced or re-ordered the shared array
+  // would pass a deepEqual and still be a second source of truth; identity is
+  // the only assertion that cannot.
+  const shared = (await import("../docs-pages.js")).PAGES;
+  assert.equal(PAGES, shared);
+});
+
 test("PAGES: every page has a unique slug; only the overview page names a file", () => {
   const slugs = PAGES.map((p) => p.slug);
   assert.equal(new Set(slugs).size, slugs.length, "no duplicate slugs");

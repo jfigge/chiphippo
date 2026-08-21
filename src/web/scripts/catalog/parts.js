@@ -22,6 +22,12 @@
 //     joined right now (Feature 70's netlist consumes this).
 //   - `source(params)` — a PSU's terminal potentials (Feature 90 consumes).
 //   - `normalizeParams(raw)` — coerce arbitrary stored params to valid ones.
+//   - `clickToggle(params, index)` — the params patch ONE plain click makes,
+//     or null when that click changes nothing. Declaring it is ALSO what makes
+//     a part click-toggling at all: the controller asks whether the function is
+//     there rather than consulting a list of refs, so a part that flips under
+//     the finger arrives entirely from here. `index` is the sub-position a
+//     multi-switch part was clicked on (a bank's actuator), null otherwise.
 // No electrical logic lives in views, and none in the netlist yet.
 
 import { hd44780Unit } from "../sim/hd44780.js";
@@ -375,6 +381,20 @@ function dipSwitchBankDef(n) {
       }
       return out;
     },
+    // A bank is the one part whose click needs the INDEX: the body between two
+    // actuators is a drag handle, not a switch, so a press that names no
+    // position changes nothing and must say so.
+    clickToggle(params, index) {
+      const states = params?.states ?? [];
+      if (!Number.isInteger(index) || index < 0 || index >= states.length) {
+        return null;
+      }
+      // COPY: the document owns the stored array, and a history snapshot must
+      // never alias it.
+      const next = [...states];
+      next[index] = !next[index];
+      return { states: next };
+    },
   };
 }
 
@@ -410,6 +430,9 @@ export const PART_DEFS = Object.freeze(
       // Common (pin 2) bridges to pin 1 or pin 3 depending on the slider.
       internalBridges(params) {
         return [[2, params?.pos === "2" ? 3 : 1]];
+      },
+      clickToggle(params) {
+        return { pos: params?.pos === "2" ? "1" : "2" };
       },
     },
     {
@@ -449,6 +472,9 @@ export const PART_DEFS = Object.freeze(
       },
       internalBridges(params) {
         return params?.on ? [[1, 2]] : [];
+      },
+      clickToggle(params) {
+        return { on: !params?.on };
       },
     },
     ...[1, 2, 4, 8].map(dipSwitchBankDef),

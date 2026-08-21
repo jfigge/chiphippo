@@ -133,6 +133,11 @@ const SKIP_DIRS = new Set(["tests", "vendor"]);
 //                       source drives the viewer, the website and the PDF), so
 //                       its chrome stays English to match the pages it lists.
 //                       See CLAUDE.md → "Language support".
+//   • docs-pages.js   — the guide's CONTENTS LIST, split out of docs-viewer.js
+//                       so the viewer, the website and the PDF share one copy
+//                       instead of three. Its titles ARE the English page
+//                       names, for the same reason and on the same terms; the
+//                       exclusion moved with them.
 //   • docs-window.js  — that window's host, same reason.
 //   • board-types.js  — the same thing as `catalog/` under another directory: a
 //                       table of board SPECS whose `label` is the English source
@@ -161,6 +166,7 @@ const SKIP_DIRS = new Set(["tests", "vendor"]);
 const SKIP_FILES = new Set([
   "i18n.js",
   "docs-viewer.js",
+  "docs-pages.js",
   "docs-window.js",
   "board-types.js",
   "generate.js",

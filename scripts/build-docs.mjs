@@ -35,6 +35,12 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 // dependency-free renderer code, and src/web/scripts is `{"type":"module"}`,
 // so plain Node imports it here exactly as the browser loads it there.
 import { slugifyHeadingHtml } from "../src/web/scripts/heading-slug.js";
+// …and THE contents list, shared for the same reason and on the same terms:
+// which pages exist must not be a per-output decision. Re-exported because
+// build-pdf.mjs imports PAGES from here.
+import { PAGES } from "../src/web/scripts/docs-pages.js";
+
+export { PAGES };
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 export const SRC = resolve(ROOT, "src/web/docs");
@@ -58,30 +64,6 @@ if (!markedPath) {
   process.exit(1);
 }
 const { marked } = await import(pathToFileURL(markedPath).href);
-
-// Keep in sync with PAGES in src/web/scripts/components/docs-viewer.js (order
-// + titles) — the two are hand-duplicated, not shared (one runs in the
-// sandboxed renderer, the other under plain Node).
-export const PAGES = [
-  { slug: "overview", file: "README", title: "Overview" },
-  { slug: "getting-started", title: "Getting Started" },
-  { slug: "the-desk", title: "The Desk & Breadboards" },
-  { slug: "components", title: "Chips & Components" },
-  { slug: "wiring", title: "Wiring, Nets & Buses" },
-  { slug: "power-and-clocks", title: "Power & Clock Sources" },
-  { slug: "chip-library", title: "The Chip Library" },
-  { slug: "simulation", title: "Running a Simulation" },
-  { slug: "probing", title: "Probing & Net Names" },
-  { slug: "memory", title: "Memory Chips & the Inspector" },
-  { slug: "logic-analyzer", title: "Logic Analyzer & Timing" },
-  { slug: "build-guide", title: "Build Guide & BOM" },
-  { slug: "schematic-view", title: "Schematic View" },
-  { slug: "ai-builder", title: "AI Circuit Builder" },
-  { slug: "files-and-undo", title: "Files, Saving & Undo" },
-  { slug: "projects-and-desktops", title: "Projects & Desktops" },
-  { slug: "settings", title: "Settings" },
-  { slug: "keyboard-shortcuts", title: "Keyboard Shortcuts" },
-];
 
 const outFile = (p) =>
   p.slug === "overview" ? "index.html" : `${p.slug}.html`;

@@ -47,35 +47,12 @@
 
 import renderMarkdown from "../vendor/markdown.js";
 import { slugifyHeading } from "../heading-slug.js";
+// The contents list and the heading-id rule are the two things this viewer, the
+// website and the PDF must agree about exactly — each lives in its own
+// dependency-free module beside this one rather than in a copy per consumer.
+import { PAGES } from "../docs-pages.js";
 
-/**
- * Contents list, in display order. `slug` is the stable identity used for the
- * active-state and internal navigation; `file` is the markdown basename under
- * docs/ (defaults to slug — only the index page differs: README.md → overview).
- * Keep this array in sync with the copy in scripts/build-docs.mjs (order +
- * titles) — the two are hand-duplicated, not shared, since one runs in the
- * sandboxed renderer and the other under plain Node.
- */
-export const PAGES = [
-  { slug: "overview", file: "README", title: "Overview" },
-  { slug: "getting-started", title: "Getting Started" },
-  { slug: "the-desk", title: "The Desk & Breadboards" },
-  { slug: "components", title: "Chips & Components" },
-  { slug: "wiring", title: "Wiring, Nets & Buses" },
-  { slug: "power-and-clocks", title: "Power & Clock Sources" },
-  { slug: "chip-library", title: "The Chip Library" },
-  { slug: "simulation", title: "Running a Simulation" },
-  { slug: "probing", title: "Probing & Net Names" },
-  { slug: "memory", title: "Memory Chips & the Inspector" },
-  { slug: "logic-analyzer", title: "Logic Analyzer & Timing" },
-  { slug: "build-guide", title: "Build Guide & BOM" },
-  { slug: "schematic-view", title: "Schematic View" },
-  { slug: "ai-builder", title: "AI Circuit Builder" },
-  { slug: "files-and-undo", title: "Files, Saving & Undo" },
-  { slug: "projects-and-desktops", title: "Projects & Desktops" },
-  { slug: "settings", title: "Settings" },
-  { slug: "keyboard-shortcuts", title: "Keyboard Shortcuts" },
-];
+export { PAGES };
 
 /** Map a doc filename (no extension) to its page slug, for resolving *.md links. */
 const FILE_TO_SLUG = Object.fromEntries(

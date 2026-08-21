@@ -29,19 +29,11 @@
 // Views report gestures through constructor callbacks (house rule); the
 // camera stays DeskView's job — this class only reads worldFromEvent/camera.
 
-import { clear, el, svgEl } from "../dom.js";
+import { el } from "../dom.js";
 import { t } from "../i18n.js";
 import { PopupManager } from "../popup-manager.js";
 import { PX_PER_UNIT, clampZoom } from "../desk/desk-geometry.js";
-import { polylinePath, wirePath } from "../desk/wire-path.js";
-import {
-  ROTATIONS,
-  boardSize,
-  columnAt,
-  holePosition,
-  parseHole,
-  spec,
-} from "../model/breadboard.js";
+import { ROTATIONS, columnAt, parseHole, spec } from "../model/breadboard.js";
 import { holeAtWorld } from "../model/occupancy.js";
 import { partSeatAt } from "../model/seating.js";
 import {
@@ -54,51 +46,24 @@ import {
   partPinsWorld,
   wiresInRect,
 } from "../model/part-geometry.js";
-import {
-  captureCluster,
-  memberAnchorWorld,
-  memberForm,
-  resolveCluster,
-} from "../model/paste-cluster.js";
 import { clusterDelta } from "../model/cluster-move.js";
-import {
-  captureDesign,
-  clipScene,
-  resolveDesign,
-  shiftFor,
-} from "../model/design-clip.js";
 import {
   DeskDoc,
   WIRE_COLORS,
   WIRE_LAYOUTS,
   busWidthForKey,
 } from "../model/desk-doc.js";
-import { nearestLegalOffset } from "../model/nearest-legal.js";
-import {
-  isToggleSelectEvent,
-  singlePick,
-  toggleSelection,
-} from "../model/selection-toggle.js";
+import { isToggleSelectEvent } from "../model/selection-toggle.js";
 import { wireRunMm } from "../model/wire-length.js";
 import { HistoryStore } from "../model/history-store.js";
 import { partDef } from "../catalog/index.js";
 import { kitLabel, partTitle } from "../catalog/labels.js";
 import { isMemory, isRomChip, memoryConfig } from "../sim/chip-eval.js";
-import {
-  BreadboardView,
-  applyBoardRotation,
-  buildBoardSvg,
-} from "./breadboard-view.js";
-import { ChipView, buildChipSvg, chipBox } from "./chip-view.js";
-import {
-  DiscreteView,
-  buildDiscreteSvg,
-  buildSpanSvg,
-  discreteBox,
-  spanPad,
-} from "./discrete-view.js";
-import { PsuView, buildPsuSvg } from "./psu-view.js";
-import { ClockView, buildClockSvg } from "./clock-view.js";
+import { BreadboardView } from "./breadboard-view.js";
+import { ChipView, buildChipSvg } from "./chip-view.js";
+import { DiscreteView, buildDiscreteSvg } from "./discrete-view.js";
+import { PsuView } from "./psu-view.js";
+import { ClockView } from "./clock-view.js";
 import { LcdView } from "./lcd-view.js";
 import { WireLayer } from "./wire-layer.js";
 import { PartPropertiesDialog } from "./part-properties-dialog.js";
@@ -108,18 +73,13 @@ import { ProbeInspector } from "./probe-inspector.js";
 import { WireTools } from "./wire-tools.js";
 import { BusTools } from "./bus-tools.js";
 import { beginPointerGesture, releaseWorld } from "./pointer-gesture.js";
-import { BoardOutline } from "./board-outline.js";
-import { HoleRings } from "./hole-rings.js";
+import { DeskSelection } from "./desk-selection.js";
+import { DeskPlacement } from "./desk-placement.js";
 
 /** Which platform's additive-select modifier the desk answers to — ⌘ on
     macOS, Ctrl elsewhere. See model/selection-toggle.js for why Ctrl cannot be
     it on a Mac. Read once, as every other platform-glyph site does. */
 const IS_MAC = globalThis.window?.chiphippo?.platform === "darwin";
-
-/** The static SVG for a desk brick (PSU / clock) by kind. */
-function brickSvg(kind, params) {
-  return kind === "psu" ? buildPsuSvg(params) : buildClockSvg(params);
-}
 
 /** A non-volatile memory chip's backing-file size in bytes (address space ×
     bytes-per-word), used when provisioning its `.bin` on placement. */
@@ -164,17 +124,26 @@ const FIT_PAD = 4;
     endpoint isn't grabbed by mistake. */
 const WIRE_END_GRAB_RADIUS = 0.6;
 
-/** Discretes whose plain click flips a durable param — interactive even
-    while the sim is running (a held-down button stays momentary instead).
-    A DIP switch bank's click flips one POSITION (see #clickTogglePatch). */
-const CLICK_TOGGLE_REFS = new Set([
-  "sw-slide",
-  "sw-toggle",
-  "sw-dip1",
-  "sw-dip2",
-  "sw-dip4",
-  "sw-dip8",
-]);
+/**
+ * Does a plain click on this part flip a durable param? DERIVED from the
+ * catalog — a part is click-toggling exactly when its def declares how to do
+ * it (`clickToggle`, parts.js) — and never from a list of refs kept here.
+ *
+ * It WAS such a list, and a list is how a rule falls silently behind: the six
+ * refs in it had to be remembered alongside the three-way `ref ===` ladder
+ * that computed the patch, in a VIEW, in a codebase whose catalog rule is that
+ * part behaviour is data. Add a seventh switch and a miss in either place is
+ * invisible — the part simply does nothing under the finger, with no error to
+ * follow. This is the same correction `#dragGestureActive` already made for
+ * "is a drag in flight?" one class over.
+ *
+ * Such a part stays interactive while the sim RUNS, which is the other half of
+ * why the answer must be reliable: a held-down button is momentary and has no
+ * durable param, so it is deliberately not one of these.
+ */
+function clickTogglingPart(ref) {
+  return typeof partDef(ref)?.clickToggle === "function";
+}
 
 export class DeskController {
   #viewport;
@@ -185,13 +154,6 @@ export class DeskController {
   #partViews = new Map(); // componentId → ChipView | DiscreteView | PsuView
   #wireLayer;
   #annotationLayer; // AnnotationLayer: labels + notes (Feature 120)
-  #selected = null; // { kind: "board"|"part"|"wire"|"annotation", id } | null
-  #copyBuffer = null; // { ref, params } of the last Cmd+C'd component | null
-  #clusterBuffer = null; // a captured multi-selection for a cluster paste | null
-  // A whole sub-assembly (boards + what is on them + the wiring), captured by
-  // a marquee that took in boards. It deliberately OUTLIVES loadDocument, so a
-  // design copied on one project tab pastes onto another (Feature 240).
-  #designBuffer = null;
   // Active interaction: null, or
   //   { kind: "place", type, ghost, pos, legal }              (board)
   //   { kind: "place-chip", ref, ghost, board, anchor, legal }
@@ -214,22 +176,13 @@ export class DeskController {
   #hoverTimer = null;
   #ring;
   #tooltip;
-  #boardOutline; // the selection highlighter around a whole snapped set
+  #sel; // DeskSelection: what is picked, plus the outline + ride-preview
+  #place; // DeskPlacement: every ghost, the copy buffers, and the drops
   #probe; // ProbeInspector: netlist highlight + net-status readout
   // Simulation (Feature 90): editing is locked while running; live net levels
   // arrive over chiphippo:sim-state and drive LEDs / chip badges / probe tint.
   #editingLocked = false;
-  // The multi-selection, filled EITHER way (Feature 340's selection-toggle.js):
-  // a Shift-drag marquee replaces these sets, a ⌘/Ctrl-click adds to or removes
-  // from them. Everything downstream reads them without caring which built it.
-  #multi = new Set(); // component ids
-  #multiWires = new Set(); // wire ids
-  #multiBoards = new Set(); // board ids (Feature 240)
   #marquee = null; // the rubber-band element while shift-dragging
-  // Feature 290: Option held over a selected part rings the wire ends an
-  // Option-drag would carry, so the answer arrives BEFORE the gesture.
-  #optionHeld = false;
-  #rideRings;
   #simOverlay; // live LEDs / badges / clock lamps + net-level lookups
   // Undo/redo (Feature 200): a bounded snapshot history the doc-changed choke
   // point feeds. `#restoring` suppresses re-recording while a restore replays.
@@ -337,13 +290,83 @@ export class DeskController {
     this.#tooltip = el("div", { class: "desk-tooltip", hidden: true });
     this.#layers.overlay.append(this.#ring, this.#tooltip);
 
-    // Board selection is drawn as ONE path around the whole snapped set.
-    this.#boardOutline = new BoardOutline(this.#layers.overlay);
+    // What is SELECTED (components/desk-selection.js), and the two overlays
+    // that are pure functions of it: the board highlighter and the Option-drag
+    // ride preview. Same host arrangement as WireTools / BusTools below —
+    // built early because the wire layer's own callbacks reach it.
+    const sel = this;
+    this.#sel = new DeskSelection(
+      {
+        get doc() {
+          return sel.#doc;
+        },
+        get mode() {
+          return sel.#mode;
+        },
+        get editingLocked() {
+          return sel.#editingLocked;
+        },
+        get boardViews() {
+          return sel.#views;
+        },
+        get partViews() {
+          return sel.#partViews;
+        },
+        get wireLayer() {
+          return sel.#wireLayer;
+        },
+        get annotationLayer() {
+          return sel.#annotationLayer;
+        },
+        addressWorld: (address) => this.#addressWorld(address),
+      },
+      this.#layers.overlay,
+    );
 
-    // The wire ends an Option-drag would carry (Feature 290) — MANY holes at
-    // once, which is exactly what HoleRings is: the same `.hole-ring` look as
-    // the single hover ring above, pooled, and pointer-inert.
-    this.#rideRings = new HoleRings(this.#layers.overlay);
+    // Every placement ghost, the ⌘C buffers and the drops
+    // (components/desk-placement.js) — the same host arrangement as the
+    // selection above and WireTools / BusTools below.
+    this.#place = new DeskPlacement(
+      {
+        get doc() {
+          return sel.#doc;
+        },
+        get mode() {
+          return sel.#mode;
+        },
+        set mode(v) {
+          sel.#mode = v;
+        },
+        get editingLocked() {
+          return sel.#editingLocked;
+        },
+        get selection() {
+          return sel.#sel;
+        },
+        get ring() {
+          return sel.#ring;
+        },
+        deskView,
+        viewport,
+        hideHover: () => this.#hideHover(),
+        deselect: () => this.deselect(),
+        disarmWireTool: () => this.disarmWireTool(),
+        disarmBusTool: () => this.disarmBusTool(),
+        disarmProbe: () => this.disarmProbe(),
+        emitDocChanged: (label) => this.#emitDocChanged(label),
+        mountBoard: (board) => this.#mountBoard(board),
+        mountPart: (comp) => this.#mountPart(comp),
+        provisionMemory: (comp) => this.#provisionMemory(comp),
+        mateStrips: (ids) => this.#mateStrips(ids),
+        partSeatAt: (w, ref, cols, params) =>
+          this.#partSeatAt(w, ref, cols, params),
+        holeAtWorld: (w) => this.#holeAtWorld(w),
+        // An ANNOTATION ghost is armed by the annotation code below but tracked
+        // through the one dispatcher, so placement hands that one kind back.
+        trackAnnotationGhost: (e) => this.#trackAnnotationGhost(e),
+      },
+      this.#layers.overlay,
+    );
 
     // All wires render into one SVG in the wires layer.
     this.#wireLayer = new WireLayer(this.#layers.wires, deskDoc, {
@@ -438,7 +461,7 @@ export class DeskController {
       cancelPlacement: () => this.cancelPlacement(),
       disarmProbe: () => this.disarmProbe(),
       disarmBusTool: () => this.disarmBusTool(),
-      clearSelectionIfWire: (id) => this.#clearSelectionIfWire(id),
+      clearSelectionIfWire: (id) => this.#sel.clearIfWire(id),
       onStateChange: onWireStateChange,
       // The uniform Pin Assignment / Properties… context-menu pair — the
       // dialogs themselves stay centralized in DeskController (same as every
@@ -485,7 +508,7 @@ export class DeskController {
       cancelPlacement: () => this.cancelPlacement(),
       disarmProbe: () => this.disarmProbe(),
       disarmWireTool: () => this.disarmWireTool(),
-      clearSelectionIfBus: (id) => this.#clearSelectionIfBus(id),
+      clearSelectionIfBus: (id) => this.#sel.clearIfBus(id),
       onStateChange: onBusStateChange,
     });
 
@@ -535,19 +558,15 @@ export class DeskController {
   }
 
   get selectedId() {
-    return this.#selected?.id ?? null;
+    return this.#sel.single?.id ?? null;
   }
 
+  /** Whether a placement ghost is in hand. DERIVED from the mode's own name
+      (`DeskPlacement.armed`), never a hand-kept list of the seven `place*`
+      kinds — the same correction `#dragGestureActive` below already made, and
+      for the same reason: a list falls silently behind the eighth kind. */
   get placementArmed() {
-    return [
-      "place",
-      "place-chip",
-      "place-part",
-      "place-brick",
-      "place-annotation",
-      "place-cluster",
-      "place-design",
-    ].includes(this.#mode?.kind);
+    return this.#place.armed;
   }
 
   /**
@@ -627,1101 +646,120 @@ export class DeskController {
     }
   }
 
-  // ── Selection (boards, parts, and wires share one slot) ─────────────────
-
-  #applySelection(sel, on) {
-    if (!sel) return;
-    if (sel.kind === "board") this.#views.get(sel.id)?.setSelected(on);
-    else if (sel.kind === "part") this.#partViews.get(sel.id)?.setSelected(on);
-    else if (sel.kind === "annotation") {
-      this.#annotationLayer.setSelected(on ? sel.id : null);
-    } else if (sel.kind === "bus") {
-      this.#wireLayer.setSelectedBus(on ? sel.id : null);
-    } else this.#wireLayer.setSelected(on ? sel.id : null);
-  }
-
-  #select(sel) {
-    // A single pick always replaces a marquee selection.
-    if (sel && this.#multiSize()) this.#clearMultiSelection();
-    if (this.#selected?.id === sel?.id && this.#selected?.kind === sel?.kind) {
-      return;
-    }
-    this.#applySelection(this.#selected, false);
-    this.#selected = sel;
-    this.#applySelection(this.#selected, true);
-    this.#refreshBoardOutline();
-    this.#refreshRidePreview(); // Option may be held over the NEW selection
-  }
-
-  // ── The Option-drag hint (Feature 290) ──────────────────────────────────
-
-  /**
-   * Option is down (or up). While it is down over a SELECTED part, every wire
-   * end an Option-drag would carry is ringed, so "what comes with it?" is
-   * answered BEFORE the gesture rather than discovered during it — the same
-   * shape as the Fit button previewing zoom-out-full while Shift is held.
-   *
-   * The state is pushed in rather than read off events because a keyup is not
-   * the only way it ends: app.js drops it on `blur` too, since a modifier
-   * released outside the window never fires our own keyup and a ring left
-   * behind would be a lie about a key nobody is holding.
-   */
-  setRidePreview(on) {
-    const next = Boolean(on);
-    if (next === this.#optionHeld) return;
-    this.#optionHeld = next;
-    this.#refreshRidePreview();
-  }
-
-  /** Re-derive the hint from whatever is true now. Called from every transition
-      that can change the answer — the selection, a doc edit, a drag starting or
-      ending, the run lock — and cheap when Option isn't held, which is the
-      overwhelmingly common case. */
-  #refreshRidePreview() {
-    this.#rideRings.show(this.#ridePreviewPoints());
-  }
-
-  /** World points of everything riding what is selected, or null — each wire
-      end, and each two-terminal part's LEAD, that an Option-drag would carry. A
-      rider held by BOTH ends gets two rings, which is the useful part: it shows
-      what travels and what stays put, so a resistor that will bend reads
-      differently from one that will translate.
-
-      A MULTI-selection rings every member's riders, since Option would carry
-      them all. Only when the press would actually start a drag, though: a
-      selection holding a board refuses (see #beginClusterDrag), and ringing
-      riders for it would be a promise the app won't keep. Riders are deduped
-      because two members can share a node. */
-  #ridePreviewPoints() {
-    if (!this.#optionHeld) return null;
-    // A drag in flight already shows the answer by moving the riders, and the
-    // topology is frozen while the circuit runs.
-    if (this.#mode || this.#editingLocked) return null;
-    let riding = null;
-    let legs = null;
-    if (this.#selected?.kind === "part") {
-      riding = this.#doc.wiresRidingPart(this.#selected.id);
-      legs = this.#doc.partsRidingPart(this.#selected.id);
-    } else if (this.#multi.size >= 2 && this.#multiBoards.size === 0) {
-      riding = this.#doc
-        .wiresRidingCluster(this.#multi)
-        .map(({ wireId, ends }) => ({ wireId, ends: ends.map((r) => r.end) }));
-      legs = this.#doc.partsRidingCluster(this.#multi);
-    }
-    if (!riding) return null;
-    const points = [];
-    for (const { wireId, ends } of riding) {
-      const wire = this.#doc.getWire(wireId);
-      for (const end of ends) {
-        const p = this.#addressWorld(wire?.[end]);
-        if (p) points.push(p);
-      }
-    }
-    for (const { id, pins } of legs ?? []) {
-      const comp = this.#doc.getComponent(id);
-      const world = comp && partPinsWorld(this.#doc.boards, comp);
-      for (const { pin } of pins) {
-        const at = world?.find((p) => p.pin === pin);
-        if (at) points.push({ x: at.x, y: at.y });
-      }
-    }
-    return points.length > 0 ? points : null;
-  }
-
-  /** A board's world-px box, at an overridden position while dragging. */
-  #boardRect(board, pos) {
-    const size = boardSize(board.type, board.rot ?? 0);
-    return {
-      x: (pos?.x ?? board.x) * PX_PER_UNIT,
-      y: (pos?.y ?? board.y) * PX_PER_UNIT,
-      width: size.width * PX_PER_UNIT,
-      height: size.height * PX_PER_UNIT,
-    };
-  }
-
-  /**
-   * Re-draw the board highlighter around the OUTER edge of every strip the
-   * grab would move — the whole snapped group, or the one-way chain an Option
-   * grab tore off — never the single strip that was clicked. Positions come
-   * from `overrides` mid-drag, from the document otherwise.
-   *
-   * @param {Map<string, {x:number,y:number}>|null} [overrides]
-   */
-  #refreshBoardOutline(overrides = null) {
-    const drag = this.#mode?.kind === "drag" ? this.#mode : null;
-    let ids = [];
-    if (drag) ids = drag.members.map((m) => m.id);
-    else if (this.#selected?.kind === "board") {
-      ids = this.#doc.groupMembers(this.#selected.id).map((b) => b.id);
-    } else if (this.#multiBoards.size > 0) {
-      // A marquee that took in boards outlines exactly those — the same
-      // highlighter, so a selected design reads as one block (Feature 240).
-      ids = [...this.#multiBoards];
-    }
-    const rects = [];
-    for (const id of ids) {
-      const board = this.#doc.getBoard(id);
-      if (board) rects.push(this.#boardRect(board, overrides?.get(id)));
-    }
-    this.#boardOutline.show(rects, drag ? !drag.legal : false);
-  }
+  // ── Selection ───────────────────────────────────────────────────────────
+  // All of it lives in DeskSelection (components/desk-selection.js), including
+  // the board highlighter and the Option-drag ride preview. What stays here is
+  // the public surface the app and the views already call, delegated straight
+  // through, so nothing outside this file learned that the selection moved.
 
   /** The component ids in the multi-selection (empty when none). */
   get multiSelectedIds() {
-    return [...this.#multi];
+    return [...this.#sel.parts];
   }
 
   /** The wire ids in the multi-selection (empty when none). */
   get multiSelectedWireIds() {
-    return [...this.#multiWires];
+    return [...this.#sel.wires];
   }
 
   /** The board ids in the multi-selection (empty when none). */
   get multiSelectedBoardIds() {
-    return [...this.#multiBoards];
+    return [...this.#sel.boards];
   }
 
-  #multiSize() {
-    return this.#multi.size + this.#multiWires.size + this.#multiBoards.size;
-  }
-
-  #clearMultiSelection() {
-    for (const id of this.#multi) {
-      this.#partViews.get(id)?.setSelected(false);
-    }
-    this.#multi.clear();
-    if (this.#multiWires.size) {
-      this.#multiWires.clear();
-      this.#wireLayer.setSelectedMany([]);
-    }
-    if (this.#multiBoards.size) {
-      this.#multiBoards.clear();
-      this.#boardOutline.show([], false);
-    }
-  }
-
-  /** Replace the multi-selection; a non-empty one clears the single pick. */
-  #setMultiSelection(ids, wireIds = [], boardIds = []) {
-    this.#clearMultiSelection();
-    // What is actually still on the desk — the caller may name anything.
-    const parts = [...ids].filter((id) => this.#partViews.has(id));
-    const wires = [...wireIds].filter((id) => this.#doc.getWire(id));
-    const boards = [...boardIds].filter((id) => this.#views.has(id));
-    // The single pick is dropped FIRST, before anything is highlighted:
-    // `#select(null)` un-highlights the part it was on, and that part is very
-    // often IN the set about to be highlighted (a marquee drawn around the
-    // selected part, or Select All). Clearing afterwards would silently undo
-    // the highlight just applied to it.
-    if (parts.length || wires.length || boards.length) this.#select(null);
-    for (const id of parts) {
-      this.#multi.add(id);
-      this.#partViews.get(id).setSelected(true);
-    }
-    for (const id of wires) this.#multiWires.add(id);
-    for (const id of boards) this.#multiBoards.add(id);
-    if (this.#multiWires.size) {
-      this.#wireLayer.setSelectedMany(this.#multiWires);
-    }
-    // #select(null) already re-traces the outline, but only when something WAS
-    // selected — refresh unconditionally so a marquee's boards light up.
-    this.#refreshBoardOutline();
-    this.#refreshRidePreview(); // Option may be held over the NEW selection
-  }
-
-  /**
-   * Select the WHOLE desktop — every board, every component seated on one (and
-   * every desk-level brick), and every wire — as though a marquee had been
-   * drawn around all of it. That is deliberately the same set a marquee
-   * captures, so `⌘A` then `⌘C` copies the entire desk as one design clip.
-   *
-   * Refused while the circuit runs, for the reason a marquee is: a selection
-   * applied into the frozen state would be one the user cannot act on.
-   *
-   * @returns {boolean} whether anything was selected.
-   */
   selectAll() {
-    if (this.#editingLocked) return false;
-    const components = this.#doc.components.map((c) => c.id);
-    const wires = this.#doc.wires.map((w) => w.id);
-    const boards = this.#doc.boards.map((b) => b.id);
-    if (!components.length && !wires.length && !boards.length) return false;
-    this.#setMultiSelection(components, wires, boards);
-    return true;
+    return this.#sel.selectAll();
   }
 
   selectBoard(id) {
-    this.#select(this.#views.has(id) ? { kind: "board", id } : null);
+    this.#sel.selectBoard(id);
   }
 
   selectComponent(id) {
-    this.#select(this.#partViews.has(id) ? { kind: "part", id } : null);
+    this.#sel.selectComponent(id);
   }
 
   selectWire(id) {
-    if (this.#mode) return; // wiring/placing/dragging — clicks aren't selects
-    this.#select(this.#doc.getWire(id) ? { kind: "wire", id } : null);
+    this.#sel.selectWire(id);
   }
 
   selectBus(id) {
-    if (this.#mode) return; // busing/placing/dragging — clicks aren't selects
-    this.#select(this.#doc.getBus(id) ? { kind: "bus", id } : null);
+    this.#sel.selectBus(id);
   }
 
   selectAnnotation(id) {
-    this.#select(
-      this.#doc.getAnnotation(id) ? { kind: "annotation", id } : null,
-    );
+    this.#sel.selectAnnotation(id);
   }
 
   deselect() {
-    this.#clearMultiSelection();
-    this.#select(null);
-  }
-
-  // ── Additive selection (⌘/Ctrl-click) ───────────────────────────────────
-  //
-  // The marquee REPLACES a selection; this ADDS one item to it, or takes one
-  // back out. Both build the same three sets, so everything downstream —
-  // Delete, ⌘C's cluster/design clip, the board highlighter — is untouched.
-  //
-  // Annotations are deliberately absent: they are not one of those three sets
-  // (a marquee cannot take one either), so a modifier-click on a label leaves
-  // the selection exactly as it was rather than silently throwing it away in
-  // exchange for the note. A plain click still selects one.
-
-  /** The selection as the three sets, with the single pick folded in — that
-      pick is what a modifier-click most often EXTENDS, so it has to be part of
-      what is being toggled against. A selected board contributes its whole
-      snapped group, which is the set its highlighter is already drawing. */
-  #selectionSets() {
-    const sets = {
-      parts: new Set(this.#multi),
-      wires: new Set(this.#multiWires),
-      boards: new Set(this.#multiBoards),
-    };
-    const sel = this.#selected;
-    if (sel?.kind === "part") sets.parts.add(sel.id);
-    else if (sel?.kind === "wire") sets.wires.add(sel.id);
-    else if (sel?.kind === "board") {
-      for (const b of this.#doc.groupMembers(sel.id)) sets.boards.add(b.id);
-    }
-    return sets;
-  }
-
-  /**
-   * Toggle a set of ids of one kind in and out of the selection.
-   *
-   * Refused while a tool or a drag owns `#mode` (a click is not a select
-   * then — the same guard selectWire/selectBus carry) and while the circuit
-   * runs, for the reason a marquee is: a selection applied into the frozen
-   * state is one the user cannot act on.
-   *
-   * @param {"parts"|"wires"|"boards"} kind
-   * @param {string[]} ids
-   */
-  #toggleSelection(kind, ids) {
-    if (this.#mode || this.#editingLocked) return;
-    const next = toggleSelection(this.#selectionSets(), kind, ids);
-    const one = singlePick(next);
-    if (one)
-      this.#select(one); // collapse — see singlePick's own note
-    else if (next.parts.length || next.wires.length || next.boards.length) {
-      this.#setMultiSelection(next.parts, next.wires, next.boards);
-    } else this.deselect();
+    this.#sel.deselect();
   }
 
   /** ⌘/Ctrl-click a part or brick: in or out of the selection. */
   toggleComponentSelection(id) {
-    if (this.#partViews.has(id)) this.#toggleSelection("parts", [id]);
+    this.#sel.toggleComponentSelection(id);
   }
 
   /** ⌘/Ctrl-click a wire: in or out of the selection. */
   toggleWireSelection(id) {
-    if (this.#doc.getWire(id)) this.#toggleSelection("wires", [id]);
+    this.#sel.toggleWireSelection(id);
   }
 
-  /** ⌘/Ctrl-click a bus: its MEMBER WIRES go in or out together — a bus is
-      metadata over wires and the selection holds no bus of its own. */
+  /** ⌘/Ctrl-click a bus: its member WIRES go in or out together. */
   toggleBusSelection(id) {
-    const members = this.#doc.getBus(id)?.members ?? [];
-    if (members.length) this.#toggleSelection("wires", members);
+    this.#sel.toggleBusSelection(id);
   }
 
-  /** ⌘/Ctrl-click a board: the WHOLE snapped group goes in or out, which is
-      the set a plain click already selects and the highlighter already
-      outlines — a kit joins a design clip as the assembly it is. */
+  /** ⌘/Ctrl-click a board: the WHOLE snapped group goes in or out. */
   toggleBoardSelection(id) {
-    if (!this.#views.has(id)) return;
-    const members = this.#doc.groupMembers(id).map((b) => b.id);
-    this.#toggleSelection("boards", members.length ? members : [id]);
+    this.#sel.toggleBoardSelection(id);
   }
 
-  /** Drop the selection if it is this wire (WireTools calls this on remove). */
-  #clearSelectionIfWire(id) {
-    if (this.#selected?.kind === "wire" && this.#selected.id === id) {
-      this.#selected = null;
-      this.#wireLayer.setSelected(null);
-    }
-  }
-
-  /** Drop the selection if it is this bus (BusTools calls this on remove). */
-  #clearSelectionIfBus(id) {
-    if (this.#selected?.kind === "bus" && this.#selected.id === id) {
-      this.#selected = null;
-      this.#wireLayer.setSelectedBus(null);
-    }
+  /** Option is down (or up) — see DeskSelection.setRidePreview for why this is
+      pushed in from app.js rather than read off a keydown here. */
+  setRidePreview(on) {
+    this.#sel.setRidePreview(on);
   }
 
   // ── Placement modes (toolbar Add-board / palette picks) ─────────────────
 
-  #enterPlacement(mode) {
-    if (this.#editingLocked) return; // topology is frozen while running
-    this.cancelPlacement();
-    this.disarmWireTool();
-    this.disarmBusTool();
-    this.disarmProbe();
-    this.deselect();
-    this.#hideHover();
-    this.#mode = mode;
-    this.#layers.overlay.append(mode.ghost);
-    this.#viewport.classList.add("desk-viewport--placing");
-  }
+  // ── Placement ───────────────────────────────────────────────────────────
+  // The ghosts, the copy buffers and the drops live in DeskPlacement
+  // (components/desk-placement.js). What stays here is the public surface the
+  // app, the palette and the AI panel already call, delegated straight
+  // through — plus `#partSeatAt`, which is NOT a placement concern: a part DRAG
+  // resolves its seat with the same call.
 
-  /**
-   * Arm breadboard placement: a translucent ghost of the whole kit — every
-   * strip at its preset offset — tracks the cursor.
-   */
   armPlacement(kit) {
-    // Throws INVALID_TYPE on junk, before any state is touched.
-    DeskDoc.kitPlacements(kit, 0, 0);
-    const mode = {
-      kind: "place",
-      kit,
-      ghost: el("div", { class: "board-ghost", hidden: true }),
-      pos: null,
-      legal: false,
-      rot: 0,
-      flipRails: false,
-    };
-    this.#renderBoardGhost(mode);
-    this.#enterPlacement(mode);
+    this.#place.armPlacement(kit);
   }
 
-  /**
-   * (Re)build the kit ghost at its current rotation — one strip element per
-   * strip, each turned exactly as the placed view will be, so what the user
-   * sees before the click is what lands after it.
-   */
-  #renderBoardGhost(m) {
-    clear(m.ghost);
-    const outline = DeskDoc.kitOutline(m.kit, m.rot);
-    // Absolutely positioned strips collapse the box, so size it explicitly —
-    // the legal/illegal outline and tint are drawn on this element.
-    m.ghost.style.width = `${outline.width * PX_PER_UNIT}px`;
-    m.ghost.style.height = `${outline.height * PX_PER_UNIT}px`;
-    for (const p of DeskDoc.kitPlacements(m.kit, 0, 0, m.rot, m.flipRails)) {
-      const strip = el("div", { class: "board-ghost-strip" });
-      strip.style.left = `${p.x * PX_PER_UNIT}px`;
-      strip.style.top = `${p.y * PX_PER_UNIT}px`;
-      strip.append(buildBoardSvg(p.type));
-      applyBoardRotation(strip, p.type, p.rot);
-      m.ghost.append(strip);
-    }
-  }
-
-  /**
-   * Arm placement for ANY palette pick: chips seat across a trench,
-   * discretes along any grid row, PSU bricks on the open desk.
-   */
   armPartPlacement(ref, params = {}) {
-    const def = partDef(ref);
-    if (!def) {
-      const err = new Error(`unknown catalog ref: ${ref}`);
-      err.code = "INVALID_REF";
-      throw err;
-    }
-    // Only true chips render + flip as a slab; a display that happens to seat in
-    // a DIP footprint (the isolated bar array) still places as a discrete — its
-    // trench-straddling geometry comes from `def.package` in seating/occupancy.
-    if (def.kind === "chip") {
-      this.armChipPlacement(ref, params);
-      return;
-    }
-    const normalized = def.normalizeParams ? def.normalizeParams(params) : {};
-    const ghost = el("div", { class: "part-ghost", hidden: true });
-    if (def.kind === "psu" || def.kind === "clock") {
-      ghost.append(brickSvg(def.kind, normalized));
-      this.#enterPlacement({
-        kind: "place-brick",
-        ref,
-        params: normalized,
-        ghost,
-        pos: null,
-        legal: false,
-      });
-    } else {
-      ghost.append(buildDiscreteSvg(ref, normalized));
-      this.#enterPlacement({
-        kind: "place-part",
-        ref,
-        params: normalized,
-        ghost,
-        board: null,
-        anchor: null,
-        legal: false,
-      });
-    }
+    this.#place.armPartPlacement(ref, params);
   }
 
-  /**
-   * Arm chip placement (palette or a Cmd+V duplicate): ghost seats across a
-   * trench. `params` carries the copied chip's orientation so a pasted chip
-   * lands flipped exactly as its source; the palette passes none.
-   */
   armChipPlacement(ref, params = {}) {
-    const def = partDef(ref);
-    if (!def?.package) {
-      const err = new Error(`unknown chip ref: ${ref}`);
-      err.code = "INVALID_REF";
-      throw err;
-    }
-    const ghost = el("div", { class: "part-ghost", hidden: true });
-    ghost.append(buildChipSvg(ref, params));
-    this.#enterPlacement({
-      kind: "place-chip",
-      ref,
-      params,
-      ghost,
-      board: null,
-      anchor: null,
-      legal: false,
-    });
+    this.#place.armChipPlacement(ref, params);
   }
 
   cancelPlacement() {
-    if (!this.placementArmed) return;
-    this.#mode.ghost.remove();
-    this.#mode = null;
-    this.#viewport.classList.remove("desk-viewport--placing");
-    // The two-click resistor uses the hover ring — clear it too (no-op else).
-    this.#ring.hidden = true;
-    this.#ring.classList.remove("hole-ring--illegal");
+    this.#place.cancelPlacement();
   }
 
-  /**
-   * Cmd+C: remember what's selected so Cmd+V can drop a fresh duplicate.
-   *
-   * A marquee MULTI-selection copies as a rigid CLUSTER — every selected part
-   * and brick, in the exact arrangement of the source; wires are never part of
-   * a paste. A single selected part keeps the simpler one-off buffer. Either
-   * way the copy is a brand-new part (its arrangement, none of its run-state) —
-   * see captureCluster / pasteComponent. A board, a wire, or nothing selected
-   * is ignored (returns false, so the native Edit-menu copy still serves text
-   * fields). The buffer deep-copies params, so later edits to the source never
-   * bleed in.
-   */
   copySelectedComponent() {
-    // A marquee that took in BOARDS is a whole design (Feature 240): the
-    // boards, everything seated on them, and all the wiring between them
-    // travel together — including to another desktop. Boards first, because a
-    // design that also caught loose parts is still a design.
-    if (this.#multiBoards.size > 0) {
-      const clip = captureDesign(
-        {
-          boards: this.#doc.boards,
-          components: this.#doc.components,
-          wires: this.#doc.wires,
-          buses: this.#doc.buses,
-          netNames: this.#doc.netNames,
-          annotations: this.#doc.annotations,
-        },
-        {
-          boardIds: [...this.#multiBoards],
-          componentIds: [...this.#multi],
-        },
-      );
-      if (!clip) return false;
-      this.#designBuffer = clip;
-      this.#clusterBuffer = null; // the design wins the next paste
-      this.#copyBuffer = null;
-      return true;
-    }
-    if (this.#multi.size > 0) {
-      const comps = [...this.#multi]
-        .map((id) => this.#doc.getComponent(id))
-        .filter(Boolean);
-      const cluster = captureCluster(this.#doc.boards, comps);
-      if (!cluster) return false;
-      this.#clusterBuffer = cluster;
-      this.#copyBuffer = null; // the cluster wins the next paste
-      this.#designBuffer = null;
-      return true;
-    }
-    if (this.#selected?.kind !== "part") return false;
-    const comp = this.#doc.getComponent(this.#selected.id);
-    if (!comp) return false;
-    this.#copyBuffer = {
-      ref: comp.ref,
-      params: comp.params ? JSON.parse(JSON.stringify(comp.params)) : {},
-    };
-    this.#clusterBuffer = null;
-    this.#designBuffer = null;
-    return true;
+    return this.#place.copySelectedComponent();
   }
 
-  /**
-   * Cmd+V: arm a placement ghost for a duplicate of the copied component so the
-   * user just clicks to drop it. The buffer persists, so repeated Cmd+V stamps
-   * more copies. Returns false when nothing has been copied. Orientation carries
-   * over: a flipped chip pastes flipped, and a rotatable part (LED / resistor)
-   * copied in its turned two-free-ends form re-arms turned the same CARDINAL way
-   * (R still re-spins it). The bend is NORMALISED back to the clean footprint
-   * span — never the source's verbatim lead vector: that vector may have been
-   * stretched to reach a power rail (whose holes sit on a non-uniform lattice),
-   * and re-injecting it would pin the drop to that exact grid→rail geometry, so
-   * the paste would refuse most rail positions. A footprint-span bend re-fits
-   * freely, exactly like a fresh turned part — drag an end onto a rail after.
-   */
   pasteComponent() {
-    if (this.#designBuffer) {
-      this.#armDesignPlacement(this.#designBuffer);
-      return true;
-    }
-    if (this.#clusterBuffer) {
-      this.#armClusterPlacement(this.#clusterBuffer);
-      return true;
-    }
-    const buf = this.#copyBuffer;
-    if (!buf) return false;
-    // A fresh duplicate starts pristine — never inherit run-state (12 V) damage.
-    const params = { ...buf.params };
-    delete params.damaged;
-    const def = partDef(buf.ref);
-    // Arm rotatable parts in the footprint form first (a safe ghost build); the
-    // turned geometry is a live two-free-ends ghost, seeded below.
-    const turned = def?.rotatable && buf.params?.rot === 90 && buf.params.end;
-    if (def?.rotatable) {
-      params.rot = 0;
-      params.end = null;
-    }
-    this.armPartPlacement(buf.ref, params);
-    if (turned && this.#mode?.kind === "place-part") {
-      this.#mode.turns = 1; // truthy → the turned two-free-ends tracking
-      // Keep the source's cardinal direction, but snap the magnitude back to a
-      // clean footprint-span bend so the drop re-fits anywhere (see the method
-      // doc). A raw rail-reaching vector would only re-validate where the exact
-      // grid→rail displacement recurs.
-      const { dx, dy } = buf.params.end;
-      const turns =
-        Math.abs(dx) >= Math.abs(dy) ? (dx >= 0 ? 0 : 2) : dy >= 0 ? 1 : 3;
-      this.#mode.orient = this.#ghostOrient(buf.ref, turns);
-    }
-    return true;
+    return this.#place.pasteComponent();
   }
 
-  /**
-   * Arm a CLUSTER paste: one translucent ghost per copied member, wrapped in a
-   * single container element (so `#enterPlacement`/`cancelPlacement` treat it
-   * like any other placement ghost). The arrangement translates rigidly with
-   * the cursor; each member is tinted green/red by whether it seats legally,
-   * re-evaluated on every move. The buffer persists, so repeated Cmd+V stamps
-   * the arrangement again.
-   */
-  #armClusterPlacement(cluster) {
-    const box = el("div", { class: "part-ghost-cluster", hidden: true });
-    const ghosts = cluster.members.map((m) => {
-      const g = el("div", { class: "part-ghost" });
-      g.append(this.#buildMemberGhostSvg(m));
-      box.append(g);
-      return g;
-    });
-    this.#enterPlacement({
-      kind: "place-cluster",
-      cluster,
-      ghost: box,
-      ghosts,
-      results: [],
-      legalCount: 0,
-    });
-  }
-
-  /** The drawn SVG for one cluster member, by its placement form. A
-      DIP-packaged discrete (bar8iso, a DIP switch bank) SEATS like a chip
-      (memberForm says "chip"), but it isn't one — buildChipSvg only knows
-      CHIP_DEFS, so it's drawn via the discrete path like every other part. */
-  #buildMemberGhostSvg(m) {
-    const def = partDef(m.ref);
-    if (def?.kind === "chip") return buildChipSvg(m.ref, m.params);
-    switch (memberForm(m.ref, m.params)) {
-      case "turned":
-        return buildSpanSvg(m.ref, m.params.end.dx, m.params.end.dy, m.params);
-      case "brick":
-        return brickSvg(def.kind, m.params);
-      default:
-        return buildDiscreteSvg(m.ref, m.params);
-    }
-  }
-
-  #trackClusterGhost(e) {
-    const m = this.#mode;
-    const w = this.#deskView.worldFromEvent(e);
-    // A rigid, integer-pitch shift keeps the arrangement exact and lets every
-    // hole-anchored member land squarely on a hole (or over nothing → red).
-    const shift = {
-      dx: Math.round(w.x - m.cluster.center.x),
-      dy: Math.round(w.y - m.cluster.center.y),
-    };
-    const results = resolveCluster(
-      {
-        boards: this.#doc.boards,
-        components: this.#doc.components,
-        wires: this.#doc.wires,
-      },
-      m.cluster.members,
-      shift,
-      (ref, x, y) => this.#doc.canPlaceBrick(ref, x, y),
-    );
-    m.results = results;
-    m.shift = shift;
-    m.legalCount = results.reduce((n, r) => n + (r.legal ? 1 : 0), 0);
-    m.ghost.hidden = false;
-    results.forEach((r, i) => {
-      const g = m.ghosts[i];
-      const tl = this.#memberGhostTopLeft(r, shift);
-      g.style.left = `${tl.x * PX_PER_UNIT}px`;
-      g.style.top = `${tl.y * PX_PER_UNIT}px`;
-      g.classList.toggle("part-ghost--legal", r.legal);
-      g.classList.toggle("part-ghost--illegal", !r.legal);
-    });
-  }
-
-  /** Top-left (pitch units) of a member's ghost after the rigid shift — the
-      same box maths the seated views use, translated by `shift`. */
-  #memberGhostTopLeft(member, shift) {
-    const ax = member.anchorWorld.x + shift.dx;
-    const ay = member.anchorWorld.y + shift.dy;
-    const def = partDef(member.ref);
-    if (def?.kind === "chip") {
-      const box = chipBox(def.package);
-      return { x: ax + box.minX, y: ay + box.minY };
-    }
-    switch (member.form ?? memberForm(member.ref, member.params)) {
-      case "turned": {
-        const pad = spanPad(member.ref);
-        const { dx, dy } = member.params.end;
-        return { x: ax + Math.min(0, dx) - pad, y: ay + Math.min(0, dy) - pad };
-      }
-      case "brick":
-        return { x: ax, y: ay };
-      default: {
-        const box = discreteBox(member.ref, member.params?.rot);
-        return { x: ax + box.minX, y: ay + box.minY };
-      }
-    }
-  }
-
-  /**
-   * Drop a cluster paste: seat every member with a legal placement and DISCARD
-   * the rest (a red member simply isn't part of the paste). One doc-changed for
-   * the whole batch; the freshly-pasted set becomes the new marquee selection so
-   * it can be nudged, deleted, or copied again as a unit.
-   */
-  #commitClusterPaste() {
-    const results = this.#mode.results;
-    this.cancelPlacement(); // removes the ghost box, clears #mode
-    const newIds = [];
-    for (const r of results) {
-      if (!r.legal) continue;
-      try {
-        const comp =
-          r.form === "brick"
-            ? this.#doc.addBrick(r.ref, r.seat.x, r.seat.y, r.params)
-            : this.#doc.addComponent({
-                kind: partDef(r.ref).kind,
-                ref: r.ref,
-                board: r.seat.board,
-                anchor: r.seat.anchor,
-                params: r.params,
-              });
-        this.#provisionMemory(comp); // a pasted ROM gets its OWN fresh file
-        this.#mountPart(comp);
-        newIds.push(comp.id);
-      } catch {
-        /* validated already — skip a stray failure rather than abort the batch */
-      }
-    }
-    if (newIds.length === 0) return;
-    this.#emitDocChanged("paste");
-    this.#setMultiSelection(newIds);
-  }
-
-  // ── Design paste (Feature 240) ──────────────────────────────────────────
-  // A whole sub-assembly — its boards, what is seated on them, and the wiring
-  // between them — armed as ONE placement ghost. It is rigid by construction,
-  // so unlike the cluster ghost (which re-seats each member against whatever
-  // it lands over) this is drawn ONCE in the clip's own coordinates and then
-  // simply TRANSLATED: a pointermove writes two style properties, not one per
-  // board, part, and wire. Legality is per-board, and the drop is all-or-
-  // nothing — see model/design-clip.js.
-
-  /**
-   * Arm a design paste: strips, parts, and wiring ghosted together, tracking
-   * the cursor until a click drops them (or Esc throws them away). The buffer
-   * persists, so repeated Cmd+V stamps the design again.
-   */
-  #armDesignPlacement(clip) {
-    const scene = clipScene(clip);
-    const ghost = el("div", { class: "design-ghost", hidden: true });
-    // The boards, each drawn (and turned) exactly as its placed view will be.
-    const strips = new Map();
-    for (const b of clip.boards) {
-      const strip = el("div", { class: "board-ghost-strip" });
-      strip.style.left = `${b.x * PX_PER_UNIT}px`;
-      strip.style.top = `${b.y * PX_PER_UNIT}px`;
-      strip.append(buildBoardSvg(b.type));
-      applyBoardRotation(strip, b.type, b.rot);
-      ghost.append(strip);
-      strips.set(b.key, strip);
-    }
-    // The parts and bricks, through the cluster ghost's own member drawing.
-    for (const comp of scene.components) {
-      const anchorWorld = memberAnchorWorld(scene.boards, comp);
-      if (!anchorWorld) continue;
-      const member = {
-        ref: comp.ref,
-        params: comp.params,
-        anchorWorld,
-        form: memberForm(comp.ref, comp.params),
-      };
-      const g = el("div", { class: "part-ghost" });
-      g.append(this.#buildMemberGhostSvg(member));
-      const tl = this.#memberGhostTopLeft(member, { dx: 0, dy: 0 });
-      g.style.left = `${tl.x * PX_PER_UNIT}px`;
-      g.style.top = `${tl.y * PX_PER_UNIT}px`;
-      ghost.append(g);
-    }
-    // The wiring, sagging exactly as WireLayer draws it (same classes, same
-    // path maths) — a design without its wires wouldn't read as one.
-    const svg = svgEl("svg", {
-      class: "design-ghost-wires",
-      width: 1,
-      height: 1,
-    });
-    for (const w of scene.wires) {
-      const a = addressWorld(scene.boards, scene.components, w.from);
-      const b = addressWorld(scene.boards, scene.components, w.to);
-      if (!a || !b) continue;
-      const ends = [
-        { x: a.x * PX_PER_UNIT, y: a.y * PX_PER_UNIT },
-        { x: b.x * PX_PER_UNIT, y: b.y * PX_PER_UNIT },
-      ];
-      // A routed wire ghosts along its own waypoints — a design that dodges a
-      // board must not straighten out while it is being positioned.
-      const d =
-        w.layout === "routed"
-          ? polylinePath([
-              ends[0],
-              ...(w.points ?? []).map((p) => ({
-                x: p.x * PX_PER_UNIT,
-                y: p.y * PX_PER_UNIT,
-              })),
-              ends[1],
-            ])
-          : wirePath(ends[0], ends[1]);
-      const group = svgEl("g", { class: "wire" }, [
-        svgEl("path", { class: "wire-outline", d }),
-        svgEl("path", { class: "wire-core", d }),
-      ]);
-      group.style.setProperty("--wire-color", `var(--color-wire-${w.color})`);
-      svg.append(group);
-    }
-    if (scene.wires.length > 0) ghost.append(svg);
-    this.#enterPlacement({
-      kind: "place-design",
-      clip,
-      ghost,
-      strips,
-      shift: { dx: 0, dy: 0 },
-      legal: false,
-    });
-  }
-
-  #trackDesignGhost(e) {
-    const m = this.#mode;
-    const world = this.#deskView.worldFromEvent(e);
-    let shift = shiftFor(m.clip, world);
-    // Magnetic mate, on the same terms as a board drag or a kit ghost: pull
-    // flush onto a board already on the desk, but only when the pulled
-    // position is still legal — a magnet must never turn a legal drop into an
-    // illegal one.
-    const pull = this.#doc.snapDesignAt(m.clip, shift);
-    if (pull.dx !== 0 || pull.dy !== 0) {
-      const snapped = { dx: shift.dx + pull.dx, dy: shift.dy + pull.dy };
-      if (this.#resolveDesignAt(m.clip, snapped).legal) shift = snapped;
-    }
-    const resolved = this.#resolveDesignAt(m.clip, shift);
-    m.shift = shift;
-    m.legal = resolved.legal;
-    m.ghost.hidden = false;
-    m.ghost.style.left = `${shift.dx * PX_PER_UNIT}px`;
-    m.ghost.style.top = `${shift.dy * PX_PER_UNIT}px`;
-    for (const b of resolved.boards) {
-      const strip = m.strips.get(b.key);
-      strip?.classList.toggle("board-ghost-strip--legal", b.legal);
-      strip?.classList.toggle("board-ghost-strip--illegal", !b.legal);
-    }
-  }
-
-  /** Where a clip would land at `shift`, and whether it may (all-or-nothing). */
-  #resolveDesignAt(clip, shift) {
-    return resolveDesign(clip, shift, {
-      canPlaceBoard: (type, x, y, rot) => this.#doc.canPlace(type, x, y, { rot }), // prettier-ignore
-      canPlaceBrick: (ref, x, y) => this.#doc.canPlaceBrick(ref, x, y),
-    });
-  }
-
-  /**
-   * Drop a design paste: the document stamps the whole clip in one atomic
-   * mutation (and rolls itself back if any part of it is refused), then the
-   * new strips are offered to the mating rule exactly as a placed kit's are,
-   * so a design dropped flush against an existing board joins its group. The
-   * fresh design becomes the selection, ready to be nudged or copied again.
-   */
-  #commitDesignPaste() {
-    const { clip, shift } = this.#mode;
-    this.cancelPlacement(); // removes the ghost, clears #mode
-    this.#dropDesign(clip, shift);
-  }
-
-  /**
-   * Stamp a clip at `shift` and bring the result onto the desk.
-   *
-   * This is the whole transaction: `pasteDesign` snapshots, replays through the
-   * ordinary add* methods — each of which THROWS on an illegal placement — and
-   * restores wholesale if any of them refuses, so a design can never land half
-   * applied. One `#emitDocChanged` follows, so the entire arrangement is a
-   * single undo step however many boards, parts and wires it carries.
-   *
-   * Shared by the paste ghost and by a generated design, which is the point:
-   * there is exactly one way a multi-part arrangement reaches the desk.
-   *
-   * @param {object} clip
-   * @param {{dx:number, dy:number}} shift
-   * @param {{label?:string, notify?:boolean}} [opts]
-   * @returns {object|null} what landed, or null when the document refused
-   */
-  #dropDesign(clip, shift, { label = "paste design", notify = true } = {}) {
-    let pasted;
-    try {
-      pasted = this.#doc.pasteDesign(clip, shift);
-    } catch (err) {
-      // The document is already back as it was — say why nothing landed
-      // rather than leaving the click looking ignored.
-      if (notify) {
-        PopupManager.notify({
-          title: t("desk.paste.failTitle"),
-          message:
-            err?.code === "OVERLAP"
-              ? t("desk.paste.overlap")
-              : t("desk.paste.noRoom"),
-        });
-      }
-      return null;
-    }
-    for (const board of pasted.boards) this.#mountBoard(board);
-    for (const comp of pasted.components) {
-      this.#provisionMemory(comp); // a pasted ROM gets its OWN fresh file
-      this.#mountPart(comp);
-    }
-    this.#mateStrips(pasted.boards.map((b) => b.id));
-    this.#emitDocChanged(label);
-    this.#setMultiSelection(
-      pasted.components.map((c) => c.id),
-      pasted.wires.map((w) => w.id),
-      pasted.boards.map((b) => b.id),
-    );
-    return pasted;
-  }
-
-  // ── Generated designs (Feature 260) ─────────────────────────────────────
-  // A circuit the app built from a netlist rather than one the user copied.
-  // It arrives as the same design clip a copy produces, so it rides the same
-  // atomic drop — no second transaction path, and no second thing to keep in
-  // lockstep with undo/redo and ROM provisioning.
-
-  /**
-   * Arm a generated design as a cursor-following ghost: the user positions it,
-   * sees it mate magnetically with what is already on the desk and redden where
-   * it will not fit, and clicks to drop. Preferred over dropping it outright —
-   * a circuit that simply appears is harder to trust than one you placed.
-   *
-   * @returns {boolean} false when the clip carries nothing to place
-   */
   armGeneratedDesign(clip) {
-    if (!clip?.boards?.length) return false;
-    this.cancelPlacement();
-    this.#armDesignPlacement(clip);
-    return true;
+    return this.#place.armGeneratedDesign(clip);
   }
 
-  /**
-   * Drop a generated design straight onto the desk, at `at` or at the nearest
-   * spot that clears whatever is already there. Same single transaction, same
-   * single undo step.
-   *
-   * @param {object} clip
-   * @param {{at?:{dx:number,dy:number}}} [opts]
-   * @returns {object|null} what landed, or null when nothing on the desk fits it
-   */
-  applyGeneratedDesign(clip, { at = null } = {}) {
-    if (!clip?.boards?.length) return null;
-    this.cancelPlacement();
-    const shift = at ?? this.#findFreeShiftFor(clip);
-    if (!shift) return null;
-    return this.#dropDesign(clip, shift, {
-      label: "add generated design",
-      notify: false,
-    });
-  }
-
-  /** The nearest whole-pitch offset at which a clip clears the desk. */
-  #findFreeShiftFor(clip) {
-    return nearestLegalOffset(
-      (dx, dy) => this.#resolveDesignAt(clip, { dx, dy }).legal,
-    );
-  }
-
-  #trackGhost(e) {
-    const kind = this.#mode.kind;
-    if (kind === "place") this.#trackBoardGhost(e);
-    else if (kind === "place-brick") this.#trackBrickGhost(e);
-    else if (kind === "place-annotation") this.#trackAnnotationGhost(e);
-    else if (kind === "place-cluster") this.#trackClusterGhost(e);
-    else if (kind === "place-design") this.#trackDesignGhost(e);
-    else this.#trackSeatedGhost(e);
-  }
-
-  #trackBoardGhost(e) {
-    const m = this.#mode;
-    m.lastEvent = e; // R re-tracks from here, so the ghost spins in place
-    const { width, height } = DeskDoc.kitOutline(m.kit, m.rot);
-    const w = this.#deskView.worldFromEvent(e);
-    // Ghost centered on the cursor, snapped to the integer pitch lattice and
-    // then pulled flush onto any board it can dovetail with — so the ghost
-    // shows the mate BEFORE the click, not as a surprise after it.
-    const { x, y } = this.#pullGhostToMate(
-      m.kit,
-      Math.round(w.x - width / 2),
-      Math.round(w.y - height / 2),
-      m.rot,
-    );
-    m.pos = { x, y };
-    m.legal = this.#doc.canPlaceKit(m.kit, x, y, m.rot, m.flipRails);
-    m.ghost.hidden = false;
-    m.ghost.style.left = `${x * PX_PER_UNIT}px`;
-    m.ghost.style.top = `${y * PX_PER_UNIT}px`;
-    m.ghost.classList.toggle("board-ghost--legal", m.legal);
-    m.ghost.classList.toggle("board-ghost--illegal", !m.legal);
-  }
-
-  /** `#pullToMate` for a kit that is not on the desk yet. */
-  #pullGhostToMate(kit, x, y, rot = 0) {
-    const pull = this.#doc.snapKitAt(kit, x, y, rot);
-    if (pull.dx === 0 && pull.dy === 0) return { x, y };
-    const snapped = { x: x + pull.dx, y: y + pull.dy };
-    return this.#doc.canPlaceKit(kit, snapped.x, snapped.y, rot)
-      ? snapped
-      : { x, y };
-  }
-
-  #trackBrickGhost(e) {
-    const m = this.#mode;
-    const { width, height } = partDef(m.ref).size;
-    const w = this.#deskView.worldFromEvent(e);
-    const x = Math.round(w.x - width / 2);
-    const y = Math.round(w.y - height / 2);
-    m.pos = { x, y };
-    m.legal = this.#doc.canPlaceBrick(m.ref, x, y);
-    m.ghost.hidden = false;
-    m.ghost.style.left = `${x * PX_PER_UNIT}px`;
-    m.ghost.style.top = `${y * PX_PER_UNIT}px`;
-    m.ghost.classList.toggle("part-ghost--legal", m.legal);
-    m.ghost.classList.toggle("part-ghost--illegal", !m.legal);
-  }
-
-  /** Chip + discrete ghosts: seat under the cursor or float, tinted. */
-  #trackSeatedGhost(e) {
-    this.#trackSeatedGhostAt(this.#deskView.worldFromEvent(e));
-  }
-
-  /** As above but from a world point, so R can redraw at the last cursor spot. */
-  #trackSeatedGhostAt(w) {
-    const m = this.#mode;
-    m.lastWorld = w;
-    // A rotatable part turned off its footprint places by two derived ends.
-    if (m.turns) {
-      this.#trackTurnedGhost(w);
-      return;
-    }
-    const box =
-      m.kind === "place-chip"
-        ? chipBox(partDef(m.ref).package)
-        : discreteBox(m.ref, m.params?.rot);
-    const seat = this.#partSeatAt(w, m.ref, 0, m.params);
-    m.ghost.hidden = false;
-    if (seat) {
-      const board = this.#doc.getBoard(seat.board);
-      const pos = holePosition(board.type, seat.anchor);
-      m.board = seat.board;
-      m.anchor = seat.anchor;
-      m.legal = this.#doc.canPlacePart(m.ref, seat.board, seat.anchor, {
-        params: m.params,
-      });
-      m.ghost.style.left = `${(board.x + pos.x + box.minX) * PX_PER_UNIT}px`;
-      m.ghost.style.top = `${(board.y + pos.y + box.minY) * PX_PER_UNIT}px`;
-    } else {
-      // Off-board / off-row: the ghost floats on the cursor, illegal.
-      m.board = null;
-      m.anchor = null;
-      m.legal = false;
-      m.ghost.style.left = `${(w.x - box.width / 2) * PX_PER_UNIT}px`;
-      m.ghost.style.top = `${(w.y - box.height / 2) * PX_PER_UNIT}px`;
-    }
-    m.ghost.classList.toggle("part-ghost--legal", m.legal);
-    m.ghost.classList.toggle("part-ghost--illegal", !m.legal);
-  }
-
-  /**
-   * Ghost for a rotatable part turned off its footprint: pin 1 rides the hole
-   * under the cursor and pin 2's lead bends one orientation vector away, so it
-   * places in the same two-free-ends form a drag would produce. The bend is an
-   * offset, so the ghost may reach a neighbouring strip's rail.
-   */
-  #trackTurnedGhost(w) {
-    const m = this.#mode;
-    // A Cmd+V paste re-arms in the copied lead vector exactly (`m.orient`); a
-    // palette pick spun with R rides the four cardinal turns instead.
-    const orient = m.orient ?? this.#ghostOrient(m.ref, m.turns);
-    const hit = this.#holeAtWorld(w);
-    const p1 = hit ? { x: hit.x, y: hit.y } : w;
-    const end = { dx: orient.dx, dy: orient.dy };
-    m.board = hit ? hit.board.id : null;
-    m.anchor = hit ? hit.hole : null;
-    m.end = end;
-    m.legal =
-      Boolean(hit) &&
-      this.#doc.canPlacePart(m.ref, hit.board.id, hit.hole, {
-        params: { ...m.params, rot: 90, end },
-      });
-
-    m.ghost.querySelector("svg")?.remove();
-    m.ghost.append(buildSpanSvg(m.ref, orient.dx, orient.dy, m.params));
-    const pad = spanPad(m.ref);
-    m.ghost.style.left = `${(p1.x + Math.min(0, orient.dx) - pad) * PX_PER_UNIT}px`;
-    m.ghost.style.top = `${(p1.y + Math.min(0, orient.dy) - pad) * PX_PER_UNIT}px`;
-    m.ghost.hidden = false;
-    m.ghost.classList.toggle("part-ghost--legal", m.legal);
-    m.ghost.classList.toggle("part-ghost--illegal", !m.legal);
+  applyGeneratedDesign(clip, opts = {}) {
+    return this.#place.applyGeneratedDesign(clip, opts);
   }
 
   /** Seat (board + anchor) for a part under the cursor — see model/seating.js. */
@@ -1730,22 +768,6 @@ export class DeskController {
   }
 
   // ── Rotation while placing / dragging ───────────────────────────────────
-
-  /**
-   * The end-to-end vector of a rotatable part's ghost after `turns` quarter
-   * turns: 0 is the horizontal footprint, 1–3 swing it a quarter lap each.
-   */
-  #ghostOrient(ref, turns) {
-    const offsets = partDef(ref).footprint.offsets;
-    const span = offsets[offsets.length - 1];
-    const table = [
-      { dx: span, dy: 0 },
-      { dx: 0, dy: span },
-      { dx: -span, dy: 0 },
-      { dx: 0, dy: -span },
-    ];
-    return table[turns % 4];
-  }
 
   /** R spins the ghost/part in hand, and rotates a selected placed one. */
   #toggleResistorRotation() {
@@ -1791,8 +813,8 @@ export class DeskController {
     // pin-board and never turn.
     if (m?.kind === "place" && DeskDoc.canRotateKit(m.kit)) {
       m.rot = ROTATIONS[(ROTATIONS.indexOf(m.rot) + 1) % ROTATIONS.length];
-      this.#renderBoardGhost(m);
-      if (m.lastEvent) this.#trackBoardGhost(m.lastEvent);
+      this.#place.renderBoardGhost(m);
+      if (m.lastEvent) this.#place.trackBoardGhost(m.lastEvent);
       return true;
     }
     // Placing an assembled kit that carries its own rails: R leaves the
@@ -1802,8 +824,8 @@ export class DeskController {
     // not a cycle: pressing R again restores the default order.
     if (m?.kind === "place" && DeskDoc.canFlipKitRails(m.kit)) {
       m.flipRails = !m.flipRails;
-      this.#renderBoardGhost(m);
-      if (m.lastEvent) this.#trackBoardGhost(m.lastEvent);
+      this.#place.renderBoardGhost(m);
+      if (m.lastEvent) this.#place.trackBoardGhost(m.lastEvent);
       return true;
     }
     // Placing a chip: R flips the ghost before it lands.
@@ -1826,7 +848,7 @@ export class DeskController {
       };
       m.ghost.querySelector("svg")?.remove();
       m.ghost.append(buildDiscreteSvg(m.ref, m.params));
-      if (m.lastWorld) this.#trackSeatedGhostAt(m.lastWorld);
+      if (m.lastWorld) this.#place.trackSeatedGhostAt(m.lastWorld);
       return true;
     }
     // Placing a reversible linear discrete (the bussed resistor array): R turns
@@ -1838,7 +860,7 @@ export class DeskController {
       m.params = { ...m.params, rot: m.params?.rot === 180 ? 0 : 180 };
       m.ghost.querySelector("svg")?.remove();
       m.ghost.append(buildDiscreteSvg(m.ref, m.params));
-      if (m.lastWorld) this.#trackSeatedGhostAt(m.lastWorld);
+      if (m.lastWorld) this.#place.trackSeatedGhostAt(m.lastWorld);
       return true;
     }
     // Placing a rotatable part: R turns the ghost a quarter lap IN PLACE — the
@@ -1853,18 +875,18 @@ export class DeskController {
       } else {
         m.turns = ((m.turns ?? 0) + 1) % 4;
       }
-      if (m.lastWorld) this.#trackSeatedGhostAt(m.lastWorld);
+      if (m.lastWorld) this.#place.trackSeatedGhostAt(m.lastWorld);
       return true;
     }
     // Not placing: rotate a selected placed part in situ (any DIP-packaged
     // part — a chip OR a package-footprint discrete like bar8iso — flips
     // 180°, and so does a `reversible` linear one; desk-doc.js's
     // rotateComponent gates on the def's shape, not on kind).
-    if (this.#selected?.kind === "part") {
-      const comp = this.#doc.getComponent(this.#selected.id);
+    if (this.#sel.single?.kind === "part") {
+      const comp = this.#doc.getComponent(this.#sel.single.id);
       const def = partDef(comp?.ref);
       if (def?.rotatable || def?.can || def?.package || def?.reversible) {
-        this.rotateComponent(this.#selected.id);
+        this.rotateComponent(this.#sel.single.id);
         return true;
       }
     }
@@ -2133,7 +1155,7 @@ export class DeskController {
     const comp = this.#doc.getComponent(id);
     if (!comp) return;
     const selected =
-      this.#selected?.kind === "part" && this.#selected.id === id;
+      this.#sel.single?.kind === "part" && this.#sel.single.id === id;
     this.#partViews.get(id)?.remove();
     this.#partViews.delete(id);
     this.#mountPart(comp);
@@ -2508,7 +1530,7 @@ export class DeskController {
             : t("palette.annotation.label"),
       }),
     );
-    this.#enterPlacement({
+    this.#place.enter({
       kind: "place-annotation",
       annKind: kind,
       ghost,
@@ -2592,8 +1614,8 @@ export class DeskController {
     } catch {
       return;
     }
-    if (this.#selected?.kind === "annotation" && this.#selected.id === id) {
-      this.#selected = null;
+    if (this.#sel.single?.kind === "annotation" && this.#sel.single.id === id) {
+      this.#sel.forget();
     }
     this.#emitDocChanged("delete annotation");
   }
@@ -2619,7 +1641,7 @@ export class DeskController {
       this.#history.sync(this.#doc.snapshot());
     }
     // Nothing can be dragged while running, so the hint must not offer to.
-    this.#refreshRidePreview();
+    this.#sel.refreshRidePreview();
     this.#notifyHistoryState();
   }
 
@@ -2865,7 +1887,7 @@ export class DeskController {
         this.#releaseMemory(comp); // a seated ROM's backing file goes with it
         this.#partViews.get(comp.id)?.remove();
         this.#partViews.delete(comp.id);
-        if (this.#selected?.id === comp.id) this.#selected = null;
+        if (this.#sel.single?.id === comp.id) this.#sel.forget();
       }
       const cascadedWires = new Set(
         this.#doc.wiresTouching(bid).map((w) => w.id),
@@ -2874,11 +1896,11 @@ export class DeskController {
       this.#views.get(bid)?.remove();
       this.#views.delete(bid);
       if (
-        this.#selected?.id === bid ||
-        (this.#selected?.kind === "wire" &&
-          cascadedWires.has(this.#selected.id))
+        this.#sel.single?.id === bid ||
+        (this.#sel.single?.kind === "wire" &&
+          cascadedWires.has(this.#sel.single.id))
       ) {
-        this.#selected = null;
+        this.#sel.forget();
       }
     }
   }
@@ -2918,24 +1940,27 @@ export class DeskController {
     this.#partViews.get(id)?.remove();
     this.#partViews.delete(id);
     if (
-      this.#selected?.id === id ||
-      (this.#selected?.kind === "wire" && cascadedWires.has(this.#selected.id))
+      this.#sel.single?.id === id ||
+      (this.#sel.single?.kind === "wire" &&
+        cascadedWires.has(this.#sel.single.id))
     ) {
-      this.#selected = null;
+      this.#sel.forget();
     }
     this.#hideHover();
     this.#emitDocChanged("delete part");
   }
 
-  /** Flip a slide switch's position, a toggle button's on/off, or one
-      position of a DIP switch bank (click) — persists the param;
-      doc-changed re-settles. `switchIndex` (a bank position, read off the
-      pointer event's target) is ignored by every other CLICK_TOGGLE_REFS
-      part. */
+  /** Apply one plain click's params patch — persists it; doc-changed
+      re-settles. WHAT the click does belongs to the part (`clickToggle`); all
+      that is left here is the write. `switchIndex` (a bank position, read off
+      the pointer event's target) is ignored by every part that has only one
+      thing to flip. */
   #toggleClickPart(id, switchIndex = null) {
     const comp = this.#doc.getComponent(id);
-    const patch = this.#clickTogglePatch(comp, switchIndex);
-    if (!patch) return; // a bank's body pressed, not a switch position
+    // The part itself says what its click does; a null means this particular
+    // press changes nothing (a bank's body, not one of its switch positions).
+    const patch = partDef(comp?.ref)?.clickToggle?.(comp.params, switchIndex);
+    if (!patch) return;
     const updated = this.#doc.setComponentParams(id, patch);
     this.#partViews.get(id)?.updateParams(updated.params);
     // pos/on/states lives in params, so the flip rides `doc-changed` alone —
@@ -2944,23 +1969,6 @@ export class DeskController {
     // is reserved for transient view state with no durable param — a held
     // button).
     this.#emitDocChanged("toggle switch");
-  }
-
-  /** The params patch one plain click on a CLICK_TOGGLE_REFS part makes, or
-      null when the click changes nothing (a DIP bank's body, not one of its
-      switch positions). */
-  #clickTogglePatch(comp, switchIndex) {
-    if (comp.ref === "sw-toggle") return { on: !comp.params.on };
-    if (partDef(comp.ref)?.switchBank) {
-      const states = comp.params.states ?? [];
-      if (!Number.isInteger(switchIndex) || switchIndex >= states.length) {
-        return null;
-      }
-      const next = [...states]; // COPY: the doc owns the stored array, and
-      next[switchIndex] = !next[switchIndex]; // history snapshots mustn't alias
-      return { states: next };
-    }
-    return { pos: comp.params.pos === "2" ? "1" : "2" };
   }
 
   /** Every field the Properties dialog shows for one component: the catalog
@@ -3115,7 +2123,7 @@ export class DeskController {
         this.cancelPlacement();
         return true;
       }
-      if (this.#selected || this.#multiSize() > 0) {
+      if (this.#sel.single || this.#sel.size() > 0) {
         this.deselect();
         return true;
       }
@@ -3219,7 +2227,7 @@ export class DeskController {
     if (
       (e.key === "Delete" || e.key === "Backspace") &&
       !dragging &&
-      this.#multiSize() > 0
+      this.#sel.size() > 0
     ) {
       this.removeSelectedComponents();
       return true;
@@ -3227,9 +2235,9 @@ export class DeskController {
     if (
       (e.key === "Delete" || e.key === "Backspace") &&
       !dragging &&
-      this.#selected
+      this.#sel.single
     ) {
-      const { kind, id } = this.#selected;
+      const { kind, id } = this.#sel.single;
       if (kind === "part") this.removeComponent(id);
       else if (kind === "wire") this.removeWire(id);
       else if (kind === "bus") this.#bus.removeBus(id, true);
@@ -3409,7 +2417,7 @@ export class DeskController {
     };
     // …and the highlighter re-traces that set, so an Option grab shows the
     // torn-off run's edge rather than the whole group's.
-    this.#refreshBoardOutline();
+    this.#sel.refreshBoardOutline();
     // Closed hand from the moment the board is grabbed (before any drag).
     this.#viewport.classList.add("desk-viewport--dragging");
     this.#mode.teardown = beginPointerGesture(view.element, e.pointerId, {
@@ -3493,7 +2501,7 @@ export class DeskController {
     }
     // The highlighter rides the set and reddens on an illegal drop — one
     // shape for the whole unit, so no seams appear between flush strips.
-    this.#refreshBoardOutline(overrides);
+    this.#sel.refreshBoardOutline(overrides);
     return overrides;
   }
 
@@ -3687,7 +2695,7 @@ export class DeskController {
       // While running, only live interactions remain: a slide switch or
       // toggle button flips, and a manual clock toggles one edge.
       const comp = this.#doc.getComponent(id);
-      if (CLICK_TOGGLE_REFS.has(comp?.ref)) {
+      if (clickTogglingPart(comp?.ref)) {
         e.stopPropagation();
         this.#toggleClickPart(id, switchIndexFromEvent(e));
       } else if (comp?.kind === "clock" && comp.params?.hz === "manual") {
@@ -3710,7 +2718,7 @@ export class DeskController {
     // (#select), which would throw the group away with the press that is about
     // to move it. The collapse still happens, at the release, if the press
     // turns out to be a plain click (#onPartPointerUp).
-    if (this.#multi.has(id) && this.#multi.size >= 2) {
+    if (this.#sel.parts.has(id) && this.#sel.parts.size >= 2) {
       if (this.#beginClusterDrag(id, e)) return;
       // Refused (a board is in the set, or a member won't resolve): the press
       // is absorbed and the selection is left exactly as it was. Falling
@@ -3818,7 +2826,7 @@ export class DeskController {
     }
     // The hint has done its job: from here the wires themselves show what is
     // coming, so the rings would only sit on holes being vacated.
-    this.#refreshRidePreview();
+    this.#sel.refreshRidePreview();
     // Closed hand from the moment the part is grabbed (before any drag).
     this.#viewport.classList.add("desk-viewport--dragging");
     this.#mode.teardown = beginPointerGesture(view.element, e.pointerId, {
@@ -3842,8 +2850,8 @@ export class DeskController {
    * a press that does nothing.
    */
   #beginClusterDrag(grabId, e) {
-    if (this.#multiBoards.size > 0) return false;
-    const members = this.#doc.clusterMembers(this.#multi);
+    if (this.#sel.boards.size > 0) return false;
+    const members = this.#doc.clusterMembers(this.#sel.parts);
     const grab = members?.find((m) => m.id === grabId);
     const view = this.#partViews.get(grabId);
     if (!members || !grab || !view) return false;
@@ -3867,8 +2875,10 @@ export class DeskController {
     // because the reduced-occupancy build it hoists is precisely what must stay
     // out of a live drag's loop. Option over a selection with nothing attached
     // is just a plain group drag — hence the empty sets collapsing to null.
-    const attached = e.altKey ? this.#doc.wiresRidingCluster(this.#multi) : [];
-    const legs = e.altKey ? this.#doc.partsRidingCluster(this.#multi) : [];
+    const attached = e.altKey
+      ? this.#doc.wiresRidingCluster(this.#sel.parts)
+      : [];
+    const legs = e.altKey ? this.#doc.partsRidingCluster(this.#sel.parts) : [];
     const riding = attached.length > 0 ? attached : null;
     const ridingParts = legs.length > 0 ? legs : null;
     this.#mode = {
@@ -3909,7 +2919,7 @@ export class DeskController {
       active: false,
       teardown: null,
     };
-    this.#refreshRidePreview();
+    this.#sel.refreshRidePreview();
     this.#viewport.classList.add("desk-viewport--dragging");
     this.#mode.teardown = beginPointerGesture(view.element, e.pointerId, {
       onMove: this.#onPartPointerMove,
@@ -4264,7 +3274,7 @@ export class DeskController {
     // here, so every exit below (a plain click, a refused drop, a commit) is
     // covered by one call. A commit refreshes it again through #emitDocChanged,
     // which is what moves the rings onto the holes the wires actually landed in.
-    this.#refreshRidePreview();
+    this.#sel.refreshRidePreview();
 
     d.teardown?.();
     if (d.kind === "drag-cluster") {
@@ -4298,7 +3308,7 @@ export class DeskController {
         // which reads as a dead press.
         this.selectComponent(d.grabId);
         const comp = this.#doc.getComponent(d.grabId);
-        if (CLICK_TOGGLE_REFS.has(comp?.ref)) {
+        if (clickTogglingPart(comp?.ref)) {
           this.#toggleClickPart(d.grabId, d.switchIndex ?? null);
         }
         return;
@@ -4431,7 +3441,7 @@ export class DeskController {
       // Plain click: a slide switch, toggle button, or DIP switch bank
       // position flips (always interactive).
       const comp = this.#doc.getComponent(d.id);
-      if (CLICK_TOGGLE_REFS.has(comp?.ref)) {
+      if (clickTogglingPart(comp?.ref)) {
         this.#toggleClickPart(d.id, d.switchIndex ?? null);
       }
       return;
@@ -4723,7 +3733,7 @@ export class DeskController {
     // rubber-band that ends a few pitches short would otherwise silently drop
     // whatever sat at the edge of the box, with no snap-back to hint at it.
     m.rect = this.#marqueeRect(m, releaseWorld(this.#deskView, e, m.lastWorld));
-    this.#setMultiSelection(
+    this.#sel.setMulti(
       this.#componentsWithin(m.rect),
       this.#wiresWithin(m.rect),
       this.#boardsWithin(m.rect),
@@ -4736,9 +3746,9 @@ export class DeskController {
    * once for the whole batch rather than per part.
    */
   removeSelectedComponents() {
-    const ids = [...this.#multi];
-    const wireIds = [...this.#multiWires];
-    const boardIds = [...this.#multiBoards];
+    const ids = [...this.#sel.parts];
+    const wireIds = [...this.#sel.wires];
+    const boardIds = [...this.#sel.boards];
     if (
       ids.length + wireIds.length + boardIds.length === 0 ||
       this.#editingLocked
@@ -4752,15 +3762,15 @@ export class DeskController {
     const parts = new Set();
     for (const id of ids) {
       for (const w of this.#doc.wiresTouching(id)) {
-        if (!this.#multiWires.has(w.id)) wires.add(w.id);
+        if (!this.#sel.wires.has(w.id)) wires.add(w.id);
       }
     }
     for (const bid of boardIds) {
       for (const c of this.#doc.componentsOnBoard(bid)) {
-        if (!this.#multi.has(c.id)) parts.add(c.id);
+        if (!this.#sel.parts.has(c.id)) parts.add(c.id);
       }
       for (const w of this.#doc.wiresTouching(bid)) {
-        if (!this.#multiWires.has(w.id)) wires.add(w.id);
+        if (!this.#sel.wires.has(w.id)) wires.add(w.id);
       }
     }
     if (wires.size === 0 && parts.size === 0) {
@@ -4791,7 +3801,7 @@ export class DeskController {
   }
 
   #doRemoveSelected(ids, wireIds = [], boardIds = []) {
-    this.#clearMultiSelection();
+    this.#sel.clearMulti();
     for (const id of ids) {
       const comp = this.#doc.getComponent(id);
       if (!comp) continue; // already cascaded away
@@ -4886,18 +3896,18 @@ export class DeskController {
       return;
     }
     if (m.kind === "place-cluster") {
-      this.#trackClusterGhost(e); // shading reflects the exact click point
+      this.#place.trackClusterGhost(e); // shading reflects the exact click point
       if (m.legalCount === 0) return; // nothing seats here — stay armed
-      this.#commitClusterPaste();
+      this.#place.commitClusterPaste();
       return;
     }
     if (m.kind === "place-design") {
-      this.#trackDesignGhost(e); // the tint reflects the exact click point
+      this.#place.trackDesignGhost(e); // the tint reflects the exact click point
       if (!m.legal) return; // half a design is no design — stay armed
-      this.#commitDesignPaste();
+      this.#place.commitDesignPaste();
       return;
     }
-    this.#trackGhost(e); // ensure the seat reflects the click point
+    this.#place.track(e); // ensure the seat reflects the click point
     if (!m.legal) return; // stay armed, the tint explains why
     this.cancelPlacement();
     if (m.kind === "place") {
@@ -4921,7 +3931,7 @@ export class DeskController {
   #onViewportPointerMove = (e) => {
     const m = this.#mode;
     if (this.placementArmed) {
-      this.#trackGhost(e);
+      this.#place.track(e);
       return;
     }
     if (m?.kind === "wire") {
@@ -5016,10 +4026,10 @@ export class DeskController {
   #emitDocChanged(label = "edit", opts = {}) {
     // Boards may have moved, been torn out of a group, or been deleted —
     // re-trace the highlighter before anyone renders from the new document.
-    this.#refreshBoardOutline();
+    this.#sel.refreshBoardOutline();
     // The same for the Option hint: a wire it rings may have just been deleted,
     // moved, or laid. No-ops unless Option is actually down.
-    this.#refreshRidePreview();
+    this.#sel.refreshRidePreview();
     if (!this.#restoring) {
       const dropped = this.#history.record(
         this.#doc.snapshot(),
@@ -5163,15 +4173,8 @@ export class DeskController {
     // exist. Undo/redo mid-drag and a tab switch mid-drag both land here.
     if (this.#dragGestureActive) this.#cancelDragGesture();
     // Drop all selection state first (the views it points at are about to go).
-    this.#selected = null;
-    this.#multi.clear();
-    this.#multiWires.clear();
-    this.#multiBoards.clear();
-    this.#wireLayer.setSelected(null);
-    this.#wireLayer.setSelectedMany([]);
-    this.#annotationLayer.setSelected(null);
+    this.#sel.forgetAll();
     this.#hideHover();
-    this.#refreshRidePreview(); // the selection it ringed has just gone
     // Unmount every board and part view (keep the Map objects — collaborators
     // hold references to them).
     for (const view of this.#views.values()) view.remove();
@@ -5182,7 +4185,7 @@ export class DeskController {
     for (const board of this.#doc.boards) this.#mountBoard(board);
     for (const component of this.#doc.components) this.#mountPart(component);
     this.#wireLayer.render();
-    this.#boardOutline.show([], false);
+    this.#sel.refreshBoardOutline();
   }
 
   /** Push the current undo/redo availability to the Edit menu. */

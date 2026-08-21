@@ -302,6 +302,677 @@ function buildDesk() {
   return desk;
 }
 
+/** One File-pill segment: icon-only, its name and accelerator in the tooltip. */
+function fileSegment({
+  icon,
+  label,
+  title,
+  haspopup = false,
+  onClick,
+  onContextMenu = null,
+}) {
+  // prettier-ignore
+  const btn = el("button", {
+    class: "toolbar-pill-btn toolbar-pill-btn--icon",
+    type: "button",
+    title,
+    "aria-label": label,
+    "aria-haspopup": haspopup ? "menu" : null,
+    onClick,
+    onContextMenu,
+  });
+  btn.innerHTML = icon;
+  return btn;
+}
+
+/**
+ * File actions — a PILL, the same shape the desk tools use: one border around a
+ * row of borderless segments. They act on the PROJECT, which is the document:
+ * one file holds every desktop, so New / Open / Save / Save As mean one thing
+ * each. Every file action is its own segment rather than a row hidden behind a
+ * ▾ — they're peers, and a toolbar's job is to show what's available.
+ *
+ * Each dispatches the SAME `chiphippo:*` event the native File menu pushes, so
+ * the two can't drift. An MRU list still can't be a BUTTON, but it is what
+ * Open's SECONDARY click offers — the same split the tab strip's "+" uses: a
+ * primary click does the common thing, a secondary one drops the menu behind
+ * it. That one goes straight to the workspace rather than through a push, since
+ * the native menu bakes its recent list into the menu template and there is no
+ * item here to drift from — only the same list, asked for as the card opens.
+ *
+ * DESKTOP actions have no toolbar button at all: Add / Duplicate / Import /
+ * Export / Properties / Delete are the application's **Desktop** menu (main.js
+ * `buildAppMenu`) and the tab strip's own context menu — a desktop is reached
+ * through its tab, so that is where the things one can do to it belong.
+ *
+ * @param {() => object|null} getWorkspace - late-bound: the pill is built
+ *   before the workspace, and only a CLICK ever needs it.
+ */
+function buildFilePill(getWorkspace) {
+  /** Every segment fires the File menu's own push — one code path, two UIs. */
+  const fileAction = (event) => () =>
+    window.dispatchEvent(new CustomEvent(`chiphippo:${event}`));
+
+  const buttons = {
+    new: fileSegment({
+      icon: NEW_SVG,
+      label: t("toolbar.file.new"),
+      title: t("toolbar.file.newTitle", { accel: accel("N") }),
+      onClick: fileAction("project-new"),
+    }),
+    open: fileSegment({
+      icon: LOAD_SVG,
+      label: t("toolbar.file.open"),
+      // Two accelerators in one tooltip: the segment's own, and the chord that
+      // drops the menu its secondary click does (bindShortcuts).
+      title: t("toolbar.file.openTitle", {
+        accel: accel("O"),
+        recent: accel("O", true),
+      }),
+      onClick: fileAction("project-open"),
+      onContextMenu: (e) => {
+        e.preventDefault();
+        void getWorkspace()?.openRecentMenu(e.clientX, e.clientY);
+      },
+    }),
+    save: fileSegment({
+      icon: SAVE_SVG,
+      label: t("toolbar.file.save"),
+      title: t("toolbar.file.saveTitle", { accel: accel("S") }),
+      onClick: fileAction("project-save"),
+    }),
+    saveAs: fileSegment({
+      icon: SAVE_AS_SVG,
+      label: t("toolbar.file.saveAs"),
+      title: t("toolbar.file.saveAsTitle", { accel: accel("S", true) }),
+      onClick: fileAction("project-save-as"),
+    }),
+  };
+  const pill = el(
+    "div",
+    {
+      class: "toolbar-pill",
+      role: "group",
+      "aria-label": t("toolbar.file.group"),
+    },
+    [buttons.new, buttons.open, buttons.save, buttons.saveAs],
+  );
+  return { pill, buttons };
+}
+
+/**
+ * The simulation transport (Features 90/100) — its own pill, sitting apart from
+ * the edit tools. It is the ONE pill whose segment count changes: stopped it
+ * holds exactly Run; the moment the circuit runs that segment becomes Stop and
+ * Pause / Step / speed unhide beside it, so it never offers a control that does
+ * not apply. `onTransportChange` in init() owns that flip — this only builds it.
+ *
+ * The glyph leading each label is NOT part of the translation: ▶ / ⏸ / ⇥ / ■
+ * mean the same thing in every language, so a catalog carrying them would only
+ * give six chances to lose one.
+ *
+ * @param {() => object|null} getSim - late-bound: the SimController is built
+ *   from `onTransportChange`, which needs these buttons, so the pill comes
+ *   first and only a CLICK ever needs the transport.
+ */
+function buildTransportPill(getSim) {
+  const pill = el("div", {
+    class: "toolbar-pill toolbar-pill--transport",
+    role: "group",
+    "aria-label": t("toolbar.transport.group"),
+  });
+  const buttons = {
+    run: el("button", {
+      class: "toolbar-pill-btn toolbar-pill-btn--run",
+      type: "button",
+      text: `▶ ${t("toolbar.transport.run")}`,
+      title: t("toolbar.transport.runTitle", { mod: MOD_KEY }),
+      "aria-pressed": "false",
+      onClick: () => getSim().toggle(),
+    }),
+    pause: el("button", {
+      class: "toolbar-pill-btn",
+      type: "button",
+      text: `⏸ ${t("toolbar.transport.pause")}`,
+      title: t("toolbar.transport.pauseTitle"),
+      hidden: true,
+      onClick: () => getSim().togglePause(),
+    }),
+    step: el("button", {
+      class: "toolbar-pill-btn",
+      type: "button",
+      text: `⇥ ${t("toolbar.transport.step")}`,
+      title: t("toolbar.transport.stepTitle"),
+      hidden: true,
+      onClick: () => getSim().step(),
+    }),
+    speed: el("button", {
+      class: "toolbar-pill-btn",
+      type: "button",
+      text: "×1",
+      title: t("toolbar.transport.speedTitle"),
+      hidden: true,
+      onClick: () => {
+        const sim = getSim();
+        const i = (SPEEDS.indexOf(sim.speed) + 1) % SPEEDS.length;
+        sim.setSpeed(SPEEDS[i]);
+        buttons.speed.textContent = SPEED_LABELS[SPEEDS[i]];
+      },
+    }),
+  };
+  pill.append(buttons.run, buttons.pause, buttons.step, buttons.speed);
+  return { pill, buttons };
+}
+
+/**
+ * Fit to screen: recentre the desk on the origin, then frame every board, part
+ * and wire on it (find lost parts). It stays available while the circuit runs —
+ * the recentre is a document edit, so it alone is skipped.
+ *
+ * Shift previews the OTHER find-a-lost-part move (zoom out fully, ⌘⇧F). The
+ * icon and tooltip swap while the button is hovered AND Shift is held: a pure
+ * preview, no click involved, so the two conditions are tracked independently
+ * and the label recomputed on either change. `blur` is in there because a Shift
+ * released outside the window never fires our own keyup — it is the only
+ * reliable place left to drop a stuck preview.
+ *
+ * @returns {{button: HTMLElement, relabel: () => void}} — `relabel` is also
+ *   what a language change calls, since the label already depends on state.
+ */
+function buildFitSegment({ getActiveView, fitActiveView }) {
+  let hovered = false;
+  let shiftHeld = false;
+  const button = el("button", {
+    class: "toolbar-pill-btn toolbar-pill-btn--icon",
+    type: "button",
+    "aria-label": t("toolbar.fit.label"),
+    title: t("toolbar.fit.title", { mod: MOD_KEY }),
+    onClick: (e) => {
+      if (e.shiftKey) getActiveView().zoomOutFull();
+      else fitActiveView();
+    },
+  });
+  const relabel = () => {
+    const zoomOutFull = hovered && shiftHeld;
+    button.innerHTML = zoomOutFull ? ZOOM_OUT_SVG : LOCATE_SVG;
+    button.setAttribute(
+      "aria-label",
+      zoomOutFull ? t("toolbar.zoomOut.label") : t("toolbar.fit.label"),
+    );
+    button.title = zoomOutFull
+      ? t("toolbar.zoomOut.title", { mod: MOD_KEY })
+      : t("toolbar.fit.title", { mod: MOD_KEY });
+  };
+  button.innerHTML = LOCATE_SVG;
+  button.addEventListener("pointerenter", () => {
+    hovered = true;
+    relabel();
+  });
+  button.addEventListener("pointerleave", () => {
+    hovered = false;
+    relabel();
+  });
+  window.addEventListener("keydown", (e) => {
+    if (e.key !== "Shift" || shiftHeld) return;
+    shiftHeld = true;
+    relabel();
+  });
+  window.addEventListener("keyup", (e) => {
+    if (e.key !== "Shift") return;
+    shiftHeld = false;
+    relabel();
+  });
+  window.addEventListener("blur", () => {
+    if (!shiftHeld) return;
+    shiftHeld = false;
+    relabel();
+  });
+  return { button, relabel };
+}
+
+/**
+ * The FILE and DESKTOP menus, and the close guard — every one of them the
+ * workspace's to answer, since it is the only side that knows what is open and
+ * what is unsaved.
+ *
+ * The application menu (main.js `buildAppMenu`) pushes one event per item. FILE
+ * acts on the project — the document — and the toolbar's File pill dispatches
+ * the very same events, so the two can't drift. DESKTOP edits the structure
+ * inside it, and acts on whichever desktop is on screen. Open Recent is the one
+ * push that carries a payload: the project file its item stands for.
+ *
+ * @param {object} bridge - `window.chiphippo`, for the close reply.
+ * @param {() => object|null} getWorkspace - late-bound: these are registered
+ *   before the workspace is built, and only a menu CLICK ever needs it.
+ */
+function wireProjectMenu(bridge, getWorkspace) {
+  /** A Desktop-menu item aimed at whichever desktop is on screen. */
+  const activeDesktopAction = (method) => {
+    const workspace = getWorkspace();
+    const id = workspace?.activeTab?.id;
+    if (id) return workspace[method](id);
+  };
+
+  for (const [event, run] of [
+    ["chiphippo:project-new", () => getWorkspace()?.newProject()],
+    ["chiphippo:project-open", () => getWorkspace()?.loadProject()],
+    ["chiphippo:project-save", () => getWorkspace()?.save()],
+    ["chiphippo:project-save-as", () => getWorkspace()?.saveAs()],
+    ["chiphippo:project-properties", () => getWorkspace()?.editProjectProperties()], // prettier-ignore
+    ["chiphippo:desktop-add", () => getWorkspace()?.addTab()],
+    ["chiphippo:desktop-import", () => getWorkspace()?.importTab()],
+    ["chiphippo:desktop-duplicate", () => activeDesktopAction("duplicateTab")],
+    ["chiphippo:desktop-export", () => activeDesktopAction("exportTab")],
+    ["chiphippo:desktop-properties", () => activeDesktopAction("editTabProperties")], // prettier-ignore
+    ["chiphippo:desktop-delete", () => activeDesktopAction("deleteTab")],
+  ]) {
+    window.addEventListener(event, () => void run());
+  }
+  window.addEventListener("chiphippo:project-open-recent", (e) => {
+    if (e.detail) void getWorkspace()?.openRecentProject(e.detail);
+  });
+
+  // A part's EXAMPLE CIRCUIT, asked for from its pin-assignments window. That
+  // window has a ref and nothing else — no project, no desk — so main relays
+  // the request here, where both live (the memory inspector's host relay is the
+  // same pipe). The workspace does the rest: a NEW example desktop is centred,
+  // framed and left clean, and one that was already open is simply put back on
+  // the desk, camera and all.
+  window.addEventListener("chiphippo:demo-host-inbound", (e) => {
+    const ref = e.detail?.ref;
+    if (ref) void getWorkspace()?.openExample(ref);
+  });
+
+  // ── Closing the window / quitting ────────────────────────────────────────
+  // Main prevents the close and asks HERE, because the unsaved state and the
+  // dialog that deals with it both live in the renderer. Desktops are written
+  // deliberately, never autosaved, so without this a • on a tab dies with the
+  // window. It must reply EXACTLY once, whatever happens: main waits for the
+  // answer with no timeout (the user is entitled to think about it), and it
+  // LATCHES until the reply comes — so a guard that never answered would leave
+  // an app that cannot be closed at all. `confirmClose()` therefore guarantees
+  // both that it settles and that it never rejects.
+  //
+  // The default here used to be `true` — let the close proceed if the guard
+  // threw — on the reasoning that a broken guard must not wedge the app. But
+  // main's reply latch is per-attempt, so blocking is only ever ONE refused
+  // ⌘Q, while proceeding is the project gone: `true` was trading the user's
+  // unsaved work for an inconvenience. There is nothing here that can tell a
+  // failed question from an answered one, so it has to assume the worst.
+  window.addEventListener("chiphippo:confirm-close", async () => {
+    let ok = false;
+    try {
+      const workspace = getWorkspace();
+      ok = workspace ? await workspace.confirmClose() : true;
+    } catch (err) {
+      console.error("[renderer] close guard failed:", err);
+    }
+    bridge.closeReply(ok).catch((err) => {
+      console.error("[renderer] app:close-reply failed:", err);
+    });
+  });
+}
+
+/**
+ * Edit ▸ Undo / Redo (⌘Z / ⇧⌘Z) and Select All (⌘A), pushed from the native
+ * menu. Main pushes rather than running the native ROLE because "everything"
+ * depends on where the focus is: a TEXT FIELD (the palette search, a Properties
+ * dialog, a name prompt) selects its own text or keeps its own undo stack — the
+ * document is not touched while typing — and the DESK selects every board, part
+ * and wire, the same set a marquee takes, so ⌘A ⌘C copies the whole desktop.
+ *
+ * With a dialog open and the focus NOT in a field there is nothing to do:
+ * selecting the desk underneath it would act on what the user cannot see.
+ */
+function wireEditMenu(controller) {
+  const inTextField = () => {
+    const node = document.activeElement;
+    return (
+      node &&
+      (node.tagName === "INPUT" ||
+        node.tagName === "TEXTAREA" ||
+        node.isContentEditable)
+    );
+  };
+  window.addEventListener("chiphippo:edit-undo", () => {
+    if (!inTextField()) controller.undo();
+  });
+  window.addEventListener("chiphippo:edit-redo", () => {
+    if (!inTextField()) controller.redo();
+  });
+  window.addEventListener("chiphippo:edit-select-all", () => {
+    const target = document.activeElement;
+    const tag = target?.tagName;
+    if (tag === "INPUT" || tag === "TEXTAREA") {
+      target.select();
+      return;
+    }
+    if (target?.isContentEditable) {
+      document.execCommand("selectAll");
+      return;
+    }
+    if (PopupManager.isOpen()) return;
+    controller.selectAll();
+  });
+}
+
+/**
+ * Whether the AI builder has a connection to ask, and the button state that
+ * follows. Decided WITHOUT reaching the provider (`ai/connection.js`): nothing
+ * is sent anywhere until the user asks for a build, so this is a key stored for
+ * the chosen provider, a provider this build has an adapter for, and a base URL
+ * that parses. Whether the server would ACCEPT the key is Settings ▸ AI's Test
+ * connection, and nothing else.
+ *
+ * The panel's RESTORE waits on that answer rather than firing at boot: an
+ * `aiOpen` remembered from a session that HAD a key must not reopen a panel
+ * whose button is now dead — and must not be overwritten either, since the key
+ * may well come back. So the remembered state is honoured on the first
+ * successful pass only, and never forced open under the user afterwards.
+ *
+ * @returns {() => Promise<void>} re-run it; every refusal carries the sentence
+ *   the disabled button shows as its tooltip.
+ */
+function createAiReadiness({ bridge, aiPanel, getButton, config, remembered }) {
+  let providers = null; // main's provider list, read once
+  let restored = false; // whether the remembered `aiOpen` has been applied
+
+  return async function refreshAiReady() {
+    let ready = { ok: false, reason: t("toolbar.ai.unreadable") };
+    try {
+      providers ??= (await bridge.ai?.providers?.()) ?? [];
+      const cfg = config();
+      // The key is asked about for the provider `checkConnection` will judge —
+      // one rule, so the button can never be gated on a key for a provider the
+      // Settings panel is not showing.
+      const provider = effectiveProvider(cfg, providers)?.id;
+      const status = provider ? await bridge.ai?.key?.status(provider) : null;
+      ready = checkConnection(cfg, providers, status);
+    } catch (err) {
+      console.error("[renderer] ai readiness check failed:", err);
+    }
+    const button = getButton();
+    if (button) {
+      button.disabled = !ready.ok;
+      button.title = ready.ok ? aiTitle() : ready.reason;
+    }
+    if (ready.ok) {
+      if (restored === false) aiPanel.setVisible(remembered);
+    } else if (aiPanel.visible) {
+      // A key cleared while the panel is open leaves a panel no button can
+      // close — so it goes with the connection it belonged to.
+      aiPanel.setVisible(false);
+    }
+    restored = true;
+  };
+}
+
+/**
+ * Changing the language, IN PLACE.
+ *
+ * Chip Hippo NEVER reloads the window — an unsaved project lives only in
+ * memory, so a reload would throw the user's work away to change a label. So a
+ * language change is applied to the chrome that is already on screen.
+ *
+ * Only PERSISTENT chrome needs this. Everything transient — every dialog,
+ * context menu, popover, notification and the palette's own part rows — is
+ * built when it opens and therefore speaks the current language for free; the
+ * native menu bar is main's, and it rebuilds itself off the same setting. What
+ * is left is this toolbar, the docked panels, and the window title.
+ *
+ * `panels` each re-render their OWN chrome rather than app.js reaching into
+ * them; a panel given as a thunk is one built later than this call.
+ * `restate` are functions the app already had, whose labels depend on state —
+ * re-running them unchanged is exactly a relabel.
+ */
+function createRelabeller({
+  header,
+  desk,
+  hint,
+  schematicViewport,
+  filePill,
+  fileButtons,
+  toolPill,
+  transportPill,
+  buttons,
+  panels,
+  restate,
+}) {
+  return () => {
+    header.header.setAttribute("aria-label", t("app.header"));
+    header.iconBtn.title = t("app.about");
+    header.iconBtn.setAttribute("aria-label", t("app.about"));
+    header.settingsBtn.title = t("app.settings");
+    header.settingsBtn.setAttribute("aria-label", t("app.openSettings"));
+
+    desk.setAttribute("aria-label", t("app.desk"));
+    hint.textContent = t("app.deskHint");
+    schematicViewport.setAttribute("aria-label", t("app.schematic"));
+
+    filePill.setAttribute("aria-label", t("toolbar.file.group"));
+    for (const [btn, label, title, params] of [
+      [fileButtons.new, "new", "newTitle", { accel: accel("N") }],
+      [fileButtons.open, "open", "openTitle", { accel: accel("O") }],
+      [fileButtons.save, "save", "saveTitle", { accel: accel("S") }],
+      [fileButtons.saveAs, "saveAs", "saveAsTitle", { accel: accel("S", true) }], // prettier-ignore
+    ]) {
+      btn.setAttribute("aria-label", t(`toolbar.file.${label}`));
+      btn.title = t(`toolbar.file.${title}`, params);
+    }
+
+    toolPill.setAttribute("aria-label", t("toolbar.tools.group"));
+    buttons.wireBtn.title = t("toolbar.wire.title");
+    buttons.wireBtn.querySelector("span:not(.wire-color-dot)").textContent =
+      t("toolbar.wire.label");
+    buttons.busBtn.title = t("toolbar.bus.title");
+    buttons.busBtn.querySelector("span:not(.bus-width-badge)").textContent =
+      t("toolbar.bus.label");
+    for (const [btn, key, params] of [
+      [buttons.fadeBtn, "fade", null],
+      [buttons.probeBtn, "probe", null],
+      [buttons.scopeBtn, "analyzer", { mod: MOD_KEY }],
+      [buttons.guideBtn, "bom", { mod: MOD_KEY }],
+    ]) {
+      btn.setAttribute("aria-label", t(`toolbar.${key}.label`));
+      btn.title = t(`toolbar.${key}.title`, params ?? undefined);
+    }
+    buttons.aiBtn.setAttribute("aria-label", t("toolbar.ai.label"));
+
+    transportPill.setAttribute("aria-label", t("toolbar.transport.group"));
+    buttons.stepBtn.textContent = `⇥ ${t("toolbar.transport.step")}`;
+    buttons.stepBtn.title = t("toolbar.transport.stepTitle");
+    buttons.speedBtn.title = t("toolbar.transport.speedTitle");
+    buttons.pauseBtn.title = t("toolbar.transport.pauseTitle");
+
+    for (const panel of panels) {
+      (typeof panel === "function" ? panel() : panel)?.relocalize();
+    }
+    for (const restated of restate) restated();
+  };
+}
+
+/**
+ * The desk-tool pill: Wire · Bus · Fade · Probe · Analyzer · Fit · BOM ·
+ * Schematic · AI.
+ *
+ * Nine tools that read as ONE control — a single rounded surface carrying the
+ * only border, its segments separated by spacing rather than by borders of
+ * their own. Each is still an ordinary button with its own state; only the
+ * chrome is shared. Append order IS the layout.
+ *
+ * Two segments carry a READOUT that is also its own PICKER — the Wire dot and
+ * the Bus badge. Each is a <span> inside its one <button> (a nested <button> is
+ * invalid HTML, and the pill has no split seam), and picking deliberately does
+ * NOT arm the tool: the segment already arms when its label is clicked, so the
+ * readout must be the one place that doesn't, or there would be no way to set
+ * the pending option without entering the tool.
+ *
+ * Which segments stay live while the circuit RUNS is decided in init(): the
+ * passive viewers (Probe, Analyzer, BOM, Schematic, AI) do; Wire and Bus edit
+ * topology and are disabled.
+ *
+ * @returns {{pill, buttons, relabelFit}} — `relabelFit` is the Fit segment's
+ *   own state-dependent relabel, which a language change also calls.
+ */
+function buildDeskToolPill({
+  controller,
+  scopeView,
+  buildGuide,
+  aiPanel,
+  setMode,
+  getMode,
+  getActiveView,
+  fitActiveView,
+}) {
+  const pill = el("div", {
+    class: "toolbar-pill",
+    role: "group",
+    "aria-label": t("toolbar.tools.group"),
+  });
+
+  /** The five icon-only toggles, which differ only in icon, keys and action. */
+  const iconSegment = (icon, label, title, onClick, pressed = false) => {
+    const btn = el("button", {
+      class: "toolbar-pill-btn toolbar-pill-btn--icon",
+      type: "button",
+      "aria-label": label,
+      title,
+      "aria-pressed": String(pressed),
+      onClick,
+    });
+    btn.innerHTML = icon;
+    btn.classList.toggle("toolbar-btn--active", pressed);
+    return btn;
+  };
+
+  // Wire tool (shortcut W), with the colour dot that is also the eight-swatch
+  // picker. While the circuit runs the button is disabled, which makes the dot
+  // inert for free (a disabled <button> still delivers a click to a descendant,
+  // so the dot asks the button it is in — see wire-color-dot.js).
+  const wireDot = createWireColorDot({
+    getColor: () => controller.wireColor,
+    onPick: (color) => controller.setWireColor(color),
+  });
+  const wire = el(
+    "button",
+    {
+      class: "toolbar-pill-btn",
+      type: "button",
+      title: t("toolbar.wire.title"),
+      "aria-pressed": "false",
+      onClick: () => controller.toggleWireTool(),
+    },
+    [el("span", { text: t("toolbar.wire.label") }), wireDot.element],
+  );
+
+  // Bus tool (shortcut B) — a multi-bit run of wires in one gesture, riding the
+  // active wire colour. Its badge shows the active width (2–8 or 16 bits) and,
+  // like the dot beside it, is also the picker for it.
+  const busWidth = createBusWidthBadge({
+    getName: () => controller.busName,
+    onPick: (name) => controller.setBusName(name),
+  });
+  const bus = el(
+    "button",
+    {
+      class: "toolbar-pill-btn",
+      type: "button",
+      title: t("toolbar.bus.title"),
+      "aria-pressed": "false",
+      onClick: () => controller.toggleBusTool(),
+    },
+    [el("span", { text: t("toolbar.bus.label") }), busWidth.element],
+  );
+
+  // Fade wires: every wire as a short stub off each hole, fading out between,
+  // so a heavily wired board stays readable. A selected wire comes back whole.
+  // Purely how the desk is DRAWN, so it stays live while running.
+  const fade = iconSegment(
+    FADE_WIRES_SVG,
+    t("toolbar.fade.label"),
+    t("toolbar.fade.title"),
+    () => controller.toggleWiresFaded(),
+  );
+  // Probe: highlight a whole electrical net on hover (shortcut I).
+  const probe = iconSegment(
+    PROBE_SVG,
+    t("toolbar.probe.label"),
+    t("toolbar.probe.title"),
+    () => controller.toggleProbe(),
+  );
+  // Logic analyzer. No `mod` to interpolate: it is a BARE `A`, like the desk's
+  // other tool letters — ⌘A is Select All, which the native Edit menu owns.
+  const scope = iconSegment(
+    ANALYZER_SVG,
+    t("toolbar.analyzer.label"),
+    t("toolbar.analyzer.title"),
+    () => scopeView.toggle(),
+    scopeView.visible,
+  );
+  // Fit to screen, with its Shift preview of zoom-out-fully.
+  const { button: fit, relabel: relabelFit } = buildFitSegment({
+    getActiveView,
+    fitActiveView,
+  });
+  // Bill of materials (⌘B): the right-docked build guide — BOM, wiring list,
+  // assembly steps. It reads the desk rather than editing it, so like the
+  // analyzer it stays available while the circuit runs. Its armed state comes
+  // from buildGuide's own onVisibilityChange, so the segment tracks the panel
+  // however it was closed.
+  const guide = iconSegment(
+    GUIDE_SVG,
+    t("toolbar.bom.label"),
+    t("toolbar.bom.title", { mod: MOD_KEY }),
+    () => buildGuide.toggle(),
+    buildGuide.visible,
+  );
+  // Breadboard ⇄ Schematic (Tab). The one segment that swaps the VIEWPORT
+  // rather than arming a tool or opening a panel, so its icon shows where it
+  // would take you; `setMode` owns both states and Tab drives the same
+  // function, so the key and the button can never disagree.
+  const modeBtn = iconSegment(
+    SCHEMATIC_SVG,
+    t("toolbar.mode.schematic"),
+    t("toolbar.mode.schematicTitle"),
+    () => setMode(getMode() === "desk" ? "schematic" : "desk"),
+  );
+  // AI builder. Its armed state comes from the panel's own onVisibilityChange,
+  // and it stays available while the circuit runs — the panel itself refuses to
+  // build while the desk is frozen, and saying so there is clearer than a dead
+  // button here. It is DISABLED, though, until there is a connection to ask at
+  // all: the builder is the one tool that cannot work on the user's own
+  // machine, so offering it with no API key would be offering nothing. It
+  // starts disabled and `createAiReadiness` enables it once main has answered,
+  // replacing the tooltip with the reason whenever it is off.
+  const ai = iconSegment(
+    AI_SVG,
+    t("toolbar.ai.label"),
+    aiTitle(),
+    () => aiPanel.toggle(),
+    aiPanel.visible,
+  );
+  ai.disabled = true;
+
+  pill.append(wire, bus, fade, probe, scope, fit, guide, modeBtn, ai);
+  return {
+    pill,
+    relabelFit,
+    buttons: {
+      wire,
+      wireDot,
+      bus,
+      busWidth,
+      fade,
+      probe,
+      scope,
+      fit,
+      guide,
+      mode: modeBtn,
+      ai,
+    },
+  };
+}
+
 /** The schematic surface (Feature 150) — a sibling of the desk, hidden until
     the Breadboard ⇄ Schematic toggle (or Tab) switches to it. */
 function buildSchematicViewport() {
@@ -609,77 +1280,7 @@ async function init() {
   updateTitle();
   window.addEventListener("chiphippo:doc-changed", updateTitle);
 
-  // ── The File and Desktop menus ────────────────────────────────────────────
-  // The application menu (main.js `buildAppMenu`) pushes one event per item;
-  // every one of them is the workspace's to answer, since it is the only side
-  // that knows what is open and what is unsaved. FILE acts on the project —
-  // the document — and the toolbar's File pill dispatches the very same
-  // events, so the two can't drift. DESKTOP edits the structure inside it, and
-  // acts on whichever desktop is on screen. Open Recent is the one push that
-  // carries a payload: the project file its item stands for.
-  for (const [event, run] of [
-    ["chiphippo:project-new", () => workspace?.newProject()],
-    ["chiphippo:project-open", () => workspace?.loadProject()],
-    ["chiphippo:project-save", () => workspace?.save()],
-    ["chiphippo:project-save-as", () => workspace?.saveAs()],
-    ["chiphippo:project-properties", () => workspace?.editProjectProperties()],
-    ["chiphippo:desktop-add", () => workspace?.addTab()],
-    ["chiphippo:desktop-import", () => workspace?.importTab()],
-    ["chiphippo:desktop-duplicate", () => activeDesktopAction("duplicateTab")],
-    ["chiphippo:desktop-export", () => activeDesktopAction("exportTab")],
-    ["chiphippo:desktop-properties", () => activeDesktopAction("editTabProperties")], // prettier-ignore
-    ["chiphippo:desktop-delete", () => activeDesktopAction("deleteTab")],
-  ]) {
-    window.addEventListener(event, () => void run());
-  }
-  window.addEventListener("chiphippo:project-open-recent", (e) => {
-    if (e.detail) void workspace?.openRecentProject(e.detail);
-  });
-
-  // A part's EXAMPLE CIRCUIT, asked for from its pin-assignments window. That
-  // window has a ref and nothing else — no project, no desk — so main relays
-  // the request here, where both live (the memory inspector's host relay is the
-  // same pipe). The workspace does the rest: a NEW example desktop is centred,
-  // framed (through the `fitView` callback below) and left clean, and one that
-  // was already open is simply put back on the desk, camera and all.
-  window.addEventListener("chiphippo:demo-host-inbound", (e) => {
-    const ref = e.detail?.ref;
-    if (ref) void workspace?.openExample(ref);
-  });
-
-  /** A Desktop-menu item aimed at whichever desktop is on screen. */
-  function activeDesktopAction(method) {
-    const id = workspace?.activeTab?.id;
-    if (id) return workspace[method](id);
-  }
-
-  // ── Closing the window / quitting ────────────────────────────────────────
-  // Main prevents the close and asks HERE, because the unsaved state and the
-  // dialog that deals with it both live in the renderer. Desktops are written
-  // deliberately, never autosaved, so without this a • on a tab dies with the
-  // window. It must reply EXACTLY once, whatever happens: main waits for the
-  // answer with no timeout (the user is entitled to think about it), and it
-  // LATCHES until the reply comes — so a guard that never answered would leave
-  // an app that cannot be closed at all. `confirmClose()` therefore guarantees
-  // both that it settles and that it never rejects.
-  //
-  // The default here used to be `true` — let the close proceed if the guard
-  // threw — on the reasoning that a broken guard must not wedge the app. But
-  // main's reply latch is per-attempt, so blocking is only ever ONE refused
-  // ⌘Q, while proceeding is the project gone: `true` was trading the user's
-  // unsaved work for an inconvenience. There is nothing here that can tell a
-  // failed question from an answered one, so it has to assume the worst.
-  window.addEventListener("chiphippo:confirm-close", async () => {
-    let ok = false;
-    try {
-      ok = workspace ? await workspace.confirmClose() : true;
-    } catch (err) {
-      console.error("[renderer] close guard failed:", err);
-    }
-    bridge.closeReply(ok).catch((err) => {
-      console.error("[renderer] app:close-reply failed:", err);
-    });
-  });
+  wireProjectMenu(bridge, () => workspace);
 
   let zoomControl = null;
   let deskLock = null;
@@ -843,45 +1444,16 @@ async function init() {
     },
   });
 
-  // The AI segment is only offered when there is a connection to ask: a key
-  // stored for the chosen provider, a provider this build has an adapter for,
-  // and a base URL that could be reached (`ai/connection.js` decides, without
-  // a network call — nothing is sent anywhere until the user asks for a
-  // build). So the panel's restore waits for that answer rather than firing
-  // here: an `aiOpen` remembered from a session that HAD a key must not
-  // reopen a panel whose button is now dead, and must not be overwritten
-  // either — the key may well come back.
-  let aiProviders = null; // main's provider list, read once
-  let aiRestored = false; // whether the remembered `aiOpen` has been applied
-  const refreshAiReady = async () => {
-    let ready = { ok: false, reason: t("toolbar.ai.unreadable") };
-    try {
-      aiProviders ??= (await bridge.ai?.providers?.()) ?? [];
-      const config = currentSettings.ai ?? {};
-      // The key is asked about for the provider `checkConnection` will judge —
-      // one rule, so the button can never be gated on a key for a provider the
-      // Settings panel is not showing.
-      const provider = effectiveProvider(config, aiProviders)?.id;
-      const status = provider ? await bridge.ai?.key?.status(provider) : null;
-      ready = checkConnection(config, aiProviders, status);
-    } catch (err) {
-      console.error("[renderer] ai readiness check failed:", err);
-    }
-    if (aiBtn) {
-      aiBtn.disabled = !ready.ok;
-      aiBtn.title = ready.ok ? aiTitle() : ready.reason;
-    }
-    if (ready.ok) {
-      // First pass only: honour the remembered state, never force the panel
-      // open under the user afterwards.
-      if (aiRestored === false) aiPanel.setVisible(settings.aiOpen === true);
-    } else if (aiPanel.visible) {
-      // A key cleared while the panel is open leaves a panel no button can
-      // close — so it goes with the connection it belonged to.
-      aiPanel.setVisible(false);
-    }
-    aiRestored = true;
-  };
+  // The AI segment is only offered when there is a connection to ask — see
+  // createAiReadiness. The button it drives is built with the rest of the
+  // desk-tool pill further down, hence the getter.
+  const refreshAiReady = createAiReadiness({
+    bridge,
+    aiPanel,
+    getButton: () => aiBtn,
+    config: () => currentSettings.ai ?? {},
+    remembered: settings.aiOpen === true,
+  });
   // Settings ▸ AI changing the provider (a settings patch) or the key itself
   // (which bypasses settings entirely, straight to the OS-encrypted store) are
   // the two ways this answer changes.
@@ -903,6 +1475,7 @@ async function init() {
   let busWidth = null; // the Bus button's width badge: readout AND picker
   let probeBtn = null;
   let fadeBtn = null; // the "Fade wires" toggle
+  let modeBtn = null; // the Breadboard ⇄ Schematic segment
   let sim = null; // the SimController (created after the toolbar below)
   let memoryBridge = null; // memory-inspector coordinator (created with sim)
   const onWireStateChange = ({ armed, color }) => {
@@ -996,53 +1569,9 @@ async function init() {
         ),
   });
 
-  // Edit ▸ Undo / Redo (⌘Z / ⇧⌘Z), pushed from the native menu. A focused text
-  // field keeps its own editing (the document isn't touched while typing).
-  const inTextField = () => {
-    const t = document.activeElement;
-    return (
-      t &&
-      (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.isContentEditable)
-    );
-  };
-  window.addEventListener("chiphippo:edit-undo", () => {
-    if (!inTextField()) controller.undo();
-  });
-  window.addEventListener("chiphippo:edit-redo", () => {
-    if (!inTextField()) controller.redo();
-  });
-
-  // Edit ▸ Select All (⌘A). "Everything" depends on where the focus is, which
-  // is why main pushes rather than running the native role: a TEXT FIELD (the
-  // palette search, a Properties dialog, a name prompt) selects its own text,
-  // and the DESK selects every board, part and wire — the same set a marquee
-  // takes, so ⌘A ⌘C copies the whole desktop.
-  //
-  // With a dialog open and the focus NOT in a field there is nothing to do:
-  // selecting the desk underneath it would act on what the user cannot see.
-  window.addEventListener("chiphippo:edit-select-all", () => {
-    const target = document.activeElement;
-    const tag = target?.tagName;
-    if (tag === "INPUT" || tag === "TEXTAREA") {
-      target.select();
-      return;
-    }
-    if (target?.isContentEditable) {
-      document.execCommand("selectAll");
-      return;
-    }
-    if (PopupManager.isOpen()) return;
-    controller.selectAll();
-  });
+  wireEditMenu(controller);
 
   const toolbar = document.getElementById("app-toolbar");
-
-  // Breadboard ⇄ Schematic view toggle (Feature 150): a desk-tool pill segment
-  // built further down (between Bill Of Materials and AI). Unlike the panel
-  // toggles either side of it this one swaps the whole viewport, so its icon
-  // swaps too — it shows the view it would take you TO, the way the
-  // Fit/zoom-out segment previews its alternate action.
-  let modeBtn = null;
 
   function setMode(next) {
     mode = next === "schematic" ? "schematic" : "desk";
@@ -1062,88 +1591,8 @@ async function init() {
     modeBtn.setAttribute("aria-pressed", String(schematic));
   }
 
-  // File actions — a PILL, the same shape the desk tools use: one border
-  // around a row of borderless segments. They act on the PROJECT, which is the
-  // document: one file holds every desktop, so New / Open / Save / Save As
-  // mean one thing each. Every file action is its own segment rather than a
-  // row hidden behind a ▾: they're peers, and a toolbar's job is to show
-  // what's available. Each is icon-only with the name + accelerator in its
-  // tooltip, and dispatches the SAME chiphippo:* event the native File menu
-  // pushes, so the two can't drift — an MRU list still can't be a BUTTON, but
-  // it is what Open's SECONDARY click offers (see below), the same split the
-  // tab strip's "+" uses: a primary click does the common thing, a secondary
-  // one drops the menu behind it.
-  const fileBtn = ({
-    icon,
-    label,
-    title,
-    haspopup = false,
-    onClick,
-    onContextMenu = null,
-  }) => {
-    const btn = el("button", {
-      class: "toolbar-pill-btn toolbar-pill-btn--icon",
-      type: "button",
-      title,
-      "aria-label": label,
-      "aria-haspopup": haspopup ? "menu" : null,
-      onClick,
-      onContextMenu,
-    });
-    btn.innerHTML = icon;
-    return btn;
-  };
-
-  /** Every segment fires the File menu's own push — one code path, two UIs. */
-  const fileAction = (event) => () =>
-    window.dispatchEvent(new CustomEvent(`chiphippo:${event}`));
-
-  const fileNewBtn = fileBtn({
-    icon: NEW_SVG,
-    label: t("toolbar.file.new"),
-    title: t("toolbar.file.newTitle", { accel: accel("N") }),
-    onClick: fileAction("project-new"),
-  });
-  const fileOpenBtn = fileBtn({
-    icon: LOAD_SVG,
-    label: t("toolbar.file.open"),
-    // Two accelerators in one tooltip: the segment's own, and the chord that
-    // drops the menu its secondary click does (bindShortcuts).
-    title: t("toolbar.file.openTitle", {
-      accel: accel("O"),
-      recent: accel("O", true),
-    }),
-    onClick: fileAction("project-open"),
-    // Open's secondary click IS File ▸ Open Recent, off main's own MRU list.
-    // It goes straight to the workspace rather than through a chiphippo:*
-    // push: the native menu bakes its recent list into the menu template, so
-    // there is no menu item here to drift from — only the same list, asked for
-    // at the moment the card opens.
-    onContextMenu: (e) => {
-      e.preventDefault();
-      void workspace?.openRecentMenu(e.clientX, e.clientY);
-    },
-  });
-  const fileSaveBtn = fileBtn({
-    icon: SAVE_SVG,
-    label: t("toolbar.file.save"),
-    title: t("toolbar.file.saveTitle", { accel: accel("S") }),
-    onClick: fileAction("project-save"),
-  });
-  const fileSaveAsBtn = fileBtn({
-    icon: SAVE_AS_SVG,
-    label: t("toolbar.file.saveAs"),
-    title: t("toolbar.file.saveAsTitle", { accel: accel("S", true) }),
-    onClick: fileAction("project-save-as"),
-  });
-  const filePill = el(
-    "div",
-    {
-      class: "toolbar-pill",
-      role: "group",
-      "aria-label": t("toolbar.file.group"),
-    },
-    [fileNewBtn, fileOpenBtn, fileSaveBtn, fileSaveAsBtn],
+  const { pill: filePill, buttons: fileButtons } = buildFilePill(
+    () => workspace,
   );
 
   // DESKTOP actions have no toolbar button at all: Add / Duplicate / Import /
@@ -1167,245 +1616,46 @@ async function init() {
       .catch((err) => console.error("[renderer] settings:set failed:", err));
   };
 
-  // ── Desk-tool pill (Wire / Bus / Fade / Probe / Analyzer / Fit) ───────────
-  // The six desk tools read as ONE control: a single rounded surface carrying
-  // the only border, its segments separated by spacing rather than by borders
-  // of their own. Each segment is still an ordinary button with its own state
-  // — only the chrome is shared. Built empty here so each tool can append
-  // itself where it is defined; the append order IS the layout.
-  const toolPill = el("div", {
-    class: "toolbar-pill",
-    role: "group",
-    "aria-label": t("toolbar.tools.group"),
-  });
-  toolbar.append(toolPill);
-
-  // Wire tool (shortcut W). The dot beside the label shows the active wire
-  // color AND opens the eight-swatch picker when clicked — the one pill
-  // readout that is also a control. It is a <span> inside this one <button>
-  // (a nested <button> is invalid, and the pill has no split seam), so the dot
-  // itself stops that click from reaching the toggle; see wire-color-dot.js.
-  // Picking a color deliberately does NOT arm the tool — this is the only way
-  // to set the pending color without entering it. While the circuit runs the
-  // button is disabled, which makes the dot inert for free.
-  wireDot = createWireColorDot({
-    getColor: () => controller.wireColor,
-    onPick: (color) => controller.setWireColor(color),
-  });
-  wireBtn = el(
-    "button",
-    {
-      class: "toolbar-pill-btn",
-      type: "button",
-      title: t("toolbar.wire.title"),
-      "aria-pressed": "false",
-      onClick: () => controller.toggleWireTool(),
-    },
-    [el("span", { text: t("toolbar.wire.label") }), wireDot.element],
-  );
-  toolPill.append(wireBtn);
-  onWireStateChange({ armed: false, color: controller.wireColor });
-
-  // Bus tool (shortcut B) — lays a multi-bit run of wires in one gesture,
-  // riding the active wire color. Its badge shows the active width (2–8 or 16
-  // bits) and, like the Wire dot beside it, is also the PICKER for it: it opens
-  // the same presets the digit keys offer, without arming the tool.
-  busWidth = createBusWidthBadge({
-    getName: () => controller.busName,
-    onPick: (name) => controller.setBusName(name),
-  });
-  busWidth.setName(controller.busName);
-  busBtn = el(
-    "button",
-    {
-      class: "toolbar-pill-btn",
-      type: "button",
-      title: t("toolbar.bus.title"),
-      "aria-pressed": "false",
-      onClick: () => controller.toggleBusTool(),
-    },
-    [el("span", { text: t("toolbar.bus.label") }), busWidth.element],
-  );
-  toolPill.append(busBtn);
-
-  // Fade wires: draw every wire as a short stub off each hole, fading out in
-  // between, so a heavily wired board stays readable. A selected wire comes
-  // back whole. Purely how the desk is drawn, so it stays live while running.
-  fadeBtn = el("button", {
-    class: "toolbar-pill-btn toolbar-pill-btn--icon",
-    type: "button",
-    "aria-label": t("toolbar.fade.label"),
-    title: t("toolbar.fade.title"),
-    "aria-pressed": "false",
-    onClick: () => controller.toggleWiresFaded(),
-  });
-  fadeBtn.innerHTML = FADE_WIRES_SVG;
-  toolPill.append(fadeBtn);
-  controller.setWiresFaded(settings.wiresFaded === true);
-
-  // Probe tool: highlight a whole electrical net on hover (shortcut I).
-  probeBtn = el("button", {
-    class: "toolbar-pill-btn toolbar-pill-btn--icon",
-    type: "button",
-    "aria-label": t("toolbar.probe.label"),
-    title: t("toolbar.probe.title"),
-    "aria-pressed": "false",
-    onClick: () => controller.toggleProbe(),
-  });
-  probeBtn.innerHTML = PROBE_SVG;
-  toolPill.append(probeBtn);
-
-  // Logic analyzer: toggle the bottom-docked waveform panel. Like the guide it
-  // is a passive viewer, so it stays available while the circuit runs.
-  scopeBtn = el("button", {
-    class: "toolbar-pill-btn toolbar-pill-btn--icon",
-    type: "button",
-    "aria-label": t("toolbar.analyzer.label"),
-    // No `mod` to interpolate: the analyzer is a BARE `A`, like the desk's
-    // other tool letters — ⌘A is Select All, which the native Edit menu owns.
-    title: t("toolbar.analyzer.title"),
-    "aria-pressed": String(scopeView.visible),
-    onClick: () => scopeView.toggle(),
-  });
-  scopeBtn.innerHTML = ANALYZER_SVG;
-  scopeBtn.classList.toggle("toolbar-btn--active", scopeView.visible);
-  toolPill.append(scopeBtn);
-
-  // Fit to screen: recentre the desk on the origin, then frame every
-  // board/part/wire on it (find lost parts). It stays available while the
-  // circuit runs — the recentre is a document edit, so it alone is skipped.
-  // Shift previews the OTHER find-a-lost-part move (zoom out fully, ⌘⇧F): the
-  // icon/tooltip swap while hovered+held is a pure preview (no click yet), so
-  // it tracks hover and Shift independently and recomputes on either change.
+  // Which surface the camera actions act on. Fit follows the view you are
+  // LOOKING at, like zoom-out-fully does — but it is not a plain camera call on
+  // either: the desk's lives on the controller because it RECENTRES the
+  // document as well, and the schematic's is the diagram's own (its symbol
+  // positions are derived, so there is nothing to move — fitting IS centring).
   const getActiveView = () => (mode === "schematic" ? schematicView : deskView);
-  // Fit follows the view you are LOOKING at, like zoom-out-full does — but it
-  // is not a plain camera call on either: the desk's lives on the controller
-  // because it recentres the document as well, and the schematic's is the
-  // diagram's own (its symbol positions are derived, so there is nothing to
-  // move — fitting IS centring it).
   const fitActiveView = () =>
     mode === "schematic" ? schematicView.fit() : controller.fitToScreen();
   // The same move for a desk that has JUST BEEN LOADED — a project opening, an
   // example desktop landing. The DESK is always recentred and framed, whichever
-  // view is showing: centring is a fact about the document, and the schematic's
-  // own fit is camera-only (its symbol positions are derived). It goes through
-  // the controller's load-time form, which keeps the recentre out of undo/redo;
-  // the workspace clears the dirty flag straight after, for the same reason —
+  // view is showing: centring is a fact about the document. It goes through the
+  // controller's load-time form, which keeps the recentre out of undo/redo; the
+  // workspace clears the dirty flag straight after, for the same reason —
   // nobody moved the design, the app did, putting it where it can be seen.
   const frameLoadedView = () => {
     controller.fitLoadedDesk();
     if (mode === "schematic") schematicView.fit();
   };
-  let locateHovered = false;
-  let locateShiftHeld = false;
-  const updateLocateIcon = () => {
-    const zoomOutFull = locateHovered && locateShiftHeld;
-    locateBtn.innerHTML = zoomOutFull ? ZOOM_OUT_SVG : LOCATE_SVG;
-    locateBtn.setAttribute(
-      "aria-label",
-      zoomOutFull ? t("toolbar.zoomOut.label") : t("toolbar.fit.label"),
-    );
-    locateBtn.title = zoomOutFull
-      ? t("toolbar.zoomOut.title", { mod: MOD_KEY })
-      : t("toolbar.fit.title", { mod: MOD_KEY });
-  };
-  const locateBtn = el("button", {
-    class: "toolbar-pill-btn toolbar-pill-btn--icon",
-    type: "button",
-    "aria-label": t("toolbar.fit.label"),
-    title: t("toolbar.fit.title", { mod: MOD_KEY }),
-    onClick: (e) => {
-      if (e.shiftKey) getActiveView().zoomOutFull();
-      else fitActiveView();
-    },
-  });
-  locateBtn.innerHTML = LOCATE_SVG;
-  locateBtn.addEventListener("pointerenter", () => {
-    locateHovered = true;
-    updateLocateIcon();
-  });
-  locateBtn.addEventListener("pointerleave", () => {
-    locateHovered = false;
-    updateLocateIcon();
-  });
-  window.addEventListener("keydown", (e) => {
-    if (e.key !== "Shift" || locateShiftHeld) return;
-    locateShiftHeld = true;
-    updateLocateIcon();
-  });
-  window.addEventListener("keyup", (e) => {
-    if (e.key !== "Shift") return;
-    locateShiftHeld = false;
-    updateLocateIcon();
-  });
-  // A Shift held on the way in (window regained focus, or a modifier chord
-  // released outside the window) never fires our own keyup — blur is the only
-  // reliable place left to drop a stuck preview.
-  window.addEventListener("blur", () => {
-    if (!locateShiftHeld) return;
-    locateShiftHeld = false;
-    updateLocateIcon();
-  });
-  toolPill.append(locateBtn);
 
-  // Bill of materials (⌘B), the pill's last segment: toggle the right-docked
-  // build guide — BOM, wiring list, assembly steps. It reads the desk rather
-  // than editing it, so like the analyzer it stays available while the circuit
-  // runs. Its armed state is set from buildGuide's onVisibilityChange, so the
-  // segment tracks the panel however it was closed (its own ×, the native File
-  // menu, or this button).
-  guideBtn = el("button", {
-    class: "toolbar-pill-btn toolbar-pill-btn--icon",
-    type: "button",
-    "aria-label": t("toolbar.bom.label"),
-    title: t("toolbar.bom.title", { mod: MOD_KEY }),
-    "aria-pressed": String(buildGuide.visible),
-    onClick: () => buildGuide.toggle(),
+  const deskTools = buildDeskToolPill({
+    controller,
+    scopeView,
+    buildGuide,
+    aiPanel,
+    setMode,
+    getMode: () => mode,
+    getActiveView,
+    fitActiveView,
   });
-  guideBtn.innerHTML = GUIDE_SVG;
-  guideBtn.classList.toggle("toolbar-btn--active", buildGuide.visible);
-  toolPill.append(guideBtn);
-
-  // Breadboard ⇄ Schematic (Tab). The one segment that swaps the VIEWPORT
-  // rather than arming a tool or opening a panel, so its icon shows where it
-  // would take you; `setMode` (above) owns both states, and Tab drives the
-  // same function, so the key and the button can never disagree. It reads the
-  // desk rather than editing it — available while the circuit runs, like the
-  // analyzer and the BOM it sits between.
-  modeBtn = el("button", {
-    class: "toolbar-pill-btn toolbar-pill-btn--icon",
-    type: "button",
-    "aria-label": t("toolbar.mode.schematic"),
-    title: t("toolbar.mode.schematicTitle"),
-    "aria-pressed": "false",
-    onClick: () => setMode(mode === "desk" ? "schematic" : "desk"),
-  });
-  modeBtn.innerHTML = SCHEMATIC_SVG;
-  toolPill.append(modeBtn);
-
-  // AI builder: toggle the bottom-docked builder panel. Like the analyzer its
-  // armed state comes from the panel's own onVisibilityChange, so the segment
-  // tracks the panel however it was closed. It stays available while the
-  // circuit runs — the panel itself refuses to build while the desk is frozen,
-  // and saying so there is clearer than a dead button here.
-  //
-  // It is DISABLED, though, until there is a connection to ask at all: the
-  // builder is the one tool that cannot work on the user's own machine, so
-  // offering it with no API key configured would be offering nothing. It
-  // starts disabled and `refreshAiReady` (above) enables it once main has
-  // answered, replacing this tooltip with the reason whenever it is off.
-  aiBtn = el("button", {
-    class: "toolbar-pill-btn toolbar-pill-btn--icon",
-    type: "button",
-    "aria-label": t("toolbar.ai.label"),
-    title: aiTitle(),
-    disabled: true,
-    "aria-pressed": String(aiPanel.visible),
-    onClick: () => aiPanel.toggle(),
-  });
-  aiBtn.innerHTML = AI_SVG;
-  aiBtn.classList.toggle("toolbar-btn--active", aiPanel.visible);
-  toolPill.append(aiBtn);
+  const toolPill = deskTools.pill;
+  ({ wire: wireBtn, wireDot, bus: busBtn, busWidth, fade: fadeBtn, probe: probeBtn, scope: scopeBtn, guide: guideBtn, mode: modeBtn, ai: aiBtn } = deskTools.buttons); // prettier-ignore
+  const updateLocateIcon = deskTools.relabelFit;
+  toolbar.append(toolPill);
+  // The segments that mirror state the app already holds, synced once now that
+  // the buttons exist: the controller's wire tool and colour, its wire fading
+  // (from the persisted setting), the bus width, and — since `setMode` returns
+  // early while `modeBtn` is null — the view toggle.
+  onWireStateChange({ armed: false, color: controller.wireColor });
+  busWidth.setName(controller.busName);
+  controller.setWiresFaded(settings.wiresFaded === true);
   refreshAiReady();
 
   // ── Simulation transport (Feature 90/100): Run/Stop, Pause, Step, speed ──
@@ -1420,55 +1670,15 @@ async function init() {
   // here and not in the About panel's own listeners.
   new UpdaterMonitor(notifications);
 
-  // The transport is its own pill (the app's grouping shape), sitting apart
-  // from the edit tools. Stopped it holds exactly ONE segment — Run; the
-  // moment the circuit runs that segment becomes Stop and Pause / Step /
-  // speed unhide beside it, so the pill only ever offers what applies.
-  const transportPill = el("div", {
-    class: "toolbar-pill toolbar-pill--transport",
-    role: "group",
-    "aria-label": t("toolbar.transport.group"),
-  });
-  // The glyph leads each transport label and is NOT part of the translation:
-  // ▶ / ⏸ / ⇥ / ■ mean the same thing in every language, so a catalog carrying
-  // them would only give six chances to lose one.
-  const runBtn = el("button", {
-    class: "toolbar-pill-btn toolbar-pill-btn--run",
-    type: "button",
-    text: `▶ ${t("toolbar.transport.run")}`,
-    title: t("toolbar.transport.runTitle", { mod: MOD_KEY }),
-    "aria-pressed": "false",
-    onClick: () => sim.toggle(),
-  });
-  const pauseBtn = el("button", {
-    class: "toolbar-pill-btn",
-    type: "button",
-    text: `⏸ ${t("toolbar.transport.pause")}`,
-    title: t("toolbar.transport.pauseTitle"),
-    hidden: true,
-    onClick: () => sim.togglePause(),
-  });
-  const stepBtn = el("button", {
-    class: "toolbar-pill-btn",
-    type: "button",
-    text: `⇥ ${t("toolbar.transport.step")}`,
-    title: t("toolbar.transport.stepTitle"),
-    hidden: true,
-    onClick: () => sim.step(),
-  });
-  const speedBtn = el("button", {
-    class: "toolbar-pill-btn",
-    type: "button",
-    text: "×1",
-    title: t("toolbar.transport.speedTitle"),
-    hidden: true,
-    onClick: () => {
-      const i = (SPEEDS.indexOf(sim.speed) + 1) % SPEEDS.length;
-      sim.setSpeed(SPEEDS[i]);
-      speedBtn.textContent = SPEED_LABELS[SPEEDS[i]];
-    },
-  });
-  transportPill.append(runBtn, pauseBtn, stepBtn, speedBtn);
+  const { pill: transportPill, buttons: transportButtons } = buildTransportPill(
+    () => sim,
+  );
+  const {
+    run: runBtn,
+    pause: pauseBtn,
+    step: stepBtn,
+    speed: speedBtn,
+  } = transportButtons;
   toolbar.append(transportPill);
 
   // Buttons that edit topology are disabled while the circuit runs; the probe,
@@ -1586,7 +1796,7 @@ async function init() {
     // place a secondary click on it would, so the key and the pointer put the
     // card in one spot rather than two.
     () => {
-      const r = fileOpenBtn.getBoundingClientRect();
+      const r = fileButtons.open.getBoundingClientRect();
       void workspace?.openRecentMenu(r.left, r.bottom);
     },
     // ⌥⌘=/−/0. Dispatches the SAME event the Settings dialog emits rather than
@@ -1609,84 +1819,38 @@ async function init() {
     },
   );
 
-  // ── Changing the language, in place ──────────────────────────────────────
-  // Chip Hippo NEVER reloads the window — an unsaved project lives only in
-  // memory, so a reload would throw the user's work away to change a label. So
-  // a language change is applied to the chrome that is already on screen.
-  //
-  // Only PERSISTENT chrome needs this. Everything transient — every dialog,
-  // context menu, popover, notification and the palette's own part rows — is
-  // built when it opens and therefore speaks the current language for free; the
-  // native menu bar is main's, and it rebuilds itself off the same setting.
-  // What is left is this toolbar, the docked panels, and the window title.
-  //
-  // Three of these are relabel functions the app ALREADY had, for their own
-  // reasons: `setMode`, `updateLocateIcon` and `onTransportChange` each own a
-  // button whose label depends on state, so re-running them with the state
-  // unchanged is exactly a relabel. `refreshAiReady` is the same for the AI
-  // segment, whose tooltip is either the description or the reason it is off.
-  const relabelChrome = () => {
-    header.header.setAttribute("aria-label", t("app.header"));
-    header.iconBtn.title = t("app.about");
-    header.iconBtn.setAttribute("aria-label", t("app.about"));
-    header.settingsBtn.title = t("app.settings");
-    header.settingsBtn.setAttribute("aria-label", t("app.openSettings"));
-
-    desk.setAttribute("aria-label", t("app.desk"));
-    hint.textContent = t("app.deskHint");
-    schematicViewport.setAttribute("aria-label", t("app.schematic"));
-
-    filePill.setAttribute("aria-label", t("toolbar.file.group"));
-    for (const [btn, label, title, params] of [
-      [fileNewBtn, "new", "newTitle", { accel: accel("N") }],
-      [fileOpenBtn, "open", "openTitle", { accel: accel("O") }],
-      [fileSaveBtn, "save", "saveTitle", { accel: accel("S") }],
-      [fileSaveAsBtn, "saveAs", "saveAsTitle", { accel: accel("S", true) }],
-    ]) {
-      btn.setAttribute("aria-label", t(`toolbar.file.${label}`));
-      btn.title = t(`toolbar.file.${title}`, params);
-    }
-
-    toolPill.setAttribute("aria-label", t("toolbar.tools.group"));
-    wireBtn.title = t("toolbar.wire.title");
-    wireBtn.querySelector("span:not(.wire-color-dot)").textContent =
-      t("toolbar.wire.label");
-    busBtn.title = t("toolbar.bus.title");
-    busBtn.querySelector("span:not(.bus-width-badge)").textContent =
-      t("toolbar.bus.label");
-    for (const [btn, key, params] of [
-      [fadeBtn, "fade", null],
-      [probeBtn, "probe", null],
-      [scopeBtn, "analyzer", { mod: MOD_KEY }],
-      [guideBtn, "bom", { mod: MOD_KEY }],
-    ]) {
-      btn.setAttribute("aria-label", t(`toolbar.${key}.label`));
-      btn.title = t(`toolbar.${key}.title`, params ?? undefined);
-    }
-    aiBtn.setAttribute("aria-label", t("toolbar.ai.label"));
-    updateLocateIcon(); // Fit / Zoom-out-fully, whichever it is showing
-    setMode(mode); // Breadboard ⇄ Schematic, whichever it would go to
-    refreshAiReady(); // the description, or the reason the segment is off
-
-    transportPill.setAttribute("aria-label", t("toolbar.transport.group"));
-    stepBtn.textContent = `⇥ ${t("toolbar.transport.step")}`;
-    stepBtn.title = t("toolbar.transport.stepTitle");
-    speedBtn.title = t("toolbar.transport.speedTitle");
-    pauseBtn.title = t("toolbar.transport.pauseTitle");
-    onTransportChange(transportMode); // Run/Stop + Pause/Resume text and titles
-
-    // The docked panels and the surfaces each own their own chrome, so each
-    // re-renders its own rather than app.js reaching into them.
-    palette.relocalize();
-    projectTabs.relocalize();
-    buildGuide.relocalize();
-    scopeView.relocalize();
-    aiPanel.relocalize();
-    zoomControl.relocalize();
-    deskLock.relocalize();
-    schematicView.relocalize();
-    updateTitle();
-  };
+  // Changing the language, in place — see createRelabeller.
+  const relabelChrome = createRelabeller({
+    header,
+    desk,
+    hint,
+    schematicViewport,
+    filePill,
+    fileButtons,
+    toolPill,
+    transportPill,
+    buttons: { wireBtn, busBtn, fadeBtn, probeBtn, scopeBtn, guideBtn, aiBtn, stepBtn, speedBtn, pauseBtn }, // prettier-ignore
+    panels: [
+      palette,
+      projectTabs,
+      buildGuide,
+      scopeView,
+      aiPanel,
+      () => zoomControl,
+      () => deskLock,
+      () => schematicView,
+    ],
+    // Four relabel functions the app ALREADY had, for their own reasons: each
+    // owns a control whose label depends on state, so re-running it with the
+    // state unchanged IS a relabel.
+    restate: [
+      updateLocateIcon, // Fit / Zoom-out-fully, whichever it is showing
+      () => setMode(mode), // Breadboard ⇄ Schematic, whichever it would go to
+      refreshAiReady, // the description, or the reason the segment is off
+      () => onTransportChange(transportMode), // Run/Stop, Pause/Resume
+      updateTitle,
+    ],
+  });
 
   // ── Settings (About / Settings dialogs + live application) ────────────────
   // The Settings dialog is deliberately dumb: it broadcasts a patch, and this
@@ -1747,4 +1911,12 @@ async function init() {
 // left a blank (or half-built) window and a menu bar whose items did nothing,
 // with no record anywhere of why. The rejected build could not have said what
 // went wrong even if someone had been watching.
-init().catch((err) => console.error("[renderer] app failed to start:", err));
+//
+// EXPORTED so a test can wait for the boot it just started. Importing this
+// module IS starting the app — there is no second entry point and nothing here
+// is called twice — so `booted` is the handle on the run already under way,
+// which is what app-boot.test.js awaits before asserting the shell is up. The
+// app itself never reads it; index.html loads this file for its side effect.
+export const booted = init().catch((err) =>
+  console.error("[renderer] app failed to start:", err),
+);

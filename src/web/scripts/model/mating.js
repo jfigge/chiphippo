@@ -54,8 +54,18 @@ export function boardRect(board) {
  * fails by 10^-15 of a millimetre is a kit that silently comes apart into
  * separate groups, so the test is a tolerance: far under a hole's own size, far
  * over any accumulation of float error.
+ *
+ * EXPORTED because "are these two edges flush?" is asked in two places and they
+ * MUST agree. desk-doc.js's `rectsOverlap` asks the same question from the
+ * other side — a flush pair must not read as an INTERSECTING one — and it used
+ * a bare `<`, which is only equivalent while the arithmetic is exact. It is
+ * not: a rail at y -9.03 ends at -5.529999999999999 and the board it is flush
+ * against begins at -5.53, so the two overlapped by 8.9×10^-16 and
+ * `normalizeDocument` DELETED the board on load, cascading away everything
+ * seated on it. Two copies of the same tolerance would have drifted the same
+ * way; one constant cannot.
  */
-const FLUSH_EPS = 1e-6;
+export const FLUSH_EPS = 1e-6;
 
 const near = (a, b) => Math.abs(a - b) <= FLUSH_EPS;
 

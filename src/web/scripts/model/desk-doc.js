@@ -54,6 +54,7 @@ import {
 import { partDef } from "../catalog/index.js";
 import {
   boardRect as outlineRect,
+  FLUSH_EPS,
   matingEdge,
   snapCorrection,
 } from "./mating.js";
@@ -766,12 +767,35 @@ export function normalizeDocument(raw) {
 }
 
 /** Strict rect overlap — boards may touch edge-to-edge but not intersect. */
+/**
+ * Do two rects INTERSECT — as opposed to merely touching?
+ *
+ * The distinction is the whole point: strips are MEANT to sit flush (a kit is
+ * `rail · pins · rail`, dovetailed edge to edge), so an overlap test that
+ * counted a shared edge would refuse every legal breadboard. A bare `<` gets
+ * that right only when the arithmetic is exact — and vertical geometry is
+ * MEASURED, not lattice (board-types.js), so it is not. A rail at y -9.03 is
+ * 3.50 tall and ends at -5.529999999999999; the pin-board flush under it begins
+ * at -5.53. Strictly, those overlap. By 8.9×10^-16.
+ *
+ * That is not a rounding curiosity — it is silent data loss, because
+ * `normalizeDocument` DROPS an overlapping board and cascades away every part
+ * seated on it and every wire touching it. It struck about one flush joint in
+ * six (only the pairs whose sum happens to round the wrong way), and Fit's
+ * whole-desk recentre re-rolls the dice on every load, so a different board
+ * vanished each time.
+ *
+ * So the test carries `mating.js`'s own FLUSH_EPS, which exists for exactly
+ * this and is imported rather than restated. An "overlap" thinner than 10^-6 of
+ * a pitch (2.5 nanometres) is two strips touching; a real one is at least 0.01,
+ * the quantum a board coordinate is held to.
+ */
 function rectsOverlap(a, b) {
   return (
-    a.x < b.x + b.width &&
-    b.x < a.x + a.width &&
-    a.y < b.y + b.height &&
-    b.y < a.y + a.height
+    a.x < b.x + b.width - FLUSH_EPS &&
+    b.x < a.x + a.width - FLUSH_EPS &&
+    a.y < b.y + b.height - FLUSH_EPS &&
+    b.y < a.y + a.height - FLUSH_EPS
   );
 }
 

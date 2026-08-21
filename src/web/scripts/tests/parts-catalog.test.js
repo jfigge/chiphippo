@@ -137,6 +137,70 @@ test("sw-toggle: bridges while on; on persists in params", () => {
   assert.deepEqual(def.normalizeParams({}), { on: false });
 });
 
+// ── The click-toggle contract ───────────────────────────────────────────────
+// `clickToggle` is BOTH the behaviour and the flag: DeskController asks whether
+// the function is there to decide whether a part flips under the finger at all
+// (clickTogglingPart), so a def that declares one is making a promise about
+// what a click does. It replaced a hand-kept Set of six refs beside a
+// three-way `ref ===` ladder in the view — the arrangement that lets a
+// seventh switch be added and simply not respond, with nothing to catch it.
+
+test("clickToggle: exactly the parts that flip under a click declare one", () => {
+  const declared = PART_DEFS.filter(
+    (d) => typeof d.clickToggle === "function",
+  ).map((d) => d.id);
+  assert.deepEqual(
+    declared.sort(),
+    ["sw-dip1", "sw-dip2", "sw-dip4", "sw-dip8", "sw-slide", "sw-toggle"],
+    "a part that flips on a plain click declares clickToggle, and only those " +
+      "do — a momentary button is transient state, not a durable param",
+  );
+  // Nothing whose position is momentary or read-only may claim one.
+  assert.equal(partDef("sw-push").clickToggle, undefined);
+  assert.equal(partDef("led").clickToggle, undefined);
+});
+
+test("clickToggle: the patch is a real flip, and round-trips through normalizeParams", () => {
+  for (const def of PART_DEFS.filter(
+    (d) => typeof d.clickToggle === "function",
+  )) {
+    const start = def.normalizeParams({});
+    // A bank needs the index of the position pressed; everything else ignores it.
+    const index = def.switchBank ? 0 : null;
+    const patch = def.clickToggle(start, index);
+    assert.ok(patch, `${def.id}: a click on a live position must do something`);
+    const once = def.normalizeParams({ ...start, ...patch });
+    assert.notDeepEqual(once, start, `${def.id}: the click must change state`);
+    // And it is an involution: two clicks are where you began.
+    const twice = def.normalizeParams({
+      ...once,
+      ...def.clickToggle(once, index),
+    });
+    assert.deepEqual(twice, start, `${def.id}: two clicks return to the start`);
+    // The stored array is never aliased — a history snapshot holds the old one.
+    if (def.switchBank) {
+      assert.notEqual(patch.states, start.states);
+      assert.deepEqual(start.states, def.normalizeParams({}).states);
+    }
+  }
+});
+
+test("clickToggle: a bank answers null for a press that names no position", () => {
+  // The body between two actuators is a drag handle, not a switch — the one
+  // case where a click on a click-toggling part changes nothing, and it has to
+  // say so rather than flipping position 0 by default.
+  const def = partDef("sw-dip4");
+  const params = def.normalizeParams({});
+  for (const miss of [null, undefined, -1, 4, 99, 1.5, "0", NaN]) {
+    assert.equal(
+      def.clickToggle(params, miss),
+      null,
+      `sw-dip4: index ${String(miss)} names no position`,
+    );
+  }
+  assert.ok(def.clickToggle(params, 3), "the last real position still flips");
+});
+
 test("sw-dip1/2/4/8: DIP switch banks — package, pins, and switch-pair bridges", () => {
   for (const [id, n] of [
     ["sw-dip1", 1],
