@@ -350,7 +350,7 @@ test("resolves PSU terminal endpoints (and drag overrides)", () => {
   assert.ok(d.startsWith(`M ${102 * PX_PER_UNIT} ${14 * PX_PER_UNIT} `), d);
 });
 
-test("a selected bus lead renders over the ribbon body; releasing restores order", () => {
+test("a highlighted wire renders last; releasing restores document order", () => {
   resetDom();
   const layer = document.createElement("div");
   document.body.append(layer);
@@ -413,14 +413,42 @@ test("a selected bus lead renders over the ribbon body; releasing restores order
   wires.setSelected(null);
   assert.deepEqual(order(), before, "releasing drops it back into place");
 
-  // A NON-member wire's selection is a pure class toggle — no reordering.
+  // A LOOSE wire is lifted by the same rule — highlighting one is how you
+  // trace it, and a run crossing under six others is exactly the run worth
+  // pointing at, ribbon or no ribbon.
   wires.setSelected(loose);
-  assert.deepEqual(order(), before, "a loose wire never reorders");
+  const one = order();
+  assert.equal(
+    one.filter((k) => k.startsWith("wire:")).at(-1),
+    `wire:${loose}`,
+    "the highlighted wire draws after every other wire",
+  );
+  assert.ok(
+    one.indexOf(`wire:${loose}`) > one.indexOf("cover"),
+    "and over the ribbon body it would otherwise pass under",
+  );
+  assert.ok(
+    one.indexOf(`wire:${loose}`) < one.indexOf("handle"),
+    "but still under the end handles",
+  );
   assert.ok(
     layer
       .querySelector(`.wire[data-wire-id="${loose}"]`)
       .classList.contains("wire--selected"),
   );
+  wires.setSelected(null);
+  assert.deepEqual(order(), before, "and drops back into document order");
+
+  // A MARQUEE lifts every member, keeping their document order among
+  // themselves — the raise is derived per render, not a stack of appends.
+  wires.setSelectedMany([ids[0], loose]);
+  const many = order();
+  assert.deepEqual(many.filter((k) => k.startsWith("wire:")).slice(-2), [
+    `wire:${ids[0]}`,
+    `wire:${loose}`,
+  ]);
+  wires.setSelectedMany([]);
+  assert.deepEqual(order(), before, "clearing restores every slot");
 });
 
 test("setFaded cuts each wire back to two masked stubs, and back", () => {

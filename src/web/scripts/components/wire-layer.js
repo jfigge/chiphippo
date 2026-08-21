@@ -30,6 +30,17 @@
 // it; a BUS MEMBER is the one exception, and it goes the other way — its leads
 // belong to the ribbon and win over any routing it carries.
 //
+// HIGHLIGHTED (setSelected/setSelectedMany): a picked wire draws LAST, over
+// every wire and every ribbon body laid after it, because picking one is how
+// you trace it and a run buried under a dozen later wires is exactly the run
+// worth pointing at. Order is derived per render, so dropping the highlight
+// drops the wire straight back into its document-order slot. That is also the
+// only thing left to do with a wire while the circuit RUNS: the topology is
+// frozen, so nothing here can be dragged, bent or re-routed, and app.css
+// (.desk-viewport--running) puts the affordances that would say otherwise
+// away — a routed wire's knobs stay hidden however it is hovered or picked,
+// and its body drops the grab cursor.
+//
 // FADED (the toolbar's "Fade wires" toggle, setFaded): a dense board can end
 // up buried under its own wiring, so every wire can be cut back to a short stub
 // off each end that ramps away to nothing in between — enough to read where a
@@ -120,7 +131,6 @@ export class WireLayer {
   #busDrag = null; // { busId, memberIds:Set, end:"from"|"to"|null, dx, dy (px), legal } dragging a bus (or one end of it)
   #partDrag = null; // { shifts: Map<wireId, {from?, to? (ADDRESS), points?:{dx,dy}}>, legal } — wires riding a part drag
   #dragShift = []; // [{ el, illegal }] a RIGID bus drag translates — see setBusDrag
-  #memberIds = new Set(); // wires that drew as a bus lead last render (see #raisedIds)
 
   /**
    * @param {HTMLElement} layer - the `.layer-wires` element.
@@ -257,20 +267,24 @@ export class WireLayer {
     //      paints OVER the base of every lead, right where the spread points
     //      meet the collar line, so the leads read as entering a solid body
     //      instead of just touching its edge — real IDC ribbon cable.
-    //   4. any SELECTED member lead, lifted back over that body (`raised`) —
-    //      a lead is only ~a collar setback long, so with the ribbon painted
-    //      on top there was barely any of it left to show a selection on.
-    //      SVG has no z-index, so "on top" is DOM order and a selection
-    //      change has to re-render (setSelectedMany). Deselecting drops the
-    //      lead straight back into its document-order slot, since order here
-    //      is derived per render, never mutated in place.
+    //   4. any SELECTED wire, lifted over everything drawn so far (`raised`).
+    // Highlighting a wire is how you TRACE one, so the highlighted wire draws
+    // last: on a dense board a run disappears under the dozen wires laid after
+    // it, and the pick that was supposed to point it out is the very thing
+    // buried. It matters most for a bus lead, which is only ~a collar setback
+    // long and had the ribbon body painted over nearly all of it, but a loose
+    // wire crossing under six others has the same problem. SVG has no
+    // z-index, so "on top" is DOM order and a selection change has to
+    // re-render (setSelectedMany). Deselecting drops every wire straight back
+    // into its document-order slot, since order here is DERIVED per render,
+    // never mutated in place.
     // End handles render LAST of all (topmost — a smaller, more specific
     // target should never lose to whatever's drawn on top of it), which is
-    // also why `raised` goes UNDER them rather than truly last: the ribbon
-    // body is what hid the selection, and the body is pointer-inert, so
-    // lifting a lead over it costs nothing — lifting it over the handles too
-    // would hand a member's hit stroke priority over the handle at the collar,
-    // the exact ambiguity WireTools#nearOwnBusHandle exists to settle.
+    // also why `raised` goes UNDER them rather than truly last: what hid the
+    // selection is the ribbon body, which is pointer-inert, so lifting a wire
+    // over it costs nothing — lifting it over the handles too would hand a
+    // member's hit stroke priority over the handle at the collar, the exact
+    // ambiguity WireTools#nearOwnBusHandle exists to settle.
     // While FADED only the collars survive that: the leads still aim at where
     // the ribbon runs, but the band, the body and the handles are all put away
     // (`ribbons` below), so there is nothing left to paint over a lead or to
@@ -307,9 +321,6 @@ export class WireLayer {
       bandCovers.push(bandCover);
       endHandles.push(...handles);
     }
-    // Which wires' selection has to lift them over the ribbon body (see
-    // #raisedIds / setSelectedMany) — none while faded: there is no body.
-    this.#memberIds = ribbons ? new Set(wireCollars.keys()) : new Set();
 
     for (const wire of wires) {
       // #wireEnds already applies a part drag's riding shift (by address).
@@ -433,9 +444,9 @@ export class WireLayer {
       if (draggingBus && rigidBus) {
         this.#dragShift.push({ el: group, illegal: "wire-preview--illegal" });
       }
-      // A selected bus lead is held back and re-appended over the ribbon body
-      // (pass 4 above); everything else keeps its document-order slot.
-      if (collars && selected) raised.push(group);
+      // A HIGHLIGHTED wire is held back and re-appended over everything else
+      // (pass 4 above); every other wire keeps its document-order slot.
+      if (selected) raised.push(group);
       else this.#svg.append(group);
     }
     for (const cover of bandCovers) this.#svg.append(cover);
@@ -822,38 +833,15 @@ export class WireLayer {
   setSelectedMany(ids) {
     const next = new Set(ids);
     if (sameSet(this.#selectedIds, next)) return;
-    // Two selection changes are more than a class toggle, and both have to
-    // rebuild — which is why this doesn't just always re-render: selection is
-    // committed once per click/marquee gesture, but render() rebuilds every
-    // wire in the document.
-    //   · a BUS LEAD changes render order — render() lifts it over the ribbon
-    //     body that would otherwise paint over nearly all of it, and drops it
-    //     back into document order when the selection is released;
-    //   · while FADED, a wire's selection changes its geometry (the stub path
-    //     and its mask come off, so the whole run shows and the whole run is
-    //     clickable again).
-    const wasRaised = this.#raisedIds(this.#selectedIds);
     this.#selectedIds = next;
-    if (this.#faded || !sameSet(wasRaised, this.#raisedIds(next))) {
-      this.render();
-      return;
-    }
-    for (const group of this.#svg.querySelectorAll(".wire")) {
-      group.classList.toggle(
-        "wire--selected",
-        this.#selectedIds.has(group.dataset.wireId),
-      );
-    }
-  }
-
-  /** Which of `selectedIds` drew as a bus lead last render — the wires whose
-      selection has to lift them over the ribbon body. */
-  #raisedIds(selectedIds) {
-    const raised = new Set();
-    for (const id of selectedIds) {
-      if (this.#memberIds.has(id)) raised.add(id);
-    }
-    return raised;
+    // A selection change is more than a class toggle here — it is a change of
+    // PAINT ORDER (render lifts every highlighted wire last, and dropping the
+    // highlight puts it back in document order), and while FADED it is a
+    // change of GEOMETRY too (the stub path and its mask come off, so the
+    // whole run shows and the whole run is clickable again). Both are derived
+    // per render, so a re-render is the only way to apply either — and one
+    // per click/marquee gesture is what this costs.
+    this.render();
   }
 
   /** Highlight one bus band (null clears). Survives re-renders. */

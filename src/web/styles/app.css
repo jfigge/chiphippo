@@ -1800,6 +1800,24 @@
   stroke: var(--color-danger);
 }
 
+/* While the circuit RUNS the wiring is frozen — no drag can start on a wire,
+   no bend can be inserted, no wire menu opens — so the affordances that say
+   otherwise go away with it: a routed wire's waypoint knobs stay hidden
+   however it is hovered or picked (a knob is a grab target, and there is
+   nothing to grab), and its body drops the grab cursor for the plain arrow
+   .desk-viewport--running already sets. Both selectors deliberately outrank
+   the rules above by DEPTH rather than by document order, so neither can be
+   undone by a later addition to this block. Picking a wire still HIGHLIGHTS
+   it — that is the one thing left to do with one, and WireLayer draws the
+   picked wire last so its whole run reads over everything it passes under. */
+.desk-viewport--running .wire .wire-point {
+  opacity: 0;
+}
+
+.desk-viewport--running .wire--routed .wire-hit {
+  cursor: default;
+}
+
 /* Rubber-band preview while a wire is pending. */
 .wire-preview {
   opacity: 0.75;

@@ -179,3 +179,61 @@ test("an ENDPOINT drag released into a running circuit reverts too", () => {
 
   assert.equal(doc.getWire("w1").from, "bb1.a10", "the end did not re-route");
 });
+
+// ── The run lock, from the other end: a gesture that never STARTS ────────────
+//
+// The two above are about a drag already in flight when Run arrives. These are
+// the ordinary case — the circuit is already running when the wire is pressed
+// — and they pin what run mode leaves behind: the wire is LOCKED (no bend, no
+// re-route, no menu) but still HIGHLIGHTS, because tracing a run is the one
+// thing left to do with a wire while the topology is frozen.
+
+test("a press on a routed wire while RUNNING starts no bend at all", () => {
+  resetDom();
+  const scene = routedScene();
+  scene.controller.setEditingLocked(true);
+
+  beginBend(scene);
+  // A bend that started would have selected the wire on the PRESS (see
+  // WireTools#beginPointDrag) — nothing did, so no gesture owns the pointer.
+  assert.equal(scene.controller.selectedId, null, "the press started nothing");
+  release(scene.surface);
+
+  assert.equal(bends(scene.doc), 0, "and nothing was written");
+});
+
+test("but a click still highlights it, and the highlight draws last", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { surface, controller } = makeDesk(doc, world);
+  controller.addBoardAt("pins-full", 0, 0);
+  doc.addWire({ from: "bb1.a10", to: "bb1.a20" });
+  doc.addWire({ from: "bb1.a12", to: "bb1.a22" });
+  controller.loadDocument(doc.toJSON());
+  controller.setEditingLocked(true);
+
+  const order = () =>
+    [...wireSvg(surface).children]
+      .map((el) => el.dataset.wireId)
+      .filter(Boolean);
+  assert.deepEqual(order(), ["w1", "w2"], "document order to start with");
+
+  wireBody(surface, "w1").dispatchEvent(
+    new window.MouseEvent("click", { bubbles: true, button: 0 }),
+  );
+
+  assert.equal(
+    controller.selectedId,
+    "w1",
+    "the wire highlights while running",
+  );
+  assert.deepEqual(order(), ["w2", "w1"], "and is drawn over the one after it");
+
+  controller.deselect();
+  assert.deepEqual(
+    order(),
+    ["w1", "w2"],
+    "dropping it restores document order",
+  );
+});
