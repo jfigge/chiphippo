@@ -1774,10 +1774,15 @@ async function init() {
 
   // The derived schematic (Feature 150): the same document as chip symbols +
   // routed nets. Symbol nudges and the auto-layout reset commit through the
-  // controller so they ride the one undo/redo seam.
+  // controller so they ride the one undo/redo seam. It gets its OWN netlist,
+  // partitioned by WIRING alone (the L4 verifier's `bridges: false` argument):
+  // a schematic draws what the build CONNECTED, and the conducting netlist the
+  // probe wants would merge a closed switch's input net into its rail —
+  // redrawing the whole input stage as power stubs whenever a switch is left
+  // thrown, and moving its pull resistors into the chip's column.
   schematicView = new SchematicView(schematicViewport, {
     doc: deskDoc,
-    netlist: netlistCache,
+    netlist: new NetlistCache(deskDoc, { bridges: false }),
     onSetSchematicPos: (id, x, y) => controller.setSchematicPos(id, x, y),
     onAutoLayout: () => controller.autoLayoutSchematic(),
   });

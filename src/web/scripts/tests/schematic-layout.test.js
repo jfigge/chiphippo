@@ -183,6 +183,77 @@ test("a bus bit wired to a single ungrouped pin still routes a connecting edge",
   assert.ok(edge.segments.flat().length >= 2, "the edge has real geometry");
 });
 
+test("a series LED resistor lands between its chip and its LED", () => {
+  const doc = {
+    components: [
+      { id: "c1", ref: "74LS00", board: "bb1" },
+      { id: "l1", ref: "led", board: "bb1" },
+      { id: "r1", ref: "resistor", board: "bb1" },
+    ],
+  };
+  // c1 1Y → resistor → LED anode; the LED never touches the chip directly.
+  const nl = netlistOf([
+    net("n1", [pin("c1", 3, "output"), pin("r1", 1, "lead")]),
+    net("n2", [pin("r1", 2, "lead"), pin("l1", 1, "anode")]),
+  ]);
+  const out = layout(doc, nl);
+  const x = (id) => out.nodes.find((n) => n.id === id).x;
+  assert.ok(x("r1") > x("c1"), "the resistor sits right of its driving chip");
+  assert.ok(x("l1") > x("r1"), "the LED sits right of its series resistor");
+});
+
+test("a pull resistor sits with its switch, left of the chip input", () => {
+  const doc = {
+    components: [
+      { id: "c1", ref: "74LS00", board: "bb1" },
+      { id: "r1", ref: "resistor", board: "bb1" },
+      { id: "s1", ref: "sw-slide", board: "bb1" },
+    ],
+  };
+  // The input net joins the chip input, the switch contact and the pull; the
+  // pull's other leg is on a rail (a power net, which must not steer it).
+  const nl = netlistOf([
+    net("n1", [
+      pin("c1", 1, "input"),
+      pin("r1", 1, "lead"),
+      pin("s1", 2, "common"),
+    ]),
+    net("gnd", [pin("r1", 2, "lead")], { rails: ["bb1.t-"] }),
+  ]);
+  const out = layout(doc, nl);
+  const node = (id) => out.nodes.find((n) => n.id === id);
+  assert.ok(node("r1").x < node("c1").x, "the pull conditions the INPUT side");
+  assert.equal(node("r1").x, node("s1").x, "pull and switch share the column");
+});
+
+test("a bank of LEDs folds into sub-columns: the diagram reads wider than tall", () => {
+  const components = [{ id: "c1", ref: "74LS00", board: "bb1" }];
+  const netList = [];
+  for (let i = 0; i < 16; i++) {
+    const id = `l${String(i).padStart(2, "0")}`;
+    components.push({ id, ref: "led", board: "bb1" });
+    netList.push(
+      net(`n${String(i).padStart(2, "0")}`, [
+        pin("c1", 3, "output"),
+        pin(id, 1, "anode"),
+      ]),
+    );
+  }
+  const out = layout({ components }, netlistOf(netList));
+  const chip = out.nodes.find((n) => n.id === "c1");
+  for (const n of out.nodes) {
+    if (n.id !== "c1") assert.ok(n.x > chip.x, `${n.id} sinks right`);
+  }
+  // The LEDs fold side by side rather than stacking into one huge column.
+  const xs = new Set(out.nodes.filter((n) => n.id !== "c1").map((n) => n.x));
+  assert.ok(xs.size > 1, "the LED column folded into sub-columns");
+  const b = out.bounds;
+  assert.ok(
+    b.maxX - b.minX > b.maxY - b.minY,
+    `wider than tall (${(b.maxX - b.minX).toFixed(1)} × ${(b.maxY - b.minY).toFixed(1)})`,
+  );
+});
+
 test("a schematicPos hint pins a symbol and reflows only its edges", () => {
   const doc = chipsDoc(["c1", "c2"]);
   const nl = netlistOf([

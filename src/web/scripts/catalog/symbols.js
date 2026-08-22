@@ -216,6 +216,28 @@ function partPinSide(role) {
 /** A box symbol for a many-pinned discrete (a display / resistor array). */
 function buildPartBox(def) {
   const sides = { left: [], right: [], top: [], bottom: [] };
+  if (def.switchBank) {
+    // A DIP bank reads as its n SWITCHES: pole k's A contact on the left row
+    // paired with its B contact on the right (pin i faces pin 2n+1-i, the
+    // same pairing internalBridges closes) — not 2n "contact" pins down one
+    // edge, which drew an 8-position bank twice as tall as a 14-pin chip.
+    const byPin = new Map(def.pins.map((p) => [p.n, p]));
+    const n = def.pins.length / 2;
+    for (let i = 1; i <= n; i++) {
+      const a = byPin.get(i);
+      const b = byPin.get(2 * n + 1 - i);
+      sides.left.push({ kind: "pin", pin: a.n, name: a.name, role: a.role });
+      sides.right.push({ kind: "pin", pin: b.n, name: b.name, role: b.role });
+    }
+    return {
+      id: def.id,
+      label: def.id,
+      title: def.title,
+      kind: "box",
+      glyph: null,
+      sides,
+    };
+  }
   for (const p of def.pins) {
     sides[partPinSide(p.role)].push({
       kind: "pin",

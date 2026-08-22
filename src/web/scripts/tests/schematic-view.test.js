@@ -186,6 +186,33 @@ test("SchematicView tints and highlights from the shared events", () => {
   view.dispose();
 });
 
+test("the schematic carries the desk's zoom cluster, wired to its own camera", () => {
+  resetDom();
+  const viewport = document.createElement("div");
+  document.body.append(viewport);
+  const doc = { toJSON: () => twoChipDoc() };
+  const view = new SchematicView(viewport, {
+    doc,
+    onSetSchematicPos() {},
+    netlist: { get: () => twoChipNetlist() },
+  });
+
+  // Same cluster, same classes — one CSS block serves both viewports.
+  const readout = viewport.querySelector(".desk-zoom .desk-zoom-readout");
+  const [outBtn, inBtn] = viewport.querySelectorAll(".desk-zoom-btn");
+  assert.ok(readout && outBtn && inBtn, "−/readout/+ mounted in the viewport");
+  assert.equal(readout.textContent, "90%", "mirrors the initial camera");
+
+  inBtn.click();
+  const zoomed = readout.textContent;
+  assert.notEqual(zoomed, "90%", "+ zooms the schematic camera");
+
+  readout.click();
+  assert.equal(readout.textContent, "100%", "the readout resets the zoom");
+
+  view.dispose();
+});
+
 test("dragging a symbol commits a schematicPos nudge", () => {
   resetDom();
   const viewport = document.createElement("div");

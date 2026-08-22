@@ -36,6 +36,7 @@ import { layout } from "../model/schematic-layout.js";
 import { formatOhms } from "../model/ohm-format.js";
 import { DeskView } from "./desk-view.js";
 import { NetlistCache } from "./netlist-cache.js";
+import { ZoomControl } from "./zoom-control.js";
 
 function svgText(text, x, y, cls, size, anchor = "middle") {
   const t = svgEl("text", {
@@ -508,6 +509,7 @@ export function applyHighlight(svg, netId) {
 export class SchematicView {
   #viewport;
   #deskView;
+  #zoomControl;
   #doc;
   #netlist;
   #onSetSchematicPos;
@@ -550,8 +552,20 @@ export class SchematicView {
 
     this.#deskView = new DeskView(viewport, {
       camera: { cx: 0, cy: 0, zoom: 0.9 },
+      onViewportChange: (camera) => this.#zoomControl?.setZoom(camera.zoom),
     });
     this.#deskView.surface.classList.add("schematic-surface");
+
+    // The same bottom-right zoom cluster the desk carries: this view keeps its
+    // OWN camera, so it keeps its own readout of it (the callback above fires
+    // for the wheel, the ⌥⌘ keys and fit() alike). Owned here, not by app.js,
+    // because the DeskView it mirrors is owned here.
+    this.#zoomControl = new ZoomControl(viewport, {
+      onZoomIn: (opts) => this.#deskView.zoomIn(opts),
+      onZoomOut: (opts) => this.#deskView.zoomOut(opts),
+      onReset: () => this.#deskView.resetZoom(),
+    });
+    this.#zoomControl.setZoom(this.#deskView.camera.zoom);
 
     this.#hint = el("p", {
       class: "schematic-hint",
@@ -592,6 +606,7 @@ export class SchematicView {
     this.#hint.textContent = t("schematic.hint");
     const auto = this.#hint.parentElement?.querySelector(".schematic-tool-btn");
     if (auto) auto.textContent = t("schematic.autoLayout");
+    this.#zoomControl.relocalize();
     this.#render();
   }
 

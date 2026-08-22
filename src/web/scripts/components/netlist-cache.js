@@ -30,12 +30,20 @@ import { buildNetlist } from "../sim/netlist.js";
 
 export class NetlistCache {
   #doc;
+  #bridges;
   #partStates = new Map(); // componentId → transient state ({ pressed })
   #cached = null; // { netOfPoint, nets } or null when dirty
 
-  /** @param {import('../model/desk-doc.js').DeskDoc} deskDoc */
-  constructor(deskDoc) {
+  /**
+   * @param {import('../model/desk-doc.js').DeskDoc} deskDoc
+   * @param {{bridges?: boolean}} [options] `bridges: false` caches the
+   *   WIRING-ONLY partition (every contact open, whatever its position) — the
+   *   schematic's netlist, which must draw the input stage the build wired
+   *   rather than redraw itself around whichever way a switch happens to sit.
+   */
+  constructor(deskDoc, { bridges = true } = {}) {
     this.#doc = deskDoc;
+    this.#bridges = bridges;
     window.addEventListener("chiphippo:doc-changed", () => {
       this.#cached = null;
     });
@@ -52,7 +60,9 @@ export class NetlistCache {
   /** The current netlist, rebuilt if a change invalidated it. */
   get() {
     if (!this.#cached) {
-      this.#cached = buildNetlist(this.#doc.toJSON(), this.#partStates);
+      this.#cached = buildNetlist(this.#doc.toJSON(), this.#partStates, {
+        bridges: this.#bridges,
+      });
     }
     return this.#cached;
   }
