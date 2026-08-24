@@ -120,6 +120,10 @@
       "title": "Buswerkzeug — mehrere Drähte in einer Bewegung legen (B)",
       "widthLabel": "Busbreite"
     },
+    "route": {
+      "label": "Drähte automatisch verlegen",
+      "title": "Drähte automatisch verlegen – jeden Draht als platinenparallelen Verlauf um die Bauteile herum neu zeichnen"
+    },
     "fade": {
       "label": "Drähte ausblenden",
       "title": "Drähte ausblenden — nur ein Stummel an jedem Ende, damit das Steckbrett lesbar bleibt (H)"
@@ -784,6 +788,23 @@
   "desk": {
     "lockWheel": "Arbeitsfläche sperren — das Mausrad bewegt sie nicht mehr ({mod}+L)",
     "unlockWheel": "Arbeitsfläche entsperren — das Mausrad bewegt sie wieder ({mod}+L)",
+    "autoRouteWorking": "Verlege Drähte…",
+    "autoRouteRound": "Verlege Drähte… Runde {round}, {done} von {total}",
+    "autoRouteTidying": "Optimiere… Durchgang {pass} von {passes}",
+    "autoRouteDone": {
+      "one": "{count} Draht verlegt.",
+      "other": "{count} Drähte verlegt."
+    },
+    "autoRoutePartial": {
+      "one": "{count} Draht verlegt; {failed} unverändert – kein gültiger Weg.",
+      "other": "{count} Drähte verlegt; {failed} unverändert – kein gültiger Weg."
+    },
+    "autoRouteMoved": {
+      "one": "{count} Draht in ein besseres Loch derselben Verbindung versetzt.",
+      "other": "{count} Drähte in bessere Löcher derselben Verbindungen versetzt."
+    },
+    "autoRouteCancelled": "Verlegen abgebrochen – die Verdrahtung ist unverändert.",
+    "autoRouteStale": "Der Tisch hat sich während des Verlegens geändert – nichts wurde übernommen.",
     "hover": {
       "pin": "{ref} Pin {pin} · {name} → {address}",
       "floating": "unbeschaltet",

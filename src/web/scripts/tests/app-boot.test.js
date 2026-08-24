@@ -161,8 +161,8 @@ test("the File pill offers New / Open / Save / Save As, each its own segment", (
 test("the desk-tool pill is built in full, and the AI segment is the disabled one", () => {
   const tools = qa("#app-toolbar .toolbar-pill")[1];
   const segments = [...tools.querySelectorAll(".toolbar-pill-btn")];
-  // Wire · Bus · Fade · Probe · Analyzer · Fit · BOM · Schematic · AI.
-  assert.equal(segments.length, 9);
+  // Wire · Bus · Auto-route · Fade · Probe · Analyzer · Fit · BOM · Schematic · AI.
+  assert.equal(segments.length, 10);
   const disabled = segments.filter((b) => b.disabled);
   assert.equal(disabled.length, 1, "only the AI segment starts disabled");
   assert.equal(disabled[0], segments.at(-1), "and it is the pill's last");

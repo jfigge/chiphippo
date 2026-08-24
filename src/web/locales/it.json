@@ -120,6 +120,10 @@
       "title": "Strumento bus — posa più fili con un solo gesto (B)",
       "widthLabel": "Larghezza del bus"
     },
+    "route": {
+      "label": "Instrada i fili automaticamente",
+      "title": "Instrada i fili automaticamente — ridisegna ogni filo come un percorso allineato alla basetta che aggira i componenti"
+    },
     "fade": {
       "label": "Sfuma i fili",
       "title": "Sfuma i fili — disegna solo un tratto a ogni estremità così la breadboard resta leggibile (H)"
@@ -784,6 +788,23 @@
   "desk": {
     "lockWheel": "Blocca il piano di lavoro: la rotellina non lo muove più ({mod}+L)",
     "unlockWheel": "Sblocca il piano di lavoro: la rotellina lo muove di nuovo ({mod}+L)",
+    "autoRouteWorking": "Instradamento…",
+    "autoRouteRound": "Instradamento… giro {round}, {done} di {total}",
+    "autoRouteTidying": "Ripulitura… passata {pass} di {passes}",
+    "autoRouteDone": {
+      "one": "{count} filo instradato.",
+      "other": "{count} fili instradati."
+    },
+    "autoRoutePartial": {
+      "one": "{count} filo instradato; {failed} lasciato com'era — nessun percorso valido.",
+      "other": "{count} fili instradati; {failed} lasciati com'erano — nessun percorso valido."
+    },
+    "autoRouteMoved": {
+      "one": "{count} filo spostato in un foro migliore della stessa connessione.",
+      "other": "{count} fili spostati in fori migliori delle stesse connessioni."
+    },
+    "autoRouteCancelled": "Instradamento annullato — il cablaggio è invariato.",
+    "autoRouteStale": "Il piano di lavoro è cambiato durante l'instradamento — non è stato applicato nulla.",
     "hover": {
       "pin": "{ref} pin {pin} · {name} → {address}",
       "floating": "flottante",

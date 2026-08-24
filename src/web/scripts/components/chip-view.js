@@ -58,6 +58,29 @@ const CHIP_BODY_BOTTOM = -0.45;
 const LEG_WIDTH = 0.28;
 
 /**
+ * A chip's BODY slab alone — `chipBox` without the legs it allows room for.
+ *
+ * The two are not interchangeable, and the auto-router (Feature 360) is why the
+ * distinction has to be exported. `chipBox` reaches 0.6 pitch PAST rows e and f
+ * so the drawn legs have somewhere to be; treat that as the obstacle, inflate it
+ * by a wire's clearance, and row d — the row every wire on a chip's lower node
+ * actually leaves from — closes up, which would make a seated chip unwireable.
+ * The slab is the plastic, and the plastic is what a jumper has to go round.
+ *
+ * The legs need no allowance of their own: each one stands in its own pin's
+ * hole, and a hole with a pin in it is already spoken for.
+ */
+export function chipBodyBox(pkg) {
+  const { halfPins } = packageSpec(pkg);
+  return {
+    minX: -0.6,
+    minY: CHIP_BODY_TOP,
+    width: halfPins - 1 + 1.2,
+    height: CHIP_BODY_BOTTOM - CHIP_BODY_TOP,
+  };
+}
+
+/**
  * Build a chip's complete SVG from its catalog def. Pure DOM construction
  * (unit-testable under jsdom).
  * @param {string} ref - catalog id, e.g. "74LS00"

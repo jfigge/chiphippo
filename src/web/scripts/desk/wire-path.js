@@ -113,6 +113,121 @@ export function wireLength(a, b) {
   return polylineLength(points);
 }
 
+/** Below this, a corner is straight enough that rounding it would only add
+    float noise to the path (radians). */
+const COLLINEAR_EPS = 1e-6;
+
+/**
+ * How far a fillet's arc may depart from the corner it is rounding, as a
+ * multiple of its own radius. Past this the corner is drawn SHARP.
+ *
+ * This is not fussiness, it is the difference between rounding a corner and
+ * deleting one. A circle tangent to both legs touches them `r / tan(θ/2)` from
+ * the apex, which runs away to infinity as the corner sharpens: on a hairpin the
+ * tangent points sit right back at the far ends of both legs, and the "rounded"
+ * path cuts straight across, throwing away half the wire's length and all of its
+ * shape. Bounding the DEVIATION instead of the tangent makes the test purely one
+ * of angle — the radius cancels — and it comes out at about 29°, comfortably
+ * below anything an orthogonal route produces and comfortably above the fold a
+ * hand-placed hairpin makes.
+ */
+const MAX_APEX_DEVIATION = 3;
+
+/** sin(θ/2) must be at least this for a corner to be worth rounding. */
+const MIN_CORNER_SINE = 1 / (MAX_APEX_DEVIATION + 1);
+
+/**
+ * One corner's fillet — the circular arc a real lead turns through instead of
+ * the mathematically sharp corner a polyline states (Feature 360).
+ *
+ * A 1.5 mm jumper cannot be folded to a point, so a routed wire drawn with
+ * square corners is a picture of something nobody can build. `radius` is the
+ * ARC radius; the tangent length it needs is `r / tan(θ/2)` (at a right angle,
+ * exactly `r`), clamped to HALF each adjacent segment so two corners sharing a
+ * short segment can never eat into each other — the clamp `outlinePath` already
+ * applies for the same reason.
+ *
+ * @returns {{start, end, radius, sweep, tangent, arc}|null} null when the corner
+ *   is straight or degenerate, i.e. when there is nothing to round.
+ */
+function cornerFillet(a, p, b, radius) {
+  const l1 = Math.hypot(a.x - p.x, a.y - p.y);
+  const l2 = Math.hypot(b.x - p.x, b.y - p.y);
+  if (!(l1 > 0) || !(l2 > 0) || !(radius > 0)) return null;
+  const u1 = { x: (a.x - p.x) / l1, y: (a.y - p.y) / l1 };
+  const u2 = { x: (b.x - p.x) / l2, y: (b.y - p.y) / l2 };
+  const cos = Math.min(1, Math.max(-1, u1.x * u2.x + u1.y * u2.y));
+  const theta = Math.acos(cos); // the interior angle at p
+  if (theta <= COLLINEAR_EPS || theta >= Math.PI - COLLINEAR_EPS) return null;
+  if (Math.sin(theta / 2) < MIN_CORNER_SINE) return null; // too sharp to round
+  const half = Math.tan(theta / 2);
+  const tangent = Math.min(radius / half, l1 / 2, l2 / 2);
+  if (!(tangent > 0)) return null;
+  // The clamp may have shrunk the tangent, so the radius that actually fits is
+  // read back from it rather than assumed.
+  const r = tangent * half;
+  // Same convention as rect-outline.js: y is down, so a positive cross product
+  // of the incoming and outgoing directions is a clockwise turn.
+  const inDir = { x: -u1.x, y: -u1.y };
+  const sweep = inDir.x * u2.y - inDir.y * u2.x > 0 ? 1 : 0;
+  return {
+    start: { x: p.x + u1.x * tangent, y: p.y + u1.y * tangent },
+    end: { x: p.x + u2.x * tangent, y: p.y + u2.y * tangent },
+    radius: r,
+    sweep,
+    tangent,
+    arc: r * (Math.PI - theta),
+  };
+}
+
+/**
+ * `polylinePath` with every corner rounded to `radius` — what an auto-routed
+ * wire is actually drawn with.
+ *
+ * `radius` is in the SAME units as the points (the wire layer works in world
+ * px, so it passes `BEND_RADIUS_PX`). A radius of 0 gives the plain polyline
+ * back, so a caller that does not care can leave it out.
+ *
+ * @param {Array<{x:number,y:number}>} points
+ * @param {number} [radius]
+ * @returns {string} an SVG `d` attribute
+ */
+export function filletedPolylinePath(points, radius = 0) {
+  if (!(radius > 0) || points.length < 3) return polylinePath(points);
+  let d = `M ${r3(points[0].x)} ${r3(points[0].y)}`;
+  for (let i = 1; i < points.length - 1; i += 1) {
+    const f = cornerFillet(points[i - 1], points[i], points[i + 1], radius);
+    if (!f) {
+      d += ` L ${r3(points[i].x)} ${r3(points[i].y)}`;
+      continue;
+    }
+    d += ` L ${r3(f.start.x)} ${r3(f.start.y)}`;
+    d += ` A ${r3(f.radius)} ${r3(f.radius)} 0 0 ${f.sweep} ${r3(f.end.x)} ${r3(f.end.y)}`; // prettier-ignore
+  }
+  const last = points[points.length - 1];
+  return `${d} L ${r3(last.x)} ${r3(last.y)}`;
+}
+
+/**
+ * The run length of `filletedPolylinePath` — shorter than the bare polyline,
+ * because each rounded corner replaces `2 × tangent` of straight line with an
+ * arc of `radius × (π − θ)` (at a right angle, a saving of about 0.43 × the
+ * radius).
+ *
+ * This exists so `model/wire-length.js` can stay THE one measurement: the BOM's
+ * cutting list and the wire gauge both quote what is drawn, and a drawing that
+ * disagrees with the number beside it is the exact failure that file prevents.
+ */
+export function filletedPolylineLength(points, radius = 0) {
+  let total = polylineLength(points);
+  if (!(radius > 0) || points.length < 3) return total;
+  for (let i = 1; i < points.length - 1; i += 1) {
+    const f = cornerFillet(points[i - 1], points[i], points[i + 1], radius);
+    if (f) total += f.arc - 2 * f.tangent;
+  }
+  return total;
+}
+
 /**
  * Where on a polyline a point lands: the closest point on the closest SEGMENT,
  * as `{ index, point, distance }` — `index` being the segment's own index, so
@@ -257,15 +372,21 @@ function trimPolyline(points, len) {
  * own fade circle) and, as with the curve, always runs past that radius, so its
  * cut edge is already invisible.
  *
+ * `bend` is the corner radius the whole wire is drawn with, so a stub that
+ * turns a corner inside its own fade is rounded exactly as the rest of the run
+ * is — the two halves of one wire must not be drawn to different rules.
+ *
  * @param {Array<{x:number,y:number}>} points - world px, two or more
+ * @param {number} [bend] - corner radius, world px
  * @returns {{d: string, radius: number}}
  */
-export function fadedPolyline(points) {
+export function fadedPolyline(points, bend = 0) {
   const run = polylineLength(points);
   const radius = fadeRadius(run / 2);
   const cut = radius * FADE_OVERCUT;
-  if (run <= cut * 2) return { d: polylinePath(points), radius }; // nothing to cut
+  const path = (p) => filletedPolylinePath(p, bend);
+  if (run <= cut * 2) return { d: path(points), radius }; // nothing to cut
   const head = trimPolyline(points, cut);
   const tail = trimPolyline([...points].reverse(), cut).reverse();
-  return { d: `${polylinePath(head)} ${polylinePath(tail)}`, radius };
+  return { d: `${path(head)} ${path(tail)}`, radius };
 }

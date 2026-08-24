@@ -1701,6 +1701,50 @@
   border-radius: 4px;
 }
 
+/* ── Auto-route debug overlay (Feature 360) ──────────────────────────────────
+   Option-clicking Auto-route leaves the router's own view of the desk behind:
+   the legal region, the bridges off it, the hole-free lanes it discounts, and
+   every obstacle AS INFLATED — the gap between an obstacle's drawn edge and its
+   inflated one is exactly one wire's clearance, which is the thing hardest to
+   picture from the numbers. Pointer-inert like everything else in the overlay. */
+.route-debug {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.route-debug-region {
+  fill: none;
+  stroke: var(--color-accent);
+  stroke-width: 1.5;
+  stroke-dasharray: 6 4;
+  opacity: 0.7;
+}
+
+.route-debug-bridge {
+  fill: var(--color-accent);
+  fill-opacity: 0.07;
+  stroke: var(--color-accent);
+  stroke-width: 1;
+  stroke-dasharray: 3 3;
+}
+
+.route-debug-lane {
+  stroke: var(--color-accent);
+  stroke-width: 0.5;
+  opacity: 0.25;
+}
+
+.route-debug-obstacle {
+  fill: var(--color-danger);
+  fill-opacity: 0.14;
+  stroke: var(--color-danger);
+  stroke-width: 1;
+  opacity: 0.8;
+}
+
 /* ── Wires (Feature 50): one SVG in .layer-wires ─────────────────────────── */
 .desk-viewport--wiring {
   cursor: crosshair;

@@ -54,14 +54,20 @@ import {
   busWidthForKey,
 } from "../model/desk-doc.js";
 import { isToggleSelectEvent } from "../model/selection-toggle.js";
+import { SKIP_BUS_MEMBER, routeDeskAsync, routePlan } from "../model/autoroute.js"; // prettier-ignore
 import { wireRunMm } from "../model/wire-length.js";
 import { HistoryStore } from "../model/history-store.js";
 import { partDef } from "../catalog/index.js";
 import { kitLabel, partTitle } from "../catalog/labels.js";
 import { isMemory, isRomChip, memoryConfig } from "../sim/chip-eval.js";
 import { BreadboardView } from "./breadboard-view.js";
-import { ChipView, buildChipSvg } from "./chip-view.js";
-import { DiscreteView, buildDiscreteSvg } from "./discrete-view.js";
+import { RouteDebugLayer } from "./route-debug-layer.js";
+import { ChipView, buildChipSvg, chipBodyBox } from "./chip-view.js";
+import {
+  DiscreteView,
+  buildDiscreteSvg,
+  discreteBox,
+} from "./discrete-view.js";
 import { PsuView } from "./psu-view.js";
 import { ClockView } from "./clock-view.js";
 import { LcdView } from "./lcd-view.js";
@@ -118,6 +124,36 @@ const RING_RADIUS = 0.55;
     outermost board/part/wire doesn't sit flush against the viewport edge. */
 const FIT_PAD = 4;
 
+/**
+ * A seated part's DRAWN body, local to its anchor hole — what the auto-router
+ * has to route around, which is not the same thing as where its pins are. A
+ * 7-segment digit's nine pins lie along ONE row while the block itself stands
+ * seven pitch above them; sized from pins alone, a wire runs straight through
+ * the middle of the display.
+ *
+ * It lives here because the geometry does: `chipBox` and `discreteBox` belong to
+ * the views, and `model/route-space.js` may not import from `components/`. So
+ * the model takes this as an argument and the view side answers.
+ *
+ * Null means "size it from the pins instead", which is right for a DIP and
+ * honest for an unknown ref. A part in the TWO-FREE-ENDS form is deliberately
+ * null too: its leads can be on different strips at any angle, so there is no
+ * anchored box to place — its pin extent is the only truthful answer.
+ */
+function partBodyBox(comp) {
+  try {
+    const def = partDef(comp.ref);
+    if (!def) return null;
+    if (def.rotatable && comp.params?.rot === 90) return null;
+    if (comp.kind === "chip") {
+      return def.package ? chipBodyBox(def.package) : null;
+    }
+    return discreteBox(comp.ref, comp.params?.rot);
+  } catch {
+    return null; // an unknown ref sizes itself from its pins
+  }
+}
+
 /** How close (pitch units) the cursor must press to a wire's endpoint cap to
     grab it for a drag-the-end gesture. A shade over one hole so the cap is
     forgiving to catch, but under the ~1-pitch hole spacing so an adjacent
@@ -150,6 +186,8 @@ export class DeskController {
   #deskView;
   #doc;
   #layers;
+  /** The auto-router's own view of the desk, drawn on demand (Feature 360). */
+  #routeDebug = null;
   #views = new Map(); // boardId → BreadboardView
   #partViews = new Map(); // componentId → ChipView | DiscreteView | PsuView
   #wireLayer;
@@ -1276,6 +1314,85 @@ export class DeskController {
    */
   setDefaultWireLayout(layout) {
     this.#defaultWireLayout = WIRE_LAYOUTS.includes(layout) ? layout : "direct";
+  }
+
+  /**
+   * Auto-route every wire on the desk (Feature 360): each one becomes a routed
+   * wire whose waypoints run inside the boards, around the parts and clear of
+   * the other wires. ONE document mutation, so ONE ⌘Z puts the whole desk back.
+   *
+   * The netlist does not move. Waypoints are a drawing, and the addresses the
+   * router does change it changes within one electrical node: a power lead slid
+   * along its rail (`model/rail-reseat.js`, which proves it against the netlist
+   * before proposing it) and a signal wire slid within its own five-hole
+   * tie-point strip (`swapEnds`, where the five holes ARE the node and there is
+   * nothing to prove). That is what makes a one-click rewrite of every wire on
+   * the desk a safe thing to offer.
+   *
+   * Refused while the circuit runs, like every other topology edit. Bus members
+   * are left to their ribbon, and a wire the router could not place keeps
+   * exactly the layout — and exactly the holes — it had.
+   *
+   * **It routes in slices and can be cancelled.** A large desk is seconds of
+   * solid computation, so the work yields to the host between slices and the
+   * caller gets progress to show and a signal to stop it with. Nothing is
+   * written until the very end, so a cancel has nothing to undo: the wiring was
+   * never touched. For the same reason the document is checked for edits made
+   * WHILE it ran — routes computed against a desk that has since moved describe
+   * a desk that no longer exists, so they are dropped rather than applied.
+   *
+   * @param {{only?: Set<string>, debug?: boolean, signal?: AbortSignal,
+   *   onProgress?: (p:object) => void}} [opts]
+   * @returns {Promise<{routed:number, moved:number, unrouted:number,
+   *   skipped:Array, diagnostics:object}|{cancelled:true}|{stale:true}|null>}
+   *   null when the desk is frozen or there was nothing to route.
+   */
+  async autoRouteWires(opts = {}) {
+    if (this.#editingLocked) return null;
+    const json = this.#doc.toJSON();
+    const before = JSON.stringify(json);
+    const result = await routeDeskAsync(json, {
+      bodyBox: partBodyBox,
+      only: opts.only ?? null,
+      signal: opts.signal,
+      onProgress: opts.onProgress,
+    });
+    if (!result) return { cancelled: true };
+    // The desk is live while this runs — a board drag, an undo, a tab switch.
+    // A plan describes the document it was computed from and nothing else, so
+    // if that document has moved on, the plan goes in the bin. (`applyRoutes`
+    // would refuse an impossible one anyway; this catches the possible-but
+    // wrong ones, where the waypoints are drawn around parts that have since
+    // been dragged away.)
+    if (JSON.stringify(this.#doc.toJSON()) !== before) return { stale: true };
+    // The debug overlay is a TOGGLE, so a second Option-click puts the desk
+    // back rather than redrawing the same thing over itself.
+    this.#routeDebug ??= new RouteDebugLayer(this.#layers.overlay);
+    if (opts.debug && !this.#routeDebug.visible) {
+      this.#routeDebug.show(result.space);
+    } else {
+      this.#routeDebug.clear();
+    }
+    const plan = routePlan(result);
+    if (plan.length === 0) return null;
+    this.#doc.applyRoutes(plan); // throws with nothing applied if it is refused
+    this.#wireLayer.render();
+    this.#emitDocChanged("auto-route wires");
+    return {
+      routed: plan.length,
+      // Both kinds of address change, counted together: a power lead slid along
+      // its rail and a signal wire slid within its own tie-point strip are the
+      // same promise to the reader — the connection is the connection, only the
+      // hole moved — and a toast that splits them into two numbers explains the
+      // implementation instead of the result.
+      moved: result.reseats.length + result.swaps.length,
+      // A bus member was never a candidate, so it is not a failure to report —
+      // only a wire the router genuinely could not place is.
+      unrouted: result.skipped.filter((s) => s.reason !== SKIP_BUS_MEMBER)
+        .length,
+      skipped: result.skipped,
+      diagnostics: result.diagnostics,
+    };
   }
 
   armBusTool() {

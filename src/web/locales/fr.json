@@ -120,6 +120,10 @@
       "title": "Outil bus — pose plusieurs fils d'un seul geste (B)",
       "widthLabel": "Largeur du bus"
     },
+    "route": {
+      "label": "Router les fils automatiquement",
+      "title": "Router les fils automatiquement — redessine chaque fil en traçé aligné sur la platine, en contournant les composants"
+    },
     "fade": {
       "label": "Estomper les fils",
       "title": "Estomper les fils — ne tracer qu'un bout à chaque extrémité pour garder la platine lisible (H)"
@@ -784,6 +788,23 @@
   "desk": {
     "lockWheel": "Verrouiller le plan de travail — la molette ne le déplace plus ({mod}+L)",
     "unlockWheel": "Déverrouiller le plan de travail — la molette le déplace à nouveau ({mod}+L)",
+    "autoRouteWorking": "Routage…",
+    "autoRouteRound": "Routage… tour {round}, {done} sur {total}",
+    "autoRouteTidying": "Nettoyage… passe {pass} sur {passes}",
+    "autoRouteDone": {
+      "one": "{count} fil routé.",
+      "other": "{count} fils routés."
+    },
+    "autoRoutePartial": {
+      "one": "{count} fil routé ; {failed} inchangé — aucun trajet valide.",
+      "other": "{count} fils routés ; {failed} inchangés — aucun trajet valide."
+    },
+    "autoRouteMoved": {
+      "one": "{count} fil déplacé vers un meilleur trou de la même connexion.",
+      "other": "{count} fils déplacés vers de meilleurs trous des mêmes connexions."
+    },
+    "autoRouteCancelled": "Routage annulé — le câblage est inchangé.",
+    "autoRouteStale": "Le plan de travail a changé pendant le routage — rien n'a été appliqué.",
     "hover": {
       "pin": "{ref} broche {pin} · {name} → {address}",
       "floating": "en l’air",

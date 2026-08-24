@@ -31,6 +31,7 @@ import {
   worldOfAddress,
 } from "../model/occupancy.js";
 import { spec } from "../model/breadboard.js";
+import { electricalPartition } from "../model/rail-reseat.js";
 import { deskBounds } from "../model/part-geometry.js";
 import { PX_PER_UNIT } from "../desk/desk-geometry.js";
 import { OUTLINE_MARGIN } from "../components/board-outline.js";
@@ -2910,4 +2911,177 @@ test("loadDocument leaves an existing store alone and never touches SRAM", () =>
   const sram = doc.components.find((c) => c.ref === "HM62256");
   assert.equal(sram.params?.storage, undefined, "volatile SRAM gets no store");
   assert.deepEqual(created, [], "nothing was created");
+});
+
+// ── Auto-route (Feature 360) ────────────────────────────────────────────────
+// The controller's half: one undo step, the run lock, and the injected body
+// geometry — the router itself is tested in autoroute*.test.js.
+
+test("autoRouteWires: one call, every wire routed, ONE doc-changed", async () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addKit("full", 0, 0);
+  const pins = doc.boards.find((b) => b.type === "pins-full").id;
+  doc.addComponent({ kind: "chip", ref: "74LS00", board: pins, anchor: "e10" });
+  doc.addWire({ from: `${pins}.g13`, to: `${pins}.c13` });
+  doc.addWire({ from: `${pins}.a5`, to: `${pins}.a30` });
+  const { controller } = makeDesk(doc);
+
+  let changes = 0;
+  const onChange = () => (changes += 1);
+  window.addEventListener("chiphippo:doc-changed", onChange);
+  const result = await controller.autoRouteWires();
+  window.removeEventListener("chiphippo:doc-changed", onChange);
+
+  assert.equal(result.routed, 2);
+  assert.equal(result.unrouted, 0);
+  assert.equal(changes, 1, "one commit, so one undo step");
+  for (const wire of doc.wires) assert.equal(wire.layout, "routed");
+  // The wire that had a chip in its way came away with bends; the clear one
+  // did not need any.
+  assert.ok((doc.getWire("w1").points ?? []).length > 0, "it went round the chip"); // prettier-ignore
+  assert.equal(
+    doc.getWire("w2").points,
+    undefined,
+    "a straight run keeps none",
+  );
+});
+
+test("autoRouteWires: refused while the circuit runs", async () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addKit("full", 0, 0);
+  const pins = doc.boards.find((b) => b.type === "pins-full").id;
+  doc.addWire({ from: `${pins}.a5`, to: `${pins}.a30` });
+  const { controller } = makeDesk(doc);
+  controller.setEditingLocked(true);
+  assert.equal(await controller.autoRouteWires(), null, "topology is frozen");
+  assert.equal(doc.getWire("w1").layout, undefined, "and nothing changed");
+});
+
+test("autoRouteWires: nothing to do is null, not an empty undo step", async () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addKit("full", 0, 0);
+  const { controller } = makeDesk(doc);
+  assert.equal(await controller.autoRouteWires(), null);
+});
+
+test("autoRouteWires: cancelling writes nothing at all", async () => {
+  // The whole plan is computed off-document and applied in one go at the end,
+  // so a cancel has nothing to put back — the point being checked here is that
+  // the abort is actually OBSERVED, and not merely raced against a run that had
+  // already finished.
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addKit("full", 0, 0);
+  const pins = doc.boards.find((b) => b.type === "pins-full").id;
+  doc.addComponent({ kind: "chip", ref: "74LS00", board: pins, anchor: "e10" });
+  for (let i = 0; i < 12; i += 1) {
+    doc.addWire({ from: `${pins}.j${5 + i}`, to: `${pins}.a${25 + i}` });
+  }
+  const before = JSON.stringify(doc.toJSON());
+  const { controller } = makeDesk(doc);
+
+  const abort = new AbortController();
+  let changes = 0;
+  const onChange = () => (changes += 1);
+  window.addEventListener("chiphippo:doc-changed", onChange);
+  const result = await controller.autoRouteWires({
+    signal: abort.signal,
+    // Pull the plug the first time it comes up for air. There is no clock in
+    // the test's hands, so the progress callback is the one honest place to
+    // catch a run that is genuinely mid-flight.
+    onProgress: () => abort.abort(),
+  });
+  window.removeEventListener("chiphippo:doc-changed", onChange);
+
+  assert.deepEqual(result, { cancelled: true });
+  assert.equal(changes, 0, "no commit, so nothing to undo");
+  assert.equal(JSON.stringify(doc.toJSON()), before, "the desk is untouched");
+});
+
+test("autoRouteWires: a plan is dropped if the desk moved while it ran", async () => {
+  // The desk is live while the router works — a board drag, an undo, a tab
+  // switch. A plan describes the document it was computed from, so one computed
+  // against a desk that has since changed is binned rather than drawn.
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addKit("full", 0, 0);
+  const pins = doc.boards.find((b) => b.type === "pins-full").id;
+  for (let i = 0; i < 8; i += 1) {
+    doc.addWire({ from: `${pins}.j${5 + i}`, to: `${pins}.a${25 + i}` });
+  }
+  const { controller } = makeDesk(doc);
+  // The call snapshots the document synchronously and only then starts routing,
+  // so an edit made between the call and the await is exactly the race the
+  // guard is there for.
+  const running = controller.autoRouteWires();
+  doc.addWire({ from: `${pins}.j40`, to: `${pins}.a40` });
+  const result = await running;
+  assert.deepEqual(result, { stale: true });
+  for (const wire of doc.wires) {
+    assert.equal(wire.layout, undefined, `${wire.id} was left alone`);
+  }
+});
+
+test("autoRouteWires: a part's DRAWN body is what a wire is routed around", async () => {
+  // The injected geometry, end to end: a 7-segment digit's nine pins lie along
+  // ONE row while the block stands seven pitch above them. Sized from pins
+  // alone a wire runs straight through the display; sized from the body it
+  // goes round.
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addKit("full", 0, 0);
+  const pins = doc.boards.find((b) => b.type === "pins-full").id;
+  doc.addComponent({ kind: "discrete", ref: "seg8cc", board: pins, anchor: "a20" }); // prettier-ignore
+  // A wire passing across the rows the BLOCK covers but the PINS do not.
+  const wire = doc.addWire({ from: `${pins}.c12`, to: `${pins}.c32` });
+  const { controller } = makeDesk(doc);
+  assert.ok(await controller.autoRouteWires());
+  const points = doc.getWire(wire.id).points ?? [];
+  assert.ok(points.length > 0, "the display was routed around, not through");
+});
+
+test("autoRouteWires: a stretched power lead lands on the rail beside its chip", async () => {
+  // End to end through the controller: two dovetailed 830s with their rails
+  // bridged, and a chip on the LOWER board taking its supply from the rail at
+  // the very top. Nothing about the wire is wrong — it is just three boards too
+  // long, which is what happens when the chip that used to be up there moved.
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addKit("full", 0, 0);
+  doc.addKit("full", 0, 21.02);
+  const rails = doc.boards.filter((b) => b.type === "rail-full");
+  const pinBoards = doc.boards.filter((b) => b.type === "pins-full");
+  const far = rails[0].id; // the strip along the very top of the stack
+  const near = rails[2].id; // the one dovetailed above the lower board
+  const board = pinBoards[1].id;
+  doc.addComponent({ kind: "chip", ref: "74LS00", board, anchor: "e20" });
+  doc.addWire({ from: `${far}.+1`, to: `${near}.+1` }); // the spine
+  const lead = doc.addWire({ from: `${far}.+20`, to: `${board}.g20` });
+  const { controller } = makeDesk(doc);
+  const before = electricalPartition(doc.toJSON());
+
+  const result = await controller.autoRouteWires();
+  assert.ok(result.moved >= 1, "at least the stretched lead was worth moving");
+  const moved = doc.getWire(lead.id);
+  assert.ok(
+    moved.from.startsWith(`${near}.+`),
+    `the lead came down to the near rail, not ${moved.from}`,
+  );
+  // The chip end may slide within its own tie-point strip (the swap pass), but
+  // never off it: column 20, upper half, is the connection.
+  assert.match(moved.to, new RegExp(`^${board}\\.[fghij]20$`), moved.to);
+  assert.equal(
+    doc.getWire("w1").from,
+    `${far}.+1`,
+    "and the rail-to-rail spine is left exactly where it was",
+  );
+  assert.equal(doc.getWire("w1").to, `${near}.+1`, "at BOTH ends");
+  assert.equal(
+    electricalPartition(doc.toJSON()),
+    before,
+    "and the circuit is the same circuit",
+  );
 });

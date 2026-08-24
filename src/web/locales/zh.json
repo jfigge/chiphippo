@@ -120,6 +120,10 @@
       "title": "总线工具 — 一次操作铺设多位导线（B）",
       "widthLabel": "总线位宽"
     },
+    "route": {
+      "label": "自动布线",
+      "title": "自动布线 — 将每根导线重新绘制为绕开元器件、与面包板对齐的走线"
+    },
     "fade": {
       "label": "淡化导线",
       "title": "淡化导线 — 每端只画一小段，让面包板保持清晰（H）"
@@ -775,6 +779,23 @@
   "desk": {
     "lockWheel": "锁定桌面 — 滚轮不再移动桌面（{mod}+L）",
     "unlockWheel": "解锁桌面 — 滚轮可再次移动桌面（{mod}+L）",
+    "autoRouteWorking": "正在布线…",
+    "autoRouteRound": "正在布线… 第 {round} 轮，{total} 根中的 {done} 根",
+    "autoRouteTidying": "正在整理… 第 {pass}/{passes} 遍",
+    "autoRouteDone": {
+      "one": "已布线 {count} 根。",
+      "other": "已布线 {count} 根。"
+    },
+    "autoRoutePartial": {
+      "one": "已布线 {count} 根；{failed} 根保持原样 — 无合法路径。",
+      "other": "已布线 {count} 根；{failed} 根保持原样 — 无合法路径。"
+    },
+    "autoRouteMoved": {
+      "one": "已将 {count} 根导线移到同一连接上更合适的孔位。",
+      "other": "已将 {count} 根导线移到同一连接上更合适的孔位。"
+    },
+    "autoRouteCancelled": "已取消布线 — 接线未更改。",
+    "autoRouteStale": "布线期间桌面发生变化 — 未应用任何更改。",
     "hover": {
       "pin": "{ref} 引脚 {pin} · {name} → {address}",
       "floating": "悬空",

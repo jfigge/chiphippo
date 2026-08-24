@@ -33,6 +33,8 @@ import {
   wireRunMm,
   wireTotalMm,
 } from "../model/wire-length.js";
+import { PX_PER_UNIT, pxToMm } from "../desk/desk-geometry.js";
+import { polylineLength } from "../desk/wire-path.js";
 
 /** A full pin-board with one wire on it, `pitch` columns apart. */
 function deskWithHop(pitch, extra = {}) {
@@ -91,7 +93,21 @@ test("a ROUTED wire measures the run through its bends", () => {
   // A bend 30 pitch below the run has to be gone out to and come back from.
   doc.addWirePoint(wire.id, 0, { x: 10, y: 30 });
   const bent = wireRunMm(doc, wire.id);
-  assert.ok(bent > straight * 2, `${bent} vs ${straight}: the detour counts`);
+  assert.ok(bent > straight * 1.9, `${bent} vs ${straight}: the detour counts`);
+
+  // ...but the corner is ROUNDED (Feature 360), so the wire is a little shorter
+  // than the sharp polyline through the same points — a real lead cannot be
+  // folded to a point, and the BOM quotes what is drawn. The saving is a few mm
+  // on one corner, which is exactly the order it should be: enough to matter on
+  // a cutting list, nowhere near enough to change what the bend is for.
+  const sharp = polylineLength([
+    { x: 1 * PX_PER_UNIT, y: 12.51 * PX_PER_UNIT },
+    { x: 10 * PX_PER_UNIT, y: 30 * PX_PER_UNIT },
+    { x: 21 * PX_PER_UNIT, y: 12.51 * PX_PER_UNIT },
+  ]);
+  const sharpMm = pxToMm(sharp);
+  assert.ok(bent < sharpMm, `${bent} < ${sharpMm}: the corner is rounded`);
+  assert.ok(sharpMm - bent < 6, `${sharpMm - bent} mm: one corner's worth`);
 });
 
 test("a BUS MEMBER is its two leads PLUS the ribbon it runs inside", () => {

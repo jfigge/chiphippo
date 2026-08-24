@@ -45,7 +45,8 @@ import { el, clear, svgEl } from "../dom.js";
 import { t } from "../i18n.js";
 import { PopupManager } from "../popup-manager.js";
 import { PX_PER_UNIT } from "../desk/desk-geometry.js";
-import { wirePath, polylinePath } from "../desk/wire-path.js";
+import { wirePath, filletedPolylinePath } from "../desk/wire-path.js";
+import { BEND_RADIUS_PX } from "../model/route-config.js";
 import { holePosition } from "../model/breadboard.js";
 import { DeskDoc } from "../model/desk-doc.js";
 import { partDef } from "../catalog/index.js";
@@ -567,14 +568,17 @@ export class DeskPlacement {
       // board must not straighten out while it is being positioned.
       const d =
         w.layout === "routed"
-          ? polylinePath([
-              ends[0],
-              ...(w.points ?? []).map((p) => ({
-                x: p.x * PX_PER_UNIT,
-                y: p.y * PX_PER_UNIT,
-              })),
-              ends[1],
-            ])
+          ? filletedPolylinePath(
+              [
+                ends[0],
+                ...(w.points ?? []).map((p) => ({
+                  x: p.x * PX_PER_UNIT,
+                  y: p.y * PX_PER_UNIT,
+                })),
+                ends[1],
+              ],
+              BEND_RADIUS_PX,
+            )
           : wirePath(ends[0], ends[1]);
       const group = svgEl("g", { class: "wire" }, [
         svgEl("path", { class: "wire-outline", d }),

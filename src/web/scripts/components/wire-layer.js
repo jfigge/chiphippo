@@ -68,11 +68,12 @@ import {
   FADE_SOLID_FRACTION,
   fadeRadius,
   fadedPolyline,
+  filletedPolylinePath,
   fadedWire,
-  polylinePath,
   wirePath,
   wireSag,
 } from "../desk/wire-path.js";
+import { BEND_RADIUS_PX } from "../model/route-config.js";
 import {
   HANDLE_HIT_RADIUS,
   centroid,
@@ -370,7 +371,11 @@ export class WireLayer {
       // had, so it still points at the ribbon; every other wire is cut back to
       // a stub off each end. Either way a mask fades each end out over a circle
       // around its own hole, sized to how much wire runs off that end.
-      let d = leads || (route ? polylinePath(route.points) : wirePath(a, b));
+      let d =
+        leads ||
+        (route
+          ? filletedPolylinePath(route.points, BEND_RADIUS_PX)
+          : wirePath(a, b));
       let fadeEnds = null;
       if (this.#faded && !selected) {
         if (collars) {
@@ -379,7 +384,9 @@ export class WireLayer {
             { ...b, r: fadeRadius(distance(b, collars.collarB)) },
           ];
         } else {
-          const fade = route ? fadedPolyline(route.points) : fadedWire(a, b);
+          const fade = route
+            ? fadedPolyline(route.points, BEND_RADIUS_PX)
+            : fadedWire(a, b);
           d = fade.d;
           fadeEnds = [
             { ...a, r: fade.radius },

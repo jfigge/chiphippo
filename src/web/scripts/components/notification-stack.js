@@ -51,8 +51,20 @@ export class NotificationStack {
    * inside a bigger one must not also fire what it sits in. The toast dismisses
    * itself afterwards, since the offer has been answered either way.
    *
+   * Re-notifying a LIVE key updates the toast's words in place rather than
+   * stacking a second one. That is what a standing warning wanted all along
+   * (nothing changes when the text is the same), and it is what a job reporting
+   * progress needs — replacing the node instead would rebuild its action button
+   * under the pointer that is reaching for it.
+   *
+   * `dismissible: false` takes away the click-anywhere-to-close, for the one
+   * shape that needs it: a toast that is a running job's ONLY interface, where
+   * a stray click would throw away the Cancel button and leave the job running
+   * with no way to stop it. Such a toast is the caller's to dismiss.
+   *
    * @param {{ key?: string, variant?: string, title?: string, message: string,
-   *           sticky?: boolean, actionLabel?: string, onAction?: () => void }} opts
+   *           sticky?: boolean, dismissible?: boolean, actionLabel?: string,
+   *           onAction?: () => void }} opts
    */
   notify({
     key,
@@ -60,6 +72,7 @@ export class NotificationStack {
     title,
     message,
     sticky = false,
+    dismissible = true,
     actionLabel,
     onAction,
   } = {}) {
@@ -67,6 +80,10 @@ export class NotificationStack {
     const existing = this.#live.get(id);
     if (existing) {
       clearTimeout(existing.timer);
+      const titleEl = existing.toast.querySelector(".toast-title");
+      if (titleEl && title != null) titleEl.textContent = title;
+      const messageEl = existing.toast.querySelector(".toast-message");
+      if (messageEl) messageEl.textContent = message;
       if (!sticky) existing.timer = this.#arm(id);
       return;
     }
@@ -91,7 +108,7 @@ export class NotificationStack {
         action,
       ].filter(Boolean),
     );
-    toast.addEventListener("click", () => this.dismiss(id));
+    if (dismissible) toast.addEventListener("click", () => this.dismiss(id));
     this.#el.append(toast);
     this.#live.set(id, { toast, timer: sticky ? null : this.#arm(id) });
   }

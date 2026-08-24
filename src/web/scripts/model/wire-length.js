@@ -46,7 +46,8 @@
 
 import { formatNumber, tf } from "../i18n.js";
 import { PX_PER_UNIT, pxToMm } from "../desk/desk-geometry.js";
-import { polylineLength, wireLength } from "../desk/wire-path.js";
+import { filletedPolylineLength, wireLength } from "../desk/wire-path.js";
+import { BEND_RADIUS_PX } from "./route-config.js";
 import {
   centroid,
   ribbonLayout,
@@ -171,7 +172,10 @@ export function wireRunMm(doc, wireId) {
       })),
       b,
     ];
-    return pxToMm(polylineLength(points));
+    // Filleted, not bare: a routed wire is DRAWN with rounded corners
+    // (Feature 360), and each one is a shade shorter than the square corner it
+    // replaces. Measuring the polyline would quote a length nobody could cut to.
+    return pxToMm(filletedPolylineLength(points, BEND_RADIUS_PX));
   }
   return pxToMm(wireLength(a, b));
 }

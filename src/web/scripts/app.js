@@ -148,6 +148,22 @@ const ANALYZER_SVG =
   ICON_SVG_OPEN +
   '<polyline points="2 18 6 18 6 6 11 6 11 18 16 18 16 6 22 6"/></svg>';
 
+/**
+ * Auto-route icon — TWO board-aligned runs turning together, a constant 5 units
+ * apart on every segment, which is the shape the router actually lays down.
+ *
+ * Two runs rather than one on purpose. The action's whole point is that it puts
+ * MANY wires into tidy parallel lanes, and a single line says "a wire" where a
+ * pair says "routing". It also has to be told apart from its neighbour at a
+ * glance: the first version of this icon was a line with an 1.8 r dot at each
+ * end, which is exactly how FADE_WIRES_SVG is built, and two adjacent segments
+ * made of the same parts read as the same button.
+ */
+const ROUTE_SVG =
+  ICON_SVG_OPEN +
+  '<polyline points="3 5 9 5 9 20 21 20"/>' +
+  '<polyline points="3 10 14 10 14 15 21 15"/></svg>';
+
 /** "Fade wires" toggle icon — the effect itself: two tie points joined by a
  * jumper drawn solid off each end and faded away in between. */
 const FADE_WIRES_SVG =
@@ -823,6 +839,7 @@ function buildDeskToolPill({
   getMode,
   getActiveView,
   fitActiveView,
+  onAutoRoute,
 }) {
   const pill = el("div", {
     class: "toolbar-pill",
@@ -884,6 +901,19 @@ function buildDeskToolPill({
     [el("span", { text: t("toolbar.bus.label") }), busWidth.element],
   );
 
+  // Auto-route (Feature 360): rewrite every wire as a board-aligned run around
+  // the parts. A one-shot ACTION, not a mode — like Fit, it arms nothing and
+  // opens nothing — but unlike Fit it EDITS, so it goes in `editButtons` and
+  // goes dead while the circuit runs.
+  // Option-click additionally leaves the router's own view of the desk on
+  // screen — the region, the bridges, the lanes, and every obstacle as
+  // INFLATED. A second Option-click clears it.
+  const route = iconSegment(
+    ROUTE_SVG,
+    t("toolbar.route.label"),
+    t("toolbar.route.title"),
+    (e) => onAutoRoute(e?.altKey === true),
+  );
   // Fade wires: every wire as a short stub off each hole, fading out between,
   // so a heavily wired board stays readable. A selected wire comes back whole.
   // Purely how the desk is DRAWN, so it stays live while running.
@@ -953,7 +983,7 @@ function buildDeskToolPill({
   );
   ai.disabled = true;
 
-  pill.append(wire, bus, fade, probe, scope, fit, guide, modeBtn, ai);
+  pill.append(wire, bus, route, fade, probe, scope, fit, guide, modeBtn, ai);
   return {
     pill,
     relabelFit,
@@ -962,6 +992,7 @@ function buildDeskToolPill({
       wireDot,
       bus,
       busWidth,
+      route,
       fade,
       probe,
       scope,
@@ -1474,6 +1505,7 @@ async function init() {
   let busBtn = null;
   let busWidth = null; // the Bus button's width badge: readout AND picker
   let probeBtn = null;
+  let routeBtn = null; // the one-shot Auto-route action
   let fadeBtn = null; // the "Fade wires" toggle
   let modeBtn = null; // the Breadboard ⇄ Schematic segment
   let sim = null; // the SimController (created after the toolbar below)
@@ -1644,9 +1676,10 @@ async function init() {
     getMode: () => mode,
     getActiveView,
     fitActiveView,
+    onAutoRoute: (debug) => autoRoute(debug),
   });
   const toolPill = deskTools.pill;
-  ({ wire: wireBtn, wireDot, bus: busBtn, busWidth, fade: fadeBtn, probe: probeBtn, scope: scopeBtn, guide: guideBtn, mode: modeBtn, ai: aiBtn } = deskTools.buttons); // prettier-ignore
+  ({ wire: wireBtn, wireDot, bus: busBtn, busWidth, route: routeBtn, fade: fadeBtn, probe: probeBtn, scope: scopeBtn, guide: guideBtn, mode: modeBtn, ai: aiBtn } = deskTools.buttons); // prettier-ignore
   const updateLocateIcon = deskTools.relabelFit;
   toolbar.append(toolPill);
   // The segments that mirror state the app already holds, synced once now that
@@ -1660,6 +1693,95 @@ async function init() {
 
   // ── Simulation transport (Feature 90/100): Run/Stop, Pause, Step, speed ──
   const notifications = new NotificationStack(document.body);
+
+  // Auto-route (Feature 360). One click, one undo step, and a toast that says
+  // what happened — including, when it happens, that some wires were left alone
+  // because there was no legal path for them. Silence there would read as a
+  // button that did nothing.
+  let routing = null; // the AbortController of the run in flight, if any
+  const autoRoute = async (debug = false) => {
+    if (routing) return; // one run at a time; the toast is already saying so
+    const abort = new AbortController();
+    routing = abort;
+    // Say so BEFORE starting, and keep saying it. Routing a large desk is
+    // seconds of computation, and an app that stops repainting with no
+    // explanation reads as one that has crashed. The toast carries the Cancel
+    // button, which is why it is not dismissible: a stray click on it would
+    // otherwise throw away the only way to stop the run. It shares its key with
+    // the outcome, so the result replaces the notice rather than stacking under
+    // it, and re-notifying that key rewrites the words in place.
+    const say = (message) =>
+      notifications.notify({
+        key: "auto-route",
+        title: t("toolbar.route.label"),
+        message,
+        sticky: true,
+        dismissible: false,
+        actionLabel: t("common.cancel"),
+        onAction: () => abort.abort(),
+      });
+    say(t("desk.autoRouteWorking"));
+    await new Promise((resolve) => setTimeout(resolve, 32)); // let it paint
+    let result = null;
+    let failed = false;
+    try {
+      result = await controller.autoRouteWires({
+        debug,
+        signal: abort.signal,
+        onProgress: (p) =>
+          say(
+            p.phase === "tidy"
+              ? t("desk.autoRouteTidying", { pass: p.round, passes: p.rounds })
+              : t("desk.autoRouteRound", {
+                  round: p.round,
+                  done: p.done,
+                  total: p.total,
+                }),
+          ),
+      });
+    } catch (err) {
+      // `applyRoutes` refused the plan and rolled itself back, so the desk is
+      // exactly as it was — which is the same thing a stale plan means, and is
+      // what the user is told. The reason still goes to the console: a refusal
+      // here is either a race with a live edit or a bug, and only one of those
+      // is worth reading a message about.
+      console.error("[renderer] auto-route failed:", err);
+      failed = true;
+    } finally {
+      routing = null;
+      notifications.dismiss("auto-route");
+    }
+    // Nothing was written and there is nothing to say: the circuit is running,
+    // or the desk holds no wire the router could take an interest in.
+    if (!failed && !result) return;
+    let message;
+    let variant = "info";
+    if (failed || result.stale) message = t("desk.autoRouteStale");
+    else if (result.cancelled) message = t("desk.autoRouteCancelled");
+    else {
+      variant = result.unrouted > 0 ? "warning" : "info";
+      message = [
+        result.unrouted > 0
+          ? t("desk.autoRoutePartial", {
+              count: result.routed,
+              failed: result.unrouted,
+            })
+          : t("desk.autoRouteDone", { count: result.routed }),
+        // The one thing the router did that is not a drawing, said out loud: a
+        // moved lead changes what you plug in, so it is reported rather than
+        // left to be noticed.
+        result.moved > 0 && t("desk.autoRouteMoved", { count: result.moved }),
+      ]
+        .filter(Boolean)
+        .join(" ");
+    }
+    notifications.notify({
+      key: "auto-route",
+      variant,
+      title: t("toolbar.route.label"),
+      message,
+    });
+  };
 
   // Surface net-name merge conflicts (Feature 120) as toasts — a name that
   // loses a merge is reported, never silently dropped.
@@ -1688,7 +1810,7 @@ async function init() {
   // tray isn't in the list either: showing or hiding a panel edits nothing, and
   // `#enterPlacement` already refuses every pick while the circuit runs (⌘P has
   // always stayed live for the same reason).
-  const editButtons = [wireBtn, busBtn];
+  const editButtons = [wireBtn, busBtn, routeBtn];
   const onTransportChange = (mode) => {
     transportMode = mode;
     const stopped = mode === "stopped";

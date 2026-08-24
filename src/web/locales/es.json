@@ -120,6 +120,10 @@
       "title": "Herramienta de bus — tiende varios cables de una sola vez (B)",
       "widthLabel": "Anchura del bus"
     },
+    "route": {
+      "label": "Enrutar cables automáticamente",
+      "title": "Enrutar cables automáticamente: redibuja cada cable como un trazado alineado con la placa que rodea los componentes"
+    },
     "fade": {
       "label": "Atenuar los cables",
       "title": "Atenuar los cables — dibujar solo un tramo en cada extremo para que la placa siga legible (H)"
@@ -784,6 +788,23 @@
   "desk": {
     "lockWheel": "Bloquear el escritorio: la rueda del ratón deja de moverlo ({mod}+L)",
     "unlockWheel": "Desbloquear el escritorio: la rueda del ratón vuelve a moverlo ({mod}+L)",
+    "autoRouteWorking": "Enrutando…",
+    "autoRouteRound": "Enrutando… ronda {round}, {done} de {total}",
+    "autoRouteTidying": "Depurando… pasada {pass} de {passes}",
+    "autoRouteDone": {
+      "one": "{count} cable enrutado.",
+      "other": "{count} cables enrutados."
+    },
+    "autoRoutePartial": {
+      "one": "{count} cable enrutado; {failed} sin cambios: no hay ruta válida.",
+      "other": "{count} cables enrutados; {failed} sin cambios: no hay ruta válida."
+    },
+    "autoRouteMoved": {
+      "one": "{count} cable movido a un orificio mejor de la misma conexión.",
+      "other": "{count} cables movidos a orificios mejores de las mismas conexiones."
+    },
+    "autoRouteCancelled": "Enrutado cancelado: el cableado no ha cambiado.",
+    "autoRouteStale": "El escritorio cambió durante el enrutado: no se aplicó nada.",
     "hover": {
       "pin": "{ref} pin {pin} · {name} → {address}",
       "floating": "flotante",

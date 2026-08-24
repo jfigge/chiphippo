@@ -120,6 +120,10 @@
       "title": "Bus tool — lay a multi-bit run of wires in one gesture (B)",
       "widthLabel": "Bus width"
     },
+    "route": {
+      "label": "Auto-route wires",
+      "title": "Auto-route wires — redraw every wire as a board-aligned run around the parts"
+    },
     "fade": {
       "label": "Fade wires",
       "title": "Fade wires — draw only a stub at each end so the board stays readable (H)"
@@ -784,6 +788,23 @@
   "desk": {
     "lockWheel": "Lock the desk — the mouse wheel stops moving it ({mod}+L)",
     "unlockWheel": "Unlock the desk — the mouse wheel moves it again ({mod}+L)",
+    "autoRouteWorking": "Routing…",
+    "autoRouteRound": "Routing… round {round}, {done} of {total} wires",
+    "autoRouteTidying": "Tidying… pass {pass} of {passes}",
+    "autoRouteDone": {
+      "one": "Routed {count} wire.",
+      "other": "Routed {count} wires."
+    },
+    "autoRoutePartial": {
+      "one": "Routed {count} wire; {failed} left as it was — no legal path.",
+      "other": "Routed {count} wires; {failed} left as they were — no legal path."
+    },
+    "autoRouteMoved": {
+      "one": "Moved {count} lead to a better hole on the same connection.",
+      "other": "Moved {count} leads to better holes on the same connections."
+    },
+    "autoRouteCancelled": "Routing cancelled — the wiring is unchanged.",
+    "autoRouteStale": "The desk changed while routing — nothing was applied.",
     "hover": {
       "pin": "{ref} pin {pin} · {name} → {address}",
       "floating": "floating",

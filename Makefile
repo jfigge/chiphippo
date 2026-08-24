@@ -148,8 +148,11 @@ license-headers:
 
 # ─── Testing ──────────────────────────────────────────────────────────────────
 # Per-test timeout so a leaked handle / never-resolving promise fails the run
-# loudly instead of hanging the suite (and CI) forever.
-TEST_TIMEOUT ?= 30000
+# loudly instead of hanging the suite (and CI) forever. 60s rather than 30
+# because the auto-route corpus (Feature 360) routes every shipped example
+# circuit through the real router, which is a few hundred milliseconds a board —
+# real work, not a hang, and the whole point of that test is that it is real.
+TEST_TIMEOUT ?= 60000
 
 test: test-license-headers
 	@echo "Running JavaScript unit tests..."

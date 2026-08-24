@@ -599,12 +599,14 @@ test("a routed wire draws as a polyline through its waypoints, with knobs", () =
 
   const a = holePosition("pins-full", "a1");
   const b = holePosition("pins-full", "a5");
-  assert.equal(
-    group.querySelector(".wire-core").getAttribute("d"),
-    `M ${a.x * PX_PER_UNIT} ${a.y * PX_PER_UNIT} L 30 200 L 70 240 ` +
-      `L ${b.x * PX_PER_UNIT} ${b.y * PX_PER_UNIT}`,
-    "straight segments, no sag, in world px",
-  );
+  // Straight runs joined by ROUNDED corners (Feature 360) — a real lead cannot
+  // be folded to a point. The run still starts and ends exactly on its holes,
+  // and there is no sag: a routed wire goes where it was put.
+  const d = group.querySelector(".wire-core").getAttribute("d");
+  assert.match(d, new RegExp(`^M ${a.x * PX_PER_UNIT} ${a.y * PX_PER_UNIT} L`));
+  assert.match(d, new RegExp(`L ${b.x * PX_PER_UNIT} ${b.y * PX_PER_UNIT}$`));
+  assert.equal((d.match(/ A /g) ?? []).length, 2, "one arc per waypoint");
+  assert.doesNotMatch(d, / Q /, "no sag on a routed wire");
   // One knob per WAYPOINT — never on the endpoints, which have caps already.
   assert.deepEqual(
     [...group.querySelectorAll(".wire-point")].map((c) => [
@@ -635,6 +637,9 @@ test("a routed wire's in-flight bend previews without touching the document", ()
     merge: false,
   });
   let group = layer.querySelector(".wire");
+  // This bend is a 26° spike off a short run, which is sharper than a real lead
+  // can be folded — so it is drawn SQUARE and the run passes through the point
+  // itself (desk/wire-path.js's deviation limit). A gentler corner gets an arc.
   assert.match(group.querySelector(".wire-core").getAttribute("d"), /L 44 210/);
   assert.equal(group.querySelectorAll(".wire-point").length, 1);
   assert.ok(

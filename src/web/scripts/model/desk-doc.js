@@ -2413,6 +2413,86 @@ export class DeskDoc {
     return copyWire(wire);
   }
 
+  /**
+   * Replace a wire's WHOLE path in one go: switch it to routed and give it
+   * `points` as its waypoints (an empty list is a routed wire drawn as the
+   * straight run between its holes, which is a perfectly ordinary answer).
+   *
+   * This exists because the auto-router (Feature 360) produces a path, not a
+   * sequence of bends. Building a twelve-corner route out of twelve
+   * `addWirePoint` calls would be twelve validations of a shape that is only
+   * meaningful whole, and — through `#emitDocChanged` — twelve chances for a
+   * half-drawn wire to be observed.
+   *
+   * Throws NOT_FOUND / INVALID_ARG (a non-array, a non-finite coordinate, or
+   * more than MAX_WIRE_POINTS points — the router is expected to have already
+   * decided what to do about a route that long, so here it is an error rather
+   * than a silent truncation). Returns a copy.
+   */
+  setWireRoute(id, points) {
+    const wire = this.#doc.wires.find((w) => w.id === id);
+    if (!wire) throw taggedError(`no wire ${id}`, "NOT_FOUND");
+    if (!Array.isArray(points)) {
+      throw taggedError("a route needs a list of points", "INVALID_ARG");
+    }
+    if (points.length > MAX_WIRE_POINTS) {
+      throw taggedError(
+        `a route may hold at most ${MAX_WIRE_POINTS} waypoints`,
+        "INVALID_ARG",
+      );
+    }
+    for (const p of points) {
+      if (!Number.isFinite(p?.x) || !Number.isFinite(p?.y)) {
+        throw taggedError("a waypoint needs finite coordinates", "INVALID_ARG");
+      }
+    }
+    wire.layout = "routed";
+    // Omit-when-empty, the same convention removeWirePoint keeps, so a routed
+    // wire with no bends round-trips through a file without an empty array.
+    if (points.length === 0) delete wire.points;
+    else wire.points = points.map((p) => ({ x: wireCoord(p.x), y: wireCoord(p.y) })); // prettier-ignore
+    return copyWire(wire);
+  }
+
+  /**
+   * Apply a whole routing plan — ONE mutation, and therefore one undo step.
+   *
+   * Every entry is written or none is: the try/restore is the same
+   * snapshot-guarded transaction `pasteDesign` and `moveClusterWithWires` use,
+   * and it matters for the same reason. A half-applied auto-route would leave
+   * some wires orthogonal and some sagging with no single ⌘Z to undo it.
+   *
+   * An entry may also carry a **`from`** and/or **`to`** address: the router's
+   * one address change, a power lead's rail end moved to a nearer hole on the
+   * same node (`model/rail-reseat.js`). It rides in the same transaction
+   * deliberately — the waypoints were computed for the new hole, so applying
+   * one without the other would leave a route drawn to a hole its wire does not
+   * end in, and a separate call would be a second undo step for one action.
+   *
+   * The endpoint goes first, so `setWireRoute` writes the path onto the wire the
+   * user will actually see. Nothing here can change the netlist: a waypoint is a
+   * drawing, and a moved end lands on a hole in the same electrical node — which
+   * `rail-reseat.js` proves against the netlist before ever proposing it.
+   *
+   * @param {Array<{id:string, points:Array<{x,y}>, from?:string, to?:string}>} plan
+   * @returns {number} how many wires were rerouted
+   */
+  applyRoutes(plan) {
+    if (!Array.isArray(plan) || plan.length === 0) return 0;
+    const before = this.snapshot();
+    try {
+      for (const entry of plan) {
+        if (entry.from) this.setWireEndpoint(entry.id, "from", entry.from);
+        if (entry.to) this.setWireEndpoint(entry.id, "to", entry.to);
+        this.setWireRoute(entry.id, entry.points ?? []);
+      }
+      return plan.length;
+    } catch (err) {
+      this.restore(before); // a refused plan changes nothing at all
+      throw err;
+    }
+  }
+
   /** The routed wire `id`, or a thrown NOT_FOUND / INVALID_ARG — the one place
       "a waypoint only exists on a routed wire" is enforced. */
   #routedWire(id) {

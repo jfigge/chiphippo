@@ -120,6 +120,10 @@
       "title": "バスツール — 複数ビット分のワイヤーを一度に敷きます（B）",
       "widthLabel": "バス幅"
     },
+    "route": {
+      "label": "配線を自動ルーティング",
+      "title": "配線を自動ルーティング — すべての配線を部品を避けたボード沿いの経路で引き直します"
+    },
     "fade": {
       "label": "ワイヤーを淡く表示",
       "title": "ワイヤーを淡く表示 — 両端だけを描いてボードを見やすく保ちます（H）"
@@ -775,6 +779,23 @@
   "desk": {
     "lockWheel": "デスクをロック — マウスホイールで動かなくなります（{mod}+L）",
     "unlockWheel": "デスクのロックを解除 — マウスホイールでまた動かせます（{mod}+L）",
+    "autoRouteWorking": "ルーティング中…",
+    "autoRouteRound": "ルーティング中… ラウンド {round}、{total} 本中 {done} 本",
+    "autoRouteTidying": "整理中… パス {pass}/{passes}",
+    "autoRouteDone": {
+      "one": "{count} 本の配線をルーティングしました。",
+      "other": "{count} 本の配線をルーティングしました。"
+    },
+    "autoRoutePartial": {
+      "one": "{count} 本をルーティングしました。{failed} 本は経路がなくそのままです。",
+      "other": "{count} 本をルーティングしました。{failed} 本は経路がなくそのままです。"
+    },
+    "autoRouteMoved": {
+      "one": "{count} 本の配線を同じ接続内のより良い穴へ移動しました。",
+      "other": "{count} 本の配線を同じ接続内のより良い穴へ移動しました。"
+    },
+    "autoRouteCancelled": "ルーティングを中止しました。配線は変更されていません。",
+    "autoRouteStale": "ルーティング中にデスクが変更されたため、何も適用しませんでした。",
     "hover": {
       "pin": "{ref} ピン {pin} · {name} → {address}",
       "floating": "未接続",

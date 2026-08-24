@@ -27,6 +27,8 @@ import {
   fadeRadius,
   fadedPolyline,
   fadedWire,
+  filletedPolylineLength,
+  filletedPolylinePath,
   nearestOnPolyline,
   polylineLength,
   polylinePath,
@@ -34,6 +36,8 @@ import {
   wirePath,
   wireSag,
 } from "../desk/wire-path.js";
+import { PX_PER_UNIT } from "../desk/desk-geometry.js";
+import { BEND_RADIUS_PX } from "../model/route-config.js";
 
 const PATH_RE =
   /^M (-?[\d.]+) (-?[\d.]+) Q (-?[\d.]+) (-?[\d.]+) (-?[\d.]+) (-?[\d.]+)$/;
@@ -237,4 +241,140 @@ test("fadedPolyline: a short run keeps its whole shape, corner and all", () => {
   ];
   const { d } = fadedPolyline(run);
   assert.equal(d, polylinePath(run), "nothing left to cut");
+});
+
+// ── Rounded corners (Feature 360) ────────────────────────────────────────────
+// A 1.5 mm jumper cannot be folded to a point, so an auto-routed wire's corners
+// are arcs. The measurement has to move with the drawing — `model/wire-length.js`
+// is THE one length, and a cutting list that disagreed with the picture beside it
+// would be the exact failure that file exists to prevent.
+
+test("filletedPolylinePath: a right angle becomes a tangent arc", () => {
+  const run = [
+    { x: 0, y: 0 },
+    { x: 100, y: 0 },
+    { x: 100, y: 100 },
+  ];
+  const d = filletedPolylinePath(run, 10);
+  // Straight in, one arc, straight out — and the ENDS are untouched, because a
+  // fillet only ever cuts a corner.
+  assert.ok(d.startsWith("M 0 0 L 90 0"), d);
+  assert.ok(d.endsWith("L 100 100"), d);
+  assert.equal((d.match(/ A /g) ?? []).length, 1, d);
+  assert.match(
+    d,
+    /A 10 10 0 0 1 100 10/,
+    "radius 10, clockwise, tangent at 10",
+  );
+});
+
+test("filletedPolylinePath: no radius, no corners, no change", () => {
+  const run = [
+    { x: 0, y: 0 },
+    { x: 50, y: 0 },
+    { x: 50, y: 50 },
+  ];
+  assert.equal(filletedPolylinePath(run, 0), polylinePath(run));
+  // A two-point run has no corner to round.
+  assert.equal(
+    filletedPolylinePath([run[0], run[1]], 10),
+    polylinePath([run[0], run[1]]),
+  );
+  // A collinear "corner" is left alone rather than rounded to nothing.
+  const straight = [
+    { x: 0, y: 0 },
+    { x: 25, y: 0 },
+    { x: 50, y: 0 },
+  ];
+  assert.equal(filletedPolylinePath(straight, 10), polylinePath(straight));
+});
+
+test("filletedPolylinePath: the radius is clamped to half the shorter leg", () => {
+  // Two corners sharing a 10-long middle segment: each may take at most 5, so
+  // they can never eat into one another and produce a self-crossing path.
+  const run = [
+    { x: 0, y: 0 },
+    { x: 100, y: 0 },
+    { x: 100, y: 10 },
+    { x: 0, y: 10 },
+  ];
+  const d = filletedPolylinePath(run, 40);
+  assert.equal((d.match(/ A /g) ?? []).length, 2, d);
+  for (const r of d.match(/A (\d+(?:\.\d+)?)/g) ?? []) {
+    assert.ok(Number(r.slice(2)) <= 5.001, `${r} fits in half the leg`);
+  }
+});
+
+test("filletedPolylineLength: a rounded corner is shorter, by r(2 − π/2)", () => {
+  const run = [
+    { x: 0, y: 0 },
+    { x: 100, y: 0 },
+    { x: 100, y: 100 },
+  ];
+  const sharp = polylineLength(run);
+  const rounded = filletedPolylineLength(run, 10);
+  assert.ok(rounded < sharp);
+  // A right-angle fillet swaps 2r of straight for an arc of πr/2.
+  assert.ok(
+    Math.abs(sharp - rounded - 10 * (2 - Math.PI / 2)) < 1e-9,
+    `${sharp - rounded} is one right-angle corner's saving`,
+  );
+  assert.equal(filletedPolylineLength(run, 0), sharp, "no radius, no saving");
+});
+
+test("a corner too sharp to round is drawn SHARP, not cut off", () => {
+  // The shape that makes tangent-circle filleting dangerous: a long thin
+  // hairpin. A circle tangent to both legs touches them right back at the far
+  // ends, so "rounding" it would cut straight across and throw away half the
+  // wire — a bend the user placed would visibly disappear. Past the deviation
+  // limit the corner stays square instead.
+  const run = [
+    { x: 0, y: 0 },
+    { x: 100, y: 2 },
+    { x: 0, y: 4 },
+  ];
+  const sharp = polylineLength(run);
+  assert.equal(filletedPolylineLength(run, 25), sharp, "no length is lost");
+  assert.equal(filletedPolylinePath(run, 25), polylinePath(run), "no arc");
+  assert.ok(sharp > 150, `${sharp}: it still goes out and comes back`);
+
+  // Just inside the limit it DOES round: a 90° corner is nowhere near it, and
+  // neither is a 45° one.
+  const gentle = [
+    { x: 0, y: 0 },
+    { x: 100, y: 0 },
+    { x: 200, y: 100 },
+  ];
+  assert.match(filletedPolylinePath(gentle, 10), / A /);
+});
+
+test("a turn fits inside ONE pin space", () => {
+  // The defect this pins. A tangent circle meets each leg `radius / tan(θ/2)`
+  // from the corner — at a right angle, exactly the radius — so the fillet eats
+  // that much off BOTH legs. The shipped radius was once 2.5 mm, which is 0.98
+  // pitch a side: it consumed a one-pitch segment entirely, so every turn took
+  // two pin spaces, adjacent runs bulged into each other, and it stopped being
+  // possible to see which wire had turned away and which carried on.
+  assert.ok(
+    BEND_RADIUS_PX < PX_PER_UNIT / 2,
+    `${BEND_RADIUS_PX} px must stay well under one ${PX_PER_UNIT} px pitch`,
+  );
+
+  // A one-pitch jog — a corner at each end of a single pitch of wire — still
+  // comes out with real straight line between its two arcs.
+  const jog = [
+    { x: 0, y: 0 },
+    { x: PX_PER_UNIT, y: 0 },
+    { x: PX_PER_UNIT, y: PX_PER_UNIT },
+  ];
+  const d = filletedPolylinePath(jog, BEND_RADIUS_PX);
+  assert.equal((d.match(/ A /g) ?? []).length, 1);
+  // The arc starts at least half a pitch along, so the corner is a corner and
+  // not the whole segment.
+  const firstLine = /^M 0 0 L ([\d.]+) 0/.exec(d);
+  assert.ok(firstLine, d);
+  assert.ok(
+    Number(firstLine[1]) > PX_PER_UNIT / 2,
+    `${firstLine[1]} px of straight before the turn begins`,
+  );
 });
