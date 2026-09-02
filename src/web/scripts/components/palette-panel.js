@@ -46,6 +46,7 @@ import {
   STRIP_KIT_KEYS,
 } from "../model/board-types.js";
 import { canRotate } from "../model/breadboard.js";
+import { MAX_SIGNALS } from "../model/signals.js";
 
 /** Every logic-chip group nests one level under this top-level folder. It
     collapses like a group, and no group shares its name. */
@@ -87,6 +88,12 @@ const MAX_TRAY_FRAC = 0.5;
     parts — hardcoded here like the boards folder — so it folds like any
     section and is hidden while the parts filter is active. */
 const ANNOTATIONS_FOLDER = "ANNOTATIONS";
+
+/** External signals (Feature 370), below ANNOTATIONS and hardcoded for the
+    same reason: a signal is NOT a catalog part — no footprint, no def, no BOM
+    line — so it must not enter PALETTE_DEFS. One entry, since every signal is
+    the same thing until it is named and coloured. */
+const SIGNALS_FOLDER = "SIGNALS";
 /** The tray's own open/close chevron. Its own copy of the app's line-icon
     idiom (16 px box, round-capped strokes) — the toolbar's constants live in
     app.js and aren't exported. */
@@ -145,6 +152,7 @@ function allSections() {
     CHIPS_FOLDER,
     COMPONENTS_FOLDER,
     ANNOTATIONS_FOLDER,
+    SIGNALS_FOLDER,
     ...PALETTE_DEFS.map((def) => def.group),
   ]);
 }
@@ -158,6 +166,9 @@ export class PalettePanel {
   #onPickChip;
   #onPickBoard;
   #onPickAnnotation;
+  #onPickSignal;
+  #signalItem = null; // the SIGNALS folder's one row (see setSignalsFull)
+  #signalsFull = false;
   #onWidthChange;
   #width = DEFAULT_TRAY_W;
   #dragStartX = null; // pointer X at drag start (null = not resizing)
@@ -175,6 +186,7 @@ export class PalettePanel {
    * @param {(ref: string, e: MouseEvent) => void} callbacks.onPickChip
    * @param {(kit: string) => void} callbacks.onPickBoard - a board kit key
    *   (assembled breadboard or loose strip) was picked; app.js arms placement.
+   * @param {() => void} callbacks.onPickSignal - arm signal placement.
    * @param {(kind: "label"|"note") => void} callbacks.onPickAnnotation - a
    *   label/note was picked; app.js arms annotation placement.
    * @param {() => void} callbacks.onToggle - the header chevron or the
@@ -192,6 +204,7 @@ export class PalettePanel {
       onPickChip,
       onPickBoard,
       onPickAnnotation,
+      onPickSignal,
       onToggle,
       width,
       onWidthChange,
@@ -201,6 +214,7 @@ export class PalettePanel {
     this.#onPickChip = onPickChip;
     this.#onPickBoard = onPickBoard;
     this.#onPickAnnotation = onPickAnnotation;
+    this.#onPickSignal = onPickSignal;
     this.#onWidthChange = onWidthChange;
 
     const filterInput = el("input", {
@@ -401,6 +415,7 @@ export class PalettePanel {
     // Labels + notes live at the very bottom (not catalog parts, so the chip
     // filter hides them, exactly like the boards folder up top).
     if (!filtering) this.#appendAnnotations();
+    if (!filtering) this.#appendSignals();
   }
 
   /**
@@ -442,6 +457,55 @@ export class PalettePanel {
         ),
       ),
     );
+  }
+
+  /**
+   * The external-signals section, pinned below ANNOTATIONS. One entry: pick it,
+   * click the desk, and a signal button lands on the viewport's right-edge
+   * rail. It goes DISABLED once every wire colour is spoken for — the colour
+   * IS a signal's identity, so eight colours means eight signals, and a
+   * disabled row that says why beats a click that silently does nothing.
+   */
+  #appendSignals() {
+    const collapsed = this.#collapsed.has(SIGNALS_FOLDER);
+    this.#signalItem = el(
+      "button",
+      {
+        class: "palette-signal-item",
+        type: "button",
+        dataset: { signal: "signal" },
+        onClick: () => this.#onPickSignal?.(),
+      },
+      [
+        el("span", { class: "palette-item-id", text: "⚑" }),
+        el("span", {
+          class: "palette-item-title",
+          text: t("palette.signal.item"),
+        }),
+      ],
+    );
+    this.setSignalsFull(this.#signalsFull);
+    this.#list.append(
+      this.#sectionHeader("palette-signals-folder", SIGNALS_FOLDER, collapsed),
+      el("div", { class: "palette-group-items", hidden: collapsed }, [
+        this.#signalItem,
+      ]),
+    );
+  }
+
+  /**
+   * Every wire colour spoken for? The colour IS a signal's identity, so eight
+   * colours means eight signals — and a disabled row that says why beats a
+   * click that silently does nothing. A targeted toggle rather than a re-render
+   * because app.js calls it on every doc change and the list is long.
+   */
+  setSignalsFull(full) {
+    this.#signalsFull = Boolean(full);
+    if (!this.#signalItem) return;
+    this.#signalItem.disabled = this.#signalsFull;
+    this.#signalItem.title = this.#signalsFull
+      ? t("palette.signal.full", { count: MAX_SIGNALS })
+      : t("palette.signal.hint");
   }
 
   /**

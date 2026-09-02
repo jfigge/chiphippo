@@ -56,6 +56,9 @@ import { AboutDialog } from "./components/about-dialog.js";
 import { SettingsDialog } from "./components/settings-dialog.js";
 import { KeyboardShortcutsDialog } from "./components/keyboard-shortcuts.js";
 import { DeskDoc } from "./model/desk-doc.js";
+import { MAX_SIGNALS } from "./model/signals.js";
+import { createSignalKeys } from "./model/signal-keys.js";
+import { SignalRail } from "./components/signal-rail.js";
 import { datasheetCrop, partDef } from "./catalog/index.js";
 
 /** How long after the last camera change to persist the viewport. */
@@ -1054,6 +1057,23 @@ function bindShortcuts(
   });
   window.addEventListener("blur", () => ridePreview(false));
 
+  // External signals (Feature 370): 1–8 press the buttons on the right-edge
+  // rail, several at once. See model/signal-keys.js for why a BARE digit is
+  // free — the only other claim on 1–9 is the wire tool's colour and the bus
+  // tool's width, and Run disarms both tools, so the two meanings are never
+  // live at the same moment.
+  const signalKeys = createSignalKeys({
+    isRunning: () => sim.running,
+    signalsOf: () => controller.signals,
+    press: (id, on) => sim.pressSignal(id, on),
+  });
+  // Keyup and blur are their OWN listeners, deliberately OUTSIDE the popup and
+  // typing guards below: a key that went down on the desk and comes up inside
+  // a dialog still has to come up. A stuck signal is far worse than a missed
+  // press, which is why release is gated on nothing at all.
+  window.addEventListener("keyup", (e) => signalKeys.handleKeyUp(e));
+  window.addEventListener("blur", () => signalKeys.releaseAll());
+
   window.addEventListener("keydown", (e) => {
     // A dialog/menu owns the keyboard while it's open — its own handlers
     // (native Escape-to-cancel, button activation) must be the only thing
@@ -1082,6 +1102,21 @@ function bindShortcuts(
     if (controller.handleKeyDown(e)) {
       e.preventDefault();
       return;
+    }
+    // 1–8 press the signal buttons, but only while the circuit runs. It sits
+    // AFTER controller.handleKeyDown deliberately: that method claims 1–9 for
+    // the wire colour / bus width while either tool is armed, so letting it go
+    // first makes the precedence a FACT of the code rather than a claim about
+    // which tools Run happens to disarm. Typing-guarded like Space and A — a
+    // digit typed into an analyzer channel name is not a stimulus.
+    {
+      const tag = e.target?.tagName;
+      const typing =
+        tag === "INPUT" || tag === "TEXTAREA" || e.target?.isContentEditable;
+      if (!typing && signalKeys.handleKeyDown(e)) {
+        e.preventDefault();
+        return;
+      }
     }
     // Space runs/stops the circuit — but not while typing, and not when a
     // placement/wire tool is armed (it may want the key for its own gesture).
@@ -1207,6 +1242,10 @@ function bindShortcuts(
       }
     }
   });
+
+  // The transport's third release path for a held signal key (see
+  // onTransportChange): keyup and window blur are the other two.
+  return () => signalKeys.releaseAll();
 }
 
 async function init() {
@@ -1315,6 +1354,9 @@ async function init() {
 
   let zoomControl = null;
   let deskLock = null;
+  let signalRail = null;
+  // Installed by bindShortcuts (below): let go of every held signal key.
+  let releaseSignalKeys = null;
   let controller = null;
 
   // Parts palette (left panel; visibility persists in settings). Any part
@@ -1338,6 +1380,7 @@ async function init() {
     onPickBoard: (kit) => controller?.armPlacement(kit),
     // The annotations section (labels + notes) lives at the bottom.
     onPickAnnotation: (kind) => controller?.armAnnotationPlacement(kind),
+    onPickSignal: () => controller?.armSignalPlacement(),
     // The tray's own header chevron / desk-edge flap. `togglePalette` is
     // declared with the toolbar further below; this closure only runs on a
     // click, long after that.
@@ -1428,7 +1471,8 @@ async function init() {
         .set({ scopeHeight: height })
         .catch((err) => console.error("[renderer] settings:set failed:", err));
     },
-    onAddChannel: (kind, ref) => controller?.addScopeChannel(kind, ref),
+    onAddChannel: (kind, ref, opts) =>
+      controller?.addScopeChannel(kind, ref, opts),
     onRemoveChannel: (id) => controller?.removeScopeChannel(id),
     onMoveChannel: (id, index) => controller?.moveScopeChannel(id, index),
     tickMs: () => tickMsFor(deskDoc, sim),
@@ -1549,8 +1593,8 @@ async function init() {
     onProbeStateChange,
     onWireFadeChange,
     // Probe context-menu → pin the net as an analyzer channel (and reveal it).
-    onAddNetToAnalyzer: (address) => {
-      scopeView.addNetChannel(address);
+    onAddNetToAnalyzer: (address, opts) => {
+      scopeView.addNetChannel(address, opts);
       scopeView.setVisible(true);
     },
     onClockToggle: (id) => sim?.manualToggle(id),
@@ -1830,6 +1874,11 @@ async function init() {
         : `⏸ ${t("toolbar.transport.pause")}`;
     for (const btn of [pauseBtn, stepBtn, speedBtn]) btn.hidden = stopped;
     for (const btn of editButtons) btn.disabled = !stopped;
+    // The third release path for a held signal key (keyup and blur are the
+    // other two): the levels are gone anyway, but a stale held set must not
+    // leak into the next Run. `releaseSignalKeys` is installed by
+    // bindShortcuts, which runs after this closure is built.
+    if (stopped) releaseSignalKeys?.();
   };
   sim = new SimController({
     deskDoc,
@@ -1894,6 +1943,23 @@ async function init() {
     onChange: (locked) => deskView.setWheelLocked(locked),
   });
 
+  // External signals (Feature 370): the buttons pinned down the viewport's
+  // right edge, between the padlock above and the zoom cluster below. A
+  // viewport sibling, so it neither pans nor zooms.
+  signalRail = new SignalRail(desk, deskDoc, {
+    onPress: (id, on) => sim?.pressSignal(id, on),
+    onFlagPointerDown: (id, e) => controller?.beginSignalFlagDrag(id, e),
+    // The rail's own right-click opens the SAME menu the flag does — an
+    // unplaced signal has no flag, so this is its only route to Remove.
+    onContextMenu: (id, e) =>
+      controller?.openSignalMenu(id, e.clientX, e.clientY),
+  });
+  // The palette's SIGNALS row goes disabled once every colour is taken.
+  const refreshSignalsFull = () =>
+    palette.setSignalsFull(deskDoc.signals.length >= MAX_SIGNALS);
+  window.addEventListener("chiphippo:doc-changed", refreshSignalsFull);
+  refreshSignalsFull();
+
   // The derived schematic (Feature 150): the same document as chip symbols +
   // routed nets. Symbol nudges and the auto-layout reset commit through the
   // controller so they ride the one undo/redo seam. It gets its OWN netlist,
@@ -1910,7 +1976,7 @@ async function init() {
   });
   setMode("desk"); // sync the initial toggle state
 
-  bindShortcuts(
+  releaseSignalKeys = bindShortcuts(
     controller,
     sim,
     scopeView,
@@ -1965,6 +2031,7 @@ async function init() {
       aiPanel,
       () => zoomControl,
       () => deskLock,
+      () => signalRail,
       () => schematicView,
     ],
     // Four relabel functions the app ALREADY had, for their own reasons: each

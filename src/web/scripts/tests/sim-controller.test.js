@@ -470,3 +470,120 @@ test("an unpowered oscillator can is scheduled but the engine gates its output",
   assert.equal(events.at(-1).chipStatus.get("c1").status, "unpowered");
   sim.stop();
 });
+
+// ── External signals (Feature 370) ──────────────────────────────────────────
+// The transport owns the LEVEL a signal holds — run-volatile, exactly like a
+// clock phase — and `pressSignal` is the one place momentary/toggle is decided,
+// so the rail's pointer and the digit keys can never come to disagree.
+
+const signalDoc = (signals) => ({
+  boards: [board],
+  components: [],
+  wires: [],
+  signals,
+});
+const sig = (id, extra = {}) => ({
+  id,
+  color: "red",
+  type: "momentary",
+  rest: "low",
+  flag: { anchor: "bb1.a12", rot: 0 },
+  ...extra,
+});
+
+test("signals seed from `rest` on start and clear on stop (run-volatile)", () => {
+  resetDom();
+  const sim = new SimController({
+    deskDoc: fakeDoc(
+      signalDoc([sig("sig1"), sig("sig2", { rest: "high", color: "blue" })]),
+    ),
+    notifications: fakeNotifications(),
+  });
+  const events = capture();
+  sim.start();
+  assert.deepEqual(
+    [...events.at(-1).signalLevels],
+    [
+      ["sig1", "L"],
+      ["sig2", "H"],
+    ],
+  );
+  sim.stop();
+  assert.equal(events.at(-1).signalLevels.size, 0, "cleared on stop");
+});
+
+test("a MOMENTARY signal asserts the opposite of rest, and returns", () => {
+  resetDom();
+  const sim = new SimController({
+    deskDoc: fakeDoc(signalDoc([sig("sig1", { rest: "high" })])),
+    notifications: fakeNotifications(),
+  });
+  const events = capture();
+  sim.start();
+  const level = () => events.at(-1).signalLevels.get("sig1");
+  assert.equal(level(), "H", "rest high");
+  sim.pressSignal("sig1", true);
+  assert.equal(level(), "L", "held → the other one");
+  sim.pressSignal("sig1", false);
+  assert.equal(level(), "H", "released → back to rest");
+});
+
+test("a TOGGLE latches on the press and ignores the release", () => {
+  resetDom();
+  const sim = new SimController({
+    deskDoc: fakeDoc(signalDoc([sig("sig1", { type: "toggle" })])),
+    notifications: fakeNotifications(),
+  });
+  const events = capture();
+  sim.start();
+  const level = () => events.at(-1).signalLevels.get("sig1");
+  assert.equal(level(), "L");
+  sim.pressSignal("sig1", true);
+  assert.equal(level(), "H");
+  sim.pressSignal("sig1", false);
+  assert.equal(level(), "H", "the release does nothing");
+  sim.pressSignal("sig1", true);
+  assert.equal(level(), "L", "the next press flips it back");
+});
+
+test("a toggle does NOT survive a Run — `rest` is the one durable answer", () => {
+  resetDom();
+  const sim = new SimController({
+    deskDoc: fakeDoc(signalDoc([sig("sig1", { type: "toggle" })])),
+    notifications: fakeNotifications(),
+  });
+  const events = capture();
+  sim.start();
+  sim.pressSignal("sig1", true);
+  assert.equal(events.at(-1).signalLevels.get("sig1"), "H");
+  sim.stop();
+  sim.start();
+  assert.equal(events.at(-1).signalLevels.get("sig1"), "L", "back to rest");
+});
+
+test("pressSignal is inert while stopped, and ignores an unknown id", () => {
+  resetDom();
+  const sim = new SimController({
+    deskDoc: fakeDoc(signalDoc([sig("sig1")])),
+    notifications: fakeNotifications(),
+  });
+  const events = capture();
+  sim.pressSignal("sig1", true); // stopped
+  assert.equal(events.length, 0, "nothing published");
+  sim.start();
+  const before = events.length;
+  sim.pressSignal("nope", true);
+  assert.equal(events.length, before, "an unknown signal ticks nothing");
+});
+
+test("an UNPLACED signal still holds a level — it simply drives no net", () => {
+  resetDom();
+  const sim = new SimController({
+    deskDoc: fakeDoc(signalDoc([{ ...sig("sig1"), flag: undefined }])),
+    notifications: fakeNotifications(),
+  });
+  const events = capture();
+  sim.start();
+  sim.pressSignal("sig1", true);
+  assert.equal(events.at(-1).signalLevels.get("sig1"), "H");
+});

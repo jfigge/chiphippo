@@ -10,7 +10,7 @@
       "name": "74LS85",
       "description": "4-bit magnitude comparator",
       "doc": {
-        "version": 12,
+        "version": 13,
         "boards": [
           {
             "id": "bb1",
@@ -478,6 +478,7 @@
           }
         ],
         "scopeChannels": [],
+        "signals": [],
         "nextBoardId": 4,
         "nextGroupId": 2,
         "nextComponentId": 10,
@@ -486,7 +487,8 @@
         "nextWireId": 30,
         "nextBusId": 1,
         "nextAnnotationId": 18,
-        "nextScopeChannelId": 1
+        "nextScopeChannelId": 1,
+        "nextSignalId": 1
       }
     }
   ]

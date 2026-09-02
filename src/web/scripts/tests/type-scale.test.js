@@ -62,6 +62,10 @@ const WORLD_UNITS = new Map([
   [".annotation-text", "document content inside the zoom-scaled world layer"],
   [".annotation-editor", "document content inside the zoom-scaled world layer"],
   [".wire-gauge-length", "a 300x62 viewBox's own coordinates"],
+  [
+    ".signal-place-ghost",
+    "the place-signal ghost rides the zoom-scaled overlay layer",
+  ],
 ]);
 
 /** Every `font-size` declaration in a stylesheet, with the rule it belongs to. */

@@ -10,7 +10,7 @@
       "name": "74LS161",
       "description": "Synchronous 4-bit counter",
       "doc": {
-        "version": 12,
+        "version": 13,
         "boards": [
           {
             "id": "bb1",
@@ -505,6 +505,7 @@
           }
         ],
         "scopeChannels": [],
+        "signals": [],
         "nextBoardId": 4,
         "nextGroupId": 2,
         "nextComponentId": 16,
@@ -513,7 +514,8 @@
         "nextWireId": 24,
         "nextBusId": 1,
         "nextAnnotationId": 14,
-        "nextScopeChannelId": 1
+        "nextScopeChannelId": 1,
+        "nextSignalId": 1
       }
     },
     {
@@ -521,7 +523,7 @@
       "name": "74LS193",
       "description": "Synchronous up/down counter",
       "doc": {
-        "version": 12,
+        "version": 13,
         "boards": [
           {
             "id": "bb1",
@@ -998,6 +1000,7 @@
           }
         ],
         "scopeChannels": [],
+        "signals": [],
         "nextBoardId": 4,
         "nextGroupId": 2,
         "nextComponentId": 15,
@@ -1006,7 +1009,8 @@
         "nextWireId": 23,
         "nextBusId": 1,
         "nextAnnotationId": 14,
-        "nextScopeChannelId": 1
+        "nextScopeChannelId": 1,
+        "nextSignalId": 1
       }
     },
     {
@@ -1014,7 +1018,7 @@
       "name": "74LS169",
       "description": "Synchronous up/down counter",
       "doc": {
-        "version": 12,
+        "version": 13,
         "boards": [
           {
             "id": "bb1",
@@ -1470,6 +1474,7 @@
           }
         ],
         "scopeChannels": [],
+        "signals": [],
         "nextBoardId": 4,
         "nextGroupId": 2,
         "nextComponentId": 14,
@@ -1478,7 +1483,8 @@
         "nextWireId": 23,
         "nextBusId": 1,
         "nextAnnotationId": 13,
-        "nextScopeChannelId": 1
+        "nextScopeChannelId": 1,
+        "nextSignalId": 1
       }
     },
     {
@@ -1486,7 +1492,7 @@
       "name": "74LS90",
       "description": "Decade (÷10) ripple counter",
       "doc": {
-        "version": 12,
+        "version": 13,
         "boards": [
           {
             "id": "bb1",
@@ -1874,6 +1880,7 @@
           }
         ],
         "scopeChannels": [],
+        "signals": [],
         "nextBoardId": 4,
         "nextGroupId": 2,
         "nextComponentId": 12,
@@ -1882,7 +1889,8 @@
         "nextWireId": 19,
         "nextBusId": 1,
         "nextAnnotationId": 11,
-        "nextScopeChannelId": 1
+        "nextScopeChannelId": 1,
+        "nextSignalId": 1
       }
     }
   ]

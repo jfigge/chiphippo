@@ -14,9 +14,10 @@
  * limitations under the License.
  */
 
-// wire-colors.js — a colour name, in the user's language.
+// wire-colors.js — the eight stored jumper-wire colour tokens, and a colour
+// name in the user's language.
 //
-// `WIRE_COLORS` (model/desk-doc.js) and `LED_COLOR_OPTIONS` (catalog/parts.js)
+// `WIRE_COLORS` (here) and `LED_COLOR_OPTIONS` (catalog/parts.js)
 // are the STORED tokens — `"red"`, `"black"`, … — written into saved documents,
 // used as CSS custom-property suffixes (`--color-wire-red`), and compared by
 // `===` all over the model. None of that may ever see a translation.
@@ -28,6 +29,26 @@
 // falls back to itself, which is exactly what an unknown colour should read as.
 
 import { tf } from "../i18n.js";
+
+/**
+ * The fixed jumper-wire palette (theme.css defines a `--color-wire-<name>`
+ * token per name). It lives HERE rather than in desk-doc.js — its home until
+ * Feature 370 — because a second thing now owns a colour from this list: a
+ * SIGNAL (model/signals.js), whose cap IS this array's length. desk-doc.js
+ * imports signals.js, so signals.js reaching back for the palette would be an
+ * import cycle whose top-level `WIRE_COLORS.length` reads a TDZ binding and
+ * throws. desk-doc.js re-exports it, so every existing importer is unchanged.
+ */
+export const WIRE_COLORS = Object.freeze([
+  "red",
+  "black",
+  "blue",
+  "green",
+  "yellow",
+  "orange",
+  "white",
+  "purple",
+]);
 
 /**
  * The display name for a stored colour token, lower case — for the middle of a

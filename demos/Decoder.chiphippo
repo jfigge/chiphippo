@@ -10,7 +10,7 @@
       "name": "74LS138",
       "description": "3-to-8 line decoder",
       "doc": {
-        "version": 12,
+        "version": 13,
         "boards": [
           {
             "id": "bb1",
@@ -644,6 +644,7 @@
           }
         ],
         "scopeChannels": [],
+        "signals": [],
         "nextBoardId": 4,
         "nextGroupId": 2,
         "nextComponentId": 24,
@@ -652,7 +653,8 @@
         "nextWireId": 24,
         "nextBusId": 1,
         "nextAnnotationId": 19,
-        "nextScopeChannelId": 1
+        "nextScopeChannelId": 1,
+        "nextSignalId": 1
       }
     },
     {
@@ -660,7 +662,7 @@
       "name": "74LS139",
       "description": "Dual 2-to-4 line decoder",
       "doc": {
-        "version": 12,
+        "version": 13,
         "boards": [
           {
             "id": "bb1",
@@ -1403,6 +1405,7 @@
           }
         ],
         "scopeChannels": [],
+        "signals": [],
         "nextBoardId": 4,
         "nextGroupId": 2,
         "nextComponentId": 30,
@@ -1411,7 +1414,8 @@
         "nextWireId": 27,
         "nextBusId": 1,
         "nextAnnotationId": 21,
-        "nextScopeChannelId": 1
+        "nextScopeChannelId": 1,
+        "nextSignalId": 1
       }
     }
   ]

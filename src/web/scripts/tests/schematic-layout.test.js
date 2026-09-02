@@ -420,3 +420,73 @@ test("a seated LCD module's ports resolve to real nets", () => {
     "and the connection routes",
   );
 });
+
+// ── External-signal stubs (Feature 370) ─────────────────────────────────────
+// A signal is not a component, so it can never be a layout NODE. It follows
+// the POWER STUB precedent instead: a glyph dropped at a port on its net.
+
+test("a planted signal yields one stub, on its net, in its colour", () => {
+  // Pin 1 (1A) of a 74LS00 at e5 seats in column 5 — its node's other holes
+  // are where a flag would plug in.
+  const raw = {
+    boards: [{ id: "bb1", type: "pins-full", x: 0, y: 0 }],
+    components: [
+      { id: "c1", kind: "chip", ref: "74LS00", board: "bb1", anchor: "e5", params: {} }, // prettier-ignore
+    ],
+    wires: [],
+    signals: [
+      { id: "sig1", color: "blue", type: "momentary", rest: "low", name: "A", flag: { anchor: "bb1.a5", rot: 0 } }, // prettier-ignore
+    ],
+  };
+  const result = layout(raw, buildNetlist(raw));
+  assert.equal(result.signalStubs.length, 1);
+  const [stub] = result.signalStubs;
+  assert.equal(stub.color, "blue");
+  assert.equal(stub.name, "A");
+  assert.ok(Number.isFinite(stub.x) && Number.isFinite(stub.y));
+  assert.ok(["left", "right", "top", "bottom"].includes(stub.side));
+  // The stub grows the drawing's bounds, like a power stub does.
+  assert.ok(result.bounds.maxX >= stub.x && result.bounds.minX <= stub.x);
+});
+
+test("an UNPLACED signal, or one on a portless net, draws nothing", () => {
+  const base = {
+    boards: [{ id: "bb1", type: "pins-full", x: 0, y: 0 }],
+    components: [
+      { id: "c1", kind: "chip", ref: "74LS00", board: "bb1", anchor: "e5", params: {} }, // prettier-ignore
+    ],
+    wires: [],
+  };
+  const unplaced = layout(
+    { ...base, signals: [{ id: "sig1", color: "red", type: "momentary", rest: "low" }] }, // prettier-ignore
+    buildNetlist({ ...base, signals: [] }),
+  );
+  assert.deepEqual(unplaced.signalStubs, []);
+
+  // A hole no symbol port touches: honest, there is nothing there to stimulate.
+  const raw = {
+    ...base,
+    signals: [
+      { id: "sig1", color: "red", type: "momentary", rest: "low", flag: { anchor: "bb1.a40", rot: 0 } }, // prettier-ignore
+    ],
+  };
+  assert.deepEqual(layout(raw, buildNetlist(raw)).signalStubs, []);
+});
+
+test("the stub's port is chosen deterministically, run after run", () => {
+  const raw = {
+    boards: [{ id: "bb1", type: "pins-full", x: 0, y: 0 }],
+    components: [
+      { id: "c1", kind: "chip", ref: "74LS00", board: "bb1", anchor: "e5", params: {} }, // prettier-ignore
+      { id: "c2", kind: "chip", ref: "74LS00", board: "bb1", anchor: "e25", params: {} }, // prettier-ignore
+    ],
+    wires: [{ id: "w1", from: "bb1.a5", to: "bb1.a25", color: "red" }],
+    signals: [
+      { id: "sig1", color: "red", type: "momentary", rest: "low", flag: { anchor: "bb1.b5", rot: 0 } }, // prettier-ignore
+    ],
+  };
+  const a = layout(raw, buildNetlist(raw)).signalStubs;
+  const b = layout(raw, buildNetlist(raw)).signalStubs;
+  assert.deepEqual(a, b);
+  assert.equal(a.length, 1, "one stub per signal, however many ports the net has"); // prettier-ignore
+});

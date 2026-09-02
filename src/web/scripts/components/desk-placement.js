@@ -59,6 +59,7 @@ import {
   resolveCluster,
 } from "../model/paste-cluster.js";
 import { captureDesign, clipScene, resolveDesign, shiftFor } from "../model/design-clip.js"; // prettier-ignore
+import { flagPoints } from "./signal-layer.js";
 import { buildPsuSvg } from "./psu-view.js";
 import { buildClockSvg } from "./clock-view.js";
 import { buildBoardSvg, applyBoardRotation } from "./breadboard-view.js";
@@ -588,6 +589,20 @@ export class DeskPlacement {
       svg.append(group);
     }
     if (scene.wires.length > 0) ghost.append(svg);
+    // The signal flags the drop would plant, from the SAME polygon the desk
+    // layer draws — the ghost and the drop must not draw two different shapes.
+    if (scene.signals.length > 0) {
+      const flags = svgEl("svg", {
+        class: "design-ghost-signals",
+        width: 1,
+        height: 1,
+      });
+      for (const sig of scene.signals) {
+        const points = flagPoints(scene.boards, sig.anchor, sig.rot);
+        if (points) flags.append(svgEl("polygon", { class: "signal-flag", points })); // prettier-ignore
+      }
+      ghost.append(flags);
+    }
     this.enter({
       kind: "place-design",
       clip,
@@ -687,6 +702,16 @@ export class DeskPlacement {
     }
     this.#host.mateStrips(pasted.boards.map((b) => b.id));
     this.#host.emitDocChanged(label);
+    // Signals paste BEST-EFFORT (desk-doc.js pasteDesign says why), so any
+    // that could not land are reported rather than silently missing.
+    if (notify && pasted.droppedSignals > 0) {
+      PopupManager.notify({
+        title: t("desk.paste.signalsDroppedTitle"),
+        message: t("desk.paste.signalsDropped", {
+          count: pasted.droppedSignals,
+        }),
+      });
+    }
     this.#host.selection.setMulti(
       pasted.components.map((c) => c.id),
       pasted.wires.map((w) => w.id),
@@ -748,6 +773,7 @@ export class DeskPlacement {
     if (kind === "place") this.trackBoardGhost(e);
     else if (kind === "place-brick") this.#trackBrickGhost(e);
     else if (kind === "place-annotation") this.#host.trackAnnotationGhost(e);
+    else if (kind === "place-signal") this.#host.trackSignalGhost(e);
     else if (kind === "place-cluster") this.trackClusterGhost(e);
     else if (kind === "place-design") this.trackDesignGhost(e);
     else this.#trackSeatedGhost(e);

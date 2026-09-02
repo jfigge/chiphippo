@@ -165,6 +165,35 @@ export function captureDesign(doc, { boardIds = [], componentIds = [] } = {}) {
     .filter((a) => a.anchor && partKeys.has(a.anchor))
     .map((a) => structuredClone(a));
 
+  // A SIGNAL travels only when its flag is planted on a captured board — the
+  // wire rule. An UNPLACED signal stays behind: it is bench equipment sitting
+  // on the rail, not part of the design on the boards, the same argument that
+  // leaves an unanchored label behind.
+  //
+  // `color` is deliberately NOT captured. A colour is a PER-DESK identity — it
+  // is what maps a flag to a button and a button to a digit key — so carrying
+  // it across desktops would collide with the destination's own allocation.
+  // The paste re-issues one from whatever is free there.
+  const signals = [];
+  for (const sig of doc.signals ?? []) {
+    const parsed = sig.flag ? inside(sig.flag.anchor) : null;
+    if (!parsed) continue;
+    signals.push(
+      withMeta(
+        {
+          type: sig.type,
+          rest: sig.rest,
+          flag: {
+            owner: parsed.boardId,
+            point: parsed.hole,
+            rot: sig.flag.rot ?? 0,
+          },
+        },
+        sig,
+      ),
+    );
+  }
+
   // The grab reference: the bounding box of everything with a FOOTPRINT (the
   // boards and bricks), so the design tracks the cursor from its middle the
   // way a kit ghost does.
@@ -216,6 +245,7 @@ export function captureDesign(doc, { boardIds = [], componentIds = [] } = {}) {
     buses,
     netNames,
     annotations,
+    signals,
   };
 }
 
@@ -332,6 +362,15 @@ export function clipScene(clip) {
       ...(w.layout === "routed"
         ? { layout: "routed", points: (w.points ?? []).map((p) => ({ ...p })) }
         : null),
+    })),
+    // The ghost draws the flags it is about to plant, from the SAME polygon
+    // the desk layer uses — the preview and the drop must not draw two
+    // different shapes. No id yet (the paste mints one), so the scene names
+    // them by index; the ghost only ever reads position and colour.
+    signals: (clip.signals ?? []).map((sig, i) => ({
+      id: `clip-sig${i + 1}`,
+      anchor: formatAddress(sig.flag.owner, sig.flag.point),
+      rot: sig.flag.rot ?? 0,
     })),
   };
 }

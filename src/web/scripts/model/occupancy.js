@@ -268,15 +268,32 @@ export function partPinAddresses(doc, comp) {
  * Build the address → occupant index for a document. Occupants:
  *   { kind: "pin", componentId, pin }   — a seated chip pin
  *   { kind: "wire", wireId, end }       — a wire end ("from" | "to")
+ *   { kind: "signal", signalId }        — a planted signal flag's POINT
  *
  * Unresolvable entries (unknown ref, malformed anchor/address) contribute
  * nothing — normalizeDocument drops them on load anyway.
  *
- * @param {{ boards: Array, components: Array, wires: Array }} doc
+ * ORDER MATTERS, and it is the inverse of the loader's. normalizeDocument
+ * claims a hole PINS → WIRES → FLAGS and keeps the FIRST; this map is
+ * last-writer-wins, so the same precedence is spelled backwards: flags first,
+ * then wires, then pins. A normalized document never collides, but this also
+ * runs against live mid-mutation documents, and of the two ways a collision
+ * could read, a flag masking a WIRE end is the harmful one — canReendWire
+ * would then refuse to move that wire's own end, wedging it for good, where
+ * the other direction merely permits a placement.
+ *
+ * @param {{ boards: Array, components: Array, wires: Array, signals: Array }} doc
  * @returns {Map<string, object>}
  */
 export function buildOccupancy(doc) {
   const map = new Map();
+  // A planted flag's point is a lead like any other — one hole, one lead.
+  for (const sig of doc.signals ?? []) {
+    const address = sig?.flag?.anchor;
+    if (typeof address === "string") {
+      map.set(address, { kind: "signal", signalId: sig.id });
+    }
+  }
   for (const comp of doc.components ?? []) {
     if (!comp || (comp.kind !== "chip" && comp.kind !== "discrete")) continue;
     const pins = partPinAddresses(doc, comp);
@@ -354,6 +371,28 @@ export function canReendWire(doc, wireId, end, address) {
   if (address === other || !isRealPoint(doc, address)) return false;
   const occupant = buildOccupancy(doc).get(address);
   return !occupant || (occupant.kind === "wire" && occupant.wireId === wireId);
+}
+
+/**
+ * May signal `signalId`'s flag plug into `address`? The point must be free —
+ * ignoring this signal's OWN current claim, so a flag slides off its old hole
+ * without colliding with itself. That is `canReendWire`'s argument one item
+ * over, and it is what lets ONE method serve both planting and moving.
+ *
+ * Deliberately does NOT test that the address is a board hole: the caller
+ * (DeskDoc.canPlaceSignalFlag) owns that half, because "a flag plugs into a
+ * breadboard, not into a PSU terminal" is a rule about signals, not about
+ * collisions, and this file is the collision authority alone.
+ *
+ * @param {{ boards: Array, components: Array, wires: Array, signals: Array }} doc
+ * @param {string} signalId
+ * @param {string} address
+ */
+export function canPlaceFlag(doc, signalId, address) {
+  const occupant = buildOccupancy(doc).get(address);
+  return (
+    !occupant || (occupant.kind === "signal" && occupant.signalId === signalId)
+  );
 }
 
 /**

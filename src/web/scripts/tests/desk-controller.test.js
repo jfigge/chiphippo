@@ -90,6 +90,7 @@ test("constructor creates the surface layers in order and mounts doc boards", ()
       "layer-parts",
       "layer-wires",
       "layer-annotations",
+      "layer-signals",
       "layer-overlay",
     ],
   );

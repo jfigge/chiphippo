@@ -29,7 +29,7 @@
 // Views report gestures through constructor callbacks (house rule); the
 // camera stays DeskView's job — this class only reads worldFromEvent/camera.
 
-import { el } from "../dom.js";
+import { el, svgEl } from "../dom.js";
 import { t } from "../i18n.js";
 import { PopupManager } from "../popup-manager.js";
 import { PX_PER_UNIT, clampZoom } from "../desk/desk-geometry.js";
@@ -74,6 +74,13 @@ import { LcdView } from "./lcd-view.js";
 import { WireLayer } from "./wire-layer.js";
 import { PartPropertiesDialog } from "./part-properties-dialog.js";
 import { AnnotationLayer } from "./annotation-layer.js";
+import { SignalLayer } from "./signal-layer.js";
+import {
+  MAX_SIGNALS,
+  availableSignalColors,
+  nextFlagRotation,
+  signalSeq,
+} from "../model/signals.js";
 import { SimOverlay } from "./sim-overlay.js";
 import { ProbeInspector } from "./probe-inspector.js";
 import { WireTools } from "./wire-tools.js";
@@ -177,6 +184,25 @@ const WIRE_END_GRAB_RADIUS = 0.6;
  * why the answer must be reliable: a held-down button is momentary and has no
  * durable param, so it is deliberately not one of these.
  */
+/**
+ * A signal's Type and Default choices. FUNCTIONS, not consts: `t()` must never
+ * run at module scope — the catalog is not loaded yet, and a top-level call
+ * would freeze the English into the module for the life of the process.
+ */
+function signalTypeOptions() {
+  return [
+    { value: "momentary", label: t("properties.option.momentary") },
+    { value: "toggle", label: t("properties.option.toggle") },
+  ];
+}
+
+function signalRestOptions() {
+  return [
+    { value: "low", label: t("properties.option.low") },
+    { value: "high", label: t("properties.option.high") },
+  ];
+}
+
 function clickTogglingPart(ref) {
   return typeof partDef(ref)?.clickToggle === "function";
 }
@@ -192,6 +218,7 @@ export class DeskController {
   #partViews = new Map(); // componentId → ChipView | DiscreteView | PsuView
   #wireLayer;
   #annotationLayer; // AnnotationLayer: labels + notes (Feature 120)
+  #signalLayer; // SignalLayer: planted signal flags (Feature 370)
   // Active interaction: null, or
   //   { kind: "place", type, ghost, pos, legal }              (board)
   //   { kind: "place-chip", ref, ghost, board, anchor, legal }
@@ -202,6 +229,7 @@ export class DeskController {
   //   { kind: "drag-brick", id, … }
   //   { kind: "drag-cluster", grabId, members, … }            (a multi-selection)
   //   { kind: "place-annotation", annKind, ghost, pos, anchor } (label / note)
+  //   { kind: "place-signal", ghost, pos }                       (Feature 370)
   //   { kind: "drag-annotation", id, … }                      (label / note)
   //   { kind: "wire", from, hover }                           (wire tool)
   #mode = null;
@@ -227,6 +255,7 @@ export class DeskController {
   #history = new HistoryStore();
   #restoring = false;
   #onHistoryChange;
+  #onAddNetToAnalyzer; // shared with the probe: one analyzer entry point
   #onClockToggle;
   #onOpenPinout;
   #onOpenMemory;
@@ -294,6 +323,7 @@ export class DeskController {
     this.#viewport = viewport;
     this.#deskView = deskView;
     this.#doc = deskDoc;
+    this.#onAddNetToAnalyzer = onAddNetToAnalyzer;
     this.#onClockToggle = onClockToggle;
     this.#onOpenPinout = onOpenPinout;
     this.#onOpenMemory = onOpenMemory;
@@ -313,6 +343,7 @@ export class DeskController {
       parts: el("div", { class: "layer-parts" }),
       wires: el("div", { class: "layer-wires" }),
       annotations: el("div", { class: "layer-annotations" }),
+      signals: el("div", { class: "layer-signals" }),
       overlay: el("div", { class: "layer-overlay" }),
     };
     surface.append(
@@ -320,6 +351,7 @@ export class DeskController {
       this.#layers.parts,
       this.#layers.wires,
       this.#layers.annotations,
+      this.#layers.signals,
       this.#layers.overlay,
     );
 
@@ -355,6 +387,9 @@ export class DeskController {
         },
         get annotationLayer() {
           return sel.#annotationLayer;
+        },
+        get signalLayer() {
+          return sel.#signalLayer;
         },
         addressWorld: (address) => this.#addressWorld(address),
       },
@@ -402,6 +437,7 @@ export class DeskController {
         // An ANNOTATION ghost is armed by the annotation code below but tracked
         // through the one dispatcher, so placement hands that one kind back.
         trackAnnotationGhost: (e) => this.#trackAnnotationGhost(e),
+        trackSignalGhost: (e) => this.#trackSignalGhost(e),
       },
       this.#layers.overlay,
     );
@@ -435,6 +471,14 @@ export class DeskController {
         onEditCommit: (id, text) => this.#commitAnnotationText(id, text),
       },
     );
+
+    // External signals (Feature 370): the planted flags, above the wires and
+    // below the interaction overlay. The BUTTONS live on the viewport rail
+    // (components/signal-rail.js), which app.js owns — this is the desk half.
+    this.#signalLayer = new SignalLayer(this.#layers.signals, deskDoc, {
+      onPointerDown: (id, e) => this.#onSignalPointerDown(id, e),
+      onContextMenu: (id, e) => this.#onSignalContextMenu(id, e),
+    });
 
     // Live simulation state (Feature 90): LEDs, chip badges, clock lamps —
     // and the net-level lookups the probe tints with. Renders from published
@@ -1657,6 +1701,33 @@ export class DeskController {
     });
   }
 
+  /**
+   * Arm a place-signal ghost. The ghost is the signal's own flag glyph — it is
+   * the thing you picked — but where it lands is NOT where the click was: a
+   * signal has no desk coordinates, so the click merely says "yes, add it" and
+   * the button goes to the next free slot on the rail. Rail order IS document
+   * order, so that slot is an append.
+   */
+  armSignalPlacement() {
+    if (this.#editingLocked) return;
+    if (this.#doc.signals.length >= MAX_SIGNALS) return;
+    const ghost = el("div", { class: "signal-place-ghost", hidden: true }, [
+      el("span", { class: "signal-place-ghost-mark", text: "⚑" }),
+      el("span", { text: t("palette.signal.item") }),
+    ]);
+    this.#place.enter({ kind: "place-signal", ghost, pos: null, legal: true });
+  }
+
+  /** Place-signal ghost: rides the cursor and says what a click would add. */
+  #trackSignalGhost(e) {
+    const m = this.#mode;
+    const w = this.#deskView.worldFromEvent(e);
+    m.pos = { x: w.x, y: w.y };
+    m.ghost.hidden = false;
+    m.ghost.style.left = `${w.x * PX_PER_UNIT}px`;
+    m.ghost.style.top = `${w.y * PX_PER_UNIT}px`;
+  }
+
   /** Place-annotation ghost: rides the cursor; anchors when over a part. */
   #trackAnnotationGhost(e) {
     const m = this.#mode;
@@ -2340,6 +2411,9 @@ export class DeskController {
     // vertical two-click form, and rotates a selected placed resistor 90°.
     if ((e.key === "r" || e.key === "R") && bareKey) {
       if (this.#toggleResistorRotation()) return true;
+      // R also turns a signal flag about its POINT — the anchor is never part
+      // of the rotation, so there is nothing to re-resolve.
+      if (this.#rotateSelectedSignal()) return true;
     }
     if (
       (e.key === "Delete" || e.key === "Backspace") &&
@@ -2359,6 +2433,9 @@ export class DeskController {
       else if (kind === "wire") this.removeWire(id);
       else if (kind === "bus") this.#bus.removeBus(id, true);
       else if (kind === "annotation") this.removeAnnotation(id);
+      // Delete removes the SIGNAL — button and all — as every other single
+      // pick removes the thing it names. Unplugging a flag is the drag.
+      else if (kind === "signal") this.removeSignal(id);
       else this.removeBoard(id);
       return true;
     }
@@ -3768,6 +3845,320 @@ export class DeskController {
     });
   }
 
+  // ── Signal gestures (external signals, Feature 370) ─────────────────────
+
+  /**
+   * Grab a flag. TWO entry points reach the ONE `drag-signal-flag`: the rail's
+   * unplaced chip (`origin` null) and a planted polygon (`origin` its flag).
+   * They are the same gesture because "drag it onto a board" and "move it to
+   * another hole" are the same act, and one gesture means one resolver and one
+   * commit. The rail chip is not a coordinate-space problem: `worldFromEvent`
+   * reads client coordinates off any event at all.
+   */
+  beginSignalFlagDrag(id, e) {
+    this.#onSignalPointerDown(id, e, { fromRail: true });
+  }
+
+  #onSignalPointerDown(id, e, { fromRail = false } = {}) {
+    if (e.button !== 0) return;
+    if (e.shiftKey) return; // shift-drag is the viewport's marquee
+    if (this.#mode || this.#probe.armed || this.#editingLocked) return;
+    // A signal is none of the three multi sets, so the additive chord leaves
+    // the selection alone — the annotation rule, verbatim.
+    if (isToggleSelectEvent(e, IS_MAC)) {
+      e.stopPropagation();
+      return;
+    }
+    const sig = this.#doc.getSignal(id);
+    if (!sig) return;
+    e.stopPropagation();
+    this.#hideHover();
+    this.selectSignal(id);
+    const start = this.#deskView.worldFromEvent(e);
+    const elem = fromRail ? this.#viewport : e.currentTarget;
+    this.#mode = {
+      kind: "drag-signal-flag",
+      id,
+      elem,
+      pointerId: e.pointerId,
+      startClientX: e.clientX,
+      startClientY: e.clientY,
+      lastWorld: start,
+      origin: sig.flag ? { ...sig.flag } : null,
+      rot: sig.flag?.rot ?? 0,
+      // A drag off the rail has nothing on the desk yet, so it must show the
+      // ghost from the very first sample rather than after the 4 px threshold.
+      active: fromRail,
+      address: null,
+      holeFree: false,
+      refused: false,
+      at: null,
+      teardown: null,
+    };
+    this.#viewport.classList.add("desk-viewport--dragging");
+    this.#mode.teardown = beginPointerGesture(elem, e.pointerId, {
+      onMove: this.#onSignalPointerMove,
+      onEnd: this.#onSignalPointerUp,
+    });
+    if (fromRail) this.#resolveSignalFlag(this.#mode, start);
+  }
+
+  /**
+   * Where the flag would land, shared by the live drag and the release.
+   *
+   * `legal` is deliberately TRUE over bare desk and FALSE over a taken hole:
+   * a drop on bare desk is the UNPLUG, while a mis-aimed drop onto someone
+   * else's hole is a miss. That difference is the whole reason the two are
+   * not one "not a valid target" case.
+   */
+  #resolveSignalFlag(d, world) {
+    const hit = this.#holeAtWorld(world);
+    d.address = hit ? `${hit.board.id}.${hit.hole}` : null;
+    d.holeFree =
+      Boolean(d.address) && this.#doc.canPlaceSignalFlag(d.id, d.address);
+    // THE FLAG NEVER LEAVES THE CURSOR. It snaps to a hole it can actually
+    // have, and rides the raw pointer everywhere else — so moving off a target
+    // no longer flings it back to where the drag started. A drop is the only
+    // thing that reverts anything.
+    d.at = d.holeFree ? { x: hit.x, y: hit.y } : world;
+    // Red exactly when a drop HERE would achieve nothing: a hole someone else
+    // holds, or bare desk with no planted flag to pull out. Bare desk under a
+    // PLANTED flag is deliberately not red — dropping there unplugs it, which
+    // is a real action and the only way to put one back on the rail.
+    d.refused = d.address ? !d.holeFree : !d.origin;
+    this.#signalLayer.setPreview(d.id, {
+      at: d.at,
+      rot: d.rot,
+      illegal: d.refused,
+    });
+  }
+
+  #onSignalPointerMove = (e) => {
+    const d = this.#mode;
+    if (d?.kind !== "drag-signal-flag" || e.pointerId !== d.pointerId) return;
+    if (!d.active) {
+      const travel = Math.hypot(
+        e.clientX - d.startClientX,
+        e.clientY - d.startClientY,
+      );
+      if (travel < DRAG_THRESHOLD) return;
+      d.active = true;
+    }
+    const w = this.#deskView.worldFromEvent(e);
+    d.lastWorld = w;
+    this.#resolveSignalFlag(d, w);
+  };
+
+  #onSignalPointerUp = (e) => {
+    const d = this.#mode;
+    if (d?.kind !== "drag-signal-flag" || e.pointerId !== d.pointerId) return;
+    this.#mode = null;
+    this.#viewport.classList.remove("desk-viewport--dragging");
+    d.teardown?.();
+    if (!d.active) {
+      this.#signalLayer.clearPreview(d.id); // plain click — the press selected it
+      return;
+    }
+    // A drag that spans Run reverts, never commits.
+    const cancelled = e.type === "pointercancel" || this.#editingLocked;
+    if (!cancelled) {
+      this.#resolveSignalFlag(d, releaseWorld(this.#deskView, e, d.lastWorld));
+    }
+    if (cancelled) {
+      this.#signalLayer.clearPreview(d.id);
+      return;
+    }
+    try {
+      if (d.address && d.holeFree) {
+        const same = d.origin?.anchor === d.address && d.origin?.rot === d.rot;
+        if (same) {
+          this.#signalLayer.clearPreview(d.id);
+          return;
+        }
+        this.#doc.plantSignalFlag(d.id, d.address, d.rot);
+        this.#emitDocChanged("connect signal");
+      } else if (!d.address && d.origin) {
+        // Dropped clear of every board: the UNPLUG. The button returns to the
+        // rail and the signal stops driving anything.
+        this.#doc.unplantSignalFlag(d.id);
+        this.#emitDocChanged("disconnect signal");
+      } else {
+        this.#signalLayer.clearPreview(d.id); // a miss changes nothing
+      }
+    } catch {
+      this.#signalLayer.clearPreview(d.id);
+    }
+  };
+
+  /** R while a planted flag is picked. Returns whether it consumed the key. */
+  #rotateSelectedSignal() {
+    const d = this.#mode;
+    if (d?.kind === "drag-signal-flag") {
+      // Mid-drag R spins the GHOST, the way it spins a board placement ghost.
+      d.rot = nextFlagRotation(d.rot);
+      this.#resolveSignalFlag(d, d.lastWorld);
+      return true;
+    }
+    const sel = this.#sel.single;
+    if (sel?.kind !== "signal") return false;
+    const sig = this.#doc.getSignal(sel.id);
+    if (!sig?.flag) return false;
+    this.#doc.rotateSignalFlag(sel.id);
+    this.#emitDocChanged("rotate signal flag");
+    return true;
+  }
+
+  #onSignalContextMenu(id, e) {
+    e.preventDefault();
+    e.stopPropagation();
+    this.openSignalMenu(id, e.clientX, e.clientY);
+  }
+
+  /**
+   * A signal's context menu, at a point. ONE menu wherever you right-click the
+   * signal — the flag on the desk, or its button on the rail. The rail needs it
+   * because an UNPLACED signal has no flag to right-click and no way to be
+   * selected, so without this there was no route to Remove at all: you had to
+   * plant it somewhere first just to throw it away.
+   */
+  openSignalMenu(id, x, y) {
+    if (this.#probe.armed || this.#mode || this.#editingLocked) return;
+    const sig = this.#doc.getSignal(id);
+    if (!sig) return;
+    if (sig.flag) this.selectSignal(id); // only a planted flag can be selected
+    PopupManager.menu({
+      x,
+      y,
+      items: [
+        {
+          label: t("desk.menu.properties"),
+          onSelect: () => this.openSignalProperties(id),
+        },
+        {
+          label: t("probe.addToAnalyzer"),
+          disabled: !sig?.flag,
+          onSelect: () =>
+            this.#onAddNetToAnalyzer?.(sig.flag.anchor, {
+              color: sig.color,
+              label: sig.name || sig.id,
+            }),
+        },
+        {
+          label: t("desk.menu.removeSignal"),
+          danger: true,
+          onSelect: () => this.removeSignal(id),
+        },
+      ],
+    });
+  }
+
+  // ── Signal document actions ─────────────────────────────────────────────
+
+  /** The desk's signals, in rail order — what the digit keys index into. */
+  get signals() {
+    return this.#doc.signals;
+  }
+
+  /** Pick a signal's flag (single pick — signals join no multi set). */
+  selectSignal(id) {
+    this.#sel.selectSignal(id);
+  }
+
+  /**
+   * The shared Properties dialog for a signal — a HAND-BUILT field list, since
+   * a signal is not a component and has no catalog def to declare one (the
+   * project and desktop cards are driven the same way).
+   *
+   * Type and Default are `segmented` rather than `select`: both are short,
+   * closed either/ors that should be readable without opening anything. There
+   * is no `warnings` callback because a signal cannot fault.
+   */
+  openSignalProperties(id) {
+    const sig = this.#doc.getSignal(id);
+    if (!sig) return;
+    PartPropertiesDialog.open({
+      title: t("desk.signalPropertiesTitle", {
+        signal: sig.name || sig.id,
+      }),
+      fields: [
+        {
+          key: "color",
+          type: "color",
+          // Uniqueness as an ABSENCE: the picker only offers colours it can
+          // grant, so every swatch on screen works and the shared swatch
+          // control (LEDs, Settings) needs no disabled state of its own.
+          options: availableSignalColors(this.#doc.signals, id),
+        },
+        { key: "type", type: "segmented", options: signalTypeOptions() },
+        { key: "rest", type: "segmented", options: signalRestOptions() },
+      ],
+      values: {
+        name: sig.name,
+        description: sig.description,
+        color: sig.color,
+        type: sig.type,
+        rest: sig.rest,
+      },
+      onChange: (key, value) => this.#setSignalProperty(id, key, value),
+    });
+  }
+
+  #setSignalProperty(id, key, value) {
+    try {
+      if (key === "name" || key === "description") {
+        this.#doc.setSignalMeta(id, { [key]: value });
+      } else {
+        this.#doc.updateSignal(id, { [key]: value });
+      }
+    } catch {
+      return; // a refused colour/value leaves the card as it was
+    }
+    // No explicit re-render: the rail and the flag layer both rebuild from
+    // `chiphippo:doc-changed`, so this ONE seam is the whole repaint path (and
+    // the one undo step, coalesced across a burst of nudges).
+    this.#emitDocChanged("set signal properties", { coalesce: true });
+  }
+
+  /**
+   * Add a signal. The desk POSITION a placement click reported is discarded on
+   * purpose: a signal has no desk coordinates at all — its button goes to the
+   * rail, and rail order IS document order, so "the next free slot" is an
+   * append. Returns the new signal, or null when the palette is exhausted.
+   */
+  addSignal() {
+    if (this.#editingLocked) return null;
+    let sig;
+    try {
+      sig = this.#doc.addSignal({});
+    } catch {
+      return null; // NO_COLOR — every colour is spoken for
+    }
+    // Named from the ID's own sequence, never the rail's length: ids never
+    // repeat and lengths do, so a length-based default hands out a second
+    // "Signal 4" the moment one is deleted. Set before the commit below, so
+    // the add and its name are ONE undo step.
+    this.#doc.setSignalMeta(sig.id, {
+      name: t("desk.signal.untitled", { n: signalSeq(sig.id) }),
+    });
+    sig = this.#doc.getSignal(sig.id);
+    this.#emitDocChanged("add signal");
+    return sig;
+  }
+
+  /** Remove a signal outright. */
+  removeSignal(id) {
+    if (this.#editingLocked) return;
+    try {
+      this.#doc.removeSignal(id);
+    } catch {
+      return;
+    }
+    if (this.#sel.single?.kind === "signal" && this.#sel.single.id === id) {
+      this.#sel.forget();
+    }
+    this.#emitDocChanged("delete signal");
+  }
+
   // ── Marquee selection (shift-drag anywhere) ─────────────────────────────
 
   /** Components whose EVERY pin/terminal lies inside the world-unit rect. */
@@ -4033,6 +4424,8 @@ export class DeskController {
       this.addBrickAt(m.ref, m.pos.x, m.pos.y, m.params);
     } else if (m.kind === "place-annotation") {
       this.addAnnotationAt(m.annKind, m.pos.x, m.pos.y, m.anchor);
+    } else if (m.kind === "place-signal") {
+      this.addSignal(); // the click point is deliberately discarded
     } else if (m.kind === "place-part") {
       this.addComponentAt(
         m.ref,

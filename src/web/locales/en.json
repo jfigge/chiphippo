@@ -278,6 +278,11 @@
       "note": "Note",
       "noteHint": "a multi-line note box"
     },
+    "signal": {
+      "item": "Signal",
+      "hint": "a bench stimulus button — click the desk to add one",
+      "full": "All {count} signal colors are in use"
+    },
     "group": {
       "and": "AND",
       "annotations": "ANNOTATIONS",
@@ -308,6 +313,7 @@
       "register": "Register",
       "resistors": "Resistors",
       "shiftregister": "Shift register",
+      "signals": "SIGNALS",
       "switches": "Switches",
       "xor": "XOR"
     }
@@ -819,6 +825,13 @@
     },
     "boardPropertiesTitle": "{board} Properties",
     "partPropertiesTitle": "{part} Properties",
+    "signalPropertiesTitle": "{signal} Properties",
+    "signal": {
+      "untitled": "Signal {n}",
+      "press": "Press {name}",
+      "digitHint": "Press {digit} while the circuit runs",
+      "dragHint": "Drag onto a hole to connect"
+    },
     "wirePropertiesTitle": "Wire Properties",
     "wireColor": "Color",
     "wireLayout": "Layout Method",
@@ -851,7 +864,8 @@
       "deleteComponent": "Delete Component",
       "removeBoard": "Remove board",
       "editText": "Edit text…",
-      "remove": "Remove"
+      "remove": "Remove",
+      "removeSignal": "Remove Signal"
     },
     "remove": {
       "confirm": "Remove",
@@ -867,7 +881,12 @@
     "paste": {
       "failTitle": "Could not paste the design",
       "overlap": "Part of it lands on something already on this desk.",
-      "noRoom": "Something it needs is not free on this desk."
+      "noRoom": "Something it needs is not free on this desk.",
+      "signalsDroppedTitle": "Some signals were not pasted",
+      "signalsDropped": {
+        "one": "1 signal was left behind — this desk already holds every signal colour.",
+        "other": "{count} signals were left behind — this desk already holds every signal colour."
+      }
     }
   },
   "workspace": {
@@ -1031,7 +1050,8 @@
     },
     "simulation": {
       "run": "Run / Stop the circuit",
-      "runKeys": "Space or {mod}+R"
+      "runKeys": "Space or {mod}+R",
+      "signals": "Press signal 1–7 (while the circuit runs)"
     }
   },
   "properties": {
@@ -1043,10 +1063,16 @@
       "volts": "Voltage",
       "hz": "Rate",
       "size": "Size",
-      "imageSource": "Image file"
+      "imageSource": "Image file",
+      "type": "Type",
+      "rest": "Default value"
     },
     "option": {
-      "manual": "Manual"
+      "manual": "Manual",
+      "momentary": "Momentary",
+      "toggle": "Toggle",
+      "low": "Low",
+      "high": "High"
     },
     "action": {
       "inspectMemory": "Inspect memory…",

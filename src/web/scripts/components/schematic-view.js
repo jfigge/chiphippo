@@ -34,6 +34,7 @@ import { t } from "../i18n.js";
 import { PX_PER_UNIT, clampZoom } from "../desk/desk-geometry.js";
 import { layout } from "../model/schematic-layout.js";
 import { formatOhms } from "../model/ohm-format.js";
+import { FLAG_LEN, flagPolygon } from "../model/signals.js";
 import { DeskView } from "./desk-view.js";
 import { NetlistCache } from "./netlist-cache.js";
 import { ZoomControl } from "./zoom-control.js";
@@ -99,6 +100,66 @@ function buildGlyph(name, geometry) {
       }),
     );
   }
+  return g;
+}
+
+// ── External-signal stubs (Feature 370) ──────────────────────────────────────
+
+/**
+ * A signal's flag at a pin tip, oriented outward along its side, plus its name.
+ *
+ * The pentagon comes from `flagPolygon` — the SAME function the desk layer
+ * draws with — because the desk and the schematic must not show two different
+ * flags for one signal. Here the apex points AT the pin, so the body extends
+ * outward: at rot 0 the body runs right of its point, so a port on the LEFT
+ * side wants rot 180, and so on round.
+ */
+function buildSignalSymbol({ x, y, side, name, color }) {
+  const dir =
+    side === "left"
+      ? { x: -1, y: 0 }
+      : side === "right"
+        ? { x: 1, y: 0 }
+        : side === "top"
+          ? { x: 0, y: -1 }
+          : { x: 0, y: 1 };
+  const rot =
+    side === "left" ? 180 : side === "right" ? 0 : side === "top" ? 270 : 90;
+  const g = svgEl("g", { class: "schematic-signal" });
+  g.style.setProperty("--signal-color", `var(--color-wire-${color})`);
+  const tip = { x: x + dir.x * 0.9, y: y + dir.y * 0.9 };
+  g.append(
+    svgEl("line", {
+      class: "schematic-signal-stem",
+      x1: x,
+      y1: y,
+      x2: tip.x,
+      y2: tip.y,
+    }),
+    svgEl("polygon", {
+      class: "schematic-signal-flag",
+      points: flagPolygon(tip, rot)
+        .map((v) => `${v.x},${v.y}`)
+        .join(" "),
+    }),
+  );
+  // The label sits past the body, on the axis the flag points along. `svgText`
+  // writes font-size as an ATTRIBUTE (SVG user units), so the type-scale guard
+  // has nothing to say about it.
+  const label = {
+    x: tip.x + dir.x * (FLAG_LEN + 0.4),
+    y: tip.y + dir.y * (FLAG_LEN + 0.4),
+  };
+  g.append(
+    svgText(
+      name,
+      label.x,
+      label.y,
+      "schematic-signal-label",
+      0.85,
+      side === "left" ? "end" : side === "right" ? "start" : "middle",
+    ),
+  );
   return g;
 }
 
@@ -454,11 +515,15 @@ export function buildSchematicSvg(result) {
 
   const gEdges = svgEl("g", { class: "schematic-edges" });
   const gPower = svgEl("g", { class: "schematic-powers" });
+  const gSignals = svgEl("g", { class: "schematic-signals" });
   const gNodes = svgEl("g", { class: "schematic-nodes" });
   for (const edge of result.edges) gEdges.append(buildEdge(edge));
   for (const stub of result.powerStubs) gPower.append(buildPowerSymbol(stub));
+  for (const stub of result.signalStubs ?? []) {
+    gSignals.append(buildSignalSymbol(stub));
+  }
   for (const node of result.nodes) gNodes.append(buildNode(node));
-  svg.append(gEdges, gPower, gNodes);
+  svg.append(gEdges, gPower, gSignals, gNodes);
   return svg;
 }
 

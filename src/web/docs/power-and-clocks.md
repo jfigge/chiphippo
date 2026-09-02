@@ -7,6 +7,10 @@ neither of which seats on a breadboard. They sit loose on the desk with their
 own addressable terminals, and you wire those terminals into a board's rails
 (or straight to a chip's pins) just like any other wire run.
 
+There is a third kind of source, and it does not live on the desk at all:
+**external signals**, the bench stimulus buttons pinned down the right-hand
+edge of the viewport. They are covered at the end of this page.
+
 ![A PSU and clock brick wired to a breadboard](images/power-and-clocks.png)
 
 ## PSU bricks
@@ -110,6 +114,66 @@ every free-running clock's rate together (it has no effect on a manual
 clock, which only ever moves on a click). A manual clock only responds to
 clicks while the simulation is actually running — stopped, its body is inert
 like everything else on the desk.
+
+## External signals
+
+A **signal** is bench stimulus: a labelled button pinned to the right-hand edge
+of the desk, and a pointed **flag** whose tip plugs into any hole on any
+breadboard. Pressing the button injects a level at that hole. Nothing about a
+signal takes up board space, and — unlike a push button, which you can only
+hold one of at a time — **you can assert several signals at once**.
+
+Add one from the parts palette's **SIGNALS** section: pick *Signal*, then click
+anywhere on the desk. The click position does not matter; the button always
+goes to the next free slot on the rail, with its flag waiting beside it.
+
+**Drag the flag onto a board** and its point snaps into the hole under the
+cursor. Press **R** while it is selected to turn it a quarter-turn about that
+point, so it can lie in whichever direction has room. Dragging a planted flag
+onto bare desk unplugs it, and its button goes back to holding the flag on the
+rail. A flag claims its hole exactly like a wire end or a chip pin does, so
+nothing else can use it while the flag is there.
+
+### Momentary, toggle, and the resting level
+
+Right-click a flag (or a button) for **Properties…**:
+
+| Field | What it does |
+| --- | --- |
+| **Name** | The label shown on the button |
+| **Description** | The button's tooltip |
+| **Color** | The colour shared by the button's dot and its flag — one of the seven signal colours, and only those no other signal holds are offered |
+| **Type** | **Momentary** asserts while held; **Toggle** flips on each press and stays |
+| **Default value** | The level the signal rests at — **Low** or **High** |
+
+A placed signal is **always** driving its net. A momentary signal rests at its
+default and asserts the *opposite* while you hold it, which is what makes
+"Default: High" the natural setting for an active-low `/RESET` line: it sits
+high, and pressing the button pulses it low. A toggle's current level is reset
+to the default every time you Run, so a run always starts from a known state.
+
+A signal drives at the same strength as a chip output, so two signals arguing
+over one net — or a signal fighting a chip's output pin — is reported as a
+conflict, exactly as two chip outputs on one net would be.
+
+### Pressing them
+
+While the circuit is running, **1–7 press the signal buttons**, top to bottom.
+No modifier, so you can hold several down together — `1` and `3` at once is two
+signals asserted at once. (Those digits pick the wire colour and the bus width
+while the Wire or Bus tool is armed, but Run puts both tools away, so the two
+meanings never collide.) Clicking a button with the mouse does the same thing
+for one signal at a time.
+
+Because a colour is what ties a flag to its button, there are **seven signals**
+per desktop — one per signal colour. That is the eight jumper colours **minus
+black**, which is the bench's ground colour: a black flag would read as a ground
+tie, and its button's dot would all but vanish against the dark rail. The
+palette's *Signal* row goes grey once all seven are in use.
+
+A project saved before black was withdrawn still opens; any signal that was
+black is given a free colour on load, and keeps its name, type, resting level
+and wherever its flag was planted. Nothing else on the rail is recoloured.
 
 ---
 

@@ -32,6 +32,7 @@ import { tick } from "../sim/engine.js";
 import { H, L } from "../sim/levels.js";
 import { partDef } from "../catalog/index.js";
 import { CLOCK_HZ } from "../catalog/parts.js";
+import { restLevel } from "../model/signals.js";
 import {
   isMemory,
   isVolatileMemory,
@@ -153,6 +154,7 @@ export class SimController {
   #state = new Map(); // per-component sequential state (run-volatile)
   #prevPins = new Map(); // last tick's sampled inputs (edge detection)
   #clockPhase = new Map(); // clockId → "H" | "L" (run-volatile)
+  #signalLevel = new Map(); // signalId → "H" | "L" (run-volatile, from `rest`)
   #images = new Map(); // memory compId → Uint8Array/Uint16Array (run-volatile)
   #memInfo = new Map(); // memory compId → { volatile, guid, width, byteLength }
   #dataLossWarned = new Set(); // programmed chips already warned of a missing file
@@ -205,6 +207,15 @@ export class SimController {
     this.#prevPins = new Map();
     this.#clockPhase = new Map();
     for (const c of this.#clocks()) this.#clockPhase.set(c.id, L); // idle low
+    // A signal starts at its RESTING level, the way a clock starts idle low.
+    // Run-volatile like everything above it: `rest` is the ONE durable answer
+    // to "what is this signal holding", so a latched toggle deliberately does
+    // not survive a Run — a second stored level would be a second source of
+    // truth for the same question.
+    this.#signalLevel = new Map();
+    for (const sig of this.#signals()) {
+      this.#signalLevel.set(sig.id, restLevel(sig) === "high" ? H : L);
+    }
     this.#dataLossWarned = new Set();
     this.#onTransportChange?.(this.#mode); // lock editing while files load
     const pending = this.#seedImages(token);
@@ -253,6 +264,7 @@ export class SimController {
     this.#state = new Map();
     this.#prevPins = new Map();
     this.#clockPhase = new Map();
+    this.#signalLevel = new Map();
     this.#images = new Map();
     this.#memInfo = new Map();
     this.#notifications?.clear();
@@ -303,6 +315,38 @@ export class SimController {
     if (this.#mode === TRANSPORT.STOPPED) return;
     this.#flip(id);
     this.#tickNow();
+  }
+
+  /**
+   * A signal button went down (`on`) or came up. The ONE entry point for both
+   * the rail's pointer press and the digit keys, and the one place that knows
+   * what momentary and toggle mean — deliberately, because if the two callers
+   * each decided, a key and a click could come to disagree about what a press
+   * does. Both simply report down → true, up → false.
+   *
+   * A MOMENTARY signal asserts the opposite of its resting level while held; a
+   * TOGGLE flips on the press and ignores the release.
+   */
+  pressSignal(id, on) {
+    if (this.#mode === TRANSPORT.STOPPED) return;
+    const sig = this.#signals().find((s) => s.id === id);
+    if (!sig) return;
+    const rest = restLevel(sig) === "high" ? H : L;
+    if (sig.type === "toggle") {
+      if (!on) return; // a toggle acts on the PRESS only
+      this.#signalLevel.set(
+        id,
+        (this.#signalLevel.get(id) ?? rest) === H ? L : H,
+      );
+    } else {
+      this.#signalLevel.set(id, on ? (rest === H ? L : H) : rest);
+    }
+    this.#tickNow();
+  }
+
+  /** The desk's signals, live off the document (the shape #clocks() has). */
+  #signals() {
+    return this.#doc.toJSON().signals ?? [];
   }
 
   // ── Clock scheduling (the ONLY timer — the engine stays timerless) ────────
@@ -510,6 +554,7 @@ export class SimController {
         state: this.#state,
         prevPinLevels: this.#prevPins,
         clockPhase: this.#clockPhase,
+        signalLevels: this.#signalLevel,
         images: this.#images,
       });
       this.#warm = result.netLevels;
@@ -581,6 +626,10 @@ export class SimController {
           warnings: result?.warnings ?? [],
           netlist: netlist ?? null,
           clockLevels: new Map(this.#clockPhase),
+          // Signal id → the level its button is holding, so the rail lights up
+          // from this ONE broadcast; views never query the engine. Empty when
+          // not running, which returns every button to showing its `rest`.
+          signalLevels: new Map(this.#signalLevel),
           // Per-LCD framebuffers (compId → { chars, cursor, … }); empty when
           // not running, which blanks every LCD screen.
           displayState: displays ?? new Map(),

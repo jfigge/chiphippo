@@ -19,6 +19,8 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
+import fs from "node:fs";
+
 import { resetDom } from "./jsdom-setup.js";
 import { CHIP_DEFS, PALETTE_DEFS } from "../catalog/index.js";
 import { ALL_KIT_KEYS } from "../model/board-types.js";
@@ -352,18 +354,20 @@ test("the annotations section is pinned at the bottom and reports the kind", () 
     onPickAnnotation: (kind) => picked.push(kind),
   });
 
-  // ANNOTATIONS is the palette's LAST section (below every part group): its
-  // items container is the list's final child, right after the folder header.
-  const list = host.querySelector(".palette-list");
+  // ANNOTATIONS sits below every part group, with SIGNALS (Feature 370) the
+  // one section under it: its items container follows its folder header, and
+  // the SIGNALS folder follows that.
   const folder = host.querySelector(".palette-annotations-folder");
   assert.ok(folder, "annotations folder present");
   assert.equal(folder.textContent, "ANNOTATIONS");
-  assert.ok(list.lastElementChild.classList.contains("palette-group-items"));
-  assert.equal(list.lastElementChild.previousElementSibling, folder);
+  const items = folder.nextElementSibling;
+  assert.ok(items.classList.contains("palette-group-items"));
+  assert.ok(
+    items.nextElementSibling.classList.contains("palette-signals-folder"),
+  );
 
   // Label + Note, each reporting its kind — and NOT counted among catalog parts.
-  const items = host.querySelectorAll(".palette-annotation-item");
-  assert.equal(items.length, 2);
+  assert.equal(host.querySelectorAll(".palette-annotation-item").length, 2);
   host
     .querySelector('.palette-annotation-item[data-annotation="note"]')
     .click();
@@ -465,4 +469,39 @@ test("setVisible toggles the hidden attribute", () => {
   assert.equal(panel.element.hidden, false);
   panel.setVisible(false);
   assert.equal(panel.element.hidden, true);
+});
+
+test("every section-header class the palette renders has a CSS rule behind it", () => {
+  // A HEADER CLASS WITH NO RULE STILL RENDERS — as a default <button>, which
+  // is a grey filled box with a border. That is how the SIGNALS folder shipped
+  // looking nothing like the four sections above it, and why its caret never
+  // rotated (the rotation selector is a hand-listed set too). Both halves are
+  // checked, and the class list is DERIVED from what the panel actually mounts
+  // rather than hand-kept here — a fifth section is caught the moment it is
+  // added, not the next time someone looks at the tray.
+  resetDom();
+  const host = document.createElement("div");
+  document.body.append(host);
+  new PalettePanel(host, {});
+
+  const css = fs.readFileSync(
+    new URL("../../styles/app.css", import.meta.url),
+    "utf8",
+  );
+  // Each header is a <button> carrying the caret; its FIRST class is the base.
+  const headers = [...host.querySelectorAll("button")].filter((b) =>
+    b.querySelector(".palette-group-caret"),
+  );
+  assert.ok(headers.length >= 5, "the panel mounts its section headers");
+  const bases = [...new Set(headers.map((b) => b.classList[0]))];
+  for (const base of bases) {
+    assert.ok(
+      new RegExp(`\\.${base}[\\s,:{]`).test(css),
+      `.${base} has no rule in app.css — it will render as a bare <button>`,
+    );
+    assert.ok(
+      css.includes(`.${base}--collapsed .palette-group-caret`),
+      `.${base}--collapsed is missing from the caret-rotation list`,
+    );
+  }
 });

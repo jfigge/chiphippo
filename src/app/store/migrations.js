@@ -45,10 +45,21 @@
  *   which also moved it from the last hole to the anchor. Stamping `rot: 180`
  *   reverses the numbering back, so the common stays in the very hole the user
  *   wired it to — the part is renumbered, the CIRCUIT is untouched.
+ * v12 → v13 (Feature 370) adds external signals — `signals` + `nextSignalId` —
+ *   and, in the same step, the two fields Feature 210 forgot: `scopeChannels`
+ *   and `nextScopeChannelId`. Pure additive, like v2 → v3 and v3 → v4.
+ *
+ *   The forgotten pair is why this step exists at all rather than relying on
+ *   the renderer to fill a missing list. `migrateDeskDocument` merges
+ *   `defaultDeskDocument()` UNDER the raw document BEFORE any step runs, so a
+ *   field absent from main's default is a field main's chain can never see or
+ *   repair — the analyzer's channels have survived purely because the
+ *   renderer's normalizeDocument rebuilds from its own empty document. That is
+ *   a load-bearing accident, not a design; this puts both back in shape.
  */
 "use strict";
 
-const DESK_DOC_VERSION = 12;
+const DESK_DOC_VERSION = 13;
 
 /** A fresh, empty desk document (main's copy of the renderer's shape). */
 function defaultDeskDocument() {
@@ -60,6 +71,8 @@ function defaultDeskDocument() {
     buses: [],
     netNames: [],
     annotations: [],
+    scopeChannels: [],
+    signals: [],
     nextBoardId: 1,
     nextGroupId: 1,
     nextComponentId: 1,
@@ -68,6 +81,8 @@ function defaultDeskDocument() {
     nextWireId: 1,
     nextBusId: 1,
     nextAnnotationId: 1,
+    nextScopeChannelId: 1,
+    nextSignalId: 1,
   };
 }
 
@@ -484,6 +499,26 @@ function migrateV11ToV12(doc) {
   };
 }
 
+/**
+ * v12 → v13: external signals (Feature 370), plus the analyzer's two fields.
+ *
+ * Additive only — an absent list is an empty one, so there is nothing to
+ * transform and nothing that can go wrong. A doc that already carries either
+ * list keeps it verbatim.
+ */
+function migrateV12ToV13(doc) {
+  const list = (value) => (Array.isArray(value) ? value : []);
+  const counter = (value) => (Number.isInteger(value) && value > 0 ? value : 1);
+  return {
+    ...doc,
+    version: 13,
+    signals: list(doc.signals),
+    nextSignalId: counter(doc.nextSignalId),
+    scopeChannels: list(doc.scopeChannels),
+    nextScopeChannelId: counter(doc.nextScopeChannelId),
+  };
+}
+
 /** version → one-step upgrade fn returning the doc at version + 1. */
 const MIGRATIONS = {
   1: migrateV1ToV2,
@@ -497,6 +532,7 @@ const MIGRATIONS = {
   9: migrateV9ToV10,
   10: migrateV10ToV11,
   11: migrateV11ToV12,
+  12: migrateV12ToV13,
 };
 
 /**

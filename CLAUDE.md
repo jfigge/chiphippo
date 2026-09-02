@@ -28,7 +28,7 @@ groups · 120 net names & labels · 130 buses · 140 build guide & wiring list �
 230 user guide & docs · 240 projects & tabbed desktops · 250 single-file projects ·
 260 AI circuit builder · 270 example circuits · 280 auto-update · 290 wire-riding part
 drags · 310 Mac App Store · 320 AI desk review · 330 shared memory blobs · 340 cluster
-drags · language support.
+drags · 370 external signals · language support.
 
 **Deferred** (`features/deferred/`): 160 export image & PDF, 300 selection drags.
 **Still open**: 260 step 15 — refactor `make demos` onto `model/autobuild.js` (which
@@ -159,8 +159,10 @@ the repo, only the cropped PNGs.
     `desk-doc.js`, `footprints.js`, `occupancy.js`, `mating.js`, `seating.js`,
     `part-geometry.js`, `part-move.js` + `cluster-move.js`, `design-clip.js`,
     `paste-cluster.js`, `project-doc.js`, `schematic-layout.js`, `hex-format.js`,
-    `wire-length.js`, `wire-colors.js`, `wire-crossing.js`, `selection-toggle.js`,
-    `pin-resolve.js`, `column-allocator.js`, `autobuild.js`, `autobuild-verify.js`.
+    `wire-length.js`, `wire-colors.js` (which also OWNS `WIRE_COLORS`, re-exported from
+    `desk-doc.js`), `wire-crossing.js`, `selection-toggle.js`, `signals.js`,
+    `signal-keys.js`, `pin-resolve.js`, `column-allocator.js`, `autobuild.js`,
+    `autobuild-verify.js`.
   - `scripts/sim/` — the DOM-free engine: `union-find.js`, `netlist.js`, `levels.js`,
     `chip-eval.js`, `sequential.js`, `resolve.js`, `engine.js`, `junction.js`,
     `w65c02.js`, `z80.js`, `z80-ops.js`.
@@ -239,14 +241,17 @@ Electron main (src/app/main.js)
 ## Desk surface & rendering
 
 - **Layers** inside `.desk-surface`: `.layer-boards` → `.layer-parts` → `.layer-wires`
-  (one shared SVG) → `.layer-overlay` (ghosts, hover rings, tooltips — pointer-inert).
+  (one shared SVG) → `.layer-annotations` → `.layer-signals` (planted signal flags — above
+  the wires, because a flag is hardware plugged into the board and is drawn over the jumper
+  running past it) → `.layer-overlay` (ghosts, hover rings, tooltips — pointer-inert).
 - Boards and chips are ONE static inline SVG each; the tie-point/pin `<rect>`s carry **no
   id, no `data-*`, no listener** — all hole/pin interaction is `holeAt()` / derived-pin
   math from pointer coordinates. The sanctioned per-item event exceptions are all widened
   invisible hit targets where idiomatic SVG beats hand-rolled distance math: each wire's
   hit stroke (`pointer-events: stroke`, `wire-layer.js`, listeners on the `g.wire`
   group), each rotatable discrete's `.part-span-hit`, each push button's
-  `.part-button-cap`.
+  `.part-button-cap`, and each signal flag's `<polygon>` (eight arbitrary rotated
+  pentagons is exactly the case that argument was written for).
 - Pan/zoom must **never** rebuild or re-lay-out surface children (transform only); wires
   re-render only on doc changes or live drags (positions passed as overrides).
 - An `<svg>` with width/height 0 renders NOTHING per spec — zero-size anchors need a
@@ -1107,6 +1112,131 @@ rule 1 holds by construction. `scripts/demo-bench.mjs` — `BOARDS`, `#railFor`/
 `autobuild.test.js`, by each generator's own `assertClean` (a non-flush board is DROPPED
 by `normalizeDocument` as an overlap, so the arithmetic cannot drift silently), and by
 `demos.test.js`, which runs the shipped files through the real engine.
+
+## External signals
+
+**Bench stimulus that lives OFF the boards** (Feature 370): a **signal button** pinned to
+the desk viewport's right edge plus a **signal flag** whose apex plugs into one breadboard
+hole. Pressing the button injects a level there. `model/signals.js` (pure) +
+`model/signal-keys.js` (pure) + `components/signal-rail.js` (the buttons) +
+`components/signal-layer.js` (the flags) + `doc.signals` / `nextSignalId`.
+
+- **A signal is the first desk item that is neither a component nor decoration.** An
+  annotation is invisible to occupancy, the netlist and the engine; a wire is visible to
+  occupancy and the netlist; a flag is visible to **occupancy and the ENGINE**, and is
+  neither. Exactly three modules assume "everything electrical is a component" —
+  `buildOccupancy`, `sim/engine.js`'s `buildContext`, and `schematic-layout.js`'s
+  `layout()`. Each gained ONE loop, and each must stay the only one. Making it a fake
+  component kind would drag in footprints, a catalog def, `normalizeParams`,
+  `partPinAddresses`, the part menu's fixed three-item shape, the BOM and the build guide,
+  none of which has anything to say about a bench button.
+- **The record** is `{ id: "sig<n>", color, type: "momentary"|"toggle", rest: "low"|"high",
+  name?, description?, flag?: { anchor, rot } }`. The three scalars are stored ALWAYS,
+  departing from omit-when-default deliberately: that convention exists to keep an existing
+  serialized form byte-identical, and a signal has none. `flag.rot` is a DESK rotation, and
+  the anchor is an address, so a rotated rail carries its flags with no code at all.
+- **The signal palette is the jumper palette MINUS BLACK** (`SIGNAL_COLORS`), derived by
+  subtraction so a new jumper colour reaches signals for free. Black is the bench's ground
+  colour: a black flag reads as a ground tie and its button's dot vanishes against the dark
+  rail. Excluded rather than discouraged — the picker cannot offer it, `addSignal` cannot
+  mint it, and a stored one is repaired on load.
+- **The cap is DERIVED** — `MAX_SIGNALS = SIGNAL_COLORS.length`, so it is **7**, never a
+  typed number. The colour is not decoration: it is the identity tying a flag to its
+  button, so ONE rule (*a signal owns a signal colour*) yields both uniqueness and the cap
+  — drop a colour and the cap follows, which is exactly what happened when black went.
+  `SIGNAL_DIGITS = min(MAX_SIGNALS, 9)` is a SEPARATE fact and deliberately not folded in:
+  there are only nine digits, so a palette that outgrew them must leave signals unreachable
+  rather than silently mis-bound. The key range is derived from it, so withdrawing black
+  narrowed the shortcut to 1–7 in the same move.
+- **A colour repair moves as little as it can.** `normalizeDocument` runs THREE passes —
+  accept, then let everyone holding a valid colour RESERVE it, then give the leftovers what
+  is free. One pass in document order would let the first bad entry take `red` and shove
+  every later signal along, so reopening a project would recolour half the rail to fix one
+  signal. `reserved` and `assigned` are two sets on purpose: collapsing them lets a
+  repaired signal steal the colour its neighbour came in with.
+- **THE RULE for a homeless flag, stated once and reused verbatim**: *a flag with nowhere
+  to go stops existing; the SIGNAL never does.* `normalizeDocument` owns the sentence;
+  `removeBoard`'s `#detachSignalFlags` and `pasteDesign` reuse it. A colour clash is
+  REPAIRED rather than dropped — a colour is presentation, and losing a stimulus source to
+  a cosmetic collision is the wrong trade. Running out of colours IS the cap; there is no
+  count test anywhere.
+- **Occupancy claims the flag's hole — one hole, one lead — and the loop runs FIRST.**
+  `buildOccupancy` is last-writer-wins while `normalizeDocument` is first-wins (pins →
+  wires → flags), so appending it last would invert the precedence. A normalized document
+  never collides, but `buildOccupancy` also runs against live mid-mutation documents, and
+  of the two ways a collision could read, a flag masking a WIRE END is the harmful one —
+  `canReendWire` would then refuse to move that wire's own end, wedging it for good.
+  `canPlaceFlag` is `canReendWire`'s argument one item over: free, ignoring the moving
+  signal's OWN claim, which is what lets one method serve planting AND moving.
+- **The rail is pinned BETWEEN the padlock and the zoom cluster**, and it is the first
+  piece of desk chrome with a variable height. The app has no `z-index` anywhere, so the
+  existing convention was extended rather than broken: `--desk-zoom-height` joins
+  `--desk-lock-size` on `.app-stage`, and **`.desk-zoom` itself consumes it**, so the two
+  cannot drift. A doc change REBUILDS the rail (≤8 rows); a `chiphippo:sim-state` toggles
+  CLASSES ONLY, because that event fires on every tick. While STOPPED a button shows its
+  `rest`, so a toggle that did not survive a Run never looks like a bug.
+- **ONE `drag-signal-flag`, two entry points** — the rail's unplaced chip and the planted
+  polygon — because "drag it onto a board" and "move it to another hole" are the same act.
+  `worldFromEvent` reads client coordinates off any event, so the rail chip is not a
+  coordinate-space problem. Drop on a free hole plants; **on BARE DESK unplugs**; on a
+  taken hole reverts. `legal` is deliberately TRUE over bare desk and FALSE over a taken
+  hole: a mis-aim is not an intent to unplug.
+  - **The preview redraws ONE polygon IN PLACE** (`SignalLayer.setPreview`), and
+    `setSelected` is a class toggle — both for the same load-bearing reason: the press
+    calls `selectSignal` BEFORE beginning the gesture, so a re-render there destroys the
+    very `<polygon>` that press is about to capture, and a re-render per pointermove would
+    destroy it again every frame.
+  - **The flag carries NO TEXT.** At rot 90/270 the body is 2 pitch wide and 4 tall with
+    nowhere for a horizontal name; the NAME lives on the button and the flag's identity is
+    its unique COLOUR, matched to that button's dot. So there is no world-space font size,
+    no `type-scale.test.js` exemption, and nothing printed on the circuit for i18n to reach.
+- **The engine treats it exactly as a clock source**: `ctx.signals` in `buildContext`, one
+  `add(sig.net, signalLevels.get(sig.id) ?? Z)` in `driversFor`, and `signalLevels` threaded
+  through **all THREE `solve` call sites** (`settle`, `tick`'s pre-settle, and `tick`'s
+  inner-loop re-settle — miss the third and a ripple tick drops every signal).
+  `sim/resolve.js` changes NOT AT ALL: being a `chipLevels` contributor is what makes two
+  signals fighting, or a signal against a chip output, report a conflict with no new code.
+  A fourth strength tier would have had to re-define what beats what.
+- **`SimController.pressSignal(id, on)` is the ONLY public entry point**, and the only
+  place momentary/toggle is decided. The rail and the keyboard both report down → true, up
+  → false and know nothing about the difference — if they did, a key and a click could come
+  to disagree about what a press means. `#signalLevel` is run-volatile like `#clockPhase`:
+  seeded from `rest` on Run, cleared on Stop, republished on `chiphippo:sim-state` so the
+  rail lights up from the ONE broadcast. A toggle deliberately does not survive a Run —
+  `rest` is the single durable answer to "what is this signal holding".
+- **Bare digits (`1`–`7` today), and only while RUNNING** (`model/signal-keys.js`). Conflict-free by
+  construction: `handleKeyDown` claims `1`–`9` only while the wire or bus tool is armed,
+  and Run disarms both. The signal block sits AFTER `controller.handleKeyDown` in app.js,
+  which makes that precedence a fact of the code rather than a claim about tool state. The
+  held set is a **Map, digit → the signal id it PRESSED**, so a release always reaches the
+  signal that was pressed even if the rail changed underneath. **Release is gated on
+  nothing** — not the run state, not the popup guard, not the typing guard — and has three
+  legs (keyup, window blur, the transport stopping), because a stuck signal is far worse
+  than a missed press.
+- **Design clips are the one place all-or-nothing bends.** A signal travels only when its
+  flag is planted on a captured board (the wire rule); an unplaced one stays behind.
+  `color` is deliberately NOT captured — it is a per-desk identity, so it is re-issued on
+  arrival. Paste is BEST-EFFORT: out of colours → dropped (and REPORTED in the notification
+  `#dropDesign` already raises); hole taken → arrives unplaced. Boards, parts and wires stay
+  all-or-nothing because that rule exists to stop half a design cutting the wires that
+  crossed to the board left behind — and *a signal cuts nothing*.
+- **The schematic follows the POWER STUB precedent, not the node one** — a signal can never
+  be a `layout()` node, which walks `doc.components` through `symbolFor`. One `signalStubs`
+  entry per planted flag at the first port of its net in sorted order (deterministic), drawn
+  by `buildSignalSymbol` from **the same `flagPolygon` the desk uses**. A signal on a net
+  with no symbol port draws nothing, which is honest: there is nothing there to stimulate.
+- **The analyzer needed almost nothing**: `doc.scopeChannels` already binds `kind:"net"` to
+  a member ADDRESS, and a planted flag's anchor is one. The flag's menu calls the
+  `onAddNetToAnalyzer` callback the probe already uses; `ScopeView.addNetChannel` was only
+  widened to forward the `{color, label}` `DeskDoc.addScopeChannel` had always accepted.
+- **`WIRE_COLORS` moved to `model/wire-colors.js`** (whose header already called itself the
+  tokens' file) and is re-exported from `desk-doc.js`, so no call site changed. Necessary,
+  not tidying: `desk-doc.js` imports `signals.js`, so `signals.js` reaching back for the
+  palette would be an import cycle whose top-level `WIRE_COLORS.length` reads a TDZ binding
+  and throws.
+- Out of scope, deliberately: the **build guide and BOM** (a signal is bench stimulus, not
+  a part you buy or solder) and **user-positionable rails** (`railOrder(signals)` exists so
+  a reorder has exactly one place to land).
 
 ## Selection
 
@@ -2153,8 +2283,8 @@ that a `tf()` call still reads correctly under `node --test` with no catalog at 
   `porthippo/src/web/scripts/components/card-canvas.js`). The capture is for the MOVE stream
   only, never the sole delivery route for the RELEASE. **Every direct-manipulation desk
   drag** goes through **`components/pointer-gesture.js`** (`beginPointerGesture` → one
-  teardown): the wire/bus/palette gestures and the eight DeskController owns (board, part,
-  brick, **cluster**, resistor body, resistor end, annotation, marquee).
+  teardown): the wire/bus/palette gestures and the NINE DeskController owns (board, part,
+  brick, **cluster**, resistor body, resistor end, annotation, **signal flag**, marquee).
   - `pointerup`/`pointercancel` listen on `window` in the CAPTURE phase, so a release
     reaches the gesture whether or not the capture held; `lostpointercapture` + window
     `blur` end it too (the only signals for "this pointer isn't yours" with no up/cancel

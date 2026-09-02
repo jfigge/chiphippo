@@ -47,7 +47,7 @@ import assert from "node:assert/strict";
 import { spec } from "../model/breadboard.js";
 import { resetDom } from "./jsdom-setup.js";
 import { DeskDoc } from "../model/desk-doc.js";
-import { partPinAddresses } from "../model/occupancy.js";
+import { partPinAddresses, worldOfAddress } from "../model/occupancy.js";
 import { PX_PER_UNIT } from "../desk/desk-geometry.js";
 
 const { DeskController } = await import("../components/desk-controller.js");
@@ -690,4 +690,234 @@ test("a scene rebuild mid-drag kills the gesture before its views go", () => {
   world.x = 20;
   fire(viewport, "pointerup", { client: [40, 40] });
   assert.equal(doc.boards.length, 0);
+});
+
+// ── Signal flag (Feature 370) ───────────────────────────────────────────────
+// The ninth gesture DeskController owns. Two entry points reach ONE drag: the
+// rail's unplaced chip and the planted polygon.
+
+const flagEl = (surface, id) => surface.querySelector(`[data-signal-id="${id}"]`); // prettier-ignore
+const holeWorld = (doc, address) => worldOfAddress(doc.boards, address);
+
+function plantedDesk() {
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const sig = doc.addSignal({ name: "RESET" });
+  doc.plantSignalFlag(sig.id, "bb1.a12", 0);
+  const world = { x: 0, y: 0 };
+  return { doc, sig, world, ...makeDesk(doc, world) };
+}
+
+test("signal flag: the flag lands at the RELEASE point, not the last move", () => {
+  const { doc, sig, world, surface } = plantedDesk();
+  dragReleasingAt(flagEl(surface, sig.id), world, {
+    from: holeWorld(doc, "bb1.a12"),
+    stale: holeWorld(doc, "bb1.a20"),
+    at: holeWorld(doc, "bb1.a30"),
+  });
+  assert.equal(doc.getSignal(sig.id).flag.anchor, "bb1.a30");
+});
+
+test("signal flag: a release over BARE DESK unplugs it", () => {
+  const { doc, sig, world, surface } = plantedDesk();
+  dragReleasingAt(flagEl(surface, sig.id), world, {
+    from: holeWorld(doc, "bb1.a12"),
+    stale: holeWorld(doc, "bb1.a20"),
+    at: { x: -80, y: -80 }, // no board anywhere near
+  });
+  assert.equal(doc.getSignal(sig.id).flag, undefined, "unplugged");
+  assert.ok(doc.getSignal(sig.id), "and the signal itself survives");
+});
+
+test("signal flag: a release onto a TAKEN hole reverts — a miss is not an unplug", () => {
+  const { doc, sig, world, surface } = plantedDesk();
+  doc.addWire({ from: "bb1.a30", to: "bb1.a40" });
+  dragReleasingAt(flagEl(surface, sig.id), world, {
+    from: holeWorld(doc, "bb1.a12"),
+    stale: holeWorld(doc, "bb1.a20"),
+    at: holeWorld(doc, "bb1.a30"),
+  });
+  assert.equal(
+    doc.getSignal(sig.id).flag.anchor,
+    "bb1.a12",
+    "still where it was — NOT unplugged",
+  );
+});
+
+test("signal flag: a release off the flag still commits (no e.currentTarget)", () => {
+  const { doc, sig, world, surface, viewport } = plantedDesk();
+  dragReleasingAt(flagEl(surface, sig.id), world, {
+    from: holeWorld(doc, "bb1.a12"),
+    stale: holeWorld(doc, "bb1.a12"),
+    at: holeWorld(doc, "bb1.a30"),
+    upOn: viewport,
+  });
+  assert.equal(doc.getSignal(sig.id).flag.anchor, "bb1.a30");
+  assert.ok(!viewport.classList.contains("desk-viewport--dragging"));
+});
+
+test("signal flag: a yanked capture aborts without committing", () => {
+  const { doc, sig, world, surface } = plantedDesk();
+  const el = flagEl(surface, sig.id);
+  world.x = holeWorld(doc, "bb1.a12").x;
+  world.y = holeWorld(doc, "bb1.a12").y;
+  fire(el, "pointerdown", { client: [0, 0] });
+  const to = holeWorld(doc, "bb1.a30");
+  world.x = to.x;
+  world.y = to.y;
+  fire(el, "pointermove", { client: [40, 40] });
+  el.dispatchEvent(new window.PointerEvent("lostpointercapture", { bubbles: true, pointerId: 5 })); // prettier-ignore
+  assert.equal(doc.getSignal(sig.id).flag.anchor, "bb1.a12", "unchanged");
+});
+
+test("signal flag: a drag that spans Run REVERTS", () => {
+  const { doc, sig, world, surface, controller } = plantedDesk();
+  const el = flagEl(surface, sig.id);
+  world.x = holeWorld(doc, "bb1.a12").x;
+  world.y = holeWorld(doc, "bb1.a12").y;
+  fire(el, "pointerdown", { client: [0, 0] });
+  const to = holeWorld(doc, "bb1.a30");
+  world.x = to.x;
+  world.y = to.y;
+  fire(el, "pointermove", { client: [40, 40] });
+  controller.setEditingLocked(true); // Space / ⌘R reached the transport
+  fire(el, "pointerup", { client: [40, 40] });
+  assert.equal(doc.getSignal(sig.id).flag.anchor, "bb1.a12");
+});
+
+test("signal flag: the rail's chip plants an UNPLACED signal in one drag", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const sig = doc.addSignal({});
+  const world = { x: 0, y: 0 };
+  const { viewport, controller } = makeDesk(doc, world);
+  // The rail hands the press straight over — there is no flag on the desk yet.
+  world.x = holeWorld(doc, "bb1.a12").x;
+  world.y = holeWorld(doc, "bb1.a12").y;
+  controller.beginSignalFlagDrag(
+    sig.id,
+    new window.PointerEvent("pointerdown", { bubbles: true, button: 0, pointerId: 5, clientX: 0, clientY: 0 }), // prettier-ignore
+  );
+  const to = holeWorld(doc, "bb1.a30");
+  world.x = to.x;
+  world.y = to.y;
+  fire(viewport, "pointermove", { client: [40, 40] });
+  fire(viewport, "pointerup", { client: [40, 40] });
+  assert.equal(doc.getSignal(sig.id).flag.anchor, "bb1.a30");
+});
+
+// The flag must never leave the cursor mid-drag. It used to be drawn only when
+// it was over a hole it could have, so it vanished over bare desk and SNAPPED
+// HOME the moment the pointer left a target — which reads as the app dropping
+// the grab rather than as "you cannot put it there".
+function flagPointsOf(surface, id) {
+  return surface
+    .querySelector(`[data-signal-id="${id}"]`)
+    ?.getAttribute("points");
+}
+const apexOf = (surface, id) => {
+  const p = flagPointsOf(surface, id);
+  return p ? p.split(" ")[0].split(",").map(Number) : null;
+};
+
+test("signal flag: the flag follows the cursor over BARE DESK, never snapping home", () => {
+  const { doc, sig, world, surface } = plantedDesk();
+  const el = flagEl(surface, sig.id);
+  const home = apexOf(surface, sig.id);
+  Object.assign(world, holeWorld(doc, "bb1.a12"));
+  fire(el, "pointerdown", { client: [0, 0] });
+
+  Object.assign(world, { x: -60, y: -40 }); // nowhere near a board
+  fire(el, "pointermove", { client: [40, 40] });
+  const away = apexOf(surface, sig.id);
+  assert.ok(away, "the flag is still drawn");
+  assert.notDeepEqual(away, home, "and it moved with the pointer");
+  assert.deepEqual(away, [-60 * PX_PER_UNIT, -40 * PX_PER_UNIT]);
+
+  Object.assign(world, { x: -20, y: -10 });
+  fire(el, "pointermove", { client: [50, 50] });
+  assert.deepEqual(
+    apexOf(surface, sig.id),
+    [-20 * PX_PER_UNIT, -10 * PX_PER_UNIT],
+    "it keeps tracking; it does not jump back to the start",
+  );
+});
+
+test("signal flag: bare desk is NOT red for a planted flag — the drop unplugs", () => {
+  const { doc, sig, world, surface } = plantedDesk();
+  const el = flagEl(surface, sig.id);
+  Object.assign(world, holeWorld(doc, "bb1.a12"));
+  fire(el, "pointerdown", { client: [0, 0] });
+  Object.assign(world, { x: -60, y: -40 });
+  fire(el, "pointermove", { client: [40, 40] });
+  assert.ok(
+    !flagEl(surface, sig.id).classList.contains("signal-flag--illegal"),
+    "dropping here unplugs it, which is a real action",
+  );
+});
+
+test("signal flag: a TAKEN hole reddens the flag instead of hiding it", () => {
+  const { doc, sig, world, surface } = plantedDesk();
+  doc.addWire({ from: "bb1.a30", to: "bb1.a40" });
+  const el = flagEl(surface, sig.id);
+  Object.assign(world, holeWorld(doc, "bb1.a12"));
+  fire(el, "pointerdown", { client: [0, 0] });
+  Object.assign(world, holeWorld(doc, "bb1.a30"));
+  fire(el, "pointermove", { client: [40, 40] });
+  const poly = flagEl(surface, sig.id);
+  assert.ok(poly.classList.contains("signal-flag--illegal"), "red");
+  assert.ok(
+    flagPointsOf(surface, sig.id),
+    "and still visible under the cursor",
+  );
+  // Releasing there is the only thing that puts it back.
+  fire(el, "pointerup", { client: [40, 40] });
+  assert.equal(doc.getSignal(sig.id).flag.anchor, "bb1.a12");
+  assert.ok(
+    !flagEl(surface, sig.id).classList.contains("signal-flag--illegal"),
+    "and the red comes off once it is home",
+  );
+});
+
+test("signal flag: a free hole SNAPS the flag to it, and is not red", () => {
+  const { doc, sig, world, surface } = plantedDesk();
+  const el = flagEl(surface, sig.id);
+  Object.assign(world, holeWorld(doc, "bb1.a12"));
+  fire(el, "pointerdown", { client: [0, 0] });
+  // A point a little off the hole still snaps onto it.
+  const target = holeWorld(doc, "bb1.a30");
+  Object.assign(world, { x: target.x + 0.2, y: target.y + 0.2 });
+  fire(el, "pointermove", { client: [40, 40] });
+  assert.deepEqual(
+    apexOf(surface, sig.id),
+    [target.x * PX_PER_UNIT, target.y * PX_PER_UNIT],
+    "snapped to the hole, not left at the raw pointer",
+  );
+  assert.ok(
+    !flagEl(surface, sig.id).classList.contains("signal-flag--illegal"),
+  );
+});
+
+test("signal flag: dragging off the rail draws the flag from the first sample", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const sig = doc.addSignal({});
+  const world = { x: 0, y: 0 };
+  const { surface, controller } = makeDesk(doc, world);
+  assert.equal(flagEl(surface, sig.id), null, "unplaced: nothing on the desk");
+  Object.assign(world, { x: -50, y: -50 });
+  controller.beginSignalFlagDrag(
+    sig.id,
+    new window.PointerEvent("pointerdown", { bubbles: true, button: 0, pointerId: 5, clientX: 0, clientY: 0 }), // prettier-ignore
+  );
+  assert.ok(
+    flagPointsOf(surface, sig.id),
+    "the flag appears under the cursor at once, with no 4px threshold to cross",
+  );
+  assert.ok(
+    flagEl(surface, sig.id).classList.contains("signal-flag--illegal"),
+    "and reads as refused until it is over a hole — there is nothing to unplug",
+  );
 });

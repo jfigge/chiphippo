@@ -351,9 +351,15 @@
    It is a row item of .app-main, so it starts to the right of the parts
    palette — the tabs line up with the desk, not with the palette. */
 /* The desk padlock's own box, declared here because the desktop tab strip has
-   to stop short of it (both live over the desk's top edge). */
+   to stop short of it (both live over the desk's top edge) — and, for the same
+   reason, the zoom cluster's, because the SIGNAL RAIL (Feature 370) runs down
+   the right edge BETWEEN the two and has to clear both. Derived from the very
+   terms .desk-zoom sizes its buttons from (a box is one line of text plus
+   constant chrome), and consumed by .desk-zoom itself, so the two cannot
+   drift apart. */
 .app-stage {
   --desk-lock-size: 24px;
+  --desk-zoom-height: calc(var(--font-size) + 11px + 2 * var(--space-1) + 2px);
   position: relative;
   display: flex;
   flex-direction: column;
@@ -615,7 +621,8 @@
 .palette-group--collapsed .palette-group-caret,
 .palette-folder--collapsed .palette-group-caret,
 .palette-boards-folder--collapsed .palette-group-caret,
-.palette-annotations-folder--collapsed .palette-group-caret {
+.palette-annotations-folder--collapsed .palette-group-caret,
+.palette-signals-folder--collapsed .palette-group-caret {
   transform: rotate(-90deg);
 }
 
@@ -623,9 +630,19 @@
   display: none;
 }
 
-/* Top-level "Chips" folder wrapping every chip group — one level above a
-   group: bolder, mixed-case, stronger colour. */
-.palette-folder {
+/* Top-level folder headers — the "Chips"/"Components" wrapper, and the
+   ANNOTATIONS and SIGNALS sections pinned at the bottom. One level above a
+   group: bolder, mixed-case, stronger colour.
+   ONE rule for all three, not a copy each. The annotations block used to be a
+   byte-identical duplicate of this one, and the cost showed up the moment a
+   third section arrived: SIGNALS was given a class of its own with no rule
+   behind it, so it fell back to the UA's default button chrome (a grey filled
+   box) and its caret never rotated. `.palette-boards-folder` stays separate
+   because it genuinely differs — it is pinned at the very top, so it carries
+   no top margin. */
+.palette-folder,
+.palette-annotations-folder,
+.palette-signals-folder {
   display: flex;
   align-items: center;
   gap: var(--space-1);
@@ -646,7 +663,9 @@
   margin-top: 0;
 }
 
-.palette-folder:hover {
+.palette-folder:hover,
+.palette-annotations-folder:hover,
+.palette-signals-folder:hover {
   color: var(--color-text);
 }
 
@@ -661,7 +680,8 @@
 
 .palette-item,
 .palette-board-item,
-.palette-annotation-item {
+.palette-annotation-item,
+.palette-signal-item {
   display: flex;
   align-items: baseline;
   gap: var(--space-2);
@@ -676,12 +696,20 @@
 
 .palette-item:hover,
 .palette-board-item:hover,
-.palette-annotation-item:hover {
+.palette-annotation-item:hover,
+.palette-signal-item:enabled:hover {
   background: var(--color-surface-0);
 }
 
-.palette-annotation-item {
+.palette-annotation-item,
+.palette-signal-item {
   cursor: pointer;
+}
+
+/* Every wire colour taken — the row stays, saying why (see setSignalsFull). */
+.palette-signal-item:disabled {
+  cursor: default;
+  color: var(--color-muted);
 }
 
 /* Board selector pinned at the top of the palette (Full/Half/Tiny + strips). */
@@ -719,29 +747,6 @@
 
 .palette-boards-items[hidden] {
   display: none;
-}
-
-/* The annotations folder (labels + notes), pinned at the BOTTOM — same look as
-   the Chips folder, but with top margin so it separates from the parts above. */
-.palette-annotations-folder {
-  display: flex;
-  align-items: center;
-  gap: var(--space-1);
-  width: 100%;
-  margin: var(--space-3) 0 var(--space-1);
-  padding: var(--space-1) 0;
-  border: none;
-  background: transparent;
-  text-align: left;
-  cursor: pointer;
-  font-size: var(--font-size-sm);
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  color: var(--color-muted);
-}
-
-.palette-annotations-folder:hover {
-  color: var(--color-text);
 }
 
 .palette-item-id {
@@ -826,6 +831,13 @@
      vanishes, intermittently and velocity-dependently, on exactly the
      trackpad/touch input most likely to produce it. */
   touch-action: none;
+  /* And nothing in here is text anyone would want to select — but a drag that
+     crosses a label selects it, which paints a highlight over the desk and
+     leaves it there. It went unnoticed until the SIGNAL RAIL, because it is the
+     first desk chrome carrying words: dragging a flag off it highlighted the
+     button labels and the zoom readout on the way past. Set on the viewport
+     rather than per-control so the next piece of chrome inherits the fix. */
+  user-select: none;
 }
 
 .desk-viewport--panning {
@@ -882,12 +894,15 @@
 
 /* ── Surface layers (Feature 30) ─────────────────────────────────────────── */
 /* Zero-size anchors at the world origin; children position in world px.
-   Order: boards under parts (40/60) under wires (50) under the interaction
-   overlay (ghosts, hover ring, selection, tooltips). */
+   Order: boards under parts (40/60) under wires (50) under annotations under
+   signal flags (370) under the interaction overlay (ghosts, hover ring,
+   selection, tooltips). A flag sits above the wires because it is hardware
+   plugged into the board, drawn over the jumper running past it. */
 .layer-boards,
 .layer-parts,
 .layer-wires,
 .layer-annotations,
+.layer-signals,
 .layer-overlay {
   position: absolute;
   top: 0;
@@ -1762,6 +1777,58 @@
   overflow: visible;
 }
 
+/* ── Signal flags (Feature 370) ──────────────────────────────────────────── */
+/* A pointed pentagon whose apex plugs into one hole. The polygon is its own
+   hit target — a sanctioned per-item event exception, like .wire-hit below:
+   eight arbitrary rotated pentagons is exactly where idiomatic SVG beats
+   hand-rolled distance math. Colour comes in as --signal-color, per element,
+   because a custom property cannot be set through el()'s style bag. */
+.signal-svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: visible;
+}
+
+.signal-flag {
+  fill: var(--signal-color);
+  /* The body reads as a tinted field with a solid border of the SAME colour —
+     one hue per signal, matched to its button's dot, so a flag is identified
+     across the desk without carrying any text. */
+  fill-opacity: 0.35;
+  stroke: var(--signal-color);
+  stroke-width: 0.16;
+  stroke-linejoin: round;
+  cursor: grab;
+}
+
+/* The paste ghost's flags: no per-signal colour yet (the paste re-issues one
+   on arrival), so they take the accent the rest of the ghost uses. */
+.design-ghost-signals {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: visible;
+}
+
+.design-ghost-signals .signal-flag {
+  --signal-color: var(--color-accent);
+}
+
+.signal-flag--selected {
+  stroke: var(--color-selection, var(--color-accent));
+  stroke-width: 0.3;
+}
+
+/* Dragged somewhere the drop would achieve nothing — a hole another lead
+   holds, or bare desk with no planted flag to pull out. The flag keeps
+   following the cursor and turns red, the way every other desk drag reports an
+   illegal target; it does NOT jump home, because only a drop reverts. */
+.signal-flag--illegal {
+  fill: var(--color-danger);
+  stroke: var(--color-danger);
+}
+
 /* Widened invisible hit stroke — the one sanctioned per-item event target. */
 .wire-hit {
   fill: none;
@@ -2224,6 +2291,10 @@ textarea.annotation-editor {
   display: flex;
   align-items: center;
   gap: var(--space-1);
+  /* Height stated through the shared token rather than left to content, so the
+     signal rail above it can subtract a number that is actually true. */
+  height: var(--desk-zoom-height);
+  box-sizing: border-box;
   padding: var(--space-1);
   background: var(--color-surface-0);
   border: 1px solid var(--color-crust);
@@ -4356,6 +4427,25 @@ textarea.annotation-editor {
 }
 
 /* Power / ground rail symbols dropped at each supply pin (never routed). */
+/* External-signal stub (Feature 370): the same flag the desk draws, in the
+   signal's own colour, saying which net a bench button is driving. */
+.schematic-signal-stem {
+  stroke: var(--signal-color);
+  stroke-width: 0.08;
+}
+
+.schematic-signal-flag {
+  fill: var(--signal-color);
+  fill-opacity: 0.35;
+  stroke: var(--signal-color);
+  stroke-width: 0.08;
+  stroke-linejoin: round;
+}
+
+.schematic-signal-label {
+  fill: var(--signal-color);
+}
+
 .schematic-power-stem,
 .schematic-power-bar {
   fill: none;
@@ -5025,4 +5115,139 @@ textarea.annotation-editor {
 .ai-send--busy {
   color: var(--color-danger);
   border-color: var(--color-danger);
+}
+
+/* The place-signal ghost: a pill riding the cursor in the pointer-inert
+   overlay, saying what a click would add. It is deliberately NOT a flag at a
+   hole — a signal has no desk position, so the click point is discarded and
+   the button goes to the rail. World-layer text, so its size is a raw px
+   (see .annotation-text, and tests/type-scale.test.js). */
+.signal-place-ghost {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px;
+  background: var(--color-surface-0);
+  border: 1px dashed var(--color-accent);
+  border-radius: var(--radius-sm);
+  color: var(--color-subtext);
+  font-size: 12px; /* world/SVG user units — the zoom-scaled layer */
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.signal-place-ghost-mark {
+  color: var(--color-accent);
+}
+
+/* ── Signal rail (Feature 370) ───────────────────────────────────────────── */
+/* The external-signal buttons, pinned down the viewport's right edge between
+   the padlock (top) and the zoom cluster (bottom). A sibling of .desk-surface,
+   which DeskView prepends, so it paints above the desk with no z-index. */
+.signal-rail {
+  position: absolute;
+  right: var(--space-3);
+  top: calc(var(--space-2) + var(--desk-lock-size) + var(--space-2));
+  bottom: calc(var(--space-4) + var(--desk-zoom-height) + var(--space-2));
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-1);
+  overflow: hidden;
+  /* The COLUMN is spacing, not a control: eight rows down the right edge must
+     not turn a tall strip of desk into dead space. Its ROWS take the clicks. */
+  pointer-events: none;
+}
+
+.signal-rail-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  pointer-events: auto;
+}
+
+/* The unplaced flag, waiting beside its button. Gone once it is on the desk —
+   the flag is in one place at a time, and that is the whole state readout. */
+.signal-flag-chip {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 16px;
+  cursor: grab;
+}
+
+.signal-rail-row--placed .signal-flag-chip {
+  visibility: hidden;
+}
+
+.signal-flag-chip-art {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.signal-flag-chip-poly {
+  fill: var(--signal-color);
+  fill-opacity: 0.35;
+  stroke: var(--signal-color);
+  stroke-width: 0.16;
+  stroke-linejoin: round;
+}
+
+.signal-btn {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  max-width: 140px;
+  height: calc(var(--font-size) + 11px);
+  padding: 0 var(--space-2);
+  background: var(--color-surface-0);
+  border: 1px solid var(--color-crust);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-1);
+  color: var(--color-subtext);
+  font-size: var(--font-size-sm);
+  cursor: pointer;
+}
+
+/* The dot is the link back to this signal's flag on the desk — the two share
+   one colour, which is the flag's whole identity (it carries no text). */
+.signal-btn-dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--signal-color);
+}
+
+.signal-btn-label {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+/* A latching button reads differently from one held down: it keeps a ring even
+   at rest, so "this one stays where you put it" is visible before you press. */
+.signal-btn--toggle {
+  border-style: dashed;
+}
+
+.signal-btn--on {
+  background: var(--signal-color);
+  border-color: var(--signal-color);
+  color: var(--color-crust);
+}
+
+.signal-btn--on .signal-btn-dot {
+  background: var(--color-crust);
+}
+
+.signal-btn:hover {
+  color: var(--color-text);
+}
+
+.signal-btn:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
 }

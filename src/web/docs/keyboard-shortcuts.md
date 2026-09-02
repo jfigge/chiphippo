@@ -12,6 +12,7 @@ are noted alongside the shortcut.
 |---|---|
 | `Space` | Run / Stop the simulation (not while typing, or while a placement/wire/bus tool is armed) |
 | `Cmd+R` | Run / Stop the simulation |
+| `1`–`7` | Press signal buttons 1–7, top to bottom — **only while the circuit runs**, and several at once (see [External signals](power-and-clocks.md#external-signals)) |
 | `Tab` | Switch between the Breadboard and Schematic views (not while typing) |
 | `Escape` | Abandon a drag in flight, then unpin a probed net, then disarm the probe, then cancel a pending wire/bus, then cancel a placement in hand, then deselect — whichever applies first |
 | `Delete` / `Backspace` | Remove the current selection (a part, wire, bus, annotation, board, or a whole multi-selection) |

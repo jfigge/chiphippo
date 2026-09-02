@@ -790,3 +790,79 @@ test("a TURNED two-terminal part may anchor on a rail — both leads can reach r
     false, // 1 < minSpan 3
   );
 });
+
+// ── Signal flags (Feature 370) ──────────────────────────────────────────────
+
+test("a planted flag's point is a lead: one hole, one lead", () => {
+  const boards = [{ id: "bb1", type: "pins-full", x: 0, y: 0 }];
+  const doc = {
+    boards,
+    components: [],
+    wires: [],
+    signals: [{ id: "sig1", flag: { anchor: "bb1.a12", rot: 0 } }],
+  };
+  assert.deepEqual(buildOccupancy(doc).get("bb1.a12"), {
+    kind: "signal",
+    signalId: "sig1",
+  });
+  assert.equal(isFreeHole(doc, "bb1.a12"), false);
+  assert.equal(canPlaceWire(doc, "bb1.a12", "bb1.a20"), false);
+  // A part whose footprint would cover the hole is refused too — the check
+  // compares `occupant.componentId` against `ignoreId`, and a signal has none.
+  assert.equal(
+    canPlacePart(doc, { ref: "sw-slide", board: "bb1", anchor: "a12" }),
+    false,
+  );
+  assert.equal(
+    canPlacePart(doc, { ref: "sw-slide", board: "bb1", anchor: "a20" }),
+    true,
+    "and a clear run still seats",
+  );
+});
+
+test("a flag blocks a wire from being re-ended onto its hole", () => {
+  const doc = {
+    boards: [{ id: "bb1", type: "pins-full", x: 0, y: 0 }],
+    components: [],
+    wires: [{ id: "w1", from: "bb1.a1", to: "bb1.a20", color: "red" }],
+    signals: [{ id: "sig1", flag: { anchor: "bb1.a12", rot: 0 } }],
+  };
+  assert.equal(canReendWire(doc, "w1", "to", "bb1.a12"), false);
+  assert.equal(canMoveWire(doc, "w1", "bb1.a12", "bb1.a30"), false);
+  assert.equal(canReendWire(doc, "w1", "to", "bb1.a13"), true);
+});
+
+test("canPlaceFlag ignores the moving signal's OWN claim", async () => {
+  const { canPlaceFlag } = await import("../model/occupancy.js");
+  const doc = {
+    boards: [{ id: "bb1", type: "pins-full", x: 0, y: 0 }],
+    components: [],
+    wires: [],
+    signals: [
+      { id: "sig1", flag: { anchor: "bb1.a12", rot: 0 } },
+      { id: "sig2", flag: { anchor: "bb1.a20", rot: 0 } },
+    ],
+  };
+  assert.equal(canPlaceFlag(doc, "sig1", "bb1.a12"), true, "its own hole");
+  assert.equal(canPlaceFlag(doc, "sig1", "bb1.a20"), false, "sig2's hole");
+  assert.equal(canPlaceFlag(doc, "sig1", "bb1.a13"), true, "a free hole");
+});
+
+test("the flag loop runs FIRST, so a pin or wire end always outranks it", () => {
+  // A collision cannot survive normalizeDocument, but buildOccupancy also runs
+  // against live mid-mutation documents — and of the two ways one could read,
+  // a flag masking a wire END is the harmful one (canReendWire would then
+  // refuse to move that wire's own end, wedging it for good).
+  const doc = {
+    boards: [{ id: "bb1", type: "pins-full", x: 0, y: 0 }],
+    components: [],
+    wires: [{ id: "w1", from: "bb1.a12", to: "bb1.a20", color: "red" }],
+    signals: [{ id: "sig1", flag: { anchor: "bb1.a12", rot: 0 } }],
+  };
+  assert.deepEqual(buildOccupancy(doc).get("bb1.a12"), {
+    kind: "wire",
+    wireId: "w1",
+    end: "from",
+  });
+  assert.equal(canReendWire(doc, "w1", "from", "bb1.a13"), true);
+});

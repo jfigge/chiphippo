@@ -10,7 +10,7 @@
       "name": "74LS283",
       "description": "4-bit binary full adder",
       "doc": {
-        "version": 12,
+        "version": 13,
         "boards": [
           {
             "id": "bb1",
@@ -542,6 +542,7 @@
           }
         ],
         "scopeChannels": [],
+        "signals": [],
         "nextBoardId": 4,
         "nextGroupId": 2,
         "nextComponentId": 14,
@@ -550,7 +551,8 @@
         "nextWireId": 30,
         "nextBusId": 1,
         "nextAnnotationId": 19,
-        "nextScopeChannelId": 1
+        "nextScopeChannelId": 1,
+        "nextSignalId": 1
       }
     },
     {
@@ -558,7 +560,7 @@
       "name": "74LS83",
       "description": "4-bit binary adder (original pinout)",
       "doc": {
-        "version": 12,
+        "version": 13,
         "boards": [
           {
             "id": "bb1",
@@ -1090,6 +1092,7 @@
           }
         ],
         "scopeChannels": [],
+        "signals": [],
         "nextBoardId": 4,
         "nextGroupId": 2,
         "nextComponentId": 14,
@@ -1098,7 +1101,8 @@
         "nextWireId": 30,
         "nextBusId": 1,
         "nextAnnotationId": 19,
-        "nextScopeChannelId": 1
+        "nextScopeChannelId": 1,
+        "nextSignalId": 1
       }
     },
     {
@@ -1106,7 +1110,7 @@
       "name": "74LS181",
       "description": "4-bit Arithmetic Logic Unit",
       "doc": {
-        "version": 12,
+        "version": 13,
         "boards": [
           {
             "id": "bb1",
@@ -1790,6 +1794,7 @@
           }
         ],
         "scopeChannels": [],
+        "signals": [],
         "nextBoardId": 4,
         "nextGroupId": 2,
         "nextComponentId": 20,
@@ -1798,7 +1803,8 @@
         "nextWireId": 38,
         "nextBusId": 1,
         "nextAnnotationId": 23,
-        "nextScopeChannelId": 1
+        "nextScopeChannelId": 1,
+        "nextSignalId": 1
       }
     }
   ]

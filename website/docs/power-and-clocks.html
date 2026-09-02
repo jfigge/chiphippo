@@ -90,6 +90,9 @@ signal to step them along. Chip Hippo gives you two kinds of desk-level
 neither of which seats on a breadboard. They sit loose on the desk with their
 own addressable terminals, and you wire those terminals into a board&#39;s rails
 (or straight to a chip&#39;s pins) just like any other wire run.</p>
+<p>There is a third kind of source, and it does not live on the desk at all:
+<strong>external signals</strong>, the bench stimulus buttons pinned down the right-hand
+edge of the viewport. They are covered at the end of this page.</p>
 <p><img src="images/power-and-clocks.png" alt="A PSU and clock brick wired to a breadboard"></p>
 <h2 id="psu-bricks">PSU bricks</h2>
 <p>Add a <strong>Power supply</strong> from the parts palette (<strong>Power</strong> group) and drop it
@@ -178,6 +181,74 @@ every free-running clock&#39;s rate together (it has no effect on a manual
 clock, which only ever moves on a click). A manual clock only responds to
 clicks while the simulation is actually running — stopped, its body is inert
 like everything else on the desk.</p>
+<h2 id="external-signals">External signals</h2>
+<p>A <strong>signal</strong> is bench stimulus: a labelled button pinned to the right-hand edge
+of the desk, and a pointed <strong>flag</strong> whose tip plugs into any hole on any
+breadboard. Pressing the button injects a level at that hole. Nothing about a
+signal takes up board space, and — unlike a push button, which you can only
+hold one of at a time — <strong>you can assert several signals at once</strong>.</p>
+<p>Add one from the parts palette&#39;s <strong>SIGNALS</strong> section: pick <em>Signal</em>, then click
+anywhere on the desk. The click position does not matter; the button always
+goes to the next free slot on the rail, with its flag waiting beside it.</p>
+<p><strong>Drag the flag onto a board</strong> and its point snaps into the hole under the
+cursor. Press <strong>R</strong> while it is selected to turn it a quarter-turn about that
+point, so it can lie in whichever direction has room. Dragging a planted flag
+onto bare desk unplugs it, and its button goes back to holding the flag on the
+rail. A flag claims its hole exactly like a wire end or a chip pin does, so
+nothing else can use it while the flag is there.</p>
+<h3 id="momentary-toggle-and-the-resting-level">Momentary, toggle, and the resting level</h3>
+<p>Right-click a flag (or a button) for <strong>Properties…</strong>:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Name</strong></td>
+<td>The label shown on the button</td>
+</tr>
+<tr>
+<td><strong>Description</strong></td>
+<td>The button&#39;s tooltip</td>
+</tr>
+<tr>
+<td><strong>Color</strong></td>
+<td>The colour shared by the button&#39;s dot and its flag — one of the seven signal colours, and only those no other signal holds are offered</td>
+</tr>
+<tr>
+<td><strong>Type</strong></td>
+<td><strong>Momentary</strong> asserts while held; <strong>Toggle</strong> flips on each press and stays</td>
+</tr>
+<tr>
+<td><strong>Default value</strong></td>
+<td>The level the signal rests at — <strong>Low</strong> or <strong>High</strong></td>
+</tr>
+</tbody></table>
+<p>A placed signal is <strong>always</strong> driving its net. A momentary signal rests at its
+default and asserts the <em>opposite</em> while you hold it, which is what makes
+&quot;Default: High&quot; the natural setting for an active-low <code>/RESET</code> line: it sits
+high, and pressing the button pulses it low. A toggle&#39;s current level is reset
+to the default every time you Run, so a run always starts from a known state.</p>
+<p>A signal drives at the same strength as a chip output, so two signals arguing
+over one net — or a signal fighting a chip&#39;s output pin — is reported as a
+conflict, exactly as two chip outputs on one net would be.</p>
+<h3 id="pressing-them">Pressing them</h3>
+<p>While the circuit is running, <strong>1–7 press the signal buttons</strong>, top to bottom.
+No modifier, so you can hold several down together — <code>1</code> and <code>3</code> at once is two
+signals asserted at once. (Those digits pick the wire colour and the bus width
+while the Wire or Bus tool is armed, but Run puts both tools away, so the two
+meanings never collide.) Clicking a button with the mouse does the same thing
+for one signal at a time.</p>
+<p>Because a colour is what ties a flag to its button, there are <strong>seven signals</strong>
+per desktop — one per signal colour. That is the eight jumper colours <strong>minus
+black</strong>, which is the bench&#39;s ground colour: a black flag would read as a ground
+tie, and its button&#39;s dot would all but vanish against the dark rail. The
+palette&#39;s <em>Signal</em> row goes grey once all seven are in use.</p>
+<p>A project saved before black was withdrawn still opens; any signal that was
+black is given a free colour on load, and keeps its name, type, resting level
+and wherever its flag was planted. Nothing else on the rail is recoloured.</p>
 <hr>
 <p>See <a href="wiring.html">Wiring, Nets &amp; Buses</a> for how to route power-rail and clock
 wiring generally, and <a href="simulation.html">Running a Simulation</a> for how power

@@ -278,6 +278,11 @@
       "note": "Notiz",
       "noteHint": "ein mehrzeiliges Notizfeld"
     },
+    "signal": {
+      "item": "Signal",
+      "hint": "eine Stimulus-Taste — auf den Tisch klicken, um eine hinzuzufügen",
+      "full": "Alle {count} Signalfarben sind belegt"
+    },
     "group": {
       "and": "AND",
       "annotations": "ANMERKUNGEN",
@@ -308,6 +313,7 @@
       "register": "Register",
       "resistors": "Widerstände",
       "shiftregister": "Schieberegister",
+      "signals": "SIGNALE",
       "switches": "Schalter",
       "xor": "XOR"
     }
@@ -819,6 +825,13 @@
     },
     "boardPropertiesTitle": "Eigenschaften: {board}",
     "partPropertiesTitle": "Eigenschaften: {part}",
+    "signalPropertiesTitle": "Eigenschaften: {signal}",
+    "signal": {
+      "untitled": "Signal {n}",
+      "press": "{name} drücken",
+      "digitHint": "{digit} drücken, während die Schaltung läuft",
+      "dragHint": "Auf eine Bohrung ziehen, um zu verbinden"
+    },
     "wirePropertiesTitle": "Drahteigenschaften",
     "wireColor": "Farbe",
     "wireLayout": "Verlaufsart",
@@ -851,7 +864,8 @@
       "deleteComponent": "Bauteil löschen",
       "removeBoard": "Steckbrett entfernen",
       "editText": "Text bearbeiten…",
-      "remove": "Entfernen"
+      "remove": "Entfernen",
+      "removeSignal": "Signal entfernen"
     },
     "remove": {
       "confirm": "Entfernen",
@@ -867,7 +881,12 @@
     "paste": {
       "failTitle": "Der Entwurf konnte nicht eingefügt werden",
       "overlap": "Ein Teil davon landet auf etwas, das schon auf dieser Arbeitsfläche liegt.",
-      "noRoom": "Etwas, das er braucht, ist auf dieser Arbeitsfläche nicht frei."
+      "noRoom": "Etwas, das er braucht, ist auf dieser Arbeitsfläche nicht frei.",
+      "signalsDroppedTitle": "Einige Signale wurden nicht eingefügt",
+      "signalsDropped": {
+        "one": "1 Signal wurde ausgelassen — dieser Tisch belegt bereits jede Signalfarbe.",
+        "other": "{count} Signale wurden ausgelassen — dieser Tisch belegt bereits jede Signalfarbe."
+      }
     }
   },
   "workspace": {
@@ -1031,7 +1050,8 @@
     },
     "simulation": {
       "run": "Schaltung starten / stoppen",
-      "runKeys": "Leertaste oder {mod}+R"
+      "runKeys": "Leertaste oder {mod}+R",
+      "signals": "Signal 1–7 drücken (während die Schaltung läuft)"
     }
   },
   "properties": {
@@ -1043,10 +1063,16 @@
       "volts": "Spannung",
       "hz": "Frequenz",
       "size": "Größe",
-      "imageSource": "Image-Datei"
+      "imageSource": "Image-Datei",
+      "type": "Typ",
+      "rest": "Standardwert"
     },
     "option": {
-      "manual": "Manuell"
+      "manual": "Manuell",
+      "momentary": "Tastend",
+      "toggle": "Rastend",
+      "low": "Low",
+      "high": "High"
     },
     "action": {
       "inspectMemory": "Speicher untersuchen…",

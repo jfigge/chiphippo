@@ -39,6 +39,16 @@
 // never stored; occupancy.js is the single collision authority.
 
 import { BOARD_TYPES, BREADBOARD_KITS } from "./board-types.js";
+import { WIRE_COLORS } from "./wire-colors.js";
+import {
+  MAX_SIGNALS,
+  SIGNAL_COLORS,
+  availableSignalColors,
+  nextFlagRotation,
+  nextSignalColor,
+  normalizeFlagRotation,
+  normalizeSignalFields,
+} from "./signals.js";
 import {
   boardSize,
   canRotate,
@@ -72,6 +82,7 @@ import {
   buildOccupancy,
   canCornerOffset,
   canMoveWire,
+  canPlaceFlag,
   canPlacePart,
   canPlaceWire,
   canReendWire,
@@ -94,19 +105,12 @@ import {
  * steps back, so a migration keyed on a version could never fire once and
  * once only.
  */
-export const DOC_VERSION = 12;
+export const DOC_VERSION = 13;
 
-/** The fixed jumper-wire palette (theme.css defines a token per name). */
-export const WIRE_COLORS = Object.freeze([
-  "red",
-  "black",
-  "blue",
-  "green",
-  "yellow",
-  "orange",
-  "white",
-  "purple",
-]);
+// The jumper-wire palette moved to model/wire-colors.js (Feature 370) so
+// model/signals.js can read it without an import cycle back through here.
+// Re-exported so `import { WIRE_COLORS } from "./desk-doc.js"` still resolves.
+export { WIRE_COLORS };
 
 /**
  * How a wire gets from one end to the other — its "Layout Method" (the wire's
@@ -227,6 +231,7 @@ const WIRE_ID_RE = /^w([1-9]\d*)$/;
 const ANNOTATION_ID_RE = /^an([1-9]\d*)$/;
 const BUS_ID_RE = /^bus([1-9]\d*)$/;
 const SCOPE_CHANNEL_ID_RE = /^sc([1-9]\d*)$/;
+const SIGNAL_ID_RE = /^sig([1-9]\d*)$/;
 
 /** Logic-analyzer channel kinds (Feature 210): a single net or a whole bus. */
 const SCOPE_CHANNEL_KINDS = new Set(["net", "bus"]);
@@ -383,6 +388,7 @@ export function emptyDocument() {
     netNames: [],
     annotations: [],
     scopeChannels: [],
+    signals: [],
     nextBoardId: 1,
     nextGroupId: 1,
     nextComponentId: 1,
@@ -392,6 +398,7 @@ export function emptyDocument() {
     nextBusId: 1,
     nextAnnotationId: 1,
     nextScopeChannelId: 1,
+    nextSignalId: 1,
   };
 }
 
@@ -626,6 +633,90 @@ export function normalizeDocument(raw) {
     doc.wires.push(wireRecord);
   }
 
+  // Signals (Feature 370): bench stimulus. A signal's FLAG plugs its point
+  // into one board hole, so it extends the very same `claimed` set — the
+  // app has one ordering rule for a hole, stated here: PINS, then WIRES, then
+  // FLAGS, first wins.
+  //
+  // THE RULE, stated once and reused verbatim by removeBoard and pasteDesign:
+  // a flag with nowhere to go stops existing; the SIGNAL never does. A deleted
+  // board, a hand-edited anchor, a hole someone else took — the flag drops and
+  // the button comes back on the rail, unplaced.
+  // A colour clash is REPAIRED rather than dropped (a colour is presentation,
+  // and losing a whole stimulus source to a cosmetic collision is the wrong
+  // trade), and the repair is TWO PASSES so it moves as little as possible: a
+  // signal already holding a valid, unclaimed colour KEEPS it, and only the
+  // ones left over are reassigned. One pass in document order would have the
+  // first bad entry take `red` and shove every later signal along — and since
+  // the colour IS the identity tying a flag to its button, reopening a project
+  // would recolour half the rail to fix one signal. That is not hypothetical:
+  // BLACK was withdrawn from the signal palette, so every saved document that
+  // used it arrives needing exactly this repair.
+  //
+  // Running out of colours IS the cap — there is no count test anywhere.
+  let maxSignalSeq = 0;
+  const signalIds = new Set();
+  const rawSignals = Array.isArray(raw.signals) ? raw.signals : [];
+
+  // Pass 1 — which entries are signals at all, capped by the palette's size.
+  const accepted = [];
+  for (const sig of rawSignals) {
+    if (!sig || typeof sig !== "object") continue;
+    const m = typeof sig.id === "string" ? SIGNAL_ID_RE.exec(sig.id) : null;
+    if (!m || signalIds.has(sig.id)) continue;
+    if (accepted.length >= MAX_SIGNALS) break;
+    signalIds.add(sig.id);
+    maxSignalSeq = Math.max(maxSignalSeq, Number(m[1]));
+    accepted.push(sig);
+  }
+
+  // Pass 2 — everyone who came with a good colour RESERVES it.
+  const reserved = new Set();
+  const keptColor = new Map();
+  for (const sig of accepted) {
+    const c = sig.color;
+    if (
+      typeof c === "string" &&
+      SIGNAL_COLORS.includes(c) &&
+      !reserved.has(c)
+    ) {
+      reserved.add(c);
+      keptColor.set(sig, c);
+    }
+  }
+
+  // Pass 3 — the rest take the first colour nobody holds and nobody is keeping,
+  // and the records are built. TWO sets, not one: `assigned` is what has
+  // actually gone out, `reserved` is what a later signal is still entitled to.
+  // Collapsing them would let a repaired signal steal a colour its neighbour
+  // came in with, which is the very shuffle this pass exists to prevent.
+  const assigned = new Set();
+  for (const sig of accepted) {
+    const color =
+      keptColor.get(sig) ??
+      SIGNAL_COLORS.find((c) => !assigned.has(c) && !reserved.has(c));
+    if (color == null) continue; // unreachable while the cap holds
+    reserved.delete(color);
+    assigned.add(color);
+    // `taken` is empty: the colour is already decided above, and this call is
+    // here for the type/rest coercion every other path shares.
+    const fields = normalizeSignalFields({ ...sig, color }, new Set());
+    const record = { id: sig.id, ...fields };
+    applyMeta(record, sig);
+    // A flag anchors to a BOARD hole only: a component terminal is a
+    // connection point, not something you can plug a flag into.
+    const anchor = sig.flag?.anchor;
+    if (typeof anchor === "string" && !claimed.has(anchor)) {
+      const parsed = parseAddress(anchor);
+      const board = parsed && doc.boards.find((b) => b.id === parsed.boardId);
+      if (board && parseHole(board.type, parsed.hole) !== null) {
+        record.flag = { anchor, rot: normalizeFlagRotation(sig.flag?.rot) };
+        claimed.add(anchor);
+      }
+    }
+    doc.signals.push(record);
+  }
+
   // Buses (Feature 130): metadata over wires — `{ id, name, width, color,
   // members: [wireId…] }`. Each member must be a surviving wire; junk names
   // drop the bus. `width` is repaired up so it never undercounts its members
@@ -763,6 +854,11 @@ export function normalizeDocument(raw) {
       ? raw.nextScopeChannelId
       : 1;
   doc.nextScopeChannelId = Math.max(storedNextScope, maxScopeSeq + 1);
+  const storedNextSignal =
+    Number.isInteger(raw.nextSignalId) && raw.nextSignalId > 0
+      ? raw.nextSignalId
+      : 1;
+  doc.nextSignalId = Math.max(storedNextSignal, maxSignalSeq + 1);
   return doc;
 }
 
@@ -1434,6 +1530,7 @@ export class DeskDoc {
     }
     this.#doc.components = this.#doc.components.filter((c) => c.board !== id);
     this.#doc.wires = this.#doc.wires.filter((w) => !this.#wireTouches(w, id));
+    this.#detachSignalFlags(id);
     this.#pruneBusesToWires();
     if (removed.group != null) {
       this.#regroupRuns(
@@ -2804,6 +2901,158 @@ export class DeskDoc {
     }
   }
 
+  // ── External signals: bench stimulus (Feature 370) ─────────────────────────
+  // A signal is a BUTTON pinned to the viewport's right edge plus a FLAG whose
+  // point plugs into one board hole. It is neither a component nor decoration:
+  // occupancy claims the flag's hole and the engine drives its net, but it has
+  // no footprint, no catalog def and no desk coordinates of its own. Rail order
+  // IS document order, which is why "the next free slot" is simply an append.
+  //
+  // The colour is the IDENTITY tying a flag to its button, so it is unique and
+  // the cap is `MAX_SIGNALS` = the palette's length (model/signals.js).
+
+  /** Copies of the signals, in rail order. */
+  get signals() {
+    return this.#doc.signals.map((s) => ({
+      ...s,
+      ...(s.flag ? { flag: { ...s.flag } } : {}),
+    }));
+  }
+
+  /** A copy of one signal, or null. */
+  getSignal(id) {
+    const sig = this.#doc.signals.find((s) => s.id === id);
+    return sig
+      ? { ...sig, ...(sig.flag ? { flag: { ...sig.flag } } : {}) }
+      : null;
+  }
+
+  /**
+   * Add a signal, taking the next free palette colour. Throws NO_COLOR when
+   * every colour is spoken for — which IS the cap, so there is no count test
+   * here either. Returns a copy.
+   */
+  addSignal({ type, rest, name } = {}) {
+    const color = nextSignalColor(this.#doc.signals);
+    if (color == null) {
+      throw taggedError(`at most ${MAX_SIGNALS} signals`, "NO_COLOR");
+    }
+    const sig = {
+      id: `sig${this.#doc.nextSignalId++}`,
+      ...normalizeSignalFields({ color, type, rest }),
+    };
+    if (typeof name === "string" && name) sig.name = name;
+    this.#doc.signals.push(sig);
+    return { ...sig };
+  }
+
+  /**
+   * Patch a signal's `color` / `type` / `rest`. Throws NOT_FOUND,
+   * COLOR_TAKEN (another signal holds it) or INVALID_ARG. Returns a copy.
+   */
+  updateSignal(id, patch = {}) {
+    const sig = this.#doc.signals.find((s) => s.id === id);
+    if (!sig) throw taggedError(`no signal ${id}`, "NOT_FOUND");
+    if (patch.color !== undefined) {
+      if (!availableSignalColors(this.#doc.signals, id).includes(patch.color)) {
+        throw taggedError(`color ${patch.color} is taken`, "COLOR_TAKEN");
+      }
+      sig.color = patch.color;
+    }
+    for (const key of ["type", "rest"]) {
+      if (patch[key] === undefined) continue;
+      const next = normalizeSignalFields(
+        { ...sig, [key]: patch[key] },
+        new Set(),
+      );
+      if (next[key] !== patch[key]) {
+        throw taggedError(`bad signal ${key}: ${patch[key]}`, "INVALID_ARG");
+      }
+      sig[key] = patch[key];
+    }
+    return { ...sig, ...(sig.flag ? { flag: { ...sig.flag } } : {}) };
+  }
+
+  /** Update a signal's Name/Description — the setComponentMeta shape. */
+  setSignalMeta(id, patch) {
+    const sig = this.#doc.signals.find((s) => s.id === id);
+    if (!sig) throw taggedError(`no signal ${id}`, "NOT_FOUND");
+    for (const key of ["name", "description"]) {
+      if (typeof patch[key] !== "string") continue;
+      if (patch[key]) sig[key] = patch[key];
+      else delete sig[key];
+    }
+    return { ...sig, ...(sig.flag ? { flag: { ...sig.flag } } : {}) };
+  }
+
+  /**
+   * Plug a signal's flag into a board hole — the one method behind BOTH
+   * planting an unplaced flag and moving a planted one, since `canPlaceFlag`
+   * ignores this signal's own claim. Throws NOT_FOUND / NOT_A_POINT /
+   * HOLE_TAKEN. Returns a copy.
+   */
+  plantSignalFlag(id, address, rot = 0) {
+    const sig = this.#doc.signals.find((s) => s.id === id);
+    if (!sig) throw taggedError(`no signal ${id}`, "NOT_FOUND");
+    if (!this.isBoardHole(address)) {
+      throw taggedError(`${address} is not a board hole`, "NOT_A_POINT");
+    }
+    if (!canPlaceFlag(this.#doc, id, address)) {
+      throw taggedError(`${address} is already taken`, "HOLE_TAKEN");
+    }
+    sig.flag = { anchor: address, rot: normalizeFlagRotation(rot) };
+    return { ...sig, flag: { ...sig.flag } };
+  }
+
+  /** Turn a planted flag a quarter-turn about its POINT (the anchor is never
+      part of the sum, so there is nothing to recompute). Throws NOT_FOUND. */
+  rotateSignalFlag(id) {
+    const sig = this.#doc.signals.find((s) => s.id === id);
+    if (!sig) throw taggedError(`no signal ${id}`, "NOT_FOUND");
+    if (!sig.flag) return { ...sig };
+    sig.flag.rot = nextFlagRotation(sig.flag.rot);
+    return { ...sig, flag: { ...sig.flag } };
+  }
+
+  /** Unplug a flag — the signal survives, its button back on the rail. */
+  unplantSignalFlag(id) {
+    const sig = this.#doc.signals.find((s) => s.id === id);
+    if (!sig) throw taggedError(`no signal ${id}`, "NOT_FOUND");
+    delete sig.flag;
+    return { ...sig };
+  }
+
+  /** Remove a signal outright — button, flag and all. Throws NOT_FOUND. */
+  removeSignal(id) {
+    const i = this.#doc.signals.findIndex((s) => s.id === id);
+    if (i === -1) throw taggedError(`no signal ${id}`, "NOT_FOUND");
+    this.#doc.signals.splice(i, 1);
+  }
+
+  /** Is this address a real hole on a real BOARD (not a component terminal —
+      a flag plugs into a breadboard, not into a PSU's screw terminal)? */
+  isBoardHole(address) {
+    if (typeof address !== "string") return false;
+    const parsed = parseAddress(address);
+    if (!parsed) return false;
+    const board = this.#doc.boards.find((b) => b.id === parsed.boardId);
+    return Boolean(board) && parseHole(board.type, parsed.hole) !== null;
+  }
+
+  /** May this signal's flag plug in here? Free, real, ignoring its own claim. */
+  canPlaceSignalFlag(id, address) {
+    return this.isBoardHole(address) && canPlaceFlag(this.#doc, id, address);
+  }
+
+  /** Detach every flag planted on a board that is going away — THE RULE: a
+      flag with nowhere to go stops existing; the signal never does. */
+  #detachSignalFlags(boardId) {
+    for (const sig of this.#doc.signals) {
+      const parsed = sig.flag ? parseAddress(sig.flag.anchor) : null;
+      if (parsed?.boardId === boardId) delete sig.flag;
+    }
+  }
+
   // ── Scope channels: the logic-analyzer instrument setup (Feature 210) ──────
   // An ordered list of channel bindings persisted with the design so a saved
   // schematic keeps its analyzer setup. A `net` channel binds to a member
@@ -3014,7 +3263,49 @@ export class DeskDoc {
           }),
         );
       }
-      return { boards, components, wires, buses, annotations };
+      // Signals are the ONE part of a clip that is best-effort rather than
+      // all-or-nothing, and the argument is what all-or-nothing exists FOR:
+      // half a design silently cuts the wires that crossed to the board left
+      // behind — and a signal cuts nothing. Refusing a whole sub-assembly
+      // because this desk already holds eight stimulus buttons would make the
+      // cap punish the wrong thing. Out of colours → the signal is DROPPED;
+      // its hole already taken → it arrives UNPLACED (the loader's own rule:
+      // a flag with nowhere to go stops existing, the signal never does).
+      // `droppedSignals` is reported, never swallowed.
+      const signals = [];
+      let droppedSignals = 0;
+      for (const sig of clip.signals ?? []) {
+        const owner = owners.get(sig.flag.owner);
+        if (!owner) {
+          droppedSignals++;
+          continue;
+        }
+        if (nextSignalColor(this.#doc.signals) == null) {
+          droppedSignals++;
+          continue;
+        }
+        const added = this.addSignal({ type: sig.type, rest: sig.rest });
+        if (sig.name || sig.description) {
+          this.setSignalMeta(added.id, {
+            name: sig.name ?? "",
+            description: sig.description ?? "",
+          });
+        }
+        const address = formatAddress(owner, sig.flag.point);
+        if (this.canPlaceSignalFlag(added.id, address)) {
+          this.plantSignalFlag(added.id, address, sig.flag.rot ?? 0);
+        }
+        signals.push(this.getSignal(added.id));
+      }
+      return {
+        boards,
+        components,
+        wires,
+        buses,
+        annotations,
+        signals,
+        droppedSignals,
+      };
     } catch (err) {
       this.restore(before); // a refused paste changes nothing at all
       throw err;
@@ -3026,7 +3317,11 @@ export class DeskDoc {
   /**
    * Slide the ENTIRE desk by an integer (dx, dy): every board, every desk-level
    * brick, and every annotation. Seated parts and wires need nothing — they are
-   * stored as board addresses, not coordinates, so they ride their board.
+   * stored as board addresses, not coordinates, so they ride their board. A
+   * signal FLAG is an address too, so it is absent here for the same reason and
+   * not by oversight — worth saying, since the two things that DO need carrying
+   * (an annotation's free coordinates, a routed wire's waypoints) make the
+   * omission look like one.
    *
    * The move is RIGID, which is why there is no legality check and no way to
    * refuse it: nothing changes its position relative to anything else, so

@@ -278,6 +278,11 @@
       "note": "Note",
       "noteHint": "un cadre de note sur plusieurs lignes"
     },
+    "signal": {
+      "item": "Signal",
+      "hint": "un bouton de stimulus — cliquez sur le bureau pour en ajouter un",
+      "full": "Les {count} couleurs de signal sont utilisées"
+    },
     "group": {
       "and": "AND",
       "annotations": "ANNOTATIONS",
@@ -308,6 +313,7 @@
       "register": "Registre",
       "resistors": "Résistances",
       "shiftregister": "Registre à décalage",
+      "signals": "SIGNAUX",
       "switches": "Interrupteurs",
       "xor": "XOR"
     }
@@ -819,6 +825,13 @@
     },
     "boardPropertiesTitle": "Propriétés de {board}",
     "partPropertiesTitle": "Propriétés de {part}",
+    "signalPropertiesTitle": "Propriétés de {signal}",
+    "signal": {
+      "untitled": "Signal {n}",
+      "press": "Appuyer sur {name}",
+      "digitHint": "Appuyez sur {digit} pendant l'exécution du circuit",
+      "dragHint": "Faites glisser sur un trou pour connecter"
+    },
     "wirePropertiesTitle": "Propriétés du fil",
     "wireColor": "Couleur",
     "wireLayout": "Méthode de tracé",
@@ -851,7 +864,8 @@
       "deleteComponent": "Supprimer le composant",
       "removeBoard": "Retirer la platine",
       "editText": "Modifier le texte…",
-      "remove": "Retirer"
+      "remove": "Retirer",
+      "removeSignal": "Retirer le signal"
     },
     "remove": {
       "confirm": "Retirer",
@@ -867,7 +881,12 @@
     "paste": {
       "failTitle": "La conception n'a pas pu être collée",
       "overlap": "Une partie tombe sur quelque chose qui est déjà sur ce plan de travail.",
-      "noRoom": "Quelque chose dont elle a besoin n'est pas libre sur ce plan de travail."
+      "noRoom": "Quelque chose dont elle a besoin n'est pas libre sur ce plan de travail.",
+      "signalsDroppedTitle": "Certains signaux n'ont pas été collés",
+      "signalsDropped": {
+        "one": "1 signal a été laissé de côté — ce bureau utilise déjà toutes les couleurs de signal.",
+        "other": "{count} signaux ont été laissés de côté — ce bureau utilise déjà toutes les couleurs de signal."
+      }
     }
   },
   "workspace": {
@@ -1031,7 +1050,8 @@
     },
     "simulation": {
       "run": "Exécuter / arrêter le circuit",
-      "runKeys": "Espace ou {mod}+R"
+      "runKeys": "Espace ou {mod}+R",
+      "signals": "Appuyer sur le signal 1–7 (pendant l'exécution du circuit)"
     }
   },
   "properties": {
@@ -1043,10 +1063,16 @@
       "volts": "Tension",
       "hz": "Fréquence",
       "size": "Taille",
-      "imageSource": "Fichier image"
+      "imageSource": "Fichier image",
+      "type": "Type",
+      "rest": "Valeur par défaut"
     },
     "option": {
-      "manual": "Manuel"
+      "manual": "Manuel",
+      "momentary": "Momentané",
+      "toggle": "Bascule",
+      "low": "Bas",
+      "high": "Haut"
     },
     "action": {
       "inspectMemory": "Inspecter la mémoire…",

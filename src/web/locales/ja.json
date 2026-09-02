@@ -278,6 +278,11 @@
       "note": "ノート",
       "noteHint": "複数行のノート枠"
     },
+    "signal": {
+      "item": "信号",
+      "hint": "外部信号ボタン — デスクをクリックして追加",
+      "full": "{count} 色の信号カラーはすべて使用中です"
+    },
     "group": {
       "and": "AND",
       "annotations": "注釈",
@@ -308,6 +313,7 @@
       "register": "レジスタ",
       "resistors": "抵抗",
       "shiftregister": "シフトレジスタ",
+      "signals": "信号",
       "switches": "スイッチ",
       "xor": "XOR"
     }
@@ -810,6 +816,13 @@
     },
     "boardPropertiesTitle": "{board} の情報",
     "partPropertiesTitle": "{part} の情報",
+    "signalPropertiesTitle": "{signal} の情報",
+    "signal": {
+      "untitled": "信号 {n}",
+      "press": "{name} を押す",
+      "digitHint": "回路の実行中に {digit} を押します",
+      "dragHint": "穴までドラッグして接続"
+    },
     "wirePropertiesTitle": "ワイヤーの情報",
     "wireColor": "色",
     "wireLayout": "引き方",
@@ -837,7 +850,8 @@
       "deleteComponent": "部品を削除",
       "removeBoard": "ボードを取り外す",
       "editText": "テキストを編集…",
-      "remove": "取り外す"
+      "remove": "取り外す",
+      "removeSignal": "信号を削除"
     },
     "remove": {
       "confirm": "取り外す",
@@ -853,7 +867,11 @@
     "paste": {
       "failTitle": "この設計を貼り付けられませんでした",
       "overlap": "一部がこのデスクにすでにあるものの上に重なります。",
-      "noRoom": "必要な場所がこのデスクで空いていません。"
+      "noRoom": "必要な場所がこのデスクで空いていません。",
+      "signalsDroppedTitle": "一部の信号は貼り付けられませんでした",
+      "signalsDropped": {
+        "other": "{count} 個の信号を見送りました — このデスクはすでにすべての信号カラーを使用しています。"
+      }
     }
   },
   "workspace": {
@@ -1016,7 +1034,8 @@
     },
     "simulation": {
       "run": "回路を実行／停止",
-      "runKeys": "スペースまたは {mod}+R"
+      "runKeys": "スペースまたは {mod}+R",
+      "signals": "信号 1〜7 を押す（回路の実行中）"
     }
   },
   "properties": {
@@ -1028,10 +1047,16 @@
       "volts": "電圧",
       "hz": "周波数",
       "size": "サイズ",
-      "imageSource": "イメージファイル"
+      "imageSource": "イメージファイル",
+      "type": "種類",
+      "rest": "既定値"
     },
     "option": {
-      "manual": "手動"
+      "manual": "手動",
+      "momentary": "モーメンタリ",
+      "toggle": "オルタネート",
+      "low": "Low",
+      "high": "High"
     },
     "action": {
       "inspectMemory": "メモリを調べる…",

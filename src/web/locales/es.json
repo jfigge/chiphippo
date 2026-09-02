@@ -278,6 +278,11 @@
       "note": "Nota",
       "noteHint": "un cuadro de nota de varias líneas"
     },
+    "signal": {
+      "item": "Señal",
+      "hint": "un botón de estímulo: haz clic en el escritorio para añadir uno",
+      "full": "Los {count} colores de señal están en uso"
+    },
     "group": {
       "and": "AND",
       "annotations": "ANOTACIONES",
@@ -308,6 +313,7 @@
       "register": "Registro",
       "resistors": "Resistencias",
       "shiftregister": "Registro de desplazamiento",
+      "signals": "SEÑALES",
       "switches": "Interruptores",
       "xor": "XOR"
     }
@@ -819,6 +825,13 @@
     },
     "boardPropertiesTitle": "Propiedades de {board}",
     "partPropertiesTitle": "Propiedades de {part}",
+    "signalPropertiesTitle": "Propiedades de {signal}",
+    "signal": {
+      "untitled": "Señal {n}",
+      "press": "Pulsar {name}",
+      "digitHint": "Pulsa {digit} mientras el circuito se ejecuta",
+      "dragHint": "Arrastra hasta un orificio para conectar"
+    },
     "wirePropertiesTitle": "Propiedades del cable",
     "wireColor": "Color",
     "wireLayout": "Método de trazado",
@@ -851,7 +864,8 @@
       "deleteComponent": "Eliminar el componente",
       "removeBoard": "Quitar la placa",
       "editText": "Editar el texto…",
-      "remove": "Quitar"
+      "remove": "Quitar",
+      "removeSignal": "Quitar señal"
     },
     "remove": {
       "confirm": "Quitar",
@@ -867,7 +881,12 @@
     "paste": {
       "failTitle": "No se pudo pegar el diseño",
       "overlap": "Una parte cae sobre algo que ya está en esta mesa.",
-      "noRoom": "Algo que necesita no está libre en esta mesa."
+      "noRoom": "Algo que necesita no está libre en esta mesa.",
+      "signalsDroppedTitle": "Algunas señales no se pegaron",
+      "signalsDropped": {
+        "one": "Se omitió 1 señal: este escritorio ya usa todos los colores de señal.",
+        "other": "Se omitieron {count} señales: este escritorio ya usa todos los colores de señal."
+      }
     }
   },
   "workspace": {
@@ -1031,7 +1050,8 @@
     },
     "simulation": {
       "run": "Ejecutar / detener el circuito",
-      "runKeys": "Espacio o {mod}+R"
+      "runKeys": "Espacio o {mod}+R",
+      "signals": "Pulsar la señal 1–7 (mientras el circuito se ejecuta)"
     }
   },
   "properties": {
@@ -1043,10 +1063,16 @@
       "volts": "Tensión",
       "hz": "Frecuencia",
       "size": "Tamaño",
-      "imageSource": "Archivo de imagen"
+      "imageSource": "Archivo de imagen",
+      "type": "Tipo",
+      "rest": "Valor por defecto"
     },
     "option": {
-      "manual": "Manual"
+      "manual": "Manual",
+      "momentary": "Momentáneo",
+      "toggle": "Conmutado",
+      "low": "Bajo",
+      "high": "Alto"
     },
     "action": {
       "inspectMemory": "Inspeccionar la memoria…",

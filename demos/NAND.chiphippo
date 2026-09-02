@@ -10,7 +10,7 @@
       "name": "74LS00",
       "description": "Quad 2-input NAND",
       "doc": {
-        "version": 12,
+        "version": 13,
         "boards": [
           {
             "id": "bb1",
@@ -503,6 +503,7 @@
           }
         ],
         "scopeChannels": [],
+        "signals": [],
         "nextBoardId": 4,
         "nextGroupId": 2,
         "nextComponentId": 18,
@@ -511,7 +512,8 @@
         "nextWireId": 23,
         "nextBusId": 1,
         "nextAnnotationId": 13,
-        "nextScopeChannelId": 1
+        "nextScopeChannelId": 1,
+        "nextSignalId": 1
       }
     },
     {
@@ -519,7 +521,7 @@
       "name": "74LS10",
       "description": "Triple 3-input NAND",
       "doc": {
-        "version": 12,
+        "version": 13,
         "boards": [
           {
             "id": "bb1",
@@ -984,6 +986,7 @@
           }
         ],
         "scopeChannels": [],
+        "signals": [],
         "nextBoardId": 4,
         "nextGroupId": 2,
         "nextComponentId": 16,
@@ -992,7 +995,8 @@
         "nextWireId": 23,
         "nextBusId": 1,
         "nextAnnotationId": 13,
-        "nextScopeChannelId": 1
+        "nextScopeChannelId": 1,
+        "nextSignalId": 1
       }
     },
     {
@@ -1000,7 +1004,7 @@
       "name": "74LS20",
       "description": "Dual 4-input NAND",
       "doc": {
-        "version": 12,
+        "version": 13,
         "boards": [
           {
             "id": "bb1",
@@ -1417,6 +1421,7 @@
           }
         ],
         "scopeChannels": [],
+        "signals": [],
         "nextBoardId": 4,
         "nextGroupId": 2,
         "nextComponentId": 14,
@@ -1425,7 +1430,8 @@
         "nextWireId": 21,
         "nextBusId": 1,
         "nextAnnotationId": 12,
-        "nextScopeChannelId": 1
+        "nextScopeChannelId": 1,
+        "nextSignalId": 1
       }
     },
     {
@@ -1433,7 +1439,7 @@
       "name": "74LS30",
       "description": "8-input NAND",
       "doc": {
-        "version": 12,
+        "version": 13,
         "boards": [
           {
             "id": "bb1",
@@ -1791,6 +1797,7 @@
           }
         ],
         "scopeChannels": [],
+        "signals": [],
         "nextBoardId": 4,
         "nextGroupId": 2,
         "nextComponentId": 6,
@@ -1799,7 +1806,8 @@
         "nextWireId": 25,
         "nextBusId": 1,
         "nextAnnotationId": 15,
-        "nextScopeChannelId": 1
+        "nextScopeChannelId": 1,
+        "nextSignalId": 1
       }
     },
     {
@@ -1807,7 +1815,7 @@
       "name": "74LS01",
       "description": "Quad 2-input NAND (open-collector)",
       "doc": {
-        "version": 12,
+        "version": 13,
         "boards": [
           {
             "id": "bb1",
@@ -2316,6 +2324,7 @@
           }
         ],
         "scopeChannels": [],
+        "signals": [],
         "nextBoardId": 4,
         "nextGroupId": 2,
         "nextComponentId": 18,
@@ -2324,7 +2333,8 @@
         "nextWireId": 23,
         "nextBusId": 1,
         "nextAnnotationId": 15,
-        "nextScopeChannelId": 1
+        "nextScopeChannelId": 1,
+        "nextSignalId": 1
       }
     },
     {
@@ -2332,7 +2342,7 @@
       "name": "74LS03",
       "description": "Quad 2-input NAND (open-collector)",
       "doc": {
-        "version": 12,
+        "version": 13,
         "boards": [
           {
             "id": "bb1",
@@ -2833,6 +2843,7 @@
           }
         ],
         "scopeChannels": [],
+        "signals": [],
         "nextBoardId": 4,
         "nextGroupId": 2,
         "nextComponentId": 18,
@@ -2841,7 +2852,8 @@
         "nextWireId": 23,
         "nextBusId": 1,
         "nextAnnotationId": 14,
-        "nextScopeChannelId": 1
+        "nextScopeChannelId": 1,
+        "nextSignalId": 1
       }
     }
   ]

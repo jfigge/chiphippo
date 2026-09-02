@@ -110,7 +110,7 @@ export class ScopeView {
    * @param {import('../model/desk-doc.js').DeskDoc} opts.deskDoc
    * @param {import('./netlist-cache.js').NetlistCache} opts.netlist
    * @param {(visible:boolean)=>void} [opts.onVisibilityChange]
-   * @param {(kind:string, ref:string)=>void} opts.onAddChannel
+   * @param {(kind:string, ref:string, opts?:object)=>void} opts.onAddChannel
    * @param {(id:string)=>void} opts.onRemoveChannel
    * @param {(id:string, index:number)=>void} opts.onMoveChannel
    * @param {()=>number|null} [opts.tickMs] - ms per tick for the Δ readout.
@@ -363,10 +363,15 @@ export class ScopeView {
 
   // ── Public channel entry points (probe "Add to analyzer", picker) ───────────
 
-  /** Track a net by a member address (deduped by the controller). */
-  addNetChannel(address) {
+  /**
+   * Track a net by a member address (deduped by the controller). `opts` reaches
+   * DeskDoc.addScopeChannel, which has always accepted a colour and a label —
+   * it was only this hop that dropped them. A signal flag passes its own
+   * colour, so the flag, its button's dot and the analyzer lane are one hue.
+   */
+  addNetChannel(address, opts = {}) {
     if (this.#doc.hasScopeChannel("net", address)) return;
-    this.#onAddChannel?.("net", address);
+    this.#onAddChannel?.("net", address, opts);
   }
 
   /** Track a bus by its id. */

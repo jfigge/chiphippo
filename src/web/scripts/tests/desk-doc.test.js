@@ -28,6 +28,7 @@ import {
   normalizeDocument,
 } from "../model/desk-doc.js";
 import { buildOccupancy } from "../model/occupancy.js";
+import { MAX_SIGNALS } from "../model/signals.js";
 import { boardSize, spec } from "../model/breadboard.js";
 
 // Strip heights are MEASURED, not whole pitches (board-types.js): a rail is
@@ -52,6 +53,7 @@ test("a fresh DeskDoc serializes to the empty document shape", () => {
     netNames: [],
     annotations: [],
     scopeChannels: [],
+    signals: [],
     nextBoardId: 1,
     nextGroupId: 1,
     nextComponentId: 1,
@@ -61,6 +63,7 @@ test("a fresh DeskDoc serializes to the empty document shape", () => {
     nextBusId: 1,
     nextAnnotationId: 1,
     nextScopeChannelId: 1,
+    nextSignalId: 1,
   });
   assert.deepEqual(new DeskDoc(null).toJSON(), emptyDocument());
 });
@@ -2690,4 +2693,182 @@ test("translateAll: rigid — the group and every mating survive the slide", () 
     doc.matingStrips("bb2").map((b) => b.id),
     ["bb1", "bb3"],
   );
+});
+
+// ── External signals (Feature 370) ──────────────────────────────────────────
+// THE RULE, tested from both ends: a flag with nowhere to go stops existing;
+// the SIGNAL never does.
+
+test("addSignal mints ids and colours, and one past the cap is refused", () => {
+  const doc = new DeskDoc(null);
+  const colors = [];
+  for (let i = 0; i < MAX_SIGNALS; i++) colors.push(doc.addSignal({}).color);
+  assert.equal(
+    new Set(colors).size,
+    MAX_SIGNALS,
+    "each owns a distinct colour",
+  );
+  assert.ok(!colors.includes("black"), "and black is never handed out");
+  assert.deepEqual(
+    doc.signals.map((s) => s.id),
+    Array.from({ length: MAX_SIGNALS }, (_, i) => `sig${i + 1}`),
+  );
+  assert.throws(() => doc.addSignal({}), { code: "NO_COLOR" });
+});
+
+test("updateSignal refuses a colour another signal holds", () => {
+  const doc = new DeskDoc(null);
+  const a = doc.addSignal({});
+  const b = doc.addSignal({});
+  assert.throws(() => doc.updateSignal(b.id, { color: a.color }), {
+    code: "COLOR_TAKEN",
+  });
+  assert.doesNotThrow(() => doc.updateSignal(b.id, { color: b.color }));
+  assert.throws(() => doc.updateSignal(b.id, { type: "sideways" }), {
+    code: "INVALID_ARG",
+  });
+});
+
+test("a flag plugs into a BOARD hole, and claims it like any other lead", () => {
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const sig = doc.addSignal({});
+  doc.plantSignalFlag(sig.id, "bb1.a12", 90);
+  assert.deepEqual(doc.getSignal(sig.id).flag, { anchor: "bb1.a12", rot: 90 });
+  // One hole, one lead — the occupancy index answers for every other claimant.
+  const occ = buildOccupancy(doc.toJSON());
+  assert.deepEqual(occ.get("bb1.a12"), { kind: "signal", signalId: sig.id });
+  assert.equal(doc.canPlaceWire("bb1.a12", "bb1.a20"), false);
+  // ...and the same signal may still slide off its own hole onto a new one.
+  assert.equal(doc.canPlaceSignalFlag(sig.id, "bb1.a12"), true);
+  const other = doc.addSignal({});
+  assert.equal(doc.canPlaceSignalFlag(other.id, "bb1.a12"), false);
+  assert.throws(() => doc.plantSignalFlag(other.id, "bb1.a12"), {
+    code: "HOLE_TAKEN",
+  });
+});
+
+test("a flag refuses a component TERMINAL — it plugs into a breadboard", () => {
+  const doc = new DeskDoc(null);
+  doc.addPsu(0, 0);
+  const sig = doc.addSignal({});
+  assert.equal(doc.canPlaceSignalFlag(sig.id, "psu1.+"), false);
+  assert.throws(() => doc.plantSignalFlag(sig.id, "psu1.+"), {
+    code: "NOT_A_POINT",
+  });
+});
+
+test("R turns a flag about its point — the anchor never moves", () => {
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const sig = doc.addSignal({});
+  doc.plantSignalFlag(sig.id, "bb1.a12", 0);
+  const seen = [];
+  for (let i = 0; i < 4; i++) seen.push(doc.rotateSignalFlag(sig.id).flag.rot);
+  assert.deepEqual(seen, [90, 180, 270, 0]);
+  assert.equal(doc.getSignal(sig.id).flag.anchor, "bb1.a12");
+});
+
+test("deleting the board under a flag keeps the SIGNAL and drops the flag", () => {
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  doc.addBoard("pins-tiny", 0, 30);
+  const a = doc.addSignal({ name: "RESET" });
+  const b = doc.addSignal({});
+  doc.plantSignalFlag(a.id, "bb1.a12", 0);
+  doc.plantSignalFlag(b.id, "bb2.a3", 0);
+  doc.removeBoard("bb1");
+  assert.equal(doc.getSignal(a.id).flag, undefined, "the flag is gone");
+  assert.equal(doc.getSignal(a.id).name, "RESET", "the signal is not");
+  assert.deepEqual(doc.getSignal(b.id).flag, { anchor: "bb2.a3", rot: 0 });
+});
+
+test("a flag is an ADDRESS, so translateAll leaves it alone", () => {
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const sig = doc.addSignal({});
+  doc.plantSignalFlag(sig.id, "bb1.a12", 180);
+  doc.translateAll(7, 3);
+  assert.deepEqual(doc.getSignal(sig.id).flag, { anchor: "bb1.a12", rot: 180 });
+});
+
+test("normalizeDocument repairs a colour clash rather than dropping a signal", () => {
+  const doc = normalizeDocument({
+    signals: [
+      { id: "sig1", color: "red", type: "toggle", rest: "high" },
+      { id: "sig2", color: "red" },
+    ],
+  });
+  assert.equal(doc.signals.length, 2, "both survive");
+  assert.equal(doc.signals[0].color, "red");
+  assert.notEqual(doc.signals[1].color, "red");
+  assert.equal(doc.signals[1].type, "momentary", "junk fields default");
+});
+
+test("normalizeDocument drops past the cap — 'no colour left', not a count", () => {
+  const raw = Array.from({ length: 12 }, (_, i) => ({ id: `sig${i + 1}` }));
+  assert.equal(normalizeDocument({ signals: raw }).signals.length, MAX_SIGNALS);
+});
+
+test("repairing one bad colour does not shuffle the signals around it", () => {
+  // Black was withdrawn, so every saved document holding one arrives needing a
+  // repair — and the colour IS the identity tying a flag to its button, so
+  // only the signal that has to move may move.
+  const doc = normalizeDocument({
+    signals: [
+      { id: "sig1", color: "black", name: "RESET" },
+      { id: "sig2", color: "red", name: "B" },
+      { id: "sig3", color: "green", name: "C" },
+    ],
+  });
+  assert.deepEqual(
+    doc.signals.map((s) => s.color),
+    ["blue", "red", "green"],
+    "B and C keep what they came in with; only the black one is reassigned",
+  );
+  assert.equal(doc.signals[0].name, "RESET", "and it keeps everything else");
+});
+
+test("normalizeDocument drops a homeless flag and keeps its signal", () => {
+  const doc = normalizeDocument({
+    boards: [{ id: "bb1", type: "pins-full", x: 0, y: 0 }],
+    signals: [
+      { id: "sig1", flag: { anchor: "bb9.a1" } }, // no such board
+      { id: "sig2", flag: { anchor: "bb1.zz9" } }, // no such hole
+      { id: "sig3", flag: { anchor: "psu1.+" } }, // not a board hole
+      { id: "sig4", flag: { anchor: "bb1.a12", rot: 45 } }, // junk rotation
+    ],
+  });
+  assert.equal(doc.signals.length, 4, "every signal survives");
+  assert.deepEqual(
+    doc.signals.map((s) => s.flag?.anchor ?? null),
+    [null, null, null, "bb1.a12"],
+  );
+  assert.equal(doc.signals[3].flag.rot, 0);
+});
+
+test("PINS then WIRES then FLAGS — first wins for a contested hole", () => {
+  const doc = normalizeDocument({
+    boards: [{ id: "bb1", type: "pins-full", x: 0, y: 0 }],
+    wires: [{ id: "w1", from: "bb1.a12", to: "bb1.a20", color: "red" }],
+    signals: [{ id: "sig1", flag: { anchor: "bb1.a12" } }],
+  });
+  assert.equal(doc.wires.length, 1, "the wire got there first");
+  assert.equal(doc.signals.length, 1, "the signal survives...");
+  assert.equal(doc.signals[0].flag, undefined, "...unplaced");
+});
+
+test("nextSignalId reconciles past the ids a loaded document holds", () => {
+  const doc = normalizeDocument({
+    signals: [{ id: "sig4" }, { id: "sig2" }],
+    nextSignalId: 1,
+  });
+  assert.equal(doc.nextSignalId, 5);
+});
+
+test("a desk holding only a signal is NOT empty", () => {
+  const doc = new DeskDoc(null);
+  assert.equal(isEmptyDocument(doc.toJSON()), true);
+  doc.addSignal({});
+  assert.equal(isEmptyDocument(doc.toJSON()), false);
 });

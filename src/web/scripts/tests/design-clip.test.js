@@ -30,6 +30,7 @@ import {
   snapDesign,
 } from "../model/design-clip.js";
 import { boardRect } from "../model/mating.js";
+import { MAX_SIGNALS } from "../model/signals.js";
 
 /** The plain `{boards, components, wires, …}` view captureDesign reads. */
 const view = (doc) => ({
@@ -39,6 +40,7 @@ const view = (doc) => ({
   buses: doc.buses,
   netNames: doc.netNames,
   annotations: doc.annotations,
+  signals: doc.signals,
 });
 
 /** The placement predicates resolveDesign asks about the live document. */
@@ -299,4 +301,104 @@ test("DeskDoc.load normalizes an untrusted document", () => {
   // Junk is dropped rather than trusted through.
   doc.load({ boards: [{ id: "bb1", type: "not-a-board", x: 0, y: 0 }] });
   assert.equal(doc.boards.length, 0);
+});
+
+// ── External signals in a clip (Feature 370) ────────────────────────────────
+
+/** A one-board design with two signals: one planted, one still on the rail. */
+function signalDesign() {
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const planted = doc.addSignal({ name: "RESET", rest: "high" });
+  const loose = doc.addSignal({ type: "toggle" });
+  doc.plantSignalFlag(planted.id, "bb1.a12", 90);
+  return { doc, planted, loose };
+}
+
+test("a clip carries a PLANTED signal and leaves an unplaced one behind", () => {
+  const { doc } = signalDesign();
+  const clip = captureDesign(view(doc), { boardIds: ["bb1"] });
+  assert.equal(clip.signals.length, 1, "only the planted one travels");
+  const [sig] = clip.signals;
+  assert.deepEqual(sig.flag, { owner: "bb1", point: "a12", rot: 90 });
+  assert.equal(sig.name, "RESET");
+  assert.equal(sig.rest, "high");
+  assert.equal(sig.type, "momentary");
+  // A colour is a PER-DESK identity (flag ↔ button ↔ digit key), so it is
+  // deliberately re-issued on arrival rather than carried.
+  assert.equal("color" in sig, false);
+});
+
+test("clipScene draws the flags the drop would plant", () => {
+  const { doc } = signalDesign();
+  const scene = clipScene(captureDesign(view(doc), { boardIds: ["bb1"] }));
+  assert.deepEqual(scene.signals, [
+    { id: "clip-sig1", anchor: "bb1.a12", rot: 90 },
+  ]);
+});
+
+test("a pasted signal lands planted, with a colour free on THIS desk", () => {
+  const { doc } = signalDesign();
+  const clip = captureDesign(view(doc), { boardIds: ["bb1"] });
+  const pasted = doc.pasteDesign(clip, { dx: 0, dy: 40 });
+  assert.equal(pasted.signals.length, 1);
+  assert.equal(pasted.droppedSignals, 0);
+  const [added] = pasted.signals;
+  assert.equal(added.name, "RESET");
+  assert.equal(added.rest, "high");
+  assert.equal(added.flag.rot, 90);
+  assert.notEqual(added.flag.anchor, "bb1.a12", "a hole on the NEW board");
+  assert.equal(
+    new Set(doc.signals.map((s) => s.color)).size,
+    doc.signals.length,
+    "every colour still distinct",
+  );
+});
+
+test("signals paste BEST-EFFORT: the boards still land when colours run out", () => {
+  const { doc } = signalDesign();
+  const clip = captureDesign(view(doc), { boardIds: ["bb1"] });
+  // Fill the palette — this desk can hold no more signals.
+  while (doc.signals.length < MAX_SIGNALS) doc.addSignal({});
+  const pasted = doc.pasteDesign(clip, { dx: 0, dy: 40 });
+  assert.equal(pasted.boards.length, 1, "the design itself still lands");
+  assert.equal(pasted.signals.length, 0);
+  assert.equal(pasted.droppedSignals, 1, "and the drop is REPORTED");
+});
+
+test("a signal whose hole is taken arrives UNPLACED, never refused", () => {
+  // Hand-built, because a NORMALIZED source document can never hold a flag and
+  // a wire end on one hole — so this branch is only reachable from a clip that
+  // came from somewhere else. The rule it proves is the loader's, reused
+  // verbatim: a flag with nowhere to go stops existing; the signal never does.
+  const doc = new DeskDoc(null);
+  const clip = {
+    center: { x: 0, y: 0 },
+    boards: [{ key: "b1", type: "pins-full", x: 0, y: 0, rot: 0, group: null }],
+    bricks: [],
+    parts: [],
+    wires: [
+      {
+        key: "w1",
+        from: { owner: "b1", point: "a12" },
+        to: { owner: "b1", point: "a30" },
+        color: "red",
+      },
+    ],
+    buses: [],
+    netNames: [],
+    annotations: [],
+    signals: [
+      {
+        type: "momentary",
+        rest: "low",
+        flag: { owner: "b1", point: "a12", rot: 0 },
+      },
+    ],
+  };
+  const pasted = doc.pasteDesign(clip, { dx: 0, dy: 0 });
+  assert.equal(pasted.signals.length, 1, "the signal arrives");
+  assert.equal(pasted.signals[0].flag, undefined, "but unplaced");
+  assert.equal(pasted.droppedSignals, 0, "it was not dropped");
+  assert.equal(pasted.wires.length, 1, "the wire that owns the hole is intact");
 });

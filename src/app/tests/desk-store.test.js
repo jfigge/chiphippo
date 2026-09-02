@@ -50,6 +50,8 @@ test("writeFile → readFile round-trips a named schematic anywhere", () => {
       buses: [],
       netNames: [],
       annotations: [],
+      scopeChannels: [],
+      signals: [],
       nextBoardId: 2,
       nextGroupId: 1,
       nextComponentId: 1,
@@ -59,6 +61,8 @@ test("writeFile → readFile round-trips a named schematic anywhere", () => {
       nextWireId: 1,
       nextBusId: 1,
       nextAnnotationId: 1,
+      nextScopeChannelId: 1,
+      nextSignalId: 1,
     };
     assert.equal(store.writeFile(file, doc), file);
     assert.deepEqual(store.readFile(file), doc);
@@ -133,6 +137,8 @@ test("migrateDeskDocument: a current-version document passes through", () => {
     buses: [],
     netNames: [],
     annotations: [],
+    scopeChannels: [],
+    signals: [],
     nextBoardId: 5,
     nextGroupId: 2,
     nextComponentId: 3,
@@ -142,6 +148,8 @@ test("migrateDeskDocument: a current-version document passes through", () => {
     nextWireId: 2,
     nextBusId: 1,
     nextAnnotationId: 1,
+    nextScopeChannelId: 1,
+    nextSignalId: 1,
   };
   assert.deepEqual(migrateDeskDocument(doc), doc);
 });

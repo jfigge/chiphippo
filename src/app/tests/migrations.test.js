@@ -391,8 +391,20 @@ test("v9 → v10: drops nextLcdId and touches nothing else", () => {
   assert.equal(doc.version, DESK_DOC_VERSION);
   assert.ok(!("nextLcdId" in doc));
   const { version: _v, nextLcdId: _n, ...restBefore } = v9;
-  const { version: _v2, ...restAfter } = doc;
+  // v13 is additive, so the run to CURRENT also lands its four empty fields.
+  // Set them aside rather than widening the comparison: what this test is
+  // about is that the v10 step SUBTRACTS one field and rewrites nothing.
+  const {
+    version: _v2,
+    signals: _s,
+    nextSignalId: _si,
+    scopeChannels: _sc,
+    nextScopeChannelId: _sci,
+    ...restAfter
+  } = doc;
   assert.deepEqual(restAfter, restBefore);
+  assert.deepEqual(doc.signals, []);
+  assert.deepEqual(doc.scopeChannels, []);
 });
 
 test("v6 → v7: a pure version bump — Name/Description need no defaulting", () => {
@@ -690,4 +702,57 @@ test("the renderer stamps the SAME version main migrates to", () => {
   return import("../../web/scripts/model/desk-doc.js").then((m) => {
     assert.equal(m.DOC_VERSION, DESK_DOC_VERSION);
   });
+});
+
+test("v12 → v13: adds signals, and the two fields Feature 210 forgot", () => {
+  const v12 = {
+    version: 12,
+    boards: [],
+    components: [],
+    wires: [],
+    buses: [],
+    netNames: [],
+    annotations: [],
+    nextBoardId: 1,
+    nextGroupId: 1,
+    nextComponentId: 1,
+    nextPsuId: 1,
+    nextClockId: 1,
+    nextWireId: 1,
+    nextBusId: 1,
+    nextAnnotationId: 1,
+  };
+  const doc = migrateDeskDocument(v12);
+  assert.equal(doc.version, DESK_DOC_VERSION);
+  assert.deepEqual(doc.signals, []);
+  assert.equal(doc.nextSignalId, 1);
+  // `scopeChannels` never got a step of its own, which is why main's default
+  // document had drifted out of shape — this is where that is repaired.
+  assert.deepEqual(doc.scopeChannels, []);
+  assert.equal(doc.nextScopeChannelId, 1);
+});
+
+test("v12 → v13 keeps signals and channels a document already carries", () => {
+  const doc = migrateDeskDocument({
+    version: 12,
+    signals: [{ id: "sig1", color: "red" }],
+    nextSignalId: 4,
+    scopeChannels: [{ id: "sc1", kind: "net", ref: "bb1.a1" }],
+    nextScopeChannelId: 2,
+  });
+  assert.deepEqual(doc.signals, [{ id: "sig1", color: "red" }]);
+  assert.equal(doc.nextSignalId, 4);
+  assert.deepEqual(doc.scopeChannels, [{ id: "sc1", kind: "net", ref: "bb1.a1" }]); // prettier-ignore
+  assert.equal(doc.nextScopeChannelId, 2);
+});
+
+test("main's default document carries every list the renderer's does", async () => {
+  // migrateDeskDocument merges defaultDeskDocument() UNDER the raw document
+  // BEFORE any step runs, so a field missing from main's default is a field
+  // main's chain can never see. Held against the renderer's own shape.
+  const { emptyDocument } = await import("../../web/scripts/model/desk-doc.js");
+  assert.deepEqual(
+    Object.keys(defaultDeskDocument()).sort(),
+    Object.keys(emptyDocument()).sort(),
+  );
 });

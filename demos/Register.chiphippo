@@ -10,7 +10,7 @@
       "name": "74LS173",
       "description": "4-bit D register (tri-state)",
       "doc": {
-        "version": 12,
+        "version": 13,
         "boards": [
           {
             "id": "bb1",
@@ -578,6 +578,7 @@
           }
         ],
         "scopeChannels": [],
+        "signals": [],
         "nextBoardId": 4,
         "nextGroupId": 2,
         "nextComponentId": 20,
@@ -586,7 +587,8 @@
         "nextWireId": 27,
         "nextBusId": 1,
         "nextAnnotationId": 15,
-        "nextScopeChannelId": 1
+        "nextScopeChannelId": 1,
+        "nextSignalId": 1
       }
     }
   ]

@@ -278,6 +278,11 @@
       "note": "备注",
       "noteHint": "多行备注框"
     },
+    "signal": {
+      "item": "信号",
+      "hint": "外部信号按钮 — 点击桌面即可添加",
+      "full": "{count} 种信号颜色已全部使用"
+    },
     "group": {
       "and": "AND",
       "annotations": "标注",
@@ -308,6 +313,7 @@
       "register": "寄存器",
       "resistors": "电阻",
       "shiftregister": "移位寄存器",
+      "signals": "信号",
       "switches": "开关",
       "xor": "XOR"
     }
@@ -810,6 +816,13 @@
     },
     "boardPropertiesTitle": "{board} 属性",
     "partPropertiesTitle": "{part} 属性",
+    "signalPropertiesTitle": "{signal} 属性",
+    "signal": {
+      "untitled": "信号 {n}",
+      "press": "按下 {name}",
+      "digitHint": "电路运行时按 {digit}",
+      "dragHint": "拖到孔位以连接"
+    },
     "wirePropertiesTitle": "导线属性",
     "wireColor": "颜色",
     "wireLayout": "走线方式",
@@ -837,7 +850,8 @@
       "deleteComponent": "删除元件",
       "removeBoard": "移除面包板",
       "editText": "编辑文字…",
-      "remove": "移除"
+      "remove": "移除",
+      "removeSignal": "移除信号"
     },
     "remove": {
       "confirm": "移除",
@@ -853,7 +867,11 @@
     "paste": {
       "failTitle": "无法粘贴该设计",
       "overlap": "它的一部分会落在这个工作台上已有的东西上。",
-      "noRoom": "它需要的位置在这个工作台上没有空出来。"
+      "noRoom": "它需要的位置在这个工作台上没有空出来。",
+      "signalsDroppedTitle": "部分信号未粘贴",
+      "signalsDropped": {
+        "other": "已略过 {count} 个信号 — 此桌面已用尽全部信号颜色。"
+      }
     }
   },
   "workspace": {
@@ -1016,7 +1034,8 @@
     },
     "simulation": {
       "run": "运行／停止电路",
-      "runKeys": "空格或 {mod}+R"
+      "runKeys": "空格或 {mod}+R",
+      "signals": "按信号 1–7（电路运行时）"
     }
   },
   "properties": {
@@ -1028,10 +1047,16 @@
       "volts": "电压",
       "hz": "频率",
       "size": "尺寸",
-      "imageSource": "映像文件"
+      "imageSource": "映像文件",
+      "type": "类型",
+      "rest": "默认值"
     },
     "option": {
-      "manual": "手动"
+      "manual": "手动",
+      "momentary": "点动",
+      "toggle": "自锁",
+      "low": "低",
+      "high": "高"
     },
     "action": {
       "inspectMemory": "查看存储器…",

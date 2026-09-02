@@ -24,7 +24,8 @@
 // Power: a chip is POWERED iff its VCC net carries a 5 V PSU `+` and its GND
 // net a PSU `−`; 3 V → underpowered (inert); 12 V → damaged (magic smoke).
 // Digital abstraction with drive strengths (resolve.js): supply beats chip
-// output; a clock source drives at output strength; Z contributes nothing.
+// output; a clock source and a planted signal flag both drive at output
+// strength; Z contributes nothing.
 //
 // Tick (Feature 100, extended for ripple in Feature 220):
 //   ① pre-settle with the OLD sequential state (propagates the new clock phase
@@ -150,6 +151,16 @@ function buildContext(doc, netlist) {
     }
   }
 
+  // External signals (Feature 370): bench stimulus. A signal is NOT a
+  // component — it has no footprint and no catalog def — so it gets its own
+  // pass over its own list. What it does have is a FLAG whose point is planted
+  // in one hole, and that hole's net is the one it drives.
+  const signals = []; // { id, net }
+  for (const sig of doc.signals ?? []) {
+    if (!sig?.flag?.anchor) continue; // an unplaced signal drives nothing
+    signals.push({ id: sig.id, net: netOf(sig.flag.anchor) });
+  }
+
   // Resistors: weak two-terminal couplers (pull-ups / pull-downs / series R).
   // They never merge nets (that's a wire's job) — each conducts one terminal's
   // STRONG level to the other at the weakest strength (resolveAll, below).
@@ -226,14 +237,16 @@ function buildContext(doc, netlist) {
     supplyPlusVolts,
     supplyMinus,
     clocks,
+    signals,
     resistors,
     chips,
     chipStatus,
   };
 }
 
-/** Every driver (clock sources + powered chip outputs) for a set of levels. */
-function driversFor(ctx, levels, state, clockPhase, images) {
+/** Every driver (clock + signal sources, and powered chip outputs) for a set
+    of levels. */
+function driversFor(ctx, levels, state, clockPhase, images, signalLevels) {
   const drivers = new Map(); // netId → [levels]
   const add = (net, level) => {
     if (!net) return;
@@ -243,6 +256,14 @@ function driversFor(ctx, levels, state, clockPhase, images) {
 
   // Clock sources drive their output net at output strength.
   for (const clk of ctx.clocks) add(clk.outNet, clockPhase.get(clk.id) ?? Z);
+
+  // A planted signal flag drives its net at OUTPUT strength — the same tier
+  // and the same sentence as a clock source, because it is the same thing: a
+  // lead from the bench holding a level. Being CHIP-tier rather than a fourth
+  // strength of its own is what makes two signals fighting over one net, or a
+  // signal fighting a chip output, report a conflict with no new code in
+  // resolve.js. A level it has not been given contributes nothing.
+  for (const sig of ctx.signals) add(sig.net, signalLevels.get(sig.id) ?? Z);
 
   for (const c of ctx.chips) {
     if (c.status !== CHIP_STATUS.OK) continue; // inert chips drive nothing
@@ -337,8 +358,9 @@ function resolveAll(ctx, drivers) {
   return { next, warnings, strong: strong ?? next };
 }
 
-/** Run the warm-started settle loop for a fixed state + clock phase + images. */
-function solve(ctx, warmStart, state, clockPhase, images) {
+/** Run the warm-started settle loop for a fixed state + clock phase + images
+    + signal levels. */
+function solve(ctx, warmStart, state, clockPhase, images, signalLevels) {
   let levels = new Map();
   for (const id of ctx.netIds) levels.set(id, warmStart.get(id) ?? Z);
 
@@ -351,7 +373,7 @@ function solve(ctx, warmStart, state, clockPhase, images) {
     iterations++;
     const { next, warnings, strong } = resolveAll(
       ctx,
-      driversFor(ctx, levels, state, clockPhase, images),
+      driversFor(ctx, levels, state, clockPhase, images, signalLevels),
     );
     lastWarnings = warnings;
     lastStrong = strong;
@@ -407,6 +429,8 @@ function assemble(ctx, solved, extra = {}) {
  * @param {Map<string,string>} [opts.warmStart] - previous stable net levels.
  * @param {Map<string,object>} [opts.state] - per-component sequential state.
  * @param {Map<string,string>} [opts.clockPhase] - clock id → output level.
+ * @param {Map<string,string>} [opts.signalLevels] - signal id → the level its
+ *   planted flag is holding (run-volatile; SimController owns it).
  * @param {Map<string,Uint8Array|Uint16Array>} [opts.images] - per-memory byte
  *   images (read-only input; the engine never mutates them).
  * @returns {{netLevels:Map, chipStatus:Map, warnings:Array, iterations:number, settled:boolean}}
@@ -417,10 +441,14 @@ export function settle({
   warmStart = new Map(),
   state = new Map(),
   clockPhase = new Map(),
+  signalLevels = new Map(),
   images = new Map(),
 }) {
   const ctx = buildContext(doc, netlist);
-  return assemble(ctx, solve(ctx, warmStart, state, clockPhase, images));
+  return assemble(
+    ctx,
+    solve(ctx, warmStart, state, clockPhase, images, signalLevels),
+  );
 }
 
 /** Structural equality for plain-data sequential states (arrays/objects/scalars). */
@@ -471,6 +499,8 @@ function samplePins(c, levels) {
  * @param {Map<string,Map<number,string>>} [opts.prevPinLevels] - last tick's
  *   sampled input levels per component (for edge detection; empty → no edges).
  * @param {Map<string,string>} [opts.clockPhase] - clock id → current output.
+ * @param {Map<string,string>} [opts.signalLevels] - signal id → the level its
+ *   planted flag is holding (run-volatile; SimController owns it).
  * @param {Map<string,Uint8Array|Uint16Array>} [opts.images] - per-memory byte
  *   images (read-only input; writes are REPORTED via `memWrites`, not applied).
  * @returns {{netLevels, chipStatus, warnings, iterations, settled,
@@ -483,13 +513,14 @@ export function tick({
   state = new Map(),
   prevPinLevels = new Map(),
   clockPhase = new Map(),
+  signalLevels = new Map(),
   images = new Map(),
 }) {
   const ctx = buildContext(doc, netlist);
 
   // ① Pre-settle: propagate the new clock phase / input changes with the OLD
   //    sequential state holding.
-  let solved = solve(ctx, warmStart, state, clockPhase, images);
+  let solved = solve(ctx, warmStart, state, clockPhase, images, signalLevels);
 
   // ② Sequential-step fixpoint: sample each sequential chip from the current
   //    settled levels, `step` it (edges vs the previous inner iteration), and
@@ -543,7 +574,14 @@ export function tick({
       oscillating = true;
       break;
     }
-    solved = solve(ctx, solved.levels, curState, clockPhase, images);
+    solved = solve(
+      ctx,
+      solved.levels,
+      curState,
+      clockPhase,
+      images,
+      signalLevels,
+    );
   }
 
   // Memory: no clocked state — read its inputs from the FINAL settled levels and

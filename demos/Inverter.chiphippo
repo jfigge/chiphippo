@@ -10,7 +10,7 @@
       "name": "74LS04",
       "description": "Hex inverter",
       "doc": {
-        "version": 12,
+        "version": 13,
         "boards": [
           {
             "id": "bb1",
@@ -466,6 +466,7 @@
           }
         ],
         "scopeChannels": [],
+        "signals": [],
         "nextBoardId": 4,
         "nextGroupId": 2,
         "nextComponentId": 16,
@@ -474,7 +475,8 @@
         "nextWireId": 20,
         "nextBusId": 1,
         "nextAnnotationId": 13,
-        "nextScopeChannelId": 1
+        "nextScopeChannelId": 1,
+        "nextSignalId": 1
       }
     },
     {
@@ -482,7 +484,7 @@
       "name": "74LS05",
       "description": "Hex inverter (open-collector)",
       "doc": {
-        "version": 12,
+        "version": 13,
         "boards": [
           {
             "id": "bb1",
@@ -977,6 +979,7 @@
           }
         ],
         "scopeChannels": [],
+        "signals": [],
         "nextBoardId": 4,
         "nextGroupId": 2,
         "nextComponentId": 18,
@@ -985,7 +988,8 @@
         "nextWireId": 21,
         "nextBusId": 1,
         "nextAnnotationId": 14,
-        "nextScopeChannelId": 1
+        "nextScopeChannelId": 1,
+        "nextSignalId": 1
       }
     },
     {
@@ -993,7 +997,7 @@
       "name": "74LS14",
       "description": "Hex Schmitt-trigger inverter",
       "doc": {
-        "version": 12,
+        "version": 13,
         "boards": [
           {
             "id": "bb1",
@@ -1488,6 +1492,7 @@
           }
         ],
         "scopeChannels": [],
+        "signals": [],
         "nextBoardId": 4,
         "nextGroupId": 2,
         "nextComponentId": 18,
@@ -1496,7 +1501,8 @@
         "nextWireId": 21,
         "nextBusId": 1,
         "nextAnnotationId": 14,
-        "nextScopeChannelId": 1
+        "nextScopeChannelId": 1,
+        "nextSignalId": 1
       }
     }
   ]

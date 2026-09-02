@@ -10,7 +10,7 @@
       "name": "74LS125",
       "description": "Quad bus buffer (tri-state)",
       "doc": {
-        "version": 12,
+        "version": 13,
         "boards": [
           {
             "id": "bb1",
@@ -480,6 +480,7 @@
           }
         ],
         "scopeChannels": [],
+        "signals": [],
         "nextBoardId": 4,
         "nextGroupId": 2,
         "nextComponentId": 16,
@@ -488,7 +489,8 @@
         "nextWireId": 22,
         "nextBusId": 1,
         "nextAnnotationId": 14,
-        "nextScopeChannelId": 1
+        "nextScopeChannelId": 1,
+        "nextSignalId": 1
       }
     },
     {
@@ -496,7 +498,7 @@
       "name": "74LS240",
       "description": "Octal buffer/line driver (inverting)",
       "doc": {
-        "version": 12,
+        "version": 13,
         "boards": [
           {
             "id": "bb1",
@@ -1238,6 +1240,7 @@
           }
         ],
         "scopeChannels": [],
+        "signals": [],
         "nextBoardId": 4,
         "nextGroupId": 2,
         "nextComponentId": 24,
@@ -1246,7 +1249,8 @@
         "nextWireId": 36,
         "nextBusId": 1,
         "nextAnnotationId": 24,
-        "nextScopeChannelId": 1
+        "nextScopeChannelId": 1,
+        "nextSignalId": 1
       }
     },
     {
@@ -1254,7 +1258,7 @@
       "name": "74LS244",
       "description": "Octal buffer/line driver",
       "doc": {
-        "version": 12,
+        "version": 13,
         "boards": [
           {
             "id": "bb1",
@@ -2004,6 +2008,7 @@
           }
         ],
         "scopeChannels": [],
+        "signals": [],
         "nextBoardId": 4,
         "nextGroupId": 2,
         "nextComponentId": 24,
@@ -2012,7 +2017,8 @@
         "nextWireId": 36,
         "nextBusId": 1,
         "nextAnnotationId": 25,
-        "nextScopeChannelId": 1
+        "nextScopeChannelId": 1,
+        "nextSignalId": 1
       }
     },
     {
@@ -2020,7 +2026,7 @@
       "name": "74LS245",
       "description": "Octal bus transceiver",
       "doc": {
-        "version": 12,
+        "version": 13,
         "boards": [
           {
             "id": "bb1",
@@ -2731,6 +2737,7 @@
           }
         ],
         "scopeChannels": [],
+        "signals": [],
         "nextBoardId": 4,
         "nextGroupId": 2,
         "nextComponentId": 22,
@@ -2739,7 +2746,8 @@
         "nextWireId": 35,
         "nextBusId": 1,
         "nextAnnotationId": 24,
-        "nextScopeChannelId": 1
+        "nextScopeChannelId": 1,
+        "nextSignalId": 1
       }
     }
   ]

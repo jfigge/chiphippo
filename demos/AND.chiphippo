@@ -10,7 +10,7 @@
       "name": "74LS08",
       "description": "Quad 2-input AND",
       "doc": {
-        "version": 12,
+        "version": 13,
         "boards": [
           {
             "id": "bb1",
@@ -503,6 +503,7 @@
           }
         ],
         "scopeChannels": [],
+        "signals": [],
         "nextBoardId": 4,
         "nextGroupId": 2,
         "nextComponentId": 18,
@@ -511,7 +512,8 @@
         "nextWireId": 23,
         "nextBusId": 1,
         "nextAnnotationId": 13,
-        "nextScopeChannelId": 1
+        "nextScopeChannelId": 1,
+        "nextSignalId": 1
       }
     },
     {
@@ -519,7 +521,7 @@
       "name": "74LS11",
       "description": "Triple 3-input AND",
       "doc": {
-        "version": 12,
+        "version": 13,
         "boards": [
           {
             "id": "bb1",
@@ -984,6 +986,7 @@
           }
         ],
         "scopeChannels": [],
+        "signals": [],
         "nextBoardId": 4,
         "nextGroupId": 2,
         "nextComponentId": 16,
@@ -992,7 +995,8 @@
         "nextWireId": 23,
         "nextBusId": 1,
         "nextAnnotationId": 13,
-        "nextScopeChannelId": 1
+        "nextScopeChannelId": 1,
+        "nextSignalId": 1
       }
     }
   ]

@@ -1363,3 +1363,82 @@ test("an anchored label springs back when the chip's drop is illegal", () => {
   const still = doc.getAnnotation(label.id);
   assert.deepEqual({ x: still.x, y: still.y }, { x: 3, y: 6 }, "label unmoved");
 });
+
+// ── Signal flags: the keyboard half (Feature 370) ───────────────────────────
+
+function signalDesk() {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const sig = doc.addSignal({ name: "RESET" });
+  doc.plantSignalFlag(sig.id, "bb1.a12", 0);
+  const world = { x: 0, y: 0 };
+  return { doc, sig, ...makeDesk(doc, world) };
+}
+
+const key = (k, mods = {}) => ({
+  key: k,
+  target: { tagName: "DIV" },
+  metaKey: false,
+  ctrlKey: false,
+  altKey: false,
+  shiftKey: false,
+  ...mods,
+});
+
+test("R turns the SELECTED flag about its point, and consumes the key", () => {
+  const { doc, sig, controller } = signalDesk();
+  controller.selectSignal(sig.id);
+  assert.equal(controller.handleKeyDown(key("r")), true);
+  assert.equal(doc.getSignal(sig.id).flag.rot, 90);
+  assert.equal(doc.getSignal(sig.id).flag.anchor, "bb1.a12", "the point stays");
+  controller.handleKeyDown(key("r"));
+  controller.handleKeyDown(key("r"));
+  controller.handleKeyDown(key("r"));
+  assert.equal(
+    doc.getSignal(sig.id).flag.rot,
+    0,
+    "four turns is a full circle",
+  );
+});
+
+test("R does nothing to an UNPLACED signal — there is no flag to turn", () => {
+  const { doc, controller } = signalDesk();
+  const loose = doc.addSignal({});
+  controller.selectSignal(loose.id);
+  assert.equal(controller.handleKeyDown(key("r")), false, "not consumed");
+});
+
+test("R is inert while the circuit runs — a flag is topology", () => {
+  const { doc, sig, controller } = signalDesk();
+  controller.selectSignal(sig.id);
+  controller.setEditingLocked(true);
+  assert.equal(controller.handleKeyDown(key("r")), false);
+  assert.equal(doc.getSignal(sig.id).flag.rot, 0);
+});
+
+test("Delete removes the SIGNAL, button and all — unplugging is the drag", () => {
+  const { doc, sig, controller } = signalDesk();
+  controller.selectSignal(sig.id);
+  assert.equal(controller.handleKeyDown(key("Delete")), true);
+  assert.equal(doc.getSignal(sig.id), null);
+  assert.equal(doc.signals.length, 0);
+});
+
+test("a signal joins no multi set, so the additive chord leaves it alone", () => {
+  const { doc, sig, controller, surface } = signalDesk();
+  controller.addComponentAt("74LS00", "bb1", "e30");
+  const part = doc.components.at(-1);
+  controller.selectComponent(part.id);
+  const poly = surface.querySelector(`[data-signal-id="${sig.id}"]`);
+  poly.dispatchEvent(
+    new window.PointerEvent("pointerdown", {
+      bubbles: true,
+      button: 0,
+      pointerId: 3,
+      ctrlKey: true,
+      metaKey: true,
+    }),
+  );
+  assert.equal(controller.selectedId, part.id, "the selection is untouched");
+});

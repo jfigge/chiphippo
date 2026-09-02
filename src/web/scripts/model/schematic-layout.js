@@ -311,11 +311,13 @@ function assignRows(columns, neighbors) {
 /**
  * Project a desk document + its netlist onto a schematic.
  *
- * @param {{components:Array}} doc - a plain desk document (from `toJSON`).
+ * @param {{components:Array, signals:Array}} doc - a plain desk document
+ *   (from `toJSON`).
  * @param {{nets:Map, netOfPoint:Map, names:Map}} netlist - from buildNetlist.
  * @param {Object<string,{x:number,y:number}>} [posHints] - componentId → a
  *   persisted `schematicPos` nudge that overrides the computed position.
- * @returns {{ nodes:Array, edges:Array, powerStubs:Array, bounds:object }}
+ * @returns {{ nodes:Array, edges:Array, powerStubs:Array, signalStubs:Array,
+ *   bounds:object }}
  */
 export function layout(doc, netlist, posHints = {}) {
   const components = doc.components ?? [];
@@ -764,6 +766,35 @@ export function layout(doc, netlist, posHints = {}) {
     }
   }
 
+  // External signals (Feature 370): a signal is not a component, so it can
+  // never be a layout NODE — this walks doc.components through symbolFor. The
+  // right precedent is the power stub: a glyph dropped AT a port rather than
+  // routed. One stub per planted signal, at the FIRST port of its net in
+  // sorted order (deterministic — this module carries no randomness), so the
+  // schematic says "this net is driven by RESET" in the signal's own colour.
+  // A signal on a net with no symbol port draws nothing, which is honest:
+  // there is nothing there to stimulate.
+  const signalStubs = [];
+  for (const sig of doc.signals ?? []) {
+    if (!sig?.flag?.anchor) continue;
+    const nid = netOfPoint.get(sig.flag.anchor);
+    if (!nid) continue;
+    const ports = netPorts.get(nid);
+    if (!ports?.length) continue;
+    const port = [...ports].sort(
+      (a, b) =>
+      a.nodeId === b.nodeId ? a.side.localeCompare(b.side) : a.nodeId.localeCompare(b.nodeId), // prettier-ignore
+    )[0];
+    signalStubs.push({
+      x: port.x,
+      y: port.y,
+      side: port.side,
+      name: sig.name || sig.id,
+      color: sig.color,
+      netId: nid,
+    });
+  }
+
   // Nets that will draw a real trunk between ≥2 ports — a bus port must NOT also
   // drop a dangling stub for a bit that already routes to a real counterpart.
   const routedNets = new Set();
@@ -868,8 +899,8 @@ export function layout(doc, netlist, posHints = {}) {
     }
   }
 
-  const bounds = computeBounds(nodes, edges, powerStubs);
-  return { nodes, edges, powerStubs, bounds };
+  const bounds = computeBounds(nodes, edges, [...powerStubs, ...signalStubs]);
+  return { nodes, edges, powerStubs, signalStubs, bounds };
 }
 
 /** The outward unit direction a stub on a given side exits toward. */

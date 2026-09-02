@@ -10,7 +10,7 @@
       "name": "74LS148",
       "description": "8-to-3 priority encoder",
       "doc": {
-        "version": 12,
+        "version": 13,
         "boards": [
           {
             "id": "bb1",
@@ -550,6 +550,7 @@
           }
         ],
         "scopeChannels": [],
+        "signals": [],
         "nextBoardId": 4,
         "nextGroupId": 2,
         "nextComponentId": 14,
@@ -558,7 +559,8 @@
         "nextWireId": 30,
         "nextBusId": 1,
         "nextAnnotationId": 20,
-        "nextScopeChannelId": 1
+        "nextScopeChannelId": 1,
+        "nextSignalId": 1
       }
     }
   ]

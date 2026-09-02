@@ -10,7 +10,7 @@
       "name": "74LS32",
       "description": "Quad 2-input OR",
       "doc": {
-        "version": 12,
+        "version": 13,
         "boards": [
           {
             "id": "bb1",
@@ -503,6 +503,7 @@
           }
         ],
         "scopeChannels": [],
+        "signals": [],
         "nextBoardId": 4,
         "nextGroupId": 2,
         "nextComponentId": 18,
@@ -511,7 +512,8 @@
         "nextWireId": 23,
         "nextBusId": 1,
         "nextAnnotationId": 13,
-        "nextScopeChannelId": 1
+        "nextScopeChannelId": 1,
+        "nextSignalId": 1
       }
     }
   ]
