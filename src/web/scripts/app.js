@@ -152,20 +152,31 @@ const ANALYZER_SVG =
   '<polyline points="2 18 6 18 6 6 11 6 11 18 16 18 16 6 22 6"/></svg>';
 
 /**
- * Auto-route icon — TWO board-aligned runs turning together, a constant 5 units
- * apart on every segment, which is the shape the router actually lays down.
+ * Auto-route icon — ONE run threaded from end to end: a node, three straight
+ * board-aligned legs folded back on each other by two half-turns, and the node
+ * it lands on. It draws what the button does — take a wire's two fixed ends and
+ * find the way between them — rather than what the result looks like, which is
+ * why the ENDS are drawn at all: the router never moves them, and everything in
+ * between is what it decides.
  *
- * Two runs rather than one on purpose. The action's whole point is that it puts
- * MANY wires into tidy parallel lanes, and a single line says "a wire" where a
- * pair says "routing". It also has to be told apart from its neighbour at a
- * glance: the first version of this icon was a line with an 1.8 r dot at each
- * end, which is exactly how FADE_WIRES_SVG is built, and two adjacent segments
- * made of the same parts read as the same button.
+ * It has to be told apart from its neighbour at a glance, which is the one
+ * constraint that has governed every version of this icon. FADE_WIRES_SVG is
+ * also two circles joined by a line, so the difference has to be the LINE:
+ * fade's is a single flat sagging jumper faded through the middle, this one a
+ * stepped diagonal of square legs and half-turns filling the box corner to
+ * corner. (The version before this drew two parallel runs and no ends at all —
+ * legible, but it said "lanes" where the action is "find a path".)
+ *
+ * The two arcs are true semicircles of radius 3 (centres (15,9) and (9,15)), so
+ * every fold is the same size and the legs stay a constant 6 units apart; the
+ * bends are the widest points, at x 18 and 6, which is what keeps the glyph
+ * optically centred against the circles' 19.5 and 4.5.
  */
 const ROUTE_SVG =
   ICON_SVG_OPEN +
-  '<polyline points="3 5 9 5 9 20 21 20"/>' +
-  '<polyline points="3 10 14 10 14 15 21 15"/></svg>';
+  '<circle cx="7" cy="6" r="2.5"/>' +
+  '<circle cx="17" cy="18" r="2.5"/>' +
+  '<path d="M9.5 6H15a3 3 0 0 1 0 6H9a3 3 0 0 0 0 6h5.5"/></svg>';
 
 /** "Fade wires" toggle icon — the effect itself: two tie points joined by a
  * jumper drawn solid off each end and faded away in between. */

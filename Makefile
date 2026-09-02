@@ -147,12 +147,24 @@ license-headers:
 	@echo "--------------------------------"
 
 # ─── Testing ──────────────────────────────────────────────────────────────────
-# Per-test timeout so a leaked handle / never-resolving promise fails the run
-# loudly instead of hanging the suite (and CI) forever. 60s rather than 30
-# because the auto-route corpus (Feature 360) routes every shipped example
-# circuit through the real router, which is a few hundred milliseconds a board —
-# real work, not a hang, and the whole point of that test is that it is real.
-TEST_TIMEOUT ?= 60000
+# Timeout so a leaked handle / never-resolving promise fails the run loudly
+# instead of hanging the suite (and CI) forever.
+#
+# It is NOT a per-test budget, which is what the old 60s was picked as. Node
+# runs each FILE as a test of its own, so the flag also caps the file wrapper —
+# i.e. the SUM of that file's subtests. The number therefore has to be set from
+# the slowest FILE on the slowest machine, and the floor is the auto-route
+# corpus (Feature 360): 54 subtests routing every shipped example circuit
+# through the real router, ~48s on a dev Mac. Real work, not a hang, and the
+# whole point of that test is that it is real.
+#
+# 60s left that file no headroom at all, so it passed here and TIMED OUT on
+# every CI run from the day it landed. Measured against a failing run's own log,
+# a GitHub ubuntu runner takes 1.5x the CPU-bound tests and a median 2.35x the
+# suite — and the corpus is contended by the files running beside it, so 48s
+# here is comfortably over a minute there. 300s is several times that; a genuine
+# hang still fails, it just takes five minutes to say so.
+TEST_TIMEOUT ?= 300000
 
 test: test-license-headers
 	@echo "Running JavaScript unit tests..."

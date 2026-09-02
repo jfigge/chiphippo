@@ -29,7 +29,7 @@
 // Views report gestures through constructor callbacks (house rule); the
 // camera stays DeskView's job — this class only reads worldFromEvent/camera.
 
-import { el, svgEl } from "../dom.js";
+import { el } from "../dom.js";
 import { t } from "../i18n.js";
 import { PopupManager } from "../popup-manager.js";
 import { PX_PER_UNIT, clampZoom } from "../desk/desk-geometry.js";
