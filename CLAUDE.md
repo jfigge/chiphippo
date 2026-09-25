@@ -1587,12 +1587,35 @@ readout sets what the tool lays NEXT and nothing already on the desk — a place
 colour changes through its Properties dialog, a placed bus through its context menu.
 
 **The parts tray is deliberately NOT in the toolbar**: it carries its own chevron in the
-palette header's top-right corner and its own `.palette-flap` — a drawer pull absolutely
-positioned on the desk's left edge, so a shut tray costs zero layout width — both on the
-SAME vertical line, so the control reads as one thing sliding into the wall. Both, and ⌘P,
-route through app.js's one `togglePalette` (the only thing that persists `paletteOpen`);
-`PalettePanel.setVisible` flips the pair and stamps `.app-main--tray-closed`, which insets
-`.project-tabs` past the flap. Its WIDTH is the user's: `.palette-resize` is the analyzer's
+palette header's top-right corner, and shuts down to a **rail** (`components/palette-rail.js`)
+rather than to nothing — a layout column one icon wide whose head row IS the header's (same
+padding, control height and rule, so the reopen chevron and the line under it do not move
+and the control reads as one thing sliding into the wall), then one icon per TOP-LEVEL
+section in tray order (`RAIL_SECTIONS`: Boards · Chips · Components · Memory · Annotations
+· Signals — the test derives that list from what the tray mounts, so a new section without
+an icon fails). **Each icon sits level with its header's label as a SHUT tray lists it**, so
+closing the tray leaves every icon where its label was: the rail column copies the list's top
+padding, each header's margins (in a BLOCK column so they collapse as the headers' do, not a
+flex gap) and a row one line of that header's text plus its padding — `--font-size-xs` for
+the Memory row (`palette-rail-btn--group`, the one top-level catalog GROUP), `-sm` for the
+folders. Nothing in jsdom lays out, so `palette-panel.test.js` holds the rail's rules to the
+header rules they copy. **The same glyphs head the OPEN tray's top-level sections**, between
+the caret and the label: `components/palette-icons.js` is the one copy both views draw from,
+and `--palette-icon` (1.3 × `--font-size`, declared on `.palette-panel, .palette-rail`) the
+one size, so shutting the tray changes where an icon is, never what it is. In a header the
+icon is a ZERO-HIGH flex item its glyph overflows evenly — it is taller than Memory's line of
+`-xs` text, and a header that grew to fit it would no longer be the row the rail is measured
+against. The match is VERTICAL only, on purpose: open, each icon sits a caret's width (8 px)
+further right, and that small slide is what makes opening read as the drawer stretching out
+— widening the rail to line them up horizontally was offered and declined. Clicking a rail
+icon runs
+`#openSection`: every other top-level entry shuts, the groups INSIDE the chosen one keep
+their session state, a live filter is cleared (it hides three of the six sections), and
+focus moves to that header, since the icon that had it has just been hidden. The rail is a
+thin view with no tray state; the chevron is the panel's button, handed in. The chevrons,
+the icons and ⌘P all route through app.js's one `togglePalette` (the only thing that
+persists `paletteOpen`); `PalettePanel.setVisible` shows exactly one of tray and rail, and
+since both are layout columns the tab strip needs no inset. Its WIDTH is the user's: `.palette-resize` is the analyzer's
 resize seam stood on end (same grip, `ew-resize`, straddling the border so it never covers
 the list's scrollbar), clamped to `[180, half the window]` and persisted as
 `settings.paletteWidth` — reported by the panel, written by app.js. It survives a

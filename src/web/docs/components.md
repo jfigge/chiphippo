@@ -21,8 +21,13 @@ The palette opens with every section collapsed, grouped by function:
   **Oscillators**, and **Power**, in that shelf order.
 - **Memory** — the ROM/RAM chips, pulled out of CHIPS into a top-level group
   of their own.
-- **ANNOTATIONS** — labels and notes, pinned at the bottom (see
+- **ANNOTATIONS** — labels and notes (see
   [Probing & Net Names](probing.md#annotations)).
+- **SIGNALS** — bench stimulus buttons, pinned at the bottom (see
+  [External signals](power-and-clocks.md#external-signals)).
+
+With the tray shut, the strip it leaves on the desk's edge carries one icon per
+section in the same order — click one to open the tray on that section alone.
 
 The tray's right edge is a drag handle: pull it out to give long part names
 more room, and the width you leave it at is remembered.

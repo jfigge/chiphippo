@@ -268,6 +268,15 @@
     "show": "部品トレイを表示",
     "showTitle": "部品トレイを表示（{mod}+P）",
     "resize": "ドラッグして部品トレイの幅を変える",
+    "rail": {
+      "label": "部品トレイのセクション",
+      "boards": "ボード",
+      "chips": "チップ",
+      "components": "部品",
+      "memory": "メモリ",
+      "annotations": "注釈",
+      "signals": "信号"
+    },
     "board": {
       "title": "{label} — 接続点 {points} 個",
       "titleRotates": "{label} — 接続点 {points} 個（R で回転）"

@@ -335,16 +335,13 @@
 }
 
 /* ── Main row: palette beside the desk ───────────────────────────────────── */
-/* Positioned so the parts tray's reopen flap can float over the desk's left
-   edge without taking a single pixel of layout width when the tray is shut.
-   `--tray-flap-width` is how far that flap reaches out — shared by the flap
-   itself and by what it would otherwise cover (the desktop tab strip). */
+/* The parts tray (or, shut, the rail it shuts down to) then the desk column —
+   both layout columns, so nothing floats over the desk's left edge. */
 .app-main {
   position: relative;
   display: flex;
   flex: 1 1 auto;
   min-height: 0;
-  --tray-flap-width: 20px;
 }
 
 /* The desk column: the tab strip stacked over whichever surface is showing.
@@ -395,13 +392,6 @@
   border-radius: var(--radius-md);
   overflow-x: auto;
   scrollbar-width: thin;
-}
-
-/* With the parts tray shut, its reopen flap sits on the desk's top-left corner
-   — exactly where the tabs start — so they step aside for it. */
-.app-main--tray-closed .project-tabs {
-  left: calc(var(--space-3) + var(--tray-flap-width));
-  max-width: calc(100% - 2 * var(--space-3) - var(--tray-flap-width));
 }
 
 .project-tab,
@@ -506,8 +496,8 @@
 }
 
 /* The tray's own close control, in the header's top-right corner — the tray
-   has no toolbar button. Clicking it shuts the tray down to nothing; the flap
-   below reopens it from the same line. */
+   has no toolbar button. Clicking it shuts the tray down to its rail, whose
+   own chevron (below) reopens it from the same line. */
 .palette-collapse {
   display: inline-flex;
   align-items: center;
@@ -528,38 +518,127 @@
   color: var(--color-text);
 }
 
-/* The reopen flap: a drawer pull left behind on the desk's edge when the tray
-   is shut. Absolute, so a closed tray costs no layout width; flush against the
-   left wall and rounded only on the desk side, so it reads as the shut tray's
-   handle rather than a floating button. Its vertical centre matches the header
-   chevron's (header padding + half a control), so the control appears to slide
-   sideways into the wall. */
-.palette-flap {
-  position: absolute;
-  z-index: 2;
-  top: var(--space-2);
-  left: 0;
+/* The section icons' size (palette-icons.js), ONE value for both places they
+   show — the open tray's headers and the shut tray's rail — so shutting the
+   tray never resizes one. 30% over one line of the base text, so they follow
+   the Editor font size. */
+.palette-panel,
+.palette-rail {
+  --palette-icon: calc(1.3 * var(--font-size));
+}
+
+/* The rail: what the tray shuts down TO — the tray's own surface left showing
+   along the desk's left edge, one icon wide (palette-rail.js). A layout column
+   like the tray, so the desk and its tab strip start to the right of it. Every
+   box below is the icon plus constant chrome, so the strip widens with its
+   icons rather than clipping them. */
+.palette-rail {
+  display: flex;
+  flex-direction: column;
+  flex: 0 0 auto;
+  min-height: 0;
+  background: var(--color-mantle);
+  border-right: 1px solid var(--color-crust);
+}
+
+.palette-rail[hidden] {
+  display: none;
+}
+
+/* The reopen chevron's row IS the tray header's, shut: the same padding, a
+   control-high button and the same rule under it, so the chevron and the rule
+   stay exactly where they were and the tray reads as sliding into the wall. */
+.palette-rail-head {
+  display: flex;
+  justify-content: center;
+  padding: var(--space-2) var(--space-1);
+  border-bottom: 1px solid var(--color-crust);
+}
+
+/* Each icon sits on the ROW its section's header occupies in a shut tray, so
+   shutting the tray leaves every icon exactly where its label was. That takes
+   the list's own top padding (.palette-list), each header's own margins — in a
+   BLOCK column, not a flex gap, so they collapse between neighbours exactly as
+   the headers' do — and a row one line of that header's text tall plus its
+   padding. `palette-panel.test.js` holds these to the header rules.
+   Level VERTICALLY only, and deliberately: in the open tray the caret comes
+   first, so each icon sits a caret's width further right there, and opening
+   the tray reads as the drawer stretching out. Do not widen the rail to
+   "fix" it. */
+.palette-rail-sections {
+  min-height: 0;
+  padding: var(--space-2) var(--space-1);
+  overflow-y: auto;
+}
+
+.palette-rail-toggle,
+.palette-rail-btn {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: var(--tray-flap-width);
-  height: var(--control-height);
+  flex: 0 0 auto;
+  width: calc(var(--palette-icon) + 2 * var(--space-2));
   padding: 0;
-  border: 1px solid var(--color-crust);
-  border-left: none;
-  border-radius: 0 var(--radius-md) var(--radius-md) 0;
-  background: var(--color-mantle);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
   color: var(--color-muted);
   cursor: pointer;
 }
 
-.palette-flap:hover {
+.palette-rail-toggle {
+  height: var(--control-height);
+}
+
+/* A folder header's row (.palette-folder and its peers). A shade brighter than
+   the chevron: the icons are the strip's whole content, and a line drawing
+   that small needs it to be told apart. */
+.palette-rail-btn {
+  height: calc(var(--font-size-sm) * var(--line-height) + 2 * var(--space-1));
+  margin: var(--space-3) auto var(--space-1);
+  color: var(--color-subtext);
+}
+
+/* BOARDS leads the list, so its header carries no top margin. */
+.palette-rail-btn:first-child {
+  margin-top: 0;
+}
+
+/* A GROUP header's row (.palette-group — Memory), whose text is a size
+   smaller. */
+.palette-rail-btn--group {
+  height: calc(var(--font-size-xs) * var(--line-height) + 2 * var(--space-1));
+}
+
+.palette-rail-toggle:hover,
+.palette-rail-btn:hover {
   background: var(--color-surface-1);
   color: var(--color-text);
 }
 
-.palette-flap[hidden] {
-  display: none;
+.palette-rail-toggle:focus-visible,
+.palette-rail-btn:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+
+/* `block` drops the inline baseline gap so the glyph centres exactly. */
+.palette-rail-btn svg,
+.palette-section-icon svg {
+  display: block;
+  width: var(--palette-icon);
+  height: var(--palette-icon);
+}
+
+/* A top-level header's icon, between the caret and the label. A ZERO-HIGH
+   flex item whose glyph overflows it evenly: the icon is taller than a GROUP
+   header's line of text (Memory's), and a header that grew to fit it would
+   no longer be the row the rail's icons are measured to sit on. */
+.palette-section-icon {
+  display: flex;
+  align-items: center;
+  flex: 0 0 auto;
+  height: 0;
 }
 
 /* Takes the header row's remaining width, beside the collapse chevron. */

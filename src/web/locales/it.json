@@ -268,6 +268,15 @@
     "show": "Mostra il cassetto dei componenti",
     "showTitle": "Mostra il cassetto dei componenti ({mod}+P)",
     "resize": "Trascina per ridimensionare il cassetto",
+    "rail": {
+      "label": "Sezioni del cassetto dei componenti",
+      "boards": "Breadboard",
+      "chips": "Chip",
+      "components": "Componenti",
+      "memory": "Memoria",
+      "annotations": "Annotazioni",
+      "signals": "Segnali"
+    },
     "board": {
       "title": "{label} — {points} punti di contatto",
       "titleRotates": "{label} — {points} punti di contatto (R per ruotare)"

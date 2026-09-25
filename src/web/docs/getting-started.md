@@ -19,10 +19,15 @@ add a breadboard to get started."*
 ## Open the parts palette
 
 The palette is a tray docked to the left of the desk, and it carries its own
-open/close control rather than a toolbar button. When it is shut, a small
-chevron flap sits against the desk's left edge — click it (or press `Ctrl+P` /
-`⌘P`) to slide the tray out. The matching chevron in the tray's top-right
-corner shuts it again, back to nothing.
+open/close control rather than a toolbar button. The chevron in the tray's
+top-right corner shuts it down to a narrow strip along the desk's left edge;
+the chevron at the top of that strip (or `Ctrl+P` / `⌘P`) slides it back out.
+
+Below that chevron the strip keeps an icon for each of the tray's sections —
+Boards, Chips, Components, Memory, Annotations and Signals — the same icon that
+sits beside that section's name in the open tray, and level with it. Clicking one opens the tray straight
+onto that section, with every other section folded away. The icons are sized
+from the text, so they grow and shrink with the font size you set in Settings.
 
 At the top of the tray is the **board selector** (Full / Half / Tiny
 breadboards, plus loose strips); below that, chips and components grouped by

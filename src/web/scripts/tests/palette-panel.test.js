@@ -463,12 +463,273 @@ test("setVisible toggles the hidden attribute", () => {
   const host = document.createElement("div");
   document.body.append(host);
   const panel = new PalettePanel(host, {});
+  const rail = host.querySelector(".palette-rail");
   assert.equal(panel.visible, false); // hidden until app.js applies settings
+  assert.equal(rail.hidden, false); // …so it is showing its rail
   panel.setVisible(true);
   assert.equal(panel.visible, true);
   assert.equal(panel.element.hidden, false);
+  assert.equal(rail.hidden, true); // exactly one of the two, ever
   panel.setVisible(false);
   assert.equal(panel.element.hidden, true);
+  assert.equal(rail.hidden, false);
+});
+
+/** The tray's TOP-LEVEL section headers, in order — the ones that are direct
+    children of the list (a sub-group's header sits inside its folder). */
+function topLevelSections(host) {
+  return [...host.querySelector(".palette-list").children]
+    .filter((c) => c.dataset.section)
+    .map((c) => c.dataset.section);
+}
+
+const railButtons = (host) => [...host.querySelectorAll(".palette-rail-btn")];
+
+test("shut, the tray leaves a rail: one icon per top-level section, in tray order", () => {
+  resetDom();
+  const host = document.createElement("div");
+  document.body.append(host);
+  new PalettePanel(host, {});
+
+  // Derived from what the tray actually lists, so a new top-level section
+  // with no icon on the rail fails here rather than going unnoticed.
+  const sections = topLevelSections(host);
+  assert.deepEqual(sections, [
+    "BOARDS",
+    "CHIPS",
+    "COMPONENTS",
+    "Memory",
+    "ANNOTATIONS",
+    "SIGNALS",
+  ]);
+  assert.deepEqual(
+    railButtons(host).map((b) => b.dataset.section),
+    sections,
+  );
+
+  // Labelled from the catalog (the real en.json is installed), not a raw key.
+  assert.deepEqual(
+    railButtons(host).map((b) => b.title),
+    ["Boards", "Chips", "Components", "Memory", "Annotations", "Signals"],
+  );
+  for (const b of railButtons(host)) {
+    assert.equal(b.getAttribute("aria-label"), b.title);
+  }
+  // The reopen chevron heads the strip.
+  assert.ok(host.querySelector(".palette-rail-head .palette-rail-toggle"));
+});
+
+/** app.css as `selector → Map(property → value)`, comments stripped and each
+    selector list normalised to `a, b`. Flat rules only — which is all the
+    tray and rail use. */
+function cssRules() {
+  const css = fs
+    .readFileSync(new URL("../../styles/app.css", import.meta.url), "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "");
+  const rules = new Map();
+  for (const [, sel, body] of css.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
+    const selector = sel
+      .split(",")
+      .map((s) => s.trim())
+      .join(", ");
+    const decls = new Map();
+    for (const decl of body.split(";")) {
+      const i = decl.indexOf(":");
+      if (i > 0) {
+        decls.set(decl.slice(0, i).trim(), decl.slice(i + 1).trim());
+      }
+    }
+    rules.set(selector, decls);
+  }
+  return rules;
+}
+
+/** A box shorthand (`margin`/`padding`) as [top, right, bottom, left]. */
+function edges(value) {
+  const v = value.split(/\s+(?![^(]*\))/);
+  return [v[0], v[1] ?? v[0], v[2] ?? v[0], v[3] ?? v[1] ?? v[0]];
+}
+
+test("the rail's icons scale with the base text size", () => {
+  // An icon sized in px would sit still while Settings ▸ Editor font size moved
+  // every word around it. The rail states its icon size in terms of the base
+  // text size, and every glyph is drawn at that size.
+  resetDom();
+  const host = document.createElement("div");
+  document.body.append(host);
+  new PalettePanel(host, {});
+
+  for (const b of railButtons(host)) {
+    const svg = b.querySelector("svg");
+    assert.ok(svg, `${b.dataset.section} has an icon`);
+    assert.equal(svg.getAttribute("aria-hidden"), "true");
+  }
+  // ONE size for the tray's headers and the rail alike.
+  const rules = cssRules();
+  assert.match(
+    rules.get(".palette-panel, .palette-rail").get("--palette-icon"),
+    /var\(--font-size\)/,
+  );
+  const svg = rules.get(".palette-rail-btn svg, .palette-section-icon svg");
+  assert.equal(svg.get("width"), "var(--palette-icon)");
+  assert.equal(svg.get("height"), "var(--palette-icon)");
+});
+
+test("a top-level header carries its rail icon, between the caret and the label", () => {
+  resetDom();
+  const host = document.createElement("div");
+  document.body.append(host);
+  new PalettePanel(host, {});
+
+  const railIcon = new Map(
+    railButtons(host).map((b) => [b.dataset.section, b.innerHTML]),
+  );
+  const headers = [...host.querySelector(".palette-list").children].filter(
+    (c) => c.dataset.section,
+  );
+  assert.equal(headers.length, railIcon.size);
+  for (const h of headers) {
+    // caret · icon · label, in that order — and the SAME glyph as the rail's.
+    assert.deepEqual(
+      [...h.children].map((c) => c.className),
+      ["palette-group-caret", "palette-section-icon", "palette-group-label"],
+      h.dataset.section,
+    );
+    const icon = h.querySelector(".palette-section-icon");
+    assert.equal(icon.getAttribute("aria-hidden"), "true");
+    assert.equal(icon.innerHTML, railIcon.get(h.dataset.section));
+  }
+  // The icon draws no text, so a header still reads as its name alone.
+  assert.equal(
+    host.querySelector(".palette-boards-folder").textContent,
+    "BOARDS",
+  );
+
+  // A group NESTED in a folder is not a top-level section and carries none.
+  host.querySelector('.palette-list [data-section="CHIPS"]').click();
+  const nested = host.querySelector(".palette-folder-groups .palette-group");
+  assert.equal(nested.querySelector(".palette-section-icon"), null);
+});
+
+test("each rail icon sits on the row its section's header occupies", () => {
+  // Shutting the tray must leave every icon exactly where its label was, and
+  // nothing in jsdom lays out — so this holds the rail's rows to the header
+  // rules they copy. Change a header's margin, padding or text size and this
+  // fails until the rail follows (measured in the real app: 0.00 px off at
+  // 11, 13, 16 and 18 px text).
+  resetDom();
+  const host = document.createElement("div");
+  document.body.append(host);
+  new PalettePanel(host, {});
+  const rules = cssRules();
+  const folder = rules.get(
+    ".palette-folder, .palette-annotations-folder, .palette-signals-folder",
+  );
+  const boards = rules.get(".palette-boards-folder");
+  const group = rules.get(".palette-group");
+  const row = rules.get(".palette-rail-btn");
+
+  // The column starts where the list's content does.
+  assert.equal(
+    edges(rules.get(".palette-rail-sections").get("padding"))[0],
+    edges(rules.get(".palette-list").get("padding"))[0],
+  );
+
+  // Margins: every header collapses the same top/bottom pair between
+  // neighbours, bar BOARDS, which leads and carries no top margin.
+  const [top, , bottom] = edges(folder.get("margin"));
+  const [rowTop, , rowBottom] = edges(row.get("margin"));
+  assert.deepEqual([rowTop, rowBottom], [top, bottom]);
+  assert.deepEqual(edges(group.get("margin")), edges(folder.get("margin")));
+  assert.equal(edges(boards.get("margin"))[2], bottom);
+  assert.equal(edges(boards.get("margin"))[0], "0");
+  assert.equal(
+    rules.get(".palette-rail-btn:first-child").get("margin-top"),
+    "0",
+  );
+
+  // Heights: one line of the header's text plus its vertical padding. The line
+  // height is the body's, inherited — a header setting its own would break it.
+  const height = (h) => {
+    const [padTop, , padBottom] = edges(h.get("padding"));
+    assert.equal(padTop, padBottom);
+    assert.equal(h.has("line-height"), false);
+    return `calc(${h.get("font-size")} * var(--line-height) + 2 * ${padTop})`;
+  };
+  assert.equal(height(boards), height(folder));
+  assert.equal(row.get("height"), height(folder));
+  assert.equal(
+    rules.get(".palette-rail-btn--group").get("height"),
+    height(group),
+  );
+
+  // And the rows are marked to match what the tray actually mounts: Memory is
+  // the one top-level GROUP header, every other a folder's.
+  const kinds = railButtons(host).map((b) =>
+    b.classList.contains("palette-rail-btn--group"),
+  );
+  const headerKinds = [...host.querySelector(".palette-list").children]
+    .filter((c) => c.dataset.section)
+    .map((c) => c.classList.contains("palette-group"));
+  assert.deepEqual(kinds, headerKinds);
+});
+
+test("a rail icon opens the tray on that section alone", () => {
+  resetDom();
+  const host = document.createElement("div");
+  document.body.append(host);
+  let toggles = 0;
+  // app.js's togglePalette, minus the persistence.
+  const panel = new PalettePanel(host, {
+    onToggle: () => {
+      toggles++;
+      panel.setVisible(!panel.visible);
+    },
+  });
+  panel.setVisible(true);
+  const header = (id) =>
+    host.querySelector(`.palette-list [data-section="${id}"]`);
+  const expanded = () =>
+    topLevelSections(host).filter(
+      (id) => header(id).getAttribute("aria-expanded") === "true",
+    );
+
+  // A session's worth of state: CHIPS open with its first group open inside
+  // it, BOARDS open, and a filter typed.
+  header("CHIPS").click();
+  const firstChipGroup = host.querySelector(
+    ".palette-folder-groups .palette-group",
+  ).dataset.section;
+  header(firstChipGroup).click();
+  header("BOARDS").click();
+  typeFilter(panel.element, "74LS00");
+  panel.setVisible(false);
+
+  host.querySelector('.palette-rail-btn[data-section="COMPONENTS"]').click();
+
+  // It asked app.js for the one toggle, which opened the tray.
+  assert.equal(toggles, 1);
+  assert.equal(panel.visible, true);
+  assert.equal(host.querySelector(".palette-rail").hidden, true);
+  // The filter is gone (it would hide BOARDS/ANNOTATIONS/SIGNALS outright).
+  assert.equal(host.querySelector(".palette-filter").value, "");
+  // Every other top-level entry is shut; the one asked for is open.
+  assert.deepEqual(expanded(), ["COMPONENTS"]);
+  // Focus landed on it (the icon that had it has just been hidden).
+  assert.equal(document.activeElement, header("COMPONENTS"));
+
+  // The groups INSIDE a folder keep their session state: reopen CHIPS by hand
+  // and its first group is still open.
+  header("CHIPS").click();
+  assert.equal(header(firstChipGroup).getAttribute("aria-expanded"), "true");
+
+  // Every icon — the Memory GROUP included — opens its own section.
+  for (const id of topLevelSections(host)) {
+    panel.setVisible(false);
+    host.querySelector(`.palette-rail-btn[data-section="${id}"]`).click();
+    assert.equal(panel.visible, true, id);
+    assert.deepEqual(expanded(), [id]);
+  }
 });
 
 test("every section-header class the palette renders has a CSS rule behind it", () => {

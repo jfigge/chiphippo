@@ -22,10 +22,11 @@
 // color swatches — the ghost belongs to DeskController).
 //
 // The tray carries its OWN open/close control rather than a toolbar button:
-// a chevron in the header's top-right corner shuts it, and a flap pinned to
-// the desk's left edge — the same vertical line, so the control reads as one
-// thing sliding into the wall — opens it again. The flap floats over the desk
-// (the `.project-tabs` shape), so a closed tray costs no layout width at all.
+// a chevron in the header's top-right corner shuts it, and the tray shuts down
+// to a narrow RAIL (palette-rail.js) rather than to nothing — the reopen
+// chevron on the header's own line, so the control reads as one thing sliding
+// into the wall, and under it one icon per top-level section. An icon opens
+// the tray on that section alone (see #openSection).
 //
 // Its WIDTH is the user's: the tray's right edge is a drag handle, exactly as
 // the analyzer's top edge is, and the width it is left at is persisted
@@ -39,6 +40,8 @@ import { clear, el } from "../dom.js";
 import { t, tf } from "../i18n.js";
 import { partTitle, kitLabel } from "../catalog/labels.js";
 import { beginPointerGesture } from "./pointer-gesture.js";
+import { PaletteRail } from "./palette-rail.js";
+import { SECTION_ICONS } from "./palette-icons.js";
 import { PALETTE_DEFS } from "../catalog/index.js";
 import {
   BREADBOARD_KITS,
@@ -94,6 +97,21 @@ const ANNOTATIONS_FOLDER = "ANNOTATIONS";
     line — so it must not enter PALETTE_DEFS. One entry, since every signal is
     the same thing until it is named and coloured. */
 const SIGNALS_FOLDER = "SIGNALS";
+
+/** The TOP-LEVEL entries, in the order the tray lists them — the shut tray's
+    rail shows one icon each, on the row that entry's header occupies. `id` is
+    the section's identity (its collapse key); `key` names its icon and its
+    `palette.rail.*` label; `group` marks the one that is a catalog GROUP
+    rather than a folder, whose header is a text size smaller. */
+const RAIL_SECTIONS = [
+  { id: BOARDS_FOLDER, key: "boards" },
+  { id: CHIPS_FOLDER, key: "chips" },
+  { id: COMPONENTS_FOLDER, key: "components" },
+  { id: MEMORY_GROUP, key: "memory", group: true },
+  { id: ANNOTATIONS_FOLDER, key: "annotations" },
+  { id: SIGNALS_FOLDER, key: "signals" },
+];
+
 /** The tray's own open/close chevron. Its own copy of the app's line-icon
     idiom (16 px box, round-capped strokes) — the toolbar's constants live in
     app.js and aren't exported. */
@@ -107,7 +125,7 @@ function chevron(points) {
 }
 /** ‹ — closing pushes the tray back into the left wall. */
 const CHEVRON_LEFT = chevron("15 6 9 12 15 18");
-/** › — opening pulls it back out over the desk. */
+/** › — opening pulls it back out of the rail. */
 const CHEVRON_RIGHT = chevron("9 6 15 12 9 18");
 
 /** The platform-correct modifier glyph for the toggle's tooltips. Read when the
@@ -160,9 +178,11 @@ function allSections() {
 export class PalettePanel {
   #el;
   #list;
-  #container;
-  #flap;
+  #filterInput;
+  #reopen; // the reopen chevron, heading the rail
+  #rail; // what the tray shuts down to (palette-rail.js)
   #resize; // the draggable right edge
+  #onToggle;
   #onPickChip;
   #onPickBoard;
   #onPickAnnotation;
@@ -190,9 +210,9 @@ export class PalettePanel {
    * @param {(kind: "label"|"note") => void} callbacks.onPickAnnotation - a
    *   label/note was picked; app.js arms annotation placement.
    * @param {() => void} callbacks.onToggle - the header chevron or the
-   *   desk-edge flap was clicked. The panel does NOT flip itself: app.js owns
-   *   the one toggle that also persists `paletteOpen`, exactly as the ⌘P
-   *   shortcut does.
+   *   rail's was clicked, or a rail icon asked for the tray. The panel does NOT
+   *   flip itself: app.js owns the one toggle that also persists
+   *   `paletteOpen`, exactly as the ⌘P shortcut does.
    * @param {number} [callbacks.width] - restored tray width in CSS px.
    * @param {(width: number) => void} [callbacks.onWidthChange] - persist the
    *   width after a resize drag settles (app.js writes `paletteWidth`, the
@@ -210,14 +230,14 @@ export class PalettePanel {
       onWidthChange,
     } = {},
   ) {
-    this.#container = container;
     this.#onPickChip = onPickChip;
     this.#onPickBoard = onPickBoard;
     this.#onPickAnnotation = onPickAnnotation;
     this.#onPickSignal = onPickSignal;
     this.#onWidthChange = onWidthChange;
+    this.#onToggle = onToggle;
 
-    const filterInput = el("input", {
+    this.#filterInput = el("input", {
       class: "palette-filter",
       type: "search",
       placeholder: t("palette.filterPlaceholder"),
@@ -258,26 +278,34 @@ export class PalettePanel {
         hidden: true,
       },
       [
-        el("div", { class: "palette-header" }, [filterInput, collapseBtn]),
+        el("div", { class: "palette-header" }, [
+          this.#filterInput,
+          collapseBtn,
+        ]),
         this.#list,
         this.#resize,
       ],
     );
     this.#applyWidth(Number.isFinite(width) ? width : DEFAULT_TRAY_W);
 
-    // The reopen flap: a sibling of the tray, not a child — the tray itself is
-    // display:none when shut. It floats over the desk's left edge on the same
-    // line as the header chevron above, so the two read as one control.
-    this.#flap = el("button", {
-      class: "palette-flap",
+    // The rail: a sibling of the tray, not a child — the tray itself is
+    // display:none when shut. Its reopen chevron sits on the same line as the
+    // header chevron above, so the two read as one control.
+    this.#reopen = el("button", {
+      class: "palette-rail-toggle",
       type: "button",
       title: t("palette.showTitle", { mod }),
       "aria-label": t("palette.show"),
       onClick: () => onToggle?.(),
     });
-    this.#flap.innerHTML = CHEVRON_RIGHT;
+    this.#reopen.innerHTML = CHEVRON_RIGHT;
+    this.#rail = new PaletteRail({
+      toggle: this.#reopen,
+      sections: RAIL_SECTIONS,
+      onOpen: (id) => this.#openSection(id),
+    });
 
-    container.append(this.#el, this.#flap);
+    container.append(this.#el, this.#rail.element);
     this.#render();
   }
 
@@ -295,11 +323,36 @@ export class PalettePanel {
 
   setVisible(on) {
     this.#el.hidden = !on;
-    // Exactly one of the two chevrons is ever showing.
-    this.#flap.hidden = !!on;
-    // The flap overlays the desk's top-left corner, which is where the
-    // desktop tab strip starts — the modifier insets the tabs past it.
-    this.#container?.classList.toggle("app-main--tray-closed", !on);
+    // Exactly one of the two is ever showing: the tray, or the rail it shuts
+    // down to. The rail is a layout column, so the desk (and its tab strip)
+    // simply starts to the right of whichever it is.
+    this.#rail.setVisible(!on);
+  }
+
+  /**
+   * A rail icon asked for one section: open the tray on it ALONE. Every other
+   * top-level entry is shut, so what comes into view is the shelf that was
+   * asked for rather than wherever it falls in a long list — while the groups
+   * INSIDE it keep whatever this session left them at. A live filter goes: it
+   * hides BOARDS / ANNOTATIONS / SIGNALS outright and forces every group open,
+   * so the tray would show anything but the one section asked for.
+   *
+   * Focus follows to that section's header: the icon that had it has just
+   * been hidden, and a keyboard user should land where they asked to go.
+   * @param {string} id the section's identity (a `RAIL_SECTIONS` id)
+   */
+  #openSection(id) {
+    for (const section of RAIL_SECTIONS) this.#collapsed.add(section.id);
+    this.#collapsed.delete(id);
+    this.#filter = "";
+    this.#filterInput.value = "";
+    this.#render();
+    // The rail only shows while the tray is shut, so asking app.js for the
+    // one toggle (the one that persists `paletteOpen`) is asking to open it.
+    if (!this.visible) this.#onToggle?.();
+    const header = this.#list.querySelector(`[data-section="${id}"]`);
+    header?.focus({ preventScroll: true });
+    header?.scrollIntoView?.({ block: "nearest" });
   }
 
   // ── Sizing (drag the right edge; the tray docks along the window's left) ────
@@ -553,23 +606,38 @@ export class PalettePanel {
   /** A collapsible section header (folder or group). `name` is the IDENTITY —
       the collapse-state key `#toggleGroup` is called with — and the label shown
       is its translation, so a language change cannot make a section forget
-      whether it was open. The caret glyph is a CSS pseudo-element. */
+      whether it was open. The caret glyph is a CSS pseudo-element.
+
+      A TOP-LEVEL section's header carries its icon between the caret and the
+      label: the glyph its button on the shut tray's rail shows, so the two
+      read as the same thing. */
   #sectionHeader(baseClass, name, collapsed) {
+    const key = RAIL_SECTIONS.find((s) => s.id === name)?.key;
+    let icon = null;
+    if (key) {
+      icon = el("span", {
+        class: "palette-section-icon",
+        "aria-hidden": "true",
+      });
+      icon.innerHTML = SECTION_ICONS[key];
+    }
     return el(
       "button",
       {
         class: collapsed ? `${baseClass} ${baseClass}--collapsed` : baseClass,
         type: "button",
         "aria-expanded": collapsed ? "false" : "true",
+        dataset: { section: name },
         onClick: () => this.#toggleGroup(name),
       },
       [
         el("span", { class: "palette-group-caret", "aria-hidden": true }),
+        icon,
         el("span", {
           class: "palette-group-label",
           text: sectionLabel(name),
         }),
-      ],
+      ].filter(Boolean),
     );
   }
 
@@ -627,21 +695,21 @@ export class PalettePanel {
   /**
    * Re-render in the new language (see app.js's `relabelChrome`). The tray's
    * whole body is derived from the catalog on every `#render()`, so the list
-   * needs nothing but a redraw — only the header/flap controls, which are built
-   * once in the constructor, have to be relabelled by hand.
+   * needs nothing but a redraw — only the header and rail controls, which are
+   * built once in the constructor, have to be relabelled by hand.
    */
   relocalize() {
     const mod = modKey();
-    const filter = this.#el.querySelector(".palette-filter");
-    filter.placeholder = t("palette.filterPlaceholder");
-    filter.setAttribute("aria-label", t("palette.filter"));
+    this.#filterInput.placeholder = t("palette.filterPlaceholder");
+    this.#filterInput.setAttribute("aria-label", t("palette.filter"));
     const collapse = this.#el.querySelector(".palette-collapse");
     collapse.title = t("palette.hideTitle", { mod });
     collapse.setAttribute("aria-label", t("palette.hide"));
     this.#resize.title = t("palette.resize");
     this.#el.setAttribute("aria-label", t("palette.label"));
-    this.#flap.title = t("palette.showTitle", { mod });
-    this.#flap.setAttribute("aria-label", t("palette.show"));
+    this.#reopen.title = t("palette.showTitle", { mod });
+    this.#reopen.setAttribute("aria-label", t("palette.show"));
+    this.#rail.relocalize();
     this.#render();
   }
 

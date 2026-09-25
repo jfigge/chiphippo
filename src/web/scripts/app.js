@@ -1392,9 +1392,9 @@ async function init() {
     // The annotations section (labels + notes) lives at the bottom.
     onPickAnnotation: (kind) => controller?.armAnnotationPlacement(kind),
     onPickSignal: () => controller?.armSignalPlacement(),
-    // The tray's own header chevron / desk-edge flap. `togglePalette` is
-    // declared with the toolbar further below; this closure only runs on a
-    // click, long after that.
+    // The tray's own header chevron / its rail's chevron and section icons.
+    // `togglePalette` is declared with the toolbar further below; this closure
+    // only runs on a click, long after that.
     onToggle: () => togglePalette(),
     // The tray's own width, dragged on its right edge. Persisted like the open
     // flag — the panel reports, app.js writes.
@@ -1695,8 +1695,8 @@ async function init() {
   );
 
   // The parts tray has no toolbar button: it carries its own chevron in the
-  // header and its own flap on the desk edge (see PalettePanel), both of which
-  // route back here so ⌘P, the chevron, and the flap are one code path.
+  // header and the rail it shuts down to (see PalettePanel), both of which
+  // route back here so ⌘P, the chevrons, and the rail's icons are one code path.
   const togglePalette = () => {
     const on = !palette.visible;
     palette.setVisible(on);
