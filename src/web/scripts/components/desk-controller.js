@@ -1370,6 +1370,18 @@ export class DeskController {
   }
 
   /**
+   * How many wires Auto-route would take up: every wire on the desk bar the
+   * bus members, whose shape belongs to their ribbon (the router's own
+   * `SKIP_BUS_MEMBER`). It is what the confirmation states BEFORE a run; the
+   * toast after it reports what actually happened, since a wire with no legal
+   * path is left as it was.
+   */
+  get routableWireCount() {
+    const members = new Set(this.#doc.buses.flatMap((b) => b.members));
+    return this.#doc.wires.filter((w) => !members.has(w.id)).length;
+  }
+
+  /**
    * Auto-route every wire on the desk (Feature 360): each one becomes a routed
    * wire whose waypoints run inside the boards, around the parts and clear of
    * the other wires. ONE document mutation, so ONE ⌘Z puts the whole desk back.

@@ -1755,9 +1755,30 @@ async function init() {
   // what happened — including, when it happens, that some wires were left alone
   // because there was no legal path for them. Silence there would read as a
   // button that did nothing.
+  //
+  // It ASKS first. One click rewrites every wire on the desktop — hand-placed
+  // bends included — and may move a lead to another hole, which is too much for
+  // a toolbar segment a stray click can reach, undo or not. The question is
+  // skipped only when there is nothing for it to be about (no wire the router
+  // would take up), where the run writes nothing anyway.
   let routing = null; // the AbortController of the run in flight, if any
-  const autoRoute = async (debug = false) => {
+  const autoRoute = (debug = false) => {
     if (routing) return; // one run at a time; the toast is already saying so
+    const count = controller.routableWireCount;
+    if (count === 0) {
+      void runAutoRoute(debug);
+      return;
+    }
+    PopupManager.confirm({
+      title: t("desk.autoRouteConfirmTitle"),
+      message: t("desk.autoRouteConfirmMessage", { count }),
+      note: t("desk.autoRouteConfirmNote"),
+      confirmLabel: t("desk.autoRouteConfirm"),
+      onConfirm: () => void runAutoRoute(debug),
+    });
+  };
+  const runAutoRoute = async (debug) => {
+    if (routing) return;
     const abort = new AbortController();
     routing = abort;
     // Say so BEFORE starting, and keep saying it. Routing a large desk is

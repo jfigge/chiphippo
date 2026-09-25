@@ -824,6 +824,13 @@
     },
     "autoRouteCancelled": "Routing cancelled — the wiring is unchanged.",
     "autoRouteStale": "The desk changed while routing — nothing was applied.",
+    "autoRouteConfirmTitle": "Auto-route wires?",
+    "autoRouteConfirmMessage": {
+      "one": "{count} wire will be redrawn as a board-aligned run around the parts.",
+      "other": "{count} wires will be redrawn as board-aligned runs around the parts."
+    },
+    "autoRouteConfirmNote": "Bends placed by hand are replaced, and a lead may move to another hole on the same connection. Undo puts it all back in one step.",
+    "autoRouteConfirm": "Route wires",
     "hover": {
       "pin": "{ref} pin {pin} · {name} → {address}",
       "floating": "floating",

@@ -824,6 +824,13 @@
     },
     "autoRouteCancelled": "Enrutado cancelado: el cableado no ha cambiado.",
     "autoRouteStale": "El escritorio cambió durante el enrutado: no se aplicó nada.",
+    "autoRouteConfirmTitle": "¿Enrutar cables automáticamente?",
+    "autoRouteConfirmMessage": {
+      "one": "{count} cable se redibujará como un trazado alineado con la placa que rodea los componentes.",
+      "other": "{count} cables se redibujarán como trazados alineados con la placa que rodean los componentes."
+    },
+    "autoRouteConfirmNote": "Los codos colocados a mano se sustituyen y un cable puede pasar a otro orificio de la misma conexión. Deshacer lo restaura todo en un solo paso.",
+    "autoRouteConfirm": "Enrutar cables",
     "hover": {
       "pin": "{ref} pin {pin} · {name} → {address}",
       "floating": "flotante",

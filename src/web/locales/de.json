@@ -824,6 +824,13 @@
     },
     "autoRouteCancelled": "Verlegen abgebrochen – die Verdrahtung ist unverändert.",
     "autoRouteStale": "Der Tisch hat sich während des Verlegens geändert – nichts wurde übernommen.",
+    "autoRouteConfirmTitle": "Drähte automatisch verlegen?",
+    "autoRouteConfirmMessage": {
+      "one": "{count} Draht wird als platinenparalleler Verlauf um die Bauteile herum neu gezeichnet.",
+      "other": "{count} Drähte werden als platinenparallele Verläufe um die Bauteile herum neu gezeichnet."
+    },
+    "autoRouteConfirmNote": "Von Hand gesetzte Knicke werden ersetzt, und ein Draht kann in ein anderes Loch derselben Verbindung wandern. Widerrufen stellt alles in einem Schritt wieder her.",
+    "autoRouteConfirm": "Drähte verlegen",
     "hover": {
       "pin": "{ref} Pin {pin} · {name} → {address}",
       "floating": "unbeschaltet",

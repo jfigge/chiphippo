@@ -824,6 +824,13 @@
     },
     "autoRouteCancelled": "Instradamento annullato — il cablaggio è invariato.",
     "autoRouteStale": "Il piano di lavoro è cambiato durante l'instradamento — non è stato applicato nulla.",
+    "autoRouteConfirmTitle": "Instradare i fili automaticamente?",
+    "autoRouteConfirmMessage": {
+      "one": "{count} filo verrà ridisegnato come un percorso allineato alla basetta che aggira i componenti.",
+      "other": "{count} fili verranno ridisegnati come percorsi allineati alla basetta che aggirano i componenti."
+    },
+    "autoRouteConfirmNote": "Le curve tracciate a mano vengono sostituite e un filo può spostarsi in un altro foro della stessa connessione. Annulla ripristina tutto in un solo passaggio.",
+    "autoRouteConfirm": "Instrada i fili",
     "hover": {
       "pin": "{ref} pin {pin} · {name} → {address}",
       "floating": "flottante",

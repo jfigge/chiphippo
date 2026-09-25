@@ -815,6 +815,13 @@
     },
     "autoRouteCancelled": "ルーティングを中止しました。配線は変更されていません。",
     "autoRouteStale": "ルーティング中にデスクが変更されたため、何も適用しませんでした。",
+    "autoRouteConfirmTitle": "配線を自動ルーティングしますか？",
+    "autoRouteConfirmMessage": {
+      "one": "{count} 本の配線を、部品を避けたボード沿いの経路で引き直します。",
+      "other": "{count} 本の配線を、部品を避けたボード沿いの経路で引き直します。"
+    },
+    "autoRouteConfirmNote": "手動で付けた折れ点は置き換えられ、配線が同じ接続内の別の穴へ移動することがあります。取り消すと 1 回ですべて元に戻ります。",
+    "autoRouteConfirm": "ルーティング",
     "hover": {
       "pin": "{ref} ピン {pin} · {name} → {address}",
       "floating": "未接続",

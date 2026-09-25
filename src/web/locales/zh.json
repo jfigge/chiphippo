@@ -815,6 +815,13 @@
     },
     "autoRouteCancelled": "已取消布线 — 接线未更改。",
     "autoRouteStale": "布线期间桌面发生变化 — 未应用任何更改。",
+    "autoRouteConfirmTitle": "要自动布线吗？",
+    "autoRouteConfirmMessage": {
+      "one": "将把 {count} 根导线重新绘制为绕开元器件、与面包板对齐的走线。",
+      "other": "将把 {count} 根导线重新绘制为绕开元器件、与面包板对齐的走线。"
+    },
+    "autoRouteConfirmNote": "手动设置的拐点将被替换，导线也可能移到同一连接上的其他孔位。撤销可一步恢复全部更改。",
+    "autoRouteConfirm": "开始布线",
     "hover": {
       "pin": "{ref} 引脚 {pin} · {name} → {address}",
       "floating": "悬空",

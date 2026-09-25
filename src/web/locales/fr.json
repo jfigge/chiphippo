@@ -824,6 +824,13 @@
     },
     "autoRouteCancelled": "Routage annulé — le câblage est inchangé.",
     "autoRouteStale": "Le plan de travail a changé pendant le routage — rien n'a été appliqué.",
+    "autoRouteConfirmTitle": "Router les fils automatiquement ?",
+    "autoRouteConfirmMessage": {
+      "one": "{count} fil sera redessiné en tracé aligné sur la platine, en contournant les composants.",
+      "other": "{count} fils seront redessinés en tracés alignés sur la platine, en contournant les composants."
+    },
+    "autoRouteConfirmNote": "Les coudes placés à la main sont remplacés, et un fil peut passer dans un autre trou de la même connexion. Annuler rétablit tout en une seule étape.",
+    "autoRouteConfirm": "Router les fils",
     "hover": {
       "pin": "{ref} broche {pin} · {name} → {address}",
       "floating": "en l’air",

@@ -2948,6 +2948,22 @@ test("autoRouteWires: one call, every wire routed, ONE doc-changed", async () =>
   );
 });
 
+test("routableWireCount: every wire bar the bus members", () => {
+  // What the Auto-route confirmation states before a run — and whether it asks
+  // at all (a desk with nothing to route is not asked about).
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const { controller } = makeDesk(doc);
+  assert.equal(controller.routableWireCount, 0);
+  doc.addWire({ from: "bb1.a6", to: "bb1.a9" });
+  const m0 = doc.addWire({ from: "bb1.b6", to: "bb1.b9" });
+  const m1 = doc.addWire({ from: "bb1.c6", to: "bb1.c9" });
+  assert.equal(controller.routableWireCount, 3);
+  doc.addBus("D[1:0]", [m0.id, m1.id]);
+  assert.equal(controller.routableWireCount, 1, "a member's shape is its ribbon's"); // prettier-ignore
+});
+
 test("autoRouteWires: refused while the circuit runs", async () => {
   resetDom();
   const doc = new DeskDoc(null);
