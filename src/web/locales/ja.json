@@ -834,6 +834,10 @@
       "psu": "電源",
       "clock": "クロック"
     },
+    "clock": {
+      "pause": "このクロックを一時停止（回路の他の部分は動作を続けます）",
+      "resume": "このクロックを再開"
+    },
     "boardPropertiesTitle": "{board} の情報",
     "partPropertiesTitle": "{part} の情報",
     "signalPropertiesTitle": "{signal} の情報",

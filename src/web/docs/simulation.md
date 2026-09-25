@@ -69,7 +69,10 @@ cluster next to **Run** the moment you start:
 
 - **Pause** / **Resume** — freezes the free-running clock's edges without
   stopping the simulation; everything stays lit exactly as it was. Click
-  again (the button relabels to **Resume**) to continue.
+  again (the button relabels to **Resume**) to continue. To hold just ONE
+  clock while the rest of the circuit keeps running, use the **⏸** button on
+  that clock brick instead (see
+  [Power & Clock Sources](power-and-clocks.md#clock-sources)).
 - **Step** — advances the circuit by exactly one clock half-period: every
   free-running clock flips once, and the circuit settles around it. Stepping
   implies Pause, so you can single-step a counter or shift register edge by

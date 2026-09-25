@@ -103,3 +103,63 @@ test("setLevel toggles the pulse-lamp class; updateParams re-badges", () => {
   view.updateParams({ hz: 5 });
   assert.equal(elem.querySelector(".part-clock-badge").textContent, "5 Hz");
 });
+
+test("a free-running clock carries its own pause button, top right; a manual one does not", () => {
+  resetDom();
+  const svg = buildClockSvg({ hz: 2 });
+  const button = svg.querySelector(".part-clock-pause");
+  assert.ok(button, "free-running: there is a timer to pause");
+  assert.ok(button.querySelector(".part-clock-pause-glyph--pause"));
+  assert.ok(button.querySelector(".part-clock-pause-glyph--resume"));
+
+  // Top right: the lamp's mirror image, clear of the wave and the rate badge.
+  const num = (el, attr) => Number(el.getAttribute(attr));
+  const disc = button.querySelector(".part-clock-pause-disc");
+  const lamp = svg.querySelector(".part-clock-lamp");
+  assert.equal(num(disc, "cy"), num(lamp, "cy"), "level with the lamp");
+  assert.equal(num(disc, "cx"), 8 - num(lamp, "cx"), "mirrors it");
+  const d = svg.querySelector(".part-clock-wave").getAttribute("d");
+  const waveRight = Math.max(
+    ...[...d.matchAll(/[ML]\s*([\d.]+)\s+[\d.]+/g)].map((m) => Number(m[1])),
+  );
+  assert.ok(num(disc, "cx") - num(disc, "r") > waveRight, "clear of the wave");
+  // The badge's em box (its 1.1-unit font above the baseline) — a bound no
+  // glyph of it reaches, so the disc sitting on or above it is clear.
+  const badgeTop = num(svg.querySelector(".part-clock-badge"), "y") - 1.1;
+  assert.ok(num(disc, "cy") + num(disc, "r") <= badgeTop, "above the badge");
+  assert.ok(num(disc, "cx") + num(disc, "r") < 8, "inside the body");
+
+  assert.equal(
+    buildClockSvg({ hz: "manual" }).querySelector(".part-clock-pause"),
+    null,
+    "manual: it moves on a click, so there is nothing to pause",
+  );
+});
+
+test("setPaused picks the glyph by class and says what a click would do", () => {
+  resetDom();
+  const layer = document.createElement("div");
+  const view = new ClockView(layer, {
+    id: "clk1",
+    x: 0,
+    y: 0,
+    params: { hz: 1 },
+  });
+  const elem = layer.querySelector(".part-clock");
+  const hint = () =>
+    elem.querySelector(".part-clock-pause > title").textContent;
+  assert.ok(!elem.classList.contains("part-clock--paused"));
+  assert.match(hint(), /^Pause this clock/, "the catalog's words, not a key");
+
+  view.setPaused(true);
+  assert.ok(elem.classList.contains("part-clock--paused"));
+  assert.equal(hint(), "Resume this clock");
+
+  // A rate change mid-run rebuilds the SVG; the hint must survive it.
+  view.updateParams({ hz: 5 });
+  assert.equal(hint(), "Resume this clock");
+
+  view.setPaused(false);
+  assert.ok(!elem.classList.contains("part-clock--paused"));
+  assert.match(hint(), /^Pause this clock/);
+});

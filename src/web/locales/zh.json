@@ -834,6 +834,10 @@
       "psu": "电源",
       "clock": "时钟"
     },
+    "clock": {
+      "pause": "暂停此时钟（电路其余部分继续运行）",
+      "resume": "继续此时钟"
+    },
     "boardPropertiesTitle": "{board} 属性",
     "partPropertiesTitle": "{part} 属性",
     "signalPropertiesTitle": "{signal} 属性",

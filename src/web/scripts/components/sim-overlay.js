@@ -69,6 +69,7 @@ export class SimOverlay {
     chipStatus,
     netlist,
     clockLevels,
+    pausedClocks,
     displayState,
   }) {
     this.#running = running;
@@ -93,12 +94,13 @@ export class SimOverlay {
       this.#partViews.get(id)?.setStatus?.(status);
     }
 
-    // Clock pulse lamps track their live output level.
+    // Clock pulse lamps track their live output level, and each clock's
+    // pause button whether that clock is held on its own.
     for (const comp of this.#doc.components) {
       if (comp.kind !== "clock") continue;
-      this.#partViews
-        .get(comp.id)
-        ?.setLevel?.(running && clockLevels?.get(comp.id) === H);
+      const view = this.#partViews.get(comp.id);
+      view?.setLevel?.(running && clockLevels?.get(comp.id) === H);
+      view?.setPaused?.(running && pausedClocks?.has(comp.id) === true);
     }
 
     this.#updateLeds();

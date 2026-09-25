@@ -3102,3 +3102,53 @@ test("autoRouteWires: a stretched power lead lands on the rail beside its chip",
     "and the circuit is the same circuit",
   );
 });
+
+test("a running clock's own button pauses THAT clock; its body stays inert", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const viewport = document.createElement("section");
+  const surface = document.createElement("div");
+  viewport.append(surface);
+  document.body.append(viewport);
+  const paused = [];
+  const toggled = [];
+  const controller = new DeskController({
+    viewport,
+    deskView: {
+      surface,
+      camera: { cx: 0, cy: 0, zoom: 1 },
+      worldFromEvent: () => ({ x: 0, y: 0 }),
+      setCamera: () => {},
+    },
+    deskDoc: doc,
+    onClockPause: (id) => paused.push(id),
+    onClockToggle: (id) => toggled.push(id),
+  });
+  const clk = controller.addBrickAt("clock", 20, 4, { hz: 1 });
+  const el = surface.querySelector(`[data-component-id="${clk.id}"]`);
+  const press = (target) =>
+    target.dispatchEvent(
+      new window.PointerEvent("pointerdown", {
+        bubbles: true,
+        button: 0,
+        pointerId: 7,
+      }),
+    );
+
+  // Editing: the button is not drawn (CSS), and a press there is the brick's
+  // own drag — never a pause.
+  press(el.querySelector(".part-clock-pause-disc"));
+  window.dispatchEvent(new window.PointerEvent("pointerup", { pointerId: 7 }));
+  assert.deepEqual(paused, []);
+
+  controller.setEditingLocked(true);
+  press(el.querySelector(".part-clock-pause-disc"));
+  assert.deepEqual(paused, [clk.id], "the button pauses this clock");
+  press(el.querySelector(".part-clock-body"));
+  assert.deepEqual(
+    paused,
+    [clk.id],
+    "the body of a free-running clock is inert",
+  );
+  assert.deepEqual(toggled, [], "and never makes a manual edge");
+});

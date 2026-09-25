@@ -1691,6 +1691,52 @@
   pointer-events: none;
 }
 
+/* A free-running clock's own pause button (top right). Stopped there is no
+   clock to pause and a press drags the brick, so it exists only on a RUNNING
+   desk — the class the editing lock sets. It shows what a click would DO, as
+   the transport's Pause does: ⏸ while the clock runs, ▶ while it is held. */
+.part-clock-pause {
+  display: none;
+}
+
+.desk-viewport--running .part-clock-pause {
+  display: inline;
+}
+
+.part-clock-pause-disc {
+  fill: var(--color-part-inset);
+  stroke: var(--color-psu-badge);
+  stroke-width: 0.06;
+  stroke-opacity: 0.35;
+}
+
+.part-clock-pause:hover .part-clock-pause-disc {
+  stroke-opacity: 1;
+}
+
+/* The brick's own ink, not a status colour: the brick is dark in BOTH themes
+   (its tokens never flip), so a token that darkens for the light theme would
+   sink into it. */
+.part-clock-pause-glyph {
+  fill: var(--color-psu-badge);
+  pointer-events: none;
+}
+
+.part-clock-pause-glyph--resume,
+.part-clock--paused .part-clock-pause-glyph--pause {
+  display: none;
+}
+
+.part-clock--paused .part-clock-pause-glyph--resume {
+  display: inline;
+}
+
+/* A held clock's wave fades out — it is not oscillating. The lamp still shows
+   the level it is holding. */
+.part-clock--paused .part-clock-wave {
+  opacity: 0.2;
+}
+
 /* ── Character-LCD module (HD44780) ──────────────────────────────────────── */
 /* The bare PCB the module is bonded to — green, so it reads as a board and not
    as part of the black display above it. */

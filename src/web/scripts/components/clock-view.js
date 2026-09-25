@@ -21,13 +21,54 @@
 // (setLevel) — the timer itself lives in the SimController, never here. In
 // manual mode the whole body is a click-to-toggle button (the controller owns
 // that gesture, like a slide switch).
+//
+// A free-running clock also carries its OWN pause button in the top-right
+// corner, level with the lamp it mirrors. It is drawn at every rate but shown
+// only while the circuit runs (CSS keys it off `.desk-viewport--running`, the
+// class the editing lock already sets), since stopped there is no clock to
+// pause and a press there is a drag. Both glyphs are always in the SVG and the
+// `part-clock--paused` class picks one, so a rate change mid-run — which
+// rebuilds the SVG — can never show the wrong one. The press is the
+// controller's, like the manual toggle; the paused set arrives on sim-state.
 
+import { t } from "../i18n.js";
 import { svgEl } from "../dom.js";
 import { PX_PER_UNIT } from "../desk/desk-geometry.js";
 import { partDef } from "../catalog/index.js";
 import { BrickView } from "./brick-view.js";
 
 const rateLabel = (hz) => (hz === "manual" ? "MAN" : `${hz} Hz`);
+
+/** The pause button's centre: the lamp's mirror image across the body, so the
+    top row reads lamp · wave · button. */
+const PAUSE_CX = 6.8;
+const PAUSE_CY = 1.5;
+
+/** The pause/resume button (a free-running clock's only). The disc is the hit
+    target; the two glyphs are pointer-inert and CSS shows exactly one. */
+function buildPauseButton() {
+  const cx = PAUSE_CX;
+  const cy = PAUSE_CY;
+  const g = svgEl("g", { class: "part-clock-pause" });
+  g.append(
+    svgEl("title"), // the hover hint; text set by ClockView.setPaused
+    svgEl("circle", { class: "part-clock-pause-disc", cx, cy, r: 0.6 }),
+    // ⏸ — shown while the clock runs: a click pauses it.
+    svgEl("path", {
+      class: "part-clock-pause-glyph part-clock-pause-glyph--pause",
+      d:
+        `M ${cx - 0.28} ${cy - 0.3} h 0.18 v 0.6 h -0.18 Z ` +
+        `M ${cx + 0.1} ${cy - 0.3} h 0.18 v 0.6 h -0.18 Z`,
+    }),
+    // ▶ — shown while it is held: a click resumes it. Its tip sits right of
+    // centre so the triangle's centroid, not its box, is on the disc's centre.
+    svgEl("path", {
+      class: "part-clock-pause-glyph part-clock-pause-glyph--resume",
+      d: `M ${cx - 0.15} ${cy - 0.32} L ${cx + 0.3} ${cy} L ${cx - 0.15} ${cy + 0.32} Z`,
+    }),
+  );
+  return g;
+}
 
 /** Build a clock brick's SVG from the catalog def + params. */
 export function buildClockSvg(params = {}) {
@@ -80,6 +121,9 @@ export function buildClockSvg(params = {}) {
   badge.textContent = rateLabel(hz);
   svg.append(badge);
 
+  // A manual clock has no timer, so nothing to pause: it moves on a click.
+  if (def.isAuto({ hz })) svg.append(buildPauseButton());
+
   for (const t of def.terminals) {
     svg.append(
       svgEl("circle", {
@@ -102,6 +146,8 @@ export function buildClockSvg(params = {}) {
 }
 
 export class ClockView extends BrickView {
+  #paused = false;
+
   /**
    * @param {HTMLElement} layer - the `.layer-parts` element.
    * @param {{id:string,x:number,y:number,params:object}} clock
@@ -118,10 +164,29 @@ export class ClockView extends BrickView {
   updateParams(params) {
     this.element.querySelector("svg")?.remove();
     this.element.prepend(buildClockSvg(params));
+    this.#labelPauseButton();
   }
 
   /** Reflect the live output level (Feature 100): lamp on while HIGH. */
   setLevel(on) {
     this.element.classList.toggle("part-clock--high", on === true);
+  }
+
+  /** Reflect this clock's OWN pause (not the transport's): the button offers
+      resume while it is held, pause otherwise. Re-applied on every sim-state,
+      so the hint follows a language change at the next tick. */
+  setPaused(on) {
+    this.#paused = on === true;
+    this.element.classList.toggle("part-clock--paused", this.#paused);
+    this.#labelPauseButton();
+  }
+
+  /** The hint says what a click would do, as the transport's Pause does. */
+  #labelPauseButton() {
+    const title = this.element.querySelector(".part-clock-pause > title");
+    if (!title) return;
+    title.textContent = this.#paused
+      ? t("desk.clock.resume")
+      : t("desk.clock.pause");
   }
 }

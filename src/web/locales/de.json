@@ -843,6 +843,10 @@
       "psu": "Netzteil",
       "clock": "Taktgeber"
     },
+    "clock": {
+      "pause": "Diesen Taktgeber anhalten — der Rest der Schaltung läuft weiter",
+      "resume": "Diesen Taktgeber fortsetzen"
+    },
     "boardPropertiesTitle": "Eigenschaften: {board}",
     "partPropertiesTitle": "Eigenschaften: {part}",
     "signalPropertiesTitle": "Eigenschaften: {signal}",

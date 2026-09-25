@@ -257,6 +257,7 @@ export class DeskController {
   #onHistoryChange;
   #onAddNetToAnalyzer; // shared with the probe: one analyzer entry point
   #onClockToggle;
+  #onClockPause;
   #onOpenPinout;
   #onOpenMemory;
   #onProgramMemory;
@@ -282,6 +283,9 @@ export class DeskController {
    *   fires on every setWiresFaded, including the initial apply at startup.
    * @param {(id: string) => void} [opts.onClockToggle] - a manual clock's
    *   click-to-toggle while running (Feature 100).
+   * @param {(id: string) => void} [opts.onClockPause] - a free-running
+   *   clock's own pause button, pressed while running: pause or resume that
+   *   one clock and nothing else.
    * @param {(ref: string, rows: number, rot?: number, kind?: string) => void} [opts.onOpenPinout] -
    *   a part's (or a wire's) context-menu "Pin Assignment" item requests its
    *   pin-assignments window (main opens a native OS window); `rot` is the
@@ -316,6 +320,7 @@ export class DeskController {
     onWireFadeChange,
     onAddNetToAnalyzer,
     onClockToggle,
+    onClockPause,
     onOpenPinout,
     onOpenMemory,
     onProgramMemory,
@@ -330,6 +335,7 @@ export class DeskController {
     this.#doc = deskDoc;
     this.#onAddNetToAnalyzer = onAddNetToAnalyzer;
     this.#onClockToggle = onClockToggle;
+    this.#onClockPause = onClockPause;
     this.#onOpenPinout = onOpenPinout;
     this.#onOpenMemory = onOpenMemory;
     this.#onProgramMemory = onProgramMemory;
@@ -2908,9 +2914,15 @@ export class DeskController {
         return;
       }
       // While running, only live interactions remain: a slide switch or
-      // toggle button flips, and a manual clock toggles one edge.
+      // toggle button flips, a manual clock toggles one edge, and a
+      // free-running clock's own button pauses or resumes it. That button is
+      // drawn only while running, so it is never the target of an edit-time
+      // press (which drags the brick).
       const comp = this.#doc.getComponent(id);
-      if (clickTogglingPart(comp?.ref)) {
+      if (comp?.kind === "clock" && e.target?.closest?.(".part-clock-pause")) {
+        e.stopPropagation();
+        this.#onClockPause?.(id);
+      } else if (clickTogglingPart(comp?.ref)) {
         e.stopPropagation();
         this.#toggleClickPart(id, switchIndexFromEvent(e));
       } else if (comp?.kind === "clock" && comp.params?.hz === "manual") {

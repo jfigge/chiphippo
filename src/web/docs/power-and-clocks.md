@@ -85,6 +85,15 @@ Right-click a clock brick and choose **Properties…** to set its rate:
   actually get somewhere while you watch. Above about 20 Hz the lamp and any
   LEDs on the circuit blur into a steady glow — that's the point at which the
   [logic analyzer](logic-analyzer.md) becomes the way to see what happened.
+
+  While the simulation runs, a free-running clock also shows a small **⏸**
+  button in its top-right corner. Click it to hold **that one clock**: it
+  keeps whatever level it was at — its lamp and everything it drives stay as
+  they were — while the rest of the circuit, and every other clock, carries
+  on. The button turns into a **▶**; click it again to set the clock going.
+  A clock's own pause belongs to the run, like its phase: **Run** always
+  starts every clock going, **Step** passes a paused clock by, and resuming
+  the transport after **Pause** leaves it held.
 - **Manual** — click-to-toggle. No timer runs it; instead, while the
   simulation is running, clicking the brick's body flips `out` from LOW to
   HIGH (or back) once per click — handy for single-stepping a counter or

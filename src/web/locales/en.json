@@ -843,6 +843,10 @@
       "psu": "power supply",
       "clock": "clock"
     },
+    "clock": {
+      "pause": "Pause this clock — the rest of the circuit keeps running",
+      "resume": "Resume this clock"
+    },
     "boardPropertiesTitle": "{board} Properties",
     "partPropertiesTitle": "{part} Properties",
     "signalPropertiesTitle": "{signal} Properties",

@@ -843,6 +843,10 @@
       "psu": "fuente de alimentación",
       "clock": "reloj"
     },
+    "clock": {
+      "pause": "Pausar este reloj — el resto del circuito sigue funcionando",
+      "resume": "Reanudar este reloj"
+    },
     "boardPropertiesTitle": "Propiedades de {board}",
     "partPropertiesTitle": "Propiedades de {part}",
     "signalPropertiesTitle": "Propiedades de {signal}",

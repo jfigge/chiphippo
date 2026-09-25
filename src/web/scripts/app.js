@@ -1609,6 +1609,7 @@ async function init() {
       scopeView.setVisible(true);
     },
     onClockToggle: (id) => sim?.manualToggle(id),
+    onClockPause: (id) => sim?.toggleClockPause(id),
     // A signal flag selected on the desk lights its button on the rail.
     onSignalSelect: (id) => signalRail?.setSelected(id),
     // A part's (or a wire's) "Pin Assignment" context-menu item → its

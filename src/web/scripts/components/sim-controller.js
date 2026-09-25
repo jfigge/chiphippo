@@ -154,6 +154,7 @@ export class SimController {
   #state = new Map(); // per-component sequential state (run-volatile)
   #prevPins = new Map(); // last tick's sampled inputs (edge detection)
   #clockPhase = new Map(); // clockId → "H" | "L" (run-volatile)
+  #pausedClocks = new Set(); // clockIds held by their OWN pause (run-volatile)
   #signalLevel = new Map(); // signalId → "H" | "L" (run-volatile, from `rest`)
   #images = new Map(); // memory compId → Uint8Array/Uint16Array (run-volatile)
   #memInfo = new Map(); // memory compId → { volatile, guid, width, byteLength }
@@ -207,6 +208,7 @@ export class SimController {
     this.#prevPins = new Map();
     this.#clockPhase = new Map();
     for (const c of this.#clocks()) this.#clockPhase.set(c.id, L); // idle low
+    this.#pausedClocks = new Set(); // every clock starts going
     // A signal starts at its RESTING level, the way a clock starts idle low.
     // Run-volatile like everything above it: `rest` is the ONE durable answer
     // to "what is this signal holding", so a latched toggle deliberately does
@@ -264,6 +266,7 @@ export class SimController {
     this.#state = new Map();
     this.#prevPins = new Map();
     this.#clockPhase = new Map();
+    this.#pausedClocks = new Set();
     this.#signalLevel = new Map();
     this.#images = new Map();
     this.#memInfo = new Map();
@@ -295,11 +298,13 @@ export class SimController {
     else if (this.#mode === TRANSPORT.PAUSED) this.resume();
   }
 
-  /** Advance one half-period: toggle every free-running clock once, then tick. */
+  /** Advance one half-period: toggle every free-running clock once, then tick.
+      A clock paused on its own is passed by — it is HELD, and a Step is the
+      transport's edge, not a way round that clock's own pause. */
   step() {
     if (this.#mode === TRANSPORT.STOPPED) return;
     if (this.#mode === TRANSPORT.RUNNING) this.pause(); // stepping implies paused
-    for (const c of this.#autoClocks()) this.#flip(c.id);
+    for (const c of this.#tickingClocks()) this.#flip(c.id);
     this.#tickNow();
   }
 
@@ -308,6 +313,39 @@ export class SimController {
     if (!SPEEDS.includes(multiplier)) return;
     this.#speed = multiplier;
     if (this.#mode === TRANSPORT.RUNNING) this.#scheduleClocks();
+  }
+
+  /**
+   * Pause or resume ONE free-running clock while the rest of the circuit runs
+   * on — its own transport, beside the header's. A paused clock HOLDS the level
+   * it was at (no edge is made on the way in or out), so its lamp and every
+   * net it drives stay put while switches, signals and the other clocks carry
+   * on. Only its own timer is started or stopped: re-scheduling the lot would
+   * restart every other clock's half-period and delay its next edge.
+   *
+   * Run-volatile like the phase itself — Run starts every clock going and Stop
+   * forgets. It is independent of the transport's Pause: a clock paused here
+   * stays held when the transport resumes, and Step passes it by. A manual
+   * clock has no timer to pause, so it is refused.
+   */
+  toggleClockPause(id) {
+    if (this.#mode === TRANSPORT.STOPPED) return;
+    const clock = this.#autoClocks().find((c) => c.id === id);
+    if (!clock) return;
+    if (this.#pausedClocks.delete(id)) {
+      if (this.#mode === TRANSPORT.RUNNING) this.#startTimer(clock);
+    } else {
+      this.#pausedClocks.add(id);
+      this.#stopTimer(id);
+    }
+    // No edge was made, so this settle changes nothing — it is how the new
+    // paused set reaches the views, which render only from sim-state.
+    this.#tickNow();
+  }
+
+  /** Is this clock held by its own pause? (False whenever stopped.) */
+  isClockPaused(id) {
+    return this.#pausedClocks.has(id);
   }
 
   /** Manually toggle one clock (a manual clock's click, or programmatic). */
@@ -502,6 +540,12 @@ export class SimController {
     );
   }
 
+  /** The free-running clocks actually advancing: every auto clock bar the
+      ones paused on their own. The timers and Step both read this. */
+  #tickingClocks() {
+    return this.#autoClocks().filter((c) => !this.#pausedClocks.has(c.id));
+  }
+
   #flip(id) {
     this.#clockPhase.set(id, this.#clockPhase.get(id) === H ? L : H);
   }
@@ -509,17 +553,26 @@ export class SimController {
   #scheduleClocks() {
     this.#clearTimers();
     if (this.#mode !== TRANSPORT.RUNNING) return;
-    for (const c of this.#autoClocks()) {
-      const halfMs = Math.max(
-        MIN_HALF_PERIOD_MS,
-        Math.round(1000 / (2 * c.params.hz * this.#speed)),
-      );
-      const handle = setInterval(() => {
-        this.#flip(c.id);
-        this.#tickNow();
-      }, halfMs);
-      this.#timers.set(c.id, handle);
-    }
+    for (const c of this.#tickingClocks()) this.#startTimer(c);
+  }
+
+  /** One clock's half-period timer, replacing any it already had. */
+  #startTimer(c) {
+    this.#stopTimer(c.id);
+    const halfMs = Math.max(
+      MIN_HALF_PERIOD_MS,
+      Math.round(1000 / (2 * c.params.hz * this.#speed)),
+    );
+    const handle = setInterval(() => {
+      this.#flip(c.id);
+      this.#tickNow();
+    }, halfMs);
+    this.#timers.set(c.id, handle);
+  }
+
+  #stopTimer(id) {
+    clearInterval(this.#timers.get(id));
+    this.#timers.delete(id);
   }
 
   #clearTimers() {
@@ -626,6 +679,10 @@ export class SimController {
           warnings: result?.warnings ?? [],
           netlist: netlist ?? null,
           clockLevels: new Map(this.#clockPhase),
+          // Clocks held by their own pause (not the transport's) — each
+          // clock brick's pause button shows resume for these. Empty when
+          // not running.
+          pausedClocks: new Set(this.#pausedClocks),
           // Signal id → the level its button is holding, so the rail lights up
           // from this ONE broadcast; views never query the engine. Empty when
           // not running, which returns every button to showing its `rest`.

@@ -409,6 +409,162 @@ test("the SPEED multiplier saturates at the fastest offered rate, both ways", ()
   sim.stop();
 });
 
+// ── Transport: one clock's own pause ──────────────────────────────────────
+
+/** Two free-running clocks, so one can be paused while the other runs on. */
+const twoClockDoc = () => ({
+  boards: [],
+  components: [
+    { id: "clk1", kind: "clock", ref: "clock", x: 0, y: 0, params: { hz: 1 } },
+    { id: "clk2", kind: "clock", ref: "clock", x: 10, y: 0, params: { hz: 2 } },
+  ],
+  wires: [],
+});
+
+/** Every handle `captureTimers` has minted → its half-period, kept across
+    calls so a timer started under one capture is recognised when another
+    clears it. */
+const periodOf = new Map();
+
+/**
+ * Run `fn` with setInterval/clearInterval recording WHICH clock's timer each
+ * call touched (a timer is told apart by its half-period). No timer ever
+ * fires, and none holds the runner open.
+ */
+function captureTimers(fn) {
+  const real = { set: globalThis.setInterval, clear: globalThis.clearInterval };
+  const log = { started: [], cleared: [] };
+  globalThis.setInterval = (_cb, ms) => {
+    const h = real.set(() => {}, 1e9);
+    h?.unref?.();
+    periodOf.set(h, ms);
+    log.started.push(ms);
+    return h;
+  };
+  globalThis.clearInterval = (h) => {
+    if (periodOf.has(h)) log.cleared.push(periodOf.get(h));
+    real.clear(h);
+  };
+  try {
+    fn();
+  } finally {
+    globalThis.setInterval = real.set;
+    globalThis.clearInterval = real.clear;
+  }
+  return log;
+}
+
+test("a paused clock HOLDS its level while the rest of the circuit runs on", () => {
+  resetDom();
+  const sim = new SimController({
+    deskDoc: fakeDoc(twoClockDoc()),
+    notifications: fakeNotifications(),
+  });
+  const events = capture();
+  sim.start();
+  sim.step(); // both H
+  sim.togglePause(); // the transport runs again; clk1 is paused on its own
+  sim.toggleClockPause("clk1");
+  assert.equal(sim.mode, "running", "the circuit is still running");
+  assert.equal(sim.isClockPaused("clk1"), true);
+  assert.deepEqual([...events.at(-1).pausedClocks], ["clk1"], "published");
+  assert.equal(
+    events.at(-1).clockLevels.get("clk1"),
+    "H",
+    "pausing makes no edge: the clock holds where it was",
+  );
+
+  // Step is the transport's edge, not a way round one clock's own pause.
+  sim.step();
+  assert.equal(events.at(-1).clockLevels.get("clk1"), "H", "held");
+  assert.equal(events.at(-1).clockLevels.get("clk2"), "L", "the other moves");
+
+  sim.toggleClockPause("clk1");
+  assert.equal(sim.isClockPaused("clk1"), false);
+  assert.deepEqual([...events.at(-1).pausedClocks], []);
+  assert.equal(
+    events.at(-1).clockLevels.get("clk1"),
+    "H",
+    "no edge out either",
+  );
+  sim.step();
+  assert.equal(events.at(-1).clockLevels.get("clk1"), "L", "moving again");
+  sim.stop();
+});
+
+test("pausing one clock touches ONLY its own timer", () => {
+  // Re-scheduling the lot would restart every other clock's half-period and
+  // push its next edge back — a clock nobody touched would stutter.
+  resetDom();
+  const sim = new SimController({
+    deskDoc: fakeDoc(twoClockDoc()),
+    notifications: fakeNotifications(),
+  });
+  captureTimers(() => sim.start());
+
+  const paused = captureTimers(() => sim.toggleClockPause("clk1"));
+  assert.deepEqual(paused, { started: [], cleared: [500] }, "clk1's alone");
+
+  const resumed = captureTimers(() => sim.toggleClockPause("clk1"));
+  assert.deepEqual(resumed, { started: [500], cleared: [] }, "clk1's alone");
+  sim.stop();
+});
+
+test("a clock paused on its own stays held when the TRANSPORT resumes", () => {
+  resetDom();
+  const sim = new SimController({
+    deskDoc: fakeDoc(twoClockDoc()),
+    notifications: fakeNotifications(),
+  });
+  captureTimers(() => sim.start());
+  sim.pause();
+  // Under the transport's pause no timer runs, so there is none to stop or
+  // start — but the clock's own pause is still recorded.
+  const whilePaused = captureTimers(() => sim.toggleClockPause("clk1"));
+  assert.deepEqual(whilePaused.started, []);
+  assert.equal(sim.isClockPaused("clk1"), true);
+
+  const resumed = captureTimers(() => sim.resume());
+  assert.deepEqual(resumed.started, [250], "only clk2 starts again");
+  sim.stop();
+});
+
+test("a clock's own pause is run-volatile, and refused where it means nothing", () => {
+  resetDom();
+  const sim = new SimController({
+    deskDoc: fakeDoc({
+      boards: [],
+      components: [
+        { id: "clk1", kind: "clock", ref: "clock", x: 0, y: 0, params: { hz: 1 } }, // prettier-ignore
+        { id: "clk2", kind: "clock", ref: "clock", x: 10, y: 0, params: { hz: "manual" } }, // prettier-ignore
+      ],
+      wires: [],
+    }),
+    notifications: fakeNotifications(),
+  });
+  const events = capture();
+
+  sim.toggleClockPause("clk1");
+  assert.equal(sim.isClockPaused("clk1"), false, "stopped: nothing to pause");
+
+  captureTimers(() => sim.start());
+  sim.toggleClockPause("clk2");
+  assert.equal(sim.isClockPaused("clk2"), false, "a manual clock has no timer");
+
+  sim.toggleClockPause("clk1");
+  sim.stop();
+  assert.equal(sim.isClockPaused("clk1"), false, "Stop forgets");
+  assert.deepEqual([...events.at(-1).pausedClocks], [], "and says so");
+
+  captureTimers(() => sim.start());
+  assert.equal(
+    sim.isClockPaused("clk1"),
+    false,
+    "Run starts every clock going",
+  );
+  sim.stop();
+});
+
 // ── Transport: board-seated oscillator can ─────────────────────
 
 // Canonical can pin numbers (see catalog/parts.js's `def.can` defs):
