@@ -36,6 +36,7 @@ import {
   holeAt,
   holePosition,
   holes,
+  holesNear,
   holesOfNode,
   nodeOf,
   normalizeRotation,
@@ -228,6 +229,67 @@ test("holeAt has a dead zone between holes and misses the trench", () => {
   // Way outside the board.
   assert.equal(holeAt("pins-full", -10, -10), null);
   assert.ok(HOLE_HIT_RADIUS < 0.5, "radius must leave a dead zone");
+});
+
+test("holesNear: the dead zone holeAt leaves still has two holes half a pitch away", () => {
+  const f1 = holePosition("pins-full", "f1");
+  // Midway between f1 and f2 — holeAt answers null here, holesNear both.
+  const near = holesNear("pins-full", f1.x + 0.5, f1.y, 0.6);
+  assert.deepEqual(
+    near.map((h) => h.hole),
+    ["f1", "f2"],
+  );
+  for (const h of near) assert.equal(h.dist, 0.5);
+});
+
+test("holesNear: nearest first, bounded by the radius", () => {
+  const f12 = holePosition("pins-full", "f12");
+  const near = holesNear("pins-full", f12.x + 0.1, f12.y, 1.2);
+  assert.equal(near[0].hole, "f12");
+  for (let i = 1; i < near.length; i++) {
+    assert.ok(near[i - 1].dist <= near[i].dist, "sorted by distance");
+  }
+  assert.ok(near.every((h) => h.dist <= 1.2));
+  // f13 (0.9 along), g12 (≈1 up) and f11 (1.1 back) are in reach; f10 is not.
+  const ids = new Set(near.map((h) => h.hole));
+  for (const id of ["g12", "f13", "f11"]) assert.ok(ids.has(id), id);
+  assert.ok(!ids.has("f10"));
+  // e12 is across the channel, 3 rows down — out of reach.
+  assert.ok(!ids.has("e12"));
+});
+
+test("holesNear: the channel's midline reaches neither row at a hole's reach", () => {
+  const f5 = holePosition("pins-full", "f5");
+  assert.deepEqual(holesNear("pins-full", f5.x, f5.y + 1.5, 1.2), []);
+  assert.equal(holesNear("pins-full", f5.x, f5.y + 1.5, 1.5).length, 2);
+});
+
+test("holesNear: columns clamp to the strip — nothing past either end", () => {
+  const a1 = holePosition("pins-full", "a1");
+  const left = holesNear("pins-full", a1.x - 1, a1.y, 1.2).map((h) => h.hole);
+  assert.deepEqual(left, ["a1"]);
+  const a63 = holePosition("pins-full", "a63");
+  const right = holesNear("pins-full", a63.x + 1, a63.y, 1.2).map(
+    (h) => h.hole,
+  );
+  assert.deepEqual(right, ["a63"]);
+  assert.deepEqual(holesNear("pins-full", -10, -10, 1.2), []);
+});
+
+test("holesNear: a turned rail answers in its own frame", () => {
+  for (const rot of ROTATIONS) {
+    const p = holePosition("rail-full", "+7", rot);
+    const near = holesNear("rail-full", p.x, p.y, 0.1, rot);
+    assert.deepEqual(
+      near.map((h) => h.hole),
+      ["+7"],
+      `rot ${rot}`,
+    );
+    // One pitch across, the other polarity; one along, the next hole.
+    const ids = holesNear("rail-full", p.x, p.y, 1, rot).map((h) => h.hole);
+    for (const id of ["-7", "+6", "+8"])
+      assert.ok(ids.includes(id), `${rot} ${id}`);
+  }
 });
 
 test("rail groups: one extra pitch of gap every 5 holes", () => {

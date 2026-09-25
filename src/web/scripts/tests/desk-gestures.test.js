@@ -939,8 +939,9 @@ test("wire-endpoint drag: a near-miss onto an occupied hole snaps to the nearest
   controller.addBoardAt("pins-full", 0, 0);
   const wire = seedWire(doc, "bb1.a1", "bb1.a20");
   // Drag 'to' (20,12) onto a1 (1,12) — the wire's own other end, so the
-  // exact spot is illegal. The nearest free hole to a1 (SNAP_RADIUS
-  // recovery, wire-tools.js) is b1, one pitch unit up.
+  // exact spot is illegal. The nearest free holes to a1 (END_SNAP_RADIUS
+  // recovery, wire-tools.js) are b1, one pitch up, and a2, one along; the
+  // tie goes to the higher one.
   world.x = 20;
   world.y = ROW.a;
   fire(viewport, "pointerdown", { id: 9, client: [0, 0] });
@@ -956,19 +957,17 @@ test("wire-endpoint drag: a near-miss onto an occupied hole snaps to the nearest
   );
 });
 
-test("wire-endpoint drag: a release well beyond SNAP_RADIUS still finds the nearest hole", () => {
+test("wire-endpoint drag: a release far from every hole reverts — an end never teleports", () => {
   resetDom();
   const doc = new DeskDoc(null);
   const world = { x: 0, y: 0 };
   const { viewport, surface, controller } = makeDesk(doc, world);
   controller.addBoardAt("pins-full", 0, 0);
   const wire = seedWire(doc, "bb1.a1", "bb1.a20");
-  // Release well off the board's right edge (col 63 is its last column) —
-  // 37 pitch units past SNAP_RADIUS (2), the bound the LIVE per-move
-  // preview searches, but well within the one-time unbounded search
-  // #onEndpointUp falls back to when the release point itself isn't legal.
-  // A single move+up (no intermediate moves) exercises exactly that
-  // fallback, not just the cheap live-preview path.
+  // Release well off the board's right edge (col 63 is its last column).
+  // a63 is the nearest hole, 37 pitches away — which is exactly the jump an
+  // end must never make: it snaps only within a hole's reach of the cursor,
+  // and otherwise goes back where it came from.
   world.x = 20;
   world.y = ROW.a;
   fire(viewport, "pointerdown", { id: 9, client: [0, 0] });
@@ -977,11 +976,7 @@ test("wire-endpoint drag: a release well beyond SNAP_RADIUS still finds the near
   fire(wireSvg(surface), "pointermove", { id: 9, client: [40, 40] });
   fire(wireSvg(surface), "pointerup", { id: 9, client: [40, 40] });
 
-  assert.equal(
-    doc.getWire(wire.id).to,
-    "bb1.a63",
-    "found the nearest hole far beyond the live-preview's own search bound",
-  );
+  assert.equal(doc.getWire(wire.id).to, "bb1.a20", "reverted");
 });
 
 test("wire-endpoint drag: a target with nothing legal anywhere nearby reverts", () => {
@@ -991,9 +986,7 @@ test("wire-endpoint drag: a target with nothing legal anywhere nearby reverts", 
   const { viewport, surface, controller } = makeDesk(doc, world);
   controller.addBoardAt("pins-full", 0, 0);
   const wire = seedWire(doc, "bb1.a1", "bb1.a20");
-  // Drag 'to' off the board entirely — a target well beyond even the
-  // endpoint drag's unbounded search's DEFAULT_SEARCH_RADIUS from every
-  // hole on the board, so there's genuinely nothing to recover onto.
+  // Drag 'to' off the board entirely, nowhere near any hole.
   world.x = 20;
   world.y = ROW.a;
   fire(viewport, "pointerdown", { id: 9, client: [0, 0] });
@@ -1002,6 +995,62 @@ test("wire-endpoint drag: a target with nothing legal anywhere nearby reverts", 
   fire(wireSvg(surface), "pointermove", { id: 9, client: [40, 40] });
   fire(wireSvg(surface), "pointerup", { id: 9, client: [40, 40] });
 
+  assert.equal(doc.getWire(wire.id).to, "bb1.a20", "reverted");
+});
+
+test("wire-endpoint drag: half a pitch off f1 lands on f1, not on a strip pitches away", () => {
+  // The reported case. A rail strip stood on end beside a pin-board has its
+  // holes on quarters, while the pin-board's columns sit on whole pitches.
+  // The end used to search whole-pitch steps from the raw cursor, so half a
+  // pitch right of f1 every step fell between the pin-board's holes — the
+  // preview found nothing, and the release searched on until it hit the
+  // RAIL's +6, over three pitches away, while f1 and f2 were half a pitch off.
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { viewport, surface, controller } = makeDesk(doc, world);
+  doc.addBoard("rail-full", 0, 0, 90); // bb1: x 0–3.5, holes at x 1.25/2.25
+  controller.addBoardAt("pins-full", 4, 3.5); // bb2: f1 at (5, 3.5 + ROW.f)
+  const wire = seedWire(doc, "bb2.a10", "bb2.a20");
+  const ring = document.querySelector(".hole-ring");
+
+  world.x = 24;
+  world.y = 3.5 + ROW.a;
+  fire(viewport, "pointerdown", { id: 9, client: [0, 0] });
+  world.x = 5.5;
+  world.y = 3.5 + ROW.f;
+  fire(wireSvg(surface), "pointermove", { id: 9, client: [40, 40] });
+
+  // The preview already shows where it will land: the ring sits on f1 (f2 is
+  // as near, and the tie goes left).
+  assert.equal(ring.hidden, false, "the preview snaps");
+  assert.ok(!ring.classList.contains("hole-ring--illegal"));
+  const r = 0.55 * PX_PER_UNIT;
+  assert.equal(parseFloat(ring.style.left), 5 * PX_PER_UNIT - r);
+
+  fire(wireSvg(surface), "pointerup", { id: 9, client: [40, 40] });
+  assert.equal(doc.getWire(wire.id).to, "bb2.f1");
+});
+
+test("wire-endpoint drag: out of reach of every hole the end rides the cursor, and reverts", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { viewport, surface, controller } = makeDesk(doc, world);
+  controller.addBoardAt("pins-full", 0, 0);
+  const wire = seedWire(doc, "bb1.a1", "bb1.a20");
+  const ring = document.querySelector(".hole-ring");
+  // The channel's midline is 1.5 pitch from rows e and f — more than a hole's
+  // reach — so there is nothing to snap to while the cursor is there.
+  world.x = 20;
+  world.y = ROW.a;
+  fire(viewport, "pointerdown", { id: 9, client: [0, 0] });
+  world.x = 10;
+  world.y = (ROW.e + ROW.f) / 2;
+  fire(wireSvg(surface), "pointermove", { id: 9, client: [40, 40] });
+  assert.equal(ring.hidden, true, "no ring: nothing in reach");
+
+  fire(wireSvg(surface), "pointerup", { id: 9, client: [40, 40] });
   assert.equal(doc.getWire(wire.id).to, "bb1.a20", "reverted");
 });
 

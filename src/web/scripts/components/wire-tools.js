@@ -48,6 +48,7 @@ import {
   WIRE_POINT_MERGE_RADIUS,
   addressWorld,
   connectionPointAt,
+  connectionPointsNear,
   wireEndNear,
   wirePointNear,
 } from "../model/part-geometry.js";
@@ -61,22 +62,29 @@ const DRAG_THRESHOLD = 4;
 /** Radius of the shared hover ring (pitch units); keep 2× this in step with
     `.hole-ring`'s diameter in app.css. See desk-controller.js. */
 const RING_RADIUS = 0.55;
-/** How far (pitch units) a search stays a cheap, TIGHT near-miss lookup
-    instead of the full "always find the nearest, however far" one: a
-    WHOLE-WIRE (rigid, both-ends-together) drop's only recovery margin (a
-    big rigid jump there would read as relocating the whole wire, not
-    recovering a drop that missed by a hole or two) — AND, separately, the
-    bound every LIVE pointermove uses for a single END's own drag preview.
-    An end's search is only ever unbounded ONCE per gesture, at the moment
-    of release (#onEndpointUp calling #resolveEndpointTarget with no
-    maxRadius) — never on every move. A `nearestLegalOffset` call with no
-    bound genuinely walks outward ring by ring until it hits something, and
-    measured on a few hundred wires that's ~15-20ms of pure search
-    overhead (ring generation + hole hit-testing) on top of a live-drag
-    re-render's own cost — trivial as a ONE-TIME cost on release, but a
-    visible per-frame stutter if it ran on every pointermove, which is
-    exactly what an earlier version of this code did. */
+/** How far (pitch units) a WHOLE-WIRE (rigid, both-ends-together) drop may be
+    nudged to land legally. It stays small on purpose: a big rigid jump reads
+    as relocating the whole wire, not recovering a drop that missed by a hole
+    or two. Its offsets are whole-pitch steps from the wire's own HOLES, i.e.
+    from points ON the lattice — see END_SNAP_RADIUS for why a single end,
+    which starts from the cursor, cannot search that way. */
 const SNAP_RADIUS = 2;
+/** How close (pitch units) a legal hole or terminal must be for a dragged END
+    to snap onto it; further than that the end rides the cursor, and a release
+    there puts it back where it was. 1.2 reaches the orthogonal neighbours of
+    the hole under the cursor (1 pitch) but not its diagonals (1.41), so a
+    near-miss is forgiven by ONE hole and never more, and the channel's midline
+    (1.5 from rows e and f) snaps to nothing.
+
+    The candidates are the REAL points around the cursor (connectionPointsNear),
+    nearest first. The end used to try whole-pitch offsets from the raw cursor
+    instead, and a cursor is not on the lattice: half a pitch off a column,
+    every sample fell between the holes, the board under it went invisible, and
+    the unbounded search a release fell back to walked on until it met a strip
+    on ANOTHER lattice (a turned rail's holes sit on quarters) — an end dropped
+    beside f1 landed on a rail strip nearly five pitches away. The preview and
+    the drop ask the one bounded question, so they can never disagree. */
+const END_SNAP_RADIUS = 1.2;
 
 export class WireTools {
   #host;
@@ -623,17 +631,9 @@ export class WireTools {
     }
     const world = this.#host.deskView.worldFromEvent(e);
     m.lastWorld = world; // the fallback for a release with no position of its own
-    // A cheap, SNAP_RADIUS-bounded lookup for the live preview — see the
-    // SNAP_RADIUS comment for why the unbounded search is reserved for the
-    // one-time #onEndpointUp resolve instead of running here every move. What
-    // this finds is ONLY the preview; the drop re-resolves at the release
-    // point (#onEndpointUp).
-    const resolved = this.#resolveEndpointTarget(
-      m.wireId,
-      m.end,
-      world,
-      SNAP_RADIUS,
-    );
+    // Only the preview: the drop re-resolves at the release point
+    // (#onEndpointUp), through the same function and the same radius.
+    const resolved = this.#resolveEndpointTarget(m.wireId, m.end, world);
     if (resolved) {
       const r = RING_RADIUS * PX_PER_UNIT;
       this.#host.ring.style.left = `${resolved.x * PX_PER_UNIT - r}px`;
@@ -654,30 +654,26 @@ export class WireTools {
   };
 
   /**
-   * Where a release at `world` would land `wireId`'s `end`: the exact point
-   * under the cursor when it's already legal there, else the CLOSEST legal
-   * hole within `maxRadius` — dragging an end always ends up somewhere
-   * real, the way a magnet-snapped connector would, never just floating
-   * loose because the cursor missed by a hole or two. `maxRadius` omitted
-   * means UNBOUNDED ("always find the nearest, however far") — reserved
-   * for the one-time call in #onEndpointUp; #onEndpointMove's own per-move
-   * call always passes SNAP_RADIUS (see its comment). Returns `{ address,
-   * x, y, legal }` (`legal:false` — with whatever the raw point resolves
-   * to, if anything — only when nothing within `maxRadius` qualifies, so
-   * the illegal tint still explains what's under the cursor) or null when
-   * there's truly nothing there at all (not even a real point).
+   * Where a release at `world` would land `wireId`'s `end`: the NEAREST
+   * connection point within END_SNAP_RADIUS that it may legally re-end at —
+   * the point under the cursor when that one is legal, else a neighbour one
+   * hole along, the way a magnet-snapped connector forgives a near-miss.
+   * Returns `{ address, x, y, legal }`; `legal:false` (with whatever the raw
+   * point resolves to) when nothing in range qualifies, so the illegal tint
+   * still explains what's under the cursor; null when there's nothing there
+   * at all. Shared by the preview and the drop, so they cannot disagree.
    */
-  #resolveEndpointTarget(wireId, end, world, maxRadius) {
+  #resolveEndpointTarget(wireId, end, world) {
     const doc = this.#host.doc;
-    const found = nearestLegalOffset((dx, dy) => {
-      const cand = this.#wirePointAt({ x: world.x + dx, y: world.y + dy });
-      return Boolean(cand && doc.canReendWire(wireId, end, cand.address));
-    }, maxRadius);
-    if (found) {
-      return {
-        ...this.#wirePointAt({ x: world.x + found.dx, y: world.y + found.dy }),
-        legal: true,
-      };
+    for (const cand of connectionPointsNear(
+      doc.boards,
+      doc.components,
+      world,
+      END_SNAP_RADIUS,
+    )) {
+      if (doc.canReendWire(wireId, end, cand.address)) {
+        return { address: cand.address, x: cand.x, y: cand.y, legal: true };
+      }
     }
     const hit = this.#wirePointAt(world);
     return hit ? { ...hit, legal: false } : null;
@@ -698,20 +694,11 @@ export class WireTools {
     if (this.#aborted(e)) return; // aborted — never commit
 
     // Resolve at the RELEASE point, not from whatever the last pointermove
-    // left in `m.hover` (see pointer-gesture.js's releaseWorld): the tight
-    // near-miss margin the preview showed first, then — only when that comes
-    // up empty — the ONE unbounded "always find the nearest, however far"
-    // search, a single call rather than a per-frame cost.
+    // left behind (see pointer-gesture.js's releaseWorld) — the same bounded
+    // question the preview asked. Nothing legal in reach reverts: an end only
+    // ever lands a hole's reach from where it was let go.
     const world = releaseWorld(this.#host.deskView, e, m.lastWorld);
-    let target = this.#resolveEndpointTarget(
-      m.wireId,
-      m.end,
-      world,
-      SNAP_RADIUS,
-    );
-    if (!target?.legal) {
-      target = this.#resolveEndpointTarget(m.wireId, m.end, world);
-    }
+    const target = this.#resolveEndpointTarget(m.wireId, m.end, world);
     if (target?.legal && target.address !== m.origin) {
       // An END dropped onto one of its own wire's bends absorbs it: the wire
       // now reaches where that waypoint was, so keeping it would leave a bend

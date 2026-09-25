@@ -19,10 +19,17 @@
 // shouldn't just fail — it should recover onto whatever legal spot is
 // closest, the way real drag-and-drop UIs forgive a near-miss. Pure and
 // domain-free: callers supply `isLegal(dx, dy)` over integer pitch-unit
-// OFFSETS from whatever anchor they care about (a cursor world point for a
-// single endpoint, a whole-wire/whole-bus translation delta for a rigid
-// move) — this module only knows how to search a growing neighborhood of
-// offsets, closest ring first, and stop at the first one that's legal.
+// OFFSETS from whatever anchor they care about (a whole-wire/whole-bus
+// translation delta for a rigid move, a clip's shift) — this module only
+// knows how to search a growing neighborhood of offsets, closest ring first,
+// and stop at the first one that's legal.
+//
+// The anchor must sit ON the lattice — a hole, or a delta between holes. A
+// raw CURSOR point does not, and whole-pitch steps from one land between the
+// holes: half a pitch off a column, every sample misses every hole on the
+// strip, while a strip on another lattice answers from pitches away. For "the
+// nearest hole to this point" enumerate the real ones instead
+// (part-geometry.js's `connectionPointsNear`).
 //
 // The search is INCREMENTAL (ring by ring, `nearestLegalOffset` bails out at
 // the first hit) rather than pre-building and sorting one big square, so an

@@ -20,12 +20,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { spec } from "../model/breadboard.js";
+import { boardSize, spec } from "../model/breadboard.js";
 import { applyCatalog } from "../i18n.js";
 import {
   addressWorld,
   componentsInRect,
   connectionPointAt,
+  connectionPointsNear,
   deskBounds,
   hoverHitAt,
   partPinsWorld,
@@ -86,6 +87,61 @@ test("connectionPointAt: a hole wins; a terminal matches within the radius", () 
     "psu1.+",
   );
   assert.equal(connectionPointAt(BOARDS, [PSU], { x: 500, y: 500 }), null);
+});
+
+test("connectionPointsNear: nearest first, ties top-to-bottom then left-to-right", () => {
+  // Exactly on a1: b1 (one row up) and a2 (one column along) tie at 1 pitch,
+  // and the higher one wins the tie whatever floating point says.
+  const near = connectionPointsNear(BOARDS, [], { x: 1, y: ROW.a }, 1.2);
+  assert.deepEqual(
+    near.map((p) => p.address),
+    ["bb1.a1", "bb1.b1", "bb1.a2"],
+  );
+  assert.deepEqual(
+    { x: near[0].x, y: near[0].y, dist: near[0].dist },
+    { x: 1, y: ROW.a, dist: 0 },
+  );
+  assert.deepEqual(
+    connectionPointsNear(BOARDS, [], { x: 500, y: 500 }, 1.2),
+    [],
+  );
+});
+
+test("connectionPointsNear: brick terminals are candidates too", () => {
+  // Between the PSU's + (82, 4) and − (86, 4), nearer the +.
+  const near = connectionPointsNear(BOARDS, [PSU], { x: 83, y: 4 }, 1.2);
+  assert.deepEqual(
+    near.map((p) => p.address),
+    ["psu1.+"],
+  );
+  assert.equal(near[0].dist, 1);
+});
+
+test("connectionPointsNear: beside f1 it answers the board under the cursor, not a strip on another lattice", () => {
+  // The reported layout: a rail strip stood on end just left of a pin-board.
+  // Its holes sit on quarters, so a whole-pitch search from a cursor half a
+  // pitch off the pin-board's columns missed every pin-board hole and found
+  // the rail's instead, pitches away.
+  const railW = boardSize("rail-full", 90).width;
+  const boards = [
+    { id: "r1", type: "rail-full", x: 0, y: 0, rot: 90 },
+    { id: "bb1", type: "pins-full", x: railW + 1, y: 0 },
+  ];
+  const f1 = { x: railW + 2, y: ROW.f };
+  const near = connectionPointsNear(
+    boards,
+    [],
+    { x: f1.x + 0.5, y: f1.y },
+    1.2,
+  );
+  assert.deepEqual(
+    near.slice(0, 2).map((p) => p.address),
+    ["bb1.f1", "bb1.f2"],
+  );
+  assert.ok(
+    near.every((p) => p.address.startsWith("bb1.")),
+    "nothing on the rail strip is within a hole's reach",
+  );
 });
 
 test("componentsInRect: a component counts only when EVERY pin is inside", () => {

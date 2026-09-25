@@ -106,9 +106,11 @@ what the Option-held preview rings show you before you commit.
 Grab a wire two different ways:
 
 - **Its end cap** — drag just one endpoint to a new hole or terminal,
-  re-routing that end while the other stays put. A hover ring and red/legal
-  tint on the dragged end work exactly like placing a fresh wire; release
-  over an illegal point and the end snaps back to where it started.
+  re-routing that end while the other stays put. The end follows the cursor
+  and snaps onto a free hole once it's within about a hole's reach of one. A
+  hover ring and red/legal tint on the dragged end work exactly like placing
+  a fresh wire; release with no free hole in reach and the end snaps back to
+  where it started.
 - **Its body** — drag anywhere along the wire itself to translate the whole
   wire rigidly, keeping its length and orientation and just sliding both ends
   together onto a new pair of holes. If either landing point isn't free, the

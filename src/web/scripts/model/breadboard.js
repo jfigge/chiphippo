@@ -266,6 +266,49 @@ export function holeAt(type, px, py, rot = 0) {
   return best;
 }
 
+/**
+ * Every hole within `radius` of a pitch-unit point, nearest first, as
+ * `[{ hole, dist }]` — `holeAt` widened from "the one under the point" to "the
+ * ones around it". This is how a drag finds the nearest hole it may LAND in:
+ * walk the answer in order and take the first legal one.
+ *
+ * It enumerates the REAL holes rather than sampling points around the input,
+ * and that is the whole reason it exists. A cursor is not on the lattice, so
+ * whole-pitch steps taken from one land between the holes: half a pitch off a
+ * column, every sample is half a pitch from every hole on the strip and
+ * `holeAt` sees none of them — while a strip on another lattice (a turned
+ * rail's holes sit on quarters) answers from several pitches away.
+ */
+export function holesNear(type, px, py, radius, rot = 0) {
+  const s = spec(type);
+  const { x, y } = unrotatePoint(type, { x: px, y: py }, rot);
+  const out = [];
+  const consider = (hole, hx, hy) => {
+    const dist = Math.hypot(x - hx, y - hy);
+    if (dist <= radius) out.push({ hole, dist });
+  };
+
+  // Grid: only the columns within reach, then every row within reach.
+  const lo = Math.max(1, Math.ceil(x - s.colStartX + 1 - radius));
+  const hi = Math.min(s.cols, Math.floor(x - s.colStartX + 1 + radius));
+  for (let col = lo; col <= hi; col++) {
+    const colX = s.colStartX + (col - 1);
+    for (const [row, rowY] of Object.entries(s.rowY)) {
+      if (Math.abs(y - rowY) <= radius) consider(`${row}${col}`, colX, rowY);
+    }
+  }
+
+  // Rails: a line is at most a few dozen holes, so walk the one within reach.
+  for (const rail of s.rails) {
+    if (Math.abs(y - rail.y) > radius) continue;
+    for (let index = 1; index <= s.railHoles; index++) {
+      consider(`${rail.id}${index}`, railHoleX(s, index), rail.y);
+    }
+  }
+
+  return out.sort((a, b) => a.dist - b.dist);
+}
+
 // ── Lattice arithmetic ──────────────────────────────────────────────────────
 // Placing a part is a LOOSER search than holeAt's: a ghost seats from a whole
 // row-band or trench-band away, not just within HOLE_HIT_RADIUS. These are the

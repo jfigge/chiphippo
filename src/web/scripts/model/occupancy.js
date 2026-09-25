@@ -38,6 +38,7 @@ import {
   formatAddress,
   holeAt,
   holePosition,
+  holesNear,
   parseAddress,
   parseHole,
   ROTATIONS,
@@ -200,6 +201,44 @@ export function holeAtWorld(boards, x, y) {
     return { board, hole, x: board.x + pos.x, y: board.y + pos.y };
   }
   return null;
+}
+
+/**
+ * Every board hole within `radius` of a world point, as
+ * `[{ board, hole, x, y, dist }]` (unordered across boards) — `holeAtWorld`
+ * widened the way `holesNear` widens `holeAt`. A board is asked only when the
+ * point lies within `radius` of its rect, so a hole just past a strip's edge
+ * is still in reach of a cursor that has slid off it.
+ *
+ * @param {Array<{id:string,type:string,x:number,y:number,rot?:number}>} boards
+ * @returns {Array<{board:object, hole:string, x:number, y:number, dist:number}>}
+ */
+export function holesNearWorld(boards, x, y, radius) {
+  const out = [];
+  for (const board of boards ?? []) {
+    const rot = board.rot ?? 0;
+    let size;
+    try {
+      size = boardSize(board.type, rot);
+    } catch {
+      continue; // a foreign/junk board type never owns a hole
+    }
+    if (x < board.x - radius || y < board.y - radius) continue;
+    if (x > board.x + size.width + radius) continue;
+    if (y > board.y + size.height + radius) continue;
+    for (const { hole, dist } of holesNear(
+      board.type,
+      x - board.x,
+      y - board.y,
+      radius,
+      rot,
+    )) {
+      const pos = holePosition(board.type, hole, rot);
+      if (!pos) continue;
+      out.push({ board, hole, x: board.x + pos.x, y: board.y + pos.y, dist });
+    }
+  }
+  return out;
 }
 
 /**

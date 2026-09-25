@@ -33,6 +33,7 @@ import { formatAddress, holePosition, parseAddress } from "./breadboard.js";
 // worldOfAddress from occupancy.
 import {
   holeAtWorld,
+  holesNearWorld,
   partPinAddresses,
   partPinHoles,
   worldOfAddress,
@@ -133,6 +134,46 @@ export function connectionPointAt(boards, components, world) {
     }
   }
   return null;
+}
+
+/** Distances closer than this are a TIE: a hole one row up and one a column
+    along are both "1 pitch" away, and floating point must not pick between
+    them — the stated tie-break does. */
+const DIST_EPS = 1e-9;
+
+/**
+ * Every connection point (board hole or brick terminal) within `radius` of a
+ * world point, nearest first, as `[{ address, x, y, dist }]` — the widened
+ * `connectionPointAt`. A drag walks it in order and lands on the first point
+ * it may, so the answer is always the NEAREST legal point and never one a
+ * stride of samples happened to hit first (see `holesNear`).
+ *
+ * Ties go top-to-bottom, then left-to-right — the order `ringOffsets`
+ * documents — so the same cursor always picks the same hole.
+ */
+export function connectionPointsNear(boards, components, world, radius) {
+  const out = holesNearWorld(boards, world.x, world.y, radius).map((h) => ({
+    address: formatAddress(h.board.id, h.hole),
+    x: h.x,
+    y: h.y,
+    dist: h.dist,
+  }));
+  for (const comp of components) {
+    const terminals = partDef(comp.ref)?.terminals;
+    if (!terminals) continue;
+    for (const t of terminals) {
+      const x = comp.x + t.dx;
+      const y = comp.y + t.dy;
+      const dist = Math.hypot(world.x - x, world.y - y);
+      if (dist > radius) continue;
+      out.push({ address: formatAddress(comp.id, t.id), x, y, dist });
+    }
+  }
+  return out.sort((a, b) =>
+    Math.abs(a.dist - b.dist) > DIST_EPS
+      ? a.dist - b.dist
+      : a.y - b.y || a.x - b.x,
+  );
 }
 
 /**

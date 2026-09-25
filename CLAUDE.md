@@ -423,6 +423,17 @@ in `doc.boards`; a "breadboard" is a **kit** of them placed in one action.
   pixels) — board holes or component terminals; colours from `WIRE_COLORS` (a
   `--color-wire-<name>` token each, shared with LEDs). **`occupancy.js` is the single
   collision authority** (one hole/terminal, one lead).
+- **A dragged wire END snaps within a hole's reach, or not at all**
+  (`END_SNAP_RADIUS` 1.2 in `wire-tools.js`). The candidates are the REAL points
+  around the cursor — `connectionPointsNear` ← `holesNearWorld` ← `holesNear` — nearest
+  first, and the first one `canReendWire` accepts wins; nothing legal in reach and
+  the tip rides the cursor, and a release there reverts. ONE bounded resolve serves
+  preview and drop. **Never search whole-pitch offsets (`nearestLegalOffset`) from a
+  raw cursor**: it is not on the lattice, so half a pitch off a column every sample
+  misses every hole on that strip while a strip on another lattice (a turned rail's
+  holes sit on quarters) answers from pitches away — which is how an end dropped
+  beside f1 used to land on a rail strip nearly five pitches off. Those offsets are
+  for anchors that ARE on the lattice (a hole, a rigid delta between holes).
 - **Wire layout — direct or routed** (`WIRE_LAYOUTS`, set in the wire's Properties
   dialog). A **direct** wire is the sagging hole-to-hole curve: its shape is DERIVED from
   its ends, so it carries no `layout` and no `points` at all — absence IS the default
