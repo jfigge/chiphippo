@@ -183,8 +183,9 @@ you can resize remember that too: the parts tray's **width**, and the analyzer
 and AI builder's **height**. Close Chip Hippo and reopen it, and you're back
 exactly where you left off.
 
-The desk padlock is the deliberate exception — it's session-only and starts
-open every launch (see [The Desk & Breadboards](the-desk.md#the-desk-padlock)).
+The desk padlock isn't one of these: it's saved in the project file, so it
+belongs to the project rather than to the app (see
+[The Desk & Breadboards](the-desk.md#the-desk-padlock)).
 
 See [Files, Saving & Undo](files-and-undo.md) for how your circuit itself
 is saved.

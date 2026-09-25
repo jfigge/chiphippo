@@ -1905,6 +1905,14 @@ async function init() {
   // through the controller's load path, plus every action behind the File and
   // Desktop menus. Built here because it needs the sim to stop across a
   // switch.
+  //
+  // A loaded project's padlock goes onto the desk in two places: the wheel
+  // itself, and the button that shows it (once it exists — the workspace boots
+  // before the padlock is built).
+  const applyWheelLock = (locked) => {
+    deskView.setWheelLocked(locked);
+    deskLock?.setLocked(locked);
+  };
   workspace = new ProjectWorkspace({
     bridge,
     deskDoc,
@@ -1916,6 +1924,7 @@ async function init() {
     fitView: frameLoadedView,
     boot: projectBoot,
     onActiveChange: () => updateTitle(),
+    onWheelLock: applyWheelLock,
   });
   updateTitle(); // the booted project names the window
 
@@ -1948,13 +1957,22 @@ async function init() {
   });
   zoomControl.setZoom(deskView.camera.zoom);
 
-  // The desk padlock (top-right): shut, the mouse wheel stops moving the desk.
-  // Session-only and open at launch — see DeskLock for why it is not remembered,
-  // and DeskView.setWheelLocked for why it locks the wheel and nothing else.
+  // The desk padlock (top-right): shut, the mouse wheel stops moving the desk
+  // (DeskView.setWheelLocked says why it locks the wheel and nothing else). It
+  // is part of the PROJECT and saved in its file: a toggle is recorded there as
+  // an edit, and a project that loads brings its own state back through
+  // `applyWheelLock` — the padlock's silent `setLocked`, so a load is never
+  // mistaken for a click.
   deskLock = new DeskLock(desk, {
     mod: MOD_KEY,
-    onChange: (locked) => deskView.setWheelLocked(locked),
+    onChange: (locked) => {
+      deskView.setWheelLocked(locked);
+      workspace?.setWheelLocked(locked);
+    },
   });
+  // The workspace was built first, so the booted project's padlock is applied
+  // to the desk already but not yet to the button.
+  applyWheelLock(workspace?.wheelLocked === true);
 
   // External signals (Feature 370): the buttons pinned down the viewport's
   // right edge, between the padlock above and the zoom cluster below. A

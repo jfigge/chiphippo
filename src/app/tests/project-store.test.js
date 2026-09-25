@@ -168,6 +168,41 @@ test("a project file round-trips WHOLE, wherever it is written", () => {
   });
 });
 
+test("the desk padlock travels in the file, and only while it is shut", () => {
+  withStore((store, dir) => {
+    const shut = path.join(dir, `shut${PROJECT_EXT}`);
+    store.write(shut, { ...store.newProject(), wheelLocked: true });
+    assert.equal(JSON.parse(fs.readFileSync(shut, "utf8")).wheelLocked, true);
+    assert.equal(store.read(shut).wheelLocked, true);
+
+    // Open is the default, and a default is not written — so a project that
+    // never touched the padlock keeps exactly the bytes it always had.
+    const open = path.join(dir, `open${PROJECT_EXT}`);
+    store.write(open, { ...store.newProject(), wheelLocked: false });
+    assert.equal(
+      "wheelLocked" in JSON.parse(fs.readFileSync(open, "utf8")),
+      false,
+    );
+    assert.equal(store.read(open).wheelLocked, false);
+    assert.equal(
+      store.newProject().wheelLocked,
+      undefined,
+      "a new project is open",
+    );
+  });
+});
+
+test("a renderer's padlock is taken only when it says, exactly, true", () => {
+  withStore((store, dir) => {
+    const target = path.join(dir, `odd${PROJECT_EXT}`);
+    store.write(target, { ...store.newProject(), wheelLocked: "yes" });
+    assert.equal(
+      "wheelLocked" in JSON.parse(fs.readFileSync(target, "utf8")),
+      false,
+    );
+  });
+});
+
 test("a project opens on another machine — nothing but the file is needed", () => {
   withStore((store, dir) => {
     // Written under one userData dir...

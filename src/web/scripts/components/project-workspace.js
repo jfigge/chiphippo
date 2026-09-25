@@ -96,6 +96,7 @@ import {
   setDesktopDoc,
   setDesktopField,
   setProjectField,
+  setProjectWheelLock,
 } from "../model/project-doc.js";
 
 /**
@@ -148,6 +149,7 @@ export class ProjectWorkspace {
   #setCamera;
   #fitView;
   #onActiveChange;
+  #onWheelLock;
   #project = null; // the normalized meta (model/project-doc.js) + `location`
   #state = new Map(); // tabId → { history, camera }
   #saved = null; // the signature of the project as its FILE holds it → the •
@@ -219,6 +221,9 @@ export class ProjectWorkspace {
    * @param {object|null} [opts.boot] - the result of `ProjectWorkspace.boot`.
    * @param {(tab: object|null) => void} [opts.onActiveChange] - the active
    *   desktop (or the project) changed: re-title and re-render.
+   * @param {(locked: boolean) => void} [opts.onWheelLock] - a project was
+   *   LOADED, and this is its desk padlock: put it on the desk. Not fired by
+   *   `setWheelLocked`, whose news came from the padlock in the first place.
    */
   constructor({
     bridge,
@@ -231,6 +236,7 @@ export class ProjectWorkspace {
     fitView,
     boot = null,
     onActiveChange,
+    onWheelLock,
     autoSaveMs = AUTO_SAVE_MS,
   }) {
     this.#bridge = bridge;
@@ -242,6 +248,7 @@ export class ProjectWorkspace {
     this.#setCamera = setCamera;
     this.#fitView = fitView;
     this.#onActiveChange = onActiveChange;
+    this.#onWheelLock = onWheelLock;
     this.#autoSaveMs = Number(autoSaveMs) > 0 ? Number(autoSaveMs) : 0;
     if (boot?.project) {
       this.#adopt(boot.project);
@@ -322,11 +329,33 @@ export class ProjectWorkspace {
     return this.#project ? activeDesktop(this.#project) : null;
   }
 
+  /** Is the desk padlock shut in the open project? */
+  get wheelLocked() {
+    return this.#project?.wheelLocked === true;
+  }
+
+  /**
+   * The padlock was clicked (or ⌘L pressed): record it in the project.
+   *
+   * It is IN THE FILE, so it is an edit like a rename — the • appears, the
+   * auto-save tick stashes it, and leaving asks about it — never one that a quit
+   * could drop without a word. Deliberately not refused while the circuit runs:
+   * the padlock locks an INPUT, and changing it is not a change to the desk.
+   */
+  setWheelLocked(locked) {
+    if (!this.isOpen) return;
+    const next = setProjectWheelLock(this.#project, locked);
+    if (!next) return; // already so
+    this.#project = next;
+    this.#announce();
+  }
+
   /**
    * THE dirty flag — the whole project against what its file holds: every
-   * desktop's design, the desktops themselves, and their names. Which desktop
-   * is on screen is deliberately not counted, and neither is the camera:
-   * moving between tabs and panning are not changes to keep or throw away.
+   * desktop's design, the desktops themselves, their names, and whether the
+   * desk padlock is shut. Which desktop is on screen is deliberately not
+   * counted, and neither is the camera: moving between tabs and panning are
+   * not changes to keep or throw away.
    */
   get dirty() {
     return this.isOpen && this.#signature() !== this.#saved;
@@ -1028,6 +1057,8 @@ export class ProjectWorkspace {
     this.#saved = projectSignature(this.#project);
     this.#state.clear();
     this.#renderTabs();
+    // The padlock is the project's, so a project arriving brings its own.
+    this.#onWheelLock?.(this.wheelLocked);
     return true;
   }
 
@@ -1127,13 +1158,28 @@ export class ProjectWorkspace {
    * user. Both halves are needed — an unsaved change is caught by `dirty`, and
    * one already ⌘S'd into the slot (which is not dirty at all) by the project
    * still having something in it.
+   *
+   * The desk PADLOCK is the one change that does not count. It is in the file,
+   * so shutting it makes the project dirty, but a blank desk with its wheel
+   * locked still holds nothing to lose — and asking would put a save-or-discard
+   * question over an empty desk the user merely steadied.
    */
   #isPristine() {
     const meta = this.#project;
     if (!meta || meta.name || meta.description) return false;
     if (meta.tabs.length !== 1) return false;
-    if (this.dirty) return false;
+    if (this.#dirtyBesidesLock()) return false;
     return isEmptyDocument(this.#deskDoc.toJSON());
+  }
+
+  /** Is the project dirty in anything but its padlock? True when neither
+      padlock state brings it back to what its file holds. */
+  #dirtyBesidesLock() {
+    const live = this.#liveMeta();
+    return [false, true].every(
+      (wheelLocked) =>
+        projectSignature({ ...live, wheelLocked }) !== this.#saved,
+    );
   }
 
   /**
@@ -1390,7 +1436,10 @@ export class ProjectWorkspace {
    */
   #confirmLeaveProject({ quitting = false } = {}) {
     if (!this.#project) return Promise.resolve(true);
-    if (this.isUntitled && !quitting && !this.#isPristine()) {
+    if (this.isUntitled && !quitting) {
+      // Let go outright, not left to the dirty test below: a pristine project
+      // may still be dirty by its padlock alone (see `#isPristine`).
+      if (this.#isPristine()) return Promise.resolve(true);
       return this.#askUnsaved({
         title: t("workspace.untitledTitle"),
         message: t("workspace.untitledMessage"),

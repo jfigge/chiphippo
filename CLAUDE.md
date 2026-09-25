@@ -262,11 +262,17 @@ Electron main (src/app/main.js)
   drag-to-pan, the zoom cluster, the keyboard and Fit all still work — it exists for a
   **Magic Mouse**, whose surface reports a scroll from a resting finger. `#onWheel` calls
   `preventDefault` BEFORE the lock check (a locked desk must not fall through to page
-  zoom). The state is **session-only and open at launch** — a remembered lock would greet
-  a new session with a desk that ignores the wheel and no memory of why. The icon changes
-  SHAPE (open vs shut shackle), its label says what a CLICK would do (with its
-  accelerator), `aria-pressed` says what it IS, and ⌘L goes through the padlock's own
-  `toggle()` so key and button can never disagree.
+  zoom). The icon changes SHAPE (open vs shut shackle), its label says what a CLICK
+  would do (with its accelerator), `aria-pressed` says what it IS, and ⌘L goes through
+  the padlock's own `toggle()` so key and button can never disagree.
+- **The padlock is saved in the PROJECT file** (`wheelLocked`, project-level, written only
+  while shut, so a file that never shut it keeps its old bytes). One flag per project, not
+  per desktop — a tab switch never moves it. A toggle goes padlock `onChange` →
+  `ProjectWorkspace.setWheelLocked` and is an ordinary unsaved change (•, auto-save
+  stash, leave guard); a load goes the other way, `#adopt` → `onWheelLock` → app.js's
+  `applyWheelLock` → `DeskLock.setLocked` (the silent mirror, so a load is never read
+  as a click). The ONE place it does not count is `#isPristine`: a blank untitled project
+  whose only change is the padlock is still let go without a question.
 - **Fit (⌘F) is the one camera action that EDITS the document**, deliberately.
   `#recentreDesk` slides the whole desk onto the origin (`DeskDoc.translateAll`: every
   board, brick and label by one integer delta — seated parts and wires are addresses, so
@@ -649,7 +655,7 @@ desk document AND every programmed ROM's bytes, so there is one dirty marker, on
 one Save As, one recent list and one File menu.
 
 ```jsonc
-{ version: 5, name, description?, activeTab, nextIndex,
+{ version: 5, name, description?, wheelLocked?, activeTab, nextIndex,
   tabs:   [ { id, name, description?, doc } ],
   images: { "<rom-guid>": { "blob": "sha256-<hex>" } },  // programmed ROMs only
   blobs:  { "sha256-<hex>": "<base64>" } }               // stored once, shared

@@ -50,10 +50,11 @@ keyboard shortcuts above, and **Fit**. It's the wheel that's locked, not the
 camera.
 
 The padlock's shape changes rather than just its colour — an open shackle when
-the wheel is live, a shut one when it isn't. The state lasts for the session
-only and starts **open** every launch, so a new session never greets you with
-a desk that ignores the wheel for a reason you've forgotten. The schematic
-view has a wheel of its own and no padlock over it.
+the wheel is live, a shut one when it isn't. It's **saved with the project**:
+shut it, save, and the project reopens with the wheel still locked. Because
+it's part of the file, changing it counts as an unsaved change, like renaming a
+desktop. A new project starts with it open. The schematic view has a wheel of
+its own and no padlock over it.
 
 ## Breadboards are strips
 

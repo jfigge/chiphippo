@@ -16,6 +16,7 @@ desktops side by side.
 
 - every desktop — its boards, chips, wiring, parts, and net names;
 - what those desktops are called, and which one you were on;
+- whether you left the [desk padlock](the-desk.md#the-desk-padlock) shut;
 - the contents of every ROM you programmed.
 
 Nothing else is needed to open a design. Copy that one file to another machine

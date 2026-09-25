@@ -58,8 +58,8 @@ function makeTab(id, name, description, doc) {
  * at all (a project without a desktop is not a project).
  *
  * @param {object} raw
- * @returns {object|null} `{version, name, description, activeTab, nextIndex,
- *   tabs, location}`.
+ * @returns {object|null} `{version, name, description, wheelLocked, activeTab,
+ *   nextIndex, tabs, location}`.
  */
 export function normalizeProject(raw) {
   if (!raw || typeof raw !== "object" || !Array.isArray(raw.tabs)) return null;
@@ -78,6 +78,7 @@ export function normalizeProject(raw) {
     version: PROJECT_VERSION,
     name: text(raw.name),
     description: typeof raw.description === "string" ? raw.description : "",
+    wheelLocked: raw.wheelLocked === true,
     activeTab: tabs.some((t) => t.id === raw.activeTab)
       ? raw.activeTab
       : tabs[0].id,
@@ -273,6 +274,18 @@ export function setProjectField(meta, key, value) {
 }
 
 /**
+ * The desk padlock, shut or open. It belongs to the PROJECT rather than to a
+ * desktop — there is one padlock, and switching tabs does not move it — and it
+ * is in the file, so a project reopens with the wheel as it was left. Returns
+ * null when nothing changed, as `setProjectField` does.
+ */
+export function setProjectWheelLock(meta, locked) {
+  const next = locked === true;
+  if (next === (meta.wheelLocked === true)) return null;
+  return { ...meta, wheelLocked: next };
+}
+
+/**
  * The project exactly as its FILE holds it — which is the whole document, so
  * this is what both the save and the dirty test are built on.
  */
@@ -280,6 +293,9 @@ export function projectForFile(meta) {
   return {
     name: meta.name ?? "",
     description: meta.description ?? "",
+    // Omitted while open, so a project that never shut the padlock writes the
+    // bytes it always did.
+    ...(meta.wheelLocked ? { wheelLocked: true } : {}),
     activeTab: meta.activeTab,
     nextIndex: meta.nextIndex,
     tabs: meta.tabs.map((tab) => ({

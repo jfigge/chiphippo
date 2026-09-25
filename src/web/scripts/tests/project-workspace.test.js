@@ -326,6 +326,8 @@ async function harness({
   // What app.js's `updateTitle` is wired to — the • marker's one refresh seam.
   const announced = { count: 0 };
   const fits = { count: 0 };
+  // What app.js's `applyWheelLock` is handed: every padlock a LOAD brought.
+  const wheelLocks = [];
   workspace = new ProjectWorkspace({
     bridge: fake.bridge,
     deskDoc: doc,
@@ -345,6 +347,7 @@ async function harness({
     onActiveChange: () => {
       announced.count += 1;
     },
+    onWheelLock: (locked) => wheelLocks.push(locked),
   });
   return {
     ...fake,
@@ -357,6 +360,7 @@ async function harness({
     boot,
     announced,
     fits,
+    wheelLocks,
     camera: () => camera,
     moveCamera: (c) => {
       camera = c;
@@ -2100,4 +2104,131 @@ test("running the circuit freezes the strip's destructive items", async () => {
     .filter((i) => i.disabled || i.getAttribute("aria-disabled") === "true")
     .map((i) => i.textContent.trim());
   assert.deepEqual(disabled, ["Duplicate Desktop", "Delete Desktop"]);
+});
+
+// ── The desk padlock ─────────────────────────────────────────────────────────
+//
+// It is part of the PROJECT and saved in its file: a load puts it on the desk,
+// a toggle is an unsaved change like a rename, and only a shut one is written.
+
+/** A saved project whose file says the padlock was left shut. */
+const seedLocked = (h, at = "/home/steady.chiphippo", name = "Steady") =>
+  h.seedProject(at, {
+    name,
+    wheelLocked: true,
+    activeTab: "t1",
+    nextIndex: 2,
+    tabs: [{ id: "t1", name: "Bench", doc: someDesign() }],
+  });
+
+test("a project saved with its padlock shut boots with it shut", async () => {
+  const fake = fakeBridge();
+  seedLocked(fake);
+  fake.seedRecent("/home/steady.chiphippo");
+  const h = await harness({ fake });
+  assert.equal(h.workspace.wheelLocked, true);
+  assert.deepEqual(h.wheelLocks, [true], "the desk was told, once");
+  assert.equal(h.workspace.dirty, false, "and that is its file, not an edit");
+});
+
+test("a brand-new project boots with the padlock open", async () => {
+  const h = await harness();
+  assert.equal(h.workspace.wheelLocked, false);
+  assert.deepEqual(h.wheelLocks, [false]);
+});
+
+test("shutting the padlock is an unsaved change, and Save writes it", async () => {
+  const h = await harness();
+  const at = await homed(h);
+  h.workspace.setWheelLocked(true);
+  assert.equal(h.workspace.wheelLocked, true);
+  assert.equal(h.workspace.dirty, true, "the • appears");
+  assert.equal(h.announced.count, 1, "and the title is told");
+  assert.deepEqual(h.wheelLocks, [false], "a toggle is not echoed as a load");
+
+  await h.workspace.save();
+  await settle();
+  assert.equal(h.stored(at).wheelLocked, true);
+  assert.equal(h.workspace.dirty, false);
+
+  h.workspace.setWheelLocked(false);
+  assert.equal(h.workspace.dirty, true, "opening it again is a change too");
+  await h.workspace.save();
+  await settle();
+  assert.equal("wheelLocked" in h.stored(at), false, "an open one is omitted");
+});
+
+test("setting the padlock to what it already is changes nothing", async () => {
+  const h = await harness();
+  await homed(h);
+  h.workspace.setWheelLocked(false);
+  assert.equal(h.workspace.dirty, false);
+  assert.equal(h.announced.count, 0);
+});
+
+test("the padlock is not refused while the circuit runs", async () => {
+  const h = await harness();
+  h.workspace.setEditingLocked(true);
+  h.workspace.setWheelLocked(true);
+  assert.equal(
+    h.workspace.wheelLocked,
+    true,
+    "it locks an input, not the desk",
+  );
+});
+
+test("switching desktops leaves the padlock alone — it is the project's", async () => {
+  const h = await harness();
+  await twoDesktops(h);
+  h.workspace.setWheelLocked(true);
+  await h.workspace.selectTab("t2");
+  await settle();
+  assert.equal(h.workspace.wheelLocked, true);
+  assert.deepEqual(h.wheelLocks, [false], "no tab switch re-applies it");
+});
+
+test("opening another project brings THAT project's padlock", async () => {
+  const h = await harness();
+  seedLocked(h);
+  h.control.openProject = "/home/steady.chiphippo";
+  await leaving(() => h.workspace.loadProject());
+  assert.equal(h.workspace.wheelLocked, true);
+  assert.deepEqual(h.wheelLocks, [false, true]);
+  assert.equal(h.workspace.dirty, false);
+
+  // …and a new project opens it again, since the incoming file says nothing.
+  await leaving(() => h.workspace.newProject());
+  assert.equal(h.workspace.wheelLocked, false);
+  assert.deepEqual(h.wheelLocks, [false, true, false]);
+});
+
+test("the auto-save tick stashes a padlock change", async () => {
+  const h = await harness();
+  const at = await homed(h);
+  h.workspace.setWheelLocked(true);
+  assert.equal(await h.workspace.autoSaveNow(), true);
+  await settle();
+  assert.equal(h.stored(DEFAULT_PROJECT).wheelLocked, true, "in the slot");
+  assert.equal("wheelLocked" in h.stored(at), false, "not yet in the file");
+});
+
+test("a blank project with only its padlock shut is let go without a question", async () => {
+  const h = await harness();
+  h.workspace.setWheelLocked(true);
+  assert.equal(h.workspace.dirty, true, "it IS a change");
+  await h.workspace.newProject();
+  await settle();
+  assert.equal(dialogTitle(), "", "but there is nothing on the desk to lose");
+  assert.equal(h.workspace.wheelLocked, false);
+});
+
+test("a padlock shut over real work does not make that work pristine", async () => {
+  const h = await harness();
+  h.doc.load(someDesign("bb3"));
+  h.workspace.setWheelLocked(true);
+  const done = h.workspace.newProject();
+  await settle();
+  assert.notEqual(dialogTitle(), "", "the untitled design is asked about");
+  clickButton("Cancel");
+  await done;
 });

@@ -37,6 +37,7 @@ import {
   setDesktopDoc,
   setDesktopField,
   setProjectField,
+  setProjectWheelLock,
   PROJECT_VERSION,
 } from "../model/project-doc.js";
 
@@ -231,6 +232,59 @@ test("the signature covers every desktop's design, not just the active one", () 
     projectSignature(meta),
     projectSignature(addDesktop(meta, doc()).meta),
   );
+});
+
+// ── The desk padlock ────────────────────────────────────────────────────────
+
+test("the padlock is open unless the file says, exactly, that it is shut", () => {
+  assert.equal(project("A").wheelLocked, false, "absent reads as open");
+  const raw = { tabs: [{ id: "t1", name: "A", doc: doc() }] };
+  assert.equal(
+    normalizeProject({ ...raw, wheelLocked: true }).wheelLocked,
+    true,
+  );
+  for (const junk of ["yes", 1, "true", null, {}]) {
+    assert.equal(
+      normalizeProject({ ...raw, wheelLocked: junk }).wheelLocked,
+      false,
+    );
+  }
+});
+
+test("the file holds a SHUT padlock and says nothing about an open one", () => {
+  const meta = project("A");
+  assert.equal(
+    "wheelLocked" in projectForFile(meta),
+    false,
+    "a project that never shut it writes the bytes it always did",
+  );
+  const shut = setProjectWheelLock(meta, true);
+  assert.equal(projectForFile(shut).wheelLocked, true);
+  assert.equal(
+    "wheelLocked" in projectForFile(setProjectWheelLock(shut, false)),
+    false,
+  );
+});
+
+test("shutting the padlock is a change to the project", () => {
+  const meta = project("A", "B");
+  const shut = setProjectWheelLock(meta, true);
+  assert.notEqual(projectSignature(meta), projectSignature(shut));
+  assert.equal(
+    projectSignature(meta),
+    projectSignature(setProjectWheelLock(shut, false)),
+    "and opening it again is back where it started",
+  );
+});
+
+test("setting the padlock to what it already is changes nothing", () => {
+  const meta = project("A");
+  assert.equal(setProjectWheelLock(meta, false), null);
+  assert.equal(
+    setProjectWheelLock(setProjectWheelLock(meta, true), true),
+    null,
+  );
+  assert.equal(meta.wheelLocked, false, "a new meta, never a mutation");
 });
 
 test("setDesktopDoc on an unknown desktop changes nothing", () => {

@@ -21,7 +21,7 @@
  *
  *     <name>.chiphippo
  *     {
- *       version, name, description?, activeTab, nextIndex,
+ *       version, name, description?, wheelLocked?, activeTab, nextIndex,
  *       tabs:   [ { id, name, description?, doc } ],   // doc = a desk document
  *       images: { <rom-guid>: <base64> }               // programmed ROMs only
  *     }
@@ -293,6 +293,10 @@ class ProjectStore {
       version: PROJECT_VERSION,
       name: clean.name,
       ...(clean.description ? { description: clean.description } : {}),
+      // The desk padlock, written only while it is SHUT — so a project that
+      // never touched it keeps the bytes it always had, and an older build
+      // reading this simply drops the key and opens with the wheel live.
+      ...(clean.wheelLocked ? { wheelLocked: true } : {}),
       activeTab: clean.activeTab,
       nextIndex: clean.nextIndex,
       tabs: clean.tabs.map((tab) => ({
@@ -390,6 +394,7 @@ class ProjectStore {
       version: PROJECT_VERSION,
       name: text(raw.name).slice(0, MAX_NAME),
       description: text(raw.description),
+      wheelLocked: raw.wheelLocked === true,
       activeTab: tabs.some((t) => t.id === raw.activeTab)
         ? raw.activeTab
         : tabs[0].id,

@@ -68,9 +68,10 @@ export class DeskLock {
     this.#button.className = "desk-lock";
     this.#button.type = "button";
     this.#button.addEventListener("click", () => this.toggle());
-    // OPEN to begin with, every session: a lock that remembered itself would
-    // greet a new session with a desk that ignores the wheel and no memory of
-    // having been told to.
+    // OPEN to begin with. Remembering is not the padlock's job: the state is
+    // saved in the PROJECT file, and app.js mirrors a loaded project's state in
+    // through `setLocked`. The shut shackle in the corner is what shows a desk
+    // that ignores the wheel, and why.
     this.#render();
     container.append(this.#button);
   }
