@@ -203,7 +203,11 @@
       "wireLayout": "Tracé du fil",
       "wireLayoutDirect": "Direct",
       "wireLayoutRouted": "Guidé",
-      "wireLayoutHint": "Comment un nouveau fil est tracé : Direct pend d'un trou à l'autre ; Guidé va tout droit et peut être plié autour de la platine en y glissant des points. Les fils déjà posés gardent leur tracé — modifie-en un depuis sa propre fenêtre de propriétés."
+      "wireLayoutHint": "Comment un nouveau fil est tracé : Direct pend d'un trou à l'autre ; Guidé va tout droit et peut être plié autour de la platine en y glissant des points. Les fils déjà posés gardent leur tracé — modifie-en un depuis sa propre fenêtre de propriétés.",
+      "trayAutoClose": "Fermer automatiquement les dossiers du tiroir",
+      "trayAutoCloseOn": "Activé",
+      "trayAutoCloseOff": "Désactivé",
+      "trayAutoCloseHint": "Lorsque cette option est activée, ouvrir un dossier du tiroir de composants ferme tous les autres : seul celui sur lequel vous travaillez reste ouvert, avec le dossier qui le contient. Cliquer sur une icône de la barre du tiroir fermé fait de même."
     },
     "datasheets": {
       "folder": "Dossier des fiches techniques",

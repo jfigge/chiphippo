@@ -175,6 +175,21 @@ function allSections() {
   ]);
 }
 
+/**
+ * The top-level folder a catalog group is shelved under — CHIPS or COMPONENTS
+ * — or null for anything that is itself top-level (the folders, BOARDS,
+ * ANNOTATIONS, SIGNALS, and Memory, which is pulled OUT of CHIPS). The same
+ * bucketing `#render` does, stated for one name.
+ * @param {string} name a section's identity
+ * @returns {string|null}
+ */
+function folderOf(name) {
+  if (name === MEMORY_GROUP) return null;
+  const def = PALETTE_DEFS.find((d) => d.group === name);
+  if (!def) return null;
+  return def.kind === "chip" ? CHIPS_FOLDER : COMPONENTS_FOLDER;
+}
+
 export class PalettePanel {
   #el;
   #list;
@@ -195,6 +210,7 @@ export class PalettePanel {
   #dragStartW = 0; // tray width at drag start
   #endDrag = null; // the pointer gesture's teardown
   #filter = "";
+  #autoClose = false; // Settings ▸ Appearance ▸ Auto-close tray folders
   // Every section starts shut, every launch. What the user opens lasts for
   // the session only — deliberately NOT persisted, so the panel always opens
   // in the same known state.
@@ -330,20 +346,51 @@ export class PalettePanel {
   }
 
   /**
+   * Settings ▸ Appearance ▸ Auto-close tray folders (`paletteAutoClose`). On,
+   * opening a section closes every section that is not on the way to it (see
+   * `#openOnly`), so the tray only ever shows the shelf being worked in.
+   * Switching it on closes nothing by itself: which of several open sections
+   * is "the" one is only known when the next one is opened.
+   * @param {boolean} on
+   */
+  setAutoClose(on) {
+    this.#autoClose = on === true;
+  }
+
+  /**
+   * Open `name` and shut EVERYTHING else — every folder and every group,
+   * nested ones included — bar the folder it is shelved under, which is what
+   * is showing it. The auto-close rule, shared by a header click and a rail
+   * icon.
+   * @param {string} name a section's identity
+   */
+  #openOnly(name) {
+    this.#collapsed = allSections();
+    this.#collapsed.delete(name);
+    const folder = folderOf(name);
+    if (folder) this.#collapsed.delete(folder);
+  }
+
+  /**
    * A rail icon asked for one section: open the tray on it ALONE. Every other
    * top-level entry is shut, so what comes into view is the shelf that was
    * asked for rather than wherever it falls in a long list — while the groups
-   * INSIDE it keep whatever this session left them at. A live filter goes: it
-   * hides BOARDS / ANNOTATIONS / SIGNALS outright and forces every group open,
-   * so the tray would show anything but the one section asked for.
+   * INSIDE it keep whatever this session left them at, unless auto-close is on,
+   * which shuts those too (`#openOnly`). A live filter goes: it hides BOARDS /
+   * ANNOTATIONS / SIGNALS outright and forces every group open, so the tray
+   * would show anything but the one section asked for.
    *
    * Focus follows to that section's header: the icon that had it has just
    * been hidden, and a keyboard user should land where they asked to go.
    * @param {string} id the section's identity (a `RAIL_SECTIONS` id)
    */
   #openSection(id) {
-    for (const section of RAIL_SECTIONS) this.#collapsed.add(section.id);
-    this.#collapsed.delete(id);
+    if (this.#autoClose) {
+      this.#openOnly(id);
+    } else {
+      for (const section of RAIL_SECTIONS) this.#collapsed.add(section.id);
+      this.#collapsed.delete(id);
+    }
     this.#filter = "";
     this.#filterInput.value = "";
     this.#render();
@@ -713,9 +760,12 @@ export class PalettePanel {
     this.#render();
   }
 
+  /** A header was clicked. Closing is always just that; OPENING, with
+      auto-close on, also shuts every section not on the way to this one. */
   #toggleGroup(group) {
-    if (this.#collapsed.has(group)) this.#collapsed.delete(group);
-    else this.#collapsed.add(group);
+    if (!this.#collapsed.has(group)) this.#collapsed.add(group);
+    else if (this.#autoClose) this.#openOnly(group);
+    else this.#collapsed.delete(group);
     this.#render();
   }
 }

@@ -203,7 +203,11 @@
       "wireLayout": "Tracciato del filo",
       "wireLayoutDirect": "Diretto",
       "wireLayoutRouted": "Guidato",
-      "wireLayoutHint": "Come viene disegnato un filo nuovo: Diretto pende da foro a foro; Guidato corre dritto e può essere piegato attorno alla breadboard trascinandovi dei punti. I fili già posati mantengono il loro tracciato — cambialo dalla finestra delle proprietà del filo stesso."
+      "wireLayoutHint": "Come viene disegnato un filo nuovo: Diretto pende da foro a foro; Guidato corre dritto e può essere piegato attorno alla breadboard trascinandovi dei punti. I fili già posati mantengono il loro tracciato — cambialo dalla finestra delle proprietà del filo stesso.",
+      "trayAutoClose": "Chiudi automaticamente le cartelle del cassetto",
+      "trayAutoCloseOn": "Sì",
+      "trayAutoCloseOff": "No",
+      "trayAutoCloseHint": "Se attivo, aprire una cartella nel cassetto dei componenti chiude tutte le altre, così resta aperta solo quella su cui stai lavorando, insieme alla cartella che la contiene. Fare clic su un'icona nella barra del cassetto chiuso ha lo stesso effetto."
     },
     "datasheets": {
       "folder": "Cartella delle schede tecniche",

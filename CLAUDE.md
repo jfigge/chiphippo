@@ -1825,6 +1825,21 @@ is no General), **Data Sheets**, **AI**, **About**.
   **`defaultWireLayout`** (Direct / Routed, default `"direct"`) — both **not live-apply**,
   read only at placement time (`applySettings` just keeps
   `DeskController.setDefaultWireLayout` current).
+- **`paletteAutoClose`** ("Auto-close tray folders", On / Off, default Off — Appearance's
+  last row). On, opening a parts-tray section shuts every section NOT ON THE WAY TO IT:
+  `PalettePanel.#openOnly` collapses everything bar the section and the folder it is
+  shelved under (`folderOf`, the same bucketing `#render` does — Memory is top-level), so
+  a nested group opened elsewhere is shut too, and a folder reopened later shows tidy. A
+  header click and a rail icon go through the same rule (off, the rail still shuts only the
+  other TOP-LEVEL entries). Closing is only ever closing, and switching it on closes
+  nothing — which of several open sections is "the" one is only known at the next opening.
+  `applySettings` keeps `palette.setAutoClose` current.
+- **The card's height is Appearance's.** `.settings-popup` is `max(520px, 34 lines)`: the
+  Appearance rows grow additively with the type while the lines grow 34 px a step, so the
+  px floor binds up to 14px. 520 was MEASURED in the running app across every shipped
+  language and size so the tab never scrolls (tightest: Italian at 13px, 29px spare) — a
+  new Appearance row means measuring again, with the panel NOT scrolling (a scrollbar
+  narrows it and wraps more labels, overstating the need).
 - **`fontSize` — ONE BASE, AND EVERY OTHER SIZE DERIVED FROM IT**
   (`web/scripts/font-scale.js` + the type scale in `theme.css`). Six steps
   `11 · 12 · 13 · 14 · 16 · 18`, default 13, a segmented picker under Language, plus

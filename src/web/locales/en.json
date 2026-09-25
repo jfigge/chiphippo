@@ -203,7 +203,11 @@
       "wireLayout": "Wire layout",
       "wireLayoutDirect": "Direct",
       "wireLayoutRouted": "Routed",
-      "wireLayoutHint": "How a new wire is drawn: Direct sags from hole to hole; Routed runs straight, and can be bent around the board by dragging points into it. Wires already on the desk keep the layout they have — change one through its own Properties dialog."
+      "wireLayoutHint": "How a new wire is drawn: Direct sags from hole to hole; Routed runs straight, and can be bent around the board by dragging points into it. Wires already on the desk keep the layout they have — change one through its own Properties dialog.",
+      "trayAutoClose": "Auto-close tray folders",
+      "trayAutoCloseOn": "On",
+      "trayAutoCloseOff": "Off",
+      "trayAutoCloseHint": "When this is on, opening a folder in the parts tray closes every other folder, so only the one you're working in stays open — along with the folder it sits inside. Clicking an icon on the shut tray's strip does the same."
     },
     "datasheets": {
       "folder": "Datasheet folder",

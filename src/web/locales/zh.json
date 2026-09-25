@@ -203,7 +203,11 @@
       "wireLayout": "导线走线",
       "wireLayoutDirect": "直连",
       "wireLayoutRouted": "布线",
-      "wireLayoutHint": "新导线的画法：直连会从一个插孔垂到另一个插孔；布线则走直线，并可通过拖入控制点绕开面包板。已经放好的导线保持原有走线 — 要修改就用它自己的属性对话框。"
+      "wireLayoutHint": "新导线的画法：直连会从一个插孔垂到另一个插孔；布线则走直线，并可通过拖入控制点绕开面包板。已经放好的导线保持原有走线 — 要修改就用它自己的属性对话框。",
+      "trayAutoClose": "自动折叠元件库文件夹",
+      "trayAutoCloseOn": "开",
+      "trayAutoCloseOff": "关",
+      "trayAutoCloseHint": "开启后，在元件库中展开一个文件夹时会折叠其他所有文件夹，只保留正在使用的文件夹及其所在的上级文件夹。点击收起的元件库侧栏中的图标时也是如此。"
     },
     "datasheets": {
       "folder": "数据手册文件夹",

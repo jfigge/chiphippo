@@ -2819,8 +2819,8 @@ textarea.annotation-editor {
 }
 
 /* ── Settings dialog (styled after Rest Hippo: master-detail card) ────────── */
-/* The card is sized in LINES, not pixels — 43 wide by 34 tall, which is exactly
-   560×440 at the shipped 13px. A fixed card would keep its width as the type
+/* The card is sized in LINES, not pixels — 43 wide by 34 tall, which is 560
+   wide at the shipped 13px. A fixed card would keep its width as the type
    grew, squeezing every label column until a label broke over three lines beside
    its own control; and this is the one dialog a user resizing the app is
    certainly looking at. Proportional rather than the additive law the CONTROLS
@@ -2830,13 +2830,22 @@ textarea.annotation-editor {
    nav rail and the controls' own padding do not, so a card that shrank in
    proportion at 11px squeezed the label column harder than 13px ever did — the
    same reason the type ramp itself carries a floor. `max-*` still clamps it to
-   the window. */
+   the window.
+   The HEIGHT floor is what the tallest tab needs: Appearance, whose seven rows
+   must all show without the panel scrolling. Its rows grow ADDITIVELY with the
+   type (a control is one line plus padding) while 34 lines grows by 34 px a
+   step, so the floor is what binds up to 14px and the lines take over above.
+   Measured in the running app, every shipped language at every size: up to
+   14px the tallest needs 491px (Italian at 13px, whose longer labels wrap),
+   and at 16 and 18 the 34 lines clear what is needed by 40px or more. A new
+   Appearance row means measuring again — with the panel NOT scrolling, since
+   a scrollbar narrows it and wraps more labels, overstating the need. */
 .settings-popup {
   display: flex;
   flex-direction: column;
   width: max(560px, calc(var(--font-size) * 43));
   max-width: 90vw;
-  height: max(440px, calc(var(--font-size) * 34));
+  height: max(520px, calc(var(--font-size) * 34));
   max-height: 85vh;
   overflow: hidden;
   padding: 0;

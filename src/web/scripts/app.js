@@ -2088,6 +2088,9 @@ async function init() {
     // The layout a NEW wire gets. Like the default LED colour it is read at
     // placement time, so this only has to keep the controller's copy current.
     controller?.setDefaultWireLayout(s.defaultWireLayout);
+    // Whether opening a tray section closes the rest. Acts on the NEXT one
+    // opened, so keeping the panel's copy current is the whole application.
+    palette.setAutoClose(s.paletteAutoClose === true);
     // The base of the type scale. This window applies it itself — main fans the
     // same value out to the three auxiliary windows, which have no settings UI
     // and only ever follow.

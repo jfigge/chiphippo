@@ -203,7 +203,11 @@
       "wireLayout": "Drahtverlauf",
       "wireLayoutDirect": "Direkt",
       "wireLayoutRouted": "Geführt",
-      "wireLayoutHint": "Wie ein neuer Draht gezeichnet wird: Direkt hängt von Kontakt zu Kontakt durch; Geführt läuft gerade und kann durch hineingezogene Punkte um das Steckbrett gebogen werden. Drähte, die bereits liegen, behalten ihren Verlauf — ändere einen über seinen eigenen Eigenschaftsdialog."
+      "wireLayoutHint": "Wie ein neuer Draht gezeichnet wird: Direkt hängt von Kontakt zu Kontakt durch; Geführt läuft gerade und kann durch hineingezogene Punkte um das Steckbrett gebogen werden. Drähte, die bereits liegen, behalten ihren Verlauf — ändere einen über seinen eigenen Eigenschaftsdialog.",
+      "trayAutoClose": "Ablageordner automatisch schließen",
+      "trayAutoCloseOn": "Ein",
+      "trayAutoCloseOff": "Aus",
+      "trayAutoCloseHint": "Ist dies aktiviert, schließt das Öffnen eines Ordners in der Bauteilablage alle anderen Ordner, sodass nur der Ordner geöffnet bleibt, in dem Sie gerade arbeiten – zusammen mit dem Ordner, in dem er liegt. Ein Klick auf ein Symbol in der Leiste der geschlossenen Ablage wirkt genauso."
     },
     "datasheets": {
       "folder": "Datenblattordner",

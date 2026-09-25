@@ -732,6 +732,96 @@ test("a rail icon opens the tray on that section alone", () => {
   }
 });
 
+test("auto-close: opening a section shuts every section not on the way to it", () => {
+  resetDom();
+  const host = document.createElement("div");
+  document.body.append(host);
+  const panel = new PalettePanel(host, {});
+  const header = (id) =>
+    host.querySelector(`.palette-list [data-section="${id}"]`);
+  const isOpen = (id) => header(id).getAttribute("aria-expanded") === "true";
+  const open = () =>
+    [...host.querySelectorAll(".palette-list [data-section]")]
+      .filter((h) => h.getAttribute("aria-expanded") === "true")
+      .map((h) => h.dataset.section);
+  const chipGroups = () =>
+    [...host.querySelectorAll(".palette-folder-groups")][0].querySelectorAll(
+      ".palette-group",
+    );
+
+  // Off (the default): opening leaves everything else as it was.
+  header("BOARDS").click();
+  header("CHIPS").click();
+  assert.deepEqual(open(), ["BOARDS", "CHIPS"]);
+
+  panel.setAutoClose(true);
+  // Switching it on closes nothing by itself…
+  assert.deepEqual(open(), ["BOARDS", "CHIPS"]);
+
+  // …the NEXT opening does. A group inside CHIPS keeps CHIPS open (it is what
+  // shows the group) and shuts BOARDS.
+  const [g1, g2] = [...chipGroups()].map((g) => g.dataset.section);
+  header(g1).click();
+  assert.deepEqual(open(), ["CHIPS", g1]);
+  // A sibling group takes over from it.
+  header(g2).click();
+  assert.deepEqual(open(), ["CHIPS", g2]);
+
+  // Another top-level section shuts CHIPS — and the group inside it, so
+  // reopening CHIPS later shows it tidy rather than as it was left.
+  header("COMPONENTS").click();
+  assert.deepEqual(open(), ["COMPONENTS"]);
+  header("CHIPS").click();
+  assert.deepEqual(open(), ["CHIPS"]);
+
+  // Memory is top-level (pulled OUT of CHIPS), so it shuts CHIPS too.
+  header("Memory").click();
+  assert.deepEqual(open(), ["Memory"]);
+
+  // Closing is only ever closing.
+  header("Memory").click();
+  assert.deepEqual(open(), []);
+
+  // Off again: back to leaving the rest alone.
+  panel.setAutoClose(false);
+  header("BOARDS").click();
+  header("SIGNALS").click();
+  assert.deepEqual(open(), ["BOARDS", "SIGNALS"]);
+  assert.equal(isOpen("CHIPS"), false);
+});
+
+test("auto-close: a rail icon shuts the groups inside the section too", () => {
+  resetDom();
+  const host = document.createElement("div");
+  document.body.append(host);
+  const panel = new PalettePanel(host, {
+    onToggle: () => panel.setVisible(!panel.visible),
+  });
+  panel.setVisible(true);
+  const header = (id) =>
+    host.querySelector(`.palette-list [data-section="${id}"]`);
+  const open = () =>
+    [...host.querySelectorAll(".palette-list [data-section]")]
+      .filter((h) => h.getAttribute("aria-expanded") === "true")
+      .map((h) => h.dataset.section);
+
+  header("CHIPS").click();
+  const g1 = host.querySelector(".palette-folder-groups .palette-group").dataset
+    .section;
+  header(g1).click();
+  panel.setVisible(false);
+
+  // Off, the rail keeps a folder's groups as the session left them…
+  host.querySelector('.palette-rail-btn[data-section="CHIPS"]').click();
+  assert.deepEqual(open(), ["CHIPS", g1]);
+
+  // …on, it opens the section alone, exactly as a header click would.
+  panel.setAutoClose(true);
+  panel.setVisible(false);
+  host.querySelector('.palette-rail-btn[data-section="CHIPS"]').click();
+  assert.deepEqual(open(), ["CHIPS"]);
+});
+
 test("every section-header class the palette renders has a CSS rule behind it", () => {
   // A HEADER CLASS WITH NO RULE STILL RENDERS — as a default <button>, which
   // is a grey filled box with a border. That is how the SIGNALS folder shipped

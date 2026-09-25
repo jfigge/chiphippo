@@ -60,6 +60,11 @@ The **Appearance** tab is the one the dialog opens on:
   [Wiring](wiring.md#wire-layout-direct-or-routed)). Like the LED colour it's
   read when you lay a wire, so wires already on the desk keep the layout they
   have — change one from its own **Properties…** dialog.
+- **Auto-close tray folders** — **On** or **Off** (the default). When it's on,
+  opening a folder in the parts tray closes every other one, so only the
+  section you're working in stays open, along with the folder it sits inside.
+  Clicking an icon on the shut tray's strip does the same. It acts on the next
+  folder you open, so switching it on doesn't close anything by itself.
 
 Everything but the LED colour and the wire layout takes effect immediately —
 there's no separate Apply or OK step. (Changing the language is the one

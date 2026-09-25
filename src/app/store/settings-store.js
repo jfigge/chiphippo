@@ -50,6 +50,13 @@ const DEFAULTS = Object.freeze({
   // much of the desk a permanent left column may take, not a transient one.
   paletteWidth: 232,
 
+  // Whether opening a section of that tray closes every section that is not
+  // on the way to it (Settings ▸ Appearance ▸ "Auto-close tray folders"), so
+  // only the shelf being worked in stays open. Off by default: the tray has
+  // always left open whatever the user opened. Applied live, and it closes
+  // nothing by itself — it acts on the NEXT section opened.
+  paletteAutoClose: false,
+
   // ── Pin-assignments window (Feature 100) ──────────────────────────────────
   // Whether a chip's pin-out window floats above the main app. A de-facto
   // global preference: the window's right-click menu toggles it, every open

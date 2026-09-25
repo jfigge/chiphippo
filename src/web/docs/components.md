@@ -28,6 +28,9 @@ The palette opens with every section collapsed, grouped by function:
 
 With the tray shut, the strip it leaves on the desk's edge carries one icon per
 section in the same order — click one to open the tray on that section alone.
+To keep the tray down to one section all the time, turn on **Auto-close tray
+folders** in [Settings](settings.md#appearance): opening any folder then
+closes the rest.
 
 The tray's right edge is a drag handle: pull it out to give long part names
 more room, and the width you leave it at is remembered.

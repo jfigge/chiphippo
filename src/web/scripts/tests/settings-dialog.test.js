@@ -165,6 +165,45 @@ test("SettingsDialog: the wire-layout picker seeds, emits, and falls back", () =
   PopupManager.close();
 });
 
+test("SettingsDialog: Auto-close tray folders seeds, emits a boolean, and defaults Off", () => {
+  resetDom();
+  SettingsDialog.open({ paletteAutoClose: true });
+  const label = "Auto-close tray folders";
+  const panel = document.querySelector('.settings-panel[data-panel="appearance"]'); // prettier-ignore
+  // Appearance's last row, with its note behind an (i) like its neighbours.
+  const row = panel.lastElementChild;
+  assert.equal(row.querySelector(".settings-label").textContent, label);
+  assert.ok(row.querySelector(".settings-note"), "the row carries a note");
+
+  const segments = [
+    ...row.querySelectorAll(
+      `.segmented-picker[aria-label="${label}"] .segmented-option`,
+    ),
+  ];
+  assert.deepEqual(
+    segments.map((b) => b.textContent),
+    ["On", "Off"],
+  );
+  assert.equal(activeSegment(label).textContent, "On");
+
+  const patches = [];
+  window.addEventListener("chiphippo:settings-changed", (e) =>
+    patches.push(e.detail),
+  );
+  segments[1].click();
+  assert.deepEqual(patches, [{ paletteAutoClose: false }]);
+  assert.equal(activeSegment(label).textContent, "Off");
+  PopupManager.close();
+
+  // Absent — or anything but `true` — is Off: how the tray always behaved.
+  for (const seed of [{}, { paletteAutoClose: "yes" }]) {
+    resetDom();
+    SettingsDialog.open(seed);
+    assert.equal(activeSegment(label).textContent, "Off");
+    PopupManager.close();
+  }
+});
+
 test("SettingsDialog: the font-size picker seeds, emits a NUMBER, and repairs", () => {
   resetDom();
   SettingsDialog.open({ fontSize: 16 });
@@ -325,6 +364,7 @@ test("SettingsDialog: every (i) is labelled by the row it documents", () => {
     "More about Language",
     "More about Editor font size",
     "More about Wire layout",
+    "More about Auto-close tray folders",
   ]);
   assert.ok(
     [...panel.querySelectorAll(".info-btn")].every(

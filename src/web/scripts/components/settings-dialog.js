@@ -80,6 +80,14 @@ const wireLayoutOptions = () => [
   { value: "routed", label: t("settings.appearance.wireLayoutRouted") },
 ];
 
+/** Appearance ▸ Auto-close tray folders — whether opening a parts-tray
+    section closes every one not on the way to it (PalettePanel.setAutoClose).
+    On leads, as it does on About's own On/Off track. */
+const trayAutoCloseOptions = () => [
+  { value: true, label: t("settings.appearance.trayAutoCloseOn") },
+  { value: false, label: t("settings.appearance.trayAutoCloseOff") },
+];
+
 /** Unique ids for the notes below, so each (i) can `aria-controls` its own. */
 let noteSeq = 0;
 
@@ -707,6 +715,15 @@ export class SettingsDialog {
         SettingsDialog.#emit({ defaultWireLayout }),
     });
 
+    // Absent (or anything but `true`) is Off — the tray's behaviour before the
+    // setting existed.
+    const trayAutoClosePicker = buildSegmented({
+      options: trayAutoCloseOptions(),
+      value: settings.paletteAutoClose === true,
+      ariaLabel: t("settings.appearance.trayAutoClose"),
+      onPick: (paletteAutoClose) => SettingsDialog.#emit({ paletteAutoClose }),
+    });
+
     const ledColorSwatches = buildColorSwatches({
       colors: LED_COLOR_OPTIONS,
       value: settings.defaultLedColor || "red",
@@ -867,6 +884,11 @@ export class SettingsDialog {
             label: t("settings.appearance.wireLayout"),
             control: wireLayoutPicker,
             notes: [t("settings.appearance.wireLayoutHint")],
+          }),
+          rowWithNote({
+            label: t("settings.appearance.trayAutoClose"),
+            control: trayAutoClosePicker,
+            notes: [t("settings.appearance.trayAutoCloseHint")],
           }),
         ],
       ),

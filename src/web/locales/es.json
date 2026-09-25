@@ -203,7 +203,11 @@
       "wireLayout": "Trazado del cable",
       "wireLayoutDirect": "Directo",
       "wireLayoutRouted": "Guiado",
-      "wireLayoutHint": "Cómo se dibuja un cable nuevo: Directo cuelga de orificio a orificio; Guiado va recto y puede doblarse alrededor de la placa arrastrando puntos hacia él. Los cables que ya están en la mesa conservan su trazado — cambia uno desde su propio diálogo de propiedades."
+      "wireLayoutHint": "Cómo se dibuja un cable nuevo: Directo cuelga de orificio a orificio; Guiado va recto y puede doblarse alrededor de la placa arrastrando puntos hacia él. Los cables que ya están en la mesa conservan su trazado — cambia uno desde su propio diálogo de propiedades.",
+      "trayAutoClose": "Cerrar carpetas de la bandeja automáticamente",
+      "trayAutoCloseOn": "Sí",
+      "trayAutoCloseOff": "No",
+      "trayAutoCloseHint": "Si está activado, al abrir una carpeta de la bandeja de componentes se cierran todas las demás, de modo que solo queda abierta aquella con la que trabaja, junto con la carpeta que la contiene. Hacer clic en un icono de la barra de la bandeja cerrada funciona igual."
     },
     "datasheets": {
       "folder": "Carpeta de hojas de datos",
