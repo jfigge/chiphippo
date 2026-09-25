@@ -26,11 +26,15 @@
 // tenant further on.
 //
 // Each row is a flag CHIP (only while the signal is unplaced) beside a BUTTON.
-// The button carries the Name; the chip is what you drag onto a board. Colour
-// is one custom property per row, tying flag to button to analyzer lane.
+// The button carries the Name, and its dot carries the digit KEY that presses
+// it — the same key printed inside the flag on the desk, which is what ties
+// the two together now that colours repeat. The chip is what you drag onto a
+// board. Colour is one custom property per row, shared by flag, button and
+// analyzer lane. Selecting a flag on the desk lights its button
+// (`setSelected`, fed by the SignalLayer through the controller).
 //
 // Two rendering paths, deliberately different:
-//   `chiphippo:doc-changed`  → full rebuild (there are at most eight rows).
+//   `chiphippo:doc-changed`  → full rebuild (there are at most ten rows).
 //   `chiphippo:sim-state`    → CLASSES ONLY, never a rebuild. That event fires
 //                              on every tick.
 
@@ -42,7 +46,7 @@ import {
   flagPolygon,
   railOrder,
   restLevel,
-  signalDigit,
+  signalKey,
 } from "../model/signals.js";
 
 /** The chip's flag glyph: the SAME polygon the desk draws, at chip scale. */
@@ -70,6 +74,7 @@ export class SignalRail {
   #onFlagPointerDown;
   #onContextMenu;
   #running = false;
+  #selected = null; // the signal whose flag is selected on the desk
 
   /**
    * @param {HTMLElement} viewport the `.desk-viewport` element
@@ -111,8 +116,19 @@ export class SignalRail {
     this.render();
   }
 
+  /**
+   * Light the button of the signal whose flag is selected on the desk (null
+   * clears it). A class toggle, and remembered, so a rebuild keeps it.
+   */
+  setSelected(id) {
+    this.#selected = id ?? null;
+    for (const [sigId, { btn }] of this.#rows) {
+      btn.classList.toggle("signal-btn--selected", sigId === this.#selected);
+    }
+  }
+
   #buildRow(sig) {
-    const digit = signalDigit(this.#doc.signals, sig.id);
+    const key = signalKey(this.#doc.signals, sig.id);
     const name = sig.name || sig.id;
     const chip = el(
       "div",
@@ -133,7 +149,7 @@ export class SignalRail {
         // no description the digit is the useful thing left to say.
         title:
           sig.description ||
-          (digit ? t("desk.signal.digitHint", { digit }) : name),
+          (key ? t("desk.signal.digitHint", { digit: key }) : name),
         "aria-label": t("desk.signal.press", { name }),
         "aria-pressed": "false",
         oncontextmenu: (e) => {
@@ -143,12 +159,18 @@ export class SignalRail {
         },
       },
       [
-        el("span", { class: "signal-btn-dot", "aria-hidden": "true" }),
+        // The key, on the colour dot — the same glyph the flag prints.
+        el("span", {
+          class: "signal-btn-dot",
+          "aria-hidden": "true",
+          text: key ?? "",
+        }),
         el("span", { class: "signal-btn-label", text: name }),
       ],
     );
     this.#bindPress(sig.id, btn);
     if (sig.type === "toggle") btn.classList.add("signal-btn--toggle");
+    if (sig.id === this.#selected) btn.classList.add("signal-btn--selected");
 
     const row = el(
       "div",

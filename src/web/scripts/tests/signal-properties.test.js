@@ -47,6 +47,7 @@ function stubCatalog() {
   const c = structuredClone(en);
   c.desk.signalPropertiesTitle = "<TITLE:{signal}>";
   c.desk.menu.removeSignal = "<REMOVE-SIGNAL>";
+  c.desk.menu.deleteSignal = "<DELETE-SIGNAL>";
   c.desk.menu.properties = "<PROPERTIES>";
   c.probe.addToAnalyzer = "<ADD-TO-ANALYZER>";
   c.properties.name = "<NAME>";
@@ -125,7 +126,7 @@ test("every word on the signal Properties card comes from the catalog", (t) => {
   ]);
 });
 
-test("the colour picker offers only colours it can actually grant", (t) => {
+test("the colour picker offers every signal colour, a shared one too", (t) => {
   const { doc, controller } = setup(t);
   const a = doc.addSignal({});
   const b = doc.addSignal({});
@@ -133,9 +134,8 @@ test("the colour picker offers only colours it can actually grant", (t) => {
   const offered = [...document.querySelectorAll(".color-swatch")].map(
     (n) => n.dataset.color,
   );
-  assert.ok(offered.includes(a.color), "its own colour stays on offer");
-  assert.ok(!offered.includes(b.color), "the other signal's is withheld");
-  assert.equal(offered.length, SIGNAL_COLORS.length - 1);
+  assert.deepEqual(offered, [...SIGNAL_COLORS]);
+  assert.ok(offered.includes(b.color), "another signal's colour is on offer");
   assert.ok(!offered.includes("black"), "black is never on the card");
 });
 
@@ -156,7 +156,7 @@ test("Type and Default write through, riding the one doc-changed seam", (t) => {
   assert.ok(changes >= 2, "each edit announced itself");
 });
 
-test("a flag's context menu is Properties… / Add to analyzer / Remove Signal", (t) => {
+test("a flag's context menu is Properties… / Add to analyzer / Remove / Delete Signal", (t) => {
   // The controller is what mounts the signal layer — the flag is reached
   // through the DOM it built, not through the controller's own API.
   const { doc } = setup(t);
@@ -174,7 +174,7 @@ test("a flag's context menu is Properties… / Add to analyzer / Remove Signal",
   );
   assert.deepEqual(
     [...document.querySelectorAll(".popup-menu-item")].map((b) => b.textContent.trim()), // prettier-ignore
-    ["<PROPERTIES>", "<ADD-TO-ANALYZER>", "<REMOVE-SIGNAL>"],
+    ["<PROPERTIES>", "<ADD-TO-ANALYZER>", "<REMOVE-SIGNAL>", "<DELETE-SIGNAL>"],
   );
 });
 
@@ -187,7 +187,7 @@ test("Add to analyzer is disabled for an UNPLACED signal — it names no net", (
   assert.ok(cardText().includes("<F:TYPE>"), "the card still opens");
 });
 
-test("the RAIL opens the same menu — the only way to remove an unplaced signal", (t) => {
+test("the RAIL opens the same menu — the only way to delete an unplaced signal", (t) => {
   // An unplaced signal has no flag on the desk, so it cannot be right-clicked
   // there and cannot be selected for Delete. Without the rail's own menu the
   // only way to throw one away was to plant it somewhere first.
@@ -198,9 +198,55 @@ test("the RAIL opens the same menu — the only way to remove an unplaced signal
   const labels = [...document.querySelectorAll(".popup-menu-item")].map((b) =>
     b.textContent.trim(),
   );
-  assert.deepEqual(labels, ["<PROPERTIES>", "<ADD-TO-ANALYZER>", "<REMOVE-SIGNAL>"]); // prettier-ignore
-  const analyzer = [...document.querySelectorAll(".popup-menu-item")][1];
-  assert.ok(analyzer.disabled, "it names no net, so the analyzer item is off");
-  [...document.querySelectorAll(".popup-menu-item")].at(-1).click();
-  assert.equal(doc.getSignal(sig.id), null, "and Remove reaches it");
+  assert.deepEqual(labels, ["<PROPERTIES>", "<ADD-TO-ANALYZER>", "<REMOVE-SIGNAL>", "<DELETE-SIGNAL>"]); // prettier-ignore
+  const items = [...document.querySelectorAll(".popup-menu-item")];
+  assert.ok(items[1].disabled, "it names no net, so the analyzer item is off");
+  assert.ok(items[2].disabled, "and there is no flag on a board to remove");
+  items.at(-1).click();
+  assert.equal(doc.getSignal(sig.id), null, "and Delete reaches it");
+});
+
+test("Remove Signal sends the flag back to its button, position and all", (t) => {
+  resetDom();
+  t.after(() => PopupManager.close());
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const seen = [];
+  const controller = makeDesk(doc, { onSignalSelect: (id) => seen.push(id) });
+  const sig = doc.addSignal({ name: "RESET" });
+  doc.plantSignalFlag(sig.id, "bb1.a12", 270);
+  window.dispatchEvent(new window.CustomEvent("chiphippo:doc-changed"));
+  let changes = 0;
+  window.addEventListener("chiphippo:doc-changed", () => changes++);
+
+  controller.openSignalMenu(sig.id, 5, 5); // a planted flag's menu selects it
+  const remove = [...document.querySelectorAll(".popup-menu-item")][2];
+  assert.equal(remove.disabled, false, "a planted flag can be removed");
+  remove.click();
+
+  const after = doc.getSignal(sig.id);
+  assert.ok(after, "the SIGNAL survives");
+  assert.equal(after.name, "RESET");
+  assert.equal(after.flag, undefined, "anchor AND rotation are gone");
+  assert.equal(
+    document.querySelector(`[data-signal-id="${sig.id}"]`),
+    null,
+    "no flag left on the desk",
+  );
+  assert.deepEqual(seen, [sig.id, null], "and its selection went with it");
+  assert.equal(changes, 1, "one undoable edit");
+});
+
+test("selecting a flag tells the rail, through onSignalSelect", (t) => {
+  resetDom();
+  t.after(() => PopupManager.close());
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const seen = [];
+  const controller = makeDesk(doc, { onSignalSelect: (id) => seen.push(id) });
+  const sig = doc.addSignal({});
+  doc.plantSignalFlag(sig.id, "bb1.a12", 0);
+  controller.selectSignal(sig.id);
+  controller.deselect();
+  assert.deepEqual(seen, [sig.id, null]);
 });

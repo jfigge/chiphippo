@@ -281,7 +281,7 @@
     "signal": {
       "item": "Segnale",
       "hint": "un pulsante di stimolo — fai clic sulla scrivania per aggiungerne uno",
-      "full": "Tutti i {count} colori dei segnali sono in uso"
+      "full": "Questa scrivania ha già il massimo di {count} segnali"
     },
     "group": {
       "and": "AND",
@@ -865,7 +865,8 @@
       "removeBoard": "Rimuovi la breadboard",
       "editText": "Modifica il testo…",
       "remove": "Rimuovi",
-      "removeSignal": "Rimuovi segnale"
+      "removeSignal": "Rimuovi segnale",
+      "deleteSignal": "Elimina il segnale"
     },
     "remove": {
       "confirm": "Rimuovi",
@@ -884,8 +885,8 @@
       "noRoom": "Qualcosa di cui ha bisogno non è libero su questo piano di lavoro.",
       "signalsDroppedTitle": "Alcuni segnali non sono stati incollati",
       "signalsDropped": {
-        "one": "1 segnale è stato tralasciato: questa scrivania usa già tutti i colori dei segnali.",
-        "other": "{count} segnali sono stati tralasciati: questa scrivania usa già tutti i colori dei segnali."
+        "one": "1 segnale è stato tralasciato: questa scrivania ha già il numero massimo di segnali.",
+        "other": "{count} segnali sono stati tralasciati: questa scrivania ha già il numero massimo di segnali."
       }
     }
   },
@@ -1051,7 +1052,7 @@
     "simulation": {
       "run": "Esegui / arresta il circuito",
       "runKeys": "Spazio o {mod}+R",
-      "signals": "Premi il segnale 1–7 (mentre il circuito è in esecuzione)"
+      "signals": "Premi un pulsante di segnale (mentre il circuito è in esecuzione)"
     }
   },
   "properties": {

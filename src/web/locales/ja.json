@@ -281,7 +281,7 @@
     "signal": {
       "item": "信号",
       "hint": "外部信号ボタン — デスクをクリックして追加",
-      "full": "{count} 色の信号カラーはすべて使用中です"
+      "full": "このデスクにはすでに上限の {count} 個の信号があります"
     },
     "group": {
       "and": "AND",
@@ -851,7 +851,8 @@
       "removeBoard": "ボードを取り外す",
       "editText": "テキストを編集…",
       "remove": "取り外す",
-      "removeSignal": "信号を削除"
+      "removeSignal": "信号を取り外す",
+      "deleteSignal": "信号を削除"
     },
     "remove": {
       "confirm": "取り外す",
@@ -870,7 +871,7 @@
       "noRoom": "必要な場所がこのデスクで空いていません。",
       "signalsDroppedTitle": "一部の信号は貼り付けられませんでした",
       "signalsDropped": {
-        "other": "{count} 個の信号を見送りました — このデスクはすでにすべての信号カラーを使用しています。"
+        "other": "{count} 個の信号を見送りました — このデスクの信号はすでに上限に達しています。"
       }
     }
   },
@@ -1035,7 +1036,7 @@
     "simulation": {
       "run": "回路を実行／停止",
       "runKeys": "スペースまたは {mod}+R",
-      "signals": "信号 1〜7 を押す（回路の実行中）"
+      "signals": "信号ボタンを押す（回路の実行中）"
     }
   },
   "properties": {

@@ -190,12 +190,21 @@ hold one of at a time — <strong>you can assert several signals at once</strong
 <p>Add one from the parts palette&#39;s <strong>SIGNALS</strong> section: pick <em>Signal</em>, then click
 anywhere on the desk. The click position does not matter; the button always
 goes to the next free slot on the rail, with its flag waiting beside it.</p>
+<p>Each button&#39;s coloured dot shows the <strong>key</strong> that presses it — <code>1</code> for the top
+button, down to <code>9</code>, then <code>0</code> for the tenth — and the flag prints the same key
+inside its body. That key is how you tell a flag&#39;s button at a glance.
+Selecting a flag on the desk also outlines its button on the rail.</p>
 <p><strong>Drag the flag onto a board</strong> and its point snaps into the hole under the
 cursor. Press <strong>R</strong> while it is selected to turn it a quarter-turn about that
-point, so it can lie in whichever direction has room. Dragging a planted flag
-onto bare desk unplugs it, and its button goes back to holding the flag on the
-rail. A flag claims its hole exactly like a wire end or a chip pin does, so
-nothing else can use it while the flag is there.</p>
+point, so it can lie in whichever direction has room. A flag claims its hole
+exactly like a wire end or a chip pin does, so nothing else can use it while
+the flag is there.</p>
+<p>To take a flag off the board, drag it onto bare desk, or right-click it and
+choose <strong>Remove Signal</strong>. Either way the flag goes back beside its button on
+the rail, and its position and rotation are cleared, so the next drag starts
+fresh. The signal itself stays. <strong>Delete Signal</strong> on the same menu (or the
+<strong>Delete</strong> key while the flag is selected) removes the signal altogether,
+button included.</p>
 <h3 id="momentary-toggle-and-the-resting-level">Momentary, toggle, and the resting level</h3>
 <p>Right-click a flag (or a button) for <strong>Properties…</strong>:</p>
 <table>
@@ -215,7 +224,7 @@ nothing else can use it while the flag is there.</p>
 </tr>
 <tr>
 <td><strong>Color</strong></td>
-<td>The colour shared by the button&#39;s dot and its flag — one of the seven signal colours, and only those no other signal holds are offered</td>
+<td>The colour shared by the button&#39;s dot and its flag — any of the seven signal colours, even one another signal already uses</td>
 </tr>
 <tr>
 <td><strong>Type</strong></td>
@@ -235,20 +244,26 @@ to the default every time you Run, so a run always starts from a known state.</p
 over one net — or a signal fighting a chip&#39;s output pin — is reported as a
 conflict, exactly as two chip outputs on one net would be.</p>
 <h3 id="pressing-them">Pressing them</h3>
-<p>While the circuit is running, <strong>1–7 press the signal buttons</strong>, top to bottom.
-No modifier, so you can hold several down together — <code>1</code> and <code>3</code> at once is two
-signals asserted at once. (Those digits pick the wire colour and the bus width
+<p>While the circuit is running, <strong>1–9 and then 0 press the signal buttons</strong>, top
+to bottom — the key each button (and its flag) shows. No modifier, so you can
+hold several down together — <code>1</code> and <code>3</code> at once is two signals asserted at
+once. (Those digits pick the wire colour and the bus width
 while the Wire or Bus tool is armed, but Run puts both tools away, so the two
 meanings never collide.) Clicking a button with the mouse does the same thing
 for one signal at a time.</p>
-<p>Because a colour is what ties a flag to its button, there are <strong>seven signals</strong>
-per desktop — one per signal colour. That is the eight jumper colours <strong>minus
-black</strong>, which is the bench&#39;s ground colour: a black flag would read as a ground
-tie, and its button&#39;s dot would all but vanish against the dark rail. The
-palette&#39;s <em>Signal</em> row goes grey once all seven are in use.</p>
+<p>There are <strong>ten signals</strong> per desktop — one per digit key. The palette&#39;s
+<em>Signal</em> row goes grey once all ten are in use.</p>
+<p>A new signal takes the next colour in the sequence red, blue, green, yellow,
+orange, white, purple, starting with the first one no signal is using. Once all
+seven are in use the sequence starts again from red, so the eighth, ninth and
+tenth signals share a colour with the first three — their keys tell them apart.
+Deleting a signal frees its colour for the next one you add. The signal colours
+are the eight jumper colours <strong>minus black</strong>, which is the bench&#39;s ground
+colour: a black flag would read as a ground tie, and its button&#39;s dot would all
+but vanish against the dark rail.</p>
 <p>A project saved before black was withdrawn still opens; any signal that was
-black is given a free colour on load, and keeps its name, type, resting level
-and wherever its flag was planted. Nothing else on the rail is recoloured.</p>
+black is given a colour on load, and keeps its name, type, resting level and
+wherever its flag was planted. Nothing else on the rail is recoloured.</p>
 <hr>
 <p>See <a href="wiring.html">Wiring, Nets &amp; Buses</a> for how to route power-rail and clock
 wiring generally, and <a href="simulation.html">Running a Simulation</a> for how power

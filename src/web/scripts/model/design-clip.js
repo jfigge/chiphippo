@@ -170,10 +170,9 @@ export function captureDesign(doc, { boardIds = [], componentIds = [] } = {}) {
   // on the rail, not part of the design on the boards, the same argument that
   // leaves an unanchored label behind.
   //
-  // `color` is deliberately NOT captured. A colour is a PER-DESK identity — it
-  // is what maps a flag to a button and a button to a digit key — so carrying
-  // it across desktops would collide with the destination's own allocation.
-  // The paste re-issues one from whatever is free there.
+  // `color` is deliberately NOT captured. Colours are handed out per desk, in a
+  // cycle (`nextSignalColor`), so the paste re-issues one from the
+  // destination's own sequence — the next it would give any new signal.
   const signals = [];
   for (const sig of doc.signals ?? []) {
     const parsed = sig.flag ? inside(sig.flag.anchor) : null;

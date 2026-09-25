@@ -281,7 +281,7 @@
     "signal": {
       "item": "Signal",
       "hint": "eine Stimulus-Taste — auf den Tisch klicken, um eine hinzuzufügen",
-      "full": "Alle {count} Signalfarben sind belegt"
+      "full": "Dieser Tisch hat bereits die Höchstzahl von {count} Signalen"
     },
     "group": {
       "and": "AND",
@@ -865,7 +865,8 @@
       "removeBoard": "Steckbrett entfernen",
       "editText": "Text bearbeiten…",
       "remove": "Entfernen",
-      "removeSignal": "Signal entfernen"
+      "removeSignal": "Signal entfernen",
+      "deleteSignal": "Signal löschen"
     },
     "remove": {
       "confirm": "Entfernen",
@@ -884,8 +885,8 @@
       "noRoom": "Etwas, das er braucht, ist auf dieser Arbeitsfläche nicht frei.",
       "signalsDroppedTitle": "Einige Signale wurden nicht eingefügt",
       "signalsDropped": {
-        "one": "1 Signal wurde ausgelassen — dieser Tisch belegt bereits jede Signalfarbe.",
-        "other": "{count} Signale wurden ausgelassen — dieser Tisch belegt bereits jede Signalfarbe."
+        "one": "1 Signal wurde ausgelassen — dieser Tisch hat bereits die Höchstzahl an Signalen.",
+        "other": "{count} Signale wurden ausgelassen — dieser Tisch hat bereits die Höchstzahl an Signalen."
       }
     }
   },
@@ -1051,7 +1052,7 @@
     "simulation": {
       "run": "Schaltung starten / stoppen",
       "runKeys": "Leertaste oder {mod}+R",
-      "signals": "Signal 1–7 drücken (während die Schaltung läuft)"
+      "signals": "Signaltaste drücken (während die Schaltung läuft)"
     }
   },
   "properties": {

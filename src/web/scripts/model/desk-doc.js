@@ -43,7 +43,6 @@ import { WIRE_COLORS } from "./wire-colors.js";
 import {
   MAX_SIGNALS,
   SIGNAL_COLORS,
-  availableSignalColors,
   nextFlagRotation,
   nextSignalColor,
   normalizeFlagRotation,
@@ -642,23 +641,22 @@ export function normalizeDocument(raw) {
   // a flag with nowhere to go stops existing; the SIGNAL never does. A deleted
   // board, a hand-edited anchor, a hole someone else took — the flag drops and
   // the button comes back on the rail, unplaced.
-  // A colour clash is REPAIRED rather than dropped (a colour is presentation,
-  // and losing a whole stimulus source to a cosmetic collision is the wrong
-  // trade), and the repair is TWO PASSES so it moves as little as possible: a
-  // signal already holding a valid, unclaimed colour KEEPS it, and only the
-  // ones left over are reassigned. One pass in document order would have the
-  // first bad entry take `red` and shove every later signal along — and since
-  // the colour IS the identity tying a flag to its button, reopening a project
-  // would recolour half the rail to fix one signal. That is not hypothetical:
-  // BLACK was withdrawn from the signal palette, so every saved document that
-  // used it arrives needing exactly this repair.
   //
-  // Running out of colours IS the cap — there is no count test anywhere.
+  // Two signals may share a colour (colours cycle once the seven are used; the
+  // KEY is what tells them apart), so a duplicate is not a fault. A colour
+  // that is not a signal colour at all — BLACK, which was withdrawn, or junk —
+  // is REPAIRED rather than dropped (a colour is presentation, and losing a
+  // whole stimulus source to a cosmetic fault is the wrong trade), and the
+  // repair moves nothing else: every signal holding a valid colour keeps it,
+  // and each bad one takes `nextSignalColor` over everything already kept, so
+  // it lands in the gap the kept ones leave rather than shoving them along.
+  //
+  // The cap is the digit row (`MAX_SIGNALS`): past it, a signal is dropped.
   let maxSignalSeq = 0;
   const signalIds = new Set();
   const rawSignals = Array.isArray(raw.signals) ? raw.signals : [];
 
-  // Pass 1 — which entries are signals at all, capped by the palette's size.
+  // Pass 1 — which entries are signals at all, capped at one per key.
   const accepted = [];
   for (const sig of rawSignals) {
     if (!sig || typeof sig !== "object") continue;
@@ -670,37 +668,15 @@ export function normalizeDocument(raw) {
     accepted.push(sig);
   }
 
-  // Pass 2 — everyone who came with a good colour RESERVES it.
-  const reserved = new Set();
-  const keptColor = new Map();
+  // Pass 2 — the records. `colored` starts as every signal that came with a
+  // good colour, so a repair sees the WHOLE rail's colours (later signals'
+  // included) and each repaired one joins it before the next is decided.
+  const colored = accepted
+    .filter((sig) => SIGNAL_COLORS.includes(sig.color))
+    .map((sig) => ({ color: sig.color }));
   for (const sig of accepted) {
-    const c = sig.color;
-    if (
-      typeof c === "string" &&
-      SIGNAL_COLORS.includes(c) &&
-      !reserved.has(c)
-    ) {
-      reserved.add(c);
-      keptColor.set(sig, c);
-    }
-  }
-
-  // Pass 3 — the rest take the first colour nobody holds and nobody is keeping,
-  // and the records are built. TWO sets, not one: `assigned` is what has
-  // actually gone out, `reserved` is what a later signal is still entitled to.
-  // Collapsing them would let a repaired signal steal a colour its neighbour
-  // came in with, which is the very shuffle this pass exists to prevent.
-  const assigned = new Set();
-  for (const sig of accepted) {
-    const color =
-      keptColor.get(sig) ??
-      SIGNAL_COLORS.find((c) => !assigned.has(c) && !reserved.has(c));
-    if (color == null) continue; // unreachable while the cap holds
-    reserved.delete(color);
-    assigned.add(color);
-    // `taken` is empty: the colour is already decided above, and this call is
-    // here for the type/rest coercion every other path shares.
-    const fields = normalizeSignalFields({ ...sig, color }, new Set());
+    const fields = normalizeSignalFields(sig, colored);
+    if (fields.color !== sig.color) colored.push({ color: fields.color });
     const record = { id: sig.id, ...fields };
     applyMeta(record, sig);
     // A flag anchors to a BOARD hole only: a component terminal is a
@@ -2908,8 +2884,8 @@ export class DeskDoc {
   // no footprint, no catalog def and no desk coordinates of its own. Rail order
   // IS document order, which is why "the next free slot" is simply an append.
   //
-  // The colour is the IDENTITY tying a flag to its button, so it is unique and
-  // the cap is `MAX_SIGNALS` = the palette's length (model/signals.js).
+  // The cap is `MAX_SIGNALS` — one signal per digit key — and the KEY is what
+  // ties a flag to its button; colours cycle and may repeat (model/signals.js).
 
   /** Copies of the signals, in rail order. */
   get signals() {
@@ -2928,15 +2904,14 @@ export class DeskDoc {
   }
 
   /**
-   * Add a signal, taking the next free palette colour. Throws NO_COLOR when
-   * every colour is spoken for — which IS the cap, so there is no count test
-   * here either. Returns a copy.
+   * Add a signal, taking the next colour in the cycle (`nextSignalColor`).
+   * Throws SIGNALS_FULL once every key has a signal. Returns a copy.
    */
   addSignal({ type, rest, name } = {}) {
-    const color = nextSignalColor(this.#doc.signals);
-    if (color == null) {
-      throw taggedError(`at most ${MAX_SIGNALS} signals`, "NO_COLOR");
+    if (this.#doc.signals.length >= MAX_SIGNALS) {
+      throw taggedError(`at most ${MAX_SIGNALS} signals`, "SIGNALS_FULL");
     }
+    const color = nextSignalColor(this.#doc.signals);
     const sig = {
       id: `sig${this.#doc.nextSignalId++}`,
       ...normalizeSignalFields({ color, type, rest }),
@@ -2947,24 +2922,22 @@ export class DeskDoc {
   }
 
   /**
-   * Patch a signal's `color` / `type` / `rest`. Throws NOT_FOUND,
-   * COLOR_TAKEN (another signal holds it) or INVALID_ARG. Returns a copy.
+   * Patch a signal's `color` / `type` / `rest`. Any signal colour is allowed,
+   * one another signal holds included. Throws NOT_FOUND or INVALID_ARG.
+   * Returns a copy.
    */
   updateSignal(id, patch = {}) {
     const sig = this.#doc.signals.find((s) => s.id === id);
     if (!sig) throw taggedError(`no signal ${id}`, "NOT_FOUND");
     if (patch.color !== undefined) {
-      if (!availableSignalColors(this.#doc.signals, id).includes(patch.color)) {
-        throw taggedError(`color ${patch.color} is taken`, "COLOR_TAKEN");
+      if (!SIGNAL_COLORS.includes(patch.color)) {
+        throw taggedError(`bad signal color: ${patch.color}`, "INVALID_ARG");
       }
       sig.color = patch.color;
     }
     for (const key of ["type", "rest"]) {
       if (patch[key] === undefined) continue;
-      const next = normalizeSignalFields(
-        { ...sig, [key]: patch[key] },
-        new Set(),
-      );
+      const next = normalizeSignalFields({ ...sig, [key]: patch[key] });
       if (next[key] !== patch[key]) {
         throw taggedError(`bad signal ${key}: ${patch[key]}`, "INVALID_ARG");
       }
@@ -3267,10 +3240,11 @@ export class DeskDoc {
       // all-or-nothing, and the argument is what all-or-nothing exists FOR:
       // half a design silently cuts the wires that crossed to the board left
       // behind — and a signal cuts nothing. Refusing a whole sub-assembly
-      // because this desk already holds eight stimulus buttons would make the
-      // cap punish the wrong thing. Out of colours → the signal is DROPPED;
-      // its hole already taken → it arrives UNPLACED (the loader's own rule:
-      // a flag with nowhere to go stops existing, the signal never does).
+      // because this desk already holds every stimulus button it can would
+      // make the cap punish the wrong thing. At the cap → the signal is
+      // DROPPED; its hole already taken → it arrives UNPLACED (the loader's
+      // own rule: a flag with nowhere to go stops existing, the signal never
+      // does).
       // `droppedSignals` is reported, never swallowed.
       const signals = [];
       let droppedSignals = 0;
@@ -3280,7 +3254,7 @@ export class DeskDoc {
           droppedSignals++;
           continue;
         }
-        if (nextSignalColor(this.#doc.signals) == null) {
+        if (this.#doc.signals.length >= MAX_SIGNALS) {
           droppedSignals++;
           continue;
         }

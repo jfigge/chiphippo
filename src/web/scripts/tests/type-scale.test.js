@@ -59,6 +59,7 @@ const WORLD_UNITS = new Map([
   [".part-lcd-pin1-label", "printed on the module, SVG user units"],
   [".part-lcd-size", "printed on the module, SVG user units"],
   [".bus-band-label", "drawn on the ribbon, world px"],
+  [".signal-flag-key-digit", "printed on the signal flag, world px"],
   [".annotation-text", "document content inside the zoom-scaled world layer"],
   [".annotation-editor", "document content inside the zoom-scaled world layer"],
   [".wire-gauge-length", "a 300x62 viewBox's own coordinates"],

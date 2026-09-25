@@ -77,7 +77,7 @@ import { AnnotationLayer } from "./annotation-layer.js";
 import { SignalLayer } from "./signal-layer.js";
 import {
   MAX_SIGNALS,
-  availableSignalColors,
+  SIGNAL_COLORS,
   nextFlagRotation,
   signalSeq,
 } from "../model/signals.js";
@@ -264,6 +264,7 @@ export class DeskController {
   #onRemoveMemoryFile;
   #onBusNameChange;
   #onWireFadeChange;
+  #onSignalSelect;
 
   /**
    * @param {object} opts
@@ -300,6 +301,9 @@ export class DeskController {
    * @param {(state: {canUndo: boolean, canRedo: boolean}) => void}
    *   [opts.onHistoryChange] - undo/redo availability changed (drives the
    *   Edit-menu enable state, Feature 200).
+   * @param {(id: string|null) => void} [opts.onSignalSelect] - the selected
+   *   signal flag changed (or cleared); the rail highlights that signal's
+   *   button, which app.js owns.
    */
   constructor({
     viewport,
@@ -318,6 +322,7 @@ export class DeskController {
     onCreateMemoryFile,
     onRemoveMemoryFile,
     onHistoryChange,
+    onSignalSelect,
     netlist,
   }) {
     this.#viewport = viewport;
@@ -333,6 +338,7 @@ export class DeskController {
     this.#onHistoryChange = onHistoryChange;
     this.#onBusNameChange = onBusNameChange;
     this.#onWireFadeChange = onWireFadeChange;
+    this.#onSignalSelect = onSignalSelect;
 
     // Layer order (established for every later stage): boards under parts
     // under wires under the interaction overlay. All are zero-size anchors —
@@ -478,6 +484,9 @@ export class DeskController {
     this.#signalLayer = new SignalLayer(this.#layers.signals, deskDoc, {
       onPointerDown: (id, e) => this.#onSignalPointerDown(id, e),
       onContextMenu: (id, e) => this.#onSignalContextMenu(id, e),
+      // Every path that highlights a flag goes through the layer's
+      // setSelected, so its report is the one place the rail can learn of it.
+      onSelect: (id) => this.#onSignalSelect?.(id),
     });
 
     // Live simulation state (Feature 90): LEDs, chip badges, clock lamps —
@@ -3978,10 +3987,9 @@ export class DeskController {
         this.#doc.plantSignalFlag(d.id, d.address, d.rot);
         this.#emitDocChanged("connect signal");
       } else if (!d.address && d.origin) {
-        // Dropped clear of every board: the UNPLUG. The button returns to the
-        // rail and the signal stops driving anything.
-        this.#doc.unplantSignalFlag(d.id);
-        this.#emitDocChanged("disconnect signal");
+        // Dropped clear of every board: the UNPLUG — the same act as the
+        // menu's Remove Signal.
+        this.unplugSignal(d.id);
       } else {
         this.#signalLayer.clearPreview(d.id); // a miss changes nothing
       }
@@ -4018,8 +4026,14 @@ export class DeskController {
    * A signal's context menu, at a point. ONE menu wherever you right-click the
    * signal — the flag on the desk, or its button on the rail. The rail needs it
    * because an UNPLACED signal has no flag to right-click and no way to be
-   * selected, so without this there was no route to Remove at all: you had to
+   * selected, so without this there was no route to Delete at all: you had to
    * plant it somewhere first just to throw it away.
+   *
+   * Two ways to be rid of a flag, and the words keep them apart: **Remove
+   * Signal** takes the flag off the board and back to its button (the signal
+   * stays), **Delete Signal** throws the whole signal away — the same thing
+   * the Delete key does. Like Add to analyzer, Remove stays PRESENT but
+   * disabled for an unplaced signal, so the menu's shape never changes.
    */
   openSignalMenu(id, x, y) {
     if (this.#probe.armed || this.#mode || this.#editingLocked) return;
@@ -4045,6 +4059,11 @@ export class DeskController {
         },
         {
           label: t("desk.menu.removeSignal"),
+          disabled: !sig?.flag,
+          onSelect: () => this.unplugSignal(id),
+        },
+        {
+          label: t("desk.menu.deleteSignal"),
           danger: true,
           onSelect: () => this.removeSignal(id),
         },
@@ -4084,10 +4103,9 @@ export class DeskController {
         {
           key: "color",
           type: "color",
-          // Uniqueness as an ABSENCE: the picker only offers colours it can
-          // grant, so every swatch on screen works and the shared swatch
-          // control (LEDs, Settings) needs no disabled state of its own.
-          options: availableSignalColors(this.#doc.signals, id),
+          // Every signal colour, whoever else holds it — colours may repeat,
+          // since the KEY is what ties a flag to its button.
+          options: SIGNAL_COLORS,
         },
         { key: "type", type: "segmented", options: signalTypeOptions() },
         { key: "rest", type: "segmented", options: signalRestOptions() },
@@ -4123,7 +4141,7 @@ export class DeskController {
    * Add a signal. The desk POSITION a placement click reported is discarded on
    * purpose: a signal has no desk coordinates at all — its button goes to the
    * rail, and rail order IS document order, so "the next free slot" is an
-   * append. Returns the new signal, or null when the palette is exhausted.
+   * append. Returns the new signal, or null when every key has a signal.
    */
   addSignal() {
     if (this.#editingLocked) return null;
@@ -4131,7 +4149,7 @@ export class DeskController {
     try {
       sig = this.#doc.addSignal({});
     } catch {
-      return null; // NO_COLOR — every colour is spoken for
+      return null; // SIGNALS_FULL — every digit key has a signal
     }
     // Named from the ID's own sequence, never the rail's length: ids never
     // repeat and lengths do, so a length-based default hands out a second
@@ -4145,7 +4163,24 @@ export class DeskController {
     return sig;
   }
 
-  /** Remove a signal outright. */
+  /**
+   * Take a signal's flag off the board and back to its button on the rail —
+   * the signal survives, it just stops driving anything. The flag comes back
+   * with no position at all (anchor AND rotation go), so the next drag starts
+   * from scratch. Its selection goes with it: only a planted flag can be
+   * selected, and a lingering one would leave its rail button lit.
+   */
+  unplugSignal(id) {
+    if (this.#editingLocked) return;
+    if (!this.#doc.getSignal(id)?.flag) return;
+    this.#doc.unplantSignalFlag(id);
+    if (this.#sel.single?.kind === "signal" && this.#sel.single.id === id) {
+      this.#sel.select(null);
+    }
+    this.#emitDocChanged("disconnect signal");
+  }
+
+  /** Delete a signal outright — button, flag and all. */
   removeSignal(id) {
     if (this.#editingLocked) return;
     try {

@@ -28,7 +28,7 @@ import {
   normalizeDocument,
 } from "../model/desk-doc.js";
 import { buildOccupancy } from "../model/occupancy.js";
-import { MAX_SIGNALS } from "../model/signals.js";
+import { MAX_SIGNALS, SIGNAL_COLORS } from "../model/signals.js";
 import { boardSize, spec } from "../model/breadboard.js";
 
 // Strip heights are MEASURED, not whole pitches (board-types.js): a rail is
@@ -2699,31 +2699,40 @@ test("translateAll: rigid — the group and every mating survive the slide", () 
 // THE RULE, tested from both ends: a flag with nowhere to go stops existing;
 // the SIGNAL never does.
 
-test("addSignal mints ids and colours, and one past the cap is refused", () => {
+test("addSignal mints ids and cycling colours, and one past the cap is refused", () => {
   const doc = new DeskDoc(null);
   const colors = [];
   for (let i = 0; i < MAX_SIGNALS; i++) colors.push(doc.addSignal({}).color);
-  assert.equal(
-    new Set(colors).size,
-    MAX_SIGNALS,
-    "each owns a distinct colour",
+  assert.deepEqual(
+    colors,
+    [...SIGNAL_COLORS, ...SIGNAL_COLORS.slice(0, MAX_SIGNALS - SIGNAL_COLORS.length)], // prettier-ignore
+    "the sequence, then a second lap from the beginning",
   );
   assert.ok(!colors.includes("black"), "and black is never handed out");
   assert.deepEqual(
     doc.signals.map((s) => s.id),
     Array.from({ length: MAX_SIGNALS }, (_, i) => `sig${i + 1}`),
   );
-  assert.throws(() => doc.addSignal({}), { code: "NO_COLOR" });
+  assert.throws(() => doc.addSignal({}), { code: "SIGNALS_FULL" });
 });
 
-test("updateSignal refuses a colour another signal holds", () => {
+test("a deleted signal's colour is the next one handed out", () => {
+  const doc = new DeskDoc(null);
+  doc.addSignal({});
+  const second = doc.addSignal({});
+  doc.addSignal({});
+  doc.removeSignal(second.id);
+  assert.equal(doc.addSignal({}).color, second.color);
+});
+
+test("updateSignal takes any signal colour — a shared one too — but never black", () => {
   const doc = new DeskDoc(null);
   const a = doc.addSignal({});
   const b = doc.addSignal({});
-  assert.throws(() => doc.updateSignal(b.id, { color: a.color }), {
-    code: "COLOR_TAKEN",
+  assert.equal(doc.updateSignal(b.id, { color: a.color }).color, a.color);
+  assert.throws(() => doc.updateSignal(b.id, { color: "black" }), {
+    code: "INVALID_ARG",
   });
-  assert.doesNotThrow(() => doc.updateSignal(b.id, { color: b.color }));
   assert.throws(() => doc.updateSignal(b.id, { type: "sideways" }), {
     code: "INVALID_ARG",
   });
@@ -2792,7 +2801,7 @@ test("a flag is an ADDRESS, so translateAll leaves it alone", () => {
   assert.deepEqual(doc.getSignal(sig.id).flag, { anchor: "bb1.a12", rot: 180 });
 });
 
-test("normalizeDocument repairs a colour clash rather than dropping a signal", () => {
+test("normalizeDocument keeps two signals that share a colour", () => {
   const doc = normalizeDocument({
     signals: [
       { id: "sig1", color: "red", type: "toggle", rest: "high" },
@@ -2800,20 +2809,24 @@ test("normalizeDocument repairs a colour clash rather than dropping a signal", (
     ],
   });
   assert.equal(doc.signals.length, 2, "both survive");
-  assert.equal(doc.signals[0].color, "red");
-  assert.notEqual(doc.signals[1].color, "red");
+  assert.deepEqual(
+    doc.signals.map((s) => s.color),
+    ["red", "red"],
+    "a shared colour is legal — the key tells them apart",
+  );
   assert.equal(doc.signals[1].type, "momentary", "junk fields default");
 });
 
-test("normalizeDocument drops past the cap — 'no colour left', not a count", () => {
+test("normalizeDocument drops past the cap — one signal per key", () => {
   const raw = Array.from({ length: 12 }, (_, i) => ({ id: `sig${i + 1}` }));
   assert.equal(normalizeDocument({ signals: raw }).signals.length, MAX_SIGNALS);
 });
 
 test("repairing one bad colour does not shuffle the signals around it", () => {
   // Black was withdrawn, so every saved document holding one arrives needing a
-  // repair — and the colour IS the identity tying a flag to its button, so
-  // only the signal that has to move may move.
+  // repair — and only the signal that has to move may move. The repair takes
+  // the first colour nothing on the WHOLE rail is using (a later signal's
+  // colour counts too).
   const doc = normalizeDocument({
     signals: [
       { id: "sig1", color: "black", name: "RESET" },

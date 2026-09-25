@@ -281,7 +281,7 @@
     "signal": {
       "item": "信号",
       "hint": "外部信号按钮 — 点击桌面即可添加",
-      "full": "{count} 种信号颜色已全部使用"
+      "full": "此桌面已有上限 {count} 个信号"
     },
     "group": {
       "and": "AND",
@@ -851,7 +851,8 @@
       "removeBoard": "移除面包板",
       "editText": "编辑文字…",
       "remove": "移除",
-      "removeSignal": "移除信号"
+      "removeSignal": "移除信号",
+      "deleteSignal": "删除信号"
     },
     "remove": {
       "confirm": "移除",
@@ -870,7 +871,7 @@
       "noRoom": "它需要的位置在这个工作台上没有空出来。",
       "signalsDroppedTitle": "部分信号未粘贴",
       "signalsDropped": {
-        "other": "已略过 {count} 个信号 — 此桌面已用尽全部信号颜色。"
+        "other": "已略过 {count} 个信号 — 此桌面的信号数量已达上限。"
       }
     }
   },
@@ -1035,7 +1036,7 @@
     "simulation": {
       "run": "运行／停止电路",
       "runKeys": "空格或 {mod}+R",
-      "signals": "按信号 1–7（电路运行时）"
+      "signals": "按信号按钮（电路运行时）"
     }
   },
   "properties": {

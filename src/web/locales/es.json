@@ -281,7 +281,7 @@
     "signal": {
       "item": "Señal",
       "hint": "un botón de estímulo: haz clic en el escritorio para añadir uno",
-      "full": "Los {count} colores de señal están en uso"
+      "full": "Este escritorio ya tiene el máximo de {count} señales"
     },
     "group": {
       "and": "AND",
@@ -865,7 +865,8 @@
       "removeBoard": "Quitar la placa",
       "editText": "Editar el texto…",
       "remove": "Quitar",
-      "removeSignal": "Quitar señal"
+      "removeSignal": "Quitar señal",
+      "deleteSignal": "Eliminar la señal"
     },
     "remove": {
       "confirm": "Quitar",
@@ -884,8 +885,8 @@
       "noRoom": "Algo que necesita no está libre en esta mesa.",
       "signalsDroppedTitle": "Algunas señales no se pegaron",
       "signalsDropped": {
-        "one": "Se omitió 1 señal: este escritorio ya usa todos los colores de señal.",
-        "other": "Se omitieron {count} señales: este escritorio ya usa todos los colores de señal."
+        "one": "Se omitió 1 señal: este escritorio ya tiene el número máximo de señales.",
+        "other": "Se omitieron {count} señales: este escritorio ya tiene el número máximo de señales."
       }
     }
   },
@@ -1051,7 +1052,7 @@
     "simulation": {
       "run": "Ejecutar / detener el circuito",
       "runKeys": "Espacio o {mod}+R",
-      "signals": "Pulsar la señal 1–7 (mientras el circuito se ejecuta)"
+      "signals": "Pulsar un botón de señal (mientras el circuito se ejecuta)"
     }
   },
   "properties": {

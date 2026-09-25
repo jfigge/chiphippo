@@ -281,7 +281,7 @@
     "signal": {
       "item": "Signal",
       "hint": "a bench stimulus button — click the desk to add one",
-      "full": "All {count} signal colors are in use"
+      "full": "This desk already has the maximum of {count} signals"
     },
     "group": {
       "and": "AND",
@@ -865,7 +865,8 @@
       "removeBoard": "Remove board",
       "editText": "Edit text…",
       "remove": "Remove",
-      "removeSignal": "Remove Signal"
+      "removeSignal": "Remove Signal",
+      "deleteSignal": "Delete Signal"
     },
     "remove": {
       "confirm": "Remove",
@@ -884,8 +885,8 @@
       "noRoom": "Something it needs is not free on this desk.",
       "signalsDroppedTitle": "Some signals were not pasted",
       "signalsDropped": {
-        "one": "1 signal was left behind — this desk already holds every signal colour.",
-        "other": "{count} signals were left behind — this desk already holds every signal colour."
+        "one": "1 signal was left behind — this desk already has the maximum number of signals.",
+        "other": "{count} signals were left behind — this desk already has the maximum number of signals."
       }
     }
   },
@@ -1051,7 +1052,7 @@
     "simulation": {
       "run": "Run / Stop the circuit",
       "runKeys": "Space or {mod}+R",
-      "signals": "Press signal 1–7 (while the circuit runs)"
+      "signals": "Press a signal button (while the circuit runs)"
     }
   },
   "properties": {

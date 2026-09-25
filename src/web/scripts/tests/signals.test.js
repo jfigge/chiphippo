@@ -15,37 +15,37 @@
  */
 
 // Unit tests for model/signals.js — the pure half of external signals
-// (Feature 370): the colour allocation that IS the cap, the rail ordering the
-// digit keys index into, and the flag polygon.
+// (Feature 370): the digit keys that ARE the cap, the colour cycle, the rail
+// ordering the keys index into, and the flag polygon.
 
 import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  FLAG_KEY_R,
   FLAG_LEN,
   FLAG_W,
   MAX_SIGNALS,
   SIGNAL_COLORS,
-  SIGNAL_DIGITS,
+  SIGNAL_KEYS,
   assertedLevel,
-  availableSignalColors,
+  flagKeyPoint,
   flagPolygon,
   isPlanted,
   nextFlagRotation,
+  nextSignalColor,
   normalizeFlagRotation,
   normalizeSignalFields,
   railOrder,
   restLevel,
-  signalDigit,
-  signalForDigit,
+  signalForKey,
+  signalKey,
 } from "../model/signals.js";
 import { WIRE_COLORS } from "../model/wire-colors.js";
 
-test("black is not a signal colour, and the cap follows from that", () => {
+test("black is not a signal colour", () => {
   // Black is the bench's ground colour — a black flag reads as a ground tie,
-  // and its button's dot vanishes against the dark rail. Withdrawing it is
-  // what took the cap from 8 to 7, and the two are ONE fact: the cap is the
-  // signal palette's length, never a typed number.
+  // and its button's dot vanishes against the dark rail.
   assert.ok(WIRE_COLORS.includes("black"), "still a jumper colour");
   assert.ok(!SIGNAL_COLORS.includes("black"), "but never a signal colour");
   assert.deepEqual(
@@ -53,77 +53,90 @@ test("black is not a signal colour, and the cap follows from that", () => {
     WIRE_COLORS.filter((c) => c !== "black"),
     "derived by subtraction, so a new jumper colour reaches signals for free",
   );
-  assert.equal(MAX_SIGNALS, SIGNAL_COLORS.length);
-  assert.equal(MAX_SIGNALS, 7);
 });
 
-test("the digit keys reach every signal there can be", () => {
-  // A separate fact from the cap: there are only nine digits, so a palette
-  // that outgrew them must leave signals unreachable rather than mis-bound.
-  assert.equal(SIGNAL_DIGITS, Math.min(MAX_SIGNALS, 9));
-  assert.equal(SIGNAL_DIGITS, MAX_SIGNALS, "today the cap binds");
+test("the cap is the digit row: 1–9, then 0", () => {
+  // One signal per key, so the cap is the key list's length — and NOT the
+  // colour palette's, which is shorter: colours repeat, keys do not.
+  assert.deepEqual(SIGNAL_KEYS, ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]); // prettier-ignore
+  assert.equal(MAX_SIGNALS, SIGNAL_KEYS.length);
+  assert.equal(MAX_SIGNALS, 10);
+  assert.ok(MAX_SIGNALS > SIGNAL_COLORS.length, "so a lap must wrap");
 });
 
-test("nextSignalColor walks the palette and then runs out", async () => {
-  const { nextSignalColor } = await import("../model/signals.js");
+test("nextSignalColor walks the sequence, then starts a second lap", () => {
   const signals = [];
-  for (const expected of SIGNAL_COLORS) {
-    const color = nextSignalColor(signals);
-    assert.equal(color, expected);
-    signals.push({ color });
+  for (let i = 0; i < MAX_SIGNALS; i++) {
+    signals.push({ color: nextSignalColor(signals) });
   }
-  assert.equal(nextSignalColor(signals), null);
+  assert.deepEqual(
+    signals.map((s) => s.color),
+    [...SIGNAL_COLORS, ...SIGNAL_COLORS.slice(0, MAX_SIGNALS - SIGNAL_COLORS.length)], // prettier-ignore
+    "red, blue, green … purple, then red, blue, green again",
+  );
+  assert.equal(nextSignalColor([]), SIGNAL_COLORS[0]);
+  assert.equal(nextSignalColor(null), SIGNAL_COLORS[0]);
 });
 
-test("availableSignalColors offers the free ones plus the signal's own", () => {
-  const signals = [
-    { id: "sig1", color: "red" },
-    { id: "sig2", color: "blue" },
-  ];
-  const offered = availableSignalColors(signals, "sig1");
-  assert.ok(offered.includes("red"), "its own colour stays offered");
-  assert.ok(!offered.includes("blue"), "another signal's colour is withheld");
-  assert.equal(offered.length, SIGNAL_COLORS.length - 1);
+test("nextSignalColor fills the gap a deleted signal left first", () => {
+  // Mid-lap: the first colour nobody holds, not the one after the last.
+  const three = SIGNAL_COLORS.slice(0, 3).map((color) => ({ color }));
+  three.splice(1, 1); // delete the second
+  assert.equal(nextSignalColor(three), SIGNAL_COLORS[1]);
+  // Second lap: a colour down to zero uses beats every colour on one.
+  const full = SIGNAL_COLORS.map((color) => ({ color }));
+  full.push({ color: SIGNAL_COLORS[0] });
+  full.splice(3, 1); // the fourth colour's only holder goes
+  assert.equal(nextSignalColor(full), SIGNAL_COLORS[3]);
+  // Junk and black count as nothing.
+  assert.equal(nextSignalColor([{ color: "black" }, {}]), SIGNAL_COLORS[0]);
 });
 
-test("normalizeSignalFields repairs a clash instead of rejecting the signal", () => {
+test("normalizeSignalFields keeps a duplicate colour and coerces the rest", () => {
   const fields = normalizeSignalFields(
     { color: "red", type: "nonsense", rest: "sideways" },
-    new Set(["red"]),
+    [{ color: "red" }],
   );
-  assert.notEqual(fields.color, "red");
+  assert.equal(fields.color, "red", "two signals may share a colour");
   assert.equal(fields.type, "momentary");
   assert.equal(fields.rest, "low");
 });
 
-test("normalizeSignalFields returns null only when no colour is left", () => {
-  assert.equal(normalizeSignalFields({}, new Set(SIGNAL_COLORS)), null);
-});
-
-test("a stored BLACK signal is repaired, never rejected", () => {
+test("a stored BLACK signal is repaired into the gap, never rejected", () => {
   // Every project saved before black was withdrawn arrives needing this.
   const fields = normalizeSignalFields(
     { color: "black", type: "toggle", rest: "high" },
-    new Set(),
+    [{ color: SIGNAL_COLORS[0] }],
   );
   assert.ok(fields, "the signal survives");
-  assert.notEqual(fields.color, "black");
+  assert.equal(fields.color, SIGNAL_COLORS[1], "the first colour not in use");
   assert.equal(fields.type, "toggle", "and nothing else about it moves");
   assert.equal(fields.rest, "high");
+  assert.equal(normalizeSignalFields({}).color, SIGNAL_COLORS[0]);
 });
 
-test("railOrder is document order, and the digits index into it", () => {
+test("railOrder is document order, and the keys index into it", () => {
   const signals = [{ id: "sig9" }, { id: "sig2" }, { id: "sig5" }];
   assert.deepEqual(
     railOrder(signals).map((s) => s.id),
     ["sig9", "sig2", "sig5"],
   );
-  assert.equal(signalForDigit(signals, 1).id, "sig9");
-  assert.equal(signalForDigit(signals, 3).id, "sig5");
-  assert.equal(signalForDigit(signals, 4), null);
-  assert.equal(signalForDigit(signals, 0), null);
-  assert.equal(signalDigit(signals, "sig2"), 2);
-  assert.equal(signalDigit(signals, "nope"), null);
+  assert.equal(signalForKey(signals, "1").id, "sig9");
+  assert.equal(signalForKey(signals, "3").id, "sig5");
+  assert.equal(signalForKey(signals, "4"), null, "no button there");
+  assert.equal(signalForKey(signals, "0"), null, "no tenth button");
+  assert.equal(signalForKey(signals, "x"), null);
+  assert.equal(signalKey(signals, "sig2"), "2");
+  assert.equal(signalKey(signals, "nope"), null);
+});
+
+test("the tenth signal is key 0", () => {
+  const signals = Array.from({ length: MAX_SIGNALS }, (_, i) => ({
+    id: `sig${i + 1}`,
+  }));
+  assert.equal(signalKey(signals, "sig9"), "9");
+  assert.equal(signalKey(signals, "sig10"), "0");
+  assert.equal(signalForKey(signals, "0").id, "sig10");
 });
 
 test("rest and asserted levels are opposites", () => {
@@ -177,6 +190,32 @@ test("every rotation is the same rigid shape, one quarter-turn on", () => {
     Math.max(...flagPolygon({ x: 0, y: 0 }, 90).map((p) => p.y)),
     FLAG_LEN,
   );
+});
+
+test("the key sits mid-body, clear of the point, at every rotation", () => {
+  const at = { x: 7, y: -3 };
+  const round = (p) => ({
+    x: Math.round(p.x * 1e6) / 1e6,
+    y: Math.round(p.y * 1e6) / 1e6,
+  });
+  for (const rot of [0, 90, 180, 270]) {
+    const poly = flagPolygon(at, rot);
+    // The body rectangle is vertices 1–4; the key is its centre.
+    const body = poly.slice(1);
+    const centre = {
+      x: body.reduce((n, p) => n + p.x, 0) / body.length,
+      y: body.reduce((n, p) => n + p.y, 0) / body.length,
+    };
+    assert.deepEqual(round(flagKeyPoint(at, rot)), round(centre), `rot ${rot}`);
+  }
+});
+
+test("the key's disc fits inside the body rectangle, clear of the point", () => {
+  const bodyStart = flagPolygon({ x: 0, y: 0 }, 0)[1].x; // where the point ends
+  const centre = flagKeyPoint({ x: 0, y: 0 }, 0);
+  assert.ok(FLAG_KEY_R < FLAG_W / 2, "narrower than the body");
+  assert.ok(centre.x - FLAG_KEY_R >= bodyStart, "never over the point");
+  assert.ok(centre.x + FLAG_KEY_R <= FLAG_LEN, "never off the end");
 });
 
 test("R cycles the four quarter-turns and junk coerces to 0", () => {

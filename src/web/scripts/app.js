@@ -1068,7 +1068,7 @@ function bindShortcuts(
   });
   window.addEventListener("blur", () => ridePreview(false));
 
-  // External signals (Feature 370): 1–8 press the buttons on the right-edge
+  // External signals (Feature 370): 1–9, 0 press the buttons on the right-edge
   // rail, several at once. See model/signal-keys.js for why a BARE digit is
   // free — the only other claim on 1–9 is the wire tool's colour and the bus
   // tool's width, and Run disarms both tools, so the two meanings are never
@@ -1114,7 +1114,7 @@ function bindShortcuts(
       e.preventDefault();
       return;
     }
-    // 1–8 press the signal buttons, but only while the circuit runs. It sits
+    // 1–9, 0 press the signal buttons, but only while the circuit runs. It sits
     // AFTER controller.handleKeyDown deliberately: that method claims 1–9 for
     // the wire colour / bus width while either tool is armed, so letting it go
     // first makes the precedence a FACT of the code rather than a claim about
@@ -1609,6 +1609,8 @@ async function init() {
       scopeView.setVisible(true);
     },
     onClockToggle: (id) => sim?.manualToggle(id),
+    // A signal flag selected on the desk lights its button on the rail.
+    onSignalSelect: (id) => signalRail?.setSelected(id),
     // A part's (or a wire's) "Pin Assignment" context-menu item → its
     // floating pin/terminal-assignments OS window (`rows` sizes it to the
     // layout; `rot` is a snapshot of the part's placed rotation — only an
@@ -1965,7 +1967,7 @@ async function init() {
     onContextMenu: (id, e) =>
       controller?.openSignalMenu(id, e.clientX, e.clientY),
   });
-  // The palette's SIGNALS row goes disabled once every colour is taken.
+  // The palette's SIGNALS row goes disabled once every digit key has a signal.
   const refreshSignalsFull = () =>
     palette.setSignalsFull(deskDoc.signals.length >= MAX_SIGNALS);
   window.addEventListener("chiphippo:doc-changed", refreshSignalsFull);

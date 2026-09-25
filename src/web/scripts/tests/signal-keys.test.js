@@ -23,7 +23,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { createSignalKeys } from "../model/signal-keys.js";
-import { MAX_SIGNALS, SIGNAL_DIGITS } from "../model/signals.js";
+import { MAX_SIGNALS, SIGNAL_KEYS } from "../model/signals.js";
 
 function harness({
   running = true,
@@ -45,10 +45,10 @@ test("several digits are held at once, and each releases on its own", () => {
   const { keys, log } = harness();
   assert.equal(keys.handleKeyDown(down("1")), true);
   assert.equal(keys.handleKeyDown(down("3")), true);
-  assert.deepEqual(keys.heldDigits, [1, 3]);
+  assert.deepEqual(keys.heldKeys, ["1", "3"]);
   assert.deepEqual(log, ["sig1:down", "sig3:down"]);
   keys.handleKeyUp({ key: "1" });
-  assert.deepEqual(keys.heldDigits, [3]);
+  assert.deepEqual(keys.heldKeys, ["3"]);
   assert.deepEqual(log, ["sig1:down", "sig3:down", "sig1:up"]);
 });
 
@@ -96,7 +96,7 @@ test("keyup is gated on NOTHING — a stuck signal is the worst outcome", () => 
   state.running = false;
   assert.equal(keys.handleKeyUp({ key: "2", metaKey: true }), true);
   assert.deepEqual(log, ["sig2:down", "sig2:up"]);
-  assert.deepEqual(keys.heldDigits, []);
+  assert.deepEqual(keys.heldKeys, []);
 });
 
 test("a release reaches the signal that was PRESSED, not the digit's current one", () => {
@@ -115,23 +115,28 @@ test("releaseAll lets go of everything (window blur, transport stop)", () => {
   keys.handleKeyDown(down("2"));
   keys.releaseAll();
   assert.deepEqual(log, ["sig1:down", "sig2:down", "sig1:up", "sig2:up"]);
-  assert.deepEqual(keys.heldDigits, []);
+  assert.deepEqual(keys.heldKeys, []);
   keys.releaseAll(); // idempotent
   assert.equal(log.length, 4);
 });
 
-test("the digit range stops where the signals do", () => {
-  // DERIVED from SIGNAL_DIGITS, so withdrawing black (which took the eighth
-  // signal with it) narrowed the shortcut in the same move. A key that can
-  // never reach a button must not be swallowed from whatever else wants it.
-  const { keys } = harness({
+test("the key range stops where the signals do", () => {
+  // A key with no button behind it must not be swallowed from whatever else
+  // wants it — `0` included, which names the tenth signal only.
+  const { keys } = harness();
+  assert.equal(keys.handleKeyDown(down("3")), true, "the last");
+  assert.equal(keys.handleKeyDown(down("4")), false, "past the end");
+  assert.equal(keys.handleKeyDown(down("0")), false, "no tenth signal yet");
+});
+
+test("0 presses the TENTH signal, and releases it", () => {
+  const { keys, log } = harness({
     signals: Array.from({ length: MAX_SIGNALS }, (_, i) => ({ id: `sig${i + 1}` })), // prettier-ignore
   });
-  assert.equal(
-    keys.handleKeyDown(down(String(SIGNAL_DIGITS))),
-    true,
-    "the last",
-  );
-  assert.equal(keys.handleKeyDown(down(String(SIGNAL_DIGITS + 1))), false, "past the end"); // prettier-ignore
-  assert.equal(keys.handleKeyDown(down("0")), false);
+  assert.equal(SIGNAL_KEYS.at(-1), "0");
+  assert.equal(keys.handleKeyDown(down("0")), true);
+  assert.equal(keys.handleKeyDown(down("9")), true);
+  assert.deepEqual(keys.heldKeys, ["9", "0"], "digit-row order");
+  keys.handleKeyUp({ key: "0" });
+  assert.deepEqual(log, ["sig10:down", "sig9:down", "sig10:up"]);
 });

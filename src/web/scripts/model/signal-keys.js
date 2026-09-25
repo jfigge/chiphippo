@@ -14,42 +14,39 @@
  * limitations under the License.
  */
 
-// signal-keys.js — the 1–8 held set that drives the signal buttons from the
-// keyboard (Feature 370). Pure and DOM-free: it takes plain event-shaped
-// objects, so the whole thing is testable under `node --test`.
+// signal-keys.js — the held set of digit keys (1–9, then 0) that drives the
+// signal buttons from the keyboard (Feature 370). Pure and DOM-free: it takes
+// plain event-shaped objects, so the whole thing is testable under
+// `node --test`.
 //
 // WHY BARE DIGITS, AND ONLY WHILE RUNNING. Several signals must be
 // assertable at once — that is the feature's whole reason for existing, and one
 // mouse can only hold one button. A bare digit is the only thing a hand can
 // hold three of. It is free because the ONLY other claim on 1–9 is the wire
 // tool's colour and the bus tool's width (desk-controller.js), and Run disarms
-// both tools — so the two meanings can never be live at the same moment.
+// both tools — so the two meanings can never be live at the same moment. Bare
+// 0 has no other claim at all.
 //
 // THE HELD SET IS A MAP, NOT A SET, and that is the load-bearing detail: it
-// remembers WHICH SIGNAL each digit pressed, so a release always reaches the
+// remembers WHICH SIGNAL each key pressed, so a release always reaches the
 // signal that was pressed even if the rail changed underneath (a signal deleted
 // mid-hold would otherwise renumber the digits and strand the first one down
 // for good). A stuck signal is far worse than a missed press, which is also why
 // keyup is never gated on anything.
 
-import { SIGNAL_DIGITS, signalForDigit } from "./signals.js";
+import { SIGNAL_KEYS, signalForKey } from "./signals.js";
 
-/**
- * The digits that name a signal, DERIVED from how many there can be — so
- * dropping a colour (black went, taking the eighth signal with it) narrows
- * the shortcut in the same move, and a key that can never reach a button is
- * never swallowed from whatever else might want it.
- */
-const DIGIT_RE = new RegExp(`^[1-${SIGNAL_DIGITS}]$`);
+/** Is this one of the signal keys? Matched on `e.key`, as the wire-colour and
+    bus-width digits are: the two sets of digit shortcuts must mean the same
+    keystroke. */
+const isSignalKey = (key) => SIGNAL_KEYS.includes(key);
 
-/** Is this a bare digit keydown — no modifier, no auto-repeat? */
-function digitOf(e) {
+/** The signal key of a bare keydown — no modifier — or null. */
+function keyOf(e) {
   if (!e || e.metaKey || e.ctrlKey || e.altKey || e.shiftKey) return null;
-  // Matched on `e.key`, as the wire-colour and bus-width digits are: the two
-  // sets of digit shortcuts must mean the same keystroke. (Shift is excluded
-  // rather than ignored — "!" is not "1" on every layout, and Shift belongs to
-  // the marquee.)
-  return DIGIT_RE.test(e.key) ? Number(e.key) : null;
+  // Shift is excluded rather than ignored — "!" is not "1" on every layout,
+  // and Shift belongs to the marquee.
+  return isSignalKey(e.key) ? e.key : null;
 }
 
 /**
@@ -59,13 +56,13 @@ function digitOf(e) {
  * @param {(id: string, on: boolean) => void} opts.press
  */
 export function createSignalKeys({ isRunning, signalsOf, press }) {
-  /** digit → the signal id that digit is currently holding down. */
+  /** key → the signal id that key is currently holding down. */
   const held = new Map();
 
-  const release = (digit) => {
-    const id = held.get(digit);
+  const release = (key) => {
+    const id = held.get(key);
     if (id == null) return false;
-    held.delete(digit);
+    held.delete(key);
     press(id, false);
     return true;
   };
@@ -73,16 +70,16 @@ export function createSignalKeys({ isRunning, signalsOf, press }) {
   return {
     /** @returns {boolean} did this consume the key? */
     handleKeyDown(e) {
-      const digit = digitOf(e);
-      if (digit == null) return false;
-      if (!isRunning()) return false; // stopped: 1–8 are the tools' to claim
+      const key = keyOf(e);
+      if (key == null) return false;
+      if (!isRunning()) return false; // stopped: 1–9 are the tools' to claim
       // Auto-repeat must never re-fire a toggle or re-press a held button —
       // but it IS our key, so swallow it rather than letting it fall through.
       if (e.repeat) return true;
-      if (held.has(digit)) return true;
-      const sig = signalForDigit(signalsOf(), digit);
+      if (held.has(key)) return true;
+      const sig = signalForKey(signalsOf(), key);
       if (!sig) return false; // no button there — not ours to swallow
-      held.set(digit, sig.id);
+      held.set(key, sig.id);
       press(sig.id, true);
       return true;
     },
@@ -95,20 +92,20 @@ export function createSignalKeys({ isRunning, signalsOf, press }) {
      * else still has to come up.
      */
     handleKeyUp(e) {
-      if (!e || !DIGIT_RE.test(e.key)) return false;
+      if (!e || !isSignalKey(e.key)) return false;
       // Modifiers are NOT checked here either: press ⌘ after the digit and the
       // keyup arrives with metaKey set, which must still release it.
-      return release(Number(e.key));
+      return release(e.key);
     },
 
     /** Let go of everything — window blur, or the transport stopping. */
     releaseAll() {
-      for (const digit of [...held.keys()]) release(digit);
+      for (const key of [...held.keys()]) release(key);
     },
 
-    /** The digits currently down, for tests. */
-    get heldDigits() {
-      return [...held.keys()].sort((a, b) => a - b);
+    /** The keys currently down, in digit-row order, for tests. */
+    get heldKeys() {
+      return SIGNAL_KEYS.filter((k) => held.has(k));
     },
   };
 }

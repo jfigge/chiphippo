@@ -38,7 +38,8 @@ export const SIGNAL_TYPES = Object.freeze(["momentary", "toggle"]);
 export const SIGNAL_RESTS = Object.freeze(["low", "high"]);
 
 /**
- * The colours a signal may own — the jumper palette MINUS BLACK.
+ * The colours a signal may take — the jumper palette MINUS BLACK, in the order
+ * new signals are handed them (`nextSignalColor`).
  *
  * Black is the bench's ground colour. A black flag planted in a hole reads as
  * a ground tie rather than as a stimulus lead, and its button's dot all but
@@ -56,73 +57,66 @@ export const SIGNAL_COLORS = Object.freeze(
 );
 
 /**
- * At most one signal per SIGNAL colour, so the cap IS that palette's length.
+ * The keys that press a signal, in the order they run along the digit row —
+ * `1` to `9`, then `0` for the tenth. There are exactly ten, and that is the
+ * CAP: every signal has a key, so there is no eleventh signal.
  *
- * The colour is not decoration — it is the identity tying a flag on the desk
- * to a button on the rail, which is why it must be unique and why there is no
- * eighth signal. Stating it as `SIGNAL_COLORS.length` rather than `7` keeps
- * the two facts (uniqueness, and the cap) as ONE rule: drop a colour and the
- * cap follows, which is exactly what happened when black went.
+ * The cap used to be the colour palette's length, back when a colour was a
+ * signal's whole identity. It is not any more — colours repeat once the seven
+ * are used — so the identity tying a flag to its button is this key, printed
+ * inside the flag and on the button (`signalKey`).
  */
-export const MAX_SIGNALS = SIGNAL_COLORS.length;
+export const SIGNAL_KEYS = Object.freeze([
+  "1",
+  "2",
+  "3",
+  "4",
+  "5",
+  "6",
+  "7",
+  "8",
+  "9",
+  "0",
+]);
+
+/** At most one signal per key — the cap IS the digit row's length. */
+export const MAX_SIGNALS = SIGNAL_KEYS.length;
 
 /**
- * How many signals the DIGIT KEYS can reach. A different fact from the cap,
- * and deliberately not folded into it: there are only nine digits, so a
- * palette that ever grew past that would leave signals unreachable from the
- * keyboard rather than silently mis-binding them. Today the cap binds.
- */
-export const SIGNAL_DIGITS = Math.min(MAX_SIGNALS, 9);
-
-/**
- * The first palette colour no signal holds, or null when all are taken.
+ * The colour a new signal takes: the first colour in `SIGNAL_COLORS` order that
+ * no signal is using, and once all of them are in use, a second lap from the
+ * beginning. Stated as LEAST-USED, ties by palette order, which is the same
+ * rule on every lap — so deleting a signal frees its colour for the next one
+ * added, whichever lap it was on. Never null (the palette is never empty).
  * @param {Array<{color?: string}>} signals
- * @returns {string|null}
+ * @returns {string}
  */
 export function nextSignalColor(signals) {
-  const taken = new Set((signals ?? []).map((s) => s?.color));
-  return SIGNAL_COLORS.find((c) => !taken.has(c)) ?? null;
-}
-
-/**
- * The colours a signal's own picker may offer: everything free, plus the one
- * it already holds. Uniqueness expressed as an ABSENCE — every swatch on
- * screen is one that works, so the shared colour-swatch control needs no
- * disabled state of its own.
- * @param {Array<{id: string, color?: string}>} signals
- * @param {string} id the signal being edited
- * @returns {string[]}
- */
-export function availableSignalColors(signals, id) {
-  const taken = new Set(
-    (signals ?? []).filter((s) => s?.id !== id).map((s) => s?.color),
-  );
-  return SIGNAL_COLORS.filter((c) => !taken.has(c));
+  const uses = new Map(SIGNAL_COLORS.map((c) => [c, 0]));
+  for (const s of signals ?? []) {
+    if (uses.has(s?.color)) uses.set(s.color, uses.get(s.color) + 1);
+  }
+  let best = SIGNAL_COLORS[0];
+  for (const c of SIGNAL_COLORS) if (uses.get(c) < uses.get(best)) best = c;
+  return best;
 }
 
 /**
  * Coerce a stored signal's three scalars. Shared by the loader and by every
  * mutator, so "a valid signal" has one definition.
  *
- * The colour is REPAIRED rather than rejected: it is presentation, and dropping
- * a whole stimulus source because a hand-edited file duplicated a token would
- * lose work to fix a cosmetic clash. `taken` is what has already been accepted.
+ * Any signal colour is kept — two signals may share one. Only a colour that is
+ * not a signal colour at all (black, or junk) is REPAIRED, never rejected: it
+ * is presentation, and dropping a whole stimulus source over it would lose work
+ * to fix a cosmetic fault. The repair takes `nextSignalColor` over `others`.
  * @param {object} raw
- * @param {Set<string>} [taken] colours already spoken for
- * @returns {{color: string, type: string, rest: string}|null} null when no
- *   colour is left to give it
+ * @param {Array<{color?: string}>} [others] the signals it joins
+ * @returns {{color: string, type: string, rest: string}}
  */
-export function normalizeSignalFields(raw, taken = new Set()) {
+export function normalizeSignalFields(raw, others = []) {
   const wanted = raw?.color;
-  const color =
-    typeof wanted === "string" &&
-    SIGNAL_COLORS.includes(wanted) &&
-    !taken.has(wanted)
-      ? wanted
-      : (SIGNAL_COLORS.find((c) => !taken.has(c)) ?? null);
-  if (color == null) return null;
   return {
-    color,
+    color: SIGNAL_COLORS.includes(wanted) ? wanted : nextSignalColor(others),
     type: SIGNAL_TYPES.includes(raw?.type) ? raw.type : "momentary",
     rest: SIGNAL_RESTS.includes(raw?.rest) ? raw.rest : "low",
   };
@@ -141,15 +135,15 @@ export function railOrder(signals) {
 }
 
 /**
- * The signal a digit key drives, or null. Stated in terms of `railOrder`, so
- * "the third button down" and "key 3" cannot come apart.
+ * The signal a key drives (`"1"`…`"9"`, `"0"`), or null. Stated in terms of
+ * `railOrder`, so "the third button down" and key 3 cannot come apart.
  * @param {Array} signals
- * @param {number} digit 1-based
+ * @param {string} key
  * @returns {object|null}
  */
-export function signalForDigit(signals, digit) {
-  if (!Number.isInteger(digit) || digit < 1) return null;
-  return railOrder(signals)[digit - 1] ?? null;
+export function signalForKey(signals, key) {
+  const i = SIGNAL_KEYS.indexOf(key);
+  return i < 0 ? null : (railOrder(signals)[i] ?? null);
 }
 
 /**
@@ -167,14 +161,16 @@ export function signalSeq(id) {
 }
 
 /**
- * The 1-based digit that drives a signal, or null when it is past the keys.
+ * The key that drives a signal — `"1"`…`"9"`, `"0"` for the tenth — or null
+ * when it is not on the rail. This is the signal's IDENTITY on the desk: the
+ * flag prints it and so does the button, since colours repeat.
  * @param {Array} signals
  * @param {string} id
- * @returns {number|null}
+ * @returns {string|null}
  */
-export function signalDigit(signals, id) {
+export function signalKey(signals, id) {
   const i = railOrder(signals).findIndex((s) => s?.id === id);
-  return i >= 0 && i < SIGNAL_DIGITS ? i + 1 : null;
+  return i >= 0 ? (SIGNAL_KEYS[i] ?? null) : null;
 }
 
 /** The level a signal holds when released — its `rest`. */
@@ -235,6 +231,27 @@ export function flagPolygon(point, rot = 0) {
     const r = rotateOffset(v, rot);
     return { x: px + r.dx, y: py + r.dy };
   });
+}
+
+/**
+ * The radius of the disc the flag's KEY sits on — the rail button's dot, drawn
+ * on the flag. It leaves a fifth of a pitch of body showing on either side, and
+ * fits the body's rectangle lengthwise too, so it never spills into the point.
+ */
+export const FLAG_KEY_R = 0.8;
+
+/**
+ * Where the flag's KEY is printed: the middle of its rectangular body, clear
+ * of the point. Rotated with the flag, but the glyph itself never is — one
+ * upright character fits the 2-pitch-wide body at every quarter-turn, which is
+ * exactly what a horizontal NAME could not do (the name lives on the button).
+ * @param {{x: number, y: number}} point the anchor hole's world position
+ * @param {number} rot 0 | 90 | 180 | 270
+ * @returns {{x: number, y: number}}
+ */
+export function flagKeyPoint(point, rot = 0) {
+  const r = rotateOffset({ dx: (POINT_DEPTH + FLAG_LEN) / 2, dy: 0 }, rot);
+  return { x: (point?.x ?? 0) + r.dx, y: (point?.y ?? 0) + r.dy };
 }
 
 /** The next quarter-turn round, for R. Junk normalizes to 0 FIRST and then

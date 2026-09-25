@@ -127,12 +127,23 @@ Add one from the parts palette's **SIGNALS** section: pick *Signal*, then click
 anywhere on the desk. The click position does not matter; the button always
 goes to the next free slot on the rail, with its flag waiting beside it.
 
+Each button's coloured dot shows the **key** that presses it — `1` for the top
+button, down to `9`, then `0` for the tenth — and the flag prints the same key
+inside its body. That key is how you tell a flag's button at a glance.
+Selecting a flag on the desk also outlines its button on the rail.
+
 **Drag the flag onto a board** and its point snaps into the hole under the
 cursor. Press **R** while it is selected to turn it a quarter-turn about that
-point, so it can lie in whichever direction has room. Dragging a planted flag
-onto bare desk unplugs it, and its button goes back to holding the flag on the
-rail. A flag claims its hole exactly like a wire end or a chip pin does, so
-nothing else can use it while the flag is there.
+point, so it can lie in whichever direction has room. A flag claims its hole
+exactly like a wire end or a chip pin does, so nothing else can use it while
+the flag is there.
+
+To take a flag off the board, drag it onto bare desk, or right-click it and
+choose **Remove Signal**. Either way the flag goes back beside its button on
+the rail, and its position and rotation are cleared, so the next drag starts
+fresh. The signal itself stays. **Delete Signal** on the same menu (or the
+**Delete** key while the flag is selected) removes the signal altogether,
+button included.
 
 ### Momentary, toggle, and the resting level
 
@@ -142,7 +153,7 @@ Right-click a flag (or a button) for **Properties…**:
 | --- | --- |
 | **Name** | The label shown on the button |
 | **Description** | The button's tooltip |
-| **Color** | The colour shared by the button's dot and its flag — one of the seven signal colours, and only those no other signal holds are offered |
+| **Color** | The colour shared by the button's dot and its flag — any of the seven signal colours, even one another signal already uses |
 | **Type** | **Momentary** asserts while held; **Toggle** flips on each press and stays |
 | **Default value** | The level the signal rests at — **Low** or **High** |
 
@@ -158,22 +169,29 @@ conflict, exactly as two chip outputs on one net would be.
 
 ### Pressing them
 
-While the circuit is running, **1–7 press the signal buttons**, top to bottom.
-No modifier, so you can hold several down together — `1` and `3` at once is two
-signals asserted at once. (Those digits pick the wire colour and the bus width
+While the circuit is running, **1–9 and then 0 press the signal buttons**, top
+to bottom — the key each button (and its flag) shows. No modifier, so you can
+hold several down together — `1` and `3` at once is two signals asserted at
+once. (Those digits pick the wire colour and the bus width
 while the Wire or Bus tool is armed, but Run puts both tools away, so the two
 meanings never collide.) Clicking a button with the mouse does the same thing
 for one signal at a time.
 
-Because a colour is what ties a flag to its button, there are **seven signals**
-per desktop — one per signal colour. That is the eight jumper colours **minus
-black**, which is the bench's ground colour: a black flag would read as a ground
-tie, and its button's dot would all but vanish against the dark rail. The
-palette's *Signal* row goes grey once all seven are in use.
+There are **ten signals** per desktop — one per digit key. The palette's
+*Signal* row goes grey once all ten are in use.
+
+A new signal takes the next colour in the sequence red, blue, green, yellow,
+orange, white, purple, starting with the first one no signal is using. Once all
+seven are in use the sequence starts again from red, so the eighth, ninth and
+tenth signals share a colour with the first three — their keys tell them apart.
+Deleting a signal frees its colour for the next one you add. The signal colours
+are the eight jumper colours **minus black**, which is the bench's ground
+colour: a black flag would read as a ground tie, and its button's dot would all
+but vanish against the dark rail.
 
 A project saved before black was withdrawn still opens; any signal that was
-black is given a free colour on load, and keeps its name, type, resting level
-and wherever its flag was planted. Nothing else on the rail is recoloured.
+black is given a colour on load, and keeps its name, type, resting level and
+wherever its flag was planted. Nothing else on the rail is recoloured.
 
 ---
 

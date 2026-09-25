@@ -462,9 +462,8 @@ export class PalettePanel {
   /**
    * The external-signals section, pinned below ANNOTATIONS. One entry: pick it,
    * click the desk, and a signal button lands on the viewport's right-edge
-   * rail. It goes DISABLED once every wire colour is spoken for — the colour
-   * IS a signal's identity, so eight colours means eight signals, and a
-   * disabled row that says why beats a click that silently does nothing.
+   * rail. It goes DISABLED once every digit key has a signal (`MAX_SIGNALS`) —
+   * a disabled row that says why beats a click that silently does nothing.
    */
   #appendSignals() {
     const collapsed = this.#collapsed.has(SIGNALS_FOLDER);
@@ -494,10 +493,10 @@ export class PalettePanel {
   }
 
   /**
-   * Every wire colour spoken for? The colour IS a signal's identity, so eight
-   * colours means eight signals — and a disabled row that says why beats a
-   * click that silently does nothing. A targeted toggle rather than a re-render
-   * because app.js calls it on every doc change and the list is long.
+   * Every digit key taken? One signal per key is the cap — and a disabled row
+   * that says why beats a click that silently does nothing. A targeted toggle
+   * rather than a re-render because app.js calls it on every doc change and the
+   * list is long.
    */
   setSignalsFull(full) {
     this.#signalsFull = Boolean(full);

@@ -30,7 +30,7 @@ import {
   snapDesign,
 } from "../model/design-clip.js";
 import { boardRect } from "../model/mating.js";
-import { MAX_SIGNALS } from "../model/signals.js";
+import { MAX_SIGNALS, nextSignalColor } from "../model/signals.js";
 
 /** The plain `{boards, components, wires, …}` view captureDesign reads. */
 const view = (doc) => ({
@@ -324,8 +324,8 @@ test("a clip carries a PLANTED signal and leaves an unplaced one behind", () => 
   assert.equal(sig.name, "RESET");
   assert.equal(sig.rest, "high");
   assert.equal(sig.type, "momentary");
-  // A colour is a PER-DESK identity (flag ↔ button ↔ digit key), so it is
-  // deliberately re-issued on arrival rather than carried.
+  // Colours are handed out per desk, in a cycle, so one is deliberately
+  // re-issued on arrival — the next in THIS desk's sequence — not carried.
   assert.equal("color" in sig, false);
 });
 
@@ -337,7 +337,7 @@ test("clipScene draws the flags the drop would plant", () => {
   ]);
 });
 
-test("a pasted signal lands planted, with a colour free on THIS desk", () => {
+test("a pasted signal lands planted, with the next colour in THIS desk's cycle", () => {
   const { doc } = signalDesign();
   const clip = captureDesign(view(doc), { boardIds: ["bb1"] });
   const pasted = doc.pasteDesign(clip, { dx: 0, dy: 40 });
@@ -349,16 +349,16 @@ test("a pasted signal lands planted, with a colour free on THIS desk", () => {
   assert.equal(added.flag.rot, 90);
   assert.notEqual(added.flag.anchor, "bb1.a12", "a hole on the NEW board");
   assert.equal(
-    new Set(doc.signals.map((s) => s.color)).size,
-    doc.signals.length,
-    "every colour still distinct",
+    added.color,
+    nextSignalColor(doc.signals.filter((s) => s.id !== added.id)),
+    "the colour a new signal on this desk would have taken",
   );
 });
 
-test("signals paste BEST-EFFORT: the boards still land when colours run out", () => {
+test("signals paste BEST-EFFORT: the boards still land when the desk is full", () => {
   const { doc } = signalDesign();
   const clip = captureDesign(view(doc), { boardIds: ["bb1"] });
-  // Fill the palette — this desk can hold no more signals.
+  // One signal per key — this desk can hold no more signals.
   while (doc.signals.length < MAX_SIGNALS) doc.addSignal({});
   const pasted = doc.pasteDesign(clip, { dx: 0, dy: 40 });
   assert.equal(pasted.boards.length, 1, "the design itself still lands");

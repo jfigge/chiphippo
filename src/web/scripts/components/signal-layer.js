@@ -23,18 +23,27 @@
 //
 // The polygon IS the hit target — the sanctioned per-item event exception
 // (beside the wire hit stroke, `.part-span-hit` and `.part-button-cap`), where
-// idiomatic SVG beats hand-rolled distance math. Eight arbitrary rotated
+// idiomatic SVG beats hand-rolled distance math. Ten arbitrary rotated
 // pentagons is exactly that case.
 //
-// The flag carries NO TEXT, and that is a decision rather than an omission: at
-// rot 90/270 the body is 2 pitch wide and 4 tall, with nowhere to put a
-// horizontal name; the NAME lives on the button, and the flag's identity is its
-// unique COLOUR, matched to that button's dot. So there is no world-space font
-// size here and nothing printed on the circuit for i18n to reach.
+// The flag carries ONE CHARACTER: the digit KEY that presses it (`1`–`9`, `0`),
+// on the same coloured disc its rail button shows it on. Colours cycle and
+// repeat, so the key is what ties a flag to its button. It is a single UPRIGHT
+// glyph, deliberately — at rot 90/270 the body is 2 pitch wide and 4 tall, with
+// nowhere for a horizontal name (the NAME lives on the button), but one
+// character fits the body at every angle. A digit is not a word, so there is
+// nothing here for i18n to reach. The disc + digit group sits BESIDE the
+// polygon, pointer-inert, so the polygon stays the one hit target and the one
+// node carrying the signal's id.
 
 import { svgEl } from "../dom.js";
 import { PX_PER_UNIT } from "../desk/desk-geometry.js";
-import { flagPolygon } from "../model/signals.js";
+import {
+  FLAG_KEY_R,
+  flagKeyPoint,
+  flagPolygon,
+  signalKey,
+} from "../model/signals.js";
 import { worldOfAddress } from "../model/occupancy.js";
 
 /** The polygon `points` attribute for a flag whose apex is at a world point. */
@@ -50,23 +59,36 @@ export function flagPoints(boards, anchor, rot) {
   return at ? pointsAt(at, rot) : null;
 }
 
+/** Put a flag's key (disc + digit) where its body is, for a flag whose apex
+    is `at`. One translate on the group, so the two cannot come apart. */
+function placeKey(key, at, rot) {
+  const p = flagKeyPoint(at, rot);
+  key.setAttribute(
+    "transform",
+    `translate(${p.x * PX_PER_UNIT} ${p.y * PX_PER_UNIT})`,
+  );
+}
+
 export class SignalLayer {
   #doc;
   #svg;
-  #els = new Map(); // signalId → its <polygon>
+  #els = new Map(); // signalId → { poly: its <polygon>, key: its key <g> }
   #selected = null;
   #onPointerDown;
   #onContextMenu;
+  #onSelect;
 
   /**
    * @param {HTMLElement} layer the `.layer-signals` element
    * @param {object} doc the DeskDoc
-   * @param {object} [callbacks]
+   * @param {object} [callbacks] `onSelect(id|null)` hears every change of the
+   *   highlighted flag — the rail lights the matching button from it
    */
-  constructor(layer, doc, { onPointerDown, onContextMenu } = {}) {
+  constructor(layer, doc, { onPointerDown, onContextMenu, onSelect } = {}) {
     this.#doc = doc;
     this.#onPointerDown = onPointerDown;
     this.#onContextMenu = onContextMenu;
+    this.#onSelect = onSelect;
     // A zero-size <svg> renders NOTHING per spec — hence the token 1×1 box
     // plus overflow: visible, the same zero-size-anchor rule the wire layer
     // and every surface layer follow.
@@ -88,32 +110,55 @@ export class SignalLayer {
     this.#els.clear();
     for (const sig of this.#doc.signals) {
       if (!sig.flag?.anchor) continue;
-      const points = flagPoints(
-        this.#doc.boards,
-        sig.flag.anchor,
-        sig.flag.rot ?? 0,
-      );
-      if (points == null) continue; // an anchor over nothing draws nothing
-      const poly = this.#buildFlag(sig.id, points);
-      this.#svg.append(poly);
-      this.#els.set(sig.id, poly);
+      const at = worldOfAddress(this.#doc.boards, sig.flag.anchor);
+      if (at == null) continue; // an anchor over nothing draws nothing
+      const entry = this.#buildFlag(sig.id);
+      if (!entry) continue;
+      this.#moveTo(entry, at, sig.flag.rot ?? 0);
+      this.#svg.append(entry.poly, entry.key);
+      this.#els.set(sig.id, entry);
     }
   }
 
-  /** One flag's `<polygon>`, carrying its colour and its own listeners. */
-  #buildFlag(id, points) {
+  /**
+   * One flag: its `<polygon>`, carrying its colour and its own listeners, and
+   * the `<g>` printing its key — a translucent disc in the signal's colour with
+   * the digit on it. Unpositioned — `#moveTo` places both.
+   */
+  #buildFlag(id) {
     const sig = this.#doc.getSignal(id);
     if (!sig) return null;
+    const color = `var(--color-wire-${sig.color})`;
     const poly = svgEl("polygon", {
       class: "signal-flag",
-      points,
+      points: "",
       "data-signal-id": id,
     });
-    poly.style.setProperty("--signal-color", `var(--color-wire-${sig.color})`);
+    poly.style.setProperty("--signal-color", color);
     if (id === this.#selected) poly.classList.add("signal-flag--selected");
     poly.addEventListener("pointerdown", (e) => this.#onPointerDown?.(id, e));
     poly.addEventListener("contextmenu", (e) => this.#onContextMenu?.(id, e));
-    return poly;
+    const digit = svgEl("text", { class: "signal-flag-key-digit" });
+    digit.textContent = signalKey(this.#doc.signals, id) ?? "";
+    const key = svgEl(
+      "g",
+      { class: "signal-flag-key", "aria-hidden": "true" },
+      [
+        svgEl("circle", {
+          class: "signal-flag-key-disc",
+          r: FLAG_KEY_R * PX_PER_UNIT,
+        }),
+        digit,
+      ],
+    );
+    key.style.setProperty("--signal-color", color);
+    return { poly, key };
+  }
+
+  /** Draw one flag (polygon AND key) with its apex at a world point. */
+  #moveTo(entry, at, rot) {
+    entry.poly.setAttribute("points", pointsAt(at, rot));
+    placeKey(entry.key, at, rot);
   }
 
   /**
@@ -135,33 +180,30 @@ export class SignalLayer {
       this.clearPreview(id);
       return;
     }
-    let poly = this.#els.get(id);
-    if (!poly) {
-      poly = this.#buildFlag(id, "");
-      if (!poly) return;
-      this.#svg.append(poly);
-      this.#els.set(id, poly);
+    let entry = this.#els.get(id);
+    if (!entry) {
+      entry = this.#buildFlag(id);
+      if (!entry) return;
+      this.#svg.append(entry.poly, entry.key);
+      this.#els.set(id, entry);
     }
-    poly.setAttribute("points", pointsAt(at, rot));
-    poly.classList.toggle("signal-flag--illegal", Boolean(illegal));
+    this.#moveTo(entry, at, rot);
+    entry.poly.classList.toggle("signal-flag--illegal", Boolean(illegal));
   }
 
   /** Put one flag back where the DOCUMENT has it (a reverted or ended drag). */
   clearPreview(id) {
     const sig = this.#doc.getSignal(id);
-    const poly = this.#els.get(id);
-    poly?.classList.remove("signal-flag--illegal");
+    const entry = this.#els.get(id);
+    entry?.poly.classList.remove("signal-flag--illegal");
     if (!sig?.flag?.anchor) {
-      poly?.remove();
+      entry?.poly.remove();
+      entry?.key.remove();
       this.#els.delete(id);
       return;
     }
-    const points = flagPoints(
-      this.#doc.boards,
-      sig.flag.anchor,
-      sig.flag.rot ?? 0,
-    );
-    if (points && poly) poly.setAttribute("points", points);
+    const at = worldOfAddress(this.#doc.boards, sig.flag.anchor);
+    if (at && entry) this.#moveTo(entry, at, sig.flag.rot ?? 0);
     else this.render();
   }
 
@@ -177,9 +219,10 @@ export class SignalLayer {
   setSelected(id) {
     if (this.#selected === id) return;
     this.#selected = id;
-    for (const [sigId, poly] of this.#els) {
+    for (const [sigId, { poly }] of this.#els) {
       poly.classList.toggle("signal-flag--selected", sigId === id);
     }
+    this.#onSelect?.(id);
   }
 
   /** The currently highlighted flag's signal id, or null. */

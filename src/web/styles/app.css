@@ -1780,7 +1780,7 @@
 /* ── Signal flags (Feature 370) ──────────────────────────────────────────── */
 /* A pointed pentagon whose apex plugs into one hole. The polygon is its own
    hit target — a sanctioned per-item event exception, like .wire-hit below:
-   eight arbitrary rotated pentagons is exactly where idiomatic SVG beats
+   ten arbitrary rotated pentagons is exactly where idiomatic SVG beats
    hand-rolled distance math. Colour comes in as --signal-color, per element,
    because a custom property cannot be set through el()'s style bag. */
 .signal-svg {
@@ -1790,12 +1790,21 @@
   overflow: visible;
 }
 
+/* How much of a flag's colour its body shows — ONE number, read by the desk
+   flags, the paste ghost's flags, the rail's waiting chip, and the key disc
+   (which derives its own from it). */
+.signal-svg,
+.design-ghost-signals,
+.signal-flag-chip-art {
+  --signal-flag-alpha: 0.35;
+}
+
 .signal-flag {
   fill: var(--signal-color);
-  /* The body reads as a tinted field with a solid border of the SAME colour —
-     one hue per signal, matched to its button's dot, so a flag is identified
-     across the desk without carrying any text. */
-  fill-opacity: 0.35;
+  /* The body reads as a tinted field with a solid border of the SAME colour,
+     matched to its button's dot. Colours repeat once the seven are used, so
+     the KEY printed inside (.signal-flag-key) is what names the flag. */
+  fill-opacity: var(--signal-flag-alpha);
   stroke: var(--signal-color);
   stroke-width: 0.16;
   stroke-linejoin: round;
@@ -1818,6 +1827,35 @@
 .signal-flag--selected {
   stroke: var(--color-selection, var(--color-accent));
   stroke-width: 0.3;
+}
+
+/* The digit key that presses this signal, upright in the middle of the flag's
+   body on the same coloured disc its rail button shows it on — but
+   translucent, so the board shows through. Pointer-inert, so the polygon stays
+   the one hit target. */
+.signal-flag-key {
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Laid over the body, the disc must read as exactly TWICE the body's opacity:
+   a over a composites to a + d(1 - a), which is 2a when d = a / (1 - a). So it
+   is derived from the body's own alpha rather than typed (0.35 → ~0.54, for a
+   combined 0.70). */
+.signal-flag-key-disc {
+  fill: var(--signal-color);
+  fill-opacity: calc(var(--signal-flag-alpha) / (1 - var(--signal-flag-alpha)));
+}
+
+/* The rail dot's ink (a fixed dark, since it sits on the signal's own colour),
+   at the dot's own digit-to-disc proportion. */
+.signal-flag-key-digit {
+  fill: var(--color-wire-black);
+  font-size: 11px; /* world px (1.1 pitch) — printed on the flag */
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-anchor: middle;
+  dominant-baseline: central;
 }
 
 /* Dragged somewhere the drop would achieve nothing — a hole another lead
@@ -5155,7 +5193,7 @@ textarea.annotation-editor {
   align-items: flex-end;
   gap: var(--space-1);
   overflow: hidden;
-  /* The COLUMN is spacing, not a control: eight rows down the right edge must
+  /* The COLUMN is spacing, not a control: ten rows down the right edge must
      not turn a tall strip of desk into dead space. Its ROWS take the clicks. */
   pointer-events: none;
 }
@@ -5189,7 +5227,7 @@ textarea.annotation-editor {
 
 .signal-flag-chip-poly {
   fill: var(--signal-color);
-  fill-opacity: 0.35;
+  fill-opacity: var(--signal-flag-alpha);
   stroke: var(--signal-color);
   stroke-width: 0.16;
   stroke-linejoin: round;
@@ -5211,14 +5249,27 @@ textarea.annotation-editor {
   cursor: pointer;
 }
 
-/* The dot is the link back to this signal's flag on the desk — the two share
-   one colour, which is the flag's whole identity (it carries no text). */
+/* The dot is the link back to this signal's flag on the desk: the two share
+   a colour, and the dot carries the digit KEY the flag prints — colours
+   repeat, keys do not. The digit is a fixed dark ink rather than a theme
+   token, because it sits on the signal's own colour, which is a mid-to-light
+   tone in both themes. */
 .signal-btn-dot {
   flex: 0 0 auto;
-  width: 8px;
-  height: 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: calc(var(--font-size-xs) + 5px);
+  height: calc(var(--font-size-xs) + 5px);
   border-radius: 50%;
   background: var(--signal-color);
+  /* The wires' own under-stroke, so a WHITE dot keeps an edge on a light rail. */
+  box-shadow: inset 0 0 0 1px var(--color-wire-outline);
+  color: var(--color-wire-black);
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
 }
 
 .signal-btn-label {
@@ -5239,8 +5290,18 @@ textarea.annotation-editor {
   color: var(--color-crust);
 }
 
+/* Held: the button fills with the colour, so the dot turns inside out — a
+   dark disc with the digit in the colour. */
 .signal-btn--on .signal-btn-dot {
-  background: var(--color-crust);
+  background: var(--color-wire-black);
+  color: var(--signal-color);
+}
+
+/* Its flag is selected on the desk: the button takes the selected flag's own
+   outline colour, so the pair reads as one pick. */
+.signal-btn--selected {
+  border-color: var(--color-selection, var(--color-accent));
+  box-shadow: 0 0 0 1px var(--color-selection, var(--color-accent));
 }
 
 .signal-btn:hover {

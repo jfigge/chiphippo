@@ -281,7 +281,7 @@
     "signal": {
       "item": "Signal",
       "hint": "un bouton de stimulus — cliquez sur le bureau pour en ajouter un",
-      "full": "Les {count} couleurs de signal sont utilisées"
+      "full": "Ce bureau a déjà le maximum de {count} signaux"
     },
     "group": {
       "and": "AND",
@@ -865,7 +865,8 @@
       "removeBoard": "Retirer la platine",
       "editText": "Modifier le texte…",
       "remove": "Retirer",
-      "removeSignal": "Retirer le signal"
+      "removeSignal": "Retirer le signal",
+      "deleteSignal": "Supprimer le signal"
     },
     "remove": {
       "confirm": "Retirer",
@@ -884,8 +885,8 @@
       "noRoom": "Quelque chose dont elle a besoin n'est pas libre sur ce plan de travail.",
       "signalsDroppedTitle": "Certains signaux n'ont pas été collés",
       "signalsDropped": {
-        "one": "1 signal a été laissé de côté — ce bureau utilise déjà toutes les couleurs de signal.",
-        "other": "{count} signaux ont été laissés de côté — ce bureau utilise déjà toutes les couleurs de signal."
+        "one": "1 signal a été laissé de côté — ce bureau a déjà le nombre maximal de signaux.",
+        "other": "{count} signaux ont été laissés de côté — ce bureau a déjà le nombre maximal de signaux."
       }
     }
   },
@@ -1051,7 +1052,7 @@
     "simulation": {
       "run": "Exécuter / arrêter le circuit",
       "runKeys": "Espace ou {mod}+R",
-      "signals": "Appuyer sur le signal 1–7 (pendant l'exécution du circuit)"
+      "signals": "Appuyer sur un bouton de signal (pendant l'exécution du circuit)"
     }
   },
   "properties": {

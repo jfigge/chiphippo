@@ -188,3 +188,30 @@ test("a toggle button reads differently from a momentary one at rest", () => {
       .classList.contains("signal-btn--toggle"),
   );
 });
+
+test("each button's dot carries its KEY — 1 to 9, then 0 for the tenth", () => {
+  const { viewport } = mount({ signals: 10 });
+  assert.deepEqual(
+    rows(viewport).map((r) => r.querySelector(".signal-btn-dot").textContent),
+    ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"],
+  );
+});
+
+test("a selected flag lights its button, and a rebuild keeps it lit", () => {
+  const { win, rail, viewport, ids } = mount({ signals: 3 });
+  const lit = () =>
+    rows(viewport)
+      .filter((r) =>
+        r
+          .querySelector(".signal-btn")
+          .classList.contains("signal-btn--selected"),
+      )
+      .map((r) => r.dataset.signalId);
+  assert.deepEqual(lit(), []);
+  rail.setSelected(ids[1]);
+  assert.deepEqual(lit(), [ids[1]]);
+  win.dispatchEvent(new win.CustomEvent("chiphippo:doc-changed"));
+  assert.deepEqual(lit(), [ids[1]], "the rebuilt row is still lit");
+  rail.setSelected(null);
+  assert.deepEqual(lit(), []);
+});

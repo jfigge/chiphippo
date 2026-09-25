@@ -23,7 +23,7 @@
 
 import { el } from "../dom.js";
 import { t } from "../i18n.js";
-import { SIGNAL_DIGITS } from "../model/signals.js";
+import { SIGNAL_KEYS } from "../model/signals.js";
 import { PopupManager } from "../popup-manager.js";
 
 const isMac = window.chiphippo?.platform === "darwin";
@@ -117,9 +117,13 @@ const shortcutGroups = () => [
         desc: t("shortcuts.simulation.run"),
         keys: t("shortcuts.simulation.runKeys", { mod: MOD }),
       },
-      // Bare digits, and only while running — the wire/bus tools own 1–8 while
-      // armed, and Run disarms them, so the two can never both be live.
-      { desc: t("shortcuts.simulation.signals"), keys: `1–${SIGNAL_DIGITS}` },
+      // Bare digits, and only while running — the wire/bus tools own 1–9 while
+      // armed, and Run disarms them, so the two can never both be live. Read
+      // off SIGNAL_KEYS, which runs along the digit row: "1–9, 0".
+      {
+        desc: t("shortcuts.simulation.signals"),
+        keys: `${SIGNAL_KEYS[0]}–${SIGNAL_KEYS.at(-2)}, ${SIGNAL_KEYS.at(-1)}`,
+      },
     ],
   },
 ];
