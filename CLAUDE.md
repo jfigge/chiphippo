@@ -1602,7 +1602,9 @@ folders. Nothing in jsdom lays out, so `palette-panel.test.js` holds the rail's 
 header rules they copy. **The same glyphs head the OPEN tray's top-level sections**, between
 the caret and the label: `components/palette-icons.js` is the one copy both views draw from,
 and `--palette-icon` (1.3 × `--font-size`, declared on `.palette-panel, .palette-rail`) the
-one size, so shutting the tray changes where an icon is, never what it is. In a header the
+one size, so shutting the tray changes where an icon is, never what it is — and one colour,
+`--color-brand` (theme.css: the app icon's 150° green, `#2f855a` on light, lifted to `#5eba8c`
+on dark), which a hover never changes: it lifts the button or the label instead. In a header the
 icon is a ZERO-HIGH flex item its glyph overflows evenly — it is taller than Memory's line of
 `-xs` text, and a header that grew to fit it would no longer be the row the rail is measured
 against. The match is VERTICAL only, on purpose: open, each icon sits a caret's width (8 px)

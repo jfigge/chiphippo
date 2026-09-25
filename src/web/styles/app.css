@@ -590,13 +590,10 @@
   height: var(--control-height);
 }
 
-/* A folder header's row (.palette-folder and its peers). A shade brighter than
-   the chevron: the icons are the strip's whole content, and a line drawing
-   that small needs it to be told apart. */
+/* A folder header's row (.palette-folder and its peers). */
 .palette-rail-btn {
   height: calc(var(--font-size-sm) * var(--line-height) + 2 * var(--space-1));
   margin: var(--space-3) auto var(--space-1);
-  color: var(--color-subtext);
 }
 
 /* BOARDS leads the list, so its header carries no top margin. */
@@ -613,6 +610,9 @@
 .palette-rail-toggle:hover,
 .palette-rail-btn:hover {
   background: var(--color-surface-1);
+}
+
+.palette-rail-toggle:hover {
   color: var(--color-text);
 }
 
@@ -622,10 +622,13 @@
   outline-offset: -2px;
 }
 
-/* `block` drops the inline baseline gap so the glyph centres exactly. */
+/* The section icons, in the app icon's green (`--color-brand`) wherever they
+   show — a hover lifts the button or the header's text, never the tint.
+   `block` drops the inline baseline gap so the glyph centres exactly. */
 .palette-rail-btn svg,
 .palette-section-icon svg {
   display: block;
+  color: var(--color-brand);
   width: var(--palette-icon);
   height: var(--palette-icon);
 }
