@@ -49,6 +49,20 @@ import {
   normalizeSignalFields,
 } from "./signals.js";
 import {
+  ELEMENT_KINDS,
+  ID_PREFIX,
+  MAX_ELEMENTS,
+  elementKindOf,
+  elementSeq,
+  hasTagKey,
+  nextTagRotation,
+  normalizeElementFields,
+  normalizeFields,
+  normalizeTagRotation,
+  presetFields,
+  tagKeys,
+} from "./integration.js";
+import {
   boardSize,
   canRotate,
   formatAddress,
@@ -83,6 +97,7 @@ import {
   canMoveWire,
   canPlaceFlag,
   canPlacePart,
+  canPlaceTag,
   canPlaceWire,
   canReendWire,
   isFreeHole,
@@ -104,7 +119,7 @@ import {
  * steps back, so a migration keyed on a version could never fire once and
  * once only.
  */
-export const DOC_VERSION = 13;
+export const DOC_VERSION = 14;
 
 // The jumper-wire palette moved to model/wire-colors.js (Feature 370) so
 // model/signals.js can read it without an import cycle back through here.
@@ -285,6 +300,22 @@ function normalizeSchematicPos(raw) {
  * same omit-when-empty convention as schematicPos, so a record that never had
  * one round-trips to the identical shape it had before these fields existed.
  */
+/** A deep-enough copy of an integration element: its fields and tags are the
+    two nested things a caller could otherwise mutate through. */
+function copyElement(e) {
+  return {
+    ...e,
+    fields: e.fields.map((f) => ({ ...f })),
+    ...(e.tags
+      ? {
+          tags: Object.fromEntries(
+            Object.entries(e.tags).map(([k, v]) => [k, { ...v }]),
+          ),
+        }
+      : {}),
+  };
+}
+
 function applyMeta(record, raw) {
   if (typeof raw?.name === "string" && raw.name) record.name = raw.name;
   if (typeof raw?.description === "string" && raw.description) {
@@ -388,6 +419,7 @@ export function emptyDocument() {
     annotations: [],
     scopeChannels: [],
     signals: [],
+    integrations: [],
     nextBoardId: 1,
     nextGroupId: 1,
     nextComponentId: 1,
@@ -398,6 +430,8 @@ export function emptyDocument() {
     nextAnnotationId: 1,
     nextScopeChannelId: 1,
     nextSignalId: 1,
+    nextOutputId: 1,
+    nextInputId: 1,
   };
 }
 
@@ -693,6 +727,42 @@ export function normalizeDocument(raw) {
     doc.signals.push(record);
   }
 
+  // Serial integration: Output and Input elements (model/integration.js). An
+  // element's TAGS plug into board holes exactly as a signal's flag does, so
+  // they extend the very same `claimed` set — PINS, then WIRES, then FLAGS,
+  // then TAGS, first wins — and follow THE RULE for a homeless flag word for
+  // word: a tag with nowhere to go stops existing; the ELEMENT never does. The
+  // kind is read off the id (`out3`, `in1`), never trusted from a field that
+  // could disagree with it, and a colour is repaired the way a signal's is.
+  const maxElementSeq = { output: 0, input: 0 };
+  const elementIds = new Set();
+  const colorsKept = doc.signals.map((s) => ({ color: s.color }));
+  const rawElements = Array.isArray(raw.integrations) ? raw.integrations : [];
+  for (const e of rawElements) {
+    if (!e || typeof e !== "object") continue;
+    const kind = elementKindOf(e.id);
+    if (!kind || elementIds.has(e.id)) continue;
+    if (doc.integrations.length >= MAX_ELEMENTS) break;
+    elementIds.add(e.id);
+    maxElementSeq[kind] = Math.max(maxElementSeq[kind], elementSeq(e.id));
+    const record = { id: e.id, kind, ...normalizeElementFields(e, colorsKept) };
+    colorsKept.push({ color: record.color });
+    applyMeta(record, e);
+    const tags = {};
+    for (const key of tagKeys(record)) {
+      const tag = e.tags?.[key];
+      const anchor = tag?.anchor;
+      if (typeof anchor !== "string" || claimed.has(anchor)) continue;
+      const parsed = parseAddress(anchor);
+      const board = parsed && doc.boards.find((b) => b.id === parsed.boardId);
+      if (!board || parseHole(board.type, parsed.hole) === null) continue;
+      tags[key] = { anchor, rot: normalizeTagRotation(tag.rot) };
+      claimed.add(anchor);
+    }
+    if (Object.keys(tags).length) record.tags = tags;
+    doc.integrations.push(record);
+  }
+
   // Buses (Feature 130): metadata over wires — `{ id, name, width, color,
   // members: [wireId…] }`. Each member must be a surviving wire; junk names
   // drop the bus. `width` is repaired up so it never undercounts its members
@@ -835,6 +905,16 @@ export function normalizeDocument(raw) {
       ? raw.nextSignalId
       : 1;
   doc.nextSignalId = Math.max(storedNextSignal, maxSignalSeq + 1);
+  const storedNextOutput =
+    Number.isInteger(raw.nextOutputId) && raw.nextOutputId > 0
+      ? raw.nextOutputId
+      : 1;
+  doc.nextOutputId = Math.max(storedNextOutput, maxElementSeq.output + 1);
+  const storedNextInput =
+    Number.isInteger(raw.nextInputId) && raw.nextInputId > 0
+      ? raw.nextInputId
+      : 1;
+  doc.nextInputId = Math.max(storedNextInput, maxElementSeq.input + 1);
   return doc;
 }
 
@@ -1507,6 +1587,7 @@ export class DeskDoc {
     this.#doc.components = this.#doc.components.filter((c) => c.board !== id);
     this.#doc.wires = this.#doc.wires.filter((w) => !this.#wireTouches(w, id));
     this.#detachSignalFlags(id);
+    this.#detachIntegrationTags(id);
     this.#pruneBusesToWires();
     if (removed.group != null) {
       this.#regroupRuns(
@@ -3023,6 +3104,186 @@ export class DeskDoc {
     for (const sig of this.#doc.signals) {
       const parsed = sig.flag ? parseAddress(sig.flag.anchor) : null;
       if (parsed?.boardId === boardId) delete sig.flag;
+    }
+  }
+
+  // ── Serial integration: Output and Input elements ─────────────────────────
+  // An element is a CARD on the viewport rail (under the signal buttons) plus
+  // TAGS — one per pin and one trigger — whose points plug into board holes.
+  // Like a signal it is neither a component nor decoration: occupancy claims
+  // every planted tag's hole and the engine drives an Input's pin nets, but it
+  // has no footprint, no catalog def and no desk coordinates of its own. Rail
+  // order IS document order, and so is the element's index on the wire among
+  // its connection's elements of the same kind (model/integration.js).
+
+  /** Copies of the elements, in rail order. */
+  get integrations() {
+    return this.#doc.integrations.map(copyElement);
+  }
+
+  /** A copy of one element, or null. */
+  getIntegration(id) {
+    const e = this.#doc.integrations.find((x) => x.id === id);
+    return e ? copyElement(e) : null;
+  }
+
+  /**
+   * Add an Output or Input, `width` pins wide (a drop-time preset — see
+   * `presetFields`), taking the next colour in the cycle the signals share.
+   * Throws INTEGRATIONS_FULL past `MAX_ELEMENTS`, INVALID_ARG for a kind that
+   * is neither. Returns a copy.
+   */
+  addIntegration({ kind, width = 1, connection = null, name } = {}) {
+    if (!ELEMENT_KINDS.includes(kind)) {
+      throw taggedError(`bad element kind: ${kind}`, "INVALID_ARG");
+    }
+    if (this.#doc.integrations.length >= MAX_ELEMENTS) {
+      throw taggedError(
+        `at most ${MAX_ELEMENTS} elements`,
+        "INTEGRATIONS_FULL",
+      );
+    }
+    const counter = kind === "output" ? "nextOutputId" : "nextInputId";
+    const color = nextSignalColor([
+      ...this.#doc.signals,
+      ...this.#doc.integrations,
+    ]);
+    const element = {
+      id: `${ID_PREFIX[kind]}${this.#doc[counter]++}`,
+      kind,
+      ...normalizeElementFields({
+        color,
+        connection,
+        fields: presetFields(width),
+      }),
+    };
+    if (typeof name === "string" && name) element.name = name;
+    this.#doc.integrations.push(element);
+    return copyElement(element);
+  }
+
+  /**
+   * Patch an element's `color` / `connection` / `triggerEdge` /
+   * `triggerInit`. Throws NOT_FOUND or INVALID_ARG. Returns a copy.
+   */
+  updateIntegration(id, patch = {}) {
+    const e = this.#element(id);
+    if (patch.color !== undefined && !SIGNAL_COLORS.includes(patch.color)) {
+      throw taggedError(`bad element color: ${patch.color}`, "INVALID_ARG");
+    }
+    const next = normalizeElementFields({ ...e, ...patch });
+    for (const key of ["triggerEdge", "triggerInit"]) {
+      if (patch[key] !== undefined && next[key] !== patch[key]) {
+        throw taggedError(`bad element ${key}: ${patch[key]}`, "INVALID_ARG");
+      }
+    }
+    for (const key of ["color", "connection", "triggerEdge", "triggerInit"]) {
+      if (patch[key] !== undefined) e[key] = next[key];
+    }
+    return copyElement(e);
+  }
+
+  /**
+   * Re-shape an element's pins (Properties ▸ Pins). Tags are numbered by PIN,
+   * so a re-shape leaves every planted tag in its hole — except those past
+   * the new last pin, which have no pin left to be and are unplugged (THE
+   * RULE again: the tag goes, the element stays). Returns a copy.
+   */
+  setIntegrationFields(id, fields) {
+    const e = this.#element(id);
+    e.fields = normalizeFields(fields);
+    if (e.tags) {
+      for (const key of Object.keys(e.tags)) {
+        if (!hasTagKey(e, key)) delete e.tags[key];
+      }
+      if (!Object.keys(e.tags).length) delete e.tags;
+    }
+    return copyElement(e);
+  }
+
+  /** Update an element's Name/Description — the setComponentMeta shape. */
+  setIntegrationMeta(id, patch) {
+    const e = this.#element(id);
+    for (const key of ["name", "description"]) {
+      if (typeof patch[key] !== "string") continue;
+      if (patch[key]) e[key] = patch[key];
+      else delete e[key];
+    }
+    return copyElement(e);
+  }
+
+  /**
+   * Plug one of an element's tags into a board hole — planting and moving are
+   * the one method, as for a signal flag. Throws NOT_FOUND (element or tag
+   * key) / NOT_A_POINT / HOLE_TAKEN. Returns a copy.
+   */
+  plantIntegrationTag(id, key, address, rot = 0) {
+    const e = this.#element(id);
+    if (!hasTagKey(e, key))
+      throw taggedError(`no tag ${id}:${key}`, "NOT_FOUND");
+    if (!this.isBoardHole(address)) {
+      throw taggedError(`${address} is not a board hole`, "NOT_A_POINT");
+    }
+    if (!canPlaceTag(this.#doc, id, key, address)) {
+      throw taggedError(`${address} is already taken`, "HOLE_TAKEN");
+    }
+    e.tags = { ...(e.tags ?? {}), [key]: { anchor: address, rot: normalizeTagRotation(rot) } }; // prettier-ignore
+    return copyElement(e);
+  }
+
+  /** Turn a planted tag a quarter-turn about its point. */
+  rotateIntegrationTag(id, key) {
+    const e = this.#element(id);
+    const tag = e.tags?.[key];
+    if (tag) tag.rot = nextTagRotation(tag.rot);
+    return copyElement(e);
+  }
+
+  /** Unplug one tag — back onto its card on the rail. */
+  unplantIntegrationTag(id, key) {
+    const e = this.#element(id);
+    if (e.tags) {
+      delete e.tags[key];
+      if (!Object.keys(e.tags).length) delete e.tags;
+    }
+    return copyElement(e);
+  }
+
+  /** Unplug every tag an element has. */
+  unplantIntegrationTags(id) {
+    const e = this.#element(id);
+    delete e.tags;
+    return copyElement(e);
+  }
+
+  /** Remove an element outright — card, tags and all. Throws NOT_FOUND. */
+  removeIntegration(id) {
+    const i = this.#doc.integrations.findIndex((x) => x.id === id);
+    if (i === -1) throw taggedError(`no element ${id}`, "NOT_FOUND");
+    this.#doc.integrations.splice(i, 1);
+  }
+
+  /** May this tag plug in here? A real board hole, free, ignoring its own claim. */
+  canPlaceIntegrationTag(id, key, address) {
+    return (
+      this.isBoardHole(address) && canPlaceTag(this.#doc, id, key, address)
+    );
+  }
+
+  #element(id) {
+    const e = this.#doc.integrations.find((x) => x.id === id);
+    if (!e) throw taggedError(`no element ${id}`, "NOT_FOUND");
+    return e;
+  }
+
+  /** Detach every tag planted on a board that is going away (THE RULE). */
+  #detachIntegrationTags(boardId) {
+    for (const e of this.#doc.integrations) {
+      if (!e.tags) continue;
+      for (const [key, tag] of Object.entries(e.tags)) {
+        if (parseAddress(tag.anchor)?.boardId === boardId) delete e.tags[key];
+      }
+      if (!Object.keys(e.tags).length) delete e.tags;
     }
   }
 

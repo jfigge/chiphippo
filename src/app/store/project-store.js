@@ -23,7 +23,9 @@
  *     {
  *       version, name, description?, wheelLocked?, activeTab, nextIndex,
  *       tabs:   [ { id, name, description?, doc } ],   // doc = a desk document
- *       images: { <rom-guid>: <base64> }               // programmed ROMs only
+ *       images: { <rom-guid>: <base64> },              // programmed ROMs only
+ *       connections?: [ {id, name, baud, …} ],         // serial, NO port
+ *       codegen?: { <tabId>: { <connId>: "0x…" } }     // generated headers
  *     }
  *
  * Up to v3 a project was a list of PATHS — one `.desktop.chiphippo` per tab,
@@ -105,6 +107,60 @@ const MAX_NAME = 64;
     becomes a file name, hence the disable.) */
 // eslint-disable-next-line no-control-regex
 const UNSAFE_FILENAME_RE = /[\x00-\x1f<>:"\\/|?*]+/g;
+
+/** What a serial connection id may look like (the renderer's own rule). */
+const CONNECTION_ID_RE = /^[a-z0-9][a-z0-9-]{0,63}$/i;
+
+/** A generated header's design hash, as the project stores it. */
+const HASH_RE = /^0x[0-9A-F]{8}$/;
+
+/**
+ * The serial connections a project carries (the Arduino serial integration):
+ * each one its elements name, WITHOUT a port — a port is a fact about one
+ * machine, and the settings there are where it lives. Only the plain fields
+ * survive; the renderer (model/serial-connections.js) is the one that decides
+ * what their values mean.
+ */
+function sanitizeConnections(list) {
+  if (!Array.isArray(list)) return [];
+  const out = [];
+  const seen = new Set();
+  for (const c of list) {
+    if (!c || typeof c !== "object") continue;
+    if (typeof c.id !== "string" || !CONNECTION_ID_RE.test(c.id)) continue;
+    if (c.id === "mock") continue; // the built-in Mock is everywhere already
+    if (seen.has(c.id)) continue;
+    seen.add(c.id);
+    const record = { id: c.id, name: text(c.name).slice(0, MAX_NAME) || c.id };
+    for (const key of ["baud", "dataBits", "stopBits"]) {
+      if (Number.isFinite(c[key])) record[key] = c[key];
+    }
+    for (const key of ["parity", "flowControl", "language"]) {
+      if (typeof c[key] === "string") record[key] = c[key].slice(0, 16);
+    }
+    out.push(record);
+  }
+  return out;
+}
+
+/** The generated-header hashes, per desktop per connection, pruned to the
+    desktops that exist. */
+function sanitizeCodegen(raw, tabIds) {
+  const out = {};
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return out;
+  for (const tabId of tabIds) {
+    const entry = raw[tabId];
+    if (!entry || typeof entry !== "object") continue;
+    const kept = {};
+    for (const [connId, hash] of Object.entries(entry)) {
+      if (CONNECTION_ID_RE.test(connId) && HASH_RE.test(String(hash))) {
+        kept[connId] = hash;
+      }
+    }
+    if (Object.keys(kept).length) out[tabId] = kept;
+  }
+  return out;
+}
 
 function taggedError(message, code) {
   const err = new Error(message);
@@ -308,6 +364,10 @@ class ProjectStore {
       // `images` is non-empty exactly when `blobs` is, so one guard covers the
       // pair and an image-less project still writes neither key.
       ...(Object.keys(images).length ? { images, blobs } : {}),
+      // The serial integration's two: omitted while empty, so a project that
+      // never used it keeps the bytes it always had.
+      ...(clean.connections.length ? { connections: clean.connections } : {}),
+      ...(Object.keys(clean.codegen).length ? { codegen: clean.codegen } : {}),
       // Only ever in the working slot, and only when the project it belongs to
       // has a file of its own (see `writeRecovery`).
       ...(recoveryFor ? { recoveryFor } : {}),
@@ -403,6 +463,11 @@ class ProjectStore {
           ? raw.nextIndex
           : highest + 1,
       tabs,
+      connections: sanitizeConnections(raw.connections),
+      codegen: sanitizeCodegen(
+        raw.codegen,
+        tabs.map((t) => t.id),
+      ),
     };
   }
 

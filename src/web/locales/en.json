@@ -88,7 +88,10 @@
       "memImage": "Memory image",
       "binImage": "Binary image",
       "intelHex": "Intel HEX",
-      "allFiles": "All files"
+      "allFiles": "All files",
+      "header": "C/C++ header",
+      "python": "Python source",
+      "text": "Text"
     },
     "regrant": {
       "message": "Confirm access to this project",
@@ -171,6 +174,13 @@
       "step": "Step",
       "stepTitle": "Advance one clock half-period",
       "speedTitle": "Clock speed (click to cycle ¼ / 1 / 4)"
+    },
+    "generate": {
+      "label": "Generate",
+      "title": "Generate the code for this desktop's boards",
+      "stale": "Generate — a board's code is out of date with this desktop's design",
+      "staleLabel": "Generate (out of date)",
+      "none": "Generate board code — add an Output or an Input first"
     }
   },
   "zoom": {
@@ -186,7 +196,8 @@
       "appearance": "Appearance",
       "datasheets": "Data Sheets",
       "ai": "AI",
-      "about": "About"
+      "about": "About",
+      "integration": "Serial I/O"
     },
     "appearance": {
       "language": "Language",
@@ -329,6 +340,13 @@
       "signals": "SIGNALS",
       "switches": "Switches",
       "xor": "XOR"
+    },
+    "integration": {
+      "output": "Output",
+      "input": "Input",
+      "outputHint": "sends a value to an Arduino when its trigger fires — click the desk to add one",
+      "inputHint": "an Arduino's values drive its pins — click the desk to add one",
+      "full": "This desk already holds as many Outputs and Inputs as it can"
     }
   },
   "boards": {
@@ -1090,7 +1108,11 @@
       "size": "Size",
       "imageSource": "Image file",
       "type": "Type",
-      "rest": "Default value"
+      "rest": "Default value",
+      "connection": "Connection",
+      "triggerEdge": "Trigger",
+      "triggerInit": "Trigger starts",
+      "fields": "Pins"
     },
     "option": {
       "manual": "Manual",
@@ -1101,7 +1123,8 @@
     },
     "action": {
       "inspectMemory": "Inspect memory…",
-      "programMemory": "Load image… (program)"
+      "programMemory": "Load image… (program)",
+      "manageConnections": "Manage connections…"
     },
     "warnings": "Warnings",
     "warning": {
@@ -1182,5 +1205,290 @@
     "closeNamed": "Close {title}",
     "removeNamed": "Remove {label}",
     "enterValue": "Enter a value"
+  },
+  "integration": {
+    "kind": {
+      "output": "Output",
+      "input": "Input"
+    },
+    "defaultName": {
+      "output": "Output {n}",
+      "input": "Input {n}"
+    },
+    "edge": {
+      "rising": "Rising",
+      "falling": "Falling",
+      "either": "Either"
+    },
+    "fieldType": {
+      "bit": "Bit",
+      "byte": "Byte",
+      "word": "Word"
+    },
+    "widthLabel": "Width",
+    "widthOption": {
+      "one": "{count} pin",
+      "other": "{count} pins"
+    },
+    "widthTitle": {
+      "output": "Output width (pins)",
+      "input": "Input width (pins)"
+    },
+    "tag": {
+      "pinTitle": "{name} · pin {pin} {field}",
+      "triggerTitle": "{name} · trigger ({edge})"
+    },
+    "card": {
+      "noConnection": "no connection",
+      "menuHint": "Right-click for Properties and more",
+      "width": {
+        "one": "{count} pin",
+        "other": "{count} pins"
+      },
+      "pinHint": "Pin {pin} — drag onto a hole",
+      "triggerHint": "Trigger — drag onto the line that fires it"
+    },
+    "menu": {
+      "removeTag": "Remove Tag",
+      "removeAllTags": "Remove All Tags",
+      "delete": {
+        "output": "Delete Output",
+        "input": "Delete Input"
+      },
+      "openWindow": "Open Connection Window"
+    },
+    "properties": {
+      "title": {
+        "output": "{name} Properties",
+        "input": "{name} Properties"
+      },
+      "connection": "Connection",
+      "noConnection": "None",
+      "unknownConnection": "(not on this computer)",
+      "manageConnections": "Manage connections…",
+      "triggerEdge": "Trigger",
+      "triggerInit": "Trigger starts",
+      "pins": "Pins"
+    },
+    "fields": {
+      "pinsTitle": "Pins {pins}",
+      "nameAria": "Name of pins {pins}",
+      "typeAria": "Type of pins {pins}",
+      "remove": "Remove this field",
+      "count": "{used} of {max} pins"
+    },
+    "verify": {
+      "title": "Settings need to be verified",
+      "noConnection": "{name} isn't assigned to a connection. Choose one in its Properties.",
+      "unknownConnection": "The connection {name} uses isn't set up on this computer. Choose one in its Properties.",
+      "unconfigured": "The connection “{name}” needs to be configured in Settings ▸ Serial I/O before the circuit can run.",
+      "portMissing": "The port {port} for the connection “{name}” is unavailable.",
+      "openSettings": "Open Settings",
+      "openProperties": "Open Properties"
+    },
+    "run": {
+      "connectingTitle": "Connecting",
+      "connecting": "Waiting for {names} to answer…",
+      "signatureTitle": "Sketch built for another design",
+      "signature": "The code on “{name}” was built for a different design. Generate it again and put it back on the board.",
+      "versionTitle": "Protocol version mismatch",
+      "version": "“{name}” speaks protocol v{device}; Chip Hippo speaks v{host}. Generate its code again and put it back on the board.",
+      "droppedTitle": "Connection dropped",
+      "dropped": "The serial connection to “{name}” was dropped, so the circuit has stopped.",
+      "deliveryTitle": "Delivery failed",
+      "delivery": "Delivery to “{name}” failed after {attempts} attempts, so the circuit has stopped. Is its sketch calling ChipHippo.poll() often enough?",
+      "noResponseTitle": "No answer",
+      "noResponse": "Nothing answered on {port} for “{name}”. Is the sketch uploaded, and does it call ChipHippo.begin() and ChipHippo.poll()?",
+      "openFailedTitle": "Couldn't open the port",
+      "openFailed": "Couldn't open {port} for “{name}”: {detail}",
+      "restartTitle": "Board restarted",
+      "restart": "“{name}” restarted while the circuit was running, so the circuit has stopped. Run it again to reconnect."
+    },
+    "lamps": {
+      "label": "Serial activity",
+      "tx": "TX — values sent to an Arduino",
+      "rx": "RX — values received from an Arduino",
+      "lg": "LG — log output",
+      "open": "Click to open a connection window."
+    },
+    "log": {
+      "empty": "Nothing yet. What the sketch prints, and every value that crosses the connection, appears here while the circuit runs.",
+      "filter": {
+        "log": "Log",
+        "data": "Data",
+        "protocol": "Protocol"
+      },
+      "filterTitle": {
+        "log": "Show what the device printed",
+        "data": "Show the values that cross the connection",
+        "protocol": "Show acknowledgements, handshakes and the port opening and closing. Problems are always shown."
+      },
+      "timestamps": "Timestamps",
+      "timestampsTitle": "Show the time since the run started",
+      "save": "Save…",
+      "saved": "Saved to {path}",
+      "saveFailed": "Couldn't save: {error}",
+      "event": {
+        "open": "Connection opened",
+        "openPort": "Port {port} opened",
+        "close": "Port closed",
+        "handshake": "Handshake OK: protocol v{version}, signature {signature}",
+        "announce": "the device announced a start",
+        "staleAck": "stale, ignored",
+        "nakIdle": "nothing to resend",
+        "resend": "resending seq {seq} (attempt {attempt}/{max})",
+        "noAck": "No ACK for seq {seq} — resending (attempt {attempt}/{max})",
+        "failed": "Delivery of seq {seq} failed after {attempts} attempts",
+        "frame": "frame",
+        "damage": {
+          "crc": "bad CRC",
+          "escape": "bad escape",
+          "length": "too long"
+        },
+        "damagedNak": "Damaged {frame} ({error}) — NAK sent",
+        "damagedDropped": "Damaged {frame} ({error}) — dropped",
+        "duplicate": "a resend: acknowledged again, not applied twice",
+        "unusable": "unreadable: acknowledged and dropped",
+        "noResponse": "No answer to HELLO in {seconds} s",
+        "version": "The device speaks protocol v{version}; Chip Hippo speaks v{host}",
+        "signature": "The device was built for layout {signature}, not {expected}",
+        "restart": "The device restarted",
+        "dropped": "Connection dropped",
+        "droppedDetail": "Connection dropped: {detail}",
+        "openFailed": "Couldn't open the port: {detail}"
+      }
+    },
+    "settings": {
+      "hint": "Named serial connections to Arduino boards. Output and Input elements pick one in their Properties.",
+      "connection": "Connection",
+      "optionTagged": "{name} — {tag}",
+      "add": "Add connection",
+      "defaultName": "Arduino",
+      "name": "Name",
+      "port": "Port",
+      "baud": "Baud rate",
+      "language": "Language",
+      "languageValue": {
+        "cpp": "C++",
+        "python": "Python"
+      },
+      "languageHint": "What Generate writes for this connection: C++ — an Arduino header, for any Arduino board — or Python — one module for MicroPython and CircuitPython boards, such as a Raspberry Pi Pico, an ESP32 or a Nano ESP32. An Uno, Nano, Mega or Leonardo runs C++ only.",
+      "choosePort": "— choose a port —",
+      "portNotFound": "{port} (not found)",
+      "portOf": "port {n} of {count}",
+      "portOfRole": "port {n} of {count}: {role}",
+      "portRoleRepl": "REPL",
+      "portRoleData": "CircuitPython data",
+      "rescan": "Re-scan",
+      "scanning": "Scanning…",
+      "advanced": "Advanced",
+      "dataBits": "Data bits",
+      "parity": "Parity",
+      "parityValue": {
+        "none": "None",
+        "even": "Even",
+        "odd": "Odd",
+        "mark": "Mark",
+        "space": "Space"
+      },
+      "stopBits": "Stop bits",
+      "flowControl": "Flow control",
+      "flowValue": {
+        "none": "None",
+        "hardware": "Hardware (RTS/CTS)",
+        "software": "Software (XON/XOFF)"
+      },
+      "needsConfig": "Needs configuration",
+      "portUnavailable": "Port unavailable",
+      "apply": "Apply",
+      "applied": "Applied.",
+      "applyAnyway": "Apply anyway",
+      "noPort": "Choose a port first.",
+      "portAbsent": "{port} isn't connected right now.",
+      "remove": "Remove connection",
+      "removeConfirm": "Click again to remove this connection",
+      "builtin": "Built-in",
+      "mockNote": "Simulates a device on this connection. Nothing is sent to hardware.",
+      "reservedName": "“{name}” is the built-in connection's name. Choose another.",
+      "openWindow": "Open window…",
+      "openWindowTitle": "Open this connection's window: what the device prints, and every value that crosses it"
+    },
+    "generate": {
+      "title": "Generate board code",
+      "intro": "One file per connection, in the connection's language: a C++ header or a Python module. Save it beside the board's own code and include or import it. Your code handles the Outputs, so saving over the file never touches it.",
+      "none": "No Output or Input on this desktop has a connection.",
+      "unassigned": {
+        "one": "{count} element has no connection and is left out.",
+        "other": "{count} elements have no connection and are left out."
+      },
+      "counts": "Outputs: {outputs} · Inputs: {inputs}",
+      "language": {
+        "cpp": "C++ header for Arduino",
+        "python": "Python module for MicroPython and CircuitPython"
+      },
+      "hash": "Design {hash}",
+      "status": {
+        "current": "Up to date",
+        "stale": "Out of date",
+        "never": "Not generated yet",
+        "unknown": "Not configured on this computer"
+      },
+      "save": "Save header…",
+      "saveModule": "Save module…",
+      "copy": "Copy",
+      "view": "View files…",
+      "viewTitle": "{name} — header and example",
+      "viewTitlePython": "{name} — module and examples",
+      "files": "Files",
+      "copied": "Copied to the clipboard.",
+      "copiedFile": "Copied {name} to the clipboard.",
+      "copyFailed": "Couldn't copy to the clipboard.",
+      "saved": "Saved to {path}",
+      "failed": "Couldn't save the file: {error}",
+      "warn": {
+        "duplicate": "“{name}” became {identifier}: another name made the same identifier.",
+        "reserved": "“{name}” became {identifier}: that word is reserved in Arduino code.",
+        "reservedPython": "“{name}” became {identifier}: that word is reserved in Python."
+      },
+      "warnConfig": "1.5 stop bits has no Arduino setting, so the header opens the port at its default framing.",
+      "warnPythonFraming": "This connection is set to {baud} baud, {format}. A MicroPython board whose USB is a separate serial chip (a classic ESP32 DevKit) always talks at 115200 baud, 8N1, so it won't connect; a board with USB built in (a Pico, a Nano ESP32) doesn't mind.",
+      "mockOnly": "Every Output and Input on this desktop is on the Mock, which needs no code: it is built from the design on screen at every run.",
+      "mockNote": "The Mock needs no code."
+    },
+    "mock": {
+      "status": {
+        "idle": "Not running. The Mock connects when you press Run.",
+        "waiting": "Waiting for the circuit to greet the Mock…",
+        "connected": "Connected. What you send reaches the circuit."
+      },
+      "noLayout": "Run the circuit to see the Mock's Inputs here.",
+      "noInputs": "The Mock has no Inputs on this desktop.",
+      "send": "Send",
+      "sendAll": "Send all",
+      "sent": "Sent",
+      "failed": {
+        "offline": "Not connected",
+        "delivery": "Not acknowledged",
+        "closed": "The run ended",
+        "invalid": "Not a value it can send"
+      },
+      "bit": "{name}, bit {bit}",
+      "log": "Log",
+      "logPlaceholder": "Log text",
+      "faults": "Faults",
+      "faultsHint": "Each fault happens once, to the next frame it applies to.",
+      "fault": {
+        "drop-ack": "Drop next ACK",
+        "corrupt": "Corrupt next frame",
+        "ignore-hello": "Ignore handshake",
+        "wrong-signature": "Wrong signature"
+      },
+      "faultTitle": {
+        "drop-ack": "Swallow the acknowledgement of the next Output, so Chip Hippo times out and sends it again",
+        "corrupt": "Damage the next acknowledgement or Input the Mock sends, so Chip Hippo asks for it again",
+        "ignore-hello": "Don't answer the next Run, so it stops with “No answer”",
+        "wrong-signature": "Answer the next Run as a sketch built for another design, so it refuses to start"
+      }
+    }
   }
 }

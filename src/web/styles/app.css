@@ -357,6 +357,13 @@
 .app-stage {
   --desk-lock-size: 24px;
   --desk-zoom-height: calc(var(--font-size) + 11px + 2 * var(--space-1) + 2px);
+  /* …and its WIDTH, for the serial integration's activity lamps, which sit
+     immediately to its left: two square buttons and the readout's floor, the
+     two gaps between them, the padding and the border. Consumed by .desk-zoom
+     too, so the lamps can never drift onto it. */
+  --desk-zoom-width: calc(
+    2 * (var(--font-size) + 11px) + 48px + 4 * var(--space-1) + 2px
+  );
   position: relative;
   display: flex;
   flex-direction: column;
@@ -689,8 +696,10 @@
   color: var(--color-text);
 }
 
-/* Disclosure caret — points down when open, right when collapsed. */
-.palette-group-caret {
+/* Disclosure caret — points down when open, right when collapsed. The Mock
+   panel's (its Inputs, its Faults) is the same caret. */
+.palette-group-caret,
+.mock-caret {
   flex: 0 0 auto;
   width: 0;
   height: 0;
@@ -926,9 +935,18 @@
   cursor: grabbing;
 }
 
-/* An item (board, part, or brick) grabbed and being moved: closed hand. */
-.desk-viewport--dragging {
-  cursor: grabbing;
+/* Something grabbed and being moved: a board, part, brick, annotation, signal
+   flag or Output/Input tag (`--dragging`), or a wire or bus end
+   (`--wire-dragging`) — the closed hand, as a pan shows. It is forced on every
+   descendant too, because a drag crosses items with a grab cursor of their own
+   (flags, tags, wires, annotations; tags in adjacent holes overlap), and the
+   OPEN hand reappearing over one would say nothing is held. `!important`
+   because several of those rules out-rank a descendant selector. */
+.desk-viewport--dragging,
+.desk-viewport--dragging *,
+.desk-viewport--wire-dragging,
+.desk-viewport--wire-dragging * {
+  cursor: grabbing !important;
 }
 
 /* The infinite world: children are absolutely positioned in world px
@@ -1893,11 +1911,6 @@
   cursor: crosshair;
 }
 
-/* Dragging a wire (an end or the whole run) shows the closed hand. */
-.desk-viewport--wire-dragging {
-  cursor: grabbing;
-}
-
 .wire-svg {
   position: absolute;
   top: 0;
@@ -1919,12 +1932,15 @@
 }
 
 /* How much of a flag's colour its body shows — ONE number, read by the desk
-   flags, the paste ghost's flags, the rail's waiting chip, and the key disc
-   (which derives its own from it). */
+   flags, the paste ghost's flags, the rail's waiting chip, the key disc
+   (which derives its own from it), and the Output/Input tags and their
+   waiting chips. */
 .signal-svg,
 .design-ghost-signals,
-.signal-flag-chip-art {
-  --signal-flag-alpha: 0.35;
+.signal-flag-chip-art,
+.tag-svg,
+.integration-tag-chip {
+  --signal-flag-alpha: 0.4375;
 }
 
 .signal-flag {
@@ -1934,7 +1950,7 @@
      the KEY printed inside (.signal-flag-key) is what names the flag. */
   fill-opacity: var(--signal-flag-alpha);
   stroke: var(--signal-color);
-  stroke-width: 0.16;
+  stroke-width: 1; /* world px (0.1 pitch) — the polygon is drawn in px */
   stroke-linejoin: round;
   cursor: grab;
 }
@@ -1954,7 +1970,7 @@
 
 .signal-flag--selected {
   stroke: var(--color-selection, var(--color-accent));
-  stroke-width: 0.3;
+  stroke-width: 2;
 }
 
 /* The digit key that presses this signal, upright in the middle of the flag's
@@ -1968,18 +1984,19 @@
 
 /* Laid over the body, the disc must read as exactly TWICE the body's opacity:
    a over a composites to a + d(1 - a), which is 2a when d = a / (1 - a). So it
-   is derived from the body's own alpha rather than typed (0.35 → ~0.54, for a
-   combined 0.70). */
+   is derived from the body's own alpha rather than typed (0.4375 → ~0.78, for
+   a combined 0.875). */
 .signal-flag-key-disc {
   fill: var(--signal-color);
   fill-opacity: calc(var(--signal-flag-alpha) / (1 - var(--signal-flag-alpha)));
 }
 
 /* The rail dot's ink (a fixed dark, since it sits on the signal's own colour),
-   at the dot's own digit-to-disc proportion. */
+   in the type an Output/Input tag prints its pin number in — the flag is the
+   tag's glyph, so the two must read the same. */
 .signal-flag-key-digit {
   fill: var(--color-wire-black);
-  font-size: 11px; /* world px (1.1 pitch) — printed on the flag */
+  font-size: 9.75px; /* world px (0.975 pitch) — printed on the flag */
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   text-anchor: middle;
@@ -1993,6 +2010,75 @@
 .signal-flag--illegal {
   fill: var(--color-danger);
   stroke: var(--color-danger);
+}
+
+/* ── Output / Input tags (the Arduino serial integration) ───────────────── */
+/* A signal flag's glyph exactly (model/integration.js's TAG_W is FLAG_W —
+   over one pitch, so tags in adjacent holes overlap), sharing the flag's
+   colour rules: a tinted body with a solid border of the element's colour. The trigger tag is dashed — it LISTENS for the edge; the pin tags
+   carry the value. */
+.tag-svg {
+  position: absolute;
+  top: 0;
+  left: 0;
+  overflow: visible;
+}
+
+.integration-tag {
+  fill: var(--signal-color);
+  fill-opacity: var(--signal-flag-alpha);
+  stroke: var(--signal-color);
+  stroke-width: 1; /* world px (0.1 pitch) — the polygon is drawn in px */
+  stroke-linejoin: round;
+  cursor: grab;
+}
+
+/* An Input DRIVES its net, so its tags read more solid than an Output's,
+   which only sample. */
+.integration-tag--input {
+  fill-opacity: calc(2 * var(--signal-flag-alpha));
+}
+
+.integration-tag--trigger {
+  stroke-dasharray: 3 2; /* world px, like the stroke */
+}
+
+.integration-tag--selected {
+  stroke: var(--color-selection, var(--color-accent));
+  stroke-width: 2;
+  stroke-dasharray: none;
+}
+
+.integration-tag--illegal {
+  fill: var(--color-danger);
+  stroke: var(--color-danger);
+}
+
+/* The pin number (or the trigger's edge arrow), upright on a plate in the
+   element's colour — the flag's key disc at tag size, so the holes under the
+   translucent body never cross the number. Pointer-inert, so the polygon stays
+   the one hit target. */
+.integration-tag-label {
+  font-size: 9.75px; /* world px (0.975 pitch) — printed on the tag */
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* Laid over the body, the plate reads as TWICE the body's opacity — the key
+   disc's rule (.signal-flag-key-disc): a / (1 - a) over a composites to 2a. */
+.integration-tag-plate {
+  fill: var(--signal-color);
+  fill-opacity: calc(var(--signal-flag-alpha) / (1 - var(--signal-flag-alpha)));
+}
+
+/* FIXED dark ink, as the flag's digit has: the board is cream in BOTH themes,
+   so the app's text colour (near-white in dark mode) all but vanished on it. */
+.integration-tag-number {
+  fill: var(--color-wire-black);
+  text-anchor: middle;
+  dominant-baseline: central;
 }
 
 /* Widened invisible hit stroke — the one sanctioned per-item event target. */
@@ -2458,8 +2544,10 @@ textarea.annotation-editor {
   align-items: center;
   gap: var(--space-1);
   /* Height stated through the shared token rather than left to content, so the
-     signal rail above it can subtract a number that is actually true. */
+     signal rail above it can subtract a number that is actually true — and
+     the width likewise, for the activity lamps beside it. */
   height: var(--desk-zoom-height);
+  width: var(--desk-zoom-width);
   box-sizing: border-box;
   padding: var(--space-1);
   background: var(--color-surface-0);
@@ -2486,6 +2574,7 @@ textarea.annotation-editor {
 }
 
 .desk-zoom-readout {
+  flex: 1 1 auto;
   min-width: 48px;
   padding: 0 var(--space-1);
   font-size: var(--font-size-sm);
@@ -3314,7 +3403,26 @@ textarea.annotation-editor {
 .properties-popup {
   width: 360px;
   max-width: 90vw;
+  /* The whole height the dialog has (the card sits inside the <dialog>'s own
+     padding), not the generic 80vh: that cap scrolled an Output's card — the
+     longest one here — by a few lines in an ordinary laptop window. When a
+     card is taller still (an element of sixteen one-bit fields), the BODY
+     scrolls under a header that stays put, not the whole card. */
+  max-height: calc(100vh - 2 * var(--space-4));
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
   padding: 0;
+}
+
+.properties-popup .popup-header {
+  flex: none;
+}
+
+.properties-popup .popup-body {
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
 }
 
 /* Shared with the datasheet-download popup: the same small centred modal, so it
@@ -3470,6 +3578,46 @@ textarea.annotation-editor {
 }
 
 .properties-select:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* A control with its row's own command riding to its right (a field's
+   `action` — the Connection picker's gear). The pair holds the control
+   column together, so the label still takes the slack. */
+.properties-control-group {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: var(--space-1);
+}
+
+/* Borderless and square to the control beside it, like the Settings
+   connection picker's + and bin (.integration-picker-btn). */
+.properties-icon-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: var(--control-height);
+  height: var(--control-height);
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-subtext);
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.properties-icon-action:hover {
+  background: var(--color-surface-1);
+  color: var(--color-text);
+}
+
+.properties-icon-action:focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
 }
@@ -4358,13 +4506,16 @@ textarea.annotation-editor {
   color: var(--color-text);
 }
 
-/* Tab strip. */
-.build-guide-tabs {
+/* Tab strip — shared with Generate's file viewer (.code-files-tabs), which is
+   the same control on a card. */
+.build-guide-tabs,
+.code-files-tabs {
   display: flex;
   border-bottom: 1px solid var(--color-crust);
 }
 
-.build-guide-tab {
+.build-guide-tab,
+.code-files-tab {
   flex: 1 1 0;
   padding: var(--space-2) 0;
   border: none;
@@ -4376,11 +4527,13 @@ textarea.annotation-editor {
   cursor: pointer;
 }
 
-.build-guide-tab:hover {
+.build-guide-tab:hover,
+.code-files-tab:hover {
   color: var(--color-text);
 }
 
-.build-guide-tab[aria-selected="true"] {
+.build-guide-tab[aria-selected="true"],
+.code-files-tab[aria-selected="true"] {
   color: var(--color-text);
   border-bottom-color: var(--color-accent);
 }
@@ -5335,6 +5488,15 @@ textarea.annotation-editor {
   pointer-events: none;
 }
 
+/* The signal rows get their own list, so the column can carry the serial
+   integration's element cards below them (.integration-rail). */
+.signal-rail-list {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-1);
+}
+
 .signal-rail-row {
   display: flex;
   align-items: center;
@@ -5448,4 +5610,1150 @@ textarea.annotation-editor {
 .signal-btn:focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 1px;
+}
+
+/* ── Output / Input cards (the Arduino serial integration) ──────────────── */
+/* The elements' home on the rail, under the signal buttons in the same
+   column: a head naming the element, and under it the tags still waiting to
+   go on the board, as chips to drag. A fully wired element is a head alone. */
+.integration-rail {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--space-1);
+  margin-top: var(--space-2);
+}
+
+.integration-card {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--space-1);
+  max-width: 180px;
+  padding: var(--space-1);
+  background: var(--color-surface-0);
+  border: 1px solid var(--color-crust);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-1);
+  pointer-events: auto;
+}
+
+.integration-card--selected {
+  border-color: var(--color-selection, var(--color-accent));
+  box-shadow: 0 0 0 1px var(--color-selection, var(--color-accent));
+}
+
+.integration-card-head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: calc(var(--font-size) + 7px);
+  padding: 0 var(--space-1);
+  background: transparent;
+  border: none;
+  border-radius: var(--radius-sm);
+  color: var(--color-subtext);
+  font-size: var(--font-size-sm);
+  /* No pointer: a primary click does nothing here — the head answers only a
+     right-click (the element's menu), which the hover wash still marks. */
+  cursor: default;
+}
+
+.integration-card-head:hover {
+  background: var(--color-surface-1);
+  color: var(--color-text);
+}
+
+.integration-card-head:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.integration-card-dir {
+  color: var(--color-muted);
+  font-weight: 700;
+}
+
+.integration-card-dot {
+  flex: 0 0 auto;
+  width: calc(var(--font-size-xs) - 1px);
+  height: calc(var(--font-size-xs) - 1px);
+  border-radius: 50%;
+  background: var(--signal-color);
+  box-shadow: inset 0 0 0 1px var(--color-wire-outline);
+}
+
+.integration-card-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-align: left;
+}
+
+.integration-card-width {
+  flex: 0 0 auto;
+  color: var(--color-muted);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+/* No connection chosen yet: the head says so in its tooltip, and the card
+   wears the warning colour so it is found before Run refuses. */
+.integration-card--unassigned .integration-card-name {
+  color: var(--color-warning);
+}
+
+.integration-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 2px;
+}
+
+.integration-tag-chip {
+  display: inline-grid;
+  place-items: center;
+  min-width: calc(var(--font-size-xs) + 6px);
+  height: calc(var(--font-size-xs) + 6px);
+  padding: 0 2px;
+  box-sizing: border-box;
+  border: 1px solid var(--signal-color);
+  border-radius: 3px;
+  background: color-mix(
+    in srgb,
+    var(--signal-color) calc(var(--signal-flag-alpha) * 100%),
+    transparent
+  );
+  color: var(--color-text);
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  cursor: grab;
+  user-select: none;
+}
+
+.integration-tag-chip--trigger {
+  border-style: dashed;
+}
+
+/* ── The width asked for when an element is dropped ─────────────────────── */
+.integration-width-popover {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+}
+
+.integration-width-title {
+  color: var(--color-subtext);
+  font-size: var(--font-size-sm);
+}
+
+.integration-width-options {
+  display: flex;
+  gap: var(--space-2);
+}
+
+.integration-width-option {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: calc(var(--font-size) + 13px);
+  height: calc(var(--font-size) + 13px);
+  padding: 0 4px;
+  box-sizing: border-box;
+  border: 1px solid var(--color-overlay);
+  border-radius: 4px;
+  background: var(--color-surface-1);
+  color: var(--color-text);
+  font-size: var(--font-size-sm);
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+  transition: transform 0.15s ease;
+}
+
+.integration-width-option:hover {
+  transform: scale(1.1);
+}
+
+.integration-width-option:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* ── Activity lamps (TX · RX · LG) ───────────────────────────────────────── */
+/* The zoom cluster's pill, fixed immediately to its LEFT: the same height
+   (--desk-zoom-height), and a right edge one gap past the cluster's own
+   width (--desk-zoom-width), which the cluster itself is sized by. */
+.integration-lamps {
+  position: absolute;
+  bottom: var(--space-4);
+  right: calc(var(--space-4) + var(--desk-zoom-width) + var(--space-2));
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: var(--desk-zoom-height);
+  box-sizing: border-box;
+  padding: var(--space-1) var(--space-2);
+  background: var(--color-surface-0);
+  border: 1px solid var(--color-crust);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-1);
+}
+
+.integration-lamps[hidden] {
+  display: none;
+}
+
+.integration-lamp {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0 var(--space-1);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  font-weight: 700;
+}
+
+button.integration-lamp {
+  cursor: pointer;
+}
+
+button.integration-lamp:hover {
+  background: var(--color-surface-1);
+  color: var(--color-text);
+}
+
+.integration-lamp-led {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-surface-1);
+  box-shadow: inset 0 0 0 1px var(--color-overlay);
+  transition: background-color 0.08s linear;
+}
+
+.integration-lamp--tx.integration-lamp--on .integration-lamp-led {
+  background: var(--color-sim-high);
+  box-shadow: 0 0 5px var(--color-sim-high);
+}
+
+.integration-lamp--rx.integration-lamp--on .integration-lamp-led {
+  background: var(--color-info);
+  box-shadow: 0 0 5px var(--color-info);
+}
+
+.integration-lamp--lg.integration-lamp--on .integration-lamp-led {
+  background: var(--color-warning);
+  box-shadow: 0 0 5px var(--color-warning);
+}
+
+.integration-lamp--on {
+  color: var(--color-text);
+}
+
+/* ── The Generate segment's out-of-sync dot ──────────────────────────────── */
+.toolbar-generate {
+  position: relative;
+}
+
+.toolbar-stale-dot {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-warning);
+  box-shadow: 0 0 0 1px var(--color-mantle);
+  pointer-events: none;
+}
+
+.toolbar-stale-dot[hidden] {
+  display: none;
+}
+
+/* ── Settings ▸ Serial I/O (integration-settings.js) ─────────────────────── */
+/* The picker: a `.settings-row` (its padding, and the containing block for
+   the (i)'s note card) holding the connection <select> filling the row, then
+   + and the bin as bare glyphs — the shape Rest Hippo's environment bar uses —
+   then the (i). Glyph buttons sit closer together than a row's label and
+   control do. */
+.integration-picker {
+  gap: var(--space-1);
+}
+
+.integration-picker-select {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.integration-picker .info-btn {
+  margin-left: var(--space-1);
+}
+
+.integration-picker-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: var(--control-height);
+  height: var(--control-height);
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-subtext);
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.integration-picker-btn:hover {
+  background: var(--color-surface-1);
+  color: var(--color-text);
+}
+
+.integration-picker-btn:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* The bin reddens under the pointer, and STAYS red while armed — its second
+   click removes. Both after the base rules: same specificity, so source order
+   is what makes red win. */
+.integration-picker-btn--danger:hover,
+.integration-picker-btn--armed {
+  color: var(--color-danger);
+}
+
+/* The Mock is picked: there is nothing to remove. */
+.integration-picker-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+  background: transparent;
+  color: var(--color-subtext);
+}
+
+/* The editor for the picked connection: plain `.settings-row`s on the panel,
+   spaced and lettered as every other tab's are, with no card around them. A
+   problem is marked where it is — on the Port field, and in the connection's
+   name in the picker. */
+.integration-conn {
+  display: flex;
+  flex-direction: column;
+}
+
+/* A field row's select (and the Port's select + Re-scan pair) fills the
+   field column, as `.settings-row--field`'s text input does. */
+.integration-field > .settings-select,
+.integration-port-row {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.integration-field--problem .settings-label {
+  color: var(--color-danger);
+}
+
+.integration-field--problem .settings-select {
+  border-color: var(--color-danger);
+}
+
+.integration-port-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.integration-port-row .settings-select {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* Re-scan is one word and must stay one line: wrapped, it grew taller than
+   the select beside it and took the width the device path needed. It is the
+   select's height, too, so the Port row is no taller than the rows around it. */
+.integration-port-row .settings-action {
+  flex: none;
+  white-space: nowrap;
+  height: var(--control-height);
+  padding-block: 0;
+}
+
+/* "Advanced" is a row of its own, in the rows' type — a disclosure, so in the
+   secondary colour until pointed at. */
+.integration-advanced > summary {
+  padding: var(--space-3) 0;
+  font-size: var(--font-size);
+  color: var(--color-subtext);
+  cursor: pointer;
+}
+
+.integration-advanced > summary:hover {
+  color: var(--color-text);
+}
+
+/* The Mock's one line, and a note under the buttons: `.settings-hint`s, with
+   a note coloured by what it says. */
+.integration-mock-note {
+  margin-bottom: var(--space-3);
+}
+
+.integration-note--warn {
+  color: var(--color-warning);
+}
+
+.integration-note--ok {
+  color: var(--color-success);
+}
+
+.settings-action--primary {
+  border-color: var(--color-accent);
+}
+
+.settings-action:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* ── The Properties card's Pins editor (pin-fields-editor.js) ────────────── */
+.pin-fields {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.pin-fields-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.pin-fields-pins {
+  flex: 0 0 3.5em;
+  color: var(--color-muted);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.pin-fields-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: var(--control-height);
+  box-sizing: border-box;
+  padding: 0 var(--space-2);
+  background: var(--color-surface-0);
+  color: var(--color-text);
+  border: 1px solid var(--color-overlay);
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+}
+
+.pin-fields-type {
+  flex: 0 0 auto;
+  height: var(--control-height);
+  background: var(--color-surface-1);
+  color: var(--color-text);
+  border: 1px solid var(--color-overlay);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-sm);
+}
+
+.pin-fields-remove {
+  flex: 0 0 auto;
+  width: var(--control-height);
+  height: var(--control-height);
+  padding: 0;
+  background: transparent;
+  color: var(--color-muted);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size);
+  cursor: pointer;
+}
+
+.pin-fields-remove:enabled:hover {
+  color: var(--color-danger);
+  border-color: var(--color-overlay);
+}
+
+.pin-fields-remove:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.pin-fields-add {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.pin-fields-count {
+  flex: 1 1 auto;
+  color: var(--color-muted);
+  font-size: var(--font-size-xs);
+}
+
+.pin-fields-add-btn {
+  padding: 2px var(--space-2);
+  background: var(--color-surface-1);
+  color: var(--color-text);
+  border: 1px solid var(--color-overlay);
+  border-radius: var(--radius-sm);
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+}
+
+.pin-fields-add-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+/* ── Generate (codegen-dialog.js) ────────────────────────────────────────── */
+.codegen-popup {
+  width: 460px;
+  max-width: 90vw;
+}
+
+.codegen-popup-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+}
+
+.codegen-list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.codegen-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  border: 1px solid var(--color-overlay);
+  border-radius: var(--radius-md);
+}
+
+.codegen-row--stale,
+.codegen-row--never {
+  border-color: var(--color-warning);
+}
+
+.codegen-row--unknown {
+  border-color: var(--color-danger);
+}
+
+.codegen-row-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+}
+
+.codegen-name {
+  flex: 1 1 auto;
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.codegen-status {
+  font-size: var(--font-size-xs);
+  color: var(--color-muted);
+}
+
+.codegen-row--stale .codegen-status,
+.codegen-row--never .codegen-status {
+  color: var(--color-warning);
+}
+
+.codegen-row--current .codegen-status {
+  color: var(--color-success);
+}
+
+.codegen-counts,
+.codegen-language,
+.codegen-hash,
+.codegen-result {
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-subtext);
+}
+
+.codegen-hash {
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+}
+
+.codegen-result {
+  overflow-wrap: anywhere;
+}
+
+.codegen-warnings {
+  margin: 0;
+  padding-left: var(--space-4);
+  color: var(--color-warning);
+  font-size: var(--font-size-sm);
+}
+
+.codegen-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+/* ── Generate ▸ View files (code-files-dialog.js) ────────────────────────── */
+/* Wide and tall enough to read code in: the card is a frame around a
+   listing that scrolls both ways, with the tabs above and Copy below. */
+.code-files-popup {
+  display: flex;
+  flex-direction: column;
+  width: min(820px, 90vw);
+  max-width: 90vw;
+  height: min(640px, 85vh);
+  overflow: hidden;
+}
+
+.code-files-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: var(--space-3) var(--space-4) var(--space-4);
+}
+
+.code-files-panels {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  border: 1px solid var(--color-overlay);
+  border-top: none;
+  background: var(--color-mantle);
+}
+
+.code-files-panel {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: auto;
+}
+
+.code-files-panel[hidden] {
+  display: none;
+}
+
+.code-files-listing {
+  border-collapse: collapse;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  line-height: 1.5;
+  color: var(--color-text);
+}
+
+/* The line number: out of any selection, and pinned to the left edge so a
+   long line scrolls under it rather than away from it. */
+.code-files-number {
+  position: sticky;
+  left: 0;
+  padding: 0 var(--space-2) 0 var(--space-3);
+  border-right: 1px solid var(--color-overlay);
+  background: var(--color-mantle);
+  color: var(--color-muted);
+  text-align: right;
+  vertical-align: top;
+  user-select: none;
+}
+
+.code-files-code {
+  padding: 0 var(--space-3);
+  white-space: pre;
+}
+
+.code-files-footer {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding-top: var(--space-3);
+}
+
+.code-files-result {
+  flex: 1 1 auto;
+  margin: 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-subtext);
+}
+
+/* ── A connection window (serial-log.html) ──────────────────────────────── */
+.serial-log-body {
+  height: 100vh;
+  margin: 0;
+  background: var(--color-surface-0);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  overflow: hidden;
+}
+
+.serial-log-root {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+/* Basis 0, not auto: the stream takes whatever the rows under it leave and
+   scrolls inside it. With `auto` its basis was the height of EVERY line, so
+   each new line squeezed the Mock's panel below (a shrinkable sibling takes
+   its share of the overflow) until the panel scrolled away to a sliver. */
+.serial-log-scroll {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: var(--space-2) var(--space-3);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  line-height: 1.45;
+  user-select: text;
+}
+
+/* One line: [time] [prefix] text — the time column shown only with
+   Timestamps on, the prefix one character wide so every kind lines up. */
+.serial-log-line {
+  display: flex;
+  gap: var(--space-2);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.serial-log-time {
+  display: none;
+  flex: 0 0 auto;
+  color: var(--color-muted);
+  white-space: pre;
+}
+
+.serial-log--times .serial-log-time {
+  display: inline;
+}
+
+.serial-log-prefix {
+  flex: 0 0 1ch;
+  white-space: pre;
+}
+
+.serial-log-text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* The kinds, by colour: data in the lamps' own (→ is TX's, ← RX's),
+   protocol dim, errors in the warning colour. */
+.serial-log-line--out {
+  color: var(--color-sim-high);
+}
+
+.serial-log-line--in {
+  color: var(--color-info);
+}
+
+.serial-log-line--protocol {
+  color: var(--color-muted);
+}
+
+.serial-log-line--error {
+  color: var(--color-warning);
+}
+
+/* The filters: a view, never a rebuild. Errors have no filter. */
+.serial-log--hide-log .serial-log-line--log,
+.serial-log--hide-data .serial-log-line--data,
+.serial-log--hide-protocol .serial-log-line--protocol {
+  display: none;
+}
+
+.serial-log-partial {
+  color: var(--color-subtext);
+}
+
+.serial-log-partial[hidden],
+.serial-log-empty[hidden] {
+  display: none;
+}
+
+.serial-log-empty {
+  margin: var(--space-4) 0;
+  font-family: var(--font-sans);
+  color: var(--color-muted);
+  text-align: center;
+}
+
+/* One thin row under the stream. */
+.serial-log-footer {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-1) var(--space-3);
+  border-top: 1px solid var(--color-overlay);
+  background: var(--color-mantle);
+  font-size: var(--font-size-sm);
+}
+
+.serial-log-toggle input {
+  accent-color: var(--color-accent);
+}
+
+.serial-log-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--color-subtext);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.serial-log-gap {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-align: center;
+}
+
+.serial-log-note {
+  color: var(--color-subtext);
+  font-size: var(--font-size-xs);
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.serial-log-footer .settings-action {
+  flex: 0 0 auto;
+}
+
+/* Every button in the window is one control tall, the height of the Mock's
+   log field, so a button and the field beside it share both edges. */
+.serial-log-root .settings-action {
+  height: var(--control-height);
+  padding-block: 0;
+}
+
+/* ── The built-in Mock's send panel, docked under its log ───────────────── */
+.mock-panel {
+  container: mock-panel / inline-size;
+  flex: 0 1 auto;
+  max-height: 55vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3) var(--space-3);
+  border-top: 1px solid var(--color-overlay);
+  background: var(--color-mantle);
+  font-size: var(--font-size-sm);
+}
+
+.mock-status {
+  margin: 0;
+  color: var(--color-subtext);
+}
+
+.mock-status--connected {
+  color: var(--color-success);
+}
+
+.mock-hint {
+  margin: 0;
+  color: var(--color-muted);
+}
+
+.mock-inputs {
+  /* ONE grid for every Input, so a column lines up down the whole panel:
+     1 the Input's name · 2 a field's name · 3 its bits · 4 its hex ·
+     5 the slack · 6 the result · 7 Send. Each row and each field line is a
+     subgrid of it. The slack is what holds every Send on the right edge,
+     flush with Send all, Log and the footer's Save…. */
+  display: grid;
+  grid-template-columns:
+    fit-content(10em) fit-content(8em) auto auto minmax(0, 1fr)
+    minmax(0, auto) auto;
+  column-gap: var(--space-2);
+  row-gap: var(--space-2);
+}
+
+.mock-inputs > .mock-hint {
+  grid-column: 1 / -1;
+}
+
+/* Everything in a row hangs from its FIRST line, and a line is one control
+   tall, so the name, the first field and Send share one centre line however
+   many fields the Input has. A rule under EVERY Input, the last included,
+   rules the rows off from the Faults line below as well as from each other. */
+.mock-input {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: subgrid;
+  align-items: start;
+  padding-bottom: var(--space-2);
+  border-bottom: 1px solid var(--color-overlay);
+}
+
+/* The name, behind the caret that folds its row. It gives way to a narrow
+   window, down to a floor — below it the panel scrolls sideways rather than
+   lose it altogether. */
+.mock-input-toggle {
+  grid-column: 1;
+  grid-row: 1;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 4em;
+  height: var(--control-height);
+  padding: 0 var(--space-2) 0 0;
+  border: none;
+  background: transparent;
+  color: var(--color-text);
+  font: inherit;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mock-input-toggle:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.mock-input-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The caret points down when open, right when folded. */
+.mock-input-toggle[aria-expanded="false"] .mock-caret,
+.mock-faults:not([open]) .mock-caret {
+  transform: rotate(-90deg);
+}
+
+.mock-fields {
+  grid-column: 2 / span 3;
+  grid-row: 1;
+  display: grid;
+  grid-template-columns: subgrid;
+}
+
+/* The class's `display` outranks the UA sheet's [hidden]. */
+.mock-fields[hidden] {
+  display: none;
+}
+
+/* One line per field: name · bits · hex, each centred on the line's FIRST
+   control-high band — the band the Input's name and Send sit on — so a
+   word's second byte hangs below without moving anything beside it. */
+.mock-field {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: subgrid;
+  align-items: start;
+  --mock-inset: calc((var(--control-height) - var(--segment-height)) / 2);
+}
+
+.mock-field-name {
+  min-width: 3em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--color-subtext);
+  line-height: var(--control-height);
+}
+
+/* A byte to a row, MSB first — a word stacks its high byte over its low one,
+   so the bits column is always one byte wide and the hex fields line up. */
+.mock-bits {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding-block: var(--mock-inset);
+}
+
+.mock-byte {
+  display: inline-flex;
+  gap: 2px;
+}
+
+/* One glyph in a box, which is what a segment is sized for. */
+.mock-bit {
+  min-width: var(--segment-height);
+  height: var(--segment-height);
+  padding: 0 var(--space-1);
+  border: 1px solid var(--color-overlay);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-0);
+  color: var(--color-subtext);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+  cursor: pointer;
+}
+
+/* A gap every four bits, so a byte reads as two hex digits. */
+.mock-bit--nibble {
+  margin-left: var(--space-1);
+}
+
+.mock-bit[aria-pressed="true"] {
+  border-color: var(--color-sim-high);
+  background: var(--color-sim-high);
+  color: var(--color-base);
+}
+
+.mock-bit:disabled {
+  cursor: default;
+  opacity: 0.5;
+}
+
+.mock-hex {
+  width: 5.5em;
+  height: var(--segment-height);
+  margin-block: var(--mock-inset);
+  padding: 0 var(--space-2);
+  font-family: var(--font-mono);
+  font-size: var(--font-size-xs);
+}
+
+/* Gives way before anything else does: a long reason is cut, whole in its
+   tooltip. */
+.mock-result {
+  grid-column: 6;
+  grid-row: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: right;
+  color: var(--color-success);
+  font-size: var(--font-size-xs);
+  line-height: var(--control-height);
+}
+
+.mock-result--failed {
+  color: var(--color-warning);
+}
+
+.mock-send {
+  grid-column: 7;
+  grid-row: 1;
+}
+
+/* Too narrow for one shared row: each name heads its Input, beside the
+   result and Send, and the fields go under it on a grid of their own — its
+   name column a fixed width, so bits and hex fields still line up down the
+   panel — and Send never scrolls out of sight. Container ems are the panel's
+   own text, so the break moves with the font size. */
+@container mock-panel (max-width: 43em) {
+  .mock-inputs {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .mock-input {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: start;
+    column-gap: var(--space-2);
+  }
+
+  .mock-input-toggle {
+    flex: 1 1 0;
+  }
+
+  /* Indented past the caret (8px wide, then its gap), under the name. */
+  .mock-fields {
+    order: 1;
+    flex: 1 0 100%;
+    padding-left: calc(8px + var(--space-1));
+    grid-template-columns: 4em max-content max-content;
+    justify-content: start;
+    column-gap: var(--space-2);
+  }
+}
+
+/* Faults and Send all on one line. The disclosure spans the whole line, so
+   when it opens its hint and buttons get the panel's full width below; Send
+   all sits over the right end of the summary line, which is one control
+   tall so the two share a centre line. */
+.mock-actions {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+}
+
+.mock-actions > .mock-faults {
+  grid-column: 1 / -1;
+  grid-row: 1;
+}
+
+.mock-send-all {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+/* Ruled off from Faults and Send all above as one Input is from the next.
+   The rule is the log row's own, so it goes when the Log filter hides it. */
+.mock-log-row {
+  display: flex;
+  gap: var(--space-2);
+  padding-top: var(--space-2);
+  border-top: 1px solid var(--color-overlay);
+}
+
+/* The class's `display` outranks the UA sheet's [hidden]. */
+.mock-log-row[hidden] {
+  display: none;
+}
+
+.mock-log-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--font-mono);
+}
+
+.mock-faults > summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  height: var(--control-height);
+  cursor: pointer;
+  color: var(--color-subtext);
+}
+
+.mock-faults > summary::-webkit-details-marker {
+  display: none;
+}
+
+.mock-faults[open] > summary {
+  margin-bottom: var(--space-2);
+}
+
+.mock-fault-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-2);
+}
+
+.mock-fault--armed {
+  border-color: var(--color-warning);
+  color: var(--color-warning);
 }

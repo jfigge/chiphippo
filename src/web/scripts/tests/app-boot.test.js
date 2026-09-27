@@ -158,20 +158,31 @@ test("the File pill offers New / Open / Save / Save As, each its own segment", (
   }
 });
 
-test("the desk-tool pill is built in full, and the AI segment is the disabled one", () => {
+test("the desk-tool pill is built in full; AI and Generate are the disabled ones", () => {
   const tools = qa("#app-toolbar .toolbar-pill")[1];
   const segments = [...tools.querySelectorAll(".toolbar-pill-btn")];
-  // Wire · Bus · Auto-route · Fade · Probe · Analyzer · Fit · BOM · Schematic · AI.
-  assert.equal(segments.length, 10);
+  // Wire · Bus · Auto-route · Fade · Probe · Analyzer · Fit · BOM · Schematic ·
+  // AI · Generate.
+  assert.equal(segments.length, 11);
   const disabled = segments.filter((b) => b.disabled);
-  assert.equal(disabled.length, 1, "only the AI segment starts disabled");
-  assert.equal(disabled[0], segments.at(-1), "and it is the pill's last");
-  const label = t("toolbar.ai.label");
-  assert.equal(disabled[0].getAttribute("aria-label"), label);
+  // AI has no connection to ask; Generate has no Output or Input on an empty
+  // desk to write a header for. Nothing else starts disabled.
+  assert.deepEqual(disabled, segments.slice(-2), "the pill's last two");
+  const [ai, generate] = disabled;
+  assert.equal(ai.getAttribute("aria-label"), t("toolbar.ai.label"));
   // With no key it must say WHY, since the tooltip is the only explanation a
   // disabled button gets — the description would be no explanation at all.
-  assert.ok(disabled[0].title, "a disabled AI segment explains itself");
-  assert.notEqual(disabled[0].title, t("toolbar.ai.title"));
+  assert.ok(ai.title, "a disabled AI segment explains itself");
+  assert.notEqual(ai.title, t("toolbar.ai.title"));
+  assert.equal(
+    generate.getAttribute("aria-label"),
+    t("toolbar.generate.label"),
+  );
+  assert.equal(
+    generate.title,
+    t("toolbar.generate.none"),
+    "and so does Generate",
+  );
 });
 
 test("the Wire and Bus segments carry their readouts", () => {

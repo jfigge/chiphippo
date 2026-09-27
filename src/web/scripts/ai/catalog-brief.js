@@ -30,7 +30,16 @@
 // `internalBridges` and `source` — they are functions. The projection below is
 // explicit for that reason, not for brevity.
 
-import { PALETTE_DEFS } from "../catalog/index.js";
+import { PALETTE_DEFS, outputEnables } from "../catalog/index.js";
+import { MIN_TESTS } from "./generate.js";
+
+/**
+ * The parts the BUILDER may be offered: everything the compiler can seat. A
+ * crystal-can oscillator (`can`) is refused by the compiler, so listing it only
+ * spends a repair round learning that. The desk REVIEW still sees every part —
+ * a hand-built desk can hold anything the palette has.
+ */
+export const BUILDABLE_DEFS = Object.freeze(PALETTE_DEFS.filter((d) => !d.can));
 
 /**
  * One line per part: what it is, and every pin by number and name.
@@ -53,7 +62,7 @@ import { PALETTE_DEFS } from "../catalog/index.js";
  * datasheet-following design comes up dead and the model has no way to see why.
  */
 function pinMark(def, p) {
-  if (def.outputEnable?.includes(p.n)) return "!";
+  if (outputEnables(def).includes(p.n)) return "!";
   if (p.role === "output") return ">";
   if (p.role === "io") return "<>";
   return "";
@@ -66,7 +75,12 @@ function partLine(def) {
   const terminals = (def.terminals ?? []).map((t) => t.id).join(" ");
   const shape = def.package ? ` [${def.package}]` : "";
   const points = pins || terminals || "—";
-  return `${def.id}${shape} — ${def.title}. ${points}`;
+  // A part's named buses, so the `NAME[i]` member form the resolver accepts is
+  // one the model can actually see.
+  const buses = (def.pinGroups ?? [])
+    .map((g) => `${g.name}[0-${g.pins.length - 1}]`)
+    .join(" ");
+  return `${def.id}${shape} — ${def.title}. ${points}${buses ? ` | buses ${buses}` : ""}`;
 }
 
 /** The parts catalogue, grouped as the palette groups it. */
@@ -89,10 +103,10 @@ export function buildCatalogCard(defs = PALETTE_DEFS) {
  * The rules half of the prompt — everything the compiler will hold the spec to.
  *
  * Written as constraints rather than as a tutorial: each line exists because
- * violating it produces a specific fault in `autobuild-verify.js`, and the
- * repair round quotes that fault straight back. Kept in sync with the ladder by
- * `tests/catalog-brief.test.js`, which asserts the codes named here are codes
- * the verifier can actually raise.
+ * violating it produces a specific fault in the compiler (`autobuild.js`), the
+ * verifier (`autobuild-verify.js`) or the suite check (`generate.js`), and the
+ * repair round quotes that fault straight back. `tests/ai-generate.test.js`
+ * holds this text to the rules those modules actually enforce.
  */
 const RULES = `
 You design 74xx TTL logic circuits for Chip Hippo, a breadboard simulator.
@@ -117,8 +131,10 @@ design.
 * \`ref\` must be a catalog id from the list below, spelled exactly.
 * \`id\` is yours to choose and must be unique.
 * A net member is \`<partId>.<pin>\`. The pin may be its NAME (exactly as
-  listed, case-sensitive) or its NUMBER. Use \`<partId>.#7\` to force the
-  number when a chip has a pin *named* like a number.
+  listed, case-sensitive, marks included: \`1Q̄\` is not \`1Q\`) or its NUMBER.
+  Use \`<partId>.#7\` to force the number when a chip has a pin *named* like
+  a number. A part that lists \`buses\` also takes \`<partId>.A[3]\` — index 0
+  is the bus's first line.
 * \`VCC\` and \`GND\` bind to the power rails, either as a reserved NET NAME
   (\`{ "name": "VCC", "members": [...] }\`) or as a member of a net of your own
   name (\`{ "name": "A_SRC", "members": ["SW1.1B", "VCC"] }\`). Both work.
@@ -133,10 +149,18 @@ design.
 * Every net needs at least two members.
 * A pin belongs to at most one net.
 * Two outputs must not share a net — that is a bus fight, and the engine
-  reports it as a conflict.
-* Do not leave a used input floating. A floating TTL input reads HIGH, which
-  is a real circuit's most convincing lie; tie it to VCC or GND explicitly.
-  An input fed from a switch is covered by the pull rule below.
+  reports it as a conflict. The one exception is a BUS of tri-state outputs
+  (parts with a \`!\` enable): any number may share a net when EVERY one of
+  them can be switched off, and at any moment exactly one enable is LOW.
+* Never put an output in a VCC or GND net. The supply overrides it, so the
+  output drives nothing at all.
+* Every input of a part you use must be in a net — including the ones you
+  have no use for, like a counter's load inputs while LOAD is held HIGH: tie
+  those to VCC or GND. A floating TTL input reads HIGH, which is a real
+  circuit's most convincing lie. The only inputs you may leave out are those
+  of a gate or section whose outputs you do not use at all (the three spare
+  gates of a 74LS00). An input fed from a switch is covered by the pull rule
+  below.
 * Every \`!\` pin in the catalog needs wiring, and almost always to \`GND\`. It
   is an active-LOW output enable: leave it out and the part's outputs float,
   the circuit does nothing, and the fault you get back will name the pin.
@@ -144,8 +168,9 @@ design.
   RESTS, so the part comes up disabled. A circuit that only works after the
   user finds the right switch is not one worth handing over.
 * LEDs and displays do NOT need you to add a series resistor — the compiler
-  interposes one, because an unlimited LED burns rather than lights. Do not
-  put one in the netlist.
+  interposes one in every lamp leg that goes to VCC or GND, because an
+  unlimited LED burns rather than lights. Do not put one in the netlist, and
+  do not wire a lamp between two outputs: nothing can limit it there.
 * An ACTIVE-LOW output gets its LED the other way up: anode to \`VCC\`, cathode
   to the pin, so a LIT lamp still means "asserted". An active-high output takes
   the usual way round — anode to the pin, cathode to \`GND\`.
@@ -156,9 +181,12 @@ design.
   input LOW while the switch is open (wire it to \`GND\` instead and it adds a
   pull-up). A closed switch then reads HIGH — which is exactly what a \`1\` in
   a \`set\` bit string means.
-* Rotated two-lead parts (a bare \`led\`/\`resistor\` placed at an angle) cannot
-  be expressed as a netlist. Use the DIP-bodied displays (\`bar8\`, \`seg8cc\`)
-  and switch banks (\`sw-dip8\`) instead.
+* A bare \`led\` or \`resistor\` is fine — wire its two pins like any other.
+  For eight lamps or eight inputs, the DIP-bodied displays (\`bar8\`,
+  \`seg8cc\`) and switch banks (\`sw-dip8\`) are tidier.
+* A memory chip arrives EMPTY: a netlist cannot carry its contents. A RAM is
+  written by the circuit; a ROM, EPROM or EEPROM must be programmed by the user
+  afterwards, so say so in \`notes\` if the design needs one.
 
 # Notes — one paragraph, written onto the desk
 
@@ -185,14 +213,20 @@ those and the user can see them.
 The \`tests\` block is your own acceptance test and the app EXECUTES it before
 showing the user anything. It is the only check that catches a circuit that is
 built exactly as you described and still computes the wrong thing — an
-inverted LSB order, most often. Always include at least two.
+inverted LSB order, most often. Always include at least ${MIN_TESTS}, each
+with a different input state (or a different number of clock edges).
 
 * \`set\` and \`expect\` are LISTS of \`{ "target": …, "value": … }\` pairs, not
   objects — an object with arbitrary keys cannot be schema-constrained.
-* \`set\` drives a switch-bank part id with a bit string, LSB FIRST.
+* \`set\` drives a switch-bank part id with a bit string, LSB FIRST, giving
+  EVERY position — a string exactly as long as the bank.
+* Each test starts from the circuit as built, every switch at rest; nothing
+  carries over from the test before.
 * \`edges\` is how many clock edges to apply first (omit for combinational).
-* \`expect\` targets a part id with a bit string (LSB first), or a single pin
-  (\`{ "target": "D1.A", "value": "H" }\`) with a level.
+  It needs a \`clock\` part in the design.
+* \`expect\` targets a display part id with a bit string of EVERY segment
+  (LSB first), or a single pin (\`{ "target": "D1.A", "value": "H" }\`) with
+  H or L. Every test must expect something.
 
 # Output
 
@@ -204,7 +238,7 @@ substituting a chip that does not exist.
 
 Every part, then its pins as \`number:name\`. A pin's suffix says what it is:
 
-    (none)  an input
+    (none)  an input — or a passive pin: power, a switch contact, a lamp leg
     >       an output — it DRIVES. Two of these must never share a net.
     <>      bidirectional: it drives in one direction and listens in the other.
     !       an ACTIVE-LOW OUTPUT ENABLE — the one thing here you could not
@@ -222,7 +256,7 @@ Every part, then its pins as \`number:name\`. A pin's suffix says what it is:
  * Comfortably over the 512-token cache minimum, so it caches on the repair
  * round rather than being re-billed at full rate.
  */
-export function buildSystemPrompt(defs = PALETTE_DEFS) {
+export function buildSystemPrompt(defs = BUILDABLE_DEFS) {
   return `${RULES}\n\n${buildCatalogCard(defs)}`;
 }
 
@@ -307,12 +341,24 @@ export function buildReviewSystemPrompt(defs = PALETTE_DEFS, language = "") {
 }
 
 /**
+ * Compiler notes worth telling the model on a repair round: the ones that
+ * CHANGE the circuit it wrote. A level it did not expect is often a pull or a
+ * resistor it did not ask for, and it cannot reason about what it was never
+ * told. Layout notes (wire crossings) and user-facing ones (an unprogrammed
+ * ROM) say nothing it can act on.
+ */
+const CIRCUIT_NOTES = new Set(["RESISTOR_INSERTED", "PULL_INSERTED"]);
+
+/**
  * Turn verifier faults / compiler errors into the repair message.
  *
  * Structured, never prose: the model is being told which member of which net
  * is wrong, so it can fix that one thing rather than redesign.
+ *
+ * @param {Array} faults
+ * @param {Array} [notes]  the compiler's warnings for the same build
  */
-export function buildRepairMessage(faults) {
+export function buildRepairMessage(faults, notes = []) {
   const lines = faults.map((f) => {
     const where = f.path ? ` at ${f.path}` : "";
     const extra = f.candidates
@@ -320,8 +366,16 @@ export function buildRepairMessage(faults) {
       : "";
     return `- ${f.code}${where}: ${f.message}${extra}`;
   });
+  const context = (notes ?? [])
+    .filter((w) => CIRCUIT_NOTES.has(w?.code))
+    .map((w) => `- ${w.code}: ${w.message}`);
   return (
     `That netlist did not pass. Fix exactly these and return the whole ` +
-    `corrected JSON object:\n${lines.join("\n")}`
+    `corrected JSON object:\n${lines.join("\n")}` +
+    (context.length
+      ? `\n\nFor context, the compiler also changed the circuit as it built ` +
+        `it (these are not faults, and you should not add them yourself):\n` +
+        context.join("\n")
+      : "")
   );
 }

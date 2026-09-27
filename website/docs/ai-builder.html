@@ -77,6 +77,7 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
         <a class="doc-nav-link" href="build-guide.html">Build Guide &amp; BOM</a>
         <a class="doc-nav-link" href="schematic-view.html">Schematic View</a>
         <a class="doc-nav-link doc-nav-link--active" href="ai-builder.html">AI Circuit Builder</a>
+        <a class="doc-nav-link" href="arduino.html">Arduino Integration</a>
         <a class="doc-nav-link" href="files-and-undo.html">Files, Saving &amp; Undo</a>
         <a class="doc-nav-link" href="projects-and-desktops.html">Projects &amp; Desktops</a>
         <a class="doc-nav-link" href="settings.html">Settings</a>
@@ -159,7 +160,11 @@ goes wrong <em>while still looking perfectly fine</em>:</p>
 <ol>
 <li><strong>It compiles.</strong> Parts get real seats on real breadboard columns, with an
 allocator that makes it impossible for two parts to accidentally share a
-column-half — which on a real breadboard means they&#39;re shorted together.</li>
+column-half — which on a real breadboard means they&#39;re shorted together.
+Before that, the netlist is held to the electrical rules a simulation
+would happily let through: no output wired straight to a power rail (the
+supply silently wins), and no two outputs on one net unless every one of
+them can be switched off — a tri-state bus.</li>
 <li><strong>Everything seated.</strong> No part hangs off the end of a board with pins over
 nothing. A part like that loads without complaint and is electrically dead.</li>
 <li><strong>The nets match.</strong> The connections the design <em>asked for</em> are compared
@@ -167,15 +172,21 @@ against the connections the finished breadboard <em>actually has</em>. This is t
 check that catches an accidental short, which is otherwise invisible — the
 circuit loads clean and simulates happily while computing something else.</li>
 <li><strong>It powers up and settles.</strong> Every chip reports OK, with no conflicts,
-no shorts, and no oscillation.</li>
+no shorts, no oscillation, and no LED burning out.</li>
 <li><strong>Nothing is left floating.</strong> A signal net nothing drives is reported
-rather than shipped.</li>
+rather than shipped — and so is an input the design uses but never
+connects, such as a decoder&#39;s enable, which would otherwise quietly read
+HIGH. (The spare gates of a chip it only half uses may float.)</li>
 <li><strong>Its own tests pass.</strong> This is the interesting one. The design is asked to
 state its own acceptance tests — &quot;with these switches set this way, after
 this many clock edges, these LEDs should read this&quot; — and Chip Hippo
 <strong>runs them</strong>. It&#39;s the only check that tests what the circuit <em>means</em>
 rather than whether it&#39;s internally consistent, and it&#39;s what catches a
-perfectly-built adder with its bit order reversed.</li>
+perfectly-built adder with its bit order reversed. A design must bring at
+least two, each with different inputs; every test starts from the circuit
+as built and must spell out every switch position and every segment it
+reads; and each test&#39;s state is checked for shorts and fights too, not
+just for the lamps it names.</li>
 </ol>
 <p>The panel reports which tests ran and whether they passed as part of the
 summary.</p>
@@ -209,10 +220,12 @@ influence.</p>
 <p>A few things are outside what a netlist can express, and it will tell you
 rather than guess:</p>
 <ul>
-<li><strong>Rotated two-lead parts</strong> — a bare LED or resistor placed at an angle. Use
-the DIP-bodied displays (<code>bar8</code>, <code>seg8cc</code>) and switch banks (<code>sw-dip8</code>)
-instead, which is what it will reach for anyway.</li>
-<li><strong>Multi-corner cans</strong> — the oscillator packages.</li>
+<li><strong>Memory contents.</strong> A ROM, EPROM or EEPROM in a generated design arrives
+<strong>unprogrammed</strong> — a netlist has nowhere to carry its bytes. The panel says
+so when it offers the design; load the image through the chip&#39;s
+<strong>Properties</strong> before you run it.</li>
+<li><strong>Multi-corner cans</strong> — the oscillator packages. The model isn&#39;t offered
+them.</li>
 </ul>
 <h2 id="review-asking-whats-wrong-with-a-circuit">Review: asking what&#39;s wrong with a circuit</h2>
 <p>The panel has two modes, picked with the <strong>Build / Review</strong> switch in its
@@ -257,9 +270,11 @@ the model quite different things — but your transcript stays where it is.</p>
 <p>You never need to ask for a current-limiting resistor, and you shouldn&#39;t put
 one in your description. Chip Hippo models the <em>physical</em> requirement, not just
 the logical one: an LED conducting between two strongly-driven nets burns out
-instead of lighting, exactly as it would on a real bench. So whenever a
-display&#39;s common leg heads for a power rail, the compiler interposes a series
-resistor for you. See <a href="components.html">Chips &amp; Components</a> for the same rule
+instead of lighting, exactly as it would on a real bench. So whenever a lamp
+leg goes straight to a power rail — a display&#39;s common leg, a single LED&#39;s
+cathode to GND or its anode to VCC, a segment of an isolated bar — the
+compiler interposes a series resistor for you (a resistor network, when there
+are several). See <a href="components.html">Chips &amp; Components</a> for the same rule
 when you&#39;re wiring by hand.</p>
 <h2 id="cost-privacy-and-the-simulation">Cost, privacy and the simulation</h2>
 <p>Requests go to whichever endpoint you configured, billed to your own account —

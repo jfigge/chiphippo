@@ -160,6 +160,19 @@ function buildContext(doc, netlist) {
     if (!sig?.flag?.anchor) continue; // an unplaced signal drives nothing
     signals.push({ id: sig.id, net: netOf(sig.flag.anchor) });
   }
+  // An INPUT element's pin tags (the Arduino serial integration) are signal
+  // flags the ARDUINO presses: each drives its own net, at the same strength,
+  // with whatever level the last received value gave that pin — so they share
+  // this list and the `signalLevels` map (keyed `<element>:<pin>`, which no
+  // signal id can collide with) rather than threading a second map through
+  // every solve. An Output's tags and every trigger tag only LISTEN.
+  for (const element of doc.integrations ?? []) {
+    if (element?.kind !== "input") continue;
+    for (const [key, tag] of Object.entries(element.tags ?? {})) {
+      if (key === "T" || typeof tag?.anchor !== "string") continue;
+      signals.push({ id: `${element.id}:${key}`, net: netOf(tag.anchor) });
+    }
+  }
 
   // Resistors: weak two-terminal couplers (pull-ups / pull-downs / series R).
   // They never merge nets (that's a wire's job) — each conducts one terminal's

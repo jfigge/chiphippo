@@ -84,6 +84,20 @@ test("a drag preview carries the key with the flag, in place", () => {
   );
 });
 
+test("every key is drawn above every body, so a neighbour never covers one", () => {
+  // Wider than a pitch, flags in adjacent holes overlap — as tags do — so the
+  // order in the SVG, not the spacing, is what keeps each digit readable.
+  const { signalLayer, layer, ids } = mount({ signals: 3, planted: 2 });
+  const order = () =>
+    [...layer.querySelectorAll(".signal-flag, .signal-flag-key")].map(
+      (n) => n.classList[0],
+    );
+  assert.deepEqual(order(), ["signal-flag", "signal-flag", "signal-flag-key", "signal-flag-key"]); // prettier-ignore
+  // A flag minted by a drag off the rail joins the same two groups.
+  signalLayer.setPreview(ids[2], { at: { x: 5, y: 5 } });
+  assert.deepEqual(order(), ["signal-flag", "signal-flag", "signal-flag", "signal-flag-key", "signal-flag-key", "signal-flag-key"]); // prettier-ignore
+});
+
 test("the key sits on a disc in the signal's own colour", () => {
   const { doc, layer, ids } = mount({ signals: 1 });
   const key = layer.querySelector(".signal-flag-key");

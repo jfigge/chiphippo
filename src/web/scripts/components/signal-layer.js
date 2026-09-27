@@ -29,12 +29,17 @@
 // The flag carries ONE CHARACTER: the digit KEY that presses it (`1`–`9`, `0`),
 // on the same coloured disc its rail button shows it on. Colours cycle and
 // repeat, so the key is what ties a flag to its button. It is a single UPRIGHT
-// glyph, deliberately — at rot 90/270 the body is 2 pitch wide and 4 tall, with
-// nowhere for a horizontal name (the NAME lives on the button), but one
+// glyph, deliberately — at rot 90/270 the body is barely over a pitch wide,
+// with nowhere for a horizontal name (the NAME lives on the button), but one
 // character fits the body at every angle. A digit is not a word, so there is
 // nothing here for i18n to reach. The disc + digit group sits BESIDE the
 // polygon, pointer-inert, so the polygon stays the one hit target and the one
 // node carrying the signal's id.
+//
+// A flag is an Output/Input tag's glyph exactly (integration-layer.js), and
+// like a tag it is wider than one pitch, so flags in adjacent holes overlap.
+// So it is drawn the tag's way too: every body in one group, every key in a
+// second group above it, and no digit is ever under the flag beside it.
 
 import { svgEl } from "../dom.js";
 import { PX_PER_UNIT } from "../desk/desk-geometry.js";
@@ -72,6 +77,8 @@ function placeKey(key, at, rot) {
 export class SignalLayer {
   #doc;
   #svg;
+  #bodies; // every flag's <polygon>…
+  #keys; // …and, above them all, every flag's key
   #els = new Map(); // signalId → { poly: its <polygon>, key: its key <g> }
   #selected = null;
   #onPointerDown;
@@ -93,6 +100,9 @@ export class SignalLayer {
     // plus overflow: visible, the same zero-size-anchor rule the wire layer
     // and every surface layer follow.
     this.#svg = svgEl("svg", { class: "signal-svg", width: 1, height: 1 });
+    this.#bodies = svgEl("g");
+    this.#keys = svgEl("g");
+    this.#svg.append(this.#bodies, this.#keys);
     layer.append(this.#svg);
     window.addEventListener("chiphippo:doc-changed", () => this.render());
     this.render();
@@ -106,7 +116,8 @@ export class SignalLayer {
    * would do so on every pointermove.
    */
   render() {
-    this.#svg.replaceChildren();
+    this.#bodies.replaceChildren();
+    this.#keys.replaceChildren();
     this.#els.clear();
     for (const sig of this.#doc.signals) {
       if (!sig.flag?.anchor) continue;
@@ -115,7 +126,7 @@ export class SignalLayer {
       const entry = this.#buildFlag(sig.id);
       if (!entry) continue;
       this.#moveTo(entry, at, sig.flag.rot ?? 0);
-      this.#svg.append(entry.poly, entry.key);
+      this.#append(entry);
       this.#els.set(sig.id, entry);
     }
   }
@@ -155,6 +166,12 @@ export class SignalLayer {
     return { poly, key };
   }
 
+  /** Put one flag on the desk: its body with the bodies, its key above them. */
+  #append(entry) {
+    this.#bodies.append(entry.poly);
+    this.#keys.append(entry.key);
+  }
+
   /** Draw one flag (polygon AND key) with its apex at a world point. */
   #moveTo(entry, at, rot) {
     entry.poly.setAttribute("points", pointsAt(at, rot));
@@ -184,7 +201,7 @@ export class SignalLayer {
     if (!entry) {
       entry = this.#buildFlag(id);
       if (!entry) return;
-      this.#svg.append(entry.poly, entry.key);
+      this.#append(entry);
       this.#els.set(id, entry);
     }
     this.#moveTo(entry, at, rot);

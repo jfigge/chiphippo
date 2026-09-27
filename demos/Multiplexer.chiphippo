@@ -10,7 +10,7 @@
       "name": "74LS151",
       "description": "8-to-1 multiplexer",
       "doc": {
-        "version": 13,
+        "version": 14,
         "boards": [
           {
             "id": "bb1",
@@ -413,6 +413,7 @@
         ],
         "scopeChannels": [],
         "signals": [],
+        "integrations": [],
         "nextBoardId": 4,
         "nextGroupId": 2,
         "nextComponentId": 12,
@@ -422,7 +423,9 @@
         "nextBusId": 1,
         "nextAnnotationId": 11,
         "nextScopeChannelId": 1,
-        "nextSignalId": 1
+        "nextSignalId": 1,
+        "nextOutputId": 1,
+        "nextInputId": 1
       }
     },
     {
@@ -430,7 +433,7 @@
       "name": "74LS153",
       "description": "Dual 4-to-1 multiplexer",
       "doc": {
-        "version": 13,
+        "version": 14,
         "boards": [
           {
             "id": "bb1",
@@ -802,6 +805,7 @@
         ],
         "scopeChannels": [],
         "signals": [],
+        "integrations": [],
         "nextBoardId": 4,
         "nextGroupId": 2,
         "nextComponentId": 10,
@@ -811,7 +815,9 @@
         "nextBusId": 1,
         "nextAnnotationId": 11,
         "nextScopeChannelId": 1,
-        "nextSignalId": 1
+        "nextSignalId": 1,
+        "nextOutputId": 1,
+        "nextInputId": 1
       }
     },
     {
@@ -819,7 +825,7 @@
       "name": "74LS157",
       "description": "Quad 2-to-1 selector",
       "doc": {
-        "version": 13,
+        "version": 14,
         "boards": [
           {
             "id": "bb1",
@@ -1255,6 +1261,7 @@
         ],
         "scopeChannels": [],
         "signals": [],
+        "integrations": [],
         "nextBoardId": 4,
         "nextGroupId": 2,
         "nextComponentId": 14,
@@ -1264,7 +1271,9 @@
         "nextBusId": 1,
         "nextAnnotationId": 12,
         "nextScopeChannelId": 1,
-        "nextSignalId": 1
+        "nextSignalId": 1,
+        "nextOutputId": 1,
+        "nextInputId": 1
       }
     },
     {
@@ -1272,7 +1281,7 @@
       "name": "74LS257",
       "description": "Quad 2-to-1 selector (tri-state)",
       "doc": {
-        "version": 13,
+        "version": 14,
         "boards": [
           {
             "id": "bb1",
@@ -1708,6 +1717,7 @@
         ],
         "scopeChannels": [],
         "signals": [],
+        "integrations": [],
         "nextBoardId": 4,
         "nextGroupId": 2,
         "nextComponentId": 14,
@@ -1717,7 +1727,9 @@
         "nextBusId": 1,
         "nextAnnotationId": 12,
         "nextScopeChannelId": 1,
-        "nextSignalId": 1
+        "nextSignalId": 1,
+        "nextOutputId": 1,
+        "nextInputId": 1
       }
     }
   ]

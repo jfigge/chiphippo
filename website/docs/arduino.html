@@ -1,0 +1,537 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#2F855A" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <title>Arduino Integration · Chip Hippo Guide</title>
+  <meta name="description" content="Arduino Integration — the Chip Hippo user guide." />
+  <link rel="canonical" href="https://chiphippo.com/docs/arduino.html" />
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="Chip Hippo" />
+  <meta property="og:title" content="Arduino Integration · Chip Hippo Guide" />
+  <meta property="og:description" content="Arduino Integration — the Chip Hippo user guide." />
+  <meta property="og:url" content="https://chiphippo.com/docs/arduino.html" />
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="Arduino Integration · Chip Hippo Guide" />
+  <meta name="twitter:description" content="Arduino Integration — the Chip Hippo user guide." />
+  <style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#1c1c1c;--mantle:#161616;--crust:#101010;--surface-0:#2a2a2a;--surface-1:#383838;--overlay-0:#686868;--text:#e8e8e8;--subtext:#b0b0b0;--accent:#3fb950;--green:#56d364}
+html{scroll-behavior:smooth}
+body{font-family:"Segoe UI",system-ui,-apple-system,BlinkMacSystemFont,sans-serif;background:var(--bg);color:var(--text);line-height:1.65}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+code{font-family:"Cascadia Code","JetBrains Mono","Fira Code",monospace;font-size:.88em;background:var(--surface-0);padding:1px 6px;border-radius:4px;color:var(--text)}
+pre{background:var(--crust);border:1px solid var(--surface-0);border-radius:10px;padding:14px 16px;overflow:auto;margin:16px 0}
+pre code{background:none;padding:0}
+kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px solid var(--surface-1);border-bottom-width:2px;border-radius:5px;padding:1px 6px}
+.topbar{position:sticky;top:0;z-index:10;height:58px;display:flex;align-items:center;justify-content:space-between;padding:0 24px;background:var(--mantle);border-bottom:1px solid var(--surface-0)}
+.brand{display:flex;align-items:center;gap:10px;font-weight:800;color:var(--accent);font-size:1.1rem}
+.brand:hover{text-decoration:none}
+.topbar .back{color:var(--subtext);font-size:.85rem}
+.layout{max-width:1180px;margin:0 auto;display:grid;grid-template-columns:260px 1fr;gap:40px;padding:32px 24px 80px}
+.sidebar{position:sticky;top:90px;align-self:start;max-height:calc(100vh - 110px);overflow:auto}
+.sidebar-title{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--overlay-0);padding:0 12px 8px}
+.doc-nav-link{display:block;padding:7px 12px;border-radius:7px;color:var(--subtext);font-size:.9rem;margin-bottom:2px}
+.doc-nav-link:hover{background:var(--surface-0);color:var(--text);text-decoration:none}
+.doc-nav-link--active{background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent);font-weight:600}
+.content{min-width:0;max-width:760px}
+.content h1{font-size:2.1rem;font-weight:800;letter-spacing:-1px;margin:0 0 20px;line-height:1.2}
+.content h2{font-size:1.45rem;font-weight:700;margin:36px 0 12px;padding-top:12px;border-top:1px solid var(--surface-0)}
+.content h3{font-size:1.12rem;font-weight:700;margin:26px 0 10px}
+.content p,.content ul,.content ol,.content blockquote,.content table{margin:0 0 16px}
+.content ul,.content ol{padding-left:24px}
+.content li{margin:4px 0}
+.content img{max-width:100%;height:auto;border:1px solid var(--surface-0);border-radius:10px;margin:8px 0}
+.content blockquote{border-left:3px solid var(--accent);background:var(--mantle);padding:10px 16px;border-radius:0 8px 8px 0;color:var(--subtext)}
+.content blockquote p:last-child{margin:0}
+.content table{border-collapse:collapse;width:100%;font-size:.9rem;display:block;overflow:auto}
+.content th,.content td{border:1px solid var(--surface-0);padding:8px 12px;text-align:left}
+.content th{background:var(--mantle)}
+.content hr{border:none;border-top:1px solid var(--surface-0);margin:28px 0}
+@media(max-width:820px){.layout{grid-template-columns:1fr;gap:20px}.sidebar{position:static;max-height:none;border-bottom:1px solid var(--surface-0);padding-bottom:16px}}
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/"><svg width="24" height="24" viewBox="0 0 512 512" role="img" aria-label="Chip Hippo"><rect x="0" y="0" width="512" height="512" rx="114" fill="#2F855A"/><circle cx="170" cy="146" r="40" fill="#FFFFFF"/><circle cx="342" cy="146" r="40" fill="#FFFFFF"/><rect x="144" y="140" width="224" height="190" rx="74" fill="#FFFFFF"/><rect x="118" y="260" width="276" height="150" rx="74" fill="#FFFFFF"/><circle cx="201" cy="198" r="17" fill="#1C1C1C"/><circle cx="311" cy="198" r="17" fill="#1C1C1C"/><rect x="186" y="320" width="140" height="52" rx="8" fill="#23272B"/><circle cx="186" cy="346" r="11" fill="#FFFFFF"/></svg><span>Chip Hippo</span></a>
+    <a class="back" href="/">← Back to site</a>
+  </header>
+  <div class="layout">
+    <nav class="sidebar" aria-label="User guide">
+      <div class="sidebar-title">User Guide</div>
+        <a class="doc-nav-link" href="index.html">Overview</a>
+        <a class="doc-nav-link" href="getting-started.html">Getting Started</a>
+        <a class="doc-nav-link" href="the-desk.html">The Desk &amp; Breadboards</a>
+        <a class="doc-nav-link" href="components.html">Chips &amp; Components</a>
+        <a class="doc-nav-link" href="wiring.html">Wiring, Nets &amp; Buses</a>
+        <a class="doc-nav-link" href="power-and-clocks.html">Power &amp; Clock Sources</a>
+        <a class="doc-nav-link" href="chip-library.html">The Chip Library</a>
+        <a class="doc-nav-link" href="simulation.html">Running a Simulation</a>
+        <a class="doc-nav-link" href="probing.html">Probing &amp; Net Names</a>
+        <a class="doc-nav-link" href="memory.html">Memory Chips &amp; the Inspector</a>
+        <a class="doc-nav-link" href="logic-analyzer.html">Logic Analyzer &amp; Timing</a>
+        <a class="doc-nav-link" href="build-guide.html">Build Guide &amp; BOM</a>
+        <a class="doc-nav-link" href="schematic-view.html">Schematic View</a>
+        <a class="doc-nav-link" href="ai-builder.html">AI Circuit Builder</a>
+        <a class="doc-nav-link doc-nav-link--active" href="arduino.html">Arduino Integration</a>
+        <a class="doc-nav-link" href="files-and-undo.html">Files, Saving &amp; Undo</a>
+        <a class="doc-nav-link" href="projects-and-desktops.html">Projects &amp; Desktops</a>
+        <a class="doc-nav-link" href="settings.html">Settings</a>
+        <a class="doc-nav-link" href="keyboard-shortcuts.html">Keyboard Shortcuts</a>
+    </nav>
+    <main class="content">
+<h1>Arduino Integration</h1>
+<p>Chip Hippo can talk to a real <strong>Arduino</strong> over USB while the circuit runs. An
+<strong>Output</strong> hands a value from the breadboard to a sketch — a number to show on
+a real display, a bit to switch a real relay — and an <strong>Input</strong> hands a value
+from the sketch back onto the breadboard: a sensor reading, a key press, the
+answer to a question the circuit just asked.</p>
+<p>The sketch side is written for you. Chip Hippo <strong>generates a header file</strong> for
+each board, declaring one function per Output and one small object per Input;
+you include it, call two functions from <code>setup()</code> and <code>loop()</code>, and fill in
+what each Output should do. The link underneath — framing, checksums,
+acknowledgements, retries — is the header&#39;s job and never yours.</p>
+<p>No Arduino to hand? Every Chip Hippo has a built-in <strong>Mock</strong> connection that
+plays the board&#39;s part itself (see <a href="#the-mock-connection">The Mock connection</a>),
+so you can build and try an integration before a wire is connected.</p>
+<h2 id="what-you-need">What you need</h2>
+<ul>
+<li>An Arduino (any board with a USB serial port — an Uno, a Nano, a Mega, a
+Leonardo…) and the Arduino IDE to upload sketches to it — or just the
+built-in Mock.</li>
+<li>A <strong>connection</strong> for it in Settings ▸ Serial I/O (below), naming it and
+saying which port it is plugged into.</li>
+<li>One or more <strong>Outputs</strong> or <strong>Inputs</strong> on the desk, each assigned to that
+connection.</li>
+</ul>
+<p>Nothing here touches the network: a connection is a USB cable, and Chip Hippo
+opens the port only while the circuit is running.</p>
+<h2 id="connections">Connections</h2>
+<p>A <strong>connection</strong> is a named Arduino: <em>Display board</em>, <em>Sensor Nano</em>. Open
+Settings (<code>Cmd/Ctrl+,</code>) and choose the <strong>Serial I/O</strong> tab. <strong>+</strong> beside the
+connection list creates one; give it a name and pick its <strong>Port</strong> from the list
+of what is plugged in right now (<strong>Re-scan</strong> after plugging a board in). <strong>Baud rate</strong>
+defaults to 115200, which suits every current board. <strong>Advanced</strong> holds the
+rest of the serial framing — data bits, parity, stop bits and flow control.
+Leave those alone unless you have a reason.</p>
+<p><strong>Apply</strong> saves the connection. If the port isn&#39;t plugged in at that moment
+you&#39;re told so, and the button becomes <strong>Apply anyway</strong>, which saves it
+regardless — useful when you&#39;re setting up before the board arrives. <strong>Open
+window…</strong> opens the connection&#39;s <a href="#the-connection-window">window</a>, and the
+bin beside the list (click it twice) deletes the connection. An Output or
+Input still using it keeps its assignment — its Properties show the connection
+as <em>(not on this computer)</em> — and the circuit won&#39;t run until you choose
+another one there.</p>
+<p>A connection whose port is missing, or which still <strong>Needs configuration</strong>,
+says so in the list, and its <strong>Port</strong> is marked in red.</p>
+<p>The list always starts with the <strong>Mock</strong>, marked <em>Built-in</em>. It has nothing to
+configure and can&#39;t be removed, and its name is reserved: a connection of your
+own can&#39;t be called <em>Mock</em>.</p>
+<h3 id="connections-travel-with-the-project">Connections travel with the project</h3>
+<p>The connection&#39;s <strong>name</strong> and serial settings are saved in the project file,
+so a design opened on another computer still knows which board each Output
+talks to. The <strong>port</strong> is not — <code>/dev/cu.usbmodem14101</code> on your Mac means
+nothing on someone else&#39;s PC — so a connection that arrives in a project is
+added to that computer&#39;s Settings marked <strong>Needs configuration</strong>, and the
+circuit won&#39;t run until a port has been chosen for it.</p>
+<h2 id="the-mock-connection">The Mock connection</h2>
+<p>The <strong>Mock</strong> is a pretend Arduino inside Chip Hippo. Choose it as an Output&#39;s or
+Input&#39;s <strong>Connection</strong> like any other, and press <strong>Run</strong>. There is no port to
+pick, no sketch to upload and no header to generate. It speaks the same
+protocol a real board does, byte for byte, so what works with the Mock works
+with a board.</p>
+<p>When a run starts, the Mock&#39;s <a href="#the-connection-window">connection window</a>
+opens beside the desk (without taking focus from it), with a send panel under
+its stream. You can also open it from Settings ▸ Serial I/O: pick <strong>Mock</strong> and
+press <strong>Open window…</strong>. It shows:</p>
+<ul>
+<li><strong>What arrives.</strong> Each value an Output sends appears as a line, named and
+split into its fields: <code>→ OUTPUT   Display  value=0x3F dp=1</code>. The Mock
+acknowledges it at once, so the circuit carries straight on.</li>
+<li><strong>What you send.</strong> There is one row per Input on the Mock. A bit field is a
+toggle; a byte or a word is a row of bit toggles plus a hex field, and
+editing either updates the other. <strong>Send</strong> sends that Input&#39;s whole value,
+exactly as a sketch&#39;s <code>send()</code> would, and it lands on the board like one.
+<strong>Send all</strong> sends every row in turn. The rows appear once the circuit has
+run with the Mock, since that is when the window learns your design.</li>
+<li><strong>Log text.</strong> Type a line and press <strong>Log</strong> (or Enter). It arrives in the
+log exactly as a sketch&#39;s <code>ChipHippo.println()</code> would.</li>
+</ul>
+<p><strong>Faults</strong>, folded away at the bottom, make the Mock misbehave once, on
+purpose, so you can see how the link copes:</p>
+<table>
+<thead>
+<tr>
+<th>Fault</th>
+<th>What happens</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Drop next ACK</strong></td>
+<td>The Mock swallows its acknowledgement of the next Output. Chip Hippo waits, sends it again, and the circuit carries on — the value still arrives only once.</td>
+</tr>
+<tr>
+<td><strong>Corrupt next frame</strong></td>
+<td>The next acknowledgement or Input the Mock sends is damaged in transit. Chip Hippo notices and asks for it again.</td>
+</tr>
+<tr>
+<td><strong>Ignore handshake</strong></td>
+<td>The Mock doesn&#39;t answer on the next Run, which stops with <em>No answer</em>.</td>
+</tr>
+<tr>
+<td><strong>Wrong signature</strong></td>
+<td>The Mock answers the next Run as a sketch built for a different design, which refuses to start.</td>
+</tr>
+</tbody></table>
+<p>A fault stays armed (its button highlighted) until it has happened. Click it
+again to disarm it. You can arm one while the circuit is stopped, ready for
+the next Run. What each fault causes shows up in the stream as a warning line
+(turn on <strong>Protocol</strong> to see the traffic around it too).</p>
+<h2 id="outputs-and-inputs">Outputs and Inputs</h2>
+<p>Add either from the parts palette&#39;s <strong>SIGNALS</strong> section: pick <strong>Output</strong> or
+<strong>Input</strong>, click anywhere on the desk, and choose how many <strong>pins</strong> it has —
+1, 2, 4, 8 or 16. You can change that afterwards in its Properties.</p>
+<p>Each one appears as a <strong>card</strong> on the right-hand edge of the desk, under the
+signal buttons: its direction arrow (→ Output, ← Input), its colour, its name
+and how many pins it has. Under the name sits a small numbered chip for every
+pin that isn&#39;t on the board yet, plus one more — the <strong>trigger</strong>, marked with
+an arrow. <strong>Drag a chip onto a breadboard hole</strong> to plant that pin there as a
+<strong>tag</strong>; drag a planted tag to move it, and press <code>R</code> while dragging (or with
+the tag selected) to turn it. <strong>Delete</strong> unplugs a selected tag back onto its
+card. The card&#39;s right-click menu offers <strong>Properties…</strong>, <strong>Remove All Tags</strong>
+and <strong>Delete Output</strong> / <strong>Delete Input</strong>; a tag&#39;s own menu adds <strong>Remove Tag</strong>
+and <strong>Add to analyzer</strong>.</p>
+<p>A tag is plugged into its hole the way a wire end is — one hole, one lead —
+and deleting the breadboard under a tag sends it back to the card; the Output
+or Input itself is never lost with it.</p>
+<h3 id="pins-and-fields">Pins and fields</h3>
+<p>An element&#39;s pins are grouped into <strong>fields</strong>, and each field becomes one
+parameter of the Arduino function (for an Output) or one setter (for an
+Input). A field is a <strong>Bit</strong> (1 pin, a <code>bool</code>), a <strong>Byte</strong> (8 pins, a
+<code>uint8_t</code>) or a <strong>Word</strong> (16 pins, a <code>uint16_t</code>), up to 16 pins in all. The
+Properties dialog lists them in pin order with a name each; <strong>+ Bit</strong>, <strong>+
+Byte</strong> and <strong>+ Word</strong> add one, and the × removes one.</p>
+<p>Pin 1 is the <strong>least significant bit</strong> of the element&#39;s value, pin 2 the next,
+and so on. A pin whose tag isn&#39;t planted, or whose net is floating or unknown,
+<strong>reads as 0</strong>.</p>
+<h3 id="properties">Properties</h3>
+<p>Right-click a card (or one of its tags) and choose <strong>Properties…</strong> to edit:</p>
+<table>
+<thead>
+<tr>
+<th>Setting</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Name</strong>, <strong>Description</strong></td>
+<td>The name is also the function (Output) or object (Input) name in the header, turned into a valid C++ identifier</td>
+</tr>
+<tr>
+<td><strong>Color</strong></td>
+<td>The card&#39;s dot and its tags — any of the seven signal colours</td>
+</tr>
+<tr>
+<td><strong>Connection</strong></td>
+<td>Which Arduino it talks to. The gear beside it opens Settings ▸ Serial I/O</td>
+</tr>
+<tr>
+<td><strong>Trigger</strong></td>
+<td><strong>Rising</strong>, <strong>Falling</strong> or <strong>Either</strong> — which transition of the trigger line counts</td>
+</tr>
+<tr>
+<td><strong>Trigger starts</strong></td>
+<td><strong>Low</strong> or <strong>High</strong> — what the trigger line is taken to have been before the run began, so a line that starts high can still fire (or not) on the first settle</td>
+</tr>
+<tr>
+<td><strong>Pins</strong></td>
+<td>The fields, as above</td>
+</tr>
+</tbody></table>
+<h2 id="how-values-move">How values move</h2>
+<p>Chip Hippo only ever looks at the board <strong>between settles</strong> — when every
+chip&#39;s output has stopped changing. A glitch inside one settle is never sent
+anywhere, and nothing from the Arduino ever lands on the board halfway through
+a ripple.</p>
+<h3 id="an-output-fires-on-its-trigger">An Output fires on its trigger</h3>
+<p>When an Output&#39;s trigger line makes the chosen transition, Chip Hippo samples
+the Output&#39;s pins and <strong>sends the value</strong>. <strong>The circuit then waits</strong> — no
+clock edges, no further settles — until the Arduino&#39;s function has <em>returned</em>
+and the board has acknowledged it. So whatever the sketch does in response has
+already happened before the circuit moves on, and an Input the sketch sends
+from inside that function lands in the same step: the request/response shape
+(the circuit asks, the Arduino answers, the circuit carries on with the
+answer) works with no timing of your own.</p>
+<p>An Output whose trigger tag isn&#39;t planted <strong>never fires</strong>.</p>
+<h3 id="an-input-is-live-or-triggered">An Input is live or triggered</h3>
+<p>An Input drives its pins at the strength of a chip output — two things
+disagreeing over one net is reported as a conflict, exactly as two chip
+outputs would be — but <strong>drives nothing at all</strong> until the Arduino has sent it
+a first value.</p>
+<ul>
+<li>With <strong>no trigger tag planted</strong>, an Input is <strong>live</strong>: each value the
+Arduino sends is put on the board at the next opportunity between settles.</li>
+<li>With a trigger tag planted, the latest value the Arduino sent <strong>waits</strong> and
+is put on the board only when the trigger line makes its transition — the
+way a latch loads on its clock. Earlier values the circuit never took are
+simply replaced.</li>
+</ul>
+<h2 id="generating-the-boards-code">Generating the board&#39;s code</h2>
+<p>The <strong>Generate</strong> button in the desk tools pill opens a card listing every
+connection this desktop&#39;s Outputs and Inputs use, each with <strong>View files…</strong>,
+<strong>Copy</strong> and <strong>Save header…</strong>. Save <code>ChipHippo.h</code> into that board&#39;s sketch
+folder and include it:</p>
+<pre><code class="language-cpp">#include &quot;ChipHippo.h&quot;
+
+void setup() {
+  ChipHippo.onConnect(sendInputs);  // optional — see below
+  ChipHippo.begin();
+}
+void loop() { ChipHippo.poll(); }
+
+// The Output &quot;Display&quot; arrives here: its name + In, its fields the parameters.
+void DisplayIn(uint8_t value, bool dp) {
+  ChipHippo.print(&quot;showing &quot;);
+  ChipHippo.println(value);
+}
+
+// The Input &quot;Keypad&quot; is sent from here: set its fields, then send it whole.
+void keyPressed(uint8_t code) {
+  ChipHippo.KeypadOut.setCode(code);
+  ChipHippo.KeypadOut.setReady(true);
+  ChipHippo.KeypadOut.send();
+}
+
+// Runs at the start of every run: give each Input its starting value.
+void sendInputs() {
+  ChipHippo.KeypadOut.setCode(0);
+  ChipHippo.KeypadOut.setReady(false);
+  ChipHippo.KeypadOut.send();
+}
+</code></pre>
+<p>In the sketch, names read from the <strong>Arduino&#39;s</strong> side. An Output leaves the
+circuit and <em>arrives</em> at the Arduino, so the Output called <em>Display</em> is the
+function <code>DisplayIn()</code>; an Input is <em>sent</em> from the Arduino into the circuit,
+so the Input called <em>Keypad</em> is <code>ChipHippo.KeypadOut</code>. The two different
+endings also mean an Output and an Input can share a name. A name that
+already ends that way isn&#39;t doubled (an Output called <em>DataIn</em> stays
+<code>DataIn</code>). A name that still can&#39;t be used as it is (two Outputs with the
+same name, a field called <code>delay</code>) is changed, and the Generate card lists
+each change under its connection.</p>
+<p><strong>View files…</strong> shows the header beside <code>ChipHippoExample.ino</code>, the smallest
+sketch that uses it — one function per Output that logs what arrived, and
+every Input sent its starting value at the start of a run — each in its own
+tab, with line numbers and a <strong>Copy</strong> button. Closing it returns to the
+Generate card. The header&#39;s own opening comment points at the example too.</p>
+<p>An Input&#39;s <code>send()</code> returns <code>true</code> once Chip Hippo has the value. It returns
+<code>false</code> when nobody is listening: at once before a run has greeted the sketch,
+and after one has stopped (the first time, after a second and a half of
+resends). <code>ChipHippo.connected()</code> says which state the link is in.</p>
+<p>An Input puts nothing on its pins until its first value arrives, so a sketch
+should say where its Inputs stand as soon as a run begins.
+<code>ChipHippo.onConnect(fn)</code> is for exactly that: <code>poll()</code> runs <code>fn</code> at the start
+of <strong>every</strong> run. That matters on boards that don&#39;t restart when Chip Hippo
+opens the port — a Leonardo, a Micro, most boards with USB built into the
+chip — where the sketch simply carries on from one run into the next and
+<code>connected()</code> alone can&#39;t tell that a new one has begun.</p>
+<p>The Mock needs no header. A desktop whose Outputs and Inputs are all on the
+Mock is told so, and the Mock never marks the Generate button out of date.</p>
+<p>The header never contains your code, so saving over it after a change to the
+design is always safe. Three rules keep the link healthy:</p>
+<ul>
+<li><strong>Call <code>ChipHippo.poll()</code> often</strong>, and keep Output functions short. The
+circuit is stood still while an Output is being handled; a <code>delay()</code> there is
+time it waits. Chip Hippo resends a value it hasn&#39;t had acknowledged after
+half a second, and stops the run after three tries.</li>
+<li><strong>Log with <code>ChipHippo.print()</code> / <code>println()</code>, never <code>Serial</code>.</strong> Chip Hippo
+owns the port while the circuit runs; anything printed straight to <code>Serial</code>
+is noise on the link. What you print through <code>ChipHippo</code> appears in the
+<a href="#the-connection-window">connection window</a>.</li>
+<li><strong>One header per connection.</strong> Two boards on one desktop get two headers,
+each declaring only its own Outputs and Inputs.</li>
+</ul>
+<h3 id="python-boards-micropython-and-circuitpython">Python boards (MicroPython and CircuitPython)</h3>
+<p>A board that runs Python — a Raspberry Pi Pico, an ESP32, an Arduino Nano
+ESP32 or Nano RP2040 Connect, most Adafruit boards — can take part too. Set
+its connection&#39;s <strong>Language</strong> to <strong>Python</strong> in
+<a href="settings.html#serial-io">Settings ▸ Serial I/O</a>, and Generate writes
+<code>chiphippo.py</code> instead of a header: one module that runs on MicroPython and
+CircuitPython alike. (An Uno, Nano, Mega or Leonardo is too small for Python
+and stays C++.)</p>
+<pre><code class="language-python">from chiphippo import link
+
+
+@link.display_in  # the Output &quot;Display&quot; arrives here
+def display_in(value, dp):
+    link.print(&quot;showing&quot;, value)
+
+
+@link.on_connect  # runs at the start of every run
+def send_inputs():
+    link.keypad_out.set_code(0)
+    link.keypad_out.set_ready(False)
+    link.keypad_out.send()
+
+
+link.begin()
+while True:
+    link.poll()
+</code></pre>
+<p>It is the header said in Python: the same names in Python&#39;s own style
+(<code>display_in</code>, <code>keypad_out.set_code</code>), an Output handled by decorating a
+function with <code>@link.&lt;its name&gt;_in</code>, and <code>link.print()</code> for the log. The
+Generate card offers <strong>Save module…</strong> instead of <strong>Save header…</strong>, and <strong>View
+files…</strong> shows the module beside <code>main.py</code> (MicroPython) and <code>code.py</code> with
+<code>boot.py</code> (CircuitPython). Copy <code>chiphippo.py</code> and the program for your board
+onto it.</p>
+<p>Where the link runs is the one real difference between the two:</p>
+<ul>
+<li><strong>MicroPython</strong> uses the board&#39;s own USB serial port — the one its REPL uses
+— so point the connection at that port. Inside the link&#39;s data a <code>0x03</code> byte
+is just data, not Ctrl-C; between messages, Ctrl-C still stops the program,
+so Thonny and <code>mpremote</code> can always get in to replace its files. A plain
+<code>print()</code> would land in the middle of the link, so log with <code>link.print()</code>.
+On a board whose USB is a separate serial chip (a classic ESP32 DevKit),
+MicroPython always talks at <strong>115200 baud, 8N1</strong>: leave the connection
+there — the Generate card warns if it isn&#39;t. A board with USB built in (a
+Pico, a Nano ESP32) ignores the rate.</li>
+<li><strong>CircuitPython</strong> gives the link a second USB serial port of its own, which
+<code>boot.py</code> turns on (<code>usb_cdc.enable(console=True, data=True)</code>). After the
+board resets, a new port appears beside the REPL&#39;s. For a Python connection
+the <strong>Port</strong> list names the two — <em>port 1 of 2: REPL</em> and <em>port 2 of 2:
+CircuitPython data</em> — so choose the data port. (Any board with several ports
+shows which of them each one is.)</li>
+</ul>
+<p>A function that raises an exception is reported in the connection window and
+the circuit carries on — on a board there is nowhere else it could be seen.
+Most Python boards don&#39;t restart when Chip Hippo opens the port, so give your
+Inputs their starting values from an <code>@link.on_connect</code> function, as above.
+<code>link.begin()</code> can also be handed a port you have opened yourself — a
+<code>machine.UART</code> or <code>busio.UART</code> at the connection&#39;s baud rate.</p>
+<h3 id="keeping-the-header-current">Keeping the header current</h3>
+<p>Every header carries a <strong>design hash</strong> of what it was generated from — the
+connection&#39;s settings and the names, fields and order of its Outputs and
+Inputs. Change any of those and the header is <strong>out of date</strong>: the Generate
+button shows a dot, and the Generate card says which header needs doing again.
+Positions of tags on the board, colours and descriptions don&#39;t change the hash.
+A header saved by an older Chip Hippo whose generated code has since changed
+shows as out of date too, so that saving it again picks the change up.</p>
+<p>A run checks something narrower: the <strong>layout</strong> the sketch was built for —
+which Outputs and Inputs there are, in what order, and how each one&#39;s pins are
+split into fields. Names aren&#39;t part of it, so a design you&#39;ve only renamed
+things in still runs while you get round to regenerating. But a sketch built
+for a different layout would hand values to the wrong functions or parameters,
+so that <strong>stops the run</strong> before it starts, asking you to generate the header
+again and re-upload the sketch. A sketch built by a version of Chip Hippo that
+speaks a different protocol is refused the same way.</p>
+<h2 id="running-with-an-arduino">Running with an Arduino</h2>
+<p>Press <strong>Run</strong> as usual. Before anything simulates, Chip Hippo checks that every
+Output and Input in use has a connection, that each connection is configured,
+and that its port is plugged in — and if not, says which and offers to open the
+right Properties or Settings. It then <strong>opens each port and greets the
+sketch</strong>, asking again every quarter of a second for up to five seconds; many
+boards reset when the port opens, so this is also the time a sketch has to
+boot. A board that never answers stops the run with the port named, and so
+does a sketch built for a different layout (above).</p>
+<p>While it runs:</p>
+<ul>
+<li><strong>TX</strong>, <strong>RX</strong> and <strong>LG</strong> lamps beside the zoom controls flash as values go
+to an Arduino, come back from one, and as log text arrives. Click any of
+them to open a <a href="#the-connection-window">connection window</a> (a menu asks
+which, if there are several).</li>
+<li>A board that <strong>restarts</strong> mid-run (a reset button, a brown-out), one that is
+<strong>unplugged</strong>, and one that fails to acknowledge a value after three
+attempts all <strong>stop the run</strong> with a message naming the connection. A
+restarted sketch has forgotten the run, so press <strong>Run</strong> again to reconnect.</li>
+</ul>
+<p><strong>Stop</strong> closes every port, so the Arduino IDE can have it back to upload a
+new sketch — there&#39;s no need to quit Chip Hippo between uploads.</p>
+<h3 id="the-connection-window">The connection window</h3>
+<p>Each connection has a window showing everything that happens on it, in one
+stream: what its sketch printed through <code>ChipHippo</code>, and the values and
+protocol frames going back and forth. Because it is one timeline, cause and
+effect read in order — a value arrives, then the line the sketch printed in
+response.</p>
+<p>Open one by clicking the lamps, with <strong>Open Connection Window</strong> on an Output&#39;s
+or Input&#39;s right-click menu (it works while the circuit runs), or by picking
+the connection in Settings ▸ Serial I/O and pressing <strong>Open window…</strong>.</p>
+<p>Every line starts with a mark saying what it is:</p>
+<table>
+<thead>
+<tr>
+<th>Mark</th>
+<th>Line</th>
+<th>Example</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><em>(none)</em></td>
+<td>Text the sketch printed</td>
+<td><code>got 41</code></td>
+</tr>
+<tr>
+<td><code>→</code></td>
+<td>A value sent to the board (an Output)</td>
+<td><code>→ OUTPUT   Display  value=0x3F dp=1</code></td>
+</tr>
+<tr>
+<td><code>←</code></td>
+<td>A value from the board (an Input)</td>
+<td><code>← INBOUND  Keypad  code=0x07 ready=1</code></td>
+</tr>
+<tr>
+<td><code>·</code></td>
+<td>Protocol traffic: the handshake, acknowledgements, the port opening and closing</td>
+<td><code>· ← ACK seq 12</code></td>
+</tr>
+<tr>
+<td><code>!</code></td>
+<td>Something went wrong, and what the link did about it</td>
+<td><code>! No ACK for seq 12 — resending (attempt 2/3)</code></td>
+</tr>
+</tbody></table>
+<p>Arrows are always from Chip Hippo&#39;s side: <code>→</code> leaves Chip Hippo, <code>←</code> arrives.
+Hover over a value&#39;s line to see the exact bytes it travelled as. A value
+that had to be sent again appears once, with the resend as a warning line
+beneath it.</p>
+<p>The footer holds the controls:</p>
+<ul>
+<li><strong>Log</strong>, <strong>Data</strong> and <strong>Protocol</strong> choose which lines to show — the first
+two on by default, Protocol off. Hidden lines are still recorded and come
+back when you turn them on again. <strong>Warning lines are always shown.</strong></li>
+<li><strong>Timestamps</strong> adds each line&#39;s time since the run started, to the
+millisecond (<code>+  12.345</code>) — the way to line a frame up with what the sketch
+printed.</li>
+<li><strong>Clear</strong> empties the window. <strong>Save…</strong> writes the whole stream to a text
+file — every line, with its time, whatever the filters are showing.</li>
+</ul>
+<p>A new Run starts the window afresh. After <strong>Stop</strong> everything stays, so a
+failure can be read at leisure — even after closing and reopening the window.
+It keeps the last 2,000 lines, follows new lines only while you&#39;re scrolled
+to the bottom, and its text can be selected and copied. Each connection&#39;s
+window remembers where it was and how it was set up.</p>
+<h2 id="under-the-hood">Under the hood</h2>
+<p>For the curious, or for anyone writing their own firmware: the link is a
+small framed protocol over the serial port, <strong>version 1</strong>. Every frame is
+<code>0x7E · TYPE · SEQ · LEN · PAYLOAD · CRC</code>, with <code>0x7E</code> and <code>0x7D</code> escaped
+everywhere after the start byte and a CRC-16/CCITT-FALSE (polynomial
+<code>0x1021</code>, initial value <code>0xFFFF</code>) over the unescaped <code>TYPE</code> to <code>PAYLOAD</code>. A
+value&#39;s payload is the element&#39;s index, its width in bits, and the value as
+two bytes, little-endian.</p>
+<p>At the start of every run Chip Hippo sends a HELLO carrying the protocol
+version, the layout signature (a CRC-32 of the layout described above) and a
+fresh session number, and the sketch answers with its own version and
+signature. Outputs and Inputs are then acknowledged and resent on a timeout or
+a NAK. A resend is recognised by its sequence number, so a function never runs
+twice for one value, and an Output is acknowledged only once its function has
+returned. Log text travels in unacknowledged chunks that never split a
+character.</p>
+
+    </main>
+  </div>
+</body>
+</html>

@@ -88,7 +88,10 @@
       "memImage": "メモリイメージ",
       "binImage": "バイナリイメージ",
       "intelHex": "Intel HEX",
-      "allFiles": "すべてのファイル"
+      "allFiles": "すべてのファイル",
+      "header": "C/C++ ヘッダー",
+      "python": "Python ソース",
+      "text": "テキスト"
     },
     "regrant": {
       "message": "このプロジェクトへのアクセスを確認",
@@ -171,6 +174,13 @@
       "step": "ステップ",
       "stepTitle": "クロックの半周期だけ進める",
       "speedTitle": "クロック速度（クリックで ¼ / 1 / 4 を切り替え）"
+    },
+    "generate": {
+      "label": "生成",
+      "title": "このデスクトップのボード用のコードを生成",
+      "stale": "生成 — ボードのコードがこのデスクトップの設計と一致していません",
+      "staleLabel": "生成（古い）",
+      "none": "ボードのコードを生成 — 先に出力または入力を追加してください"
     }
   },
   "zoom": {
@@ -186,7 +196,8 @@
       "appearance": "外観",
       "datasheets": "データシート",
       "ai": "AI",
-      "about": "情報"
+      "about": "情報",
+      "integration": "シリアル I/O"
     },
     "appearance": {
       "language": "言語",
@@ -329,6 +340,13 @@
       "signals": "信号",
       "switches": "スイッチ",
       "xor": "XOR"
+    },
+    "integration": {
+      "output": "出力",
+      "input": "入力",
+      "outputHint": "トリガーが発火すると Arduino に値を送る — デスクをクリックして追加",
+      "inputHint": "Arduino からの値でピンを駆動する — デスクをクリックして追加",
+      "full": "このデスクには置ける数の出力と入力がすでにあります"
     }
   },
   "boards": {
@@ -1074,7 +1092,11 @@
       "size": "サイズ",
       "imageSource": "イメージファイル",
       "type": "種類",
-      "rest": "既定値"
+      "rest": "既定値",
+      "connection": "接続",
+      "triggerEdge": "トリガー",
+      "triggerInit": "トリガーの初期値",
+      "fields": "ピン"
     },
     "option": {
       "manual": "手動",
@@ -1085,7 +1107,8 @@
     },
     "action": {
       "inspectMemory": "メモリを調べる…",
-      "programMemory": "イメージを読み込む…（書き込み）"
+      "programMemory": "イメージを読み込む…（書き込み）",
+      "manageConnections": "接続を管理…"
     },
     "warnings": "警告",
     "warning": {
@@ -1164,5 +1187,287 @@
     "closeNamed": "{title}を閉じる",
     "removeNamed": "{label} を削除",
     "enterValue": "値を入力してください"
+  },
+  "integration": {
+    "kind": {
+      "output": "出力",
+      "input": "入力"
+    },
+    "defaultName": {
+      "output": "出力 {n}",
+      "input": "入力 {n}"
+    },
+    "edge": {
+      "rising": "立ち上がり",
+      "falling": "立ち下がり",
+      "either": "両方"
+    },
+    "fieldType": {
+      "bit": "ビット",
+      "byte": "バイト",
+      "word": "ワード"
+    },
+    "widthLabel": "幅",
+    "widthOption": {
+      "other": "{count} ピン"
+    },
+    "widthTitle": {
+      "output": "出力の幅（ピン数）",
+      "input": "入力の幅（ピン数）"
+    },
+    "tag": {
+      "pinTitle": "{name} · ピン {pin} {field}",
+      "triggerTitle": "{name} · トリガー（{edge}）"
+    },
+    "card": {
+      "noConnection": "接続なし",
+      "menuHint": "右クリックで情報など",
+      "width": {
+        "other": "{count} ピン"
+      },
+      "pinHint": "ピン {pin} — 穴へドラッグ",
+      "triggerHint": "トリガー — 発火させる線へドラッグ"
+    },
+    "menu": {
+      "removeTag": "タグを取り外す",
+      "removeAllTags": "すべてのタグを取り外す",
+      "delete": {
+        "output": "出力を削除",
+        "input": "入力を削除"
+      },
+      "openWindow": "接続ウインドウを開く"
+    },
+    "properties": {
+      "title": {
+        "output": "{name} の情報",
+        "input": "{name} の情報"
+      },
+      "connection": "接続",
+      "noConnection": "なし",
+      "unknownConnection": "（このコンピュータにはありません）",
+      "manageConnections": "接続を管理…",
+      "triggerEdge": "トリガー",
+      "triggerInit": "トリガーの初期値",
+      "pins": "ピン"
+    },
+    "fields": {
+      "pinsTitle": "ピン {pins}",
+      "nameAria": "ピン {pins} の名前",
+      "typeAria": "ピン {pins} の型",
+      "remove": "このフィールドを削除",
+      "count": "{used} / {max} ピン"
+    },
+    "verify": {
+      "title": "設定の確認が必要です",
+      "noConnection": "{name} に接続が割り当てられていません。情報で接続を選んでください。",
+      "unknownConnection": "{name} が使う接続はこのコンピュータに設定されていません。プロパティで接続を選んでください。",
+      "unconfigured": "回路を実行する前に、設定 ▸ シリアル I/O で接続「{name}」を構成してください。",
+      "portMissing": "接続「{name}」のポート {port} は利用できません。",
+      "openSettings": "設定を開く",
+      "openProperties": "情報を開く"
+    },
+    "run": {
+      "connectingTitle": "接続中",
+      "connecting": "{names} の応答を待っています…",
+      "signatureTitle": "別の設計用のスケッチです",
+      "signature": "「{name}」のコードは別の設計用に作られています。生成し直して、ボードに書き込み直してください。",
+      "versionTitle": "プロトコルのバージョンが違います",
+      "version": "「{name}」はプロトコル v{device}、Chip Hippo は v{host} です。コードを生成し直して、ボードに書き込み直してください。",
+      "droppedTitle": "接続が切れました",
+      "dropped": "「{name}」とのシリアル接続が切れたため、回路を停止しました。",
+      "deliveryTitle": "送信に失敗しました",
+      "delivery": "「{name}」への送信が {attempts} 回失敗したため、回路を停止しました。スケッチは ChipHippo.poll() を十分な頻度で呼んでいますか？",
+      "noResponseTitle": "応答がありません",
+      "noResponse": "「{name}」の {port} から応答がありません。スケッチはアップロード済みで、ChipHippo.begin() と ChipHippo.poll() を呼んでいますか？",
+      "openFailedTitle": "ポートを開けませんでした",
+      "openFailed": "「{name}」の {port} を開けませんでした: {detail}",
+      "restartTitle": "ボードが再起動しました",
+      "restart": "回路の実行中に「{name}」が再起動したため、回路を停止しました。もう一度実行すると再接続します。"
+    },
+    "lamps": {
+      "label": "シリアルの状態",
+      "tx": "TX — Arduino へ送った値",
+      "rx": "RX — Arduino から受け取った値",
+      "lg": "LG — ログ出力",
+      "open": "クリックすると接続ウインドウを開きます。"
+    },
+    "log": {
+      "empty": "まだ何もありません。回路の実行中、スケッチの出力と、接続を通るすべての値がここに表示されます。",
+      "filter": {
+        "log": "ログ",
+        "data": "データ",
+        "protocol": "プロトコル"
+      },
+      "filterTitle": {
+        "log": "デバイスが出力した内容を表示",
+        "data": "接続を通る値を表示",
+        "protocol": "確認応答、ハンドシェイク、ポートの開閉を表示します。問題は常に表示されます。"
+      },
+      "timestamps": "タイムスタンプ",
+      "timestampsTitle": "実行開始からの時間を表示",
+      "save": "保存…",
+      "saved": "{path} に保存しました",
+      "saveFailed": "保存できませんでした: {error}",
+      "event": {
+        "open": "接続を開きました",
+        "openPort": "ポート {port} を開きました",
+        "close": "ポートを閉じました",
+        "handshake": "ハンドシェイク成功: プロトコル v{version}、シグネチャ {signature}",
+        "announce": "デバイスが起動を通知しました",
+        "staleAck": "古いので無視",
+        "nakIdle": "再送するものはありません",
+        "resend": "seq {seq} を再送（試行 {attempt}/{max}）",
+        "noAck": "seq {seq} の ACK がありません — 再送（試行 {attempt}/{max}）",
+        "failed": "seq {seq} の送信が {attempts} 回失敗しました",
+        "frame": "フレーム",
+        "damage": {
+          "crc": "CRC 不一致",
+          "escape": "不正なエスケープ",
+          "length": "長すぎる"
+        },
+        "damagedNak": "破損した {frame}（{error}）— NAK を送信",
+        "damagedDropped": "破損した {frame}（{error}）— 破棄",
+        "duplicate": "再送です。再度確認応答し、二重には適用しません",
+        "unusable": "読めません。確認応答して破棄しました",
+        "noResponse": "{seconds} 秒以内に HELLO への応答がありません",
+        "version": "デバイスはプロトコル v{version}、Chip Hippo は v{host} です",
+        "signature": "デバイスはレイアウト {signature} 用に作られています（期待値 {expected}）",
+        "restart": "デバイスが再起動しました",
+        "dropped": "接続が切れました",
+        "droppedDetail": "接続が切れました: {detail}",
+        "openFailed": "ポートを開けませんでした: {detail}"
+      }
+    },
+    "settings": {
+      "hint": "Arduino ボードへの名前付きシリアル接続。出力と入力は情報で接続を選びます。",
+      "connection": "接続",
+      "optionTagged": "{name}（{tag}）",
+      "add": "接続を追加",
+      "defaultName": "Arduino",
+      "name": "名前",
+      "port": "ポート",
+      "baud": "ボーレート",
+      "language": "言語",
+      "languageValue": {
+        "cpp": "C++",
+        "python": "Python"
+      },
+      "languageHint": "この接続に対して生成するもの: C++ — あらゆる Arduino ボード用の Arduino ヘッダー — または Python — Raspberry Pi Pico、ESP32、Nano ESP32 などの MicroPython / CircuitPython ボード用のモジュール。Uno、Nano、Mega、Leonardo は C++ のみ対応です。",
+      "choosePort": "— ポートを選択 —",
+      "portNotFound": "{port}（見つかりません）",
+      "portOf": "ポート {n}/{count}",
+      "portOfRole": "ポート {n}/{count}: {role}",
+      "portRoleRepl": "REPL",
+      "portRoleData": "CircuitPython データ",
+      "rescan": "再スキャン",
+      "scanning": "スキャン中…",
+      "advanced": "詳細",
+      "dataBits": "データビット",
+      "parity": "パリティ",
+      "parityValue": {
+        "none": "なし",
+        "even": "偶数",
+        "odd": "奇数",
+        "mark": "マーク",
+        "space": "スペース"
+      },
+      "stopBits": "ストップビット",
+      "flowControl": "フロー制御",
+      "flowValue": {
+        "none": "なし",
+        "hardware": "ハードウェア（RTS/CTS）",
+        "software": "ソフトウェア（XON/XOFF）"
+      },
+      "needsConfig": "構成が必要",
+      "portUnavailable": "ポートを利用できません",
+      "apply": "適用",
+      "applied": "適用しました。",
+      "applyAnyway": "このまま適用",
+      "noPort": "先にポートを選んでください。",
+      "portAbsent": "{port} は現在接続されていません。",
+      "remove": "接続を削除",
+      "removeConfirm": "もう一度クリックするとこの接続を削除します",
+      "builtin": "組み込み",
+      "mockNote": "この接続でデバイスをシミュレートします。ハードウェアには何も送信しません。",
+      "reservedName": "「{name}」は組み込み接続の名前です。別の名前を選んでください。",
+      "openWindow": "ウインドウを開く…",
+      "openWindowTitle": "この接続のウインドウを開く：デバイスの出力と、接続を通るすべての値"
+    },
+    "generate": {
+      "title": "ボードのコードを生成",
+      "intro": "接続ごとに、その接続の言語で 1 つのファイルを生成します（C++ ヘッダーまたは Python モジュール）。ボードのコードの隣に保存して、インクルードまたはインポートしてください。出力の処理はあなたのコード側にあるため、ファイルを上書きしてもあなたのコードには触れません。",
+      "none": "このデスクトップには接続のある出力・入力がありません。",
+      "unassigned": {
+        "other": "{count} 個の要素は接続がないため除外されます。"
+      },
+      "counts": "出力: {outputs} · 入力: {inputs}",
+      "language": {
+        "cpp": "Arduino 用 C++ ヘッダー",
+        "python": "MicroPython / CircuitPython 用 Python モジュール"
+      },
+      "hash": "設計 {hash}",
+      "status": {
+        "current": "最新",
+        "stale": "古い",
+        "never": "未生成",
+        "unknown": "このコンピュータでは未構成"
+      },
+      "save": "ヘッダーを保存…",
+      "saveModule": "モジュールを保存…",
+      "copy": "コピー",
+      "view": "ファイルを表示…",
+      "viewTitle": "{name} — ヘッダーとサンプル",
+      "viewTitlePython": "{name} — モジュールとサンプル",
+      "files": "ファイル",
+      "copied": "クリップボードにコピーしました。",
+      "copiedFile": "{name} をクリップボードにコピーしました。",
+      "copyFailed": "クリップボードにコピーできませんでした。",
+      "saved": "{path} に保存しました",
+      "failed": "ファイルを保存できませんでした: {error}",
+      "warn": {
+        "duplicate": "「{name}」は {identifier} になりました（別の名前が同じ識別子になったため）。",
+        "reserved": "「{name}」は {identifier} になりました（Arduino コードの予約語のため）。",
+        "reservedPython": "「{name}」は {identifier} になりました: その語は Python の予約語です。"
+      },
+      "warnConfig": "1.5 ストップビットには Arduino の設定がないため、ヘッダーは既定の形式でポートを開きます。",
+      "warnPythonFraming": "この接続は {baud} ボー、{format} に設定されています。USB が別のシリアルチップになっている MicroPython ボード（従来の ESP32 DevKit など）は常に 115200 ボー、8N1 で通信するため接続できません。USB を内蔵したボード（Pico、Nano ESP32 など）には影響ありません。",
+      "mockOnly": "このデスクトップの出力と入力はすべて Mock にあり、コードは不要です。実行のたびに画面上の設計から作られます。",
+      "mockNote": "Mock にはコードは不要です。"
+    },
+    "mock": {
+      "status": {
+        "idle": "停止中です。実行すると Mock が接続します。",
+        "waiting": "回路が Mock に挨拶するのを待っています…",
+        "connected": "接続済みです。送信した値は回路に届きます。"
+      },
+      "noLayout": "回路を実行すると、ここに Mock の入力が表示されます。",
+      "noInputs": "このデスクトップでは Mock に入力がありません。",
+      "send": "送信",
+      "sendAll": "すべて送信",
+      "sent": "送信しました",
+      "failed": {
+        "offline": "未接続",
+        "delivery": "確認応答がありません",
+        "closed": "実行が終了しました",
+        "invalid": "送信できない値です"
+      },
+      "bit": "{name}、ビット {bit}",
+      "log": "ログ",
+      "logPlaceholder": "ログのテキスト",
+      "faults": "障害",
+      "faultsHint": "各障害は、対象となる次のフレームに 1 回だけ起こります。",
+      "fault": {
+        "drop-ack": "次の ACK を破棄",
+        "corrupt": "次のフレームを破損",
+        "ignore-hello": "ハンドシェイクを無視",
+        "wrong-signature": "違うシグネチャ"
+      },
+      "faultTitle": {
+        "drop-ack": "次の出力への確認応答を握りつぶし、Chip Hippo にタイムアウトさせて再送させます",
+        "corrupt": "Mock が次に送る確認応答または入力を破損し、Chip Hippo に再送を求めさせます",
+        "ignore-hello": "次の実行に応答せず、「応答がありません」で停止させます",
+        "wrong-signature": "次の実行に別の設計用のスケッチとして応答し、開始を拒否させます"
+      }
+    }
   }
 }

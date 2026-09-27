@@ -103,6 +103,17 @@ for (const [channel, event] of [
   // something each window polls: the setting is app-wide, and the three
   // auxiliary windows have no settings UI of their own — they only ever follow.
   ["settings:font-size", "chiphippo:font-size-changed"],
+  // The Arduino serial integration: an Input's value, a device announcing it
+  // has restarted mid-run, a connection lost mid-run, and log text — the last
+  // to the connection's log window, and to the app window for its LG lamp.
+  // All of them carry the connection's `id`.
+  ["serial:inbound", "chiphippo:serial-inbound"],
+  ["serial:restart", "chiphippo:serial-restart"],
+  ["serial:dropped", "chiphippo:serial-dropped"],
+  ["serial:log", "chiphippo:serial-log"],
+  // …and the built-in Mock's state (open, connected, armed faults, layout),
+  // to its own window.
+  ["serial:mock", "chiphippo:serial-mock"],
 ]) {
   ipcRenderer.on(channel, (_e, detail) => {
     window.dispatchEvent(new CustomEvent(event, { detail }));
@@ -351,6 +362,50 @@ contextBridge.exposeInMainWorld("chiphippo", {
   menu: {
     setEditState: (state) => ipcRenderer.invoke("menu:edit-state", state),
     setDesktopState: (state) => ipcRenderer.invoke("menu:desktop-state", state),
+  },
+
+  // ── Arduino serial integration ─────────────────────────────────────────────
+  // A run names CONNECTION IDS, never ports or paths — main reads which device
+  // each one is from its own settings. `open([{id, signature}])` opens them
+  // and greets every device, holding it to the layout signature, resolving
+  // `{ok}` or `{ok:false, id, code}`; `send` delivers one Output frame and
+  // resolves once it is ACKed (or given up on — `{ok:false, code:"delivery"}`);
+  // `close` is Stop. The log calls are the log window's (`open` is also the LG
+  // lamp's and Settings' Log… button).
+  serial: {
+    ports: () => ipcRenderer.invoke("serial:ports"),
+    open: (requests) => ipcRenderer.invoke("serial:open", requests),
+    close: () => ipcRenderer.invoke("serial:close"),
+    send: (id, index, width, value) =>
+      ipcRenderer.invoke("serial:send", id, index, width, value),
+    // A connection window: open it, read its stream (and remembered view),
+    // clear it, remember its filters and timestamps, Save… its text, and say
+    // how narrow its footer lets it go (main sizes the window that asks).
+    log: {
+      open: (id, opts) => ipcRenderer.invoke("serial:log:open", id, opts),
+      read: (id) => ipcRenderer.invoke("serial:log:read", id),
+      clear: (id) => ipcRenderer.invoke("serial:log:clear", id),
+      prefs: (id, view) => ipcRenderer.invoke("serial:log:prefs", id, view),
+      save: (id, text) => ipcRenderer.invoke("serial:log:save", id, text),
+      minWidth: (width) => ipcRenderer.invoke("serial:log:min-width", width),
+    },
+    // The built-in Mock's window: send an Input's value, log text, and arm
+    // (or disarm) a one-shot fault. Each is the Mock DEVICE acting — the
+    // bytes go through the same link a real board's do.
+    mock: {
+      send: (index, width, value) =>
+        ipcRenderer.invoke("serial:mock:send", index, width, value),
+      log: (text) => ipcRenderer.invoke("serial:mock:log", text),
+      fault: (fault, on) => ipcRenderer.invoke("serial:mock:fault", fault, on),
+    },
+  },
+
+  // Generate's Save panel: write one connection's file (a C++ header or a
+  // Python module) where the board's code is.
+  // Resolves `{ok, path}`, or null when the panel was cancelled.
+  integration: {
+    saveHeader: (text, suggestedName) =>
+      ipcRenderer.invoke("integration:save-header", text, suggestedName),
   },
 
   // ── User guide (Feature 230) ────────────────────────────────────────────────

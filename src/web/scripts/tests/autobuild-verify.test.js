@@ -106,6 +106,9 @@ const COUNTER = {
       members: ["CTR.CLR", "CTR.LOAD", "CTR.ENP", "CTR.ENT", "VCC"],
     },
     { name: "CLOCK", members: ["CLK.out", "CTR.CLK"] },
+    // The parallel-load inputs are unused while LOAD is held HIGH, but an
+    // unused TTL input is still TIED rather than left to float.
+    { name: "DATA", members: ["CTR.A", "CTR.B", "CTR.C", "CTR.D", "GND"] },
     { name: "CLKGND", members: ["CLK.gnd", "GND"] },
     { name: "Q0", members: ["CTR.QA", "BAR.1"] },
     { name: "Q1", members: ["CTR.QB", "BAR.2"] },
@@ -214,14 +217,13 @@ test("bit ordering is stated, not inferred", () => {
 test("a test naming something absent is reported, not skipped", () => {
   const spec = {
     ...ADDER,
-    tests: [{ name: "typo", set: { NOPE: 1 }, expect: {} }],
+    tests: [{ name: "typo", set: { NOPE: 1 }, expect: { "U1.S1": "L" } }],
   };
   const v = verifyBuild(compile(spec), spec);
   assert.equal(v.ok, false);
-  assert.match(
-    v.faults.find((f) => f.gate === "L7").message,
-    /not in the circuit/,
-  );
+  const l7 = v.faults.find((f) => f.gate === "L7");
+  assert.match(l7.message, /not in the circuit/);
+  assert.equal(l7.code, "TEST_INVALID", "the TEST is wrong, not the circuit");
 });
 
 test("no tests block is not a failure — it is just no L7 coverage", () => {
@@ -517,4 +519,196 @@ test("an early abort stops the ladder rather than narrating the rest", () => {
     ["L3", "L4"],
     "it never announced L5/L6/L7 it was not going to run",
   );
+});
+
+// ── The gaps the AI audit found ─────────────────────────────────────────────
+//
+// Each of these was a circuit that verified clean while doing something other
+// than what its spec said, or a fault the repair round could not act on
+// (docs/ai-generation-audit.md).
+
+/** One inverter from a switch to a lamp — the smallest honest build. */
+const INVERTER = {
+  parts: [
+    { id: "U1", ref: "74LS04" },
+    { id: "SW", ref: "sw-dip1" },
+    { id: "D", ref: "bar8" },
+  ],
+  nets: [
+    { name: "A", members: ["U1.1A", "SW.1B"] },
+    { name: "A_SRC", members: ["SW.1A", "VCC"] },
+    { name: "Y", members: ["U1.1Y", "D.1"] },
+    { name: "K", members: ["D.K", "GND"] },
+  ],
+};
+
+test("an input the spec never connects is named, in the spec's own terms", () => {
+  // A 74LS138 with its active-low enables left out reads them HIGH, so the
+  // decoder is off and every output sits HIGH — which settles perfectly.
+  const spec = {
+    parts: [
+      { id: "DEC", ref: "74LS138" },
+      { id: "D", ref: "bar8" },
+    ],
+    nets: [
+      { name: "SEL", members: ["DEC.A", "DEC.B", "DEC.C", "GND"] },
+      { name: "G1", members: ["DEC.G1", "VCC"] },
+      { name: "Y0", members: ["DEC.Y0", "D.1"] },
+      { name: "K", members: ["D.K", "GND"] },
+    ],
+  };
+  const v = verifyBuild(compile(spec), spec);
+  const f = v.faults.find((x) => x.code === "INPUT_FLOATING");
+  assert.ok(f, JSON.stringify(v.faults));
+  assert.match(
+    f.message,
+    /^DEC \(74LS138\) leaves inputs G2A \(pin 4\), G2B \(pin 5\)/,
+  );
+  assert.equal(f.kind, "repair");
+});
+
+test("faults name the SPEC's part ids, never the document's", () => {
+  // A '244 with its enables left out: the fault used to say "c2 (74LS244)",
+  // an id the model never wrote and cannot find.
+  const spec = {
+    parts: [
+      { id: "BUF", ref: "74LS244" },
+      { id: "D", ref: "bar8" },
+    ],
+    nets: [
+      { name: "IN", members: ["BUF.1A1", "VCC"] },
+      { name: "OUT", members: ["BUF.1Y1", "D.1"] },
+      { name: "K", members: ["D.K", "GND"] },
+    ],
+  };
+  const v = verifyBuild(compile(spec), spec);
+  const off = v.faults.find((x) => x.code === "OUTPUTS_DISABLED");
+  assert.match(off.message, /BUF \(74LS244\)'s outputs are switched off/);
+  assert.ok(!/\bc\d+\b/.test(off.message), off.message);
+});
+
+test("an oscillation says WHERE, and an X net is not called undriven", () => {
+  const spec = {
+    parts: [
+      { id: "U1", ref: "74LS04" },
+      { id: "D", ref: "bar8" },
+    ],
+    nets: [
+      { name: "LOOP", members: ["U1.1Y", "U1.1A", "D.1"] },
+      { name: "K", members: ["D.K", "GND"] },
+    ],
+  };
+  const v = verifyBuild(compile(spec), spec);
+  const osc = v.faults.find((x) => x.code === "SIM_OSCILLATION");
+  assert.match(osc.message, /"LOOP" never settles/);
+  assert.ok(!v.faults.some((x) => x.code === "NET_NOT_DRIVEN"));
+  assert.ok(v.faults.some((x) => x.code === "NET_UNRESOLVED"));
+});
+
+test("a lamp between two outputs burns, and says so", () => {
+  // Neither leg is on a rail, so no resistor can be interposed — and a burnt
+  // junction is physics, not an engine warning, so nothing used to report it.
+  const spec = {
+    parts: [
+      { id: "U1", ref: "74LS04" },
+      { id: "L1", ref: "led" },
+    ],
+    nets: [
+      { name: "HI_IN", members: ["U1.1A", "GND"] },
+      { name: "LO_IN", members: ["U1.2A", "VCC"] },
+      { name: "ANODE", members: ["U1.1Y", "L1.A"] },
+      { name: "CATHODE", members: ["U1.2Y", "L1.K"] },
+    ],
+  };
+  const v = verifyBuild(compile(spec), spec);
+  const burn = v.faults.find((x) => x.code === "LED_BURNS");
+  assert.match(burn?.message ?? "", /^L1 \(led\) burns/);
+});
+
+test("a test that cannot be run as written is INVALID, not failed", () => {
+  const cases = [
+    // A short pattern used to leave the missing positions open without a word.
+    [
+      { set: { SW: "10" }, expect: { D: "10000000" } },
+      /has 1 position, and "10" gives 2/,
+    ],
+    // Edges with no clock used to settle and compare against power-on state.
+    [{ edges: 2, expect: { D: "00000000" } }, /no clock source/],
+    // A test that expects nothing can never fail.
+    [{ set: { SW: 1 } }, /expects nothing/],
+    // A display read with the wrong number of segments.
+    [{ set: { SW: 1 }, expect: { D: "1" } }, /8 positions, and "1" gives 1/],
+  ];
+  for (const [t, why] of cases) {
+    const spec = { ...INVERTER, tests: [{ name: "t", ...t }] };
+    const v = verifyBuild(compile(spec), spec);
+    const f = v.faults.find((x) => x.gate === "L7");
+    assert.equal(f?.code, "TEST_INVALID", JSON.stringify(t));
+    assert.match(f.message, why);
+  }
+  // The same pin grammar a net member has: a test may say `U1.1y` or `#2`.
+  const spec = {
+    ...INVERTER,
+    tests: [
+      { name: "open", set: { SW: 0 }, expect: { "U1.1y": "H" } },
+      { name: "closed", set: { SW: 1 }, expect: { "U1.#2": "L" } },
+    ],
+  };
+  assert.equal(verifyBuild(compile(spec), spec).ok, true);
+});
+
+test("every test starts from the circuit as built, not the last test's switches", () => {
+  // The second test sets nothing, so it must see the switch at rest — not
+  // closed, which is where the first test left it.
+  const spec = {
+    ...INVERTER,
+    tests: [
+      { name: "closed", set: { SW: 1 }, expect: { "U1.1Y": "L" } },
+      { name: "at rest", expect: { "U1.1Y": "H" } },
+    ],
+  };
+  const v = verifyBuild(compile(spec), spec);
+  assert.equal(v.ok, true, JSON.stringify(v.faults));
+});
+
+test("a fight that only a TEST reaches is reported by that test", () => {
+  // Two tri-state drivers on one bus, each enabled by its own switch (a
+  // GND-side contact, so the compiler pulls each enable UP: both off at rest).
+  // Closing both puts H and L on the bus at once — a state no default settle
+  // visits, so only the test can find it.
+  const spec = {
+    parts: [
+      { id: "U1", ref: "74LS125" },
+      { id: "SW", ref: "sw-dip2" },
+      { id: "D", ref: "bar8" },
+    ],
+    nets: [
+      { name: "HI", members: ["U1.1A", "VCC"] },
+      { name: "LO", members: ["U1.2A", "GND"] },
+      { name: "BUS", members: ["U1.1Y", "U1.2Y", "D.1"] },
+      { name: "K", members: ["D.K", "GND"] },
+      { name: "EN1", members: ["U1.1G", "SW.1A"] },
+      { name: "EN2", members: ["U1.2G", "SW.2A"] },
+      { name: "SW_GND", members: ["SW.1B", "SW.2B", "GND"] },
+    ],
+  };
+  const out = compile(spec);
+  const doc = normalizeDocument(out.document);
+  const results = runFunctionalTests({
+    doc,
+    netlist: buildNetlist(doc),
+    partMap: out.partMap,
+    tests: [
+      { name: "one on", set: { SW: "10" }, expect: { D: "10000000" } },
+      { name: "both on", set: { SW: "11" }, expect: { D: "10000000" } },
+    ],
+  });
+  assert.equal(results[0].ok, true, results[0].detail);
+  assert.equal(results[1].ok, false);
+  assert.match(results[1].detail, /opposite levels/);
+  // And the default state — every enable off — is the bus message, not "tie
+  // it to GND", which on a bus would start the very fight above.
+  const v = verifyBuild(out, { ...spec, tests: null });
+  const off = v.faults.find((x) => x.code === "OUTPUTS_DISABLED");
+  assert.match(off.message, /every output on it is switched off/);
 });

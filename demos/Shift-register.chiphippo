@@ -10,7 +10,7 @@
       "name": "74LS164",
       "description": "8-bit shift register",
       "doc": {
-        "version": 13,
+        "version": 14,
         "boards": [
           {
             "id": "bb1",
@@ -594,6 +594,7 @@
         ],
         "scopeChannels": [],
         "signals": [],
+        "integrations": [],
         "nextBoardId": 4,
         "nextGroupId": 2,
         "nextComponentId": 22,
@@ -603,7 +604,9 @@
         "nextBusId": 1,
         "nextAnnotationId": 16,
         "nextScopeChannelId": 1,
-        "nextSignalId": 1
+        "nextSignalId": 1,
+        "nextOutputId": 1,
+        "nextInputId": 1
       }
     },
     {
@@ -611,7 +614,7 @@
       "name": "74LS165",
       "description": "8-bit PISO shift register",
       "doc": {
-        "version": 13,
+        "version": 14,
         "boards": [
           {
             "id": "bb1",
@@ -1099,6 +1102,7 @@
         ],
         "scopeChannels": [],
         "signals": [],
+        "integrations": [],
         "nextBoardId": 4,
         "nextGroupId": 2,
         "nextComponentId": 10,
@@ -1108,7 +1112,9 @@
         "nextBusId": 1,
         "nextAnnotationId": 18,
         "nextScopeChannelId": 1,
-        "nextSignalId": 1
+        "nextSignalId": 1,
+        "nextOutputId": 1,
+        "nextInputId": 1
       }
     },
     {
@@ -1116,7 +1122,7 @@
       "name": "74LS595",
       "description": "8-bit shift register with output latch",
       "doc": {
-        "version": 13,
+        "version": 14,
         "boards": [
           {
             "id": "bb1",
@@ -1761,6 +1767,7 @@
         ],
         "scopeChannels": [],
         "signals": [],
+        "integrations": [],
         "nextBoardId": 4,
         "nextGroupId": 2,
         "nextComponentId": 24,
@@ -1770,7 +1777,9 @@
         "nextBusId": 1,
         "nextAnnotationId": 19,
         "nextScopeChannelId": 1,
-        "nextSignalId": 1
+        "nextSignalId": 1,
+        "nextOutputId": 1,
+        "nextInputId": 1
       }
     }
   ]

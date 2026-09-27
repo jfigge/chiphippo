@@ -48,7 +48,7 @@ import {
   WIRE_POINT_MERGE_RADIUS,
   addressWorld,
   connectionPointAt,
-  connectionPointsNear,
+  nearestLegalPoint,
   wireEndNear,
   wirePointNear,
 } from "../model/part-geometry.js";
@@ -56,35 +56,17 @@ import { nearestOnPolyline } from "../desk/wire-path.js";
 import { HANDLE_HIT_RADIUS, busEndHandleNear } from "../desk/ribbon-path.js";
 import { nearestLegalOffset } from "../model/nearest-legal.js";
 import { beginPointerGesture, releaseWorld } from "./pointer-gesture.js";
+import { aimRing } from "./hole-rings.js";
 
 /** Pointer travel (px) below which a press stays a click, not a drag. */
 const DRAG_THRESHOLD = 4;
-/** Radius of the shared hover ring (pitch units); keep 2× this in step with
-    `.hole-ring`'s diameter in app.css. See desk-controller.js. */
-const RING_RADIUS = 0.55;
 /** How far (pitch units) a WHOLE-WIRE (rigid, both-ends-together) drop may be
     nudged to land legally. It stays small on purpose: a big rigid jump reads
     as relocating the whole wire, not recovering a drop that missed by a hole
     or two. Its offsets are whole-pitch steps from the wire's own HOLES, i.e.
-    from points ON the lattice — see END_SNAP_RADIUS for why a single end,
-    which starts from the cursor, cannot search that way. */
+    from points ON the lattice — see part-geometry.js's END_SNAP_RADIUS for
+    why a single end, which starts from the cursor, cannot search that way. */
 const SNAP_RADIUS = 2;
-/** How close (pitch units) a legal hole or terminal must be for a dragged END
-    to snap onto it; further than that the end rides the cursor, and a release
-    there puts it back where it was. 1.2 reaches the orthogonal neighbours of
-    the hole under the cursor (1 pitch) but not its diagonals (1.41), so a
-    near-miss is forgiven by ONE hole and never more, and the channel's midline
-    (1.5 from rows e and f) snaps to nothing.
-
-    The candidates are the REAL points around the cursor (connectionPointsNear),
-    nearest first. The end used to try whole-pitch offsets from the raw cursor
-    instead, and a cursor is not on the lattice: half a pitch off a column,
-    every sample fell between the holes, the board under it went invisible, and
-    the unbounded search a release fell back to walked on until it met a strip
-    on ANOTHER lattice (a turned rail's holes sit on quarters) — an end dropped
-    beside f1 landed on a rail strip nearly five pitches away. The preview and
-    the drop ask the one bounded question, so they can never disagree. */
-const END_SNAP_RADIUS = 1.2;
 
 export class WireTools {
   #host;
@@ -211,14 +193,10 @@ export class WireTools {
       const free = this.#host.doc.isHoleFree(hit.address);
       const legal = free && hit.address !== m.from;
       m.hover = { address: hit.address, legal };
-      const r = RING_RADIUS * PX_PER_UNIT;
-      this.#host.ring.style.left = `${hit.x * PX_PER_UNIT - r}px`;
-      this.#host.ring.style.top = `${hit.y * PX_PER_UNIT - r}px`;
-      this.#host.ring.classList.toggle("hole-ring--illegal", !legal);
-      this.#host.ring.hidden = false;
+      aimRing(this.#host.ring, hit, legal);
     } else {
       m.hover = null;
-      this.#host.ring.hidden = true;
+      aimRing(this.#host.ring, null);
     }
     if (m.from) {
       const from = this.#addressWorld(m.from);
@@ -634,15 +612,11 @@ export class WireTools {
     // Only the preview: the drop re-resolves at the release point
     // (#onEndpointUp), through the same function and the same radius.
     const resolved = this.#resolveEndpointTarget(m.wireId, m.end, world);
-    if (resolved) {
-      const r = RING_RADIUS * PX_PER_UNIT;
-      this.#host.ring.style.left = `${resolved.x * PX_PER_UNIT - r}px`;
-      this.#host.ring.style.top = `${resolved.y * PX_PER_UNIT - r}px`;
-      this.#host.ring.classList.toggle("hole-ring--illegal", !resolved.legal);
-      this.#host.ring.hidden = false;
-    } else {
-      this.#host.ring.hidden = true;
-    }
+    aimRing(this.#host.ring, resolved, resolved?.legal);
+    // What the screen now SHOWS — snapped and ringed — for the release to fall
+    // back on. Null when this sample has nowhere to land, so wandering off a
+    // target before letting go still reverts.
+    m.shown = resolved?.legal ? { target: resolved, world } : null;
     // The dragged end snaps to the resolved point, else rides the raw cursor.
     const tip = resolved ?? world;
     this.#host.wireLayer.setEndpointDrag({
@@ -655,9 +629,9 @@ export class WireTools {
 
   /**
    * Where a release at `world` would land `wireId`'s `end`: the NEAREST
-   * connection point within END_SNAP_RADIUS that it may legally re-end at —
-   * the point under the cursor when that one is legal, else a neighbour one
-   * hole along, the way a magnet-snapped connector forgives a near-miss.
+   * connection point in snap reach that it may legally re-end at
+   * (part-geometry.js's nearestLegalPoint, which every single-point drag
+   * shares).
    * Returns `{ address, x, y, legal }`; `legal:false` (with whatever the raw
    * point resolves to) when nothing in range qualifies, so the illegal tint
    * still explains what's under the cursor; null when there's nothing there
@@ -665,15 +639,14 @@ export class WireTools {
    */
   #resolveEndpointTarget(wireId, end, world) {
     const doc = this.#host.doc;
-    for (const cand of connectionPointsNear(
+    const { point } = nearestLegalPoint(
       doc.boards,
       doc.components,
       world,
-      END_SNAP_RADIUS,
-    )) {
-      if (doc.canReendWire(wireId, end, cand.address)) {
-        return { address: cand.address, x: cand.x, y: cand.y, legal: true };
-      }
+      (p) => doc.canReendWire(wireId, end, p.address),
+    );
+    if (point) {
+      return { address: point.address, x: point.x, y: point.y, legal: true };
     }
     const hit = this.#wirePointAt(world);
     return hit ? { ...hit, legal: false } : null;
@@ -695,16 +668,23 @@ export class WireTools {
 
     // Resolve at the RELEASE point, not from whatever the last pointermove
     // left behind (see pointer-gesture.js's releaseWorld) — the same bounded
-    // question the preview asked. Nothing legal in reach reverts: an end only
-    // ever lands a hole's reach from where it was let go.
+    // question the preview asked. When it lands NOWHERE, the end goes where
+    // the ring last showed it: what was on screen at the release is a promise,
+    // and an up event that strays out of reach must not break it. Nothing
+    // legal there either reverts.
     const world = releaseWorld(this.#host.deskView, e, m.lastWorld);
-    const target = this.#resolveEndpointTarget(m.wireId, m.end, world);
+    let target = this.#resolveEndpointTarget(m.wireId, m.end, world);
+    let at = world;
+    if (!target?.legal && m.shown) {
+      target = m.shown.target;
+      at = m.shown.world;
+    }
     if (target?.legal && target.address !== m.origin) {
       // An END dropped onto one of its own wire's bends absorbs it: the wire
       // now reaches where that waypoint was, so keeping it would leave a bend
       // sitting under the cap doing nothing. One undo step for both — the user
       // made one gesture.
-      const merged = this.#pointNearOnWire(m.wireId, world);
+      const merged = this.#pointNearOnWire(m.wireId, at);
       if (merged != null) this.#host.doc.removeWirePoint(m.wireId, merged);
       this.#host.doc.setWireEndpoint(m.wireId, m.end, target.address);
       this.#host.emitDocChanged("move wire"); // WireLayer re-renders from this

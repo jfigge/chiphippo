@@ -28,7 +28,7 @@ groups · 120 net names & labels · 130 buses · 140 build guide & wiring list �
 230 user guide & docs · 240 projects & tabbed desktops · 250 single-file projects ·
 260 AI circuit builder · 270 example circuits · 280 auto-update · 290 wire-riding part
 drags · 310 Mac App Store · 320 AI desk review · 330 shared memory blobs · 340 cluster
-drags · 370 external signals · language support.
+drags · 370 external signals · 380 Arduino serial integration · language support.
 
 **Deferred** (`features/deferred/`): 160 export image & PDF, 300 selection drags.
 **Still open**: 260 step 15 — refactor `make demos` onto `model/autobuild.js` (which
@@ -151,6 +151,9 @@ the repo, only the cropped PNGs.
     renderer's CSP forbids one), all the same shape (a hard-coded statement of where
     they may go beside the thing that goes there), and all **opt-in**, so an
     unconfigured Chip Hippo never reaches the network at all.
+  - `serial/` (`protocol.js`, `link.js`, `ports.js`, `serial-manager.js`) + `ipc/serial.js`
+    — the Arduino serial integration's main half (a USB port, not the network; see
+    "Arduino serial integration").
 - **`src/web/`** — **renderer** (ES modules + plain CSS), sandboxed, talking to main only
   through `window.chiphippo.*`. `index.html` → `scripts/app.js`.
   - `scripts/desk/` — pure geometry: `desk-geometry.js` (camera), `wire-path.js` (sag +
@@ -162,7 +165,8 @@ the repo, only the cropped PNGs.
     `wire-length.js`, `wire-colors.js` (which also OWNS `WIRE_COLORS`, re-exported from
     `desk-doc.js`), `wire-crossing.js`, `selection-toggle.js`, `signals.js`,
     `signal-keys.js`, `pin-resolve.js`, `column-allocator.js`, `autobuild.js`,
-    `autobuild-verify.js`.
+    `autobuild-verify.js`, `spec-lint.js`, `integration.js`, `integration-runtime.js`,
+    `integration-codegen.js`, `serial-connections.js`.
   - `scripts/sim/` — the DOM-free engine: `union-find.js`, `netlist.js`, `levels.js`,
     `chip-eval.js`, `sequential.js`, `resolve.js`, `engine.js`, `junction.js`,
     `w65c02.js`, `z80.js`, `z80-ops.js`.
@@ -371,9 +375,10 @@ in `doc.boards`; a "breadboard" is a **kit** of them placed in one action.
   `rowNear`, `clampColumn`, `parseHole`, `parseAddress`, `nodeOf`, `holeAlong`,
   `holeAlongTo`, `holeAcross`, `rowsBetween`). The ONE deliberate exception is
   `app/store/migrations.js`: a frozen snapshot of the v1 address grammar that must NOT
-  track the live specs (a spec change would silently rewrite saved documents), and which
-  as main-process CommonJS cannot import renderer ESM anyway. **Leave its hand-rolled
-  copy alone.**
+  track the live specs (a spec change would silently rewrite saved documents) — which is
+  why it stays a copy even though main now CAN `require()` a dependency-free renderer ES
+  module (the serial protocol's `serial-wire.js` does). **Leave its hand-rolled copy
+  alone.**
 - **Groups**: strips snapped together share a `group` id (`g<n>`, or `null` when loose)
   and drag as one rigid unit; a kit arrives pre-grouped. Anything landing flush against a
   board **mates** — `model/mating.js` owns the rule (`matingEdge`/`rectMatingEdge`:
@@ -429,13 +434,22 @@ in `doc.boards`; a "breadboard" is a **kit** of them placed in one action.
   pixels) — board holes or component terminals; colours from `WIRE_COLORS` (a
   `--color-wire-<name>` token each, shared with LEDs). **`occupancy.js` is the single
   collision authority** (one hole/terminal, one lead).
-- **A dragged wire END snaps within a hole's reach, or not at all**
-  (`END_SNAP_RADIUS` 1.2 in `wire-tools.js`). The candidates are the REAL points
-  around the cursor — `connectionPointsNear` ← `holesNearWorld` ← `holesNear` — nearest
-  first, and the first one `canReendWire` accepts wins; nothing legal in reach and
-  the tip rides the cursor, and a release there reverts. ONE bounded resolve serves
-  preview and drop. **Never search whole-pitch offsets (`nearestLegalOffset`) from a
-  raw cursor**: it is not on the lattice, so half a pitch off a column every sample
+- **A dragged SINGLE POINT snaps within a hole's reach, or not at all** — a wire END,
+  a two-terminal part's lead (and its pin 1, which carries a body drag), a signal flag,
+  an Output/Input tag. ONE rule for all of them: `nearestLegalPoint` in
+  `model/part-geometry.js` (`END_SNAP_RADIUS` 1.2 — orthogonal neighbours, never a
+  diagonal). The candidates are the REAL points around the cursor —
+  `connectionPointsNear` ← `holesNearWorld` ← `holesNear` — nearest first, and the first
+  one the drag's own check accepts wins (`canReendWire`, `canPlacePart`,
+  `canPlaceSignalFlag`, …; `accepted` hands back whatever seat that check derived, so it
+  is never derived twice); nothing legal in reach and the tip rides the cursor, and a
+  release there reverts. The shared `.hole-ring` marks the target (`aimRing` in
+  `hole-rings.js`), red on a refused hole — except for a body drag, whose part previews
+  its own seat. ONE bounded resolve serves preview and drop — and when the RELEASE point
+  lands nowhere (it would revert), the drop falls back to the target the last move SHOWED,
+  snapped and ringed: what was on screen at the release is a promise. The release point
+  still wins whenever it lands, a flag's or tag's UNPLUG included. **Never search
+  whole-pitch offsets (`nearestLegalOffset`) from a raw cursor**: it is not on the lattice, so half a pitch off a column every sample
   misses every hole on that strip while a strip on another lattice (a turned rail's
   holes sit on quarters) answers from pitches away — which is how an end dropped
   beside f1 used to land on a rail strip nearly five pitches off. Those offsets are
@@ -857,7 +871,7 @@ Code: `app/store/project-store.js` + `project-images.js` + `project-migrate.js` 
 ## AI circuit builder
 
 `app/store/credential-store.js` + `app/ai/{providers,client}.js` +
-`model/{pin-resolve,column-allocator,autobuild,autobuild-verify,wire-crossing}.js` +
+`model/{pin-resolve,spec-lint,column-allocator,autobuild,autobuild-verify,wire-crossing}.js` +
 `web/scripts/ai/{catalog-brief,generate,connection,usage}.js` + `components/ai-panel.js`.
 
 **An LLM cannot emit geometry, so it is never asked to.** The model answers exactly one
@@ -867,7 +881,14 @@ anchor and wire.
 
 - **The compiler interposes what a netlist must not have to mention.** `sim/junction.js`
   (the LED burn rule, moved out of the view because it is PHYSICS) is why a series
-  resistor is added automatically. The **pull rule** is the same fact one step over: a
+  resistor is added automatically — in EVERY lamp leg the spec puts straight on a rail
+  (`lampLegs`: a display's common leg, an isolated segment, a bare LED's cathode on GND
+  or its anode on VCC over an active-low output). Legs are limited per NODE: the lamp legs
+  one rail net holds are already joined, so they are one common leg and take one
+  resistor, as a common-cathode bar does; legs on different nets pack eight to an `rnet9`
+  with COM on the rail. The legs are moved OUT of the rail net, never the rail off it —
+  a named `GND` net holds everything else tied low, and detaching its rail once hung all
+  of it off the lamp's side of the resistor. The **pull rule** is the same fact one step over: a
   switch is a CONTACT, not a source, so an input fed from one floats when the switch is
   open — and a floating TTL input reads HIGH, i.e. a switch that appears to do nothing. A
   signal net with no rail, no output driver and no resistor of its own, whose only path
@@ -961,8 +982,32 @@ anchor and wire.
   catalog (74LS47's `A`–`D` inputs vs its `a`–`g` outputs), so folding case would
   MANUFACTURE ambiguity. The one real ambiguity is `74LS148` (inputs *named* `0`–`7` that
   do not match their pin numbers), reported with both readings, with `#N` as the escape.
+  - **Punctuation that means something is kept** (`canonical`). An overbar, a leading
+    `/`/`~` or a trailing `'` all say "complement / active-low", so `1Q'`, `/1Q`, `~1Q`
+    and `1Q̅` are `1Q̄` and never `1Q`; `>`/`<`/`=` name different '85 pins. Stripping it
+    all once made 26 same-role pairs across 10 chips identical, and the lowest pin won —
+    `1Q'` silently wired the TRUE output. A loose match landing on two DIFFERENT names is
+    reported (`oneName`), never collapsed; only identical names (`NC`, `VSS`) are
+    interchangeable.
+  - A marked token may name a bare INPUT (`/CLR` → the '161's `CLR`; a chip never has
+    both) and a bare token a marked pin (`INT` → the Z80's `/INT`), but a marked token is
+    REFUSED on a bare OUTPUT: `1Q'` on the '174 asks for a complement the part does not
+    have.
+- **The spec is linted before it is built** (`model/spec-lint.js`, pure) for what the
+  engine rightly lets through. `OUTPUT_ON_RAIL`: supply beats chip output
+  (`sim/resolve.js`), so an output in a VCC/GND net settles, verifies and drives nothing.
+  `MULTIPLE_DRIVERS`: two `output` pins may share a net only when EVERY one can be
+  switched off — a BUS — which `switchableOutputs` PROBES from the evaluator (all enables
+  HIGH → whatever reads Z) rather than assuming from the enable, since the '595's OE
+  leaves `QH'` driving. `io` pins are left to the engine. Output enables come from
+  **`outputEnables(def)`** (`catalog/index.js`): the declared `outputEnable`, or a
+  memory's own `ceN`/`oeN` read off `logic.memory` — never declared twice — which is what
+  gives memory CE/OE their `!` and lets two ROMs share a data bus.
 - **Verify** (`autobuild-verify.js`): the L3a–L7 ladder, faults tagged `abort` (OUR bug)
-  or `repair` (the SPEC's mistake) — the split the panel's retry loop needs.
+  or `repair` (the SPEC's mistake) — the split the panel's retry loop needs. **Faults name
+  parts and nets in the SPEC's terms** (`partNamer`, `electricalNamer`): `U2 (74LS244)`,
+  `"BUS"` — never the document's `c7` or a net's smallest member address, which the model
+  never wrote and cannot act on.
   - **L4** compares the DECLARED net partition against the one `buildNetlist` DERIVES —
     the only thing that catches an accidental short (counts match, it loads clean, it
     settles, and it computes something else). It derives that partition from **wiring
@@ -974,13 +1019,32 @@ anchor and wire.
     facts about wiring, which no switch position can hide or invent; a real electrical
     short is L5's to report, from the conducting netlist it keeps.
   - **L5** settles with every clock idle-low — a bare `settle` leaves a clock line at `Z`
-    and L6 would report a good circuit as undriven.
+    and L6 would report a good circuit as undriven. It also asks `burntLamps` (`LED_BURNS`):
+    a burnt junction is physics, not an engine warning, so nothing else reports a lamp
+    wired between two outputs.
   - **L6** uses the tri-state data: a net that floats with a tri-state driver on it
-    reports `OUTPUTS_DISABLED`, naming the chip, the pin and "tie it to GND", instead of
-    `NET_NOT_DRIVEN` sending a repair round hunting for a wire that was never missing.
+    reports `OUTPUTS_DISABLED`, naming the chip, the pin and "tie it to GND" (or, on a BUS,
+    "exactly one enable LOW" — tying two low starts a fight), instead of `NET_NOT_DRIVEN`
+    sending a repair round hunting for a wire that was never missing. An `X` net is
+    `NET_UNRESOLVED`, not "undriven". And `INPUT_FLOATING` (`floatingInputs`) names every
+    input a part USES that no net connects — an input on no net is invisible to a net
+    sweep and reads HIGH. "Uses": a unit whose output is wired needs all its inputs (the
+    spare gates of a 7400 may float); a part without units is read by the datasheet's
+    `1…`/`2…` section numbering, and an unnumbered input (a shared CLK, an address line,
+    a counter's load data) is needed once any output is.
   - **L7** is the highest-value one: the spec states its own acceptance tests and the app
     RUNS them, so a perfectly-built adder with its bit order reversed is caught. Bit
-    ordering in `set`/`expect` is PINNED by a test, not inferred.
+    ordering in `set`/`expect` is PINNED by a test, not inferred. A pattern must give
+    EVERY position (a short one once left the rest open silently), `edges` needs a clock
+    (it once settled instead and compared against power-on), a test must expect
+    something, and an `expect` pin goes through `resolvePin` like a net member. Each test
+    starts from the switches AS BUILT, and each test STATE is checked for shorts, fights,
+    oscillation and burning lamps no expectation mentions. A test that cannot be run as
+    written is `TEST_INVALID`, a different repair from `TEST_FAILED`.
+  - **The SUITE is the AI builder's rule, not the verifier's** (`ai/generate.js`
+    `testSuiteFaults`, which other callers never run): at least `MIN_TESTS` (the prompt
+    quotes the constant), and no two applying the same inputs (`DUPLICATE_TEST`) —
+    reported beside whatever else failed, so one round fixes both.
 - **Every generated circuit explains itself.** The spec carries a `notes` paragraph and
   `assemble` stamps it above the boards as a caption, in the line pitch and muted body a
   demo bench uses — a generated circuit and a shipped demo should read the same way on
@@ -1002,7 +1066,9 @@ anchor and wire.
   ONE undo step on the same atomic `pasteDesign` transaction as a paste — there is
   deliberately no `applyBatch`.
 - **The prompt is DERIVED, never hand-written** (`ai/catalog-brief.js`):
-  `buildCatalogCard()` projects `PALETTE_DEFS` (ids, packages, exact `n:name` pin lists —
+  `buildCatalogCard()` projects `BUILDABLE_DEFS` for the builder (`PALETTE_DEFS` minus the
+  `can` oscillators the compiler refuses; the review keeps them all) — ids, packages,
+  exact `n:name` pin lists, and a part's `buses` for the `A[3]` member form —
   `JSON.stringify` would silently drop the FUNCTION fields), so a new 74xx part reaches
   the model the moment it lands in `catalog/`. ~4.4 K tokens, over the prompt-cache
   minimum, so a repair round re-reads rather than re-pays. Each pin carries a
@@ -1010,9 +1076,14 @@ anchor and wire.
   enable**. The first exists because "two outputs must not share a net" is a rule the
   compiler ENFORCES; the `!` is the one fact nothing else reveals (the pins are called
   `1G`, `OE`, `M`, `N`) and getting it wrong is silent — the part floats every output it
-  gates, an unwired enable reads HIGH, and a datasheet-correct netlist comes up dead.
-- **Tri-state is DECLARED, then PROVED** — `outputEnable: [pins]` on the nine parts that
-  have one, plus `tests/chips-tristate.test.js`. Not derived, because the catalog
+  gates, an unwired enable reads HIGH, and a datasheet-correct netlist comes up dead. A
+  repair round is also told what the compiler CHANGED (`RESISTOR_INSERTED`,
+  `PULL_INSERTED` — `buildRepairMessage`'s notes), since a level the model did not expect
+  is often a pull it never asked for; a ROM warns the USER it arrives unprogrammed
+  (`ROM_UNPROGRAMMED`) — a netlist has nowhere to carry memory contents.
+- **Tri-state is DECLARED, then PROVED** — `outputEnable: [pins]` on the nine logic parts
+  that have one, plus `tests/chips-tristate.test.js` (which also proves a memory's DERIVED
+  enables against `memUnit`). Not derived, because the catalog
   expresses tri-state four ways and only one is introspectable (a `BUF3` unit '125/'244;
   a `COMB` returning `Z` '240/'245/'257; a sequential `outputs()` returning `Z`
   '173/'533/'573/'595; a memory image). So the test probes the REAL evaluator: every
@@ -1203,24 +1274,30 @@ hole. Pressing the button injects a level there. `model/signals.js` (pure) +
 - **ONE `drag-signal-flag`, two entry points** — the rail's unplaced chip and the planted
   polygon — because "drag it onto a board" and "move it to another hole" are the same act.
   `worldFromEvent` reads client coordinates off any event, so the rail chip is not a
-  coordinate-space problem. Drop on a free hole plants; **on BARE DESK unplugs**; on a
-  taken hole reverts. `legal` is deliberately TRUE over bare desk and FALSE over a taken
-  hole: a mis-aim is not an intent to unplug.
+  coordinate-space problem. Drop on (or within a hole's reach of) a free hole plants
+  there; **clear of every hole unplugs**; aimed at a board with nothing free in reach
+  reverts. `inReach` is that difference, and it is deliberately NOT red with nothing in
+  reach (the unplug is a real action) and red with every hole in reach taken: a mis-aim
+  is not an intent to unplug. The Output/Input tag drag is the same rule.
   - **The preview redraws ONE polygon IN PLACE** (`SignalLayer.setPreview`), and
     `setSelected` is a class toggle — both for the same load-bearing reason: the press
     calls `selectSignal` BEFORE beginning the gesture, so a re-render there destroys the
     very `<polygon>` that press is about to capture, and a re-render per pointermove would
     destroy it again every frame.
   - **The flag carries ONE CHARACTER — its key**, on the rail button's dot drawn on the
-    flag. At rot 90/270 the body is 2 pitch wide and 4 tall with nowhere for a horizontal
+    flag. At rot 90/270 the body is barely over a pitch wide with nowhere for a horizontal
     NAME (that lives on the button), but a single UPRIGHT glyph fits the body at every
     angle (`flagKeyPoint`, the body's centre, rotated with the flag while the glyph is
     not; `FLAG_KEY_R` sized to clear the point). It is a pointer-inert `<g
     class="signal-flag-key">` (disc + digit, ONE translate) BESIDE the polygon, which stays
     the one hit target and the one node carrying `data-signal-id`; `setPreview` moves both
-    in place. The disc is TRANSLUCENT and DERIVED: `--signal-flag-alpha` (0.35) is the one
-    body opacity, and the disc takes `a / (1 − a)` so disc-over-body composites to exactly
-    2a. The digit's size is world px (a `type-scale.test.js` exemption); a digit is not a
+    in place. **The flag IS an Output/Input tag's glyph** — `integration.js`'s `TAG_W` /
+    `TAG_LEN` / `TAG_KEY_R` / `tagPolygon` / `tagLabelPoint` are `signals.js`'s flag
+    constants and functions under their own names, and the digit is the tag label's type —
+    so both are wider than a pitch and neighbours overlap; each layer draws every body in
+    one group and every key/label in a second above it. The disc is TRANSLUCENT and DERIVED: `--signal-flag-alpha` (0.4375) is the one
+    body opacity (the Output/Input tags and their waiting chips share it), and the disc
+    takes `a / (1 − a)` so disc-over-body composites to exactly 2a. The digit's size is world px (a `type-scale.test.js` exemption); a digit is not a
     word, so there is still nothing for i18n to reach.
   - **Selecting a flag lights its button.** `SignalLayer.setSelected` is already the ONE
     seam every highlight goes through (`#applySelection` and `forgetAll`), so it reports to
@@ -1275,6 +1352,251 @@ hole. Pressing the button injects a level there. `model/signals.js` (pure) +
 - Out of scope, deliberately: the **build guide and BOM** (a signal is bench stimulus, not
   a part you buy or solder) and **user-positionable rails** (`railOrder(signals)` exists so
   a reorder has exactly one place to land).
+
+## Arduino serial integration
+
+**The running circuit talks to a real Arduino over USB** (Feature 380, from
+`docs/chiphippo-serial-integration-spec.md`; the wire is `docs/chiphippo-serial-protocol.md`,
+protocol v1, which is NORMATIVE). An **Output** samples its pins on its
+trigger's edge and sends the value to a sketch; an **Input** puts a value the sketch sent
+onto its pins. The sketch side is a GENERATED header. Main: `app/serial/{protocol,link,
+ports,serial-manager}.js` + `app/ipc/serial.js`. Renderer: `model/{integration,
+integration-runtime,integration-codegen,serial-connections,serial-wire}.js` +
+`components/integration-{shell,controller,rail,layer,tools,lamps,settings}.js` +
+`pin-fields-editor.js` + `codegen-dialog.js` + `serial-log-view.js` (`web/serial-log.html`).
+
+- **An element is a signal's sibling, not a component** — the same argument as
+  "External signals", one kind over. `doc.integrations` (schema **v14**, main migration
+  v13 → v14, with `nextOutputId`/`nextInputId`) holds `{ id: "out<n>"|"in<n>", kind, color,
+  connection, triggerEdge, triggerInit, fields: [{type, name}], name?, description?,
+  tags?: {"1": {anchor, rot}, …, "T": {anchor, rot}} }`. `buildOccupancy` and the engine's
+  `buildContext` each gained ONE more loop beside the signal one; the schematic draws no
+  tags (out of scope). A tag is keyed by PIN NUMBER (`"T"` for the trigger), pin k is bit
+  k−1, and a pin that is unplanted, floating or `X` reads **0** (`packValue`). The colour
+  comes from the SAME cycle as signals (`nextSignalColor` over both), since both share the
+  rail. At most `MAX_ELEMENTS` (16) per desk and `MAX_ELEMENT_PINS` (16) per element — the
+  widest value is a `uint16_t` on the wire.
+- **Fields, not bits, are the pin model**: an element is an ordered list of Bit (1) /
+  Byte (8) / Word (16) fields, each one PARAMETER of the Output function or one SETTER on
+  the Input — which is what makes the generated C++ read like the design. The drop presets
+  (1/2/4/8/16) are just initial field lists (`presetFields`); `setIntegrationFields`
+  unplants any tag past the new last pin.
+- **Tags follow THE RULE verbatim** (*a tag with nowhere to go stops existing; the element
+  never does*): `normalizeDocument` is first-wins PINS → WIRES → FLAGS → TAGS, and
+  `buildOccupancy` claims flags and tags FIRST for the reason it claims flags first.
+  `removeBoard` sends a board's tags home (`#detachIntegrationTags`). ONE
+  `drag-integration-tag` serves the card's waiting chip and a planted tag; `R` turns it,
+  Delete unplugs a selected tag (the element stays).
+- **Inputs ride the engine's signal path**: each planted Input PIN is pushed into
+  `ctx.signals` as `<elementId>:<pin>` and driven through the shared `signalLevels` map at
+  chip-output strength, so a conflict needs no new code. An Input drives **Z until its first
+  value** — a sketch that has not spoken yet must not assert anything.
+- **The timing model lives in ONE pure module** (`integration-runtime.js`, header comment):
+  Chip Hippo looks only at SETTLE BOUNDARIES. An Output fires when its trigger's settled
+  level differs from the previous boundary's in the configured direction
+  (`triggerInit` stands in for "previous" at the first); an Input's value is buffered
+  (latest wins) and applied at a boundary — immediately if LIVE (no trigger tag), else on
+  its trigger's edge — all at once, then the board settles again. A value arriving DURING a
+  stall still counts for that boundary, which is what makes request/response work.
+- **SimController grew a collaborator seam, not integration code**:
+  `integration: {preflight, begin, settled, levels, end}`. `preflight` may refuse Run (sync
+  `false` or a promise — every element assigned, every connection known here, configured and
+  its port present, each refusal offering the fix); `begin` opens the ports; after each
+  tick `settled` may return `{again}` (re-settle with new Input levels, capped at
+  `MAX_BOUNDARY_PASSES`) or a **Promise — the STALL**: while an Output is in flight the
+  transport skips clock edges, and `wake()` resumes. `levels()` merges into the drive map.
+  Stop ends it all and releases the stall.
+- **Every protocol NUMBER lives in ONE module, `model/serial-wire.js`** — version, markers,
+  frame types, payload sizes, CRC-16 poly/init, the 250 ms / 5 s handshake, the 500 ms ACK
+  timeout, the 3 sends — plus `crc16`/`crc32`. Dependency-free ESM, because BOTH sides read
+  it: the generator imports it and WRITES the header's constants from it, and main's
+  `protocol.js` `require()`s it (require(esm): Electron 42's Node 24 loads a dependency-free
+  ES module synchronously, asar included — verified). So nothing is typed twice, including
+  the version in the version-mismatch message and the count in the delivery one (both are
+  `{placeholders}` fed from the constants). There is NO per-connection timeout: it is the
+  protocol's, not a setting.
+- **The link** (main, `protocol.js` bytes + `link.js` session/reliability): `0x7E TYPE SEQ
+  LEN PAYLOAD CRC_LO CRC_HI`, CRC-16/CCITT-FALSE over the unescaped TYPE…PAYLOAD, every byte
+  after START escaped (a `0x7D` followed by anything but `5E`/`5D` is damage). Types HELLO 01 ·
+  HELLO_ACK 02 · ACK 06 · NAK 15 · OUTPUT 10 · INBOUND 11 · LOG 20; a data payload is always
+  `[index][width][lo][hi]`. Stop-and-wait, SEQ 1…255 wrapping to 1 (0 is the handshake's,
+  LOG's and NAK's), last-accepted starting at 0, a NAK (SEQ 0, "resend what you have") at
+  once for a damaged frame — never for a damaged ACK/NAK/LOG/HELLO/HELLO_ACK. The device
+  ACKs an OUTPUT **after its handler returns** — that is what makes the stall mean "the
+  device has reacted" — and so a resend arriving WHILE that handler runs (it pumps the port
+  inside an Input's `send()`) is IGNORED, never re-ACKed early. LOG is **unacknowledged**
+  (SEQ 0, ≤60-byte chunks from the header, never split inside a UTF-8 character; the host
+  decodes it as a stream anyway). An intact but unusable data frame is ACKed and dropped.
+- **The handshake is a SESSION.** Each run picks a fresh session number (1–255,
+  process-wide counter from a random start) and sends HELLO `{version, layout signature}`
+  with it as SEQ every 250 ms for up to 5 s; the device answers HELLO_ACK with ITS version
+  and signature and the same SEQ. It resets its sequence state only when the session
+  CHANGES — the host resends HELLO until it hears, and a late copy that reset the device
+  would rewind its SEQs so its next Input looked like a duplicate and vanished. A HELLO_ACK
+  for another session is stale. SEQ **0** is the device ANNOUNCING a start (the header's
+  `begin()` sends one): ignored during a handshake, but after it the device has forgotten
+  the session, so the link fails what is in flight (`"restart"`) and main pushes
+  `serial:restart` → the run STOPS. Version or signature mismatch REFUSES the run
+  (`version` / `signature` codes, facts only). The device goes OFFLINE after a send it
+  never got acknowledged (behaves un-greeted until the next HELLO), so a sketch left
+  running after Stop — no goodbye frame, and a Nano does not reset on close — fails each
+  `send()` at once instead of blocking 1.5 s; `ChipHippo.connected()` exposes it.
+- **The built-in MOCK connection** (`docs/chiphippo-mock-connection.md`) is a device
+  Chip Hippo plays itself, at the BYTE level: `app/serial/mock-device.js` is the protocol's
+  device side in JS behind the same four-method port `adaptPort` gives a real one, so the
+  host link cannot tell it from a cable — which makes it the host stack's best test
+  (`serial-mock.test.js` runs every fault through the real `SerialLink`). Its identity is
+  `model/mock-connection.js` (id `mock`, name `Mock` — reserved, NOT translated, it is a
+  name), dependency-free and `require()`d by main for `serial-wire.js`'s reason. It is in
+  NO list: `knownConnections` prepends it wherever a connection is chosen (so every
+  consumer sees it first), `normalizeConnection` drops a stored user entry claiming its id,
+  `projectConnections`/`mergeProjectConnections`/project-store never carry it,
+  `connectionProblem` is null for it (no port), and `SerialManager.connection("mock")`
+  answers a built-in record no settings entry can shadow and opens it with no port scan.
+  Its connection window is everyone's (below) plus `components/mock-panel.js`, whose
+  Input rows come from the LAYOUT its run brought (a row per Input, Send / Send all, Log, the four
+  one-shot FAULTS — `drop-ack`, `corrupt` (the next ACK or INBOUND, never a LOG, which
+  would just vanish), `ignore-hello`, `wrong-signature` — armed in main, outliving a run
+  until spent), talking to main over `serial:mock:{send,log,fault}` and hearing the
+  `serial:mock` push. A run using it opens that window IN THE BACKGROUND
+  (`showInactive`, never stealing focus from the circuit). Generate gives it no row and
+  no staleness dot.
+- **THE RENDERER NAMES CONNECTIONS, NEVER DEVICES.** `serial:open` takes
+  `[{id, signature}]` — connection IDS, plus the layout signature main cannot compute
+  (it never sees the document);
+  main reads the port from ITS settings (`serialConnections`, the allowlist) — the
+  `knownPath` stance, for devices. Ports **open on Run, close on Stop** so the Arduino IDE
+  can reflash between runs; the open is all-or-nothing. Main pushes FACTS (codes, ids,
+  timestamps); every sentence is the renderer's. `require("serialport")` is LAZY in
+  `ports.js` (the updater's reason: `main.js` is READ by `node --test`); it ships N-API
+  prebuilds, hence `npmRebuild: false`. It is the second runtime dependency.
+- **A device goes away in three shapes and the adapter hears all three** (`adaptPort`):
+  `close` with a DisconnectedError (a USB pull: ENXIO), `error` (the same failed write,
+  which UNLISTENED is an uncaught exception in main), and `end`. One does NOT surface: the
+  macOS binding re-reads a zero-byte read, so a far end that merely shuts (a pty in testing)
+  is silent until the next write fails. `#portClosed` also closes the port, since not every
+  shape leaves it shut.
+- **Connections are MACHINE truth with a portable shadow.** Settings hold them whole;
+  the PROJECT file carries `connections` WITHOUT `port` (a device path means nothing on
+  another machine) and, on open, any this machine lacks joins its settings flagged
+  `needsConfig`. The project copy is DERIVED at every stash, so it is excluded from
+  `projectSignature` (a Settings rename must not dirty a project); `codegen`
+  (`{tabId: {connId: "0xHASH"}}`, recorded by Save header…) is not. Settings ▸ Serial I/O
+  (panel key `integration`) is the one Settings panel with **Apply** rather than
+  live-apply: a connection's fields only mean something together, and Apply is where the
+  port is checked against a live scan (a failed check turns the button into **Apply
+  anyway**, which keeps one that is not plugged in yet). ONE dropdown picks the connection
+  (+ adds, the bin removes on a second click) and ONE editor below edits it, built from the
+  card's own `.settings-row--field` rows with no card around them, so it spaces and letters
+  exactly as the other tabs do. Closed it fits the card at every shipped size and
+  language; with Advanced open it scrolls. Each connection keeps its own draft while
+  another is picked (a • in the list marks one), and an edit updates in place rather than
+  rebuilding the editor.
+- **The header** (`integration-codegen.js`): one per connection × desktop, a
+  `ChipHippoLink : public Print` with `begin()`/`poll()`, one declared function per Output
+  (fields → parameters) and one object per Input (setters + `send()`). **Identifiers
+  read from the ARDUINO's side**: an Output ARRIVES at the sketch, so its function ends
+  `In`, and an Input is SENT from it, so its member ends `Out` (`elementIdentifier`; not
+  doubled when the name already ends so) — the element keeps the circuit's name, the code
+  the board's, and the header's comment and the example bridge the two. The suffixes
+  differ, which is load-bearing: an Output's function is CALLED from inside the class
+  holding the Inputs, where an Input member of the same name would win and the header
+  would not compile — so that is unrepresentable rather than renamed. **`onConnect(fn)`**
+  is run from `poll()` whenever `onHello` sees a NEW session — the only signal a board that
+  does not reset when the port opens (Leonardo, native USB) gets that a run began, since
+  `connected()` stays true between two runs nobody sent in; it is where a sketch sends its
+  Inputs' starting values (an Input drives Z until its first). TWO fingerprints,
+  deliberately different: the **layout signature** (`integration.js`'s `layoutSignature`,
+  the ONE function both the generator and the run's handshake call: CRC-32 of
+  `O0:8+1,O1:1,I0:16` — per element its FIELD WIDTHS in order, since a `[bit, byte]`
+  reordered to `[byte, bit]` keeps its width and misroutes every value; never names) is
+  compiled in, sent in HELLO_ACK and REFUSES a mismatch; the **design hash** (FNV-1a over
+  the connection's framing + its elements' names, field types/names and order, plus
+  `HEADER_REVISION`, 1 until the first release and bumped only after one, when the
+  generated code changes shape, so old headers read out of date — never positions, colours or descriptions) is only a comment and the Generate
+  button's staleness dot, so a rename still runs. **Wire order is by the NUMBER in the id** (`elementsFor`
+  sorts `out2` before `out10`) — one ordering for the header, the element index on the wire
+  and the signature. Names become identifiers through `planIdentifiers`
+  (reserved words and collisions renamed and REPORTED). `serial-arduino-header.test.js`
+  compiles a generated header with the host `c++ -std=gnu++11 -Wall -Wextra -Werror`
+  against a stub `Arduino.h` and runs it against the REAL `SerialLink` (skips with no
+  compiler) — the only proof the two halves agree. A test may PATCH the header text
+  before compiling (a v2 sketch, a 40 ms ACK timeout) to reach a case the generator never
+  emits. The reserved-word list carries every member and constant of `ChipHippoLink`: an
+  Output's function is CALLED from inside the class, where a member of the same name wins.
+  **`generateExample`** writes the SMALLEST sketch for a header (`ChipHippoExample.ino`:
+  a logging function per Output, every Input sent its starting value from `onConnect`)
+  from the SAME identifier plan, and the header's comment points at it; the header test
+  builds and RUNS it. Generate's **View files…** shows the pair in
+  `components/code-files-dialog.js` — a tab per file, each a line-numbered TABLE, Copy for
+  the file on show — which REPLACES the Generate card (PopupManager queues) and hands back
+  to it on close. `docs/examples/SegmentDecoder/` is a fuller sketch, with real buttons.
+- **A connection has a LANGUAGE** (`LANGUAGES`: `cpp` default | `python`; a segmented row
+  in Settings ▸ Serial I/O, a draft like every field there). It is the BOARD's, so it
+  travels with a project (`PORTABLE_KEYS`, project-store's sanitize) and enters the design
+  hash only when not `cpp` (a C++ header's hash is what it was before languages).
+  `model/integration-files.js`'s `connectionFiles` is the ONE place it is read: C++ →
+  `ChipHippo.h` + `ChipHippoExample.ino`; Python → `chiphippo.py` + `main.py`
+  (MicroPython) + `code.py` + `boot.py` (CircuitPython), `main` being what Save and Copy
+  mean. Save's IPC accepts `.h` or `.py` names (a suggestion, never a path).
+- **The Python module** (`integration-codegen-python.js`) is the header said again, line
+  for line — same protocol numbers (from `serial-wire.js`), session rules, ACK-after-the-
+  handler, log chunking — in ONE file for MicroPython AND CircuitPython, picking its port
+  by `sys.implementation.name`: CircuitPython's second USB port (`usb_cdc.data`, which
+  `boot.py` enables), MicroPython's REPL port via stdin/stdout with `kbd_intr(-1)`
+  (a 0x03 in a frame is data), desktop Python's stdin/stdout (how it is tested), or any
+  stream handed to `begin()`. Names come from the SAME `planIdentifiers` with
+  `PY_NAMING` (snake_case, `_in`/`_out`, Python keywords reserved); an Output is
+  registered by DECORATOR (`@link.digit_in`) and one left unregistered is ACKed and
+  ignored; a handler that RAISES is caught, logged to the connection window and ACKed —
+  on a board an uncaught exception ends the program where nobody can see it. No
+  f-strings or typing: MicroPython and CircuitPython must both run it.
+  **Ctrl-C is off only INSIDE a frame**: MicroPython's port is the REPL's and
+  `kbd_intr(-1)` makes a 0x03 data, but the host sends nothing but whole frames, so a
+  lone 0x03 BETWEEN frames can only be Thonny or `mpremote` stopping the program —
+  `_Stdio.interrupt()` restores Ctrl-C and raises KeyboardInterrupt (and `read()` stops at a
+  0x03, leaving what follows it for the REPL). Without it, a `main.py` running the link
+  locked every tool out of the board. A Python connection off **115200 baud, 8N1**
+  is warned about on the Generate card (`python-framing`): a USB-serial-chip board (a
+  classic ESP32 DevKit) runs its REPL at exactly that, a native-USB one ignores it.
+- **A board's several ports are told apart** (`portPositions` in serial-connections.js):
+  ports sharing a serial number, else a USB location, are one board, numbered by USB
+  interface where the OS says (Windows' `MI_xx`, Linux's `-ifxx` in `pnpId`, which
+  `ports.js` now passes with `locationId`) else by path. The Port list shows "port n of
+  m", and for a PYTHON connection on a two-port board names them — REPL, then
+  CircuitPython data — relabelling in place when the Language is switched.
+  `app/tests/serial-python-module.test.js` runs every protocol case under `python3` AND
+  the real `micropython` (unix port, `brew install micropython`), each skipping when its
+  interpreter is absent; `serial-board.js` is the board harness it shares with the C++
+  header's test.
+- **The CONNECTION WINDOW** (`docs/chiphippo-connection-window.md`; `web/serial-log.html`
+  → `serial-log.js` → `components/serial-log-view.js`) shows ONE stream per connection:
+  log text, every value that crossed (`→ OUTPUT`/`← INBOUND` — Chip Hippo's point of view
+  in EVERY window), protocol traffic (`·`) and errors (`!`, never filtered). Main owns it:
+  `app/serial/connection-stream.js` per connection (FACTS only — kind, event code, numbers,
+  `t`; every sentence is `model/connection-stream.js`'s, the protocol's notation
+  untranslated), capped at 2,000 (the window's row cap is the same number, held
+  equal by a test), CLEARED when a run opens the connection (`t0` = then,
+  what `+  12.345` counts from), kept after Stop. A non-text entry ends a partial log line
+  as a line of its own. The link reports everything through `onTrace` (resends are ERROR
+  lines, never a second data line; damage before the session is bootloader noise and not
+  traced); the manager adds open/close/drop and SNAPSHOTS the element into each data entry
+  from the LAYOUT every run's `serial:open` request now carries (`connectionLayout`, main
+  never sees the document). Pushes are BATCHED per tick, and the app window hears only of
+  TEXT (the LG lamp). Filters (Log · Data · Protocol) and Timestamps are CSS classes on the
+  scroller, never a rebuild; they and the window's bounds are remembered per connection
+  ID in `settings.connectionWindows` (main writes it: `trackWindowState` +
+  `resolveWindowBounds`), so a rename keeps them — and ONLY for a connection that exists
+  (or the Mock): writing `serialConnections` runs `forgetDeletedWindows`, and a window
+  still open when its connection goes saves nothing as it closes. Save… writes EVERY line with its time via `serial:log:save`.
+  There is no Copy button (the text is selectable). Opened from ANY lamp, an element's
+  menu (**Open Connection Window** — that menu now opens while RUNNING, editing items
+  disabled) and Settings ▸ Serial I/O's **Open window…**; not closed by `closeAuxWindows`,
+  since a connection is not a project's.
+- **Chrome**: cards sit in the signal rail's column under the buttons (`.signal-rail-list`
+  keeps the buttons their own block); tags draw in `.layer-signals`; the **TX · RX · LG**
+  lamps (all three buttons) sit left of the zoom cluster, which now publishes
+  `--desk-zoom-width` beside `--desk-zoom-height`.
 
 ## Selection
 
@@ -1523,7 +1845,8 @@ over the desk, its active tab filling exactly as an armed segment does.
 Three pills:
 
 - **Desk tools** — Wire · Bus · Fade · Probe · Analyzer · Fit · **BOM** · **Schematic** ·
-  **AI**. BOM lives here rather than with the file actions because it toggles a desk panel
+  **AI** · **Generate** (the Arduino headers — disabled with no Output/Input on the desk, and
+  carrying a dot while one is out of date). BOM lives here rather than with the file actions because it toggles a desk panel
   exactly as Analyzer does, and like Analyzer its armed state comes from the panel's own
   `onVisibilityChange`, so the segment tracks the panel however it was closed. AI is the
   same shape and the one segment DISABLED when it has nothing to offer. **Schematic** is
@@ -1806,7 +2129,8 @@ re-dispatches as `chiphippo:*`; `app.js` hands the project/desktop ones straight
 **The Settings dialog is dumb**: it broadcasts a `chiphippo:settings-changed` patch and
 `app.js`'s `applySettings` both persists it (`settings.set`) and applies it live. It is a
 tabbed master-detail card (left nav rail → panels): **Appearance** (first/default — there
-is no General), **Data Sheets**, **AI**, **About**.
+is no General), **Serial I/O** (key `integration`), **Data Sheets**, **AI**, **About**.
+Serial I/O is the one panel that is NOT live-apply (see "Arduino serial integration").
 
 - **`theme`** — a **segmented picker** (`components/segmented-picker.js`: a DIALOG's form
   of the toolbar pill — one bordered track, borderless `.segmented-option`s, the chosen one
@@ -2162,11 +2486,12 @@ See STORE-PUBLISHING.md for the submission itself.
   parenthetical is a per-developer identifier, NOT a team id and NOT a mismatch (both are
   under `2C564TQ2FY`, the cert's OU field) — but it is enough for the pin to filter out the
   one certificate that profile authorizes.
-- The entitlements are five keys and no more (`entitlements.mas.plist`, committed and
+- The entitlements are six keys and no more (`entitlements.mas.plist`, committed and
   commented): `app-sandbox`, `cs.allow-jit`, `files.user-selected.read-write`,
   `files.bookmarks.app-scope` — **without which the dialogs return EMPTY bookmark strings and
-  the two features above quietly stop working a launch after install** — and `network.client`
-  for the AI builder and the datasheet download. `app/tests/packaging.test.js` holds the
+  the two features above quietly stop working a launch after install** — `network.client`
+  for the AI builder and the datasheet download, and `device.serial` for the Arduino
+  integration (the sandbox refuses to open a `/dev/cu.*` without it). `app/tests/packaging.test.js` holds the
   config to them, and to their absences (`disable-library-validation` is forbidden under the
   sandbox; `network.server` would ask for something nothing listens on), on every platform
   and with no Apple material present.
@@ -2370,7 +2695,9 @@ that a `tf()` call still reads correctly under `node --test` with no catalog at 
     gesture mid-drag and cancel it.
   - **A drop is resolved from the RELEASE event's own position** (`releaseWorld`), never
     from the last `pointermove` — coalesced moves lag the cursor, and a stale sample
-    silently lost the drop.
+    silently lost the drop. The single-point drags (wire end, lead, flag, tag) add the
+    converse: a release that would land NOWHERE falls back to the target the last move
+    showed with its ring, so a stray up event can't throw a visible drop away either.
   - **The re-resolve is one function per drag, shared by the move and the release**
     (`#resolveBoardDrag` / `#resolvePartSeat` / `#resolveBrickPos` /
     `#resolveAnnotationPos` / `#marqueeRect`, and the two resistor trackers, which take the

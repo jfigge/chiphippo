@@ -53,7 +53,11 @@ const path = require("path");
 
 // Everything main draws with lives in main.js; the store/ and ai/ modules it
 // delegates to render nothing. Add a file here if that changes.
-const MAIN_FILES = [path.join(__dirname, "..", "main.js")];
+const MAIN_FILES = [
+  path.join(__dirname, "..", "main.js"),
+  // The serial integration's log windows and its header Save panel.
+  path.join(__dirname, "..", "ipc", "serial.js"),
+];
 
 /** Native-UI option keys whose value, as a bare literal, is on-screen text. */
 const KEY_RE =

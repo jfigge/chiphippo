@@ -10,7 +10,7 @@
       "name": "74LS75",
       "description": "4-bit bistable latch",
       "doc": {
-        "version": 13,
+        "version": 14,
         "boards": [
           {
             "id": "bb1",
@@ -539,6 +539,7 @@
         ],
         "scopeChannels": [],
         "signals": [],
+        "integrations": [],
         "nextBoardId": 4,
         "nextGroupId": 2,
         "nextComponentId": 20,
@@ -548,7 +549,9 @@
         "nextBusId": 1,
         "nextAnnotationId": 15,
         "nextScopeChannelId": 1,
-        "nextSignalId": 1
+        "nextSignalId": 1,
+        "nextOutputId": 1,
+        "nextInputId": 1
       }
     },
     {
@@ -556,7 +559,7 @@
       "name": "74LS279",
       "description": "Quad S̄R̄ latch",
       "doc": {
-        "version": 13,
+        "version": 14,
         "boards": [
           {
             "id": "bb1",
@@ -1000,6 +1003,7 @@
         ],
         "scopeChannels": [],
         "signals": [],
+        "integrations": [],
         "nextBoardId": 4,
         "nextGroupId": 2,
         "nextComponentId": 14,
@@ -1009,7 +1013,9 @@
         "nextBusId": 1,
         "nextAnnotationId": 13,
         "nextScopeChannelId": 1,
-        "nextSignalId": 1
+        "nextSignalId": 1,
+        "nextOutputId": 1,
+        "nextInputId": 1
       }
     },
     {
@@ -1017,7 +1023,7 @@
       "name": "74LS259",
       "description": "8-bit addressable latch",
       "doc": {
-        "version": 13,
+        "version": 14,
         "boards": [
           {
             "id": "bb1",
@@ -1761,6 +1767,7 @@
         ],
         "scopeChannels": [],
         "signals": [],
+        "integrations": [],
         "nextBoardId": 4,
         "nextGroupId": 2,
         "nextComponentId": 30,
@@ -1770,7 +1777,9 @@
         "nextBusId": 1,
         "nextAnnotationId": 21,
         "nextScopeChannelId": 1,
-        "nextSignalId": 1
+        "nextSignalId": 1,
+        "nextOutputId": 1,
+        "nextInputId": 1
       }
     },
     {
@@ -1778,7 +1787,7 @@
       "name": "74LS533",
       "description": "Octal transparent latch (inverting)",
       "doc": {
-        "version": 13,
+        "version": 14,
         "boards": [
           {
             "id": "bb1",
@@ -2521,6 +2530,7 @@
         ],
         "scopeChannels": [],
         "signals": [],
+        "integrations": [],
         "nextBoardId": 4,
         "nextGroupId": 2,
         "nextComponentId": 24,
@@ -2530,7 +2540,9 @@
         "nextBusId": 1,
         "nextAnnotationId": 24,
         "nextScopeChannelId": 1,
-        "nextSignalId": 1
+        "nextSignalId": 1,
+        "nextOutputId": 1,
+        "nextInputId": 1
       }
     },
     {
@@ -2538,7 +2550,7 @@
       "name": "74LS573",
       "description": "Octal transparent latch",
       "doc": {
-        "version": 13,
+        "version": 14,
         "boards": [
           {
             "id": "bb1",
@@ -3297,6 +3309,7 @@
         ],
         "scopeChannels": [],
         "signals": [],
+        "integrations": [],
         "nextBoardId": 4,
         "nextGroupId": 2,
         "nextComponentId": 24,
@@ -3306,7 +3319,9 @@
         "nextBusId": 1,
         "nextAnnotationId": 26,
         "nextScopeChannelId": 1,
-        "nextSignalId": 1
+        "nextSignalId": 1,
+        "nextOutputId": 1,
+        "nextInputId": 1
       }
     }
   ]

@@ -41,7 +41,12 @@
 // #propertyFieldsFor), `"readonly"` (a value shown but not edited — a
 // project's or a desktop's Location, which Save As is what changes),
 // `"wire-gauge"` (the workshop drawing of a wire, dimensioned in cm — see
-// below), and `"separator"` (a plain divider, no key/control).
+// below), `"pin-fields"` (an Output/Input element's ordered bit/byte/word
+// fields — pin-fields-editor.js; its value is the whole list), and
+// `"separator"` (a plain divider, no key/control). A value field may also
+// carry an `action` (`{key, label, icon}`): the same command an `"action"`
+// field fires, drawn as an icon button to the RIGHT of the control, for a
+// command that belongs to that one row.
 //
 // `"wire-gauge"` is the one field type named after what it draws rather than
 // after a KIND of control, and deliberately so: it is a picture, not an editor.
@@ -86,6 +91,7 @@ import { el, svgEl } from "../dom.js";
 import { PopupManager } from "../popup-manager.js";
 import { buildColorSwatches } from "./color-swatches.js";
 import { buildSegmented } from "./segmented-picker.js";
+import { buildPinFieldsEditor } from "./pin-fields-editor.js";
 import {
   buildWireGauge,
   setWireGaugeColor,
@@ -150,6 +156,46 @@ function buildActionButton(field, onFire) {
     ),
     onClick: onFire,
   });
+}
+
+/** The glyphs a trailing action may carry, by name — so a descriptor stays
+    data and this file stays the one place that draws a control. Line-drawn
+    24-unit icons at the size the Settings card's inline buttons use. */
+const ACTION_ICONS = {
+  /** The gear — this action leads to Settings, as the header's own does. */
+  settings:
+    '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" ' +
+    'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+    'stroke-linejoin="round" aria-hidden="true">' +
+    '<circle cx="12" cy="12" r="3"/>' +
+    '<path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06' +
+    "-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A" +
+    "1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l" +
+    ".06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1" +
+    ".65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l" +
+    ".06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.6" +
+    "5 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-." +
+    "06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-." +
+    '09a1.65 1.65 0 0 0-1.51 1z"/></svg>',
+};
+
+/** An icon button riding to the right of a field's control — `field.action`,
+    `{key, label, icon}` — for a command that belongs to THAT row (a
+    Connection's "Manage connections…" beside the picker) rather than one
+    that deserves a full-width row of its own. Fires like an `"action"` field
+    (the dialog closes, then `onAction(key)`); the label, resolved the same
+    way, is its tooltip and accessible name, since the glyph is all it shows. */
+function withTrailingAction(control, action, onFire) {
+  const label = tf(`properties.action.${action.key}`, action.label ?? "");
+  const btn = el("button", {
+    class: "properties-icon-action",
+    type: "button",
+    title: label,
+    "aria-label": label,
+    onClick: onFire,
+  });
+  btn.innerHTML = ACTION_ICONS[action.icon] ?? "";
+  return el("span", { class: "properties-control-group" }, [control, btn]);
 }
 
 /** A single-line text field (Name) — commits on the `change` event (blur/
@@ -225,12 +271,19 @@ function buildControl(field, value, onChange) {
   if (field.type === "textarea") {
     return buildTextarea(field, value, onChange);
   }
+  if (field.type === "pin-fields") {
+    return buildPinFieldsEditor({
+      value,
+      ariaLabel: fieldLabel(field),
+      onChange: (v) => onChange(field.key, v),
+    });
+  }
   return el("span", { class: "properties-value", text: String(value ?? "") });
 }
 
 /** A plain divider between the universal Name/Description pair and a part's
     own catalog-declared properties. */
-const STACKED_TYPES = new Set(["text", "textarea", "readonly"]);
+const STACKED_TYPES = new Set(["text", "textarea", "readonly", "pin-fields"]);
 
 function buildRow(field, value, onChange, onAction) {
   if (field.type === "separator") {
@@ -253,9 +306,14 @@ function buildRow(field, value, onChange, onAction) {
   const rowClass = STACKED_TYPES.has(field.type)
     ? "properties-row properties-row--stacked"
     : "properties-row";
+  const control = buildControl(field, value, onChange);
   return el("div", { class: rowClass }, [
     el("span", { class: "properties-label", text: fieldLabel(field) }),
-    buildControl(field, value, onChange),
+    field.action
+      ? withTrailingAction(control, field.action, () =>
+          onAction(field.action.key),
+        )
+      : control,
   ]);
 }
 
@@ -304,7 +362,7 @@ export class PartPropertiesDialog {
    * Name/Description always come first; `fields` (if any) follow a separator.
    * @param {object} opts
    * @param {string} opts.title - the dialog header (e.g. "LED Properties").
-   * @param {Array<{key?:string,label?:string,type:string,options?:Array<{value,label}>,actionLabel?:string,color?:string,measure?:() => number}>} [opts.fields] -
+   * @param {Array<{key?:string,label?:string,type:string,options?:Array<{value,label}>,actionLabel?:string,action?:{key:string,label?:string,icon:string},color?:string,measure?:() => number}>} [opts.fields] -
    *   the part's catalog `properties` list (plus any instance-conditional
    *   action fields desk-controller.js appends) — empty/omitted for a board
    *   or a part with nothing beyond Name/Description.
@@ -313,7 +371,8 @@ export class PartPropertiesDialog {
    * @param {(key: string, value: any) => void} opts.onChange - fires live,
    *   once per value-field control change (text/textarea: on blur/Enter).
    * @param {(key: string) => void} [opts.onAction] - fires once when an
-   *   `"action"`-type field's button is clicked; the dialog closes first.
+   *   `"action"`-type field's button (or a field's trailing `action` icon)
+   *   is clicked; the dialog closes first.
    * @param {() => string[]} [opts.warnings] - the faults the part is showing
    *   right now, as sentences. Re-asked on every sim tick for the dialog's
    *   open lifetime; an empty list keeps the section out of the card

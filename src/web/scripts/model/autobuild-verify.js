@@ -63,9 +63,11 @@
 // one, and the drift would be silent.
 
 import { tf } from "../i18n.js";
-import { partDef } from "../catalog/index.js";
+import { outputEnables, partDef } from "../catalog/index.js";
 import { normalizeDocument } from "./desk-doc.js";
 import { canPlacePart, partPinAddresses } from "./occupancy.js";
+import { resolvePin } from "./pin-resolve.js";
+import { floatingInputs } from "./spec-lint.js";
 import { buildNetlist } from "../sim/netlist.js";
 import { settle, tick } from "../sim/engine.js";
 import { isLit, junctionState } from "../sim/junction.js";
@@ -123,6 +125,11 @@ export function* verifySteps(compiled, spec = null) {
   const faults = [];
   const raw = compiled.document;
   const doc = normalizeDocument(raw);
+  // Faults go back to the model that wrote the spec, so they name parts the
+  // way IT does. The document says `c7`; the spec, and the model, say `U2` —
+  // and with two 74LS244s in a design, "c7 (74LS244)" is not an instruction
+  // anyone can act on.
+  const nameOf = partNamer(compiled.partMap);
 
   yield { gate: "L3", label: tf("ai.gate.l3", "Checking the build…") };
 
@@ -149,12 +156,7 @@ export function* verifySteps(compiled, spec = null) {
     const pins = partPinAddresses(doc, comp);
     if (!pins) {
       faults.push(
-        fault(
-          "L3b",
-          ABORT,
-          "UNSEATED",
-          `${comp.id} (${comp.ref}) does not seat.`,
-        ),
+        fault("L3b", ABORT, "UNSEATED", `${nameOf(comp)} does not seat.`),
       );
       continue;
     }
@@ -165,7 +167,7 @@ export function* verifySteps(compiled, spec = null) {
           "L3b",
           ABORT,
           "FLOATING_PINS",
-          `${comp.id} (${comp.ref}) has pins over nothing: ${floating.join(", ")}.`,
+          `${nameOf(comp)} has pins over nothing: ${floating.join(", ")}.`,
         ),
       );
     }
@@ -175,7 +177,7 @@ export function* verifySteps(compiled, spec = null) {
           "L3b",
           ABORT,
           "ILLEGAL_SEAT",
-          `${comp.id} (${comp.ref}) is not legally placed.`,
+          `${nameOf(comp)} is not legally placed.`,
         ),
       );
     }
@@ -299,6 +301,7 @@ export function* verifySteps(compiled, spec = null) {
     doc.components.filter((c) => c.kind === "clock").map((c) => [c.id, L]),
   );
   const first = settle({ document: doc, netlist, clockPhase });
+  const where = electricalNamer(nameOf, doc, netIdOfDeclared);
   if (!first.settled) {
     faults.push(
       fault(
@@ -315,18 +318,29 @@ export function* verifySteps(compiled, spec = null) {
         "L5",
         REPAIR,
         `SIM_${String(w.type).toUpperCase()}`,
-        describeWarning(w),
+        describeWarning(w, where),
       ),
     );
   }
   for (const [id, status] of first.chipStatus ?? []) {
     if (status?.status && status.status !== "ok") {
       faults.push(
-        fault("L5", REPAIR, "CHIP_NOT_OK", `${id} is ${status.status}.`, {
-          chip: id,
-        }),
+        fault(
+          "L5",
+          REPAIR,
+          "CHIP_NOT_OK",
+          `${where.chip(id)} is ${status.status}.`,
+          { chip: id },
+        ),
       );
     }
+  }
+  // A burnt lamp is not an engine WARNING — the junction is physics the views
+  // draw (sim/junction.js), and a settled net says nothing about it — so it is
+  // asked for here. The resistor rule covers every leg the spec puts on a
+  // rail; what is left burning has both legs on chip outputs.
+  for (const burn of burntLamps(doc, netlist, first)) {
+    faults.push(fault("L5", REPAIR, "LED_BURNS", describeBurn(burn, nameOf)));
   }
 
   yield { gate: "L6", label: tf("ai.gate.l6", "Checking for undriven nets…") };
@@ -339,34 +353,97 @@ export function* verifySteps(compiled, spec = null) {
   // LOW — and since a floating enable reads HIGH, the omission is invisible in
   // the netlist it wrote. So a net whose only driver is a tri-state output
   // names the enable pin instead, which is a fault a repair round can act on.
-  const disabledBy = tristateEnables(doc, netlist, first);
+  const disabledBy = tristateEnables(doc, netlist, first, nameOf);
   for (const net of compiled.nets ?? []) {
     if (net.rail) continue;
     const id = netIdOfDeclared.get(net.name);
     if (id == null) continue;
     const level = first.netLevels.get(id);
     if (level !== undefined && level !== "Z" && level !== "X") continue;
+    // X is not "undriven": it is a net fought over or never settling, which
+    // L5 has already reported as the conflict or oscillation it is. Saying
+    // "nothing drives it" here sent a repair round looking for a missing wire
+    // on a net that had one driver too many.
+    if (level === "X") {
+      faults.push(
+        fault(
+          "L6",
+          REPAIR,
+          "NET_UNRESOLVED",
+          `Net "${net.name}" settles to X — it is driven to both levels at ` +
+            `once or never settles; see the SIM_ faults for which.`,
+          { net: net.name },
+        ),
+      );
+      continue;
+    }
     const off = disabledBy.get(id);
+    // A BUS — several outputs that can each be switched off — floats when all
+    // of them are, and "tie it to GND" is the wrong advice there: tie two
+    // enables low and they fight. Say what a bus needs instead.
+    const bus = outputsOn(net, compiled.partMap, doc) > 1;
     faults.push(
-      off
+      off && bus
         ? fault(
             "L6",
             REPAIR,
             "OUTPUTS_DISABLED",
-            `Net "${net.name}" floats because ${off.chip}'s outputs are ` +
-              `switched off: its active-LOW output ` +
-              `${off.plural ? "enables" : "enable"} ${off.pin} ` +
-              `${off.plural ? "are" : "is"} ${off.level}. ` +
-              `Tie ${off.plural ? "them" : "it"} to GND.`,
+            `Net "${net.name}" floats because every output on it is switched ` +
+              `off (${off.chip}'s ${off.pin} ${off.plural ? "are" : "is"} ` +
+              `${off.level}, and the others likewise). A shared net needs ` +
+              `exactly one of its drivers enabled — its active-LOW enable ` +
+              `driven LOW — whenever it must carry a value.`,
             { net: net.name, chip: off.chip, pin: off.pin },
           )
-        : fault(
-            "L6",
-            REPAIR,
-            "NET_NOT_DRIVEN",
-            `Net "${net.name}" settles to ${level ?? "nothing"} — nothing drives it.`,
-            { net: net.name },
-          ),
+        : off
+          ? fault(
+              "L6",
+              REPAIR,
+              "OUTPUTS_DISABLED",
+              `Net "${net.name}" floats because ${off.chip}'s outputs are ` +
+                `switched off: its active-LOW output ` +
+                `${off.plural ? "enables" : "enable"} ${off.pin} ` +
+                `${off.plural ? "are" : "is"} ${off.level}. ` +
+                `Tie ${off.plural ? "them" : "it"} to GND.`,
+              { net: net.name, chip: off.chip, pin: off.pin },
+            )
+          : fault(
+              "L6",
+              REPAIR,
+              "NET_NOT_DRIVEN",
+              `Net "${net.name}" settles to ${level ?? "nothing"} — nothing drives it.`,
+              { net: net.name },
+            ),
+    );
+  }
+
+  // An input the spec never connected does not show up as an undriven NET —
+  // it is on no net at all — so the sweep above cannot see it, and it reads
+  // HIGH: an enable left out disables its part, a clear left out holds it, and
+  // every net still settles cleanly. `floatingInputs` knows which inputs a part
+  // is actually USING (the spare gates of a 7400 may float; the enable of the
+  // decoder whose outputs are wired may not).
+  const specParts = [...(compiled.partMap ?? [])].flatMap(
+    ([specId, compId]) => {
+      const comp = doc.components.find((c) => c.id === compId);
+      const def = comp && partDef(comp.ref);
+      return def ? [{ id: specId, def }] : [];
+    },
+  );
+  for (const loose of floatingInputs(specParts, compiled.nets ?? [])) {
+    faults.push(
+      fault(
+        "L6",
+        REPAIR,
+        "INPUT_FLOATING",
+        `${loose.partId} (${loose.ref}) leaves ` +
+          `${loose.pins.length > 1 ? "inputs" : "input"} ` +
+          `${loose.pins.map((p) => `${p.name} (pin ${p.n})`).join(", ")} ` +
+          `unconnected. A floating TTL input reads HIGH, so the part does ` +
+          `whatever HIGH means there — tie each one to VCC or GND, or wire it ` +
+          `to the signal that should drive it.`,
+        { part: loose.partId, pins: loose.pins.map((p) => p.n) },
+      ),
     );
   }
 
@@ -380,13 +457,21 @@ export function* verifySteps(compiled, spec = null) {
     netlist,
     partMap: compiled.partMap,
     tests: spec?.tests,
+    namer: (live) =>
+      electricalNamer(nameOf, doc, declaredIds(compiled.nets, addressOf, live)),
   });
   for (const r of results) {
     if (!r.ok) {
+      // A test that cannot be run as written is a different repair from a
+      // circuit that fails it: fix the test, not the circuit.
       faults.push(
-        fault("L7", REPAIR, "TEST_FAILED", `${r.name}: ${r.detail}`, {
-          test: r.name,
-        }),
+        fault(
+          "L7",
+          REPAIR,
+          r.invalid ? "TEST_INVALID" : "TEST_FAILED",
+          `${r.name}: ${r.detail}`,
+          { test: r.name },
+        ),
       );
     }
   }
@@ -394,18 +479,152 @@ export function* verifySteps(compiled, spec = null) {
   return { ok: faults.length === 0, faults, document: doc, netlist, results };
 }
 
-function describeWarning(w) {
-  const where = w.chip ?? w.net ?? "";
-  return `${w.type}${where ? ` at ${where}` : ""}`;
+/** Engine warnings about a NET, as a sentence about the spec's nets. */
+const NET_WARNINGS = Object.freeze({
+  short: (nets) => `VCC and GND meet on ${nets}`,
+  conflict: (nets) => `outputs drive opposite levels onto ${nets}`,
+  oscillation: (nets) => `${nets} never settles — the circuit oscillates`,
+});
+
+/**
+ * An engine warning in the spec's own terms. The engine names a chip by its
+ * document id and a net by its smallest member ADDRESS (`bb1.a12`), neither of
+ * which means anything to the model reading the repair — and an oscillation
+ * names its nets in a `nets` list, which the old one-field reading dropped, so
+ * the fault said "oscillation" and nothing else.
+ */
+function describeWarning(w, where) {
+  if (w.chip != null) {
+    return `${where ? where.chip(w.chip) : w.chip} is ${w.type}`;
+  }
+  const ids = w.nets ?? (w.net != null ? [w.net] : []);
+  const nets = [...new Set(ids.map((id) => (where ? where.net(id) : id)))];
+  const said = NET_WARNINGS[w.type];
+  if (!nets.length) return w.type;
+  return said ? said(nets.join(", ")) : `${w.type} on ${nets.join(", ")}`;
+}
+
+/** Component id → `U2 (74LS244)`, the spec's id with the part it names. */
+function partNamer(partMap) {
+  const specOf = new Map([...(partMap ?? [])].map(([s, c]) => [c, s]));
+  return (comp) => `${specOf.get(comp.id) ?? comp.id} (${comp.ref})`;
+}
+
+/**
+ * Names for what the engine reports: a chip by the spec's id, a net by the
+ * declared name(s) it carries.
+ *
+ * @param {Function} nameOf  comp → name
+ * @param {object} doc
+ * @param {Map<string, string>} idOfDeclared  declared net name → net id
+ */
+function electricalNamer(nameOf, doc, idOfDeclared) {
+  const byNet = new Map();
+  for (const [name, id] of idOfDeclared ?? []) {
+    if (!byNet.has(id)) byNet.set(id, []);
+    byNet.get(id).push(name);
+  }
+  const comps = new Map(doc.components.map((c) => [c.id, c]));
+  return {
+    chip: (id) => (comps.has(id) ? nameOf(comps.get(id)) : String(id)),
+    net: (id) =>
+      byNet.has(id)
+        ? byNet
+            .get(id)
+            .map((n) => `"${n}"`)
+            .join(" / ")
+        : "a net the spec does not name",
+  };
+}
+
+/** Declared net name → its id in `live`, a netlist of the same document. */
+function declaredIds(nets, addressOf, live) {
+  const out = new Map();
+  for (const net of nets ?? []) {
+    for (const m of net.pins) {
+      const id = live.netOfPoint.get(addressOf(m));
+      if (id != null) {
+        out.set(net.name, id);
+        break;
+      }
+    }
+  }
+  return out;
+}
+
+/** How many `output`-role pins a declared net carries. */
+function outputsOn(net, partMap, doc) {
+  let n = 0;
+  for (const m of net.pins) {
+    if (m.kind !== "pin") continue;
+    const comp = doc.components.find((c) => c.id === partMap?.get(m.partId));
+    const role = comp && partDef(comp.ref)?.pins?.find((q) => q.n === m.pin);
+    if (role?.role === "output") n++;
+  }
+  return n;
+}
+
+/**
+ * Every lamp junction a settled circuit is BURNING — conducting across two
+ * strongly driven nets with nothing to limit the current (sim/junction.js).
+ *
+ * @returns {Array<{comp:object, labels:string[], lamp:boolean}>}
+ */
+export function burntLamps(doc, netlist, result) {
+  const burns = [];
+  for (const comp of doc.components ?? []) {
+    const def = partDef(comp.ref);
+    const junctions = def?.segments?.length
+      ? def.segments.map((s) => ({ ...s, label: s.id }))
+      : typeof def?.polarity === "function"
+        ? [{ ...def.polarity(comp.params ?? {}), label: null }]
+        : [];
+    if (!junctions.length) continue;
+    const pins = partPinAddresses(doc, comp);
+    if (!pins) continue;
+    const addressOf = new Map(pins.map((p) => [p.pin, p.address]));
+    const at = (levels, pin) => {
+      const address = addressOf.get(pin);
+      return address == null
+        ? undefined
+        : levels?.get(netlist.netOfPoint.get(address));
+    };
+    const labels = junctions
+      .filter(
+        (j) =>
+          junctionState({
+            anode: at(result.netLevels, j.anodePin),
+            cathode: at(result.netLevels, j.cathodePin),
+            anodeStrong: at(result.strongLevels, j.anodePin),
+            cathodeStrong: at(result.strongLevels, j.cathodePin),
+          }).unlimited,
+      )
+      .map((j) => j.label);
+    if (labels.length)
+      burns.push({ comp, labels, lamp: !def.segments?.length });
+  }
+  return burns;
+}
+
+function describeBurn({ comp, labels, lamp }, nameOf) {
+  const what = lamp
+    ? `${nameOf(comp)} burns`
+    : `${nameOf(comp)} segment${labels.length > 1 ? "s" : ""} ` +
+      `${labels.join(", ")} burn${labels.length > 1 ? "" : "s"}`;
+  return (
+    `${what}: both legs are driven hard with nothing to limit the current. ` +
+    `Put one leg on VCC or GND — the compiler adds the series resistor ` +
+    `there — rather than between two outputs.`
+  );
 }
 
 /**
  * Which floating nets are floating because a tri-state part is switched off.
  *
- * A part declaring `outputEnable` (catalog data, proved against the evaluator
- * in tests/chips-tristate.test.js) drives nothing at all while any of those
- * pins is not LOW — and an unwired one reads HIGH, so the usual way to arrive
- * here is to have forgotten the pin entirely. Every enable that is not asserted
+ * A part with output enables (`outputEnables`: declared on a tri-state logic
+ * part, read off a memory's own chip and output enables) drives nothing at all
+ * while any of those pins is not LOW — and an unwired one reads HIGH, so the
+ * usual way to arrive here is to have forgotten the pin entirely. Every enable that is not asserted
  * is named, because a part with two of them ('244) may be missing either or
  * both, and "tie this pin low" is only useful if it is the right pin.
  *
@@ -414,13 +633,21 @@ function describeWarning(w) {
  * the same omission produces the same dead circuit and the same wrong diagnosis
  * ("nothing drives this net") if it goes unasked.
  *
+ * @param {Function} [nameOf]  comp → how `chip` names it; the verifier passes
+ *   the spec's ids, the desk review the document's.
  * @returns {Map<string, {chip:string, pin:string, level:string}>} netId → blame
  */
-export function tristateEnables(doc, netlist, settled) {
+export function tristateEnables(
+  doc,
+  netlist,
+  settled,
+  nameOf = (comp) => `${comp.id} (${comp.ref})`,
+) {
   const out = new Map();
   for (const comp of doc.components ?? []) {
     const def = partDef(comp.ref);
-    if (!def?.outputEnable?.length) continue;
+    const enables = outputEnables(def);
+    if (!enables.length) continue;
     const pins = partPinAddresses(doc, comp);
     if (!pins) continue;
     const addressOf = new Map(pins.map((p) => [p.pin, p.address]));
@@ -431,7 +658,7 @@ export function tristateEnables(doc, netlist, settled) {
     };
     // An enable at Z is an enable nobody wired: it reads HIGH, and the part is
     // off. Anything but a solid L leaves the outputs floating.
-    const off = def.outputEnable.filter((n) => levelOf(n) !== L);
+    const off = enables.filter((n) => levelOf(n) !== L);
     if (!off.length) continue;
     const name = (n) => {
       const p = def.pins.find((q) => q.n === n);
@@ -441,7 +668,7 @@ export function tristateEnables(doc, netlist, settled) {
       (n) => levelOf(n) === undefined || levelOf(n) === "Z",
     );
     const blame = {
-      chip: `${comp.id} (${comp.ref})`,
+      chip: nameOf(comp),
       // The id on its own, beside the pre-formatted `chip` string the repair
       // message quotes: `desk-review.js` names a part the way the rest of the
       // desk names it (ref first, then id) and needs the finding to carry an id
@@ -488,14 +715,29 @@ function pinAddresser(doc, partMap) {
  *
  *   set     `{ "<partId>": <number|"0101…"> }` — switch positions. A NUMBER is
  *           unambiguous (bit i sets position i+1); a STRING is read the same
- *           way, character i for position i+1. That ordering is stated rather
- *           than inferred, because an off-by-one here is exactly the silent
- *           wrong-circuit failure everything else guards against.
- *   edges   how many clock pulses to apply before reading (default 0).
+ *           way, character i for position i+1, and must give EVERY position:
+ *           a short string used to leave the rest open without a word, which
+ *           is a test of something other than what its author wrote. That
+ *           ordering is stated rather than inferred, because an off-by-one here
+ *           is exactly the silent wrong-circuit failure everything else guards
+ *           against.
+ *   edges   how many clock pulses to apply before reading (default 0). Only a
+ *           design with a `clock` has edges to give; asking one without is an
+ *           invalid test, not a combinational one.
  *   expect  `{ "<partId>.<pin>": "H"|"L", "<partId>": "0101…" }` — a pin's
- *           level, or a display's LIT SEGMENTS as a bit string, same indexing.
+ *           level (the pin named as a net member may name it), or a display's
+ *           LIT SEGMENTS as a bit string of exactly its width.
  *
- * @returns {Array<{name:string, ok:boolean, detail:string}>}
+ * Every test starts from the circuit AS BUILT — the switch positions of one
+ * test are not left behind for the next — and every test state is checked
+ * for what no expectation mentions: a short, a fight, an oscillation, a
+ * burning lamp.
+ *
+ * A result is `{name, ok, detail}`, plus `invalid: true` when the test itself
+ * could not be run as written (a bad target, a wrong-width pattern), which is
+ * a different repair from a circuit that fails it.
+ *
+ * @returns {Array<{name:string, ok:boolean, detail:string, invalid?:boolean}>}
  */
 export function runFunctionalTests(args) {
   return drain(runFunctionalTestSteps(args));
@@ -507,12 +749,25 @@ export function runFunctionalTests(args) {
  * A spec with no `tests` block yields nothing at all — there is no work to
  * narrate, and a lone "Running 0 tests…" would be a label for an empty pause.
  *
+ * @param {object} args
+ * @param {Function} [args.namer]  `(liveNetlist) → {chip(id), net(id)}`, to
+ *   say which nets a state faults on in the spec's terms.
  * @yields {{gate:"L7", label:string, index:number, total:number}}
- * @returns {Array<{name:string, ok:boolean, detail:string}>}
+ * @returns {Array<{name:string, ok:boolean, detail:string, invalid?:boolean}>}
  */
-export function* runFunctionalTestSteps({ doc, netlist, partMap, tests }) {
+export function* runFunctionalTestSteps({
+  doc,
+  netlist,
+  partMap,
+  tests,
+  namer = null,
+}) {
   if (!Array.isArray(tests) || !tests.length) return [];
   const results = [];
+  // What each test starts from: the switch positions the circuit was BUILT
+  // with. `runOne` writes a test's positions into the document; without this
+  // the next test inherited them, and a test's meaning depended on its order.
+  const built = new Map(doc.components.map((c) => [c.id, c.params]));
 
   for (const [i, t] of tests.entries()) {
     const name =
@@ -532,29 +787,58 @@ export function* runFunctionalTestSteps({ doc, netlist, partMap, tests }) {
       index: i,
       total: tests.length,
     };
+    for (const c of doc.components) c.params = built.get(c.id);
     try {
-      results.push({ name, ...runOne({ doc, netlist, partMap, test: t }) });
+      results.push({
+        name,
+        ...runOne({ doc, netlist, partMap, test: t, namer }),
+      });
     } catch (e) {
-      results.push({ name, ok: false, detail: e.message });
+      results.push({ name, ok: false, detail: e.message, invalid: true });
     }
   }
+  for (const c of doc.components) c.params = built.get(c.id);
   return results;
 }
 
-/** Bit `i` of a number or 0/1 string → switch position i+1 / segment i+1. */
-function bitsOf(value, width) {
+/** A test that cannot be run as written — thrown, and reported as invalid. */
+class InvalidTest extends Error {}
+
+/**
+ * Bit `i` of a number or 0/1 string → switch position i+1 / segment i+1.
+ * Exactly `width` bits: a pattern that is short, long or out of range is the
+ * test's mistake, and guessing at the missing bits is how a wrong test passes.
+ */
+function bitsOf(value, width, what) {
+  const positions = `${width} position${width === 1 ? "" : "s"}`;
   if (typeof value === "number" && Number.isInteger(value)) {
+    if (value < 0 || value >= 2 ** width) {
+      throw new InvalidTest(
+        `${what} has ${positions}; ${value} does not fit in ${width} bits`,
+      );
+    }
     return Array.from({ length: width }, (_, i) => ((value >> i) & 1) === 1);
   }
   if (typeof value === "string" && /^[01]+$/.test(value)) {
+    if (value.length !== width) {
+      throw new InvalidTest(
+        `${what} has ${positions}, and "${value}" gives ${value.length} ` +
+          `— write all ${width}, LSB (position 1) first`,
+      );
+    }
     return Array.from({ length: width }, (_, i) => value[i] === "1");
   }
-  throw new Error(
+  throw new InvalidTest(
     `"${value}" is not a bit pattern (use a number or a 0/1 string)`,
   );
 }
 
-function runOne({ doc, netlist, partMap, test }) {
+function runOne({ doc, netlist, partMap, test, namer }) {
+  const expects = Object.entries(test?.expect ?? {});
+  if (!expects.length) {
+    throw new InvalidTest("it expects nothing, so it can never fail");
+  }
+
   // ① Apply switch settings. Switch state is a NETLIST input — a closed
   //    position's internalBridges conduct — so the netlist is rebuilt, not
   //    merely re-settled.
@@ -564,27 +848,54 @@ function runOne({ doc, netlist, partMap, test }) {
   for (const [specId, value] of Object.entries(sets)) {
     const compId = partMap.get(specId);
     const comp = compId && doc.components.find((c) => c.id === compId);
-    if (!comp)
-      throw new Error(`set names "${specId}", which is not in the circuit`);
+    if (!comp) {
+      throw new InvalidTest(
+        `set names "${specId}", which is not in the circuit`,
+      );
+    }
     const def = partDef(comp.ref);
     const width = def?.switchBank ? def.pins.length / 2 : 1;
     if (!def?.switchBank && !Array.isArray(comp.params?.states)) {
-      throw new Error(
+      throw new InvalidTest(
         `"${specId}" (${comp.ref}) has no switch positions to set`,
       );
     }
-    comp.params = { ...comp.params, states: bitsOf(value, width) };
+    comp.params = {
+      ...comp.params,
+      states: bitsOf(value, width, `"${specId}" (${comp.ref})`),
+    };
     touched = true;
   }
   if (touched) live = buildNetlist(doc);
 
   // ② Clock it, if the test asks for edges.
-  const edges = Number.isInteger(test?.edges) ? test.edges : 0;
+  const edges = test?.edges ?? 0;
+  if (!Number.isInteger(edges) || edges < 0) {
+    throw new InvalidTest(`edges must be a whole number, not ${edges}`);
+  }
   const clocks = doc.components
     .filter((c) => c.kind === "clock")
     .map((c) => c.id);
+  if (edges > 0 && !clocks.length) {
+    // It used to settle instead and compare, so a sequential test passed
+    // against the power-on state with no edge ever applied.
+    throw new InvalidTest(
+      `it asks for ${edges} clock edge${edges > 1 ? "s" : ""}, but the ` +
+        `design has no clock source — add a "clock" part, or drop "edges"`,
+    );
+  }
   let result;
-  if (edges > 0 && clocks.length) {
+  const faults = [];
+  const where = namer?.(live);
+  const inspect = () => {
+    for (const w of result.warnings ?? []) {
+      if (w.chip == null) faults.push(describeWarning(w, where));
+    }
+    for (const burn of burntLamps(doc, live, result)) {
+      faults.push(describeBurn(burn, (c) => where?.chip(c.id) ?? c.id));
+    }
+  };
+  if (edges > 0) {
     const phase = new Map(clocks.map((id) => [id, L]));
     let warm = new Map();
     let state = new Map();
@@ -601,6 +912,7 @@ function runOne({ doc, netlist, partMap, test }) {
       warm = result.netLevels;
       state = result.state;
       prev = result.pinLevels;
+      inspect();
     };
     step();
     for (let e = 0; e < edges; e++) {
@@ -610,34 +922,49 @@ function runOne({ doc, netlist, partMap, test }) {
       step();
     }
   } else {
-    result = settle({ document: doc, netlist: live });
+    result = settle({
+      document: doc,
+      netlist: live,
+      clockPhase: new Map(clocks.map((id) => [id, L])),
+    });
+    inspect();
   }
 
   // ③ Read the expectations back.
   const addresses = pinAddresser(doc, partMap);
   const levelAt = (a) => result.netLevels.get(live.netOfPoint.get(a));
   const strongAt = (a) => result.strongLevels.get(live.netOfPoint.get(a));
-  const mismatches = [];
+  const mismatches = [...new Set(faults)];
 
-  for (const [target, want] of Object.entries(test?.expect ?? {})) {
+  for (const [target, want] of expects) {
     const dot = target.indexOf(".");
     if (dot > 0) {
       const specId = target.slice(0, dot);
       const pinToken = target.slice(dot + 1);
       const compId = partMap.get(specId);
       const comp = compId && doc.components.find((c) => c.id === compId);
-      if (!comp)
-        throw new Error(
+      if (!comp) {
+        throw new InvalidTest(
           `expect names "${specId}", which is not in the circuit`,
         );
-      const def = partDef(comp.ref);
-      const pin = def?.pins?.find(
-        (p) => p.name === pinToken || String(p.n) === pinToken,
-      );
-      if (!pin) throw new Error(`"${comp.ref}" has no pin "${pinToken}"`);
-      const address = addresses({ partId: specId, kind: "pin", pin: pin.n });
+      }
+      // The SAME resolver a net member goes through, so a pin the netlist
+      // could name, the test can too.
+      const r = resolvePin(comp.ref, pinToken);
+      if (!r.ok || r.kind !== "pin") {
+        throw new InvalidTest(
+          r.message ?? `"${comp.ref}" has no pin "${pinToken}"`,
+        );
+      }
+      const wanted = String(want).toUpperCase();
+      if (wanted !== H && wanted !== L) {
+        throw new InvalidTest(
+          `expect ${target} is "${want}" — a pin is expected "H" or "L"`,
+        );
+      }
+      const address = addresses({ partId: specId, kind: "pin", pin: r.pin });
       const got = levelAt(address) ?? "Z";
-      if (String(want).toUpperCase() !== got) {
+      if (wanted !== got) {
         mismatches.push(`${target} is ${got}, expected ${want}`);
       }
       continue;
@@ -646,15 +973,22 @@ function runOne({ doc, netlist, partMap, test }) {
     // one conducts and shows nothing, which is the failure worth catching).
     const compId = partMap.get(target);
     const comp = compId && doc.components.find((c) => c.id === compId);
-    if (!comp)
-      throw new Error(`expect names "${target}", which is not in the circuit`);
+    if (!comp) {
+      throw new InvalidTest(
+        `expect names "${target}", which is not in the circuit`,
+      );
+    }
     const def = partDef(comp.ref);
     if (!def?.segments?.length) {
-      throw new Error(
+      throw new InvalidTest(
         `"${target}" (${comp.ref}) is not a display; name a pin instead`,
       );
     }
-    const wanted = bitsOf(want, def.segments.length);
+    const wanted = bitsOf(
+      want,
+      def.segments.length,
+      `"${target}" (${comp.ref})`,
+    );
     const got = def.segments.map((seg) => {
       const anode = addresses({
         partId: target,

@@ -37,6 +37,28 @@ import { PX_PER_UNIT } from "../desk/desk-geometry.js";
     its hole rather than as anything obviously broken. */
 export const RING_RADIUS = 0.55;
 
+/**
+ * Aim the ONE shared `.hole-ring` (the desk controller's) at a world point —
+ * the "it lands here" marker every single-point drag shows (a wire's end, a
+ * part's lead, a flag, a tag) — or take it off the desk with a null point.
+ *
+ * @param {HTMLElement} ring
+ * @param {{x:number,y:number}|null} point - world (pitch) centre.
+ * @param {boolean} [legal] - false paints it the danger colour.
+ */
+export function aimRing(ring, point, legal = true) {
+  if (!point) {
+    ring.hidden = true;
+    ring.classList.remove("hole-ring--illegal");
+    return;
+  }
+  const r = RING_RADIUS * PX_PER_UNIT;
+  ring.style.left = `${point.x * PX_PER_UNIT - r}px`;
+  ring.style.top = `${point.y * PX_PER_UNIT - r}px`;
+  ring.classList.toggle("hole-ring--illegal", !legal);
+  ring.hidden = false;
+}
+
 export class HoleRings {
   #layer;
   #pool = [];

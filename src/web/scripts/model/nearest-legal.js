@@ -28,8 +28,8 @@
 // raw CURSOR point does not, and whole-pitch steps from one land between the
 // holes: half a pitch off a column, every sample misses every hole on the
 // strip, while a strip on another lattice answers from pitches away. For "the
-// nearest hole to this point" enumerate the real ones instead
-// (part-geometry.js's `connectionPointsNear`).
+// nearest legal hole to this point" enumerate the real ones instead
+// (part-geometry.js's `nearestLegalPoint`, over `connectionPointsNear`).
 //
 // The search is INCREMENTAL (ring by ring, `nearestLegalOffset` bails out at
 // the first hit) rather than pre-building and sorting one big square, so an

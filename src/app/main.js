@@ -59,6 +59,7 @@ const {
 } = require("./store/project-store");
 const memStore = require("./store/mem-store");
 const datasheetDownload = require("./datasheets/download");
+const { registerSerialIpc } = require("./ipc/serial");
 const { reseatImages } = require("./store/project-images");
 const {
   rememberRecent,
@@ -1749,10 +1750,30 @@ function closeAuxWindows() {
   }
 }
 
+// ─── Arduino serial integration ───────────────────────────────────────────────
+// Its IPC and its log windows live in ipc/serial.js (the protocol and the ports
+// under serial/); this is the handle main keeps, to let the ports go when the
+// renderer that opened them does.
+let serialIpc = null;
+
 // ─── IPC handlers ─────────────────────────────────────────────────────────────
 // Every channel registered here must have a matching window.chiphippo.* export
 // in preload.js (the ipc-parity test enforcing this lands in Feature 20).
 function registerIpc() {
+  serialIpc = registerSerialIpc({
+    ipcMain,
+    BrowserWindow,
+    dialog,
+    getSettings: () => getSettingsStore().get(),
+    setSettings: (patch) => getSettingsStore().set(patch),
+    getDisplays: () => screen.getAllDisplays(),
+    getMainWindow: () => mainWindow,
+    m,
+    windowBackground,
+    icon: appIcon,
+    appDir: __dirname,
+  });
+
   // Mirrors the bridge's synchronous `platform` value so main stays the
   // authoritative source for platform info reachable over IPC.
   ipcMain.handle("app:platform", () => process.platform);
@@ -1791,6 +1812,12 @@ function registerIpc() {
     // whichever window writes the key, every window follows.
     if (patch && Object.hasOwn(patch, "fontSize")) {
       broadcastFontSize(next.fontSize, event.sender);
+    }
+    // A serial log window is titled with its connection's name, and a
+    // connection's window state goes when the connection does.
+    if (patch && Object.hasOwn(patch, "serialConnections")) {
+      serialIpc?.retitleLogs();
+      serialIpc?.forgetDeletedWindows();
     }
     return next;
   });
@@ -2336,6 +2363,9 @@ function createWindow() {
     // keep running, and keep spending the user's tokens, for a panel that no
     // longer exists.
     aiClient.cancelAll();
+    // The serial ports a run opened belong to the renderer that ran it; let
+    // them go so the Arduino IDE can have them back.
+    void serialIpc?.closeAll();
     // Close the orphaned pinout/inspector windows so they don't outlive the
     // desk they belong to — and so `window-all-closed` can actually fire and
     // quit the app instead of hanging on a stray inspector. That second reason
@@ -2345,6 +2375,11 @@ function createWindow() {
     // so it survives New/Open — but it must not outlive the app itself.
     if (docsWindow && !docsWindow.isDestroyed()) docsWindow.close();
   });
+
+  // A renderer that dies mid-run can never send the Stop that closes its
+  // ports; nor can one that reloads (the new one closes them itself on boot,
+  // but a crashed one never boots again).
+  win.webContents.on("render-process-gone", () => void serialIpc?.closeAll());
 
   if (isDev || isDevTools) win.webContents.openDevTools({ mode: "bottom" });
   if (isHotReload) installHotReload(win);

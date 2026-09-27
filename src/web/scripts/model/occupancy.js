@@ -308,14 +308,15 @@ export function partPinAddresses(doc, comp) {
  *   { kind: "pin", componentId, pin }   — a seated chip pin
  *   { kind: "wire", wireId, end }       — a wire end ("from" | "to")
  *   { kind: "signal", signalId }        — a planted signal flag's POINT
+ *   { kind: "tag", elementId, key }     — a planted Output/Input tag's point
  *
  * Unresolvable entries (unknown ref, malformed anchor/address) contribute
  * nothing — normalizeDocument drops them on load anyway.
  *
  * ORDER MATTERS, and it is the inverse of the loader's. normalizeDocument
  * claims a hole PINS → WIRES → FLAGS and keeps the FIRST; this map is
- * last-writer-wins, so the same precedence is spelled backwards: flags first,
- * then wires, then pins. A normalized document never collides, but this also
+ * last-writer-wins, so the same precedence is spelled backwards: tags and
+ * flags first, then wires, then pins. A normalized document never collides, but this also
  * runs against live mid-mutation documents, and of the two ways a collision
  * could read, a flag masking a WIRE end is the harmful one — canReendWire
  * would then refuse to move that wire's own end, wedging it for good, where
@@ -331,6 +332,15 @@ export function buildOccupancy(doc) {
     const address = sig?.flag?.anchor;
     if (typeof address === "string") {
       map.set(address, { kind: "signal", signalId: sig.id });
+    }
+  }
+  // An integration element's tags are flags by another name: each planted
+  // point is one lead in one hole.
+  for (const element of doc.integrations ?? []) {
+    for (const [key, tag] of Object.entries(element?.tags ?? {})) {
+      if (typeof tag?.anchor === "string") {
+        map.set(tag.anchor, { kind: "tag", elementId: element.id, key });
+      }
     }
   }
   for (const comp of doc.components ?? []) {
@@ -431,6 +441,27 @@ export function canPlaceFlag(doc, signalId, address) {
   const occupant = buildOccupancy(doc).get(address);
   return (
     !occupant || (occupant.kind === "signal" && occupant.signalId === signalId)
+  );
+}
+
+/**
+ * May element `elementId`'s tag `key` plug into `address`? `canPlaceFlag`'s
+ * rule one item over: free, ignoring the tag's OWN current claim, so one
+ * method serves planting and moving alike. The board-hole half is the
+ * caller's (DeskDoc.canPlaceIntegrationTag), for the same reason as a flag's.
+ *
+ * @param {{ integrations?: Array }} doc
+ * @param {string} elementId
+ * @param {string} key
+ * @param {string} address
+ */
+export function canPlaceTag(doc, elementId, key, address) {
+  const occupant = buildOccupancy(doc).get(address);
+  return (
+    !occupant ||
+    (occupant.kind === "tag" &&
+      occupant.elementId === elementId &&
+      occupant.key === key)
   );
 }
 

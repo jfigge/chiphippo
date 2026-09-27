@@ -54,6 +54,7 @@ test("a fresh DeskDoc serializes to the empty document shape", () => {
     annotations: [],
     scopeChannels: [],
     signals: [],
+    integrations: [],
     nextBoardId: 1,
     nextGroupId: 1,
     nextComponentId: 1,
@@ -64,6 +65,8 @@ test("a fresh DeskDoc serializes to the empty document shape", () => {
     nextAnnotationId: 1,
     nextScopeChannelId: 1,
     nextSignalId: 1,
+    nextOutputId: 1,
+    nextInputId: 1,
   });
   assert.deepEqual(new DeskDoc(null).toJSON(), emptyDocument());
 });

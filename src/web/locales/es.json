@@ -88,7 +88,10 @@
       "memImage": "Imagen de memoria",
       "binImage": "Imagen binaria",
       "intelHex": "Intel HEX",
-      "allFiles": "Todos los archivos"
+      "allFiles": "Todos los archivos",
+      "header": "Cabecera C/C++",
+      "python": "Código fuente de Python",
+      "text": "Texto"
     },
     "regrant": {
       "message": "Confirma el acceso a este proyecto",
@@ -171,6 +174,13 @@
       "step": "Paso",
       "stepTitle": "Avanzar medio periodo de reloj",
       "speedTitle": "Velocidad del reloj (haz clic para alternar ¼ / 1 / 4)"
+    },
+    "generate": {
+      "label": "Generar",
+      "title": "Generar el código para las placas de este escritorio",
+      "stale": "Generar — el código de una placa está desactualizado respecto al diseño de este escritorio",
+      "staleLabel": "Generar (desactualizada)",
+      "none": "Generar código de placa — añade primero una Salida o una Entrada"
     }
   },
   "zoom": {
@@ -186,7 +196,8 @@
       "appearance": "Apariencia",
       "datasheets": "Hojas de datos",
       "ai": "IA",
-      "about": "Acerca de"
+      "about": "Acerca de",
+      "integration": "E/S serie"
     },
     "appearance": {
       "language": "Idioma",
@@ -329,6 +340,13 @@
       "signals": "SEÑALES",
       "switches": "Interruptores",
       "xor": "XOR"
+    },
+    "integration": {
+      "output": "Salida",
+      "input": "Entrada",
+      "outputHint": "envía un valor a un Arduino cuando se dispara su disparador — haz clic en el escritorio para añadir una",
+      "inputHint": "los valores de un Arduino controlan sus pines — haz clic en el escritorio para añadir una",
+      "full": "Este escritorio ya tiene tantas Salidas y Entradas como admite"
     }
   },
   "boards": {
@@ -1090,7 +1108,11 @@
       "size": "Tamaño",
       "imageSource": "Archivo de imagen",
       "type": "Tipo",
-      "rest": "Valor por defecto"
+      "rest": "Valor por defecto",
+      "connection": "Conexión",
+      "triggerEdge": "Disparador",
+      "triggerInit": "El disparador empieza",
+      "fields": "Pines"
     },
     "option": {
       "manual": "Manual",
@@ -1101,7 +1123,8 @@
     },
     "action": {
       "inspectMemory": "Inspeccionar la memoria…",
-      "programMemory": "Cargar una imagen… (programar)"
+      "programMemory": "Cargar una imagen… (programar)",
+      "manageConnections": "Gestionar conexiones…"
     },
     "warnings": "Advertencias",
     "warning": {
@@ -1182,5 +1205,290 @@
     "closeNamed": "Cerrar {title}",
     "removeNamed": "Quitar {label}",
     "enterValue": "Introduce un valor"
+  },
+  "integration": {
+    "kind": {
+      "output": "Salida",
+      "input": "Entrada"
+    },
+    "defaultName": {
+      "output": "Salida {n}",
+      "input": "Entrada {n}"
+    },
+    "edge": {
+      "rising": "Subida",
+      "falling": "Bajada",
+      "either": "Ambos"
+    },
+    "fieldType": {
+      "bit": "Bit",
+      "byte": "Byte",
+      "word": "Palabra"
+    },
+    "widthLabel": "Ancho",
+    "widthOption": {
+      "one": "{count} pin",
+      "other": "{count} pines"
+    },
+    "widthTitle": {
+      "output": "Ancho de la salida (pines)",
+      "input": "Ancho de la entrada (pines)"
+    },
+    "tag": {
+      "pinTitle": "{name} · pin {pin} {field}",
+      "triggerTitle": "{name} · disparador ({edge})"
+    },
+    "card": {
+      "noConnection": "sin conexión",
+      "menuHint": "Clic derecho para Propiedades y más",
+      "width": {
+        "one": "{count} pin",
+        "other": "{count} pines"
+      },
+      "pinHint": "Pin {pin} — arrástralo a un orificio",
+      "triggerHint": "Disparador — arrástralo a la línea que lo dispara"
+    },
+    "menu": {
+      "removeTag": "Quitar etiqueta",
+      "removeAllTags": "Quitar todas las etiquetas",
+      "delete": {
+        "output": "Eliminar salida",
+        "input": "Eliminar entrada"
+      },
+      "openWindow": "Abrir ventana de conexión"
+    },
+    "properties": {
+      "title": {
+        "output": "Propiedades de {name}",
+        "input": "Propiedades de {name}"
+      },
+      "connection": "Conexión",
+      "noConnection": "Ninguna",
+      "unknownConnection": "(no está en este ordenador)",
+      "manageConnections": "Gestionar conexiones…",
+      "triggerEdge": "Disparador",
+      "triggerInit": "El disparador empieza",
+      "pins": "Pines"
+    },
+    "fields": {
+      "pinsTitle": "Pines {pins}",
+      "nameAria": "Nombre de los pines {pins}",
+      "typeAria": "Tipo de los pines {pins}",
+      "remove": "Quitar este campo",
+      "count": "{used} de {max} pines"
+    },
+    "verify": {
+      "title": "Hay que verificar la configuración",
+      "noConnection": "{name} no tiene ninguna conexión asignada. Elige una en sus Propiedades.",
+      "unknownConnection": "La conexión que usa {name} no está configurada en este equipo. Elija una en sus Propiedades.",
+      "unconfigured": "La conexión «{name}» debe configurarse en Ajustes ▸ E/S serie antes de que el circuito pueda funcionar.",
+      "portMissing": "El puerto {port} de la conexión «{name}» no está disponible.",
+      "openSettings": "Abrir Ajustes",
+      "openProperties": "Abrir Propiedades"
+    },
+    "run": {
+      "connectingTitle": "Conectando",
+      "connecting": "Esperando la respuesta de {names}…",
+      "signatureTitle": "Sketch de otro diseño",
+      "signature": "El código de «{name}» se generó para otro diseño. Genéralo de nuevo y vuelve a cargarlo en la placa.",
+      "versionTitle": "Versión de protocolo distinta",
+      "version": "«{name}» habla el protocolo v{device}; Chip Hippo habla v{host}. Genera de nuevo su código y vuelve a cargarlo en la placa.",
+      "droppedTitle": "Conexión perdida",
+      "dropped": "Se perdió la conexión serie con «{name}», así que el circuito se ha detenido.",
+      "deliveryTitle": "Error de entrega",
+      "delivery": "La entrega a «{name}» falló tras {attempts} intentos, así que el circuito se ha detenido. ¿Llama su sketch a ChipHippo.poll() con suficiente frecuencia?",
+      "noResponseTitle": "Sin respuesta",
+      "noResponse": "Nada respondió en {port} para «{name}». ¿Está cargado el sketch y llama a ChipHippo.begin() y ChipHippo.poll()?",
+      "openFailedTitle": "No se pudo abrir el puerto",
+      "openFailed": "No se pudo abrir {port} para «{name}»: {detail}",
+      "restartTitle": "Placa reiniciada",
+      "restart": "«{name}» se reinició mientras el circuito funcionaba, así que el circuito se ha detenido. Ejecútalo de nuevo para volver a conectar."
+    },
+    "lamps": {
+      "label": "Actividad serie",
+      "tx": "TX — valores enviados a un Arduino",
+      "rx": "RX — valores recibidos de un Arduino",
+      "lg": "LG — salida de registro",
+      "open": "Haz clic para abrir una ventana de conexión."
+    },
+    "log": {
+      "empty": "Nada todavía. Lo que imprime el sketch, y cada valor que cruza la conexión, aparece aquí mientras el circuito funciona.",
+      "filter": {
+        "log": "Registro",
+        "data": "Datos",
+        "protocol": "Protocolo"
+      },
+      "filterTitle": {
+        "log": "Mostrar lo que imprimió el dispositivo",
+        "data": "Mostrar los valores que cruzan la conexión",
+        "protocol": "Mostrar confirmaciones, saludos y la apertura y cierre del puerto. Los problemas siempre se muestran."
+      },
+      "timestamps": "Marcas de tiempo",
+      "timestampsTitle": "Mostrar el tiempo desde que empezó la ejecución",
+      "save": "Guardar…",
+      "saved": "Guardado en {path}",
+      "saveFailed": "No se pudo guardar: {error}",
+      "event": {
+        "open": "Conexión abierta",
+        "openPort": "Puerto {port} abierto",
+        "close": "Puerto cerrado",
+        "handshake": "Saludo correcto: protocolo v{version}, firma {signature}",
+        "announce": "el dispositivo anunció un arranque",
+        "staleAck": "obsoleto, ignorado",
+        "nakIdle": "nada que reenviar",
+        "resend": "reenviando seq {seq} (intento {attempt}/{max})",
+        "noAck": "Sin ACK para seq {seq} — reenviando (intento {attempt}/{max})",
+        "failed": "La entrega de seq {seq} falló tras {attempts} intentos",
+        "frame": "trama",
+        "damage": {
+          "crc": "CRC incorrecto",
+          "escape": "escape incorrecto",
+          "length": "demasiado larga"
+        },
+        "damagedNak": "{frame} dañado ({error}) — NAK enviado",
+        "damagedDropped": "{frame} dañado ({error}) — descartado",
+        "duplicate": "un reenvío: confirmado de nuevo, no aplicado dos veces",
+        "unusable": "ilegible: confirmado y descartado",
+        "noResponse": "Sin respuesta a HELLO en {seconds} s",
+        "version": "El dispositivo habla el protocolo v{version}; Chip Hippo habla v{host}",
+        "signature": "El dispositivo se construyó para la disposición {signature}, no {expected}",
+        "restart": "El dispositivo se reinició",
+        "dropped": "Conexión perdida",
+        "droppedDetail": "Conexión perdida: {detail}",
+        "openFailed": "No se pudo abrir el puerto: {detail}"
+      }
+    },
+    "settings": {
+      "hint": "Conexiones serie con nombre a placas Arduino. Las Salidas y Entradas eligen una en sus Propiedades.",
+      "connection": "Conexión",
+      "optionTagged": "{name} — {tag}",
+      "add": "Añadir conexión",
+      "defaultName": "Arduino",
+      "name": "Nombre",
+      "port": "Puerto",
+      "baud": "Velocidad (baudios)",
+      "language": "Lenguaje",
+      "languageValue": {
+        "cpp": "C++",
+        "python": "Python"
+      },
+      "languageHint": "Lo que Generar escribe para esta conexión: C++ — una cabecera de Arduino, para cualquier placa Arduino — o Python — un módulo para placas MicroPython y CircuitPython, como una Raspberry Pi Pico, un ESP32 o un Nano ESP32. Uno, Nano, Mega y Leonardo solo admiten C++.",
+      "choosePort": "— elige un puerto —",
+      "portNotFound": "{port} (no encontrado)",
+      "portOf": "puerto {n} de {count}",
+      "portOfRole": "puerto {n} de {count}: {role}",
+      "portRoleRepl": "REPL",
+      "portRoleData": "datos de CircuitPython",
+      "rescan": "Volver a buscar",
+      "scanning": "Buscando…",
+      "advanced": "Avanzado",
+      "dataBits": "Bits de datos",
+      "parity": "Paridad",
+      "parityValue": {
+        "none": "Ninguna",
+        "even": "Par",
+        "odd": "Impar",
+        "mark": "Marca",
+        "space": "Espacio"
+      },
+      "stopBits": "Bits de parada",
+      "flowControl": "Control de flujo",
+      "flowValue": {
+        "none": "Ninguno",
+        "hardware": "Hardware (RTS/CTS)",
+        "software": "Software (XON/XOFF)"
+      },
+      "needsConfig": "Requiere configuración",
+      "portUnavailable": "Puerto no disponible",
+      "apply": "Aplicar",
+      "applied": "Aplicado.",
+      "applyAnyway": "Aplicar de todos modos",
+      "noPort": "Elige primero un puerto.",
+      "portAbsent": "{port} no está conectado ahora mismo.",
+      "remove": "Quitar conexión",
+      "removeConfirm": "Haz clic de nuevo para quitar esta conexión",
+      "builtin": "Integrada",
+      "mockNote": "Simula un dispositivo en esta conexión. No se envía nada al hardware.",
+      "reservedName": "«{name}» es el nombre de la conexión integrada. Elige otro.",
+      "openWindow": "Abrir ventana…",
+      "openWindowTitle": "Abrir la ventana de esta conexión: lo que imprime el dispositivo y cada valor que la cruza"
+    },
+    "generate": {
+      "title": "Generar código de placa",
+      "intro": "Un archivo por conexión, en el lenguaje de la conexión: una cabecera de C++ o un módulo de Python. Guárdalo junto al código de la placa e inclúyelo o impórtalo. Tu código gestiona las Salidas, así que sobrescribir el archivo nunca lo toca.",
+      "none": "Ninguna Salida ni Entrada de este escritorio tiene conexión.",
+      "unassigned": {
+        "one": "{count} elemento no tiene conexión y se omite.",
+        "other": "{count} elementos no tienen conexión y se omiten."
+      },
+      "counts": "Salidas: {outputs} · Entradas: {inputs}",
+      "language": {
+        "cpp": "Cabecera de C++ para Arduino",
+        "python": "Módulo de Python para MicroPython y CircuitPython"
+      },
+      "hash": "Diseño {hash}",
+      "status": {
+        "current": "Actualizada",
+        "stale": "Desactualizada",
+        "never": "Aún no generada",
+        "unknown": "No configurada en este ordenador"
+      },
+      "save": "Guardar cabecera…",
+      "saveModule": "Guardar módulo…",
+      "copy": "Copiar",
+      "view": "Ver archivos…",
+      "viewTitle": "{name}: cabecera y ejemplo",
+      "viewTitlePython": "{name}: módulo y ejemplos",
+      "files": "Archivos",
+      "copied": "Copiada al portapapeles.",
+      "copiedFile": "{name} copiado al portapapeles.",
+      "copyFailed": "No se pudo copiar al portapapeles.",
+      "saved": "Guardada en {path}",
+      "failed": "No se pudo guardar el archivo: {error}",
+      "warn": {
+        "duplicate": "«{name}» pasó a ser {identifier}: otro nombre producía el mismo identificador.",
+        "reserved": "«{name}» pasó a ser {identifier}: esa palabra está reservada en el código de Arduino.",
+        "reservedPython": "«{name}» pasó a ser {identifier}: esa palabra está reservada en Python."
+      },
+      "warnConfig": "1,5 bits de parada no tiene ajuste en Arduino, así que la cabecera abre el puerto con su formato predeterminado.",
+      "warnPythonFraming": "Esta conexión está a {baud} baudios, {format}. Una placa MicroPython cuyo USB es un chip serie aparte (un ESP32 DevKit clásico) siempre habla a 115200 baudios, 8N1, así que no se conectará; a una placa con USB integrado (una Pico, un Nano ESP32) le da igual.",
+      "mockOnly": "Todas las Salidas y Entradas de este escritorio están en el Mock, que no necesita código: se construye a partir del diseño en pantalla en cada ejecución.",
+      "mockNote": "El Mock no necesita código."
+    },
+    "mock": {
+      "status": {
+        "idle": "Sin ejecutar. El Mock se conecta cuando pulsas Ejecutar.",
+        "waiting": "Esperando a que el circuito salude al Mock…",
+        "connected": "Conectado. Lo que envíes llega al circuito."
+      },
+      "noLayout": "Ejecuta el circuito para ver aquí las Entradas del Mock.",
+      "noInputs": "El Mock no tiene Entradas en este escritorio.",
+      "send": "Enviar",
+      "sendAll": "Enviar todo",
+      "sent": "Enviado",
+      "failed": {
+        "offline": "Sin conexión",
+        "delivery": "Sin confirmar",
+        "closed": "La ejecución terminó",
+        "invalid": "No es un valor que pueda enviar"
+      },
+      "bit": "{name}, bit {bit}",
+      "log": "Registrar",
+      "logPlaceholder": "Texto de registro",
+      "faults": "Fallos",
+      "faultsHint": "Cada fallo ocurre una vez, en la siguiente trama a la que se aplica.",
+      "fault": {
+        "drop-ack": "Descartar el siguiente ACK",
+        "corrupt": "Dañar la siguiente trama",
+        "ignore-hello": "Ignorar el saludo",
+        "wrong-signature": "Firma incorrecta"
+      },
+      "faultTitle": {
+        "drop-ack": "Tragarse la confirmación de la siguiente Salida, para que Chip Hippo agote el tiempo y la reenvíe",
+        "corrupt": "Dañar la siguiente confirmación o Entrada que envíe el Mock, para que Chip Hippo la pida de nuevo",
+        "ignore-hello": "No responder en la siguiente ejecución, para que se detenga con «Sin respuesta»",
+        "wrong-signature": "Responder a la siguiente ejecución como un sketch de otro diseño, para que no arranque"
+      }
+    }
   }
 }

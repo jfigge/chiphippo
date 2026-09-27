@@ -26,6 +26,22 @@
 //
 // Topology is FROZEN while running (the app locks editing tools); switch/clock
 // changes are part state, not topology, so the netlist still rebuilds on them.
+//
+// THE SETTLE BOUNDARY. Every tick ends with the board settled, and that is the
+// one moment an outside party may look at it or change it — the Arduino serial
+// integration's whole timing model ("external data only enters or leaves the
+// board at settle boundaries") rests on it. So an optional `integration`
+// collaborator is told of every boundary (`settled`), and may answer with:
+//   · nothing — the board carries on;
+//   · `{again: true}` — it put new levels on the board (an Input's value), so
+//     run one more settle straight away;
+//   · a PROMISE — the INTEGRATION SETTLE: frames went out and the board STALLS
+//     until they are acknowledged. Nothing advances while it does — a clock
+//     edge due in the meantime is skipped (time is frozen, not queued), and an
+//     input event is held and settled once, when the stall ends.
+// The same collaborator may refuse a Run before it starts (`preflight`), gate
+// the first tick the way a ROM load does (`begin`), add drivers of its own to
+// every settle (`levels`), and hear Stop (`end`). The engine knows none of it.
 
 import { t } from "../i18n.js";
 import { tick } from "../sim/engine.js";
@@ -143,6 +159,14 @@ export const SPEEDS = Object.freeze([0.25, 1, 4]);
 const MIN_HALF_PERIOD_MS =
   1000 / (2 * Math.max(...CLOCK_HZ.filter((hz) => typeof hz === "number")));
 
+/**
+ * How many settles ONE tick request may chain through `{again: true}` before
+ * it stops and waits for the next event. Each answer consumes the value that
+ * prompted it, so a real chain is one or two long; the cap only guarantees a
+ * misbehaving collaborator can never spin the renderer.
+ */
+const MAX_BOUNDARY_PASSES = 32;
+
 export class SimController {
   #doc;
   #netlist;
@@ -162,18 +186,31 @@ export class SimController {
   #timers = new Map(); // clockId → interval handle
   #suppress = false; // ignore our own damage-persist writes
   #runToken = 0; // bumped on every start() — see #loadRom
+  #integration = null; // the settle-boundary collaborator (see the file header)
+  #stalled = false; // an integration settle is in progress — the board waits
+  #pendingTick = false; // a tick asked for while stalled, or a boundary's `again`
+  #startToken = 0; // bumped by every Run request, so a stale preflight stands down
 
   /**
    * @param {object} opts
    * @param {import('../model/desk-doc.js').DeskDoc} opts.deskDoc
    * @param {import('./notification-stack.js').NotificationStack} [opts.notifications]
    * @param {(mode: string) => void} [opts.onTransportChange]
+   * @param {object} [opts.integration] - the settle-boundary collaborator:
+   *   `{preflight?, begin?, settled?, levels?, end?}` (see the file header).
    */
-  constructor({ deskDoc, notifications, onTransportChange, netlist }) {
+  constructor({
+    deskDoc,
+    notifications,
+    onTransportChange,
+    netlist,
+    integration,
+  }) {
     this.#doc = deskDoc;
     this.#netlist = netlist ?? new NetlistCache(deskDoc);
     this.#notifications = notifications;
     this.#onTransportChange = onTransportChange;
+    this.#integration = integration ?? null;
     window.addEventListener("chiphippo:part-state", this.#onPartState);
     window.addEventListener("chiphippo:doc-changed", this.#onDocChanged);
   }
@@ -198,10 +235,41 @@ export class SimController {
    * start the clocks. Seeding is async ONLY when a ROM chip is present; with
    * none (or only volatile SRAM), Run proceeds synchronously. Returns a promise
    * that resolves once the first tick has run (tests await it; the UI ignores it).
+   *
+   * An integration collaborator may REFUSE the run first (`preflight` — its
+   * connections need verifying), in which case nothing starts at all: no
+   * transport change, no locked desk, nothing to stop.
    */
   start() {
     if (this.#mode !== TRANSPORT.STOPPED) return;
+    const token = ++this.#startToken;
+    let verdict;
+    try {
+      verdict = this.#integration?.preflight?.(this.#doc.toJSON());
+    } catch (err) {
+      console.error("[renderer] integration preflight failed:", err);
+      return;
+    }
+    if (verdict && typeof verdict.then === "function") {
+      return verdict.then(
+        (ok) => {
+          // A second Run press, or a Stop, while this was checking wins.
+          if (!ok || token !== this.#startToken) return;
+          if (this.#mode !== TRANSPORT.STOPPED) return;
+          return this.#beginRun();
+        },
+        (err) => console.error("[renderer] integration preflight failed:", err),
+      );
+    }
+    if (verdict === false) return;
+    return this.#beginRun();
+  }
+
+  /** The run itself, once nothing has refused it. */
+  #beginRun() {
     this.#mode = TRANSPORT.RUNNING;
+    this.#stalled = false;
+    this.#pendingTick = false;
     const token = ++this.#runToken;
     this.#warm = new Map();
     this.#state = new Map();
@@ -220,9 +288,48 @@ export class SimController {
     }
     this.#dataLossWarned = new Set();
     this.#onTransportChange?.(this.#mode); // lock editing while files load
-    const pending = this.#seedImages(token);
-    if (pending) return pending.then(() => this.#afterSeed(token));
+    const gates = [this.#seedImages(token), this.#beginIntegration(token)];
+    const pending = gates.filter(Boolean);
+    if (this.#mode === TRANSPORT.STOPPED) return; // the integration refused
+    if (pending.length) {
+      return Promise.all(pending).then(() => this.#afterSeed(token));
+    }
     this.#afterSeed(token);
+  }
+
+  /**
+   * Let the integration open what the run needs (ports, and each board's
+   * HELLO) before the first tick — the ROM load's gate, one collaborator over.
+   * An answer of `false` stops the run; saying WHY is the collaborator's job,
+   * since only it knows. Returns a promise to wait on, or null.
+   */
+  #beginIntegration(token) {
+    let gate;
+    try {
+      gate = this.#integration?.begin?.(this.#doc.toJSON());
+    } catch (err) {
+      console.error("[renderer] integration begin failed:", err);
+      gate = false;
+    }
+    const refuse = () => {
+      if (token === this.#runToken && this.#mode !== TRANSPORT.STOPPED) {
+        this.stop();
+      }
+    };
+    if (gate === false) {
+      refuse();
+      return null;
+    }
+    if (!gate || typeof gate.then !== "function") return null;
+    return gate.then(
+      (ok) => {
+        if (ok === false) refuse();
+      },
+      (err) => {
+        console.error("[renderer] integration begin failed:", err);
+        refuse();
+      },
+    );
   }
 
   /** First settle + clock start once memory images are seeded/loaded. */
@@ -270,6 +377,15 @@ export class SimController {
     this.#signalLevel = new Map();
     this.#images = new Map();
     this.#memInfo = new Map();
+    // A stall still waiting on an ACK is abandoned: the run token it carries
+    // no longer matches anything once the mode is STOPPED.
+    this.#stalled = false;
+    this.#pendingTick = false;
+    try {
+      this.#integration?.end?.();
+    } catch (err) {
+      console.error("[renderer] integration end failed:", err);
+    }
     this.#notifications?.clear();
     // BEFORE #onTransportChange: stopping re-baselines undo/redo against the
     // live document (`#history.sync`), so the chips have to be whole by the
@@ -564,6 +680,10 @@ export class SimController {
       Math.round(1000 / (2 * c.params.hz * this.#speed)),
     );
     const handle = setInterval(() => {
+      // An integration settle freezes time: the edge due now is SKIPPED, not
+      // queued, so a slow Arduino slows the clock instead of bunching edges
+      // up behind the stall.
+      if (this.#stalled) return;
       this.#flip(c.id);
       this.#tickNow();
     }, halfMs);
@@ -593,9 +713,95 @@ export class SimController {
     this.#tickNow();
   };
 
-  /** Run one engine tick from the current phase + state, and publish. */
+  /**
+   * Something outside the board changed — an Arduino's value arrived — and it
+   * may be applied at the next boundary. A tick provides one: while the board
+   * is quiet that is now, and while it is stalled it is when the stall ends.
+   */
+  wake() {
+    this.#tickNow();
+  }
+
+  /** Is the board waiting on an integration settle right now? */
+  get stalled() {
+    return this.#stalled;
+  }
+
+  /**
+   * Run one engine tick from the current phase + state, publish, and hand the
+   * settled board to the integration — repeating while it answers `again`,
+   * and deferring altogether while it is stalled.
+   */
   #tickNow() {
     if (this.#mode === TRANSPORT.STOPPED) return;
+    if (this.#stalled) {
+      this.#pendingTick = true;
+      return;
+    }
+    for (let pass = 0; pass < MAX_BOUNDARY_PASSES; pass++) {
+      this.#pendingTick = false;
+      const settled = this.#tickOnce();
+      if (settled) this.#boundary(settled);
+      if (!this.#pendingTick || this.#stalled) return;
+      if (this.#mode === TRANSPORT.STOPPED) return;
+    }
+  }
+
+  /**
+   * The settle boundary: tell the integration the board has settled, and act
+   * on its answer (see the file header).
+   */
+  #boundary({ doc, netlist, result }) {
+    if (!this.#integration?.settled) return;
+    let verdict;
+    try {
+      verdict = this.#integration.settled({
+        document: doc,
+        netlist,
+        netLevels: result.netLevels,
+      });
+    } catch (err) {
+      console.error("[renderer] integration settle failed:", err);
+      return;
+    }
+    if (!verdict) return;
+    if (typeof verdict.then === "function") {
+      this.#stalled = true;
+      const token = this.#runToken;
+      verdict.then(
+        (v) => this.#endStall(token, v?.again === true),
+        (err) => {
+          console.error("[renderer] integration settle failed:", err);
+          if (token === this.#runToken) this.stop();
+        },
+      );
+      return;
+    }
+    if (verdict.again === true) this.#pendingTick = true;
+  }
+
+  /** The integration settle is over: the board may advance again, and settles
+      once for whatever was held back while it waited. */
+  #endStall(token, again) {
+    if (token !== this.#runToken || this.#mode === TRANSPORT.STOPPED) return;
+    this.#stalled = false;
+    if (again || this.#pendingTick) {
+      this.#pendingTick = false;
+      this.#tickNow();
+    }
+  }
+
+  /** The levels every planted driver holds: the signals' own, plus whatever
+      the integration drives (an Input's pins), in the one map the engine
+      reads. */
+  #driveLevels() {
+    const extra = this.#integration?.levels?.();
+    if (!extra || extra.size === 0) return this.#signalLevel;
+    return new Map([...this.#signalLevel, ...extra]);
+  }
+
+  /** One engine tick + publish. Returns what the boundary needs, or null. */
+  #tickOnce() {
     this.#suppress = true;
     try {
       const doc = this.#doc.toJSON();
@@ -607,7 +813,7 @@ export class SimController {
         state: this.#state,
         prevPinLevels: this.#prevPins,
         clockPhase: this.#clockPhase,
-        signalLevels: this.#signalLevel,
+        signalLevels: this.#driveLevels(),
         images: this.#images,
       });
       this.#warm = result.netLevels;
@@ -619,6 +825,7 @@ export class SimController {
       this.#persistDamage(result.chipStatus);
       this.#publish(result, netlist, this.#displayState(doc, result.state));
       this.#report(result.warnings);
+      return { doc, netlist, result };
     } finally {
       this.#suppress = false;
     }

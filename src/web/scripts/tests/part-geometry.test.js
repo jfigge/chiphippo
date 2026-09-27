@@ -29,6 +29,7 @@ import {
   connectionPointsNear,
   deskBounds,
   hoverHitAt,
+  nearestLegalPoint,
   partPinsWorld,
   wireEndNear,
   wirePointNear,
@@ -142,6 +143,61 @@ test("connectionPointsNear: beside f1 it answers the board under the cursor, not
     near.every((p) => p.address.startsWith("bb1.")),
     "nothing on the rail strip is within a hole's reach",
   );
+});
+
+test("nearestLegalPoint: the point under the cursor when it is legal", () => {
+  const got = nearestLegalPoint(BOARDS, [], { x: 5.2, y: ROW.a }, () => true);
+  assert.equal(got.point.address, "bb1.a5");
+  assert.equal(got.accepted, true);
+  assert.equal(got.inReach, true);
+});
+
+test("nearestLegalPoint: a refused point gives way to the nearest one that is not", () => {
+  // a5 is taken: its neighbours b5, a4 and a6 are all one pitch off, and the
+  // stated tie-break (top-to-bottom, then left-to-right) picks b5.
+  const taken = new Set(["bb1.a5"]);
+  const got = nearestLegalPoint(
+    BOARDS,
+    [],
+    { x: 5, y: ROW.a },
+    (p) => !taken.has(p.address),
+  );
+  assert.equal(got.point.address, "bb1.b5");
+});
+
+test("nearestLegalPoint: `accepted` is whatever accept() returned for the winner", () => {
+  const got = nearestLegalPoint(BOARDS, [], { x: 5, y: ROW.a }, (p) =>
+    p.address === "bb1.a6" ? { seat: "a6" } : null,
+  );
+  assert.equal(got.point.address, "bb1.a6");
+  assert.deepEqual(got.accepted, { seat: "a6" });
+});
+
+test("nearestLegalPoint: never reaches a diagonal — a near-miss is forgiven by ONE hole", () => {
+  // Every orthogonal neighbour of a5 refused; the diagonal b4 (1.41) is out of
+  // reach, so nothing lands — but a board WAS in reach, which is a miss.
+  const legal = new Set(["bb1.b4", "bb1.b6"]);
+  const got = nearestLegalPoint(BOARDS, [], { x: 5, y: ROW.a }, (p) =>
+    legal.has(p.address),
+  );
+  assert.equal(got.point, null);
+  assert.equal(got.accepted, null);
+  assert.equal(got.inReach, true);
+});
+
+test("nearestLegalPoint: clear of every hole is not a miss — nothing is in reach", () => {
+  const got = nearestLegalPoint(BOARDS, [], { x: 500, y: 500 }, () => true);
+  assert.equal(got.point, null);
+  assert.equal(got.inReach, false);
+});
+
+test("nearestLegalPoint: brick terminals count only when components are passed", () => {
+  const at = { x: 83, y: 4 };
+  assert.equal(
+    nearestLegalPoint(BOARDS, [PSU], at, () => true).point.address,
+    "psu1.+",
+  );
+  assert.equal(nearestLegalPoint(BOARDS, null, at, () => true).point, null);
 });
 
 test("componentsInRect: a component counts only when EVERY pin is inside", () => {

@@ -39,12 +39,47 @@ export const PROJECT_VERSION = 5;
 
 /** How long a project or desktop name may be (it suggests a file name). */
 import { tf } from "../i18n.js";
+import { normalizeConnections } from "./serial-connections.js";
 
 const MAX_NAME = 64;
 
 /** Trim a user-supplied string field, or "" for anything that isn't one. */
 const text = (value) =>
   typeof value === "string" ? value.trim().slice(0, MAX_NAME) : "";
+
+/** A generated header's design hash, as a project stores it. */
+const HASH_RE = /^0x[0-9A-F]{8}$/;
+
+/**
+ * The serial connections a project carries (the Arduino serial integration)
+ * — its elements' connections with everything but the PORT, which is a fact
+ * about one machine (model/serial-connections.js says why).
+ */
+function projectConnectionList(raw) {
+  return normalizeConnections(raw).map((c) => {
+    const { port: _port, needsConfig: _flag, ...rest } = c;
+    void _port;
+    void _flag;
+    return rest;
+  });
+}
+
+/** The generated-header hashes — `{tabId: {connectionId: "0x…"}}` — pruned
+    to the desktops that exist. */
+function codegenFor(raw, tabs) {
+  const out = {};
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return out;
+  for (const tab of tabs) {
+    const entry = raw[tab.id];
+    if (!entry || typeof entry !== "object") continue;
+    const kept = {};
+    for (const [connId, hash] of Object.entries(entry)) {
+      if (HASH_RE.test(String(hash))) kept[connId] = hash;
+    }
+    if (Object.keys(kept).length) out[tab.id] = kept;
+  }
+  return out;
+}
 
 /** A tab record with the omit-when-empty description convention. */
 function makeTab(id, name, description, doc) {
@@ -59,7 +94,7 @@ function makeTab(id, name, description, doc) {
  *
  * @param {object} raw
  * @returns {object|null} `{version, name, description, wheelLocked, activeTab,
- *   nextIndex, tabs, location}`.
+ *   nextIndex, tabs, connections, codegen, location}`.
  */
 export function normalizeProject(raw) {
   if (!raw || typeof raw !== "object" || !Array.isArray(raw.tabs)) return null;
@@ -84,6 +119,8 @@ export function normalizeProject(raw) {
       : tabs[0].id,
     nextIndex: nextIndexFor(raw, tabs),
     tabs,
+    connections: projectConnectionList(raw.connections),
+    codegen: codegenFor(raw.codegen, tabs),
     location: typeof raw.location === "string" && raw.location ? raw.location : null, // prettier-ignore
   };
 }
@@ -286,10 +323,37 @@ export function setProjectWheelLock(meta, locked) {
 }
 
 /**
+ * The design hash a desktop's header for one connection was last generated
+ * from, or null — the Generate button's staleness test.
+ */
+export function codegenHash(meta, tabId, connectionId) {
+  return meta?.codegen?.[tabId]?.[connectionId] ?? null;
+}
+
+/**
+ * Record that a desktop's header for one connection was generated from
+ * `hash`. It is IN THE FILE (the spec's "store the hash in the project file"),
+ * so it is an edit like a rename. Returns null when nothing changed.
+ */
+export function setCodegenHash(meta, tabId, connectionId, hash) {
+  if (!findDesktop(meta, tabId) || !HASH_RE.test(String(hash))) return null;
+  if (codegenHash(meta, tabId, connectionId) === hash) return null;
+  return {
+    ...meta,
+    codegen: {
+      ...(meta.codegen ?? {}),
+      [tabId]: { ...(meta.codegen?.[tabId] ?? {}), [connectionId]: hash },
+    },
+  };
+}
+
+/**
  * The project exactly as its FILE holds it — which is the whole document, so
  * this is what both the save and the dirty test are built on.
  */
 export function projectForFile(meta) {
+  const codegen = codegenFor(meta.codegen, meta.tabs);
+  const connections = meta.connections ?? [];
   return {
     name: meta.name ?? "",
     description: meta.description ?? "",
@@ -304,6 +368,10 @@ export function projectForFile(meta) {
       ...(tab.description ? { description: tab.description } : {}),
       doc: tab.doc,
     })),
+    // The serial integration's two, omitted while empty so a project that
+    // never used it writes the bytes it always did.
+    ...(connections.length ? { connections } : {}),
+    ...(Object.keys(codegen).length ? { codegen } : {}),
   };
 }
 
@@ -313,7 +381,15 @@ export function projectForFile(meta) {
  * panning, which is why a camera is never in a project file.
  */
 export function projectSignature(meta) {
-  const { activeTab: _active, ...rest } = projectForFile(meta);
+  // `connections` is DERIVED — refreshed from the machine's settings on every
+  // write — so it is never an edit of its own: changing a baud rate in
+  // Settings must not put a • on the project.
+  const {
+    activeTab: _active,
+    connections: _connections,
+    ...rest
+  } = projectForFile(meta);
   void _active;
+  void _connections;
   return JSON.stringify(rest);
 }

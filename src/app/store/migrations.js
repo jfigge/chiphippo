@@ -56,10 +56,13 @@
  *   repair — the analyzer's channels have survived purely because the
  *   renderer's normalizeDocument rebuilds from its own empty document. That is
  *   a load-bearing accident, not a design; this puts both back in shape.
+ * v13 → v14 adds the Arduino serial integration's Output and Input elements —
+ *   `integrations` + `nextOutputId` + `nextInputId`. Pure additive: an absent
+ *   list is an empty one.
  */
 "use strict";
 
-const DESK_DOC_VERSION = 13;
+const DESK_DOC_VERSION = 14;
 
 /** A fresh, empty desk document (main's copy of the renderer's shape). */
 function defaultDeskDocument() {
@@ -73,6 +76,7 @@ function defaultDeskDocument() {
     annotations: [],
     scopeChannels: [],
     signals: [],
+    integrations: [],
     nextBoardId: 1,
     nextGroupId: 1,
     nextComponentId: 1,
@@ -83,6 +87,8 @@ function defaultDeskDocument() {
     nextAnnotationId: 1,
     nextScopeChannelId: 1,
     nextSignalId: 1,
+    nextOutputId: 1,
+    nextInputId: 1,
   };
 }
 
@@ -519,6 +525,21 @@ function migrateV12ToV13(doc) {
   };
 }
 
+/**
+ * v13 → v14: the serial integration's Output and Input elements. Additive
+ * only, like v12 → v13 — a doc already carrying the list keeps it verbatim.
+ */
+function migrateV13ToV14(doc) {
+  const counter = (value) => (Number.isInteger(value) && value > 0 ? value : 1);
+  return {
+    ...doc,
+    version: 14,
+    integrations: Array.isArray(doc.integrations) ? doc.integrations : [],
+    nextOutputId: counter(doc.nextOutputId),
+    nextInputId: counter(doc.nextInputId),
+  };
+}
+
 /** version → one-step upgrade fn returning the doc at version + 1. */
 const MIGRATIONS = {
   1: migrateV1ToV2,
@@ -533,6 +554,7 @@ const MIGRATIONS = {
   10: migrateV10ToV11,
   11: migrateV11ToV12,
   12: migrateV12ToV13,
+  13: migrateV13ToV14,
 };
 
 /**

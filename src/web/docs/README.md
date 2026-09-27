@@ -43,6 +43,9 @@ of the same glue logic.
 - **An AI circuit builder** — describe a circuit in words, using your own AI
   connection, and get a wired design that has already been built and run
   before you're offered it.
+- **A link to real hardware** — Outputs and Inputs carry values between the
+  running circuit and an Arduino over USB, and Chip Hippo writes the sketch's
+  side of the link for you.
 
 ## Table of contents
 
@@ -76,6 +79,8 @@ of the same glue logic.
 - [Schematic View](schematic-view.md) — the derived logical diagram.
 - [AI Circuit Builder](ai-builder.md) — describe a circuit in words and get a
   simulation-proven design, using your own AI connection.
+- [Arduino Integration](arduino.md) — pass values between the running circuit
+  and a real Arduino over USB, with the sketch's header generated for you.
 
 ### Files & reference
 

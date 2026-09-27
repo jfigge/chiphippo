@@ -90,6 +90,10 @@ goes wrong *while still looking perfectly fine*:
 1. **It compiles.** Parts get real seats on real breadboard columns, with an
    allocator that makes it impossible for two parts to accidentally share a
    column-half — which on a real breadboard means they're shorted together.
+   Before that, the netlist is held to the electrical rules a simulation
+   would happily let through: no output wired straight to a power rail (the
+   supply silently wins), and no two outputs on one net unless every one of
+   them can be switched off — a tri-state bus.
 2. **Everything seated.** No part hangs off the end of a board with pins over
    nothing. A part like that loads without complaint and is electrically dead.
 3. **The nets match.** The connections the design *asked for* are compared
@@ -97,15 +101,21 @@ goes wrong *while still looking perfectly fine*:
    check that catches an accidental short, which is otherwise invisible — the
    circuit loads clean and simulates happily while computing something else.
 4. **It powers up and settles.** Every chip reports OK, with no conflicts,
-   no shorts, and no oscillation.
+   no shorts, no oscillation, and no LED burning out.
 5. **Nothing is left floating.** A signal net nothing drives is reported
-   rather than shipped.
+   rather than shipped — and so is an input the design uses but never
+   connects, such as a decoder's enable, which would otherwise quietly read
+   HIGH. (The spare gates of a chip it only half uses may float.)
 6. **Its own tests pass.** This is the interesting one. The design is asked to
    state its own acceptance tests — "with these switches set this way, after
    this many clock edges, these LEDs should read this" — and Chip Hippo
    **runs them**. It's the only check that tests what the circuit *means*
    rather than whether it's internally consistent, and it's what catches a
-   perfectly-built adder with its bit order reversed.
+   perfectly-built adder with its bit order reversed. A design must bring at
+   least two, each with different inputs; every test starts from the circuit
+   as built and must spell out every switch position and every segment it
+   reads; and each test's state is checked for shorts and fights too, not
+   just for the lamps it names.
 
 The panel reports which tests ran and whether they passed as part of the
 summary.
@@ -149,10 +159,12 @@ influence.
 A few things are outside what a netlist can express, and it will tell you
 rather than guess:
 
-- **Rotated two-lead parts** — a bare LED or resistor placed at an angle. Use
-  the DIP-bodied displays (`bar8`, `seg8cc`) and switch banks (`sw-dip8`)
-  instead, which is what it will reach for anyway.
-- **Multi-corner cans** — the oscillator packages.
+- **Memory contents.** A ROM, EPROM or EEPROM in a generated design arrives
+  **unprogrammed** — a netlist has nowhere to carry its bytes. The panel says
+  so when it offers the design; load the image through the chip's
+  **Properties** before you run it.
+- **Multi-corner cans** — the oscillator packages. The model isn't offered
+  them.
 
 ## Review: asking what's wrong with a circuit
 
@@ -205,9 +217,11 @@ the model quite different things — but your transcript stays where it is.
 You never need to ask for a current-limiting resistor, and you shouldn't put
 one in your description. Chip Hippo models the *physical* requirement, not just
 the logical one: an LED conducting between two strongly-driven nets burns out
-instead of lighting, exactly as it would on a real bench. So whenever a
-display's common leg heads for a power rail, the compiler interposes a series
-resistor for you. See [Chips & Components](components.md) for the same rule
+instead of lighting, exactly as it would on a real bench. So whenever a lamp
+leg goes straight to a power rail — a display's common leg, a single LED's
+cathode to GND or its anode to VCC, a segment of an isolated bar — the
+compiler interposes a series resistor for you (a resistor network, when there
+are several). See [Chips & Components](components.md) for the same rule
 when you're wiring by hand.
 
 ## Cost, privacy and the simulation

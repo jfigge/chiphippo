@@ -46,6 +46,9 @@ const COUNTER_SPEC = {
       members: ["CTR.CLR", "CTR.LOAD", "CTR.ENP", "CTR.ENT", "VCC"],
     },
     { name: "CLOCK", members: ["CLK.out", "CTR.CLK"] },
+    // The parallel-load inputs are unused while LOAD is held HIGH, but an
+    // unused TTL input is still TIED rather than left to float.
+    { name: "DATA", members: ["CTR.A", "CTR.B", "CTR.C", "CTR.D", "GND"] },
     { name: "CLKGND", members: ["CLK.gnd", "GND"] },
     { name: "Q0", members: ["CTR.QA", "BAR.1"] },
     { name: "Q1", members: ["CTR.QB", "BAR.2"] },
@@ -53,7 +56,10 @@ const COUNTER_SPEC = {
     { name: "Q3", members: ["CTR.QD", "BAR.4"] },
     { name: "BARGND", members: ["BAR.K", "GND"] },
   ],
-  tests: [{ name: "reset state", edges: 0, expect: { BAR: "00000000" } }],
+  tests: [
+    { name: "reset state", edges: 0, expect: { BAR: "00000000" } },
+    { name: "one edge", edges: 1, expect: { BAR: "10000000" } },
+  ],
 };
 
 /**
@@ -199,6 +205,11 @@ test("AiPanel: a failing design is sent back for repair, and the fix lands", asy
   const repair = sent[1].messages.at(-1);
   assert.equal(repair.role, "user");
   assert.match(repair.content, /TEST_FAILED/, "structured faults, not prose");
+  assert.match(
+    repair.content,
+    /For context[^]*RESISTOR_INSERTED/,
+    "and what the compiler added to the circuit it is repairing",
+  );
   assert.equal(
     sent[1].messages.at(-2).role,
     "assistant",

@@ -33,7 +33,13 @@ import { el } from "../dom.js";
 import { t } from "../i18n.js";
 import { PopupManager } from "../popup-manager.js";
 import { PX_PER_UNIT, clampZoom } from "../desk/desk-geometry.js";
-import { ROTATIONS, columnAt, parseHole, spec } from "../model/breadboard.js";
+import {
+  ROTATIONS,
+  columnAt,
+  parseAddress,
+  parseHole,
+  spec,
+} from "../model/breadboard.js";
 import { holeAtWorld } from "../model/occupancy.js";
 import { partSeatAt } from "../model/seating.js";
 import {
@@ -43,6 +49,7 @@ import {
   componentsInRect,
   deskBounds,
   hoverHitAt,
+  nearestLegalPoint,
   partPinsWorld,
   wiresInRect,
 } from "../model/part-geometry.js";
@@ -54,6 +61,7 @@ import {
   busWidthForKey,
 } from "../model/desk-doc.js";
 import { isToggleSelectEvent } from "../model/selection-toggle.js";
+import { parseTagId } from "../model/integration.js";
 import { SKIP_BUS_MEMBER, routeDeskAsync, routePlan } from "../model/autoroute.js"; // prettier-ignore
 import { wireRunMm } from "../model/wire-length.js";
 import { HistoryStore } from "../model/history-store.js";
@@ -75,6 +83,8 @@ import { WireLayer } from "./wire-layer.js";
 import { PartPropertiesDialog } from "./part-properties-dialog.js";
 import { AnnotationLayer } from "./annotation-layer.js";
 import { SignalLayer } from "./signal-layer.js";
+import { IntegrationLayer } from "./integration-layer.js";
+import { IntegrationTools } from "./integration-tools.js";
 import {
   MAX_SIGNALS,
   SIGNAL_COLORS,
@@ -86,6 +96,7 @@ import { ProbeInspector } from "./probe-inspector.js";
 import { WireTools } from "./wire-tools.js";
 import { BusTools } from "./bus-tools.js";
 import { beginPointerGesture, releaseWorld } from "./pointer-gesture.js";
+import { aimRing } from "./hole-rings.js";
 import { DeskSelection } from "./desk-selection.js";
 import { DeskPlacement } from "./desk-placement.js";
 
@@ -219,6 +230,8 @@ export class DeskController {
   #wireLayer;
   #annotationLayer; // AnnotationLayer: labels + notes (Feature 120)
   #signalLayer; // SignalLayer: planted signal flags (Feature 370)
+  #integrationLayer; // IntegrationLayer: planted Output/Input tags
+  #integration; // IntegrationTools: the elements' drags, menus, Properties
   // Active interaction: null, or
   //   { kind: "place", type, ghost, pos, legal }              (board)
   //   { kind: "place-chip", ref, ghost, board, anchor, legal }
@@ -230,6 +243,8 @@ export class DeskController {
   //   { kind: "drag-cluster", grabId, members, … }            (a multi-selection)
   //   { kind: "place-annotation", annKind, ghost, pos, anchor } (label / note)
   //   { kind: "place-signal", ghost, pos }                       (Feature 370)
+  //   { kind: "place-integration", integrationKind, ghost, pos } (Output/Input)
+  //   { kind: "drag-integration-tag", elementId, key, … }     (a tag)
   //   { kind: "drag-annotation", id, … }                      (label / note)
   //   { kind: "wire", from, hover }                           (wire tool)
   #mode = null;
@@ -266,6 +281,10 @@ export class DeskController {
   #onBusNameChange;
   #onWireFadeChange;
   #onSignalSelect;
+  #onIntegrationSelect;
+  #getConnections;
+  #onOpenSettings;
+  #onOpenConnectionWindow;
 
   /**
    * @param {object} opts
@@ -308,6 +327,14 @@ export class DeskController {
    * @param {(id: string|null) => void} [opts.onSignalSelect] - the selected
    *   signal flag changed (or cleared); the rail highlights that signal's
    *   button, which app.js owns.
+   * @param {(id: string|null) => void} [opts.onIntegrationSelect] - the
+   *   selected Output/Input TAG changed; the rail lights that element's card.
+   * @param {() => Array} [opts.getConnections] - the configured serial
+   *   connections (settings), for an element's Properties and its default.
+   * @param {(tab: string) => void} [opts.onOpenSettings] - open Settings on a
+   *   tab (an element's "Manage connections…").
+   * @param {(connectionId: string) => void} [opts.onOpenConnectionWindow] -
+   *   an element's "Open Connection Window".
    */
   constructor({
     viewport,
@@ -328,6 +355,10 @@ export class DeskController {
     onRemoveMemoryFile,
     onHistoryChange,
     onSignalSelect,
+    onIntegrationSelect,
+    getConnections,
+    onOpenSettings,
+    onOpenConnectionWindow,
     netlist,
   }) {
     this.#viewport = viewport;
@@ -345,6 +376,10 @@ export class DeskController {
     this.#onBusNameChange = onBusNameChange;
     this.#onWireFadeChange = onWireFadeChange;
     this.#onSignalSelect = onSignalSelect;
+    this.#onIntegrationSelect = onIntegrationSelect;
+    this.#getConnections = getConnections ?? (() => []);
+    this.#onOpenSettings = onOpenSettings;
+    this.#onOpenConnectionWindow = onOpenConnectionWindow;
 
     // Layer order (established for every later stage): boards under parts
     // under wires under the interaction overlay. All are zero-size anchors —
@@ -403,6 +438,9 @@ export class DeskController {
         get signalLayer() {
           return sel.#signalLayer;
         },
+        get integrationLayer() {
+          return sel.#integrationLayer;
+        },
         addressWorld: (address) => this.#addressWorld(address),
       },
       this.#layers.overlay,
@@ -450,6 +488,7 @@ export class DeskController {
         // through the one dispatcher, so placement hands that one kind back.
         trackAnnotationGhost: (e) => this.#trackAnnotationGhost(e),
         trackSignalGhost: (e) => this.#trackSignalGhost(e),
+        trackIntegrationGhost: (e) => this.#trackSignalGhost(e),
       },
       this.#layers.overlay,
     );
@@ -493,6 +532,56 @@ export class DeskController {
       // Every path that highlights a flag goes through the layer's
       // setSelected, so its report is the one place the rail can learn of it.
       onSelect: (id) => this.#onSignalSelect?.(id),
+    });
+
+    // The Arduino serial integration's tags: the same layer div as the flags
+    // (a second SVG, after theirs), since a tag is the same kind of thing — a
+    // bench lead plugged into one hole. The CARDS live on the rail beside the
+    // signal buttons (components/integration-rail.js), which app.js owns.
+    this.#integrationLayer = new IntegrationLayer(
+      this.#layers.signals,
+      deskDoc,
+      {
+        onPointerDown: (id, key, e) =>
+          this.#integration.onTagPointerDown(id, key, e),
+        onContextMenu: (id, key, e) =>
+          this.#integration.onTagContextMenu(id, key, e),
+        onSelect: (id) => this.#onIntegrationSelect?.(id),
+      },
+    );
+    const ctl = this;
+    this.#integration = new IntegrationTools({
+      get mode() {
+        return ctl.#mode;
+      },
+      set mode(v) {
+        ctl.#mode = v;
+      },
+      get editingLocked() {
+        return ctl.#editingLocked;
+      },
+      get probeArmed() {
+        return ctl.#probe.armed;
+      },
+      get selectedTag() {
+        const s = ctl.#sel.single;
+        return s?.kind === "tag" ? parseTagId(s.id) : null;
+      },
+      doc: deskDoc,
+      deskView,
+      viewport,
+      layer: this.#integrationLayer,
+      ring: this.#ring,
+      holeAtWorld: (w) => this.#holeAtWorld(w),
+      selectTag: (id) => this.#sel.selectTag(id),
+      forgetTag: () => this.#sel.select(null),
+      emitDocChanged: (label, opts) => this.#emitDocChanged(label, opts),
+      hideHover: () => this.#hideHover(),
+      connections: () => this.#getConnections(),
+      openSettings: (tab) => this.#onOpenSettings?.(tab),
+      openConnectionWindow: (id) => this.#onOpenConnectionWindow?.(id),
+      addNetToAnalyzer: (address, opts) =>
+        this.#onAddNetToAnalyzer?.(address, opts),
     });
 
     // Live simulation state (Feature 90): LEDs, chip badges, clock lamps —
@@ -739,6 +828,12 @@ export class DeskController {
         break;
       case "drag-bus":
         this.#bus.cancelDrag();
+        break;
+      case "drag-integration-tag":
+        this.#integration.cancelDrag();
+        break;
+      case "drag-signal-flag":
+        this.#onSignalPointerUp(fake);
         break;
     }
   }
@@ -1121,37 +1216,27 @@ export class DeskController {
     };
   }
 
-  /** Live single-end drag: the moving lead snaps to a hole, the other stays. */
+  /** Live single-end drag: the moving lead snaps to the nearest hole in reach
+      it may have (the wire end's rule, and its ring), the other stays. */
   // `d` defaults to the live drag, but the RELEASE passes its own copy — the
   // up-handler clears #mode before it re-resolves at the release point.
   #trackResistorEndDrag(d = this.#mode) {
-    const hit = this.#holeAtWorld(d.lastWorld);
-    d.target = null;
-    let legal = false;
-    if (hit) {
-      // Pin 1 SEATS in a hole; pin 2 is a bend measured from it. So dragging
-      // pin 1 re-seats the part (onto another strip if that's where it landed)
-      // while dragging pin 2 only re-bends the lead — either way the pair is
-      // rewritten as one anchor plus one offset.
-      const movingA = d.moving === "a";
-      const boardId = movingA ? hit.board.id : d.boardId;
-      const anchor = movingA ? hit.hole : d.anchor;
-      const from = movingA ? hit : d.fixed;
-      const to = movingA ? d.fixed : hit;
-      // Both points are resolved HOLES, so the bend is exactly the vector
-      // between them — no rounding, or the lead would be drawn short of the
-      // hole it landed in (a rail's rows are not on the pin-board's lattice).
-      const end = { dx: to.x - from.x, dy: to.y - from.y };
-      // canPlacePart enforces free + distinct + the minimum lead span.
-      legal = this.#doc.canPlacePart(d.ref, boardId, anchor, {
-        ignoreId: d.id,
-        params: { rot: 90, end },
-      });
-      if (legal) d.target = { boardId, anchor, end };
-    }
+    const { point, accepted } = nearestLegalPoint(
+      this.#doc.boards,
+      null,
+      d.lastWorld,
+      (p) => this.#leadEndSeat(d, p),
+    );
+    d.target = accepted;
+    const legal = Boolean(point);
     d.legal = legal;
-    // The moving end rides the snapped hole, else the raw cursor.
-    const tip = hit ? { x: hit.x, y: hit.y } : d.lastWorld;
+    // The moving end rides the snapped hole; with nothing in reach it may have,
+    // the hole under the cursor (red — THAT hole is the one refused), else the
+    // raw cursor.
+    const under = point ? null : this.#holeAtWorld(d.lastWorld);
+    const at = point ?? under;
+    aimRing(this.#ring, at, legal);
+    const tip = at ? { x: at.x, y: at.y } : d.lastWorld;
     const view = this.#partViews.get(d.id);
     view?.updateSpanWorld(
       d.moving === "a" ? tip : d.fixed,
@@ -1160,9 +1245,38 @@ export class DeskController {
     view?.setIllegal(!legal);
   }
 
+  /**
+   * The seat a single-end drag would commit with its moving lead in `hole` (a
+   * nearestLegalPoint candidate), or null when the part can't be placed so.
+   *
+   * Pin 1 SEATS in a hole; pin 2 is a bend measured from it. So dragging pin 1
+   * re-seats the part (onto another strip if that's where it landed) while
+   * dragging pin 2 only re-bends the lead — either way the pair is rewritten as
+   * one anchor plus one offset.
+   */
+  #leadEndSeat(d, hole) {
+    const parsed = parseAddress(hole.address);
+    if (!parsed) return null;
+    const movingA = d.moving === "a";
+    const boardId = movingA ? parsed.boardId : d.boardId;
+    const anchor = movingA ? parsed.hole : d.anchor;
+    const from = movingA ? hole : d.fixed;
+    const to = movingA ? d.fixed : hole;
+    // Both points are resolved HOLES, so the bend is exactly the vector between
+    // them — no rounding, or the lead would be drawn short of the hole it
+    // landed in (a rail's rows are not on the pin-board's lattice).
+    const end = { dx: to.x - from.x, dy: to.y - from.y };
+    // canPlacePart enforces free + distinct + the minimum lead span.
+    const fits = this.#doc.canPlacePart(d.ref, boardId, anchor, {
+      ignoreId: d.id,
+      params: { rot: 90, end },
+    });
+    return fits ? { boardId, anchor, end } : null;
+  }
+
   /** Live resistor drag: rigid lattice-snapped translation, both ends checked.
-      Pin 1 seats in whatever hole it lands on; the lead keeps its bend, so the
-      far end may reach a NEIGHBOURING strip's rail. */
+      Pin 1 seats in the nearest hole in reach where the part fits; the lead
+      keeps its bend, so the far end may reach a NEIGHBOURING strip's rail. */
   // `d` defaults to the live drag; see #trackResistorEndDrag. `preview` is off
   // on the RELEASE re-resolve: the handler has already put the riding-wire
   // preview away, and re-establishing it there would leave the committed wires
@@ -1170,72 +1284,47 @@ export class DeskController {
   #trackResistorDrag(d = this.#mode, { preview = true } = {}) {
     // ONE delta moves both ends, so length and angle never change.
     //
-    // TWO CANDIDATES FOR PIN 1, and the raw one is why a spanned run works.
-    // Rounding the travel to whole pitches assumes a lattice, and there is only
-    // one HORIZONTALLY: vertically the heights are MEASURED, so the next
-    // pin-board of a spanned run sits 17.52 pitch down and a rounded dy lands
-    // pin 1 0.48 off the hole it aimed at — past holeAt's 0.45 radius, so the
-    // part could not be dropped on the other board AT ALL and its wiring never
-    // went either. The raw point is where the part actually is, so it is tried
-    // first; the rounded one is the fallback that keeps a same-board drag
-    // exactly as it was, including the sliver between two rows where the raw
-    // point is nearest to nothing. On one board the two always name the same
-    // hole whenever either does.
+    // Pin 1 lands on the NEAREST hole in snap reach of where it actually is
+    // (the raw travel, not a rounded one) at which the whole part fits — both
+    // leads, and on an Option-drag every rider — the wire end's rule, so a
+    // near-miss is forgiven by one hole rather than thrown back. The raw point
+    // is what makes a spanned run work: rounding the travel assumes a lattice,
+    // and there is only one HORIZONTALLY — the next pin-board of a spanned run
+    // sits 17.52 pitch down, so a rounded dy put pin 1 0.48 off the hole it
+    // aimed at and the part could not be dropped on the other board at all.
     const tx = d.lastWorld.x - d.startWorld.x;
     const ty = d.lastWorld.y - d.startWorld.y;
+    const raw = { x: d.p1.x + tx, y: d.p1.y + ty };
     const snapped = { x: d.p1.x + Math.round(tx), y: d.p1.y + Math.round(ty) };
-    const a =
-      this.#holeAtWorld({ x: d.p1.x + tx, y: d.p1.y + ty }) ??
-      this.#holeAtWorld(snapped);
-    // Drawn from the HOLE it found, so the preview is the seat that will be
-    // committed; over bare desk there is none, and it follows the cursor.
-    const p1 = a ? { x: a.x, y: a.y } : snapped;
-    const p2 = { x: p1.x + d.orient.dx, y: p1.y + d.orient.dy };
     // The bend is carried through a rigid translation untouched — rounding it
     // here would quietly re-bend a lead every time the part was dragged.
     const end = { dx: d.orient.dx, dy: d.orient.dy };
-    // canPlacePart resolves the bent lead against the whole desk, so it is the
-    // one authority on whether the far end found a free hole.
     const params = { rot: 90, end };
-    let legal =
-      Boolean(a) &&
-      this.#doc.canPlacePart(d.ref, a.board.id, a.hole, {
-        ignoreId: d.id,
-        params,
-      });
-    d.holes = legal ? { boardId: a.board.id, anchor: a.hole, end } : null;
-    // An Option-drag re-plans its riders for THIS position and checks the whole
-    // batch as one, exactly as a footprint part's does — one refusal, one visual
-    // language. Note the plan is told the FORM the part is landing in: a body
-    // drag rewrites a footprint-form part into the two-free-ends one, and the
-    // ride rule has to read the pins it will actually have.
-    //
-    // The plan is re-derived on EVERY sample, including the ones with nowhere to
-    // land — that is what the null branch is for. This part is drawn at the raw
-    // cursor whatever the position (unlike a footprint drag, which stops at its
-    // last good seat), so leaving a stale plan in place left the riders frozen
-    // at a hole the part had long since left: drag an LED over the gap between
-    // two boards and its wiring simply stopped following it. With no plan they
-    // draw from the DOCUMENT instead — where they actually are — in red, which
-    // is the truth: nothing is moving.
-    if (d.riding || d.ridingParts) {
-      d.plan = d.holes
-        ? this.#doc.planPartMove(d.id, {
-            board: d.holes.boardId,
-            anchor: d.holes.anchor,
-            params,
-            riding: d.riding,
-            ridingParts: d.ridingParts,
-          })
-        : null;
-      const placements = d.plan && [
-        { id: d.id, board: d.holes.boardId, anchor: d.holes.anchor, params },
-        ...d.plan.parts,
-      ];
-      if (!(d.plan?.resolved && d.checkBatch(placements, d.plan.moves))) {
-        legal = false;
-      }
-    }
+    const { point, accepted } = nearestLegalPoint(
+      this.#doc.boards,
+      null,
+      raw,
+      (p) => this.#bodySeat(d, p, params),
+    );
+    d.holes = accepted?.holes ?? null;
+    // The rider plan is re-derived on EVERY sample, including the ones with
+    // nowhere to land — that is what the null is for. This part is drawn at the
+    // raw cursor whatever the position (unlike a footprint drag, which stops at
+    // its last good seat), so leaving a stale plan in place left the riders
+    // frozen at a hole the part had long since left: drag an LED over the gap
+    // between two boards and its wiring simply stopped following it. With no
+    // plan they draw from the DOCUMENT instead — where they actually are — in
+    // red, which is the truth: nothing is moving.
+    d.plan = accepted?.plan ?? null;
+    const legal = Boolean(point);
+    // Drawn from the HOLE it seats in, so the preview is the seat that will be
+    // committed; refused, from the hole under pin 1 (the rounded point is the
+    // fallback for the sliver between two rows, nearest to nothing); over bare
+    // desk there is none, and it follows the cursor.
+    const at =
+      point ?? this.#holeAtWorld(raw) ?? this.#holeAtWorld(snapped) ?? snapped;
+    const p1 = { x: at.x, y: at.y };
+    const p2 = { x: p1.x + d.orient.dx, y: p1.y + d.orient.dy };
     d.legal = legal;
     const view = this.#partViews.get(d.id);
     view?.updateSpanWorld(p1, p2);
@@ -1243,6 +1332,46 @@ export class DeskController {
     if (!preview) return;
     if (d.riding) this.#wireLayer.setPartDrag(this.#partDragPreview(d));
     if (d.ridingParts) this.#applyLeadRiders(d);
+  }
+
+  /**
+   * The seat a body drag would commit with pin 1 in `hole` (a
+   * nearestLegalPoint candidate) — `{ holes, plan }` — or null when the part,
+   * or anything riding it, can't land there. canPlacePart resolves the bent
+   * lead against the whole desk, so it is the one authority on whether the far
+   * end found a free hole.
+   *
+   * An Option-drag plans its riders for THIS seat and checks the whole batch as
+   * one, exactly as a footprint part's does — one refusal, one visual language.
+   * The plan is told the FORM the part is landing in: a body drag rewrites a
+   * footprint-form part into the two-free-ends one, and the ride rule has to
+   * read the pins it will actually have.
+   */
+  #bodySeat(d, hole, params) {
+    const parsed = parseAddress(hole.address);
+    if (!parsed) return null;
+    const { boardId, hole: anchor } = parsed;
+    const fits = this.#doc.canPlacePart(d.ref, boardId, anchor, {
+      ignoreId: d.id,
+      params,
+    });
+    if (!fits) return null;
+    const holes = { boardId, anchor, end: params.end };
+    if (!(d.riding || d.ridingParts)) return { holes, plan: null };
+    const plan = this.#doc.planPartMove(d.id, {
+      board: boardId,
+      anchor,
+      params,
+      riding: d.riding,
+      ridingParts: d.ridingParts,
+    });
+    const placements = plan && [
+      { id: d.id, board: boardId, anchor, params },
+      ...plan.parts,
+    ];
+    return plan?.resolved && d.checkBatch(placements, plan.moves)
+      ? { holes, plan }
+      : null;
   }
 
   /** Rebuild a part's view from the document — the horizontal SVG and the
@@ -2441,6 +2570,8 @@ export class DeskController {
       // R also turns a signal flag about its POINT — the anchor is never part
       // of the rotation, so there is nothing to re-resolve.
       if (this.#rotateSelectedSignal()) return true;
+      // …and an Output/Input tag, the same way.
+      if (this.#integration.rotate()) return true;
     }
     if (
       (e.key === "Delete" || e.key === "Backspace") &&
@@ -2463,7 +2594,12 @@ export class DeskController {
       // Delete removes the SIGNAL — button and all — as every other single
       // pick removes the thing it names. Unplugging a flag is the drag.
       else if (kind === "signal") this.removeSignal(id);
-      else this.removeBoard(id);
+      // A TAG names a lead, not the element: Delete unplugs it back to its
+      // card, and the element's own menu is where it is deleted outright.
+      else if (kind === "tag") {
+        const tag = parseTagId(id);
+        if (tag) this.#integration.unplugTag(tag.elementId, tag.key);
+      } else this.removeBoard(id);
       return true;
     }
     return false;
@@ -3497,6 +3633,7 @@ export class DeskController {
     }
     this.#mode = null;
     this.#viewport.classList.remove("desk-viewport--dragging");
+    aimRing(this.#ring, null); // a lead drag's target marker, on every exit
     // With the drag over, the hint comes back if Option is still down — from
     // here, so every exit below (a plain click, a refused drop, a commit) is
     // covered by one call. A commit refreshes it again through #emitDocChanged,
@@ -3575,8 +3712,16 @@ export class DeskController {
       // happen, since a stale sample doesn't merely misplace the lead: it can
       // fail canPlacePart's minimum-span check and revert the drag outright.
       if (!cancelled) {
+        // What the last move SHOWED (snapped and ringed): the drop falls back
+        // on it when the release point lands nowhere — see the wire end's.
+        const shown = d.legal ? d.target : null;
         d.lastWorld = releaseWorld(this.#deskView, e, d.lastWorld);
         this.#trackResistorEndDrag(d);
+        aimRing(this.#ring, null); // the re-resolve aimed it again
+        if (!d.legal && shown) {
+          d.target = shown;
+          d.legal = true;
+        }
       }
       if (!cancelled && d.legal && d.target) {
         this.#doc.movePartEnds(
@@ -3924,6 +4069,7 @@ export class DeskController {
       active: fromRail,
       address: null,
       holeFree: false,
+      inReach: false,
       refused: false,
       at: null,
       teardown: null,
@@ -3939,26 +4085,38 @@ export class DeskController {
   /**
    * Where the flag would land, shared by the live drag and the release.
    *
-   * `legal` is deliberately TRUE over bare desk and FALSE over a taken hole:
-   * a drop on bare desk is the UNPLUG, while a mis-aimed drop onto someone
-   * else's hole is a miss. That difference is the whole reason the two are
-   * not one "not a valid target" case.
+   * The apex snaps to the NEAREST free hole in reach (the wire end's rule, and
+   * its ring), so a near-miss beside a taken hole lands one hole along rather
+   * than being thrown back. With no free hole in reach the drop is one of two
+   * things, and the difference is the whole reason they are not one "not a
+   * valid target" case: aimed at a board (some hole in reach, all taken) it is
+   * a MISS, which changes nothing; clear of every hole it is BARE DESK, which
+   * is the UNPLUG.
    */
   #resolveSignalFlag(d, world) {
-    const hit = this.#holeAtWorld(world);
-    d.address = hit ? `${hit.board.id}.${hit.hole}` : null;
-    d.holeFree =
-      Boolean(d.address) && this.#doc.canPlaceSignalFlag(d.id, d.address);
+    const { point, inReach } = nearestLegalPoint(
+      this.#doc.boards,
+      null,
+      world,
+      (p) => this.#doc.canPlaceSignalFlag(d.id, p.address),
+    );
+    d.address = point?.address ?? null;
+    d.holeFree = Boolean(point);
+    d.inReach = inReach;
     // THE FLAG NEVER LEAVES THE CURSOR. It snaps to a hole it can actually
     // have, and rides the raw pointer everywhere else — so moving off a target
     // no longer flings it back to where the drag started. A drop is the only
     // thing that reverts anything.
-    d.at = d.holeFree ? { x: hit.x, y: hit.y } : world;
-    // Red exactly when a drop HERE would achieve nothing: a hole someone else
-    // holds, or bare desk with no planted flag to pull out. Bare desk under a
-    // PLANTED flag is deliberately not red — dropping there unplugs it, which
-    // is a real action and the only way to put one back on the rail.
-    d.refused = d.address ? !d.holeFree : !d.origin;
+    d.at = point ? { x: point.x, y: point.y } : world;
+    // Red exactly when a drop HERE would achieve nothing: a board with no free
+    // hole in reach, or bare desk with no planted flag to pull out. Bare desk
+    // under a PLANTED flag is deliberately not red — dropping there unplugs it,
+    // which is a real action and the only way to put one back on the rail.
+    d.refused = inReach ? !point : !d.origin;
+    // The ring marks the hole it lands in — or, on a miss, the taken hole
+    // under the cursor, in red.
+    const under = point || !inReach ? null : this.#holeAtWorld(world);
+    aimRing(this.#ring, point ?? under, Boolean(point));
     this.#signalLayer.setPreview(d.id, {
       at: d.at,
       rot: d.rot,
@@ -3988,6 +4146,7 @@ export class DeskController {
     this.#mode = null;
     this.#viewport.classList.remove("desk-viewport--dragging");
     d.teardown?.();
+    aimRing(this.#ring, null);
     if (!d.active) {
       this.#signalLayer.clearPreview(d.id); // plain click — the press selected it
       return;
@@ -3995,7 +4154,18 @@ export class DeskController {
     // A drag that spans Run reverts, never commits.
     const cancelled = e.type === "pointercancel" || this.#editingLocked;
     if (!cancelled) {
+      // What the last move SHOWED (snapped and ringed) — see the wire end's.
+      const shown = d.holeFree ? d.address : null;
       this.#resolveSignalFlag(d, releaseWorld(this.#deskView, e, d.lastWorld));
+      aimRing(this.#ring, null); // the re-resolve aimed it again
+      // A release that would achieve NOTHING (a miss, or bare desk with no
+      // planted flag to pull out) lands where the ring last was instead. An
+      // unplug is an action of its own, so it still wins.
+      const miss = !d.holeFree && (d.inReach || !d.origin);
+      if (miss && shown) {
+        d.address = shown;
+        d.holeFree = true;
+      }
     }
     if (cancelled) {
       this.#signalLayer.clearPreview(d.id);
@@ -4010,9 +4180,9 @@ export class DeskController {
         }
         this.#doc.plantSignalFlag(d.id, d.address, d.rot);
         this.#emitDocChanged("connect signal");
-      } else if (!d.address && d.origin) {
-        // Dropped clear of every board: the UNPLUG — the same act as the
-        // menu's Remove Signal.
+      } else if (!d.inReach && d.origin) {
+        // Dropped clear of every hole: the UNPLUG — the same act as the menu's
+        // Remove Signal.
         this.unplugSignal(d.id);
       } else {
         this.#signalLayer.clearPreview(d.id); // a miss changes nothing
@@ -4216,6 +4386,60 @@ export class DeskController {
       this.#sel.forget();
     }
     this.#emitDocChanged("delete signal");
+  }
+
+  // ── Serial integration: Output and Input elements ───────────────────────
+  // The desk half (tags, drags, menus, Properties) is IntegrationTools; these
+  // are the entry points the rail and the palette reach it through.
+
+  /**
+   * Arm a place-integration ghost for an Output or Input. Like a signal, the
+   * click only says "yes, add one" — the card goes on the rail — and that is
+   * where its width is asked for.
+   */
+  armIntegrationPlacement(kind) {
+    if (this.#editingLocked || this.#integration.full) return;
+    const ghost = el("div", { class: "signal-place-ghost", hidden: true }, [
+      el("span", {
+        class: "signal-place-ghost-mark",
+        text: kind === "output" ? "→" : "←",
+      }),
+      el("span", { text: t(`palette.integration.${kind}`) }),
+    ]);
+    this.#place.enter({
+      kind: "place-integration",
+      integrationKind: kind,
+      ghost,
+      pos: null,
+      legal: true,
+    });
+  }
+
+  /** Add an element outright (tests; the placement click goes via the width
+      popover). */
+  addIntegration(kind, width) {
+    return this.#integration.add(kind, width);
+  }
+
+  /** A press on a card's waiting tag chip — the tag drag, from the rail. */
+  beginIntegrationTagDrag(id, key, e) {
+    this.#integration.beginDragFromCard(id, key, e);
+  }
+
+  /** The element's menu (from its card on the rail). */
+  openIntegrationMenu(id, x, y) {
+    this.#integration.openMenu(id, x, y);
+  }
+
+  /** The element's Properties card. */
+  openIntegrationProperties(id) {
+    if (this.#editingLocked) return;
+    this.#integration.openProperties(id);
+  }
+
+  /** Is the rail full of elements? */
+  get integrationsFull() {
+    return this.#integration.full;
   }
 
   // ── Marquee selection (shift-drag anywhere) ─────────────────────────────
@@ -4485,6 +4709,10 @@ export class DeskController {
       this.addAnnotationAt(m.annKind, m.pos.x, m.pos.y, m.anchor);
     } else if (m.kind === "place-signal") {
       this.addSignal(); // the click point is deliberately discarded
+    } else if (m.kind === "place-integration") {
+      // The desk position is discarded, as a signal's is: the card goes on
+      // the rail. The click is where the width is asked for.
+      this.#integration.promptWidth(m.integrationKind, e.clientX, e.clientY);
     } else if (m.kind === "place-part") {
       this.addComponentAt(
         m.ref,

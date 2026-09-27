@@ -429,6 +429,70 @@ test("resistor end drag: a stale sample INSIDE the minimum span must not revert 
   ]);
 });
 
+test("resistor end drag: a near-miss onto a TAKEN hole lands one hole along, ringed", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const world = { x: 0, y: 0 };
+  const { surface, controller } = makeDesk(doc, world);
+  const r = controller.addComponentAt("resistor", "bb1", "a10"); // a10 ── a13
+  doc.addWire({ from: "bb1.a16", to: "bb1.a30" });
+
+  const el = partEl(surface, r.id);
+  Object.assign(world, { x: 13, y: ROW.a }); // grab pin 2
+  fire(el, "pointerdown", { client: [0, 0] });
+  Object.assign(world, { x: 16.3, y: ROW.a }); // aimed at a16, a shade right
+  fire(el, "pointermove", { client: [40, 40] });
+  assert.deepEqual(ringOf(surface), { x: 17, y: ROW.a, illegal: false });
+  fire(el, "pointerup", { client: [40, 40] });
+
+  assert.deepEqual(partPinAddresses(doc, doc.getComponent(r.id)), [
+    { pin: 1, address: "bb1.a10" },
+    { pin: 2, address: "bb1.a17" },
+  ]);
+  assert.equal(ringOf(surface), null);
+});
+
+test("resistor end drag: a release that lands NOWHERE drops where the ring last was", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const world = { x: 0, y: 0 };
+  const { surface, controller } = makeDesk(doc, world);
+  const r = controller.addComponentAt("resistor", "bb1", "a10"); // a10 ── a13
+
+  dragReleasingAt(partEl(surface, r.id), world, {
+    from: { x: 13, y: ROW.a }, // grab pin 2
+    stale: { x: 16, y: ROW.a }, // snapped to a16 and ringed
+    at: { x: 200, y: 200 }, // the up event, out of every hole's reach
+  });
+
+  assert.deepEqual(partPinAddresses(doc, doc.getComponent(r.id)), [
+    { pin: 1, address: "bb1.a10" },
+    { pin: 2, address: "bb1.a16" },
+  ]);
+});
+
+test("resistor body drag: a seat whose far lead is taken gives way to the nearest that fits", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const world = { x: 0, y: 0 };
+  const { surface, controller } = makeDesk(doc, world);
+  const r = controller.addComponentAt("resistor", "bb1", "e10"); // e10 ── e13
+  doc.addWire({ from: "bb1.e15", to: "bb1.a30" }); // where +2 puts pin 2
+
+  dragReleasingAt(partEl(surface, r.id), world, {
+    from: { x: 0, y: 0 },
+    stale: { x: 1, y: 0 },
+    at: { x: 2, y: 0 }, // e12 ── e15: refused
+  });
+
+  // One pitch off, e11 and e13 tie; the tie goes left-to-right, and e11 ── e14
+  // fits (the part's own holes are its to leave).
+  assert.equal(doc.getComponent(r.id).anchor, "e11");
+});
+
 // ── Annotation drag ─────────────────────────────────────────────────────────
 
 test("annotation drag: the label lands where it was let go", () => {
@@ -708,6 +772,31 @@ function plantedDesk() {
   return { doc, sig, world, ...makeDesk(doc, world) };
 }
 
+/** Take a hole AND every hole within snap reach of it (its three neighbours
+    one pitch off, on a bare pin-board's bottom row), so a drop there has
+    nowhere to go — a MISS, not a near-miss. */
+function surround(doc, col) {
+  doc.addWire({ from: `bb1.a${col}`, to: "bb1.a50" });
+  doc.addWire({ from: `bb1.a${col - 1}`, to: "bb1.a51" });
+  doc.addWire({ from: `bb1.a${col + 1}`, to: "bb1.a52" });
+  doc.addWire({ from: `bb1.b${col}`, to: "bb1.a53" });
+}
+
+/** The shared target ring, when it is showing: its world centre and whether
+    it is the danger colour. Null when it is hidden. */
+function ringOf(surface) {
+  const ring = [...surface.querySelectorAll(".hole-ring")].find(
+    (r) => !r.hidden,
+  );
+  if (!ring) return null;
+  const r = 0.55 * PX_PER_UNIT;
+  return {
+    x: (parseFloat(ring.style.left) + r) / PX_PER_UNIT,
+    y: (parseFloat(ring.style.top) + r) / PX_PER_UNIT,
+    illegal: ring.classList.contains("hole-ring--illegal"),
+  };
+}
+
 test("signal flag: the flag lands at the RELEASE point, not the last move", () => {
   const { doc, sig, world, surface } = plantedDesk();
   dragReleasingAt(flagEl(surface, sig.id), world, {
@@ -729,7 +818,7 @@ test("signal flag: a release over BARE DESK unplugs it", () => {
   assert.ok(doc.getSignal(sig.id), "and the signal itself survives");
 });
 
-test("signal flag: a release onto a TAKEN hole reverts — a miss is not an unplug", () => {
+test("signal flag: a release onto a TAKEN hole lands on the nearest free one", () => {
   const { doc, sig, world, surface } = plantedDesk();
   doc.addWire({ from: "bb1.a30", to: "bb1.a40" });
   dragReleasingAt(flagEl(surface, sig.id), world, {
@@ -737,11 +826,47 @@ test("signal flag: a release onto a TAKEN hole reverts — a miss is not an unpl
     stale: holeWorld(doc, "bb1.a20"),
     at: holeWorld(doc, "bb1.a30"),
   });
+  // b30, a29 and a31 are all one pitch off; the tie goes top-to-bottom.
+  assert.equal(doc.getSignal(sig.id).flag.anchor, "bb1.b30");
+});
+
+test("signal flag: a release with NO free hole in reach reverts — a miss is not an unplug", () => {
+  const { doc, sig, world, surface } = plantedDesk();
+  surround(doc, 30);
+  dragReleasingAt(flagEl(surface, sig.id), world, {
+    from: holeWorld(doc, "bb1.a12"),
+    stale: holeWorld(doc, "bb1.a30"), // the screen showed a miss too
+    at: holeWorld(doc, "bb1.a30"),
+  });
   assert.equal(
     doc.getSignal(sig.id).flag.anchor,
     "bb1.a12",
     "still where it was — NOT unplugged",
   );
+});
+
+test("signal flag: a release that lands NOWHERE drops where the ring last was", () => {
+  // The last move snapped the flag to a20 and ringed it; the up event then
+  // arrives over a hole with nothing free in reach. What was on screen wins
+  // over a release that would do nothing.
+  const { doc, sig, world, surface } = plantedDesk();
+  surround(doc, 30);
+  dragReleasingAt(flagEl(surface, sig.id), world, {
+    from: holeWorld(doc, "bb1.a12"),
+    stale: holeWorld(doc, "bb1.a20"),
+    at: holeWorld(doc, "bb1.a30"),
+  });
+  assert.equal(doc.getSignal(sig.id).flag.anchor, "bb1.a20");
+});
+
+test("signal flag: an UNPLUG at the release still beats the ring — it is an action", () => {
+  const { doc, sig, world, surface } = plantedDesk();
+  dragReleasingAt(flagEl(surface, sig.id), world, {
+    from: holeWorld(doc, "bb1.a12"),
+    stale: holeWorld(doc, "bb1.a20"), // ringed
+    at: { x: -80, y: -80 }, // clear of every hole
+  });
+  assert.equal(doc.getSignal(sig.id).flag, undefined, "unplugged");
 });
 
 test("signal flag: a release off the flag still commits (no e.currentTarget)", () => {
@@ -857,9 +982,9 @@ test("signal flag: bare desk is NOT red for a planted flag — the drop unplugs"
   );
 });
 
-test("signal flag: a TAKEN hole reddens the flag instead of hiding it", () => {
+test("signal flag: a hole with nothing free in reach reddens the flag instead of hiding it", () => {
   const { doc, sig, world, surface } = plantedDesk();
-  doc.addWire({ from: "bb1.a30", to: "bb1.a40" });
+  surround(doc, 30);
   const el = flagEl(surface, sig.id);
   Object.assign(world, holeWorld(doc, "bb1.a12"));
   fire(el, "pointerdown", { client: [0, 0] });
@@ -870,6 +995,12 @@ test("signal flag: a TAKEN hole reddens the flag instead of hiding it", () => {
   assert.ok(
     flagPointsOf(surface, sig.id),
     "and still visible under the cursor",
+  );
+  const a30 = holeWorld(doc, "bb1.a30");
+  assert.deepEqual(
+    ringOf(surface),
+    { ...a30, illegal: true },
+    "the ring marks the refused hole in red",
   );
   // Releasing there is the only thing that puts it back.
   fire(el, "pointerup", { client: [40, 40] });
@@ -899,6 +1030,57 @@ test("signal flag: a free hole SNAPS the flag to it, and is not red", () => {
   );
 });
 
+test("signal flag: a near-miss beside a taken hole snaps one hole along, ringed", () => {
+  const { doc, sig, world, surface } = plantedDesk();
+  doc.addWire({ from: "bb1.a30", to: "bb1.a40" });
+  const el = flagEl(surface, sig.id);
+  Object.assign(world, holeWorld(doc, "bb1.a12"));
+  fire(el, "pointerdown", { client: [0, 0] });
+  // Aimed at a30 (taken) and a shade to the right, so a31 is the nearest free.
+  const a30 = holeWorld(doc, "bb1.a30");
+  Object.assign(world, { x: a30.x + 0.3, y: a30.y });
+  fire(el, "pointermove", { client: [40, 40] });
+  const a31 = holeWorld(doc, "bb1.a31");
+  assert.deepEqual(apexOf(surface, sig.id), [
+    a31.x * PX_PER_UNIT,
+    a31.y * PX_PER_UNIT,
+  ]);
+  assert.ok(
+    !flagEl(surface, sig.id).classList.contains("signal-flag--illegal"),
+  );
+  assert.deepEqual(ringOf(surface), { ...a31, illegal: false });
+  fire(el, "pointerup", { client: [40, 40] });
+  assert.equal(doc.getSignal(sig.id).flag.anchor, "bb1.a31");
+  assert.equal(ringOf(surface), null, "the ring goes when the drag does");
+});
+
+test("signal flag: a release BETWEEN holes lands on the nearest, never unplugs", () => {
+  const { doc, sig, world, surface } = plantedDesk();
+  const a30 = holeWorld(doc, "bb1.a30");
+  dragReleasingAt(flagEl(surface, sig.id), world, {
+    from: holeWorld(doc, "bb1.a12"),
+    stale: holeWorld(doc, "bb1.a20"),
+    // 0.6 off a30 — past the 0.45 a hole answers a point within, which used
+    // to read as bare desk and pull the flag out.
+    at: { x: a30.x + 0.4, y: a30.y - 0.45 },
+  });
+  assert.equal(doc.getSignal(sig.id).flag.anchor, "bb1.a30");
+});
+
+test("signal flag: Escape mid-drag abandons it", () => {
+  const { doc, sig, world, surface, controller } = plantedDesk();
+  const el = flagEl(surface, sig.id);
+  Object.assign(world, holeWorld(doc, "bb1.a12"));
+  fire(el, "pointerdown", { client: [0, 0] });
+  Object.assign(world, holeWorld(doc, "bb1.a30"));
+  fire(el, "pointermove", { client: [40, 40] });
+  assert.ok(ringOf(surface), "ringed mid-drag");
+  controller.handleKeyDown({ key: "Escape", target: document.body });
+  assert.equal(ringOf(surface), null, "the ring goes with it");
+  fire(el, "pointerup", { client: [40, 40] });
+  assert.equal(doc.getSignal(sig.id).flag.anchor, "bb1.a12", "nothing moved");
+});
+
 test("signal flag: dragging off the rail draws the flag from the first sample", () => {
   resetDom();
   const doc = new DeskDoc(null);
@@ -920,4 +1102,72 @@ test("signal flag: dragging off the rail draws the flag from the first sample", 
     flagEl(surface, sig.id).classList.contains("signal-flag--illegal"),
     "and reads as refused until it is over a hole — there is nothing to unplug",
   );
+});
+
+// ── Output/Input tag ────────────────────────────────────────────────────────
+// The signal flag's drag, one item over (components/integration-tools.js).
+
+function taggedDesk() {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addBoard("pins-full", 0, 0);
+  const out = doc.addIntegration({ kind: "output", width: 2 });
+  doc.plantIntegrationTag(out.id, "1", "bb1.a12");
+  const world = { x: 0, y: 0 };
+  return { doc, out, world, ...makeDesk(doc, world) };
+}
+
+const tagEl = (surface, elementId, key) =>
+  surface.querySelector(`[data-tag-id="${elementId}:${key}"]`);
+const tagAnchor = (doc, elementId, key) =>
+  doc.getIntegration(elementId).tags?.[key]?.anchor;
+
+test("tag: a release onto a TAKEN hole lands on the nearest free one, ringed", () => {
+  const { doc, out, world, surface } = taggedDesk();
+  doc.addWire({ from: "bb1.a30", to: "bb1.a40" });
+  const el = tagEl(surface, out.id, "1");
+  Object.assign(world, holeWorld(doc, "bb1.a12"));
+  fire(el, "pointerdown", { client: [0, 0] });
+  const a30 = holeWorld(doc, "bb1.a30");
+  Object.assign(world, { x: a30.x - 0.3, y: a30.y }); // a shade left of a30
+  fire(el, "pointermove", { client: [40, 40] });
+  assert.deepEqual(ringOf(surface), {
+    ...holeWorld(doc, "bb1.a29"),
+    illegal: false,
+  });
+  fire(el, "pointerup", { client: [40, 40] });
+  assert.equal(tagAnchor(doc, out.id, "1"), "bb1.a29");
+  assert.equal(ringOf(surface), null);
+});
+
+test("tag: NO free hole in reach is a miss — it reverts, and is not unplugged", () => {
+  const { doc, out, world, surface } = taggedDesk();
+  surround(doc, 30);
+  dragReleasingAt(tagEl(surface, out.id, "1"), world, {
+    from: holeWorld(doc, "bb1.a12"),
+    stale: holeWorld(doc, "bb1.a30"), // the screen showed a miss too
+    at: holeWorld(doc, "bb1.a30"),
+  });
+  assert.equal(tagAnchor(doc, out.id, "1"), "bb1.a12");
+});
+
+test("tag: a release that lands NOWHERE drops where the ring last was", () => {
+  const { doc, out, world, surface } = taggedDesk();
+  surround(doc, 30);
+  dragReleasingAt(tagEl(surface, out.id, "1"), world, {
+    from: holeWorld(doc, "bb1.a12"),
+    stale: holeWorld(doc, "bb1.a20"),
+    at: holeWorld(doc, "bb1.a30"),
+  });
+  assert.equal(tagAnchor(doc, out.id, "1"), "bb1.a20");
+});
+
+test("tag: a release clear of every hole unplugs it", () => {
+  const { doc, out, world, surface } = taggedDesk();
+  dragReleasingAt(tagEl(surface, out.id, "1"), world, {
+    from: holeWorld(doc, "bb1.a12"),
+    stale: holeWorld(doc, "bb1.a20"),
+    at: { x: -80, y: -80 },
+  });
+  assert.equal(tagAnchor(doc, out.id, "1"), undefined, "back on its card");
 });

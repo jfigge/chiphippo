@@ -107,6 +107,9 @@ test("the sandbox entitlements ask for what the app needs, and no more", () => {
     // the single most expensive thing on this list to discover in the wild.
     "com.apple.security.files.bookmarks.app-scope",
     "com.apple.security.network.client",
+    // The Arduino serial integration opens a board's /dev/cu.* node while the
+    // circuit runs; the sandbox refuses that without it.
+    "com.apple.security.device.serial",
   ]) {
     assert.equal(keys[required], true, `${required} must be granted`);
   }

@@ -69,6 +69,7 @@ function chipGlyph() {
 export class SignalRail {
   #doc;
   #root;
+  #list; // the signal rows — the root also hosts the integration cards below
   #rows = new Map(); // signalId → { row, btn }
   #onPress;
   #onFlagPointerDown;
@@ -90,7 +91,11 @@ export class SignalRail {
     this.#onPress = onPress;
     this.#onFlagPointerDown = onFlagPointerDown;
     this.#onContextMenu = onContextMenu;
-    this.#root = el("div", { class: "signal-rail" });
+    // The rows get a list of their own, so the column can carry the serial
+    // integration's element cards under them (integration-rail.js) and a
+    // rebuild here never touches those.
+    this.#list = el("div", { class: "signal-rail-list" });
+    this.#root = el("div", { class: "signal-rail" }, [this.#list]);
     viewport.append(this.#root);
 
     window.addEventListener("chiphippo:doc-changed", () => this.render());
@@ -102,11 +107,11 @@ export class SignalRail {
 
   /** Rebuild every row from the document, in rail order. */
   render() {
-    this.#root.replaceChildren();
+    this.#list.replaceChildren();
     this.#rows.clear();
     for (const sig of railOrder(this.#doc.signals)) {
       const row = this.#buildRow(sig);
-      this.#root.append(row.row);
+      this.#list.append(row.row);
       this.#rows.set(sig.id, row);
     }
   }

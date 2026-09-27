@@ -391,7 +391,8 @@ test("v9 → v10: drops nextLcdId and touches nothing else", () => {
   assert.equal(doc.version, DESK_DOC_VERSION);
   assert.ok(!("nextLcdId" in doc));
   const { version: _v, nextLcdId: _n, ...restBefore } = v9;
-  // v13 is additive, so the run to CURRENT also lands its four empty fields.
+  // v13 and v14 are additive, so the run to CURRENT also lands their empty
+  // fields.
   // Set them aside rather than widening the comparison: what this test is
   // about is that the v10 step SUBTRACTS one field and rewrites nothing.
   const {
@@ -400,6 +401,9 @@ test("v9 → v10: drops nextLcdId and touches nothing else", () => {
     nextSignalId: _si,
     scopeChannels: _sc,
     nextScopeChannelId: _sci,
+    integrations: _i,
+    nextOutputId: _o,
+    nextInputId: _in,
     ...restAfter
   } = doc;
   assert.deepEqual(restAfter, restBefore);
@@ -744,6 +748,31 @@ test("v12 → v13 keeps signals and channels a document already carries", () => 
   assert.equal(doc.nextSignalId, 4);
   assert.deepEqual(doc.scopeChannels, [{ id: "sc1", kind: "net", ref: "bb1.a1" }]); // prettier-ignore
   assert.equal(doc.nextScopeChannelId, 2);
+});
+
+test("v13 → v14: adds the serial integration's elements and counters", () => {
+  const doc = migrateDeskDocument({
+    version: 13,
+    signals: [],
+    nextSignalId: 1,
+  });
+  assert.equal(doc.version, DESK_DOC_VERSION);
+  assert.deepEqual(doc.integrations, []);
+  assert.equal(doc.nextOutputId, 1);
+  assert.equal(doc.nextInputId, 1);
+});
+
+test("v13 → v14 keeps elements a document already carries", () => {
+  const element = { id: "out2", color: "red", fields: [{ type: "bit" }] };
+  const doc = migrateDeskDocument({
+    version: 13,
+    integrations: [element],
+    nextOutputId: 3,
+    nextInputId: 5,
+  });
+  assert.deepEqual(doc.integrations, [element]);
+  assert.equal(doc.nextOutputId, 3);
+  assert.equal(doc.nextInputId, 5);
 });
 
 test("main's default document carries every list the renderer's does", async () => {

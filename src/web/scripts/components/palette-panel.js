@@ -95,7 +95,9 @@ const ANNOTATIONS_FOLDER = "ANNOTATIONS";
 /** External signals (Feature 370), below ANNOTATIONS and hardcoded for the
     same reason: a signal is NOT a catalog part — no footprint, no def, no BOM
     line — so it must not enter PALETTE_DEFS. One entry, since every signal is
-    the same thing until it is named and coloured. */
+    the same thing until it is named and coloured — plus the Arduino serial
+    integration's Output and Input, which are bench leads of the same kind
+    (they go on the same rail) and so share the folder rather than adding one. */
 const SIGNALS_FOLDER = "SIGNALS";
 
 /** The TOP-LEVEL entries, in the order the tray lists them — the shut tray's
@@ -204,6 +206,9 @@ export class PalettePanel {
   #onPickSignal;
   #signalItem = null; // the SIGNALS folder's one row (see setSignalsFull)
   #signalsFull = false;
+  #onPickIntegration;
+  #integrationItems = []; // the Output and Input rows (see setIntegrationsFull)
+  #integrationsFull = false;
   #onWidthChange;
   #width = DEFAULT_TRAY_W;
   #dragStartX = null; // pointer X at drag start (null = not resizing)
@@ -223,6 +228,8 @@ export class PalettePanel {
    * @param {(kit: string) => void} callbacks.onPickBoard - a board kit key
    *   (assembled breadboard or loose strip) was picked; app.js arms placement.
    * @param {() => void} callbacks.onPickSignal - arm signal placement.
+   * @param {(kind: "output"|"input") => void} [callbacks.onPickIntegration] -
+   *   arm an Arduino serial Output / Input placement.
    * @param {(kind: "label"|"note") => void} callbacks.onPickAnnotation - a
    *   label/note was picked; app.js arms annotation placement.
    * @param {() => void} callbacks.onToggle - the header chevron or the
@@ -241,6 +248,7 @@ export class PalettePanel {
       onPickBoard,
       onPickAnnotation,
       onPickSignal,
+      onPickIntegration,
       onToggle,
       width,
       onWidthChange,
@@ -250,6 +258,7 @@ export class PalettePanel {
     this.#onPickBoard = onPickBoard;
     this.#onPickAnnotation = onPickAnnotation;
     this.#onPickSignal = onPickSignal;
+    this.#onPickIntegration = onPickIntegration;
     this.#onWidthChange = onWidthChange;
     this.#onToggle = onToggle;
 
@@ -584,12 +593,50 @@ export class PalettePanel {
       ],
     );
     this.setSignalsFull(this.#signalsFull);
+    // Output (→, leaves the board) and Input (←, comes in): the arrows the
+    // element's rail card and placement ghost carry too.
+    this.#integrationItems = [
+      ["output", "→"],
+      ["input", "←"],
+    ].map(([kind, glyph]) =>
+      el(
+        "button",
+        {
+          class: "palette-signal-item palette-integration-item",
+          type: "button",
+          dataset: { integration: kind },
+          onClick: () => this.#onPickIntegration?.(kind),
+        },
+        [
+          el("span", { class: "palette-item-id", text: glyph }),
+          el("span", {
+            class: "palette-item-title",
+            text: t(`palette.integration.${kind}`),
+          }),
+        ],
+      ),
+    );
+    this.setIntegrationsFull(this.#integrationsFull);
     this.#list.append(
       this.#sectionHeader("palette-signals-folder", SIGNALS_FOLDER, collapsed),
       el("div", { class: "palette-group-items", hidden: collapsed }, [
         this.#signalItem,
+        ...this.#integrationItems,
       ]),
     );
+  }
+
+  /** Is the rail full of Output/Input elements? Both rows go disabled and say
+      why, as the signal row does. */
+  setIntegrationsFull(full) {
+    this.#integrationsFull = Boolean(full);
+    for (const item of this.#integrationItems) {
+      const kind = item.dataset.integration;
+      item.disabled = this.#integrationsFull;
+      item.title = this.#integrationsFull
+        ? t("palette.integration.full")
+        : t(`palette.integration.${kind}Hint`);
+    }
   }
 
   /**

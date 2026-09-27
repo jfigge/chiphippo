@@ -1032,6 +1032,31 @@ test("wire-endpoint drag: half a pitch off f1 lands on f1, not on a strip pitche
   assert.equal(doc.getWire(wire.id).to, "bb2.f1");
 });
 
+test("wire-endpoint drag: a release that lands NOWHERE drops where the ring last was", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { viewport, surface, controller } = makeDesk(doc, world);
+  controller.addBoardAt("pins-full", 0, 0);
+  const wire = seedWire(doc, "bb1.a1", "bb1.a20");
+  const ring = document.querySelector(".hole-ring");
+
+  world.x = 20;
+  world.y = ROW.a;
+  fire(viewport, "pointerdown", { id: 9, client: [0, 0] });
+  world.x = 25;
+  world.y = ROW.b;
+  fire(wireSvg(surface), "pointermove", { id: 9, client: [40, 40] });
+  assert.equal(ring.hidden, false, "snapped to b25 and ringed");
+  // The up event then arrives out of every hole's reach (a late or jittered
+  // release): the screen promised b25, so that is where the end goes.
+  world.x = 10;
+  world.y = (ROW.e + ROW.f) / 2;
+  fire(wireSvg(surface), "pointerup", { id: 9, client: [40, 40] });
+  assert.equal(doc.getWire(wire.id).to, "bb1.b25");
+  assert.equal(ring.hidden, true);
+});
+
 test("wire-endpoint drag: out of reach of every hole the end rides the cursor, and reverts", () => {
   resetDom();
   const doc = new DeskDoc(null);

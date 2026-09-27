@@ -77,6 +77,7 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
         <a class="doc-nav-link" href="build-guide.html">Build Guide &amp; BOM</a>
         <a class="doc-nav-link" href="schematic-view.html">Schematic View</a>
         <a class="doc-nav-link" href="ai-builder.html">AI Circuit Builder</a>
+        <a class="doc-nav-link" href="arduino.html">Arduino Integration</a>
         <a class="doc-nav-link" href="files-and-undo.html">Files, Saving &amp; Undo</a>
         <a class="doc-nav-link" href="projects-and-desktops.html">Projects &amp; Desktops</a>
         <a class="doc-nav-link doc-nav-link--active" href="settings.html">Settings</a>
@@ -86,7 +87,7 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
 <h1>Settings</h1>
 <p>Chip Hippo keeps its handful of app-wide preferences in one small <strong>Settings</strong>
 dialog — a tabbed master-detail card with a left nav rail and a panel on the
-right. It&#39;s deliberately minimal: four tabs, a few controls each, applied
+right. It&#39;s deliberately minimal: five tabs, a few controls each, applied
 live the moment you change them.</p>
 <p><img src="images/settings.png" alt="The Settings dialog"></p>
 <h2 id="opening-settings">Opening Settings</h2>
@@ -148,6 +149,33 @@ folder you open, so switching it on doesn&#39;t close anything by itself.</li>
 there&#39;s no separate Apply or OK step. (Changing the language is the one
 setting that closes and reopens this dialog, so the card you&#39;re looking at
 comes back in the language you just picked, on the tab you were reading.)</p>
+<h2 id="serial-io">Serial I/O</h2>
+<p>The <strong>Serial I/O</strong> tab holds the <strong>connections</strong> — the named Arduino boards
+that <a href="arduino.html">Outputs and Inputs</a> talk to. A dropdown at the top picks
+one, and the settings under it are that connection&#39;s. The list always starts
+with the built-in <strong>Mock</strong>, a pretend board with nothing to configure (see
+<a href="arduino.html#the-mock-connection">The Mock connection</a>); its <strong>Open window…</strong>
+shows what it receives and lets you send values back. <strong>+</strong> beside the list
+adds a connection, and the bin removes the one picked — click it twice (the
+first click turns it into a <strong>?</strong>; clicking anywhere else, or <code>Esc</code>, puts it
+back). The <strong>ⓘ</strong> says what connections are for.</p>
+<p>Each connection has a <strong>Name</strong>, the <strong>Port</strong> it is plugged into (<strong>Re-scan</strong>
+looks again after you plug a board in), a <strong>Baud rate</strong>, the <strong>Language</strong>
+Generate writes the board&#39;s code in — <strong>C++</strong> (the default, an Arduino header)
+or <strong>Python</strong> (a module for MicroPython and CircuitPython boards; see
+<a href="arduino.html#python-boards-micropython-and-circuitpython">Python boards</a>) — and
+under <strong>Advanced</strong> the rest of the serial framing (data bits, parity, stop
+bits, flow control). Unlike the other tabs, nothing here applies until you press
+<strong>Apply</strong>, which also checks the port is present — if it isn&#39;t, you&#39;re told
+so and the button becomes <strong>Apply anyway</strong>. You can edit several connections
+before applying: each keeps its changes while you look at another, and one
+with changes not yet applied is marked <strong>•</strong> in the list. <strong>Open window…</strong>
+opens the connection&#39;s <a href="arduino.html#the-connection-window">window</a>.</p>
+<p>A connection the circuit can&#39;t run with yet says why in the list — <strong>Port
+unavailable</strong>, or <strong>Needs configuration</strong> when it arrived in a project from
+another computer (a project carries its connections&#39; names and settings, but
+never a port) — and its <strong>Port</strong> is marked in red. See
+<a href="arduino.html#connections">Connections</a> for the details.</p>
 <h2 id="data-sheets">Data Sheets</h2>
 <p>The <strong>Data Sheets</strong> tab points Chip Hippo at an external folder of
 manufacturer datasheet PDFs on your machine. Click <strong>Browse…</strong> to pick a

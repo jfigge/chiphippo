@@ -91,6 +91,8 @@ import {
   normalizeProject,
   projectForFile,
   projectSignature,
+  codegenHash,
+  setCodegenHash,
   removeDesktop,
   setActiveDesktop,
   setDesktopDoc,
@@ -150,6 +152,8 @@ export class ProjectWorkspace {
   #fitView;
   #onActiveChange;
   #onWheelLock;
+  #projectConnections; // (docs, previous) → the connections the file carries
+  #onConnections; // a project arrived carrying these connections
   #project = null; // the normalized meta (model/project-doc.js) + `location`
   #state = new Map(); // tabId → { history, camera }
   #saved = null; // the signature of the project as its FILE holds it → the •
@@ -224,6 +228,14 @@ export class ProjectWorkspace {
    * @param {(locked: boolean) => void} [opts.onWheelLock] - a project was
    *   LOADED, and this is its desk padlock: put it on the desk. Not fired by
    *   `setWheelLocked`, whose news came from the padlock in the first place.
+   * @param {(docs: object[], previous: object[]) => object[]} [opts.projectConnections]
+   *   - the serial connections the project FILE should carry, given every
+   *   desktop's document and what the project carried before (app.js reads
+   *   the machine's settings for them). Refreshed on every stash, so a file
+   *   always travels with what its elements need.
+   * @param {(connections: object[]) => void} [opts.onConnections] - a project
+   *   was LOADED carrying these connections; the ones this machine lacks go
+   *   into its settings, flagged (app.js).
    */
   constructor({
     bridge,
@@ -237,6 +249,8 @@ export class ProjectWorkspace {
     boot = null,
     onActiveChange,
     onWheelLock,
+    projectConnections,
+    onConnections,
     autoSaveMs = AUTO_SAVE_MS,
   }) {
     this.#bridge = bridge;
@@ -249,6 +263,8 @@ export class ProjectWorkspace {
     this.#fitView = fitView;
     this.#onActiveChange = onActiveChange;
     this.#onWheelLock = onWheelLock;
+    this.#projectConnections = projectConnections;
+    this.#onConnections = onConnections;
     this.#autoSaveMs = Number(autoSaveMs) > 0 ? Number(autoSaveMs) : 0;
     if (boot?.project) {
       this.#adopt(boot.project);
@@ -327,6 +343,35 @@ export class ProjectWorkspace {
   /** The active tab record `{id, name, description?, doc}`. */
   get activeTab() {
     return this.#project ? activeDesktop(this.#project) : null;
+  }
+
+  /**
+   * The design hash the ACTIVE desktop's header for one connection was last
+   * generated from, or null (the Generate button's staleness test).
+   */
+  codegenHash(connectionId) {
+    return this.#project
+      ? codegenHash(this.#project, this.#project.activeTab, connectionId)
+      : null;
+  }
+
+  /**
+   * A header was generated for the active desktop and one connection: record
+   * its hash IN THE PROJECT. An edit like a rename — the •, the auto-save, the
+   * leave guard — since the file is where the staleness test will look next
+   * time, on this machine or another.
+   */
+  setCodegenHash(connectionId, hash) {
+    if (!this.isOpen) return;
+    const next = setCodegenHash(
+      this.#project,
+      this.#project.activeTab,
+      connectionId,
+      hash,
+    );
+    if (!next) return;
+    this.#project = next;
+    this.#announce();
   }
 
   /** Is the desk padlock shut in the open project? */
@@ -1059,6 +1104,15 @@ export class ProjectWorkspace {
     this.#renderTabs();
     // The padlock is the project's, so a project arriving brings its own.
     this.#onWheelLock?.(this.wheelLocked);
+    // …and so are the serial connections its elements talk over: any this
+    // machine does not know yet join its settings, flagged to be verified.
+    if (this.#project.connections?.length) {
+      try {
+        this.#onConnections?.(this.#project.connections);
+      } catch (err) {
+        console.error("[renderer] merging project connections failed:", err);
+      }
+    }
     return true;
   }
 
@@ -1129,6 +1183,18 @@ export class ProjectWorkspace {
     if (!this.#project) return;
     const id = this.#project.activeTab;
     this.#project = setDesktopDoc(this.#project, id, this.#deskDoc.toJSON());
+    // The connections the file carries are DERIVED from what its elements use
+    // and the machine's settings, so they are refreshed here, where every
+    // write passes — and never counted by the dirty test (projectSignature).
+    if (this.#projectConnections) {
+      this.#project = {
+        ...this.#project,
+        connections: this.#projectConnections(
+          this.#project.tabs.map((tab) => tab.doc),
+          this.#project.connections ?? [],
+        ),
+      };
+    }
     const state = this.#state.get(id);
     if (state) state.camera = this.#getCamera?.() ?? state.camera;
   }

@@ -10,7 +10,7 @@
       "name": "74LS47",
       "description": "BCD to 7-segment decoder",
       "doc": {
-        "version": 13,
+        "version": 14,
         "boards": [
           {
             "id": "bb1",
@@ -405,6 +405,7 @@
         ],
         "scopeChannels": [],
         "signals": [],
+        "integrations": [],
         "nextBoardId": 4,
         "nextGroupId": 2,
         "nextComponentId": 12,
@@ -414,7 +415,9 @@
         "nextBusId": 1,
         "nextAnnotationId": 10,
         "nextScopeChannelId": 1,
-        "nextSignalId": 1
+        "nextSignalId": 1,
+        "nextOutputId": 1,
+        "nextInputId": 1
       }
     }
   ]

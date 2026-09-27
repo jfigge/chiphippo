@@ -22,15 +22,18 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  MIN_TESTS,
   buildFromReply,
   buildFromSpec,
   buildStepsFromReply,
   parseNetlist,
   partitionFaults,
+  testSuiteFaults,
 } from "../ai/generate.js";
 import {
   buildCatalogCard,
   buildRepairMessage,
+  buildReviewSystemPrompt,
   buildSystemPrompt,
 } from "../ai/catalog-brief.js";
 import { PALETTE_DEFS, partDef } from "../catalog/index.js";
@@ -48,6 +51,9 @@ const COUNTER_SPEC = {
       members: ["CTR.CLR", "CTR.LOAD", "CTR.ENP", "CTR.ENT", "VCC"],
     },
     { name: "CLOCK", members: ["CLK.out", "CTR.CLK"] },
+    // The parallel-load inputs are unused while LOAD is held HIGH, but an
+    // unused TTL input is still TIED rather than left to float.
+    { name: "DATA", members: ["CTR.A", "CTR.B", "CTR.C", "CTR.D", "GND"] },
     { name: "CLKGND", members: ["CLK.gnd", "GND"] },
     { name: "Q0", members: ["CTR.QA", "BAR.1"] },
     { name: "Q1", members: ["CTR.QB", "BAR.2"] },
@@ -237,6 +243,29 @@ test("the catalog card names every part in the palette", () => {
   }
 });
 
+test("the BUILDER is offered only what the compiler can seat; the review sees all", () => {
+  // The crystal-can oscillators are refused by the compiler, so offering them
+  // to the builder only spent a repair round discovering that.
+  const cans = PALETTE_DEFS.filter((d) => d.can).map((d) => d.id);
+  assert.ok(cans.length, "the catalog has can parts to leave out");
+  const build = buildSystemPrompt();
+  const review = buildReviewSystemPrompt();
+  for (const id of cans) {
+    assert.ok(!new RegExp(`^${id} `, "m").test(build), `${id} not offered`);
+    assert.ok(new RegExp(`^${id} `, "m").test(review), `${id} still reviewed`);
+  }
+});
+
+test("a part's buses and a memory's enables are on its card line", () => {
+  // `A[3]` is a member form the resolver accepts — so the model is shown the
+  // bus names it may use — and a memory's CE/OE gate its outputs exactly as a
+  // '244's G does, so they carry the same `!`.
+  const card = buildCatalogCard([partDef("AT28C256"), partDef("74LS245")]);
+  assert.match(card, /AT28C256 .*20:CE! .*22:OE! .*27:WE /);
+  assert.match(card, /\| buses A\[0-14\] DQ\[0-7\]/);
+  assert.match(card, /74LS245 .*\| buses A\[0-7\] B\[0-7\]/);
+});
+
 test("pin names are quoted case-exactly, because the resolver is case-first", () => {
   // 74LS47 distinguishes its A–D inputs from its a–g segment outputs by CASE
   // alone. Folding either way would make the model's spelling ambiguous.
@@ -281,6 +310,19 @@ test("the system prompt states the rules the compiler actually enforces", () => 
     "the mark is on the pin",
   );
   assert.match(prompt, /74LS244 \[DIP-20\][^\n]*18:1Y1>/, "outputs marked too");
+  // The rules added after the audit, each backed by a fault of its own.
+  assert.match(prompt, /Never put an output in a VCC or GND net/); // OUTPUT_ON_RAIL
+  assert.match(prompt, /BUS of tri-state outputs/); // MULTIPLE_DRIVERS
+  assert.match(prompt, /Every input of a part you use must be in a net/); // INPUT_FLOATING
+  assert.match(prompt, new RegExp(`at least ${MIN_TESTS}, each`)); // TOO_FEW_TESTS
+  assert.match(prompt, /giving\s+EVERY position/); // TEST_INVALID
+  assert.match(prompt, /It needs a `clock` part/);
+  assert.match(prompt, /A memory chip arrives EMPTY/); // ROM_UNPROGRAMMED
+  assert.doesNotMatch(
+    prompt,
+    /cannot\s+be expressed as a netlist/,
+    "a bare led is fine",
+  );
   assert.ok(prompt.length > 4000, "over the prompt-cache minimum");
 });
 
@@ -296,6 +338,61 @@ test("the repair message is structured faults, never prose", () => {
   assert.match(msg, /AMBIGUOUS_PIN at nets\[3\]\.members\[1\]/);
   assert.match(msg, /candidates: 7, 13/);
   assert.match(msg, /return the whole corrected JSON object/);
+  assert.doesNotMatch(msg, /For context/, "no notes, no context block");
+});
+
+test("a repair round is told what the compiler changed — and only that", () => {
+  // A level the model did not expect is often a pull it never asked for.
+  // Layout and user-facing notes say nothing it can act on.
+  const msg = buildRepairMessage(
+    [{ code: "TEST_FAILED", message: "t: D reads 0, expected 1" }],
+    [
+      { code: "PULL_INSERTED", message: 'Added a pull-down on "A".' },
+      { code: "WIRES_CROSS_PARTS", message: "1 of 9 wires run over a part." },
+      { code: "ROM_UNPROGRAMMED", message: "U3 arrives unprogrammed." },
+    ],
+  );
+  assert.match(msg, /For context, the compiler also changed the circuit/);
+  assert.match(msg, /- PULL_INSERTED: Added a pull-down on "A"\./);
+  assert.doesNotMatch(msg, /WIRES_CROSS_PARTS|ROM_UNPROGRAMMED/);
+});
+
+test("a design must bring a real test SUITE, not just a test", () => {
+  // L7 is the only check against what was ASKED for, and it checks only what
+  // the tests check: none passed vacuously, and two identical ones proved one
+  // state twice.
+  assert.equal(testSuiteFaults({ tests: [] })[0].code, "TOO_FEW_TESTS");
+  assert.equal(testSuiteFaults({})[0].code, "TOO_FEW_TESTS");
+  const dup = testSuiteFaults({
+    tests: [
+      { name: "a", set: { SW: "01" }, expect: { D: "1" } },
+      { name: "b", set: { SW: "01" }, expect: { D: "0" } },
+    ],
+  });
+  assert.deepEqual(
+    dup.map((f) => f.code),
+    ["DUPLICATE_TEST"],
+  );
+  assert.match(dup[0].message, /"b" applies exactly the inputs "a" does/);
+  // Different edges ARE different states.
+  assert.deepEqual(
+    testSuiteFaults({
+      tests: [
+        { name: "a", edges: 0, expect: { D: "1" } },
+        { name: "b", edges: 1, expect: { D: "0" } },
+      ],
+    }),
+    [],
+  );
+  // Reported beside the circuit's own faults, so one round can fix both.
+  const lone = { ...COUNTER_SPEC, tests: COUNTER_SPEC.tests.slice(0, 1) };
+  const built = buildFromSpec(lone);
+  assert.equal(built.ok, false);
+  assert.deepEqual(
+    built.faults.map((f) => f.code),
+    ["TOO_FEW_TESTS"],
+  );
+  assert.ok(built.warnings?.length, "the compiler's notes come back too");
 });
 
 // ── Stepping ────────────────────────────────────────────────────────────────

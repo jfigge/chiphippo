@@ -1,0 +1,247 @@
+/*
+ * Copyright 2026 Jason Figge
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+/**
+ * tests/serial-protocol.test.js — the serial protocol v1's bytes
+ * (docs/chiphippo-serial-protocol.md): the two CRCs' check values, byte
+ * stuffing (CRC bytes included), the streaming decoder's resync and its three
+ * ways a frame is damaged, and the data and HELLO payloads. The byte strings
+ * below are the protocol document's worked example, computed; the generated
+ * C++ header transcribes the same rules, which serial-arduino-header.test.js
+ * proves against a real compiler.
+ */
+
+"use strict";
+
+const test = require("node:test");
+const assert = require("node:assert/strict");
+
+const {
+  START,
+  ESC,
+  FRAME,
+  PROTOCOL_VERSION,
+  crc16,
+  crc32,
+  encodeFrame,
+  FrameDecoder,
+  encodeData,
+  decodeData,
+  encodeHello,
+  decodeHello,
+} = require("../serial/protocol");
+
+const hex = (buf) =>
+  [...buf].map((b) => b.toString(16).toUpperCase().padStart(2, "0")).join(" ");
+
+test('CRC-16/CCITT-FALSE check value: "123456789" → 0x29B1', () => {
+  assert.equal(crc16(Buffer.from("123456789", "ascii")), 0x29b1);
+  assert.equal(crc16([]), 0xffff);
+});
+
+test('CRC-32 (IEEE 802.3) check value: "123456789" → 0xCBF43926, "" → 0', () => {
+  assert.equal(crc32(Buffer.from("123456789", "ascii")), 0xcbf43926);
+  assert.equal(crc32([]), 0);
+});
+
+test("the constants come from the one shared module, and no type needs escaping", () => {
+  assert.equal(PROTOCOL_VERSION, 1);
+  const types = Object.values(FRAME);
+  assert.equal(new Set(types).size, types.length, "every type is distinct");
+  for (const t of types) {
+    assert.ok(
+      ![0x00, ESC, START, 0xff].includes(t),
+      `type 0x${t.toString(16)}`,
+    );
+  }
+});
+
+test("the worked example: OUTPUT 0, width 8, value 0x7E, SEQ 1 — and its ACK", () => {
+  const out = encodeFrame({
+    type: FRAME.OUTPUT,
+    seq: 1,
+    payload: encodeData(0, 8, 0x7e),
+  });
+  assert.equal(hex(out), "7E 10 01 04 00 08 7D 5E 00 E4 88");
+  assert.equal(
+    hex(encodeFrame({ type: FRAME.ACK, seq: 1 })),
+    "7E 06 01 00 0D 4D",
+  );
+});
+
+test("escaping reaches the CRC bytes too, and round-trips", () => {
+  // ACK 16's CRC is 0x7D4F (CRC_HI is ESC); ACK 17's is 0x4E7E (CRC_LO is START).
+  const a16 = encodeFrame({ type: FRAME.ACK, seq: 16 });
+  const a17 = encodeFrame({ type: FRAME.ACK, seq: 17 });
+  assert.equal(hex(a16), "7E 06 10 00 4F 7D 5D");
+  assert.equal(hex(a17), "7E 06 11 00 7D 5E 4E");
+  const d = new FrameDecoder();
+  const got = d.push(Buffer.concat([a16, a17]));
+  assert.deepEqual(
+    got.map((f) => [f.ok, f.type, f.seq]),
+    [
+      [true, FRAME.ACK, 16],
+      [true, FRAME.ACK, 17],
+    ],
+  );
+});
+
+test("a payload full of markers never puts a raw START after the first byte", () => {
+  const payload = [START, ESC, 0x20, START, START, ESC];
+  const frame = encodeFrame({ type: FRAME.LOG, seq: START, payload });
+  assert.equal(
+    frame.indexOf(START, 1),
+    -1,
+    "no unescaped START after the first",
+  );
+  const [decoded] = new FrameDecoder().push(frame);
+  assert.equal(decoded.ok, true);
+  assert.equal(decoded.seq, START);
+  assert.deepEqual([...decoded.payload], payload);
+});
+
+test("a 255-byte payload round-trips; 256 is refused", () => {
+  const payload = Array.from({ length: 255 }, (_, i) => i);
+  const [got] = new FrameDecoder().push(
+    encodeFrame({ type: FRAME.LOG, seq: 3, payload }),
+  );
+  assert.equal(got.ok, true);
+  assert.deepEqual([...got.payload], payload);
+  assert.throws(
+    () => encodeFrame({ type: FRAME.LOG, payload: new Array(256).fill(65) }),
+    RangeError,
+  );
+});
+
+test("a frame split across chunks is reassembled — at every split point", () => {
+  const frame = encodeFrame({
+    type: FRAME.LOG,
+    seq: 0x7d,
+    payload: [...Buffer.from("hello~}world")],
+  });
+  for (let cut = 1; cut < frame.length; cut++) {
+    const d = new FrameDecoder();
+    const a = d.push(frame.subarray(0, cut));
+    const b = d.push(frame.subarray(cut));
+    assert.equal(a.length + b.length, 1, `split at ${cut}`);
+    const got = [...a, ...b][0];
+    assert.equal(got.ok, true);
+    assert.equal(got.payload.toString(), "hello~}world");
+  }
+});
+
+test("resync: garbage, then a truncated frame, then a good one", () => {
+  const good = encodeFrame({ type: FRAME.ACK, seq: 9 });
+  const torn = encodeFrame({
+    type: FRAME.INBOUND,
+    seq: 1,
+    payload: encodeData(0, 8, 1),
+  }).subarray(0, 5);
+  const out = new FrameDecoder().push(
+    Buffer.concat([Buffer.from("bootloader junk \x7d\x7d"), torn, good]),
+  );
+  assert.equal(out.length, 1, "the torn frame is dropped, not reported");
+  assert.deepEqual([out[0].ok, out[0].type, out[0].seq], [true, FRAME.ACK, 9]);
+});
+
+test("a corrupted byte is a CRC failure, carrying TYPE and SEQ as they arrived", () => {
+  const frame = Buffer.from(
+    encodeFrame({
+      type: FRAME.INBOUND,
+      seq: 5,
+      payload: encodeData(2, 4, 0xa),
+    }),
+  );
+  frame[6] ^= 0x01; // flip a bit of the value
+  const d = new FrameDecoder();
+  const [got] = d.push(frame);
+  assert.deepEqual(got, {
+    ok: false,
+    error: "crc",
+    type: FRAME.INBOUND,
+    seq: 5,
+  });
+  const [next] = d.push(encodeFrame({ type: FRAME.ACK, seq: 1 }));
+  assert.equal(next.ok, true, "and the decoder is hunting again");
+});
+
+test("an escape followed by anything but 0x5E/0x5D is a corrupt frame", () => {
+  const d = new FrameDecoder();
+  const [got] = d.push([START, FRAME.LOG, 7, 2, ESC, 0x41]);
+  assert.deepEqual(got, {
+    ok: false,
+    error: "escape",
+    type: FRAME.LOG,
+    seq: 7,
+  });
+  const [next] = d.push(encodeFrame({ type: FRAME.ACK, seq: 2 }));
+  assert.equal(next.ok, true);
+});
+
+test("a receiver with a small buffer refuses a longer LEN rather than waiting for it", () => {
+  const d = new FrameDecoder({ maxPayload: 8 });
+  const [got] = d.push([START, FRAME.LOG, 4, 9]);
+  assert.deepEqual(got, {
+    ok: false,
+    error: "length",
+    type: FRAME.LOG,
+    seq: 4,
+  });
+  const [next] = d.push(encodeFrame({ type: FRAME.ACK, seq: 1 }));
+  assert.equal(next.ok, true);
+});
+
+test("data payloads: index, width and a right-aligned little-endian value", () => {
+  assert.deepEqual(encodeData(0, 1, 1), [0, 1, 1, 0]);
+  assert.deepEqual(
+    encodeData(3, 4, 0xff),
+    [3, 4, 0x0f, 0],
+    "masked to the width",
+  );
+  assert.deepEqual(encodeData(1, 9, 0x1a5), [1, 9, 0xa5, 0x01]);
+  assert.deepEqual(encodeData(0, 16, 0xbeef), [0, 16, 0xef, 0xbe]);
+  assert.throws(() => encodeData(0, 0, 0), RangeError);
+  assert.throws(() => encodeData(0, 17, 0), RangeError);
+  for (const width of [1, 2, 3, 8, 9, 11, 16]) {
+    const value = 0xa5c3 & ((1 << width) - 1);
+    assert.deepEqual(decodeData(encodeData(5, width, value)), {
+      index: 5,
+      width,
+      value,
+    });
+  }
+});
+
+test("decodeData masks stray high bits and rejects a payload of the wrong shape", () => {
+  assert.deepEqual(decodeData([0, 4, 0xff, 0xff]), {
+    index: 0,
+    width: 4,
+    value: 0x0f,
+  });
+  assert.equal(decodeData([]), null);
+  assert.equal(decodeData([0, 8, 1]), null, "always four bytes");
+  assert.equal(decodeData([0, 8, 1, 0, 0]), null);
+  assert.equal(decodeData([0, 0, 1, 0]), null);
+  assert.equal(decodeData([0, 17, 1, 0]), null);
+});
+
+test("HELLO carries the version and the layout signature", () => {
+  const hello = { version: 1, signature: 0xf8acb506 };
+  assert.deepEqual(encodeHello(hello), [1, 0x06, 0xb5, 0xac, 0xf8]);
+  assert.deepEqual(decodeHello(encodeHello(hello)), hello);
+  assert.equal(decodeHello([1, 2, 3]), null);
+  assert.equal(decodeHello([1, 2, 3, 4, 5, 6]), null);
+});

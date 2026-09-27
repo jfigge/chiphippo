@@ -33,6 +33,16 @@
 //   * The only genuinely duplicated names are `NC` (74LS20/30/90, rom-8k,
 //     ram-8k) and `VSS` (AM27C1024). Every duplicate shares one role, so the
 //     duplicates are electrically interchangeable — not ambiguous, just plural.
+//     That holds for EXACT names only. Once a loose rung folds case or drops
+//     punctuation, distinct pins meet: `1Q` and `1Q̄` are both outputs, and so
+//     are the 74LS85's `A>B`, `A=B` and `A<B`. Two DIFFERENT names are never
+//     interchangeable however alike their roles, so a loose match that lands on
+//     more than one name is reported, never collapsed to the lowest pin.
+//   * The punctuation that matters is the punctuation that carries MEANING.
+//     An overbar, a leading `/` or `~`, a trailing `'` all say "active-low" or
+//     "the complement" — `1Q'`, `/1Q`, `~1Q` and `1Q̅` all mean `1Q̄`, never
+//     `1Q` — and `>`, `<`, `=` name different comparator outputs. `canonical`
+//     keeps both kinds and drops only what separates words (`R0(1)` → `R01`).
 //   * Power pins are declared by ROLE, not by name, which is what lets 74LS83
 //     (VCC=5, GND=12) resolve with no special-casing beside 74LS283 (16/8).
 //
@@ -58,11 +68,54 @@ const ROLE_TOKENS = Object.freeze({
   VSS: "gnd",
 });
 
-/** `R0(1)` → `R01`, `A=B` → `AB` — punctuation a datasheet uses, we don't. */
-const normalise = (s) =>
-  String(s)
+/** Overbars, however they were typed: combining macron/overline, spacing ones. */
+const OVERBAR = /[̄̅¯‾]/g;
+/** A leading active-low mark: `/INT`, `~CLR`, `!OE`. */
+const LEADING_LOW = /^[/~!\\]+/;
+/** A trailing one: `QH'`, `CE#`, `OE_N`, `QBAR`. */
+const TRAILING_LOW = /(?:['’′`*#]+|_[NL]|_?BAR)$/i;
+/** Relations are part of a comparator pin's NAME: `A>B` is not `A=B`. */
+const RELATIONS = Object.freeze({
+  ">": "GT",
+  "<": "LT",
+  "=": "EQ",
+  "≥": "GE",
+  "≤": "LE",
+  "≠": "NE",
+});
+
+/**
+ * A pin name reduced to what it SAYS: its words, upper-cased and stripped of
+ * separators, plus whether it is marked active-low / complemented.
+ *
+ * `R0(1)` → `{key: "R01"}`, `A=B` → `{key: "AEQB"}`, and `1Q̄`, `1Q'`, `/1Q`,
+ * `~1Q` → `{key: "1Q", low: true}`. Applied to the token AND the catalog's
+ * names, so the two meet on the same terms.
+ *
+ * @returns {{key: string, low: boolean}}
+ */
+export function canonical(name) {
+  let s = String(name).normalize("NFD").trim();
+  let low = false;
+  if (OVERBAR.test(s)) {
+    low = true;
+    s = s.replace(OVERBAR, "");
+  }
+  if (LEADING_LOW.test(s)) {
+    low = true;
+    s = s.replace(LEADING_LOW, "");
+  }
+  if (TRAILING_LOW.test(s)) {
+    low = true;
+    s = s.replace(TRAILING_LOW, "");
+  }
+  const key = s
+    .replace(/[̀-ͯ]/g, "")
+    .replace(/[><=≥≤≠]/g, (c) => RELATIONS[c])
     .replace(/[^a-zA-Z0-9]/g, "")
     .toUpperCase();
+  return { key, low };
+}
 
 const fail = (code, message, extra = {}) => ({
   ok: false,
@@ -181,15 +234,11 @@ export function resolvePin(ref, pinToken) {
   const loose = pins.filter(
     (p) => p.name.toLowerCase() === token.toLowerCase(),
   );
-  if (loose.length) return oneOf(loose, ref, token);
+  if (loose.length) return oneName(loose, ref, token);
 
-  // ⑤ Punctuation-insensitive: `R0(1)` written as `R01`, `A=B` as `AB`.
-  const wanted = normalise(token);
-  const normalised = pins.filter((p) => normalise(p.name) === wanted);
-  if (normalised.length) return oneOf(normalised, ref, token);
-
-  // ⑥ Bus index — `Q[3]`, `A[12]` — against the def's own pinGroups, which is
-  //    catalog data rather than a naming heuristic.
+  // ⑤ Bus index — `Q[3]`, `A[12]` — against the def's own pinGroups, which is
+  //    catalog data rather than a naming heuristic. Ahead of the punctuation
+  //    rung, which would otherwise read the brackets as noise.
   const bus = /^([A-Za-z_][A-Za-z0-9_]*)\s*\[\s*(\d+)\s*\]$/.exec(token);
   if (bus) {
     const groups = pinGroupsOf(ref) ?? [];
@@ -209,6 +258,38 @@ export function resolvePin(ref, pinToken) {
       );
     }
     return { ok: true, kind: "pin", pin: group.pins[idx] };
+  }
+
+  // ⑥ Notation. `R0(1)` written as `R01`, `A>B` as `A_GT_B`, `1Q̄` as `1Q'`,
+  //    `/INT` as `~INT` — the same words and the same POLARITY, spelled
+  //    differently (`canonical`). A token that says "active-low" only ever
+  //    meets a pin that says so: `1Q'` is `1Q̄`, never `1Q`.
+  const wanted = canonical(token);
+  const spelled = pins.filter((p) => {
+    const c = canonical(p.name);
+    return c.key === wanted.key && c.low === wanted.low;
+  });
+  if (spelled.length) return oneName(spelled, ref, token);
+  // A token with NO mark may still name a pin whose name carries one — `INT`
+  // for the Z80's `/INT`, the way anyone says it aloud — and a marked token
+  // may name an INPUT the catalog writes bare (`/CLR` for the '161's `CLR`):
+  // a chip never has both, so there is only one pin it can mean. An OUTPUT is
+  // different, because there the mark means the COMPLEMENT: `1Q'` on the
+  // '174 asks for an inverted output the part does not have, and handing it
+  // the true `1Q` is the silent wrong circuit this module exists to refuse.
+  const bare = pins.filter((p) => canonical(p.name).key === wanted.key);
+  const drives = (p) => p.role === "output" || p.role === "io";
+  if (bare.length && (!wanted.low || !bare.some(drives))) {
+    return oneName(bare, ref, token);
+  }
+  if (bare.length) {
+    return fail(
+      "UNKNOWN_PIN",
+      `"${ref}" has no active-low or complement pin "${token}" — ` +
+        `${bare.map((p) => `"${p.name}" (pin ${p.n})`).join(", ")} carries ` +
+        `no such mark. Name the pin exactly as the catalog lists it.`,
+      { candidates: bare.map((p) => p.name) },
+    );
   }
 
   // ⑦ Give up — but say what was available, so a repair turn has something
@@ -241,6 +322,24 @@ function oneOf(matches, ref, token) {
     "AMBIGUOUS_PIN",
     `"${ref}" has ${matches.length} pins named "${token}" with different roles ` +
       `(${matches.map((p) => `${p.n}:${p.role}`).join(", ")}). Use the pin number.`,
+    { candidates: matches.map((p) => p.n) },
+  );
+}
+
+/**
+ * `oneOf` for a LOOSE match: collapse only when every match carries the same
+ * name. A loose rung that lands on two different names — `1Q` and `1Q̄`, `A>B`
+ * and `A<B` — has found two different pins, and however alike their roles, the
+ * lowest-numbered one is not an answer.
+ */
+function oneName(matches, ref, token) {
+  const names = [...new Set(matches.map((p) => p.name))];
+  if (names.length === 1) return oneOf(matches, ref, token);
+  return fail(
+    "AMBIGUOUS_PIN",
+    `"${ref}" has no pin named exactly "${token}", and it could mean any of ` +
+      `${matches.map((p) => `"${p.name}" (pin ${p.n})`).join(", ")}. ` +
+      `Use the exact name or "#" and the pin number.`,
     { candidates: matches.map((p) => p.n) },
   );
 }

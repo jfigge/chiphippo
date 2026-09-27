@@ -136,6 +136,26 @@ export function connectionPointAt(boards, components, world) {
   return null;
 }
 
+/** How close (pitch units) a legal point must be for a dragged SINGLE POINT —
+    a wire's end, a two-terminal part's lead (or its pin 1, carrying the body),
+    a signal flag's or an Output/Input tag's apex — to snap onto it; further
+    than that it rides the cursor, and a release there changes nothing. 1.2
+    reaches the orthogonal neighbours of the hole under the cursor (1 pitch)
+    but not its diagonals (1.41), so a near-miss is forgiven by ONE hole and
+    never more, and the channel's midline (1.5 from rows e and f) snaps to
+    nothing.
+
+    The candidates are the REAL points around the cursor (connectionPointsNear),
+    nearest first. A wire end used to try whole-pitch offsets from the raw
+    cursor instead, and a cursor is not on the lattice: half a pitch off a
+    column, every sample fell between the holes, the board under it went
+    invisible, and the unbounded search a release fell back to walked on until
+    it met a strip on ANOTHER lattice (a turned rail's holes sit on quarters) —
+    an end dropped beside f1 landed on a rail strip nearly five pitches away.
+    The preview and the drop ask the one bounded question (nearestLegalPoint),
+    so they can never disagree. */
+export const END_SNAP_RADIUS = 1.2;
+
 /** Distances closer than this are a TIE: a hole one row up and one a column
     along are both "1 pitch" away, and floating point must not pick between
     them — the stated tie-break does. */
@@ -174,6 +194,39 @@ export function connectionPointsNear(boards, components, world, radius) {
       ? a.dist - b.dist
       : a.y - b.y || a.x - b.x,
   );
+}
+
+/**
+ * Where a drag aiming ONE point at `world` lands: the nearest connection point
+ * within `radius` that `accept` takes — the point under the cursor when it is
+ * legal, else a neighbour one hole along, the way a magnet-snapped connector
+ * forgives a near-miss. Every single-point drag asks this, at every sample and
+ * again at the release, so preview and drop cannot disagree.
+ *
+ * `accept(point)` returns anything truthy to take a point, and that value comes
+ * back as `accepted` — a drag whose legality check already derives the seat it
+ * would commit (a lead's bend, a body's rider plan) keeps it rather than
+ * deriving it twice. `inReach` says whether ANY point lay within reach, which
+ * is how a flag tells a MISS (aimed at a board, nothing there free) from BARE
+ * DESK (the unplug). Pass no components for a drag that lands on board holes
+ * only.
+ *
+ * @returns {{point: {address:string,x:number,y:number,dist:number}|null,
+ *   accepted: any, inReach: boolean}}
+ */
+export function nearestLegalPoint(
+  boards,
+  components,
+  world,
+  accept,
+  radius = END_SNAP_RADIUS,
+) {
+  const near = connectionPointsNear(boards, components ?? [], world, radius);
+  for (const point of near) {
+    const accepted = accept(point);
+    if (accepted) return { point, accepted, inReach: true };
+  }
+  return { point: null, accepted: null, inReach: near.length > 0 };
 }
 
 /**

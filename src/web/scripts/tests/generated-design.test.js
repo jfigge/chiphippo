@@ -44,6 +44,9 @@ const SPEC = {
       members: ["CTR.CLR", "CTR.LOAD", "CTR.ENP", "CTR.ENT", "VCC"],
     },
     { name: "CLOCK", members: ["CLK.out", "CTR.CLK"] },
+    // The parallel-load inputs are unused while LOAD is held HIGH, but an
+    // unused TTL input is still TIED rather than left to float.
+    { name: "DATA", members: ["CTR.A", "CTR.B", "CTR.C", "CTR.D", "GND"] },
     { name: "Q0", members: ["CTR.QA", "BAR.1"] },
     { name: "Q1", members: ["CTR.QB", "BAR.2"] },
     { name: "BARGND", members: ["BAR.K", "GND"] },

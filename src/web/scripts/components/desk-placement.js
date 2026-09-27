@@ -774,6 +774,7 @@ export class DeskPlacement {
     else if (kind === "place-brick") this.#trackBrickGhost(e);
     else if (kind === "place-annotation") this.#host.trackAnnotationGhost(e);
     else if (kind === "place-signal") this.#host.trackSignalGhost(e);
+    else if (kind === "place-integration") this.#host.trackIntegrationGhost(e);
     else if (kind === "place-cluster") this.trackClusterGhost(e);
     else if (kind === "place-design") this.trackDesignGhost(e);
     else this.#trackSeatedGhost(e);

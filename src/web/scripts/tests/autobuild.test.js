@@ -388,6 +388,141 @@ test("two outputs on one net is caught before the engine sees it", () => {
   );
 });
 
+test("an output on a rail is refused — the supply would silence it", () => {
+  // The engine gives the supply the net, so this settles and verifies with
+  // the output's whole job gone. Nothing downstream can see it.
+  const errs = fails(
+    {
+      parts: [{ id: "U1", ref: "74LS00" }],
+      nets: [{ name: "GND", members: ["U1.1Y", "U1.1A"] }],
+    },
+    "OUTPUT_ON_RAIL",
+  );
+  assert.match(errs[0].message, /U1\.1Y \(pin 3\)/);
+});
+
+test("tri-state outputs make a BUS; one that cannot switch off still fights", () => {
+  const bus = compileNetlist({
+    parts: [{ id: "U1", ref: "74LS125" }],
+    nets: [
+      { name: "BUS", members: ["U1.1Y", "U1.2Y"] },
+      { name: "EN", members: ["U1.1G", "GND"] },
+      { name: "OFF", members: ["U1.2G", "VCC"] },
+      { name: "D", members: ["U1.1A", "U1.2A", "VCC"] },
+    ],
+  });
+  assert.equal(bus.ok, true, JSON.stringify(bus.errors));
+  // A memory's data outputs float on its own CE/OE, so two ROMs share a bus.
+  const roms = compileNetlist({
+    parts: [
+      { id: "R1", ref: "rom-8k" },
+      { id: "R2", ref: "rom-8k" },
+    ],
+    nets: [{ name: "D0", members: ["R1.Q0", "R2.Q0"] }],
+  });
+  assert.equal(roms.ok, true, JSON.stringify(roms.errors));
+  const errs = fails(
+    {
+      parts: [
+        { id: "U1", ref: "74LS125" },
+        { id: "U2", ref: "74LS04" },
+      ],
+      nets: [{ name: "BUS", members: ["U1.1Y", "U2.1Y"] }],
+    },
+    "MULTIPLE_DRIVERS",
+  );
+  assert.match(errs[0].message, /U2\.1Y \(pin 2\) cannot/);
+});
+
+test("every lamp leg on a rail is limited — isolated segments and a VCC anode too", () => {
+  // Only a display's COMMON leg used to get a resistor, so an isolated bar and
+  // an LED hung from VCC over an active-low output (the way the prompt says to
+  // wire one) burned without a word.
+  const iso = compileNetlist({
+    parts: [
+      { id: "U1", ref: "74LS04" },
+      { id: "D", ref: "bar8iso" },
+    ],
+    nets: [
+      { name: "Y", members: ["U1.1Y", "D.A1"] },
+      { name: "K", members: ["D.K1", "GND"] },
+    ],
+  });
+  assert.equal(iso.ok, true);
+  assert.equal(iso.interposed.length, 1);
+  const { out } = build(DECODER_SPEC);
+  assert.equal(
+    out.interposed.length,
+    1,
+    "eight LED anodes on eight VCC nets: ONE resistor network",
+  );
+  const pack = out.document.components.find(
+    (c) => c.id === out.partMap.get(out.interposed[0]),
+  );
+  assert.equal(pack.ref, "rnet9");
+
+  // And they LIGHT: switches open, the address is 0, Y0 alone is LOW — so D1
+  // alone glows, and nothing burns.
+  const { doc, netlist } = build(DECODER_SPEC);
+  const r = settle({ document: doc, netlist });
+  const at = (levels, a) => levels.get(netlist.netOfPoint.get(a));
+  for (let i = 0; i < 8; i++) {
+    const led = out.partMap.get(`D${i + 1}`);
+    const anode = pinAddress(doc, led, 1);
+    const cathode = pinAddress(doc, led, 2);
+    const state = junctionState({
+      anode: at(r.netLevels, anode),
+      cathode: at(r.netLevels, cathode),
+      anodeStrong: at(r.strongLevels, anode),
+      cathodeStrong: at(r.strongLevels, cathode),
+    });
+    assert.equal(state.unlimited, false, `D${i + 1} does not burn`);
+    assert.equal(isLit(state), i === 0, `D${i + 1} lit only when selected`);
+  }
+});
+
+test("the resistor goes in the LAMP's leg, not in everything else on that rail", () => {
+  // A named `GND` net collects everything the spec tied low. Detaching the
+  // rail from it (as the rule once did) hung the decoder's enables off the
+  // bar's side of the resistor.
+  const out = compileNetlist({
+    parts: [
+      { id: "U1", ref: "74LS138" },
+      { id: "BAR", ref: "bar8" },
+    ],
+    nets: [
+      { name: "GND", members: ["BAR.K", "U1.G2A", "U1.G2B"] },
+      { name: "Y0", members: ["U1.Y0", "BAR.1"] },
+    ],
+  });
+  assert.equal(out.ok, true);
+  const gnd = out.nets.find((n) => n.name === "GND");
+  assert.equal(gnd.rail, "GND", "the enables are still on the rail");
+  assert.deepEqual(
+    gnd.pins.map((p) => p.pin).sort(),
+    [4, 5],
+    "…and only they are",
+  );
+  const leg = out.nets.find((n) => n.name === "GND_LIMITED");
+  assert.equal(leg.rail, null);
+  assert.ok(leg.pins.some((p) => p.partId === "BAR" && p.pin === 9));
+});
+
+test("a ROM says it arrives unprogrammed", () => {
+  const out = compileNetlist({
+    parts: [{ id: "U1", ref: "AT28C256" }],
+    nets: [{ name: "CE", members: ["U1.CE", "GND"] }],
+  });
+  assert.equal(out.ok, true);
+  const w = out.warnings.find((x) => x.code === "ROM_UNPROGRAMMED");
+  assert.match(w?.message ?? "", /U1 \(AT28C256\) arrives unprogrammed/);
+  const ram = compileNetlist({
+    parts: [{ id: "U1", ref: "HM62256" }],
+    nets: [{ name: "CE", members: ["U1.CE", "GND"] }],
+  });
+  assert.ok(!ram.warnings.some((x) => x.code === "ROM_UNPROGRAMMED"));
+});
+
 test("a net joining the rails, or with one member, is rejected", () => {
   fails(
     {

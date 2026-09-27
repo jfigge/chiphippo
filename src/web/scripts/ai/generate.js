@@ -30,6 +30,64 @@ import { tf } from "../i18n.js";
 import { compileNetlist, designClipOf } from "../model/autobuild.js";
 import { verifySteps } from "../model/autobuild-verify.js";
 
+/**
+ * How many tests a generated design must carry. The prompt quotes this
+ * number (ai/catalog-brief.js), so it is stated once.
+ */
+export const MIN_TESTS = 2;
+
+/**
+ * The test SUITE's own faults — the ones no single test can have.
+ *
+ * L7 is the only gate that checks a design against what was ASKED for rather
+ * than against itself, and it checks only what the tests check. A spec with
+ * no tests passed it vacuously; one whose tests all apply the same inputs
+ * proved one state and claimed a suite. Neither is a circuit fault, so neither
+ * belongs to the verifier, which other callers run without tests at all — it
+ * is the AI builder's rule for what a design must bring with it.
+ */
+export function testSuiteFaults(spec) {
+  const tests = Array.isArray(spec?.tests) ? spec.tests : [];
+  const faults = [];
+  if (tests.length < MIN_TESTS) {
+    faults.push({
+      gate: "L7",
+      kind: "repair",
+      code: "TOO_FEW_TESTS",
+      message:
+        `The spec carries ${tests.length} test${tests.length === 1 ? "" : "s"}; ` +
+        `a design needs at least ${MIN_TESTS}, because they are the only check ` +
+        `that it does what was asked. Give each one a different input state ` +
+        `(or a different number of clock edges) and what that state must show.`,
+    });
+  }
+  const seen = new Map(); // input state → the first test that applied it
+  tests.forEach((t, i) => {
+    const name = typeof t?.name === "string" && t.name ? t.name : `tests[${i}]`;
+    const set = t?.set && typeof t.set === "object" ? t.set : {};
+    const state = JSON.stringify([
+      Object.entries(set)
+        .map(([k, v]) => [k, String(v)])
+        .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
+      Number.isInteger(t?.edges) ? t.edges : 0,
+    ]);
+    if (seen.has(state)) {
+      faults.push({
+        gate: "L7",
+        kind: "repair",
+        code: "DUPLICATE_TEST",
+        message:
+          `"${name}" applies exactly the inputs "${seen.get(state)}" does, so ` +
+          `it proves nothing new — give it a different input state.`,
+        test: name,
+      });
+    } else {
+      seen.set(state, name);
+    }
+  });
+  return faults;
+}
+
 /** Drain a step generator to its return value. */
 function drain(iterator) {
   let step = iterator.next();
@@ -158,7 +216,7 @@ export function parseNetlist(text) {
  *
  * @param {object} spec
  * @returns {{ok:true, clip:object, document:object, warnings:Array, results:Array, title:string}
- *          |{ok:false, faults:Array, document?:object}}
+ *          |{ok:false, faults:Array, document?:object, warnings?:Array}}
  */
 export function buildFromSpec(spec) {
   return drain(buildStepsFromSpec(spec));
@@ -183,16 +241,26 @@ export function* buildStepsFromSpec(spec) {
     label: tf("ai.gate.compile", "Compiling the netlist…"),
   };
 
+  // Reported beside whatever else fails, so one repair round can fix both.
+  const suite = testSuiteFaults(spec);
   const compiled = compileNetlist(spec);
   if (!compiled.ok) {
     // Compiler errors and verifier faults are the same shape to the caller —
     // a repair round should not have to know which stage refused.
-    return { ok: false, faults: compiled.errors };
+    return { ok: false, faults: [...compiled.errors, ...suite] };
   }
 
   const verdict = yield* verifySteps(compiled, spec);
-  if (!verdict.ok) {
-    return { ok: false, faults: verdict.faults, document: verdict.document };
+  if (!verdict.ok || suite.length) {
+    return {
+      ok: false,
+      faults: [...verdict.faults, ...suite],
+      document: verdict.document,
+      // What the compiler changed on the way, so a repair round can be told
+      // (ai/catalog-brief.js `buildRepairMessage`) — a model that does not know
+      // a pull-down was added cannot reason about the level it sees.
+      warnings: compiled.warnings ?? [],
+    };
   }
 
   // The clip comes from the VERIFIED document, not the compiled one: the

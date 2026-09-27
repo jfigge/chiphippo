@@ -32,6 +32,12 @@
                                builder and the datasheet download. Both are
                                opt-in, and the auto-updater — the third — is
                                switched off in a store build (store-build.js).
+    * device.serial            the Arduino serial integration: a running
+                               circuit talks to a real board over its USB
+                               serial port (/dev/cu.*), which the sandbox
+                               otherwise refuses to open. Ports are opened only
+                               while the circuit runs, only for a connection
+                               the user configured in Settings ▸ Integration.
 
   Deliberately ABSENT, and why:
     * network.server           nothing listens; there is no loopback server.
@@ -43,8 +49,10 @@
                                that is for bookmarks stored INSIDE a document.
                                Ours live in an app-owned sidecar under
                                userData, so app-scope is the right one.
-    * print, device.*, files.downloads.*
-                               unused surface is unused.
+    * print, device.usb, device.camera, device.bluetooth,
+      files.downloads.*        unused surface is unused. (A USB-serial adapter
+                               is reached through its serial device node, which
+                               is device.serial's, not raw USB access.)
 
   Everything the app writes for itself — the working slot, ROM .bin files,
   downloaded datasheets, settings, the encrypted API key — lives under
@@ -61,6 +69,8 @@
     <key>com.apple.security.files.bookmarks.app-scope</key>
     <true/>
     <key>com.apple.security.network.client</key>
+    <true/>
+    <key>com.apple.security.device.serial</key>
     <true/>
   </dict>
 </plist>

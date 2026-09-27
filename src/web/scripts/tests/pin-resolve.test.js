@@ -22,7 +22,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import { PALETTE_DEFS, partDef } from "../catalog/index.js";
-import { parseMember, resolvePin } from "../model/pin-resolve.js";
+import { canonical, parseMember, resolvePin } from "../model/pin-resolve.js";
 
 const pin = (ref, token) => {
   const r = resolvePin(ref, token);
@@ -177,6 +177,108 @@ test("a near-miss is never silently repaired", () => {
   assert.equal(err("74LS283", "S0").code, "UNKNOWN_PIN");
   assert.equal(err("74LS161", "Q0").code, "UNKNOWN_PIN");
   assert.equal(err("74LS283", "CIN").code, "UNKNOWN_PIN");
+});
+
+test("canonical keeps what notation MEANS and drops what only separates", () => {
+  assert.deepEqual(canonical("R0(1)"), { key: "R01", low: false });
+  assert.deepEqual(canonical("U/D"), { key: "UD", low: false });
+  // Relations name different comparator pins.
+  assert.equal(canonical("A>B").key, "AGTB");
+  assert.equal(canonical("A=B").key, "AEQB");
+  assert.equal(canonical("A_GT_B").key, "AGTB");
+  // Every way of writing "the complement" / "active-low" is the same mark.
+  for (const t of [
+    "1Q̄",
+    "1Q\u0305",
+    "1Q'",
+    "1Q’",
+    "/1Q",
+    "~1Q",
+    "1Q_N",
+    "1QBAR",
+  ]) {
+    assert.deepEqual(canonical(t), { key: "1Q", low: true }, t);
+  }
+  assert.deepEqual(canonical("1Q"), { key: "1Q", low: false });
+});
+
+test("a complement is never resolved to its true output", () => {
+  // The collision the punctuation rung used to make: stripping the mark left
+  // `1Q` and `1Q̄` identical, both outputs, and the lowest pin won — so `1Q'`
+  // wired the TRUE output into a net that asked for the inverted one.
+  for (const t of ["1Q̄", "1Q\u0305", "1Q'", "/1Q", "~1Q", "1Q_N"]) {
+    assert.equal(pin("74LS74", t), 6, `74LS74 "${t}" is 1Q̄`);
+  }
+  assert.equal(pin("74LS74", "1Q"), 5);
+  assert.equal(pin("74LS74", "1-Q"), 5, "an unmarked respelling is the true Q");
+  // The '595's serial output is QH' — a typographer's apostrophe is still it.
+  assert.equal(pin("74LS595", "QH’"), 9);
+  assert.equal(pin("74LS595", "QH"), 7);
+  // Relations: A>=B is none of A>B, A=B, A<B, so it is not guessed at.
+  assert.equal(err("74LS85", "A>=B").code, "UNKNOWN_PIN");
+  assert.equal(pin("74LS85", "A_GT_B"), 5);
+});
+
+test("an OUTPUT's mark is refused when the part has no such complement", () => {
+  // The '174 has only true outputs. `1Q'` asks for an inverted one, and the
+  // true `1Q` is exactly the wrong answer, so it is refused, naming the pin.
+  const e = err("74LS174", "1Q'");
+  assert.equal(e.code, "UNKNOWN_PIN");
+  assert.deepEqual(e.candidates, ["1Q"]);
+});
+
+test("an INPUT answers with or without its active-low mark", () => {
+  // A chip never has both CLR and CLR̄, so the mark cannot pick the wrong pin:
+  // the catalog writes many active-low inputs bare, and datasheets do not.
+  assert.equal(pin("74LS161", "/CLR"), 1);
+  assert.equal(pin("AT28C256", "/CE"), 20);
+  assert.equal(pin("Z80A", "INT"), 16, "the Z80's /INT, said aloud");
+  assert.equal(pin("Z80A", "~INT"), 16);
+});
+
+test("a loose match landing on two different pins is reported, not collapsed", () => {
+  // Same role is not the same pin: `IA<B`, `IA=B` and `IA>B` are all inputs.
+  const e = err("74LS85", "IA_B");
+  assert.equal(e.code, "UNKNOWN_PIN", "IA_B names none of them");
+  // Written with its relation, each is exactly one pin.
+  assert.equal(pin("74LS85", "ia<b"), 2);
+  assert.equal(pin("74LS85", "IA_EQ_B"), 3);
+  assert.equal(pin("74LS85", "IA_GT_B"), 4);
+});
+
+test("no respelling of a pin's name ever lands on a DIFFERENT pin", () => {
+  // The invariant the loose rungs exist under, swept over the whole catalog:
+  // a pin written in another case, with its mark spelled another way, or with
+  // its separators dropped resolves to THAT pin or fails — never a neighbour.
+  const spellings = (name) => {
+    const bare = name.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    const low = canonical(name).low;
+    return [
+      name.toLowerCase(),
+      name.toUpperCase(),
+      bare.replace(/[^A-Za-z0-9<>=]/g, ""),
+      ...(low ? [`${canonical(name).key}'`, `/${canonical(name).key}`] : []),
+    ];
+  };
+  for (const def of PALETTE_DEFS) {
+    if (def.terminals?.length) continue;
+    const pins = def.pins ?? [];
+    for (const p of pins) {
+      for (const t of spellings(p.name)) {
+        // A spelling that IS another pin's exact name is that pin, by design
+        // (74LS47's `a` is not its `A`).
+        if (pins.some((q) => q.name === t && q.name !== p.name)) continue;
+        const r = resolvePin(def.id, t);
+        if (!r.ok) continue;
+        const landed = pins.find((q) => q.n === r.pin);
+        assert.equal(
+          landed.name,
+          p.name,
+          `${def.id} "${t}" (from "${p.name}") landed on "${landed.name}"`,
+        );
+      }
+    }
+  }
 });
 
 // ── The whole catalog stays addressable ─────────────────────────────────────

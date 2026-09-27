@@ -34,7 +34,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { CHIP_DEFS } from "../catalog/index.js";
+import { CHIP_DEFS, outputEnables } from "../catalog/index.js";
 import {
   evaluate,
   hasLogic,
@@ -182,4 +182,36 @@ test("the 245's DIR is NOT an output enable — it picks a side", () => {
   );
   const oeHigh = floating(def, [19]);
   assert.equal(oeHigh.size, outputsOf(def).length, "OE floats everything");
+});
+
+test("a memory's output enables are READ off its own logic, and they are real", () => {
+  // `outputEnables` does not ask a memory to declare its enables a second
+  // time: it reads the chip and output enables `memUnit` already gates on. So
+  // this proves the derived list against the unit itself — every data pin
+  // drives with all of them LOW, and each one alone, taken HIGH, floats them.
+  for (const def of CHIP_DEFS.filter(isMemory)) {
+    const m = def.logic.memory;
+    const enables = outputEnables(def);
+    assert.deepEqual(enables, [m.ceN, m.oeN], `${def.id} CE and OE`);
+    const vector = (high) => {
+      const ins = new Map();
+      for (const p of drivable(def)) ins.set(p.n, L);
+      if (m.weN != null) ins.set(m.weN, H); // reading, not writing
+      if (m.ce2 != null) ins.set(m.ce2, H); // the active-HIGH second select
+      for (const n of high) ins.set(n, H);
+      return def.logic.read(ins, null);
+    };
+    const on = vector([]);
+    assert.ok(
+      m.data.every((n) => on.get(n) !== Z),
+      `${def.id} drives its data with every enable LOW`,
+    );
+    for (const pin of enables) {
+      const off = vector([pin]);
+      assert.ok(
+        m.data.every((n) => off.get(n) === Z),
+        `${def.id}: pin ${pin} HIGH floats every data pin`,
+      );
+    }
+  }
 });

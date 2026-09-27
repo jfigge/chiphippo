@@ -623,3 +623,27 @@ test("nameFromFile strips whichever extension the file carries", () => {
   assert.equal(nameFromFile("/a/Old.project.chiphippo"), "Old");
   assert.equal(nameFromFile("/a/plain"), "plain");
 });
+
+test("a project's connections keep their language — and never a port", () => {
+  withStore((store, dir) => {
+    const meta = store.newProject();
+    meta.connections = [
+      {
+        id: "conn-pico",
+        name: "Pico",
+        port: "/dev/cu.usbmodem1",
+        baud: 115200,
+        dataBits: 8,
+        parity: "none",
+        stopBits: 1,
+        flowControl: "none",
+        language: "python",
+      },
+    ];
+    const target = path.join(dir, `Bench${PROJECT_EXT}`);
+    store.write(target, meta);
+    const [conn] = store.read(target).connections;
+    assert.equal(conn.language, "python");
+    assert.equal(conn.port, undefined);
+  });
+});

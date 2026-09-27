@@ -10,7 +10,7 @@
       "name": "74LS73",
       "description": "Dual JK flip-flop, clear",
       "doc": {
-        "version": 13,
+        "version": 14,
         "boards": [
           {
             "id": "bb1",
@@ -489,6 +489,7 @@
         ],
         "scopeChannels": [],
         "signals": [],
+        "integrations": [],
         "nextBoardId": 4,
         "nextGroupId": 2,
         "nextComponentId": 16,
@@ -498,7 +499,9 @@
         "nextBusId": 1,
         "nextAnnotationId": 13,
         "nextScopeChannelId": 1,
-        "nextSignalId": 1
+        "nextSignalId": 1,
+        "nextOutputId": 1,
+        "nextInputId": 1
       }
     },
     {
@@ -506,7 +509,7 @@
       "name": "74LS74",
       "description": "Dual D flip-flop",
       "doc": {
-        "version": 13,
+        "version": 14,
         "boards": [
           {
             "id": "bb1",
@@ -907,6 +910,7 @@
         ],
         "scopeChannels": [],
         "signals": [],
+        "integrations": [],
         "nextBoardId": 4,
         "nextGroupId": 2,
         "nextComponentId": 12,
@@ -916,7 +920,9 @@
         "nextBusId": 1,
         "nextAnnotationId": 11,
         "nextScopeChannelId": 1,
-        "nextSignalId": 1
+        "nextSignalId": 1,
+        "nextOutputId": 1,
+        "nextInputId": 1
       }
     },
     {
@@ -924,7 +930,7 @@
       "name": "74LS76",
       "description": "Dual JK flip-flop, preset & clear",
       "doc": {
-        "version": 13,
+        "version": 14,
         "boards": [
           {
             "id": "bb1",
@@ -1423,6 +1429,7 @@
         ],
         "scopeChannels": [],
         "signals": [],
+        "integrations": [],
         "nextBoardId": 4,
         "nextGroupId": 2,
         "nextComponentId": 16,
@@ -1432,7 +1439,9 @@
         "nextBusId": 1,
         "nextAnnotationId": 14,
         "nextScopeChannelId": 1,
-        "nextSignalId": 1
+        "nextSignalId": 1,
+        "nextOutputId": 1,
+        "nextInputId": 1
       }
     },
     {
@@ -1440,7 +1449,7 @@
       "name": "74LS107",
       "description": "Dual JK flip-flop, clear",
       "doc": {
-        "version": 13,
+        "version": 14,
         "boards": [
           {
             "id": "bb1",
@@ -1919,6 +1928,7 @@
         ],
         "scopeChannels": [],
         "signals": [],
+        "integrations": [],
         "nextBoardId": 4,
         "nextGroupId": 2,
         "nextComponentId": 16,
@@ -1928,7 +1938,9 @@
         "nextBusId": 1,
         "nextAnnotationId": 13,
         "nextScopeChannelId": 1,
-        "nextSignalId": 1
+        "nextSignalId": 1,
+        "nextOutputId": 1,
+        "nextInputId": 1
       }
     },
     {
@@ -1936,7 +1948,7 @@
       "name": "74LS175",
       "description": "Quad D flip-flop",
       "doc": {
-        "version": 13,
+        "version": 14,
         "boards": [
           {
             "id": "bb1",
@@ -2481,6 +2493,7 @@
         ],
         "scopeChannels": [],
         "signals": [],
+        "integrations": [],
         "nextBoardId": 4,
         "nextGroupId": 2,
         "nextComponentId": 20,
@@ -2490,7 +2503,9 @@
         "nextBusId": 1,
         "nextAnnotationId": 15,
         "nextScopeChannelId": 1,
-        "nextSignalId": 1
+        "nextSignalId": 1,
+        "nextOutputId": 1,
+        "nextInputId": 1
       }
     },
     {
@@ -2498,7 +2513,7 @@
       "name": "74LS112",
       "description": "Dual JK flip-flop, preset & clear",
       "doc": {
-        "version": 13,
+        "version": 14,
         "boards": [
           {
             "id": "bb1",
@@ -2989,6 +3004,7 @@
         ],
         "scopeChannels": [],
         "signals": [],
+        "integrations": [],
         "nextBoardId": 4,
         "nextGroupId": 2,
         "nextComponentId": 16,
@@ -2998,7 +3014,9 @@
         "nextBusId": 1,
         "nextAnnotationId": 13,
         "nextScopeChannelId": 1,
-        "nextSignalId": 1
+        "nextSignalId": 1,
+        "nextOutputId": 1,
+        "nextInputId": 1
       }
     },
     {
@@ -3006,7 +3024,7 @@
       "name": "74LS174",
       "description": "Hex D flip-flop",
       "doc": {
-        "version": 13,
+        "version": 14,
         "boards": [
           {
             "id": "bb1",
@@ -3725,6 +3743,7 @@
         ],
         "scopeChannels": [],
         "signals": [],
+        "integrations": [],
         "nextBoardId": 4,
         "nextGroupId": 2,
         "nextComponentId": 28,
@@ -3734,7 +3753,9 @@
         "nextBusId": 1,
         "nextAnnotationId": 19,
         "nextScopeChannelId": 1,
-        "nextSignalId": 1
+        "nextSignalId": 1,
+        "nextOutputId": 1,
+        "nextInputId": 1
       }
     },
     {
@@ -3742,7 +3763,7 @@
       "name": "74LS273",
       "description": "Octal D flip-flop, clear",
       "doc": {
-        "version": 13,
+        "version": 14,
         "boards": [
           {
             "id": "bb1",
@@ -4462,6 +4483,7 @@
         ],
         "scopeChannels": [],
         "signals": [],
+        "integrations": [],
         "nextBoardId": 4,
         "nextGroupId": 2,
         "nextComponentId": 22,
@@ -4471,7 +4493,9 @@
         "nextBusId": 1,
         "nextAnnotationId": 23,
         "nextScopeChannelId": 1,
-        "nextSignalId": 1
+        "nextSignalId": 1,
+        "nextOutputId": 1,
+        "nextInputId": 1
       }
     }
   ]

@@ -22,7 +22,8 @@
     "vendor-markdown": "esbuild web/scripts/vendor/markdown-entry.js --bundle --format=esm --outfile=web/scripts/vendor/markdown.js"
   },
   "dependencies": {
-    "electron-updater": "^6.8.9"
+    "electron-updater": "^6.8.9",
+    "serialport": "^13.0.0"
   },
   "devDependencies": {
     "@eslint/js": "^9.39.4",
@@ -64,6 +65,7 @@
       "web/**/*",
       "package.json"
     ],
+    "npmRebuild": false,
     "mac": {
       "icon": "web/chiphippo-mac-icon.png",
       "category": "public.app-category.developer-tools",

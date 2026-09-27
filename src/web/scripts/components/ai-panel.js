@@ -981,7 +981,10 @@ export class AiPanel {
       repair.map((f) => `${f.code}: ${f.message}`),
     );
     this.#history.push({ role: "assistant", content: text });
-    this.#history.push({ role: "user", content: buildRepairMessage(repair) });
+    this.#history.push({
+      role: "user",
+      content: buildRepairMessage(repair, built.warnings),
+    });
     this.#request();
   }
 

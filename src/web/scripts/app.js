@@ -59,6 +59,8 @@ import { DeskDoc } from "./model/desk-doc.js";
 import { MAX_SIGNALS } from "./model/signals.js";
 import { createSignalKeys } from "./model/signal-keys.js";
 import { SignalRail } from "./components/signal-rail.js";
+import { createIntegrationShell } from "./components/integration-shell.js";
+import { knownConnections } from "./model/serial-connections.js";
 import { datasheetCrop, partDef } from "./catalog/index.js";
 
 /** How long after the last camera change to persist the viewport. */
@@ -1293,6 +1295,9 @@ async function init() {
   // below because the AI panel also reads `ai` off it on every send — that is
   // how a Settings change reaches the panel with no wiring between them.
   let currentSettings = settings;
+  // Settings, opened on a given panel — Run's "settings need to be verified"
+  // and an element's "Manage connections…" go straight to Integration.
+  const openSettings = (tab) => SettingsDialog.open(currentSettings, { tab });
   window.addEventListener("chiphippo:show-about", () => AboutDialog.open());
   window.addEventListener("chiphippo:open-settings", () =>
     SettingsDialog.open(currentSettings),
@@ -1366,6 +1371,11 @@ async function init() {
   let zoomControl = null;
   let deskLock = null;
   let signalRail = null;
+  // The Arduino serial integration's place in the window (rail cards, lamps,
+  // the Generate segment, the run-time controller) — built once the
+  // notification stack exists, below; the closures that reach it before then
+  // only run on a user action.
+  let integration = null;
   // Installed by bindShortcuts (below): let go of every held signal key.
   let releaseSignalKeys = null;
   let controller = null;
@@ -1392,6 +1402,7 @@ async function init() {
     // The annotations section (labels + notes) lives at the bottom.
     onPickAnnotation: (kind) => controller?.armAnnotationPlacement(kind),
     onPickSignal: () => controller?.armSignalPlacement(),
+    onPickIntegration: (kind) => controller?.armIntegrationPlacement(kind),
     // The tray's own header chevron / its rail's chevron and section icons.
     // `togglePalette` is declared with the toolbar further below; this closure
     // only runs on a click, long after that.
@@ -1612,6 +1623,13 @@ async function init() {
     onClockPause: (id) => sim?.toggleClockPause(id),
     // A signal flag selected on the desk lights its button on the rail.
     onSignalSelect: (id) => signalRail?.setSelected(id),
+    // …and an Output/Input tag lights its element's card.
+    onIntegrationSelect: (id) => integration?.setSelected(id),
+    // The built-in Mock first, then this machine's configured connections.
+    getConnections: () => knownConnections(currentSettings.serialConnections),
+    onOpenSettings: (tab) => openSettings(tab),
+    onOpenConnectionWindow: (id) =>
+      Promise.resolve(bridge?.serial?.log?.open?.(id)).catch(() => {}),
     // A part's (or a wire's) "Pin Assignment" context-menu item → its
     // floating pin/terminal-assignments OS window (`rows` sizes it to the
     // layout; `rot` is a snapshot of the part's placed rotation — only an
@@ -1751,6 +1769,31 @@ async function init() {
 
   // ── Simulation transport (Feature 90/100): Run/Stop, Pause, Step, speed ──
   const notifications = new NotificationStack(document.body);
+
+  // The Arduino serial integration. Its settings writes go straight to the
+  // store rather than through the settings-changed event, because the first
+  // one can come from the project that BOOTS (a connection it carries that
+  // this machine lacks), before that event has a listener.
+  integration = createIntegrationShell({
+    bridge,
+    desk,
+    deskDoc,
+    notifications,
+    getSettings: () => currentSettings,
+    setSettings: (patch) => {
+      currentSettings = { ...currentSettings, ...patch };
+      bridge.settings
+        .set(patch)
+        .catch((err) => console.error("[renderer] settings:set failed:", err));
+      integration?.settingsChanged(patch);
+    },
+    openSettings,
+    getWorkspace: () => workspace,
+    getController: () => controller,
+  });
+  // Generate: after AI, the last of the desk tools — it reads the desk into
+  // an artifact, as BOM does, and stays live while the circuit runs.
+  toolPill.append(integration.generate);
 
   // Auto-route (Feature 360). One click, one undo step, and a toast that says
   // what happened — including, when it happens, that some wires were left alone
@@ -1920,7 +1963,10 @@ async function init() {
     netlist: netlistCache,
     notifications,
     onTransportChange,
+    // The settle-boundary collaborator: the serial link to real Arduinos.
+    integration: integration.controller,
   });
+  integration.controller.setSim(sim);
 
   // Projects & tabbed desktops: owns the open project — the document — which
   // desktop is on the desk, and the swap (with its camera and undo history)
@@ -1945,8 +1991,16 @@ async function init() {
     setCamera: (camera) => deskView.setCamera(camera),
     fitView: frameLoadedView,
     boot: projectBoot,
-    onActiveChange: () => updateTitle(),
+    onActiveChange: () => {
+      updateTitle();
+      integration?.refresh();
+    },
     onWheelLock: applyWheelLock,
+    // A project FILE carries the serial connections its elements use (never a
+    // port), and a project arriving brings any this machine lacks.
+    projectConnections: (docs, previous) =>
+      integration.projectConnections(docs, previous),
+    onConnections: (list) => integration.mergeProjectConnections(list),
   });
   updateTitle(); // the booted project names the window
 
@@ -2007,9 +2061,16 @@ async function init() {
     onContextMenu: (id, e) =>
       controller?.openSignalMenu(id, e.clientX, e.clientY),
   });
-  // The palette's SIGNALS row goes disabled once every digit key has a signal.
-  const refreshSignalsFull = () =>
+  // The serial integration's element cards, under the signal buttons in the
+  // same column.
+  integration.mountRail(signalRail);
+  integration.refresh();
+  // The palette's SIGNALS row goes disabled once every digit key has a signal
+  // (and its Output/Input rows once the rail holds all the elements it can).
+  const refreshSignalsFull = () => {
     palette.setSignalsFull(deskDoc.signals.length >= MAX_SIGNALS);
+    palette.setIntegrationsFull(controller.integrationsFull);
+  };
   window.addEventListener("chiphippo:doc-changed", refreshSignalsFull);
   refreshSignalsFull();
 
@@ -2085,6 +2146,7 @@ async function init() {
       () => zoomControl,
       () => deskLock,
       () => signalRail,
+      () => integration,
       () => schematicView,
     ],
     // Four relabel functions the app ALREADY had, for their own reasons: each
@@ -2134,6 +2196,9 @@ async function init() {
     // into something unreachable — either changes whether the AI segment has
     // a connection to offer.
     if (e.detail && "ai" in e.detail) refreshAiReady();
+    // A connection renamed, re-ported or re-framed: the cards name it, and
+    // its serial settings are part of the header's design hash.
+    integration?.settingsChanged(e.detail);
     const write = bridge.settings
       .set(e.detail)
       .catch((err) => console.error("[renderer] settings:set failed:", err));

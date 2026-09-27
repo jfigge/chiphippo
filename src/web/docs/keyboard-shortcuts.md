@@ -15,7 +15,7 @@ are noted alongside the shortcut.
 | `1`–`9`, `0` | Press signal buttons 1–10, top to bottom (`0` is the tenth) — **only while the circuit runs**, and several at once (see [External signals](power-and-clocks.md#external-signals)) |
 | `Tab` | Switch between the Breadboard and Schematic views (not while typing) |
 | `Escape` | Abandon a drag in flight, then unpin a probed net, then disarm the probe, then cancel a pending wire/bus, then cancel a placement in hand, then deselect — whichever applies first |
-| `Delete` / `Backspace` | Remove the current selection (a part, wire, bus, annotation, board, or a whole multi-selection) |
+| `Delete` / `Backspace` | Remove the current selection (a part, wire, bus, annotation, board, or a whole multi-selection); a selected [Output or Input tag](arduino.md#outputs-and-inputs) is unplugged back onto its card instead |
 
 ## Selecting & moving
 
@@ -53,6 +53,7 @@ covers moving one.
 | Shortcut | Action |
 |---|---|
 | `R` | Rotate or flip the part being placed or selected — see [Chips & Components](components.md) for the exact behavior per part type |
+| `R` (Output/Input tag) | Turn the tag being dragged, or the selected tag, a quarter-turn |
 | `F` | Flip an LED's polarity while its placement ghost is armed |
 | `Cmd+C` | Copy the selection — one part, a whole multi-selection of parts, or (if it includes boards) the whole sub-assembly |
 | `Cmd+V` | Paste a copy as a new placement ghost |

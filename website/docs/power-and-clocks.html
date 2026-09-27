@@ -77,6 +77,7 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
         <a class="doc-nav-link" href="build-guide.html">Build Guide &amp; BOM</a>
         <a class="doc-nav-link" href="schematic-view.html">Schematic View</a>
         <a class="doc-nav-link" href="ai-builder.html">AI Circuit Builder</a>
+        <a class="doc-nav-link" href="arduino.html">Arduino Integration</a>
         <a class="doc-nav-link" href="files-and-undo.html">Files, Saving &amp; Undo</a>
         <a class="doc-nav-link" href="projects-and-desktops.html">Projects &amp; Desktops</a>
         <a class="doc-nav-link" href="settings.html">Settings</a>
@@ -148,17 +149,27 @@ two addressable terminals: <strong><code>out</code></strong> and <strong><code>g
 Wire <code>out</code> to a chip&#39;s clock input and <code>gnd</code> to your circuit&#39;s ground.</p>
 <p>Right-click a clock brick and choose <strong>Properties…</strong> to set its rate:</p>
 <ul>
-<li><strong>1 / 2 / 5 / 10 / 20 / 50 / 100 Hz</strong> — free-running. Once the simulation is
+<li><p><strong>1 / 2 / 5 / 10 / 20 / 50 / 100 Hz</strong> — free-running. Once the simulation is
 running, the brick toggles its <code>out</code> level on its own at the chosen rate; a
 small lamp on the body lights while the output is HIGH. The slow end is for
 watching a single edge land; the fast end is for letting a counter or a CPU
 actually get somewhere while you watch. Above about 20 Hz the lamp and any
 LEDs on the circuit blur into a steady glow — that&#39;s the point at which the
-<a href="logic-analyzer.html">logic analyzer</a> becomes the way to see what happened.</li>
-<li><strong>Manual</strong> — click-to-toggle. No timer runs it; instead, while the
+<a href="logic-analyzer.html">logic analyzer</a> becomes the way to see what happened.</p>
+<p>While the simulation runs, a free-running clock also shows a small <strong>⏸</strong>
+button in its top-right corner. Click it to hold <strong>that one clock</strong>: it
+keeps whatever level it was at — its lamp and everything it drives stay as
+they were — while the rest of the circuit, and every other clock, carries
+on. The button turns into a <strong>▶</strong>; click it again to set the clock going.
+A clock&#39;s own pause belongs to the run, like its phase: <strong>Run</strong> always
+starts every clock going, <strong>Step</strong> passes a paused clock by, and resuming
+the transport after <strong>Pause</strong> leaves it held.</p>
+</li>
+<li><p><strong>Manual</strong> — click-to-toggle. No timer runs it; instead, while the
 simulation is running, clicking the brick&#39;s body flips <code>out</code> from LOW to
 HIGH (or back) once per click — handy for single-stepping a counter or
-flip-flop by hand and watching each edge land.</li>
+flip-flop by hand and watching each edge land.</p>
+</li>
 </ul>
 <p>The rate dropdown, like the PSU&#39;s voltage one, is a live setting — it applies
 immediately and stays available while running, so you can retune a clock&#39;s

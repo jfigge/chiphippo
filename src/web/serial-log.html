@@ -1,0 +1,24 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="
+        default-src 'self';
+        script-src  'self';
+        style-src   'self' 'unsafe-inline';
+        font-src    'self';
+        img-src     'self' data:;
+      "
+    />
+    <title>Serial log</title>
+    <link rel="stylesheet" href="styles/theme.css" />
+    <link rel="stylesheet" href="styles/app.css" />
+  </head>
+  <body class="serial-log-body">
+    <div id="serial-log-root" class="serial-log-root"></div>
+    <script type="module" src="scripts/serial-log.js"></script>
+  </body>
+</html>

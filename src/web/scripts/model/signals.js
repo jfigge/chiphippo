@@ -190,11 +190,21 @@ export function isPlanted(sig) {
 
 // ── The flag glyph ──────────────────────────────────────────────────────────
 
+/**
+ * A flag is the SAME glyph an Output/Input tag is (model/integration.js's tags
+ * are these constants and functions under their own names), so every lead from
+ * the bench reads as one family on the board. It is sized to be SEEN: across
+ * its axis it is wider than one pitch, so flags and tags planted in ADJACENT
+ * holes overlap their neighbours. Legibility won that trade — at under a pitch
+ * a tag was a few pixels across at any working zoom — and each layer draws
+ * every key above every body, so a number is never under the lead beside it.
+ */
+
 /** Flag body length along its axis, in world pitch units. */
-export const FLAG_LEN = 4;
+export const FLAG_LEN = 3.75;
 
 /** Flag body width across its axis, in world pitch units. */
-export const FLAG_W = 2;
+export const FLAG_W = 1.29;
 
 /**
  * The height of an equilateral triangle of side FLAG_W — the depth of the
@@ -235,16 +245,19 @@ export function flagPolygon(point, rot = 0) {
 
 /**
  * The radius of the disc the flag's KEY sits on — the rail button's dot, drawn
- * on the flag. It leaves a fifth of a pitch of body showing on either side, and
- * fits the body's rectangle lengthwise too, so it never spills into the point.
+ * on the flag, so the holes under a translucent body never cross the digit. It
+ * leaves a sliver of body showing on either side, and fits the body's
+ * rectangle lengthwise too, so it never spills into the point. (A tag's
+ * two-digit pin stretches the same disc into a pill; a key is one character.)
  */
-export const FLAG_KEY_R = 0.8;
+export const FLAG_KEY_R = 0.55;
 
 /**
  * Where the flag's KEY is printed: the middle of its rectangular body, clear
  * of the point. Rotated with the flag, but the glyph itself never is — one
- * upright character fits the 2-pitch-wide body at every quarter-turn, which is
- * exactly what a horizontal NAME could not do (the name lives on the button).
+ * upright character fits the body across its width at every quarter-turn,
+ * which is exactly what a horizontal NAME could not do (the name lives on the
+ * button).
  * @param {{x: number, y: number}} point the anchor hole's world position
  * @param {number} rot 0 | 90 | 180 | 270
  * @returns {{x: number, y: number}}

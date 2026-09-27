@@ -36,6 +36,7 @@ import { buildColorSwatches } from "./color-swatches.js";
 import { buildInfoButton } from "./info-button.js";
 import { buildSegmented } from "./segmented-picker.js";
 import { DatasheetDownloadDialog } from "./datasheet-download-dialog.js";
+import { buildIntegrationPanel } from "./integration-settings.js";
 
 /** A line-drawn book glyph for the "browse the datasheet folder" affordance. */
 const FOLDER_SVG =
@@ -633,14 +634,17 @@ export class SettingsDialog {
   /**
    * Show the Settings dialog, seeded from `settings` (a no-op when already
    * open). @param {object} settings the current settings document.
+   * @param {{tab?: string}} [opts] the panel to open on — Run's "settings need
+   *   to be verified" and an element's "Manage connections…" open straight
+   *   onto Serial I/O (key "integration").
    */
-  static open(settings = {}) {
+  static open(settings = {}, { tab } = {}) {
     if (SettingsDialog.#open) return;
     SettingsDialog.#open = true;
     SettingsDialog.#settings = { ...settings };
-    // A fresh open starts on Appearance; a language rebuild resumes where the
-    // user was.
-    if (!SettingsDialog.#relabelling) SettingsDialog.#tab = "appearance";
+    // A fresh open starts on Appearance (or the tab asked for); a language
+    // rebuild resumes where the user was.
+    if (!SettingsDialog.#relabelling) SettingsDialog.#tab = tab ?? "appearance";
 
     // The UI language. A <select> rather than a segmented track: eight choices
     // is past what one bordered row can show, and unlike Theme these are not an
@@ -833,6 +837,16 @@ export class SettingsDialog {
     // the updater listeners it attaches, which onClose below has to run.
     const about = buildAboutPanel(settings, SettingsDialog.#emit);
 
+    // The Arduino serial integration's named connections. Built from the
+    // dialog's OWN copy of the settings, so a language rebuild keeps what was
+    // just applied; its drafts are the one thing on this card that is not a
+    // live patch (integration-settings.js says why).
+    const integration = buildIntegrationPanel(
+      SettingsDialog.#settings,
+      SettingsDialog.#emit,
+      window.chiphippo,
+    );
+
     const panels = {
       appearance: el(
         "section",
@@ -924,6 +938,16 @@ export class SettingsDialog {
         ],
       ),
       ai: aiPanel,
+      integration: el(
+        "section",
+        {
+          class: "settings-panel",
+          role: "tabpanel",
+          "data-panel": "integration",
+          hidden: true,
+        },
+        integration.rows,
+      ),
       about: el(
         "section",
         {
@@ -937,8 +961,11 @@ export class SettingsDialog {
     };
 
     // Left nav rail — one item per panel; clicking switches the visible panel.
+    // Serial I/O sits directly under Appearance. Its key stays "integration",
+    // the name Run's refusal and an element's "Manage connections…" open it by.
     const TABS = [
       { key: "appearance", label: t("settings.nav.appearance") },
+      { key: "integration", label: t("settings.nav.integration") },
       { key: "datasheets", label: t("settings.nav.datasheets") },
       { key: "ai", label: t("settings.nav.ai") },
       { key: "about", label: t("settings.nav.about") },
@@ -977,6 +1004,7 @@ export class SettingsDialog {
       el("nav", { class: "settings-nav", role: "tablist" }, navItems),
       el("div", { class: "settings-panels" }, [
         panels.appearance,
+        panels.integration,
         panels.datasheets,
         panels.ai,
         panels.about,

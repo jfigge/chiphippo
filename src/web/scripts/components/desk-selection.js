@@ -83,6 +83,8 @@ export class DeskSelection {
       this.#host.annotationLayer.setSelected(on ? sel.id : null);
     } else if (sel.kind === "signal") {
       this.#host.signalLayer.setSelected(on ? sel.id : null);
+    } else if (sel.kind === "tag") {
+      this.#host.integrationLayer.setSelected(on ? sel.id : null);
     } else if (sel.kind === "bus") {
       this.#host.wireLayer.setSelectedBus(on ? sel.id : null);
     } else this.#host.wireLayer.setSelected(on ? sel.id : null);
@@ -331,6 +333,12 @@ export class DeskSelection {
     this.select(this.#host.doc.getSignal(id) ? { kind: "signal", id } : null);
   }
 
+  /** Pick one Output/Input TAG (`<element>:<key>`). Like a signal flag, a tag
+      is none of the three multi sets. */
+  selectTag(id) {
+    this.select({ kind: "tag", id });
+  }
+
   deselect() {
     this.clearMulti();
     this.select(null);
@@ -441,6 +449,7 @@ export class DeskSelection {
     this.#host.wireLayer.setSelectedMany([]);
     this.#host.annotationLayer.setSelected(null);
     this.#host.signalLayer.setSelected(null);
+    this.#host.integrationLayer?.setSelected(null);
     this.#boardOutline.show([], false);
     this.refreshRidePreview();
   }

@@ -175,6 +175,27 @@ const DEFAULTS = Object.freeze({
     model: "", // blank → the provider's own default
   },
 
+  // ── Arduino serial integration (Settings ▸ Serial I/O) ─────────────────────
+  // The machine's NAMED CONNECTIONS: `{id, name, port, baud, dataBits, parity,
+  // stopBits, flowControl, language, needsConfig?}` each (see the renderer's
+  // model/serial-connections.js). Here rather than in the project because a
+  // PORT is a fact about this computer; a project carries the rest of each
+  // connection it uses, and one it brings that this machine lacks is added
+  // here flagged `needsConfig`. Replaced whole by a patch, like every
+  // object-valued key. It is also the ALLOWLIST `serial:open` reads: the
+  // renderer names connection ids, and only main turns one into a device.
+  serialConnections: Object.freeze([]),
+
+  // Each CONNECTION WINDOW's remembered state, keyed by the connection's ID
+  // (docs/chiphippo-connection-window.md): where it was and how big
+  // (`bounds`) and how it was showing its stream (`log` / `data` /
+  // `protocol` filters, `timestamps`). Written by main (ipc/serial.js) as the
+  // window moves and as its toggles change. Kept only for connections that
+  // exist (and the built-in Mock): writing `serialConnections` without one
+  // drops its entry, so a rename keeps a window where it was and a deletion
+  // takes its window's state with it.
+  connectionWindows: Object.freeze({}),
+
   // ── Recent projects ────────────────────────────────────────────────────────
   // The last 10 PROJECT files saved or opened, most recent first. Main owns
   // the list (store/recent-files.js does the arithmetic) and it does two jobs:

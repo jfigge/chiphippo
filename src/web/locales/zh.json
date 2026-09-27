@@ -88,7 +88,10 @@
       "memImage": "存储器映像",
       "binImage": "二进制映像",
       "intelHex": "Intel HEX",
-      "allFiles": "所有文件"
+      "allFiles": "所有文件",
+      "header": "C/C++ 头文件",
+      "python": "Python 源文件",
+      "text": "文本"
     },
     "regrant": {
       "message": "确认对该项目的访问权限",
@@ -171,6 +174,13 @@
       "step": "单步",
       "stepTitle": "前进半个时钟周期",
       "speedTitle": "时钟速度（点击在 ¼ / 1 / 4 间切换）"
+    },
+    "generate": {
+      "label": "生成",
+      "title": "为此桌面的开发板生成代码",
+      "stale": "生成 — 有开发板的代码与此桌面的设计不一致",
+      "staleLabel": "生成（已过期）",
+      "none": "生成开发板代码 — 请先添加输出或输入"
     }
   },
   "zoom": {
@@ -186,7 +196,8 @@
       "appearance": "外观",
       "datasheets": "数据手册",
       "ai": "AI",
-      "about": "关于"
+      "about": "关于",
+      "integration": "串口 I/O"
     },
     "appearance": {
       "language": "语言",
@@ -329,6 +340,13 @@
       "signals": "信号",
       "switches": "开关",
       "xor": "XOR"
+    },
+    "integration": {
+      "output": "输出",
+      "input": "输入",
+      "outputHint": "触发时把值发送给 Arduino — 点击桌面即可添加",
+      "inputHint": "由 Arduino 的值驱动其引脚 — 点击桌面即可添加",
+      "full": "此桌面上的输出和输入已达上限"
     }
   },
   "boards": {
@@ -1074,7 +1092,11 @@
       "size": "尺寸",
       "imageSource": "映像文件",
       "type": "类型",
-      "rest": "默认值"
+      "rest": "默认值",
+      "connection": "连接",
+      "triggerEdge": "触发",
+      "triggerInit": "触发初始值",
+      "fields": "引脚"
     },
     "option": {
       "manual": "手动",
@@ -1085,7 +1107,8 @@
     },
     "action": {
       "inspectMemory": "查看存储器…",
-      "programMemory": "载入映像…（编程）"
+      "programMemory": "载入映像…（编程）",
+      "manageConnections": "管理连接…"
     },
     "warnings": "警告",
     "warning": {
@@ -1164,5 +1187,287 @@
     "closeNamed": "关闭{title}",
     "removeNamed": "移除 {label}",
     "enterValue": "输入一个值"
+  },
+  "integration": {
+    "kind": {
+      "output": "输出",
+      "input": "输入"
+    },
+    "defaultName": {
+      "output": "输出 {n}",
+      "input": "输入 {n}"
+    },
+    "edge": {
+      "rising": "上升沿",
+      "falling": "下降沿",
+      "either": "双沿"
+    },
+    "fieldType": {
+      "bit": "位",
+      "byte": "字节",
+      "word": "字"
+    },
+    "widthLabel": "宽度",
+    "widthOption": {
+      "other": "{count} 个引脚"
+    },
+    "widthTitle": {
+      "output": "输出宽度（引脚数）",
+      "input": "输入宽度（引脚数）"
+    },
+    "tag": {
+      "pinTitle": "{name} · 引脚 {pin} {field}",
+      "triggerTitle": "{name} · 触发（{edge}）"
+    },
+    "card": {
+      "noConnection": "无连接",
+      "menuHint": "右键单击打开属性及更多",
+      "width": {
+        "other": "{count} 个引脚"
+      },
+      "pinHint": "引脚 {pin} — 拖到一个孔上",
+      "triggerHint": "触发 — 拖到触发它的那条线上"
+    },
+    "menu": {
+      "removeTag": "移除标签",
+      "removeAllTags": "移除所有标签",
+      "delete": {
+        "output": "删除输出",
+        "input": "删除输入"
+      },
+      "openWindow": "打开连接窗口"
+    },
+    "properties": {
+      "title": {
+        "output": "{name} 属性",
+        "input": "{name} 属性"
+      },
+      "connection": "连接",
+      "noConnection": "无",
+      "unknownConnection": "（不在这台电脑上）",
+      "manageConnections": "管理连接…",
+      "triggerEdge": "触发",
+      "triggerInit": "触发初始值",
+      "pins": "引脚"
+    },
+    "fields": {
+      "pinsTitle": "引脚 {pins}",
+      "nameAria": "引脚 {pins} 的名称",
+      "typeAria": "引脚 {pins} 的类型",
+      "remove": "移除此字段",
+      "count": "{used} / {max} 个引脚"
+    },
+    "verify": {
+      "title": "需要核实设置",
+      "noConnection": "{name} 没有分配连接。请在其属性中选择一个。",
+      "unknownConnection": "{name} 使用的连接未在这台电脑上设置。请在其属性中选择一个连接。",
+      "unconfigured": "运行电路前，需要在“设置 ▸ 串口 I/O”中配置连接“{name}”。",
+      "portMissing": "连接“{name}”的端口 {port} 不可用。",
+      "openSettings": "打开设置",
+      "openProperties": "打开属性"
+    },
+    "run": {
+      "connectingTitle": "正在连接",
+      "connecting": "正在等待 {names} 应答…",
+      "signatureTitle": "程序是为另一个设计构建的",
+      "signature": "“{name}”上的代码是为另一个设计生成的。请重新生成并重新写入开发板。",
+      "versionTitle": "协议版本不一致",
+      "version": "“{name}”使用协议 v{device}，Chip Hippo 使用 v{host}。请重新生成它的代码并重新写入开发板。",
+      "droppedTitle": "连接已断开",
+      "dropped": "与“{name}”的串口连接已断开，电路已停止。",
+      "deliveryTitle": "发送失败",
+      "delivery": "向“{name}”发送 {attempts} 次均失败，电路已停止。它的程序是否足够频繁地调用 ChipHippo.poll()？",
+      "noResponseTitle": "无应答",
+      "noResponse": "“{name}”的 {port} 上没有任何应答。程序是否已上传，并且调用了 ChipHippo.begin() 和 ChipHippo.poll()？",
+      "openFailedTitle": "无法打开端口",
+      "openFailed": "无法为“{name}”打开 {port}：{detail}",
+      "restartTitle": "开发板已重启",
+      "restart": "电路运行时“{name}”重启了，电路已停止。再次运行即可重新连接。"
+    },
+    "lamps": {
+      "label": "串口活动",
+      "tx": "TX — 发送给 Arduino 的值",
+      "rx": "RX — 从 Arduino 收到的值",
+      "lg": "LG — 日志输出",
+      "open": "点击可打开连接窗口。"
+    },
+    "log": {
+      "empty": "还没有内容。电路运行时，程序打印的内容以及经过此连接的每个值都会显示在这里。",
+      "filter": {
+        "log": "日志",
+        "data": "数据",
+        "protocol": "协议"
+      },
+      "filterTitle": {
+        "log": "显示设备打印的内容",
+        "data": "显示经过此连接的值",
+        "protocol": "显示确认、握手以及端口的打开和关闭。问题总会显示。"
+      },
+      "timestamps": "时间戳",
+      "timestampsTitle": "显示自运行开始以来的时间",
+      "save": "保存…",
+      "saved": "已保存到 {path}",
+      "saveFailed": "无法保存：{error}",
+      "event": {
+        "open": "连接已打开",
+        "openPort": "端口 {port} 已打开",
+        "close": "端口已关闭",
+        "handshake": "握手成功：协议 v{version}，签名 {signature}",
+        "announce": "设备宣告已启动",
+        "staleAck": "过时，已忽略",
+        "nakIdle": "没有需要重发的内容",
+        "resend": "重发 seq {seq}（第 {attempt}/{max} 次）",
+        "noAck": "seq {seq} 没有 ACK — 重发（第 {attempt}/{max} 次）",
+        "failed": "seq {seq} 发送 {attempts} 次均失败",
+        "frame": "帧",
+        "damage": {
+          "crc": "CRC 错误",
+          "escape": "转义错误",
+          "length": "过长"
+        },
+        "damagedNak": "损坏的 {frame}（{error}）— 已发送 NAK",
+        "damagedDropped": "损坏的 {frame}（{error}）— 已丢弃",
+        "duplicate": "这是重发：已再次确认，不会重复应用",
+        "unusable": "无法读取：已确认并丢弃",
+        "noResponse": "{seconds} 秒内没有对 HELLO 的应答",
+        "version": "设备使用协议 v{version}，Chip Hippo 使用 v{host}",
+        "signature": "设备是为布局 {signature} 构建的，而不是 {expected}",
+        "restart": "设备已重启",
+        "dropped": "连接已断开",
+        "droppedDetail": "连接已断开：{detail}",
+        "openFailed": "无法打开端口：{detail}"
+      }
+    },
+    "settings": {
+      "hint": "到 Arduino 开发板的命名串口连接。输出和输入在各自的属性中选择一个连接。",
+      "connection": "连接",
+      "optionTagged": "{name}（{tag}）",
+      "add": "添加连接",
+      "defaultName": "Arduino",
+      "name": "名称",
+      "port": "端口",
+      "baud": "波特率",
+      "language": "语言",
+      "languageValue": {
+        "cpp": "C++",
+        "python": "Python"
+      },
+      "languageHint": "“生成”为此连接编写的内容：C++ — 适用于任何 Arduino 开发板的 Arduino 头文件 — 或 Python — 适用于 MicroPython 和 CircuitPython 开发板（如 Raspberry Pi Pico、ESP32 或 Nano ESP32）的模块。Uno、Nano、Mega 和 Leonardo 只支持 C++。",
+      "choosePort": "— 选择端口 —",
+      "portNotFound": "{port}（未找到）",
+      "portOf": "端口 {n}/{count}",
+      "portOfRole": "端口 {n}/{count}：{role}",
+      "portRoleRepl": "REPL",
+      "portRoleData": "CircuitPython 数据",
+      "rescan": "重新扫描",
+      "scanning": "正在扫描…",
+      "advanced": "高级",
+      "dataBits": "数据位",
+      "parity": "校验",
+      "parityValue": {
+        "none": "无",
+        "even": "偶校验",
+        "odd": "奇校验",
+        "mark": "标记",
+        "space": "空格"
+      },
+      "stopBits": "停止位",
+      "flowControl": "流控制",
+      "flowValue": {
+        "none": "无",
+        "hardware": "硬件（RTS/CTS）",
+        "software": "软件（XON/XOFF）"
+      },
+      "needsConfig": "需要配置",
+      "portUnavailable": "端口不可用",
+      "apply": "应用",
+      "applied": "已应用。",
+      "applyAnyway": "仍然应用",
+      "noPort": "请先选择一个端口。",
+      "portAbsent": "{port} 当前未连接。",
+      "remove": "移除连接",
+      "removeConfirm": "再次单击以移除此连接",
+      "builtin": "内置",
+      "mockNote": "在此连接上模拟一个设备。不会向硬件发送任何内容。",
+      "reservedName": "“{name}”是内置连接的名称。请另选一个。",
+      "openWindow": "打开窗口…",
+      "openWindowTitle": "打开此连接的窗口：设备打印的内容，以及经过它的每个值"
+    },
+    "generate": {
+      "title": "生成开发板代码",
+      "intro": "每个连接一个文件，使用该连接的语言：C++ 头文件或 Python 模块。把它保存在开发板代码旁边，并用 include 或 import 引入。输出由你的代码处理，因此覆盖这个文件永远不会动到你的代码。",
+      "none": "此桌面上没有已分配连接的输出或输入。",
+      "unassigned": {
+        "other": "{count} 个元件没有连接，已被略过。"
+      },
+      "counts": "输出：{outputs} · 输入：{inputs}",
+      "language": {
+        "cpp": "用于 Arduino 的 C++ 头文件",
+        "python": "用于 MicroPython 和 CircuitPython 的 Python 模块"
+      },
+      "hash": "设计 {hash}",
+      "status": {
+        "current": "最新",
+        "stale": "已过期",
+        "never": "尚未生成",
+        "unknown": "这台电脑上未配置"
+      },
+      "save": "保存头文件…",
+      "saveModule": "保存模块…",
+      "copy": "复制",
+      "view": "查看文件…",
+      "viewTitle": "{name} — 头文件和示例",
+      "viewTitlePython": "{name} — 模块和示例",
+      "files": "文件",
+      "copied": "已复制到剪贴板。",
+      "copiedFile": "已将 {name} 复制到剪贴板。",
+      "copyFailed": "无法复制到剪贴板。",
+      "saved": "已保存到 {path}",
+      "failed": "无法保存文件：{error}",
+      "warn": {
+        "duplicate": "“{name}”改为 {identifier}：另一个名称生成了相同的标识符。",
+        "reserved": "“{name}”改为 {identifier}：该词是 Arduino 代码的保留字。",
+        "reservedPython": "“{name}”变成了 {identifier}：该词是 Python 的保留字。"
+      },
+      "warnConfig": "1.5 个停止位在 Arduino 中没有对应设置，因此头文件以默认格式打开端口。",
+      "warnPythonFraming": "此连接设置为 {baud} 波特、{format}。USB 由独立串口芯片提供的 MicroPython 开发板（如经典的 ESP32 DevKit）始终以 115200 波特、8N1 通信，因此无法连接；内置 USB 的开发板（如 Pico、Nano ESP32）则不受影响。",
+      "mockOnly": "此桌面上的所有输出和输入都在 Mock 上，不需要代码：每次运行时都会根据屏幕上的设计构建它。",
+      "mockNote": "Mock 不需要代码。"
+    },
+    "mock": {
+      "status": {
+        "idle": "未运行。按下运行后 Mock 会连接。",
+        "waiting": "正在等待电路向 Mock 打招呼…",
+        "connected": "已连接。你发送的值会到达电路。"
+      },
+      "noLayout": "运行电路后，这里会显示 Mock 的输入。",
+      "noInputs": "此桌面上 Mock 没有输入。",
+      "send": "发送",
+      "sendAll": "全部发送",
+      "sent": "已发送",
+      "failed": {
+        "offline": "未连接",
+        "delivery": "未被确认",
+        "closed": "运行已结束",
+        "invalid": "不是可以发送的值"
+      },
+      "bit": "{name}，第 {bit} 位",
+      "log": "记录",
+      "logPlaceholder": "日志文本",
+      "faults": "故障",
+      "faultsHint": "每个故障只发生一次，作用于它适用的下一帧。",
+      "fault": {
+        "drop-ack": "丢弃下一个 ACK",
+        "corrupt": "损坏下一帧",
+        "ignore-hello": "忽略握手",
+        "wrong-signature": "错误的签名"
+      },
+      "faultTitle": {
+        "drop-ack": "吞掉下一个输出的确认，让 Chip Hippo 超时并重发",
+        "corrupt": "损坏 Mock 发送的下一个确认或输入，让 Chip Hippo 要求重发",
+        "ignore-hello": "不应答下一次运行，使其以“无应答”停止",
+        "wrong-signature": "以另一个设计的程序身份应答下一次运行，使其拒绝启动"
+      }
+    }
   }
 }

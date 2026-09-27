@@ -10,7 +10,7 @@
       "name": "74LS161",
       "description": "Synchronous 4-bit counter",
       "doc": {
-        "version": 13,
+        "version": 14,
         "boards": [
           {
             "id": "bb1",
@@ -506,6 +506,7 @@
         ],
         "scopeChannels": [],
         "signals": [],
+        "integrations": [],
         "nextBoardId": 4,
         "nextGroupId": 2,
         "nextComponentId": 16,
@@ -515,7 +516,9 @@
         "nextBusId": 1,
         "nextAnnotationId": 14,
         "nextScopeChannelId": 1,
-        "nextSignalId": 1
+        "nextSignalId": 1,
+        "nextOutputId": 1,
+        "nextInputId": 1
       }
     },
     {
@@ -523,7 +526,7 @@
       "name": "74LS193",
       "description": "Synchronous up/down counter",
       "doc": {
-        "version": 13,
+        "version": 14,
         "boards": [
           {
             "id": "bb1",
@@ -1001,6 +1004,7 @@
         ],
         "scopeChannels": [],
         "signals": [],
+        "integrations": [],
         "nextBoardId": 4,
         "nextGroupId": 2,
         "nextComponentId": 15,
@@ -1010,7 +1014,9 @@
         "nextBusId": 1,
         "nextAnnotationId": 14,
         "nextScopeChannelId": 1,
-        "nextSignalId": 1
+        "nextSignalId": 1,
+        "nextOutputId": 1,
+        "nextInputId": 1
       }
     },
     {
@@ -1018,7 +1024,7 @@
       "name": "74LS169",
       "description": "Synchronous up/down counter",
       "doc": {
-        "version": 13,
+        "version": 14,
         "boards": [
           {
             "id": "bb1",
@@ -1475,6 +1481,7 @@
         ],
         "scopeChannels": [],
         "signals": [],
+        "integrations": [],
         "nextBoardId": 4,
         "nextGroupId": 2,
         "nextComponentId": 14,
@@ -1484,7 +1491,9 @@
         "nextBusId": 1,
         "nextAnnotationId": 13,
         "nextScopeChannelId": 1,
-        "nextSignalId": 1
+        "nextSignalId": 1,
+        "nextOutputId": 1,
+        "nextInputId": 1
       }
     },
     {
@@ -1492,7 +1501,7 @@
       "name": "74LS90",
       "description": "Decade (÷10) ripple counter",
       "doc": {
-        "version": 13,
+        "version": 14,
         "boards": [
           {
             "id": "bb1",
@@ -1881,6 +1890,7 @@
         ],
         "scopeChannels": [],
         "signals": [],
+        "integrations": [],
         "nextBoardId": 4,
         "nextGroupId": 2,
         "nextComponentId": 12,
@@ -1890,7 +1900,9 @@
         "nextBusId": 1,
         "nextAnnotationId": 11,
         "nextScopeChannelId": 1,
-        "nextSignalId": 1
+        "nextSignalId": 1,
+        "nextOutputId": 1,
+        "nextInputId": 1
       }
     }
   ]

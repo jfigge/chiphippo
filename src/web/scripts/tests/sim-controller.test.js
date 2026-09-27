@@ -743,3 +743,315 @@ test("an UNPLACED signal still holds a level — it simply drives no net", () =>
   sim.pressSignal("sig1", true);
   assert.equal(events.at(-1).signalLevels.get("sig1"), "H");
 });
+
+// ── The settle boundary (the Arduino serial integration) ────────────────────
+// The one moment an outside party may look at the board or change it. A
+// collaborator hears every boundary, may put levels on the board (`again`),
+// may STALL it on a promise, may refuse a Run, gate the first tick, and hears
+// Stop — and the engine knows none of it.
+
+/** A scriptable integration collaborator that records what it was told. */
+function fakeIntegration(overrides = {}) {
+  const log = { settled: [], ended: 0, begun: 0, preflights: 0 };
+  return {
+    log,
+    preflight: (doc) => {
+      log.preflights++;
+      return overrides.preflight ? overrides.preflight(doc) : true;
+    },
+    begin: (doc) => {
+      log.begun++;
+      return overrides.begin ? overrides.begin(doc) : null;
+    },
+    settled: (ctx) => {
+      log.settled.push(ctx);
+      return overrides.settled ? overrides.settled(ctx, log) : null;
+    },
+    levels: () => overrides.levels?.() ?? new Map(),
+    end: () => {
+      log.ended++;
+    },
+  };
+}
+
+/** Resolve after the microtask queue drains (promise `.then` chains). */
+const flush = () => new Promise((r) => setTimeout(r, 0));
+
+test("every settle is reported at the boundary, with the settled board", () => {
+  resetDom();
+  const integration = fakeIntegration();
+  const sim = new SimController({
+    deskDoc: fakeDoc(signalDoc([sig("sig1")])),
+    notifications: fakeNotifications(),
+    integration,
+  });
+  const events = capture();
+  sim.start();
+  sim.pressSignal("sig1", true);
+  assert.equal(integration.log.settled.length, 2, "one per tick");
+  const last = integration.log.settled.at(-1);
+  assert.ok(last.document.signals, "the document it settled");
+  assert.ok(last.netlist.netOfPoint instanceof Map, "the netlist");
+  assert.equal(
+    last.netLevels,
+    events.at(-1).netLevels,
+    "the SAME levels published",
+  );
+  const net = last.netlist.netOfPoint.get("bb1.a12");
+  assert.equal(
+    last.netLevels.get(net),
+    "H",
+    "the signal's press is on the board",
+  );
+});
+
+test("`again` runs one more settle straight away — once", () => {
+  resetDom();
+  let asked = 0;
+  const integration = fakeIntegration({
+    settled: () => (++asked === 1 ? { again: true } : null),
+  });
+  const sim = new SimController({
+    deskDoc: fakeDoc(signalDoc([sig("sig1")])),
+    notifications: fakeNotifications(),
+    integration,
+  });
+  sim.start();
+  assert.equal(integration.log.settled.length, 2);
+});
+
+test("a collaborator that always says `again` cannot spin the renderer", () => {
+  resetDom();
+  const integration = fakeIntegration({ settled: () => ({ again: true }) });
+  const sim = new SimController({
+    deskDoc: fakeDoc(signalDoc([sig("sig1")])),
+    notifications: fakeNotifications(),
+    integration,
+  });
+  sim.start();
+  assert.ok(integration.log.settled.length <= 32);
+});
+
+test("levels() drive the board alongside the signals' own", () => {
+  resetDom();
+  const doc = {
+    boards: [board],
+    components: [],
+    wires: [],
+    signals: [],
+    integrations: [
+      {
+        id: "in1",
+        kind: "input",
+        fields: [{ type: "bit", name: "a" }],
+        tags: { 1: { anchor: "bb1.a20", rot: 0 } },
+      },
+    ],
+  };
+  let level = "L";
+  const integration = fakeIntegration({
+    levels: () => new Map([["in1:1", level]]),
+  });
+  const sim = new SimController({
+    deskDoc: fakeDoc(doc),
+    notifications: fakeNotifications(),
+    integration,
+  });
+  const events = capture();
+  sim.start();
+  const at = () => {
+    const d = events.at(-1);
+    return d.netLevels.get(d.netlist.netOfPoint.get("bb1.a20"));
+  };
+  assert.equal(at(), "L");
+  level = "H";
+  sim.wake();
+  assert.equal(at(), "H", "wake() settles whatever the integration now holds");
+});
+
+test("a STALL holds every tick until it resolves, then settles once", async () => {
+  resetDom();
+  let release = null;
+  let stallNext = true;
+  const integration = fakeIntegration({
+    settled: () => {
+      if (!stallNext) return null;
+      stallNext = false;
+      return new Promise((r) => (release = r));
+    },
+  });
+  const sim = new SimController({
+    deskDoc: fakeDoc(
+      signalDoc([sig("sig1"), sig("sig2", { flag: undefined })]),
+    ),
+    notifications: fakeNotifications(),
+    integration,
+  });
+  const events = capture();
+  sim.start();
+  assert.equal(sim.stalled, true);
+  const published = events.length;
+  sim.pressSignal("sig1", true);
+  sim.pressSignal("sig2", true);
+  sim.wake();
+  assert.equal(events.length, published, "nothing settles while stalled");
+  release({ again: false });
+  await flush();
+  assert.equal(sim.stalled, false);
+  assert.equal(events.length, published + 1, "the held input settles ONCE");
+  assert.equal(events.at(-1).signalLevels.get("sig1"), "H");
+});
+
+test("a stall resolving `again` settles again even with nothing held", async () => {
+  resetDom();
+  let n = 0;
+  const integration = fakeIntegration({
+    settled: () => (++n === 1 ? Promise.resolve({ again: true }) : null),
+  });
+  const sim = new SimController({
+    deskDoc: fakeDoc(signalDoc([sig("sig1")])),
+    notifications: fakeNotifications(),
+    integration,
+  });
+  sim.start();
+  await flush();
+  assert.equal(integration.log.settled.length, 2);
+});
+
+test("clock edges due during a stall are SKIPPED, not queued", async () => {
+  resetDom();
+  let release = null;
+  const integration = fakeIntegration({
+    settled: (_ctx, log) =>
+      log.settled.length === 1 ? new Promise((r) => (release = r)) : null,
+  });
+  const clockDoc = {
+    boards: [board],
+    components: [
+      {
+        id: "clk1",
+        kind: "clock",
+        ref: "clock",
+        x: 40,
+        y: 0,
+        params: { hz: 100 },
+      },
+    ],
+    wires: [],
+  };
+  const sim = new SimController({
+    deskDoc: fakeDoc(clockDoc),
+    notifications: fakeNotifications(),
+    integration,
+  });
+  const events = capture();
+  sim.start();
+  const published = events.length;
+  await new Promise((r) => setTimeout(r, 60)); // several half-periods at 100 Hz
+  assert.equal(events.length, published, "no edge ticked while stalled");
+  release(null);
+  await flush();
+  const after = events.length;
+  assert.ok(
+    after - published <= 1,
+    "and none were saved up to burst out after",
+  );
+  sim.stop();
+});
+
+test("preflight can refuse a Run — nothing starts, nothing locks", async () => {
+  resetDom();
+  const modes = [];
+  const integration = fakeIntegration({ preflight: () => false });
+  const sim = new SimController({
+    deskDoc: fakeDoc(poweredDoc(5)),
+    notifications: fakeNotifications(),
+    onTransportChange: (m) => modes.push(m),
+    integration,
+  });
+  sim.start();
+  assert.equal(sim.running, false);
+  assert.deepEqual(modes, []);
+
+  const later = fakeIntegration({ preflight: () => Promise.resolve(false) });
+  const sim2 = new SimController({
+    deskDoc: fakeDoc(poweredDoc(5)),
+    notifications: fakeNotifications(),
+    onTransportChange: (m) => modes.push(m),
+    integration: later,
+  });
+  await sim2.start();
+  assert.equal(sim2.running, false);
+  assert.deepEqual(modes, []);
+});
+
+test("an async preflight that passes starts the run", async () => {
+  resetDom();
+  const integration = fakeIntegration({
+    preflight: () => Promise.resolve(true),
+  });
+  const sim = new SimController({
+    deskDoc: fakeDoc(poweredDoc(5)),
+    notifications: fakeNotifications(),
+    integration,
+  });
+  await sim.start();
+  assert.equal(sim.running, true);
+  assert.equal(integration.log.begun, 1);
+});
+
+test("begin gates the first tick, and a `false` answer stops the run", async () => {
+  resetDom();
+  let open = null;
+  const integration = fakeIntegration({
+    begin: () => new Promise((r) => (open = r)),
+  });
+  const sim = new SimController({
+    deskDoc: fakeDoc(poweredDoc(5)),
+    notifications: fakeNotifications(),
+    integration,
+  });
+  const events = capture();
+  const started = sim.start();
+  assert.equal(sim.running, true, "the desk locks while ports open");
+  assert.equal(integration.log.settled.length, 0, "no tick before the gate");
+  open(true);
+  await started;
+  assert.equal(integration.log.settled.length, 1);
+  assert.equal(events.at(-1).running, true);
+
+  const refusing = fakeIntegration({ begin: () => Promise.resolve(false) });
+  const sim2 = new SimController({
+    deskDoc: fakeDoc(poweredDoc(5)),
+    notifications: fakeNotifications(),
+    integration: refusing,
+  });
+  await sim2.start();
+  assert.equal(sim2.running, false);
+  assert.equal(refusing.log.settled.length, 0);
+  assert.equal(refusing.log.ended, 1, "Stop is heard, so ports close");
+});
+
+test("Stop is heard, and a stall that resolves after it changes nothing", async () => {
+  resetDom();
+  let release = null;
+  const integration = fakeIntegration({
+    settled: (_c, log) =>
+      log.settled.length === 1 ? new Promise((r) => (release = r)) : null,
+  });
+  const sim = new SimController({
+    deskDoc: fakeDoc(signalDoc([sig("sig1")])),
+    notifications: fakeNotifications(),
+    integration,
+  });
+  const events = capture();
+  sim.start();
+  sim.stop();
+  assert.equal(integration.log.ended, 1);
+  assert.equal(sim.stalled, false);
+  const published = events.length;
+  release({ again: true });
+  await flush();
+  assert.equal(events.length, published, "a stale stall does not tick");
+  assert.equal(sim.running, false);
+});

@@ -129,6 +129,27 @@ export function datasheetCrop(def) {
   return def?.datasheet ?? (def?.package ? def.id : null);
 }
 
+/**
+ * The active-LOW pins that must ALL be LOW for a part's outputs to drive.
+ *
+ * A tri-state logic part DECLARES them (`outputEnable`, proved against the
+ * evaluator by tests/chips-tristate.test.js). A memory chip carries the same
+ * fact already, as the chip and output enables its own `logic.memory` gates
+ * its data pins on (sim/sequential.js `memUnit`), so they are READ from there
+ * rather than declared a second time — a copy that could come to disagree with
+ * what the chip actually does. An active-HIGH `ce2` is not an active-low
+ * enable and is not listed.
+ *
+ * @param {object|null} def
+ * @returns {number[]}
+ */
+export function outputEnables(def) {
+  if (def?.outputEnable?.length) return def.outputEnable;
+  const m = def?.logic?.memory;
+  if (m) return [m.ceN, m.oeN].filter((n) => n != null);
+  return [];
+}
+
 /** A chip's `pinGroups` (Feature 130 bus taps), or an empty list. */
 export function pinGroupsOf(ref) {
   return partDef(ref)?.pinGroups ?? [];

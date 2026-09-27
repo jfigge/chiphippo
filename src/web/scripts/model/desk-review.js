@@ -42,7 +42,7 @@
 // feeds would then be reported as undriven on a perfectly good circuit.
 
 import { tf } from "../i18n.js";
-import { partDef } from "../catalog/index.js";
+import { outputEnables, partDef } from "../catalog/index.js";
 import { partTitle } from "../catalog/labels.js";
 import { partPinAddresses } from "./occupancy.js";
 import { buildPlan } from "./build-plan.js";
@@ -289,7 +289,7 @@ export function reviewDesk(document, netlist) {
     const floating = [];
     for (const p of def.pins) {
       if (p.role !== "input") continue;
-      if (def.outputEnable?.includes(p.n)) continue;
+      if (outputEnables(def).includes(p.n)) continue;
       if (live && !live.has(p.n)) continue;
       const address = addressOf.get(p.n);
       const level =

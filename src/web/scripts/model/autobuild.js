@@ -33,8 +33,9 @@
 //     wired from one board to the next.
 //   * LEDs NEED A RESISTOR. Per sim/junction.js an LED conducting between two
 //     strongly driven nets burns rather than lights. That is physics, not
-//     logic, so the netlist should not have to mention it: when a display's
-//     common leg heads for a rail, a series resistor is interposed.
+//     logic, so the netlist should not have to mention it: whenever a lamp
+//     leg — a display's common leg, an isolated segment, a bare LED's anode
+//     or cathode — heads straight for a rail, a series resistor is interposed.
 //   * SWITCHES NEED A PULL. A switch is a contact, not a source: open, it
 //     joins nothing, so an input fed from one FLOATS half the time. Same
 //     class of fact as the LED's resistor, and handled the same way.
@@ -45,6 +46,7 @@
 // the paste path is the caller's job.
 
 import { partDef } from "../catalog/index.js";
+import { isRomChip } from "../sim/chip-eval.js";
 import { BREADBOARD_KITS } from "./board-types.js";
 import {
   boardSize,
@@ -59,6 +61,7 @@ import { captureDesign } from "./design-clip.js";
 import { DIP_PACKAGES } from "./footprints.js";
 import { partPinHoles } from "./occupancy.js";
 import { RAIL_TOKENS, parseMember, resolvePin } from "./pin-resolve.js";
+import { netDrivers, pinLabel } from "./spec-lint.js";
 import { boxOf, crossingCount } from "./wire-crossing.js";
 
 const GAP = 1; // blank columns between parts, so nothing reads as one block
@@ -335,18 +338,38 @@ function resolveSpec(spec) {
         err("NET_SHORTS_RAILS", `Net "${name}" joins VCC to GND.`, { path }),
       );
     }
-    // Two outputs on one net is a driver conflict the engine would only report
-    // at run time; naming it here points at the spec line instead.
-    const drivers = pins.filter((p) => {
-      const def = parts.get(p.partId).def;
-      return def.pins?.find((q) => q.n === p.pin)?.role === "output";
-    });
-    if (drivers.length > 1) {
+    const { hard, switchable } = netDrivers(pins, parts);
+    const drivers = [...hard, ...switchable];
+    // An output on a rail drives nothing: the engine gives the supply the net
+    // (sim/resolve.js), so the circuit settles, verifies, and the output's
+    // whole job has silently vanished. There is no reading of that which is
+    // a design.
+    if (rails.size && drivers.length) {
+      const rail = [...rails][0];
+      errors.push(
+        err(
+          "OUTPUT_ON_RAIL",
+          `Net "${name}" ties ${drivers.map(pinLabel).join(", ")} straight ` +
+            `to ${rail}. The supply overrides an output, so it would drive ` +
+            `nothing at all — wire the output to what it should drive, and ` +
+            `tie only inputs to ${rail}.`,
+          { path },
+        ),
+      );
+    } else if (drivers.length > 1 && hard.length) {
+      // Two outputs on one net is a driver conflict the engine would only
+      // report in a state where they disagree; naming it here points at the
+      // spec line instead. Tri-state outputs are the exception that makes a
+      // BUS: any number may share a net as long as every one of them can be
+      // switched off, and it is then the engine's job to catch two switched on.
       errors.push(
         err(
           "MULTIPLE_DRIVERS",
           `Net "${name}" ties ${drivers.length} outputs together ` +
-            `(${drivers.map((d) => `${d.partId}.${d.pin}`).join(", ")}).`,
+            `(${drivers.map(pinLabel).join(", ")}). Outputs may share a net ` +
+            `only when every one of them can be switched off — a tri-state ` +
+            `output behind a "!" enable — and ` +
+            `${hard.map(pinLabel).join(", ")} cannot.`,
           { path },
         ),
       );
@@ -702,22 +725,36 @@ function companionSeat(part, links, { alloc, host, hostId, type, params }) {
   return { boardId: host.boardId, anchor, holes: r.holes, params };
 }
 
-/** The pin every segment of a display shares — its common anode or cathode. */
-function commonLeg(def) {
+/**
+ * The junctions of a light-emitting part, as the legs a series resistor could
+ * go in.
+ *
+ * A common-cathode display is ONE such leg (its K, which heads for GND) and a
+ * common-anode one likewise (its A, for VCC): one resistor in the common leg
+ * limits every segment. An isolated display (`bar8iso`) and a bare LED have a
+ * junction per segment with BOTH legs free, and either may be the one on a
+ * rail — the cathode on GND under an active-high output, or the anode on VCC
+ * over an active-LOW one, which is exactly how the prompt tells the model to
+ * wire a lamp for an active-low signal.
+ *
+ * @returns {{common: {pin, rail}|null, junctions: Array<{anodePin, cathodePin}>}}
+ */
+function lampLegs(def) {
   if (def.segments?.length) {
     const first = def.segments[0];
     if (def.segments.every((s) => s.cathodePin === first.cathodePin)) {
-      return { pin: first.cathodePin, rail: "GND" };
+      return { common: { pin: first.cathodePin, rail: "GND" }, junctions: [] };
     }
     if (def.segments.every((s) => s.anodePin === first.anodePin)) {
-      return { pin: first.anodePin, rail: "VCC" };
+      return { common: { pin: first.anodePin, rail: "VCC" }, junctions: [] };
     }
+    return { common: null, junctions: def.segments };
   }
   if (typeof def.polarity === "function") {
-    const { cathodePin } = def.polarity({});
-    return { pin: cathodePin, rail: "GND" };
+    const { anodePin, cathodePin } = def.polarity({});
+    return { common: null, junctions: [{ anodePin, cathodePin }] };
   }
-  return null;
+  return { common: null, junctions: [] };
 }
 
 function assemble(resolved, title, notes) {
@@ -730,44 +767,118 @@ function assemble(resolved, title, notes) {
   for (const p of parts.values()) {
     if (p.def.terminals?.length) bricks.push(p);
     else seated.push(p);
+    // A netlist has nowhere to put memory CONTENTS, so a ROM arrives holding
+    // whatever its fresh backing file holds — noise. Nothing downstream can
+    // tell that from a program, so it is said here, to the person placing it.
+    if (isRomChip(p.def)) {
+      warnings.push({
+        code: "ROM_UNPROGRAMMED",
+        message:
+          `${p.id} (${p.ref}) arrives unprogrammed — a netlist cannot carry ` +
+          `memory contents. Load an image through its Properties before ` +
+          `running the circuit.`,
+      });
+    }
   }
 
-  // ── The resistor rule. A display whose common leg heads for a rail gets a
-  //    series resistor interposed, because otherwise it burns rather than
-  //    lights (sim/junction.js). One resistor per display covers every segment.
+  // ── The resistor rule. A lamp leg that goes STRAIGHT to a rail gets a series
+  //    resistor interposed, because a junction across two strongly driven nets
+  //    burns rather than lights (sim/junction.js).
+  //
+  //    Legs are limited per NODE. The lamp legs the spec puts in one rail net
+  //    are joined to each other already — a display's common leg, or a row of
+  //    LEDs whose cathodes share a net — so they are ONE common leg and take
+  //    one resistor, exactly as a common-cathode bar does. Legs on different
+  //    nets are different nodes and each needs its own; those are packed eight
+  //    to a bussed `rnet9` (COM on the rail), however many parts they come from,
+  //    because eight LEDs hanging off one rail is one resistor network on a
+  //    bench, not eight loose resistors.
+  //
+  //    The legs are taken OUT of the rail net rather than the rail being taken
+  //    off the net. The net may be the named `GND` holding everything else the
+  //    spec tied low, and detaching its rail would hang all of that off the
+  //    lamp's side of the resistor.
   const interposed = [];
-  for (const p of seated) {
-    const leg = commonLeg(p.def);
-    if (!leg) continue;
-    const net = nets.find(
+  const netOf = (partId, pin, rail) =>
+    nets.find(
       (n) =>
-        n.rail === leg.rail &&
-        n.pins.some((q) => q.partId === p.id && q.pin === leg.pin),
+        n.rail === rail &&
+        n.pins.some((q) => q.partId === partId && q.pin === pin),
     );
-    if (!net) continue;
-    const rid = `${p.id}_R`;
-    if (parts.has(rid)) continue;
-    const rdef = partDef("resistor");
-    const resistor = { id: rid, ref: "resistor", def: rdef, label: null };
-    parts.set(rid, resistor);
-    seated.push(resistor);
-    interposed.push({ resistor, display: p, leg, net });
-    // The display's common leg no longer reaches the rail DIRECTLY; it reaches
-    // the resistor, and the resistor reaches the rail. The display stays in
-    // this net — only the rail is detached from it.
-    net.rail = null;
-    net.pins.push({ partId: rid, kind: "pin", pin: 1 });
-    nets.push({
-      name: `${net.name}_LIMITED`,
-      pins: [{ partId: rid, kind: "pin", pin: 2 }],
-      rail: leg.rail,
-    });
-    warnings.push({
-      code: "RESISTOR_INSERTED",
-      message:
-        `Added a series resistor between ${p.id} and ${leg.rail} — an LED ` +
-        `across two strongly driven nets burns instead of lighting.`,
-    });
+  const legs = []; // {part, pin, rail, net}
+  for (const p of seated) {
+    const { common, junctions } = lampLegs(p.def);
+    if (common) {
+      const net = netOf(p.id, common.pin, common.rail);
+      if (net) legs.push({ part: p, ...common, net });
+    }
+    for (const j of junctions) {
+      // One resistor per junction is enough, so a lamp tied across both rails
+      // is limited once, in its cathode.
+      const k = netOf(p.id, j.cathodePin, "GND");
+      const a = k ? null : netOf(p.id, j.anodePin, "VCC");
+      if (k) legs.push({ part: p, pin: j.cathodePin, rail: "GND", net: k });
+      else if (a) legs.push({ part: p, pin: j.anodePin, rail: "VCC", net: a });
+    }
+  }
+  const nodes = new Map(); // rail net → its lamp legs, one node
+  for (const leg of legs) {
+    if (!nodes.has(leg.net)) nodes.set(leg.net, []);
+    nodes.get(leg.net).push(leg);
+  }
+  let limitSeq = 0;
+  const limiterId = (node) => {
+    const owners = new Set(node.map((l) => l.part.id));
+    let rid = owners.size === 1 ? `${node[0].part.id}_R` : "";
+    while (!rid || parts.has(rid)) rid = `RLIM${++limitSeq}`;
+    return rid;
+  };
+  for (const rail of ["GND", "VCC"]) {
+    const group = [...nodes].filter(([net]) => net.rail === rail);
+    for (let i = 0; i < group.length; i += 8) {
+      const chunk = group.slice(i, i + 8);
+      const pack = chunk.length > 1;
+      const ref = pack ? "rnet9" : "resistor";
+      const rid = pack ? limiterId([]) : limiterId(chunk[0][1]);
+      const limiter = { id: rid, ref, def: partDef(ref), label: null };
+      parts.set(rid, limiter);
+      seated.push(limiter);
+      interposed.push({ resistor: limiter });
+      chunk.forEach(([net, node], k) => {
+        const lamp = (q) =>
+          node.some((l) => l.part.id === q.partId && l.pin === q.pin);
+        nets.push({
+          name: `${net.name}_LIMITED`,
+          pins: [
+            ...net.pins.filter(lamp),
+            // A pack's elements are pins 2–9 (pin 1 is COM); a lone resistor's
+            // lamp end is pin 1.
+            { partId: rid, kind: "pin", pin: pack ? 2 + k : 1 },
+          ],
+          rail: null,
+        });
+        net.pins = net.pins.filter((q) => !lamp(q));
+      });
+      nets.push({
+        name: `${rid}_${rail}`,
+        pins: [{ partId: rid, kind: "pin", pin: pack ? 1 : 2 }],
+        rail,
+      });
+      const owners = [
+        ...new Set(chunk.flatMap(([, node]) => node.map((l) => l.part.id))),
+      ].join(", ");
+      warnings.push({
+        code: "RESISTOR_INSERTED",
+        message:
+          `Added ${pack ? "a resistor network" : "a series resistor"} ` +
+          `between ${owners} and ${rail} — an LED across two strongly ` +
+          `driven nets burns instead of lighting.`,
+      });
+    }
+  }
+  // A rail net the lamps were the only members of is now just a rail.
+  for (let i = nets.length - 1; i >= 0; i--) {
+    if (nets[i].rail && !nets[i].pins.length) nets.splice(i, 1);
   }
 
   // ── The pull rule. A SWITCH DRIVES NOTHING.
