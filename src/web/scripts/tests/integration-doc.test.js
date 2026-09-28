@@ -134,6 +134,36 @@ test("a tag refuses a component terminal and a hole a signal flag holds", () => 
   assert.equal(doc.canPlaceSignalFlag(sig.id, "bb1.a6"), false);
 });
 
+test("a bus drag, a cluster drag and an Option-drag cannot land on a tag or a flag", () => {
+  // Each prepares its own occupancy with the movers lifted out — and a planted
+  // tag or flag, which never travels with them, must still read as taken.
+  const doc = withBoard();
+  const wire = doc.addWire({ from: "bb1.a1", to: "bb1.a30", color: "red" });
+  const chip = doc.addComponent({
+    kind: "chip",
+    ref: "74LS00",
+    board: "bb1",
+    anchor: "e5",
+  });
+  const inp = doc.addIntegration({ kind: "input" });
+  doc.plantIntegrationTag(inp.id, "1", "bb1.e20");
+  const sig = doc.addSignal({});
+  doc.plantSignalFlag(sig.id, "bb1.b3");
+  const batch = (from) => [{ id: wire.id, from, to: "bb1.a30" }];
+  assert.equal(doc.canMoveWiresBatch(batch("bb1.b3")), false, "a flag's hole");
+  assert.equal(doc.canMoveWiresBatch(batch("bb1.e20")), false, "a tag's hole");
+  assert.equal(doc.canMoveWiresBatch(batch("bb1.b4")), true, "a free one");
+  const cluster = doc.prepareClusterMove({ componentIds: [chip.id] });
+  // At e20 the chip's pin 1 lands on the tag.
+  assert.equal(cluster([{ id: chip.id, board: "bb1", anchor: "e20" }]), false);
+  assert.equal(cluster([{ id: chip.id, board: "bb1", anchor: "e40" }]), true);
+  assert.throws(
+    () => doc.moveComponentWithWires(chip.id, "bb1", "e20", { moves: [] }),
+    { code: "ILLEGAL_PLACEMENT" },
+  );
+  assert.equal(doc.getIntegration(inp.id).tags["1"].anchor, "bb1.e20");
+});
+
 test("re-shaping the pins keeps tags by NUMBER and unplugs the ones past the end", () => {
   const doc = withBoard();
   const e = doc.addIntegration({ kind: "output", width: 4 });

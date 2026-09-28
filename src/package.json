@@ -68,6 +68,9 @@
     "npmRebuild": false,
     "mac": {
       "icon": "web/chiphippo-mac-icon.png",
+      "files": [
+        "!node_modules/@serialport/bindings-cpp/prebuilds/{android,linux,win32}-*/**"
+      ],
       "category": "public.app-category.developer-tools",
       "extendInfo": {
         "ITSAppUsesNonExemptEncryption": false
@@ -120,6 +123,9 @@
     },
     "win": {
       "icon": "web/chiphippo-icon.ico",
+      "files": [
+        "!node_modules/@serialport/bindings-cpp/prebuilds/{android,darwin,linux}-*/**"
+      ],
       "target": [
         {
           "target": "nsis",
@@ -139,6 +145,9 @@
     },
     "linux": {
       "icon": "web/icons",
+      "files": [
+        "!node_modules/@serialport/bindings-cpp/prebuilds/{android,darwin,win32}-*/**"
+      ],
       "target": [
         {
           "target": "AppImage",

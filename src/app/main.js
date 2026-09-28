@@ -2397,8 +2397,10 @@ function createWindow() {
     // now applies on every platform, macOS included.
     closeAuxWindows();
     // The guide carries no document state (unlike pinout/inspector windows),
-    // so it survives New/Open — but it must not outlive the app itself.
+    // so it survives New/Open — but it must not outlive the app itself. Nor
+    // may a connection window, for the same reason (every Mock run opens one).
     if (docsWindow && !docsWindow.isDestroyed()) docsWindow.close();
+    serialIpc?.closeWindows();
   });
 
   // A renderer that dies mid-run can never send the Stop that closes its

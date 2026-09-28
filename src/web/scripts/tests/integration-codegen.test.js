@@ -166,6 +166,40 @@ test("an Output and an Input of one name never collide; what does is renamed AND
   ]);
 });
 
+test("an Output's parameter in capitals gains an underscore — it may be a core macro", () => {
+  // The cores define object-like macros under ordinary names (binary.h's B0,
+  // Print.h's HEX, an AVR's SP, an ESP32's BIT0), in capitals by convention;
+  // no list could hold them all. `typeof` is GNU's keyword.
+  const plan = planIdentifiers("nano", [
+    el("out1", "output", "Regs", [
+      { type: "bit", name: "B0" },
+      { type: "byte", name: "HEX" },
+      { type: "bit", name: "typeof" },
+      { type: "bit", name: "bit0" },
+      { type: "bit", name: "Ready" },
+      { type: "bit", name: "DONE_" },
+      { type: "bit", name: "7" },
+    ]),
+    el("in1", "input", "Keys", [{ type: "byte", name: "DEC" }]),
+  ]);
+  assert.deepEqual(
+    plan.outputs[0].fields.map((f) => f.param),
+    ["B0_", "HEX_", "typeof_", "bit0", "Ready", "DONE_", "_7"],
+    "lowercase anywhere, a trailing underscore or no letter at all: as it is",
+  );
+  assert.equal(
+    plan.inputs[0].fields[0].setter,
+    "setDEC",
+    "an Input's field is only ever part of a setter's name",
+  );
+  const found = plan.warnings.map((w) => `${w.code}:${w.name}→${w.identifier}`);
+  assert.deepEqual(found, [
+    "macro:B0→B0_",
+    "macro:HEX→HEX_",
+    "reserved:typeof→typeof_",
+  ]);
+});
+
 test("setters are named after their field", () => {
   const plan = planIdentifiers("nano", design());
   assert.equal(plan.inputs[0].fields[0].setter, "setValue");
@@ -245,10 +279,7 @@ test("a user's text can never break out of a comment", () => {
 
 test("non-default framing becomes a SERIAL_ constant; 1.5 stop bits is reported", () => {
   assert.equal(serialConfigConstant(nano), null);
-  assert.equal(
-    serialConfigConstant({ ...nano, dataBits: 7, parity: "even" }),
-    "SERIAL_7E1",
-  );
+  assert.equal(serialConfigConstant({ ...nano, parity: "even" }), "SERIAL_8E1");
   assert.equal(serialConfigConstant({ ...nano, stopBits: 1.5 }), undefined);
   const r = generateHeader({
     connection: { ...nano, stopBits: 1.5 },
@@ -256,10 +287,10 @@ test("non-default framing becomes a SERIAL_ constant; 1.5 stop bits is reported"
   });
   assert.ok(r.warnings.some((w) => w.code === "serial-config"));
   const e = generateHeader({
-    connection: { ...nano, dataBits: 7, parity: "even" },
+    connection: { ...nano, parity: "even" },
     elements: design(),
   });
-  assert.match(e.text, /Serial\.begin\(baud, SERIAL_7E1\);/);
+  assert.match(e.text, /Serial\.begin\(baud, SERIAL_8E1\);/);
 });
 
 test("a connection with no elements still makes a valid (empty) header", () => {

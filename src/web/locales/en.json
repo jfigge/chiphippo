@@ -1386,7 +1386,6 @@
       "rescan": "Re-scan",
       "scanning": "Scanning…",
       "advanced": "Advanced",
-      "dataBits": "Data bits",
       "parity": "Parity",
       "parityValue": {
         "none": "None",
@@ -1399,8 +1398,7 @@
       "flowControl": "Flow control",
       "flowValue": {
         "none": "None",
-        "hardware": "Hardware (RTS/CTS)",
-        "software": "Software (XON/XOFF)"
+        "hardware": "Hardware (RTS/CTS)"
       },
       "needsConfig": "Needs configuration",
       "portUnavailable": "Port unavailable",
@@ -1451,6 +1449,7 @@
       "failed": "Couldn't save the file: {error}",
       "warn": {
         "duplicate": "“{name}” became {identifier}: another name made the same identifier.",
+        "macro": "“{name}” became {identifier}: Arduino code keeps names in capitals for its macros.",
         "reserved": "“{name}” became {identifier}: that word is reserved in Arduino code.",
         "reservedPython": "“{name}” became {identifier}: that word is reserved in Python."
       },

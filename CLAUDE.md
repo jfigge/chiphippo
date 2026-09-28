@@ -1386,7 +1386,9 @@ integration-runtime,integration-codegen,serial-connections,serial-wire}.js` +
   k−1, and a pin that is unplanted, floating or `X` reads **0** (`packValue`). The colour
   comes from the SAME cycle as signals (`nextSignalColor` over both), since both share the
   rail. At most `MAX_ELEMENTS` (16) per desk and `MAX_ELEMENT_PINS` (16) per element — the
-  widest value is a `uint16_t` on the wire.
+  widest value is a `uint16_t` on the wire. A NEW element takes the connection the desk
+  already uses, else the first non-Mock one (`#defaultConnection` — the Mock leads every
+  list, so "the first" alone would never be the user's board), the Mock only with none.
 - **Auto is a TRIGGER SETTING, not the absence of a tag** (`TRIGGER_EDGES`: `auto` ·
   `rising` · `falling` · `either`; `DEFAULT_TRIGGER_EDGE` is Rising for an Output, Auto for
   an Input). An element on Auto has NO trigger tag — `tagKeys`/`hasTagKey` leave `"T"` out,
@@ -1434,7 +1436,10 @@ integration-runtime,integration-codegen,serial-connections,serial-wire}.js` +
   tick `settled` may return `{again}` (re-settle with new Input levels, capped at
   `MAX_BOUNDARY_PASSES`) or a **Promise — the STALL**: while an Output is in flight the
   transport skips clock edges, and `wake()` resumes. `levels()` merges into the drive map.
-  Stop ends it all and releases the stall.
+  Stop ends it all and releases the stall. An ASYNC preflight (the live port scan) runs
+  while the transport still reads stopped and the desk is unlocked, so `stop()` bumps the
+  start token even when stopped (a tab switch / New / Open cancels it) and a desk edited
+  meanwhile is preflighted again rather than run unchecked.
 - **Every protocol NUMBER lives in ONE module, `model/serial-wire.js`** — version, markers,
   frame types, payload sizes and limits, session/SEQ ranges, the never-NAKed types, CRC-16
   poly/init, the 250 ms / 5 s handshake, the 500 ms ACK timeout, the 3 sends — plus
@@ -1529,16 +1534,33 @@ integration-runtime,integration-codegen,serial-connections,serial-wire}.js` +
   (it never sees the document);
   main reads the port from ITS settings (`serialConnections`, the allowlist) — the
   `knownPath` stance, for devices. Ports **open on Run, close on Stop** so the Arduino IDE
-  can reflash between runs; the open is all-or-nothing. Main pushes FACTS (codes, ids,
+  can reflash between runs; the open is all-or-nothing, and SERIALIZED: a run's ports open
+  only once every earlier open and close has let go (a port still closing, or one a
+  stopped run is still acquiring, holds the exclusive lock and answers "busy"), and a
+  superseded open re-checks its generation after every await and closes only the links
+  it made. A port lost while the run is opening answers `dropped` (explained), never
+  `closed` (a Stop — silent). The same race has two renderer-side halves: a CLOSED link
+  hears nothing (`#receive` returns at once, so an Input or restart the port had already
+  read never reaches the next run), and `IntegrationController#open` carries a run token
+  (`#run`, bumped by `begin()` and `end()`), so an answer for an ended run touches
+  nothing of the current one. Main pushes FACTS (codes, ids,
   timestamps); every sentence is the renderer's. `require("serialport")` is LAZY in
   `ports.js` (the updater's reason: `main.js` is READ by `node --test`); it ships N-API
-  prebuilds, hence `npmRebuild: false`. It is the second runtime dependency.
+  prebuilds, hence `npmRebuild: false`. It is the second runtime dependency. Those
+  prebuilds cover every platform, so each desktop build excludes all but its own
+  (`build.mac.files` — which mas/masDev inherit — `build.win.files`, `build.linux.files`;
+  `packaging.test.js` fails on a platform a serialport update adds).
 - **A device goes away in three shapes and the adapter hears all three** (`adaptPort`):
   `close` with a DisconnectedError (a USB pull: ENXIO), `error` (the same failed write,
   which UNLISTENED is an uncaught exception in main), and `end`. One does NOT surface: the
   macOS binding re-reads a zero-byte read, so a far end that merely shuts (a pty in testing)
   is silent until the next write fails. `#portClosed` also closes the port, since not every
   shape leaves it shut.
+- **The link is BINARY, so two framing choices are not offered**: data bits are always 8
+  (`DATA_BITS = [8]`; a CRC byte needs all eight) and flow control is never software
+  (`FLOW_CONTROLS` is none/hardware; XON/XOFF swallows 0x11, the INBOUND type). A stored
+  other value normalizes away, and main's `portOptions` forces both whatever raw
+  settings.json says — main reads it unnormalized.
 - **Connections are MACHINE truth with a portable shadow.** Settings hold them whole;
   the PROJECT file carries `connections` WITHOUT `port` (a device path means nothing on
   another machine) and, on open, any this machine lacks joins its settings flagged
@@ -1564,7 +1586,13 @@ integration-runtime,integration-codegen,serial-connections,serial-wire}.js` +
   the board's, and the header's comment and the example bridge the two. The suffixes
   differ, which is load-bearing: an Output's function is CALLED from inside the class
   holding the Inputs, where an Input member of the same name would win and the header
-  would not compile — so that is unrepresentable rather than renamed. **`onConnect(fn)`**
+  would not compile — so that is unrepresentable rather than renamed. An Output's
+  PARAMETER spelled in capitals (`B0`, `HEX`, `SP`, `BIT0`) gains `_` and a `macro`
+  warning (`CPP_NAMING.macroLike`): the cores define object-like macros under ordinary
+  names, in capitals by convention, and no reserved list could hold them all — the
+  convention is the rule, so `bit0` and `value` stay as they are. An Input's field is only
+  ever part of a setter's name, so it is exempt. The stub `Arduino.h` in `serial-board.js`
+  defines a few so a regression fails the compile test. **`onConnect(fn)`**
   is run from `poll()` whenever `onHello` sees a NEW session — the only signal a board that
   does not reset when the port opens (Leonardo, native USB) gets that a run began, since
   `connected()` stays true between two runs nobody sent in; it is where a sketch sends its
@@ -1648,7 +1676,15 @@ integration-runtime,integration-codegen,serial-connections,serial-wire}.js` +
   0x03, leaving what follows it for the REPL). "Between frames" means outside any frame's
   EXTENT: a DAMAGED frame is still read to the end its LEN gives it (`_bad`/`_got`, wire-
   identical to hunting), or a 0x03 in its tail — a later version's long HELLO, say — would
-  kill the program. Without it, a `main.py` running the link
+  kill the program. And a frame's extent can be MISREAD (a LEN damaged smaller, a lost
+  START, a byte damaged into 0x7D), leaving the rest of it outside any frame: so any stray
+  non-CR/LF byte, and any damaged frame, makes the next `_QUIET_MS` (= `ACK_TIMEOUT_MS`,
+  since a program reading less often is failing the link anyway) SUSPECT, and a 0x03 then
+  is noise (`_stray`); a tool's `\r\x03` after a clean frame, or after the quiet, still
+  stops it. The generated `main.py` also calls `kbd_intr(-1)` BEFORE importing the module
+  (guarded for desktop Python): compiling it takes a while on a board, and a board that
+  boots mid-handshake would otherwise be stopped by a 0x03 in a HELLO before `begin()`
+  runs. Without it all, a `main.py` running the link
   locked every tool out of the board. A Python connection off **115200 baud, 8N1**
   is warned about on the Generate card (`python-framing`): a USB-serial-chip board (a
   classic ESP32 DevKit) runs its REPL at exactly that, a native-USB one ignores it.
@@ -1685,7 +1721,8 @@ integration-runtime,integration-codegen,serial-connections,serial-wire}.js` +
   There is no Copy button (the text is selectable). Opened from ANY lamp, an element's
   menu (**Open Connection Window** — that menu now opens while RUNNING, editing items
   disabled) and Settings ▸ Serial I/O's **Open window…**; not closed by `closeAuxWindows`,
-  since a connection is not a project's.
+  since a connection is not a project's — but closed WITH the app window
+  (`closeWindows`), or one left on screen keeps `window-all-closed` from quitting.
 - **Chrome**: cards sit in the signal rail's column under the buttons (`.signal-rail-list`
   keeps the buttons their own block); tags draw in `.layer-signals`; the **TX · RX · LG**
   lamps (all three buttons) sit left of the zoom cluster, which now publishes

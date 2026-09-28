@@ -62,10 +62,16 @@ export const BAUD_RATES = Object.freeze([
   230400, 250000, 460800, 500000, 921600, 1000000, 2000000,
 ]);
 
-export const DATA_BITS = Object.freeze([5, 6, 7, 8]);
+/** Always 8: every frame is binary — CRCs, signatures and values use all
+    eight bits of a byte, which 5, 6 or 7 data bits cannot carry. A stored
+    other value normalizes to 8 (and main opens 8 whatever settings say). */
+export const DATA_BITS = Object.freeze([8]);
 export const PARITIES = Object.freeze(["none", "even", "odd", "mark", "space"]);
 export const STOP_BITS = Object.freeze([1, 1.5, 2]);
-export const FLOW_CONTROLS = Object.freeze(["none", "hardware", "software"]);
+/** Never software (XON/XOFF): 0x11 and 0x13 are ordinary bytes on this link
+    — 0x11 is the INBOUND frame type — and a port doing XON/XOFF swallows
+    them (serial-protocol.md §2). A stored "software" normalizes to "none". */
+export const FLOW_CONTROLS = Object.freeze(["none", "hardware"]);
 
 /** What Generate writes a connection's board code in: `cpp` — an Arduino
     header (ChipHippo.h) — or `python` — one module (chiphippo.py) for

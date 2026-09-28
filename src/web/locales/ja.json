@@ -1366,7 +1366,6 @@
       "rescan": "再スキャン",
       "scanning": "スキャン中…",
       "advanced": "詳細",
-      "dataBits": "データビット",
       "parity": "パリティ",
       "parityValue": {
         "none": "なし",
@@ -1379,8 +1378,7 @@
       "flowControl": "フロー制御",
       "flowValue": {
         "none": "なし",
-        "hardware": "ハードウェア（RTS/CTS）",
-        "software": "ソフトウェア（XON/XOFF）"
+        "hardware": "ハードウェア（RTS/CTS）"
       },
       "needsConfig": "構成が必要",
       "portUnavailable": "ポートを利用できません",
@@ -1430,6 +1428,7 @@
       "failed": "ファイルを保存できませんでした: {error}",
       "warn": {
         "duplicate": "「{name}」は {identifier} になりました（別の名前が同じ識別子になったため）。",
+        "macro": "「{name}」は {identifier} になりました（Arduino コードでは大文字の名前がマクロに使われるため）。",
         "reserved": "「{name}」は {identifier} になりました（Arduino コードの予約語のため）。",
         "reservedPython": "「{name}」は {identifier} になりました: その語は Python の予約語です。"
       },

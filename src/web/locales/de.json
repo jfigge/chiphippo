@@ -1386,7 +1386,6 @@
       "rescan": "Neu suchen",
       "scanning": "Suche…",
       "advanced": "Erweitert",
-      "dataBits": "Datenbits",
       "parity": "Parität",
       "parityValue": {
         "none": "Keine",
@@ -1399,8 +1398,7 @@
       "flowControl": "Flusssteuerung",
       "flowValue": {
         "none": "Keine",
-        "hardware": "Hardware (RTS/CTS)",
-        "software": "Software (XON/XOFF)"
+        "hardware": "Hardware (RTS/CTS)"
       },
       "needsConfig": "Muss konfiguriert werden",
       "portUnavailable": "Anschluss nicht verfügbar",
@@ -1451,6 +1449,7 @@
       "failed": "Die Datei konnte nicht gespeichert werden: {error}",
       "warn": {
         "duplicate": "„{name}“ wurde zu {identifier}: ein anderer Name ergab denselben Bezeichner.",
+        "macro": "„{name}“ wurde zu {identifier}: Arduino-Code verwendet Namen in Großbuchstaben für seine Makros.",
         "reserved": "„{name}“ wurde zu {identifier}: dieses Wort ist im Arduino-Code reserviert.",
         "reservedPython": "„{name}“ wurde zu {identifier}: Das Wort ist in Python reserviert."
       },

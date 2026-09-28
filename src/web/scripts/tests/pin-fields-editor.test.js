@@ -114,6 +114,31 @@ test("a rename commits on change, trimmed, as the whole list", () => {
   ]);
 });
 
+test("a rename rebuilds nothing, so the click that caused its blur still lands", () => {
+  // A name commits on blur, and a press on "+ Byte" is what blurs it — at
+  // MOUSEDOWN. Rebuilding the rows then replaces the button before its
+  // mouseup and Chromium drops the click (checked in Electron), so the rows
+  // must be the very nodes they were.
+  const { root, rows, addBtn, changes, fire } = mount([
+    { type: "bit", name: "a" },
+  ]);
+  const add = addBtn("Byte");
+  const remove = rows()[0].querySelector(".pin-fields-remove");
+  const input = rows()[0].querySelector(".pin-fields-name");
+  input.value = "   ";
+  fire(input, "change");
+  assert.equal(addBtn("Byte"), add, "the same button, still under the finger");
+  assert.equal(rows()[0].querySelector(".pin-fields-remove"), remove);
+  assert.equal(input.value, "bit0", "a blank name shows the default it became");
+  assert.deepEqual(changes.at(-1), [{ type: "bit", name: "bit0" }]);
+  add.click();
+  assert.deepEqual(changes.at(-1), [
+    { type: "bit", name: "bit0" },
+    { type: "byte", name: "byte1" },
+  ]);
+  assert.equal(root.querySelectorAll(".pin-fields-row").length, 2);
+});
+
 test("a type change re-spans the pins", () => {
   const { rows, pins, changes, fire } = mount([
     { type: "bit", name: "a" },

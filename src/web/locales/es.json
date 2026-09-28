@@ -1386,7 +1386,6 @@
       "rescan": "Volver a buscar",
       "scanning": "Buscando…",
       "advanced": "Avanzado",
-      "dataBits": "Bits de datos",
       "parity": "Paridad",
       "parityValue": {
         "none": "Ninguna",
@@ -1399,8 +1398,7 @@
       "flowControl": "Control de flujo",
       "flowValue": {
         "none": "Ninguno",
-        "hardware": "Hardware (RTS/CTS)",
-        "software": "Software (XON/XOFF)"
+        "hardware": "Hardware (RTS/CTS)"
       },
       "needsConfig": "Requiere configuración",
       "portUnavailable": "Puerto no disponible",
@@ -1451,6 +1449,7 @@
       "failed": "No se pudo guardar el archivo: {error}",
       "warn": {
         "duplicate": "«{name}» pasó a ser {identifier}: otro nombre producía el mismo identificador.",
+        "macro": "«{name}» pasó a ser {identifier}: el código de Arduino reserva los nombres en mayúsculas para sus macros.",
         "reserved": "«{name}» pasó a ser {identifier}: esa palabra está reservada en el código de Arduino.",
         "reservedPython": "«{name}» pasó a ser {identifier}: esa palabra está reservada en Python."
       },

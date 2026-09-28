@@ -43,6 +43,7 @@ import {
   nextTagRotation,
   tagId,
 } from "../model/integration.js";
+import { isMockId } from "../model/mock-connection.js";
 import { nearestLegalPoint } from "../model/part-geometry.js";
 import { isToggleSelectEvent } from "../model/selection-toggle.js";
 import { PartPropertiesDialog } from "./part-properties-dialog.js";
@@ -129,8 +130,9 @@ export class IntegrationTools {
   /**
    * Add an Output or Input, `width` pins wide. Named from its own id (never
    * the rail's length — the `Signal N` argument), and given the connection
-   * the desk already talks over, or failing that the first one configured, so
-   * the common case of one Arduino needs no Properties visit at all.
+   * the desk already talks over, or failing that the first ARDUINO configured
+   * (the Mock only when there is none), so the common case of one Arduino
+   * needs no Properties visit at all.
    * @returns {object|null} the element, or null (running, or the rail full)
    */
   add(kind, width) {
@@ -154,11 +156,14 @@ export class IntegrationTools {
   }
 
   #defaultConnection() {
-    const known = new Set((this.#host.connections() ?? []).map((c) => c.id));
+    const list = this.#host.connections() ?? [];
+    const known = new Set(list.map((c) => c.id));
     for (const e of this.#host.doc.integrations) {
       if (e.connection && known.has(e.connection)) return e.connection;
     }
-    return this.#host.connections()?.[0]?.id ?? null;
+    // The Mock leads every connection list (`knownConnections`), so "the
+    // first" would always be it — never the board the user set up.
+    return (list.find((c) => !isMockId(c.id)) ?? list[0])?.id ?? null;
   }
 
   /** Is the rail full? (The palette disables both rows then.) */

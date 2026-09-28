@@ -117,8 +117,10 @@ Settings (<code>Cmd/Ctrl+,</code>) and choose the <strong>Serial I/O</strong> ta
 connection list creates one; give it a name and pick its <strong>Port</strong> from the list
 of what is plugged in right now (<strong>Re-scan</strong> after plugging a board in). <strong>Baud rate</strong>
 defaults to 115200, which suits every current board. <strong>Advanced</strong> holds the
-rest of the serial framing — data bits, parity, stop bits and flow control.
-Leave those alone unless you have a reason.</p>
+rest of the serial framing — parity, stop bits and flow control. Leave those
+alone unless you have a reason. (Data bits are always 8 and there is no
+XON/XOFF flow control: the link carries binary frames, which need every bit of
+every byte.)</p>
 <p><strong>Apply</strong> saves the connection. If the port isn&#39;t plugged in at that moment
 you&#39;re told so, and the button becomes <strong>Apply anyway</strong>, which saves it
 regardless — useful when you&#39;re setting up before the board arrives. <strong>Open
@@ -239,7 +241,7 @@ and so on. A pin whose tag isn&#39;t planted, or whose net is floating or unknow
 </tr>
 <tr>
 <td><strong>Connection</strong></td>
-<td>Which Arduino it talks to. The gear beside it opens Settings ▸ Serial I/O</td>
+<td>Which Arduino it talks to. A new Output or Input joins the connection the desktop already uses, or else your first Arduino — the Mock only when none is set up. The gear beside it opens Settings ▸ Serial I/O</td>
 </tr>
 <tr>
 <td><strong>Trigger</strong></td>
@@ -336,9 +338,12 @@ function <code>DisplayIn()</code>; an Input is <em>sent</em> from the Arduino in
 so the Input called <em>Keypad</em> is <code>ChipHippo.KeypadOut</code>. The two different
 endings also mean an Output and an Input can share a name. A name that
 already ends that way isn&#39;t doubled (an Output called <em>DataIn</em> stays
-<code>DataIn</code>). A name that still can&#39;t be used as it is (two Outputs with the
-same name, a field called <code>delay</code>) is changed, and the Generate card lists
-each change under its connection.</p>
+<code>DataIn</code>). A name that can&#39;t be used as it is (two Outputs with the same
+name, a field called <code>delay</code>) is changed, and the Generate card lists each
+change under its connection. That includes an Output&#39;s field named in
+capitals, such as <code>SP</code> or <code>HEX</code>, which becomes <code>SP_</code> or <code>HEX_</code>: the Arduino
+cores use names in capitals for their macros, and a parameter spelled like one
+won&#39;t compile.</p>
 <p>The file viewer shows the header beside <code>ChipHippoExample.ino</code>, an example
 sketch that uses it, each in its own tab, with line numbers. The example
 shows the three things a sketch does, each labelled where it happens:
@@ -419,7 +424,9 @@ onto it.</p>
 <li><strong>MicroPython</strong> uses the board&#39;s own USB serial port — the one its REPL uses
 — so point the connection at that port. Inside the link&#39;s data a <code>0x03</code> byte
 is just data, not Ctrl-C; between messages, Ctrl-C still stops the program,
-so Thonny and <code>mpremote</code> can always get in to replace its files. A plain
+so Thonny and <code>mpremote</code> can always get in to replace its files. The
+example <code>main.py</code> switches Ctrl-C off on its first lines, before it imports
+<code>chiphippo</code>; if you write your own, start it the same way. A plain
 <code>print()</code> would land in the middle of the link, so log with <code>link.print()</code>.
 On a board whose USB is a separate serial chip (a classic ESP32 DevKit),
 MicroPython always talks at <strong>115200 baud, 8N1</strong>: leave the connection

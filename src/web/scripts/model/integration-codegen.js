@@ -203,6 +203,8 @@ const RESERVED = new Set(
     "static_cast struct switch template this thread_local throw true try " +
     "typedef typeid typename union unsigned using virtual void volatile wchar_t " +
     "while xor xor_eq " +
+    // GNU's own keyword: the Arduino toolchains build as gnu++11.
+    "typeof " +
     // The Arduino core.
     "HIGH LOW INPUT OUTPUT INPUT_PULLUP LED_BUILTIN PI HALF_PI TWO_PI DEG_TO_RAD " +
     "RAD_TO_DEG SERIAL DISPLAY LSBFIRST MSBFIRST CHANGE FALLING RISING " +
@@ -245,9 +247,15 @@ export function cIdentifier(name, fallback = "x") {
 /**
  * Hands out identifiers from one namespace, changing (and reporting) any that
  * collide with a reserved word or with one already handed out. `clean` turns
- * a name into the language's identifier.
+ * a name into the language's identifier; `macroLike`, where given, marks one
+ * that may be a macro's name and so is changed the same way.
  */
-function identifierPool(warnings, reserved = RESERVED, clean = cIdentifier) {
+function identifierPool(
+  warnings,
+  reserved = RESERVED,
+  clean = cIdentifier,
+  macroLike = null,
+) {
   const used = new Set();
   return (name, fallback, context) => {
     const base = clean(name, fallback);
@@ -255,6 +263,9 @@ function identifierPool(warnings, reserved = RESERVED, clean = cIdentifier) {
     let reason = null;
     if (reserved.has(id)) {
       reason = "reserved";
+      id = `${base}_`;
+    } else if (macroLike?.(id)) {
+      reason = "macro";
       id = `${base}_`;
     }
     for (let n = 2; used.has(id); n++) {
@@ -305,6 +316,13 @@ export const CPP_NAMING = Object.freeze({
   reserved: RESERVED,
   setterReserved: new Set([...RESERVED, "send"]),
   type: C_TYPE,
+  // An Output's parameter spelled in capitals (`SP`, `HEX`, `B0`, `BIT0`) gains
+  // an underscore: the cores define object-like macros under ordinary names,
+  // in capitals by convention, and a parameter spelled like one does not
+  // compile. No list of them could be complete; the convention is the rule.
+  // An Input's fields are only ever part of a setter's name (`setSP`), and an
+  // element's name gains In/Out, so neither can be one.
+  macroLike: (id) => /[A-Z]/.test(id) && !/[a-z]/.test(id) && !id.endsWith("_"),
 });
 
 /**
@@ -314,8 +332,8 @@ export const CPP_NAMING = Object.freeze({
  */
 export function planIdentifiers(connectionId, elements, naming = CPP_NAMING) {
   const warnings = [];
-  const pool = (reserved = naming.reserved) =>
-    identifierPool(warnings, reserved, naming.identifier);
+  const pool = (reserved = naming.reserved, macroLike = null) =>
+    identifierPool(warnings, reserved, naming.identifier, macroLike);
   const fnName = pool();
   const memberName = pool();
   const plan = (e, names, index) => {
@@ -325,7 +343,10 @@ export function planIdentifiers(connectionId, elements, naming = CPP_NAMING) {
       element: display,
       name: display,
     });
-    const paramName = pool();
+    const paramName = pool(
+      naming.reserved,
+      e.kind === "output" ? naming.macroLike : null,
+    );
     const setters = pool(naming.setterReserved);
     const fields = fieldSpans(e.fields).map((span) => {
       const param = paramName(span.name, `${span.type}${span.first - 1}`, {

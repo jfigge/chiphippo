@@ -735,3 +735,26 @@ test("a Python connection off 115200 baud, 8N1 says why a USB-serial-chip board 
     PopupManager.close();
   }
 });
+
+test("a field renamed because it may be a core macro says so, under its connection", () => {
+  const { row } = openDialog({
+    connections: [conn("conn-a", "Nano")],
+    elements: [
+      {
+        id: "out1",
+        kind: "output",
+        connection: "conn-a",
+        name: "Regs",
+        fields: [{ type: "byte", name: "SP" }],
+      },
+    ],
+  });
+  try {
+    assert.match(
+      row("conn-a").querySelector(".codegen-warnings").textContent,
+      /“SP” became SP_: Arduino code keeps names in capitals for its macros\./,
+    );
+  } finally {
+    PopupManager.close();
+  }
+});

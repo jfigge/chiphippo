@@ -26,7 +26,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { EventEmitter } = require("node:events");
 
-const { adaptPort } = require("../serial/ports");
+const { adaptPort, portOptions } = require("../serial/ports");
 const { SerialLink } = require("../serial/link");
 
 /** Enough of a SerialPort stream for the adapter. */
@@ -82,4 +82,28 @@ test("closing an already-closed port does not call the driver", async () => {
   stream.isOpen = false;
   await adapted.close();
   assert.equal(stream.closes, 0);
+});
+
+test("the port is always 8 data bits and never XON/XOFF — the link is binary", () => {
+  // settings.json is read raw and may predate the rule: a stored 7 or
+  // "software" must not reach the driver (0x11 is the INBOUND frame type).
+  const opts = portOptions({
+    port: "/dev/cu.nano",
+    baud: 115200,
+    dataBits: 7,
+    parity: "even",
+    stopBits: 1,
+    flowControl: "software",
+  });
+  assert.equal(opts.dataBits, 8);
+  assert.equal(opts.xon, false);
+  assert.equal(opts.xoff, false);
+  assert.equal(opts.xany, false);
+  assert.equal(opts.rtscts, false);
+  assert.equal(opts.parity, "even", "the rest is the connection's");
+  assert.equal(opts.baudRate, 115200);
+  assert.equal(
+    portOptions({ port: "p", baud: 9600, flowControl: "hardware" }).rtscts,
+    true,
+  );
 });

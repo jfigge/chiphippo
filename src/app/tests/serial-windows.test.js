@@ -23,6 +23,8 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 
 const { registerSerialIpc } = require("../ipc/serial");
 
@@ -71,6 +73,9 @@ class FakeWindow {
   show() {}
   focus() {}
   showInactive() {}
+  close() {
+    this.moveAndClose(this.bounds);
+  }
   /** The user moves it and closes it: the close flushes the save. */
   moveAndClose(bounds) {
     this.bounds = bounds;
@@ -106,7 +111,7 @@ function setup(connections = [NANO, UNO]) {
     ipc.retitleLogs();
     ipc.forgetDeletedConnections();
   };
-  return { settings, invoke, setConnections };
+  return { settings, invoke, setConnections, ipc };
 }
 
 const HERE = { x: 300, y: 200, width: 700, height: 500 };
@@ -186,4 +191,26 @@ test("state kept under anything but a live connection's id is dropped", () => {
   };
   setConnections([NANO, UNO]);
   assert.deepEqual(Object.keys(settings.connectionWindows), [UNO.id]);
+});
+
+test("closeWindows closes every connection window, the Mock's included", () => {
+  const { invoke, ipc } = setup();
+  invoke("serial:log:open", NANO.id);
+  invoke("serial:log:open", "mock", { background: true });
+  ipc.closeWindows();
+  assert.equal(FakeWindow.made.length, 2);
+  assert.ok(FakeWindow.made.every((w) => w.isDestroyed()));
+  // Gone from the registry too: the next open makes a window afresh.
+  invoke("serial:log:open", NANO.id);
+  assert.equal(FakeWindow.made.length, 3);
+});
+
+test("the app window's closing closes the connection windows, so the app can quit", () => {
+  // A connection window left on screen keeps `window-all-closed` from firing.
+  const main = fs.readFileSync(path.join(__dirname, "..", "main.js"), "utf8");
+  const create = main.indexOf("function createWindow()");
+  const start = main.indexOf('win.on("closed"', create);
+  const end = main.indexOf("\n  });", start);
+  assert.ok(create >= 0 && start > create && end > start);
+  assert.match(main.slice(start, end), /serialIpc\?\.closeWindows\(\)/);
 });

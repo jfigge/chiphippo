@@ -422,6 +422,10 @@ class SerialLink {
   // ── Receiving ────────────────────────────────────────────────────────────
 
   #receive(chunk) {
+    // CLOSED accepts nothing (serial-protocol.md §5.2): bytes the port had
+    // already read when it was let go belong to a run that has ended, and an
+    // Input or a restart from it must not reach whichever run comes next.
+    if (this.#closed) return;
     for (const frame of this.#decoder.push(chunk)) {
       if (!frame.ok) {
         // The fast fail: NAK at once rather than let the sender wait out its

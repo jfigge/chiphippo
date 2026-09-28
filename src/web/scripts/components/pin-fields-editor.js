@@ -28,7 +28,11 @@
 // Like every Properties control it applies LIVE: each change reports the whole
 // new list through `onChange` (a name commits on blur/Enter, not per key, so
 // it does not spam the undo history), and the editor re-renders itself from
-// that list, since the card never rebuilds its rows.
+// that list, since the card never rebuilds its rows — EXCEPT for a name. A
+// name commits on the blur that a press elsewhere causes, i.e. at MOUSEDOWN
+// on "+ Byte", ×, or a type; rebuilding then replaces that button before its
+// mouseup, and the browser drops the click. A name changes nothing else a row
+// shows, so its input is corrected in place instead.
 
 import { el } from "../dom.js";
 import { t } from "../i18n.js";
@@ -61,10 +65,10 @@ export function buildPinFieldsEditor({ value, onChange, ariaLabel }) {
     ...(ariaLabel ? { "aria-label": ariaLabel } : {}),
   });
 
-  const commit = (next) => {
+  const commit = (next, { rerender = true } = {}) => {
     fields = normalizeFields(next);
     onChange(fields.map((f) => ({ ...f })));
-    render();
+    if (rerender) render();
   };
 
   const typeLabel = (type) => t(`integration.fieldType.${type}`);
@@ -90,7 +94,8 @@ export function buildPinFieldsEditor({ value, onChange, ariaLabel }) {
           onChange: (e) => {
             const next = fields.map((f) => ({ ...f }));
             next[i].name = e.target.value;
-            commit(next);
+            commit(next, { rerender: false });
+            e.target.value = fields[i].name; // trimmed, or the default if blank
           },
         }),
         el(

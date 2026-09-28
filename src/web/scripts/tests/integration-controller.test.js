@@ -59,6 +59,7 @@ function mount({
   connections = [NANO],
   present = ["/dev/cu.nano"],
   openResult,
+  open,
   send,
 } = {}) {
   const win = resetDom();
@@ -96,7 +97,7 @@ function mount({
       log: { open: async (...args) => calls.windows.push(args) },
       open: async (requests) => {
         calls.open.push(requests);
-        return openResult ?? { ok: true };
+        return open ? open(requests) : (openResult ?? { ok: true });
       },
       send: (...args) => {
         calls.send.push(args);
@@ -277,6 +278,13 @@ test("each handshake refusal stops the run before it starts, and says why", asyn
       "Sketch built for another design",
       /The code on “Nano” was built for a different design\. Generate it again/,
     ],
+    // Its port went away while the run was opening — a board re-enumerating
+    // as its port opened, a cable pulled while "Connecting…" showed.
+    [
+      { code: "dropped" },
+      "Connection dropped",
+      /The serial connection to “Nano” was dropped/,
+    ],
   ];
   for (const [result, title, message] of cases) {
     const { controller, active } = mount({
@@ -292,6 +300,16 @@ test("each handshake refusal stops the run before it starts, and says why", asyn
       closeAll();
     }
   }
+});
+
+test("an open a Stop (or a newer run) came before is 'closed', and says nothing", async () => {
+  const { controller, active } = mount({
+    openResult: { ok: false, code: "closed" },
+  });
+  assert.equal(await controller.begin(design().doc), false);
+  assert.equal(PopupManager.isOpen(), false);
+  assert.equal(controller.running, false);
+  assert.deepEqual(active, []);
 });
 
 test("the boundary STALLS on an Output until it is acknowledged, then applies what arrived", async () => {
@@ -379,6 +397,45 @@ test("an Input sent the moment its device is greeted — before the run has fini
     again: true,
   });
   assert.deepEqual([...controller.levels()], [[`${inp}:1`, "H"]]);
+});
+
+test("a late answer for a run that has ended changes nothing of the run now opening", async () => {
+  // Stop, then Run again, while main is still answering the first run's open.
+  const answers = [];
+  const { controller, emit, active, dismissed } = mount({
+    open: () => new Promise((r) => answers.push(r)),
+  });
+  const { doc, inp } = design();
+  const first = controller.begin(doc);
+  controller.end(); // Stop
+  const second = controller.begin(doc); // Run again
+  await settle();
+  const notes = dismissed.length;
+  answers[0]({ ok: false, code: "closed" }); // the first run's, arriving late
+  assert.equal(await first, false);
+  assert.equal(dismissed.length, notes, "the new run's Connecting… stays up");
+  // The new run is still opening, so its device's starting value is kept.
+  emit("serial-inbound", { id: "conn-a", index: 0, width: 1, value: 1 });
+  answers[1]({ ok: true });
+  assert.equal(await second, true);
+  assert.equal(controller.running, true);
+  controller.settled(board({ "bb1.a5": "L" }));
+  assert.deepEqual([...controller.levels()], [[`${inp}:1`, "H"]]);
+  assert.deepEqual(active, [false, true]);
+});
+
+test("a Stop while main's 'ok' is on its way leaves the run stopped", async () => {
+  let answer = null;
+  const { controller, active } = mount({
+    open: () => new Promise((r) => (answer = r)),
+  });
+  const begun = controller.begin(design().doc);
+  await settle();
+  controller.end(); // Stop
+  answer({ ok: true }); // the open had already succeeded in main
+  assert.equal(await begun, false);
+  assert.equal(controller.running, false);
+  assert.deepEqual(active, [false], "the lamps never came on");
 });
 
 test("an Input that arrives after Stop, or for a run that never opened, is dropped", async () => {

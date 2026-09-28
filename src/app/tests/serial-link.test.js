@@ -459,6 +459,25 @@ test("an Input is ACKed and delivered; a resend of the same SEQ is re-ACKed, not
   );
 });
 
+test("a closed link hears nothing: bytes still arriving belong to a run that has ended", async () => {
+  // The port may have read them already when Stop let it go; an Input or a
+  // restart from the old run must never reach the run that comes next.
+  const { device, link, events } = await greeted();
+  await link.close();
+  device.sendIn(0, 8, 0x42);
+  device.helloAck(0); // the announcement: "I am in no session"
+  device.send({ type: FRAME.LOG, payload: [...Buffer.from("late\n")] });
+  await sleep(20);
+  assert.deepEqual(events.inbound, []);
+  assert.equal(events.restarts, 0);
+  assert.deepEqual(events.logs, []);
+  assert.equal(
+    device.frames.filter((f) => f.type === FRAME.ACK).length,
+    0,
+    "and it answers nothing",
+  );
+});
+
 test("an intact Input the host cannot use is ACKed and dropped — and its resend is a duplicate", async () => {
   const { device, events } = await greeted();
   device.send({ type: FRAME.INBOUND, seq: 1, payload: [0, 17, 1, 0] }); // width 17

@@ -115,12 +115,14 @@ RFC 2119. A paragraph marked <em>Note</em> explains a rule and adds none.</li>
 <li>A byte stream with no framing of its own: a UART, USB CDC, a
 pseudo-terminal. It MUST deliver bytes in order. It may lose or corrupt
 them; <a href="#35-receiving-a-frame">§3.5</a> and <a href="#6-reliable-delivery">§6</a> recover.</li>
-<li>The serial parameters — baud rate, data bits, parity, stop bits — come from
-the connection (Settings ▸ Serial I/O). The default, and the recommendation,
-is <strong>115200 baud, 8-N-1, no flow control</strong>.</li>
+<li>The serial parameters — baud rate, parity, stop bits — come from the
+connection (Settings ▸ Serial I/O). Data bits are always <strong>8</strong>: frames are
+binary, and CRCs, signatures and values use every bit of a byte. The
+default, and the recommendation, is <strong>115200 baud, 8-N-1, no flow control</strong>.</li>
 <li><strong>No software flow control.</strong> XON (<code>0x11</code>) and XOFF (<code>0x13</code>) are ordinary
 bytes here — <code>0x11</code> is the <code>INBOUND</code> type — and only <code>0x7E</code> and <code>0x7D</code> are
-escaped, so a link that swallows them loses frames.</li>
+escaped, so a link that swallows them loses frames. Chip Hippo never opens
+a port with XON/XOFF.</li>
 <li>One host and one device per connection. The device sees only the Outputs and
 Inputs assigned to its connection. A run may use several connections at
 once; each is an independent link with its own session.</li>
@@ -1184,7 +1186,11 @@ the host never sends a byte outside a frame (<a href="#2-transport">§2</a>), a 
 <code>0x03</code> between frames can only be a tool such as Thonny or <code>mpremote</code>, and
 it stops the program as Ctrl-C would. (The module reads a damaged frame to
 the end its <code>LEN</code> gives it, so a <code>0x03</code> in the rest of one is still that
-frame&#39;s.) On a board whose USB is a separate serial chip (a classic ESP32
+frame&#39;s; and for a moment after line damage — a frame whose <code>START</code> was
+lost, or the rest of one whose <code>LEN</code> was misread — a stray <code>0x03</code> is taken
+as more of it, not as Ctrl-C. Its example <code>main.py</code> turns Ctrl-C off before
+it imports the module, so a board that starts during a handshake is not
+stopped by a <code>HELLO</code>.) On a board whose USB is a separate serial chip (a classic ESP32
 DevKit) that port always runs at 115200 baud, 8N1, so the connection must
 too. On <strong>CircuitPython</strong> it uses the second USB serial port, which its
 <code>boot.py</code> turns on. Any stream can be handed to <code>begin()</code> instead.</li>

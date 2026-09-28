@@ -1366,7 +1366,6 @@
       "rescan": "重新扫描",
       "scanning": "正在扫描…",
       "advanced": "高级",
-      "dataBits": "数据位",
       "parity": "校验",
       "parityValue": {
         "none": "无",
@@ -1379,8 +1378,7 @@
       "flowControl": "流控制",
       "flowValue": {
         "none": "无",
-        "hardware": "硬件（RTS/CTS）",
-        "software": "软件（XON/XOFF）"
+        "hardware": "硬件（RTS/CTS）"
       },
       "needsConfig": "需要配置",
       "portUnavailable": "端口不可用",
@@ -1430,6 +1428,7 @@
       "failed": "无法保存文件：{error}",
       "warn": {
         "duplicate": "“{name}”改为 {identifier}：另一个名称生成了相同的标识符。",
+        "macro": "“{name}”改为 {identifier}：Arduino 代码中全大写的名称留给宏使用。",
         "reserved": "“{name}”改为 {identifier}：该词是 Arduino 代码的保留字。",
         "reservedPython": "“{name}”变成了 {identifier}：该词是 Python 的保留字。"
       },

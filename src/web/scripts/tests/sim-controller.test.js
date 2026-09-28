@@ -1000,6 +1000,56 @@ test("an async preflight that passes starts the run", async () => {
   assert.equal(integration.log.begun, 1);
 });
 
+test("a Stop while an async preflight is still checking cancels the Run", async () => {
+  // A tab switch or a New/Open stops the sim while the port scan is out; the
+  // transport still reads stopped then, but the Run must not start after it.
+  resetDom();
+  let answer = null;
+  const integration = fakeIntegration({
+    preflight: () => new Promise((r) => (answer = r)),
+  });
+  const sim = new SimController({
+    deskDoc: fakeDoc(poweredDoc(5)),
+    notifications: fakeNotifications(),
+    integration,
+  });
+  const pending = sim.start();
+  sim.stop();
+  answer(true);
+  await pending;
+  assert.equal(sim.running, false);
+  assert.equal(integration.log.begun, 0);
+});
+
+test("a desk edited while its preflight checks is checked again before it runs", async () => {
+  resetDom();
+  const seen = [];
+  let answer = null;
+  const integration = fakeIntegration({
+    preflight: (doc) => {
+      seen.push(doc.wires.length);
+      return seen.length === 1
+        ? new Promise((r) => (answer = r))
+        : Promise.resolve(true);
+    },
+  });
+  const deskDoc = fakeDoc(poweredDoc(5));
+  const sim = new SimController({
+    deskDoc,
+    notifications: fakeNotifications(),
+    integration,
+  });
+  const pending = sim.start();
+  const before = seen[0];
+  deskDoc.toJSON().wires.pop(); // an edit while the ports are scanned
+  answer(true);
+  await pending;
+  assert.deepEqual(seen, [before, before - 1], "the edited desk was checked");
+  assert.equal(sim.running, true);
+  assert.equal(integration.log.begun, 1);
+  sim.stop();
+});
+
 test("begin gates the first tick, and a `false` answer stops the run", async () => {
   resetDom();
   let open = null;

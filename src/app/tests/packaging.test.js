@@ -14,7 +14,8 @@
  * limitations under the License.
  */
 
-// packaging.test.js — the Mac App Store build configuration.
+// packaging.test.js — the Mac App Store build configuration, and what every
+// mac build ships.
 //
 // Everything here fails LATE and expensively otherwise: a mistyped entitlements
 // path surfaces as a codesign error minutes into `make mas`, and a wrong key in
@@ -139,4 +140,46 @@ test("the store build declares its encryption exemption once, for both macs", ()
       false,
     );
   }
+});
+
+test("each desktop build ships only its own platform's build of the serial port's native module", () => {
+  // @serialport/bindings-cpp carries a prebuilt .node for every platform, and
+  // a build needs only its own: mac's is one universal binary for both
+  // architectures (mas/masDev inherit mac's options), Windows' and Linux's
+  // one per architecture. Each build's pattern must exclude every OTHER
+  // platform present — so a platform a serialport update adds fails here
+  // rather than riding along unnoticed — and must never exclude its own.
+  const dir = path.join(SRC, "node_modules/@serialport/bindings-cpp/prebuilds");
+  const present = fs.existsSync(dir) ? fs.readdirSync(dir) : [];
+  const platformOf = (p) => p.split("-")[0];
+  const pattern = new RegExp(
+    String.raw`^!node_modules/@serialport/bindings-cpp/prebuilds/\{([a-z0-9,]+)\}-\*/\*\*$`,
+  );
+  for (const [key, own] of [
+    ["mac", "darwin"],
+    ["win", "win32"],
+    ["linux", "linux"],
+  ]) {
+    const files = build[key].files ?? [];
+    assert.equal(files.length, 1, `${key}: one exclusion`);
+    const m = pattern.exec(files[0]);
+    assert.ok(m, `${key}: the exclusion is the prebuilds pattern`);
+    const excluded = new Set(m[1].split(","));
+    assert.ok(!excluded.has(own), `${key} must keep ${own}'s own binary`);
+    for (const p of present) {
+      if (platformOf(p) === own) continue;
+      assert.ok(
+        excluded.has(platformOf(p)),
+        `${p}'s binary would ship in ${key}`,
+      );
+    }
+    if (present.length) {
+      assert.ok(
+        present.some((p) => platformOf(p) === own),
+        `and ${own}'s own binary is still there for ${key} to ship`,
+      );
+    }
+  }
+  assert.equal(build.mas.files, undefined, "mas inherits mac's");
+  assert.equal(build.masDev.files, undefined, "masDev likewise");
 });

@@ -128,7 +128,8 @@ function streamFileName(name, now = new Date()) {
  * @param {() => string} deps.windowBackground
  * @param {Electron.NativeImage} [deps.icon]
  * @param {string} deps.appDir - src/app (for the preload)
- * @returns {{manager: SerialManager, closeAll: () => Promise<void>}}
+ * @returns {{manager: SerialManager, closeAll: () => Promise<void>,
+ *   closeWindows: () => void}}
  */
 function registerSerialIpc(deps) {
   const { ipcMain, BrowserWindow, dialog, getSettings, getMainWindow, m } =
@@ -442,6 +443,15 @@ function registerSerialIpc(deps) {
   return {
     manager,
     closeAll: () => manager.close(),
+    /** Close every connection window. They are no project's, so New/Open
+        leaves them be — but they must not outlive the app window: one left
+        on screen keeps `window-all-closed` from firing, and the app from
+        quitting. */
+    closeWindows: () => {
+      for (const win of [...logWindows.values()]) {
+        if (!win.isDestroyed()) win.close();
+      }
+    },
     /** Drop what is remembered for every connection that no longer exists
         — its window, and where its generated files were saved — called
         whenever the connection list is written. */

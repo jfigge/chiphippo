@@ -90,6 +90,10 @@ export class IntegrationController {
   // may be sending its Inputs' starting values (its onConnect runs the moment
   // its handshake completes, before every other connection's has).
   #opening = false;
+  // Which run the ports are being opened for: bumped by begin() and end(), so
+  // an open answering for a run that has since ended (a Stop, or a Stop and a
+  // new Run, while main was still opening) changes nothing of the run now.
+  #run = 0;
   #partials = new Map(); // connection id → the log's last partial line
 
   /**
@@ -248,10 +252,10 @@ export class IntegrationController {
     this.#runtime.begin(elements);
     this.#partials.clear();
     this.#opening = true;
-    return this.#open(connectionsUsed(elements));
+    return this.#open(connectionsUsed(elements), ++this.#run);
   }
 
-  async #open(ids) {
+  async #open(ids, run) {
     const connections = this.#getConnections() ?? [];
     const names = ids
       .map((id) => findConnection(connections, id)?.name ?? id)
@@ -280,6 +284,10 @@ export class IntegrationController {
         detail: String(err?.message ?? err),
       };
     }
+    // An answer for a run that has ended: its Stop said everything already,
+    // and what it would set (the lamps, the opening state, the "Connecting…"
+    // note) is the current run's.
+    if (run !== this.#run) return false;
     this.#notifications?.dismiss?.("integration-connect");
     this.#opening = false;
     if (!result?.ok) {
@@ -344,6 +352,7 @@ export class IntegrationController {
   /** Stop: forget the run and let the ports go. */
   end() {
     const was = this.#running || this.#elements.length > 0;
+    this.#run++;
     this.#running = false;
     this.#opening = false;
     this.#elements = [];
@@ -487,6 +496,16 @@ export class IntegrationController {
       PopupManager.notify({
         title: t("integration.run.signatureTitle"),
         message: t("integration.run.signature", { name }),
+        okLabel: t("common.ok"),
+      });
+    } else if (result?.code === "dropped") {
+      // Its port went away while the run was opening (a board that
+      // re-enumerates as its port opens, a cable pulled while "Connecting…"
+      // showed) — the same news `serial-dropped` brings mid-run, which this
+      // run was not yet running to hear.
+      PopupManager.notify({
+        title: t("integration.run.droppedTitle"),
+        message: t("integration.run.dropped", { name }),
         okLabel: t("common.ok"),
       });
     } else {

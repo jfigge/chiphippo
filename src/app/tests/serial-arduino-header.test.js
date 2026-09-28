@@ -518,7 +518,7 @@ test(
 );
 
 test(
-  "every element shape compiles — none, bits, a word, many, a 7E1 link",
+  "every element shape compiles — none, bits, a word, many, an 8E1 link",
   { skip: !CXX && "no C++ compiler" },
   async () => {
     const b = await build();
@@ -569,10 +569,7 @@ test(
       ],
     };
     for (const [name, els] of Object.entries(shapes)) {
-      for (const conn of [
-        connection,
-        { ...connection, dataBits: 7, parity: "even" },
-      ]) {
+      for (const conn of [connection, { ...connection, parity: "even" }]) {
         const { text } = generateHeader({ connection: conn, elements: els });
         const hdrDir = fs.mkdtempSync(
           path.join(os.tmpdir(), "chiphippo-shape-"),
@@ -601,6 +598,49 @@ test(
         assert.equal(r.status, 0, `${name}: ${r.stderr}`);
       }
     }
+  },
+);
+
+test(
+  "fields named like the core's macros — B0, HEX, SP, BIT0, typeof — still compile, example and all",
+  { skip: !CXX && "no C++ compiler" },
+  async () => {
+    // A parameter spelled like an object-like macro is expanded into
+    // nonsense ("variable or field declared void"); `typeof` is a GNU keyword.
+    const els = [
+      {
+        id: "out1",
+        kind: "output",
+        name: "Regs",
+        connection: "nano",
+        fields: [
+          { type: "bit", name: "B0" },
+          { type: "byte", name: "HEX" },
+          { type: "byte", name: "SP" },
+          { type: "bit", name: "BIT0" },
+          { type: "bit", name: "typeof" },
+        ],
+      },
+      {
+        id: "in1",
+        kind: "input",
+        name: "Keys",
+        connection: "nano",
+        fields: [
+          { type: "byte", name: "DEC" },
+          { type: "bit", name: "B1" },
+        ],
+      },
+    ];
+    const b = await build("macro-names", undefined, {
+      els,
+      sketch: (codegen, dir) => {
+        const example = codegen.generateExample({ connection, elements: els });
+        fs.writeFileSync(path.join(dir, example.name), example.text);
+        return `#include "${example.name}"\nHostSerial Serial;\n${HOST_MAIN}`;
+      },
+    });
+    assert.equal(b.status, 0, b.stderr);
   },
 );
 

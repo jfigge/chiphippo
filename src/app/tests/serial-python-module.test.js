@@ -773,6 +773,61 @@ test(
 );
 
 test(
+  "micropython: a 0x03 that line damage leaves outside a frame is not a Ctrl-C — until the line has been quiet",
+  { skip: !INTERPRETERS[1].present && "no micropython" },
+  async () => {
+    const { dir, module } = await prepare();
+    const { child, port } = board("micropython", {
+      args: ["prog.py"],
+      cwd: dir,
+      stderr: "pipe",
+    });
+    let stderr = "";
+    child.stderr.on("data", (d) => (stderr += d));
+    let exited = false;
+    const exit = new Promise((r) =>
+      child.once("exit", (code) => {
+        exited = true;
+        r(code);
+      }),
+    );
+    const inbound = [];
+    const link = new SerialLink({ port, onInbound: (d) => inbound.push(d) });
+    // An Output carrying 3 — a 0x03 in its payload.
+    const output = () =>
+      encodeFrame({ type: FRAME.OUTPUT, seq: 9, payload: [0, 9, 3, 0] });
+    try {
+      assert.equal((await link.handshake(module.signature)).ok, true);
+      // One bit flip in LEN (4 → 0): the frame ends early, and the rest of
+      // it — the 0x03 included — arrives outside any frame.
+      const shrunk = output();
+      shrunk[3] = 0;
+      child.stdin.write(shrunk);
+      // A lost START: the whole frame arrives outside any frame.
+      child.stdin.write(output().subarray(1));
+      await new Promise((r) => setTimeout(r, 100));
+      assert.equal(exited, false, `the program is still running: ${stderr}`);
+      assert.deepEqual(await link.send(0, 9, 2), { ok: true });
+      assert.deepEqual(
+        inbound.map((d) => d.value),
+        [3],
+      );
+      // Damage again, then a tool's Ctrl-C once the line has been quiet:
+      // that one does stop the program.
+      child.stdin.write(output().subarray(1));
+      await new Promise((r) => setTimeout(r, 700));
+      assert.equal(exited, false, stderr);
+      child.stdin.write(Buffer.from([0x0d, 0x03]));
+      assert.notEqual(await exit, 0, "the program stopped");
+      assert.match(stderr, /KeyboardInterrupt/);
+    } finally {
+      await link.close();
+      child.kill();
+    }
+  },
+);
+
+test(
   "micropython: a Ctrl-C between frames stops the program — so Thonny and mpremote can get in — while a 0x03 inside one is data",
   { skip: !INTERPRETERS[1].present && "no micropython" },
   async () => {

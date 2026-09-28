@@ -131,6 +131,18 @@ test("the shared plan, in Python's spelling: keywords and duplicates are renamed
   ]);
 });
 
+test("a field named str is renamed — the example's handlers call str() on their parameters", () => {
+  const els = [el("out1", "output", "Show", [{ type: "byte", name: "str" }])];
+  const plan = planIdentifiers("pico", els, PY_NAMING);
+  assert.equal(plan.outputs[0].fields[0].param, "str_");
+  assert.deepEqual(
+    plan.warnings.map((w) => `${w.code}:${w.name}→${w.identifier}`),
+    ["reserved:str→str_"],
+  );
+  const [main] = generatePythonExamples({ connection: pico, elements: els });
+  assert.ok(main.text.includes('link.print("Show:", "str_=" + str(str_))'));
+});
+
 test("the module registers Outputs by decorator, builds Inputs, and is written from serial-wire.js", () => {
   const { name, text, hash, signature, outputs, inputs } = generatePythonModule(
     {
@@ -252,6 +264,13 @@ test("the examples: main.py and code.py are one program that RECEIVES, SENDS and
     /link\.begin\(\)\nwhile True:\n {4}link\.poll\(\).*\n {4}if link\.connected\(\) and ticks_diff\(ticks_ms\(\), last_send\) >= SEND_EVERY_MS:\n {8}last_send = ticks_ms\(\)\n {8}send_next\(\)\n$/,
   );
   assert.match(boot.text, /usb_cdc\.enable\(console=True, data=True\)/);
+
+  // main.py switches Ctrl-C off BEFORE importing the module (compiling it
+  // takes a while on a board, and a HELLO may hold a 0x03); code.py talks over
+  // CircuitPython's second port, which has no Ctrl-C to switch off.
+  const off = main.text.indexOf("micropython.kbd_intr(-1)");
+  assert.ok(off > 0 && off < main.text.indexOf("from chiphippo import"));
+  assert.ok(!code.text.includes("kbd_intr"));
 });
 
 test("the module offers the example's clock: ticks_ms and ticks_diff", () => {
@@ -334,10 +353,10 @@ test("a Python connection off 115200 baud, 8N1 is warned about — a USB-serial-
     { code: "python-framing", baud: 9600, format: "8N1" },
   ]);
   const odd = generatePythonModule({
-    connection: { ...pico, dataBits: 7, parity: "even" },
+    connection: { ...pico, parity: "even" },
     elements: design(),
   });
   assert.deepEqual(odd.warnings, [
-    { code: "python-framing", baud: 115200, format: "7E1" },
+    { code: "python-framing", baud: 115200, format: "8E1" },
   ]);
 });

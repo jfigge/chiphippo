@@ -492,11 +492,18 @@ test("the editor is built from the card's own rows, each label tied to its contr
       "Port",
       "Baud rate",
       "Language",
-      "Data bits",
+      // No "Data bits": the link is binary, so it is always 8.
       "Parity",
       "Stop bits",
       "Flow control",
     ],
+  );
+  // And no software flow control: XON/XOFF would swallow 0x11, a frame type.
+  assert.deepEqual(
+    [...win.document.querySelectorAll("#set-serial-flow-control option")].map(
+      (o) => o.value,
+    ),
+    ["none", "hardware"],
   );
   for (const row of rows) {
     const label = row.querySelector(".settings-label");

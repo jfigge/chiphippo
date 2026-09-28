@@ -2259,10 +2259,14 @@ export class DeskDoc {
       ids.size === wireIds.length && wireIds.every((id) => known.has(id));
     if (!usable) return () => false;
     // The doc as if the movers were gone — the holes they leave read free.
+    // Planted flags and tags stay: each is a lead in its hole, and a hole
+    // they hold must read taken, as it does to `canReendWire`.
     const reduced = {
       boards: this.#doc.boards,
       components: this.#doc.components,
       wires: this.#doc.wires.filter((w) => !ids.has(w.id)),
+      signals: this.#doc.signals,
+      integrations: this.#doc.integrations,
     };
     const occupied = buildOccupancy(reduced);
     return (moves) => {
@@ -2352,10 +2356,14 @@ export class DeskDoc {
       wireIds.every((id) => knownWires.has(id));
     if (!usable) return () => false;
 
+    // Flags and tags never travel with a cluster, so every hole they hold
+    // stays taken — one hole, one lead.
     const reduced = {
       boards: this.#doc.boards,
       components: this.#doc.components.filter((c) => !compIds.has(c.id)),
       wires: this.#doc.wires.filter((w) => !movingWires.has(w.id)),
+      signals: this.#doc.signals,
+      integrations: this.#doc.integrations,
     };
     const occupied = buildOccupancy(reduced);
     const real = { boards: this.#doc.boards, components: this.#doc.components };

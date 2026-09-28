@@ -69,7 +69,6 @@ import { buildInfoButton } from "./info-button.js";
 import { buildSegmented } from "./segmented-picker.js";
 import {
   BAUD_RATES,
-  DATA_BITS,
   FLOW_CONTROLS,
   LANGUAGES,
   PARITIES,
@@ -496,17 +495,7 @@ export function buildIntegrationPanel(settings, emitPatch, bridge) {
       { class: "integration-advanced", open: advancedOpen },
       [
         el("summary", { text: t("integration.settings.advanced") }),
-        field(
-          t("integration.settings.dataBits"),
-          "set-serial-data-bits",
-          select(
-            DATA_BITS,
-            draft.dataBits,
-            String,
-            (dataBits) => edit({ dataBits }),
-            "set-serial-data-bits",
-          ),
-        ),
+        // No data-bits row: the link is binary, so it is always 8.
         field(
           t("integration.settings.parity"),
           "set-serial-parity",

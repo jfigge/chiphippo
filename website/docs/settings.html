@@ -165,8 +165,9 @@ looks again after you plug a board in), a <strong>Baud rate</strong>, the <stron
 Generate writes the board&#39;s code in — <strong>C++</strong> (the default, an Arduino header)
 or <strong>Python</strong> (a module for MicroPython and CircuitPython boards; see
 <a href="arduino.html#python-boards-micropython-and-circuitpython">Python boards</a>) — and
-under <strong>Advanced</strong> the rest of the serial framing (data bits, parity, stop
-bits, flow control). Unlike the other tabs, nothing here applies until you press
+under <strong>Advanced</strong> the rest of the serial framing (parity, stop bits, flow
+control — data bits are always 8, and flow control is None or Hardware, since
+the link is binary). Unlike the other tabs, nothing here applies until you press
 <strong>Apply</strong>, which also checks the port is present — if it isn&#39;t, you&#39;re told
 so and the button becomes <strong>Apply anyway</strong>. You can edit several connections
 before applying: each keeps its changes while you look at another, and one

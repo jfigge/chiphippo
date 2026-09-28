@@ -99,6 +99,8 @@ const PY_RESERVED = new Set(
     "nonlocal not or pass raise return try while with yield " +
     // The module, the example programs and what they import.
     "link chiphippo self sys os time micropython usb_cdc select supervisor " +
+    // A builtin the example's handlers call on their parameters.
+    "str " +
     "send_inputs " +
     // The link's own members, and an Input's.
     "begin poll connected on_connect print send bits"
@@ -343,6 +345,10 @@ export function generatePythonModule({
     "# Never resent, so never NAKed when damaged.",
     `_NOT_NAKED = (${NOT_NAKED.map((t) => PY_FRAME.get(t)).join(", ")})`,
     `_LOG_CHUNK = ${LOG_CHUNK}`,
+    "# How long bytes outside any frame stay suspect after line damage: a 0x03",
+    "# among them is more of the damaged frame, not a tool's Ctrl-C. A program",
+    "# that reads less often than this is failing the link already.",
+    "_QUIET_MS = ACK_TIMEOUT_MS",
     "_R_NONE = 0",
     "_R_ACK = 1",
     "_R_NAK = 2",
@@ -628,6 +634,7 @@ class _Input:
         self._esc = False
         self._bad = False
         self._got = 0
+        self._noise = None  # when line damage last left stray bytes
         self._greeted = False
         self._session = 0
         self._tx_seq = 0
@@ -747,8 +754,7 @@ class _Input:
                 self._rx = bytearray()
                 continue
             if not self._in_frame:
-                if b == 0x03 and hasattr(self._io, "interrupt"):
-                    self._io.interrupt()  # a tool's Ctrl-C (see _Stdio)
+                self._stray(b)
                 continue
             if self._esc:
                 self._esc = False
@@ -772,14 +778,33 @@ class _Input:
                 continue
             self._in_frame = False
             if self._bad:
+                self._noise = _ticks_ms()  # its bytes may not all be read yet
                 continue
+            self._noise = None  # read whole; _handle stamps a bad CRC
             r = self._handle(n, waiting, wait_seq)
             if waiting and r != _R_NONE:
                 return r
 
+    def _stray(self, b):
+        # A byte outside any frame. The host sends nothing but whole frames,
+        # so a 0x03 here is a tool's Ctrl-C (see _Stdio) — unless line damage
+        # has just left stray bytes: a frame whose START was lost, or the rest
+        # of one whose LEN was misread, where a 0x03 is that frame's data.
+        # CR and LF are what a tool sends before its Ctrl-C.
+        if b == 0x0D or b == 0x0A:
+            return
+        now = _ticks_ms()
+        if b != 0x03:
+            self._noise = now
+        elif self._noise is not None and _ticks_diff(now, self._noise) < _QUIET_MS:
+            self._noise = now
+        elif hasattr(self._io, "interrupt"):
+            self._io.interrupt()
+
     def _damaged(self):
         # A frame arrived damaged: ask for a resend at once — unless it was
         # one that is never resent, or nothing has greeted this program yet.
+        self._noise = _ticks_ms()
         if self._bad:
             return
         self._bad = True
@@ -891,6 +916,29 @@ link = _Link()
 }
 
 // ── The examples ───────────────────────────────────────────────────────────
+
+/**
+ * MicroPython's main.py opens with Ctrl-C switched off. The link shares the
+ * REPL's port, and a board that starts while Chip Hippo is greeting it (the
+ * port opening resets many) would otherwise be stopped by any 0x03 in a HELLO
+ * before `begin()` exists to tell data from a tool — compiling the module
+ * alone takes a while on a microcontroller. A tool's Ctrl-C still stops the
+ * program once `poll()` runs. Guarded, because desktop Python has no
+ * `micropython`.
+ */
+const KBD_INTR_OFF = Object.freeze([
+  "# First, before the import: Chip Hippo shares this port with the REPL, and",
+  "# until link.begin() runs, a 0x03 in its bytes would stop the program as",
+  "# Ctrl-C does. Once link.poll() is running, Thonny's or mpremote's Ctrl-C",
+  "# still stops it.",
+  "try:",
+  "    import micropython",
+  "",
+  "    micropython.kbd_intr(-1)",
+  "except ImportError:",
+  "    pass  # desktop Python",
+  "",
+]);
 
 /**
  * The example program for the module — the header's example said in Python:
@@ -1022,7 +1070,7 @@ export function generatePythonExamples({ connection, elements }) {
     "",
   );
 
-  const program = (file, runtime, extra) =>
+  const program = (file, runtime, extra, prelude = []) =>
     [
       `# ${file} — an example ${runtime} program for the ${PYTHON_MODULE_FILE} generated for`,
       `# the connection ${who}. Copy ${PYTHON_MODULE_FILE} and this file to the board${extra}.`,
@@ -1033,13 +1081,14 @@ export function generatePythonExamples({ connection, elements }) {
       "#   LOG      link.print() writes to Chip Hippo's connection window. Never",
       "#            use print(): on MicroPython the link IS the port it writes to.",
       "",
+      ...prelude,
       ...body,
     ].join("\n");
 
   return [
     {
       name: MICROPYTHON_MAIN,
-      text: program(MICROPYTHON_MAIN, "MicroPython", ""),
+      text: program(MICROPYTHON_MAIN, "MicroPython", "", KBD_INTR_OFF),
     },
     {
       name: CIRCUITPYTHON_MAIN,

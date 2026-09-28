@@ -36,8 +36,10 @@ Settings (`Cmd/Ctrl+,`) and choose the **Serial I/O** tab. **+** beside the
 connection list creates one; give it a name and pick its **Port** from the list
 of what is plugged in right now (**Re-scan** after plugging a board in). **Baud rate**
 defaults to 115200, which suits every current board. **Advanced** holds the
-rest of the serial framing — data bits, parity, stop bits and flow control.
-Leave those alone unless you have a reason.
+rest of the serial framing — parity, stop bits and flow control. Leave those
+alone unless you have a reason. (Data bits are always 8 and there is no
+XON/XOFF flow control: the link carries binary frames, which need every bit of
+every byte.)
 
 **Apply** saves the connection. If the port isn't plugged in at that moment
 you're told so, and the button becomes **Apply anyway**, which saves it
@@ -147,7 +149,7 @@ Right-click a card (or one of its tags) and choose **Properties…** to edit:
 | --- | --- |
 | **Name**, **Description** | The name is also the function (Output) or object (Input) name in the header, turned into a valid C++ identifier |
 | **Color** | The card's dot and its tags — any of the seven signal colours |
-| **Connection** | Which Arduino it talks to. The gear beside it opens Settings ▸ Serial I/O |
+| **Connection** | Which Arduino it talks to. A new Output or Input joins the connection the desktop already uses, or else your first Arduino — the Mock only when none is set up. The gear beside it opens Settings ▸ Serial I/O |
 | **Trigger** | **Auto**, **Rising**, **Falling** or **Either**. Auto watches no line: an Output sends whenever its value changes, an Input puts each value on the board as it arrives. The others name which transition of the trigger line counts. A new Output starts on **Rising**, a new Input on **Auto** |
 | **Trigger starts** | **Low** or **High** — what the trigger line is taken to have been before the run began, so a line that starts high can still fire (or not) on the first settle. Greyed out on Auto, which has no line |
 | **Pins** | The fields, as above |
@@ -246,9 +248,12 @@ function `DisplayIn()`; an Input is *sent* from the Arduino into the circuit,
 so the Input called *Keypad* is `ChipHippo.KeypadOut`. The two different
 endings also mean an Output and an Input can share a name. A name that
 already ends that way isn't doubled (an Output called *DataIn* stays
-`DataIn`). A name that still can't be used as it is (two Outputs with the
-same name, a field called `delay`) is changed, and the Generate card lists
-each change under its connection.
+`DataIn`). A name that can't be used as it is (two Outputs with the same
+name, a field called `delay`) is changed, and the Generate card lists each
+change under its connection. That includes an Output's field named in
+capitals, such as `SP` or `HEX`, which becomes `SP_` or `HEX_`: the Arduino
+cores use names in capitals for their macros, and a parameter spelled like one
+won't compile.
 
 The file viewer shows the header beside `ChipHippoExample.ino`, an example
 sketch that uses it, each in its own tab, with line numbers. The example
@@ -339,7 +344,9 @@ Where the link runs is the one real difference between the two:
 - **MicroPython** uses the board's own USB serial port — the one its REPL uses
   — so point the connection at that port. Inside the link's data a `0x03` byte
   is just data, not Ctrl-C; between messages, Ctrl-C still stops the program,
-  so Thonny and `mpremote` can always get in to replace its files. A plain
+  so Thonny and `mpremote` can always get in to replace its files. The
+  example `main.py` switches Ctrl-C off on its first lines, before it imports
+  `chiphippo`; if you write your own, start it the same way. A plain
   `print()` would land in the middle of the link, so log with `link.print()`.
   On a board whose USB is a separate serial chip (a classic ESP32 DevKit),
   MicroPython always talks at **115200 baud, 8N1**: leave the connection

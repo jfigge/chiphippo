@@ -239,23 +239,35 @@ export class SimController {
    * An integration collaborator may REFUSE the run first (`preflight` — its
    * connections need verifying), in which case nothing starts at all: no
    * transport change, no locked desk, nothing to stop.
+   *
+   * While an ASYNC preflight is still checking (a live port scan), the run
+   * has not started: the transport still reads stopped and the desk is not
+   * locked. So a Stop meanwhile — a tab switch, New, Open — cancels it
+   * (`stop()` bumps the start token even when stopped), and a desk edited
+   * meanwhile is checked again rather than run unchecked.
    */
   start() {
     if (this.#mode !== TRANSPORT.STOPPED) return;
     const token = ++this.#startToken;
+    const doc = this.#doc.toJSON();
     let verdict;
     try {
-      verdict = this.#integration?.preflight?.(this.#doc.toJSON());
+      verdict = this.#integration?.preflight?.(doc);
     } catch (err) {
       console.error("[renderer] integration preflight failed:", err);
       return;
     }
     if (verdict && typeof verdict.then === "function") {
+      const checked = JSON.stringify(doc);
       return verdict.then(
         (ok) => {
           // A second Run press, or a Stop, while this was checking wins.
           if (!ok || token !== this.#startToken) return;
           if (this.#mode !== TRANSPORT.STOPPED) return;
+          // What was checked is no longer what is on the desk: check that.
+          if (JSON.stringify(this.#doc.toJSON()) !== checked) {
+            return this.start();
+          }
           return this.#beginRun();
         },
         (err) => console.error("[renderer] integration preflight failed:", err),
@@ -360,6 +372,9 @@ export class SimController {
 
   /** Return to editing: clear every scrap of run state, damage included. */
   stop() {
+    // A Run still in its async preflight has not started, but it is cancelled
+    // all the same — whoever stops the sim means nothing to run after it.
+    this.#startToken++;
     if (this.#mode === TRANSPORT.STOPPED) return;
     this.#clearTimers();
     // Snapshot each memory's final bytes (while the images still exist) so an

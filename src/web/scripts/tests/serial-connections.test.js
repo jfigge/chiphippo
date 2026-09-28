@@ -44,6 +44,24 @@ const nano = {
   port: "/dev/a",
 };
 
+test("a stored framing the binary link cannot carry normalizes away", () => {
+  // 5-7 data bits cannot carry a CRC byte; XON/XOFF swallows 0x11 (INBOUND).
+  const c = normalizeConnection({
+    id: "conn-x",
+    name: "X",
+    dataBits: 7,
+    parity: "even",
+    flowControl: "software",
+  });
+  assert.equal(c.dataBits, 8);
+  assert.equal(c.flowControl, "none");
+  assert.equal(c.parity, "even", "the rest is kept");
+  assert.equal(
+    normalizeConnection({ id: "conn-x", flowControl: "hardware" }).flowControl,
+    "hardware",
+  );
+});
+
 test("the Mock is offered first, before the machine's own connections", () => {
   assert.deepEqual(
     knownConnections([nano]).map((c) => c.id),

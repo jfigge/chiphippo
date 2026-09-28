@@ -115,7 +115,7 @@ What this spec still decides about it:
 - New **Integration** tab in the Settings dialogue (alongside Appearance, Data Sheets, AI, About).
 - Holds a list of **named connections**. Each has serial settings modelled on CoolTerm:
   - Port (with **Re-scan** button), baud rate
-  - Data bits, parity, stop bits, flow control (defaults 8 / None / 1 / none — keep these available for non-Nano boards, ideally in an advanced section)
+  - Parity, stop bits, flow control (defaults None / 1 / none — keep these available for non-Nano boards, ideally in an advanced section). Data bits are always 8 and flow control is never software (XON/XOFF): the link is binary, so every bit of every byte, 0x11 and 0x13 included, must get through
 - Each connection has its own **Apply** button so several can be confirmed in one visit without reopening the dialogue.
 
 ### 7.2 Storage

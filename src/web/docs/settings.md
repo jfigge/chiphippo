@@ -88,8 +88,9 @@ looks again after you plug a board in), a **Baud rate**, the **Language**
 Generate writes the board's code in — **C++** (the default, an Arduino header)
 or **Python** (a module for MicroPython and CircuitPython boards; see
 [Python boards](arduino.md#python-boards-micropython-and-circuitpython)) — and
-under **Advanced** the rest of the serial framing (data bits, parity, stop
-bits, flow control). Unlike the other tabs, nothing here applies until you press
+under **Advanced** the rest of the serial framing (parity, stop bits, flow
+control — data bits are always 8, and flow control is None or Hardware, since
+the link is binary). Unlike the other tabs, nothing here applies until you press
 **Apply**, which also checks the port is present — if it isn't, you're told
 so and the button becomes **Apply anyway**. You can edit several connections
 before applying: each keeps its changes while you look at another, and one

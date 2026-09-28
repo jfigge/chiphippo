@@ -63,7 +63,17 @@ static inline unsigned long millis() {
 }
 
 #define SERIAL_8N1 0x06
-#define SERIAL_7E1 0x24
+#define SERIAL_8E1 0x26
+
+// Object-like macros the real cores define under ordinary names — binary.h's
+// B0/B1, Print.h's HEX/DEC, an AVR register, an ESP32 bit — so a generated
+// name spelled like one is caught here as it would be on the board.
+#define B0 0
+#define B1 1
+#define HEX 16
+#define DEC 10
+#define SP (*(volatile uint16_t *)(0x5D))
+#define BIT0 0x00000001
 
 class Print {
  public:

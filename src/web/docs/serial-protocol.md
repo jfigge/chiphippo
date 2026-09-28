@@ -30,12 +30,14 @@ place.
 - A byte stream with no framing of its own: a UART, USB CDC, a
   pseudo-terminal. It MUST deliver bytes in order. It may lose or corrupt
   them; [§3.5](#35-receiving-a-frame) and [§6](#6-reliable-delivery) recover.
-- The serial parameters — baud rate, data bits, parity, stop bits — come from
-  the connection (Settings ▸ Serial I/O). The default, and the recommendation,
-  is **115200 baud, 8-N-1, no flow control**.
+- The serial parameters — baud rate, parity, stop bits — come from the
+  connection (Settings ▸ Serial I/O). Data bits are always **8**: frames are
+  binary, and CRCs, signatures and values use every bit of a byte. The
+  default, and the recommendation, is **115200 baud, 8-N-1, no flow control**.
 - **No software flow control.** XON (`0x11`) and XOFF (`0x13`) are ordinary
   bytes here — `0x11` is the `INBOUND` type — and only `0x7E` and `0x7D` are
-  escaped, so a link that swallows them loses frames.
+  escaped, so a link that swallows them loses frames. Chip Hippo never opens
+  a port with XON/XOFF.
 - One host and one device per connection. The device sees only the Outputs and
   Inputs assigned to its connection. A run may use several connections at
   once; each is an independent link with its own session.
@@ -829,7 +831,11 @@ Four implementations speak this page, and each is tested against the others.
   `0x03` between frames can only be a tool such as Thonny or `mpremote`, and
   it stops the program as Ctrl-C would. (The module reads a damaged frame to
   the end its `LEN` gives it, so a `0x03` in the rest of one is still that
-  frame's.) On a board whose USB is a separate serial chip (a classic ESP32
+  frame's; and for a moment after line damage — a frame whose `START` was
+  lost, or the rest of one whose `LEN` was misread — a stray `0x03` is taken
+  as more of it, not as Ctrl-C. Its example `main.py` turns Ctrl-C off before
+  it imports the module, so a board that starts during a handshake is not
+  stopped by a `HELLO`.) On a board whose USB is a separate serial chip (a classic ESP32
   DevKit) that port always runs at 115200 baud, 8N1, so the connection must
   too. On **CircuitPython** it uses the second USB serial port, which its
   `boot.py` turns on. Any stream can be handed to `begin()` instead.

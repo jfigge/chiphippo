@@ -27,7 +27,11 @@ import assert from "node:assert/strict";
 
 import { resetDom } from "./jsdom-setup.js";
 import { DeskDoc } from "../model/desk-doc.js";
-import { MOCK_CONNECTION } from "../model/serial-connections.js";
+import {
+  CONNECTION_DEFAULTS,
+  MOCK_CONNECTION,
+  knownConnections,
+} from "../model/serial-connections.js";
 
 const { DeskController } = await import("../components/desk-controller.js");
 const { PopupManager } = await import("../popup-manager.js");
@@ -233,4 +237,20 @@ test("Properties: an Input opens on Auto with Trigger starts already greyed", ()
   } finally {
     while (PopupManager.isOpen()) PopupManager.close();
   }
+});
+
+test("a new element joins the desk's connection, else the first Arduino — the Mock only when there is none", () => {
+  const nano = { id: "conn-nano", name: "Nano", ...CONNECTION_DEFAULTS, port: "/dev/cu.nano" }; // prettier-ignore
+  const uno = { id: "conn-uno", name: "Uno", ...CONNECTION_DEFAULTS, port: "/dev/cu.uno" }; // prettier-ignore
+  // The list as the app hands it over: the Mock always first.
+  const both = mount({ connections: knownConnections([nano, uno]) });
+  assert.equal(both.controller.addIntegration("output", 8).connection, "conn-nano"); // prettier-ignore
+  const onUno = mount({
+    connections: knownConnections([nano, uno]),
+    setup: (doc) =>
+      doc.addIntegration({ kind: "input", connection: "conn-uno" }),
+  });
+  assert.equal(onUno.controller.addIntegration("output", 1).connection, "conn-uno"); // prettier-ignore
+  const none = mount({ connections: knownConnections([]) });
+  assert.equal(none.controller.addIntegration("input", 1).connection, "mock");
 });

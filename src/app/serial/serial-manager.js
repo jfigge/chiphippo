@@ -116,6 +116,7 @@ class SerialManager {
   #pending = new Map(); // id → { reset, entries, text } not yet pushed
   #flushQueued = false;
   #generation = 0; // bumped by every open/close, so a stale open can tell
+  #settled = Promise.resolve(); // every earlier open and close, let go
   #mock; // the Mock's device — one for the life of the process
 
   /**
@@ -186,12 +187,32 @@ class SerialManager {
    *   (flagged, or no port), `port-missing`, `open-failed` (the driver refused
    *   — `detail` says why), `no-response` (the port opened but nothing
    *   answered HELLO), `version` (the sketch speaks another protocol version —
-   *   `version` says which) or `signature` (it was built for a different
-   *   layout).
+   *   `version` says which), `signature` (it was built for a different
+   *   layout), `dropped` (its port went away while the run was opening) or
+   *   `closed` (a Stop, or a newer run, came first — nothing to explain).
+   *
+   * A run first stops whatever was running or opening, and its own ports open
+   * only once EVERY earlier open and close has let go: a port still closing,
+   * or one a stopped run's open is still acquiring, holds the device's
+   * exclusive lock and would answer this run "busy". A superseded open notices
+   * after every await and closes only what it opened itself — never a newer
+   * run's links.
    */
-  async open(requests) {
-    await this.close();
-    const generation = ++this.#generation;
+  open(requests) {
+    this.close();
+    const generation = this.#generation;
+    const run = this.#settled.then(() => this.#open(requests, generation));
+    this.#settled = run.then(
+      () => {},
+      () => {},
+    );
+    return run;
+  }
+
+  async #open(requests, generation) {
+    const stale = () => generation !== this.#generation;
+    const closed = { ok: false, code: "closed" };
+    if (stale()) return closed; // stopped while an earlier run let go
     const wanted = new Map();
     for (const r of Array.isArray(requests) ? requests : []) {
       if (r && !wanted.has(r.id)) wanted.set(r.id, r);
@@ -210,6 +231,7 @@ class SerialManager {
     const real = configs.filter((c) => !c.mock);
     if (real.length) {
       const present = new Set((await this.ports()).map((p) => p.path));
+      if (stale()) return closed;
       for (const config of real) {
         if (!present.has(config.port)) {
           return { ok: false, id: config.id, code: "port-missing" };
@@ -220,10 +242,13 @@ class SerialManager {
       this.#layouts.set(id, connectionLayout(request.layout));
     }
 
+    // THIS open's links, and only these: a newer run's are not its to touch.
     const opened = [];
     const refuse = async (result) => {
-      for (const [id, link] of opened) await this.#closeLink(id, link);
-      this.#links.clear();
+      for (const [id, link] of opened) {
+        if (this.#links.get(id) === link) this.#links.delete(id);
+        await this.#closeLink(id, link);
+      }
       return result;
     };
     for (const config of configs) {
@@ -238,47 +263,60 @@ class SerialManager {
             })
           : await this.#openPort(config);
       } catch (err) {
+        if (stale()) return refuse(closed);
         const detail = String(err?.message ?? err);
         this.#record(config.id, { kind: "error", event: "open-failed", detail }); // prettier-ignore
         return refuse({ ok: false, id: config.id, code: "open-failed", detail }); // prettier-ignore
       }
       const link = this.#linkFor(config, port);
       opened.push([config.id, link]);
-      this.#links.set(config.id, link);
       this.#record(config.id, {
         kind: "proto",
         event: "open",
         port: config.mock ? null : config.port,
       });
+      // Stopped while the driver was opening it: let it go again at once.
+      if (stale()) return refuse(closed);
+      this.#links.set(config.id, link);
     }
-    if (generation !== this.#generation)
-      return refuse({ ok: false, code: "closed" });
 
+    // Each link as it was opened — a drop may already have taken one out of
+    // `#links`, and its handshake then answers "closed" at once.
     const results = await Promise.all(
-      configs.map((config) =>
-        this.#links
-          .get(config.id)
-          .handshake(wanted.get(config.id).signature >>> 0),
+      opened.map(([id, link]) =>
+        link.handshake(wanted.get(id).signature >>> 0),
       ),
     );
-    if (generation !== this.#generation)
-      return refuse({ ok: false, code: "closed" });
-    for (let i = 0; i < configs.length; i++) {
+    if (stale()) return refuse(closed);
+    for (let i = 0; i < opened.length; i++) {
+      const [id, link] = opened[i];
+      // Nothing of ours has closed it (that would have made the open stale),
+      // so its port went away — during its own handshake or while another's
+      // finished. That is a drop to explain, never a Stop to keep quiet about.
+      if (link.closed) return refuse({ ok: false, id, code: "dropped" });
       const r = results[i];
       if (r.ok) continue;
-      const refusal = { ok: false, id: configs[i].id, code: r.code };
+      const refusal = { ok: false, id, code: r.code };
       if (r.code === "version") refusal.version = r.device.version;
       return refuse(refusal);
     }
     return { ok: true };
   }
 
-  /** Close every open connection — Stop, or a refused run. */
-  async close() {
+  /** Close every open connection — Stop, or a refused run. An open still in
+      flight notices, and lets go of whatever it acquires. */
+  close() {
     this.#generation++;
     const links = [...this.#links];
     this.#links.clear();
-    for (const [id, link] of links) await this.#closeLink(id, link);
+    const done = (async () => {
+      for (const [id, link] of links) await this.#closeLink(id, link);
+    })();
+    this.#settled = Promise.all([this.#settled, done]).then(
+      () => {},
+      () => {},
+    );
+    return done;
   }
 
   async #closeLink(id, link) {

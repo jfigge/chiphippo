@@ -93,18 +93,26 @@ function fakeDevice({
   return device;
 }
 
-function setup({ connections, present, devices = {}, openError } = {}) {
+function setup({
+  connections,
+  present,
+  devices = {},
+  openError,
+  openPort,
+} = {}) {
   const events = [];
   const opened = [];
   const manager = new SerialManager({
     connections: () => connections,
     listPorts: async () => present.map((p) => ({ path: p })),
-    openPort: async (config) => {
-      if (openError) throw new Error(openError);
-      opened.push(config.port);
-      const d = devices[config.port] ?? (devices[config.port] = fakeDevice());
-      return d.port;
-    },
+    openPort:
+      openPort ??
+      (async (config) => {
+        if (openError) throw new Error(openError);
+        opened.push(config.port);
+        const d = devices[config.port] ?? (devices[config.port] = fakeDevice());
+        return d.port;
+      }),
     emit: (event, payload) => events.push({ event, ...payload }),
     timers: {
       setTimeout: (fn, ms) => setTimeout(fn, Math.min(ms, 60)),
@@ -126,6 +134,42 @@ const nano = {
   stopBits: 1,
   flowControl: "none",
 };
+
+/**
+ * Ports the way a driver hands them out: ONE opener per path at a time (the
+ * exclusive lock, held until the port has finished closing, which takes
+ * `closeMs`), a fresh device each open, and — while `hold` is set — an open
+ * that lands only when the test calls `release()`.
+ */
+function lockingPorts({ closeMs = 0 } = {}) {
+  const held = new Set();
+  const made = [];
+  const gates = [];
+  const ports = {
+    held,
+    made,
+    hold: false,
+    release: () => gates.splice(0).forEach((go) => go()),
+    openPort: async (config) => {
+      if (ports.hold) await new Promise((go) => gates.push(go));
+      if (held.has(config.port)) throw new Error("Resource busy");
+      held.add(config.port);
+      const device = fakeDevice();
+      const close = device.port.close;
+      device.port.close = () =>
+        new Promise((done) =>
+          setTimeout(() => {
+            close();
+            held.delete(config.port);
+            done();
+          }, closeMs),
+        );
+      made.push(device);
+      return device.port;
+    },
+  };
+  return ports;
+}
 
 /** What a run asks for: each connection with the signature it expects. */
 const ask = (...ids) => ids.map((id) => ({ id, signature: SIGNATURE }));
@@ -366,4 +410,97 @@ test("closing is not a drop", async () => {
   await manager.close();
   devices["/dev/cu.nano"].unplug();
   assert.equal(events.filter((e) => e.event === "dropped").length, 0);
+});
+
+test("Stop while a port is still opening: that run lets it go, and never touches the next run's", async () => {
+  const ports = lockingPorts();
+  const { manager } = setup({
+    connections: [nano],
+    present: ["/dev/cu.nano"],
+    openPort: ports.openPort,
+  });
+  ports.hold = true;
+  const first = manager.open(ask("conn-nano")); // the driver is still working
+  await sleep(5);
+  manager.close(); // Stop …
+  ports.hold = false;
+  const second = manager.open(ask("conn-nano")); // … and Run again
+  ports.release(); // the first run's port finally arrives
+  assert.deepEqual(await first, { ok: false, code: "closed" });
+  assert.deepEqual(await second, { ok: true });
+  assert.equal(ports.made[0].closed, true, "the stopped run's port is let go");
+  assert.equal(manager.active, true);
+  assert.deepEqual(await manager.send("conn-nano", 0, 8, 42), { ok: true });
+  await manager.close();
+  assert.equal(ports.made[1].closed, true);
+  assert.equal(ports.held.size, 0, "no port is left held");
+});
+
+test("a run opens only once the last run's ports have finished closing", async () => {
+  const ports = lockingPorts({ closeMs: 30 });
+  const { manager } = setup({
+    connections: [nano],
+    present: ["/dev/cu.nano"],
+    openPort: ports.openPort,
+  });
+  assert.deepEqual(await manager.open(ask("conn-nano")), { ok: true });
+  manager.close(); // Stop — not awaited, as the renderer's is not
+  assert.deepEqual(await manager.open(ask("conn-nano")), { ok: true });
+  await manager.close();
+  assert.equal(ports.held.size, 0);
+});
+
+test("a port lost during the handshake is 'dropped' — never a silent 'closed'", async () => {
+  const silent = fakeDevice({ silent: true });
+  const { manager } = setup({
+    connections: [nano],
+    present: ["/dev/cu.nano"],
+    devices: { "/dev/cu.nano": silent },
+  });
+  const run = manager.open(ask("conn-nano"));
+  await sleep(5);
+  silent.unplug();
+  assert.deepEqual(await run, { ok: false, id: "conn-nano", code: "dropped" });
+  assert.equal(manager.active, false);
+});
+
+test("a board dropped while another is still opening is 'dropped' — and the open answers", async () => {
+  const uno = { ...nano, id: "conn-uno", port: "/dev/cu.uno" };
+  const nanoDevice = fakeDevice();
+  const unoDevice = fakeDevice();
+  let unoOpens;
+  const { manager } = setup({
+    connections: [nano, uno],
+    present: ["/dev/cu.nano", "/dev/cu.uno"],
+    openPort: async (config) => {
+      if (config.port !== "/dev/cu.uno") return nanoDevice.port;
+      await new Promise((go) => (unoOpens = go));
+      return unoDevice.port;
+    },
+  });
+  const run = manager.open(ask("conn-nano", "conn-uno"));
+  await sleep(5); // the Nano is open; the Uno's driver is still working
+  nanoDevice.unplug();
+  unoOpens();
+  assert.deepEqual(await run, { ok: false, id: "conn-nano", code: "dropped" });
+  assert.equal(unoDevice.closed, true, "and the rest are let go");
+  assert.equal(manager.active, false);
+});
+
+test("a board dropped after its handshake, while another's is still running, is 'dropped'", async () => {
+  const uno = { ...nano, id: "conn-uno", port: "/dev/cu.uno" };
+  const nanoDevice = fakeDevice();
+  const slow = fakeDevice({ silent: true });
+  const { manager } = setup({
+    connections: [nano, uno],
+    present: ["/dev/cu.nano", "/dev/cu.uno"],
+    devices: { "/dev/cu.nano": nanoDevice, "/dev/cu.uno": slow },
+  });
+  const run = manager.open(ask("conn-nano", "conn-uno"));
+  const greeted = () =>
+    manager.logRead("conn-nano").entries.some((e) => e.event === "handshake");
+  while (!greeted()) await sleep(1);
+  nanoDevice.unplug();
+  assert.deepEqual(await run, { ok: false, id: "conn-nano", code: "dropped" });
+  assert.equal(manager.active, false);
 });

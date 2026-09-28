@@ -108,29 +108,45 @@ function adaptPort(port) {
 }
 
 /**
- * Open a port with a connection's settings.
+ * The driver's options for a connection's settings. The link is BINARY
+ * (serial-protocol.md §2), so two settings are not the connection's to choose,
+ * whatever settings.json holds (it is read raw, and may predate the rule):
+ * always 8 data bits — CRCs, signatures and values use every bit of a byte —
+ * and never XON/XOFF, which would swallow every 0x11 (the INBOUND frame type)
+ * and 0x13 the device sends.
+ *
+ * @param {{port: string, baud: number, parity: string, stopBits: number,
+ *   flowControl: string}} config
+ */
+function portOptions(config) {
+  return {
+    path: config.port,
+    baudRate: config.baud,
+    dataBits: 8,
+    parity: config.parity,
+    stopBits: config.stopBits,
+    rtscts: config.flowControl === "hardware",
+    xon: false,
+    xoff: false,
+    xany: false,
+    autoOpen: false,
+  };
+}
+
+/**
+ * Open a port with a connection's settings (`portOptions`).
  *
  * Resolves to `adaptPort`'s object; rejects with the driver's own error when
  * the port cannot be opened (missing, busy in another app, permission).
  *
- * @param {{port: string, baud: number, dataBits: number, parity: string,
- *   stopBits: number, flowControl: string}} config
+ * @param {{port: string, baud: number, parity: string, stopBits: number,
+ *   flowControl: string}} config
  */
 function openPort(config) {
   const sp = serialport();
   if (!sp) return Promise.reject(new Error("serial support is unavailable"));
   return new Promise((resolve, reject) => {
-    const port = new sp.SerialPort({
-      path: config.port,
-      baudRate: config.baud,
-      dataBits: config.dataBits,
-      parity: config.parity,
-      stopBits: config.stopBits,
-      rtscts: config.flowControl === "hardware",
-      xon: config.flowControl === "software",
-      xoff: config.flowControl === "software",
-      autoOpen: false,
-    });
+    const port = new sp.SerialPort(portOptions(config));
     port.open((err) => {
       if (err) reject(err);
       else resolve(adaptPort(port));
@@ -138,4 +154,4 @@ function openPort(config) {
   });
 }
 
-module.exports = { listPorts, openPort, adaptPort };
+module.exports = { listPorts, openPort, adaptPort, portOptions };
