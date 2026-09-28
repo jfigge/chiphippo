@@ -1,15 +1,17 @@
 // The Arduino side of the "Arduino1" connection. The design it talks to:
 //
 //   Output "Output 3"  pin 1 bit0               the push button's line
+//                      pin 2 bit1               lights LED2
 //   Input  "Dips"      Dip1, Dip2, Dip3, Dip4   driven from this sketch
 //
-// When the button on the Chip Hippo board goes HIGH, Output3In(true) runs
-// here: the sketch reads its four DIP switches and answers by sending Dips
-// from INSIDE that function. Chip Hippo waits until the function returns, so
-// the answer has reached the circuit before the circuit moves on.
+// When the button on the Chip Hippo board goes HIGH, Output3In() runs here
+// with bit0 true: the sketch reads its four DIP switches and answers by
+// sending Dips from INSIDE that function. Chip Hippo waits until the function
+// returns, so the answer has reached the circuit before the circuit moves on.
+// LED2 follows bit1: HIGH while it is high, LOW while it is low.
 //
-// Between runs the sketch keeps doing what it did on its own: DIP1 and DIP2
-// light LED1 and LED2, and every change of the switches is logged.
+// On its own the sketch also lights LED1 from DIP1 and logs every change of
+// the switches.
 
 #include "ChipHippo.h"
 
@@ -26,6 +28,10 @@ const uint8_t DIP_PINS[4] = {DIP1_PIN, DIP2_PIN, DIP3_PIN, DIP4_PIN};
 // The switches as last read: bit 0 is DIP1 … bit 3 is DIP4.
 uint8_t last = 0;
 
+// The button's line as Output 3 last reported it, so only a PRESS asks for
+// the switches — not a change of bit1 while the button is held.
+bool pressed = false;
+
 // Read the four switches as one value. A bit is 1 when its pin reads HIGH —
 // with INPUT_PULLUP, that is a switch that is OFF (open); a switch that is
 // ON pulls its pin LOW and reads 0.
@@ -37,10 +43,10 @@ uint8_t readDips() {
   return v;
 }
 
-// LED1 and LED2 light while DIP1 and DIP2 are ON (their pins LOW).
+// LED1 lights while DIP1 is ON (its pin LOW). LED2 is not the switches' —
+// it belongs to the circuit's Output 3 (see Output3In).
 void showDips(uint8_t v) {
   digitalWrite(LED1_PIN, (v & 0x01) ? LOW : HIGH);
-  digitalWrite(LED2_PIN, (v & 0x02) ? LOW : HIGH);
 }
 
 // "1011" — DIP1 first, 1 for HIGH, as the log has always shown them.
@@ -59,12 +65,18 @@ bool sendDips(uint8_t v) {
   return ChipHippo.DipsOut.send();
 }
 
-// The circuit's Output "Output 3": the button's line. Chip Hippo calls this
-// each time it sends that Output — on Auto, at the start of a run and on
-// every change, so a press arrives as true and a release as false. Only the
-// press asks for the switches. Keep it short: the circuit waits on it.
-void Output3In(bool bit0) {
-  if (!bit0) return;
+// The circuit's Output "Output 3": bit0 is the button's line, bit1 drives
+// LED2. Chip Hippo calls this each time it sends that Output — on Auto, at
+// the start of a run and whenever either bit changes, so a press arrives as
+// bit0 true and a release as bit0 false. Only the press asks for the
+// switches. Keep it short: the circuit waits on it.
+void Output3In(bool bit0, bool bit1) {
+  ChipHippo.write("Output3In");
+  digitalWrite(LED2_PIN, bit1 ? HIGH : LOW);
+
+  const bool press = bit0 && !pressed;
+  pressed = bit0;
+  if (!press) return;
   const uint8_t dips = readDips();
   ChipHippo.print("Button: sending dips ");
   printDips(dips);
@@ -73,6 +85,8 @@ void Output3In(bool bit0) {
 
 // Runs at the start of every run: give each Input its starting value.
 void sendInputs() {
+  pressed = false;  // a new run: the button starts released
+
   // The Input "Dips".
   ChipHippo.DipsOut.setDip1(false);
   ChipHippo.DipsOut.setDip2(false);
@@ -85,6 +99,7 @@ void setup() {
   for (uint8_t i = 0; i < 4; i++) pinMode(DIP_PINS[i], INPUT_PULLUP);
   pinMode(LED1_PIN, OUTPUT);
   pinMode(LED2_PIN, OUTPUT);
+  digitalWrite(LED2_PIN, LOW);  // until Output 3 says otherwise
 
   last = readDips();
   showDips(last);
