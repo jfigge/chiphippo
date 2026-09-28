@@ -114,6 +114,9 @@ for (const [channel, event] of [
   // …and the built-in Mock's state (open, connected, armed faults, layout),
   // to its own window.
   ["serial:mock", "chiphippo:serial-mock"],
+  // The user guide, already open, asked to turn to a page (`docs.open` below,
+  // from another window) — carrying the page's slug.
+  ["docs:show", "chiphippo:docs-show"],
 ]) {
   ipcRenderer.on(channel, (_e, detail) => {
     window.dispatchEvent(new CustomEvent(event, { detail }));
@@ -418,13 +421,16 @@ contextBridge.exposeInMainWorld("chiphippo", {
 
   // ── User guide (Feature 230) ────────────────────────────────────────────────
   // Help ▸ Chip Hippo User Guide opens its own OS window directly from the
-  // native menu (main's openDocsWindow) — this bridge exists only so the docs
-  // window itself, once open, can fetch one Markdown page's source at a time
-  // by slug (never a filesystem path, never fetch(), so it works under
-  // file://). Shared with the docs window, same as every other auxiliary
-  // window (pinout/memory) — Chip Hippo has one bridge, not a narrow preload
-  // per window.
+  // native menu (main's openDocsWindow). `read` is the docs window's own: once
+  // open, it fetches one Markdown page's source at a time by slug (never a
+  // filesystem path, never fetch(), so it works under file://). `open` is the
+  // app window's: it opens (or turns) the guide to one page by slug — the
+  // Serial Protocol reference Settings ▸ Serial I/O and the Generate card
+  // offer. Shared with the docs window, same as every other auxiliary window
+  // (pinout/memory) — Chip Hippo has one bridge, not a narrow preload per
+  // window.
   docs: {
     read: (slug) => ipcRenderer.invoke("docs:read", slug),
+    open: (slug) => ipcRenderer.invoke("docs:open", slug),
   },
 });

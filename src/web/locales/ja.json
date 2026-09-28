@@ -1199,6 +1199,7 @@
       "input": "入力 {n}"
     },
     "edge": {
+      "auto": "自動",
       "rising": "立ち上がり",
       "falling": "立ち下がり",
       "either": "両方"
@@ -1208,6 +1209,7 @@
       "byte": "バイト",
       "word": "ワード"
     },
+    "protocolDoc": "シリアルプロトコルのリファレンス",
     "widthLabel": "幅",
     "widthOption": {
       "other": "{count} ピン"
@@ -1261,6 +1263,7 @@
     "verify": {
       "title": "設定の確認が必要です",
       "noConnection": "{name} に接続が割り当てられていません。情報で接続を選んでください。",
+      "noTrigger": "{name} はトリガーを待ちますが、トリガーのタグがブレッドボード上にありません。タグを線へドラッグするか、情報でトリガーを「自動」にしてください。",
       "unknownConnection": "{name} が使う接続はこのコンピュータに設定されていません。プロパティで接続を選んでください。",
       "unconfigured": "回路を実行する前に、設定 ▸ シリアル I/O で接続「{name}」を構成してください。",
       "portMissing": "接続「{name}」のポート {port} は利用できません。",
@@ -1282,8 +1285,8 @@
       "noResponse": "「{name}」の {port} から応答がありません。スケッチはアップロード済みで、ChipHippo.begin() と ChipHippo.poll() を呼んでいますか？",
       "openFailedTitle": "ポートを開けませんでした",
       "openFailed": "「{name}」の {port} を開けませんでした: {detail}",
-      "restartTitle": "ボードが再起動しました",
-      "restart": "回路の実行中に「{name}」が再起動したため、回路を停止しました。もう一度実行すると再接続します。"
+      "restartTitle": "ボードが実行から離脱しました",
+      "restart": "「{name}」が実行から離脱した（再起動したか、Chip Hippo からの応答が届かなくなった）ため、回路を停止しました。もう一度実行すると再接続します。"
     },
     "lamps": {
       "label": "シリアルの状態",
@@ -1314,7 +1317,7 @@
         "openPort": "ポート {port} を開きました",
         "close": "ポートを閉じました",
         "handshake": "ハンドシェイク成功: プロトコル v{version}、シグネチャ {signature}",
-        "announce": "デバイスが起動を通知しました",
+        "announce": "デバイスはセッションに参加していません",
         "staleAck": "古いので無視",
         "nakIdle": "再送するものはありません",
         "resend": "seq {seq} を再送（試行 {attempt}/{max}）",
@@ -1333,7 +1336,7 @@
         "noResponse": "{seconds} 秒以内に HELLO への応答がありません",
         "version": "デバイスはプロトコル v{version}、Chip Hippo は v{host} です",
         "signature": "デバイスはレイアウト {signature} 用に作られています（期待値 {expected}）",
-        "restart": "デバイスが再起動しました",
+        "restart": "デバイスがセッションから離脱しました（再起動したか、Chip Hippo からの応答が届かなくなりました）",
         "dropped": "接続が切れました",
         "droppedDetail": "接続が切れました: {detail}",
         "openFailed": "ポートを開けませんでした: {detail}"

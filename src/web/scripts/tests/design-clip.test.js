@@ -211,6 +211,38 @@ test("pasteDesign: fresh ids, remapped addresses, the source untouched", () => {
   assert.equal(source.components.length, 2);
 });
 
+test("pasteDesign: a board's default name follows its NEW id; a user's travels", () => {
+  const source = new DeskDoc(null);
+  source.addBoard("pins-tiny", 0, 0); // bb1, still named "bb1"
+  source.addBoard("pins-tiny", 30, 0); // bb2
+  source.setBoardParams("bb2", { name: "Clock", description: "the 555" });
+  const clip = captureDesign(view(source), { boardIds: ["bb1", "bb2"] });
+  const dest = new DeskDoc(null);
+  dest.addBoard("pins-full", 0, 0); // bb1 is taken here
+  const pasted = dest.pasteDesign(clip, { dx: 0, dy: 40 });
+
+  assert.deepEqual(
+    pasted.boards.map((b) => [b.id, b.name, b.description]),
+    [
+      ["bb2", "bb2", undefined], // never "bb1" — that is a different board here
+      ["bb3", "Clock", "the 555"],
+    ],
+  );
+});
+
+test("pasteDesign: a board that arrives unnamed is named after its new id", () => {
+  // A generated design, or one captured from a desk saved before boards were
+  // named at birth: nothing to carry, so it is named as any dropped board is.
+  const source = new DeskDoc({
+    boards: [{ id: "bb1", type: "pins-tiny", x: 0, y: 0 }],
+  });
+  assert.equal("name" in source.getBoard("bb1"), false, "loaded as saved");
+  const clip = captureDesign(view(source), { boardIds: ["bb1"] });
+  const dest = new DeskDoc(null);
+  dest.addBoard("pins-full", 0, 0);
+  assert.equal(dest.pasteDesign(clip, { dx: 0, dy: 40 }).boards[0].name, "bb2");
+});
+
 test("a routed wire travels routed, and its bends ride the paste shift", () => {
   const source = sourceDesign();
   source.setWireLayout("w1", "routed");

@@ -1217,6 +1217,7 @@
       "input": "Input {n}"
     },
     "edge": {
+      "auto": "Auto",
       "rising": "Rising",
       "falling": "Falling",
       "either": "Either"
@@ -1226,6 +1227,7 @@
       "byte": "Byte",
       "word": "Word"
     },
+    "protocolDoc": "Serial protocol reference",
     "widthLabel": "Width",
     "widthOption": {
       "one": "{count} pin",
@@ -1281,6 +1283,7 @@
     "verify": {
       "title": "Settings need to be verified",
       "noConnection": "{name} isn't assigned to a connection. Choose one in its Properties.",
+      "noTrigger": "{name} waits for a trigger, but its trigger tag isn't on the breadboard. Drag it onto a line, or set its Trigger to Auto in its Properties.",
       "unknownConnection": "The connection {name} uses isn't set up on this computer. Choose one in its Properties.",
       "unconfigured": "The connection “{name}” needs to be configured in Settings ▸ Serial I/O before the circuit can run.",
       "portMissing": "The port {port} for the connection “{name}” is unavailable.",
@@ -1302,8 +1305,8 @@
       "noResponse": "Nothing answered on {port} for “{name}”. Is the sketch uploaded, and does it call ChipHippo.begin() and ChipHippo.poll()?",
       "openFailedTitle": "Couldn't open the port",
       "openFailed": "Couldn't open {port} for “{name}”: {detail}",
-      "restartTitle": "Board restarted",
-      "restart": "“{name}” restarted while the circuit was running, so the circuit has stopped. Run it again to reconnect."
+      "restartTitle": "Board left the run",
+      "restart": "“{name}” left the run — it restarted, or stopped hearing Chip Hippo — so the circuit has stopped. Run it again to reconnect."
     },
     "lamps": {
       "label": "Serial activity",
@@ -1334,7 +1337,7 @@
         "openPort": "Port {port} opened",
         "close": "Port closed",
         "handshake": "Handshake OK: protocol v{version}, signature {signature}",
-        "announce": "the device announced a start",
+        "announce": "the device is not in a session",
         "staleAck": "stale, ignored",
         "nakIdle": "nothing to resend",
         "resend": "resending seq {seq} (attempt {attempt}/{max})",
@@ -1353,7 +1356,7 @@
         "noResponse": "No answer to HELLO in {seconds} s",
         "version": "The device speaks protocol v{version}; Chip Hippo speaks v{host}",
         "signature": "The device was built for layout {signature}, not {expected}",
-        "restart": "The device restarted",
+        "restart": "The device left the session (it restarted, or stopped hearing Chip Hippo)",
         "dropped": "Connection dropped",
         "droppedDetail": "Connection dropped: {detail}",
         "openFailed": "Couldn't open the port: {detail}"

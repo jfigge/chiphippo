@@ -17,10 +17,11 @@
 /**
  * tests/serial-link.test.js — the host half of the serial protocol v1 against
  * a scripted device: the HELLO / HELLO_ACK handshake (its timeout, and its
- * version and signature refusals), the session number that keeps a repeated
- * HELLO from rewinding SEQs, stop-and-wait delivery with ACK/NAK/retry and the
- * three-strikes give-up, de-duplicating a resent Input, log text, a device
- * announcing a restart, and a port that vanishes mid-run.
+ * version and signature refusals), the 16-bit session number that keeps a
+ * repeated HELLO from rewinding SEQs, stop-and-wait delivery with
+ * ACK/NAK/retry and the three-strikes give-up, de-duplicating a resent Input,
+ * the two directions' independent SEQs, log text, a device announcing a
+ * restart, and a port that vanishes mid-run.
  */
 
 "use strict";
@@ -38,7 +39,7 @@ const {
   encodeHello,
   decodeHello,
 } = require("../serial/protocol");
-const { SerialLink } = require("../serial/link");
+const { SerialLink, followingSession } = require("../serial/link");
 
 const SIGNATURE = 0x12345678;
 
@@ -69,11 +70,10 @@ function makeDevice(script = {}) {
     send(frame) {
       device.emit(encodeFrame(frame));
     },
-    helloAck(seq) {
+    helloAck(session) {
       device.send({
         type: FRAME.HELLO_ACK,
-        seq,
-        payload: encodeHello(device),
+        payload: encodeHello({ ...device, session }),
       });
     },
     sendIn(index, width, value, seq) {
@@ -108,12 +108,13 @@ function makeDevice(script = {}) {
     defaultReply(f, d) {
       if (!f.ok) return;
       if (f.type === FRAME.HELLO) {
-        if (f.seq !== d.session) {
-          d.session = f.seq;
+        const { session } = decodeHello(f.payload);
+        if (session !== d.session) {
+          d.session = session;
           d.txSeq = 0;
           d.rxSeq = 0;
         }
-        d.helloAck(f.seq);
+        d.helloAck(session);
       } else if (f.type === FRAME.OUTPUT) {
         if (f.seq !== d.rxSeq) {
           d.rxSeq = f.seq;
@@ -162,11 +163,14 @@ test("the handshake sends HELLO with the version and signature, and accepts a ma
     device: { version: PROTOCOL_VERSION, signature: SIGNATURE },
   });
   const hello = device.frames.find((f) => f.type === FRAME.HELLO);
-  assert.deepEqual(decodeHello(hello.payload), {
-    version: PROTOCOL_VERSION,
-    signature: SIGNATURE,
-  });
-  assert.ok(hello.seq >= 1 && hello.seq <= 255, "HELLO's SEQ is the session");
+  const { session, ...rest } = decodeHello(hello.payload);
+  assert.deepEqual(rest, { version: PROTOCOL_VERSION, signature: SIGNATURE });
+  assert.ok(
+    session >= 1 && session <= 0xffff,
+    "the payload carries the session",
+  );
+  assert.equal(hello.seq, 0, "HELLO's SEQ is 0: it is no data frame");
+  assert.equal(hello.payload.length, 7);
 });
 
 test("a device that never answers is 'no-response' — after asking repeatedly", async () => {
@@ -201,14 +205,18 @@ test("a HELLO_ACK for another session, or the start-up announcement, is not an a
   const device = makeDevice({
     onFrame(f, d) {
       if (f.type !== FRAME.HELLO) return;
+      const { session } = decodeHello(f.payload);
       d.helloAck(0); // "I have just started"
-      d.helloAck((f.seq % 255) + 1); // a stale session
+      d.helloAck(followingSession(session)); // a stale session
+      d.helloAck(session & 0xff); // the right session's low byte alone
+      d.helloAck((session << 8) & 0xffff); // …or swapped end for end
       if (d.frames.filter((x) => x.type === FRAME.HELLO).length >= 3) {
-        d.helloAck(f.seq);
+        d.helloAck(session);
       }
     },
   });
-  const { link, events } = linkTo(device);
+  // A session whose bytes differ, so a half-read one could not pass.
+  const { link, events } = linkTo(device, { sessions: () => 0x1234 });
   const r = await link.handshake(SIGNATURE);
   assert.equal(r.ok, true);
   assert.equal(
@@ -221,6 +229,68 @@ test("a HELLO_ACK for another session, or the start-up announcement, is not an a
     0,
     "an announcement DURING the handshake is expected",
   );
+});
+
+// ── Sessions ────────────────────────────────────────────────────────────────
+
+test("sessions are 16 bits: 1…65535, wrapping to 1 — never 0, the announcement's", () => {
+  assert.equal(followingSession(1), 2);
+  assert.equal(followingSession(255), 256, "past a byte, unlike a SEQ");
+  assert.equal(followingSession(256), 257);
+  assert.equal(followingSession(65534), 65535);
+  assert.equal(followingSession(65535), 1, "wraps to 1, never to 0");
+  assert.equal(followingSession(0), 1);
+});
+
+test("every session width travels whole in HELLO, and only its own echo answers it", async () => {
+  // 0x7D7E puts an ESC and a START in the payload, escaped on the wire.
+  for (const session of [1, 255, 256, 0x7d7e, 65535]) {
+    const device = makeDevice();
+    const { link } = linkTo(device, { sessions: () => session });
+    const r = await link.handshake(SIGNATURE);
+    assert.equal(r.ok, true, `session ${session}`);
+    const hello = device.frames.find((f) => f.type === FRAME.HELLO);
+    assert.equal(decodeHello(hello.payload).session, session);
+    assert.deepEqual(
+      [...hello.payload.subarray(1, 3)],
+      [session & 0xff, session >> 8],
+      "little-endian",
+    );
+  }
+});
+
+test("a v1 HELLO_ACK that is not seven bytes is no answer; another version's is judged by its version", async () => {
+  const short = makeDevice({
+    onFrame(f, d) {
+      if (f.type !== FRAME.HELLO) return;
+      const payload = encodeHello({
+        ...d,
+        session: decodeHello(f.payload).session,
+      });
+      d.send({ type: FRAME.HELLO_ACK, payload: payload.slice(0, 6) });
+    },
+  });
+  assert.deepEqual(await linkTo(short).link.handshake(SIGNATURE), {
+    ok: false,
+    code: "no-response",
+  });
+  // Another version's longer answer: its version and session are enough to
+  // name it, so the run is refused as a version, not silence.
+  const later = makeDevice({
+    onFrame(f, d) {
+      if (f.type !== FRAME.HELLO) return;
+      const { session } = decodeHello(f.payload);
+      d.send({
+        type: FRAME.HELLO_ACK,
+        payload: [2, session & 0xff, session >> 8, 9, 9, 9, 9, 9, 9, 9, 9],
+      });
+    },
+  });
+  assert.deepEqual(await linkTo(later).link.handshake(SIGNATURE), {
+    ok: false,
+    code: "version",
+    device: { version: 2, signature: null },
+  });
 });
 
 test("every handshake uses a new session, so a device that did not reset starts over", async () => {
@@ -307,6 +377,40 @@ test("a NAK makes the host resend at once, not after the timeout", async () => {
   assert.ok(Date.now() - started < 1000, "the NAK short-circuited the wait");
 });
 
+test("a NAK with nothing outstanding is ignored", async () => {
+  const { device, link, events } = await greeted();
+  device.send({ type: FRAME.NAK });
+  await sleep(10);
+  assert.deepEqual(events.trace.at(-1), { kind: "proto", event: "nak-idle" });
+  assert.equal(device.frames.filter((f) => f.type === FRAME.OUTPUT).length, 0);
+  assert.deepEqual(
+    await link.send(0, 1, 1),
+    { ok: true },
+    "and changes nothing",
+  );
+});
+
+test("NAKs never send a frame more than three times: one after the third ends it at once", async () => {
+  // A device that NAKs every Output: three sends, then the NAK of the third
+  // fails the delivery without waiting out a timeout.
+  const device = makeDevice({
+    onFrame(f, d) {
+      if (f.type === FRAME.OUTPUT) d.send({ type: FRAME.NAK });
+      else d.defaultReply(f, d);
+    },
+  });
+  const { link } = await greeted(device, { timeoutMs: 5000 });
+  const started = Date.now();
+  assert.deepEqual(await link.send(0, 8, 1), { ok: false, code: "delivery" });
+  assert.ok(Date.now() - started < 1000, "no timeout was waited for");
+  const sent = device.frames.filter((f) => f.type === FRAME.OUTPUT);
+  assert.equal(sent.length, 3);
+  assert.ok(
+    sent.every((f) => f.seq === 1 && f.payload.equals(sent[0].payload)),
+    "every resend is the same frame, SEQ and all",
+  );
+});
+
 test("a stale ACK is ignored", async () => {
   const device = makeDevice({
     onFrame(f, d) {
@@ -352,6 +456,67 @@ test("an Input is ACKed and delivered; a resend of the same SEQ is re-ACKed, not
     acks.map((f) => f.seq),
     [seq, seq, seq + 1],
     "every copy is ACKed, so the device stops resending",
+  );
+});
+
+test("an intact Input the host cannot use is ACKed and dropped — and its resend is a duplicate", async () => {
+  const { device, events } = await greeted();
+  device.send({ type: FRAME.INBOUND, seq: 1, payload: [0, 17, 1, 0] }); // width 17
+  device.send({ type: FRAME.INBOUND, seq: 1, payload: [0, 17, 1, 0] });
+  device.send({ type: FRAME.INBOUND, seq: 2, payload: [0, 8, 1] }); // short
+  device.sendIn(0, 8, 5, 3);
+  await sleep(20);
+  assert.deepEqual(events.inbound, [{ index: 0, width: 8, value: 5 }]);
+  assert.deepEqual(
+    device.frames.filter((f) => f.type === FRAME.ACK).map((f) => f.seq),
+    [1, 1, 2, 3],
+  );
+  assert.deepEqual(
+    events.trace.filter((e) => e.kind === "error").map((e) => e.event),
+    ["unusable", "duplicate", "unusable"],
+  );
+});
+
+test("each direction counts its own SEQs, and the host ACKs Inputs while its Output waits", async () => {
+  // The device holds its ACK of Output SEQ 1 until it has sent Input SEQ 1
+  // and heard the host acknowledge it: the same number, two frames.
+  let heldSeq = null;
+  const device = makeDevice({
+    onFrame(f, d) {
+      if (f.ok && f.type === FRAME.OUTPUT && heldSeq === null) {
+        heldSeq = f.seq;
+        d.rxSeq = f.seq;
+        d.handled.push(decodeData(f.payload));
+        d.sendIn(0, 8, 0x42); // INBOUND SEQ 1, while OUTPUT SEQ 1 waits
+        return;
+      }
+      if (f.ok && f.type === FRAME.ACK && heldSeq !== null) {
+        d.send({ type: FRAME.ACK, seq: heldSeq }); // now the Output's ACK
+        return;
+      }
+      d.defaultReply(f, d);
+    },
+  });
+  const { link, events } = await greeted(device, { timeoutMs: 5000 });
+  assert.deepEqual(await link.send(0, 8, 7), { ok: true });
+  assert.equal(heldSeq, 1);
+  assert.deepEqual(events.inbound, [{ index: 0, width: 8, value: 0x42 }]);
+  assert.deepEqual(
+    device.frames.filter((f) => f.type === FRAME.ACK).map((f) => f.seq),
+    [1],
+    "the host's ACK of INBOUND 1 — not taken for the device's ACK of OUTPUT 1",
+  );
+  // And the next of each is 2, independently.
+  assert.deepEqual(await link.send(0, 8, 8), { ok: true });
+  device.sendIn(0, 8, 0x43);
+  await sleep(10);
+  assert.deepEqual(
+    device.frames.filter((f) => f.type === FRAME.OUTPUT).map((f) => f.seq),
+    [1, 2],
+  );
+  assert.deepEqual(
+    events.inbound.map((d) => d.value),
+    [0x42, 0x43],
   );
 });
 
@@ -423,10 +588,99 @@ test("the device announcing a start AFTER the handshake is a restart, and fails 
   device.helloAck(0);
   assert.deepEqual(await pending, { ok: false, code: "restart" });
   assert.equal(events.restarts, 1);
-  // …and it has forgotten the session: nothing it sends counts until a new one.
+  // …and it has forgotten the session: nothing it sends counts until a new
+  // one, and FAILED, the host NAKs no damage.
   device.sendIn(0, 8, 9);
+  const bad = Buffer.from(
+    encodeFrame({ type: FRAME.INBOUND, seq: 2, payload: encodeData(0, 8, 1) }),
+  );
+  bad[bad.length - 1] ^= 0x01;
+  device.emit(bad);
   await sleep(10);
   assert.equal(events.inbound.length, 0);
+  assert.equal(device.frames.filter((f) => f.type === FRAME.NAK).length, 0);
+});
+
+test("a stale HELLO_ACK after the handshake — another session's, or this one's again — changes nothing", async () => {
+  const { device, link, events } = await greeted(undefined, {
+    sessions: () => 0x0300,
+  });
+  device.helloAck(0x02ff); // the session before
+  device.helloAck(0x0300); // this one, late
+  await sleep(10);
+  assert.equal(events.restarts, 0);
+  assert.deepEqual(await link.send(0, 8, 1), { ok: true }, "the run goes on");
+});
+
+test("data frames go only while ACTIVE: none before the handshake, and a failure answers again after it", async () => {
+  const quiet = makeDevice();
+  const early = linkTo(quiet).link;
+  assert.deepEqual(await early.send(0, 8, 1), { ok: false, code: "closed" });
+  assert.equal(quiet.frames.length, 0, "nothing was written");
+
+  // After a delivery fails the session is over: the next send is refused at
+  // once, an Input is no longer taken — but log text still is.
+  const deaf = makeDevice({
+    onFrame(f, d) {
+      if (f.type === FRAME.HELLO) d.defaultReply(f, d);
+    },
+  });
+  const { link, events } = await greeted(deaf);
+  assert.deepEqual(await link.send(0, 8, 1), { ok: false, code: "delivery" });
+  const sent = deaf.frames.length;
+  assert.deepEqual(await link.send(0, 8, 2), { ok: false, code: "delivery" });
+  assert.equal(deaf.frames.length, sent, "and nothing more was written");
+  deaf.sendIn(0, 8, 9);
+  deaf.send({ type: FRAME.LOG, payload: [...Buffer.from("still here")] });
+  await sleep(10);
+  assert.deepEqual(events.inbound, []);
+  assert.deepEqual(events.logs, ["still here"]);
+  assert.equal(deaf.frames.filter((f) => f.type === FRAME.ACK).length, 0);
+
+  // After a restart, likewise.
+  const { device: d2, link: l2 } = await greeted();
+  d2.helloAck(0);
+  await sleep(10);
+  assert.deepEqual(await l2.send(0, 8, 1), { ok: false, code: "restart" });
+});
+
+test("an INBOUND with SEQ 0 is no data frame: not ACKed, not delivered", async () => {
+  const { device, events } = await greeted();
+  device.send({ type: FRAME.INBOUND, seq: 0, payload: encodeData(0, 8, 1) });
+  device.sendIn(0, 8, 2);
+  await sleep(10);
+  assert.deepEqual(
+    events.inbound.map((d) => d.value),
+    [2],
+  );
+  assert.deepEqual(
+    device.frames.filter((f) => f.type === FRAME.ACK).map((f) => f.seq),
+    [1],
+  );
+});
+
+test("a frame of a type the host never receives, or does not know, is ignored", async () => {
+  const { device, link, events } = await greeted();
+  device.send({ type: 0x33, payload: [1, 2, 3] });
+  device.send({ type: FRAME.OUTPUT, seq: 1, payload: encodeData(0, 8, 9) });
+  device.send({
+    type: FRAME.HELLO,
+    payload: encodeHello({ ...device, session: 7 }),
+  });
+  device.sendIn(0, 8, 2);
+  await sleep(10);
+  assert.deepEqual(
+    events.inbound.map((d) => d.value),
+    [2],
+  );
+  assert.deepEqual(
+    device.frames
+      .filter((f) => f.type !== FRAME.HELLO)
+      .map((f) => [f.type, f.seq]),
+    [[FRAME.ACK, 1]],
+    "the Input's ACK and nothing else: no NAK, no answer",
+  );
+  assert.deepEqual(await link.send(0, 8, 1), { ok: true });
 });
 
 test("nothing but LOG and the handshake counts before the device is greeted", async () => {
@@ -435,6 +689,11 @@ test("nothing but LOG and the handshake counts before the device is greeted", as
   device.sendIn(0, 8, 1);
   device.helloAck(0);
   device.send({ type: FRAME.LOG, payload: [...Buffer.from("boot")] });
+  const bad = Buffer.from(
+    encodeFrame({ type: FRAME.INBOUND, seq: 2, payload: encodeData(0, 8, 1) }),
+  );
+  bad[bad.length - 1] ^= 0x01; // damage owed a NAK — in a session
+  device.emit(bad);
   await sleep(10);
   assert.equal(events.inbound.length, 0);
   assert.equal(events.restarts, 0);

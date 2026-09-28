@@ -94,7 +94,9 @@ bits, flow control). Unlike the other tabs, nothing here applies until you press
 so and the button becomes **Apply anyway**. You can edit several connections
 before applying: each keeps its changes while you look at another, and one
 with changes not yet applied is marked **•** in the list. **Open window…**
-opens the connection's [window](arduino.md#the-connection-window).
+opens the connection's [window](arduino.md#the-connection-window). The book
+icon beside the card's close button (shown on this tab only) opens the
+[Serial Protocol](serial-protocol.md) reference in the user guide.
 
 A connection the circuit can't run with yet says why in the list — **Port
 unavailable**, or **Needs configuration** when it arrived in a project from

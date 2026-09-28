@@ -146,7 +146,7 @@ test("error lines say what went wrong, and why a frame is being resent", () => {
   );
   assert.equal(
     say({ kind: "error", event: "restart" }),
-    "The device restarted",
+    "The device left the session (it restarted, or stopped hearing Chip Hippo)",
   );
   assert.equal(say({ kind: "error", event: "dropped", detail: "" }), "Connection dropped"); // prettier-ignore
   assert.equal(say({ kind: "error", event: "dropped", detail: "ENXIO" }), "Connection dropped: ENXIO"); // prettier-ignore

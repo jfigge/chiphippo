@@ -100,9 +100,11 @@ test("addBoard: fresh bb<n> ids, x on the lattice, y to two decimals", () => {
     y: -2.6,
     rot: 0,
     group: null, // a strip added on its own is loose
+    name: "bb1", // born named after its id — the one messages quote
   });
   const b2 = doc.addBoard("pins-tiny", 0.2, 30);
   assert.equal(b2.id, "bb2");
+  assert.equal(b2.name, "bb2");
   assert.deepEqual(
     doc.boards.map((b) => b.id),
     ["bb1", "bb2"],
@@ -112,7 +114,8 @@ test("addBoard: fresh bb<n> ids, x on the lattice, y to two decimals", () => {
 test("setBoardParams: sets, clears, and round-trips Name/Description", () => {
   const doc = new DeskDoc(null);
   doc.addBoard("pins-full", 0, 0);
-  assert.equal("name" in doc.getBoard("bb1"), false, "omitted until set");
+  assert.equal(doc.getBoard("bb1").name, "bb1", "born named after its id");
+  assert.equal("description" in doc.getBoard("bb1"), false, "omitted until set"); // prettier-ignore
 
   const set = doc.setBoardParams("bb1", {
     name: "Main board",
@@ -194,6 +197,7 @@ test("moveBoard: snaps, ignores its own footprint, rejects other overlaps", () =
     y: 0.4,
     rot: 0,
     group: null,
+    name: "bb1",
   });
   // Onto the other board — rejected, position unchanged.
   assert.throws(() => doc.moveBoard("bb1", 39, 0), { code: "OVERLAP" });
@@ -204,6 +208,7 @@ test("moveBoard: snaps, ignores its own footprint, rejects other overlaps", () =
     y: 0.4,
     rot: 0,
     group: null,
+    name: "bb1",
   });
   assert.throws(() => doc.moveBoard("bb9", 0, 0), { code: "NOT_FOUND" });
 });
@@ -242,6 +247,7 @@ test("moveBoard: an upright rail is collision-checked at its TURNED size", () =>
     y: 0,
     rot: 90,
     group: null,
+    name: "bb1",
   });
 });
 
@@ -716,6 +722,7 @@ test("toJSON is a deep copy — later mutations don't leak into it", () => {
     y: 0,
     rot: 0,
     group: null,
+    name: "bb1",
   });
 });
 
@@ -785,7 +792,8 @@ test("addKit(flipRails: true) stores 180° on the rails only, and still mates", 
 test("addKit: seats every strip at its preset offset, sharing one group", () => {
   const doc = new DeskDoc(null);
   assert.deepEqual(doc.addKit("full", 2, 5), [
-    { id: "bb1", type: "rail-full", x: 2, y: 5, rot: 0, group: "g1" },
+    // Every strip is named after its OWN id — a kit is three boards.
+    { id: "bb1", type: "rail-full", x: 2, y: 5, rot: 0, group: "g1", name: "bb1" }, // prettier-ignore
     {
       id: "bb2",
       type: "pins-full",
@@ -793,8 +801,9 @@ test("addKit: seats every strip at its preset offset, sharing one group", () => 
       y: q(5 + RAIL_H),
       rot: 0,
       group: "g1",
+      name: "bb2",
     },
-    { id: "bb3", type: "rail-full", x: 2, y: q(5 + RAIL_H + PINS_H), rot: 0, group: "g1" }, // prettier-ignore
+    { id: "bb3", type: "rail-full", x: 2, y: q(5 + RAIL_H + PINS_H), rot: 0, group: "g1", name: "bb3" }, // prettier-ignore
   ]);
   // The next kit is its own rigid unit, with its own group id.
   assert.deepEqual(
@@ -811,7 +820,7 @@ test("addKit: a tiny breadboard is a single loose strip", () => {
   const doc = new DeskDoc(null);
   // The real 170-point part is a bare pin-board — nothing to group it with.
   assert.deepEqual(doc.addKit("tiny", 0.4, -0.4), [
-    { id: "bb1", type: "pins-tiny", x: 0, y: -0.4, rot: 0, group: null },
+    { id: "bb1", type: "pins-tiny", x: 0, y: -0.4, rot: 0, group: null, name: "bb1" }, // prettier-ignore
   ]);
   assert.equal(doc.toJSON().nextGroupId, 1); // no group id burned
 });
@@ -839,10 +848,10 @@ test("addKit: a loose strip is placeable on its own, ungrouped", () => {
   const doc = new DeskDoc(null);
   // The bare parts out of the bag — each kit is exactly one strip.
   assert.deepEqual(doc.addKit("pins-full", 0, 0), [
-    { id: "bb1", type: "pins-full", x: 0, y: 0, rot: 0, group: null },
+    { id: "bb1", type: "pins-full", x: 0, y: 0, rot: 0, group: null, name: "bb1" }, // prettier-ignore
   ]);
   assert.deepEqual(doc.addKit("rail-half", 0, 40), [
-    { id: "bb2", type: "rail-half", x: 0, y: 40, rot: 0, group: null },
+    { id: "bb2", type: "rail-half", x: 0, y: 40, rot: 0, group: null, name: "bb2" }, // prettier-ignore
   ]);
   assert.equal(doc.toJSON().nextGroupId, 1); // no group id burned
 });
@@ -1146,7 +1155,7 @@ test("groupMembers: the whole kit for a grouped strip, itself for a loose one", 
     ["bb1", "bb2", "bb3"],
   );
   assert.deepEqual(doc.groupMembers("bb4"), [
-    { id: "bb4", type: "pins-tiny", x: 70, y: 0, rot: 0, group: null },
+    { id: "bb4", type: "pins-tiny", x: 70, y: 0, rot: 0, group: null, name: "bb4" }, // prettier-ignore
   ]);
   assert.deepEqual(doc.groupMembers("bb9"), []);
 });
@@ -1158,9 +1167,9 @@ test("moveBoardBy: translates every member, preserving relative offsets", () => 
   // gesture rounds its own (that is what makes a drag step pitch by pitch),
   // and a magnetic pull onto a measured strip is fractional by nature.
   assert.deepEqual(doc.moveBoardBy("bb2", 4, -3.4), [
-    { id: "bb1", type: "rail-full", x: 4, y: -3.4, rot: 0, group: "g1" },
-    { id: "bb2", type: "pins-full", x: 4, y: q(RAIL_H - 3.4), rot: 0, group: "g1" }, // prettier-ignore
-    { id: "bb3", type: "rail-full", x: 4, y: q(RAIL_H + PINS_H - 3.4), rot: 0, group: "g1" }, // prettier-ignore
+    { id: "bb1", type: "rail-full", x: 4, y: -3.4, rot: 0, group: "g1", name: "bb1" }, // prettier-ignore
+    { id: "bb2", type: "pins-full", x: 4, y: q(RAIL_H - 3.4), rot: 0, group: "g1", name: "bb2" }, // prettier-ignore
+    { id: "bb3", type: "rail-full", x: 4, y: q(RAIL_H + PINS_H - 3.4), rot: 0, group: "g1", name: "bb3" }, // prettier-ignore
   ]);
   // The stack stays assembled — same offsets from the top strip as before.
   assert.deepEqual(

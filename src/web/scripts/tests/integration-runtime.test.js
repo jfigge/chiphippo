@@ -15,9 +15,10 @@
  */
 
 // Tests for model/integration-runtime.js — the settle-boundary rules of the
-// Arduino serial integration: when an Output fires and what it samples, how
-// an Input's value is buffered and when it is released (live vs triggered),
-// atomic application, and the levels the engine is handed.
+// Arduino serial integration: when an Output fires and what it samples (on an
+// edge, and on Auto), how an Input's value is buffered and when it is released
+// (live on Auto vs triggered), atomic application, and the levels the engine
+// is handed.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -44,7 +45,7 @@ const input = (extra = {}) => ({
   id: "in1",
   kind: "input",
   connection: "nano",
-  triggerEdge: "rising",
+  triggerEdge: "auto",
   triggerInit: "low",
   fields: [
     { type: "bit", name: "a" },
@@ -122,6 +123,48 @@ test("an Output with no trigger tag, or no connection, never sends", () => {
   assert.equal(rt.boundary(noConn, board({ "bb1.a9": "H" })).sends.length, 0);
 });
 
+test("an Output on AUTO sends where the run starts, then only on a change", () => {
+  const rt = new IntegrationRuntime();
+  // The fixture's trigger tag stays in its record: on Auto it means nothing.
+  const els = [output({ triggerEdge: "auto" })];
+  rt.begin(els);
+  let r = rt.boundary(els, board({}));
+  assert.deepEqual(
+    r.sends.map((s) => [s.index, s.width, s.value]),
+    [[0, 2, 0]],
+    "the first boundary sends the starting value, even 0",
+  );
+  assert.equal(rt.boundary(els, board({})).sends.length, 0, "unchanged");
+  r = rt.boundary(els, board({ "bb1.a1": "H" }));
+  assert.deepEqual(
+    r.sends.map((s) => s.value),
+    [0b01],
+  );
+  assert.equal(
+    rt.boundary(els, board({ "bb1.a1": "H", "bb1.a9": "H" })).sends.length,
+    0,
+    "a line where a trigger could be moves nothing",
+  );
+  r = rt.boundary(els, board({ "bb1.a2": "H" }));
+  assert.deepEqual(
+    r.sends.map((s) => s.value),
+    [0b10],
+  );
+  rt.begin(els);
+  assert.equal(
+    rt.boundary(els, board({ "bb1.a2": "H" })).sends.length,
+    1,
+    "a new run starts over, and says where it is",
+  );
+});
+
+test("an Output on AUTO with no connection never sends", () => {
+  const rt = new IntegrationRuntime();
+  const els = [output({ triggerEdge: "auto", connection: null })];
+  rt.begin(els);
+  assert.equal(rt.boundary(els, board({ "bb1.a1": "H" })).sends.length, 0);
+});
+
 test("several Outputs index by connection and kind", () => {
   const rt = new IntegrationRuntime();
   const els = [
@@ -162,6 +205,17 @@ test("a LIVE Input applies its value at the next boundary, latest wins", () => {
   assert.equal(rt.apply(els), false, "nothing new");
 });
 
+test("an Input waiting for an edge with no trigger tag is not live — it never applies", () => {
+  const rt = new IntegrationRuntime();
+  const els = [input({ triggerEdge: "rising" })];
+  assert.equal(isLive(els[0]), false);
+  rt.begin(els);
+  rt.receive(els, els[0], 2, 3);
+  assert.equal(rt.hasLivePending(els), false);
+  const r = rt.boundary(els, () => "H");
+  assert.equal(rt.apply(els, r.released), false);
+});
+
 test("the same value again changes nothing on the board", () => {
   const rt = new IntegrationRuntime();
   const els = [input()];
@@ -175,6 +229,7 @@ test("the same value again changes nothing on the board", () => {
 test("a TRIGGERED Input holds its value until the edge — then releases it", () => {
   const rt = new IntegrationRuntime();
   const trig = input({
+    triggerEdge: "rising",
     tags: { 1: tag("bb1.a11"), 2: tag("bb1.a12"), T: tag("bb1.a19") },
   });
   const els = [trig];
@@ -192,7 +247,10 @@ test("a TRIGGERED Input holds its value until the edge — then releases it", ()
 
 test("an edge with nothing buffered releases nothing — the value waits for the next", () => {
   const rt = new IntegrationRuntime();
-  const trig = input({ tags: { 1: tag("bb1.a11"), T: tag("bb1.a19") } });
+  const trig = input({
+    triggerEdge: "rising",
+    tags: { 1: tag("bb1.a11"), T: tag("bb1.a19") },
+  });
   const els = [trig];
   rt.begin(els);
   let r = rt.boundary(els, board({ "bb1.a19": "H" }));
@@ -210,6 +268,7 @@ test("every eligible Input is applied at once", () => {
   const a = input({ id: "in1" });
   const b = input({
     id: "in2",
+    triggerEdge: "rising",
     tags: { 1: tag("bb1.a21"), T: tag("bb1.a29") },
   });
   const els = [a, b];

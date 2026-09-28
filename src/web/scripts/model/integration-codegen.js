@@ -26,9 +26,11 @@
 //
 // What it holds:
 //   · the DEVICE side of the serial protocol v1
-//     (docs/chiphippo-serial-protocol.md): 0x7E framing with 0x7D escaping,
-//     CRC-16/CCITT-FALSE, the HELLO / HELLO_ACK session, ACK/NAK/retry, SEQ
-//     de-duplication, and the OUTPUT ACK sent only once its handler returns.
+//     (src/web/docs/serial-protocol.md): 0x7E framing with 0x7D escaping,
+//     CRC-16/CCITT-FALSE, the HELLO / HELLO_ACK session (joined only when
+//     the HELLO's version and layout are the sketch's own), ACK/NAK/retry,
+//     SEQ de-duplication, and the OUTPUT ACK sent only once its handler
+//     returns.
 //     Every protocol number in it is WRITTEN FROM serial-wire.js — the module
 //     main's own protocol.js reads — so the two ends cannot drift;
 //   · `ChipHippo.begin()` / `ChipHippo.poll()` for setup() / loop(), and
@@ -97,7 +99,11 @@ import {
   FRAME,
   HEADER_BYTES,
   HELLO_PAYLOAD,
+  HELLO_PREFIX,
+  MAX_HOST_PAYLOAD,
   MAX_SENDS,
+  MAX_SEQ,
+  NOT_NAKED,
   PROTOCOL_VERSION,
   START,
 } from "./serial-wire.js";
@@ -212,14 +218,14 @@ const RESERVED = new Set(
     // name would win) and its constants.
     "ChipHippo ChipHippoLink chiphippo begin poll print println write flush " +
     "sendInput connected onConnect bits pump handle damaged onHello onOutput " +
-    "dispatch sendFrame putEscaped crcStep crc16 ack sendHelloAck flushLog " +
+    "dispatch sendFrame putEscaped crcStep crc16 ack helloPayload flushLog " +
     "wholeChars io_ rx_ rxLen_ inFrame_ esc_ greeted_ session_ txSeq_ rxSeq_ " +
     "onConnect_ connectPending_ " +
-    "dispatching_ busySeq_ busySession_ pending_ pendingIndex_ pendingSeq_ " +
+    "dispatching_ busySeq_ pending_ pendingIndex_ pendingSeq_ " +
     "pendingWidth_ pendingValue_ log_ logLen_ bits_ K_START K_ESC K_ESC_XOR " +
     "F_HELLO F_HELLO_ACK F_ACK F_NAK F_OUTPUT F_INBOUND F_LOG R_NONE R_ACK " +
-    "R_NAK HEADER CRC_LEN DATA_LEN HELLO_LEN RX_MAX LOG_CHUNK OUTPUT_COUNT " +
-    "INPUT_COUNT"
+    "R_NAK HEADER CRC_LEN DATA_LEN HELLO_LEN HELLO_MIN RX_MAX LOG_CHUNK " +
+    "OUTPUT_COUNT INPUT_COUNT"
   ).split(/\s+/),
 );
 
@@ -377,6 +383,15 @@ const comment = (s) => String(s ?? "").replace(/[\r\n]+/g, " ");
 /** A protocol byte / word as a C hex literal. */
 const hex2 = (n) => `0x${n.toString(16).toUpperCase().padStart(2, "0")}`;
 const hex4 = (n) => `0x${n.toString(16).toUpperCase().padStart(4, "0")}`;
+
+/** The header's name for each frame type — its F_ enum. */
+const F_NAMES = new Map(
+  Object.entries(FRAME).map(([name, value]) => [value, `F_${name}`]),
+);
+
+/** The C condition "a NAK is owed for a damaged frame of `type`": it is none
+    of the frames that are never resent (serial-wire.js's NOT_NAKED). */
+const OWES_NAK = NOT_NAKED.map((t) => `type != ${F_NAMES.get(t)}`).join(" && ");
 
 /** The bit mask of a field, as a hex literal. */
 const maskOf = (type) =>
@@ -593,7 +608,7 @@ export function generateHeader({
     "    logLen_ = 0;",
     '    // Session 0 says "I have just started": a circuit that was running',
     "    // learns this sketch has forgotten it, and stops rather than go deaf.",
-    "    sendHelloAck(0);",
+    "    sendHelloAck(0, 0);",
     "  }",
     "",
     "  // Service the link: runs Output functions, answers Chip Hippo. Call it",
@@ -612,8 +627,8 @@ export function generateHeader({
     "    flushLog(false);",
     "  }",
     "",
-    "  // True from Chip Hippo's HELLO until a send it never acknowledged: while",
-    "  // it is false, an Input's send() returns false at once.",
+    "  // True from Chip Hippo's HELLO (for this design) until a send it never",
+    "  // acknowledged: while it is false, an Input's send() fails at once.",
     "  bool connected() const { return greeted_; }",
     "",
     "  // Run `fn` from poll() at the start of every run, once Chip Hippo has",
@@ -639,26 +654,29 @@ export function generateHeader({
     "  // Used by the Inputs' send(). Waits for Chip Hippo's ACK, resending on",
     "  // a NAK or a timeout, and keeps the link serviced while it waits.",
     "  bool sendInput(uint8_t index, uint8_t width, uint16_t value) {",
-    "    if (!io_ || !greeted_) return false;",
+    "    // Not in a session — or inside a handler whose session has ended.",
+    "    if (!io_ || !greeted_ || (dispatching_ && !busySeq_)) return false;",
     "    flushLog(false);",
     "    const uint8_t payload[DATA_LEN] = {index, width, (uint8_t)(value & 0xFF),",
     "                                       (uint8_t)(value >> 8)};",
-    "    txSeq_ = (uint8_t)(txSeq_ % 255 + 1);",
+    `    txSeq_ = (uint8_t)(txSeq_ % ${MAX_SEQ} + 1);`,
     "    const uint8_t seq = txSeq_;",
-    "    const uint8_t session = session_;",
     "    for (uint8_t n = 0; n < CHIPHIPPO_MAX_SENDS; n++) {",
     "      sendFrame(F_INBOUND, seq, payload, DATA_LEN);",
     "      unsigned long start = millis();",
     "      while ((unsigned long)(millis() - start) < CHIPHIPPO_ACK_TIMEOUT_MS) {",
     "        uint8_t r = pump(true, seq);",
+    "        if (txSeq_ != seq) return false;  // a new session reset txSeq_",
     "        if (r == R_ACK) return true;",
     "        if (r == R_NAK) break;",
-    "        if (!greeted_ || session_ != session) return false;  // a new run",
     "      }",
     "    }",
-    "    // Nobody is listening: stop waiting on every send until Chip Hippo",
-    "    // greets the sketch again.",
+    "    // Nobody is listening: leave the session — nothing more of it goes out,",
+    "    // not even a held or running Output's ACK — and say so, as begin() does.",
     "    greeted_ = false;",
+    "    busySeq_ = 0;",
+    "    pending_ = false;",
+    "    sendHelloAck(0, 0);",
     "    return false;",
     "  }",
     "",
@@ -667,9 +685,9 @@ export function generateHeader({
     `  enum { F_HELLO = ${hex2(FRAME.HELLO)}, F_HELLO_ACK = ${hex2(FRAME.HELLO_ACK)}, F_ACK = ${hex2(FRAME.ACK)}, F_NAK = ${hex2(FRAME.NAK)},`,
     `         F_OUTPUT = ${hex2(FRAME.OUTPUT)}, F_INBOUND = ${hex2(FRAME.INBOUND)}, F_LOG = ${hex2(FRAME.LOG)} };`,
     "  enum { R_NONE = 0, R_ACK = 1, R_NAK = 2 };",
-    `  enum { HEADER = ${HEADER_BYTES}, CRC_LEN = ${CRC_BYTES}, DATA_LEN = ${DATA_PAYLOAD}, HELLO_LEN = ${HELLO_PAYLOAD} };`,
+    `  enum { HEADER = ${HEADER_BYTES}, CRC_LEN = ${CRC_BYTES}, DATA_LEN = ${DATA_PAYLOAD}, HELLO_LEN = ${HELLO_PAYLOAD}, HELLO_MIN = ${HELLO_PREFIX} };`,
     "  // The longest frame this side is ever sent: anything longer is damage.",
-    `  enum { RX_MAX = ${Math.max(DATA_PAYLOAD, HELLO_PAYLOAD)}, LOG_CHUNK = ${LOG_CHUNK} };`,
+    `  enum { RX_MAX = ${MAX_HOST_PAYLOAD}, LOG_CHUNK = ${LOG_CHUNK} };`,
     `  enum { OUTPUT_COUNT = ${plan.outputs.length}, INPUT_COUNT = ${plan.inputs.length} };`,
     "",
     "  // CRC-16/CCITT-FALSE, a bit at a time: no table, so no flash spent on one.",
@@ -713,17 +731,25 @@ export function generateHeader({
     "    putEscaped((uint8_t)(crc >> 8));",
     "  }",
     "",
-    "  void ack(uint8_t seq) { sendFrame(F_ACK, seq, 0, 0); }",
+    "  // An Output's ACK: its SEQ is the one a resend is recognised by.",
+    "  void ack(uint8_t seq) {",
+    "    rxSeq_ = seq;",
+    "    sendFrame(F_ACK, seq, 0, 0);",
+    "  }",
     "",
-    "  // This sketch's protocol version and layout — answered to every HELLO,",
-    "  // matching or not: only Chip Hippo judges, so only it has to explain.",
-    "  void sendHelloAck(uint8_t seq) {",
+    "  // This sketch's version, `session` and layout, to any HELLO: only Chip",
+    "  // Hippo judges. True if the HELLO in rx_ was these 7 bytes: joinable.",
+    "  bool sendHelloAck(uint16_t session, uint8_t len) {",
     "    const unsigned long s = CHIPHIPPO_LAYOUT_SIGNATURE;",
     "    const uint8_t p[HELLO_LEN] = {",
-    "        CHIPHIPPO_PROTOCOL_VERSION,   (uint8_t)(s & 0xFF),",
+    "        CHIPHIPPO_PROTOCOL_VERSION,  (uint8_t)(session & 0xFF),",
+    "        (uint8_t)(session >> 8),     (uint8_t)(s & 0xFF),",
     "        (uint8_t)((s >> 8) & 0xFF),  (uint8_t)((s >> 16) & 0xFF),",
     "        (uint8_t)((s >> 24) & 0xFF)};",
-    "    sendFrame(F_HELLO_ACK, seq, p, HELLO_LEN);",
+    "    sendFrame(F_HELLO_ACK, 0, p, HELLO_LEN);",
+    "    uint8_t i = 0;",
+    "    while (i < HELLO_LEN && rx_[HEADER + i] == p[i]) i++;",
+    "    return len == HELLO_LEN && i == HELLO_LEN;",
     "  }",
     "",
     "  // How much of the log ends on a whole UTF-8 character: a LOG frame never",
@@ -791,11 +817,11 @@ export function generateHeader({
     "  }",
     "",
     "  // A frame arrived damaged: ask for a resend at once — unless it was one",
-    "  // that is never resent, or nothing has greeted this sketch yet.",
+    "  // that is never resent, or this sketch is in no session.",
     "  void damaged() {",
     "    inFrame_ = false;",
     "    const uint8_t type = rxLen_ ? rx_[0] : 0;",
-    "    if (greeted_ && type != F_ACK && type != F_NAK && type != F_HELLO) {",
+    `    if (greeted_ && ${OWES_NAK}) {`,
     "      sendFrame(F_NAK, 0, 0, 0);",
     "    }",
     "  }",
@@ -809,7 +835,7 @@ export function generateHeader({
     "      return R_NONE;",
     "    }",
     "    if (type == F_HELLO) {",
-    "      if (len == HELLO_LEN) onHello(seq);",
+    "      onHello(len);",
     "      return R_NONE;",
     "    }",
     "    if (!greeted_) return R_NONE;  // nothing counts before a HELLO",
@@ -819,6 +845,7 @@ export function generateHeader({
     "      case F_NAK:",
     "        return waiting ? R_NAK : R_NONE;",
     "      case F_OUTPUT:",
+    "        if (!seq) return R_NONE;  // SEQ 0 is never a data frame's",
     "        // Intact but unreadable: ACK and drop — a resend would be the same.",
     "        if (len == DATA_LEN) onOutput(seq, waiting);",
     "        else ack(seq);",
@@ -828,19 +855,22 @@ export function generateHeader({
     "    }",
     "  }",
     "",
-    "  // HELLO's SEQ is the run's SESSION. Only a new one resets what this side",
-    "  // remembers — a repeat of the current one (the host asks until it hears)",
-    "  // is answered and nothing more, or it would rewind the SEQs mid-run.",
-    "  void onHello(uint8_t session) {",
-    "    if (!greeted_ || session != session_) {",
-    "      session_ = session;",
-    "      greeted_ = true;",
-    "      txSeq_ = 0;",
-    "      rxSeq_ = 0;",
-    "      pending_ = false;",
-    "      connectPending_ = true;  // a new run: poll() runs onConnect",
-    "    }",
-    "    sendHelloAck(session);",
+    "  // A HELLO names the run's SESSION (never 0). Only a new one resets what",
+    "  // this side remembers — a repeat of the last (the host asks until it",
+    "  // hears) is answered and nothing more, or it would rewind the SEQs.",
+    "  void onHello(uint8_t len) {",
+    "    const uint16_t session =",
+    "        (uint16_t)(rx_[HEADER + 1] | ((uint16_t)rx_[HEADER + 2] << 8));",
+    "    if (len < HELLO_MIN || session == 0) return;",
+    "    const bool join = sendHelloAck(session, len);",
+    "    if (session == session_) return;",
+    "    session_ = session;",
+    "    greeted_ = join;",
+    "    connectPending_ = join;  // a new run: poll() runs onConnect",
+    "    txSeq_ = 0;",
+    "    rxSeq_ = 0;",
+    "    busySeq_ = 0;  // an Output being handled is the old run's: no ACK",
+    "    pending_ = false;",
     "  }",
     "",
     "  void onOutput(uint8_t seq, bool waiting) {",
@@ -852,7 +882,7 @@ export function generateHeader({
     "    // A resend of the one being handled, or held, right now: its ACK",
     "    // follows when the handler returns — an ACK now would let the circuit",
     "    // run on before the handler's own Inputs had reached it.",
-    "    if (dispatching_ && seq == busySeq_ && busySession_ == session_) return;",
+    "    if (dispatching_ && seq == busySeq_) return;",
     "    if (pending_ && seq == pendingSeq_) return;",
     "    const uint8_t index = rx_[HEADER], width = rx_[HEADER + 1];",
     "    const uint16_t value =",
@@ -876,7 +906,6 @@ export function generateHeader({
     "  void dispatch(uint8_t index, uint8_t seq, uint8_t width, uint16_t v) {",
     "    dispatching_ = true;",
     "    busySeq_ = seq;",
-    "    busySession_ = session_;",
     "    switch (index) {",
     ...plan.outputs.flatMap((o) => [
       `      case ${o.index}:`,
@@ -889,8 +918,7 @@ export function generateHeader({
     "        break;",
     "    }",
     "    dispatching_ = false;",
-    "    if (busySession_ != session_) return;  // a new run began meanwhile",
-    "    rxSeq_ = seq;",
+    "    if (busySeq_ != seq) return;  // a new session began meanwhile",
     "    flushLog(false);",
     "    ack(seq);",
     "  }",
@@ -901,11 +929,11 @@ export function generateHeader({
     "  bool inFrame_ = false;",
     "  bool esc_ = false;",
     "  bool greeted_ = false;",
-    "  uint8_t session_ = 0;",
+    "  uint16_t session_ = 0;",
     "  uint8_t txSeq_ = 0;",
     "  uint8_t rxSeq_ = 0;",
     "  bool dispatching_ = false;",
-    "  uint8_t busySeq_ = 0, busySession_ = 0;",
+    "  uint8_t busySeq_ = 0;",
     "  bool pending_ = false;",
     "  uint8_t pendingIndex_ = 0, pendingSeq_ = 0, pendingWidth_ = 0;",
     "  uint16_t pendingValue_ = 0;",

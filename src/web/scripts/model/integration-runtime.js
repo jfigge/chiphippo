@@ -26,11 +26,17 @@
 //     initial state stands in for "previous" at the first one. Only settled
 //     levels are compared, so a glitch inside one settle is never seen: that
 //     is intended. Firing samples the pins at the same boundary.
+//   · An OUTPUT on AUTO watches no line: it fires when the value its pins
+//     settle to differs from the last value it SENT — and at the first
+//     boundary unconditionally, so the sketch learns where the circuit starts
+//     rather than hearing nothing until something moves. It sees every
+//     settled value, intermediate ones included; a value that is only valid
+//     at a strobe wants an edge instead.
 //   · An INPUT's received value is BUFFERED — the latest one wins — and is
 //     never put on the board mid-propagation. At a boundary the eligible
-//     values are: every LIVE input's (no trigger tag), and every TRIGGERED
-//     input's whose trigger showed its edge at that boundary. All of them are
-//     applied at once, and the board settles once more.
+//     values are: every LIVE input's (on Auto), and every TRIGGERED input's
+//     whose trigger showed its edge at that boundary. All of them are applied
+//     at once, and the board settles once more.
 //   · A value that arrives while the board is stalled on an Output is still
 //     eligible at that boundary: the boundary is not over until the stall is.
 //     That is what makes the request/response shape work — an Output handler
@@ -39,13 +45,16 @@
 //
 // A TRIGGER LEVEL IS A BOOLEAN: high, or not. A floating or unknown line is
 // not a transition to anything, and an unplanted pin reads 0 — the same rule
-// `packValue` states.
+// `packValue` states. An element waiting for an edge with no trigger tag on
+// the board never fires and never releases; the run's preflight refuses to
+// start one, so that is a rule for completeness, not a state a run is in.
 
 import {
   TRIGGER_KEY,
   edgeFired,
   elementIndex,
   hasTagKey,
+  isAutoTrigger,
   packValue,
   pinCount,
   unpackLevels,
@@ -57,14 +66,15 @@ function triggerAnchor(element) {
   return typeof anchor === "string" ? anchor : null;
 }
 
-/** Is an Input LIVE — no trigger tag planted, so a value is applied as soon
-    as the board is between settles? */
+/** Is an Input LIVE — on Auto, so a value is applied as soon as the board is
+    between settles? */
 export function isLive(element) {
-  return triggerAnchor(element) == null;
+  return isAutoTrigger(element);
 }
 
 export class IntegrationRuntime {
   #prevHigh = new Map(); // element id → trigger was HIGH at the last boundary
+  #lastSent = new Map(); // Auto output id → { width, value } it last sent
   #pending = new Map(); // input id → { width, value } received, not yet applied
   #applied = new Map(); // input id → { width, value } on the board now
 
@@ -75,6 +85,7 @@ export class IntegrationRuntime {
    */
   begin(elements) {
     this.#prevHigh.clear();
+    this.#lastSent.clear();
     this.#pending.clear();
     this.#applied.clear();
     for (const e of elements ?? []) {
@@ -85,6 +96,7 @@ export class IntegrationRuntime {
   /** The run is over: forget everything (run-volatile, like a clock phase). */
   end() {
     this.#prevHigh.clear();
+    this.#lastSent.clear();
     this.#pending.clear();
     this.#applied.clear();
   }
@@ -123,25 +135,35 @@ export class IntegrationRuntime {
     const sends = [];
     const released = new Set();
     const high = (address) => address != null && levelAt(address) === "H";
+    const sample = (e) =>
+      packValue(e.fields, (pin) => high(e.tags?.[String(pin)]?.anchor));
+    const send = (e, { width, value }) =>
+      sends.push({
+        element: e,
+        index: elementIndex(elements, e),
+        width,
+        value,
+      });
     for (const e of elements ?? []) {
+      if (isAutoTrigger(e)) {
+        // An Input on Auto is live (handled in apply); an Output sends when
+        // its value is not the one it last sent.
+        if (e.kind !== "output" || !e.connection) continue;
+        const now = sample(e);
+        const last = this.#lastSent.get(e.id);
+        if (last?.width === now.width && last.value === now.value) continue;
+        this.#lastSent.set(e.id, now);
+        send(e, now);
+        continue;
+      }
       const anchor = triggerAnchor(e);
-      if (anchor == null) continue; // no trigger: an Output never fires,
-      // and an Input is live (handled in apply)
+      if (anchor == null) continue; // an edge with no line: never comes
       const now = high(anchor);
       const prev = this.#prevHigh.get(e.id) ?? e.triggerInit === "high";
       this.#prevHigh.set(e.id, now);
       if (!edgeFired(e.triggerEdge, prev, now)) continue;
       if (e.kind === "output") {
-        if (!e.connection) continue;
-        const { width, value } = packValue(e.fields, (pin) =>
-          high(e.tags?.[String(pin)]?.anchor),
-        );
-        sends.push({
-          element: e,
-          index: elementIndex(elements, e),
-          width,
-          value,
-        });
+        if (e.connection) send(e, sample(e));
       } else {
         released.add(e.id);
       }

@@ -44,101 +44,17 @@ const path = require("path");
 const { spawnSync } = require("child_process");
 
 const { SerialLink } = require("../serial/link");
-const { FRAME, encodeFrame } = require("../serial/protocol");
-const { board, lastingBoard } = require("./serial-board");
+const {
+  FRAME,
+  encodeFrame,
+  encodeHello,
+  decodeHello,
+} = require("../serial/protocol");
+const { board, lastingBoard, ARDUINO_H, HOST_MAIN } = require("./serial-board");
 
 const CXX = ["c++", "clang++", "g++"].find(
   (cc) => spawnSync(cc, ["--version"], { stdio: "ignore" }).status === 0,
 );
-
-/** Runs a sketch's setup() and loop() as a host program, until stdin closes. */
-const HOST_MAIN = String.raw`
-int main() {
-  setup();
-  while (!Serial.eof) {
-    loop();
-    usleep(200);
-  }
-  return 0;
-}
-`;
-
-/** Just enough of the Arduino core for the generated header and a sketch. */
-const ARDUINO_H = String.raw`
-#pragma once
-#include <stdint.h>
-#include <stddef.h>
-#include <stdio.h>
-#include <string.h>
-#include <unistd.h>
-#include <fcntl.h>
-#include <time.h>
-
-typedef bool boolean;
-typedef uint8_t byte;
-
-static inline unsigned long millis() {
-  struct timespec ts;
-  clock_gettime(CLOCK_MONOTONIC, &ts);
-  return (unsigned long)(ts.tv_sec * 1000UL + ts.tv_nsec / 1000000UL);
-}
-
-#define SERIAL_8N1 0x06
-#define SERIAL_7E1 0x24
-
-class Print {
- public:
-  virtual ~Print() {}
-  virtual size_t write(uint8_t) = 0;
-  size_t write(const uint8_t* b, size_t n) {
-    size_t k = 0;
-    while (n--) k += write(*b++);
-    return k;
-  }
-  size_t write(const char* s) { return write((const uint8_t*)s, strlen(s)); }
-  size_t print(const char* s) { return write(s); }
-  size_t print(long v) {
-    char buf[24];
-    snprintf(buf, sizeof buf, "%ld", v);
-    return write(buf);
-  }
-  size_t print(int v) { return print((long)v); }
-  size_t print(unsigned v) { return print((long)v); }
-  size_t print(unsigned char v) { return print((long)v); }
-  size_t println() { return write("\r\n"); }
-  template <typename T> size_t println(T v) { size_t n = print(v); return n + println(); }
-};
-
-class Stream : public Print {
- public:
-  virtual int available() = 0;
-  virtual int read() = 0;
-};
-
-class HostSerial : public Stream {
- public:
-  void begin(unsigned long) { fcntl(0, F_SETFL, fcntl(0, F_GETFL) | O_NONBLOCK); }
-  void begin(unsigned long b, int) { begin(b); }
-  int available() {
-    if (pos_ < len_) return (int)(len_ - pos_);
-    ssize_t n = ::read(0, buf_, sizeof buf_);
-    if (n == 0) eof = true;
-    if (n <= 0) return 0;
-    len_ = (size_t)n;
-    pos_ = 0;
-    return (int)len_;
-  }
-  int read() { return available() ? buf_[pos_++] : -1; }
-  size_t write(uint8_t b) { return ::write(1, &b, 1) == 1 ? 1 : 0; }
-  using Print::write;
-  bool eof = false;
- private:
-  uint8_t buf_[256];
-  size_t len_ = 0, pos_ = 0;
-};
-
-extern HostSerial Serial;
-`;
 
 /** The sketch: an Output whose handler logs and answers with an Input. */
 const SKETCH =
@@ -298,7 +214,7 @@ test(
       });
       // begin() announced itself with session 0 before it was asked.
       assert.equal(frames[0].type, FRAME.HELLO_ACK);
-      assert.equal(frames[0].seq, 0);
+      assert.equal(decodeHello(frames[0].payload).session, 0);
     } finally {
       await link.close();
       child.kill();
@@ -512,9 +428,10 @@ test(
     const link = new SerialLink({ port, onInbound: (d) => inbound.push(d) });
     try {
       assert.equal((await link.handshake(b.header.signature)).ok, true);
-      const session = frames.find(
-        (f) => f.type === FRAME.HELLO_ACK && f.seq !== 0,
-      ).seq;
+      const { session } = frames
+        .filter((f) => f.type === FRAME.HELLO_ACK)
+        .map((f) => decodeHello(f.payload))
+        .find((h) => h.session !== 0);
       assert.deepEqual(await link.send(0, 9, 1), { ok: true }); // Input SEQ 1
       // The host's second HELLO, late: the sketch must answer it and nothing
       // more. Were it to reset, its next Input would be SEQ 1 again — which
@@ -522,8 +439,11 @@ test(
       child.stdin.write(
         encodeFrame({
           type: FRAME.HELLO,
-          seq: session,
-          payload: [1, 0, 0, 0, 0],
+          payload: encodeHello({
+            version: 1,
+            session,
+            signature: b.header.signature,
+          }),
         }),
       );
       assert.deepEqual(await link.send(0, 9, 2), { ok: true }); // Input SEQ 2
@@ -543,7 +463,7 @@ test(
 );
 
 test(
-  "a send nobody acknowledges takes the sketch offline until the next HELLO",
+  "a send nobody acknowledges takes the sketch out of the session, and it says so: the run stops",
   { skip: !CXX && "no C++ compiler" },
   async () => {
     // A 40 ms ACK timeout in the sketch, so its three sends fail quickly.
@@ -559,21 +479,35 @@ test(
       mangle: (buf) => (buf[1] === FRAME.ACK ? null : buf),
     });
     let log = "";
+    let restarts = 0;
     const link = new SerialLink({
       port,
       timeoutMs: 200,
       onLog: (t) => (log += t),
+      onRestart: () => restarts++,
     });
     try {
       assert.equal((await link.handshake(b.header.signature)).ok, true);
-      // The handler's Input goes unanswered three times; the handler still
-      // returns, and its Output is still acknowledged.
-      assert.deepEqual(await link.send(0, 9, 1), { ok: true });
+      // The handler's Input goes unanswered three times. The sketch leaves
+      // the session — its handler's Output is never acknowledged — and
+      // announces it, so the host stops rather than wait on a deaf board.
+      assert.deepEqual(await link.send(0, 9, 1), {
+        ok: false,
+        code: "restart",
+      });
+      assert.equal(restarts, 1);
       assert.equal(frames.filter((f) => f.type === FRAME.INBOUND).length, 3);
-      // Offline now: the next Output is not the sketch's to answer.
+      const last = frames.filter((f) => f.type === FRAME.HELLO_ACK).at(-1);
+      assert.equal(decodeHello(last.payload).session, 0, "the announcement");
+      assert.equal(
+        frames.filter((f) => f.type === FRAME.ACK).length,
+        0,
+        "no ACK for the Output whose handler was running",
+      );
+      // The session is over on both sides: nothing more is sent.
       assert.deepEqual(await link.send(0, 9, 2), {
         ok: false,
-        code: "delivery",
+        code: "restart",
       });
       assert.equal((log.match(/call/g) ?? []).length, 1);
     } finally {

@@ -120,6 +120,7 @@ test("addBoardAt mounts, selects, and emits chiphippo:doc-changed", () => {
     y: 3.6,
     rot: 0, // pin-boards never turn
     group: null, // a strip added on its own is loose
+    name: "bb1", // named after its id, so a message quoting it can be traced
   });
   assert.equal(surface.querySelectorAll(".board").length, 1);
   assert.equal(controller.selectedId, "bb1");

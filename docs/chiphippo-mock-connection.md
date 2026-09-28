@@ -2,7 +2,7 @@
 
 A connection that is always present and needs no hardware. It plays the device side of the serial protocol inside ChipHippo and shows what it receives on screen, with controls to send inbound values and log lines back. It lets anyone build and test an integration — and lets us develop and test the whole feature — before a single wire is connected.
 
-Depends on: `chiphippo-serial-protocol.md` (and Revision 1), `chiphippo-connection-window.md`.
+Depends on: `src/web/docs/serial-protocol.md` (and Revision 1), `chiphippo-connection-window.md`.
 
 ---
 
@@ -31,10 +31,10 @@ Depends on: `chiphippo-serial-protocol.md` (and Revision 1), `chiphippo-connecti
 
 The mock is a virtual device holding the state a generated sketch would hold.
 
-- **Handshake:** answers `HELLO` (echoing its session) with protocol version 1 and the layout signature computed from the **current** design by the same `layoutSignature` the generator uses, so it is always in sync — it never needs regenerating. It follows the device's session rules (protocol §4): a new session resets its sequence state, a repeat does not.
-- **Start-up:** opening its port (Run) is the device resetting: it forgets any old session and announces the start (`HELLO_ACK`, `SEQ` 0), as a generated sketch's `begin()` does.
+- **Handshake:** answers `HELLO` (echoing its session) with protocol version 1 and the layout signature of the **current** design — the run hands it over as it opens the port, computed by the same `layoutSignature` the generator uses — so it is always in sync and never needs regenerating. It follows the device's session rules (protocol §5.3): a new session resets its sequence state and is joined only if the `HELLO` matches its version and layout; a repeat of the last session changes nothing.
+- **Start-up:** opening its port (Run) is the device resetting: it forgets any old session and announces the start (a `HELLO_ACK` for session 0), as a generated sketch's `begin()` does.
 - **OUTPUT received:** decodes it, writes it to the window, and acks it (it has no handler, so it acks immediately). A resend of the last one is re-acked and not written twice.
-- **Inbound:** holds a current value for every Inbound element on the mock connection (starting at 0). The user edits values in the send panel and presses **Send**, which sends one `INBOUND` frame for that element — the whole value, exactly as the generated setters + send function would. It is sent stop-and-wait with the protocol's resends; a value never acknowledged takes the mock offline until the next `HELLO`, as the header's rule is.
+- **Inbound:** holds a current value for every Inbound element on the mock connection (starting at 0). The user edits values in the send panel and presses **Send**, which sends one `INBOUND` frame for that element — the whole value, exactly as the generated setters + send function would. It is sent stop-and-wait with the protocol's resends; a value never acknowledged takes the mock out of the session — it announces that (a `HELLO_ACK` for session 0), which stops the run — and it stays offline until the next session, as the header's rule is.
 - **Log:** a text field in the send panel sends its contents as `LOG` frames, so the log path can be tested too.
 - **Lamps:** TX, RX and LG behave exactly as for a real board.
 - Port lifecycle: "opens" on Run, "closes" on Stop, like any connection.
@@ -54,7 +54,7 @@ Status    addr    [0][0][0][1] [0][0][1][0]   0x12A5        [Send]
                   [1][0][1][0] [0][1][0][1]
 ```
 
-- One line per **field**, in order (an element is a list of bit / byte / word fields, protocol §3.2), under its name:
+- One line per **field**, in order (an element is a list of bit / byte / word fields, protocol §4.2), under its name:
   - A bit field: one toggle.
   - A byte or word field: bit toggles, MSB first, plus an editable hex field; editing either updates the other. A word stacks its high byte over its low one, so the bits column is always one byte wide.
 - The rows share one set of columns, so field names, bits, hex fields and Send buttons line up down the panel. A window too narrow for that puts each element's name on a line of its own, beside its Send, with its fields beneath.

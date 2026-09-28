@@ -1217,6 +1217,7 @@
       "input": "Ingresso {n}"
     },
     "edge": {
+      "auto": "Auto",
       "rising": "Salita",
       "falling": "Discesa",
       "either": "Entrambi"
@@ -1226,6 +1227,7 @@
       "byte": "Byte",
       "word": "Word"
     },
+    "protocolDoc": "Riferimento del protocollo seriale",
     "widthLabel": "Larghezza",
     "widthOption": {
       "one": "{count} pin",
@@ -1281,6 +1283,7 @@
     "verify": {
       "title": "Le impostazioni vanno verificate",
       "noConnection": "{name} non è assegnato a nessuna connessione. Scegline una nelle sue Proprietà.",
+      "noTrigger": "{name} attende un trigger, ma la sua etichetta del trigger non è sulla breadboard. Trascinala su una linea, oppure imposta il Trigger su Auto nelle sue Proprietà.",
       "unknownConnection": "La connessione usata da {name} non è configurata su questo computer. Sceglierne una nelle sue Proprietà.",
       "unconfigured": "La connessione «{name}» va configurata in Impostazioni ▸ I/O seriale prima che il circuito possa funzionare.",
       "portMissing": "La porta {port} della connessione «{name}» non è disponibile.",
@@ -1302,8 +1305,8 @@
       "noResponse": "Nessuno ha risposto su {port} per «{name}». Lo sketch è caricato, e chiama ChipHippo.begin() e ChipHippo.poll()?",
       "openFailedTitle": "Impossibile aprire la porta",
       "openFailed": "Impossibile aprire {port} per «{name}»: {detail}",
-      "restartTitle": "Scheda riavviata",
-      "restart": "«{name}» si è riavviata mentre il circuito funzionava, quindi il circuito si è fermato. Avvialo di nuovo per riconnetterti."
+      "restartTitle": "La scheda ha lasciato l'esecuzione",
+      "restart": "«{name}» ha lasciato l'esecuzione — si è riavviata o non sente più Chip Hippo — quindi il circuito si è fermato. Avvialo di nuovo per riconnetterti."
     },
     "lamps": {
       "label": "Attività seriale",
@@ -1334,7 +1337,7 @@
         "openPort": "Porta {port} aperta",
         "close": "Porta chiusa",
         "handshake": "Handshake riuscito: protocollo v{version}, firma {signature}",
-        "announce": "il dispositivo ha annunciato un avvio",
+        "announce": "il dispositivo non è in nessuna sessione",
         "staleAck": "obsoleto, ignorato",
         "nakIdle": "niente da rinviare",
         "resend": "rinvio di seq {seq} (tentativo {attempt}/{max})",
@@ -1353,7 +1356,7 @@
         "noResponse": "Nessuna risposta a HELLO in {seconds} s",
         "version": "Il dispositivo usa il protocollo v{version}; Chip Hippo usa v{host}",
         "signature": "Il dispositivo è stato costruito per il layout {signature}, non {expected}",
-        "restart": "Il dispositivo si è riavviato",
+        "restart": "Il dispositivo ha lasciato la sessione (si è riavviato o non sente più Chip Hippo)",
         "dropped": "Connessione interrotta",
         "droppedDetail": "Connessione interrotta: {detail}",
         "openFailed": "Impossibile aprire la porta: {detail}"

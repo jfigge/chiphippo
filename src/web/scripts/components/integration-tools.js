@@ -38,6 +38,7 @@ import { SIGNAL_COLORS } from "../model/signals.js";
 import {
   DROP_WIDTHS,
   MAX_ELEMENTS,
+  TRIGGER_EDGES,
   elementSeq,
   nextTagRotation,
   tagId,
@@ -53,10 +54,10 @@ const DRAG_THRESHOLD = 4;
 
 const IS_MAC = globalThis.window?.chiphippo?.platform === "darwin";
 
-/** The trigger's choices — functions, never consts: `t()` must not run at
-    module scope. */
+/** The trigger's choices — Auto, then the three edges — as functions, never
+    consts: `t()` must not run at module scope. */
 const edgeOptions = () =>
-  ["rising", "falling", "either"].map((value) => ({
+  TRIGGER_EDGES.map((value) => ({
     value,
     label: t(`integration.edge.${value}`),
   }));
@@ -509,6 +510,8 @@ export class IntegrationTools {
           label: t("integration.properties.triggerInit"),
           type: "segmented",
           options: initOptions(),
+          // What a trigger LINE was before the run: Auto watches none.
+          disabledWhen: (values) => values.triggerEdge === "auto",
         },
         {
           key: "fields",
@@ -547,6 +550,16 @@ export class IntegrationTools {
       }
     } catch {
       return;
+    }
+    // A change here can take a tag off the board — the trigger, parked by a
+    // switch to Auto, or a pin past a narrower field list — and a selection
+    // left on it would light nothing and answer Delete and R for nothing.
+    const sel = h.selectedTag;
+    if (
+      sel?.elementId === elementId &&
+      !h.doc.getIntegration(elementId)?.tags?.[sel.key]
+    ) {
+      h.forgetTag();
     }
     h.emitDocChanged("set element properties", { coalesce: true });
   }

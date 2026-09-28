@@ -32,9 +32,10 @@ import { MOCK_CONNECTION } from "../model/serial-connections.js";
 const { DeskController } = await import("../components/desk-controller.js");
 const { PopupManager } = await import("../popup-manager.js");
 
-function mount({ connections = [MOCK_CONNECTION] } = {}) {
+function mount({ connections = [MOCK_CONNECTION], setup } = {}) {
   resetDom();
   const deskDoc = new DeskDoc(null);
+  setup?.(deskDoc);
   const viewport = document.createElement("section");
   const surface = document.createElement("div");
   viewport.append(surface);
@@ -153,6 +154,82 @@ test("Properties: Manage connections is the gear beside the Connection picker, n
     gear.click();
     assert.deepEqual(settings, ["integration"]);
     assert.equal(PopupManager.isOpen(), false, "the card closes first");
+  } finally {
+    while (PopupManager.isOpen()) PopupManager.close();
+  }
+});
+
+test("Properties: Auto leads the Trigger picker, and greys out Trigger starts", () => {
+  let out;
+  const { deskDoc, controller } = mount({
+    setup: (doc) => {
+      doc.addBoard("pins-full", 0, 0);
+      out = doc.addIntegration({ kind: "output", connection: "mock" }).id;
+      doc.plantIntegrationTag(out, "T", "bb1.a9");
+    },
+  });
+  const row = (label) =>
+    [...document.querySelectorAll(".properties-row")].find(
+      (r) => r.querySelector(".properties-label")?.textContent === label,
+    );
+  const segment = (r, label) =>
+    [...r.querySelectorAll(".segmented-option")].find(
+      (b) => b.textContent === label,
+    );
+  try {
+    // Right-click the planted trigger: the menu selects it, then Properties…
+    document
+      .querySelector(`[data-tag-id="${out}:T"]`)
+      .dispatchEvent(new window.MouseEvent("contextmenu", { bubbles: true }));
+    assert.equal(controller.selectedId, `${out}:T`);
+    [...document.querySelectorAll(".popup-menu-item, [role=menuitem]")]
+      .find((b) => b.textContent.trim() === "Properties…")
+      .click();
+
+    const trigger = row("Trigger");
+    assert.deepEqual(
+      [...trigger.querySelectorAll(".segmented-option")].map(
+        (b) => b.textContent,
+      ),
+      ["Auto", "Rising", "Falling", "Either"],
+    );
+    const starts = row("Trigger starts");
+    assert.ok(!starts.classList.contains("properties-row--disabled"));
+
+    segment(trigger, "Auto").click();
+    assert.ok(starts.classList.contains("properties-row--disabled"));
+    assert.ok(
+      [...starts.querySelectorAll("button")].every((b) => b.disabled),
+      "its segments take no input",
+    );
+    const parked = deskDoc.getIntegration(out);
+    assert.equal(parked.tags, undefined, "the trigger left the board");
+    assert.equal(parked.parkedTrigger.anchor, "bb1.a9", "remembered");
+    assert.equal(controller.selectedId, null, "and its selection with it");
+
+    segment(trigger, "Falling").click();
+    assert.ok(!starts.classList.contains("properties-row--disabled"));
+    assert.ok([...starts.querySelectorAll("button")].every((b) => !b.disabled));
+    assert.equal(deskDoc.getIntegration(out).tags.T.anchor, "bb1.a9", "back");
+  } finally {
+    while (PopupManager.isOpen()) PopupManager.close();
+  }
+});
+
+test("Properties: an Input opens on Auto with Trigger starts already greyed", () => {
+  const { deskDoc, controller } = mount();
+  const inp = deskDoc.addIntegration({ kind: "input", connection: "mock" });
+  try {
+    controller.openIntegrationProperties(inp.id);
+    const starts = [...document.querySelectorAll(".properties-row")].find(
+      (r) =>
+        r.querySelector(".properties-label")?.textContent === "Trigger starts",
+    );
+    assert.ok(starts.classList.contains("properties-row--disabled"));
+    const active = document.querySelector(
+      ".properties-row .segmented-option--active",
+    );
+    assert.equal(active.textContent, "Auto");
   } finally {
     while (PopupManager.isOpen()) PopupManager.close();
   }

@@ -1217,6 +1217,7 @@
       "input": "Entrada {n}"
     },
     "edge": {
+      "auto": "Auto",
       "rising": "Subida",
       "falling": "Bajada",
       "either": "Ambos"
@@ -1226,6 +1227,7 @@
       "byte": "Byte",
       "word": "Palabra"
     },
+    "protocolDoc": "Referencia del protocolo serie",
     "widthLabel": "Ancho",
     "widthOption": {
       "one": "{count} pin",
@@ -1281,6 +1283,7 @@
     "verify": {
       "title": "Hay que verificar la configuración",
       "noConnection": "{name} no tiene ninguna conexión asignada. Elige una en sus Propiedades.",
+      "noTrigger": "{name} espera un disparador, pero su etiqueta de disparador no está en la placa de pruebas. Arrástrala a una línea o pon su Disparador en Auto en sus Propiedades.",
       "unknownConnection": "La conexión que usa {name} no está configurada en este equipo. Elija una en sus Propiedades.",
       "unconfigured": "La conexión «{name}» debe configurarse en Ajustes ▸ E/S serie antes de que el circuito pueda funcionar.",
       "portMissing": "El puerto {port} de la conexión «{name}» no está disponible.",
@@ -1302,8 +1305,8 @@
       "noResponse": "Nada respondió en {port} para «{name}». ¿Está cargado el sketch y llama a ChipHippo.begin() y ChipHippo.poll()?",
       "openFailedTitle": "No se pudo abrir el puerto",
       "openFailed": "No se pudo abrir {port} para «{name}»: {detail}",
-      "restartTitle": "Placa reiniciada",
-      "restart": "«{name}» se reinició mientras el circuito funcionaba, así que el circuito se ha detenido. Ejecútalo de nuevo para volver a conectar."
+      "restartTitle": "La placa abandonó la ejecución",
+      "restart": "«{name}» abandonó la ejecución —se reinició o dejó de oír a Chip Hippo—, así que el circuito se ha detenido. Ejecútalo de nuevo para volver a conectar."
     },
     "lamps": {
       "label": "Actividad serie",
@@ -1334,7 +1337,7 @@
         "openPort": "Puerto {port} abierto",
         "close": "Puerto cerrado",
         "handshake": "Saludo correcto: protocolo v{version}, firma {signature}",
-        "announce": "el dispositivo anunció un arranque",
+        "announce": "el dispositivo no está en ninguna sesión",
         "staleAck": "obsoleto, ignorado",
         "nakIdle": "nada que reenviar",
         "resend": "reenviando seq {seq} (intento {attempt}/{max})",
@@ -1353,7 +1356,7 @@
         "noResponse": "Sin respuesta a HELLO en {seconds} s",
         "version": "El dispositivo habla el protocolo v{version}; Chip Hippo habla v{host}",
         "signature": "El dispositivo se construyó para la disposición {signature}, no {expected}",
-        "restart": "El dispositivo se reinició",
+        "restart": "El dispositivo abandonó la sesión (se reinició o dejó de oír a Chip Hippo)",
         "dropped": "Conexión perdida",
         "droppedDetail": "Conexión perdida: {detail}",
         "openFailed": "No se pudo abrir el puerto: {detail}"

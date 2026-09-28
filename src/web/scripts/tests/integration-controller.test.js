@@ -174,6 +174,29 @@ test("preflight: an element with no connection refuses, and offers its Propertie
   }
 });
 
+test("preflight: an element waiting for an edge with no trigger tag refuses, naming it", () => {
+  const { controller, calls } = mount();
+  const { doc, out } = design();
+  doc.unplantIntegrationTag(out, "T");
+  try {
+    assert.equal(controller.preflight(doc), false);
+    const p = popup();
+    assert.equal(p.title, "Settings need to be verified");
+    assert.equal(p.message, "Lamp waits for a trigger, but its trigger tag isn't on the breadboard. Drag it onto a line, or set its Trigger to Auto in its Properties."); // prettier-ignore
+    p.buttons.find((b) => b.textContent === "Open Properties").click();
+    assert.deepEqual(calls.props, [out]);
+  } finally {
+    closeAll();
+  }
+});
+
+test("preflight: on Auto an element needs no trigger tag at all", async () => {
+  const { controller } = mount();
+  const { doc, out } = design();
+  doc.updateIntegration(out, { triggerEdge: "auto" });
+  assert.equal(await controller.preflight(doc), true);
+});
+
 test("preflight: a connection needing configuration refuses, and offers Settings ▸ Integration", () => {
   const { controller, calls } = mount({
     connections: [{ ...NANO, needsConfig: true }],
@@ -302,6 +325,29 @@ test("the boundary STALLS on an Output until it is acknowledged, then applies wh
   assert.deepEqual([...controller.levels()], [[`${inp}:1`, "H"]]);
 });
 
+test("an Output on Auto goes out at the first boundary, then on each change", async () => {
+  const { controller, calls } = mount();
+  const { doc, out } = design();
+  doc.updateIntegration(out, { triggerEdge: "auto" });
+  await controller.begin(doc);
+  const first = controller.settled(board({ "bb1.a10": "L" }));
+  assert.ok(
+    first instanceof Promise,
+    "the starting value stalls like any send",
+  );
+  await first;
+  assert.equal(
+    controller.settled(board({ "bb1.a10": "L" })),
+    null,
+    "unchanged",
+  );
+  await controller.settled(board({ "bb1.a10": "H" }));
+  assert.deepEqual(calls.send, [
+    ["conn-a", 0, 1, 0],
+    ["conn-a", 0, 1, 1],
+  ]);
+});
+
 test("a LIVE Input arriving on a quiet board wakes it", async () => {
   const { controller, sim, emit } = mount();
   await controller.begin(design().doc);
@@ -314,6 +360,38 @@ test("a LIVE Input arriving on a quiet board wakes it", async () => {
   assert.equal(sim.wakes, 1, "an Input the desk does not have is ignored");
   emit("serial-inbound", { id: "conn-a", index: 0, width: 8, value: 0 });
   assert.equal(sim.wakes, 1, "…and so is one of the wrong width");
+});
+
+test("an Input sent the moment its device is greeted — before the run has finished opening — is kept", async () => {
+  // A device runs onConnect as soon as ITS handshake completes, and main
+  // ACKs the value at once, so it arrives while the renderer is still
+  // waiting on serial.open (every connection's handshake). Dropped there, it
+  // would never be sent again.
+  const { controller, sim, emit } = mount();
+  const { doc, inp } = design();
+  const begun = controller.begin(doc); // serial.open is still pending…
+  emit("serial-inbound", { id: "conn-a", index: 0, width: 1, value: 1 });
+  assert.equal(controller.running, false, "…when the value arrives");
+  assert.equal(sim.wakes, 0, "nothing to wake: the circuit is not running yet");
+  assert.equal(await begun, true);
+  // The first boundary puts it on the board.
+  assert.deepEqual(controller.settled(board({ "bb1.a5": "L" })), {
+    again: true,
+  });
+  assert.deepEqual([...controller.levels()], [[`${inp}:1`, "H"]]);
+});
+
+test("an Input that arrives after Stop, or for a run that never opened, is dropped", async () => {
+  const { controller, emit } = mount({
+    openResult: { ok: false, id: "conn-a", code: "no-response" },
+  });
+  try {
+    assert.equal(await controller.begin(design().doc), false);
+    emit("serial-inbound", { id: "conn-a", index: 0, width: 1, value: 1 });
+    assert.equal(controller.levels().size, 0);
+  } finally {
+    closeAll();
+  }
 });
 
 test("a delivery that fails stops the run, naming the connection", async () => {
@@ -372,10 +450,10 @@ test("a device restarting mid-run stops the run by name", async () => {
   try {
     emit("serial-restart", { id: "conn-a" });
     assert.equal(sim.stops, 1);
-    assert.equal(popup().title, "Board restarted");
+    assert.equal(popup().title, "Board left the run");
     assert.match(
       popup().message,
-      /“Nano” restarted while the circuit was running/,
+      /“Nano” left the run — it restarted, or stopped hearing Chip Hippo/,
     );
   } finally {
     closeAll();
@@ -394,7 +472,7 @@ test("an Output failed by that restart says so once, not as a delivery failure",
     await controller.settled(board({ "bb1.a5": "H" }));
     emit("serial-restart", { id: "conn-a" });
     assert.equal(sim.stops, 1);
-    assert.equal(popup().title, "Board restarted");
+    assert.equal(popup().title, "Board left the run");
   } finally {
     closeAll();
   }

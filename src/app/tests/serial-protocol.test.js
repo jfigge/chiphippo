@@ -16,12 +16,13 @@
 
 /**
  * tests/serial-protocol.test.js — the serial protocol v1's bytes
- * (docs/chiphippo-serial-protocol.md): the two CRCs' check values, byte
- * stuffing (CRC bytes included), the streaming decoder's resync and its three
- * ways a frame is damaged, and the data and HELLO payloads. The byte strings
- * below are the protocol document's worked example, computed; the generated
- * C++ header transcribes the same rules, which serial-arduino-header.test.js
- * proves against a real compiler.
+ * (src/web/docs/serial-protocol.md): the two CRCs' check values, byte
+ * stuffing in every field (CRC bytes included), the size limits, the
+ * streaming decoder's resync and its three ways a frame is damaged, and the
+ * data and HELLO payloads. The protocol page's own worked examples are held
+ * to the encoder by serial-protocol-doc.test.js; the generated C++ header
+ * transcribes the same rules, which serial-arduino-header.test.js proves
+ * against a real compiler.
  */
 
 "use strict";
@@ -42,6 +43,10 @@ const {
   decodeData,
   encodeHello,
   decodeHello,
+  owesNak,
+  MAX_PAYLOAD,
+  MAX_FRAME_BODY,
+  MAX_WIRE_FRAME,
 } = require("../serial/protocol");
 
 const hex = (buf) =>
@@ -82,6 +87,43 @@ test("the worked example: OUTPUT 0, width 8, value 0x7E, SEQ 1 — and its ACK",
   );
 });
 
+test("HELLO and HELLO_ACK carry the session in the payload, SEQ 0, at every width", () => {
+  const signature = crc32(Buffer.from("O0:8,O1:1,I0:16", "ascii"));
+  assert.equal(signature, 0xf8acb506);
+  for (const session of [0, 1, 255, 256, 0x7d7e, 65535]) {
+    const payload = encodeHello({ version: 1, session, signature });
+    assert.deepEqual(payload.slice(0, 3), [1, session & 0xff, session >> 8]);
+    for (const type of [FRAME.HELLO, FRAME.HELLO_ACK]) {
+      const [got] = new FrameDecoder().push(encodeFrame({ type, payload }));
+      assert.equal(got.ok, true);
+      assert.equal(got.seq, 0);
+      assert.deepEqual(decodeHello(got.payload), {
+        version: 1,
+        session,
+        signature,
+      });
+    }
+  }
+});
+
+test("an INBOUND, a LOG and a NAK", () => {
+  assert.equal(
+    hex(
+      encodeFrame({
+        type: FRAME.INBOUND,
+        seq: 1,
+        payload: encodeData(0, 16, 0xbeef),
+      }),
+    ),
+    "7E 11 01 04 00 10 EF BE 88 B7",
+  );
+  assert.equal(
+    hex(encodeFrame({ type: FRAME.LOG, payload: Buffer.from("ok\n") })),
+    "7E 20 00 03 6F 6B 0A 04 61",
+  );
+  assert.equal(hex(encodeFrame({ type: FRAME.NAK })), "7E 15 00 00 0F 64");
+});
+
 test("escaping reaches the CRC bytes too, and round-trips", () => {
   // ACK 16's CRC is 0x7D4F (CRC_HI is ESC); ACK 17's is 0x4E7E (CRC_LO is START).
   const a16 = encodeFrame({ type: FRAME.ACK, seq: 16 });
@@ -111,6 +153,67 @@ test("a payload full of markers never puts a raw START after the first byte", ()
   assert.equal(decoded.ok, true);
   assert.equal(decoded.seq, START);
   assert.deepEqual([...decoded.payload], payload);
+});
+
+test("an escaped LEN: 125- and 126-byte payloads say 0x7D and 0x7E, escaped", () => {
+  for (const n of [0x7d, 0x7e]) {
+    const payload = Array.from({ length: n }, (_, i) => (i * 7) & 0xff);
+    const frame = encodeFrame({ type: FRAME.LOG, payload });
+    assert.deepEqual([...frame.subarray(3, 5)], [ESC, n ^ 0x20], `LEN ${n}`);
+    const [got] = new FrameDecoder().push(frame);
+    assert.equal(got.ok, true);
+    assert.deepEqual([...got.payload], payload);
+  }
+});
+
+test("the size limits: 255-byte payload, 260-byte body, 521 bytes on the wire at worst", () => {
+  assert.equal(MAX_PAYLOAD, 255);
+  assert.equal(MAX_FRAME_BODY, 260);
+  assert.equal(MAX_WIRE_FRAME, 521);
+  const worst = encodeFrame({
+    type: FRAME.LOG,
+    seq: ESC,
+    payload: new Array(255).fill(START),
+  });
+  assert.ok(worst.length <= MAX_WIRE_FRAME, `${worst.length} bytes`);
+  assert.equal(new FrameDecoder().push(worst)[0].ok, true);
+});
+
+test("a payload limit must be 0–255", () => {
+  assert.throws(() => new FrameDecoder({ maxPayload: 256 }), RangeError);
+  assert.throws(() => new FrameDecoder({ maxPayload: -1 }), RangeError);
+  assert.doesNotThrow(() => new FrameDecoder({ maxPayload: 7 }));
+});
+
+test("a frame never grows past its LEN: bytes after it are hunted through, not held", () => {
+  // A START, a LOG header claiming 3 bytes, then far more than that with no
+  // START: the frame ends — damaged — at its own length, and the rest is
+  // discarded until a START. One report, however long the garbage.
+  const d = new FrameDecoder({ maxPayload: 7 });
+  const garbage = Array.from({ length: 1000 }, (_, i) => (i % 0x7c) + 1);
+  const out = d.push([START, FRAME.LOG, 0, 3, ...garbage]);
+  assert.deepEqual(out, [{ ok: false, error: "crc", type: FRAME.LOG, seq: 0 }]);
+  const [next] = d.push(encodeFrame({ type: FRAME.ACK, seq: 3 }));
+  assert.equal(next.ok, true, "and the next START is found");
+});
+
+test("a START inside a frame tears it: dropped without a report, and the new frame read", () => {
+  const whole = encodeFrame({ type: FRAME.ACK, seq: 4 });
+  const torn = encodeFrame({
+    type: FRAME.OUTPUT,
+    seq: 2,
+    payload: encodeData(0, 8, 9),
+  });
+  for (let cut = 1; cut < torn.length; cut++) {
+    const out = new FrameDecoder().push(
+      Buffer.concat([torn.subarray(0, cut), whole]),
+    );
+    assert.deepEqual(
+      out.map((f) => [f.ok, f.type, f.seq]),
+      [[true, FRAME.ACK, 4]],
+      `torn after ${cut} bytes`,
+    );
+  }
 });
 
 test("a 255-byte payload round-trips; 256 is refused", () => {
@@ -178,6 +281,17 @@ test("a corrupted byte is a CRC failure, carrying TYPE and SEQ as they arrived",
   assert.equal(next.ok, true, "and the decoder is hunting again");
 });
 
+test("the CRC is little-endian: the same bytes sent high byte first are damage", () => {
+  const frame = encodeFrame({ type: FRAME.ACK, seq: 3 });
+  const [lo, hi] = [frame.at(-2), frame.at(-1)];
+  assert.notEqual(lo, hi);
+  const swapped = Buffer.concat([frame.subarray(0, -2), Buffer.from([hi, lo])]);
+  assert.deepEqual(new FrameDecoder().push(swapped), [
+    { ok: false, error: "crc", type: FRAME.ACK, seq: 3 },
+  ]);
+  assert.equal(crc16([FRAME.ACK, 3, 0]), lo | (hi << 8));
+});
+
 test("an escape followed by anything but 0x5E/0x5D is a corrupt frame", () => {
   const d = new FrameDecoder();
   const [got] = d.push([START, FRAME.LOG, 7, 2, ESC, 0x41]);
@@ -238,10 +352,37 @@ test("decodeData masks stray high bits and rejects a payload of the wrong shape"
   assert.equal(decodeData([0, 17, 1, 0]), null);
 });
 
-test("HELLO carries the version and the layout signature", () => {
-  const hello = { version: 1, signature: 0xf8acb506 };
-  assert.deepEqual(encodeHello(hello), [1, 0x06, 0xb5, 0xac, 0xf8]);
+test("HELLO carries the version, a 16-bit session and the layout signature", () => {
+  const hello = { version: 1, session: 0x1234, signature: 0xf8acb506 };
+  assert.deepEqual(encodeHello(hello), [1, 0x34, 0x12, 0x06, 0xb5, 0xac, 0xf8]);
   assert.deepEqual(decodeHello(encodeHello(hello)), hello);
-  assert.equal(decodeHello([1, 2, 3]), null);
-  assert.equal(decodeHello([1, 2, 3, 4, 5, 6]), null);
+});
+
+test("a HELLO shorter than three bytes is nothing; version and session read from any longer one", () => {
+  assert.equal(decodeHello([]), null);
+  assert.equal(decodeHello([1, 2]), null);
+  // Three to six bytes, or eight: the shared prefix, but no v1 signature.
+  for (const n of [3, 4, 6, 8, 11]) {
+    const payload = [2, 0x05, 0x01, 9, 9, 9, 9, 9, 9, 9, 9].slice(0, n);
+    assert.deepEqual(decodeHello(payload), {
+      version: 2,
+      session: 0x0105,
+      signature: null,
+    });
+  }
+});
+
+test("a NAK is owed for damage to anything but HELLO, HELLO_ACK, ACK, NAK and LOG", () => {
+  for (const t of [
+    FRAME.HELLO,
+    FRAME.HELLO_ACK,
+    FRAME.ACK,
+    FRAME.NAK,
+    FRAME.LOG,
+  ]) {
+    assert.equal(owesNak(t), false, `0x${t.toString(16)}`);
+  }
+  for (const t of [FRAME.OUTPUT, FRAME.INBOUND, 0x33, null]) {
+    assert.equal(owesNak(t), true, String(t));
+  }
 });

@@ -19,11 +19,14 @@
 //
 // An element is a card on the desk's right-edge rail (under the signal
 // buttons) plus a set of TAGS — small numbered pointers, one per pin, whose
-// point plugs into one breadboard hole, and one optional TRIGGER tag. An
-// OUTPUT samples its pins when its trigger line shows the configured edge and
-// sends the value to the Arduino; an INPUT drives its pins with whatever the
-// Arduino last sent — straight away (no trigger tag: "live"), or when its
-// trigger line shows the edge ("triggered").
+// point plugs into one breadboard hole, and a TRIGGER tag for an element that
+// waits for an edge. An OUTPUT samples its pins and sends the value to the
+// Arduino — when its trigger line shows the configured edge, or on AUTO
+// whenever the value changes; an INPUT drives its pins with whatever the
+// Arduino last sent — on AUTO straight away ("live"), or when its trigger line
+// shows the edge ("triggered"). Auto is a trigger setting like the edges, not
+// the absence of a tag: an element on Auto has no trigger tag at all, and one
+// waiting for an edge must have its tag on the board before the circuit runs.
 //
 // It is the signal flag's arrangement one step on (model/signals.js), and for
 // the same reason it is not a component: no footprint, no catalog def, no BOM
@@ -66,8 +69,28 @@ export const MAX_ELEMENT_PINS = MAX_WIDTH;
 /** The widths offered when an element is dropped (the bus sizes, plus 1). */
 export const DROP_WIDTHS = Object.freeze([1, 2, 4, 8, 16]);
 
-/** Which transition of the trigger line fires (Output) or releases (Input). */
-export const TRIGGER_EDGES = Object.freeze(["rising", "falling", "either"]);
+/** When an element acts. AUTO watches no line: an Output sends whenever its
+    settled value changes, an Input applies each value as it arrives. The
+    others are which transition of the trigger line fires (Output) or releases
+    (Input). Auto leads, since the picker lists them in this order. */
+export const TRIGGER_EDGES = Object.freeze([
+  "auto",
+  "rising",
+  "falling",
+  "either",
+]);
+
+/** The trigger a new element starts on: an Output waits for a strobe (its
+    pins are often valid only at one), an Input takes values as they come. */
+export const DEFAULT_TRIGGER_EDGE = Object.freeze({
+  output: "rising",
+  input: "auto",
+});
+
+/** Is this element on AUTO — no trigger line, and so no trigger tag? */
+export function isAutoTrigger(element) {
+  return element?.triggerEdge === "auto";
+}
 
 /** What the trigger line is taken to have been BEFORE the first settle. */
 export const TRIGGER_INITS = Object.freeze(["low", "high"]);
@@ -196,15 +219,17 @@ export function isPinKey(key) {
   return /^([1-9]|1[0-6])$/.test(String(key ?? ""));
 }
 
-/** Every tag key an element has, pins first then the trigger. */
+/** Every tag key an element has, pins first then the trigger — which an
+    element on Auto does not have at all. */
 export function tagKeys(element) {
   const n = pinCount(element?.fields);
-  return [...Array.from({ length: n }, (_, i) => String(i + 1)), TRIGGER_KEY];
+  const pins = Array.from({ length: n }, (_, i) => String(i + 1));
+  return isAutoTrigger(element) ? pins : [...pins, TRIGGER_KEY];
 }
 
 /** Is `key` one of this element's tags? */
 export function hasTagKey(element, key) {
-  if (key === TRIGGER_KEY) return true;
+  if (key === TRIGGER_KEY) return !isAutoTrigger(element);
   return isPinKey(key) && Number(key) <= pinCount(element?.fields);
 }
 
@@ -235,11 +260,18 @@ export const normalizeTagRotation = normalizeFlagRotation;
  * mutator, so "a valid element" has one definition — the signal fields' rule
  * too: a colour that is not a signal colour is REPAIRED, never a reason to
  * drop the element.
+ * A missing or unknown trigger takes its KIND's default
+ * (`DEFAULT_TRIGGER_EDGE`), the kind read off the id when there is one — as
+ * the loader does, never trusting a field that could disagree with it — and
+ * off `raw.kind` for an element still being minted.
  * @param {object} raw
  * @param {Array<{color?: string}>} [others] the colours it joins (signals and
  *   other elements), for the repair
  */
 export function normalizeElementFields(raw, others = []) {
+  const kind =
+    elementKindOf(raw?.id) ??
+    (ELEMENT_KINDS.includes(raw?.kind) ? raw.kind : "output");
   return {
     color: SIGNAL_COLORS.includes(raw?.color)
       ? raw.color
@@ -250,7 +282,7 @@ export function normalizeElementFields(raw, others = []) {
         : null,
     triggerEdge: TRIGGER_EDGES.includes(raw?.triggerEdge)
       ? raw.triggerEdge
-      : "rising",
+      : DEFAULT_TRIGGER_EDGE[kind],
     triggerInit: TRIGGER_INITS.includes(raw?.triggerInit)
       ? raw.triggerInit
       : "low",
@@ -263,10 +295,11 @@ export function normalizeElementFields(raw, others = []) {
 /**
  * Did the trigger line do what the element waits for, between two settles?
  * Levels are booleans — HIGH or not — because a floating or unknown line is
- * not a transition to anything.
+ * not a transition to anything. Auto waits for no line, so no transition is
+ * ever its edge.
  */
 export function edgeFired(edge, prevHigh, nowHigh) {
-  if (prevHigh === nowHigh) return false;
+  if (prevHigh === nowHigh || edge === "auto") return false;
   if (edge === "either") return true;
   return edge === "rising" ? nowHigh : !nowHigh;
 }
@@ -326,7 +359,7 @@ export function describeFields(fields, value) {
     up, so an element's index moves only when one before it is added or
     removed. This is the order the generated header numbers them, the element
     index in every data frame, and the order the layout signature lists them:
-    ONE ordering, so the three can never disagree (protocol §6). */
+    ONE ordering, so the three can never disagree (protocol §7). */
 export function elementsFor(elements, connectionId, kind) {
   return (elements ?? [])
     .filter((e) => e.connection === connectionId && e.kind === kind)
@@ -359,7 +392,7 @@ export function connectionLayout(elements, connectionId) {
 
 /**
  * The layout one connection's sketch is built for, as the protocol spells it
- * (§6): every Output, then every Input, in wire order, each as
+ * (§7.2): every Output, then every Input, in wire order, each as
  * `<O|I><index>:<field widths in order, joined by +>` — `O0:8+1,O1:1,I0:16`.
  * What decides which bits reach which parameter is in it — the field
  * boundaries, not only the total, or a `[bit, byte]` reordered to

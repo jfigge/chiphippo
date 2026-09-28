@@ -47,7 +47,12 @@ const path = require("path");
 const { spawnSync } = require("child_process");
 
 const { SerialLink } = require("../serial/link");
-const { FRAME, encodeFrame } = require("../serial/protocol");
+const {
+  FRAME,
+  encodeFrame,
+  encodeHello,
+  decodeHello,
+} = require("../serial/protocol");
 const { board, lastingBoard } = require("./serial-board");
 
 const INTERPRETERS = ["python3", "micropython"].map((cmd) => ({
@@ -208,7 +213,7 @@ for (const { cmd, present } of INTERPRETERS) {
         assert.deepEqual(r.device, { version: 1, signature: module.signature });
         // begin() announced itself with session 0 before it was asked.
         assert.equal(frames[0].type, FRAME.HELLO_ACK);
-        assert.equal(frames[0].seq, 0);
+        assert.equal(decodeHello(frames[0].payload).session, 0);
       } finally {
         await link.close();
         child.kill();
@@ -443,15 +448,19 @@ for (const { cmd, present } of INTERPRETERS) {
       const link = new SerialLink({ port, onInbound: (d) => inbound.push(d) });
       try {
         assert.equal((await link.handshake(module.signature)).ok, true);
-        const session = frames.find(
-          (f) => f.type === FRAME.HELLO_ACK && f.seq !== 0,
-        ).seq;
+        const { session } = frames
+          .filter((f) => f.type === FRAME.HELLO_ACK)
+          .map((f) => decodeHello(f.payload))
+          .find((h) => h.session !== 0);
         assert.deepEqual(await link.send(0, 9, 1), { ok: true });
         child.stdin.write(
           encodeFrame({
             type: FRAME.HELLO,
-            seq: session,
-            payload: [1, 0, 0, 0, 0],
+            payload: encodeHello({
+              version: 1,
+              session,
+              signature: module.signature,
+            }),
           }),
         );
         assert.deepEqual(await link.send(0, 9, 2), { ok: true });
@@ -472,7 +481,7 @@ for (const { cmd, present } of INTERPRETERS) {
 
   test(
     named(
-      "a send nobody acknowledges takes the program offline until the next HELLO",
+      "a send nobody acknowledges takes the program out of the session, and it says so: the run stops",
     ),
     { skip },
     async () => {
@@ -484,18 +493,27 @@ for (const { cmd, present } of INTERPRETERS) {
         mangle: (buf) => (buf[1] === FRAME.ACK ? null : buf),
       });
       let log = "";
+      let restarts = 0;
       const link = new SerialLink({
         port,
         timeoutMs: 200,
         onLog: (t) => (log += t),
+        onRestart: () => restarts++,
       });
       try {
         assert.equal((await link.handshake(module.signature)).ok, true);
-        assert.deepEqual(await link.send(0, 9, 1), { ok: true });
+        assert.deepEqual(await link.send(0, 9, 1), {
+          ok: false,
+          code: "restart",
+        });
+        assert.equal(restarts, 1);
         assert.equal(frames.filter((f) => f.type === FRAME.INBOUND).length, 3);
+        const last = frames.filter((f) => f.type === FRAME.HELLO_ACK).at(-1);
+        assert.equal(decodeHello(last.payload).session, 0, "the announcement");
+        assert.equal(frames.filter((f) => f.type === FRAME.ACK).length, 0);
         assert.deepEqual(await link.send(0, 9, 2), {
           ok: false,
-          code: "delivery",
+          code: "restart",
         });
         assert.equal((log.match(/call/g) ?? []).length, 1);
       } finally {
@@ -704,6 +722,49 @@ while not pipe.closed:
       assert.equal((await link.handshake(module.signature)).ok, true);
       assert.deepEqual(await link.send(0, 9, 12), { ok: true });
       assert.equal(log, "via stream 12\n");
+    } finally {
+      await link.close();
+      child.kill();
+    }
+  },
+);
+
+test(
+  "micropython: a 0x03 inside a damaged frame is the frame's own — only one between frames is a Ctrl-C",
+  { skip: !INTERPRETERS[1].present && "no micropython" },
+  async () => {
+    const { dir, module } = await prepare();
+    const { child, port } = board("micropython", {
+      args: ["prog.py"],
+      cwd: dir,
+      stderr: "pipe",
+    });
+    let stderr = "";
+    child.stderr.on("data", (d) => (stderr += d));
+    let exited = false;
+    child.once("exit", () => (exited = true));
+    const inbound = [];
+    const link = new SerialLink({ port, onInbound: (d) => inbound.push(d) });
+    try {
+      assert.equal((await link.handshake(module.signature)).ok, true);
+      // Three damaged frames whose remaining bytes are full of 0x03:
+      // a LEN past the payload limit (damaged as soon as it is read)…
+      child.stdin.write(
+        encodeFrame({ type: FRAME.OUTPUT, seq: 7, payload: [0, 8, 3, 3, 3, 3, 3, 3, 3, 3] }), // prettier-ignore
+      );
+      // …a bad escape before the LEN, the frame's bytes still to come…
+      child.stdin.write(Buffer.from([0x7e, FRAME.OUTPUT, 0x7d, 0x41, 4, 3, 3, 3, 3, 3, 3])); // prettier-ignore
+      // …and a later protocol version's HELLO, longer than this one's.
+      child.stdin.write(
+        encodeFrame({ type: FRAME.HELLO, payload: [2, 1, 2, 3, 3, 3, 3, 3, 3, 3, 3] }), // prettier-ignore
+      );
+      await new Promise((r) => setTimeout(r, 100));
+      assert.equal(exited, false, `the program is still running: ${stderr}`);
+      assert.deepEqual(await link.send(0, 9, 2), { ok: true });
+      assert.deepEqual(
+        inbound.map((d) => d.value),
+        [3],
+      );
     } finally {
       await link.close();
       child.kill();

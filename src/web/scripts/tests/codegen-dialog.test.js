@@ -160,6 +160,7 @@ function openDialog({
   globalThis.CSS ??= { escape: (s) => String(s) };
   const saves = [];
   const recorded = [];
+  const opened = [];
   CodegenDialog.open({
     elements,
     connections,
@@ -179,6 +180,12 @@ function openDialog({
           return saveResult; // null is the Save panel cancelled
         },
       },
+      docs: {
+        open: async (slug) => {
+          opened.push(slug);
+          return true;
+        },
+      },
     },
   });
   const row = (id) =>
@@ -189,7 +196,17 @@ function openDialog({
     [...viewer().querySelectorAll("button")].find(
       (b) => b.textContent === label,
     );
-  return { win, row, buttons, viewer, viewerButton, saves, recorded, stored };
+  return {
+    win,
+    row,
+    buttons,
+    viewer,
+    viewerButton,
+    saves,
+    recorded,
+    stored,
+    opened,
+  };
 }
 
 const settle = () => new Promise((r) => setTimeout(r, 0));
@@ -240,6 +257,32 @@ test("the dialog shows one row per used connection, named, with its status", () 
     assert.match(
       win.document.querySelector(".codegen-popup").textContent,
       /1 element has no connection/,
+    );
+  } finally {
+    PopupManager.close();
+  }
+});
+
+test("the header's book icon, left of the ×, opens the serial protocol page and leaves the card up", async () => {
+  const { win, opened } = openDialog();
+  try {
+    const header = win.document.querySelector(".codegen-popup .popup-header");
+    const actions = header.querySelector(".popup-header-actions");
+    assert.ok(actions, "the header's buttons are grouped with the ×");
+    assert.deepEqual(
+      [...actions.children].map((b) => b.className),
+      ["popup-header-btn", "popup-close"],
+      "the book sits LEFT of the close button",
+    );
+    const book = actions.querySelector(".popup-header-btn");
+    assert.equal(book.getAttribute("aria-label"), "Serial protocol reference");
+    assert.equal(book.hidden, false);
+    book.click();
+    await settle();
+    assert.deepEqual(opened, ["serial-protocol"]);
+    assert.ok(
+      win.document.querySelector(".codegen-popup"),
+      "the guide is a window of its own: the card stays",
     );
   } finally {
     PopupManager.close();

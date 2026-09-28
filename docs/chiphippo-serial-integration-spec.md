@@ -2,7 +2,7 @@
 
 Design spec for connecting a running ChipHippo simulation to one or more real Arduino boards over serial. The board can push values out to an Arduino, receive values back, and show the Arduino's log output.
 
-This document records decisions already made. Every item once marked **Open** has since been settled; each section says where. The bytes on the wire are defined by `chiphippo-serial-protocol.md` (§6).
+This document records decisions already made. Every item once marked **Open** has since been settled; each section says where. The bytes on the wire are defined by `src/web/docs/serial-protocol.md` (§6).
 
 ---
 
@@ -41,22 +41,24 @@ Two new element types, both separate objects from Signals and from each other.
 - Dropped on the desktop background, like a Signal. Default names **Output 1, Output 2, …**; renameable.
 - **Width** chosen at drop time: **1, 2, 4, 8 or 16** (matches bus sizes). This is a preset: the element is really an ordered list of **fields**, each a bit, a byte or a word, 16 pins at most. The Properties card can mix them, e.g. one byte of data plus three strobes as one element, one frame and one generated call (see §3.2).
 - One coloured, numbered tag per pin, matching the element's colour, dragged onto breadboard holes/pins exactly like Signal flags. The number on each tag identifies which pin it is.
-- A separate **trigger tag** that the user attaches to a line on the board.
+- A separate **trigger tag** that the user attaches to a line on the board — unless the trigger condition is **Auto**, which has no trigger tag at all.
 - Properties (on the standard properties dialogue, below the divider):
   - Colour
   - Connection — dropdown of named connections (§7)
-  - Trigger condition — **rising edge / falling edge / either**
-  - Trigger initial state — **low / high** (default low). Used as the "previous" value on the first settle.
+  - Trigger condition — **auto / rising edge / falling edge / either** (default **rising**). Auto watches no line: the Output sends whenever its settled value changes (§5.1).
+  - Trigger initial state — **low / high** (default low). Used as the "previous" value on the first settle. Disabled on Auto, which has no line.
+- Switching to Auto takes the trigger tag off the board but **remembers** where it was (`parkedTrigger` in the document — it claims no hole and drives nothing). Switching back to an edge puts it back in that hole if the hole is still there and free, and otherwise leaves it on the card. Deleting the board under it, or Remove All Tags, forgets it.
+- An element on an edge **must** have its trigger tag planted before a run starts; Run refuses otherwise, naming the element and offering its Properties.
   - Fields — each one's type (bit / byte / word) and name. These become the parameters of the generated Arduino function, in order.
 
 ### 3.2 Inbound (Arduino → board)
 
 - Dropped the same way. Default names **Input 1, Input 2, …** (settled: the element is called an *Input* in the UI; the protocol's frame type keeps the name `INBOUND`).
 - Width choices and per-pin tags as for Output.
-- **Optional** trigger tag:
-  - **Unattached → live mode.** A received value is held until the current settle completes, then injected.
-  - **Attached → triggered mode.** A received value is held, and only released onto the board when the trigger line shows the configured edge (rising / falling / either) between settles.
-- Properties: as Output — colour, connection, trigger condition, trigger initial state, fields.
+- The trigger condition picks the mode:
+  - **Auto → live mode** (the default for a new Input). No trigger tag. A received value is held until the current settle completes, then injected.
+  - **An edge → triggered mode.** A received value is held, and only released onto the board when the planted trigger line shows the configured edge (rising / falling / either) between settles.
+- Properties: as Output — colour, connection, trigger condition, trigger initial state, fields — with the same parking of the trigger tag on Auto.
 - Inbound only has effect while the simulation is running. Nothing is applied to the board while stopped.
 
 **Settled:** one model for both kinds. An element carries an ordered list of **fields** (bit = 1 pin, byte = 8, word = 16; 16 pins at most), packed into one value from bit 0 in order. So an element is any width from 1 to 16, sent as one frame and applied atomically. On the Output side it is one generated function with one parameter per field; on the Input side, one setter per field plus one `send()`.
@@ -65,7 +67,7 @@ Two new element types, both separate objects from Signals and from each other.
 
 ## 4. Payload encoding
 
-- The frame carries the width (1–16), so both sides know which bits are real. The exact payload is `chiphippo-serial-protocol.md` §3.2.
+- The frame carries the width (1–16), so both sides know which bits are real. The exact payload is `src/web/docs/serial-protocol.md` §4.2.
 - Values are **right-aligned**: bit 0 is pin 1.
 - Arduino-side types follow the **fields** (§3.2), in order:
   - **Bit** → `bool`.
@@ -83,6 +85,8 @@ Two new element types, both separate objects from Signals and from each other.
 3. If the transition matches the configured condition, the payload is sampled and sent.
 4. If the trigger didn't change, nothing is sent. Glitches within a single settle are never seen — this is intended.
 
+An Output on **Auto** replaces steps 2–4: its pins are sampled at every settle, and the value is sent when it differs from the last value that Output sent — and unconditionally at the first settle of a run, so the sketch learns the starting state. It sees every settled value, intermediate ones included (two switches flipped one after the other are two sends); a value that is only meaningful at a strobe wants an edge on that strobe instead.
+
 ### 5.2 Integration settle phase (stall)
 After the electrical settle, any outbound frames are sent and the simulation **stalls** until every one is acknowledged (§6). Only then does the board advance. Think of it as a second, integration-level settle.
 
@@ -96,7 +100,7 @@ After the electrical settle, any outbound frames are sent and the simulation **s
 
 ## 6. Wire protocol
 
-Defined by **`chiphippo-serial-protocol.md`** (protocol v1), which is normative: framing, escaping, CRC, frame types, the HELLO / HELLO_ACK handshake with its protocol version and layout signature, sequence numbers, acknowledgement, NAK and retry, and logging. Where this document and that one disagree about the wire, that one wins.
+Defined by **`src/web/docs/serial-protocol.md`** (protocol v1), which is normative: framing, escaping, CRC, frame types, the HELLO / HELLO_ACK handshake with its protocol version and layout signature, sequence numbers, acknowledgement, NAK and retry, and logging. Where this document and that one disagree about the wire, that one wins.
 
 What this spec still decides about it:
 - Every data frame is acknowledged, and a bad one is NAKed at once. Three failed sends of an Output **stop the run** with a message naming the connection, as a dropped port does (§7.4).
@@ -173,7 +177,7 @@ Element and pin names must be turned into valid C identifiers; warn on collision
 - Store the hash in the header comment **and** in the project file.
 - When the current design's hash differs from the stored one, show an out-of-sync indicator (e.g. a dot on the Generate button).
 - If the user removes an element, their implementation of it will no longer match the header — that's expected, and the staleness indicator is the warning.
-- The design hash does not travel on the wire. What a run checks is the narrower **layout signature** (protocol §6): a rename leaves it alone, so a renamed design still runs until regenerated, while anything that would misroute data refuses the run.
+- The design hash does not travel on the wire. What a run checks is the narrower **layout signature** (protocol §7): a rename leaves it alone, so a renamed design still runs until regenerated, while anything that would misroute data refuses the run.
 
 ---
 
@@ -189,4 +193,4 @@ Element and pin names must be turned into valid C identifiers; warn on collision
 8. Lamps.
 9. Log window.
 
-All **Open** items have been settled (§3.2, §9, §10.1 here; §6 by `chiphippo-serial-protocol.md`).
+All **Open** items have been settled (§3.2, §9, §10.1 here; §6 by `src/web/docs/serial-protocol.md`).

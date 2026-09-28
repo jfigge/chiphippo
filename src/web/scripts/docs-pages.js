@@ -55,6 +55,7 @@ export const PAGES = Object.freeze([
   { slug: "schematic-view", title: "Schematic View" },
   { slug: "ai-builder", title: "AI Circuit Builder" },
   { slug: "arduino", title: "Arduino Integration" },
+  { slug: "serial-protocol", title: "Serial Protocol" },
   { slug: "files-and-undo", title: "Files, Saving & Undo" },
   { slug: "projects-and-desktops", title: "Projects & Desktops" },
   { slug: "settings", title: "Settings" },

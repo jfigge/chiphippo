@@ -107,7 +107,12 @@ function guideHeadings() {
       if (/^\s*```/.test(line)) fenced = !fenced;
       else if (!fenced) {
         const m = /^#{1,6}\s+(.+?)\s*$/.exec(line);
-        if (m) ids.add(slugifyHeading(m[1].replace(/[`*_]/g, "")));
+        // Markup goes; an underscore INSIDE a word (HELLO_ACK) is not
+        // emphasis, to marked or to GitHub, and stays in the id.
+        if (m) {
+          const text = m[1].replace(/[`*]|(?<!\w)_|_(?!\w)/g, "");
+          ids.add(slugifyHeading(text));
+        }
       }
     }
     byPage.set(file.replace(/\.md$/, ""), ids);

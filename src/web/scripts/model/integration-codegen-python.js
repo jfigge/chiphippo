@@ -59,7 +59,11 @@ import {
   FRAME,
   HEADER_BYTES,
   HELLO_PAYLOAD,
+  HELLO_PREFIX,
+  MAX_HOST_PAYLOAD,
   MAX_SENDS,
+  MAX_SEQ,
+  NOT_NAKED,
   PROTOCOL_VERSION,
   START,
 } from "./serial-wire.js";
@@ -78,6 +82,11 @@ export const REPL_FORMAT = "8N1";
 
 /** The device's log chunk — the C++ header's number, for the same reason. */
 const LOG_CHUNK = 60;
+
+/** The module's name for each frame type. */
+const PY_FRAME = new Map(
+  Object.entries(FRAME).map(([name, value]) => [value, `_${name}`]),
+);
 
 // ── Identifiers ────────────────────────────────────────────────────────────
 
@@ -328,8 +337,11 @@ export function generatePythonModule({
     `_CRC_LEN = ${CRC_BYTES}`,
     `_DATA_LEN = ${DATA_PAYLOAD}`,
     `_HELLO_LEN = ${HELLO_PAYLOAD}`,
+    `_HELLO_MIN = ${HELLO_PREFIX}`,
     "# The longest frame this side is ever sent: anything longer is damage.",
-    `_RX_MAX = ${Math.max(DATA_PAYLOAD, HELLO_PAYLOAD)}`,
+    `_RX_MAX = ${MAX_HOST_PAYLOAD}`,
+    "# Never resent, so never NAKed when damaged.",
+    `_NOT_NAKED = (${NOT_NAKED.map((t) => PY_FRAME.get(t)).join(", ")})`,
     `_LOG_CHUNK = ${LOG_CHUNK}`,
     "_R_NONE = 0",
     "_R_ACK = 1",
@@ -571,7 +583,7 @@ class _Input:
         self._reset()
         # Session 0 says "I have just started": a circuit that was running
         # learns this program has forgotten it, and stops rather than go deaf.
-        self._send_hello_ack(0)
+        self._send_frame(_HELLO_ACK, 0, self._hello_payload(0))
 
     def poll(self):
         # Service the link: runs Output functions, answers Chip Hippo. Call
@@ -590,8 +602,8 @@ class _Input:
         self._flush_log(False)
 
     def connected(self):
-        # True from Chip Hippo's HELLO until a send it never acknowledged:
-        # while it is False, an Input's send() returns False at once.
+        # True from Chip Hippo's HELLO (for this design) until a send it
+        # never acknowledged: while it is False, send() fails at once.
         return self._greeted
 
     def print(self, *args, sep=" ", end="\n"):
@@ -614,41 +626,46 @@ class _Input:
         self._rx = bytearray()
         self._in_frame = False
         self._esc = False
+        self._bad = False
+        self._got = 0
         self._greeted = False
         self._session = 0
         self._tx_seq = 0
         self._rx_seq = 0
         self._dispatching = False
         self._busy_seq = 0
-        self._busy_session = 0
         self._pending = None
         self._connect_pending = False
         self._log = bytearray()
 
     def _send_input(self, index, width, value):
         # Waits for Chip Hippo's ACK, resending on a NAK or a timeout, and
-        # keeps the link serviced while it waits.
-        if self._io is None or not self._greeted:
+        # keeps the link serviced while it waits. Refused out of a session —
+        # or inside a handler whose session has ended.
+        if self._io is None or not self._greeted or (self._dispatching and not self._busy_seq):
             return False
         self._flush_log(False)
         payload = bytes((index, width, value & 0xFF, (value >> 8) & 0xFF))
-        self._tx_seq = self._tx_seq % 255 + 1
+        self._tx_seq = self._tx_seq % ${MAX_SEQ} + 1
         seq = self._tx_seq
-        session = self._session
         for _ in range(MAX_SENDS):
             self._send_frame(_INBOUND, seq, payload)
             start = _ticks_ms()
             while _ticks_diff(_ticks_ms(), start) < ACK_TIMEOUT_MS:
                 r = self._pump(True, seq)
+                if self._tx_seq != seq:
+                    return False  # a new session reset _tx_seq
                 if r == _R_ACK:
                     return True
                 if r == _R_NAK:
                     break
-                if not self._greeted or self._session != session:
-                    return False  # a new run
-        # Nobody is listening: stop waiting on every send until Chip Hippo
-        # greets the program again.
+        # Nobody is listening: leave the session — nothing more of it goes
+        # out, not even a held or running Output's ACK — and say so, as
+        # begin() does.
         self._greeted = False
+        self._busy_seq = 0
+        self._pending = None
+        self._send_frame(_HELLO_ACK, 0, self._hello_payload(0))
         return False
 
     def _call(self, name, fn, args):
@@ -672,16 +689,16 @@ class _Input:
         self._io.write(out)
 
     def _ack(self, seq):
+        # An Output's ACK: its SEQ is the one a resend is recognised by.
+        self._rx_seq = seq
         self._send_frame(_ACK, seq)
 
-    def _send_hello_ack(self, seq):
-        # This program's protocol version and layout — answered to every
-        # HELLO, matching or not: only Chip Hippo judges, so only it explains.
+    def _hello_payload(self, session):
+        # This program's version, the session and its layout: HELLO_ACK's
+        # payload — and a HELLO it can join is the same seven bytes.
         s = LAYOUT_SIGNATURE
-        self._send_frame(
-            _HELLO_ACK,
-            seq,
-            bytes((PROTOCOL_VERSION, s & 0xFF, (s >> 8) & 0xFF, (s >> 16) & 0xFF, (s >> 24) & 0xFF)),
+        return bytes(
+            (PROTOCOL_VERSION, session & 0xFF, session >> 8, s & 0xFF, (s >> 8) & 0xFF, (s >> 16) & 0xFF, (s >> 24) & 0xFF)
         )
 
     def _whole_chars(self):
@@ -725,6 +742,8 @@ class _Input:
             if b == _START:
                 self._in_frame = True
                 self._esc = False
+                self._bad = False
+                self._got = 0
                 self._rx = bytearray()
                 continue
             if not self._in_frame:
@@ -736,20 +755,24 @@ class _Input:
                 b ^= _ESC_XOR
                 if b != _START and b != _ESC:
                     self._damaged()
-                    continue
             elif b == _ESC:
                 self._esc = True
                 continue
-            self._rx.append(b)
-            if len(self._rx) < _HEADER:
+            # A damaged frame is still read to the end its LEN gives it, just
+            # not kept: its bytes are the frame's, so a 0x03 in them is data.
+            self._got += 1
+            if self._got <= _HEADER or not self._bad:
+                self._rx.append(b)
+            if self._got < _HEADER:
                 continue
             n = self._rx[2]
             if n > _RX_MAX:
                 self._damaged()
-                continue
-            if len(self._rx) < _HEADER + n + _CRC_LEN:
+            if self._got < _HEADER + n + _CRC_LEN:
                 continue
             self._in_frame = False
+            if self._bad:
+                continue
             r = self._handle(n, waiting, wait_seq)
             if waiting and r != _R_NONE:
                 return r
@@ -757,9 +780,11 @@ class _Input:
     def _damaged(self):
         # A frame arrived damaged: ask for a resend at once — unless it was
         # one that is never resent, or nothing has greeted this program yet.
-        self._in_frame = False
+        if self._bad:
+            return
+        self._bad = True
         kind = self._rx[0] if self._rx else 0
-        if self._greeted and kind != _ACK and kind != _NAK and kind != _HELLO:
+        if self._greeted and kind not in _NOT_NAKED:
             self._send_frame(_NAK, 0)
 
     def _handle(self, n, waiting, wait_seq):
@@ -771,8 +796,7 @@ class _Input:
             self._damaged()
             return _R_NONE
         if kind == _HELLO:
-            if n == _HELLO_LEN:
-                self._on_hello(seq)
+            self._on_hello(n)
             return _R_NONE
         if not self._greeted:
             return _R_NONE  # nothing counts before a HELLO
@@ -780,7 +804,7 @@ class _Input:
             return _R_ACK if waiting and seq == wait_seq else _R_NONE
         if kind == _NAK:
             return _R_NAK if waiting else _R_NONE
-        if kind == _OUTPUT:
+        if kind == _OUTPUT and seq:  # SEQ 0 is never a data frame's
             # Intact but unreadable: ACK and drop — a resend would be the same.
             if n == _DATA_LEN:
                 self._on_output(seq, waiting)
@@ -788,18 +812,25 @@ class _Input:
                 self._ack(seq)
         return _R_NONE
 
-    def _on_hello(self, session):
-        # HELLO's SEQ is the run's SESSION. Only a new one resets what this
-        # side remembers — a repeat of the current one (the host asks until
-        # it hears) is answered and nothing more.
-        if not self._greeted or session != self._session:
-            self._session = session
-            self._greeted = True
-            self._tx_seq = 0
-            self._rx_seq = 0
-            self._pending = None
-            self._connect_pending = True  # a new run: poll() runs on_connect
-        self._send_hello_ack(session)
+    def _on_hello(self, n):
+        # A HELLO names the run's SESSION (never 0). Only a new one resets
+        # what this side remembers — a repeat of the last (the host asks
+        # until it hears) is answered and nothing more.
+        rx = self._rx
+        session = rx[_HEADER + 1] | (rx[_HEADER + 2] << 8) if n >= _HELLO_MIN else 0
+        if session == 0:
+            return
+        payload = self._hello_payload(session)
+        self._send_frame(_HELLO_ACK, 0, payload)
+        if session == self._session:
+            return
+        self._session = session
+        self._greeted = n == _HELLO_LEN and bytes(rx[_HEADER:_HEADER + n]) == payload
+        self._connect_pending = self._greeted  # a new run: poll() runs on_connect
+        self._tx_seq = 0
+        self._rx_seq = 0
+        self._busy_seq = 0  # an Output being handled is the old run's: no ACK
+        self._pending = None
 
     def _on_output(self, seq, waiting):
         # A resend of one already handled: its ACK was lost. ACK, act once.
@@ -808,7 +839,7 @@ class _Input:
             return
         # A resend of the one being handled, or held, right now: its ACK
         # follows when the handler returns.
-        if self._dispatching and seq == self._busy_seq and self._busy_session == self._session:
+        if self._dispatching and seq == self._busy_seq:
             return
         if self._pending is not None and seq == self._pending[1]:
             return
@@ -829,7 +860,6 @@ class _Input:
         # function sent (its Inputs, its log) ahead of it.
         self._dispatching = True
         self._busy_seq = seq
-        self._busy_session = self._session
         try:
             if index < len(_OUTPUTS) and width == _OUTPUTS[index][0]:
                 fn = self._handlers[index]
@@ -837,9 +867,8 @@ class _Input:
                     self._call(_OUTPUTS[index][1], fn, _OUTPUTS[index][2](value))
         finally:
             self._dispatching = False
-        if self._busy_session != self._session:
-            return  # a new run began meanwhile
-        self._rx_seq = seq
+        if self._busy_seq != seq:
+            return  # a new session began meanwhile
         self._flush_log(False)
         self._ack(seq)
 

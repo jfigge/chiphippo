@@ -66,7 +66,8 @@ test("addIntegration mints per-kind ids from the width preset", () => {
   assert.deepEqual(out.fields, [{ type: "byte", name: "value" }]);
   assert.equal(inp.fields.length, 4);
   assert.equal(inp.connection, "c1");
-  assert.equal(out.triggerEdge, "rising");
+  assert.equal(out.triggerEdge, "rising", "an Output waits for a strobe");
+  assert.equal(inp.triggerEdge, "auto", "an Input takes values as they come");
   assert.equal(out.triggerInit, "low");
   assert.notEqual(out.color, inp.color, "colours cycle across elements");
   assert.throws(() => doc.addIntegration({ kind: "sideways" }), {
@@ -135,7 +136,7 @@ test("a tag refuses a component terminal and a hole a signal flag holds", () => 
 
 test("re-shaping the pins keeps tags by NUMBER and unplugs the ones past the end", () => {
   const doc = withBoard();
-  const e = doc.addIntegration({ kind: "input", width: 4 });
+  const e = doc.addIntegration({ kind: "output", width: 4 });
   doc.plantIntegrationTag(e.id, "1", "bb1.a1");
   doc.plantIntegrationTag(e.id, "4", "bb1.a4");
   doc.plantIntegrationTag(e.id, "T", "bb1.a9");
@@ -176,6 +177,113 @@ test("updateIntegration validates, and meta follows the component shape", () => 
   doc.setIntegrationMeta(e.id, { name: "Bus out", description: "" });
   assert.equal(doc.getIntegration(e.id).name, "Bus out");
   assert.ok(!("description" in doc.getIntegration(e.id)));
+});
+
+// ── Auto: no trigger tag, and a parked one remembered ─────────────────────
+
+test("an element on Auto has no trigger tag to plant", () => {
+  const doc = withBoard();
+  const inp = doc.addIntegration({ kind: "input", width: 2 });
+  assert.throws(() => doc.plantIntegrationTag(inp.id, "T", "bb1.a9"), {
+    code: "NOT_FOUND",
+  });
+  doc.updateIntegration(inp.id, { triggerEdge: "rising" });
+  doc.plantIntegrationTag(inp.id, "T", "bb1.a9");
+  assert.equal(doc.getIntegration(inp.id).tags.T.anchor, "bb1.a9");
+});
+
+test("switching to Auto parks the trigger; switching back puts it where it was", () => {
+  const doc = withBoard();
+  const out = doc.addIntegration({ kind: "output" });
+  doc.plantIntegrationTag(out.id, "1", "bb1.a3");
+  doc.plantIntegrationTag(out.id, "T", "bb1.a9", 90);
+  doc.updateIntegration(out.id, { triggerEdge: "auto" });
+  let got = doc.getIntegration(out.id);
+  assert.deepEqual(Object.keys(got.tags), ["1"], "off the board");
+  assert.deepEqual(got.parkedTrigger, { anchor: "bb1.a9", rot: 90 });
+  assert.equal(
+    buildOccupancy(doc.toJSON()).get("bb1.a9"),
+    undefined,
+    "a parked trigger claims nothing",
+  );
+  doc.updateIntegration(out.id, { triggerEdge: "falling" });
+  got = doc.getIntegration(out.id);
+  assert.deepEqual(
+    got.tags.T,
+    { anchor: "bb1.a9", rot: 90 },
+    "back, as it was",
+  );
+  assert.equal(got.parkedTrigger, undefined);
+});
+
+test("switching between edges leaves the trigger alone; Auto to Auto is nothing", () => {
+  const doc = withBoard();
+  const out = doc.addIntegration({ kind: "output" });
+  doc.plantIntegrationTag(out.id, "T", "bb1.a9");
+  doc.updateIntegration(out.id, { triggerEdge: "either" });
+  assert.equal(doc.getIntegration(out.id).tags.T.anchor, "bb1.a9");
+  doc.updateIntegration(out.id, { triggerEdge: "auto" });
+  doc.updateIntegration(out.id, { triggerEdge: "auto", triggerInit: "high" });
+  assert.equal(doc.getIntegration(out.id).parkedTrigger.anchor, "bb1.a9");
+});
+
+test("a parked trigger whose hole was taken meanwhile waits on the card", () => {
+  const doc = withBoard();
+  const out = doc.addIntegration({ kind: "output" });
+  doc.plantIntegrationTag(out.id, "T", "bb1.a9");
+  doc.updateIntegration(out.id, { triggerEdge: "auto" });
+  doc.addWire({ from: "bb1.a9", to: "bb1.a20" }); // the freed hole, reused
+  doc.updateIntegration(out.id, { triggerEdge: "rising" });
+  const got = doc.getIntegration(out.id);
+  assert.equal(got.tags, undefined, "not planted over the wire");
+  assert.equal(got.parkedTrigger, undefined, "and not remembered twice");
+});
+
+test("a parked trigger goes with the board under it, and with Remove All Tags", () => {
+  const doc = withBoard();
+  const out = doc.addIntegration({ kind: "output" });
+  doc.plantIntegrationTag(out.id, "T", "bb1.a9");
+  doc.updateIntegration(out.id, { triggerEdge: "auto" });
+  doc.removeBoard("bb1");
+  assert.equal(doc.getIntegration(out.id).parkedTrigger, undefined);
+
+  const doc2 = withBoard();
+  const out2 = doc2.addIntegration({ kind: "output" });
+  doc2.plantIntegrationTag(out2.id, "T", "bb1.a9");
+  doc2.updateIntegration(out2.id, { triggerEdge: "auto" });
+  doc2.unplantIntegrationTags(out2.id);
+  doc2.updateIntegration(out2.id, { triggerEdge: "rising" });
+  assert.equal(doc2.getIntegration(out2.id).tags, undefined);
+});
+
+test("the loader: a parked trigger survives on Auto only, and never claims its hole", () => {
+  const doc = normalizeDocument({
+    boards: [board],
+    components: [],
+    wires: [{ id: "w1", from: "bb1.a9", to: "bb1.a30", color: "red" }],
+    integrations: [
+      // Parked under a wire end: kept, since a memory claims nothing.
+      { id: "out1", triggerEdge: "auto", parkedTrigger: { anchor: "bb1.a9", rot: 180 } }, // prettier-ignore
+      // A trigger PLANTED on an Auto element (never written) is parked.
+      { id: "out2", triggerEdge: "auto", tags: { T: { anchor: "bb1.a5", rot: 0 } } }, // prettier-ignore
+      // A park on an edge is meaningless and goes; so does one on no board.
+      { id: "out3", triggerEdge: "rising", parkedTrigger: { anchor: "bb1.a6", rot: 0 } }, // prettier-ignore
+      { id: "out4", triggerEdge: "auto", parkedTrigger: { anchor: "bb9.a6", rot: 0 } }, // prettier-ignore
+      // No trigger stored: each kind's default.
+      { id: "out5" },
+      { id: "in1" },
+    ],
+  });
+  const byId = Object.fromEntries(doc.integrations.map((e) => [e.id, e]));
+  assert.deepEqual(byId.out1.parkedTrigger, { anchor: "bb1.a9", rot: 180 });
+  assert.equal(byId.out1.tags, undefined);
+  assert.deepEqual(byId.out2.parkedTrigger, { anchor: "bb1.a5", rot: 0 });
+  assert.equal(byId.out2.tags, undefined);
+  assert.equal(byId.out3.parkedTrigger, undefined);
+  assert.equal(byId.out4.parkedTrigger, undefined);
+  assert.equal(byId.out5.triggerEdge, "rising");
+  assert.equal(byId.in1.triggerEdge, "auto");
+  assert.deepEqual(buildOccupancy(doc).get("bb1.a5"), undefined);
 });
 
 test("removing the board under a tag detaches it — the element stays", () => {

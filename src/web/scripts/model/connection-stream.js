@@ -56,6 +56,10 @@ const FRAME_NAMES = new Map(
 const hex8 = (n) =>
   (Number(n) >>> 0).toString(16).toUpperCase().padStart(8, "0");
 
+/** ` sig 1A2B3C4D`, or nothing for a HELLO_ACK of another protocol version,
+    whose signature this build cannot read. */
+const sig = (e) => (e.signature == null ? "" : ` sig ${hex8(e.signature)}`);
+
 /** Which of the four kinds an entry is, or null for one this build does not
     know (a newer main's). */
 export function streamKind(entry) {
@@ -125,9 +129,9 @@ function protocolText(e) {
     case "close":
       return say("close");
     case "hello":
-      return `→ HELLO v${e.version} sig ${hex8(e.signature)} session ${e.session}`;
+      return `→ HELLO v${e.version}${sig(e)} session ${e.session}`;
     case "hello-ack":
-      return `← HELLO_ACK v${e.version} sig ${hex8(e.signature)} session ${e.session}`;
+      return `← HELLO_ACK v${e.version}${sig(e)} session ${e.session}`;
     case "handshake":
       return say("handshake", {
         version: e.version,

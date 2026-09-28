@@ -3018,6 +3018,53 @@ textarea.annotation-editor {
   color: var(--color-danger);
 }
 
+/* A dialog's own header buttons (dialog()'s `headerActions`) and its × as one
+   tight group, top right: icons beside each other, not spread by the header's
+   title gap. */
+.popup-header-actions {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  gap: var(--space-1);
+}
+
+/* A header button is the ×'s box and look — the same affordance, a different
+   glyph — and lifts to the accent rather than the ×'s danger red, since it
+   opens something instead of dismissing. */
+.popup-header-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--color-subtext);
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.popup-header-btn:hover {
+  background-color: var(--color-surface-1);
+  color: var(--color-accent);
+}
+
+.popup-header-btn:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* It sets a `display`, so it must opt back in to `hidden` (Settings shows its
+   one only on the Serial I/O tab). */
+.popup-header-btn[hidden] {
+  display: none;
+}
+
 /* Master-detail body: left nav rail + right single-column panel. */
 .settings-popup-body {
   display: flex;
@@ -3455,6 +3502,15 @@ textarea.annotation-editor {
   flex-direction: column;
   align-items: stretch;
   gap: var(--space-2);
+}
+
+/* A row that means nothing under another row's current choice (a field's
+   `disabledWhen` — an Output's "Trigger starts" on Auto): it keeps its place,
+   so nothing below it moves, but reads as out of play and takes no pointer.
+   Its controls are `disabled` as well, which is what stops the keyboard. */
+.properties-row--disabled {
+  opacity: 0.45;
+  pointer-events: none;
 }
 
 .properties-label {

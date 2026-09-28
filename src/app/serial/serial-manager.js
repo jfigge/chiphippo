@@ -233,7 +233,9 @@ class SerialManager {
       let port;
       try {
         port = config.mock
-          ? this.#mock.openPort()
+          ? this.#mock.openPort({
+              signature: wanted.get(config.id).signature >>> 0,
+            })
           : await this.#openPort(config);
       } catch (err) {
         const detail = String(err?.message ?? err);

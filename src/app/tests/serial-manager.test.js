@@ -33,6 +33,7 @@ const {
   encodeFrame,
   FrameDecoder,
   encodeHello,
+  decodeHello,
 } = require("../serial/protocol");
 const { SerialManager, MAX_LOG_ENTRIES } = require("../serial/serial-manager");
 
@@ -61,8 +62,7 @@ function fakeDevice({
     announce() {
       device.send({
         type: FRAME.HELLO_ACK,
-        seq: 0,
-        payload: encodeHello({ version, signature }),
+        payload: encodeHello({ version, session: 0, signature }),
       });
     },
     unplug() {
@@ -73,10 +73,10 @@ function fakeDevice({
         for (const f of decoder.push(buf)) {
           if (silent || !f.ok) continue;
           if (f.type === FRAME.HELLO) {
+            const { session } = decodeHello(f.payload);
             device.send({
               type: FRAME.HELLO_ACK,
-              seq: f.seq,
-              payload: encodeHello({ version, signature }),
+              payload: encodeHello({ version, session, signature }),
             });
           } else if (f.type === FRAME.OUTPUT) {
             device.send({ type: FRAME.ACK, seq: f.seq });

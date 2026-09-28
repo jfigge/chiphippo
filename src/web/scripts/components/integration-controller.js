@@ -18,10 +18,12 @@
 // RUNS. It is SimController's settle-boundary collaborator (see the header of
 // sim-controller.js), and the renderer's end of main's serial link:
 //
-//   preflight  Run pressed: every connection the desk's elements use must be
-//              configured, not flagged, and have its port plugged in — or the
-//              run does not start, and the user is told which and why (never
-//              offered some other port: that is theirs to choose).
+//   preflight  Run pressed: every element waiting for an edge must have its
+//              trigger tag on the board, and every connection the desk's
+//              elements use must be configured, not flagged, and have its port
+//              plugged in — or the run does not start, and the user is told
+//              which and why (never offered some other port: that is theirs
+//              to choose).
 //   begin      the ports open and each device is greeted (HELLO / HELLO_ACK):
 //              one that does not answer, speaks another protocol version, or
 //              was built for a different LAYOUT (the signature: what shapes
@@ -56,9 +58,12 @@
 import { t } from "../i18n.js";
 import { PopupManager } from "../popup-manager.js";
 import {
+  TRIGGER_KEY,
   connectionLayout,
   connectionsUsed,
   elementsFor,
+  isAutoTrigger,
+  isTagPlanted,
   layoutSignature,
   pinCount,
 } from "../model/integration.js";
@@ -81,6 +86,10 @@ export class IntegrationController {
   #runtime = new IntegrationRuntime();
   #elements = []; // frozen at begin — the topology is frozen while running
   #running = false;
+  // Between begin() and the ports' open resolving: a device already greeted
+  // may be sending its Inputs' starting values (its onConnect runs the moment
+  // its handshake completes, before every other connection's has).
+  #opening = false;
   #partials = new Map(); // connection id → the log's last partial line
 
   /**
@@ -161,6 +170,22 @@ export class IntegrationController {
       );
       return false;
     }
+    // An element waiting for an edge with no line to watch would never send
+    // (an Output) or never apply (an Input): a run that silently does
+    // nothing. Auto is the one trigger with no tag, so it is never asked.
+    const untriggered = elements.find(
+      (e) => !isAutoTrigger(e) && !isTagPlanted(e, TRIGGER_KEY),
+    );
+    if (untriggered) {
+      this.#refuse(
+        t("integration.verify.noTrigger", {
+          name: untriggered.name || untriggered.id,
+        }),
+        () => this.#openProperties?.(untriggered.id),
+        t("integration.verify.openProperties"),
+      );
+      return false;
+    }
     const connections = this.#getConnections() ?? [];
     // A connection this computer does not know — removed in Settings since
     // the element chose it — has no card to fix it on, so the way out is the
@@ -222,6 +247,7 @@ export class IntegrationController {
     this.#elements = elements;
     this.#runtime.begin(elements);
     this.#partials.clear();
+    this.#opening = true;
     return this.#open(connectionsUsed(elements));
   }
 
@@ -255,6 +281,7 @@ export class IntegrationController {
       };
     }
     this.#notifications?.dismiss?.("integration-connect");
+    this.#opening = false;
     if (!result?.ok) {
       if (result?.code !== "closed")
         this.#explainOpenFailure(result, connections);
@@ -318,6 +345,7 @@ export class IntegrationController {
   end() {
     const was = this.#running || this.#elements.length > 0;
     this.#running = false;
+    this.#opening = false;
     this.#elements = [];
     this.#runtime.end();
     this.#lamps?.setActive(false);
@@ -327,8 +355,14 @@ export class IntegrationController {
 
   // ── What arrives from main ──────────────────────────────────────────────
 
+  /**
+   * A value from a device. Kept from the moment its connection is greeted —
+   * while the run is still opening too: a device sends its Inputs' starting
+   * values as soon as its own handshake completes (the protocol's `onConnect`),
+   * and it has been ACKed, so a value dropped here would never come again.
+   */
   #onInbound(detail) {
-    if (!this.#running || !detail) return;
+    if ((!this.#running && !this.#opening) || !detail) return;
     const element = elementsFor(this.#elements, detail.id, "input")[
       detail.index
     ];
@@ -341,7 +375,9 @@ export class IntegrationController {
     // A LIVE Input applies at the next boundary — which, on a quiet board, is
     // now. A triggered one waits for its edge, and a stalled board applies
     // what it holds when the stall ends.
-    if (isLive(element) && !this.#sim?.stalled) this.#sim?.wake();
+    if (this.#running && isLive(element) && !this.#sim?.stalled) {
+      this.#sim?.wake();
+    }
   }
 
   #onLog(detail) {
@@ -362,9 +398,9 @@ export class IntegrationController {
     );
   }
 
-  /** The device announced a fresh start mid-run: it has forgotten the
-      session and will not answer until greeted again, which only a new Run
-      does. */
+  /** The device announced mid-run that it is in no session — it restarted,
+      or gave up on this one after an Input went unacknowledged — and will not
+      answer until greeted again, which only a new Run does. */
   #onRestart(detail) {
     if (!this.#running || !detail) return;
     const conn = findConnection(this.#getConnections(), detail.id);

@@ -23,8 +23,10 @@ import test from "node:test";
 import assert from "node:assert/strict";
 
 import {
+  DEFAULT_TRIGGER_EDGE,
   DROP_WIDTHS,
   MAX_ELEMENT_PINS,
+  TRIGGER_EDGES,
   TRIGGER_KEY,
   connectionsUsed,
   edgeFired,
@@ -33,6 +35,7 @@ import {
   elementSeq,
   fieldSpans,
   hasTagKey,
+  isAutoTrigger,
   normalizeElementFields,
   normalizeFields,
   packValue,
@@ -133,6 +136,37 @@ test("tag keys run 1…N then the trigger, and composite ids round-trip", () => 
   assert.equal(parseTagId("out2"), null);
 });
 
+test("an element on Auto has pin tags and no trigger tag", () => {
+  const element = { fields: presetFields(2), triggerEdge: "auto" };
+  assert.ok(isAutoTrigger(element));
+  assert.deepEqual(tagKeys(element), ["1", "2"]);
+  assert.ok(hasTagKey(element, "2"));
+  assert.ok(!hasTagKey(element, TRIGGER_KEY));
+  assert.ok(!isAutoTrigger({ triggerEdge: "rising" }));
+});
+
+test("Auto leads the trigger choices; an Output defaults to Rising, an Input to Auto", () => {
+  assert.deepEqual(TRIGGER_EDGES, ["auto", "rising", "falling", "either"]);
+  assert.deepEqual(DEFAULT_TRIGGER_EDGE, { output: "rising", input: "auto" });
+  // The kind comes off the id when there is one, never a field beside it…
+  assert.equal(normalizeElementFields({ id: "in3" }).triggerEdge, "auto");
+  assert.equal(
+    normalizeElementFields({ id: "out3", kind: "input" }).triggerEdge,
+    "rising",
+  );
+  // …and off `kind` for an element still being minted.
+  assert.equal(normalizeElementFields({ kind: "input" }).triggerEdge, "auto");
+  assert.equal(
+    normalizeElementFields({ id: "in3", triggerEdge: "sideways" }).triggerEdge,
+    "auto",
+    "junk takes the kind's default",
+  );
+  assert.equal(
+    normalizeElementFields({ id: "in3", triggerEdge: "rising" }).triggerEdge,
+    "rising",
+  );
+});
+
 test("element fields normalize, repairing a colour rather than refusing it", () => {
   const n = normalizeElementFields({ color: "black" }, [{ color: "red" }]);
   assert.ok(SIGNAL_COLORS.includes(n.color));
@@ -163,6 +197,9 @@ test("edgeFired: rising, falling, either — and no change is never an edge", ()
     assert.equal(edgeFired(e, true, true), false);
     assert.equal(edgeFired(e, false, false), false);
   }
+  // Auto watches no line: no transition is its edge.
+  assert.equal(edgeFired("auto", false, true), false);
+  assert.equal(edgeFired("auto", true, false), false);
 });
 
 test("packValue is right-aligned: pin 1 is bit 0", () => {

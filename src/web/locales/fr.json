@@ -1217,6 +1217,7 @@
       "input": "Entrée {n}"
     },
     "edge": {
+      "auto": "Auto",
       "rising": "Montant",
       "falling": "Descendant",
       "either": "Les deux"
@@ -1226,6 +1227,7 @@
       "byte": "Octet",
       "word": "Mot"
     },
+    "protocolDoc": "Référence du protocole série",
     "widthLabel": "Largeur",
     "widthOption": {
       "one": "{count} broche",
@@ -1281,6 +1283,7 @@
     "verify": {
       "title": "Réglages à vérifier",
       "noConnection": "{name} n'est associé à aucune connexion. Choisissez-en une dans ses propriétés.",
+      "noTrigger": "{name} attend un déclencheur, mais son étiquette de déclencheur n'est pas sur la platine d'essai. Faites-la glisser sur une ligne, ou réglez son Déclencheur sur Auto dans ses propriétés.",
       "unknownConnection": "La connexion utilisée par {name} n’est pas configurée sur cet ordinateur. Choisissez-en une dans ses Propriétés.",
       "unconfigured": "La connexion « {name} » doit être configurée dans Réglages ▸ E/S série avant que le circuit puisse tourner.",
       "portMissing": "Le port {port} de la connexion « {name} » est indisponible.",
@@ -1302,8 +1305,8 @@
       "noResponse": "Rien n'a répondu sur {port} pour « {name} ». Le sketch est-il téléversé, et appelle-t-il ChipHippo.begin() et ChipHippo.poll() ?",
       "openFailedTitle": "Impossible d'ouvrir le port",
       "openFailed": "Impossible d'ouvrir {port} pour « {name} » : {detail}",
-      "restartTitle": "Carte redémarrée",
-      "restart": "« {name} » a redémarré pendant que le circuit tournait ; le circuit s'est donc arrêté. Relancez-le pour vous reconnecter."
+      "restartTitle": "La carte a quitté l'exécution",
+      "restart": "« {name} » a quitté l'exécution — elle a redémarré ou n'entend plus Chip Hippo — ; le circuit s'est donc arrêté. Relancez-le pour vous reconnecter."
     },
     "lamps": {
       "label": "Activité série",
@@ -1334,7 +1337,7 @@
         "openPort": "Port {port} ouvert",
         "close": "Port fermé",
         "handshake": "Poignée de main réussie : protocole v{version}, signature {signature}",
-        "announce": "l'appareil a annoncé un démarrage",
+        "announce": "l'appareil n'est dans aucune session",
         "staleAck": "périmé, ignoré",
         "nakIdle": "rien à renvoyer",
         "resend": "renvoi de seq {seq} (tentative {attempt}/{max})",
@@ -1353,7 +1356,7 @@
         "noResponse": "Aucune réponse à HELLO en {seconds} s",
         "version": "L'appareil parle le protocole v{version} ; Chip Hippo parle v{host}",
         "signature": "L'appareil a été construit pour la disposition {signature}, pas {expected}",
-        "restart": "L'appareil a redémarré",
+        "restart": "L'appareil a quitté la session (il a redémarré ou n'entend plus Chip Hippo)",
         "dropped": "Connexion perdue",
         "droppedDetail": "Connexion perdue : {detail}",
         "openFailed": "Impossible d'ouvrir le port : {detail}"

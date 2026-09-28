@@ -30,7 +30,12 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { FRAME, FrameDecoder, encodeFrame } = require("../serial/protocol");
+const {
+  FRAME,
+  FrameDecoder,
+  encodeFrame,
+  decodeHello,
+} = require("../serial/protocol");
 const { SerialLink } = require("../serial/link");
 const { MockDevice, FAULTS } = require("../serial/mock-device");
 const { SerialManager, MOCK_ID } = require("../serial/serial-manager");
@@ -49,7 +54,7 @@ function rig({ timeoutMs = 30, faults = [], drop } = {}) {
     onEvent: (kind, data) => events[kind].push(data),
   });
   for (const f of faults) mock.arm(f, true);
-  const port = mock.openPort();
+  const port = mock.openPort({ signature: SIGNATURE });
   if (drop) {
     // Lose what the host writes, frame by frame, when `drop(frame)` says so.
     const write = port.write;
@@ -96,7 +101,11 @@ test("the Mock answers the handshake with protocol v1 and the design's own signa
   assert.equal(mock.state.connected, true);
   // Opening the port was a reset: the start was announced (session 0) first.
   assert.equal(sent[0].type, FRAME.HELLO_ACK);
-  assert.equal(sent[0].seq, 0);
+  assert.deepEqual(decodeHello(sent[0].payload), {
+    version: 1,
+    session: 0,
+    signature: SIGNATURE,
+  });
   await link.close();
   assert.deepEqual(mock.state, { open: false, connected: false, faults: [] });
 });
@@ -204,18 +213,32 @@ test("ignore-hello: the next run's handshake goes unanswered — once", async ()
   await link.close();
 });
 
-test("wrong-signature: the next HELLO is answered for another layout", async () => {
-  const { link } = rig({ faults: ["wrong-signature"] });
+test("wrong-signature: the next HELLO is answered for another layout, and not joined", async () => {
+  const { mock, link } = rig({ faults: ["wrong-signature"] });
   const r = await link.handshake(SIGNATURE);
   assert.equal(r.ok, false);
   assert.equal(r.code, "signature");
   assert.notEqual(r.device.signature, SIGNATURE);
+  assert.equal(mock.state.connected, false, "the mock stays out of it too");
   await link.close();
 });
 
-test("an Input nobody acknowledges takes the Mock offline until the next HELLO", async () => {
+test("a run for another layout is answered with the mock's own, and never joined", async () => {
+  const { mock, link } = rig();
+  const r = await link.handshake(0x12345678);
+  assert.equal(r.code, "signature");
+  assert.equal(r.device.signature, SIGNATURE, "its own layout, not the host's");
+  assert.equal(mock.state.connected, false);
+  assert.deepEqual(await mock.sendInput(0, 1, 1), {
+    ok: false,
+    code: "offline",
+  });
+  await link.close();
+});
+
+test("an Input nobody acknowledges takes the Mock out of the session — it says so — until the next one", async () => {
   let deaf = false;
-  const { mock, link } = await greeted({
+  const { mock, link, sent } = await greeted({
     drop: (f) => deaf && f.type === FRAME.ACK,
   });
   deaf = true; // the host stops acknowledging, without a word
@@ -224,6 +247,15 @@ test("an Input nobody acknowledges takes the Mock offline until the next HELLO",
     code: "delivery",
   });
   assert.equal(mock.state.connected, false, "offline");
+  await sleep(5);
+  const last = sent.at(-1);
+  assert.equal(last.type, FRAME.HELLO_ACK);
+  assert.equal(decodeHello(last.payload).session, 0, "announced, as at start");
+  assert.deepEqual(
+    await link.send(0, 1, 1),
+    { ok: false, code: "restart" },
+    "so the host has stopped too",
+  );
   const started = Date.now();
   assert.deepEqual(await mock.sendInput(0, 1, 1), {
     ok: false,

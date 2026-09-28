@@ -7,8 +7,8 @@
 // what each one's Properties say; the header is generated from them):
 //
 //   Output "Digit"     Byte value, Bit blank   trigger tag on the counter's clock
-//   Input  "Segments"  Byte pattern            no trigger tag (live)
-//   Input  "Buttons"   Bit step, Bit reset     no trigger tag (live)
+//   Input  "Segments"  Byte pattern            Trigger: Auto (live)
+//   Input  "Buttons"   Bit step, Bit reset     Trigger: Auto (live)
 //
 // The circuit counts. On each clock edge it sends the count to Digit and
 // WAITS; the sketch looks the count up in a hex-to-7-segment table and sends

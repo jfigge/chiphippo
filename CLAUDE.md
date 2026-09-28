@@ -115,6 +115,15 @@ the repo, only the cropped PNGs.
   forced `target="_blank"` so main's `setWindowOpenHandler` opens the system browser;
   `images/x.png` is rewritten to `docs/images/x.png`; GitHub-style heading ids are
   stamped; a monotonic load token stops a slow page clobbering a newer one.
+- **Opening the guide ON a page** is `window.chiphippo.docs.open(slug)` → `docs:open`
+  (slug-validated like `docs:read`): a new window gets `?page=`, one already open is told
+  over the `docs:show` push (deferred to `did-finish-load` while it is still loading, and
+  listened for in `docs-window.js` BEFORE its font-size await). An unknown slug opens the
+  overview. Its one caller today is the **Serial Protocol** page
+  (`src/web/docs/serial-protocol.md` — the NORMATIVE wire protocol lives in the guide, so
+  the app, website and PDF all carry the one copy): the book icon
+  (`components/protocol-doc-button.js`) left of the × on Settings ▸ Serial I/O (shown on
+  that tab only) and on the Generate card.
 - **Website**: `scripts/build-docs.mjs` renders the same Markdown through `marked` under
   Node (no DOMPurify — first-party content) into themed static HTML (`STYLE`/`LOGO_SVG`
   in the file, the green `--accent:#3fb950` tokens matching `website/index.html`) under
@@ -1356,8 +1365,9 @@ hole. Pressing the button injects a level there. `model/signals.js` (pure) +
 ## Arduino serial integration
 
 **The running circuit talks to a real Arduino over USB** (Feature 380, from
-`docs/chiphippo-serial-integration-spec.md`; the wire is `docs/chiphippo-serial-protocol.md`,
-protocol v1, which is NORMATIVE). An **Output** samples its pins on its
+`docs/chiphippo-serial-integration-spec.md`; the wire is `src/web/docs/serial-protocol.md`,
+protocol v1, which is NORMATIVE — and a user-guide page, so the app, the website and the PDF
+all carry it). An **Output** samples its pins on its
 trigger's edge and sends the value to a sketch; an **Input** puts a value the sketch sent
 onto its pins. The sketch side is a GENERATED header. Main: `app/serial/{protocol,link,
 ports,serial-manager}.js` + `app/ipc/serial.js`. Renderer: `model/{integration,
@@ -1369,13 +1379,29 @@ integration-runtime,integration-codegen,serial-connections,serial-wire}.js` +
   "External signals", one kind over. `doc.integrations` (schema **v14**, main migration
   v13 → v14, with `nextOutputId`/`nextInputId`) holds `{ id: "out<n>"|"in<n>", kind, color,
   connection, triggerEdge, triggerInit, fields: [{type, name}], name?, description?,
-  tags?: {"1": {anchor, rot}, …, "T": {anchor, rot}} }`. `buildOccupancy` and the engine's
+  tags?: {"1": {anchor, rot}, …, "T": {anchor, rot}}, parkedTrigger?: {anchor, rot} }`.
+  `buildOccupancy` and the engine's
   `buildContext` each gained ONE more loop beside the signal one; the schematic draws no
   tags (out of scope). A tag is keyed by PIN NUMBER (`"T"` for the trigger), pin k is bit
   k−1, and a pin that is unplanted, floating or `X` reads **0** (`packValue`). The colour
   comes from the SAME cycle as signals (`nextSignalColor` over both), since both share the
   rail. At most `MAX_ELEMENTS` (16) per desk and `MAX_ELEMENT_PINS` (16) per element — the
   widest value is a `uint16_t` on the wire.
+- **Auto is a TRIGGER SETTING, not the absence of a tag** (`TRIGGER_EDGES`: `auto` ·
+  `rising` · `falling` · `either`; `DEFAULT_TRIGGER_EDGE` is Rising for an Output, Auto for
+  an Input). An element on Auto has NO trigger tag — `tagKeys`/`hasTagKey` leave `"T"` out,
+  so the card offers no chip and planting one throws — and one on an edge MUST have it
+  planted, or `preflight` refuses Run naming it (an Output with no line used to never fire,
+  silently). Switching ONTO Auto parks the tag (`DeskDoc.updateIntegration` →
+  `#parkTrigger`, `parkedTrigger`); switching off it restores the tag to that hole if the
+  hole is still real and free, else it waits on the card (THE RULE). A parked trigger is a
+  MEMORY, not a tag: it lives outside `tags`, so occupancy, the engine, the layer and the
+  rail never see it, and it claims nothing — which is why the restore asks again. The
+  loader keeps one only on Auto and only naming a real hole; board removal and Remove All
+  Tags forget it. The Properties card greys "Trigger starts" on Auto through the dialog's
+  generic `disabledWhen(values)` (a row that means nothing stays put rather than moving
+  the rows under it). The trigger is host-only: not in the layout signature, not in the
+  design hash.
 - **Fields, not bits, are the pin model**: an element is an ordered list of Bit (1) /
   Byte (8) / Word (16) fields, each one PARAMETER of the Output function or one SETTER on
   the Input — which is what makes the generated C++ read like the design. The drop presets
@@ -1394,21 +1420,28 @@ integration-runtime,integration-codegen,serial-connections,serial-wire}.js` +
 - **The timing model lives in ONE pure module** (`integration-runtime.js`, header comment):
   Chip Hippo looks only at SETTLE BOUNDARIES. An Output fires when its trigger's settled
   level differs from the previous boundary's in the configured direction
-  (`triggerInit` stands in for "previous" at the first); an Input's value is buffered
-  (latest wins) and applied at a boundary — immediately if LIVE (no trigger tag), else on
-  its trigger's edge — all at once, then the board settles again. A value arriving DURING a
+  (`triggerInit` stands in for "previous" at the first) — or, on Auto, when the value its
+  pins settle to differs from the last one it SENT, and unconditionally at a run's first
+  boundary (so the sketch learns the starting state); an Input's value is buffered
+  (latest wins) and applied at a boundary — immediately if LIVE (on Auto), else on its
+  trigger's edge — all at once, then the board settles again. A value arriving DURING a
   stall still counts for that boundary, which is what makes request/response work.
 - **SimController grew a collaborator seam, not integration code**:
   `integration: {preflight, begin, settled, levels, end}`. `preflight` may refuse Run (sync
-  `false` or a promise — every element assigned, every connection known here, configured and
-  its port present, each refusal offering the fix); `begin` opens the ports; after each
+  `false` or a promise — every element assigned and, on an edge, its trigger planted;
+  every connection known here, configured and its port present, each refusal offering the
+  fix); `begin` opens the ports; after each
   tick `settled` may return `{again}` (re-settle with new Input levels, capped at
   `MAX_BOUNDARY_PASSES`) or a **Promise — the STALL**: while an Output is in flight the
   transport skips clock edges, and `wake()` resumes. `levels()` merges into the drive map.
   Stop ends it all and releases the stall.
 - **Every protocol NUMBER lives in ONE module, `model/serial-wire.js`** — version, markers,
-  frame types, payload sizes, CRC-16 poly/init, the 250 ms / 5 s handshake, the 500 ms ACK
-  timeout, the 3 sends — plus `crc16`/`crc32`. Dependency-free ESM, because BOTH sides read
+  frame types, payload sizes and limits, session/SEQ ranges, the never-NAKed types, CRC-16
+  poly/init, the 250 ms / 5 s handshake, the 500 ms ACK timeout, the 3 sends — plus
+  `crc16`/`crc32`. The protocol page's Constants table names these exports, and
+  `serial-protocol-doc.test.js` reads the page back (its constants, frame types,
+  signatures, and every hex frame and quoted CRC) against the code, so the spec and the
+  implementation cannot drift. Dependency-free ESM, because BOTH sides read
   it: the generator imports it and WRITES the header's constants from it, and main's
   `protocol.js` `require()`s it (require(esm): Electron 42's Node 24 loads a dependency-free
   ES module synchronously, asar included — verified). So nothing is typed twice, including
@@ -1419,28 +1452,56 @@ integration-runtime,integration-codegen,serial-connections,serial-wire}.js` +
   LEN PAYLOAD CRC_LO CRC_HI`, CRC-16/CCITT-FALSE over the unescaped TYPE…PAYLOAD, every byte
   after START escaped (a `0x7D` followed by anything but `5E`/`5D` is damage). Types HELLO 01 ·
   HELLO_ACK 02 · ACK 06 · NAK 15 · OUTPUT 10 · INBOUND 11 · LOG 20; a data payload is always
-  `[index][width][lo][hi]`. Stop-and-wait, SEQ 1…255 wrapping to 1 (0 is the handshake's,
-  LOG's and NAK's), last-accepted starting at 0, a NAK (SEQ 0, "resend what you have") at
-  once for a damaged frame — never for a damaged ACK/NAK/LOG/HELLO/HELLO_ACK. The device
+  `[index][width][lo][hi]`. Stop-and-wait, SEQ 1…255 wrapping to 1 (non-zero ONLY in data
+  frames and ACKs), duplicates judged against the last SEQ ACKNOWLEDGED (so an unusable
+  frame counts: the device's `ack()` records it), a NAK (SEQ 0, "resend what you have") at
+  once for a damaged frame — never for a damaged ACK/NAK/LOG/HELLO/HELLO_ACK, on BOTH sides
+  (`NOT_NAKED`, which the generators write the device's check from). Receivers have a
+  payload limit (host 255, a device `MAX_HOST_PAYLOAD` = 7): a LEN past it is damage the
+  moment it is read, so a frame buffer is bounded by construction. The device
   ACKs an OUTPUT **after its handler returns** — that is what makes the stall mean "the
   device has reacted" — and so a resend arriving WHILE that handler runs (it pumps the port
   inside an Input's `send()`) is IGNORED, never re-ACKed early. LOG is **unacknowledged**
   (SEQ 0, ≤60-byte chunks from the header, never split inside a UTF-8 character; the host
   decodes it as a stream anyway). An intact but unusable data frame is ACKed and dropped.
-- **The handshake is a SESSION.** Each run picks a fresh session number (1–255,
-  process-wide counter from a random start) and sends HELLO `{version, layout signature}`
-  with it as SEQ every 250 ms for up to 5 s; the device answers HELLO_ACK with ITS version
-  and signature and the same SEQ. It resets its sequence state only when the session
-  CHANGES — the host resends HELLO until it hears, and a late copy that reset the device
-  would rewind its SEQs so its next Input looked like a duplicate and vanished. A HELLO_ACK
-  for another session is stale. SEQ **0** is the device ANNOUNCING a start (the header's
-  `begin()` sends one): ignored during a handshake, but after it the device has forgotten
-  the session, so the link fails what is in flight (`"restart"`) and main pushes
-  `serial:restart` → the run STOPS. Version or signature mismatch REFUSES the run
-  (`version` / `signature` codes, facts only). The device goes OFFLINE after a send it
-  never got acknowledged (behaves un-greeted until the next HELLO), so a sketch left
-  running after Stop — no goodbye frame, and a Nano does not reset on close — fails each
-  `send()` at once instead of blocking 1.5 s; `ChipHippo.connected()` exposes it.
+- **The handshake is a SESSION.** Each run picks a fresh **16-bit** session (1–65535,
+  process-wide counter from a random start — 8 bits gave a non-resetting board a 1-in-255
+  chance per app restart of taking a new run for a late copy of the old one) and sends
+  HELLO `[version][session ×2][signature ×4]` (SEQ 0) every 250 ms for up to 5 s; the device
+  answers HELLO_ACK in the same layout with the SAME session and ITS version and
+  signature. The host reads the version (payload byte 0, after the session in 1–2 matched)
+  from a HELLO_ACK of ANY length and refuses a foreign one as `version`, never as silence;
+  v1 promises nothing about a later version's payload beyond what it can read. The device
+  remembers the LAST session a HELLO named (0 at start) and resets only when a HELLO names
+  a different one — the host resends HELLO until it hears, and a late copy that reset the device would rewind its SEQs so its next
+  Input looked like a duplicate and vanished. It JOINS that session only if the HELLO is
+  byte-for-byte its own HELLO_ACK payload (v1, its layout): the header compares the two
+  seven bytes, so a mismatch never runs `onConnect` or sends an Input into a refused run.
+  A HELLO for session 0 is IGNORED (its answer would read as a restart). A HELLO_ACK for
+  another session is stale. Session **0** is the device ANNOUNCING it is in NO session —
+  the header's `begin()` sends one, and so does leaving a session (below): ignored during
+  a handshake, but after it the link FAILS (`"restart"`, and `send()` answers that from
+  then on — data goes only while ACTIVE, LOG is still shown) and main pushes
+  `serial:restart` → the run STOPS ("left the run" — it restarted, or stopped hearing
+  Chip Hippo). Version or signature mismatch REFUSES the run (`version` / `signature`
+  codes, facts only). A send it never got acknowledged takes the device OUT of the session:
+  it drops a held OUTPUT, never ACKs the running handler's (`busySeq_` zeroed), ANNOUNCES
+  (so a host still listening stops — before, an Inputs-only run just froze), and stays
+  OFFLINE keeping its last session, so only the NEXT run's HELLO brings it back — a
+  sketch left running after Stop fails each `send()` at once instead of blocking 1.5 s;
+  `ChipHippo.connected()` exposes it. A new session while a handler waits in `send()`
+  abandons that Input (its `txSeq_` was reset — checked BEFORE acting on the answer, or a
+  NAK right behind the HELLO would resend the old run's Input into the new one), never
+  ACKs the handler's OUTPUT (`busySeq_` zeroed — SEQ 0 is never a data frame's, and a data
+  frame CARRYING 0 is ignored everywhere), and REFUSES the rest of that handler's sends
+  (`dispatching_ && !busySeq_`): a handler belongs to its OUTPUT's session. The
+  RENDERER keeps an Input that arrives while the run is still OPENING
+  (`IntegrationController`'s `#opening`): a device's `onConnect` sends its starting
+  values the moment ITS handshake completes, main ACKs them at once, and `serial:open`
+  resolves only after every connection's — dropped there, they never came again.
+  `serial-conformance.test.js` feeds the Mock, the compiled header and the Python module
+  (python3 + micropython) the SAME host bytes — corners a correct host never sends — and
+  holds them to the same answers.
 - **The built-in MOCK connection** (`docs/chiphippo-mock-connection.md`) is a device
   Chip Hippo plays itself, at the BYTE level: `app/serial/mock-device.js` is the protocol's
   device side in JS behind the same four-method port `adaptPort` gives a real one, so the
@@ -1452,7 +1513,9 @@ integration-runtime,integration-codegen,serial-connections,serial-wire}.js` +
   consumer sees it first), `normalizeConnection` drops a stored user entry claiming its id,
   `projectConnections`/`mergeProjectConnections`/project-store never carry it,
   `connectionProblem` is null for it (no port), and `SerialManager.connection("mock")`
-  answers a built-in record no settings entry can shadow and opens it with no port scan.
+  answers a built-in record no settings entry can shadow and opens it with no port scan —
+  handing `openPort({signature})` the run's layout signature, so the mock is a device
+  built for the design on screen (its own layout, as a sketch has) rather than a mirror.
   Its connection window is everyone's (below) plus `components/mock-panel.js`, whose
   Input rows come from the LAYOUT its run brought (a row per Input, Send / Send all, Log, the four
   one-shot FAULTS — `drop-ack`, `corrupt` (the next ACK or INBOUND, never a LOG, which
@@ -1582,7 +1645,10 @@ integration-runtime,integration-codegen,serial-connections,serial-wire}.js` +
   `kbd_intr(-1)` makes a 0x03 data, but the host sends nothing but whole frames, so a
   lone 0x03 BETWEEN frames can only be Thonny or `mpremote` stopping the program —
   `_Stdio.interrupt()` restores Ctrl-C and raises KeyboardInterrupt (and `read()` stops at a
-  0x03, leaving what follows it for the REPL). Without it, a `main.py` running the link
+  0x03, leaving what follows it for the REPL). "Between frames" means outside any frame's
+  EXTENT: a DAMAGED frame is still read to the end its LEN gives it (`_bad`/`_got`, wire-
+  identical to hunting), or a 0x03 in its tail — a later version's long HELLO, say — would
+  kill the program. Without it, a `main.py` running the link
   locked every tool out of the board. A Python connection off **115200 baud, 8N1**
   is warned about on the Generate card (`python-framing`): a USB-serial-chip board (a
   classic ESP32 DevKit) runs its REPL at exactly that, a native-USB one ignores it.
@@ -1980,6 +2046,8 @@ The drag runs on `pointer-gesture.js`.
 DOM with `dom.js` `el()`. `PopupManager.close()` fires a one-way `chiphippo:popup-closed`
 so stateful dialogs can reset their open-guard however they were dismissed. Every callback
 goes through `fire()`, which reports a throw or rejection instead of dropping it.
+`dialog`'s optional `headerActions` puts a card's own icon buttons (`.popup-header-btn`,
+the ×'s box) in one `.popup-header-actions` group LEFT of the ×.
 
 - Beyond `menu` / `confirm` / `prompt` / `notify` / `dialog` there is **`choose`** — the
   Cancel + N-choices shape a "save, discard, or cancel" question needs (the tab delete,

@@ -52,9 +52,11 @@ import {
   ELEMENT_KINDS,
   ID_PREFIX,
   MAX_ELEMENTS,
+  TRIGGER_KEY,
   elementKindOf,
   elementSeq,
   hasTagKey,
+  isAutoTrigger,
   nextTagRotation,
   normalizeElementFields,
   normalizeFields,
@@ -300,8 +302,9 @@ function normalizeSchematicPos(raw) {
  * same omit-when-empty convention as schematicPos, so a record that never had
  * one round-trips to the identical shape it had before these fields existed.
  */
-/** A deep-enough copy of an integration element: its fields and tags are the
-    two nested things a caller could otherwise mutate through. */
+/** A deep-enough copy of an integration element: its fields, its tags and a
+    parked trigger are the nested things a caller could otherwise mutate
+    through. */
 function copyElement(e) {
   return {
     ...e,
@@ -313,6 +316,7 @@ function copyElement(e) {
           ),
         }
       : {}),
+    ...(e.parkedTrigger ? { parkedTrigger: { ...e.parkedTrigger } } : {}),
   };
 }
 
@@ -738,6 +742,11 @@ export function normalizeDocument(raw) {
   const elementIds = new Set();
   const colorsKept = doc.signals.map((s) => ({ color: s.color }));
   const rawElements = Array.isArray(raw.integrations) ? raw.integrations : [];
+  const isHole = (anchor) => {
+    const parsed = typeof anchor === "string" ? parseAddress(anchor) : null;
+    const board = parsed && doc.boards.find((b) => b.id === parsed.boardId);
+    return Boolean(board) && parseHole(board.type, parsed.hole) !== null;
+  };
   for (const e of rawElements) {
     if (!e || typeof e !== "object") continue;
     const kind = elementKindOf(e.id);
@@ -753,13 +762,27 @@ export function normalizeDocument(raw) {
       const tag = e.tags?.[key];
       const anchor = tag?.anchor;
       if (typeof anchor !== "string" || claimed.has(anchor)) continue;
-      const parsed = parseAddress(anchor);
-      const board = parsed && doc.boards.find((b) => b.id === parsed.boardId);
-      if (!board || parseHole(board.type, parsed.hole) === null) continue;
+      if (!isHole(anchor)) continue;
       tags[key] = { anchor, rot: normalizeTagRotation(tag.rot) };
       claimed.add(anchor);
     }
     if (Object.keys(tags).length) record.tags = tags;
+    // An element on Auto has no trigger tag, but REMEMBERS where it was
+    // (`parkedTrigger`), so switching back to an edge puts it back. A memory,
+    // not a tag: it claims no hole, drives nothing and is drawn nowhere, so
+    // it is held only to naming a real hole — whether that hole is still free
+    // is asked when it is restored. Only Auto keeps one; an Auto element
+    // arriving with a planted trigger (a state the app never writes) has it
+    // parked, the reading that loses nothing.
+    if (isAutoTrigger(record)) {
+      const park = e.parkedTrigger ?? e.tags?.[TRIGGER_KEY];
+      if (isHole(park?.anchor)) {
+        record.parkedTrigger = {
+          anchor: park.anchor,
+          rot: normalizeTagRotation(park.rot),
+        };
+      }
+    }
     doc.integrations.push(record);
   }
 
@@ -1087,6 +1110,14 @@ export class DeskDoc {
   /**
    * Add a board (coordinates snapped to integers). Throws INVALID_TYPE /
    * INVALID_ARG / OVERLAP. Returns a copy of the new board.
+   *
+   * BOARD NAMES: a strip is born NAMED after its id (`bb2`), here and in
+   * addKit. The id is what every message and hole address quotes (`bb2.a12`,
+   * a short on `bb2.+`), and nothing drawn on the desk says which strip that
+   * is — so the Properties dialog's Name is where the reader finds it, and a
+   * rename is still theirs to make. An ordinary name, not a derived one:
+   * boards loaded without one stay without one, and pasteDesign re-names a
+   * copy whose name was still its source's id (see there).
    */
   addBoard(type, x, y, rot = 0) {
     spec(type); // validates — throws INVALID_TYPE
@@ -1100,13 +1131,15 @@ export class DeskDoc {
         "OVERLAP",
       );
     }
+    const id = `bb${this.#doc.nextBoardId++}`;
     const board = {
-      id: `bb${this.#doc.nextBoardId++}`,
+      id,
       type,
       x: placeX(x),
       y: boardCoord(y),
       rot: turn,
       group: null,
+      name: id, // BOARD NAMES, above
     };
     this.#doc.boards.push(board);
     return { ...board };
@@ -1209,14 +1242,10 @@ export class DeskDoc {
     }
     // A lone strip needs no group — grouping starts at two.
     const group = placements.length > 1 ? `g${this.#doc.nextGroupId++}` : null;
-    const added = placements.map((p) => ({
-      id: `bb${this.#doc.nextBoardId++}`,
-      type: p.type,
-      x: p.x,
-      y: p.y,
-      rot: p.rot,
-      group,
-    }));
+    const added = placements.map((p) => {
+      const id = `bb${this.#doc.nextBoardId++}`;
+      return { id, type: p.type, x: p.x, y: p.y, rot: p.rot, group, name: id };
+    });
     this.#doc.boards.push(...added);
     return added.map((b) => ({ ...b }));
   }
@@ -3152,6 +3181,7 @@ export class DeskDoc {
       id: `${ID_PREFIX[kind]}${this.#doc[counter]++}`,
       kind,
       ...normalizeElementFields({
+        kind,
         color,
         connection,
         fields: presetFields(width),
@@ -3165,6 +3195,12 @@ export class DeskDoc {
   /**
    * Patch an element's `color` / `connection` / `triggerEdge` /
    * `triggerInit`. Throws NOT_FOUND or INVALID_ARG. Returns a copy.
+   *
+   * Moving the trigger ONTO Auto takes the trigger tag off the board and
+   * PARKS it (`parkedTrigger`); moving it off Auto puts it back in the hole it
+   * left — if that hole is still there and still free, and otherwise onto the
+   * card (THE RULE: the tag waits, the element is none the worse). Switching
+   * between two edges leaves the tag where it is.
    */
   updateIntegration(id, patch = {}) {
     const e = this.#element(id);
@@ -3177,10 +3213,37 @@ export class DeskDoc {
         throw taggedError(`bad element ${key}: ${patch[key]}`, "INVALID_ARG");
       }
     }
+    const wasAuto = isAutoTrigger(e);
     for (const key of ["color", "connection", "triggerEdge", "triggerInit"]) {
       if (patch[key] !== undefined) e[key] = next[key];
     }
+    if (isAutoTrigger(e) && !wasAuto) this.#parkTrigger(e);
+    if (!isAutoTrigger(e) && wasAuto) this.#unparkTrigger(e);
     return copyElement(e);
+  }
+
+  /** Onto Auto: the trigger tag leaves its hole, remembered but claiming
+      nothing — the hole is free for anything while the element is on Auto. */
+  #parkTrigger(e) {
+    delete e.parkedTrigger;
+    const tag = e.tags?.[TRIGGER_KEY];
+    if (!tag) return;
+    e.parkedTrigger = { ...tag };
+    delete e.tags[TRIGGER_KEY];
+    if (!Object.keys(e.tags).length) delete e.tags;
+  }
+
+  /** Off Auto: the parked trigger goes back where it was, when it can. */
+  #unparkTrigger(e) {
+    const park = e.parkedTrigger;
+    delete e.parkedTrigger;
+    if (!park) return;
+    if (
+      this.isBoardHole(park.anchor) &&
+      canPlaceTag(this.#doc, e.id, TRIGGER_KEY, park.anchor)
+    ) {
+      e.tags = { ...(e.tags ?? {}), [TRIGGER_KEY]: { ...park } };
+    }
   }
 
   /**
@@ -3249,10 +3312,12 @@ export class DeskDoc {
     return copyElement(e);
   }
 
-  /** Unplug every tag an element has. */
+  /** Unplug every tag an element has — a parked trigger included, so a
+      later switch off Auto cannot bring back a tag the user cleared. */
   unplantIntegrationTags(id) {
     const e = this.#element(id);
     delete e.tags;
+    delete e.parkedTrigger;
     return copyElement(e);
   }
 
@@ -3276,9 +3341,13 @@ export class DeskDoc {
     return e;
   }
 
-  /** Detach every tag planted on a board that is going away (THE RULE). */
+  /** Detach every tag planted on a board that is going away (THE RULE) —
+      and forget a trigger parked there, which has nowhere to go back to. */
   #detachIntegrationTags(boardId) {
     for (const e of this.#doc.integrations) {
+      if (parseAddress(e.parkedTrigger?.anchor)?.boardId === boardId) {
+        delete e.parkedTrigger;
+      }
       if (!e.tags) continue;
       for (const [key, tag] of Object.entries(e.tags)) {
         if (parseAddress(tag.anchor)?.boardId === boardId) delete e.tags[key];
@@ -3410,9 +3479,13 @@ export class DeskDoc {
       const boards = [];
       for (const b of clip.boards) {
         const added = this.addBoard(b.type, b.x + dx, b.y + dy, b.rot);
-        if (b.name || b.description) {
+        // addBoard named it after its NEW id. A name that was still the
+        // source's own id is that same default, not the user's words — copied,
+        // `bb7` would arrive calling itself `bb2`, the board it came from.
+        const name = b.name && b.name !== b.key ? b.name : undefined;
+        if (name || b.description) {
           this.setBoardParams(added.id, {
-            name: b.name ?? "",
+            name, // undefined leaves addBoard's alone
             description: b.description ?? "",
           });
         }

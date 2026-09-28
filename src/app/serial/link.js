@@ -17,7 +17,7 @@
 /**
  * link.js — ONE connection's conversation with its device, over whatever port
  * it is handed: the HOST half of the serial protocol v1's session and
- * reliability rules (docs/chiphippo-serial-protocol.md §4–§5; protocol.js is
+ * reliability rules (src/web/docs/serial-protocol.md §5–§6; protocol.js is
  * the bytes). It runs the HELLO / HELLO_ACK handshake a run waits for,
  * delivers Output frames stop-and-wait with ACK/NAK/retry, acknowledges and
  * de-duplicates Input frames, and passes log text on.
@@ -28,15 +28,19 @@
  * device, and against the REAL generated header compiled on the host
  * (tests/serial-arduino-header.test.js).
  *
- * THE SESSION. Every handshake picks a fresh session number (1–255) and sends
- * it as HELLO's SEQ; the device echoes it in HELLO_ACK and resets its sequence
- * state only when the session CHANGES. So the host may resend HELLO as often as
- * the bootloader makes it, and a second copy arriving after the device has
- * started talking cannot rewind the device's SEQ counter — which would make
- * its next Input look like a duplicate and be dropped without a word. A
- * HELLO_ACK for any other session is stale and ignored, bar one: SEQ 0 is the
- * device ANNOUNCING that its sketch has (re)started, which mid-run means it has
- * forgotten the session and will ignore everything until greeted again.
+ * THE SESSION. Every handshake picks a fresh 16-bit session number (1–65535)
+ * and sends it in HELLO; the device echoes it in HELLO_ACK and resets its
+ * sequence state only when the session CHANGES. So the host may resend HELLO
+ * as often as the bootloader makes it, and a second copy arriving after the
+ * device has started talking cannot rewind the device's SEQ counter — which
+ * would make its next Input look like a duplicate and be dropped without a
+ * word. Sixteen bits, because a board that does not reset between runs
+ * remembers the last session it saw, and a restarted Chip Hippo that happened
+ * to pick that one again would be taken for a late copy of the old run's
+ * HELLO. A HELLO_ACK for any other session is stale and ignored, bar one:
+ * session 0 is the device ANNOUNCING that it is in no session — its sketch
+ * has (re)started, or given up on this one after an Input went unanswered —
+ * which mid-run means it will ignore everything until greeted again.
  *
  * WHY STOP-AND-WAIT. The board stalls at a settle boundary until every frame
  * it sent has been acknowledged (the "integration settle"), and the device
@@ -72,40 +76,34 @@ const {
   MAX_SENDS,
   HELLO_INTERVAL_MS,
   HELLO_WINDOW_MS,
+  ANNOUNCE_SESSION,
+  MAX_SESSION,
+  MAX_SEQ,
   encodeFrame,
   FrameDecoder,
   encodeData,
   decodeData,
   encodeHello,
   decodeHello,
+  owesNak,
 } = require("./protocol");
 
-/** Damaged frames that are NOT answered with a NAK: acknowledgements (a NAK
-    for an ACK would loop), log text (never acknowledged, so there is nothing
-    to resend) and the handshake (which resends on its own clock). */
-const NO_NAK = new Set([
-  FRAME.ACK,
-  FRAME.NAK,
-  FRAME.LOG,
-  FRAME.HELLO,
-  FRAME.HELLO_ACK,
-]);
+/** The session after `session`: 1…65535, wrapping to 1 — 0 is never a
+    run's (it is the device's start-up announcement). */
+const followingSession = (session) => (session % MAX_SESSION) + 1;
 
-/** The session number the device ANNOUNCES a (re)start with. */
-const ANNOUNCE = 0;
-
-/** The next session number, 1–255: process-wide and counting, so two runs in
-    a row never share one (a device that did not reset between them would
-    keep the old run's SEQs). Seeded at random so a restarted app is unlikely
-    to reuse the one a still-running device remembers. */
-let lastSession = randomInt(1, 256);
+/** The next session number: process-wide and counting, so two runs in a row
+    never share one (a device that did not reset between them would keep the
+    old run's SEQs). Seeded at random so a restarted app is unlikely — one in
+    65535 — to reuse the one a still-running device remembers. */
+let lastSession = randomInt(1, MAX_SESSION + 1);
 function nextSession() {
-  lastSession = (lastSession % 255) + 1;
+  lastSession = followingSession(lastSession);
   return lastSession;
 }
 
-/** A data frame's next SEQ: 1…255, wrapping to 1 — 0 is the handshake's. */
-const nextSeq = (seq) => (seq % 255) + 1;
+/** A data frame's next SEQ: 1…255, wrapping to 1 — 0 is every other frame's. */
+const nextSeq = (seq) => (seq % MAX_SEQ) + 1;
 
 class SerialLink {
   #port;
@@ -114,6 +112,7 @@ class SerialLink {
   #attempts;
   #helloTimeoutMs;
   #helloIntervalMs;
+  #sessions;
   #decoder = new FrameDecoder();
   #text = new StringDecoder("utf8");
   #onInbound;
@@ -123,10 +122,11 @@ class SerialLink {
   #onTrace;
 
   #session = null; // this run's session, once a handshake has begun
-  #greeted = false; // the device has answered this session's HELLO
+  #greeted = false; // ACTIVE: the device has answered this session's HELLO
+  #failure = null; // FAILED: why the session ended ("delivery", "restart")
   #handshake = null; // the handshake in progress: (hello) => void
   #txSeq = 0; // the last SEQ this side sent
-  #lastInSeq = 0; // the last Input SEQ accepted (0: none yet)
+  #lastInSeq = 0; // the last Input SEQ acknowledged (0: none yet)
   #queue = []; // waiting Output frames: { index, width, value, resolve }
   #current = null; // the frame in flight: { frame, seq, tries, timer, resolve }
   #closed = false;
@@ -142,6 +142,8 @@ class SerialLink {
    * @param {number} [opts.helloIntervalMs]
    * @param {{setTimeout: Function, clearTimeout: Function, setInterval: Function,
    *   clearInterval: Function}} [opts.timers] - injectable for tests.
+   * @param {() => number} [opts.sessions] - the session each handshake uses;
+   *   the process-wide counter unless a test names its own.
    * @param {(data: {index: number, width: number, value: number}) => void} [opts.onInbound]
    * @param {(text: string) => void} [opts.onLog]
    * @param {() => void} [opts.onRestart] - the device announced a restart
@@ -157,6 +159,7 @@ class SerialLink {
     helloTimeoutMs = HELLO_WINDOW_MS,
     helloIntervalMs = HELLO_INTERVAL_MS,
     timers = globalThis,
+    sessions = nextSession,
     onInbound,
     onLog,
     onRestart,
@@ -169,6 +172,7 @@ class SerialLink {
     this.#attempts = Math.max(1, Number(attempts) || MAX_SENDS);
     this.#helloTimeoutMs = helloTimeoutMs;
     this.#helloIntervalMs = helloIntervalMs;
+    this.#sessions = sessions;
     this.#onInbound = onInbound;
     this.#onLog = onLog;
     this.#onRestart = onRestart;
@@ -184,19 +188,24 @@ class SerialLink {
 
   /**
    * Greet the device: HELLO every so often until it answers for THIS session
-   * (a bootloader may swallow the first few), then judge its answer. Only the
-   * host judges, so only the host has to say what is wrong.
+   * (a bootloader may swallow the first few), then judge its answer — the
+   * version first, read whatever the answer's length, so a sketch from
+   * another version is named as that rather than as silence.
+   * The device judges too (it joins only a HELLO that matches it), but only
+   * the host has to say what is wrong.
    *
    * @param {number} signature - the layout signature this run expects.
    * @returns {Promise<{ok: true, device: {version: number, signature: number}} |
    *   {ok: false, code: "no-response"|"version"|"signature"|"closed",
-   *   device?: {version: number, signature: number}}>}
+   *   device?: {version: number, signature: number|null}}>} - a device of
+   *   another version may not have said a signature this side can read.
    */
   handshake(signature) {
     if (this.#closed) return Promise.resolve({ ok: false, code: "closed" });
-    const session = nextSession();
+    const session = this.#sessions();
     this.#session = session;
     this.#greeted = false;
+    this.#failure = null;
     return new Promise((resolve) => {
       const t = this.#timers;
       let done = false;
@@ -208,8 +217,9 @@ class SerialLink {
         this.#handshake = null;
         resolve(result);
       };
-      this.#handshake = (device) => {
-        if (!device) return finish({ ok: false, code: "closed" });
+      this.#handshake = (hello) => {
+        if (!hello) return finish({ ok: false, code: "closed" });
+        const device = { version: hello.version, signature: hello.signature };
         if (device.version !== PROTOCOL_VERSION) {
           this.#trace({
             kind: "error",
@@ -248,8 +258,11 @@ class SerialLink {
         });
         this.#write({
           type: FRAME.HELLO,
-          seq: session,
-          payload: encodeHello({ version: PROTOCOL_VERSION, signature }),
+          payload: encodeHello({
+            version: PROTOCOL_VERSION,
+            session,
+            signature,
+          }),
         });
       };
       const ask = t.setInterval(hello, this.#helloIntervalMs);
@@ -270,9 +283,14 @@ class SerialLink {
    * it (its handler has returned), or `{ok: false, code}` after the last
    * attempt — "delivery" — or when the port went away — "closed". Never
    * rejects: a failed delivery is an answer, and the caller stops the run on it.
+   * Data frames go only while the session is ACTIVE (§5.2): before the
+   * handshake nothing is sent, and after a failure the failure answers again.
    */
   send(index, width, value) {
     if (this.#closed) return Promise.resolve({ ok: false, code: "closed" });
+    if (!this.#greeted) {
+      return Promise.resolve({ ok: false, code: this.#failure ?? "closed" });
+    }
     return new Promise((resolve) => {
       this.#queue.push({ index, width, value, resolve });
       this.#pump();
@@ -356,8 +374,16 @@ class SerialLink {
     cur.resolve(result);
     // One failure ends the run, so a frame queued behind it is not worth
     // trying — and trying would only hold the stall open three times longer.
-    if (!result.ok) this.#failAll(result.code);
+    if (!result.ok) this.#fail(result.code);
     else this.#pump();
+  }
+
+  /** The session has FAILED (§5.2): nothing more is sent or accepted but
+      log text, and everything waiting answers `code`. */
+  #fail(code) {
+    this.#greeted = false;
+    this.#failure = code;
+    this.#failAll(code);
   }
 
   #failAll(code) {
@@ -399,10 +425,10 @@ class SerialLink {
     for (const frame of this.#decoder.push(chunk)) {
       if (!frame.ok) {
         // The fast fail: NAK at once rather than let the sender wait out its
-        // timeout — for anything that would be resent (§2.3). Damage before
+        // timeout — for anything that would be resent (§3.5). Damage before
         // the session is a bootloader's noise, not worth a line.
         if (!this.#greeted) continue;
-        const nak = !NO_NAK.has(frame.type);
+        const nak = owesNak(frame.type);
         this.#trace({
           kind: "error",
           event: "damaged",
@@ -452,7 +478,9 @@ class SerialLink {
         // Acknowledged as soon as it is here, whatever the run is doing — a
         // stalled board still receives, it just does not APPLY until the stall
         // is over — so the device's send() returns promptly. A resend of the
-        // last one accepted (our ACK was lost) is ACKed again and dropped.
+        // last one acknowledged (our ACK was lost) is ACKed again and dropped;
+        // one that is intact but unusable is acknowledged and dropped (§4.2).
+        if (frame.seq === 0) return; // no data frame's: ignored, not ACKed
         this.#write({ type: FRAME.ACK, seq: frame.seq });
         if (frame.seq === this.#lastInSeq) {
           this.#trace({ kind: "error", event: "duplicate", seq: frame.seq });
@@ -476,33 +504,36 @@ class SerialLink {
   }
 
   #onHelloAck(frame) {
-    const device = decodeHello(frame.payload);
-    if (!device) return;
-    if (frame.seq === ANNOUNCE) {
-      // The sketch has just started. During the handshake that is expected
+    const hello = decodeHello(frame.payload);
+    if (!hello) return;
+    if (hello.session === ANNOUNCE_SESSION) {
+      // The sketch is in no session. During the handshake that is expected
       // (opening the port reset the board) — it answers the next HELLO. After
-      // it, the device has forgotten this session.
+      // it, the device has restarted, or given this session up.
       if (this.#greeted) {
-        this.#greeted = false;
         this.#trace({ kind: "error", event: "restart" });
-        this.#failAll("restart");
+        this.#fail("restart");
         this.#onRestart?.();
       } else if (this.#handshake) {
         this.#trace({ kind: "proto", event: "announce" });
       }
       return;
     }
-    if (frame.seq !== this.#session || this.#greeted) return; // stale, or a repeat
-    if (this.#handshake) {
-      this.#trace({
-        kind: "proto",
-        event: "hello-ack",
-        session: frame.seq,
-        version: device.version,
-        signature: device.signature >>> 0,
-      });
+    // Stale (another session's), or a repeat of this one's after the fact.
+    if (!this.#handshake || hello.session !== this.#session) return;
+    // A v1 answer that is not v1's seven bytes is no answer at all; another
+    // version's is judged on its version alone.
+    if (hello.version === PROTOCOL_VERSION && hello.signature === null) {
+      return;
     }
-    this.#handshake?.(device);
+    this.#trace({
+      kind: "proto",
+      event: "hello-ack",
+      session: hello.session,
+      version: hello.version,
+      ...(hello.signature === null ? {} : { signature: hello.signature >>> 0 }),
+    });
+    this.#handshake(hello);
   }
 
   #portClosed(error) {
@@ -519,4 +550,4 @@ class SerialLink {
   }
 }
 
-module.exports = { SerialLink };
+module.exports = { SerialLink, followingSession };

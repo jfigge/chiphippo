@@ -34,7 +34,7 @@ Every entry is one line. Three kinds, visually distinct by a fixed-width prefix 
 | Protocol error | `!` | `! ← NAK — resending seq 12 (attempt 2/3)` | warning colour |
 
 - Arrows are always from **ChipHippo's** point of view: `→` leaves ChipHippo, `←` arrives. (Including in the Mock window, for consistency; the mock is the device.)
-- Data frames are decoded with element and field names, one `name=value` per field (protocol §3.2): a bit field as `0`/`1` (`rw=1 ce=0`), a byte or word field in hex (`addr=0x3F`). Hover a data line to see the raw bytes as they went on the wire.
+- Data frames are decoded with element and field names, one `name=value` per field (protocol §4.2): a bit field as `0`/`1` (`rw=1 ce=0`), a byte or word field in hex (`addr=0x3F`). Hover a data line to see the raw bytes as they went on the wire.
 - Log text: a `LOG` frame without a trailing newline stays on the current line; later `LOG` frames continue it. A data or protocol line arriving mid-line starts a new line (the partial log line isn't lost, it just ends there).
 - Resends are shown as protocol-error lines, not as repeated data lines, so a retried frame appears once as data.
 - Run-level events appear as protocol lines: port opened, handshake result, port closed, and the reason a run was stopped (in the error colour).

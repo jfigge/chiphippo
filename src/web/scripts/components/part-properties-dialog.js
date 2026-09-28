@@ -48,6 +48,14 @@
 // field fires, drawn as an icon button to the RIGHT of the control, for a
 // command that belongs to that one row.
 //
+// A value field may also carry `disabledWhen(values)`: a row that means
+// nothing under another row's current choice (an Output's "Trigger starts"
+// once its Trigger is Auto) stays in the card, greyed and inert, rather than
+// leaving it — a row that vanished would move every control below it under
+// the pointer. It is asked with the values as they stand NOW (the opening
+// values with every change made here laid over them), on open and after
+// every change, since this card never rebuilds its rows.
+//
 // `"wire-gauge"` is the one field type named after what it draws rather than
 // after a KIND of control, and deliberately so: it is a picture, not an editor.
 // Like `"separator"` it carries no key and reads nothing out of `values` — the
@@ -317,6 +325,18 @@ function buildRow(field, value, onChange, onAction) {
   ]);
 }
 
+/** Grey a row out (or bring it back): every control in it stops taking
+    input, and the row says so for the stylesheet. `disabledWhen`'s one
+    effect — see the note at the top of this file. */
+function setRowDisabled(row, disabled) {
+  row.classList.toggle("properties-row--disabled", disabled);
+  for (const control of row.querySelectorAll(
+    "button, input, select, textarea",
+  )) {
+    control.disabled = disabled;
+  }
+}
+
 /** The warning triangle, drawn small enough to sit in a line of text — the
     same sign the part is showing on the desk (part-symbols.js draws that one
     in pitch units, so it can't be the same node). Decorative: the sentence
@@ -362,7 +382,7 @@ export class PartPropertiesDialog {
    * Name/Description always come first; `fields` (if any) follow a separator.
    * @param {object} opts
    * @param {string} opts.title - the dialog header (e.g. "LED Properties").
-   * @param {Array<{key?:string,label?:string,type:string,options?:Array<{value,label}>,actionLabel?:string,action?:{key:string,label?:string,icon:string},color?:string,measure?:() => number}>} [opts.fields] -
+   * @param {Array<{key?:string,label?:string,type:string,options?:Array<{value,label}>,actionLabel?:string,action?:{key:string,label?:string,icon:string},color?:string,measure?:() => number,disabledWhen?:(values: object) => boolean}>} [opts.fields] -
    *   the part's catalog `properties` list (plus any instance-conditional
    *   action fields desk-controller.js appends) — empty/omitted for a board
    *   or a part with nothing beyond Name/Description.
@@ -411,8 +431,17 @@ export class PartPropertiesDialog {
     const colorKeys = new Set(
       allFields.filter((f) => f.type === "color").map((f) => f.key),
     );
+    const current = { ...values };
+    const dependents = [];
+    const refreshDisabled = () => {
+      for (const { row, field } of dependents) {
+        setRowDisabled(row, Boolean(field.disabledWhen(current)));
+      }
+    };
     const change = (key, value) => {
       onChange(key, value);
+      current[key] = value;
+      refreshDisabled();
       for (const { svg, field } of gauges) {
         if (colorKeys.has(key)) setWireGaugeColor(svg, value);
         setWireGaugeRun(svg, field.measure());
@@ -424,7 +453,11 @@ export class PartPropertiesDialog {
     allFields.forEach((field, i) => {
       const svg = rows[i].querySelector?.(".wire-gauge");
       if (svg) gauges.push({ svg, field });
+      if (typeof field.disabledWhen === "function") {
+        dependents.push({ row: rows[i], field });
+      }
     });
+    refreshDisabled();
 
     // The warnings section (see the note at the top of this file): the LAST
     // thing in the card, gone entirely while the part is healthy. Its divider

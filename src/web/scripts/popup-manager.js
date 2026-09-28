@@ -410,6 +410,9 @@ export const PopupManager = {
    * @param {string} [opts.bodyClass] - an extra class on the `.popup-body`
    *   wrapper, e.g. "settings-popup-body".
    * @param {Node|Array<Node>} opts.body - the dialog's own content.
+   * @param {Array<Node>} [opts.headerActions] - buttons for the header's top
+   *   right, LEFT of the close (×) and grouped with it (the Serial I/O cards'
+   *   protocol-reference button). Absent, the header is title + × as ever.
    * @param {() => void} [opts.onClose] - fires when THIS popup closes (not
    *   when a popup it was queued behind closes) — reset the caller's guard.
    */
@@ -420,6 +423,7 @@ export const PopupManager = {
     className,
     bodyClass,
     body,
+    headerActions,
     onClose,
   } = {}) {
     const closeBtn = el("button", {
@@ -431,6 +435,14 @@ export const PopupManager = {
       "data-autofocus": true,
     });
     closeBtn.innerHTML = CLOSE_SVG;
+    // The header's own buttons sit in ONE group with the ×, a tight row of
+    // icons rather than spread by `.popup-header`'s title gap.
+    const trailing = headerActions?.length
+      ? el("div", { class: "popup-header-actions" }, [
+          ...headerActions,
+          closeBtn,
+        ])
+      : closeBtn;
 
     const element = el(
       "div",
@@ -443,7 +455,7 @@ export const PopupManager = {
       [
         el("div", { class: "popup-header" }, [
           el("span", { class: "popup-title", text: title }),
-          closeBtn,
+          trailing,
         ]),
         el(
           "div",

@@ -1230,11 +1230,10 @@ function relayToHost(compId, msg) {
 // ─── User guide (Feature 230) ───────────────────────────────────────────────────
 // One Markdown source (src/web/docs/*.md) drives the in-app guide here, the
 // hosted website (scripts/build-docs.mjs), and the PDF (scripts/build-pdf.mjs) —
-// see docs-viewer.js's PAGES for the page list, kept in sync by hand with the
-// copy in build-docs.mjs. The guide window is a true singleton (unlike pinout/
-// memory, which are keyed per ref/component) and carries no document state, so
-// it is NOT closed by closeAuxWindows() on New/Open — only when the app itself
-// is shutting down.
+// see web/scripts/docs-pages.js for the one page list all three read. The guide
+// window is a true singleton (unlike pinout/memory, which are keyed per
+// ref/component) and carries no document state, so it is NOT closed by
+// closeAuxWindows() on New/Open — only when the app itself is shutting down.
 let docsWindow = null;
 const DOCS_DIR = path.join(__dirname, "..", "web", "docs");
 const DOCS_SLUG_RE = /^[a-zA-Z0-9-]+$/;
@@ -1256,9 +1255,22 @@ function readDocsPage(slug) {
   return fs.promises.readFile(filePath, "utf8");
 }
 
-/** Open (or focus) the singleton Chip Hippo User Guide window. */
-function openDocsWindow() {
+/**
+ * Open (or focus) the singleton Chip Hippo User Guide window — on `page` when
+ * one is named (a slug; the window itself falls back to the overview for one
+ * its contents list does not have). A window already open is turned to that
+ * page rather than opened again; one still loading is told once it has
+ * loaded, since its listener does not exist before then.
+ * @param {string|null} [page]
+ */
+function openDocsWindow(page = null) {
   if (docsWindow && !docsWindow.isDestroyed()) {
+    if (page) {
+      const wc = docsWindow.webContents;
+      const show = () => wc.send("docs:show", page);
+      if (wc.isLoading()) wc.once("did-finish-load", show);
+      else show();
+    }
     docsWindow.show();
     docsWindow.focus();
     return true;
@@ -1296,7 +1308,12 @@ function openDocsWindow() {
     }
     return { action: "deny" };
   });
-  win.loadFile(path.join(__dirname, "..", "web", "docs.html")).catch(() => {});
+  win
+    .loadFile(
+      path.join(__dirname, "..", "web", "docs.html"),
+      page ? { query: { page } } : {},
+    )
+    .catch(() => {});
   win.on("closed", () => {
     if (docsWindow === win) docsWindow = null;
   });
@@ -2080,6 +2097,13 @@ function registerIpc() {
   // User guide (Feature 230): the docs window fetches one Markdown page's raw
   // source at a time by slug — never the filesystem path, never fetch().
   ipcMain.handle("docs:read", (_event, slug) => readDocsPage(slug));
+  // …and the app window opens the guide ON a page — the protocol reference
+  // Settings ▸ Serial I/O and the Generate card link to. A slug, validated as
+  // docs:read validates one, so the request can name a page and nothing else.
+  ipcMain.handle("docs:open", (_event, slug) => {
+    if (typeof slug !== "string" || !DOCS_SLUG_RE.test(slug)) return false;
+    return openDocsWindow(slug);
+  });
 
   // Memory backing files (Features 180/190): the byte-oriented, GUID-keyed store
   // behind a ROM chip's `.bin` in the app working folder. Each resolves the

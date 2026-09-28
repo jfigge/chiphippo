@@ -16,7 +16,7 @@
 
 /**
  * protocol.js — the bytes of the Arduino serial protocol v1
- * (docs/chiphippo-serial-protocol.md, which is normative). Pure: bytes in,
+ * (src/web/docs/serial-protocol.md, which is normative). Pure: bytes in,
  * frames out, no port and no timer — `link.js` owns those.
  *
  *     0x7E  TYPE  SEQ  LEN  PAYLOAD…  CRC_LO  CRC_HI
@@ -28,7 +28,8 @@
  * torn frame) resync on the next one without a second marker.
  *
  *   · TYPE  what the frame is (FRAME in serial-wire.js).
- *   · SEQ   a data frame's sequence number; for an ACK, the one acknowledged.
+ *   · SEQ   a data frame's sequence number; for an ACK, the one acknowledged;
+ *           0 in every other frame (a session travels in HELLO's payload).
  *   · LEN   payload bytes BEFORE escaping, 0–255.
  *   · CRC   CRC-16/CCITT-FALSE over TYPE SEQ LEN PAYLOAD, unescaped, LE.
  *
@@ -49,7 +50,9 @@ const {
   MAX_PAYLOAD,
   DATA_PAYLOAD,
   HELLO_PAYLOAD,
+  HELLO_PREFIX,
   MAX_WIDTH,
+  NOT_NAKED,
   crc16,
 } = wire;
 
@@ -87,9 +90,15 @@ function encodeFrame({ type, seq = 0, payload = [] }) {
  * and starts again.
  *
  * A damaged frame is REPORTED rather than swallowed, because the receiver may
- * owe a NAK for it (§2.3) — carrying TYPE and SEQ as they arrived, which the
+ * owe a NAK for it (§3.5) — carrying TYPE and SEQ as they arrived, which the
  * caller may trust only as far as a damaged frame deserves, and `null` for
- * any it never got to.
+ * any it never got to. A frame cut short by a START is not damaged: it is
+ * dropped without a report, and the sender's timeout covers it.
+ *
+ * Its memory is bounded by construction: the frame in hand is never more
+ * than TYPE SEQ LEN + `maxPayload` + CRC bytes, since a LEN past the limit
+ * is damage the moment it is read, and a frame is complete (or damaged) the
+ * moment its last CRC byte arrives.
  */
 class FrameDecoder {
   #max;
@@ -97,9 +106,17 @@ class FrameDecoder {
   #inFrame = false;
   #escaped = false;
 
-  /** @param {{maxPayload?: number}} [opts] - a receiver with a smaller buffer
-      than LEN can describe treats a longer frame as corrupt. */
+  /** @param {{maxPayload?: number}} [opts] - the receiver's payload limit
+      (§3.2): the longest payload it accepts, at most 255. A frame whose LEN
+      is past it is damaged. */
   constructor({ maxPayload = MAX_PAYLOAD } = {}) {
+    if (
+      !Number.isInteger(maxPayload) ||
+      maxPayload < 0 ||
+      maxPayload > MAX_PAYLOAD
+    ) {
+      throw new RangeError(`bad payload limit ${maxPayload}`);
+    }
     this.#max = maxPayload;
   }
 
@@ -175,7 +192,7 @@ class FrameDecoder {
 }
 
 /**
- * An OUTPUT / INBOUND payload (§3.2): `[index][width][lo][hi]`, the value
+ * An OUTPUT / INBOUND payload (§4.2): `[index][width][lo][hi]`, the value
  * right-aligned — bit 0 is the element's pin 1 — and masked to its width, so
  * a caller can never smuggle a bit past the pins that exist.
  * @returns {number[]}
@@ -190,7 +207,7 @@ function encodeData(index, width, value) {
 
 /**
  * A data payload back, or null when it is not one — the wrong length, or a
- * width out of range. Bits at or above the width are masked off (§3.2).
+ * width out of range. Bits at or above the width are masked off (§4.2).
  * @param {ArrayLike<number>} payload
  * @returns {{index: number, width: number, value: number}|null}
  */
@@ -202,11 +219,17 @@ function decodeData(payload) {
   return { index: payload[0], width, value };
 }
 
-/** A HELLO / HELLO_ACK payload (§3.1): `[version][signature ×4, LE]`. */
-function encodeHello({ version, signature }) {
+/**
+ * A HELLO / HELLO_ACK payload (§4.1):
+ * `[version][session lo][session hi][signature ×4, LE]`.
+ * @param {{version: number, session: number, signature: number}} hello
+ */
+function encodeHello({ version, session, signature }) {
   const s = signature >>> 0;
   return [
     version & 0xff,
+    session & 0xff,
+    (session >>> 8) & 0xff,
     s & 0xff,
     (s >>> 8) & 0xff,
     (s >>> 16) & 0xff,
@@ -215,18 +238,37 @@ function encodeHello({ version, signature }) {
 }
 
 /**
+ * A HELLO / HELLO_ACK payload back. Its first three bytes — version, session
+ * — are read whatever the length, so a device of another version is named as
+ * that; the signature only from a payload that is exactly v1's seven bytes
+ * (`null` otherwise). Null for anything shorter than those three: ignored.
  * @param {ArrayLike<number>} payload
- * @returns {{version: number, signature: number}|null}
+ * @returns {{version: number, session: number, signature: number|null}|null}
  */
 function decodeHello(payload) {
-  if (!payload || payload.length !== HELLO_PAYLOAD) return null;
+  if (!payload || payload.length < HELLO_PREFIX) return null;
   const signature =
-    (payload[1] |
-      (payload[2] << 8) |
-      (payload[3] << 16) |
-      (payload[4] << 24)) >>>
-    0;
-  return { version: payload[0], signature };
+    payload.length === HELLO_PAYLOAD
+      ? (payload[3] |
+          (payload[4] << 8) |
+          (payload[5] << 16) |
+          (payload[6] << 24)) >>>
+        0
+      : null;
+  return {
+    version: payload[0],
+    session: payload[1] | (payload[2] << 8),
+    signature,
+  };
+}
+
+/**
+ * Is a NAK owed for a damaged frame whose TYPE read as `type` (null: it never
+ * arrived)? Yes unless it is one never resent in answer to one (§3.5) — the
+ * caller adds the other condition, that its side is in a session.
+ */
+function owesNak(type) {
+  return !NOT_NAKED.includes(type);
 }
 
 module.exports = {
@@ -237,4 +279,5 @@ module.exports = {
   decodeData,
   encodeHello,
   decodeHello,
+  owesNak,
 };

@@ -1,0 +1,1207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#2F855A" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <title>Serial Protocol · Chip Hippo Guide</title>
+  <meta name="description" content="Serial Protocol — the Chip Hippo user guide." />
+  <link rel="canonical" href="https://chiphippo.com/docs/serial-protocol.html" />
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="Chip Hippo" />
+  <meta property="og:title" content="Serial Protocol · Chip Hippo Guide" />
+  <meta property="og:description" content="Serial Protocol — the Chip Hippo user guide." />
+  <meta property="og:url" content="https://chiphippo.com/docs/serial-protocol.html" />
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="Serial Protocol · Chip Hippo Guide" />
+  <meta name="twitter:description" content="Serial Protocol — the Chip Hippo user guide." />
+  <style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#1c1c1c;--mantle:#161616;--crust:#101010;--surface-0:#2a2a2a;--surface-1:#383838;--overlay-0:#686868;--text:#e8e8e8;--subtext:#b0b0b0;--accent:#3fb950;--green:#56d364}
+html{scroll-behavior:smooth}
+body{font-family:"Segoe UI",system-ui,-apple-system,BlinkMacSystemFont,sans-serif;background:var(--bg);color:var(--text);line-height:1.65}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+code{font-family:"Cascadia Code","JetBrains Mono","Fira Code",monospace;font-size:.88em;background:var(--surface-0);padding:1px 6px;border-radius:4px;color:var(--text)}
+pre{background:var(--crust);border:1px solid var(--surface-0);border-radius:10px;padding:14px 16px;overflow:auto;margin:16px 0}
+pre code{background:none;padding:0}
+kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px solid var(--surface-1);border-bottom-width:2px;border-radius:5px;padding:1px 6px}
+.topbar{position:sticky;top:0;z-index:10;height:58px;display:flex;align-items:center;justify-content:space-between;padding:0 24px;background:var(--mantle);border-bottom:1px solid var(--surface-0)}
+.brand{display:flex;align-items:center;gap:10px;font-weight:800;color:var(--accent);font-size:1.1rem}
+.brand:hover{text-decoration:none}
+.topbar .back{color:var(--subtext);font-size:.85rem}
+.layout{max-width:1180px;margin:0 auto;display:grid;grid-template-columns:260px 1fr;gap:40px;padding:32px 24px 80px}
+.sidebar{position:sticky;top:90px;align-self:start;max-height:calc(100vh - 110px);overflow:auto}
+.sidebar-title{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--overlay-0);padding:0 12px 8px}
+.doc-nav-link{display:block;padding:7px 12px;border-radius:7px;color:var(--subtext);font-size:.9rem;margin-bottom:2px}
+.doc-nav-link:hover{background:var(--surface-0);color:var(--text);text-decoration:none}
+.doc-nav-link--active{background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent);font-weight:600}
+.content{min-width:0;max-width:760px}
+.content h1{font-size:2.1rem;font-weight:800;letter-spacing:-1px;margin:0 0 20px;line-height:1.2}
+.content h2{font-size:1.45rem;font-weight:700;margin:36px 0 12px;padding-top:12px;border-top:1px solid var(--surface-0)}
+.content h3{font-size:1.12rem;font-weight:700;margin:26px 0 10px}
+.content p,.content ul,.content ol,.content blockquote,.content table{margin:0 0 16px}
+.content ul,.content ol{padding-left:24px}
+.content li{margin:4px 0}
+.content img{max-width:100%;height:auto;border:1px solid var(--surface-0);border-radius:10px;margin:8px 0}
+.content blockquote{border-left:3px solid var(--accent);background:var(--mantle);padding:10px 16px;border-radius:0 8px 8px 0;color:var(--subtext)}
+.content blockquote p:last-child{margin:0}
+.content table{border-collapse:collapse;width:100%;font-size:.9rem;display:block;overflow:auto}
+.content th,.content td{border:1px solid var(--surface-0);padding:8px 12px;text-align:left}
+.content th{background:var(--mantle)}
+.content hr{border:none;border-top:1px solid var(--surface-0);margin:28px 0}
+@media(max-width:820px){.layout{grid-template-columns:1fr;gap:20px}.sidebar{position:static;max-height:none;border-bottom:1px solid var(--surface-0);padding-bottom:16px}}
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/"><svg width="24" height="24" viewBox="0 0 512 512" role="img" aria-label="Chip Hippo"><rect x="0" y="0" width="512" height="512" rx="114" fill="#2F855A"/><circle cx="170" cy="146" r="40" fill="#FFFFFF"/><circle cx="342" cy="146" r="40" fill="#FFFFFF"/><rect x="144" y="140" width="224" height="190" rx="74" fill="#FFFFFF"/><rect x="118" y="260" width="276" height="150" rx="74" fill="#FFFFFF"/><circle cx="201" cy="198" r="17" fill="#1C1C1C"/><circle cx="311" cy="198" r="17" fill="#1C1C1C"/><rect x="186" y="320" width="140" height="52" rx="8" fill="#23272B"/><circle cx="186" cy="346" r="11" fill="#FFFFFF"/></svg><span>Chip Hippo</span></a>
+    <a class="back" href="/">← Back to site</a>
+  </header>
+  <div class="layout">
+    <nav class="sidebar" aria-label="User guide">
+      <div class="sidebar-title">User Guide</div>
+        <a class="doc-nav-link" href="index.html">Overview</a>
+        <a class="doc-nav-link" href="getting-started.html">Getting Started</a>
+        <a class="doc-nav-link" href="the-desk.html">The Desk &amp; Breadboards</a>
+        <a class="doc-nav-link" href="components.html">Chips &amp; Components</a>
+        <a class="doc-nav-link" href="wiring.html">Wiring, Nets &amp; Buses</a>
+        <a class="doc-nav-link" href="power-and-clocks.html">Power &amp; Clock Sources</a>
+        <a class="doc-nav-link" href="chip-library.html">The Chip Library</a>
+        <a class="doc-nav-link" href="simulation.html">Running a Simulation</a>
+        <a class="doc-nav-link" href="probing.html">Probing &amp; Net Names</a>
+        <a class="doc-nav-link" href="memory.html">Memory Chips &amp; the Inspector</a>
+        <a class="doc-nav-link" href="logic-analyzer.html">Logic Analyzer &amp; Timing</a>
+        <a class="doc-nav-link" href="build-guide.html">Build Guide &amp; BOM</a>
+        <a class="doc-nav-link" href="schematic-view.html">Schematic View</a>
+        <a class="doc-nav-link" href="ai-builder.html">AI Circuit Builder</a>
+        <a class="doc-nav-link" href="arduino.html">Arduino Integration</a>
+        <a class="doc-nav-link doc-nav-link--active" href="serial-protocol.html">Serial Protocol</a>
+        <a class="doc-nav-link" href="files-and-undo.html">Files, Saving &amp; Undo</a>
+        <a class="doc-nav-link" href="projects-and-desktops.html">Projects &amp; Desktops</a>
+        <a class="doc-nav-link" href="settings.html">Settings</a>
+        <a class="doc-nav-link" href="keyboard-shortcuts.html">Keyboard Shortcuts</a>
+    </nav>
+    <main class="content">
+<h1>Serial Protocol</h1>
+<p><strong>Chip Hippo serial protocol, version 1.</strong> This page defines the bytes that
+travel between Chip Hippo and a board at the other end of a <a href="arduino.html">serial
+connection</a>. You never need it to use the Arduino integration —
+the header and module Chip Hippo generates speak it for you — but it is the
+whole contract. Anything that follows this page (a sketch in another language,
+firmware in Rust, a test harness on a pseudo-terminal) can take the board&#39;s
+place.</p>
+<h2 id="1-conventions">1. Conventions</h2>
+<ul>
+<li><strong>Host</strong>: Chip Hippo. <strong>Device</strong>: whatever is at the other end of the
+connection, usually an Arduino. <strong>Circuit</strong>: the simulated breadboard.</li>
+<li><strong>Output</strong> and <strong>Input</strong> are named from the circuit&#39;s side: an Output&#39;s
+value leaves the circuit for the device; an Input&#39;s value comes from the
+device into the circuit.</li>
+<li>A <strong>data frame</strong> is an <code>OUTPUT</code> or an <code>INBOUND</code> — the only frames delivered
+reliably (<a href="#6-reliable-delivery">§6</a>). A data frame is <strong>outstanding</strong> from
+its first transmission until it is acknowledged or its delivery fails.</li>
+<li>A <strong>session</strong> is one run&#39;s conversation on one connection, from the
+handshake (<a href="#54-the-handshake">§5.4</a>) until the port closes.</li>
+<li><strong>MUST</strong>, <strong>MUST NOT</strong>, <strong>SHOULD</strong> and <strong>MAY</strong> state requirements, as in
+RFC 2119. A paragraph marked <em>Note</em> explains a rule and adds none.</li>
+<li>Byte values are hexadecimal (<code>0x7E</code>). Multi-byte integers are
+<strong>little-endian</strong>. A frame is written as its bytes on the wire, in hex.</li>
+</ul>
+<h2 id="2-transport">2. Transport</h2>
+<ul>
+<li>A byte stream with no framing of its own: a UART, USB CDC, a
+pseudo-terminal. It MUST deliver bytes in order. It may lose or corrupt
+them; <a href="#35-receiving-a-frame">§3.5</a> and <a href="#6-reliable-delivery">§6</a> recover.</li>
+<li>The serial parameters — baud rate, data bits, parity, stop bits — come from
+the connection (Settings ▸ Serial I/O). The default, and the recommendation,
+is <strong>115200 baud, 8-N-1, no flow control</strong>.</li>
+<li><strong>No software flow control.</strong> XON (<code>0x11</code>) and XOFF (<code>0x13</code>) are ordinary
+bytes here — <code>0x11</code> is the <code>INBOUND</code> type — and only <code>0x7E</code> and <code>0x7D</code> are
+escaped, so a link that swallows them loses frames.</li>
+<li>One host and one device per connection. The device sees only the Outputs and
+Inputs assigned to its connection. A run may use several connections at
+once; each is an independent link with its own session.</li>
+<li>The host writes <strong>nothing but whole frames</strong>: no preamble, no line endings,
+no break. A device MAY rely on this (the MicroPython library does,
+<a href="#13-implementations">§13</a>).</li>
+<li>The host opens the port when the circuit starts running and closes it when
+it stops. Opening the port resets many boards (a classic Arduino&#39;s
+auto-reset), and a bootloader may swallow bytes for a second or two. Many
+others — native-USB boards such as a Leonardo, and most Python boards — do
+<strong>not</strong> reset, and their program carries on from one run into the next. So a
+device learns that a run has begun from the handshake
+(<a href="#54-the-handshake">§5.4</a>), never from its own start-up.</li>
+</ul>
+<h2 id="3-frames">3. Frames</h2>
+<h3 id="31-frame-format">3.1 Frame format</h3>
+<pre><code>START  TYPE  SEQ  LEN  PAYLOAD     CRC_LO  CRC_HI
+0x7E   1     1    1    LEN bytes   1       1
+</code></pre>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Size</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>START</code></td>
+<td>1</td>
+<td>Always <code>0x7E</code>, never escaped. Begins a frame.</td>
+</tr>
+<tr>
+<td><code>TYPE</code></td>
+<td>1</td>
+<td>The frame type (<a href="#4-frame-types">§4</a>).</td>
+</tr>
+<tr>
+<td><code>SEQ</code></td>
+<td>1</td>
+<td>In <code>OUTPUT</code> and <code>INBOUND</code>: the frame&#39;s sequence number, 1–255 (<a href="#61-frame-identity-and-sequence-numbers">§6.1</a>); one with SEQ 0 is ignored. In <code>ACK</code>: the sequence number acknowledged. In every other frame: 0, which the receiver MUST ignore.</td>
+</tr>
+<tr>
+<td><code>LEN</code></td>
+<td>1</td>
+<td>The number of payload bytes, counted <strong>before</strong> escaping: 0–255.</td>
+</tr>
+<tr>
+<td><code>PAYLOAD</code></td>
+<td><code>LEN</code></td>
+<td>Defined per type (<a href="#4-frame-types">§4</a>).</td>
+</tr>
+<tr>
+<td><code>CRC</code></td>
+<td>2</td>
+<td>CRC-16/CCITT-FALSE (<a href="#33-crc">§3.3</a>) of the unescaped bytes <code>TYPE SEQ LEN PAYLOAD</code>, little-endian.</td>
+</tr>
+</tbody></table>
+<p>A frame&#39;s <strong>body</strong> is everything after <code>START</code>, from <code>TYPE</code> to <code>CRC_HI</code>.</p>
+<h3 id="32-size-limits">3.2 Size limits</h3>
+<table>
+<thead>
+<tr>
+<th>Quantity</th>
+<th>Bytes</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Payload</td>
+<td>0–255</td>
+</tr>
+<tr>
+<td>Body, unescaped: <code>TYPE</code> + <code>SEQ</code> + <code>LEN</code> + payload + CRC = 1 + 1 + 1 + 255 + 2</td>
+<td>at most 260</td>
+</tr>
+<tr>
+<td>Frame on the wire: <code>START</code> + every body byte escaped = 1 + 2 × 260</td>
+<td>at most 521</td>
+</tr>
+</tbody></table>
+<ul>
+<li>A sender MUST NOT send a payload longer than 255 bytes: <code>LEN</code> could not say
+so.</li>
+<li>Every receiver has a <strong>payload limit</strong>, the longest payload it accepts. The
+host&#39;s is 255. A device&#39;s MAY be smaller, but MUST be at least 7 — the
+longest payload the host sends (<code>HELLO</code>).</li>
+<li>A receiver that reads a <code>LEN</code> greater than its payload limit MUST treat the
+frame as damaged at once (<a href="#35-receiving-a-frame">§3.5</a>), without waiting
+for the rest of it.</li>
+</ul>
+<p><em>Note:</em> so a receiver never holds more than 3 + its limit + 2 bytes of a frame
+— 260 for the host, 12 for a device with the smallest limit. Escaping needs no
+buffer of its own: each escape pair is undone as it arrives.</p>
+<h3 id="33-crc">3.3 CRC</h3>
+<p>CRC-16/CCITT-FALSE: polynomial <code>0x1021</code>, initial value <code>0xFFFF</code>, input and
+output not reflected, no final XOR. The check value, for the ASCII bytes
+<code>123456789</code>, is <code>0x29B1</code>.</p>
+<pre><code class="language-c">uint16_t crc16(const uint8_t *p, size_t n) {
+  uint16_t crc = 0xFFFF;
+  while (n--) {
+    crc ^= (uint16_t)(*p++) &lt;&lt; 8;
+    for (uint8_t i = 0; i &lt; 8; i++)
+      crc = (crc &amp; 0x8000) ? (crc &lt;&lt; 1) ^ 0x1021 : (crc &lt;&lt; 1);
+  }
+  return crc;
+}
+</code></pre>
+<h3 id="34-escaping">3.4 Escaping</h3>
+<p>Every body byte that is <code>0x7E</code> or <code>0x7D</code> is sent as two bytes: <code>0x7D</code>, then
+the byte XOR <code>0x20</code>. No other byte is escaped.</p>
+<table>
+<thead>
+<tr>
+<th>Unescaped</th>
+<th>On the wire</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>0x7E</code></td>
+<td><code>0x7D 0x5E</code></td>
+</tr>
+<tr>
+<td><code>0x7D</code></td>
+<td><code>0x7D 0x5D</code></td>
+</tr>
+</tbody></table>
+<p>Escaping applies to every body byte — <code>TYPE</code>, <code>SEQ</code>, <code>LEN</code>, the payload and
+both CRC bytes — while <code>LEN</code> and the CRC are computed over the unescaped
+bytes. So <code>0x7E</code> on the wire is <strong>always</strong> the start of a frame, which is how
+a receiver finds the next frame after noise, a torn frame or a reset.</p>
+<h3 id="35-receiving-a-frame">3.5 Receiving a frame</h3>
+<p>A receiver is either <strong>hunting</strong> (between frames) or <strong>in a frame</strong>.</p>
+<ol>
+<li>While hunting, it discards every byte but <code>0x7E</code>, which begins a frame.</li>
+<li>In a frame, a <code>0x7E</code> abandons the partial frame and begins a new one. A
+frame cut short this way is <strong>torn</strong>, not damaged: it is dropped without a
+word, and the sender&#39;s timer (<a href="#64-timeout-nak-and-retry">§6.4</a>) covers it.
+Any other byte is unescaped (<a href="#34-escaping">§3.4</a>) and read, in order, as
+<code>TYPE</code>, <code>SEQ</code>, <code>LEN</code>, <code>LEN</code> payload bytes and the two CRC bytes.</li>
+<li>The frame is <strong>damaged</strong>, and the receiver goes back to hunting, when:<ul>
+<li>a <code>0x7D</code> is followed by anything but <code>0x5E</code> or <code>0x5D</code> — or <code>0x7E</code>, which
+tears the frame instead (step 2);</li>
+<li><code>LEN</code> is greater than the receiver&#39;s payload limit
+(<a href="#32-size-limits">§3.2</a>) — known as soon as <code>LEN</code> is read; or</li>
+<li>the CRC does not match — known when the second CRC byte is read.</li>
+</ul>
+</li>
+<li>A damaged frame is discarded. If the receiver is in a session (ACTIVE,
+<a href="#52-host-states">§5.2</a> and <a href="#53-device-states">§5.3</a>), it MUST then send a
+<code>NAK</code> (<a href="#44-nak">§4.4</a>) at once — <strong>unless</strong> the damaged frame&#39;s <code>TYPE</code>, as
+received, is <code>HELLO</code>, <code>HELLO_ACK</code>, <code>ACK</code>, <code>NAK</code> or <code>LOG</code>: frames never
+resent in answer to a NAK. A frame damaged before its <code>TYPE</code> arrived is
+NAKed. A receiver not in a session MUST NOT send a <code>NAK</code>: before a
+handshake, damage is most likely a bootloader&#39;s noise.</li>
+<li>An intact frame is dispatched by <code>TYPE</code>. A frame of a type the receiver
+does not know, or never receives (a device never receives <code>INBOUND</code>), MUST
+be ignored.</li>
+</ol>
+<p><em>Note:</em> a <code>LEN</code> damaged into a larger value is damage at once if it exceeds
+the receiver&#39;s payload limit (step 3). Otherwise the receiver waits for bytes
+that belong to the next frame, whose <code>0x7E</code> then tears it (step 2), and the
+sender&#39;s timer (<a href="#64-timeout-nak-and-retry">§6.4</a>) covers the loss. A <code>LEN</code>
+damaged into a smaller value fails the CRC.</p>
+<h2 id="4-frame-types">4. Frame types</h2>
+<table>
+<thead>
+<tr>
+<th>Value</th>
+<th>Name</th>
+<th>Sent by</th>
+<th><code>SEQ</code></th>
+<th>Payload</th>
+<th>Delivery</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>0x01</code></td>
+<td><code>HELLO</code></td>
+<td>host</td>
+<td>0</td>
+<td>7 bytes (<a href="#41-hello-and-hello_ack">§4.1</a>)</td>
+<td>resent until answered (<a href="#54-the-handshake">§5.4</a>)</td>
+</tr>
+<tr>
+<td><code>0x02</code></td>
+<td><code>HELLO_ACK</code></td>
+<td>device</td>
+<td>0</td>
+<td>7 bytes (<a href="#41-hello-and-hello_ack">§4.1</a>)</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>0x06</code></td>
+<td><code>ACK</code></td>
+<td>either</td>
+<td>the <code>SEQ</code> acknowledged</td>
+<td>none (<a href="#43-ack">§4.3</a>)</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>0x15</code></td>
+<td><code>NAK</code></td>
+<td>either</td>
+<td>0</td>
+<td>none (<a href="#44-nak">§4.4</a>)</td>
+<td>—</td>
+</tr>
+<tr>
+<td><code>0x10</code></td>
+<td><code>OUTPUT</code></td>
+<td>host</td>
+<td>1–255</td>
+<td>4 bytes (<a href="#42-output-and-inbound">§4.2</a>)</td>
+<td>reliable (<a href="#6-reliable-delivery">§6</a>)</td>
+</tr>
+<tr>
+<td><code>0x11</code></td>
+<td><code>INBOUND</code></td>
+<td>device</td>
+<td>1–255</td>
+<td>4 bytes (<a href="#42-output-and-inbound">§4.2</a>)</td>
+<td>reliable (<a href="#6-reliable-delivery">§6</a>)</td>
+</tr>
+<tr>
+<td><code>0x20</code></td>
+<td><code>LOG</code></td>
+<td>device</td>
+<td>0</td>
+<td>1–255 bytes (<a href="#45-log">§4.5</a>)</td>
+<td>not acknowledged</td>
+</tr>
+</tbody></table>
+<p>The values <code>0x00</code>, <code>0x7D</code>, <code>0x7E</code> and <code>0xFF</code> are never frame types. Every
+other unassigned value is reserved for later versions (<a href="#11-versions">§11</a>).</p>
+<h3 id="41-hello-and-hello_ack">4.1 HELLO and HELLO_ACK</h3>
+<p>The payload of both (7 bytes):</p>
+<table>
+<thead>
+<tr>
+<th>Offset</th>
+<th>Size</th>
+<th>Field</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>0</td>
+<td>1</td>
+<td>Protocol version: <strong>1</strong>.</td>
+</tr>
+<tr>
+<td>1</td>
+<td>2</td>
+<td>Session (<a href="#51-session-numbers">§5.1</a>), little-endian.</td>
+</tr>
+<tr>
+<td>3</td>
+<td>4</td>
+<td>Layout signature (<a href="#73-the-signature">§7.3</a>), little-endian.</td>
+</tr>
+</tbody></table>
+<p>For protocol version 1, the first three payload bytes are the version and the
+session. They are all a device needs to answer a <code>HELLO</code>, and all the host
+needs to judge a <code>HELLO_ACK</code>&#39;s version. A later version MAY change the <code>HELLO</code>
+and <code>HELLO_ACK</code> payloads after establishing that it is speaking to a different
+version (<a href="#11-versions">§11</a>).</p>
+<ul>
+<li>The host sends <code>HELLO</code> with its version, the session it has chosen and the
+signature of the layout it expects.</li>
+<li>A device MUST answer every intact <code>HELLO</code> of at least 3 bytes, for any
+session but 0, with a <code>HELLO_ACK</code> carrying the <code>HELLO</code>&#39;s session and <strong>its
+own</strong> version and signature — in any state, and even when they differ from
+the <code>HELLO</code>&#39;s. Only the host has to explain a mismatch, so only the host
+needs to see one. (A <code>HELLO</code> longer than the device&#39;s payload limit is not
+intact: it is damaged, <a href="#35-receiving-a-frame">§3.5</a>.)</li>
+<li>A device MUST ignore a <code>HELLO</code> shorter than 3 bytes, or for session 0,
+without answering it.</li>
+<li>A <code>HELLO_ACK</code> for session 0 is the device&#39;s <strong>announcement</strong> that it is in
+no session (<a href="#53-device-states">§5.3</a>) — sent when its program starts, and
+when it leaves a session after a failed delivery. It answers nothing.</li>
+<li>A host MUST ignore a <code>HELLO_ACK</code> shorter than 3 bytes. What it does with any
+other is in <a href="#52-host-states">§5.2</a> and <a href="#54-the-handshake">§5.4</a>.</li>
+</ul>
+<h3 id="42-output-and-inbound">4.2 OUTPUT and INBOUND</h3>
+<p><code>OUTPUT</code> carries an Output&#39;s value from the circuit to the device; <code>INBOUND</code>
+carries an Input&#39;s value from the device to the circuit. The payload of both
+(4 bytes):</p>
+<table>
+<thead>
+<tr>
+<th>Offset</th>
+<th>Size</th>
+<th>Field</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>0</td>
+<td>1</td>
+<td>Element index (<a href="#71-element-indices">§7.1</a>), within this connection and direction.</td>
+</tr>
+<tr>
+<td>1</td>
+<td>1</td>
+<td>Width, <strong>1–16</strong>: the element&#39;s pin count.</td>
+</tr>
+<tr>
+<td>2</td>
+<td>2</td>
+<td>Value, little-endian and right-aligned: bit 0 is the element&#39;s pin 1.</td>
+</tr>
+</tbody></table>
+<ul>
+<li>A sender MUST send every value bit at or above the width as 0. A receiver
+MUST ignore them.</li>
+<li>An element is an ordered list of <strong>fields</strong> — bit (1 pin), byte (8) or word
+(16), 16 pins in all at most — packed into the value in order from bit 0. A
+byte followed by a bit puts the byte in bits 0–7 and the bit in bit 8. The
+fields need no wire support of their own: they only say which bits the
+generated code hands to which parameter, which is why the layout signature
+covers them (<a href="#7-element-indices-and-the-layout-signature">§7</a>).</li>
+<li>An <code>INBOUND</code> always carries the <strong>whole</strong> element — there are no partial
+updates. The device keeps its own copy of the state and sends all of it.</li>
+<li>A data frame is <strong>unusable</strong> when it is intact but its <code>LEN</code> is not 4, its
+width is not 1–16, its index names no element, its width is not that
+element&#39;s, or (at a device) the program has no handler for its Output. An
+unusable frame MUST be acknowledged like any other
+(<a href="#62-acknowledgement">§6.2</a>) and then discarded: a resend would carry the
+same bytes.</li>
+</ul>
+<h3 id="43-ack">4.3 ACK</h3>
+<p><code>SEQ</code> is the sequence number of the data frame acknowledged. The payload is
+empty, and a receiver MUST NOT examine it. When an <code>ACK</code> is sent, and what one
+means, is <a href="#62-acknowledgement">§6.2</a>.</p>
+<h3 id="44-nak">4.4 NAK</h3>
+<p><code>SEQ</code> is 0 and the payload empty; a receiver MUST NOT examine either.</p>
+<p>A <code>NAK</code> means: <em>a frame arrived damaged — if you have a data frame
+outstanding, send it again now</em>. It names no frame, because the damaged
+frame&#39;s <code>TYPE</code> and <code>SEQ</code> cannot be trusted; and it needs to name none, because
+each side has at most one data frame outstanding (<a href="#6-reliable-delivery">§6</a>).</p>
+<ul>
+<li>A side receiving a <code>NAK</code> with a data frame outstanding MUST retransmit that
+frame at once — the same bytes, the same <code>SEQ</code> — and MUST NOT advance its
+sequence counter. The retransmission is one of the frame&#39;s sends
+(<a href="#64-timeout-nak-and-retry">§6.4</a>).</li>
+<li>A side receiving a <code>NAK</code> with nothing outstanding MUST ignore it.</li>
+</ul>
+<p>A <code>NAK</code> is never acknowledged, never resent and never answered with a <code>NAK</code>,
+so it can cause no more retransmissions than the send limit allows.</p>
+<h3 id="45-log">4.5 LOG</h3>
+<p>The payload is 1–255 bytes of UTF-8 text, with no terminator. A newline
+(<code>0x0A</code>) ends a line; text without a trailing newline continues on the same
+line when the next <code>LOG</code> arrives.</p>
+<ul>
+<li>A sender MUST NOT send an empty <code>LOG</code>, and SHOULD split longer text between
+characters, never inside a multi-byte UTF-8 sequence. A receiver MUST ignore
+an empty <code>LOG</code>, and SHOULD decode <code>LOG</code> text as one stream, so that a
+character split across frames still arrives whole.</li>
+<li><code>LOG</code> is <strong>not acknowledged</strong>: its <code>SEQ</code> is 0, and it is never NAKed, resent
+or de-duplicated. Log text changes nothing on the circuit, so losing a line
+to a damaged frame is cheap, and blocking the device on every <code>print()</code> is
+not.</li>
+<li>A device MAY send <code>LOG</code> in any state, in a session or not. Text printed
+during start-up reaches a host that is listening, and costs nothing when
+none is.</li>
+<li><code>LOG</code> never touches the circuit. The host shows the text in the connection&#39;s
+window.</li>
+</ul>
+<h2 id="5-sessions">5. Sessions</h2>
+<h3 id="51-session-numbers">5.1 Session numbers</h3>
+<p>A session number is 16 bits, <strong>1–65535</strong>. <strong>0</strong> is reserved: it is never a
+run&#39;s session, and a <code>HELLO_ACK</code> for session 0 is a device&#39;s announcement that
+it is in no session.</p>
+<ul>
+<li>The host MUST NOT use the session of its previous handshake on the same
+connection again, and SHOULD make repeating any recent session unlikely.
+Chip Hippo counts upward, across all its connections, wrapping 65535 → 1,
+from a random starting point.</li>
+<li><em>Note:</em> the session is what tells a device that did not reset between runs
+that a new run has begun, and what tells a late copy of this run&#39;s <code>HELLO</code>
+from the next run&#39;s. A host picking, by chance, the very session a device
+still remembers from before would be taken for a late copy: the device would
+keep the old run&#39;s sequence numbers and not see a new run begin. Sixteen
+bits make that a 1-in-65535 event on each restart of Chip Hippo.</li>
+</ul>
+<h3 id="52-host-states">5.2 Host states</h3>
+<table>
+<thead>
+<tr>
+<th>State</th>
+<th>Accepts</th>
+<th>Ignores</th>
+<th>Moves on</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>CLOSED</strong></td>
+<td>—</td>
+<td>—</td>
+<td>Run opens the port → HANDSHAKE.</td>
+</tr>
+<tr>
+<td><strong>HANDSHAKE</strong></td>
+<td><code>HELLO_ACK</code> for its session; <code>LOG</code></td>
+<td>Every other frame — including the announcement and a <code>HELLO_ACK</code> for any other session. Damage is not NAKed.</td>
+<td>Its session is established → ACTIVE. A mismatch, no answer in 5 s, or the port lost → FAILED.</td>
+</tr>
+<tr>
+<td><strong>ACTIVE</strong></td>
+<td><code>INBOUND</code>, <code>ACK</code>, <code>NAK</code>, <code>LOG</code>; the announcement</td>
+<td>Every other <code>HELLO_ACK</code> (a late copy of its own, another session&#39;s); types it never receives</td>
+<td>The announcement, a failed delivery (<a href="#64-timeout-nak-and-retry">§6.4</a>), or the port lost → FAILED. Stop → CLOSED.</td>
+</tr>
+<tr>
+<td><strong>FAILED</strong></td>
+<td><code>LOG</code></td>
+<td>Everything else. Damage is not NAKed.</td>
+<td>The run stops and the port closes → CLOSED.</td>
+</tr>
+</tbody></table>
+<ul>
+<li>The host sends data frames only while ACTIVE: never during the handshake,
+and nothing at all once FAILED.</li>
+<li><strong>The announcement while ACTIVE</strong> means the device is in no session: it has
+restarted, or it has left this session after one of its own deliveries
+failed (<a href="#53-device-states">§5.3</a>). Either way it will ignore everything
+until greeted again, which only a new run does, so the host fails what it
+has outstanding and stops the run. Without the announcement, a device that
+had left on an Inputs-only design would simply fall silent.</li>
+<li><strong>The port lost</strong> — a cable pulled, a board gone — stops the run the same
+way.</li>
+<li><strong>On FAILED</strong> the host fails every Output waiting to be sent, stops the run
+and tells the user which connection failed and why: no answer, another
+protocol version, another layout, the device leaving the session, a failed
+delivery, or a dropped connection. It still shows log text until the port
+closes — often the device&#39;s own account of what happened.</li>
+<li>There is no goodbye frame. Stop closes the port, and a device learns of it
+only when a send of its own fails (<a href="#53-device-states">§5.3</a>).</li>
+</ul>
+<h3 id="53-device-states">5.3 Device states</h3>
+<p>A device remembers the <strong>last session</strong> a <code>HELLO</code> named — 0 when its program
+starts.</p>
+<table>
+<thead>
+<tr>
+<th>State</th>
+<th>Accepts</th>
+<th>Ignores</th>
+<th>Moves on</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>WAITING</strong></td>
+<td><code>HELLO</code></td>
+<td>Every other frame. Damage is not NAKed, and no data frame is sent.</td>
+<td>A <code>HELLO</code> for a new session that matches the device → ACTIVE.</td>
+</tr>
+<tr>
+<td><strong>ACTIVE</strong></td>
+<td><code>HELLO</code>, <code>OUTPUT</code>, <code>ACK</code>, <code>NAK</code></td>
+<td>Types it never receives</td>
+<td>A <code>HELLO</code> for a new session → ACTIVE if it matches, else WAITING. A failed delivery → WAITING, announced.</td>
+</tr>
+</tbody></table>
+<ul>
+<li><strong>Start.</strong> A program starts WAITING, its last session 0, and MUST send the
+announcement once: a <code>HELLO_ACK</code> for session 0 carrying its version and
+signature.</li>
+<li><strong>A <code>HELLO</code> for the last session</strong> — a late copy; the host resends until it
+hears — is answered and changes nothing else, in either state. In particular
+it MUST NOT reset the device&#39;s sequence numbers: rewound, its next <code>INBOUND</code>
+would look like a duplicate to the host and be dropped without a word.</li>
+<li><strong>A <code>HELLO</code> for a new session</strong> is answered, and starts that session. The
+device MUST discard everything it held for the previous one: its sequence
+numbers (<a href="#61-frame-identity-and-sequence-numbers">§6.1</a>), an <code>OUTPUT</code> held
+for later (dropped), an <code>OUTPUT</code> whose handler is running (never
+acknowledged — the run that sent it has gone) and an <code>INBOUND</code> waiting for
+its <code>ACK</code> (given up at once). It records the new session as its last, and
+becomes ACTIVE only if the <code>HELLO</code> <strong>matches</strong>: exactly 7 bytes, version 1,
+and the device&#39;s own layout signature. Otherwise it is WAITING.</li>
+<li><strong>A handler belongs to its OUTPUT&#39;s session.</strong> If that session ends while
+the handler runs — a new <code>HELLO</code>, or a failed delivery — every send the
+handler makes afterwards MUST fail at once: its Inputs belong to a run that
+has gone, and must not reach the next one.</li>
+<li><strong>Becoming ACTIVE</strong> is the moment for the device to send every Input its
+starting value: an Input drives nothing until its first <code>INBOUND</code>
+(<a href="#8-what-the-values-mean">§8</a>). The generated libraries run the program&#39;s
+<code>onConnect</code> function (<code>on_connect</code> in Python) here — the only sign a board
+that did not reset gets that a new run has begun.</li>
+<li><strong>A failed delivery</strong> (<a href="#64-timeout-nak-and-retry">§6.4</a>) means nobody is
+listening: the device leaves the session. It MUST discard a held <code>OUTPUT</code>,
+MUST NOT acknowledge an <code>OUTPUT</code> whose handler is running, and MUST then
+send the announcement, so that a host still listening stops rather than wait
+on a device that no longer answers. It returns to WAITING — <strong>offline</strong> —
+and keeps its last session, so only the next run&#39;s <code>HELLO</code> brings it back.
+While offline, a send fails at once instead of waiting three times 500 ms,
+which keeps a program left running after Stop from crawling: there is no
+goodbye frame, and a board that resets on open does not reset on close. The
+generated libraries report the state as <code>connected()</code>.</li>
+</ul>
+<p><em>Note:</em> the byte stream keeps two sessions apart without a session number in
+every frame. Whatever a device sent in an old session precedes its <code>HELLO_ACK</code>
+for the new one, and the host accepts nothing but that <code>HELLO_ACK</code> until it
+arrives; after it, the device sends nothing that belongs to the old session.
+The same holds the other way round.</p>
+<h3 id="54-the-handshake">5.4 The handshake</h3>
+<ol>
+<li><strong>Open.</strong> The host opens the port. On many boards this resets the device
+(<a href="#2-transport">§2</a>).</li>
+<li><strong>Greet.</strong> The host chooses a session (<a href="#51-session-numbers">§5.1</a>) and
+sends <code>HELLO</code> at once, then again every <strong>250 ms</strong> — the same session each
+time — until a <code>HELLO_ACK</code> for that session arrives, for up to <strong>5 s</strong>.</li>
+<li><strong>Judge.</strong> Of a <code>HELLO_ACK</code> for its session, the host:<ul>
+<li>refuses the run — <strong>version mismatch</strong> — if its version is not 1,
+whatever its length;</li>
+<li>ignores it and keeps waiting if it is not exactly 7 bytes;</li>
+<li>refuses the run — <strong>layout mismatch</strong> — if its signature is not the
+host&#39;s;</li>
+<li>otherwise establishes the session and becomes ACTIVE.</li>
+</ul>
+</li>
+<li><strong>No answer</strong> in 5 s refuses the run.</li>
+</ol>
+<p>A run is all-or-nothing: if any of its connections fails to open, or fails its
+handshake, every port the run opened is closed again.</p>
+<p><em>Note:</em> the device judges the <code>HELLO</code> as the host judges the <code>HELLO_ACK</code>
+(<a href="#53-device-states">§5.3</a>), so after a mismatch neither side is in the
+session. A device built for another design never runs <code>onConnect</code>, or sends an
+Input, into a run that has refused it.</p>
+<h2 id="6-reliable-delivery">6. Reliable delivery</h2>
+<p><code>OUTPUT</code> and <code>INBOUND</code> are delivered <strong>stop-and-wait</strong>. A side has at most one
+data frame outstanding, and sends the next only when that one has been
+acknowledged or its delivery has failed.</p>
+<h3 id="61-frame-identity-and-sequence-numbers">6.1 Frame identity and sequence numbers</h3>
+<ul>
+<li>A data frame is identified by its <strong>session, direction and <code>SEQ</code></strong>. The two
+directions number their frames independently: the host&#39;s <code>OUTPUT</code> 7 and the
+device&#39;s <code>INBOUND</code> 7 are different frames, and an <code>ACK</code> 7 acknowledges
+whichever of them its receiver sent.</li>
+<li>Each side has a send counter for the session, starting at 0. A new data
+frame takes the counter&#39;s next value, 1–255, wrapping 255 → 1: a session&#39;s
+first data frame in each direction is <code>SEQ</code> 1. <code>SEQ</code> 0 is never a data
+frame&#39;s: a receiver MUST ignore an <code>OUTPUT</code> or <code>INBOUND</code> carrying it —
+neither acknowledge nor process it.</li>
+<li>A retransmission, after a timeout or a <code>NAK</code>, is the same frame: the same
+bytes and the same <code>SEQ</code>. The counter advances only for a new frame.</li>
+</ul>
+<h3 id="62-acknowledgement">6.2 Acknowledgement</h3>
+<p>In a session, a receiver acknowledges every intact data frame — at the time
+the table below gives — with an <code>ACK</code> carrying its <code>SEQ</code>. A frame is
+<strong>delivered</strong> when an intact <code>ACK</code> with its <code>SEQ</code> arrives while it is
+outstanding. Any other <code>ACK</code> — another <code>SEQ</code>, or nothing outstanding — is
+<strong>stale</strong>, and MUST be ignored.</p>
+<table>
+<thead>
+<tr>
+<th>Receiver</th>
+<th>Frame</th>
+<th>The <code>ACK</code> is sent…</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>device</td>
+<td><code>OUTPUT</code></td>
+<td><strong>after</strong> the Output&#39;s handler returns.</td>
+</tr>
+<tr>
+<td>host</td>
+<td><code>INBOUND</code></td>
+<td>as soon as the frame arrives — even while the circuit is stalled. The value is applied at the next settle boundary (<a href="#8-what-the-values-mean">§8</a>).</td>
+</tr>
+</tbody></table>
+<p>Acknowledging an <code>OUTPUT</code> after its handler means everything the handler sent
+— each <code>INBOUND</code>, delivered and acknowledged, and each <code>LOG</code> — reaches the
+host <strong>before</strong> the <code>ACK</code>. The host stalls the circuit until every <code>OUTPUT</code> is
+acknowledged, so it always sees the device&#39;s reaction before the circuit moves
+on. That is what makes request and response deterministic
+(<a href="#8-what-the-values-mean">§8</a>).</p>
+<ul>
+<li>A handler that fails still counts as returned: the Python library catches
+the exception, logs it, and acknowledges.</li>
+<li>A device MUST NOT run a handler from inside another handler, or while it
+waits for an <code>INBOUND</code>&#39;s <code>ACK</code>. An <code>OUTPUT</code> arriving then is held — the host
+sends one at a time, so one slot is enough — run afterwards, and
+acknowledged when it has run.</li>
+<li>Handlers must return promptly: within 500 ms if possible, and certainly
+within the host&#39;s three sends, 1.5 s in all
+(<a href="#64-timeout-nak-and-retry">§6.4</a>). Long work belongs in the program&#39;s main
+loop.</li>
+</ul>
+<h3 id="63-duplicates">6.3 Duplicates</h3>
+<p>Each receiver remembers the <code>SEQ</code> of the last data frame it acknowledged in
+the session — none, when the session begins.</p>
+<ul>
+<li>A data frame carrying that <code>SEQ</code> is a <strong>duplicate</strong>: its <code>ACK</code> was lost and
+the sender has resent it. The receiver MUST acknowledge it again and MUST
+NOT process it again. Without this, a lost <code>ACK</code> would call an Output&#39;s
+handler twice.</li>
+<li><strong>Exception:</strong> a duplicate of the <code>OUTPUT</code> whose handler is still running,
+or which the device is holding to run next, MUST be ignored — not
+acknowledged. Its <code>ACK</code> follows when the handler returns. This happens
+whenever a handler sends an <code>INBOUND</code>: the device reads the port while it
+waits for that <code>ACK</code>, and the host&#39;s timer can resend the <code>OUTPUT</code> in the
+meantime. Acknowledging it then would let the circuit run on before the
+handler&#39;s <code>INBOUND</code> had been applied.</li>
+</ul>
+<p><em>Note:</em> because a sender never has two frames outstanding, a receiver only
+ever sees the frame it last acknowledged again, or the next one. One
+remembered <code>SEQ</code> is enough to tell them apart.</p>
+<h3 id="64-timeout-nak-and-retry">6.4 Timeout, NAK and retry</h3>
+<ul>
+<li><strong>The timer.</strong> Each transmission of a data frame — the first, or any
+retransmission — starts an ACK timer of <strong>500 ms</strong> when the frame has been
+written to the port.</li>
+<li><strong>Retransmit</strong> the outstanding frame when its timer expires, or at once when
+a <code>NAK</code> arrives (<a href="#44-nak">§4.4</a>). The retransmission restarts the timer.</li>
+<li><strong>The limit.</strong> A frame is sent at most <strong>3 times</strong> in all, the first
+transmission included, whatever caused the resends. If the timer of the
+third transmission expires, or a <code>NAK</code> arrives after it, the delivery has
+<strong>failed</strong>:<ul>
+<li>the <strong>host</strong> stops the run (FAILED, <a href="#52-host-states">§5.2</a>). Whatever was
+queued behind the frame fails with it.</li>
+<li>the <strong>device</strong> drops the frame, reports the failure to its caller (the
+generated <code>send()</code> returns false), and leaves the session, saying so with
+the announcement (<a href="#53-device-states">§5.3</a>) — which stops a host still
+listening.</li>
+</ul>
+</li>
+<li><code>ACK</code>s, <code>NAK</code>s and retransmissions are the protocol&#39;s own traffic, not the
+circuit&#39;s: they never light Chip Hippo&#39;s activity lamps. The connection
+window&#39;s protocol view shows them, a resend as a warning.</li>
+</ul>
+<h3 id="65-ordering">6.5 Ordering</h3>
+<p>Each direction&#39;s data frames are processed in the order they were sent, since
+each waits for the one before. The two directions interleave freely. A side
+waiting for an <code>ACK</code> MUST keep receiving meanwhile: it acknowledges the other
+side&#39;s data frames, answers a <code>HELLO</code> and acts on a <code>NAK</code> as usual. <code>LOG</code>
+frames sit in the byte stream in the order they were written, among the data
+frames around them.</p>
+<h2 id="7-element-indices-and-the-layout-signature">7. Element indices and the layout signature</h2>
+<p>Names never travel over the wire. Elements are identified by index, and the
+layout signature makes sure both ends number them alike.</p>
+<h3 id="71-element-indices">7.1 Element indices</h3>
+<ul>
+<li>Indices are assigned <strong>per connection, per direction</strong>, from 0: Outputs 0 to
+n−1, Inputs 0 to m−1.</li>
+<li>The generated code, the element index in every data frame, and the layout
+string (<a href="#72-the-layout-string">§7.2</a>) all use this one numbering.</li>
+<li><em>Note:</em> Chip Hippo orders each direction by the number in the element&#39;s
+internal id (<code>out2</code> before <code>out10</code>). That number only ever counts up, so an
+element&#39;s index changes only when one before it, on the same connection and
+in the same direction, is added or removed.</li>
+</ul>
+<h3 id="72-the-layout-string">7.2 The layout string</h3>
+<p>A connection&#39;s layout is written as an ASCII string, with no byte-order mark,
+no NUL terminator, no newline and no spaces:</p>
+<pre><code>layout  = [ element *( &quot;,&quot; element ) ]
+element = kind index &quot;:&quot; width *( &quot;+&quot; width )
+kind    = &quot;O&quot; / &quot;I&quot;
+index   = &quot;0&quot; / ( %x31-39 *DIGIT )   ; decimal, no leading zeros
+width   = &quot;1&quot; / &quot;8&quot; / &quot;16&quot;           ; one field: bit, byte or word
+</code></pre>
+<ul>
+<li>Every Output comes first, in index order, then every Input, in index order.</li>
+<li>An element lists its fields&#39; widths in field order, joined by <code>+</code>; they add
+up to the element&#39;s width, at most 16.</li>
+<li>A connection with no elements has the empty string as its layout.</li>
+</ul>
+<p>For example, Outputs of fields <code>[byte, bit]</code> and <code>[bit]</code>, and an Input of one
+word, are <code>O0:8+1,O1:1,I0:16</code>.</p>
+<h3 id="73-the-signature">7.3 The signature</h3>
+<p>The <strong>layout signature</strong> is the CRC-32 (IEEE 802.3, also known as
+CRC-32/ISO-HDLC) of the layout string&#39;s bytes: polynomial <code>0x04C11DB7</code>,
+reflected (<code>0xEDB88320</code>), initial value <code>0xFFFFFFFF</code>, final XOR <code>0xFFFFFFFF</code>.
+It travels little-endian. The check value, for the ASCII bytes <code>123456789</code>, is
+<code>0xCBF43926</code>; the empty layout&#39;s signature is <code>0x00000000</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Layout string</th>
+<th>Signature</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>O0:8,O1:1,I0:16</code></td>
+<td><code>0xF8ACB506</code></td>
+</tr>
+<tr>
+<td><code>O0:8+1,O1:1,I0:16</code></td>
+<td><code>0x7EF66B41</code></td>
+</tr>
+<tr>
+<td><code>O0:1,I0:1+1+1+1</code></td>
+<td><code>0x0EC32022</code></td>
+</tr>
+<tr>
+<td><code>I0:16</code></td>
+<td><code>0x43F1C7E9</code></td>
+</tr>
+</tbody></table>
+<p>The signature covers what decides which bits reach which parameter: the
+elements, their order, and each one&#39;s field boundaries, not only its total
+width. A <code>[bit, byte]</code> element reordered to <code>[byte, bit]</code> keeps its width of 9
+but would hand every value to the wrong parameters, so it must be refused.</p>
+<p>Everything else is the circuit&#39;s business and changes nothing on the wire:
+names, colours, descriptions, where the tags are planted, and each element&#39;s
+trigger. Renaming an element or a field changes the generated code&#39;s <strong>design
+hash</strong> — a second fingerprint, written into the generated file as a comment
+and compared by the Generate button — so the code reads as out of date, but a
+run still works until it is regenerated. The design hash never travels on the
+wire.</p>
+<h2 id="8-what-the-values-mean">8. What the values mean</h2>
+<p>The protocol moves values; this is what Chip Hippo does with them, which a
+device has to know to answer sensibly.</p>
+<ul>
+<li><strong>Pins and bits.</strong> Pin <em>k</em> of an element is bit <em>k</em>−1 of its value. On the
+host, a pin whose tag isn&#39;t planted on the board, or whose net is floating
+or unknown, reads as <strong>0</strong>.</li>
+<li><strong>Chip Hippo looks only at settle boundaries</strong> — the moments the circuit has
+stopped changing. A glitch inside one settle is never sent anywhere, and
+nothing from the device lands on the board halfway through a ripple.</li>
+<li><strong>When an <code>OUTPUT</code> is sent.</strong> An Output with an <strong>edge</strong> trigger (rising,
+falling or either) is sent when its trigger line&#39;s settled level has made
+that transition since the previous boundary (its <em>Trigger starts</em> setting
+stands in for &quot;previous&quot; at the first). An Output on <strong>Auto</strong> has no trigger
+line: it is sent whenever the value its pins settle to differs from the last
+value it sent, <strong>and always at the first boundary of a run</strong>, so the device
+learns where the circuit starts.</li>
+<li><strong>The stall.</strong> Once a boundary has sent its <code>OUTPUT</code>s, the circuit stands
+still — no clock edges, no settles — until every one is acknowledged, that
+is, until every handler has returned (<a href="#62-acknowledgement">§6.2</a>).</li>
+<li><strong>When an <code>INBOUND</code> is applied.</strong> A received value is held, and a newer one
+for the same Input replaces one not yet applied. An Input on <strong>Auto</strong> is
+<em>live</em>: its value goes on the board at the next boundary — at once, if the
+circuit is idle. An Input with an edge trigger releases its value only when
+its trigger line makes that transition, the way a latch loads on its clock.
+All the values eligible at a boundary are applied together, and the circuit
+settles again. A value that repeats what the Input already drives changes
+nothing.</li>
+<li><strong>Request and response.</strong> An <code>INBOUND</code> that arrives while the circuit is
+stalled on an <code>OUTPUT</code> still counts for that boundary. So a handler that
+answers with an Input lands its answer before the circuit moves on.</li>
+<li><strong>Inputs start undriven.</strong> An Input drives its pins at the strength of a
+chip output — two drivers disagreeing on one net are reported as a conflict
+— but drives <strong>nothing at all</strong> until its first <code>INBOUND</code> of the run. Send
+every Input its starting value when a session begins
+(<a href="#53-device-states">§5.3</a>).</li>
+</ul>
+<h2 id="9-invariants">9. Invariants</h2>
+<p>The rules above, reduced to what must always hold:</p>
+<ol>
+<li><code>SEQ</code> is non-zero only in data frames and <code>ACK</code>s. <code>HELLO</code>, <code>HELLO_ACK</code>,
+<code>NAK</code> and <code>LOG</code> carry 0; a session travels in the <code>HELLO</code> payload; a data
+frame with <code>SEQ</code> 0 is ignored.</li>
+<li>Each side has at most one data frame outstanding.</li>
+<li>A retransmission is the same frame — the same bytes, the same <code>SEQ</code> — and a
+data frame is sent at most 3 times.</li>
+<li>A data frame is identified by session, direction and <code>SEQ</code>. The two
+directions&#39; counters are independent.</li>
+<li>An <code>ACK</code> carries the <code>SEQ</code> of the frame it acknowledges, and only an <code>ACK</code>
+with the outstanding frame&#39;s <code>SEQ</code> delivers it.</li>
+<li>A receiver processes each data frame at most once: a duplicate is
+acknowledged again, never processed again.</li>
+<li>A device acknowledges an <code>OUTPUT</code> only after its handler has returned, and
+never one received in a session it has since left.</li>
+<li><code>HELLO</code>, <code>HELLO_ACK</code>, <code>ACK</code>, <code>NAK</code> and <code>LOG</code> consume no sequence numbers
+and are never acknowledged.</li>
+<li>A <code>NAK</code> names no frame, and causes no more retransmissions than the send
+limit allows.</li>
+<li><code>LOG</code> is never acknowledged, resent or de-duplicated, and may be sent
+outside a session.</li>
+<li>Session 0 is never a run&#39;s: a <code>HELLO_ACK</code> for session 0 is the device&#39;s
+announcement that it is in no session.</li>
+<li>Only a <code>HELLO</code> for a new session resets a device&#39;s session state.</li>
+<li>Neither side enters a session unless the versions and the layout
+signatures match.</li>
+<li>A failed delivery ends the session on both sides: the host stops the run;
+the device leaves it and announces that, which stops a host still
+listening, and stays offline until the next session.</li>
+<li>A device sends nothing that belongs to a session it has left — not an
+<code>ACK</code>, and not an <code>INBOUND</code> from a handler of that session.</li>
+</ol>
+<h2 id="10-constants">10. Constants</h2>
+<table>
+<thead>
+<tr>
+<th>Constant</th>
+<th>Value</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>PROTOCOL_VERSION</code></td>
+<td>1</td>
+<td>This protocol&#39;s version.</td>
+</tr>
+<tr>
+<td><code>START</code></td>
+<td><code>0x7E</code></td>
+<td>Begins a frame.</td>
+</tr>
+<tr>
+<td><code>ESC</code></td>
+<td><code>0x7D</code></td>
+<td>Escapes the next byte.</td>
+</tr>
+<tr>
+<td><code>ESC_XOR</code></td>
+<td><code>0x20</code></td>
+<td>XORed into an escaped byte.</td>
+</tr>
+<tr>
+<td><code>HEADER_BYTES</code></td>
+<td>3</td>
+<td><code>TYPE</code>, <code>SEQ</code>, <code>LEN</code>.</td>
+</tr>
+<tr>
+<td><code>CRC_BYTES</code></td>
+<td>2</td>
+<td>The CRC.</td>
+</tr>
+<tr>
+<td><code>MAX_PAYLOAD</code></td>
+<td>255</td>
+<td>The longest payload.</td>
+</tr>
+<tr>
+<td><code>MAX_FRAME_BODY</code></td>
+<td>260</td>
+<td>The longest body, unescaped.</td>
+</tr>
+<tr>
+<td><code>MAX_WIRE_FRAME</code></td>
+<td>521</td>
+<td>The longest frame on the wire.</td>
+</tr>
+<tr>
+<td><code>DATA_PAYLOAD</code></td>
+<td>4</td>
+<td>An <code>OUTPUT</code> or <code>INBOUND</code> payload.</td>
+</tr>
+<tr>
+<td><code>HELLO_PAYLOAD</code></td>
+<td>7</td>
+<td>A <code>HELLO</code> or <code>HELLO_ACK</code> payload.</td>
+</tr>
+<tr>
+<td><code>HELLO_PREFIX</code></td>
+<td>3</td>
+<td>The shortest <code>HELLO</code> a device answers, and <code>HELLO_ACK</code> a host reads: version, session.</td>
+</tr>
+<tr>
+<td><code>MAX_HOST_PAYLOAD</code></td>
+<td>7</td>
+<td>The longest payload the host sends: a device&#39;s smallest payload limit.</td>
+</tr>
+<tr>
+<td><code>ANNOUNCE_SESSION</code></td>
+<td>0</td>
+<td>The session of the announcement: the device is in no session.</td>
+</tr>
+<tr>
+<td><code>MAX_SESSION</code></td>
+<td>65535</td>
+<td>Sessions are 1 to this.</td>
+</tr>
+<tr>
+<td><code>MAX_SEQ</code></td>
+<td>255</td>
+<td>Data <code>SEQ</code>s are 1 to this.</td>
+</tr>
+<tr>
+<td><code>MAX_WIDTH</code></td>
+<td>16</td>
+<td>The widest element, in pins.</td>
+</tr>
+<tr>
+<td><code>CRC16_POLY</code></td>
+<td><code>0x1021</code></td>
+<td>The frame CRC&#39;s polynomial.</td>
+</tr>
+<tr>
+<td><code>CRC16_INIT</code></td>
+<td><code>0xFFFF</code></td>
+<td>The frame CRC&#39;s initial value.</td>
+</tr>
+<tr>
+<td><code>HELLO_INTERVAL_MS</code></td>
+<td>250</td>
+<td>How often the host sends <code>HELLO</code> while it waits.</td>
+</tr>
+<tr>
+<td><code>HELLO_WINDOW_MS</code></td>
+<td>5000</td>
+<td>How long the host waits for <code>HELLO_ACK</code>.</td>
+</tr>
+<tr>
+<td><code>ACK_TIMEOUT_MS</code></td>
+<td>500</td>
+<td>The ACK timer.</td>
+</tr>
+<tr>
+<td><code>MAX_SENDS</code></td>
+<td>3</td>
+<td>The most times a data frame is sent.</td>
+</tr>
+</tbody></table>
+<p>These are protocol values, not settings: no connection overrides them. The
+names are those of Chip Hippo&#39;s source (<a href="#13-implementations">§13</a>).</p>
+<h2 id="11-versions">11. Versions</h2>
+<ul>
+<li>This page is version <strong>1</strong>. A host and a device talk only when their
+versions are equal.</li>
+<li>In version 1, the version is the first byte of the <code>HELLO</code> and <code>HELLO_ACK</code>
+payloads, and the session the next two (<a href="#41-hello-and-hello_ack">§4.1</a>). A
+version-1 device answers a <code>HELLO</code> of any version with its own version, and
+joins only a version-1 <code>HELLO</code> (<a href="#53-device-states">§5.3</a>). A version-1 host
+refuses a <code>HELLO_ACK</code> of any other version as a version mismatch, whatever
+its length (<a href="#54-the-handshake">§5.4</a>).</li>
+<li>Any change to a frame&#39;s layout, the frame types, the CRC or the meaning of a
+field is a new version. A later version MAY change the <code>HELLO</code> and
+<code>HELLO_ACK</code> payloads after establishing that it is speaking to a different
+version.</li>
+<li><em>Note:</em> a version-1 side answers or refuses another version, rather than
+falling silent, only when it can read the frame: framed as in
+<a href="#3-frames">§3</a>, the version first and the session next — and, sent to a
+version-1 device, no longer than 7 bytes (<a href="#32-size-limits">§3.2</a>).</li>
+<li>Not part of version 1: a goodbye frame, a device-initiated handshake (the
+announcement tells the host something happened; it establishes nothing),
+windowed delivery, flow control and keep-alives.</li>
+</ul>
+<h2 id="12-worked-examples">12. Worked examples</h2>
+<p>These examples use the layout <code>O0:8,O1:1,I0:16</code> — signature <code>0xF8ACB506</code>, sent
+as <code>06 B5 AC F8</code> — and session <code>0x1234</code>, sent as <code>34 12</code>. Each frame is
+written as it is on the wire. They are test vectors: Chip Hippo&#39;s test suite
+checks every frame on this page against its encoder.</p>
+<h3 id="121-the-handshake">12.1 The handshake</h3>
+<p>The host&#39;s <code>HELLO</code>: version 1, session <code>0x1234</code>, its signature (CRC <code>0x9C63</code>).</p>
+<pre><code>7E  01 00 07  01 34 12 06 B5 AC F8  63 9C
+</code></pre>
+<p>The device&#39;s answer, <code>HELLO_ACK</code>: the same session, with its own version and
+signature (CRC <code>0x2DAC</code>).</p>
+<pre><code>7E  02 00 07  01 34 12 06 B5 AC F8  AC 2D
+</code></pre>
+<p>The same device announcing its start-up: a <code>HELLO_ACK</code> for session 0 (CRC
+<code>0x4458</code>).</p>
+<pre><code>7E  02 00 07  01 00 00 06 B5 AC F8  58 44
+</code></pre>
+<p>Escaping reaches the session as well. Session <code>0x7D7E</code> is sent as <code>7E 7D</code>,
+both of them markers, so a <code>HELLO</code> for it is (CRC <code>0x0C54</code>):</p>
+<pre><code>7E  01 00 07  01 7D 5E 7D 5D 06 B5 AC F8  54 0C
+</code></pre>
+<h3 id="122-an-output-and-its-ack">12.2 An OUTPUT and its ACK</h3>
+<p>The host sends <code>OUTPUT</code> <code>SEQ</code> 1: element 0, width 8, value <code>0x7E</code> —
+deliberately a value that needs escaping.</p>
+<ul>
+<li>Unescaped: <code>TYPE=10 SEQ=01 LEN=04 PAYLOAD=00 08 7E 00</code>.</li>
+<li>CRC-16 of <code>10 01 04 00 08 7E 00</code> is <code>0x88E4</code>, sent as <code>E4 88</code>.</li>
+</ul>
+<pre><code>7E  10 01 04  00 08 7D 5E 00  E4 88
+</code></pre>
+<p>The device calls the handler for Output 0 with <code>0x7E</code>. The handler returns,
+and the device sends <code>ACK</code> 1 (CRC <code>0x4D0D</code>):</p>
+<pre><code>7E  06 01 00  0D 4D
+</code></pre>
+<p>Escaping reaches the CRC too. <code>ACK</code> 16 has the CRC <code>0x7D4F</code>, and <code>ACK</code> 17
+<code>0x4E7E</code>:</p>
+<pre><code>7E  06 10 00  4F 7D 5D
+</code></pre>
+<pre><code>7E  06 11 00  7D 5E 4E
+</code></pre>
+<h3 id="123-an-inbound-a-log-and-a-nak">12.3 An INBOUND, a LOG and a NAK</h3>
+<p>The device sends <code>INBOUND</code> <code>SEQ</code> 1 — its own first data frame, since each
+direction counts separately (<a href="#61-frame-identity-and-sequence-numbers">§6.1</a>):
+element 0, width 16, value <code>0xBEEF</code> (CRC <code>0xB788</code>).</p>
+<pre><code>7E  11 01 04  00 10 EF BE  88 B7
+</code></pre>
+<p>The host acknowledges it with the same bytes as the <code>ACK</code> in
+<a href="#122-an-output-and-its-ack">§12.2</a>: <code>7E 06 01 00 0D 4D</code>. It is the device&#39;s
+frame this <code>ACK</code> answers, because the device receives it.</p>
+<p>The device logs <code>ok</code> and a newline, unacknowledged (CRC <code>0x6104</code>):</p>
+<pre><code>7E  20 00 03  6F 6B 0A  04 61
+</code></pre>
+<p>A <code>NAK</code>, from either side (CRC <code>0x640F</code>):</p>
+<pre><code>7E  15 00 00  0F 64
+</code></pre>
+<h3 id="124-a-retransmission">12.4 A retransmission</h3>
+<p>The host sends Output 1 (width 1) the value 1, as <code>SEQ</code> 2. The frame is
+damaged on the way, and the device&#39;s <code>ACK</code> is later lost:</p>
+<table>
+<thead>
+<tr>
+<th>Step</th>
+<th>Direction</th>
+<th>What happens</th>
+<th>On the wire</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>1</td>
+<td>host → device</td>
+<td><code>OUTPUT</code> <code>SEQ</code> 2, first send. It arrives damaged.</td>
+<td><code>7E 10 02 04 01 01 01 00 46 B6</code></td>
+</tr>
+<tr>
+<td>2</td>
+<td>device → host</td>
+<td>The damage is NAKed.</td>
+<td><code>7E 15 00 00 0F 64</code></td>
+</tr>
+<tr>
+<td>3</td>
+<td>host → device</td>
+<td>Second send, at once: the same bytes.</td>
+<td><code>7E 10 02 04 01 01 01 00 46 B6</code></td>
+</tr>
+<tr>
+<td>4</td>
+<td>device → host</td>
+<td>The handler runs; <code>ACK</code> 2. It is lost.</td>
+<td><code>7E 06 02 00 5E 18</code></td>
+</tr>
+<tr>
+<td>5</td>
+<td>host → device</td>
+<td>500 ms after step 3, the third and last send.</td>
+<td><code>7E 10 02 04 01 01 01 00 46 B6</code></td>
+</tr>
+<tr>
+<td>6</td>
+<td>device → host</td>
+<td>A duplicate of the last frame acknowledged: <code>ACK</code> 2 again, the handler not run again.</td>
+<td><code>7E 06 02 00 5E 18</code></td>
+</tr>
+</tbody></table>
+<p>Had step 6 been lost too, the host would have stopped the run 500 ms after
+step 5. At no point does the <code>SEQ</code> change, and the handler runs once.</p>
+<h2 id="13-implementations">13. Implementations</h2>
+<p>Four implementations speak this page, and each is tested against the others.</p>
+<ul>
+<li><strong>The host</strong> — Chip Hippo&#39;s main process: the bytes in
+<code>src/app/serial/protocol.js</code>, the session and reliability rules in
+<code>src/app/serial/link.js</code>. Every number on this page lives in one module,
+<code>src/web/scripts/model/serial-wire.js</code> — the names in <a href="#10-constants">§10</a>
+are its exports — which the host reads and the code generators write the
+devices&#39; constants from, so the two ends cannot drift. The element order and
+the layout string are one function each (<code>elementsFor</code> and <code>layoutString</code> in
+<code>src/web/scripts/model/integration.js</code>), called by the generators and by the
+run-time handshake alike.</li>
+<li><strong>The C++ header</strong> (<code>ChipHippo.h</code>, from Generate, for a connection whose
+Language is C++) — the device side for Arduino boards. Its payload limit is
+the smallest allowed, so it buffers 12 bytes of a frame; it computes the CRC
+a bit at a time (no table, so no flash spent on one); it decides whether a
+<code>HELLO</code> matches by comparing it, byte for byte, with the <code>HELLO_ACK</code> it
+answers with; and it sends log text in frames of up to 60 bytes — at every
+newline, at every <code>poll()</code>, and before every <code>INBOUND</code> and every <code>ACK</code> of an
+<code>OUTPUT</code>.</li>
+<li><strong>The Python module</strong> (<code>chiphippo.py</code>, for a Language of Python) — the
+header said again, line for line, for MicroPython and CircuitPython. It
+picks its port by platform. On <strong>MicroPython</strong> it uses the REPL&#39;s own USB
+port, with Ctrl-C switched off inside a frame (where <code>0x03</code> is data); since
+the host never sends a byte outside a frame (<a href="#2-transport">§2</a>), a lone
+<code>0x03</code> between frames can only be a tool such as Thonny or <code>mpremote</code>, and
+it stops the program as Ctrl-C would. (The module reads a damaged frame to
+the end its <code>LEN</code> gives it, so a <code>0x03</code> in the rest of one is still that
+frame&#39;s.) On a board whose USB is a separate serial chip (a classic ESP32
+DevKit) that port always runs at 115200 baud, 8N1, so the connection must
+too. On <strong>CircuitPython</strong> it uses the second USB serial port, which its
+<code>boot.py</code> turns on. Any stream can be handed to <code>begin()</code> instead.</li>
+<li><strong>The Mock</strong> — Chip Hippo&#39;s built-in pretend board
+(<code>src/app/serial/mock-device.js</code>): the device side in JavaScript, behind the
+same port interface as a USB cable, so the host cannot tell the two apart.
+Its one-shot faults — drop the next <code>ACK</code>, corrupt the next frame, ignore a
+handshake, answer with the wrong signature — exercise the recovery rules
+(see <a href="arduino.html#the-mock-connection">The Mock connection</a>).</li>
+</ul>
+<p>Chip Hippo&#39;s test suite checks this page&#39;s frames, constants and signatures
+against the code, drives each device — a generated header compiled with the
+host&#39;s C++ compiler, the Python module under Python and MicroPython, and the
+Mock — with the real host link, and feeds all of them the same bytes to show
+they answer alike.</p>
+
+    </main>
+  </div>
+</body>
+</html>

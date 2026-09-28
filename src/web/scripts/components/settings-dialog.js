@@ -37,6 +37,7 @@ import { buildInfoButton } from "./info-button.js";
 import { buildSegmented } from "./segmented-picker.js";
 import { DatasheetDownloadDialog } from "./datasheet-download-dialog.js";
 import { buildIntegrationPanel } from "./integration-settings.js";
+import { protocolDocButton } from "./protocol-doc-button.js";
 
 /** A line-drawn book glyph for the "browse the datasheet folder" affordance. */
 const FOLDER_SVG =
@@ -982,6 +983,11 @@ export class SettingsDialog {
       }),
     );
 
+    // The serial protocol reference, top right beside the ×. The header is
+    // the whole card's, so the button belongs to the Serial I/O tab by being
+    // shown only while that tab is.
+    const protocolBtn = protocolDocButton(window.chiphippo);
+
     const select = (key) => {
       // Remembered on the class, not just in this closure: a language change
       // rebuilds the card and has to put the user back on the panel they were
@@ -995,6 +1001,7 @@ export class SettingsDialog {
       for (const [panelKey, panel] of Object.entries(panels)) {
         panel.hidden = panelKey !== key;
       }
+      protocolBtn.hidden = key !== "integration";
     };
     // Apply the starting panel through the same one path a click takes, so the
     // nav rail and the panels cannot disagree about which is showing.
@@ -1025,6 +1032,7 @@ export class SettingsDialog {
       className: "settings-popup",
       bodyClass: "settings-popup-body",
       body,
+      headerActions: [protocolBtn],
       onClose: () => {
         // The About panel's updater listeners live for exactly as long as the
         // dialog does — the app-wide toasts are the always-on surface, and a

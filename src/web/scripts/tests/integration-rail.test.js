@@ -117,6 +117,16 @@ test("the waiting chips are exactly the unplanted keys — pins, then the trigge
   assert.deepEqual(chipKeys(cards(column)[0]), ["1", "3", "4"]);
 });
 
+test("on Auto the trigger chip leaves the card, and comes back off it", () => {
+  const { win, doc, column, out } = mount();
+  doc.updateIntegration(out.id, { triggerEdge: "auto" });
+  changed(win);
+  assert.deepEqual(chipKeys(cards(column)[0]), ["1", "2", "3", "4"]);
+  doc.updateIntegration(out.id, { triggerEdge: "falling" });
+  changed(win);
+  assert.deepEqual(chipKeys(cards(column)[0]), ["1", "2", "3", "4", "T"]);
+});
+
 test("a fully planted element shows no chip row at all", () => {
   const { win, doc, column, out } = mount();
   ["1", "2", "3", "4", "T"].forEach((key, i) =>

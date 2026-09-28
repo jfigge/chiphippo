@@ -1199,6 +1199,7 @@
       "input": "输入 {n}"
     },
     "edge": {
+      "auto": "自动",
       "rising": "上升沿",
       "falling": "下降沿",
       "either": "双沿"
@@ -1208,6 +1209,7 @@
       "byte": "字节",
       "word": "字"
     },
+    "protocolDoc": "串行协议参考",
     "widthLabel": "宽度",
     "widthOption": {
       "other": "{count} 个引脚"
@@ -1261,6 +1263,7 @@
     "verify": {
       "title": "需要核实设置",
       "noConnection": "{name} 没有分配连接。请在其属性中选择一个。",
+      "noTrigger": "{name} 需要等待触发，但它的触发标签不在面包板上。请把它拖到一条线上，或在其属性中把触发设为“自动”。",
       "unknownConnection": "{name} 使用的连接未在这台电脑上设置。请在其属性中选择一个连接。",
       "unconfigured": "运行电路前，需要在“设置 ▸ 串口 I/O”中配置连接“{name}”。",
       "portMissing": "连接“{name}”的端口 {port} 不可用。",
@@ -1282,8 +1285,8 @@
       "noResponse": "“{name}”的 {port} 上没有任何应答。程序是否已上传，并且调用了 ChipHippo.begin() 和 ChipHippo.poll()？",
       "openFailedTitle": "无法打开端口",
       "openFailed": "无法为“{name}”打开 {port}：{detail}",
-      "restartTitle": "开发板已重启",
-      "restart": "电路运行时“{name}”重启了，电路已停止。再次运行即可重新连接。"
+      "restartTitle": "开发板已退出运行",
+      "restart": "“{name}”已退出运行（它重启了，或收不到 Chip Hippo 的应答），电路已停止。再次运行即可重新连接。"
     },
     "lamps": {
       "label": "串口活动",
@@ -1314,7 +1317,7 @@
         "openPort": "端口 {port} 已打开",
         "close": "端口已关闭",
         "handshake": "握手成功：协议 v{version}，签名 {signature}",
-        "announce": "设备宣告已启动",
+        "announce": "设备不在任何会话中",
         "staleAck": "过时，已忽略",
         "nakIdle": "没有需要重发的内容",
         "resend": "重发 seq {seq}（第 {attempt}/{max} 次）",
@@ -1333,7 +1336,7 @@
         "noResponse": "{seconds} 秒内没有对 HELLO 的应答",
         "version": "设备使用协议 v{version}，Chip Hippo 使用 v{host}",
         "signature": "设备是为布局 {signature} 构建的，而不是 {expected}",
-        "restart": "设备已重启",
+        "restart": "设备已退出会话（它重启了，或收不到 Chip Hippo 的应答）",
         "dropped": "连接已断开",
         "droppedDetail": "连接已断开：{detail}",
         "openFailed": "无法打开端口：{detail}"

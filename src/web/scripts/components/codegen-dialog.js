@@ -56,6 +56,7 @@ import { connectionsUsed, elementsFor } from "../model/integration.js";
 import { designHash, hashHex } from "../model/integration-codegen.js";
 import { connectionFiles } from "../model/integration-files.js";
 import { CodeFilesDialog } from "./code-files-dialog.js";
+import { protocolDocButton } from "./protocol-doc-button.js";
 import { findConnection, isMockId } from "../model/serial-connections.js";
 
 /**
@@ -282,6 +283,9 @@ export class CodegenDialog {
       closeAriaLabel: t("common.close"),
       className: "codegen-popup",
       bodyClass: "codegen-popup-body",
+      // What the generated files speak, one click from the card that makes
+      // them.
+      headerActions: [protocolDocButton(bridge)],
       body: [
         el("p", {
           class: "settings-hint",

@@ -478,6 +478,45 @@ test("SettingsDialog: the Data Sheets tab switches panels", () => {
   PopupManager.close();
 });
 
+test("SettingsDialog: the protocol book sits left of the × on Serial I/O only, and opens its page", async () => {
+  resetDom();
+  const opened = [];
+  window.chiphippo = { docs: { open: async (slug) => opened.push(slug) } };
+  SettingsDialog.open({});
+  const dialog = document.querySelector(".settings-popup");
+  const actions = dialog.querySelector(".popup-header .popup-header-actions");
+  assert.deepEqual(
+    [...actions.children].map((b) => b.className),
+    ["popup-header-btn", "popup-close"],
+    "grouped with the close button, to its left",
+  );
+  const book = actions.querySelector(".popup-header-btn");
+  const tab = (key) =>
+    dialog
+      .querySelector(`.settings-nav-item[data-panel="${key}"]`)
+      .dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+
+  assert.equal(book.hidden, true, "not on Appearance");
+  tab("integration");
+  assert.equal(book.hidden, false, "shown on Serial I/O");
+  assert.equal(book.getAttribute("aria-label"), "Serial protocol reference");
+  book.click();
+  await new Promise((r) => setTimeout(r, 0));
+  assert.deepEqual(opened, ["serial-protocol"]);
+  assert.ok(document.querySelector(".settings-popup"), "Settings stays open");
+  tab("datasheets");
+  assert.equal(book.hidden, true, "gone again off the tab");
+  PopupManager.close();
+
+  // Opened straight onto Serial I/O (Run's refusal, "Manage connections…").
+  SettingsDialog.open({}, { tab: "integration" });
+  assert.equal(
+    document.querySelector(".settings-popup .popup-header-btn").hidden,
+    false,
+  );
+  PopupManager.close();
+});
+
 // ── A language change rebuilds the card ─────────────────────────────────────
 // The Language picker is IN this dialog, so it is the ONE card that can still
 // be on screen when the language changes. Every other transient surface is

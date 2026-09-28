@@ -15,7 +15,7 @@
  */
 
 // serial-wire.js — the Arduino serial protocol's NUMBERS, stated once
-// (docs/chiphippo-serial-protocol.md is the normative text). Pure and
+// (src/web/docs/serial-protocol.md is the normative text). Pure and
 // dependency-free, because it is read from BOTH sides of the bridge:
 //
 //   · the generator (integration-codegen.js) imports it and WRITES the
@@ -25,8 +25,9 @@
 //
 // So the protocol version, the byte values, the timeouts and the retry count
 // exist in exactly one place, and the C++ on the Arduino cannot drift from the
-// host that talks to it. Anything here is a WIRE fact: change one after
-// release and PROTOCOL_VERSION goes up with it.
+// host that talks to it. The protocol page's Constants table names these
+// exports and a test holds the two to each other. Anything here is a WIRE
+// fact: change one after release and PROTOCOL_VERSION goes up with it.
 
 /** The protocol this build speaks. Exchanged in HELLO / HELLO_ACK. */
 export const PROTOCOL_VERSION = 1;
@@ -37,16 +38,27 @@ export const START = 0x7e;
 export const ESC = 0x7d;
 export const ESC_XOR = 0x20;
 
-/** Frame types (§3). None is 0x00, 0x7D, 0x7E or 0xFF. */
+/** Frame types (§4). None is 0x00, 0x7D, 0x7E or 0xFF. */
 export const FRAME = Object.freeze({
-  HELLO: 0x01, // host → device: version + layout signature
-  HELLO_ACK: 0x02, // device → host: ITS version + layout signature
+  HELLO: 0x01, // host → device: version, session, layout signature
+  HELLO_ACK: 0x02, // device → host: ITS version, the session, ITS signature
   ACK: 0x06, // either way: SEQ received (and, for an OUTPUT, handled)
-  NAK: 0x15, // either way: the last frame arrived damaged — resend
+  NAK: 0x15, // either way: a frame arrived damaged — resend yours now
   OUTPUT: 0x10, // host → device: an Output fired              (ACKed)
   INBOUND: 0x11, // device → host: an Input's whole new value  (ACKed)
-  LOG: 0x20, // device → host: log text                     (ACKed)
+  LOG: 0x20, // device → host: log text               (never ACKed)
 });
+
+/** The frames never resent in answer to a NAK, so a damaged one is never
+    NAKed (§3.5): a NAK for an ACK or a NAK would echo forever, LOG is never
+    resent at all, and the handshake resends on its own clock. */
+export const NOT_NAKED = Object.freeze([
+  FRAME.HELLO,
+  FRAME.HELLO_ACK,
+  FRAME.ACK,
+  FRAME.NAK,
+  FRAME.LOG,
+]);
 
 /** Bytes before the payload, after START: TYPE SEQ LEN. */
 export const HEADER_BYTES = 3;
@@ -54,11 +66,31 @@ export const HEADER_BYTES = 3;
 export const CRC_BYTES = 2;
 /** LEN is one byte. */
 export const MAX_PAYLOAD = 255;
+/** The longest frame, unescaped and without START: TYPE SEQ LEN, 255
+    payload bytes, the CRC — 260. */
+export const MAX_FRAME_BODY = HEADER_BYTES + MAX_PAYLOAD + CRC_BYTES;
+/** The most bytes one frame can take on the wire: START, then every body
+    byte escaped — 521. */
+export const MAX_WIRE_FRAME = 1 + 2 * MAX_FRAME_BODY;
 
 /** An OUTPUT / INBOUND payload: element index, width, value lo, value hi. */
 export const DATA_PAYLOAD = 4;
-/** A HELLO / HELLO_ACK payload: version, signature ×4 (little-endian). */
-export const HELLO_PAYLOAD = 5;
+/** A v1 HELLO / HELLO_ACK payload: version, session ×2, signature ×4 (all
+    little-endian). */
+export const HELLO_PAYLOAD = 7;
+/** A v1 HELLO / HELLO_ACK's first bytes — version, session: all a device
+    needs to answer a HELLO, and all the host needs to judge a HELLO_ACK's
+    version. Shorter is ignored. */
+export const HELLO_PREFIX = 3;
+/** The longest payload the host ever sends: all a device need buffer. */
+export const MAX_HOST_PAYLOAD = Math.max(DATA_PAYLOAD, HELLO_PAYLOAD);
+
+/** Sessions are 16 bits. 0 is never a run's: a HELLO_ACK for session 0 is a
+    device announcing that it has just started. */
+export const ANNOUNCE_SESSION = 0;
+export const MAX_SESSION = 0xffff;
+/** Data SEQs run 1…255 and wrap to 1; 0 is every other frame's. */
+export const MAX_SEQ = 255;
 
 /** The widest element: a value is a uint16_t on the wire. */
 export const MAX_WIDTH = 16;

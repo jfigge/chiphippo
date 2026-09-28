@@ -114,7 +114,8 @@ Each one appears as a **card** on the right-hand edge of the desk, under the
 signal buttons: its direction arrow (← Output, pointing out; → Input, pointing in), its colour, its name
 and how many pins it has. Under the name sits a small numbered chip for every
 pin that isn't on the board yet, plus one more — the **trigger**, marked with
-an arrow. **Drag a chip onto a breadboard hole** to plant that pin there as a
+an arrow — unless the element's trigger is **Auto**, which has no trigger tag
+at all. **Drag a chip onto a breadboard hole** to plant that pin there as a
 **tag**; drag a planted tag to move it, and press `R` while dragging (or with
 the tag selected) to turn it. **Delete** unplugs a selected tag back onto its
 card. The card's right-click menu offers **Properties…**, **Remove All Tags**
@@ -147,8 +148,8 @@ Right-click a card (or one of its tags) and choose **Properties…** to edit:
 | **Name**, **Description** | The name is also the function (Output) or object (Input) name in the header, turned into a valid C++ identifier |
 | **Color** | The card's dot and its tags — any of the seven signal colours |
 | **Connection** | Which Arduino it talks to. The gear beside it opens Settings ▸ Serial I/O |
-| **Trigger** | **Rising**, **Falling** or **Either** — which transition of the trigger line counts |
-| **Trigger starts** | **Low** or **High** — what the trigger line is taken to have been before the run began, so a line that starts high can still fire (or not) on the first settle |
+| **Trigger** | **Auto**, **Rising**, **Falling** or **Either**. Auto watches no line: an Output sends whenever its value changes, an Input puts each value on the board as it arrives. The others name which transition of the trigger line counts. A new Output starts on **Rising**, a new Input on **Auto** |
+| **Trigger starts** | **Low** or **High** — what the trigger line is taken to have been before the run began, so a line that starts high can still fire (or not) on the first settle. Greyed out on Auto, which has no line |
 | **Pins** | The fields, as above |
 
 ## How values move
@@ -158,10 +159,13 @@ chip's output has stopped changing. A glitch inside one settle is never sent
 anywhere, and nothing from the Arduino ever lands on the board halfway through
 a ripple.
 
-### An Output fires on its trigger
+### An Output fires on its trigger, or on a change
 
 When an Output's trigger line makes the chosen transition, Chip Hippo samples
-the Output's pins and **sends the value**. **The circuit then waits** — no
+the Output's pins and **sends the value**. On **Auto** there is no trigger
+line: after every settle Chip Hippo samples the pins and sends the value if it
+differs from the last one it sent — and always at the very first settle of a
+run, so the sketch learns where the circuit starts. **The circuit then waits** — no
 clock edges, no further settles — until the Arduino's function has *returned*
 and the board has acknowledged it. So whatever the sketch does in response has
 already happened before the circuit moves on, and an Input the sketch sends
@@ -169,7 +173,14 @@ from inside that function lands in the same step: the request/response shape
 (the circuit asks, the Arduino answers, the circuit carries on with the
 answer) works with no timing of your own.
 
-An Output whose trigger tag isn't planted **never fires**.
+Auto sends **every** value the pins settle to, including the in-between ones:
+flip two switches one after the other and the Arduino hears both steps. When
+the pins only hold a meaningful value at one moment — a data bus, a latch
+strobe — use an edge on that strobe instead.
+
+An Output or Input waiting for an edge **won't run without its trigger tag on
+the board**: pressing Run says which one is missing it, and offers its
+Properties, where you can switch it to Auto instead.
 
 ### An Input is live or triggered
 
@@ -178,12 +189,17 @@ disagreeing over one net is reported as a conflict, exactly as two chip
 outputs would be — but **drives nothing at all** until the Arduino has sent it
 a first value.
 
-- With **no trigger tag planted**, an Input is **live**: each value the
-  Arduino sends is put on the board at the next opportunity between settles.
-- With a trigger tag planted, the latest value the Arduino sent **waits** and
-  is put on the board only when the trigger line makes its transition — the
-  way a latch loads on its clock. Earlier values the circuit never took are
-  simply replaced.
+- On **Auto**, an Input is **live**: each value the Arduino sends is put on
+  the board at the next opportunity between settles.
+- On an edge, the latest value the Arduino sent **waits** and is put on the
+  board only when the trigger line makes its transition — the way a latch
+  loads on its clock. Earlier values the circuit never took are simply
+  replaced.
+
+Switching an element to Auto takes its trigger tag off the board, but Chip
+Hippo remembers where it was: switch back to an edge and the tag returns to
+the same hole — unless something else has been plugged in there meanwhile, in
+which case it waits on the card.
 
 ## Generating the board's code
 
@@ -385,9 +401,10 @@ While it runs:
   them to open a [connection window](#the-connection-window) (a menu asks
   which, if there are several).
 - A board that **restarts** mid-run (a reset button, a brown-out), one that is
-  **unplugged**, and one that fails to acknowledge a value after three
-  attempts all **stop the run** with a message naming the connection. A
-  restarted sketch has forgotten the run, so press **Run** again to reconnect.
+  **unplugged**, one that fails to acknowledge a value after three attempts,
+  and one whose sketch sends a value that Chip Hippo never acknowledges all
+  **stop the run** with a message naming the connection. A sketch that has
+  left the run has forgotten it, so press **Run** again to reconnect.
 
 **Stop** closes every port, so the Arduino IDE can have it back to upload a
 new sketch — there's no need to quit Chip Hippo between uploads.
@@ -447,10 +464,14 @@ value's payload is the element's index, its width in bits, and the value as
 two bytes, little-endian.
 
 At the start of every run Chip Hippo sends a HELLO carrying the protocol
-version, the layout signature (a CRC-32 of the layout described above) and a
-fresh session number, and the sketch answers with its own version and
-signature. Outputs and Inputs are then acknowledged and resent on a timeout or
-a NAK. A resend is recognised by its sequence number, so a function never runs
+version, a fresh 16-bit session number and the layout signature (a CRC-32 of
+the layout described above), and the sketch answers with its own version and
+signature. Both sides take part in the run only if the two match. Outputs and
+Inputs are then acknowledged and resent on a timeout or a NAK. A resend is recognised by its sequence number, so a function never runs
 twice for one value, and an Output is acknowledged only once its function has
 returned. Log text travels in unacknowledged chunks that never split a
 character.
+
+The whole protocol — every frame, rule and constant, with worked examples — is
+on the [Serial Protocol](serial-protocol.md) page. The book icon at the top
+right of Settings ▸ Serial I/O and of the Generate card opens it too.

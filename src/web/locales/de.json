@@ -1217,6 +1217,7 @@
       "input": "Eingang {n}"
     },
     "edge": {
+      "auto": "Auto",
       "rising": "Steigend",
       "falling": "Fallend",
       "either": "Beide"
@@ -1226,6 +1227,7 @@
       "byte": "Byte",
       "word": "Wort"
     },
+    "protocolDoc": "Referenz zum seriellen Protokoll",
     "widthLabel": "Breite",
     "widthOption": {
       "one": "{count} Pin",
@@ -1281,6 +1283,7 @@
     "verify": {
       "title": "Einstellungen müssen geprüft werden",
       "noConnection": "{name} ist keiner Verbindung zugeordnet. Wähle eine in seinen Eigenschaften.",
+      "noTrigger": "{name} wartet auf einen Trigger, aber seine Trigger-Marke steckt nicht im Steckbrett. Zieh sie auf eine Leitung oder stelle den Trigger in seinen Eigenschaften auf Auto.",
       "unknownConnection": "Die Verbindung, die {name} verwendet, ist auf diesem Computer nicht eingerichtet. Wählen Sie in den Eigenschaften eine aus.",
       "unconfigured": "Die Verbindung „{name}“ muss unter Einstellungen ▸ Serielle E/A konfiguriert werden, bevor die Schaltung laufen kann.",
       "portMissing": "Der Anschluss {port} der Verbindung „{name}“ ist nicht verfügbar.",
@@ -1302,8 +1305,8 @@
       "noResponse": "Auf {port} hat für „{name}“ nichts geantwortet. Ist der Sketch hochgeladen, und ruft er ChipHippo.begin() und ChipHippo.poll() auf?",
       "openFailedTitle": "Anschluss konnte nicht geöffnet werden",
       "openFailed": "{port} für „{name}“ konnte nicht geöffnet werden: {detail}",
-      "restartTitle": "Board neu gestartet",
-      "restart": "„{name}“ wurde während der Laufzeit neu gestartet, daher wurde die Schaltung angehalten. Starte sie erneut, um wieder zu verbinden."
+      "restartTitle": "Board hat den Lauf verlassen",
+      "restart": "„{name}“ hat den Lauf verlassen – es wurde neu gestartet oder hört Chip Hippo nicht mehr –, daher wurde die Schaltung angehalten. Starte sie erneut, um wieder zu verbinden."
     },
     "lamps": {
       "label": "Serielle Aktivität",
@@ -1334,7 +1337,7 @@
         "openPort": "Port {port} geöffnet",
         "close": "Port geschlossen",
         "handshake": "Handshake OK: Protokoll v{version}, Signatur {signature}",
-        "announce": "das Gerät hat einen Start gemeldet",
+        "announce": "das Gerät ist in keiner Sitzung",
         "staleAck": "veraltet, ignoriert",
         "nakIdle": "nichts erneut zu senden",
         "resend": "sende seq {seq} erneut (Versuch {attempt}/{max})",
@@ -1353,7 +1356,7 @@
         "noResponse": "Keine Antwort auf HELLO in {seconds} s",
         "version": "Das Gerät spricht Protokoll v{version}, Chip Hippo spricht v{host}",
         "signature": "Das Gerät wurde für das Layout {signature} gebaut, nicht {expected}",
-        "restart": "Das Gerät wurde neu gestartet",
+        "restart": "Das Gerät hat die Sitzung verlassen (Neustart, oder es hört Chip Hippo nicht mehr)",
         "dropped": "Verbindung getrennt",
         "droppedDetail": "Verbindung getrennt: {detail}",
         "openFailed": "Der Port ließ sich nicht öffnen: {detail}"
