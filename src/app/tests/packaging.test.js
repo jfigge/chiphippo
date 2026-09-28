@@ -183,3 +183,32 @@ test("each desktop build ships only its own platform's build of the serial port'
   assert.equal(build.mas.files, undefined, "mas inherits mac's");
   assert.equal(build.masDev.files, undefined, "masDev likewise");
 });
+
+test("the Linux packages start on a stock system", () => {
+  // The legacy AppImage toolset's arm64 launcher links the UNVERSIONED
+  // libz.so, which only zlib's -dev package provides, so it would not start
+  // on a stock Raspberry Pi OS or Ubuntu; 1.0.2's launcher is static.
+  assert.equal(build.toolsets?.appimage, "1.0.2");
+  // A deb's `depends` REPLACES electron-builder's defaults, so they are all
+  // restated, plus the two libraries Electron loads that the defaults leave
+  // out: a minimal system installed the package and then could not start it
+  // ("libasound.so.2" / "libgbm.so.1: cannot open shared object file").
+  const defaults = [
+    "libgtk-3-0",
+    "libnotify4",
+    "libnss3",
+    "libxss1",
+    "libxtst6",
+    "xdg-utils",
+    "libatspi2.0-0",
+    "libuuid1",
+    "libsecret-1-0",
+  ];
+  const depends = build.deb?.depends ?? [];
+  for (const d of defaults) assert.ok(depends.includes(d), `deb keeps ${d}`);
+  assert.ok(
+    depends.includes("libasound2t64 | libasound2"),
+    "sound (t64 or not)",
+  );
+  assert.ok(depends.includes("libgbm1"), "the GPU buffer library");
+});

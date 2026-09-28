@@ -2628,6 +2628,18 @@ See STORE-PUBLISHING.md for the submission itself.
   sandbox; `network.server` would ask for something nothing listens on), on every platform
   and with no Apple material present.
 
+## Linux packaging
+
+The AppImage is built with electron-builder's **`toolsets.appimage: "1.0.2"`**: the legacy
+toolset's arm64 launcher links the UNVERSIONED `libz.so` (only zlib's `-dev` package
+provides it), so it did not start on a stock Raspberry Pi OS or Ubuntu; 1.0.2's launcher is
+static, and needs no `libfuse2` either. The `.deb` states its **`depends`** in full — a
+custom list REPLACES electron-builder's defaults — adding `libasound2t64 | libasound2` and
+`libgbm1`, which Electron loads and the defaults omit (a minimal system installed the
+package and then could not start it). Both are held by `app/tests/packaging.test.js`, and
+were proved in fresh `ubuntu:24.04` containers (arm64 native, x64 emulated): the deb's
+binary resolves every library, and both packages run the Mock loop under `xvfb`.
+
 ## Language support
 
 The app speaks **English, German, Spanish, French, Italian, Japanese and Chinese
