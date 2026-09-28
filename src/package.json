@@ -29,7 +29,7 @@
     "@eslint/js": "^9.39.4",
     "dompurify": "^3.4.7",
     "electron": "^42.1.0",
-    "electron-builder": "~26.8.1",
+    "electron-builder": "~26.17.0",
     "esbuild": "^0.28.0",
     "eslint": "^9.39.4",
     "globals": "^16.1.0",

@@ -337,12 +337,17 @@ build-install:
 # CSC_KEY_PASSWORD (a Developer ID .p12) — absent ⇒ electron-builder emits an
 # unsigned .app with no failure, so this works before any certificate exists (in
 # CI those come from repository secrets; see .github/workflows/release.yml).
-# Notarization stays off for now (it needs hardenedRuntime + entitlements).
+# Notarization is driven the same way and is NOT pinned off here: with Apple's
+# credentials in the environment (APPLE_ID + APPLE_APP_SPECIFIC_PASSWORD +
+# APPLE_TEAM_ID, or APPLE_API_KEY + APPLE_API_KEY_ID + APPLE_API_ISSUER) a
+# signed build is notarized; without them electron-builder skips it and says so.
+# A `-c.mac.notarize=false` here once shipped every release un-notarized however
+# many secrets were configured — a signed download Gatekeeper still blocks.
 dist: dist-mac dist-linux dist-win
 
 dist-mac: build-setup build-install
 	@echo "Building macOS distribution (dmg + zip; signed if a cert is present)..."
-	@cd $(BUILD_DIR)/src; npx electron-builder --mac --publish never -c.mac.notarize=false
+	@cd $(BUILD_DIR)/src; npx electron-builder --mac --publish never
 	@echo "  → $(BUILD_DIR)/src/dist/"
 	@echo "--------------------------------"
 

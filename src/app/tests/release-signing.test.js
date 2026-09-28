@@ -111,6 +111,61 @@ test("notarization credentials reach the build, and only alongside a certificate
   assert.match(signing, /export APPLE_ID="\$INPUT_APPLE_ID"/);
 });
 
+test("the App Store Connect API key can notarize instead, also only alongside a certificate", () => {
+  const build = step(workflow(), "Build installers (macOS / Linux)");
+  for (const name of [
+    "APPLE_API_KEY_ID",
+    "APPLE_API_ISSUER",
+    "APPLE_API_KEY_BASE64",
+  ]) {
+    assert.match(
+      build,
+      new RegExp(`INPUT_${name}:\\s*\\$\\{\\{\\s*secrets\\.${name}\\s*\\}\\}`),
+    );
+  }
+  const signing = build.slice(
+    build.indexOf('if [ -n "$INPUT_CSC_LINK" ]'),
+    build.indexOf("\n          else"),
+  );
+  // electron-builder reads the key from a FILE named by APPLE_API_KEY.
+  assert.match(signing, /export APPLE_API_KEY="\$RUNNER_TEMP\/[^"]+\.p8"/);
+  assert.match(signing, /export APPLE_API_KEY_ID="\$INPUT_APPLE_API_KEY_ID"/);
+  assert.match(signing, /export APPLE_API_ISSUER="\$INPUT_APPLE_API_ISSUER"/);
+});
+
+test("the release's mac recipe does not pin notarize off either", () => {
+  // `build.mac` leaving notarize at its default is not enough on its own: the
+  // workflow runs `make dist-mac`, and a `-c.mac.notarize=false` on that
+  // command line overrides it. It did, and every release shipped un-notarized
+  // whatever secrets were set — the page's promise, silently untrue.
+  const makefile = fs.readFileSync(path.join(ROOT, "Makefile"), "utf8");
+  // The recipe: the lines after `dist-mac:` that start with a tab.
+  const lines = makefile.split("\n");
+  const start = lines.findIndex((l) => l.startsWith("dist-mac:"));
+  assert.notEqual(
+    start,
+    -1,
+    "the Makefile should still have a dist-mac target",
+  );
+  const body = [];
+  for (const line of lines.slice(start + 1)) {
+    if (!line.startsWith("\t")) break;
+    body.push(line);
+  }
+  const recipeText = body.join("\n");
+  assert.match(
+    recipeText,
+    /electron-builder --mac\b/,
+    "dist-mac should still run electron-builder",
+  );
+  assert.doesNotMatch(recipeText, /notarize=false/);
+  assert.match(
+    workflow(),
+    /target: dist-mac/,
+    "and the release should still build the mac installers with it",
+  );
+});
+
 test("the mac build does not pin notarize off — only the store builds do", () => {
   // `mas`/`masDev` set `notarize: false` correctly: App Store review notarizes.
   // The plain `mac` block must NOT, or electron-builder skips notarization even

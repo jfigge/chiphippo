@@ -2628,6 +2628,20 @@ See STORE-PUBLISHING.md for the submission itself.
   sandbox; `network.server` would ask for something nothing listens on), on every platform
   and with no Apple material present.
 
+## Release signing (the direct-download mac build)
+
+`make dist-mac` signs and notarizes from the ENVIRONMENT, and must never pin either off:
+`release.yml` exports `CSC_LINK`/`CSC_KEY_PASSWORD` (a Developer ID Application .p12)
+only when that secret exists, and inside that branch the notarization credentials —
+`APPLE_ID` + app-specific password + team id, or else the App Store Connect API key the
+store job already holds (decoded to `$RUNNER_TEMP/*.p8` as `APPLE_API_KEY`). A
+`-c.mac.notarize=false` on the recipe once shipped every release un-notarized however many
+secrets were set, which made `website/code-signing-policy.html` untrue;
+`app/tests/release-signing.test.js` now reads the recipe as well as `build.mac`. The store
+job's temporary keychain needs electron-builder ≥ 26.16.1: before it, `importCerts` passed
+the .p12's passphrase to `set-key-partition-list -k`, which macOS 15 ignored and macOS 26
+(the `macos-latest` image the v1.1.0 release ran on) rejects.
+
 ## Linux packaging
 
 The AppImage is built with electron-builder's **`toolsets.appimage: "1.0.2"`**: the legacy
