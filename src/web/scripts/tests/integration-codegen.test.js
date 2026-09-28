@@ -269,37 +269,80 @@ test("a connection with no elements still makes a valid (empty) header", () => {
   assert.match(r.text, /this connection has no Inputs/);
 });
 
-test("the example is the smallest sketch for its header: begin, poll, one logging function per Output, Inputs sent from onConnect", () => {
+test("the example RECEIVES (a logging function per Output), SENDS (starting values, then a counter from loop()) and LOGS", () => {
   const { name, text } = generateExample({
     connection: nano,
     elements: design(),
   });
   assert.equal(name, EXAMPLE_FILE);
   assert.match(text, /#include "ChipHippo\.h"/);
+  for (const label of ["RECEIVE", "SEND", "LOG"]) {
+    assert.match(text, new RegExp(`^//   ${label} `, "m"), `explains ${label}`);
+  }
+  assert.ok(text.includes("Never use Serial"), "and what not to log with");
+
+  // RECEIVE, logged.
   assert.match(text, /void Output1In\(uint8_t data, bool strobe\) \{/);
   assert.ok(text.includes('ChipHippo.print("Output 1: data=");'));
   assert.ok(text.includes('ChipHippo.print(" strobe=");'));
+
+  // Every run starts with a log line and the Inputs' starting values.
+  assert.match(
+    text,
+    /void runStarted\(\) \{\n {2}ChipHippo\.println\("Run started"\);/,
+  );
   assert.match(
     text,
     /ChipHippo\.Input1Out\.setValue\(0\);\n\s*ChipHippo\.Input1Out\.send\(\);/,
   );
   assert.match(
     text,
-    /ChipHippo\.onConnect\(sendInputs\);\n\s*ChipHippo\.begin\(\);/,
+    /ChipHippo\.onConnect\(runStarted\);\n\s*ChipHippo\.begin\(\);/,
   );
-  assert.match(text, /void loop\(\) \{\n\s*ChipHippo\.poll\(\);\n\}/);
+
+  // SEND from loop(): the first Input's first field, counting in its own type.
+  assert.match(text, /^const unsigned long SEND_EVERY_MS = 1000;$/m);
+  assert.match(text, /^uint16_t counter = 0;$/m, "a word counts in a word");
+  assert.match(
+    text,
+    /void sendNext\(\) \{\n {2}counter\+\+;\n {2}ChipHippo\.Input1Out\.setValue\(counter\);\n {2}if \(ChipHippo\.Input1Out\.send\(\)\) \{\n {4}ChipHippo\.print\("Sent Input 1: value="\);/,
+  );
+  assert.match(
+    text,
+    /void loop\(\) \{\n {2}ChipHippo\.poll\(\);.*\n {2}if \(ChipHippo\.connected\(\) && millis\(\) - lastSend >= SEND_EVERY_MS\) \{\n {4}lastSend = millis\(\);\n {4}sendNext\(\);/,
+  );
   assert.ok(!text.includes("Other"), "another connection's Output is absent");
 });
 
-test("an example with no Inputs has no onConnect, and a name cannot break its code", () => {
+test("a bit is toggled rather than counted, and an example without Outputs says where they would go", () => {
+  const { text } = generateExample({
+    connection: nano,
+    elements: [
+      el("in1", "input", "Dips", [
+        { type: "bit", name: "dip1" },
+        { type: "bit", name: "dip2" },
+      ]),
+    ],
+  });
+  assert.match(text, /^bool level = false;$/m);
+  assert.match(text, /^ {2}level = !level;\n {2}ChipHippo\.DipsOut\.setDip1\(level\);$/m); // prettier-ignore
+  assert.match(text, /this connection has no Outputs/);
+  assert.ok(!/void \w+In\(/.test(text), "no Output function to declare");
+});
+
+test("an example with no Inputs sends nothing but still logs a run's start, and a name cannot break its code", () => {
   const { text } = generateExample({
     connection: nano,
     elements: [
       el("out1", "output", 'Say "hi"\\??=\nx', [{ type: "bit", name: "on" }]),
     ],
   });
-  assert.ok(!text.includes("onConnect"));
-  assert.ok(!text.includes("sendInputs"));
+  assert.match(text, /ChipHippo\.onConnect\(runStarted\);/);
+  assert.ok(text.includes('ChipHippo.println("Run started");'));
+  for (const absent of ["sendNext", "SEND_EVERY_MS", "millis", ".send()"]) {
+    assert.ok(!text.includes(absent), absent);
+  }
+  assert.match(text, /this connection has no Inputs/);
   assert.ok(
     text.includes('ChipHippo.print("Say \\"hi\\"\\\\?\\?= x: on=");'),
     text,

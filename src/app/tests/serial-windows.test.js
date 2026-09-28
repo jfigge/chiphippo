@@ -104,7 +104,7 @@ function setup(connections = [NANO, UNO]) {
   const setConnections = (list) => {
     settings.serialConnections = list;
     ipc.retitleLogs();
-    ipc.forgetDeletedWindows();
+    ipc.forgetDeletedConnections();
   };
   return { settings, invoke, setConnections };
 }

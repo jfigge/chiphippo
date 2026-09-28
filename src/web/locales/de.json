@@ -91,6 +91,7 @@
       "allFiles": "Alle Dateien",
       "header": "C/C++-Header",
       "python": "Python-Quelltext",
+      "sketch": "Arduino-Sketch",
       "text": "Text"
     },
     "regrant": {
@@ -1433,15 +1434,15 @@
         "never": "Noch nicht generiert",
         "unknown": "Auf diesem Computer nicht konfiguriert"
       },
-      "save": "Header speichern…",
-      "saveModule": "Modul speichern…",
+      "generate": "Generieren",
+      "saveAs": "Speichern unter…",
       "copy": "Kopieren",
       "view": "Dateien ansehen…",
       "viewTitle": "{name} — Header und Beispiel",
       "viewTitlePython": "{name} — Modul und Beispiele",
       "files": "Dateien",
-      "copied": "In die Zwischenablage kopiert.",
       "copiedFile": "{name} in die Zwischenablage kopiert.",
+      "copiedSelection": "Auswahl in die Zwischenablage kopiert.",
       "copyFailed": "Kopieren in die Zwischenablage fehlgeschlagen.",
       "saved": "Gespeichert unter {path}",
       "failed": "Die Datei konnte nicht gespeichert werden: {error}",

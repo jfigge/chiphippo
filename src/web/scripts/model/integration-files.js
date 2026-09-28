@@ -22,8 +22,9 @@
 //   · Python: chiphippo.py, and main.py (MicroPython), code.py + boot.py
 //     (CircuitPython) that use it.
 //
-// `main` is the file Save and Copy mean — the one the board's own code
-// imports; `files` is everything View files shows, `main` first.
+// `main` is the file the board's own code imports; `files` is everything
+// the Generate viewer shows, `main` first (Copy and Save As… there act on
+// whichever file is on show).
 
 import {
   HEADER_FILE,

@@ -17,7 +17,7 @@
 // integration-codegen-python.js — the board side of the serial integration
 // for a connection whose language is PYTHON: one module, chiphippo.py, that
 // runs unchanged on MICROPYTHON and CIRCUITPYTHON (and on desktop Python,
-// which is how it is tested), plus the smallest programs that use it.
+// which is how it is tested), plus the example programs that use it.
 // Pure: strings in, strings out.
 //
 // It is integration-codegen.js's C++ header said again, line for line: the
@@ -289,9 +289,9 @@ export function generatePythonModule({
     "# from a function decorated @link.on_connect: poll() runs it at the start of",
     "# every run, whether or not the board reset when the port opened.",
     "#",
-    `# The smallest programs that use this module are ${MICROPYTHON_MAIN} (MicroPython) and`,
-    `# ${CIRCUITPYTHON_MAIN} with ${CIRCUITPYTHON_BOOT} (CircuitPython): in Chip Hippo, Generate ▸ View files`,
-    "# shows them beside this module.",
+    `# Example programs that use this module — receiving, sending and logging —`,
+    `# are ${MICROPYTHON_MAIN} (MicroPython) and ${CIRCUITPYTHON_MAIN} with ${CIRCUITPYTHON_BOOT} (CircuitPython): in`,
+    "# Chip Hippo, Generate shows them beside this module.",
     "#",
     "# Call poll() often and keep Output functions short. While an Output is being",
     "# handled the circuit waits for it, so every sleep() is time it stands still",
@@ -367,6 +367,12 @@ except ImportError:
 
         def _ticks_diff(a, b):
             return a - b
+
+
+# Milliseconds for your own program, read the same way on every board:
+# ticks_diff(ticks_ms(), then) is how many milliseconds ago 'then' was.
+ticks_ms = _ticks_ms
+ticks_diff = _ticks_diff
 
 
 # ── Ports: each reads what has arrived (never waiting) and writes a frame ───
@@ -858,12 +864,16 @@ link = _Link()
 // ── The examples ───────────────────────────────────────────────────────────
 
 /**
- * The smallest program that uses the module: a logging function per Output,
- * every Input sent its starting value at the start of every run, begin and
- * the poll loop. MicroPython's main.py and CircuitPython's code.py are the
- * same program — only the file a board runs at boot differs, and what the
- * opening comment says — plus CircuitPython's boot.py, which turns on the
- * second USB serial port the module talks over.
+ * The example program for the module — the header's example said in Python:
+ * RECEIVE (a logging function per Output), SEND (every Input its starting
+ * value at the start of every run, then the first Input's first field
+ * counting up — a bit: toggling — once a second from the loop) and LOG, each
+ * labelled where it happens. The timer uses the module's own `ticks_ms` /
+ * `ticks_diff`, the one clock that reads the same on MicroPython,
+ * CircuitPython and desktop Python. MicroPython's main.py and CircuitPython's
+ * code.py are the same program — only the file a board runs at boot differs,
+ * and what the opening comment says — plus CircuitPython's boot.py, which
+ * turns on the second USB serial port the module talks over.
  *
  * @param {object} opts
  * @param {object} opts.connection
@@ -873,26 +883,67 @@ link = _Link()
 export function generatePythonExamples({ connection, elements }) {
   const plan = planIdentifiers(connection?.id ?? null, elements, PY_NAMING);
   const who = comment(JSON.stringify(String(connection?.name ?? "")));
-  const body = ["from chiphippo import link"];
-  for (const o of plan.outputs) {
+  // What the loop sends: the first Input's first field.
+  const input = plan.inputs[0] ?? null;
+  const field = input?.fields[0] ?? null;
+  const bit = field?.type === "bit";
+  const value = bit ? "level" : "counter";
+  const body = [
+    input
+      ? "from chiphippo import link, ticks_diff, ticks_ms"
+      : "from chiphippo import link",
+  ];
+  if (input) {
+    body.push(
+      "",
+      `# SEND: every SEND_EVERY_MS, the loop sends the Input ${comment(JSON.stringify(input.display))} its next value.`,
+      "SEND_EVERY_MS = 1000",
+      "last_send = 0",
+      `${value} = ${bit ? "False" : "0"}`,
+    );
+  }
+  if (!plan.outputs.length) {
+    body.push(
+      "",
+      "",
+      "# RECEIVE: this connection has no Outputs. Give it one and generate again,",
+      "# and each time it fires it arrives in a function of its own here,",
+      "# decorated @link.<its name>_in.",
+    );
+  }
+  plan.outputs.forEach((o, n) => {
     const params = o.fields.map((f) => f.param);
     body.push(
       "",
       "",
+      ...(n
+        ? []
+        : [
+            "# RECEIVE: each Output arrives in a function of its own, each time it",
+            "# fires, its fields the parameters. The circuit waits until it returns,",
+            "# so keep it short.",
+          ]),
       `@link.${o.id}  # the Output ${comment(JSON.stringify(o.display))} arrives here`,
       `def ${o.id}(${params.join(", ")}):`,
+      ...(n ? [] : ["    # LOG: what arrived, to the connection window."]),
       `    link.print(${[pyString(`${o.display}:`), ...params.map((p) => `${pyString(`${p}=`)} + str(${p})`)].join(", ")})`,
     );
-  }
+  });
+  body.push(
+    "",
+    "",
+    "# Runs at the start of every run, whether or not the board reset.",
+    "@link.on_connect",
+    "def run_started():",
+    ...(input ? [`    global last_send, ${value}`] : []),
+    `    link.print("Run started")  # LOG`,
+  );
   if (plan.inputs.length) {
     body.push(
-      "",
-      "",
-      "@link.on_connect  # runs at the start of every run",
-      "def send_inputs():",
+      "    # SEND each Input its starting value: an Input drives nothing until its",
+      "    # first send().",
     );
-    plan.inputs.forEach((i, n) => {
-      if (n) body.push("");
+    for (const i of plan.inputs) {
       body.push(`    # The Input ${comment(JSON.stringify(i.display))}.`);
       for (const f of i.fields) {
         body.push(
@@ -900,14 +951,58 @@ export function generatePythonExamples({ connection, elements }) {
         );
       }
       body.push(`    link.${i.id}.send()`);
-    });
+    }
+    body.push(
+      `    ${value} = ${bit ? "False" : "0"}`,
+      "    last_send = ticks_ms()",
+    );
   }
-  body.push("", "", "link.begin()", "while True:", "    link.poll()", "");
+  if (input) {
+    const wrap = field.type === "word" ? 65536 : 256;
+    body.push(
+      "",
+      "",
+      "# SEND: stands in for whatever your program reads — a switch, a sensor. Set",
+      "# what changed, then send() the Input whole.",
+      "def send_next():",
+      `    global ${value}`,
+      bit
+        ? `    ${value} = not ${value}`
+        : `    ${value} = (${value} + 1) % ${wrap}`,
+      `    link.${input.id}.${field.setter}(${value})`,
+      `    if link.${input.id}.send():`,
+      `        link.print(${pyString(`Sent ${input.display}:`)}, ${pyString(`${field.param}=`)} + str(${value}))  # LOG`,
+    );
+  }
+  body.push(
+    "",
+    "",
+    "link.begin()",
+    "while True:",
+    "    link.poll()  # runs the Output functions: call it as often as you can",
+    ...(input
+      ? [
+          "    if link.connected() and ticks_diff(ticks_ms(), last_send) >= SEND_EVERY_MS:",
+          "        last_send = ticks_ms()",
+          "        send_next()",
+        ]
+      : [
+          "    # SEND: this connection has no Inputs. Give it one and generate again to",
+          "    # send values into the circuit from here.",
+        ]),
+    "",
+  );
 
   const program = (file, runtime, extra) =>
     [
-      `# ${file} — the smallest ${runtime} program for the ${PYTHON_MODULE_FILE} generated for`,
+      `# ${file} — an example ${runtime} program for the ${PYTHON_MODULE_FILE} generated for`,
       `# the connection ${who}. Copy ${PYTHON_MODULE_FILE} and this file to the board${extra}.`,
+      "#",
+      "# It shows the three things a program does with Chip Hippo:",
+      "#   RECEIVE  each Output of the circuit arrives in a function of its own;",
+      "#   SEND     set an Input's fields, then send() it into the circuit;",
+      "#   LOG      link.print() writes to Chip Hippo's connection window. Never",
+      "#            use print(): on MicroPython the link IS the port it writes to.",
       "",
       ...body,
     ].join("\n");

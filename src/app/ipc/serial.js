@@ -47,7 +47,10 @@
  *   serial:mock:log (text)  …or log text
  *   serial:mock:fault (fault, on)
  *                           …or arms one of its one-shot faults
- *   integration:save-header (text) — Generate's Save panel + the write
+ *   integration:save-file (id, scope, name, text)
+ *                           Generate's Save As…: one generated file, opening
+ *                           where that file was last saved for this
+ *                           connection and design (serial/saved-files.js)
  *
  * and the pushes, re-dispatched by the preload as `chiphippo:serial-*`:
  *
@@ -69,6 +72,11 @@
 const path = require("path");
 const fs = require("fs");
 const { SerialManager, CONNECTION_ID_RE } = require("../serial/serial-manager");
+const {
+  savedPath,
+  rememberSaved,
+  forgetDeleted,
+} = require("../serial/saved-files");
 const { listPorts, openPort } = require("../serial/ports");
 const { resolveWindowBounds, trackWindowState } = require("../window-state");
 
@@ -85,6 +93,13 @@ const VIEW_DEFAULTS = Object.freeze({
   protocol: false,
   timestamps: false,
 });
+
+/** A generated file's name: what Save As… will write, by its extension. */
+const GENERATED_NAME_RE = /^[\w .-]{1,64}\.(h|ino|py)$/;
+
+/** The longest design SCOPE a save may be remembered under (an opaque
+    `<project path>|<desktop id>` from the renderer). */
+const MAX_SCOPE_LENGTH = 2048;
 
 /** A file name from a connection's name and the moment: `Nano 2026-09-25 1402.txt`. */
 function streamFileName(name, now = new Date()) {
@@ -155,7 +170,7 @@ function registerSerialIpc(deps) {
   // Where it was and how it was showing its stream, keyed by the connection's
   // ID — so a rename keeps it, and it is kept only while that connection
   // exists (or is the built-in Mock, which no list holds): deleting one in
-  // Settings deletes its window's state with it (`forgetDeletedWindows`).
+  // Settings deletes its window's state with it (`forgetDeletedConnections`).
   const remembered = () => {
     const all = getSettings()?.connectionWindows;
     return all && typeof all === "object" && !Array.isArray(all) ? all : {};
@@ -250,44 +265,65 @@ function registerSerialIpc(deps) {
     return true;
   }
 
-  /** Generate's Save panel: the connection's file — a C++ header or a
-      Python module — wherever the board's code lives. The name only picks
-      the suggestion and the filter; it is never a path. */
-  async function saveHeader(text, suggestedName) {
-    if (typeof text !== "string" || !text) return null;
-    const win = getMainWindow();
-    const name =
-      typeof suggestedName === "string" &&
-      /^[\w .-]{1,64}\.(h|py)$/.test(suggestedName)
-        ? suggestedName
-        : "ChipHippo.h";
+  // ── Generate's Save As…, remembered per CONNECTION and design ─────────
+  const savedFiles = () => getSettings()?.codegenSaves;
+  const writeSavedFiles = (all) => {
+    try {
+      deps.setSettings({ codegenSaves: all });
+    } catch (err) {
+      console.error("[main] remembering a saved file failed:", err);
+    }
+  };
+
+  /** The Save panel's file-type filter, by the generated file's extension. */
+  const filterFor = (ext) =>
+    ext === "py"
+      ? { name: m("dialog.filter.python", "Python source"), extensions: ["py"] }
+      : ext === "ino"
+        ? { name: m("dialog.filter.sketch", "Arduino sketch"), extensions: ["ino"] } // prettier-ignore
+        : { name: m("dialog.filter.header", "C/C++ header"), extensions: ["h"] }; // prettier-ignore
+
+  /**
+   * Generate's Save As…: one generated file — a header, a module, an example
+   * program — wherever the user puts it. The panel opens on the path this
+   * file was last saved to for this connection and design, if its folder is
+   * still there, else on the bare name. The renderer's `name` only picks the
+   * suggestion and the filter; it is never a path, and neither is `scope`,
+   * which is only ever a key.
+   */
+  async function saveFile(id, scope, name, text) {
+    if (
+      !validId(id) ||
+      typeof scope !== "string" ||
+      scope.length > MAX_SCOPE_LENGTH ||
+      typeof name !== "string" ||
+      !GENERATED_NAME_RE.test(name) ||
+      typeof text !== "string" ||
+      !text
+    ) {
+      return null;
+    }
+    const previous = savedPath(savedFiles(), id, scope, name);
     const opts = {
-      defaultPath: name,
-      filters: name.endsWith(".py")
-        ? [
-            {
-              name: m("dialog.filter.python", "Python source"),
-              extensions: ["py"],
-            },
-          ]
-        : [
-            {
-              name: m("dialog.filter.header", "C/C++ header"),
-              extensions: ["h"],
-            },
-          ],
+      defaultPath:
+        previous && fs.existsSync(path.dirname(previous)) ? previous : name,
+      filters: [filterFor(GENERATED_NAME_RE.exec(name)[1])],
       properties: ["showOverwriteConfirmation", "createDirectory"],
     };
+    const win = getMainWindow();
     const r = win
       ? await dialog.showSaveDialog(win, opts)
       : await dialog.showSaveDialog(opts);
     if (r.canceled || !r.filePath) return null;
     try {
       fs.writeFileSync(r.filePath, text, "utf8");
-      return { ok: true, path: r.filePath };
     } catch (err) {
       return { ok: false, error: err.message };
     }
+    if (deps.setSettings && manager.connection(id)) {
+      writeSavedFiles(rememberSaved(savedFiles(), id, scope, name, r.filePath));
+    }
+    return { ok: true, path: r.filePath };
   }
 
   ipcMain.handle("serial:ports", () => manager.ports());
@@ -399,21 +435,27 @@ function registerSerialIpc(deps) {
     if (validId(id)) manager.logClear(id);
     return null;
   });
-  ipcMain.handle("integration:save-header", (_event, text, suggestedName) =>
-    saveHeader(text, suggestedName),
+  ipcMain.handle("integration:save-file", (_event, id, scope, name, text) =>
+    saveFile(id, scope, name, text),
   );
 
   return {
     manager,
     closeAll: () => manager.close(),
-    /** Drop the remembered window of every connection that no longer exists
-        — called whenever the connection list is written. */
-    forgetDeletedWindows: () => {
+    /** Drop what is remembered for every connection that no longer exists
+        — its window, and where its generated files were saved — called
+        whenever the connection list is written. */
+    forgetDeletedConnections: () => {
       if (!deps.setSettings) return;
       const all = remembered();
       const kept = live(all);
       if (Object.keys(kept).length !== Object.keys(all).length) {
         writeRemembered(kept);
+      }
+      const saves = savedFiles() ?? {};
+      const keptSaves = forgetDeleted(saves, (id) => manager.connection(id));
+      if (Object.keys(keptSaves).length !== Object.keys(saves).length) {
+        writeSavedFiles(keptSaves);
       }
     },
     /** Keep each open log window's title in step with a renamed connection. */

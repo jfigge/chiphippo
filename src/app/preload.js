@@ -400,12 +400,20 @@ contextBridge.exposeInMainWorld("chiphippo", {
     },
   },
 
-  // Generate's Save panel: write one connection's file (a C++ header or a
-  // Python module) where the board's code is.
-  // Resolves `{ok, path}`, or null when the panel was cancelled.
+  // Generate's Save As…: write one generated file (a header, a module, an
+  // example program) where the board's code is. `scope` names the design it
+  // was generated from, so the panel opens where THIS file was saved last.
+  // Resolves `{ok, path}` / `{ok: false, error}`, or null when the panel was
+  // cancelled.
   integration: {
-    saveHeader: (text, suggestedName) =>
-      ipcRenderer.invoke("integration:save-header", text, suggestedName),
+    saveFile: (connectionId, scope, name, text) =>
+      ipcRenderer.invoke(
+        "integration:save-file",
+        connectionId,
+        scope,
+        name,
+        text,
+      ),
   },
 
   // ── User guide (Feature 230) ────────────────────────────────────────────────

@@ -91,6 +91,7 @@
       "allFiles": "Tous les fichiers",
       "header": "En-tête C/C++",
       "python": "Source Python",
+      "sketch": "Croquis Arduino",
       "text": "Texte"
     },
     "regrant": {
@@ -1433,15 +1434,15 @@
         "never": "Pas encore généré",
         "unknown": "Non configurée sur cet ordinateur"
       },
-      "save": "Enregistrer l'en-tête…",
-      "saveModule": "Enregistrer le module…",
+      "generate": "Générer",
+      "saveAs": "Enregistrer sous…",
       "copy": "Copier",
       "view": "Voir les fichiers…",
       "viewTitle": "{name} — en-tête et exemple",
       "viewTitlePython": "{name} — module et exemples",
       "files": "Fichiers",
-      "copied": "Copié dans le presse-papiers.",
       "copiedFile": "{name} copié dans le presse-papiers.",
+      "copiedSelection": "Sélection copiée dans le presse-papiers.",
       "copyFailed": "Impossible de copier dans le presse-papiers.",
       "saved": "Enregistré dans {path}",
       "failed": "Impossible d'enregistrer le fichier : {error}",

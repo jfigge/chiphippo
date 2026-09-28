@@ -91,6 +91,7 @@
       "allFiles": "所有文件",
       "header": "C/C++ 头文件",
       "python": "Python 源文件",
+      "sketch": "Arduino 程序",
       "text": "文本"
     },
     "regrant": {
@@ -1412,15 +1413,15 @@
         "never": "尚未生成",
         "unknown": "这台电脑上未配置"
       },
-      "save": "保存头文件…",
-      "saveModule": "保存模块…",
+      "generate": "生成",
+      "saveAs": "另存为…",
       "copy": "复制",
       "view": "查看文件…",
       "viewTitle": "{name} — 头文件和示例",
       "viewTitlePython": "{name} — 模块和示例",
       "files": "文件",
-      "copied": "已复制到剪贴板。",
       "copiedFile": "已将 {name} 复制到剪贴板。",
+      "copiedSelection": "已将所选内容复制到剪贴板。",
       "copyFailed": "无法复制到剪贴板。",
       "saved": "已保存到 {path}",
       "failed": "无法保存文件：{error}",

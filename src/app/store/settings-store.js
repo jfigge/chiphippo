@@ -196,6 +196,13 @@ const DEFAULTS = Object.freeze({
   // takes its window's state with it.
   connectionWindows: Object.freeze({}),
 
+  // Where Generate's Save As… last put each generated file, so the next Save
+  // As of it opens there: connection ID → design scope → file name → path
+  // (app/serial/saved-files.js). Written by main (ipc/serial.js), only ever
+  // with a path a Save panel returned; pruned like `connectionWindows` when
+  // a connection is deleted.
+  codegenSaves: Object.freeze({}),
+
   // ── Recent projects ────────────────────────────────────────────────────────
   // The last 10 PROJECT files saved or opened, most recent first. Main owns
   // the list (store/recent-files.js does the arithmetic) and it does two jobs:

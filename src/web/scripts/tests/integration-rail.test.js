@@ -63,8 +63,8 @@ test("one card per element, in document order, headed by arrow, name and width",
     [out.id, inp.id],
   );
   const text = (card, cls) => card.querySelector(`.${cls}`).textContent;
-  assert.equal(text(built[0], "integration-card-dir"), "→", "an Output leaves");
-  assert.equal(text(built[1], "integration-card-dir"), "←", "an Input arrives");
+  assert.equal(text(built[0], "integration-card-dir"), "←", "an Output leaves");
+  assert.equal(text(built[1], "integration-card-dir"), "→", "an Input arrives");
   assert.equal(text(built[0], "integration-card-name"), "Lamps");
   assert.equal(
     text(built[1], "integration-card-name"),

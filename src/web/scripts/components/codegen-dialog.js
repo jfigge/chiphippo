@@ -26,23 +26,28 @@
 // user wrote.
 //
 // Each connection is a row saying how many Outputs and Inputs it carries, and
-// whether its header is IN SYNC: the design hash it would be generated from
-// now, against the one this project recorded when it was last saved. Saving
-// records the new one (in the project file — an ordinary unsaved change), and
-// that is what takes the dot off the Generate button. Every identifier a name
-// had to be changed into is listed under its row, since a function the sketch
-// defines under the old spelling will not link.
+// whether its code is IN SYNC: the design hash it would be generated from now,
+// against the one this project recorded when it was last GENERATED. The row
+// has ONE button, and the status picks it: never generated or out of date →
+// **Generate**, which records the new hash (in the project file — an ordinary
+// unsaved change, and what takes the dot off the toolbar button) and opens
+// the files; in sync → **View files…**, which only opens them. Every
+// identifier a name had to be changed into is listed under its row, since a
+// function the sketch defines under the old spelling will not link.
 //
 // The built-in MOCK gets no row: it is built from the design on screen at
 // every run, so it has no header to generate and nothing to fall out of date.
 // A desktop whose elements are all on the Mock is told so rather than shown
 // an empty card.
 //
-// VIEW FILES shows a row's file beside the smallest program that uses it —
+// The FILES are the row's file beside an example program that uses it —
 // ChipHippoExample.ino for C++; main.py, code.py and boot.py for Python, the
-// reference the file's own comment points at — in a tabbed viewer. PopupManager QUEUES a second popup rather than stacking
-// it, so the viewer REPLACES this card, and closing it brings this card back
-// — it is a look at the files on the way to saving one.
+// reference the file's own comment points at — in `CodeFilesDialog`'s tabbed
+// text view, where Copy and Save As… act on the file on show. Save As… goes
+// through `integration:save-file`, which opens where THAT file was last saved
+// for this connection and design (`saveScope`). PopupManager QUEUES a second
+// popup rather than stacking it, so the viewer REPLACES this card, and closing
+// it brings this card back.
 
 import { el } from "../dom.js";
 import { t } from "../i18n.js";
@@ -120,7 +125,10 @@ export class CodegenDialog {
    * @param {string} [opts.desktopName]
    * @param {string} [opts.appVersion]
    * @param {(connectionId: string) => string|null} opts.storedHash
-   * @param {(connectionId: string, hash: string) => void} opts.onSaved
+   * @param {(connectionId: string, hash: string) => void} opts.onGenerated
+   *   — Generate was pressed: record `hash` as this connection's.
+   * @param {string} [opts.saveScope] — the design the files are generated
+   *   from, as Save As… remembers it (opaque; see ipc/serial.js).
    * @param {object} opts.bridge window.chiphippo
    */
   static open(opts) {
@@ -133,7 +141,8 @@ export class CodegenDialog {
       desktopName = "",
       appVersion = "",
       storedHash,
-      onSaved,
+      onGenerated,
+      saveScope = "",
       bridge,
     } = opts;
     const list = el("div", { class: "codegen-list" });
@@ -152,71 +161,35 @@ export class CodegenDialog {
             })
           : null;
         const python = files?.language === "python";
-        const say = el("p", { class: "codegen-result", role: "status" });
-        const save = el("button", {
-          class: "btn popup-btn btn--primary",
+        const current = row.status === "current";
+        const openFiles = () => {
+          PopupManager.close(); // this card: the viewer takes its place
+          CodeFilesDialog.open({
+            title: python
+              ? t("integration.generate.viewTitlePython", { name })
+              : t("integration.generate.viewTitle", { name }),
+            files: files.files,
+            onSave: (file) =>
+              bridge?.integration?.saveFile(
+                row.id,
+                saveScope,
+                file.name,
+                file.text,
+              ) ?? Promise.resolve(null),
+            // Back to this card once the viewer has finished closing.
+            onClose: () => queueMicrotask(() => CodegenDialog.open(opts)),
+          });
+        };
+        const action = el("button", {
+          class: `btn popup-btn ${current ? "btn--secondary" : "btn--primary"}`,
           type: "button",
-          text: python
-            ? t("integration.generate.saveModule")
-            : t("integration.generate.save"),
-          disabled: !files,
-          onClick: async () => {
-            let r = null;
-            try {
-              r = await bridge?.integration?.saveHeader(
-                files.main.text,
-                files.main.name,
-              );
-            } catch (err) {
-              r = { ok: false, error: String(err?.message ?? err) };
-            }
-            if (!r) return; // the Save panel was cancelled
-            if (!r.ok) {
-              say.textContent = t("integration.generate.failed", {
-                error: r.error ?? "",
-              });
-              return;
-            }
-            onSaved?.(row.id, hashHex(files.hash));
-            render();
-            list
-              .querySelector(
-                `[data-connection-id="${CSS.escape(row.id)}"] .codegen-result`,
-              )
-              ?.replaceChildren(
-                t("integration.generate.saved", { path: r.path }),
-              );
-          },
-        });
-        const view = el("button", {
-          class: "btn popup-btn btn--secondary",
-          type: "button",
-          text: t("integration.generate.view"),
+          text: current
+            ? t("integration.generate.view")
+            : t("integration.generate.generate"),
           disabled: !files,
           onClick: () => {
-            PopupManager.close(); // this card: the viewer takes its place
-            CodeFilesDialog.open({
-              title: python
-                ? t("integration.generate.viewTitlePython", { name })
-                : t("integration.generate.viewTitle", { name }),
-              files: files.files,
-              // Back to this card once the viewer has finished closing.
-              onClose: () => queueMicrotask(() => CodegenDialog.open(opts)),
-            });
-          },
-        });
-        const copy = el("button", {
-          class: "btn popup-btn btn--secondary",
-          type: "button",
-          text: t("integration.generate.copy"),
-          disabled: !files,
-          onClick: async () => {
-            try {
-              await navigator.clipboard.writeText(files.main.text);
-              say.textContent = t("integration.generate.copied");
-            } catch {
-              say.textContent = t("integration.generate.copyFailed");
-            }
+            if (!current) onGenerated?.(row.id, hashHex(files.hash));
+            openFiles();
           },
         });
         return el(
@@ -267,8 +240,7 @@ export class CodegenDialog {
                   ),
                 ]
               : []),
-            el("div", { class: "codegen-actions" }, [view, copy, save]),
-            say,
+            el("div", { class: "codegen-actions" }, [action]),
           ],
         );
       });

@@ -66,11 +66,12 @@
 // and REPORTED, a warning list the Generate dialog shows, never silently
 // mangled.
 //
-// Beside the header, `generateExample` writes the SMALLEST SKETCH that header
-// works in — one logging function per Output, every Input sent its starting
-// value from `onConnect` — as the reference the Generate dialog shows and
-// the header's comment points at. It is built from the same identifier plan,
-// so the two cannot disagree about a name.
+// Beside the header, `generateExample` writes an EXAMPLE SKETCH that header
+// works in — receiving (a logging function per Output), sending (every Input
+// its starting value from `onConnect`, then a value counting up from loop())
+// and logging — as the reference the Generate dialog shows and the header's
+// comment points at. It is built from the same identifier plan, so the two
+// cannot disagree about a name.
 //
 // This file has a twin, and they must agree byte for byte on the wire:
 // app/tests/serial-arduino-header.test.js compiles this output with the host's
@@ -504,8 +505,8 @@ export function generateHeader({
   }
   out(
     "//",
-    `// The smallest sketch that uses this header is ${EXAMPLE_FILE}: in Chip`,
-    "// Hippo, Generate ▸ View files shows it beside this header.",
+    `// ${EXAMPLE_FILE} is an example sketch that uses this header — receiving,`,
+    "// sending and logging: in Chip Hippo, Generate shows it beside this header.",
   );
   out(
     "//",
@@ -948,12 +949,22 @@ const cString = (s) =>
     .replace(/\?\?/g, "?\\?")}"`;
 
 /**
- * The smallest sketch that uses one connection's header: `ChipHippo.begin()`
- * and `ChipHippo.poll()`, one function per Output that logs what arrived,
- * and — when there are Inputs — one `onConnect` function sending each its
- * starting value, which is also the plainest demonstration of a setter and a
- * send(). Built from the header's own identifier plan, so every name in it
- * is one the header declares. English, like the header: it is code.
+ * The example sketch for one connection's header, showing the three things a
+ * sketch does with the link, each labelled where it happens:
+ *
+ *   · RECEIVE — one function per Output, logging what arrived;
+ *   · SEND    — every Input its starting value from `onConnect`, and then
+ *               the first Input's first field counting up (a bit: toggling)
+ *               once a second from loop(), standing in for a switch or a
+ *               sensor — set what changed, then send();
+ *   · LOG     — a line at the start of every run, one per Output that
+ *               arrives, one per value sent.
+ *
+ * A connection with no Outputs (or no Inputs) says so where that code would
+ * be, so the example still shows where it goes. Built from the header's own
+ * identifier plan, so every name in it is one the header declares, and the
+ * sketch's own globals cannot collide with one: an Output's function always
+ * ends in `In`. English, like the header: it is code.
  *
  * @param {object} opts
  * @param {object} opts.connection the settings record
@@ -963,33 +974,74 @@ const cString = (s) =>
  */
 export function generateExample({ connection, elements }) {
   const plan = planIdentifiers(connection?.id ?? null, elements);
+  // What loop() sends: the first Input's first field.
+  const input = plan.inputs[0] ?? null;
+  const field = input?.fields[0] ?? null;
+  const bit = field?.type === "bit";
+  const value = bit ? "level" : "counter";
   const L = [
-    `// ${EXAMPLE_FILE} — the smallest sketch for the ChipHippo.h generated for`,
+    `// ${EXAMPLE_FILE} — an example sketch for the ChipHippo.h generated for`,
     `// the connection ${comment(quoted(connection?.name ?? ""))}. Put ChipHippo.h in this sketch's folder.`,
+    "//",
+    "// It shows the three things a sketch does with Chip Hippo:",
+    "//   RECEIVE  each Output of the circuit arrives in a function of its own;",
+    "//   SEND     set an Input's fields, then send() it into the circuit;",
+    "//   LOG      ChipHippo.print() / println() write to Chip Hippo's connection",
+    "//            window. Never use Serial: Chip Hippo owns the port.",
     "",
     '#include "ChipHippo.h"',
   ];
-  for (const o of plan.outputs) {
+  if (input) {
     L.push(
       "",
-      `// Chip Hippo calls this each time the Output ${comment(quoted(o.display))} fires.`,
+      `// SEND: every SEND_EVERY_MS, loop() sends the Input ${comment(quoted(input.display))} its next value.`,
+      "const unsigned long SEND_EVERY_MS = 1000;",
+      "unsigned long lastSend = 0;",
+      `${field.cType} ${value} = ${bit ? "false" : "0"};`,
+    );
+  }
+  if (!plan.outputs.length) {
+    L.push(
+      "",
+      "// RECEIVE: this connection has no Outputs. Give it one and generate again,",
+      "// and each time it fires Chip Hippo calls a function of its own here:",
+      "//   void <its name>In(<its fields>) { … }",
+    );
+  }
+  plan.outputs.forEach((o, n) => {
+    L.push(
+      "",
+      ...(n
+        ? [
+            `// RECEIVE: each time the Output ${comment(quoted(o.display))} fires.`,
+          ]
+        : [
+            `// RECEIVE: Chip Hippo calls this each time the Output ${comment(quoted(o.display))} fires,`,
+            "// its fields the parameters. The circuit waits until it returns, so keep",
+            "// it short.",
+          ]),
       `void ${o.id}(${o.fields.map((f) => `${f.cType} ${f.param}`).join(", ")}) {`,
-      ...o.fields.flatMap((f, n) => [
-        `  ChipHippo.print(${cString(`${n ? " " : `${o.display}: `}${f.param}=`)});`,
+      ...(n ? [] : ["  // LOG: what arrived, to the connection window."]),
+      ...o.fields.flatMap((f, k) => [
+        `  ChipHippo.print(${cString(`${k ? " " : `${o.display}: `}${f.param}=`)});`,
         `  ChipHippo.print(${f.param});`,
       ]),
       "  ChipHippo.println();",
       "}",
     );
-  }
+  });
+  L.push(
+    "",
+    "// Runs at the start of every run, whether or not the board reset.",
+    "void runStarted() {",
+    '  ChipHippo.println("Run started");  // LOG',
+  );
   if (plan.inputs.length) {
     L.push(
-      "",
-      "// Runs at the start of every run: give each Input its starting value.",
-      "void sendInputs() {",
+      "  // SEND each Input its starting value: an Input drives nothing until its",
+      "  // first send().",
     );
-    plan.inputs.forEach((i, n) => {
-      if (n) L.push("");
+    for (const i of plan.inputs) {
       L.push(`  // The Input ${comment(quoted(i.display))}.`);
       for (const f of i.fields) {
         L.push(
@@ -997,18 +1049,45 @@ export function generateExample({ connection, elements }) {
         );
       }
       L.push(`  ChipHippo.${i.id}.send();`);
-    });
-    L.push("}");
+    }
+    L.push(`  ${value} = ${bit ? "false" : "0"};`, "  lastSend = millis();");
+  }
+  L.push("}");
+  if (input) {
+    L.push(
+      "",
+      "// SEND: stands in for whatever your sketch reads — a switch, a sensor. Set",
+      "// what changed, then send() the Input whole.",
+      "void sendNext() {",
+      bit ? `  ${value} = !${value};` : `  ${value}++;`,
+      `  ChipHippo.${input.id}.${field.setter}(${value});`,
+      `  if (ChipHippo.${input.id}.send()) {`,
+      `    ChipHippo.print(${cString(`Sent ${input.display}: ${field.param}=`)});  // LOG`,
+      `    ChipHippo.println(${value});`,
+      "  }",
+      "}",
+    );
   }
   L.push(
     "",
     "void setup() {",
-    ...(plan.inputs.length ? ["  ChipHippo.onConnect(sendInputs);"] : []),
+    "  ChipHippo.onConnect(runStarted);",
     "  ChipHippo.begin();",
     "}",
     "",
     "void loop() {",
-    "  ChipHippo.poll();",
+    "  ChipHippo.poll();  // runs the Output functions: call it as often as you can",
+    ...(input
+      ? [
+          "  if (ChipHippo.connected() && millis() - lastSend >= SEND_EVERY_MS) {",
+          "    lastSend = millis();",
+          "    sendNext();",
+          "  }",
+        ]
+      : [
+          "  // SEND: this connection has no Inputs. Give it one and generate again to",
+          "  // send values into the circuit from here.",
+        ]),
     "}",
     "",
   );

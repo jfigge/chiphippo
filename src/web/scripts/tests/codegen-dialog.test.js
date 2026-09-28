@@ -13,11 +13,14 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
-// jsdom tests for components/codegen-dialog.js — the toolbar's Generate. The
-// pure `codegenStatus` is what the toolbar's staleness dot is computed from,
-// so its four answers are pinned first; then the dialog: one row per
-// connection the desktop uses, Copy and Save aimed at THAT connection's
-// header, and a save recording the hash that makes the row read up to date.
+// jsdom tests for components/codegen-dialog.js — the toolbar's Generate — and
+// the file viewer it opens (components/code-files-dialog.js). The pure
+// `codegenStatus` is what the toolbar's staleness dot is computed from, so its
+// four answers are pinned first; then the card: one row per connection the
+// desktop uses, each with ONE button — Generate (records the hash, opens the
+// files) until it is in sync, View files… after; then the viewer: a text view
+// per file, Select All and Copy held to the file on show (the selection, or
+// the whole file), and Save As… aimed at THAT connection and design.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -150,11 +153,11 @@ test("codegenStatus: the Mock gets no row and is never stale", () => {
 function openDialog({
   connections = CONNECTIONS,
   elements = design(),
+  stored = {},
   saveResult = { ok: true, path: "/sketch/ChipHippo.h" },
 } = {}) {
   const win = resetDom();
   globalThis.CSS ??= { escape: (s) => String(s) };
-  const stored = {};
   const saves = [];
   const recorded = [];
   CodegenDialog.open({
@@ -164,14 +167,15 @@ function openDialog({
     desktopName: "Desktop 1",
     appVersion: "1.2.3",
     storedHash: (id) => stored[id] ?? null,
-    onSaved: (id, hash) => {
+    onGenerated: (id, hash) => {
       stored[id] = hash;
       recorded.push([id, hash]);
     },
+    saveScope: "/projects/bench.chiphippo|t1",
     bridge: {
       integration: {
-        saveHeader: async (text, name) => {
-          saves.push({ text, name });
+        saveFile: async (id, scope, name, text) => {
+          saves.push({ id, scope, name, text });
           return saveResult; // null is the Save panel cancelled
         },
       },
@@ -179,14 +183,42 @@ function openDialog({
   });
   const row = (id) =>
     win.document.querySelector(`.codegen-row[data-connection-id="${id}"]`);
-  const button = (id, label) =>
-    [...row(id).querySelectorAll("button")].find(
+  const buttons = (id) => [...row(id).querySelectorAll("button")];
+  const viewer = () => win.document.querySelector(".code-files-popup");
+  const viewerButton = (label) =>
+    [...viewer().querySelectorAll("button")].find(
       (b) => b.textContent === label,
     );
-  return { win, row, button, saves, recorded, stored };
+  return { win, row, buttons, viewer, viewerButton, saves, recorded, stored };
 }
 
 const settle = () => new Promise((r) => setTimeout(r, 0));
+
+/** Close the viewer, then the Generate card it hands back to. */
+async function closeViewer() {
+  PopupManager.close();
+  await settle();
+  PopupManager.close();
+}
+
+/** A stub clipboard for the length of `fn`; returns what was written. */
+async function withClipboard(fn) {
+  const copied = [];
+  Object.defineProperty(globalThis.navigator, "clipboard", {
+    value: { writeText: async (text) => copied.push(text) },
+    configurable: true,
+  });
+  try {
+    await fn(copied);
+  } finally {
+    delete globalThis.navigator.clipboard;
+  }
+  return copied;
+}
+
+/** The current design's hash for a connection — what "in sync" means. */
+const currentHash = (connection, elements) =>
+  hashHex(designHash(connection, elements));
 
 test("the dialog shows one row per used connection, named, with its status", () => {
   const { win, row } = openDialog();
@@ -214,69 +246,99 @@ test("the dialog shows one row per used connection, named, with its status", () 
   }
 });
 
-test("Save writes THAT connection's header, records its hash, and the row reads up to date", async () => {
-  const { row, button, saves, recorded } = openDialog();
+test("a row has ONE button: Generate until it is in sync, View files… after", () => {
+  const elements = design();
+  const { buttons } = openDialog({
+    elements,
+    stored: {
+      "conn-a": currentHash(CONNECTIONS[0], elements),
+      "conn-b": "0xDEADBEEF",
+    },
+  });
   try {
-    button("conn-b", "Save header…").click();
-    await settle();
-    assert.equal(saves.length, 1);
-    assert.equal(saves[0].name, "ChipHippo.h");
-    assert.match(saves[0].text, /Motor/, "the Uno's header carries its Output");
-    assert.doesNotMatch(saves[0].text, /Lamp/, "and not the Nano's");
+    assert.deepEqual(
+      buttons("conn-a").map((b) => b.textContent),
+      ["View files…"],
+      "in sync: just look",
+    );
+    assert.deepEqual(
+      buttons("conn-b").map((b) => b.textContent),
+      ["Generate"],
+      "out of date: generate again",
+    );
+  } finally {
+    PopupManager.close();
+  }
+});
+
+test("Generate records THAT connection's hash, opens its files, and the card comes back up to date", async () => {
+  const { win, row, buttons, viewer, recorded } = openDialog();
+  try {
+    buttons("conn-b")[0].click();
     assert.equal(recorded.length, 1);
     assert.equal(recorded[0][0], "conn-b");
     assert.match(recorded[0][1], /^0x[0-9A-F]{8}$/);
     assert.equal(
+      win.document.querySelector(".codegen-popup"),
+      null,
+      "the card made way",
+    );
+    assert.equal(
+      viewer().querySelector(".popup-title").textContent,
+      "Uno — header and example",
+    );
+    const header = viewer().querySelector(".code-files-code").textContent;
+    assert.match(header, /Motor/, "the Uno's header carries its Output");
+    assert.doesNotMatch(header, /Lamp/, "and not the Nano's");
+
+    PopupManager.close(); // the viewer
+    await settle();
+    assert.equal(
       row("conn-b").querySelector(".codegen-status").textContent,
       "Up to date",
     );
-    assert.equal(
-      row("conn-b").querySelector(".codegen-result").textContent,
-      "Saved to /sketch/ChipHippo.h",
+    assert.deepEqual(
+      buttons("conn-b").map((b) => b.textContent),
+      ["View files…"],
     );
     assert.equal(
       row("conn-a").querySelector(".codegen-status").textContent,
       "Not generated yet",
       "the other connection is untouched",
     );
-  } finally {
-    PopupManager.close();
-  }
-});
-
-test("a cancelled save records nothing; a failed one says why", async () => {
-  const cancelled = openDialog({ saveResult: null });
-  try {
-    cancelled.button("conn-a", "Save header…").click();
-    await settle();
-    assert.equal(cancelled.recorded.length, 0);
-  } finally {
-    PopupManager.close();
-  }
-  const failed = openDialog({ saveResult: { ok: false, error: "EACCES" } });
-  try {
-    failed.button("conn-a", "Save header…").click();
-    await settle();
-    assert.equal(failed.recorded.length, 0);
-    assert.equal(
-      failed.row("conn-a").querySelector(".codegen-result").textContent,
-      "Couldn't save the file: EACCES",
+    assert.deepEqual(
+      buttons("conn-a").map((b) => b.textContent),
+      ["Generate"],
     );
   } finally {
     PopupManager.close();
   }
 });
 
-test("a connection this computer does not know offers nothing to save", () => {
-  const { row, button } = openDialog({ connections: [CONNECTIONS[0]] });
+test("View files… on a row in sync opens the files and records nothing", async () => {
+  const elements = design();
+  const { buttons, viewer, recorded } = openDialog({
+    elements,
+    stored: { "conn-a": currentHash(CONNECTIONS[0], elements) },
+  });
+  try {
+    buttons("conn-a")[0].click();
+    assert.ok(viewer(), "the viewer is up");
+    assert.equal(recorded.length, 0);
+  } finally {
+    await closeViewer();
+  }
+});
+
+test("a connection this computer does not know offers nothing to generate", () => {
+  const { row, buttons } = openDialog({ connections: [CONNECTIONS[0]] });
   try {
     assert.equal(
       row("conn-b").querySelector(".codegen-status").textContent,
       "Not configured on this computer",
     );
-    assert.equal(button("conn-b", "Save header…").disabled, true);
-    assert.equal(button("conn-b", "Copy").disabled, true);
-    assert.equal(button("conn-a", "Save header…").disabled, false);
+    assert.equal(buttons("conn-b")[0].disabled, true);
+    assert.equal(buttons("conn-a")[0].disabled, false);
   } finally {
     PopupManager.close();
   }
@@ -297,28 +359,6 @@ test("a desktop with nothing connected says so instead of listing rows", () => {
   }
 });
 
-test("Copy puts that connection's header on the clipboard", async () => {
-  const copied = [];
-  Object.defineProperty(globalThis.navigator, "clipboard", {
-    value: { writeText: async (text) => copied.push(text) },
-    configurable: true,
-  });
-  const { row, button } = openDialog();
-  try {
-    button("conn-a", "Copy").click();
-    await settle();
-    assert.equal(copied.length, 1);
-    assert.match(copied[0], /Lamp/);
-    assert.equal(
-      row("conn-a").querySelector(".codegen-result").textContent,
-      "Copied to the clipboard.",
-    );
-  } finally {
-    PopupManager.close();
-    delete globalThis.navigator.clipboard;
-  }
-});
-
 test("a desktop entirely on the Mock is told it has nothing to generate", () => {
   const { win } = openDialog({
     connections: [MOCK_CONNECTION],
@@ -335,29 +375,11 @@ test("a desktop entirely on the Mock is told it has nothing to generate", () => 
   }
 });
 
-/** Close the viewer, then the Generate card it hands back to. */
-async function closeViewer() {
-  PopupManager.close();
-  await settle();
-  PopupManager.close();
-}
-
-test("View files replaces the card with THAT connection's header and example, one tab each", async () => {
-  const { win, button } = openDialog();
+test("the viewer shows each file as text beside a gutter of line numbers, one tab each", async () => {
+  const { buttons, viewer } = openDialog();
   try {
-    button("conn-a", "View files…").click();
-    const doc = win.document;
-    assert.equal(
-      doc.querySelector(".codegen-popup"),
-      null,
-      "the card made way",
-    );
-    const viewer = doc.querySelector(".code-files-popup");
-    assert.equal(
-      viewer.querySelector(".popup-title").textContent,
-      "Nano — header and example",
-    );
-    const tabs = [...viewer.querySelectorAll(".code-files-tab")];
+    buttons("conn-a")[0].click();
+    const tabs = [...viewer().querySelectorAll(".code-files-tab")];
     assert.deepEqual(
       tabs.map((b) => [b.textContent, b.getAttribute("aria-selected")]),
       [
@@ -365,24 +387,26 @@ test("View files replaces the card with THAT connection's header and example, on
         ["ChipHippoExample.ino", "false"],
       ],
     );
-    const panels = [...viewer.querySelectorAll(".code-files-panel")];
+    const panels = [...viewer().querySelectorAll(".code-files-panel")];
     assert.deepEqual(
       panels.map((p) => p.hidden),
       [false, true],
     );
 
-    // Each file is a line-numbered table: row n reads n, then line n.
-    const header = panels[0].querySelectorAll("tr");
-    assert.equal(header[0].cells[0].textContent, "1");
-    assert.match(header[0].cells[1].textContent, /^\/\/ ChipHippo\.h/);
-    assert.ok(
-      [...header].some((r) => /void LampIn\(bool/.test(r.cells[1].textContent)),
-      "the Nano's Output, by its In name",
+    // The text is ONE run (what a selection sweeps); the numbers are apart.
+    const code = panels[0].querySelector(".code-files-code");
+    const gutter = panels[0].querySelector(".code-files-gutter");
+    assert.equal(code.tagName, "PRE");
+    assert.match(code.textContent, /^\/\/ ChipHippo\.h/);
+    assert.match(code.textContent, /void LampIn\(bool/, "the Nano's Output");
+    assert.doesNotMatch(code.textContent, /Motor/, "and not the Uno's");
+    const lines = code.textContent.split("\n");
+    assert.deepEqual(
+      gutter.textContent.split("\n"),
+      lines.map((_, i) => String(i + 1)),
+      "one number per line",
     );
-    assert.ok(
-      ![...header].some((r) => /Motor/.test(r.cells[1].textContent)),
-      "and not the Uno's",
-    );
+    assert.equal(gutter.getAttribute("aria-hidden"), "true");
 
     tabs[1].click();
     assert.deepEqual(
@@ -390,73 +414,235 @@ test("View files replaces the card with THAT connection's header and example, on
       [true, false],
     );
     assert.equal(tabs[1].getAttribute("aria-selected"), "true");
-    const example = [...panels[1].querySelectorAll(".code-files-code")].map(
-      (c) => c.textContent,
-    );
+    const example = panels[1]
+      .querySelector(".code-files-code")
+      .textContent.split("\n");
     assert.ok(example.includes('#include "ChipHippo.h"'));
     assert.ok(example.includes("  ChipHippo.KeysOut.send();"));
+  } finally {
+    await closeViewer();
+  }
+});
+
+test("Copy takes the WHOLE file on show when nothing is selected; closing the viewer brings the card back", async () => {
+  const { win, buttons, viewer, viewerButton } = openDialog();
+  const copied = await withClipboard(async () => {
+    buttons("conn-a")[0].click();
+    viewer().querySelectorAll(".code-files-tab")[1].click();
+    viewerButton("Copy").click();
+    await settle();
     assert.equal(
-      panels[1].querySelectorAll("tr").length,
-      example.length,
-      "one row per line",
+      viewer().querySelector(".code-files-result").textContent,
+      "Copied ChipHippoExample.ino to the clipboard.",
+    );
+  });
+  assert.equal(copied.length, 1);
+  assert.match(copied[0], /^\/\/ ChipHippoExample\.ino/);
+  assert.match(copied[0], /\n$/, "the file's own text, final newline and all");
+
+  PopupManager.close();
+  await settle();
+  assert.equal(viewer(), null);
+  assert.ok(
+    win.document.querySelector('.codegen-row[data-connection-id="conn-a"]'),
+    "back on the Generate card",
+  );
+  PopupManager.close();
+});
+
+test("Copy takes the SELECTION when there is one, cut back to the file", async () => {
+  const { win, buttons, viewer, viewerButton } = openDialog();
+  const doc = win.document;
+  let copied = [];
+  try {
+    copied = await withClipboard(async () => {
+      buttons("conn-a")[0].click();
+      const code = viewer().querySelector(".code-files-code");
+      const text = code.firstChild;
+      const at = text.data.indexOf("void LampIn");
+      const range = doc.createRange();
+      range.setStart(text, at);
+      range.setEnd(text, at + "void LampIn".length);
+      doc.getSelection().removeAllRanges();
+      doc.getSelection().addRange(range);
+      viewerButton("Copy").click();
+      await settle();
+      assert.equal(
+        viewer().querySelector(".code-files-result").textContent,
+        "Copied the selection to the clipboard.",
+      );
+
+      // A selection that strays from the title into the text copies only the
+      // text it reached.
+      const title = viewer().querySelector(".popup-title");
+      const straying = doc.createRange();
+      straying.setStart(title.firstChild, 0);
+      straying.setEnd(text, 2);
+      doc.getSelection().removeAllRanges();
+      doc.getSelection().addRange(straying);
+      viewerButton("Copy").click();
+      await settle();
+    });
+  } finally {
+    await closeViewer();
+  }
+  assert.deepEqual(copied, ["void LampIn", "//"]);
+});
+
+test("Select All and Copy keys are the file's: ⌘A selects just its text, ⌘C copies the selection or all", async () => {
+  const { win, buttons, viewer } = openDialog();
+  const doc = win.document;
+  const key = (k) => {
+    const e = new win.KeyboardEvent("keydown", {
+      key: k,
+      ctrlKey: true, // not macOS here: Ctrl is the modifier
+      bubbles: true,
+      cancelable: true,
+    });
+    doc.body.dispatchEvent(e);
+    return e;
+  };
+  let header = "";
+  let copied = [];
+  try {
+    copied = await withClipboard(async () => {
+      buttons("conn-a")[0].click();
+      const code = viewer().querySelector(".code-files-code");
+      header = code.textContent;
+
+      const c = key("c");
+      await settle();
+      assert.equal(c.defaultPrevented, true, "the native Copy stands down");
+
+      const a = key("a");
+      assert.equal(
+        a.defaultPrevented,
+        true,
+        "and so does the native Select All",
+      );
+      assert.equal(doc.getSelection().toString(), code.textContent);
+
+      // Select All in the menu, clicked rather than keyed, does the same.
+      doc.getSelection().removeAllRanges();
+      win.dispatchEvent(new win.CustomEvent("chiphippo:edit-select-all"));
+      assert.equal(doc.getSelection().toString(), code.textContent);
+
+      // With the other tab showing, both keys mean THAT file.
+      viewer().querySelectorAll(".code-files-tab")[1].click();
+      assert.equal(doc.getSelection().toString(), "", "a tab switch drops it");
+      key("a");
+      key("c");
+      await settle();
+      assert.equal(
+        viewer().querySelector(".code-files-result").textContent,
+        "Copied ChipHippoExample.ino to the clipboard.",
+        "everything selected IS the file",
+      );
+    });
+  } finally {
+    await closeViewer();
+  }
+  assert.equal(copied.length, 2);
+  assert.equal(copied[0], `${header}\n`, "nothing selected: the whole file");
+  assert.match(copied[1], /^\/\/ ChipHippoExample\.ino/);
+  assert.match(
+    copied[1],
+    /\n$/,
+    "select-all copies the file, final newline too",
+  );
+
+  // Once the viewer is gone the keys are nobody's business here.
+  const late = new win.KeyboardEvent("keydown", {
+    key: "a",
+    ctrlKey: true,
+    cancelable: true,
+  });
+  doc.dispatchEvent(late);
+  assert.equal(late.defaultPrevented, false);
+});
+
+test("Edit ▸ Copy from the menu is held to the file too", async () => {
+  const { win, buttons, viewer } = openDialog();
+  const doc = win.document;
+  try {
+    buttons("conn-a")[0].click();
+    const title = viewer().querySelector(".popup-title");
+    const text = viewer().querySelector(".code-files-code").firstChild;
+    const range = doc.createRange();
+    range.setStart(title.firstChild, 0);
+    range.setEnd(text, 2);
+    doc.getSelection().removeAllRanges();
+    doc.getSelection().addRange(range);
+    const data = {};
+    const e = new win.Event("copy", { bubbles: true, cancelable: true });
+    e.clipboardData = { setData: (type, value) => (data[type] = value) };
+    doc.body.dispatchEvent(e);
+    assert.equal(e.defaultPrevented, true);
+    assert.deepEqual(data, { "text/plain": "//" });
+  } finally {
+    await closeViewer();
+  }
+});
+
+test("Save As… saves the file ON SHOW, for THAT connection and design, and says where", async () => {
+  const { buttons, viewer, viewerButton, saves } = openDialog();
+  try {
+    buttons("conn-b")[0].click();
+    viewer().querySelectorAll(".code-files-tab")[1].click();
+    viewerButton("Save As…").click();
+    await settle();
+    assert.equal(saves.length, 1);
+    assert.equal(saves[0].id, "conn-b");
+    assert.equal(saves[0].scope, "/projects/bench.chiphippo|t1");
+    assert.equal(saves[0].name, "ChipHippoExample.ino");
+    assert.match(saves[0].text, /^\/\/ ChipHippoExample\.ino/);
+    assert.equal(
+      viewer().querySelector(".code-files-result").textContent,
+      "Saved to /sketch/ChipHippo.h",
     );
   } finally {
     await closeViewer();
   }
 });
 
-test("Copy in the viewer takes the file on show; closing the viewer brings the card back", async () => {
-  const copied = [];
-  Object.defineProperty(globalThis.navigator, "clipboard", {
-    value: { writeText: async (text) => copied.push(text) },
-    configurable: true,
-  });
-  const { win, button } = openDialog();
+test("a cancelled Save As… says nothing; a failed one says why", async () => {
+  const cancelled = openDialog({ saveResult: null });
   try {
-    button("conn-a", "View files…").click();
-    const viewer = win.document.querySelector(".code-files-popup");
-    viewer.querySelectorAll(".code-files-tab")[1].click();
-    [...viewer.querySelectorAll("button")]
-      .find((b) => b.textContent === "Copy")
-      .click();
+    cancelled.buttons("conn-a")[0].click();
+    cancelled.viewerButton("Save As…").click();
     await settle();
-    assert.equal(copied.length, 1);
-    assert.match(copied[0], /^\/\/ ChipHippoExample\.ino/);
+    assert.equal(cancelled.saves.length, 1);
     assert.equal(
-      viewer.querySelector(".code-files-result").textContent,
-      "Copied ChipHippoExample.ino to the clipboard.",
+      cancelled.viewer().querySelector(".code-files-result").textContent,
+      "",
     );
-
-    PopupManager.close();
-    await settle();
-    assert.equal(win.document.querySelector(".code-files-popup"), null);
-    assert.ok(
-      win.document.querySelector('.codegen-row[data-connection-id="conn-a"]'),
-      "back on the Generate card",
-    );
-    PopupManager.close();
   } finally {
-    delete globalThis.navigator.clipboard;
+    await closeViewer();
   }
-});
-
-test("a connection this computer does not know has no files to view", () => {
-  const { button } = openDialog({ connections: [CONNECTIONS[0]] });
+  const failed = openDialog({ saveResult: { ok: false, error: "EACCES" } });
   try {
-    assert.equal(button("conn-b", "View files…").disabled, true);
-    assert.equal(button("conn-a", "View files…").disabled, false);
+    failed.buttons("conn-a")[0].click();
+    failed.viewerButton("Save As…").click();
+    await settle();
+    assert.equal(
+      failed.viewer().querySelector(".code-files-result").textContent,
+      "Couldn't save the file: EACCES",
+    );
   } finally {
-    PopupManager.close();
+    await closeViewer();
   }
 });
 
-test("a Python connection's row saves chiphippo.py, and its files are the module and three programs", async () => {
+test("a Python connection's files are the module and three programs, each saved by its own name", async () => {
   const elements = design();
   const connections = [
     conn("conn-a", "Pico", { language: "python" }),
     CONNECTIONS[1],
   ];
-  const { win, row, button, saves } = openDialog({ connections, elements });
+  const { row, buttons, viewer, viewerButton, saves } = openDialog({
+    connections,
+    elements,
+  });
   try {
     assert.equal(
       row("conn-a").querySelector(".codegen-language").textContent,
@@ -466,22 +652,27 @@ test("a Python connection's row saves chiphippo.py, and its files are the module
       row("conn-b").querySelector(".codegen-language").textContent,
       "C++ header for Arduino",
     );
-    assert.equal(button("conn-a", "Save header…"), undefined);
-    button("conn-a", "Save module…").click();
-    await settle();
-    assert.equal(saves[0].name, "chiphippo.py");
-    assert.match(saves[0].text, /^# chiphippo\.py — generated by Chip Hippo/);
-    assert.match(saves[0].text, /def lamp_in\(self, fn\):/);
-
-    button("conn-a", "View files…").click();
-    const viewer = win.document.querySelector(".code-files-popup");
+    buttons("conn-a")[0].click();
     assert.equal(
-      viewer.querySelector(".popup-title").textContent,
+      viewer().querySelector(".popup-title").textContent,
       "Pico — module and examples",
     );
+    const tabs = [...viewer().querySelectorAll(".code-files-tab")];
     assert.deepEqual(
-      [...viewer.querySelectorAll(".code-files-tab")].map((b) => b.textContent),
+      tabs.map((b) => b.textContent),
       ["chiphippo.py", "main.py", "code.py", "boot.py"],
+    );
+    const module = viewer().querySelector(".code-files-code").textContent;
+    assert.match(module, /^# chiphippo\.py — generated by Chip Hippo/);
+    assert.match(module, /def lamp_in\(self, fn\):/);
+
+    viewerButton("Save As…").click();
+    tabs[1].click();
+    viewerButton("Save As…").click();
+    await settle();
+    assert.deepEqual(
+      saves.map((s) => s.name),
+      ["chiphippo.py", "main.py"],
     );
   } finally {
     await closeViewer();

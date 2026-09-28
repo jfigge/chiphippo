@@ -91,6 +91,7 @@
       "allFiles": "Tutti i file",
       "header": "Header C/C++",
       "python": "Sorgente Python",
+      "sketch": "Sketch Arduino",
       "text": "Testo"
     },
     "regrant": {
@@ -1433,15 +1434,15 @@
         "never": "Non ancora generato",
         "unknown": "Non configurata su questo computer"
       },
-      "save": "Salva header…",
-      "saveModule": "Salva modulo…",
+      "generate": "Genera",
+      "saveAs": "Salva con nome…",
       "copy": "Copia",
       "view": "Mostra file…",
       "viewTitle": "{name} — header ed esempio",
       "viewTitlePython": "{name} — modulo ed esempi",
       "files": "File",
-      "copied": "Copiato negli appunti.",
       "copiedFile": "{name} copiato negli appunti.",
+      "copiedSelection": "Selezione copiata negli appunti.",
       "copyFailed": "Impossibile copiare negli appunti.",
       "saved": "Salvato in {path}",
       "failed": "Impossibile salvare il file: {error}",

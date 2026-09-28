@@ -1481,7 +1481,7 @@ integration-runtime,integration-codegen,serial-connections,serial-wire}.js` +
   another machine) and, on open, any this machine lacks joins its settings flagged
   `needsConfig`. The project copy is DERIVED at every stash, so it is excluded from
   `projectSignature` (a Settings rename must not dirty a project); `codegen`
-  (`{tabId: {connId: "0xHASH"}}`, recorded by Save header…) is not. Settings ▸ Serial I/O
+  (`{tabId: {connId: "0xHASH"}}`, recorded by Generate) is not. Settings ▸ Serial I/O
   (panel key `integration`) is the one Settings panel with **Apply** rather than
   live-apply: a connection's fields only mean something together, and Apply is where the
   port is checked against a live scan (a failed check turns the button into **Apply
@@ -1524,21 +1524,48 @@ integration-runtime,integration-codegen,serial-connections,serial-wire}.js` +
   before compiling (a v2 sketch, a 40 ms ACK timeout) to reach a case the generator never
   emits. The reserved-word list carries every member and constant of `ChipHippoLink`: an
   Output's function is CALLED from inside the class, where a member of the same name wins.
-  **`generateExample`** writes the SMALLEST sketch for a header (`ChipHippoExample.ino`:
-  a logging function per Output, every Input sent its starting value from `onConnect`)
-  from the SAME identifier plan, and the header's comment points at it; the header test
-  builds and RUNS it. Generate's **View files…** shows the pair in
-  `components/code-files-dialog.js` — a tab per file, each a line-numbered TABLE, Copy for
-  the file on show — which REPLACES the Generate card (PopupManager queues) and hands back
-  to it on close. `docs/examples/SegmentDecoder/` is a fuller sketch, with real buttons.
+  **`generateExample`** writes an EXAMPLE sketch for a header (`ChipHippoExample.ino`)
+  showing the three things a sketch does, each labelled RECEIVE / SEND / LOG where it
+  happens: a logging function per Output; a `runStarted` `onConnect` that logs and sends
+  every Input's starting value; and the first Input's first field counting up (a bit:
+  toggling) every `SEND_EVERY_MS` from `loop()`, logged per send. A connection with no
+  Outputs or no Inputs says where that code would go. Built from the SAME identifier
+  plan (its own globals cannot collide: an Output's function always ends in `In`), the
+  header's comment points at it, and the header test builds and RUNS it with the period
+  patched down to 30 ms. `generatePythonExamples` is the same program, timed with the
+  module's public `ticks_ms`/`ticks_diff` (its one clock that reads the same on every
+  board), and runs under `python3` and `micropython` alike. **The Generate card has ONE button per connection**, picked by its
+  status: never generated / out of date → **Generate**, which RECORDS the hash (that, not
+  a save, is what makes a row current and takes the toolbar dot off) and opens the files;
+  in sync → **View files…**, which only opens them. The files open in
+  `components/code-files-dialog.js`, a tabbed TEXT VIEW (a gutter `<pre>` of line numbers
+  beside ONE `<pre>` of the file, so a selection sweeps it like any text view; everything
+  else on the card is `user-select: none`), which REPLACES the Generate card
+  (PopupManager queues) and hands back to it on close. **Copy means the selection within
+  the file on show, or the whole file** — the button, ⌘C/Ctrl+C and a menu Edit ▸ Copy
+  (the `copy` event) alike; a selection of ALL of it copies the file's own text, final
+  newline included. ⌘A/Ctrl+A (and the menu's `chiphippo:edit-select-all` push) select
+  that file's text alone. Both keys are caught on the DOCUMENT in capture while the viewer
+  is ON SCREEN (a click on the text can leave focus on `<body>`) and preventDefault'ed,
+  which is what stops the native menu running after them. **Save As…** saves the file on
+  show through `integration:save-file (id, scope, name, text)`, which opens where THAT file
+  was last saved for that connection and DESIGN — `app/serial/saved-files.js`, main-owned
+  in `settings.codegenSaves` (connection → scope → file name → path, the renderer's
+  `scope` an opaque `<project path>|<desktop id>` key, never a path, and a remembered path
+  only ever one a Save panel returned). Per design because one board serves many (a
+  sketch folder per circuit), and a default carried from another design is an invitation
+  to click Replace over the wrong file. Pruned with the connection windows when a
+  connection is deleted (`forgetDeletedConnections`), 20 designs per connection.
+  `docs/examples/SegmentDecoder/` is a fuller sketch, with real buttons.
 - **A connection has a LANGUAGE** (`LANGUAGES`: `cpp` default | `python`; a segmented row
   in Settings ▸ Serial I/O, a draft like every field there). It is the BOARD's, so it
   travels with a project (`PORTABLE_KEYS`, project-store's sanitize) and enters the design
   hash only when not `cpp` (a C++ header's hash is what it was before languages).
   `model/integration-files.js`'s `connectionFiles` is the ONE place it is read: C++ →
   `ChipHippo.h` + `ChipHippoExample.ino`; Python → `chiphippo.py` + `main.py`
-  (MicroPython) + `code.py` + `boot.py` (CircuitPython), `main` being what Save and Copy
-  mean. Save's IPC accepts `.h` or `.py` names (a suggestion, never a path).
+  (MicroPython) + `code.py` + `boot.py` (CircuitPython), `main` (the file the board's
+  code imports) first. Save As…'s IPC accepts `.h`, `.ino` or `.py` names (a suggestion
+  and the filter, never a path).
 - **The Python module** (`integration-codegen-python.js`) is the header said again, line
   for line — same protocol numbers (from `serial-wire.js`), session rules, ACK-after-the-
   handler, log chunking — in ONE file for MicroPython AND CircuitPython, picking its port

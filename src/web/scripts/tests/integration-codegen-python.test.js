@@ -196,7 +196,7 @@ test("a user's text can never break out of a comment or a string", () => {
   );
 });
 
-test("the examples: main.py and code.py are one program; boot.py turns on CircuitPython's data port", () => {
+test("the examples: main.py and code.py are one program that RECEIVES, SENDS and LOGS; boot.py turns on CircuitPython's data port", () => {
   const files = generatePythonExamples({
     connection: pico,
     elements: design(),
@@ -206,10 +206,19 @@ test("the examples: main.py and code.py are one program; boot.py turns on Circui
     [MICROPYTHON_MAIN, CIRCUITPYTHON_MAIN, CIRCUITPYTHON_BOOT],
   );
   const [main, code, boot] = files;
-  const body = (t) => t.slice(t.indexOf("from chiphippo import link"));
+  const body = (t) => t.slice(t.indexOf("from chiphippo import"));
   assert.equal(body(main.text), body(code.text));
-  assert.match(main.text, /smallest MicroPython program/);
-  assert.match(code.text, /smallest CircuitPython program/);
+  assert.match(main.text, /an example MicroPython program/);
+  assert.match(code.text, /an example CircuitPython program/);
+  for (const label of ["RECEIVE", "SEND", "LOG"]) {
+    assert.match(main.text, new RegExp(`^#   ${label} `, "m"), label);
+  }
+  assert.match(
+    main.text,
+    /^from chiphippo import link, ticks_diff, ticks_ms$/m,
+  );
+
+  // RECEIVE, logged.
   assert.match(
     main.text,
     /^@link\.digit_in {2}# the Output "Digit" arrives here$/m,
@@ -220,26 +229,62 @@ test("the examples: main.py and code.py are one program; boot.py turns on Circui
       'link.print("Digit:", "value=" + str(value), "blank=" + str(blank))',
     ),
   );
-  assert.match(main.text, /^@link\.on_connect/m);
+
+  // Every run starts with a log line and the Inputs' starting values.
+  assert.match(
+    main.text,
+    /^@link\.on_connect\ndef run_started\(\):\n {4}global last_send, counter\n {4}link\.print\("Run started"\)/m,
+  );
   assert.match(
     main.text,
     /link\.segments_out\.set_pattern\(0\)\n\s+link\.segments_out\.send\(\)/,
   );
   assert.match(main.text, /link\.buttons_out\.set_step\(False\)/);
+
+  // SEND from the loop: the first Input's first field, a byte, counting.
+  assert.match(main.text, /^SEND_EVERY_MS = 1000$/m);
   assert.match(
     main.text,
-    /link\.begin\(\)\nwhile True:\n {4}link\.poll\(\)\n$/,
+    /def send_next\(\):\n {4}global counter\n {4}counter = \(counter \+ 1\) % 256\n {4}link\.segments_out\.set_pattern\(counter\)\n {4}if link\.segments_out\.send\(\):\n {8}link\.print\("Sent Segments:", "pattern=" \+ str\(counter\)\)/,
+  );
+  assert.match(
+    main.text,
+    /link\.begin\(\)\nwhile True:\n {4}link\.poll\(\).*\n {4}if link\.connected\(\) and ticks_diff\(ticks_ms\(\), last_send\) >= SEND_EVERY_MS:\n {8}last_send = ticks_ms\(\)\n {8}send_next\(\)\n$/,
   );
   assert.match(boot.text, /usb_cdc\.enable\(console=True, data=True\)/);
 });
 
-test("an example with no Inputs has no on_connect", () => {
+test("the module offers the example's clock: ticks_ms and ticks_diff", () => {
+  const { text } = generatePythonModule({
+    connection: pico,
+    elements: design(),
+  });
+  assert.match(text, /^ticks_ms = _ticks_ms$/m);
+  assert.match(text, /^ticks_diff = _ticks_diff$/m);
+});
+
+test("an example with no Inputs sends nothing but still logs a run's start", () => {
   const [main] = generatePythonExamples({
     connection: pico,
     elements: [design()[0]],
   });
-  assert.ok(!main.text.includes("on_connect"));
-  assert.ok(!main.text.includes("send_inputs"));
+  assert.match(main.text, /^from chiphippo import link$/m);
+  assert.match(main.text, /@link\.on_connect\ndef run_started\(\):\n {4}link\.print\("Run started"\)/); // prettier-ignore
+  for (const absent of ["send_next", "SEND_EVERY_MS", "ticks_ms", ".send()"]) {
+    assert.ok(!main.text.includes(absent), absent);
+  }
+  assert.match(main.text, /this connection has no Inputs/);
+});
+
+test("a bit is toggled rather than counted, and an example without Outputs says where they would go", () => {
+  const [main] = generatePythonExamples({
+    connection: pico,
+    elements: [design()[2]],
+  });
+  assert.match(main.text, /^level = False$/m);
+  assert.match(main.text, /^ {4}level = not level$/m);
+  assert.match(main.text, /this connection has no Outputs/);
+  assert.ok(!/^@link\.\w+_in\b/m.test(main.text), "no Output to decorate");
 });
 
 test("the design hash moves with the language, and a C++ connection's is what it always was", () => {

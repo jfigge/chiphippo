@@ -593,11 +593,12 @@ export class PalettePanel {
       ],
     );
     this.setSignalsFull(this.#signalsFull);
-    // Output (→, leaves the board) and Input (←, comes in): the arrows the
-    // element's rail card and placement ghost carry too.
+    // Output (←, pointing OUT of its label: it leaves the board) and Input
+    // (→, pointing IN: it comes in) — the arrows the element's rail card
+    // carries too.
     this.#integrationItems = [
-      ["output", "→"],
-      ["input", "←"],
+      ["output", "←"],
+      ["input", "→"],
     ].map(([kind, glyph]) =>
       el(
         "button",

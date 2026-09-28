@@ -156,10 +156,13 @@ export function createIntegrationShell({
       desktopName: ws?.activeTab?.name ?? "",
       appVersion,
       storedHash: (id) => ws?.codegenHash(id) ?? null,
-      onSaved: (id, hash) => {
+      onGenerated: (id, hash) => {
         ws?.setCodegenHash(id, hash);
         refreshGenerate();
       },
+      // Save As… remembers where each file went per DESIGN — this project
+      // file and this desktop — since one board serves many.
+      saveScope: `${ws?.projectLocation ?? ""}|${ws?.activeTab?.id ?? ""}`,
       bridge,
     });
   }

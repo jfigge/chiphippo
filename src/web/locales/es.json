@@ -91,6 +91,7 @@
       "allFiles": "Todos los archivos",
       "header": "Cabecera C/C++",
       "python": "Código fuente de Python",
+      "sketch": "Sketch de Arduino",
       "text": "Texto"
     },
     "regrant": {
@@ -1433,15 +1434,15 @@
         "never": "Aún no generada",
         "unknown": "No configurada en este ordenador"
       },
-      "save": "Guardar cabecera…",
-      "saveModule": "Guardar módulo…",
+      "generate": "Generar",
+      "saveAs": "Guardar como…",
       "copy": "Copiar",
       "view": "Ver archivos…",
       "viewTitle": "{name}: cabecera y ejemplo",
       "viewTitlePython": "{name}: módulo y ejemplos",
       "files": "Archivos",
-      "copied": "Copiada al portapapeles.",
       "copiedFile": "{name} copiado al portapapeles.",
+      "copiedSelection": "Selección copiada al portapapeles.",
       "copyFailed": "No se pudo copiar al portapapeles.",
       "saved": "Guardada en {path}",
       "failed": "No se pudo guardar el archivo: {error}",

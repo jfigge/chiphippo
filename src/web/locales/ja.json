@@ -91,6 +91,7 @@
       "allFiles": "すべてのファイル",
       "header": "C/C++ ヘッダー",
       "python": "Python ソース",
+      "sketch": "Arduino スケッチ",
       "text": "テキスト"
     },
     "regrant": {
@@ -1412,15 +1413,15 @@
         "never": "未生成",
         "unknown": "このコンピュータでは未構成"
       },
-      "save": "ヘッダーを保存…",
-      "saveModule": "モジュールを保存…",
+      "generate": "生成",
+      "saveAs": "別名で保存…",
       "copy": "コピー",
       "view": "ファイルを表示…",
       "viewTitle": "{name} — ヘッダーとサンプル",
       "viewTitlePython": "{name} — モジュールとサンプル",
       "files": "ファイル",
-      "copied": "クリップボードにコピーしました。",
       "copiedFile": "{name} をクリップボードにコピーしました。",
+      "copiedSelection": "選択範囲をクリップボードにコピーしました。",
       "copyFailed": "クリップボードにコピーできませんでした。",
       "saved": "{path} に保存しました",
       "failed": "ファイルを保存できませんでした: {error}",

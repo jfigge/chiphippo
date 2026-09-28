@@ -91,6 +91,7 @@
       "allFiles": "All files",
       "header": "C/C++ header",
       "python": "Python source",
+      "sketch": "Arduino sketch",
       "text": "Text"
     },
     "regrant": {
@@ -1433,15 +1434,15 @@
         "never": "Not generated yet",
         "unknown": "Not configured on this computer"
       },
-      "save": "Save header…",
-      "saveModule": "Save module…",
+      "generate": "Generate",
+      "saveAs": "Save As…",
       "copy": "Copy",
       "view": "View files…",
       "viewTitle": "{name} — header and example",
       "viewTitlePython": "{name} — module and examples",
       "files": "Files",
-      "copied": "Copied to the clipboard.",
       "copiedFile": "Copied {name} to the clipboard.",
+      "copiedSelection": "Copied the selection to the clipboard.",
       "copyFailed": "Couldn't copy to the clipboard.",
       "saved": "Saved to {path}",
       "failed": "Couldn't save the file: {error}",

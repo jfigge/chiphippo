@@ -196,7 +196,7 @@ the next Run. What each fault causes shows up in the stream as a warning line
 <strong>Input</strong>, click anywhere on the desk, and choose how many <strong>pins</strong> it has —
 1, 2, 4, 8 or 16. You can change that afterwards in its Properties.</p>
 <p>Each one appears as a <strong>card</strong> on the right-hand edge of the desk, under the
-signal buttons: its direction arrow (→ Output, ← Input), its colour, its name
+signal buttons: its direction arrow (← Output, pointing out; → Input, pointing in), its colour, its name
 and how many pins it has. Under the name sits a small numbered chip for every
 pin that isn&#39;t on the board yet, plus one more — the <strong>trigger</strong>, marked with
 an arrow. <strong>Drag a chip onto a breadboard hole</strong> to plant that pin there as a
@@ -282,9 +282,11 @@ simply replaced.</li>
 </ul>
 <h2 id="generating-the-boards-code">Generating the board&#39;s code</h2>
 <p>The <strong>Generate</strong> button in the desk tools pill opens a card listing every
-connection this desktop&#39;s Outputs and Inputs use, each with <strong>View files…</strong>,
-<strong>Copy</strong> and <strong>Save header…</strong>. Save <code>ChipHippo.h</code> into that board&#39;s sketch
-folder and include it:</p>
+connection this desktop&#39;s Outputs and Inputs use. Each has one button:
+<strong>Generate</strong> while its code has never been generated or is out of date, which
+generates it and opens the files, and <strong>View files…</strong> once it is up to date,
+which just opens them. In the file viewer, <strong>Save As…</strong> saves the file on
+show: save <code>ChipHippo.h</code> into that board&#39;s sketch folder and include it:</p>
 <pre><code class="language-cpp">#include &quot;ChipHippo.h&quot;
 
 void setup() {
@@ -322,10 +324,20 @@ already ends that way isn&#39;t doubled (an Output called <em>DataIn</em> stays
 <code>DataIn</code>). A name that still can&#39;t be used as it is (two Outputs with the
 same name, a field called <code>delay</code>) is changed, and the Generate card lists
 each change under its connection.</p>
-<p><strong>View files…</strong> shows the header beside <code>ChipHippoExample.ino</code>, the smallest
-sketch that uses it — one function per Output that logs what arrived, and
-every Input sent its starting value at the start of a run — each in its own
-tab, with line numbers and a <strong>Copy</strong> button. Closing it returns to the
+<p>The file viewer shows the header beside <code>ChipHippoExample.ino</code>, an example
+sketch that uses it, each in its own tab, with line numbers. The example
+shows the three things a sketch does, each labelled where it happens:
+<strong>receiving</strong> (a function per Output that logs what arrived), <strong>sending</strong>
+(every Input&#39;s starting value at the start of a run, then the first Input
+counting up once a second from <code>loop()</code> — a stand-in for reading a switch or
+a sensor) and <strong>logging</strong> (a line when a run starts, one per Output that
+arrives, one per value sent). The Python programs do the same, timing the
+loop with the module&#39;s own <code>ticks_ms()</code> and <code>ticks_diff()</code>, which read the
+same on every board. Select part of a file and <strong>Copy</strong> (or ⌘C / Ctrl+C)
+takes just that; with nothing selected it takes the whole file, and ⌘A /
+Ctrl+A selects all of the file on show. <strong>Save As…</strong> opens where you last
+saved that file for this board and desktop, so a new version goes over the
+old one without hunting for the folder. Closing the viewer returns to the
 Generate card. The header&#39;s own opening comment points at the example too.</p>
 <p>An Input&#39;s <code>send()</code> returns <code>true</code> once Chip Hippo has the value. It returns
 <code>false</code> when nobody is listening: at once before a run has greeted the sketch,
@@ -384,9 +396,8 @@ while True:
 <p>It is the header said in Python: the same names in Python&#39;s own style
 (<code>display_in</code>, <code>keypad_out.set_code</code>), an Output handled by decorating a
 function with <code>@link.&lt;its name&gt;_in</code>, and <code>link.print()</code> for the log. The
-Generate card offers <strong>Save module…</strong> instead of <strong>Save header…</strong>, and <strong>View
-files…</strong> shows the module beside <code>main.py</code> (MicroPython) and <code>code.py</code> with
-<code>boot.py</code> (CircuitPython). Copy <code>chiphippo.py</code> and the program for your board
+file viewer shows the module beside <code>main.py</code> (MicroPython) and <code>code.py</code> with
+<code>boot.py</code> (CircuitPython). Save <code>chiphippo.py</code> and the program for your board
 onto it.</p>
 <p>Where the link runs is the one real difference between the two:</p>
 <ul>
@@ -416,10 +427,14 @@ Inputs their starting values from an <code>@link.on_connect</code> function, as 
 <p>Every header carries a <strong>design hash</strong> of what it was generated from — the
 connection&#39;s settings and the names, fields and order of its Outputs and
 Inputs. Change any of those and the header is <strong>out of date</strong>: the Generate
-button shows a dot, and the Generate card says which header needs doing again.
-Positions of tags on the board, colours and descriptions don&#39;t change the hash.
-A header saved by an older Chip Hippo whose generated code has since changed
-shows as out of date too, so that saving it again picks the change up.</p>
+button shows a dot, and on the Generate card that connection&#39;s button reads
+<strong>Generate</strong> again. Positions of tags on the board, colours and descriptions
+don&#39;t change the hash. A header generated by an older Chip Hippo whose
+generated code has since changed shows as out of date too, so that generating
+it again picks the change up.</p>
+<p>Pressing <strong>Generate</strong> is what marks a header up to date — the hash is kept in
+the project file — so save the new file over the old one (<strong>Save As…</strong> offers
+the same place) before you rebuild the sketch.</p>
 <p>A run checks something narrower: the <strong>layout</strong> the sketch was built for —
 which Outputs and Inputs there are, in what order, and how each one&#39;s pins are
 split into fields. Names aren&#39;t part of it, so a design you&#39;ve only renamed

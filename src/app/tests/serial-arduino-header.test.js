@@ -743,14 +743,29 @@ void loop() { ChipHippo.poll(); }
   },
 );
 
+/** Wait for something the board does in its own time (its loop's timer). */
+async function until(done, ms = 5000) {
+  const end = Date.now() + ms;
+  while (!done()) {
+    if (Date.now() > end) throw new Error("timed out waiting for the board");
+    await new Promise((r) => setTimeout(r, 5));
+  }
+}
+
 test(
-  "the generated example builds against its header and runs: every Input sent at the start of the run, every Output logged",
+  "the generated example builds against its header and runs: it logs the run's start, sends the Inputs' starting values, logs each Output that arrives, and sends a value counting up",
   { skip: !CXX && "no C++ compiler" },
   async () => {
     const b = await build("example", undefined, {
       sketch: (codegen, dir) => {
         const example = codegen.generateExample({ connection, elements });
-        fs.writeFileSync(path.join(dir, example.name), example.text);
+        // A second is a long time in a test: count every 30 ms instead.
+        const text = example.text.replace(
+          "SEND_EVERY_MS = 1000;",
+          "SEND_EVERY_MS = 30;",
+        );
+        assert.notEqual(text, example.text, "the period is where it was");
+        fs.writeFileSync(path.join(dir, example.name), text);
         return `#include "${example.name}"\nHostSerial Serial;\n${HOST_MAIN}`;
       },
     });
@@ -765,9 +780,20 @@ test(
     });
     try {
       assert.equal((await link.handshake(b.header.signature)).ok, true);
+      // RECEIVE: data = 41, strobe = 1.
       assert.deepEqual(await link.send(0, 9, 41 | (1 << 8)), { ok: true });
-      assert.deepEqual(inbound, [{ index: 0, width: 9, value: 0 }]);
-      assert.equal(log, "Output 1: data=41 strobe=1\r\n");
+      // SEND: the starting value first, then value counting up (ready low).
+      await until(() => inbound.length >= 3);
+      assert.deepEqual(inbound[0], { index: 0, width: 9, value: 0 });
+      assert.deepEqual(
+        inbound.slice(1, 3).map((d) => d.value),
+        [1, 2],
+      );
+      // LOG: all three kinds of line.
+      await until(() => log.includes("Sent Input 1: value=2\r\n"));
+      assert.ok(log.startsWith("Run started\r\n"), log);
+      assert.ok(log.includes("Output 1: data=41 strobe=1\r\n"), log);
+      assert.ok(log.includes("Sent Input 1: value=1\r\n"), log);
     } finally {
       await link.close();
       child.kill();

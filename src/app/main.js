@@ -1813,11 +1813,12 @@ function registerIpc() {
     if (patch && Object.hasOwn(patch, "fontSize")) {
       broadcastFontSize(next.fontSize, event.sender);
     }
-    // A serial log window is titled with its connection's name, and a
-    // connection's window state goes when the connection does.
+    // A serial log window is titled with its connection's name, and what is
+    // remembered about a connection (its window, where its generated files
+    // were saved) goes when the connection does.
     if (patch && Object.hasOwn(patch, "serialConnections")) {
       serialIpc?.retitleLogs();
-      serialIpc?.forgetDeletedWindows();
+      serialIpc?.forgetDeletedConnections();
     }
     return next;
   });

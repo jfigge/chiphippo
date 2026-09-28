@@ -122,7 +122,9 @@ export class IntegrationRail {
         el("span", {
           class: "integration-card-dir",
           "aria-hidden": "true",
-          text: element.kind === "output" ? "→" : "←",
+          // Beside the name, as in the palette: an Output's arrow points
+          // out of it (←), an Input's in (→).
+          text: element.kind === "output" ? "←" : "→",
         }),
         el("span", { class: "integration-card-dot", "aria-hidden": "true" }),
         el("span", { class: "integration-card-name", text: name }),

@@ -6185,8 +6185,7 @@ button.integration-lamp:hover {
 
 .codegen-counts,
 .codegen-language,
-.codegen-hash,
-.codegen-result {
+.codegen-hash {
   margin: 0;
   font-size: var(--font-size-sm);
   color: var(--color-subtext);
@@ -6195,10 +6194,6 @@ button.integration-lamp:hover {
 .codegen-hash {
   font-family: var(--font-mono);
   font-size: var(--font-size-xs);
-}
-
-.codegen-result {
-  overflow-wrap: anywhere;
 }
 
 .codegen-warnings {
@@ -6217,7 +6212,10 @@ button.integration-lamp:hover {
 
 /* ── Generate ▸ View files (code-files-dialog.js) ────────────────────────── */
 /* Wide and tall enough to read code in: the card is a frame around a
-   listing that scrolls both ways, with the tabs above and Copy below. */
+   listing that scrolls both ways, with the tabs above and Copy / Save As…
+   below. Nothing on the card but a file's text can be selected
+   (.code-files-code opts back in), so what is highlighted is exactly what
+   Copy takes. */
 .code-files-popup {
   display: flex;
   flex-direction: column;
@@ -6225,6 +6223,7 @@ button.integration-lamp:hover {
   max-width: 90vw;
   height: min(640px, 85vh);
   overflow: hidden;
+  user-select: none;
 }
 
 .code-files-body {
@@ -6254,17 +6253,41 @@ button.integration-lamp:hover {
   display: none;
 }
 
+.code-files-panel:focus {
+  outline: none;
+}
+
+.code-files-panel:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: -2px;
+}
+
+/* The gutter and the text are two <pre>s side by side, so the text is one
+   run a selection sweeps like any text view's. As wide as the longest line
+   (the panel scrolls it), and at least as tall as the panel, so the gutter's
+   rule runs to the bottom of a short file. */
 .code-files-listing {
-  border-collapse: collapse;
+  display: flex;
+  width: max-content;
+  min-width: 100%;
+  min-height: 100%;
   font-family: var(--font-mono);
   font-size: var(--font-size-sm);
   line-height: 1.5;
   color: var(--color-text);
 }
 
-/* The line number: out of any selection, and pinned to the left edge so a
-   long line scrolls under it rather than away from it. */
-.code-files-number {
+.code-files-gutter,
+.code-files-code {
+  margin: 0;
+  font: inherit;
+  white-space: pre;
+}
+
+/* The line numbers: out of any selection, and pinned to the left edge so a
+   long line scrolls under them rather than away from them. */
+.code-files-gutter {
+  flex: none;
   position: sticky;
   left: 0;
   padding: 0 var(--space-2) 0 var(--space-3);
@@ -6272,13 +6295,13 @@ button.integration-lamp:hover {
   background: var(--color-mantle);
   color: var(--color-muted);
   text-align: right;
-  vertical-align: top;
   user-select: none;
 }
 
 .code-files-code {
+  flex: 1 1 auto;
   padding: 0 var(--space-3);
-  white-space: pre;
+  user-select: text;
 }
 
 .code-files-footer {
@@ -6290,9 +6313,11 @@ button.integration-lamp:hover {
 
 .code-files-result {
   flex: 1 1 auto;
+  min-width: 0;
   margin: 0;
   font-size: var(--font-size-sm);
   color: var(--color-subtext);
+  overflow-wrap: anywhere;
 }
 
 /* ── A connection window (serial-log.html) ──────────────────────────────── */
