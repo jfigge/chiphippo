@@ -86,40 +86,6 @@
   min-width: 0;
 }
 
-.toolbar-btn {
-  display: inline-flex;
-  align-items: center;
-  height: var(--toolbar-height);
-  padding: 0 var(--space-3);
-  background: var(--color-surface-0);
-  border: 1px solid var(--color-overlay);
-  color: var(--color-text);
-  font-size: var(--font-size-sm);
-}
-
-.toolbar-btn:hover {
-  background: var(--color-surface-1);
-}
-
-/* Icon-only toolbar buttons (the schematic New / Load / Save group). */
-.toolbar-icon-btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: var(--toolbar-height);
-  height: var(--toolbar-height);
-  padding: 0;
-  background: var(--color-surface-0);
-  border: 1px solid var(--color-overlay);
-  border-radius: var(--radius-sm);
-  color: var(--color-text);
-  cursor: pointer;
-}
-
-.toolbar-icon-btn:hover {
-  background: var(--color-surface-1);
-}
-
 /* Thin vertical rule separating toolbar groups. */
 .toolbar-divider {
   width: 1px;
@@ -131,11 +97,6 @@
 .toolbar-btn--active {
   background: var(--color-surface-1);
   border-color: var(--color-accent);
-}
-
-.toolbar-btn:disabled {
-  opacity: 0.4;
-  cursor: default;
 }
 
 /* ── Toolbar pill ─────────────────────────────────────────────────────────
@@ -329,12 +290,6 @@
 .bus-width-option:focus-visible {
   outline: 2px solid var(--color-accent);
   outline-offset: 2px;
-}
-
-/* Standalone toolbar buttons (the Schematic toggle) share the split-button
-   look. */
-.app-header-toolbar > .toolbar-btn {
-  border-radius: var(--radius-sm);
 }
 
 /* ── Main row: palette beside the desk ───────────────────────────────────── */

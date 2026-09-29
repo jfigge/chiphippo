@@ -31,10 +31,8 @@ import {
   MAX_SIGNALS,
   SIGNAL_COLORS,
   SIGNAL_KEYS,
-  assertedLevel,
   flagKeyPoint,
   flagPolygon,
-  isPlanted,
   nextFlagRotation,
   nextSignalColor,
   normalizeFlagRotation,
@@ -142,17 +140,9 @@ test("the tenth signal is key 0", () => {
   assert.equal(signalForKey(signals, "0").id, "sig10");
 });
 
-test("rest and asserted levels are opposites", () => {
+test("a signal rests LOW unless it says HIGH", () => {
   assert.equal(restLevel({ rest: "high" }), "high");
-  assert.equal(assertedLevel({ rest: "high" }), "low");
   assert.equal(restLevel({}), "low");
-  assert.equal(assertedLevel({}), "high");
-});
-
-test("isPlanted asks only whether there is an anchor", () => {
-  assert.equal(isPlanted({ flag: { anchor: "bb1.a1" } }), true);
-  assert.equal(isPlanted({ flag: { rot: 90 } }), false);
-  assert.equal(isPlanted({}), false);
 });
 
 test("the flag's apex sits EXACTLY on the anchor, at every rotation", () => {

@@ -173,6 +173,10 @@ export class AiPanel {
   // held and replayed once it is.
   #starting = false;
   #early = [];
+  // Which `ai:start` is the current one. A cancel — or a mode switch — while it
+  // is still being answered bumps this, so the reply that lands afterwards is
+  // recognised as abandoned and cancelled in main rather than adopted.
+  #startToken = 0;
 
   /**
    * @param {HTMLElement} container - the app shell; the panel docks along its
@@ -370,7 +374,7 @@ export class AiPanel {
   setMode(mode) {
     const next = mode === REVIEW ? REVIEW : BUILD;
     if (next === this.#mode) return;
-    if (this.#requestId || this.#building) this.#cancel();
+    if (this.#inFlight) this.#cancel();
     this.#mode = next;
     this.#history = [];
     this.#repairs = 0;
@@ -627,7 +631,10 @@ export class AiPanel {
     // for one activity, rather than a Stop that only exists sometimes. That now
     // covers the BUILD as well as the request: the ladder spans many tasks, so
     // "in flight" is no longer the same thing as "has a request id".
-    if (this.#requestId || this.#building) {
+    // Including the moment BETWEEN the send and main's reply: the button is
+    // live then too, and a second click used to start a second — billed —
+    // request with the first one's rows orphaned and its reply dropped.
+    if (this.#inFlight) {
       this.#cancel();
       return;
     }
@@ -752,8 +759,18 @@ export class AiPanel {
    * writing to the transcript, which is more state machine than the accuracy
    * is worth.
    */
+  /** A request is being started, streamed or built. */
+  get #inFlight() {
+    return Boolean(this.#starting || this.#requestId || this.#building);
+  }
+
   #cancel() {
     const id = this.#requestId;
+    // A start still being answered is abandoned too: its reply is cancelled in
+    // main when it lands (see `#request`), and anything it streams is ignored.
+    this.#startToken++;
+    this.#starting = false;
+    this.#early = [];
     // Dropping the ladder is what `#build` checks for, so this abandons a
     // build in progress too — impossible while it ran as one atomic task. No
     // tokens come back (they were spent the moment the reply arrived); what it
@@ -773,6 +790,7 @@ export class AiPanel {
     this.#stream = "";
     this.#starting = true;
     this.#early = [];
+    const token = ++this.#startToken;
     // Name the repair round UP FRONT. It was previously announced only after
     // the round it fixed had already failed, so the second request looked idle
     // for its whole duration.
@@ -799,6 +817,11 @@ export class AiPanel {
       );
     } catch (err) {
       started = { ok: false, error: String(err?.message ?? err) };
+    }
+    if (token !== this.#startToken) {
+      // Cancelled while main was answering: nobody wants this one any more.
+      if (started?.ok) window.chiphippo?.ai?.cancel(started.requestId);
+      return;
     }
     this.#starting = false;
     const early = this.#early;

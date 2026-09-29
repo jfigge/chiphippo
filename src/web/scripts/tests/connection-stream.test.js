@@ -34,7 +34,6 @@ resetDom(); // the real English catalog
 
 const {
   formatEntry,
-  isShown,
   streamFile,
   streamKind,
   streamPrefix,
@@ -153,15 +152,6 @@ test("error lines say what went wrong, and why a frame is being resent", () => {
   );
   assert.equal(say({ kind: "error", event: "dropped", detail: "" }), "Connection dropped"); // prettier-ignore
   assert.equal(say({ kind: "error", event: "dropped", detail: "ENXIO" }), "Connection dropped: ENXIO"); // prettier-ignore
-});
-
-test("filters hide log, data and protocol lines — never errors", () => {
-  const off = { log: false, data: false, protocol: false };
-  for (const kind of ["log", "data", "protocol"]) {
-    assert.equal(isShown(kind, off), false);
-    assert.equal(isShown(kind, { [kind]: true }), true);
-  }
-  assert.equal(isShown("error", off), true);
 });
 
 test("formatEntry puts it all together", () => {

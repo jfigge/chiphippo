@@ -350,8 +350,8 @@ function wireCoord(n) {
  *
  * It used to be whole pitches, which was right while every strip was a whole
  * number of them tall. It is not any more: board-types.js measures a rail at
- * 3.70 pitches and a pin-board at 14.02, so the strips of an ordinary 830 kit
- * sit at y 0, 3.70 and 17.72 — and `Math.round` here would jam each of them
+ * 3.50 pitches and a pin-board at 14.02, so the strips of an ordinary 830 kit
+ * sit at y 0, 3.50 and 17.52 — and `Math.round` here would jam each of them
  * back into the one above it. Every vertical dimension in board-types.js is an
  * exact multiple of 0.01, so a stack lands on this grid exactly and stays
  * flush through a save and a reload.
@@ -360,7 +360,7 @@ function wireCoord(n) {
  * feed it: a board is PLACED at a whole-pitch x (`placeX`), and a drag moves it
  * by a whole-pitch delta. The only thing that ever puts a board on a fractional
  * x is a dovetail against something whose width is fractional — an upright rail
- * is 3.70 wide — which is precisely a case where the exact value is the point.
+ * is 3.50 wide — which is precisely a case where the exact value is the point.
  */
 function boardCoord(n) {
   return Math.round(n * 100) / 100;
@@ -544,7 +544,11 @@ export function normalizeDocument(raw) {
         kind: c.kind,
         ref: c.ref,
         x: Math.round(c.x),
-        y: Math.round(c.y),
+        // y keeps the 0.01 grid a board is stored on, not a whole pitch: a
+        // recentre (`translateAll`) slides everything by a board's fractional
+        // y, and rounding the brick here on the NEXT load moved it up to half a
+        // pitch away from the boards it was placed beside.
+        y: boardCoord(c.y),
         params: normalizeParams(def, c.params),
       };
       // A BRICK's footprint is deliberately NOT checked here, though
@@ -1205,8 +1209,9 @@ export class DeskDoc {
     const strips = DeskDoc.kitPlacements(kitKey, 0, 0, rot);
     const sized = strips.map((s) => ({ s, size: boardSize(s.type, s.rot) }));
     // Quantized like a board origin: the height is a sum of measured strips
-    // (3.70 + 14.02 + 3.70), which in binary lands a hair under 21.42 — and
-    // this outline is compared against, and drawn, as a stated size.
+    // (3.50 + 14.02 + 3.50), and a sum of 0.01-grid values need not land on
+    // the grid in binary — this outline is compared against, and drawn, as a
+    // stated size.
     return {
       width: Math.max(...sized.map(({ s, size }) => s.x + size.width)),
       height: boardCoord(
@@ -1362,9 +1367,9 @@ export class DeskDoc {
    * which must land on exactly the position this cleared). A gesture supplies
    * a whole-pitch delta of its own accord — that is what makes a board drag
    * step pitch by pitch — but the magnetic pull is then ADDED to it, and a
-   * dovetail is only ever flush at an exact value: against a 3.70-tall rail
-   * that value is fractional, and rounding it away here is a snap that lands a
-   * hundredth of a pitch short and silently fails to mate.
+   * dovetail is only ever flush at an exact value: against a 3.50-tall rail
+   * or a 14.02-tall pin-board that value is fractional, and rounding it away
+   * here is a snap that lands short and silently fails to mate.
    */
   canMoveBoardsBy(ids, dx, dy) {
     const moving = new Set(ids);
@@ -1669,11 +1674,6 @@ export class DeskDoc {
       params,
       ignoreId,
     });
-  }
-
-  /** Back-compat alias (Feature 40 name). */
-  canPlaceChip(ref, boardId, anchor, opts) {
-    return this.canPlacePart(ref, boardId, anchor, opts);
   }
 
   /**
@@ -2108,11 +2108,6 @@ export class DeskDoc {
     return this.#doc.wires
       .filter((w) => this.#wireTouches(w, ownerId))
       .map(copyWire);
-  }
-
-  /** Back-compat alias (Feature 50 name). */
-  wiresOnBoard(boardId) {
-    return this.wiresTouching(boardId);
   }
 
   /** Is `address` a real, unoccupied hole? (occupancy delegation) */
@@ -3480,8 +3475,13 @@ export class DeskDoc {
    */
   pasteDesign(clip, shift = { dx: 0, dy: 0 }) {
     const before = this.snapshot();
+    // x is the column lattice; y is the 0.01 grid a board is stored on. The
+    // ghost's magnetic pull lands a strip flush against one at a FRACTIONAL y
+    // (a kit's bottom rail ends at 21.02) and judges the drop there — rounding
+    // it here committed a different position from the one shown green, which
+    // either overlapped (a refused paste) or left a gap that never mated.
     const dx = Math.round(shift.dx);
-    const dy = Math.round(shift.dy);
+    const dy = boardCoord(shift.dy);
     try {
       // Clip key → the id it landed under here. Boards and bricks share one
       // map because a wire endpoint's owner may be either.
@@ -3634,7 +3634,8 @@ export class DeskDoc {
   // ── Whole-desk translation ───────────────────────────────────────────────
 
   /**
-   * Slide the ENTIRE desk by an integer (dx, dy): every board, every desk-level
+   * Slide the ENTIRE desk by (dx, dy) — a whole pitch across, the 0.01 grid
+   * down (see below): every board, every desk-level
    * brick, and every annotation. Seated parts and wires need nothing — they are
    * stored as board addresses, not coordinates, so they ride their board. A
    * signal FLAG is an address too, so it is absent here for the same reason and
@@ -3664,32 +3665,34 @@ export class DeskDoc {
     if (ix === 0 && iy === 0) return { dx: 0, dy: 0 };
     for (const board of this.#doc.boards) {
       // Quantized, not accumulated: a board's y is fractional now (a kit's
-      // middle strip sits at 3.70), and `+=` down a session of recentres would
-      // walk it off the grid one ulp at a time until a dovetail stopped being
-      // flush. The delta itself is a whole pitch, so nothing else moves.
+      // lower strips sit at 3.50 and 17.52), and `+=` down a session of
+      // recentres would walk it off the grid one ulp at a time until a
+      // dovetail stopped being flush.
       board.x = boardCoord(board.x + ix);
       board.y = boardCoord(board.y + iy);
     }
+    // Everything below is quantized like the boards and for the same reason:
+    // `+=` down a session of recentres leaves -17.009999999999998 behind.
     for (const comp of this.#doc.components) {
       // Bricks alone carry desk coordinates; a seated part has board + anchor.
       if (comp.board == null && Number.isFinite(comp.x)) {
         comp.x += ix;
-        comp.y += iy;
+        comp.y = boardCoord(comp.y + iy);
       }
     }
     // A label's position is absolute even when it is anchored to a part (the
     // anchor only makes it ride that part's drag), so every one moves.
     for (const ann of this.#doc.annotations) {
       ann.x += ix;
-      ann.y += iy;
+      ann.y = boardCoord(ann.y + iy);
     }
     // A routed wire's waypoints are the one part of a wire that is NOT an
     // address, so they are the one part that has to be moved by hand — leave
     // them and a design slid to the origin would drag its routing behind it.
     for (const wire of this.#doc.wires) {
       for (const p of wire.points ?? []) {
-        p.x += ix;
-        p.y += iy;
+        p.x = wireCoord(p.x + ix);
+        p.y = wireCoord(p.y + iy);
       }
     }
     return { dx: ix, dy: iy };

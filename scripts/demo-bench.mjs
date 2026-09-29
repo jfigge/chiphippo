@@ -30,15 +30,15 @@
 // the loader silently drops.
 //
 // The frame (matching the two hand-built desktops the demos began with). The
-// strips stack at their MEASURED heights — a rail is 3.70 pitch (9.4 mm) and a
+// strips stack at their MEASURED heights — a rail is 3.50 pitch (8.9 mm) and a
 // pin-board 14.02 (35.6), see board-types.js — so the offsets are DERIVED here
 // as everywhere else: a literal would leave the stack overlapping, and
 // `normalizeDocument` drops a board that overlaps its neighbour.
 //
 //   y −23    ┌ psu1 / clk1 bricks
 //   y −14    ├ bb1  rail-full
-//   y −10.30 ├ bb2  pins-full  (rows j…f, the channel, rows e…a)
-//   y   3.72 └ bb3  rail-full
+//   y −10.50 ├ bb2  pins-full  (rows j…f, the channel, rows e…a)
+//   y   3.52 └ bb3  rail-full
 //
 // Columns, left to right: an optional 8-way DIP-switch bank at 2, slide
 // switches after it (pitch 6, four to a half — two when the bank is there

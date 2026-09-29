@@ -50,10 +50,10 @@ export function boardRect(board) {
  *
  * Flushness used to be exact `===`, which was safe while every strip height was
  * a whole pitch: a stack landed on integers and integers add exactly. Vertical
- * geometry is measured now (board-types.js), so a 3.70-tall rail under a
- * 14.02-tall board meets it at 17.72 — a sum of two values neither of which is
- * exactly representable in binary, and which can therefore land an ulp away
- * from the same number written down or read back from a file. A dovetail that
+ * geometry is measured now (board-types.js), so strips meet at y's like 17.52
+ * — values on a 0.01 grid that binary cannot represent exactly, so a sum of
+ * them can land an ulp away from the same number written down or read back
+ * from a file (4.51 − 3 is 1.5099999999999998). A dovetail that
  * fails by 10^-15 of a millimetre is a kit that silently comes apart into
  * separate groups, so the test is a tolerance: far under a hole's own size, far
  * over any accumulation of float error.

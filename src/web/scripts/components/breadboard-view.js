@@ -42,7 +42,7 @@ const HOLE_RADIUS = 0.08;
     far its outer edge sits from the strip's own edge. Pinned to the EDGE
     rather than offset from the hole row, because that is where the printed
     line runs on the real part — and because the plastic outside a rail's rows
-    is 3.2 mm of it (board-types.js measures the strip at 9.4 mm), so a stripe
+    is 3.2 mm of it (board-types.js measures the strip at 8.9 mm), so a stripe
     hung off the row would float in the middle of it. */
 const STRIPE_HEIGHT = 0.22;
 const STRIPE_OVERHANG = 0.7;

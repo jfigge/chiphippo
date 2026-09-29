@@ -187,6 +187,15 @@ test("each desktop build ships only its own platform's build of the serial port'
   assert.equal(build.masDev.files, undefined, "masDev likewise");
 });
 
+test("the test suites stay out of the app", () => {
+  // `app/**/*` and `web/**/*` take everything under them, so without these the
+  // package carried ~70 K lines of tests and fixtures to every user. Nothing
+  // at runtime reaches into a tests/ directory, so the exclusion costs nothing.
+  for (const dir of ["app/tests/**", "web/scripts/tests/**"]) {
+    assert.ok(build.files.includes(`!${dir}`), `excludes ${dir}`);
+  }
+});
+
 test("the Linux packages start on a stock system", () => {
   // The legacy AppImage toolset's arm64 launcher links the UNVERSIONED
   // libz.so, which only zlib's -dev package provides, so it would not start

@@ -45,9 +45,6 @@ import { t } from "../i18n.js";
 import { describeFields } from "./integration.js";
 import { FRAME, PROTOCOL_VERSION } from "./serial-wire.js";
 
-/** The four kinds, in the order the filters are offered (errors have none). */
-export const STREAM_KINDS = Object.freeze(["log", "data", "protocol", "error"]);
-
 /** The three a filter can hide. Errors are always shown. */
 export const FILTERED_KINDS = Object.freeze(["log", "data", "protocol"]);
 
@@ -222,12 +219,6 @@ export function formatEntry(entry, t0) {
     text: streamText(entry),
     raw: streamRaw(entry),
   };
-}
-
-/** Is a line of this kind shown under these filters? Errors always are. */
-export function isShown(kind, filters) {
-  if (kind === "error") return true;
-  return filters?.[kind] !== false;
 }
 
 /**

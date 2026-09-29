@@ -32,7 +32,10 @@ drags · 370 external signals · 380 Arduino serial integration · language supp
 
 **Deferred** (`features/deferred/`): 160 export image & PDF, 300 selection drags.
 **Still open**: 260 step 15 — refactor `make demos` onto `model/autobuild.js` (which
-now has `centreDocument` and a second output to honour).
+now has `centreDocument` and a second output to honour); 360 auto-routing (plan still in
+`features/`; `model/autoroute.js` + `route-*.js`, the toolbar's Auto-route action).
+**Landed without a plan file**: Desktop ▸ Export To — KiCad schematic and Digital `.dig`
+(`model/export/`, `app/ipc/export.js`, "Feature 390" in its comments).
 
 ## Naming & identity
 
@@ -92,9 +95,11 @@ the repo, only the cropped PNGs.
 `⌘/`), the hosted website (`make docs` → `website/docs/`) and a PDF (`make pdf` →
 `docs/chip-hippo-user-guide.pdf`).
 
-- The page index (`PAGES` — slug, optional `file`, title) is **hand-duplicated** between
-  `web/scripts/components/docs-viewer.js` and `scripts/build-docs.mjs`; keep the two in
-  sync when adding a page (a missing entry is a page that visibly doesn't appear).
+- The page index (`PAGES` — slug, optional `file`, title) lives ONCE, in
+  `web/scripts/docs-pages.js`, imported by both the viewer and `scripts/build-docs.mjs`.
+  `tests/docs-viewer.test.js` holds it to `src/web/docs/*.md` in both directions — a page
+  left off the list is unreachable everywhere (`docs.open` drops it, an in-guide link goes
+  external, the website and PDF skip it), which is how `exporting.md` first shipped.
 - **The heading-id rule is NOT duplicated** — `web/scripts/heading-slug.js` is imported
   by both (dependency-free ESM; `src/web/scripts` is `{"type":"module"}`, so Node imports
   it by path exactly as the browser loads it). It was two copies and they DID disagree,
@@ -250,6 +255,11 @@ Electron main (src/app/main.js)
 - Live state pushed main → renderer uses one-way broadcasts the preload re-dispatches as
   global `chiphippo:*` `CustomEvent`s. The parity test ignores push channels — it checks
   `ipcMain.handle` ↔ `ipcRenderer.invoke` only.
+- **The renderer writes its own settings, never main's**: `settings:set` passes through
+  `rendererPatch` (`store/settings-store.js`), which drops the main-owned keys
+  (`MAIN_OWNED` — `recentProjects` above all, since it IS the Open Recent allowlist) and
+  keeps a `datasheetDir` only when main vouches for it (dialog-established, the app's own
+  download folder, or the value already stored).
 - **Every path crossing the bridge is gated by main's `knownPath`**: anything inside the
   app's saves folder, plus what a dialog (or an opened project) established this session.
   The one exception is `settings.recentProjects`, which is itself the allowlist for
@@ -297,9 +307,10 @@ Electron main (src/app/main.js)
   whose only change is the padlock is still let go without a question.
 - **Fit (⌘F) is the one camera action that EDITS the document**, deliberately.
   `#recentreDesk` slides the whole desk onto the origin (`DeskDoc.translateAll`: every
-  board, brick and label by one integer delta — seated parts and wires are addresses, so
-  they ride their board) before framing, so a long session cannot creep out into the
-  coordinate space. The move is RIGID (it can neither be refused nor break a mating),
+  board, brick and label by one delta — a whole pitch across, the 0.01 grid down, all of
+  it quantized so a brick keeps its place through a reload; seated parts and wires are
+  addresses, so they ride their board) before framing, so a long session cannot creep out
+  into the coordinate space. The move is RIGID (it can neither be refused nor break a mating),
   rides `#emitDocChanged` as one undo step, marks the project dirty, and is skipped while
   the sim runs. Fit follows the ACTIVE view (`fitActiveView`); the schematic's own `fit()`
   is camera-only.
@@ -343,8 +354,9 @@ differently, because a real breadboard is.**
   `normalizeDocument` then DROPS the overlap. The desk stays tidy anyway because a board
   is PLACED at a whole-pitch x and DRAGGED by a whole-pitch delta — only a dovetail puts
   a board on a fraction, and there the exact value is the point. `mating.js` compares
-  flush edges with a tolerance (`FLUSH_EPS`): 3.70 + 14.02 is not exactly 17.72 in
-  binary, and a joint that fails by an ulp is a kit that silently comes apart.
+  flush edges with a tolerance (`FLUSH_EPS`): a sum of 0.01-grid values need not be
+  exact in binary (4.51 − 3 is 1.5099999999999998), and a joint that fails by an
+  ulp is a kit that silently comes apart.
 - **Integer by design**: the pitch within a group of five rows; the spacing between a
   strip's two RAILS (1 = 2.54 mm, so a lead bridging `+` to `−` lands square); and the 3
   pitches ACROSS the channel (7.62 mm, the 0.3-in row spacing every DIP is made to). So
@@ -779,7 +791,10 @@ Code: `app/store/project-store.js` + `project-images.js` + `project-migrate.js` 
   COLLECTS every chip flagged `programmed`, HASHES its bytes and records chip → blob
   (noise does not need to travel); `read` HYDRATES them back before the renderer sees the
   project; `reseatImages` gives a COPIED desktop (Import, Duplicate) fresh guids and
-  fresh files so two chips can never share one. This is the second place in main with
+  fresh files so two chips can never share one. An Import taken from a whole PROJECT file
+  reads it `{hydrate: false}` and hands the bytes to the reseat as `images`: hydrating
+  wrote the file's guids — the OPEN project's own, when the file is a copy or backup of
+  it — straight over the live sidecars. This is the second place in main with
   document knowledge after `migrations.js`, and equally narrow — it reads
   `components[].params.storage.guid` + `params.programmed` and nothing else.
   - **The bytes are the key**: identical images name ONE blob however many chips or
@@ -819,7 +834,12 @@ Code: `app/store/project-store.js` + `project-images.js` + `project-migrate.js` 
 - **Every path resolves `false` for a cancel**, and a save that never landed IS a cancel:
   `save`/`saveAs`/`exportTab` all return `Promise<boolean>` and every dialog is
   promise-wrapped, since PopupManager fires its callbacks on EVERY dismissal path (mask
-  click included) so an awaiting caller can't hang.
+  click included) so an awaiting caller can't hang. The converse: a file that was PICKED
+  but holds no project answers `{ok:false, code:"invalid"}` (Open, Open Recent, re-grant)
+  and is SAID, never read back as a cancel — and it is left where it is. `io.readJSON`'s
+  quarantine (rename a corrupt file aside) is for the app's OWN files only; the project
+  store passes `{quarantine: false}` for any path but the working slot, since renaming a
+  user's truncated project out of its folder with nothing said is a disappearance.
 - **The guard must ANSWER, and answering is three separate promises** — main waits on
   `confirmClose()` with NO TIMEOUT and LATCHES `closePending` until the reply lands, so
   anything less than an answer is an app that can never be closed again:
@@ -848,6 +868,18 @@ Code: `app/store/project-store.js` + `project-images.js` + `project-migrate.js` 
     one-way latch, and on macOS (where closing the last window does not quit) that was
     silent data loss — close, answer "discard", click the dock icon, and the fresh window
     inherited a set latch, so every later close and ⌘Q skipped the guard entirely.
+  - **Whether there is anybody to ask is the renderer's to SAY** (`app:close-ready`, sent
+    once app.js has registered its handler → `closeGuard.rendererReady`; cleared by
+    `render-process-gone`, `destroyed` and `did-start-loading`). It was guessed from
+    `webContents.isDestroyed()`, which stays false after a renderer CRASH — so a crashed
+    window re-asked a dead page, latched, and could neither be closed nor quit; likewise a
+    page that failed to load. Until the page is ready it holds nothing unsaved, so a close
+    proceeds. A reply with no question pending, or from any window but the main one,
+    authorises nothing.
+  - **Restart-to-update is a close-guard question too** (`ask({installing})` → reply
+    `"install"`): electron-updater's `quitAndInstall` spawns the installer BEFORE it quits
+    on Windows and Linux, so leaning on the ordinary before-quit question made "Cancel"
+    too late to stop the update. Main calls `quitAndInstall` only after a yes.
 - **Export / Import replaced a desktop's Save As / Open.** A `.desktop.chiphippo` is a
   SNAPSHOT (the document plus its ROM bytes, no link retained), so it can never dangle.
   Import is always an ADDITION (no file operation can replace the desk on screen) and
@@ -1277,8 +1309,9 @@ hole. Pressing the button injects a level there. `model/signals.js` (pure) +
   `canPlaceFlag` is `canReendWire`'s argument one item over: free, ignoring the moving
   signal's OWN claim, which is what lets one method serve planting AND moving.
 - **The rail is pinned BETWEEN the padlock and the zoom cluster**, and it is the first
-  piece of desk chrome with a variable height. The app has no `z-index` anywhere, so the
-  existing convention was extended rather than broken: `--desk-zoom-height` joins
+  piece of desk chrome with a variable height. The desk's corner chrome is kept apart
+  by POSITION — each piece measured out of the others' way — not stacked by `z-index`,
+  so the existing convention was extended rather than broken: `--desk-zoom-height` joins
   `--desk-lock-size` on `.app-stage`, and **`.desk-zoom` itself consumes it**, so the two
   cannot drift. A doc change REBUILDS the rail (≤10 rows); a `chiphippo:sim-state` toggles
   CLASSES ONLY, because that event fires on every tick. While STOPPED a button shows its
@@ -1449,6 +1482,14 @@ integration-runtime,integration-codegen,serial-connections,serial-wire}.js` +
   while the transport still reads stopped and the desk is unlocked, so `stop()` bumps the
   start token even when stopped (a tab switch / New / Open cancels it) and a desk edited
   meanwhile is preflighted again rather than run unchecked.
+- **A run involves only the boards the breadboard REFERENCES** (`runElements` in
+  `integration.js`): a connection takes part when at least one of its elements has a tag
+  planted, and then with ALL its elements (the layout signature counts every one). An
+  element with nothing on the breadboard reaches no net, so a board used only by such
+  elements is not opened, not checked and not complained about — an unplugged Arduino,
+  or one not set up on this computer, must not stop a circuit that does not use it. The
+  same rule spares an idle element the trigger check; an UNASSIGNED element is refused
+  only when it is planted.
 - **Every protocol NUMBER lives in ONE module, `model/serial-wire.js`** — version, markers,
   frame types, payload sizes and limits, session/SEQ ranges, the never-NAKed types, CRC-16
   poly/init, the 250 ms / 5 s handshake, the 500 ms ACK timeout, the 3 sends — plus
@@ -1972,12 +2013,13 @@ two members travels whole, one bridging a member and a fixed part bends).
 
 ## Header toolbar
 
-**Two shapes, and no others.** A **pill** (`.toolbar-pill`) groups buttons that read as
-ONE control: it carries the only border and the only background, its `.toolbar-pill-btn`
-segments are separated by spacing rather than borders (there is no split-button seam
-anywhere), and an armed segment FILLS instead of gaining an accent border. Everything else
-is a plain `.toolbar-btn` / `.toolbar-icon-btn`. `.toolbar-btn--active` is the one class
-every armed state toggles, whatever the shape. The pill is the APP's grouping shape, not
+**One shape.** A **pill** (`.toolbar-pill`) groups buttons that read as ONE control: it
+carries the only border and the only background, its `.toolbar-pill-btn` segments are
+separated by spacing rather than borders (there is no split-button seam anywhere), and an
+armed segment FILLS instead of gaining an accent border. Every toolbar button is a pill
+segment now — the standalone `.toolbar-btn` / `.toolbar-icon-btn` shapes had no users left
+and their rules are gone. `.toolbar-btn--active` is the one class every armed state
+toggles. The pill is the APP's grouping shape, not
 the toolbar's alone — the desktop tab strip (`.project-tabs`) is the same thing floating
 over the desk, its active tab filling exactly as an armed segment does.
 

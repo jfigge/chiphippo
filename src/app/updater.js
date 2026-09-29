@@ -30,8 +30,11 @@
 //
 // WE NEVER RESTART WITHOUT CONSENT. A downloaded update installs on a normal
 // quit (`autoInstallOnAppQuit`) or through an explicit, user-clicked
-// `quitAndInstall()` — and even then the quit runs main's ordinary
-// before-quit guard, so an unsaved project is still asked about first.
+// `quitAndInstall()` — and main calls that only AFTER the unsaved-work guard
+// has been answered yes (`updater:install` → the close guard's `installing`
+// question). It cannot lean on the ordinary before-quit question instead:
+// electron-updater's BaseUpdater spawns the installer before it quits, so on
+// Windows and Linux a "Cancel" there came too late to stop the update.
 //
 // The update check is the app's THIRD outbound call, after the AI builder and
 // the datasheet download — and, like both, it is here in main because the
@@ -166,8 +169,9 @@ function checkForUpdates({ manual = false } = {}) {
  */
 function quitAndInstall() {
   try {
-    // isSilent=false → show the installer UI on Windows; isForceRunAfter=true
-    // → relaunch once the update is applied.
+    // isSilent=false → show the installer UI on Windows. The second argument
+    // only counts for a SILENT install; a visible one relaunches per
+    // `autoRunAppAfterInstall` (default true), which is what we want anyway.
     getAutoUpdater().quitAndInstall(false, true);
   } catch {
     /* nothing downloaded yet, or not packaged — nothing to do */

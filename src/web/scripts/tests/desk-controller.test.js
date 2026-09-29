@@ -415,7 +415,7 @@ test("addKitAt: a bare pin-board places on its own and takes a chip", () => {
     [["pins-full", null]],
   );
   // It is an ordinary pin-board: parts seat across its trench as always.
-  assert.ok(doc.canPlaceChip("74LS00", strips[0].id, "e2"));
+  assert.ok(doc.canPlacePart("74LS00", strips[0].id, "e2"));
 });
 
 test("Delete/Backspace removes the selected board via handleKeyDown", () => {
@@ -2722,11 +2722,11 @@ test("fitToScreen slides the whole desk onto the origin and frames it", () => {
   const [dx, dy] = [moved.x - before.x, moved.y - before.y];
   assert.deepEqual(
     [doc.getComponent("psu1").x, doc.getComponent("psu1").y],
-    [480 + dx, 303 + dy],
+    [480 + dx, q(303 + dy)],
   );
   assert.deepEqual(
     [doc.annotations[0].x, doc.annotations[0].y],
-    [402 + dx, 296 + dy],
+    [402 + dx, q(296 + dy)],
   );
   // The views followed the document rather than staying where they were…
   const board = surface.querySelector('[data-board-id="bb2"]');
@@ -2978,6 +2978,21 @@ test("autoRouteWires: refused while the circuit runs", async () => {
   controller.setEditingLocked(true);
   assert.equal(await controller.autoRouteWires(), null, "topology is frozen");
   assert.equal(doc.getWire("w1").layout, undefined, "and nothing changed");
+});
+
+test("autoRouteWires: a Run started mid-route writes nothing", async () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  doc.addKit("full", 0, 0);
+  const pins = doc.boards.find((b) => b.type === "pins-full").id;
+  doc.addWire({ from: `${pins}.a5`, to: `${pins}.a30` });
+  const { controller } = makeDesk(doc);
+  const run = controller.autoRouteWires();
+  // The route is in flight (it yields to the host between slices) — the
+  // moment a Space press gets through to the transport.
+  controller.setEditingLocked(true);
+  assert.deepEqual(await run, { stale: true });
+  assert.equal(doc.getWire("w1").layout, undefined, "nothing was applied");
 });
 
 test("autoRouteWires: nothing to do is null, not an empty undo step", async () => {

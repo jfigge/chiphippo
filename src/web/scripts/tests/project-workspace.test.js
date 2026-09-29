@@ -73,6 +73,9 @@ function fakeBridge() {
     // is THERE, which is what makes this a different answer from `missing`.
     denied: new Set(),
     regrantPick: null, // what the re-grant open panel returns (null → cancelled)
+    // Paths that exist but hold no project (a truncated file): main reports
+    // `invalid` rather than a null that reads as Cancel.
+    invalid: new Set(),
   };
   let minted = 0;
 
@@ -115,7 +118,13 @@ function fakeBridge() {
       return create();
     },
     create: async () => create(),
-    open: async () => (control.openProject ? adopt(control.openProject) : null),
+    open: async () => {
+      if (!control.openProject) return null;
+      if (control.invalid.has(control.openProject)) {
+        return { ok: false, code: "invalid" };
+      }
+      return adopt(control.openProject);
+    },
     openRecent: async (filePath) => {
       if (!recent.includes(filePath)) {
         return { ok: false, code: "unknown", error: "not a recent project" };
@@ -126,6 +135,7 @@ function fakeBridge() {
       if (control.denied.has(filePath)) {
         return { ok: false, code: "denied", error: "permission denied" };
       }
+      if (control.invalid.has(filePath)) return { ok: false, code: "invalid" };
       return { ok: true, project: adopt(filePath) };
     },
     // The open panel that repairs a stale bookmark. Confirming the SAME file
@@ -1765,6 +1775,32 @@ test("opening a project swaps the whole desk", async () => {
   assert.equal(h.workspace.dirty, false);
   assert.equal(h.sim.stops, 1);
   assert.equal(h.counts.aux, 1);
+});
+
+test("opening a file that holds no project SAYS so, and changes nothing", async () => {
+  const h = await harness();
+  const before = h.workspace.projectName;
+  h.seedProject("/home/broken.chiphippo", { name: "Broken", tabs: [] });
+  h.control.invalid.add("/home/broken.chiphippo");
+  h.control.openProject = "/home/broken.chiphippo";
+  await leaving(() => h.workspace.loadProject());
+  // It used to come back as null — indistinguishable from Cancel, so picking
+  // a damaged file did nothing at all and said nothing about why.
+  assert.equal(dialogTitle(), "Could not open that project");
+  assert.match(document.querySelector(".popup-message")?.textContent ?? "", /could not be read/); // prettier-ignore
+  PopupManager.close();
+  assert.equal(h.workspace.projectName, before);
+});
+
+test("a recent project that holds no project is reported, not forgotten", async () => {
+  const h = await harness();
+  h.seedProject("/home/broken.chiphippo", { name: "Broken", tabs: [] });
+  h.seedRecent("/home/broken.chiphippo");
+  h.control.invalid.add("/home/broken.chiphippo");
+  await leaving(() => h.workspace.openRecentProject("/home/broken.chiphippo"));
+  assert.equal(dialogTitle(), "Could not open that project");
+  PopupManager.close();
+  assert.equal(h.recentList().includes("/home/broken.chiphippo"), true);
 });
 
 test("a recent project that has gone offers to be forgotten", async () => {

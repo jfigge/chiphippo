@@ -378,3 +378,31 @@ test("a shipped demo's ROM can be programmed straight after opening it", async (
     "the chip is flagged programmed, so the sim will load it on Run",
   );
 });
+
+test("a run starting hands every open inspector its RUNNING context", async () => {
+  // Stop always told a window the run had ended; nothing told it one had
+  // begun. A window opened while stopped read "Stopped · editable" all run,
+  // and an SRAM's showed deltas over a zeroed grid instead of the live image.
+  resetDom();
+  const { calls } = install({ files: new Map([[GUID, new Uint8Array(8192)]]) });
+  const comp = rom({ storage: { guid: GUID } });
+  const sim = { running: false, imageBytesOf: () => Uint8Array.from([7, 8]) };
+  new MemoryBridge({
+    deskDoc: { getComponent: (id) => (id === comp.id ? comp : null) },
+    sim,
+    controller: { setMemoryProgrammed() {} },
+    bridge: window.chiphippo,
+    notifications: { notify() {} },
+  });
+  hostInbound("c1", { kind: "ready" });
+  await settle();
+  assert.equal(calls.toInspector.at(-1)[1].running, false);
+
+  sim.running = true;
+  memState({ running: true, started: true, changes: new Map() });
+  await settle();
+  const ctx = calls.toInspector.at(-1)[1];
+  assert.equal(ctx.kind, "context");
+  assert.equal(ctx.running, true);
+  assert.deepEqual([...ctx.bytes], [7, 8]);
+});

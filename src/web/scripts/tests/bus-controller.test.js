@@ -254,3 +254,27 @@ test("the rings come off the desk when the pointer leaves the viewport", () => {
   controller.disarmBusTool();
   assert.equal(rings(surface).count, 0);
 });
+
+test("a start hole an undo takes away drops the pending run, not the tool", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const { viewport, surface, controller, world } = makeDesk(doc);
+  controller.addBoardAt("pins-full", 0, 0); // an undoable step
+  controller.setBusName("D[3:0]");
+  controller.toggleBusTool();
+  clickAt(viewport, world, 10, ROW.a); // anchored on bb1.a10
+
+  // Undo takes the board, and the anchored hole with it; the tool stays armed.
+  assert.equal(controller.undo(), true);
+  assert.equal(doc.boards.length, 0);
+  // Every move used to throw on the vanished start hole from here on — inside
+  // the listener, where jsdom reports it rather than rethrowing it.
+  const errors = [];
+  const onError = (e) => errors.push(e.error ?? e.message);
+  window.addEventListener("error", onError);
+  hoverAt(viewport, world, 12, ROW.a);
+  window.removeEventListener("error", onError);
+  assert.deepEqual(errors, []);
+  assert.equal(controller.busToolArmed, true);
+  assert.equal(rings(surface).count, 0);
+});

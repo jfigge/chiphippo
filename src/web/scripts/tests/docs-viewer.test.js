@@ -25,8 +25,13 @@
 
 import test from "node:test";
 import assert from "node:assert/strict";
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { resetDom } from "./jsdom-setup.js";
+
+const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 // The vendored DOMPurify bundle detects `window` at MODULE-EVAL time (it calls
 // DOMPurify.addHook(...) at the top level of markdown-entry.js), so a DOM must
@@ -67,6 +72,22 @@ test("PAGES: every page has a unique slug; only the overview page names a file",
   assert.deepEqual(withFile, [
     { slug: "overview", file: "README", title: "Overview" },
   ]);
+});
+
+test("PAGES lists every page in docs/, and names no page that is not there", () => {
+  // A page left off the list is written, committed and unreachable: the
+  // viewer drops a `docs.open` for it (docs-window.js `knownPage`), leaves a
+  // link to it as an external one, and the website and the PDF skip it —
+  // which is how exporting.md shipped with its own guide button opening the
+  // Overview instead.
+  const dir = path.join(HERE, "..", "..", "docs");
+  const onDisk = fs
+    .readdirSync(dir)
+    .filter((f) => f.endsWith(".md"))
+    .map((f) => f.slice(0, -3))
+    .sort();
+  const listed = PAGES.map((p) => p.file ?? p.slug).sort();
+  assert.deepEqual(listed, onDisk);
 });
 
 test("mount: fetches the overview page by its file (README), not its slug", async () => {

@@ -181,16 +181,6 @@ export function restLevel(sig) {
   return sig?.rest === "high" ? "high" : "low";
 }
 
-/** The level a MOMENTARY signal asserts while held — the other one. */
-export function assertedLevel(sig) {
-  return restLevel(sig) === "high" ? "low" : "high";
-}
-
-/** Is this signal plugged into a board? */
-export function isPlanted(sig) {
-  return typeof sig?.flag?.anchor === "string";
-}
-
 // ── The flag glyph ──────────────────────────────────────────────────────────
 
 /**

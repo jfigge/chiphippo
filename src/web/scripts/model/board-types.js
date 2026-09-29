@@ -273,8 +273,8 @@ export const BOARD_TYPE_KEYS = Object.freeze(Object.keys(BOARD_TYPES));
  * in one group, pre-snapped, exactly as a boxed breadboard arrives assembled.
  *
  * `dx` is an integer (the horizontal lattice); `dy` is each strip's measured
- * height, so the stack is 0 · 3.70 · 17.72 and the whole kit 21.42 units —
- * 54.41 mm, a real 830. Quantized through `q` so the stored value is the same
+ * height, so the stack is 0 · 3.50 · 17.52 and the whole kit 21.02 units —
+ * 53.4 mm, a real 830. Quantized through `q` so the stored value is the same
  * clean 2-decimal number whichever way it was summed.
  */
 export const BREADBOARD_KITS = Object.freeze({

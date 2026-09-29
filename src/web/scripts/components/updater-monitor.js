@@ -104,11 +104,10 @@ export class UpdaterMonitor {
    *
    * An update announces itself in stages — downloading, then ready — and they
    * are one running commentary, not four independent warnings, so they must
-   * not stack up in the corner. One shared key does that, but the stack's
-   * de-dupe deliberately keeps the FIRST toast's content and only refreshes its
-   * timer (that is what makes a standing sim warning stable while it re-settles
-   * every tick), which here would freeze the message at "Downloading…" forever.
-   * So the old one is dismissed first: same slot, current wording.
+   * not stack up in the corner. One shared key does that, but re-notifying a
+   * live key rewrites only its WORDS — the "ready" stage would arrive without
+   * its Restart button, or keep a sticky/variant it no longer means. So the
+   * old one is dismissed first: same slot, the whole new toast.
    */
   #show(opts) {
     this.#notifications.dismiss(TOAST_KEY);

@@ -56,7 +56,10 @@ function ensureDir(dir) {
 
 /**
  * Distinctive infix marking write temp files. Real data files never contain
- * it, so cleanup can match orphans with no risk of touching real documents.
+ * it, so an orphan (a crash between write and rename) can be told apart from a
+ * real document by name alone. Nothing sweeps them today — `isTempFileName` is
+ * what the tests use to prove a write left none behind, and what a sweep would
+ * match on.
  */
 const TEMP_INFIX = ".chiphippotmp-";
 
@@ -282,10 +285,16 @@ function quarantineCorruptFile(filePath, parseErr) {
  * quarantined aside (see {@link quarantineCorruptFile}) and likewise reported
  * as `null`, so one bad document degrades gracefully instead of failing the
  * entire load. Other read errors (EACCES, EISDIR) still throw.
+ *
+ * Quarantine is for files the APP owns (settings, the working slot). A file
+ * the USER chose — a project opened from anywhere on disk — must be read with
+ * `{quarantine: false}`: renaming it out from under them, with nothing said,
+ * is how opening a truncated project used to make it vanish from its folder.
  * @param {string} filePath
+ * @param {{quarantine?: boolean}} [opts]
  * @returns {*}
  */
-function readJSON(filePath) {
+function readJSON(filePath, { quarantine = true } = {}) {
   let raw;
   try {
     raw = fs.readFileSync(filePath, "utf8");
@@ -297,7 +306,7 @@ function readJSON(filePath) {
     return JSON.parse(raw);
   } catch (err) {
     // Parse failure ⇒ the file is corrupt. Quarantine + degrade to "missing".
-    quarantineCorruptFile(filePath, err);
+    if (quarantine) quarantineCorruptFile(filePath, err);
     return null;
   }
 }

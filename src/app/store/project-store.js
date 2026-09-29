@@ -244,6 +244,18 @@ class ProjectStore {
   }
 
   /** Is `filePath` inside the app's own saves directory? */
+  /**
+   * Parse a file this store was asked to read. Only the app's own working slot
+   * may be quarantined when it is corrupt; any other path is the user's file,
+   * and is reported unreadable where it lies rather than renamed.
+   */
+  _readRaw(filePath) {
+    const own =
+      typeof filePath === "string" &&
+      path.resolve(filePath) === path.resolve(this.defaultProjectPath);
+    return io.readJSON(filePath, { quarantine: own });
+  }
+
   isInsideSaves(filePath) {
     if (typeof filePath !== "string" || !filePath) return false;
     const resolved = path.resolve(filePath);
@@ -296,8 +308,8 @@ class ProjectStore {
    * `warnings` (when present) is what the migration could not bring across —
    * neither field is ever stored.
    */
-  read(filePath) {
-    const raw = io.readJSON(filePath);
+  read(filePath, { hydrate = true } = {}) {
+    const raw = this._readRaw(filePath);
     if (!raw || typeof raw !== "object") return null;
     let meta = null;
     let warnings = [];
@@ -319,7 +331,7 @@ class ProjectStore {
       if (snapshot) meta = this._normalize(projectOf(snapshot), true);
     }
     if (!meta) return null;
-    hydrateImages(imagesOf(raw), this._memory);
+    if (hydrate) hydrateImages(imagesOf(raw), this._memory);
     const resolved = path.resolve(filePath);
     // A project knows where it lives — EXCEPT in the working slot, which is
     // what "no location" means. A loose design is not a project file at all,
@@ -490,18 +502,22 @@ class ProjectStore {
    *   images: object|null}|null}
    */
   readDesktopSnapshot(filePath) {
-    const raw = io.readJSON(filePath);
+    const raw = this._readRaw(filePath);
     if (!raw || typeof raw !== "object") return null;
     if (isProjectShape(raw)) {
-      const meta = this.read(filePath); // migrates + hydrates, whatever it is
+      // Migrates, but must NOT hydrate: the file's chips carry the guids they
+      // were saved with, and when it is a copy or a backup of the project that
+      // is OPEN, those are the open project's own sidecars — hydrating wrote the
+      // file's old bytes over them. The bytes travel as `images` instead, and
+      // the reseat gives them to fresh guids.
+      const meta = this.read(filePath, { hydrate: false });
       const tab = meta?.tabs.find((t) => t.id === meta.activeTab);
       if (!tab) return null;
       return {
         name: tab.name,
         description: tab.description ?? "",
         doc: tab.doc,
-        // `read` has already hydrated the cache, so a reseat finds the files.
-        images: null,
+        images: imagesOf(raw),
       };
     }
     return this._asSnapshot(raw, nameFromFile(filePath));

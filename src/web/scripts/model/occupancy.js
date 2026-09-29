@@ -166,9 +166,6 @@ export function partPinHoles(ref, anchor, params) {
   return null; // a PSU has terminals, not board pins
 }
 
-/** Back-compat alias (Feature 40 name) — same derivation for chips. */
-export const chipPinHoles = partPinHoles;
-
 /**
  * The board + hole under a world point, with the hole's exact world position,
  * or null over bare desk (or over a board but between holes).
@@ -569,6 +566,3 @@ export function canPlacePart(
   }
   return true;
 }
-
-/** Back-compat alias (Feature 40 name). */
-export const canPlaceChip = canPlacePart;

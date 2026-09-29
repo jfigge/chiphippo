@@ -162,6 +162,40 @@ test("a good counter passes, and its display is read through the burn rule", () 
   );
 });
 
+test("a FALLING-edge part sees as many edges as it is asked for", () => {
+  // A 74LS76 wired to toggle: each clock pulse flips 1Q on its falling edge.
+  // One `edge` used to be L then H from a LOW start — every rising edge but
+  // one falling edge short — so this design failed its own first test.
+  const spec = {
+    title: "toggle",
+    parts: [
+      { id: "FF", ref: "74LS76" },
+      { id: "CLK", ref: "clock" },
+    ],
+    nets: [
+      {
+        name: "HOLD",
+        members: ["FF.1J", "FF.1K", "FF.1PRE", "FF.1CLR", "VCC"],
+      },
+      { name: "CLOCK", members: ["CLK.out", "FF.1CLK"] },
+      { name: "CLKGND", members: ["CLK.gnd", "GND"] },
+    ],
+    tests: [
+      { name: "one pulse sets it", edges: 1, expect: { "FF.1Q": "H" } },
+      { name: "two pulses clear it", edges: 2, expect: { "FF.1Q": "L" } },
+      { name: "three set it again", edges: 3, expect: { "FF.1Q": "H" } },
+    ],
+  };
+  const v = verifyBuild(compile(spec), spec);
+  assert.deepEqual(v.faults, [], "no faults");
+  assert.equal(v.results.length, 3, "all three tests ran");
+  assert.deepEqual(
+    v.results.filter((r) => !r.ok),
+    [],
+    "every test passes",
+  );
+});
+
 // ── L7 catches what nothing else can: a correct circuit, wrong intent ───────
 
 test("a wrong expectation fails as REPAIR, naming actual vs expected", () => {

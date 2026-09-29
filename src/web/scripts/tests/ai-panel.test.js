@@ -991,3 +991,36 @@ test("AiPanel: the mode picker and the compose box agree", () => {
     "the compose box says what THIS mode does with it",
   );
 });
+
+test("a second click while main is still answering cancels — it never sends twice", async () => {
+  resetDom();
+  const starts = [];
+  const cancels = [];
+  let answer;
+  window.chiphippo = {
+    ai: {
+      // Main has not answered yet: the reply is held until the test says so.
+      start: (config, system, messages) => {
+        starts.push([...messages]);
+        return new Promise((resolve) => (answer = resolve));
+      },
+      cancel: async (id) => {
+        cancels.push(id);
+        return { ok: true };
+      },
+    },
+  };
+  // Review: an empty box is a valid send, so the second click is one too.
+  const { container } = mountReview();
+  ask(container, "");
+  ask(container, ""); // the button is still live in the gap
+  assert.equal(starts.length, 1, "one request, not two");
+  // The reply that lands afterwards belongs to a cancelled request: it is
+  // cancelled in main rather than adopted.
+  answer({ ok: true, requestId: "r1" });
+  await new Promise((r) => setTimeout(r, 0));
+  assert.deepEqual(cancels, ["r1"]);
+  // …and the panel is idle again: the next click starts afresh.
+  ask(container, "");
+  assert.equal(starts.length, 2);
+});

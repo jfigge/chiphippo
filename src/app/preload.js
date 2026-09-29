@@ -151,6 +151,9 @@ contextBridge.exposeInMainWorld("chiphippo", {
   // to stay open. Main waits for this indefinitely — it is a user decision —
   // so every path through the renderer's guard must reply exactly once.
   closeReply: (ok) => ipcRenderer.invoke("app:close-reply", ok === true),
+  // Said once the renderer's close handler is registered: until then main has
+  // nobody to ask, and lets a close proceed rather than wait on no answer.
+  closeReady: () => ipcRenderer.invoke("app:close-ready"),
 
   // ── App settings (Feature 10) ──────────────────────────────────────────────
   // A single preferences document in main (store/settings-store.js): the desk

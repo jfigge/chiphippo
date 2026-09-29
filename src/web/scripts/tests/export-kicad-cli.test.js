@@ -81,11 +81,23 @@ function modelGroups(doc) {
   return [...byNet.values()].map((g) => g.sort());
 }
 
+/**
+ * ERC findings that describe the MACHINE, not the export: a KiCad whose global
+ * footprint table has never been set up (a fresh install, a CI image) reports
+ * every standard library a symbol names — `Package_DIP`, `Resistor_THT` — as
+ * missing. The footprint names are KiCad's own, so this says nothing about
+ * what we wrote, and failing on it made the test pass or fail by who ran it.
+ */
+const ENVIRONMENT_ONLY = new Set(["footprint_link_issues"]);
+
 test(
   "KiCad reads every demo's export: ERC clean, netlist identical",
   { skip: !available && `no ${CLI}`, timeout: 30 * 60 * 1000 },
   () => {
     const root = fs.mkdtempSync(path.join(os.tmpdir(), "chiphippo-kicad-"));
+    // Every demo is checked before anything is asserted: one bench stopping
+    // the run hid how many others shared its fault.
+    const failures = [];
     try {
       for (const { ref, doc } of demoDocs()) {
         const dir = path.join(root, ref);
@@ -97,36 +109,39 @@ test(
         const sch = `${ref}.kicad_sch`;
         const run = (...args) => {
           const r = spawnSync(CLI, args, { cwd: dir, encoding: "utf8" });
-          assert.equal(
-            r.status,
-            0,
-            `${ref}: kicad-cli ${args[1]}: ${r.stderr}`,
-          );
+          if (r.status !== 0) {
+            failures.push(`${ref}: kicad-cli ${args[1]}: ${r.stderr}`);
+          }
+          return r.status === 0;
         };
-        run("sch", "erc", "--severity-all", "--format", "json", "-o", "erc.json", sch); // prettier-ignore
-        const erc = JSON.parse(fs.readFileSync(path.join(dir, "erc.json"), "utf8")); // prettier-ignore
-        const violations = erc.sheets.flatMap((s) => s.violations);
-        assert.deepEqual(
-          violations.map((v) => `${v.severity} ${v.type}: ${v.description}`),
-          [],
-          `${ref}: ERC`,
-        );
-        run("sch", "export", "netlist", "--format", "kicadsexpr", "-o", "out.net", sch); // prettier-ignore
+        const erc = ["sch", "erc", "--severity-all", "--format", "json"];
+        if (run(...erc, "-o", "erc.json", sch)) {
+          const report = JSON.parse(
+            fs.readFileSync(path.join(dir, "erc.json"), "utf8"),
+          );
+          for (const v of report.sheets.flatMap((s) => s.violations)) {
+            if (ENVIRONMENT_ONLY.has(v.type)) continue;
+            failures.push(
+              `${ref}: ERC ${v.severity} ${v.type}: ${v.description}`,
+            );
+          }
+        }
+        const netlist = ["sch", "export", "netlist", "--format", "kicadsexpr"];
+        if (!run(...netlist, "-o", "out.net", sch)) continue;
         const theirs = kicadGroups(
           fs.readFileSync(path.join(dir, "out.net"), "utf8"),
         );
-        const ours = modelGroups(doc);
         const key = (g) => g.join(" ");
         const theirSet = new Set(theirs.map(key));
-        for (const group of ours) {
-          assert.ok(
-            theirSet.has(key(group)),
-            `${ref}: KiCad joins ${key(group)}`,
-          );
+        for (const group of modelGroups(doc)) {
+          if (!theirSet.has(key(group))) {
+            failures.push(`${ref}: KiCad does not join ${key(group)}`);
+          }
         }
       }
     } finally {
       fs.rmSync(root, { recursive: true, force: true });
     }
+    assert.deepEqual(failures, []);
   },
 );

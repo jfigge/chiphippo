@@ -32,7 +32,10 @@
 import { t } from "../i18n.js";
 import { PopupManager } from "../popup-manager.js";
 import { exportDesktop, exportable } from "../model/export/index.js";
-import { openExportReport, reportWorthShowing } from "./export-report-dialog.js";
+import {
+  openExportReport,
+  reportWorthShowing,
+} from "./export-report-dialog.js";
 
 /** The targets' product names: shown as they are in every language. */
 export const FORMAT_NAMES = Object.freeze({

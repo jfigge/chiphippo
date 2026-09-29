@@ -46,6 +46,10 @@ export class MemoryBridge {
   #bridge;
   #notifications;
   #onImagesChanged;
+  // Chips whose inspector window has announced itself this session. A window
+  // closed since is harmless to address: main drops a message with nowhere
+  // to go.
+  #windows = new Set();
 
   /**
    * @param {object} opts
@@ -159,6 +163,7 @@ export class MemoryBridge {
   /** A window is up: make sure a ROM's file exists (warn on a lost one), then
       hand it its context. */
   async #onReady(compId) {
+    this.#windows.add(compId);
     await this.#ensureFile(compId);
     this.#sendContext(compId);
   }
@@ -166,9 +171,9 @@ export class MemoryBridge {
   /** Persist inspector hand-edits to a ROM's file (Save) + flag it programmed. */
   async #save(compId, bytes) {
     if (this.#sim?.running) {
-      // The requesting window's own "running" flag only updates on ready/
-      // program/stop — it can be stale (e.g. Run started after it opened).
-      // This is the authoritative check: never let a live ROM's backing file
+      // The requesting window is told when a run starts and stops, but a Save
+      // can cross that message in flight — so this, not the window's own
+      // flag, is the authoritative check: never let a live ROM's backing file
       // be overwritten out from under the running simulation's own image.
       return this.#warn(
         "danger",
@@ -241,6 +246,11 @@ export class MemoryBridge {
   #onMemState = (e) => {
     const detail = e.detail ?? {};
     if (detail.running) {
+      // A run starting: each window that has spoken gets its running context
+      // (the live image, and "running" — so it stops offering edits).
+      if (detail.started) {
+        for (const compId of this.#windows) this.#sendContext(compId);
+      }
       for (const [compId, changes] of detail.changes ?? new Map()) {
         this.#relay(compId, { kind: "bytes", changes });
       }

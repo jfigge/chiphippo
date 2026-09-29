@@ -125,6 +125,7 @@ function fakeNotifications() {
   return {
     calls,
     notify: (o) => calls.push(o),
+    dismiss: (key) => calls.push({ dismissed: key }),
     clear: () => calls.push({ cleared: true }),
   };
 }
@@ -171,7 +172,28 @@ test("stop clears notifications, publishes not-running, keeps run state off", ()
   assert.deepEqual(modes, ["running", "stopped"]);
   assert.equal(events.at(-1).running, false);
   assert.deepEqual(events.at(-1).netLevels, new Map()); // views clear
-  assert.ok(notifications.calls.some((c) => c.cleared)); // clear() ran
+  // Stop takes down its OWN toasts, never the whole stack.
+  assert.ok(!notifications.calls.some((c) => c.cleared));
+});
+
+test("Stop dismisses the run's toasts and leaves everyone else's", () => {
+  resetDom();
+  const notifications = fakeNotifications();
+  const sim = new SimController({
+    deskDoc: fakeDoc(poweredDoc(12)), // 12 V: the chip lets its smoke out
+    notifications,
+  });
+  sim.start();
+  const raised = notifications.calls.filter((c) => c.key).map((c) => c.key);
+  assert.ok(raised.length > 0, "the run raised something");
+  sim.stop();
+  const dismissed = notifications.calls
+    .filter((c) => c.dismissed)
+    .map((c) => c.dismissed);
+  assert.deepEqual(dismissed.sort(), [...new Set(raised)].sort());
+  // The updater's sticky Restart offer, the auto-route Cancel: not the sim's
+  // to take down, and a whole-stack clear used to.
+  assert.ok(!notifications.calls.some((c) => c.cleared));
 });
 
 test("pause freezes the transport; resume returns to running", () => {
@@ -510,6 +532,34 @@ test("pausing one clock touches ONLY its own timer", () => {
 
   const resumed = captureTimers(() => sim.toggleClockPause("clk1"));
   assert.deepEqual(resumed, { started: [500], cleared: [] }, "clk1's alone");
+  sim.stop();
+});
+
+test("an edit while running retimes only the clock it changed", () => {
+  // Every switch flip is a doc change. Restarting every timer on each one put
+  // every clock's next edge back by a whole half-period — flip a switch faster
+  // than a slow clock's half-period and that clock never ticked at all.
+  resetDom();
+  const raw = twoClockDoc();
+  const deskDoc = fakeDoc(raw);
+  const sim = new SimController({
+    deskDoc,
+    notifications: fakeNotifications(),
+  });
+  captureTimers(() => sim.start());
+  const flip = () =>
+    window.dispatchEvent(new window.CustomEvent("chiphippo:doc-changed"));
+
+  // Nothing about a clock changed: no timer is touched.
+  assert.deepEqual(captureTimers(flip), { started: [], cleared: [] });
+
+  // One clock re-rated: its timer alone is restarted, at the new rate.
+  deskDoc.setComponentParams("clk2", { hz: 5 });
+  assert.deepEqual(captureTimers(flip), { started: [100], cleared: [250] });
+
+  // One clock deleted: its timer alone stops.
+  deskDoc.toJSON().components.splice(0, 1);
+  assert.deepEqual(captureTimers(flip), { started: [], cleared: [500] });
   sim.stop();
 });
 

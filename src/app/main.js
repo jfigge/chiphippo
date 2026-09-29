@@ -20,11 +20,11 @@
 // main.js — Electron main process for Chip Hippo.
 //
 // Owns all native I/O and exposes it to the sandboxed renderer only through
-// the window.chiphippo bridge (preload.js). Stage 00 is a bare shell: the
-// hardened BrowserWindow, hot reload under --hot-reload, the single-instance
-// lock, and the first two IPC handlers. Later stages add stores, autosave and
-// the rest of the bridge here — keep every ipcMain handler in lockstep with
-// preload.js.
+// the window.chiphippo bridge (preload.js): the hardened windows, the
+// single-instance lock, the application menu, the close/quit guard, the
+// project file and its path gate (`knownPath`), and most IPC handlers (serial
+// and export live in ipc/). Keep every ipcMain handler in lockstep with
+// preload.js — app/tests/ipc-parity.test.js holds them to it.
 "use strict";
 
 const {
@@ -51,7 +51,7 @@ const { CredentialStore } = require("./store/credential-store");
 const { BookmarkStore } = require("./store/bookmark-store");
 const aiClient = require("./ai/client");
 const aiProviders = require("./ai/providers");
-const { SettingsStore } = require("./store/settings-store");
+const { SettingsStore, rendererPatch } = require("./store/settings-store");
 const { DeskStore } = require("./store/desk-store");
 const {
   ProjectStore,
@@ -541,7 +541,12 @@ function bootProject() {
   return store.newProject();
 }
 
-/** Show the Open dialog for a PROJECT file; read it. Returns the meta|null. */
+/**
+ * Show the Open dialog for a PROJECT file; read it. Returns the meta, null for
+ * a cancel, or `{ok:false, code:"invalid"}` for a file that holds no project —
+ * which must not read back as a cancel, or picking a damaged file does nothing
+ * at all and says nothing about why.
+ */
 async function openProjectDialog() {
   const win = mainWindow && !mainWindow.isDestroyed() ? mainWindow : null;
   const opts = getBookmarks().dialogOpts({
@@ -556,7 +561,8 @@ async function openProjectDialog() {
   // Mint here, while the panel's grant is fresh — this is what lets a LATER
   // session open the same file from the recent list.
   getBookmarks().captureOpen(result);
-  return adoptProject(path.resolve(result.filePaths[0]));
+  const project = adoptProject(path.resolve(result.filePaths[0]));
+  return project ?? { ok: false, code: "invalid" };
 }
 
 /**
@@ -621,9 +627,7 @@ function openRecentProject(filePath) {
   }
   try {
     const project = bookmarks.withAccess(wanted, () => adoptProject(wanted));
-    if (!project) {
-      return { ok: false, code: "error", error: "not a project file" };
-    }
+    if (!project) return { ok: false, code: "invalid" };
     return { ok: true, project };
   } catch (err) {
     return { ok: false, code: "error", error: err.message };
@@ -674,7 +678,7 @@ async function regrantProject(filePath) {
   getBookmarks().captureOpen(result);
   try {
     const project = adoptProject(wanted);
-    if (!project) return { ok: false, code: "error", error: "not a project file" }; // prettier-ignore
+    if (!project) return { ok: false, code: "invalid" };
     return { ok: true, project };
   } catch (err) {
     return { ok: false, code: "error", error: err.message };
@@ -811,7 +815,22 @@ async function chooseDatasheetDir() {
   // one. The renderer separately persists the plain path as a setting; the
   // capability stays on this side.
   getBookmarks().captureOpen(result);
-  return result.filePaths[0];
+  return establishPath(result.filePaths[0]);
+}
+
+/**
+ * May the renderer point Settings ▸ Data Sheets at `dir`? Only at a folder a
+ * dialog handed over this session, the app's own download folder, or the one
+ * already stored (re-sending the current value changes nothing).
+ */
+function mayUseDatasheetDir(dir) {
+  const resolved = path.resolve(dir);
+  const current = safeCall("datasheet:current", () => getSettingsStore().get().datasheetDir, null); // prettier-ignore
+  return (
+    establishedPaths.has(resolved) ||
+    resolved === path.resolve(datasheetDir()) ||
+    (typeof current === "string" && resolved === path.resolve(current))
+  );
 }
 
 /** Natively open a part's external datasheet PDF (no-op when none is on file).
@@ -1795,7 +1814,7 @@ let serialIpc = null;
 
 // ─── IPC handlers ─────────────────────────────────────────────────────────────
 // Every channel registered here must have a matching window.chiphippo.* export
-// in preload.js (the ipc-parity test enforcing this lands in Feature 20).
+// in preload.js (app/tests/ipc-parity.test.js enforces it).
 function registerIpc() {
   serialIpc = registerSerialIpc({
     ipcMain,
@@ -1832,11 +1851,21 @@ function registerIpc() {
   // saved or discarded whatever was unsaved), `false` to stay. Resuming is
   // deferred to the next tick so this reply reaches the renderer before the
   // teardown it triggers.
-  ipcMain.handle("app:close-reply", (_event, ok) => {
+  // The page has registered its close handler, so there is somebody to ask.
+  ipcMain.handle("app:close-ready", (event) => {
+    if (event.sender !== mainWindow?.webContents) return false;
+    closeGuard.rendererReady();
+    return true;
+  });
+  ipcMain.handle("app:close-reply", (event, ok) => {
+    // Only the window that was asked may answer — every window loads the one
+    // preload, and a stray reply from a pinout must not close the desk.
+    if (event.sender !== mainWindow?.webContents) return false;
     const next = closeGuard.reply(ok);
     if (next === "stay") return false;
     setImmediate(() => {
-      if (next === "quit") app.quit();
+      if (next === "install") updater.quitAndInstall();
+      else if (next === "quit") app.quit();
       else if (mainWindow && !mainWindow.isDestroyed()) mainWindow.close();
     });
     return true;
@@ -1845,7 +1874,11 @@ function registerIpc() {
   // App settings (Feature 10): the desk viewport + window bounds live here;
   // later stages add their own keys. Writes are atomic (store/io.js).
   ipcMain.handle("settings:get", () => getSettingsStore().get());
-  ipcMain.handle("settings:set", (event, patch) => {
+  ipcMain.handle("settings:set", (event, raw) => {
+    // The renderer writes its own preferences, never main's: see
+    // `rendererPatch` for the keys it may not touch and the folder it may not
+    // name unvouched.
+    const patch = rendererPatch(raw, { mayUseDir: mayUseDatasheetDir });
     const next = getSettingsStore().set(patch);
     // Appearance holds the three settings main itself acts on. `theme` becomes
     // the native theme source, which every window (and the native chrome)
@@ -1901,8 +1934,16 @@ function registerIpc() {
     updater.checkForUpdates({ manual: true });
     return null;
   });
+  // Restart-to-update asks about unsaved work FIRST and installs only on a yes:
+  // electron-updater's quitAndInstall starts the installer before it quits
+  // (Windows, Linux), so letting it trigger the ordinary before-quit question
+  // left "Cancel" unable to stop the update it had already launched.
   ipcMain.handle("updater:install", () => {
-    updater.quitAndInstall();
+    if (closeGuard.allows() || !canAskRenderer(mainWindow)) {
+      updater.quitAndInstall();
+    } else {
+      askBeforeClose(mainWindow, { installing: true });
+    }
     return null;
   });
 
@@ -2449,23 +2490,31 @@ function createWindow() {
 // Main owns the lifecycle; the RENDERER owns the unsaved state and the dialog
 // that asks about it (`chiphippo:confirm-close` → `app:close-reply`). So a
 // close or a quit is prevented ONCE, the renderer is asked, and the answer
-// resumes or abandons it. A project is written deliberately (⌘S), never
-// autosaved, so this is the only thing standing between an unsaved design and
-// the window going away.
+// resumes or abandons it. The user's FILE is written only deliberately (⌘S);
+// the 30-second autosave goes to the app's own working slot, for crash
+// recovery — so this is the only thing standing between unsaved work and a
+// close that loses it from the file.
 //
 // There is deliberately NO timeout on the answer: the user may sit on that
 // dialog for as long as they like, and an app that quits out from under a
 // question is worse than one that waits. If the renderer is gone or crashed
 // there is nobody to ask, so the close simply proceeds.
 
-/** The handshake's own state machine (close-guard.js) — three flags and their
+/** The handshake's own state machine (close-guard.js) — its flags and their
     transitions, kept out of here so they can be tested without Electron. */
 const closeGuard = new CloseGuard();
 
-/** Is there a live renderer to put the question to? */
+/**
+ * Is there a live renderer to put the question to? The page says so itself
+ * (`app:close-ready` → `closeGuard.rendererReady`): `webContents.isDestroyed()`
+ * stays false after a renderer CRASH, and asking a dead page latched the guard
+ * on a reply that could never come — a window that could not be closed, and an
+ * app that could not be quit.
+ */
 function canAskRenderer(win) {
   return Boolean(
-    win && !win.isDestroyed() && win.webContents && !win.webContents.isDestroyed(), // prettier-ignore
+    closeGuard.answerable &&
+      win && !win.isDestroyed() && win.webContents && !win.webContents.isDestroyed(), // prettier-ignore
   );
 }
 
@@ -2481,8 +2530,8 @@ function canAskRenderer(win) {
  * `watchRendererForClose` below does that; the renderer's own guarantee that it
  * always replies is in `ProjectWorkspace#askUnsaved`.
  */
-function askBeforeClose(win, { quitting = false } = {}) {
-  if (!closeGuard.ask({ quitting })) return;
+function askBeforeClose(win, { quitting = false, installing = false } = {}) {
+  if (!closeGuard.ask({ quitting, installing })) return;
   win.webContents.send("app:confirm-close");
 }
 
@@ -2505,6 +2554,10 @@ function watchRendererForClose(win) {
   const release = () => closeGuard.rendererGone();
   win.webContents.on("render-process-gone", release);
   win.webContents.on("destroyed", release);
+  // A reload (hot reload, or a crashed page brought back) replaces the page that
+  // said it could answer; its successor says so again once it is up. A page that
+  // FAILS to load never does, so a close then simply proceeds.
+  win.webContents.on("did-start-loading", release);
 }
 
 /** Show and focus the window (the single-instance / dock-activate path). */

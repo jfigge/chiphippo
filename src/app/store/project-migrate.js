@@ -89,13 +89,11 @@ function isLegacyProject(raw) {
  * @param {string} opts.savesDir - this machine's app saves folder; an app-kept
  *   desktop's stored path is rebased onto it, exactly as v3's reader did, so a
  *   project file that travelled still finds the files the app was keeping.
- * @returns {{tabs: Array<object>, warnings: Array<string>,
- *   appKeptFiles: Array<string>}}
+ * @returns {{tabs: Array<object>, warnings: Array<string>}}
  */
 function migrateLegacyTabs(raw, { deskStore, savesDir }) {
   const tabs = [];
   const warnings = [];
-  const appKeptFiles = [];
   for (const tab of raw?.tabs ?? []) {
     if (!tab || typeof tab !== "object") continue;
     const id = text(tab.id);
@@ -130,23 +128,15 @@ function migrateLegacyTabs(raw, { deskStore, savesDir }) {
       warnings.push(`"${name}" could not be read (${err.message}).`);
       doc = defaultDeskDocument();
     }
-    if (isInside(file, savesDir)) appKeptFiles.push(file);
     tabs.push(makeTab(id, name, tab.description, doc));
   }
-  return { tabs, warnings, appKeptFiles };
+  return { tabs, warnings };
 }
 
 /** One v4 tab record, with the omit-when-empty description convention. */
 function makeTab(id, name, description, doc) {
   const desc = text(description);
   return { id, name, ...(desc ? { description: desc } : {}), doc };
-}
-
-/** Is `filePath` inside `dir`? (the app-kept test, path-only) */
-function isInside(filePath, dir) {
-  const resolved = path.resolve(filePath);
-  const root = path.resolve(dir);
-  return resolved === root || resolved.startsWith(root + path.sep);
 }
 
 /** fs.existsSync that can never throw the load. */

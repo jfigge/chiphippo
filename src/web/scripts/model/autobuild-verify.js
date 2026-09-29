@@ -679,6 +679,9 @@ export function tristateEnables(
       componentId: comp.id,
       pin: off.map(name).join(" and "),
       plural: off.length > 1,
+      // `level` is prose for the repair message; `unwired` is the same fact
+      // as a flag, for a caller that has to TEST it rather than quote it.
+      unwired,
       level: unwired ? "not wired at all" : "HIGH",
     };
     for (const p of pins) {
@@ -918,10 +921,15 @@ function runOne({ doc, netlist, partMap, test, namer }) {
       inspect();
     };
     step();
+    // One `edge` is one whole PULSE, LOW → HIGH → LOW, so a part triggered on
+    // either edge sees `edges` of them. Stepping L then H from a LOW start
+    // gave N rising edges but only N−1 falling ones: a falling-edge part
+    // (74LS73/76/107/112, 7490) asked for one edge saw none, and a correct
+    // design failed TEST_FAILED and was sent off to be "repaired".
     for (let e = 0; e < edges; e++) {
-      for (const id of clocks) phase.set(id, L);
-      step();
       for (const id of clocks) phase.set(id, H);
+      step();
+      for (const id of clocks) phase.set(id, L);
       step();
     }
   } else {

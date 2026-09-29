@@ -372,6 +372,27 @@ test("a [DONE] sentinel and non-JSON frames are tolerated", async () => {
   assert.deepEqual(seen, ["done"]);
 });
 
+test("CRLF-framed streams are read — a CR/LF pair split across chunks too", async () => {
+  // sse-starlette (llama-cpp-python's server) ends lines in CRLF; "\r\n\r\n"
+  // has no "\n\n" in it, so this stream used to yield nothing at all.
+  const crlf = 'data: {"n":1}\r\n\r\ndata: {"n":2}\r\n\r\ndata: [DONE]\r\n\r\n';
+  for (const cut of [1, 13, 14, 15, 16, crlf.length - 2]) {
+    const seen = [];
+    await readSSE(bodyOf([crlf.slice(0, cut), crlf.slice(cut)]), (json, done) =>
+      seen.push(done ? "done" : json.n),
+    );
+    assert.deepEqual(seen, [1, 2, "done"], `cut at ${cut}`);
+  }
+});
+
+test("bare-CR line endings, and a last frame with no blank line after it", async () => {
+  const seen = [];
+  await readSSE(bodyOf(['data: {"n":1}\r\rdata: {"n":2}']), (json) =>
+    seen.push(json.n),
+  );
+  assert.deepEqual(seen, [1, 2]);
+});
+
 // ── The client ──────────────────────────────────────────────────────────────
 
 test("a streamed answer accumulates and reports deltas as they arrive", async () => {

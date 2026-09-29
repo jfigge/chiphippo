@@ -225,7 +225,7 @@ export function reviewDesk(document, netlist) {
       pin: blame.pin,
       count: blame.plural ? 2 : 1,
     };
-    const unwired = blame.level === "not wired at all";
+    const unwired = blame.unwired === true;
     findings.push(
       finding(
         "OUTPUTS_DISABLED",

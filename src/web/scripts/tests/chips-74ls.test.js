@@ -417,24 +417,25 @@ test("74LS181: 4-bit ALU — logic mode covers all 16 functions", () => {
     );
   const mask = 0xf;
   const comp = (x) => ~x & mask;
-  // The 16 functions, in S0..S3 order, per the datasheet's active-HIGH
-  // function table (DM74LS181, DS009821).
+  // The 16 functions, in S3..S0 order, per the datasheet's ACTIVE-HIGH data
+  // table (TI SN74LS181 / Fairchild DM74LS181). S=0001 is NOR and S=0100 is
+  // NAND — the other way round is the ACTIVE-LOW table's column.
   const expected = [
-    comp(A), // 0000: A'
-    comp(A & B), // 0001: NAND
-    comp(A) & B, // 0010: A'B
-    0, // 0011: Logic 0
-    comp(A | B), // 0100: NOR
-    comp(B), // 0101: B'
-    A ^ B, // 0110: XOR
-    A & comp(B), // 0111: AB'
-    comp(A) | B, // 1000: A'+B
-    comp(A ^ B), // 1001: XNOR
+    comp(A), // 0000: Ā
+    comp(A | B), // 0001: ¬(A + B)  NOR
+    comp(A) & B, // 0010: ĀB
+    0, // 0011: logic 0
+    comp(A & B), // 0100: ¬(AB)  NAND
+    comp(B), // 0101: B̄
+    A ^ B, // 0110: A ⊕ B
+    A & comp(B), // 0111: AB̄
+    comp(A) | B, // 1000: Ā + B
+    comp(A ^ B), // 1001: ¬(A ⊕ B)
     B, // 1010: B
     A & B, // 1011: AB
-    mask, // 1100: Logic 1
-    A | comp(B), // 1101: A+B'
-    A | B, // 1110: OR
+    mask, // 1100: logic 1
+    A | comp(B), // 1101: A + B̄
+    A | B, // 1110: A + B
     A, // 1111: A
   ];
   expected.forEach((exp, sel) => {
@@ -444,7 +445,7 @@ test("74LS181: 4-bit ALU — logic mode covers all 16 functions", () => {
   assert.equal(new Set(expected.map((v) => v & mask)).size, 16);
 });
 
-test("74LS181: 4-bit ALU — arithmetic mode add/subtract with carry", () => {
+test("74LS181: 4-bit ALU — all 16 arithmetic functions, every operand and carry", () => {
   const def = chipDef("74LS181");
   const aPins = [2, 23, 21, 19];
   const bPins = [1, 22, 20, 18];
@@ -455,34 +456,103 @@ test("74LS181: 4-bit ALU — arithmetic mode add/subtract with carry", () => {
     Object.fromEntries(bits(v).map((b, i) => [pins[i], b ? H : L]));
   const readF = (out) =>
     fPins.reduce((n, p, i) => n + (out.get(p) === H ? 1 << i : 0), 0);
-  const run = (a, b, sel, cinLow) =>
-    evaluate(
-      def,
-      lv({
-        ...pinLevels(aPins, a),
-        ...pinLevels(bPins, b),
-        ...pinLevels(sPins, sel),
-        8: L, // M=L: arithmetic mode
-        7: cinLow ? L : H, // Cn active-low
-      }),
-    );
-  // S=0001 "A+B": 9 + 3 = 12, no carry (12 < 16).
-  let out = run(9, 3, 0b0001, false);
-  assert.equal(readF(out), 12);
-  assert.equal(out.get(16), L); // Cn+4
-  // S=0001 "A+B": 15 + 1 = 16 → sum wraps to 0, carry out.
-  out = run(15, 1, 0b0001, false);
-  assert.equal(readF(out), 0);
-  assert.equal(out.get(16), H);
-  // S=0110 with Cn asserted (LOW): the classic "A minus B" subtractor.
-  // 9 - 3 = 6, no borrow → Cn+4 HIGH.
-  out = run(9, 3, 0b0110, true);
-  assert.equal(readF(out), 6);
-  assert.equal(out.get(16), H);
-  // 3 - 9 = -6 ≡ 10 (mod 16), a borrow occurred → Cn+4 LOW.
-  out = run(3, 9, 0b0110, true);
-  assert.equal(readF(out), 10);
-  assert.equal(out.get(16), L);
+  const nb = (b) => ~b & 0xf;
+  // The datasheet's ACTIVE-HIGH arithmetic column (M = L, Cn = H: no carry),
+  // in S3..S0 order. In its notation "+" is OR and "plus" is addition, so
+  // S=0001 is A OR B — not A plus B, which is S=1001. "minus 1" is plus 15.
+  const ARITH = [
+    (a) => a, // 0000: A
+    (a, b) => a | b, // 0001: A + B
+    (a, b) => a | nb(b), // 0010: A + B̄
+    () => 15, // 0011: minus 1 (two's complement)
+    (a, b) => a + (a & nb(b)), // 0100: A plus AB̄
+    (a, b) => (a | b) + (a & nb(b)), // 0101: (A + B) plus AB̄
+    (a, b) => a + nb(b), // 0110: A minus B minus 1
+    (a, b) => (a & nb(b)) + 15, // 0111: AB̄ minus 1
+    (a, b) => a + (a & b), // 1000: A plus AB
+    (a, b) => a + b, // 1001: A plus B
+    (a, b) => (a | nb(b)) + (a & b), // 1010: (A + B̄) plus AB
+    (a, b) => (a & b) + 15, // 1011: AB minus 1
+    (a) => a + a, // 1100: A plus A
+    (a, b) => (a | b) + a, // 1101: (A + B) plus A
+    (a, b) => (a | nb(b)) + a, // 1110: (A + B̄) plus A
+    (a) => a + 15, // 1111: A minus 1
+  ];
+  for (let sel = 0; sel < 16; sel++) {
+    for (let a = 0; a < 16; a++) {
+      for (let b = 0; b < 16; b++) {
+        for (const carry of [0, 1]) {
+          const out = evaluate(
+            def,
+            lv({
+              ...pinLevels(aPins, a),
+              ...pinLevels(bPins, b),
+              ...pinLevels(sPins, sel),
+              8: L, // M=L: arithmetic mode
+              7: carry ? L : H, // Cn is active-LOW: L asserts a carry
+            }),
+          );
+          const total = ARITH[sel](a, b) + carry;
+          const at = `S=${sel.toString(2).padStart(4, "0")} A=${a} B=${b} c=${carry}`; // prettier-ignore
+          assert.equal(readF(out), total & 0xf, `${at}: F`);
+          // Cn+4 is active-LOW too, so it wires straight to the next ALU's Cn.
+          assert.equal(out.get(16), total > 15 ? L : H, `${at}: Cn+4`);
+        }
+      }
+    }
+  }
+});
+
+test("74LS181: the carry cascades — Cn+4 into the next chip's Cn adds 8 bits", () => {
+  const def = chipDef("74LS181");
+  const aPins = [2, 23, 21, 19];
+  const bPins = [1, 22, 20, 18];
+  const fPins = [9, 10, 11, 13];
+  const bits = (v) => [v & 1, (v >> 1) & 1, (v >> 2) & 1, (v >> 3) & 1];
+  const pinLevels = (pins, v) =>
+    Object.fromEntries(bits(v).map((b, i) => [pins[i], b ? H : L]));
+  const readF = (out) =>
+    fPins.reduce((n, p, i) => n + (out.get(p) === H ? 1 << i : 0), 0);
+  // S=1001 (A plus B), M=L, the low chip's Cn HIGH (no carry in).
+  const add = { 6: H, 5: L, 4: L, 3: H, 8: L };
+  for (const [x, y] of [
+    [0x0f, 0x01],
+    [0x7a, 0x86],
+    [0xff, 0xff],
+    [0x12, 0x34],
+  ]) {
+    const lo = evaluate(def, lv({ ...add, ...pinLevels(aPins, x & 15), ...pinLevels(bPins, y & 15), 7: H })); // prettier-ignore
+    const hi = evaluate(def, lv({ ...add, ...pinLevels(aPins, x >> 4), ...pinLevels(bPins, y >> 4), 7: lo.get(16) })); // prettier-ignore
+    const sum = x + y;
+    assert.equal((readF(hi) << 4) | readF(lo), sum & 0xff, `${x}+${y}`);
+    assert.equal(hi.get(16), sum > 0xff ? L : H, `${x}+${y}: carry out`);
+  }
+});
+
+test("74LS181: G and P are the group generate/propagate, carry-in blind", () => {
+  const def = chipDef("74LS181");
+  const aPins = [2, 23, 21, 19];
+  const bPins = [1, 22, 20, 18];
+  const bits = (v) => [v & 1, (v >> 1) & 1, (v >> 2) & 1, (v >> 3) & 1];
+  const pinLevels = (pins, v) =>
+    Object.fromEntries(bits(v).map((b, i) => [pins[i], b ? H : L]));
+  // A plus B: bit i generates when Ai·Bi and propagates when Ai + Bi.
+  const add = { 6: H, 5: L, 4: L, 3: H, 8: L };
+  for (let a = 0; a < 16; a++) {
+    for (let b = 0; b < 16; b++) {
+      for (const cn of [L, H]) {
+        const out = evaluate(def, lv({ ...add, ...pinLevels(aPins, a), ...pinLevels(bPins, b), 7: cn })); // prettier-ignore
+        const generate = a + b > 15;
+        const propagate = (a | b) === 15;
+        assert.equal(out.get(17), generate ? L : H, `A=${a} B=${b}: Ḡ`);
+        assert.equal(out.get(15), propagate ? L : H, `A=${a} B=${b}: P̄`);
+      }
+    }
+  }
+  // The datasheet's own worked case: A = B = 1000 generates from bit 3 but
+  // does not propagate through bits 0–2.
+  const out = evaluate(def, lv({ ...add, ...pinLevels(aPins, 8), ...pinLevels(bPins, 8), 7: H })); // prettier-ignore
+  assert.equal(out.get(15), H);
 });
 
 test("74LS181: 4-bit ALU — A=B output", () => {

@@ -282,3 +282,16 @@ test("a QUEUED positioned popup is placed when it MOUNTS, not when asked for", (
   assert.equal(queued.style.top, "60px");
   PopupManager.close();
 });
+
+test("notify's default button speaks the catalog, not a hard-coded English word", () => {
+  resetDom();
+  PopupManager.notify({ title: "t", message: "m" });
+  const labels = [...document.querySelectorAll(".popup-notify button")]
+    .map((b) => b.textContent)
+    .filter((text) => text.trim());
+  // jsdom-setup installs the real en.json: `common.ok` is "OK". The default
+  // used to be a literal "Dismiss" in every language.
+  assert.ok(labels.includes("OK"), labels.join(", "));
+  assert.ok(!labels.includes("Dismiss"));
+  PopupManager.close();
+});

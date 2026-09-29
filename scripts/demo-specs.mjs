@@ -260,17 +260,25 @@ const SEL_B = [false, true, true, false];
 
 /**
  * The 74LS181's logic-mode functions (M = HIGH), from the datasheet's
- * ACTIVE-HIGH data table, keyed by S3S2S1S0. Only the functions the demo pins
- * down are here — the rest of the table is the part's business, not this
- * demo's claim.
+ * ACTIVE-HIGH data table, keyed by S3S2S1S0 — all sixteen, since the demo's
+ * note promises "the rest of the sixteen". In that table's notation "+" is OR:
+ * S=0001 is NOR and S=0100 is NAND (swapped, they are the ACTIVE-LOW column).
  */
 const ALU_LOGIC = Object.freeze({
   0b0000: (a) => ~a, // Ā
+  0b0001: (a, b) => ~(a | b), // ¬(A + B)
+  0b0010: (a, b) => ~a & b, // ĀB
   0b0011: () => 0, // logic 0
+  0b0100: (a, b) => ~(a & b), // ¬(AB)
+  0b0101: (a, b) => ~b, // B̄
   0b0110: (a, b) => a ^ b, // A ⊕ B
+  0b0111: (a, b) => a & ~b, // AB̄
+  0b1000: (a, b) => ~a | b, // Ā + B
   0b1001: (a, b) => ~(a ^ b), // A ⊙ B
+  0b1010: (a, b) => b, // B
   0b1011: (a, b) => a & b, // A · B
   0b1100: () => 0xf, // logic 1
+  0b1101: (a, b) => a | ~b, // A + B̄
   0b1110: (a, b) => a | b, // A + B
   0b1111: (a) => a, // A
 });
@@ -1391,18 +1399,15 @@ export const DEMOS = Object.freeze([
       label: `F${i}`,
       color: "green",
     })),
-    // Twelve switched inputs is 4096 combinations — check the functions the
-    // demo actually claims, against two fixed operands.
+    // Twelve switched inputs is 4096 combinations — check all sixteen
+    // functions against two fixed operands.
     cases: Object.keys(ALU_LOGIC).map((sel) => [
       ...bitsOf(0b1010, 4), // A = 10
       ...bitsOf(0b0110, 4), // B = 6
       ...bitsOf(Number(sel), 4),
     ]),
-    expect: (v) => {
-      const fn = ALU_LOGIC[word(v, 8, 4)];
-      if (!fn) return null; // a function this demo doesn't pin down
-      return bitsOf(fn(word(v, 0, 4), word(v, 4, 4)) & 0xf, 4);
-    },
+    expect: (v) =>
+      bitsOf(ALU_LOGIC[word(v, 8, 4)](word(v, 0, 4), word(v, 4, 4)) & 0xf, 4),
   },
 ]);
 

@@ -79,7 +79,10 @@ function partLine(comp, def) {
   }
   if (comp.kind === "psu") bits.push(`${comp.params?.volts ?? 5} V`);
   if (comp.kind === "clock") {
-    bits.push(comp.params?.hz ? `${comp.params.hz} Hz` : "manual");
+    // `hz` is a number or the string "manual" — which is truthy, and used to
+    // brief a click-to-toggle clock as running at "manual Hz".
+    const hz = comp.params?.hz;
+    bits.push(Number.isFinite(hz) ? `${hz} Hz` : "manual");
   }
   return bits.join("  ");
 }

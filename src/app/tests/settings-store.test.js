@@ -25,7 +25,12 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 
-const { SettingsStore, DEFAULTS } = require("../store/settings-store");
+const {
+  SettingsStore,
+  DEFAULTS,
+  MAIN_OWNED,
+  rendererPatch,
+} = require("../store/settings-store");
 
 function freshStore() {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "chiphippo-settings-"));
@@ -151,4 +156,33 @@ test("a corrupt settings file degrades to the defaults", () => {
   } finally {
     fs.rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test("rendererPatch: main's own keys never come from the renderer", () => {
+  // `recentProjects` is the Open Recent allowlist: writable from the renderer,
+  // it made every other path gate moot.
+  const patch = rendererPatch(
+    {
+      theme: "dark",
+      recentProjects: ["/etc/passwd"],
+      windowBounds: { x: 0, y: 0, width: 1, height: 1 },
+      codegenSaves: {},
+    },
+    { mayUseDir: () => true },
+  );
+  assert.deepEqual(patch, { theme: "dark" });
+  for (const key of MAIN_OWNED) {
+    assert.deepEqual(
+      rendererPatch({ [key]: 1 }, { mayUseDir: () => true }),
+      {},
+    );
+  }
+});
+
+test("rendererPatch: a datasheet folder must be one main vouches for", () => {
+  const vouched = (dir) => dir === "/picked";
+  assert.deepEqual(rendererPatch({ datasheetDir: "/picked" }, { mayUseDir: vouched }), { datasheetDir: "/picked" }); // prettier-ignore
+  assert.deepEqual(rendererPatch({ datasheetDir: "/anywhere" }, { mayUseDir: vouched }), {}); // prettier-ignore
+  // Clearing it is always allowed.
+  assert.deepEqual(rendererPatch({ datasheetDir: null }, { mayUseDir: vouched }), { datasheetDir: null }); // prettier-ignore
 });

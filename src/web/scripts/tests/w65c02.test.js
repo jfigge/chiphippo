@@ -307,3 +307,96 @@ test("a read latches the byte from the PHI2-HIGH phase, not the falling edge", (
     "the CPU booted to the vector it was shown during PHI2 high",
   );
 });
+
+// ── SBC, BIT and the read-modify-write shifts ───────────────────────────────
+// None of these had ever been executed by a test (coverage showed `sbc`,
+// `bitTest` and the ASL/ROL/ROR/DEC arms dark), including the two BCD flag
+// rules the code comments promise.
+
+const N = 0x80;
+const V = 0x40;
+
+/** Run `LDA #a ; SEC|CLC ; SBC #b` (decimal when `bcd`) and read A and P. */
+function sbc(a, b, { carry = true, bcd = false } = {}) {
+  const prog = [
+    ...(bcd ? [0xf8] : []), // SED
+    0xa9,
+    a, // LDA #a
+    carry ? 0x38 : 0x18, // SEC / CLC
+    0xe9,
+    b, // SBC #b
+  ];
+  const end = 0x8000 + prog.length;
+  const m = machine([...prog, 0x4c, end & 0xff, end >> 8]); // JMP self
+  m.runTo(end);
+  return { a: m.state.a, p: m.state.p };
+}
+
+test("binary SBC: result, borrow and signed overflow", () => {
+  let r = sbc(0x50, 0xf0);
+  assert.equal(r.a, 0x60);
+  assert.equal(r.p & C, 0, "a borrow clears C");
+  assert.equal(r.p & V, 0);
+  r = sbc(0x50, 0xb0); // +80 − (−80) overflows into the negative range
+  assert.equal(r.a, 0xa0);
+  assert.equal(r.p & V, V);
+  assert.equal(r.p & N, N);
+  r = sbc(0x80, 0x01); // −128 − 1 overflows the other way
+  assert.equal(r.a, 0x7f);
+  assert.equal(r.p & V, V);
+  assert.equal(r.p & C, C, "no borrow");
+  r = sbc(0x05, 0x04, { carry: false }); // the borrow in takes one more
+  assert.equal(r.a, 0x00);
+  assert.equal(r.p & ZF, ZF);
+});
+
+test("decimal SBC: BCD digits, BCD borrow, and N/Z from the CORRECTED byte", () => {
+  let r = sbc(0x00, 0x01, { bcd: true });
+  assert.equal(r.a, 0x99, "00 − 01 = 99, borrowing");
+  assert.equal(r.p & C, 0);
+  assert.equal(r.p & N, N, "N reads the BCD result, not the binary $FF");
+  r = sbc(0x50, 0x25, { bcd: true });
+  assert.equal(r.a, 0x25);
+  assert.equal(r.p & C, C);
+  r = sbc(0x10, 0x01, { bcd: true, carry: false });
+  assert.equal(r.a, 0x08, "10 − 01 − borrow = 08");
+  r = sbc(0x42, 0x42, { bcd: true });
+  assert.equal(r.a, 0x00);
+  assert.equal(r.p & ZF, ZF);
+});
+
+test("decimal ADC: a carry out of 99, with Z from the corrected byte", () => {
+  // F8 SED ; A9 99 LDA #$99 ; 38 SEC ; 69 00 ADC #$00 ; JMP self
+  const m = machine([0xf8, 0xa9, 0x99, 0x38, 0x69, 0x00, 0x4c, 0x06, 0x80]);
+  m.runTo(0x8006);
+  assert.equal(m.state.a, 0x00);
+  assert.equal(m.state.p & C, C);
+  assert.equal(m.state.p & ZF, ZF, "99 + 1 rolls to 00: Z set");
+  assert.equal(m.state.p & N, 0);
+});
+
+test("BIT: memory forms copy bits 7/6 into N/V; the immediate form touches only Z", () => {
+  // A9 00 LDA #0 ; 2C 00 02 BIT $0200 ; JMP self
+  let m = machine([0xa9, 0x00, 0x2c, 0x00, 0x02, 0x4c, 0x05, 0x80]);
+  m.mem[0x0200] = 0xc0;
+  m.runTo(0x8005);
+  assert.equal(m.state.p & (N | V | ZF), N | V | ZF);
+  // B8 CLV ; A9 40 LDA #$40 (N clear) ; 89 C0 BIT #$C0 ; JMP self
+  m = machine([0xb8, 0xa9, 0x40, 0x89, 0xc0, 0x4c, 0x05, 0x80]);
+  m.runTo(0x8005);
+  assert.equal(m.state.p & ZF, 0, "A & $C0 is non-zero");
+  assert.equal(m.state.p & (N | V), 0, "N and V are left alone");
+});
+
+test("ASL / ROL / ROR / DEC on memory: the result, and the bit shifted out", () => {
+  // 38 SEC ; 26 10 ROL $10 ; 38 SEC ; 66 11 ROR $11 ; 06 12 ASL $12 ;
+  // C6 13 DEC $13 ; JMP self
+  const m = machine([
+    0x38, 0x26, 0x10, 0x38, 0x66, 0x11, 0x06, 0x12, 0xc6, 0x13,
+    0x4c, 0x0a, 0x80,
+  ]); // prettier-ignore
+  m.mem.set([0x81, 0x01, 0x80, 0x00], 0x10);
+  m.runTo(0x800a);
+  assert.deepEqual([...m.mem.slice(0x10, 0x14)], [0x03, 0x80, 0x00, 0xff]);
+  assert.equal(m.state.p & N, N, "the last op, DEC to $FF, sets N");
+});

@@ -63,6 +63,8 @@
     "files": [
       "app/**/*",
       "web/**/*",
+      "!app/tests/**",
+      "!web/scripts/tests/**",
       "package.json"
     ],
     "npmRebuild": false,

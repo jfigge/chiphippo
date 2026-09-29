@@ -61,7 +61,9 @@ export function reportWorthShowing(report) {
 export function compactDesignators(designators) {
   const parsed = designators
     .map((d) => /^([A-Z]+)(\d+)$/.exec(d))
-    .map((m, i) => (m ? { p: m[1], n: Number(m[2]) } : { raw: designators[i] }));
+    .map((m, i) =>
+      m ? { p: m[1], n: Number(m[2]) } : { raw: designators[i] },
+    );
   const out = [];
   let run = null;
   const flush = () => {

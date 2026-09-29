@@ -1793,13 +1793,13 @@ test("removeBoard leaves a part REACHING into it alone — the lead just floats"
   );
 });
 
-test("canPlaceChip mirrors occupancy through the document", () => {
+test("canPlacePart mirrors occupancy through the document", () => {
   const doc = docWithFull();
   doc.addComponent({ kind: "chip", ref: "74LS00", board: "bb1", anchor: "e5" });
-  assert.equal(doc.canPlaceChip("74LS04", "bb1", "e8"), false);
-  assert.equal(doc.canPlaceChip("74LS04", "bb1", "e12"), true);
+  assert.equal(doc.canPlacePart("74LS04", "bb1", "e8"), false);
+  assert.equal(doc.canPlacePart("74LS04", "bb1", "e12"), true);
   assert.equal(
-    doc.canPlaceChip("74LS00", "bb1", "e6", { ignoreId: "c1" }),
+    doc.canPlacePart("74LS00", "bb1", "e6", { ignoreId: "c1" }),
     true,
   );
 });
@@ -2109,7 +2109,7 @@ test("removeBoard cascades wires touching it (either endpoint)", () => {
   doc.addWire({ from: "bb1.a1", to: "bb2.a1" }); // cross-board
   doc.addWire({ from: "bb2.a3", to: "bb2.a7" }); // wholly on bb2
   doc.addWire({ from: "bb1.a5", to: "bb1.a9" }); // wholly on bb1
-  assert.equal(doc.wiresOnBoard("bb2").length, 2);
+  assert.equal(doc.wiresTouching("bb2").length, 2);
   doc.removeBoard("bb2");
   assert.deepEqual(
     doc.wires.map((w) => w.id),
@@ -2693,6 +2693,24 @@ test("translateAll: quantizes the delta per axis, and no-ops on zero", () => {
   assert.deepEqual(doc.translateAll(0.4, 0.004), { dx: 0, dy: 0 });
   assert.deepEqual(doc.snapshot(), untouched);
   assert.throws(() => doc.translateAll(NaN, 0), { code: "INVALID_ARG" });
+});
+
+test("translateAll: a fractional slide survives a reload — bricks keep their place", () => {
+  const doc = docToSlide();
+  const psuBefore = doc.getComponent("psu1");
+  const railBefore = doc.getBoard("bb1");
+  doc.translateAll(-100, -196.49);
+  const psu = doc.getComponent("psu1");
+  // Moved by exactly the boards' delta, and stored on the same 0.01 grid…
+  assert.equal(q(psu.y - doc.getBoard("bb1").y), q(psuBefore.y - railBefore.y)); // prettier-ignore
+  assert.equal(psu.y, q(psu.y));
+  // …and a save and reopen puts it back exactly there. The loader used to
+  // round a brick's y to a whole pitch, so a PSU crept up to half a pitch off
+  // the boards it was placed beside every time a recentred project reopened.
+  const reloaded = new DeskDoc(null);
+  reloaded.load(doc.toJSON());
+  assert.deepEqual(reloaded.getComponent("psu1"), psu);
+  assert.deepEqual(reloaded.annotations, doc.annotations);
 });
 
 test("translateAll: rigid — the group and every mating survive the slide", () => {

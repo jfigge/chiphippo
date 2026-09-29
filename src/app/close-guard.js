@@ -40,6 +40,15 @@
 // renderer that is alive and simply silent is invisible from here, which is why
 // the "it always answers" guarantee lives on the renderer side
 // (ProjectWorkspace#askUnsaved).
+//
+// WHETHER THERE IS ANYBODY TO ASK is the fourth flag, and the renderer states
+// it (`rendererReady`, from `app:close-ready`) rather than main guessing it. It
+// used to be guessed from `webContents.isDestroyed()` — which stays FALSE after
+// a renderer crash, so a crashed window re-asked a dead page, latched on a reply
+// that could never come, and could not be closed or quit at all. The same was
+// true of a page that failed to load, and of the moments at boot before app.js
+// has registered its handler. Until the page says it can answer, nothing it
+// holds can be unsaved, so the close simply proceeds.
 "use strict";
 
 class CloseGuard {
@@ -49,6 +58,10 @@ class CloseGuard {
   #pending = false;
   /** That question came from a QUIT (⌘Q / menu), not the window's own button. */
   #quitting = false;
+  /** A renderer is loaded, has its handler registered, and has not died since. */
+  #answerable = false;
+  /** That quit is to INSTALL a downloaded update (the Restart button). */
+  #installing = false;
 
   /**
    * May a close/quit proceed without asking? True only between the renderer's
@@ -64,15 +77,34 @@ class CloseGuard {
   }
 
   /**
+   * Is there a renderer that can answer? False until one says so, and again
+   * the moment it dies or starts loading a new page — the caller lets a close
+   * proceed rather than ask nobody.
+   */
+  get answerable() {
+    return this.#answerable;
+  }
+
+  /** The renderer has registered its close handler and can answer. */
+  rendererReady() {
+    this.#answerable = true;
+  }
+
+  /**
    * Put the question to the renderer — once. A ⌘Q arriving while a
    * window-button question is already out still marks the answer as a QUIT,
    * which is what the user last asked for.
    *
-   * @param {{quitting?: boolean}} [opts]
+   * `installing` is a quit for an update: electron-updater's `quitAndInstall`
+   * starts the installer BEFORE it quits (on Windows and Linux), so it must
+   * run only once the question is answered — never as the thing that asks it.
+   *
+   * @param {{quitting?: boolean, installing?: boolean}} [opts]
    * @returns {boolean} whether the caller should actually send it.
    */
-  ask({ quitting = false } = {}) {
-    if (quitting) this.#quitting = true;
+  ask({ quitting = false, installing = false } = {}) {
+    if (installing) this.#installing = true;
+    if (quitting || installing) this.#quitting = true;
     if (this.#pending) return false;
     this.#pending = true;
     return true;
@@ -82,15 +114,21 @@ class CloseGuard {
    * The renderer answered.
    *
    * @param {boolean} ok - true to go ahead (it saved or discarded).
-   * @returns {"quit"|"close"|"stay"} what the caller should now do.
+   * @returns {"install"|"quit"|"close"|"stay"} what the caller should now do.
    */
   reply(ok) {
+    // An answer to no question authorises nothing: a stray or duplicated reply,
+    // or a late one from a page already written off, must not close the window
+    // without asking.
+    if (!this.#pending) return "stay";
     this.#pending = false;
     if (!ok) {
       this.#quitting = false; // a cancelled quit is not a pending one
+      this.#installing = false; // nor is the update it was for
       return "stay";
     }
     this.#confirmed = true;
+    if (this.#installing) return "install";
     return this.#quitting ? "quit" : "close";
   }
 
@@ -102,15 +140,18 @@ class CloseGuard {
   closed() {
     this.#confirmed = false;
     this.#quitting = false;
+    this.#installing = false;
   }
 
   /**
-   * The renderer we are waiting on died. It will never reply, and with the
-   * latch still set no question would ever be asked again — so the window could
-   * not be closed even though there was nobody left to ask.
+   * The renderer died, or is being replaced by a new page load. It will never
+   * reply, and with the latch still set no question would ever be asked again —
+   * so the window could not be closed even though there was nobody left to
+   * ask. Nor can it be asked afresh until its successor says it is ready.
    */
   rendererGone() {
     this.#pending = false;
+    this.#answerable = false;
   }
 }
 

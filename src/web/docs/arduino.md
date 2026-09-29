@@ -405,7 +405,10 @@ speaks a different protocol is refused the same way.
 Press **Run** as usual. Before anything simulates, Chip Hippo checks that every
 Output and Input in use has a connection, that each connection is configured,
 and that its port is plugged in — and if not, says which and offers to open the
-right Properties or Settings. It then **opens each port and greets the
+right Properties or Settings. "In use" means on the breadboard: a board is
+checked (and opened) only when at least one of its Outputs or Inputs has a tag
+planted, so an Arduino you've left unplugged doesn't stop a circuit that isn't
+using it. It then **opens each port and greets the
 sketch**, asking again every quarter of a second for up to five seconds; many
 boards reset when the port opens, so this is also the time a sketch has to
 boot. A board that never answers stops the run with the port named, and so

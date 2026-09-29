@@ -434,8 +434,10 @@ export function rowOffsetBy(type, row, delta) {
   const y0 = s.rowY[row];
   if (y0 == null) return null;
   const target = y0 + delta;
+  // Row y's live on a 0.01 grid, which binary floats do not: 4.51 − 3 is
+  // 1.5099999999999998, so an exact test never found row j from below it.
   for (const [r, y] of Object.entries(s.rowY)) {
-    if (y === target) return r;
+    if (Math.abs(y - target) < 1e-6) return r;
   }
   return null;
 }

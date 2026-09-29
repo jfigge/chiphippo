@@ -315,6 +315,7 @@ test("a language change relabels the chrome in place, without reloading", async 
   marked.toolbar.file.new = "«new»";
   marked.app.deskHint = "«hint»";
   marked.toolbar.transport.step = "«step»";
+  marked.toolbar.route.label = "«route»";
   window.chiphippo.i18n.load = async () => ({
     active: "de",
     lang: "de",
@@ -345,11 +346,23 @@ test("a language change relabels the chrome in place, without reloading", async 
     segments.some((b) => b.getAttribute("aria-label") === "«bom»"),
     "the BOM segment relabelled",
   );
+  // …the Auto-route action, once missing from the relabel list…
+  assert.ok(
+    segments.some((b) => b.getAttribute("aria-label") === "«route»"),
+    "the Auto-route segment relabelled",
+  );
   // …the File pill, which is a different builder…
   const file = qa("#app-toolbar .toolbar-pill")[0];
   assert.equal(
     file.querySelector(".toolbar-pill-btn").getAttribute("aria-label"),
     "«new»",
+  );
+  // …and every tooltip's placeholders filled — the Open button's relabel once
+  // left a literal "{recent}" in it.
+  const tips = [...file.querySelectorAll(".toolbar-pill-btn")].map((b) => b.title); // prettier-ignore
+  assert.ok(
+    tips.every((tip) => !/\{\w+\}/.test(tip)),
+    tips.join(" | "),
   );
   // …the transport, whose text carries an untranslated glyph in front of it…
   assert.match(q(".toolbar-pill--transport").textContent, /⇥ «step»/);

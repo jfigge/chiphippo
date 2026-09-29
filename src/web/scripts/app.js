@@ -655,6 +655,12 @@ function wireProjectMenu(bridge, getWorkspace, exportDesktopTo) {
       console.error("[renderer] app:close-reply failed:", err);
     });
   });
+  // Only now is there anybody to ask. Main lets a close through until it hears
+  // this — a page still booting holds nothing unsaved, and one that crashed or
+  // never loaded would otherwise leave a window that could not be closed.
+  Promise.resolve(bridge.closeReady?.()).catch((err) => {
+    console.error("[renderer] app:close-ready failed:", err);
+  });
 }
 
 /**
@@ -678,11 +684,15 @@ function wireEditMenu(controller) {
         node.isContentEditable)
     );
   };
+  // Not under a dialog either: the native menu's ⌘Z still fires beneath an
+  // HTML modal, and a Properties card or a pending confirm then acts on a part
+  // or a board the undo just took away.
+  const undoable = () => !inTextField() && !PopupManager.isOpen();
   window.addEventListener("chiphippo:edit-undo", () => {
-    if (!inTextField()) controller.undo();
+    if (undoable()) controller.undo();
   });
   window.addEventListener("chiphippo:edit-redo", () => {
-    if (!inTextField()) controller.redo();
+    if (undoable()) controller.redo();
   });
   window.addEventListener("chiphippo:edit-select-all", () => {
     const target = document.activeElement;
@@ -796,7 +806,7 @@ function createRelabeller({
     filePill.setAttribute("aria-label", t("toolbar.file.group"));
     for (const [btn, label, title, params] of [
       [fileButtons.new, "new", "newTitle", { accel: accel("N") }],
-      [fileButtons.open, "open", "openTitle", { accel: accel("O") }],
+      [fileButtons.open, "open", "openTitle", { accel: accel("O"), recent: accel("O", true) }], // prettier-ignore
       [fileButtons.save, "save", "saveTitle", { accel: accel("S") }],
       [fileButtons.saveAs, "saveAs", "saveAsTitle", { accel: accel("S", true) }], // prettier-ignore
     ]) {
@@ -812,6 +822,7 @@ function createRelabeller({
     buttons.busBtn.querySelector("span:not(.bus-width-badge)").textContent =
       t("toolbar.bus.label");
     for (const [btn, key, params] of [
+      [buttons.routeBtn, "route", null],
       [buttons.fadeBtn, "fade", null],
       [buttons.probeBtn, "probe", null],
       [buttons.scopeBtn, "analyzer", { mod: MOD_KEY }],
@@ -2155,7 +2166,7 @@ async function init() {
     fileButtons,
     toolPill,
     transportPill,
-    buttons: { wireBtn, busBtn, fadeBtn, probeBtn, scopeBtn, guideBtn, aiBtn, stepBtn, speedBtn, pauseBtn }, // prettier-ignore
+    buttons: { wireBtn, busBtn, routeBtn, fadeBtn, probeBtn, scopeBtn, guideBtn, aiBtn, stepBtn, speedBtn, pauseBtn }, // prettier-ignore
     panels: [
       palette,
       projectTabs,

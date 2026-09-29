@@ -225,8 +225,9 @@ with a different input state (or a different number of clock edges).
   EVERY position — a string exactly as long as the bank.
 * Each test starts from the circuit as built, every switch at rest; nothing
   carries over from the test before.
-* \`edges\` is how many clock edges to apply first (omit for combinational).
-  It needs a \`clock\` part in the design.
+* \`edges\` is how many clock PULSES to apply first — each one LOW → HIGH →
+  LOW, so a rising-edge part and a falling-edge part both see that many
+  (omit for combinational). It needs a \`clock\` part in the design.
 * \`expect\` targets a display part id with a bit string of EVERY segment
   (LSB first), or a single pin (\`{ "target": "D1.A", "value": "H" }\`) with
   H or L. Every test must expect something.

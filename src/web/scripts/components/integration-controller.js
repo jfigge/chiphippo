@@ -66,9 +66,11 @@ import {
   connectionsUsed,
   elementsFor,
   isAutoTrigger,
+  isElementPlanted,
   isTagPlanted,
   layoutSignature,
   pinCount,
+  runElements,
 } from "../model/integration.js";
 import { IntegrationRuntime, isLive } from "../model/integration-runtime.js";
 import { MAX_SENDS, PROTOCOL_VERSION } from "../model/serial-wire.js";
@@ -158,15 +160,19 @@ export class IntegrationController {
 
   /**
    * Before Run: may the circuit start? Synchronously true for a desk with no
-   * elements; otherwise every element needs a connection, and every
-   * connection must be configured and have its port present. A refusal shows
+   * elements in use; otherwise every element on the breadboard needs a
+   * connection, and every connection the breadboard references must be
+   * configured and have its port present (see `runElements` — a board nothing
+   * on the breadboard uses is none of this run's business). A refusal shows
    * the reason and offers the way to fix it.
    * @returns {boolean|Promise<boolean>}
    */
   preflight(doc) {
-    const elements = doc?.integrations ?? [];
-    if (elements.length === 0) return true;
-    const unassigned = elements.find((e) => !e.connection);
+    const all = doc?.integrations ?? [];
+    // Unassigned is asked of the whole desk, not the run's elements: an
+    // element with no connection is never IN a run, and one planted on the
+    // breadboard that would silently do nothing is exactly what to say.
+    const unassigned = all.find((e) => !e.connection && isElementPlanted(e));
     if (unassigned) {
       this.#refuse(
         t("integration.verify.noConnection", {
@@ -177,11 +183,18 @@ export class IntegrationController {
       );
       return false;
     }
+    const elements = runElements(all);
+    if (elements.length === 0) return true;
     // An element waiting for an edge with no line to watch would never send
     // (an Output) or never apply (an Input): a run that silently does
-    // nothing. Auto is the one trigger with no tag, so it is never asked.
+    // nothing. Auto is the one trigger with no tag, so it is never asked — and
+    // nor is an element with NOTHING on the breadboard, riding along on a board
+    // its neighbours use: it reaches no net, so there is no silence to warn of.
     const untriggered = elements.find(
-      (e) => !isAutoTrigger(e) && !isTagPlanted(e, TRIGGER_KEY),
+      (e) =>
+        isElementPlanted(e) &&
+        !isAutoTrigger(e) &&
+        !isTagPlanted(e, TRIGGER_KEY),
     );
     if (untriggered) {
       this.#refuse(
@@ -249,7 +262,7 @@ export class IntegrationController {
    * @returns {Promise<boolean>|null} false stops the run (after saying why)
    */
   begin(doc) {
-    const elements = doc?.integrations ?? [];
+    const elements = runElements(doc?.integrations);
     if (elements.length === 0) return null;
     this.#elements = elements;
     this.#runtime.begin(elements);

@@ -87,14 +87,14 @@ const MCYCLES = {
   WRITE: { t: 3, sample: null, drives: true },
   IN: { t: 4, sample: 4, drives: false }, // T1 T2 TW T3
   OUT: { t: 4, sample: null, drives: true },
-  INTACK: { t: 6, sample: 6, drives: false }, // M1 plus two automatic waits
+  INTACK: { t: 6, sample: 5, drives: false }, // T1 T2 TW TW T3 T4: vector at T3↑
   INTERNAL: { t: 1, sample: null, drives: false }, // `t` overridden per cycle
   RESET: { t: 1, sample: null, drives: false },
   BUSACK: { t: 1, sample: null, drives: false },
 };
 
 /** The T at whose FALLING edge /WAIT is sampled, per cycle kind. */
-const WAIT_T = { M1: 2, READ: 2, WRITE: 2, IN: 3, OUT: 3, INTACK: 2 };
+const WAIT_T = { M1: 2, READ: 2, WRITE: 2, IN: 3, OUT: 3, INTACK: 4 };
 
 /** How many T-states this state's current M-cycle runs for. */
 const cycleLen = (s) => (s.mk === "INTERNAL" ? s.itc : MCYCLES[s.mk].t);
@@ -172,10 +172,21 @@ function signalsAt(mk, t, high) {
       };
 
     case "INTACK":
-      // /M1 marks it as an acknowledge; the refresh still runs behind the two
-      // automatic wait states, and /IORQ asks the device for its vector.
-      if (t <= 2) return { ...off, m1: true };
-      return { ...off, addr: "rfsh", rfsh: true, iorq: t >= 5 };
+      // T1 T2 TW TW T3 T4 (Zilog UM0080, Interrupt Request/Acknowledge Cycle).
+      // /M1 from T1↑ and HELD through both automatic waits; /IORQ — in place
+      // of the fetch's /MREQ + /RD — from the first wait's falling edge. The
+      // device reads /M1·/IORQ as "acknowledge, put your vector up", and the
+      // vector is taken at T3↑, where both release and the refresh runs in
+      // T3–T4 exactly as it does behind an ordinary fetch. (/M1 used to drop
+      // after T2 and /IORQ to rise only in T3: never low together, so a
+      // device decoding the acknowledge never answered, and the bus read $FF.)
+      if (t <= 4) return { ...off, m1: true, iorq: t === 4 || (t === 3 && !high) }; // prettier-ignore
+      return {
+        ...off,
+        addr: "rfsh",
+        rfsh: true,
+        mreq: (t === 5 && !high) || (t === 6 && high),
+      };
 
     case "INTERNAL":
       // No bus activity at all; the address bus holds what it last carried.

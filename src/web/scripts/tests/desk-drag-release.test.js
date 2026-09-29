@@ -721,7 +721,9 @@ test("cluster drag: a scene rebuild mid-drag kills the gesture", () => {
   world.x = 13;
   fire(el, "pointermove", { client: [40, 40] });
 
-  controller.undo(); // unmounts every view the gesture was drawing into
+  // A tab switch back onto the same design unmounts every view the gesture
+  // was drawing into.
+  controller.loadDocument(doc.toJSON());
   assert.ok(!viewport.classList.contains("desk-viewport--dragging"));
 
   world.x = 20;
@@ -745,10 +747,10 @@ test("a scene rebuild mid-drag kills the gesture before its views go", () => {
   world.x = 8;
   fire(el, "pointermove", { client: [40, 40] });
 
-  // Undo mid-drag unmounts every view. The gesture's listeners live on
-  // `window` now, so unlike the old element-scoped ones they would SURVIVE
+  // A tab switch mid-drag unmounts every view. The gesture's listeners live
+  // on `window` now, so unlike the old element-scoped ones they would SURVIVE
   // that and later commit against views that no longer exist.
-  controller.undo();
+  controller.loadDocument(new DeskDoc(null).toJSON());
   assert.equal(doc.boards.length, 0);
   assert.ok(!viewport.classList.contains("desk-viewport--dragging"));
 
@@ -757,6 +759,49 @@ test("a scene rebuild mid-drag kills the gesture before its views go", () => {
   world.x = 20;
   fire(viewport, "pointerup", { client: [40, 40] });
   assert.equal(doc.boards.length, 0);
+});
+
+test("a chip drag survives its board leaving with the document", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { viewport, surface, controller } = makeDesk(doc, world);
+  controller.addBoardAt("pins-full", 0, 0);
+  const chip = controller.addComponentAt("74LS00", "bb1", "e5");
+
+  world.x = 8;
+  world.y = 6.5;
+  fire(partEl(surface, chip.id), "pointerdown");
+  world.x = 13;
+  fire(partEl(surface, chip.id), "pointermove", { client: [40, 40] });
+
+  // The cancel used to run AFTER the swap, and snapped the chip back onto its
+  // origin board read out of the NEW document — which has none, so it threw
+  // inside the rebuild and left the old views mounted over the new desk.
+  controller.loadDocument(new DeskDoc(null).toJSON());
+  assert.equal(doc.components.length, 0);
+  assert.equal(surface.querySelector(`[data-component-id="${chip.id}"]`), null);
+  assert.ok(!viewport.classList.contains("desk-viewport--dragging"));
+});
+
+test("undo and redo are refused while a drag is in flight", () => {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const world = { x: 0, y: 0 };
+  const { surface, controller } = makeDesk(doc, world);
+  controller.addBoardAt("pins-full", 0, 0);
+  const chip = controller.addComponentAt("74LS00", "bb1", "e5");
+
+  world.x = 8;
+  world.y = 6.5;
+  fire(partEl(surface, chip.id), "pointerdown");
+  world.x = 13;
+  fire(partEl(surface, chip.id), "pointermove", { client: [40, 40] });
+  // The menu's ⌘Z reaches the controller mid-gesture; it must not pull the
+  // document out from under the part in hand.
+  assert.equal(controller.undo(), false);
+  assert.equal(controller.redo(), false);
+  assert.equal(doc.components.length, 1);
 });
 
 // ── Signal flag (Feature 370) ───────────────────────────────────────────────

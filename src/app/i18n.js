@@ -51,7 +51,7 @@ const LOCALES_DIR = path.join(__dirname, "..", "web", "locales");
 
 /**
  * Every language a catalog ships for, English first. The renderer's picker is
- * built from this list over IPC (`i18n:locales`) rather than from a copy of its
+ * built from this list — it rides along on `i18n:load` — rather than a copy of its
  * own, so a language cannot appear in Settings with no catalog behind it.
  * `nativeName` is deliberately NOT translated: a language names itself the same
  * way whatever the UI is currently speaking, which is what makes a picker

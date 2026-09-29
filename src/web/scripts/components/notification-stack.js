@@ -127,9 +127,4 @@ export class NotificationStack {
     entry.toast.remove();
     this.#live.delete(id);
   }
-
-  /** Remove every toast (e.g. on Stop). */
-  clear() {
-    for (const id of [...this.#live.keys()]) this.dismiss(id);
-  }
 }

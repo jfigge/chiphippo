@@ -22,7 +22,7 @@
 // The app's SECOND outbound network call (ai/client.js is the first), and in
 // main for the same reason: the renderer's CSP is `default-src 'self'` with no
 // `connect-src`, so it cannot fetch, and it cannot write a file either. Node's
-// global `fetch` again — src/package.json still has no `dependencies` block.
+// global `fetch` again, for the same reason as the AI client: no HTTP package.
 //
 // SEQUENTIAL, not parallel. The whole point of the run is the `n/TOTAL`
 // counter, and a counter that jumps 3 → 7 → 5 is worse than one that takes a

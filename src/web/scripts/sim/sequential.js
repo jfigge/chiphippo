@@ -575,58 +575,59 @@ export function comparator4Units(m) {
 /**
  * 4-bit Arithmetic Logic Unit (74181-style). `a`/`b` are the operand pins LSB
  * first, `s` the four function-select pins LSB first (S0..S3), `m` the mode
- * control (H = logic, L = arithmetic), `cin` the active-low carry-in (LOW
- * asserts a carry). Drives `f` (F0..F3, LSB first), and optionally `cout`
- * (Cn+4), `gN`/`pN` (active-low carry generate/propagate, for cascading
- * multiple ALUs — only meaningful in arithmetic mode; carries are inhibited
- * in logic mode so they read inactive there), and `aeqb` (A=B — open-
- * collector on the real part, wired-AND across cascaded ALUs; modelled here
- * as a plain output, the same simplification as this catalog's other open-
- * collector parts).
+ * control (H = logic, L = arithmetic), `cin` the carry-in. Drives `f` (F0..F3,
+ * LSB first), and optionally `cout` (Cn+4), `gN`/`pN` (carry generate /
+ * propagate, for cascading ALUs through a lookahead unit — only meaningful in
+ * arithmetic mode; carries are inhibited in logic mode so they read inactive
+ * there), and `aeqb` (A=B — open-collector on the real part, wired-AND across
+ * cascaded ALUs; modelled here as a plain output, the same simplification as
+ * this catalog's other open-collector parts).
  *
- * Per-select-code logic/arithmetic pair is the datasheet's Function Table,
- * active-HIGH-operand column, transcribed exactly (Fairchild DM74LS181,
- * DS009821): the arithmetic "baseline" is the Cn=H (no incoming carry) entry,
- * evaluated with unsigned 4-bit complements (never negative), then `cin` is
- * added and the total both masked to 4 bits (the sum) and compared against 16
- * (the carry).
+ * Everything is stated in the datasheet's ACTIVE-HIGH-data convention, where
+ * the CARRIES are active-LOW at both ends: Cn = L asserts a carry in, and
+ * Cn+4 = L reports one out — so the Cn+4 of one ALU wires straight to the Cn of
+ * the next, as the datasheet's ripple cascade does. G and P are active-low too.
+ *
+ * THE FUNCTIONS ARE DERIVED FROM THE CHIP'S OWN STRUCTURE, not transcribed
+ * from its function table — a transcription took two rows from the active-LOW
+ * column and read three "+"s (the table's OR) as "plus", and its tests were
+ * written from the same misreading. Each bit forms an OR-term and an AND-term
+ * from its operands under S (Fairchild DM74LS181 / TI SN74LS181 logic diagram):
+ *
+ *     X = A | (B & S0) | (~B & S1)        Y = (A & ~B & S2) | (A & B & S3)
+ *
+ * Logic mode drives ¬(X ⊕ Y); arithmetic mode drives X PLUS Y PLUS carry. Y is
+ * never set where X is clear, so per bit X is the carry PROPAGATE and Y the
+ * carry GENERATE: the group generates when X + Y alone carries out, and
+ * propagates when every bit of X is set. `tests/chips-74ls.test.js` holds all
+ * 32 functions to the datasheet's table, written out by name.
  * @param {{a:number[], b:number[], s:number[], m, cin, f:number[], cout?, gN?, pN?, aeqb?}} m_
  */
 export function alu4Units(m_) {
   const inputs = [...m_.a, ...m_.b, ...m_.s, m_.m, m_.cin];
   const mask = 0xf;
-  const comp = (x) => ~x & mask;
-  const ROWS = [
-    { logic: (a) => comp(a), arith: (a) => a },
-    { logic: (a, b) => comp(a & b), arith: (a, b) => a + b },
-    { logic: (a, b) => comp(a) & b, arith: (a, b) => a + comp(b) },
-    { logic: () => 0, arith: () => mask },
-    { logic: (a, b) => comp(a | b), arith: (a, b) => a + (a & comp(b)) },
-    { logic: (a, b) => comp(b), arith: (a, b) => (a | b) + (a & comp(b)) },
-    { logic: (a, b) => a ^ b, arith: (a, b) => a + comp(b) },
-    { logic: (a, b) => a & comp(b), arith: (a, b) => (a & b) + mask },
-    { logic: (a, b) => comp(a) | b, arith: (a, b) => a + (a & b) },
-    { logic: (a, b) => comp(a ^ b), arith: (a, b) => a + b },
-    { logic: (a, b) => b, arith: (a, b) => (a | comp(b)) + (a & b) },
-    { logic: (a, b) => a & b, arith: (a, b) => (a & b) + mask },
-    { logic: () => mask, arith: (a) => a + a },
-    { logic: (a, b) => a | comp(b), arith: (a, b) => (a | b) + a },
-    { logic: (a, b) => a | b, arith: (a, b) => (a | comp(b)) + a },
-    { logic: (a) => a, arith: (a) => a + mask },
-  ];
   const compute = (levels) => {
     const byPin = new Map(inputs.map((p, i) => [p, levels[i]]));
     const a = readBus(m_.a, byPin);
     const b = readBus(m_.b, byPin);
-    const row = ROWS[readBus(m_.s, byPin)];
+    const sel = readBus(m_.s, byPin);
+    const bit = (n) => ((sel >> n) & 1 ? mask : 0);
+    const nb = ~b & mask;
+    const x = a | (b & bit(0)) | (nb & bit(1));
+    const y = (a & nb & bit(2)) | (a & b & bit(3));
     if (high(byPin.get(m_.m))) {
-      const f = row.logic(a, b) & mask;
-      return { f, total: f, baseline: f };
+      const f = ~(x ^ y) & mask;
+      return { f, total: 0, generate: false, propagate: false };
     }
     const cin = byPin.get(m_.cin) === L ? 1 : 0; // Cn is active-low.
-    const baseline = row.arith(a, b);
-    const total = baseline + cin;
-    return { f: total & mask, total, baseline };
+    const total = x + y + cin;
+    return {
+      f: total & mask,
+      total,
+      // Neither depends on the carry-in (datasheet-stated).
+      generate: x + y > mask,
+      propagate: x === mask,
+    };
   };
   // A contested/shorted operand, select, or control bit makes every ALU
   // output uncertain — coarse but sound, rather than confidently computing a
@@ -639,23 +640,21 @@ export function alu4Units(m_) {
   if (m_.cout != null) {
     units.push(
       comb(inputs, m_.cout, (levels) =>
-        anyX(levels) ? X : compute(levels).total >= 16 ? H : L,
+        anyX(levels) ? X : compute(levels).total > mask ? L : H,
       ),
     );
   }
   if (m_.gN != null) {
-    // Generate/propagate are NOT affected by carry-in (datasheet-stated) —
-    // computed from the baseline (Cin-less) total, unlike Cn+4 above.
     units.push(
       comb(inputs, m_.gN, (levels) =>
-        anyX(levels) ? X : compute(levels).baseline >= 16 ? L : H,
+        anyX(levels) ? X : compute(levels).generate ? L : H,
       ),
     );
   }
   if (m_.pN != null) {
     units.push(
       comb(inputs, m_.pN, (levels) =>
-        anyX(levels) ? X : compute(levels).baseline >= 15 ? L : H,
+        anyX(levels) ? X : compute(levels).propagate ? L : H,
       ),
     );
   }

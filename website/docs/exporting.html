@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#2F855A" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <title>Exporting to Other Tools · Chip Hippo Guide</title>
+  <meta name="description" content="Exporting to Other Tools — the Chip Hippo user guide." />
+  <link rel="canonical" href="https://chiphippo.com/docs/exporting.html" />
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="Chip Hippo" />
+  <meta property="og:title" content="Exporting to Other Tools · Chip Hippo Guide" />
+  <meta property="og:description" content="Exporting to Other Tools — the Chip Hippo user guide." />
+  <meta property="og:url" content="https://chiphippo.com/docs/exporting.html" />
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="Exporting to Other Tools · Chip Hippo Guide" />
+  <meta name="twitter:description" content="Exporting to Other Tools — the Chip Hippo user guide." />
+  <style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#1c1c1c;--mantle:#161616;--crust:#101010;--surface-0:#2a2a2a;--surface-1:#383838;--overlay-0:#686868;--text:#e8e8e8;--subtext:#b0b0b0;--accent:#3fb950;--green:#56d364}
+html{scroll-behavior:smooth}
+body{font-family:"Segoe UI",system-ui,-apple-system,BlinkMacSystemFont,sans-serif;background:var(--bg);color:var(--text);line-height:1.65}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+code{font-family:"Cascadia Code","JetBrains Mono","Fira Code",monospace;font-size:.88em;background:var(--surface-0);padding:1px 6px;border-radius:4px;color:var(--text)}
+pre{background:var(--crust);border:1px solid var(--surface-0);border-radius:10px;padding:14px 16px;overflow:auto;margin:16px 0}
+pre code{background:none;padding:0}
+kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px solid var(--surface-1);border-bottom-width:2px;border-radius:5px;padding:1px 6px}
+.topbar{position:sticky;top:0;z-index:10;height:58px;display:flex;align-items:center;justify-content:space-between;padding:0 24px;background:var(--mantle);border-bottom:1px solid var(--surface-0)}
+.brand{display:flex;align-items:center;gap:10px;font-weight:800;color:var(--accent);font-size:1.1rem}
+.brand:hover{text-decoration:none}
+.topbar .back{color:var(--subtext);font-size:.85rem}
+.layout{max-width:1180px;margin:0 auto;display:grid;grid-template-columns:260px 1fr;gap:40px;padding:32px 24px 80px}
+.sidebar{position:sticky;top:90px;align-self:start;max-height:calc(100vh - 110px);overflow:auto}
+.sidebar-title{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--overlay-0);padding:0 12px 8px}
+.doc-nav-link{display:block;padding:7px 12px;border-radius:7px;color:var(--subtext);font-size:.9rem;margin-bottom:2px}
+.doc-nav-link:hover{background:var(--surface-0);color:var(--text);text-decoration:none}
+.doc-nav-link--active{background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent);font-weight:600}
+.content{min-width:0;max-width:760px}
+.content h1{font-size:2.1rem;font-weight:800;letter-spacing:-1px;margin:0 0 20px;line-height:1.2}
+.content h2{font-size:1.45rem;font-weight:700;margin:36px 0 12px;padding-top:12px;border-top:1px solid var(--surface-0)}
+.content h3{font-size:1.12rem;font-weight:700;margin:26px 0 10px}
+.content p,.content ul,.content ol,.content blockquote,.content table{margin:0 0 16px}
+.content ul,.content ol{padding-left:24px}
+.content li{margin:4px 0}
+.content img{max-width:100%;height:auto;border:1px solid var(--surface-0);border-radius:10px;margin:8px 0}
+.content blockquote{border-left:3px solid var(--accent);background:var(--mantle);padding:10px 16px;border-radius:0 8px 8px 0;color:var(--subtext)}
+.content blockquote p:last-child{margin:0}
+.content table{border-collapse:collapse;width:100%;font-size:.9rem;display:block;overflow:auto}
+.content th,.content td{border:1px solid var(--surface-0);padding:8px 12px;text-align:left}
+.content th{background:var(--mantle)}
+.content hr{border:none;border-top:1px solid var(--surface-0);margin:28px 0}
+@media(max-width:820px){.layout{grid-template-columns:1fr;gap:20px}.sidebar{position:static;max-height:none;border-bottom:1px solid var(--surface-0);padding-bottom:16px}}
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/"><svg width="24" height="24" viewBox="0 0 512 512" role="img" aria-label="Chip Hippo"><rect x="0" y="0" width="512" height="512" rx="114" fill="#2F855A"/><circle cx="170" cy="146" r="40" fill="#FFFFFF"/><circle cx="342" cy="146" r="40" fill="#FFFFFF"/><rect x="144" y="140" width="224" height="190" rx="74" fill="#FFFFFF"/><rect x="118" y="260" width="276" height="150" rx="74" fill="#FFFFFF"/><circle cx="201" cy="198" r="17" fill="#1C1C1C"/><circle cx="311" cy="198" r="17" fill="#1C1C1C"/><rect x="186" y="320" width="140" height="52" rx="8" fill="#23272B"/><circle cx="186" cy="346" r="11" fill="#FFFFFF"/></svg><span>Chip Hippo</span></a>
+    <a class="back" href="/">← Back to site</a>
+  </header>
+  <div class="layout">
+    <nav class="sidebar" aria-label="User guide">
+      <div class="sidebar-title">User Guide</div>
+        <a class="doc-nav-link" href="index.html">Overview</a>
+        <a class="doc-nav-link" href="getting-started.html">Getting Started</a>
+        <a class="doc-nav-link" href="the-desk.html">The Desk &amp; Breadboards</a>
+        <a class="doc-nav-link" href="components.html">Chips &amp; Components</a>
+        <a class="doc-nav-link" href="wiring.html">Wiring, Nets &amp; Buses</a>
+        <a class="doc-nav-link" href="power-and-clocks.html">Power &amp; Clock Sources</a>
+        <a class="doc-nav-link" href="chip-library.html">The Chip Library</a>
+        <a class="doc-nav-link" href="simulation.html">Running a Simulation</a>
+        <a class="doc-nav-link" href="probing.html">Probing &amp; Net Names</a>
+        <a class="doc-nav-link" href="memory.html">Memory Chips &amp; the Inspector</a>
+        <a class="doc-nav-link" href="logic-analyzer.html">Logic Analyzer &amp; Timing</a>
+        <a class="doc-nav-link" href="build-guide.html">Build Guide &amp; BOM</a>
+        <a class="doc-nav-link" href="schematic-view.html">Schematic View</a>
+        <a class="doc-nav-link" href="ai-builder.html">AI Circuit Builder</a>
+        <a class="doc-nav-link" href="arduino.html">Arduino Integration</a>
+        <a class="doc-nav-link" href="serial-protocol.html">Serial Protocol</a>
+        <a class="doc-nav-link" href="files-and-undo.html">Files, Saving &amp; Undo</a>
+        <a class="doc-nav-link" href="projects-and-desktops.html">Projects &amp; Desktops</a>
+        <a class="doc-nav-link doc-nav-link--active" href="exporting.html">Exporting to Other Tools</a>
+        <a class="doc-nav-link" href="settings.html">Settings</a>
+        <a class="doc-nav-link" href="keyboard-shortcuts.html">Keyboard Shortcuts</a>
+    </nav>
+    <main class="content">
+<h1>Exporting to Other Tools</h1>
+<p>A design that works on the desk is often only the beginning. You might want to
+turn it into a real circuit board, or keep simulating it somewhere else.
+<strong>Desktop ▸ Export To</strong> writes the desktop on screen in another program&#39;s
+format. You can also right-click any desktop&#39;s tab and choose <strong>Export To</strong> to
+export that desktop. There are two formats, one for each of those jobs:</p>
+<ul>
+<li><strong>KiCad Project…</strong> writes a project for <a href="https://www.kicad.org">KiCad</a>, the
+free schematic and circuit-board program. Use it to go from breadboard to PCB.</li>
+<li><strong>Digital Circuit…</strong> writes a circuit for
+<a href="https://github.com/hneemann/Digital">Digital</a>, a free logic simulator with
+its own 74xx library. Use it to keep simulating the design with the same
+chips.</li>
+</ul>
+<p>Exporting only reads the desktop, so you can do it while the circuit is
+running. It never changes your design, and the exported files keep no link to
+it. Export again whenever the design changes.</p>
+<h2 id="the-export-report">The export report</h2>
+<p>Some things on a breadboard have no exact equivalent in the other program. If
+anything won&#39;t come across as it is, Chip Hippo tells you before writing a
+single file:</p>
+<ul>
+<li><strong>Won&#39;t come across</strong>: parts the other program has nothing for. Everything
+wired to them is still exported, and their nets keep their names.</li>
+<li><strong>Changes</strong>: parts that are exported as something that behaves a little
+differently. For example, a push button becomes a toggle switch in Digital.</li>
+<li><strong>Footprints to check</strong>: KiCad parts that got a stand-in footprint (see
+below). Choose the real one before laying out a board.</li>
+</ul>
+<p>Parts are listed by the same names the exported file uses (<code>U7</code>, <code>R1–R3</code>).
+Choose <strong>Export…</strong> to go ahead, or <strong>Cancel</strong> to write nothing. If nothing
+changes in the export, the report is skipped and you go straight to choosing
+where to save.</p>
+<h2 id="part-names-and-net-names">Part names and net names</h2>
+<p>A schematic names every part with a letter and a number, so the export gives
+each part one:</p>
+<table>
+<thead>
+<tr>
+<th>Prefix</th>
+<th>Parts</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>U</code></td>
+<td>Chips</td>
+</tr>
+<tr>
+<td><code>R</code>, <code>RN</code></td>
+<td>Resistors, resistor networks</td>
+</tr>
+<tr>
+<td><code>D</code></td>
+<td>LEDs</td>
+</tr>
+<tr>
+<td><code>SW</code></td>
+<td>Switches, push buttons, DIP switch banks</td>
+</tr>
+<tr>
+<td><code>DS</code></td>
+<td>7-segment digits, bar graphs, character LCDs</td>
+</tr>
+<tr>
+<td><code>X</code></td>
+<td>Oscillator cans</td>
+</tr>
+<tr>
+<td><code>J</code></td>
+<td>The power supply and clock source, which become connectors</td>
+</tr>
+</tbody></table>
+<p>Parts are numbered in the order you placed them, so the same desktop always
+exports with the same names. To choose a part&#39;s name yourself, set its <strong>Name</strong>
+to a designator of the right kind (<code>U5</code>, <code>R12</code>) in <strong>Properties…</strong>, and the
+export keeps it.</p>
+<p>Nets are named the same way in both formats:</p>
+<ul>
+<li>a net you named yourself keeps its name (see
+<a href="probing.html">Probing &amp; Net Names</a>);</li>
+<li>a wire in a bus is named after the bus and its bit, so bus <code>D[7:0]</code> gives
+<code>D0</code>…<code>D7</code>;</li>
+<li>the supply rails are <code>+5V</code> (or <code>+3V</code>, <code>+12V</code>) and <code>GND</code>;</li>
+<li>every other net is numbered <code>N1</code>, <code>N2</code>, … in reading order.</li>
+</ul>
+<p>Characters the other programs can&#39;t use in a net name become <code>_</code>. A name
+marked active-low with a leading <code>/</code>, <code>~</code> or <code>!</code> gets an <code>n</code> prefix instead,
+so <code>/CLR</code> exports as <code>nCLR</code>.</p>
+<h2 id="kicad">KiCad</h2>
+<p><strong>Export To ▸ KiCad Project…</strong> asks for a <strong>folder</strong>, not a file name. A KiCad
+project is several files that belong together, so choose (or create) a folder
+for it. Chip Hippo writes four files there, named after the desktop:</p>
+<ul>
+<li><code>&lt;desktop&gt;.kicad_pro</code>, the project itself. Open this one in KiCad.</li>
+<li><code>&lt;desktop&gt;.kicad_sch</code>, the schematic.</li>
+<li><code>chiphippo.kicad_sym</code>, the symbols for the parts on it.</li>
+<li><code>sym-lib-table</code>, which tells KiCad where those symbols are, so the project
+opens anywhere without any setup.</li>
+</ul>
+<p>The files are written in KiCad 8&#39;s format, so KiCad 8 and every later version
+can open them.</p>
+<h3 id="what-the-schematic-looks-like">What the schematic looks like</h3>
+<p>Parts are laid out in the same arrangement as the
+<a href="schematic-view.html">Schematic View</a>, including any symbols you moved there.
+Each chip is <strong>one</strong> symbol with every pin in its physical numbering, the way
+it sits on the breadboard. (KiCad&#39;s own library draws a 74xx chip as a set of
+separate gates.) Inputs are on the left, outputs on the right, and power on
+the top and bottom.</p>
+<p>Pins are connected by <strong>net labels</strong> rather than drawn wires: each connected
+pin has a short stub ending in its net&#39;s name, and KiCad joins every label with
+the same name. The supply rails use power symbols, with one <code>PWR_FLAG</code> per rail
+so KiCad&#39;s electrical rules check knows they are supplied. A pin that isn&#39;t
+connected to anything gets a no-connect flag. The sheet passes KiCad&#39;s
+electrical rules check with nothing to report.</p>
+<h3 id="from-schematic-to-circuit-board">From schematic to circuit board</h3>
+<p>Every part is given a <strong>footprint</strong> from KiCad&#39;s standard libraries:</p>
+<ul>
+<li>Chips get <code>Package_DIP</code> footprints at their real width: 300 mil for logic,
+600 mil for the wide memory chips and processors.</li>
+<li>Resistors, LEDs, switches, DIP switch banks, resistor networks, oscillator
+cans and the 16×2 LCD each get their matching standard footprint.</li>
+<li>The power supply and the clock source become 2-pin headers labelled
+<strong>POWER</strong> and <strong>CLOCK IN</strong>. That&#39;s where power and a clock come in on a real
+board. The clock needs an oscillator in its place, which the report points
+out.</li>
+<li>The 7-segment digits, the 8-segment bar graph, the 20×4 LCD and the latching
+push button get a <strong>stand-in footprint</strong> (a pin header or a tactile button
+of the right size). Chip Hippo&#39;s versions of these are idealized parts, with
+no single real part to match. Choose the real part&#39;s footprint before laying
+out the board.</li>
+</ul>
+<p>With the project open in KiCad, <strong>Tools ▸ Update PCB from Schematic</strong> in the
+PCB editor brings every footprint onto the board, connected.</p>
+<h3 id="exporting-again">Exporting again</h3>
+<p>To update an exported project after changing the design, export into the
+<strong>same folder</strong>. Chip Hippo rewrites the schematic and its symbol library, but
+leaves your <code>.kicad_pro</code> and any board you&#39;ve laid out alone. Every part keeps
+the same identity from one export to the next, so <strong>Update PCB from
+Schematic</strong> only adds, removes and rewires what actually changed, and the
+parts you&#39;ve already placed stay put.</p>
+<p>Chip Hippo never overwrites a schematic that some other program wrote. If the
+folder already holds a <code>.kicad_sch</code> of that name from somewhere else, the
+export stops and changes nothing. Choose an empty folder instead.</p>
+<h3 id="what-isnt-exported">What isn&#39;t exported</h3>
+<p>Breadboards and jumper wires don&#39;t appear as parts: they become the
+connections between the parts. External signals and Arduino Output and Input
+elements are stimulus for the bench, not parts, so they are left out (the
+report lists them). Notes and labels are left out too.</p>
+<h2 id="digital">Digital</h2>
+<p><strong>Export To ▸ Digital Circuit…</strong> writes one <code>.dig</code> file. Open it in Digital
+with <strong>File ▸ Open</strong>.</p>
+<p>The chips are <strong>Digital&#39;s own</strong>: its library models most of the 74xx family as
+DIL packages, pinned exactly like the real parts. Chip Hippo places each one
+and connects its pins through <strong>tunnels</strong> named after their nets, which Digital
+joins the way KiCad joins labels. Switches, LEDs, bar graphs, 7-segment
+digits, clock sources, oscillator cans and the power supply each become the
+matching Digital element. The switches start in the position they&#39;re in on the
+desk. External signals become Digital buttons (momentary) or inputs (toggle),
+labelled with their names.</p>
+<p>These exports have been run in Digital itself and checked against Chip Hippo&#39;s
+own simulation. For the example circuits, every chip output and every lamp
+reads the same in both, at a range of switch settings.</p>
+<h3 id="what-changes">What changes</h3>
+<p>Digital is a logic simulator, so some parts have to be exported as what they
+<strong>mean</strong> rather than what they are:</p>
+<ul>
+<li><strong>Resistors</strong> are exported as what they do in the logic. A resistor to a
+supply rail becomes a pull-up or pull-down on the net at its other end, which
+is what a lamp&#39;s current-limiting resistor and a switch&#39;s pull-down amount
+to. A resistor between two signals becomes a plain wire (the report lists
+it). A resistor from rail to rail does nothing in logic and is left out.</li>
+<li><strong>Floating inputs</strong>: an unconnected TTL input reads HIGH. Digital treats an
+undriven input as an error, so the export adds the pull-up that makes it
+HIGH in Digital too. It doesn&#39;t add one where a resistor already sets the
+level.</li>
+<li><strong>Open-collector chips</strong> (74LS01, 74LS03, 74LS05) get a pull-up on each
+output. Chip Hippo simulates their outputs driving both ways, but Digital
+simulates them as the real parts, which only pull low. The pull-up makes the
+two behave the same, as it would on a real board.</li>
+<li><strong>Push buttons</strong> become toggle switches, because Digital has no momentary
+switch contact.</li>
+<li><strong>Unpowered chips</strong> are powered, because Digital can&#39;t simulate a chip with
+its supply pins unconnected.</li>
+</ul>
+<h3 id="what-doesnt-come-across">What doesn&#39;t come across</h3>
+<ul>
+<li>Seven 74xx parts that Digital&#39;s library doesn&#39;t include: 74LS73, 74LS75,
+74LS169, 74LS240, 74LS259, 74LS279 and 74LS533. Each one&#39;s place in the
+circuit is marked with a note, and everything wired to it is still exported.</li>
+<li>Memory chips, because their contents are stored in files the export doesn&#39;t
+carry.</li>
+<li>The processors and their peripheral chips (W65C02, Z80, W65C21, W65C22).</li>
+<li>The character LCD modules.</li>
+<li>Arduino Output and Input elements.</li>
+</ul>
+<p>Digital needs its own library to find the chips, and it comes installed with
+Digital. If a chip shows up as missing, check Digital&#39;s library settings.</p>
+
+    </main>
+  </div>
+</body>
+</html>

@@ -90,5 +90,7 @@ of the same glue logic.
   are kept, saving them, and undo/redo.
 - [Projects & Desktops](projects-and-desktops.md) — tabbed desktops, saving a
   project, and copying a design from one desktop onto another.
+- [Exporting to Other Tools](exporting.md) — writing a desktop out as a KiCad
+  schematic or a Digital circuit.
 - [Settings](settings.md) — the settings dialog and its options.
 - [Keyboard Shortcuts](keyboard-shortcuts.md) — every shortcut in one place.

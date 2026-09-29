@@ -24,10 +24,9 @@
 // That is the same rule that puts every filesystem call in main, and it is
 // worth keeping — the renderer stays a thing that cannot phone home.
 //
-// Node's global `fetch` (Electron 42 ships Node 22) rather than an HTTP
-// dependency: src/package.json has no `dependencies` block at all, and an SSE
-// reader is about forty lines. The trade is typed helpers we do not get; the
-// gain is that the project still installs with zero runtime packages.
+// Node's global `fetch` rather than an HTTP dependency: an SSE reader is a few
+// dozen lines, and the only runtime packages the app ships are the updater and
+// the serial port. The trade is typed helpers we do not get.
 //
 // Requests are registered by id so a long generation can be cancelled — the
 // renderer holds the id, and `cancel(id)` aborts the underlying fetch. Nothing
@@ -51,27 +50,46 @@ let seq = 0;
 async function readSSE(body, onEvent) {
   const decoder = new TextDecoder();
   let buffer = "";
-  for await (const chunk of body) {
-    buffer += decoder.decode(chunk, { stream: true });
-    let cut;
-    while ((cut = buffer.indexOf("\n\n")) !== -1) {
-      const frame = buffer.slice(0, cut);
-      buffer = buffer.slice(cut + 2);
-      for (const line of frame.split("\n")) {
-        if (!line.startsWith("data:")) continue;
-        const payload = line.slice(5).trim();
-        if (!payload || payload === "[DONE]") {
-          if (payload === "[DONE]") onEvent({ done: true }, true);
-          continue;
-        }
-        try {
-          onEvent(JSON.parse(payload), false);
-        } catch {
-          /* a partial or non-JSON frame — the next one will carry the text */
-        }
+  const frameOut = (frame) => {
+    for (const line of frame.split("\n")) {
+      if (!line.startsWith("data:")) continue;
+      const payload = line.slice(5).trim();
+      if (!payload || payload === "[DONE]") {
+        if (payload === "[DONE]") onEvent({ done: true }, true);
+        continue;
+      }
+      try {
+        onEvent(JSON.parse(payload), false);
+      } catch {
+        /* a partial or non-JSON frame — the next one will carry the text */
       }
     }
+  };
+  // The spec lets a line end in CRLF, CR or LF, and some servers use CRLF
+  // (sse-starlette, which llama-cpp-python's OpenAI-compatible server runs
+  // on): "\r\n\r\n" never contains "\n\n", so a CRLF stream produced not
+  // one event and ended as an "empty response". Line endings are normalised
+  // as the text arrives — holding back a trailing CR, which may be the first
+  // half of a CRLF split across two chunks.
+  const take = (text) => {
+    buffer += text;
+    const held = buffer.endsWith("\r") ? "\r" : "";
+    if (held) buffer = buffer.slice(0, -1);
+    buffer = buffer.replace(/\r\n?/g, "\n");
+    let cut;
+    while ((cut = buffer.indexOf("\n\n")) !== -1) {
+      frameOut(buffer.slice(0, cut));
+      buffer = buffer.slice(cut + 2);
+    }
+    buffer += held;
+  };
+  for await (const chunk of body) {
+    take(decoder.decode(chunk, { stream: true }));
   }
+  // Whatever the decoder still holds, and a last frame the server closed the
+  // stream on without its blank line, are events too.
+  take(decoder.decode());
+  if (buffer.trim()) frameOut(buffer.replace(/\r\n?/g, "\n"));
 }
 
 /** A human-readable reason for a non-2xx response. */

@@ -498,6 +498,46 @@ test("importing a whole project takes its active desktop", () => {
   });
 });
 
+test("importing from a copy of the OPEN project leaves its ROM files alone", () => {
+  withStore((store, dir) => {
+    // The open project's chip, reprogrammed since the copy was taken.
+    seedRom(store, GUID_A, [1, 2, 3]);
+    const meta = store.newProject();
+    meta.tabs[0].doc = docWithRom(GUID_A);
+    const backup = path.join(dir, `backup${PROJECT_EXT}`);
+    store.write(backup, meta);
+    seedRom(store, GUID_A, [9, 9, 9]); // the live bytes now differ from the file
+
+    const snap = store.readDesktopSnapshot(backup);
+    // The import did not write the file's bytes over the live chip's sidecar…
+    assert.deepEqual(romBytes(store, GUID_A), [9, 9, 9]);
+    // …and the copy still arrives with the bytes the file holds.
+    reseatImages(snap.doc, store.memoryDir, snap.images);
+    const guid = snap.doc.components[0].params.storage.guid;
+    assert.notEqual(guid, GUID_A);
+    assert.deepEqual(romBytes(store, guid), [1, 2, 3]);
+  });
+});
+
+test("a corrupt project the user chose is left where it is", () => {
+  withStore((store, dir) => {
+    const mine = path.join(dir, `mine${PROJECT_EXT}`);
+    fs.writeFileSync(mine, '{"version": 5, "tabs": [');
+    assert.equal(store.read(mine), null);
+    assert.equal(store.readDesktopSnapshot(mine), null);
+    assert.equal(fs.readFileSync(mine, "utf8"), '{"version": 5, "tabs": [');
+  });
+});
+
+test("a corrupt WORKING SLOT is still quarantined — it is the app's own file", () => {
+  withStore((store) => {
+    fs.mkdirSync(path.dirname(store.defaultProjectPath), { recursive: true });
+    fs.writeFileSync(store.defaultProjectPath, "{ half");
+    assert.equal(store.read(store.defaultProjectPath), null);
+    assert.equal(fs.existsSync(store.defaultProjectPath), false);
+  });
+});
+
 test("readDesktopSnapshot refuses a file that holds no desk", () => {
   withStore((store, dir) => {
     const junk = path.join(dir, `junk${DESKTOP_EXT}`);

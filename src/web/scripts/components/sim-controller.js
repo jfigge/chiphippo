@@ -186,7 +186,9 @@ export class SimController {
   #images = new Map(); // memory compId → Uint8Array/Uint16Array (run-volatile)
   #memInfo = new Map(); // memory compId → { volatile, guid, width, byteLength }
   #dataLossWarned = new Set(); // programmed chips already warned of a missing file
+  #toastKeys = new Set(); // the keys of the toasts this run has raised
   #timers = new Map(); // clockId → interval handle
+  #timerHalfMs = new Map(); // clockId → the half-period its timer runs at
   #suppress = false; // ignore our own damage-persist writes
   #runToken = 0; // bumped on every start() — see #loadRom
   #integration = null; // the settle-boundary collaborator (see the file header)
@@ -355,6 +357,14 @@ export class SimController {
     if (token !== this.#runToken || this.#mode !== TRANSPORT.RUNNING) return;
     this.#tickNow();
     this.#scheduleClocks();
+    // Tell any open inspector the run has begun, as Stop tells it the run has
+    // ended: a window opened while stopped otherwise went on reading "Stopped ·
+    // editable" all run, and an SRAM's showed deltas over a zeroed grid.
+    window.dispatchEvent(
+      new CustomEvent("chiphippo:mem-state", {
+        detail: { running: true, started: true, changes: new Map() },
+      }),
+    );
   }
 
   /** Freeze time (stop the clocks) but keep the state + live view. */
@@ -404,7 +414,11 @@ export class SimController {
     } catch (err) {
       console.error("[renderer] integration end failed:", err);
     }
-    this.#notifications?.clear();
+    // Only this controller's own toasts: the stack is the app's, and clearing
+    // it whole took the updater's sticky Restart offer and the auto-route
+    // Cancel button down with every short and oscillation of the run.
+    for (const key of this.#toastKeys) this.#notifications?.dismiss?.(key);
+    this.#toastKeys.clear();
     // BEFORE #onTransportChange: stopping re-baselines undo/redo against the
     // live document (`#history.sync`), so the chips have to be whole by the
     // time that runs — otherwise the baseline would hold the damage and a ⌘Z
@@ -597,7 +611,7 @@ export class SimController {
       this.#images.set(compId, unpackImage(def, res.bytes));
     } catch (err) {
       if (stale()) return; // a superseded run's own failure is nobody's business
-      this.#notifications?.notify({
+      this.#notify({
         key: `mem-load:${compId}`,
         variant: "danger",
         sticky: true,
@@ -636,7 +650,7 @@ export class SimController {
   #warnDataLoss(compId) {
     if (this.#dataLossWarned.has(compId)) return;
     this.#dataLossWarned.add(compId);
-    this.#notifications?.notify({
+    this.#notify({
       key: `mem-lost:${compId}`,
       variant: "danger",
       sticky: true,
@@ -666,6 +680,12 @@ export class SimController {
     return packImage(this.#memInfo.get(compId)?.width ?? 8, img);
   }
 
+  /** Raise a toast, remembering its key so Stop takes down exactly these. */
+  #notify(opts) {
+    if (opts?.key) this.#toastKeys.add(opts.key);
+    this.#notifications?.notify(opts);
+  }
+
   #autoClocks() {
     // A clock brick may be in manual mode; an oscillator can never is — a
     // real crystal has no click-to-toggle pin.
@@ -690,13 +710,39 @@ export class SimController {
     for (const c of this.#tickingClocks()) this.#startTimer(c);
   }
 
-  /** One clock's half-period timer, replacing any it already had. */
-  #startTimer(c) {
-    this.#stopTimer(c.id);
-    const halfMs = Math.max(
+  /** The half-period a clock's timer runs at, at the current speed. */
+  #halfMsOf(c) {
+    return Math.max(
       MIN_HALF_PERIOD_MS,
       Math.round(1000 / (2 * c.params.hz * this.#speed)),
     );
+  }
+
+  /**
+   * Bring the timers in line with the document WITHOUT touching a clock that
+   * has not changed: start the new or re-rated ones, stop the ones gone. A
+   * doc change fires on every switch flip, and restarting every timer on each
+   * one delayed every clock's next edge — flip a switch more often than a
+   * slow clock's half-period and that clock never ticked at all.
+   */
+  #reconcileClocks() {
+    if (this.#mode !== TRANSPORT.RUNNING) return;
+    const ticking = this.#tickingClocks();
+    const wanted = new Set(ticking.map((c) => c.id));
+    for (const id of [...this.#timers.keys()]) {
+      if (!wanted.has(id)) this.#stopTimer(id);
+    }
+    for (const c of ticking) {
+      if (this.#timerHalfMs.get(c.id) !== this.#halfMsOf(c))
+        this.#startTimer(c);
+    }
+  }
+
+  /** One clock's half-period timer, replacing any it already had. */
+  #startTimer(c) {
+    this.#stopTimer(c.id);
+    const halfMs = this.#halfMsOf(c);
+    this.#timerHalfMs.set(c.id, halfMs);
     const handle = setInterval(() => {
       // An integration settle freezes time: the edge due now is SKIPPED, not
       // queued, so a slow Arduino slows the clock instead of bunching edges
@@ -711,11 +757,13 @@ export class SimController {
   #stopTimer(id) {
     clearInterval(this.#timers.get(id));
     this.#timers.delete(id);
+    this.#timerHalfMs.delete(id);
   }
 
   #clearTimers() {
     for (const handle of this.#timers.values()) clearInterval(handle);
     this.#timers.clear();
+    this.#timerHalfMs.clear();
   }
 
   // ── Input events (re-settle without advancing the clock) ─────────────────
@@ -726,8 +774,9 @@ export class SimController {
 
   #onDocChanged = () => {
     if (!this.running || this.#suppress) return;
-    // A clock's rate may have changed via its menu — reschedule, then settle.
-    if (this.#mode === TRANSPORT.RUNNING) this.#scheduleClocks();
+    // A clock's rate may have changed via its menu, or a clock come or gone —
+    // retime just those, then settle.
+    this.#reconcileClocks();
     this.#tickNow();
   };
 
@@ -929,28 +978,28 @@ export class SimController {
     if (!this.#notifications) return;
     for (const w of warnings) {
       if (w.type === "short") {
-        this.#notifications.notify({
+        this.#notify({
           key: `short:${w.net}`,
           variant: "danger",
           title: t("sim.short"),
           message: t("sim.shortMessage", { net: w.net }),
         });
       } else if (w.type === "conflict") {
-        this.#notifications.notify({
+        this.#notify({
           key: `conflict:${w.net}`,
           variant: "warning",
           title: t("sim.conflict"),
           message: t("sim.conflictMessage", { net: w.net }),
         });
       } else if (w.type === "oscillation") {
-        this.#notifications.notify({
+        this.#notify({
           key: "oscillation",
           variant: "warning",
           title: t("sim.oscillation"),
           message: t("sim.oscillationMessage", { count: w.nets.length }),
         });
       } else if (w.type === "underpowered") {
-        this.#notifications.notify({
+        this.#notify({
           key: `under:${w.chip}`,
           variant: "warning",
           title: t("sim.underpowered"),
@@ -959,14 +1008,14 @@ export class SimController {
           }),
         });
       } else if (w.type === "reversed") {
-        this.#notifications.notify({
+        this.#notify({
           key: `reversed:${w.chip}`,
           variant: "danger",
           title: t("sim.reversed"),
           message: t("sim.reversedMessage", { chip: this.#refName(w.chip) }),
         });
       } else if (w.type === "damaged") {
-        this.#notifications.notify({
+        this.#notify({
           key: `smoke:${w.chip}`,
           variant: "danger",
           title: t("sim.damaged"),

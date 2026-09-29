@@ -953,7 +953,7 @@ export const CHIPS_74LS = Object.freeze([
     title: "4-bit Arithmetic Logic Unit",
     blurb:
       "16 logic operations (M=H) or 16 arithmetic operations (M=L), " +
-      "selected by S0-S3, with an active-low carry-in, a carry-out, and " +
+      "selected by S0-S3, with an active-low carry-in and carry-out, and " +
       "active-low carry generate/propagate outputs for cascading multiple " +
       "ALUs (meaningful only in arithmetic mode). A=B is open-collector on " +
       "the real part (modelled as a plain output, like this catalog's " +

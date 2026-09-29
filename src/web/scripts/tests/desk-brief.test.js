@@ -165,3 +165,16 @@ test("the review prompt names the language to answer in", () => {
   assert.match(prompt, /Answer in Deutsch/);
   assert.match(prompt, /net\s+ids and finding codes exactly as they are given/);
 });
+
+test("a clock is briefed at its rate, or as manual — never as 'manual Hz'", () => {
+  const doc = new DeskDoc(null);
+  doc.addKit("full", 0, 0);
+  doc.addBrick("clock", 70, 0, { hz: 5 });
+  doc.addBrick("clock", 70, 10, { hz: "manual" });
+  const json = doc.toJSON();
+  const netlist = buildNetlist(json);
+  const text = buildDeskBrief(json, netlist, reviewDesk(json, netlist));
+  assert.match(text, /clk1 {2}clock {2}5 Hz/);
+  assert.match(text, /clk2 {2}clock {2}manual/);
+  assert.doesNotMatch(text, /manual Hz/);
+});

@@ -105,3 +105,57 @@ test("a dead renderer releases the latch so the next close can ask again", () =>
   // Releasing the latch is NOT permission to close — that is still unanswered.
   assert.equal(g.allows(), false);
 });
+
+test("nobody can answer until the renderer says it is ready", () => {
+  const g = new CloseGuard();
+  // A window still loading — or one whose page never loaded — has no handler
+  // registered: asking it would latch on a reply that cannot come.
+  assert.equal(g.answerable, false);
+  g.rendererReady();
+  assert.equal(g.answerable, true);
+});
+
+test("a crashed renderer cannot be asked again — the close proceeds", () => {
+  const g = new CloseGuard();
+  g.rendererReady();
+  g.ask();
+  g.rendererGone(); // render-process-gone: webContents is NOT destroyed
+  assert.equal(g.pending, false);
+  assert.equal(g.answerable, false, "not re-asked: the page is dead");
+  // A reload brings a new page, which says so for itself.
+  g.rendererReady();
+  assert.equal(g.answerable, true);
+});
+
+test("an answer to no question authorises nothing", () => {
+  const g = new CloseGuard();
+  g.rendererReady();
+  assert.equal(g.reply(true), "stay");
+  assert.equal(g.allows(), false);
+  // Nor does a late reply from a page written off mid-question.
+  g.ask();
+  g.rendererGone();
+  assert.equal(g.reply(true), "stay");
+  assert.equal(g.allows(), false);
+});
+
+test("restart-to-update is a quit that answers as an INSTALL", () => {
+  const g = new CloseGuard();
+  g.rendererReady();
+  g.ask({ installing: true });
+  assert.equal(g.reply(true), "install");
+  assert.equal(
+    g.allows(),
+    true,
+    "the quit the installer triggers goes through",
+  );
+});
+
+test("declining a restart-to-update forgets the install", () => {
+  const g = new CloseGuard();
+  g.ask({ installing: true });
+  assert.equal(g.reply(false), "stay");
+  // The next ⌘Q is a plain quit, not a delayed install.
+  g.ask({ quitting: true });
+  assert.equal(g.reply(true), "quit");
+});

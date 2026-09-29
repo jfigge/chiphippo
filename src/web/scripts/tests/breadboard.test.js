@@ -539,3 +539,22 @@ test("rowOffsetBy: the row exactly N pitch-units away, or null (trench gap / off
   assert.equal(rowOffsetBy("pins-full", "z", 3), null);
   assert.equal(rowOffsetBy("rail-full", "+", 3), null);
 });
+
+test("rowOffsetBy: every reach UP to row j lands, float error and all", () => {
+  // 4.51 − 3 is 1.5099999999999998, not 1.51 — an exact comparison refused
+  // every offset that should have landed on the top row.
+  const ROWS = "jihgf";
+  for (let i = 1; i < ROWS.length; i++) {
+    assert.equal(
+      rowOffsetBy("pins-full", ROWS[i], -i),
+      "j",
+      `${ROWS[i]} − ${i}`,
+    );
+  }
+  for (const [row, delta] of [
+    ["e", -7],
+    ["a", -11],
+  ]) {
+    assert.equal(rowOffsetBy("pins-full", row, delta), "j", `${row} ${delta}`);
+  }
+});

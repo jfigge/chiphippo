@@ -516,6 +516,7 @@ export class ProjectWorkspace {
         return;
       }
       if (!raw) return; // cancelled
+      if (raw.ok === false) return this.#notifyUnreadable();
       if (!raw.tabs?.length) {
         const err = new Error(t("workspace.noDesktops"));
         this.#fail(t("workspace.failOpen"), err);
@@ -543,12 +544,21 @@ export class ProjectWorkspace {
       if (!res?.ok) {
         if (res?.code === "missing") return this.#offerForgetRecent(filePath);
         if (res?.code === "denied") return this.#offerRegrantRecent(filePath);
+        if (res?.code === "invalid") return this.#notifyUnreadable();
         return PopupManager.notify({
           title: t("workspace.openFailTitle"),
           message: res?.error ?? t("workspace.unreadable"),
         });
       }
       await this.#swapProject(res.project);
+    });
+  }
+
+  /** The file was read, and holds no project: say so, and touch nothing. */
+  #notifyUnreadable() {
+    return PopupManager.notify({
+      title: t("workspace.openFailTitle"),
+      message: t("workspace.unreadable"),
     });
   }
 

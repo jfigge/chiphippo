@@ -430,6 +430,32 @@ export function connectionsUsed(elements) {
   return out;
 }
 
+/** Is any of this element's tags on the breadboard — a pin, or its trigger? */
+export function isElementPlanted(element) {
+  return Object.values(element?.tags ?? {}).some(
+    (tag) => typeof tag?.anchor === "string",
+  );
+}
+
+/**
+ * The elements a RUN involves.
+ *
+ * A connection takes part only when the breadboard references it — at least
+ * one of its elements has a tag planted — and then ALL of its elements do,
+ * planted or not, because the layout signature its sketch was compiled against
+ * counts every one of them. An element with nothing on the board reaches no
+ * net, so a board referenced only by such elements is not opened, not checked
+ * and not complained about: an Arduino left unplugged, or a connection not set
+ * up on this computer, must not stop a circuit that makes no use of it.
+ */
+export function runElements(elements) {
+  const referenced = new Set();
+  for (const e of elements ?? []) {
+    if (e.connection && isElementPlanted(e)) referenced.add(e.connection);
+  }
+  return (elements ?? []).filter((e) => referenced.has(e.connection));
+}
+
 // ── The tag glyph ──────────────────────────────────────────────────────────
 
 // A tag IS a signal flag — the same pentagon, point at the anchor, and the

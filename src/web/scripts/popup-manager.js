@@ -725,7 +725,7 @@ export const PopupManager = {
   notify({
     title,
     message,
-    okLabel = "Dismiss",
+    okLabel = t("common.ok"),
     okClass = "btn--primary",
     onClose,
   } = {}) {

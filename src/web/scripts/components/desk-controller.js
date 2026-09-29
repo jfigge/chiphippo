@@ -1568,6 +1568,12 @@ export class DeskController {
     // wrong ones, where the waypoints are drawn around parts that have since
     // been dragged away.)
     if (JSON.stringify(this.#doc.toJSON()) !== before) return { stale: true };
+    // Nor if the circuit started running meanwhile: Space and ⌘R reach the
+    // transport mid-route, and starting it changes nothing in the document —
+    // so the check above passed, and the plan was written into a running
+    // circuit with history frozen, for Stop's re-baseline to fold into the
+    // edit before it.
+    if (this.#editingLocked) return { stale: true };
     // The debug overlay is a TOGGLE, so a second Option-click puts the desk
     // back rather than redrawing the same thing over itself.
     this.#routeDebug ??= new RouteDebugLayer(this.#layers.overlay);
@@ -1690,7 +1696,7 @@ export class DeskController {
 
   /**
    * Slide the whole desk so what is on it straddles the origin — every board,
-   * brick, and label by one integer delta (DeskDoc.translateAll), which is
+   * brick, and label by one delta (DeskDoc.translateAll), which is
    * rigid and so can neither refuse nor change what is mated to what.
    *
    * Fitting already centres the CAMERA on the design; centring the DESIGN
@@ -4888,6 +4894,9 @@ export class DeskController {
   /** Restore the previous snapshot. @returns {boolean} true when it acted. */
   undo() {
     if (this.#editingLocked) return false; // history frozen during a run
+    // Nor mid-drag: the menu's ⌘Z reaches here while a gesture is live, and
+    // the document it would restore may not hold what the drag is holding.
+    if (this.#dragGestureActive) return false;
     const snapshot = this.#history.undo();
     if (snapshot == null) return false;
     this.#restoreSnapshot(snapshot);
@@ -4897,6 +4906,7 @@ export class DeskController {
   /** Restore the next snapshot. @returns {boolean} true when it acted. */
   redo() {
     if (this.#editingLocked) return false;
+    if (this.#dragGestureActive) return false;
     const snapshot = this.#history.redo();
     if (snapshot == null) return false;
     this.#restoreSnapshot(snapshot);
@@ -4922,6 +4932,11 @@ export class DeskController {
    * @param {{history?: import('../model/history-store.js').HistoryStore}} [opts]
    */
   loadDocument(raw, { history = null } = {}) {
+    // A drag in flight is cancelled against the document it BEGAN on, before
+    // that document is swapped out: its revert reads the origin board back out
+    // of `#doc`, and the incoming document need not have one (a chip dragged on
+    // a board a tab switch or New/Open takes away threw inside the rebuild).
+    if (this.#dragGestureActive) this.#cancelDragGesture();
     this.cancelPlacement();
     this.disarmWireTool();
     this.disarmBusTool();
@@ -4947,6 +4962,8 @@ export class DeskController {
    * re-recording the restore as a fresh edit.
    */
   #restoreSnapshot(snapshot) {
+    // As `loadDocument`: cancel against the document the gesture began on.
+    if (this.#dragGestureActive) this.#cancelDragGesture();
     this.#restoring = true;
     try {
       this.#doc.restore(snapshot);

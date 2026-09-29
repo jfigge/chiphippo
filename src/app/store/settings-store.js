@@ -256,4 +256,46 @@ class SettingsStore {
   }
 }
 
-module.exports = { SettingsStore, DEFAULTS };
+/**
+ * Keys MAIN keeps for itself. The renderer never writes one, and the first is
+ * load-bearing: `recentProjects` IS the allowlist Open Recent is checked
+ * against, so a renderer that could write it could have main adopt — and later
+ * save over — any path on disk, every other path gate notwithstanding.
+ */
+const MAIN_OWNED = Object.freeze([
+  "recentProjects",
+  "windowBounds",
+  "pinoutFloat",
+  "connectionWindows",
+  "codegenSaves",
+]);
+
+/**
+ * The part of a `settings:set` patch the renderer may write.
+ *
+ * Main-owned keys are dropped, and `datasheetDir` — a folder main later hands
+ * to `shell.openPath` — survives only as null, or a folder `mayUseDir` vouches
+ * for (one a dialog established, or the app's own download folder).
+ *
+ * @param {object} patch
+ * @param {{mayUseDir: (dir: string) => boolean}} opts
+ * @returns {object} a new object; the input is never mutated.
+ */
+function rendererPatch(patch, { mayUseDir }) {
+  if (!patch || typeof patch !== "object" || Array.isArray(patch)) return patch;
+  const out = {};
+  for (const [key, value] of Object.entries(patch)) {
+    if (MAIN_OWNED.includes(key)) continue;
+    if (key === "datasheetDir") {
+      const ok =
+        value == null ||
+        value === "" ||
+        (typeof value === "string" && mayUseDir(value));
+      if (!ok) continue;
+    }
+    out[key] = value;
+  }
+  return out;
+}
+
+module.exports = { SettingsStore, DEFAULTS, MAIN_OWNED, rendererPatch };

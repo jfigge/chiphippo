@@ -32,7 +32,7 @@ import {
   shiftFor,
   snapDesign,
 } from "../model/design-clip.js";
-import { boardRect } from "../model/mating.js";
+import { boardRect, matingEdge } from "../model/mating.js";
 import { MAX_SIGNALS, nextSignalColor } from "../model/signals.js";
 
 /** The plain `{boards, components, wires, …}` view captureDesign reads. */
@@ -178,6 +178,24 @@ test("snapDesign pulls a design flush onto a board it can dovetail with", () => 
     dx: 0,
     dy: 0,
   });
+});
+
+test("a paste lands where the snapped ghost showed it — at a FRACTIONAL y", () => {
+  const clip = captureDesign(view(sourceDesign()), { boardIds: ["bb1"] });
+  const dest = new DeskDoc(null);
+  dest.addKit("full", 0, 0); // its bottom rail ends at 21.02, not on a pitch
+  const bottom = dest.boards.at(-1);
+  const shift = { dx: 0, dy: 21 };
+  const pull = snapDesign(clip, shift, dest.boards.map(boardRect));
+  const snapped = { dx: shift.dx + pull.dx, dy: shift.dy + pull.dy };
+  // The ghost judges the drop at the snapped position — legal, and flush.
+  assert.equal(resolveDesign(clip, snapped, tests(dest)).legal, true);
+  // Rounding that shift used to land the pin-board at y 21, straight into
+  // the rail: a green ghost, then a refused paste.
+  const pasted = dest.pasteDesign(clip, snapped);
+  const board = pasted.boards[0];
+  assert.equal(board.y, 21.02);
+  assert.ok(matingEdge(bottom, board), "flush: it mates");
 });
 
 test("clipScene re-expresses a clip as a document the geometry helpers read", () => {

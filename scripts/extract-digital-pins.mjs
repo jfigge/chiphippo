@@ -87,9 +87,9 @@ function indexLibrary(dir) {
 /** The root `<attributes>` value of `key` as an int, or null. */
 function rootInt(xml, key) {
   const attrs = xml.split("<visualElements>")[0];
-  const m = new RegExp(
-    `<string>${key}</string>\\s*<int>(-?\\d+)</int>`,
-  ).exec(attrs);
+  const m = new RegExp(`<string>${key}</string>\\s*<int>(-?\\d+)</int>`).exec(
+    attrs,
+  );
   return m ? Number(m[1]) : null;
 }
 

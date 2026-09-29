@@ -68,6 +68,20 @@ test("readJSON: corrupt JSON is quarantined and reads as null", () => {
   }
 });
 
+test("readJSON: {quarantine:false} reads a corrupt file as null and leaves it", () => {
+  const dir = tempDir();
+  try {
+    const file = path.join(dir, "mine.chiphippo");
+    fs.writeFileSync(file, "{ truncated");
+    assert.equal(io.readJSON(file, { quarantine: false }), null);
+    // A file the user chose is theirs: reported unreadable, never renamed.
+    assert.equal(fs.readFileSync(file, "utf8"), "{ truncated");
+    assert.deepEqual(fs.readdirSync(dir), ["mine.chiphippo"]);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
 test("writeJSON: refuses non-serializable input", () => {
   const dir = tempDir();
   try {

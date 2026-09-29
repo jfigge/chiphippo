@@ -61,6 +61,7 @@ export const PAGES = Object.freeze([
   { slug: "serial-protocol", title: "Serial Protocol" },
   { slug: "files-and-undo", title: "Files, Saving & Undo" },
   { slug: "projects-and-desktops", title: "Projects & Desktops" },
+  { slug: "exporting", title: "Exporting to Other Tools" },
   { slug: "settings", title: "Settings" },
   { slug: "keyboard-shortcuts", title: "Keyboard Shortcuts" },
 ]);

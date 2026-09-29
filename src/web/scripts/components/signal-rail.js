@@ -23,8 +23,9 @@
 // A sibling of `.desk-surface`, not a child of it: the rail belongs to the
 // SCREEN, so it neither pans nor zooms — the DeskLock / ZoomControl
 // arrangement. Those two already hold that edge (padlock top, zoom cluster
-// bottom) and the app has no `z-index` anywhere, stacking on DOM order alone,
-// so the rail is pinned BETWEEN them by subtracting both their heights. That
+// bottom), and the corner chrome is kept apart by position rather than stacked
+// by `z-index`, so the rail is pinned BETWEEN them by subtracting both their
+// heights. That
 // is the `--desk-lock-size` convention `.project-tabs` already follows, one
 // tenant further on.
 //

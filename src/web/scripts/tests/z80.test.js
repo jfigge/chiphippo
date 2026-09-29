@@ -47,7 +47,7 @@ const LEN = {
   RESET: 1,
   BUSACK: 1,
 };
-const SAMPLE = { M1: 3, READ: 3, IN: 4, INTACK: 6 };
+const SAMPLE = { M1: 3, READ: 3, IN: 4, INTACK: 5 };
 
 /** A CPU wired to a flat memory image and a flat port space. */
 function machine(program, org = 0x0000) {
@@ -789,4 +789,42 @@ test("outputs() drives every output pin, which the catalog guard requires", () =
       `pin ${p} is an output or io`,
     );
   }
+});
+
+test("INTACK: /M1 and /IORQ are low together, and the vector is taken while they are", () => {
+  // T1 T2 TW TW T3 T4 (Zilog UM0080). A device answers an acknowledge by
+  // decoding /M1·/IORQ — so the two must overlap, and the byte must be read
+  // inside that overlap. /M1 used to drop after T2 and /IORQ rise only in T3.
+  const unit = Z80();
+  const state = { ...initialZ80(), mk: "INTACK", addr: 0x1234 };
+  const at = (t, high) =>
+    unit.outputs({ ...state, t }, new Map([[6, high ? H : L]]));
+  const lines = [];
+  for (let t = 1; t <= 6; t++) {
+    for (const high of [true, false]) {
+      const out = at(t, high);
+      lines.push({
+        t,
+        high,
+        m1: out.get(27) === L,
+        iorq: out.get(20) === L,
+        mreq: out.get(19) === L,
+        rd: out.get(21) === L,
+        rfsh: out.get(28) === L,
+      });
+    }
+  }
+  const both = lines.filter((l) => l.m1 && l.iorq);
+  assert.ok(both.length > 0, "an acknowledge a device can decode");
+  // Everything up to T3 is the acknowledge: no memory read is ever asked for.
+  assert.ok(
+    lines.every((l) => !l.rd),
+    "no /RD in an acknowledge",
+  );
+  assert.ok(lines.filter((l) => l.t <= 4).every((l) => l.m1 && !l.mreq && !l.rfsh)); // prettier-ignore
+  // The byte is latched on the edge ENTERING T3 (t 5) — from T4's picture,
+  // which is inside the overlap.
+  assert.ok(lines.filter((l) => l.t === 4).every((l) => l.m1 && l.iorq));
+  // T3–T4 are the refresh, as behind any fetch.
+  assert.ok(lines.filter((l) => l.t >= 5).every((l) => l.rfsh && !l.m1 && !l.iorq)); // prettier-ignore
 });

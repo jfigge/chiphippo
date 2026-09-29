@@ -770,8 +770,10 @@ function execCB(c, bus, idx) {
 
   if (x === 1) {
     if (mem) bus.internal(1);
-    // With no MEMPTR, the memory forms take F3/F5 from the byte itself.
-    return bitTest(c, y, v, mem ? v : v);
+    // F3/F5 come from the value tested. The real chip's memory forms take them
+    // from MEMPTR's high byte instead; with no MEMPTR modelled, the byte
+    // stands in for it.
+    return bitTest(c, y, v, v);
   }
 
   let r;

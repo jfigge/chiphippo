@@ -81,6 +81,7 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
         <a class="doc-nav-link" href="serial-protocol.html">Serial Protocol</a>
         <a class="doc-nav-link" href="files-and-undo.html">Files, Saving &amp; Undo</a>
         <a class="doc-nav-link" href="projects-and-desktops.html">Projects &amp; Desktops</a>
+        <a class="doc-nav-link" href="exporting.html">Exporting to Other Tools</a>
         <a class="doc-nav-link" href="settings.html">Settings</a>
         <a class="doc-nav-link" href="keyboard-shortcuts.html">Keyboard Shortcuts</a>
     </nav>
@@ -477,7 +478,10 @@ speaks a different protocol is refused the same way.</p>
 <p>Press <strong>Run</strong> as usual. Before anything simulates, Chip Hippo checks that every
 Output and Input in use has a connection, that each connection is configured,
 and that its port is plugged in — and if not, says which and offers to open the
-right Properties or Settings. It then <strong>opens each port and greets the
+right Properties or Settings. &quot;In use&quot; means on the breadboard: a board is
+checked (and opened) only when at least one of its Outputs or Inputs has a tag
+planted, so an Arduino you&#39;ve left unplugged doesn&#39;t stop a circuit that isn&#39;t
+using it. It then <strong>opens each port and greets the
 sketch</strong>, asking again every quarter of a second for up to five seconds; many
 boards reset when the port opens, so this is also the time a sketch has to
 boot. A board that never answers stops the run with the port named, and so

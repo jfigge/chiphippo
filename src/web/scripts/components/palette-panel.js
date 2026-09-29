@@ -21,8 +21,8 @@
 // top (complete breadboards + loose pin-boards / power rails), then chips,
 // discrete parts, and power bricks grouped by function, with a filter box
 // matching id/title/blurb. Clicking an entry arms placement mode (reported via
-// the constructor callback with the click event, so app.js can pop the LED
-// color swatches — the ghost belongs to DeskController).
+// the constructor callback with the click event — the ghost belongs to
+// DeskController; a coloured part arms with the "Default LED color" setting).
 //
 // The tray carries its OWN open/close control rather than a toolbar button:
 // a chevron in the header's top-right corner shuts it, and the tray shuts down

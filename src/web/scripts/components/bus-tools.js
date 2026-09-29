@@ -289,10 +289,17 @@ export class BusTools {
       return;
     }
 
+    const from = this.#startWorld(m.from);
+    if (!from) {
+      // The anchored hole vanished from under us (an undo/redo removed its
+      // board while the tool stayed armed) — drop the stale anchor, as
+      // WireTools does, rather than throw on every move from here on.
+      this.#clearPending();
+      return;
+    }
     const resolved = this.#resolvePlan(m, world);
     m.plan = resolved?.pairs ?? null;
     m.legal = Boolean(resolved?.legal);
-    const from = this.#startWorld(m.from);
     const end = resolved?.endWorld;
     this.#host.wireLayer.setBusPreview({
       from: { x: from.x * PX_PER_UNIT, y: from.y * PX_PER_UNIT },

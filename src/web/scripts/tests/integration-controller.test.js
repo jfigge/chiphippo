@@ -600,3 +600,85 @@ test("a board's run carries its layout too, but opens no window by itself", asyn
   await settle();
   assert.deepEqual(calls.windows, []);
 });
+
+// ── A board the breadboard does not use is not the run's business ───────────
+
+/** The design with every tag taken back off the breadboard. */
+function unplanted(opts) {
+  const d = design(opts);
+  d.doc.unplantIntegrationTag(d.out, "T");
+  d.doc.unplantIntegrationTag(d.out, "1");
+  d.doc.unplantIntegrationTag(d.inp, "1");
+  return d;
+}
+
+test("an invalid board nothing on the breadboard references is not complained about", async () => {
+  // Unplugged, unconfigured, or not on this computer at all: with none of its
+  // elements' tags on the breadboard, nothing the circuit does reaches it.
+  for (const connections of [[NANO], [{ ...NANO, needsConfig: true }], []]) {
+    const { controller, calls } = mount({ connections, present: [] });
+    const { doc } = unplanted();
+    try {
+      assert.equal(await controller.preflight(doc), true);
+      assert.equal(popup().message, null, "no refusal");
+      assert.equal(calls.scans, 0, "no port looked for");
+      assert.equal(controller.begin(doc), null, "and nothing opened");
+    } finally {
+      closeAll();
+    }
+  }
+});
+
+test("…nor is an element with no connection that has nothing on the breadboard", async () => {
+  const { controller } = mount();
+  const { doc } = unplanted({ connection: null });
+  assert.equal(await controller.preflight(doc), true);
+  assert.equal(popup().message, null);
+});
+
+test("one tag on the breadboard is a reference — the unplugged board is refused", async () => {
+  const { controller } = mount({ present: [] });
+  const { doc, inp } = unplanted();
+  doc.plantIntegrationTag(inp, "1", "bb1.a20");
+  try {
+    assert.equal(await controller.preflight(doc), false);
+    // The refusal is the BOARD's. "Lamp", still idle on that board with no
+    // trigger tag, reaches no net and is not asked for one.
+    assert.match(popup().message, /is unavailable/);
+  } finally {
+    closeAll();
+  }
+});
+
+test("a board that IS referenced runs with every element on it, planted or not", async () => {
+  // The sketch was compiled against ALL of a connection's elements, so the
+  // signature — and the element indexes on the wire — must count the idle ones.
+  const { controller, calls } = mount();
+  const { doc } = design();
+  doc.addIntegration({ kind: "output", connection: "conn-a", name: "Idle" });
+  assert.equal(await controller.begin(doc), true);
+  assert.equal(
+    calls.open[0][0].signature,
+    layoutSignature(doc.integrations, "conn-a"),
+  );
+});
+
+test("an unused board beside a used one: only the used one is checked and opened", async () => {
+  const { controller, calls } = mount({
+    connections: [MOCK_CONNECTION, NANO],
+    present: [], // the Nano is unplugged
+  });
+  const { doc } = design({ connection: "mock" });
+  doc.addIntegration({ kind: "input", connection: "conn-a", name: "Spare" });
+  try {
+    assert.equal(await controller.preflight(doc), true);
+    assert.equal(popup().message, null);
+    assert.equal(await controller.begin(doc), true);
+    assert.deepEqual(
+      calls.open[0].map((r) => r.id),
+      ["mock"],
+    );
+  } finally {
+    closeAll();
+  }
+});
