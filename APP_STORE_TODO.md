@@ -31,8 +31,8 @@ left.
 ## Done
 
 - [x] `src/packaging/` — sandbox entitlements (app-sandbox, allow-jit,
-      user-selected.read-write, **bookmarks.app-scope**, network.client) + the inherit
-      plist for the helpers.
+      user-selected.read-write, **bookmarks.app-scope**, network.client,
+      device.serial) + the inherit plist for the helpers.
 - [x] `mas` / `masDev` blocks in `src/package.json`; `ITSAppUsesNonExemptEncryption`
       declared for both macs.
 - [x] `make mas` / `make mas-dev`, both skipping cleanly without a profile.

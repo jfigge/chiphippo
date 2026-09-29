@@ -255,7 +255,7 @@ Paste into *App Review Information ▸ Notes*.
 Chip Hippo is a digital-logic breadboard simulator. No account, no login, and
 no server: everything works offline and out of the box.
 
-Three things a reviewer may notice, all deliberate:
+Four things a reviewer may notice, all deliberate:
 
 1. NO IN-APP UPDATER. Help has no "Check for Updates" item and Settings > About
    explains why. The App Store delivers updates for this build. The same
@@ -274,6 +274,18 @@ Three things a reviewer may notice, all deliberate:
    bookmark minted by the save panel does not survive a relaunch, so the app
    re-requests access rather than failing. Confirming once is permanent for
    that file.
+
+4. SERIAL PORT ACCESS (com.apple.security.device.serial). A running circuit
+   can exchange values with the user's own Arduino, ESP32 or Raspberry Pi Pico
+   over its USB serial port. A port is opened only while a circuit is running,
+   and only one the user chose in Settings > Serial I/O. Nothing is sent over
+   the network. To review it without a board, use the built-in "Mock"
+   connection, which plays the board inside the app: add an Output from the
+   parts palette's SIGNALS section, set its Trigger to Auto in its
+   Properties, drag its pin tag onto a breadboard hole, and press Run. The
+   Mock's window opens beside the desk and shows each value as it arrives; it
+   can also send values back to an Input. Help > Chip Hippo User Guide >
+   Arduino Integration describes it fully.
 
 Suggested walkthrough: open Help > Chip Hippo User Guide, or use the parts
 palette to place a breadboard and a 74LS00, then press Run. Every chip's

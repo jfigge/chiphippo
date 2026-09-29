@@ -16,8 +16,8 @@ runtime.
 
 Everything else works: opening and saving projects, exporting and importing desktops,
 programming ROMs from `.bin`/Intel HEX, the build guide's RTF export, the AI circuit
-builder, the datasheet download, **Open Recent**, and the external **Settings ▸ Data
-Sheets** folder. The last two only work because of security-scoped bookmarks
+builder, the datasheet download, the Arduino serial integration, **Open Recent**, and
+the external **Settings ▸ Data Sheets** folder. The last two only work because of security-scoped bookmarks
 (`src/app/store/bookmark-store.js`) — see *Sandbox notes* below.
 
 ## 1. Prerequisites, once per app
@@ -65,6 +65,10 @@ with no Apple material still builds everything else.
   pin-assignments window and press the datasheet button.
 - Load and export a ROM image; export the Bill Of Materials as RTF.
 - Ask the AI builder for a circuit (proves `network.client`).
+- Plug in a board running a sketch built from **Generate**, add a connection for it in
+  **Settings ▸ Serial I/O** (its port must appear in the Port list), and **Run** a
+  circuit with an Output on it (proves `device.serial`). The built-in **Mock** proves
+  nothing here — it opens no port.
 - Confirm Help has no *Check for Updates…* and About explains why.
 
 The quit-and-relaunch steps are the point: they are what a bookmark buys, and the only
@@ -76,7 +80,7 @@ Verify before uploading:
 ```sh
 APP="build/src/dist/mas-universal/Chip Hippo.app"
 codesign -dvvv "$APP"                 # Apple Distribution, TeamIdentifier=2C564TQ2FY
-codesign -d --entitlements - --xml "$APP"   # app-sandbox + the four others
+codesign -d --entitlements - --xml "$APP"   # app-sandbox + the five others
 lipo -archs "$APP/Contents/MacOS/Chip Hippo"   # x86_64 arm64
 pkgutil --check-signature build/src/dist/mas-universal/*.pkg
 ```

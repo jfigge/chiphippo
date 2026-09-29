@@ -37,7 +37,7 @@
                                serial port (/dev/cu.*), which the sandbox
                                otherwise refuses to open. Ports are opened only
                                while the circuit runs, only for a connection
-                               the user configured in Settings ▸ Integration.
+                               the user configured in Settings ▸ Serial I/O.
 
   Deliberately ABSENT, and why:
     * network.server           nothing listens; there is no loopback server.
