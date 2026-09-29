@@ -49,6 +49,9 @@
       "duplicate": "Duplicate Desktop",
       "import": "Import Desktop…",
       "export": "Export Desktop…",
+      "exportTo": "Export To",
+      "exportKicad": "KiCad Project…",
+      "exportDigital": "Digital Circuit…",
       "properties": "Desktop Properties…",
       "delete": "Delete Desktop"
     },
@@ -92,11 +95,20 @@
       "header": "C/C++ header",
       "python": "Python source",
       "sketch": "Arduino sketch",
-      "text": "Text"
+      "text": "Text",
+      "digital": "Digital circuit"
     },
     "regrant": {
       "message": "Confirm access to this project",
       "button": "Grant Access"
+    },
+    "exportKicad": {
+      "title": "Export to KiCad",
+      "message": "Choose the folder for the KiCad project — a new one, or the one it was exported to before.",
+      "button": "Export Here"
+    },
+    "exportDigital": {
+      "title": "Export to Digital"
     }
   },
   "toolbar": {
@@ -969,6 +981,51 @@
     "failImport": "Could not import that desktop",
     "failExport": "Could not export the desktop",
     "failExample": "Could not open the {ref} example"
+  },
+  "export": {
+    "title": "Export to {format}",
+    "guide": "Exporting to other tools",
+    "confirm": "Export…",
+    "note": "Everything wired to them is still exported: their nets keep their names.",
+    "empty": "There is nothing on this desktop to export yet.",
+    "doneTitle": "Exported to {format}",
+    "done": "“{name}” was written to {path}",
+    "foreign": "{file} in that folder was not written by Chip Hippo, so nothing was changed. Choose an empty folder, or the one this desktop was exported to before.",
+    "group": {
+      "dropped": {
+        "one": "{count} part won't come across",
+        "other": "{count} parts won't come across"
+      },
+      "changed": {
+        "one": "{count} part changes in {format}",
+        "other": "{count} parts change in {format}"
+      },
+      "footprint": {
+        "one": "{count} footprint to check before the PCB",
+        "other": "{count} footprints to check before the PCB"
+      }
+    },
+    "reason": {
+      "noDigitalModel": "Digital's library has no model of it",
+      "memory": "its contents live in a file that does not travel",
+      "processor": "Digital has no model of it",
+      "lcd": "Digital has no character display",
+      "unmapped": "{format} has nothing to place for it",
+      "clockConnector": "becomes a CLOCK IN connector — a board needs an oscillator there",
+      "genericFootprint": "gets a pin-header footprint — choose the real part's",
+      "resistorMerged": "becomes a wire: a logic simulator has no resistors",
+      "momentary": "becomes a toggle switch: Digital has no momentary contact",
+      "unpowered": "is powered in Digital, which cannot run an unpowered chip",
+      "openCollector": "gets a pull-up on each output, which floats in Digital as on the real part",
+      "signals": {
+        "one": "{count} external signal: bench stimulus, not a part",
+        "other": "{count} external signals: bench stimulus, not parts"
+      },
+      "integrations": {
+        "one": "{count} Arduino Output or Input: a link to a board, not a part",
+        "other": "{count} Arduino Outputs and Inputs: links to a board, not parts"
+      }
+    }
   },
   "sim": {
     "memNotLoaded": "Memory not loaded",

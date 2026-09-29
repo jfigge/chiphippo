@@ -1003,21 +1003,37 @@ export class ProjectWorkspace {
    * @returns {Promise<boolean>} whether a file was written.
    */
   async exportTab(id) {
-    const tab = this.#project ? findDesktop(this.#project, id) : null;
-    if (!tab) return false;
-    const doc =
-      id === this.#project.activeTab ? this.#deskDoc.toJSON() : tab.doc;
+    const snap = this.desktopSnapshot(id);
+    if (!snap) return false;
     try {
       const res = await this.#bridge.desktop.export({
-        name: tab.name,
-        description: tab.description ?? "",
-        doc,
+        name: snap.name,
+        description: snap.description,
+        doc: snap.doc,
       });
       return res != null; // null is a cancelled dialog, not a failure
     } catch (err) {
       this.#fail(t("workspace.failExport"), err);
       return false;
     }
+  }
+
+  /**
+   * One desktop as it stands NOW — the live document for the one on screen,
+   * the stored one otherwise — for anything that reads a desktop without
+   * changing it: Export Desktop…, and Export To (Feature 390).
+   *
+   * @returns {{tabId:string, name:string, description:string, doc:object}|null}
+   */
+  desktopSnapshot(id) {
+    const tab = this.#project ? findDesktop(this.#project, id) : null;
+    if (!tab) return null;
+    return {
+      tabId: tab.id,
+      name: tab.name,
+      description: tab.description ?? "",
+      doc: id === this.#project.activeTab ? this.#deskDoc.toJSON() : tab.doc,
+    };
   }
 
   /**

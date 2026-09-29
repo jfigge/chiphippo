@@ -6841,3 +6841,73 @@ button.integration-lamp:hover {
   border-color: var(--color-warning);
   color: var(--color-warning);
 }
+
+/* ── Export To report (export-report-dialog.js, Feature 390) ─────────────── */
+.export-report-popup {
+  width: 480px;
+  max-width: 90vw;
+}
+
+.export-report-group + .export-report-group {
+  margin-top: var(--space-3);
+}
+
+.export-report-heading {
+  margin: 0 0 var(--space-1);
+  font-size: var(--font-size);
+  font-weight: 600;
+}
+
+.export-report-heading--dropped {
+  color: var(--color-danger);
+}
+
+.export-report-heading--changed,
+.export-report-heading--footprint {
+  color: var(--color-warning);
+}
+
+.export-report-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: var(--font-size-sm);
+}
+
+/* Designators · part · why — one aligned row per part (or run of parts). */
+.export-report-row {
+  display: grid;
+  grid-template-columns: minmax(3.5em, auto) minmax(5em, auto) 1fr;
+  gap: var(--space-2);
+  color: var(--color-subtext);
+}
+
+/* A line about a whole kind of thing (the external signals), not a part. */
+.export-report-row--whole {
+  display: block;
+}
+
+.export-report-refs {
+  font-family: var(--font-mono);
+  color: var(--color-text);
+}
+
+.export-report-part {
+  color: var(--color-text);
+}
+
+.export-report-note {
+  margin: var(--space-3) 0 0;
+  font-size: var(--font-size-sm);
+  color: var(--color-muted);
+}
+
+.export-report-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}

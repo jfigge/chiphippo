@@ -63,6 +63,7 @@ import { MAX_SIGNALS } from "./model/signals.js";
 import { createSignalKeys } from "./model/signal-keys.js";
 import { SignalRail } from "./components/signal-rail.js";
 import { createIntegrationShell } from "./components/integration-shell.js";
+import { DesktopExporter } from "./components/desktop-exporter.js";
 import { knownConnections } from "./model/serial-connections.js";
 import { datasheetCrop, partDef } from "./catalog/index.js";
 
@@ -579,8 +580,10 @@ function buildFitSegment({ getActiveView, fitActiveView }) {
  * @param {object} bridge - `window.chiphippo`, for the close reply.
  * @param {() => object|null} getWorkspace - late-bound: these are registered
  *   before the workspace is built, and only a menu CLICK ever needs it.
+ * @param {(id: string, format: string) => Promise<boolean>} exportDesktopTo -
+ *   Export To (Feature 390), late-bound the same way.
  */
-function wireProjectMenu(bridge, getWorkspace) {
+function wireProjectMenu(bridge, getWorkspace, exportDesktopTo) {
   /** A Desktop-menu item aimed at whichever desktop is on screen. */
   const activeDesktopAction = (method) => {
     const workspace = getWorkspace();
@@ -605,6 +608,12 @@ function wireProjectMenu(bridge, getWorkspace) {
   }
   window.addEventListener("chiphippo:project-open-recent", (e) => {
     if (e.detail) void getWorkspace()?.openRecentProject(e.detail);
+  });
+  // Desktop ▸ Export To ▸ a format (Feature 390): the second push that carries
+  // a payload — which format — aimed at the desktop on screen.
+  window.addEventListener("chiphippo:desktop-export-to", (e) => {
+    const id = getWorkspace()?.activeTab?.id;
+    if (id && e.detail) void exportDesktopTo(id, e.detail);
   });
 
   // A part's EXAMPLE CIRCUIT, asked for from its pin-assignments window. That
@@ -1329,6 +1338,11 @@ async function init() {
   const header = buildHeader();
   app.append(header.header, main);
   let workspace = null;
+  // Desktop ▸ Export To (Feature 390) — built once the toast stack exists;
+  // the menu and the tab strip reach it late-bound, like the workspace.
+  let exporter = null;
+  const exportDesktopTo = (id, format) =>
+    exporter?.export(workspace?.desktopSnapshot(id), format);
 
   // Desk document (Feature 20): the boards/components/wires of the desktop on
   // screen, held in one in-memory DeskDoc. Anything that mutates it dispatches
@@ -1369,7 +1383,7 @@ async function init() {
   updateTitle();
   window.addEventListener("chiphippo:doc-changed", updateTitle);
 
-  wireProjectMenu(bridge, () => workspace);
+  wireProjectMenu(bridge, () => workspace, exportDesktopTo);
 
   let zoomControl = null;
   let deskLock = null;
@@ -1439,6 +1453,7 @@ async function init() {
     onProperties: (id) => workspace?.editTabProperties(id),
     onDuplicate: (id) => void workspace?.duplicateTab(id),
     onExport: (id) => void workspace?.exportTab(id),
+    onExportTo: (id, format) => void exportDesktopTo(id, format),
     onDelete: (id) => workspace?.deleteTab(id),
   });
   stage.append(desk);
@@ -1772,6 +1787,7 @@ async function init() {
 
   // ── Simulation transport (Feature 90/100): Run/Stop, Pause, Step, speed ──
   const notifications = new NotificationStack(document.body);
+  exporter = new DesktopExporter({ bridge, notifications });
 
   // The Arduino serial integration. Its settings writes go straight to the
   // store rather than through the settings-changed event, because the first

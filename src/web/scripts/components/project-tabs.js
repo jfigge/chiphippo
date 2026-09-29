@@ -44,7 +44,8 @@
 // Assignment is meaningless here (a desktop has no pins at all, not even a
 // disabled-today set), so it is dropped along with its separator, exactly as
 // a board's menu drops it. Duplicate and Export join it as the two other
-// things one can do to a whole desktop; as everywhere else, an item that
+// things one can do to a whole desktop (Export To ▸ carrying the Desktop
+// menu's other-tool formats, Feature 390); as everywhere else, an item that
 // doesn't apply stays PRESENT but disabled — and there is no per-tab
 // branching at all: the only desktop that can't be deleted is the LAST one,
 // whichever it is.
@@ -62,6 +63,7 @@ export class ProjectTabs {
   #onDelete;
   #onDuplicate;
   #onExport;
+  #onExportTo;
   #tabs = [];
   #activeId = null;
   #locked = false; // editing frozen (the circuit is running)
@@ -79,6 +81,8 @@ export class ProjectTabs {
    *   tab (its Name/Description, through the app-wide shared dialog).
    * @param {(id: string) => void} callbacks.onDuplicate - Duplicate.
    * @param {(id: string) => void} callbacks.onExport - Export Desktop….
+   * @param {(id: string, format: string) => void} callbacks.onExportTo -
+   *   Export To ▸ one of another tool's formats (Feature 390).
    * @param {(id: string) => void} callbacks.onDelete - Delete on a tab.
    */
   constructor(
@@ -90,6 +94,7 @@ export class ProjectTabs {
       onProperties,
       onDuplicate,
       onExport,
+      onExportTo,
       onDelete,
     } = {},
   ) {
@@ -99,6 +104,7 @@ export class ProjectTabs {
     this.#onProperties = onProperties;
     this.#onDuplicate = onDuplicate;
     this.#onExport = onExport;
+    this.#onExportTo = onExportTo;
     this.#onDelete = onDelete;
     this.#root = el("div", {
       class: "project-tabs",
@@ -227,6 +233,22 @@ export class ProjectTabs {
           // while the circuit runs.
           label: t("menu.desktop.export"),
           onSelect: () => this.#onExport?.(tab.id),
+        },
+        {
+          // Another tool's format — the Desktop menu's submenu, item for item
+          // (Feature 390). Read-only too, so it stays available while running.
+          label: t("menu.desktop.exportTo"),
+          submenu: [
+            {
+              label: t("menu.desktop.exportKicad"),
+              onSelect: () => this.#onExportTo?.(tab.id, "kicad"),
+            },
+            { separator: true },
+            {
+              label: t("menu.desktop.exportDigital"),
+              onSelect: () => this.#onExportTo?.(tab.id, "digital"),
+            },
+          ],
         },
         { separator: true },
         {

@@ -63,6 +63,7 @@ const {
 const memStore = require("./store/mem-store");
 const datasheetDownload = require("./datasheets/download");
 const { registerSerialIpc } = require("./ipc/serial");
+const { registerExportIpc } = require("./ipc/export");
 const { reseatImages } = require("./store/project-images");
 const {
   rememberRecent,
@@ -1462,6 +1463,22 @@ function buildAppMenu() {
       label: m("menu.desktop.export", "Export Desktop…"),
       click: () => sendToMain("menu:desktop-export"),
     },
+    // Another tool's format (Feature 390). The push carries WHICH format; the
+    // renderer produces the files and `desktop:export-to` writes them.
+    {
+      label: m("menu.desktop.exportTo", "Export To"),
+      submenu: [
+        {
+          label: m("menu.desktop.exportKicad", "KiCad Project…"),
+          click: () => sendToMain("menu:desktop-export-to", "kicad"),
+        },
+        { type: "separator" },
+        {
+          label: m("menu.desktop.exportDigital", "Digital Circuit…"),
+          click: () => sendToMain("menu:desktop-export-to", "digital"),
+        },
+      ],
+    },
     { type: "separator" },
     {
       label: m("menu.desktop.properties", "Desktop Properties…"),
@@ -1792,6 +1809,16 @@ function registerIpc() {
     windowBackground,
     icon: appIcon,
     appDir: __dirname,
+  });
+  // Desktop ▸ Export To (Feature 390): the export's files arrive by NAME and
+  // main picks where they go (ipc/export.js).
+  registerExportIpc({
+    ipcMain,
+    dialog,
+    getMainWindow: () => mainWindow,
+    m,
+    getBookmarks,
+    defaultDir: () => app.getPath("documents"),
   });
 
   // Mirrors the bridge's synchronous `platform` value so main stays the

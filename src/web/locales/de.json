@@ -49,6 +49,9 @@
       "duplicate": "Arbeitsblatt duplizieren",
       "import": "Arbeitsblatt importieren…",
       "export": "Arbeitsblatt exportieren…",
+      "exportTo": "Exportieren nach",
+      "exportKicad": "KiCad-Projekt…",
+      "exportDigital": "Digital-Schaltung…",
       "properties": "Arbeitsblatteigenschaften…",
       "delete": "Arbeitsblatt löschen"
     },
@@ -92,11 +95,20 @@
       "header": "C/C++-Header",
       "python": "Python-Quelltext",
       "sketch": "Arduino-Sketch",
-      "text": "Text"
+      "text": "Text",
+      "digital": "Digital-Schaltung"
     },
     "regrant": {
       "message": "Zugriff auf dieses Projekt bestätigen",
       "button": "Zugriff gewähren"
+    },
+    "exportKicad": {
+      "title": "Nach KiCad exportieren",
+      "message": "Wählen Sie den Ordner für das KiCad-Projekt – einen neuen oder den, in den zuvor exportiert wurde.",
+      "button": "Hierher exportieren"
+    },
+    "exportDigital": {
+      "title": "Nach Digital exportieren"
     }
   },
   "toolbar": {
@@ -969,6 +981,51 @@
     "failImport": "Dieses Arbeitsblatt konnte nicht importiert werden",
     "failExport": "Das Arbeitsblatt konnte nicht exportiert werden",
     "failExample": "Das Beispiel {ref} konnte nicht geöffnet werden"
+  },
+  "export": {
+    "title": "Nach {format} exportieren",
+    "guide": "In andere Programme exportieren",
+    "confirm": "Exportieren…",
+    "note": "Alles, was mit ihnen verdrahtet ist, wird trotzdem exportiert: Ihre Netze behalten ihre Namen.",
+    "empty": "Auf diesem Arbeitsblatt gibt es noch nichts zu exportieren.",
+    "doneTitle": "Nach {format} exportiert",
+    "done": "„{name}“ wurde nach {path} geschrieben",
+    "foreign": "{file} in diesem Ordner stammt nicht von Chip Hippo, daher wurde nichts geändert. Wählen Sie einen leeren Ordner oder den, in den dieses Arbeitsblatt zuvor exportiert wurde.",
+    "group": {
+      "dropped": {
+        "one": "{count} Bauteil wird nicht übernommen",
+        "other": "{count} Bauteile werden nicht übernommen"
+      },
+      "changed": {
+        "one": "{count} Bauteil ändert sich in {format}",
+        "other": "{count} Bauteile ändern sich in {format}"
+      },
+      "footprint": {
+        "one": "{count} Footprint vor der Platine prüfen",
+        "other": "{count} Footprints vor der Platine prüfen"
+      }
+    },
+    "reason": {
+      "noDigitalModel": "Digitals Bibliothek hat kein Modell dafür",
+      "memory": "sein Inhalt liegt in einer Datei, die nicht mitkommt",
+      "processor": "Digital hat kein Modell dafür",
+      "lcd": "Digital hat keine Zeichenanzeige",
+      "unmapped": "{format} hat nichts, was dafür platziert werden könnte",
+      "clockConnector": "wird zu einem CLOCK-IN-Anschluss – auf einer Platine gehört dort ein Oszillator hin",
+      "genericFootprint": "erhält einen Stiftleisten-Footprint – wählen Sie den des echten Bauteils",
+      "resistorMerged": "wird zu einer Leitung: Ein Logiksimulator kennt keine Widerstände",
+      "momentary": "wird zu einem Kippschalter: Digital hat keinen Tastkontakt",
+      "unpowered": "wird in Digital versorgt, das keinen unversorgten Chip simulieren kann",
+      "openCollector": "erhält an jedem Ausgang einen Pull-up, denn in Digital floaten sie wie beim echten Bauteil",
+      "signals": {
+        "one": "{count} externes Signal: Stimulus vom Arbeitstisch, kein Bauteil",
+        "other": "{count} externe Signale: Stimulus vom Arbeitstisch, keine Bauteile"
+      },
+      "integrations": {
+        "one": "{count} Arduino-Ausgang oder -Eingang: eine Verbindung zu einer Platine, kein Bauteil",
+        "other": "{count} Arduino-Ausgänge und -Eingänge: Verbindungen zu einer Platine, keine Bauteile"
+      }
+    }
   },
   "sim": {
     "memNotLoaded": "Speicher nicht geladen",

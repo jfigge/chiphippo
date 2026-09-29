@@ -49,6 +49,9 @@
       "duplicate": "デスクトップを複製",
       "import": "デスクトップを読み込む…",
       "export": "デスクトップを書き出す…",
+      "exportTo": "書き出し先",
+      "exportKicad": "KiCad プロジェクト…",
+      "exportDigital": "Digital 回路…",
       "properties": "デスクトップの情報…",
       "delete": "デスクトップを削除"
     },
@@ -92,11 +95,20 @@
       "header": "C/C++ ヘッダー",
       "python": "Python ソース",
       "sketch": "Arduino スケッチ",
-      "text": "テキスト"
+      "text": "テキスト",
+      "digital": "Digital 回路"
     },
     "regrant": {
       "message": "このプロジェクトへのアクセスを確認",
       "button": "アクセスを許可"
+    },
+    "exportKicad": {
+      "title": "KiCad に書き出す",
+      "message": "KiCad プロジェクトのフォルダを選んでください。新しいフォルダでも、以前書き出したフォルダでもかまいません。",
+      "button": "ここに書き出す"
+    },
+    "exportDigital": {
+      "title": "Digital に書き出す"
     }
   },
   "toolbar": {
@@ -954,6 +966,46 @@
     "failImport": "そのデスクトップを読み込めませんでした",
     "failExport": "デスクトップを書き出せませんでした",
     "failExample": "{ref} の例を開けませんでした"
+  },
+  "export": {
+    "title": "{format} に書き出す",
+    "guide": "ほかのツールへの書き出し",
+    "confirm": "書き出す…",
+    "note": "これらに配線されているものはすべて書き出されます。ネット名もそのまま残ります。",
+    "empty": "このデスクトップには、まだ書き出すものがありません。",
+    "doneTitle": "{format} に書き出しました",
+    "done": "「{name}」を {path} に書き出しました",
+    "foreign": "そのフォルダの {file} は Chip Hippo が書いたものではないため、何も変更していません。空のフォルダか、このデスクトップを以前書き出したフォルダを選んでください。",
+    "group": {
+      "dropped": {
+        "other": "書き出されない部品が {count} 個あります"
+      },
+      "changed": {
+        "other": "{format} で扱いが変わる部品が {count} 個あります"
+      },
+      "footprint": {
+        "other": "基板の前に確認が必要なフットプリントが {count} 個あります"
+      }
+    },
+    "reason": {
+      "noDigitalModel": "Digital のライブラリにモデルがありません",
+      "memory": "内容は書き出されないファイルに入っています",
+      "processor": "Digital にモデルがありません",
+      "lcd": "Digital には文字表示器がありません",
+      "unmapped": "{format} には置き換えられる部品がありません",
+      "clockConnector": "CLOCK IN コネクタになります。基板ではここに発振器が必要です",
+      "genericFootprint": "ピンヘッダのフットプリントになります。実際の部品のものを選んでください",
+      "resistorMerged": "配線になります。論理シミュレータには抵抗がありません",
+      "momentary": "トグルスイッチになります。Digital にはモーメンタリ接点がありません",
+      "unpowered": "Digital では電源が供給されます。電源のないチップは動かせません",
+      "openCollector": "各出力にプルアップが付きます。Digital では実物と同じく出力がフローティングになるためです",
+      "signals": {
+        "other": "外部信号 {count} 個: 作業台の刺激であり、部品ではありません"
+      },
+      "integrations": {
+        "other": "Arduino の出力・入力 {count} 個: ボードとのリンクであり、部品ではありません"
+      }
+    }
   },
   "sim": {
     "memNotLoaded": "メモリを読み込めませんでした",

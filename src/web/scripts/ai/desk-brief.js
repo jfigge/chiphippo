@@ -44,7 +44,7 @@
 // same claim.
 
 import { partDef } from "../catalog/index.js";
-import { partPinAddresses } from "../model/occupancy.js";
+import { partNets } from "../model/part-nets.js";
 
 /** How much of a large desk reaches the prompt before it is trimmed. */
 export const MAX_PARTS = 80;
@@ -93,27 +93,13 @@ function partLine(comp, def) {
  * as an anonymous address would be the one piece of geometry this brief avoids.
  */
 function netLines(doc, netlist) {
-  const byNet = new Map();
-  const add = (netId, text) => {
-    if (netId == null) return;
-    if (!byNet.has(netId)) byNet.set(netId, []);
-    byNet.get(netId).push(text);
-  };
-
-  for (const comp of doc.components ?? []) {
-    const def = partDef(comp.ref);
-    for (const t of def?.terminals ?? []) {
-      add(netlist.netOfPoint.get(`${comp.id}.${t.id}`), `${comp.id}.${t.id}`);
-    }
-    if (!def?.pins?.length) continue;
-    for (const p of partPinAddresses(doc, comp) ?? []) {
-      if (p.address == null) continue;
-      add(netlist.netOfPoint.get(p.address), member(comp.id, def, p.pin));
-    }
-  }
-
   const lines = [];
-  for (const [netId, members] of byNet) {
+  for (const [netId, parts] of partNets(doc, netlist)) {
+    const members = parts.map((m) =>
+      m.terminal != null
+        ? `${m.comp.id}.${m.terminal}`
+        : member(m.comp.id, m.def, m.pin),
+    );
     if (members.length < 1) continue;
     const name = netlist.names?.get(netId);
     const shown =

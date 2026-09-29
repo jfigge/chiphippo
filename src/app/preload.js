@@ -52,6 +52,7 @@ for (const [channel, event] of [
   ["menu:desktop-duplicate", "chiphippo:desktop-duplicate"],
   ["menu:desktop-import", "chiphippo:desktop-import"],
   ["menu:desktop-export", "chiphippo:desktop-export"],
+  ["menu:desktop-export-to", "chiphippo:desktop-export-to"],
   ["menu:desktop-properties", "chiphippo:desktop-properties"],
   ["menu:desktop-delete", "chiphippo:desktop-delete"],
   ["menu:build-guide", "chiphippo:build-guide"],
@@ -283,6 +284,12 @@ contextBridge.exposeInMainWorld("chiphippo", {
   // dialog was cancelled.
   desktop: {
     export: (desktop) => ipcRenderer.invoke("desktop:export", desktop),
+    // Export To (Feature 390): another tool's format. The renderer hands over
+    // the FILES (name + text) its exporter produced; main asks where and
+    // writes them, resolving `{ok, path}`, `{ok:false, code}`, or null when
+    // the dialog was cancelled.
+    exportTo: (format, files) =>
+      ipcRenderer.invoke("desktop:export-to", format, files),
     import: () => ipcRenderer.invoke("desktop:import"),
     duplicate: (doc) => ipcRenderer.invoke("desktop:duplicate", doc),
   },

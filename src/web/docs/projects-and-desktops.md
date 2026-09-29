@@ -60,6 +60,9 @@ you're looking at:
 - **Import Desktop…** — read a `.desktop.chiphippo` (or a loose `.chiphippo`
   design) in as a new desktop. See *Moving a desktop between projects* below.
 - **Export Desktop…** — write this desktop out as a self-contained file.
+- **Export To ▸** — write this desktop in another tool's format: a **KiCad**
+  project to take it to a circuit board, or a **Digital** circuit to keep
+  simulating it. See [Exporting to Other Tools](exporting.md).
 - **Desktop Properties…** — its **Name** and **Description**.
 - **Delete Desktop** — remove it from the project.
 

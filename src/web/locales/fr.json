@@ -49,6 +49,9 @@
       "duplicate": "Dupliquer le bureau",
       "import": "Importer un bureau…",
       "export": "Exporter le bureau…",
+      "exportTo": "Exporter vers",
+      "exportKicad": "Projet KiCad…",
+      "exportDigital": "Circuit Digital…",
       "properties": "Propriétés du bureau…",
       "delete": "Supprimer le bureau"
     },
@@ -92,11 +95,20 @@
       "header": "En-tête C/C++",
       "python": "Source Python",
       "sketch": "Croquis Arduino",
-      "text": "Texte"
+      "text": "Texte",
+      "digital": "Circuit Digital"
     },
     "regrant": {
       "message": "Confirmer l'accès à ce projet",
       "button": "Autoriser l'accès"
+    },
+    "exportKicad": {
+      "title": "Exporter vers KiCad",
+      "message": "Choisissez le dossier du projet KiCad : un nouveau, ou celui d'une exportation précédente.",
+      "button": "Exporter ici"
+    },
+    "exportDigital": {
+      "title": "Exporter vers Digital"
     }
   },
   "toolbar": {
@@ -969,6 +981,51 @@
     "failImport": "Ce bureau n'a pas pu être importé",
     "failExport": "Le bureau n'a pas pu être exporté",
     "failExample": "L'exemple {ref} n'a pas pu être ouvert"
+  },
+  "export": {
+    "title": "Exporter vers {format}",
+    "guide": "Exporter vers d'autres outils",
+    "confirm": "Exporter…",
+    "note": "Tout ce qui y est câblé est tout de même exporté : leurs réseaux gardent leurs noms.",
+    "empty": "Il n'y a encore rien à exporter sur ce bureau.",
+    "doneTitle": "Exporté vers {format}",
+    "done": "« {name} » a été écrit dans {path}",
+    "foreign": "{file} dans ce dossier n'a pas été écrit par Chip Hippo : rien n'a été modifié. Choisissez un dossier vide, ou celui vers lequel ce bureau a déjà été exporté.",
+    "group": {
+      "dropped": {
+        "one": "{count} composant ne sera pas exporté",
+        "other": "{count} composants ne seront pas exportés"
+      },
+      "changed": {
+        "one": "{count} composant change dans {format}",
+        "other": "{count} composants changent dans {format}"
+      },
+      "footprint": {
+        "one": "{count} empreinte à vérifier avant le circuit imprimé",
+        "other": "{count} empreintes à vérifier avant le circuit imprimé"
+      }
+    },
+    "reason": {
+      "noDigitalModel": "la bibliothèque de Digital n'en a pas de modèle",
+      "memory": "son contenu est dans un fichier qui n'est pas exporté",
+      "processor": "Digital n'en a pas de modèle",
+      "lcd": "Digital n'a pas d'afficheur de caractères",
+      "unmapped": "{format} n'a rien à placer à sa place",
+      "clockConnector": "devient un connecteur CLOCK IN : sur une carte, il faut un oscillateur à cet endroit",
+      "genericFootprint": "reçoit une empreinte de barrette : choisissez celle du vrai composant",
+      "resistorMerged": "devient un fil : un simulateur logique n'a pas de résistances",
+      "momentary": "devient un interrupteur à bascule : Digital n'a pas de contact momentané",
+      "unpowered": "est alimenté dans Digital, qui ne sait pas simuler une puce non alimentée",
+      "openCollector": "reçoit une résistance de rappel sur chaque sortie, qui flotte dans Digital comme sur le vrai composant",
+      "signals": {
+        "one": "{count} signal externe : un stimulus du banc, pas un composant",
+        "other": "{count} signaux externes : des stimuli du banc, pas des composants"
+      },
+      "integrations": {
+        "one": "{count} sortie ou entrée Arduino : un lien vers une carte, pas un composant",
+        "other": "{count} sorties et entrées Arduino : des liens vers une carte, pas des composants"
+      }
+    }
   },
   "sim": {
     "memNotLoaded": "Mémoire non chargée",

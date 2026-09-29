@@ -56,7 +56,9 @@ function channelsFor(source, fnPattern) {
 
 // The main-process IPC surface currently lives entirely in main.js; when a
 // stage splits handlers into ipc/*.js modules, add each new file here.
-const mainProcessSource = ["main.js", "ipc/serial.js"].map(read).join("\n");
+const mainProcessSource = ["main.js", "ipc/serial.js", "ipc/export.js"]
+  .map(read)
+  .join("\n");
 
 const handlers = channelsFor(mainProcessSource, "ipcMain\\.handle");
 const invokes = channelsFor(read("preload.js"), "ipcRenderer\\.invoke");

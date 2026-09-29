@@ -49,6 +49,9 @@
       "duplicate": "复制桌面",
       "import": "导入桌面…",
       "export": "导出桌面…",
+      "exportTo": "导出为",
+      "exportKicad": "KiCad 项目…",
+      "exportDigital": "Digital 电路…",
       "properties": "桌面属性…",
       "delete": "删除桌面"
     },
@@ -92,11 +95,20 @@
       "header": "C/C++ 头文件",
       "python": "Python 源文件",
       "sketch": "Arduino 程序",
-      "text": "文本"
+      "text": "文本",
+      "digital": "Digital 电路"
     },
     "regrant": {
       "message": "确认对该项目的访问权限",
       "button": "授予访问权限"
+    },
+    "exportKicad": {
+      "title": "导出到 KiCad",
+      "message": "选择 KiCad 项目的文件夹：新建一个，或选择之前导出过的文件夹。",
+      "button": "导出到此处"
+    },
+    "exportDigital": {
+      "title": "导出到 Digital"
     }
   },
   "toolbar": {
@@ -954,6 +966,46 @@
     "failImport": "无法导入该桌面",
     "failExport": "无法导出该桌面",
     "failExample": "无法打开 {ref} 的示例"
+  },
+  "export": {
+    "title": "导出到 {format}",
+    "guide": "导出到其他工具",
+    "confirm": "导出…",
+    "note": "与它们相连的一切仍会导出：网络保留原来的名称。",
+    "empty": "此桌面上还没有可导出的内容。",
+    "doneTitle": "已导出到 {format}",
+    "done": "“{name}”已写入 {path}",
+    "foreign": "该文件夹中的 {file} 不是 Chip Hippo 写入的，因此未做任何更改。请选择一个空文件夹，或此桌面之前导出到的文件夹。",
+    "group": {
+      "dropped": {
+        "other": "{count} 个元件无法导出"
+      },
+      "changed": {
+        "other": "{count} 个元件在 {format} 中会有变化"
+      },
+      "footprint": {
+        "other": "制作电路板前需检查 {count} 个封装"
+      }
+    },
+    "reason": {
+      "noDigitalModel": "Digital 的库中没有它的模型",
+      "memory": "其内容存放在不会被导出的文件中",
+      "processor": "Digital 没有它的模型",
+      "lcd": "Digital 没有字符显示屏",
+      "unmapped": "{format} 中没有可替代它的元件",
+      "clockConnector": "变为 CLOCK IN 连接器——电路板上此处需要一个振荡器",
+      "genericFootprint": "使用排针封装——请选择实际元件的封装",
+      "resistorMerged": "变为一根导线：逻辑仿真器中没有电阻",
+      "momentary": "变为拨动开关：Digital 没有瞬时触点",
+      "unpowered": "在 Digital 中会被供电，因为它无法仿真未供电的芯片",
+      "openCollector": "每个输出加一个上拉电阻，因为在 Digital 中它们和真实元件一样会悬空",
+      "signals": {
+        "other": "{count} 个外部信号：工作台激励，而非元件"
+      },
+      "integrations": {
+        "other": "{count} 个 Arduino 输出/输入：与开发板的连接，而非元件"
+      }
+    }
   },
   "sim": {
     "memNotLoaded": "存储器未载入",

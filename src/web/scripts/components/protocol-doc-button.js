@@ -51,14 +51,25 @@ const BOOK_SVG =
  * @returns {HTMLButtonElement}
  */
 export function protocolDocButton(bridge) {
-  const label = t("integration.protocolDoc");
+  return guidePageButton(bridge, PROTOCOL_PAGE, t("integration.protocolDoc"));
+}
+
+/**
+ * The same book button, opening the guide on any page — the export report
+ * card (Feature 390) points at "Exporting to Other Tools" with it.
+ * @param {object} [bridge] - window.chiphippo (its `docs.open`).
+ * @param {string} page - a slug `docs-pages.js` lists.
+ * @param {string} label - the button's tooltip and accessible name.
+ * @returns {HTMLButtonElement}
+ */
+export function guidePageButton(bridge, page, label) {
   const btn = el("button", {
     class: "popup-header-btn",
     type: "button",
     title: label,
     "aria-label": label,
     onClick: () => {
-      Promise.resolve(bridge?.docs?.open?.(PROTOCOL_PAGE)).catch((err) =>
+      Promise.resolve(bridge?.docs?.open?.(page)).catch((err) =>
         console.error("[renderer] docs:open failed:", err),
       );
     },

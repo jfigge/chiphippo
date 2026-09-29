@@ -2003,22 +2003,34 @@ test("Import from the +'s menu brings a desktop in as a new tab", async () => {
   );
 });
 
-test("the tab menu offers Properties, Duplicate, Export and Delete", async () => {
+test("the tab menu offers Properties, Duplicate, Export, Export To and Delete", async () => {
   const h = await harness();
   await twoDesktops(h);
   const tab = h.tabs.element.querySelector(".project-tab");
   tab.dispatchEvent(
     new window.MouseEvent("contextmenu", { bubbles: true, clientX: 5, clientY: 5 }), // prettier-ignore
   );
-  const labels = [...document.querySelectorAll(".popup-menu-item")].map((i) =>
-    i.textContent.trim(),
+  const items = [...document.querySelectorAll(".popup-menu-item")];
+  const labels = items.map((i) =>
+    i.querySelector(".popup-menu-label").textContent.trim(),
   );
   assert.deepEqual(labels, [
     "Properties…",
     "Duplicate Desktop",
     "Export Desktop…",
+    "Export To",
     "Delete Desktop",
   ]);
+  // Export To's flyout is the Desktop menu's submenu, item for item.
+  items[3].dispatchEvent(new window.PointerEvent("pointerenter"));
+  const flyout = [...document.querySelectorAll(".popup-menu")][1];
+  assert.deepEqual(
+    [...flyout.querySelectorAll(".popup-menu-item")].map((i) =>
+      i.querySelector(".popup-menu-label").textContent.trim(),
+    ),
+    ["KiCad Project…", "Digital Circuit…"],
+  );
+  PopupManager.close();
   assert.equal(
     labels.includes("Pin Assignment"),
     false,

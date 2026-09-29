@@ -49,6 +49,9 @@
       "duplicate": "Duplica la scrivania",
       "import": "Importa una scrivania…",
       "export": "Esporta la scrivania…",
+      "exportTo": "Esporta in",
+      "exportKicad": "Progetto KiCad…",
+      "exportDigital": "Circuito Digital…",
       "properties": "Proprietà della scrivania…",
       "delete": "Elimina la scrivania"
     },
@@ -92,11 +95,20 @@
       "header": "Header C/C++",
       "python": "Sorgente Python",
       "sketch": "Sketch Arduino",
-      "text": "Testo"
+      "text": "Testo",
+      "digital": "Circuito Digital"
     },
     "regrant": {
       "message": "Conferma l'accesso a questo progetto",
       "button": "Concedi accesso"
+    },
+    "exportKicad": {
+      "title": "Esporta in KiCad",
+      "message": "Scegli la cartella del progetto KiCad: una nuova, o quella di un'esportazione precedente.",
+      "button": "Esporta qui"
+    },
+    "exportDigital": {
+      "title": "Esporta in Digital"
     }
   },
   "toolbar": {
@@ -969,6 +981,51 @@
     "failImport": "Non è stato possibile importare quella scrivania",
     "failExport": "Non è stato possibile esportare la scrivania",
     "failExample": "Non è stato possibile aprire l'esempio di {ref}"
+  },
+  "export": {
+    "title": "Esporta in {format}",
+    "guide": "Esportare in altri strumenti",
+    "confirm": "Esporta…",
+    "note": "Tutto ciò che è collegato a essi viene comunque esportato: le loro reti mantengono i nomi.",
+    "empty": "Su questa scrivania non c'è ancora nulla da esportare.",
+    "doneTitle": "Esportato in {format}",
+    "done": "«{name}» è stato scritto in {path}",
+    "foreign": "{file} in quella cartella non è stato scritto da Chip Hippo, quindi non è stato modificato nulla. Scegli una cartella vuota, o quella in cui questa scrivania è già stata esportata.",
+    "group": {
+      "dropped": {
+        "one": "{count} componente non verrà esportato",
+        "other": "{count} componenti non verranno esportati"
+      },
+      "changed": {
+        "one": "{count} componente cambia in {format}",
+        "other": "{count} componenti cambiano in {format}"
+      },
+      "footprint": {
+        "one": "{count} footprint da controllare prima del circuito stampato",
+        "other": "{count} footprint da controllare prima del circuito stampato"
+      }
+    },
+    "reason": {
+      "noDigitalModel": "la libreria di Digital non ne ha un modello",
+      "memory": "il suo contenuto è in un file che non viene esportato",
+      "processor": "Digital non ne ha un modello",
+      "lcd": "Digital non ha display a caratteri",
+      "unmapped": "{format} non ha nulla da mettere al suo posto",
+      "clockConnector": "diventa un connettore CLOCK IN: su una scheda lì serve un oscillatore",
+      "genericFootprint": "riceve un footprint a pettine: scegli quello del componente reale",
+      "resistorMerged": "diventa un filo: un simulatore logico non ha resistenze",
+      "momentary": "diventa un interruttore: Digital non ha contatti momentanei",
+      "unpowered": "viene alimentato in Digital, che non può simulare un chip non alimentato",
+      "openCollector": "riceve un pull-up su ogni uscita, che in Digital resta flottante come nel componente reale",
+      "signals": {
+        "one": "{count} segnale esterno: uno stimolo da banco, non un componente",
+        "other": "{count} segnali esterni: stimoli da banco, non componenti"
+      },
+      "integrations": {
+        "one": "{count} uscita o ingresso Arduino: un collegamento con una scheda, non un componente",
+        "other": "{count} uscite e ingressi Arduino: collegamenti con una scheda, non componenti"
+      }
+    }
   },
   "sim": {
     "memNotLoaded": "Memoria non caricata",

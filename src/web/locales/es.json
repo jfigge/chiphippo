@@ -49,6 +49,9 @@
       "duplicate": "Duplicar escritorio",
       "import": "Importar escritorio…",
       "export": "Exportar escritorio…",
+      "exportTo": "Exportar a",
+      "exportKicad": "Proyecto de KiCad…",
+      "exportDigital": "Circuito de Digital…",
       "properties": "Propiedades del escritorio…",
       "delete": "Eliminar escritorio"
     },
@@ -92,11 +95,20 @@
       "header": "Cabecera C/C++",
       "python": "Código fuente de Python",
       "sketch": "Sketch de Arduino",
-      "text": "Texto"
+      "text": "Texto",
+      "digital": "Circuito de Digital"
     },
     "regrant": {
       "message": "Confirma el acceso a este proyecto",
       "button": "Conceder acceso"
+    },
+    "exportKicad": {
+      "title": "Exportar a KiCad",
+      "message": "Elige la carpeta del proyecto de KiCad: una nueva o la que se usó en una exportación anterior.",
+      "button": "Exportar aquí"
+    },
+    "exportDigital": {
+      "title": "Exportar a Digital"
     }
   },
   "toolbar": {
@@ -969,6 +981,51 @@
     "failImport": "No se pudo importar ese escritorio",
     "failExport": "No se pudo exportar el escritorio",
     "failExample": "No se pudo abrir el ejemplo de {ref}"
+  },
+  "export": {
+    "title": "Exportar a {format}",
+    "guide": "Exportar a otras herramientas",
+    "confirm": "Exportar…",
+    "note": "Todo lo que está cableado a ellas se sigue exportando: sus redes conservan sus nombres.",
+    "empty": "Todavía no hay nada que exportar en este escritorio.",
+    "doneTitle": "Exportado a {format}",
+    "done": "«{name}» se escribió en {path}",
+    "foreign": "{file} de esa carpeta no lo escribió Chip Hippo, así que no se cambió nada. Elige una carpeta vacía o la carpeta a la que se exportó antes este escritorio.",
+    "group": {
+      "dropped": {
+        "one": "{count} pieza no se exporta",
+        "other": "{count} piezas no se exportan"
+      },
+      "changed": {
+        "one": "{count} pieza cambia en {format}",
+        "other": "{count} piezas cambian en {format}"
+      },
+      "footprint": {
+        "one": "{count} huella que revisar antes de la placa",
+        "other": "{count} huellas que revisar antes de la placa"
+      }
+    },
+    "reason": {
+      "noDigitalModel": "la biblioteca de Digital no tiene un modelo de ella",
+      "memory": "su contenido está en un archivo que no se exporta",
+      "processor": "Digital no tiene un modelo de ella",
+      "lcd": "Digital no tiene pantallas de caracteres",
+      "unmapped": "{format} no tiene nada que colocar en su lugar",
+      "clockConnector": "pasa a ser un conector CLOCK IN: en una placa ahí va un oscilador",
+      "genericFootprint": "recibe una huella de tira de pines: elige la de la pieza real",
+      "resistorMerged": "pasa a ser un cable: un simulador lógico no tiene resistencias",
+      "momentary": "pasa a ser un interruptor: Digital no tiene contactos momentáneos",
+      "unpowered": "recibe alimentación en Digital, que no puede simular un chip sin alimentar",
+      "openCollector": "recibe una resistencia de pull-up en cada salida, que en Digital queda flotante como en la pieza real",
+      "signals": {
+        "one": "{count} señal externa: un estímulo de banco, no una pieza",
+        "other": "{count} señales externas: estímulos de banco, no piezas"
+      },
+      "integrations": {
+        "one": "{count} salida o entrada de Arduino: un enlace con una placa, no una pieza",
+        "other": "{count} salidas y entradas de Arduino: enlaces con una placa, no piezas"
+      }
+    }
   },
   "sim": {
     "memNotLoaded": "Memoria no cargada",

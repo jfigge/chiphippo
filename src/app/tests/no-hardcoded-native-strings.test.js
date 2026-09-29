@@ -60,6 +60,8 @@ const MAIN_FILES = [
   path.join(__dirname, "..", "main.js"),
   // The serial integration's log windows and its header Save panel.
   path.join(__dirname, "..", "ipc", "serial.js"),
+  // Desktop ▸ Export To's folder and save panels.
+  path.join(__dirname, "..", "ipc", "export.js"),
 ];
 
 /** Native-UI option keys whose value, as a bare literal, is on-screen text. */

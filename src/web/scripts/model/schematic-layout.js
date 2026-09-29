@@ -205,8 +205,12 @@ const isSink = (ref) => SINK_REFS.has(ref);
 const DRIVER_ROLES = ["output", "io"];
 const READER_ROLES = ["input"];
 
-/** A net's `+`/`-` power polarity, or null if it is an ordinary signal net. */
-function netPolarity(net) {
+/**
+ * A net's `+`/`-` power polarity, or null if it is an ordinary signal net.
+ * Exported for the exporters (model/export/), which drop the same power
+ * symbols a schematic does and so must agree with it about which nets are rails.
+ */
+export function netPolarity(net) {
   let plus = false;
   let minus = false;
   for (const t of net.terminals) {
