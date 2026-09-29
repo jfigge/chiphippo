@@ -29,7 +29,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-import { loadPage } from "./website-page.js";
+import fs from "node:fs";
+import path from "node:path";
+
+import { SITE_DIR, loadPage } from "./website-page.js";
 
 // ── What the markup has to keep offering ────────────────────────────────────
 
@@ -66,6 +69,22 @@ test("every in-page link points at an element that exists", async (t) => {
     .filter((id) => id && !page.document.getElementById(id));
 
   assert.deepEqual(dead, []);
+});
+
+test("every root-relative link lands on a file the site ships", async (t) => {
+  // "/chips.html" and "/docs/" are pages the deploy builds into website/; a
+  // link to one that isn't there is a 404 nothing else in the suite would see.
+  const page = loadPage();
+  t.after(page.close);
+  const missing = [...page.document.querySelectorAll('a[href^="/"]')]
+    .map((a) => a.getAttribute("href").split("#")[0])
+    .filter((href) => !href.startsWith("//"))
+    .filter((href) => {
+      const file = href.endsWith("/") ? `${href}index.html` : href;
+      return !fs.existsSync(path.join(SITE_DIR, file));
+    });
+
+  assert.deepEqual(missing, []);
 });
 
 test("the share card names an absolute image with its real size", async (t) => {

@@ -131,6 +131,15 @@ the repo, only the cropped PNGs.
   **by file path** (`src/node_modules/marked/…`, or `MARKED_DIR`) since it is ESM-only
   and bare specifiers ignore `NODE_PATH`. `website/index.html` carries Guide nav +
   footer links.
+- **Supported chips** (`website/chips.html`) is GENERATED, not written:
+  `scripts/build-chips-page.mjs` (plain Node, no `marked` — it must not import
+  `build-docs.mjs`) projects `CHIP_DEFS` into seven sections, with ✦ wherever
+  `src/web/demos/<id>.json` exists (main's own test for the example button). `make docs`
+  runs it, so the deploy regenerates it on every push. Its one hand-kept table is
+  `SECTIONS` (catalog `group`s → sections, in bands), and it THROWS on a chip whose group
+  no section claims or a claimed group no chip has — a new group can't vanish from the
+  site. Row titles are the catalog's `title`s verbatim; a better wording is a catalog fix.
+  `tests/website-chips.test.js` holds the committed page to the generator.
 - **PDF**: `scripts/build-pdf.mjs` **imports `PAGES`/`SRC`/`renderBody`/`LOGO_SVG` from
   `build-docs.mjs`** (real reuse, so it can't drift), stitches cover + TOC + one section
   per page, absolutizes `images/` to `file://`, and prints via a hidden **Electron**

@@ -264,10 +264,12 @@ vendor-markdown:
 	@echo "--------------------------------"
 
 # Render src/web/docs/*.md into the Chip Hippo–themed static site under
-# website/docs/, copy the images, and write website/sitemap.xml.
+# website/docs/, copy the images, and write website/sitemap.xml; then write
+# website/chips.html, the supported-chips list, from the parts catalog.
 docs:
 	@echo "Building the hosted user guide..."
 	@node $(WORKSPACE)/scripts/build-docs.mjs
+	@node $(WORKSPACE)/scripts/build-chips-page.mjs
 	@echo "--------------------------------"
 
 PDF_OUT ?= $(WORKSPACE)/docs/chip-hippo-user-guide.pdf
@@ -550,7 +552,7 @@ help:
 	@echo "    datasheets    Report datasheet crops missing from the pinout window"
 	@echo "    demos         Regenerate + validate demos/ and the bundled examples"
 	@echo "    vendor-markdown  Rebuild the bundled marked+DOMPurify renderer"
-	@echo "    docs          Build the hosted user guide (website/docs/)"
+	@echo "    docs          Build the hosted user guide (website/docs/) + website/chips.html"
 	@echo "    pdf           Build the user-guide PDF (PDF_OUT=path to override)"
 	@echo "    build         Build Electron app for macOS (dir only, unsigned)"
 	@echo "    build-linux   Package smoke-test for Linux (dir only, unsigned)"
