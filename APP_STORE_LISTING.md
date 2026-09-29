@@ -3,8 +3,8 @@
 Draft content for the App Store Connect fields, kept here so a re-submission
 starts from the last thing that was approved rather than from a blank box.
 The number beside each heading is Apple's limit. Counts as drafted:
-name 10/30 · subtitle 23/30 · promotional text 156/170 · keywords 98/100 ·
-description 3107/4000 — so there is room to edit, but check again if you add a
+name 10/30 · subtitle 23/30 · promotional text 149/170 · keywords 98/100 ·
+description 3578/4000 — so there is room to edit, but check again if you add a
 paragraph, because the store TRUNCATES rather than refusing.
 
 Wording is deliberately close to `website/index.html` and the in-app About
@@ -43,10 +43,12 @@ for it).
 Editable without a new build, so this is the line to change for a release note.
 
 ```
-Build 74xx logic circuits on virtual breadboards, then run them — real
-electrical nets, real clock edges, and real magic smoke if you get the voltage
-wrong.
+New: connect a running circuit to a real Arduino, ESP32 or Raspberry Pi Pico over USB. Chip Hippo writes the board's code for you — in C++ or Python.
 ```
+
+(Until 1.1.1: *Build 74xx logic circuits on virtual breadboards, then run them —
+real electrical nets, real clock edges, and real magic smoke if you get the
+voltage wrong.*)
 
 ## Keywords (100)
 
@@ -88,6 +90,14 @@ releases its magic smoke — recoverable, because burning a chip is a wiring
 mistake and not a permanent property of your design. Edge-triggered parts step
 correctly on every clock, with Run, Pause, Single-step and speed control.
 
+REAL HARDWARE
+Connect the running circuit to an Arduino, ESP32 or Raspberry Pi Pico over USB.
+Output elements send values from your breadboard to the board; Input elements
+put its buttons and sensors onto your pins. Chip Hippo writes the board's code
+for you — a C++ header for Arduino, or a Python module for MicroPython and
+CircuitPython — and a built-in Mock connection lets you try it all with no board
+plugged in.
+
 FINDING OUT WHY
 Hover any hole to highlight its entire electrical net across every board and
 wire, with a live readout of what is connected and the level it is carrying.
@@ -97,8 +107,9 @@ is no second source of truth to fall out of step.
 
 WIRING, FASTER
 Wire a whole address or data bus in one gesture instead of one lead at a time.
-Drag a part and its wiring goes with it. Route a wire by hand where the tidy
-path matters. Name a net once and see it everywhere.
+Drag a part and its wiring goes with it. Let automatic routing lead wires around
+the chips, or route one by hand where the tidy path matters. Name a net once and
+see it everywhere.
 
 TAKING IT TO A REAL BENCH
 The build guide turns your design into an ordered bill of materials and a
@@ -120,7 +131,7 @@ Chip Hippo works entirely offline. It collects nothing, has no analytics, and
 makes no network call you did not ask for. The optional AI circuit builder
 talks to your own provider account with your own API key — nothing is sent to
 us, because there is no "us" to send it to. It is free and open source under
-the Apache 2.0 licence.
+the GNU GPL v3 licence.
 
 Available in English, German, Spanish, French, Italian, Japanese and Chinese.
 ```
