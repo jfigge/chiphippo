@@ -2923,9 +2923,22 @@ make clean      # Remove build/ and dist/
 
 ## License headers
 
-The project is **Apache-2.0** (`LICENSE` + `NOTICE` at the root; `"license": "Apache-2.0"`
-in `src/package.json`). Every first-party source file must begin with the standard Apache
-2.0 header comment — a hard requirement enforced by a guard.
+The project is **GPL-3.0-or-later** (`LICENSE` + `NOTICE` at the root;
+`"license": "GPL-3.0-or-later"` in `src/package.json`). It was Apache-2.0 up to and
+including v1.1.1, and those releases stay Apache-2.0. Every first-party source file must
+begin with the FSF's standard GPL notice — a hard requirement enforced by a guard.
+
+**What the app GENERATES for a board is not GPL** (`LICENSE-EXCEPTION`, a section 7
+additional permission): `ChipHippo.h`, `ChipHippoExample.ino`, `chiphippo.py`, `main.py`,
+`code.py`, `boot.py` and `docs/examples/` may go into anyone's firmware under any terms —
+otherwise shipping a sketch that includes the header would oblige its author to GPL their
+firmware. The permission stops short of a program that uses that code as the TEMPLATE for
+code IT generates (Bison's limit), so it cannot be used to lift the device side into a
+closed competitor. Each generated file states it in its own comment
+(`GENERATED_LICENSE` in `integration-codegen.js`, held by
+`integration-codegen-python.test.js`), because a header copied into a sketch folder
+travels without the repo's files beside it; the two generator modules' own headers say
+so too.
 
 - **Scope**: first-party `*.js` under `src/app/` and `src/web/scripts/`, `*.css` under
   `src/web/styles/`, and the build scripts under `scripts/`.
@@ -2934,4 +2947,6 @@ in `src/package.json`). Every first-party source file must begin with the standa
 - **Enforcement**: `scripts/license-header.mjs --check` runs as `make test-license-headers`,
   part of `make test` (so CI fails on a missing header).
 - **Auto-fix**: `make license-headers` stamps every in-scope file missing one; it preserves
-  shebangs and is idempotent.
+  shebangs and is idempotent. A file still opening with the old Apache terms (one from an
+  older branch) counts as missing: the stamper swaps the terms in place, keeping that
+  file's own copyright line, rather than stacking a second header above it.

@@ -1,8 +1,14 @@
 Chip Hippo
 Copyright 2026 Jason Figge
 
-This product is licensed under the Apache License, Version 2.0 (see the LICENSE
-file in the root of this distribution).
+This product is licensed under the GNU General Public License, version 3 or
+(at your option) any later version (see the LICENSE file in the root of this
+distribution). Releases up to and including v1.1.1 were published under the
+Apache License, Version 2.0, and remain available under those terms.
+
+The code Chip Hippo generates for a microcontroller to run is covered by an
+additional permission under section 7 of the GPL, letting it be used under
+terms of your choice; see the LICENSE-EXCEPTION file.
 
 This software bundles third-party components, each distributed under its own
 license. Their copyright notices and license terms are retained within the

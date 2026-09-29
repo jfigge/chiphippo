@@ -445,6 +445,14 @@ Most Python boards don&#39;t restart when Chip Hippo opens the port, so give you
 Inputs their starting values from an <code>@link.on_connect</code> function, as above.
 <code>link.begin()</code> can also be handed a port you have opened yourself — a
 <code>machine.UART</code> or <code>busio.UART</code> at the connection&#39;s baud rate.</p>
+<h3 id="using-the-generated-files-in-your-own-firmware">Using the generated files in your own firmware</h3>
+<p>Chip Hippo itself is free software under the GNU General Public License, but
+the files it generates for a board are not bound by it. <code>ChipHippo.h</code>,
+<code>chiphippo.py</code> and the example programs beside them can go into your own
+firmware — open or closed, given away or sold — under whatever terms you
+choose. Each file says so in its opening comment; the full wording is
+Chip Hippo&#39;s
+<a href="https://github.com/jfigge/chiphippo/blob/main/LICENSE-EXCEPTION">LICENSE-EXCEPTION</a>.</p>
 <h3 id="keeping-the-header-current">Keeping the header current</h3>
 <p>Every header carries a <strong>design hash</strong> of what it was generated from — the
 connection&#39;s settings and the names, fields and order of its Outputs and

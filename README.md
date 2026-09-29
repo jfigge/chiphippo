@@ -1,7 +1,7 @@
 # Chip Hippo — A free, offline, open-source TTL breadboard designer & simulator
 
 [![CI](https://github.com/jfigge/chiphippo/actions/workflows/ci.yml/badge.svg)](https://github.com/jfigge/chiphippo/actions/workflows/ci.yml)
-[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg)](LICENSE)
+[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 ![Platforms](https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey)
 [![GitHub stars](https://img.shields.io/github/stars/jfigge/chiphippo?style=social)](https://github.com/jfigge/chiphippo/stargazers)
 
@@ -17,7 +17,7 @@ breadboards, the netlist, and the entire simulation engine as first-party code.
 It shares its engineering foundation with its siblings
 [Rest Hippo](https://github.com/jfigge/resthippo) and Port Hippo.
 
-> **Why Chip Hippo?** Free forever · Open source (Apache 2.0) · 100% offline · No
+> **Why Chip Hippo?** Free forever · Open source (GPL-3.0) · 100% offline · No
 > sign-in · No tracking · Your designs stay in local files.
 
 <p align="center"><img src="src/web/docs/images/overview.png" alt="Chip Hippo — a circuit on the desk" width="820"></p>
@@ -256,7 +256,7 @@ over every gate and circuit fixtures for the sequential parts), the renderer
 components under jsdom, and five **i18n guards** that make an untranslated
 string fail the suite rather than ship.
 
-Every first-party source file must carry the Apache 2.0 header; `make test`
+Every first-party source file must carry the GPL-3.0 header; `make test`
 enforces it and `make license-headers` stamps any file missing one.
 
 ## Releasing
@@ -315,4 +315,10 @@ lives in that roadmap.
 
 ## License
 
-Apache-2.0. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
+GPL-3.0-or-later. See [LICENSE](LICENSE) and [NOTICE](NOTICE). Releases up to and
+including v1.1.1 were published under Apache-2.0.
+
+The code Chip Hippo **generates** for a microcontroller (`ChipHippo.h`, `chiphippo.py`
+and their example programs) is not bound by the GPL: an additional permission in
+[LICENSE-EXCEPTION](LICENSE-EXCEPTION) lets you use it in your own firmware under terms
+of your choice.

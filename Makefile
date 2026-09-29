@@ -139,10 +139,10 @@ lint:
 	@echo "--------------------------------"
 
 # ─── License headers ──────────────────────────────────────────────────────────
-# Stamp the Apache 2.0 header onto any first-party src/ JS+CSS or build script
+# Stamp the GPL-3.0 header onto any first-party src/ JS+CSS or build script
 # that is missing it (see CLAUDE.md → "License headers" for the scope).
 license-headers:
-	@echo "Stamping Apache 2.0 license headers..."
+	@echo "Stamping GPL-3.0 license headers..."
 	@node $(WORKSPACE)/scripts/license-header.mjs
 	@echo "--------------------------------"
 
@@ -193,9 +193,9 @@ test-i18n:
 	@echo "--------------------------------"
 
 # Guard: every first-party src/ JS+CSS file and build script must carry the
-# Apache 2.0 header. Fix any failure with `make license-headers`.
+# GPL-3.0 header. Fix any failure with `make license-headers`.
 test-license-headers:
-	@echo "Checking Apache 2.0 license headers (guard)..."
+	@echo "Checking GPL-3.0 license headers (guard)..."
 	@node $(WORKSPACE)/scripts/license-header.mjs --check
 	@echo "--------------------------------"
 
@@ -545,7 +545,7 @@ help:
 	@echo "    fmt-check     Check formatting without writing (prettier --check)"
 	@echo "    lint          Lint JS (eslint)"
 	@echo "    test          Run license-header guard + JS unit tests"
-	@echo "    license-headers  Stamp the Apache 2.0 header on any file missing it"
+	@echo "    license-headers  Stamp the GPL-3.0 header on any file missing it"
 	@echo "    icons         Regenerate app-icon rasters from the SVG sources"
 	@echo "    datasheets    Report datasheet crops missing from the pinout window"
 	@echo "    demos         Regenerate + validate demos/ and the bundled examples"

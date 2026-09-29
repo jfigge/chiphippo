@@ -366,6 +366,16 @@ Inputs their starting values from an `@link.on_connect` function, as above.
 `link.begin()` can also be handed a port you have opened yourself — a
 `machine.UART` or `busio.UART` at the connection's baud rate.
 
+### Using the generated files in your own firmware
+
+Chip Hippo itself is free software under the GNU General Public License, but
+the files it generates for a board are not bound by it. `ChipHippo.h`,
+`chiphippo.py` and the example programs beside them can go into your own
+firmware — open or closed, given away or sold — under whatever terms you
+choose. Each file says so in its opening comment; the full wording is
+Chip Hippo's
+[LICENSE-EXCEPTION](https://github.com/jfigge/chiphippo/blob/main/LICENSE-EXCEPTION).
+
 ### Keeping the header current
 
 Every header carries a **design hash** of what it was generated from — the

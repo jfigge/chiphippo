@@ -1,17 +1,20 @@
 /*
  * Copyright 2026 Jason Figge
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * This file is part of Chip Hippo.
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * Chip Hippo is free software: you can redistribute it and/or modify it under
+ * the terms of the GNU General Public License as published by the Free
+ * Software Foundation, either version 3 of the License, or (at your option)
+ * any later version.
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Chip Hippo is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with Chip Hippo. If not, see <https://www.gnu.org/licenses/>.
  */
 // Tests for model/integration-codegen-python.js and model/integration-files.js
 // — the Python module a connection gets when its language is Python, and the
@@ -38,6 +41,7 @@ import {
 } from "../model/integration-codegen-python.js";
 import {
   EXAMPLE_FILE,
+  GENERATED_LICENSE,
   HEADER_FILE,
   designHash,
   hashHex,
@@ -340,6 +344,24 @@ test("connectionFiles: the language picks the files — C++ a header and a sketc
   );
   assert.equal(py.hash, designHash(pico, design()));
   assert.deepEqual(py.warnings, []);
+});
+
+test("every file Generate writes, in either language, states the generated-code permission in full", () => {
+  // Chip Hippo is GPL; what it writes for a board is not (LICENSE-EXCEPTION).
+  // A file copied into a sketch folder travels without that file, so the
+  // permission must be IN it — every line, in order, under the file's own
+  // comment marker — or someone shipping firmware has nothing to point at.
+  for (const language of ["cpp", "python"]) {
+    const { files } = connectionFiles({
+      connection: { ...pico, language },
+      elements: design(),
+    });
+    for (const { name, text } of files) {
+      const mark = name.endsWith(".py") ? "#" : "//";
+      const notice = GENERATED_LICENSE.map((l) => `${mark} ${l}`).join("\n");
+      assert.ok(text.includes(notice), `${name} carries the license notice`);
+    }
+  }
 });
 
 test("a Python connection off 115200 baud, 8N1 is warned about — a USB-serial-chip board runs its REPL at exactly that", () => {

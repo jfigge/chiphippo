@@ -2,6 +2,10 @@
 // (Generate ▸ View files shows the smallest possible sketch for any header;
 // this is a fuller one, with real hardware on the Arduino's side.)
 //
+// License: you may use, modify and distribute this example under terms of
+// your choice; see Chip Hippo's LICENSE-EXCEPTION,
+// https://github.com/jfigge/chiphippo/blob/main/LICENSE-EXCEPTION
+//
 // It consumes the ChipHippo.h that Chip Hippo's Generate button saves for a
 // connection whose desktop has these three elements (the names and fields are
 // what each one's Properties say; the header is generated from them):

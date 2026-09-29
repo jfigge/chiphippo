@@ -1,22 +1,26 @@
 /*
  * Copyright 2026 Jason Figge
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
+ * This file is part of Chip Hippo.
  *
- *     http://www.apache.org/licenses/LICENSE-2.0
+ * Chip Hippo is free software: you can redistribute it and/or modify it under
+ * the terms of the GNU General Public License as published by the Free
+ * Software Foundation, either version 3 of the License, or (at your option)
+ * any later version.
  *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+ * Chip Hippo is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with Chip Hippo. If not, see <https://www.gnu.org/licenses/>.
  */
 
 // License-header stamper + guard.
 //
 //   node scripts/license-header.mjs            # add the header to any file missing it
+//                                              # (swapping out old Apache 2.0 terms)
 //   node scripts/license-header.mjs --check    # fail (exit 1) if any file is missing it
 //
 // Scope (kept in lockstep with CLAUDE.md → "License headers"): first-party
@@ -41,26 +45,44 @@ const ROOTS = [
 // Directory names never descended into, anywhere in the tree.
 const EXCLUDE_DIRS = new Set(["node_modules", "vendor"]);
 
-// The canonical Apache 2.0 short header, as a block comment (valid in JS & CSS).
+// The GPL-3.0-or-later terms — the FSF's standard notice, "How to Apply These
+// Terms" in LICENSE, with the program named.
+const TERMS = ` * This file is part of Chip Hippo.
+ *
+ * Chip Hippo is free software: you can redistribute it and/or modify it under
+ * the terms of the GNU General Public License as published by the Free
+ * Software Foundation, either version 3 of the License, or (at your option)
+ * any later version.
+ *
+ * Chip Hippo is distributed in the hope that it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE. See the GNU General Public License for
+ * more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with Chip Hippo. If not, see <https://www.gnu.org/licenses/>.`;
+
+// The whole header, as a block comment (valid in JS & CSS).
 const HEADER = `/*
  * Copyright 2026 Jason Figge
  *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
+${TERMS}
  */`;
 
-// A file counts as already-stamped if this marker appears near its top. Matching
-// a substring (not the exact block) keeps the guard stable across reformatting.
-const MARKER = "Licensed under the Apache License, Version 2.0";
+// A file counts as already-stamped if this marker appears in the comment it
+// OPENS with. Matching a substring (not the exact block) keeps the guard stable
+// across reformatting; looking only in the leading comment keeps this file's
+// own mentions of both licences, further down, from counting as a header.
+const MARKER = "the GNU General Public License as published by";
+
+// The Apache-2.0 terms the project was published under before it moved to
+// GPL-3.0. A file still opening with them has its TERMS swapped in place — so it
+// keeps its own copyright line — instead of gaining a second, contradictory
+// header above the first; the guard reports it exactly as it reports a missing
+// one, so a file from an older branch cannot bring the old licence back.
+const LEGACY_MARKER = "Licensed under the Apache License, Version 2.0";
+const LEGACY_TERMS =
+  /^ \* Licensed under the Apache License, Version 2\.0[^\n]*\n(?: \*[^\n]*\n)*? \* limitations under the License\.\n/m;
 
 function* walk(dir, exts) {
   let entries;
@@ -88,8 +110,13 @@ function collectFiles() {
   return [...files].sort();
 }
 
-function hasHeader(content) {
-  return content.slice(0, 2000).includes(MARKER);
+// The block comment a file opens with (after any shebang), or "" if it opens
+// with anything else.
+function leadingComment(content) {
+  const body = content.replace(/^#![^\n]*\n/, "").replace(/^[\s\uFEFF]+/, "");
+  if (!body.startsWith("/*")) return "";
+  const end = body.indexOf("*/");
+  return end === -1 ? "" : body.slice(0, end + 2);
 }
 
 // Insert the header at the top, but after a shebang line if one is present.
@@ -108,20 +135,37 @@ function stamp(content) {
 const check = process.argv.includes("--check");
 const files = collectFiles();
 const missing = [];
+const stuck = []; // open with Apache terms this script could not recognise
 
 for (const file of files) {
   const content = readFileSync(file, "utf8");
-  if (hasHeader(content)) continue;
+  const head = leadingComment(content);
+  if (head.includes(MARKER)) continue;
   missing.push(file);
-  if (!check) writeFileSync(file, stamp(content));
+  if (check) continue;
+  if (head.includes(LEGACY_MARKER)) {
+    const swapped = content.replace(LEGACY_TERMS, () => `${TERMS}\n`);
+    if (swapped === content) stuck.push(file);
+    else writeFileSync(file, swapped);
+  } else {
+    writeFileSync(file, stamp(content));
+  }
 }
 
 const rel = (f) => relative(REPO_ROOT, f);
 
+if (stuck.length) {
+  console.error(
+    `${stuck.length} file(s) open with Apache 2.0 terms in an unrecognised shape; replace them by hand:`,
+  );
+  for (const f of stuck) console.error(`  ${rel(f)}`);
+  process.exit(1);
+}
+
 if (check) {
   if (missing.length) {
     console.error(
-      `License-header guard: ${missing.length} file(s) missing the Apache 2.0 header:`,
+      `License-header guard: ${missing.length} file(s) missing the GPL-3.0 header:`,
     );
     for (const f of missing) console.error(`  ${rel(f)}`);
     console.error(`\nAdd it with:  make license-headers`);
@@ -134,7 +178,7 @@ if (check) {
     `License-header guard: all ${files.length} files carry the header.`,
   );
 } else if (missing.length) {
-  console.log(`Stamped ${missing.length} file(s) with the Apache 2.0 header:`);
+  console.log(`Stamped ${missing.length} file(s) with the GPL-3.0 header:`);
   for (const f of missing) console.log(`  ${rel(f)}`);
 } else {
   console.log(

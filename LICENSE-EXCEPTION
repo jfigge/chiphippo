@@ -1,0 +1,41 @@
+Chip Hippo — additional permission for generated code
+=====================================================
+
+Chip Hippo is free software, licensed under the GNU General Public License,
+version 3 or (at your option) any later version; see LICENSE. As an
+additional permission under section 7 of that license, the copyright holder
+grants the following.
+
+1. Generated Code
+
+   "Generated Code" is any file Chip Hippo writes for a microcontroller to
+   run, including the portions of Chip Hippo's own source text it copies into
+   that file. Today these are:
+
+     ChipHippo.h, ChipHippoExample.ino           (Arduino, C++)
+     chiphippo.py, main.py, code.py, boot.py     (MicroPython, CircuitPython)
+
+   A file a later version of Chip Hippo writes for the same purpose is
+   Generated Code too, whatever it is named. So are the example sketches
+   under docs/examples/ in Chip Hippo's source, which exist to be copied into
+   a sketch in the same way.
+
+2. Permission
+
+   You may use, copy, modify and distribute Generated Code, on its own or as
+   part of a larger work such as your own firmware, under terms of your
+   choice, without the conditions of the GNU General Public License.
+
+3. Limits
+
+   This permission covers Generated Code only. It does not cover Chip Hippo
+   itself, including the source files that produce Generated Code, and it
+   does not apply to a program that uses Generated Code, or a modified
+   version of it, as a template for code that program generates. Chip Hippo,
+   and any work based on it, remains under the GNU General Public License.
+
+4. Modified versions of Chip Hippo
+
+   If you modify Chip Hippo, you may extend this permission to your version,
+   but you are not obliged to. If you do not wish to, delete this file from
+   your version.

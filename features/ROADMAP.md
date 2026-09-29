@@ -16,8 +16,8 @@ same engineering setup as its siblings **Rest Hippo**
 (`/Users/jason/src/js/projects/resthippo`) and **Port Hippo**
 (`/Users/jason/src/js/projects/porthippo`): a `Makefile`-driven build, `src/app`
 (Electron main) + `src/web` (renderer) split, file-based storage under `userData`,
-electron-builder packaging, and Apache-2.0 with a license-header guard. External npm
-packages only when necessary — at the start the only planned runtime dependency is
+electron-builder packaging, and GPL-3.0 (Apache-2.0 until v1.1.1) with a
+license-header guard. External npm packages only when necessary — at the start the only planned runtime dependency is
 `electron-updater` (later, for auto-update); the breadboards, wires, and the entire
 simulation engine are first-party code.
 
@@ -130,7 +130,7 @@ buffers/latches/transceivers/decoders/comparators/adders.)
 - **Events vs callbacks.** Parent-owned widget reporting to its creator → constructor
   callback; app-wide state change any number of panels may react to → a global
   `chiphippo:*` `CustomEvent`. No event-bus library.
-- **License headers.** Apache-2.0; every first-party `src/app`/`src/web` JS+CSS and
+- **License headers.** GPL-3.0-or-later; every first-party `src/app`/`src/web` JS+CSS and
   build script carries the standard header, enforced by a guard in `make test`.
 - **Green gate.** `make fmt && make lint && make test` must pass before a stage is
   done; each plan's Verify section also drives the real app via `make debug`.
