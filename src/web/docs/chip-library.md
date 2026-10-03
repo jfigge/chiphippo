@@ -1,14 +1,31 @@
 # The Chip Library
 
-The parts palette's **CHIPS** folder holds a broad shelf of 74xx-family DIP
-logic — everything from a single quad NAND gate up to octal shift registers
-and 4-bit counters — every one with a datasheet-accurate pinout and real
-behavior you can wire up and run. Past them, an **Interface** group carries
+The parts palette's **CHIPS** folder holds a broad shelf of DIP logic from two
+families — **74LS TTL**, everything from a single quad NAND gate up to octal
+shift registers and 4-bit counters, and **CD4000 CMOS** — every one with a
+datasheet-accurate pinout and real behavior you can wire up and run. Past them, an **Interface** group carries
 the 65xx peripherals (a PIA and a VIA) and a **PROCESSOR** group carries the
 CPUs, while a separate **Memory** group sits below for the address-indexed
 ROM/RAM parts, which get their own dedicated page. This page is a tour of what's
 on the shelf and how to read a chip's pin-assignments window once you've placed
 one.
+
+## Choosing a logic family
+
+**Settings → Data Sheets → Chip family** picks which family the parts palette
+shows: **74LS** (the default), **CD4000**, or **Both**. With one family, the
+CHIPS folder is the familiar list of function groups — NAND, NOR, Flip-flop…
+— holding that family's chips. With **Both**, CHIPS gains a `74LS` folder and
+a `CD4000` folder, each holding its own function groups. The memory, interface
+and processor chips belong to no family and are there in every mode.
+
+It only filters the palette. A project's chips always load and run, whatever
+is chosen, and a family the open project uses is shown anyway — so you can add
+more of the parts already on its desk. Typing a CD4000 part number into the
+filter while CD4000 is hidden says where to switch it on.
+
+The families differ in more than part numbers — see
+[The CD4000 CMOS family](#the-cd4000-cmos-family) below.
 
 ## Combinational gates
 
@@ -106,6 +123,91 @@ GND on the package corners, and neither do these.
 | `74LS283` | 4-bit binary full adder |
 | `74LS83` | The same adder on its **original** pinout — VCC on pin 5, GND on pin 12, not the later JEDEC corners |
 | `74LS181` | 4-bit arithmetic logic unit (DIP-24) — 16 logic or 16 arithmetic operations selected by `S0`–`S3` and `M`, with carry generate/propagate outputs for cascading |
+
+## The CD4000 CMOS family
+
+The 4000-series CMOS parts, each pinned out from its Texas Instruments
+datasheet. They are **not** pin-compatible with the 74LS parts of the same
+function — the CD4001B's NOR outputs are on pins 3, 4, 10 and 11, the 74LS02's
+on 1, 4, 10 and 13 — so read the pin-assignments window before wiring one.
+
+| Part | Description |
+| --- | --- |
+| `CD4001B` | Quad 2-input NOR |
+| `CD4002B` | Dual 4-input NOR |
+| `CD4025B` | Triple 3-input NOR |
+| `CD4078B` | 8-input NOR/OR gate — both outputs |
+| `CD4011B` | Quad 2-input NAND |
+| `CD4012B` | Dual 4-input NAND |
+| `CD4023B` | Triple 3-input NAND |
+| `CD4068B` | 8-input NAND/AND gate — both outputs |
+| `CD4093B` | Quad 2-input NAND Schmitt trigger |
+| `CD4081B` | Quad 2-input AND |
+| `CD4082B` | Dual 4-input AND |
+| `CD4073B` | Triple 3-input AND |
+| `CD4071B` | Quad 2-input OR |
+| `CD4072B` | Dual 4-input OR |
+| `CD4075B` | Triple 3-input OR |
+| `CD4030B` | Quad exclusive-OR — the original; the CD4070B is its successor |
+| `CD4070B` | Quad exclusive-OR |
+| `CD4077B` | Quad exclusive-NOR |
+| `CD4069UB` | Hex inverter (unbuffered) |
+| `CD40106B` | Hex Schmitt-trigger inverter |
+| `CD4049UB` | Hex inverting buffer/converter — **VCC on pin 1, VSS on pin 8**, not the corners |
+| `CD4050B` | Hex non-inverting buffer/converter — same odd power pins |
+| `CD4013B` | Dual D flip-flop with **active-HIGH** set and reset (the 74LS74's are active-LOW) |
+| `CD4027B` | Dual JK flip-flop with active-HIGH set and reset — raising **both** drives Q and Q̄ HIGH together |
+| `CD4017B` | Decade counter with ten decoded outputs and a carry-out |
+| `CD4022B` | Octal counter with eight decoded outputs — the 4017's divide-by-8 sibling |
+| `CD4020B` | 14-stage binary ripple counter — Q2 and Q3 have no pin |
+| `CD4024B` | 7-stage binary ripple counter, in a **14-pin** package |
+| `CD4040B` | 12-stage binary ripple counter — counts on the **falling** edge |
+| `CD4029B` | Presettable up/down counter, binary or decade (a pin picks which) |
+| `CD4510B` | Presettable BCD up/down counter with reset |
+| `CD4516B` | Presettable binary up/down counter with reset |
+| `CD4094B` | 8-stage shift-and-store register — its 3-state **OUTPUT ENABLE is active HIGH** |
+| `CD4028B` | BCD-to-decimal decoder, ten active-HIGH outputs |
+| `CD4511B` | BCD-to-7-segment latch/decoder/driver for a **common-cathode** display |
+
+What makes the family worth learning on is how it differs from TTL:
+
+- **A floating input is unknown, not HIGH.** A 74LS input pulls itself up; a
+  CMOS input is a gate with nothing on it. Chip Hippo reads an unconnected
+  CD4000 input as `X`, warns about it, and lets the unknown spread to whatever
+  it feeds — a CD4017 with its RESET left floating loses its count. Tie every
+  CMOS input, spare gates included, as the datasheets ask.
+- **A much wider supply range.** A CD4000 part runs from 3 V to 18 V, where a
+  74LS part needs 5 V — see [Power & Clock Sources](power-and-clocks.md).
+- **Weaker outputs.** One standard CD4000 output can hold only one 74LS input
+  LOW; the CD4049UB/CD4050B buffers drive eight. Driving the other way, a 74LS
+  HIGH is marginal for a CMOS input. Both are reported — see
+  [Mixing logic families](simulation.md#mixing-logic-families).
+
+The Schmitt-trigger parts (CD4093B, CD40106B) behave as plain gates here: their
+hysteresis is an analog property, and their classic RC oscillator needs a
+capacitor the desk does not have.
+
+A few of the larger parts have habits of their own:
+
+- **The up/down counters' carry is combinational.** CARRY OUT on the CD4029B,
+  CD4510B and CD4516B goes LOW at the end of the count — 15 (or 9) going up, 0
+  going down — while CARRY IN is LOW, and it follows UP/DOWN at once, without
+  waiting for a clock. Wire one counter's CARRY OUT to the next one's CARRY IN
+  and give them the same clock to chain them. Tie CARRY IN LOW on a counter on
+  its own.
+- **A decade counter can be preset to a code that is not a digit.** The jam
+  inputs load any binary number, 10–15 included. The CD4510B's datasheet
+  promises it counts back into 0–9 within two clocks going up and four going
+  down, and Chip Hippo follows that part's logic gates to get there; the
+  CD4029B's decade mode uses the same logic.
+- **The CD4511B blanks a code above 9**, where the 74LS47 shows odd symbols.
+  Its latch sits before the decoder, so LE HIGH freezes the digit while lamp
+  test (LT) and blanking (BL) still work on it.
+- **The CD4094B's outputs follow its shift register only while STROBE is
+  HIGH**, and its OUTPUT ENABLE floats them when it is LOW — the opposite sense
+  of every 74LS output enable. The serial outputs QS and Q'S are never floated;
+  Q'S gives the same bit half a clock later, for chaining a second 4094 on a
+  slow clock.
 
 ## Interface chips (65xx)
 
@@ -217,9 +319,9 @@ one, both, or neither for any given chip.
 ## Example circuits
 
 A pin map tells you where the pins are; it doesn't show you the part working.
-So every 74xx chip in the catalog ships with a **worked example** — a small
-bench built around that one part — and the pin-assignments window is where you
-reach it. Look for the **circuit button** in the window's top-right corner,
+So every 74LS and CD4000 chip in the catalog ships with a **worked example** — a
+small bench built around that one part — and the pin-assignments window is where
+you reach it. Look for the **circuit button** in the window's top-right corner,
 beside the datasheet one.
 
 Click it and the example arrives as a **new desktop** in the open project,
@@ -230,7 +332,8 @@ Every one is the same bench, so once you can read one you can read them all:
   parts;
 - **switched inputs** on the left, each throwing between +5 V and a pull-down
   so an input is never left floating — a part with more inputs than will fit
-  gets a DIP switch bank over a resistor network instead;
+  gets a DIP switch bank over a resistor network instead. A CD4000 bench also
+  ties every input it does not switch, spare gates included;
 - the **chip under test** in the middle, straddling the trench;
 - **LED read-outs** on the right, one per output, through its own resistor. An
   active-LOW output has its LED wired the other way up, so a lit lamp always
@@ -255,11 +358,11 @@ A few practical notes:
 ## Datasheets
 
 The datasheet crops shown in the pin-assignments window are committed image
-assets built once from the manufacturer PDFs (`make datasheets`), not
-fetched or rendered at runtime — they work offline and load instantly. Four
-parts in the sequential/MSI wave have no matching `74LS*` datasheet on file
-(`74LS164`, `74LS193`, `74LS27`, `74LS76`) and simply show their pin map with
-no crop below it. Pointing **Settings → Data Sheets** at your own folder of
+assets cut by hand from the manufacturer PDFs, not fetched or rendered at
+runtime — they work offline and load instantly. A part with no crop on file
+simply shows its pin map with no image below it: four 74LS parts have no
+matching `74LS*` datasheet (`74LS164`, `74LS193`, `74LS27`, `74LS76`), and the
+CD4000 parts' crops are still being cut. Pointing **Settings → Data Sheets** at your own folder of
 manufacturer PDFs is a separate, optional feature — it doesn't add or replace
 the built-in crops, it just adds the "open datasheet PDF" button for any part
 whose PDF you have on hand.

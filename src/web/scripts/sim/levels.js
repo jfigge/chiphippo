@@ -25,7 +25,9 @@
 //   X  conflict / unknown
 //
 // TTL authenticity: a FLOATING TTL input reads HIGH — `asInput(Z) === H` — a
-// deliberate, documented choice (real 74xx inputs pull themselves high). `X`
+// deliberate, documented choice (real 74xx inputs pull themselves high). A
+// CMOS input has nothing to pull it anywhere, so a CD4000 part reads its
+// floating inputs through `asCmosInput` instead (Z → X; Feature 400). `X`
 // propagates as `X` except where a dominant input forces the result (a NAND
 // with any `L` is `H` regardless of an `X` on another pin — the standard
 // ternary-logic shortcut).
@@ -45,6 +47,16 @@ export const X = "X";
  */
 export function asInput(level) {
   return level === Z ? H : level;
+}
+
+/**
+ * Read a pin as a CMOS gate input: a floating pin (`Z`) is UNKNOWN — a gate
+ * with nothing on it reads whatever the air puts there — so it becomes `X`;
+ * H/L/X pass through. The CMOS twin of `asInput`, chosen per part by its
+ * family (catalog/families.js `floatsUnknown`).
+ */
+export function asCmosInput(level) {
+  return level === Z ? X : level;
 }
 
 const some = (arr, v) => arr.some((x) => x === v);
@@ -81,6 +93,16 @@ export function nor(...ins) {
 export function xor(...ins) {
   if (some(ins, X)) return X;
   return ins.filter((x) => x === H).length % 2 === 1 ? H : L;
+}
+
+/** XNOR: the complement of XOR — any X → X; else even count of H → H. */
+export function xnor(...ins) {
+  return inv(xor(...ins));
+}
+
+/** BUF: a non-inverting buffer — H/L pass through, X stays X. */
+export function buf(a) {
+  return a === H || a === L ? a : X;
 }
 
 /** INV: H↔L; X → X (Z is asInput'd to H before it reaches here). */

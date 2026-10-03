@@ -1,7 +1,7 @@
 # Chips & Components
 
 Everything that isn't a breadboard strip lives in the **Parts** palette on the
-left: 74xx logic chips, CPUs, 65xx interface chips, memory chips, switches, LEDs,
+left: 74LS and CD4000 logic chips, CPUs, 65xx interface chips, memory chips, switches, LEDs,
 displays, resistors, oscillators, and power/clock bricks. This page covers
 finding a part, seating it on a board, and the (surprisingly varied) ways
 different parts rotate and flip once they're down.
@@ -14,9 +14,11 @@ The palette opens with every section collapsed, grouped by function:
 
 - **BOARDS** — the breadboard kits and loose strips, pinned at the top (see
   [The Desk & Breadboards](the-desk.md)).
-- **CHIPS** — every 74xx logic family, folder-grouped, ending with the
+- **CHIPS** — the logic chips, folder-grouped by function, ending with the
   **Interface** group (the 65xx PIA/VIA) and the **PROCESSOR** group (the
-  W65C02 and Z80A CPUs).
+  W65C02 and Z80A CPUs). Which logic family it shows — 74LS, CD4000, or both,
+  each in a folder of its own — is **Settings → Data Sheets → Chip family**
+  (see [Choosing a logic family](chip-library.md#choosing-a-logic-family)).
 - **COMPONENTS** — **Switches**, **Resistors**, **LEDs**, **Displays**,
   **Oscillators**, and **Power**, in that shelf order.
 - **Memory** — the ROM/RAM chips, pulled out of CHIPS into a top-level group

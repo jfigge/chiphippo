@@ -2279,7 +2279,7 @@ test("movePsu + volts via setComponentParams", () => {
     params: { volts: 5 },
   });
   assert.equal(doc.setComponentParams("psu1", { volts: 3 }).params.volts, 3);
-  assert.equal(doc.setComponentParams("psu1", { volts: 9 }).params.volts, 5);
+  assert.equal(doc.setComponentParams("psu1", { volts: 7 }).params.volts, 5);
   assert.throws(() => doc.movePsu("psu9", 0, 0), { code: "NOT_FOUND" });
   const led = doc.addBoard("pins-tiny", 40, 0);
   assert.ok(led);
@@ -2332,7 +2332,7 @@ test("normalizeDocument: discretes + PSUs survive; junk dropped/coerced", () => 
         ref: "psu",
         x: 40.4,
         y: 1,
-        params: { volts: 9 },
+        params: { volts: 7 },
       },
       { id: "c3", kind: "psu", ref: "psu", x: 60, y: 0 }, // psu needs psu<n> id
     ],

@@ -31,6 +31,8 @@
 // and a flipped warning triangle would read upside down.
 
 import { svgEl } from "../dom.js";
+import { t } from "../i18n.js";
+import { supplyText } from "../catalog/families.js";
 
 /**
  * The red X + rising smoke drawn over a burnt-out part.
@@ -108,12 +110,34 @@ export function buildWarnOverlay(cx, cy, r = 0.7) {
   return g;
 }
 
-/** Hover hints for the fault symbols — keyed by the status the engine reports.
-    Shared by every view with a live setStatus (chip-view.js, discrete-view.js). */
-export const STATUS_HINT = Object.freeze({
-  unpowered: "Unpowered",
-  underpowered: "Underpowered — VCC is at 3 V",
-  reversed: "Power reversed — VCC and GND are swapped",
-  damaged: "Damaged — replace this part",
-  unprogrammed: "Not programmed — load an image",
-});
+/** The statuses a fault symbol can show, and so the ones with a hover hint. */
+const HINTED = new Set([
+  "unpowered",
+  "underpowered",
+  "reversed",
+  "damaged",
+  "unprogrammed",
+]);
+
+/**
+ * The hover hint for a fault symbol — keyed by the status the engine reports,
+ * shared by every view with a live setStatus (chip-view.js, discrete-view.js).
+ *
+ * It is the Properties card's own warning sentence (`properties.warning.*`),
+ * so the two can never disagree: this was a hand-kept English list, and it
+ * went on telling a burnt chip to "replace this part" after Stop had learnt to
+ * restore it, and an underpowered one that VCC was "at 3 V" whatever it was.
+ * The voltage the part saw comes from the engine's status (Feature 400) and
+ * the rating from its family. A function, not a table: `t()` must not run at
+ * module scope.
+ * @param {string|null} status
+ * @param {{volts?: number|null, def?: object|null}} [about]
+ * @returns {string} "" for no status
+ */
+export function statusHint(status, { volts = null, def = null } = {}) {
+  if (!HINTED.has(status)) return "";
+  return t(`properties.warning.${status}`, {
+    volts: volts ?? "?",
+    rating: supplyText(def),
+  });
+}

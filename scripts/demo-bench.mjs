@@ -241,14 +241,28 @@ export class Bench {
     return id;
   }
 
-  /** A free hole on the same internal node as `hole`, claimed for a wire. */
-  free(hole, board = PINS) {
+  /**
+   * A free hole on the same internal node as `hole`, claimed for a wire — the
+   * one nearest `toward` (a world point) when one is given, ties going to the
+   * node's own order. A node is five rows, and which a wire leaves from
+   * decides what it flies over: taking the first free one sent every input
+   * switch's supply lead up from row f, straight across the switch's own knob
+   * to the rail above it — and a wire is drawn over the parts, so the knob
+   * could not be clicked.
+   */
+  free(hole, board = PINS, toward = null) {
     const type = this.#boards.find((b) => b.id === board).type;
     const node = nodeOf(type, hole);
+    let best = null;
     for (const h of holesOfNode(type, node) ?? []) {
       const address = `${board}.${h}`;
-      if (!this.#claimed.has(address)) return this.#claim(address, "wire");
+      if (this.#claimed.has(address)) continue;
+      if (!toward) return this.#claim(address, "wire");
+      const at = this.#world(address);
+      const d = Math.hypot(at.x - toward.x, at.y - toward.y);
+      if (!best || d < best.d) best = { address, d };
     }
+    if (best) return this.#claim(best.address, "wire");
     throw new Error(`no free hole left on ${board} node ${node}`);
   }
 
@@ -274,15 +288,13 @@ export class Bench {
     this.#wires.push({ id: `w${++this.#wireSeq}`, from, to, color });
   }
 
-  /** Wire a pin-board hole's node to the nearest free hole of a rail. */
+  /** Wire a pin-board hole's node to the nearest free hole of a rail, from
+      the row of that node nearest the rail (power layout rule 3). */
   wireToRail(hole, railId, color) {
-    const from = this.free(hole);
     const rail = this.#railFor(hole);
-    const to = this.#claim(
-      this.railNear(rail, railId, this.#world(from).x),
-      "wire",
-    );
-    this.wire(from, to, color);
+    const to = this.railNear(rail, railId, this.#world(`${PINS}.${hole}`).x);
+    const from = this.free(hole, PINS, this.#world(to));
+    this.wire(from, this.#claim(to, "wire"), color);
   }
 
   /** Claim one SPECIFIC hole for a wire (throws if anything already has it). */
@@ -490,16 +502,19 @@ export class Bench {
   }
 
   /**
-   * A 7-segment digit (common anode) with its common leg held up at +5 V
-   * through a resistor, so an active-low driver sinking a segment lights it
-   * rather than burning it.
+   * A 7-segment digit with its common leg on a rail through a resistor, so a
+   * driver lights a segment rather than burning it. Common ANODE (`seg8ca`,
+   * the default) holds the leg up at the supply for an active-low driver that
+   * sinks segments; common CATHODE (`seg8cc`) holds it at ground for an
+   * active-high driver that sources them (the CD4511B).
    */
   segmentDisplay({ col = LAYOUT.displayCol, ref = "seg8ca", color = "red" }) {
     const disp = this.#part("discrete", ref, `b${col}`, { color });
-    this.#toRail("resistor", `c${col + 8}`, "+", { ohms: 330 });
+    const rail = ref === "seg8cc" ? "-" : "+";
+    this.#toRail("resistor", `c${col + 8}`, rail, { ohms: 330 });
     return {
       id: disp.id,
-      // Segment k (a…g, dp) seats in column col+k−1; pin 9 is the common anode.
+      // Segment k (a…g, dp) seats in column col+k−1; pin 9 is the common leg.
       holeOf: (pin) => `b${col + pin - 1}`,
     };
   }
@@ -511,9 +526,11 @@ export class Bench {
     this.wireToRail(hole, railId, railId === "+" ? WIRE.power : WIRE.ground);
   }
 
-  /** A signal wire between two pin-board holes' nodes. */
+  /** A signal wire between two pin-board holes' nodes, each end leaving
+      from the row of its node nearest the other. */
   join(fromHole, toHole, kind = "link") {
-    this.wire(this.free(fromHole), this.free(toHole), WIRE[kind]);
+    const from = this.free(fromHole, PINS, this.#world(`${PINS}.${toHole}`));
+    this.wire(from, this.free(toHole, PINS, this.#world(from)), WIRE[kind]);
   }
 
   /** The clock brick's output → a chip pin. */

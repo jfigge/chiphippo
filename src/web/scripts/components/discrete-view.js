@@ -42,7 +42,7 @@ import { chipBox } from "./chip-view.js";
 import {
   buildBurnOverlay,
   buildWarnOverlay,
-  STATUS_HINT,
+  statusHint,
 } from "./part-symbols.js";
 
 /** Per-ref body boxes (pitch units, origin at pin 1's hole). */
@@ -1267,12 +1267,17 @@ export class DiscreteView {
    * oscillator can actually has a status overlay to reveal; every other
    * discrete's classList toggle is a harmless no-op. `null` clears it.
    */
-  setStatus(status) {
+  setStatus(status, volts = null) {
     for (const s of ["unpowered", "underpowered", "reversed", "damaged"]) {
       this.#el.classList.toggle(`part-discrete--${s}`, status === s);
     }
     const title = this.#el.querySelector(".part-can-status > title");
-    if (title) title.textContent = STATUS_HINT[status] ?? "";
+    if (title) {
+      title.textContent = statusHint(status, {
+        volts,
+        def: partDef(this.#ref),
+      });
+    }
   }
 
   /** Light one segment of a multi-segment display (anode-H / cathode-L). */

@@ -33,7 +33,8 @@
 // `internalBridges` and `source` — they are functions. The projection below is
 // explicit for that reason, not for brevity.
 
-import { PALETTE_DEFS, outputEnables } from "../catalog/index.js";
+import { PALETTE_DEFS, outputEnablePins } from "../catalog/index.js";
+import { familyOf } from "../catalog/families.js";
 import { MIN_TESTS } from "./generate.js";
 
 /**
@@ -63,9 +64,12 @@ export const BUILDABLE_DEFS = Object.freeze(PALETTE_DEFS.filter((d) => !d.can));
  * are called `1G`, `OE`, `M`, `N`, with no bar), the part floats every output
  * until it is tied LOW, and a floating enable reads HIGH — so the honest,
  * datasheet-following design comes up dead and the model has no way to see why.
+ * The CD4094B's enable is the one active-HIGH one, and it gets its own mark
+ * (`^`): telling the model "tie every enable LOW" would disable it.
  */
 function pinMark(def, p) {
-  if (outputEnables(def).includes(p.n)) return "!";
+  const enable = outputEnablePins(def).find((e) => e.n === p.n);
+  if (enable) return enable.on === "H" ? "^" : "!";
   if (p.role === "output") return ">";
   if (p.role === "io") return "<>";
   return "";
@@ -76,7 +80,12 @@ function partLine(def) {
     .map((p) => `${p.n}:${p.name}${pinMark(def, p)}`)
     .join(" ");
   const terminals = (def.terminals ?? []).map((t) => t.id).join(" ");
-  const shape = def.package ? ` [${def.package}]` : "";
+  // A logic chip states its family (Feature 400) — the prompt's family rule
+  // picks parts by it, so the model must never have to infer it from an id.
+  const family = familyOf(def);
+  const shape = def.package
+    ? ` [${def.package}${family ? `, ${family}` : ""}]`
+    : "";
   const points = pins || terminals || "—";
   // A part's named buses, so the `NAME[i]` member form the resolver accepts is
   // one the model can actually see.
@@ -112,7 +121,8 @@ export function buildCatalogCard(defs = PALETTE_DEFS) {
  * holds this text to the rules those modules actually enforce.
  */
 const RULES = `
-You design 74xx TTL logic circuits for Chip Hippo, a breadboard simulator.
+You design logic circuits for Chip Hippo, a breadboard simulator — from two
+logic families, 74LS TTL and CD4000 CMOS.
 
 You emit a NETLIST — parts and which pins are joined. You never emit
 coordinates, holes, columns, anchors or wires: the app's compiler owns all
@@ -144,6 +154,22 @@ design.
 * An optional field (\`title\`, \`notes\`, \`label\`, \`set\`, \`edges\`,
   \`tests\`) may be \`null\` — the app reads null as absent.
 
+# Logic families
+
+Every logic chip in the catalog belongs to ONE family, named in its bracket:
+\`74LS\` (TTL, ids \`74LS…\`) or \`CD4000\` (CMOS, ids \`CD4…\`).
+
+* A request that names CD4000, 4000-series or CMOS uses ONLY CD4000 parts.
+* A request that names TTL or 74LS uses ONLY 74LS parts.
+* A request that names neither uses 74LS parts.
+* Never mix the two unless the request asks for it. If it does, every 74LS
+  output that feeds a CD4000 input needs a \`resistor\` from that net to
+  \`VCC\` (a pull-up): a 74LS HIGH is below what a CMOS input needs. And one
+  CD4000 output can drive only ONE 74LS input — buffer more through a
+  \`CD4050B\`.
+* Memory, interface chips and processors belong to no family and go with
+  either.
+
 # Rules the compiler enforces
 
 * NEVER list a power pin. Every part declares its own VCC/GND, and the
@@ -153,8 +179,8 @@ design.
 * A pin belongs to at most one net.
 * Two outputs must not share a net — that is a bus fight, and the engine
   reports it as a conflict. The one exception is a BUS of tri-state outputs
-  (parts with a \`!\` enable): any number may share a net when EVERY one of
-  them can be switched off, and at any moment exactly one enable is LOW.
+  (parts with a \`!\` or \`^\` enable): any number may share a net when EVERY
+  one of them can be switched off, and at any moment exactly one is enabled.
 * Never put an output in a VCC or GND net. The supply overrides it, so the
   output drives nothing at all.
 * Every input of a part you use must be in a net — including the ones you
@@ -164,12 +190,18 @@ design.
   of a gate or section whose outputs you do not use at all (the three spare
   gates of a 74LS00). An input fed from a switch is covered by the pull rule
   below.
+* A CD4000 input is stricter: a floating CMOS input reads neither HIGH nor
+  LOW, so EVERY input of a CD4000 gate or section you use must be in a net
+  (tie a spare input of a gate you use HIGH on an AND/NAND, LOW on an
+  OR/NOR). The inputs of a CD4000 gate or section you do not use at all are
+  the compiler's job — it ties them to GND, so do not list them.
 * Every \`!\` pin in the catalog needs wiring, and almost always to \`GND\`. It
   is an active-LOW output enable: leave it out and the part's outputs float,
-  the circuit does nothing, and the fault you get back will name the pin.
-  Do NOT put one on a switch — a netlist cannot state which way a switch
-  RESTS, so the part comes up disabled. A circuit that only works after the
-  user finds the right switch is not one worth handing over.
+  the circuit does nothing, and the fault you get back will name the pin. A
+  \`^\` pin is the same thing active-HIGH (the CD4094B's OUTPUT ENABLE): wire
+  it to \`VCC\`. Do NOT put either on a switch — a netlist cannot state which
+  way a switch RESTS, so the part comes up disabled. A circuit that only works
+  after the user finds the right switch is not one worth handing over.
 * LEDs and displays do NOT need you to add a series resistor — the compiler
   interposes one in every lamp leg that goes to VCC or GND, because an
   unlimited LED burns rather than lights. Do not put one in the netlist, and
@@ -240,7 +272,8 @@ substituting a chip that does not exist.
 
 # Catalog
 
-Every part, then its pins as \`number:name\`. A pin's suffix says what it is:
+Every part, its package and (for a logic chip) its family, then its pins as
+\`number:name\`. A pin's suffix says what it is:
 
     (none)  an input — or a passive pin: power, a switch contact, a lamp leg
     >       an output — it DRIVES. Two of these must never share a net.
@@ -252,6 +285,9 @@ Every part, then its pins as \`number:name\`. A pin's suffix says what it is:
             the design genuinely takes the part off a shared bus. Where a part
             has two, each may gate its own half (\`74LS244\`) or both may gate
             everything (\`74LS173\`) — so wire EVERY \`!\` pin the part has.
+    ^       an ACTIVE-HIGH OUTPUT ENABLE: the same, the other way up. The
+            outputs float until it is HIGH (and a floating CMOS input reads
+            neither level). Tie it to \`VCC\`.
 `.trim();
 
 /**
@@ -276,8 +312,8 @@ export function buildSystemPrompt(defs = BUILDABLE_DEFS) {
  * sometimes wrongly, and the user has no way to tell the two apart.
  */
 const REVIEW_RULES = `
-You are helping someone debug a 74xx TTL circuit they built on a virtual
-breadboard in Chip Hippo. They can see the circuit; you cannot. You are given a
+You are helping someone debug a logic circuit — 74LS TTL, CD4000 CMOS, or both
+— they built on a virtual breadboard in Chip Hippo. They can see the circuit; you cannot. You are given a
 description of what is on the desk, which pins are joined to which, and the
 findings the app's own simulator produced.
 
@@ -322,6 +358,12 @@ what it is:
     !       an ACTIVE-LOW OUTPUT ENABLE. The outputs it gates float until it is
             LOW, and an unwired input reads HIGH — so a part with one of these
             left unwired is dead while its wiring looks perfect.
+
+A logic chip's bracket names its family. The two read a floating input
+differently, which explains many findings: an unwired 74LS (TTL) input reads
+HIGH, so the part works, just not as designed; an unwired CD4000 (CMOS) input
+reads neither HIGH nor LOW, so what the part does is anybody's guess, and
+every CMOS input — spare gates included — has to be tied.
 `.trim();
 
 /**
@@ -351,7 +393,11 @@ export function buildReviewSystemPrompt(defs = PALETTE_DEFS, language = "") {
  * told. Layout notes (wire crossings) and user-facing ones (an unprogrammed
  * ROM) say nothing it can act on.
  */
-const CIRCUIT_NOTES = new Set(["RESISTOR_INSERTED", "PULL_INSERTED"]);
+const CIRCUIT_NOTES = new Set([
+  "RESISTOR_INSERTED",
+  "PULL_INSERTED",
+  "SPARE_INPUTS_TIED",
+]);
 
 /**
  * Turn verifier faults / compiler errors into the repair message.

@@ -64,8 +64,8 @@ import { captureDesign } from "./design-clip.js";
 import { DIP_PACKAGES } from "./footprints.js";
 import { partPinHoles } from "./occupancy.js";
 import { RAIL_TOKENS, parseMember, resolvePin } from "./pin-resolve.js";
-import { netDrivers, pinLabel } from "./spec-lint.js";
-import { boxOf, crossingCount } from "./wire-crossing.js";
+import { netDrivers, pinLabel, spareCmosInputs } from "./spec-lint.js";
+import { boxOf, drawnCrossings } from "./wire-crossing.js";
 
 const GAP = 1; // blank columns between parts, so nothing reads as one block
 
@@ -81,7 +81,7 @@ const RAIL_INDEX_RE = /[+-](\d+)$/;
  * `shortlist` hands `bestPair` every free hole on both strips unpruned — and
  * the two strips are the same type at the same x, so hole `+k` sits EXACTLY
  * above hole `+k`. Every vertical pair therefore scores an identical
- * `distance`, the only thing that separates them is `crossingCount`, and
+ * `distance`, the only thing that separates them is `drawnCrossings`, and
  * `bestPair` breaks a tie strictly — first enumerated wins. `freeRailHoles`
  * walks `k = 1…` upward, so the enumeration order WAS the decision, and it put
  * the supply down column 1: the far end from the PSU, and exactly where the
@@ -371,7 +371,7 @@ function resolveSpec(spec) {
           `Net "${name}" ties ${drivers.length} outputs together ` +
             `(${drivers.map(pinLabel).join(", ")}). Outputs may share a net ` +
             `only when every one of them can be switched off — a tri-state ` +
-            `output behind a "!" enable — and ` +
+            `output behind a "!" or "^" enable — and ` +
             `${hard.map(pinLabel).join(", ")} cannot.`,
           { path },
         ),
@@ -742,6 +742,43 @@ function companionSeat(part, links, { alloc, host, hostId, type, params }) {
  *
  * @returns {{common: {pin, rail}|null, junctions: Array<{anodePin, cathodePin}>}}
  */
+/** A part you operate while the circuit runs: anything with `contact` pins
+    (a slide switch, a push button, a DIP switch bank). */
+const operated = (def) => def?.pins?.some((p) => p.role === "contact") === true;
+
+/**
+ * The row a one-row part seats in: row a, along the bottom rail — except a
+ * part you OPERATE, which seats in row h, the middle of the upper half.
+ *
+ * Wires draw ABOVE parts, and a switch under one cannot be clicked. Every
+ * slide switch the demo corpus compiles (219 of them) had a wire over its knob
+ * when they sat in row a: all four spare holes of their nodes were ABOVE them,
+ * so the supply lead to the bottom rail ran straight across the knob, and
+ * every run along rows b–e hung down over it (a drawn wire sags below its
+ * chord). Row h is where the demo bench has always put them, for the reason
+ * that holds here: two holes above (i, j) for the lead to the top rail, two
+ * below (f, g) for the signal, so neither crosses the switch, and a run's sag
+ * falls away from it. Row e (the trench side) was tried and is worse — it is
+ * exactly where every wire crossing the trench passes. With the drawn-wire
+ * router (`drawnCrossings`) it leaves 3 of 219 covered.
+ *
+ * Resistor networks, LEDs and bars keep row a — nobody clicks those. A DIP
+ * switch bank straddles the trench like any DIP, so it never asks.
+ * @param {object} def
+ * @returns {"a"|"h"}
+ */
+function seatRowOf(def) {
+  return operated(def) ? "h" : "a";
+}
+
+/**
+ * How far an operated part's routing box reaches past its pins (pitch): its
+ * knob is ±0.45 about the pin row and a wire's hit stroke half a pitch either
+ * side of the wire, so a wire nearer than this takes the click. Short of 1 so
+ * the holes one row away — where the part's own wires leave — stay outside it.
+ */
+const OPERATED_MARGIN = 0.95;
+
 function lampLegs(def) {
   if (def.segments?.length) {
     const first = def.segments[0];
@@ -782,6 +819,40 @@ function assemble(resolved, title, notes) {
           `running the circuit.`,
       });
     }
+  }
+
+  // ── Spare CMOS inputs (Feature 400). A CD4000 input on no net floats, and a
+  //    floating CMOS input reads UNKNOWN — so a spare gate the spec rightly
+  //    says nothing about would make the engine warn about a correct design.
+  //    The compiler ties every such input to GND, as a bench does, exactly as
+  //    it interposes the resistor an LED needs: a netlist should not have to
+  //    mention either. Only inputs nothing uses (spec-lint's
+  //    `spareCmosInputs`) — one the part DOES use and the spec left out is a
+  //    mistake for L6 to report, not something to paper over.
+  const spare = spareCmosInputs([...parts.values()], nets);
+  if (spare.length) {
+    let gnd = nets.find((n) => n.rail === "GND");
+    if (!gnd) {
+      gnd = { name: "GND", pins: [], rail: "GND" };
+      nets.push(gnd);
+    }
+    for (const s of spare) {
+      for (const p of s.pins) {
+        gnd.pins.push({ partId: s.partId, ok: true, kind: "pin", pin: p.n });
+      }
+    }
+    warnings.push({
+      code: "SPARE_INPUTS_TIED",
+      message:
+        `Tied the unused inputs of ` +
+        spare
+          .map(
+            (s) =>
+              `${s.partId} (${s.ref}: ${s.pins.map((p) => p.name).join(", ")})`,
+          )
+          .join("; ") +
+        ` to GND — a floating CMOS input reads neither HIGH nor LOW.`,
+    });
   }
 
   // ── The resistor rule. A lamp leg that goes STRAIGHT to a rail gets a series
@@ -1178,7 +1249,7 @@ function assemble(resolved, title, notes) {
         ? "e"
         : p.def.characterDisplay?.headerEdge === "bottom"
           ? "j"
-          : "a";
+          : seatRowOf(p.def);
       // A pull pack goes UNDER the switch bank it pulls, in the very columns
       // that bank owns — because its pins are already that bank's nets, so the
       // board does the connecting. Eight wires and nine columns become none.
@@ -1353,7 +1424,9 @@ function assemble(resolved, title, notes) {
   // the board through the very row the resistor networks and LED bars occupy.
   // A port therefore OFFERS its free holes and the router picks the pair, by
   // length plus a penalty for every part the wire would fly over.
-  const partBoxes = new Map(); // specId → body box
+  const partBoxes = new Map(); // specId → body box (the residual-crossing audit)
+  const routeBoxes = new Map(); // …and as the router keeps wires clear of it
+  const defOf = new Map(seated.map((p) => [p.id, p.def]));
   for (const [specId, seat] of seatOf) {
     const points = [];
     for (const hole of seat.holes.values()) {
@@ -1361,10 +1434,21 @@ function assemble(resolved, title, notes) {
       if (at) points.push(at);
     }
     const box = boxOf(points);
-    if (box) partBoxes.set(specId, box);
+    if (!box) continue;
+    partBoxes.set(specId, box);
+    // A part you OPERATE is kept clear by a wire's whole width as well as its
+    // knob: a stroke grazing the knob still takes the click (seatRowOf).
+    routeBoxes.set(
+      specId,
+      operated(defOf.get(specId)) ? boxOf(points, OPERATED_MARGIN) : box,
+    );
   }
-  // A wire ENDS on the part whose node it leaves from; that is attachment, not
-  // crossing, so those two parts are excluded from its own hit test.
+  // A wire ENDS on the part whose node it leaves from. The ROUTER does not
+  // excuse that part (only an end inside its body is attachment): a lead from
+  // beside a part back across it is drawn over it all the same — it was every
+  // switch's supply lead, over its own knob (seatRowOf), and a chip's leads
+  // over the chip. The residual-crossing REPORT below still excuses it, as it
+  // always has: that is a count of wires over somebody ELSE's part.
   const ownerOfNode = new Map(); // "board:node" → specId
   for (const [specId, seat] of seatOf) {
     for (const hole of seat.holes.values()) {
@@ -1380,6 +1464,9 @@ function assemble(resolved, title, notes) {
     const node = nodeOf(type, parsed.hole);
     return node ? `${parsed.boardId}:${node}` : "";
   };
+  /** The parts a wire between two nodes ends on. */
+  const ownersOf = (nodeA, nodeB) =>
+    new Set([ownerOfNode.get(nodeA), ownerOfNode.get(nodeB)].filter(Boolean));
 
   /** The four-ish spare holes electrically common with a seated pin. */
   const pinPort = (boardId, hole) => ({
@@ -1449,18 +1536,16 @@ function assemble(resolved, title, notes) {
     const froms = shortlist(hostPort, port.at);
     const tos = shortlist(port, hostPort.at);
     if (!froms.length || !tos.length) return null;
-    const skip = new Set(
-      [ownerOfNode.get(hostPort.node), ownerOfNode.get(port.node)].filter(
-        Boolean,
-      ),
-    );
     let best = null;
     for (const from of froms) {
       const a = worldOf(from);
       for (const to of tos) {
         const b = worldOf(to);
+        // As DRAWN, and against the parts it ends on too (`drawnCrossings`):
+        // a sagging run, or a lead back across its own switch, covers that
+        // switch's knob just as surely as a wire to somewhere else does.
         const cost =
-          distance(a, b) + CROSSING_COST * crossingCount(a, b, partBoxes, skip);
+          distance(a, b) + CROSSING_COST * drawnCrossings(a, b, routeBoxes);
         if (!best || cost < best.cost) best = { from, to, cost };
       }
     }
@@ -1664,12 +1749,8 @@ function assemble(resolved, title, notes) {
     const a = worldOf(w.from);
     const b = worldOf(w.to);
     if (!a || !b) return false;
-    const skip = new Set(
-      [ownerOfNode.get(nodeKey(w.from)), ownerOfNode.get(nodeKey(w.to))].filter(
-        Boolean,
-      ),
-    );
-    return crossingCount(a, b, partBoxes, skip) > 0;
+    const excused = ownersOf(nodeKey(w.from), nodeKey(w.to));
+    return drawnCrossings(a, b, partBoxes, excused) > 0;
   }).length;
   if (crossed) {
     warnings.push({

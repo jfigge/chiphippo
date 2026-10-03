@@ -39,7 +39,7 @@ import { partPinAddresses } from "../model/occupancy.js";
 import { holePosition, nodeOf, parseAddress } from "../model/breadboard.js";
 import { matingEdge } from "../model/mating.js";
 import { partDef } from "../catalog/index.js";
-import { wireCrossings } from "../model/wire-crossing.js";
+import { drawnCrossings, wireCrossings } from "../model/wire-crossing.js";
 import {
   compileNetlist,
   designClipOf,
@@ -1118,6 +1118,74 @@ test("wires stay OUT of the row the discretes sit in", () => {
   assert.ok(inRowA.size >= 8, "the bench really does have discretes on row a");
   const over = crossingsOf(doc).filter((c) => inRowA.has(c.part));
   assert.deepEqual(over, [], "nothing flies over a part seated on row a");
+});
+
+test("no wire is drawn over a switch's knob — the part you click", () => {
+  // Wires draw ABOVE parts, so a wire over a slide switch's knob swallows the
+  // click that would flip it. Seated in row a, every switch the demo corpus
+  // compiled had one: its supply lead ran up across it and every run along
+  // the rows above sagged down over it. Row h, with the router testing the
+  // wire as it is DRAWN, keeps them clear.
+  const spec = {
+    title: "four NAND gates, each on two switches",
+    parts: [
+      { id: "U1", ref: "74LS00" },
+      ...[...Array(8)].map((_, i) => ({ id: `S${i + 1}`, ref: "sw-slide" })),
+      ...[...Array(4)].map((_, i) => ({ id: `D${i + 1}`, ref: "led" })),
+    ],
+    nets: [
+      ...[...Array(8)].flatMap((_, i) => [
+        { name: `HI${i}`, members: [`S${i + 1}.#1`, "VCC"] },
+        { name: `LO${i}`, members: [`S${i + 1}.#3`, "GND"] },
+      ]),
+      ...["1A", "1B", "2A", "2B", "3A", "3B", "4A", "4B"].map((pin, i) => ({
+        name: `IN${i}`,
+        members: [`S${i + 1}.C`, `U1.${pin}`],
+      })),
+      ...[1, 2, 3, 4].flatMap((g) => [
+        { name: `Y${g}`, members: [`U1.${g}Y`, `D${g}.A`] },
+        { name: `K${g}`, members: [`D${g}.K`, "GND"] },
+      ]),
+    ],
+  };
+  const { doc } = build(spec);
+  const boards = new Map(doc.boards.map((b) => [b.id, b]));
+  const world = (address) => {
+    const p = parseAddress(address);
+    const b = p && boards.get(p.boardId);
+    if (!b) return null;
+    const h = holePosition(b.type, p.hole, b.rot ?? 0);
+    return h && { x: b.x + h.x, y: b.y + h.y };
+  };
+  const switches = doc.components.filter((c) => c.ref === "sw-slide");
+  assert.equal(switches.length, 8);
+  for (const sw of switches) {
+    assert.ok(sw.anchor.startsWith("h"), `${sw.id} seats in row h`);
+    // The knob's slot (±0.45 about the pin row, a quarter pitch past the end
+    // pins) widened by half a wire's hit stroke either side.
+    const pin1 = world(`${sw.board}.${sw.anchor}`);
+    const knob = new Map([
+      [
+        sw.id,
+        {
+          x0: pin1.x - 0.75,
+          x1: pin1.x + 2.75,
+          y0: pin1.y - 0.95,
+          y1: pin1.y + 0.95,
+        },
+      ],
+    ]);
+    const over = doc.wires.filter((w) => {
+      const a = world(w.from);
+      const b = world(w.to);
+      return a && b && drawnCrossings(a, b, knob) > 0;
+    });
+    assert.deepEqual(
+      over.map((w) => `${w.from}→${w.to}`),
+      [],
+      `nothing is drawn over ${sw.id}'s knob`,
+    );
+  }
 });
 
 test("a supply lead takes the rail on its OWN side of the trench", () => {

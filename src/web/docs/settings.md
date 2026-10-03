@@ -107,7 +107,14 @@ never a port) — and its **Port** is marked in red. See
 
 ## Data Sheets
 
-The **Data Sheets** tab points Chip Hippo at an external folder of
+**Chip family** leads the tab: which logic family the parts palette shows —
+**74LS** (the TTL chips, the default), **CD4000** (the CMOS chips), or
+**Both**, each in a folder of its own. It applies at once, and it only filters
+the palette: a project's chips always load and run whatever is chosen here,
+and a family the open project uses is shown anyway. See
+[Choosing a logic family](chip-library.md#choosing-a-logic-family).
+
+Below it, the tab points Chip Hippo at an external folder of
 manufacturer datasheet PDFs on your machine. Click **Browse…** to pick a
 folder with the native file picker; the chosen path is shown next to it, with
 a **Clear** button that resets it to no folder selected.
@@ -128,7 +135,8 @@ couldn't be fetched; closing it stops the download and keeps whatever already
 arrived. The sources are:
 
 - [Texas Instruments](https://www.ti.com/) — the current manufacturer's own
-  documents for much of the 74LS family;
+  documents for much of the 74LS family, and for every CD4000 part (several of
+  which share one sheet — it is fetched once and saved under each part's name);
 - [Microchip](https://www.microchip.com/) — the Atmel EEPROM parts;
 - [Alliance Memory](https://www.alliancememory.com/) — the large SRAM;
 - the [Western Design Center](https://www.westerndesigncenter.com/) — likewise

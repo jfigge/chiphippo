@@ -33,9 +33,20 @@
 // test requires every palette part to be exactly one of the two — so a new
 // part cannot slip out of an export unannounced.
 
-/** Our 74xx part → the Digital library file that models it. */
-export const DIGITAL_FILES = Object.freeze(
-  Object.fromEntries(
+/**
+ * Our chip → the Digital library file that models it.
+ *
+ * Digital's library has no 4000-series folder, but six CD4000 parts have a
+ * PIN-FOR-PIN twin in it: the 74HC4002/4017/4075/7266 (the HC "40xx" parts
+ * were made as drop-ins for the CMOS originals) and the hex inverters, whose
+ * pinout the CD4069UB/CD40106B share with the 7404/7414. Pin tables are held
+ * to the library like every other mapping, and the CLI test runs each bench
+ * against our engine — which is what proves the FUNCTION matches, since a pin
+ * table only says which pins are inputs. The other 29 have no twin there
+ * (DIGITAL_UNSUPPORTED).
+ */
+export const DIGITAL_FILES = Object.freeze({
+  ...Object.fromEntries(
     (
       "00 01 02 03 04 05 08 10 11 14 20 27 30 32 47 74 76 83 85 86 90 107 " +
       "112 125 138 139 148 151 153 157 161 164 165 173 174 175 181 193 244 " +
@@ -44,7 +55,13 @@ export const DIGITAL_FILES = Object.freeze(
       .split(" ")
       .map((n) => [`74LS${n}`, `74${n}.dig`]),
   ),
-);
+  CD4002B: "744002.dig",
+  CD4017B: "744017.dig",
+  CD4069UB: "7404.dig",
+  CD4075B: "744075.dig",
+  CD4077B: "747266.dig",
+  CD40106B: "7414.dig",
+});
 
 /**
  * The open-collector parts. Our engine models them as ordinary push-pull
@@ -93,6 +110,40 @@ export const DIGITAL_UNSUPPORTED = Object.freeze({
   "74LS259": "noDigitalModel",
   "74LS279": "noDigitalModel",
   "74LS533": "noDigitalModel",
+  // The CD4000 parts with no pin-for-pin twin in Digital's library (v0.31
+  // has no 4000-series folder; the six that do are in DIGITAL_FILES, and no
+  // MSI part — the 4094, 4511, 4029, 4510 — is among them). The 4000
+  // series' pinouts are not the 74xx ones, so a 74xx file of the same
+  // FUNCTION cannot stand in: its pins would be wired to the wrong nets.
+  CD4001B: "noDigitalModel",
+  CD4025B: "noDigitalModel",
+  CD4078B: "noDigitalModel",
+  CD4011B: "noDigitalModel",
+  CD4012B: "noDigitalModel",
+  CD4023B: "noDigitalModel",
+  CD4068B: "noDigitalModel",
+  CD4093B: "noDigitalModel",
+  CD4081B: "noDigitalModel",
+  CD4082B: "noDigitalModel",
+  CD4073B: "noDigitalModel",
+  CD4071B: "noDigitalModel",
+  CD4072B: "noDigitalModel",
+  CD4030B: "noDigitalModel",
+  CD4070B: "noDigitalModel",
+  CD4049UB: "noDigitalModel",
+  CD4050B: "noDigitalModel",
+  CD4013B: "noDigitalModel",
+  CD4040B: "noDigitalModel",
+  CD4027B: "noDigitalModel",
+  CD4022B: "noDigitalModel",
+  CD4020B: "noDigitalModel",
+  CD4024B: "noDigitalModel",
+  CD4029B: "noDigitalModel",
+  CD4510B: "noDigitalModel",
+  CD4516B: "noDigitalModel",
+  CD4094B: "noDigitalModel",
+  CD4028B: "noDigitalModel",
+  CD4511B: "noDigitalModel",
   "rom-8k": "memory",
   "ram-8k": "memory",
   "28C16": "memory",

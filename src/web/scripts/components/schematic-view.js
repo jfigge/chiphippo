@@ -67,15 +67,18 @@ function buildGlyph(name, geometry) {
     class: "schematic-glyph",
     transform: `translate(${geometry.width / 2 - s * 0.6} 0.5) scale(${s})`,
   });
-  const inverting = name === "NAND" || name === "NOR" || name === "NOT";
+  const inverting =
+    name === "NAND" || name === "NOR" || name === "XNOR" || name === "NOT";
   const base =
     name === "NAND"
       ? "AND"
       : name === "NOR"
         ? "OR"
-        : name === "NOT"
-          ? "BUFFER"
-          : name;
+        : name === "XNOR"
+          ? "XOR"
+          : name === "NOT"
+            ? "BUFFER"
+            : name;
   let bodyD;
   if (base === "AND") {
     bodyD = "M0,0 L0.45,0 A0.5,0.5 0 0 1 0.45,1 L0,1 Z";

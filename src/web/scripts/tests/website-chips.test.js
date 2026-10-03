@@ -74,6 +74,20 @@ test("rows read in part-number order within a band", () => {
   assert.ok(cids.indexOf("74LS193") < cids.indexOf("74LS164"));
 });
 
+test("within a band the 74LS rows come first, then the CD4000 ones by number", () => {
+  const gates = chipSections().find((s) => s.id === "gates");
+  const ids = gates.rows.map((r) => r.id);
+  // Feature 400: one family is one run, not interleaved by number.
+  const lastLs = Math.max(
+    ...ids
+      .map((id, i) => (id.startsWith("74LS") ? i : -1))
+      .filter((i) => i >= 0 && i < ids.indexOf("74LS125")),
+  );
+  assert.ok(lastLs < ids.indexOf("CD4001B"), "74LS gates before CD4000 gates");
+  assert.ok(ids.indexOf("CD4001B") < ids.indexOf("CD4011B"));
+  assert.ok(ids.indexOf("CD4077B") < ids.indexOf("CD40106B"));
+});
+
 test("a chip in a group no section claims fails the build", () => {
   const stray = { id: "74LS999", title: "Mystery", group: "Mystery" };
   assert.throws(

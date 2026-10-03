@@ -155,6 +155,7 @@ export class ProjectWorkspace {
   #fitView;
   #onActiveChange;
   #onWheelLock;
+  #onProjectAdopted;
   #projectConnections; // (docs, previous) → the connections the file carries
   #onConnections; // a project arrived carrying these connections
   #project = null; // the normalized meta (model/project-doc.js) + `location`
@@ -239,6 +240,9 @@ export class ProjectWorkspace {
    * @param {(connections: object[]) => void} [opts.onConnections] - a project
    *   was LOADED carrying these connections; the ones this machine lacks go
    *   into its settings, flagged (app.js).
+   * @param {(docs: object[]) => void} [opts.onProjectAdopted] - a project was
+   *   LOADED (boot, New, Open, Open Recent); these are its desktops'
+   *   documents. app.js re-derives which logic families the tray must show.
    */
   constructor({
     bridge,
@@ -254,6 +258,7 @@ export class ProjectWorkspace {
     onWheelLock,
     projectConnections,
     onConnections,
+    onProjectAdopted,
     autoSaveMs = AUTO_SAVE_MS,
   }) {
     this.#bridge = bridge;
@@ -268,6 +273,7 @@ export class ProjectWorkspace {
     this.#onWheelLock = onWheelLock;
     this.#projectConnections = projectConnections;
     this.#onConnections = onConnections;
+    this.#onProjectAdopted = onProjectAdopted;
     this.#autoSaveMs = Number(autoSaveMs) > 0 ? Number(autoSaveMs) : 0;
     if (boot?.project) {
       this.#adopt(boot.project);
@@ -1133,6 +1139,13 @@ export class ProjectWorkspace {
     this.#renderTabs();
     // The padlock is the project's, so a project arriving brings its own.
     this.#onWheelLock?.(this.wheelLocked);
+    // …and the tray learns which logic families this project uses (Feature
+    // 400), forgetting the last project's.
+    try {
+      this.#onProjectAdopted?.(this.#project.tabs.map((tab) => tab.doc));
+    } catch (err) {
+      console.error("[renderer] project-adopted hook failed:", err);
+    }
     // …and so are the serial connections its elements talk over: any this
     // machine does not know yet join its settings, flagged to be verified.
     if (this.#project.connections?.length) {

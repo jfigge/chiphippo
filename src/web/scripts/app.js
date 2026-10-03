@@ -65,7 +65,7 @@ import { SignalRail } from "./components/signal-rail.js";
 import { createIntegrationShell } from "./components/integration-shell.js";
 import { DesktopExporter } from "./components/desktop-exporter.js";
 import { knownConnections } from "./model/serial-connections.js";
-import { datasheetCrop, partDef } from "./catalog/index.js";
+import { datasheetCrop, familiesUsed, partDef } from "./catalog/index.js";
 
 /** How long after the last camera change to persist the viewport. */
 const VIEWPORT_SAVE_DEBOUNCE_MS = 500;
@@ -2026,6 +2026,10 @@ async function init() {
       integration?.refresh();
     },
     onWheelLock: applyWheelLock,
+    // The tray shows every logic family the open project uses, whatever its
+    // mode (Feature 400) — re-derived from scratch for each project.
+    onProjectAdopted: (docs) =>
+      palette.resetProjectFamilies(familiesUsed(docs)),
     // A project FILE carries the serial connections its elements use (never a
     // port), and a project arriving brings any this machine lacks.
     projectConnections: (docs, previous) =>
@@ -2103,6 +2107,14 @@ async function init() {
   };
   window.addEventListener("chiphippo:doc-changed", refreshSignalsFull);
   refreshSignalsFull();
+  // A family that arrives on the desk mid-session (a paste, an import, an
+  // example, an AI build) joins the families the tray keeps showing — sticky
+  // until the next project, so a folder never vanishes under the user.
+  window.addEventListener("chiphippo:doc-changed", () =>
+    palette.noteProjectFamilies(
+      familiesUsed([{ components: deskDoc.components }]),
+    ),
+  );
 
   // The derived schematic (Feature 150): the same document as chip symbols +
   // routed nets. Symbol nudges and the auto-layout reset commit through the
@@ -2205,6 +2217,8 @@ async function init() {
     // Whether opening a tray section closes the rest. Acts on the NEXT one
     // opened, so keeping the panel's copy current is the whole application.
     palette.setAutoClose(s.paletteAutoClose === true);
+    // Which logic family the tray shows (Feature 400) — rebuilt at once.
+    palette.setFamilyMode(s.logicFamily);
     // The base of the type scale. This window applies it itself — main fans the
     // same value out to the three auxiliary windows, which have no settings UI
     // and only ever follow.

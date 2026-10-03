@@ -182,7 +182,13 @@ another computer (a project carries its connections&#39; names and settings, but
 never a port) — and its <strong>Port</strong> is marked in red. See
 <a href="arduino.html#connections">Connections</a> for the details.</p>
 <h2 id="data-sheets">Data Sheets</h2>
-<p>The <strong>Data Sheets</strong> tab points Chip Hippo at an external folder of
+<p><strong>Chip family</strong> leads the tab: which logic family the parts palette shows —
+<strong>74LS</strong> (the TTL chips, the default), <strong>CD4000</strong> (the CMOS chips), or
+<strong>Both</strong>, each in a folder of its own. It applies at once, and it only filters
+the palette: a project&#39;s chips always load and run whatever is chosen here,
+and a family the open project uses is shown anyway. See
+<a href="chip-library.html#choosing-a-logic-family">Choosing a logic family</a>.</p>
+<p>Below it, the tab points Chip Hippo at an external folder of
 manufacturer datasheet PDFs on your machine. Click <strong>Browse…</strong> to pick a
 folder with the native file picker; the chosen path is shown next to it, with
 a <strong>Clear</strong> button that resets it to no folder selected.</p>
@@ -201,7 +207,8 @@ couldn&#39;t be fetched; closing it stops the download and keeps whatever alread
 arrived. The sources are:</p>
 <ul>
 <li><a href="https://www.ti.com/">Texas Instruments</a> — the current manufacturer&#39;s own
-documents for much of the 74LS family;</li>
+documents for much of the 74LS family, and for every CD4000 part (several of
+which share one sheet — it is fetched once and saved under each part&#39;s name);</li>
 <li><a href="https://www.microchip.com/">Microchip</a> — the Atmel EEPROM parts;</li>
 <li><a href="https://www.alliancememory.com/">Alliance Memory</a> — the large SRAM;</li>
 <li>the <a href="https://www.westerndesigncenter.com/">Western Design Center</a> — likewise

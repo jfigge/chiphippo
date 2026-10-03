@@ -126,8 +126,48 @@ const IO_WAVE = ["W65C21", "W65C22"];
 // real M-cycle/T-state machine off a single CLK — which is exactly why they are
 // two files in sim/ and not one shared shape.
 const CPU_WAVE = ["W65C02", "Z80A"];
+// The CD4000 CMOS family (Feature 400): the basic gates and buffers, a D
+// flip-flop and two counters — every pinout from its TI datasheet.
+const CD4000_WAVE = [
+  "CD4001B",
+  "CD4002B",
+  "CD4025B",
+  "CD4078B",
+  "CD4011B",
+  "CD4012B",
+  "CD4023B",
+  "CD4068B",
+  "CD4093B",
+  "CD4081B",
+  "CD4082B",
+  "CD4073B",
+  "CD4071B",
+  "CD4072B",
+  "CD4075B",
+  "CD4030B",
+  "CD4070B",
+  "CD4077B",
+  "CD4069UB",
+  "CD40106B",
+  "CD4049UB",
+  "CD4050B",
+  "CD4013B",
+  "CD4017B",
+  "CD4040B",
+  // CD4000 batch 2: the MSI parts.
+  "CD4027B",
+  "CD4022B",
+  "CD4020B",
+  "CD4024B",
+  "CD4029B",
+  "CD4510B",
+  "CD4516B",
+  "CD4094B",
+  "CD4028B",
+  "CD4511B",
+];
 
-test("the catalog contains the gate wave plus the sequential/MSI + 74LS + memory + io + cpu waves", () => {
+test("the catalog contains the gate wave plus the sequential/MSI + 74LS + memory + io + cpu + CD4000 waves", () => {
   assert.deepEqual(
     CHIP_DEFS.map((d) => d.id).sort(),
     [
@@ -137,6 +177,7 @@ test("the catalog contains the gate wave plus the sequential/MSI + 74LS + memory
       ...MEM_WAVE,
       ...IO_WAVE,
       ...CPU_WAVE,
+      ...CD4000_WAVE,
     ].sort(),
   );
   for (const id of [
@@ -146,10 +187,25 @@ test("the catalog contains the gate wave plus the sequential/MSI + 74LS + memory
     ...MEM_WAVE,
     ...IO_WAVE,
     ...CPU_WAVE,
+    ...CD4000_WAVE,
   ]) {
     assert.ok(chipDef(id), id);
   }
   assert.equal(chipDef("9999"), null);
+});
+
+test("every logic chip carries its family; memory, peripherals and CPUs carry none", () => {
+  for (const id of [...GATE_WAVE, ...SEQ_WAVE, ...LS_WAVE]) {
+    assert.equal(chipDef(id).family, "74LS", id);
+  }
+  for (const id of CD4000_WAVE) {
+    assert.equal(chipDef(id).family, "CD4000", id);
+  }
+  // Family-less on purpose: none of these is a 74LS part, and tagging one
+  // would hide it in CD4000 mode (catalog/families.js).
+  for (const id of [...MEM_WAVE, ...IO_WAVE, ...CPU_WAVE]) {
+    assert.equal(chipDef(id).family, undefined, id);
+  }
 });
 
 for (const def of CHIP_DEFS) {

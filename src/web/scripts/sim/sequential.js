@@ -28,24 +28,85 @@
 //   step(state, inputs, prevInputs) → nextState   (prevInputs null on tick 0)
 //   outputs(state, inputs)          → Map<pin, level>
 //
-// `inputs`/`prevInputs` are Map<pin, level>, already asInput'd (Z→H) so only
-// H/L/X reach here. Edge detection compares prev vs current; async
-// (level-sensitive) preset/clear/load/reset override the clocked path per
-// datasheet. Combinational MSI parts (decoders, muxes) live here too as
-// `COMB` unit builders — their inputs legitimately fan out to every output.
+// `inputs`/`prevInputs` are Map<pin, level>, already read through the part's
+// family reader (Z→H for TTL, Z→X for CMOS) so only H/L/X reach here. Edge
+// detection compares prev vs current; async (level-sensitive)
+// preset/clear/load/reset override the clocked path per datasheet.
+// Combinational MSI parts (decoders, muxes) live here too as `COMB` unit
+// builders — their inputs legitimately fan out to every output.
+//
+// UNKNOWN STATE (Feature 400). The TTL builders read an `X` control or clock
+// as a clean LOW — a floating TTL input never reaches them as X, and changing
+// what a 74LS part does on a fought-over net is not this feature's business.
+// A CMOS part's floating input DOES arrive as X, and reading it as LOW would
+// hide the classic mistake (a 4017 with RESET left open counts perfectly in a
+// sim and erratically on a bench). So the CMOS units — `dffUnit` and `jkUnit`
+// with `unknown: true`, `johnsonCounter`, `binaryCounter`, and the batch-2 MSI
+// builders at the end of the file — carry an unknown state:
+//   · an X on an async input makes the state unknown;
+//   · an X on the clock (now, or on the sample before) MIGHT have clocked, so
+//     the state becomes whatever the clocked and the held value agree on —
+//     unknown wherever they differ;
+//   · an unknown state drives X on every output it governs;
+//   · a clean async reset/set (or, for a D-FF, a clean edge with clean D)
+//     makes it known again.
+// Power-up stays deterministic, as on the TTL parts: an unknown power-up
+// would leave an un-reset 4017 chaser dark forever, which no real 4017 does.
+// Every rule is idempotent, so a stuck X settles the tick's step fixpoint.
 
-import { H, L, Z, X, inv } from "./levels.js";
+import { H, L, Z, X, and, inv } from "./levels.js";
 
 /** A control/data line reads as a clean bit: H stays H, everything else L. */
 const asBit = (lv) => (lv === H ? H : L);
 const high = (lv) => lv === H;
 const edgeRose = (p, c) => p === L && c === H;
 const edgeFell = (p, c) => p === H && c === L;
+/** A clean bit, or X when the level is anything but H/L (the CMOS units). */
+const bitX = (lv) => (lv === H || lv === L ? lv : X);
+/** Two candidate states agree, or are unknown: the "might have clocked" merge. */
+const merge = (a, b) => (a === b ? a : X);
+/**
+ * Did the clock produce an edge in `dir` ("rise"|"fall")? "yes" for a clean
+ * transition, "maybe" when either sample is unknown (a floating clock picks up
+ * whatever is near it), "no" otherwise. The CMOS units' edge test.
+ */
+function edgeOf(p, c, dir) {
+  if (p === X || c === X) return "maybe";
+  if (dir === "fall") return edgeFell(p, c) ? "yes" : "no";
+  return edgeRose(p, c) ? "yes" : "no";
+}
 /** True when any of `levels` is unknown/contested — a shorted or conflicting
     net (never Z; callers always asInput() first). Used by the COMB units
     below to propagate X instead of silently reading it as a clean L, the way
     `asBit`/`high` do for ordinary clocked control lines. */
 const anyX = (levels) => levels.some((lv) => lv === X);
+
+/**
+ * `fn` over every clean reading of `levels` (H/L/X), each X tried both ways:
+ * the level every reading agrees on, or X where they differ. So an unknown
+ * that cannot change the answer does not spoil it — a 4028 with D floating
+ * still holds outputs 2–7 LOW, since neither reading of D selects them.
+ * @param {string[]} levels
+ * @param {(clean: string[]) => string} fn
+ */
+function overUnknowns(levels, fn) {
+  const unknown = levels.flatMap((lv, i) => (lv === X ? [i] : []));
+  let result = null;
+  for (let k = 0; k < 1 << unknown.length; k++) {
+    const clean = levels.slice();
+    unknown.forEach((at, bit) => {
+      clean[at] = (k >> bit) & 1 ? H : L;
+    });
+    const value = fn(clean);
+    result = result === null ? value : merge(result, value);
+    if (result === X) return X;
+  }
+  return result;
+}
+
+/** A clean little-endian list of levels → its number. */
+const bitsValue = (bits) =>
+  bits.reduce((n, lv, i) => n + (lv === H ? 1 << i : 0), 0);
 
 /** Read a little-endian bus (LSB first) of input pins into an integer. */
 const readBus = (pins, ins) =>
@@ -87,10 +148,19 @@ function ffOutputs(s, qPin, qnPin) {
   return out;
 }
 
-/** Resolve async preset/clear (active-low). Returns a state or null. */
-function asyncOverride(ins, preN, clrN) {
-  const clr = clrN != null && ins.get(clrN) === L;
-  const pre = preN != null && ins.get(preN) === L;
+/**
+ * Resolve async preset/clear. Returns a state or null. The ACTIVE LEVEL is per
+ * pin: `preN`/`clrN` are active-LOW (the 74LS74's PRE̅/CLR̅), `set`/`reset`
+ * active-HIGH (the CD4013B's SET/RESET); a part names whichever it has. Both
+ * asserted is the datasheet's both-outputs-HIGH case either way.
+ */
+function asyncOverride(ins, m) {
+  const pre =
+    (m.preN != null && ins.get(m.preN) === L) ||
+    (m.set != null && ins.get(m.set) === H);
+  const clr =
+    (m.clrN != null && ins.get(m.clrN) === L) ||
+    (m.reset != null && ins.get(m.reset) === H);
   if (pre && clr) return { q: H, both: true };
   if (clr) return { q: L };
   if (pre) return { q: H };
@@ -98,15 +168,58 @@ function asyncOverride(ins, preN, clrN) {
 }
 
 /**
- * Edge-triggered D flip-flop with optional async active-low preset/clear.
- * @param {{d,clk,preN?,clrN?,q,qn?,edge?}} m - pin map; `edge` "rise"|"fall".
+ * The unknown-aware async override (CMOS units): as `asyncOverride`, but a
+ * control at X MIGHT be asserted, so whenever one is in doubt the state is
+ * unknown. (Set HIGH with reset in doubt does pin Q HIGH, but Q̄ is then either
+ * level, and the unit keeps one Q for both — so the honest answer is X.)
+ * Returns a state, or null when neither is, or might be, asserted.
+ */
+function asyncOverrideX(ins, m) {
+  const level = (pin, active) => {
+    if (pin == null) return "off";
+    const lv = ins.get(pin);
+    if (lv === X) return "maybe";
+    return lv === active ? "on" : "off";
+  };
+  const pre = m.preN != null ? level(m.preN, L) : level(m.set, H);
+  const clr = m.clrN != null ? level(m.clrN, L) : level(m.reset, H);
+  if (pre === "off" && clr === "off") return null;
+  if (pre === "on" && clr === "on") return { q: H, both: true };
+  if (pre === "on" && clr === "off") return { q: H };
+  if (clr === "on" && pre === "off") return { q: L };
+  return { q: X };
+}
+
+/**
+ * Edge-triggered D flip-flop with optional async preset/clear — active-LOW
+ * (`preN`/`clrN`) or active-HIGH (`set`/`reset`). `unknown: true` makes it a
+ * CMOS unit that carries an unknown state (see the header).
+ * @param {{d,clk,preN?,clrN?,set?,reset?,q,qn?,edge?,unknown?}} m - pin map;
+ *   `edge` "rise"|"fall".
  */
 export function dffUnit(m) {
   const clocked = m.edge === "fall" ? edgeFell : edgeRose;
+  if (m.unknown) {
+    return {
+      state0: () => ({ q: L }),
+      step(s, ins, prev) {
+        const forced = asyncOverrideX(ins, m);
+        if (forced) return forced;
+        const edge = prev
+          ? edgeOf(prev.get(m.clk), ins.get(m.clk), m.edge ?? "rise")
+          : "no";
+        const d = bitX(ins.get(m.d));
+        if (edge === "yes") return { q: d };
+        if (edge === "maybe") return { q: merge(s.q, d) };
+        return { q: s.q };
+      },
+      outputs: (s) => ffOutputs(s, m.q, m.qn),
+    };
+  }
   return {
     state0: () => ({ q: L }),
     step(s, ins, prev) {
-      const forced = asyncOverride(ins, m.preN, m.clrN);
+      const forced = asyncOverride(ins, m);
       if (forced) return forced;
       if (prev && clocked(prev.get(m.clk), ins.get(m.clk))) {
         return { q: asBit(ins.get(m.d)) };
@@ -117,24 +230,52 @@ export function dffUnit(m) {
   };
 }
 
+/** A JK flip-flop's next Q for one clean reading of Q, J and K. */
+function jkNext(q, j, k) {
+  if (j === H && k === H) return inv(q); // toggle
+  if (j === H) return H; // set
+  if (k === H) return L; // reset
+  return q; // hold
+}
+
 /**
- * Edge-triggered JK flip-flop with optional async active-low preset/clear.
- * @param {{j,k,clk,preN?,clrN?,q,qn?,edge?}} m - `edge` defaults "fall".
+ * Edge-triggered JK flip-flop with optional async preset/clear — active-LOW
+ * (`preN`/`clrN`, the 74LS parts) or active-HIGH (`set`/`reset`, the CD4027B).
+ * `unknown: true` makes it a CMOS unit that carries an unknown state, as
+ * `dffUnit`'s does: a floating J or K makes the clocked value whatever every
+ * reading of it agrees on (J=1, K=X sets or toggles — from Q LOW both give
+ * HIGH, so that one stays known).
+ * @param {{j,k,clk,preN?,clrN?,set?,reset?,q,qn?,edge?,unknown?}} m - `edge`
+ *   defaults "fall".
  */
 export function jkUnit(m) {
   const clocked = m.edge === "rise" ? edgeRose : edgeFell;
+  if (m.unknown) {
+    return {
+      state0: () => ({ q: L }),
+      step(s, ins, prev) {
+        const forced = asyncOverrideX(ins, m);
+        if (forced) return forced;
+        const edge = prev
+          ? edgeOf(prev.get(m.clk), ins.get(m.clk), m.edge ?? "fall")
+          : "no";
+        if (edge === "no") return { q: s.q };
+        const next = overUnknowns(
+          [s.q, bitX(ins.get(m.j)), bitX(ins.get(m.k))],
+          ([q, j, k]) => jkNext(q, j, k),
+        );
+        return { q: edge === "yes" ? next : merge(s.q, next) };
+      },
+      outputs: (s) => ffOutputs(s, m.q, m.qn),
+    };
+  }
   return {
     state0: () => ({ q: L }),
     step(s, ins, prev) {
-      const forced = asyncOverride(ins, m.preN, m.clrN);
+      const forced = asyncOverride(ins, m);
       if (forced) return forced;
       if (prev && clocked(prev.get(m.clk), ins.get(m.clk))) {
-        const j = high(ins.get(m.j));
-        const k = high(ins.get(m.k));
-        if (j && k) return { q: inv(s.q) }; // toggle
-        if (j) return { q: H }; // set
-        if (k) return { q: L }; // reset
-        return { q: s.q }; // hold
+        return { q: jkNext(s.q, asBit(ins.get(m.j)), asBit(ins.get(m.k))) };
       }
       return { q: s.q };
     },
@@ -954,5 +1095,340 @@ export function decadeCounter7490(m) {
         [m.qc, (s.v >> 1) & 1 ? H : L],
         [m.qd, (s.v >> 2) & 1 ? H : L],
       ]),
+  };
+}
+
+// ── CMOS counters (Feature 400) — unknown-aware, see the header ─────────────
+
+/**
+ * The async reset of a CMOS counter, read three ways: "on" (clean HIGH),
+ * "off" (clean LOW), or "maybe" (X — a floating reset line).
+ */
+function resetLevel(ins, pin) {
+  const lv = ins.get(pin);
+  if (lv === X) return "maybe";
+  return lv === H ? "on" : "off";
+}
+
+/**
+ * Johnson counter with fully DECODED outputs (CD4017B-style; the CD4022B is
+ * the same counter with `length: 8`). One decoded output per count is HIGH;
+ * the count advances on the RISING edge of the GATED clock `CLOCK · ¬INHIBIT`
+ * — which is the datasheet's two ways in one rule: a rising CLOCK while
+ * CLOCK INHIBIT is LOW, or a falling CLOCK INHIBIT while CLOCK is HIGH (the
+ * footnote's "pin 13 as the clock input, pin 14 tied high"). A HIGH RESET
+ * clears to count 0, asynchronously. CARRY OUT is HIGH for the first half of
+ * the cycle (counts 0…length/2−1) and LOW for the second, so it rises once per
+ * `length` clocks — the edge that ripple-clocks the next counter.
+ *
+ * Unknown state: `n: null`. The ternary AND is what makes the gating honest —
+ * a floating INHIBIT while CLOCK is LOW cannot clock anything, so only an X
+ * on the gated clock itself puts the count in doubt.
+ *
+ * @param {{clk,inh,reset,outs:number[],carry,length?:number}} m - `outs` are
+ *   the decoded output pins for counts 0…length−1, in count order.
+ */
+export function johnsonCounter(m) {
+  const length = m.length ?? m.outs.length;
+  const gated = (ins) => and(ins.get(m.clk), inv(ins.get(m.inh)));
+  return {
+    state0: () => ({ n: 0 }),
+    step(s, ins, prev) {
+      const reset = resetLevel(ins, m.reset);
+      if (reset === "on") return { n: 0 };
+      if (reset === "maybe") return { n: null };
+      const edge = prev ? edgeOf(gated(prev), gated(ins), "rise") : "no";
+      if (edge === "no" || s.n === null) return { n: s.n };
+      if (edge === "yes") return { n: (s.n + 1) % length };
+      return { n: null }; // "maybe": advanced or held — no longer known
+    },
+    outputs(s) {
+      const out = new Map();
+      m.outs.forEach((pin, i) => {
+        out.set(pin, s.n === null ? X : s.n === i ? H : L);
+      });
+      out.set(m.carry, s.n === null ? X : s.n < length / 2 ? H : L);
+      return out;
+    },
+  };
+}
+
+/**
+ * N-stage binary counter (CD4040B-style: 12 stages; the CD4020B's 14 and the
+ * CD4024B's 7 are the same builder with another `q` list). Advances one count
+ * on the FALLING edge of its input pulse; a HIGH RESET clears every stage,
+ * asynchronously. `q` lists the stage outputs Q1…Qn, LSB first.
+ *
+ * A real ripple counter's stages settle one after another, so its outputs
+ * pass through intermediate codes; this engine has zero delay and Feature 220
+ * completes a ripple inside one tick, so they cannot appear here, and the
+ * whole count changes at once.
+ *
+ * A stage the package has no pin for is `null` in `q` — the CD4020B brings
+ * out Q1 and Q4–Q14, so its Q2 and Q3 count but drive nothing.
+ *
+ * Unknown state: `n: null`.
+ * @param {{clk,reset,q:Array<number|null>,edge?:"rise"|"fall"}} m
+ */
+export function binaryCounter(m) {
+  const modulus = 2 ** m.q.length;
+  return {
+    state0: () => ({ n: 0 }),
+    step(s, ins, prev) {
+      const reset = resetLevel(ins, m.reset);
+      if (reset === "on") return { n: 0 };
+      if (reset === "maybe") return { n: null };
+      const edge = prev
+        ? edgeOf(prev.get(m.clk), ins.get(m.clk), m.edge ?? "fall")
+        : "no";
+      if (edge === "no" || s.n === null) return { n: s.n };
+      if (edge === "yes") return { n: (s.n + 1) % modulus };
+      return { n: null };
+    },
+    outputs(s) {
+      const bits = s.n === null ? null : busBits(s.n, m.q.length);
+      const out = new Map();
+      m.q.forEach((pin, i) => {
+        if (pin != null) out.set(pin, bits ? bits[i] : X);
+      });
+      return out;
+    },
+  };
+}
+
+// ── CMOS MSI (CD4000 batch 2) — unknown-aware, see the header ───────────────
+
+/**
+ * 8-stage shift-and-store bus register (CD4094B). DATA shifts into stage 1 on
+ * CLOCK's RISING edge. Each stage has a storage latch that follows it while
+ * STROBE is HIGH (transparent) and holds while it is LOW; OUTPUT ENABLE HIGH
+ * puts the stored byte on Q1…Q8, LOW floats them (`Z`). Two serial outputs,
+ * neither ever floated: QS is the 8th shift stage itself (it changes on the
+ * rising edge), and Q'S takes that bit on the NEXT FALLING edge — the cascade
+ * output for a slow clock, half a cycle later.
+ *
+ * Unknown-aware: every shift bit, stored bit and Q'S may be X — an X DATA
+ * shifts in as X, a "maybe" edge leaves each bit whatever both outcomes agree
+ * on, and a floating STROBE or OUTPUT ENABLE might be either.
+ * @param {{data, clk, strobe, oe, q:number[], qs, qsn}} m - `q` the parallel
+ *   outputs Q1…Qn, stage order; `qsn` is Q'S.
+ */
+export function shiftStoreRegister(m) {
+  const width = m.q.length;
+  const last = width - 1;
+  /** What the latches hold or show for a STROBE level, given the shift bits. */
+  const latched = (store, shift, strobe) => {
+    if (strobe === H) return shift.slice();
+    if (strobe === X) return store.map((b, i) => merge(b, shift[i]));
+    return store;
+  };
+  return {
+    state0: () => ({
+      shift: Array(width).fill(L),
+      store: Array(width).fill(L),
+      qsn: L,
+    }),
+    step(s, ins, prev) {
+      const clk = (dir) =>
+        prev ? edgeOf(prev.get(m.clk), ins.get(m.clk), dir) : "no";
+      const rise = clk("rise");
+      let shift = s.shift;
+      if (rise !== "no") {
+        const shifted = [bitX(ins.get(m.data)), ...s.shift.slice(0, last)];
+        shift =
+          rise === "yes"
+            ? shifted
+            : shifted.map((b, i) => merge(b, s.shift[i]));
+      }
+      let qsn = s.qsn;
+      const fall = clk("fall");
+      if (fall === "yes") qsn = shift[last];
+      // A floating clock might have fallen either side of a shift it might
+      // also have made — Q'S keeps only what every case agrees on.
+      if (fall === "maybe") qsn = merge(merge(qsn, s.shift[last]), shift[last]);
+      return { shift, store: latched(s.store, shift, ins.get(m.strobe)), qsn };
+    },
+    outputs(s, ins) {
+      const shown = latched(s.store, s.shift, ins.get(m.strobe));
+      const oe = ins.get(m.oe);
+      const out = new Map(
+        m.q.map((pin, i) => [pin, oe === H ? shown[i] : oe === L ? Z : X]),
+      );
+      out.set(m.qs, s.shift[last]);
+      out.set(m.qsn, s.qsn);
+      return out;
+    },
+  };
+}
+
+/**
+ * BCD-to-decimal (1-of-10) decoder with active-HIGH outputs (CD4028B): output
+ * k is HIGH while the code on `bcd` is k, and a code of 10–15 — not a BCD
+ * digit — leaves all ten LOW. COMB units over the four inputs; an unknown
+ * input bit spoils only the outputs it could select (`overUnknowns`).
+ * @param {{bcd:number[], out:number[]}} m - `bcd` A…D, LSB first; `out` the
+ *   pins of outputs 0…9 in order.
+ */
+export function bcdDecimalUnits(m) {
+  return m.out.map((pin, digit) =>
+    comb(m.bcd, pin, (levels) =>
+      overUnknowns(levels, (bits) => (bitsValue(bits) === digit ? H : L)),
+    ),
+  );
+}
+
+/**
+ * BCD-to-7-segment LATCH/decoder/driver (CD4511B), active-HIGH outputs that
+ * source a common-cathode display. LE LOW makes the 4-bit latch transparent
+ * (the display follows the inputs); LE HIGH holds the code it had as LE went
+ * HIGH. LT̄ LOW lights every segment whatever else is happening (lamp test);
+ * otherwise BL̄ LOW blanks them all. The latch sits BEFORE the decoder, so
+ * both act on a held code as on a live one. `font` gives each of the 16 codes'
+ * segment masks (a…g) as DATA — codes 10–15 are blank on this part.
+ * @param {{bcd:number[], le, ltN, blN, seg:number[], font:number[][]}} m -
+ *   `bcd` A…D LSB first, `seg` the a…g pins.
+ */
+export function bcd7segLatch(m) {
+  const live = (ins) => m.bcd.map((p) => bitX(ins.get(p)));
+  /** The code the decoder sees: live, held, or (LE unknown) either. */
+  const codeOf = (s, ins) => {
+    const le = ins.get(m.le);
+    if (le === L) return live(ins);
+    if (le === H) return s.code;
+    return live(ins).map((b, i) => merge(b, s.code[i]));
+  };
+  return {
+    state0: () => ({ code: [L, L, L, L] }),
+    step: (s, ins) => ({ code: codeOf(s, ins) }),
+    outputs(s, ins) {
+      const code = codeOf(s, ins);
+      const blN = ins.get(m.blN);
+      const ltN = ins.get(m.ltN);
+      return new Map(
+        m.seg.map((pin, i) => {
+          const lit = overUnknowns(code, (bits) =>
+            m.font[bitsValue(bits)][i] ? H : L,
+          );
+          const shown = blN === L ? L : blN === X ? merge(L, lit) : lit;
+          return [pin, ltN === L ? H : ltN === X ? merge(H, shown) : shown];
+        }),
+      );
+    },
+  };
+}
+
+/**
+ * The CD4510B's BCD next state, for ALL SIXTEEN states — read off the gates of
+ * its logic diagram (SCHS071B Fig. 3), because a code above 9 is reachable
+ * (the preset loads any binary number) and the sheet only bounds what follows
+ * it: "will count out of non-BCD counter states in a maximum of two clock
+ * pulses in the up mode, and a maximum of four clock pulses in the down mode".
+ * These equations do exactly that (up: 10→11→6, 12→13→4, 14→15→2; down:
+ * 11→10→13→12→3, 15→14→1). Each stage is a T flip-flop; Q1 always toggles,
+ * and `carry` is the diagram's XNOR of UP/DOWN with Q1.
+ */
+function bcdNext(n, up) {
+  const [q1, q2, q3, q4] = [1, 2, 4, 8].map((b) => (n & b) !== 0);
+  const dn = !up;
+  const carry = up === q1;
+  const t2 = carry && !(up && q4) && !(dn && !q2 && !q3 && !q4);
+  const t3 = carry && ((dn && !q2 && q3) || (up && q2) || (dn && q4));
+  const t4 =
+    carry &&
+    ((up && q2 && q3) || (up && q4) || (dn && !q2 && !q3) || (q3 && q4));
+  return n ^ 1 ^ (t2 ? 2 : 0) ^ (t3 ? 4 : 0) ^ (t4 ? 8 : 0);
+}
+
+/** One count, binary or BCD. */
+const countStep = (n, up, decade) =>
+  decade ? bcdNext(n, up) : (n + (up ? 1 : 15)) & 15;
+
+/**
+ * Does the count sit at the terminal count CARRY OUT̄ flags? Binary: 15 up,
+ * 0 down. BCD: the 4510 diagram's gate, Q1·Q4 up (9 — and 11, 13, 15, which
+ * the counter leaves within a clock or two) and 0 down.
+ */
+const terminal = (n, up, decade) => {
+  if (!up) return n === 0;
+  return decade ? (n & 9) === 9 : n === 15;
+};
+
+/**
+ * Presettable synchronous 4-bit up/down counter, binary or BCD (CD4029B,
+ * CD4510B, CD4516B). It counts one on CLOCK's RISING edge while CARRY IN̄ and
+ * PRESET ENABLE are both LOW — up while UP/DOWN is HIGH, down while it is LOW.
+ * PRESET ENABLE HIGH loads the jam inputs asynchronously, and the count stays
+ * there while it is held. The 4510/4516 also have an async active-HIGH RESET,
+ * which beats the preset (their truth table: R=1 resets whatever PE is).
+ * CARRY OUT̄ goes LOW at the terminal count while CARRY IN̄ is LOW, and it is
+ * COMBINATIONAL — it follows UP/DOWN and CARRY IN̄ without a clock, which is
+ * what lets carry-out → carry-in chain counters synchronously.
+ *
+ * BCD or binary is a pin on the 4029 (`bd`: HIGH binary, LOW decade) and
+ * fixed on the others (`decade`).
+ *
+ * Unknown state: `n: null`. A floating jam bit loaded, a floating RESET, or a
+ * clock/CARRY IN̄/direction in doubt whose outcomes disagree all leave the
+ * count unknown until a clean reset or preset.
+ * @param {{clk, ciN, pe, reset?, ud, bd?, decade?, jam:number[], q:number[], coN}} m -
+ *   `jam` and `q` LSB first.
+ */
+export function presetUpDownCounter(m) {
+  /** Every reading of a two-way control: H and L, or one of them. */
+  const readings = (lv) => (lv === X ? [true, false] : [lv === H]);
+  const ups = (ins) => readings(ins.get(m.ud));
+  const decades = (ins) =>
+    m.bd == null ? [m.decade === true] : readings(ins.get(m.bd)).map((b) => !b);
+  /** What every candidate agrees on, or null. */
+  const agree = (values) =>
+    values.every((v) => v === values[0]) ? values[0] : null;
+  return {
+    state0: () => ({ n: 0 }),
+    step(s, ins, prev) {
+      if (m.reset != null) {
+        const reset = resetLevel(ins, m.reset);
+        if (reset === "on") return { n: 0 };
+        if (reset === "maybe") return { n: null };
+      }
+      const pe = ins.get(m.pe);
+      if (pe !== L) {
+        const jam = m.jam.map((p) => bitX(ins.get(p)));
+        const loaded = anyX(jam) ? null : bitsValue(jam);
+        if (pe === H) return { n: loaded };
+        return { n: loaded === s.n ? s.n : null }; // a floating PE: maybe loaded
+      }
+      const edge = prev
+        ? edgeOf(prev.get(m.clk), ins.get(m.clk), "rise")
+        : "no";
+      const ciN = ins.get(m.ciN);
+      if (edge === "no" || ciN === H || s.n === null) return { n: s.n };
+      const nexts = [];
+      for (const up of ups(ins)) {
+        for (const decade of decades(ins))
+          nexts.push(countStep(s.n, up, decade));
+      }
+      const next = agree(nexts);
+      if (edge === "yes" && ciN === L) return { n: next };
+      return { n: next === s.n ? s.n : null }; // counted, or maybe not
+    },
+    outputs(s, ins) {
+      const out = new Map(
+        m.q.map((pin, i) => [pin, s.n === null ? X : (s.n >> i) & 1 ? H : L]),
+      );
+      const ciN = ins.get(m.ciN);
+      let co = H;
+      if (ciN !== H) {
+        const levels = [];
+        for (const up of ups(ins)) {
+          for (const decade of decades(ins)) {
+            levels.push(s.n === null ? X : terminal(s.n, up, decade) ? L : H);
+          }
+        }
+        co = levels.reduce(merge);
+        if (ciN === X) co = merge(co, H);
+      }
+      out.set(m.coN, co);
+      return out;
+    },
   };
 }

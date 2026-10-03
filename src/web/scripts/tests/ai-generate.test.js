@@ -309,10 +309,14 @@ test("the system prompt states the rules the compiler actually enforces", () => 
   assert.match(prompt, /ACTIVE-LOW OUTPUT ENABLE/);
   assert.match(
     prompt,
-    /74LS244 \[DIP-20\][^\n]*1:1G!/,
+    /74LS244 \[DIP-20, 74LS\][^\n]*1:1G!/,
     "the mark is on the pin",
   );
-  assert.match(prompt, /74LS244 \[DIP-20\][^\n]*18:1Y1>/, "outputs marked too");
+  assert.match(
+    prompt,
+    /74LS244 \[DIP-20, 74LS\][^\n]*18:1Y1>/,
+    "outputs marked too",
+  );
   // The rules added after the audit, each backed by a fault of its own.
   assert.match(prompt, /Never put an output in a VCC or GND net/); // OUTPUT_ON_RAIL
   assert.match(prompt, /BUS of tri-state outputs/); // MULTIPLE_DRIVERS
@@ -327,6 +331,37 @@ test("the system prompt states the rules the compiler actually enforces", () => 
     "a bare led is fine",
   );
   assert.ok(prompt.length > 4000, "over the prompt-cache minimum");
+});
+
+test("the system prompt picks a logic family from the request, and says why CMOS is stricter", () => {
+  const prompt = buildSystemPrompt();
+  // Feature 400: the request picks the family; neither named → 74LS.
+  assert.match(prompt, /names CD4000, 4000-series or CMOS uses ONLY CD4000/);
+  assert.match(prompt, /names TTL or 74LS uses ONLY 74LS/);
+  assert.match(prompt, /names neither uses 74LS/);
+  assert.match(prompt, /Never mix the two unless the request asks/);
+  // The card states every logic chip's family, so the model never infers it.
+  assert.match(prompt, /CD4011B \[DIP-14, CD4000\]/);
+  assert.match(prompt, /74LS00 \[DIP-14, 74LS\]/);
+  // A family-less part says nothing of one.
+  assert.match(prompt, /Z80A \[DIP-40\]/);
+  // Every input of a used CMOS gate; the spares are the compiler's.
+  assert.match(prompt, /floating CMOS input reads neither HIGH nor/);
+  assert.match(prompt, /the compiler's job — it ties them to GND/);
+});
+
+test("the review prompt explains both families' floating inputs", () => {
+  const prompt = buildReviewSystemPrompt();
+  assert.match(prompt, /74LS TTL, CD4000 CMOS, or both/);
+  assert.match(prompt, /unwired CD4000 \(CMOS\) input/);
+});
+
+test("the repair round is told about inputs the compiler tied", () => {
+  const msg = buildRepairMessage(
+    [{ code: "INPUT_FLOATING", message: "U1 leaves B unconnected." }],
+    [{ code: "SPARE_INPUTS_TIED", message: "Tied U1's spare inputs to GND." }],
+  );
+  assert.match(msg, /SPARE_INPUTS_TIED: Tied U1's spare inputs/);
 });
 
 test("the repair message is structured faults, never prose", () => {

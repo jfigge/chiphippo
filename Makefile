@@ -230,6 +230,17 @@ datasheets:
 	@node $(WORKSPACE)/scripts/check-datasheets.mjs
 	@echo "--------------------------------"
 
+# Ask every datasheet URL Settings ▸ Data Sheets ▸ Download… would fetch
+# whether it still answers with a PDF. The one target here that goes to the
+# NETWORK, which is exactly why it is not part of `make test`: the suite must
+# not go red because a vendor's server is slow. Each unique URL is requested
+# once; a failure names every part that shares it. `--strict` (add it by hand)
+# exits 1 on a failure.
+datasheet-urls:
+	@echo "Checking the datasheet download URLs (network)..."
+	@node $(WORKSPACE)/scripts/check-datasheet-urls.mjs
+	@echo "--------------------------------"
+
 # ─── Demos ────────────────────────────────────────────────────────────────────
 # Regenerate the loadable demo schematics in demos/ (a .chiphippo layout + a .hex
 # ROM image each). The generator computes every wire from the model and then runs
@@ -550,6 +561,7 @@ help:
 	@echo "    license-headers  Stamp the GPL-3.0 header on any file missing it"
 	@echo "    icons         Regenerate app-icon rasters from the SVG sources"
 	@echo "    datasheets    Report datasheet crops missing from the pinout window"
+	@echo "    datasheet-urls Check every datasheet download URL still serves a PDF"
 	@echo "    demos         Regenerate + validate demos/ and the bundled examples"
 	@echo "    vendor-markdown  Rebuild the bundled marked+DOMPurify renderer"
 	@echo "    docs          Build the hosted user guide (website/docs/) + website/chips.html"
@@ -572,7 +584,7 @@ help:
 	@echo "    info          Print full build information"
 
 .PHONY: version info install debug fmt fmt-check lint license-headers icons \
-        datasheets demos vendor-markdown docs pdf test test-license-headers \
+        datasheets datasheet-urls demos vendor-markdown docs pdf test test-license-headers \
         build build-mac build-linux build-win dmg release dist dist-mac \
         dist-linux dist-win mas mas-dev upload site build-setup build-install \
         clean help

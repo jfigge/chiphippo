@@ -29,15 +29,20 @@
 // to say and what the verifier has to name when a design leaves an output
 // floating.
 //
-// So each part DECLARES it, and this proves the declaration against the real
-// evaluator rather than trusting it. Declared-and-verified, not derived, and
+// So each part DECLARES it — `outputEnable` active-LOW, `outputEnableHigh`
+// active-HIGH — and this proves the declaration against the real evaluator,
+// polarity included, rather than trusting it. Declared-and-verified, not derived, and
 // not merely asserted: the failure mode this exists to prevent is a second copy
 // of a fact drifting from the first.
 
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { CHIP_DEFS, outputEnables } from "../catalog/index.js";
+import {
+  CHIP_DEFS,
+  outputEnablePins,
+  outputEnables,
+} from "../catalog/index.js";
 import {
   evaluate,
   hasLogic,
@@ -82,30 +87,53 @@ function floating(def, high) {
   return new Set(outputsOf(def).filter((n) => out.get(n) === Z));
 }
 
-const TRISTATE = CHIP_DEFS.filter((d) => d.outputEnable?.length);
+/** The logic parts that DECLARE enables (a memory's are read, not declared). */
+const TRISTATE = CHIP_DEFS.filter(
+  (d) => d.outputEnable?.length || d.outputEnableHigh?.length,
+);
 
-test("every declared output enable is one — and it is ACTIVE LOW", () => {
+test("every declared output enable is one — at the polarity it is declared", () => {
   // The claim the prompt makes to the model and the verifier makes to the user:
-  // drive this pin HIGH and outputs that were driving stop driving.
-  assert.ok(TRISTATE.length >= 8, `${TRISTATE.length} parts declare one`);
+  // take this pin to its OFF level — HIGH for an active-LOW enable (every 74xx
+  // part), LOW for an active-HIGH one (the CD4094B) — and outputs that were
+  // driving stop driving.
+  assert.ok(TRISTATE.length >= 9, `${TRISTATE.length} parts declare one`);
   for (const def of TRISTATE) {
     const outs = outputsOf(def);
     assert.ok(outs.length, `${def.id} has outputs to enable`);
-    for (const pin of def.outputEnable) {
+    const enables = outputEnablePins(def);
+    // Every enable at its ON level: the active-HIGH ones HIGH, the rest LOW.
+    const on = enables.filter((e) => e.on === H).map((e) => e.n);
+    for (const { n: pin, on: level } of enables) {
       const p = def.pins.find((q) => q.n === pin);
       assert.ok(p, `${def.id} pin ${pin} exists`);
       assert.equal(p.role, "input", `${def.id}.${p.name} is an input`);
 
-      const low = floating(def, []);
-      const high = floating(def, [pin]);
-      if (low === null) continue; // memory: proved by its own suites
-      const stopped = [...high].filter((n) => !low.has(n));
+      const driving = floating(def, on);
+      const off = level === H ? on.filter((n) => n !== pin) : [...on, pin];
+      const stopped = [...floating(def, off)].filter((n) => !driving.has(n));
       assert.ok(
         stopped.length,
-        `${def.id}: driving ${p.name} (pin ${pin}) HIGH should float an ` +
-          `output that drives when it is LOW`,
+        `${def.id}: taking ${p.name} (pin ${pin}) ${level === H ? "LOW" : "HIGH"} ` +
+          `should float an output that drives while it is ${level}`,
       );
     }
+  }
+});
+
+test("the CD4094B's OUTPUT ENABLE is active HIGH, and the serial outputs ignore it", () => {
+  // The one active-HIGH enable in the catalog — so a test that every enable
+  // works when LOW would have disabled the 4094 and called it enabled.
+  const def = CHIP_DEFS.find((d) => d.id === "CD4094B");
+  assert.deepEqual(outputEnablePins(def), [{ n: 15, on: "H" }]);
+  const parallel = [4, 5, 6, 7, 14, 13, 12, 11];
+  assert.deepEqual([...floating(def, [])].sort(), parallel.sort());
+  assert.equal(floating(def, [15]).size, 0, "OE HIGH drives Q1–Q8");
+  // QS and Q'S chain the next register — never floated, whatever OE says.
+  for (const high of [[], [15]]) {
+    const out = outputsAt(def, high);
+    assert.notEqual(out.get(9), Z, "QS");
+    assert.notEqual(out.get(10), Z, "Q'S");
   }
 });
 
@@ -137,7 +165,7 @@ test("a part that can float an output DECLARES what enables it", () => {
   // on OE and says nothing about it in its title, so every wording-based check
   // would have missed it.
   for (const def of CHIP_DEFS) {
-    if (def.outputEnable?.length || isMemory(def)) continue;
+    if (outputEnables(def).length) continue;
     if (PROTOCOL_GROUPS.has(def.group)) continue;
     if (!hasLogic(def) && !isSequential(def)) continue;
     const vectors = [[], drivable(def).map((p) => p.n)];
@@ -162,7 +190,7 @@ test("a tri-state title is backed by a declaration", () => {
   for (const def of CHIP_DEFS) {
     if (!/tri-state|3-state/i.test(def.title)) continue;
     assert.ok(
-      def.outputEnable?.length || isMemory(def),
+      outputEnables(def).length,
       `${def.id} ("${def.title}") declares no outputEnable`,
     );
   }

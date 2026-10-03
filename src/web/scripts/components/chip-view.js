@@ -36,7 +36,7 @@ import { isRomChip } from "../sim/chip-eval.js";
 import {
   buildBurnOverlay,
   buildWarnOverlay,
-  STATUS_HINT,
+  statusHint,
 } from "./part-symbols.js";
 
 /** Footprint-box geometry shared by the builder and the ghost/controller. */
@@ -200,6 +200,7 @@ export class ChipView {
   #ref;
   #params = {}; // latest params (the 180° flip changes the drawn orientation)
   #status = null; // last engine-reported power/health status (Feature 90)
+  #volts = null; // …and the supply volts the engine saw (Feature 400)
   #unprogrammed = false; // a ROM/EPROM/EEPROM with no image loaded (Feature 190)
 
   /**
@@ -269,8 +270,9 @@ export class ChipView {
    * (editing / stopped) — but an unprogrammed ROM's own warning (Feature 190
    * follow-up, see #refresh) is independent of this and stays put.
    */
-  setStatus(status) {
+  setStatus(status, volts = null) {
     this.#status = status;
+    this.#volts = volts;
     this.#refresh();
   }
 
@@ -298,9 +300,10 @@ export class ChipView {
     );
     const title = this.#el.querySelector(".part-chip-status > title");
     if (title) {
+      const about = { volts: this.#volts, def: chipDef(this.#ref) };
       title.textContent =
-        STATUS_HINT[this.#status] ??
-        (this.#unprogrammed ? STATUS_HINT.unprogrammed : "");
+        statusHint(this.#status, about) ||
+        (this.#unprogrammed ? statusHint("unprogrammed", about) : "");
     }
   }
 

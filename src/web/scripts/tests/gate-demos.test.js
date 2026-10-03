@@ -40,6 +40,7 @@ import {
   buildDemo,
   catalogGroups,
   fileNameOf,
+  projectNameOf,
   validateDemo,
   PROGRAM_ONLY,
 } from "../../../../scripts/demo-build.mjs";
@@ -77,7 +78,7 @@ for (const [group, ids] of GROUPS) {
   test(`${group}: ${ids.length} demo(s) build, and the engine proves them`, () => {
     const project = existsSync(demoPath(file)) ? readProject(file) : null;
     assert.ok(project, `${file} is missing — run \`make demos\``);
-    assert.equal(project.name, group);
+    assert.equal(project.name, projectNameOf(group));
     assert.equal(project.tabs.length, ids.length);
 
     ids.forEach((id, index) => {
@@ -159,5 +160,32 @@ test("the program-only groups are left to the 65xx demos", () => {
       `${def.id} should have no bundled example`,
     );
   }
-  assert.ok(!existsSync(demoPath(fileNameOf("Memory"))));
+  for (const where of ["Memory.chiphippo", "74LS/Memory.chiphippo"]) {
+    assert.ok(!existsSync(demoPath(where)), `no ${where}`);
+  }
+});
+
+test("the two families never share a group project, and none is left at the root", () => {
+  // Feature 400: demos/74LS/ and demos/CD4000/. A project at the demos/ root
+  // under a group's name is a stale copy from before the split — nothing
+  // sweeps that folder, so this is the guard.
+  for (const key of GROUPS.keys()) {
+    const [family] = key.split("/");
+    assert.ok(fileNameOf(key).startsWith(`${family}/`), key);
+    const legacy = fileNameOf(key).split("/").pop();
+    assert.ok(
+      !existsSync(demoPath(legacy)),
+      `demos/${legacy} is a stale copy — the group lives in demos/${family}/`,
+    );
+  }
+  for (const [key, ids] of GROUPS) {
+    const [family] = key.split("/");
+    for (const id of ids) {
+      assert.equal(
+        CHIP_DEFS.find((d) => d.id === id).family,
+        family,
+        `${id} sits in a ${family} project`,
+      );
+    }
+  }
 });

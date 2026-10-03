@@ -44,8 +44,12 @@ function reference(unit, valueOf) {
       return unit.inputs.some(hi) ? L : H;
     case "XOR":
       return unit.inputs.filter(hi).length % 2 === 1 ? H : L;
+    case "XNOR":
+      return unit.inputs.filter(hi).length % 2 === 1 ? L : H;
     case "INV":
       return hi(unit.inputs[0]) ? L : H;
+    case "BUF":
+      return hi(unit.inputs[0]) ? H : L;
     case "BUF3":
       // Active-low enable: enabled (L) passes the data level; disabled (H) → Z.
       return hi(unit.enable) ? Z : valueOf(unit.inputs[0]);
@@ -63,7 +67,17 @@ let totalCases = 0;
 
 /** Gate vocabulary this exhaustive harness enumerates (decoder/mux `COMB`
     units and sequential defs are checked by their own fixture suites). */
-const GATE_FNS = new Set(["AND", "OR", "NAND", "NOR", "XOR", "INV", "BUF3"]);
+const GATE_FNS = new Set([
+  "AND",
+  "OR",
+  "NAND",
+  "NOR",
+  "XOR",
+  "XNOR",
+  "INV",
+  "BUF",
+  "BUF3",
+]);
 const GATE_DEFS = CHIP_DEFS.filter(
   (def) => hasLogic(def) && def.logic.units.some((u) => GATE_FNS.has(u.fn)),
 );

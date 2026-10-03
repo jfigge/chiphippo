@@ -47,7 +47,11 @@ export const LED_COLOR_OPTIONS = Object.freeze([
   "yellow",
   "white",
 ]);
-export const PSU_VOLTS = Object.freeze([3, 5, 12]);
+/** Bench supply voltages. 5 V is TTL's only rail; 3, 9, 12 and 15 V are
+    CMOS rails (the CD4000B series runs 3–18 V, rated at 5/10/15 V) — and a
+    trap for a 74LS part, which a supply above 5 V damages (catalog/families.js
+    holds each family's range; the engine gates every chip against it). */
+export const PSU_VOLTS = Object.freeze([3, 5, 9, 12, 15]);
 /** Clock rates (Hz) plus click-to-toggle "manual"; the timer lives in the
     renderer's SimController — the def carries only the pure contract. A 1-2-5
     ladder up two decades: the slow end is for watching an edge land, the fast
@@ -897,8 +901,8 @@ export const PART_DEFS = Object.freeze(
       kind: "psu",
       title: "Power supply",
       blurb:
-        "Bench power brick (3 V / 5 V / 12 V) with addressable + and − " +
-        "terminals — wire them into a board's rails.",
+        "Bench power brick (3 V / 5 V / 9 V / 12 V / 15 V) with addressable " +
+        "+ and − terminals — wire them into a board's rails.",
       group: "Power",
       // Desk outline (pitch units) and terminal pads at INTEGER offsets so
       // wired terminals land on the global 0.1-in lattice.

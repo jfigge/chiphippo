@@ -93,8 +93,8 @@ export class SimOverlay {
     // Properties dialog, which has a component id and no view.
     this.#status = running ? (chipStatus ?? new Map()) : new Map();
     for (const view of this.#partViews.values()) view.setStatus?.(null);
-    for (const [id, { status }] of this.#status) {
-      this.#partViews.get(id)?.setStatus?.(status);
+    for (const [id, { status, volts }] of this.#status) {
+      this.#partViews.get(id)?.setStatus?.(status, volts);
     }
 
     // Clock pulse lamps track their live output level, and each clock's
@@ -120,6 +120,12 @@ export class SimOverlay {
   statusOf(id) {
     const status = this.#status.get(id)?.status;
     return status && status !== CHIP_STATUS.OK ? status : null;
+  }
+
+  /** The supply voltage that part's VCC pin saw on the last sim-state — the
+      number its underpowered/damaged sentence states — or null. */
+  voltsOf(id) {
+    return this.#status.get(id)?.volts ?? null;
   }
 
   /** The level of a net by id, or "Z" when it isn't driven (running only). */

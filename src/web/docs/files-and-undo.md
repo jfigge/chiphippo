@@ -121,15 +121,16 @@ without saving.
 
 Undo/redo does **not** cover simulation state. While the circuit is running,
 editing — and with it, recording new undo steps — is locked, so nothing that
-happens mid-run (sequential chip state, clock phase, a chip taking 12 V damage)
+happens mid-run (sequential chip state, clock phase, a chip taking over-voltage damage)
 ever becomes an undo step of its own. All of it is **run state**: it exists
 while the circuit is running and not a moment longer.
 
-That includes **12 V damage**. Feed a chip 12 V and it lets its smoke out on the
-spot — the warning appears, its badge goes red, and it stays dead for the rest of
-that run, because a chip that's failed doesn't come back while the power is still
-wrong. Press **Stop** and every damaged chip is whole again. Wiring 12 V to the
-wrong rail is a mistake about the *circuit*, and a mistake you can see and fix;
+That includes **over-voltage damage**. Feed a 74LS chip 12 V and it lets its
+smoke out on the spot — the warning appears, its badge goes red, and it stays dead
+for the rest of that run, because a chip that's failed doesn't come back while the
+power is still wrong. Press **Stop** and every damaged chip is whole again. Wiring
+12 V to the wrong rail is a mistake about the *circuit*, and a mistake you can see
+and fix;
 it was never meant to cost you the chip, so it doesn't. Fix the wiring, run
 again. What undo/redo restores is always the circuit you built, never a moment in
 its simulated behavior.

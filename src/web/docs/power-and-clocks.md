@@ -27,24 +27,40 @@ A PSU has no on/off switch of its own — it's always "live" the moment the
 simulation is running; what matters is which voltage it's set to and what
 it's wired into.
 
-## Choosing a voltage — and the 12 V damage rule
+## Choosing a voltage — and the damage rule
 
 Right-click a PSU brick and choose **Properties…** to pick its voltage:
-**3 V**, **5 V**, or **12 V**. It's a live setting — the dropdown stays
-available and applies immediately even while the simulation is running, so
-you can change voltage on the fly and watch the effect.
+**3 V**, **5 V**, **9 V**, **12 V** or **15 V**. It's a live setting — the
+dropdown stays available and applies immediately even while the simulation is
+running, so you can change voltage on the fly and watch the effect.
 
-- **5 V** — normal operation. A chip whose VCC net carries a 5 V supply and
-  whose GND net is properly grounded runs exactly to its datasheet behavior.
-- **3 V** — underpowered. The chip is inert — every output floats/reads as if
-  disconnected — but nothing is harmed. Useful for demonstrating what an
-  underpowered chip looks like without any risk.
-- **12 V** — **damage**. This is Chip Hippo's "magic smoke" rule: any chip (or
-  oscillator can, which is powered the same way) whose VCC net sees 12 V is
-  immediately marked **damaged** and goes inert for the rest of that run,
-  independent of anything else on the net. It stays dead while the run lasts —
-  a failed chip doesn't recover while the power is still wrong — and **Stop**
-  makes it whole again.
+What a voltage does to a chip depends on the chip's **logic family** — each
+chip is held to the supply its datasheet rates it for:
+
+| Supply | 74LS (TTL) and the memory, interface and processor chips | CD4000 (CMOS) |
+| --- | --- | --- |
+| 3 V | **underpowered** — inert | runs |
+| 5 V | runs | runs |
+| 9 V, 12 V, 15 V | **damaged** — magic smoke | runs |
+
+- **Runs** — a chip whose VCC net carries a supply inside its range and whose
+  GND net is properly grounded behaves exactly to its datasheet.
+- **Underpowered** — the chip is inert (every output floats, as if
+  disconnected) but nothing is harmed. A 74LS part needs 5 V; at 3 V it does
+  nothing.
+- **Damaged** — this is Chip Hippo's "magic smoke" rule: any chip (or
+  oscillator can, which is powered the same way) whose VCC net sees more than
+  its range allows is immediately marked **damaged** and goes inert for the
+  rest of that run, independent of anything else on the net. A 74LS part is
+  rated for 5 V, so 9 V, 12 V and 15 V all destroy it; a CD4000 part runs
+  anywhere from 3 V to 18 V. It stays dead while the run lasts — a failed chip
+  doesn't recover while the power is still wrong — and **Stop** makes it whole
+  again.
+
+So one board can run a CD4000 chip happily at 12 V while the 74LS chip beside it
+smokes — which is exactly why, on a real bench, people ran 4000-series chips at
+5 V whenever the two families had to share a supply. The warning says the
+voltage the chip saw and the supply it is rated for.
 
 A chip can also come up **reversed** — a PSU `−` on its VCC pin's net at the
 same time as a PSU `+` on its GND pin's net — which is reported separately
@@ -56,17 +72,18 @@ badge on each chip while running — see [Running a Simulation](simulation.md)
 for how those badges and the rest of the settle model work. This page only
 covers what puts a chip into each state.
 
-## Recovering from a 12 V mistake
+## Recovering from an over-voltage mistake
 
 Press **Stop**. Every damaged chip on the desk is restored, and you can rewire
 and run again. You don't lose the part, and you don't have to delete and
 re-place anything.
 
-12 V is meant to be *noticed*, not to cost you the chip: the red badge and the
-warning are the point, and they've done their job by the time you stop. Wiring a
-supply to the wrong rail is a mistake about the circuit — one you can see and
-fix — so it stays fixable. Find where 12 V is reaching a VCC net (the
-[probe tool](probing.md) is the quick way), correct it, and press **Run**.
+Over-voltage is meant to be *noticed*, not to cost you the chip: the red badge
+and the warning are the point, and they've done their job by the time you stop.
+Wiring a supply to the wrong rail is a mistake about the circuit — one you can
+see and fix — so it stays fixable. Find where the high supply is reaching a 74LS
+chip's VCC net (the [probe tool](probing.md) is the quick way), correct it, and
+press **Run**.
 
 ## Clock sources
 

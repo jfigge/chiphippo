@@ -24,8 +24,10 @@
 // renderer's SimController, which merely hands `tick` each clock's current
 // output level (`clockPhase`).
 //
-// Power: a chip is POWERED iff its VCC net carries a 5 V PSU `+` and its GND
-// net a PSU `−`; 3 V → underpowered (inert); 12 V → damaged (magic smoke).
+// Power: a chip is POWERED iff its VCC net carries a PSU `+` inside its
+// family's supply range and its GND net a PSU `−`; below the range it is
+// underpowered (inert), above it damaged (magic smoke). 74LS and every
+// family-less part: 5 V only; CD4000: 3–18 V (catalog/families.js).
 // Digital abstraction with drive strengths (resolve.js): supply beats chip
 // output; a clock source and a planted signal flag both drive at output
 // strength; Z contributes nothing.
@@ -60,6 +62,12 @@ import {
 } from "./chip-eval.js";
 import { resolveNet } from "./resolve.js";
 import { partDef } from "../catalog/index.js";
+import {
+  familyOf,
+  floatsUnknown,
+  lsFanoutOf,
+  supplyRange,
+} from "../catalog/families.js";
 import { partPinAddresses } from "../model/occupancy.js";
 import { formatAddress } from "../model/breadboard.js";
 
@@ -89,12 +97,12 @@ export const CHIP_STATUS = Object.freeze({
  * other floating) is ordinary `UNPOWERED`; calling that "backwards" would
  * accuse the user of a mistake they may not have made.
  */
-function powerStatus({ vccVolts, vccMinus, gndVolts, gnd, damaged }) {
+function powerStatus({ vccVolts, vccMinus, gndVolts, gnd, damaged, supply }) {
   if (damaged) return CHIP_STATUS.DAMAGED;
   if (vccMinus && gndVolts.length) return CHIP_STATUS.REVERSED;
-  if (vccVolts.includes(12)) return CHIP_STATUS.DAMAGED; // magic smoke
-  if (gnd && vccVolts.includes(5)) return CHIP_STATUS.OK;
-  if (gnd && vccVolts.includes(3)) return CHIP_STATUS.UNDERPOWERED;
+  if (vccVolts.some((v) => v > supply.max)) return CHIP_STATUS.DAMAGED; // smoke
+  if (gnd && vccVolts.some((v) => v >= supply.min)) return CHIP_STATUS.OK;
+  if (gnd && vccVolts.length) return CHIP_STATUS.UNDERPOWERED;
   return CHIP_STATUS.UNPOWERED;
 }
 
@@ -224,14 +232,19 @@ function buildContext(doc, netlist) {
     const gndPin = def.pins.find((p) => p.role === "gnd")?.n;
     const vccNet = pinNet.get(vccPin);
     const gndNet = pinNet.get(gndPin);
+    const vccVolts = (vccNet && supplyPlusVolts.get(vccNet)) || [];
     const status = powerStatus({
-      vccVolts: (vccNet && supplyPlusVolts.get(vccNet)) || [],
+      vccVolts,
       vccMinus: supplyMinus.has(vccNet),
       gndVolts: (gndNet && supplyPlusVolts.get(gndNet)) || [],
       gnd: supplyMinus.has(gndNet),
       damaged: comp.params?.damaged === true,
+      supply: supplyRange(def),
     });
-    chipStatus.set(comp.id, { status });
+    // The supply the chip SAW (the highest, should two meet on one net) —
+    // the number its underpowered/damaged message states.
+    const volts = vccVolts.length ? Math.max(...vccVolts) : null;
+    chipStatus.set(comp.id, { status, volts });
     const oscillator = isOscillator(def);
     chips.push({
       comp,
@@ -257,7 +270,103 @@ function buildContext(doc, netlist) {
     resistors,
     chips,
     chipStatus,
+    boundaryWarnings: boundaryWarnings(
+      chips,
+      chipStatus,
+      supplyPlusVolts,
+      resistors,
+    ),
   };
+}
+
+/**
+ * The family-boundary facts of a frozen topology (Feature 400), as warnings.
+ * The engine carries no voltages on a net, so none of these changes a level;
+ * each is a STRUCTURAL fact about which pins share a net, stated once per net
+ * with the fix. Only powered (`ok`) chips count — an unpowered part reads and
+ * drives nothing, so it is on no boundary.
+ *
+ *   marginal-high   a 74LS output feeds a CD4000 input and no pull-up to a
+ *                   supply `+` lifts the net. LS VOH is 2.7 V min / 3.4 V typ;
+ *                   a CD4000B input at VDD 5 V needs VIH ≥ 3.5 V. Marginal,
+ *                   usually works, out of spec — so a warning, never an X.
+ *   ls-fanout       one CD4000 output holds more 74LS inputs than it can sink
+ *                   (families.js `lsFanoutOf`: one, or a buffer's eight).
+ *   mixed-supply    one net joins chips powered from different voltages — a
+ *                   12 V output into a 5 V input, which needs a level shifter.
+ */
+function boundaryWarnings(chips, chipStatus, supplyPlusVolts, resistors) {
+  const byNet = new Map(); // netId → { lsOut, cmosIn, lsIn, cmosOut[], volts }
+  const at = (net) => {
+    if (!byNet.has(net)) {
+      byNet.set(net, {
+        lsOut: false,
+        cmosIn: false,
+        lsIn: 0,
+        cmosOut: [],
+        volts: new Set(),
+      });
+    }
+    return byNet.get(net);
+  };
+  for (const c of chips) {
+    if (c.status !== CHIP_STATUS.OK) continue;
+    const family = familyOf(c.def);
+    const volts = chipStatus.get(c.comp.id)?.volts ?? null;
+    const role = new Map(c.def.pins.map((p) => [p.n, p.role]));
+    for (const [pin, net] of c.pinNet) {
+      if (!net) continue;
+      const r = role.get(pin);
+      if (r !== "input" && r !== "output" && r !== "io") continue;
+      const entry = at(net);
+      if (volts != null) entry.volts.add(volts);
+      if (family === "74LS") {
+        if (r === "output" || r === "io") entry.lsOut = true;
+        if (r === "input" || r === "io") entry.lsIn += 1;
+      } else if (family === "CD4000") {
+        if (r === "input" || r === "io") entry.cmosIn = true;
+        if (r === "output" || r === "io") {
+          entry.cmosOut.push({
+            chip: c.comp.id,
+            pin,
+            fanout: lsFanoutOf(c.def),
+          });
+        }
+      }
+    }
+  }
+  // Nets a resistor ties to a supply `+` — a pull-up the LS output can lean on.
+  const pulledUp = new Set();
+  for (const r of resistors) {
+    if (supplyPlusVolts.has(r.netB) && r.netA) pulledUp.add(r.netA);
+    if (supplyPlusVolts.has(r.netA) && r.netB) pulledUp.add(r.netB);
+  }
+  const warnings = [];
+  for (const [net, e] of byNet) {
+    if (supplyPlusVolts.has(net)) continue; // a rail is not a signal
+    if (e.lsOut && e.cmosIn && !pulledUp.has(net)) {
+      warnings.push({ type: "marginal-high", net });
+    }
+    for (const out of e.cmosOut) {
+      if (e.lsIn > out.fanout) {
+        warnings.push({
+          type: "ls-fanout",
+          net,
+          chip: out.chip,
+          loads: e.lsIn,
+          max: out.fanout,
+        });
+      }
+    }
+    if (e.volts.size > 1) {
+      warnings.push({
+        type: "mixed-supply",
+        net,
+        volts: [...e.volts].sort((a, b) => a - b),
+      });
+    }
+  }
+  return warnings;
 }
 
 /** Every driver (clock + signal sources, and powered chip outputs) for a set
@@ -411,18 +520,46 @@ function solve(ctx, warmStart, state, clockPhase, images, signalLevels) {
   return { levels, iterations, settled, warnings, strong: lastStrong };
 }
 
+/**
+ * The CMOS inputs a settle left FLOATING (Feature 400): per powered CD4000
+ * chip, the input pins whose net resolved to `Z` — or that reach no net at
+ * all. A floating CMOS input reads unknown, which on its own is quiet (an LED
+ * on an X net is simply dark), so it is reported. Spare gates count: the
+ * datasheets say to tie every unused input.
+ */
+function floatingInputWarnings(ctx, levels) {
+  const warnings = [];
+  for (const c of ctx.chips) {
+    if (c.status !== CHIP_STATUS.OK || !floatsUnknown(c.def)) continue;
+    const pins = c.def.pins
+      .filter((p) => p.role === "input")
+      .filter((p) => {
+        const net = c.pinNet.get(p.n);
+        return !net || (levels.get(net) ?? Z) === Z;
+      })
+      .map((p) => p.n);
+    if (pins.length) {
+      warnings.push({ type: "floating-input", chip: c.comp.id, pins });
+    }
+  }
+  return warnings;
+}
+
 /** Assemble the public result: net levels, chip status, deduped warnings. */
 function assemble(ctx, solved, extra = {}) {
   const warnings = [...solved.warnings];
   for (const c of ctx.chips) {
+    const volts = ctx.chipStatus.get(c.comp.id)?.volts ?? null;
     if (c.status === CHIP_STATUS.UNDERPOWERED) {
-      warnings.push({ type: "underpowered", chip: c.comp.id });
+      warnings.push({ type: "underpowered", chip: c.comp.id, volts });
     } else if (c.status === CHIP_STATUS.REVERSED) {
       warnings.push({ type: "reversed", chip: c.comp.id });
     } else if (c.status === CHIP_STATUS.DAMAGED) {
-      warnings.push({ type: "damaged", chip: c.comp.id });
+      warnings.push({ type: "damaged", chip: c.comp.id, volts });
     }
   }
+  warnings.push(...floatingInputWarnings(ctx, solved.levels));
+  warnings.push(...ctx.boundaryWarnings);
   return {
     netLevels: solved.levels,
     strongLevels: solved.strong,

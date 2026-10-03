@@ -50,6 +50,7 @@ import { t } from "../i18n.js";
 import { tick } from "../sim/engine.js";
 import { H, L } from "../sim/levels.js";
 import { partDef } from "../catalog/index.js";
+import { supplyText } from "../catalog/families.js";
 import { CLOCK_HZ } from "../catalog/parts.js";
 import { restLevel } from "../model/signals.js";
 import {
@@ -974,6 +975,11 @@ export class SimController {
     return comp ? `${comp.ref} (${id})` : id;
   }
 
+  /** The supply a chip is rated for ("5 V", "3–18 V") — its family's. */
+  #rating(id) {
+    return supplyText(partDef(this.#doc.getComponent(id)?.ref));
+  }
+
   #report(warnings) {
     if (!this.#notifications) return;
     for (const w of warnings) {
@@ -1005,6 +1011,8 @@ export class SimController {
           title: t("sim.underpowered"),
           message: t("sim.underpoweredMessage", {
             chip: this.#refName(w.chip),
+            volts: w.volts ?? "?",
+            rating: this.#rating(w.chip),
           }),
         });
       } else if (w.type === "reversed") {
@@ -1019,7 +1027,53 @@ export class SimController {
           key: `smoke:${w.chip}`,
           variant: "danger",
           title: t("sim.damaged"),
-          message: t("sim.damagedMessage", { chip: this.#refName(w.chip) }),
+          message: t("sim.damagedMessage", {
+            chip: this.#refName(w.chip),
+            volts: w.volts ?? "?",
+            rating: this.#rating(w.chip),
+          }),
+        });
+      } else if (w.type === "floating-input") {
+        // Feature 400: a CMOS input nothing drives reads unknown — quiet on
+        // its own (an LED on an X net is just dark), so it is said.
+        this.#notify({
+          key: `floating:${w.chip}`,
+          variant: "warning",
+          title: t("sim.floatingInput"),
+          message: t("sim.floatingInputMessage", {
+            chip: this.#refName(w.chip),
+            pins: w.pins.join(", "),
+            count: w.pins.length,
+          }),
+        });
+      } else if (w.type === "marginal-high") {
+        this.#notify({
+          key: `marginal:${w.net}`,
+          variant: "warning",
+          title: t("sim.marginalHigh"),
+          message: t("sim.marginalHighMessage", { net: w.net }),
+        });
+      } else if (w.type === "ls-fanout") {
+        this.#notify({
+          key: `fanout:${w.net}`,
+          variant: "warning",
+          title: t("sim.lsFanout"),
+          message: t("sim.lsFanoutMessage", {
+            chip: this.#refName(w.chip),
+            net: w.net,
+            loads: w.loads,
+            count: w.max,
+          }),
+        });
+      } else if (w.type === "mixed-supply") {
+        this.#notify({
+          key: `mixed:${w.net}`,
+          variant: "warning",
+          title: t("sim.mixedSupply"),
+          message: t("sim.mixedSupplyMessage", {
+            net: w.net,
+            volts: w.volts.map((v) => `${v} V`).join(" / "),
+          }),
         });
       }
     }

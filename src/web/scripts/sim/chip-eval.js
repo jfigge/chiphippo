@@ -28,16 +28,38 @@
 // This is zero-delay, power-agnostic logic. VCC/GND checking, supply voltages,
 // the tick pipeline, and damage are the engine's concern (Feature 90/100).
 
-import { asInput, and, or, nand, nor, xor, inv, buf3, Z } from "./levels.js";
+import {
+  asInput,
+  asCmosInput,
+  and,
+  or,
+  nand,
+  nor,
+  xor,
+  xnor,
+  inv,
+  buf,
+  buf3,
+  Z,
+} from "./levels.js";
+import { floatsUnknown } from "../catalog/families.js";
 
-/** Gate fn name → n-ary primitive. INV/BUF3/COMB are handled specially. */
+/** Gate fn name → n-ary primitive. INV/BUF/BUF3/COMB are handled specially. */
 const GATES = Object.freeze({
   NAND: nand,
   NOR: nor,
   AND: and,
   OR: or,
   XOR: xor,
+  XNOR: xnor,
 });
+
+/**
+ * How this def reads a pin as an input: a TTL (or family-less) part pulls a
+ * floating pin HIGH, a CMOS part reads it as unknown (Feature 400). The one
+ * place the choice is made, for both the combinational and the stateful path.
+ */
+const readerFor = (def) => (floatsUnknown(def) ? asCmosInput : asInput);
 
 /** Does this def carry combinational (unit-based) behavior? */
 export function hasLogic(def) {
@@ -99,21 +121,25 @@ export function initialState(def) {
  *
  * @param {object} def - a catalog def with a `logic.units` block.
  * @param {Map<number, string>} pinLevels - pin number → level (H/L/Z/X). A
- *   missing pin is treated as floating (`Z` → reads HIGH via asInput).
+ *   missing pin is treated as floating (`Z` → reads HIGH via asInput, or
+ *   unknown via asCmosInput for a CMOS part).
  * @returns {Map<number, string>} output pin → driven level.
  */
 export function evaluate(def, pinLevels) {
   const out = new Map();
   if (!hasLogic(def)) return out;
 
-  // Every input pin is read through asInput, so a floating (Z) pin reads H
-  // and Z never reaches a gate primitive.
-  const level = (pin) => asInput(pinLevels.get(pin) ?? Z);
+  // Every input pin is read through the def's family reader, so a floating
+  // (Z) pin reads H (TTL) or X (CMOS) and Z never reaches a gate primitive.
+  const read = readerFor(def);
+  const level = (pin) => read(pinLevels.get(pin) ?? Z);
 
   for (const unit of def.logic.units) {
     let value;
     if (unit.fn === "INV") {
       value = inv(level(unit.inputs[0]));
+    } else if (unit.fn === "BUF") {
+      value = buf(level(unit.inputs[0]));
     } else if (unit.fn === "BUF3") {
       value = buf3(level(unit.inputs[0]), level(unit.enable));
     } else if (unit.fn === "COMB") {
@@ -134,8 +160,8 @@ export function evaluate(def, pinLevels) {
 
 /**
  * The input-pin levels a sequential/latch/memory chip reads, keyed by pin
- * number and already `asInput`'d (Z → H) so `step`/`outputs`/`read`/`write`
- * see only H/L/X. Bidirectional `io` pins (a memory's data bus, driven by the
+ * number and already read through the def's family reader (Z → H for TTL,
+ * Z → X for CMOS) so `step`/`outputs`/`read`/`write` see only H/L/X. Bidirectional `io` pins (a memory's data bus, driven by the
  * unit AND read back during a write) are included — the unit floats them while
  * writing, so their net level reflects the external driver.
  * @param {object} def
@@ -144,9 +170,10 @@ export function evaluate(def, pinLevels) {
  */
 export function inputLevels(def, pinLevels) {
   const ins = new Map();
+  const read = readerFor(def);
   for (const p of def.pins) {
     if (p.role === "input" || p.role === "io") {
-      ins.set(p.n, asInput(pinLevels.get(p.n) ?? Z));
+      ins.set(p.n, read(pinLevels.get(p.n) ?? Z));
     }
   }
   return ins;

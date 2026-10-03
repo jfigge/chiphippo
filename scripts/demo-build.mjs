@@ -61,21 +61,49 @@ const SEQUENTIAL_EDGES = 20;
  */
 export const PROGRAM_ONLY = new Set(["Memory", "Interface", "PROCESSOR"]);
 
-/** A group's demo file name: its own name, spaces closed up. */
-export const fileNameOf = (group) => `${group.replace(/\s+/g, "-")}.chiphippo`;
+/**
+ * A benchable group's KEY — its logic family and its catalog group,
+ * `74LS/NAND` — because the families never share a project (Feature 400): a
+ * CMOS NAND and a TTL NAND are wired to different rules (every CMOS input
+ * tied), and a project mixing them would invite exactly the mixed-family
+ * circuit the engine warns about. A benchable chip always has a family; the
+ * family-less parts (memory, peripherals, CPUs) are all PROGRAM_ONLY.
+ */
+export const groupKey = (family, group) => `${family}/${group}`;
+
+/** The family and group a key names. */
+export function splitGroupKey(key) {
+  const slash = key.indexOf("/");
+  return { family: key.slice(0, slash), group: key.slice(slash + 1) };
+}
+
+/** A group's demo file, relative to demos/: its family's folder, then the
+    group's own name with spaces closed up — `74LS/Shift-register.chiphippo`. */
+export const fileNameOf = (key) => {
+  const { family, group } = splitGroupKey(key);
+  return `${family}/${group.replace(/\s+/g, "-")}.chiphippo`;
+};
+
+/** A group project's NAME — what its window title says: `CD4000 NAND`. */
+export const projectNameOf = (key) => {
+  const { family, group } = splitGroupKey(key);
+  return `${family} ${group}`;
+};
 
 /**
- * The catalog's benchable groups → the chip ids in each, in catalog order.
- * This is the ONE definition of what the demos must cover: the group set, the
- * membership and the ordering all come from the catalog itself, so a part
- * added there shows up here as a missing spec rather than as a silent gap.
+ * The catalog's benchable groups → the chip ids in each, in catalog order,
+ * keyed by `groupKey` (family + group). This is the ONE definition of what the
+ * demos must cover: the group set, the membership and the ordering all come
+ * from the catalog itself, so a part added there shows up here as a missing
+ * spec rather than as a silent gap.
  */
 export function catalogGroups() {
   const groups = new Map();
   for (const def of CHIP_DEFS) {
     if (PROGRAM_ONLY.has(def.group)) continue;
-    if (!groups.has(def.group)) groups.set(def.group, []);
-    groups.get(def.group).push(def.id);
+    const key = groupKey(def.family ?? "other", def.group);
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key).push(def.id);
   }
   return groups;
 }
@@ -213,7 +241,7 @@ export function buildDemo(spec) {
 
   let display = null;
   if (spec.display) {
-    display = b.segmentDisplay({});
+    display = b.segmentDisplay({ ref: spec.display.ref });
     spec.display.segPins.forEach((pin, i) => {
       b.join(chip.holeOf(pin), display.holeOf(i + 1), "output");
     });
@@ -394,7 +422,11 @@ function checkTruthTable(built) {
   return checked;
 }
 
-/** Check a 74LS47-style display demo digit by digit. */
+/**
+ * Check a display demo digit by digit: the first four switched inputs are the
+ * BCD code (A first), and every other switch stays where the demo opens it —
+ * the CD4511B's LT, BL and LE among them.
+ */
 function checkDisplay(built) {
   const { spec } = built;
   const comp = built.doc.components.find((c) => c.id === built.display.id);
@@ -404,7 +436,8 @@ function checkDisplay(built) {
 
   for (const [digit, wanted] of Object.entries(spec.digits)) {
     const value = Number(digit);
-    const values = [0, 1, 2, 3].map((bit) => Boolean(value & (1 << bit)));
+    const values = built.defaults.slice();
+    for (const bit of [0, 1, 2, 3]) values[bit] = Boolean(value & (1 << bit));
     const { netlist, result } = settleWith(built, values);
     const on = def.segments
       .filter((seg) =>

@@ -20,8 +20,8 @@ scratch and begins driving live views from the result.
 Press **Stop** (same shortcut) to freeze the simulation and return to editing.
 Stopping clears all run-volatile state — net levels, chip health badges, any
 sequential state (counter values, shift-register contents, clock phase), and
-**12 V chip damage**, so a chip you burnt out is whole again the moment you
-stop. Nothing that happens during a run outlives it.
+**over-voltage chip damage**, so a chip you burnt out is whole again the moment
+you stop. Nothing that happens during a run outlives it.
 
 `Space` is disabled while a placement, wire, or bus tool is armed (it might
 want the key for its own gesture) or while a text field has focus — use
@@ -35,13 +35,22 @@ vocabulary (see [Probing & Net Names](probing.md)):
 
 - **`H`** — logic high, driven by a supply or a chip output.
 - **`L`** — logic low, driven the same way.
-- **`Z`** — floating: nothing is actively driving this point. Chip Hippo
-  models real 74xx TTL behavior here — **a floating input reads as HIGH**,
-  so an unconnected chip input doesn't just do nothing, it behaves as if
-  tied high.
-- **`X`** — a conflict: two drivers disagree on a net (two chip outputs
-  fighting, or opposing supplies wired together), or the net never settled
-  to a stable value at all (an oscillation — see below).
+- **`Z`** — floating: nothing is actively driving this point. What a chip
+  input makes of that depends on its **logic family**, exactly as on a real
+  bench:
+  - a **74LS (TTL)** input pulls itself up — **a floating input reads as
+    HIGH**, so an unconnected input doesn't just do nothing, it behaves as if
+    tied high;
+  - a **CD4000 (CMOS)** input has nothing to pull it anywhere — **a floating
+    input reads as unknown (`X`)**, so whatever it feeds is unknown too. A
+    gate whose other input already decides it still answers (a NOR with one
+    input HIGH is LOW whatever the floating one does), and a counter or
+    flip-flop whose reset or clock floats loses track of its count until a
+    clean reset. Tie every CMOS input — spare gates included.
+- **`X`** — unknown: two drivers disagree on a net (two chip outputs
+  fighting, or opposing supplies wired together), a floating CMOS input, or
+  the net never settled to a stable value at all (an oscillation — see
+  below).
 
 You don't need to know how the engine computes these to use the app, but
 recognizing `X` on a probe reading is the fastest way to spot a wiring
@@ -102,8 +111,8 @@ computed by the views themselves:
   resistor count. This is a physical rule, not a logical one — the levels
   alone would happily light it.
 - **Chips** show a small health badge the moment they're powered: normal
-  chips show nothing extra, an **underpowered** chip (running at 3 V) gets
-  an amber corner dot, and a chip killed by 12 V shows **damaged** — a red X
+  chips show nothing extra, an **underpowered** chip (a 74LS part at 3 V) gets
+  an amber corner dot, and a chip killed by over-voltage shows **damaged** — a red X
   with a smoke cue. Hover the badge for the exact reason (also unpowered or
   reversed VCC/GND). A damaged chip stays dead for the rest of that run, and
   **Stop** restores it — see [Power & Clock Sources](power-and-clocks.md).
@@ -149,9 +158,28 @@ Two things can go wrong:
 Either way, the affected nets read `X` on the probe and in the logic
 analyzer, which is your cue to go find the wiring mistake causing it.
 
+## Mixing logic families
+
+A 74LS (TTL) chip and a CD4000 (CMOS) chip can share a board, and at 5 V they
+can share signals — but the two were not designed to the same voltages, and
+Chip Hippo says so where it matters. None of these changes a level; each is a
+warning naming the net, with the fix:
+
+- **A floating CMOS input** — a CD4000 input nothing drives. Spare gates count:
+  their datasheets say to tie every unused input.
+- **A 74LS output into a CMOS input** — a 74LS HIGH is about 3.4 V, below the
+  3.5 V a CD4000 input needs at 5 V. It usually works on a bench, which is why
+  it is marginal rather than wrong; a pull-up resistor from the net to VCC is
+  the textbook fix, and clears the warning.
+- **Too many TTL loads** — a standard CD4000 output can hold only one 74LS
+  input LOW. The CD4049UB and CD4050B buffers exist for exactly this: one of
+  their outputs drives eight.
+- **Two supplies on one net** — chips on different supply voltages joined by
+  a signal, which needs a level shifter.
+
 ---
 
 Next: [Power & Clock Sources](power-and-clocks.md) for supply voltages, the
-12 V damage rule, and clock bricks in depth, or
+over-voltage damage rule, and clock bricks in depth, or
 [Probing & Net Names](probing.md) to read exactly what's happening on any
 net.

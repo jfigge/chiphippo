@@ -145,14 +145,20 @@ LED bar for the sum</p>
 <p>a 4-bit counter driven by a clock, showing its count on an LED bar</p>
 </blockquote>
 <p>Be specific about the <strong>inputs and the outputs</strong> — what you want to set, and
-what you want to see. The parts themselves you can leave to it: the model is
+what you want to see. Say which <strong>logic family</strong> you want if it matters:
+mention CD4000, 4000-series or CMOS and the design uses only CD4000 parts;
+mention TTL or 74LS and it uses only 74LS parts; say neither and it uses 74LS.
+It won&#39;t mix the two unless you ask, and if you do it adds the pull-up a 74LS
+output needs to drive a CMOS input. The parts themselves you can leave to it: the model is
 told, on every request, exactly which chips are in Chip Hippo&#39;s catalog and
 exactly what every pin on each of them is called, so it has no reason to
 invent a part that doesn&#39;t exist.</p>
 <p>You don&#39;t need to mention power, and you shouldn&#39;t. Every chip declares its
 own VCC and GND pins, so the compiler wires power itself, plants a 5 V supply,
 and bridges the breadboard&#39;s two power rails. You also don&#39;t need to ask for a
-series resistor on an LED — see below.</p>
+series resistor on an LED — see below — or for the spare gates of a CD4000
+chip to be tied off: a floating CMOS input reads neither HIGH nor LOW, so the
+compiler ties every input of an unused CMOS gate to GND itself.</p>
 <p>While it&#39;s working the panel shows progress; the same button becomes a
 <strong>cancel</strong>, so a long or expensive request is always interruptible.</p>
 <h2 id="what-happens-to-the-answer">What happens to the answer</h2>
@@ -178,7 +184,8 @@ no shorts, no oscillation, and no LED burning out.</li>
 <li><strong>Nothing is left floating.</strong> A signal net nothing drives is reported
 rather than shipped — and so is an input the design uses but never
 connects, such as a decoder&#39;s enable, which would otherwise quietly read
-HIGH. (The spare gates of a chip it only half uses may float.)</li>
+HIGH. (The spare gates of a TTL chip it only half uses may float; a CMOS
+chip&#39;s spare gates are tied off by the compiler.)</li>
 <li><strong>Its own tests pass.</strong> This is the interesting one. The design is asked to
 state its own acceptance tests — &quot;with these switches set this way, after
 this many clock edges, these LEDs should read this&quot; — and Chip Hippo
@@ -251,13 +258,18 @@ nowhere, or one whose VCC net never reaches a rail.</li>
 <li><strong>An input nothing drives.</strong> The most convincing lie a real circuit tells: a
 floating TTL input reads HIGH, so the chip <em>works</em>, just not as designed.
 Only inputs that are actually in use are reported — an unused gate on a quad
-package is idle, not broken.</li>
+TTL package is idle, not broken. A CMOS input is different: it reads neither
+HIGH nor LOW, so every floating CD4000 input is reported, spare gates
+included.</li>
 <li><strong>A part switched off.</strong> An active-low output enable left unwired reads HIGH,
 so the chip drives nothing at all while its wiring looks flawless.</li>
 <li><strong>Two outputs on one net</strong>, whatever they happen to be driving today.</li>
 <li><strong>Shorts, driver conflicts, and a circuit that won&#39;t settle</strong>, straight from
 the engine.</li>
-<li><strong>A chip at 3 V or 12 V</strong>, and <strong>an LED with nothing limiting its current</strong>.</li>
+<li><strong>A chip outside its supply range</strong> (a 74LS chip at 3 V or above 5 V), and
+<strong>an LED with nothing limiting its current</strong>.</li>
+<li><strong>A family boundary</strong> — a 74LS output driving a CMOS input with no pull-up,
+too many 74LS inputs on one CMOS output, or two supply voltages on one net.</li>
 </ul>
 <p>The findings appear in the transcript immediately, before the request even goes
 out — so if the connection fails you still have the app&#39;s own answer.</p>

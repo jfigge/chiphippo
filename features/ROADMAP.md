@@ -1,10 +1,10 @@
 # Chip Hippo — Implementation Roadmap
 
-**Chip Hippo** is a cross-platform desktop app for designing and simulating **74xx TTL
-logic circuits on virtual breadboards**. The main window is an **infinitely pannable,
-zoomable desk**. The user places solderless breadboards on the desk — Full-size
-(830 tie points), Half-size (400), Tiny (170) — then populates them with 74xx-family
-DIP chips, wires, switches, LEDs, and power sources (3 V / 5 V / 12 V). Every tie
+**Chip Hippo** is a cross-platform desktop app for designing and simulating **74LS TTL
+and CD4000 CMOS logic circuits on virtual breadboards**. The main window is an
+**infinitely pannable, zoomable desk**. The user places solderless breadboards on the
+desk — Full-size (830 tie points), Half-size (400), Tiny (170) — then populates them
+with DIP chips, wires, switches, LEDs, and power sources (3 / 5 / 9 / 12 / 15 V). Every tie
 point, rail hole, and component terminal is **individually addressable**, so chip pins
 and wire ends bind to real holes. A **simulation engine** emulates each chip's logic:
 it traces electricity from the power sources, resolves every electrical net, computes
@@ -86,6 +86,7 @@ Two outcomes shape stages 120–210, beyond "more parts":
 | 320 | [AI desk review](done/320-ai-desk-review.md) | A **Review** mode in the AI panel: it reads the desktop you already have, runs the app's own engine-backed checks over it (floating inputs on gates that are in use, a tri-state part switched off, two outputs on a net, shorts, oscillation, an LED with nothing limiting it), and asks the model to explain what they mean. Chip Hippo finds the faults and the model explains them — never the other way round. It changes nothing, so unlike Build it is not locked out while the simulation runs | 70, 90, 140, 260 |
 | 370 | [External signals](done/370-external-signals.md) | Bench **stimulus buttons** pinned down the right edge of the viewport, each plugged into the circuit by a coloured **flag** whose point plants in any breadboard hole — no board space, no jumper wire. A placed signal always drives its net (at chip-output strength, so a fight with a real output reports a conflict for free); **momentary** asserts the opposite of its resting level while held, **toggle** latches. **`1`–`7` press them while the circuit runs, several at once** — the thing one mouse and a push button could never do | 50, 70, 90, 100, 200, 210, 240 |
 | 380 | [Arduino serial integration](chiphippo-serial-integration-spec.md) | **Output** and **Input** elements carry values between the running circuit and a real Arduino over USB: an Output samples its pins on its trigger's edge and the circuit STALLS until the sketch's handler has returned, an Input's value lands at the next settle boundary (live) or on its own trigger's edge. Named connections in Settings ▸ Integration (the port stays on the machine; the project carries the rest), a framed ACK/NAK/retry link with per-connection log windows and TX/RX/LG lamps, and a **Generate** button writing each board's `ChipHippo.h` with a design hash that flags a stale sketch | 70, 90, 100, 200, 240, 250, 370 |
+| 400 | [CD4000 CMOS family](done/400-cd4000-cmos-family.md) | A second logic family beside 74LS: 25 CD4000B parts (gates, Schmitt triggers, buffers, the 4013/4017/4040), each pinout read off its TI datasheet. Family facts are catalog data — supply envelope (74LS 4.75–5.25 V, CD4000 3–18 V; the PSU gains 9 and 15 V), a floating CMOS input reading **X** (with X-aware sequential units), and engine warnings for floating inputs, 74LS→CMOS marginal HIGHs, LS fan-out and mixed supplies. A **Chip family** switch in Settings ▸ Data Sheets shows 74LS, CD4000 or both in the tray; the AI builder picks the family the request names and ties spare CMOS inputs itself; every part gets a proven demo bench (`demos/<family>/`) and a datasheet download | 80, 90, 100, 260, 270 |
 
 ## Backlog (unwritten — author a plan file when promoted)
 

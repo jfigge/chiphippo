@@ -224,6 +224,168 @@ function jkFlipFlop(ref, title, map, extra = "") {
   };
 }
 
+// ── The CD4000 CMOS family (Feature 400) ─────────────────────────────────
+//
+// A CMOS input left floating reads UNKNOWN (and the engine says so), so every
+// CD4000 bench ties every input it does not switch — spare gates included,
+// exactly as the datasheets ask. The switches are labelled S1…S4 rather than
+// A…D because a CD4000 part already names its own pins A…M, and "switch A
+// feeds pins A and H" is a sentence nobody needs.
+
+/** The quad 2-input layout most CD4000 gates share: (1,2)→3, (5,6)→4,
+    (8,9)→10, (12,13)→11 — the 4011's pinout, outputs J K L M. */
+const CMOS_QUAD = {
+  in: [
+    [1, 2],
+    [5, 6],
+    [8, 9],
+    [12, 13],
+  ],
+  out: [3, 4, 10, 11],
+};
+
+/**
+ * A CD4000 quad 2-input gate in the same RING the 74LS quads use — J takes
+ * S1·S2, K S2·S3, L S3·S4, M S4·S1 — so every output says something different.
+ */
+function cmosQuad(ref, title, op, sign, blurb) {
+  const ring = [
+    [CMOS_QUAD.in[0][0], CMOS_QUAD.in[3][1]], // S1
+    [CMOS_QUAD.in[0][1], CMOS_QUAD.in[1][0]], // S2
+    [CMOS_QUAD.in[1][1], CMOS_QUAD.in[2][0]], // S3
+    [CMOS_QUAD.in[2][1], CMOS_QUAD.in[3][0]], // S4
+  ];
+  return {
+    ref,
+    title,
+    note:
+      `${ref} — ${title} (CMOS)\n` +
+      "Each gate gets a different pair:\n" +
+      `J = S1${sign}S2   K = S2${sign}S3\n` +
+      `L = S3${sign}S4   M = S4${sign}S1\n` +
+      blurb,
+    inputs: ["S1", "S2", "S3", "S4"].map((label, i) => ({
+      label,
+      pins: ring[i],
+    })),
+    defaults: [true, false, true, true],
+    leds: CMOS_QUAD.out.map((pin, i) => ({ pin, label: "JKLM"[i] })),
+    expect: ([a, b, c, d]) => [op(a, b), op(b, c), op(c, d), op(d, a)],
+  };
+}
+
+/**
+ * A CD4000 dual 4-input gate (J = f(2,3,4,5), K = f(9,10,11,12)): J takes all
+ * four switches; K takes S1–S3 with its fourth input TIED to the level that
+ * cannot decide it (HIGH for an AND/NAND, LOW for an OR/NOR) — how a wide gate
+ * is used narrow, and the tie a CMOS input must never be left without.
+ */
+function cmosDual4(ref, title, op, sign, blurb) {
+  // The tie that cannot decide the gate: HIGH when a HIGH fourth input leaves
+  // every three-input answer as it was (AND/NAND), else LOW (OR/NOR).
+  const tieHigh = [true, false].every((x) => op(x, x, x, true) === op(x, x, x));
+  return {
+    ref,
+    title,
+    note:
+      `${ref} — ${title} (CMOS)\n` +
+      `J = S1${sign}S2${sign}S3${sign}S4. K takes S1–S3 with\n` +
+      `its fourth input tied ${tieHigh ? "HIGH" : "LOW"} — how a wide gate\n` +
+      "is used narrow. A CMOS input must never\n" +
+      "be left floating.\n" +
+      blurb,
+    inputs: [
+      { label: "S1", pins: [2, 9] },
+      { label: "S2", pins: [3, 10] },
+      { label: "S3", pins: [4, 11] },
+      { label: "S4", pins: [5] },
+    ],
+    defaults: [true, true, true, false],
+    ties: [{ pins: [12], rail: tieHigh ? "+" : "-" }],
+    leds: [
+      { pin: 1, label: "J" },
+      { pin: 13, label: "K" },
+    ],
+    expect: ([a, b, c, d]) => [op(a, b, c, d), op(a, b, c, tieHigh)],
+  };
+}
+
+/**
+ * A CD4000 triple 3-input gate: J = f(1,2,8), K = f(3,4,5), L = f(11,12,13),
+ * fed J ← S1 S2 S3, K ← S2 S3 S4, L ← S3 S4 S1.
+ */
+function cmosTriple3(ref, title, op, sign, blurb) {
+  return {
+    ref,
+    title,
+    note:
+      `${ref} — ${title} (CMOS)\n` +
+      `J = S1${sign}S2${sign}S3   K = S2${sign}S3${sign}S4\n` +
+      `L = S3${sign}S4${sign}S1\n` +
+      blurb,
+    inputs: [
+      { label: "S1", pins: [1, 13] },
+      { label: "S2", pins: [2, 3] },
+      { label: "S3", pins: [8, 4, 11] },
+      { label: "S4", pins: [5, 12] },
+    ],
+    defaults: [true, false, true, true],
+    leds: [
+      { pin: 9, label: "J" },
+      { pin: 6, label: "K" },
+      { pin: 10, label: "L" },
+    ],
+    expect: ([a, b, c, d]) => [op(a, b, c), op(b, c, d), op(c, d, a)],
+  };
+}
+
+/**
+ * The 8-input gates with both outputs (4068/4078): every input from one DIP
+ * switch bank (its resistor network holds an open switch LOW, so no input
+ * ever floats); J (13) is the complemented output, K (1) the true one.
+ */
+function cmosOctal(ref, title, op, defaults, note) {
+  return {
+    ref,
+    title,
+    note,
+    bank: {
+      labels: ["A", "B", "C", "D", "E", "F", "G", "H"],
+      pins: [2, 3, 4, 5, 9, 10, 11, 12],
+    },
+    defaults,
+    leds: [
+      { pin: 13, label: "J" },
+      { pin: 1, label: "K", color: "green" },
+    ],
+    expect: (v) => [!op(...v), op(...v)],
+  };
+}
+
+/** The 14-pin hex inverters (4069UB/40106B): the 7404's pinout. */
+const CMOS_HEX14 = { in: [1, 3, 5, 9, 11, 13], out: [2, 4, 6, 8, 10, 12] };
+/** The 16-pin hex buffers (4049UB/4050B): outputs beside their inputs. */
+const CMOS_HEX16 = { in: [3, 5, 7, 9, 11, 14], out: [2, 4, 6, 10, 12, 15] };
+
+/**
+ * A CD4000 hex inverter or buffer: S1 drives elements 1–3, S2 elements 4–6,
+ * so the row of read-outs splits down the middle and both levels show.
+ */
+function cmosHex(ref, title, map, invert, note) {
+  return {
+    ref,
+    title,
+    note,
+    inputs: [
+      { label: "S1", pins: map.in.slice(0, 3) },
+      { label: "S2", pins: map.in.slice(3) },
+    ],
+    defaults: [true, false],
+    leds: map.out.map((pin, i) => ({ pin, label: "GHIJKL"[i] })),
+    expect: ([a, b]) => [a, a, a, b, b, b].map((v) => (invert ? !v : v)),
+  };
+}
+
 /** Two eight-bit patterns, used wherever a demo loads a word and changes it. */
 const PATTERN_A = [true, false, true, true, false, false, true, false];
 const PATTERN_B = [false, true, false, false, true, true, false, true];
@@ -1408,6 +1570,563 @@ export const DEMOS = Object.freeze([
     ]),
     expect: (v) =>
       bitsOf(ALU_LOGIC[word(v, 8, 4)](word(v, 0, 4), word(v, 4, 4)) & 0xf, 4),
+  },
+
+  // ── The CD4000 CMOS family (Feature 400) ───────────────────────────────
+  // NOR
+  cmosQuad("CD4001B", "Quad 2-input NOR", (...v) => !or(...v), "+", "An output is HIGH only with BOTH inputs LOW."), // prettier-ignore
+  cmosDual4("CD4002B", "Dual 4-input NOR", (...v) => !or(...v), "+", "A NOR output is HIGH only when every\ninput is LOW."), // prettier-ignore
+  cmosTriple3("CD4025B", "Triple 3-input NOR", (...v) => !or(...v), "+", "A NOR output is HIGH only while every\ninput is LOW."), // prettier-ignore
+  cmosOctal(
+    "CD4078B",
+    "8-input NOR/OR gate",
+    or,
+    [false, false, false, false, false, false, false, true],
+    "CD4078B — 8-input NOR/OR gate (CMOS)\nOne gate, both outputs: J is the NOR, K\nthe OR. Every input comes from the DIP\nswitch bank, held LOW by its resistor\nnetwork — open H and J goes HIGH.",
+  ),
+  // NAND
+  cmosQuad("CD4011B", "Quad 2-input NAND", (...v) => !and(...v), "·", "An output is LOW only with BOTH inputs HIGH."), // prettier-ignore
+  cmosDual4("CD4012B", "Dual 4-input NAND", (...v) => !and(...v), "·", "A NAND output is LOW only when every\ninput is HIGH."), // prettier-ignore
+  cmosTriple3("CD4023B", "Triple 3-input NAND", (...v) => !and(...v), "·", "A NAND output is LOW only when every\ninput is HIGH."), // prettier-ignore
+  cmosOctal(
+    "CD4068B",
+    "8-input NAND/AND gate",
+    and,
+    [true, true, true, true, true, true, true, false],
+    "CD4068B — 8-input NAND/AND gate (CMOS)\nOne gate, both outputs: J is the NAND, K\nthe AND. Every input comes from the DIP\nswitch bank — close H, the last open\nswitch, and J goes LOW.",
+  ),
+  cmosQuad(
+    "CD4093B",
+    "Quad 2-input NAND Schmitt trigger",
+    (...v) => !and(...v),
+    "·",
+    "The Schmitt-trigger hysteresis is an\nANALOG property: to the logic sim this\nis a plain quad NAND.",
+  ),
+  // AND
+  cmosQuad("CD4081B", "Quad 2-input AND", and, "·", "An output is HIGH only with BOTH inputs HIGH."), // prettier-ignore
+  cmosDual4("CD4082B", "Dual 4-input AND", and, "·", "An AND output is HIGH only when every\ninput is HIGH."), // prettier-ignore
+  cmosTriple3("CD4073B", "Triple 3-input AND", and, "·", "An output is HIGH only with all three\ninputs HIGH."), // prettier-ignore
+  // OR
+  cmosQuad("CD4071B", "Quad 2-input OR", or, "+", "An output is HIGH with EITHER input HIGH."), // prettier-ignore
+  cmosDual4("CD4072B", "Dual 4-input OR", or, "+", "An OR output is HIGH with ANY input\nHIGH."), // prettier-ignore
+  cmosTriple3("CD4075B", "Triple 3-input OR", or, "+", "An output is HIGH with ANY of its three\ninputs HIGH."), // prettier-ignore
+  // XOR
+  cmosQuad("CD4030B", "Quad exclusive-OR", (x, y) => x !== y, "⊕", "An output is HIGH while its inputs\nDIFFER. The original part; the CD4070B\nis its pin-for-pin successor."), // prettier-ignore
+  cmosQuad("CD4070B", "Quad exclusive-OR", (x, y) => x !== y, "⊕", "An output is HIGH while its inputs DIFFER."), // prettier-ignore
+  cmosQuad("CD4077B", "Quad exclusive-NOR", (x, y) => x === y, "⊙", "An output is HIGH while its inputs AGREE."), // prettier-ignore
+  // Inverter
+  cmosHex(
+    "CD4069UB",
+    "Hex inverter",
+    CMOS_HEX14,
+    true,
+    "CD4069UB — Hex inverter (CMOS)\nS1 drives inverters 1–3, S2 inverters\n4–6. The UB is unbuffered: one stage per\ninverter — the part RC and crystal\noscillators are built around.",
+  ),
+  cmosHex(
+    "CD40106B",
+    "Hex Schmitt-trigger inverter",
+    CMOS_HEX14,
+    true,
+    "CD40106B — Hex Schmitt inverter (CMOS)\nS1 drives inverters 1–3, S2 inverters\n4–6. The hysteresis is an ANALOG\nproperty — and its classic RC oscillator\nneeds a capacitor the desk does not have.",
+  ),
+  cmosHex(
+    "CD4049UB",
+    "Hex inverting buffer/converter",
+    CMOS_HEX16,
+    true,
+    "CD4049UB — Hex inverting buffer (CMOS)\nS1 drives buffers 1–3, S2 buffers 4–6.\nNote the power pins: VCC is pin 1 and\nVSS pin 8, NOT the corners, and pins 13\nand 16 are not connected.",
+  ),
+  // Buffer
+  cmosHex(
+    "CD4050B",
+    "Hex non-inverting buffer/converter",
+    CMOS_HEX16,
+    false,
+    "CD4050B — Hex buffer (CMOS)\nS1 drives buffers 1–3, S2 buffers 4–6.\nEach output can sink enough to drive\neight 74LS inputs. VCC is pin 1, VSS\npin 8 — not the corners.",
+  ),
+  // Flip-flop
+  {
+    ref: "CD4013B",
+    title: "Dual D flip-flop, set & reset",
+    note:
+      "CD4013B — Dual D flip-flop (CMOS)\n" +
+      "FF1 samples D on every RISING clock edge.\n" +
+      "Its SET and RESET are active HIGH — the\n" +
+      "opposite of the 74LS74 — so they rest\n" +
+      "LOW. FF2's Q̄ feeds its own D: it toggles.",
+    inputs: [
+      { label: "D", pins: [5] },
+      { label: "SET", pins: [6] },
+      { label: "RESET", pins: [4] },
+    ],
+    defaults: [true, false, false],
+    ties: [{ pins: [8, 10], rail: "-" }], // FF2's SET and RESET: inactive
+    links: [[12, 9]], // Q̄2 → D2: the toggle connection
+    clock: { hz: 1, pins: [3, 11] },
+    leds: [
+      { pin: 1, label: "Q1", color: "green" },
+      { pin: 2, label: "Q̄1" },
+      { pin: 13, label: "Q2", color: "green" },
+      { pin: 12, label: "Q̄2" },
+    ],
+    sequential: {
+      // D held HIGH from a cleared start: FF1 follows it, FF2 toggles.
+      expect: (edges) => {
+        const q2 = edges % 2 === 1;
+        return [true, false, q2, !q2];
+      },
+    },
+  },
+  {
+    ref: "CD4027B",
+    title: "Dual JK flip-flop, set & reset",
+    note:
+      "CD4027B — Dual JK flip-flop (CMOS)\n" +
+      "FF1 is strapped J=K=1, so it TOGGLES on\n" +
+      "every RISING clock edge. FF2 takes J and\n" +
+      "K from switches. Its SET and RESET are\n" +
+      "active HIGH: raise BOTH and Q2 and Q̄2\n" +
+      "light together — the sheet's wiring trap.",
+    inputs: [
+      { label: "J", pins: [6] },
+      { label: "K", pins: [5] },
+      { label: "SET", pins: [7] },
+      { label: "RESET", pins: [4] },
+    ],
+    defaults: [true, false, false, false],
+    ties: [
+      { pins: [10, 11], rail: "+" }, // FF1: J=K=1, toggle
+      { pins: [9, 12], rail: "-" }, // FF1's SET and RESET: inactive
+    ],
+    clock: { hz: 1, pins: [13, 3] },
+    leds: [
+      { pin: 15, label: "Q1", color: "green" },
+      { pin: 14, label: "Q̄1" },
+      { pin: 1, label: "Q2", color: "green" },
+      { pin: 2, label: "Q̄2" },
+    ],
+    sequential: {
+      edges: 10,
+      phases: [
+        { untilEdge: 3, inputs: { J: true, K: false } }, // sets
+        { untilEdge: 5, inputs: { J: true, K: true } }, // toggles
+        { untilEdge: 7, inputs: { J: false, K: true } }, // resets
+        { untilEdge: 8, inputs: { J: false, K: false, SET: true, RESET: true } }, // prettier-ignore
+        { untilEdge: Infinity, inputs: { J: false, K: false, RESET: true } }, // cleared
+      ],
+      // FF2 by hand from the sheet's functional-modes table, edge by edge
+      // (index 0 is power-up). "both" is SET=RESET=1: Q and Q̄ both HIGH.
+      expect: (edges) => {
+        const q1 = edges % 2 === 1; // FF1 toggles on every rising edge
+        const ff2 = [0, 1, 1, 1, 0, 1, 0, 0, "both", 0, 0][edges];
+        const both = ff2 === "both";
+        return [q1, !q1, both || ff2 === 1, both || ff2 === 0];
+      },
+    },
+  },
+  // Counter
+  {
+    ref: "CD4017B",
+    title: "Decade counter, 10 decoded outputs",
+    note:
+      "CD4017B — Decade counter (CMOS)\n" +
+      "One of the ten outputs is HIGH at a time,\n" +
+      "stepping 0 → 9 on each rising clock.\n" +
+      "INHIBIT HIGH holds the count; RESET HIGH\n" +
+      "returns it to 0. CARRY is HIGH for 0–4.",
+    inputs: [
+      { label: "INHIBIT", pins: [13] },
+      { label: "RESET", pins: [15] },
+    ],
+    defaults: [false, false],
+    clock: { hz: 2, pins: [14] },
+    leds: [
+      ...[3, 2, 4, 7, 10, 1, 5, 6, 9, 11].map((pin, i) => ({
+        pin,
+        label: String(i),
+        color: "green",
+      })),
+      { pin: 12, label: "CO", color: "yellow" },
+    ],
+    sequential: {
+      expect: (edges) => {
+        const n = edges % 10;
+        return [...Array.from({ length: 10 }, (_, i) => i === n), n < 5];
+      },
+    },
+  },
+  {
+    ref: "CD4022B",
+    title: "Octal counter, 8 decoded outputs",
+    note:
+      "CD4022B — Octal counter (CMOS)\n" +
+      "The 4017's divide-by-8 sibling: one of the\n" +
+      "eight outputs is HIGH at a time, stepping\n" +
+      "0 → 7 on each rising clock. INHIBIT HIGH\n" +
+      "holds the count; RESET HIGH returns it to\n" +
+      "0. CARRY is HIGH for 0–3.",
+    inputs: [
+      { label: "INHIBIT", pins: [13] },
+      { label: "RESET", pins: [15] },
+    ],
+    defaults: [false, false],
+    clock: { hz: 2, pins: [14] },
+    leds: [
+      ...[2, 1, 3, 7, 11, 4, 5, 10].map((pin, i) => ({
+        pin,
+        label: String(i),
+        color: "green",
+      })),
+      { pin: 12, label: "CO", color: "yellow" },
+    ],
+    sequential: {
+      expect: (edges) => {
+        const n = edges % 8;
+        return [...Array.from({ length: 8 }, (_, i) => i === n), n < 4];
+      },
+    },
+  },
+  {
+    ref: "CD4020B",
+    title: "14-stage binary ripple counter",
+    note:
+      "CD4020B — 14-stage binary counter (CMOS)\n" +
+      "Fourteen stages, but Q2 and Q3 have no pin:\n" +
+      "the lamps run Q1, then Q4 (÷16) up to Q14.\n" +
+      "It counts on the FALLING edge of φ; RESET\n" +
+      "HIGH clears it.",
+    inputs: [{ label: "RESET", pins: [11] }],
+    defaults: [false],
+    clock: { hz: 5, pins: [10] },
+    leds: [
+      { pin: 9, label: "Q1", color: "green" },
+      ...[7, 5, 4, 6, 13, 12, 14, 15, 1, 2, 3].map((pin, i) => ({
+        pin,
+        label: `Q${i + 4}`,
+        color: "green",
+      })),
+    ],
+    sequential: {
+      // A falling edge lands between the rising ones; stages 2 and 3 count
+      // unseen.
+      expect: (edges) => {
+        const bits = bitsOf((edges - 1) % 16384, 14);
+        return [bits[0], ...bits.slice(3)];
+      },
+    },
+  },
+  {
+    ref: "CD4024B",
+    title: "7-stage binary ripple counter",
+    note:
+      "CD4024B — 7-stage binary counter (CMOS)\n" +
+      "The short one, in a 14-pin package: Q1\n" +
+      "halves the clock, Q7 divides it by 128. It\n" +
+      "counts on the FALLING edge of φ; RESET\n" +
+      "HIGH clears it.",
+    inputs: [{ label: "RESET", pins: [2] }],
+    defaults: [false],
+    clock: { hz: 5, pins: [1] },
+    leds: [12, 11, 9, 6, 5, 4, 3].map((pin, i) => ({
+      pin,
+      label: `Q${i + 1}`,
+      color: "green",
+    })),
+    sequential: {
+      expect: (edges) => bitsOf((edges - 1) % 128, 7),
+    },
+  },
+  {
+    ref: "CD4040B",
+    title: "12-stage binary ripple counter",
+    note:
+      "CD4040B — 12-stage binary counter (CMOS)\n" +
+      "Q1 halves the clock, Q2 quarters it, and\n" +
+      "so on to Q12 (÷4096). It counts on the\n" +
+      "FALLING edge of φ; R HIGH clears it.",
+    inputs: [{ label: "R", pins: [11] }],
+    defaults: [false],
+    clock: { hz: 5, pins: [10] },
+    leds: [9, 7, 6, 5, 3, 2, 4, 13, 12, 14, 15, 1].map((pin, i) => ({
+      pin,
+      label: `Q${i + 1}`,
+      color: "green",
+    })),
+    sequential: {
+      // A falling edge lands between the rising ones.
+      expect: (edges) => bitsOf((edges - 1) % 4096, 12),
+    },
+  },
+  {
+    ref: "CD4029B",
+    title: "Presettable up/down counter, binary or decade",
+    note:
+      "CD4029B — Up/down counter (CMOS)\n" +
+      "UP/DN picks the direction, BIN/DEC binary\n" +
+      "(0–15) or decade (0–9). CARRY lights at the\n" +
+      "end of the count — 15 or 9 going up, 0 going\n" +
+      "down. PRESET loads the JAM pins, tied to 7.\n" +
+      "CARRY IN is tied LOW: always counting.",
+    inputs: [
+      { label: "UP/DN", pins: [10] },
+      { label: "BIN/DEC", pins: [9] },
+      { label: "PRESET", pins: [1] },
+    ],
+    defaults: [true, true, false], // binary, counting up
+    ties: [
+      { pins: [5], rail: "-" }, // CARRY IN: counting enabled
+      { pins: [4, 12, 13], rail: "+" }, // JAM 1–3…
+      { pins: [3], rail: "-" }, // …and JAM 4 LOW: the preset is 7
+    ],
+    clock: { hz: 2, pins: [15] },
+    leds: [
+      { pin: 6, label: "Q1", color: "green" },
+      { pin: 11, label: "Q2", color: "green" },
+      { pin: 14, label: "Q3", color: "green" },
+      { pin: 2, label: "Q4", color: "green" },
+      { pin: 7, label: "CO", activeLow: true, color: "yellow" },
+    ],
+    sequential: {
+      edges: 24,
+      phases: [
+        { untilEdge: 6, inputs: { "UP/DN": true, "BIN/DEC": true } },
+        { untilEdge: 11, inputs: { "UP/DN": true, "BIN/DEC": false } },
+        { untilEdge: 14, inputs: { "UP/DN": false, "BIN/DEC": false } },
+        { untilEdge: 15, inputs: { "UP/DN": true, "BIN/DEC": true, PRESET: true } }, // prettier-ignore
+        { untilEdge: Infinity, inputs: { "UP/DN": true, "BIN/DEC": true } },
+      ],
+      // The count after each edge, by hand: binary up to 6, decade up through
+      // 9 and over, decade down through 0 and over, jammed to 7 (no count
+      // while PRESET is HIGH), then binary up to 15 and over. CARRY lights
+      // at 9 (decade, up), 0 (down) and 15 (binary, up).
+      expect: (edges) => {
+        const counts = [
+          0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 0, 9, 8, 7, 8, 9, 10, 11, 12, 13,
+          14, 15, 0,
+        ];
+        const carry = edges === 9 || edges === 12 || edges === 23;
+        return [...bitsOf(counts[edges], 4), carry];
+      },
+    },
+  },
+  {
+    ref: "CD4510B",
+    title: "Presettable BCD up/down counter",
+    note:
+      "CD4510B — BCD up/down counter (CMOS)\n" +
+      "Counts 0–9 up or down (UP/DN). CARRY\n" +
+      "lights at 9 going up and at 0 going down.\n" +
+      "PRESET loads the P pins (tied to 6) and\n" +
+      "RESET clears — both without the clock.\n" +
+      "CARRY IN is tied LOW: always counting.",
+    inputs: [
+      { label: "UP/DN", pins: [10] },
+      { label: "PRESET", pins: [1] },
+      { label: "RESET", pins: [9] },
+    ],
+    defaults: [true, false, false],
+    ties: [
+      { pins: [5], rail: "-" }, // CARRY IN: counting enabled
+      { pins: [12, 13], rail: "+" }, // P2, P3…
+      { pins: [4, 3], rail: "-" }, // …P1, P4 LOW: the preset is 6
+    ],
+    clock: { hz: 2, pins: [15] },
+    leds: [
+      { pin: 6, label: "Q1", color: "green" },
+      { pin: 11, label: "Q2", color: "green" },
+      { pin: 14, label: "Q3", color: "green" },
+      { pin: 2, label: "Q4", color: "green" },
+      { pin: 7, label: "CO", activeLow: true, color: "yellow" },
+    ],
+    sequential: {
+      edges: 20,
+      phases: [
+        { untilEdge: 11, inputs: { "UP/DN": true } },
+        { untilEdge: 13, inputs: { "UP/DN": false } },
+        { untilEdge: 14, inputs: { "UP/DN": true, PRESET: true } },
+        { untilEdge: 16, inputs: { "UP/DN": true } },
+        { untilEdge: 17, inputs: { "UP/DN": true, RESET: true } },
+        { untilEdge: Infinity, inputs: { "UP/DN": true } },
+      ],
+      // Up through 9 and over, down through 0 and over, preset to 6, up,
+      // reset, up again — Fig. 15's moves, by hand.
+      expect: (edges) => {
+        const counts = [
+          0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0, 1, 0, 9, 6, 7, 8, 0, 1, 2, 3,
+        ];
+        const carry = edges === 9 || edges === 12;
+        return [...bitsOf(counts[edges], 4), carry];
+      },
+    },
+  },
+  {
+    ref: "CD4516B",
+    title: "Presettable binary up/down counter",
+    note:
+      "CD4516B — Binary up/down counter (CMOS)\n" +
+      "The 4510's binary twin: counts 0–15 up or\n" +
+      "down (UP/DN). CARRY lights at 15 going up\n" +
+      "and at 0 going down. PRESET loads the P\n" +
+      "pins (tied to 12); RESET clears.",
+    inputs: [
+      { label: "UP/DN", pins: [10] },
+      { label: "PRESET", pins: [1] },
+      { label: "RESET", pins: [9] },
+    ],
+    defaults: [true, false, false],
+    ties: [
+      { pins: [5], rail: "-" }, // CARRY IN: counting enabled
+      { pins: [13, 3], rail: "+" }, // P3, P4…
+      { pins: [4, 12], rail: "-" }, // …P1, P2 LOW: the preset is 12
+    ],
+    clock: { hz: 2, pins: [15] },
+    leds: [
+      { pin: 6, label: "Q1", color: "green" },
+      { pin: 11, label: "Q2", color: "green" },
+      { pin: 14, label: "Q3", color: "green" },
+      { pin: 2, label: "Q4", color: "green" },
+      { pin: 7, label: "CO", activeLow: true, color: "yellow" },
+    ],
+    sequential: {
+      edges: 22,
+      phases: [
+        { untilEdge: 17, inputs: { "UP/DN": true } },
+        { untilEdge: 19, inputs: { "UP/DN": false } },
+        { untilEdge: 20, inputs: { "UP/DN": false, PRESET: true } },
+        { untilEdge: 21, inputs: { "UP/DN": false } },
+        { untilEdge: Infinity, inputs: { "UP/DN": false, RESET: true } },
+      ],
+      // Up through 15 and over, down through 0 and over, preset to 12, down
+      // one, reset.
+      expect: (edges) => {
+        const counts = [
+          0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 0, 1, 0, 15, 12,
+          11, 0,
+        ];
+        // 15 counting up; 0 counting down (edge 18, and the reset at 22).
+        const carry = edges === 15 || edges === 18 || edges === 22;
+        return [...bitsOf(counts[edges], 4), carry];
+      },
+    },
+  },
+  // Shift register
+  {
+    ref: "CD4094B",
+    title: "8-stage shift-and-store register, 3-state",
+    note:
+      "CD4094B — Shift-and-store register (CMOS)\n" +
+      "DATA shifts along on every rising clock;\n" +
+      "the lamps hang off a latch that follows it\n" +
+      "only while STROBE is HIGH. OUT EN is active\n" +
+      "HIGH — LOW floats Q1–Q8 for a shared bus.\n" +
+      "QS and Q'S chain the next 4094.",
+    inputs: [
+      { label: "DATA", pins: [2] },
+      { label: "STROBE", pins: [1] },
+      { label: "OUT EN", pins: [15] },
+    ],
+    defaults: [true, true, true],
+    clock: { hz: 1, pins: [3] },
+    leds: [
+      ...[4, 5, 6, 7, 14, 13, 12, 11].map((pin, i) => ({
+        pin,
+        label: `Q${i + 1}`,
+        color: "green",
+      })),
+      { pin: 9, label: "QS", color: "yellow" },
+      { pin: 10, label: "Q'S", color: "yellow" },
+    ],
+    sequential: {
+      edges: 14,
+      phases: [
+        // Ones shifted in behind a closed latch: nothing shows…
+        { untilEdge: 3, inputs: { DATA: true, STROBE: false, "OUT EN": true } },
+        // …until STROBE opens it, and the lamps follow the register.
+        { untilEdge: 5, inputs: { DATA: true, STROBE: true, "OUT EN": true } },
+        { untilEdge: 8, inputs: { DATA: false, STROBE: true, "OUT EN": true } },
+        // OUT EN LOW floats the outputs; the register keeps shifting.
+        {
+          untilEdge: 10,
+          inputs: { DATA: false, STROBE: true, "OUT EN": false },
+        },
+        // STROBE LOW freezes what the lamps show while it shifts on.
+        { untilEdge: Infinity, inputs: { DATA: false, STROBE: false, "OUT EN": true } }, // prettier-ignore
+      ],
+      // The shift register after each edge, stage 1 first, by hand.
+      expect: (edges) => {
+        const stages = [
+          "00000000", "10000000", "11000000", "11100000", "11110000",
+          "11111000", "01111100", "00111110", "00011111", "00001111",
+          "00000111", "00000011", "00000001", "00000000", "00000000",
+        ].map((row) => [...row].map((c) => c === "1")); // prettier-ignore
+        let shown;
+        if (edges <= 3)
+          shown = Array(8).fill(false); // latch never opened
+        else if (edges <= 8)
+          shown = stages[edges]; // following
+        else if (edges <= 10)
+          shown = Array(8).fill(false); // floating
+        else shown = stages[10]; // frozen as STROBE fell
+        const qs = stages[edges][7]; // the 8th stage
+        const qsPrime = stages[edges - 1][7]; // as of the last falling edge
+        return [...shown, qs, qsPrime];
+      },
+    },
+  },
+  // Decoder
+  {
+    ref: "CD4028B",
+    title: "BCD-to-decimal decoder",
+    note:
+      "CD4028B — BCD-to-decimal decoder (CMOS)\n" +
+      "Switches A–D set a 4-bit code; the output\n" +
+      "it names lights. Its outputs are active\n" +
+      "HIGH, so the LEDs sit the usual way up. A\n" +
+      "code of 10–15 is not a digit: all ten dark.",
+    inputs: [
+      { label: "A", pins: [10] },
+      { label: "B", pins: [13] },
+      { label: "C", pins: [12] },
+      { label: "D", pins: [11] },
+    ],
+    defaults: [true, true, false, false], // 3
+    leds: [3, 14, 2, 15, 1, 6, 7, 4, 9, 5].map((pin, i) => ({
+      pin,
+      label: String(i),
+      color: "green",
+    })),
+    expect: (v) => {
+      const code = word(v, 0, 4);
+      return Array.from({ length: 10 }, (_, i) => i === code);
+    },
+  },
+  // Display driver
+  {
+    ref: "CD4511B",
+    title: "BCD-to-7-segment latch/decoder/driver",
+    note:
+      "CD4511B — BCD to 7-segment (CMOS)\n" +
+      "Switches A–D set a BCD digit. Its outputs\n" +
+      "drive HIGH, so the display is COMMON\n" +
+      "CATHODE. LT LOW lights every segment, BL\n" +
+      "LOW blanks them, LE HIGH freezes the digit.\n" +
+      "A code of 10–15 shows nothing.",
+    inputs: [
+      { label: "A", pins: [7] },
+      { label: "B", pins: [1] },
+      { label: "C", pins: [2] },
+      { label: "D", pins: [6] },
+      { label: "LT", pins: [3] },
+      { label: "BL", pins: [4] },
+      { label: "LE", pins: [5] },
+    ],
+    defaults: [true, false, true, false, true, true, false], // 5, all inactive
+    // Outputs a…g (pins 13, 12, 11, 10, 9, 15, 14) → display pins 1…7.
+    display: { segPins: [13, 12, 11, 10, 9, 15, 14], ref: "seg8cc" },
+    // The '47's font — its 6 and 9 are the 4511's too — and, from the 4511's
+    // own truth table, a blank for each code that is not a digit.
+    digits: { ...SEG7, 10: "", 11: "", 12: "", 13: "", 14: "", 15: "" },
+    segments: SEG,
   },
 ]);
 

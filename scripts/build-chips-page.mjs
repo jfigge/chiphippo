@@ -50,7 +50,9 @@ const SITE_URL = "https://chiphippo.com";
 
 /**
  * The page's sections, in order. `bands` are ordered lists of catalog
- * `group`s: rows sort by band first, then by 74xx part number, so the gate
+ * `group`s: rows sort by band first, then by family (74LS before CD4000 —
+ * Feature 400; the part number already says which is which, so the family
+ * needs no column of its own), then by part number, so the gate
  * families read 00 → 86 as one run with the bus buffers after them, while the
  * counters come before the shift registers.
  */
@@ -92,11 +94,19 @@ export const SECTIONS = Object.freeze([
     the pinout window's example button with, so the ✦ cannot disagree. */
 export const hasDemo = (id) => existsSync(resolve(DEMOS_DIR, `${id}.json`));
 
-// The 74xx number (74LS00 → 0, 74LS283 → 283); anything else sorts after, in
-// catalog order.
+// The 74xx number (74LS00 → 0, 74LS283 → 283) or the CD4000 one (CD4011B →
+// 4011, CD40106B → 40106); anything else sorts after, in catalog order.
 const partNumber = (id) => {
-  const m = /^74[A-Z]*(\d+)/.exec(id);
+  const m = /^74[A-Z]*(\d+)/.exec(id) ?? /^CD(\d+)/.exec(id);
   return m ? Number(m[1]) : Infinity;
+};
+
+// Within a band the 74LS rows come first, then the CD4000 ones, then the
+// family-less parts — so a family reads as one run rather than interleaved.
+const FAMILY_ORDER = ["74LS", "CD4000"];
+const familyRank = (def) => {
+  const i = FAMILY_ORDER.indexOf(def.family);
+  return i < 0 ? FAMILY_ORDER.length : i;
 };
 
 /**
@@ -133,7 +143,14 @@ export function chipSections(defs = CHIP_DEFS, hasExample = hasDemo) {
 
   const keyed = defs.map((def, index) => {
     const [section, band] = place.get(def.group);
-    return { def, index, section, band, number: partNumber(def.id) };
+    return {
+      def,
+      index,
+      section,
+      band,
+      family: familyRank(def),
+      number: partNumber(def.id),
+    };
   });
   return SECTIONS.map((s, si) => ({
     id: s.id,
@@ -141,7 +158,11 @@ export function chipSections(defs = CHIP_DEFS, hasExample = hasDemo) {
     rows: keyed
       .filter((k) => k.section === si)
       .sort(
-        (a, b) => a.band - b.band || a.number - b.number || a.index - b.index,
+        (a, b) =>
+          a.band - b.band ||
+          a.family - b.family ||
+          a.number - b.number ||
+          a.index - b.index,
       )
       .map(({ def }) => ({
         id: def.id,
@@ -277,7 +298,7 @@ export function renderChipsPage(sections = chipSections()) {
     (n, s) => n + s.rows.filter((r) => r.example).length,
     0,
   );
-  const description = `Every chip Chip Hippo simulates — ${total} 74xx logic, memory, interface and processor parts, each with a datasheet-accurate pinout.`;
+  const description = `Every chip Chip Hippo simulates — ${total} 74LS TTL and CD4000 CMOS logic, memory, interface and processor parts, each with a datasheet-accurate pinout.`;
   const jump = sections
     .map(
       (s) =>
@@ -330,7 +351,8 @@ export function renderChipsPage(sections = chipSections()) {
   <h1>Supported chips</h1>
   <p>
     Chip Hippo ships <strong>${total} chips</strong>, every one with a datasheet-accurate
-    pinout and a working simulation you can wire up and run.
+    pinout and a working simulation you can wire up and run — logic from two families,
+    74LS TTL and CD4000 CMOS, listed 74LS first in each table.
     <strong>${examples}</strong> of them carry a built-in example circuit, marked
     <span class="example-mark" aria-hidden="true">✦</span> below: open the chip's
     <em>Pin Assignment</em> window and click its example button to drop a working bench

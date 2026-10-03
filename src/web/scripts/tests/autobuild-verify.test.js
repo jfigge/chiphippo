@@ -749,3 +749,120 @@ test("a fight that only a TEST reaches is reported by that test", () => {
   const off = v.faults.find((x) => x.code === "OUTPUTS_DISABLED");
   assert.match(off.message, /every output on it is switched off/);
 });
+
+// ── The CD4000 family (Feature 400) ─────────────────────────────────────────
+
+test("a CD4094B's active-HIGH enable tied LOW is told to go to VCC, not GND", () => {
+  const spec = (oe) => ({
+    parts: [
+      { id: "SR", ref: "CD4094B" },
+      { id: "D", ref: "bar8" },
+    ],
+    nets: [
+      { name: "HI", members: ["SR.STROBE", "VCC"] },
+      { name: "LO", members: ["SR.DATA", "SR.CLOCK", "GND"] },
+      { name: "OE", members: ["SR.OUTPUT ENABLE", oe] },
+      { name: "OUT", members: ["SR.Q1", "D.1"] },
+      { name: "K", members: ["D.K", "GND"] },
+    ],
+  });
+  const off = verifyBuild(compile(spec("GND")), spec("GND"));
+  const fault = off.faults.find((f) => f.code === "OUTPUTS_DISABLED");
+  assert.ok(fault, JSON.stringify(off.faults));
+  assert.match(fault.message, /active-HIGH output enable OUTPUT ENABLE/);
+  assert.match(fault.message, /is LOW\. Tie it to VCC\./);
+  const on = verifyBuild(compile(spec("VCC")), spec("VCC"));
+  assert.deepEqual(on.faults, [], JSON.stringify(on.faults));
+});
+
+test("a CD4000 part's spare gates are tied by the compiler, and the build is clean", () => {
+  // One gate of a quad NAND in use; the other three are the compiler's job.
+  // Their inputs float otherwise, and a floating CMOS input reads unknown.
+  const spec = {
+    parts: [
+      { id: "U1", ref: "CD4011B" },
+      { id: "D", ref: "bar8" },
+    ],
+    nets: [
+      { name: "IN", members: ["U1.A", "U1.B", "GND"] },
+      { name: "OUT", members: ["U1.J", "D.1"] },
+      { name: "K", members: ["D.K", "GND"] },
+    ],
+  };
+  const compiled = compile(spec);
+  const tied = compiled.warnings.find((w) => w.code === "SPARE_INPUTS_TIED");
+  assert.ok(tied, JSON.stringify(compiled.warnings));
+  assert.match(tied.message, /U1 \(CD4011B: C, D, E, F, G, H\)/);
+  const v = verifyBuild(compiled, spec);
+  assert.deepEqual(v.faults, [], JSON.stringify(v.faults));
+});
+
+test("an input a CD4000 gate USES but the spec left out is named, in CMOS terms", () => {
+  const spec = {
+    parts: [
+      { id: "U1", ref: "CD4011B" },
+      { id: "D", ref: "bar8" },
+    ],
+    nets: [
+      { name: "IN", members: ["U1.A", "GND"] },
+      { name: "OUT", members: ["U1.J", "D.1"] },
+      { name: "K", members: ["D.K", "GND"] },
+    ],
+  };
+  const compiled = compile(spec);
+  // B is in USE (gate J's output is wired), so the compiler must not tie it.
+  const tied = compiled.warnings.find((w) => w.code === "SPARE_INPUTS_TIED");
+  assert.doesNotMatch(tied.message, /CD4011B: B\b/);
+  const v = verifyBuild(compiled, spec);
+  const f = v.faults.find((x) => x.code === "INPUT_FLOATING");
+  assert.ok(f, JSON.stringify(v.faults));
+  assert.match(f.message, /^U1 \(CD4011B\) leaves input B \(pin 2\)/);
+  assert.match(f.message, /CMOS input reads neither HIGH nor LOW/);
+  // L6 names it; the engine's own floating-input warning is not said twice.
+  assert.ok(!v.faults.some((x) => x.code === "SIM_FLOATING_INPUT"));
+});
+
+test("a CD4013B's unused flip-flop is tied; the used one's inputs stay required", () => {
+  const spec = {
+    parts: [
+      { id: "FF", ref: "CD4013B" },
+      { id: "CK", ref: "clock" },
+      { id: "D", ref: "bar8" },
+    ],
+    nets: [
+      { name: "CLK", members: ["CK.out", "FF.CLOCK1"] },
+      { name: "CG", members: ["CK.gnd", "GND"] },
+      { name: "LOW", members: ["FF.SET1", "FF.RESET1", "GND"] },
+      { name: "DATA", members: ["FF.D1", "VCC"] },
+      { name: "Q", members: ["FF.Q1", "D.1"] },
+      { name: "K", members: ["D.K", "GND"] },
+    ],
+  };
+  const compiled = compile(spec);
+  const tied = compiled.warnings.find((w) => w.code === "SPARE_INPUTS_TIED");
+  assert.match(tied.message, /FF \(CD4013B: SET2, D2, RESET2, CLOCK2\)/);
+  const v = verifyBuild(compiled, spec);
+  assert.deepEqual(v.faults, [], JSON.stringify(v.faults));
+});
+
+test("a 74LS output into a CD4000 input without a pull-up is a repair fault", () => {
+  const spec = {
+    parts: [
+      { id: "U1", ref: "74LS04" },
+      { id: "U2", ref: "CD4011B" },
+      { id: "D", ref: "bar8" },
+    ],
+    nets: [
+      { name: "IN", members: ["U1.1A", "GND"] },
+      { name: "MID", members: ["U1.1Y", "U2.A"] },
+      { name: "TIE", members: ["U2.B", "VCC"] },
+      { name: "OUT", members: ["U2.J", "D.1"] },
+      { name: "K", members: ["D.K", "GND"] },
+    ],
+  };
+  const v = verifyBuild(compile(spec), spec);
+  const f = v.faults.find((x) => x.code === "SIM_MARGINAL_HIGH");
+  assert.ok(f, JSON.stringify(v.faults));
+  assert.match(f.message, /"MID" carries a 74LS output into a CD4000 input/);
+  assert.equal(f.kind, "repair");
+});

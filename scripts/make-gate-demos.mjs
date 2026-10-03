@@ -19,13 +19,14 @@
 
 // make-gate-demos.mjs — write the per-chip demonstration projects in demos/.
 //
-// ONE PROJECT PER CATALOG GROUP, one desktop per chip in it: the catalog's own
-// `group` field is the organising fact (NAND, Flip-flop, Multiplexer…), so the
-// demos track the palette rather than a second opinion about which part is
-// like which. A group's project is named for the group and holds a desktop for
-// every chip in it, in catalog order — open Multiplexer.chiphippo and the '151,
-// '153, '157 and '257 are four tabs of the same idea, wired the same way, ready
-// to compare.
+// ONE PROJECT PER CATALOG GROUP AND FAMILY, one desktop per chip in it: the
+// catalog's own `group` field is the organising fact (NAND, Flip-flop,
+// Multiplexer…), so the demos track the palette rather than a second opinion
+// about which part is like which. A group's project is named for its family and
+// group and holds a desktop for every chip in it, in catalog order — open
+// 74LS/Multiplexer.chiphippo and the '151, '153, '157 and '257 are four tabs of
+// the same idea, wired the same way, ready to compare. The two logic families
+// never share a project (Feature 400): demos/74LS/ and demos/CD4000/.
 //
 // Every desktop is laid out by demo-bench.mjs and proved out by demo-build.mjs
 // against the real simulation engine before anything reaches a file. A group
@@ -44,7 +45,13 @@
 //
 //   node scripts/make-gate-demos.mjs        (or `make demos`)
 
-import { mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
@@ -54,6 +61,7 @@ import {
   buildDemo,
   catalogGroups,
   fileNameOf,
+  projectNameOf,
   validateDemo,
 } from "./demo-build.mjs";
 
@@ -82,7 +90,7 @@ function main() {
       const built = buildDemo(spec);
       const proof = validateDemo(built);
       console.log(
-        `demos: ${group.padEnd(15)} ${id.padEnd(8)} ` +
+        `demos: ${group.padEnd(22)} ${id.padEnd(8)} ` +
           `${String(built.doc.components.length).padStart(3)} parts, ` +
           `${String(built.doc.wires.length).padStart(3)} wires — ${proof}`,
       );
@@ -106,13 +114,14 @@ function main() {
     });
 
     const file = fileNameOf(group);
+    mkdirSync(dirname(join(OUT_DIR, file)), { recursive: true });
     writeFileSync(
       join(OUT_DIR, file),
       JSON.stringify(
         {
           version: 4,
-          name: group,
-          description: `${group} — one desktop per catalog part.`,
+          name: projectNameOf(group),
+          description: `${projectNameOf(group)} — one desktop per catalog part.`,
           activeTab: "t1",
           nextIndex: tabs.length + 1,
           tabs,
@@ -134,6 +143,18 @@ function main() {
     if (!file.endsWith(".json") || shipped.has(file)) continue;
     rmSync(join(WEB_DIR, file));
     console.log(`demos: ✕ src/web/demos/${file} (no such demo any more)`);
+  }
+
+  // The group projects used to sit at the demos/ root, before the families
+  // were split into folders of their own. One left there is a stale copy of a
+  // project that now lives in a family folder — say so, rather than leave two.
+  for (const key of groups.keys()) {
+    const legacy = fileNameOf(key).split("/").pop();
+    if (existsSync(join(OUT_DIR, legacy))) {
+      console.log(
+        `demos: ! demos/${legacy} is a stale pre-family copy — delete it`,
+      );
+    }
   }
 
   console.log(

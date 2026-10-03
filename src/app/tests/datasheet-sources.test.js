@@ -119,3 +119,58 @@ test("the table is non-empty and sourceCount agrees with it", () => {
   assert.ok(sourceCount() > 0, "the download would fetch nothing");
   assert.equal(sourceCount(), Object.keys(DATASHEET_SOURCES).length);
 });
+
+test("every CD4000 part names its TI sheet — the family is fully documented", async () => {
+  // Unlike the 74LS parts, every CD4000 part has a TI datasheet (the family is
+  // TI's, from Harris), so a CMOS part with no entry is a forgotten line, not a
+  // deliberate gap — and it would leave that part's pin window without its PDF
+  // button for good, silently.
+  const { PALETTE_DEFS } = await import(CATALOG_URL);
+  const { familyOf } = await import(
+    pathToFileURL(
+      path.join(
+        __dirname,
+        "..",
+        "..",
+        "web",
+        "scripts",
+        "catalog",
+        "families.js",
+      ),
+    ).href
+  );
+  const missing = PALETTE_DEFS.filter(
+    (def) => familyOf(def) === "CD4000" && !DATASHEET_SOURCES[def.id],
+  ).map((def) => def.id);
+  assert.deepEqual(missing, [], `CD4000 parts with no sheet: ${missing}`);
+  for (const def of PALETTE_DEFS.filter((d) => familyOf(d) === "CD4000")) {
+    assert.match(
+      DATASHEET_SOURCES[def.id].url,
+      /^https:\/\/www\.ti\.com\/lit\/ds\/symlink\/cd\d+u?b\.pdf$/,
+      def.id,
+    );
+  }
+});
+
+test("the CD4000 batch-2 parts download the sheets their feature names", () => {
+  // features/chiphippo-cd4000-batch2.md lists each part's URL, several of them
+  // a sibling's (the 4020/4024 are documented in the 4040's sheet, the 4022 in
+  // the 4017's, the 4516 in the 4510's). Each was opened and its part number
+  // read off it before it went in; this pins the table to that list.
+  const TI = "https://www.ti.com/lit/ds/symlink/";
+  const wanted = {
+    CD4027B: "cd4027b.pdf",
+    CD4094B: "cd4094b.pdf",
+    CD4028B: "cd4028b.pdf",
+    CD4511B: "cd4511b.pdf",
+    CD4029B: "cd4029b.pdf",
+    CD4510B: "cd4510b.pdf",
+    CD4516B: "cd4510b.pdf",
+    CD4020B: "cd4040b.pdf",
+    CD4024B: "cd4040b.pdf",
+    CD4022B: "cd4017b.pdf",
+  };
+  for (const [ref, file] of Object.entries(wanted)) {
+    assert.equal(DATASHEET_SOURCES[ref]?.url, TI + file, ref);
+  }
+});

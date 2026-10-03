@@ -70,6 +70,7 @@ import { wireRunMm } from "../model/wire-length.js";
 import { HistoryStore } from "../model/history-store.js";
 import { partDef } from "../catalog/index.js";
 import { kitLabel, partTitle } from "../catalog/labels.js";
+import { supplyText } from "../catalog/families.js";
 import { isMemory, isRomChip, memoryConfig } from "../sim/chip-eval.js";
 import { BreadboardView } from "./breadboard-view.js";
 import { RouteDebugLayer } from "./route-debug-layer.js";
@@ -256,6 +257,7 @@ export class DeskController {
   #busName = "D[7:0]"; // the name the bus tool reads (the toolbar badge/digits)
   #defaultWireLayout = "direct"; // what a NEW wire gets (Settings ▸ Appearance)
   #lastDown = null; // last viewport pointerdown client pos (click-vs-pan)
+  #pressWentThrough = false; // this press flipped a switch under a wire
   #hoverKey = null; // hover identity currently shown or pending
   #hoverTimer = null;
   #ring;
@@ -504,11 +506,15 @@ export class DeskController {
       // These two therefore only have to stand down for it — the click that
       // still follows would otherwise replace the selection just toggled.
       onSelect: (id, e) => {
+        // A running press that went THROUGH the wire to the switch under it
+        // (#onViewportPointerDown) has had its say; its click selects nothing.
+        if (this.#pressWentThrough) return;
         if (!isToggleSelectEvent(e, IS_MAC)) this.selectWire(id);
       },
       onContextMenu: (id, e) => this.#wire.onContextMenu(id, e),
       onHover: (id) => this.#probe.onWireHover(id),
       onSelectBus: (id, e) => {
+        if (this.#pressWentThrough) return;
         if (!isToggleSelectEvent(e, IS_MAC)) this.selectBus(id);
       },
       onBusContextMenu: (id, e) => this.#bus.onContextMenu(id, e),
@@ -2389,7 +2395,11 @@ export class DeskController {
     ) {
       keys.push("unprogrammed");
     }
-    return keys.map((key) => t(`properties.warning.${key}`));
+    // The power sentences state the voltage the part saw and the supply it is
+    // rated for (its family's, Feature 400); the others ignore both.
+    const volts = this.#simOverlay.voltsOf(id) ?? "?";
+    const rating = supplyText(partDef(comp.ref));
+    return keys.map((key) => t(`properties.warning.${key}`, { volts, rating }));
   }
 
   /** Open the shared Properties dialog (context menu → "Properties…") for a
@@ -4624,7 +4634,27 @@ export class DeskController {
 
   #onViewportPointerDown = (e) => {
     this.#lastDown = { x: e.clientX, y: e.clientY };
+    this.#pressWentThrough = false;
     if (this.#mode || e.button !== 0) return; // busy (tool/drag) or non-left
+    // While RUNNING a wire is frozen and a switch is the one thing a click is
+    // for — but the wires draw ABOVE the parts, so a lead laid across a slide
+    // switch (a generated layout does it readily) swallowed every click aimed
+    // at the knob, and the switch could not be flipped at all. So a plain
+    // press on a wire or bus band goes through to a click-toggling part under
+    // it. Editing is different: there the wire is what you may want to grab.
+    if (
+      this.#editingLocked &&
+      !this.#probe.armed &&
+      !isToggleSelectEvent(e, IS_MAC) &&
+      e.target?.closest?.(".wire, .bus-band")
+    ) {
+      const under = this.#togglePartUnder(e);
+      if (under) {
+        this.#pressWentThrough = true;
+        this.#toggleClickPart(under.id, switchIndexFromEvent(under));
+        return;
+      }
+    }
     // A wire and a bus are toggled from HERE rather than from their own click
     // listeners, so that every kind of item joins the selection on the press,
     // as a part and a board do.
@@ -4665,6 +4695,26 @@ export class DeskController {
     // the same as asking for the selection to be cleared.
     if (e.target === this.#viewport && !toggling) this.deselect();
   };
+
+  /**
+   * The click-toggling part beneath a press that landed on something drawn
+   * over the parts, as `{ id, target }` (the element hit, which says which
+   * position of a DIP bank) — or null when the topmost part there is not one.
+   */
+  #togglePartUnder(e) {
+    const stack = document.elementsFromPoint?.(e.clientX, e.clientY) ?? [];
+    for (const target of stack) {
+      const partEl = target.closest?.(".part");
+      if (!partEl) continue;
+      for (const [id, view] of this.#partViews) {
+        if (view.element !== partEl) continue;
+        const comp = this.#doc.getComponent(id);
+        return clickTogglingPart(comp?.ref) ? { id, target } : null;
+      }
+      return null;
+    }
+    return null;
+  }
 
   #onViewportClick = (e) => {
     const m = this.#mode;
