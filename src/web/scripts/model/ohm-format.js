@@ -36,13 +36,10 @@
 // gets to read. Two copies of a formatting rule will always end up like this;
 // one cannot.
 //
-// Since resistors carry a typed value (the Resistance field in their
-// Properties card), this is also where a typed resistance is READ: `parseOhms`
-// accepts what a bench writes — `470`, `470R`, `470Ω`, `4.7k`, `4k7`, `1M`,
-// `2M2`, `R47` — through the same SI rules a capacitance uses (si-value.js),
-// so the two units can never disagree about what "4k7" means.
+// What a person TYPES as a resistance is read by the one parser every value
+// field shares (component-value.js), not here.
 
-import { formatWithPrefix, parseSi } from "./si-value.js";
+import { formatWithPrefix } from "./si-value.js";
 
 /** Prefix steps, largest first. */
 const STEPS = Object.freeze([
@@ -51,14 +48,6 @@ const STEPS = Object.freeze([
   ["k", 1e3],
   ["", 1],
 ]);
-
-/**
- * The resistances the Resistance field accepts: 0.1 Ω (`R1`, a gold band's
- * smallest multiplier, and the smallest value a colour code can state with two
- * digits) to 1 GΩ — past the largest any part in a bench drawer is sold in, and
- * still inside what four bands can say.
- */
-export const OHMS_RANGE = Object.freeze({ min: 0.1, max: 1e9 });
 
 /**
  * Format a resistance for printing — 4700 → "4.7k", 10000 → "10k", 220 → "220".
@@ -79,25 +68,4 @@ export const OHMS_RANGE = Object.freeze({ min: 0.1, max: 1e9 });
  */
 export function formatOhms(ohms) {
   return formatWithPrefix(ohms, STEPS);
-}
-
-/**
- * Read a typed resistance, in ohms, or null when it is not one (or lies
- * outside OHMS_RANGE). A bare number is ohms; `k`/`K`, `M` and `G` scale it;
- * `R` (or `Ω`, `ohm`) marks the unit, and in the IEC form stands where the
- * decimal point would (`4R7` is 4.7 Ω, `R47` 0.47 Ω). A lowercase `m` is
- * REFUSED rather than guessed at: as SI it is a milliohm no breadboard part
- * is, and as shorthand for mega it is a typo for `M` — either reading would be
- * a value the user did not mean, stored without a word.
- * @param {string} text
- * @returns {number|null}
- */
-export function parseOhms(text) {
-  return parseSi(text, {
-    prefixes: { k: 1e3, K: 1e3, M: 1e6, G: 1e9 },
-    decimals: ["R", "r"],
-    unit: /(\u03A9|\u2126|ohms?)$/i,
-    bare: true,
-    range: OHMS_RANGE,
-  });
 }

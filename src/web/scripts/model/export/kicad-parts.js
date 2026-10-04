@@ -38,10 +38,7 @@
 // without a footprint.
 
 import { packageSpec } from "../footprints.js";
-import { formatOhms } from "../ohm-format.js";
-import { formatFaradsAscii } from "../farad-format.js";
-import { formatHenriesAscii } from "../henry-format.js";
-import { formatVolts } from "../volt-format.js";
+import { formatComponentValueAscii } from "../component-value.js";
 import { partNumberOf, transistorCase } from "../../catalog/discretes.js";
 import { switchableOutputs } from "../spec-lint.js";
 import { isAnalogSwitch } from "../../sim/chip-eval.js";
@@ -58,17 +55,14 @@ const DIP_SWITCH = {
 
 const colour = (comp) => comp.params?.color ?? "";
 
-/** A capacitor's Value: "100nF", "4.7uF" — or "" with no value to state. */
-const capValue = (comp) => {
-  const v = formatFaradsAscii(Number(comp.params?.farads));
-  return v ? `${v}F` : "";
-};
-
-/** A Zener's voltage as a Value says it: "5.1V", or "". */
-const zenerVolts = (comp) => {
-  const v = formatVolts(Number(comp.params?.zenerVolts));
-  return v ? `${v}V` : "";
-};
+/**
+ * A component's value as its Value field says it: what the Properties combo
+ * box shows (model/component-value.js), to the precision it was set to, in
+ * plain ASCII — "4.7k", "100nF", "4.7uF", "10uH", "5.1V" — or "" with no
+ * value to state.
+ */
+const valueOf = (comp, key, unit) =>
+  formatComponentValueAscii(Number(comp.params?.[key]), unit);
 
 /** A transistor's footprint by its package (catalog/discretes.js
     `transistorCase`): a TO-92 on 0.1 in — the pitch a breadboard bends its
@@ -113,35 +107,34 @@ export const KICAD_PARTS = Object.freeze({
   resistor: {
     footprint: "Resistor_THT:R_Axial_DIN0207_L6.3mm_D2.5mm_P10.16mm_Horizontal",
     shape: "resistor",
-    value: (comp) => formatOhms(comp.params?.ohms) || "R",
+    value: (comp) => valueOf(comp, "ohms", "ohm") || "R",
   },
   // A Bourns 3296W: three pads in a row at 2.54 mm, the wiper in the middle,
   // numbered as ours are (1 · 2 wiper · 3) — so no pad map.
   pot: {
     footprint: "Potentiometer_THT:Potentiometer_Bourns_3296W_Vertical",
     shape: "potentiometer",
-    value: (comp) => formatOhms(comp.params?.ohms) || "RV",
+    value: (comp) => valueOf(comp, "ohms", "ohm") || "RV",
   },
   rnet9: {
     footprint: "Resistor_THT:R_Array_SIP9",
     shape: "box",
-    value: (comp) => `${formatOhms(comp.params?.ohms)} ×8`.trim(),
+    value: (comp) => `${valueOf(comp, "ohms", "ohm")} ×8`.trim(),
   },
   // Capacitors carry their VALUE across — the reason a capacitor may sit
   // anywhere on the desk at all. Both sit in adjacent holes, so both take a
   // 2.50 mm-pitch footprint: a ceramic is KiCad's plain C on a 5 mm disc; an
   // electrolytic is C_Polarized on a 5 mm radial can, whose pad 1 — KiCad's
-  // square one — is +, as our pin 1 is. The Value says the unit in ASCII
-  // ("4.7uF"), for whatever BOM script reads it.
+  // square one — is +, as our pin 1 is.
   "cap-ceramic": {
     footprint: "Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P2.50mm",
     shape: "capacitor",
-    value: (comp) => capValue(comp) || "C",
+    value: (comp) => valueOf(comp, "farads", "farad") || "C",
   },
   "cap-electrolytic": {
     footprint: "Capacitor_THT:CP_Radial_D5.0mm_P2.50mm",
     shape: "capacitor-polarized",
-    value: (comp) => capValue(comp) || "C",
+    value: (comp) => valueOf(comp, "farads", "farad") || "C",
   },
   // The discretes. A semiconductor's Value is its part number (the
   // generic name until it has one); a passive's is its value. Any part
@@ -162,8 +155,9 @@ export const KICAD_PARTS = Object.freeze({
     shape: "zener",
     pads: { 1: "2", 2: "1" },
     value: (comp) =>
-      [partNumberOf(comp.params), zenerVolts(comp)].filter(Boolean).join(" ") ||
-      "D_Zener",
+      [partNumberOf(comp.params), valueOf(comp, "zenerVolts", "volt")]
+        .filter(Boolean)
+        .join(" ") || "D_Zener",
   },
   // A toroid or a drum, on the pitch its leads were set to (above).
   inductor: {
@@ -173,10 +167,8 @@ export const KICAD_PARTS = Object.freeze({
       ],
     nearest: isCan,
     shape: "inductor",
-    value: (comp) => {
-      const v = formatHenriesAscii(Number(comp.params?.henries));
-      return v ? `${v}H` : (partNumberOf(comp.params) ?? "L");
-    },
+    value: (comp) =>
+      valueOf(comp, "henries", "henry") || (partNumberOf(comp.params) ?? "L"),
   },
   // A TO-92 (or, for a MOSFET set to it, a TO-220) on 2.54 mm, its pads
   // numbered in the order the desk draws the pins (E·B·C, S·G·D). That is no

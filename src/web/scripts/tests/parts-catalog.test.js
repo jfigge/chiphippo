@@ -78,10 +78,10 @@ test("the part catalog carries the Feature 60 inventory", () => {
   assert.ok(partDef("clock"));
   assert.ok(partDef("lcd16x2"));
   assert.equal(chipDef("sw-slide"), null);
-  // 107 chips (24 + 28 LS + 43 CD4000 + 7 memory + 2 io + 2 cpu + the 555)
+  // 110 chips (24 + 28 LS + 46 CD4000 + 7 memory + 2 io + 2 cpu + the 555)
   // + 30 parts (the discretes brought 7: two diodes, an inductor and
   // four transistors)
-  assert.equal(PALETTE_DEFS.length, 137);
+  assert.equal(PALETTE_DEFS.length, 140);
 });
 
 for (const def of PART_DEFS.filter((d) => d.kind === "discrete")) {
@@ -536,7 +536,9 @@ test("resistor: weakly bridges 1↔2, never a hard bridge; ohms coerce", () => {
   assert.deepEqual(def.internalBridges({ ohms: 220 }), []);
   // …but declares its weakly-coupled pin pair for the simulator's PULL tier.
   assert.deepEqual(def.weakBridges({ ohms: 220 }), [[1, 2]]);
-  // Ohms are cosmetic but coerced to a positive number (default 10k); a
+  // Ohms are coerced to a positive number (default 10k); text an older
+  // document holds is read through the value parser, or KEPT as it was when
+  // it does not read, so its card can open red rather than lose it. A
   // horizontal resistor carries rot 0 and no far end.
   assert.deepEqual(def.normalizeParams({}), { ohms: 10000, rot: 0, end: null });
   assert.deepEqual(def.normalizeParams({ ohms: 330 }), {
@@ -549,8 +551,13 @@ test("resistor: weakly bridges 1↔2, never a hard bridge; ohms coerce", () => {
     rot: 0,
     end: null,
   });
+  assert.deepEqual(def.normalizeParams({ ohms: "4k7" }), {
+    ohms: 4700,
+    rot: 0,
+    end: null,
+  });
   assert.deepEqual(def.normalizeParams({ ohms: "junk" }), {
-    ohms: 10000,
+    ohms: "junk",
     rot: 0,
     end: null,
   });
@@ -613,7 +620,8 @@ test("rnet9: bussed array — 8 weak pulls to the common pin, no hard bridge", (
   assert.deepEqual(def.normalizeParams({}), { ohms: 10000 });
   assert.deepEqual(def.normalizeParams({ ohms: 470 }), { ohms: 470 });
   assert.deepEqual(def.normalizeParams({ ohms: -5 }), { ohms: 10000 });
-  assert.deepEqual(def.normalizeParams({ ohms: "junk" }), { ohms: 10000 });
+  assert.deepEqual(def.normalizeParams({ ohms: "junk" }), { ohms: "junk" });
+  assert.deepEqual(def.normalizeParams({ ohms: "10k" }), { ohms: 10000 });
   // Turns end-for-end; the flag is kept only when set, so an unturned array
   // round-trips byte-identical (the sw-dip8 / bar8iso convention).
   assert.equal(def.reversible, true);

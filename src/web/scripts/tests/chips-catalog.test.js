@@ -154,6 +154,8 @@ const CD4000_WAVE = [
   "CD40106B",
   "CD4049UB",
   "CD4050B",
+  // …and the bare MOSFETs of the CD4007UB, shelved with the inverters.
+  "CD4007UB",
   "CD4013B",
   "CD4017B",
   "CD4040B",
@@ -174,11 +176,14 @@ const CD4000_WAVE = [
   "CD4052B",
   "CD4053B",
   // The RC-timed parts: the 4047 multivibrator, the 4060 counter with its own
-  // oscillator, the 4098/4538 dual one-shots.
+  // oscillator, the 4098/4528/4538 dual one-shots and the 4541 programmable
+  // timer.
   "CD4047B",
   "CD4060B",
   "CD4098B",
+  "CD4528B",
   "CD4538B",
+  "CD4541B",
 ];
 // The 555 timer: a chip, family-less, shelved under CHIPS ▸ Timer.
 const TIMER_WAVE = ["NE555"];
@@ -322,11 +327,16 @@ for (const def of CHIP_DEFS) {
     } else if (isAnalogSwitch(def)) {
       // ── Analog switch: channels between real io terminals, read from real
       //    input controls. Every io pin is a terminal of some channel, every
-      //    input a control of some channel, and nothing is an output.
+      //    input a control of some channel, and nothing is an output. The one
+      //    other terminal a channel may have is a SUPPLY pin, on a part whose
+      //    transistor sits on its own rail inside the package (the CD4007UB's
+      //    pair 1: its P from VDD, its N to VSS).
       const terminals = new Set();
       const controls = new Set();
+      const supply = (p) => ["vcc", "gnd"].includes(pinRole.get(p));
       for (const ch of def.logic.channels) {
         for (const p of [ch.a, ch.b]) {
+          if (def.transistorArray && supply(p)) continue;
           assert.equal(pinRole.get(p), "io", `${def.id} terminal ${p}`);
           terminals.add(p);
         }

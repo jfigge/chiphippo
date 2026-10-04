@@ -19,25 +19,30 @@
 
 // chips-cd4000-timers.js — the CD4000 parts that keep time with an external
 // resistor and capacitor: the CD4047B multivibrator, the CD4060B counter with
-// its own oscillator, and the CD4098B and CD4538B dual monostables. Stamped
-// CD4000 in catalog/index.js like chips-cd4000.js, so they share its supply
-// range, floating-input rule and tray folder.
+// its own oscillator, the CD4098B, CD4528B and CD4538B dual monostables and
+// the CD4541B programmable timer. Stamped CD4000 in catalog/index.js like
+// chips-cd4000.js, so they share its supply range, floating-input rule and
+// tray folder.
 //
-// EVERY PINOUT AND FORMULA IS FROM THE PART'S TI DATASHEET, cited at each def —
-// all four are Harris scans, read from rendered pages. The CD4538B is TI's
-// SCHS093C, written for the CD14538B: TI no longer prints a CD4538B sheet,
-// and that one states it is pin-compatible with the CD4538B, replaces it, and
-// gives the CD4538B's own period in a footnote (T = Rx·Cx). The CD4528B,
-// asked for beside them, has no TI datasheet at all and is not here.
+// EVERY PINOUT AND FORMULA IS FROM THE PART'S DATASHEET, cited at each def —
+// TI's for all but one, every one of them a Harris scan read from rendered
+// pages. The CD4538B is TI's SCHS093C, written for the CD14538B: TI no longer
+// prints a CD4538B sheet, and that one states it is pin-compatible with the
+// CD4538B, replaces it, and gives the CD4538B's own period in a footnote
+// (T = Rx·Cx). The CD4528B has no TI sheet at all; its pinout, truth table
+// and pulse width are from HGSEMI's CD4528B sheet (V1.4), a current second
+// source whose tables are Fairchild's CD4528BC sheet's.
 //
 // The R and C are READ off the wiring by the shared trace (sim/rc-trace.js);
 // how each part turns them into time is its own (sim/monostable.js,
-// sim/ripple-oscillator.js). Their RC terminals are `timing` pins — neither
-// input nor output (pin-builders.js says what that buys).
+// sim/ripple-oscillator.js, sim/programmable-timer.js). Their RC terminals
+// are `timing` pins — neither input nor output (pin-builders.js says what
+// that buys).
 
-import { input, output, timing, gnd, vcc } from "./pin-builders.js";
+import { input, output, nc, timing, gnd, vcc } from "./pin-builders.js";
 import { cd4047Logic, dualMonostableLogic } from "../sim/monostable.js";
 import { cd4060Logic } from "../sim/ripple-oscillator.js";
+import { cd4541Logic } from "../sim/programmable-timer.js";
 
 const VDD = (n) => vcc(n, "VDD");
 const VSS = (n) => gnd(n, "VSS");
@@ -67,10 +72,52 @@ const DUAL_MONO_PINS = [
   VDD(16),
 ];
 
-const DUAL_MONO_SECTIONS = [
+/** The sections' pins — the CD4528B's too, whose terminals are the same
+    functions on the same pins under its own names (below). */
+const SECTION_PINS = [
   { cx: 1, rxcx: 2, reset: 3, plus: 4, minus: 5, q: 6, qn: 7 },
   { cx: 15, rxcx: 14, reset: 13, plus: 12, minus: 11, q: 10, qn: 9 },
 ];
+
+const DUAL_MONO_SECTIONS = SECTION_PINS.map((s) => ({
+  ...s,
+  cxName: "CX",
+  rxcxName: "RX CX",
+}));
+
+/**
+ * The CD4528B's pinout (HGSEMI V1.4 connection diagram): T1A 1, T2A 2, CDA 3,
+ * A 4, B 5, QA 6, Q̄A 7, VSS 8, Q̄B 9, QB 10, B 11, A 12, CDB 13, T2B 14,
+ * T1B 15, VDD 16 — the 4098's functions on the 4098's pins: Cx between T1
+ * and T2, Rx from T2 to VDD, CD (clear) active LOW, A the rising trigger, B
+ * the falling one. Its A and B inputs are named for their section here
+ * (AA, BA, AB, BB), since the sheet tells the two A pins apart only by the
+ * block they sit in.
+ */
+const CD4528_PINS = [
+  timing(1, "T1A"),
+  timing(2, "T2A"),
+  input(3, "CDA"),
+  input(4, "AA"),
+  input(5, "BA"),
+  output(6, "QA"),
+  output(7, "Q̄A"),
+  VSS(8),
+  output(9, "Q̄B"),
+  output(10, "QB"),
+  input(11, "BB"),
+  input(12, "AB"),
+  input(13, "CDB"),
+  timing(14, "T2B"),
+  timing(15, "T1B"),
+  VDD(16),
+];
+
+const CD4528_SECTIONS = SECTION_PINS.map((s, i) => ({
+  ...s,
+  cxName: i ? "T1B" : "T1A",
+  rxcxName: i ? "T2B" : "T2A",
+}));
 
 export const CHIPS_CD4000_TIMERS = Object.freeze([
   {
@@ -85,8 +132,10 @@ export const CHIPS_CD4000_TIMERS = Object.freeze([
       "ASTABLĒ LOW) makes it free-run: Q and Q̄ square-wave with a period of " +
       "4.40·RC and OSC OUT at twice that rate. Otherwise it is a one-shot: " +
       "+TRIGGER rising (with −TRIGGER LOW) or −TRIGGER falling (with +TRIGGER " +
-      "HIGH) gives a 2.48·RC pulse on Q; a rising RETRIGGER during the pulse " +
-      "restarts it. EXT RESET HIGH holds Q LOW. Tie every unused input.",
+      "HIGH) gives a 2.48·RC pulse on Q, which another trigger does not " +
+      "restart. RETRIGGER rising during the pulse, or held HIGH, runs it on " +
+      "by whole 2.2·RC periods of the internal oscillator. EXT RESET HIGH " +
+      "holds Q LOW. Tie every unused input.",
     group: "Timer",
     package: "DIP-14",
     pins: [
@@ -162,7 +211,40 @@ export const CHIPS_CD4000_TIMERS = Object.freeze([
     group: "Timer",
     package: "DIP-16",
     pins: DUAL_MONO_PINS.map((p) => ({ ...p })),
-    logic: dualMonostableLogic({ k: 0.5, sections: DUAL_MONO_SECTIONS }),
+    logic: dualMonostableLogic({
+      width: (r, c) => 0.5 * r * c,
+      cxInside: true,
+      vdd: 16,
+      sections: DUAL_MONO_SECTIONS,
+    }),
+  },
+  {
+    // HGSEMI CD4528B V1.4 (Fairchild's CD4528BC tables): connection diagram,
+    // truth table, block and logic diagrams, and the AC table's "for Cx >
+    // 0.01 µF use PWout = 0.2·Rx·Cx·ln(VDD − VSS)" (below that the sheet
+    // gives the width only as Fig. 1's curves). Retriggerable and resettable;
+    // "externally ground pins 1 and 15 to pin 8".
+    id: "CD4528B",
+    title: "Dual monostable multivibrator",
+    blurb:
+      "Two retriggerable, resettable one-shots, the CD4098B's functions on " +
+      "the CD4098B's pins. For each, a capacitor from T2 to T1 and a resistor " +
+      "from T2 to VDD set the pulse: T = 0.2·Rx·Cx·ln(VDD), so it lengthens " +
+      "with the supply. T1 is NOT grounded inside the part — wire T1A (1) and " +
+      "T1B (15) to GND. A rising (with B HIGH) or B falling (with A LOW) " +
+      "starts it, and every new trigger extends it one full period. CD LOW " +
+      "ends it at once. Tie unused CDs HIGH; an unused section's inputs all " +
+      "to VDD or VSS.",
+    group: "Timer",
+    package: "DIP-16",
+    pins: CD4528_PINS.map((p) => ({ ...p })),
+    logic: dualMonostableLogic({
+      width: (r, c, volts) =>
+        volts > 1 ? 0.2 * r * c * Math.log(volts) : null,
+      cxInside: false,
+      vdd: 16,
+      sections: CD4528_SECTIONS,
+    }),
   },
   {
     // SCHS093C (CD14538B, "Replaces CD4538B Type"): terminal assignment, the
@@ -181,6 +263,50 @@ export const CHIPS_CD4000_TIMERS = Object.freeze([
     group: "Timer",
     package: "DIP-16",
     pins: DUAL_MONO_PINS.map((p) => ({ ...p })),
-    logic: dualMonostableLogic({ k: 1, sections: DUAL_MONO_SECTIONS }),
+    logic: dualMonostableLogic({
+      width: (r, c) => r * c,
+      cxInside: true,
+      vdd: 16,
+      sections: DUAL_MONO_SECTIONS,
+    }),
+  },
+  {
+    // SCHS085E (CD4541B): pinout, Fig. 1 functional diagram, Fig. 2 RC
+    // oscillator, the Frequency Selection Table and the Truth Table;
+    // f = 1/(2.3·Rtc·Ctc), Rs ≈ 2·Rtc and ≥ 10 kΩ. Fig. 2 drives RTC and CTC
+    // from inverters, and its clock is RS inverted. Pins 4 and 11 are NC.
+    id: "CD4541B",
+    title: "Programmable timer",
+    blurb:
+      "A 16-stage counter with its own RC oscillator. Put Ctc from CTC (2), " +
+      "Rtc from RTC (1) and Rs (about 2·Rtc, at least 10 kΩ) from RS (3) all " +
+      "on one junction: it runs at 1/(2.3·Rtc·Ctc). Or clock RS from outside " +
+      "and leave CTC and RTC to drive nothing but logic; it counts on RS's " +
+      "FALLING edges. A and B pick " +
+      "the output's stage: 2^13 (both LOW), 2^10 (B HIGH), 2^8 (A HIGH) or " +
+      "2^16 (both). MODE HIGH recycles — a square wave at f/2^N; MODE LOW " +
+      "makes ONE transition, 2^(N−1) counts after a reset, and holds it. " +
+      "Q/Q̄ SELECT HIGH inverts the output. MASTER RESET HIGH clears and " +
+      "stops it. With AUTO RESET LOW it starts at power-up; HIGH, it waits " +
+      "for a MASTER RESET pulse.",
+    group: "Timer",
+    package: "DIP-14",
+    pins: [
+      output(1, "RTC"),
+      output(2, "CTC"),
+      input(3, "RS"),
+      nc(4),
+      input(5, "AUTO RESET"),
+      input(6, "MASTER RESET"),
+      VSS(7),
+      output(8, "OUTPUT"),
+      input(9, "Q/Q̄ SELECT"),
+      input(10, "MODE"),
+      nc(11),
+      input(12, "A"),
+      input(13, "B"),
+      VDD(14),
+    ],
+    logic: cd4541Logic(),
   },
 ]);

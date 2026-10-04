@@ -17,20 +17,17 @@
  * with Chip Hippo. If not, see <https://www.gnu.org/licenses/>.
  */
 
-// si-value.js — the arithmetic under every typed component VALUE: how a
-// number with an SI prefix is read off what a person typed, and how one is
-// printed back. Pure and DOM-free.
+// si-value.js — the arithmetic under every component value PRINTED on the
+// desk, the schematic and the BOM: a number against an SI prefix table, at
+// three significant figures, as a part's own markings say it. Pure and
+// DOM-free.
 //
-// It exists so a resistance (ohm-format.js) and a capacitance
-// (farad-format.js) are read and printed by ONE set of rules. The two units
-// differ only in their TABLES — which prefix letters they take, and whether
-// a bare number means anything — and the tables are theirs; the reading is
-// here.
-//
-// Both forms a bench writes are accepted: the decimal one (`4.7k`, `100n`)
-// and the IEC 60062 one, where the prefix letter stands where the decimal
-// point would (`4k7`, `2M2`, `4u7`, `n47`) — the form printed on the parts
-// themselves, because a dot rubs off a resistor and a letter does not.
+// It exists so a resistance (ohm-format.js), a capacitance (farad-format.js),
+// an inductance and a voltage are printed by ONE set of rules; the units
+// differ only in their prefix TABLES, which are theirs. What a person TYPES
+// is read elsewhere, by the one parser every value field shares
+// (component-value.js), which also prints a value to its full precision
+// where nothing may be rounded — a Properties field, a KiCad Value.
 
 /** Significant digits a parsed value keeps: enough for any value a part is
     sold in, few enough that `4.7 × 1e-6` reads back as 4.7e-6. */
@@ -75,64 +72,4 @@ export function formatWithPrefix(value, steps) {
     rounded = toThreeFigures(value / steps[step][1]);
   }
   return `${rounded}${steps[step][0]}`;
-}
-
-/** An unsigned decimal: `470`, `4.7`, `.47`. */
-const NUMBER = String.raw`(\d+(?:\.\d+)?|\.\d+)`;
-
-/** Escape a prefix letter for a character class. */
-const charClass = (letters) =>
-  `[${letters.map((c) => c.replace(/[\]\\^-]/g, "\\$&")).join("")}]`;
-
-/**
- * Read a typed value against a unit's table, or null.
- *
- * Accepted, with the unit's own letters:
- *   · `<number>`                 — only when `bare` (a resistance) or a unit
- *                                   suffix was given (`1F`);
- *   · `<number><prefix>`         — `4.7k`, `100n`;
- *   · `<digits><mark><digits>`   — the IEC form, `4k7`, `4u7`, and `R47`
- *                                   with no leading digits;
- *   · any of those followed by the unit (`470Ω`, `100nF`), and `<number><mark>`
- *     where the mark is the unit-letter decimal (`470R`).
- * Spaces anywhere are ignored ("4.7 kΩ").
- *
- * @param {string} text
- * @param {object} table
- * @param {Record<string, number>} table.prefixes - letter → scale.
- * @param {RegExp} table.unit - the unit suffix, matched at the END.
- * @param {string[]} [table.decimals] - letters that stand for a decimal
- *   point with NO scale (a resistance's `R`).
- * @param {boolean} [table.bare] - whether a plain number means the unit.
- * @param {{min: number, max: number}} table.range - inclusive.
- * @returns {number|null}
- */
-export function parseSi(text, { prefixes, unit, decimals = [], bare, range }) {
-  if (typeof text !== "string" && typeof text !== "number") return null;
-  let s = String(text).replace(/\s+/g, "");
-  if (!s) return null;
-  const withUnit = unit.test(s);
-  if (withUnit) s = s.replace(unit, "");
-  if (!s) return null;
-
-  const scaleOf = (letter) =>
-    decimals.includes(letter) ? 1 : (prefixes[letter] ?? null);
-  const marks = [...Object.keys(prefixes), ...decimals];
-  let value = null;
-
-  const plain = new RegExp(`^${NUMBER}$`).exec(s);
-  const prefixed = new RegExp(`^${NUMBER}(${charClass(marks)})$`).exec(s);
-  const infix = new RegExp(`^(\\d*)(${charClass(marks)})(\\d+)$`).exec(s);
-  if (plain) {
-    if (bare || withUnit) value = Number(plain[1]);
-  } else if (prefixed) {
-    value = Number(prefixed[1]) * scaleOf(prefixed[2]);
-  } else if (infix) {
-    const whole = infix[1] || "0";
-    value = Number(`${whole}.${infix[3]}`) * scaleOf(infix[2]);
-  }
-  if (value == null || !Number.isFinite(value) || value <= 0) return null;
-  value = tidy(value);
-  if (value < range.min || value > range.max) return null;
-  return value;
 }

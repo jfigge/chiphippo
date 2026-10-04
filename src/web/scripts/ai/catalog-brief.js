@@ -51,7 +51,10 @@ import { MIN_TESTS } from "./generate.js";
  * discretes (`countsAsConnection` — diodes, inductors, transistors): the
  * compiler's seating, its pull and lamp rules and the L4–L7 ladder were never
  * taught a one-way part or a switch with no supply, and a spec has nowhere to
- * state a part number or a value. The desk REVIEW still sees every part — a
+ * state a part number or a value. Nor the CD4007UB (`transistorArray`), the
+ * same six MOSFETs in one package: which of its terminals is a gate's OUTPUT
+ * is decided by how they are wired, and on the card every one would read as
+ * a terminal that drives nothing. The desk REVIEW still sees every part — a
  * hand-built desk can hold anything the palette has.
  */
 const hasKnob = (d) => (d.properties ?? []).some((f) => f.type === "range");
@@ -62,6 +65,7 @@ export const BUILDABLE_DEFS = Object.freeze(
       !d.can &&
       !d.capacitor &&
       !d.countsAsConnection &&
+      !d.transistorArray &&
       !isTimed(d) &&
       !hasKnob(d),
   ),

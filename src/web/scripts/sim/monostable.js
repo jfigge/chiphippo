@@ -18,8 +18,8 @@
  */
 
 // monostable.js — the CD4000 multivibrators: the CD4047B (monostable or
-// astable) and the dual retriggerable monostables (CD4098B, CD4538B). Pure
-// and DOM-free; each part reads its own R and C off the wiring through the
+// astable) and the dual retriggerable monostables (CD4098B, CD4528B,
+// CD4538B). Pure and DOM-free; each part reads its own R and C off the wiring through the
 // shared trace (sim/rc-trace.js) and turns them into time by ITS OWN
 // datasheet, cited at each builder. The timing contract — `env.now`,
 // `wakeAt`, the cap — is sim/timing.js's.
@@ -35,24 +35,30 @@ import {
   capSchedule,
   scheduleAt,
   shownPulse,
+  rebase,
   earliest,
   EPS,
 } from "./timing.js";
 
-// ── The dual monostables: CD4098B, CD4538B ───────────────────────────────────
+// ── The dual monostables: CD4098B, CD4528B, CD4538B ─────────────────────────
 
 /**
  * Read one dual monostable's timing components, section by section. A
- * section's capacitor sits between RX CX and CX — which the part ties to VSS
+ * section's capacitor sits between RX CX and CX and its resistor runs from
+ * RX CX to VDD (the functional diagrams). The 4098 and 4538 tie CX to VSS
  * inside ("terminals 1, 8, 15 are electrically connected internally"), so a
- * capacitor from RX CX to GND is the same capacitor — and its resistor runs
- * from RX CX to VDD (the functional diagram). A section with neither and no
- * output in use is simply unused (Table I's "unused section" ties), and says
- * nothing.
+ * capacitor from RX CX to GND is the same capacitor. The 4528 does NOT —
+ * "externally ground pins 1 and 15 to pin 8", CX "always connected to
+ * ground" — so there CX must be wired to GND before the section times
+ * anything, whichever way its capacitor is wired (`cxInside: false`). A section with
+ * neither and no output in use is simply unused (the "unused section" ties),
+ * and says nothing. `vdd` is the supply pin, read for the one part whose
+ * period depends on its supply (the 4528's ln(VDD − VSS)).
  */
-function analyzeDual(probe, k, sections) {
+function analyzeDual(probe, { width, sections, cxInside, vdd }) {
   const toVdd = probe.toRail("+");
   const toGnd = probe.toRail("-");
+  const volts = probe.supplyVolts(probe.net(vdd));
   const out = { sections: [], problems: [] };
   sections.forEach((s, i) => {
     const section = i + 1;
@@ -71,25 +77,35 @@ function analyzeDual(probe, k, sections) {
       out.sections.push({ section, mode: "unused" });
       return;
     }
+    const grounded = cxInside || toGnd(cx);
     if (!c) {
       out.problems.push({
         code: "noCapacitor",
         section,
-        from: `RX CX (${s.rxcx})`,
-        to: `CX (${s.cx}) / GND`,
+        from: `${s.rxcxName} (${s.rxcx})`,
+        to: `${s.cxName} (${s.cx}) / GND`,
+      });
+    } else if (!grounded) {
+      out.problems.push({
+        code: "notGrounded",
+        section,
+        pin: `${s.cxName} (${s.cx})`,
       });
     }
     if (r == null) {
       out.problems.push({
         code: "noResistor",
         section,
-        from: `RX CX (${s.rxcx})`,
+        from: `${s.rxcxName} (${s.rxcx})`,
         to: "VDD",
       });
     }
+    // A part with no supply is reported as that, by the engine; its timing
+    // has nothing to say until it has one.
+    const t = c && r != null && grounded ? width(r, c, volts) : null;
     out.sections.push(
-      c && r != null
-        ? { section, mode: "monostable", r, c, width: k * r * c }
+      Number.isFinite(t) && t > 0
+        ? { section, mode: "monostable", r, c, width: t }
         : { section, mode: null },
     );
   });
@@ -131,13 +147,17 @@ function stepSection(prior, s, ins, prev, analysis, now) {
 }
 
 /**
- * A dual retriggerable, resettable monostable (the CD4098B and the CD4538B
- * share one pinout, Table I and trigger logic; they differ only in how a
- * period follows from Rx and Cx — `k` in T = k·Rx·Cx).
- * @param {{k: number, sections: Array<{cx:number, rxcx:number, reset:number,
- *   plus:number, minus:number, q:number, qn:number}>}} cfg
+ * A dual retriggerable, resettable monostable. The CD4098B, CD4528B and
+ * CD4538B share one pinout, trigger logic and reset; they differ in how a
+ * period follows from Rx and Cx (`width(r, c, volts)` — the 4528's depends on
+ * its supply too) and in whether CX is grounded inside the part (`cxInside`).
+ * @param {{width: (r: number, c: number, volts: number|null) => number,
+ *   cxInside: boolean, vdd: number,
+ *   sections: Array<{cx:number, rxcx:number, reset:number, plus:number,
+ *   minus:number, q:number, qn:number, cxName:string, rxcxName:string}>}} cfg
  */
-export function dualMonostableLogic({ k, sections }) {
+export function dualMonostableLogic(cfg) {
+  const { sections } = cfg;
   const idle = Object.freeze({
     sections: sections.map(() => ({ until: null, unknown: false })),
     wake: null,
@@ -171,7 +191,7 @@ export function dualMonostableLogic({ k, sections }) {
       });
       return out;
     },
-    timing: (probe) => analyzeDual(probe, k, sections),
+    timing: (probe) => analyzeDual(probe, cfg),
     wakeAt: (state) => state?.wake ?? null,
   });
 }
@@ -244,14 +264,30 @@ const IDLE_4047 = Object.freeze({
   wake: null,
 });
 
+/** The 4047's astable schedule for one RC: t1' + t2 first (that first
+    positive half of Q is tM), then t1 + t2 per oscillator cycle. */
+const astable4047 = (rc) =>
+  capSchedule(
+    [CD4047.t1 * rc, CD4047.t2 * rc],
+    [CD4047.t1First * rc, CD4047.t2 * rc],
+  );
+
 /**
  * One tick of a 4047 (SCHS044C). ASTABLE HIGH or ASTABLĒ LOW gates the
  * oscillator on: Q/Q̄ then square-wave at tA = 4.40 RC — the first positive
  * half-cycle tM, every one after it tA/2 — and OSC OUT runs at twice that.
- * Otherwise it is a one-shot: +TRIGGER rising while −TRIGGER is LOW (or −TRIGGER
- * falling while +TRIGGER is HIGH) starts a tM = 2.48 RC pulse, not
- * retriggered by another trigger; a rising RETRIGGER during the pulse restarts
- * it. EXTERNAL RESET HIGH holds Q LOW (and ends a pulse).
+ *
+ * Otherwise it is a one-shot: +TRIGGER rising while −TRIGGER is LOW (or
+ * −TRIGGER falling while +TRIGGER is HIGH) starts a pulse, which another
+ * trigger does not restart. The pulse is the internal oscillator running for
+ * a whole number of its periods (§III, Fig. 34): the first t1' + t2 (tM,
+ * 2.48 RC), each after it t1 + t2 (2.2 RC). At the end of each period the
+ * pulse goes on for another if RETRIGGER rose during it or is HIGH then — "the
+ * CD4047B will retrigger as long as the RETRIGGER input is high, with or
+ * without transitions" — so one extra input pulse gives tRE = t1' + t1 + 2·t2,
+ * as the sheet works out. The rise that STARTS a pulse (+TRIGGER and
+ * RETRIGGER tied, the retriggerable hook-up) is the trigger, not a retrigger.
+ * EXTERNAL RESET HIGH holds Q LOW (and ends a pulse).
  */
 function step4047(state, ins, prev, env) {
   const a = env?.timing?.sections?.[0];
@@ -265,53 +301,67 @@ function step4047(state, ins, prev, env) {
   const rc = a.r * a.c;
 
   if (astable === H) {
-    // The oscillator: t1' + t2 first (that first positive half of Q is tM),
-    // then t1 + t2 per cycle; Q toggles once per oscillator cycle.
-    const schedule = capSchedule(
-      [CD4047.t1 * rc, CD4047.t2 * rc],
-      [CD4047.t1First * rc, CD4047.t2 * rc],
-    );
-    const t0 = state?.mode === "astable" ? state.t0 : now;
+    // Q toggles once per oscillator cycle. A value changed while it runs (a
+    // pot turned) carries the cycle on at the new rate (`rebase`).
+    const schedule = astable4047(rc);
+    let t0 = now;
+    if (state?.mode === "astable") {
+      t0 =
+        state.rc === rc
+          ? state.t0
+          : rebase(astable4047(state.rc), schedule, state.t0, now);
+    }
     const { index, next } = scheduleAt(schedule, t0, now);
     const osc = index % 2 === 0 ? H : L;
     const q = reset === H ? L : Math.floor(index / 2) % 2 === 0 ? H : L;
-    return { mode: "astable", t0, q, osc, wake: next };
+    return { mode: "astable", t0, rc, q, osc, wake: next };
   }
 
-  // Monostable.
+  // Monostable. The periods are shown stretched together with the first,
+  // should that be too short to see (`shownPulse`).
+  const scale = shownPulse(a.width).width / a.width;
+  const first = { high: CD4047.t1First * rc * scale, low: CD4047.t2 * rc * scale }; // prettier-ignore
+  const later = { high: CD4047.t1 * rc * scale, low: CD4047.t2 * rc * scale };
+  const idle = { mode: "mono", pulse: null, q: L, osc: L, wake: null };
+  if (reset === H) return idle;
   const trig = and(ins.get(P4047.TRIG_P), inv(ins.get(P4047.TRIG_N)));
   const was = prev
     ? and(prev.get(P4047.TRIG_P), inv(prev.get(P4047.TRIG_N)))
     : trig;
-  const retrig = prev
-    ? prev.get(P4047.RETRIGGER) === L && ins.get(P4047.RETRIGGER) === H
+  const retrigger = ins.get(P4047.RETRIGGER);
+  const rose = prev
+    ? prev.get(P4047.RETRIGGER) === L && retrigger === H
     : false;
-  let start = state?.mode === "mono" ? state.start : null;
-  let until = state?.mode === "mono" ? state.until : null;
-  if (until != null && now >= until - EPS) {
-    start = null;
-    until = null;
+
+  let pulse = state?.mode === "mono" ? state.pulse : null;
+  if (pulse == null) {
+    if (!(was === L && trig === H)) return idle;
+    // A new pulse: its first period, and no retrigger seen in it yet.
+    pulse = { start: now, ends: now + first.high + first.low, first: true, rose: false }; // prettier-ignore
+  } else {
+    pulse = { ...pulse, rose: pulse.rose || rose };
+    // Period boundaries passed since the last tick: go on for another while
+    // RETRIGGER rose during the one ending, or is HIGH.
+    while (now >= pulse.ends - EPS) {
+      if (!(pulse.rose || retrigger === H)) return idle;
+      pulse = {
+        start: pulse.ends,
+        ends: pulse.ends + later.high + later.low,
+        first: false,
+        rose: false,
+      };
+    }
   }
-  if (reset === H) return { mode: "mono", start: null, until: null, q: L, osc: L, wake: null }; // prettier-ignore
-  const shown = shownPulse(a.width).width;
-  if ((was === L && trig === H && until == null) || (retrig && until != null)) {
-    start = now;
-    until = now + shown;
-  }
-  if (until == null) {
-    return { mode: "mono", start: null, until: null, q: L, osc: L, wake: null }; // prettier-ignore
-  }
-  // During the pulse the oscillator makes its one long first half-cycle (t1'
-  // HIGH, then t2 LOW: Fig. 33), scaled with the pulse if it was stretched.
-  const oscEnd = start + shown * (CD4047.t1First / CD4047.tM);
-  const osc = now < oscEnd - EPS ? H : L;
+  // Within the period, OSC OUT is HIGH for its first part (t1', or t1) and
+  // LOW for the rest (t2).
+  const oscFall = pulse.start + (pulse.first ? first.high : later.high);
+  const osc = now < oscFall - EPS ? H : L;
   return {
     mode: "mono",
-    start,
-    until,
+    pulse,
     q: H,
     osc,
-    wake: earliest(oscEnd > now + EPS ? oscEnd : null, until),
+    wake: earliest(oscFall > now + EPS ? oscFall : null, pulse.ends),
   };
 }
 

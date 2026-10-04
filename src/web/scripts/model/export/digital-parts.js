@@ -133,6 +133,7 @@ export const DIGITAL_UNSUPPORTED = Object.freeze({
   CD4030B: "noDigitalModel",
   CD4070B: "noDigitalModel",
   CD4049UB: "noDigitalModel",
+  CD4007UB: "noDigitalModel",
   CD4050B: "noDigitalModel",
   CD4013B: "noDigitalModel",
   CD4040B: "noDigitalModel",
@@ -155,7 +156,9 @@ export const DIGITAL_UNSUPPORTED = Object.freeze({
   CD4047B: "noDigitalModel",
   CD4060B: "noDigitalModel",
   CD4098B: "noDigitalModel",
+  CD4528B: "noDigitalModel",
   CD4538B: "noDigitalModel",
+  CD4541B: "noDigitalModel",
   NE555: "noDigitalModel",
   // A capacitor joins no net here either, so leaving it out changes nothing
   // electrically — the report just says it went.

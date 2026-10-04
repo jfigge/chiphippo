@@ -3807,20 +3807,84 @@ textarea.annotation-editor {
   white-space: pre-line;
 }
 
-/* A typed physical value (a resistor's Resistance, a capacitor's
-   Capacitance): the Name box's look, with the field's own error underneath
-   when what was typed does not read as one. */
-.properties-quantity {
+/* A component's value or part number (components/value-combobox.js): the
+   Name box's look with a ▾ inside its right edge that drops the common
+   values, and the field's own reason underneath when what was typed does not
+   read. The list floats (position: fixed, placed against the box), so a card
+   whose body scrolls never clips it. */
+.properties-combo {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
 }
 
-.properties-quantity-input {
-  font-family: var(--font-mono);
+.properties-combo-field {
+  position: relative;
+  display: flex;
 }
 
-.properties-quantity-input[aria-invalid="true"] {
+.properties-combo-input {
+  flex: 1;
+  min-width: 0;
+  padding-right: calc(var(--control-height) + var(--space-1));
+}
+
+.properties-combo-toggle {
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  bottom: 1px;
+  width: var(--control-height);
+  padding: 0;
+  border: none;
+  border-left: 1px solid var(--color-overlay);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: var(--color-subtext);
+  cursor: pointer;
+}
+
+.properties-combo-toggle:hover {
+  color: var(--color-text);
+  background: var(--color-surface-1);
+}
+
+.properties-combo-list {
+  position: fixed;
+  z-index: 1;
+  margin: 0;
+  padding: var(--space-1) 0;
+  list-style: none;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  background: var(--color-surface-0);
+  border: 1px solid var(--color-overlay);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow-1);
+}
+
+.properties-combo-list[hidden] {
+  display: none;
+}
+
+.properties-combo-option {
+  padding: var(--space-1) var(--space-3);
+  font-family: var(--font-sans);
+  font-size: var(--font-size);
+  color: var(--color-text);
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.properties-combo-option:hover,
+.properties-combo-option--active {
+  background: var(--color-surface-1);
+}
+
+.properties-combo-input[aria-invalid="true"] {
   border-color: var(--color-danger);
 }
 

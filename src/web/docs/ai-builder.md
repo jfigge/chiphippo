@@ -173,10 +173,14 @@ rather than guess:
 - **Multi-corner cans** — the oscillator packages. The model isn't offered
   them.
 - **Capacitors and the timers** (the 555, CD4047B, CD4060B, CD4098B,
-  CD4538B). A timer's rate lives in the values of its resistors and capacitor,
-  and a netlist has nowhere to state a value, so the model isn't offered them.
-  Build a timer by hand and wire the rest with the builder, or ask for a
-  circuit clocked by a clock brick.
+  CD4528B, CD4538B, CD4541B). A timer's rate lives in the values of its
+  resistors and capacitor, and a netlist has nowhere to state a value, so the
+  model isn't offered them. Build a timer by hand and wire the rest with the
+  builder, or ask for a circuit clocked by a clock brick.
+- **Transistors, diodes, inductors and the potentiometer**, and the
+  CD4007UB's bare MOSFETs with them. What these do depends on how they are
+  wired, which way round they go, or where a knob is turned — none of which a
+  netlist can say — so the model isn't offered them either.
 
 ## Review: asking what's wrong with a circuit
 

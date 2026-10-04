@@ -701,6 +701,9 @@
     "CD4049UB": {
       "title": "Sechsfach-Puffer/Pegelwandler, invertierend"
     },
+    "CD4007UB": {
+      "title": "Zwei komplementäre Transistorpaare plus Inverter"
+    },
     "CD4050B": {
       "title": "Sechsfach-Puffer/Pegelwandler, nicht invertierend"
     },
@@ -767,8 +770,14 @@
     "CD4098B": {
       "title": "Doppelter monostabiler Multivibrator"
     },
+    "CD4528B": {
+      "title": "Doppelter monostabiler Multivibrator"
+    },
     "CD4538B": {
       "title": "Doppelter monostabiler Präzisions-Multivibrator"
+    },
+    "CD4541B": {
+      "title": "Programmierbarer Timer"
     },
     "cap-ceramic": {
       "title": "Kondensator (Keramik)"
@@ -1402,7 +1411,8 @@
       "zenerVolts": "Z-Spannung",
       "case": "Gehäuse",
       "style": "Ausführung",
-      "bodyHoles": "Löcher zwischen den Anschlüssen"
+      "bodyHoles": "Löcher zwischen den Anschlüssen",
+      "ref": "Typ"
     },
     "option": {
       "manual": "Manuell",
@@ -1411,7 +1421,9 @@
       "low": "Low",
       "high": "High",
       "coil": "Spule",
-      "can": "Umhüllt"
+      "can": "Umhüllt",
+      "cap-ceramic": "Keramik",
+      "cap-electrolytic": "Elektrolyt"
     },
     "action": {
       "inspectMemory": "Speicher untersuchen…",
@@ -1429,11 +1441,44 @@
       "heldOn": "Hält EIN — das Gate führt keinen Pegel, und die darauf verbliebene Ladung hält den Kanal leitend. Ein echtes Gate verliert diese Ladung; legen Sie es über einen Widerstand auf einen festen Pegel.",
       "heldOff": "Hält AUS — das Gate führt keinen Pegel, also bleibt er, wie er zuletzt angesteuert wurde (aus, solange das Gate noch nie angesteuert wurde). Ein echtes Gate driftet; legen Sie es über einen Widerstand auf einen festen Pegel."
     },
-    "invalid": {
-      "ohms": "Kein Widerstandswert — etwa 470, 4.7k, 4k7 oder 2M2 (0,1 Ω bis 1 GΩ).",
-      "farads": "Kein Kapazitätswert — mit Einheit angeben: 100p, 10n, 4.7µ, 4u7 oder 1m (1 pF bis 1 F).",
-      "henries": "Kein Induktivitätswert — mit Einheit angeben: 100n, 10µ, 4u7, 100m oder 1H (1 nH bis 100 H), oder leer lassen.",
-      "zenerVolts": "Keine Spannung — etwa 5.1V, 5V1 oder 3.3 (1 V bis 200 V), oder leer lassen."
+    "combo": {
+      "show": "Gängige Werte anzeigen",
+      "notValue": {
+        "ohm": "Kein Widerstandswert",
+        "farad": "Kein Kapazitätswert",
+        "henry": "Kein Induktivitätswert",
+        "volt": "Kein Spannungswert"
+      },
+      "range": "Außerhalb des Bereichs: {min} bis {max}",
+      "wrongUnit": {
+        "ohm": {
+          "farad": "Das ist eine Kapazität, kein Widerstand",
+          "henry": "Das ist eine Induktivität, kein Widerstand",
+          "volt": "Das ist eine Spannung, kein Widerstand"
+        },
+        "farad": {
+          "ohm": "Das ist ein Widerstand, keine Kapazität",
+          "henry": "Das ist eine Induktivität, keine Kapazität",
+          "volt": "Das ist eine Spannung, keine Kapazität"
+        },
+        "henry": {
+          "ohm": "Das ist ein Widerstand, keine Induktivität",
+          "farad": "Das ist eine Kapazität, keine Induktivität",
+          "volt": "Das ist eine Spannung, keine Induktivität"
+        },
+        "volt": {
+          "ohm": "Das ist ein Widerstand, keine Spannung",
+          "farad": "Das ist eine Kapazität, keine Spannung",
+          "henry": "Das ist eine Induktivität, keine Spannung"
+        }
+      },
+      "notPart": "Keine Teilenummer – nur Buchstaben, Ziffern und -, höchstens 20",
+      "foreignPart": {
+        "npn": "{part} ist ein NPN-Transistor",
+        "pnp": "{part} ist ein PNP-Transistor",
+        "nmos": "{part} ist ein N-Kanal-MOSFET",
+        "pmos": "{part} ist ein P-Kanal-MOSFET"
+      }
     },
     "refused": {
       "bodyHoles": "Kein Platz – das Loch, in das sein Anschluss wandern würde, ist belegt oder liegt hinter dem Ende der Platine."
@@ -1803,7 +1848,7 @@
     "bistable": "Bistabil — TRIG LOW setzt den Ausgang auf HIGH, RESET LOW setzt ihn zurück",
     "multivibrator": "Astabil: Q mit {frequency}; monostabil: Impuls von {width}",
     "oscillator": "RC-Oszillator — {frequency}",
-    "external": "Zählt einen externen Takt an φI",
+    "external": "Zählt einen externen Takt an {pin}",
     "unused": "Nicht benutzt",
     "capped": "Schneller, als der Tisch es zeigen kann: dargestellt mit {cap}.",
     "stretched": "Kürzer, als der Tisch es zeigen kann: {shown} lang dargestellt.",
@@ -1814,7 +1859,9 @@
       "noResistor": "kein Zeitwiderstand von {from} nach {to}",
       "notConnected": "{pin} ist nicht angeschlossen",
       "ne555Unrecognised": "TRIG (2), THRES (6) und DISCH (7) sind weder astabil (TRIG und THRES verbunden, DISCH zwischen RA und RB), monostabil (THRES und DISCH verbunden, TRIG von außen angesteuert) noch bistabil (THRES an GND, TRIG von außen angesteuert) beschaltet",
-      "cd4060Incomplete": "der RC-Oszillator braucht Cx von φO (9), Rx von φ̄O (10) und Rs von φI (11), die sich alle in einem Knoten treffen"
+      "cd4060Incomplete": "der RC-Oszillator braucht Cx von φO (9), Rx von φ̄O (10) und Rs von φI (11), die sich alle in einem Knoten treffen",
+      "cd4541Incomplete": "der RC-Oszillator braucht Ctc von CTC (2), Rtc von RTC (1) und Rs von RS (3), die sich alle in einem Knoten treffen",
+      "notGrounded": "{pin} muss an GND angeschlossen sein"
     }
   }
 }

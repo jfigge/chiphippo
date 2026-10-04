@@ -122,11 +122,11 @@ test("an inductance is optional: typed, refused, and cleared at the field", () =
   assert.equal(value(), "IM02 4.7µH");
   type("Part number", "");
   // Refused: the value stays, the error shows.
-  type("Inductance", "10");
+  type("Inductance", "ten");
   assert.equal(params().henries, 4.7e-6);
   const error = row("Inductance").querySelector(".properties-field-error");
   assert.equal(error.hidden, false);
-  assert.match(error.textContent, /Not an inductance/);
+  assert.match(error.textContent, /Not an inductance value/);
   // Blank is an answer, not a mistake: the value goes.
   type("Inductance", "  ");
   assert.equal(error.hidden, true);
@@ -138,12 +138,16 @@ test("a Zener's voltage is optional and printed beside it with its part number",
   const { doc, surface, controller } = desk();
   const z = controller.addComponentAt("zener", "bb1", "a10");
   openProperties(surface, z.id);
+  // A voltage the common Zeners have brings its part number, into the Part
+  // number row as well as the part.
   type("Zener voltage", "5V1");
   assert.equal(doc.getComponent(z.id).params.zenerVolts, 5.1);
+  assert.equal(doc.getComponent(z.id).params.partNumber, "1N4733A");
+  assert.equal(row("Part number").querySelector("input").value, "1N4733A");
   const label = () =>
     surface.querySelector(`[data-component-id="${z.id}"] .part-span-label`)
       ?.textContent;
-  assert.equal(label(), "5.1V");
+  assert.equal(label(), "1N4733A 5.1V");
   type("Part number", "BZX79-C5V1");
   assert.equal(label(), "BZX79-C5V1 5.1V");
   type("Zener voltage", "");

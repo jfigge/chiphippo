@@ -154,6 +154,7 @@ on 1, 4, 10 and 13 — so read the pin-assignments window before wiring one.
 | `CD4069UB` | Hex inverter (unbuffered) |
 | `CD40106B` | Hex Schmitt-trigger inverter |
 | `CD4049UB` | Hex inverting buffer/converter — **VCC on pin 1, VSS on pin 8**, not the corners |
+| `CD4007UB` | Dual complementary pair plus inverter — six bare **MOSFETs**, see below |
 | `CD4050B` | Hex non-inverting buffer/converter — same odd power pins |
 | `CD4013B` | Dual D flip-flop with **active-HIGH** set and reset (the 74LS74's are active-LOW) |
 | `CD4027B` | Dual JK flip-flop with active-HIGH set and reset — raising **both** drives Q and Q̄ HIGH together |
@@ -175,7 +176,9 @@ on 1, 4, 10 and 13 — so read the pin-assignments window before wiring one.
 | `CD4053B` | Triple 2-channel analog multiplexer/demultiplexer — VEE on pin 7 |
 | `CD4047B` | Monostable/astable multivibrator — timed by one resistor and one capacitor |
 | `CD4098B` | Dual retriggerable monostable |
+| `CD4528B` | Dual retriggerable monostable — its pulse **lengthens with the supply** |
 | `CD4538B` | Dual retriggerable precision monostable |
+| `CD4541B` | Programmable timer: an RC oscillator and a 16-stage counter |
 
 What makes the family worth learning on is how it differs from TTL:
 
@@ -224,6 +227,14 @@ A few of the larger parts have habits of their own:
   analog voltages are out of scope — and a supply that passes through a switch
   arrives at the strength of an ordinary output: the + rail switched onto an
   output driving LOW is a fight, and a channel joining + to − is a short.
+- **The CD4007UB is six MOSFETs, not gates.** Three N-channel and three
+  P-channel transistors with their terminals brought out, each a switch exactly
+  as a discrete MOSFET is: an N-channel joins its two terminals while its gate
+  is HIGH, a P-channel while it is LOW, and a floating gate is unknown. Pair 1's
+  P already sits on VDD and its N on VSS, so joining 13 to 8 makes an inverter
+  from Q1 GATES (6); pair 3 is an inverter from Q3 GATES (10) to 12 once 11 is
+  on VDD and 9 on VSS; pair 2's four terminals are all free. Thresholds and the
+  part's analog uses — amplifiers, oscillators — are out of scope.
 - **VEE is a supply pin.** The 405x parts have a negative supply, VEE (pin 7),
   for analog signals below ground. Chip Hippo has no negative supply, so tie
   VEE to VSS, as single-supply digital circuits do; until it is, the chip is
@@ -236,12 +247,12 @@ A few of the larger parts have habits of their own:
 
 ## Timers
 
-Five parts take their timing from a **resistor and a capacitor** you wire to
+Seven parts take their timing from a **resistor and a capacitor** you wire to
 them, as on a bench: the **555** (CHIPS ▸ Timer), and the CD4000
-**CD4047B**, **CD4098B** and **CD4538B** (CD4000 ▸ Timer) and **CD4060B**
-(CD4000 ▸ Counter). Give the resistors and the capacitor their values in
+**CD4047B**, **CD4098B**, **CD4528B**, **CD4538B** and **CD4541B** (CD4000 ▸
+Timer) and **CD4060B** (CD4000 ▸ Counter). Give the resistors and the capacitor their values in
 **Properties…** (see
-[Resistor and capacitor values](components.md#resistor-and-capacitor-values))
+[Component values](components.md#component-values))
 and the part runs at the rate its datasheet gives for them. There is no analog
 simulation behind it: each part finds its own resistor and capacitor in the
 wiring and works the time out from the datasheet's formula.
@@ -249,15 +260,17 @@ wiring and works the time out from the datasheet's formula.
 While the circuit runs, each timer prints its rate or pulse length under its
 part number, and its **Properties…** card shows the same under **Timing**:
 
-| Part | Timing pins | Formula (TI datasheet) |
+| Part | Timing pins | Formula (datasheet) |
 | --- | --- | --- |
 | 555 astable | RA from VCC to DISCH, RB from DISCH to TRIG + THRES, C from TRIG + THRES to GND | high 0.693·(RA+RB)·C, low 0.693·RB·C |
 | 555 monostable | RA from VCC to THRES + DISCH, C from THRES + DISCH to GND | pulse 1.1·RA·C |
 | 555 bistable | THRES to GND — no resistor or capacitor | none: TRIG LOW sets OUT, RESET LOW clears it |
 | CD4047B | R between R (2) and RC COMMON (3), C between C (1) and RC COMMON (3) | Q/Q̄ period 4.40·RC (OSC OUT twice as fast), one-shot pulse 2.48·RC |
 | CD4098B | per section: C from RX CX to CX (or GND), R from RX CX to VDD | pulse ½·R·C |
+| CD4528B | per section: C from T2 to T1 (or GND), R from T2 to VDD — and T1 wired to GND | pulse 0.2·R·C·ln(VDD) |
 | CD4538B | per section: C from RX CX to CX (or GND), R from RX CX to VDD | pulse R·C |
 | CD4060B | Cx from φO (9), Rx from φ̄O (10), Rs from φI (11), all to one junction | oscillator period 2.2·Rx·Cx |
+| CD4541B | Ctc from CTC (2), Rtc from RTC (1), Rs from RS (3), all to one junction | oscillator period 2.3·Rtc·Ctc |
 
 Two resistors (or two capacitors) side by side between the same two points
 count as one, combined the way they would be on a bench. Two in **series**
@@ -297,19 +310,41 @@ and harmless. The 555 runs from 4.5 V to 16 V.
 - **CD4047B** — ASTABLE (5) HIGH or ASTABLĒ (4) LOW makes it free-run: Q and
   Q̄ square-wave, with OSC OUT (13) at twice the rate. Otherwise it is a
   one-shot: +TRIGGER (8) rising while −TRIGGER (6) is LOW, or −TRIGGER falling
-  while +TRIGGER is HIGH, fires one pulse; RETRIGGER (12) rising during the
-  pulse starts it again; EXT RESET (9) HIGH ends it and holds Q LOW.
-- **CD4098B** and **CD4538B** — two independent one-shots each. A section
-  fires on +TR rising (with −TR held HIGH) or on −TR falling (with +TR held
-  LOW), is **retriggerable** (a new trigger during the pulse starts the time
-  again), and RESET LOW ends the pulse at once. A section with nothing on its
-  timing pins and nothing on its outputs is unused and says nothing.
+  while +TRIGGER is HIGH, fires one 2.48·RC pulse, which another trigger
+  does not restart. The pulse is the internal oscillator running for whole
+  periods, so RETRIGGER (12) rising during it, or held HIGH, runs it on by
+  one more 2.2·RC period at a time — the datasheet's "will retrigger as long
+  as the RETRIGGER input is high". The datasheet's retriggerable hook-up
+  ties RETRIGGER to +TRIGGER, so every further trigger during the pulse runs
+  it on. EXT RESET (9) HIGH ends it and holds Q LOW.
+- **CD4098B**, **CD4528B** and **CD4538B** — two independent one-shots each,
+  on the same pins. A section fires on +TR rising (with −TR held HIGH) or on
+  −TR falling (with +TR held LOW) — the 4528 calls them A and B — is
+  **retriggerable** (a new trigger during the pulse starts the time again), and
+  RESET LOW (the 4528's CD) ends the pulse at once. A section with nothing on
+  its timing pins and nothing on its outputs is unused and says nothing. The
+  4528 differs in two ways: its T1 pins (1 and 15) are not grounded inside the
+  part, so wire them to GND or the section reports it and times nothing; and
+  its pulse depends on the supply — 0.2·R·C·ln(VDD) is 0.32·R·C at 5 V and
+  0.54·R·C at 15 V. (Its datasheet is a current second source's, HGSEMI's; TI
+  never documented this part. Makers disagree: another maker's CD4528 sheet
+  gives 0.42·R·C at 5 V, falling to 0.30·R·C at 15 V.)
 - **CD4060B** — with the RC network on φO, φ̄O and φI it runs its own
   oscillator and counts it; RESET HIGH clears the count and stops it. With
   nothing on φO and φ̄O, φI is an ordinary clock input, counted on its falling
   edges — the way its example circuit uses it. A network with a piece missing
   is reported, not guessed at. A crystal (the datasheet's other oscillator) is
   not offered: the desk has no crystal to put there.
+- **CD4541B** — the same idea with a programmable output. With the RC network
+  on CTC, RTC and RS it runs its own oscillator (CTC drives it out, RTC its
+  complement); with nothing on CTC and RTC, RS is a clock input counted on its
+  **falling** edges. A and B pick which counter stage is the OUTPUT: 2^13 with
+  both LOW, 2^10 with B HIGH, 2^8 with A HIGH, 2^16 with both HIGH. MODE HIGH
+  recycles — a square wave at the oscillator ÷ 2^N; MODE LOW makes a **single
+  transition** 2^(N−1) counts after a reset and holds it. Q/Q̄ SELECT HIGH
+  inverts the output. MASTER RESET HIGH clears the count and stops the
+  oscillator; with AUTO RESET LOW it starts by itself when you press Run,
+  and with AUTO RESET HIGH it waits for a MASTER RESET pulse first.
 
 ### Faster than the desk can show
 
@@ -484,8 +519,8 @@ A few practical notes:
 - Parts with no bench have no button: the memory and interface chips (a RAM or
   a CPU can't be demonstrated by flipping switches at it — those are the
   computer demos, which need a program), the CD4000 RC timers (CD4047B,
-  CD4098B and CD4538B — a timer's bench is its resistor and capacitor, not
-  switches), and every discrete, brick and wire. The CD4060B's example counts
+  CD4098B, CD4528B, CD4538B and CD4541B — a timer's bench is its resistor and
+  capacitor, not switches), and every discrete, brick and wire. The CD4060B's example counts
   a clock brick on φI rather than running its oscillator.
 
 ## Datasheets

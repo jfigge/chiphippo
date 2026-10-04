@@ -18,8 +18,9 @@
  */
 
 // The analog switches (Feature 410, phase 2b): the CD4066B and the
-// CD4051B/52B/53B, through the WHOLE engine — a channel joins two nets, so the
-// thing under test is never the part alone but the circuit around it.
+// CD4051B/52B/53B — and the CD4007UB, whose six MOSFETs are channels too —
+// through the WHOLE engine: a channel joins two nets, so the thing under test
+// is never the part alone but the circuit around it.
 //
 //   · an ON channel passes a level BOTH ways (a 4051 is a multiplexer and a
 //     demultiplexer), an OFF one leaves each side to its own drivers (Z if it
@@ -360,6 +361,50 @@ test("CD4051B: a floating select bit leaves only its two channels in doubt", () 
   );
 });
 
+test("CD4051B: a floating select is read each way in turn — never every channel at once", () => {
+  // A floating, B = C = LOW: channel 0 OR channel 1 meets COM, never both.
+  // Channel 0 is on +, so COM is H or nothing — unknown; channel 1 only ever
+  // meets COM, which nothing else drives, so it floats either way.
+  const MUX = bench("CD4051B");
+  const { at } = run({
+    boards,
+    components: [psu(), MUX.comp],
+    wires: [
+      ...MUX.power(),
+      MUX.tie(6, "-"),
+      MUX.tie(10, "-"),
+      MUX.tie(9, "-"),
+      MUX.tie(13, "+"),
+    ],
+  });
+  assert.equal(at(MUX.hole(3)), X, "COM");
+  assert.equal(at(MUX.hole(13)), H, "channel 0 is the rail's");
+  assert.equal(at(MUX.hole(14)), Z, "channel 1");
+});
+
+test("CD4053B: a floating select never joins x to y through COM", () => {
+  // Section c, C floating: cx on −, cy driven HIGH by an inverter. Either
+  // way the switch is set, cy keeps its own HIGH.
+  const TRIPLE = bench("CD4053B");
+  const { inv, wires } = inverter("-");
+  const { at, warnings } = run({
+    boards,
+    components: [psu(), TRIPLE.comp, inv.comp],
+    wires: [
+      ...TRIPLE.power(),
+      TRIPLE.tie(6, "-"),
+      TRIPLE.tie(11, "-"),
+      TRIPLE.tie(10, "-"),
+      TRIPLE.tie(5, "-"),
+      ...wires,
+      wire(inv.free(2), TRIPLE.free(3)),
+    ],
+  });
+  assert.equal(at(TRIPLE.hole(3)), H, "cy");
+  assert.equal(at(TRIPLE.hole(4)), X, "COM c: L or H");
+  assert.deepEqual(warnings("conflict"), []);
+});
+
 test("CD4051B: VEE is a supply pin — the part runs only with it on VSS", () => {
   const desk = (vee) => {
     const mux = bench("CD4051B");
@@ -469,4 +514,183 @@ test("CD4053B: Table 7-1 — each section follows its OWN select", () => {
     ],
   });
   assert.equal(off.at(T2.hole(12)), Z);
+});
+
+// ── CD4007UB ────────────────────────────────────────────────────────────────
+
+// SCHS018C: Q1 P 14 ↔ 13, Q1 N 8 ↔ 7, gates 6. Q2 P 2 ↔ 1, Q2 N 4 ↔ 5, gates 3.
+// Q3 P 11 ↔ 12, Q3 N 12 ↔ 9, gates 10. 14 is VDD and 7 VSS.
+
+/** A powered 4007 with each named gate on a rail (or left open: null) and
+    the test's own wires. */
+function fets(sw, gates, extra = []) {
+  const wires = [...sw.power(), ...extra];
+  for (const [pin, rail] of Object.entries(gates)) {
+    if (rail) wires.push(sw.tie(Number(pin), rail));
+  }
+  return { boards, components: [psu(), sw.comp], wires };
+}
+
+test("CD4007UB: Q3 inverts once 11 is on VDD and 9 on VSS", () => {
+  for (const [rail, want] of [
+    ["+", L],
+    ["-", H],
+  ]) {
+    const sw = bench("CD4007UB");
+    const doc = fets(sw, { 10: rail, 6: "-", 3: "-" }, [
+      sw.tie(11, "+"),
+      sw.tie(9, "-"),
+    ]);
+    const { at, warnings } = run(doc);
+    assert.equal(at(sw.hole(12)), want, `gate ${rail}`);
+    assert.deepEqual(warnings("short"), []);
+  }
+});
+
+test("CD4007UB: Q1's P is on VDD and its N on VSS inside — 13 to 8 is an inverter", () => {
+  for (const [rail, want] of [
+    ["+", L],
+    ["-", H],
+  ]) {
+    const sw = bench("CD4007UB");
+    const doc = fets(sw, { 6: rail, 3: "-", 10: "-" }, [
+      wire(sw.free(13), sw.free(8)),
+    ]);
+    assert.equal(run(doc).at(sw.hole(13)), want, `gate ${rail}`);
+  }
+});
+
+test("CD4007UB: one MOSFET is a switch — Q2's P passes a level both ways while its gate is LOW", () => {
+  const sw = bench("CD4007UB");
+  const on = run(fets(sw, { 3: "-", 6: "-", 10: "-" }, [sw.tie(2, "+")]));
+  assert.equal(on.at(sw.hole(1)), H, "2 → 1");
+  const back = bench("CD4007UB");
+  const rev = run(fets(back, { 3: "-", 6: "-", 10: "-" }, [back.tie(1, "-")]));
+  assert.equal(rev.at(back.hole(2)), L, "1 → 2");
+  // Gate HIGH: the P is off, so 1 has nothing (its N partner joins 4 to 5,
+  // which hold nothing either).
+  const off = bench("CD4007UB");
+  const open = run(fets(off, { 3: "+", 6: "-", 10: "-" }, [off.tie(2, "+")]));
+  assert.equal(open.at(off.hole(1)), Z);
+});
+
+test("CD4007UB: a floating gate leaves its inverter unknown, and is reported", () => {
+  const sw = bench("CD4007UB");
+  const doc = fets(sw, { 10: null, 6: "-", 3: "-" }, [
+    sw.tie(11, "+"),
+    sw.tie(9, "-"),
+  ]);
+  const { at, warnings } = run(doc);
+  assert.equal(at(sw.hole(12)), X);
+  const [w] = warnings("floating-input");
+  assert.deepEqual(w.pins, [10]);
+});
+
+test("CD4007UB: a MOSFET joining + to − is a short through a transistor", () => {
+  // Q1's P joins VDD to 13 while its gate is LOW; 13 is wired to GND.
+  const sw = bench("CD4007UB");
+  const { warnings } = run(
+    fets(sw, { 6: "-", 3: "-", 10: "-" }, [sw.tie(13, "-")]),
+  );
+  const [short] = warnings("short");
+  assert.equal(short?.via, "transistor");
+  // Gate HIGH turns that P off — and the short goes with it.
+  const off = bench("CD4007UB");
+  const quiet = run(fets(off, { 6: "+", 3: "-", 10: "-" }, [off.tie(13, "-")]));
+  assert.deepEqual(quiet.warnings("short"), []);
+});
+
+test("CD4007UB: a fight on one net stays there, though a rail reaches another through a channel too", () => {
+  // Q1's P puts VDD on 13 (gate 6 LOW); Q3's P puts VDD on 12 (gate 10
+  // LOW, 11 on +), where an inverter's output fights it. The rail is stiff:
+  // 13 hears none of 12's fight.
+  const sw = bench("CD4007UB");
+  const { inv, wires } = inverter("+");
+  const { at, warnings } = run({
+    boards,
+    components: [psu(), sw.comp, inv.comp],
+    wires: [
+      ...sw.power(),
+      sw.tie(6, "-"),
+      sw.tie(3, "-"),
+      sw.tie(10, "-"),
+      sw.tie(11, "+"),
+      ...wires,
+      wire(inv.free(2), sw.free(12)),
+    ],
+  });
+  assert.equal(at(sw.hole(12)), X, "the fight");
+  assert.equal(at(sw.hole(13)), H, "Q1's output");
+  assert.equal(warnings("conflict").length, 1);
+});
+
+test("a short through a SWITCH is said to be a switch's, whatever transistors sit elsewhere", () => {
+  // A 4066 joining + to −, and an idle CD4007UB (whose terminals 14 and 7
+  // are on the rails) beside it.
+  const sw = bench("CD4066B");
+  const fet = bench("CD4007UB", "e30", "c2");
+  const { warnings } = run(
+    quad(
+      sw,
+      "+",
+      [
+        sw.tie(1, "+"),
+        sw.tie(2, "-"),
+        ...fet.power(),
+        fet.tie(6, "+"),
+        fet.tie(3, "+"),
+        fet.tie(10, "+"),
+      ],
+      [fet.comp],
+    ),
+  );
+  const shorts = warnings("short");
+  assert.equal(shorts.length, 1);
+  assert.equal(shorts[0].via, "switch");
+});
+
+test("CD4007UB: a gate built from it is held to the family boundaries like any output", () => {
+  // Q1 as an inverter (13 to 8) into three 74LS04 inputs: one B-series sink
+  // holds one LS load, as a CD4069UB's does.
+  const sw = bench("CD4007UB");
+  const ls = bench("74LS04", "e30", "c2");
+  const fan = run({
+    boards,
+    components: [psu(), sw.comp, ls.comp],
+    wires: [
+      ...sw.power(),
+      ...ls.power(),
+      sw.tie(6, "+"),
+      sw.tie(3, "-"),
+      sw.tie(10, "-"),
+      wire(sw.free(13), sw.free(8)),
+      ...[1, 3, 5].map((p) => wire(sw.free(8), ls.free(p))),
+    ],
+  });
+  const [over] = fan.warnings("ls-fanout");
+  assert.equal(over?.chip, "c1");
+  assert.equal(over?.loads, 3);
+  // …and its HIGH, from a 12 V supply, into a 74LS04 on 5 V is two supplies
+  // on one net.
+  const hi = bench("CD4007UB");
+  const ls5 = bench("74LS04", "e30", "c2");
+  const twelve = { ...psu("psu1"), params: { volts: 12 } };
+  const five = { ...psu("psu2"), x: 90, params: { volts: 5 } };
+  const mixed = run({
+    boards,
+    components: [twelve, five, hi.comp, ls5.comp],
+    wires: [
+      ...hi.power(),
+      hi.tie(6, "-"),
+      hi.tie(3, "-"),
+      hi.tie(10, "-"),
+      wire(hi.free(13), hi.free(8)),
+      wire("psu2.+", ls5.free(14)),
+      wire("psu2.-", ls5.free(7)),
+      wire("psu2.-", "psu1.-"),
+      wire(hi.free(13), ls5.free(1)),
+    ],
+  });
+  const [w] = mixed.warnings("mixed-supply");
+  assert.deepEqual(w?.volts, [5, 12]);
 });

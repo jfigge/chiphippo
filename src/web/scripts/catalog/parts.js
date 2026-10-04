@@ -36,7 +36,9 @@
 import { hd44780Unit } from "../sim/hd44780.js";
 import { MM_PER_UNIT } from "../desk/desk-geometry.js";
 import { ROTATIONS } from "../model/breadboard.js";
-import { formatOhms, parseOhms } from "../model/ohm-format.js";
+import { formatOhms } from "../model/ohm-format.js";
+import { RESISTOR_VALUES, VALUE_RANGES } from "../model/component-value.js";
+import { storedValue, valueField } from "./value-fields.js";
 import { normalizeLeadOffset } from "./lead-offset.js";
 import { DISCRETE_DEFS } from "./discretes.js";
 
@@ -377,20 +379,23 @@ function dipSwitchBankDef(n) {
 }
 
 /**
- * The Resistance field every resistor's Properties card carries: typed, read
- * the way a bench writes a value (`470`, `4k7`, `2M2` — ohm-format.js), and
- * refused at the field when it does not read as one, keeping the value it had.
- * `parse`/`format` are pure functions, so the field stays data like any other
- * (part-properties-dialog.js's `"quantity"` type is the one renderer).
+ * The Resistance field every resistor's Properties card carries: the E12
+ * values from 10 Ω to 1 MΩ to pick, or any value typed the way a bench writes
+ * it (`470`, `4k7`, `2M2`, `100 kilo ohms` — model/component-value.js), and
+ * refused at the field when it does not read as one, keeping the value it had
+ * (value-fields.js, part-properties-dialog.js's `"combo"` type).
  */
-const RESISTANCE_FIELD = Object.freeze({
+const RESISTANCE_FIELD = valueField({
   key: "ohms",
   label: "Resistance",
-  type: "quantity",
-  parse: parseOhms,
-  format: (ohms) => `${formatOhms(ohms)}Ω`,
-  invalid: "Not a resistance — try 470, 4.7k, 4k7 or 2M2 (0.1 Ω to 1 GΩ).",
+  unit: "ohm",
+  range: VALUE_RANGES.resistor,
+  values: RESISTOR_VALUES,
 });
+
+/** A resistance as the loader keeps it (value-fields.js `storedValue`): a
+    positive number, text an older document holds read or kept, else 10k. */
+const storedOhms = (raw) => storedValue(raw?.ohms, "ohm", 10000);
 
 /**
  * A potentiometer's wiper Position, 0–100 % — a slider in its Properties card
@@ -409,7 +414,10 @@ const POSITION_FIELD = Object.freeze({
   max: 100,
   step: 1,
   ends: (values) => {
-    const side = (ohms) => (ohms > 0 ? formatOhms(ohms) : "0");
+    // A track value that would not read (an older document's, kept as its
+    // text) divides into sides of no known value.
+    const side = (ohms) =>
+      Number.isNaN(ohms) ? "?" : ohms > 0 ? formatOhms(ohms) : "0";
     const { toPin1, toPin3 } = potentiometerSplit(values);
     return [side(toPin1), side(toPin3)];
   },
@@ -418,10 +426,9 @@ const POSITION_FIELD = Object.freeze({
 /** A potentiometer's params: the whole track's value (a resistor's default)
     and the wiper's position, a whole percent, centred unless said. */
 function potentiometerParams(raw) {
-  const ohms = Number(raw?.ohms);
   const position = Number(raw?.position);
   return {
-    ohms: Number.isFinite(ohms) && ohms > 0 ? ohms : 10000,
+    ohms: storedOhms(raw),
     position: Number.isFinite(position)
       ? Math.min(100, Math.max(0, Math.round(position)))
       : 50,
@@ -853,10 +860,9 @@ export const PART_DEFS = Object.freeze(
         { n: 2, name: "2", role: "lead" },
       ],
       normalizeParams(raw) {
-        const ohms = Number(raw?.ohms);
         const rotated = raw?.rot === 90;
         return {
-          ohms: Number.isFinite(ohms) && ohms > 0 ? ohms : 10000,
+          ohms: storedOhms(raw),
           // Orientation: 0 = horizontal footprint, 90 = vertical two-end form.
           rot: rotated ? 90 : 0,
           // Pin 2's lead bend as a {dx, dy} pitch offset from the anchor —
@@ -919,9 +925,8 @@ export const PART_DEFS = Object.freeze(
         })),
       ],
       normalizeParams(raw) {
-        const ohms = Number(raw?.ohms);
         return {
-          ohms: Number.isFinite(ohms) && ohms > 0 ? ohms : 10000,
+          ohms: storedOhms(raw),
           // Stored only when set (as sw-dip8 and bar8iso do), so an unturned
           // part round-trips byte-identical.
           ...(raw?.rot === 180 ? { rot: 180 } : {}),
@@ -985,22 +990,27 @@ export const PART_DEFS = Object.freeze(
       // A side with NONE of the track left is not a resistor at all but the
       // wiper's contact sitting on the end terminal — a WIRE, so the nets
       // join and nothing limits the current through them.
+      // Which side that is, is the POSITION's to say, not the arithmetic's:
+      // a track value that would not read (an older document's, kept as its
+      // text) still has a wiper, and its sides are still resistors.
       internalBridges(params) {
-        const { toPin1, toPin3 } = potentiometerSplit(params);
+        const { position } = potentiometerParams(params);
         return [
-          ...(toPin1 === 0 ? [[2, 1]] : []),
-          ...(toPin3 === 0 ? [[2, 3]] : []),
+          ...(position === 0 ? [[2, 1]] : []),
+          ...(position === 100 ? [[2, 3]] : []),
         ];
       },
       // Every other side is a resistor: a weak coupler from the wiper to that
       // end. Each pair carries its OWN ohms (third element), since the two
       // sides divide one track — sim/rc-trace.js reads it in place of the
-      // part's single `ohms`, which every other consumer can ignore.
+      // part's single `ohms`, which every other consumer can ignore (and
+      // skips a side of no known value, as it does a resistor's).
       weakBridges(params) {
+        const { position } = potentiometerParams(params);
         const { toPin1, toPin3 } = potentiometerSplit(params);
         return [
-          ...(toPin1 > 0 ? [[2, 1, toPin1]] : []),
-          ...(toPin3 > 0 ? [[2, 3, toPin3]] : []),
+          ...(position > 0 ? [[2, 1, toPin1]] : []),
+          ...(position < 100 ? [[2, 3, toPin3]] : []),
         ];
       },
     },

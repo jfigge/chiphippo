@@ -334,6 +334,10 @@ function buildContext(doc, netlist) {
       sequential: isSequential(def),
       memory: isMemory(def),
       analogSwitch,
+      // Its channels are TRANSISTORS (a discrete one, or a CD4007UB's), so
+      // two rails meeting through one are said to meet through a transistor
+      // rather than "an analog switch".
+      transistor: Boolean(def.transistor || def.transistorArray),
       oscillator,
       // The output levels whose drive cannot burn an LED (families.js
       // `limitsLedCurrent`), and whether the channels cannot either.
@@ -350,19 +354,6 @@ function buildContext(doc, netlist) {
     });
   }
 
-  // The nets a TRANSISTOR's switched pins sit on — so two rails meeting
-  // through one are said to meet through a transistor, not "an analog switch".
-  const transistorNets = new Set();
-  for (const c of chips) {
-    if (!c.def.transistor) continue;
-    for (const ch of c.def.logic.channels) {
-      for (const pin of [ch.a, ch.b]) {
-        const net = c.pinNet.get(pin);
-        if (net) transistorNets.add(net);
-      }
-    }
-  }
-
   return {
     netIds,
     supplyPlusVolts,
@@ -371,7 +362,6 @@ function buildContext(doc, netlist) {
     signals,
     resistors,
     diodes,
-    transistorNets,
     trace,
     chips,
     chipStatus,
@@ -382,6 +372,7 @@ function buildContext(doc, netlist) {
       chips,
       chipStatus,
       supplyPlusVolts,
+      supplyMinus,
       resistors,
     ),
   };
@@ -401,10 +392,23 @@ function buildContext(doc, netlist) {
  *   ls-fanout       one CD4000 output holds more 74LS inputs than it can sink
  *                   (families.js `lsFanoutOf`: one, or a buffer's eight).
  *   mixed-supply    one net joins chips powered from different voltages — a
- *                   12 V output into a 5 V input, which needs a level shifter.
+ *                   12 V output into a 5 V input, which needs a level shifter
+ *                   (`supplyClash`). A level shifter's own inputs
+ *                   (`def.inputsAboveSupply`, the CD4049UB/CD4050B) may sit
+ *                   on a HIGHER supply's net; that is what they are for.
+ *
+ * Neither rail is a signal: a supply `+` net is skipped, and so is a ground
+ * net — chips on two supplies share one by necessity.
  */
-function boundaryWarnings(chips, chipStatus, supplyPlusVolts, resistors) {
-  const byNet = new Map(); // netId → { lsOut, cmosIn, lsIn, cmosOut[], volts }
+function boundaryWarnings(
+  chips,
+  chipStatus,
+  supplyPlusVolts,
+  supplyMinus,
+  resistors,
+) {
+  // netId → { lsOut, cmosIn, lsIn, cmosOut[], volts, driven, plain, above }
+  const byNet = new Map();
   const at = (net) => {
     if (!byNet.has(net)) {
       byNet.set(net, {
@@ -413,6 +417,9 @@ function boundaryWarnings(chips, chipStatus, supplyPlusVolts, resistors) {
         lsIn: 0,
         cmosOut: [],
         volts: new Set(),
+        driven: new Set(), // the supplies of the outputs on it
+        plain: new Set(), // …of the inputs that need their own supply's level
+        above: new Set(), // …of the inputs that take anything up from theirs
       });
     }
     return byNet.get(net);
@@ -426,10 +433,17 @@ function boundaryWarnings(chips, chipStatus, supplyPlusVolts, resistors) {
       if (!net) continue;
       const r = role.get(pin);
       if (r !== "input" && r !== "output" && r !== "io") continue;
-      // A switch terminal is neither: it passes another part's level.
+      // A switch terminal is neither: it passes another part's level. (A
+      // CD4007UB's terminal on a channel from a rail is its OUTPUT — below.)
       if (c.analogSwitch && r === "io") continue;
       const entry = at(net);
-      if (volts != null) entry.volts.add(volts);
+      if (volts != null) {
+        entry.volts.add(volts);
+        if (r === "output" || r === "io") entry.driven.add(volts);
+        if (r === "input" || r === "io") {
+          (c.def.inputsAboveSupply ? entry.above : entry.plain).add(volts);
+        }
+      }
       if (family === "74LS") {
         if (r === "output" || r === "io") entry.lsOut = true;
         if (r === "input" || r === "io") entry.lsIn += 1;
@@ -445,6 +459,36 @@ function boundaryWarnings(chips, chipStatus, supplyPlusVolts, resistors) {
       }
     }
   }
+  // A CD4007UB is built into gates by its wiring: a terminal whose channel
+  // runs to a rail (its own VDD/VSS inside, or one wired to 11/9) is that
+  // gate's output — HIGH at the `+` rail's voltage through a P-channel, LOW
+  // through an N-channel, sinking what a B-series output sinks.
+  for (const c of chips) {
+    if (c.status !== CHIP_STATUS.OK || !c.def.transistorArray) continue;
+    for (const ch of c.def.logic.channels) {
+      for (const [near, far] of [
+        [ch.a, ch.b],
+        [ch.b, ch.a],
+      ]) {
+        const net = c.pinNet.get(near);
+        const rail = c.pinNet.get(far);
+        if (!net || !rail || net === rail) continue;
+        if (supplyPlusVolts.has(net) || supplyMinus.has(net)) continue;
+        if (supplyPlusVolts.has(rail)) {
+          for (const v of supplyPlusVolts.get(rail)) {
+            at(net).volts.add(v);
+            at(net).driven.add(v);
+          }
+        } else if (supplyMinus.has(rail)) {
+          const fanout = lsFanoutOf(c.def);
+          const outs = at(net).cmosOut;
+          if (!outs.some((o) => o.chip === c.comp.id)) {
+            outs.push({ chip: c.comp.id, pin: near, fanout });
+          }
+        }
+      }
+    }
+  }
   // Nets a resistor ties to a supply `+` — a pull-up the LS output can lean on.
   const pulledUp = new Set();
   for (const r of resistors) {
@@ -453,7 +497,8 @@ function boundaryWarnings(chips, chipStatus, supplyPlusVolts, resistors) {
   }
   const warnings = [];
   for (const [net, e] of byNet) {
-    if (supplyPlusVolts.has(net)) continue; // a rail is not a signal
+    // A rail is not a signal.
+    if (supplyPlusVolts.has(net) || supplyMinus.has(net)) continue;
     if (e.lsOut && e.cmosIn && !pulledUp.has(net)) {
       warnings.push({ type: "marginal-high", net });
     }
@@ -468,7 +513,7 @@ function boundaryWarnings(chips, chipStatus, supplyPlusVolts, resistors) {
         });
       }
     }
-    if (e.volts.size > 1) {
+    if (supplyClash(e)) {
       warnings.push({
         type: "mixed-supply",
         net,
@@ -477,6 +522,19 @@ function boundaryWarnings(chips, chipStatus, supplyPlusVolts, resistors) {
     }
   }
   return warnings;
+}
+
+/**
+ * Whether one net's chips disagree about its voltage. Its outputs, and every
+ * ordinary input, need it at their OWN supply's level, so two different
+ * supplies among them clash; a level shifter's input needs only a level at
+ * or above its supply's, so it clashes only with a lower one.
+ */
+function supplyClash({ driven, plain, above }) {
+  const fixed = new Set([...driven, ...plain]);
+  if (fixed.size > 1) return true;
+  const [level] = fixed;
+  return level != null && [...above].some((v) => v > level);
 }
 
 /**
@@ -544,56 +602,164 @@ function driversFor(ctx, levels, state, clockPhase, images, signalLevels) {
 }
 
 /**
+ * The most unknown channel controls one pass tries every way round (2⁴
+ * readings — a 405x's A, B, C and INH). Past it, every channel that MIGHT be
+ * on is closed at once in one wide reading: more X than the truth, never less.
+ */
+const MAX_UNKNOWN_CONTROLS = 4;
+
+/** A control pin's identity across parts: its net, or the pin itself when it
+    is wired to nothing. */
+const controlKey = (c, pin) => c.pinNet.get(pin) ?? `${c.comp.id}#${pin}`;
+
+/**
  * Which nets the analog switches' channels JOIN for one pass, read off the
  * levels on their control pins (`levels`, the previous pass's — as every chip
- * output is computed). Returns null when no channel conducts, else
- * `{ on, wide, hardOn, hardWide }`: each a Map netId → the member list of its
- * joined group (itself included; one shared array per group), `on` over the
- * channels that are ON and `wide` over those that MIGHT be (a floating
- * control) as well — null when none might. `hardOn`/`hardWide` are the same
- * joins minus the channels whose on-resistance limits an LED's current: what
- * the LED rule's resolution joins. Only a POWERED switch conducts. `state` is
- * the per-part state map, read by the one channel part that keeps any (a
- * MOSFET's gate charge).
+ * output is computed). Only a POWERED switch conducts; `state` is the
+ * per-part state map, read by the one channel part that keeps any (a
+ * MOSFET's gate charge). Returns null when no channel conducts, else
+ * `{ definite, readings }`, each reading a `{ on, hardOn }` pair of
+ * `groupsOf` joins (`hardOn` minus the channels whose on-resistance limits an
+ * LED's current: what the LED rule's resolution joins).
+ *
+ * `definite` closes only the channels that are certainly ON. A channel whose
+ * control is UNKNOWN (floating, or fought over) might be either, so the
+ * `readings` are every way those controls could read — each a real switch
+ * position, so a mux with a floating select is never read as every channel
+ * closed at once (two channels no select value joins, joined through COM).
+ * The pass keeps the levels all readings agree on; with no unknown control
+ * the one reading IS `definite`.
  */
 function channelGroups(ctx, levels, state = new Map()) {
-  const on = [];
-  const maybe = [];
-  for (const c of ctx.chips) {
-    if (!c.analogSwitch || c.status !== CHIP_STATUS.OK) continue;
-    const pinLevels = new Map();
-    for (const [pin, net] of c.pinNet) {
-      pinLevels.set(pin, net ? (levels.get(net) ?? Z) : Z);
+  const parts = ctx.chips.filter(
+    (c) => c.analogSwitch && c.status === CHIP_STATUS.OK,
+  );
+  if (!parts.length) return null;
+  // The pairs one reading joins: `overrides` sets controls (controlKey → H/L);
+  // `unknown` collects the controls behind every channel that answered X.
+  const pairsFor = (overrides, unknown) => {
+    const on = [];
+    const maybe = [];
+    for (const c of parts) {
+      const pinLevels = new Map();
+      for (const [pin, net] of c.pinNet) {
+        const level = net ? (levels.get(net) ?? Z) : Z;
+        pinLevels.set(pin, overrides?.get(controlKey(c, pin)) ?? level);
+      }
+      const own = state.get(c.comp.id) ?? initialState(c.def);
+      channelStates(c.def, pinLevels, own).forEach((ch, i) => {
+        const a = c.pinNet.get(ch.a);
+        const b = c.pinNet.get(ch.b);
+        if (!a || !b || a === b || ch.on === L) return;
+        const pair = {
+          a,
+          b,
+          limited: c.limitsChannel,
+          transistor: c.transistor,
+        };
+        if (ch.on === H) {
+          on.push(pair);
+          return;
+        }
+        maybe.push(pair);
+        for (const pin of c.def.logic.channels[i].inputs) {
+          const level = pinLevels.get(pin);
+          if (level !== H && level !== L) unknown?.add(controlKey(c, pin));
+        }
+      });
     }
-    const own = state.get(c.comp.id) ?? initialState(c.def);
-    for (const ch of channelStates(c.def, pinLevels, own)) {
-      const a = c.pinNet.get(ch.a);
-      const b = c.pinNet.get(ch.b);
-      if (!a || !b || a === b || ch.on === L) continue;
-      (ch.on === H ? on : maybe).push({ a, b, limited: c.limitsChannel });
-    }
-  }
-  if (!on.length && !maybe.length) return null;
-  const hard = (pairs) => pairs.filter((p) => !p.limited);
-  const all = [...on, ...maybe];
-  return {
-    on: groupsOf(on),
-    wide: maybe.length ? groupsOf(all) : null,
-    hardOn: groupsOf(hard(on)),
-    hardWide: maybe.length ? groupsOf(hard(all)) : null,
+    return { on, maybe };
   };
+  const reading = (pairs) => ({
+    on: groupsOf(ctx, pairs),
+    hardOn: groupsOf(
+      ctx,
+      pairs.filter((p) => !p.limited),
+    ),
+  });
+  const unknown = new Set();
+  const base = pairsFor(null, unknown);
+  if (!base.on.length && !base.maybe.length) return null;
+  const definite = reading(base.on);
+  if (!base.maybe.length) return { definite, readings: [definite] };
+  const keys = [...unknown];
+  if (keys.length > MAX_UNKNOWN_CONTROLS) {
+    return {
+      definite,
+      readings: [definite, reading([...base.on, ...base.maybe])],
+    };
+  }
+  const readings = [];
+  for (let bits = 0; bits < 2 ** keys.length; bits++) {
+    const overrides = new Map(
+      keys.map((key, i) => [key, (bits >> i) & 1 ? H : L]),
+    );
+    // A channel still answering X with every unknown control set has a
+    // reason of its own; it is closed, the conservative reading.
+    const { on, maybe } = pairsFor(overrides, null);
+    readings.push(reading([...on, ...maybe]));
+  }
+  return { definite, readings };
 }
 
-/** Net pairs → Map netId → its group's (shared) member list; null for none. */
-function groupsOf(pairs) {
+/**
+ * Net pairs → the joined groups: `{ byNet, all }`, `byNet` netId → its
+ * group, `all` every group. A group is `{ members, via }` — its member nets
+ * (one shared record per group) and whether a transistor's channel is among
+ * its joins ("transistor") or only switches' ("switch").
+ *
+ * A SUPPLY net is never a union point. It is stiff: a net a channel joins to
+ * a rail hears the rail (at output strength), but two nets each joined to the
+ * same rail are not thereby joined to each other — a fight on one stays on
+ * that one. So a rail is a MEMBER of each group that touches it (never a key:
+ * it resolves as itself), and a channel straight between two rails is a group
+ * of its own, there to be reported as the short it is.
+ */
+function groupsOf(ctx, pairs) {
   if (!pairs.length) return null;
+  const isSupply = (id) =>
+    ctx.supplyPlusVolts.has(id) || ctx.supplyMinus.has(id);
   const uf = new UnionFind();
-  for (const { a, b } of pairs) uf.union(a, b);
-  const byNet = new Map();
-  for (const members of uf.groups().values()) {
-    for (const id of members) byNet.set(id, members);
+  const rails = new Map(); // net → the supply nets channels join it to
+  const all = [];
+  for (const p of pairs) {
+    const railA = isSupply(p.a);
+    const railB = isSupply(p.b);
+    if (railA && railB) {
+      all.push({
+        members: [p.a, p.b],
+        via: p.transistor ? "transistor" : "switch",
+      });
+    } else if (railA || railB) {
+      const [net, rail] = railA ? [p.b, p.a] : [p.a, p.b];
+      uf.add(net);
+      if (!rails.has(net)) rails.set(net, new Set());
+      rails.get(net).add(rail);
+    } else {
+      uf.union(p.a, p.b);
+    }
   }
-  return byNet;
+  const viaTransistor = new Set(
+    pairs
+      .filter((p) => p.transistor)
+      .map((p) => (isSupply(p.a) ? p.b : p.a))
+      .filter((id) => !isSupply(id))
+      .map((id) => uf.find(id)),
+  );
+  const byNet = new Map();
+  for (const [root, members] of uf.groups()) {
+    const supplies = new Set();
+    for (const id of members) {
+      for (const rail of rails.get(id) ?? []) supplies.add(rail);
+    }
+    const group = {
+      members: [...members, ...supplies],
+      via: viaTransistor.has(root) ? "transistor" : "switch",
+    };
+    all.push(group);
+    for (const id of members) byNet.set(id, group);
+  }
+  return { byNet, all };
 }
 
 /** Two candidate level maps → what they agree on, X where they differ. */
@@ -605,14 +771,15 @@ function agreeing(a, b) {
 
 /**
  * Resolve ONE net from supplies + `drivers` (+ the pulls `pullsOf` names),
- * across the channels `groups` joins (netId → its group's members; null for
- * none). A joined net hears every member's drivers and pulls — but another
- * member's SUPPLY only at OUTPUT strength: it arrives through a switch, so a
- * rail through a 4066 FIGHTS an output on the far side (a conflict there),
- * where the same rail wired straight on would simply win.
+ * across the channels `groups` joins (`groupsOf`; null for none). A joined
+ * net hears every member's drivers and pulls — but a member RAIL only as its
+ * supply, at OUTPUT strength: it arrives through a switch, so a rail through
+ * a 4066 FIGHTS an output on the far side (a conflict there), where the same
+ * rail wired straight on would simply win. (Whatever else sits on a rail is
+ * overruled by it, so it travels no further.)
  */
 function resolveIn(ctx, drivers, groups, id, pullsOf) {
-  const group = groups?.get(id);
+  const group = groups?.byNet.get(id);
   if (!group) {
     return resolveNet({
       supplyPlus: ctx.supplyPlusVolts.has(id),
@@ -623,12 +790,13 @@ function resolveIn(ctx, drivers, groups, id, pullsOf) {
   }
   const chipLevels = [];
   const pullLevels = [];
-  for (const member of group) {
-    chipLevels.push(...(drivers.get(member) ?? []));
-    pullLevels.push(...pullsOf(member));
-    if (member === id) continue;
+  for (const member of group.members) {
     if (ctx.supplyPlusVolts.has(member)) chipLevels.push(H);
-    if (ctx.supplyMinus.has(member)) chipLevels.push(L);
+    else if (ctx.supplyMinus.has(member)) chipLevels.push(L);
+    else {
+      chipLevels.push(...(drivers.get(member) ?? []));
+      pullLevels.push(...pullsOf(member));
+    }
   }
   return resolveNet({
     supplyPlus: ctx.supplyPlusVolts.has(id),
@@ -781,7 +949,7 @@ function resolveAll(ctx, drivers, groups = null, burn = null, wide = false) {
     const res = resolveOne(id, (net) => pulls?.get(net) ?? []);
     next.set(id, res.level);
     if (!res.warning) continue;
-    const group = groups?.get(id);
+    const group = groups?.byNet.get(id);
     if (group) {
       if (!said.has(res.warning)) said.set(res.warning, new Set());
       if (said.get(res.warning).has(group)) continue;
@@ -789,12 +957,9 @@ function resolveAll(ctx, drivers, groups = null, burn = null, wide = false) {
     }
     warnings.push({ type: res.warning, net: id });
   }
-  for (const group of new Set(groups?.values() ?? [])) {
-    const plus = group.find((id) => ctx.supplyPlusVolts.has(id));
-    if (plus && group.some((id) => ctx.supplyMinus.has(id))) {
-      const via = group.some((id) => ctx.transistorNets.has(id))
-        ? "transistor"
-        : "switch";
+  for (const { members, via } of groups?.all ?? []) {
+    const plus = members.find((id) => ctx.supplyPlusVolts.has(id));
+    if (plus && members.some((id) => ctx.supplyMinus.has(id))) {
       warnings.push({ type: "short", net: plus, via });
     }
   }
@@ -844,27 +1009,26 @@ function solve(ctx, warmStart, state, clockPhase, images, signalLevels) {
       images,
       signalLevels,
     );
-    const groups = channelGroups(ctx, levels, state);
+    const channels = channelGroups(ctx, levels, state);
     const burn = (joins) =>
       ctx.limitsLed ? { drivers: hard, groups: joins ?? null } : null;
-    let { next, warnings, strong, uncertain } = resolveAll(
-      ctx,
-      drivers,
-      groups?.on ?? null,
-      burn(groups?.hardOn),
-    );
-    // A channel that MIGHT be on, or a diode whose anode MIGHT be HIGH:
-    // resolve with it too, and keep only what both readings agree on.
-    if (groups?.wide || uncertain) {
-      const wide = resolveAll(
-        ctx,
-        drivers,
-        groups?.wide ?? groups?.on ?? null,
-        burn(groups?.hardWide ?? groups?.hardOn),
-        true,
-      );
-      next = agreeing(next, wide.next);
-      strong = agreeing(strong, wide.strong);
+    // Each way the channels could be set (`channelGroups`), and for each a
+    // diode whose anode MIGHT be HIGH tried both ways: keep only what every
+    // reading agrees on. The warnings are the certain channels' alone.
+    const readingOf = (r, wide = false) =>
+      resolveAll(ctx, drivers, r?.on ?? null, burn(r?.hardOn), wide);
+    const definite = readingOf(channels?.definite);
+    const { warnings } = definite;
+    let next = null;
+    let strong = null;
+    for (const r of channels?.readings ?? [null]) {
+      const narrow =
+        r === (channels?.definite ?? null) ? definite : readingOf(r);
+      const tried = narrow.uncertain ? [narrow, readingOf(r, true)] : [narrow];
+      for (const t of tried) {
+        next = next ? agreeing(next, t.next) : t.next;
+        strong = strong ? agreeing(strong, t.strong) : t.strong;
+      }
     }
     lastWarnings = warnings;
     lastStrong = strong;

@@ -341,6 +341,9 @@ test("capacitors and resistors export with their values and the right symbols", 
   const byLib = (lib) =>
     instances.filter((s) => s.lib === `${KICAD_LIB}:${lib}`);
 
+  // Every Value is what the Properties field shows, nothing rounded, in
+  // plain ASCII (model/component-value.js): u for micro, and a resistance
+  // with no unit symbol, the schematic convention.
   const [electrolytic] = byLib("cap-electrolytic");
   assert.equal(electrolytic.value, "10uF");
   assert.match(electrolytic.ref, /^C\d+$/, "a capacitor is a C");
@@ -350,6 +353,14 @@ test("capacitors and resistors export with their values and the right symbols", 
   );
   const [ceramic] = byLib("cap-ceramic");
   assert.equal(ceramic.value, "10nF");
+  assert.equal(
+    kicadPart({
+      def: partDef("resistor"),
+      comp: { params: { ohms: 4753 } },
+    }).value,
+    "4.753k",
+    "four figures stay four",
+  );
   assert.equal(ceramic.footprint, "Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P2.50mm");
   assert.deepEqual(
     byLib("resistor")

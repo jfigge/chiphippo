@@ -942,7 +942,9 @@ test("CD4000 mode: the same flat tree, holding only CD4000 logic chips", () => {
   assert.deepEqual(refsUnder(host, "Timer"), [
     "CD4047B",
     "CD4098B",
+    "CD4528B",
     "CD4538B",
+    "CD4541B",
     "NE555",
   ]);
 });

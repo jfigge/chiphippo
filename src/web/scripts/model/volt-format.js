@@ -17,26 +17,16 @@
  * with Chip Hippo. If not, see <https://www.gnu.org/licenses/>.
  */
 
-// volt-format.js — a voltage as it is TYPED and PRINTED: what a Zener diode's
-// Zener voltage field reads and what the desk, the schematic, the BOM and the
-// KiCad export print, one rule for all of them. Pure and DOM-free; the SI
-// rules underneath are si-value.js's.
-//
-// A Zener's voltage is written three ways on a bench — `5.1V`, `3.3` and the
-// IEC 60062 form printed on the part itself, `5V1`, where the unit letter
-// stands where the decimal point would (a BZX79-C5V1 is a 5.1 V part).
+// volt-format.js — a Zener's voltage as it is PRINTED on the desk, the
+// schematic and the BOM. Pure and DOM-free; the SI rules underneath are
+// si-value.js's. What a person TYPES (`5.1V`, `3.3`, and `5V1`, the form
+// printed on the part) is read by the one parser every value field shares
+// (component-value.js).
 
-import { formatWithPrefix, parseSi } from "./si-value.js";
+import { formatWithPrefix } from "./si-value.js";
 
 /** Volts only: nothing a Zener is sold at needs a prefix. */
 const STEPS = Object.freeze([["", 1]]);
-
-/**
- * The voltages the Zener voltage field accepts: 1 V to 200 V — the range the
- * Zener families are sold in, from the lowest-voltage parts to the
- * 200 V end of the 1N53xx series.
- */
-export const VOLTS_RANGE = Object.freeze({ min: 1, max: 200 });
 
 /**
  * Format a voltage for printing — 5.1 → "5.1", 12 → "12". Three significant
@@ -46,21 +36,4 @@ export const VOLTS_RANGE = Object.freeze({ min: 1, max: 200 });
  */
 export function formatVolts(volts) {
   return formatWithPrefix(volts, STEPS);
-}
-
-/**
- * Read a typed voltage, in volts, or null when it is not one (or lies outside
- * VOLTS_RANGE). A bare number is volts; a trailing `V` is the unit; and in the
- * IEC form a `V` stands where the decimal point would (`5V1` is 5.1 V).
- * @param {string} text
- * @returns {number|null}
- */
-export function parseVolts(text) {
-  return parseSi(text, {
-    prefixes: {},
-    decimals: ["V", "v"],
-    unit: /[vV]$/,
-    bare: true,
-    range: VOLTS_RANGE,
-  });
 }

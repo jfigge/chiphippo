@@ -1359,6 +1359,20 @@ export function presetUpDownCounter(m) {
   /** What every candidate agrees on, or null. */
   const agree = (values) =>
     values.every((v) => v === values[0]) ? values[0] : null;
+  /** The count with PRESET ENABLE LOW: a rising CLOCK while CARRY IN is LOW
+      steps it. */
+  const count = (s, ins, prev) => {
+    const edge = prev ? edgeOf(prev.get(m.clk), ins.get(m.clk), "rise") : "no";
+    const ciN = ins.get(m.ciN);
+    if (edge === "no" || ciN === H || s.n === null) return s.n;
+    const nexts = [];
+    for (const up of ups(ins)) {
+      for (const decade of decades(ins)) nexts.push(countStep(s.n, up, decade));
+    }
+    const next = agree(nexts);
+    if (edge === "yes" && ciN === L) return next;
+    return next === s.n ? s.n : null; // counted, or maybe not
+  };
   return {
     state0: () => ({ n: 0 }),
     step(s, ins, prev) {
@@ -1368,25 +1382,17 @@ export function presetUpDownCounter(m) {
         if (reset === "maybe") return { n: null };
       }
       const pe = ins.get(m.pe);
+      let loaded = null;
       if (pe !== L) {
         const jam = m.jam.map((p) => bitX(ins.get(p)));
-        const loaded = anyX(jam) ? null : bitsValue(jam);
+        loaded = anyX(jam) ? null : bitsValue(jam);
         if (pe === H) return { n: loaded };
-        return { n: loaded === s.n ? s.n : null }; // a floating PE: maybe loaded
       }
-      const edge = prev
-        ? edgeOf(prev.get(m.clk), ins.get(m.clk), "rise")
-        : "no";
-      const ciN = ins.get(m.ciN);
-      if (edge === "no" || ciN === H || s.n === null) return { n: s.n };
-      const nexts = [];
-      for (const up of ups(ins)) {
-        for (const decade of decades(ins))
-          nexts.push(countStep(s.n, up, decade));
-      }
-      const next = agree(nexts);
-      if (edge === "yes" && ciN === L) return { n: next };
-      return { n: next === s.n ? s.n : null }; // counted, or maybe not
+      const counted = count(s, ins, prev);
+      if (pe === L) return { n: counted };
+      // A floating PE: loaded, or counted — known only where both agree (a
+      // jam equal to the count is still lost to a clock edge).
+      return { n: loaded === counted ? counted : null };
     },
     outputs(s, ins) {
       const out = new Map(

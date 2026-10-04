@@ -27,8 +27,8 @@
 // capacitor, which net is on the far side, and how many farads did it take to
 // get there?" — and the same for a resistor and its ohms. This module answers
 // both, once, for every part that keeps time (the 555, the CD4047B/4060B/
-// 4098B/4538B); each part then decides for itself what its wiring means, by
-// its own datasheet.
+// 4098B/4528B/4538B/4541B); each part then decides for itself what its wiring
+// means, by its own datasheet.
 //
 // Components in PARALLEL between the same two nets combine, because that is
 // arithmetic and not interpretation: capacitances add, conductances add. A
@@ -60,6 +60,7 @@ export function rcTrace(doc, netlist) {
   const netOf = (address) =>
     address ? (netlist.netOfPoint.get(address) ?? null) : null;
   const plus = new Set(); // nets carrying a PSU `+`
+  const plusVolts = new Map(); // a `+` net → the highest supply on it, volts
   const minus = new Set(); // nets carrying a PSU `−`
   const caps = new Map(); // netId → TraceLink[]
   const res = new Map(); // netId → TraceLink[]
@@ -94,6 +95,10 @@ export function rcTrace(doc, netlist) {
       for (const t of def.terminals) {
         const net = netOf(formatAddress(comp.id, t.id));
         if (net) (t.id === "+" ? plus : minus).add(net);
+        const volts = Number(comp.params?.volts);
+        if (net && t.id === "+" && volts > 0) {
+          plusVolts.set(net, Math.max(volts, plusVolts.get(net) ?? 0));
+        }
       }
       continue;
     }
@@ -144,6 +149,12 @@ export function rcTrace(doc, netlist) {
       if (plus.has(net)) return "+";
       if (minus.has(net)) return "-";
       return null;
+    },
+    /** The supply on a `+` net, volts (the highest, should two PSUs meet on
+        it) — or null for any other net. What a part whose timing depends on
+        its supply (the CD4528B's ln(VDD − VSS)) reads its VDD pin with. */
+    supplyVolts(net) {
+      return (net && plusVolts.get(net)) ?? null;
     },
     /** A predicate matching any net on one rail ("+" or "-"). */
     toRail(sign) {

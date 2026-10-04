@@ -19,8 +19,9 @@
 
 // analog-switch.js — the vocabulary of the parts that DRIVE NOTHING: the
 // CD4066B's bilateral switches and the CD4051B/52B/53B multiplexers (Feature
-// 410, phase 2b), and the transistors among the discretes, which a logic
-// circuit uses as exactly this — a switch a level opens and closes.
+// 410, phase 2b), the transistors among the discretes, which a logic circuit
+// uses as exactly this — a switch a level opens and closes — and the CD4007UB,
+// which is six of them in one package.
 //
 // Every other chip computes a level and puts it on a pin. These connect. Each
 // CHANNEL is two terminals and a control rule: while the rule reads HIGH the
@@ -81,6 +82,26 @@ export function muxSection({ inh, sel, common, channels }) {
       overUnknowns(levels, ([inhibit, ...select]) =>
         inhibit === L && valueOf(select) === k ? H : L,
       ),
+  }));
+}
+
+/**
+ * MOSFETs on one die (the CD4007UB): each a channel between two pins, closed
+ * while its gate reads `onLevel` — HIGH for an N-channel, LOW for a
+ * P-channel — exactly as a discrete transistor is (below), less the memory. A
+ * gate here is a chip INPUT, read through the CMOS family's reader like every
+ * other, so a floating one is "maybe" (X), and the engine keeps what every
+ * reading of it agrees on: what the family does with every other floating
+ * input.
+ * @param {Array<{a:number, b:number, gate:number, onLevel:string}>} fets
+ */
+export function mosfetChannels(fets) {
+  return fets.map(({ a, b, gate, onLevel }) => ({
+    a,
+    b,
+    inputs: [gate],
+    on: ([level]) =>
+      level === H || level === L ? (level === onLevel ? H : L) : X,
   }));
 }
 

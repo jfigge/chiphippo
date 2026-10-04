@@ -2356,10 +2356,11 @@ export class DeskController {
     // minted HERE, so there is no English source for them to carry — the dialog
     // names them from `properties.field.<key>` / `properties.action.<key>`
     // (part-properties-dialog.js).
-    // A field that can MOVE a pin (an inductor's holes between its leads) is
-    // a topology edit, and greyed while the circuit runs like every other.
+    // A field that can MOVE a pin (an inductor's holes between its leads) or
+    // SWAP the part (a transistor's Type) is a topology edit, and greyed while
+    // the circuit runs like every other.
     const fields = (def?.properties ?? []).map((field) =>
-      field.movesPins && this.#editingLocked
+      (field.movesPins || field.swapsPart) && this.#editingLocked
         ? { ...field, disabledWhen: () => true }
         : field,
     );
@@ -2474,6 +2475,9 @@ export class DeskController {
         name: comp.name,
         description: comp.description,
         ...comp.params,
+        // The part itself, for a Type field that swaps it (value-fields.js
+        // `partTypeField`).
+        ref: comp.ref,
         // A readonly whose value is DERIVED rather than stored — `values` is
         // the established route for one (the project's Location does the same).
         imageSource: this.#memorySourceLabel(comp),
@@ -2499,6 +2503,10 @@ export class DeskController {
       for a change that would move a pin somewhere it cannot go (an inductor
       grown to three holes between its leads, with the next hole taken). */
   #setComponentProperty(id, key, value) {
+    if (key === "ref") {
+      this.#swapComponent(id, value);
+      return;
+    }
     if (key === "name" || key === "description") {
       this.#doc.setComponentMeta(id, { [key]: value });
     } else {
@@ -2507,6 +2515,27 @@ export class DeskController {
     }
     this.#remountPart(id);
     this.#emitDocChanged("set properties", { coalesce: true });
+  }
+
+  /**
+   * Swap a part for a sibling from its Properties card's Type field — a
+   * ceramic for an electrolytic, an NPN for a MOSFET (DeskDoc.setComponentRef:
+   * the same holes and wiring, its params carried across). ONE undo step. The
+   * card it came from describes the OLD part — a MOSFET has a Package a BJT
+   * has not, an electrolytic other common values — so it is closed and the
+   * new part's opened in its place, which is also where a value the new type
+   * cannot be is shown red.
+   */
+  #swapComponent(id, ref) {
+    try {
+      this.#doc.setComponentRef(id, ref);
+    } catch {
+      return; // not interchangeable — the card is left as it was
+    }
+    this.#remountPart(id);
+    this.#emitDocChanged("change part type");
+    PopupManager.close();
+    this.#onOpenProperties(id);
   }
 
   /** Fire a Properties-dialog `"action"` field — the memory chip commands

@@ -51,16 +51,19 @@
 
 import { normalizeLeadOffset } from "./lead-offset.js";
 import {
-  FARADS_RANGE,
-  formatFarads,
-  parseFarads,
-} from "../model/farad-format.js";
+  ZENER_VOLTS_FIELD,
+  partTypeField,
+  storedValue,
+  transistorPartField,
+  valueField,
+} from "./value-fields.js";
 import {
-  HENRIES_RANGE,
-  formatHenries,
-  parseHenries,
-} from "../model/henry-format.js";
-import { VOLTS_RANGE, formatVolts, parseVolts } from "../model/volt-format.js";
+  CERAMIC_VALUES,
+  ELECTROLYTIC_VALUES,
+  INDUCTOR_VALUES,
+  VALUE_RANGES,
+  transistorTypeOf,
+} from "../model/component-value.js";
 import { transistorSwitch } from "../sim/analog-switch.js";
 import { H, L } from "../sim/levels.js";
 
@@ -108,36 +111,37 @@ function leadGeometry(raw) {
   };
 }
 
-/** A value in `range`, or undefined. */
-const inRange = (raw, range) => {
-  const value = Number(raw);
-  return Number.isFinite(value) && value >= range.min && value <= range.max
-    ? value
-    : undefined;
-};
-
 // ── Capacitors ──────────────────────────────────────────────────────────────
 
-/** The Capacitance field both capacitors carry (farad-format.js). */
-const CAPACITANCE_FIELD = Object.freeze({
-  key: "farads",
-  label: "Capacitance",
-  type: "quantity",
-  parse: parseFarads,
-  format: (farads) => `${formatFarads(farads)}F`,
-  invalid:
-    "Not a capacitance — give a unit: 100p, 10n, 4.7µ, 4u7 or 1m (1 pF to 1 F).",
-});
+/** A capacitor's Type: the two are one part to the user, swapped in place
+    (value-fields.js `partTypeField`). */
+const CAPACITORS = Object.freeze(["cap-ceramic", "cap-electrolytic"]);
+const CAPACITOR_TYPE_FIELD = partTypeField([
+  { value: "cap-ceramic", label: "Ceramic" },
+  { value: "cap-electrolytic", label: "Electrolytic" },
+]);
+
+/** Each capacitor's Capacitance: its own range and its own common values. */
+const capacitanceField = (range, values) =>
+  valueField({
+    key: "farads",
+    label: "Capacitance",
+    unit: "farad",
+    range,
+    values,
+  });
 
 /**
  * A capacitor's params: its value, plus the same two-free-ends geometry the
- * resistor and LED keep (`rot`, `end` — see normalizeLeadOffset). A value
- * that is not a capacitance in range falls back to the part's default.
+ * resistor and LED keep (`rot`, `end` — see normalizeLeadOffset). Any positive
+ * value is KEPT, in range or not (a ceramic swapped for an electrolytic keeps
+ * its value, and its card says if the new type cannot be that); text an older
+ * document holds is read, or kept as it was (value-fields.js `storedValue`).
  */
 function capacitorParams(raw, fallback) {
   return withPartNumber(
     {
-      farads: inRange(raw?.farads, FARADS_RANGE) ?? fallback,
+      farads: storedValue(raw?.farads, "farad", fallback),
       ...leadGeometry(raw),
     },
     raw,
@@ -156,20 +160,17 @@ const CAPACITOR_NOTE =
 // ── Inductors ───────────────────────────────────────────────────────────────
 
 /**
- * The Inductance field (henry-format.js) — OPTIONAL, unlike a capacitance: a
- * bare inductor is a part you can place, and clearing the box clears the
- * value rather than being refused.
+ * The Inductance field — OPTIONAL, unlike a capacitance: a bare inductor is a
+ * part you can place, and clearing the box clears the value rather than
+ * being refused.
  */
-const INDUCTANCE_FIELD = Object.freeze({
+const INDUCTANCE_FIELD = valueField({
   key: "henries",
   label: "Inductance",
-  type: "quantity",
+  unit: "henry",
+  range: VALUE_RANGES.inductor,
+  values: INDUCTOR_VALUES,
   optional: true,
-  parse: parseHenries,
-  format: (henries) => `${formatHenries(henries)}H`,
-  invalid:
-    "Not an inductance — give a unit: 100n, 10µ, 4u7, 100m or 1H (1 nH to " +
-    "100 H), or leave it blank.",
 });
 
 /**
@@ -223,18 +224,6 @@ const INDUCTOR_OFFSETS = Object.freeze({
 
 // ── Diodes ──────────────────────────────────────────────────────────────────
 
-/** A Zener's voltage (volt-format.js) — optional, and export-only. */
-const ZENER_VOLTS_FIELD = Object.freeze({
-  key: "zenerVolts",
-  label: "Zener voltage",
-  type: "quantity",
-  optional: true,
-  parse: parseVolts,
-  format: (volts) => `${formatVolts(volts)}V`,
-  invalid:
-    "Not a voltage — try 5.1V, 5V1 or 3.3 (1 V to 200 V), or leave it blank.",
-});
-
 /** What both diodes' blurbs say about what a diode IS here. */
 const DIODE_NOTE =
   "In this logic sim a diode is ONE-WAY: a HIGH on the anode passes to the " +
@@ -276,8 +265,10 @@ function diodeDef({ id, title, blurb, zener }) {
       },
     ],
     normalizeParams(raw) {
+      // A Zener's voltage (value-fields.js ZENER_VOLTS_FIELD) — optional,
+      // and export-only.
       const zenerVolts = zener
-        ? inRange(raw?.zenerVolts, VOLTS_RANGE)
+        ? storedValue(raw?.zenerVolts, "volt", undefined)
         : undefined;
       return withPartNumber(
         {
@@ -397,6 +388,19 @@ const placementNote = (cases) =>
   "resistor in an LED's leg as you would on a bench. Set an optional part " +
   "number in Properties.";
 
+/** The four transistors are one part to the user, its Type swapped in place
+    (value-fields.js `partTypeField`) — four kinds, so a list, not a track. */
+const TRANSISTORS = Object.freeze(["npn", "pnp", "nmos", "pmos"]);
+const TRANSISTOR_TYPE_FIELD = partTypeField(
+  [
+    { value: "npn", label: "NPN" },
+    { value: "pnp", label: "PNP" },
+    { value: "nmos", label: "N-channel MOSFET" },
+    { value: "pmos", label: "P-channel MOSFET" },
+  ],
+  "select",
+);
+
 /**
  * One transistor def. `type` names it (the data hook the drawing, the
  * schematic and the export read); `onLevel` is what its control must read to
@@ -422,9 +426,24 @@ function transistorDef({ id, title, blurb, type, onLevel, holds }) {
     // HIGH a TTL input would read (catalog/families.js `floatsUnknown`).
     floating: "unknown",
     countsAsConnection: true,
-    properties:
-      cases.length > 1 ? [CASE_FIELD, PART_NUMBER_FIELD] : [PART_NUMBER_FIELD],
+    swapsWith: TRANSISTORS,
+    // The part number is a combo of this type's common parts
+    // (value-fields.js `transistorPartField`) — still only a label.
+    properties: [
+      TRANSISTOR_TYPE_FIELD,
+      ...(cases.length > 1 ? [CASE_FIELD] : []),
+      transistorPartField(type),
+    ],
     pins,
+    // Swapped in from another type (DeskDoc.setComponentRef): a part number
+    // that type's list holds names a part this one is not, so it goes; one
+    // on no list is the user's, and stays.
+    adoptParams(params) {
+      const owner = transistorTypeOf(params?.partNumber);
+      if (!owner || owner === type) return params;
+      const { partNumber: _dropped, ...rest } = params;
+      return rest;
+    },
     normalizeParams(raw) {
       // A package is stored only where there is a choice to remember — and
       // then always, since the Properties picker has to show one.
@@ -467,7 +486,12 @@ export const DISCRETE_DEFS = Object.freeze(
       // the BOM, the export) — never an id.
       capacitor: Object.freeze({ polarized: false }),
       countsAsConnection: true,
-      properties: [CAPACITANCE_FIELD, PART_NUMBER_FIELD],
+      swapsWith: CAPACITORS,
+      properties: [
+        CAPACITOR_TYPE_FIELD,
+        capacitanceField(VALUE_RANGES.ceramic, CERAMIC_VALUES),
+        PART_NUMBER_FIELD,
+      ],
       pins: [
         { n: 1, name: "1", role: "lead" },
         { n: 2, name: "2", role: "lead" },
@@ -497,7 +521,12 @@ export const DISCRETE_DEFS = Object.freeze(
       minSpan: 1,
       capacitor: Object.freeze({ polarized: true }),
       countsAsConnection: true,
-      properties: [CAPACITANCE_FIELD, PART_NUMBER_FIELD],
+      swapsWith: CAPACITORS,
+      properties: [
+        CAPACITOR_TYPE_FIELD,
+        capacitanceField(VALUE_RANGES.electrolytic, ELECTROLYTIC_VALUES),
+        PART_NUMBER_FIELD,
+      ],
       pins: [
         { n: 1, name: "+", role: "lead" },
         { n: 2, name: "-", role: "lead" },
@@ -572,7 +601,7 @@ export const DISCRETE_DEFS = Object.freeze(
         },
       ],
       normalizeParams(raw) {
-        const henries = inRange(raw?.henries, HENRIES_RANGE);
+        const henries = storedValue(raw?.henries, "henry", undefined);
         return withPartNumber(
           {
             ...(henries != null ? { henries } : {}),

@@ -1627,7 +1627,7 @@ export const DEMOS = Object.freeze([
     "Hex Schmitt-trigger inverter",
     CMOS_HEX14,
     true,
-    "CD40106B — Hex Schmitt inverter (CMOS)\nS1 drives inverters 1–3, S2 inverters\n4–6. The hysteresis is an ANALOG\nproperty — and its classic RC oscillator\nneeds a capacitor the desk does not have.",
+    "CD40106B — Hex Schmitt inverter (CMOS)\nS1 drives inverters 1–3, S2 inverters\n4–6. The hysteresis is an ANALOG\nproperty, so its classic RC oscillator\nis not simulated.",
   ),
   cmosHex(
     "CD4049UB",
@@ -1636,6 +1636,42 @@ export const DEMOS = Object.freeze([
     true,
     "CD4049UB — Hex inverting buffer (CMOS)\nS1 drives buffers 1–3, S2 buffers 4–6.\nNote the power pins: VCC is pin 1 and\nVSS pin 8, NOT the corners, and pins 13\nand 16 are not connected.",
   ),
+  {
+    ref: "CD4007UB",
+    title: "Dual complementary pair plus inverter",
+    note:
+      "CD4007UB — Six bare MOSFETs (CMOS)\n" +
+      "Each pair is wired as an inverter: an N\n" +
+      "conducts while its gate is HIGH, a P while\n" +
+      "it is LOW. Q1's drains 13 and 8 are joined;\n" +
+      "Q2 has 2 on VDD, 4 on VSS and 1 joined to\n" +
+      "5; Q3 needs only 11 on VDD and 9 on VSS.",
+    inputs: [
+      { label: "Q1", pins: [6] },
+      { label: "Q2", pins: [3] },
+      { label: "Q3", pins: [10] },
+    ],
+    // Opens with Q1 and Q3 LOW (their lamps lit) and Q2 HIGH (its lamp dark).
+    defaults: [false, true, false],
+    // Q2's sources and Q3's outer terminals to the rails: the inverter
+    // hook-ups of the sheet's functional diagram.
+    ties: [
+      { pins: [2, 11], rail: "+" },
+      { pins: [4, 9], rail: "-" },
+    ],
+    links: [
+      [13, 8], // Q1: P drain to N drain — the output
+      [1, 5], // Q2: likewise
+    ],
+    leds: [
+      { pin: 13, label: "Q1" },
+      { pin: 5, label: "Q2" },
+      { pin: 12, label: "Q3" },
+    ],
+    // From the sheet: an N-channel conducts with its gate HIGH, a P-channel
+    // with it LOW — so each pair inverts its gate.
+    expect: ([q1, q2, q3]) => [!q1, !q2, !q3],
+  },
   // Buffer
   cmosHex(
     "CD4050B",

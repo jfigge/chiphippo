@@ -49,10 +49,7 @@ import { nodeOf, parseAddress, parseHole } from "./breadboard.js";
 import { BOARD_TYPES } from "./board-types.js";
 import { WIRE_COLORS, parseBusName } from "./desk-doc.js";
 import { wireCutMm, wireLengthLabel } from "./wire-length.js";
-import { formatOhms } from "./ohm-format.js";
-import { formatFarads } from "./farad-format.js";
-import { formatHenries } from "./henry-format.js";
-import { formatVolts } from "./volt-format.js";
+import { formatComponentValue } from "./component-value.js";
 import { partNumberOf, transistorCase } from "../catalog/discretes.js";
 
 /**
@@ -310,20 +307,26 @@ function bomVariant(def, comp) {
   // A typed value is what you take out of the drawer: two 10k resistors are
   // one line, a 10k and a 4.7k are two. Keyed by the stored number, and set
   // off with a dash rather than brackets, since several of these titles end in
-  // a bracket of their own ("Capacitor (ceramic)").
+  // a bracket of their own ("Capacitor (ceramic)"), and written exactly as
+  // the part's Properties card writes it (model/component-value.js) — every
+  // figure typed, so a 4.75k and a 4.753k are two lines that SAY so.
   // The discretes adds its PART NUMBER to the value: two 1N4148s are
   // one line, a 1N4148 and a 1N4001 two — and a part with neither is just
   // its title. A capacitor with no part number keys exactly as it always has.
   // A part with a choice of package (a MOSFET) says which: a TO-220 and a
   // TO-92 are different things to buy.
   if (def.countsAsConnection) {
-    const [number, text] = def.capacitor
-      ? [p.farads, `${formatFarads(p.farads)}F`]
-      : def.inductor && Number.isFinite(p.henries)
-        ? [p.henries, `${formatHenries(p.henries)}H`]
-        : def.diode?.zener && Number.isFinite(p.zenerVolts)
-          ? [p.zenerVolts, `${formatVolts(p.zenerVolts)}V`]
-          : [null, ""];
+    // A value is a NUMBER or nothing here: an older document's capacitance
+    // that would not read is kept as its text (catalog/value-fields.js), and
+    // a line for it says no value rather than a bare "F".
+    const [number, text] =
+      def.capacitor && Number.isFinite(p.farads)
+        ? [p.farads, formatComponentValue(p.farads, "farad")]
+        : def.inductor && Number.isFinite(p.henries)
+          ? [p.henries, formatComponentValue(p.henries, "henry")]
+          : def.diode?.zener && Number.isFinite(p.zenerVolts)
+            ? [p.zenerVolts, formatComponentValue(p.zenerVolts, "volt")]
+            : [null, ""];
     const partNumber = partNumberOf(p);
     const pkg = packageChoice(def, p);
     const detail = [text, pkg, partNumber].filter(Boolean).join(", ");
@@ -337,7 +340,7 @@ function bomVariant(def, comp) {
   if (typeof def.weakBridges === "function" && Number.isFinite(p.ohms)) {
     return {
       key: `${comp.ref}:${p.ohms}`,
-      title: `${partTitle(def)} — ${formatOhms(p.ohms)}Ω`,
+      title: `${partTitle(def)} — ${formatComponentValue(p.ohms, "ohm")}`,
     };
   }
   return { key: comp.ref, title: partTitle(def) };

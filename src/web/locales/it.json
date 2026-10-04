@@ -702,6 +702,9 @@
     "CD4049UB": {
       "title": "Buffer/convertitore invertente sestuplo"
     },
+    "CD4007UB": {
+      "title": "Doppia coppia complementare più invertitore"
+    },
     "CD4050B": {
       "title": "Buffer/convertitore non invertente sestuplo"
     },
@@ -768,8 +771,14 @@
     "CD4098B": {
       "title": "Doppio multivibratore monostabile"
     },
+    "CD4528B": {
+      "title": "Doppio multivibratore monostabile"
+    },
     "CD4538B": {
       "title": "Doppio multivibratore monostabile di precisione"
+    },
+    "CD4541B": {
+      "title": "Timer programmabile"
     },
     "cap-ceramic": {
       "title": "Condensatore (ceramico)"
@@ -1405,7 +1414,8 @@
       "zenerVolts": "Tensione Zener",
       "case": "Contenitore",
       "style": "Stile",
-      "bodyHoles": "Fori tra i terminali"
+      "bodyHoles": "Fori tra i terminali",
+      "ref": "Tipo"
     },
     "option": {
       "manual": "Manuale",
@@ -1414,7 +1424,9 @@
       "low": "Basso",
       "high": "Alto",
       "coil": "Bobina",
-      "can": "Incapsulata"
+      "can": "Incapsulata",
+      "cap-ceramic": "Ceramico",
+      "cap-electrolytic": "Elettrolitico"
     },
     "action": {
       "inspectMemory": "Ispeziona la memoria…",
@@ -1432,11 +1444,44 @@
       "heldOn": "Mantiene ACCESO — il gate non ha alcun livello, e la carica rimasta lo tiene in conduzione. Un gate reale perde quella carica: collegalo a un livello definito con una resistenza.",
       "heldOff": "Mantiene SPENTO — il gate non ha alcun livello, quindi resta com'era all'ultimo comando (spento, se il gate non è ancora stato pilotato). Un gate reale deriva: collegalo a un livello definito con una resistenza."
     },
-    "invalid": {
-      "ohms": "Non è una resistenza — prova 470, 4.7k, 4k7 o 2M2 (da 0,1 Ω a 1 GΩ).",
-      "farads": "Non è una capacità — indica l'unità: 100p, 10n, 4.7µ, 4u7 o 1m (da 1 pF a 1 F).",
-      "henries": "Non è un'induttanza — indica l'unità: 100n, 10µ, 4u7, 100m o 1H (da 1 nH a 100 H), oppure lascia vuoto.",
-      "zenerVolts": "Non è una tensione — prova 5.1V, 5V1 o 3.3 (da 1 V a 200 V), oppure lascia vuoto."
+    "combo": {
+      "show": "Mostra i valori comuni",
+      "notValue": {
+        "ohm": "Non è un valore di resistenza",
+        "farad": "Non è un valore di capacità",
+        "henry": "Non è un valore di induttanza",
+        "volt": "Non è un valore di tensione"
+      },
+      "range": "Fuori intervallo: da {min} a {max}",
+      "wrongUnit": {
+        "ohm": {
+          "farad": "Questa è una capacità, non una resistenza",
+          "henry": "Questa è un'induttanza, non una resistenza",
+          "volt": "Questa è una tensione, non una resistenza"
+        },
+        "farad": {
+          "ohm": "Questa è una resistenza, non una capacità",
+          "henry": "Questa è un'induttanza, non una capacità",
+          "volt": "Questa è una tensione, non una capacità"
+        },
+        "henry": {
+          "ohm": "Questa è una resistenza, non un'induttanza",
+          "farad": "Questa è una capacità, non un'induttanza",
+          "volt": "Questa è una tensione, non un'induttanza"
+        },
+        "volt": {
+          "ohm": "Questa è una resistenza, non una tensione",
+          "farad": "Questa è una capacità, non una tensione",
+          "henry": "Questa è un'induttanza, non una tensione"
+        }
+      },
+      "notPart": "Non è un codice componente: solo lettere, cifre e -, fino a 20",
+      "foreignPart": {
+        "npn": "{part} è un transistor NPN",
+        "pnp": "{part} è un transistor PNP",
+        "nmos": "{part} è un MOSFET a canale N",
+        "pmos": "{part} è un MOSFET a canale P"
+      }
     },
     "refused": {
       "bodyHoles": "Non c'è spazio: il foro in cui andrebbe il suo terminale è occupato o oltre la fine della basetta."
@@ -1806,7 +1851,7 @@
     "bistable": "Bistabile — TRIG a LOW porta l'uscita a HIGH, RESET a LOW la azzera",
     "multivibrator": "Astabile: Q a {frequency}; monostabile: impulso di {width}",
     "oscillator": "Oscillatore RC — {frequency}",
-    "external": "Conta un clock esterno su φI",
+    "external": "Conta un clock esterno su {pin}",
     "unused": "Non usato",
     "capped": "Più veloce di quanto la scrivania possa mostrare: disegnato a {cap}.",
     "stretched": "Più breve di quanto la scrivania possa mostrare: disegnato lungo {shown}.",
@@ -1817,7 +1862,9 @@
       "noResistor": "nessuna resistenza di temporizzazione da {from} a {to}",
       "notConnected": "{pin} non è collegato",
       "ne555Unrecognised": "TRIG (2), THRES (6) e DISCH (7) non sono collegati né come astabile (TRIG e THRES uniti, DISCH tra RA e RB), né come monostabile (THRES e DISCH uniti, TRIG pilotato dall'esterno), né come bistabile (THRES a GND, TRIG pilotato dall'esterno)",
-      "cd4060Incomplete": "l'oscillatore RC richiede Cx da φO (9), Rx da φ̄O (10) e Rs da φI (11), tutti uniti in un solo nodo"
+      "cd4060Incomplete": "l'oscillatore RC richiede Cx da φO (9), Rx da φ̄O (10) e Rs da φI (11), tutti uniti in un solo nodo",
+      "cd4541Incomplete": "l'oscillatore RC richiede Ctc da CTC (2), Rtc da RTC (1) e Rs da RS (3), tutti uniti in un solo nodo",
+      "notGrounded": "{pin} deve essere collegato a GND"
     }
   }
 }

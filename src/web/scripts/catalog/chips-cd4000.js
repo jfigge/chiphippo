@@ -19,7 +19,8 @@
 
 // chips-cd4000.js — the CD4000B CMOS family (Feature 400): the basic gates,
 // the buffers, D and JK flip-flops, the counters, a shift-and-store register,
-// a decoder, a display driver and the analog switches. The family is stamped on in
+// a decoder, a display driver, the analog switches and the CD4007UB's bare
+// MOSFETs. The family is stamped on in
 // catalog/index.js, which is what makes every floating input here read
 // UNKNOWN rather than HIGH (catalog/families.js) and holds each part to the
 // 3–18 V CMOS supply range instead of TTL's 5 V.
@@ -49,7 +50,11 @@ import {
   bcd7segLatch,
   seqChip,
 } from "../sim/sequential.js";
-import { bilateralSwitches, muxSection } from "../sim/analog-switch.js";
+import {
+  bilateralSwitches,
+  muxSection,
+  mosfetChannels,
+} from "../sim/analog-switch.js";
 import { input, output, io, nc, gnd, vcc, unit } from "./pin-builders.js";
 
 const VDD = (n) => vcc(n, "VDD");
@@ -65,7 +70,9 @@ const VEE = (n) => gnd(n, "VEE");
 /**
  * The quad 2-input layout most of the 14-pin gates share (4001/4011/4081/
  * 4093/4030/4070/4077): A·B→J (3), C·D→K (4), E·F→L (10), G·H→M (11), with
- * the inputs on 1-2, 5-6, 8-9 and 12-13 — the 7400's corners, not the 7402's.
+ * the inputs on 1-2, 5-6, 8-9 and 12-13 — the 74LS00's and 74LS02's layouts
+ * are both different (their outputs are on 3, 6, 8 and 11 and on 1, 4, 10 and
+ * 13).
  */
 function quad2(fn) {
   return {
@@ -324,7 +331,7 @@ export const CHIPS_CD4000 = Object.freeze([
     title: "Quad 2-input NOR",
     blurb:
       "Four independent 2-input CMOS NOR gates. Unlike the 74LS02, the " +
-      "outputs are on pins 3, 4, 10 and 11, the 4011's corners.",
+      "outputs are on pins 3, 4, 10 and 11, as on the 4011.",
     group: "NOR",
     package: "DIP-14",
     ...quad2("NOR"),
@@ -405,8 +412,9 @@ export const CHIPS_CD4000 = Object.freeze([
     title: "Quad 2-input NAND Schmitt trigger",
     blurb:
       "Four 2-input NAND gates with Schmitt-trigger inputs. The hysteresis is " +
-      "an analog property the logic sim treats as a plain NAND — and with no " +
-      "capacitors on the desk, its classic RC oscillator cannot be built here.",
+      "an analog property the logic sim treats as a plain NAND, so its " +
+      "classic RC oscillator (a resistor from output to input, a capacitor " +
+      "from input to GND) is not simulated: its output reads unknown.",
     group: "NAND",
     package: "DIP-14",
     ...quad2("NAND"),
@@ -461,7 +469,9 @@ export const CHIPS_CD4000 = Object.freeze([
   // ── OR ──────────────────────────────────────────────────────────────────
   {
     // SCHS056D (CD4071B/4072B/4075B), functional + logic diagrams: B is pin 1
-    // and A pin 2 on this one (the 4081 has them the other way round).
+    // and A pin 2 on this one (the 4081 has them the other way round). The
+    // sheet's terminal assignments letter it as the 4081 is (A 1, B 2, C 5,
+    // D 6, …); an OR does not care, and the two diagrams are followed.
     id: "CD4071B",
     title: "Quad 2-input OR",
     blurb: "Four independent 2-input CMOS OR gates.",
@@ -495,9 +505,11 @@ export const CHIPS_CD4000 = Object.freeze([
     ...dual4("OR"),
   },
   {
-    // SCHS056D, functional diagram: C 1, B 2, A 8 → J 9 (the sheet's logic
-    // diagram letters the same three A/B/C the other way round — an OR does
-    // not care, and the connection diagram is the one followed here).
+    // SCHS056D, functional diagram: C 1, B 2, A 8 → J 9; F 3, E 4, D 5 → K 6;
+    // I 11, H 12, G 13 → L 10. The sheet's other two drawings letter the
+    // first two gates the other way round (terminal assignments: A 1, B 2,
+    // C 8, D 3, E 4, F 5; Fig. 13's logic diagram: A 1, B 2, C 8). An OR does
+    // not care which input is which; the functional diagram is followed.
     id: "CD4075B",
     title: "Triple 3-input OR",
     blurb: "Three 3-input CMOS OR gates.",
@@ -528,8 +540,8 @@ export const CHIPS_CD4000 = Object.freeze([
     id: "CD4030B",
     title: "Quad exclusive-OR",
     blurb:
-      "Four 2-input CMOS XOR gates — the original part; the CD4070B is its " +
-      "pin-for-pin successor.",
+      "Four 2-input CMOS XOR gates — the original part; the CD4070B has the " +
+      "same pinout.",
     group: "XOR",
     package: "DIP-14",
     ...quad2("XOR"),
@@ -560,7 +572,9 @@ export const CHIPS_CD4000 = Object.freeze([
     title: "Hex inverter",
     blurb:
       "Six unbuffered CMOS inverters (the UB): one stage each, which is why " +
-      "it is the part crystal and RC oscillators are built around.",
+      "it is the part crystal and RC oscillators are built around. Those " +
+      "oscillators are analog and not simulated: an inverter fed back to " +
+      "itself through a resistor reads unknown.",
     group: "Inverter",
     package: "DIP-14",
     ...hex14("INV"),
@@ -571,8 +585,9 @@ export const CHIPS_CD4000 = Object.freeze([
     title: "Hex Schmitt-trigger inverter",
     blurb:
       "Six inverters with Schmitt-trigger inputs. The hysteresis is an analog " +
-      "property the logic sim treats as a plain inverter, and its classic RC " +
-      "oscillator needs a capacitor the desk does not have.",
+      "property the logic sim treats as a plain inverter, so its classic RC " +
+      "oscillator (a resistor from output to input, a capacitor from input " +
+      "to GND) is not simulated: its output reads unknown.",
     group: "Inverter",
     package: "DIP-14",
     ...hex14("INV"),
@@ -583,17 +598,72 @@ export const CHIPS_CD4000 = Object.freeze([
     title: "Hex inverting buffer/converter",
     blurb:
       "Six inverting buffers with a strong output (two standard TTL loads) " +
-      "for driving TTL from CMOS. Power is VCC on pin 1 and VSS on pin 8 — " +
-      "not the corners — and pins 13 and 16 are not connected.",
+      "for driving TTL from CMOS, and for converting a higher logic level " +
+      "down: an input may be driven above VCC. Power is VCC on pin 1 and VSS " +
+      "on pin 8 — not the corners — and pins 13 and 16 are not connected.",
     group: "Inverter",
     package: "DIP-16",
     // IOL ≥ 3.3 mA at VOL 0.4 V, VCC 5 V: eight LS inputs (0.4 mA each).
     lsFanout: 8,
-    // …and a sink that does not saturate where a standard output's does
-    // (Fig. 5-3: ~20 mA at VGS 5 V, VDS 3 V, still climbing), so its LOW does
-    // not limit an LED. Its HIGH is an ordinary B-series source.
+    // …and a sink five times a standard output's: Fig. 5-3 saturates at
+    // ~19.5 mA typical at VGS 5 V (VDS 3 V, a red LED's share of 5 V) — the
+    // LED's whole 20 mA rating, typical, with the fast half of the spread
+    // past it — so its LOW does not limit an LED. Its HIGH is an ordinary
+    // B-series source (Fig. 5-5: ~6.5 mA).
     highCurrent: "sink",
+    // "VIH may exceed VCC" — the high-to-low level converter: a net from a
+    // higher supply into its inputs is not a mixed-supply mistake.
+    inputsAboveSupply: true,
     ...hex16("INV"),
+  },
+  {
+    // SCHS018C (CD4007UB): the terminal diagram and the functional diagram.
+    // Three N-channel and three P-channel MOSFETs with their terminals brought
+    // out, the substrates on VDD (P) and VSS (N). Pair 1's P is joined to VDD
+    // and its N to VSS inside the part (terminals 14 and 7), and pair 3 is an
+    // inverter once 11 goes to VDD and 9 to VSS; pair 2 is free.
+    id: "CD4007UB",
+    title: "Dual complementary pair plus inverter",
+    blurb:
+      "Six MOSFETs, three N-channel and three P-channel, each a switch its " +
+      "gate opens and closes: an N-channel joins its two terminals while its " +
+      "gate is HIGH, a P-channel while it is LOW, as the discrete MOSFETs do " +
+      "(with the same limits: no threshold, no analog) — except that a " +
+      "floating gate leaves its channel unknown rather than holding. Q1 " +
+      "GATES (6) drives a P from VDD to 13 and an N from 8 to VSS — tie 13 to " +
+      "8 for an inverter. Q3 is an inverter from GATES (10) to 12 once 11 is " +
+      "on VDD and 9 on VSS. Q2's four terminals are all free. Tie the gates " +
+      "of a pair you do not use.",
+    group: "Inverter",
+    package: "DIP-14",
+    // The channels are transistors, and a short through one says so.
+    transistorArray: true,
+    pins: [
+      io(1, "Q2 P DRAIN"),
+      io(2, "Q2 P SOURCE"),
+      input(3, "Q2 GATES"),
+      io(4, "Q2 N SOURCE"),
+      io(5, "Q2 N DRAIN"),
+      input(6, "Q1 GATES"),
+      VSS(7),
+      io(8, "Q1 N DRAIN"),
+      io(9, "Q3 N SOURCE"),
+      input(10, "Q3 GATES"),
+      io(11, "Q3 P DRAIN"),
+      io(12, "Q3 N DRAIN / P SOURCE"),
+      io(13, "Q1 P SOURCE"),
+      VDD(14),
+    ],
+    logic: {
+      channels: mosfetChannels([
+        { a: 14, b: 13, gate: 6, onLevel: "L" }, // Q1 P: VDD ↔ 13
+        { a: 8, b: 7, gate: 6, onLevel: "H" }, // Q1 N: 8 ↔ VSS
+        { a: 2, b: 1, gate: 3, onLevel: "L" }, // Q2 P
+        { a: 4, b: 5, gate: 3, onLevel: "H" }, // Q2 N
+        { a: 11, b: 12, gate: 10, onLevel: "L" }, // Q3 P
+        { a: 12, b: 9, gate: 10, onLevel: "H" }, // Q3 N
+      ]),
+    },
   },
   {
     // SCHS046L. Its CD4050B pin table copies the 4049's "Inverting output"
@@ -602,12 +672,15 @@ export const CHIPS_CD4000 = Object.freeze([
     title: "Hex non-inverting buffer/converter",
     blurb:
       "Six non-inverting buffers with a strong output (two standard TTL " +
-      "loads) for driving TTL from CMOS. Power is VCC on pin 1 and VSS on " +
-      "pin 8 — not the corners — and pins 13 and 16 are not connected.",
+      "loads) for driving TTL from CMOS, and for converting a higher logic " +
+      "level down: an input may be driven above VCC. Power is VCC on pin 1 " +
+      "and VSS on pin 8 — not the corners — and pins 13 and 16 are not " +
+      "connected.",
     group: "Buffer",
     package: "DIP-16",
     lsFanout: 8,
     highCurrent: "sink",
+    inputsAboveSupply: true,
     ...hex16("BUF"),
   },
 
@@ -925,8 +998,10 @@ export const CHIPS_CD4000 = Object.freeze([
     // PRESET ENABLE are LOW; PRESET ENABLE HIGH jams JAM 1–4 in
     // asynchronously; BINARY/DECADE HIGH binary, LOW decade; UP/DOWN HIGH up;
     // CARRY OUT LOW at the top count going up (15/9) or 0 going down, while
-    // CARRY IN is LOW. The sheet does not say where a decade count above 9
-    // goes; the CD4510B's logic is used for that (sim/sequential.js).
+    // CARRY IN is LOW. The sheet's text does not say where a decade count
+    // above 9 goes. Its Fig. 9 logic diagram decides it, but the scan is too
+    // poor to trace, and its gates are not the 4510's; the CD4510B's logic
+    // is used for that, an assumption (sim/sequential.js).
     id: "CD4029B",
     title: "Presettable up/down counter, binary or decade",
     blurb:

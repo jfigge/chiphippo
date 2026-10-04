@@ -118,6 +118,10 @@ const PROBLEM_EN = Object.freeze({
   cd4060Incomplete:
     "the RC oscillator needs Cx from φO (9), Rx from φ̄O (10) and Rs from φI " +
     "(11), all meeting at one junction",
+  cd4541Incomplete:
+    "the RC oscillator needs Ctc from CTC (2), Rtc from RTC (1) and Rs from " +
+    "RS (3), all meeting at one junction",
+  notGrounded: "{pin} must be wired to GND",
 });
 
 /** A section's sentence, prefixed with its number when the part has two. */
@@ -183,7 +187,11 @@ function sectionSentence(s) {
       }),
     );
   } else if (s.mode === "external") {
-    lines.push(tf("timing.external", "Counting an external clock on φI"));
+    lines.push(
+      tf("timing.external", "Counting an external clock on {pin}", {
+        pin: s.pin,
+      }),
+    );
   } else if (s.mode === "unused") {
     lines.push(tf("timing.unused", "Not used"));
   } else {

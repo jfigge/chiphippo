@@ -63,9 +63,9 @@ const openProperties = (surface, selector) => {
     .click();
 };
 
-/** Type into the open card's quantity box and commit it (blur/Enter). */
+/** Type into the open card's value box and commit it (blur/Enter). */
 const typeValue = (text) => {
-  const input = document.querySelector(".properties-quantity-input");
+  const input = document.querySelector(".properties-combo-input");
   input.value = text;
   input.dispatchEvent(new window.Event("change", { bubbles: true }));
   return input;
@@ -89,7 +89,7 @@ test("a typed resistance is stored in ohms, shown tidy, and redrawn as bands", (
   const r = controller.addComponentAt("resistor", "bb1", "a10");
   openProperties(surface, `[data-component-id="${r.id}"]`);
 
-  const input = document.querySelector(".properties-quantity-input");
+  const input = document.querySelector(".properties-combo-input");
   assert.equal(input.value, "10kΩ", "the default, printed");
   typeValue("4k7");
   assert.equal(doc.getComponent(r.id).params.ohms, 4700);
@@ -132,7 +132,7 @@ test("a capacitor's value is typed with a unit, stored in farads, printed on it"
       .textContent;
   assert.equal(label(), "10µ", "the default value is on the part");
   openProperties(surface, `[data-component-id="${c.id}"]`);
-  typeValue("100"); // pF or µF? Not guessed.
+  typeValue("100"); // a plain number is farads: out of range, not guessed
   assert.equal(doc.getComponent(c.id).params.farads, 10e-6);
   assert.equal(fieldError().hidden, false);
   typeValue("4u7");

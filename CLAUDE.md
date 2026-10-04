@@ -42,7 +42,12 @@ now has `centreDocument` and a second output to honour); 360 auto-routing (plan 
 RC timers — the 555 and the CD4047B/4060B/4098B/4538B (plan
 `features/chiphippo-capacitors-555.md`; see "Values, capacitors & timed parts"); the
 discretes — inductors, diodes, transistors (plan `features/chiphippo-discretes.md` +
-`-amendment.md`; see "The discretes").
+`-amendment.md`; see "The discretes"); and, with no plan, the CD4000 parts those two
+made possible — the CD4528B one-shot, the CD4541B programmable timer and the CD4007UB's
+bare MOSFETs (2026-10-04). The CD4536B and CD4521B were read and left out (the 4536's
+one-shot is given only as curves, its SET/test logic only as a scanned gate diagram;
+the 4521's RC drawing could not be reconciled with its scanned logic diagram), as were the CD4046B (its
+VCO wants a voltage) and the 4060's crystal mode (no crystal part).
 
 ## Naming & identity
 
@@ -94,7 +99,7 @@ the repo, only the cropped PNGs.
   and `--strict` exits 1 on a missing one. Its one hand-kept list is `NO_DATASHEET` —
   the four chips with no matching `74LS*` sheet (74LS164, 74LS193, 74LS27, 74LS76) —
   and moving a name in or out of it is how a part leaves or rejoins the to-do list. The
-  43 CD4000 parts are deliberately NOT excused, and deliberately NOT cut yet: Jason
+  46 CD4000 parts are deliberately NOT excused, and deliberately NOT cut yet: Jason
   defers them until the family has proven worthwhile (2026-10-03). When they are, they
   come from the TI sheets the downloader fetches; until then they stay on the missing
   list.
@@ -200,18 +205,18 @@ the repo, only the cropped PNGs.
     `desk-doc.js`), `wire-crossing.js`, `selection-toggle.js`, `signals.js`,
     `signal-keys.js`, `pin-resolve.js`, `column-allocator.js`, `autobuild.js`,
     `autobuild-verify.js`, `spec-lint.js`, `integration.js`, `integration-runtime.js`,
-    `integration-codegen.js`, `serial-connections.js`, `si-value.js` + `ohm-format.js` +
-    `farad-format.js` + `henry-format.js` + `volt-format.js`, `resistor-bands.js`,
-    `timing-summary.js`.
+    `integration-codegen.js`, `serial-connections.js`, `component-value.js` (THE value
+    parser) + `si-value.js` + `ohm-format.js` + `farad-format.js` + `henry-format.js` +
+    `volt-format.js`, `resistor-bands.js`, `timing-summary.js`.
   - `scripts/sim/` — the DOM-free engine: `union-find.js`, `netlist.js`, `levels.js`,
     `chip-eval.js`, `sequential.js`, `resolve.js`, `engine.js`, `junction.js`,
     `w65c02.js`, `z80.js`, `z80-ops.js`, `analog-switch.js`, `timing.js`, `rc-trace.js`,
-    `timer-555.js`, `monostable.js`, `ripple-oscillator.js`.
+    `timer-555.js`, `monostable.js`, `ripple-oscillator.js`, `programmable-timer.js`.
   - `scripts/ai/` — `catalog-brief.js`, `generate.js`, `connection.js`, `usage.js`
     (pure).
   - `scripts/catalog/` — part metadata as pure data + integrity tests; never
     part-specific code paths. `index.js`, `parts.js` (+ `discretes.js`,
-    `lead-offset.js`), `chips-*.js` (`chips-seq.js`, `chips-io.js`, `chips-cpu.js`, …),
+    `lead-offset.js`, `value-fields.js`), `chips-*.js` (`chips-seq.js`, `chips-io.js`, `chips-cpu.js`, …),
     `symbols.js`, `labels.js`.
   - `scripts/components/` — thin views. `DeskController` keeps the public surface but
     delegates to `sim-overlay.js` (live LED/badge/clock faces from
@@ -651,7 +656,17 @@ in `doc.boards`; a "breadboard" is a **kit** of them placed in one action.
   HOLD.** The engine is a pure function: it REPORTS `chipStatus` and returns
   run-volatile `state`/`pinLevels`, never mutating `params` and never touching a timer.
 - **Analog switches JOIN nets; they drive none** (CD4066B, CD4051B/52B/53B — Phase 2b
-  of Feature 410). The NETLIST stays static (wiring + hand-set switch positions only),
+  of Feature 410 — and the CD4007UB, whose six MOSFETs are six channels built by
+  `mosfetChannels`: N on while its gate is HIGH, P while LOW, a floating gate X through
+  the family reader, with no gate memory, unlike a discrete MOSFET's. Its pair 1 sits on
+  the part's own VDD/VSS pins inside the package, so a supply pin may be a channel
+  terminal on a def flagged `transistorArray`, which also makes a rail-to-rail join
+  through it a short `via: "transistor"` — tagged per JOIN, not per net, since its
+  terminals 14 and 7 sit on the rails and a net tag made every rail short on the desk a
+  transistor's; a terminal whose channel runs to a rail is that gate's OUTPUT to the
+  boundary warnings (`mixed-supply` at the `+` rail's volts, `ls-fanout` through an N to
+  `−`); shelved under Inverter, its headline use; out of the AI builder, since which
+  terminal is an output is decided by wiring the card cannot show). The NETLIST stays static (wiring + hand-set switch positions only),
   so the probe, schematic, warm-start ids and every netlist consumer are untouched; the
   join is the SOLVER's, per pass. A def states `logic.channels: [{a, b, inputs, on}]`
   (terminal pins, control pins, a pure `on(levels)` → H/L/X, built by
@@ -659,14 +674,23 @@ in `doc.boards`; a "breadboard" is a **kit** of them placed in one action.
   through the family reader. `engine.js`'s `channelGroups` unions the nets of every ON
   channel of a POWERED switch (union-find), from the previous pass's levels exactly as a
   chip's outputs are, and `resolveAll` resolves each member net from every member's
-  drivers and pulls — but another member's SUPPLY only at OUTPUT strength, so a rail
+  drivers and pulls — but a member RAIL only as its supply at OUTPUT strength, so a rail
   through a switch FIGHTS an output on the far side (conflict, said once per group)
   where the same rail wired straight on would win, and a group holding both rails warns
-  `short` with `via: "switch"` (its own sentence everywhere). A floating control is
-  "maybe": the pass is resolved with and without those channels and keeps what agrees
-  (X elsewhere). Levels that crossed a channel stay STRONG for every purpose but one:
+  `short` with `via: "switch"` (its own sentence everywhere). **A rail is never a union
+  point** (`groupsOf`): it is stiff, so two nets each switched onto `+` are not joined to
+  each other, and a fight on one does not turn the other X; it is a MEMBER of each group
+  it touches (never a key — it resolves as itself), and a channel straight between two
+  rails is a group of its own, reported as the short. **A floating control is read
+  every way it could be** (`channelGroups`' `readings`, keyed by control NET): each
+  assignment of the unknown controls is a real switch position, resolved on its own, and
+  the pass keeps what every reading agrees on — a wide reading closing every
+  maybe-channel at once joined a mux's channels to each other through COM, which no
+  select value does. Past `MAX_UNKNOWN_CONTROLS` (4) it falls back to that one wide
+  reading (more X, never less). Warnings come from the CERTAIN channels alone
+  (`definite`). Levels that crossed a channel stay STRONG for every purpose but one:
   at ≤ 5 V a channel's on-resistance limits an LED's current, so the LED rule's
-  `strongLevels` leave such a switch's joins out (`hardOn`/`hardWide` — see "Logic
+  `strongLevels` leave such a switch's joins out (each reading's `hardOn` — see "Logic
   families"); from 9 V an LED off a switch with no resistor burns, as off an output. Channel
   terminals are `io` pins the boundary warnings skip, KiCad exports as PASSIVE, and the
   AI card marks `~`.
@@ -759,12 +783,13 @@ its floating bus reading `$FF`).
   relaxation's `strong` map when a limiting part is on the desk (`ctx.limitsLed`): it
   is resolved AGAIN from the HARD drivers only (`driversFor`'s `hard`, which drops a
   limiting chip's output levels) across the HARD joins only (`channelGroups`'
-  `hardOn`/`hardWide`, which drop a ≤ 5 V switch's channels — rON 470 Ω, ~6 mA). The
+  `hardOn` in each reading, which drops a ≤ 5 V switch's channels — rON 470 Ω, ~6 mA). The
   resistor relaxation's basis is untouched (a CD4000 output still pulls through a
   resistor), and a desk with no limiting part resolves nothing twice. A part whose
   output stage is not the small MOSFET names its hard side: `highCurrent: "sink"`
-  (CD4049UB/CD4050B buffers, ~20 mA at 5 V and climbing) or `"source"` (the CD4511B's
-  bipolar segment drivers). The compiler still puts a resistor in every lamp leg on a
+  (CD4049UB/CD4050B buffers, ~19.5 mA typical at 5 V — Fig. 5-3 levels off there, the
+  LED's whole 20 mA rating with half the spread past it; a judgement call) or `"source"`
+  (the CD4511B's bipolar segment drivers). The compiler still puts a resistor in every lamp leg on a
   rail — good practice, and the prompt's "not between two outputs" holds as advice.
 - **Warnings no level expresses** (the engine has no net voltages), all STRUCTURAL and
   reported once per net/chip: `floating-input` (a powered CD4000 input on a net that
@@ -772,7 +797,11 @@ its floating bus reading `$FF`).
   `buildContext`'s `boundaryWarnings`: `marginal-high` (74LS output → CD4000 input with
   no resistor to a supply `+`; level stays H — LS VOH 3.4 V typ vs CMOS VIH 3.5 V),
   `ls-fanout` (a CD4000 output on more 74LS inputs than `lsFanoutOf`: 1, or the
-  4049/4050's 8), `mixed-supply` (one net, chips on different supply volts).
+  4049/4050's 8), `mixed-supply` (one net, chips on different supply volts — judged by
+  `supplyClash`: outputs and ordinary inputs need the net at their own supply's level,
+  while a level shifter's input, `def.inputsAboveSupply` on the 4049/4050, takes anything
+  at or ABOVE its own; ground nets are skipped like supply `+` ones, since every supply
+  shares one).
   `SimController.#report`, the desk review's `engineFinding` and the AI ladder's
   `describeWarning` each say them; the AI's L5 skips `floating-input` because L6's
   `INPUT_FLOATING` names the same pins better. A fault symbol's hover hint IS the
@@ -799,7 +828,7 @@ its floating bus reading `$FF`).
   would turn the '193's `D0`…`D3` into four sections.
 - **The Digital export places six CD4000 parts** as their pin-for-pin twins in Digital
   v0.31's library (`DIGITAL_FILES`: CD4002B→744002, CD4017B→744017, CD4069UB→7404,
-  CD4075B→744075, CD4077B→747266, CD40106B→7414); the other 37 are
+  CD4075B→744075, CD4077B→747266, CD40106B→7414); the other 40 are
   `noDigitalModel` (that library has no 4000-series folder), as is the NE555, and a
   capacitor is left out with its own reason (`capacitor` — it joins no net anyway). A floating CMOS input
   gets the TTL rule's PullUp — Digital refuses an open input and has no X — and the
@@ -809,24 +838,56 @@ its floating bus reading `$FF`).
 
 ## Values, capacitors & timed parts
 
-**A resistor and a capacitor carry a VALUE, typed the way a drawer is labelled; only the
-timing chips read it.** No analog solver, no SPICE: each timed part finds its own R and C
+**A resistor and a capacitor carry a VALUE, picked or typed the way a drawer is labelled;
+only the timing chips read it.** No analog solver, no SPICE: each timed part finds its own R and C
 in the wiring and turns them into seconds by its datasheet's formula.
 
-- **Typed values** (`model/si-value.js` underneath `ohm-format.js` / `farad-format.js`,
-  one module per quantity because the desk label, the Properties field, the schematic,
-  the BOM and the KiCad export must all say one value one way). `parseOhms` takes
-  `470`, `470R`, `470Ω`, `4.7k`, `4k7`, `1M`, `2M2`, `0R1` (bare = ohms; lowercase `m`
-  REFUSED — milliohms is never what a breadboard means); `parseFarads` REQUIRES a prefix
-  (`100p`, `10n`, `4.7µ`/`4.7u`/`μ`, `4u7`, `1m`, optional `F`; uppercase `M` refused —
-  old parts print "MF" for MICROfarads) because a bare `100` is 100 pF to one reader and
-  100 µF to another. Ranges `OHMS_RANGE` 0.1 Ω–1 GΩ, `FARADS_RANGE` 1 pF–1 F. The stored
-  param is the NUMBER (`params.ohms`, `params.farads`); the text is never stored.
-- **The `"quantity"` Properties type** (`RESISTANCE_FIELD` / `CAPACITANCE_FIELD` in
-  `catalog/parts.js`: `parse`, `format`, `invalid`) applies on `change`; a value that does
-  not parse shows `.properties-field-error` (`properties.invalid.<key>`, examples + range)
-  with `aria-invalid`, keeps the typed text, and leaves the stored value UNCHANGED — the
-  dialog never writes a guess.
+- **ONE parser for every value field** (`model/component-value.js`,
+  `features/component-value-comboboxes.md`): `parseComponentValue(text, unit, range)` →
+  `{value, display}` or `{error: "empty"|"notValue"|"wrongUnit"|"range", …}`, and
+  `formatComponentValue(value, unit)` is its canonical display — the Properties field
+  and the BOM line say a value through it (`100kΩ`, `4.7µF`, `5.1V`: no spaces, always
+  `µ`, three figures or as many as were typed, never rounded away) — and
+  `formatComponentValueAscii` is the SAME figures for an exported file (`100k`, `4.7uF`:
+  `u` for µ, a resistance with no symbol). Jason asked for the export to stay ASCII as it
+  always was (2026-10-04) — SPICE and BOM scripts read a KiCad Value.
+  A PLAIN NUMBER IS BASE UNITS (`100` on a capacitor is 100 F, refused by range — the
+  old "a capacitance needs a prefix" rule is gone, by the spec); prefixes `p n u/µ/μ m k
+  M G` + words (`kilo`, `meg`, …) are case-blind EXCEPT `m` milli vs `M` mega, ALWAYS
+  (`1m` on a resistor is a milliohm, refused as out of range, never guessed as mega);
+  RKM (`4k7`, `2R2`, `4n7`, `5V1`); spaces anywhere but between two numbers; another
+  quantity's unit is `wrongUnit` ("That's a capacitance, not a resistance"). Ranges
+  (`VALUE_RANGES`): resistor 0.1 Ω–100 MΩ, ceramic 1 pF–100 µF, electrolytic
+  100 nF–100 mF, inductor 1 nH–10 H, Zener 1.8–200 V. Ohms never take `m` in DISPLAY
+  either (`0.47Ω`). The default LISTS live beside it (`RESISTOR_VALUES` generated from
+  the E12 bases, `CERAMIC_VALUES`, `ELECTROLYTIC_VALUES`, `INDUCTOR_VALUES`,
+  `ZENER_DIODES` voltage + part, `TRANSISTOR_PARTS` per type). The `ohm-/farad-/henry-/
+  volt-format.js` modules are now FORMATTING only (the 3-figure desk/schematic labels);
+  their parsers are gone. The stored param is the NUMBER (`params.ohms`,
+  `params.farads`, …), with ONE exception: a document value that will not read is KEPT
+  as its raw text (`storedValue` in `catalog/value-fields.js`) and shown red when the
+  card opens — every numeric consumer already guards with `Number.isFinite`/`> 0`, so
+  such a part is one of NO KNOWN VALUE (no bands, no label, rc-trace skips it, the BOM
+  lists it bare; a pot keeps its wiper — which side is a wire is the POSITION's to say).
+- **The `"combo"` Properties type** (`catalog/value-fields.js` builds the fields:
+  `valueField`, `ZENER_VOLTS_FIELD`, `transistorPartField(type)`;
+  `components/value-combobox.js` is the ONE control): an editable `role="combobox"`
+  input + ▾ + a `position: fixed` listbox the typing FILTERS (`u` matches `µ`). A field
+  is `{options(values), show(values) → {text, error?, warning?}, read(text, values) →
+  {text, patch, warning?} | {error}}` and commits a PATCH (several keys at once — a
+  Zener pick sets `zenerVolts` AND `partNumber`); the dialog's `applyPatch` writes each
+  key and rebuilds every OTHER row it touched. Validates on blur/Enter only (never
+  per keystroke, so `4.` is not flagged); an error keeps the typed text, red with
+  `aria-invalid` and the stored value UNCHANGED; a WARNING (another type's transistor
+  part, "2N3906 is a PNP transistor") is shown but stored and not `aria-invalid`.
+  Messages: `properties.combo.*`. Escape shuts an open list without closing the dialog.
+- **A capacitor's and a transistor's Type is a PART SWAP** (`partTypeField` → key `ref`,
+  `swapsPart: true`; the defs' `swapsWith` + `adoptParams`; `DeskDoc.setComponentRef`,
+  which keeps the id, anchor and holes or throws): one undo step, then the card REOPENS
+  as the new part (its own list and range). Values cross untouched — a capacitance out
+  of the new range shows red rather than being changed; a transistor part number from
+  ANOTHER type's list is dropped by `adoptParams` (a typed one is kept). Greyed while
+  running, like `movesPins`.
 - **Resistor colour code** (`model/resistor-bands.js`): 4 bands when two significant
   figures say the value (gold tolerance), 5 when it needs three (brown), `[]` when no
   multiplier band can encode it. Band colours are `--color-band-*` tokens, tuned against
@@ -873,7 +934,14 @@ in the wiring and turns them into seconds by its datasheet's formula.
   takes `now` (simulated seconds) and reports `wakeAt`, the earliest moment any powered
   timed part next changes on its own. A step's state is a pure function of `now` and the
   moment its cycle began (`t0`, `since`/`until`), so a repeated call at one `now` returns
-  the same state — the tick's step fixpoint depends on it.
+  the same state — the tick's step fixpoint depends on it. **A value changed mid-run (a
+  pot turned, a Properties edit) carries on at the new rate, never rewriting history**:
+  the analysis is re-read every context, so a free-running part keeps the R·C (or
+  period) it last ran at in its state, and on a change moves `t0` so `now` sits the same
+  FRACTION of the way through the same segment (`rebase`, the 555 and 4047 astables) or
+  at the same count (`rebaseCount`, the 4060 and 4541) — re-reading the whole elapsed
+  run at the new rate jumped the output to wherever the new schedule said it "would
+  have been".
 - **SimController owns the sim clock**: seconds since Run × speed (`#simAnchor` +
   `#realAnchor`, `#freeze`/`#thaw` on pause, stall and speed change), handed to every
   `tick` as `now`, and ONE `setTimeout` (`#armWake`) to tick again at `wakeAt`. So a 555
@@ -904,13 +972,29 @@ in the wiring and turns them into seconds by its datasheet's formula.
   a timing terminal, not an output. **Bistable is asked FIRST**: the usual build grounds
   DISCH beside THRES (a monostable's tell) and a pressed SET button puts TRIG on that
   net too (an astable's), so asking either first misreads it.
-  `chips-cd4000-timers.js`: CD4047B (4.40·RC astable, 2.48·RC one-shot), CD4098B (½·R·C)
-  and CD4538B (R·C — sourced from TI's CD14538B sheet, SCHS093C, since `cd4538b.pdf`
-  404s) as `dualMonostableLogic` (+TR OR NOT −TR rising, retriggerable, RESET low; a
-  section with nothing on it is "unused" and silent), CD4060B (`ripple-oscillator.js`:
-  Fig. 12 RC network → 2.2·Rx·Cx, or external clock on φI when φO/φ̄O carry no network;
-  no crystal). CD4528B was DROPPED: TI's sheet link 404s and no other TI sheet covers
-  it. Groups `Timer` (new, CD4000) and `Counter` (the 4060).
+  `chips-cd4000-timers.js`: CD4047B (4.40·RC astable; a 2.48·RC one-shot that is the
+  internal oscillator run for WHOLE periods — §III/Fig. 34: another trigger does not
+  restart it, and RETRIGGER risen during a period or HIGH at its end runs it on one more
+  2.2·RC period, so one extra pulse gives the sheet's tRE = t1' + t1 + 2·t2; the rise
+  that STARTS a pulse, with RETRIGGER tied to +TRIGGER, is not also a retrigger), CD4098B (½·R·C),
+  CD4528B and CD4538B (R·C — sourced from TI's CD14538B sheet, SCHS093C, since
+  `cd4538b.pdf` 404s) as `dualMonostableLogic` (+TR OR NOT −TR rising, retriggerable,
+  RESET low; a section with nothing on it is "unused" and silent; `width(r, c, volts)`
+  and `cxInside` per part), CD4060B (`ripple-oscillator.js`: Fig. 12 RC network →
+  2.2·Rx·Cx, or external clock on φI when φO/φ̄O carry no network; no crystal), CD4541B
+  (`programmable-timer.js`, SCHS085E: Fig. 2's network → 2.3·Rtc·Ctc with CTC driving the
+  clock out and RTC its complement, or an external clock on RS counted on its FALLING
+  edges — the clock is RS inverted; a 16-stage count whose stage N, picked by A/B, is
+  the OUTPUT through Fig. 1's latch: MODE HIGH recycles, LOW makes one transition after
+  2^(N−1) counts and holds it; Q/Q̄ SELECT is an XOR; MASTER RESET HIGH clears and stops
+  it; AUTO RESET LOW starts it at Run, HIGH waits for an MR pulse). **The CD4528B has NO
+  TI sheet** — it is from HGSEMI's (V1.4, a current second source with Fairchild's
+  tables, fetched from LCSC's asset host): the 4098's functions on the 4098's pins
+  under its own names, T1 NOT grounded inside (`cxInside: false` → `notGrounded` until
+  T1 is wired to GND), and T = 0.2·Rx·Cx·ln(VDD − VSS), the one timing that reads the
+  SUPPLY (`rcTrace().supplyVolts`). Makers disagree on that constant (another CD4528
+  sheet falls from 0.42 to 0.30 as VDD rises); the HGSEMI/Fairchild formula is the
+  one used. Groups `Timer` (new, CD4000) and `Counter` (the 4060).
 - **New pin role `"timing"`** (`timing(n, name)` in `pin-builders.js`): an RC terminal —
   not an input (no floating warning, never tied by the compiler), not an output (drives
   nothing), KiCad PASSIVE, pinout tag `RC`.
@@ -922,9 +1006,10 @@ in the wiring and turns them into seconds by its datasheet's formula.
 - **Exports & lists**: KiCad carries capacitor values (symbols in `chiphippo.kicad_sym`
   drawn to KiCad's `Device:C` / `Device:C_Polarized` shapes, footprints
   `Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P2.50mm` / `CP_Radial_D5.0mm_P2.50mm`, designator
-  `C`, ASCII `u` in the Value); the BOM splits resistors and capacitors by value (`Resistor — 4.7kΩ`,
-  dash not brackets, since several titles end in a bracket of their own); the schematic
-  draws both plates and the value.
+  `C`, the Value `formatComponentValueAscii`'s — `4.7uF`, `4.7k`, plain ASCII, the
+  card's figures); the BOM splits resistors and capacitors by value through the same
+  formatter (`Resistor — 4.7kΩ`, dash not brackets, since several titles end in a bracket
+  of their own); the schematic draws both plates and the value.
 
 ## The discretes — inductors, diodes, transistors
 
@@ -943,14 +1028,14 @@ a red `*` beside it too, which he dropped as redundant (2026-10-04) — don't br
   holds one of their leads is WIRED, conducting or not (`rcTrace().connectedByPart`, which
   the engine's CMOS floating-input sweep and the desk review's TTL sweep ask in place of
   the old `hasCapacitor`). Every one has an optional **Part number** (`PART_NUMBER_FIELD`,
-  `partNumberOf` — trimmed, ≤32, stored only when set): printed on the part, a BOM key,
-  KiCad's Value for a semiconductor and an `MPN` field for all. Out of the AI builder
+  `partNumberOf` — trimmed, ≤32, stored only when set; a TRANSISTOR's is the `"combo"`
+  `transistorPartField`, its type's list, uppercased, letters/digits/`-`, ≤20): printed on
+  the part, a BOM key, KiCad's Value for a semiconductor and an `MPN` field for all. Out of the AI builder
   (`BUILDABLE_DEFS` drops `countsAsConnection`).
 - **Inductor = a wire**: `internalBridges` `[[1,2]]`, so the netlist joins its nets;
   `{bridges:false}` (schematic, exports) keeps them apart, which is what KiCad needs. The
-  Inductance is OPTIONAL — the `"quantity"` field's `optional: true` takes an empty box as
-  `onChange(key, null)` and normalizeParams drops it. `parseHenries` needs a prefix or
-  `H`, as farads do; 1 nH–100 H.
+  Inductance is OPTIONAL — `valueField({optional: true})` reads an empty box as a patch
+  of `null`, which normalizeParams drops.
 - **An inductor's look and size are params** (both `"segmented"`, always stored):
   `style` `"coil"` (default — a TOROID standing on edge, seen from ABOVE like everything
   on the desk: the top of its ring, centred on its leads, each turn drawn where it
@@ -983,7 +1068,10 @@ a red `*` beside it too, which he dropped as redundant (2026-10-04) — don't br
   (`feedsCathode`) — else the H rode a transistor joined to the rail as a phantom
   conflict. Diodes obey the LED's junction rule: forward across two strong nets they BURN
   (`sim-overlay #updateDiodes`, review `DIODE_UNLIMITED`). Zener = diode; `zenerVolts`
-  (`parseVolts`: `5.1V`/`5V1`/`3.3`, 1–200 V) is export-only.
+  (the `"combo"` `ZENER_VOLTS_FIELD`: a pick or a voltage on `ZENER_DIODES` brings its
+  part number, a typed part number picks its entry, any other voltage drops a TABLE part
+  number but keeps one the user typed) is export-only. The spec's key was `voltage`;
+  `zenerVolts` was kept, since documents already store it.
 - **Transistor = an analog-switch channel** (`logic.channels`, the CD4066B's mechanism —
   `channelGroups`). TO-92 `[0,1,2]`, pins E·B·C / S·G·D (control `input`, switched `io`),
   `reversible` (R turns it end-for-end). `floating: "unknown"` (families.js
@@ -2591,7 +2679,7 @@ the ×'s box) in one `.popup-header-actions` group LEFT of the ×.
   options }]`) and the dialog is a pure renderer over that list (one
   `buildControl`/`buildRow` dispatch per `type`) that knows nothing about any specific
   part. A future part's properties are purely a catalog change, plus one more `type` case
-  only for a genuinely new control shape. Seven types:
+  only for a genuinely new control shape. Eight types:
   - `"color"` — every coloured discrete (LED, `seg8cc`/`seg8ca`, `bar8`/`bar8iso`) shares
     one `LED_COLOR_OPTIONS` list of 5 and a row of swatches reusing the
     `--color-wire-<name>` tokens. Any def with a `colors` list arms placement directly with
@@ -2627,6 +2715,8 @@ the ×'s box) in one `.popup-header-actions` group LEFT of the ×.
     `1.5k ━●━ 8.5k`: wiper↔pin 1 left, wiper↔pin 3 right, a dead side "0"). The DIALOG
     fills those (`refreshEnds`), re-asking with its current values after EVERY change, since
     they rest on another field (a new Resistance moves them); `aria-valuetext` is the pair.
+  - `"combo"` — a value or part number picked from a list or typed (see "Values,
+    capacitors & timed parts"); the one type that commits a PATCH of several keys.
   - Like Settings, value fields apply live (`onChange(key, value)` per control change, no
     Save/Cancel). `#setComponentProperty` applies the patch via
     `DeskDoc.setComponentParams` and **remounts** the part view (`#remountPart`, not
@@ -2926,8 +3016,9 @@ find or name.
   and some vendor front-ends sit behind bot protection and return a 403, or an HTML
   challenge with status 200, so `ww1.microchip.com` is used and not the
   `www…/content/dam/…` path the site itself links. Every block is a manufacturer's own file
-  server bar one — the '83's, an archive, which is the link expected to rot and which the
-  run reports by name rather than hiding. The one entry whose KEY is not its part number is
+  server bar three — the '83's and '573's archive, the '533's Rochester sheet and the
+  CD4528B's HGSEMI sheet, both on LCSC's asset hosts — the links expected to rot, which
+  the run reports by name rather than hiding. The one entry whose KEY is not its part number is
   `AS6C1024` (Alliance Memory call it the AS6C1008): the sheet is right, the catalog id is
   what is off, and a ref is stamped into saved documents, so correcting it is a migration
   rather than a rename.

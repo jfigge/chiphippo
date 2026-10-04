@@ -701,6 +701,9 @@
     "CD4049UB": {
       "title": "Hex inverting buffer/converter"
     },
+    "CD4007UB": {
+      "title": "Dual complementary pair plus inverter"
+    },
     "CD4050B": {
       "title": "Hex non-inverting buffer/converter"
     },
@@ -767,8 +770,14 @@
     "CD4098B": {
       "title": "Dual monostable multivibrator"
     },
+    "CD4528B": {
+      "title": "Dual monostable multivibrator"
+    },
     "CD4538B": {
       "title": "Dual precision monostable multivibrator"
+    },
+    "CD4541B": {
+      "title": "Programmable timer"
     },
     "cap-ceramic": {
       "title": "Capacitor (ceramic)"
@@ -1402,7 +1411,8 @@
       "zenerVolts": "Zener voltage",
       "case": "Package",
       "style": "Style",
-      "bodyHoles": "Holes between leads"
+      "bodyHoles": "Holes between leads",
+      "ref": "Type"
     },
     "option": {
       "manual": "Manual",
@@ -1411,7 +1421,9 @@
       "low": "Low",
       "high": "High",
       "coil": "Coil",
-      "can": "Can"
+      "can": "Can",
+      "cap-ceramic": "Ceramic",
+      "cap-electrolytic": "Electrolytic"
     },
     "action": {
       "inspectMemory": "Inspect memory…",
@@ -1429,11 +1441,44 @@
       "heldOn": "Holding ON — its gate reads no level, and the charge left on it keeps the channel conducting. A real gate leaks that charge away, so tie it to a defined level with a resistor.",
       "heldOff": "Holding OFF — its gate reads no level, so it stays as it was last driven (off, if its gate has not been driven yet). A real gate drifts, so tie it to a defined level with a resistor."
     },
-    "invalid": {
-      "ohms": "Not a resistance — try 470, 4.7k, 4k7 or 2M2 (0.1 Ω to 1 GΩ).",
-      "farads": "Not a capacitance — give a unit: 100p, 10n, 4.7µ, 4u7 or 1m (1 pF to 1 F).",
-      "henries": "Not an inductance — give a unit: 100n, 10µ, 4u7, 100m or 1H (1 nH to 100 H), or leave it blank.",
-      "zenerVolts": "Not a voltage — try 5.1V, 5V1 or 3.3 (1 V to 200 V), or leave it blank."
+    "combo": {
+      "show": "Show common values",
+      "notValue": {
+        "ohm": "Not a resistance value",
+        "farad": "Not a capacitance value",
+        "henry": "Not an inductance value",
+        "volt": "Not a voltage value"
+      },
+      "range": "Out of range: {min} to {max}",
+      "wrongUnit": {
+        "ohm": {
+          "farad": "That's a capacitance, not a resistance",
+          "henry": "That's an inductance, not a resistance",
+          "volt": "That's a voltage, not a resistance"
+        },
+        "farad": {
+          "ohm": "That's a resistance, not a capacitance",
+          "henry": "That's an inductance, not a capacitance",
+          "volt": "That's a voltage, not a capacitance"
+        },
+        "henry": {
+          "ohm": "That's a resistance, not an inductance",
+          "farad": "That's a capacitance, not an inductance",
+          "volt": "That's a voltage, not an inductance"
+        },
+        "volt": {
+          "ohm": "That's a resistance, not a voltage",
+          "farad": "That's a capacitance, not a voltage",
+          "henry": "That's an inductance, not a voltage"
+        }
+      },
+      "notPart": "Not a part number — letters, digits and - only, up to 20",
+      "foreignPart": {
+        "npn": "{part} is an NPN transistor",
+        "pnp": "{part} is a PNP transistor",
+        "nmos": "{part} is an N-channel MOSFET",
+        "pmos": "{part} is a P-channel MOSFET"
+      }
     },
     "refused": {
       "bodyHoles": "No room — the hole its lead would move to is taken, or past the end of the board."
@@ -1803,7 +1848,7 @@
     "bistable": "Bistable — TRIG LOW sets the output HIGH, RESET LOW clears it",
     "multivibrator": "Astable: Q at {frequency}; one-shot: a {width} pulse",
     "oscillator": "RC oscillator — {frequency}",
-    "external": "Counting an external clock on φI",
+    "external": "Counting an external clock on {pin}",
     "unused": "Not used",
     "capped": "Faster than the desk can show: drawn at {cap}.",
     "stretched": "Shorter than the desk can show: drawn {shown} long.",
@@ -1814,7 +1859,9 @@
       "noResistor": "no timing resistor from {from} to {to}",
       "notConnected": "{pin} is not connected",
       "ne555Unrecognised": "TRIG (2), THRES (6) and DISCH (7) are wired neither astable (TRIG and THRES joined, DISCH between RA and RB), monostable (THRES and DISCH joined, TRIG driven from outside) nor bistable (THRES on GND, TRIG driven from outside)",
-      "cd4060Incomplete": "the RC oscillator needs Cx from φO (9), Rx from φ̄O (10) and Rs from φI (11), all meeting at one junction"
+      "cd4060Incomplete": "the RC oscillator needs Cx from φO (9), Rx from φ̄O (10) and Rs from φI (11), all meeting at one junction",
+      "cd4541Incomplete": "the RC oscillator needs Ctc from CTC (2), Rtc from RTC (1) and Rs from RS (3), all meeting at one junction",
+      "notGrounded": "{pin} must be wired to GND"
     }
   }
 }

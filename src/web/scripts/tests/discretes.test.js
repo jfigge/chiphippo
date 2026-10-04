@@ -48,12 +48,9 @@ import {
 import { floatsUnknown } from "../catalog/families.js";
 import { symbolFor } from "../catalog/symbols.js";
 import { BUILDABLE_DEFS } from "../ai/catalog-brief.js";
-import {
-  formatHenries,
-  formatHenriesAscii,
-  parseHenries,
-} from "../model/henry-format.js";
-import { formatVolts, parseVolts } from "../model/volt-format.js";
+import { formatHenries } from "../model/henry-format.js";
+import { formatVolts } from "../model/volt-format.js";
+import { VALUE_RANGES, parseComponentValue } from "../model/component-value.js";
 import { buildPlan } from "../model/build-plan.js";
 import { reviewDesk } from "../model/desk-review.js";
 import { exportDigital } from "../model/export/digital.js";
@@ -92,7 +89,13 @@ test("the discretes: every part counts as a connection and carries a Part number
     const def = partDef(id);
     assert.ok(def, id);
     assert.equal(def.countsAsConnection, true, id);
-    assert.ok(def.properties.includes(PART_NUMBER_FIELD), `${id}: part number`);
+    // The shared text field — or, on a transistor, a combo of its type's
+    // common parts under the same key.
+    const field = def.properties.find((f) => f.key === "partNumber");
+    assert.ok(
+      def.transistor ? field?.type === "combo" : field === PART_NUMBER_FIELD,
+      `${id}: part number`,
+    );
     assert.ok(
       ["Capacitors", "Diodes", "Inductors", "Transistors"].includes(def.group),
       `${id}: ${def.group}`,
@@ -138,9 +141,9 @@ test("a MOSFET is a TO-220 by default and a TO-92 on request; a BJT is a TO-92",
     const def = partDef(ref);
     assert.deepEqual(
       def.properties.map((f) => f.key),
-      ["case", "partNumber"],
+      ["ref", "case", "partNumber"],
     );
-    const field = def.properties[0];
+    const field = def.properties[1];
     assert.equal(field.type, "segmented");
     assert.deepEqual(
       field.options.map((o) => o.value),
@@ -164,7 +167,7 @@ test("a MOSFET is a TO-220 by default and a TO-92 on request; a BJT is a TO-92",
     const def = partDef(ref);
     assert.deepEqual(
       def.properties.map((f) => f.key),
-      ["partNumber"],
+      ["ref", "partNumber"],
     );
     assert.deepEqual(def.normalizeParams({ case: "TO-220" }), {});
     assert.equal(transistorCase(def, { case: "TO-220" }), "TO-92");
@@ -205,7 +208,9 @@ test("every new part has a schematic symbol of its own shape", () => {
 
 // ── Values ──────────────────────────────────────────────────────────────────
 
-test("every inductance form the field promises reads as henries", () => {
+test("every inductance form a bench writes reads as henries", () => {
+  const henries = (text) =>
+    parseComponentValue(text, "henry", VALUE_RANGES.inductor).value;
   const forms = {
     "10µH": 10e-6,
     "10uH": 10e-6,
@@ -216,40 +221,31 @@ test("every inductance form the field promises reads as henries", () => {
     "100n": 100e-9,
     "10 μH": 10e-6,
     "2m2": 2.2e-3,
+    "1 millihenry": 1e-3,
   };
-  for (const [text, henries] of Object.entries(forms)) {
-    assert.equal(parseHenries(text), henries, text);
+  for (const [text, value] of Object.entries(forms)) {
+    assert.equal(henries(text), value, text);
   }
-});
-
-test("text that is not an inductance is refused, never guessed at", () => {
+  // Out of 1 nH–10 H, a wrong unit, or no inductance at all: refused.
   for (const text of [
     "",
     "abc",
-    "10",
+    "11", // a plain number is henries: past 10 H
     "1MH",
     "-1u",
     "0u",
-    "200H",
+    "20H",
     "0.1n",
     "4u7u",
-    null,
+    "10uF",
   ]) {
-    // prettier-ignore
-    assert.equal(parseHenries(text), null, JSON.stringify(text));
+    assert.equal(henries(text), undefined, JSON.stringify(text));
   }
 });
 
-test("an inductance prints tidy and round-trips; ASCII for a file", () => {
+test("an inductance prints on the desk at three figures", () => {
   assert.equal(formatHenries(10e-6), "10µ");
   assert.equal(formatHenries(0.1), "100m");
-  assert.equal(formatHenriesAscii(4.7e-6), "4.7u");
-  // What the field shows is what it reads back (a bare "1" is refused, so
-  // the unit goes with it, as the field prints it).
-  const field = partDef("inductor").properties.find((f) => f.key === "henries");
-  for (const h of [100e-9, 4.7e-6, 10e-6, 0.1, 1, 10]) {
-    assert.equal(parseHenries(field.format(h)), h, field.format(h));
-  }
 });
 
 test("an inductor's value is OPTIONAL: blank places a bare inductor", () => {
@@ -261,22 +257,28 @@ test("an inductor's value is OPTIONAL: blank places a bare inductor", () => {
     end: null,
   });
   assert.equal(def.normalizeParams({ henries: 1e-5 }).henries, 1e-5);
-  for (const bad of [null, "", -1, 1e6, "junk"]) {
+  // Kept out of range (its card says so); read from text; dropped when there
+  // is nothing there.
+  assert.equal(def.normalizeParams({ henries: 1e6 }).henries, 1e6);
+  assert.equal(def.normalizeParams({ henries: "10u" }).henries, 1e-5);
+  for (const bad of [null, "", -1, 0]) {
     assert.ok(!("henries" in def.normalizeParams({ henries: bad })), bad);
   }
   const field = def.properties.find((f) => f.key === "henries");
-  assert.equal(field.type, "quantity");
+  assert.equal(field.type, "combo");
   assert.equal(field.optional, true);
-  assert.equal(field.format(1e-5), "10µH");
+  assert.equal(field.show({ henries: 1e-5 }).text, "10µH");
 });
 
 test("a Zener voltage reads every way a bench writes it", () => {
+  const volts = (text) =>
+    parseComponentValue(text, "volt", VALUE_RANGES.zener).value;
   const forms = { "5.1V": 5.1, "5V1": 5.1, "3.3": 3.3, "3V3": 3.3, "12": 12, "5.1 v": 5.1 }; // prettier-ignore
-  for (const [text, volts] of Object.entries(forms)) {
-    assert.equal(parseVolts(text), volts, text);
+  for (const [text, value] of Object.entries(forms)) {
+    assert.equal(volts(text), value, text);
   }
-  for (const text of ["", "abc", "0.5", "201", "-5", "5V1V1", "V"]) {
-    assert.equal(parseVolts(text), null, JSON.stringify(text));
+  for (const text of ["", "abc", "1.5", "201", "-5", "5V1V1", "V"]) {
+    assert.equal(volts(text), undefined, JSON.stringify(text));
   }
   assert.equal(formatVolts(5.1), "5.1");
   const def = partDef("zener");

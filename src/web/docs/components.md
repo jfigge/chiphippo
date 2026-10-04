@@ -93,33 +93,69 @@ A few parts don't fit that linear model:
   16-way header along 16 adjacent holes in one row — but the module itself
   is much bigger than that row. See below.
 
-## Resistor and capacitor values
+## Component values
 
-A **resistor** has a **Resistance**, and a **capacitor** a **Capacitance**:
-right-click the part, choose **Properties…**, and type the value the way it is
-printed on a parts drawer or a schematic.
+A **resistor** has a **Resistance**, a **capacitor** a **Capacitance**, an
+**inductor** an **Inductance**, a **Zener diode** a **Zener voltage** and a
+**transistor** a **Part number**. Right-click the part, choose
+**Properties…**, and either pick from the field's list — the ▾ beside it, or
+↓ — or type any value at all, the way it is printed on a parts drawer or a
+schematic. Typing narrows the list to the entries holding what you have typed
+(`4` leaves 47Ω, 470Ω, 4.7kΩ, 47kΩ and 470kΩ; `u` finds µ).
 
-| Resistance                        | Capacitance                    |
-| --------------------------------- | ------------------------------ |
-| `470`, `470R`, `470Ω`, `470 ohms` | `100p`, `100pF`                |
-| `4.7k`, `4k7`                     | `10n`, `100nF`                 |
-| `1M`, `2M2`, `1G`                 | `4.7µ`, `4.7u`, `4u7`, `100µF` |
-| `0R1` (0.1 Ω)                     | `1m` (1 mF)                    |
+| Typed                                   | Reads as    |
+| --------------------------------------- | ----------- |
+| `470`, `470R`, `470Ω`, `470 ohms`       | 470Ω        |
+| `4.7k`, `4k7`, `4.7 k`, `4.7 kilo ohms` | 4.7kΩ       |
+| `1M`, `1meg`, `2M2`                     | 1MΩ, 2.2MΩ  |
+| `2R2`, `0.47`                           | 2.2Ω, 0.47Ω |
+| `100n`, `100nF`, `0.1uF`, `0.1µF`       | 100nF       |
+| `4n7`, `10 microfarads`                 | 4.7nF, 10µF |
+| `10uH`, `1 millihenry`                  | 10µH, 1mH   |
+| `5.1`, `5.1V`, `5V1`                    | 5.1V        |
 
-The letter can stand in for the decimal point (`4k7`, `2M2`, `4u7`), and a
-space before the unit is ignored. A resistance can be a bare number of ohms; a
-capacitance needs its prefix, because a bare `100` means 100 pF to one reader
-and 100 µF to another, and guessing would be off by a factor of a million.
-For the same reason a lowercase `m` on a resistor (milli-ohms) and an
-uppercase `M` on a capacitor (mega-farads, or the old "MF" for microfarads)
-are refused. Resistances run from 0.1 Ω to 1 GΩ, capacitances from 1 pF to
-1 F.
+A plain number is in the field's own unit — ohms, farads, henries or volts —
+so `100` in a Capacitance is a hundred farads, which is out of range and says
+so. The prefixes are `p` `n` `u`/`µ` `m` `k` `M` `G`, or spelled out (`pico`
+… `giga`, and `meg` as SPICE writes it). A lowercase `m` is always milli and
+an uppercase `M` always mega: `1m` on a resistor is a milliohm, refused as out
+of range rather than guessed at. A prefix letter — or `R` for ohms, `V` for
+volts — can stand in for the decimal point (`4k7`, `2R2`, `4n7`, `5V1`). A
+unit belonging to something else is refused by name: `10uF` in a Resistance
+is "a capacitance, not a resistance".
 
-Press Enter or move out of the field to apply it. A value that can't be read
-is marked in red under the field with examples of what it takes, and the part
-keeps the value it had, so nothing changes until you type one that reads. The
-value is stored exactly, and shown back in its tidy form (`4k7` becomes
-`4.7kΩ`).
+Press Enter or move out of the field to apply it. A value that reads is shown
+back in its tidy form — `100 kilo ohms` becomes `100kΩ` — to three figures,
+or to as many as you typed (`4753` is `4.753kΩ`; nothing is rounded away). One
+that doesn't stays as you typed it, in red with the reason under it ("Not a
+resistance value", "Out of range: 0.1Ω to 100MΩ"), and the part keeps the
+value it had. Any value in range is taken, on the list or not.
+
+| Field                      | Range         | List                           |
+| -------------------------- | ------------- | ------------------------------ |
+| Resistance                 | 0.1Ω – 100MΩ  | the E12 series, 10Ω – 1MΩ      |
+| Capacitance (ceramic)      | 1pF – 100µF   | 10pF – 1µF                     |
+| Capacitance (electrolytic) | 100nF – 100mF | 1µF – 1mF                      |
+| Inductance                 | 1nH – 10H     | 1µH – 100mH                    |
+| Zener voltage              | 1.8V – 200V   | 2.4V – 30V, each with its part |
+
+A **Zener**'s list pairs each voltage with its part — `5.1V (1N4733A)` — and
+picking one sets both. Typing a voltage on the list (`5.1`, `5V1`) brings its
+part number with it, typing a part number on it (`1n4742`) picks its entry,
+and any other voltage stands alone, with no part number.
+
+A capacitor's **Type** (Ceramic or Electrolytic) and a transistor's **Type**
+(NPN, PNP, N- or P-channel MOSFET) swap the part where it stands and reopen
+its card as the new one; like any change to the wiring, the Type is greyed
+while the circuit runs. The value comes across untouched, so a capacitance
+outside the new type's range shows red rather than being changed. A
+transistor's list holds the parts of its own type, and a part number from
+another type's list is cleared by the swap (one you typed yourself is kept).
+Typing another type's part number is allowed, with a warning — `2N3906 is a
+PNP transistor`.
+
+An older project's values load as they were. One that cannot be read is kept
+exactly as written, and shows red when you open the card.
 
 On the desk a resistor wears its **colour code** — four bands for a value two
 figures say (`4.7k`: yellow, violet, red, gold), five for one that needs three
@@ -138,8 +174,8 @@ resistive track between the two outer pins and a **wiper** on the middle pin
 that taps it. It seats along one row like a switch, pins 1, W and 3 in three
 holes side by side.
 
-Its **Properties…** card has the track's **Resistance** (typed like any
-resistor's) and the wiper's **Position**, a slider from 0 % to 100 %. The
+Its **Properties…** card has the track's **Resistance** (picked or typed
+like any resistor's) and the wiper's **Position**, a slider from 0 % to 100 %. The
 resistance from the wiper to pin 1 is Position × Resistance, and to pin 3 is
 what is left of the track:
 
@@ -200,9 +236,9 @@ has an optional **Part number** in **Properties…** (`1N4148`, `2N2222`,
 [BOM](build-guide.md) and written to the export, and it changes nothing about
 how the part behaves.
 
-**Inductors** (**COMPONENTS ▸ Inductors**) take an optional **Inductance** —
-`10µH`, `10uH`, `4.7u`, `4u7`, `100mH`, `1H` (1 nH to 100 H; a prefix or the
-`H` is required, as a capacitance's is). Leave it blank for a bare inductor.
+**Inductors** (**COMPONENTS ▸ Inductors**) take an optional **Inductance**
+(see [Component values](#component-values)); leave it blank for a bare
+inductor.
 Its **Style** is the part it is, seen from above like everything on the
 desk: a **Coil** — a toroid standing on edge over its leads, copper wound
 round a dark ferrite ring — or a **Can**, a drum in a black sleeve, its value
@@ -224,7 +260,8 @@ is on it — so two diodes into one net, with a pull-down resistor there, make a
 chip output it drives the cathode, through a resistor it only pulls it. Like an
 LED, a diode wired forward straight across two strongly driven nets (rail to
 rail, or an output into ground) **burns**. A Zener takes an optional **Zener
-voltage** (`5.1V`, `5V1`, `3.3`; 1 V to 200 V), printed and exported, but in
+voltage**, picked with its part number or typed (see
+[Component values](#component-values)), printed and exported, but in
 the simulation it is exactly a diode: reverse breakdown is analog, so it
 regulates nothing here.
 
@@ -234,7 +271,8 @@ standing over three holes in a row with its pin letters printed on it: `E B C`
 for the BJTs, `S G D` for the MOSFETs. A BJT is a TO-92. A MOSFET is a
 **TO-220** — the power part, its metal tab behind it — unless you pick
 **TO-92** under **Package** in its **Properties…**; the package is how it is
-drawn, listed in the BOM and exported, never how it behaves. Real pinouts differ by part number
+drawn, listed in the BOM and exported, never how it behaves. Its **Type**
+turns it into any of the four where it stands. Real pinouts differ by part number
 (a 2N2222 is E·B·C, a BC547 C·B·E, an IRLZ44N G·D·S), so select one and press
 `R` to turn it end-for-end. In the simulation each is a **switch**:
 

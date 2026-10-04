@@ -197,7 +197,10 @@ warning naming the net, with the fix:
   input LOW. The CD4049UB and CD4050B buffers exist for exactly this: one of
   their outputs drives eight.
 - **Two supplies on one net** — chips on different supply voltages joined by
-  a signal, which needs a level shifter.
+  a signal, which needs a level shifter. The CD4049UB and CD4050B are one:
+  their inputs may be driven from a higher supply than their own, so a signal
+  coming DOWN into them is not reported. (Ground is shared by every supply,
+  and is never a signal.)
 
 One difference works the other way. A standard CD4000 output is too weak to
 burn an LED: at 5 V it can push only about 4 mA through one, a fifth of what

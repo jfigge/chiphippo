@@ -440,6 +440,20 @@ test("CD4029B: a floating CARRY IN or PRESET ENABLE leaves the count unknown", (
   assert.equal(count29(c), null, "maybe preset to 1, maybe still 0");
 });
 
+test("CD4029B/4510B/4516B: a floating PRESET ENABLE whose jam equals the count is still lost to a clock", () => {
+  // PE HIGH would hold the jam (0); PE LOW would count to 1. Until an edge
+  // the two readings agree, so the count stays known.
+  for (const ref of ["CD4029B", "CD4510B", "CD4516B"]) {
+    const rest = ref === "CD4029B" ? COUNT_REST : UD_REST;
+    const b = bench(ref, { ...rest, 1: Z });
+    b.set({ 15: L });
+    assert.equal(count29(b), 0, `${ref}: no edge, both readings say 0`);
+    b.pulse(15);
+    assert.equal(count29(b), null, `${ref}: maybe held at 0, maybe counted`);
+    assert.equal(b.out(6), X, ref);
+  }
+});
+
 // ── CD4510B / CD4516B — presettable up/down counters ────────────────────────
 
 // Same pins as the 4029, with RESET on 9 and P1–P4 on 4 12 13 3.

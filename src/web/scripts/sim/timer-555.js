@@ -50,7 +50,7 @@
 // keeps itself.
 
 import { H, L, X } from "./levels.js";
-import { capSchedule, scheduleAt, shownPulse, EPS } from "./timing.js";
+import { capSchedule, scheduleAt, shownPulse, rebase, EPS } from "./timing.js";
 
 /** The 555's pins (DIP-8, SLFS022K Table 4-1). */
 export const PIN = Object.freeze({
@@ -200,11 +200,27 @@ function step(state, ins, _prev, env) {
 
   if (section.mode === "astable") {
     // The cycle starts HIGH: a discharged capacitor sits below the trigger
-    // level, which sets the flip-flop (§6.4, row 2).
-    const schedule = capSchedule([section.high, section.low]);
-    const t0 = state?.kind === "astable" ? state.t0 : now;
+    // level, which sets the flip-flop (§6.4, row 2). A value changed while it
+    // runs (a pot turned) carries the cycle on at the new rate from where it
+    // is, rather than replaying it from the start (sim/timing.js `rebase`).
+    const { high, low } = section;
+    const schedule = capSchedule([high, low]);
+    let t0 = now;
+    if (state?.kind === "astable") {
+      t0 =
+        state.high === high && state.low === low
+          ? state.t0
+          : rebase(capSchedule([state.high, state.low]), schedule, state.t0, now); // prettier-ignore
+    }
     const { index, next } = scheduleAt(schedule, t0, now);
-    return { kind: "astable", t0, out: index % 2 === 0 ? H : L, wake: next };
+    return {
+      kind: "astable",
+      t0,
+      high,
+      low,
+      out: index % 2 === 0 ? H : L,
+      wake: next,
+    };
   }
 
   // Monostable. TRIG below its threshold SETS the output (§6.4, row 2) — so a

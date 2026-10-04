@@ -45,9 +45,10 @@
 // project's or a desktop's Location, which Save As is what changes),
 // `"wire-gauge"` (the workshop drawing of a wire, dimensioned in cm — see
 // below), `"pin-fields"` (an Output/Input element's ordered bit/byte/word
-// fields — pin-fields-editor.js; its value is the whole list), `"quantity"`
-// (a typed physical value — a resistor's Resistance, a capacitor's
-// Capacitance — see below), `"range"` (a slider over `min`…`max` in `step`s —
+// fields — pin-fields-editor.js; its value is the whole list), `"combo"` (a
+// component's value or part number, picked from a list or typed — a
+// resistor's Resistance, a transistor's part number; see below), `"range"`
+// (a slider over `min`…`max` in `step`s —
 // a potentiometer's Position; see below), and `"separator"` (a plain
 // divider, no key/control).
 //
@@ -61,16 +62,20 @@
 // with the card's current values after every change, not just the slider's,
 // since what they say can rest on another field — a pot's on its Resistance.
 //
-// `"quantity"` is a text box whose descriptor carries its own `parse(text)`
-// (→ a number, or null) and `format(value)` (→ the text shown), so the value
-// is typed the way a bench writes it ("4k7", "100n") and STORED as a number.
-// Text that does not parse is refused AT THE FIELD: an error under the box
-// says what would, `onChange` is never called, and the stored value stays as
-// it was — the dialog's live-apply rule would otherwise write a half-typed
-// value into the part. The typed text stays in the box so it can be fixed.
-// An `optional` quantity (an inductor's inductance, a Zener's voltage) also
-// takes an EMPTY box, as "no value": `onChange(key, null)`, and the part's
-// normalizeParams drops the key. A value field may also
+// `"combo"` is the editable combo box of components/value-combobox.js: the
+// common values in a list, and any value typed the way a bench writes it
+// ("4k7", "100 kilo ohms"), STORED as a number. Its descriptor
+// (catalog/value-fields.js) says how a stored value SHOWS, how typed text
+// READS and what each entry SETS, all as data and message CODES this file
+// words (`comboMessage`). Text that does not read is refused AT THE FIELD: a
+// reason under the box, `onChange` never called, the stored value as it was
+// — the live-apply rule would otherwise write a half-typed value into the
+// part — and the text left there to be fixed. A stored value that does not
+// read, or lies outside the field's range (a capacitor swapped to a type that
+// cannot be that value), opens red the same way, and is not altered. What a
+// combo sets is a PATCH: a Zener's voltage brings its part number with it, so
+// every key is applied and any other row it touched is rebuilt to match. A
+// value field may also
 // carry an `action` (`{key, label, icon}`): the same command an `"action"`
 // field fires, drawn as an icon button to the RIGHT of the control, for a
 // command that belongs to that one row.
@@ -133,6 +138,7 @@ import { el, svgEl } from "../dom.js";
 import { PopupManager } from "../popup-manager.js";
 import { buildColorSwatches } from "./color-swatches.js";
 import { buildSegmented } from "./segmented-picker.js";
+import { buildValueCombobox } from "./value-combobox.js";
 import { buildPinFieldsEditor } from "./pin-fields-editor.js";
 import {
   buildWireGauge,
@@ -282,60 +288,68 @@ function buildReadonly(field, value) {
   });
 }
 
-/** The sentence a `"quantity"` field shows when its text does not parse —
-    `properties.invalid.<key>`, the catalog's English as the fallback. */
-const invalidMessage = (field) =>
-  tf(`properties.invalid.${field.key}`, field.invalid ?? "");
-
 /** The sentence a row shows when the caller refused its change —
     `properties.refused.<key>`, the catalog's English as the fallback. */
 const refusedMessage = (field) =>
   tf(`properties.refused.${field.key}`, field.refused ?? "");
 
 /**
- * A typed physical value (see the note at the top of this file): commits on
- * `change` like the Name box, parses with the field's own `parse`, and either
- * writes the number (showing it back in its tidy form — "4k7" reads "4.7kΩ")
- * or refuses it with an error under the box and the stored value untouched.
+ * A combo field's reason, in words: a value that does not read, a wrong unit,
+ * a value out of range, a part number that is not one — or, as a warning, a
+ * transistor's part number that names another type.
+ * @param {{error?: string, code?: string, unit?: string, got?: string,
+ *   min?: string, max?: string, part?: string, type?: string}} m
  */
-function buildQuantity(field, value, onChange) {
-  const shown = (v) =>
-    v == null ? "" : field.format ? field.format(v) : String(v);
-  const input = el("input", {
-    type: "text",
-    class: "properties-text-input properties-quantity-input",
-    value: shown(value),
-    spellcheck: false,
-    "aria-label": fieldLabel(field),
+function comboMessage(m) {
+  switch (m.error ?? m.code) {
+    case "range":
+      return t("properties.combo.range", { min: m.min, max: m.max });
+    case "wrongUnit":
+      return t(`properties.combo.wrongUnit.${m.unit}.${m.got}`);
+    case "notPart":
+      return t("properties.combo.notPart");
+    case "foreignPart":
+      return t(`properties.combo.foreignPart.${m.type}`, { part: m.part });
+    default:
+      // "notValue", or a required value left empty.
+      return t(`properties.combo.notValue.${m.unit ?? "ohm"}`);
+  }
+}
+
+/**
+ * A value picked or typed (see the note at the top of this file): the
+ * field's own list and reading, through the one combo box every value uses.
+ * `ctx.values` are the card's values as they stand now; `ctx.applyPatch`
+ * sets what a commit sets.
+ */
+function buildCombo(field, ctx) {
+  const shown = field.show(ctx.values);
+  const opening = shown.error ?? shown.warning;
+  return buildValueCombobox({
+    text: shown.text,
+    message: opening ? comboMessage(opening) : null,
+    invalid: Boolean(shown.error),
+    options: field.options(ctx.values).map((o) => ({
+      label: o.label,
+      text: o.text,
+      search: o.search,
+      commit: o.patch,
+    })),
+    read: (text) => {
+      const read = field.read(text, ctx.values);
+      return read.error
+        ? { ok: false, message: comboMessage(read.error) }
+        : {
+            ok: true,
+            text: read.text,
+            commit: read.patch,
+            warning: read.warning ? comboMessage(read.warning) : undefined,
+          };
+    },
+    onCommit: (patch) => ctx.applyPatch(field.key, patch),
+    ariaLabel: fieldLabel(field),
+    toggleLabel: t("properties.combo.show"),
   });
-  const error = el("span", {
-    class: "properties-field-error",
-    role: "alert",
-    hidden: true,
-    text: invalidMessage(field),
-  });
-  input.addEventListener("change", () => {
-    // An OPTIONAL value (an inductor's inductance, a Zener's voltage) may be
-    // cleared: an empty box is the answer "none", never a refusal.
-    if (field.optional && input.value.trim() === "") {
-      error.hidden = true;
-      input.removeAttribute("aria-invalid");
-      input.value = "";
-      onChange(field.key, null);
-      return;
-    }
-    const parsed = field.parse(input.value);
-    if (parsed == null) {
-      error.hidden = false;
-      input.setAttribute("aria-invalid", "true");
-      return;
-    }
-    error.hidden = true;
-    input.removeAttribute("aria-invalid");
-    input.value = shown(parsed);
-    onChange(field.key, parsed);
-  });
-  return el("span", { class: "properties-quantity" }, [input, error]);
 }
 
 /**
@@ -391,7 +405,7 @@ function buildRange(field, value, onChange) {
 /** Build one field's control by its declared `type`. New types extend this
     switch alone — the dialog shell and every part's catalog def stay
     untouched. An unrecognized type falls back to a read-only value. */
-function buildControl(field, value, onChange) {
+function buildControl(field, value, onChange, ctx) {
   if (field.type === "readonly") {
     return buildReadonly(field, value);
   }
@@ -420,8 +434,8 @@ function buildControl(field, value, onChange) {
   if (field.type === "text") {
     return buildTextInput(field, value, onChange);
   }
-  if (field.type === "quantity") {
-    return buildQuantity(field, value, onChange);
+  if (field.type === "combo") {
+    return buildCombo(field, ctx);
   }
   if (field.type === "range") {
     return buildRange(field, value, onChange);
@@ -446,11 +460,11 @@ const STACKED_TYPES = new Set([
   "textarea",
   "readonly",
   "pin-fields",
-  "quantity",
+  "combo",
   "range",
 ]);
 
-function buildRow(field, value, onChange, onAction) {
+function buildRow(field, value, onChange, onAction, ctx) {
   if (field.type === "separator") {
     return el("hr", { class: "properties-separator" });
   }
@@ -471,7 +485,7 @@ function buildRow(field, value, onChange, onAction) {
   const rowClass = STACKED_TYPES.has(field.type)
     ? "properties-row properties-row--stacked"
     : "properties-row";
-  const control = buildControl(field, value, onChange);
+  const control = buildControl(field, value, onChange, ctx);
   return el("div", { class: rowClass }, [
     el("span", { class: "properties-label", text: fieldLabel(field) }),
     field.action
@@ -610,18 +624,36 @@ export class PartPropertiesDialog {
           .setAttribute("aria-valuetext", `${start} – ${end}`);
       }
     };
-    // A refused change (see the note at the top of this file): its row is
-    // rebuilt at the value still TRUE, with the reason under it.
-    const refusals = new Map(); // key → the sentence shown under its row
-    const refuse = (key) => {
+    // A combo's commit is a PATCH (see the note at the top of this file):
+    // every key it sets is applied, and any other row it touched is rebuilt
+    // to show it — a Zener's Part number, set by picking its voltage.
+    const applyPatch = (ownKey, patch) => {
+      const keys = Object.keys(patch);
+      for (const key of keys) change(key, patch[key]);
+      for (const key of keys) if (key !== ownKey) rebuildRow(key);
+    };
+    const ctx = { values: current, applyPatch };
+    // A row rebuilt at the value it holds NOW — the one way this card ever
+    // redraws a control, for a refusal or another row's patch.
+    const rebuildRow = (key) => {
       const i = allFields.findIndex((f) => f.key === key);
-      if (i < 0) return;
-      const fresh = buildRow(allFields[i], current[key], change, fireAction);
+      if (i < 0) return null;
+      const fresh = buildRow(allFields[i], current[key], change, fireAction, ctx); // prettier-ignore
       for (const entry of [...dependents, ...ranges]) {
         if (entry.row === rows[i]) entry.row = fresh;
       }
       rows[i].replaceWith(fresh);
       rows[i] = fresh;
+      refreshDisabled();
+      return fresh;
+    };
+    // A refused change (see the note at the top of this file): its row is
+    // rebuilt at the value still TRUE, with the reason under it.
+    const refusals = new Map(); // key → the sentence shown under its row
+    const refuse = (key) => {
+      const fresh = rebuildRow(key);
+      if (!fresh) return;
+      const i = allFields.findIndex((f) => f.key === key);
       refusals.get(key)?.remove();
       const error = el("span", {
         class: "properties-field-error properties-field-error--row",
@@ -649,7 +681,7 @@ export class PartPropertiesDialog {
       }
     };
     const rows = allFields.map((field) =>
-      buildRow(field, values[field.key], change, fireAction),
+      buildRow(field, values[field.key], change, fireAction, ctx),
     );
     allFields.forEach((field, i) => {
       const svg = rows[i].querySelector?.(".wire-gauge");

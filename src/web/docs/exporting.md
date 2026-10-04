@@ -113,7 +113,9 @@ Every part is given a **footprint** from KiCad's standard libraries:
   KiCad Value, drawn the way KiCad draws them — the plain capacitor for a
   ceramic, the polarised one for an electrolytic, whose `+` is pin 1 — on a
   5 mm ceramic disc or a 5 mm radial electrolytic footprint. Resistors carry their value the
-  same way. On the breadboard a capacitor connects nothing; in KiCad it is
+  same way (`4.7k`). Every value keeps the figures the part's **Properties…**
+  card shows, written in plain ASCII — `u` for µ, and no `Ω` — as SPICE and
+  BOM tools expect. On the breadboard a capacitor connects nothing; in KiCad it is
   wired where it sits, which is the point of exporting it.
 - Diodes, inductors and transistors come across as KiCad's own shapes — the
   diode, the Zener (its bar bent), the inductor's coil, and the NPN, PNP and

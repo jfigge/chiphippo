@@ -201,6 +201,7 @@ const LIBRARIES = Object.freeze([
       // 4049's "Inverting output" wording; the function table is right.
       CD4049UB: "cd4049ub.pdf",
       CD4050B: "cd4049ub.pdf",
+      CD4007UB: "cd4007ub.pdf", // SCHS018C
       CD4013B: "cd4013b.pdf", // SCHS023E
       CD4027B: "cd4027b.pdf", // SCHS032D
       CD4017B: "cd4017b.pdf", // SCHS027C: CD4017B, CD4022B
@@ -226,6 +227,7 @@ const LIBRARIES = Object.freeze([
       // CD4538B sheet of its own, and this one states the pin-compatibility,
       // carries the CD4538B's Table I and gives its period (T = Rx·Cx).
       CD4538B: "cd14538b.pdf",
+      CD4541B: "cd4541b.pdf", // SCHS085E
       // SLFS022K (NA555/NE555/SA555/SE555): a current sheet with a text layer.
       NE555: "ne555.pdf",
     },
@@ -337,6 +339,26 @@ const LIBRARIES = Object.freeze([
       // function table whose D=H → O=L rows are the INVERTING outputs this
       // catalog entry is the '573's counterpart for.
       "74LS533": "ca9a28f3f5851a5f4e065caf6f1bc2f7.pdf",
+    },
+  },
+  {
+    id: "hgsemi",
+    name: "HGSEMI (LCSC document library)",
+    base: "https://wmsc.lcsc.com/wmsc/upload/file/pdf/v2/lcsc/",
+    // TI, whose sheets every other CD4000 part here comes from, has no
+    // CD4528B (`cd4528b.pdf` is a 404), and Fairchild's CD4528BC sheet went
+    // to onsemi, whose file server answers a program with a 403. HGSEMI
+    // still MAKES the part, under the CD4528B name, and its sheet's tables
+    // are Fairchild's. LCSC's asset
+    // host serves it to a program (200, `%PDF`, no challenge); a distributor
+    // path, so like the mirrors above a link expected to rot, and reported by
+    // name when it does.
+    parts: {
+      // Verified by extracting the text and rendering pages 2–3: HGSEMI
+      // CD4528B V1.4, "Dual Monostable Multivibrator", DIP-16, the connection
+      // diagram the catalog def is drawn from (VSS 8, VDD 16), its truth
+      // table, and the AC table's PWout = 0.2·Rx·Cx·ln(VDD − VSS).
+      CD4528B: "2304111800_HGSEMI-CD4528BE_C5310757.pdf",
     },
   },
   {

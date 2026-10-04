@@ -702,6 +702,9 @@
     "CD4049UB": {
       "title": "Búfer/convertidor inversor séxtuple"
     },
+    "CD4007UB": {
+      "title": "Doble par complementario más inversor"
+    },
     "CD4050B": {
       "title": "Búfer/convertidor no inversor séxtuple"
     },
@@ -768,8 +771,14 @@
     "CD4098B": {
       "title": "Multivibrador monoestable doble"
     },
+    "CD4528B": {
+      "title": "Multivibrador monoestable doble"
+    },
     "CD4538B": {
       "title": "Multivibrador monoestable de precisión doble"
+    },
+    "CD4541B": {
+      "title": "Temporizador programable"
     },
     "cap-ceramic": {
       "title": "Condensador (cerámico)"
@@ -1405,7 +1414,8 @@
       "zenerVolts": "Tensión Zener",
       "case": "Encapsulado",
       "style": "Estilo",
-      "bodyHoles": "Orificios entre terminales"
+      "bodyHoles": "Orificios entre terminales",
+      "ref": "Tipo"
     },
     "option": {
       "manual": "Manual",
@@ -1414,7 +1424,9 @@
       "low": "Bajo",
       "high": "Alto",
       "coil": "Bobina",
-      "can": "Encapsulada"
+      "can": "Encapsulada",
+      "cap-ceramic": "Cerámico",
+      "cap-electrolytic": "Electrolítico"
     },
     "action": {
       "inspectMemory": "Inspeccionar la memoria…",
@@ -1432,11 +1444,44 @@
       "heldOn": "Mantiene ENCENDIDO: su puerta no tiene nivel, y la carga que le queda mantiene el canal conduciendo. Una puerta real pierde esa carga, así que fíjala a un nivel definido con una resistencia.",
       "heldOff": "Mantiene APAGADO: su puerta no tiene nivel, así que sigue como se excitó por última vez (apagado si su puerta aún no se ha excitado). Una puerta real deriva, así que fíjala a un nivel definido con una resistencia."
     },
-    "invalid": {
-      "ohms": "No es una resistencia: prueba 470, 4.7k, 4k7 o 2M2 (de 0,1 Ω a 1 GΩ).",
-      "farads": "No es una capacidad: indica la unidad, p. ej. 100p, 10n, 4.7µ, 4u7 o 1m (de 1 pF a 1 F).",
-      "henries": "No es una inductancia: indica la unidad, p. ej. 100n, 10µ, 4u7, 100m o 1H (de 1 nH a 100 H), o déjalo en blanco.",
-      "zenerVolts": "No es una tensión: prueba 5.1V, 5V1 o 3.3 (de 1 V a 200 V), o déjalo en blanco."
+    "combo": {
+      "show": "Mostrar valores habituales",
+      "notValue": {
+        "ohm": "No es un valor de resistencia",
+        "farad": "No es un valor de capacidad",
+        "henry": "No es un valor de inductancia",
+        "volt": "No es un valor de tensión"
+      },
+      "range": "Fuera de rango: de {min} a {max}",
+      "wrongUnit": {
+        "ohm": {
+          "farad": "Eso es una capacidad, no una resistencia",
+          "henry": "Eso es una inductancia, no una resistencia",
+          "volt": "Eso es una tensión, no una resistencia"
+        },
+        "farad": {
+          "ohm": "Eso es una resistencia, no una capacidad",
+          "henry": "Eso es una inductancia, no una capacidad",
+          "volt": "Eso es una tensión, no una capacidad"
+        },
+        "henry": {
+          "ohm": "Eso es una resistencia, no una inductancia",
+          "farad": "Eso es una capacidad, no una inductancia",
+          "volt": "Eso es una tensión, no una inductancia"
+        },
+        "volt": {
+          "ohm": "Eso es una resistencia, no una tensión",
+          "farad": "Eso es una capacidad, no una tensión",
+          "henry": "Eso es una inductancia, no una tensión"
+        }
+      },
+      "notPart": "No es un número de pieza: solo letras, dígitos y -, hasta 20",
+      "foreignPart": {
+        "npn": "{part} es un transistor NPN",
+        "pnp": "{part} es un transistor PNP",
+        "nmos": "{part} es un MOSFET de canal N",
+        "pmos": "{part} es un MOSFET de canal P"
+      }
     },
     "refused": {
       "bodyHoles": "No hay sitio: el orificio al que pasaría su terminal está ocupado o más allá del final de la placa."
@@ -1806,7 +1851,7 @@
     "bistable": "Biestable: TRIG en LOW pone la salida en HIGH; RESET en LOW la borra",
     "multivibrator": "Astable: Q a {frequency}; monoestable: pulso de {width}",
     "oscillator": "Oscilador RC: {frequency}",
-    "external": "Cuenta un reloj externo en φI",
+    "external": "Cuenta un reloj externo en {pin}",
     "unused": "Sin usar",
     "capped": "Más rápido de lo que el escritorio puede mostrar: se dibuja a {cap}.",
     "stretched": "Más corto de lo que el escritorio puede mostrar: se dibuja de {shown}.",
@@ -1817,7 +1862,9 @@
       "noResistor": "no hay resistencia de temporización de {from} a {to}",
       "notConnected": "{pin} no está conectado",
       "ne555Unrecognised": "TRIG (2), THRES (6) y DISCH (7) no están cableados ni en astable (TRIG y THRES unidos, DISCH entre RA y RB), ni en monoestable (THRES y DISCH unidos, TRIG gobernado desde fuera), ni en biestable (THRES a GND, TRIG gobernado desde fuera)",
-      "cd4060Incomplete": "el oscilador RC necesita Cx desde φO (9), Rx desde φ̄O (10) y Rs desde φI (11), todos unidos en un mismo nodo"
+      "cd4060Incomplete": "el oscilador RC necesita Cx desde φO (9), Rx desde φ̄O (10) y Rs desde φI (11), todos unidos en un mismo nodo",
+      "cd4541Incomplete": "el oscilador RC necesita Ctc desde CTC (2), Rtc desde RTC (1) y Rs desde RS (3), todos unidos en un mismo nodo",
+      "notGrounded": "{pin} debe conectarse a GND"
     }
   }
 }

@@ -120,11 +120,16 @@ test("the table is non-empty and sourceCount agrees with it", () => {
   assert.equal(sourceCount(), Object.keys(DATASHEET_SOURCES).length);
 });
 
-test("every CD4000 part names its TI sheet — the family is fully documented", async () => {
-  // Unlike the 74LS parts, every CD4000 part has a TI datasheet (the family is
-  // TI's, from Harris), so a CMOS part with no entry is a forgotten line, not a
-  // deliberate gap — and it would leave that part's pin window without its PDF
-  // button for good, silently.
+test("every CD4000 part names its sheet — TI's, bar the one TI never printed", async () => {
+  // Unlike the 74LS parts, every CD4000 part has a datasheet a program can
+  // fetch — TI's for all but one (the family is TI's, from Harris) — so a CMOS
+  // part with no entry is a forgotten line, not a deliberate gap, and it would
+  // leave that part's pin window without its PDF button for good, silently.
+  // The one exception is NAMED: TI never documented the CD4528B, whose sheet
+  // is a second source's (sources.js's hgsemi block says why).
+  const NOT_TI = {
+    CD4528B: /^https:\/\/wmsc\.lcsc\.com\/.*HGSEMI-CD4528BE[^/]*\.pdf$/,
+  };
   const { PALETTE_DEFS } = await import(CATALOG_URL);
   const { familyOf } = await import(
     pathToFileURL(
@@ -146,7 +151,8 @@ test("every CD4000 part names its TI sheet — the family is fully documented", 
   for (const def of PALETTE_DEFS.filter((d) => familyOf(d) === "CD4000")) {
     assert.match(
       DATASHEET_SOURCES[def.id].url,
-      /^https:\/\/www\.ti\.com\/lit\/ds\/symlink\/cd\d+u?b\.pdf$/,
+      NOT_TI[def.id] ??
+        /^https:\/\/www\.ti\.com\/lit\/ds\/symlink\/cd\d+u?b\.pdf$/,
       def.id,
     );
   }

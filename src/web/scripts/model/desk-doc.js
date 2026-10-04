@@ -1993,6 +1993,45 @@ export class DeskDoc {
   }
 
   /**
+   * Swap a part for one of its siblings in place — a ceramic capacitor for an
+   * electrolytic, an NPN for a MOSFET — as its Properties card's Type field
+   * does. Only a part its def names in `swapsWith` qualifies, and those share
+   * one footprint, so the holes, the wiring and every address stay exactly
+   * as they were (checked, not assumed). The params are carried across
+   * through the new def — its `adoptParams` first, where it has one (a
+   * transistor drops a part number that names another type) — and nothing
+   * else changes: a capacitor keeps its value even where the new type's
+   * range does not hold it, and its card says so.
+   * Throws NOT_FOUND / INVALID_REF (not a sibling) / ILLEGAL_PLACEMENT.
+   * Returns a copy.
+   */
+  setComponentRef(id, ref) {
+    const comp = this.#doc.components.find((c) => c.id === id);
+    if (!comp) throw taggedError(`no component ${id}`, "NOT_FOUND");
+    if (ref === comp.ref) return { ...comp };
+    const def = partDef(comp.ref);
+    const next = partDef(ref);
+    if (!next || !def?.swapsWith?.includes(ref)) {
+      throw taggedError(`${comp.ref} cannot become ${ref}`, "INVALID_REF");
+    }
+    const params = normalizeParams(
+      next,
+      next.adoptParams ? next.adoptParams(comp.params) : comp.params,
+    );
+    const before = partPinHoles(comp.ref, comp.anchor, comp.params);
+    const after = partPinHoles(ref, comp.anchor, params);
+    if (JSON.stringify(before) !== JSON.stringify(after)) {
+      throw taggedError(
+        `${ref} does not fit ${id}'s holes`,
+        "ILLEGAL_PLACEMENT",
+      );
+    }
+    comp.ref = ref;
+    comp.params = params;
+    return { ...comp };
+  }
+
+  /**
    * Update a component's Name/Description — the shared Properties dialog's
    * universal metadata, kept OUTSIDE `params` so it never touches a def's own
    * normalizeParams contract (every part gets it, chips included, unlike

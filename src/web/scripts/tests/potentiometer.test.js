@@ -57,7 +57,7 @@ test("three pins in a row, the wiper in the middle, a Resistance and a Position"
   );
   const fields = def.properties.map((f) => [f.key, f.type]);
   assert.deepEqual(fields, [
-    ["ohms", "quantity"],
+    ["ohms", "combo"],
     ["position", "range"],
   ]);
   const position = def.properties.find((f) => f.key === "position");
@@ -310,7 +310,7 @@ test("the Position slider moves the wiper as it is dragged, its two sides read a
   assert.equal(doc.getComponent(c.id).params.ohms, 1e5, "the value is kept");
   // A new Resistance moves the ends too, the slider untouched.
   drag(15);
-  const resistance = document.querySelector(".properties-quantity-input");
+  const resistance = document.querySelector(".properties-combo-input");
   resistance.value = "10k";
   resistance.dispatchEvent(new window.Event("change", { bubbles: true }));
   assert.deepEqual(ends(), ["1.5k", "8.5k"]);

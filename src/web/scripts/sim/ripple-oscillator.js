@@ -43,6 +43,7 @@ import { H, L, X, inv } from "./levels.js";
 import {
   capSchedule,
   scheduleAt,
+  rebaseCount,
   TIMING_CAP_HZ,
   earliest,
   EPS,
@@ -93,7 +94,7 @@ function analyze4060(probe) {
     };
   }
   if (!caps.length && !probe.resistors(phiOn).length) {
-    return { sections: [{ mode: "external" }], problems: [] };
+    return { sections: [{ mode: "external", pin: "φI (11)" }], problems: [] };
   }
   return {
     sections: [{ mode: null }],
@@ -159,9 +160,17 @@ function step(state, ins, prev, env) {
     if (reset === H) {
       return { mode: "held", stages: allStages(L), phi: L, wake: null };
     }
-    const t0 = state?.mode === "osc" ? state.t0 : now;
+    // A value changed while it runs (a pot turned) carries the count on at the
+    // new rate rather than recounting from Run (sim/timing.js `rebaseCount`).
+    let t0 = now;
+    if (state?.mode === "osc") {
+      t0 =
+        state.period === a.period
+          ? state.t0
+          : rebaseCount(state.period, a.period, state.t0, now);
+    }
     const { phi, stages, wake } = oscillatorAt(a.period, t0, now);
-    return { mode: "osc", t0, stages, phi, wake };
+    return { mode: "osc", t0, period: a.period, stages, phi, wake };
   }
 
   // External clock: an ordinary ripple counter on φI's falling edges.

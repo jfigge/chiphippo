@@ -439,3 +439,22 @@ test("the pinout is SLFS022K's, and its RC terminals are neither input nor outpu
     [8, "VCC", "vcc"],
   ]);
 });
+
+test("555 astable: a value changed while it runs carries the cycle on, at the new rate", () => {
+  // RA = RB = 10 kΩ, 1 µF: HIGH for 13.86 ms. 5 ms in, RA becomes 30 kΩ
+  // (a pot turned): the HIGH half goes on from the same fraction of the way
+  // through it, at the new length (27.72 ms) — no jump at the instant.
+  const doc = astable(10e3, 10e3, 1e-6);
+  const sim = runner(doc);
+  sim.run(0);
+  const t = 0.005;
+  assert.equal(sim.run(t).level(OUT), H);
+  doc.components.find((c) => c.id === "r1").params.ohms = 30e3;
+  assert.equal(sim.run(t).level(OUT), H, "unchanged at the instant");
+  const highOld = 0.693 * 20e3 * 1e-6;
+  const highNew = 0.693 * 40e3 * 1e-6;
+  const ends = t + (1 - t / highOld) * highNew;
+  close(sim.result.wakeAt, ends, 1e-6, "the HIGH half's new end");
+  assert.equal(sim.run(ends - 0.0005).level(OUT), H);
+  assert.equal(sim.run(ends + 0.0005).level(OUT), L);
+});

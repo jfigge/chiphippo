@@ -465,6 +465,7 @@ function run(doc) {
   return {
     result,
     at: (address) => result.netLevels.get(netlist.netOfPoint.get(address)),
+    netOf: (address) => netlist.netOfPoint.get(address),
     warnings: (type) => result.warnings.filter((w) => w.type === type),
   };
 }
@@ -641,7 +642,48 @@ test("one net joining chips on different supplies is reported", () => {
       wire(`bb1.${mate(a.get(3))}`, `bb1.${mate(b.get(1))}`),
     ],
   };
-  const [w] = run(doc).warnings("mixed-supply");
-  assert.ok(w);
-  assert.deepEqual(w.volts, [5, 12]);
+  // Only the signal: the ground the two supplies share is not a signal net.
+  const ran = run(doc);
+  const found = ran.warnings("mixed-supply");
+  assert.equal(found.length, 1);
+  assert.deepEqual(found[0].volts, [5, 12]);
+  assert.equal(found[0].net, ran.netOf(`bb1.${mate(a.get(3))}`));
+});
+
+test("a CD4049UB/CD4050B input on a HIGHER supply is a level shifter, not a mistake", () => {
+  // The sheet's "high-to-low level logic conversion": VIH may exceed VCC.
+  const build = (shifter, driverVolts, shifterVolts) => {
+    const a = holesOf("CD4011B", "e10");
+    const b = holesOf(shifter, "e30");
+    return {
+      boards,
+      components: [
+        psu("psu1", 80, driverVolts),
+        psu("psu2", 100, shifterVolts),
+        chip("c1", "CD4011B", "e10"),
+        chip("c2", shifter, "e30"),
+      ],
+      wires: [
+        ...power("psu1", "CD4011B", "e10"),
+        ...power("psu2", shifter, "e30"),
+        wire("psu1.-", "psu2.-"),
+        ...tieAll("psu1", "CD4011B", "e10"),
+        ...tieAll("psu2", shifter, "e30", [3]),
+        wire(`bb1.${mate(a.get(3))}`, `bb1.${mate(b.get(3))}`),
+      ],
+    };
+  };
+  for (const shifter of ["CD4049UB", "CD4050B"]) {
+    assert.deepEqual(
+      run(build(shifter, 12, 5)).warnings("mixed-supply"),
+      [],
+      shifter,
+    );
+    // The other way up it is still a mistake: 5 V cannot reach a 12 V VIH.
+    assert.equal(
+      run(build(shifter, 5, 12)).warnings("mixed-supply").length,
+      1,
+      shifter,
+    );
+  }
 });

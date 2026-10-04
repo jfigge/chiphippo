@@ -108,6 +108,53 @@ export function scheduleAt({ cycle, lead }, t0, now) {
 }
 
 /**
+ * Carry a running schedule across a change of its timing — a resistor or
+ * capacitor edited, a potentiometer turned, while the circuit runs. A part's
+ * state is a function of `now` and the moment its cycle began (`t0`), so a new
+ * period read against the old `t0` would rewrite the whole history: the output
+ * would jump to wherever the new rate would have put it by now. Instead the
+ * oscillation goes on from where it IS — the same segment, the same fraction of
+ * the way through it — at the new rate: returns the `t0` that puts `next`
+ * there at `now`.
+ * @param {{cycle: number[], lead: number[]}} prev - the schedule it ran on.
+ * @param {{cycle: number[], lead: number[]}} next - the one it runs on now.
+ * @param {number} t0
+ * @param {number} now
+ * @returns {number}
+ */
+export function rebase(prev, next, t0, now) {
+  const segment = (s, i) =>
+    i < s.lead.length
+      ? s.lead[i]
+      : s.cycle[(i - s.lead.length) % s.cycle.length];
+  const { index, next: end } = scheduleAt(prev, t0, now);
+  const length = segment(prev, index);
+  const through = length > 0 ? Math.min(1, Math.max(0, 1 - (end - now) / length)) : 0; // prettier-ignore
+  // Where segment `index` starts on the NEW schedule, counted from its t0.
+  let start = 0;
+  for (let i = 0; i < Math.min(index, next.lead.length); i++) {
+    start += next.lead[i];
+  }
+  if (index > next.lead.length) {
+    const into = index - next.lead.length;
+    const period = next.cycle.reduce((a, b) => a + b, 0);
+    start += Math.floor(into / next.cycle.length) * period;
+    for (let j = 0; j < into % next.cycle.length; j++) start += next.cycle[j];
+  }
+  return now - (start + through * segment(next, index));
+}
+
+/**
+ * The same for a part that keeps a COUNT of its oscillator's periods (the
+ * CD4060B, the CD4541B): the count, and how far into the current period it
+ * is, carry over — so the stages a counter has reached stay reached. Returns
+ * the new `t0`.
+ */
+export function rebaseCount(prevPeriod, nextPeriod, t0, now) {
+  return now - ((now - t0) / prevPeriod) * nextPeriod;
+}
+
+/**
  * How long a one-shot pulse of `width` seconds is SHOWN: never under
  * MIN_SHOWN_S. Returns the shown width and whether it was stretched.
  * @param {number} width
