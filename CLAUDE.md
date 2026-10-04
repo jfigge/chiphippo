@@ -880,8 +880,9 @@ in the wiring and turns them into seconds by its datasheet's formula.
   everything else. The CD4060B shows true counts for every stage slow enough to see and
   the cap wave only for the stages too fast to.
 - **The parts** (formulas from TI, cited at each def): the NE555 (`chips-555.js`,
-  family-less, group `Oscillators` — the palette shelves a family-less part under
-  COMPONENTS, which is where an oscillator belongs; `supply` 4.5–16 V, which
+  family-less, group `Timer` — the CD4000 RC timers' group, so it sits under CHIPS ▸
+  Timer beside Interface/PROCESSOR in a 74LS or Combined tray and in ONE Timer group
+  with the CD4000 timers in a CD4000 tray; `supply` 4.5–16 V, which
   `families.js`'s `supplyRange` honours) DETECTS astable (TRIG+THRES one net with C to
   GND, DISCH between RA→VCC and RB→that net; starts HIGH) vs monostable (THRES+DISCH one
   net with C to GND and RA to VCC, TRIG connected elsewhere; falling-edge, level-held,
@@ -2904,7 +2905,7 @@ Every benchable 74xx part's demonstration bench, shipped INSIDE the app as
 - Memory/Interface/PROCESSOR chips get no example and therefore no button: a RAM or a CPU
   cannot be demonstrated by flipping switches at it, and the 65xx demos are excluded for a
   sharper reason — their program lives in a separate `.hex`, so the document alone would
-  arrive not working. The **Timer** and **Oscillators** groups are `TIMED_GROUPS`
+  arrive not working. The **Timer** group is `TIMED_GROUPS`
   (`demo-build.mjs`) and get no BENCH: the bench DSL has no resistor/capacitor values
   and its truth-table proof has no notion of time. The CD4060B (group Counter) DOES have
   one, built on its external-clock mode (a clock brick on φI) so the bench proves the

@@ -85,9 +85,8 @@ const COMPONENTS_FOLDER = "COMPONENTS";
 /** The order the COMPONENTS sub-groups render in (catalog order is by first
     appearance, which reads oddly; this is the intended shelf order). It is
     also WHAT the shelf holds: a group named here is a COMPONENTS group
-    whatever its members are — which is how the 555, a chip, sits in
-    Oscillators beside the crystal cans, where someone looking for a clock
-    looks, rather than in a CHIPS group of its own. */
+    whatever its members are, so a chip given one of these groups would be
+    shelved here rather than under CHIPS. */
 const COMPONENT_ORDER = [
   "Switches",
   "Resistors",

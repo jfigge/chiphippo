@@ -237,7 +237,7 @@ A few of the larger parts have habits of their own:
 ## Timers
 
 Five parts take their timing from a **resistor and a capacitor** you wire to
-them, as on a bench: the **555** (COMPONENTS ▸ Oscillators), and the CD4000
+them, as on a bench: the **555** (CHIPS ▸ Timer), and the CD4000
 **CD4047B**, **CD4098B** and **CD4538B** (CD4000 ▸ Timer) and **CD4060B**
 (CD4000 ▸ Counter). Give the resistors and the capacitor their values in
 **Properties…** (see

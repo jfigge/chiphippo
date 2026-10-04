@@ -418,7 +418,7 @@ test("the 555 runs from 4.5–16 V, its own range rather than a family's", () =>
   assert.deepEqual(supplyRange(def), { min: 4.5, max: 16 });
   assert.equal(def.family, undefined);
   assert.equal(def.kind, "chip");
-  assert.equal(def.group, "Oscillators");
+  assert.equal(def.group, "Timer");
   // At 12 V it runs (a 74LS part beside it would smoke).
   const doc = astable(1e3, 10e3, 10e-6);
   doc.components[0].params.volts = 12;

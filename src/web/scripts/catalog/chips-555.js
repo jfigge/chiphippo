@@ -19,11 +19,11 @@
 
 // chips-555.js — the 555 timer. A chip (an IC on a DIP-8, seated, powered and
 // exported like one) but neither a 74LS nor a CD4000 part, so it is
-// FAMILY-LESS, and it is shelved under COMPONENTS ▸ Oscillators beside the
-// crystal cans rather than under CHIPS: it is the part a bench reaches for to
-// make a clock, which is where someone looking for one will look. Its
-// behaviour — how it reads its configuration off the wiring, and the
-// datasheet formulas — is sim/timer-555.js.
+// FAMILY-LESS, and it is shelved under CHIPS ▸ Timer — the group the CD4000
+// RC timers use, so a CD4000 tray lists all four timers together, while a
+// 74LS or Combined tray shows the 555's Timer straight under CHIPS beside the
+// other family-less groups. Its behaviour — how it reads its configuration
+// off the wiring, and the datasheet formulas — is sim/timer-555.js.
 
 import { input, output, timing, gnd, vcc } from "./pin-builders.js";
 import { ne555Logic } from "../sim/timer-555.js";
@@ -45,7 +45,7 @@ export const CHIPS_555 = Object.freeze([
       "guesses. RESET LOW forces OUT LOW in every mode — tie it to VCC when " +
       "unused. CONT (5) is not modelled; a capacitor from it to GND is the " +
       "usual thing. Runs from 4.5–16 V.",
-    group: "Oscillators",
+    group: "Timer",
     package: "DIP-8",
     // SLFS022K: VCC 4.5 V to 16 V for the NA/NE/SA555 (the SE555's 18 V is
     // the military grade). Not a logic family's envelope, so the part states

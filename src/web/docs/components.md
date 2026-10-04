@@ -15,14 +15,15 @@ The palette opens with every section collapsed, grouped by function:
 - **BOARDS** — the breadboard kits and loose strips, pinned at the top (see
   [The Desk & Breadboards](the-desk.md)).
 - **CHIPS** — the logic chips, folder-grouped by function, ending with the
-  **Interface** group (the 65xx PIA/VIA) and the **PROCESSOR** group (the
-  W65C02 and Z80A CPUs). Which logic family it shows — 74LS, CD4000, or both,
-  each in a folder of its own — is **Settings → Data Sheets → Chip family**
-  (see [Choosing a logic family](chip-library.md#choosing-a-logic-family)).
+  **Timer** group (the **555 timer**), the **Interface** group (the 65xx
+  PIA/VIA) and the **PROCESSOR** group (the W65C02 and Z80A CPUs). Which logic
+  family it shows — 74LS, CD4000, or both, each in a folder of its own — is
+  **Settings → Data Sheets → Chip family** (see
+  [Choosing a logic family](chip-library.md#choosing-a-logic-family)). The 555
+  belongs to neither family, so it shows in every mode; showing CD4000 alone,
+  it shares the **Timer** group with the CD4000 timers.
 - **COMPONENTS** — **Switches**, **Resistors**, **Capacitors**, **LEDs**,
-  **Displays**, **Oscillators**, and **Power**, in that shelf order. The **555
-  timer** is under **Oscillators**: it belongs to neither logic family, so it
-  sits with the parts that make a clock rather than in CHIPS.
+  **Displays**, **Oscillators**, and **Power**, in that shelf order.
 - **Memory** — the ROM/RAM chips, pulled out of CHIPS into a top-level group
   of their own.
 - **ANNOTATIONS** — labels and notes (see

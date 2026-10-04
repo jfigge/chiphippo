@@ -34,11 +34,13 @@ const { PalettePanel } = await import("../components/palette-panel.js");
 // hidden until Settings ▸ Data Sheets shows them, so "the whole catalog" a
 // default tray lists is every part but those.
 const SHOWN_DEFS = PALETTE_DEFS.filter((d) => d.family !== "CD4000");
-// …and the chips the CHIPS folder holds: the 555 is a chip, but it is shelved
-// under COMPONENTS ▸ Oscillators beside the crystal cans.
-const SHOWN_CHIPS = CHIP_DEFS.filter(
-  (d) => d.family !== "CD4000" && d.group !== "Oscillators",
-);
+// …and the chips the CHIPS folder holds.
+const SHOWN_CHIPS = CHIP_DEFS.filter((d) => d.family !== "CD4000");
+// The chip groups' order: where each first appears in the WHOLE catalog, so a
+// group the 74LS tray shares with CD4000 (the 555's Timer) ranks where its
+// CD4000 parts put it, ahead of the family-less groups that close the list.
+const GROUP_RANK = [...new Set(PALETTE_DEFS.map((d) => d.group))];
+const byRank = (a, b) => GROUP_RANK.indexOf(a) - GROUP_RANK.indexOf(b);
 
 function typeFilter(panelEl, value) {
   const input = panelEl.querySelector(".palette-filter");
@@ -61,11 +63,11 @@ test("lists the whole catalog grouped by function; picks report the ref", () => 
   const groups = [...host.querySelectorAll(".palette-group")].map(
     (g) => g.textContent,
   );
-  // Logic chips (catalog order, minus Memory), then Memory on its own, then the
-  // COMPONENTS sub-groups in their shelf order.
-  const chipGroupNames = [...new Set(SHOWN_CHIPS.map((d) => d.group))].filter(
-    (g) => g !== "Memory",
-  );
+  // Logic chips (in rank order, minus Memory), then the COMPONENTS sub-groups
+  // in their shelf order, then Memory on its own.
+  const chipGroupNames = [...new Set(SHOWN_CHIPS.map((d) => d.group))]
+    .filter((g) => g !== "Memory")
+    .sort(byRank);
   assert.deepEqual(groups, [
     ...chipGroupNames,
     "Switches",
@@ -100,9 +102,9 @@ test("logic chips nest under CHIPS; Memory + parts are their own sections", () =
     [...root.querySelectorAll(".palette-group")].map((g) => g.textContent);
 
   // Logic chips (minus Memory) fill the CHIPS folder; the parts fill COMPONENTS.
-  const chipGroupNames = [...new Set(SHOWN_CHIPS.map((d) => d.group))].filter(
-    (g) => g !== "Memory",
-  );
+  const chipGroupNames = [...new Set(SHOWN_CHIPS.map((d) => d.group))]
+    .filter((g) => g !== "Memory")
+    .sort(byRank);
   assert.deepEqual(groupsIn(bodies[0]), chipGroupNames);
   assert.deepEqual(groupsIn(bodies[1]), [
     "Switches",
@@ -114,12 +116,13 @@ test("logic chips nest under CHIPS; Memory + parts are their own sections", () =
     "Power",
   ]);
 
-  // The 555 is a chip, but its shelf is COMPONENTS ▸ Oscillators, beside the
-  // crystal cans — not a CHIPS group of its own.
+  // The 555 is a chip, and its shelf is CHIPS ▸ Timer — not COMPONENTS, even
+  // though it is family-less and its crystal-can neighbours are there.
   const refsIn = (root) =>
     [...root.querySelectorAll(".palette-item")].map((i) => i.dataset.ref);
-  assert.ok(refsIn(bodies[1]).includes("NE555"), "NE555 under COMPONENTS");
-  assert.ok(!refsIn(bodies[0]).includes("NE555"), "NE555 not under CHIPS");
+  assert.deepEqual(refsUnder(host, "Timer"), ["NE555"]);
+  assert.ok(refsIn(bodies[0]).includes("NE555"), "NE555 under CHIPS");
+  assert.ok(!refsIn(bodies[1]).includes("NE555"), "NE555 not in COMPONENTS");
 
   // Memory is pulled OUT of both folders into its own top-level group.
   assert.ok(!groupsIn(bodies[0]).includes("Memory"), "not under CHIPS");
@@ -926,6 +929,13 @@ test("CD4000 mode: the same flat tree, holding only CD4000 logic chips", () => {
   assert.equal(host.querySelector('[data-section="Latch"]'), null);
   // …but the family-less groups stay.
   assert.ok(refsUnder(host, "PROCESSOR").includes("Z80A"));
+  // The 555 shares the CD4000 RC timers' Timer group, after them.
+  assert.deepEqual(refsUnder(host, "Timer"), [
+    "CD4047B",
+    "CD4098B",
+    "CD4538B",
+    "NE555",
+  ]);
 });
 
 test("Combined mode inserts a 74LS and a CD4000 folder under CHIPS", () => {
@@ -944,14 +954,18 @@ test("Combined mode inserts a 74LS and a CD4000 folder under CHIPS", () => {
   // Empty function folders are hidden per family.
   assert.ok(host.querySelector('[data-section="74LS/Latch"]'));
   assert.equal(host.querySelector('[data-section="CD4000/Latch"]'), null);
-  // The family-less groups sit straight under CHIPS, after the two folders.
+  // The family-less groups sit straight under CHIPS, after the two folders —
+  // the 555's Timer among them, apart from the CD4000 folder's own Timer.
   const chipsBody = host.querySelector(
     '[data-section="CHIPS"]',
   ).nextElementSibling;
   const kids = [...chipsBody.children]
     .filter((c) => c.dataset.section)
     .map((c) => c.dataset.section);
-  assert.deepEqual(kids, ["74LS", "CD4000", "Interface", "PROCESSOR"]);
+  assert.deepEqual(kids, ["74LS", "CD4000", "Timer", "Interface", "PROCESSOR"]);
+  assert.deepEqual(refsUnder(host, "Timer"), ["NE555"]);
+  assert.ok(!refsUnder(host, "CD4000/Timer").includes("NE555"));
+  assert.ok(refsUnder(host, "CD4000/Timer").includes("CD4047B"));
 });
 
 test("a CD4000 tray lists its groups in the 74LS tray's order", () => {
@@ -978,21 +992,15 @@ test("a CD4000 tray lists its groups in the 74LS tray's order", () => {
     ls.filter((g) => cmos.includes(g)),
     "CD4000 groups in the 74LS order",
   );
-  // A group only CD4000 has (the RC timers) falls after every shared one.
-  assert.deepEqual(
-    cmos.slice(cmos.length - 1),
-    cmos.filter((g) => !ls.includes(g)),
-  );
-  assert.deepEqual(
-    cmos.filter((g) => !ls.includes(g)),
-    ["Timer"],
-  );
   // Combined: each family folder in that same order.
   panel.setFamilyMode("combined");
   const strip = (family) =>
     sectionsUnder(family).map((k) => k.slice(family.length + 1));
   assert.deepEqual(strip("74LS"), ls);
-  assert.deepEqual(strip("CD4000"), cmos);
+  // A group only CD4000 has (the RC timers) falls after every shared one. Only
+  // the family folder shows it as CD4000's alone: a single-family tray shares
+  // the Timer group with the family-less 555.
+  assert.deepEqual(strip("CD4000"), [...cmos, "Timer"]);
   // The family-less groups still close the list, in every mode.
   assert.deepEqual(sectionsUnder("CHIPS").slice(-2), [
     "Interface",

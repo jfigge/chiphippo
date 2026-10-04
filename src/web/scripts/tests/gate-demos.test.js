@@ -236,10 +236,7 @@ test("the RC-timed groups have no bench demo yet", () => {
       `${def.id} should have a bundled example exactly when it is hand-built`,
     );
   }
-  for (const where of [
-    "CD4000/Timer.chiphippo",
-    "other/Oscillators.chiphippo",
-  ]) {
+  for (const where of ["CD4000/Timer.chiphippo", "other/Timer.chiphippo"]) {
     assert.ok(!existsSync(demoPath(where)), `no ${where}`);
   }
 });

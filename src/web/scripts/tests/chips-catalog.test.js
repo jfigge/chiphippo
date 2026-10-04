@@ -180,7 +180,7 @@ const CD4000_WAVE = [
   "CD4098B",
   "CD4538B",
 ];
-// The 555 timer: a chip, family-less, shelved under COMPONENTS ▸ Oscillators.
+// The 555 timer: a chip, family-less, shelved under CHIPS ▸ Timer.
 const TIMER_WAVE = ["NE555"];
 
 test("the catalog contains the gate wave plus the sequential/MSI + 74LS + memory + io + cpu + CD4000 waves", () => {

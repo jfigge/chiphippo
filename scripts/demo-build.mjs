@@ -69,16 +69,15 @@ export const PROGRAM_ONLY = new Set(["Memory", "Interface", "PROCESSOR"]);
 
 /**
  * Catalog groups whose parts keep TIME with an external resistor and capacitor
- * — the 555 (shelved in Oscillators) and the CD4000 one-shots and
- * multivibrator (Timer). A bench states its truth table as LEVELS, and what
- * these parts do is a PERIOD: showing one needs a seated RC network and a
- * check that steps simulated time, and the bench builder has neither yet. So
- * they get no group project and no bench — though a part among them may ship
- * an example drawn by hand instead (HAND_BUILT, below). (The CD4060B keeps
- * time too, but it is a Counter, and its external-clock mode benches like any
- * ripple counter.)
+ * — the 555 and the CD4000 one-shots and multivibrator, all in Timer. A bench
+ * states its truth table as LEVELS, and what these parts do is a PERIOD:
+ * showing one needs a seated RC network and a check that steps simulated
+ * time, and the bench builder has neither yet. So they get no group project
+ * and no bench — though a part among them may ship an example drawn by hand
+ * instead (HAND_BUILT, below). (The CD4060B keeps time too, but it is a
+ * Counter, and its external-clock mode benches like any ripple counter.)
  */
-export const TIMED_GROUPS = new Set(["Timer", "Oscillators"]);
+export const TIMED_GROUPS = new Set(["Timer"]);
 
 /**
  * Parts whose example circuit is drawn BY HAND on the desk rather than built
