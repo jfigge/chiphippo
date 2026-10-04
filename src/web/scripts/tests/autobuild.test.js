@@ -456,13 +456,13 @@ test("every lamp leg on a rail is limited — isolated segments and a VCC anode 
   const { out } = build(DECODER_SPEC);
   assert.equal(
     out.interposed.length,
-    1,
-    "eight LED anodes on eight VCC nets: ONE resistor network",
+    8,
+    "eight LED anodes on VCC: a resistor EACH, plugged in beside its lamp",
   );
-  const pack = out.document.components.find(
-    (c) => c.id === out.partMap.get(out.interposed[0]),
-  );
-  assert.equal(pack.ref, "rnet9");
+  for (const id of out.interposed) {
+    const r = out.document.components.find((c) => c.id === out.partMap.get(id));
+    assert.equal(r.ref, "resistor");
+  }
 
   // And they LIGHT: switches open, the address is 0, Y0 alone is LOW — so D1
   // alone glows, and nothing burns.
@@ -482,6 +482,124 @@ test("every lamp leg on a rail is limited — isolated segments and a VCC anode 
     assert.equal(state.unlimited, false, `D${i + 1} does not burn`);
     assert.equal(isLit(state), i === 0, `D${i + 1} lit only when selected`);
   }
+});
+
+/** One AND gate lighting one LED — the build that came out as four wires. */
+const LAMP_SPEC = {
+  parts: [
+    { id: "U1", ref: "74LS08" },
+    { id: "D1", ref: "led" },
+  ],
+  nets: [
+    { name: "IN", members: ["U1.1A", "U1.1B", "VCC"] },
+    { name: "Y", members: ["U1.1Y", "D1.A"] },
+    { name: "K", members: ["D1.K", "GND"] },
+  ],
+};
+
+/** The rail line (`+`/`-`) a plugged-in lead landed in, or null. */
+function railLine(doc, address) {
+  const p = parseAddress(address);
+  const board = doc.boards.find((b) => b.id === p?.boardId);
+  return board?.type.startsWith("rail") ? p.hole[0] : null;
+}
+
+test("a bare LED's resistor plugs in: lamp → resistor → rail, no wires", () => {
+  // Routed like any other part, the lamp's resistor cost three wires: output
+  // to lamp, lamp to resistor, resistor to GND. A bench plugs the resistor
+  // into the lamp's own column and straight into the rail, and so does this.
+  const { out, doc, netlist } = build(LAMP_SPEC);
+  const led = doc.components.find((c) => c.id === out.partMap.get("D1"));
+  const res = doc.components.find((c) => c.id === out.partMap.get("D1_R"));
+  assert.ok(res, "the lamp has a resistor of its own");
+  assert.match(led.anchor, /^b/, "the lamp stands in row b…");
+  assert.equal(res.params.rot, 90, "…and the resistor stands up");
+  assert.match(res.anchor, /^a/, "its top lead in row a");
+
+  const cathode = pinAddress(doc, led.id, 2);
+  const [top, bottom] = [1, 2].map((n) => pinAddress(doc, res.id, n));
+  const board = doc.boards.find((b) => b.id === led.board);
+  assert.equal(
+    nodeOf(board.type, parseAddress(top).hole),
+    nodeOf(board.type, parseAddress(cathode).hole),
+    "the resistor shares the cathode's column-half — the board joins them",
+  );
+  assert.equal(railLine(doc, bottom), "-", "and its other lead is in GND");
+
+  // Nothing is wired to either node: the one wire the lamp needs is its
+  // output's.
+  const nodes = new Set(
+    [cathode, top, bottom].map((a) => netlist.netOfPoint.get(a)),
+  );
+  const touching = doc.wires.filter((w) =>
+    [w.from, w.to].some(
+      (a) =>
+        netlist.netOfPoint.get(a) === netlist.netOfPoint.get(cathode) ||
+        a === bottom,
+    ),
+  );
+  assert.deepEqual(touching, [], "no wire between lamp, resistor and rail");
+  assert.equal(nodes.size, 2, "lamp leg + top lead one net, the rail another");
+
+  // …and it lights: both inputs HIGH, so the output is HIGH.
+  const r = settle({ document: doc, netlist });
+  const at = (levels, a) => levels.get(netlist.netOfPoint.get(a));
+  const anode = pinAddress(doc, led.id, 1);
+  const state = junctionState({
+    anode: at(r.netLevels, anode),
+    cathode: at(r.netLevels, cathode),
+    anodeStrong: at(r.strongLevels, anode),
+    cathodeStrong: at(r.strongLevels, cathode),
+  });
+  assert.equal(state.unlimited, false, "limited, not burnt");
+  assert.equal(isLit(state), true, "lit");
+});
+
+test("a lamp hung from VCC plugs its resistor into the + line", () => {
+  const { out, doc } = build(DECODER_SPEC);
+  for (let i = 1; i <= 8; i++) {
+    const led = doc.components.find((c) => c.id === out.partMap.get(`D${i}`));
+    const res = doc.components.find((c) => c.id === out.partMap.get(`D${i}_R`));
+    assert.equal(res?.params.rot, 90, `D${i}'s resistor stands`);
+    const anode = pinAddress(doc, led.id, 1);
+    const top = pinAddress(doc, res.id, 1);
+    const board = doc.boards.find((b) => b.id === led.board);
+    assert.equal(
+      nodeOf(board.type, parseAddress(top).hole),
+      nodeOf(board.type, parseAddress(anode).hole),
+      `D${i}'s resistor is in its anode's column`,
+    );
+    assert.equal(railLine(doc, pinAddress(doc, res.id, 2)), "+");
+  }
+});
+
+test("lamps sharing one GND net still get a resistor each", () => {
+  // Two cathodes the spec put in ONE rail net are not one leg — they are two
+  // lamps on a rail, and a resistor can plug into only one lamp's column.
+  const out = compileNetlist({
+    parts: [
+      { id: "U1", ref: "74LS04" },
+      { id: "D1", ref: "led" },
+      { id: "D2", ref: "led" },
+    ],
+    nets: [
+      { name: "IN", members: ["U1.1A", "U1.2A", "GND"] },
+      { name: "Y1", members: ["U1.1Y", "D1.A"] },
+      { name: "Y2", members: ["U1.2Y", "D2.A"] },
+      { name: "GND", members: ["D1.K", "D2.K", "GND"] },
+    ],
+  });
+  assert.equal(out.ok, true);
+  assert.deepEqual(out.interposed.sort(), ["D1_R", "D2_R"]);
+  const limited = out.nets.filter((n) => n.name.includes("LIMITED"));
+  assert.equal(limited.length, 2, "two LIMITED nets…");
+  assert.equal(new Set(limited.map((n) => n.name)).size, 2, "…named apart");
+  const inserted = out.warnings.filter((w) => w.code === "RESISTOR_INSERTED");
+  assert.equal(inserted.length, 1, "said once, not once per lamp");
+  assert.match(
+    inserted[0].message,
+    /to each of D1, D2, between the LED and GND/,
+  );
 });
 
 test("the resistor goes in the LAMP's leg, not in everything else on that rail", () => {

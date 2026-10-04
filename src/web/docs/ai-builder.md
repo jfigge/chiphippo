@@ -232,8 +232,12 @@ the logical one: an LED conducting between two strongly-driven nets burns out
 instead of lighting, exactly as it would on a real bench. So whenever a lamp
 leg goes straight to a power rail — a display's common leg, a single LED's
 cathode to GND or its anode to VCC, a segment of an isolated bar — the
-compiler interposes a series resistor for you (a resistor network, when there
-are several). See [Chips & Components](components.md) for the same rule
+compiler interposes a series resistor for you (a resistor network, when a
+display or bar has several legs on a rail). A single LED gets a resistor of its
+own, plugged in the way you would on a bench: the resistor's top lead goes into
+the LED's column and its other lead straight into the power rail, so the LED,
+the resistor and the rail are joined by the breadboard itself, with no jumper
+wires between them. See [Chips & Components](components.md) for the same rule
 when you're wiring by hand.
 
 ## Cost, privacy and the simulation

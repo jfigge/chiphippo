@@ -1080,7 +1080,10 @@ anchor and wire.
   or its anode on VCC over an active-low output). Legs are limited per NODE: the lamp legs
   one rail net holds are already joined, so they are one common leg and take one
   resistor, as a common-cathode bar does; legs on different nets pack eight to an `rnet9`
-  with COM on the rail. The legs are moved OUT of the rail net, never the rail off it —
+  with COM on the rail. A **bare LED** is the exception to both groupings: it gets a
+  `resistor` of its OWN, plugged in (`seatPlug`, below) — one per LED even when the spec
+  puts several cathodes in one GND net, since a resistor can plug into only one lamp's
+  column. The legs are moved OUT of the rail net, never the rail off it —
   a named `GND` net holds everything else tied low, and detaching its rail once hung all
   of it off the lamp's side of the resistor. The **pull rule** is the same fact one step over: a
   switch is a CONTACT, not a source, so an input fed from one floats when the switch is
@@ -1129,6 +1132,19 @@ anchor and wire.
     owns it). Any check failing returns null and the part seats the ordinary way, so this
     can only cost columns, never correctness; L4 checks the result regardless. One host
     per pack only.
+  - `seatPlug` — a bare LED's resistor PLUGS IN, as on a bench: the lamp seats in row b,
+    the resistor stands (rot 90) with its top lead in row a of the lamp's RAIL-LEG column
+    and its other lead bent straight down into the matching line of the rail strip below
+    (`-` for a cathode on GND, `+` for an anode on VCC). Lamp → resistor → rail is then
+    joined by the board, with no wire between them; only the output's wire to the lamp
+    remains (it was three: output → lamp → resistor → rail). The rail is drilled in
+    groups of five, so where the column has no hole straight across the lead leans up to
+    `PLUG_LEAN` (2) columns, away from the lamp's other leg; rail holes under its body are
+    claimed and left empty. Same proof discipline as `seatCompanion` (the resistor rule
+    CREATED the LIMITED net, the landing is proved through `partPinAddresses`), same
+    fallback (null → seated the ordinary way, wired). It costs no columns, so the kit
+    budget counts it at 0; to the router its rail lead IS the rail (`seat.rails` →
+    `railPort`), and a bare LED's routing box is widened to its dome (`LAMP_DOME`).
   - `freeRail(…, {fromEnd})` — the PSU brick stands off the RIGHT of the boards, and a
     rail is one node end to end, so reaching for hole 1 bought nothing but two wires the
     width of the desk.
