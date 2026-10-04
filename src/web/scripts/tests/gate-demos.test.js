@@ -38,11 +38,15 @@ import { DEMOS } from "../../../../scripts/demo-specs.mjs";
 import {
   assertComplete,
   buildDemo,
+  buildHandBuilt,
   catalogGroups,
   fileNameOf,
   projectNameOf,
   validateDemo,
+  validateHandBuilt,
+  HAND_BUILT,
   PROGRAM_ONLY,
+  TIMED_GROUPS,
 } from "../../../../scripts/demo-build.mjs";
 import { CHIP_DEFS } from "../catalog/index.js";
 import { DOC_VERSION, normalizeDocument } from "../model/desk-doc.js";
@@ -66,6 +70,24 @@ function assertLoadsClean(doc, label) {
   for (const key of ["boards", "components", "wires", "annotations"]) {
     assert.equal(norm[key].length, doc[key].length, `${label} ${key}`);
   }
+}
+
+/**
+ * Assert a bundled document is already CENTRED, so opening it as a desktop is
+ * framed by a plain camera fit: fitToScreen's recentre half finds a zero delta
+ * and returns without emitting, leaving no undo step on a brand-new desk.
+ */
+function assertCentred(doc, label) {
+  const b = deskBounds(doc.boards, doc.components, doc.wires);
+  assert.equal(b.minX + b.maxX, 0, `${label}: not centred on x`);
+  // y within one quantum: a board's y is stored to 0.01 (there is no
+  // vertical lattice — board-types.js measures the strips), so a centre
+  // that lands mid-quantum is as centred as the document can be, and
+  // `translateAll` will report a zero delta for it exactly as x does.
+  assert.ok(
+    Math.abs(b.minY + b.maxY) <= 0.01,
+    `${label}: not centred on y (${b.minY + b.maxY})`,
+  );
 }
 
 test("every benchable catalog chip has a demo spec", () => {
@@ -121,26 +143,60 @@ for (const [group, ids] of GROUPS) {
       // skips main's migrations — so it must already be at the renderer's own
       // version, not merely loadable.
       assert.equal(tab.doc.version, DOC_VERSION, `${id}: doc version`);
-
-      // …and already CENTRED, so opening one as a desktop is framed by a plain
-      // camera fit: fitToScreen's recentre half finds a zero delta and returns
-      // without emitting, leaving no undo step on a brand-new desk.
-      const b = deskBounds(tab.doc.boards, tab.doc.components, tab.doc.wires);
-      assert.equal(b.minX + b.maxX, 0, `${id}: not centred on x`);
-      // y within one quantum: a board's y is stored to 0.01 (there is no
-      // vertical lattice — board-types.js measures the strips), so a centre
-      // that lands mid-quantum is as centred as the document can be, and
-      // `translateAll` will report a zero delta for it exactly as x does.
-      assert.ok(
-        Math.abs(b.minY + b.maxY) <= 0.01,
-        `${id}: not centred on y (${b.minY + b.maxY})`,
-      );
+      // …and already centred.
+      assertCentred(tab.doc, id);
     });
   });
 }
 
+// The examples drawn by hand (HAND_BUILT) are held to the bench's bars: every
+// desktop loads with nothing dropped and every part legally seated
+// (buildHandBuilt throws otherwise), the engine proves it, it is centred, and
+// what ships is exactly what the project in demos/ now builds — a project
+// edited and not re-shipped is a stale example like any other.
+for (const ref of Object.keys(HAND_BUILT)) {
+  test(`${ref}: the hand-built example works, and is what ships`, () => {
+    const built = buildHandBuilt(ref);
+    for (const desktop of built.desktops) {
+      const label = `${ref} "${desktop.name}"`;
+      assert.ok(validateHandBuilt(desktop, label));
+      assert.equal(desktop.doc.version, DOC_VERSION, `${label}: doc version`);
+      assertCentred(desktop.doc, label);
+    }
+    assert.ok(
+      existsSync(webDemoPath(ref)),
+      `src/web/demos/${ref}.json is missing — run \`make demos\``,
+    );
+    assert.deepEqual(
+      JSON.parse(readFileSync(webDemoPath(ref), "utf8")),
+      JSON.parse(JSON.stringify(built)),
+      `${ref}: the bundled example is not what demos/${HAND_BUILT[ref]} ` +
+        `builds — run \`make demos\``,
+    );
+  });
+}
+
+// What the 555's example is FOR: one desktop per mode the part reads off its
+// wiring, each named for it — so a desktop that stopped being the circuit its
+// tab promises (a lead moved, a value dropped) fails here by name.
+test("the 555's example is its three modes, each reading as the one it is named for", () => {
+  const built = buildHandBuilt("NE555");
+  assert.deepEqual(
+    built.desktops.map((d) => [d.name, validateHandBuilt(d, d.name)]),
+    [
+      ["Monostable", "monostable"],
+      ["Bistable", "bistable"],
+      ["Astable", "astable"],
+    ],
+  );
+});
+
 test("src/web/demos holds exactly one example per benchable chip", () => {
-  const want = [...GROUPS.values()].flat().map((id) => `${id}.json`);
+  const want = [
+    ...[...GROUPS.values()].flat(),
+    // …and one per hand-built example, which the sweep keeps.
+    ...Object.keys(HAND_BUILT),
+  ].map((id) => `${id}.json`);
   const have = readdirSync(WEB_DEMO_DIR).filter((f) => f.endsWith(".json"));
   // A chip dropped from the catalog leaves a document that would still put an
   // example button on a pin-assignments window; make-gate-demos.mjs sweeps the
@@ -161,6 +217,29 @@ test("the program-only groups are left to the 65xx demos", () => {
     );
   }
   for (const where of ["Memory.chiphippo", "74LS/Memory.chiphippo"]) {
+    assert.ok(!existsSync(demoPath(where)), `no ${where}`);
+  }
+});
+
+test("the RC-timed groups have no bench demo yet", () => {
+  // A bench states a truth table in levels; a 555 or a one-shot does a period,
+  // which needs an RC network on the bench and a time-stepping check (see
+  // TIMED_GROUPS). Until then: no spec, no project — and no example, unless
+  // one was drawn by hand (HAND_BUILT).
+  const skipped = CHIP_DEFS.filter((def) => TIMED_GROUPS.has(def.group));
+  assert.ok(skipped.length > 0, "nothing is timed any more?");
+  for (const def of skipped) {
+    assert.ok(!SPECS.has(def.id), `${def.id} should have no bench demo`);
+    assert.equal(
+      existsSync(webDemoPath(def.id)),
+      Object.hasOwn(HAND_BUILT, def.id),
+      `${def.id} should have a bundled example exactly when it is hand-built`,
+    );
+  }
+  for (const where of [
+    "CD4000/Timer.chiphippo",
+    "other/Oscillators.chiphippo",
+  ]) {
     assert.ok(!existsSync(demoPath(where)), `no ${where}`);
   }
 });

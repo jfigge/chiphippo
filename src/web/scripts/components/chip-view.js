@@ -32,7 +32,13 @@ import { PX_PER_UNIT } from "../desk/desk-geometry.js";
 import { holePosition } from "../model/breadboard.js";
 import { packageSpec } from "../model/footprints.js";
 import { chipDef } from "../catalog/index.js";
-import { isRomChip } from "../sim/chip-eval.js";
+import { isRomChip, isTimed } from "../sim/chip-eval.js";
+import {
+  timingCapped,
+  timingDescription,
+  timingProblemSentences,
+  timingReadout,
+} from "../model/timing-summary.js";
 import {
   buildBurnOverlay,
   buildWarnOverlay,
@@ -178,11 +184,26 @@ export function buildChipSvg(ref, params = {}) {
     svg.append(turned);
   }
 
+  // A timed part's readout (the 555, the RC-timed CD4000 parts): its rate or
+  // pulse length, printed under the part number while it runs. Outside the
+  // flip group, so it reads upright on a chip seated backwards too; empty
+  // until ChipView.setTiming fills it.
+  const cx = (halfPins - 1) / 2;
+  if (isTimed(def)) {
+    const readout = svgEl("text", {
+      class: "part-chip-timing",
+      x: cx,
+      y: -0.66,
+      "text-anchor": "middle",
+    });
+    readout.append(svgEl("title"), svgEl("tspan"));
+    svg.append(readout);
+  }
+
   // Fault symbols (Feature 90), centred on the body — appended AFTER the flip
   // group above so they stay in screen space: smoke must rise, and an
   // upside-down warning triangle would read as a delta. CSS reveals exactly
   // one per .part-chip--<status> class and hides both otherwise.
-  const cx = (halfPins - 1) / 2;
   const cy = (CHIP_BODY_TOP + CHIP_BODY_BOTTOM) / 2;
   const status = svgEl("g", { class: "part-chip-status" });
   status.append(
@@ -202,6 +223,7 @@ export class ChipView {
   #status = null; // last engine-reported power/health status (Feature 90)
   #volts = null; // …and the supply volts the engine saw (Feature 400)
   #unprogrammed = false; // a ROM/EPROM/EEPROM with no image loaded (Feature 190)
+  #timing = null; // a timed part's reading of its own R and C, while running
 
   /**
    * @param {HTMLElement} layer - the `.layer-parts` element.
@@ -247,6 +269,33 @@ export class ChipView {
     this.#el.querySelector("svg")?.remove();
     this.#el.prepend(buildChipSvg(this.#ref, this.#params));
     this.#refresh();
+    this.#paintTiming();
+  }
+
+  /**
+   * A timed part's reading of its own wiring (sim/timing.js), from the live
+   * sim-state, or null when stopped: the readout printed on the body (amber
+   * when it is faster, or a pulse shorter, than the desk can show), and — when
+   * the part cannot read its R and C — the warning triangle, which explains.
+   */
+  setTiming(analysis) {
+    this.#timing = analysis ?? null;
+    this.#paintTiming();
+    this.#refresh();
+  }
+
+  #paintTiming() {
+    const readout = this.#el.querySelector(".part-chip-timing");
+    if (!readout) return;
+    const text = timingReadout(this.#timing);
+    readout.querySelector("title").textContent = text
+      ? timingDescription(this.#timing)
+      : "";
+    readout.querySelector("tspan").textContent = text;
+    this.#el.classList.toggle(
+      "part-chip--capped",
+      Boolean(text) && timingCapped(this.#timing),
+    );
   }
 
   /**
@@ -298,11 +347,21 @@ export class ChipView {
       "part-chip--unprogrammed",
       this.#unprogrammed && !burning,
     );
+    // A timed part that cannot read its own R and C shares the triangle; a
+    // power fault (which stops it computing at all) speaks first.
+    const fault = ["unpowered", "underpowered", "reversed", "damaged"].includes(
+      this.#status,
+    );
+    const timingProblems = fault ? [] : timingProblemSentences(this.#timing);
+    this.#el.classList.toggle("part-chip--timing", timingProblems.length > 0);
     const title = this.#el.querySelector(".part-chip-status > title");
     if (title) {
       const about = { volts: this.#volts, def: chipDef(this.#ref) };
       title.textContent =
         statusHint(this.#status, about) ||
+        (timingProblems.length
+          ? statusHint("timing", { ...about, problems: timingProblems })
+          : "") ||
         (this.#unprogrammed ? statusHint("unprogrammed", about) : "");
     }
   }

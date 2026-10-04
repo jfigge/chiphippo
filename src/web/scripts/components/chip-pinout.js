@@ -129,6 +129,10 @@ const ROLE_TAG = Object.freeze({
   cathode: "cathode",
   contact: "contact",
   common: "common",
+  lead: "lead",
+  // A timer's RC terminal (pin-builders.js `timing`): where its resistor and
+  // capacitor go.
+  timing: "RC",
 });
 
 /** Descriptions for desk-brick terminals (no board pins — labelled by id). */

@@ -235,6 +235,11 @@ so when it offers the design; load the image through the chip&#39;s
 <strong>Properties</strong> before you run it.</li>
 <li><strong>Multi-corner cans</strong> — the oscillator packages. The model isn&#39;t offered
 them.</li>
+<li><strong>Capacitors and the timers</strong> (the 555, CD4047B, CD4060B, CD4098B,
+CD4538B). A timer&#39;s rate lives in the values of its resistors and capacitor,
+and a netlist has nowhere to state a value, so the model isn&#39;t offered them.
+Build a timer by hand and wire the rest with the builder, or ask for a
+circuit clocked by a clock brick.</li>
 </ul>
 <h2 id="review-asking-whats-wrong-with-a-circuit">Review: asking what&#39;s wrong with a circuit</h2>
 <p>The panel has two modes, picked with the <strong>Build / Review</strong> switch in its

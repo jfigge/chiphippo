@@ -89,7 +89,7 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
 <h1>Chips &amp; Components</h1>
 <p>Everything that isn&#39;t a breadboard strip lives in the <strong>Parts</strong> palette on the
 left: 74LS and CD4000 logic chips, CPUs, 65xx interface chips, memory chips, switches, LEDs,
-displays, resistors, oscillators, and power/clock bricks. This page covers
+displays, resistors, capacitors, oscillators, the 555 timer, and power/clock bricks. This page covers
 finding a part, seating it on a board, and the (surprisingly varied) ways
 different parts rotate and flip once they&#39;re down.</p>
 <p><img src="images/components.png" alt="Chips and discretes placed on a breadboard"></p>
@@ -103,8 +103,10 @@ different parts rotate and flip once they&#39;re down.</p>
 W65C02 and Z80A CPUs). Which logic family it shows — 74LS, CD4000, or both,
 each in a folder of its own — is <strong>Settings → Data Sheets → Chip family</strong>
 (see <a href="chip-library.html#choosing-a-logic-family">Choosing a logic family</a>).</li>
-<li><strong>COMPONENTS</strong> — <strong>Switches</strong>, <strong>Resistors</strong>, <strong>LEDs</strong>, <strong>Displays</strong>,
-<strong>Oscillators</strong>, and <strong>Power</strong>, in that shelf order.</li>
+<li><strong>COMPONENTS</strong> — <strong>Switches</strong>, <strong>Resistors</strong>, <strong>Capacitors</strong>, <strong>LEDs</strong>,
+<strong>Displays</strong>, <strong>Oscillators</strong>, and <strong>Power</strong>, in that shelf order. The <strong>555
+timer</strong> is under <strong>Oscillators</strong>: it belongs to neither logic family, so it
+sits with the parts that make a clock rather than in CHIPS.</li>
 <li><strong>Memory</strong> — the ROM/RAM chips, pulled out of CHIPS into a top-level group
 of their own.</li>
 <li><strong>ANNOTATIONS</strong> — labels and notes (see
@@ -160,6 +162,77 @@ anywhere on the grid, including straddling the trench, since its shape
 16-way header along 16 adjacent holes in one row — but the module itself
 is much bigger than that row. See below.</li>
 </ul>
+<h2 id="resistor-and-capacitor-values">Resistor and capacitor values</h2>
+<p>A <strong>resistor</strong> has a <strong>Resistance</strong>, and a <strong>capacitor</strong> a <strong>Capacitance</strong>:
+right-click the part, choose <strong>Properties…</strong>, and type the value the way it is
+printed on a parts drawer or a schematic.</p>
+<table>
+<thead>
+<tr>
+<th>Resistance</th>
+<th>Capacitance</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><code>470</code>, <code>470R</code>, <code>470Ω</code>, <code>470 ohms</code></td>
+<td><code>100p</code>, <code>100pF</code></td>
+</tr>
+<tr>
+<td><code>4.7k</code>, <code>4k7</code></td>
+<td><code>10n</code>, <code>100nF</code></td>
+</tr>
+<tr>
+<td><code>1M</code>, <code>2M2</code>, <code>1G</code></td>
+<td><code>4.7µ</code>, <code>4.7u</code>, <code>4u7</code>, <code>100µF</code></td>
+</tr>
+<tr>
+<td><code>0R1</code> (0.1 Ω)</td>
+<td><code>1m</code> (1 mF)</td>
+</tr>
+</tbody></table>
+<p>The letter can stand in for the decimal point (<code>4k7</code>, <code>2M2</code>, <code>4u7</code>), and a
+space before the unit is ignored. A resistance can be a bare number of ohms; a
+capacitance needs its prefix, because a bare <code>100</code> means 100 pF to one reader
+and 100 µF to another, and guessing would be off by a factor of a million.
+For the same reason a lowercase <code>m</code> on a resistor (milli-ohms) and an
+uppercase <code>M</code> on a capacitor (mega-farads, or the old &quot;MF&quot; for microfarads)
+are refused. Resistances run from 0.1 Ω to 1 GΩ, capacitances from 1 pF to
+1 F.</p>
+<p>Press Enter or move out of the field to apply it. A value that can&#39;t be read
+is marked in red under the field with examples of what it takes, and the part
+keeps the value it had, so nothing changes until you type one that reads. The
+value is stored exactly, and shown back in its tidy form (<code>4k7</code> becomes
+<code>4.7kΩ</code>).</p>
+<p>On the desk a resistor wears its <strong>colour code</strong> — four bands for a value two
+figures say (<code>4.7k</code>: yellow, violet, red, gold), five for one that needs three
+(<code>4.99k</code>) — and a capacitor has its value printed on it. Both values appear in
+the <a href="schematic-view.html">Schematic View</a>, the <a href="build-guide.html">BOM</a>, and the
+<a href="exporting.html#kicad">KiCad export</a>.</p>
+<p>A resistor&#39;s value changes nothing in the simulation: a resistor is a weak pull
+whatever it measures, and a lamp is lit or burnt by whether one is in the
+loop. Only the timing chips read it (below).</p>
+<h2 id="capacitors">Capacitors</h2>
+<p><strong>COMPONENTS ▸ Capacitors</strong> holds two:</p>
+<ul>
+<li><strong>Capacitor (ceramic)</strong> — a disc, not polarised, leads two holes apart.</li>
+<li><strong>Capacitor (electrolytic)</strong> — a can with a stripe down its <strong>negative</strong>
+side, leads one hole apart. Pin 1 is <code>+</code>, pin 2 is <code>−</code>.</li>
+</ul>
+<p>Both place, rotate and bend exactly like a resistor (see
+<a href="#rotating--flipping">Rotating &amp; flipping</a>), and they take holes the way any
+part does, so a wire or a pin can&#39;t share one.</p>
+<p><strong>A capacitor carries a value, not charge.</strong> It does not filter, smooth,
+decouple or store anything, and it connects nothing: the simulation treats it
+as open, even when its legs sit across the two rails. What it is for is the
+<strong>timing chips</strong> — the 555, the CD4047B, the CD4060B, the CD4098B and the
+CD4538B read the capacitor (and the resistors) wired to their timing pins and
+run at the rate the datasheet gives for those values; see
+<a href="chip-library.html#timers">Timers</a>. A capacitor still counts as connected when
+the checks ask whether a net has anything on it.</p>
+<p>A reversed electrolytic makes no difference to the simulation. Watch the
+stripe anyway if you mean to build it.</p>
+<p>The first time you place a capacitor a note says all this; <strong>Don&#39;t show
+again</strong> puts it away for good.</p>
 <h2 id="character-lcd-modules">Character LCD modules</h2>
 <p>The <strong>Displays</strong> group holds two HD44780 character-LCD modules: a 16×2
 (the standard 1602A) and a 20×4 (the 2004A). They&#39;re drawn to their real
@@ -197,7 +270,7 @@ numbering per position reverses (a switch bank&#39;s own position states don&#39
 move — position 1 is still position 1, just wired to the opposite pins now).
 Neither has the turn-in-hand behavior of a plain LED — treat them as chips
 for rotation purposes.</p>
-<p><strong>Resistor and LED (<code>R</code>, both while placing and once placed).</strong> These
+<p><strong>Resistor, capacitor and LED (<code>R</code>, both while placing and once placed).</strong> These
 two-lead parts start in a horizontal <strong>footprint</strong> form (pin 1 and pin 2 a
 fixed span apart along one row). Press <code>R</code> while the ghost is armed to turn
 it into a vertical <strong>two-free-ends</strong> form instead: pin 1 stays at the anchor

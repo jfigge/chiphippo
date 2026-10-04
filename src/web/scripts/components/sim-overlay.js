@@ -44,6 +44,7 @@ export class SimOverlay {
   #strong = new Map(); // netId → level from supplies/outputs only (no pulls)
   #netlist = null; // the netlist those levels are keyed against
   #displays = new Map(); // compId → LCD framebuffer (from the sim-state payload)
+  #timing = new Map(); // compId → a timed part's reading of its R and C
   #pinCache = new Map(); // compId → partPinAddresses (cleared on a topology change)
 
   /**
@@ -74,6 +75,7 @@ export class SimOverlay {
     clockLevels,
     pausedClocks,
     displayState,
+    timing,
   }) {
     this.#running = running;
     this.#levels = netLevels ?? new Map();
@@ -95,6 +97,13 @@ export class SimOverlay {
     for (const view of this.#partViews.values()) view.setStatus?.(null);
     for (const [id, { status, volts }] of this.#status) {
       this.#partViews.get(id)?.setStatus?.(status, volts);
+    }
+
+    // Each timed part's readout and wiring verdict (sim/timing.js) — cleared
+    // with everything else when the run stops.
+    this.#timing = running ? (timing ?? new Map()) : new Map();
+    for (const [id, view] of this.#partViews) {
+      view.setTiming?.(this.#timing.get(id) ?? null);
     }
 
     // Clock pulse lamps track their live output level, and each clock's
@@ -120,6 +129,12 @@ export class SimOverlay {
   statusOf(id) {
     const status = this.#status.get(id)?.status;
     return status && status !== CHIP_STATUS.OK ? status : null;
+  }
+
+  /** A timed part's reading of its own R and C on the last sim-state, or
+      null (stopped, or not a timed part). */
+  timingOf(id) {
+    return this.#timing.get(id) ?? null;
   }
 
   /** The supply voltage that part's VCC pin saw on the last sim-state — the

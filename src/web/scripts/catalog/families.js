@@ -104,9 +104,14 @@ export function familyOf(def) {
   return LOGIC_FAMILIES.includes(def?.family) ? def.family : null;
 }
 
-/** The recommended supply range for a def: `{ min, max }` in volts. */
+/**
+ * The recommended supply range for a def: `{ min, max }` in volts. A part that
+ * is in no family but is not a 5 V part either states its own (`def.supply` —
+ * the NE555's 4.5–16 V); otherwise its family's, or the 5 V every family-less
+ * part has always been held to.
+ */
 export function supplyRange(def) {
-  return FAMILY_FACTS[familyOf(def)]?.supply ?? DEFAULT_SUPPLY;
+  return def?.supply ?? FAMILY_FACTS[familyOf(def)]?.supply ?? DEFAULT_SUPPLY;
 }
 
 /**

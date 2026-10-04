@@ -360,7 +360,9 @@
       "shiftregister": "Shift register",
       "signals": "SIGNALS",
       "switches": "Switches",
-      "xor": "XOR"
+      "xor": "XOR",
+      "capacitors": "Capacitors",
+      "timer": "Timer"
     },
     "integration": {
       "output": "Output",
@@ -745,6 +747,27 @@
     },
     "CD4053B": {
       "title": "Triple 2-channel analog multiplexer/demultiplexer"
+    },
+    "NE555": {
+      "title": "555 timer"
+    },
+    "CD4047B": {
+      "title": "Monostable/astable multivibrator"
+    },
+    "CD4060B": {
+      "title": "14-stage ripple counter with oscillator"
+    },
+    "CD4098B": {
+      "title": "Dual monostable multivibrator"
+    },
+    "CD4538B": {
+      "title": "Dual precision monostable multivibrator"
+    },
+    "cap-ceramic": {
+      "title": "Capacitor (ceramic)"
+    },
+    "cap-electrolytic": {
+      "title": "Capacitor (electrolytic)"
     }
   },
   "colors": {
@@ -1077,6 +1100,11 @@
         "one": "1 signal was left behind — this desk already has the maximum number of signals.",
         "other": "{count} signals were left behind — this desk already has the maximum number of signals."
       }
+    },
+    "capacitorNote": {
+      "title": "Capacitors in Chip Hippo",
+      "message": "A capacitor carries a value here — it does not filter, smooth or store charge, and it connects nothing. The timing chips (the 555, CD4047B, CD4060B, CD4098B, CD4538B) read its value from the wiring, and it exports to KiCad with it.",
+      "dismiss": "Don't show again"
     }
   },
   "workspace": {
@@ -1159,7 +1187,8 @@
       "integrations": {
         "one": "{count} Arduino Output or Input: a link to a board, not a part",
         "other": "{count} Arduino Outputs and Inputs: links to a board, not parts"
-      }
+      },
+      "capacitor": "is left out: a logic simulator has no capacitors"
     }
   },
   "sim": {
@@ -1196,7 +1225,9 @@
       "other": "{chip} drives {loads} 74LS inputs on {net}, but can only hold {count} LOW. Buffer it with a CD4049UB or CD4050B."
     },
     "mixedSupply": "Mixed supply voltages",
-    "mixedSupplyMessage": "{net} joins chips powered at {volts}. A signal crossing between supplies needs a level shifter."
+    "mixedSupplyMessage": "{net} joins chips powered at {volts}. A signal crossing between supplies needs a level shifter.",
+    "timing": "Timing not recognised",
+    "timingMessage": "{chip}: {problems}."
   },
   "about": {
     "subtitle": "TTL breadboard designer & simulator",
@@ -1320,7 +1351,10 @@
       "connection": "Connection",
       "triggerEdge": "Trigger",
       "triggerInit": "Trigger starts",
-      "fields": "Pins"
+      "fields": "Pins",
+      "ohms": "Resistance",
+      "farads": "Capacitance",
+      "timing": "Timing"
     },
     "option": {
       "manual": "Manual",
@@ -1340,7 +1374,12 @@
       "underpowered": "Underpowered — VCC is at {volts} V, below the {rating} this part needs, so it runs inert.",
       "reversed": "Power reversed — VCC and GND are swapped.",
       "damaged": "Damaged — {volts} V is over this part's {rating}, and it let the smoke out. Stopping the simulation restores it.",
-      "unprogrammed": "Not programmed — no image is loaded, so this chip reads random noise."
+      "unprogrammed": "Not programmed — no image is loaded, so this chip reads random noise.",
+      "timing": "Timing not recognised — {problems}. Its outputs stay at rest until it is wired as its datasheet shows."
+    },
+    "invalid": {
+      "ohms": "Not a resistance — try 470, 4.7k, 4k7 or 2M2 (0.1 Ω to 1 GΩ).",
+      "farads": "Not a capacitance — give a unit: 100p, 10n, 4.7µ, 4u7 or 1m (1 pF to 1 F)."
     }
   },
   "memory": {
@@ -1699,6 +1738,26 @@
         "ignore-hello": "Don't answer the next Run, so it stops with “No answer”",
         "wrong-signature": "Answer the next Run as a sketch built for another design, so it refuses to start"
       }
+    }
+  },
+  "timing": {
+    "astable": "Astable — {frequency}, {duty}% duty cycle",
+    "monostable": "Monostable — {width} pulse",
+    "bistable": "Bistable — TRIG LOW sets the output HIGH, RESET LOW clears it",
+    "multivibrator": "Astable: Q at {frequency}; one-shot: a {width} pulse",
+    "oscillator": "RC oscillator — {frequency}",
+    "external": "Counting an external clock on φI",
+    "unused": "Not used",
+    "capped": "Faster than the desk can show: drawn at {cap}.",
+    "stretched": "Shorter than the desk can show: drawn {shown} long.",
+    "notRecognised": "Wiring not recognised: {problems}.",
+    "section": "Section {section}: {text}",
+    "problem": {
+      "noCapacitor": "no timing capacitor from {from} to {to}",
+      "noResistor": "no timing resistor from {from} to {to}",
+      "notConnected": "{pin} is not connected",
+      "ne555Unrecognised": "TRIG (2), THRES (6) and DISCH (7) are wired neither astable (TRIG and THRES joined, DISCH between RA and RB), monostable (THRES and DISCH joined, TRIG driven from outside) nor bistable (THRES on GND, TRIG driven from outside)",
+      "cd4060Incomplete": "the RC oscillator needs Cx from φO (9), Rx from φ̄O (10) and Rs from φI (11), all meeting at one junction"
     }
   }
 }

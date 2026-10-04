@@ -43,6 +43,11 @@
 // the same buildDemo call in the same pass, so the two can never drift, and
 // gate-demos.test.js holds them to byte-for-byte agreement.
 //
+// HAND-BUILT EXAMPLES ride the same directory: a part demo-build.mjs lists in
+// HAND_BUILT (the 555) has its example drawn on the desk, saved as a project
+// under demos/ with a desktop per mode, and shipped from here as
+// src/web/demos/<ref>.json — proved like a bench, and kept out of the sweep.
+//
 //   node scripts/make-gate-demos.mjs        (or `make demos`)
 
 import {
@@ -59,10 +64,13 @@ import { DEMOS } from "./demo-specs.mjs";
 import {
   assertComplete,
   buildDemo,
+  buildHandBuilt,
   catalogGroups,
   fileNameOf,
+  HAND_BUILT,
   projectNameOf,
   validateDemo,
+  validateHandBuilt,
 } from "./demo-build.mjs";
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), "..");
@@ -132,6 +140,22 @@ function main() {
     );
     desktops += tabs.length;
     console.log(`demos: → ${file} (${tabs.length} desktops)`);
+  }
+
+  // The hand-built examples: one file per part, holding every desktop of its
+  // project in the multi-desktop shape (model/example-desktops.js). Minified
+  // for the benches' reason — the readable copy is the project in demos/.
+  for (const [ref, source] of Object.entries(HAND_BUILT)) {
+    const example = buildHandBuilt(ref);
+    for (const desktop of example.desktops) {
+      const proof = validateHandBuilt(desktop, `${ref} "${desktop.name}"`);
+      console.log(
+        `demos: ${`hand-built ${source}`.padEnd(22)} ${ref.padEnd(8)} ` +
+          `${desktop.name} — ${proof}`,
+      );
+    }
+    writeFileSync(join(WEB_DIR, `${ref}.json`), JSON.stringify(example) + "\n");
+    shipped.add(`${ref}.json`);
   }
 
   // src/web/demos/ is owned ENTIRELY by this script, so what it did not just

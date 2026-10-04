@@ -34,7 +34,11 @@ const { PalettePanel } = await import("../components/palette-panel.js");
 // hidden until Settings ▸ Data Sheets shows them, so "the whole catalog" a
 // default tray lists is every part but those.
 const SHOWN_DEFS = PALETTE_DEFS.filter((d) => d.family !== "CD4000");
-const SHOWN_CHIPS = CHIP_DEFS.filter((d) => d.family !== "CD4000");
+// …and the chips the CHIPS folder holds: the 555 is a chip, but it is shelved
+// under COMPONENTS ▸ Oscillators beside the crystal cans.
+const SHOWN_CHIPS = CHIP_DEFS.filter(
+  (d) => d.family !== "CD4000" && d.group !== "Oscillators",
+);
 
 function typeFilter(panelEl, value) {
   const input = panelEl.querySelector(".palette-filter");
@@ -66,6 +70,7 @@ test("lists the whole catalog grouped by function; picks report the ref", () => 
     ...chipGroupNames,
     "Switches",
     "Resistors",
+    "Capacitors",
     "LEDs",
     "Displays",
     "Oscillators",
@@ -102,11 +107,19 @@ test("logic chips nest under CHIPS; Memory + parts are their own sections", () =
   assert.deepEqual(groupsIn(bodies[1]), [
     "Switches",
     "Resistors",
+    "Capacitors",
     "LEDs",
     "Displays",
     "Oscillators",
     "Power",
   ]);
+
+  // The 555 is a chip, but its shelf is COMPONENTS ▸ Oscillators, beside the
+  // crystal cans — not a CHIPS group of its own.
+  const refsIn = (root) =>
+    [...root.querySelectorAll(".palette-item")].map((i) => i.dataset.ref);
+  assert.ok(refsIn(bodies[1]).includes("NE555"), "NE555 under COMPONENTS");
+  assert.ok(!refsIn(bodies[0]).includes("NE555"), "NE555 not under CHIPS");
 
   // Memory is pulled OUT of both folders into its own top-level group.
   assert.ok(!groupsIn(bodies[0]).includes("Memory"), "not under CHIPS");
@@ -258,8 +271,9 @@ test("every section starts collapsed, and opening one is session-only", () => {
     sections.filter((h) => h.getAttribute("aria-expanded") === "true"),
     [],
   );
-  // Every group name in the catalog is represented.
-  const groups = new Set(PALETTE_DEFS.map((d) => d.group));
+  // Every group the tray shows is represented (a CD4000-only group — Timer —
+  // waits for its family).
+  const groups = new Set(SHOWN_DEFS.map((d) => d.group));
   assert.equal(host.querySelectorAll(".palette-group").length, groups.size);
 
   // Opening one sticks for this panel…
@@ -960,9 +974,18 @@ test("a CD4000 tray lists its groups in the 74LS tray's order", () => {
   const cmos = sectionsUnder("CHIPS").filter((g) => !FAMILY_LESS.has(g));
   assert.equal(cmos[0], "NAND");
   assert.deepEqual(
-    cmos,
+    cmos.filter((g) => ls.includes(g)),
     ls.filter((g) => cmos.includes(g)),
     "CD4000 groups in the 74LS order",
+  );
+  // A group only CD4000 has (the RC timers) falls after every shared one.
+  assert.deepEqual(
+    cmos.slice(cmos.length - 1),
+    cmos.filter((g) => !ls.includes(g)),
+  );
+  assert.deepEqual(
+    cmos.filter((g) => !ls.includes(g)),
+    ["Timer"],
   );
   // Combined: each family folder in that same order.
   panel.setFamilyMode("combined");

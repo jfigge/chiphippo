@@ -139,6 +139,11 @@ const DEFAULTS = Object.freeze({
   // generated circuit is always direct.
   defaultWireLayout: "direct",
 
+  // Whether the note a capacitor shows as it lands on the board (what a
+  // capacitor does and does not do in a logic sim) has been dismissed for
+  // good with its "Don't show again". Written only by that button.
+  capacitorNoteDismissed: false,
+
   // ── Panels (Build guide / Logic analyzer) ──────────────────────────────────
   // Whether the right-docked build guide is shown.
   guideOpen: false,

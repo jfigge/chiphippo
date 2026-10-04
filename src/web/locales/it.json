@@ -361,7 +361,9 @@
       "shiftregister": "Registro a scorrimento",
       "signals": "SEGNALI",
       "switches": "Interruttori",
-      "xor": "XOR"
+      "xor": "XOR",
+      "capacitors": "Condensatori",
+      "timer": "Timer"
     },
     "integration": {
       "output": "Uscita",
@@ -746,6 +748,27 @@
     },
     "CD4053B": {
       "title": "Multiplexer/demultiplexer analogico triplo a 2 canali"
+    },
+    "NE555": {
+      "title": "Timer 555"
+    },
+    "CD4047B": {
+      "title": "Multivibratore monostabile/astabile"
+    },
+    "CD4060B": {
+      "title": "Contatore binario asincrono a 14 stadi con oscillatore"
+    },
+    "CD4098B": {
+      "title": "Doppio multivibratore monostabile"
+    },
+    "CD4538B": {
+      "title": "Doppio multivibratore monostabile di precisione"
+    },
+    "cap-ceramic": {
+      "title": "Condensatore (ceramico)"
+    },
+    "cap-electrolytic": {
+      "title": "Condensatore (elettrolitico)"
     }
   },
   "colors": {
@@ -1078,6 +1101,11 @@
         "one": "1 segnale è stato tralasciato: questa scrivania ha già il numero massimo di segnali.",
         "other": "{count} segnali sono stati tralasciati: questa scrivania ha già il numero massimo di segnali."
       }
+    },
+    "capacitorNote": {
+      "title": "I condensatori in Chip Hippo",
+      "message": "Qui un condensatore porta un valore: non filtra, non livella, non immagazzina carica e non collega nulla. I chip temporizzatori (il 555, CD4047B, CD4060B, CD4098B, CD4538B) ne leggono il valore dal cablaggio, e viene esportato in KiCad con esso.",
+      "dismiss": "Non mostrare più"
     }
   },
   "workspace": {
@@ -1160,7 +1188,8 @@
       "integrations": {
         "one": "{count} uscita o ingresso Arduino: un collegamento con una scheda, non un componente",
         "other": "{count} uscite e ingressi Arduino: collegamenti con una scheda, non componenti"
-      }
+      },
+      "capacitor": "viene omesso: un simulatore logico non ha condensatori"
     }
   },
   "sim": {
@@ -1199,7 +1228,9 @@
       "many": "{chip} pilota {loads} ingressi 74LS su {net}, ma ne può tenere a LOW solo {count}. Aggiungi un buffer CD4049UB o CD4050B."
     },
     "mixedSupply": "Tensioni di alimentazione miste",
-    "mixedSupplyMessage": "{net} unisce chip alimentati a {volts}. Un segnale che passa da un'alimentazione all'altra richiede un traslatore di livello."
+    "mixedSupplyMessage": "{net} unisce chip alimentati a {volts}. Un segnale che passa da un'alimentazione all'altra richiede un traslatore di livello.",
+    "timing": "Temporizzazione non riconosciuta",
+    "timingMessage": "{chip}: {problems}."
   },
   "about": {
     "subtitle": "Progettazione e simulazione TTL su breadboard",
@@ -1323,7 +1354,10 @@
       "connection": "Connessione",
       "triggerEdge": "Trigger",
       "triggerInit": "Il trigger parte",
-      "fields": "Pin"
+      "fields": "Pin",
+      "ohms": "Resistenza",
+      "farads": "Capacità",
+      "timing": "Temporizzazione"
     },
     "option": {
       "manual": "Manuale",
@@ -1343,7 +1377,12 @@
       "underpowered": "Alimentazione insufficiente — VCC è a {volts} V, sotto i {rating} che servono a questo componente, quindi funziona inerte.",
       "reversed": "Alimentazione invertita — VCC e GND sono scambiati.",
       "damaged": "Danneggiato — {volts} V superano i {rating} di questo componente e hanno fatto uscire il fumo. Fermando la simulazione viene ripristinato.",
-      "unprogrammed": "Non programmato — non è caricata nessuna immagine, quindi questo chip legge rumore casuale."
+      "unprogrammed": "Non programmato — non è caricata nessuna immagine, quindi questo chip legge rumore casuale.",
+      "timing": "Temporizzazione non riconosciuta — {problems}. Le uscite restano a riposo finché non è collegato come mostra il datasheet."
+    },
+    "invalid": {
+      "ohms": "Non è una resistenza — prova 470, 4.7k, 4k7 o 2M2 (da 0,1 Ω a 1 GΩ).",
+      "farads": "Non è una capacità — indica l'unità: 100p, 10n, 4.7µ, 4u7 o 1m (da 1 pF a 1 F)."
     }
   },
   "memory": {
@@ -1702,6 +1741,26 @@
         "ignore-hello": "Non rispondere alla prossima esecuzione, così si ferma con «Nessuna risposta»",
         "wrong-signature": "Rispondi alla prossima esecuzione come uno sketch di un altro progetto, così non parte"
       }
+    }
+  },
+  "timing": {
+    "astable": "Astabile — {frequency}, duty cycle {duty}%",
+    "monostable": "Monostabile — impulso di {width}",
+    "bistable": "Bistabile — TRIG a LOW porta l'uscita a HIGH, RESET a LOW la azzera",
+    "multivibrator": "Astabile: Q a {frequency}; monostabile: impulso di {width}",
+    "oscillator": "Oscillatore RC — {frequency}",
+    "external": "Conta un clock esterno su φI",
+    "unused": "Non usato",
+    "capped": "Più veloce di quanto la scrivania possa mostrare: disegnato a {cap}.",
+    "stretched": "Più breve di quanto la scrivania possa mostrare: disegnato lungo {shown}.",
+    "notRecognised": "Collegamento non riconosciuto: {problems}.",
+    "section": "Sezione {section}: {text}",
+    "problem": {
+      "noCapacitor": "nessun condensatore di temporizzazione da {from} a {to}",
+      "noResistor": "nessuna resistenza di temporizzazione da {from} a {to}",
+      "notConnected": "{pin} non è collegato",
+      "ne555Unrecognised": "TRIG (2), THRES (6) e DISCH (7) non sono collegati né come astabile (TRIG e THRES uniti, DISCH tra RA e RB), né come monostabile (THRES e DISCH uniti, TRIG pilotato dall'esterno), né come bistabile (THRES a GND, TRIG pilotato dall'esterno)",
+      "cd4060Incomplete": "l'oscillatore RC richiede Cx da φO (9), Rx da φ̄O (10) e Rs da φI (11), tutti uniti in un solo nodo"
     }
   }
 }

@@ -237,7 +237,7 @@ function twoPin(name, pins, graphics, reach, halfHeight) {
   const map = new Map();
   const pinNodes = pins.map((p) => {
     map.set(p.number, { x: p.x, y: p.y, side: p.side });
-    return pinNode(p, p.x, p.y, p.side === "left" ? 0 : 180);
+    return pinNode(p, p.x, p.y, p.side === "left" ? 0 : 180, p.len);
   });
   return {
     name,
@@ -271,6 +271,75 @@ function resistorSymbol(name) {
     ],
     2.54,
     1.016,
+  );
+}
+
+/**
+ * A capacitor: two plates across a gap — KiCad's Device:C shape — or, for a
+ * polarised one, Device:C_Polarized's open box for the + plate and a filled
+ * one for −, with a + mark on pin 1's side.
+ */
+function capacitorSymbol(name, polarized) {
+  const graphics = polarized
+    ? [
+        [
+          "rectangle",
+          ["start", -0.762, 2.286],
+          ["end", -0.254, -2.286],
+          stroke(),
+          fill("none"),
+        ],
+        [
+          "rectangle",
+          ["start", 0.762, 2.286],
+          ["end", 0.254, -2.286],
+          stroke(),
+          fill("outline"),
+        ],
+        poly([
+          [-2.286, 2.286],
+          [-1.27, 2.286],
+        ]),
+        poly([
+          [-1.778, 2.794],
+          [-1.778, 1.778],
+        ]),
+      ]
+    : [
+        poly([
+          [-0.762, 2.032],
+          [-0.762, -2.032],
+        ]),
+        poly([
+          [0.762, 2.032],
+          [0.762, -2.032],
+        ]),
+      ];
+  return twoPin(
+    name,
+    [
+      {
+        number: "1",
+        name: polarized ? "+" : "~",
+        type: "passive",
+        x: -3.81,
+        y: 0,
+        side: "left",
+        len: 3.048, // to the plate, as Device:C draws it
+      },
+      {
+        number: "2",
+        name: polarized ? "-" : "~",
+        type: "passive",
+        x: 3.81,
+        y: 0,
+        side: "right",
+        len: 3.048,
+      },
+    ],
+    graphics,
+    1.27,
+    2.286,
   );
 }
 
@@ -389,6 +458,8 @@ export function symbolFor(part, kp, widestValue = part.def.id) {
   const name = symbolName(part.def);
   if (kp.shape === "resistor") return resistorSymbol(name);
   if (kp.shape === "led") return ledSymbol(name);
+  if (kp.shape === "capacitor") return capacitorSymbol(name, false);
+  if (kp.shape === "capacitor-polarized") return capacitorSymbol(name, true);
   if (kp.shape === "spst") return spstSymbol(name);
   if (kp.shape === "spdt") return spdtSymbol(name);
   return boxSymbol(

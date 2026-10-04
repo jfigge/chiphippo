@@ -107,6 +107,12 @@ Every part is given a **footprint** from KiCad's standard libraries:
   600 mil for the wide memory chips and processors.
 - Resistors, LEDs, switches, DIP switch banks, resistor networks, oscillator
   cans and the 16×2 LCD each get their matching standard footprint.
+- Capacitors come across **with their value** (`100nF`, `4.7uF`) as their
+  KiCad Value, drawn the way KiCad draws them — the plain capacitor for a
+  ceramic, the polarised one for an electrolytic, whose `+` is pin 1 — on a
+  5 mm ceramic disc or a 5 mm radial electrolytic footprint. Resistors carry their value the
+  same way. On the breadboard a capacitor connects nothing; in KiCad it is
+  wired where it sits, which is the point of exporting it.
 - The power supply and the clock source become 2-pin headers labelled
   **POWER** and **CLOCK IN**. That's where power and a clock come in on a real
   board. The clock needs an oscillator in its place, which the report points
@@ -201,8 +207,11 @@ Digital is a logic simulator, so some parts have to be exported as what they
 - Seven 74xx parts that Digital's library doesn't include: 74LS73, 74LS75,
   74LS169, 74LS240, 74LS259, 74LS279 and 74LS533. Each one's place in the
   circuit is marked with a note, and everything wired to it is still exported.
-- The other 33 CD4000 CMOS parts, which have no twin in Digital's library. The
+- The other 37 CD4000 CMOS parts, which have no twin in Digital's library. The
   same note marks each one's place.
+- The 555 timer, which Digital's library doesn't have either.
+- Capacitors. A capacitor connects nothing in Chip Hippo, so leaving it out
+  changes nothing about the circuit.
 - Memory chips, because their contents are stored in files the export doesn't
   carry.
 - The processors and their peripheral chips (W65C02, Z80, W65C21, W65C22).

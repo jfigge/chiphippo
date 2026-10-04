@@ -34,17 +34,23 @@
 // explicit for that reason, not for brevity.
 
 import { PALETTE_DEFS, outputEnablePins } from "../catalog/index.js";
-import { isAnalogSwitch } from "../sim/chip-eval.js";
+import { isAnalogSwitch, isTimed } from "../sim/chip-eval.js";
 import { familyOf } from "../catalog/families.js";
 import { MIN_TESTS } from "./generate.js";
 
 /**
  * The parts the BUILDER may be offered: everything the compiler can seat. A
  * crystal-can oscillator (`can`) is refused by the compiler, so listing it only
- * spends a repair round learning that. The desk REVIEW still sees every part —
- * a hand-built desk can hold anything the palette has.
+ * spends a repair round learning that. Nor are the parts whose behaviour is a
+ * VALUE — a capacitor, and the timers that read their R and C off the wiring
+ * (`isTimed`): a netlist spec says which pins share a net and nothing about
+ * ohms or farads, so the compiler could seat a 555 but never make it keep the
+ * time asked for. The desk REVIEW still sees every part — a hand-built desk
+ * can hold anything the palette has.
  */
-export const BUILDABLE_DEFS = Object.freeze(PALETTE_DEFS.filter((d) => !d.can));
+export const BUILDABLE_DEFS = Object.freeze(
+  PALETTE_DEFS.filter((d) => !d.can && !d.capacitor && !isTimed(d)),
+);
 
 /**
  * One line per part: what it is, and every pin by number and name.

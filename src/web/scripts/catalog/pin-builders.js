@@ -30,6 +30,15 @@ export const output = (n, name) => pin(n, name, "output");
 /** A bidirectional (I/O) pin — a bus line a unit both reads and drives. */
 export const io = (n, name) => pin(n, name, "io");
 export const nc = (n) => pin(n, "NC", "nc");
+/**
+ * An RC TIMING terminal — where a timer's external resistor and capacitor
+ * connect (a 555's THRES, a 4047's R and C, a 4098's RX CX). Neither a logic
+ * input nor an output: the engine never reads or drives it, and the part
+ * reads its R and C off the wiring instead (sim/rc-trace.js). So no floating-
+ * input check, no boundary warning and no AI pin mark ever treats it as logic,
+ * and KiCad draws it PASSIVE.
+ */
+export const timing = (n, name) => pin(n, name, "timing");
 /** `name` overrides the silkscreen label (e.g. VSS/VDD on a CMOS memory part). */
 export const gnd = (n, name = "GND") => pin(n, name, "gnd");
 export const vcc = (n, name = "VCC") => pin(n, name, "vcc");

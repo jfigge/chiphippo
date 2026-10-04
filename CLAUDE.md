@@ -38,6 +38,9 @@ now has `centreDocument` and a second output to honour); 360 auto-routing (plan 
 `features/`; `model/autoroute.js` + `route-*.js`, the toolbar's Auto-route action).
 **Landed without a plan file**: Desktop ▸ Export To — KiCad schematic and Digital `.dig`
 (`model/export/`, `app/ipc/export.js`, "Feature 390" in its comments).
+**Landed without a feature number**: capacitors, typed resistor/capacitor values and the
+RC timers — the 555 and the CD4047B/4060B/4098B/4538B (plan
+`features/chiphippo-capacitors-555.md`; see "Values, capacitors & timed parts").
 
 ## Naming & identity
 
@@ -89,7 +92,7 @@ the repo, only the cropped PNGs.
   and `--strict` exits 1 on a missing one. Its one hand-kept list is `NO_DATASHEET` —
   the four chips with no matching `74LS*` sheet (74LS164, 74LS193, 74LS27, 74LS76) —
   and moving a name in or out of it is how a part leaves or rejoins the to-do list. The
-  39 CD4000 parts are deliberately NOT excused, and deliberately NOT cut yet: Jason
+  43 CD4000 parts are deliberately NOT excused, and deliberately NOT cut yet: Jason
   defers them until the family has proven worthwhile (2026-10-03). When they are, they
   come from the TI sheets the downloader fetches; until then they stay on the missing
   list.
@@ -195,10 +198,12 @@ the repo, only the cropped PNGs.
     `desk-doc.js`), `wire-crossing.js`, `selection-toggle.js`, `signals.js`,
     `signal-keys.js`, `pin-resolve.js`, `column-allocator.js`, `autobuild.js`,
     `autobuild-verify.js`, `spec-lint.js`, `integration.js`, `integration-runtime.js`,
-    `integration-codegen.js`, `serial-connections.js`.
+    `integration-codegen.js`, `serial-connections.js`, `si-value.js` + `ohm-format.js` +
+    `farad-format.js`, `resistor-bands.js`, `timing-summary.js`.
   - `scripts/sim/` — the DOM-free engine: `union-find.js`, `netlist.js`, `levels.js`,
     `chip-eval.js`, `sequential.js`, `resolve.js`, `engine.js`, `junction.js`,
-    `w65c02.js`, `z80.js`, `z80-ops.js`, `analog-switch.js`.
+    `w65c02.js`, `z80.js`, `z80-ops.js`, `analog-switch.js`, `timing.js`, `rc-trace.js`,
+    `timer-555.js`, `monostable.js`, `ripple-oscillator.js`.
   - `scripts/ai/` — `catalog-brief.js`, `generate.js`, `connection.js`, `usage.js`
     (pure).
   - `scripts/catalog/` — part metadata as pure data + integrity tests; never
@@ -783,12 +788,114 @@ its floating bus reading `$FF`).
   would turn the '193's `D0`…`D3` into four sections.
 - **The Digital export places six CD4000 parts** as their pin-for-pin twins in Digital
   v0.31's library (`DIGITAL_FILES`: CD4002B→744002, CD4017B→744017, CD4069UB→7404,
-  CD4075B→744075, CD4077B→747266, CD40106B→7414); the other 33 are
-  `noDigitalModel` (that library has no 4000-series folder). A floating CMOS input
+  CD4075B→744075, CD4077B→747266, CD40106B→7414); the other 37 are
+  `noDigitalModel` (that library has no 4000-series folder), as is the NE555, and a
+  capacitor is left out with its own reason (`capacitor` — it joins no net anyway). A floating CMOS input
   gets the TTL rule's PullUp — Digital refuses an open input and has no X — and the
   report says so (`cmosFloating`). `export-digital-cli.test.js` runs only with
   `DIGITAL_JAR` set and the release's `lib/` folder BESIDE the jar (a bare jar draws
   every chip as "7400.dig is missing", which the load check now fails on).
+
+## Values, capacitors & timed parts
+
+**A resistor and a capacitor carry a VALUE, typed the way a drawer is labelled; only the
+timing chips read it.** No analog solver, no SPICE: each timed part finds its own R and C
+in the wiring and turns them into seconds by its datasheet's formula.
+
+- **Typed values** (`model/si-value.js` underneath `ohm-format.js` / `farad-format.js`,
+  one module per quantity because the desk label, the Properties field, the schematic,
+  the BOM and the KiCad export must all say one value one way). `parseOhms` takes
+  `470`, `470R`, `470Ω`, `4.7k`, `4k7`, `1M`, `2M2`, `0R1` (bare = ohms; lowercase `m`
+  REFUSED — milliohms is never what a breadboard means); `parseFarads` REQUIRES a prefix
+  (`100p`, `10n`, `4.7µ`/`4.7u`/`μ`, `4u7`, `1m`, optional `F`; uppercase `M` refused —
+  old parts print "MF" for MICROfarads) because a bare `100` is 100 pF to one reader and
+  100 µF to another. Ranges `OHMS_RANGE` 0.1 Ω–1 GΩ, `FARADS_RANGE` 1 pF–1 F. The stored
+  param is the NUMBER (`params.ohms`, `params.farads`); the text is never stored.
+- **The `"quantity"` Properties type** (`RESISTANCE_FIELD` / `CAPACITANCE_FIELD` in
+  `catalog/parts.js`: `parse`, `format`, `invalid`) applies on `change`; a value that does
+  not parse shows `.properties-field-error` (`properties.invalid.<key>`, examples + range)
+  with `aria-invalid`, keeps the typed text, and leaves the stored value UNCHANGED — the
+  dialog never writes a guess.
+- **Resistor colour code** (`model/resistor-bands.js`): 4 bands when two significant
+  figures say the value (gold tolerance), 5 when it needs three (brown), `[]` when no
+  multiplier band can encode it. Band colours are `--color-band-*` tokens, tuned against
+  the beige body (gold is deliberately darker than the true hue).
+- **Capacitors** (`cap-ceramic`, offsets [0,1]; `cap-electrolytic`, offsets [0,1], pin 1
+  `+`, stripe on pin 2's side) are rotatable two-lead parts exactly like a resistor, with
+  `capacitor: {polarized}` and `internalBridges: []`. **Electrically a capacitor is a
+  non-connect, always — across the rails included**: no bridge, no weak bridge, so the
+  netlist never joins its nets and the engine never drives through it. It still claims
+  its holes (occupancy) and counts as CONNECTED wherever a check asks whether a net has
+  anything on it (`rcTrace.connected`, the floating-input sweeps in `engine.js` and
+  `desk-review.js`). A reversed electrolytic changes nothing. The value is printed
+  upright on the body (`capacitorLabel`, off-centre on the electrolytic, clear of the
+  stripe). First placement from the tray raises a one-time toast (`desk.capacitorNote.*`,
+  "Don't show again" → `settings.capacitorNoteDismissed`), through DeskController's
+  `onPartPlaced` option.
+- **The trace** (`sim/rc-trace.js`, `rcTrace(doc, netlist)`) is the ONE reader every timed
+  part shares: capacitors and resistors indexed by net, PARALLEL parts between the same
+  two nets combined (series is not followed — stated, not guessed), `toRail("+"/"-")`
+  predicates, and `connected(net)`. `timingProbe(trace, pinNet)` adds `net(pin)` for one
+  chip. Each part's `logic.timing(probe)` returns `{sections: [{mode, …}], problems:
+  [{code, section?, from?, to?, pin?}]}` — a fact about the frozen topology, so the
+  engine takes it ONCE per context.
+- **The timed contract** (`sim/timing.js` + `chip-eval.js`'s `isTimed`/`stepChip`/
+  `wakeAtOf`): `logic = {state0, step, outputs, timing, wakeAt}`, and `step(state, ins,
+  prev, env)` gets `env = {now, timing}`. **The engine still keeps no time**: `tick`
+  takes `now` (simulated seconds) and reports `wakeAt`, the earliest moment any powered
+  timed part next changes on its own. A step's state is a pure function of `now` and the
+  moment its cycle began (`t0`, `since`/`until`), so a repeated call at one `now` returns
+  the same state — the tick's step fixpoint depends on it.
+- **SimController owns the sim clock**: seconds since Run × speed (`#simAnchor` +
+  `#realAnchor`, `#freeze`/`#thaw` on pause, stall and speed change), handed to every
+  `tick` as `now`, and ONE `setTimeout` (`#armWake`) to tick again at `wakeAt`. So a 555
+  ticks itself with no clock brick on the desk. Step moves the clock by the fastest
+  running clock's half-period, or — with none — straight to `wakeAt`. Stop clears it all.
+  `timing` (the per-chip analyses) rides `chiphippo:sim-state`; problems are a
+  `{type:"timing"}` warning → a toast keyed `timing:<chip>`, the desk review's
+  `TIMING_UNRECOGNISED`, and the chip's warning triangle (`part-chip--timing`, power
+  faults outrank it).
+- **The cap** — `TIMING_CAP_HZ` is DERIVED from the top of `CLOCK_HZ` (100), for the
+  timer floor's reason. A faster oscillation is DRAWN at the cap with its duty kept
+  (`capSchedule`) while its TRUE rate is reported (readout in amber, `part-chip--capped`,
+  plus a Timing-row sentence); a pulse under `MIN_SHOWN_S` (5 ms) is stretched to it
+  (`shownPulse`). The cap is in SIMULATED time, so the speed control scales it like
+  everything else. The CD4060B shows true counts for every stage slow enough to see and
+  the cap wave only for the stages too fast to.
+- **The parts** (formulas from TI, cited at each def): the NE555 (`chips-555.js`,
+  family-less, group `Oscillators` — the palette shelves a family-less part under
+  COMPONENTS, which is where an oscillator belongs; `supply` 4.5–16 V, which
+  `families.js`'s `supplyRange` honours) DETECTS astable (TRIG+THRES one net with C to
+  GND, DISCH between RA→VCC and RB→that net; starts HIGH) vs monostable (THRES+DISCH one
+  net with C to GND and RA to VCC, TRIG connected elsewhere; falling-edge, level-held,
+  non-retriggerable) vs bistable (THRES on the GND rail, TRIG connected; the §6.4
+  function table as a set/reset latch — TRIG LOW sets, RESET LOW clears and wins,
+  otherwise it holds; powers up LOW; no readout, never wakes) and refuses anything else
+  with a sentence (`ne555Unrecognised`), OUT LOW; RESET LOW wins; CONT ignored; DISCH is
+  a timing terminal, not an output. **Bistable is asked FIRST**: the usual build grounds
+  DISCH beside THRES (a monostable's tell) and a pressed SET button puts TRIG on that
+  net too (an astable's), so asking either first misreads it.
+  `chips-cd4000-timers.js`: CD4047B (4.40·RC astable, 2.48·RC one-shot), CD4098B (½·R·C)
+  and CD4538B (R·C — sourced from TI's CD14538B sheet, SCHS093C, since `cd4538b.pdf`
+  404s) as `dualMonostableLogic` (+TR OR NOT −TR rising, retriggerable, RESET low; a
+  section with nothing on it is "unused" and silent), CD4060B (`ripple-oscillator.js`:
+  Fig. 12 RC network → 2.2·Rx·Cx, or external clock on φI when φO/φ̄O carry no network;
+  no crystal). CD4528B was DROPPED: TI's sheet link 404s and no other TI sheet covers
+  it. Groups `Timer` (new, CD4000) and `Counter` (the 4060).
+- **New pin role `"timing"`** (`timing(n, name)` in `pin-builders.js`): an RC terminal —
+  not an input (no floating warning, never tied by the compiler), not an output (drives
+  nothing), KiCad PASSIVE, pinout tag `RC`.
+- **Readouts**: `ChipView` draws `.part-chip-timing` under the part number (outside the
+  flip group, so upright on a reversed chip) from `chiphippo:sim-state`'s `timing`
+  (`model/timing-summary.js` owns every sentence: `timingReadout`, `timingDescription`,
+  `timingProblemSentences`); the Properties card of a timed part gains a readonly
+  **Timing** row computed from the CURRENT document, so it answers while stopped.
+- **Exports & lists**: KiCad carries capacitor values (symbols in `chiphippo.kicad_sym`
+  drawn to KiCad's `Device:C` / `Device:C_Polarized` shapes, footprints
+  `Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P2.50mm` / `CP_Radial_D5.0mm_P2.50mm`, designator
+  `C`, ASCII `u` in the Value); the BOM splits resistors and capacitors by value (`Resistor — 4.7kΩ`,
+  dash not brackets, since several titles end in a bracket of their own); the schematic
+  draws both plates and the value.
 
 ## Memory chips
 
@@ -1301,7 +1408,9 @@ anchor and wire.
   deliberately no `applyBatch`.
 - **The prompt is DERIVED, never hand-written** (`ai/catalog-brief.js`):
   `buildCatalogCard()` projects `BUILDABLE_DEFS` for the builder (`PALETTE_DEFS` minus the
-  `can` oscillators the compiler refuses; the review keeps them all) — ids, packages,
+  `can` oscillators the compiler refuses, the capacitors and every `isTimed` part — a
+  netlist spec has nowhere to state a VALUE, and a timer is nothing without its R and C;
+  the review keeps them all) — ids, packages,
   exact `n:name` pin lists, and a part's `buses` for the `A[3]` member form —
   `JSON.stringify` would silently drop the FUNCTION fields), so a new 74xx part reaches
   the model the moment it lands in `catalog/`. ~4.4 K tokens, over the prompt-cache
@@ -2769,7 +2878,33 @@ Every benchable 74xx part's demonstration bench, shipped INSIDE the app as
 - Memory/Interface/PROCESSOR chips get no example and therefore no button: a RAM or a CPU
   cannot be demonstrated by flipping switches at it, and the 65xx demos are excluded for a
   sharper reason — their program lives in a separate `.hex`, so the document alone would
-  arrive not working.
+  arrive not working. The **Timer** and **Oscillators** groups are `TIMED_GROUPS`
+  (`demo-build.mjs`) and get no BENCH: the bench DSL has no resistor/capacitor values
+  and its truth-table proof has no notion of time. The CD4060B (group Counter) DOES have
+  one, built on its external-clock mode (a clock brick on φI) so the bench proves the
+  divider without the oscillator.
+- **A part can ship a HAND-BUILT example instead** (`HAND_BUILT` in `demo-build.mjs`: the
+  NE555 → `demos/ne555.chiphippo`, drawn on the desk with ONE DESKTOP PER MODE —
+  Monostable, Bistable, Astable). `make-gate-demos.mjs` ships it as
+  `src/web/demos/<ref>.json` in a second payload shape, `{ref, title, desktops: [{name,
+  description?, doc}]}` beside the benches' `{ref, title, doc}`, and keeps it out of the
+  sweep. `buildHandBuilt` holds each desktop to the bench's bars (current `DOC_VERSION`
+  — a bundled doc skips main's migrations — nothing dropped, every part `canPlacePart`,
+  centred, no ROM images) and `validateHandBuilt` proves it in the engine (every chip
+  `ok`, NO warning, every timed part reading its wiring with no problem); `gate-demos.test.js`
+  holds the shipped file to a fresh build and the 555's desktops to the mode each is NAMED
+  for. **`model/example-desktops.js` is the ONE reader of both shapes** (the workspace and
+  `export-fixtures.js`'s `demoDocs`, which labels them `NE555-Astable`), and owns the tab
+  names: `<ref> example`, or `<ref> <desktop> example` — English, being identity. For
+  several desktops the identity test is PER DESKTOP: only those not open are added (a
+  deleted one comes back alone), with all open the first is selected (`"switched"`); every
+  copy is reseated before the project changes, so a failure adds none; the first NEW one
+  is landed on and framed. Re-run `make demos` after editing the project in `demos/`, or
+  the guard fails as stale.
+- **Landing clean never HIDES unsaved work**: `#addExample` re-baselines (`#markClean`)
+  only when the project was clean before the example arrived. It used to do so
+  unconditionally, which cleared the • over edits on another desktop — and a close then
+  discarded them without asking.
 
 ## Auto-update & the store gate
 

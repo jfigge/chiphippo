@@ -359,7 +359,9 @@
       "shiftregister": "シフトレジスタ",
       "signals": "信号",
       "switches": "スイッチ",
-      "xor": "XOR"
+      "xor": "XOR",
+      "capacitors": "コンデンサ",
+      "timer": "タイマー"
     },
     "integration": {
       "output": "出力",
@@ -744,6 +746,27 @@
     },
     "CD4053B": {
       "title": "2 チャンネル・アナログマルチプレクサ／デマルチプレクサ × 3"
+    },
+    "NE555": {
+      "title": "555 タイマー"
+    },
+    "CD4047B": {
+      "title": "単安定/無安定マルチバイブレータ"
+    },
+    "CD4060B": {
+      "title": "発振器付き 14 段リップルキャリー・バイナリカウンタ"
+    },
+    "CD4098B": {
+      "title": "デュアル単安定マルチバイブレータ"
+    },
+    "CD4538B": {
+      "title": "デュアル高精度単安定マルチバイブレータ"
+    },
+    "cap-ceramic": {
+      "title": "コンデンサ（セラミック）"
+    },
+    "cap-electrolytic": {
+      "title": "コンデンサ（電解）"
     }
   },
   "colors": {
@@ -1059,6 +1082,11 @@
       "signalsDropped": {
         "other": "{count} 個の信号を見送りました — このデスクの信号はすでに上限に達しています。"
       }
+    },
+    "capacitorNote": {
+      "title": "Chip Hippo のコンデンサ",
+      "message": "ここではコンデンサは値を持つだけです。フィルタ・平滑化・電荷の蓄積は行わず、何も接続しません。タイマー IC（555、CD4047B、CD4060B、CD4098B、CD4538B）は配線からその値を読み取り、KiCad へも値付きで書き出されます。",
+      "dismiss": "今後表示しない"
     }
   },
   "workspace": {
@@ -1136,7 +1164,8 @@
       },
       "integrations": {
         "other": "Arduino の出力・入力 {count} 個: ボードとのリンクであり、部品ではありません"
-      }
+      },
+      "capacitor": "省略されます。論理シミュレータにはコンデンサがありません"
     }
   },
   "sim": {
@@ -1170,7 +1199,9 @@
       "other": "{chip} は {net} で 74LS 入力を {loads} 個駆動していますが、LOW に保てるのは {count} 個までです。CD4049UB か CD4050B でバッファしてください。"
     },
     "mixedSupply": "電源電圧が混在しています",
-    "mixedSupplyMessage": "{net} は {volts} で給電されたチップ同士をつないでいます。電源をまたぐ信号にはレベル変換が必要です。"
+    "mixedSupplyMessage": "{net} は {volts} で給電されたチップ同士をつないでいます。電源をまたぐ信号にはレベル変換が必要です。",
+    "timing": "タイミングを認識できません",
+    "timingMessage": "{chip}：{problems}。"
   },
   "about": {
     "subtitle": "TTL ブレッドボード設計・シミュレータ",
@@ -1294,7 +1325,10 @@
       "connection": "接続",
       "triggerEdge": "トリガー",
       "triggerInit": "トリガーの初期値",
-      "fields": "ピン"
+      "fields": "ピン",
+      "ohms": "抵抗値",
+      "farads": "容量",
+      "timing": "タイミング"
     },
     "option": {
       "manual": "手動",
@@ -1314,7 +1348,12 @@
       "underpowered": "電圧不足 — VCC が {volts} V で、この部品に必要な {rating} を下回るため動作しません。",
       "reversed": "電源が逆 — VCC と GND が入れ替わっています。",
       "damaged": "破損 — {volts} V はこの部品の定格 {rating} を超え、煙が出ました。シミュレーションを停止すると元に戻ります。",
-      "unprogrammed": "未書き込み — イメージが読み込まれていないため、このチップはランダムなノイズを読み出します。"
+      "unprogrammed": "未書き込み — イメージが読み込まれていないため、このチップはランダムなノイズを読み出します。",
+      "timing": "タイミングを認識できません — {problems}。データシートどおりに配線されるまで、出力は休止状態のままです。"
+    },
+    "invalid": {
+      "ohms": "抵抗値として読めません — 470、4.7k、4k7、2M2 のように入力してください（0.1 Ω～1 GΩ）。",
+      "farads": "容量として読めません — 100p、10n、4.7µ、4u7、1m のように単位を付けてください（1 pF～1 F）。"
     }
   },
   "memory": {
@@ -1668,6 +1707,26 @@
         "ignore-hello": "次の実行に応答せず、「応答がありません」で停止させます",
         "wrong-signature": "次の実行に別の設計用のスケッチとして応答し、開始を拒否させます"
       }
+    }
+  },
+  "timing": {
+    "astable": "無安定 — {frequency}、デューティ比 {duty}%",
+    "monostable": "単安定 — パルス幅 {width}",
+    "bistable": "双安定 — TRIG を LOW にすると出力が HIGH になり、RESET を LOW にするとクリアされます",
+    "multivibrator": "無安定：Q は {frequency}、単安定：パルス幅 {width}",
+    "oscillator": "RC 発振器 — {frequency}",
+    "external": "φI の外部クロックを計数",
+    "unused": "未使用",
+    "capped": "デスクで表示できる速さを超えています：{cap} で描画します。",
+    "stretched": "デスクで表示できる長さより短いため、{shown} の長さで描画します。",
+    "notRecognised": "配線を認識できません：{problems}。",
+    "section": "セクション {section}：{text}",
+    "problem": {
+      "noCapacitor": "{from} から {to} へのタイミング用コンデンサがありません",
+      "noResistor": "{from} から {to} へのタイミング用抵抗がありません",
+      "notConnected": "{pin} が接続されていません",
+      "ne555Unrecognised": "TRIG (2)・THRES (6)・DISCH (7) の配線が、無安定（TRIG と THRES を接続し、DISCH を RA と RB の間に置く）にも単安定（THRES と DISCH を接続し、TRIG を外部から駆動する）にも双安定（THRES を GND に接続し、TRIG を外部から駆動する）にもなっていません",
+      "cd4060Incomplete": "RC 発振には φO (9) からの Cx、φ̄O (10) からの Rx、φI (11) からの Rs を 1 か所の接続点にまとめる必要があります"
     }
   }
 }

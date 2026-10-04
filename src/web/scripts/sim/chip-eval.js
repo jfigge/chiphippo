@@ -96,6 +96,17 @@ export function channelStates(def, pinLevels) {
   }));
 }
 
+/**
+ * Does this def keep TIME (the 555, the RC-timed CD4000 parts)? A timed part
+ * is sequential — it has the standard `{state0, step, outputs}` — plus a
+ * `timing(probe)` that reads its R and C off the wiring (sim/rc-trace.js) and
+ * a `wakeAt(state)` naming when it next changes by itself. Its `step` is
+ * handed `{now, timing}` as a fourth argument (sim/timing.js).
+ */
+export function isTimed(def) {
+  return isSequential(def) && typeof def.logic.timing === "function";
+}
+
 /** Does this def carry a memory image (ROM / SRAM / EEPROM — Feature 170)? */
 export function isMemory(def) {
   return Boolean(def?.logic?.memory);
@@ -212,11 +223,20 @@ export function inputLevels(def, pinLevels) {
 /**
  * Advance a sequential chip one tick: sample edges from `inputs` vs
  * `prevInputs` (null on the first tick — no edge) and compute the next state.
- * Pure — returns the new state, never mutates.
+ * Pure — returns the new state, never mutates. `env` reaches a TIMED part
+ * only (`{now, timing}` — see isTimed); every other step ignores it.
  * @returns {*} the def-specific next state
  */
-export function stepChip(def, state, inputs, prevInputs) {
-  return def.logic.step(state, inputs, prevInputs);
+export function stepChip(def, state, inputs, prevInputs, env) {
+  return def.logic.step(state, inputs, prevInputs, env);
+}
+
+/**
+ * When a timed chip next changes on its own, in simulated seconds, or null
+ * when nothing is pending (an idle monostable, a held reset).
+ */
+export function wakeAtOf(def, state) {
+  return isTimed(def) ? (def.logic.wakeAt?.(state) ?? null) : null;
 }
 
 /**

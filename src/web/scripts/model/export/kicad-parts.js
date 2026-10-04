@@ -39,6 +39,7 @@
 
 import { packageSpec } from "../footprints.js";
 import { formatOhms } from "../ohm-format.js";
+import { formatFaradsAscii } from "../farad-format.js";
 import { switchableOutputs } from "../spec-lint.js";
 import { isAnalogSwitch } from "../../sim/chip-eval.js";
 
@@ -53,6 +54,12 @@ const DIP_SWITCH = {
 };
 
 const colour = (comp) => comp.params?.color ?? "";
+
+/** A capacitor's Value: "100nF", "4.7uF" — or "" with no value to state. */
+const capValue = (comp) => {
+  const v = formatFaradsAscii(Number(comp.params?.farads));
+  return v ? `${v}F` : "";
+};
 
 /**
  * The non-chip parts. `shape` picks the symbol drawing (kicad-symbols.js);
@@ -69,6 +76,22 @@ export const KICAD_PARTS = Object.freeze({
     footprint: "Resistor_THT:R_Array_SIP9",
     shape: "box",
     value: (comp) => `${formatOhms(comp.params?.ohms)} ×8`.trim(),
+  },
+  // Capacitors carry their VALUE across — the reason a capacitor may sit
+  // anywhere on the desk at all. Both sit in adjacent holes, so both take a
+  // 2.50 mm-pitch footprint: a ceramic is KiCad's plain C on a 5 mm disc; an
+  // electrolytic is C_Polarized on a 5 mm radial can, whose pad 1 — KiCad's
+  // square one — is +, as our pin 1 is. The Value says the unit in ASCII
+  // ("4.7uF"), for whatever BOM script reads it.
+  "cap-ceramic": {
+    footprint: "Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P2.50mm",
+    shape: "capacitor",
+    value: (comp) => capValue(comp) || "C",
+  },
+  "cap-electrolytic": {
+    footprint: "Capacitor_THT:CP_Radial_D5.0mm_P2.50mm",
+    shape: "capacitor-polarized",
+    value: (comp) => capValue(comp) || "C",
   },
   led: {
     footprint: "LED_THT:LED_D5.0mm",
@@ -231,6 +254,9 @@ export function pinType(def, port) {
     return def.kind === "psu" || def.kind === "clock" ? "passive" : "power_in";
   }
   if (def.kind === "chip" || def.id.startsWith("osc-")) {
+    // (A timer's RC `timing` terminal falls through to PASSIVE below: it
+    // drives nothing and reads nothing — it is where a resistor and a
+    // capacitor connect.)
     if (role === "input") return "input";
     // An analog switch's terminal drives nothing — it is a conductor, which
     // is what KiCad's PASSIVE says (and it may then meet a rail without the

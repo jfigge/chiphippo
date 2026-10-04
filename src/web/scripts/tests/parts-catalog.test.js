@@ -43,6 +43,8 @@ test("the part catalog carries the Feature 60 inventory", () => {
   assert.deepEqual(PART_DEFS.map((d) => d.id).sort(), [
     "bar8",
     "bar8iso",
+    "cap-ceramic",
+    "cap-electrolytic",
     "clock",
     "lcd16x2",
     "lcd20x4",
@@ -68,8 +70,9 @@ test("the part catalog carries the Feature 60 inventory", () => {
   assert.ok(partDef("clock"));
   assert.ok(partDef("lcd16x2"));
   assert.equal(chipDef("sw-slide"), null);
-  // 102 chips (24 + 28 LS + 39 CD4000 + 7 memory + 2 io + 2 cpu) + 20 parts
-  assert.equal(PALETTE_DEFS.length, 122);
+  // 107 chips (24 + 28 LS + 43 CD4000 + 7 memory + 2 io + 2 cpu + the 555)
+  // + 22 parts
+  assert.equal(PALETTE_DEFS.length, 129);
 });
 
 for (const def of PART_DEFS.filter((d) => d.kind === "discrete")) {

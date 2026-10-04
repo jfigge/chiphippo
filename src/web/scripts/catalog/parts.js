@@ -36,6 +36,12 @@
 import { hd44780Unit } from "../sim/hd44780.js";
 import { MM_PER_UNIT } from "../desk/desk-geometry.js";
 import { ROTATIONS } from "../model/breadboard.js";
+import { formatOhms, parseOhms } from "../model/ohm-format.js";
+import {
+  FARADS_RANGE,
+  formatFarads,
+  parseFarads,
+} from "../model/farad-format.js";
 
 /** The shared color choices for every colored discrete (LED, and the
     segment/bar displays) — each part's own Properties dialog + the "Default
@@ -404,6 +410,62 @@ function dipSwitchBankDef(n) {
     },
   };
 }
+
+/**
+ * The Resistance field every resistor's Properties card carries: typed, read
+ * the way a bench writes a value (`470`, `4k7`, `2M2` — ohm-format.js), and
+ * refused at the field when it does not read as one, keeping the value it had.
+ * `parse`/`format` are pure functions, so the field stays data like any other
+ * (part-properties-dialog.js's `"quantity"` type is the one renderer).
+ */
+const RESISTANCE_FIELD = Object.freeze({
+  key: "ohms",
+  label: "Resistance",
+  type: "quantity",
+  parse: parseOhms,
+  format: (ohms) => `${formatOhms(ohms)}Ω`,
+  invalid: "Not a resistance — try 470, 4.7k, 4k7 or 2M2 (0.1 Ω to 1 GΩ).",
+});
+
+/** The Capacitance field both capacitors carry (farad-format.js). */
+const CAPACITANCE_FIELD = Object.freeze({
+  key: "farads",
+  label: "Capacitance",
+  type: "quantity",
+  parse: parseFarads,
+  format: (farads) => `${formatFarads(farads)}F`,
+  invalid:
+    "Not a capacitance — give a unit: 100p, 10n, 4.7µ, 4u7 or 1m (1 pF to 1 F).",
+});
+
+/**
+ * A capacitor's params: its value, plus the same two-free-ends geometry the
+ * resistor and LED keep (`rot`, `end` — see normalizeLeadOffset). A value
+ * that is not a capacitance in range falls back to the part's default.
+ */
+function capacitorParams(raw, fallback) {
+  const farads = Number(raw?.farads);
+  const rotated = raw?.rot === 90;
+  return {
+    farads:
+      Number.isFinite(farads) &&
+      farads >= FARADS_RANGE.min &&
+      farads <= FARADS_RANGE.max
+        ? farads
+        : fallback,
+    rot: rotated ? 90 : 0,
+    end: rotated ? normalizeLeadOffset(raw?.end) : null,
+  };
+}
+
+/** What both capacitors' blurbs say about what a capacitor IS here. */
+const CAPACITOR_NOTE =
+  "In this logic sim a capacitor joins nothing — it passes no current, " +
+  "between any two holes, rails included (a charged capacitor blocks DC) — " +
+  "and it does not filter, smooth or store charge. What it carries is its " +
+  "VALUE: a timing part (the 555, or one of the 4000-series timers) reads " +
+  "it off the wiring, and the KiCad export writes it. A pin whose only " +
+  "company is a capacitor is not called unconnected.";
 
 /** Shared by both oscillator-can sizes — the Properties dialog's rate field. */
 const OSCILLATOR_PROPERTIES = [
@@ -788,11 +850,14 @@ export const PART_DEFS = Object.freeze(
         "Two-terminal resistor. In this logic-level sim it's a WEAK coupler: " +
         "it conducts one end's driven level to the other at a strength below " +
         "any chip output, so it behaves as a pull-up / pull-down / series " +
-        "resistor. The ohms value is cosmetic (no analog current here). " +
+        "resistor. Its Resistance (Properties) is drawn as its colour bands " +
+        "and read by the timing parts (the 555, the 4000-series timers); to " +
+        "everything else it is cosmetic (no analog current here). " +
         "Press R while placing to stand it vertically and pick two free ends " +
         "(e.g. a power rail and a grid column).",
       group: "Resistors",
       footprint: Object.freeze({ offsets: Object.freeze([0, 3]) }),
+      properties: [RESISTANCE_FIELD],
       // Rotatable to a vertical, two-free-ends form: pin 1 at the anchor hole,
       // pin 2 bent to the `params.end` offset. The seating model switches from
       // footprint-offset to a free lead, so pin 2 can reach ANY hole at any
@@ -849,8 +914,10 @@ export const PART_DEFS = Object.freeze(
         "single resistor, each element is a WEAK coupler (below any chip " +
         "output), never a hard connection. Press R while placing, or with it " +
         "selected, to turn it end-for-end: the dot, pin 1 and the common bus " +
-        "all move to the other end. The ohms value is cosmetic.",
+        "all move to the other end. Its Resistance (Properties, each " +
+        "element's) is read by the timing parts and otherwise cosmetic.",
       group: "Resistors",
+      properties: [RESISTANCE_FIELD],
       // Nine holes along one grid row: the common bus first (pin 1, at the
       // anchor — the marked end), then the eight resistor pins.
       footprint: Object.freeze({
@@ -896,6 +963,63 @@ export const PART_DEFS = Object.freeze(
       // move, the elements they name do not.
       weakBridges() {
         return Array.from({ length: 8 }, (_, i) => [i + 2, 1]);
+      },
+    },
+    {
+      id: "cap-ceramic",
+      kind: "discrete",
+      title: "Capacitor (ceramic)",
+      blurb:
+        "Ceramic disc capacitor — non-polarised, either way round. Set its " +
+        "Capacitance in Properties (100p, 10n, 4.7µ, 4u7…). " +
+        CAPACITOR_NOTE +
+        " Press R while placing to stand it up and pick two free ends.",
+      group: "Capacitors",
+      // A disc's leads at 2.5 mm (0.1 in) — adjacent holes, as the
+      // electrolytic's are.
+      footprint: Object.freeze({ offsets: Object.freeze([0, 1]) }),
+      rotatable: true,
+      minSpan: 1,
+      // The data hook every consumer branches on (the trace, the engine's
+      // floating-input rule, the drop note, the BOM, the export) — never an id.
+      capacitor: Object.freeze({ polarized: false }),
+      properties: [CAPACITANCE_FIELD],
+      pins: [
+        { n: 1, name: "1", role: "lead" },
+        { n: 2, name: "2", role: "lead" },
+      ],
+      normalizeParams: (raw) => capacitorParams(raw, 100e-9),
+      // A non-connect, always: no bridge, hard or weak.
+      internalBridges() {
+        return [];
+      },
+    },
+    {
+      id: "cap-electrolytic",
+      kind: "discrete",
+      title: "Capacitor (electrolytic)",
+      blurb:
+        "Aluminium electrolytic capacitor — POLARISED: pin 1 is +, pin 2 is " +
+        "−, which the stripe down its side marks. Set its Capacitance in " +
+        "Properties (1µ, 10µ, 4u7, 470µ…). " +
+        CAPACITOR_NOTE +
+        " Its polarity is drawn and exported; wiring it backwards changes " +
+        "nothing in the sim. Press R while placing to stand it up and pick " +
+        "two free ends.",
+      group: "Capacitors",
+      // A small radial can's leads at 2.5 mm (0.1 in).
+      footprint: Object.freeze({ offsets: Object.freeze([0, 1]) }),
+      rotatable: true,
+      minSpan: 1,
+      capacitor: Object.freeze({ polarized: true }),
+      properties: [CAPACITANCE_FIELD],
+      pins: [
+        { n: 1, name: "+", role: "lead" },
+        { n: 2, name: "-", role: "lead" },
+      ],
+      normalizeParams: (raw) => capacitorParams(raw, 10e-6),
+      internalBridges() {
+        return [];
       },
     },
     {

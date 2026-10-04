@@ -65,6 +65,10 @@ net carries triggers a fresh settle while you're running:
 - Turning a **PSU** on/off or changing its voltage.
 - Changing a **clock**'s rate or manual/free-running mode.
 - A manual clock click, or (for sequential circuits) a **Step** advance.
+- A **timer** reaching its next edge — a 555 or an RC-timed CD4000 part keeps
+  its own time and re-settles the circuit at exactly the moment its output
+  changes, with no clock brick involved (see
+  [Timers](chip-library.md#timers)).
 
 Each re-settle starts from the *previous* stable state rather than from
 scratch — this warm start is what lets a cross-coupled latch or a counter
@@ -92,6 +96,15 @@ cluster next to **Run** the moment you start:
   with more than one clock keeps their relative timing. A clock never runs
   faster than 100 Hz, the top of its own rate list, so `×4` applied to a rate
   that is already a quarter of the way there has nothing further to give.
+
+**Timers keep simulated time, and the transport owns it.** A 555 or a CD4000
+timer is told how long the circuit has been running — real seconds since
+**Run**, scaled by the speed. **Pause** stops that clock along with the clock
+bricks, so a pulse in progress is frozen where it is; **Speed** scales it, so
+a 1 Hz 555 blinks four times a second at `×4`; and **Step** moves it on with
+the clocks — by the fastest clock's half-period, or, with no clock brick on
+the desk, straight to the next moment a timer's output changes, so a circuit
+built round a 555 can be single-stepped edge by edge too.
 
 See [Power & Clock Sources](power-and-clocks.md) for placing and configuring
 a clock brick, and [Logic Analyzer & Timing](logic-analyzer.md) for
@@ -123,6 +136,10 @@ computed by the views themselves:
   [Probing & Net Names](probing.md) — this page won't duplicate it.
 - **Clock bricks** carry a small pulse lamp that tracks their own current
   output level in real time.
+- **Timers** print their rate or pulse length under their part number — in
+  amber when it is faster than the desk can draw — and show a warning triangle
+  when they cannot make out their own wiring. Hover either for the full
+  sentence; see [Timers](chip-library.md#timers).
 
 ## Interacting live
 

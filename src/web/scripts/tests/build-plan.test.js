@@ -363,3 +363,28 @@ test("an empty document yields an empty, well-formed plan", () => {
   assert.deepEqual(p.steps, []);
   assert.deepEqual(p.warnings, []);
 });
+
+// A typed value is part of what you buy: two capacitors of one value are one
+// line, two values are two, and a resistor says its value the same way.
+test("BOM splits resistors and capacitors by their typed value", () => {
+  const doc = new DeskDoc(null);
+  doc.addKit("full", 0, 0);
+  const seat = (ref, anchor, params) =>
+    doc.addComponent({ kind: "discrete", ref, board: "bb2", anchor, params });
+  seat("cap-ceramic", "a5", { farads: 100e-9 });
+  seat("cap-ceramic", "a10", { farads: 100e-9 });
+  seat("cap-ceramic", "a15", { farads: 10e-9 });
+  seat("cap-electrolytic", "a20", { farads: 4.7e-6 });
+  seat("resistor", "a30", { ohms: 4700 });
+  const json = doc.toJSON();
+  const { bom } = buildPlan(json, buildNetlist(json));
+  assert.deepEqual(
+    bom.discretes.map((l) => [l.title, l.count]),
+    [
+      ["Capacitor (ceramic) — 100nF", 2],
+      ["Capacitor (ceramic) — 10nF", 1],
+      ["Capacitor (electrolytic) — 4.7µF", 1],
+      ["Resistor — 4.7kΩ", 1],
+    ].sort(),
+  );
+});

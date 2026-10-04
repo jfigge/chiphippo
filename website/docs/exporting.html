@@ -207,6 +207,12 @@ electrical rules check with nothing to report.</p>
 600 mil for the wide memory chips and processors.</li>
 <li>Resistors, LEDs, switches, DIP switch banks, resistor networks, oscillator
 cans and the 16×2 LCD each get their matching standard footprint.</li>
+<li>Capacitors come across <strong>with their value</strong> (<code>100nF</code>, <code>4.7uF</code>) as their
+KiCad Value, drawn the way KiCad draws them — the plain capacitor for a
+ceramic, the polarised one for an electrolytic, whose <code>+</code> is pin 1 — on a
+5 mm ceramic disc or a 5 mm radial electrolytic footprint. Resistors carry their value the
+same way. On the breadboard a capacitor connects nothing; in KiCad it is
+wired where it sits, which is the point of exporting it.</li>
 <li>The power supply and the clock source become 2-pin headers labelled
 <strong>POWER</strong> and <strong>CLOCK IN</strong>. That&#39;s where power and a clock come in on a real
 board. The clock needs an oscillator in its place, which the report points
@@ -312,8 +318,11 @@ its supply pins unconnected.</li>
 <li>Seven 74xx parts that Digital&#39;s library doesn&#39;t include: 74LS73, 74LS75,
 74LS169, 74LS240, 74LS259, 74LS279 and 74LS533. Each one&#39;s place in the
 circuit is marked with a note, and everything wired to it is still exported.</li>
-<li>The other 33 CD4000 CMOS parts, which have no twin in Digital&#39;s library. The
+<li>The other 37 CD4000 CMOS parts, which have no twin in Digital&#39;s library. The
 same note marks each one&#39;s place.</li>
+<li>The 555 timer, which Digital&#39;s library doesn&#39;t have either.</li>
+<li>Capacitors. A capacitor connects nothing in Chip Hippo, so leaving it out
+changes nothing about the circuit.</li>
 <li>Memory chips, because their contents are stored in files the export doesn&#39;t
 carry.</li>
 <li>The processors and their peripheral chips (W65C02, Z80, W65C21, W65C22).</li>

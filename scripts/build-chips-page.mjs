@@ -73,6 +73,14 @@ export const SECTIONS = Object.freeze([
     bands: [["Counter"], ["Shift register"]],
   },
   {
+    // The parts that keep time with an external resistor and capacitor: the
+    // CD4000 one-shots and multivibrator, and the 555 (whose tray shelf is
+    // COMPONENTS ▸ Oscillators, beside the crystal cans).
+    id: "timers",
+    title: "Timers",
+    bands: [["Timer"], ["Oscillators"]],
+  },
+  {
     id: "decoders",
     title: "Decoders, encoders & multiplexers",
     bands: [["Decoder", "Encoder", "Multiplexer"]],

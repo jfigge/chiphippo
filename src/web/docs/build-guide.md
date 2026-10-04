@@ -44,8 +44,10 @@ into five sections (only the non-empty ones show): **Breadboards**, **Chips**,
 **Discrete parts**, **Power**, and **Wires**. Boards are counted by strip type
 (a Full 830 kit counts as its constituent rail/pin strips, not as one line),
 and components are counted by catalog identity — with a few splits that matter
-for actually buying the right part: LEDs split by color, PSU bricks by
-voltage, and clock sources by rate. Each line reads as `title ×count`.
+for actually buying the right part: LEDs split by color, resistors and
+capacitors by their value (`Resistor — 4.7kΩ`, `Capacitor (ceramic) — 100nF`),
+PSU bricks by voltage, and clock sources by rate. Each line reads as
+`title ×count`.
 
 ### The cutting list
 

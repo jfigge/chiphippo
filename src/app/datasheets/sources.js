@@ -218,6 +218,16 @@ const LIBRARIES = Object.freeze([
       CD4051B: "cd4051b.pdf", // SCHS047O: CD4051B, CD4052B, CD4053B
       CD4052B: "cd4051b.pdf",
       CD4053B: "cd4051b.pdf",
+      // ── The RC-timed parts ───────────────────────────────────────────────
+      CD4047B: "cd4047b.pdf", // SCHS044C
+      CD4060B: "cd4060b.pdf", // SCHS049C
+      CD4098B: "cd4098b.pdf", // SCHS065C
+      // SCHS093C is TI's CD14538B, "Replaces CD4538B Type": TI publishes no
+      // CD4538B sheet of its own, and this one states the pin-compatibility,
+      // carries the CD4538B's Table I and gives its period (T = Rx·Cx).
+      CD4538B: "cd14538b.pdf",
+      // SLFS022K (NA555/NE555/SA555/SE555): a current sheet with a text layer.
+      NE555: "ne555.pdf",
     },
   },
   {

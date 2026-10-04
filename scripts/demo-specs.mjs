@@ -2009,6 +2009,40 @@ export const DEMOS = Object.freeze([
       },
     },
   },
+  {
+    ref: "CD4060B",
+    title: "14-stage ripple counter with oscillator",
+    note:
+      "CD4060B — 14-stage counter + oscillator (CMOS)\n" +
+      "Here the clock drives φI from outside, so its\n" +
+      "RC oscillator is not used: φO and φ̄O carry\n" +
+      "nothing. It counts on the FALLING edge of φI;\n" +
+      "the lamps run Q4 (÷16) to Q14, skipping Q11,\n" +
+      "which has no pin. RESET HIGH clears it.",
+    inputs: [{ label: "RESET", pins: [12] }],
+    defaults: [false],
+    clock: { hz: 5, pins: [11] },
+    leds: [
+      ...[7, 5, 4, 6, 14, 13, 15].map((pin, i) => ({
+        pin,
+        label: `Q${i + 4}`,
+        color: "green",
+      })),
+      ...[1, 2, 3].map((pin, i) => ({
+        pin,
+        label: `Q${i + 12}`,
+        color: "green",
+      })),
+    ],
+    sequential: {
+      // A falling edge lands between the rising ones; stages 1–3 and 11 count
+      // unseen.
+      expect: (edges) => {
+        const bits = bitsOf((edges - 1) % 16384, 14);
+        return [...bits.slice(3, 10), ...bits.slice(11)];
+      },
+    },
+  },
   // Shift register
   {
     ref: "CD4094B",

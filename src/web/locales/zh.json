@@ -359,7 +359,9 @@
       "shiftregister": "移位寄存器",
       "signals": "信号",
       "switches": "开关",
-      "xor": "XOR"
+      "xor": "XOR",
+      "capacitors": "电容",
+      "timer": "定时器"
     },
     "integration": {
       "output": "输出",
@@ -744,6 +746,27 @@
     },
     "CD4053B": {
       "title": "三 2 通道模拟多路复用器／解复用器"
+    },
+    "NE555": {
+      "title": "555 定时器"
+    },
+    "CD4047B": {
+      "title": "单稳态/无稳态多谐振荡器"
+    },
+    "CD4060B": {
+      "title": "带振荡器的 14 级二进制行波计数器"
+    },
+    "CD4098B": {
+      "title": "双单稳态多谐振荡器"
+    },
+    "CD4538B": {
+      "title": "双精密单稳态多谐振荡器"
+    },
+    "cap-ceramic": {
+      "title": "电容（陶瓷）"
+    },
+    "cap-electrolytic": {
+      "title": "电容（电解）"
     }
   },
   "colors": {
@@ -1059,6 +1082,11 @@
       "signalsDropped": {
         "other": "已略过 {count} 个信号 — 此桌面的信号数量已达上限。"
       }
+    },
+    "capacitorNote": {
+      "title": "Chip Hippo 中的电容",
+      "message": "在这里，电容只携带一个数值：它不滤波、不平滑、不储存电荷，也不连接任何东西。定时芯片（555、CD4047B、CD4060B、CD4098B、CD4538B）会从接线中读取它的值，导出到 KiCad 时也会带上该值。",
+      "dismiss": "不再显示"
     }
   },
   "workspace": {
@@ -1136,7 +1164,8 @@
       },
       "integrations": {
         "other": "{count} 个 Arduino 输出/输入：与开发板的连接，而非元件"
-      }
+      },
+      "capacitor": "被省略：逻辑仿真器中没有电容"
     }
   },
   "sim": {
@@ -1170,7 +1199,9 @@
       "other": "{chip} 在 {net} 上驱动 {loads} 个 74LS 输入，但最多只能把 {count} 个拉到 LOW。请用 CD4049UB 或 CD4050B 做缓冲。"
     },
     "mixedSupply": "供电电压混用",
-    "mixedSupplyMessage": "{net} 连接了以 {volts} 供电的芯片。跨越不同电源的信号需要电平转换器。"
+    "mixedSupplyMessage": "{net} 连接了以 {volts} 供电的芯片。跨越不同电源的信号需要电平转换器。",
+    "timing": "无法识别定时接法",
+    "timingMessage": "{chip}：{problems}。"
   },
   "about": {
     "subtitle": "TTL 面包板设计与仿真工具",
@@ -1294,7 +1325,10 @@
       "connection": "连接",
       "triggerEdge": "触发",
       "triggerInit": "触发初始值",
-      "fields": "引脚"
+      "fields": "引脚",
+      "ohms": "阻值",
+      "farads": "容值",
+      "timing": "定时"
     },
     "option": {
       "manual": "手动",
@@ -1314,7 +1348,12 @@
       "underpowered": "供电不足 — VCC 只有 {volts} V，低于该元件所需的 {rating}，因此处于不工作状态。",
       "reversed": "电源接反 — VCC 与 GND 接反了。",
       "damaged": "已损坏 — {volts} V 超过了该元件的额定 {rating}，让它冒了烟。停止仿真即可恢复。",
-      "unprogrammed": "未编程 — 尚未载入映像，因此该芯片读出的是随机噪声。"
+      "unprogrammed": "未编程 — 尚未载入映像，因此该芯片读出的是随机噪声。",
+      "timing": "无法识别定时接法 — {problems}。在按数据手册接线之前，其输出保持静止状态。"
+    },
+    "invalid": {
+      "ohms": "不是有效的阻值 — 请输入如 470、4.7k、4k7 或 2M2（0.1 Ω 至 1 GΩ）。",
+      "farads": "不是有效的容值 — 请带上单位，如 100p、10n、4.7µ、4u7 或 1m（1 pF 至 1 F）。"
     }
   },
   "memory": {
@@ -1668,6 +1707,26 @@
         "ignore-hello": "不应答下一次运行，使其以“无应答”停止",
         "wrong-signature": "以另一个设计的程序身份应答下一次运行，使其拒绝启动"
       }
+    }
+  },
+  "timing": {
+    "astable": "无稳态 — {frequency}，占空比 {duty}%",
+    "monostable": "单稳态 — 脉宽 {width}",
+    "bistable": "双稳态 — TRIG 为 LOW 时输出置为 HIGH，RESET 为 LOW 时清零",
+    "multivibrator": "无稳态：Q 为 {frequency}；单稳态：脉宽 {width}",
+    "oscillator": "RC 振荡器 — {frequency}",
+    "external": "对 φI 上的外部时钟计数",
+    "unused": "未使用",
+    "capped": "超出工作台可显示的速度：按 {cap} 绘制。",
+    "stretched": "短于工作台可显示的长度：按 {shown} 绘制。",
+    "notRecognised": "无法识别接线：{problems}。",
+    "section": "第 {section} 部分：{text}",
+    "problem": {
+      "noCapacitor": "{from} 到 {to} 之间没有定时电容",
+      "noResistor": "{from} 到 {to} 之间没有定时电阻",
+      "notConnected": "{pin} 未连接",
+      "ne555Unrecognised": "TRIG (2)、THRES (6) 与 DISCH (7) 的接法既不是无稳态（TRIG 与 THRES 相连，DISCH 位于 RA 与 RB 之间），也不是单稳态（THRES 与 DISCH 相连，TRIG 由外部驱动），也不是双稳态（THRES 接 GND，TRIG 由外部驱动）",
+      "cd4060Incomplete": "RC 振荡需要 φO (9) 引出的 Cx、φ̄O (10) 引出的 Rx 和 φI (11) 引出的 Rs，三者交汇于同一节点"
     }
   }
 }

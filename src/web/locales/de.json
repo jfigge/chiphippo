@@ -360,7 +360,9 @@
       "shiftregister": "Schieberegister",
       "signals": "SIGNALE",
       "switches": "Schalter",
-      "xor": "XOR"
+      "xor": "XOR",
+      "capacitors": "Kondensatoren",
+      "timer": "Timer"
     },
     "integration": {
       "output": "Ausgang",
@@ -745,6 +747,27 @@
     },
     "CD4053B": {
       "title": "Dreifach-2-Kanal-Analogmultiplexer/-demultiplexer"
+    },
+    "NE555": {
+      "title": "Timer 555"
+    },
+    "CD4047B": {
+      "title": "Monostabiler/astabiler Multivibrator"
+    },
+    "CD4060B": {
+      "title": "14-stufiger asynchroner Binärzähler mit Oszillator"
+    },
+    "CD4098B": {
+      "title": "Doppelter monostabiler Multivibrator"
+    },
+    "CD4538B": {
+      "title": "Doppelter monostabiler Präzisions-Multivibrator"
+    },
+    "cap-ceramic": {
+      "title": "Kondensator (Keramik)"
+    },
+    "cap-electrolytic": {
+      "title": "Kondensator (Elektrolyt)"
     }
   },
   "colors": {
@@ -1077,6 +1100,11 @@
         "one": "1 Signal wurde ausgelassen — dieser Tisch hat bereits die Höchstzahl an Signalen.",
         "other": "{count} Signale wurden ausgelassen — dieser Tisch hat bereits die Höchstzahl an Signalen."
       }
+    },
+    "capacitorNote": {
+      "title": "Kondensatoren in Chip Hippo",
+      "message": "Ein Kondensator trägt hier einen Wert — er filtert nicht, glättet nicht, speichert keine Ladung und verbindet nichts. Die Zeitgeber-Chips (555, CD4047B, CD4060B, CD4098B, CD4538B) lesen seinen Wert aus der Verdrahtung, und mit diesem Wert wird er nach KiCad exportiert.",
+      "dismiss": "Nicht mehr anzeigen"
     }
   },
   "workspace": {
@@ -1159,7 +1187,8 @@
       "integrations": {
         "one": "{count} Arduino-Ausgang oder -Eingang: eine Verbindung zu einer Platine, kein Bauteil",
         "other": "{count} Arduino-Ausgänge und -Eingänge: Verbindungen zu einer Platine, keine Bauteile"
-      }
+      },
+      "capacitor": "wird weggelassen: Ein Logiksimulator kennt keine Kondensatoren"
     }
   },
   "sim": {
@@ -1196,7 +1225,9 @@
       "other": "{chip} treibt auf {net} {loads} 74LS-Eingänge, kann aber nur {count} auf LOW halten. Puffere ihn mit einem CD4049UB oder CD4050B."
     },
     "mixedSupply": "Gemischte Versorgungsspannungen",
-    "mixedSupplyMessage": "{net} verbindet Chips, die mit {volts} versorgt werden. Ein Signal zwischen zwei Versorgungen braucht einen Pegelwandler."
+    "mixedSupplyMessage": "{net} verbindet Chips, die mit {volts} versorgt werden. Ein Signal zwischen zwei Versorgungen braucht einen Pegelwandler.",
+    "timing": "Zeitverhalten nicht erkannt",
+    "timingMessage": "{chip}: {problems}."
   },
   "about": {
     "subtitle": "TTL-Steckbrett-Entwurf & -Simulation",
@@ -1320,7 +1351,10 @@
       "connection": "Verbindung",
       "triggerEdge": "Trigger",
       "triggerInit": "Trigger beginnt",
-      "fields": "Pins"
+      "fields": "Pins",
+      "ohms": "Widerstandswert",
+      "farads": "Kapazität",
+      "timing": "Zeitverhalten"
     },
     "option": {
       "manual": "Manuell",
@@ -1340,7 +1374,12 @@
       "underpowered": "Unterversorgt — VCC liegt an {volts} V, unter den {rating}, die das Bauteil braucht, also läuft es untätig.",
       "reversed": "Versorgung verpolt — VCC und GND sind vertauscht.",
       "damaged": "Beschädigt — {volts} V liegen über den {rating} des Bauteils und haben den Rauch herausgelassen. Beim Anhalten der Simulation wird es wiederhergestellt.",
-      "unprogrammed": "Nicht programmiert — es ist kein Abbild geladen, der Chip liest zufälliges Rauschen."
+      "unprogrammed": "Nicht programmiert — es ist kein Abbild geladen, der Chip liest zufälliges Rauschen.",
+      "timing": "Zeitverhalten nicht erkannt — {problems}. Die Ausgänge bleiben in Ruhe, bis das Bauteil wie im Datenblatt beschaltet ist."
+    },
+    "invalid": {
+      "ohms": "Kein Widerstandswert — etwa 470, 4.7k, 4k7 oder 2M2 (0,1 Ω bis 1 GΩ).",
+      "farads": "Kein Kapazitätswert — mit Einheit angeben: 100p, 10n, 4.7µ, 4u7 oder 1m (1 pF bis 1 F)."
     }
   },
   "memory": {
@@ -1699,6 +1738,26 @@
         "ignore-hello": "Beim nächsten Lauf nicht antworten, sodass er mit „Keine Antwort“ anhält",
         "wrong-signature": "Dem nächsten Lauf als Sketch für einen anderen Entwurf antworten, sodass er nicht startet"
       }
+    }
+  },
+  "timing": {
+    "astable": "Astabil — {frequency}, Tastgrad {duty} %",
+    "monostable": "Monostabil — Impuls von {width}",
+    "bistable": "Bistabil — TRIG LOW setzt den Ausgang auf HIGH, RESET LOW setzt ihn zurück",
+    "multivibrator": "Astabil: Q mit {frequency}; monostabil: Impuls von {width}",
+    "oscillator": "RC-Oszillator — {frequency}",
+    "external": "Zählt einen externen Takt an φI",
+    "unused": "Nicht benutzt",
+    "capped": "Schneller, als der Tisch es zeigen kann: dargestellt mit {cap}.",
+    "stretched": "Kürzer, als der Tisch es zeigen kann: {shown} lang dargestellt.",
+    "notRecognised": "Beschaltung nicht erkannt: {problems}.",
+    "section": "Teil {section}: {text}",
+    "problem": {
+      "noCapacitor": "kein Zeitkondensator von {from} nach {to}",
+      "noResistor": "kein Zeitwiderstand von {from} nach {to}",
+      "notConnected": "{pin} ist nicht angeschlossen",
+      "ne555Unrecognised": "TRIG (2), THRES (6) und DISCH (7) sind weder astabil (TRIG und THRES verbunden, DISCH zwischen RA und RB), monostabil (THRES und DISCH verbunden, TRIG von außen angesteuert) noch bistabil (THRES an GND, TRIG von außen angesteuert) beschaltet",
+      "cd4060Incomplete": "der RC-Oszillator braucht Cx von φO (9), Rx von φ̄O (10) und Rs von φI (11), die sich alle in einem Knoten treffen"
     }
   }
 }

@@ -1559,6 +1559,84 @@
   fill: var(--color-part-inset);
 }
 
+/* The colour code, one class per band colour (model/resistor-bands.js). */
+.part-resistor-band--black {
+  fill: var(--color-band-black);
+}
+.part-resistor-band--brown {
+  fill: var(--color-band-brown);
+}
+.part-resistor-band--red {
+  fill: var(--color-band-red);
+}
+.part-resistor-band--orange {
+  fill: var(--color-band-orange);
+}
+.part-resistor-band--yellow {
+  fill: var(--color-band-yellow);
+}
+.part-resistor-band--green {
+  fill: var(--color-band-green);
+}
+.part-resistor-band--blue {
+  fill: var(--color-band-blue);
+}
+.part-resistor-band--violet {
+  fill: var(--color-band-violet);
+}
+.part-resistor-band--grey {
+  fill: var(--color-band-grey);
+}
+.part-resistor-band--white {
+  fill: var(--color-band-white);
+}
+.part-resistor-band--gold {
+  fill: var(--color-band-gold);
+}
+.part-resistor-band--silver {
+  fill: var(--color-band-silver);
+}
+
+/* Capacitors: a ceramic disc face-on, and an electrolytic's can from above
+   with its negative stripe. The value is printed on each, upright. */
+.part-cap-ceramic {
+  fill: var(--color-part-ceramic);
+  stroke: var(--color-part-inset);
+  stroke-width: 0.07;
+}
+
+.part-cap-can {
+  fill: var(--color-part-cap-can);
+  stroke: var(--color-part-inset);
+  stroke-width: 0.07;
+}
+
+.part-cap-stripe {
+  fill: var(--color-part-cap-stripe);
+}
+
+.part-cap-minus {
+  stroke: var(--color-part-cap-can);
+  stroke-width: 0.1;
+  stroke-linecap: round;
+}
+
+.part-cap-label {
+  font-family: var(--font-mono);
+  font-size: 0.5px; /* SVG user units = pitch units */
+  font-weight: 600;
+  user-select: none;
+  pointer-events: none;
+}
+
+.part-cap-label--cap-ceramic {
+  fill: var(--color-part-ceramic-text);
+}
+
+.part-cap-label--cap-electrolytic {
+  fill: var(--color-part-cap-text);
+}
+
 /* Bussed resistor array (rnet9): a beige SIP body over one row of legs, printed
    with its value and a dot at the common-bus end. */
 .part-rnet-body {
@@ -3492,6 +3570,42 @@ textarea.annotation-editor {
   font-size: var(--font-size-sm);
 }
 
+/* A read-only line of prose (a timer's Timing readout): stacked like a path,
+   but wrapped at words in the body face. */
+.properties-value--wrap {
+  min-height: 18px;
+  font-size: var(--font-size-sm);
+  line-height: 1.45;
+  white-space: pre-line;
+}
+
+/* A typed physical value (a resistor's Resistance, a capacitor's
+   Capacitance): the Name box's look, with the field's own error underneath
+   when what was typed does not read as one. */
+.properties-quantity {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.properties-quantity-input {
+  font-family: var(--font-mono);
+}
+
+.properties-quantity-input[aria-invalid="true"] {
+  border-color: var(--color-danger);
+}
+
+.properties-field-error {
+  color: var(--color-danger);
+  font-size: var(--font-size-xs);
+  line-height: 1.4;
+}
+
+.properties-field-error[hidden] {
+  display: none;
+}
+
 /* The shared segmented picker (components/segmented-picker.js): a DIALOG's
    form of the toolbar pill — one bordered track, borderless segments, the
    chosen one filled. Used by the Settings dialog (Theme, Wire layout, AI
@@ -4019,8 +4133,29 @@ textarea.annotation-editor {
 }
 
 .part-chip--unpowered .part-warn,
-.part-chip--unprogrammed .part-warn {
+.part-chip--unprogrammed .part-warn,
+.part-chip--timing .part-warn {
   display: block;
+}
+
+/* A timed part's readout (the 555, the RC-timed CD4000 parts): its rate or
+   pulse, printed small under the part number while it runs — amber when the
+   desk is drawing it slower (or a pulse longer) than true. */
+.part-chip-timing {
+  fill: var(--color-chip-label);
+  font-family: var(--font-mono);
+  font-size: 0.46px; /* SVG user units = pitch units */
+  opacity: 0.9;
+  user-select: none;
+}
+
+.part-chip--capped .part-chip-timing {
+  fill: var(--color-warning);
+  opacity: 1;
+}
+
+.part-chip--timing .part-chip-timing {
+  opacity: 0.25;
 }
 
 .part-chip--reversed .part-burn,

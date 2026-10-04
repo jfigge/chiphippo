@@ -145,6 +145,10 @@ net carries triggers a fresh settle while you&#39;re running:</p>
 <li>Turning a <strong>PSU</strong> on/off or changing its voltage.</li>
 <li>Changing a <strong>clock</strong>&#39;s rate or manual/free-running mode.</li>
 <li>A manual clock click, or (for sequential circuits) a <strong>Step</strong> advance.</li>
+<li>A <strong>timer</strong> reaching its next edge — a 555 or an RC-timed CD4000 part keeps
+its own time and re-settles the circuit at exactly the moment its output
+changes, with no clock brick involved (see
+<a href="chip-library.html#timers">Timers</a>).</li>
 </ul>
 <p>Each re-settle starts from the <em>previous</em> stable state rather than from
 scratch — this warm start is what lets a cross-coupled latch or a counter
@@ -171,6 +175,14 @@ with more than one clock keeps their relative timing. A clock never runs
 faster than 100 Hz, the top of its own rate list, so <code>×4</code> applied to a rate
 that is already a quarter of the way there has nothing further to give.</li>
 </ul>
+<p><strong>Timers keep simulated time, and the transport owns it.</strong> A 555 or a CD4000
+timer is told how long the circuit has been running — real seconds since
+<strong>Run</strong>, scaled by the speed. <strong>Pause</strong> stops that clock along with the clock
+bricks, so a pulse in progress is frozen where it is; <strong>Speed</strong> scales it, so
+a 1 Hz 555 blinks four times a second at <code>×4</code>; and <strong>Step</strong> moves it on with
+the clocks — by the fastest clock&#39;s half-period, or, with no clock brick on
+the desk, straight to the next moment a timer&#39;s output changes, so a circuit
+built round a 555 can be single-stepped edge by edge too.</p>
 <p>See <a href="power-and-clocks.html">Power &amp; Clock Sources</a> for placing and configuring
 a clock brick, and <a href="logic-analyzer.html">Logic Analyzer &amp; Timing</a> for
 capturing what these edges actually do to your signals over time.</p>
@@ -199,6 +211,10 @@ detail on reading and naming nets lives in
 <a href="probing.html">Probing &amp; Net Names</a> — this page won&#39;t duplicate it.</li>
 <li><strong>Clock bricks</strong> carry a small pulse lamp that tracks their own current
 output level in real time.</li>
+<li><strong>Timers</strong> print their rate or pulse length under their part number — in
+amber when it is faster than the desk can draw — and show a warning triangle
+when they cannot make out their own wiring. Hover either for the full
+sentence; see <a href="chip-library.html#timers">Timers</a>.</li>
 </ul>
 <h2 id="interacting-live">Interacting live</h2>
 <p>Switches, push buttons, and clock bricks stay fully interactive while

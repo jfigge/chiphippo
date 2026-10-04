@@ -71,7 +71,18 @@ import { HistoryStore } from "../model/history-store.js";
 import { partDef } from "../catalog/index.js";
 import { kitLabel, partTitle } from "../catalog/labels.js";
 import { supplyText } from "../catalog/families.js";
-import { isMemory, isRomChip, memoryConfig } from "../sim/chip-eval.js";
+import {
+  isMemory,
+  isRomChip,
+  isTimed,
+  memoryConfig,
+} from "../sim/chip-eval.js";
+import { buildNetlist } from "../sim/netlist.js";
+import { timingOf } from "../sim/rc-trace.js";
+import {
+  timingDescription,
+  timingProblemSentences,
+} from "../model/timing-summary.js";
 import { BreadboardView } from "./breadboard-view.js";
 import { RouteDebugLayer } from "./route-debug-layer.js";
 import { ChipView, buildChipSvg, chipBodyBox } from "./chip-view.js";
@@ -275,6 +286,7 @@ export class DeskController {
   #history = new HistoryStore();
   #restoring = false;
   #onHistoryChange;
+  #onPartPlaced; // a part was placed from the tray (app.js: the capacitor note)
   #onAddNetToAnalyzer; // shared with the probe: one analyzer entry point
   #onClockToggle;
   #onClockPause;
@@ -364,9 +376,11 @@ export class DeskController {
     getConnections,
     onOpenSettings,
     onOpenConnectionWindow,
+    onPartPlaced,
     netlist,
   }) {
     this.#viewport = viewport;
+    this.#onPartPlaced = onPartPlaced;
     this.#deskView = deskView;
     this.#doc = deskDoc;
     this.#onAddNetToAnalyzer = onAddNetToAnalyzer;
@@ -2343,6 +2357,10 @@ export class DeskController {
     // names them from `properties.field.<key>` / `properties.action.<key>`
     // (part-properties-dialog.js).
     const fields = [...(def?.properties ?? [])];
+    // A timed part says what it reads its wiring as — astable at what rate, a
+    // pulse how long, or why it cannot tell — derived, so a readonly.
+    if (isTimed(def))
+      fields.push({ key: "timing", type: "readonly", wrap: true });
     if (comp?.kind === "chip" && isMemory(def)) {
       // A volatile SRAM is never loaded from a file, so it never has one.
       if (isRomChip(def)) fields.push({ key: "imageSource", type: "readonly" });
@@ -2352,6 +2370,14 @@ export class DeskController {
       }
     }
     return fields;
+  }
+
+  /** What a timed part reads its own wiring as, for the Properties card's
+      Timing row — taken fresh from the desk as it stands (the same reading
+      the engine takes each tick), so it answers before anything has run. */
+  #timingLabel(comp) {
+    const doc = this.#doc.toJSON();
+    return timingDescription(timingOf(doc, buildNetlist(doc), comp));
   }
 
   /** The file a ROM's bytes came from, for the Properties card's readonly row:
@@ -2388,6 +2414,13 @@ export class DeskController {
     const keys = [];
     const status = this.#simOverlay.statusOf(id);
     if (status) keys.push(status);
+    // A timed part that cannot read its own R and C — the same verdict its
+    // triangle shows while it runs (a power fault speaks first there, and here
+    // both are listed, as an unprogrammed dead ROM's are).
+    const timingProblems = timingProblemSentences(
+      this.#simOverlay.timingOf(id),
+    );
+    if (timingProblems.length) keys.push("timing");
     if (
       isRomChip(partDef(comp.ref)) &&
       Boolean(comp.params?.storage?.guid) &&
@@ -2399,7 +2432,10 @@ export class DeskController {
     // rated for (its family's, Feature 400); the others ignore both.
     const volts = this.#simOverlay.voltsOf(id) ?? "?";
     const rating = supplyText(partDef(comp.ref));
-    return keys.map((key) => t(`properties.warning.${key}`, { volts, rating }));
+    const problems = timingProblems.join("; ");
+    return keys.map((key) =>
+      t(`properties.warning.${key}`, { volts, rating, problems }),
+    );
   }
 
   /** Open the shared Properties dialog (context menu → "Properties…") for a
@@ -2428,6 +2464,7 @@ export class DeskController {
         // A readonly whose value is DERIVED rather than stored — `values` is
         // the established route for one (the project's Location does the same).
         imageSource: this.#memorySourceLabel(comp),
+        timing: isTimed(def) ? this.#timingLabel(comp) : undefined,
       },
       onChange: (key, value) => this.#setComponentProperty(id, key, value),
       onAction: (key) => this.#onPropertyAction(id, key),
@@ -4779,8 +4816,10 @@ export class DeskController {
         m.anchor,
         m.turns ? { ...m.params, rot: 90, end: m.end } : m.params,
       );
+      this.#onPartPlaced?.(m.ref);
     } else {
       this.addComponentAt(m.ref, m.board, m.anchor, m.params);
+      this.#onPartPlaced?.(m.ref);
     }
   };
 

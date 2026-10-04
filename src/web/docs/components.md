@@ -2,7 +2,7 @@
 
 Everything that isn't a breadboard strip lives in the **Parts** palette on the
 left: 74LS and CD4000 logic chips, CPUs, 65xx interface chips, memory chips, switches, LEDs,
-displays, resistors, oscillators, and power/clock bricks. This page covers
+displays, resistors, capacitors, oscillators, the 555 timer, and power/clock bricks. This page covers
 finding a part, seating it on a board, and the (surprisingly varied) ways
 different parts rotate and flip once they're down.
 
@@ -19,8 +19,10 @@ The palette opens with every section collapsed, grouped by function:
   W65C02 and Z80A CPUs). Which logic family it shows — 74LS, CD4000, or both,
   each in a folder of its own — is **Settings → Data Sheets → Chip family**
   (see [Choosing a logic family](chip-library.md#choosing-a-logic-family)).
-- **COMPONENTS** — **Switches**, **Resistors**, **LEDs**, **Displays**,
-  **Oscillators**, and **Power**, in that shelf order.
+- **COMPONENTS** — **Switches**, **Resistors**, **Capacitors**, **LEDs**,
+  **Displays**, **Oscillators**, and **Power**, in that shelf order. The **555
+  timer** is under **Oscillators**: it belongs to neither logic family, so it
+  sits with the parts that make a clock rather than in CHIPS.
 - **Memory** — the ROM/RAM chips, pulled out of CHIPS into a top-level group
   of their own.
 - **ANNOTATIONS** — labels and notes (see
@@ -84,6 +86,71 @@ A few parts don't fit that linear model:
   16-way header along 16 adjacent holes in one row — but the module itself
   is much bigger than that row. See below.
 
+## Resistor and capacitor values
+
+A **resistor** has a **Resistance**, and a **capacitor** a **Capacitance**:
+right-click the part, choose **Properties…**, and type the value the way it is
+printed on a parts drawer or a schematic.
+
+| Resistance | Capacitance |
+| --- | --- |
+| `470`, `470R`, `470Ω`, `470 ohms` | `100p`, `100pF` |
+| `4.7k`, `4k7` | `10n`, `100nF` |
+| `1M`, `2M2`, `1G` | `4.7µ`, `4.7u`, `4u7`, `100µF` |
+| `0R1` (0.1 Ω) | `1m` (1 mF) |
+
+The letter can stand in for the decimal point (`4k7`, `2M2`, `4u7`), and a
+space before the unit is ignored. A resistance can be a bare number of ohms; a
+capacitance needs its prefix, because a bare `100` means 100 pF to one reader
+and 100 µF to another, and guessing would be off by a factor of a million.
+For the same reason a lowercase `m` on a resistor (milli-ohms) and an
+uppercase `M` on a capacitor (mega-farads, or the old "MF" for microfarads)
+are refused. Resistances run from 0.1 Ω to 1 GΩ, capacitances from 1 pF to
+1 F.
+
+Press Enter or move out of the field to apply it. A value that can't be read
+is marked in red under the field with examples of what it takes, and the part
+keeps the value it had, so nothing changes until you type one that reads. The
+value is stored exactly, and shown back in its tidy form (`4k7` becomes
+`4.7kΩ`).
+
+On the desk a resistor wears its **colour code** — four bands for a value two
+figures say (`4.7k`: yellow, violet, red, gold), five for one that needs three
+(`4.99k`) — and a capacitor has its value printed on it. Both values appear in
+the [Schematic View](schematic-view.md), the [BOM](build-guide.md), and the
+[KiCad export](exporting.md#kicad).
+
+A resistor's value changes nothing in the simulation: a resistor is a weak pull
+whatever it measures, and a lamp is lit or burnt by whether one is in the
+loop. Only the timing chips read it (below).
+
+## Capacitors
+
+**COMPONENTS ▸ Capacitors** holds two:
+
+- **Capacitor (ceramic)** — a disc, not polarised, leads one hole apart.
+- **Capacitor (electrolytic)** — a can with a stripe down its **negative**
+  side, leads one hole apart. Pin 1 is `+`, pin 2 is `−`.
+
+Both place, rotate and bend exactly like a resistor (see
+[Rotating & flipping](#rotating--flipping)), and they take holes the way any
+part does, so a wire or a pin can't share one.
+
+**A capacitor carries a value, not charge.** It does not filter, smooth,
+decouple or store anything, and it connects nothing: the simulation treats it
+as open, even when its legs sit across the two rails. What it is for is the
+**timing chips** — the 555, the CD4047B, the CD4060B, the CD4098B and the
+CD4538B read the capacitor (and the resistors) wired to their timing pins and
+run at the rate the datasheet gives for those values; see
+[Timers](chip-library.md#timers). A capacitor still counts as connected when
+the checks ask whether a net has anything on it.
+
+A reversed electrolytic makes no difference to the simulation. Watch the
+stripe anyway if you mean to build it.
+
+The first time you place a capacitor a note says all this; **Don't show
+again** puts it away for good.
+
 ## Character LCD modules
 
 The **Displays** group holds two HD44780 character-LCD modules: a 16×2
@@ -130,7 +197,7 @@ move — position 1 is still position 1, just wired to the opposite pins now).
 Neither has the turn-in-hand behavior of a plain LED — treat them as chips
 for rotation purposes.
 
-**Resistor and LED (`R`, both while placing and once placed).** These
+**Resistor, capacitor and LED (`R`, both while placing and once placed).** These
 two-lead parts start in a horizontal **footprint** form (pin 1 and pin 2 a
 fixed span apart along one row). Press `R` while the ghost is armed to turn
 it into a vertical **two-free-ends** form instead: pin 1 stays at the anchor

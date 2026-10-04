@@ -66,6 +66,8 @@ function labelWidth(text) {
 const SHAPE_SIZES = Object.freeze({
   led: { w: 3.2, h: 5 },
   resistor: { w: 6, h: 2.4 },
+  capacitor: { w: 5, h: 3 },
+  "capacitor-polarized": { w: 5, h: 3 },
   switch: { w: 5, h: 4.4 },
   button: { w: 5, h: 2.8 },
   psu: { w: 5, h: 5 },

@@ -57,6 +57,16 @@
 // external clock edge is consumed on the first pass (synchronous parts step
 // exactly once, byte-for-byte the old two-phase result), yet a NEW internal
 // edge that a just-updated output creates is still observed (ripple cascades).
+//
+// Timed parts (the 555, the RC-timed CD4000 parts — sim/timing.js): the engine
+// still keeps no time. `tick` is handed `now` (simulated seconds, owned by
+// SimController), each timed part reads its R and C off the wiring once per
+// context (sim/rc-trace.js → the def's `timing`), its `step` sees
+// `{now, timing}`, and the tick reports `wakeAt` — the earliest moment any of
+// them next changes on its own — so the controller knows when to tick again.
+// A capacitor joins no net and drives nothing; the one place the engine sees
+// one is the floating-input check, where a CMOS input whose only company is a
+// capacitor is not called floating.
 
 import { H, L, Z, X } from "./levels.js";
 import {
@@ -70,10 +80,13 @@ import {
   isMemory,
   isOscillator,
   isAnalogSwitch,
+  isTimed,
+  wakeAtOf,
   channelStates,
   memoryOutputs,
   memoryWrite,
 } from "./chip-eval.js";
+import { rcTrace, timingProbe } from "./rc-trace.js";
 import { resolveNet } from "./resolve.js";
 import { UnionFind } from "./union-find.js";
 import { partDef } from "../catalog/index.js";
@@ -220,6 +233,10 @@ function buildContext(doc, netlist) {
     }
   }
 
+  // The capacitors and resistors as a timing part reads them (and the one
+  // thing the engine itself asks of a capacitor: is there one on this net?).
+  const trace = rcTrace(doc, netlist);
+
   // Chips (combinational + sequential): pin→net maps + power status.
   const chips = [];
   const chipStatus = new Map();
@@ -268,11 +285,15 @@ function buildContext(doc, netlist) {
     chipStatus.set(comp.id, { status, volts });
     const oscillator = isOscillator(def);
     const analogSwitch = isAnalogSwitch(def);
+    const timed = isTimed(def);
     chips.push({
       comp,
       def,
       pinNet,
       status,
+      // A timed part's reading of its own R and C — a fact about the frozen
+      // topology (and the parts' values), so it is taken once per context.
+      timing: timed ? def.logic.timing(timingProbe(trace, pinNet)) : null,
       sequential: isSequential(def),
       memory: isMemory(def),
       analogSwitch,
@@ -299,6 +320,7 @@ function buildContext(doc, netlist) {
     clocks,
     signals,
     resistors,
+    trace,
     chips,
     chipStatus,
     // Whether any part limits an LED's current — when none does, the LED
@@ -726,6 +748,9 @@ function floatingInputWarnings(ctx, levels) {
       .filter((p) => p.role === "input")
       .filter((p) => {
         const net = c.pinNet.get(p.n);
+        // A capacitor on the net counts as a connection: a pin wired to one
+        // is wired, whatever DC level it settles at.
+        if (net && ctx.trace.hasCapacitor(net)) return false;
         return !net || (levels.get(net) ?? Z) === Z;
       })
       .map((p) => p.n);
@@ -751,6 +776,20 @@ function assemble(ctx, solved, extra = {}) {
   }
   warnings.push(...floatingInputWarnings(ctx, solved.levels));
   warnings.push(...ctx.boundaryWarnings);
+  // A timed part whose wiring it cannot read says so rather than guess — and
+  // holds its outputs at a defined level meanwhile (each def's own `step`).
+  const timing = new Map();
+  for (const c of ctx.chips) {
+    if (!c.timing) continue;
+    timing.set(c.comp.id, c.timing);
+    if (c.status === CHIP_STATUS.OK && c.timing.problems?.length) {
+      warnings.push({
+        type: "timing",
+        chip: c.comp.id,
+        problems: c.timing.problems,
+      });
+    }
+  }
   return {
     netLevels: solved.levels,
     strongLevels: solved.strong,
@@ -758,6 +797,7 @@ function assemble(ctx, solved, extra = {}) {
     warnings: dedupe(warnings),
     iterations: solved.iterations,
     settled: solved.settled,
+    timing,
     ...extra,
   };
 }
@@ -847,8 +887,11 @@ function samplePins(c, levels) {
  *   planted flag is holding (run-volatile; SimController owns it).
  * @param {Map<string,Uint8Array|Uint16Array>} [opts.images] - per-memory byte
  *   images (read-only input; writes are REPORTED via `memWrites`, not applied).
+ * @param {number} [opts.now] - simulated seconds since Run, handed to every
+ *   timed part's step (sim/timing.js). Nothing else reads it.
  * @returns {{netLevels, chipStatus, warnings, iterations, settled,
- *   state: Map, pinLevels: Map, memWrites: Array<{compId,addr,value}>}}
+ *   state: Map, pinLevels: Map, memWrites: Array<{compId,addr,value}>,
+ *   timing: Map, wakeAt: number|null}}
  */
 export function tick({
   document: doc,
@@ -859,6 +902,7 @@ export function tick({
   clockPhase = new Map(),
   signalLevels = new Map(),
   images = new Map(),
+  now = 0,
 }) {
   const ctx = buildContext(doc, netlist);
 
@@ -901,7 +945,10 @@ export function tick({
       const current = curState.get(c.comp.id) ?? initialState(c.def);
       const next =
         c.status === CHIP_STATUS.OK
-          ? stepChip(c.def, current, ins, prevIns.get(c.comp.id) ?? null)
+          ? stepChip(c.def, current, ins, prevIns.get(c.comp.id) ?? null, {
+              now,
+              timing: c.timing,
+            })
           : current; // inert chip holds; drives nothing
       if (!sameState(next, current)) changed.add(c.comp.id);
       nextState.set(c.comp.id, next);
@@ -964,10 +1011,22 @@ export function tick({
     if (nets.size) extraWarnings.push({ type: "oscillation", nets: [...nets] });
   }
 
+  // When the controller must tick again for a timed part to move on its own:
+  // the earliest pending change across every powered one (null: none).
+  let wakeAt = null;
+  for (const c of ctx.chips) {
+    if (!c.timing || c.status !== CHIP_STATUS.OK) continue;
+    const at = wakeAtOf(c.def, curState.get(c.comp.id));
+    if (at != null && Number.isFinite(at)) {
+      wakeAt = wakeAt == null ? at : Math.min(wakeAt, at);
+    }
+  }
+
   const result = assemble(ctx, solved, {
     state: curState,
     pinLevels: finalIns,
     memWrites,
+    wakeAt,
   });
   if (extraWarnings.length) {
     result.warnings = dedupe([...result.warnings, ...extraWarnings]);

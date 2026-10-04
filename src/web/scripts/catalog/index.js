@@ -28,6 +28,8 @@ import { CHIPS_MEM } from "./chips-mem.js";
 import { CHIPS_IO } from "./chips-io.js";
 import { CHIPS_CPU } from "./chips-cpu.js";
 import { CHIPS_CD4000 } from "./chips-cd4000.js";
+import { CHIPS_CD4000_TIMERS } from "./chips-cd4000-timers.js";
+import { CHIPS_555 } from "./chips-555.js";
 import { PART_DEFS } from "./parts.js";
 import { familyOf } from "./families.js";
 
@@ -67,9 +69,10 @@ function normalizeStorage(raw) {
 }
 
 /** Every chip def, in palette display order (combinational gates, then the
-    sequential & MSI wave, then the CD4000 CMOS family). The logic modules are
-    stamped with their `family`; memory, the 65xx peripherals and the CPUs are
-    family-less (catalog/families.js says why). `kind` is stamped uniformly, and a
+    sequential & MSI wave, then the CD4000 CMOS family and its RC-timed
+    parts). The logic modules are stamped with their `family`; memory, the 65xx
+    peripherals, the CPUs and the 555 are family-less (catalog/families.js says
+    why — the 555 is shelved under COMPONENTS, palette-panel.js says why). `kind` is stamped uniformly, and a
     `normalizeParams` that preserves the `damaged` flag (Feature 90's
     magic-smoke bookkeeping) and, for a non-volatile memory chip, its backing-
     file `storage` (the guid, plus the file its image was loaded from) and its
@@ -80,9 +83,11 @@ export const CHIP_DEFS = Object.freeze(
     ...ofFamily("74LS", CHIPS_SEQ),
     ...ofFamily("74LS", CHIPS_74LS),
     ...ofFamily("CD4000", CHIPS_CD4000),
+    ...ofFamily("CD4000", CHIPS_CD4000_TIMERS),
     ...CHIPS_MEM,
     ...CHIPS_IO,
     ...CHIPS_CPU,
+    ...CHIPS_555,
   ].map((def) =>
     Object.freeze({
       kind: "chip",

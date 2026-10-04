@@ -45,8 +45,18 @@
 // project's or a desktop's Location, which Save As is what changes),
 // `"wire-gauge"` (the workshop drawing of a wire, dimensioned in cm — see
 // below), `"pin-fields"` (an Output/Input element's ordered bit/byte/word
-// fields — pin-fields-editor.js; its value is the whole list), and
-// `"separator"` (a plain divider, no key/control). A value field may also
+// fields — pin-fields-editor.js; its value is the whole list), `"quantity"`
+// (a typed physical value — a resistor's Resistance, a capacitor's
+// Capacitance — see below), and `"separator"` (a plain divider, no
+// key/control).
+//
+// `"quantity"` is a text box whose descriptor carries its own `parse(text)`
+// (→ a number, or null) and `format(value)` (→ the text shown), so the value
+// is typed the way a bench writes it ("4k7", "100n") and STORED as a number.
+// Text that does not parse is refused AT THE FIELD: an error under the box
+// says what would, `onChange` is never called, and the stored value stays as
+// it was — the dialog's live-apply rule would otherwise write a half-typed
+// value into the part. The typed text stays in the box so it can be fixed. A value field may also
 // carry an `action` (`{key, label, icon}`): the same command an `"action"`
 // field fires, drawn as an icon button to the RIGHT of the control, for a
 // command that belongs to that one row.
@@ -236,15 +246,61 @@ function buildTextarea(field, value, onChange) {
 
 /** A value the dialog SHOWS but does not edit — a project's or a desktop's
     Location, which Save As is what changes. The full text is on the title too,
-    since a path can be longer than the row. */
+    since a path can be longer than the row. A `wrap` field (a timer's Timing
+    readout) is prose rather than a path, so it wraps at words, in the body
+    face. */
 function buildReadonly(field, value) {
   const shown = value == null || value === "" ? "" : String(value);
   return el("span", {
-    class: "properties-value properties-value--path",
+    class: field.wrap
+      ? "properties-value properties-value--wrap"
+      : "properties-value properties-value--path",
     text: shown,
     title: shown,
     "aria-label": fieldLabel(field),
   });
+}
+
+/** The sentence a `"quantity"` field shows when its text does not parse —
+    `properties.invalid.<key>`, the catalog's English as the fallback. */
+const invalidMessage = (field) =>
+  tf(`properties.invalid.${field.key}`, field.invalid ?? "");
+
+/**
+ * A typed physical value (see the note at the top of this file): commits on
+ * `change` like the Name box, parses with the field's own `parse`, and either
+ * writes the number (showing it back in its tidy form — "4k7" reads "4.7kΩ")
+ * or refuses it with an error under the box and the stored value untouched.
+ */
+function buildQuantity(field, value, onChange) {
+  const shown = (v) =>
+    v == null ? "" : field.format ? field.format(v) : String(v);
+  const input = el("input", {
+    type: "text",
+    class: "properties-text-input properties-quantity-input",
+    value: shown(value),
+    spellcheck: false,
+    "aria-label": fieldLabel(field),
+  });
+  const error = el("span", {
+    class: "properties-field-error",
+    role: "alert",
+    hidden: true,
+    text: invalidMessage(field),
+  });
+  input.addEventListener("change", () => {
+    const parsed = field.parse(input.value);
+    if (parsed == null) {
+      error.hidden = false;
+      input.setAttribute("aria-invalid", "true");
+      return;
+    }
+    error.hidden = true;
+    input.removeAttribute("aria-invalid");
+    input.value = shown(parsed);
+    onChange(field.key, parsed);
+  });
+  return el("span", { class: "properties-quantity" }, [input, error]);
 }
 
 /** Build one field's control by its declared `type`. New types extend this
@@ -279,6 +335,9 @@ function buildControl(field, value, onChange) {
   if (field.type === "text") {
     return buildTextInput(field, value, onChange);
   }
+  if (field.type === "quantity") {
+    return buildQuantity(field, value, onChange);
+  }
   if (field.type === "textarea") {
     return buildTextarea(field, value, onChange);
   }
@@ -294,7 +353,13 @@ function buildControl(field, value, onChange) {
 
 /** A plain divider between the universal Name/Description pair and a part's
     own catalog-declared properties. */
-const STACKED_TYPES = new Set(["text", "textarea", "readonly", "pin-fields"]);
+const STACKED_TYPES = new Set([
+  "text",
+  "textarea",
+  "readonly",
+  "pin-fields",
+  "quantity",
+]);
 
 function buildRow(field, value, onChange, onAction) {
   if (field.type === "separator") {

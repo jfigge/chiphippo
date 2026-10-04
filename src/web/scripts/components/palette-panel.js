@@ -83,15 +83,25 @@ const MEMORY_GROUP = "Memory";
 const COMPONENTS_FOLDER = "COMPONENTS";
 
 /** The order the COMPONENTS sub-groups render in (catalog order is by first
-    appearance, which reads oddly; this is the intended shelf order). */
+    appearance, which reads oddly; this is the intended shelf order). It is
+    also WHAT the shelf holds: a group named here is a COMPONENTS group
+    whatever its members are — which is how the 555, a chip, sits in
+    Oscillators beside the crystal cans, where someone looking for a clock
+    looks, rather than in a CHIPS group of its own. */
 const COMPONENT_ORDER = [
   "Switches",
   "Resistors",
+  "Capacitors",
   "LEDs",
   "Displays",
   "Oscillators",
   "Power",
 ];
+
+/** Is `group` shelved under COMPONENTS? Every group COMPONENT_ORDER names,
+    plus any other group whose parts are not chips. */
+const isComponentGroup = (group, members) =>
+  COMPONENT_ORDER.includes(group) || members[0]?.kind !== "chip";
 
 /** The order the chip groups render in, in EVERY family: where each group
     first appears in the whole catalog. 74LS parts lead the catalog, so this is
@@ -238,9 +248,9 @@ function foldersOf(name) {
   const slash = name.indexOf("/");
   if (slash > 0) return [name.slice(0, slash), CHIPS_FOLDER];
   if (name === MEMORY_GROUP) return [];
-  const def = PALETTE_DEFS.find((d) => d.group === name);
-  if (!def) return [];
-  return [def.kind === "chip" ? CHIPS_FOLDER : COMPONENTS_FOLDER];
+  const members = PALETTE_DEFS.filter((d) => d.group === name);
+  if (!members.length) return [];
+  return [isComponentGroup(name, members) ? COMPONENTS_FOLDER : CHIPS_FOLDER];
 }
 
 export class PalettePanel {
@@ -623,13 +633,15 @@ export class PalettePanel {
     // Three top-level buckets: logic chips nest under the CHIPS folder; memory
     // chips are pulled out into their own group below it; every non-chip part
     // nests under the COMPONENTS folder. A group is a chip group when its
-    // members are chips (the catalog stamps `kind: "chip"`).
+    // members are chips (the catalog stamps `kind: "chip"`) — unless it is one
+    // of the COMPONENTS shelf's own (isComponentGroup).
     const chipGroups = [];
     const componentGroups = [];
     let memoryMembers = null;
     for (const entry of groups.values()) {
-      if (entry.members[0]?.kind !== "chip") componentGroups.push(entry);
-      else if (entry.group === MEMORY_GROUP) memoryMembers = entry.members;
+      if (isComponentGroup(entry.group, entry.members)) {
+        componentGroups.push(entry);
+      } else if (entry.group === MEMORY_GROUP) memoryMembers = entry.members;
       else chipGroups.push(entry);
     }
     componentGroups.sort(

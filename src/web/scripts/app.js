@@ -1659,6 +1659,8 @@ async function init() {
     onOpenSettings: (tab) => openSettings(tab),
     onOpenConnectionWindow: (id) =>
       Promise.resolve(bridge?.serial?.log?.open?.(id)).catch(() => {}),
+    // A part dropped from the tray — the capacitor's one-time note.
+    onPartPlaced: (ref) => noteCapacitorPlaced(ref),
     // A part's (or a wire's) "Pin Assignment" context-menu item → its
     // floating pin/terminal-assignments OS window (`rows` sizes it to the
     // layout; `rot` is a snapshot of the part's placed rotation — only an
@@ -1798,6 +1800,34 @@ async function init() {
 
   // ── Simulation transport (Feature 90/100): Run/Stop, Pause, Step, speed ──
   const notifications = new NotificationStack(document.body);
+
+  /**
+   * A capacitor just landed on the board: say, once and out of the way, what
+   * one is in this simulator — a value-carrying part that does not filter,
+   * smooth or store charge, read by the timing chips and written into a KiCad
+   * export. A toast rather than a dialog (nothing waits on it), with "Don't
+   * show again" for good; a FUNCTION declaration so the controller's callback,
+   * wired above, reaches it.
+   */
+  function noteCapacitorPlaced(ref) {
+    if (!partDef(ref)?.capacitor) return;
+    if (currentSettings.capacitorNoteDismissed === true) return;
+    notifications.notify({
+      key: "capacitor-note",
+      variant: "info",
+      title: t("desk.capacitorNote.title"),
+      message: t("desk.capacitorNote.message"),
+      actionLabel: t("desk.capacitorNote.dismiss"),
+      onAction: () => {
+        currentSettings = { ...currentSettings, capacitorNoteDismissed: true };
+        bridge.settings
+          .set({ capacitorNoteDismissed: true })
+          .catch((err) =>
+            console.error("[renderer] settings:set failed:", err),
+          );
+      },
+    });
+  }
   exporter = new DesktopExporter({ bridge, notifications });
 
   // The Arduino serial integration. Its settings writes go straight to the

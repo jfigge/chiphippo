@@ -9,13 +9,13 @@
        'none'; the inline <style> is what needs 'unsafe-inline'. -->
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'" />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-  <meta name="description" content="Every chip Chip Hippo simulates — 102 74LS TTL and CD4000 CMOS logic, memory, interface and processor parts, each with a datasheet-accurate pinout." />
+  <meta name="description" content="Every chip Chip Hippo simulates — 107 74LS TTL and CD4000 CMOS logic, memory, interface and processor parts, each with a datasheet-accurate pinout." />
   <title>Supported chips — Chip Hippo</title>
   <link rel="canonical" href="https://chiphippo.com/chips.html" />
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="Chip Hippo" />
   <meta property="og:title" content="Supported chips — Chip Hippo" />
-  <meta property="og:description" content="Every chip Chip Hippo simulates — 102 74LS TTL and CD4000 CMOS logic, memory, interface and processor parts, each with a datasheet-accurate pinout." />
+  <meta property="og:description" content="Every chip Chip Hippo simulates — 107 74LS TTL and CD4000 CMOS logic, memory, interface and processor parts, each with a datasheet-accurate pinout." />
   <meta property="og:url" content="https://chiphippo.com/chips.html" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -120,10 +120,10 @@
   <p class="page-tag">Catalog</p>
   <h1>Supported chips</h1>
   <p>
-    Chip Hippo ships <strong>102 chips</strong>, every one with a datasheet-accurate
+    Chip Hippo ships <strong>107 chips</strong>, every one with a datasheet-accurate
     pinout and a working simulation you can wire up and run — logic from two families,
     74LS TTL and CD4000 CMOS, listed 74LS first in each table.
-    <strong>91</strong> of them carry a built-in example circuit, marked
+    <strong>93</strong> of them carry a built-in example circuit, marked
     <span class="example-mark" aria-hidden="true">✦</span> below: open the chip's
     <em>Pin Assignment</em> window and click its example button to drop a working bench
     onto a new desktop. The memory, interface and processor chips have none — a RAM or
@@ -139,7 +139,8 @@
   <ul class="chip-jump" aria-label="Chip sections">
     <li><a href="#gates">Gates &amp; buffers <span class="count">41</span></a></li>
     <li><a href="#registers">Flip-flops, latches &amp; registers <span class="count">16</span></a></li>
-    <li><a href="#counters">Counters &amp; shift registers <span class="count">16</span></a></li>
+    <li><a href="#counters">Counters &amp; shift registers <span class="count">17</span></a></li>
+    <li><a href="#timers">Timers <span class="count">4</span></a></li>
     <li><a href="#decoders">Decoders, encoders &amp; multiplexers <span class="count">12</span></a></li>
     <li><a href="#arithmetic">Arithmetic, comparison &amp; display <span class="count">6</span></a></li>
     <li><a href="#memory">Memory <span class="count">7</span></a></li>
@@ -225,7 +226,7 @@
     </table>
   </div>
 
-  <h2 id="counters">Counters &amp; shift registers <span class="count">16</span></h2>
+  <h2 id="counters">Counters &amp; shift registers <span class="count">17</span></h2>
   <div class="table-wrap">
     <table class="chip-table">
       <thead>
@@ -242,12 +243,28 @@
         <tr><td><code>CD4024B</code> <span class="example-mark" role="img" aria-label="has an example circuit" title="Has a built-in example circuit">✦</span></td><td>7-stage binary ripple counter</td><td>DIP-14</td></tr>
         <tr><td><code>CD4029B</code> <span class="example-mark" role="img" aria-label="has an example circuit" title="Has a built-in example circuit">✦</span></td><td>Presettable up/down counter, binary or decade</td><td>DIP-16</td></tr>
         <tr><td><code>CD4040B</code> <span class="example-mark" role="img" aria-label="has an example circuit" title="Has a built-in example circuit">✦</span></td><td>12-stage binary ripple counter</td><td>DIP-16</td></tr>
+        <tr><td><code>CD4060B</code> <span class="example-mark" role="img" aria-label="has an example circuit" title="Has a built-in example circuit">✦</span></td><td>14-stage ripple counter with oscillator</td><td>DIP-16</td></tr>
         <tr><td><code>CD4510B</code> <span class="example-mark" role="img" aria-label="has an example circuit" title="Has a built-in example circuit">✦</span></td><td>Presettable BCD up/down counter</td><td>DIP-16</td></tr>
         <tr><td><code>CD4516B</code> <span class="example-mark" role="img" aria-label="has an example circuit" title="Has a built-in example circuit">✦</span></td><td>Presettable binary up/down counter</td><td>DIP-16</td></tr>
         <tr><td><code>74LS164</code> <span class="example-mark" role="img" aria-label="has an example circuit" title="Has a built-in example circuit">✦</span></td><td>8-bit SIPO shift register</td><td>DIP-14</td></tr>
         <tr><td><code>74LS165</code> <span class="example-mark" role="img" aria-label="has an example circuit" title="Has a built-in example circuit">✦</span></td><td>8-bit PISO shift register</td><td>DIP-16</td></tr>
         <tr><td><code>74LS595</code> <span class="example-mark" role="img" aria-label="has an example circuit" title="Has a built-in example circuit">✦</span></td><td>8-bit shift register, output latch</td><td>DIP-16</td></tr>
         <tr><td><code>CD4094B</code> <span class="example-mark" role="img" aria-label="has an example circuit" title="Has a built-in example circuit">✦</span></td><td>8-stage shift-and-store register, 3-state</td><td>DIP-16</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2 id="timers">Timers <span class="count">4</span></h2>
+  <div class="table-wrap">
+    <table class="chip-table">
+      <thead>
+        <tr><th scope="col">Part</th><th scope="col">Function</th><th scope="col">Package</th></tr>
+      </thead>
+      <tbody>
+        <tr><td><code>CD4047B</code></td><td>Monostable/astable multivibrator</td><td>DIP-14</td></tr>
+        <tr><td><code>CD4098B</code></td><td>Dual monostable multivibrator</td><td>DIP-16</td></tr>
+        <tr><td><code>CD4538B</code></td><td>Dual precision monostable multivibrator</td><td>DIP-16</td></tr>
+        <tr><td><code>NE555</code> <span class="example-mark" role="img" aria-label="has an example circuit" title="Has a built-in example circuit">✦</span></td><td>555 timer</td><td>DIP-8</td></tr>
       </tbody>
     </table>
   </div>

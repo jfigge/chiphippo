@@ -54,6 +54,8 @@ import { tristateEnables } from "./autobuild-verify.js";
 import { settle } from "../sim/engine.js";
 import { junctionState } from "../sim/junction.js";
 import { L, Z } from "../sim/levels.js";
+import { rcTrace } from "../sim/rc-trace.js";
+import { timingProblemSentences } from "./timing-summary.js";
 
 /** A finding that stops the circuit working as built. */
 export const FAULT = "fault";
@@ -171,6 +173,7 @@ export function reviewDesk(document, netlist) {
     doc.components.filter((c) => c.kind === "clock").map((c) => [c.id, L]),
   );
   const settled = settle({ document: doc, netlist, clockPhase });
+  const trace = rcTrace(doc, netlist);
 
   for (const w of settled.warnings ?? []) {
     findings.push(engineFinding(w, doc));
@@ -316,6 +319,9 @@ export function reviewDesk(document, netlist) {
       if (outputEnables(def).includes(p.n)) continue;
       if (live && !live.has(p.n)) continue;
       const address = addressOf.get(p.n);
+      // A capacitor on the pin's net counts as a connection (a 555's TRIG on
+      // its timing capacitor is wired, whatever DC level it settles at).
+      if (address != null && trace.hasCapacitor(netlist.netOfPoint.get(address))) continue; // prettier-ignore
       const level =
         address == null
           ? Z
@@ -572,6 +578,18 @@ function engineFinding(w, doc) {
           },
         ),
         { componentId: w.chip, netId: w.net },
+      );
+    case "timing":
+      // A timer that cannot read its own R and C — the SimController's
+      // sentence, so the toast and the review say it the same way.
+      return finding(
+        "TIMING_UNRECOGNISED",
+        FAULT,
+        tf("sim.timingMessage", "{chip}: {problems}.", {
+          chip: chipName(w.chip),
+          problems: timingProblemSentences(w).join("; "),
+        }),
+        { componentId: w.chip },
       );
     case "mixed-supply":
       return finding(

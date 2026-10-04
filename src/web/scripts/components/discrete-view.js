@@ -38,6 +38,8 @@ import { holePosition, rotateOffset } from "../model/breadboard.js";
 import { partDef } from "../catalog/index.js";
 import { packageSpec } from "../model/footprints.js";
 import { formatOhms } from "../model/ohm-format.js";
+import { formatFarads } from "../model/farad-format.js";
+import { resistorBands } from "../model/resistor-bands.js";
 import { chipBox } from "./chip-view.js";
 import {
   buildBurnOverlay,
@@ -62,6 +64,19 @@ const BOXES = Object.freeze({
   }),
   led: Object.freeze({ minX: -0.7, minY: -1.2, width: 2.4, height: 2.4 }),
   resistor: Object.freeze({ minX: -0.7, minY: -1.1, width: 4.4, height: 2.2 }),
+  // A disc and a radial can, each over adjacent holes 0 and 1.
+  "cap-ceramic": Object.freeze({
+    minX: -0.7,
+    minY: -1.1,
+    width: 2.4,
+    height: 2.2,
+  }),
+  "cap-electrolytic": Object.freeze({
+    minX: -0.7,
+    minY: -1.2,
+    width: 2.4,
+    height: 2.4,
+  }),
   // A 9-pin SIP standing over one row of holes (like the displays), body above
   // so every hole stays clickable for wiring.
   rnet9: Object.freeze({ minX: -0.7, minY: -2.9, width: 9.4, height: 3.5 }),
@@ -147,7 +162,7 @@ export function discreteBox(ref, rot = 0) {
 const SPAN_BODIES = Object.freeze({
   resistor: Object.freeze({
     pad: 0.9, // body half-height 0.5 (the 1.6-wide hit stroke wants 0.8)
-    build: (m) => [
+    build: (m, params) => [
       svgEl("rect", {
         class: "part-resistor-body",
         x: m.x - 1,
@@ -156,16 +171,48 @@ const SPAN_BODIES = Object.freeze({
         height: 1,
         rx: 0.4,
       }),
-      ...[-0.4, 0, 0.4].map((off) =>
-        svgEl("rect", {
-          class: "part-resistor-band",
-          x: m.x + off - 0.07,
-          y: m.y - 0.45,
-          width: 0.14,
-          height: 0.9,
-        }),
-      ),
+      ...resistorBandRects(m, params.ohms),
     ],
+  }),
+  // A ceramic disc, seen face-on: its value is printed on it (upright — see
+  // buildSpanSvg), and it carries no polarity.
+  "cap-ceramic": Object.freeze({
+    pad: 1,
+    build: (m) => [
+      svgEl("circle", {
+        class: "part-cap-ceramic",
+        cx: m.x,
+        cy: m.y,
+        r: 0.78,
+      }),
+    ],
+  }),
+  // A radial electrolytic, seen from above: the can, and the printed stripe
+  // down the side of the NEGATIVE lead — pin 2, at +x in this frame — with its
+  // minus sign. The value is printed beside the stripe, not across it
+  // (`label`: its shift along the body, in this frame).
+  "cap-electrolytic": Object.freeze({
+    pad: 1.05,
+    label: -0.2,
+    build: (m) => {
+      const r = 0.88;
+      const d = 0.5; // where the stripe starts, from the centre
+      const h = Math.sqrt(r * r - d * d);
+      return [
+        svgEl("circle", { class: "part-cap-can", cx: m.x, cy: m.y, r }),
+        svgEl("path", {
+          class: "part-cap-stripe",
+          d: `M ${m.x + d} ${m.y - h} A ${r} ${r} 0 0 1 ${m.x + d} ${m.y + h} Z`,
+        }),
+        svgEl("line", {
+          class: "part-cap-minus",
+          x1: m.x + d + 0.12,
+          y1: m.y,
+          x2: m.x + d + 0.34,
+          y2: m.y,
+        }),
+      ];
+    },
   }),
   // Dome centred on the pin-to-pin midpoint (both axes — swapping which hole
   // either pin lands in never moves it) with the flat chord marking the
@@ -192,6 +239,49 @@ const SPAN_BODIES = Object.freeze({
 
 const DEFAULT_SPAN_PAD = 0.9;
 
+/**
+ * A resistor's colour code (model/resistor-bands.js) as band rects across a
+ * body two units long centred on `m`: the value bands grouped from the left
+ * end, the tolerance band set apart at the right — which is how the real
+ * part says which end to read from.
+ */
+function resistorBandRects(m, ohms) {
+  const bands = resistorBands(ohms);
+  if (!bands.length) return [];
+  const value = bands.slice(0, -1);
+  const pitch = value.length > 3 ? 0.22 : 0.26;
+  const first = -0.62;
+  const at = [...value.map((_, i) => first + i * pitch), 0.62];
+  return bands.map((color, i) =>
+    svgEl("rect", {
+      class: `part-resistor-band part-resistor-band--${color}`,
+      x: m.x + at[i] - 0.065,
+      y: m.y - 0.47,
+      width: 0.13,
+      height: 0.94,
+    }),
+  );
+}
+
+/**
+ * A capacitor's printed value ("100n", "4.7µ"), upright at `m` whatever angle
+ * its leads run at — text that turns with the body reads upside down half the
+ * time. A body that prints it off-centre (the electrolytic, clear of its
+ * stripe) moves it along the lead at `angle` degrees.
+ */
+function capacitorLabel(ref, m, params, angle = 0) {
+  const shift = SPAN_BODIES[ref]?.label ?? 0;
+  const rad = (angle * Math.PI) / 180;
+  const label = svgEl("text", {
+    class: `part-cap-label part-cap-label--${ref}`,
+    x: m.x + shift * Math.cos(rad),
+    y: m.y + shift * Math.sin(rad) + 0.2,
+    "text-anchor": "middle",
+  });
+  label.textContent = formatFarads(Number(params?.farads));
+  return label;
+}
+
 /** The viewBox padding for a span part — shared by the SVG builder and the
     placement math so the drawn body is never clipped. */
 export function spanPad(ref) {
@@ -204,7 +294,10 @@ export function spanPad(ref) {
  * middle and rotated to the lead angle. Handles ANY angle (rail↔column leads
  * bend when the two holes aren't aligned). Pure DOM construction.
  */
-export function buildSpanSvg(ref, dx, dy, params = {}) {
+export function buildSpanSvg(ref, dx, dy, rawParams = {}) {
+  // Coerced once here, so a body never draws from a half-filled params object
+  // (a resistor's bands need its ohms, a capacitor's label its farads).
+  const params = partDef(ref)?.normalizeParams?.(rawParams) ?? rawParams;
   const pad = spanPad(ref);
   const minX = Math.min(0, dx) - pad;
   const minY = Math.min(0, dy) - pad;
@@ -247,6 +340,9 @@ export function buildSpanSvg(ref, dx, dy, params = {}) {
     const body = svgEl("g", { transform: `rotate(${angle} ${midX} ${midY})` });
     body.append(...spec.build({ x: midX, y: midY }, params));
     svg.append(body);
+  }
+  if (partDef(ref)?.capacitor) {
+    svg.append(capacitorLabel(ref, { x: midX, y: midY }, params, angle));
   }
   // Burn-out overlay (CSS shows it only on .part-discrete--burnt): a red X over
   // the LED plus smoke, centred on the same midpoint the dome is. Smoke must
@@ -1079,15 +1175,23 @@ export function buildDiscreteSvg(ref, params = {}) {
         height: 1,
         rx: 0.4,
       }),
-      ...[0.85, 1.25, 1.65].map((x) =>
-        svgEl("rect", {
-          class: "part-resistor-band",
-          x,
-          y: -0.45,
-          width: 0.14,
-          height: 0.9,
-        }),
-      ),
+      ...resistorBandRects({ x: 1.5, y: 0 }, normalized.ohms),
+    );
+  } else if (def.capacitor) {
+    // The footprint form (the placement ghost): a straight lead between the
+    // two holes and the same body the span form draws, centred over them.
+    const end = def.footprint.offsets.at(-1);
+    const m = { x: end / 2, y: 0 };
+    svg.append(
+      svgEl("line", {
+        class: "part-span-lead",
+        x1: 0,
+        y1: 0,
+        x2: end,
+        y2: 0,
+      }),
+      ...SPAN_BODIES[ref].build(m, normalized),
+      capacitorLabel(ref, m, normalized),
     );
   } else if (ref === "seg8cc" || ref === "seg8ca") {
     buildDigitDisplay(svg, normalized.color);

@@ -117,6 +117,7 @@ const HINTED = new Set([
   "reversed",
   "damaged",
   "unprogrammed",
+  "timing",
 ]);
 
 /**
@@ -131,13 +132,18 @@ const HINTED = new Set([
  * the rating from its family. A function, not a table: `t()` must not run at
  * module scope.
  * @param {string|null} status
- * @param {{volts?: number|null, def?: object|null}} [about]
+ * @param {{volts?: number|null, def?: object|null, problems?: string[]}} [about]
  * @returns {string} "" for no status
  */
-export function statusHint(status, { volts = null, def = null } = {}) {
+export function statusHint(
+  status,
+  { volts = null, def = null, problems = [] } = {},
+) {
   if (!HINTED.has(status)) return "";
   return t(`properties.warning.${status}`, {
     volts: volts ?? "?",
     rating: supplyText(def),
+    // A timed part's wiring problems (model/timing-summary.js), for "timing".
+    problems: problems.join("; "),
   });
 }

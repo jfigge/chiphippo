@@ -112,10 +112,13 @@ export function canonical(name) {
     low = true;
     s = s.replace(TRAILING_LOW, "");
   }
+  // Letters are kept whatever their script: a CD4060B's φO and φ̄O are not
+  // the bare "O" that stripping to ASCII left of them (and a 4020's lone φ
+  // was the empty string).
   const key = s
     .replace(/[̀-ͯ]/g, "")
     .replace(/[><=≥≤≠]/g, (c) => RELATIONS[c])
-    .replace(/[^a-zA-Z0-9]/g, "")
+    .replace(/[^\p{L}\p{N}]/gu, "")
     .toUpperCase();
   return { key, low };
 }

@@ -507,6 +507,10 @@ on 1, 4, 10 and 13 — so read the pin-assignments window before wiring one.</p>
 <td>12-stage binary ripple counter — counts on the <strong>falling</strong> edge</td>
 </tr>
 <tr>
+<td><code>CD4060B</code></td>
+<td>14-stage ripple counter with its own <strong>RC oscillator</strong> — or count an external clock on φI (see <a href="#timers">Timers</a>)</td>
+</tr>
+<tr>
 <td><code>CD4029B</code></td>
 <td>Presettable up/down counter, binary or decade (a pin picks which)</td>
 </tr>
@@ -546,6 +550,18 @@ on 1, 4, 10 and 13 — so read the pin-assignments window before wiring one.</p>
 <td><code>CD4053B</code></td>
 <td>Triple 2-channel analog multiplexer/demultiplexer — VEE on pin 7</td>
 </tr>
+<tr>
+<td><code>CD4047B</code></td>
+<td>Monostable/astable multivibrator — timed by one resistor and one capacitor</td>
+</tr>
+<tr>
+<td><code>CD4098B</code></td>
+<td>Dual retriggerable monostable</td>
+</tr>
+<tr>
+<td><code>CD4538B</code></td>
+<td>Dual retriggerable precision monostable</td>
+</tr>
 </tbody></table>
 <p>What makes the family worth learning on is how it differs from TTL:</p>
 <ul>
@@ -564,8 +580,9 @@ has an upside: at 5 V and below a standard output cannot burn an LED wired
 straight onto it, so one with no resistor lights.</li>
 </ul>
 <p>The Schmitt-trigger parts (CD4093B, CD40106B) behave as plain gates here: their
-hysteresis is an analog property, and their classic RC oscillator needs a
-capacitor the desk does not have.</p>
+hysteresis is an analog property, and their classic RC oscillator will not run —
+a capacitor on the desk carries a value for the timing chips, but no charge.
+For an RC oscillator, use one of the <a href="#timers">timers</a>.</p>
 <p>A few of the larger parts have habits of their own:</p>
 <ul>
 <li><strong>The up/down counters&#39; carry is combinational.</strong> CARRY OUT on the CD4029B,
@@ -602,6 +619,114 @@ of every 74LS output enable. The serial outputs QS and Q&#39;S are never floated
 Q&#39;S gives the same bit half a clock later, for chaining a second 4094 on a
 slow clock.</li>
 </ul>
+<h2 id="timers">Timers</h2>
+<p>Five parts take their timing from a <strong>resistor and a capacitor</strong> you wire to
+them, as on a bench: the <strong>555</strong> (COMPONENTS ▸ Oscillators), and the CD4000
+<strong>CD4047B</strong>, <strong>CD4098B</strong> and <strong>CD4538B</strong> (CD4000 ▸ Timer) and <strong>CD4060B</strong>
+(CD4000 ▸ Counter). Give the resistors and the capacitor their values in
+<strong>Properties…</strong> (see
+<a href="components.html#resistor-and-capacitor-values">Resistor and capacitor values</a>)
+and the part runs at the rate its datasheet gives for them. There is no analog
+simulation behind it: each part finds its own resistor and capacitor in the
+wiring and works the time out from the datasheet&#39;s formula.</p>
+<p>While the circuit runs, each timer prints its rate or pulse length under its
+part number, and its <strong>Properties…</strong> card shows the same under <strong>Timing</strong>:</p>
+<table>
+<thead>
+<tr>
+<th>Part</th>
+<th>Timing pins</th>
+<th>Formula (TI datasheet)</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>555 astable</td>
+<td>RA from VCC to DISCH, RB from DISCH to TRIG + THRES, C from TRIG + THRES to GND</td>
+<td>high 0.693·(RA+RB)·C, low 0.693·RB·C</td>
+</tr>
+<tr>
+<td>555 monostable</td>
+<td>RA from VCC to THRES + DISCH, C from THRES + DISCH to GND</td>
+<td>pulse 1.1·RA·C</td>
+</tr>
+<tr>
+<td>CD4047B</td>
+<td>R between R (2) and RC COMMON (3), C between C (1) and RC COMMON (3)</td>
+<td>Q/Q̄ period 4.40·RC (OSC OUT twice as fast), one-shot pulse 2.48·RC</td>
+</tr>
+<tr>
+<td>CD4098B</td>
+<td>per section: C from RX CX to CX (or GND), R from RX CX to VDD</td>
+<td>pulse ½·R·C</td>
+</tr>
+<tr>
+<td>CD4538B</td>
+<td>per section: C from RX CX to CX (or GND), R from RX CX to VDD</td>
+<td>pulse R·C</td>
+</tr>
+<tr>
+<td>CD4060B</td>
+<td>Cx from φO (9), Rx from φ̄O (10), Rs from φI (11), all to one junction</td>
+<td>oscillator period 2.2·Rx·Cx</td>
+</tr>
+</tbody></table>
+<p>Two resistors (or two capacitors) side by side between the same two points
+count as one, combined the way they would be on a bench. Two in <strong>series</strong>
+are not followed: put the single value you mean.</p>
+<h3 id="the-555-works-out-what-it-is">The 555 works out what it is</h3>
+<p>The 555 has no mode setting, because the chip has none. It reads its own
+wiring the way the silicon does:</p>
+<ul>
+<li><strong>Astable</strong> — TRIG (2) and THRES (6) on one net with the capacitor from it
+to GND, and DISCH (7) between the two resistors: RA up to VCC, RB down to the
+TRIG/THRES net. It free-runs from the moment you press Run, starting HIGH.</li>
+<li><strong>Monostable</strong> — THRES (6) and DISCH (7) on one net with the capacitor to
+GND and RA up to VCC, and TRIG (2) connected to something outside. A falling
+edge on TRIG starts a pulse; a trigger during the pulse changes nothing; a
+TRIG still held LOW when the time is up keeps the output HIGH until it is
+released.</li>
+</ul>
+<p>Anything else is <strong>not guessed at</strong>. The part draws a warning triangle, a
+notification says exactly what it is missing (&quot;no timing capacitor from
+TRIG/THRES (2, 6) to GND&quot;, or that the wiring is neither astable nor
+monostable), and its output stays LOW. RESET (4) LOW forces the output LOW
+whatever the configuration and restarts the timing when it is released.
+CONT (5) is not modelled: a bypass capacitor to GND on it is the usual thing
+and harmless. The 555 runs from 4.5 V to 16 V.</p>
+<h3 id="the-cd4000-timers">The CD4000 timers</h3>
+<ul>
+<li><strong>CD4047B</strong> — ASTABLE (5) HIGH or ASTABLĒ (4) LOW makes it free-run: Q and
+Q̄ square-wave, with OSC OUT (13) at twice the rate. Otherwise it is a
+one-shot: +TRIGGER (8) rising while −TRIGGER (6) is LOW, or −TRIGGER falling
+while +TRIGGER is HIGH, fires one pulse; RETRIGGER (12) rising during the
+pulse starts it again; EXT RESET (9) HIGH ends it and holds Q LOW.</li>
+<li><strong>CD4098B</strong> and <strong>CD4538B</strong> — two independent one-shots each. A section
+fires on +TR rising (with −TR held HIGH) or on −TR falling (with +TR held
+LOW), is <strong>retriggerable</strong> (a new trigger during the pulse starts the time
+again), and RESET LOW ends the pulse at once. A section with nothing on its
+timing pins and nothing on its outputs is unused and says nothing.</li>
+<li><strong>CD4060B</strong> — with the RC network on φO, φ̄O and φI it runs its own
+oscillator and counts it; RESET HIGH clears the count and stops it. With
+nothing on φO and φ̄O, φI is an ordinary clock input, counted on its falling
+edges — the way its example circuit uses it. A network with a piece missing
+is reported, not guessed at. A crystal (the datasheet&#39;s other oscillator) is
+not offered: the desk has no crystal to put there.</li>
+</ul>
+<h3 id="faster-than-the-desk-can-show">Faster than the desk can show</h3>
+<p>A timer is drawn no faster than <strong>100 Hz</strong> — the top of the clock brick&#39;s own
+rate list — at <code>×1</code>; the speed control scales it with everything else. A timer
+set faster than that <strong>still reports its true rate</strong> —
+the readout says <code>48.1 kHz</code>, in amber, and the Timing row adds <em>Faster than
+the desk can show: drawn at 100 Hz</em> — but its output is drawn oscillating at
+100 Hz with its duty cycle kept, so an LED on it flickers rather than
+appearing steadily lit. A CD4060B counting a fast oscillator still divides it
+down correctly: every stage slow enough to show keeps the true count, and only
+the stages faster than 100 Hz are drawn at the cap. Likewise a pulse shorter
+than 5 ms is stretched to 5 ms, so it can be seen at all; the readout still
+gives the real length.</p>
+<p>Time runs at the transport&#39;s speed, so <strong>Pause</strong> freezes it and <strong>Step</strong> moves
+it to the next edge (see
+<a href="simulation.html#the-transport--pause-step--speed">The transport</a>).</p>
 <h2 id="interface-chips-65xx">Interface chips (65xx)</h2>
 <p>Past the 74xx groups, the <strong>Interface</strong> group carries two Western Design
 Center 65xx peripherals — both DIP-40, both clocked off <code>PHI2</code>, both wired the
@@ -719,9 +844,9 @@ viewer. This is independent of the built-in datasheet crop — you may have
 one, both, or neither for any given chip.</p>
 <h2 id="example-circuits">Example circuits</h2>
 <p>A pin map tells you where the pins are; it doesn&#39;t show you the part working.
-So every 74LS and CD4000 chip in the catalog ships with a <strong>worked example</strong> — a
-small bench built around that one part — and the pin-assignments window is where
-you reach it. Look for the <strong>circuit button</strong> in the window&#39;s top-right corner,
+So almost every 74LS and CD4000 chip in the catalog ships with a <strong>worked
+example</strong> — a small bench built around that one part — and the pin-assignments
+window is where you reach it. Look for the <strong>circuit button</strong> in the window&#39;s top-right corner,
 beside the datasheet one.</p>
 <p>Click it and the example arrives as a <strong>new desktop</strong> in the open project,
 called <code>74LS138 example</code> (or whichever part it is), already framed on screen.
@@ -751,7 +876,10 @@ on the desktop you already have.</li>
 <li>Adding it stops a running simulation, exactly as switching desktops does.</li>
 <li>Parts with no bench have no button: the memory and interface chips (a RAM or
 a CPU can&#39;t be demonstrated by flipping switches at it — those are the
-computer demos, which need a program), and every discrete, brick and wire.</li>
+computer demos, which need a program), the RC timers (the 555, CD4047B,
+CD4098B and CD4538B — a timer&#39;s bench is its resistor and capacitor, not
+switches), and every discrete, brick and wire. The CD4060B&#39;s example counts
+a clock brick on φI rather than running its oscillator.</li>
 </ul>
 <h2 id="datasheets">Datasheets</h2>
 <p>The datasheet crops shown in the pin-assignments window are committed image

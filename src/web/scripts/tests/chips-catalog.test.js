@@ -44,7 +44,9 @@ import {
 
 // `io` is a BIDIRECTIONAL pin (the 74245 transceiver's bus lines): a unit both
 // reads it and drives it, so it counts as an input AND an output below.
-const ROLES = new Set(["input", "output", "vcc", "gnd", "nc", "io"]);
+// `timing` is a timer's RC terminal (pin-builders.js): where its resistor and
+// capacitor connect — neither a logic input nor an output.
+const ROLES = new Set(["input", "output", "vcc", "gnd", "nc", "io", "timing"]);
 
 const GATE_WAVE = [
   "74LS00",
@@ -171,7 +173,15 @@ const CD4000_WAVE = [
   "CD4051B",
   "CD4052B",
   "CD4053B",
+  // The RC-timed parts: the 4047 multivibrator, the 4060 counter with its own
+  // oscillator, the 4098/4538 dual one-shots.
+  "CD4047B",
+  "CD4060B",
+  "CD4098B",
+  "CD4538B",
 ];
+// The 555 timer: a chip, family-less, shelved under COMPONENTS ▸ Oscillators.
+const TIMER_WAVE = ["NE555"];
 
 test("the catalog contains the gate wave plus the sequential/MSI + 74LS + memory + io + cpu + CD4000 waves", () => {
   assert.deepEqual(
@@ -184,6 +194,7 @@ test("the catalog contains the gate wave plus the sequential/MSI + 74LS + memory
       ...IO_WAVE,
       ...CPU_WAVE,
       ...CD4000_WAVE,
+      ...TIMER_WAVE,
     ].sort(),
   );
   for (const id of [
@@ -194,6 +205,7 @@ test("the catalog contains the gate wave plus the sequential/MSI + 74LS + memory
     ...IO_WAVE,
     ...CPU_WAVE,
     ...CD4000_WAVE,
+    ...TIMER_WAVE,
   ]) {
     assert.ok(chipDef(id), id);
   }
@@ -209,7 +221,7 @@ test("every logic chip carries its family; memory, peripherals and CPUs carry no
   }
   // Family-less on purpose: none of these is a 74LS part, and tagging one
   // would hide it in CD4000 mode (catalog/families.js).
-  for (const id of [...MEM_WAVE, ...IO_WAVE, ...CPU_WAVE]) {
+  for (const id of [...MEM_WAVE, ...IO_WAVE, ...CPU_WAVE, ...TIMER_WAVE]) {
     assert.equal(chipDef(id).family, undefined, id);
   }
 });

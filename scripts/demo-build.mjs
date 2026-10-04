@@ -18,9 +18,11 @@
  */
 
 // demo-build.mjs — turn a demo spec into a laid-out desk document, and PROVE
-// it works. Split out from the make-gate-demos.mjs CLI so the shipped files'
-// guard test (web/scripts/tests/gate-demos.test.js) exercises the very same
-// build and the very same checks, rather than a second implementation of them.
+// it works (and do the same for the few examples drawn by hand instead —
+// HAND_BUILT, at the end). Split out from the make-gate-demos.mjs CLI so the
+// shipped files' guard test (web/scripts/tests/gate-demos.test.js) exercises
+// the very same build and the very same checks, rather than a second
+// implementation of them.
 //
 // What counts as proved depends on the demo: a combinational one has every
 // switch combination settled and every LED read (or the explicit `cases` a
@@ -36,9 +38,13 @@
 // right, then a routing switch. `defaults`, `expect`, `cases` and `phases` all
 // index it, so a spec never has to know which physical part a bit landed on.
 
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+
 import { Bench, LAYOUT } from "./demo-bench.mjs";
 import {
   DeskDoc,
+  DOC_VERSION,
   normalizeDocument,
 } from "../src/web/scripts/model/desk-doc.js";
 import { deskBounds } from "../src/web/scripts/model/part-geometry.js";
@@ -60,6 +66,33 @@ const SEQUENTIAL_EDGES = 20;
  * get no group project, and no spec is expected for their chips.
  */
 export const PROGRAM_ONLY = new Set(["Memory", "Interface", "PROCESSOR"]);
+
+/**
+ * Catalog groups whose parts keep TIME with an external resistor and capacitor
+ * — the 555 (shelved in Oscillators) and the CD4000 one-shots and
+ * multivibrator (Timer). A bench states its truth table as LEVELS, and what
+ * these parts do is a PERIOD: showing one needs a seated RC network and a
+ * check that steps simulated time, and the bench builder has neither yet. So
+ * they get no group project and no bench — though a part among them may ship
+ * an example drawn by hand instead (HAND_BUILT, below). (The CD4060B keeps
+ * time too, but it is a Counter, and its external-clock mode benches like any
+ * ripple counter.)
+ */
+export const TIMED_GROUPS = new Set(["Timer", "Oscillators"]);
+
+/**
+ * Parts whose example circuit is drawn BY HAND on the desk rather than built
+ * from a spec: a part → its project under demos/, ONE DESKTOP PER THING THE
+ * PART DOES. The bench cannot build what these need (see TIMED_GROUPS), and
+ * the 555's three modes are three different circuits, not one bench.
+ * make-gate-demos.mjs ships each as src/web/demos/<ref>.json in the
+ * multi-desktop shape model/example-desktops.js reads, and each desktop's
+ * name becomes part of its tab's ("NE555 Astable example") — so name the
+ * desktops for what they show.
+ */
+export const HAND_BUILT = Object.freeze({ NE555: "ne555.chiphippo" });
+
+const DEMOS_ROOT = fileURLToPath(new URL("../demos/", import.meta.url));
 
 /**
  * A benchable group's KEY — its logic family and its catalog group,
@@ -100,7 +133,7 @@ export const projectNameOf = (key) => {
 export function catalogGroups() {
   const groups = new Map();
   for (const def of CHIP_DEFS) {
-    if (PROGRAM_ONLY.has(def.group)) continue;
+    if (PROGRAM_ONLY.has(def.group) || TIMED_GROUPS.has(def.group)) continue;
     const key = groupKey(def.family ?? "other", def.group);
     if (!groups.has(key)) groups.set(key, []);
     groups.get(key).push(def.id);
@@ -546,4 +579,90 @@ export function validateDemo(built) {
   } finally {
     applyInputs(built, built.defaults);
   }
+}
+
+// ── Hand-built examples ──────────────────────────────────────────────────
+
+/**
+ * One hand-built example (HAND_BUILT), ready to ship: `{ ref, title,
+ * desktops: [{ name, description?, doc }] }`. Each desktop's document is
+ * loaded the way the app loads it and CENTRED for the bench's reason (an
+ * example desktop must be framed by a plain camera fit, leaving no undo step),
+ * and must keep every entity and seat every part legally — the same two
+ * checks a bench passes. What it DOES is validateHandBuilt's to prove.
+ *
+ * Only the project's desktops are read. A ROM's bytes are not carried — no
+ * example ships memory, so a project holding some is refused rather than
+ * shipped without them.
+ */
+export function buildHandBuilt(ref) {
+  const file = HAND_BUILT[ref];
+  const def = partDef(ref);
+  if (!file || !def) throw new Error(`${ref}: no hand-built example`);
+  const project = JSON.parse(readFileSync(`${DEMOS_ROOT}${file}`, "utf8"));
+  if (Object.keys(project.images ?? {}).length) {
+    throw new Error(`demos/${file}: an example cannot carry ROM images`);
+  }
+  const names = new Set();
+  const desktops = (project.tabs ?? []).map((tab) => {
+    const label = `demos/${file} "${tab.name}"`;
+    if (typeof tab.name !== "string" || !tab.name.trim()) {
+      throw new Error(`demos/${file}: a desktop has no name`);
+    }
+    if (names.has(tab.name)) throw new Error(`${label}: named twice`);
+    names.add(tab.name);
+    // A bundled document skips main's migrations, so it must already be at
+    // the renderer's own version — re-saving the project in the app does it.
+    if (tab.doc?.version !== DOC_VERSION) {
+      throw new Error(
+        `${label}: document version ${tab.doc?.version}, not ${DOC_VERSION} — ` +
+          `open it in Chip Hippo and save it`,
+      );
+    }
+    const doc = centreDocument(normalizeDocument(tab.doc));
+    assertClean(tab.doc, doc, label);
+    assertPlaceable(doc, label);
+    return {
+      name: tab.name,
+      ...(tab.description ? { description: tab.description } : {}),
+      doc,
+    };
+  });
+  if (!desktops.length) throw new Error(`demos/${file}: no desktops`);
+  return { ref, title: def.title, desktops };
+}
+
+/**
+ * Prove one hand-built desktop, and say what it was proved to be: every chip
+ * powered, every timed part reading its own wiring as a circuit it knows (the
+ * 555: astable, monostable or bistable), and the engine reporting NO warning,
+ * as a bench must not. Returns the modes found ("monostable").
+ */
+export function validateHandBuilt(desktop, label) {
+  const { doc } = desktop;
+  const result = tick({
+    document: doc,
+    netlist: buildNetlist(doc),
+    warmStart: new Map(),
+    state: new Map(),
+    prevPinLevels: new Map(),
+    signalLevels: new Map(),
+    now: 0,
+  });
+  for (const [id, { status }] of result.chipStatus) {
+    if (status !== "ok") throw new Error(`${label}: ${id} is ${status}`);
+  }
+  if (result.warnings.length) {
+    const said = result.warnings.map((w) => w.type).join(", ");
+    throw new Error(`${label}: the engine warns (${said})`);
+  }
+  const modes = [];
+  for (const [id, analysis] of result.timing ?? []) {
+    if (analysis.problems.length) {
+      const codes = analysis.problems.map((p) => p.code).join(", ");
+      throw new Error(`${label}: ${id} does not read its wiring (${codes})`);
+    }
+    modes.push(...analysis.sections.map((s) => s.mode));
+  }
+  return modes.join(", ") || "settles clean";
 }

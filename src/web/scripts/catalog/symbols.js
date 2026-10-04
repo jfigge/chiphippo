@@ -166,6 +166,20 @@ const SHAPE_DEFS = Object.freeze({
       { name: "2", side: "right", pin: 2 },
     ],
   },
+  "cap-ceramic": {
+    shape: "capacitor",
+    terminals: [
+      { name: "1", side: "left", pin: 1 },
+      { name: "2", side: "right", pin: 2 },
+    ],
+  },
+  "cap-electrolytic": {
+    shape: "capacitor-polarized",
+    terminals: [
+      { name: "+", side: "left", pin: 1 },
+      { name: "-", side: "right", pin: 2 },
+    ],
+  },
   "sw-slide": {
     shape: "switch",
     terminals: [

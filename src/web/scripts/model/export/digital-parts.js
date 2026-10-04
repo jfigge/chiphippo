@@ -100,7 +100,8 @@ export const DIGITAL_ELEMENTS = Object.freeze([
  * The parts that do not come across, each with the report's reason code
  * (`export.reason.<code>`): a 74xx part Digital's library lacks, the memory
  * chips (their contents live in files the export does not carry), the
- * processors and their peripherals, and the character LCDs.
+ * processors and their peripherals, the character LCDs, the timers and the
+ * capacitors.
  */
 export const DIGITAL_UNSUPPORTED = Object.freeze({
   "74LS73": "noDigitalModel",
@@ -148,6 +149,17 @@ export const DIGITAL_UNSUPPORTED = Object.freeze({
   CD4051B: "noDigitalModel",
   CD4052B: "noDigitalModel",
   CD4053B: "noDigitalModel",
+  // The RC-timed parts: Digital's library has none of them, and Digital is a
+  // logic simulator with no capacitor for one to read anyway.
+  CD4047B: "noDigitalModel",
+  CD4060B: "noDigitalModel",
+  CD4098B: "noDigitalModel",
+  CD4538B: "noDigitalModel",
+  NE555: "noDigitalModel",
+  // A capacitor joins no net here either, so leaving it out changes nothing
+  // electrically — the report just says it went.
+  "cap-ceramic": "capacitor",
+  "cap-electrolytic": "capacitor",
   "rom-8k": "memory",
   "ram-8k": "memory",
   "28C16": "memory",
