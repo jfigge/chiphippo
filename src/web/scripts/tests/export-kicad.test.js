@@ -175,10 +175,30 @@ test("every palette part has a KiCad footprint and symbol", () => {
   );
   assert.deepEqual(missing, [], "a new part needs a KICAD_PARTS entry");
   for (const [id, spec] of Object.entries(KICAD_PARTS)) {
-    assert.ok(partDef(id), `${id} is a catalog part`);
-    assert.match(spec.footprint, /^[\w.-]+:[\w.-]+$/, `${id}'s footprint`);
+    const def = partDef(id);
+    assert.ok(def, `${id} is a catalog part`);
+    // A footprint the part's params choose is checked under every choice
+    // its Properties offer (a MOSFET's package, an inductor's lead pitch).
+    const footprints =
+      typeof spec.footprint === "function"
+        ? choicesOf(def).map((params) => spec.footprint({ params }, def))
+        : [spec.footprint];
+    for (const footprint of footprints) {
+      assert.match(footprint, /^[\w.-]+:[\w.-]+$/, `${id}'s footprint`);
+    }
   }
 });
+
+/** A def's params under every option of each of its segmented fields. */
+function choicesOf(def) {
+  const fields = (def.properties ?? []).filter((f) => f.type === "segmented");
+  return [
+    def.normalizeParams({}),
+    ...fields.flatMap((f) =>
+      f.options.map((o) => def.normalizeParams({ [f.key]: o.value })),
+    ),
+  ];
+}
 
 // ── The sheet reads back as the model ────────────────────────────────────────
 
@@ -449,6 +469,161 @@ test("a potentiometer exports as an RV on a 3296W, its wiper coming down onto th
       ["passive", "3"],
     ],
   );
+});
+
+// ── The discretes ──────────────────────────────────────────────────────
+
+test("every part among the discretes exports with its symbol, value and part number", () => {
+  // One of each, every pin on a net, so the sheet has something to connect.
+  const b = timingBench();
+  const seat = (id, ref, anchor, params) => {
+    const pins = b.seat(id, ref, anchor, params);
+    for (const hole of pins.values()) b.gnd(hole);
+    return pins;
+  };
+  seat("d1", "diode", "a10", { partNumber: "1N4148" });
+  seat("z1", "zener", "a14", { zenerVolts: 5.1, partNumber: "BZX79-C5V1" });
+  seat("z2", "zener", "a18", { zenerVolts: 3.3 });
+  seat("l1", "inductor", "a22", { henries: 4.7e-6, partNumber: "IM02" });
+  seat("l2", "inductor", "a26");
+  seat("q1", "npn", "a30", { partNumber: "2N2222" });
+  seat("q2", "pnp", "a34");
+  seat("q3", "nmos", "a38", { case: "TO-92", partNumber: "2N7000" });
+  seat("q4", "pmos", "a42", { rot: 180 });
+  seat("c1", "cap-ceramic", "a46", { farads: 1e-7, partNumber: "K104K" });
+  seat("q5", "nmos", "a50", { partNumber: "IRLZ44N" });
+  seat("l3", "inductor", "a54", { bodyHoles: 3, style: "can" });
+
+  const res = exportKicad(b.doc, { tabId: "t1", name: "discretes" });
+  const text = sheetOf(res).text;
+  // The sheet connects exactly what the model says — a pin on every net.
+  assert.deepEqual(readSheet(text), expected(b.doc));
+
+  const sch = parseSexpr(text);
+  const parts = new Map(
+    kids(sch, "symbol")
+      .map((s) => {
+        const prop = (name) =>
+          str(kids(s, "property").find((p) => str(p[1]) === name)?.[2]);
+        return {
+          lib: str(kid(s, "lib_id")[1]).replace(`${KICAD_LIB}:`, ""),
+          ref: prop("Reference"),
+          value: prop("Value"),
+          footprint: prop("Footprint"),
+          mpn: prop("MPN"),
+        };
+      })
+      .filter((p) => !p.ref.startsWith("#"))
+      .map((p) => [p.ref, p]),
+  );
+  const row = (ref) => {
+    const p = parts.get(ref);
+    assert.ok(p, `${ref} is on the sheet`);
+    return [p.lib, p.value, p.footprint, p.mpn ?? null];
+  };
+  const DO35 = "Diode_THT:D_DO-35_SOD27_P7.62mm_Horizontal";
+  const TOROID = "Inductor_THT:L_Toroid_Vertical_L16.0mm_W8.0mm_P7.62mm";
+  const RADIAL_WIDE =
+    "Inductor_THT:L_Radial_D12.0mm_P10.00mm_Neosid_SD12_style1";
+  const TO92 = "Package_TO_SOT_THT:TO-92_Inline_Wide";
+  const TO220 = "Package_TO_SOT_THT:TO-220-3_Vertical";
+  assert.deepEqual(row("D1"), ["diode", "1N4148", DO35, "1N4148"]);
+  assert.deepEqual(row("D2"), ["zener", "BZX79-C5V1 5.1V", DO35, "BZX79-C5V1"]);
+  assert.deepEqual(row("D3"), ["zener", "3.3V", DO35, null]);
+  assert.deepEqual(row("L1"), ["inductor", "4.7uH", TOROID, "IM02"]);
+  assert.deepEqual(row("L2"), ["inductor", "L", TOROID, null]);
+  assert.deepEqual(row("Q1"), ["npn", "2N2222", TO92, "2N2222"]);
+  assert.deepEqual(row("Q2"), ["pnp", "PNP", TO92, null]);
+  // A MOSFET is the package it was set to — a TO-220 unless told otherwise.
+  assert.deepEqual(row("Q3"), ["nmos", "2N7000", TO92, "2N7000"]);
+  assert.deepEqual(row("Q4"), ["pmos", "PMOS", TO220, null]);
+  assert.deepEqual(row("Q5"), ["nmos", "IRLZ44N", TO220, "IRLZ44N"]);
+  // An inductor's footprint is the part it is — a standing toroid, or a
+  // radial drum — on the pitch its leads were set to, or the nearest.
+  assert.deepEqual(row("L3"), ["inductor", "L", RADIAL_WIDE, null]);
+  assert.deepEqual(row("C1"), ["cap-ceramic", "100nF", "Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P2.50mm", "K104K"]); // prettier-ignore
+
+  // A diode's CATHODE is KiCad's pad 1 (symbol and footprint alike).
+  const model = exportNetlist(b.doc);
+  const diode = model.parts.find((p) => p.comp.id === "d1");
+  assert.equal(kicadPart(diode).pad("1"), "2", "our anode (pin 1) is pad 2");
+  assert.equal(kicadPart(diode).pad("2"), "1", "our cathode is pad 1");
+
+  // The library symbols: a Zener's bar is bent, a plain diode's straight; a
+  // transistor's three passive pins are numbered as our pins are, the control
+  // (2) on the left.
+  const libSym = (name) =>
+    kids(kid(sch, "lib_symbols"), "symbol").find(
+      (s) => str(s[1]) === `${KICAD_LIB}:${name}`,
+    );
+  const pinsOf = (sym) => {
+    const out = [];
+    const walk = (n) => {
+      for (const c of n) {
+        if (!Array.isArray(c)) continue;
+        if (c[0] === "pin") {
+          const at = kid(c, "at");
+          out.push([str(kid(c, "number")[1]), c[1], +at[1] < 0 ? "left" : "right"]); // prettier-ignore
+        } else walk(c);
+      }
+    };
+    walk(sym);
+    return out.sort();
+  };
+  for (const q of ["npn", "pnp", "nmos", "pmos"]) {
+    assert.deepEqual(
+      pinsOf(libSym(q)),
+      [
+        ["1", "passive", "right"],
+        ["2", "passive", "left"],
+        ["3", "passive", "right"],
+      ],
+      q,
+    );
+  }
+  const polylines = (sym) => {
+    const out = [];
+    const walk = (n) => {
+      for (const c of n) {
+        if (!Array.isArray(c)) continue;
+        if (c[0] === "polyline") out.push(kids(kid(c, "pts"), "xy").length);
+        else walk(c);
+      }
+    };
+    walk(sym);
+    return out;
+  };
+  assert.deepEqual(polylines(libSym("diode")), [4, 2]);
+  assert.deepEqual(polylines(libSym("zener")), [4, 4]);
+  // An inductor is four arcs.
+  let arcs = 0;
+  const countArcs = (n) => {
+    for (const c of n) {
+      if (!Array.isArray(c)) continue;
+      if (c[0] === "arc") arcs += 1;
+      else countArcs(c);
+    }
+  };
+  countArcs(libSym("inductor"));
+  assert.equal(arcs, 4);
+
+  // Every transistor's footprint is reported as one to check — its pads are
+  // in the desk's generic order, not any one maker's.
+  const pinOrder = res.report.find((e) => e.code === "transistorPinout");
+  assert.ok(pinOrder, "the transistors' pin order is flagged");
+  assert.equal(pinOrder.kind, "footprint");
+  const flagged = res.report
+    .filter((e) => e.code === "transistorPinout")
+    .flatMap((e) => e.designators)
+    .sort();
+  assert.deepEqual(flagged, ["Q1", "Q2", "Q3", "Q4", "Q5"]);
+  // A radial drum's footprint is only the nearest pitch KiCad has: said so.
+  const nearest = res.report.filter((e) => e.code === "nearestFootprint");
+  assert.deepEqual(
+    nearest.flatMap((e) => e.designators),
+    ["L3"],
+  );
+  assert.equal(nearest[0].kind, "footprint");
 });
 
 test("a timer's RC terminal is a PASSIVE pin, its trigger an input", () => {

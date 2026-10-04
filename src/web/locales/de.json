@@ -362,7 +362,10 @@
       "switches": "Schalter",
       "xor": "XOR",
       "capacitors": "Kondensatoren",
-      "timer": "Timer"
+      "timer": "Timer",
+      "diodes": "Dioden",
+      "inductors": "Induktivitäten",
+      "transistors": "Transistoren"
     },
     "integration": {
       "output": "Ausgang",
@@ -370,7 +373,8 @@
       "outputHint": "sendet einen Wert an einen Arduino, wenn sein Trigger auslöst — zum Hinzufügen auf den Tisch klicken",
       "inputHint": "die Werte eines Arduino steuern seine Pins — zum Hinzufügen auf den Tisch klicken",
       "full": "Auf diesem Tisch sind bereits so viele Ausgänge und Eingänge wie möglich"
-    }
+    },
+    "limitedNote": "Diese Bauteile haben nur eingeschränkte Funktion, sind aber für den Export und die Vollständigkeit des Entwurfs vorhanden."
   },
   "boards": {
     "full": "Volle Größe",
@@ -771,6 +775,27 @@
     },
     "cap-electrolytic": {
       "title": "Kondensator (Elektrolyt)"
+    },
+    "diode": {
+      "title": "Diode"
+    },
+    "zener": {
+      "title": "Z-Diode"
+    },
+    "inductor": {
+      "title": "Induktivität"
+    },
+    "npn": {
+      "title": "NPN-Transistor (BJT)"
+    },
+    "pnp": {
+      "title": "PNP-Transistor (BJT)"
+    },
+    "nmos": {
+      "title": "N-Kanal-MOSFET"
+    },
+    "pmos": {
+      "title": "P-Kanal-MOSFET"
     }
   },
   "colors": {
@@ -877,7 +902,8 @@
     "inputFloating": "{ref} ({id}) hat Eingänge, die nichts treibt: {pins}. Ein offener TTL-Eingang liest HIGH, der Baustein arbeitet also — nur nicht wie geplant. Legen Sie jeden auf VCC oder GND oder verdrahten Sie ihn mit dem, was ihn treiben soll.",
     "inputFloatingCmos": "{ref} ({id}) hat Eingänge, die nichts treibt: {pins}. Ein offener CMOS-Eingang liest weder HIGH noch LOW, was der Baustein tut, ist also Glückssache. Legen Sie jeden Eingang auf VCC oder GND — auch die der unbenutzten Gatter — oder verdrahten Sie ihn mit dem, was ihn treiben soll.",
     "busFight": "{drivers} liegen am selben Netz ({net}). Zwei Ausgänge dürfen sich niemals ein Netz teilen — einer treibt HIGH, der andere LOW, und sie arbeiten gegeneinander.",
-    "ledUnlimited": "{ref} ({id}) leitet, ohne dass der Strom begrenzt wird — auf einem echten Steckbrett würde das Bauteil durchbrennen statt zu leuchten. Schalten Sie einen Widerstand in Reihe."
+    "ledUnlimited": "{ref} ({id}) leitet, ohne dass der Strom begrenzt wird — auf einem echten Steckbrett würde das Bauteil durchbrennen statt zu leuchten. Schalten Sie einen Widerstand in Reihe.",
+    "diodeUnlimited": "{ref} ({id}) liegt in Durchlassrichtung direkt zwischen zwei stark getriebenen Netzen — Schiene an Schiene oder ein Ausgang an eine Schiene —, und nichts begrenzt den Strom. Auf einem echten Steckbrett würde sie durchbrennen oder den Ausgang mitnehmen. Schalten Sie einen Widerstand in Reihe."
   },
   "scope": {
     "title": "Logikanalysator",
@@ -1108,6 +1134,12 @@
       "title": "Kondensatoren in Chip Hippo",
       "message": "Ein Kondensator trägt hier einen Wert — er filtert nicht, glättet nicht, speichert keine Ladung und verbindet nichts. Die Zeitgeber-Chips (555, CD4047B, CD4060B, CD4098B, CD4538B) lesen seinen Wert aus der Verdrahtung, und mit diesem Wert wird er nach KiCad exportiert.",
       "dismiss": "Nicht mehr anzeigen"
+    },
+    "transistor": {
+      "on": "Leitet",
+      "off": "Gesperrt",
+      "heldOn": "Leitet — hält: das Gate ist offen, und seine Ladung hält ihn eingeschaltet",
+      "heldOff": "Gesperrt — hält: das Gate ist offen, also bleibt er wie zuletzt angesteuert"
     }
   },
   "workspace": {
@@ -1191,7 +1223,12 @@
         "one": "{count} Arduino-Ausgang oder -Eingang: eine Verbindung zu einer Platine, kein Bauteil",
         "other": "{count} Arduino-Ausgänge und -Eingänge: Verbindungen zu einer Platine, keine Bauteile"
       },
-      "capacitor": "wird weggelassen: Ein Logiksimulator kennt keine Kondensatoren"
+      "capacitor": "wird weggelassen: Ein Logiksimulator kennt keine Kondensatoren",
+      "diode": "wird weggelassen: Digital hat keine Diode, die einen Pegel so in eine Richtung weitergibt wie diese",
+      "inductor": "wird weggelassen, sodass die beiden Netze, die sie verbindet, getrennt ankommen: Digital hat keine Induktivität",
+      "transistor": "wird weggelassen: Digital hat keinen Transistor, der so schaltet wie dieser",
+      "transistorPinout": "erhält einen TO-92- oder TO-220-Footprint in der Pinreihenfolge auf dem Tisch (E·B·C bzw. S·G·D) – prüfen Sie ihn gegen die Pinbelegung des echten Bauteils",
+      "nearestFootprint": "erhält den nächstliegenden Footprint aus der KiCad-Bibliothek – sein Rastermaß weicht etwas von dem auf dem Tisch ab; prüfen Sie ihn gegen das echte Bauteil"
     }
   },
   "sim": {
@@ -1230,7 +1267,8 @@
     "mixedSupply": "Gemischte Versorgungsspannungen",
     "mixedSupplyMessage": "{net} verbindet Chips, die mit {volts} versorgt werden. Ein Signal zwischen zwei Versorgungen braucht einen Pegelwandler.",
     "timing": "Zeitverhalten nicht erkannt",
-    "timingMessage": "{chip}: {problems}."
+    "timingMessage": "{chip}: {problems}.",
+    "shortThroughTransistorMessage": "Gegensätzliche Versorgungen treffen über einen durchgeschalteten Transistor zusammen ({net}) — nichts begrenzt den Strom."
   },
   "about": {
     "subtitle": "TTL-Steckbrett-Entwurf & -Simulation",
@@ -1358,14 +1396,22 @@
       "ohms": "Widerstandswert",
       "farads": "Kapazität",
       "position": "Position",
-      "timing": "Zeitverhalten"
+      "timing": "Zeitverhalten",
+      "partNumber": "Teilenummer",
+      "henries": "Induktivität",
+      "zenerVolts": "Z-Spannung",
+      "case": "Gehäuse",
+      "style": "Ausführung",
+      "bodyHoles": "Löcher zwischen den Anschlüssen"
     },
     "option": {
       "manual": "Manuell",
       "momentary": "Tastend",
       "toggle": "Rastend",
       "low": "Low",
-      "high": "High"
+      "high": "High",
+      "coil": "Spule",
+      "can": "Umhüllt"
     },
     "action": {
       "inspectMemory": "Speicher untersuchen…",
@@ -1379,11 +1425,18 @@
       "reversed": "Versorgung verpolt — VCC und GND sind vertauscht.",
       "damaged": "Beschädigt — {volts} V liegen über den {rating} des Bauteils und haben den Rauch herausgelassen. Beim Anhalten der Simulation wird es wiederhergestellt.",
       "unprogrammed": "Nicht programmiert — es ist kein Abbild geladen, der Chip liest zufälliges Rauschen.",
-      "timing": "Zeitverhalten nicht erkannt — {problems}. Die Ausgänge bleiben in Ruhe, bis das Bauteil wie im Datenblatt beschaltet ist."
+      "timing": "Zeitverhalten nicht erkannt — {problems}. Die Ausgänge bleiben in Ruhe, bis das Bauteil wie im Datenblatt beschaltet ist.",
+      "heldOn": "Hält EIN — das Gate führt keinen Pegel, und die darauf verbliebene Ladung hält den Kanal leitend. Ein echtes Gate verliert diese Ladung; legen Sie es über einen Widerstand auf einen festen Pegel.",
+      "heldOff": "Hält AUS — das Gate führt keinen Pegel, also bleibt er, wie er zuletzt angesteuert wurde (aus, solange das Gate noch nie angesteuert wurde). Ein echtes Gate driftet; legen Sie es über einen Widerstand auf einen festen Pegel."
     },
     "invalid": {
       "ohms": "Kein Widerstandswert — etwa 470, 4.7k, 4k7 oder 2M2 (0,1 Ω bis 1 GΩ).",
-      "farads": "Kein Kapazitätswert — mit Einheit angeben: 100p, 10n, 4.7µ, 4u7 oder 1m (1 pF bis 1 F)."
+      "farads": "Kein Kapazitätswert — mit Einheit angeben: 100p, 10n, 4.7µ, 4u7 oder 1m (1 pF bis 1 F).",
+      "henries": "Kein Induktivitätswert — mit Einheit angeben: 100n, 10µ, 4u7, 100m oder 1H (1 nH bis 100 H), oder leer lassen.",
+      "zenerVolts": "Keine Spannung — etwa 5.1V, 5V1 oder 3.3 (1 V bis 200 V), oder leer lassen."
+    },
+    "refused": {
+      "bodyHoles": "Kein Platz – das Loch, in das sein Anschluss wandern würde, ist belegt oder liegt hinter dem Ende der Platine."
     }
   },
   "memory": {

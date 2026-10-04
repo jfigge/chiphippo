@@ -319,9 +319,11 @@ export function reviewDesk(document, netlist) {
       if (outputEnables(def).includes(p.n)) continue;
       if (live && !live.has(p.n)) continue;
       const address = addressOf.get(p.n);
-      // A capacitor on the pin's net counts as a connection (a 555's TRIG on
-      // its timing capacitor is wired, whatever DC level it settles at).
-      if (address != null && trace.hasCapacitor(netlist.netOfPoint.get(address))) continue; // prettier-ignore
+      // A part that counts as a connection on the pin's net — a capacitor, a
+      // diode, a transistor — means it is wired (a 555's TRIG on its timing
+      // capacitor, an input fed through a diode that is not conducting right
+      // now), whatever DC level it settles at.
+      if (address != null && trace.connectedByPart(netlist.netOfPoint.get(address))) continue; // prettier-ignore
       const level =
         address == null
           ? Z
@@ -405,6 +407,27 @@ export function reviewDesk(document, netlist) {
     const burnt = junctions.some(([a, k]) =>
       junctionAt(netlist, settled, at(a), at(k)),
     );
+    // A diode (the discretes) is the same junction without the light:
+    // forward across two strongly driven nets, it burns by the same rule.
+    const diodeBurnt =
+      typeof def.oneWayBridges === "function" &&
+      def
+        .oneWayBridges(comp.params)
+        .some(([a, k]) => junctionAt(netlist, settled, at(a), at(k)));
+    if (diodeBurnt) {
+      findings.push(
+        finding(
+          "DIODE_UNLIMITED",
+          FAULT,
+          tf(
+            "review.diodeUnlimited",
+            "{ref} ({id}) is forward-biased straight across two strongly driven nets — rail to rail, or an output into a rail — with nothing limiting the current. On a real bench it would burn out, or take the output with it. Put a resistor in series with it.",
+            { ref: label(comp), id: comp.id },
+          ),
+          { componentId: comp.id },
+        ),
+      );
+    }
     if (!burnt) continue;
     findings.push(
       finding(
@@ -473,19 +496,25 @@ function engineFinding(w, doc) {
       return finding(
         "SHORT",
         FAULT,
-        w.via === "switch"
+        w.via === "transistor"
           ? tf(
-              "sim.shortThroughSwitchMessage",
-              "Opposing supplies meet through an analog switch ({net}).",
+              "sim.shortThroughTransistorMessage",
+              "Opposing supplies meet through a transistor that is switched on ({net}) — nothing limits the current.",
               { net: w.net },
             )
-          : tf(
-              "sim.shortMessage",
-              "Opposing supplies meet on one net ({net}).",
-              {
-                net: w.net,
-              },
-            ),
+          : w.via === "switch"
+            ? tf(
+                "sim.shortThroughSwitchMessage",
+                "Opposing supplies meet through an analog switch ({net}).",
+                { net: w.net },
+              )
+            : tf(
+                "sim.shortMessage",
+                "Opposing supplies meet on one net ({net}).",
+                {
+                  net: w.net,
+                },
+              ),
         { netId: w.net },
       );
     case "conflict":

@@ -454,6 +454,7 @@ function partInstance({ part, sym, k, origin, uuid, pinUuid, root, base }) {
     hiddenField("Footprint", k.footprint),
     hiddenField("Datasheet", ""),
     hiddenField("Description", part.def.title ?? ""),
+    ...(k.fields ?? []).map(([key, text]) => hiddenField(key, text)),
     ...[...sym.pins.keys()].map((pad) => [
       "pin",
       q(pad),
@@ -642,6 +643,8 @@ function buildReport(model, kp, report) {
     }
     if (part.def.kind === "clock") add("changed", "clockConnector", part);
     if (kp.get(part.id)?.generic) add("footprint", "genericFootprint", part);
+    if (kp.get(part.id)?.pinOrder) add("footprint", "transistorPinout", part);
+    if (kp.get(part.id)?.nearest) add("footprint", "nearestFootprint", part);
   }
   const signals = model.signals.length;
   if (signals)

@@ -362,7 +362,10 @@
       "switches": "Switches",
       "xor": "XOR",
       "capacitors": "Capacitors",
-      "timer": "Timer"
+      "timer": "Timer",
+      "diodes": "Diodes",
+      "inductors": "Inductors",
+      "transistors": "Transistors"
     },
     "integration": {
       "output": "Output",
@@ -370,7 +373,8 @@
       "outputHint": "sends a value to an Arduino when its trigger fires — click the desk to add one",
       "inputHint": "an Arduino's values drive its pins — click the desk to add one",
       "full": "This desk already holds as many Outputs and Inputs as it can"
-    }
+    },
+    "limitedNote": "These components have limited functionality but exist for the purpose of export and design completeness."
   },
   "boards": {
     "full": "Full-size",
@@ -771,6 +775,27 @@
     },
     "cap-electrolytic": {
       "title": "Capacitor (electrolytic)"
+    },
+    "diode": {
+      "title": "Diode"
+    },
+    "zener": {
+      "title": "Zener diode"
+    },
+    "inductor": {
+      "title": "Inductor"
+    },
+    "npn": {
+      "title": "NPN transistor (BJT)"
+    },
+    "pnp": {
+      "title": "PNP transistor (BJT)"
+    },
+    "nmos": {
+      "title": "N-channel MOSFET"
+    },
+    "pmos": {
+      "title": "P-channel MOSFET"
     }
   },
   "colors": {
@@ -877,7 +902,8 @@
     "inputFloating": "{ref} ({id}) has inputs nothing drives: {pins}. A floating TTL input reads HIGH, so the chip works — just not as designed. Tie each one to VCC or GND, or wire it to whatever should drive it.",
     "inputFloatingCmos": "{ref} ({id}) has inputs nothing drives: {pins}. A floating CMOS input reads neither HIGH nor LOW, so what the chip does is anybody's guess. Tie every input to VCC or GND — spare gates included — or wire it to whatever should drive it.",
     "busFight": "{drivers} are wired to the same net ({net}). Two outputs must never share a net — one drives HIGH while the other drives LOW and they fight.",
-    "ledUnlimited": "{ref} ({id}) is conducting with nothing limiting the current — on a real bench it would burn out rather than light. Put a resistor in series with it."
+    "ledUnlimited": "{ref} ({id}) is conducting with nothing limiting the current — on a real bench it would burn out rather than light. Put a resistor in series with it.",
+    "diodeUnlimited": "{ref} ({id}) is forward-biased straight across two strongly driven nets — rail to rail, or an output into a rail — with nothing limiting the current. On a real bench it would burn out, or take the output with it. Put a resistor in series with it."
   },
   "scope": {
     "title": "Logic analyzer",
@@ -1108,6 +1134,12 @@
       "title": "Capacitors in Chip Hippo",
       "message": "A capacitor carries a value here — it does not filter, smooth or store charge, and it connects nothing. The timing chips (the 555, CD4047B, CD4060B, CD4098B, CD4538B) read its value from the wiring, and it exports to KiCad with it.",
       "dismiss": "Don't show again"
+    },
+    "transistor": {
+      "on": "Conducting",
+      "off": "Off",
+      "heldOn": "Conducting — holding: the gate is floating, and its charge keeps it on",
+      "heldOff": "Off — holding: the gate is floating, so it stays as last driven"
     }
   },
   "workspace": {
@@ -1191,7 +1223,12 @@
         "one": "{count} Arduino Output or Input: a link to a board, not a part",
         "other": "{count} Arduino Outputs and Inputs: links to a board, not parts"
       },
-      "capacitor": "is left out: a logic simulator has no capacitors"
+      "capacitor": "is left out: a logic simulator has no capacitors",
+      "diode": "is left out: Digital has no diode that passes a level one way as this one does",
+      "inductor": "is left out, so the two nets it joins come across apart: Digital has no inductor",
+      "transistor": "is left out: Digital has no transistor that switches as this one does",
+      "transistorPinout": "gets a TO-92 or TO-220 footprint numbered in the desk's pin order (E·B·C or S·G·D) — check it against the real part's pinout",
+      "nearestFootprint": "gets the nearest footprint KiCad's library has — its lead pitch differs a little from the desk's; check it against the real part"
     }
   },
   "sim": {
@@ -1230,7 +1267,8 @@
     "mixedSupply": "Mixed supply voltages",
     "mixedSupplyMessage": "{net} joins chips powered at {volts}. A signal crossing between supplies needs a level shifter.",
     "timing": "Timing not recognised",
-    "timingMessage": "{chip}: {problems}."
+    "timingMessage": "{chip}: {problems}.",
+    "shortThroughTransistorMessage": "Opposing supplies meet through a transistor that is switched on ({net}) — nothing limits the current."
   },
   "about": {
     "subtitle": "TTL breadboard designer & simulator",
@@ -1358,14 +1396,22 @@
       "ohms": "Resistance",
       "farads": "Capacitance",
       "position": "Position",
-      "timing": "Timing"
+      "timing": "Timing",
+      "partNumber": "Part number",
+      "henries": "Inductance",
+      "zenerVolts": "Zener voltage",
+      "case": "Package",
+      "style": "Style",
+      "bodyHoles": "Holes between leads"
     },
     "option": {
       "manual": "Manual",
       "momentary": "Momentary",
       "toggle": "Toggle",
       "low": "Low",
-      "high": "High"
+      "high": "High",
+      "coil": "Coil",
+      "can": "Can"
     },
     "action": {
       "inspectMemory": "Inspect memory…",
@@ -1379,11 +1425,18 @@
       "reversed": "Power reversed — VCC and GND are swapped.",
       "damaged": "Damaged — {volts} V is over this part's {rating}, and it let the smoke out. Stopping the simulation restores it.",
       "unprogrammed": "Not programmed — no image is loaded, so this chip reads random noise.",
-      "timing": "Timing not recognised — {problems}. Its outputs stay at rest until it is wired as its datasheet shows."
+      "timing": "Timing not recognised — {problems}. Its outputs stay at rest until it is wired as its datasheet shows.",
+      "heldOn": "Holding ON — its gate reads no level, and the charge left on it keeps the channel conducting. A real gate leaks that charge away, so tie it to a defined level with a resistor.",
+      "heldOff": "Holding OFF — its gate reads no level, so it stays as it was last driven (off, if its gate has not been driven yet). A real gate drifts, so tie it to a defined level with a resistor."
     },
     "invalid": {
       "ohms": "Not a resistance — try 470, 4.7k, 4k7 or 2M2 (0.1 Ω to 1 GΩ).",
-      "farads": "Not a capacitance — give a unit: 100p, 10n, 4.7µ, 4u7 or 1m (1 pF to 1 F)."
+      "farads": "Not a capacitance — give a unit: 100p, 10n, 4.7µ, 4u7 or 1m (1 pF to 1 F).",
+      "henries": "Not an inductance — give a unit: 100n, 10µ, 4u7, 100m or 1H (1 nH to 100 H), or leave it blank.",
+      "zenerVolts": "Not a voltage — try 5.1V, 5V1 or 3.3 (1 V to 200 V), or leave it blank."
+    },
+    "refused": {
+      "bodyHoles": "No room — the hole its lead would move to is taken, or past the end of the board."
     }
   },
   "memory": {

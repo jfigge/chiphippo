@@ -361,7 +361,10 @@
       "switches": "开关",
       "xor": "XOR",
       "capacitors": "电容",
-      "timer": "定时器"
+      "timer": "定时器",
+      "diodes": "二极管",
+      "inductors": "电感",
+      "transistors": "晶体管"
     },
     "integration": {
       "output": "输出",
@@ -369,7 +372,8 @@
       "outputHint": "触发时把值发送给 Arduino — 点击桌面即可添加",
       "inputHint": "由 Arduino 的值驱动其引脚 — 点击桌面即可添加",
       "full": "此桌面上的输出和输入已达上限"
-    }
+    },
+    "limitedNote": "这些元件的功能有限，但为导出和设计完整性而提供。"
   },
   "boards": {
     "full": "全尺寸",
@@ -770,6 +774,27 @@
     },
     "cap-electrolytic": {
       "title": "电容（电解）"
+    },
+    "diode": {
+      "title": "二极管"
+    },
+    "zener": {
+      "title": "稳压二极管"
+    },
+    "inductor": {
+      "title": "电感"
+    },
+    "npn": {
+      "title": "NPN 晶体管（BJT）"
+    },
+    "pnp": {
+      "title": "PNP 晶体管（BJT）"
+    },
+    "nmos": {
+      "title": "N 沟道 MOSFET"
+    },
+    "pmos": {
+      "title": "P 沟道 MOSFET"
     }
   },
   "colors": {
@@ -870,7 +895,8 @@
     "inputFloating": "{ref}（{id}）有无人驱动的输入：{pins}。悬空的 TTL 输入会被读作 HIGH，所以芯片能工作——只是与设计不符。请把每一个接到 VCC 或 GND，或接到应当驱动它的信号。",
     "inputFloatingCmos": "{ref}（{id}）有无人驱动的输入：{pins}。悬空的 CMOS 输入既不读作 HIGH 也不读作 LOW，所以芯片的行为无法预料。请把每一个输入接到 VCC 或 GND——包括未使用的门——或接到应当驱动它的信号。",
     "busFight": "{drivers} 接在同一个网络（{net}）上。两个输出绝不能共用一个网络——一个驱动 HIGH，另一个驱动 LOW，二者会互相冲突。",
-    "ledUnlimited": "{ref}（{id}）在没有任何限流的情况下导通——在真实面包板上它会烧毁而不是发光。请给它串联一个电阻。"
+    "ledUnlimited": "{ref}（{id}）在没有任何限流的情况下导通——在真实面包板上它会烧毁而不是发光。请给它串联一个电阻。",
+    "diodeUnlimited": "{ref}（{id}）正向直接跨接在两个强驱动的网络之间——轨到轨，或输出到电源轨——没有任何限流。在真实面包板上它会烧毁，或连带损坏输出。请给它串联一个电阻。"
   },
   "scope": {
     "title": "逻辑分析仪",
@@ -1090,6 +1116,12 @@
       "title": "Chip Hippo 中的电容",
       "message": "在这里，电容只携带一个数值：它不滤波、不平滑、不储存电荷，也不连接任何东西。定时芯片（555、CD4047B、CD4060B、CD4098B、CD4538B）会从接线中读取它的值，导出到 KiCad 时也会带上该值。",
       "dismiss": "不再显示"
+    },
+    "transistor": {
+      "on": "导通",
+      "off": "关断",
+      "heldOn": "导通 — 保持：栅极悬空，其电荷使它保持导通",
+      "heldOff": "关断 — 保持：栅极悬空，因此保持最后一次被驱动时的状态"
     }
   },
   "workspace": {
@@ -1168,7 +1200,12 @@
       "integrations": {
         "other": "{count} 个 Arduino 输出/输入：与开发板的连接，而非元件"
       },
-      "capacitor": "被省略：逻辑仿真器中没有电容"
+      "capacitor": "被省略：逻辑仿真器中没有电容",
+      "diode": "被省略：Digital 中没有像它这样单向传递电平的二极管",
+      "inductor": "被省略，因此它连接的两个网络会被分开导出：Digital 中没有电感",
+      "transistor": "被省略：Digital 中没有像它这样开关的晶体管",
+      "transistorPinout": "使用按工作台引脚顺序（E·B·C 或 S·G·D）编号的 TO-92 或 TO-220 封装——请对照实际元件的引脚排列检查",
+      "nearestFootprint": "使用 KiCad 库中最接近的封装——其引脚间距与工作台上的略有不同，请对照实际元件检查"
     }
   },
   "sim": {
@@ -1204,7 +1241,8 @@
     "mixedSupply": "供电电压混用",
     "mixedSupplyMessage": "{net} 连接了以 {volts} 供电的芯片。跨越不同电源的信号需要电平转换器。",
     "timing": "无法识别定时接法",
-    "timingMessage": "{chip}：{problems}。"
+    "timingMessage": "{chip}：{problems}。",
+    "shortThroughTransistorMessage": "两个相反的电源通过一个导通的晶体管汇到了一起（{net}）——没有任何东西限制电流。"
   },
   "about": {
     "subtitle": "TTL 面包板设计与仿真工具",
@@ -1332,14 +1370,22 @@
       "ohms": "阻值",
       "farads": "容值",
       "position": "位置",
-      "timing": "定时"
+      "timing": "定时",
+      "partNumber": "型号",
+      "henries": "电感量",
+      "zenerVolts": "稳压值",
+      "case": "封装",
+      "style": "样式",
+      "bodyHoles": "引脚间孔数"
     },
     "option": {
       "manual": "手动",
       "momentary": "点动",
       "toggle": "自锁",
       "low": "低",
-      "high": "高"
+      "high": "高",
+      "coil": "线圈",
+      "can": "模压"
     },
     "action": {
       "inspectMemory": "查看存储器…",
@@ -1353,11 +1399,18 @@
       "reversed": "电源接反 — VCC 与 GND 接反了。",
       "damaged": "已损坏 — {volts} V 超过了该元件的额定 {rating}，让它冒了烟。停止仿真即可恢复。",
       "unprogrammed": "未编程 — 尚未载入映像，因此该芯片读出的是随机噪声。",
-      "timing": "无法识别定时接法 — {problems}。在按数据手册接线之前，其输出保持静止状态。"
+      "timing": "无法识别定时接法 — {problems}。在按数据手册接线之前，其输出保持静止状态。",
+      "heldOn": "保持导通 — 栅极没有电平，残留的电荷使沟道保持导通。真实的栅极会漏掉这些电荷，请用电阻把它接到确定的电平。",
+      "heldOff": "保持关断 — 栅极没有电平，因此保持最后一次被驱动时的状态（若栅极尚未被驱动过则为关断）。真实的栅极会漂移，请用电阻把它接到确定的电平。"
     },
     "invalid": {
       "ohms": "不是有效的阻值 — 请输入如 470、4.7k、4k7 或 2M2（0.1 Ω 至 1 GΩ）。",
-      "farads": "不是有效的容值 — 请带上单位，如 100p、10n、4.7µ、4u7 或 1m（1 pF 至 1 F）。"
+      "farads": "不是有效的容值 — 请带上单位，如 100p、10n、4.7µ、4u7 或 1m（1 pF 至 1 F）。",
+      "henries": "不是有效的电感量 — 请带上单位，如 100n、10µ、4u7、100m 或 1H（1 nH 至 100 H），或留空。",
+      "zenerVolts": "不是有效的电压 — 请输入如 5.1V、5V1 或 3.3（1 V 至 200 V），或留空。"
+    },
+    "refused": {
+      "bodyHoles": "没有空间——引脚要移到的孔已被占用，或超出了面包板末端。"
     }
   },
   "memory": {

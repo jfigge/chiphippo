@@ -46,11 +46,17 @@ test("the part catalog carries the Feature 60 inventory", () => {
     "cap-ceramic",
     "cap-electrolytic",
     "clock",
+    "diode",
+    "inductor",
     "lcd16x2",
     "lcd20x4",
     "led",
+    "nmos",
+    "npn",
     "osc-full",
     "osc-half",
+    "pmos",
+    "pnp",
     "pot",
     "psu",
     "resistor",
@@ -64,6 +70,7 @@ test("the part catalog carries the Feature 60 inventory", () => {
     "sw-push",
     "sw-slide",
     "sw-toggle",
+    "zener",
   ]);
   // partDef resolves everything; chipDef stays chips-only.
   assert.ok(partDef("sw-slide"));
@@ -72,8 +79,9 @@ test("the part catalog carries the Feature 60 inventory", () => {
   assert.ok(partDef("lcd16x2"));
   assert.equal(chipDef("sw-slide"), null);
   // 107 chips (24 + 28 LS + 43 CD4000 + 7 memory + 2 io + 2 cpu + the 555)
-  // + 23 parts
-  assert.equal(PALETTE_DEFS.length, 130);
+  // + 30 parts (the discretes brought 7: two diodes, an inductor and
+  // four transistors)
+  assert.equal(PALETTE_DEFS.length, 137);
 });
 
 for (const def of PART_DEFS.filter((d) => d.kind === "discrete")) {

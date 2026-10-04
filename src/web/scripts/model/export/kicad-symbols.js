@@ -438,6 +438,207 @@ function ledSymbol(name) {
   );
 }
 
+/**
+ * A diode — KiCad's Device:D drawn on its side, or Device:D_Zener with the
+ * cathode bar's ends bent — numbered as KiCad numbers both: pin 1 the CATHODE
+ * (kicad-parts.js maps our pin 2 onto it), pin 2 the anode.
+ */
+function diodeSymbol(name, zener) {
+  return twoPin(
+    name,
+    [
+      { number: "2", name: "A", type: "passive", x: -3.81, y: 0, side: "left" },
+      { number: "1", name: "K", type: "passive", x: 3.81, y: 0, side: "right" },
+    ],
+    [
+      poly([
+        [-1.27, 1.27],
+        [-1.27, -1.27],
+        [1.27, 0],
+        [-1.27, 1.27],
+      ]),
+      poly(
+        zener
+          ? [
+              [0.762, 1.27],
+              [1.27, 1.27],
+              [1.27, -1.27],
+              [1.778, -1.27],
+            ]
+          : [
+              [1.27, 1.27],
+              [1.27, -1.27],
+            ],
+      ),
+    ],
+    1.27,
+    1.27,
+  );
+}
+
+/** One arc through `mid`, KiCad's `(arc (start) (mid) (end))`. */
+const arc = (start, mid, end) => [
+  "arc",
+  ["start", ...start],
+  ["mid", ...mid],
+  ["end", ...end],
+  stroke(),
+  fill(),
+];
+
+/** An inductor — KiCad's Device:L on its side: four turns between the pins. */
+function inductorSymbol(name) {
+  const turns = [-2.54, -1.27, 0, 1.27].map((x) =>
+    arc([x, 0], [x + 0.635, 0.635], [x + 1.27, 0]),
+  );
+  return twoPin(
+    name,
+    [
+      { number: "1", name: "1", type: "passive", x: -3.81, y: 0, side: "left" },
+      { number: "2", name: "2", type: "passive", x: 3.81, y: 0, side: "right" },
+    ],
+    turns,
+    2.54,
+    1.016,
+  );
+}
+
+/** A filled arrowhead with its tip at `tip`, pointing along `dir`. */
+function arrowhead(tip, dir, size = 0.9) {
+  const len = Math.hypot(dir[0], dir[1]) || 1;
+  const [ux, uy] = [dir[0] / len, dir[1] / len];
+  const base = [tip[0] - ux * size, tip[1] - uy * size];
+  const r = (v) => Math.round(v * 1000) / 1000;
+  const side = (k) => [r(base[0] - uy * k), r(base[1] + ux * k)];
+  const a = side(size * 0.4);
+  const b = side(-size * 0.4);
+  return poly([tip, a, b, tip], "outline");
+}
+
+/**
+ * A transistor, drawn to KiCad's Device:Q_NPN / Q_PNP / Q_NMOS / Q_PMOS: the
+ * base or gate in from the left, the switched pins out of the top and bottom
+ * at x 2.54, all in a circle. Pins are NUMBERED as ours are (1·2·3 = E·B·C or
+ * S·G·D — KiCad 9's own Q_* number theirs by letter, which no TO-92 pad
+ * matches), so the TO-92 footprint's pads line up with the desk's order.
+ *
+ * `top`/`bottom` name which of our pins leaves each way: current flows in at
+ * the top (an NPN's collector, a PNP's emitter, an N-channel's drain, a
+ * P-channel's source).
+ */
+function transistorSymbol(name, type) {
+  const bjt = type === "npn" || type === "pnp";
+  const [top, bottom] =
+    type === "npn" || type === "nmos"
+      ? [{ number: "3" }, { number: "1" }]
+      : [{ number: "1" }, { number: "3" }];
+  const letters = bjt ? { 1: "E", 2: "B", 3: "C" } : { 1: "S", 2: "G", 3: "D" };
+  const lead = bjt ? 2.54 : 3.302;
+  const pins = [
+    { number: "2", x: -5.08, y: 0, side: "left", angle: 0, len: bjt ? 5.715 : 5.334 }, // prettier-ignore
+    { ...top, x: 2.54, y: 5.08, side: "top", angle: 270, len: lead },
+    { ...bottom, x: 2.54, y: -5.08, side: "bottom", angle: 90, len: lead },
+  ];
+  const map = new Map();
+  const pinNodes = pins.map((p) => {
+    map.set(p.number, { x: p.x, y: p.y, side: p.side });
+    return pinNode(
+      { type: "passive", number: p.number, name: letters[p.number] },
+      p.x,
+      p.y,
+      p.angle,
+      p.len,
+    );
+  });
+  const circle = (cx, r) => [
+    "circle",
+    ["center", cx, 0],
+    ["radius", r],
+    stroke(),
+    fill(),
+  ];
+  let graphics;
+  if (bjt) {
+    graphics = [
+      circle(1.27, 2.8448),
+      poly(
+        [
+          [0.635, 1.905],
+          [0.635, -1.905],
+        ],
+        "none",
+        0.508,
+      ),
+      poly([
+        [0.635, 0.635],
+        [2.54, 2.54],
+      ]),
+      poly([
+        [0.635, -0.635],
+        [2.54, -2.54],
+      ]),
+      // The emitter's arrow: OUT along the lower diagonal for an NPN, IN
+      // along the upper one for a PNP.
+      type === "npn"
+        ? arrowhead([2.286, -2.286], [1, -1])
+        : arrowhead([1.016, 1.016], [-1, -1]),
+    ];
+  } else {
+    // The body ties to the source: the bottom pin of an N-channel, the top of
+    // a P-channel.
+    const source = type === "nmos" ? -1.778 : 1.778;
+    graphics = [
+      circle(1.651, 2.794),
+      poly([
+        [0.254, 1.905],
+        [0.254, -1.905],
+      ]),
+      ...[
+        [2.286, 1.27],
+        [0.508, -0.508],
+        [-1.27, -2.286],
+      ].map(([a, b]) =>
+        poly(
+          [
+            [0.762, a],
+            [0.762, b],
+          ],
+          "none",
+          0.254,
+        ),
+      ),
+      poly([
+        [0.762, 1.778],
+        [2.54, 1.778],
+      ]),
+      poly([
+        [0.762, -1.778],
+        [2.54, -1.778],
+      ]),
+      poly([
+        [0.762, 0],
+        [2.54, 0],
+        [2.54, source],
+      ]),
+      type === "nmos"
+        ? arrowhead([1.016, 0], [-1, 0])
+        : arrowhead([2.286, 0], [1, 0]),
+    ];
+  }
+  return {
+    name,
+    graphics,
+    pinNodes,
+    pins: map,
+    box: { minX: -1.6, maxX: 4.5, minY: -2.9, maxY: 2.9 },
+    compact: true,
+    fields: {
+      reference: { x: 5.08, y: 1.27, justify: ["left"] },
+      value: { x: 5.08, y: -1.27, justify: ["left"] },
+    },
+  };
+}
+
 function spstSymbol(name) {
   return twoPin(
     name,
@@ -515,6 +716,12 @@ export function symbolFor(part, kp, widestValue = part.def.id) {
   if (kp.shape === "led") return ledSymbol(name);
   if (kp.shape === "capacitor") return capacitorSymbol(name, false);
   if (kp.shape === "capacitor-polarized") return capacitorSymbol(name, true);
+  if (kp.shape === "diode") return diodeSymbol(name, false);
+  if (kp.shape === "zener") return diodeSymbol(name, true);
+  if (kp.shape === "inductor") return inductorSymbol(name);
+  if (["npn", "pnp", "nmos", "pmos"].includes(kp.shape)) {
+    return transistorSymbol(name, kp.shape);
+  }
   if (kp.shape === "spst") return spstSymbol(name);
   if (kp.shape === "spdt") return spdtSymbol(name);
   return boxSymbol(

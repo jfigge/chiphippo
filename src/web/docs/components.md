@@ -2,7 +2,8 @@
 
 Everything that isn't a breadboard strip lives in the **Parts** palette on the
 left: 74LS and CD4000 logic chips, CPUs, 65xx interface chips, memory chips, switches, LEDs,
-displays, resistors, capacitors, oscillators, the 555 timer, and power/clock bricks. This page covers
+displays, resistors, capacitors, inductors, diodes, transistors, oscillators, the 555 timer,
+and power/clock bricks. This page covers
 finding a part, seating it on a board, and the (surprisingly varied) ways
 different parts rotate and flip once they're down.
 
@@ -22,8 +23,13 @@ The palette opens with every section collapsed, grouped by function:
   [Choosing a logic family](chip-library.md#choosing-a-logic-family)). The 555
   belongs to neither family, so it shows in every mode; showing CD4000 alone,
   it shares the **Timer** group with the CD4000 timers.
-- **COMPONENTS** — **Switches**, **Resistors**, **Capacitors**, **LEDs**,
-  **Displays**, **Oscillators**, and **Power**, in that shelf order.
+- **COMPONENTS** — **Switches**, **Resistors**, **Capacitors**,
+  **Inductors**, **Diodes**, **Transistors**, **LEDs**, **Displays**,
+  **Oscillators**, and **Power**, in that shelf order. Capacitors, Inductors,
+  Diodes and Transistors carry a red **(i)** beside their names: these parts
+  do only part of what the real ones do, and are there for the export and a
+  complete design (see
+  [Inductors, diodes and transistors](#inductors-diodes-and-transistors)).
 - **Memory** — the ROM/RAM chips, pulled out of CHIPS into a top-level group
   of their own.
 - **ANNOTATIONS** — labels and notes (see
@@ -83,7 +89,7 @@ A few parts don't fit that linear model:
   can 4 holes square, with legs only at the four corners. A can can seat
   anywhere on the grid, including straddling the trench, since its shape
   (not a row) determines its footprint.
-- **Character LCD modules** (**lcd16x2**, **lcd20x4**) *are* linear — a
+- **Character LCD modules** (**lcd16x2**, **lcd20x4**) _are_ linear — a
   16-way header along 16 adjacent holes in one row — but the module itself
   is much bigger than that row. See below.
 
@@ -93,12 +99,12 @@ A **resistor** has a **Resistance**, and a **capacitor** a **Capacitance**:
 right-click the part, choose **Properties…**, and type the value the way it is
 printed on a parts drawer or a schematic.
 
-| Resistance | Capacitance |
-| --- | --- |
-| `470`, `470R`, `470Ω`, `470 ohms` | `100p`, `100pF` |
-| `4.7k`, `4k7` | `10n`, `100nF` |
-| `1M`, `2M2`, `1G` | `4.7µ`, `4.7u`, `4u7`, `100µF` |
-| `0R1` (0.1 Ω) | `1m` (1 mF) |
+| Resistance                        | Capacitance                    |
+| --------------------------------- | ------------------------------ |
+| `470`, `470R`, `470Ω`, `470 ohms` | `100p`, `100pF`                |
+| `4.7k`, `4k7`                     | `10n`, `100nF`                 |
+| `1M`, `2M2`, `1G`                 | `4.7µ`, `4.7u`, `4u7`, `100µF` |
+| `0R1` (0.1 Ω)                     | `1m` (1 mF)                    |
 
 The letter can stand in for the decimal point (`4k7`, `2M2`, `4u7`), and a
 space before the unit is ignored. A resistance can be a bare number of ohms; a
@@ -138,12 +144,12 @@ resistance from the wiper to pin 1 is Position × Resistance, and to pin 3 is
 what is left of the track:
 
 | Position | Wiper ↔ pin 1 | Wiper ↔ pin 3 |
-| --- | --- | --- |
-| 0 % | 0 — a wire | 100k |
-| 10 % | 10k | 90k |
-| 50 % | 50k | 50k |
-| 90 % | 90k | 10k |
-| 100 % | 100k | 0 — a wire |
+| -------- | ------------- | ------------- |
+| 0 %      | 0 — a wire    | 100k          |
+| 10 %     | 10k           | 90k           |
+| 50 %     | 50k           | 50k           |
+| 90 %     | 90k           | 10k           |
+| 100 %    | 100k          | 0 — a wire    |
 
 (for a 100k part). The slider shows exactly that as you move it — the
 resistance to pin 1 at its left end and to pin 3 at its right, `15k ━●━━━ 85k`
@@ -183,6 +189,85 @@ stripe anyway if you mean to build it.
 The first time you place a capacitor a note says all this; **Don't show
 again** puts it away for good.
 
+## Inductors, diodes and transistors
+
+These parts do as much as a logic simulator can honestly do, and no more: no
+forward drop, no gain, no thresholds, no Zener breakdown, no inductive kick.
+What they always do is **export to KiCad as the real part** (see
+[Exporting](exporting.md#kicad)). Every one of them — and the capacitors —
+has an optional **Part number** in **Properties…** (`1N4148`, `2N2222`,
+`2N7000`…). It is printed on the part, listed in the
+[BOM](build-guide.md) and written to the export, and it changes nothing about
+how the part behaves.
+
+**Inductors** (**COMPONENTS ▸ Inductors**) take an optional **Inductance** —
+`10µH`, `10uH`, `4.7u`, `4u7`, `100mH`, `1H` (1 nH to 100 H; a prefix or the
+`H` is required, as a capacitance's is). Leave it blank for a bare inductor.
+Its **Style** is the part it is, seen from above like everything on the
+desk: a **Coil** — a toroid standing on edge over its leads, copper wound
+round a dark ferrite ring — or a **Can**, a drum in a black sleeve, its value
+printed on top. **Holes between
+leads** is **2** (leads 0.3 in apart) or **3** (0.4 in apart, and a bigger
+part). On a part lying along a row, 3 moves its second lead one hole further
+on, so it is refused — with the reason under the choice — where that hole is
+taken or off the end of the board, and it is greyed while the circuit runs,
+like any other change to the wiring. In the simulation an inductor **conducts
+like a wire**: its two leads are one net, whatever it looks like. So one
+across the rails is a short, exactly as a wire would be.
+
+**Diodes** (**COMPONENTS ▸ Diodes**) are the **Diode** and the **Zener
+diode**. Pin 1 is the anode; pin 2, the cathode, is the end the band marks. A
+diode is **one-way**: a HIGH on its anode passes to its cathode, and nothing
+ever passes back. A LOW or undriven anode leaves the cathode to whatever else
+is on it — so two diodes into one net, with a pull-down resistor there, make a
+**diode-OR**. The HIGH passes at the strength it arrived with: from a rail or a
+chip output it drives the cathode, through a resistor it only pulls it. Like an
+LED, a diode wired forward straight across two strongly driven nets (rail to
+rail, or an output into ground) **burns**. A Zener takes an optional **Zener
+voltage** (`5.1V`, `5V1`, `3.3`; 1 V to 200 V), printed and exported, but in
+the simulation it is exactly a diode: reverse breakdown is analog, so it
+regulates nothing here.
+
+**Transistors** (**COMPONENTS ▸ Transistors**) are an **NPN** and a **PNP**
+bipolar transistor and an **N-channel** and a **P-channel MOSFET**, each
+standing over three holes in a row with its pin letters printed on it: `E B C`
+for the BJTs, `S G D` for the MOSFETs. A BJT is a TO-92. A MOSFET is a
+**TO-220** — the power part, its metal tab behind it — unless you pick
+**TO-92** under **Package** in its **Properties…**; the package is how it is
+drawn, listed in the BOM and exported, never how it behaves. Real pinouts differ by part number
+(a 2N2222 is E·B·C, a BC547 C·B·E, an IRLZ44N G·D·S), so select one and press
+`R` to turn it end-for-end. In the simulation each is a **switch**:
+
+| Part             | Control  | Joins                         | On while the control is |
+| ---------------- | -------- | ----------------------------- | ----------------------- |
+| NPN              | Base `B` | Collector `C` and emitter `E` | HIGH                    |
+| PNP              | Base `B` | Emitter `E` and collector `C` | LOW                     |
+| N-channel MOSFET | Gate `G` | Drain `D` and source `S`      | HIGH                    |
+| P-channel MOSFET | Gate `G` | Source `S` and drain `D`      | LOW                     |
+
+When it is on, the two switched pins are joined as a closed switch joins them;
+when it is off, they are apart. What an **undriven** or undefined control does
+is where the two kinds differ, as they do on a bench:
+
+- A **BJT** follows its base and remembers nothing: with its base floating or
+  undefined it is **off**.
+- A **MOSFET's gate holds charge**: it stays in the last state its gate was
+  driven to — **off** until the gate has been driven at all. So a gate left
+  floating (or driven by a floating CMOS output) keeps the MOSFET on or off
+  rather than passing the confusion down the channel. While it runs on that
+  held charge, the lamp on its face is ringed in amber, its hover says so, and
+  its **Properties…** card warns you: a real gate leaks that charge away, so
+  tie it to a defined level with a resistor.
+
+While the circuit runs, a transistor's lamp lights while it conducts. Put a
+resistor in an LED's leg as you would on a bench — with none, the LED burns —
+and a transistor switched on straight across the rails is a short.
+
+A pin wired only to one of these parts **counts as connected**, conducting
+or not: a reversed diode or an off transistor is a valid board, not a floating
+input. Supplies don't pass through them, though — a chip powered through a
+diode or a transistor sees no supply and stays unpowered.
+
 ## Character LCD modules
 
 The **Displays** group holds two HD44780 character-LCD modules: a 16×2
@@ -202,7 +287,7 @@ Driving one is the ordinary HD44780 parallel bus: put a command or character
 code on `DB0`–`DB7`, set `RS` (0 = instruction, 1 = data) and `R/W`
 (0 = write), and pulse `E` — the byte latches on `E`'s falling edge. Wire
 `VDD`/`VSS` to a 5 V rail. `V0` (contrast) and `A`/`K` (backlight) are
-present on the pinout but cosmetic here. During a *read* the module drives
+present on the pinout but cosmetic here. During a _read_ the module drives
 `DB0`–`DB7` itself, so tri-state anything else sharing that bus.
 
 Both modules show the same controller datasheet in their pin-assignments
@@ -229,7 +314,7 @@ move — position 1 is still position 1, just wired to the opposite pins now).
 Neither has the turn-in-hand behavior of a plain LED — treat them as chips
 for rotation purposes.
 
-**Resistor, capacitor and LED (`R`, both while placing and once placed).** These
+**Resistor, capacitor, inductor, diode and LED (`R`, both while placing and once placed).** These
 two-lead parts start in a horizontal **footprint** form (pin 1 and pin 2 a
 fixed span apart along one row). Press `R` while the ghost is armed to turn
 it into a vertical **two-free-ends** form instead: pin 1 stays at the anchor
@@ -240,6 +325,11 @@ turn, cycling through all four compass directions before repeating. Once the
 part is placed, select it and press `R` to rotate it 90° at a time — pin 1
 stays put and pin 2's lead swings around it, hunting for the next free hole
 to land in.
+
+**Transistors (`R` while selected, or while placing).** A transistor turns
+end-for-end in place, as the bussed resistor array does: the same three
+holes, with the pin order reversed (`E B C` becomes `C B E`), which is how
+its letters read on its face.
 
 **Oscillator cans (`R`, but the exact step differs by state).** A can spins
 around its own centre, not around one pin, and the step size changes
@@ -278,7 +368,7 @@ modifier while you start the drag:
 connected to it.** A leg in one of the part's column-halves is attached to it
 exactly as a jumper in the next hole along is, so it travels; the other leg
 stays exactly where it is and the part simply **bends** around it, the way a
-resistor's legs bend on a real bench. Plugged in at *both* legs, it travels
+resistor's legs bend on a real bench. Plugged in at _both_ legs, it travels
 whole instead. (A chip's pins can't bend, so a chip next door is never dragged
 along — it isn't a lead, it's a body.)
 
@@ -292,7 +382,7 @@ never leaves anything of its own stranded behind it.
 **To see what would come, hold Option.** With a part selected, holding Option
 rings every wire end and every leg that would travel with it, and releasing
 Option puts the rings away — so you can check before you commit to the drag
-rather than discover it during one. Something connected at *both* ends gets
+rather than discover it during one. Something connected at _both_ ends gets
 two rings, so a resistor that will travel whole reads differently from one
 that will bend; something connected at one end gets one ring, on the end that
 moves. A part with nothing attached simply shows nothing.
@@ -300,7 +390,7 @@ moves. A part with nothing attached simply shows nothing.
 The drop is **all or nothing**. If any of those has nowhere to go — its hole
 is taken by something that isn't moving, it would run off the end of the
 strip, or the bend would squeeze a resistor's legs closer than its body is
-long — the part *and* everything it would have carried turn red, and releasing
+long — the part _and_ everything it would have carried turn red, and releasing
 puts everything back. Half a move would silently cut the connections it left
 behind, which is the very thing the gesture exists to avoid.
 
@@ -342,7 +432,7 @@ you built it. Power and clock bricks count as parts here, and come too.
 Everything above applies unchanged, just to the whole group:
 
 - **Option** takes the wiring with it — every wire, and every resistor or LED
-  leg, riding *any* member. A wire between two selected parts travels at both
+  leg, riding _any_ member. A wire between two selected parts travels at both
   ends; one that leaves the group keeps its far end where it is; a resistor
   plugged into a member bends after it exactly as above.
 - Holding Option **rings** every end and leg that would travel, across all of

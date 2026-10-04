@@ -63,6 +63,10 @@ export function rcTrace(doc, netlist) {
   const minus = new Set(); // nets carrying a PSU `−`
   const caps = new Map(); // netId → TraceLink[]
   const res = new Map(); // netId → TraceLink[]
+  // Nets a lead of a part that COUNTS AS A CONNECTION sits in (a capacitor,
+  // a diode, an inductor, a transistor — catalog/discretes.js): a pin there
+  // is wired whether or not that part conducts right now.
+  const byPart = new Set();
   // Nets a planted signal flag or an Arduino Input's tag drives: off-board
   // stimulus is a connection like a wire is, though the netlist counts neither.
   const flagged = new Set();
@@ -96,10 +100,14 @@ export function rcTrace(doc, netlist) {
     if (comp.board == null) continue;
     const isCap = Boolean(def.capacitor);
     const isRes = typeof def.weakBridges === "function";
-    if (!isCap && !isRes) continue;
+    const connects = def.countsAsConnection === true;
+    if (!isCap && !isRes && !connects) continue;
     const pins = partPinAddresses(doc, comp);
     if (!pins) continue;
     const netOfPin = new Map(pins.map((p) => [p.pin, netOf(p.address)]));
+    if (connects) {
+      for (const net of netOfPin.values()) if (net) byPart.add(net);
+    }
     if (isCap) {
       const farads = Number(comp.params?.farads);
       if (!(farads > 0)) continue;
@@ -152,6 +160,16 @@ export function rcTrace(doc, netlist) {
     /** Does any capacitor lead sit in `net`? */
     hasCapacitor(net) {
       return Boolean(net && caps.has(net));
+    },
+    /**
+     * Does a lead of a part that counts as a connection sit in `net`
+     * (`def.countsAsConnection` — every one of the discretes)? The
+     * question every floating-input check asks before calling a pin
+     * unconnected: a pin whose only company is a capacitor, a reversed diode
+     * or an off transistor is WIRED, whatever level it settles at.
+     */
+    connectedByPart(net) {
+      return Boolean(net && byPart.has(net));
     },
     /**
      * The capacitance straight from `net` to `to` (a net id or a predicate

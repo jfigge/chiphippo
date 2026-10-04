@@ -124,9 +124,14 @@ export function supplyText(def) {
   return nominal != null ? `${nominal} V` : `${min}–${max} V`;
 }
 
-/** True when a floating input of this def reads unknown (`X`), not HIGH. */
+/**
+ * True when a floating input of this def reads unknown (`X`), not HIGH. A part
+ * in no family may say so itself (`def.floating: "unknown"`), as `def.supply`
+ * states its own range: a transistor's base or gate is not a TTL input with an
+ * emitter pulling it up, and reads a pin nothing drives as undefined.
+ */
 export function floatsUnknown(def) {
-  return FAMILY_FACTS[familyOf(def)]?.floating === "unknown";
+  return (def?.floating ?? FAMILY_FACTS[familyOf(def)]?.floating) === "unknown";
 }
 
 /**

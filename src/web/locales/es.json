@@ -363,7 +363,10 @@
       "switches": "Interruptores",
       "xor": "XOR",
       "capacitors": "Condensadores",
-      "timer": "Temporizador"
+      "timer": "Temporizador",
+      "diodes": "Diodos",
+      "inductors": "Inductores",
+      "transistors": "Transistores"
     },
     "integration": {
       "output": "Salida",
@@ -371,7 +374,8 @@
       "outputHint": "envía un valor a un Arduino cuando se dispara su disparador — haz clic en el escritorio para añadir una",
       "inputHint": "los valores de un Arduino controlan sus pines — haz clic en el escritorio para añadir una",
       "full": "Este escritorio ya tiene tantas Salidas y Entradas como admite"
-    }
+    },
+    "limitedNote": "Estos componentes tienen una funcionalidad limitada, pero existen para la exportación y la integridad del diseño."
   },
   "boards": {
     "full": "Tamaño completo",
@@ -772,6 +776,27 @@
     },
     "cap-electrolytic": {
       "title": "Condensador (electrolítico)"
+    },
+    "diode": {
+      "title": "Diodo"
+    },
+    "zener": {
+      "title": "Diodo Zener"
+    },
+    "inductor": {
+      "title": "Inductor"
+    },
+    "npn": {
+      "title": "Transistor NPN (BJT)"
+    },
+    "pnp": {
+      "title": "Transistor PNP (BJT)"
+    },
+    "nmos": {
+      "title": "MOSFET de canal N"
+    },
+    "pmos": {
+      "title": "MOSFET de canal P"
     }
   },
   "colors": {
@@ -878,7 +903,8 @@
     "inputFloating": "{ref} ({id}) tiene entradas que nada excita: {pins}. Una entrada TTL flotante se lee como HIGH, así que el chip funciona, pero no como se pretendía. Conecte cada una a VCC o GND, o cablee la que deba excitarla.",
     "inputFloatingCmos": "{ref} ({id}) tiene entradas que nada excita: {pins}. Una entrada CMOS flotante no se lee ni HIGH ni LOW, así que lo que haga el chip es imprevisible. Conecte cada entrada a VCC o GND —también las de las puertas sin usar— o cablee la que deba excitarla.",
     "busFight": "{drivers} están conectados a la misma red ({net}). Dos salidas nunca deben compartir una red: una excita a HIGH mientras la otra excita a LOW y se pelean.",
-    "ledUnlimited": "{ref} ({id}) conduce sin nada que limite la corriente; en una placa real se quemaría en lugar de iluminarse. Ponga una resistencia en serie."
+    "ledUnlimited": "{ref} ({id}) conduce sin nada que limite la corriente; en una placa real se quemaría en lugar de iluminarse. Ponga una resistencia en serie.",
+    "diodeUnlimited": "{ref} ({id}) está polarizado en directa directamente entre dos redes con excitación fuerte —de raíl a raíl, o de una salida a un raíl— sin nada que limite la corriente. En una placa real se quemaría o se llevaría la salida por delante. Ponga una resistencia en serie."
   },
   "scope": {
     "title": "Analizador lógico",
@@ -1109,6 +1135,12 @@
       "title": "Los condensadores en Chip Hippo",
       "message": "Aquí un condensador lleva un valor: no filtra, no suaviza ni almacena carga, y no conecta nada. Los chips temporizadores (el 555, CD4047B, CD4060B, CD4098B, CD4538B) leen su valor del cableado, y se exporta con él a KiCad.",
       "dismiss": "No volver a mostrar"
+    },
+    "transistor": {
+      "on": "Conduce",
+      "off": "Apagado",
+      "heldOn": "Conduce — mantiene: la puerta está flotante y su carga lo mantiene encendido",
+      "heldOff": "Apagado — mantiene: la puerta está flotante, así que sigue como se excitó por última vez"
     }
   },
   "workspace": {
@@ -1192,7 +1224,12 @@
         "one": "{count} salida o entrada de Arduino: un enlace con una placa, no una pieza",
         "other": "{count} salidas y entradas de Arduino: enlaces con una placa, no piezas"
       },
-      "capacitor": "se omite: un simulador lógico no tiene condensadores"
+      "capacitor": "se omite: un simulador lógico no tiene condensadores",
+      "diode": "se omite: Digital no tiene un diodo que pase un nivel en un solo sentido como este",
+      "inductor": "se omite, así que las dos redes que une llegan separadas: Digital no tiene inductores",
+      "transistor": "se omite: Digital no tiene un transistor que conmute como este",
+      "transistorPinout": "recibe una huella TO-92 o TO-220 numerada en el orden de patillas del escritorio (E·B·C o S·G·D): compruébala con el patillaje de la pieza real",
+      "nearestFootprint": "recibe la huella más parecida de la biblioteca de KiCad: su paso entre patillas difiere un poco del del escritorio; compruébala con la pieza real"
     }
   },
   "sim": {
@@ -1233,7 +1270,8 @@
     "mixedSupply": "Tensiones de alimentación mezcladas",
     "mixedSupplyMessage": "{net} une chips alimentados a {volts}. Una señal que pasa de una alimentación a otra necesita un convertidor de nivel.",
     "timing": "Temporización no reconocida",
-    "timingMessage": "{chip}: {problems}."
+    "timingMessage": "{chip}: {problems}.",
+    "shortThroughTransistorMessage": "Dos alimentaciones opuestas coinciden a través de un transistor en conducción ({net}): nada limita la corriente."
   },
   "about": {
     "subtitle": "Diseño y simulación de TTL en placa de pruebas",
@@ -1361,14 +1399,22 @@
       "ohms": "Resistencia",
       "farads": "Capacidad",
       "position": "Posición",
-      "timing": "Temporización"
+      "timing": "Temporización",
+      "partNumber": "Referencia",
+      "henries": "Inductancia",
+      "zenerVolts": "Tensión Zener",
+      "case": "Encapsulado",
+      "style": "Estilo",
+      "bodyHoles": "Orificios entre terminales"
     },
     "option": {
       "manual": "Manual",
       "momentary": "Momentáneo",
       "toggle": "Conmutado",
       "low": "Bajo",
-      "high": "Alto"
+      "high": "Alto",
+      "coil": "Bobina",
+      "can": "Encapsulada"
     },
     "action": {
       "inspectMemory": "Inspeccionar la memoria…",
@@ -1382,11 +1428,18 @@
       "reversed": "Alimentación invertida — VCC y GND están intercambiados.",
       "damaged": "Dañado — {volts} V superan los {rating} de esta pieza y soltaron el humo. Al detener la simulación se restaura.",
       "unprogrammed": "Sin programar — no hay ninguna imagen cargada, así que este chip lee ruido aleatorio.",
-      "timing": "Temporización no reconocida: {problems}. Sus salidas quedan en reposo hasta que se cablee como indica su hoja de datos."
+      "timing": "Temporización no reconocida: {problems}. Sus salidas quedan en reposo hasta que se cablee como indica su hoja de datos.",
+      "heldOn": "Mantiene ENCENDIDO: su puerta no tiene nivel, y la carga que le queda mantiene el canal conduciendo. Una puerta real pierde esa carga, así que fíjala a un nivel definido con una resistencia.",
+      "heldOff": "Mantiene APAGADO: su puerta no tiene nivel, así que sigue como se excitó por última vez (apagado si su puerta aún no se ha excitado). Una puerta real deriva, así que fíjala a un nivel definido con una resistencia."
     },
     "invalid": {
       "ohms": "No es una resistencia: prueba 470, 4.7k, 4k7 o 2M2 (de 0,1 Ω a 1 GΩ).",
-      "farads": "No es una capacidad: indica la unidad, p. ej. 100p, 10n, 4.7µ, 4u7 o 1m (de 1 pF a 1 F)."
+      "farads": "No es una capacidad: indica la unidad, p. ej. 100p, 10n, 4.7µ, 4u7 o 1m (de 1 pF a 1 F).",
+      "henries": "No es una inductancia: indica la unidad, p. ej. 100n, 10µ, 4u7, 100m o 1H (de 1 nH a 100 H), o déjalo en blanco.",
+      "zenerVolts": "No es una tensión: prueba 5.1V, 5V1 o 3.3 (de 1 V a 200 V), o déjalo en blanco."
+    },
+    "refused": {
+      "bodyHoles": "No hay sitio: el orificio al que pasaría su terminal está ocupado o más allá del final de la placa."
     }
   },
   "memory": {

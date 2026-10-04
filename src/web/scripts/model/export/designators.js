@@ -50,7 +50,9 @@ export function designatorPrefix(comp) {
   if (ref === "rnet9") return "RN";
   if (ref === "pot") return "RV"; // KiCad's own for R_Potentiometer
   if (ref === "cap-ceramic" || ref === "cap-electrolytic") return "C";
-  if (ref === "led") return "D";
+  if (ref === "led" || ref === "diode" || ref === "zener") return "D";
+  if (ref === "inductor") return "L";
+  if (["npn", "pnp", "nmos", "pmos"].includes(ref)) return "Q";
   if (ref.startsWith("sw-")) return "SW";
   if (ref.startsWith("osc-")) return "X";
   if (/^(seg8|bar8|lcd)/.test(ref)) return "DS";

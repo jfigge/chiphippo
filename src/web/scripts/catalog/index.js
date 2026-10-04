@@ -126,6 +126,20 @@ export function partDef(ref) {
 }
 
 /**
+ * The hole offsets a linear part's pins take along its row, for THESE params:
+ * the def's own `footprint.offsets`, unless the def sizes itself from its
+ * params (`offsetsFor` — an inductor set to three holes between its leads
+ * instead of two). Every reader of a seated part's footprint asks here, so a
+ * part that grows grows everywhere at once.
+ * @param {object|null} def - a catalog def.
+ * @param {object|null} [params]
+ * @returns {readonly number[]|null}
+ */
+export function footprintOffsets(def, params) {
+  return def?.offsetsFor?.(params) ?? def?.footprint?.offsets ?? null;
+}
+
+/**
  * The committed datasheet crop for a def — the basename of
  * `web/datasheets/<name>.png` — or null when the part has none.
  *

@@ -37,11 +37,11 @@ import { hd44780Unit } from "../sim/hd44780.js";
 import { MM_PER_UNIT } from "../desk/desk-geometry.js";
 import { ROTATIONS } from "../model/breadboard.js";
 import { formatOhms, parseOhms } from "../model/ohm-format.js";
-import {
-  FARADS_RANGE,
-  formatFarads,
-  parseFarads,
-} from "../model/farad-format.js";
+import { normalizeLeadOffset } from "./lead-offset.js";
+import { DISCRETE_DEFS } from "./discretes.js";
+
+// Re-exported: callers have always imported it from here.
+export { normalizeLeadOffset };
 
 /** The shared color choices for every colored discrete (LED, and the
     segment/bar displays) — each part's own Properties dialog + the "Default
@@ -283,41 +283,6 @@ function normalizeLcdParams(raw) {
   return params;
 }
 
-/**
- * Coerce a rotated part's far lead to a `{dx, dy}` PITCH OFFSET from its
- * anchor hole, or null when the shape is junk.
- *
- * A bent lead is geometry, not an address: which hole it touches is resolved
- * from where it lands on the desk (occupancy.js), because the far hole may
- * belong to a DIFFERENT strip — typically a power rail. Storing the offset is
- * what lets a part keep its position when that rail is moved or deleted: the
- * lead simply stops resolving to a hole and floats, exactly as a real leg
- * would when you pull the rail out from under it.
- *
- * Both components must be integers so the lead stays on the 0.1-in lattice,
- * and (0, 0) is rejected — a two-terminal device pinned to one hole is
- * nonsense.
- */
-export function normalizeLeadOffset(raw) {
-  const q = (n) => Math.round(n * 100) / 100;
-  const dx = q(Number(raw?.dx));
-  const dy = q(Number(raw?.dy));
-  // Two decimals, not whole pitches. A bend is the vector between two HOLES,
-  // and since board-types.js started measuring the vertical geometry that is
-  // not always a whole number: row a to a dovetailed rail's nearest row is
-  // 2.76 (7.0 mm on a real board). Rounding it to 3 drew the lead 0.6 mm past
-  // the hole it is electrically in; REFUSING it (which this did) dropped the
-  // bend altogether and stood the part back up. Horizontally the vector is
-  // still whole, because columns are.
-  if (!Number.isFinite(dx) || !Number.isFinite(dy)) return null;
-  if (dx === 0 && dy === 0) return null;
-  // Rotating a bend negates a component, and negating zero gives -0: equal to
-  // 0 under ===, distinct under Object.is, so it survives into the saved
-  // document and then fails a deepStrictEqual round-trip. Fold it here, the
-  // one chokepoint every stored bend passes through.
-  return Object.freeze({ dx: dx === 0 ? 0 : dx, dy: dy === 0 ? 0 : dy });
-}
-
 /** Shared by both oscillator-can sizes: a simulated rate, the current
     quarter-turn orientation, plus the same `damaged` bookkeeping a chip's
     12 V "magic smoke" needs. */
@@ -427,17 +392,6 @@ const RESISTANCE_FIELD = Object.freeze({
   invalid: "Not a resistance — try 470, 4.7k, 4k7 or 2M2 (0.1 Ω to 1 GΩ).",
 });
 
-/** The Capacitance field both capacitors carry (farad-format.js). */
-const CAPACITANCE_FIELD = Object.freeze({
-  key: "farads",
-  label: "Capacitance",
-  type: "quantity",
-  parse: parseFarads,
-  format: (farads) => `${formatFarads(farads)}F`,
-  invalid:
-    "Not a capacitance — give a unit: 100p, 10n, 4.7µ, 4u7 or 1m (1 pF to 1 F).",
-});
-
 /**
  * A potentiometer's wiper Position, 0–100 % — a slider in its Properties card
  * (part-properties-dialog.js's `"range"` type), applied as it is dragged. Its
@@ -488,35 +442,6 @@ export function potentiometerSplit(params) {
   const toPin1 = (ohms * position) / 100;
   return { toPin1, toPin3: ohms - toPin1 };
 }
-
-/**
- * A capacitor's params: its value, plus the same two-free-ends geometry the
- * resistor and LED keep (`rot`, `end` — see normalizeLeadOffset). A value
- * that is not a capacitance in range falls back to the part's default.
- */
-function capacitorParams(raw, fallback) {
-  const farads = Number(raw?.farads);
-  const rotated = raw?.rot === 90;
-  return {
-    farads:
-      Number.isFinite(farads) &&
-      farads >= FARADS_RANGE.min &&
-      farads <= FARADS_RANGE.max
-        ? farads
-        : fallback,
-    rot: rotated ? 90 : 0,
-    end: rotated ? normalizeLeadOffset(raw?.end) : null,
-  };
-}
-
-/** What both capacitors' blurbs say about what a capacitor IS here. */
-const CAPACITOR_NOTE =
-  "In this logic sim a capacitor joins nothing — it passes no current, " +
-  "between any two holes, rails included (a charged capacitor blocks DC) — " +
-  "and it does not filter, smooth or store charge. What it carries is its " +
-  "VALUE: a timing part (the 555, or one of the 4000-series timers) reads " +
-  "it off the wiring, and the KiCad export writes it. A pin whose only " +
-  "company is a capacitor is not called unconnected.";
 
 /** Shared by both oscillator-can sizes — the Properties dialog's rate field. */
 const OSCILLATOR_PROPERTIES = [
@@ -1079,63 +1004,8 @@ export const PART_DEFS = Object.freeze(
         ];
       },
     },
-    {
-      id: "cap-ceramic",
-      kind: "discrete",
-      title: "Capacitor (ceramic)",
-      blurb:
-        "Ceramic disc capacitor — non-polarised, either way round. Set its " +
-        "Capacitance in Properties (100p, 10n, 4.7µ, 4u7…). " +
-        CAPACITOR_NOTE +
-        " Press R while placing to stand it up and pick two free ends.",
-      group: "Capacitors",
-      // A disc's leads at 2.5 mm (0.1 in) — adjacent holes, as the
-      // electrolytic's are.
-      footprint: Object.freeze({ offsets: Object.freeze([0, 1]) }),
-      rotatable: true,
-      minSpan: 1,
-      // The data hook every consumer branches on (the trace, the engine's
-      // floating-input rule, the drop note, the BOM, the export) — never an id.
-      capacitor: Object.freeze({ polarized: false }),
-      properties: [CAPACITANCE_FIELD],
-      pins: [
-        { n: 1, name: "1", role: "lead" },
-        { n: 2, name: "2", role: "lead" },
-      ],
-      normalizeParams: (raw) => capacitorParams(raw, 100e-9),
-      // A non-connect, always: no bridge, hard or weak.
-      internalBridges() {
-        return [];
-      },
-    },
-    {
-      id: "cap-electrolytic",
-      kind: "discrete",
-      title: "Capacitor (electrolytic)",
-      blurb:
-        "Aluminium electrolytic capacitor — POLARISED: pin 1 is +, pin 2 is " +
-        "−, which the stripe down its side marks. Set its Capacitance in " +
-        "Properties (1µ, 10µ, 4u7, 470µ…). " +
-        CAPACITOR_NOTE +
-        " Its polarity is drawn and exported; wiring it backwards changes " +
-        "nothing in the sim. Press R while placing to stand it up and pick " +
-        "two free ends.",
-      group: "Capacitors",
-      // A small radial can's leads at 2.5 mm (0.1 in).
-      footprint: Object.freeze({ offsets: Object.freeze([0, 1]) }),
-      rotatable: true,
-      minSpan: 1,
-      capacitor: Object.freeze({ polarized: true }),
-      properties: [CAPACITANCE_FIELD],
-      pins: [
-        { n: 1, name: "+", role: "lead" },
-        { n: 2, name: "-", role: "lead" },
-      ],
-      normalizeParams: (raw) => capacitorParams(raw, 10e-6),
-      internalBridges() {
-        return [];
-      },
-    },
+    // The discretes — capacitors, diodes, inductors, transistors.
+    ...DISCRETE_DEFS,
     {
       id: "psu",
       kind: "psu",

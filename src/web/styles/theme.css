@@ -113,6 +113,28 @@
   --color-part-trimpot-text: #eef2fa;
   --color-part-screw: #c9a347;
   --color-part-screw-slot: #4a3a12;
+  /* The discretes: a rectifier's black epoxy and the silver band on its
+     cathode end; a Zener's amber glass and its black band; a toroid's
+     ferrite ring, the copper wound round it and the dark edge between its
+     turns, and a canned inductor's rim, its black top and the printing on
+     it; a transistor's black moulding, a TO-220's tinned tab
+     and the printing on either; and the lamp a transistor shows while it
+     conducts, ringed amber while a MOSFET is holding its last state. */
+  --color-part-diode: #232326;
+  --color-part-diode-band: #c4c8ce;
+  --color-part-zener: #c9702a;
+  --color-part-zener-band: #1e1e20;
+  --color-part-inductor-core: #2f3034;
+  --color-part-inductor-copper: #d08a46;
+  --color-part-inductor-wire: #6e3d17;
+  --color-part-inductor-rim: #45464b;
+  --color-part-inductor-drum: #1b1b1e;
+  --color-part-inductor-text: #c9c9ce;
+  --color-part-transistor: #222226;
+  --color-part-transistor-tab: #b4b9c0;
+  --color-part-transistor-text: #d8d8dc;
+  --color-part-on: #52d273;
+  --color-part-held: #e0a840;
   /* Magic smoke from a burnt-out part. Sooty, but it has to read against BOTH
      the dark and light desk (parts are theme-invariant), so it can't go much
      darker than this without vanishing on #1c1c1c. */

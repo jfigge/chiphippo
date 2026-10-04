@@ -40,7 +40,9 @@ now has `centreDocument` and a second output to honour); 360 auto-routing (plan 
 (`model/export/`, `app/ipc/export.js`, "Feature 390" in its comments).
 **Landed without a feature number**: capacitors, typed resistor/capacitor values and the
 RC timers — the 555 and the CD4047B/4060B/4098B/4538B (plan
-`features/chiphippo-capacitors-555.md`; see "Values, capacitors & timed parts").
+`features/chiphippo-capacitors-555.md`; see "Values, capacitors & timed parts"); the
+discretes — inductors, diodes, transistors (plan `features/chiphippo-discretes.md` +
+`-amendment.md`; see "The discretes").
 
 ## Naming & identity
 
@@ -199,7 +201,8 @@ the repo, only the cropped PNGs.
     `signal-keys.js`, `pin-resolve.js`, `column-allocator.js`, `autobuild.js`,
     `autobuild-verify.js`, `spec-lint.js`, `integration.js`, `integration-runtime.js`,
     `integration-codegen.js`, `serial-connections.js`, `si-value.js` + `ohm-format.js` +
-    `farad-format.js`, `resistor-bands.js`, `timing-summary.js`.
+    `farad-format.js` + `henry-format.js` + `volt-format.js`, `resistor-bands.js`,
+    `timing-summary.js`.
   - `scripts/sim/` — the DOM-free engine: `union-find.js`, `netlist.js`, `levels.js`,
     `chip-eval.js`, `sequential.js`, `resolve.js`, `engine.js`, `junction.js`,
     `w65c02.js`, `z80.js`, `z80-ops.js`, `analog-switch.js`, `timing.js`, `rc-trace.js`,
@@ -207,8 +210,9 @@ the repo, only the cropped PNGs.
   - `scripts/ai/` — `catalog-brief.js`, `generate.js`, `connection.js`, `usage.js`
     (pure).
   - `scripts/catalog/` — part metadata as pure data + integrity tests; never
-    part-specific code paths. `index.js`, `parts.js`, `chips-*.js` (`chips-seq.js`,
-    `chips-io.js`, `chips-cpu.js`, …), `symbols.js`, `labels.js`.
+    part-specific code paths. `index.js`, `parts.js` (+ `discretes.js`,
+    `lead-offset.js`), `chips-*.js` (`chips-seq.js`, `chips-io.js`, `chips-cpu.js`, …),
+    `symbols.js`, `labels.js`.
   - `scripts/components/` — thin views. `DeskController` keeps the public surface but
     delegates to `sim-overlay.js` (live LED/badge/clock faces from
     `chiphippo:sim-state`), `probe-inspector.js` (shortcut `I` — its own netlist cache,
@@ -301,6 +305,13 @@ Electron main (src/app/main.js)
   follows selects nothing (`#pressWentThrough`). A generated layout readily lays a
   lead across a slide switch's knob, and the switch could then not be flipped at all.
   Editing is untouched — there the wire is what a press may want.
+- **A span part (every rotatable two-lead part) frames ITSELF when selected**
+  (`discrete-view.js` `spanFrame`, `.part-discrete--span`): its element box is padded for
+  the body at any angle, so the `.part--selected` / `--illegal` OUTLINE every other part
+  takes framed a small part in a lot of empty board. The frame is a rect in the leads' own
+  rotated group, round the leads and the body's `size` (`{along, across}` per
+  `SPAN_BODIES` entry) at the outline's gap and stroke, shown by CSS only while selected
+  (red while refused) — the element outline is switched off for those parts.
 - Pan/zoom must **never** rebuild or re-lay-out surface children (transform only); wires
   re-render only on doc changes or live drags (positions passed as overrides).
 - An `<svg>` with width/height 0 renders NOTHING per spec — zero-size anchors need a
@@ -914,6 +925,92 @@ in the wiring and turns them into seconds by its datasheet's formula.
   `C`, ASCII `u` in the Value); the BOM splits resistors and capacitors by value (`Resistor — 4.7kΩ`,
   dash not brackets, since several titles end in a bracket of their own); the schematic
   draws both plates and the value.
+
+## The discretes — inductors, diodes, transistors
+
+`catalog/discretes.js` (the capacitors moved in beside them) + `model/henry-format.js` +
+`model/volt-format.js` + `sim/analog-switch.js` `transistorSwitch`. **Each does as much as
+a digital engine can honestly represent, and exports to KiCad as the real part** — no
+forward drop, breakdown, gain, threshold or kickback. Four flat COMPONENTS groups —
+Capacitors, Inductors, Diodes, Transistors, after Resistors — each header carrying a red
+(i) whose tooltip is `palette.limitedNote` (`LIMITED_GROUPS`, derived from
+`countsAsConnection`; the (i) is `info-button.js`'s `buildInfoMark`, a span — a header is
+already a button). Jason chose red-only on purpose; don't add a non-colour cue. There was
+a red `*` beside it too, which he dropped as redundant (2026-10-04) — don't bring it back.
+
+- **Data hooks, never ids**: `inductor: true`, `diode: {zener}`, `transistor: {type,
+  holds, cases}`, and on all of them (capacitors too) **`countsAsConnection`** — a pin whose net
+  holds one of their leads is WIRED, conducting or not (`rcTrace().connectedByPart`, which
+  the engine's CMOS floating-input sweep and the desk review's TTL sweep ask in place of
+  the old `hasCapacitor`). Every one has an optional **Part number** (`PART_NUMBER_FIELD`,
+  `partNumberOf` — trimmed, ≤32, stored only when set): printed on the part, a BOM key,
+  KiCad's Value for a semiconductor and an `MPN` field for all. Out of the AI builder
+  (`BUILDABLE_DEFS` drops `countsAsConnection`).
+- **Inductor = a wire**: `internalBridges` `[[1,2]]`, so the netlist joins its nets;
+  `{bridges:false}` (schematic, exports) keeps them apart, which is what KiCad needs. The
+  Inductance is OPTIONAL — the `"quantity"` field's `optional: true` takes an empty box as
+  `onChange(key, null)` and normalizeParams drops it. `parseHenries` needs a prefix or
+  `H`, as farads do; 1 nH–100 H.
+- **An inductor's look and size are params** (both `"segmented"`, always stored):
+  `style` `"coil"` (default — a TOROID standing on edge, seen from ABOVE like everything
+  on the desk: the top of its ring, centred on its leads, each turn drawn where it
+  crosses the top so they bunch at the ends and open over the middle, dimmed by how
+  squarely they face up — Jason rejected a face-on drawing as "sideways") or `"can"`
+  (a radial drum from above, between its leads, its value printed on top — 3.2 across
+  over three holes and two thirds of that over two, Jason's sizes);
+  `bodyHoles` 2 (default, offsets `[0,3]`) or 3 (`[0,4]`, a bigger part). The size MOVES
+  pin 2, so the footprint is params-aware: **`footprintOffsets(def, params)`**
+  (`catalog/index.js`, reading a def's `offsetsFor`) is the one read — occupancy, the seat
+  search, `ghostOrient`, the ghost — and `discreteBox(ref, rot, params)` /
+  `inductorBox` size the ghost. The field carries `movesPins` (greyed while running) and
+  `refused`: `DeskDoc.canSetComponentParams` asks `canPlacePart` only when the pins would
+  move, and the Properties dialog's generic refusal (`onChange` → `false`) rebuilds that
+  one row at the true value with `properties.refused.<key>` under it. Jason asked for the
+  toroid and the drum from photos (2026-10-04); the earlier axial looks are gone.
+- **A MOSFET's package is a param** (`case`: `"TO-220"` default, `"TO-92"`;
+  `transistorCase(def, params)`; BJTs are `cases: ["TO-92"]` and store none). Same
+  three holes either way — drawing (`buildTo220`, KiCad's TO-220-3_Vertical outline: it
+  overhangs a pitch each side and the row behind, but only the moulding over its own
+  holes is the hit target), BOM line (`— TO-220, IRLZ44N`) and export only.
+- **Diode = ONE-WAY** (`oneWayBridges(params)` → `[[anode, cathode]]`; anode pin 1, no
+  F-flip, so `polarity` is LED-only). In `resolveAll`: `diodeDrive` resolves the strong
+  pass to a fixpoint WITHIN the pass, starting from no diode driving (monotone — a ring of
+  diodes can't hold itself up; lagging a pass broke that), adding an output-strength H on
+  the cathode for every strongly-H anode; a merely PULLED-high anode passes a PULL, as a
+  link in the resistor relaxation. Never a LOW. An X anode is the "maybe" reading: the
+  narrow pass reports `uncertain` and `solve` runs the wide pass (X passes H) and keeps
+  what agrees, as for a maybe-on channel. A cathode on a supply net gets nothing
+  (`feedsCathode`) — else the H rode a transistor joined to the rail as a phantom
+  conflict. Diodes obey the LED's junction rule: forward across two strong nets they BURN
+  (`sim-overlay #updateDiodes`, review `DIODE_UNLIMITED`). Zener = diode; `zenerVolts`
+  (`parseVolts`: `5.1V`/`5V1`/`3.3`, 1–200 V) is export-only.
+- **Transistor = an analog-switch channel** (`logic.channels`, the CD4066B's mechanism —
+  `channelGroups`). TO-92 `[0,1,2]`, pins E·B·C / S·G·D (control `input`, switched `io`),
+  `reversible` (R turns it end-for-end). `floating: "unknown"` (families.js
+  `floatsUnknown` honours a def's own) so a floating control reads X, never TTL's HIGH. A
+  part with NO supply pins is `passive`: always OK, never in `chipStatus` (the desk
+  review counts chips from it), skipped by the floating-input sweep. **BJT**: on iff the
+  base reads its on-level, else off. **MOSFET** (`holds`): sequential `{gate}` state —
+  the last DEFINED gate level, null (off) before any — and an undefined gate leaves the
+  channel as that state says; `channelStates(def, levels, state)` reports `held`.
+  `channels` (compId → `[{on, held}]`) rides the tick result and `chiphippo:sim-state`:
+  the transistor's lamp lights (`part-discrete--on`), rings amber while held
+  (`--held`), its `<title>` says so (`transistorHint`), and the Properties card warns
+  `heldOn`/`heldOff`. Two rails joined through one: `short`, `via: "transistor"`
+  (`ctx.transistorNets`). Supplies don't cross a channel or a diode at supply strength, so a
+  chip fed through one is unpowered — stated, not modelled.
+- **Exports**: KiCad symbols drawn to `Device:D`/`D_Zener`/`L`/`Q_*` shapes but numbered
+  as OUR pins (KiCad 9's `Q_*` number by letter, which no TO-92 pad matches); footprints
+  `Diode_THT:D_DO-35_SOD27_P7.62mm_Horizontal` (pad 1 = K, so our pin 2),
+  inductors by style × pitch — a coil `L_Toroid_Vertical_L16.0mm_W8.0mm_P7.62mm` /
+  `…_L26.7mm_W14.0mm_P10.16mm_Pulse_D` (exact), a can `L_Radial_D12.5mm_P7.00mm_Fastron_09HCP`
+  / `L_Radial_D12.0mm_P10.00mm_Neosid_SD12_style1` (the NEAREST metric pitch, reported
+  `nearestFootprint` via the spec's `nearest`) — and `Package_TO_SOT_THT:TO-92_Inline_Wide`
+  or `TO-220-3_Vertical` by `case` (a KICAD_PARTS `footprint` may be a function of the
+  component; identity pads, every transistor reported `transistorPinout` — the desk's
+  order is no maker's); designators D, L, Q. Verified with
+  `kicad-cli` (ERC clean, netlist identical). Digital leaves all three out with reasons
+  (an inductor's nets come across APART).
 
 ## Memory chips
 

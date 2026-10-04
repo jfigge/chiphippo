@@ -38,6 +38,9 @@ import { PX_PER_UNIT, clampZoom } from "../desk/desk-geometry.js";
 import { layout } from "../model/schematic-layout.js";
 import { formatOhms } from "../model/ohm-format.js";
 import { formatFarads } from "../model/farad-format.js";
+import { formatHenries } from "../model/henry-format.js";
+import { formatVolts } from "../model/volt-format.js";
+import { partNumberOf } from "../catalog/discretes.js";
 import { FLAG_LEN, flagPolygon } from "../model/signals.js";
 import { DeskView } from "./desk-view.js";
 import { NetlistCache } from "./netlist-cache.js";
@@ -266,8 +269,23 @@ function buildEdge(edge) {
 
 // ── Distinctive-shape parts (LED / resistor / switch / button / PSU / clock) ──
 
-/** The small value text for a shape symbol (volts / ohms / Hz), or "". */
+/** The four transistor symbols (catalog/symbols.js). */
+const TRANSISTOR_SHAPES = new Set(["npn", "pnp", "nmos", "pmos"]);
+
+/** The small value text for a shape symbol (volts / ohms / Hz), or "". A
+    semiconductor is named by its part number; a passive by its value. */
 function shapeText(shape, params) {
+  if (shape === "inductor") {
+    const v = formatHenries(Number(params?.henries));
+    return v ? `${v}H` : (partNumberOf(params) ?? "");
+  }
+  if (shape === "zener") {
+    const v = formatVolts(Number(params?.zenerVolts));
+    return partNumberOf(params) ?? (v ? `${v}V` : "");
+  }
+  if (shape === "diode" || TRANSISTOR_SHAPES.has(shape)) {
+    return partNumberOf(params) ?? "";
+  }
   if (shape === "resistor" || shape === "potentiometer") {
     return formatOhms(Number(params?.ohms));
   }
@@ -280,6 +298,88 @@ function shapeText(shape, params) {
     return params?.hz === "manual" ? "man" : `${params?.hz ?? 1}Hz`;
   }
   return "";
+}
+
+/** A filled arrowhead with its tip at (x, y), pointing along (dx, dy). */
+function arrowhead(x, y, dx, dy, size = 0.42) {
+  const len = Math.hypot(dx, dy) || 1;
+  const ux = dx / len;
+  const uy = dy / len;
+  const bx = x - ux * size;
+  const by = y - uy * size;
+  const px = -uy * size * 0.5;
+  const py = ux * size * 0.5;
+  return svgEl("path", {
+    class: "schematic-shape-arrow",
+    d: `M ${x} ${y} L ${bx + px} ${by + py} L ${bx - px} ${by - py} Z`,
+  });
+}
+
+/**
+ * A transistor's symbol into `g`: the control in from the left at mid-height,
+ * the switched pins leaving at `tx` (where catalog/symbols.js puts their
+ * terminals) out of the top and bottom edges, all in a circle. A BJT is the
+ * base bar with its collector and emitter diagonals, the arrow on the emitter
+ * — out for an NPN, in for a PNP. A MOSFET is the gate plate beside a broken
+ * (enhancement) channel, its body tied to the source, the arrow on that tie —
+ * in for an N-channel, out for a P-channel.
+ */
+function buildTransistorShape(g, shape, w, h, line) {
+  const cy = h / 2;
+  const tx = w / 2 + 0.8;
+  g.append(
+    svgEl("circle", {
+      class: "schematic-shape-line",
+      cx: w / 2 + 0.15,
+      cy,
+      r: 1.55,
+    }),
+  );
+  if (shape === "npn" || shape === "pnp") {
+    const bx = 1.5;
+    const inner = { top: cy - 0.4, bottom: cy + 0.4 };
+    const outer = { top: cy - 1.15, bottom: cy + 1.15 };
+    g.append(
+      line(0, cy, bx, cy),
+      line(bx, cy - 0.85, bx, cy + 0.85),
+      line(bx, inner.top, tx, outer.top),
+      line(tx, outer.top, tx, 0),
+      line(bx, inner.bottom, tx, outer.bottom),
+      line(tx, outer.bottom, tx, h),
+    );
+    const dx = tx - bx;
+    if (shape === "npn") {
+      // The emitter is the lower diagonal, and its arrow points OUT.
+      const dy = outer.bottom - inner.bottom;
+      g.append(arrowhead(bx + dx * 0.85, inner.bottom + dy * 0.85, dx, dy));
+    } else {
+      // The emitter is the upper one, and its arrow points IN.
+      const dy = outer.top - inner.top;
+      g.append(arrowhead(bx + dx * 0.35, inner.top + dy * 0.35, -dx, -dy));
+    }
+    return;
+  }
+  const gx = 1.25;
+  const chx = 1.6;
+  const lead = 0.72;
+  // The source is the bottom pin of an N-channel and the top of a P-channel.
+  const source = shape === "nmos" ? cy + lead : cy - lead;
+  g.append(
+    line(0, cy, gx, cy),
+    line(gx, cy - 0.85, gx, cy + 0.85),
+    line(chx, cy - 0.95, chx, cy - 0.5),
+    line(chx, cy - 0.22, chx, cy + 0.22),
+    line(chx, cy + 0.5, chx, cy + 0.95),
+    line(chx, cy - lead, tx, cy - lead),
+    line(tx, cy - lead, tx, 0),
+    line(chx, cy + lead, tx, cy + lead),
+    line(tx, cy + lead, tx, h),
+    line(chx, cy, tx, cy),
+    line(tx, cy, tx, source),
+    shape === "nmos"
+      ? arrowhead(chx + 0.08, cy, -1, 0)
+      : arrowhead(chx + 0.7, cy, 1, 0),
+  );
 }
 
 /** Draw the distinctive body of a shape symbol into `g` (local coords). */
@@ -391,6 +491,70 @@ function buildShapeBody(g, shape, geo, node) {
         h * 0.92,
         "schematic-shape-value",
         0.8,
+      ),
+    );
+  } else if (shape === "diode" || shape === "zener") {
+    // Anode on top, as the LED stands: the lead down into a triangle pointing
+    // at the cathode bar — bent at both ends for a Zener — and its part
+    // number (a Zener's voltage, without one) beside it.
+    const bw = w * 0.3;
+    const top = h * 0.3;
+    const apex = h * 0.62;
+    g.append(
+      line(cx, 0, cx, top),
+      line(cx, apex, cx, h),
+      svgEl("path", {
+        class: "schematic-shape-arrow",
+        d: `M ${cx - bw} ${top} L ${cx + bw} ${top} L ${cx} ${apex} Z`,
+      }),
+      shape === "zener"
+        ? svgEl("path", {
+            class: "schematic-shape-line",
+            d:
+              `M ${cx - bw - 0.3} ${apex + 0.3} L ${cx - bw} ${apex} ` +
+              `L ${cx + bw} ${apex} L ${cx + bw + 0.3} ${apex - 0.3}`,
+          })
+        : line(cx - bw, apex, cx + bw, apex),
+      svgText(
+        shapeText(shape, node.params),
+        cx + bw + 0.5,
+        (top + apex) / 2,
+        "schematic-shape-value",
+        0.7,
+        "start",
+      ),
+    );
+  } else if (shape === "inductor") {
+    // Four turns of coil between the leads, the value below.
+    const x0 = w * 0.18;
+    const x1 = w * 0.82;
+    const turns = 4;
+    const step = (x1 - x0) / turns;
+    let d = `M 0 ${cy} L ${x0} ${cy}`;
+    for (let i = 1; i <= turns; i++) {
+      d += ` A ${step / 2} ${step / 2} 0 0 1 ${x0 + step * i} ${cy}`;
+    }
+    d += ` L ${w} ${cy}`;
+    g.append(
+      svgEl("path", { class: "schematic-shape-line", d }),
+      svgText(
+        shapeText(shape, node.params),
+        cx,
+        h * 0.92,
+        "schematic-shape-value",
+        0.8,
+      ),
+    );
+  } else if (TRANSISTOR_SHAPES.has(shape)) {
+    buildTransistorShape(g, shape, w, h, line);
+    g.append(
+      svgText(
+        shapeText(shape, node.params),
+        0.1,
+        h - 0.3,
+        "schematic-shape-value",
+        0.7,
+        "start",
       ),
     );
   } else if (shape === "switch") {

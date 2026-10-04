@@ -60,8 +60,9 @@ test("lists the whole catalog grouped by function; picks report the ref", () => 
 
   const items = host.querySelectorAll(".palette-item");
   assert.equal(items.length, SHOWN_DEFS.length);
+  // The group's NAME (a limited group's header also carries its mark).
   const groups = [...host.querySelectorAll(".palette-group")].map(
-    (g) => g.textContent,
+    (g) => g.querySelector(".palette-group-label").textContent,
   );
   // Logic chips (in rank order, minus Memory), then the COMPONENTS sub-groups
   // in their shelf order, then Memory on its own.
@@ -73,6 +74,9 @@ test("lists the whole catalog grouped by function; picks report the ref", () => 
     "Switches",
     "Resistors",
     "Capacitors",
+    "Inductors",
+    "Diodes",
+    "Transistors",
     "LEDs",
     "Displays",
     "Oscillators",
@@ -99,7 +103,9 @@ test("logic chips nest under CHIPS; Memory + parts are their own sections", () =
 
   const bodies = [...host.querySelectorAll(".palette-folder-groups")];
   const groupsIn = (root) =>
-    [...root.querySelectorAll(".palette-group")].map((g) => g.textContent);
+    [...root.querySelectorAll(".palette-group")].map(
+      (g) => g.querySelector(".palette-group-label").textContent,
+    );
 
   // Logic chips (minus Memory) fill the CHIPS folder; the parts fill COMPONENTS.
   const chipGroupNames = [...new Set(SHOWN_CHIPS.map((d) => d.group))]
@@ -110,6 +116,9 @@ test("logic chips nest under CHIPS; Memory + parts are their own sections", () =
     "Switches",
     "Resistors",
     "Capacitors",
+    "Inductors",
+    "Diodes",
+    "Transistors",
     "LEDs",
     "Displays",
     "Oscillators",
@@ -1103,4 +1112,84 @@ test("an unknown family mode reads as the default", () => {
   panel.setFamilyMode("bogus");
   assert.equal(host.querySelector(".palette-family"), null);
   assert.equal(host.querySelector('.palette-item[data-ref="CD4011B"]'), null);
+});
+
+// ── The discretes: four flat groups, marked as limited ──────────────────────
+
+/** A section's header by its identity. */
+const sectionHeader = (host, id) =>
+  host.querySelector(`[data-section="${id}"]`);
+
+test("the discretes are four flat COMPONENTS groups, capacitors where they were", () => {
+  resetDom();
+  const host = document.createElement("div");
+  document.body.append(host);
+  new PalettePanel(host, {});
+
+  // No umbrella folder: each group's header sits straight in COMPONENTS.
+  const components = sectionHeader(host, "COMPONENTS").nextElementSibling;
+  for (const group of ["Capacitors", "Inductors", "Diodes", "Transistors"]) {
+    assert.equal(sectionHeader(host, group)?.parentElement, components, group);
+  }
+  const refsOf = (group) =>
+    [
+      ...sectionHeader(host, group).nextElementSibling.querySelectorAll(
+        ".palette-item",
+      ),
+    ].map((i) => i.dataset.ref);
+  assert.deepEqual(refsOf("Capacitors"), ["cap-ceramic", "cap-electrolytic"]);
+  assert.deepEqual(refsOf("Inductors"), ["inductor"]);
+  assert.deepEqual(refsOf("Diodes"), ["diode", "zener"]);
+  // One entry per transistor, as Resistors holds one per part.
+  assert.deepEqual(refsOf("Transistors"), ["npn", "pnp", "nmos", "pmos"]);
+});
+
+test("those four groups — and only those — carry a red (i)", () => {
+  resetDom();
+  const host = document.createElement("div");
+  document.body.append(host);
+  new PalettePanel(host, {});
+
+  const marked = [...host.querySelectorAll(".palette-group")]
+    .filter((h) => h.querySelector(".info-btn"))
+    .map((h) => h.dataset.section);
+  assert.deepEqual(marked, [
+    "Capacitors",
+    "Inductors",
+    "Diodes",
+    "Transistors",
+  ]);
+  const NOTE =
+    "These components have limited functionality but exist for the purpose " +
+    "of export and design completeness.";
+  for (const group of marked) {
+    const header = sectionHeader(host, group);
+    // Beside the NAME: the label, then the (i) — and no asterisk, which Jason
+    // dropped as redundant beside it.
+    const label = header.querySelector(".palette-group-label");
+    const info = header.querySelector(".info-btn");
+    assert.equal(label.nextElementSibling, info);
+    assert.equal(info.nextElementSibling, null);
+    assert.ok(!header.textContent.includes("*"));
+    // The app's own (i), recoloured — and a mark, not a second button inside
+    // the header's: its tooltip is the note, word for word.
+    assert.ok(info.classList.contains("info-btn--danger"));
+    assert.equal(info.tagName, "SPAN");
+    assert.equal(info.title, NOTE);
+    assert.equal(info.getAttribute("aria-label"), NOTE);
+    assert.ok(info.querySelector("svg"), "the (i) glyph");
+  }
+  // The header still folds its group on a click.
+  sectionHeader(host, "Diodes").click();
+  assert.equal(
+    sectionHeader(host, "Diodes").getAttribute("aria-expanded"),
+    "true",
+  );
+});
+
+test("the mark is red: the (i) takes the danger colour", () => {
+  const rules = cssRules();
+  const danger = rules.get(".info-btn--danger");
+  assert.equal(danger?.get("color"), "var(--color-danger)");
+  assert.equal(danger?.get("border-color"), "var(--color-danger)");
 });

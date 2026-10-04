@@ -1964,6 +1964,35 @@ export class DeskDoc {
   }
 
   /**
+   * Whether `patch` may go onto a component's params where it sits — the
+   * Properties dialog's question before it applies a change. Nearly always
+   * yes: only a change that MOVES a pin (an inductor set to three holes
+   * between its leads lands its second lead one hole further on) is asked
+   * about, and then the new seat must be one `canPlacePart` would accept. A
+   * change that moves nothing is never refused — not even on a part whose
+   * lead is floating, which no seat check would pass.
+   * @param {string} id
+   * @param {object} patch
+   * @returns {boolean}
+   */
+  canSetComponentParams(id, patch) {
+    const comp = this.#doc.components.find((c) => c.id === id);
+    if (!comp) return false;
+    if (comp.board == null) return true; // a brick has terminals, not pins
+    const params = normalizeParams(partDef(comp.ref), {
+      ...comp.params,
+      ...patch,
+    });
+    const before = partPinHoles(comp.ref, comp.anchor, comp.params);
+    const after = partPinHoles(comp.ref, comp.anchor, params);
+    if (JSON.stringify(before) === JSON.stringify(after)) return true;
+    return this.canPlacePart(comp.ref, comp.board, comp.anchor, {
+      ignoreId: id,
+      params,
+    });
+  }
+
+  /**
    * Update a component's Name/Description — the shared Properties dialog's
    * universal metadata, kept OUTSIDE `params` so it never touches a def's own
    * normalizeParams contract (every part gets it, chips included, unlike

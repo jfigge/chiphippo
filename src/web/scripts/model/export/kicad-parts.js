@@ -40,6 +40,9 @@
 import { packageSpec } from "../footprints.js";
 import { formatOhms } from "../ohm-format.js";
 import { formatFaradsAscii } from "../farad-format.js";
+import { formatHenriesAscii } from "../henry-format.js";
+import { formatVolts } from "../volt-format.js";
+import { partNumberOf, transistorCase } from "../../catalog/discretes.js";
 import { switchableOutputs } from "../spec-lint.js";
 import { isAnalogSwitch } from "../../sim/chip-eval.js";
 
@@ -61,10 +64,50 @@ const capValue = (comp) => {
   return v ? `${v}F` : "";
 };
 
+/** A Zener's voltage as a Value says it: "5.1V", or "". */
+const zenerVolts = (comp) => {
+  const v = formatVolts(Number(comp.params?.zenerVolts));
+  return v ? `${v}V` : "";
+};
+
+/** A transistor's footprint by its package (catalog/discretes.js
+    `transistorCase`): a TO-92 on 0.1 in — the pitch a breadboard bends its
+    legs to — or a TO-220 standing up, whose legs already are. */
+const TRANSISTOR_FOOTPRINTS = Object.freeze({
+  "TO-92": "Package_TO_SOT_THT:TO-92_Inline_Wide",
+  "TO-220": "Package_TO_SOT_THT:TO-220-3_Vertical",
+});
+const transistorFootprint = (comp, def) =>
+  TRANSISTOR_FOOTPRINTS[transistorCase(def, comp?.params)];
+
 /**
- * The non-chip parts. `shape` picks the symbol drawing (kicad-symbols.js);
- * `pads` maps a port key onto a footprint pad where they differ (absent =
- * the pin number IS the pad); `value` is the text printed on the sheet.
+ * An inductor's footprint by which it is (catalog/discretes.js
+ * `INDUCTOR_STYLES`) and the holes between its leads — 0.3 in (7.62 mm) or
+ * 0.4 in (10.16 mm). A standing toroid has a footprint on exactly each pitch.
+ * A radial drum does NOT: KiCad's round radial inductors are on metric
+ * pitches, so it gets the nearest (7.00 and 10.00 mm), and the report says to
+ * check it (`nearest`).
+ */
+const INDUCTOR_FOOTPRINTS = Object.freeze({
+  coil: Object.freeze({
+    2: "Inductor_THT:L_Toroid_Vertical_L16.0mm_W8.0mm_P7.62mm",
+    3: "Inductor_THT:L_Toroid_Vertical_L26.7mm_W14.0mm_P10.16mm_Pulse_D",
+  }),
+  can: Object.freeze({
+    2: "Inductor_THT:L_Radial_D12.5mm_P7.00mm_Fastron_09HCP",
+    3: "Inductor_THT:L_Radial_D12.0mm_P10.00mm_Neosid_SD12_style1",
+  }),
+});
+const isCan = (comp) => comp?.params?.style === "can";
+
+/**
+ * The non-chip parts. `footprint` is a library name — or a function of the
+ * component and its def, for a part whose params choose it; `nearest`, where
+ * present, says (of a component) that the footprint is only the closest the
+ * library has, to be checked; `shape` picks the symbol drawing
+ * (kicad-symbols.js); `pads` maps a port key onto a footprint pad where they
+ * differ (absent = the pin number IS the pad); `value` is the text printed on
+ * the sheet.
  */
 export const KICAD_PARTS = Object.freeze({
   resistor: {
@@ -99,6 +142,70 @@ export const KICAD_PARTS = Object.freeze({
     footprint: "Capacitor_THT:CP_Radial_D5.0mm_P2.50mm",
     shape: "capacitor-polarized",
     value: (comp) => capValue(comp) || "C",
+  },
+  // The discretes. A semiconductor's Value is its part number (the
+  // generic name until it has one); a passive's is its value. Any part
+  // number also rides along as an MPN field (`kicadPart`'s `fields`), the
+  // name KiCad's BOM tools read.
+  //
+  // A diode is a DO-35 on 0.3 in (7.62 mm), as the desk seats it, and KiCad
+  // numbers its CATHODE 1 — symbol and footprint alike (the square pad, which
+  // the footprint silkscreens K) — so our pin 2 is pad 1.
+  diode: {
+    footprint: "Diode_THT:D_DO-35_SOD27_P7.62mm_Horizontal",
+    shape: "diode",
+    pads: { 1: "2", 2: "1" },
+    value: (comp) => partNumberOf(comp.params) ?? "D",
+  },
+  zener: {
+    footprint: "Diode_THT:D_DO-35_SOD27_P7.62mm_Horizontal",
+    shape: "zener",
+    pads: { 1: "2", 2: "1" },
+    value: (comp) =>
+      [partNumberOf(comp.params), zenerVolts(comp)].filter(Boolean).join(" ") ||
+      "D_Zener",
+  },
+  // A toroid or a drum, on the pitch its leads were set to (above).
+  inductor: {
+    footprint: (comp) =>
+      INDUCTOR_FOOTPRINTS[isCan(comp) ? "can" : "coil"][
+        comp?.params?.bodyHoles === 3 ? 3 : 2
+      ],
+    nearest: isCan,
+    shape: "inductor",
+    value: (comp) => {
+      const v = formatHenriesAscii(Number(comp.params?.henries));
+      return v ? `${v}H` : (partNumberOf(comp.params) ?? "L");
+    },
+  },
+  // A TO-92 (or, for a MOSFET set to it, a TO-220) on 2.54 mm, its pads
+  // numbered in the order the desk draws the pins (E·B·C, S·G·D). That is no
+  // one maker's pinout — a 2N2222 is E·B·C, a BC547 C·B·E, an IRLZ44N G·D·S
+  // — so the export does not pretend to know which this is: `pinOrder`
+  // reports every one as a footprint to check.
+  npn: {
+    footprint: transistorFootprint,
+    shape: "npn",
+    pinOrder: true,
+    value: (comp) => partNumberOf(comp.params) ?? "NPN",
+  },
+  pnp: {
+    footprint: transistorFootprint,
+    shape: "pnp",
+    pinOrder: true,
+    value: (comp) => partNumberOf(comp.params) ?? "PNP",
+  },
+  nmos: {
+    footprint: transistorFootprint,
+    shape: "nmos",
+    pinOrder: true,
+    value: (comp) => partNumberOf(comp.params) ?? "NMOS",
+  },
+  pmos: {
+    footprint: transistorFootprint,
+    shape: "pmos",
+    pinOrder: true,
+    value: (comp) => partNumberOf(comp.params) ?? "PMOS",
   },
   led: {
     footprint: "LED_THT:LED_D5.0mm",
@@ -218,9 +325,14 @@ export function kicadMapped(def) {
 }
 
 /**
- * Everything the writer needs about one part.
+ * Everything the writer needs about one part. `fields` are the extra
+ * (hidden) properties its symbol instance carries — an MPN, for a part with a
+ * part number; `pinOrder` marks a footprint whose pad order is the desk's
+ * generic one, to be checked against the real part; `nearest` one that is
+ * only the library's closest match.
  * @param {object} part - an ExportPart (export-netlist.js).
  * @returns {{ footprint:string, shape:string, value:string, generic:boolean,
+ *   pinOrder:boolean, nearest:boolean, fields:Array<[string,string]>,
  *   pad:(key:string) => string }}
  */
 export function kicadPart(part) {
@@ -231,15 +343,25 @@ export function kicadPart(part) {
       shape: "box",
       value: def.id,
       generic: false,
+      pinOrder: false,
+      nearest: false,
+      fields: [],
       pad: (key) => key,
     };
   }
   const spec = KICAD_PARTS[def.id];
+  const partNumber = partNumberOf(comp?.params);
   return {
-    footprint: spec.footprint,
+    footprint:
+      typeof spec.footprint === "function"
+        ? spec.footprint(comp, def)
+        : spec.footprint,
     shape: spec.shape,
     value: spec.value ? spec.value(comp) : def.id,
     generic: spec.generic === true,
+    pinOrder: spec.pinOrder === true,
+    nearest: spec.nearest?.(comp) === true,
+    fields: partNumber ? [["MPN", partNumber]] : [],
     pad: padsOf(def, comp, spec),
   };
 }

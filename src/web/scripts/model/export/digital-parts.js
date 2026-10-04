@@ -101,8 +101,8 @@ export const DIGITAL_ELEMENTS = Object.freeze([
  * The parts that do not come across, each with the report's reason code
  * (`export.reason.<code>`): a 74xx part Digital's library lacks, the memory
  * chips (their contents live in files the export does not carry), the
- * processors and their peripherals, the character LCDs, the timers and the
- * capacitors.
+ * processors and their peripherals, the character LCDs, the timers, and the
+ * discretes — capacitors, diodes, inductors and transistors.
  */
 export const DIGITAL_UNSUPPORTED = Object.freeze({
   "74LS73": "noDigitalModel",
@@ -161,6 +161,18 @@ export const DIGITAL_UNSUPPORTED = Object.freeze({
   // electrically — the report just says it went.
   "cap-ceramic": "capacitor",
   "cap-electrolytic": "capacitor",
+  // The rest of the discretes. Digital's diodes and FETs are
+  // switch-level wired-logic parts that do not pass a level the way ours
+  // do, and it has no bipolar transistor and no inductor — an inductor is a
+  // WIRE here, so leaving it out leaves the two nets it joins apart, which
+  // the reason says.
+  diode: "diode",
+  zener: "diode",
+  inductor: "inductor",
+  npn: "transistor",
+  pnp: "transistor",
+  nmos: "transistor",
+  pmos: "transistor",
   "rom-8k": "memory",
   "ram-8k": "memory",
   "28C16": "memory",

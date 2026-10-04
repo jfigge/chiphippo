@@ -1320,7 +1320,10 @@
    its lead takes the pointer — every hole under the box stays clickable. The
    widened invisible hit stroke mirrors .wire-hit. */
 .part-discrete--resistor,
-.part-discrete--led {
+.part-discrete--led,
+.part-discrete--diode,
+.part-discrete--zener,
+.part-discrete--inductor {
   pointer-events: none;
 }
 
@@ -1357,6 +1360,32 @@
    layer uses for its zero-size anchor). */
 .part-discrete-svg--rotated {
   overflow: visible;
+}
+
+/* A span part's selection frame (discrete-view.js spanFrame): .part--selected's
+   outline, drawn INSIDE the part so it hugs the leads and body and turns with
+   them — the element's own box is padded for the body at any angle, and
+   outlined it framed a small part in a great deal of empty board. */
+.part-span-frame {
+  fill: none;
+  stroke-width: 0.2;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.part--selected .part-span-frame {
+  visibility: visible;
+  stroke: var(--color-selection, var(--color-accent));
+}
+
+.part--illegal .part-span-frame {
+  visibility: visible;
+  stroke: var(--color-danger);
+}
+
+.part-discrete--span.part--selected,
+.part-discrete--span.part--illegal {
+  outline: none;
 }
 
 /* ── Part fault symbols (built by part-symbols.js, shared by LEDs + chips) ── */
@@ -1445,6 +1474,10 @@
 .part-discrete--bar8iso,
 .part-discrete--rnet9,
 .part-discrete--pot,
+.part-discrete--npn,
+.part-discrete--pnp,
+.part-discrete--nmos,
+.part-discrete--pmos,
 .part-discrete--osc-full,
 .part-discrete--osc-half,
 .part-discrete--sw-dip1,
@@ -1690,6 +1723,149 @@
 
 .part-pot-pointer {
   fill: var(--color-part-trimpot-text);
+}
+
+/* ── The discretes (catalog/discretes.js) ──────────────────────────── */
+
+/* A diode: a short body with the band on its cathode end — black epoxy and a
+   silver band for a rectifier, amber glass and a black band for a Zener. */
+.part-diode-body {
+  fill: var(--color-part-diode);
+  stroke: var(--color-part-inset);
+  stroke-width: 0.06;
+}
+
+.part-diode-band {
+  fill: var(--color-part-diode-band);
+}
+
+.part-diode-body--zener {
+  fill: var(--color-part-zener);
+  fill-opacity: 0.85;
+}
+
+.part-diode-band--zener {
+  fill: var(--color-part-zener-band);
+}
+
+/* A burnt diode goes dark like a burnt LED's dome. */
+.part-discrete--burnt .part-diode-body {
+  fill: var(--color-part-inset);
+}
+
+/* An inductor, in its two looks, from above. A TOROID standing on edge: the
+   top of its ring, copper wound round the dark ferrite — each turn a copper
+   stroke over the darker edge of the next, the core showing between them. A
+   CAN: a drum in a black sleeve, the bevel of its rim a little lighter than
+   its top, its value printed there. */
+.part-inductor-core {
+  fill: var(--color-part-inductor-core);
+  stroke: var(--color-part-inset);
+  stroke-width: 0.05;
+}
+
+.part-inductor-turn-edge {
+  stroke: var(--color-part-inductor-wire);
+  stroke-width: 0.12;
+  stroke-linecap: round;
+}
+
+.part-inductor-turn {
+  stroke: var(--color-part-inductor-copper);
+  stroke-width: 0.07;
+  stroke-linecap: round;
+}
+
+.part-inductor-drum {
+  fill: var(--color-part-inductor-rim);
+  stroke: var(--color-part-inset);
+  stroke-width: 0.06;
+}
+
+.part-inductor-drum-top {
+  fill: var(--color-part-inductor-drum);
+}
+
+.part-inductor-label {
+  fill: var(--color-part-inductor-text);
+  font-family: var(--font-mono);
+  font-size: 0.45px; /* SVG user units = pitch units */
+  font-weight: 600;
+  user-select: none;
+  pointer-events: none;
+}
+
+/* A part number printed BESIDE a two-lead part (a diode's body has no room
+   for one), upright whatever angle its leads run at. */
+.part-span-label {
+  fill: var(--color-part-inset);
+  font-family: var(--font-mono);
+  font-size: 0.42px; /* SVG user units = pitch units */
+  font-weight: 600;
+  user-select: none;
+  pointer-events: none;
+}
+
+/* A transistor, from above, in its package: a TO-92 (the D of its moulding)
+   or a TO-220 (its moulding, and the metal tab behind it). Either face is
+   printed with its part number and its pin letters, and carries a lamp that
+   lights while it conducts, ringed amber while a MOSFET holds its last
+   state. */
+.part-to92-body,
+.part-to220-body {
+  fill: var(--color-part-transistor);
+  stroke: var(--color-part-inset);
+  stroke-width: 0.06;
+}
+
+.part-to220-tab {
+  fill: var(--color-part-transistor-tab);
+  stroke: var(--color-part-inset);
+  stroke-width: 0.06;
+}
+
+.part-to220-tab-line {
+  stroke: var(--color-part-inset);
+  stroke-width: 0.04;
+  opacity: 0.6;
+}
+
+.part-transistor-label,
+.part-transistor-pin {
+  fill: var(--color-part-transistor-text);
+  font-family: var(--font-mono);
+  font-weight: 600;
+  user-select: none;
+  pointer-events: none;
+}
+
+.part-transistor-label {
+  font-size: 0.36px; /* SVG user units = pitch units */
+}
+
+/* A TO-220's face has more room than a TO-92's. */
+.part-transistor-label--to220 {
+  font-size: 0.42px; /* SVG user units = pitch units */
+}
+
+.part-transistor-pin {
+  font-size: 0.3px; /* SVG user units = pitch units */
+  opacity: 0.8;
+}
+
+.part-transistor-lamp {
+  fill: var(--color-part-inset);
+  stroke: none;
+}
+
+.part-discrete--on .part-transistor-lamp {
+  fill: var(--color-part-on);
+  filter: drop-shadow(0 0 0.25px var(--color-part-on));
+}
+
+.part-discrete--held .part-transistor-lamp {
+  stroke: var(--color-part-held);
+  stroke-width: 0.07;
 }
 
 /* ── PSU brick (desk-level) ──────────────────────────────────────────────── */
@@ -2914,6 +3090,23 @@ textarea.annotation-editor {
 .info-btn:hover,
 .info-btn[aria-expanded="true"] {
   background: var(--color-accent);
+  color: var(--color-crust);
+}
+
+/* The (i) as a MARK (info-button.js buildInfoMark): it explains on hover and
+   does nothing on a click, so it does not point like a button. */
+.info-btn--mark {
+  cursor: help;
+}
+
+/* …recoloured red (a parts-tray group of limited parts), and nothing else. */
+.info-btn--danger {
+  color: var(--color-danger);
+  border-color: var(--color-danger);
+}
+
+.info-btn--danger:hover {
+  background: var(--color-danger);
   color: var(--color-crust);
 }
 

@@ -119,3 +119,26 @@ export function buildInfoButton({ target, label, onToggle }) {
   btn.innerHTML = INFO_SVG;
   return btn;
 }
+
+/**
+ * The same (i) as a MARK rather than a control: the glyph and its circle,
+ * carrying its explanation as a hover tooltip — for a place a button cannot
+ * go, such as inside another button (a parts-tray header, which folds its
+ * group on a click). `variant` recolours it and changes nothing else
+ * (`danger`: red).
+ *
+ * @param {object} opts
+ * @param {string} opts.label - the tooltip, and the mark's accessible name.
+ * @param {string} [opts.variant]
+ * @returns {HTMLSpanElement}
+ */
+export function buildInfoMark({ label, variant }) {
+  const mark = el("span", {
+    class: `info-btn info-btn--mark${variant ? ` info-btn--${variant}` : ""}`,
+    role: "img",
+    "aria-label": label,
+    title: label,
+  });
+  mark.innerHTML = INFO_SVG;
+  return mark;
+}

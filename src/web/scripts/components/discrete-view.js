@@ -35,11 +35,15 @@
 import { el, svgEl } from "../dom.js";
 import { PX_PER_UNIT } from "../desk/desk-geometry.js";
 import { holePosition, rotateOffset } from "../model/breadboard.js";
-import { partDef } from "../catalog/index.js";
+import { footprintOffsets, partDef } from "../catalog/index.js";
 import { packageSpec } from "../model/footprints.js";
 import { formatOhms } from "../model/ohm-format.js";
 import { formatFarads } from "../model/farad-format.js";
+import { formatHenries } from "../model/henry-format.js";
+import { formatVolts } from "../model/volt-format.js";
 import { resistorBands } from "../model/resistor-bands.js";
+import { partNumberOf, transistorCase } from "../catalog/discretes.js";
+import { t } from "../i18n.js";
 import { chipBox } from "./chip-view.js";
 import {
   buildBurnOverlay,
@@ -77,6 +81,17 @@ const BOXES = Object.freeze({
     width: 2.4,
     height: 2.4,
   }),
+  // Two-lead parts on 0.3 in, as the resistor is (their span form is what is
+  // seated; this box is the placement ghost's). An inductor's depends on its
+  // params (inductorBox).
+  diode: Object.freeze({ minX: -0.7, minY: -1.1, width: 4.4, height: 2.2 }),
+  zener: Object.freeze({ minX: -0.7, minY: -1.1, width: 4.4, height: 2.2 }),
+  // A TO-92 over three holes in a row, its moulding centred on the middle one
+  // (see buildTo92). A MOSFET in its TO-220 takes TO220_BOX instead.
+  npn: Object.freeze({ minX: -0.3, minY: -0.9, width: 2.6, height: 1.45 }),
+  pnp: Object.freeze({ minX: -0.3, minY: -0.9, width: 2.6, height: 1.45 }),
+  nmos: Object.freeze({ minX: -0.3, minY: -0.9, width: 2.6, height: 1.45 }),
+  pmos: Object.freeze({ minX: -0.3, minY: -0.9, width: 2.6, height: 1.45 }),
   // A 9-pin SIP standing over one row of holes (like the displays), body above
   // so every hole stays clickable for wiring.
   rnet9: Object.freeze({ minX: -0.7, minY: -2.9, width: 9.4, height: 3.5 }),
@@ -96,6 +111,26 @@ const BOXES = Object.freeze({
   // hole rows the same way, rather than hugging the trench like a real
   // chip's body would. This box is that body plus a 0.25 margin.
   bar8iso: Object.freeze({ minX: -0.75, minY: -3.6, width: 8.5, height: 4.2 }),
+});
+
+/**
+ * A TO-220 standing over three holes in a row, seen from above (see
+ * buildTo220): KiCad's TO-220-3_Vertical outline in pitch units, its 10 mm
+ * body centred on the middle hole and its metal tab behind — so it reaches a
+ * pitch past the outer holes and over the row behind, as the real one does.
+ */
+const TO220 = Object.freeze({
+  left: -0.97,
+  width: 3.94,
+  back: -1.24, // the tab's back face
+  tab: 0.5, // the tab's thickness
+  front: 0.49, // the moulding's front face
+});
+const TO220_BOX = Object.freeze({
+  minX: TO220.left - 0.1,
+  minY: TO220.back - 0.1,
+  width: TO220.width + 0.2,
+  height: TO220.front - TO220.back + 0.2,
 });
 
 /**
@@ -130,11 +165,19 @@ function canBox(def, rot) {
 /**
  * Footprint box for a discrete ref (positioning + ghost sizing). `rot` only
  * matters for a `def.can` part (an oscillator can) — every fixed BOXES entry
- * ignores it.
+ * ignores it. `params` only for a part whose params change its outline: a
+ * MOSFET's package, an inductor's holes between its leads.
  */
-export function discreteBox(ref, rot = 0) {
+export function discreteBox(ref, rot = 0, params = null) {
   const def = partDef(ref);
   if (def?.can) return canBox(def, rot);
+  if (def?.transistor && transistorCase(def, params) === "TO-220") {
+    return TO220_BOX;
+  }
+  if (def?.inductor) {
+    // Its look and its size are both params (inductorBox).
+    return inductorBox(params, footprintOffsets(def, params).at(-1));
+  }
   // A character-LCD module's box is DATASHEET DATA, not hand-tuned padding, so
   // it lives on the def beside the window/screen rects it has to agree with —
   // three rectangles cut from one mechanical drawing, which is exactly the
@@ -161,10 +204,16 @@ export function discreteBox(ref, rot = 0) {
  * element, so the two must use the same number or the body gets clipped. A
  * resistor's body is only half a unit off its leads; an LED's dome stands a
  * whole unit off and is 0.85 across, so it needs more than twice the room.
+ *
+ * `size` is the body's own half-extents about `m` — `along` the leads and
+ * `across` them (a function of the params where its size is a property) —
+ * which is where a label beside it starts (spanLabel) and what its selection
+ * frame hugs (buildSpanSvg).
  */
 const SPAN_BODIES = Object.freeze({
   resistor: Object.freeze({
     pad: 0.9, // body half-height 0.5 (the 1.6-wide hit stroke wants 0.8)
+    size: { along: 1, across: 0.5 },
     build: (m, params) => [
       svgEl("rect", {
         class: "part-resistor-body",
@@ -181,6 +230,7 @@ const SPAN_BODIES = Object.freeze({
   // buildSpanSvg), and it carries no polarity.
   "cap-ceramic": Object.freeze({
     pad: 1,
+    size: { along: 0.78, across: 0.78 },
     build: (m) => [
       svgEl("circle", {
         class: "part-cap-ceramic",
@@ -196,6 +246,7 @@ const SPAN_BODIES = Object.freeze({
   // (`label`: its shift along the body, in this frame).
   "cap-electrolytic": Object.freeze({
     pad: 1.05,
+    size: { along: 0.88, across: 0.88 },
     label: -0.2,
     build: (m) => {
       const r = 0.88;
@@ -217,11 +268,40 @@ const SPAN_BODIES = Object.freeze({
       ];
     },
   }),
+  // A diode, its band on the CATHODE end — pin 2, at +x in this frame.
+  diode: Object.freeze({
+    pad: 0.9,
+    size: { along: 0.75, across: 0.32 },
+    build: (m) => diodeBody(m),
+  }),
+  zener: Object.freeze({
+    pad: 0.9,
+    size: { along: 0.75, across: 0.32 },
+    build: (m) => diodeBody(m, true),
+  }),
+  // An inductor, in either of its two looks (its `style`), seen from above
+  // over its leads: a TOROID standing on edge — copper wound round a ferrite
+  // ring — or a drum in a black CAN. Its size follows the holes between its
+  // leads (so `size` is a function here); the pad covers the bigger drum.
+  inductor: Object.freeze({
+    pad: 1.7,
+    size: (params) => {
+      const { length, width, drum } = inductorSize(params);
+      return params?.style === "can"
+        ? { along: drum, across: drum }
+        : { along: length / 2, across: width / 2 };
+    },
+    build: (m, params) =>
+      params.style === "can"
+        ? inductorCan(m, params)
+        : inductorToroid(m, params),
+  }),
   // Dome centred on the pin-to-pin midpoint (both axes — swapping which hole
   // either pin lands in never moves it) with the flat chord marking the
   // CATHODE side — pin 2 by default, mirrored to pin 1's side when flipped.
   led: Object.freeze({
     pad: 1, // radius 0.85, plus a hair
+    size: { along: 0.85, across: 0.85 },
     build: (m, params) => [
       svgEl("circle", {
         class: `part-led-dome part-led-dome--${params.color ?? "red"}`,
@@ -241,6 +321,178 @@ const SPAN_BODIES = Object.freeze({
 });
 
 const DEFAULT_SPAN_PAD = 0.9;
+
+/** A span part's body half-extents, `{along, across}` its leads — fixed on
+    most, a function of its params where its size is a property. */
+function bodySize(ref, params) {
+  const size = SPAN_BODIES[ref]?.size;
+  return (typeof size === "function" ? size(params) : size) ?? NO_BODY;
+}
+const NO_BODY = Object.freeze({ along: 0, across: 0.5 });
+
+/** Half a lead's stroke: how far its round cap reaches past the hole. */
+const LEAD_CAP = 0.07;
+
+/**
+ * The selection frame of a span part with its leads `reach` either side of
+ * `m` (in the leads' own frame, so it turns with them): the outline every
+ * other part gets from `.part--selected`, drawn here so it hugs the part —
+ * its leads and its body — rather than the element's box, which is padded for
+ * the body at any angle. Gap and stroke match that outline's (1 px off, 2 px
+ * wide, at PX_PER_UNIT 10); CSS shows it only while selected, or refused.
+ */
+function spanFrame(ref, params, m, reach) {
+  const { along, across } = bodySize(ref, params);
+  const x = Math.max(reach + LEAD_CAP, along) + 0.2;
+  const y = Math.max(LEAD_CAP, across) + 0.2;
+  return svgEl("rect", {
+    class: "part-span-frame",
+    x: m.x - x,
+    y: m.y - y,
+    width: 2 * x,
+    height: 2 * y,
+    rx: Math.min(0.4, y),
+  });
+}
+
+/**
+ * An inductor's size, by the holes between its leads (pitch units): a
+ * standing toroid's length along its leads and its width across them — a
+ * little longer than its leads are apart, as the real part is — and a can's
+ * drum radius, a drum sitting between its leads (Jason's sizes: 3.2 across
+ * over three holes, two thirds of that over two).
+ */
+const INDUCTOR_SIZE = Object.freeze({
+  2: Object.freeze({ length: 3.2, width: 1.35, drum: 1.06 }),
+  3: Object.freeze({ length: 4.3, width: 1.7, drum: 1.6 }),
+});
+const inductorSize = (params) => INDUCTOR_SIZE[params?.bodyHoles === 3 ? 3 : 2];
+
+/** Turns round a toroid's ring, all the way round — about one every 0.13
+    pitch along its top, which is what reads as close-wound wire. */
+const TOROID_TURNS = 72;
+
+/**
+ * A toroidal inductor about `m`, leads along +x, seen from ABOVE: it stands
+ * on edge over its two leads with its ring in their plane, so what shows is
+ * the top of the ring — a long rounded body, the copper wound round the dark
+ * ferrite turn after turn, out to both ends. Each turn is drawn where it
+ * crosses the top of the ring, so they bunch up toward the ends, where the
+ * ring curves down out of sight, and open out over the middle, where the
+ * dark core shows between them; and each is lit by how squarely it faces up
+ * (`part-inductor-turn` opacity), dimming toward the ends — together what
+ * makes it read as a ring rather than a bobbin.
+ */
+function inductorToroid(m, params) {
+  const { length, width } = inductorSize(params);
+  const half = length / 2;
+  const corner = width * 0.4;
+  // The body's half-height `d` in from either end (its rounded corners).
+  const reach = (d) =>
+    d >= corner
+      ? width / 2
+      : width / 2 - corner + Math.sqrt(corner * corner - (corner - d) ** 2);
+  const turns = [];
+  for (let k = 1; k < TOROID_TURNS / 2; k++) {
+    const phi = (2 * Math.PI * k) / TOROID_TURNS;
+    const x = m.x + (half - 0.03) * Math.cos(phi);
+    const h = reach(half - Math.abs(x - m.x)) - 0.03;
+    if (h <= 0.05) continue;
+    const lit = (0.35 + 0.65 * Math.sin(phi)).toFixed(2);
+    // Each turn over the dark edge of the next, a little slanted — wire —
+    // and seen ever more edge-on toward the ends.
+    const slant = 0.04 * Math.sin(phi);
+    for (const cls of ["part-inductor-turn-edge", "part-inductor-turn"]) {
+      turns.push(
+        svgEl("line", {
+          class: cls,
+          x1: x - slant,
+          y1: m.y - h,
+          x2: x + slant,
+          y2: m.y + h,
+          ...(cls === "part-inductor-turn" ? { "stroke-opacity": lit } : {}),
+        }),
+      );
+    }
+  }
+  const body = {
+    x: m.x - half,
+    y: m.y - width / 2,
+    width: length,
+    height: width,
+    rx: corner,
+  };
+  return [
+    svgEl("rect", { class: "part-inductor-core", ...body }),
+    ...turns,
+    // The whole body takes the pointer as well as the leads.
+    svgEl("rect", { class: "part-display-hit", ...body }),
+  ];
+}
+
+/**
+ * A drum inductor in a can about `m`, seen from above: the black sleeve with
+ * the lighter bevel of its rim, standing over both its leads, which run
+ * underneath it to their holes. Its value is printed on top (valueLabel).
+ */
+function inductorCan(m, params) {
+  const r = inductorSize(params).drum;
+  return [
+    svgEl("circle", { class: "part-inductor-drum", cx: m.x, cy: m.y, r }),
+    svgEl("circle", {
+      class: "part-inductor-drum-top",
+      cx: m.x,
+      cy: m.y,
+      r: r - 0.22,
+    }),
+    svgEl("circle", { class: "part-display-hit", cx: m.x, cy: m.y, r }),
+  ];
+}
+
+/**
+ * The box an inductor's footprint form (its placement ghost) needs, its
+ * leads `end` holes apart: its body centred over them, a little past them.
+ */
+function inductorBox(params, end) {
+  const { length, width, drum } = inductorSize(params);
+  const can = params?.style === "can";
+  const halfLong = (can ? drum : length / 2) + 0.15;
+  const halfWide = (can ? drum : width / 2) + 0.15;
+  const mid = end / 2;
+  const minX = Math.min(-0.3, mid - halfLong);
+  return {
+    minX,
+    minY: -halfWide,
+    width: Math.max(end + 0.3, mid + halfLong) - minX,
+    height: 2 * halfWide,
+  };
+}
+
+/**
+ * A diode's body about `m`, leads along +x: a short body with the band on the
+ * cathode end (pin 2) — black epoxy and a silver band for a rectifier, amber
+ * glass and a black band for a Zener.
+ */
+function diodeBody(m, zener = false) {
+  const mod = (base) => (zener ? `${base} ${base}--zener` : base);
+  return [
+    svgEl("rect", {
+      class: mod("part-diode-body"),
+      x: m.x - 0.75,
+      y: m.y - 0.32,
+      width: 1.5,
+      height: 0.64,
+      rx: 0.16,
+    }),
+    svgEl("rect", {
+      class: mod("part-diode-band"),
+      x: m.x + 0.4,
+      y: m.y - 0.32,
+      width: 0.2,
+      height: 0.64,
+    }),
+  ];
+}
 
 /**
  * A resistor's colour code (model/resistor-bands.js) as band rects across a
@@ -266,22 +518,90 @@ function resistorBandRects(m, ohms) {
   );
 }
 
+/** Whether an inductor prints its value on its own body — the can does, on
+    its top; a toroid is all winding, so its value goes beside it. */
+const printsOwnValue = (def, params) =>
+  Boolean(def?.inductor) && params?.style === "can";
+
 /**
- * A capacitor's printed value ("100n", "4.7µ"), upright at `m` whatever angle
- * its leads run at — text that turns with the body reads upside down half the
- * time. A body that prints it off-centre (the electrolytic, clear of its
- * stripe) moves it along the lead at `angle` degrees.
+ * A capacitor's printed value ("100n", "4.7µ", "10µ"), or a canned
+ * inductor's ("4.7µH"), upright at `m` whatever angle its leads run at — text
+ * that turns with the body reads upside down half the time. A body that
+ * prints it off-centre (the electrolytic, clear of its stripe) moves it along
+ * the lead at `angle` degrees. Null for a part with no value printed on it (a
+ * bare inductor; a toroid, whose value goes BESIDE it).
  */
-function capacitorLabel(ref, m, params, angle = 0) {
+function valueLabel(ref, m, params, angle = 0) {
+  const def = partDef(ref);
+  const henries = printsOwnValue(def, params)
+    ? formatHenries(Number(params?.henries))
+    : "";
+  const text = def?.capacitor
+    ? formatFarads(Number(params?.farads))
+    : henries
+      ? `${henries}H`
+      : "";
+  if (!text) return null;
   const shift = SPAN_BODIES[ref]?.label ?? 0;
   const rad = (angle * Math.PI) / 180;
   const label = svgEl("text", {
-    class: `part-cap-label part-cap-label--${ref}`,
+    class: def.capacitor
+      ? `part-cap-label part-cap-label--${ref}`
+      : "part-inductor-label",
     x: m.x + shift * Math.cos(rad),
-    y: m.y + shift * Math.sin(rad) + 0.2,
+    y: m.y + shift * Math.sin(rad) + (def.capacitor ? 0.2 : 0.16),
     "text-anchor": "middle",
   });
-  label.textContent = formatFarads(Number(params?.farads));
+  label.textContent = text;
+  return label;
+}
+
+/**
+ * What a two-lead part among the discretes prints BESIDE itself: its part
+ * number, then a Zener's voltage or a toroid's inductance — a diode's body
+ * has no room for either, and a toroid is all winding (a can prints its
+ * value on its top instead). "" for a part with nothing to say (or one that
+ * is not a discrete).
+ */
+function besideText(def, params) {
+  if (!def?.countsAsConnection) return "";
+  const volts = def.diode?.zener ? formatVolts(Number(params?.zenerVolts)) : "";
+  const henries =
+    def.inductor && !printsOwnValue(def, params)
+      ? formatHenries(Number(params?.henries))
+      : "";
+  return [
+    partNumberOf(params),
+    volts ? `${volts}V` : "",
+    henries ? `${henries}H` : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+}
+
+/**
+ * That text, upright, just clear of the body at `m`: BELOW it while the leads
+ * run more across than down, to its RIGHT once they run more down than across
+ * — always on the side a reader looks first, whichever way round the part was
+ * placed.
+ */
+function spanLabel(ref, text, m, angle = 0, params = null) {
+  const rad = (angle * Math.PI) / 180;
+  let nx = -Math.sin(rad);
+  let ny = Math.cos(rad);
+  const below = Math.abs(ny) >= Math.abs(nx);
+  if (below ? ny < 0 : nx < 0) {
+    nx = -nx;
+    ny = -ny;
+  }
+  const gap = bodySize(ref, params).across + 0.18;
+  const label = svgEl("text", {
+    class: "part-span-label",
+    x: m.x + nx * gap,
+    y: m.y + ny * gap + (below ? 0.36 : 0.15),
+    "text-anchor": below ? "middle" : "start",
+  });
+  label.textContent = text;
   return label;
 }
 
@@ -319,9 +639,9 @@ export function buildSpanSvg(ref, dx, dy, rawParams = {}) {
   });
   // The lead runs straight from hole to hole; the body rides over the middle,
   // rotated to align with the lead. The widened invisible hit stroke (the same
-  // sanctioned exception the wires use) is the ONLY part that takes the
-  // pointer — a long span's box would otherwise swallow clicks on the holes
-  // underneath it.
+  // sanctioned exception the wires use) is the part that takes the pointer — a
+  // long span's box would otherwise swallow clicks on the holes underneath it
+  // — beside a body's own `.part-display-hit`, where it has one.
   svg.append(
     svgEl("line", {
       class: "part-span-hit",
@@ -339,19 +659,22 @@ export function buildSpanSvg(ref, dx, dy, rawParams = {}) {
     }),
   );
   const spec = SPAN_BODIES[ref];
-  if (spec) {
-    const body = svgEl("g", { transform: `rotate(${angle} ${midX} ${midY})` });
-    body.append(...spec.build({ x: midX, y: midY }, params));
-    svg.append(body);
-  }
-  if (partDef(ref)?.capacitor) {
-    svg.append(capacitorLabel(ref, { x: midX, y: midY }, params, angle));
+  const body = svgEl("g", { transform: `rotate(${angle} ${midX} ${midY})` });
+  const m = { x: midX, y: midY };
+  if (spec) body.append(...spec.build(m, params));
+  body.append(spanFrame(ref, params, m, Math.hypot(dx, dy) / 2));
+  svg.append(body);
+  const value = valueLabel(ref, { x: midX, y: midY }, params, angle);
+  if (value) svg.append(value);
+  const beside = besideText(partDef(ref), params);
+  if (beside) {
+    svg.append(spanLabel(ref, beside, { x: midX, y: midY }, angle, params));
   }
   // Burn-out overlay (CSS shows it only on .part-discrete--burnt): a red X over
-  // the LED plus smoke, centred on the same midpoint the dome is. Smoke must
-  // rise in SCREEN space, not the rotated frame, so it's built outside the
-  // rotated group.
-  if (ref === "led") {
+  // the LED — or a diode, which burns by the same rule — plus smoke, centred
+  // on the same midpoint the body is. Smoke must rise in SCREEN space, not the
+  // rotated frame, so it's built outside the rotated group.
+  if (ref === "led" || partDef(ref)?.diode) {
     svg.append(buildBurnOverlay(midX, midY));
   }
   return svg;
@@ -706,6 +1029,191 @@ function buildResistorNetwork(svg, ohms, rot) {
       height: edgeY - bodyY,
     }),
   );
+}
+
+/** What a transistor with no part number says on its face. Identity, like a
+    part number, so never translated. */
+const TYPE_LABEL = Object.freeze({
+  npn: "NPN",
+  pnp: "PNP",
+  nmos: "NMOS",
+  pmos: "PMOS",
+});
+
+/**
+ * A transistor (the discretes), in whichever package it is (`transistorCase`
+ * — a MOSFET's Package property): a TO-92 or a TO-220, seen from above.
+ *
+ * Either way its face carries what the real one does — its part number (the
+ * type, until it has one) and its pin letters in the order they sit, which a
+ * turned part (`rot` 180) reverses — and a LAMP: lit while the transistor
+ * conducts, ringed amber while a MOSFET is holding its last state
+ * (DiscreteView.setChannel), with a `<title>` on the body saying which, in
+ * words. Only the body takes the pointer, so the holes around it stay
+ * clickable.
+ */
+function buildTransistor(svg, def, params) {
+  if (transistorCase(def, params) === "TO-220") buildTo220(svg, def, params);
+  else buildTo92(svg, def, params);
+}
+
+/** The pin letters in the order they sit, left to right. */
+const pinLetters = (def, params) => {
+  const names = def.pins.map((p) => p.name);
+  return params.rot === 180 ? [...names].reverse() : names;
+};
+
+/**
+ * The printing on a transistor's face, centred at (`x`, `y`): its part number
+ * or type at `size` (the stylesheet's, for the class `modifier` adds), shrunk
+ * to fit `room` rather than spilling off the body.
+ */
+function transistorLabel(def, params, { x, y, size, room, modifier = "" }) {
+  const text = partNumberOf(params) ?? TYPE_LABEL[def.transistor.type];
+  const label = svgEl("text", {
+    class: modifier
+      ? `part-transistor-label part-transistor-label--${modifier}`
+      : "part-transistor-label",
+    x,
+    y,
+    "text-anchor": "middle",
+  });
+  const fit = Math.min(size, room / (Math.max(text.length, 1) * 0.6));
+  if (fit < size) label.style.fontSize = `${fit}px`;
+  label.textContent = text;
+  return label;
+}
+
+/** The pin letters, one at each `xs`, on the baseline `y`. */
+const pinLetterTexts = (def, params, xs, y) =>
+  pinLetters(def, params).map((name, i) => {
+    const pin = svgEl("text", {
+      class: "part-transistor-pin",
+      x: xs[i],
+      y,
+      "text-anchor": "middle",
+    });
+    pin.textContent = name;
+    return pin;
+  });
+
+/** The lamp, and the body-only hit target carrying the conduction hint. */
+function transistorLampAndHit(lamp, hitRect) {
+  const hit = svgEl("g", { class: "part-transistor-hit" });
+  hit.append(
+    svgEl("title"),
+    svgEl("rect", { class: "part-display-hit", ...hitRect }),
+  );
+  return [
+    svgEl("circle", { class: "part-transistor-lamp", ...lamp, r: 0.12 }),
+    hit,
+  ];
+}
+
+/**
+ * A TO-92: its moulding — the D of a disc with a flat face — centred on the
+ * middle hole, the two outer legs fanning out to theirs. Like the pot it is
+ * held a little short of the rows either side, so the holes a wire to its
+ * pins plugs into stay clear.
+ */
+function buildTo92(svg, def, params) {
+  const cx = 1;
+  const cy = -0.02;
+  const r = 0.72;
+  const flat = 0.4;
+  const half = Math.sqrt(r * r - (flat - cy) ** 2);
+  // The outer legs, from their holes in under the moulding (the middle one is
+  // beneath it).
+  for (const x of [0, 2]) {
+    svg.append(
+      svgEl("line", {
+        class: "part-span-lead",
+        x1: x,
+        y1: 0,
+        x2: x === 0 ? cx - half + 0.05 : cx + half - 0.05,
+        y2: 0.12,
+      }),
+    );
+  }
+  svg.append(
+    svgEl("path", {
+      class: "part-to92-body",
+      d: `M ${cx - half} ${flat} A ${r} ${r} 0 1 1 ${cx + half} ${flat} Z`,
+    }),
+    ...pinLetterTexts(def, params, [cx - 0.38, cx, cx + 0.38], 0.3),
+    transistorLabel(def, params, { x: cx, y: -0.08, size: 0.36, room: 1.3 }),
+    ...transistorLampAndHit(
+      { cx, cy: -0.46 },
+      { x: cx - r, y: cy - r, width: 2 * r, height: flat - (cy - r) },
+    ),
+  );
+}
+
+/**
+ * A TO-220 standing over its three holes (KiCad's TO-220-3_Vertical, TO220
+ * above): the black moulding over the legs, which hides them, with its front
+ * face toward the row in front, and the metal tab behind it — the two lines
+ * across the tab are where it steps in to the mounting hole. Its pin letters
+ * sit along the front edge over their own holes; the lamp sits on the tab.
+ * The body overhangs the holes beside and behind it as the real part does,
+ * but only the moulding over its own three holes takes the pointer.
+ */
+function buildTo220(svg, def, params) {
+  const { left, width, back, tab, front } = TO220;
+  const mould = back + tab;
+  svg.append(
+    svgEl("rect", {
+      class: "part-to220-tab",
+      x: left,
+      y: back,
+      width,
+      height: tab,
+    }),
+    ...[0.27, 1.73].map((x) =>
+      svgEl("line", {
+        class: "part-to220-tab-line",
+        x1: x,
+        y1: back,
+        x2: x,
+        y2: mould,
+      }),
+    ),
+    svgEl("rect", {
+      class: "part-to220-body",
+      x: left,
+      y: mould,
+      width,
+      height: front - mould,
+      rx: 0.06,
+    }),
+    ...pinLetterTexts(def, params, [0, 1, 2], front - 0.11),
+    transistorLabel(def, params, {
+      x: 1,
+      y: -0.06,
+      size: 0.42,
+      room: width - 0.4,
+      modifier: "to220",
+    }),
+    ...transistorLampAndHit(
+      { cx: 1, cy: back + tab / 2 },
+      { x: -0.55, y: mould, width: 3.1, height: front - mould },
+    ),
+  );
+}
+
+/**
+ * The words a transistor's hover shows for its live state (a `<title>`):
+ * conducting or off, and — for a MOSFET whose gate reads undefined — that it
+ * is HOLDING that state, which is the thing worth being told.
+ * @param {{on?: string, held?: boolean}|null} channel
+ */
+export function transistorHint(channel) {
+  if (!channel) return "";
+  const on = channel.on === "H";
+  if (channel.held) {
+    return on ? t("desk.transistor.heldOn") : t("desk.transistor.heldOff");
+  }
+  return on ? t("desk.transistor.on") : t("desk.transistor.off");
 }
 
 /**
@@ -1149,7 +1657,7 @@ function buildCharacterDisplay(svg, def, params) {
 export function buildDiscreteSvg(ref, params = {}) {
   const def = partDef(ref);
   const normalized = def.normalizeParams(params);
-  const box = discreteBox(ref, normalized.rot);
+  const box = discreteBox(ref, normalized.rot, normalized);
 
   const svg = svgEl("svg", {
     class: `part-discrete-svg part-discrete-svg--${ref}`,
@@ -1255,10 +1763,10 @@ export function buildDiscreteSvg(ref, params = {}) {
       }),
       ...resistorBandRects({ x: 1.5, y: 0 }, normalized.ohms),
     );
-  } else if (def.capacitor) {
+  } else if (def.capacitor || def.diode || def.inductor) {
     // The footprint form (the placement ghost): a straight lead between the
     // two holes and the same body the span form draws, centred over them.
-    const end = def.footprint.offsets.at(-1);
+    const end = footprintOffsets(def, normalized).at(-1);
     const m = { x: end / 2, y: 0 };
     svg.append(
       svgEl("line", {
@@ -1269,8 +1777,11 @@ export function buildDiscreteSvg(ref, params = {}) {
         y2: 0,
       }),
       ...SPAN_BODIES[ref].build(m, normalized),
-      capacitorLabel(ref, m, normalized),
     );
+    const value = valueLabel(ref, m, normalized);
+    if (value) svg.append(value);
+  } else if (def.transistor) {
+    buildTransistor(svg, def, normalized);
   } else if (ref === "seg8cc" || ref === "seg8ca") {
     buildDigitDisplay(svg, normalized.color);
   } else if (ref === "bar8") {
@@ -1335,7 +1846,9 @@ export class DiscreteView {
     this.#rotated = Boolean(partDef(component.ref)?.rotatable);
     this.#params = component.params ?? {};
     this.#el = el("div", {
-      class: `part part-discrete part-discrete--${component.ref}`,
+      // A span part draws its own selection frame (spanFrame), in place of
+      // the element outline every other part takes.
+      class: `part part-discrete part-discrete--${component.ref}${this.#rotated ? " part-discrete--span" : ""}`, // prettier-ignore
       dataset: { componentId: component.id },
     });
     // A rotated resistor's SVG needs desk geometry (both end positions), so the
@@ -1422,7 +1935,7 @@ export class DiscreteView {
   updatePlacement(board, anchor) {
     const pos = holePosition(board.type, anchor, board.rot ?? 0);
     if (!pos) return;
-    const box = discreteBox(this.#ref, this.#params?.rot);
+    const box = discreteBox(this.#ref, this.#params?.rot, this.#params);
     this.#el.style.left = `${(board.x + pos.x + box.minX) * PX_PER_UNIT}px`;
     this.#el.style.top = `${(board.y + pos.y + box.minY) * PX_PER_UNIT}px`;
   }
@@ -1462,6 +1975,20 @@ export class DiscreteView {
         def: partDef(this.#ref),
       });
     }
+  }
+
+  /**
+   * A transistor's live state (the discretes): whether its
+   * channel conducts, and whether a MOSFET is holding its last state because
+   * its gate reads undefined — the lamp on its face, and the words on its
+   * hover. `null` (stopped) clears both.
+   * @param {{on?: string, held?: boolean}|null} channel
+   */
+  setChannel(channel) {
+    this.#el.classList.toggle("part-discrete--on", channel?.on === "H");
+    this.#el.classList.toggle("part-discrete--held", channel?.held === true);
+    const title = this.#el.querySelector(".part-transistor-hit > title");
+    if (title) title.textContent = transistorHint(channel);
   }
 
   /** Light one segment of a multi-segment display (anode-H / cathode-L). */

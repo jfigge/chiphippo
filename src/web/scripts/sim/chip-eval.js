@@ -72,8 +72,9 @@ export function isSequential(def) {
 }
 
 /**
- * Is this an analog switch (CD4066B, CD4051B/52B/53B)? Its channels JOIN nets
- * rather than driving them (sim/analog-switch.js), so it has no outputs at all.
+ * Is this an analog switch (CD4066B, CD4051B/52B/53B, and the transistors,
+ * which a logic circuit uses as one)? Its channels JOIN nets rather than
+ * driving them (sim/analog-switch.js), so it has no outputs at all.
  */
 export function isAnalogSwitch(def) {
   return Array.isArray(def?.logic?.channels);
@@ -81,19 +82,26 @@ export function isAnalogSwitch(def) {
 
 /**
  * The state of each of an analog switch's channels for the levels on its pins:
- * `[{a, b, on}]`, the terminals and H (joined), L (apart) or X (might be
- * either). Its control pins are read through the family reader, so a floating
- * CMOS control is X.
+ * `[{a, b, on, held}]`, the terminals and H (joined), L (apart) or X (might be
+ * either), and whether a part's own memory rather than its control decided it
+ * (a MOSFET whose gate reads undefined — analog-switch.js `transistorSwitch`).
+ * Its control pins are read through the family reader, so a floating CMOS
+ * control is X.
  * @param {object} def
  * @param {Map<number, string>} pinLevels
+ * @param {*} [state] - the part's own state, for the one kind that has any.
  */
-export function channelStates(def, pinLevels) {
+export function channelStates(def, pinLevels, state = null) {
   const read = readerFor(def);
-  return def.logic.channels.map((ch) => ({
-    a: ch.a,
-    b: ch.b,
-    on: ch.on(ch.inputs.map((pin) => read(pinLevels.get(pin) ?? Z))),
-  }));
+  return def.logic.channels.map((ch) => {
+    const levels = ch.inputs.map((pin) => read(pinLevels.get(pin) ?? Z));
+    return {
+      a: ch.a,
+      b: ch.b,
+      on: ch.on(levels, state),
+      held: ch.held?.(levels) === true,
+    };
+  });
 }
 
 /**

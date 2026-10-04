@@ -363,7 +363,10 @@
       "switches": "Interruttori",
       "xor": "XOR",
       "capacitors": "Condensatori",
-      "timer": "Timer"
+      "timer": "Timer",
+      "diodes": "Diodi",
+      "inductors": "Induttori",
+      "transistors": "Transistor"
     },
     "integration": {
       "output": "Uscita",
@@ -371,7 +374,8 @@
       "outputHint": "invia un valore a un Arduino quando scatta il suo trigger — fai clic sulla scrivania per aggiungerne una",
       "inputHint": "i valori di un Arduino pilotano i suoi pin — fai clic sulla scrivania per aggiungerne uno",
       "full": "Questa scrivania contiene già tutte le Uscite e gli Ingressi possibili"
-    }
+    },
+    "limitedNote": "Questi componenti hanno funzionalità limitate, ma esistono per l'esportazione e la completezza del progetto."
   },
   "boards": {
     "full": "Dimensione intera",
@@ -772,6 +776,27 @@
     },
     "cap-electrolytic": {
       "title": "Condensatore (elettrolitico)"
+    },
+    "diode": {
+      "title": "Diodo"
+    },
+    "zener": {
+      "title": "Diodo Zener"
+    },
+    "inductor": {
+      "title": "Induttore"
+    },
+    "npn": {
+      "title": "Transistor NPN (BJT)"
+    },
+    "pnp": {
+      "title": "Transistor PNP (BJT)"
+    },
+    "nmos": {
+      "title": "MOSFET a canale N"
+    },
+    "pmos": {
+      "title": "MOSFET a canale P"
     }
   },
   "colors": {
@@ -878,7 +903,8 @@
     "inputFloating": "{ref} ({id}) ha ingressi che nulla pilota: {pins}. Un ingresso TTL flottante viene letto come HIGH, quindi il chip funziona — ma non come previsto. Collega ciascuno a VCC o GND, oppure cablalo a ciò che dovrebbe pilotarlo.",
     "inputFloatingCmos": "{ref} ({id}) ha ingressi che nulla pilota: {pins}. Un ingresso CMOS flottante non si legge né HIGH né LOW, quindi ciò che fa il chip è imprevedibile. Collega ogni ingresso a VCC o GND — comprese le porte inutilizzate — oppure cablalo a ciò che dovrebbe pilotarlo.",
     "busFight": "{drivers} sono collegati alla stessa rete ({net}). Due uscite non devono mai condividere una rete: una pilota HIGH mentre l'altra pilota LOW e si contendono la linea.",
-    "ledUnlimited": "{ref} ({id}) conduce senza nulla che limiti la corrente: su una basetta vera si brucerebbe invece di accendersi. Metti una resistenza in serie."
+    "ledUnlimited": "{ref} ({id}) conduce senza nulla che limiti la corrente: su una basetta vera si brucerebbe invece di accendersi. Metti una resistenza in serie.",
+    "diodeUnlimited": "{ref} ({id}) è polarizzato in diretta direttamente tra due reti pilotate con forza — da binario a binario, o da un'uscita a un binario — senza nulla che limiti la corrente. Su una basetta vera si brucerebbe, o si porterebbe dietro l'uscita. Metti una resistenza in serie."
   },
   "scope": {
     "title": "Analizzatore logico",
@@ -1109,6 +1135,12 @@
       "title": "I condensatori in Chip Hippo",
       "message": "Qui un condensatore porta un valore: non filtra, non livella, non immagazzina carica e non collega nulla. I chip temporizzatori (il 555, CD4047B, CD4060B, CD4098B, CD4538B) ne leggono il valore dal cablaggio, e viene esportato in KiCad con esso.",
       "dismiss": "Non mostrare più"
+    },
+    "transistor": {
+      "on": "In conduzione",
+      "off": "Spento",
+      "heldOn": "In conduzione — mantiene: il gate è flottante e la sua carica lo tiene acceso",
+      "heldOff": "Spento — mantiene: il gate è flottante, quindi resta com'era all'ultimo comando"
     }
   },
   "workspace": {
@@ -1192,7 +1224,12 @@
         "one": "{count} uscita o ingresso Arduino: un collegamento con una scheda, non un componente",
         "other": "{count} uscite e ingressi Arduino: collegamenti con una scheda, non componenti"
       },
-      "capacitor": "viene omesso: un simulatore logico non ha condensatori"
+      "capacitor": "viene omesso: un simulatore logico non ha condensatori",
+      "diode": "viene omesso: Digital non ha un diodo che passi un livello in un solo verso come questo",
+      "inductor": "viene omesso, quindi le due reti che unisce arrivano separate: Digital non ha induttori",
+      "transistor": "viene omesso: Digital non ha un transistor che commuti come questo",
+      "transistorPinout": "riceve un footprint TO-92 o TO-220 numerato nell'ordine dei pin sulla scrivania (E·B·C o S·G·D): verificalo con la piedinatura del componente reale",
+      "nearestFootprint": "riceve il footprint più vicino della libreria KiCad: il suo passo differisce un po' da quello sulla scrivania; verificalo con il componente reale"
     }
   },
   "sim": {
@@ -1233,7 +1270,8 @@
     "mixedSupply": "Tensioni di alimentazione miste",
     "mixedSupplyMessage": "{net} unisce chip alimentati a {volts}. Un segnale che passa da un'alimentazione all'altra richiede un traslatore di livello.",
     "timing": "Temporizzazione non riconosciuta",
-    "timingMessage": "{chip}: {problems}."
+    "timingMessage": "{chip}: {problems}.",
+    "shortThroughTransistorMessage": "Due alimentazioni opposte si incontrano attraverso un transistor in conduzione ({net}): nulla limita la corrente."
   },
   "about": {
     "subtitle": "Progettazione e simulazione TTL su breadboard",
@@ -1361,14 +1399,22 @@
       "ohms": "Resistenza",
       "farads": "Capacità",
       "position": "Posizione",
-      "timing": "Temporizzazione"
+      "timing": "Temporizzazione",
+      "partNumber": "Codice componente",
+      "henries": "Induttanza",
+      "zenerVolts": "Tensione Zener",
+      "case": "Contenitore",
+      "style": "Stile",
+      "bodyHoles": "Fori tra i terminali"
     },
     "option": {
       "manual": "Manuale",
       "momentary": "Momentaneo",
       "toggle": "Bistabile",
       "low": "Basso",
-      "high": "Alto"
+      "high": "Alto",
+      "coil": "Bobina",
+      "can": "Incapsulata"
     },
     "action": {
       "inspectMemory": "Ispeziona la memoria…",
@@ -1382,11 +1428,18 @@
       "reversed": "Alimentazione invertita — VCC e GND sono scambiati.",
       "damaged": "Danneggiato — {volts} V superano i {rating} di questo componente e hanno fatto uscire il fumo. Fermando la simulazione viene ripristinato.",
       "unprogrammed": "Non programmato — non è caricata nessuna immagine, quindi questo chip legge rumore casuale.",
-      "timing": "Temporizzazione non riconosciuta — {problems}. Le uscite restano a riposo finché non è collegato come mostra il datasheet."
+      "timing": "Temporizzazione non riconosciuta — {problems}. Le uscite restano a riposo finché non è collegato come mostra il datasheet.",
+      "heldOn": "Mantiene ACCESO — il gate non ha alcun livello, e la carica rimasta lo tiene in conduzione. Un gate reale perde quella carica: collegalo a un livello definito con una resistenza.",
+      "heldOff": "Mantiene SPENTO — il gate non ha alcun livello, quindi resta com'era all'ultimo comando (spento, se il gate non è ancora stato pilotato). Un gate reale deriva: collegalo a un livello definito con una resistenza."
     },
     "invalid": {
       "ohms": "Non è una resistenza — prova 470, 4.7k, 4k7 o 2M2 (da 0,1 Ω a 1 GΩ).",
-      "farads": "Non è una capacità — indica l'unità: 100p, 10n, 4.7µ, 4u7 o 1m (da 1 pF a 1 F)."
+      "farads": "Non è una capacità — indica l'unità: 100p, 10n, 4.7µ, 4u7 o 1m (da 1 pF a 1 F).",
+      "henries": "Non è un'induttanza — indica l'unità: 100n, 10µ, 4u7, 100m o 1H (da 1 nH a 100 H), oppure lascia vuoto.",
+      "zenerVolts": "Non è una tensione — prova 5.1V, 5V1 o 3.3 (da 1 V a 200 V), oppure lascia vuoto."
+    },
+    "refused": {
+      "bodyHoles": "Non c'è spazio: il foro in cui andrebbe il suo terminale è occupato o oltre la fine della basetta."
     }
   },
   "memory": {

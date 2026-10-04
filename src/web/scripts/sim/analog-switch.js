@@ -19,7 +19,8 @@
 
 // analog-switch.js — the vocabulary of the parts that DRIVE NOTHING: the
 // CD4066B's bilateral switches and the CD4051B/52B/53B multiplexers (Feature
-// 410, phase 2b).
+// 410, phase 2b), and the transistors among the discretes, which a logic
+// circuit uses as exactly this — a switch a level opens and closes.
 //
 // Every other chip computes a level and puts it on a pin. These connect. Each
 // CHANNEL is two terminals and a control rule: while the rule reads HIGH the
@@ -30,7 +31,9 @@
 // `channelGroups` and `resolveAll`); a def only states its channels, as DATA:
 //
 //   { a, b, inputs, on }   terminal pins, the control pins the rule reads, and
-//                          a pure `on(levels)` over those levels → H | L | X.
+//                          a pure `on(levels, state)` over those levels → H |
+//                          L | X (`state` is the part's own, for the one kind
+//                          that has any: a MOSFET's gate charge, below).
 //
 // The levels arrive read through the part's family reader, so a floating CMOS
 // control reads X, and X means "might be on": the engine resolves the circuit
@@ -79,4 +82,62 @@ export function muxSection({ inh, sel, common, channels }) {
         inhibit === L && valueOf(select) === k ? H : L,
       ),
   }));
+}
+
+/**
+ * A transistor as the switch it is in a logic circuit (the discretes):
+ * ONE channel between its two switched pins, closed and opened by its base or
+ * gate read as a plain level — no threshold, no gain, no saturation, no
+ * on-resistance. `onLevel` is the level that turns it on: HIGH for an NPN or
+ * an N-channel MOSFET, LOW for a PNP or a P-channel one.
+ *
+ * What an UNDEFINED control does — floating, or X — is where the two kinds
+ * part company, as they do on a bench:
+ *   · a BJT follows its base and remembers nothing: a base nothing drives
+ *     passes no base current, so the transistor is off;
+ *   · a MOSFET's gate is a capacitor (`holds`): it stays in the state the
+ *     last DEFINED level left it in — off until there has been one — so an
+ *     undefined gate stops AT the gate instead of spreading down the channel.
+ *
+ * A holding part is the one channel part with state, `{ gate }` (the last
+ * defined level its gate read, null before any), advanced by `step` exactly as
+ * a sequential part's is — run-volatile with the rest, so every Run starts
+ * with the MOSFET off. Its channel reports `held` while that memory, not the
+ * gate, is what decides it, which is how the desk shows it.
+ *
+ * The control arrives read through the part's own reader, which for a
+ * transistor reads a floating pin as undefined (`def.floating`,
+ * catalog/families.js) — never as the HIGH a TTL input would read.
+ *
+ * @param {{control:number, a:number, b:number, onLevel:string, holds:boolean}} t
+ * @returns {object} the def's `logic` block
+ */
+export function transistorSwitch({ control, a, b, onLevel, holds }) {
+  const defined = (level) => level === H || level === L;
+  const channel = Object.freeze({
+    a,
+    b,
+    inputs: [control],
+    on: ([level], state) => {
+      const gate = defined(level)
+        ? level
+        : holds
+          ? (state?.gate ?? null)
+          : null;
+      return gate === onLevel ? H : L;
+    },
+    held: ([level]) => holds && !defined(level),
+  });
+  if (!holds) return Object.freeze({ channels: [channel] });
+  return Object.freeze({
+    channels: [channel],
+    state0: () => ({ gate: null }),
+    // Returned VERBATIM when nothing defined arrives — the tick's step
+    // fixpoint depends on a repeated step changing nothing.
+    step: (state, ins) => {
+      const level = ins.get(control);
+      return defined(level) && level !== state?.gate ? { gate: level } : state;
+    },
+    outputs: () => new Map(),
+  });
 }

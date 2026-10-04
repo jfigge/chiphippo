@@ -51,6 +51,9 @@ import { WIRE_COLORS, parseBusName } from "./desk-doc.js";
 import { wireCutMm, wireLengthLabel } from "./wire-length.js";
 import { formatOhms } from "./ohm-format.js";
 import { formatFarads } from "./farad-format.js";
+import { formatHenries } from "./henry-format.js";
+import { formatVolts } from "./volt-format.js";
+import { partNumberOf, transistorCase } from "../catalog/discretes.js";
 
 /**
  * @typedef {object} BuildPlan
@@ -308,10 +311,27 @@ function bomVariant(def, comp) {
   // one line, a 10k and a 4.7k are two. Keyed by the stored number, and set
   // off with a dash rather than brackets, since several of these titles end in
   // a bracket of their own ("Capacitor (ceramic)").
-  if (def.capacitor && Number.isFinite(p.farads)) {
+  // The discretes adds its PART NUMBER to the value: two 1N4148s are
+  // one line, a 1N4148 and a 1N4001 two — and a part with neither is just
+  // its title. A capacitor with no part number keys exactly as it always has.
+  // A part with a choice of package (a MOSFET) says which: a TO-220 and a
+  // TO-92 are different things to buy.
+  if (def.countsAsConnection) {
+    const [number, text] = def.capacitor
+      ? [p.farads, `${formatFarads(p.farads)}F`]
+      : def.inductor && Number.isFinite(p.henries)
+        ? [p.henries, `${formatHenries(p.henries)}H`]
+        : def.diode?.zener && Number.isFinite(p.zenerVolts)
+          ? [p.zenerVolts, `${formatVolts(p.zenerVolts)}V`]
+          : [null, ""];
+    const partNumber = partNumberOf(p);
+    const pkg = packageChoice(def, p);
+    const detail = [text, pkg, partNumber].filter(Boolean).join(", ");
     return {
-      key: `${comp.ref}:${p.farads}`,
-      title: `${partTitle(def)} — ${formatFarads(p.farads)}F`,
+      key: [comp.ref, number, pkg, partNumber]
+        .filter((v) => v != null)
+        .join(":"),
+      title: detail ? `${partTitle(def)} — ${detail}` : partTitle(def),
     };
   }
   if (typeof def.weakBridges === "function" && Number.isFinite(p.ohms)) {
@@ -321,6 +341,14 @@ function bomVariant(def, comp) {
     };
   }
   return { key: comp.ref, title: partTitle(def) };
+}
+
+/** The package a part was given where it had a choice (a MOSFET's TO-220 or
+    TO-92), else null — a part with one package has nothing to say. */
+function packageChoice(def, params) {
+  return (def.transistor?.cases?.length ?? 0) > 1
+    ? transistorCase(def, params)
+    : null;
 }
 
 /** Count `items` by a key fn into sorted `{ key, title, count }` lines. */
@@ -622,10 +650,20 @@ function discreteSteps(doc, steps) {
   for (const comp of doc.components) {
     const def = partDef(comp.ref);
     if (def?.kind !== "discrete") continue;
+    // A coloured part says its colour; one of the discretes its package
+    // (where it had a choice) and part number, which is how it is told apart
+    // in the drawer.
+    const marking = def.countsAsConnection
+      ? [packageChoice(def, comp.params), partNumberOf(comp.params)]
+          .filter(Boolean)
+          .join(", ")
+      : null;
     const color =
       def.colors && comp.params?.color
         ? ` (${wireColorName(comp.params.color)})`
-        : "";
+        : marking
+          ? ` (${marking})`
+          : "";
     steps.push({
       id: `step:discretes:${comp.id}`,
       group: "discretes",
@@ -673,11 +711,19 @@ function seatingPhrase(doc, comp) {
       );
     }
   }
-  // A linear (or rotated) part: list its resolved lead addresses.
+  // A linear (or rotated) part: list its resolved lead addresses — each
+  // NAMED, for one of the discretes whose pins have names, since
+  // which way round a diode, a transistor or an electrolytic goes is the
+  // whole question ("A bb1.a10, K bb1.a13").
   const pins = partPinAddresses(doc, comp) ?? [];
-  const leads = pins.map(
-    (p) => p.address ?? tf("plan.floatingLead", "floating"),
-  );
+  const named =
+    def?.countsAsConnection === true &&
+    def.pins.some((p) => !/^\d+$/.test(p.name));
+  const leads = pins.map((p) => {
+    const at = p.address ?? tf("plan.floatingLead", "floating");
+    const name = named ? def.pins.find((q) => q.n === p.pin)?.name : null;
+    return name ? `${name} ${at}` : at;
+  });
   return tf("plan.withLeads", "with leads at {leads}{flip}", {
     leads: leads.join(", "),
     flip,

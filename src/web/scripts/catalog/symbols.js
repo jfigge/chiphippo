@@ -190,6 +190,66 @@ const SHAPE_DEFS = Object.freeze({
       { name: "-", side: "right", pin: 2 },
     ],
   },
+  // A diode stands like the LED, anode on top; a Zener is the same with the
+  // bent cathode bar.
+  diode: {
+    shape: "diode",
+    terminals: [
+      { name: "A", side: "top", pin: 1 },
+      { name: "K", side: "bottom", pin: 2 },
+    ],
+  },
+  zener: {
+    shape: "zener",
+    terminals: [
+      { name: "A", side: "top", pin: 1 },
+      { name: "K", side: "bottom", pin: 2 },
+    ],
+  },
+  inductor: {
+    shape: "inductor",
+    terminals: [
+      { name: "1", side: "left", pin: 1 },
+      { name: "2", side: "right", pin: 2 },
+    ],
+  },
+  // A transistor as the textbook draws it: the base or gate in from the
+  // left, the switched pins out of the top and bottom on the right — the one
+  // current flows in at on top (an NPN's collector, a PNP's emitter, an
+  // N-channel's drain, a P-channel's source). Pins are by NUMBER, so a part
+  // turned end-for-end on the desk draws the same.
+  npn: {
+    shape: "npn",
+    terminals: [
+      { name: "B", side: "left", pin: 2 },
+      { name: "C", side: "top", pin: 3, offset: 0.8 },
+      { name: "E", side: "bottom", pin: 1, offset: 0.8 },
+    ],
+  },
+  pnp: {
+    shape: "pnp",
+    terminals: [
+      { name: "B", side: "left", pin: 2 },
+      { name: "E", side: "top", pin: 1, offset: 0.8 },
+      { name: "C", side: "bottom", pin: 3, offset: 0.8 },
+    ],
+  },
+  nmos: {
+    shape: "nmos",
+    terminals: [
+      { name: "G", side: "left", pin: 2 },
+      { name: "D", side: "top", pin: 3, offset: 0.8 },
+      { name: "S", side: "bottom", pin: 1, offset: 0.8 },
+    ],
+  },
+  pmos: {
+    shape: "pmos",
+    terminals: [
+      { name: "G", side: "left", pin: 2 },
+      { name: "S", side: "top", pin: 1, offset: 0.8 },
+      { name: "D", side: "bottom", pin: 3, offset: 0.8 },
+    ],
+  },
   "sw-slide": {
     shape: "switch",
     terminals: [

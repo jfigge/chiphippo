@@ -30,7 +30,7 @@
 // address's worth of intent. Whether that seat is actually FREE is occupancy's
 // question (canPlacePart), not this module's.
 
-import { partDef } from "../catalog/index.js";
+import { footprintOffsets, partDef } from "../catalog/index.js";
 import { packageSpec } from "./footprints.js";
 import {
   boardSize,
@@ -67,8 +67,9 @@ export const ROW_BAND = 0.8;
  * @param {string} ref
  * @param {{x:number,y:number}} world
  * @param {number} [grabOffsetCols]
- * @param {{rot?:number}|null} [params] - only a `def.can` part's current
- *   quarter-turn matters here; every other seat search ignores it.
+ * @param {{rot?:number}|null} [params] - a `def.can` part's current
+ *   quarter-turn, and a linear part's size where it has one (an inductor's
+ *   holes between its leads — catalog/index.js `footprintOffsets`).
  * @returns {{board:string, anchor:string}|null}
  */
 export function partSeatAt(
@@ -87,7 +88,7 @@ export function partSeatAt(
       ? canSeat(board, def, local, grabOffsetCols, params?.rot ?? 0)
       : def.package
         ? chipSeat(board, def.package, local, grabOffsetCols)
-        : discreteSeat(board, def, local, grabOffsetCols);
+        : discreteSeat(board, def, local, grabOffsetCols, params);
     if (seat) return seat;
   }
   return null;
@@ -128,8 +129,8 @@ function chipSeat(board, pkg, local, grabOffsetCols) {
 }
 
 /** A discrete lies along ONE grid row — whichever row the cursor is nearest. */
-function discreteSeat(board, def, local, grabOffsetCols) {
-  const offsets = def.footprint?.offsets;
+function discreteSeat(board, def, local, grabOffsetCols, params) {
+  const offsets = footprintOffsets(def, params);
   if (!offsets) return null; // a brick has terminals, not a board seat
   const span = offsets[offsets.length - 1];
   const row = rowNear(board.type, local.y, ROW_BAND);

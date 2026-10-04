@@ -1073,6 +1073,10 @@ export class SimController {
           // sim/timing.js) — what its readout and any wiring warning show.
           // Empty when not running.
           timing: result?.timing ?? new Map(),
+          // Every channel part's channels (compId → [{on, held}]) — what a
+          // transistor's lamp lights from, and whether a MOSFET is holding.
+          // Empty when not running.
+          channels: result?.channels ?? new Map(),
         },
       }),
     );
@@ -1092,16 +1096,19 @@ export class SimController {
     if (!this.#notifications) return;
     for (const w of warnings) {
       if (w.type === "short") {
-        // Through an analog switch the two rails are still two nets, and the
-        // switch between them is the thing to look at.
+        // Through an analog switch — or a transistor switched on — the two
+        // rails are still two nets, and the part between them is the thing
+        // to look at.
         this.#notify({
           key: `short:${w.net}`,
           variant: "danger",
           title: t("sim.short"),
           message: t(
-            w.via === "switch"
-              ? "sim.shortThroughSwitchMessage"
-              : "sim.shortMessage",
+            w.via === "transistor"
+              ? "sim.shortThroughTransistorMessage"
+              : w.via === "switch"
+                ? "sim.shortThroughSwitchMessage"
+                : "sim.shortMessage",
             { net: w.net },
           ),
         });

@@ -363,7 +363,10 @@
       "switches": "Interrupteurs",
       "xor": "XOR",
       "capacitors": "Condensateurs",
-      "timer": "Temporisateur"
+      "timer": "Temporisateur",
+      "diodes": "Diodes",
+      "inductors": "Inductances",
+      "transistors": "Transistors"
     },
     "integration": {
       "output": "Sortie",
@@ -371,7 +374,8 @@
       "outputHint": "envoie une valeur à un Arduino quand son déclencheur se déclenche — cliquez sur le bureau pour en ajouter une",
       "inputHint": "les valeurs d'un Arduino pilotent ses broches — cliquez sur le bureau pour en ajouter une",
       "full": "Ce bureau contient déjà autant de Sorties et d'Entrées que possible"
-    }
+    },
+    "limitedNote": "Ces composants ont une fonctionnalité limitée, mais existent pour l'export et l'exhaustivité de la conception."
   },
   "boards": {
     "full": "Taille complète",
@@ -772,6 +776,27 @@
     },
     "cap-electrolytic": {
       "title": "Condensateur (électrolytique)"
+    },
+    "diode": {
+      "title": "Diode"
+    },
+    "zener": {
+      "title": "Diode Zener"
+    },
+    "inductor": {
+      "title": "Inductance"
+    },
+    "npn": {
+      "title": "Transistor NPN (bipolaire)"
+    },
+    "pnp": {
+      "title": "Transistor PNP (bipolaire)"
+    },
+    "nmos": {
+      "title": "MOSFET canal N"
+    },
+    "pmos": {
+      "title": "MOSFET canal P"
     }
   },
   "colors": {
@@ -878,7 +903,8 @@
     "inputFloating": "{ref} ({id}) a des entrées que rien ne pilote : {pins}. Une entrée TTL flottante se lit HIGH, donc le circuit fonctionne — mais pas comme prévu. Reliez chacune à VCC ou GND, ou câblez-la à ce qui doit la piloter.",
     "inputFloatingCmos": "{ref} ({id}) a des entrées que rien ne pilote : {pins}. Une entrée CMOS flottante ne se lit ni HIGH ni LOW, donc ce que fait le circuit est imprévisible. Reliez chaque entrée à VCC ou GND — portes inutilisées comprises — ou câblez-la à ce qui doit la piloter.",
     "busFight": "{drivers} sont reliés au même net ({net}). Deux sorties ne doivent jamais partager un net : l'une pilote HIGH pendant que l'autre pilote LOW, et elles se combattent.",
-    "ledUnlimited": "{ref} ({id}) conduit sans rien pour limiter le courant — sur une vraie platine il grillerait au lieu de s'allumer. Mettez une résistance en série."
+    "ledUnlimited": "{ref} ({id}) conduit sans rien pour limiter le courant — sur une vraie platine il grillerait au lieu de s'allumer. Mettez une résistance en série.",
+    "diodeUnlimited": "{ref} ({id}) est polarisée en direct directement entre deux réseaux fortement pilotés — d'un rail à l'autre, ou d'une sortie vers un rail — sans rien pour limiter le courant. Sur une vraie platine elle grillerait, ou emporterait la sortie avec elle. Mettez une résistance en série."
   },
   "scope": {
     "title": "Analyseur logique",
@@ -1109,6 +1135,12 @@
       "title": "Les condensateurs dans Chip Hippo",
       "message": "Ici, un condensateur porte une valeur : il ne filtre pas, ne lisse pas, ne stocke aucune charge et ne relie rien. Les puces de temporisation (le 555, CD4047B, CD4060B, CD4098B, CD4538B) lisent sa valeur sur le câblage, et il est exporté vers KiCad avec elle.",
       "dismiss": "Ne plus afficher"
+    },
+    "transistor": {
+      "on": "Passant",
+      "off": "Bloqué",
+      "heldOn": "Passant — maintenu : la grille est flottante et sa charge le garde passant",
+      "heldOff": "Bloqué — maintenu : la grille est flottante, il reste tel que commandé en dernier"
     }
   },
   "workspace": {
@@ -1192,7 +1224,12 @@
         "one": "{count} sortie ou entrée Arduino : un lien vers une carte, pas un composant",
         "other": "{count} sorties et entrées Arduino : des liens vers une carte, pas des composants"
       },
-      "capacitor": "est omis : un simulateur logique n'a pas de condensateurs"
+      "capacitor": "est omis : un simulateur logique n'a pas de condensateurs",
+      "diode": "est omise : Digital n'a pas de diode qui transmette un niveau dans un seul sens comme celle-ci",
+      "inductor": "est omise, si bien que les deux réseaux qu'elle relie arrivent séparés : Digital n'a pas d'inductance",
+      "transistor": "est omis : Digital n'a pas de transistor qui commute comme celui-ci",
+      "transistorPinout": "reçoit une empreinte TO-92 ou TO-220 numérotée dans l'ordre des broches du bureau (E·B·C ou S·G·D) — vérifiez-la avec le brochage du vrai composant",
+      "nearestFootprint": "reçoit l'empreinte la plus proche de la bibliothèque KiCad — son pas diffère un peu de celui du bureau ; vérifiez-la avec le vrai composant"
     }
   },
   "sim": {
@@ -1233,7 +1270,8 @@
     "mixedSupply": "Tensions d’alimentation mélangées",
     "mixedSupplyMessage": "{net} relie des puces alimentées en {volts}. Un signal qui passe d’une alimentation à l’autre a besoin d’un convertisseur de niveau.",
     "timing": "Temporisation non reconnue",
-    "timingMessage": "{chip} : {problems}."
+    "timingMessage": "{chip} : {problems}.",
+    "shortThroughTransistorMessage": "Deux alimentations opposées se rejoignent à travers un transistor passant ({net}) — rien ne limite le courant."
   },
   "about": {
     "subtitle": "Conception et simulation TTL sur platine d'essai",
@@ -1361,14 +1399,22 @@
       "ohms": "Résistance",
       "farads": "Capacité",
       "position": "Position",
-      "timing": "Temporisation"
+      "timing": "Temporisation",
+      "partNumber": "Référence",
+      "henries": "Inductance",
+      "zenerVolts": "Tension Zener",
+      "case": "Boîtier",
+      "style": "Style",
+      "bodyHoles": "Trous entre les pattes"
     },
     "option": {
       "manual": "Manuel",
       "momentary": "Momentané",
       "toggle": "Bascule",
       "low": "Bas",
-      "high": "Haut"
+      "high": "Haut",
+      "coil": "Bobine",
+      "can": "Moulée"
     },
     "action": {
       "inspectMemory": "Inspecter la mémoire…",
@@ -1382,11 +1428,18 @@
       "reversed": "Alimentation inversée — VCC et GND sont intervertis.",
       "damaged": "Détruit — {volts} V dépassent les {rating} de ce composant et ont fait sortir la fumée. Arrêter la simulation le rétablit.",
       "unprogrammed": "Non programmé — aucune image n'est chargée, donc cette puce lit du bruit aléatoire.",
-      "timing": "Temporisation non reconnue — {problems}. Ses sorties restent au repos tant qu'il n'est pas câblé comme le montre sa fiche technique."
+      "timing": "Temporisation non reconnue — {problems}. Ses sorties restent au repos tant qu'il n'est pas câblé comme le montre sa fiche technique.",
+      "heldOn": "Maintenu PASSANT — sa grille n'a aucun niveau, et la charge qui y reste garde le canal conducteur. Une vraie grille perd cette charge : reliez-la à un niveau défini par une résistance.",
+      "heldOff": "Maintenu BLOQUÉ — sa grille n'a aucun niveau, il reste donc tel qu'il a été commandé en dernier (bloqué si sa grille n'a encore jamais été commandée). Une vraie grille dérive : reliez-la à un niveau défini par une résistance."
     },
     "invalid": {
       "ohms": "Ce n'est pas une résistance — essaie 470, 4.7k, 4k7 ou 2M2 (de 0,1 Ω à 1 GΩ).",
-      "farads": "Ce n'est pas une capacité — indique l'unité : 100p, 10n, 4.7µ, 4u7 ou 1m (de 1 pF à 1 F)."
+      "farads": "Ce n'est pas une capacité — indique l'unité : 100p, 10n, 4.7µ, 4u7 ou 1m (de 1 pF à 1 F).",
+      "henries": "Ce n'est pas une inductance — indique l'unité : 100n, 10µ, 4u7, 100m ou 1H (de 1 nH à 100 H), ou laisse vide.",
+      "zenerVolts": "Ce n'est pas une tension — essaie 5.1V, 5V1 ou 3.3 (de 1 V à 200 V), ou laisse vide."
+    },
+    "refused": {
+      "bodyHoles": "Pas de place — le trou où irait sa patte est occupé, ou au-delà du bord de la plaque."
     }
   },
   "memory": {

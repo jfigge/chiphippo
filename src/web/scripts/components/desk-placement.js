@@ -52,7 +52,7 @@ import { wirePath, filletedPolylinePath } from "../desk/wire-path.js";
 import { BEND_RADIUS_PX } from "../model/route-config.js";
 import { holePosition } from "../model/breadboard.js";
 import { DeskDoc } from "../model/desk-doc.js";
-import { partDef } from "../catalog/index.js";
+import { footprintOffsets, partDef } from "../catalog/index.js";
 import { addressWorld } from "../model/part-geometry.js";
 import { nearestLegalOffset } from "../model/nearest-legal.js";
 import {
@@ -71,8 +71,10 @@ import { buildDiscreteSvg, buildSpanSvg, discreteBox, spanPad } from "./discrete
 
 /**
  * The end-to-end vector of a rotatable part's ghost after `turns` quarter
- * turns: 0 is the horizontal footprint, 1–3 swing it a quarter lap each. Pure,
- * and exported because R rotates a PLACED part through the same table.
+ * turns: 0 is the horizontal footprint, 1–3 swing it a quarter lap each — as
+ * long as the footprint its params give it (an inductor set to three holes
+ * between its leads reaches one further). Pure, and exported because R rotates
+ * a PLACED part through the same table.
  */
 /** The static SVG for a desk brick (PSU / clock) by kind. Exported because a
     brick is DRAWN in three places — its ghost here, its seated view, and a
@@ -81,8 +83,8 @@ export function brickSvg(kind, params) {
   return kind === "psu" ? buildPsuSvg(params) : buildClockSvg(params);
 }
 
-export function ghostOrient(ref, turns) {
-  const offsets = partDef(ref).footprint.offsets;
+export function ghostOrient(ref, turns, params = null) {
+  const offsets = footprintOffsets(partDef(ref), params);
   const span = offsets[offsets.length - 1];
   const table = [
     { dx: span, dy: 0 },
@@ -367,7 +369,7 @@ export class DeskPlacement {
       const { dx, dy } = buf.params.end;
       const turns =
         Math.abs(dx) >= Math.abs(dy) ? (dx >= 0 ? 0 : 2) : dy >= 0 ? 1 : 3;
-      this.#host.mode.orient = ghostOrient(buf.ref, turns);
+      this.#host.mode.orient = ghostOrient(buf.ref, turns, buf.params);
     }
     return true;
   }
@@ -467,7 +469,7 @@ export class DeskPlacement {
       case "brick":
         return { x: ax, y: ay };
       default: {
-        const box = discreteBox(member.ref, member.params?.rot);
+        const box = discreteBox(member.ref, member.params?.rot, member.params);
         return { x: ax + box.minX, y: ay + box.minY };
       }
     }
@@ -848,7 +850,7 @@ export class DeskPlacement {
     const box =
       m.kind === "place-chip"
         ? chipBox(partDef(m.ref).package)
-        : discreteBox(m.ref, m.params?.rot);
+        : discreteBox(m.ref, m.params?.rot, m.params);
     const seat = this.#host.partSeatAt(w, m.ref, 0, m.params);
     m.ghost.hidden = false;
     if (seat) {
@@ -883,7 +885,7 @@ export class DeskPlacement {
     const m = this.#host.mode;
     // A Cmd+V paste re-arms in the copied lead vector exactly (`m.orient`); a
     // palette pick spun with R rides the four cardinal turns instead.
-    const orient = m.orient ?? ghostOrient(m.ref, m.turns);
+    const orient = m.orient ?? ghostOrient(m.ref, m.turns, m.params);
     const hit = this.#host.holeAtWorld(w);
     const p1 = hit ? { x: hit.x, y: hit.y } : w;
     const end = { dx: orient.dx, dy: orient.dy };

@@ -45,6 +45,7 @@ export class SimOverlay {
   #netlist = null; // the netlist those levels are keyed against
   #displays = new Map(); // compId → LCD framebuffer (from the sim-state payload)
   #timing = new Map(); // compId → a timed part's reading of its R and C
+  #channels = new Map(); // compId → a channel part's channels (engine `channels`)
   #pinCache = new Map(); // compId → partPinAddresses (cleared on a topology change)
 
   /**
@@ -76,6 +77,7 @@ export class SimOverlay {
     pausedClocks,
     displayState,
     timing,
+    channels,
   }) {
     this.#running = running;
     this.#levels = netLevels ?? new Map();
@@ -115,9 +117,26 @@ export class SimOverlay {
       view?.setPaused?.(running && pausedClocks?.has(comp.id) === true);
     }
 
+    // Each transistor's channel: whether it conducts, and whether a MOSFET
+    // is holding its last state (its lamp, and its hover).
+    this.#channels = running ? (channels ?? new Map()) : new Map();
+    for (const comp of this.#doc.components) {
+      if (!partDef(comp.ref)?.transistor) continue;
+      this.#partViews
+        .get(comp.id)
+        ?.setChannel?.(this.#channels.get(comp.id)?.[0] ?? null);
+    }
+
     this.#updateLeds();
+    this.#updateDiodes();
     this.#updateDisplays();
     this.#updateLcds();
+  }
+
+  /** A transistor's channel on the last sim-state — `{on, held}` — or null
+      (stopped, or not a transistor). The Properties card's "holding" line. */
+  channelOf(id) {
+    return this.#channels.get(id)?.[0] ?? null;
   }
 
   /**
@@ -215,6 +234,31 @@ export class SimOverlay {
       const state = this.#junctionState(at(anodePin), at(cathodePin));
       view.setBurnt?.(state.unlimited);
       view.setLit(isLit(state));
+    }
+  }
+
+  /**
+   * Diodes (the discretes) obey the LED's junction rule too — physics,
+   * not light: one wired forward straight across two strongly driven nets has
+   * nothing limiting its current, and burns. They never glow.
+   */
+  #updateDiodes() {
+    for (const comp of this.#doc.components) {
+      const def = partDef(comp.ref);
+      if (typeof def?.oneWayBridges !== "function") continue;
+      const view = this.#partViews.get(comp.id);
+      if (!view?.setBurnt) continue;
+      if (!this.#running) {
+        view.setBurnt(false);
+        continue;
+      }
+      const pins = this.#pinsFor(comp);
+      const at = (pin) => pins?.find((p) => p.pin === pin)?.address;
+      view.setBurnt(
+        def
+          .oneWayBridges(comp.params)
+          .some(([a, k]) => this.#junctionState(at(a), at(k)).unlimited),
+      );
     }
   }
 

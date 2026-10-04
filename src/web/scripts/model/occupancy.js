@@ -34,7 +34,7 @@
 // from under either the anchor or the bent lead leaves the part where it was,
 // with that leg floating.
 
-import { partDef } from "../catalog/index.js";
+import { footprintOffsets, partDef } from "../catalog/index.js";
 import { allPinHoles, flippedPin } from "./footprints.js";
 import {
   boardSize,
@@ -158,7 +158,7 @@ export function partPinHoles(ref, anchor, params) {
     // trade places.
     const flipped = def.reversible === true && params?.rot === 180;
     const last = def.pins.length - 1;
-    return def.footprint.offsets.map((offset, i) => ({
+    return footprintOffsets(def, params).map((offset, i) => ({
       pin: def.pins[flipped ? last - i : i].n,
       hole: `${row}${col + offset}`,
     }));

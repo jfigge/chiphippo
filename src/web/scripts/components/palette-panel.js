@@ -54,6 +54,7 @@ import { partTitle, kitLabel } from "../catalog/labels.js";
 import { beginPointerGesture } from "./pointer-gesture.js";
 import { PaletteRail } from "./palette-rail.js";
 import { SECTION_ICONS } from "./palette-icons.js";
+import { buildInfoMark } from "./info-button.js";
 import { PALETTE_DEFS } from "../catalog/index.js";
 import {
   DEFAULT_FAMILY_MODE,
@@ -91,11 +92,24 @@ const COMPONENT_ORDER = [
   "Switches",
   "Resistors",
   "Capacitors",
+  "Inductors",
+  "Diodes",
+  "Transistors",
   "LEDs",
   "Displays",
   "Oscillators",
   "Power",
 ];
+
+/** The groups whose parts do only part of what the real thing does — the
+    discretes (catalog/discretes.js: capacitors, inductors, diodes,
+    transistors), each placed for the export and a complete design more than
+    for what it simulates — and so carry a red (i) whose tooltip says so. DERIVED from the parts (`countsAsConnection`, the mark
+    every one of them carries), so a new one is marked with nothing to add
+    here. */
+const LIMITED_GROUPS = new Set(
+  PALETTE_DEFS.filter((def) => def.countsAsConnection).map((def) => def.group),
+);
 
 /** Is `group` shelved under COMPONENTS? Every group COMPONENT_ORDER names,
     plus any other group whose parts are not chips. */
@@ -963,8 +977,22 @@ export class PalettePanel {
       copy of a group in Combined mode). */
   #appendGroup(container, group, members, filtering, key = group) {
     const collapsed = !filtering && this.#collapsed.has(key);
+    const header = this.#sectionHeader(
+      "palette-group",
+      key,
+      collapsed,
+      sectionLabel(group),
+    );
+    // A group of limited parts says so beside its name: the app's (i) in
+    // red, whose tooltip is the explanation. A mark, not a control — the
+    // header is already the button that folds the group.
+    if (LIMITED_GROUPS.has(group)) {
+      header.append(
+        buildInfoMark({ label: t("palette.limitedNote"), variant: "danger" }),
+      );
+    }
     container.append(
-      this.#sectionHeader("palette-group", key, collapsed, sectionLabel(group)),
+      header,
       el(
         "div",
         { class: "palette-group-items", hidden: collapsed },

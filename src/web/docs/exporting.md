@@ -44,7 +44,9 @@ each part one:
 |---|---|
 | `U` | Chips |
 | `R`, `RN` | Resistors, resistor networks |
-| `D` | LEDs |
+| `D` | LEDs, diodes and Zener diodes |
+| `L` | Inductors |
+| `Q` | Transistors |
 | `SW` | Switches, push buttons, DIP switch banks |
 | `DS` | 7-segment digits, bar graphs, character LCDs |
 | `X` | Oscillator cans |
@@ -113,6 +115,24 @@ Every part is given a **footprint** from KiCad's standard libraries:
   5 mm ceramic disc or a 5 mm radial electrolytic footprint. Resistors carry their value the
   same way. On the breadboard a capacitor connects nothing; in KiCad it is
   wired where it sits, which is the point of exporting it.
+- Diodes, inductors and transistors come across as KiCad's own shapes — the
+  diode, the Zener (its bar bent), the inductor's coil, and the NPN, PNP and
+  N- and P-channel MOSFET symbols. A diode or a transistor's **Value** is its
+  part number (`1N4148`, `2N2222`), or the plain type (`D`, `NPN`) until it has
+  one; a Zener adds its voltage (`1N4733A 5.1V`); an inductor's is its
+  inductance (`10uH`). Any part number also rides along as an **MPN** field
+  for KiCad's BOM tools. Diodes get a DO-35 footprint on 7.62 mm, its pad 1
+  the cathode.
+- An inductor's footprint is the part its **Style** says, on the pitch its
+  **Holes between leads** says: a **Coil** is a standing toroid, on exactly
+  7.62 or 10.16 mm; a **Can** is a radial drum, and KiCad's round radial
+  inductors are on metric pitches, so it gets the nearest (7.00 or 10.00 mm)
+  and the report lists it under **footprints to check**.
+- Transistors get a **TO-92** footprint on 2.54 mm — or, for a MOSFET whose
+  **Package** is TO-220, a standing **TO-220** — its pads numbered in the
+  order the desk prints the pins (`E B C`, `S G D`). That is no one maker's
+  pinout, so the report lists every transistor under **footprints to check**:
+  make sure the pads match the real part's datasheet before laying out.
 - The power supply and the clock source become 2-pin headers labelled
   **POWER** and **CLOCK IN**. That's where power and a clock come in on a real
   board. The clock needs an oscillator in its place, which the report points
@@ -212,6 +232,11 @@ Digital is a logic simulator, so some parts have to be exported as what they
 - The 555 timer, which Digital's library doesn't have either.
 - Capacitors. A capacitor connects nothing in Chip Hippo, so leaving it out
   changes nothing about the circuit.
+- Diodes and transistors: Digital has none that pass a level one way, or
+  switch, the way Chip Hippo's do.
+- Inductors. An inductor is a wire in Chip Hippo, so the two nets it joins
+  come across **apart** — the report says so; join them in Digital if you
+  need them joined.
 - Memory chips, because their contents are stored in files the export doesn't
   carry.
 - The processors and their peripheral chips (W65C02, Z80, W65C21, W65C22).

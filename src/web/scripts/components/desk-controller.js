@@ -181,7 +181,7 @@ function partBodyBox(comp) {
     if (comp.kind === "chip") {
       return def.package ? chipBodyBox(def.package) : null;
     }
-    return discreteBox(comp.ref, comp.params?.rot);
+    return discreteBox(comp.ref, comp.params?.rot, comp.params);
   } catch {
     return null; // an unknown ref sizes itself from its pins
   }
@@ -2356,7 +2356,13 @@ export class DeskController {
     // minted HERE, so there is no English source for them to carry — the dialog
     // names them from `properties.field.<key>` / `properties.action.<key>`
     // (part-properties-dialog.js).
-    const fields = [...(def?.properties ?? [])];
+    // A field that can MOVE a pin (an inductor's holes between its leads) is
+    // a topology edit, and greyed while the circuit runs like every other.
+    const fields = (def?.properties ?? []).map((field) =>
+      field.movesPins && this.#editingLocked
+        ? { ...field, disabledWhen: () => true }
+        : field,
+    );
     // A timed part says what it reads its wiring as — astable at what rate, a
     // pulse how long, or why it cannot tell — derived, so a readonly.
     if (isTimed(def))
@@ -2399,7 +2405,9 @@ export class DeskController {
    *   • the engine's live power/health status (running only — the overlay
    *     answers null when stopped, and never for a healthy part);
    *   • an unprogrammed ROM, which is derived from params alone and therefore
-   *     stands at design time too, exactly as ChipView#refresh has it.
+   *     stands at design time too, exactly as ChipView#refresh has it;
+   *   • a MOSFET holding its last state on a gate nothing defines (running
+   *     only — the amber ring on its lamp).
    *
    * A chip can hold both at once (a dead ROM is still an empty one) and both
    * are listed: the desk suppresses one triangle behind the other because it
@@ -2421,6 +2429,11 @@ export class DeskController {
       this.#simOverlay.timingOf(id),
     );
     if (timingProblems.length) keys.push("timing");
+    // A MOSFET whose gate reads undefined is running on the charge its gate
+    // holds — the amber ring on its lamp, said in words. Not a fault the
+    // simulation makes, but one a real board would: that charge leaks.
+    const channel = this.#simOverlay.channelOf(id);
+    if (channel?.held) keys.push(channel.on === "H" ? "heldOn" : "heldOff");
     if (
       isRomChip(partDef(comp.ref)) &&
       Boolean(comp.params?.storage?.guid) &&
@@ -2480,11 +2493,16 @@ export class DeskController {
       goes through setComponentParams. Remounting (rather than updateParams
       alone) is correct for every part kind: a rotatable/span part (e.g. the
       LED) only redraws through its span geometry, which updateParams alone
-      skips — see DiscreteView.updateParams. */
+      skips — see DiscreteView.updateParams.
+
+      Answers false — the dialog then puts the control back and says why —
+      for a change that would move a pin somewhere it cannot go (an inductor
+      grown to three holes between its leads, with the next hole taken). */
   #setComponentProperty(id, key, value) {
     if (key === "name" || key === "description") {
       this.#doc.setComponentMeta(id, { [key]: value });
     } else {
+      if (!this.#doc.canSetComponentParams(id, { [key]: value })) return false;
       this.#doc.setComponentParams(id, { [key]: value });
     }
     this.#remountPart(id);

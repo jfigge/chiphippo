@@ -47,14 +47,23 @@ import { MIN_TESTS } from "./generate.js";
  * ohms or farads, so the compiler could seat a 555 but never make it keep the
  * time asked for. Nor a part with a KNOB (a `"range"` property — the
  * potentiometer's wiper): what it connects depends on where it is turned, at
- * an end it is a wire, and a spec has nowhere to say. The desk REVIEW still
- * sees every part — a hand-built desk can hold anything the palette has.
+ * an end it is a wire, and a spec has nowhere to say. Nor the rest of the
+ * discretes (`countsAsConnection` — diodes, inductors, transistors): the
+ * compiler's seating, its pull and lamp rules and the L4–L7 ladder were never
+ * taught a one-way part or a switch with no supply, and a spec has nowhere to
+ * state a part number or a value. The desk REVIEW still sees every part — a
+ * hand-built desk can hold anything the palette has.
  */
 const hasKnob = (d) => (d.properties ?? []).some((f) => f.type === "range");
 
 export const BUILDABLE_DEFS = Object.freeze(
   PALETTE_DEFS.filter(
-    (d) => !d.can && !d.capacitor && !isTimed(d) && !hasKnob(d),
+    (d) =>
+      !d.can &&
+      !d.capacitor &&
+      !d.countsAsConnection &&
+      !isTimed(d) &&
+      !hasKnob(d),
   ),
 );
 

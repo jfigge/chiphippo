@@ -67,7 +67,10 @@
 // Text that does not parse is refused AT THE FIELD: an error under the box
 // says what would, `onChange` is never called, and the stored value stays as
 // it was — the dialog's live-apply rule would otherwise write a half-typed
-// value into the part. The typed text stays in the box so it can be fixed. A value field may also
+// value into the part. The typed text stays in the box so it can be fixed.
+// An `optional` quantity (an inductor's inductance, a Zener's voltage) also
+// takes an EMPTY box, as "no value": `onChange(key, null)`, and the part's
+// normalizeParams drops the key. A value field may also
 // carry an `action` (`{key, label, icon}`): the same command an `"action"`
 // field fires, drawn as an icon button to the RIGHT of the control, for a
 // command that belongs to that one row.
@@ -79,6 +82,13 @@
 // the pointer. It is asked with the values as they stand NOW (the opening
 // values with every change made here laid over them), on open and after
 // every change, since this card never rebuilds its rows.
+//
+// The CALLER may refuse a change: `onChange` answering `false` means "that
+// cannot be done here" (an inductor grown to three holes between its leads,
+// with the hole its lead would move to taken). The dialog then puts the row
+// back as it was — rebuilt at the value that is still true, the one row this
+// card ever rebuilds — and says why under it: the field's `refused` sentence,
+// `properties.refused.<key>`. The next change that goes through clears it.
 //
 // `"wire-gauge"` is the one field type named after what it draws rather than
 // after a KIND of control, and deliberately so: it is a picture, not an editor.
@@ -277,6 +287,11 @@ function buildReadonly(field, value) {
 const invalidMessage = (field) =>
   tf(`properties.invalid.${field.key}`, field.invalid ?? "");
 
+/** The sentence a row shows when the caller refused its change —
+    `properties.refused.<key>`, the catalog's English as the fallback. */
+const refusedMessage = (field) =>
+  tf(`properties.refused.${field.key}`, field.refused ?? "");
+
 /**
  * A typed physical value (see the note at the top of this file): commits on
  * `change` like the Name box, parses with the field's own `parse`, and either
@@ -300,6 +315,15 @@ function buildQuantity(field, value, onChange) {
     text: invalidMessage(field),
   });
   input.addEventListener("change", () => {
+    // An OPTIONAL value (an inductor's inductance, a Zener's voltage) may be
+    // cleared: an empty box is the answer "none", never a refusal.
+    if (field.optional && input.value.trim() === "") {
+      error.hidden = true;
+      input.removeAttribute("aria-invalid");
+      input.value = "";
+      onChange(field.key, null);
+      return;
+    }
     const parsed = field.parse(input.value);
     if (parsed == null) {
       error.hidden = false;
@@ -586,8 +610,36 @@ export class PartPropertiesDialog {
           .setAttribute("aria-valuetext", `${start} – ${end}`);
       }
     };
+    // A refused change (see the note at the top of this file): its row is
+    // rebuilt at the value still TRUE, with the reason under it.
+    const refusals = new Map(); // key → the sentence shown under its row
+    const refuse = (key) => {
+      const i = allFields.findIndex((f) => f.key === key);
+      if (i < 0) return;
+      const fresh = buildRow(allFields[i], current[key], change, fireAction);
+      for (const entry of [...dependents, ...ranges]) {
+        if (entry.row === rows[i]) entry.row = fresh;
+      }
+      rows[i].replaceWith(fresh);
+      rows[i] = fresh;
+      refusals.get(key)?.remove();
+      const error = el("span", {
+        class: "properties-field-error properties-field-error--row",
+        role: "alert",
+        text: refusedMessage(allFields[i]),
+      });
+      fresh.after(error);
+      refusals.set(key, error);
+      refreshDisabled();
+      refreshEnds();
+    };
     const change = (key, value) => {
-      onChange(key, value);
+      if (onChange(key, value) === false) {
+        refuse(key);
+        return;
+      }
+      refusals.get(key)?.remove();
+      refusals.delete(key);
       current[key] = value;
       refreshDisabled();
       refreshEnds();
