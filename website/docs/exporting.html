@@ -207,6 +207,12 @@ electrical rules check with nothing to report.</p>
 600 mil for the wide memory chips and processors.</li>
 <li>Resistors, LEDs, switches, DIP switch banks, resistor networks, oscillator
 cans and the 16×2 LCD each get their matching standard footprint.</li>
+<li>Capacitors come across <strong>with their value</strong> (<code>100nF</code>, <code>4.7uF</code>) as their
+KiCad Value, drawn the way KiCad draws them — the plain capacitor for a
+ceramic, the polarised one for an electrolytic, whose <code>+</code> is pin 1 — on a
+5 mm ceramic disc or a 5 mm radial electrolytic footprint. Resistors carry their value the
+same way. On the breadboard a capacitor connects nothing; in KiCad it is
+wired where it sits, which is the point of exporting it.</li>
 <li>The power supply and the clock source become 2-pin headers labelled
 <strong>POWER</strong> and <strong>CLOCK IN</strong>. That&#39;s where power and a clock come in on a real
 board. The clock needs an oscillator in its place, which the report points
@@ -238,7 +244,41 @@ report lists them). Notes and labels are left out too.</p>
 <p><strong>Export To ▸ Digital Circuit…</strong> writes one <code>.dig</code> file. Open it in Digital
 with <strong>File ▸ Open</strong>.</p>
 <p>The chips are <strong>Digital&#39;s own</strong>: its library models most of the 74xx family as
-DIL packages, pinned exactly like the real parts. Chip Hippo places each one
+DIL packages, pinned exactly like the real parts. It has no CD4000 folder, but
+six CD4000 parts have a pin-for-pin twin there, and the export uses it:</p>
+<table>
+<thead>
+<tr>
+<th>Chip Hippo part</th>
+<th>Placed in Digital as</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>CD4002B dual 4-input NOR</td>
+<td>744002</td>
+</tr>
+<tr>
+<td>CD4017B decade counter</td>
+<td>744017</td>
+</tr>
+<tr>
+<td>CD4069UB hex inverter</td>
+<td>7404</td>
+</tr>
+<tr>
+<td>CD4075B triple 3-input OR</td>
+<td>744075</td>
+</tr>
+<tr>
+<td>CD4077B quad XNOR</td>
+<td>747266</td>
+</tr>
+<tr>
+<td>CD40106B Schmitt hex inverter</td>
+<td>7414</td>
+</tr>
+</tbody></table>
+<p>Chip Hippo places each chip
 and connects its pins through <strong>tunnels</strong> named after their nets, which Digital
 joins the way KiCad joins labels. Switches, LEDs, bar graphs, 7-segment
 digits, clock sources, oscillator cans and the power supply each become the
@@ -260,7 +300,10 @@ it). A resistor from rail to rail does nothing in logic and is left out.</li>
 <li><strong>Floating inputs</strong>: an unconnected TTL input reads HIGH. Digital treats an
 undriven input as an error, so the export adds the pull-up that makes it
 HIGH in Digital too. It doesn&#39;t add one where a resistor already sets the
-level.</li>
+level. An unconnected <strong>CMOS</strong> input gets the same pull-up, but there it
+changes the answer: Chip Hippo reads a floating CMOS input as unknown, and
+Digital has no unknown to give it. The report names each CD4000 chip this
+happens to.</li>
 <li><strong>Open-collector chips</strong> (74LS01, 74LS03, 74LS05) get a pull-up on each
 output. Chip Hippo simulates their outputs driving both ways, but Digital
 simulates them as the real parts, which only pull low. The pull-up makes the
@@ -275,14 +318,20 @@ its supply pins unconnected.</li>
 <li>Seven 74xx parts that Digital&#39;s library doesn&#39;t include: 74LS73, 74LS75,
 74LS169, 74LS240, 74LS259, 74LS279 and 74LS533. Each one&#39;s place in the
 circuit is marked with a note, and everything wired to it is still exported.</li>
+<li>The other 37 CD4000 CMOS parts, which have no twin in Digital&#39;s library. The
+same note marks each one&#39;s place.</li>
+<li>The 555 timer, which Digital&#39;s library doesn&#39;t have either.</li>
+<li>Capacitors. A capacitor connects nothing in Chip Hippo, so leaving it out
+changes nothing about the circuit.</li>
 <li>Memory chips, because their contents are stored in files the export doesn&#39;t
 carry.</li>
 <li>The processors and their peripheral chips (W65C02, Z80, W65C21, W65C22).</li>
 <li>The character LCD modules.</li>
 <li>Arduino Output and Input elements.</li>
 </ul>
-<p>Digital needs its own library to find the chips, and it comes installed with
-Digital. If a chip shows up as missing, check Digital&#39;s library settings.</p>
+<p>Digital needs its own library to find the chips. It comes in the <code>lib</code> folder
+of the Digital download, which has to stay beside <code>Digital.jar</code>. If a chip
+shows up as missing, check that folder and Digital&#39;s library settings.</p>
 
     </main>
   </div>

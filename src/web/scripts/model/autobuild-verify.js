@@ -66,7 +66,8 @@
 // one, and the drift would be silent.
 
 import { tf } from "../i18n.js";
-import { outputEnables, partDef } from "../catalog/index.js";
+import { outputEnablePins, partDef } from "../catalog/index.js";
+import { floatsUnknown } from "../catalog/families.js";
 import { normalizeDocument } from "./desk-doc.js";
 import { canPlacePart, partPinAddresses } from "./occupancy.js";
 import { resolvePin } from "./pin-resolve.js";
@@ -74,7 +75,8 @@ import { floatingInputs } from "./spec-lint.js";
 import { buildNetlist } from "../sim/netlist.js";
 import { settle, tick } from "../sim/engine.js";
 import { isLit, junctionState } from "../sim/junction.js";
-import { H, L } from "../sim/levels.js";
+import { channelStates, isAnalogSwitch } from "../sim/chip-eval.js";
+import { H, L, Z } from "../sim/levels.js";
 
 const ABORT = "abort";
 const REPAIR = "repair";
@@ -316,11 +318,15 @@ export function* verifySteps(compiled, spec = null) {
     );
   }
   for (const w of first.warnings ?? []) {
+    // A floating CMOS input (Feature 400) is L6's to name: it says WHICH input
+    // of WHICH part the spec left out, where this would say the same thing
+    // twice and less usefully.
+    if (w.type === "floating-input") continue;
     faults.push(
       fault(
         "L5",
         REPAIR,
-        `SIM_${String(w.type).toUpperCase()}`,
+        `SIM_${String(w.type).toUpperCase().replace(/-/g, "_")}`,
         describeWarning(w, where),
       ),
     );
@@ -357,12 +363,17 @@ export function* verifySteps(compiled, spec = null) {
   // the netlist it wrote. So a net whose only driver is a tri-state output
   // names the enable pin instead, which is a fault a repair round can act on.
   const disabledBy = tristateEnables(doc, netlist, first, nameOf);
+  const opened = openChannelNets(doc, netlist, first);
   for (const net of compiled.nets ?? []) {
     if (net.rail) continue;
     const id = netIdOfDeclared.get(net.name);
     if (id == null) continue;
     const level = first.netLevels.get(id);
     if (level !== undefined && level !== "Z" && level !== "X") continue;
+    // A net on an analog switch's OPEN channel is MEANT to float: it is driven
+    // exactly while its channel is on (seven of a 4051's eight channels are
+    // off at any moment). Calling it undriven would condemn the part working.
+    if (level === "Z" && opened.has(id)) continue;
     // X is not "undriven": it is a net fought over or never settling, which
     // L5 has already reported as the conflict or oscillation it is. Saying
     // "nothing drives it" here sent a repair round looking for a missing wire
@@ -394,8 +405,8 @@ export function* verifySteps(compiled, spec = null) {
             `Net "${net.name}" floats because every output on it is switched ` +
               `off (${off.chip}'s ${off.pin} ${off.plural ? "are" : "is"} ` +
               `${off.level}, and the others likewise). A shared net needs ` +
-              `exactly one of its drivers enabled — its active-LOW enable ` +
-              `driven LOW — whenever it must carry a value.`,
+              `exactly one of its drivers enabled — its output enable ` +
+              `asserted — whenever it must carry a value.`,
             { net: net.name, chip: off.chip, pin: off.pin },
           )
         : off
@@ -404,10 +415,11 @@ export function* verifySteps(compiled, spec = null) {
               REPAIR,
               "OUTPUTS_DISABLED",
               `Net "${net.name}" floats because ${off.chip}'s outputs are ` +
-                `switched off: its active-LOW output ` +
-                `${off.plural ? "enables" : "enable"} ${off.pin} ` +
+                `switched off: its active-${off.activeHigh ? "HIGH" : "LOW"} ` +
+                `output ${off.plural ? "enables" : "enable"} ${off.pin} ` +
                 `${off.plural ? "are" : "is"} ${off.level}. ` +
-                `Tie ${off.plural ? "them" : "it"} to GND.`,
+                `Tie ${off.plural ? "them" : "it"} to ` +
+                `${off.activeHigh ? "VCC" : "GND"}.`,
               { net: net.name, chip: off.chip, pin: off.pin },
             )
           : fault(
@@ -442,9 +454,15 @@ export function* verifySteps(compiled, spec = null) {
         `${loose.partId} (${loose.ref}) leaves ` +
           `${loose.pins.length > 1 ? "inputs" : "input"} ` +
           `${loose.pins.map((p) => `${p.name} (pin ${p.n})`).join(", ")} ` +
-          `unconnected. A floating TTL input reads HIGH, so the part does ` +
-          `whatever HIGH means there — tie each one to VCC or GND, or wire it ` +
-          `to the signal that should drive it.`,
+          `unconnected. ` +
+          (floatsUnknown(partDef(loose.ref))
+            ? `A floating CMOS input reads neither HIGH nor LOW, so the part ` +
+              `does whatever the noise says — tie each one to VCC or GND ` +
+              `(HIGH for an AND/NAND input, LOW for an OR/NOR one), or wire ` +
+              `it to the signal that should drive it.`
+            : `A floating TTL input reads HIGH, so the part does whatever ` +
+              `HIGH means there — tie each one to VCC or GND, or wire it to ` +
+              `the signal that should drive it.`),
         { part: loose.partId, pins: loose.pins.map((p) => p.n) },
       ),
     );
@@ -487,6 +505,13 @@ const NET_WARNINGS = Object.freeze({
   short: (nets) => `VCC and GND meet on ${nets}`,
   conflict: (nets) => `outputs drive opposite levels onto ${nets}`,
   oscillation: (nets) => `${nets} never settles — the circuit oscillates`,
+  // The family boundaries (Feature 400).
+  "marginal-high": (nets) =>
+    `${nets} carries a 74LS output into a CD4000 input, and a 74LS HIGH ` +
+    `(about 3.4 V) is below the 3.5 V a CMOS input needs at 5 V — add a ` +
+    `resistor from that net to VCC (a pull-up)`,
+  "mixed-supply": (nets) =>
+    `${nets} joins chips powered from different supply voltages`,
 });
 
 /**
@@ -497,12 +522,24 @@ const NET_WARNINGS = Object.freeze({
  * the fault said "oscillation" and nothing else.
  */
 function describeWarning(w, where) {
+  if (w.type === "ls-fanout") {
+    const chip = where ? where.chip(w.chip) : w.chip;
+    const net = where ? where.net(w.net) : w.net;
+    return (
+      `${chip} drives ${w.loads} 74LS inputs on ${net}, more than the ` +
+      `${w.max} a CD4000 output can hold LOW — buffer it through a CD4050B ` +
+      `(or a CD4049UB, which inverts)`
+    );
+  }
   if (w.chip != null) {
     return `${where ? where.chip(w.chip) : w.chip} is ${w.type}`;
   }
   const ids = w.nets ?? (w.net != null ? [w.net] : []);
   const nets = [...new Set(ids.map((id) => (where ? where.net(id) : id)))];
-  const said = NET_WARNINGS[w.type];
+  const said =
+    w.type === "short" && w.via === "switch"
+      ? (n) => `VCC and GND meet through an ON analog switch channel at ${n}`
+      : NET_WARNINGS[w.type];
   if (!nets.length) return w.type;
   return said ? said(nets.join(", ")) : `${w.type} on ${nets.join(", ")}`;
 }
@@ -624,12 +661,14 @@ function describeBurn({ comp, labels, lamp }, nameOf) {
 /**
  * Which floating nets are floating because a tri-state part is switched off.
  *
- * A part with output enables (`outputEnables`: declared on a tri-state logic
- * part, read off a memory's own chip and output enables) drives nothing at all
- * while any of those pins is not LOW — and an unwired one reads HIGH, so the
- * usual way to arrive here is to have forgotten the pin entirely. Every enable that is not asserted
- * is named, because a part with two of them ('244) may be missing either or
- * both, and "tie this pin low" is only useful if it is the right pin.
+ * A part with output enables (`outputEnablePins`: declared on a tri-state
+ * logic part, read off a memory's own chip and output enables) drives nothing
+ * at all while any of those pins is not at its enabling level — LOW for every
+ * 74xx enable, HIGH for the CD4094B's — and an unwired TTL one reads HIGH, so
+ * the usual way to arrive here is to have forgotten the pin entirely. Every
+ * enable that is not asserted is named, because a part with two of them
+ * ('244) may be missing either or both, and "tie this pin low" is only useful
+ * if it is the right pin.
  *
  * Exported because it is a question about a DOCUMENT, not about a generated
  * one: `model/desk-review.js` asks it of the desk the user built by hand, where
@@ -649,7 +688,7 @@ export function tristateEnables(
   const out = new Map();
   for (const comp of doc.components ?? []) {
     const def = partDef(comp.ref);
-    const enables = outputEnables(def);
+    const enables = outputEnablePins(def);
     if (!enables.length) continue;
     const pins = partPinAddresses(doc, comp);
     if (!pins) continue;
@@ -659,17 +698,20 @@ export function tristateEnables(
       if (address == null) return undefined;
       return settled.netLevels.get(netlist.netOfPoint.get(address));
     };
-    // An enable at Z is an enable nobody wired: it reads HIGH, and the part is
-    // off. Anything but a solid L leaves the outputs floating.
-    const off = enables.filter((n) => levelOf(n) !== L);
+    // An enable at Z is an enable nobody wired: a TTL one reads HIGH and the
+    // part is off. Anything but a solid enabling level leaves the outputs
+    // floating — L for an active-LOW enable, H for an active-HIGH one.
+    const off = enables.filter((e) => levelOf(e.n) !== e.on);
     if (!off.length) continue;
-    const name = (n) => {
+    const name = ({ n }) => {
       const p = def.pins.find((q) => q.n === n);
       return `${p?.name ?? n} (pin ${n})`;
     };
     const unwired = off.every(
-      (n) => levelOf(n) === undefined || levelOf(n) === "Z",
+      ({ n }) => levelOf(n) === undefined || levelOf(n) === "Z",
     );
+    // No part mixes polarities, so the first enable speaks for them all.
+    const activeHigh = off[0].on === H;
     const blame = {
       chip: nameOf(comp),
       // The id on its own, beside the pre-formatted `chip` string the repair
@@ -682,7 +724,10 @@ export function tristateEnables(
       // `level` is prose for the repair message; `unwired` is the same fact
       // as a flag, for a caller that has to TEST it rather than quote it.
       unwired,
-      level: unwired ? "not wired at all" : "HIGH",
+      level: unwired ? "not wired at all" : activeHigh ? "LOW" : "HIGH",
+      // Which way the enable works: the 4094's is active HIGH, every 74xx
+      // part's active LOW — and the fix ("tie it to GND") turns with it.
+      activeHigh,
     };
     for (const p of pins) {
       const role = def.pins.find((q) => q.n === p.pin)?.role;
@@ -693,6 +738,39 @@ export function tristateEnables(
     }
   }
   return out;
+}
+
+/**
+ * The nets that hold a terminal of an analog switch channel that is OPEN (or
+ * might be — a floating control) in the settled state: nets whose floating is
+ * the switch doing its job, not a missing wire.
+ */
+export function openChannelNets(doc, netlist, settled) {
+  const open = new Set();
+  for (const comp of doc.components ?? []) {
+    const def = partDef(comp.ref);
+    if (!isAnalogSwitch(def)) continue;
+    const pins = partPinAddresses(doc, comp);
+    if (!pins) continue;
+    const netOfPin = new Map(
+      pins.map((p) => [p.pin, netlist.netOfPoint.get(p.address)]),
+    );
+    const levels = new Map(
+      [...netOfPin].map(([pin, net]) => [
+        pin,
+        net ? (settled.netLevels.get(net) ?? Z) : Z,
+      ]),
+    );
+    const powered = settled.chipStatus?.get(comp.id)?.status === "ok";
+    for (const ch of channelStates(def, levels)) {
+      if (powered && ch.on === H) continue;
+      for (const pin of [ch.a, ch.b]) {
+        const net = netOfPin.get(pin);
+        if (net) open.add(net);
+      }
+    }
+  }
+  return open;
 }
 
 /** Resolve a compiled net member to a desk address. */

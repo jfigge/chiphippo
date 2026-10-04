@@ -2,9 +2,10 @@
 
 Two kinds of ready-to-load design:
 
-- **One project per chip GROUP** — `NAND.chiphippo`, `Flip-flop.chiphippo`,
-  `Multiplexer.chiphippo` and so on: **every 74xx part in the catalog**, one
-  desktop each, wired up on a logic bench you can flip switches on (see below).
+- **One project per chip GROUP, per logic family** — `74LS/NAND.chiphippo`,
+  `74LS/Flip-flop.chiphippo`, `CD4000/NAND.chiphippo` and so on: **every 74LS and
+  every CD4000 part in the catalog**, one desktop each, wired up on a logic bench
+  you can flip switches on (see below). The two families never share a project.
 - **`65xx-*`** and **`eater-*`** — whole breadboard computers: a
   **`.chiphippo`** schematic (the wired-up circuit) plus a **`.hex`** ROM image
   (the program).
@@ -15,7 +16,10 @@ works — a truth table enumerated switch by switch, or a program run clock by c
 
 ## The group projects — a desktop per chip
 
-The groups are the **catalog's own**, so the demos track the parts palette:
+The groups are the **catalog's own**, so the demos track the parts palette — one
+folder per logic family.
+
+**`74LS/`** — the TTL parts:
 
 | Project | Desktops |
 | --- | --- |
@@ -36,6 +40,26 @@ The groups are the **catalog's own**, so the demos track the parts palette:
 | `Comparator` | '85 |
 | `Encoder` | '148 |
 | `Arithmetic` | '283 '83 '181 |
+
+**`CD4000/`** — the CMOS parts. A floating CMOS input reads neither HIGH nor LOW,
+so every one of these benches ties every input it does not switch, spare gates
+included:
+
+| Project | Desktops |
+| --- | --- |
+| `NOR` | 4001B 4002B 4025B 4078B |
+| `NAND` | 4011B 4012B 4023B 4068B 4093B |
+| `AND` | 4081B 4082B 4073B |
+| `OR` | 4071B 4072B 4075B |
+| `XOR` | 4030B 4070B 4077B |
+| `Inverter` | 4069UB 40106B 4049UB |
+| `Buffer` | 4050B |
+| `Flip-flop` | 4013B 4027B |
+| `Counter` | 4017B 4022B 4020B 4024B 4040B 4029B 4510B 4516B |
+| `Shift-register` | 4094B |
+| `Decoder` | 4028B |
+| `Multiplexer` | 4066B 4051B 4052B 4053B |
+| `Display-driver` | 4511B |
 
 **File ▸ Open…** one of them, then pick a chip from the **desktop tabs** along the
 top.
@@ -234,7 +258,7 @@ make demos
 Rebuilds every `.chiphippo` + `.hex` pair from `scripts/make-demos.mjs`, then
 every group project **and every bundled per-chip example** from
 `scripts/make-gate-demos.mjs` — one `buildDemo` call feeding both outputs, so
-`demos/<Group>.chiphippo` and `src/web/demos/<ref>.json` come from the same build
+`demos/<family>/<Group>.chiphippo` and `src/web/demos/<ref>.json` come from the same build
 and are held to byte-for-byte agreement by the tests. `src/web/demos/` is swept
 on every run, so a chip dropped from the catalog cannot leave a live example
 button behind. Everything is re-validated through the engine. Both are guarded by

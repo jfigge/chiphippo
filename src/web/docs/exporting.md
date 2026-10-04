@@ -107,6 +107,12 @@ Every part is given a **footprint** from KiCad's standard libraries:
   600 mil for the wide memory chips and processors.
 - Resistors, LEDs, switches, DIP switch banks, resistor networks, oscillator
   cans and the 16×2 LCD each get their matching standard footprint.
+- Capacitors come across **with their value** (`100nF`, `4.7uF`) as their
+  KiCad Value, drawn the way KiCad draws them — the plain capacitor for a
+  ceramic, the polarised one for an electrolytic, whose `+` is pin 1 — on a
+  5 mm ceramic disc or a 5 mm radial electrolytic footprint. Resistors carry their value the
+  same way. On the breadboard a capacitor connects nothing; in KiCad it is
+  wired where it sits, which is the point of exporting it.
 - The power supply and the clock source become 2-pin headers labelled
   **POWER** and **CLOCK IN**. That's where power and a clock come in on a real
   board. The clock needs an oscillator in its place, which the report points
@@ -146,7 +152,19 @@ report lists them). Notes and labels are left out too.
 with **File ▸ Open**.
 
 The chips are **Digital's own**: its library models most of the 74xx family as
-DIL packages, pinned exactly like the real parts. Chip Hippo places each one
+DIL packages, pinned exactly like the real parts. It has no CD4000 folder, but
+six CD4000 parts have a pin-for-pin twin there, and the export uses it:
+
+| Chip Hippo part | Placed in Digital as |
+|---|---|
+| CD4002B dual 4-input NOR | 744002 |
+| CD4017B decade counter | 744017 |
+| CD4069UB hex inverter | 7404 |
+| CD4075B triple 3-input OR | 744075 |
+| CD4077B quad XNOR | 747266 |
+| CD40106B Schmitt hex inverter | 7414 |
+
+Chip Hippo places each chip
 and connects its pins through **tunnels** named after their nets, which Digital
 joins the way KiCad joins labels. Switches, LEDs, bar graphs, 7-segment
 digits, clock sources, oscillator cans and the power supply each become the
@@ -171,7 +189,10 @@ Digital is a logic simulator, so some parts have to be exported as what they
 - **Floating inputs**: an unconnected TTL input reads HIGH. Digital treats an
   undriven input as an error, so the export adds the pull-up that makes it
   HIGH in Digital too. It doesn't add one where a resistor already sets the
-  level.
+  level. An unconnected **CMOS** input gets the same pull-up, but there it
+  changes the answer: Chip Hippo reads a floating CMOS input as unknown, and
+  Digital has no unknown to give it. The report names each CD4000 chip this
+  happens to.
 - **Open-collector chips** (74LS01, 74LS03, 74LS05) get a pull-up on each
   output. Chip Hippo simulates their outputs driving both ways, but Digital
   simulates them as the real parts, which only pull low. The pull-up makes the
@@ -186,11 +207,17 @@ Digital is a logic simulator, so some parts have to be exported as what they
 - Seven 74xx parts that Digital's library doesn't include: 74LS73, 74LS75,
   74LS169, 74LS240, 74LS259, 74LS279 and 74LS533. Each one's place in the
   circuit is marked with a note, and everything wired to it is still exported.
+- The other 37 CD4000 CMOS parts, which have no twin in Digital's library. The
+  same note marks each one's place.
+- The 555 timer, which Digital's library doesn't have either.
+- Capacitors. A capacitor connects nothing in Chip Hippo, so leaving it out
+  changes nothing about the circuit.
 - Memory chips, because their contents are stored in files the export doesn't
   carry.
 - The processors and their peripheral chips (W65C02, Z80, W65C21, W65C22).
 - The character LCD modules.
 - Arduino Output and Input elements.
 
-Digital needs its own library to find the chips, and it comes installed with
-Digital. If a chip shows up as missing, check Digital's library settings.
+Digital needs its own library to find the chips. It comes in the `lib` folder
+of the Digital download, which has to stay beside `Digital.jar`. If a chip
+shows up as missing, check that folder and Digital's library settings.

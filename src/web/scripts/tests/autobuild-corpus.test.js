@@ -124,8 +124,14 @@ export function specOfDemo(d) {
   });
 
   if (d.display) {
-    parts.push({ id: "DS1", ref: "seg8ca" });
-    nets.push({ name: "DS_COM", members: ["DS1.#9", "VCC"] }); // pin 9 = anode
+    // Pin 9 is the common leg: an anode to VCC (the '47's sinking driver), a
+    // cathode to GND (the 4511's sourcing one).
+    const ref = d.display.ref ?? "seg8ca";
+    parts.push({ id: "DS1", ref });
+    nets.push({
+      name: "DS_COM",
+      members: ["DS1.#9", ref === "seg8cc" ? "GND" : "VCC"],
+    });
     d.display.segPins.forEach((p, i) => {
       nets.push({ name: `SEG${i}`, members: [`DS1.${"abcdefg"[i]}`, pin(p)] });
     });

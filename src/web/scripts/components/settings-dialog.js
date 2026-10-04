@@ -34,6 +34,7 @@ import { el } from "../dom.js";
 import { t, getLocales } from "../i18n.js";
 import { PopupManager } from "../popup-manager.js";
 import { LED_COLOR_OPTIONS } from "../catalog/parts.js";
+import { LOGIC_FAMILIES, normalizeFamilyMode } from "../catalog/families.js";
 import { FONT_SIZES, normalizeFontSize } from "../font-scale.js";
 import { buildColorSwatches } from "./color-swatches.js";
 import { buildInfoButton } from "./info-button.js";
@@ -91,6 +92,13 @@ const wireLayoutOptions = () => [
 const trayAutoCloseOptions = () => [
   { value: true, label: t("settings.appearance.trayAutoCloseOn") },
   { value: false, label: t("settings.appearance.trayAutoCloseOff") },
+];
+/** The parts tray's logic families (Feature 400). The two family names are
+    part-number prefixes and stay as they are in every language; only "Both"
+    is a word. Values are catalog/families.js `FAMILY_MODES`. */
+const familyOptions = () => [
+  ...LOGIC_FAMILIES.map((family) => ({ value: family, label: family })),
+  { value: "combined", label: t("settings.datasheets.familyBoth") },
 ];
 
 /** Unique ids for the notes below, so each (i) can `aria-controls` its own. */
@@ -732,6 +740,15 @@ export class SettingsDialog {
       onPick: (paletteAutoClose) => SettingsDialog.#emit({ paletteAutoClose }),
     });
 
+    // Which family the parts tray shows. Live like the rest of the panel: the
+    // tray rebuilds while this card is still open.
+    const familyPicker = buildSegmented({
+      options: familyOptions(),
+      value: normalizeFamilyMode(settings.logicFamily),
+      ariaLabel: t("settings.datasheets.family"),
+      onPick: (logicFamily) => SettingsDialog.#emit({ logicFamily }),
+    });
+
     const ledColorSwatches = buildColorSwatches({
       colors: LED_COLOR_OPTIONS,
       value: settings.defaultLedColor || "red",
@@ -919,6 +936,11 @@ export class SettingsDialog {
           hidden: true,
         },
         [
+          rowWithNote({
+            label: t("settings.datasheets.family"),
+            control: familyPicker,
+            notes: [t("settings.datasheets.familyHint")],
+          }),
           rowWithNote({
             label: t("settings.datasheets.folder"),
             stack: true,

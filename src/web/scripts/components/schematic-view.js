@@ -37,6 +37,7 @@ import { t } from "../i18n.js";
 import { PX_PER_UNIT, clampZoom } from "../desk/desk-geometry.js";
 import { layout } from "../model/schematic-layout.js";
 import { formatOhms } from "../model/ohm-format.js";
+import { formatFarads } from "../model/farad-format.js";
 import { FLAG_LEN, flagPolygon } from "../model/signals.js";
 import { DeskView } from "./desk-view.js";
 import { NetlistCache } from "./netlist-cache.js";
@@ -67,15 +68,18 @@ function buildGlyph(name, geometry) {
     class: "schematic-glyph",
     transform: `translate(${geometry.width / 2 - s * 0.6} 0.5) scale(${s})`,
   });
-  const inverting = name === "NAND" || name === "NOR" || name === "NOT";
+  const inverting =
+    name === "NAND" || name === "NOR" || name === "XNOR" || name === "NOT";
   const base =
     name === "NAND"
       ? "AND"
       : name === "NOR"
         ? "OR"
-        : name === "NOT"
-          ? "BUFFER"
-          : name;
+        : name === "XNOR"
+          ? "XOR"
+          : name === "NOT"
+            ? "BUFFER"
+            : name;
   let bodyD;
   if (base === "AND") {
     bodyD = "M0,0 L0.45,0 A0.5,0.5 0 0 1 0.45,1 L0,1 Z";
@@ -264,7 +268,13 @@ function buildEdge(edge) {
 
 /** The small value text for a shape symbol (volts / ohms / Hz), or "". */
 function shapeText(shape, params) {
-  if (shape === "resistor") return formatOhms(Number(params?.ohms));
+  if (shape === "resistor" || shape === "potentiometer") {
+    return formatOhms(Number(params?.ohms));
+  }
+  if (shape === "capacitor" || shape === "capacitor-polarized") {
+    const v = formatFarads(Number(params?.farads));
+    return v ? `${v}F` : "";
+  }
   if (shape === "psu") return `${params?.volts ?? 5}V`;
   if (shape === "clock") {
     return params?.hz === "manual" ? "man" : `${params?.hz ?? 1}Hz`;
@@ -319,6 +329,70 @@ function buildShapeBody(g, shape, geo, node) {
     }
     d += ` L ${x1} ${mid} L ${w} ${mid}`;
     g.append(svgEl("path", { class: "schematic-shape-line", d }));
+  } else if (shape === "potentiometer") {
+    // The resistor's zigzag (pin 1 left, pin 3 right), and the wiper coming
+    // down from its top stub to an arrowhead on the track.
+    const a = 0.6;
+    const x0 = w * 0.22;
+    const x1 = w * 0.78;
+    const step = (x1 - x0) / 6;
+    let d = `M 0 ${cy} L ${x0} ${cy}`;
+    for (let i = 0; i < 6; i++) {
+      d += ` L ${x0 + step * (i + 0.5)} ${i % 2 === 0 ? cy - a : cy + a}`;
+    }
+    d += ` L ${x1} ${cy} L ${w} ${cy}`;
+    const tip = cy - a - 0.08;
+    g.append(
+      svgEl("path", { class: "schematic-shape-line", d }),
+      line(cx, 0, cx, tip - 0.3),
+      svgEl("path", {
+        class: "schematic-shape-arrow",
+        d: `M ${cx - 0.3} ${tip - 0.45} L ${cx} ${tip} L ${cx + 0.3} ${tip - 0.45} Z`,
+      }),
+      svgText(
+        shapeText(shape, node.params),
+        cx,
+        h * 0.95,
+        "schematic-shape-value",
+        0.8,
+      ),
+    );
+  } else if (shape === "capacitor" || shape === "capacitor-polarized") {
+    // Two plates across the leads; a polarised part's negative plate is the
+    // curved one, with a + by the positive lead (pin 1, on the left).
+    const gap = 0.32;
+    const plate = h * 0.32;
+    const mid = h * 0.42;
+    g.append(line(0, mid, cx - gap, mid), line(cx + gap, mid, w, mid));
+    g.append(line(cx - gap, mid - plate, cx - gap, mid + plate));
+    if (shape === "capacitor") {
+      g.append(line(cx + gap, mid - plate, cx + gap, mid + plate));
+    } else {
+      g.append(
+        svgEl("path", {
+          class: "schematic-shape-line",
+          d:
+            `M ${cx + gap + 0.3} ${mid - plate} ` +
+            `Q ${cx + gap - 0.1} ${mid} ${cx + gap + 0.3} ${mid + plate}`,
+        }),
+        line(cx - gap - 0.75, mid - plate, cx - gap - 0.35, mid - plate),
+        line(
+          cx - gap - 0.55,
+          mid - plate - 0.2,
+          cx - gap - 0.55,
+          mid - plate + 0.2,
+        ),
+      );
+    }
+    g.append(
+      svgText(
+        shapeText(shape, node.params),
+        cx,
+        h * 0.92,
+        "schematic-shape-value",
+        0.8,
+      ),
+    );
   } else if (shape === "switch") {
     // SPDT: a common pivot throwing a lever toward contact 1 (the upper pin).
     const pivot = { x: w * 0.32, y: cy };

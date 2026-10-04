@@ -31,6 +31,15 @@
 // into the wall, and under it one icon per top-level section. An icon opens
 // the tray on that section alone (see #openSection).
 //
+// It shows ONE LOGIC FAMILY, or both (Feature 400; Settings ▸ Data Sheets ▸
+// Chip family, `settings.logicFamily`). With one, the tray is exactly what it
+// always was — function groups straight under CHIPS, holding that family's
+// chips. With both, CHIPS gains a tier: a `74LS` and a `CD4000` folder, each
+// holding the same function groups for its own parts. A family the open
+// PROJECT uses is always shown (as if Combined), so a CD4000 project opened in
+// 74LS mode still offers the parts on its desk. The family-less chip groups
+// (Interface, PROCESSOR) and Memory show in every mode.
+//
 // Its WIDTH is the user's: the tray's right edge is a drag handle, exactly as
 // the analyzer's top edge is, and the width it is left at is persisted
 // (`settings.paletteWidth`) so it survives a relaunch — and a close/reopen for
@@ -46,6 +55,13 @@ import { beginPointerGesture } from "./pointer-gesture.js";
 import { PaletteRail } from "./palette-rail.js";
 import { SECTION_ICONS } from "./palette-icons.js";
 import { PALETTE_DEFS } from "../catalog/index.js";
+import {
+  DEFAULT_FAMILY_MODE,
+  LOGIC_FAMILIES,
+  familiesShown,
+  familyOf,
+  normalizeFamilyMode,
+} from "../catalog/families.js";
 import {
   BREADBOARD_KITS,
   KIT_KEYS,
@@ -67,15 +83,37 @@ const MEMORY_GROUP = "Memory";
 const COMPONENTS_FOLDER = "COMPONENTS";
 
 /** The order the COMPONENTS sub-groups render in (catalog order is by first
-    appearance, which reads oddly; this is the intended shelf order). */
+    appearance, which reads oddly; this is the intended shelf order). It is
+    also WHAT the shelf holds: a group named here is a COMPONENTS group
+    whatever its members are, so a chip given one of these groups would be
+    shelved here rather than under CHIPS. */
 const COMPONENT_ORDER = [
   "Switches",
   "Resistors",
+  "Capacitors",
   "LEDs",
   "Displays",
   "Oscillators",
   "Power",
 ];
+
+/** Is `group` shelved under COMPONENTS? Every group COMPONENT_ORDER names,
+    plus any other group whose parts are not chips. */
+const isComponentGroup = (group, members) =>
+  COMPONENT_ORDER.includes(group) || members[0]?.kind !== "chip";
+
+/** The order the chip groups render in, in EVERY family: where each group
+    first appears in the whole catalog. 74LS parts lead the catalog, so this is
+    the 74LS tray's order, and a CD4000 tray lists its groups the same way
+    (NAND before NOR) rather than in its own part-number order, which would put
+    the CD4001B's NOR first. A group only CD4000 has falls after the 74LS ones,
+    and the family-less groups after those — exactly where they sat before. */
+const CHIP_GROUP_RANK = new Map(
+  [...new Set(PALETTE_DEFS.map((def) => def.group))].map((group, i) => [
+    group,
+    i,
+  ]),
+);
 
 /** The board selector's foldable section name (pinned at the top). Folds like
     any section, and starts shut with the rest. */
@@ -164,10 +202,21 @@ function sectionLabel(name) {
 }
 
 /**
+ * The identity of a function group INSIDE a family folder (Combined mode):
+ * `CD4000/NAND`. Single-family mode keeps the bare `NAND` — the tray it has
+ * always had — so the two layouts each remember their own open/closed state,
+ * and the two NAND groups of a Combined tray never open and shut together.
+ * @param {string} family
+ * @param {string} group
+ */
+const familyGroupKey = (family, group) => `${family}/${group}`;
+
+/**
  * Every collapsible section name — the boards folder, the chips folder, the
- * annotations folder, and every group in the catalog. The palette opens with
- * ALL of them shut: the full list is long enough that a wall of parts buries
- * the structure, and the filter box is the fast path to a specific one anyway.
+ * annotations folder, every group in the catalog, the family folders, and
+ * every family's own copy of its groups. The palette opens with ALL of them
+ * shut: the full list is long enough that a wall of parts buries the
+ * structure, and the filter box is the fast path to a specific one anyway.
  */
 function allSections() {
   return new Set([
@@ -177,22 +226,30 @@ function allSections() {
     ANNOTATIONS_FOLDER,
     SIGNALS_FOLDER,
     ...PALETTE_DEFS.map((def) => def.group),
+    ...LOGIC_FAMILIES,
+    ...PALETTE_DEFS.filter((def) => familyOf(def)).map((def) =>
+      familyGroupKey(def.family, def.group),
+    ),
   ]);
 }
 
 /**
- * The top-level folder a catalog group is shelved under — CHIPS or COMPONENTS
- * — or null for anything that is itself top-level (the folders, BOARDS,
- * ANNOTATIONS, SIGNALS, and Memory, which is pulled OUT of CHIPS). The same
- * bucketing `#render` does, stated for one name.
+ * The folders a section is shelved under, innermost first — `CD4000/NAND`
+ * sits in `CD4000`, which sits in CHIPS; a bare chip group in CHIPS, a
+ * component group in COMPONENTS — or none for anything that is itself
+ * top-level (the folders, BOARDS, ANNOTATIONS, SIGNALS, and Memory, which is
+ * pulled OUT of CHIPS). The same bucketing `#render` does, stated for one name.
  * @param {string} name a section's identity
- * @returns {string|null}
+ * @returns {string[]}
  */
-function folderOf(name) {
-  if (name === MEMORY_GROUP) return null;
-  const def = PALETTE_DEFS.find((d) => d.group === name);
-  if (!def) return null;
-  return def.kind === "chip" ? CHIPS_FOLDER : COMPONENTS_FOLDER;
+function foldersOf(name) {
+  if (LOGIC_FAMILIES.includes(name)) return [CHIPS_FOLDER];
+  const slash = name.indexOf("/");
+  if (slash > 0) return [name.slice(0, slash), CHIPS_FOLDER];
+  if (name === MEMORY_GROUP) return [];
+  const members = PALETTE_DEFS.filter((d) => d.group === name);
+  if (!members.length) return [];
+  return [isComponentGroup(name, members) ? COMPONENTS_FOLDER : CHIPS_FOLDER];
 }
 
 export class PalettePanel {
@@ -219,6 +276,8 @@ export class PalettePanel {
   #endDrag = null; // the pointer gesture's teardown
   #filter = "";
   #autoClose = false; // Settings ▸ Appearance ▸ Auto-close tray folders
+  #familyMode = DEFAULT_FAMILY_MODE; // Settings ▸ Data Sheets ▸ Chip family
+  #projectFamilies = new Set(); // families the open project uses (sticky)
   // Every section starts shut, every launch. What the user opens lasts for
   // the session only — deliberately NOT persisted, so the panel always opens
   // in the same known state.
@@ -370,17 +429,74 @@ export class PalettePanel {
   }
 
   /**
+   * Settings ▸ Data Sheets ▸ Chip family (`logicFamily`): which family the
+   * tray shows — "74LS", "CD4000" or "combined". Applied live; an unknown
+   * value reads as the default. Each section keeps its remembered state.
+   * @param {string} mode
+   */
+  setFamilyMode(mode) {
+    const next = normalizeFamilyMode(mode);
+    if (next === this.#familyMode) return;
+    this.#familyMode = next;
+    this.#render();
+  }
+
+  /**
+   * The families the OPEN PROJECT uses, which the tray shows whatever the mode
+   * — so a CD4000 project opened in 74LS mode still offers the parts on its
+   * desk. STICKY until `resetProjectFamilies`: deleting the last CD4000 part
+   * mid-session must not make its folder vanish under the user. Derived from
+   * the project, never stored.
+   * @param {Iterable<string>} families
+   */
+  noteProjectFamilies(families) {
+    let grew = false;
+    for (const family of families) {
+      if (
+        !LOGIC_FAMILIES.includes(family) ||
+        this.#projectFamilies.has(family)
+      ) {
+        continue;
+      }
+      this.#projectFamilies.add(family);
+      grew = true;
+    }
+    if (grew) this.#render();
+  }
+
+  /**
+   * A different project is open: forget the last one's families and start
+   * from `families` (the new project's).
+   * @param {Iterable<string>} [families]
+   */
+  resetProjectFamilies(families = []) {
+    this.#projectFamilies = new Set();
+    this.noteProjectFamilies(families);
+    this.#render();
+  }
+
+  /** The families showing right now (the mode, widened by the project). */
+  #shownFamilies() {
+    return familiesShown(this.#familyMode, this.#projectFamilies);
+  }
+
+  /** Is `def` in a family the tray is showing? Family-less parts always are. */
+  #familyShown(def, shown = this.#shownFamilies()) {
+    const family = familyOf(def);
+    return family === null || shown.has(family);
+  }
+
+  /**
    * Open `name` and shut EVERYTHING else — every folder and every group,
-   * nested ones included — bar the folder it is shelved under, which is what
-   * is showing it. The auto-close rule, shared by a header click and a rail
-   * icon.
+   * nested ones included — bar the folders it is shelved under, which are
+   * what is showing it. The auto-close rule, shared by a header click and a
+   * rail icon.
    * @param {string} name a section's identity
    */
   #openOnly(name) {
     this.#collapsed = allSections();
     this.#collapsed.delete(name);
-    const folder = folderOf(name);
-    if (folder) this.#collapsed.delete(folder);
+    for (const folder of foldersOf(name)) this.#collapsed.delete(folder);
   }
 
   /**
@@ -487,38 +603,60 @@ export class PalettePanel {
     // box targets the parts list below, so hide the boards while filtering.
     if (!filtering) this.#appendBoards();
 
-    const defs = PALETTE_DEFS.filter((def) => this.#matches(def));
+    const shown = this.#shownFamilies();
+    const matching = PALETTE_DEFS.filter((def) => this.#matches(def));
+    const defs = matching.filter((def) => this.#familyShown(def, shown));
     if (defs.length === 0) {
       this.#list.append(
-        el("p", { class: "palette-empty", text: t("palette.noMatches") }),
+        el("p", {
+          class: "palette-empty",
+          text: this.#hiddenFamilyHint(matching) ?? t("palette.noMatches"),
+        }),
       );
       return;
     }
-    // Group by function, preserving catalog order of first appearance.
+    // Group by function (ordered below — chip groups by CHIP_GROUP_RANK). With
+    // more than one family showing, a family's chips group under a key of
+    // their own (`CD4000/NAND`), so each family folder gets its own NAND.
+    const tiered = shown.size > 1;
     const groups = new Map();
     for (const def of defs) {
-      if (!groups.has(def.group)) groups.set(def.group, []);
-      groups.get(def.group).push(def);
+      const family = tiered ? familyOf(def) : null;
+      const key = family ? familyGroupKey(family, def.group) : def.group;
+      if (!groups.has(key)) {
+        groups.set(key, { key, group: def.group, family, members: [] });
+      }
+      groups.get(key).members.push(def);
     }
 
     // Three top-level buckets: logic chips nest under the CHIPS folder; memory
     // chips are pulled out into their own group below it; every non-chip part
     // nests under the COMPONENTS folder. A group is a chip group when its
-    // members are chips (the catalog stamps `kind: "chip"`).
+    // members are chips (the catalog stamps `kind: "chip"`) — unless it is one
+    // of the COMPONENTS shelf's own (isComponentGroup).
     const chipGroups = [];
     const componentGroups = [];
     let memoryMembers = null;
-    for (const [group, members] of groups) {
-      if (members[0]?.kind !== "chip") componentGroups.push([group, members]);
-      else if (group === MEMORY_GROUP) memoryMembers = members;
-      else chipGroups.push([group, members]);
+    for (const entry of groups.values()) {
+      if (isComponentGroup(entry.group, entry.members)) {
+        componentGroups.push(entry);
+      } else if (entry.group === MEMORY_GROUP) memoryMembers = entry.members;
+      else chipGroups.push(entry);
     }
     componentGroups.sort(
-      (a, b) => COMPONENT_ORDER.indexOf(a[0]) - COMPONENT_ORDER.indexOf(b[0]),
+      (a, b) =>
+        COMPONENT_ORDER.indexOf(a.group) - COMPONENT_ORDER.indexOf(b.group),
+    );
+    chipGroups.sort(
+      (a, b) => CHIP_GROUP_RANK.get(a.group) - CHIP_GROUP_RANK.get(b.group),
     );
 
     // Chips lead, then every other component, then memory (its own group).
-    this.#appendFolder(CHIPS_FOLDER, chipGroups, filtering);
+    this.#appendFolder(
+      CHIPS_FOLDER,
+      this.#withFamilyTier(chipGroups),
+      filtering,
+    );
     this.#appendFolder(COMPONENTS_FOLDER, componentGroups, filtering);
     if (memoryMembers) {
       this.#appendGroup(this.#list, MEMORY_GROUP, memoryMembers, filtering);
@@ -708,8 +846,9 @@ export class PalettePanel {
 
       A TOP-LEVEL section's header carries its icon between the caret and the
       label: the glyph its button on the shut tray's rail shows, so the two
-      read as the same thing. */
-  #sectionHeader(baseClass, name, collapsed) {
+      read as the same thing. `label` overrides the shown text when the
+      identity is not a translatable name (`CD4000/NAND`, a family). */
+  #sectionHeader(baseClass, name, collapsed, label = sectionLabel(name)) {
     const key = RAIL_SECTIONS.find((s) => s.id === name)?.key;
     let icon = null;
     if (key) {
@@ -733,14 +872,50 @@ export class PalettePanel {
         icon,
         el("span", {
           class: "palette-group-label",
-          text: sectionLabel(name),
+          text: label,
         }),
       ].filter(Boolean),
     );
   }
 
+  /**
+   * The sentence the tray shows when the filter matched NOTHING it is showing
+   * but did match parts of a hidden family — so "4011" in 74LS mode says where
+   * the CD4011B is rather than "No matches". Null when no hidden part matched.
+   * The switch lives in Settings, not the tray, which is why this has to.
+   * @param {object[]} matching - every def the filter matched, shown or not.
+   * @returns {string|null}
+   */
+  #hiddenFamilyHint(matching) {
+    if (!this.#filter.trim()) return null;
+    const hidden = matching.filter((def) => familyOf(def));
+    if (hidden.length === 0) return null;
+    const family = familyOf(hidden[0]);
+    return hidden.length === 1
+      ? t("palette.hiddenFamilyOne", { part: hidden[0].id, family })
+      : t("palette.hiddenFamilyMany", { count: hidden.length, family });
+  }
+
+  /**
+   * Fold the family-keyed chip groups into the CHIPS folder's children: in
+   * Combined mode one family folder per family (in tray order, empty ones
+   * omitted) holding its groups, then the family-less groups; otherwise the
+   * groups as they are.
+   * @param {Array<{key,group,family,members}>} chipGroups
+   */
+  #withFamilyTier(chipGroups) {
+    if (!chipGroups.some((g) => g.family)) return chipGroups;
+    const children = [];
+    for (const family of LOGIC_FAMILIES) {
+      const groups = chipGroups.filter((g) => g.family === family);
+      if (groups.length) children.push({ key: family, family, groups });
+    }
+    return [...children, ...chipGroups.filter((g) => !g.family)];
+  }
+
   /** Append a top-level folder (CHIPS / COMPONENTS) wrapping its sub-groups. A
-      no-op when it has no groups (e.g. the filter hid them all). */
+      no-op when it has no groups (e.g. the filter hid them all). A child with
+      `groups` is a family folder (Combined mode), nesting its own groups. */
   #appendFolder(folderName, groupEntries, filtering) {
     if (groupEntries.length === 0) return;
     const collapsed = !filtering && this.#collapsed.has(folderName);
@@ -751,17 +926,45 @@ export class PalettePanel {
       class: "palette-folder-groups",
       hidden: collapsed,
     });
-    for (const [group, members] of groupEntries) {
-      this.#appendGroup(body, group, members, filtering);
+    for (const entry of groupEntries) {
+      if (entry.groups) this.#appendFamily(body, entry, filtering);
+      else {
+        this.#appendGroup(
+          body,
+          entry.group,
+          entry.members,
+          filtering,
+          entry.key,
+        );
+      }
     }
     this.#list.append(body);
   }
 
-  /** Append one group's header + item list to `container`. */
-  #appendGroup(container, group, members, filtering) {
-    const collapsed = !filtering && this.#collapsed.has(group);
+  /** Append one family folder (Combined mode) and its function groups. Its
+      label is the family's name, which is a part-number prefix and is never
+      translated. */
+  #appendFamily(container, { key, family, groups }, filtering) {
+    const collapsed = !filtering && this.#collapsed.has(key);
+    const header = this.#sectionHeader("palette-group", key, collapsed, family);
+    header.classList.add("palette-family");
+    const body = el("div", {
+      class: "palette-folder-groups",
+      hidden: collapsed,
+    });
+    for (const entry of groups) {
+      this.#appendGroup(body, entry.group, entry.members, filtering, entry.key);
+    }
+    container.append(header, body);
+  }
+
+  /** Append one group's header + item list to `container`. `key` is the
+      section's identity when it differs from the group's name (a family's own
+      copy of a group in Combined mode). */
+  #appendGroup(container, group, members, filtering, key = group) {
+    const collapsed = !filtering && this.#collapsed.has(key);
     container.append(
-      this.#sectionHeader("palette-group", group, collapsed),
+      this.#sectionHeader("palette-group", key, collapsed, sectionLabel(group)),
       el(
         "div",
         { class: "palette-group-items", hidden: collapsed },

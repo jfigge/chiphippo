@@ -234,6 +234,9 @@
       "trayAutoCloseHint": "Ist dies aktiviert, schließt das Öffnen eines Ordners in der Bauteilablage alle anderen Ordner, sodass nur der Ordner geöffnet bleibt, in dem Sie gerade arbeiten – zusammen mit dem Ordner, in dem er liegt. Ein Klick auf ein Symbol in der Leiste der geschlossenen Ablage wirkt genauso."
     },
     "datasheets": {
+      "family": "Chip-Familie",
+      "familyBoth": "Beide",
+      "familyHint": "Welche Logikfamilie die Bauteilablage zeigt: die 74LS-TTL-Chips, die CD4000-CMOS-Chips oder beide — jede in einem eigenen Ordner. Das filtert nur die Ablage: Die Chips eines Projekts werden immer geladen und laufen, egal was hier gewählt ist, und eine Familie, die das geöffnete Projekt verwendet, wird trotzdem gezeigt, damit du mehr von den Bauteilen auf seinem Tisch hinzufügen kannst.",
       "folder": "Datenblattordner",
       "noFolder": "Kein Ordner ausgewählt",
       "clearTitle": "Den Datenblattordner zurücksetzen",
@@ -291,6 +294,11 @@
     "filter": "Bauteile filtern",
     "filterPlaceholder": "Bauteile filtern…",
     "noMatches": "Keine passenden Bauteile.",
+    "hiddenFamilyOne": "{part} ist ein {family}-Baustein. Blende {family}-Chips unter Einstellungen ▸ Datenblätter ein.",
+    "hiddenFamilyMany": {
+      "one": "{count} {family}-Baustein passt. Blende {family}-Chips unter Einstellungen ▸ Datenblätter ein.",
+      "other": "{count} {family}-Bausteine passen. Blende {family}-Chips unter Einstellungen ▸ Datenblätter ein."
+    },
     "hide": "Bauteilablage ausblenden",
     "hideTitle": "Bauteilablage ausblenden ({mod}+P)",
     "show": "Bauteilablage einblenden",
@@ -352,7 +360,9 @@
       "shiftregister": "Schieberegister",
       "signals": "SIGNALE",
       "switches": "Schalter",
-      "xor": "XOR"
+      "xor": "XOR",
+      "capacitors": "Kondensatoren",
+      "timer": "Timer"
     },
     "integration": {
       "output": "Ausgang",
@@ -603,6 +613,9 @@
     "rnet9": {
       "title": "Widerstandsnetzwerk (gebündelt, 9-polig)"
     },
+    "pot": {
+      "title": "Potentiometer"
+    },
     "psu": {
       "title": "Netzteil"
     },
@@ -620,6 +633,144 @@
     },
     "lcd20x4": {
       "title": "Zeichen-LCD 20×4 (HD44780)"
+    },
+    "CD4001B": {
+      "title": "Vierfach-NOR, 2 Eingänge"
+    },
+    "CD4002B": {
+      "title": "Zweifach-NOR, 4 Eingänge"
+    },
+    "CD4025B": {
+      "title": "Dreifach-NOR, 3 Eingänge"
+    },
+    "CD4078B": {
+      "title": "NOR/OR-Gatter, 8 Eingänge"
+    },
+    "CD4011B": {
+      "title": "Vierfach-NAND, 2 Eingänge"
+    },
+    "CD4012B": {
+      "title": "Zweifach-NAND, 4 Eingänge"
+    },
+    "CD4023B": {
+      "title": "Dreifach-NAND, 3 Eingänge"
+    },
+    "CD4068B": {
+      "title": "NAND/AND-Gatter, 8 Eingänge"
+    },
+    "CD4093B": {
+      "title": "Vierfach-NAND mit Schmitt-Trigger, 2 Eingänge"
+    },
+    "CD4081B": {
+      "title": "Vierfach-AND, 2 Eingänge"
+    },
+    "CD4082B": {
+      "title": "Zweifach-AND, 4 Eingänge"
+    },
+    "CD4073B": {
+      "title": "Dreifach-AND, 3 Eingänge"
+    },
+    "CD4071B": {
+      "title": "Vierfach-OR, 2 Eingänge"
+    },
+    "CD4072B": {
+      "title": "Zweifach-OR, 4 Eingänge"
+    },
+    "CD4075B": {
+      "title": "Dreifach-OR, 3 Eingänge"
+    },
+    "CD4030B": {
+      "title": "Vierfach-Exklusiv-ODER"
+    },
+    "CD4070B": {
+      "title": "Vierfach-Exklusiv-ODER"
+    },
+    "CD4077B": {
+      "title": "Vierfach-Exklusiv-NOR"
+    },
+    "CD4069UB": {
+      "title": "Sechsfach-Inverter"
+    },
+    "CD40106B": {
+      "title": "Sechsfach-Inverter mit Schmitt-Trigger"
+    },
+    "CD4049UB": {
+      "title": "Sechsfach-Puffer/Pegelwandler, invertierend"
+    },
+    "CD4050B": {
+      "title": "Sechsfach-Puffer/Pegelwandler, nicht invertierend"
+    },
+    "CD4013B": {
+      "title": "Zweifach-D-Flipflop, Set & Reset"
+    },
+    "CD4017B": {
+      "title": "Dekadenzähler mit 10 dekodierten Ausgängen"
+    },
+    "CD4040B": {
+      "title": "12-stufiger asynchroner Binärzähler"
+    },
+    "CD4027B": {
+      "title": "Zweifach-JK-Flipflop, Set & Reset"
+    },
+    "CD4022B": {
+      "title": "Oktalzähler mit 8 dekodierten Ausgängen"
+    },
+    "CD4020B": {
+      "title": "14-stufiger asynchroner Binärzähler"
+    },
+    "CD4024B": {
+      "title": "7-stufiger asynchroner Binärzähler"
+    },
+    "CD4029B": {
+      "title": "Voreinstellbarer Vor-/Rückwärtszähler, binär oder dezimal"
+    },
+    "CD4510B": {
+      "title": "Voreinstellbarer BCD-Vor-/Rückwärtszähler"
+    },
+    "CD4516B": {
+      "title": "Voreinstellbarer binärer Vor-/Rückwärtszähler"
+    },
+    "CD4094B": {
+      "title": "8-stufiges Schiebe- und Speicherregister, Tri-State"
+    },
+    "CD4028B": {
+      "title": "BCD-zu-Dezimal-Dekoder"
+    },
+    "CD4511B": {
+      "title": "BCD-zu-7-Segment-Latch/-Dekoder/-Treiber"
+    },
+    "CD4066B": {
+      "title": "Vierfach-Analogschalter, bilateral"
+    },
+    "CD4051B": {
+      "title": "8-Kanal-Analogmultiplexer/-demultiplexer"
+    },
+    "CD4052B": {
+      "title": "Zweifach-4-Kanal-Analogmultiplexer/-demultiplexer"
+    },
+    "CD4053B": {
+      "title": "Dreifach-2-Kanal-Analogmultiplexer/-demultiplexer"
+    },
+    "NE555": {
+      "title": "Timer 555"
+    },
+    "CD4047B": {
+      "title": "Monostabiler/astabiler Multivibrator"
+    },
+    "CD4060B": {
+      "title": "14-stufiger asynchroner Binärzähler mit Oszillator"
+    },
+    "CD4098B": {
+      "title": "Doppelter monostabiler Multivibrator"
+    },
+    "CD4538B": {
+      "title": "Doppelter monostabiler Präzisions-Multivibrator"
+    },
+    "cap-ceramic": {
+      "title": "Kondensator (Keramik)"
+    },
+    "cap-electrolytic": {
+      "title": "Kondensator (Elektrolyt)"
     }
   },
   "colors": {
@@ -715,7 +866,16 @@
       "one": "{chip} ist gerade abgeschaltet: Der Low-aktive Ausgangsfreigabe-Pin {pin} ist HIGH, deshalb sind die Ausgänge hochohmig. Ziehen Sie ihn auf LOW, um sie freizugeben.",
       "other": "{chip} ist gerade abgeschaltet: Die Low-aktiven Ausgangsfreigabe-Pins {pin} sind HIGH, deshalb sind die Ausgänge hochohmig. Ziehen Sie sie auf LOW, um sie freizugeben."
     },
+    "outputsDisabledUnwiredActiveHigh": {
+      "one": "Die Ausgänge von {chip} sind nicht freigegeben: Der High-aktive Ausgangsfreigabe-Pin {pin} ist gar nicht verdrahtet. Legen Sie ihn auf HIGH.",
+      "other": "Die Ausgänge von {chip} sind nicht freigegeben: Die High-aktiven Ausgangsfreigabe-Pins {pin} sind gar nicht verdrahtet. Legen Sie sie auf HIGH."
+    },
+    "outputsDisabledLow": {
+      "one": "{chip} ist gerade abgeschaltet: Der High-aktive Ausgangsfreigabe-Pin {pin} ist LOW, deshalb sind die Ausgänge hochohmig. Ziehen Sie ihn auf HIGH, um sie freizugeben.",
+      "other": "{chip} ist gerade abgeschaltet: Die High-aktiven Ausgangsfreigabe-Pins {pin} sind LOW, deshalb sind die Ausgänge hochohmig. Ziehen Sie sie auf HIGH, um sie freizugeben."
+    },
     "inputFloating": "{ref} ({id}) hat Eingänge, die nichts treibt: {pins}. Ein offener TTL-Eingang liest HIGH, der Baustein arbeitet also — nur nicht wie geplant. Legen Sie jeden auf VCC oder GND oder verdrahten Sie ihn mit dem, was ihn treiben soll.",
+    "inputFloatingCmos": "{ref} ({id}) hat Eingänge, die nichts treibt: {pins}. Ein offener CMOS-Eingang liest weder HIGH noch LOW, was der Baustein tut, ist also Glückssache. Legen Sie jeden Eingang auf VCC oder GND — auch die der unbenutzten Gatter — oder verdrahten Sie ihn mit dem, was ihn treiben soll.",
     "busFight": "{drivers} liegen am selben Netz ({net}). Zwei Ausgänge dürfen sich niemals ein Netz teilen — einer treibt HIGH, der andere LOW, und sie arbeiten gegeneinander.",
     "ledUnlimited": "{ref} ({id}) leitet, ohne dass der Strom begrenzt wird — auf einem echten Steckbrett würde das Bauteil durchbrennen statt zu leuchten. Schalten Sie einen Widerstand in Reihe."
   },
@@ -943,6 +1103,11 @@
         "one": "1 Signal wurde ausgelassen — dieser Tisch hat bereits die Höchstzahl an Signalen.",
         "other": "{count} Signale wurden ausgelassen — dieser Tisch hat bereits die Höchstzahl an Signalen."
       }
+    },
+    "capacitorNote": {
+      "title": "Kondensatoren in Chip Hippo",
+      "message": "Ein Kondensator trägt hier einen Wert — er filtert nicht, glättet nicht, speichert keine Ladung und verbindet nichts. Die Zeitgeber-Chips (555, CD4047B, CD4060B, CD4098B, CD4538B) lesen seinen Wert aus der Verdrahtung, und mit diesem Wert wird er nach KiCad exportiert.",
+      "dismiss": "Nicht mehr anzeigen"
     }
   },
   "workspace": {
@@ -1017,6 +1182,7 @@
       "momentary": "wird zu einem Kippschalter: Digital hat keinen Tastkontakt",
       "unpowered": "wird in Digital versorgt, das keinen unversorgten Chip simulieren kann",
       "openCollector": "erhält an jedem Ausgang einen Pull-up, denn in Digital floaten sie wie beim echten Bauteil",
+      "cmosFloating": "erhält einen Pull-up an einem Eingang, den nichts treibt: Chip Hippo liest diesen CMOS-Eingang als unbekannt, Digital als HIGH",
       "signals": {
         "one": "{count} externes Signal: Stimulus vom Arbeitstisch, kein Bauteil",
         "other": "{count} externe Signale: Stimulus vom Arbeitstisch, keine Bauteile"
@@ -1024,7 +1190,8 @@
       "integrations": {
         "one": "{count} Arduino-Ausgang oder -Eingang: eine Verbindung zu einer Platine, kein Bauteil",
         "other": "{count} Arduino-Ausgänge und -Eingänge: Verbindungen zu einer Platine, keine Bauteile"
-      }
+      },
+      "capacitor": "wird weggelassen: Ein Logiksimulator kennt keine Kondensatoren"
     }
   },
   "sim": {
@@ -1034,6 +1201,7 @@
     "memLostMessage": "{chip} war programmiert, aber seine Datendatei fehlte — er enthält jetzt Zufallsrauschen. Lade ein Abbild neu.",
     "short": "Kurzschluss",
     "shortMessage": "Gegensätzliche Versorgungen treffen auf einem Netz zusammen ({net}).",
+    "shortThroughSwitchMessage": "Gegensätzliche Versorgungen treffen über einen Analogschalter zusammen ({net}).",
     "conflict": "Treiberkonflikt",
     "conflictMessage": "Zwei Ausgänge kämpfen auf einem Netz ({net}).",
     "oscillation": "Schwingung",
@@ -1042,11 +1210,27 @@
       "other": "Die Schaltung kommt nicht zur Ruhe ({count} instabile Netze)."
     },
     "underpowered": "Unterversorgt",
-    "underpoweredMessage": "{chip} liegt an 3 V — läuft untätig.",
+    "underpoweredMessage": "{chip} liegt an {volts} V, unter den {rating}, die er braucht — läuft untätig.",
     "reversed": "Versorgung verpolt",
     "reversedMessage": "Bei {chip} sind VCC und GND vertauscht.",
     "damaged": "Magischer Rauch!",
-    "damagedMessage": "{chip} wurde durch 12 V beschädigt. Lösche ihn und setze einen neuen ein, um weiterzumachen."
+    "damagedMessage": "{chip} wurde durch {volts} V beschädigt — er ist für {rating} ausgelegt. Beim Anhalten der Simulation wird er wiederhergestellt.",
+    "floatingInput": "Offener CMOS-Eingang",
+    "floatingInputMessage": {
+      "one": "Pin {pins} von {chip} wird von nichts getrieben. Ein offener CMOS-Eingang liest weder HIGH noch LOW — leg jeden Eingang fest, auch die der unbenutzten Gatter.",
+      "other": "Die Pins {pins} von {chip} werden von nichts getrieben. Ein offener CMOS-Eingang liest weder HIGH noch LOW — leg jeden Eingang fest, auch die der unbenutzten Gatter."
+    },
+    "marginalHigh": "Grenzwertiger Logikpegel",
+    "marginalHighMessage": "Ein 74LS-Ausgang treibt auf {net} einen CD4000-Eingang. Sein HIGH (etwa 3,4 V) liegt unter den 3,5 V, die ein CMOS-Eingang bei 5 V braucht — füge einen Pull-up-Widerstand nach VCC hinzu.",
+    "lsFanout": "Zu viele TTL-Lasten",
+    "lsFanoutMessage": {
+      "one": "{chip} treibt auf {net} {loads} 74LS-Eingänge, kann aber nur {count} auf LOW halten. Puffere ihn mit einem CD4049UB oder CD4050B.",
+      "other": "{chip} treibt auf {net} {loads} 74LS-Eingänge, kann aber nur {count} auf LOW halten. Puffere ihn mit einem CD4049UB oder CD4050B."
+    },
+    "mixedSupply": "Gemischte Versorgungsspannungen",
+    "mixedSupplyMessage": "{net} verbindet Chips, die mit {volts} versorgt werden. Ein Signal zwischen zwei Versorgungen braucht einen Pegelwandler.",
+    "timing": "Zeitverhalten nicht erkannt",
+    "timingMessage": "{chip}: {problems}."
   },
   "about": {
     "subtitle": "TTL-Steckbrett-Entwurf & -Simulation",
@@ -1170,7 +1354,11 @@
       "connection": "Verbindung",
       "triggerEdge": "Trigger",
       "triggerInit": "Trigger beginnt",
-      "fields": "Pins"
+      "fields": "Pins",
+      "ohms": "Widerstandswert",
+      "farads": "Kapazität",
+      "position": "Position",
+      "timing": "Zeitverhalten"
     },
     "option": {
       "manual": "Manuell",
@@ -1187,10 +1375,15 @@
     "warnings": "Warnungen",
     "warning": {
       "unpowered": "Ohne Versorgung — an VCC und GND liegt keine Spannung, das Bauteil rechnet nichts.",
-      "underpowered": "Unterversorgt — VCC liegt an 3 V, das Bauteil läuft untätig.",
+      "underpowered": "Unterversorgt — VCC liegt an {volts} V, unter den {rating}, die das Bauteil braucht, also läuft es untätig.",
       "reversed": "Versorgung verpolt — VCC und GND sind vertauscht.",
-      "damaged": "Beschädigt — 12 V haben den Rauch herausgelassen. Beim Anhalten der Simulation wird es wiederhergestellt.",
-      "unprogrammed": "Nicht programmiert — es ist kein Abbild geladen, der Chip liest zufälliges Rauschen."
+      "damaged": "Beschädigt — {volts} V liegen über den {rating} des Bauteils und haben den Rauch herausgelassen. Beim Anhalten der Simulation wird es wiederhergestellt.",
+      "unprogrammed": "Nicht programmiert — es ist kein Abbild geladen, der Chip liest zufälliges Rauschen.",
+      "timing": "Zeitverhalten nicht erkannt — {problems}. Die Ausgänge bleiben in Ruhe, bis das Bauteil wie im Datenblatt beschaltet ist."
+    },
+    "invalid": {
+      "ohms": "Kein Widerstandswert — etwa 470, 4.7k, 4k7 oder 2M2 (0,1 Ω bis 1 GΩ).",
+      "farads": "Kein Kapazitätswert — mit Einheit angeben: 100p, 10n, 4.7µ, 4u7 oder 1m (1 pF bis 1 F)."
     }
   },
   "memory": {
@@ -1549,6 +1742,26 @@
         "ignore-hello": "Beim nächsten Lauf nicht antworten, sodass er mit „Keine Antwort“ anhält",
         "wrong-signature": "Dem nächsten Lauf als Sketch für einen anderen Entwurf antworten, sodass er nicht startet"
       }
+    }
+  },
+  "timing": {
+    "astable": "Astabil — {frequency}, Tastgrad {duty} %",
+    "monostable": "Monostabil — Impuls von {width}",
+    "bistable": "Bistabil — TRIG LOW setzt den Ausgang auf HIGH, RESET LOW setzt ihn zurück",
+    "multivibrator": "Astabil: Q mit {frequency}; monostabil: Impuls von {width}",
+    "oscillator": "RC-Oszillator — {frequency}",
+    "external": "Zählt einen externen Takt an φI",
+    "unused": "Nicht benutzt",
+    "capped": "Schneller, als der Tisch es zeigen kann: dargestellt mit {cap}.",
+    "stretched": "Kürzer, als der Tisch es zeigen kann: {shown} lang dargestellt.",
+    "notRecognised": "Beschaltung nicht erkannt: {problems}.",
+    "section": "Teil {section}: {text}",
+    "problem": {
+      "noCapacitor": "kein Zeitkondensator von {from} nach {to}",
+      "noResistor": "kein Zeitwiderstand von {from} nach {to}",
+      "notConnected": "{pin} ist nicht angeschlossen",
+      "ne555Unrecognised": "TRIG (2), THRES (6) und DISCH (7) sind weder astabil (TRIG und THRES verbunden, DISCH zwischen RA und RB), monostabil (THRES und DISCH verbunden, TRIG von außen angesteuert) noch bistabil (THRES an GND, TRIG von außen angesteuert) beschaltet",
+      "cd4060Incomplete": "der RC-Oszillator braucht Cx von φO (9), Rx von φ̄O (10) und Rs von φI (11), die sich alle in einem Knoten treffen"
     }
   }
 }

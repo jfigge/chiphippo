@@ -28,16 +28,38 @@
 // This is zero-delay, power-agnostic logic. VCC/GND checking, supply voltages,
 // the tick pipeline, and damage are the engine's concern (Feature 90/100).
 
-import { asInput, and, or, nand, nor, xor, inv, buf3, Z } from "./levels.js";
+import {
+  asInput,
+  asCmosInput,
+  and,
+  or,
+  nand,
+  nor,
+  xor,
+  xnor,
+  inv,
+  buf,
+  buf3,
+  Z,
+} from "./levels.js";
+import { floatsUnknown } from "../catalog/families.js";
 
-/** Gate fn name → n-ary primitive. INV/BUF3/COMB are handled specially. */
+/** Gate fn name → n-ary primitive. INV/BUF/BUF3/COMB are handled specially. */
 const GATES = Object.freeze({
   NAND: nand,
   NOR: nor,
   AND: and,
   OR: or,
   XOR: xor,
+  XNOR: xnor,
 });
+
+/**
+ * How this def reads a pin as an input: a TTL (or family-less) part pulls a
+ * floating pin HIGH, a CMOS part reads it as unknown (Feature 400). The one
+ * place the choice is made, for both the combinational and the stateful path.
+ */
+const readerFor = (def) => (floatsUnknown(def) ? asCmosInput : asInput);
 
 /** Does this def carry combinational (unit-based) behavior? */
 export function hasLogic(def) {
@@ -47,6 +69,42 @@ export function hasLogic(def) {
 /** Does this def carry sequential (stateful) behavior? */
 export function isSequential(def) {
   return typeof def?.logic?.step === "function";
+}
+
+/**
+ * Is this an analog switch (CD4066B, CD4051B/52B/53B)? Its channels JOIN nets
+ * rather than driving them (sim/analog-switch.js), so it has no outputs at all.
+ */
+export function isAnalogSwitch(def) {
+  return Array.isArray(def?.logic?.channels);
+}
+
+/**
+ * The state of each of an analog switch's channels for the levels on its pins:
+ * `[{a, b, on}]`, the terminals and H (joined), L (apart) or X (might be
+ * either). Its control pins are read through the family reader, so a floating
+ * CMOS control is X.
+ * @param {object} def
+ * @param {Map<number, string>} pinLevels
+ */
+export function channelStates(def, pinLevels) {
+  const read = readerFor(def);
+  return def.logic.channels.map((ch) => ({
+    a: ch.a,
+    b: ch.b,
+    on: ch.on(ch.inputs.map((pin) => read(pinLevels.get(pin) ?? Z))),
+  }));
+}
+
+/**
+ * Does this def keep TIME (the 555, the RC-timed CD4000 parts)? A timed part
+ * is sequential — it has the standard `{state0, step, outputs}` — plus a
+ * `timing(probe)` that reads its R and C off the wiring (sim/rc-trace.js) and
+ * a `wakeAt(state)` naming when it next changes by itself. Its `step` is
+ * handed `{now, timing}` as a fourth argument (sim/timing.js).
+ */
+export function isTimed(def) {
+  return isSequential(def) && typeof def.logic.timing === "function";
 }
 
 /** Does this def carry a memory image (ROM / SRAM / EEPROM — Feature 170)? */
@@ -79,10 +137,15 @@ export function isRomChip(def) {
   return isMemory(def) && !isVolatileMemory(def);
 }
 
-/** Does this def carry ANY simulated behavior (combinational/sequential/memory/oscillator)? */
+/** Does this def carry ANY simulated behavior (combinational/sequential/
+    memory/oscillator/analog switch)? */
 export function hasBehavior(def) {
   return (
-    hasLogic(def) || isSequential(def) || isMemory(def) || isOscillator(def)
+    hasLogic(def) ||
+    isSequential(def) ||
+    isMemory(def) ||
+    isOscillator(def) ||
+    isAnalogSwitch(def)
   );
 }
 
@@ -99,21 +162,25 @@ export function initialState(def) {
  *
  * @param {object} def - a catalog def with a `logic.units` block.
  * @param {Map<number, string>} pinLevels - pin number → level (H/L/Z/X). A
- *   missing pin is treated as floating (`Z` → reads HIGH via asInput).
+ *   missing pin is treated as floating (`Z` → reads HIGH via asInput, or
+ *   unknown via asCmosInput for a CMOS part).
  * @returns {Map<number, string>} output pin → driven level.
  */
 export function evaluate(def, pinLevels) {
   const out = new Map();
   if (!hasLogic(def)) return out;
 
-  // Every input pin is read through asInput, so a floating (Z) pin reads H
-  // and Z never reaches a gate primitive.
-  const level = (pin) => asInput(pinLevels.get(pin) ?? Z);
+  // Every input pin is read through the def's family reader, so a floating
+  // (Z) pin reads H (TTL) or X (CMOS) and Z never reaches a gate primitive.
+  const read = readerFor(def);
+  const level = (pin) => read(pinLevels.get(pin) ?? Z);
 
   for (const unit of def.logic.units) {
     let value;
     if (unit.fn === "INV") {
       value = inv(level(unit.inputs[0]));
+    } else if (unit.fn === "BUF") {
+      value = buf(level(unit.inputs[0]));
     } else if (unit.fn === "BUF3") {
       value = buf3(level(unit.inputs[0]), level(unit.enable));
     } else if (unit.fn === "COMB") {
@@ -134,8 +201,8 @@ export function evaluate(def, pinLevels) {
 
 /**
  * The input-pin levels a sequential/latch/memory chip reads, keyed by pin
- * number and already `asInput`'d (Z → H) so `step`/`outputs`/`read`/`write`
- * see only H/L/X. Bidirectional `io` pins (a memory's data bus, driven by the
+ * number and already read through the def's family reader (Z → H for TTL,
+ * Z → X for CMOS) so `step`/`outputs`/`read`/`write` see only H/L/X. Bidirectional `io` pins (a memory's data bus, driven by the
  * unit AND read back during a write) are included — the unit floats them while
  * writing, so their net level reflects the external driver.
  * @param {object} def
@@ -144,9 +211,10 @@ export function evaluate(def, pinLevels) {
  */
 export function inputLevels(def, pinLevels) {
   const ins = new Map();
+  const read = readerFor(def);
   for (const p of def.pins) {
     if (p.role === "input" || p.role === "io") {
-      ins.set(p.n, asInput(pinLevels.get(p.n) ?? Z));
+      ins.set(p.n, read(pinLevels.get(p.n) ?? Z));
     }
   }
   return ins;
@@ -155,11 +223,20 @@ export function inputLevels(def, pinLevels) {
 /**
  * Advance a sequential chip one tick: sample edges from `inputs` vs
  * `prevInputs` (null on the first tick — no edge) and compute the next state.
- * Pure — returns the new state, never mutates.
+ * Pure — returns the new state, never mutates. `env` reaches a TIMED part
+ * only (`{now, timing}` — see isTimed); every other step ignores it.
  * @returns {*} the def-specific next state
  */
-export function stepChip(def, state, inputs, prevInputs) {
-  return def.logic.step(state, inputs, prevInputs);
+export function stepChip(def, state, inputs, prevInputs, env) {
+  return def.logic.step(state, inputs, prevInputs, env);
+}
+
+/**
+ * When a timed chip next changes on its own, in simulated seconds, or null
+ * when nothing is pending (an idle monostable, a held reset).
+ */
+export function wakeAtOf(def, state) {
+  return isTimed(def) ? (def.logic.wakeAt?.(state) ?? null) : null;
 }
 
 /**

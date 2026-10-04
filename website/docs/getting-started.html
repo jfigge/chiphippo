@@ -131,8 +131,9 @@ desk space near the breadboard to place it. A PSU brick isn&#39;t seated on the
 board; it&#39;s a free-standing part with two wireable terminals, <strong>+</strong> and
 <strong>−</strong>.</p>
 <p>Right-click the placed PSU and choose <strong>Properties…</strong> to confirm it&#39;s set to
-<strong>5 V</strong> (new PSUs default to 5 V, but 3 V and 12 V are also there — 12 V is
-enough to damage a chip, so save it for parts rated to take it). <strong>Delete
+<strong>5 V</strong> (new PSUs default to 5 V, but 3 V, 9 V, 12 V and 15 V are also there —
+anything over 5 V damages a 74LS chip, so save those for CD4000 CMOS parts,
+which are rated for 3–18 V). <strong>Delete
 Component</strong>, further down the same context menu, removes the PSU if you want
 to start over.</p>
 <h2 id="add-an-led">Add an LED</h2>
@@ -148,7 +149,9 @@ it and choose <strong>Properties…</strong>.</p>
 between a supply rail and ground it has nothing to limit the current, and the
 simulation shows it <strong>burnt</strong> rather than lit. One resistor anywhere in the
 loop is enough — including a single one in a display&#39;s common leg, which
-protects all of its segments at once.</p>
+protects all of its segments at once. (The one thing that limits the current
+by itself is a CD4000 output at 5 V or below — see
+<a href="simulation.html#mixing-logic-families">Mixing logic families</a>.)</p>
 <h2 id="wire-it-up">Wire it up</h2>
 <p>Press <code>W</code> (or click <strong>Wire</strong> in the toolbar) to arm the wire tool. Click a
 free hole or terminal to anchor the first end, then click a second free point
@@ -187,7 +190,7 @@ chips, discretes, placement, and rotation.</li>
 <li><strong><a href="wiring.html">Wiring, Nets &amp; Buses</a></strong> — the wire tool in depth, cross-board
 wires, colors, and multi-bit buses.</li>
 <li><strong><a href="power-and-clocks.html">Power &amp; Clock Sources</a></strong> — PSU voltage and the
-12 V damage rule, plus clock sources for sequential circuits.</li>
+over-voltage damage rule, plus clock sources for sequential circuits.</li>
 <li><strong><a href="simulation.html">Running a Simulation</a></strong> — Run/Pause/Step, the settle
 model, and how live views (LEDs, chip badges) work.</li>
 </ul>

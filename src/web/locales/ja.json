@@ -234,6 +234,9 @@
       "trayAutoCloseHint": "オンにすると、部品トレイでフォルダーを開いたときに他のフォルダーがすべて閉じ、作業中のフォルダーとそれを含むフォルダーだけが開いたままになります。閉じたトレイのバーにあるアイコンをクリックした場合も同様です。"
     },
     "datasheets": {
+      "family": "チップファミリー",
+      "familyBoth": "両方",
+      "familyHint": "部品トレイに表示するロジックファミリー: 74LS TTL チップ、CD4000 CMOS チップ、またはその両方（それぞれ専用のフォルダに入ります）。これはトレイを絞り込むだけです。プロジェクトのチップはここでの選択に関係なく常に読み込まれて動作し、開いているプロジェクトが使っているファミリーは表示されるので、そのデスクにある部品を追加できます。",
       "folder": "データシートのフォルダ",
       "noFolder": "フォルダが選択されていません",
       "clearTitle": "データシートのフォルダをクリア",
@@ -291,6 +294,10 @@
     "filter": "部品を絞り込む",
     "filterPlaceholder": "部品を絞り込む…",
     "noMatches": "一致する部品はありません。",
+    "hiddenFamilyOne": "{part} は {family} の部品です。設定 ▸ データシート で {family} のチップを表示してください。",
+    "hiddenFamilyMany": {
+      "other": "{family} の部品が {count} 個一致します。設定 ▸ データシート で {family} のチップを表示してください。"
+    },
     "hide": "部品トレイを隠す",
     "hideTitle": "部品トレイを隠す（{mod}+P）",
     "show": "部品トレイを表示",
@@ -352,7 +359,9 @@
       "shiftregister": "シフトレジスタ",
       "signals": "信号",
       "switches": "スイッチ",
-      "xor": "XOR"
+      "xor": "XOR",
+      "capacitors": "コンデンサ",
+      "timer": "タイマー"
     },
     "integration": {
       "output": "出力",
@@ -603,6 +612,9 @@
     "rnet9": {
       "title": "集合抵抗（コモン端子式、9 ピン）"
     },
+    "pot": {
+      "title": "ポテンショメータ"
+    },
     "psu": {
       "title": "電源"
     },
@@ -620,6 +632,144 @@
     },
     "lcd20x4": {
       "title": "キャラクタ LCD 20×4（HD44780）"
+    },
+    "CD4001B": {
+      "title": "2 入力 NOR × 4"
+    },
+    "CD4002B": {
+      "title": "4 入力 NOR × 2"
+    },
+    "CD4025B": {
+      "title": "3 入力 NOR × 3"
+    },
+    "CD4078B": {
+      "title": "8 入力 NOR/OR ゲート"
+    },
+    "CD4011B": {
+      "title": "2 入力 NAND × 4"
+    },
+    "CD4012B": {
+      "title": "4 入力 NAND × 2"
+    },
+    "CD4023B": {
+      "title": "3 入力 NAND × 3"
+    },
+    "CD4068B": {
+      "title": "8 入力 NAND/AND ゲート"
+    },
+    "CD4093B": {
+      "title": "シュミットトリガ入力 2 入力 NAND × 4"
+    },
+    "CD4081B": {
+      "title": "2 入力 AND × 4"
+    },
+    "CD4082B": {
+      "title": "4 入力 AND × 2"
+    },
+    "CD4073B": {
+      "title": "3 入力 AND × 3"
+    },
+    "CD4071B": {
+      "title": "2 入力 OR × 4"
+    },
+    "CD4072B": {
+      "title": "4 入力 OR × 2"
+    },
+    "CD4075B": {
+      "title": "3 入力 OR × 3"
+    },
+    "CD4030B": {
+      "title": "排他的 OR × 4"
+    },
+    "CD4070B": {
+      "title": "排他的 OR × 4"
+    },
+    "CD4077B": {
+      "title": "排他的 NOR × 4"
+    },
+    "CD4069UB": {
+      "title": "インバータ × 6"
+    },
+    "CD40106B": {
+      "title": "シュミットトリガ入力インバータ × 6"
+    },
+    "CD4049UB": {
+      "title": "反転バッファ／レベル変換 × 6"
+    },
+    "CD4050B": {
+      "title": "非反転バッファ／レベル変換 × 6"
+    },
+    "CD4013B": {
+      "title": "D フリップフロップ × 2、セット・リセット付き"
+    },
+    "CD4017B": {
+      "title": "10 出力デコード付きデケードカウンタ"
+    },
+    "CD4040B": {
+      "title": "12 段リップルキャリー・バイナリカウンタ"
+    },
+    "CD4027B": {
+      "title": "JK フリップフロップ × 2、セット・リセット付き"
+    },
+    "CD4022B": {
+      "title": "8 出力デコード付きオクタルカウンタ"
+    },
+    "CD4020B": {
+      "title": "14 段リップルキャリー・バイナリカウンタ"
+    },
+    "CD4024B": {
+      "title": "7 段リップルキャリー・バイナリカウンタ"
+    },
+    "CD4029B": {
+      "title": "プリセット可能アップ／ダウンカウンタ（バイナリ／デケード）"
+    },
+    "CD4510B": {
+      "title": "プリセット可能 BCD アップ／ダウンカウンタ"
+    },
+    "CD4516B": {
+      "title": "プリセット可能バイナリ・アップ／ダウンカウンタ"
+    },
+    "CD4094B": {
+      "title": "8 段シフト＆ストアレジスタ、3 ステート出力"
+    },
+    "CD4028B": {
+      "title": "BCD-10 進デコーダ"
+    },
+    "CD4511B": {
+      "title": "BCD-7 セグメント・ラッチ／デコーダ／ドライバ"
+    },
+    "CD4066B": {
+      "title": "双方向アナログスイッチ × 4"
+    },
+    "CD4051B": {
+      "title": "8 チャンネル・アナログマルチプレクサ／デマルチプレクサ"
+    },
+    "CD4052B": {
+      "title": "4 チャンネル・アナログマルチプレクサ／デマルチプレクサ × 2"
+    },
+    "CD4053B": {
+      "title": "2 チャンネル・アナログマルチプレクサ／デマルチプレクサ × 3"
+    },
+    "NE555": {
+      "title": "555 タイマー"
+    },
+    "CD4047B": {
+      "title": "単安定/無安定マルチバイブレータ"
+    },
+    "CD4060B": {
+      "title": "発振器付き 14 段リップルキャリー・バイナリカウンタ"
+    },
+    "CD4098B": {
+      "title": "デュアル単安定マルチバイブレータ"
+    },
+    "CD4538B": {
+      "title": "デュアル高精度単安定マルチバイブレータ"
+    },
+    "cap-ceramic": {
+      "title": "コンデンサ（セラミック）"
+    },
+    "cap-electrolytic": {
+      "title": "コンデンサ（電解）"
     }
   },
   "colors": {
@@ -711,7 +861,14 @@
     "outputsDisabledHigh": {
       "other": "{chip} は現在オフです。負論理の出力イネーブル {pin} が HIGH のため、出力はハイインピーダンスになっています。LOW に駆動して有効にしてください。"
     },
+    "outputsDisabledUnwiredActiveHigh": {
+      "other": "{chip} の出力は有効になっていません。正論理の出力イネーブル {pin} がまったく配線されていません。HIGH に接続してください。"
+    },
+    "outputsDisabledLow": {
+      "other": "{chip} は現在オフです。正論理の出力イネーブル {pin} が LOW のため、出力はハイインピーダンスになっています。HIGH に駆動して有効にしてください。"
+    },
     "inputFloating": "{ref}（{id}）には何も駆動していない入力があります: {pins}。TTL の未接続入力は HIGH として読まれるため、チップは動作しますが設計どおりではありません。それぞれを VCC か GND に接続するか、駆動すべき信号に配線してください。",
+    "inputFloatingCmos": "{ref}（{id}）には何も駆動していない入力があります: {pins}。未接続の CMOS 入力は HIGH とも LOW とも読まれないため、チップの動作は予測できません。未使用のゲートも含め、すべての入力を VCC か GND に接続するか、駆動すべき信号に配線してください。",
     "busFight": "{drivers} が同じネット（{net}）に配線されています。2 つの出力が 1 つのネットを共有してはいけません。一方が HIGH を、もう一方が LOW を駆動して競合します。",
     "ledUnlimited": "{ref}（{id}）は電流を制限するものなしで導通しています。実際のブレッドボードでは点灯せずに焼き切れます。直列に抵抗を入れてください。"
   },
@@ -928,6 +1085,11 @@
       "signalsDropped": {
         "other": "{count} 個の信号を見送りました — このデスクの信号はすでに上限に達しています。"
       }
+    },
+    "capacitorNote": {
+      "title": "Chip Hippo のコンデンサ",
+      "message": "ここではコンデンサは値を持つだけです。フィルタ・平滑化・電荷の蓄積は行わず、何も接続しません。タイマー IC（555、CD4047B、CD4060B、CD4098B、CD4538B）は配線からその値を読み取り、KiCad へも値付きで書き出されます。",
+      "dismiss": "今後表示しない"
     }
   },
   "workspace": {
@@ -999,12 +1161,14 @@
       "momentary": "トグルスイッチになります。Digital にはモーメンタリ接点がありません",
       "unpowered": "Digital では電源が供給されます。電源のないチップは動かせません",
       "openCollector": "各出力にプルアップが付きます。Digital では実物と同じく出力がフローティングになるためです",
+      "cmosFloating": "何も駆動していない入力にプルアップが付きます。Chip Hippo はその CMOS 入力を不定として読みますが、Digital では HIGH になります",
       "signals": {
         "other": "外部信号 {count} 個: 作業台の刺激であり、部品ではありません"
       },
       "integrations": {
         "other": "Arduino の出力・入力 {count} 個: ボードとのリンクであり、部品ではありません"
-      }
+      },
+      "capacitor": "省略されます。論理シミュレータにはコンデンサがありません"
     }
   },
   "sim": {
@@ -1014,6 +1178,7 @@
     "memLostMessage": "{chip} は書き込み済みでしたが、データファイルが見つかりませんでした — 現在はランダムなノイズが入っています。イメージを読み込み直してください。",
     "short": "ショート",
     "shortMessage": "逆向きの電源が同じネットで出会っています（{net}）。",
+    "shortThroughSwitchMessage": "逆向きの電源がアナログスイッチを介して出会っています（{net}）。",
     "conflict": "ドライバの衝突",
     "conflictMessage": "2 つの出力が同じネットで競合しています（{net}）。",
     "oscillation": "発振",
@@ -1021,11 +1186,25 @@
       "other": "回路が収束しません（不安定なネット {count} 個）。"
     },
     "underpowered": "電圧不足",
-    "underpoweredMessage": "{chip} は 3 V です — 動作しません。",
+    "underpoweredMessage": "{chip} は {volts} V で、必要な {rating} を下回っています — 動作しません。",
     "reversed": "電源が逆",
     "reversedMessage": "{chip} の VCC と GND が入れ替わっています。",
     "damaged": "煙が出ました！",
-    "damagedMessage": "{chip} は 12 V で壊れました。削除して新しいものを置くと続けられます。"
+    "damagedMessage": "{chip} は {volts} V で壊れました — 定格は {rating} です。シミュレーションを停止すると元に戻ります。",
+    "floatingInput": "CMOS 入力が未接続",
+    "floatingInputMessage": {
+      "other": "{chip} のピン {pins} は何にも駆動されていません。未接続の CMOS 入力は HIGH とも LOW とも読まれません — 未使用のゲートも含め、すべての入力を固定してください。"
+    },
+    "marginalHigh": "ロジックレベルが境界値",
+    "marginalHighMessage": "{net} で 74LS の出力が CD4000 の入力を駆動しています。その HIGH（約 3.4 V）は、5 V 動作の CMOS 入力に必要な 3.5 V を下回ります — VCC へのプルアップ抵抗を追加してください。",
+    "lsFanout": "TTL 負荷が多すぎます",
+    "lsFanoutMessage": {
+      "other": "{chip} は {net} で 74LS 入力を {loads} 個駆動していますが、LOW に保てるのは {count} 個までです。CD4049UB か CD4050B でバッファしてください。"
+    },
+    "mixedSupply": "電源電圧が混在しています",
+    "mixedSupplyMessage": "{net} は {volts} で給電されたチップ同士をつないでいます。電源をまたぐ信号にはレベル変換が必要です。",
+    "timing": "タイミングを認識できません",
+    "timingMessage": "{chip}：{problems}。"
   },
   "about": {
     "subtitle": "TTL ブレッドボード設計・シミュレータ",
@@ -1149,7 +1328,11 @@
       "connection": "接続",
       "triggerEdge": "トリガー",
       "triggerInit": "トリガーの初期値",
-      "fields": "ピン"
+      "fields": "ピン",
+      "ohms": "抵抗値",
+      "farads": "容量",
+      "position": "位置",
+      "timing": "タイミング"
     },
     "option": {
       "manual": "手動",
@@ -1166,10 +1349,15 @@
     "warnings": "警告",
     "warning": {
       "unpowered": "電源なし — VCC と GND に電圧が届いていないため、この部品は何も計算しません。",
-      "underpowered": "電圧不足 — VCC が 3 V のため、この部品は動作しません。",
+      "underpowered": "電圧不足 — VCC が {volts} V で、この部品に必要な {rating} を下回るため動作しません。",
       "reversed": "電源が逆 — VCC と GND が入れ替わっています。",
-      "damaged": "破損 — 12 V で煙が出ました。シミュレーションを停止すると元に戻ります。",
-      "unprogrammed": "未書き込み — イメージが読み込まれていないため、このチップはランダムなノイズを読み出します。"
+      "damaged": "破損 — {volts} V はこの部品の定格 {rating} を超え、煙が出ました。シミュレーションを停止すると元に戻ります。",
+      "unprogrammed": "未書き込み — イメージが読み込まれていないため、このチップはランダムなノイズを読み出します。",
+      "timing": "タイミングを認識できません — {problems}。データシートどおりに配線されるまで、出力は休止状態のままです。"
+    },
+    "invalid": {
+      "ohms": "抵抗値として読めません — 470、4.7k、4k7、2M2 のように入力してください（0.1 Ω～1 GΩ）。",
+      "farads": "容量として読めません — 100p、10n、4.7µ、4u7、1m のように単位を付けてください（1 pF～1 F）。"
     }
   },
   "memory": {
@@ -1523,6 +1711,26 @@
         "ignore-hello": "次の実行に応答せず、「応答がありません」で停止させます",
         "wrong-signature": "次の実行に別の設計用のスケッチとして応答し、開始を拒否させます"
       }
+    }
+  },
+  "timing": {
+    "astable": "無安定 — {frequency}、デューティ比 {duty}%",
+    "monostable": "単安定 — パルス幅 {width}",
+    "bistable": "双安定 — TRIG を LOW にすると出力が HIGH になり、RESET を LOW にするとクリアされます",
+    "multivibrator": "無安定：Q は {frequency}、単安定：パルス幅 {width}",
+    "oscillator": "RC 発振器 — {frequency}",
+    "external": "φI の外部クロックを計数",
+    "unused": "未使用",
+    "capped": "デスクで表示できる速さを超えています：{cap} で描画します。",
+    "stretched": "デスクで表示できる長さより短いため、{shown} の長さで描画します。",
+    "notRecognised": "配線を認識できません：{problems}。",
+    "section": "セクション {section}：{text}",
+    "problem": {
+      "noCapacitor": "{from} から {to} へのタイミング用コンデンサがありません",
+      "noResistor": "{from} から {to} へのタイミング用抵抗がありません",
+      "notConnected": "{pin} が接続されていません",
+      "ne555Unrecognised": "TRIG (2)・THRES (6)・DISCH (7) の配線が、無安定（TRIG と THRES を接続し、DISCH を RA と RB の間に置く）にも単安定（THRES と DISCH を接続し、TRIG を外部から駆動する）にも双安定（THRES を GND に接続し、TRIG を外部から駆動する）にもなっていません",
+      "cd4060Incomplete": "RC 発振には φO (9) からの Cx、φ̄O (10) からの Rx、φI (11) からの Rs を 1 か所の接続点にまとめる必要があります"
     }
   }
 }

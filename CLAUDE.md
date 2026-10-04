@@ -2,11 +2,12 @@
 
 ## What This Is
 
-**Chip Hippo** is a cross-platform desktop app for designing and simulating **74xx TTL
-logic circuits on virtual breadboards**. The main window is an infinitely pannable,
-zoomable **desk**: the user places solderless breadboards (Full 830 / Half 400 / Tiny
-170 tie points), populates them with 74xx DIP chips, wires, switches, LEDs and power
-sources (3 V / 5 V / 12 V), and a **simulation engine** traces electricity from the
+**Chip Hippo** is a cross-platform desktop app for designing and simulating **74LS TTL
+and CD4000 CMOS logic circuits on virtual breadboards**. The main window is an
+infinitely pannable, zoomable **desk**: the user places solderless breadboards (Full
+830 / Half 400 / Tiny 170 tie points), populates them with DIP chips, wires, switches,
+LEDs and power sources (3 / 5 / 9 / 12 / 15 V), and a **simulation engine** traces
+electricity from the
 sources, resolves every electrical net, and ripples changes through the circuit until
 it settles.
 
@@ -28,7 +29,8 @@ groups · 120 net names & labels · 130 buses · 140 build guide & wiring list �
 230 user guide & docs · 240 projects & tabbed desktops · 250 single-file projects ·
 260 AI circuit builder · 270 example circuits · 280 auto-update · 290 wire-riding part
 drags · 310 Mac App Store · 320 AI desk review · 330 shared memory blobs · 340 cluster
-drags · 370 external signals · 380 Arduino serial integration · language support.
+drags · 370 external signals · 380 Arduino serial integration · language support ·
+400 CD4000 CMOS family · 410 CD4000 batch 2 (the MSI parts and the analog switches).
 
 **Deferred** (`features/deferred/`): 160 export image & PDF, 300 selection drags.
 **Still open**: 260 step 15 — refactor `make demos` onto `model/autobuild.js` (which
@@ -36,6 +38,9 @@ now has `centreDocument` and a second output to honour); 360 auto-routing (plan 
 `features/`; `model/autoroute.js` + `route-*.js`, the toolbar's Auto-route action).
 **Landed without a plan file**: Desktop ▸ Export To — KiCad schematic and Digital `.dig`
 (`model/export/`, `app/ipc/export.js`, "Feature 390" in its comments).
+**Landed without a feature number**: capacitors, typed resistor/capacitor values and the
+RC timers — the 555 and the CD4047B/4060B/4098B/4538B (plan
+`features/chiphippo-capacitors-555.md`; see "Values, capacitors & timed parts").
 
 ## Naming & identity
 
@@ -86,7 +91,11 @@ the repo, only the cropped PNGs.
   `datasheetCrop`, names **missing** crops to cut and **orphaned** PNGs no part asks for,
   and `--strict` exits 1 on a missing one. Its one hand-kept list is `NO_DATASHEET` —
   the four chips with no matching `74LS*` sheet (74LS164, 74LS193, 74LS27, 74LS76) —
-  and moving a name in or out of it is how a part leaves or rejoins the to-do list.
+  and moving a name in or out of it is how a part leaves or rejoins the to-do list. The
+  43 CD4000 parts are deliberately NOT excused, and deliberately NOT cut yet: Jason
+  defers them until the family has proven worthwhile (2026-10-03). When they are, they
+  come from the TI sheets the downloader fetches; until then they stay on the missing
+  list.
 
 ## User guide & docs
 
@@ -189,10 +198,12 @@ the repo, only the cropped PNGs.
     `desk-doc.js`), `wire-crossing.js`, `selection-toggle.js`, `signals.js`,
     `signal-keys.js`, `pin-resolve.js`, `column-allocator.js`, `autobuild.js`,
     `autobuild-verify.js`, `spec-lint.js`, `integration.js`, `integration-runtime.js`,
-    `integration-codegen.js`, `serial-connections.js`.
+    `integration-codegen.js`, `serial-connections.js`, `si-value.js` + `ohm-format.js` +
+    `farad-format.js`, `resistor-bands.js`, `timing-summary.js`.
   - `scripts/sim/` — the DOM-free engine: `union-find.js`, `netlist.js`, `levels.js`,
     `chip-eval.js`, `sequential.js`, `resolve.js`, `engine.js`, `junction.js`,
-    `w65c02.js`, `z80.js`, `z80-ops.js`.
+    `w65c02.js`, `z80.js`, `z80-ops.js`, `analog-switch.js`, `timing.js`, `rc-trace.js`,
+    `timer-555.js`, `monostable.js`, `ripple-oscillator.js`.
   - `scripts/ai/` — `catalog-brief.js`, `generate.js`, `connection.js`, `usage.js`
     (pure).
   - `scripts/catalog/` — part metadata as pure data + integrity tests; never
@@ -284,6 +295,12 @@ Electron main (src/app/main.js)
   group), each rotatable discrete's `.part-span-hit`, each push button's
   `.part-button-cap`, and each signal flag's `<polygon>` (eight arbitrary rotated
   pentagons is exactly the case that argument was written for).
+- **Wires draw above parts, so while RUNNING a press goes THROUGH them**: a plain press
+  on a wire or bus band with a click-toggling part beneath it flips that part
+  (`DeskController#togglePartUnder`, `document.elementsFromPoint`) and the click that
+  follows selects nothing (`#pressWentThrough`). A generated layout readily lays a
+  lead across a slide switch's knob, and the switch could then not be flipped at all.
+  Editing is untouched — there the wire is what a press may want.
 - Pan/zoom must **never** rebuild or re-lay-out surface children (transform only); wires
   re-render only on doc changes or live drags (positions passed as overrides).
 - An `<svg>` with width/height 0 renders NOTHING per spec — zero-size anchors need a
@@ -559,14 +576,18 @@ in `doc.boards`; a "breadboard" is a **kit** of them placed in one action.
   conduct; chip pins are net MEMBERS, never conduits (that is the simulator's job).
   Always a full rebuild, invalidated on `chiphippo:doc-changed` / `chiphippo:part-state`
   by `NetlistCache`.
-- **Levels** (`sim/levels.js`): H/L/Z/X, `asInput` = "floating reads HIGH", ternary gate
-  primitives.
+- **Levels** (`sim/levels.js`): H/L/Z/X, `asInput` = "floating reads HIGH" (TTL),
+  `asCmosInput` = "floating reads X" (CMOS), ternary gate primitives. Which one a part
+  reads through is its FAMILY's (`chip-eval.js`'s `readerFor`; see "Logic families").
 - **Chip behaviour is DATA, never per-chip code.** Combinational chips carry a
   `logic.units` block the ONE generic `evaluate(def, pinLevels)` in `sim/chip-eval.js`
-  walks — gate primitives, tri-state `BUF3`, and `COMB` units (a pure `compute` over
-  fanning-out inputs: the decoder/mux vocabulary). Sequential chips carry
-  `{ state0, step, outputs }` built by the pure family builders in `sim/sequential.js`
-  (D-FF, JK-FF, transparent latch, sync + up/down counters, SIPO/PISO shift);
+  walks — gate primitives (incl. `XNOR` and the non-inverting `BUF`), tri-state `BUF3`,
+  and `COMB` units (a pure `compute` over fanning-out inputs: the decoder/mux
+  vocabulary). Sequential chips carry `{ state0, step, outputs }` built by the pure
+  family builders in `sim/sequential.js` (D-FF with active-low OR active-high async
+  controls, JK-FF, transparent latch, sync + up/down counters, SIPO/PISO shift, and the
+  CMOS `johnsonCounter`/`binaryCounter` and batch-2 MSI builders); analog switches carry
+  `logic.channels` (`sim/analog-switch.js`, below);
   `step(state, inputs, prevInputs)` advances on detected edges + level-sensitive async
   overrides, `outputs(state, inputs)` drives the pins. **A new 74xx part is data** — if
   it can't be expressed, extend the vocabulary, never fork. Zero-delay and
@@ -608,12 +629,36 @@ in `doc.boards`; a "breadboard" is a **kit** of them placed in one action.
   picks a net's level by strength precedence (supply beats chip output; opposing supplies
   → `X` + short; disagreeing outputs → `X` + conflict; `Z`/undriven contributes nothing;
   a clock source drives its `out` net at output strength).
-  `settle({document, netlist, warmStart})` gates each chip on its VCC/GND nets (5 V ok,
-  3 V underpowered-inert, 12 V damaged), then loops resolve → `evaluate` → re-drive to a
+  `settle({document, netlist, warmStart})` gates each chip on its VCC net and EVERY
+  ground-role pin's net (a CD405x's VEE beside its VSS; the AM27C1024's two VSS) against
+  its FAMILY's supply range (`catalog/families.js` `supplyRange`: 74LS and every
+  family-less part 4.75–5.25 V, CD4000 3–18 V; below → underpowered-inert, above →
+  damaged; `chipStatus` entries are `{ status, volts }`), then loops resolve →
+  `evaluate` → re-drive to a
   fixpoint or the 200-iteration cap (→ still-changing nets marked `X` + oscillation).
   **Warm-starting net levels by stable netId is exactly why cross-coupled NAND latches
   HOLD.** The engine is a pure function: it REPORTS `chipStatus` and returns
   run-volatile `state`/`pinLevels`, never mutating `params` and never touching a timer.
+- **Analog switches JOIN nets; they drive none** (CD4066B, CD4051B/52B/53B — Phase 2b
+  of Feature 410). The NETLIST stays static (wiring + hand-set switch positions only),
+  so the probe, schematic, warm-start ids and every netlist consumer are untouched; the
+  join is the SOLVER's, per pass. A def states `logic.channels: [{a, b, inputs, on}]`
+  (terminal pins, control pins, a pure `on(levels)` → H/L/X, built by
+  `bilateralSwitches`/`muxSection`); `chip-eval.js`'s `channelStates` reads the controls
+  through the family reader. `engine.js`'s `channelGroups` unions the nets of every ON
+  channel of a POWERED switch (union-find), from the previous pass's levels exactly as a
+  chip's outputs are, and `resolveAll` resolves each member net from every member's
+  drivers and pulls — but another member's SUPPLY only at OUTPUT strength, so a rail
+  through a switch FIGHTS an output on the far side (conflict, said once per group)
+  where the same rail wired straight on would win, and a group holding both rails warns
+  `short` with `via: "switch"` (its own sentence everywhere). A floating control is
+  "maybe": the pass is resolved with and without those channels and keeps what agrees
+  (X elsewhere). Levels that crossed a channel stay STRONG for every purpose but one:
+  at ≤ 5 V a channel's on-resistance limits an LED's current, so the LED rule's
+  `strongLevels` leave such a switch's joins out (`hardOn`/`hardWide` — see "Logic
+  families"); from 9 V an LED off a switch with no resistor burns, as off an output. Channel
+  terminals are `io` pins the boundary warnings skip, KiCad exports as PASSIVE, and the
+  AI card marks `~`.
 - **`tick(...)`** adds the synchronous two-phase step on the same solver: ① pre-settle
   with the OLD per-component state (propagating the new `clockPhase` + input changes),
   ② sample each sequential chip's inputs and `step` it (edges from the pre-settle vs the
@@ -633,7 +678,7 @@ in `doc.boards`; a "breadboard" is a **kit** of them placed in one action.
     only the SPEED multiplier can saturate. Offering a rate past ~100 Hz is a question
     about the tick budget (the heaviest shipped demo settles in ~0.6 ms), not about that
     constant.
-  - **12 V damage is run-volatile, and that took work to be true.** `#persistDamage`
+  - **Over-voltage damage is run-volatile, and that took work to be true.** `#persistDamage`
     writes `params.damaged` into the DOCUMENT because that is what the pure engine reads
     (`powerStatus`) and a chip that let its smoke out at tick 5 must stay dead at tick 6
     — a timerless solver has nowhere else to remember it. But burning a chip is a WIRING
@@ -645,6 +690,230 @@ in `doc.boards`; a "breadboard" is a **kit** of them placed in one action.
     and the latch needs) — covering a project ⌘S'd mid-run, older documents, every import
     and every paste. `SimController.replaceChip` is GONE: Stop recovers every damaged
     chip.
+
+## Logic families (Features 400, 410)
+
+**Two logic families, one catalog**: 74LS TTL (`chips-gates.js`, `chips-seq.js`,
+`chips-74ls.js`) and CD4000 CMOS (`chips-cd4000.js`). `catalog/index.js` stamps
+`family` per MODULE (`ofFamily`); memory, the 65xx peripherals and the CPUs are
+deliberately FAMILY-LESS (they are not 74LS, and tagging them would hide a Z80 in
+CD4000 mode). The family lives in the catalog ONLY — never in a document — so no
+migration exists or is needed. **Everything that branches on a family asks
+`catalog/families.js`** (`familyOf`, `supplyRange`, `supplyText`, `floatsUnknown`,
+`lsFanoutOf`, `limitsLedCurrent`, `familiesShown`), never `def.family` by hand, and keys off
+`family === "CD4000"`, never "is CMOS" (the W65C02 is CMOS and a Z80 test depends on
+its floating bus reading `$FF`).
+
+- **Every CD4000 pinout is from its TI datasheet**, cited at each def by literature
+  number; most are Harris scans, read from rendered pages. Pin names are the sheet's
+  (`A`–`M`, `0`–`9` on the 4017/4022/4028 — which, like the '148, need `#N` in an AI
+  spec — VDD/VSS, VCC on the 4049/4050), less the bar on an active-LOW pin (the 4511's
+  `LT`/`BL`, the counters' `CARRY IN`/`CARRY OUT`), as the 74LS names are. TI's CD4050B
+  pin table wrongly says "Inverting output"; its function table is right.
+- **A floating CMOS input reads `X`** (`asCmosInput`), at both input sites in
+  `chip-eval.js`. The TTL sequential builders read X as a clean L and are untouched;
+  the CMOS units (`dffUnit`/`jkUnit` with `unknown:true`, `johnsonCounter`,
+  `binaryCounter`, `presetUpDownCounter`, `shiftStoreRegister`, `bcd7segLatch`,
+  `bcdDecimalUnits`) carry an UNKNOWN state — X on an async control → unknown; X on the
+  clock → "maybe clocked" (`merge` of held and clocked value); a clean reset recovers;
+  power-up stays deterministic. Every rule is idempotent, so a stuck X still reaches the
+  tick fixpoint. `overUnknowns(levels, fn)` tries each X both ways and keeps what every
+  reading agrees on, so an unknown that cannot change an output does not spoil it (a 4028
+  with D floating still holds outputs 2–7 LOW).
+- **The batch-2 MSI parts' facts that are not obvious from a pinout**: a 4027 with SET
+  and RESET both HIGH drives Q and Q̄ HIGH (as the 4013); the 4094's storage latches are
+  TRANSPARENT while STROBE is HIGH and its OUTPUT ENABLE is active HIGH, QS/Q'S never
+  floating; the 4511 is a latch BEFORE its decoder (LT/BL act on a held code) and BLANKS
+  codes 10–15 (`CD4511_FONT`); the up/down counters' CARRY OUT is combinational and an
+  async PRESET ENABLE holds the count while HIGH, the 4510/4516 RESET beating it. A
+  decade count above 9 follows `bcdNext` — the CD4510B's logic-diagram gates for all 16
+  states, which keep its sheet's "out of non-BCD states within two clocks up, four down";
+  the CD4029B's sheet says nothing about it, so its decade mode reuses that logic (an
+  assumption, flagged in the def). The CD4020B's Q2/Q3 count but have no pin
+  (`binaryCounter`'s `q` takes `null`); the CD4024B is a 14-pin part.
+- **A CD405x's VEE is a GROUND-ROLE pin** (`VEE` in `chips-cd4000.js`): the app has no
+  negative supply, single-supply use ties it to VSS, and being a supply pin is what
+  makes every consumer right with no special case — the engine powers the part only
+  with it on the `−` net (else `unpowered`, and the build guide's unconnected-power-pin
+  warning names VEE), the AI compiler and the demo bench wire EVERY supply pin (VCC
+  first, then each ground, so single-ground parts lay out exactly as before), the spec
+  may not list it (`POWER_PIN_LISTED`, which now names the pin), and `pin-resolve`'s
+  role rung prefers the ground pin the token NAMES (`vss` is VSS, not the lower-numbered
+  VEE). The catalog test allows exactly this second ground pin.
+- **A CD4000 output at ≤ 5 V cannot burn an LED** (`ledLimit` 5 /
+  `limitsLedCurrent(def, volts, level)` — the datasheet arithmetic is in its comment:
+  ~4 mA typical at 5 V; at 9 V ~15 mA puts ~105 mW in the output transistor against
+  its 100 mW absolute max; 12–15 V is 22–28 mA, past the LED too). So `strongLevels` —
+  all `junctionState` ever reads, and why no consumer changed — is no longer the
+  relaxation's `strong` map when a limiting part is on the desk (`ctx.limitsLed`): it
+  is resolved AGAIN from the HARD drivers only (`driversFor`'s `hard`, which drops a
+  limiting chip's output levels) across the HARD joins only (`channelGroups`'
+  `hardOn`/`hardWide`, which drop a ≤ 5 V switch's channels — rON 470 Ω, ~6 mA). The
+  resistor relaxation's basis is untouched (a CD4000 output still pulls through a
+  resistor), and a desk with no limiting part resolves nothing twice. A part whose
+  output stage is not the small MOSFET names its hard side: `highCurrent: "sink"`
+  (CD4049UB/CD4050B buffers, ~20 mA at 5 V and climbing) or `"source"` (the CD4511B's
+  bipolar segment drivers). The compiler still puts a resistor in every lamp leg on a
+  rail — good practice, and the prompt's "not between two outputs" holds as advice.
+- **Warnings no level expresses** (the engine has no net voltages), all STRUCTURAL and
+  reported once per net/chip: `floating-input` (a powered CD4000 input on a net that
+  resolved `Z`, spare gates INCLUDED — computed in `assemble`), and from
+  `buildContext`'s `boundaryWarnings`: `marginal-high` (74LS output → CD4000 input with
+  no resistor to a supply `+`; level stays H — LS VOH 3.4 V typ vs CMOS VIH 3.5 V),
+  `ls-fanout` (a CD4000 output on more 74LS inputs than `lsFanoutOf`: 1, or the
+  4049/4050's 8), `mixed-supply` (one net, chips on different supply volts).
+  `SimController.#report`, the desk review's `engineFinding` and the AI ladder's
+  `describeWarning` each say them; the AI's L5 skips `floating-input` because L6's
+  `INPUT_FLOATING` names the same pins better. A fault symbol's hover hint IS the
+  Properties card's warning sentence (`part-symbols.js` `statusHint`, fed the volts
+  from `chipStatus`) — it was a hand-kept English list that told a burnt chip to
+  "replace this part" long after Stop learnt to restore it.
+- **The tray shows a family, or both** (`settings.logicFamily`: `"74LS"` default |
+  `"CD4000"` | `"combined"`; switched from Settings ▸ Data Sheets — app-wide, NOT per
+  project, since a project flag is an unsaved change). Combined inserts a `74LS` and a
+  `CD4000` folder under CHIPS; their groups' collapse keys are `74LS/NAND` etc., so the
+  two NANDs never open together (`foldersOf` gives `#openOnly` the whole path). A family
+  the open project uses is always shown (`noteProjectFamilies`, sticky until
+  `resetProjectFamilies` from `ProjectWorkspace`'s `onProjectAdopted`), and a filter
+  matching only a hidden family says where to switch it on. Every family lists its
+  groups in the 74LS order (`CHIP_GROUP_RANK`: first appearance in the whole catalog,
+  which 74LS leads), not its own part-number order — that would open CD4000 on NOR.
+- **The AI builder knows both**: the card brackets each logic chip's family
+  (`[DIP-14, CD4000]`), the prompt's family rule picks parts from the request (CMOS /
+  CD4000 → CD4000; TTL / 74LS → 74LS; neither → 74LS; never mixed unless asked), and the
+  compiler ties every input of an UNUSED CD4000 gate/section to GND (`spareCmosInputs`,
+  `SPARE_INPUTS_TIED`, told to the repair round) — an input a USED section needs stays the
+  spec's mistake for L6, whose message turns CMOS for a CMOS part. The section rule reads
+  the CMOS sheets' TRAILING digit (`CLOCK1`) for CD4000 parts only — on a TTL part it
+  would turn the '193's `D0`…`D3` into four sections.
+- **The Digital export places six CD4000 parts** as their pin-for-pin twins in Digital
+  v0.31's library (`DIGITAL_FILES`: CD4002B→744002, CD4017B→744017, CD4069UB→7404,
+  CD4075B→744075, CD4077B→747266, CD40106B→7414); the other 37 are
+  `noDigitalModel` (that library has no 4000-series folder), as is the NE555, and a
+  capacitor is left out with its own reason (`capacitor` — it joins no net anyway). A floating CMOS input
+  gets the TTL rule's PullUp — Digital refuses an open input and has no X — and the
+  report says so (`cmosFloating`). `export-digital-cli.test.js` runs only with
+  `DIGITAL_JAR` set and the release's `lib/` folder BESIDE the jar (a bare jar draws
+  every chip as "7400.dig is missing", which the load check now fails on).
+
+## Values, capacitors & timed parts
+
+**A resistor and a capacitor carry a VALUE, typed the way a drawer is labelled; only the
+timing chips read it.** No analog solver, no SPICE: each timed part finds its own R and C
+in the wiring and turns them into seconds by its datasheet's formula.
+
+- **Typed values** (`model/si-value.js` underneath `ohm-format.js` / `farad-format.js`,
+  one module per quantity because the desk label, the Properties field, the schematic,
+  the BOM and the KiCad export must all say one value one way). `parseOhms` takes
+  `470`, `470R`, `470Ω`, `4.7k`, `4k7`, `1M`, `2M2`, `0R1` (bare = ohms; lowercase `m`
+  REFUSED — milliohms is never what a breadboard means); `parseFarads` REQUIRES a prefix
+  (`100p`, `10n`, `4.7µ`/`4.7u`/`μ`, `4u7`, `1m`, optional `F`; uppercase `M` refused —
+  old parts print "MF" for MICROfarads) because a bare `100` is 100 pF to one reader and
+  100 µF to another. Ranges `OHMS_RANGE` 0.1 Ω–1 GΩ, `FARADS_RANGE` 1 pF–1 F. The stored
+  param is the NUMBER (`params.ohms`, `params.farads`); the text is never stored.
+- **The `"quantity"` Properties type** (`RESISTANCE_FIELD` / `CAPACITANCE_FIELD` in
+  `catalog/parts.js`: `parse`, `format`, `invalid`) applies on `change`; a value that does
+  not parse shows `.properties-field-error` (`properties.invalid.<key>`, examples + range)
+  with `aria-invalid`, keeps the typed text, and leaves the stored value UNCHANGED — the
+  dialog never writes a guess.
+- **Resistor colour code** (`model/resistor-bands.js`): 4 bands when two significant
+  figures say the value (gold tolerance), 5 when it needs three (brown), `[]` when no
+  multiplier band can encode it. Band colours are `--color-band-*` tokens, tuned against
+  the beige body (gold is deliberately darker than the true hue).
+- **Capacitors** (`cap-ceramic`, offsets [0,1]; `cap-electrolytic`, offsets [0,1], pin 1
+  `+`, stripe on pin 2's side) are rotatable two-lead parts exactly like a resistor, with
+  `capacitor: {polarized}` and `internalBridges: []`. **Electrically a capacitor is a
+  non-connect, always — across the rails included**: no bridge, no weak bridge, so the
+  netlist never joins its nets and the engine never drives through it. It still claims
+  its holes (occupancy) and counts as CONNECTED wherever a check asks whether a net has
+  anything on it (`rcTrace.connected`, the floating-input sweeps in `engine.js` and
+  `desk-review.js`). A reversed electrolytic changes nothing. The value is printed
+  upright on the body (`capacitorLabel`, off-centre on the electrolytic, clear of the
+  stripe). First placement from the tray raises a one-time toast (`desk.capacitorNote.*`,
+  "Don't show again" → `settings.capacitorNoteDismissed`), through DeskController's
+  `onPartPlaced` option.
+- **The potentiometer** (`pot`, group Resistors, offsets [0,1,2]: pin 1 `1` · pin 2 `W`,
+  role `wiper` · pin 3 `3`; a Bourns 3296W) has `ohms` (the whole track) and `position`
+  (a whole percent, default 50 — the `"range"` field). `potentiometerSplit` is the ONE
+  statement of its arithmetic: wiper↔pin 1 = position × ohms, wiper↔pin 3 = the rest. A
+  side with track left is a `weakBridges` pair carrying its OWN ohms as a third element
+  (`[2, 1, toPin1]` — `rc-trace.js` reads it in place of `params.ohms`; every other
+  consumer destructures two and ignores it); a side with NONE left is an
+  `internalBridges` pair — a WIRE — so at 0 % / 100 % the nets join and an LED fed through
+  that side burns, with no special case anywhere (the LED rule reads `strongLevels`). The
+  desk draws a blue block CENTRED over its three pins, as the real part is (the pins run
+  under the middle of the body, hidden like a slide switch's; body-only hit rect),
+  printed with its value, whose brass screw's slot turns through 270° with the position.
+  Exports: KiCad `RV` on `Potentiometer_THT:Potentiometer_Bourns_3296W_Vertical` (pads
+  1·2·3 = ours, verified in KiCad's library), symbol `"potentiometer"` (the resistor body,
+  the wiper's arrow from a TOP pin); Digital treats it as its sides, through the same
+  `weakBridges`-driven pull/merge every resistive part now takes (no id checks), a dead
+  side merged as a wire. Not offered to the AI builder (`hasKnob`).
+- **The trace** (`sim/rc-trace.js`, `rcTrace(doc, netlist)`) is the ONE reader every timed
+  part shares: capacitors and resistors indexed by net, PARALLEL parts between the same
+  two nets combined (series is not followed — stated, not guessed), `toRail("+"/"-")`
+  predicates, and `connected(net)`. `timingProbe(trace, pinNet)` adds `net(pin)` for one
+  chip. Each part's `logic.timing(probe)` returns `{sections: [{mode, …}], problems:
+  [{code, section?, from?, to?, pin?}]}` — a fact about the frozen topology, so the
+  engine takes it ONCE per context.
+- **The timed contract** (`sim/timing.js` + `chip-eval.js`'s `isTimed`/`stepChip`/
+  `wakeAtOf`): `logic = {state0, step, outputs, timing, wakeAt}`, and `step(state, ins,
+  prev, env)` gets `env = {now, timing}`. **The engine still keeps no time**: `tick`
+  takes `now` (simulated seconds) and reports `wakeAt`, the earliest moment any powered
+  timed part next changes on its own. A step's state is a pure function of `now` and the
+  moment its cycle began (`t0`, `since`/`until`), so a repeated call at one `now` returns
+  the same state — the tick's step fixpoint depends on it.
+- **SimController owns the sim clock**: seconds since Run × speed (`#simAnchor` +
+  `#realAnchor`, `#freeze`/`#thaw` on pause, stall and speed change), handed to every
+  `tick` as `now`, and ONE `setTimeout` (`#armWake`) to tick again at `wakeAt`. So a 555
+  ticks itself with no clock brick on the desk. Step moves the clock by the fastest
+  running clock's half-period, or — with none — straight to `wakeAt`. Stop clears it all.
+  `timing` (the per-chip analyses) rides `chiphippo:sim-state`; problems are a
+  `{type:"timing"}` warning → a toast keyed `timing:<chip>`, the desk review's
+  `TIMING_UNRECOGNISED`, and the chip's warning triangle (`part-chip--timing`, power
+  faults outrank it).
+- **The cap** — `TIMING_CAP_HZ` is DERIVED from the top of `CLOCK_HZ` (100), for the
+  timer floor's reason. A faster oscillation is DRAWN at the cap with its duty kept
+  (`capSchedule`) while its TRUE rate is reported (readout in amber, `part-chip--capped`,
+  plus a Timing-row sentence); a pulse under `MIN_SHOWN_S` (5 ms) is stretched to it
+  (`shownPulse`). The cap is in SIMULATED time, so the speed control scales it like
+  everything else. The CD4060B shows true counts for every stage slow enough to see and
+  the cap wave only for the stages too fast to.
+- **The parts** (formulas from TI, cited at each def): the NE555 (`chips-555.js`,
+  family-less, group `Timer` — the CD4000 RC timers' group, so it sits under CHIPS ▸
+  Timer beside Interface/PROCESSOR in a 74LS or Combined tray and in ONE Timer group
+  with the CD4000 timers in a CD4000 tray; `supply` 4.5–16 V, which
+  `families.js`'s `supplyRange` honours) DETECTS astable (TRIG+THRES one net with C to
+  GND, DISCH between RA→VCC and RB→that net; starts HIGH) vs monostable (THRES+DISCH one
+  net with C to GND and RA to VCC, TRIG connected elsewhere; falling-edge, level-held,
+  non-retriggerable) vs bistable (THRES on the GND rail, TRIG connected; the §6.4
+  function table as a set/reset latch — TRIG LOW sets, RESET LOW clears and wins,
+  otherwise it holds; powers up LOW; no readout, never wakes) and refuses anything else
+  with a sentence (`ne555Unrecognised`), OUT LOW; RESET LOW wins; CONT ignored; DISCH is
+  a timing terminal, not an output. **Bistable is asked FIRST**: the usual build grounds
+  DISCH beside THRES (a monostable's tell) and a pressed SET button puts TRIG on that
+  net too (an astable's), so asking either first misreads it.
+  `chips-cd4000-timers.js`: CD4047B (4.40·RC astable, 2.48·RC one-shot), CD4098B (½·R·C)
+  and CD4538B (R·C — sourced from TI's CD14538B sheet, SCHS093C, since `cd4538b.pdf`
+  404s) as `dualMonostableLogic` (+TR OR NOT −TR rising, retriggerable, RESET low; a
+  section with nothing on it is "unused" and silent), CD4060B (`ripple-oscillator.js`:
+  Fig. 12 RC network → 2.2·Rx·Cx, or external clock on φI when φO/φ̄O carry no network;
+  no crystal). CD4528B was DROPPED: TI's sheet link 404s and no other TI sheet covers
+  it. Groups `Timer` (new, CD4000) and `Counter` (the 4060).
+- **New pin role `"timing"`** (`timing(n, name)` in `pin-builders.js`): an RC terminal —
+  not an input (no floating warning, never tied by the compiler), not an output (drives
+  nothing), KiCad PASSIVE, pinout tag `RC`.
+- **Readouts**: `ChipView` draws `.part-chip-timing` under the part number (outside the
+  flip group, so upright on a reversed chip) from `chiphippo:sim-state`'s `timing`
+  (`model/timing-summary.js` owns every sentence: `timingReadout`, `timingDescription`,
+  `timingProblemSentences`); the Properties card of a timed part gains a readonly
+  **Timing** row computed from the CURRENT document, so it answers while stopped.
+- **Exports & lists**: KiCad carries capacitor values (symbols in `chiphippo.kicad_sym`
+  drawn to KiCad's `Device:C` / `Device:C_Polarized` shapes, footprints
+  `Capacitor_THT:C_Disc_D5.0mm_W2.5mm_P2.50mm` / `CP_Radial_D5.0mm_P2.50mm`, designator
+  `C`, ASCII `u` in the Value); the BOM splits resistors and capacitors by value (`Resistor — 4.7kΩ`,
+  dash not brackets, since several titles end in a bracket of their own); the schematic
+  draws both plates and the value.
 
 ## Memory chips
 
@@ -936,7 +1205,10 @@ anchor and wire.
   or its anode on VCC over an active-low output). Legs are limited per NODE: the lamp legs
   one rail net holds are already joined, so they are one common leg and take one
   resistor, as a common-cathode bar does; legs on different nets pack eight to an `rnet9`
-  with COM on the rail. The legs are moved OUT of the rail net, never the rail off it —
+  with COM on the rail. A **bare LED** is the exception to both groupings: it gets a
+  `resistor` of its OWN, plugged in (`seatPlug`, below) — one per LED even when the spec
+  puts several cathodes in one GND net, since a resistor can plug into only one lamp's
+  column. The legs are moved OUT of the rail net, never the rail off it —
   a named `GND` net holds everything else tied low, and detaching its rail once hung all
   of it off the lamp's side of the resistor. The **pull rule** is the same fact one step over: a
   switch is a CONTACT, not a source, so an input fed from one floats when the switch is
@@ -985,6 +1257,19 @@ anchor and wire.
     owns it). Any check failing returns null and the part seats the ordinary way, so this
     can only cost columns, never correctness; L4 checks the result regardless. One host
     per pack only.
+  - `seatPlug` — a bare LED's resistor PLUGS IN, as on a bench: the lamp seats in row b,
+    the resistor stands (rot 90) with its top lead in row a of the lamp's RAIL-LEG column
+    and its other lead bent straight down into the matching line of the rail strip below
+    (`-` for a cathode on GND, `+` for an anode on VCC). Lamp → resistor → rail is then
+    joined by the board, with no wire between them; only the output's wire to the lamp
+    remains (it was three: output → lamp → resistor → rail). The rail is drilled in
+    groups of five, so where the column has no hole straight across the lead leans up to
+    `PLUG_LEAN` (2) columns, away from the lamp's other leg; rail holes under its body are
+    claimed and left empty. Same proof discipline as `seatCompanion` (the resistor rule
+    CREATED the LIMITED net, the landing is proved through `partPinAddresses`), same
+    fallback (null → seated the ordinary way, wired). It costs no columns, so the kit
+    budget counts it at 0; to the router its rail lead IS the rail (`seat.rails` →
+    `railPort`), and a bare LED's routing box is widened to its dome (`LAMP_DOME`).
   - `freeRail(…, {fromEnd})` — the PSU brick stands off the RIGHT of the boards, and a
     rail is one node end to end, so reaching for hole 1 bought nothing but two wires the
     width of the desk.
@@ -1028,6 +1313,21 @@ anchor and wire.
   exactly where the first part goes. Residual crossings are REPORTED
   (`WIRES_CROSS_PARTS`), never hidden: a net joining a pin below the trench to one above
   has to get across. Corpus-wide: wire length −38%, crossings −44% (932 → 518).
+  - **The router tests the wire as DRAWN** (`drawnCrossings` over `drawnWire`, the same
+    sagging quadratic `desk/wire-path.js` draws), and excuses a part only while an END
+    of the wire is inside it — not for being the part the wire leaves from. A chord test
+    missed that a long run hangs a pitch or two below its chord, and the owner excuse let
+    a lead leave beside its part and run back across it. The residual REPORT keeps the
+    owner excuse (a count of wires over somebody else's part), as `wireCrossings` does.
+  - **A part you OPERATE seats in row h** (`seatRowOf`: anything with `contact` pins —
+    slide switch, push buttons; a DIP bank straddles anyway), with a routing box widened
+    to `OPERATED_MARGIN` (0.95 — knob ±0.45 plus half a wire's hit stroke). Wires draw
+    above parts, so a wire over a knob swallows the click: in row a, all 219 switches the
+    corpus compiles were covered (supply lead up across the knob, every run above sagging
+    onto it). Row h is the demo bench's row for the same reason — rail lead from i/j
+    above, signal from f/g below. Row e was measured and is worse (where every
+    trench-crossing wire passes). Together: knobs covered 219 → 3, drawn crossings over
+    any part 1840 → 167, wire length +0.5%, same wires and strips.
 - `pin-resolve.js` is FAIL-CLOSED and case-FIRST: pin names are case-distinguished in the
   catalog (74LS47's `A`–`D` inputs vs its `a`–`g` outputs), so folding case would
   MANUFACTURE ambiguity. The one real ambiguity is `74LS148` (inputs *named* `0`–`7` that
@@ -1047,12 +1347,16 @@ anchor and wire.
   engine rightly lets through. `OUTPUT_ON_RAIL`: supply beats chip output
   (`sim/resolve.js`), so an output in a VCC/GND net settles, verifies and drives nothing.
   `MULTIPLE_DRIVERS`: two `output` pins may share a net only when EVERY one can be
-  switched off — a BUS — which `switchableOutputs` PROBES from the evaluator (all enables
-  HIGH → whatever reads Z) rather than assuming from the enable, since the '595's OE
-  leaves `QH'` driving. `io` pins are left to the engine. Output enables come from
-  **`outputEnables(def)`** (`catalog/index.js`): the declared `outputEnable`, or a
-  memory's own `ceN`/`oeN` read off `logic.memory` — never declared twice — which is what
-  gives memory CE/OE their `!` and lets two ROMs share a data bus.
+  switched off — a BUS — which `switchableOutputs` PROBES from the evaluator (every enable
+  at its OFF level → whatever reads Z) rather than assuming from the enable, since the
+  '595's OE leaves `QH'` driving. `io` pins are left to the engine. Output enables come
+  from **`outputEnablePins(def)`** (`catalog/index.js`) as `{n, on}` — the declared
+  `outputEnable` (active LOW) and `outputEnableHigh` (active HIGH: the CD4094B's, the only
+  one), or a memory's own `ceN`/`oeN` read off `logic.memory` — never declared twice —
+  which is what gives memory CE/OE their `!` and lets two ROMs share a data bus.
+  `outputEnables(def)` is the same list as bare pin numbers. Every consumer reads the
+  polarity: the verifier's `OUTPUTS_DISABLED` says "active-HIGH … tie it to VCC" for the
+  4094, and the desk review has its own two sentences for it.
 - **Verify** (`autobuild-verify.js`): the L3a–L7 ladder, faults tagged `abort` (OUR bug)
   or `repair` (the SPEC's mistake) — the split the panel's retry loop needs. **Faults name
   parts and nets in the SPEC's terms** (`partNamer`, `electricalNamer`): `U2 (74LS244)`,
@@ -1076,10 +1380,15 @@ anchor and wire.
     reports `OUTPUTS_DISABLED`, naming the chip, the pin and "tie it to GND" (or, on a BUS,
     "exactly one enable LOW" — tying two low starts a fight), instead of `NET_NOT_DRIVEN`
     sending a repair round hunting for a wire that was never missing. An `X` net is
-    `NET_UNRESOLVED`, not "undriven". And `INPUT_FLOATING` (`floatingInputs`) names every
+    `NET_UNRESOLVED`, not "undriven". A net on an analog switch's OPEN channel
+    (`openChannelNets`) floats by design and is exempt — seven of a 4051's eight are —
+    while one on a CLOSED channel with nothing on either side is still undriven. And
+    `INPUT_FLOATING` (`floatingInputs`) names every
     input a part USES that no net connects — an input on no net is invisible to a net
     sweep and reads HIGH. "Uses": a unit whose output is wired needs all its inputs (the
-    spare gates of a 7400 may float); a part without units is read by the datasheet's
+    spare gates of a 7400 may float; a switch CHANNEL with a terminal wired needs its
+    controls, so a 4066's spare controls are the compiler's to tie); a part without units
+    is read by the datasheet's
     `1…`/`2…` section numbering, and an unnumbered input (a shared CLK, an address line,
     a counter's load data) is needed once any output is.
   - **L7** is the highest-value one: the spec states its own acceptance tests and the app
@@ -1117,13 +1426,18 @@ anchor and wire.
   deliberately no `applyBatch`.
 - **The prompt is DERIVED, never hand-written** (`ai/catalog-brief.js`):
   `buildCatalogCard()` projects `BUILDABLE_DEFS` for the builder (`PALETTE_DEFS` minus the
-  `can` oscillators the compiler refuses; the review keeps them all) — ids, packages,
+  `can` oscillators the compiler refuses, the capacitors, every `isTimed` part and every
+  part with a KNOB — a `"range"` property, the potentiometer's wiper — since a netlist spec
+  has nowhere to state a VALUE or a setting, a timer is nothing without its R and C, and a
+  pot at the end of its track is a wire; the review keeps them all) — ids, packages,
   exact `n:name` pin lists, and a part's `buses` for the `A[3]` member form —
   `JSON.stringify` would silently drop the FUNCTION fields), so a new 74xx part reaches
   the model the moment it lands in `catalog/`. ~4.4 K tokens, over the prompt-cache
   minimum, so a repair round re-reads rather than re-pays. Each pin carries a
   one-character MARK (`pinMark`): `>` output, `<>` bidirectional, `!` **active-low output
-  enable**. The first exists because "two outputs must not share a net" is a rule the
+  enable**, `^` the active-HIGH one (the CD4094B's — "tie every enable LOW" would disable
+  it), `~` an analog switch terminal (it CONNECTS and drives nothing, so the model must
+  never count on one as a source). The first exists because "two outputs must not share a net" is a rule the
   compiler ENFORCES; the `!` is the one fact nothing else reveals (the pins are called
   `1G`, `OE`, `M`, `N`) and getting it wrong is silent — the part floats every output it
   gates, an unwired enable reads HIGH, and a datasheet-correct netlist comes up dead. A
@@ -1131,14 +1445,14 @@ anchor and wire.
   `PULL_INSERTED` — `buildRepairMessage`'s notes), since a level the model did not expect
   is often a pull it never asked for; a ROM warns the USER it arrives unprogrammed
   (`ROM_UNPROGRAMMED`) — a netlist has nowhere to carry memory contents.
-- **Tri-state is DECLARED, then PROVED** — `outputEnable: [pins]` on the nine logic parts
-  that have one, plus `tests/chips-tristate.test.js` (which also proves a memory's DERIVED
-  enables against `memUnit`). Not derived, because the catalog
+- **Tri-state is DECLARED, then PROVED** — `outputEnable: [pins]` on the nine 74LS parts
+  that have one and `outputEnableHigh` on the CD4094B, plus `tests/chips-tristate.test.js`
+  (which also proves a memory's DERIVED enables against `memUnit`). Not derived, because the catalog
   expresses tri-state four ways and only one is introspectable (a `BUF3` unit '125/'244;
   a `COMB` returning `Z` '240/'245/'257; a sequential `outputs()` returning `Z`
-  '173/'533/'573/'595; a memory image). So the test probes the REAL evaluator: every
-  declared pin must float an output that drives when it is LOW (pinning the active-low
-  convention), and a behavioural sweep requires any part that floats an output to declare
+  '173/'533/'573/'595/4094; a memory image). So the test probes the REAL evaluator: every
+  declared pin, taken to its OFF level, must float an output that drives at its ON level
+  (pinning each enable's polarity), and a behavioural sweep requires any part that floats an output to declare
   one — which is what found the '595, whose title never says "tri-state". `74LS245`'s
   `DIR` is deliberately NOT an enable (it picks which side drives; only `OE` stops both),
   and the Memory/Interface/PROCESSOR groups are out of the sweep — a CPU or PIA floats
@@ -1246,7 +1560,9 @@ circuit that simulates perfectly and looks like nothing anyone would build.
 `scripts/make-demos.mjs` — `stack`/`extend` (1), `spine` (2), `tie` (3); `stack` is the
 ONLY way to put a board on the desk there (`board` is not exported from `builder()`), so
 rule 1 holds by construction. `scripts/demo-bench.mjs` — `BOARDS`, `#railFor`/`railNear`/
-`wireToRail` (a single kit, so rules 1–2 have nothing to decide). Held by
+`wireToRail` (a single kit, so rules 1–2 have nothing to decide), and `free(hole, board,
+toward)`, which leaves a node from the row NEAREST the wire's other end — the first
+free row sent every input switch's supply lead from row f across its own knob. Held by
 `autobuild.test.js`, by each generator's own `assertClean` (a non-flush board is DROPPED
 by `normalizeDocument` as an overlap, so the arithmetic cannot drift silently), and by
 `demos.test.js`, which runs the shipped files through the real engine.
@@ -2178,7 +2494,7 @@ the ×'s box) in one `.popup-header-actions` group LEFT of the ×.
   options }]`) and the dialog is a pure renderer over that list (one
   `buildControl`/`buildRow` dispatch per `type`) that knows nothing about any specific
   part. A future part's properties are purely a catalog change, plus one more `type` case
-  only for a genuinely new control shape. Six types:
+  only for a genuinely new control shape. Seven types:
   - `"color"` — every coloured discrete (LED, `seg8cc`/`seg8ca`, `bar8`/`bar8iso`) shares
     one `LED_COLOR_OPTIONS` list of 5 and a row of swatches reusing the
     `--color-wire-<name>` tokens. Any def with a `colors` list arms placement directly with
@@ -2206,6 +2522,14 @@ the ×'s box) in one `.popup-header-actions` group LEFT of the ×.
     dialog's `values` rather than read off `params`.
   - `"wire-gauge"` — a PICTURE, not an editor (below); the one type named after what it
     draws rather than after a kind of control.
+  - `"range"` — a slider over `min`…`max` in `step`s (the potentiometer's Position). The
+    ONE value control that applies on `input` rather than `change`: it stands for a knob,
+    and turning it while the circuit runs and watching the result is the point. Each step
+    is a coalesced undo entry. Read out as a locale-formatted percentage — unless the
+    field carries `ends(values)`, two texts for either END of the track (the pot's
+    `1.5k ━●━ 8.5k`: wiper↔pin 1 left, wiper↔pin 3 right, a dead side "0"). The DIALOG
+    fills those (`refreshEnds`), re-asking with its current values after EVERY change, since
+    they rest on another field (a new Resistance moves them); `aria-valuetext` is the pair.
   - Like Settings, value fields apply live (`onChange(key, value)` per control change, no
     Save/Cancel). `#setComponentProperty` applies the patch via
     `DeskDoc.setComponentParams` and **remounts** the part view (`#remountPart`, not
@@ -2401,7 +2725,10 @@ Serial I/O is the one panel that is NOT live-apply (see "Arduino serial integrat
   null; Browse calls the native `settings:choose-datasheet-dir` picker, exposed as
   `settings.chooseDatasheetDir`), with no live apply (the pinout window reads it at open
   time). Beside it **Download…** FILLS that folder (below); both end in the same one-line
-  patch, and nothing downstream knows which button produced it.
+  patch, and nothing downstream knows which button produced it. Its FIRST row is **Chip
+  family** (`logicFamily`: 74LS / CD4000 / both — a segmented picker, live-applied to the
+  tray through `PalettePanel.setFamilyMode`; see "Logic families"). Main stores it
+  unvalidated, like `paletteAutoClose`; the renderer coerces it (`normalizeFamilyMode`).
 - **AI** drives the NON-SECRET half (`ai: {provider, baseUrl, model}`, emitted WHOLE as an
   object-valued setting) and is the one panel built asynchronously — its picker comes from
   `ai:providers`, so it cannot drift from `app/ai/providers.js`. Its API-key field is the
@@ -2518,7 +2845,14 @@ find or name.
   one part (the flatten would silently keep the later copy).
 - The destination is the app's OWN `userData/datasheets/` (a sibling of `memory/`), never a
   folder the user picked — the run REPLACES what it finds, and a button that overwrites
-  files may only be aimed at a directory the app made. Fetching is **sequential** (the point
+  files may only be aimed at a directory the app made. Each UNIQUE URL is fetched ONCE
+  and saved under every part that names it (TI documents the CD4001B, CD4002B and
+  CD4025B in one PDF), so a shared sheet's failure is reported against each of its parts
+  without being retried per part (`fetchPdf` / `savePdf`; `tests/datasheet-download.test.js`
+  runs it against a stub fetch). **`make datasheet-urls`**
+  (`scripts/check-datasheet-urls.mjs`, `--strict` to exit 1) asks every unique URL
+  whether it still serves a `%PDF` — deliberately OUTSIDE `make test`, which makes no
+  network calls. Fetching is **sequential** (the point
   is the `n/TOTAL` count, and a counter that jumps is worse than one that takes longer) and
   every body is checked for the `%PDF` magic before it is written, because a host that
   answers a missing file with a friendly HTML page and status 200 would otherwise land
@@ -2536,7 +2870,9 @@ Every benchable 74xx part's demonstration bench, shipped INSIDE the app as
 `src/web/demos/<ref>.json` and offered as a button on that part's pin-assignments window.
 
 - **One build, two outputs**: `make-gate-demos.mjs` writes each desktop into its group
-  project (`demos/<Group>.chiphippo`) AND on its own into `src/web/demos/`, from the SAME
+  project (`demos/<family>/<Group>.chiphippo` — `demos/74LS/`, `demos/CD4000/`; the
+  families never share a project, keyed by `groupKey`) AND on its own into
+  `src/web/demos/`, from the SAME
   `buildDemo(spec)` call, and `gate-demos.test.js` holds them to byte-for-byte agreement.
   Minified (nobody reads that one) and pre-**CENTRED** on the origin by `demo-build.mjs`'s
   `centreDocument` — which is load-bearing, not tidy: `fitToScreen` RECENTRES as well as
@@ -2569,7 +2905,33 @@ Every benchable 74xx part's demonstration bench, shipped INSIDE the app as
 - Memory/Interface/PROCESSOR chips get no example and therefore no button: a RAM or a CPU
   cannot be demonstrated by flipping switches at it, and the 65xx demos are excluded for a
   sharper reason — their program lives in a separate `.hex`, so the document alone would
-  arrive not working.
+  arrive not working. The **Timer** group is `TIMED_GROUPS`
+  (`demo-build.mjs`) and get no BENCH: the bench DSL has no resistor/capacitor values
+  and its truth-table proof has no notion of time. The CD4060B (group Counter) DOES have
+  one, built on its external-clock mode (a clock brick on φI) so the bench proves the
+  divider without the oscillator.
+- **A part can ship a HAND-BUILT example instead** (`HAND_BUILT` in `demo-build.mjs`: the
+  NE555 → `demos/ne555.chiphippo`, drawn on the desk with ONE DESKTOP PER MODE —
+  Monostable, Bistable, Astable). `make-gate-demos.mjs` ships it as
+  `src/web/demos/<ref>.json` in a second payload shape, `{ref, title, desktops: [{name,
+  description?, doc}]}` beside the benches' `{ref, title, doc}`, and keeps it out of the
+  sweep. `buildHandBuilt` holds each desktop to the bench's bars (current `DOC_VERSION`
+  — a bundled doc skips main's migrations — nothing dropped, every part `canPlacePart`,
+  centred, no ROM images) and `validateHandBuilt` proves it in the engine (every chip
+  `ok`, NO warning, every timed part reading its wiring with no problem); `gate-demos.test.js`
+  holds the shipped file to a fresh build and the 555's desktops to the mode each is NAMED
+  for. **`model/example-desktops.js` is the ONE reader of both shapes** (the workspace and
+  `export-fixtures.js`'s `demoDocs`, which labels them `NE555-Astable`), and owns the tab
+  names: `<ref> example`, or `<ref> <desktop> example` — English, being identity. For
+  several desktops the identity test is PER DESKTOP: only those not open are added (a
+  deleted one comes back alone), with all open the first is selected (`"switched"`); every
+  copy is reseated before the project changes, so a failure adds none; the first NEW one
+  is landed on and framed. Re-run `make demos` after editing the project in `demos/`, or
+  the guard fails as stale.
+- **Landing clean never HIDES unsaved work**: `#addExample` re-baselines (`#markClean`)
+  only when the project was clean before the example arrived. It used to do so
+  unconditionally, which cleared the • over edits on another desktop — and a close then
+  discarded them without asking.
 
 ## Auto-update & the store gate
 
@@ -2954,6 +3316,7 @@ make test       # License-header guard + node --test
 make test-i18n  # Just the language guards
 make icons      # Regenerate app-icon rasters from the SVG sources
 make datasheets # Report which pinout datasheet crops are missing/orphaned
+make datasheet-urls # Check every datasheet download URL still serves a PDF (network)
 make demos      # Regenerate + engine-validate demos/ AND src/web/demos/
 make docs       # Build the website docs;  make pdf  builds the user-guide PDF
 make build      # macOS app (dir only, unsigned);  make dmg  (bare `make` default)

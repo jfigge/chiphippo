@@ -43,12 +43,15 @@ test("the part catalog carries the Feature 60 inventory", () => {
   assert.deepEqual(PART_DEFS.map((d) => d.id).sort(), [
     "bar8",
     "bar8iso",
+    "cap-ceramic",
+    "cap-electrolytic",
     "clock",
     "lcd16x2",
     "lcd20x4",
     "led",
     "osc-full",
     "osc-half",
+    "pot",
     "psu",
     "resistor",
     "rnet9",
@@ -68,8 +71,9 @@ test("the part catalog carries the Feature 60 inventory", () => {
   assert.ok(partDef("clock"));
   assert.ok(partDef("lcd16x2"));
   assert.equal(chipDef("sw-slide"), null);
-  // 63 chips (24 + 28 LS + 7 memory + 2 io + 2 cpu) + 20 parts
-  assert.equal(PALETTE_DEFS.length, 83);
+  // 107 chips (24 + 28 LS + 43 CD4000 + 7 memory + 2 io + 2 cpu + the 555)
+  // + 23 parts
+  assert.equal(PALETTE_DEFS.length, 130);
 });
 
 for (const def of PART_DEFS.filter((d) => d.kind === "discrete")) {
@@ -639,10 +643,11 @@ test("a reversible def's offsets are palindromic — the flip maps onto itself",
 
 test("psu: volts enum, source contract, integer terminal offsets", () => {
   const def = partDef("psu");
-  assert.deepEqual(PSU_VOLTS, [3, 5, 12]);
+  assert.deepEqual(PSU_VOLTS, [3, 5, 9, 12, 15]);
   assert.deepEqual(def.normalizeParams({}), { volts: 5 });
   assert.deepEqual(def.normalizeParams({ volts: 12 }), { volts: 12 });
-  assert.deepEqual(def.normalizeParams({ volts: 9 }), { volts: 5 });
+  assert.deepEqual(def.normalizeParams({ volts: 9 }), { volts: 9 });
+  assert.deepEqual(def.normalizeParams({ volts: 7 }), { volts: 5 });
   assert.deepEqual(def.source({ volts: 3 }), { plus: 3, minus: 0 });
   assert.deepEqual(
     def.terminals.map((t) => t.id),
@@ -662,7 +667,9 @@ test("psu: volts enum, source contract, integer terminal offsets", () => {
       options: [
         { value: 3, label: "3 V" },
         { value: 5, label: "5 V" },
+        { value: 9, label: "9 V" },
         { value: 12, label: "12 V" },
+        { value: 15, label: "15 V" },
       ],
     },
   ]);

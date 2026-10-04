@@ -39,6 +39,9 @@
 // choosing holes; a caller with a finished document can use `wireCrossings` to
 // audit one.
 
+import { PX_PER_UNIT } from "../desk/desk-geometry.js";
+import { wireSag } from "../desk/wire-path.js";
+
 /** A part's body as an axis-aligned box, from the points it occupies. */
 export function boxOf(points, margin = 0.45) {
   if (!points?.length) return null;
@@ -110,8 +113,71 @@ export function crossingCount(a, b, boxes, skip) {
 }
 
 /**
- * Audit a finished document: every wire that runs over a part it does not end
- * on. Used by the compiler to warn, and by tests to hold the routing honest.
+ * The wire `a`→`b` as it is DRAWN, as a polyline (pitch units): the sagging
+ * quadratic of `desk/wire-path.js`, whose control point hangs `wireSag` below
+ * the chord's midpoint. A long run hangs a pitch or two below its chord, which
+ * is enough to carry it across the row of parts beneath — the very thing a
+ * straight-chord test cannot see.
+ * @param {{x:number,y:number}} a
+ * @param {{x:number,y:number}} b
+ * @param {number} [steps]
+ * @returns {Array<{x:number,y:number}>}
+ */
+export function drawnWire(a, b, steps = 12) {
+  const sag =
+    wireSag(
+      { x: a.x * PX_PER_UNIT, y: a.y * PX_PER_UNIT },
+      { x: b.x * PX_PER_UNIT, y: b.y * PX_PER_UNIT },
+    ) / PX_PER_UNIT;
+  const c = { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 + sag };
+  const out = [];
+  for (let i = 0; i <= steps; i++) {
+    const t = i / steps;
+    const u = 1 - t;
+    out.push({
+      x: u * u * a.x + 2 * u * t * c.x + t * t * b.x,
+      y: u * u * a.y + 2 * u * t * c.y + t * t * b.y,
+    });
+  }
+  return out;
+}
+
+/** Does the wire as DRAWN (a `drawnWire` polyline) cross the box? */
+function drawnHitsBox(line, box) {
+  for (let i = 1; i < line.length; i++) {
+    if (segmentHitsBox(line[i - 1], line[i], box)) return true;
+  }
+  return false;
+}
+
+/**
+ * How many parts the wire `a`→`b` is DRAWN over — `crossingCount` along the
+ * curve as drawn (`drawnWire`), sag and all, because a run that clears a row of
+ * parts as a chord can still hang down across it, and a wire is drawn ABOVE the
+ * parts. A part is excused while an end of the wire lies inside its body —
+ * that is attachment — and so is any part named in `excused`. The compiler's
+ * router names none: a lead from beside a part back across it (a switch's
+ * supply lead over its own knob) is drawn over it all the same. Its report of
+ * residual crossings excuses the parts a wire ends on, as `wireCrossings` does.
+ * @param {{x:number,y:number}} a
+ * @param {{x:number,y:number}} b
+ * @param {Iterable<[string, object]>} boxes  id → box
+ * @param {Set<string>} [excused]
+ */
+export function drawnCrossings(a, b, boxes, excused) {
+  const line = drawnWire(a, b);
+  let n = 0;
+  for (const [id, box] of boxes) {
+    if (excused?.has(id)) continue;
+    if (inside(a, box) || inside(b, box)) continue;
+    if (drawnHitsBox(line, box)) n++;
+  }
+  return n;
+}
+
+/**
+ * Audit a finished document: every wire DRAWN over a part it does not end on —
+ * the compiler's own warning rule, for tests to hold the routing honest.
  *
  * `ownerOf` names the part an address BELONGS to — the one whose node it sits
  * on, not merely whose body it falls inside. Without it a lead leaving a
@@ -126,14 +192,12 @@ export function crossingCount(a, b, boxes, skip) {
  */
 export function wireCrossings(doc, world, pinsOf, ownerOf = () => null) {
   const boxes = new Map();
-  const owns = new Map(); // component id → the addresses it occupies
   for (const comp of doc.components ?? []) {
     if (!comp.board) continue;
     const pins = (pinsOf(comp) ?? []).filter((p) => p.address);
     const box = boxOf(pins.map((p) => world(p.address)).filter(Boolean));
     if (!box) continue;
     boxes.set(comp.id, box);
-    owns.set(comp.id, new Set(pins.map((p) => p.address)));
   }
   const out = [];
   for (const wire of doc.wires ?? []) {
@@ -141,12 +205,13 @@ export function wireCrossings(doc, world, pinsOf, ownerOf = () => null) {
     const b = world(wire.to);
     if (!a || !b) continue;
     const ends = new Set([ownerOf(wire.from), ownerOf(wire.to)]);
+    const line = drawnWire(a, b);
     for (const [id, box] of boxes) {
       // A wire whose end sits inside a body — or on a node that body owns — is
       // attached to it, not over it.
       if (ends.has(id)) continue;
       if (inside(a, box) || inside(b, box)) continue;
-      if (!segmentHitsBox(a, b, box)) continue;
+      if (!drawnHitsBox(line, box)) continue;
       out.push({
         wire: wire.id,
         part: id,

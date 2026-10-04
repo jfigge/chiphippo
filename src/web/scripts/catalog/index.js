@@ -27,7 +27,16 @@ import { CHIPS_74LS } from "./chips-74ls.js";
 import { CHIPS_MEM } from "./chips-mem.js";
 import { CHIPS_IO } from "./chips-io.js";
 import { CHIPS_CPU } from "./chips-cpu.js";
+import { CHIPS_CD4000 } from "./chips-cd4000.js";
+import { CHIPS_CD4000_TIMERS } from "./chips-cd4000-timers.js";
+import { CHIPS_555 } from "./chips-555.js";
 import { PART_DEFS } from "./parts.js";
+import { familyOf } from "./families.js";
+
+/** Stamp a logic family (catalog/families.js) on every def of one module —
+    the family is a fact about the MODULE's line of parts, so it is stated
+    once per module rather than once per def. A def's own field wins. */
+const ofFamily = (family, defs) => defs.map((def) => ({ family, ...def }));
 
 /**
  * Coerce a non-volatile memory chip's backing-file reference (Feature 190) to a
@@ -60,19 +69,25 @@ function normalizeStorage(raw) {
 }
 
 /** Every chip def, in palette display order (combinational gates, then the
-    sequential & MSI wave). `kind` is stamped uniformly, and a
+    sequential & MSI wave, then the CD4000 CMOS family and its RC-timed
+    parts). The logic modules are stamped with their `family`; memory, the 65xx
+    peripherals, the CPUs and the 555 are family-less (catalog/families.js says
+    why — the 555 is shelved under COMPONENTS, palette-panel.js says why). `kind` is stamped uniformly, and a
     `normalizeParams` that preserves the `damaged` flag (Feature 90's
     magic-smoke bookkeeping) and, for a non-volatile memory chip, its backing-
     file `storage` (the guid, plus the file its image was loaded from) and its
     `programmed` flag (Feature 190) — chips otherwise carry no params. */
 export const CHIP_DEFS = Object.freeze(
   [
-    ...CHIPS_GATES,
-    ...CHIPS_SEQ,
-    ...CHIPS_74LS,
+    ...ofFamily("74LS", CHIPS_GATES),
+    ...ofFamily("74LS", CHIPS_SEQ),
+    ...ofFamily("74LS", CHIPS_74LS),
+    ...ofFamily("CD4000", CHIPS_CD4000),
+    ...ofFamily("CD4000", CHIPS_CD4000_TIMERS),
     ...CHIPS_MEM,
     ...CHIPS_IO,
     ...CHIPS_CPU,
+    ...CHIPS_555,
   ].map((def) =>
     Object.freeze({
       kind: "chip",
@@ -133,24 +148,57 @@ export function datasheetCrop(def) {
 }
 
 /**
- * The active-LOW pins that must ALL be LOW for a part's outputs to drive.
+ * The pins that must ALL be at their enabling level for a part's outputs to
+ * drive, each with that level: `{ n, on }`, `on` "L" for an active-LOW enable
+ * and "H" for an active-HIGH one.
  *
- * A tri-state logic part DECLARES them (`outputEnable`, proved against the
- * evaluator by tests/chips-tristate.test.js). A memory chip carries the same
- * fact already, as the chip and output enables its own `logic.memory` gates
- * its data pins on (sim/sequential.js `memUnit`), so they are READ from there
- * rather than declared a second time — a copy that could come to disagree with
- * what the chip actually does. An active-HIGH `ce2` is not an active-low
- * enable and is not listed.
+ * A tri-state logic part DECLARES them — `outputEnable` for active-LOW (every
+ * 74xx ŌĒ and Ḡ) and `outputEnableHigh` for active-HIGH (the CD4094B's OUTPUT
+ * ENABLE) — and tests/chips-tristate.test.js proves each against the evaluator,
+ * polarity included. A memory chip carries the same fact already, as the chip
+ * and output enables its own `logic.memory` gates its data pins on
+ * (sim/sequential.js `memUnit`), so they are READ from there rather than
+ * declared a second time — a copy that could come to disagree with what the
+ * chip actually does. A memory's active-HIGH `ce2` is a chip SELECT, not an
+ * output enable, and is not listed.
  *
  * @param {object|null} def
- * @returns {number[]}
+ * @returns {Array<{n: number, on: "L"|"H"}>}
  */
-export function outputEnables(def) {
-  if (def?.outputEnable?.length) return def.outputEnable;
+export function outputEnablePins(def) {
   const m = def?.logic?.memory;
-  if (m) return [m.ceN, m.oeN].filter((n) => n != null);
-  return [];
+  const low = def?.outputEnable?.length
+    ? def.outputEnable
+    : m
+      ? [m.ceN, m.oeN].filter((n) => n != null)
+      : [];
+  return [
+    ...low.map((n) => ({ n, on: "L" })),
+    ...(def?.outputEnableHigh ?? []).map((n) => ({ n, on: "H" })),
+  ];
+}
+
+/** Just the pin numbers of `outputEnablePins`, whatever their polarity. */
+export function outputEnables(def) {
+  return outputEnablePins(def).map((e) => e.n);
+}
+
+/**
+ * The logic families a set of desk documents uses (Feature 400) — what the
+ * tray has to keep showing whatever its mode, so a project's own parts can
+ * always be added to.
+ * @param {Array<{components?: Array<{ref: string}>}>} docs
+ * @returns {Set<string>}
+ */
+export function familiesUsed(docs) {
+  const used = new Set();
+  for (const doc of docs ?? []) {
+    for (const comp of doc?.components ?? []) {
+      const family = familyOf(partDef(comp.ref));
+      if (family) used.add(family);
+    }
+  }
+  return used;
 }
 
 /** A chip's `pinGroups` (Feature 130 bus taps), or an empty list. */

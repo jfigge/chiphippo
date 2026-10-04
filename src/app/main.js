@@ -1032,8 +1032,10 @@ function openPinoutWindow(ref, opts = {}) {
 // ─── Example circuits (Feature 270) ───────────────────────────────────────────
 // `make demos` builds a demonstration bench for every benchable 74xx part and
 // ships one document per part as web/demos/<ref>.json — the SAME desktop the
-// group project in demos/ holds, written in the same pass. A pin-assignments
-// window offers to open its part's example as a desktop of its own.
+// group project in demos/ holds, written in the same pass — or, for a part
+// whose example was drawn by hand (the 555), one document holding a desktop
+// per mode. A pin-assignments window offers to open its part's example as
+// desktops of their own; main reads either shape the same way (verbatim).
 //
 // TWO channels, because there are two windows and only one of them can use the
 // bytes. A PINOUT window has a ref and nothing else — no project, no desk — so
@@ -1060,13 +1062,14 @@ function demoDocPath(ref) {
 }
 
 /**
- * One example circuit's payload (`{ ref, title, doc }`), or null when the part
- * has none. The document is handed over VERBATIM: it is first-party, built by
- * the same tree that ships it, and main deliberately keeps its document
- * knowledge to migrations.js and project-images.js — the renderer canonicalizes
- * it through DeskDoc on the way in, exactly as it does every desktop that
- * arrives from a file. A corrupt file throws, which reaches the renderer as a
- * rejected invoke and is reported there.
+ * One example circuit's payload (`{ ref, title, doc }`, or `{ ref, title,
+ * desktops }` for a hand-built one — model/example-desktops.js reads both), or
+ * null when the part has none. The document is handed over VERBATIM: it is
+ * first-party, built by the same tree that ships it, and main deliberately
+ * keeps its document knowledge to migrations.js and project-images.js — the
+ * renderer canonicalizes it through DeskDoc on the way in, exactly as it does
+ * every desktop that arrives from a file. A corrupt file throws, which reaches
+ * the renderer as a rejected invoke and is reported there.
  */
 async function readDemoDoc(ref) {
   const file = demoDocPath(ref);

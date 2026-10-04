@@ -36,6 +36,12 @@
 import { hd44780Unit } from "../sim/hd44780.js";
 import { MM_PER_UNIT } from "../desk/desk-geometry.js";
 import { ROTATIONS } from "../model/breadboard.js";
+import { formatOhms, parseOhms } from "../model/ohm-format.js";
+import {
+  FARADS_RANGE,
+  formatFarads,
+  parseFarads,
+} from "../model/farad-format.js";
 
 /** The shared color choices for every colored discrete (LED, and the
     segment/bar displays) — each part's own Properties dialog + the "Default
@@ -47,7 +53,11 @@ export const LED_COLOR_OPTIONS = Object.freeze([
   "yellow",
   "white",
 ]);
-export const PSU_VOLTS = Object.freeze([3, 5, 12]);
+/** Bench supply voltages. 5 V is TTL's only rail; 3, 9, 12 and 15 V are
+    CMOS rails (the CD4000B series runs 3–18 V, rated at 5/10/15 V) — and a
+    trap for a 74LS part, which a supply above 5 V damages (catalog/families.js
+    holds each family's range; the engine gates every chip against it). */
+export const PSU_VOLTS = Object.freeze([3, 5, 9, 12, 15]);
 /** Clock rates (Hz) plus click-to-toggle "manual"; the timer lives in the
     renderer's SimController — the def carries only the pure contract. A 1-2-5
     ladder up two decades: the slow end is for watching an edge land, the fast
@@ -401,6 +411,113 @@ function dipSwitchBankDef(n) {
   };
 }
 
+/**
+ * The Resistance field every resistor's Properties card carries: typed, read
+ * the way a bench writes a value (`470`, `4k7`, `2M2` — ohm-format.js), and
+ * refused at the field when it does not read as one, keeping the value it had.
+ * `parse`/`format` are pure functions, so the field stays data like any other
+ * (part-properties-dialog.js's `"quantity"` type is the one renderer).
+ */
+const RESISTANCE_FIELD = Object.freeze({
+  key: "ohms",
+  label: "Resistance",
+  type: "quantity",
+  parse: parseOhms,
+  format: (ohms) => `${formatOhms(ohms)}Ω`,
+  invalid: "Not a resistance — try 470, 4.7k, 4k7 or 2M2 (0.1 Ω to 1 GΩ).",
+});
+
+/** The Capacitance field both capacitors carry (farad-format.js). */
+const CAPACITANCE_FIELD = Object.freeze({
+  key: "farads",
+  label: "Capacitance",
+  type: "quantity",
+  parse: parseFarads,
+  format: (farads) => `${formatFarads(farads)}F`,
+  invalid:
+    "Not a capacitance — give a unit: 100p, 10n, 4.7µ, 4u7 or 1m (1 pF to 1 F).",
+});
+
+/**
+ * A potentiometer's wiper Position, 0–100 % — a slider in its Properties card
+ * (part-properties-dialog.js's `"range"` type), applied as it is dragged. Its
+ * two ENDS say what the slider means rather than where it is: the resistance
+ * from the wiper to pin 1 on the left and to pin 3 on the right, `1.5k ⟵⟶
+ * 8.5k` — read from the card's current values, so a new Resistance moves them
+ * too. A side with no track left reads "0" (formatOhms prints nothing for
+ * zero, which is right on a part's body and wrong here).
+ */
+const POSITION_FIELD = Object.freeze({
+  key: "position",
+  label: "Position",
+  type: "range",
+  min: 0,
+  max: 100,
+  step: 1,
+  ends: (values) => {
+    const side = (ohms) => (ohms > 0 ? formatOhms(ohms) : "0");
+    const { toPin1, toPin3 } = potentiometerSplit(values);
+    return [side(toPin1), side(toPin3)];
+  },
+});
+
+/** A potentiometer's params: the whole track's value (a resistor's default)
+    and the wiper's position, a whole percent, centred unless said. */
+function potentiometerParams(raw) {
+  const ohms = Number(raw?.ohms);
+  const position = Number(raw?.position);
+  return {
+    ohms: Number.isFinite(ohms) && ohms > 0 ? ohms : 10000,
+    position: Number.isFinite(position)
+      ? Math.min(100, Math.max(0, Math.round(position)))
+      : 50,
+  };
+}
+
+/**
+ * How a potentiometer's track divides at its wiper: the resistance from the
+ * wiper (pin 2) to each end — `toPin1` grows with the position, `toPin3` is the
+ * rest of the track. 100k at 10 % is 10k and 90k; at 0 % pin 1's side is 0, a
+ * wire. Pure arithmetic; the params are coerced first, so a half-filled object
+ * divides like the part it would load as.
+ * @param {{ohms?: number, position?: number}} params
+ * @returns {{toPin1: number, toPin3: number}} ohms
+ */
+export function potentiometerSplit(params) {
+  const { ohms, position } = potentiometerParams(params);
+  const toPin1 = (ohms * position) / 100;
+  return { toPin1, toPin3: ohms - toPin1 };
+}
+
+/**
+ * A capacitor's params: its value, plus the same two-free-ends geometry the
+ * resistor and LED keep (`rot`, `end` — see normalizeLeadOffset). A value
+ * that is not a capacitance in range falls back to the part's default.
+ */
+function capacitorParams(raw, fallback) {
+  const farads = Number(raw?.farads);
+  const rotated = raw?.rot === 90;
+  return {
+    farads:
+      Number.isFinite(farads) &&
+      farads >= FARADS_RANGE.min &&
+      farads <= FARADS_RANGE.max
+        ? farads
+        : fallback,
+    rot: rotated ? 90 : 0,
+    end: rotated ? normalizeLeadOffset(raw?.end) : null,
+  };
+}
+
+/** What both capacitors' blurbs say about what a capacitor IS here. */
+const CAPACITOR_NOTE =
+  "In this logic sim a capacitor joins nothing — it passes no current, " +
+  "between any two holes, rails included (a charged capacitor blocks DC) — " +
+  "and it does not filter, smooth or store charge. What it carries is its " +
+  "VALUE: a timing part (the 555, or one of the 4000-series timers) reads " +
+  "it off the wiring, and the KiCad export writes it. A pin whose only " +
+  "company is a capacitor is not called unconnected.";
+
 /** Shared by both oscillator-can sizes — the Properties dialog's rate field. */
 const OSCILLATOR_PROPERTIES = [
   {
@@ -489,9 +606,11 @@ export const PART_DEFS = Object.freeze(
         "Light-emitting diode. Needs a series resistor whenever both legs " +
         "reach strongly driven nets (a supply rail, or a chip output) — " +
         "wired straight across the rails it burns out instead of lighting, " +
-        "exactly as it would on a bench. Anode at the anchor hole; press F " +
-        "while placing to flip polarity, R to stand it up and pick two free " +
-        "ends (rail or column).",
+        "exactly as it would on a bench — unless one leg is on a 4000-series " +
+        "CMOS output at 5 V or below, which is weak enough to limit the " +
+        "current itself. Anode at the anchor hole; press F while placing to " +
+        "flip polarity, R to stand it up and pick two free ends (rail or " +
+        "column).",
       group: "LEDs",
       // Legs sit in ADJACENT holes — an LED needs no gap between its pins.
       footprint: Object.freeze({ offsets: Object.freeze([0, 1]) }),
@@ -782,11 +901,14 @@ export const PART_DEFS = Object.freeze(
         "Two-terminal resistor. In this logic-level sim it's a WEAK coupler: " +
         "it conducts one end's driven level to the other at a strength below " +
         "any chip output, so it behaves as a pull-up / pull-down / series " +
-        "resistor. The ohms value is cosmetic (no analog current here). " +
+        "resistor. Its Resistance (Properties) is drawn as its colour bands " +
+        "and read by the timing parts (the 555, the 4000-series timers); to " +
+        "everything else it is cosmetic (no analog current here). " +
         "Press R while placing to stand it vertically and pick two free ends " +
         "(e.g. a power rail and a grid column).",
       group: "Resistors",
       footprint: Object.freeze({ offsets: Object.freeze([0, 3]) }),
+      properties: [RESISTANCE_FIELD],
       // Rotatable to a vertical, two-free-ends form: pin 1 at the anchor hole,
       // pin 2 bent to the `params.end` offset. The seating model switches from
       // footprint-offset to a free lead, so pin 2 can reach ANY hole at any
@@ -843,8 +965,10 @@ export const PART_DEFS = Object.freeze(
         "single resistor, each element is a WEAK coupler (below any chip " +
         "output), never a hard connection. Press R while placing, or with it " +
         "selected, to turn it end-for-end: the dot, pin 1 and the common bus " +
-        "all move to the other end. The ohms value is cosmetic.",
+        "all move to the other end. Its Resistance (Properties, each " +
+        "element's) is read by the timing parts and otherwise cosmetic.",
       group: "Resistors",
+      properties: [RESISTANCE_FIELD],
       // Nine holes along one grid row: the common bus first (pin 1, at the
       // anchor — the marked end), then the eight resistor pins.
       footprint: Object.freeze({
@@ -893,12 +1017,132 @@ export const PART_DEFS = Object.freeze(
       },
     },
     {
+      id: "pot",
+      kind: "discrete",
+      title: "Potentiometer",
+      blurb:
+        "Three-pin trimmer potentiometer: a resistive track between pins 1 " +
+        "and 3, and a wiper (pin 2, the middle) that taps it. Set its " +
+        "Resistance — the whole track — and the wiper's Position, 0–100 %, " +
+        "in Properties. From the wiper to pin 1 is Position × Resistance and " +
+        "to pin 3 the rest: 100k at 10 % is 10k to pin 1 and 90k to pin 3. " +
+        "Like a resistor, each side is a WEAK coupler, read by the timing " +
+        "parts — except a side with nothing left of the track (pin 1 at 0 %, " +
+        "pin 3 at 100 %), which is a wire, and an LED fed through it burns.",
+      group: "Resistors",
+      // A Bourns 3296W-style trimmer: three pins in a row at 0.1 in, the
+      // wiper in the middle.
+      footprint: Object.freeze({ offsets: Object.freeze([0, 1, 2]) }),
+      properties: [RESISTANCE_FIELD, POSITION_FIELD],
+      pins: [
+        {
+          n: 1,
+          name: "1",
+          role: "lead",
+          detail: "track end — Position × R from the wiper",
+        },
+        {
+          n: 2,
+          name: "W",
+          role: "wiper",
+          detail: "wiper — taps the track",
+        },
+        {
+          n: 3,
+          name: "3",
+          role: "lead",
+          detail: "track end — (100 % − Position) × R from the wiper",
+        },
+      ],
+      // Whole percent, clamped: the slider's own steps, and the one number
+      // the two sides' arithmetic is stated in.
+      normalizeParams: potentiometerParams,
+      // A side with NONE of the track left is not a resistor at all but the
+      // wiper's contact sitting on the end terminal — a WIRE, so the nets
+      // join and nothing limits the current through them.
+      internalBridges(params) {
+        const { toPin1, toPin3 } = potentiometerSplit(params);
+        return [
+          ...(toPin1 === 0 ? [[2, 1]] : []),
+          ...(toPin3 === 0 ? [[2, 3]] : []),
+        ];
+      },
+      // Every other side is a resistor: a weak coupler from the wiper to that
+      // end. Each pair carries its OWN ohms (third element), since the two
+      // sides divide one track — sim/rc-trace.js reads it in place of the
+      // part's single `ohms`, which every other consumer can ignore.
+      weakBridges(params) {
+        const { toPin1, toPin3 } = potentiometerSplit(params);
+        return [
+          ...(toPin1 > 0 ? [[2, 1, toPin1]] : []),
+          ...(toPin3 > 0 ? [[2, 3, toPin3]] : []),
+        ];
+      },
+    },
+    {
+      id: "cap-ceramic",
+      kind: "discrete",
+      title: "Capacitor (ceramic)",
+      blurb:
+        "Ceramic disc capacitor — non-polarised, either way round. Set its " +
+        "Capacitance in Properties (100p, 10n, 4.7µ, 4u7…). " +
+        CAPACITOR_NOTE +
+        " Press R while placing to stand it up and pick two free ends.",
+      group: "Capacitors",
+      // A disc's leads at 2.5 mm (0.1 in) — adjacent holes, as the
+      // electrolytic's are.
+      footprint: Object.freeze({ offsets: Object.freeze([0, 1]) }),
+      rotatable: true,
+      minSpan: 1,
+      // The data hook every consumer branches on (the trace, the engine's
+      // floating-input rule, the drop note, the BOM, the export) — never an id.
+      capacitor: Object.freeze({ polarized: false }),
+      properties: [CAPACITANCE_FIELD],
+      pins: [
+        { n: 1, name: "1", role: "lead" },
+        { n: 2, name: "2", role: "lead" },
+      ],
+      normalizeParams: (raw) => capacitorParams(raw, 100e-9),
+      // A non-connect, always: no bridge, hard or weak.
+      internalBridges() {
+        return [];
+      },
+    },
+    {
+      id: "cap-electrolytic",
+      kind: "discrete",
+      title: "Capacitor (electrolytic)",
+      blurb:
+        "Aluminium electrolytic capacitor — POLARISED: pin 1 is +, pin 2 is " +
+        "−, which the stripe down its side marks. Set its Capacitance in " +
+        "Properties (1µ, 10µ, 4u7, 470µ…). " +
+        CAPACITOR_NOTE +
+        " Its polarity is drawn and exported; wiring it backwards changes " +
+        "nothing in the sim. Press R while placing to stand it up and pick " +
+        "two free ends.",
+      group: "Capacitors",
+      // A small radial can's leads at 2.5 mm (0.1 in).
+      footprint: Object.freeze({ offsets: Object.freeze([0, 1]) }),
+      rotatable: true,
+      minSpan: 1,
+      capacitor: Object.freeze({ polarized: true }),
+      properties: [CAPACITANCE_FIELD],
+      pins: [
+        { n: 1, name: "+", role: "lead" },
+        { n: 2, name: "-", role: "lead" },
+      ],
+      normalizeParams: (raw) => capacitorParams(raw, 10e-6),
+      internalBridges() {
+        return [];
+      },
+    },
+    {
       id: "psu",
       kind: "psu",
       title: "Power supply",
       blurb:
-        "Bench power brick (3 V / 5 V / 12 V) with addressable + and − " +
-        "terminals — wire them into a board's rails.",
+        "Bench power brick (3 V / 5 V / 9 V / 12 V / 15 V) with addressable " +
+        "+ and − terminals — wire them into a board's rails.",
       group: "Power",
       // Desk outline (pitch units) and terminal pads at INTEGER offsets so
       // wired terminals land on the global 0.1-in lattice.

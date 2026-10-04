@@ -450,6 +450,48 @@ test("SettingsDialog: opening twice does not stack a second dialog", () => {
   PopupManager.close();
 });
 
+test("SettingsDialog: Chip family leads Data Sheets, seeds, emits, and defaults to 74LS", () => {
+  // Feature 400: which logic family the parts tray shows. App-wide, live.
+  resetDom();
+  SettingsDialog.open({ logicFamily: "combined" });
+  const label = "Chip family";
+  const panel = document.querySelector('.settings-panel[data-panel="datasheets"]'); // prettier-ignore
+  const row = panel.firstElementChild;
+  assert.equal(row.querySelector(".settings-label").textContent, label);
+  assert.ok(
+    row.querySelector(".settings-note"),
+    "its explanation is behind an (i)",
+  );
+
+  const segments = [
+    ...row.querySelectorAll(
+      `.segmented-picker[aria-label="${label}"] .segmented-option`,
+    ),
+  ];
+  // The family names are part-number prefixes, not words: never translated.
+  assert.deepEqual(
+    segments.map((b) => b.textContent),
+    ["74LS", "CD4000", "Both"],
+  );
+  assert.equal(activeSegment(label).textContent, "Both");
+
+  const patches = [];
+  window.addEventListener("chiphippo:settings-changed", (e) =>
+    patches.push(e.detail),
+  );
+  segments[1].click();
+  assert.deepEqual(patches, [{ logicFamily: "CD4000" }]);
+  PopupManager.close();
+
+  // Absent, or junk, is the default — the tray it always was.
+  for (const seed of [{}, { logicFamily: "TTL" }]) {
+    resetDom();
+    SettingsDialog.open(seed);
+    assert.equal(activeSegment(label).textContent, "74LS");
+    PopupManager.close();
+  }
+});
+
 test("SettingsDialog: the Data Sheets tab switches panels", () => {
   resetDom();
   SettingsDialog.open({});

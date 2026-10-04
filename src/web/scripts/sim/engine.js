@@ -24,11 +24,25 @@
 // renderer's SimController, which merely hands `tick` each clock's current
 // output level (`clockPhase`).
 //
-// Power: a chip is POWERED iff its VCC net carries a 5 V PSU `+` and its GND
-// net a PSU `−`; 3 V → underpowered (inert); 12 V → damaged (magic smoke).
+// Power: a chip is POWERED iff its VCC net carries a PSU `+` inside its
+// family's supply range and its GND net a PSU `−`; below the range it is
+// underpowered (inert), above it damaged (magic smoke). 74LS and every
+// family-less part: 5 V only; CD4000: 3–18 V (catalog/families.js).
 // Digital abstraction with drive strengths (resolve.js): supply beats chip
 // output; a clock source and a planted signal flag both drive at output
-// strength; Z contributes nothing.
+// strength; Z contributes nothing. Every ground-role pin must reach the
+// supply's `−` — a CD405x's VEE as well as its VSS (single-supply use ties
+// them together), an AM27C1024's two VSS pins both.
+//
+// Analog switches (CD4066B, CD405x) drive nothing: an ON channel JOINS two
+// nets for the settle, so each resolves from the drivers of both (a supply
+// crossing a switch at output strength). See `channelGroups`/`resolveAll`.
+//
+// The LED rule (sim/junction.js) reads a SECOND resolution, `strongLevels`:
+// each net from the sources that could burn an LED — supplies and outputs,
+// never a resistor's pull, and never a CD4000 output (or channel) running
+// from a supply low enough that it limits the current itself
+// (families.js `limitsLedCurrent`).
 //
 // Tick (Feature 100, extended for ripple in Feature 220):
 //   ① pre-settle with the OLD sequential state (propagates the new clock phase
@@ -43,6 +57,16 @@
 // external clock edge is consumed on the first pass (synchronous parts step
 // exactly once, byte-for-byte the old two-phase result), yet a NEW internal
 // edge that a just-updated output creates is still observed (ripple cascades).
+//
+// Timed parts (the 555, the RC-timed CD4000 parts — sim/timing.js): the engine
+// still keeps no time. `tick` is handed `now` (simulated seconds, owned by
+// SimController), each timed part reads its R and C off the wiring once per
+// context (sim/rc-trace.js → the def's `timing`), its `step` sees
+// `{now, timing}`, and the tick reports `wakeAt` — the earliest moment any of
+// them next changes on its own — so the controller knows when to tick again.
+// A capacitor joins no net and drives nothing; the one place the engine sees
+// one is the floating-input check, where a CMOS input whose only company is a
+// capacitor is not called floating.
 
 import { H, L, Z, X } from "./levels.js";
 import {
@@ -55,11 +79,24 @@ import {
   isSequential,
   isMemory,
   isOscillator,
+  isAnalogSwitch,
+  isTimed,
+  wakeAtOf,
+  channelStates,
   memoryOutputs,
   memoryWrite,
 } from "./chip-eval.js";
+import { rcTrace, timingProbe } from "./rc-trace.js";
 import { resolveNet } from "./resolve.js";
+import { UnionFind } from "./union-find.js";
 import { partDef } from "../catalog/index.js";
+import {
+  familyOf,
+  floatsUnknown,
+  limitsLedCurrent,
+  lsFanoutOf,
+  supplyRange,
+} from "../catalog/families.js";
 import { partPinAddresses } from "../model/occupancy.js";
 import { formatAddress } from "../model/breadboard.js";
 
@@ -89,12 +126,12 @@ export const CHIP_STATUS = Object.freeze({
  * other floating) is ordinary `UNPOWERED`; calling that "backwards" would
  * accuse the user of a mistake they may not have made.
  */
-function powerStatus({ vccVolts, vccMinus, gndVolts, gnd, damaged }) {
+function powerStatus({ vccVolts, vccMinus, gndVolts, gnd, damaged, supply }) {
   if (damaged) return CHIP_STATUS.DAMAGED;
   if (vccMinus && gndVolts.length) return CHIP_STATUS.REVERSED;
-  if (vccVolts.includes(12)) return CHIP_STATUS.DAMAGED; // magic smoke
-  if (gnd && vccVolts.includes(5)) return CHIP_STATUS.OK;
-  if (gnd && vccVolts.includes(3)) return CHIP_STATUS.UNDERPOWERED;
+  if (vccVolts.some((v) => v > supply.max)) return CHIP_STATUS.DAMAGED; // smoke
+  if (gnd && vccVolts.some((v) => v >= supply.min)) return CHIP_STATUS.OK;
+  if (gnd && vccVolts.length) return CHIP_STATUS.UNDERPOWERED;
   return CHIP_STATUS.UNPOWERED;
 }
 
@@ -196,6 +233,10 @@ function buildContext(doc, netlist) {
     }
   }
 
+  // The capacitors and resistors as a timing part reads them (and the one
+  // thing the engine itself asks of a capacitor: is there one on this net?).
+  const trace = rcTrace(doc, netlist);
+
   // Chips (combinational + sequential): pin→net maps + power status.
   const chips = [];
   const chipStatus = new Map();
@@ -221,26 +262,50 @@ function buildContext(doc, netlist) {
       pinNet.set(pin, address ? netOf(address) : null);
     }
     const vccPin = def.pins.find((p) => p.role === "vcc")?.n;
-    const gndPin = def.pins.find((p) => p.role === "gnd")?.n;
     const vccNet = pinNet.get(vccPin);
-    const gndNet = pinNet.get(gndPin);
+    // EVERY ground pin: a 405x's VEE is a supply pin like its VSS, and a chip
+    // with one of them left off does not run.
+    const gndNets = def.pins
+      .filter((p) => p.role === "gnd")
+      .map((p) => pinNet.get(p.n));
+    const vccVolts = (vccNet && supplyPlusVolts.get(vccNet)) || [];
     const status = powerStatus({
-      vccVolts: (vccNet && supplyPlusVolts.get(vccNet)) || [],
+      vccVolts,
       vccMinus: supplyMinus.has(vccNet),
-      gndVolts: (gndNet && supplyPlusVolts.get(gndNet)) || [],
-      gnd: supplyMinus.has(gndNet),
+      gndVolts: gndNets.flatMap(
+        (net) => (net && supplyPlusVolts.get(net)) || [],
+      ),
+      gnd: gndNets.length > 0 && gndNets.every((net) => supplyMinus.has(net)),
       damaged: comp.params?.damaged === true,
+      supply: supplyRange(def),
     });
-    chipStatus.set(comp.id, { status });
+    // The supply the chip SAW (the highest, should two meet on one net) —
+    // the number its underpowered/damaged message states.
+    const volts = vccVolts.length ? Math.max(...vccVolts) : null;
+    chipStatus.set(comp.id, { status, volts });
     const oscillator = isOscillator(def);
+    const analogSwitch = isAnalogSwitch(def);
+    const timed = isTimed(def);
     chips.push({
       comp,
       def,
       pinNet,
       status,
+      // A timed part's reading of its own R and C — a fact about the frozen
+      // topology (and the parts' values), so it is taken once per context.
+      timing: timed ? def.logic.timing(timingProbe(trace, pinNet)) : null,
       sequential: isSequential(def),
       memory: isMemory(def),
+      analogSwitch,
       oscillator,
+      // The output levels whose drive cannot burn an LED (families.js
+      // `limitsLedCurrent`), and whether the channels cannot either.
+      limitsLevel: new Set(
+        analogSwitch
+          ? []
+          : [H, L].filter((lv) => limitsLedCurrent(def, volts, lv)),
+      ),
+      limitsChannel: analogSwitch && limitsLedCurrent(def, volts),
       // A can has exactly one output pin — resolved once here, not per drive.
       outputPin: oscillator
         ? def.pins.find((p) => p.role === "output")?.n
@@ -255,19 +320,129 @@ function buildContext(doc, netlist) {
     clocks,
     signals,
     resistors,
+    trace,
     chips,
     chipStatus,
+    // Whether any part limits an LED's current — when none does, the LED
+    // rule's resolution is the ordinary strong one and is not computed twice.
+    limitsLed: chips.some((c) => c.limitsLevel.size > 0 || c.limitsChannel),
+    boundaryWarnings: boundaryWarnings(
+      chips,
+      chipStatus,
+      supplyPlusVolts,
+      resistors,
+    ),
   };
 }
 
-/** Every driver (clock + signal sources, and powered chip outputs) for a set
-    of levels. */
+/**
+ * The family-boundary facts of a frozen topology (Feature 400), as warnings.
+ * The engine carries no voltages on a net, so none of these changes a level;
+ * each is a STRUCTURAL fact about which pins share a net, stated once per net
+ * with the fix. Only powered (`ok`) chips count — an unpowered part reads and
+ * drives nothing, so it is on no boundary.
+ *
+ *   marginal-high   a 74LS output feeds a CD4000 input and no pull-up to a
+ *                   supply `+` lifts the net. LS VOH is 2.7 V min / 3.4 V typ;
+ *                   a CD4000B input at VDD 5 V needs VIH ≥ 3.5 V. Marginal,
+ *                   usually works, out of spec — so a warning, never an X.
+ *   ls-fanout       one CD4000 output holds more 74LS inputs than it can sink
+ *                   (families.js `lsFanoutOf`: one, or a buffer's eight).
+ *   mixed-supply    one net joins chips powered from different voltages — a
+ *                   12 V output into a 5 V input, which needs a level shifter.
+ */
+function boundaryWarnings(chips, chipStatus, supplyPlusVolts, resistors) {
+  const byNet = new Map(); // netId → { lsOut, cmosIn, lsIn, cmosOut[], volts }
+  const at = (net) => {
+    if (!byNet.has(net)) {
+      byNet.set(net, {
+        lsOut: false,
+        cmosIn: false,
+        lsIn: 0,
+        cmosOut: [],
+        volts: new Set(),
+      });
+    }
+    return byNet.get(net);
+  };
+  for (const c of chips) {
+    if (c.status !== CHIP_STATUS.OK) continue;
+    const family = familyOf(c.def);
+    const volts = chipStatus.get(c.comp.id)?.volts ?? null;
+    const role = new Map(c.def.pins.map((p) => [p.n, p.role]));
+    for (const [pin, net] of c.pinNet) {
+      if (!net) continue;
+      const r = role.get(pin);
+      if (r !== "input" && r !== "output" && r !== "io") continue;
+      // A switch terminal is neither: it passes another part's level.
+      if (c.analogSwitch && r === "io") continue;
+      const entry = at(net);
+      if (volts != null) entry.volts.add(volts);
+      if (family === "74LS") {
+        if (r === "output" || r === "io") entry.lsOut = true;
+        if (r === "input" || r === "io") entry.lsIn += 1;
+      } else if (family === "CD4000") {
+        if (r === "input" || r === "io") entry.cmosIn = true;
+        if (r === "output" || r === "io") {
+          entry.cmosOut.push({
+            chip: c.comp.id,
+            pin,
+            fanout: lsFanoutOf(c.def),
+          });
+        }
+      }
+    }
+  }
+  // Nets a resistor ties to a supply `+` — a pull-up the LS output can lean on.
+  const pulledUp = new Set();
+  for (const r of resistors) {
+    if (supplyPlusVolts.has(r.netB) && r.netA) pulledUp.add(r.netA);
+    if (supplyPlusVolts.has(r.netA) && r.netB) pulledUp.add(r.netB);
+  }
+  const warnings = [];
+  for (const [net, e] of byNet) {
+    if (supplyPlusVolts.has(net)) continue; // a rail is not a signal
+    if (e.lsOut && e.cmosIn && !pulledUp.has(net)) {
+      warnings.push({ type: "marginal-high", net });
+    }
+    for (const out of e.cmosOut) {
+      if (e.lsIn > out.fanout) {
+        warnings.push({
+          type: "ls-fanout",
+          net,
+          chip: out.chip,
+          loads: e.lsIn,
+          max: out.fanout,
+        });
+      }
+    }
+    if (e.volts.size > 1) {
+      warnings.push({
+        type: "mixed-supply",
+        net,
+        volts: [...e.volts].sort((a, b) => a - b),
+      });
+    }
+  }
+  return warnings;
+}
+
+/**
+ * Every driver (clock + signal sources, and powered chip outputs) for a set
+ * of levels: `drivers` netId → [levels], and `hard`, the same minus each
+ * output whose drive cannot burn an LED (the very same map when no part on
+ * the desk limits one — `ctx.limitsLed`).
+ */
 function driversFor(ctx, levels, state, clockPhase, images, signalLevels) {
   const drivers = new Map(); // netId → [levels]
-  const add = (net, level) => {
+  const hard = ctx.limitsLed ? new Map() : drivers;
+  const add = (net, level, limited = false) => {
     if (!net) return;
     if (!drivers.has(net)) drivers.set(net, []);
     drivers.get(net).push(level);
+    if (hard === drivers || limited) return;
+    if (!hard.has(net)) hard.set(net, []);
+    hard.get(net).push(level);
   };
 
   // Clock sources drive their output net at output strength.
@@ -283,6 +458,7 @@ function driversFor(ctx, levels, state, clockPhase, images, signalLevels) {
 
   for (const c of ctx.chips) {
     if (c.status !== CHIP_STATUS.OK) continue; // inert chips drive nothing
+    if (c.analogSwitch) continue; // it joins nets (channelGroups); drives none
     const pinLevels = new Map();
     for (const [pin, net] of c.pinNet) {
       pinLevels.set(pin, net ? (levels.get(net) ?? Z) : Z);
@@ -308,30 +484,130 @@ function driversFor(ctx, levels, state, clockPhase, images, signalLevels) {
     } else {
       outMap = evaluate(c.def, pinLevels);
     }
-    for (const [outPin, level] of outMap) add(c.pinNet.get(outPin), level);
+    for (const [outPin, level] of outMap) {
+      add(c.pinNet.get(outPin), level, c.limitsLevel.has(level));
+    }
   }
-  return drivers;
+  return { drivers, hard };
 }
 
-/** Resolve every net once from supplies + the given drivers (+ resistor pulls). */
-function resolveAll(ctx, drivers) {
-  const resolveOne = (id, pullLevels) =>
-    resolveNet({
+/**
+ * Which nets the analog switches' channels JOIN for one pass, read off the
+ * levels on their control pins (`levels`, the previous pass's — as every chip
+ * output is computed). Returns null when no channel conducts, else
+ * `{ on, wide, hardOn, hardWide }`: each a Map netId → the member list of its
+ * joined group (itself included; one shared array per group), `on` over the
+ * channels that are ON and `wide` over those that MIGHT be (a floating
+ * control) as well — null when none might. `hardOn`/`hardWide` are the same
+ * joins minus the channels whose on-resistance limits an LED's current: what
+ * the LED rule's resolution joins. Only a POWERED switch conducts.
+ */
+function channelGroups(ctx, levels) {
+  const on = [];
+  const maybe = [];
+  for (const c of ctx.chips) {
+    if (!c.analogSwitch || c.status !== CHIP_STATUS.OK) continue;
+    const pinLevels = new Map();
+    for (const [pin, net] of c.pinNet) {
+      pinLevels.set(pin, net ? (levels.get(net) ?? Z) : Z);
+    }
+    for (const ch of channelStates(c.def, pinLevels)) {
+      const a = c.pinNet.get(ch.a);
+      const b = c.pinNet.get(ch.b);
+      if (!a || !b || a === b || ch.on === L) continue;
+      (ch.on === H ? on : maybe).push({ a, b, limited: c.limitsChannel });
+    }
+  }
+  if (!on.length && !maybe.length) return null;
+  const hard = (pairs) => pairs.filter((p) => !p.limited);
+  const all = [...on, ...maybe];
+  return {
+    on: groupsOf(on),
+    wide: maybe.length ? groupsOf(all) : null,
+    hardOn: groupsOf(hard(on)),
+    hardWide: maybe.length ? groupsOf(hard(all)) : null,
+  };
+}
+
+/** Net pairs → Map netId → its group's (shared) member list; null for none. */
+function groupsOf(pairs) {
+  if (!pairs.length) return null;
+  const uf = new UnionFind();
+  for (const { a, b } of pairs) uf.union(a, b);
+  const byNet = new Map();
+  for (const members of uf.groups().values()) {
+    for (const id of members) byNet.set(id, members);
+  }
+  return byNet;
+}
+
+/** Two candidate level maps → what they agree on, X where they differ. */
+function agreeing(a, b) {
+  const out = new Map();
+  for (const [id, lv] of a) out.set(id, b.get(id) === lv ? lv : X);
+  return out;
+}
+
+/**
+ * Resolve ONE net from supplies + `drivers` (+ the pulls `pullsOf` names),
+ * across the channels `groups` joins (netId → its group's members; null for
+ * none). A joined net hears every member's drivers and pulls — but another
+ * member's SUPPLY only at OUTPUT strength: it arrives through a switch, so a
+ * rail through a 4066 FIGHTS an output on the far side (a conflict there),
+ * where the same rail wired straight on would simply win.
+ */
+function resolveIn(ctx, drivers, groups, id, pullsOf) {
+  const group = groups?.get(id);
+  if (!group) {
+    return resolveNet({
       supplyPlus: ctx.supplyPlusVolts.has(id),
       supplyMinus: ctx.supplyMinus.has(id),
       chipLevels: drivers.get(id) ?? [],
-      pullLevels,
+      pullLevels: pullsOf(id),
     });
+  }
+  const chipLevels = [];
+  const pullLevels = [];
+  for (const member of group) {
+    chipLevels.push(...(drivers.get(member) ?? []));
+    pullLevels.push(...pullsOf(member));
+    if (member === id) continue;
+    if (ctx.supplyPlusVolts.has(member)) chipLevels.push(H);
+    if (ctx.supplyMinus.has(member)) chipLevels.push(L);
+  }
+  return resolveNet({
+    supplyPlus: ctx.supplyPlusVolts.has(id),
+    supplyMinus: ctx.supplyMinus.has(id),
+    chipLevels,
+    pullLevels,
+  });
+}
+
+const noPulls = () => [];
+
+/**
+ * Resolve every net once (`resolveIn`) from supplies + the given drivers +
+ * resistor pulls, across the channels `groups` joins. A channel joining the
+ * two rails themselves is a short through the switch, and said so.
+ *
+ * `burn` (null when no part limits an LED's current) is the `{drivers,
+ * groups}` the LED rule's resolution reads instead: the drivers and joins
+ * that could burn one (`driversFor`'s `hard`, `channelGroups`' `hardOn`).
+ */
+function resolveAll(ctx, drivers, groups = null, burn = null) {
+  const resolveOne = (id, pullsOf) =>
+    resolveIn(ctx, drivers, groups, id, pullsOf);
 
   // With resistors present, first compute each net's STRONG level (supplies +
-  // chip outputs, no pulls) — that's what a resistor conducts, and it's also
-  // what callers use to tell "driven directly" from "fed through a resistor"
-  // (a lit LED vs. a burnt one), so it must never itself include a pull.
+  // chip outputs, no pulls) — that's what a resistor conducts, and (unless a
+  // part limits an LED's current — `burn`) it's also what callers use to
+  // tell "driven directly" from "fed through a resistor" (a lit LED vs. a
+  // burnt one), so it must never itself include a pull.
   let pulls = null;
   let strong = null;
   if (ctx.resistors.length) {
     strong = new Map();
-    for (const id of ctx.netIds) strong.set(id, resolveOne(id, []).level);
+    for (const id of ctx.netIds) strong.set(id, resolveOne(id, noPulls).level);
 
     // Relax the resistor network to a fixpoint: a net one resistor just
     // pulled to H/L can itself feed the NEXT resistor down the chain (R1
@@ -353,7 +629,7 @@ function resolveAll(ctx, drivers) {
       }
       const nextBasis = new Map();
       for (const id of ctx.netIds) {
-        nextBasis.set(id, resolveOne(id, p.get(id) ?? []).level);
+        nextBasis.set(id, resolveOne(id, (net) => p.get(net) ?? []).level);
       }
       pulls = p;
       if (mapsEqual(nextBasis, basis)) break;
@@ -363,15 +639,41 @@ function resolveAll(ctx, drivers) {
 
   const next = new Map();
   const warnings = [];
+  // A joined group's fight is ONE fight, whichever member nets report it.
+  const said = new Map(); // warning type → the groups it was said for
   for (const id of ctx.netIds) {
-    const res = resolveOne(id, pulls?.get(id) ?? []);
+    const res = resolveOne(id, (net) => pulls?.get(net) ?? []);
     next.set(id, res.level);
-    if (res.warning) warnings.push({ type: res.warning, net: id });
+    if (!res.warning) continue;
+    const group = groups?.get(id);
+    if (group) {
+      if (!said.has(res.warning)) said.set(res.warning, new Set());
+      if (said.get(res.warning).has(group)) continue;
+      said.get(res.warning).add(group);
+    }
+    warnings.push({ type: res.warning, net: id });
   }
-  // Without resistors nothing is weakly pulled, so the resolved level IS the
-  // strong one. Callers use this to tell "driven directly" from "fed through a
-  // resistor" — the difference between a lit LED and a burnt one.
-  return { next, warnings, strong: strong ?? next };
+  for (const group of new Set(groups?.values() ?? [])) {
+    const plus = group.find((id) => ctx.supplyPlusVolts.has(id));
+    if (plus && group.some((id) => ctx.supplyMinus.has(id))) {
+      warnings.push({ type: "short", net: plus, via: "switch" });
+    }
+  }
+  // What the LED rule reads (sim/junction.js): the level each net would have
+  // from the sources that can burn an LED. Without a limiting part that is
+  // the strong level — and without resistors nothing is weakly pulled, so
+  // the resolved level IS the strong one. With one, it is resolved again
+  // from the hard drivers across the hard joins: a CD4000 output, or a
+  // channel, that limits the current is no more a burn than a resistor is.
+  const burning = burn
+    ? new Map(
+        ctx.netIds.map((id) => [
+          id,
+          resolveIn(ctx, burn.drivers, burn.groups, id, noPulls).level,
+        ]),
+      )
+    : (strong ?? next);
+  return { next, warnings, strong: burning };
 }
 
 /** Run the warm-started settle loop for a fixed state + clock phase + images
@@ -387,10 +689,30 @@ function solve(ctx, warmStart, state, clockPhase, images, signalLevels) {
   let prev = levels;
   while (iterations < MAX_ITERATIONS) {
     iterations++;
-    const { next, warnings, strong } = resolveAll(
+    const { drivers, hard } = driversFor(
       ctx,
-      driversFor(ctx, levels, state, clockPhase, images, signalLevels),
+      levels,
+      state,
+      clockPhase,
+      images,
+      signalLevels,
     );
+    const groups = channelGroups(ctx, levels);
+    const burn = (joins) =>
+      ctx.limitsLed ? { drivers: hard, groups: joins ?? null } : null;
+    let { next, warnings, strong } = resolveAll(
+      ctx,
+      drivers,
+      groups?.on,
+      burn(groups?.hardOn),
+    );
+    // A channel that MIGHT be on: resolve with it too, and keep only what
+    // both readings agree on.
+    if (groups?.wide) {
+      const wide = resolveAll(ctx, drivers, groups.wide, burn(groups.hardWide));
+      next = agreeing(next, wide.next);
+      strong = agreeing(strong, wide.strong);
+    }
     lastWarnings = warnings;
     lastStrong = strong;
     if (mapsEqual(next, levels)) {
@@ -411,16 +733,61 @@ function solve(ctx, warmStart, state, clockPhase, images, signalLevels) {
   return { levels, iterations, settled, warnings, strong: lastStrong };
 }
 
+/**
+ * The CMOS inputs a settle left FLOATING (Feature 400): per powered CD4000
+ * chip, the input pins whose net resolved to `Z` — or that reach no net at
+ * all. A floating CMOS input reads unknown, which on its own is quiet (an LED
+ * on an X net is simply dark), so it is reported. Spare gates count: the
+ * datasheets say to tie every unused input.
+ */
+function floatingInputWarnings(ctx, levels) {
+  const warnings = [];
+  for (const c of ctx.chips) {
+    if (c.status !== CHIP_STATUS.OK || !floatsUnknown(c.def)) continue;
+    const pins = c.def.pins
+      .filter((p) => p.role === "input")
+      .filter((p) => {
+        const net = c.pinNet.get(p.n);
+        // A capacitor on the net counts as a connection: a pin wired to one
+        // is wired, whatever DC level it settles at.
+        if (net && ctx.trace.hasCapacitor(net)) return false;
+        return !net || (levels.get(net) ?? Z) === Z;
+      })
+      .map((p) => p.n);
+    if (pins.length) {
+      warnings.push({ type: "floating-input", chip: c.comp.id, pins });
+    }
+  }
+  return warnings;
+}
+
 /** Assemble the public result: net levels, chip status, deduped warnings. */
 function assemble(ctx, solved, extra = {}) {
   const warnings = [...solved.warnings];
   for (const c of ctx.chips) {
+    const volts = ctx.chipStatus.get(c.comp.id)?.volts ?? null;
     if (c.status === CHIP_STATUS.UNDERPOWERED) {
-      warnings.push({ type: "underpowered", chip: c.comp.id });
+      warnings.push({ type: "underpowered", chip: c.comp.id, volts });
     } else if (c.status === CHIP_STATUS.REVERSED) {
       warnings.push({ type: "reversed", chip: c.comp.id });
     } else if (c.status === CHIP_STATUS.DAMAGED) {
-      warnings.push({ type: "damaged", chip: c.comp.id });
+      warnings.push({ type: "damaged", chip: c.comp.id, volts });
+    }
+  }
+  warnings.push(...floatingInputWarnings(ctx, solved.levels));
+  warnings.push(...ctx.boundaryWarnings);
+  // A timed part whose wiring it cannot read says so rather than guess — and
+  // holds its outputs at a defined level meanwhile (each def's own `step`).
+  const timing = new Map();
+  for (const c of ctx.chips) {
+    if (!c.timing) continue;
+    timing.set(c.comp.id, c.timing);
+    if (c.status === CHIP_STATUS.OK && c.timing.problems?.length) {
+      warnings.push({
+        type: "timing",
+        chip: c.comp.id,
+        problems: c.timing.problems,
+      });
     }
   }
   return {
@@ -430,6 +797,7 @@ function assemble(ctx, solved, extra = {}) {
     warnings: dedupe(warnings),
     iterations: solved.iterations,
     settled: solved.settled,
+    timing,
     ...extra,
   };
 }
@@ -519,8 +887,11 @@ function samplePins(c, levels) {
  *   planted flag is holding (run-volatile; SimController owns it).
  * @param {Map<string,Uint8Array|Uint16Array>} [opts.images] - per-memory byte
  *   images (read-only input; writes are REPORTED via `memWrites`, not applied).
+ * @param {number} [opts.now] - simulated seconds since Run, handed to every
+ *   timed part's step (sim/timing.js). Nothing else reads it.
  * @returns {{netLevels, chipStatus, warnings, iterations, settled,
- *   state: Map, pinLevels: Map, memWrites: Array<{compId,addr,value}>}}
+ *   state: Map, pinLevels: Map, memWrites: Array<{compId,addr,value}>,
+ *   timing: Map, wakeAt: number|null}}
  */
 export function tick({
   document: doc,
@@ -531,6 +902,7 @@ export function tick({
   clockPhase = new Map(),
   signalLevels = new Map(),
   images = new Map(),
+  now = 0,
 }) {
   const ctx = buildContext(doc, netlist);
 
@@ -573,7 +945,10 @@ export function tick({
       const current = curState.get(c.comp.id) ?? initialState(c.def);
       const next =
         c.status === CHIP_STATUS.OK
-          ? stepChip(c.def, current, ins, prevIns.get(c.comp.id) ?? null)
+          ? stepChip(c.def, current, ins, prevIns.get(c.comp.id) ?? null, {
+              now,
+              timing: c.timing,
+            })
           : current; // inert chip holds; drives nothing
       if (!sameState(next, current)) changed.add(c.comp.id);
       nextState.set(c.comp.id, next);
@@ -636,10 +1011,22 @@ export function tick({
     if (nets.size) extraWarnings.push({ type: "oscillation", nets: [...nets] });
   }
 
+  // When the controller must tick again for a timed part to move on its own:
+  // the earliest pending change across every powered one (null: none).
+  let wakeAt = null;
+  for (const c of ctx.chips) {
+    if (!c.timing || c.status !== CHIP_STATUS.OK) continue;
+    const at = wakeAtOf(c.def, curState.get(c.comp.id));
+    if (at != null && Number.isFinite(at)) {
+      wakeAt = wakeAt == null ? at : Math.min(wakeAt, at);
+    }
+  }
+
   const result = assemble(ctx, solved, {
     state: curState,
     pinLevels: finalIns,
     memWrites,
+    wakeAt,
   });
   if (extraWarnings.length) {
     result.warnings = dedupe([...result.warnings, ...extraWarnings]);

@@ -139,6 +139,11 @@ const DEFAULTS = Object.freeze({
   // generated circuit is always direct.
   defaultWireLayout: "direct",
 
+  // Whether the note a capacitor shows as it lands on the board (what a
+  // capacitor does and does not do in a logic sim) has been dismissed for
+  // good with its "Don't show again". Written only by that button.
+  capacitorNoteDismissed: false,
+
   // ── Panels (Build guide / Logic analyzer) ──────────────────────────────────
   // Whether the right-docked build guide is shown.
   guideOpen: false,
@@ -165,6 +170,14 @@ const DEFAULTS = Object.freeze({
   // `<dir>/<partId>.pdf` exists, the pin-assignments window shows a button that
   // opens that PDF natively. null → no directory (the default).
   datasheetDir: null,
+
+  // Which logic family the parts tray shows (Feature 400; Settings ▸ Data
+  // Sheets ▸ Chip family): "74LS" (the default, so the tray is what it always
+  // was), "CD4000", or "combined" — both, each in a folder of its own. App-wide
+  // and not per project, deliberately: it is a view filter, and a project flag
+  // is an unsaved change. The renderer coerces anything else to the default
+  // (catalog/families.js `normalizeFamilyMode`).
+  logicFamily: "74LS",
 
   // ── AI circuit builder (Feature 260) ───────────────────────────────────────
   // The NON-SECRET half of the user's own AI connection: which provider, where

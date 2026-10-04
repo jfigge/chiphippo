@@ -53,20 +53,17 @@ const REF_RE = /^[a-z0-9][a-z0-9-]{1,11}$/i;
 const PDF_MAGIC = "%PDF";
 
 /**
- * Fetch one entry into `<dir>/<ref>.pdf`, overwriting whatever was there.
+ * Fetch one source's PDF into memory. Resolves `{ ok: true, bytes }` or
+ * `{ ok: false, error }` — one URL failing is a line in the summary, never the
+ * end of the run. Only an ABORT propagates, because that is the user saying
+ * stop rather than one file going wrong.
  *
- * Resolves `{ ok: true }` or `{ ok: false, error }` — a single part failing is
- * a line in the summary, never the end of the run. Only an ABORT propagates,
- * because that is the user saying stop rather than one file going wrong.
- *
- * @param {string} ref catalog part id (also the output file name)
  * @param {{url: string, base: string}} source the DATASHEET_SOURCES entry —
  *   the resolved URL, and the library base it must still be inside
- * @param {string} dir the destination folder
  * @param {AbortSignal} signal the run's cancel signal
+ * @param {typeof fetch} fetchImpl the fetch to use (the global one, bar tests)
  */
-async function fetchOne(ref, source, dir, signal) {
-  if (!REF_RE.test(ref)) return { ok: false, error: "invalid part id" };
+async function fetchPdf(source, signal, fetchImpl) {
   // Defence in depth: the table is hard-coded, but a path that walked out of
   // the library it was declared in — or an absolute URL pasted into a `parts`
   // block — must not be fetched even so. Checked per ENTRY, against its own
@@ -74,10 +71,9 @@ async function fetchOne(ref, source, dir, signal) {
   if (!source?.url || !source?.base || !source.url.startsWith(source.base)) {
     return { ok: false, error: "source outside its datasheet library" };
   }
-
   let res;
   try {
-    res = await fetch(source.url, {
+    res = await fetchImpl(source.url, {
       signal: AbortSignal.any([
         signal,
         AbortSignal.timeout(REQUEST_TIMEOUT_MS),
@@ -93,7 +89,6 @@ async function fetchOne(ref, source, dir, signal) {
     };
   }
   if (!res.ok) return { ok: false, error: `HTTP ${res.status}` };
-
   let bytes;
   try {
     bytes = Buffer.from(await res.arrayBuffer());
@@ -107,7 +102,15 @@ async function fetchOne(ref, source, dir, signal) {
   ) {
     return { ok: false, error: "the reply was not a PDF" };
   }
+  return { ok: true, bytes };
+}
 
+/**
+ * Write one part's copy as `<dir>/<ref>.pdf`, overwriting whatever was there.
+ * Resolves `{ ok: true, bytes: <length> }` or `{ ok: false, error }`.
+ */
+function savePdf(ref, bytes, dir) {
+  if (!REF_RE.test(ref)) return { ok: false, error: "invalid part id" };
   try {
     io.atomicWrite(path.join(dir, `${ref}.pdf`), bytes);
   } catch (err) {
@@ -123,6 +126,14 @@ async function fetchOne(ref, source, dir, signal) {
  * get a fresh set) — atomically, so a failed write can never leave a truncated
  * PDF behind the old good one.
  *
+ * A SHARED SHEET IS FETCHED ONCE. A vendor routinely documents a family of
+ * parts in one PDF (TI's CD4001B sheet is the 4002B's and the 4025B's too), so
+ * each URL is fetched the first time a part names it and its bytes are saved
+ * under every part that does — each part still gets its own `<ref>.pdf`,
+ * because that is what the pinout window asks the folder for. Progress counts
+ * PARTS, and a URL that fails fails every part sharing it, each reported by
+ * name.
+ *
  * @param {object} opts
  * @param {string} opts.dir destination folder (created if absent)
  * @param {AbortSignal} opts.signal cancels the run between/inside requests
@@ -130,31 +141,47 @@ async function fetchOne(ref, source, dir, signal) {
  *   fires once with `{done: 0, ref: null}` before the first request, then once
  *   per part as it lands — so the dialog can show its total immediately rather
  *   than after the first (possibly slow) fetch.
+ * @param {object} [opts.sources] the table to walk (DATASHEET_SOURCES; tests
+ *   hand in their own).
+ * @param {typeof fetch} [opts.fetch] the fetch to use (the global one; tests
+ *   hand in a stub, so no test reaches the network).
  * @returns {Promise<{ok: boolean, dir: string, total: number, saved: number,
  *   cancelled: boolean, failures: Array<{ref: string, error: string}>}>}
  */
-async function downloadAll({ dir, signal, onProgress } = {}) {
-  const entries = Object.entries(DATASHEET_SOURCES);
+async function downloadAll({
+  dir,
+  signal,
+  onProgress,
+  sources = DATASHEET_SOURCES,
+  fetch: fetchImpl = globalThis.fetch,
+} = {}) {
+  const entries = Object.entries(sources);
   const total = entries.length;
   const failures = [];
+  const fetched = new Map(); // url → the one fetchPdf result every part shares
   let saved = 0;
   let cancelled = false;
+  const runSignal = signal ?? new AbortController().signal;
 
   io.ensureDir(dir);
   onProgress?.({ done: 0, total, ref: null });
 
   for (const [ref, source] of entries) {
-    if (signal?.aborted) {
+    if (runSignal.aborted) {
       cancelled = true;
       break;
     }
-    let result;
-    try {
-      result = await fetchOne(ref, source, dir, signal);
-    } catch {
-      cancelled = true; // only an abort reaches here
-      break;
+    let got = fetched.get(source?.url);
+    if (!got) {
+      try {
+        got = await fetchPdf(source, runSignal, fetchImpl);
+      } catch {
+        cancelled = true; // only an abort reaches here
+        break;
+      }
+      if (source?.url) fetched.set(source.url, got);
     }
+    const result = got.ok ? savePdf(ref, got.bytes, dir) : got;
     if (result.ok) saved += 1;
     else failures.push({ ref, error: result.error });
     onProgress?.({ done: saved + failures.length, total, ref, ok: result.ok });

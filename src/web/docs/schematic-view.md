@@ -38,7 +38,9 @@ Every chip is drawn as a labelled box (or, for a plain gate chip, a small
 distinctive shape — AND/OR/NAND/NOR/XOR/NOT/BUFFER — badged at the top of
 the box) with named pin stubs instead of physical DIP pins. Discretes get
 their own recognizable symbols too: an LED's diode triangle, a resistor
-body, a switch, a push button, a PSU or clock source block. VCC and GND
+body, a capacitor's two plates (one curved, with a `+`, for an electrolytic),
+a switch, a push button, a PSU or clock source block. A resistor and a
+capacitor carry their value beside the symbol. VCC and GND
 pins don't route across the page like a signal would — each one drops a
 small power-rail symbol right at the pin, the way a real schematic keeps
 power off the signal routing.

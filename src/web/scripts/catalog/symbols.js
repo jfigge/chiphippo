@@ -32,7 +32,7 @@
 //   • NC pins are omitted — a schematic shows only what carries signal.
 //
 // A chip whose `logic.units` are all one gate primitive also carries a
-// distinctive-shape `glyph` (AND/OR/NAND/NOR/XOR/NOT/BUFFER) the view draws as
+// distinctive-shape `glyph` (AND/OR/NAND/NOR/XOR/XNOR/NOT/BUFFER) the view draws as
 // a small type badge; multi-function parts (decoders, counters, sequential)
 // are a plain labelled box. The glyph is keyed off the SAME `logic.units` the
 // evaluator walks, so it can never disagree with the simulated behavior.
@@ -58,7 +58,9 @@ const GLYPH_OF_FN = Object.freeze({
   NAND: "NAND",
   NOR: "NOR",
   XOR: "XOR",
+  XNOR: "XNOR",
   INV: "NOT",
+  BUF: "BUFFER",
   BUF3: "BUFFER",
 });
 
@@ -162,6 +164,30 @@ const SHAPE_DEFS = Object.freeze({
     terminals: [
       { name: "1", side: "left", pin: 1 },
       { name: "2", side: "right", pin: 2 },
+    ],
+  },
+  // The track left to right like a resistor's body, the wiper's arrow coming
+  // down onto it from above.
+  pot: {
+    shape: "potentiometer",
+    terminals: [
+      { name: "1", side: "left", pin: 1 },
+      { name: "3", side: "right", pin: 3 },
+      { name: "W", side: "top", pin: 2 },
+    ],
+  },
+  "cap-ceramic": {
+    shape: "capacitor",
+    terminals: [
+      { name: "1", side: "left", pin: 1 },
+      { name: "2", side: "right", pin: 2 },
+    ],
+  },
+  "cap-electrolytic": {
+    shape: "capacitor-polarized",
+    terminals: [
+      { name: "+", side: "left", pin: 1 },
+      { name: "-", side: "right", pin: 2 },
     ],
   },
   "sw-slide": {

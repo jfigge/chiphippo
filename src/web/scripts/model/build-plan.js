@@ -49,6 +49,8 @@ import { nodeOf, parseAddress, parseHole } from "./breadboard.js";
 import { BOARD_TYPES } from "./board-types.js";
 import { WIRE_COLORS, parseBusName } from "./desk-doc.js";
 import { wireCutMm, wireLengthLabel } from "./wire-length.js";
+import { formatOhms } from "./ohm-format.js";
+import { formatFarads } from "./farad-format.js";
 
 /**
  * @typedef {object} BuildPlan
@@ -300,6 +302,22 @@ function bomVariant(def, comp) {
     return {
       key: `${comp.ref}:${p.color}`,
       title: `${partTitle(def)} (${wireColorName(p.color)})`,
+    };
+  }
+  // A typed value is what you take out of the drawer: two 10k resistors are
+  // one line, a 10k and a 4.7k are two. Keyed by the stored number, and set
+  // off with a dash rather than brackets, since several of these titles end in
+  // a bracket of their own ("Capacitor (ceramic)").
+  if (def.capacitor && Number.isFinite(p.farads)) {
+    return {
+      key: `${comp.ref}:${p.farads}`,
+      title: `${partTitle(def)} — ${formatFarads(p.farads)}F`,
+    };
+  }
+  if (typeof def.weakBridges === "function" && Number.isFinite(p.ohms)) {
+    return {
+      key: `${comp.ref}:${p.ohms}`,
+      title: `${partTitle(def)} — ${formatOhms(p.ohms)}Ω`,
     };
   }
   return { key: comp.ref, title: partTitle(def) };

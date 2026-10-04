@@ -35,7 +35,10 @@
 // free to power a flip-flop up in different states.
 //
 // It needs Java and Digital.jar, so it SKIPS unless DIGITAL_JAR points at one
-// (https://github.com/hneemann/Digital/releases — the jar is in the zip).
+// (https://github.com/hneemann/Digital/releases). Unpack the WHOLE zip: the
+// jar reads its chip models from the `lib/` folder beside it, and a jar on its
+// own loads every export with each chip drawn as "7400.dig is missing" — which
+// the load check below now fails on, rather than passing over.
 
 import test from "node:test";
 import assert from "node:assert/strict";
@@ -163,6 +166,16 @@ test(
         fs.writeFileSync(file, res.files[0].text);
         const r = digital("svg", "-dig", file, "-svg", `${file}.svg`);
         assert.ok(fs.existsSync(`${file}.svg`), `${ref} loads: ${r.out}`);
+        // Digital still draws a circuit whose library chip it cannot find,
+        // with the hole labelled — so a drawing is not proof it loaded.
+        const missing = /\S+\.dig (?:is missing|not found)/.exec(
+          fs.readFileSync(`${file}.svg`, "utf8"),
+        );
+        assert.equal(
+          missing,
+          null,
+          `${ref}: ${missing?.[0]} — is Digital's lib/ folder beside the jar?`,
+        );
       }
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
@@ -181,6 +194,7 @@ test(
       return seed / 0x7fffffff < 0.5 ? 1 : 0;
     };
     let checked = 0;
+    const compared = new Set();
     try {
       for (const { ref, doc: base } of demoDocs()) {
         if (!combinational(base)) continue;
@@ -200,9 +214,15 @@ test(
           const r = digital("test", "-circ", file, "-verbose");
           assert.match(r.out, /passed/, `${ref} setting ${k}:\n${r.out}`);
           checked += 1;
+          compared.add(ref);
         }
       }
       assert.ok(checked > 20, `compared ${checked} settings`);
+      // The CD4000 parts with a Digital twin are compared too, not just placed.
+      assert.ok(
+        [...compared].some((ref) => ref.startsWith("CD4")),
+        "at least one CD4000 bench was compared",
+      );
     } finally {
       fs.rmSync(dir, { recursive: true, force: true });
     }

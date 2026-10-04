@@ -1519,3 +1519,53 @@ test("a signal joins no multi set, so the additive chord leaves it alone", () =>
   );
   assert.equal(controller.selectedId, part.id, "the selection is untouched");
 });
+
+// ── A wire over a switch (running) ─────────────────────────────────────────
+
+/** A slide switch with a wire laid straight across its knob. */
+function coveredSwitchDesk() {
+  resetDom();
+  const doc = new DeskDoc(null);
+  const { viewport, surface, controller } = makeDesk(doc);
+  controller.addBoardAt("pins-full", 0, 0);
+  controller.addComponentAt("sw-slide", "bb1", "a5");
+  const sw = doc.components.at(-1);
+  const wire = seedWire(doc, "bb1.b5", "bb1.b20");
+  const press = () => {
+    // Re-read every time: a flip is a doc change, which redraws the wires.
+    const hit = surface.querySelector(
+      `.wire[data-wire-id="${wire.id}"] .wire-hit`,
+    );
+    const part = partEl(surface, sw.id);
+    // jsdom lays nothing out: say what the browser would find under the
+    // press — the wire's stroke on top, the switch's knob beneath it.
+    document.elementsFromPoint = () => [
+      hit,
+      part.querySelector(".part-slide-knob"),
+      part,
+    ];
+    fire(hit, "pointerdown", { id: 4, client: [10, 10] });
+    fire(hit, "pointerup", { id: 4, client: [10, 10] });
+    hit.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
+  };
+  return { doc, controller, sw, wire, press, viewport };
+}
+
+test("running: a press on a wire flips the switch underneath, and selects nothing", () => {
+  const { doc, controller, sw, wire, press } = coveredSwitchDesk();
+  controller.setEditingLocked(true);
+  const before = doc.getComponent(sw.id).params.pos;
+  press();
+  assert.notEqual(doc.getComponent(sw.id).params.pos, before, "flipped");
+  assert.notEqual(controller.selectedId, wire.id, "the wire is not selected");
+  press();
+  assert.equal(doc.getComponent(sw.id).params.pos, before, "flipped back");
+});
+
+test("editing: a press on that wire is the wire's — the switch stays put", () => {
+  const { doc, controller, sw, wire, press } = coveredSwitchDesk();
+  const before = doc.getComponent(sw.id).params.pos;
+  press();
+  assert.equal(doc.getComponent(sw.id).params.pos, before);
+  assert.equal(controller.selectedId, wire.id);
+});

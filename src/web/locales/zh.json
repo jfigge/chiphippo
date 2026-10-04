@@ -234,6 +234,9 @@
       "trayAutoCloseHint": "开启后，在元件库中展开一个文件夹时会折叠其他所有文件夹，只保留正在使用的文件夹及其所在的上级文件夹。点击收起的元件库侧栏中的图标时也是如此。"
     },
     "datasheets": {
+      "family": "芯片系列",
+      "familyBoth": "两者",
+      "familyHint": "元件托盘显示哪个逻辑系列：74LS TTL 芯片、CD4000 CMOS 芯片，或两者都显示——各自放在单独的文件夹里。它只筛选托盘：无论这里怎么选，项目里的芯片都会照常加载和运行；打开的项目所用的系列也总会显示，方便你继续添加它桌面上已有的元件。",
       "folder": "数据手册文件夹",
       "noFolder": "未选择文件夹",
       "clearTitle": "清除数据手册文件夹",
@@ -291,6 +294,10 @@
     "filter": "筛选元件",
     "filterPlaceholder": "筛选元件…",
     "noMatches": "没有匹配的元件。",
+    "hiddenFamilyOne": "{part} 属于 {family} 系列。请在 设置 ▸ 数据手册 中显示 {family} 芯片。",
+    "hiddenFamilyMany": {
+      "other": "有 {count} 个 {family} 元件匹配。请在 设置 ▸ 数据手册 中显示 {family} 芯片。"
+    },
     "hide": "隐藏元件库",
     "hideTitle": "隐藏元件库（{mod}+P）",
     "show": "显示元件库",
@@ -352,7 +359,9 @@
       "shiftregister": "移位寄存器",
       "signals": "信号",
       "switches": "开关",
-      "xor": "XOR"
+      "xor": "XOR",
+      "capacitors": "电容",
+      "timer": "定时器"
     },
     "integration": {
       "output": "输出",
@@ -603,6 +612,9 @@
     "rnet9": {
       "title": "排阻（共端，9 脚）"
     },
+    "pot": {
+      "title": "电位器"
+    },
     "psu": {
       "title": "电源"
     },
@@ -620,6 +632,144 @@
     },
     "lcd20x4": {
       "title": "字符 LCD 20×4（HD44780）"
+    },
+    "CD4001B": {
+      "title": "四路二输入 NOR"
+    },
+    "CD4002B": {
+      "title": "双路四输入 NOR"
+    },
+    "CD4025B": {
+      "title": "三路三输入 NOR"
+    },
+    "CD4078B": {
+      "title": "八输入 NOR/OR 门"
+    },
+    "CD4011B": {
+      "title": "四路二输入 NAND"
+    },
+    "CD4012B": {
+      "title": "双路四输入 NAND"
+    },
+    "CD4023B": {
+      "title": "三路三输入 NAND"
+    },
+    "CD4068B": {
+      "title": "八输入 NAND/AND 门"
+    },
+    "CD4093B": {
+      "title": "四路二输入施密特触发 NAND"
+    },
+    "CD4081B": {
+      "title": "四路二输入 AND"
+    },
+    "CD4082B": {
+      "title": "双路四输入 AND"
+    },
+    "CD4073B": {
+      "title": "三路三输入 AND"
+    },
+    "CD4071B": {
+      "title": "四路二输入 OR"
+    },
+    "CD4072B": {
+      "title": "双路四输入 OR"
+    },
+    "CD4075B": {
+      "title": "三路三输入 OR"
+    },
+    "CD4030B": {
+      "title": "四路异或门"
+    },
+    "CD4070B": {
+      "title": "四路异或门"
+    },
+    "CD4077B": {
+      "title": "四路异或非门"
+    },
+    "CD4069UB": {
+      "title": "六路反相器"
+    },
+    "CD40106B": {
+      "title": "六路施密特触发反相器"
+    },
+    "CD4049UB": {
+      "title": "六路反相缓冲器/电平转换器"
+    },
+    "CD4050B": {
+      "title": "六路同相缓冲器/电平转换器"
+    },
+    "CD4013B": {
+      "title": "双 D 触发器，带置位和复位"
+    },
+    "CD4017B": {
+      "title": "十进制计数器，10 路译码输出"
+    },
+    "CD4040B": {
+      "title": "12 级二进制行波计数器"
+    },
+    "CD4027B": {
+      "title": "双 JK 触发器，带置位和复位"
+    },
+    "CD4022B": {
+      "title": "八进制计数器，8 路译码输出"
+    },
+    "CD4020B": {
+      "title": "14 级二进制行波计数器"
+    },
+    "CD4024B": {
+      "title": "7 级二进制行波计数器"
+    },
+    "CD4029B": {
+      "title": "可预置可逆计数器，二进制或十进制"
+    },
+    "CD4510B": {
+      "title": "可预置 BCD 可逆计数器"
+    },
+    "CD4516B": {
+      "title": "可预置二进制可逆计数器"
+    },
+    "CD4094B": {
+      "title": "8 级移位存储寄存器，三态输出"
+    },
+    "CD4028B": {
+      "title": "BCD 转十进制译码器"
+    },
+    "CD4511B": {
+      "title": "BCD 转七段锁存／译码器／驱动器"
+    },
+    "CD4066B": {
+      "title": "四路双向模拟开关"
+    },
+    "CD4051B": {
+      "title": "8 通道模拟多路复用器／解复用器"
+    },
+    "CD4052B": {
+      "title": "双 4 通道模拟多路复用器／解复用器"
+    },
+    "CD4053B": {
+      "title": "三 2 通道模拟多路复用器／解复用器"
+    },
+    "NE555": {
+      "title": "555 定时器"
+    },
+    "CD4047B": {
+      "title": "单稳态/无稳态多谐振荡器"
+    },
+    "CD4060B": {
+      "title": "带振荡器的 14 级二进制行波计数器"
+    },
+    "CD4098B": {
+      "title": "双单稳态多谐振荡器"
+    },
+    "CD4538B": {
+      "title": "双精密单稳态多谐振荡器"
+    },
+    "cap-ceramic": {
+      "title": "电容（陶瓷）"
+    },
+    "cap-electrolytic": {
+      "title": "电容（电解）"
     }
   },
   "colors": {
@@ -711,7 +861,14 @@
     "outputsDisabledHigh": {
       "other": "{chip} 目前处于关闭状态：其低电平有效的输出使能 {pin} 为 HIGH，因此输出处于高阻态。将其拉低即可使能。"
     },
+    "outputsDisabledUnwiredActiveHigh": {
+      "other": "{chip} 的输出未被使能：其高电平有效的输出使能 {pin} 完全没有接线。请将其接为 HIGH。"
+    },
+    "outputsDisabledLow": {
+      "other": "{chip} 目前处于关闭状态：其高电平有效的输出使能 {pin} 为 LOW，因此输出处于高阻态。将其拉高即可使能。"
+    },
     "inputFloating": "{ref}（{id}）有无人驱动的输入：{pins}。悬空的 TTL 输入会被读作 HIGH，所以芯片能工作——只是与设计不符。请把每一个接到 VCC 或 GND，或接到应当驱动它的信号。",
+    "inputFloatingCmos": "{ref}（{id}）有无人驱动的输入：{pins}。悬空的 CMOS 输入既不读作 HIGH 也不读作 LOW，所以芯片的行为无法预料。请把每一个输入接到 VCC 或 GND——包括未使用的门——或接到应当驱动它的信号。",
     "busFight": "{drivers} 接在同一个网络（{net}）上。两个输出绝不能共用一个网络——一个驱动 HIGH，另一个驱动 LOW，二者会互相冲突。",
     "ledUnlimited": "{ref}（{id}）在没有任何限流的情况下导通——在真实面包板上它会烧毁而不是发光。请给它串联一个电阻。"
   },
@@ -928,6 +1085,11 @@
       "signalsDropped": {
         "other": "已略过 {count} 个信号 — 此桌面的信号数量已达上限。"
       }
+    },
+    "capacitorNote": {
+      "title": "Chip Hippo 中的电容",
+      "message": "在这里，电容只携带一个数值：它不滤波、不平滑、不储存电荷，也不连接任何东西。定时芯片（555、CD4047B、CD4060B、CD4098B、CD4538B）会从接线中读取它的值，导出到 KiCad 时也会带上该值。",
+      "dismiss": "不再显示"
     }
   },
   "workspace": {
@@ -999,12 +1161,14 @@
       "momentary": "变为拨动开关：Digital 没有瞬时触点",
       "unpowered": "在 Digital 中会被供电，因为它无法仿真未供电的芯片",
       "openCollector": "每个输出加一个上拉电阻，因为在 Digital 中它们和真实元件一样会悬空",
+      "cmosFloating": "在没有任何驱动的输入上加一个上拉电阻：Chip Hippo 将该 CMOS 输入读作未知，Digital 中则读作 HIGH",
       "signals": {
         "other": "{count} 个外部信号：工作台激励，而非元件"
       },
       "integrations": {
         "other": "{count} 个 Arduino 输出/输入：与开发板的连接，而非元件"
-      }
+      },
+      "capacitor": "被省略：逻辑仿真器中没有电容"
     }
   },
   "sim": {
@@ -1014,6 +1178,7 @@
     "memLostMessage": "{chip} 曾被编程，但它的数据文件已丢失 — 现在里面是随机噪声。请重新载入映像。",
     "short": "短路",
     "shortMessage": "两个相反的电源汇到了同一个网络上（{net}）。",
+    "shortThroughSwitchMessage": "两个相反的电源通过模拟开关汇到了一起（{net}）。",
     "conflict": "驱动冲突",
     "conflictMessage": "两个输出在同一个网络上互相争抢（{net}）。",
     "oscillation": "振荡",
@@ -1021,11 +1186,25 @@
       "other": "电路无法稳定（{count} 个网络不稳定）。"
     },
     "underpowered": "供电不足",
-    "underpoweredMessage": "{chip} 只有 3 V — 处于不工作状态。",
+    "underpoweredMessage": "{chip} 只有 {volts} V，低于它所需的 {rating} — 处于不工作状态。",
     "reversed": "电源接反",
     "reversedMessage": "{chip} 的 VCC 与 GND 接反了。",
     "damaged": "冒烟了！",
-    "damagedMessage": "{chip} 被 12 V 损坏了。请删除它并放一片新的以继续。"
+    "damagedMessage": "{chip} 被 {volts} V 损坏了 — 它的额定电压是 {rating}。停止仿真即可恢复。",
+    "floatingInput": "CMOS 输入悬空",
+    "floatingInputMessage": {
+      "other": "{chip} 的引脚 {pins} 没有任何驱动。悬空的 CMOS 输入既不读作 HIGH 也不读作 LOW — 请固定每一个输入，包括未使用的门。"
+    },
+    "marginalHigh": "逻辑电平处于临界",
+    "marginalHighMessage": "{net} 上有一个 74LS 输出在驱动 CD4000 输入。它的 HIGH（约 3.4 V）低于 5 V 下 CMOS 输入所需的 3.5 V — 请加一个接到 VCC 的上拉电阻。",
+    "lsFanout": "TTL 负载过多",
+    "lsFanoutMessage": {
+      "other": "{chip} 在 {net} 上驱动 {loads} 个 74LS 输入，但最多只能把 {count} 个拉到 LOW。请用 CD4049UB 或 CD4050B 做缓冲。"
+    },
+    "mixedSupply": "供电电压混用",
+    "mixedSupplyMessage": "{net} 连接了以 {volts} 供电的芯片。跨越不同电源的信号需要电平转换器。",
+    "timing": "无法识别定时接法",
+    "timingMessage": "{chip}：{problems}。"
   },
   "about": {
     "subtitle": "TTL 面包板设计与仿真工具",
@@ -1149,7 +1328,11 @@
       "connection": "连接",
       "triggerEdge": "触发",
       "triggerInit": "触发初始值",
-      "fields": "引脚"
+      "fields": "引脚",
+      "ohms": "阻值",
+      "farads": "容值",
+      "position": "位置",
+      "timing": "定时"
     },
     "option": {
       "manual": "手动",
@@ -1166,10 +1349,15 @@
     "warnings": "警告",
     "warning": {
       "unpowered": "未供电 — VCC 与 GND 上没有电压，因此该元件不进行任何运算。",
-      "underpowered": "供电不足 — VCC 只有 3 V，因此该元件处于不工作状态。",
+      "underpowered": "供电不足 — VCC 只有 {volts} V，低于该元件所需的 {rating}，因此处于不工作状态。",
       "reversed": "电源接反 — VCC 与 GND 接反了。",
-      "damaged": "已损坏 — 12 V 让它冒了烟。停止仿真即可恢复。",
-      "unprogrammed": "未编程 — 尚未载入映像，因此该芯片读出的是随机噪声。"
+      "damaged": "已损坏 — {volts} V 超过了该元件的额定 {rating}，让它冒了烟。停止仿真即可恢复。",
+      "unprogrammed": "未编程 — 尚未载入映像，因此该芯片读出的是随机噪声。",
+      "timing": "无法识别定时接法 — {problems}。在按数据手册接线之前，其输出保持静止状态。"
+    },
+    "invalid": {
+      "ohms": "不是有效的阻值 — 请输入如 470、4.7k、4k7 或 2M2（0.1 Ω 至 1 GΩ）。",
+      "farads": "不是有效的容值 — 请带上单位，如 100p、10n、4.7µ、4u7 或 1m（1 pF 至 1 F）。"
     }
   },
   "memory": {
@@ -1523,6 +1711,26 @@
         "ignore-hello": "不应答下一次运行，使其以“无应答”停止",
         "wrong-signature": "以另一个设计的程序身份应答下一次运行，使其拒绝启动"
       }
+    }
+  },
+  "timing": {
+    "astable": "无稳态 — {frequency}，占空比 {duty}%",
+    "monostable": "单稳态 — 脉宽 {width}",
+    "bistable": "双稳态 — TRIG 为 LOW 时输出置为 HIGH，RESET 为 LOW 时清零",
+    "multivibrator": "无稳态：Q 为 {frequency}；单稳态：脉宽 {width}",
+    "oscillator": "RC 振荡器 — {frequency}",
+    "external": "对 φI 上的外部时钟计数",
+    "unused": "未使用",
+    "capped": "超出工作台可显示的速度：按 {cap} 绘制。",
+    "stretched": "短于工作台可显示的长度：按 {shown} 绘制。",
+    "notRecognised": "无法识别接线：{problems}。",
+    "section": "第 {section} 部分：{text}",
+    "problem": {
+      "noCapacitor": "{from} 到 {to} 之间没有定时电容",
+      "noResistor": "{from} 到 {to} 之间没有定时电阻",
+      "notConnected": "{pin} 未连接",
+      "ne555Unrecognised": "TRIG (2)、THRES (6) 与 DISCH (7) 的接法既不是无稳态（TRIG 与 THRES 相连，DISCH 位于 RA 与 RB 之间），也不是单稳态（THRES 与 DISCH 相连，TRIG 由外部驱动），也不是双稳态（THRES 接 GND，TRIG 由外部驱动）",
+      "cd4060Incomplete": "RC 振荡需要 φO (9) 引出的 Cx、φ̄O (10) 引出的 Rx 和 φI (11) 引出的 Rs，三者交汇于同一节点"
     }
   }
 }

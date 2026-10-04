@@ -86,6 +86,33 @@
   --color-part-accent: #c8ccd2; /* knobs / caps highlight */
   --color-part-cap: #b25252; /* push-button cap */
   --color-part-resistor: #c9a26a; /* resistor body (beige) */
+  /* A resistor's colour code (IEC 60062) — one per band colour in
+     model/resistor-bands.js, tuned to read against the beige body. */
+  --color-band-black: #1e1e20;
+  --color-band-brown: #7a4a22;
+  --color-band-red: #c8332d;
+  --color-band-orange: #e07a1f;
+  --color-band-yellow: #e8cf2a;
+  --color-band-green: #2f9a45;
+  --color-band-blue: #2f5fc8;
+  --color-band-violet: #8a3fc0;
+  --color-band-grey: #8c8f94;
+  --color-band-white: #f2f2f0;
+  --color-band-gold: #a8820f; /* darker than the true hue: the body is beige */
+  --color-band-silver: #bfc3c8;
+  /* Capacitors: a ceramic disc's glaze, and an electrolytic's sleeve with
+     the paler stripe printed down its negative side. */
+  --color-part-ceramic: #d9892b;
+  --color-part-ceramic-text: #3a2408;
+  --color-part-cap-can: #2a4a8c;
+  --color-part-cap-stripe: #b8c4dc;
+  --color-part-cap-text: #e9eef8;
+  /* A trimmer potentiometer: the blue moulded body a Bourns 3296 has, its
+     white printing, and the brass adjusting screw with its slot. */
+  --color-part-trimpot: #2f62b5;
+  --color-part-trimpot-text: #eef2fa;
+  --color-part-screw: #c9a347;
+  --color-part-screw-slot: #4a3a12;
   /* Magic smoke from a burnt-out part. Sooty, but it has to read against BOTH
      the dark and light desk (parts are theme-invariant), so it can't go much
      darker than this without vanishing on #1c1c1c. */

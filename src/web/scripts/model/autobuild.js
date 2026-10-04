@@ -39,6 +39,8 @@
 //     logic, so the netlist should not have to mention it: whenever a lamp
 //     leg — a display's common leg, an isolated segment, a bare LED's anode
 //     or cathode — heads straight for a rail, a series resistor is interposed.
+//     A bare LED's is its own and is PLUGGED IN, as on a bench: one lead in
+//     the lamp's column, the other in the rail, and no wire to either.
 //   * SWITCHES NEED A PULL. A switch is a contact, not a source: open, it
 //     joins nothing, so an input fed from one FLOATS half the time. Same
 //     class of fact as the LED's resistor, and handled the same way.
@@ -62,10 +64,10 @@ import { createAllocator } from "./column-allocator.js";
 import { DOC_VERSION } from "./desk-doc.js";
 import { captureDesign } from "./design-clip.js";
 import { DIP_PACKAGES } from "./footprints.js";
-import { partPinHoles } from "./occupancy.js";
+import { partPinAddresses, partPinHoles } from "./occupancy.js";
 import { RAIL_TOKENS, parseMember, resolvePin } from "./pin-resolve.js";
-import { netDrivers, pinLabel } from "./spec-lint.js";
-import { boxOf, crossingCount } from "./wire-crossing.js";
+import { netDrivers, pinLabel, spareCmosInputs } from "./spec-lint.js";
+import { boxOf, drawnCrossings } from "./wire-crossing.js";
 
 const GAP = 1; // blank columns between parts, so nothing reads as one block
 
@@ -81,7 +83,7 @@ const RAIL_INDEX_RE = /[+-](\d+)$/;
  * `shortlist` hands `bestPair` every free hole on both strips unpruned — and
  * the two strips are the same type at the same x, so hole `+k` sits EXACTLY
  * above hole `+k`. Every vertical pair therefore scores an identical
- * `distance`, the only thing that separates them is `crossingCount`, and
+ * `distance`, the only thing that separates them is `drawnCrossings`, and
  * `bestPair` breaks a tie strictly — first enumerated wins. `freeRailHoles`
  * walks `k = 1…` upward, so the enumeration order WAS the decision, and it put
  * the supply down column 1: the far end from the PSU, and exactly where the
@@ -309,11 +311,16 @@ function resolveSpec(spec) {
       if (r.kind === "pin") {
         const role = part.def.pins?.find((q) => q.n === r.pin)?.role;
         if (role === "vcc" || role === "gnd") {
+          const pinName = part.def.pins.find((q) => q.n === r.pin)?.name;
           errors.push(
             err(
               "POWER_PIN_LISTED",
-              `"${m}" is ${part.ref}'s ${role.toUpperCase()} pin. The compiler ` +
-                `wires power itself — drop it from net "${name}".`,
+              `"${m}" is ${part.ref}'s ${role.toUpperCase()} pin` +
+                (pinName && pinName !== role.toUpperCase()
+                  ? ` (${pinName})`
+                  : "") +
+                `. The compiler wires power itself — drop it from net ` +
+                `"${name}".`,
               { path: mPath },
             ),
           );
@@ -371,7 +378,7 @@ function resolveSpec(spec) {
           `Net "${name}" ties ${drivers.length} outputs together ` +
             `(${drivers.map(pinLabel).join(", ")}). Outputs may share a net ` +
             `only when every one of them can be switched off — a tri-state ` +
-            `output behind a "!" enable — and ` +
+            `output behind a "!" or "^" enable — and ` +
             `${hard.map(pinLabel).join(", ")} cannot.`,
           { path },
         ),
@@ -729,6 +736,128 @@ function companionSeat(part, links, { alloc, host, hostId, type, params }) {
 }
 
 /**
+ * How far either side of the straight-down hole a plugged-in resistor may lean
+ * to find the rail (columns). A rail is drilled in groups of five with a gap
+ * between, so one column in six has no hole straight across it, and the line
+ * does not start until the board's second or third column.
+ */
+const PLUG_LEAN = 2;
+/** A rail hole this near a plugged-in resistor's lead lies under its body
+    (half a pitch wide, discrete-view.js), so no wire may end in it. */
+const PLUG_COVERS = 0.6;
+
+/** Distance from point `p` to the segment `a`→`b`. */
+function segmentDistance(p, a, b) {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const t = Math.max(
+    0,
+    Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / (dx * dx + dy * dy)),
+  );
+  return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
+}
+
+/**
+ * Plug a lamp's resistor in: its top lead in row a of the column the lamp's
+ * rail leg is in, its other lead bent straight down into the rail strip under
+ * the board. The lamp sits in row b of that column, so the board joins lamp
+ * and resistor, the rail joins resistor and supply, and neither needs a wire.
+ *
+ * The same proof as `seatCompanion`, for the same reason — it shares a
+ * column-half with another part, which column-allocator.js otherwise forbids:
+ * the net equality is GIVEN (the resistor rule created the LIMITED net holding
+ * exactly the lamp's leg and pin 1), and the geometry is PROVED — the part is
+ * resolved the way the loader resolves it, and both leads must land in exactly
+ * the holes chosen, pin 1 on the lamp's own node.
+ *
+ * The lead goes straight down where the rail has a hole there, else leans a
+ * column or two (`PLUG_LEAN`), away from the lamp's other leg first. The rail
+ * holes under its body are claimed and left EMPTY, so no supply lead is later
+ * planted beneath it.
+ *
+ * Null whenever any of that fails, and the caller seats the resistor the
+ * ordinary way, wired — this can cost wires, never correctness. L4 checks the
+ * result regardless.
+ *
+ * @returns {{boardId:string, anchor:string, holes:Map, params:object,
+ *   rails:Map<number, {rail:string, address:string}>}|null}
+ */
+function seatPlug(part, plug, ctx) {
+  const { alloc, seatOf, kits, boards, boardType, worldOf } = ctx;
+  const host = seatOf.get(plug.hostId);
+  const leg = host?.holes.get(plug.hostPin);
+  const m = leg && GRID_HOLE_RE.exec(leg);
+  const kit = kits.find((k) => k.pins === host?.boardId);
+  if (!m || !isLowerRow(m[1]) || !kit) return null;
+  const anchor = `a${m[2]}`;
+  const top = `${host.boardId}.${anchor}`;
+  const from = worldOf(top);
+  if (!from || alloc.isClaimed(top)) return null;
+  const type = boardType.get(host.boardId);
+  if (nodeOf(type, anchor) !== nodeOf(type, leg)) return null;
+
+  // Lean AWAY from the lamp's other leg: the resistor then hangs off the leg
+  // it belongs to, clear of the column the lamp's driver is wired into.
+  const other = [...host.holes.values()].find((h) => h !== leg);
+  const otherAt = other && worldOf(`${host.boardId}.${other}`);
+  const away = otherAt ? Math.sign(from.x - otherAt.x) : 1;
+  const strip = kit.rails[1];
+  const candidates = alloc
+    .freeRailHoles(strip, plug.rail === "GND" ? "-" : "+")
+    .map((address) => ({ address, at: worldOf(address) }))
+    .filter((c) => c.at && Math.abs(c.at.x - from.x) <= PLUG_LEAN + 0.01)
+    .sort((p, q) => {
+      const dp = p.at.x - from.x;
+      const dq = q.at.x - from.x;
+      return (
+        Math.abs(dp) - Math.abs(dq) ||
+        Number(Math.sign(dq) === away) - Number(Math.sign(dp) === away)
+      );
+    });
+
+  for (const { address, at } of candidates) {
+    const params = part.def.normalizeParams({
+      rot: 90,
+      end: { dx: at.x - from.x, dy: at.y - from.y },
+    });
+    if (!params.end) continue;
+    if (Math.hypot(params.end.dx, params.end.dy) < (part.def.minSpan ?? 0)) {
+      continue;
+    }
+    const lands = partPinAddresses(
+      { boards },
+      { ref: part.ref, board: host.boardId, anchor, params },
+    );
+    const landed = new Map(lands?.map((q) => [q.pin, q.address]) ?? []);
+    if (landed.get(1) !== top || landed.get(2) !== address) continue;
+    // The column-half is the LAMP's, and stays so: it is the lamp's node.
+    const r = alloc.seat(host.boardId, part.ref, anchor, params, plug.hostId);
+    if (!r.ok) return null;
+    alloc.claim(address);
+    for (const polarity of ["+", "-"]) {
+      for (const under of alloc.freeRailHoles(strip, polarity)) {
+        const w = worldOf(under);
+        if (w && segmentDistance(w, from, at) < PLUG_COVERS) alloc.claim(under);
+      }
+    }
+    return {
+      boardId: host.boardId,
+      anchor,
+      holes: r.holes,
+      params,
+      rails: new Map([[2, { rail: plug.rail, address }]]),
+    };
+  }
+  return null;
+}
+
+/**
+ * A single LED: one junction, two legs side by side — the lamp whose resistor
+ * plugs in (`seatPlug`). A display or a bar has `segments` instead.
+ */
+const isBareLed = (def) => typeof def?.polarity === "function" && !def.segments;
+
+/**
  * The junctions of a light-emitting part, as the legs a series resistor could
  * go in.
  *
@@ -742,6 +871,53 @@ function companionSeat(part, links, { alloc, host, hostId, type, params }) {
  *
  * @returns {{common: {pin, rail}|null, junctions: Array<{anodePin, cathodePin}>}}
  */
+/** A part you operate while the circuit runs: anything with `contact` pins
+    (a slide switch, a push button, a DIP switch bank). */
+const operated = (def) => def?.pins?.some((p) => p.role === "contact") === true;
+
+/**
+ * The row a one-row part seats in: row a, along the bottom rail — except a
+ * part you OPERATE, which seats in row h, the middle of the upper half.
+ *
+ * Wires draw ABOVE parts, and a switch under one cannot be clicked. Every
+ * slide switch the demo corpus compiles (219 of them) had a wire over its knob
+ * when they sat in row a: all four spare holes of their nodes were ABOVE them,
+ * so the supply lead to the bottom rail ran straight across the knob, and
+ * every run along rows b–e hung down over it (a drawn wire sags below its
+ * chord). Row h is where the demo bench has always put them, for the reason
+ * that holds here: two holes above (i, j) for the lead to the top rail, two
+ * below (f, g) for the signal, so neither crosses the switch, and a run's sag
+ * falls away from it. Row e (the trench side) was tried and is worse — it is
+ * exactly where every wire crossing the trench passes. With the drawn-wire
+ * router (`drawnCrossings`) it leaves 3 of 219 covered.
+ *
+ * Resistor networks, LEDs and bars keep row a — nobody clicks those — except
+ * an LED whose resistor plugs in beneath it, which takes row b (`seatPlug`).
+ * A DIP switch bank straddles the trench like any DIP, so it never asks.
+ * @param {object} def
+ * @returns {"a"|"h"}
+ */
+function seatRowOf(def) {
+  return operated(def) ? "h" : "a";
+}
+
+/**
+ * How far an operated part's routing box reaches past its pins (pitch): its
+ * knob is ±0.45 about the pin row and a wire's hit stroke half a pitch either
+ * side of the wire, so a wire nearer than this takes the click. Short of 1 so
+ * the holes one row away — where the part's own wires leave — stay outside it.
+ */
+const OPERATED_MARGIN = 0.95;
+
+/**
+ * How far a bare LED's routing box reaches past its pins (pitch): its dome, as
+ * the desk draws it (discrete-view.js, r 0.85), is wider than the box around
+ * its two holes. Seated in row b it reaches up toward row c, where runs along
+ * the board pass, and a wire drawn across the dome hides the lamp it is there
+ * to show.
+ */
+const LAMP_DOME = 0.85;
+
 function lampLegs(def) {
   if (def.segments?.length) {
     const first = def.segments[0];
@@ -784,6 +960,40 @@ function assemble(resolved, title, notes) {
     }
   }
 
+  // ── Spare CMOS inputs (Feature 400). A CD4000 input on no net floats, and a
+  //    floating CMOS input reads UNKNOWN — so a spare gate the spec rightly
+  //    says nothing about would make the engine warn about a correct design.
+  //    The compiler ties every such input to GND, as a bench does, exactly as
+  //    it interposes the resistor an LED needs: a netlist should not have to
+  //    mention either. Only inputs nothing uses (spec-lint's
+  //    `spareCmosInputs`) — one the part DOES use and the spec left out is a
+  //    mistake for L6 to report, not something to paper over.
+  const spare = spareCmosInputs([...parts.values()], nets);
+  if (spare.length) {
+    let gnd = nets.find((n) => n.rail === "GND");
+    if (!gnd) {
+      gnd = { name: "GND", pins: [], rail: "GND" };
+      nets.push(gnd);
+    }
+    for (const s of spare) {
+      for (const p of s.pins) {
+        gnd.pins.push({ partId: s.partId, ok: true, kind: "pin", pin: p.n });
+      }
+    }
+    warnings.push({
+      code: "SPARE_INPUTS_TIED",
+      message:
+        `Tied the unused inputs of ` +
+        spare
+          .map(
+            (s) =>
+              `${s.partId} (${s.ref}: ${s.pins.map((p) => p.name).join(", ")})`,
+          )
+          .join("; ") +
+        ` to GND — a floating CMOS input reads neither HIGH nor LOW.`,
+    });
+  }
+
   // ── The resistor rule. A lamp leg that goes STRAIGHT to a rail gets a series
   //    resistor interposed, because a junction across two strongly driven nets
   //    burns rather than lights (sim/junction.js).
@@ -801,6 +1011,9 @@ function assemble(resolved, title, notes) {
   //    off the net. The net may be the named `GND` holding everything else the
   //    spec tied low, and detaching its rail would hang all of that off the
   //    lamp's side of the resistor.
+  //
+  //    A bare LED is the exception to both of those groupings: it gets a
+  //    resistor of its OWN, PLUGGED IN (`seatPlug`) — see below.
   const interposed = [];
   const netOf = (partId, pin, rail) =>
     nets.find(
@@ -809,6 +1022,7 @@ function assemble(resolved, title, notes) {
         n.pins.some((q) => q.partId === partId && q.pin === pin),
     );
   const legs = []; // {part, pin, rail, net}
+  const bareLegs = []; // …the same, for a bare LED
   for (const p of seated) {
     const { common, junctions } = lampLegs(p.def);
     if (common) {
@@ -820,8 +1034,12 @@ function assemble(resolved, title, notes) {
       // is limited once, in its cathode.
       const k = netOf(p.id, j.cathodePin, "GND");
       const a = k ? null : netOf(p.id, j.anodePin, "VCC");
-      if (k) legs.push({ part: p, pin: j.cathodePin, rail: "GND", net: k });
-      else if (a) legs.push({ part: p, pin: j.anodePin, rail: "VCC", net: a });
+      const leg = k
+        ? { part: p, pin: j.cathodePin, rail: "GND", net: k }
+        : a
+          ? { part: p, pin: j.anodePin, rail: "VCC", net: a }
+          : null;
+      if (leg) (isBareLed(p.def) ? bareLegs : legs).push(leg);
     }
   }
   const nodes = new Map(); // rail net → its lamp legs, one node
@@ -879,6 +1097,80 @@ function assemble(resolved, title, notes) {
       });
     }
   }
+
+  // ── A bare LED's resistor is its OWN, and it PLUGS IN.
+  //
+  // The bench build: the resistor's top lead goes into the column the lamp's
+  // rail leg is in, and its other lead straight into the rail — so the lamp,
+  // the resistor and the rail are joined by the board alone. Routed like any
+  // other part it came out as three wires (output → lamp → resistor → rail),
+  // two of them doing nothing a resistor's own legs could not.
+  //
+  // So one resistor per LED, never a shared one and never a pack: a resistor
+  // can only plug into ONE lamp's column, and a pack's nine pins lie along a
+  // row that no two lying-down LEDs can line up with. That is also how a bench
+  // does it — one resistor per LED, so each lamp's current is its own. The
+  // LIMITED net is exactly what the board will join: the lamp's leg and the
+  // resistor's pin 1, nothing else. `plugOf` is the "net equality proven
+  // first" `seatPlug` relies on, created here as the pull rule creates its own.
+  const plugOf = new Map(); // resistor id → {hostId, hostPin, rail}
+  const netNames = new Set(nets.map((n) => n.name));
+  const freshName = (...bases) => {
+    let name = bases.find((b) => !netNames.has(b));
+    for (let k = 2; !name; k++) {
+      if (!netNames.has(`${bases[0]}_${k}`)) name = `${bases[0]}_${k}`;
+    }
+    netNames.add(name);
+    return name;
+  };
+  for (const rail of ["GND", "VCC"]) {
+    const mine = bareLegs.filter((leg) => leg.rail === rail);
+    for (const leg of mine) {
+      const rid = limiterId([leg]);
+      const limiter = {
+        id: rid,
+        ref: "resistor",
+        def: partDef("resistor"),
+        label: null,
+      };
+      parts.set(rid, limiter);
+      seated.push(limiter);
+      interposed.push({ resistor: limiter });
+      plugOf.set(rid, { hostId: leg.part.id, hostPin: leg.pin, rail });
+      const isLeg = (q) => q.partId === leg.part.id && q.pin === leg.pin;
+      nets.push({
+        name: freshName(
+          `${leg.net.name}_LIMITED`,
+          `${leg.part.id}_${rail}_LIMITED`,
+        ),
+        pins: [
+          ...leg.net.pins.filter(isLeg),
+          { partId: rid, kind: "pin", pin: 1 },
+        ],
+        rail: null,
+      });
+      leg.net.pins = leg.net.pins.filter((q) => !isLeg(q));
+      nets.push({
+        name: freshName(`${rid}_${rail}`),
+        pins: [{ partId: rid, kind: "pin", pin: 2 }],
+        rail,
+      });
+    }
+    if (mine.length) {
+      const ids = mine.map((leg) => leg.part.id);
+      warnings.push({
+        code: "RESISTOR_INSERTED",
+        message:
+          (ids.length > 1
+            ? `Added a series resistor to each of ${ids.join(", ")}, ` +
+              `between the LED and ${rail}`
+            : `Added a series resistor between ${ids[0]} and ${rail}`) +
+          ` — an LED across two strongly driven nets burns instead of ` +
+          `lighting.`,
+      });
+    }
+  }
+
   // A rail net the lamps were the only members of is now just a rail.
   for (let i = nets.length - 1; i >= 0; i--) {
     if (nets[i].rail && !nets[i].pins.length) nets.splice(i, 1);
@@ -1011,7 +1303,18 @@ function assemble(resolved, title, notes) {
   // whether that succeeds is a geometric question this cannot answer yet.
   // Guessing high costs a board that `#pruneKits` then takes back; guessing low
   // costs a NO_ROOM refusal, and only one of those is recoverable.
-  const budget = seated.reduce((n, p) => n + spanOf(p.def) + GAP, 0);
+  //
+  // A plugged-in resistor is the one part counted at NOTHING. It stands in its
+  // lamp's own column with its other lead in the rail, so it never owns a
+  // column — and unlike a pull pack's seat, which needs a host's geometry to
+  // line up, it needs only a free rail hole within two columns of the lamp,
+  // and nothing is wired to a rail until every part is seated. Counted at four
+  // columns a lamp, eight LEDs would book a full board for a design that fits
+  // on a half.
+  const budget = seated.reduce(
+    (n, p) => n + (plugOf.has(p.id) ? 0 : spanOf(p.def) + GAP),
+    0,
+  );
   const kitKey = budget <= 30 ? "half" : "full";
   const perKit = kitKey === "half" ? 30 : 63;
   const kitCount = Math.max(1, Math.ceil(budget / perKit));
@@ -1151,7 +1454,17 @@ function assemble(resolved, title, notes) {
   // board is tried again ignoring it. So it can only change WHICH board a part
   // lands on, never whether it lands at all — the layout is a preference, the
   // fit is not.
-  const order = orderByConnectivity(seated, nets);
+  //
+  // A plugged-in resistor stands in its lamp's column, so it has to come AFTER
+  // its lamp: each is taken out and put back straight behind it.
+  const order = orderByConnectivity(seated, nets).filter(
+    (p) => !plugOf.has(p.id),
+  );
+  for (const [rid, plug] of plugOf) {
+    const at = order.findIndex((p) => p.id === plug.hostId);
+    order.splice(at < 0 ? order.length : at + 1, 0, parts.get(rid));
+  }
+  const lampsWithPlugs = new Set([...plugOf.values()].map((x) => x.hostId));
   const seatPass = (assignment = null, gap = GAP) => {
     const alloc = createAllocator(boards);
     const seatOf = new Map(); // specId → {compId, boardId, holes}
@@ -1174,20 +1487,40 @@ function assemble(resolved, title, notes) {
       // its body reaches off the header edge, so a body-UP module (the 16×2,
       // header along its bottom edge) has to go on the TOP row or it buries
       // the board it is plugged into, and its own wiring holes with it.
+      //
+      // A lamp whose resistor plugs in goes one row up, in row b: row a of its
+      // column is where that resistor's lead goes in (`seatPlug`).
       const row = p.def.package
         ? "e"
         : p.def.characterDisplay?.headerEdge === "bottom"
           ? "j"
-          : "a";
+          : lampsWithPlugs.has(p.id)
+            ? "b"
+            : seatRowOf(p.def);
       // A pull pack goes UNDER the switch bank it pulls, in the very columns
       // that bank owns — because its pins are already that bank's nets, so the
       // board does the connecting. Eight wires and nine columns become none.
       // It costs no columns of its own: it is IN its host's.
-      let placed = seatCompanion(p, companionOf.get(p.id), {
-        alloc,
-        seatOf,
-        boardType,
-      });
+      //
+      // A lamp's resistor plugs into the lamp's column the same way, and into
+      // the rail below it: two wires and four columns become none.
+      const plug = plugOf.get(p.id);
+      let placed =
+        seatCompanion(p, companionOf.get(p.id), {
+          alloc,
+          seatOf,
+          boardType,
+        }) ??
+        (plug
+          ? seatPlug(p, plug, {
+              alloc,
+              seatOf,
+              kits,
+              boards,
+              boardType,
+              worldOf,
+            })
+          : null);
       // Reserve a blank column after the part as well, so neighbours do not
       // read as one block — the same courtesy a person building this leaves.
       const cost = span + gap;
@@ -1265,7 +1598,7 @@ function assemble(resolved, title, notes) {
     // A companion rides its host's columns, so it must not be counted — and it
     // must not be assigned a board of its own either; `seatCompanion` runs
     // before the assignment is consulted, so it simply follows its host.
-    const companions = new Set(companionOf.keys());
+    const companions = new Set([...companionOf.keys(), ...plugOf.keys()]);
     const laid = seatPass(
       splitAcrossBoards(
         order,
@@ -1353,18 +1686,40 @@ function assemble(resolved, title, notes) {
   // the board through the very row the resistor networks and LED bars occupy.
   // A port therefore OFFERS its free holes and the router picks the pair, by
   // length plus a penalty for every part the wire would fly over.
-  const partBoxes = new Map(); // specId → body box
+  const partBoxes = new Map(); // specId → body box (the residual-crossing audit)
+  const routeBoxes = new Map(); // …and as the router keeps wires clear of it
+  const defOf = new Map(seated.map((p) => [p.id, p.def]));
   for (const [specId, seat] of seatOf) {
     const points = [];
     for (const hole of seat.holes.values()) {
       const at = worldOf(`${seat.boardId}.${hole}`);
       if (at) points.push(at);
     }
+    // …and a lead plugged into a rail, so a wire is kept off the whole body.
+    for (const { address } of seat.rails?.values() ?? []) {
+      const at = worldOf(address);
+      if (at) points.push(at);
+    }
     const box = boxOf(points);
-    if (box) partBoxes.set(specId, box);
+    if (!box) continue;
+    partBoxes.set(specId, box);
+    // A part you OPERATE is kept clear by a wire's whole width as well as its
+    // knob: a stroke grazing the knob still takes the click (seatRowOf).
+    routeBoxes.set(
+      specId,
+      operated(defOf.get(specId))
+        ? boxOf(points, OPERATED_MARGIN)
+        : isBareLed(defOf.get(specId))
+          ? boxOf(points, LAMP_DOME)
+          : box,
+    );
   }
-  // A wire ENDS on the part whose node it leaves from; that is attachment, not
-  // crossing, so those two parts are excluded from its own hit test.
+  // A wire ENDS on the part whose node it leaves from. The ROUTER does not
+  // excuse that part (only an end inside its body is attachment): a lead from
+  // beside a part back across it is drawn over it all the same — it was every
+  // switch's supply lead, over its own knob (seatRowOf), and a chip's leads
+  // over the chip. The residual-crossing REPORT below still excuses it, as it
+  // always has: that is a count of wires over somebody ELSE's part.
   const ownerOfNode = new Map(); // "board:node" → specId
   for (const [specId, seat] of seatOf) {
     for (const hole of seat.holes.values()) {
@@ -1380,6 +1735,9 @@ function assemble(resolved, title, notes) {
     const node = nodeOf(type, parsed.hole);
     return node ? `${parsed.boardId}:${node}` : "";
   };
+  /** The parts a wire between two nodes ends on. */
+  const ownersOf = (nodeA, nodeB) =>
+    new Set([ownerOfNode.get(nodeA), ownerOfNode.get(nodeB)].filter(Boolean));
 
   /** The four-ish spare holes electrically common with a seated pin. */
   const pinPort = (boardId, hole) => ({
@@ -1406,6 +1764,10 @@ function assemble(resolved, title, notes) {
       };
     }
     const seat = seatOf.get(member.partId);
+    // A lead plugged into a rail (`seatPlug`) IS the rail: the board already
+    // joins it, so the net reaches it for nothing.
+    const plugged = seat?.rails?.get(member.pin);
+    if (plugged) return railPort(plugged.rail);
     const hole = seat?.holes.get(member.pin);
     if (hole == null) return null;
     return pinPort(seat.boardId, hole);
@@ -1449,18 +1811,16 @@ function assemble(resolved, title, notes) {
     const froms = shortlist(hostPort, port.at);
     const tos = shortlist(port, hostPort.at);
     if (!froms.length || !tos.length) return null;
-    const skip = new Set(
-      [ownerOfNode.get(hostPort.node), ownerOfNode.get(port.node)].filter(
-        Boolean,
-      ),
-    );
     let best = null;
     for (const from of froms) {
       const a = worldOf(from);
       for (const to of tos) {
         const b = worldOf(to);
+        // As DRAWN, and against the parts it ends on too (`drawnCrossings`):
+        // a sagging run, or a lead back across its own switch, covers that
+        // switch's knob just as surely as a wire to somewhere else does.
         const cost =
-          distance(a, b) + CROSSING_COST * crossingCount(a, b, partBoxes, skip);
+          distance(a, b) + CROSSING_COST * drawnCrossings(a, b, routeBoxes);
         if (!best || cost < best.cost) best = { from, to, cost };
       }
     }
@@ -1494,11 +1854,17 @@ function assemble(resolved, title, notes) {
     wire(pair.from, pair.to, colour);
   };
 
+  // EVERY supply pin, not the first of each: a CD405x's VEE is a ground pin
+  // beside its VSS (single-supply use ties it there), and the AM27C1024 has two
+  // VSS pins — a part with one left off does not power up.
   for (const p of seated) {
-    const vcc = p.def.pins?.find((q) => q.role === "vcc");
-    const gnd = p.def.pins?.find((q) => q.role === "gnd");
-    if (vcc) railLink(p.id, vcc.n, "+", "red", `${p.id} (${p.ref}) VCC`);
-    if (gnd) railLink(p.id, gnd.n, "-", "black", `${p.id} (${p.ref}) GND`);
+    const supply = (role) => (p.def.pins ?? []).filter((q) => q.role === role);
+    for (const q of supply("vcc")) {
+      railLink(p.id, q.n, "+", "red", `${p.id} (${p.ref}) ${q.name}`);
+    }
+    for (const q of supply("gnd")) {
+      railLink(p.id, q.n, "-", "black", `${p.id} (${p.ref}) ${q.name}`);
+    }
   }
 
   // ── The supply's own plumbing: the PSU's two leads, and the bridges that
@@ -1598,7 +1964,9 @@ function assemble(resolved, title, notes) {
       onNode.add(port.node);
       ports.push(port);
     }
-    if (net.rail) ports.push(railPort(net.rail));
+    if (net.rail && !onNode.has(`rail:${net.rail}`)) {
+      ports.push(railPort(net.rail));
+    }
     if (ports.length < 2) continue;
 
     const colour = net.rail
@@ -1664,12 +2032,8 @@ function assemble(resolved, title, notes) {
     const a = worldOf(w.from);
     const b = worldOf(w.to);
     if (!a || !b) return false;
-    const skip = new Set(
-      [ownerOfNode.get(nodeKey(w.from)), ownerOfNode.get(nodeKey(w.to))].filter(
-        Boolean,
-      ),
-    );
-    return crossingCount(a, b, partBoxes, skip) > 0;
+    const excused = ownersOf(nodeKey(w.from), nodeKey(w.to));
+    return drawnCrossings(a, b, partBoxes, excused) > 0;
   }).length;
   if (crossed) {
     warnings.push({

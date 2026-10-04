@@ -66,16 +66,25 @@ export function bench(extra = {}) {
   return normalizeDocument(built.document);
 }
 
-/** Every shipped demo bench, `{ ref, doc }`, in name order. */
+/**
+ * Every shipped example desktop, `{ ref, doc }`, in name order: each demo
+ * bench under its part's id, and each desktop of a hand-built example (the
+ * 555's modes) as `NE555-Astable` — a label that is also a safe file name.
+ */
 export function demoDocs() {
   return fs
     .readdirSync(DEMOS)
     .filter((f) => f.endsWith(".json"))
     .sort()
-    .map((f) => ({
-      ref: f.replace(/\.json$/, ""),
-      doc: normalizeDocument(
-        JSON.parse(fs.readFileSync(path.join(DEMOS, f), "utf8")).doc,
-      ),
-    }));
+    .flatMap((f) => {
+      const ref = f.replace(/\.json$/, "");
+      const payload = JSON.parse(fs.readFileSync(path.join(DEMOS, f), "utf8"));
+      const desktops = payload.desktops
+        ? payload.desktops.map((d) => [`${ref}-${d.name}`, d.doc])
+        : [[ref, payload.doc]];
+      return desktops.map(([label, doc]) => ({
+        ref: label,
+        doc: normalizeDocument(doc),
+      }));
+    });
 }

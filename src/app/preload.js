@@ -322,8 +322,9 @@ contextBridge.exposeInMainWorld("chiphippo", {
   },
 
   // ── Example circuits (Feature 270) ─────────────────────────────────────────
-  // The demonstration bench `make demos` builds for every benchable 74xx part,
-  // shipped as web/demos/<ref>.json. Two windows, one action: a PINOUT window
+  // The demonstration bench `make demos` builds for every benchable 74xx part
+  // (or a hand-built example's several desktops — the 555's modes), shipped as
+  // web/demos/<ref>.json. Two windows, one action: a PINOUT window
   // asks (`open` — it has a ref and nothing else, so main relays the request to
   // the app window as `demo:host-inbound`), and the APP window reads (`read`)
   // the document it is going to make a desktop of. `read` answers null for a

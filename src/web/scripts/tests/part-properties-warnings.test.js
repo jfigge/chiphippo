@@ -80,8 +80,12 @@ const publish = (statuses, running = true) =>
         running,
         netLevels: new Map(),
         strongLevels: new Map(),
+        // A status alone, or `{ status, volts }` as the engine reports it.
         chipStatus: new Map(
-          Object.entries(statuses).map(([id, status]) => [id, { status }]),
+          Object.entries(statuses).map(([id, status]) => [
+            id,
+            typeof status === "string" ? { status } : status,
+          ]),
         ),
         netlist: null,
         clockLevels: new Map(),
@@ -138,8 +142,14 @@ test("a fault raised while the card is open appears, and clears with the run", (
     "each line carries the same warning sign the part draws",
   );
 
-  publish({ [id]: "damaged" });
-  assert.deepEqual(lines(), [en.properties.warning.damaged]);
+  // A power fault states the voltage the part saw and the supply it is rated
+  // for — its family's (Feature 400).
+  publish({ [id]: { status: "damaged", volts: 12 } });
+  assert.deepEqual(lines(), [
+    en.properties.warning.damaged
+      .replace("{volts}", "12")
+      .replace("{rating}", "5 V"),
+  ]);
 
   // "ok" is a status, not a fault — and a stopped sim reports nothing at all.
   publish({ [id]: "ok" });

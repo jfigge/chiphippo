@@ -35,7 +35,10 @@
 //     cathode, and a switch's resistor to GND a pulled-down throw;
 //   · a resistor between two signals is a wire (reported: it no longer
 //     limits anything);
-//   · a resistor from rail to rail does nothing in logic and is left out.
+//   · a resistor from rail to rail does nothing in logic and is left out;
+//   · a potentiometer is its two sides, each such a resistor — except a side
+//     with none of its track left, which the engine reads as a wire, as this
+//     does.
 //
 // FLOATING TTL INPUTS READ HIGH (sim/levels.js `asInput`); in Digital an input
 // with nothing driving it is an ERROR. So a net that holds a chip input and
@@ -45,6 +48,12 @@
 // has. An input on no net at all gets one right on the pin, and so does an
 // open display leg (tied to its dark level), since Digital refuses to run a
 // display with an input left open.
+//
+// A FLOATING CMOS INPUT READS UNKNOWN (Feature 400, `asCmosInput`), and there
+// is no honest translation of that: Digital has no unknown to give it, and a
+// file that refuses to run is no use. So it gets the same PullUp — and,
+// unlike the TTL case, that is a CHANGE, reported per part (`cmosFloating`):
+// Digital will compute a definite answer where our engine says X.
 //
 // OPEN-COLLECTOR OUTPUTS ('01, '03, '05) are modelled as plain gates here and
 // as the real parts in Digital, which float a HIGH; the pull-up a real board
@@ -75,6 +84,7 @@ import { safeFileBase } from "./file-base.js";
 import { packColumns, viewPositions } from "./sheet-pack.js";
 import { UnionFind } from "../../sim/union-find.js";
 import { signalKey } from "../signals.js";
+import { floatsUnknown } from "../../catalog/families.js";
 
 /** Digital's grid unit. */
 const SIZE = 20;
@@ -111,6 +121,10 @@ const OUT = {
 export function digitalMapped(def) {
   return def.id in DIGITAL_FILES || DIGITAL_ELEMENTS.includes(def.id);
 }
+
+/** A part the engine reads as resistors (catalog `weakBridges`), which comes
+    across as pulls and wires rather than as an element of its own. */
+const resistive = (def) => typeof def.weakBridges === "function";
 
 // ── Elements as data ─────────────────────────────────────────────────────────
 
@@ -154,15 +168,23 @@ export function exportDigital(doc, desktop) {
   const uf = new UnionFind();
   for (const id of model.nets.keys()) uf.add(id);
   const pullOn = []; // { id, up } — a net id from before the merges
-  const legs = (part) => {
-    const port = (key) => part.ports.find((p) => p.key === key)?.net ?? null;
-    if (part.def.id === "resistor") return [[port("1"), port("2")]];
-    // rnet9: COM (pin 1) to each lead
-    return part.ports.filter((p) => p.pin !== 1).map((p) => [port("1"), p.net]);
-  };
+  // Each element as the catalog states it: `weakBridges`' pin pairs (the
+  // resistor's one, the array's eight, a potentiometer's sides) as nets.
+  const pinNet = (part, n) => part.ports.find((p) => p.pin === n)?.net ?? null;
+  const pairs = (part, list) =>
+    list.map(([a, b]) => [pinNet(part, a), pinNet(part, b)]);
   for (const part of model.parts) {
-    if (part.def.id !== "resistor" && part.def.id !== "rnet9") continue;
-    for (const [a, b] of legs(part)) {
+    if (!resistive(part.def)) continue;
+    const params = part.comp.params;
+    // A potentiometer side with none of its track left is a WIRE in the
+    // engine (its `internalBridges`), so it is one here too — unless it joins
+    // two rails, a short the engine already reports and no wire can carry.
+    for (const [a, b] of pairs(part, part.def.internalBridges(params))) {
+      if (!a || !b) continue;
+      if (model.nets.get(a).polarity && model.nets.get(b).polarity) continue;
+      uf.union(a, b);
+    }
+    for (const [a, b] of pairs(part, part.def.weakBridges(params))) {
       if (!a || !b) continue; // a floating leg connects nothing
       const pa = model.nets.get(a).polarity;
       const pb = model.nets.get(b).polarity;
@@ -204,9 +226,10 @@ export function exportDigital(doc, desktop) {
   const switchLinks = []; // [netA, netB] pairs a switch contact can join
   const nearPins = []; // pulls placed right on an unconnected input pin
   const openCollector = new Set(); // nets an open-collector output drives
+  const cmosInputs = []; // { part, name } — a CMOS input and the net it reads
 
   for (const part of model.parts) {
-    if (part.def.id === "resistor" || part.def.id === "rnet9") continue;
+    if (resistive(part.def)) continue;
     if (!digitalMapped(part.def)) {
       const reason =
         DIGITAL_UNSUPPORTED[part.def.id] ??
@@ -222,6 +245,7 @@ export function exportDigital(doc, desktop) {
       switchLinks,
       nearPins,
       openCollector,
+      cmosInputs,
       report,
     });
     drawings.set(part.id, d);
@@ -299,9 +323,14 @@ export function exportDigital(doc, desktop) {
     }
     return false;
   };
+  const floating = new Set();
   for (const name of inputNets) {
     if (polarity.has(name) || driven.has(name) || reachesPull(name)) continue;
     addPull(name, true);
+    floating.add(name);
+  }
+  for (const { part, name } of cmosInputs) {
+    if (floating.has(name)) addReport(report, "changed", "cmosFloating", part);
   }
 
   // ── Supplies and pulls: a column of their own at the left. ──
@@ -651,17 +680,21 @@ function drawChip(part, ctx) {
         ? { x: 0, y: 2 * SIZE * (p - 1), side: "left" }
         : { x: right, y: 2 * SIZE * (n - p), side: "right" };
     const name = ctx.nameOf(port.net);
+    const cmosInput = port.role === "input" && floatsUnknown(part.def);
     if (name) {
       d.pins.push({ ...pos, net: name });
       if (port.role === "output" || port.role === "io") ctx.driven.add(name);
       if (port.role === "input") ctx.inputNets.add(name);
+      if (cmosInput) ctx.cmosInputs.push({ part, name });
       continue;
     }
     // On no net. Digital cannot load a chip with an input left unconnected,
     // and a floating TTL input reads HIGH anyway — so tie it high, right on
-    // the pin. Power pins get the supply they would need.
+    // the pin (a CMOS one too, and say so). Power pins get the supply they
+    // would need.
     if (port.role === "vcc" || port.role === "gnd") unpowered = true;
     if (outputs.has(p) || port.role === "nc") continue;
+    if (cmosInput) addReport(ctx.report, "changed", "cmosFloating", part);
     ctx.nearPins.push({
       partId: part.id,
       x: pos.x,

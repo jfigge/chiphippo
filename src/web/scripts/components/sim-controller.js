@@ -45,11 +45,21 @@
 // The same collaborator may refuse a Run before it starts (`preflight`), gate
 // the first tick the way a ROM load does (`begin`), add drivers of its own to
 // every settle (`levels`), and hear Stop (`end`). The engine knows none of it.
+//
+// SIMULATED TIME. A timed part (the 555, the RC-timed CD4000 parts —
+// sim/timing.js) needs to know what time it is, and the engine keeps none, so
+// this controller does: seconds since Run, advancing with the wall clock ×
+// the speed multiplier, FROZEN while paused or stalled (time stops for the
+// whole board, exactly as the clock bricks' edges do). Every tick is handed
+// its reading (`now`), and the engine answers with `wakeAt` — when the next
+// timed part next changes on its own — which is the ONE timeout this keeps
+// beside the clock bricks' intervals: it ticks again then, and only then.
 
 import { t } from "../i18n.js";
 import { tick } from "../sim/engine.js";
 import { H, L } from "../sim/levels.js";
 import { partDef } from "../catalog/index.js";
+import { supplyText } from "../catalog/families.js";
 import { CLOCK_HZ } from "../catalog/parts.js";
 import { restLevel } from "../model/signals.js";
 import {
@@ -59,7 +69,11 @@ import {
   memoryConfig,
 } from "../sim/chip-eval.js";
 import { framebufferOf } from "../sim/hd44780.js";
+import { timingProblemSentences } from "../model/timing-summary.js";
 import { NetlistCache } from "./netlist-cache.js";
+
+/** The wall clock, in ms — monotonic where the platform has one. */
+const wallMs = () => globalThis.performance?.now?.() ?? Date.now();
 
 /** A blank byte image for a def: Uint16Array for a >8-bit data bus, else Uint8Array. */
 function blankImage(def) {
@@ -195,6 +209,10 @@ export class SimController {
   #stalled = false; // an integration settle is in progress — the board waits
   #pendingTick = false; // a tick asked for while stalled, or a boundary's `again`
   #startToken = 0; // bumped by every Run request, so a stale preflight stands down
+  #simAnchor = 0; // simulated seconds at #realAnchor (see SIMULATED TIME above)
+  #realAnchor = null; // wall-clock ms the sim clock last started from; null = frozen
+  #wakeAt = null; // simulated seconds a timed part next changes at, or null
+  #wakeTimer = null; // the timeout that ticks then
 
   /**
    * @param {object} opts
@@ -304,6 +322,11 @@ export class SimController {
       this.#signalLevel.set(sig.id, restLevel(sig) === "high" ? H : L);
     }
     this.#dataLossWarned = new Set();
+    // The sim clock starts at 0 and stays there until the first tick: a ROM
+    // load or a board's handshake is not time the circuit lived through.
+    this.#clearWake();
+    this.#simAnchor = 0;
+    this.#realAnchor = null;
     this.#onTransportChange?.(this.#mode); // lock editing while files load
     const gates = [this.#seedImages(token), this.#beginIntegration(token)];
     const pending = gates.filter(Boolean);
@@ -355,6 +378,7 @@ export class SimController {
     // async load from a PRIOR run must never act once a NEWER run has begun,
     // even though `#mode` alone reads RUNNING again by then (see #loadRom).
     if (token !== this.#runToken || this.#mode !== TRANSPORT.RUNNING) return;
+    this.#thaw();
     this.#tickNow();
     this.#scheduleClocks();
     // Tell any open inspector the run has begun, as Stop tells it the run has
@@ -372,6 +396,8 @@ export class SimController {
     if (this.#mode !== TRANSPORT.RUNNING) return;
     this.#mode = TRANSPORT.PAUSED;
     this.#clearTimers();
+    this.#freeze();
+    this.#clearWake();
     this.#onTransportChange?.(this.#mode);
   }
 
@@ -380,7 +406,9 @@ export class SimController {
     if (this.#mode !== TRANSPORT.PAUSED) return;
     this.#mode = TRANSPORT.RUNNING;
     this.#onTransportChange?.(this.#mode);
+    this.#thaw();
     this.#scheduleClocks();
+    this.#armWake();
   }
 
   /** Return to editing: clear every scrap of run state, damage included. */
@@ -390,6 +418,9 @@ export class SimController {
     this.#startToken++;
     if (this.#mode === TRANSPORT.STOPPED) return;
     this.#clearTimers();
+    this.#clearWake();
+    this.#simAnchor = 0;
+    this.#realAnchor = null;
     // Snapshot each memory's final bytes (while the images still exist) so an
     // open inspector shows the exact end-of-run contents with no file re-read.
     const finalImages = new Map();
@@ -452,15 +483,80 @@ export class SimController {
   step() {
     if (this.#mode === TRANSPORT.STOPPED) return;
     if (this.#mode === TRANSPORT.RUNNING) this.pause(); // stepping implies paused
-    for (const c of this.#tickingClocks()) this.#flip(c.id);
+    const ticking = this.#tickingClocks();
+    for (const c of ticking) this.#flip(c.id);
+    // Simulated time moves on with the step, so a timed part steps too: by
+    // the half-period the fastest clock just made (keeping it in step with the
+    // edges the bricks produce), or — with no clock running — straight to the
+    // next moment a timed part changes.
+    const halves = ticking.map((c) => 1 / (2 * c.params.hz));
+    if (halves.length) this.#simAnchor += Math.min(...halves);
+    else if (this.#wakeAt != null) {
+      this.#simAnchor = Math.max(this.#simAnchor, this.#wakeAt);
+    }
     this.#tickNow();
   }
 
   /** Set the speed multiplier (applies to every free-running clock). */
   setSpeed(multiplier) {
     if (!SPEEDS.includes(multiplier)) return;
+    // Re-anchor the sim clock, so the time already lived through keeps the
+    // rate it was lived at.
+    const running = this.#realAnchor != null;
+    this.#freeze();
     this.#speed = multiplier;
-    if (this.#mode === TRANSPORT.RUNNING) this.#scheduleClocks();
+    if (running) this.#thaw();
+    if (this.#mode === TRANSPORT.RUNNING) {
+      this.#scheduleClocks();
+      this.#armWake();
+    }
+  }
+
+  // ── Simulated time (see the file header) ─────────────────────────────────
+
+  /** The sim clock's reading, in seconds. */
+  #simNow() {
+    if (this.#realAnchor == null) return this.#simAnchor;
+    return (
+      this.#simAnchor + ((wallMs() - this.#realAnchor) / 1000) * this.#speed
+    );
+  }
+
+  /** Stop the sim clock where it is (pause, a stall, a speed change). */
+  #freeze() {
+    this.#simAnchor = this.#simNow();
+    this.#realAnchor = null;
+  }
+
+  /** Start the sim clock again from where it stopped. */
+  #thaw() {
+    if (this.#realAnchor == null) this.#realAnchor = wallMs();
+  }
+
+  #clearWake() {
+    clearTimeout(this.#wakeTimer);
+    this.#wakeTimer = null;
+  }
+
+  /**
+   * Tick again at the moment the last tick said a timed part next changes —
+   * the one timer timed parts need. Only while running and time is flowing; a
+   * stall's end, a resume and every later tick re-arm it.
+   */
+  #armWake() {
+    this.#clearWake();
+    if (this.#mode !== TRANSPORT.RUNNING || this.#stalled) return;
+    if (this.#wakeAt == null || this.#realAnchor == null) return;
+    const ms = Math.max(
+      1,
+      ((this.#wakeAt - this.#simNow()) * 1000) / this.#speed,
+    );
+    this.#wakeTimer = setTimeout(() => {
+      this.#wakeTimer = null;
+      if (this.#stalled) return;
+      this.#tickNow();
+    }, ms);
+    this.#wakeTimer?.unref?.();
   }
 
   /**
@@ -834,6 +930,9 @@ export class SimController {
     if (!verdict) return;
     if (typeof verdict.then === "function") {
       this.#stalled = true;
+      // Time stops for the whole board while it waits, timed parts included.
+      this.#freeze();
+      this.#clearWake();
       const token = this.#runToken;
       verdict.then(
         (v) => this.#endStall(token, v?.again === true),
@@ -852,9 +951,12 @@ export class SimController {
   #endStall(token, again) {
     if (token !== this.#runToken || this.#mode === TRANSPORT.STOPPED) return;
     this.#stalled = false;
+    if (this.#mode === TRANSPORT.RUNNING) this.#thaw();
     if (again || this.#pendingTick) {
       this.#pendingTick = false;
       this.#tickNow();
+    } else {
+      this.#armWake();
     }
   }
 
@@ -882,10 +984,13 @@ export class SimController {
         clockPhase: this.#clockPhase,
         signalLevels: this.#driveLevels(),
         images: this.#images,
+        now: this.#simNow(),
       });
       this.#warm = result.netLevels;
       this.#state = result.state;
       this.#prevPins = result.pinLevels;
+      this.#wakeAt = result.wakeAt ?? null;
+      this.#armWake();
       // Volatile (SRAM) writes land in the run image + drive the live inspector;
       // ROM writes are dropped (read-only). No file is ever written while running.
       this.#broadcastMemChanges(this.#applyWrites(result.memWrites));
@@ -964,6 +1069,10 @@ export class SimController {
           // Per-LCD framebuffers (compId → { chars, cursor, … }); empty when
           // not running, which blanks every LCD screen.
           displayState: displays ?? new Map(),
+          // Each timed part's reading of its own R and C (compId → analysis,
+          // sim/timing.js) — what its readout and any wiring warning show.
+          // Empty when not running.
+          timing: result?.timing ?? new Map(),
         },
       }),
     );
@@ -974,15 +1083,27 @@ export class SimController {
     return comp ? `${comp.ref} (${id})` : id;
   }
 
+  /** The supply a chip is rated for ("5 V", "3–18 V") — its family's. */
+  #rating(id) {
+    return supplyText(partDef(this.#doc.getComponent(id)?.ref));
+  }
+
   #report(warnings) {
     if (!this.#notifications) return;
     for (const w of warnings) {
       if (w.type === "short") {
+        // Through an analog switch the two rails are still two nets, and the
+        // switch between them is the thing to look at.
         this.#notify({
           key: `short:${w.net}`,
           variant: "danger",
           title: t("sim.short"),
-          message: t("sim.shortMessage", { net: w.net }),
+          message: t(
+            w.via === "switch"
+              ? "sim.shortThroughSwitchMessage"
+              : "sim.shortMessage",
+            { net: w.net },
+          ),
         });
       } else if (w.type === "conflict") {
         this.#notify({
@@ -1005,6 +1126,8 @@ export class SimController {
           title: t("sim.underpowered"),
           message: t("sim.underpoweredMessage", {
             chip: this.#refName(w.chip),
+            volts: w.volts ?? "?",
+            rating: this.#rating(w.chip),
           }),
         });
       } else if (w.type === "reversed") {
@@ -1019,7 +1142,65 @@ export class SimController {
           key: `smoke:${w.chip}`,
           variant: "danger",
           title: t("sim.damaged"),
-          message: t("sim.damagedMessage", { chip: this.#refName(w.chip) }),
+          message: t("sim.damagedMessage", {
+            chip: this.#refName(w.chip),
+            volts: w.volts ?? "?",
+            rating: this.#rating(w.chip),
+          }),
+        });
+      } else if (w.type === "floating-input") {
+        // Feature 400: a CMOS input nothing drives reads unknown — quiet on
+        // its own (an LED on an X net is just dark), so it is said.
+        this.#notify({
+          key: `floating:${w.chip}`,
+          variant: "warning",
+          title: t("sim.floatingInput"),
+          message: t("sim.floatingInputMessage", {
+            chip: this.#refName(w.chip),
+            pins: w.pins.join(", "),
+            count: w.pins.length,
+          }),
+        });
+      } else if (w.type === "marginal-high") {
+        this.#notify({
+          key: `marginal:${w.net}`,
+          variant: "warning",
+          title: t("sim.marginalHigh"),
+          message: t("sim.marginalHighMessage", { net: w.net }),
+        });
+      } else if (w.type === "ls-fanout") {
+        this.#notify({
+          key: `fanout:${w.net}`,
+          variant: "warning",
+          title: t("sim.lsFanout"),
+          message: t("sim.lsFanoutMessage", {
+            chip: this.#refName(w.chip),
+            net: w.net,
+            loads: w.loads,
+            count: w.max,
+          }),
+        });
+      } else if (w.type === "timing") {
+        // A timed part that cannot read its own R and C: it says what is
+        // missing rather than guess, and holds its output (sim/timing.js).
+        this.#notify({
+          key: `timing:${w.chip}`,
+          variant: "warning",
+          title: t("sim.timing"),
+          message: t("sim.timingMessage", {
+            chip: this.#refName(w.chip),
+            problems: timingProblemSentences(w).join("; "),
+          }),
+        });
+      } else if (w.type === "mixed-supply") {
+        this.#notify({
+          key: `mixed:${w.net}`,
+          variant: "warning",
+          title: t("sim.mixedSupply"),
+          message: t("sim.mixedSupplyMessage", {
+            net: w.net,
+            volts: w.volts.map((v) => `${v} V`).join(" / "),
+          }),
         });
       }
     }

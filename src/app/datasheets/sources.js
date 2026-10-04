@@ -170,6 +170,64 @@ const LIBRARIES = Object.freeze([
       "74LS259": "sn74ls259b.pdf",
       "74LS279": "sn74ls279a.pdf",
       "74LS595": "sn74ls595.pdf",
+      // ── The CD4000B CMOS family (Feature 400) ───────────────────────────
+      // Mostly Harris originals TI scanned, so the diagrams are images and a
+      // sheet routinely documents a family of parts: each part below names
+      // the sheet that carries ITS diagram. Verified by rendering each sheet
+      // and reading the part number and the 14/16-lead plastic DIP (the "E"
+      // suffix) off it. A shared sheet is fetched once and saved under every
+      // part that names it (download.js).
+      CD4001B: "cd4001b.pdf", // SCHS015C: CD4001B, CD4002B, CD4025B
+      CD4002B: "cd4001b.pdf",
+      CD4025B: "cd4001b.pdf",
+      CD4078B: "cd4078b.pdf", // SCHS059C
+      CD4011B: "cd4011b.pdf", // SCHS021D: CD4011B, CD4012B, CD4023B
+      CD4012B: "cd4011b.pdf",
+      CD4023B: "cd4011b.pdf",
+      CD4068B: "cd4068b.pdf", // SCHS053C
+      CD4093B: "cd4093b.pdf", // SCHS115D
+      CD4073B: "cd4073b.pdf", // SCHS057C: CD4073B, CD4081B, CD4082B
+      CD4081B: "cd4073b.pdf",
+      CD4082B: "cd4073b.pdf",
+      CD4071B: "cd4071b.pdf", // SCHS056D: CD4071B, CD4072B, CD4075B
+      CD4072B: "cd4071b.pdf",
+      CD4075B: "cd4071b.pdf",
+      CD4030B: "cd4030b.pdf", // SCHS035C
+      CD4070B: "cd4070b.pdf", // SCHS055E: CD4070B, CD4077B
+      CD4077B: "cd4070b.pdf",
+      CD4069UB: "cd4069ub.pdf", // SCHS054E
+      CD40106B: "cd40106b.pdf", // SCHS097F
+      // SCHS046L: CD4049UB, CD4050B. Its CD4050B pin table copies the
+      // 4049's "Inverting output" wording; the function table is right.
+      CD4049UB: "cd4049ub.pdf",
+      CD4050B: "cd4049ub.pdf",
+      CD4013B: "cd4013b.pdf", // SCHS023E
+      CD4027B: "cd4027b.pdf", // SCHS032D
+      CD4017B: "cd4017b.pdf", // SCHS027C: CD4017B, CD4022B
+      CD4022B: "cd4017b.pdf",
+      CD4040B: "cd4040b.pdf", // SCHS030D: CD4020B, CD4024B, CD4040B
+      CD4020B: "cd4040b.pdf",
+      CD4024B: "cd4040b.pdf",
+      CD4029B: "cd4029b.pdf", // SCHS034C
+      CD4510B: "cd4510b.pdf", // SCHS071B: CD4510B, CD4516B
+      CD4516B: "cd4510b.pdf",
+      CD4094B: "cd4094b.pdf", // SCHS063B
+      CD4028B: "cd4028b.pdf", // SCHS033C
+      CD4511B: "cd4511b.pdf", // SCHS072B
+      CD4066B: "cd4066b.pdf", // SCHS051J
+      CD4051B: "cd4051b.pdf", // SCHS047O: CD4051B, CD4052B, CD4053B
+      CD4052B: "cd4051b.pdf",
+      CD4053B: "cd4051b.pdf",
+      // ── The RC-timed parts ───────────────────────────────────────────────
+      CD4047B: "cd4047b.pdf", // SCHS044C
+      CD4060B: "cd4060b.pdf", // SCHS049C
+      CD4098B: "cd4098b.pdf", // SCHS065C
+      // SCHS093C is TI's CD14538B, "Replaces CD4538B Type": TI publishes no
+      // CD4538B sheet of its own, and this one states the pin-compatibility,
+      // carries the CD4538B's Table I and gives its period (T = Rx·Cx).
+      CD4538B: "cd14538b.pdf",
+      // SLFS022K (NA555/NE555/SA555/SE555): a current sheet with a text layer.
+      NE555: "ne555.pdf",
     },
   },
   {

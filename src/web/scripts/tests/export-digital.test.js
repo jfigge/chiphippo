@@ -41,6 +41,9 @@ import {
 import { DIGITAL_LIB } from "../model/export/digital-lib.js";
 import { digitalMapped, exportDigital } from "../model/export/digital.js";
 import { bench, demoDocs } from "./export-fixtures.js";
+import { bench as timingBench } from "./timing-fixtures.js";
+import { compileNetlist } from "../model/autobuild.js";
+import { normalizeDocument } from "../model/desk-doc.js";
 
 const SIZE = 20;
 
@@ -230,6 +233,36 @@ test("a lamp resistor to a rail becomes a pull on the lamp's side", () => {
   );
 });
 
+test("a potentiometer is its sides: a pull, or at the end of its track a wire", () => {
+  // The wiper on GND, pin 1 on a NAND input, pin 3 open.
+  const circuitAt = (position) => {
+    const b = timingBench();
+    const u = b.seat("u1", "74LS00", "e10");
+    b.vcc(u.get(14));
+    b.gnd(u.get(7));
+    const rv = b.seat("rv1", "pot", "a30", { ohms: 1e4, position });
+    b.gnd(rv.get(2));
+    b.link(rv.get(1), u.get(1));
+    const res = exportOf(b.doc);
+    const circuit = parse(res.files[0].text);
+    const reach = tunnelAt(circuit);
+    const chip = circuit.elements.find((el) => el.name === "7400.dig");
+    const pin = dilPin("7400.dig", chip.x, chip.y, 1);
+    const input = reach(pin.x, pin.y);
+    const pulledDown = circuit.elements.some(
+      (el) => el.name === "PullDown" && reach(el.x, el.y) === input,
+    );
+    return { report: res.report, input, pulledDown };
+  };
+  const mid = circuitAt(50);
+  assert.equal(mid.pulledDown, true, "a side with track left pulls");
+  assert.notEqual(mid.input, "GND");
+  assert.ok(!mid.report.some((e) => e.code === "unmapped"), "it comes across");
+  const end = circuitAt(0);
+  assert.equal(end.input, "GND", "a side with none left is a wire to it");
+  assert.equal(end.pulledDown, false);
+});
+
 test("an unconnected chip input is tied HIGH right on its pin", () => {
   const doc = bench();
   const circuit = parse(exportOf(doc).files[0].text);
@@ -309,4 +342,69 @@ test("an open-collector part is reported, and its outputs pulled up", () => {
       `output pin ${port.pin} is pulled up`,
     );
   }
+});
+
+// ── CMOS parts (Feature 400) ─────────────────────────────────────────────────
+
+/**
+ * A CD4002B bench with one gate's inputs left undriven three ways: a switch
+ * on A, a net of nothing but inputs on B and C, and D on no net at all.
+ */
+function cmosBench() {
+  const built = compileNetlist({
+    title: "NOR bench",
+    parts: [
+      { id: "U1", ref: "CD4002B" },
+      { id: "S1", ref: "sw-slide" },
+      { id: "D1", ref: "led" },
+    ],
+    nets: [
+      { name: "A", members: ["U1.A", "S1.C"] },
+      { name: "A_HI", members: ["S1.#1", "VCC"] },
+      { name: "A_LO", members: ["S1.#3", "GND"] },
+      { name: "FLOAT", members: ["U1.B", "U1.C"] },
+      { name: "Y", members: ["U1.J", "D1.A"] },
+      { name: "LAMP", members: ["D1.K", "GND"] },
+    ],
+  });
+  assert.ok(built.ok, JSON.stringify(built.errors));
+  return normalizeDocument(built.document);
+}
+
+test("a CD4000 part with a Digital twin is placed as that chip", () => {
+  const doc = cmosBench();
+  const circuit = parse(exportOf(doc).files[0].text);
+  assert.ok(circuit.elements.some((el) => el.name === "744002.dig"));
+});
+
+test("a floating CMOS input is pulled up in Digital, and that is reported", () => {
+  const doc = cmosBench();
+  const res = exportOf(doc);
+  const model = exportNetlist(doc);
+  const chip = model.parts.find((p) => p.def.id === "CD4002B");
+  const entry = res.report.find((e) => e.code === "cmosFloating");
+  assert.ok(entry, "reported");
+  assert.equal(entry.kind, "changed");
+  assert.deepEqual(entry.designators, [chip.designator]);
+  const circuit = parse(res.files[0].text);
+  const reach = tunnelAt(circuit);
+  const ups = circuit.elements.filter((el) => el.name === "PullUp");
+  // The net of nothing but inputs (B, C) carries a PullUp…
+  const floatNet = model.nets.get(chip.ports.find((p) => p.pin === 3).net).name;
+  assert.ok(
+    ups.some((el) => reach(el.x, el.y) === floatNet),
+    "B/C pulled up",
+  );
+  // …and D, on no net, has one right on its pin.
+  const el = circuit.elements.find((e) => e.name === "744002.dig");
+  const at = dilPin("744002.dig", el.x, el.y, 5);
+  assert.ok(
+    ups.some((u) => u.x === at.x && u.y === at.y),
+    "D pulled up on the pin",
+  );
+});
+
+test("a floating TTL input is not a CMOS report — it reads HIGH in both", () => {
+  const res = exportOf(bench());
+  assert.ok(!res.report.some((e) => e.code === "cmosFloating"));
 });

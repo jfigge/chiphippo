@@ -28,6 +28,8 @@ import assert from "node:assert/strict";
 import {
   boxOf,
   crossingCount,
+  drawnCrossings,
+  drawnWire,
   segmentHitsBox,
 } from "../model/wire-crossing.js";
 
@@ -107,4 +109,41 @@ test("crossingCount skips the parts a wire terminates on", () => {
     crossingCount(at(0, 5), at(22, 5), boxes, new Set(["chip", "bar"])),
     0,
   );
+});
+
+// ── The wire as DRAWN ───────────────────────────────────────────────────────
+
+test("a drawn wire runs end to end and sags below its chord", () => {
+  const line = drawnWire(at(0, 5), at(30, 5));
+  assert.deepEqual(line[0], at(0, 5));
+  assert.deepEqual(line.at(-1), at(30, 5));
+  const lowest = Math.max(...line.map((p) => p.y));
+  // 30 pitch × 0.12 = 3.6 pitch at the control point; the curve's own
+  // midpoint hangs half that below the chord.
+  assert.ok(lowest > 6.5 && lowest < 7, `sags ${lowest - 5} pitch`);
+});
+
+test("a run that clears a part as a chord can still be drawn over it", () => {
+  // The row-a case: a long run one row above a flat part. Its chord passes
+  // clear; its sag carries it down across the part — which is what made a
+  // switch on row a unclickable.
+  const part = boxOf([at(4, 6), at(6, 6)]);
+  const boxes = new Map([["sw", part]]);
+  assert.equal(crossingCount(at(0, 5), at(30, 5), boxes), 0, "the chord");
+  assert.equal(drawnCrossings(at(0, 5), at(30, 5), boxes), 1, "as drawn");
+});
+
+test("drawn crossings excuse a part an end sits in, and the parts named", () => {
+  const boxes = new Map([
+    ["chip", BODY],
+    ["bar", { x0: 12, x1: 20, y0: 4, y1: 6 }],
+  ]);
+  // Ends inside the chip's body: attached, not over it.
+  assert.equal(drawnCrossings(at(6, 5), at(22, 5), boxes), 1, "only the bar");
+  // Leaving from BESIDE a part and running back across it counts — the
+  // compiler names no part, so a switch's own supply lead over its knob is
+  // a crossing like any other…
+  assert.equal(drawnCrossings(at(7, 3), at(7, 9), boxes), 1);
+  // …while a report that excuses the parts a wire ends on still can.
+  assert.equal(drawnCrossings(at(7, 3), at(7, 9), boxes, new Set(["chip"])), 0);
 });

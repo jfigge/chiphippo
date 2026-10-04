@@ -234,6 +234,9 @@
       "trayAutoCloseHint": "When this is on, opening a folder in the parts tray closes every other folder, so only the one you're working in stays open — along with the folder it sits inside. Clicking an icon on the shut tray's strip does the same."
     },
     "datasheets": {
+      "family": "Chip family",
+      "familyBoth": "Both",
+      "familyHint": "Which logic family the parts tray shows: the 74LS TTL chips, the CD4000 CMOS chips, or both — each in a folder of its own. It only filters the tray: a project's chips always load and run whatever is chosen here, and a family the open project uses is shown anyway, so you can add more of the parts already on its desk.",
       "folder": "Datasheet folder",
       "noFolder": "No folder selected",
       "clearTitle": "Clear the datasheet folder",
@@ -291,6 +294,11 @@
     "filter": "Filter parts",
     "filterPlaceholder": "Filter parts…",
     "noMatches": "No matching parts.",
+    "hiddenFamilyOne": "{part} is a {family} part. Show {family} chips in Settings ▸ Data Sheets.",
+    "hiddenFamilyMany": {
+      "one": "{count} {family} part matches. Show {family} chips in Settings ▸ Data Sheets.",
+      "other": "{count} {family} parts match. Show {family} chips in Settings ▸ Data Sheets."
+    },
     "hide": "Hide the parts tray",
     "hideTitle": "Hide the parts tray ({mod}+P)",
     "show": "Show the parts tray",
@@ -352,7 +360,9 @@
       "shiftregister": "Shift register",
       "signals": "SIGNALS",
       "switches": "Switches",
-      "xor": "XOR"
+      "xor": "XOR",
+      "capacitors": "Capacitors",
+      "timer": "Timer"
     },
     "integration": {
       "output": "Output",
@@ -603,6 +613,9 @@
     "rnet9": {
       "title": "Resistor array (bussed, 9-pin)"
     },
+    "pot": {
+      "title": "Potentiometer"
+    },
     "psu": {
       "title": "Power supply"
     },
@@ -620,6 +633,144 @@
     },
     "lcd20x4": {
       "title": "Character LCD 20×4 (HD44780)"
+    },
+    "CD4001B": {
+      "title": "Quad 2-input NOR"
+    },
+    "CD4002B": {
+      "title": "Dual 4-input NOR"
+    },
+    "CD4025B": {
+      "title": "Triple 3-input NOR"
+    },
+    "CD4078B": {
+      "title": "8-input NOR/OR gate"
+    },
+    "CD4011B": {
+      "title": "Quad 2-input NAND"
+    },
+    "CD4012B": {
+      "title": "Dual 4-input NAND"
+    },
+    "CD4023B": {
+      "title": "Triple 3-input NAND"
+    },
+    "CD4068B": {
+      "title": "8-input NAND/AND gate"
+    },
+    "CD4093B": {
+      "title": "Quad 2-input NAND Schmitt trigger"
+    },
+    "CD4081B": {
+      "title": "Quad 2-input AND"
+    },
+    "CD4082B": {
+      "title": "Dual 4-input AND"
+    },
+    "CD4073B": {
+      "title": "Triple 3-input AND"
+    },
+    "CD4071B": {
+      "title": "Quad 2-input OR"
+    },
+    "CD4072B": {
+      "title": "Dual 4-input OR"
+    },
+    "CD4075B": {
+      "title": "Triple 3-input OR"
+    },
+    "CD4030B": {
+      "title": "Quad exclusive-OR"
+    },
+    "CD4070B": {
+      "title": "Quad exclusive-OR"
+    },
+    "CD4077B": {
+      "title": "Quad exclusive-NOR"
+    },
+    "CD4069UB": {
+      "title": "Hex inverter"
+    },
+    "CD40106B": {
+      "title": "Hex Schmitt-trigger inverter"
+    },
+    "CD4049UB": {
+      "title": "Hex inverting buffer/converter"
+    },
+    "CD4050B": {
+      "title": "Hex non-inverting buffer/converter"
+    },
+    "CD4013B": {
+      "title": "Dual D flip-flop, set & reset"
+    },
+    "CD4017B": {
+      "title": "Decade counter, 10 decoded outputs"
+    },
+    "CD4040B": {
+      "title": "12-stage binary ripple counter"
+    },
+    "CD4027B": {
+      "title": "Dual JK flip-flop, set & reset"
+    },
+    "CD4022B": {
+      "title": "Octal counter, 8 decoded outputs"
+    },
+    "CD4020B": {
+      "title": "14-stage binary ripple counter"
+    },
+    "CD4024B": {
+      "title": "7-stage binary ripple counter"
+    },
+    "CD4029B": {
+      "title": "Presettable up/down counter, binary or decade"
+    },
+    "CD4510B": {
+      "title": "Presettable BCD up/down counter"
+    },
+    "CD4516B": {
+      "title": "Presettable binary up/down counter"
+    },
+    "CD4094B": {
+      "title": "8-stage shift-and-store register, 3-state"
+    },
+    "CD4028B": {
+      "title": "BCD-to-decimal decoder"
+    },
+    "CD4511B": {
+      "title": "BCD-to-7-segment latch/decoder/driver"
+    },
+    "CD4066B": {
+      "title": "Quad bilateral switch"
+    },
+    "CD4051B": {
+      "title": "8-channel analog multiplexer/demultiplexer"
+    },
+    "CD4052B": {
+      "title": "Dual 4-channel analog multiplexer/demultiplexer"
+    },
+    "CD4053B": {
+      "title": "Triple 2-channel analog multiplexer/demultiplexer"
+    },
+    "NE555": {
+      "title": "555 timer"
+    },
+    "CD4047B": {
+      "title": "Monostable/astable multivibrator"
+    },
+    "CD4060B": {
+      "title": "14-stage ripple counter with oscillator"
+    },
+    "CD4098B": {
+      "title": "Dual monostable multivibrator"
+    },
+    "CD4538B": {
+      "title": "Dual precision monostable multivibrator"
+    },
+    "cap-ceramic": {
+      "title": "Capacitor (ceramic)"
+    },
+    "cap-electrolytic": {
+      "title": "Capacitor (electrolytic)"
     }
   },
   "colors": {
@@ -715,7 +866,16 @@
       "one": "{chip} is switched off right now: its active-low output enable {pin} is HIGH, so its outputs float. Drive it LOW to enable them.",
       "other": "{chip} is switched off right now: its active-low output enables {pin} are HIGH, so its outputs float. Drive them LOW to enable them."
     },
+    "outputsDisabledUnwiredActiveHigh": {
+      "one": "{chip}'s outputs are not enabled: its active-high output enable {pin} is not wired at all. Tie it HIGH.",
+      "other": "{chip}'s outputs are not enabled: its active-high output enables {pin} are not wired at all. Tie them HIGH."
+    },
+    "outputsDisabledLow": {
+      "one": "{chip} is switched off right now: its active-high output enable {pin} is LOW, so its outputs float. Drive it HIGH to enable them.",
+      "other": "{chip} is switched off right now: its active-high output enables {pin} are LOW, so its outputs float. Drive them HIGH to enable them."
+    },
     "inputFloating": "{ref} ({id}) has inputs nothing drives: {pins}. A floating TTL input reads HIGH, so the chip works — just not as designed. Tie each one to VCC or GND, or wire it to whatever should drive it.",
+    "inputFloatingCmos": "{ref} ({id}) has inputs nothing drives: {pins}. A floating CMOS input reads neither HIGH nor LOW, so what the chip does is anybody's guess. Tie every input to VCC or GND — spare gates included — or wire it to whatever should drive it.",
     "busFight": "{drivers} are wired to the same net ({net}). Two outputs must never share a net — one drives HIGH while the other drives LOW and they fight.",
     "ledUnlimited": "{ref} ({id}) is conducting with nothing limiting the current — on a real bench it would burn out rather than light. Put a resistor in series with it."
   },
@@ -943,6 +1103,11 @@
         "one": "1 signal was left behind — this desk already has the maximum number of signals.",
         "other": "{count} signals were left behind — this desk already has the maximum number of signals."
       }
+    },
+    "capacitorNote": {
+      "title": "Capacitors in Chip Hippo",
+      "message": "A capacitor carries a value here — it does not filter, smooth or store charge, and it connects nothing. The timing chips (the 555, CD4047B, CD4060B, CD4098B, CD4538B) read its value from the wiring, and it exports to KiCad with it.",
+      "dismiss": "Don't show again"
     }
   },
   "workspace": {
@@ -1017,6 +1182,7 @@
       "momentary": "becomes a toggle switch: Digital has no momentary contact",
       "unpowered": "is powered in Digital, which cannot run an unpowered chip",
       "openCollector": "gets a pull-up on each output, which floats in Digital as on the real part",
+      "cmosFloating": "gets a pull-up on an input nothing drives: Chip Hippo reads that CMOS input as unknown, Digital reads it HIGH",
       "signals": {
         "one": "{count} external signal: bench stimulus, not a part",
         "other": "{count} external signals: bench stimulus, not parts"
@@ -1024,7 +1190,8 @@
       "integrations": {
         "one": "{count} Arduino Output or Input: a link to a board, not a part",
         "other": "{count} Arduino Outputs and Inputs: links to a board, not parts"
-      }
+      },
+      "capacitor": "is left out: a logic simulator has no capacitors"
     }
   },
   "sim": {
@@ -1034,6 +1201,7 @@
     "memLostMessage": "{chip} was programmed, but its data file was missing — it now holds random noise. Re-load an image.",
     "short": "Short circuit",
     "shortMessage": "Opposing supplies meet on one net ({net}).",
+    "shortThroughSwitchMessage": "Opposing supplies meet through an analog switch ({net}).",
     "conflict": "Driver conflict",
     "conflictMessage": "Two outputs are fighting on one net ({net}).",
     "oscillation": "Oscillation",
@@ -1042,11 +1210,27 @@
       "other": "The circuit won't settle ({count} unstable nets)."
     },
     "underpowered": "Underpowered",
-    "underpoweredMessage": "{chip} is at 3 V — running inert.",
+    "underpoweredMessage": "{chip} is at {volts} V, below the {rating} it needs — running inert.",
     "reversed": "Power reversed",
     "reversedMessage": "{chip} has VCC and GND swapped.",
     "damaged": "Magic smoke!",
-    "damagedMessage": "{chip} was damaged by 12 V. Delete it and place a fresh one to continue."
+    "damagedMessage": "{chip} was damaged by {volts} V — it is rated for {rating}. Stopping the simulation restores it.",
+    "floatingInput": "Floating CMOS input",
+    "floatingInputMessage": {
+      "one": "{chip} has nothing driving pin {pins}. A floating CMOS input reads neither HIGH nor LOW — tie every input, spare gates included.",
+      "other": "{chip} has nothing driving pins {pins}. A floating CMOS input reads neither HIGH nor LOW — tie every input, spare gates included."
+    },
+    "marginalHigh": "Marginal logic level",
+    "marginalHighMessage": "A 74LS output drives a CD4000 input on {net}. Its HIGH (about 3.4 V) is below the 3.5 V a CMOS input needs at 5 V — add a pull-up resistor to VCC.",
+    "lsFanout": "Too many TTL loads",
+    "lsFanoutMessage": {
+      "one": "{chip} drives {loads} 74LS inputs on {net}, but can only hold {count} LOW. Buffer it with a CD4049UB or CD4050B.",
+      "other": "{chip} drives {loads} 74LS inputs on {net}, but can only hold {count} LOW. Buffer it with a CD4049UB or CD4050B."
+    },
+    "mixedSupply": "Mixed supply voltages",
+    "mixedSupplyMessage": "{net} joins chips powered at {volts}. A signal crossing between supplies needs a level shifter.",
+    "timing": "Timing not recognised",
+    "timingMessage": "{chip}: {problems}."
   },
   "about": {
     "subtitle": "TTL breadboard designer & simulator",
@@ -1170,7 +1354,11 @@
       "connection": "Connection",
       "triggerEdge": "Trigger",
       "triggerInit": "Trigger starts",
-      "fields": "Pins"
+      "fields": "Pins",
+      "ohms": "Resistance",
+      "farads": "Capacitance",
+      "position": "Position",
+      "timing": "Timing"
     },
     "option": {
       "manual": "Manual",
@@ -1187,10 +1375,15 @@
     "warnings": "Warnings",
     "warning": {
       "unpowered": "Unpowered — no supply reaches VCC and GND, so this part computes nothing.",
-      "underpowered": "Underpowered — VCC is at 3 V, so this part runs inert.",
+      "underpowered": "Underpowered — VCC is at {volts} V, below the {rating} this part needs, so it runs inert.",
       "reversed": "Power reversed — VCC and GND are swapped.",
-      "damaged": "Damaged — 12 V let the smoke out. Stopping the simulation restores it.",
-      "unprogrammed": "Not programmed — no image is loaded, so this chip reads random noise."
+      "damaged": "Damaged — {volts} V is over this part's {rating}, and it let the smoke out. Stopping the simulation restores it.",
+      "unprogrammed": "Not programmed — no image is loaded, so this chip reads random noise.",
+      "timing": "Timing not recognised — {problems}. Its outputs stay at rest until it is wired as its datasheet shows."
+    },
+    "invalid": {
+      "ohms": "Not a resistance — try 470, 4.7k, 4k7 or 2M2 (0.1 Ω to 1 GΩ).",
+      "farads": "Not a capacitance — give a unit: 100p, 10n, 4.7µ, 4u7 or 1m (1 pF to 1 F)."
     }
   },
   "memory": {
@@ -1549,6 +1742,26 @@
         "ignore-hello": "Don't answer the next Run, so it stops with “No answer”",
         "wrong-signature": "Answer the next Run as a sketch built for another design, so it refuses to start"
       }
+    }
+  },
+  "timing": {
+    "astable": "Astable — {frequency}, {duty}% duty cycle",
+    "monostable": "Monostable — {width} pulse",
+    "bistable": "Bistable — TRIG LOW sets the output HIGH, RESET LOW clears it",
+    "multivibrator": "Astable: Q at {frequency}; one-shot: a {width} pulse",
+    "oscillator": "RC oscillator — {frequency}",
+    "external": "Counting an external clock on φI",
+    "unused": "Not used",
+    "capped": "Faster than the desk can show: drawn at {cap}.",
+    "stretched": "Shorter than the desk can show: drawn {shown} long.",
+    "notRecognised": "Wiring not recognised: {problems}.",
+    "section": "Section {section}: {text}",
+    "problem": {
+      "noCapacitor": "no timing capacitor from {from} to {to}",
+      "noResistor": "no timing resistor from {from} to {to}",
+      "notConnected": "{pin} is not connected",
+      "ne555Unrecognised": "TRIG (2), THRES (6) and DISCH (7) are wired neither astable (TRIG and THRES joined, DISCH between RA and RB), monostable (THRES and DISCH joined, TRIG driven from outside) nor bistable (THRES on GND, TRIG driven from outside)",
+      "cd4060Incomplete": "the RC oscillator needs Cx from φO (9), Rx from φ̄O (10) and Rs from φI (11), all meeting at one junction"
     }
   }
 }

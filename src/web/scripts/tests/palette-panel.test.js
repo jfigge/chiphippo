@@ -30,6 +30,18 @@ import { ALL_KIT_KEYS } from "../model/board-types.js";
 
 const { PalettePanel } = await import("../components/palette-panel.js");
 
+// The tray's default family mode is 74LS (Feature 400): the CD4000 parts are
+// hidden until Settings ▸ Data Sheets shows them, so "the whole catalog" a
+// default tray lists is every part but those.
+const SHOWN_DEFS = PALETTE_DEFS.filter((d) => d.family !== "CD4000");
+// …and the chips the CHIPS folder holds.
+const SHOWN_CHIPS = CHIP_DEFS.filter((d) => d.family !== "CD4000");
+// The chip groups' order: where each first appears in the WHOLE catalog, so a
+// group the 74LS tray shares with CD4000 (the 555's Timer) ranks where its
+// CD4000 parts put it, ahead of the family-less groups that close the list.
+const GROUP_RANK = [...new Set(PALETTE_DEFS.map((d) => d.group))];
+const byRank = (a, b) => GROUP_RANK.indexOf(a) - GROUP_RANK.indexOf(b);
+
 function typeFilter(panelEl, value) {
   const input = panelEl.querySelector(".palette-filter");
   input.value = value;
@@ -47,19 +59,20 @@ test("lists the whole catalog grouped by function; picks report the ref", () => 
   });
 
   const items = host.querySelectorAll(".palette-item");
-  assert.equal(items.length, PALETTE_DEFS.length);
+  assert.equal(items.length, SHOWN_DEFS.length);
   const groups = [...host.querySelectorAll(".palette-group")].map(
     (g) => g.textContent,
   );
-  // Logic chips (catalog order, minus Memory), then Memory on its own, then the
-  // COMPONENTS sub-groups in their shelf order.
-  const chipGroupNames = [...new Set(CHIP_DEFS.map((d) => d.group))].filter(
-    (g) => g !== "Memory",
-  );
+  // Logic chips (in rank order, minus Memory), then the COMPONENTS sub-groups
+  // in their shelf order, then Memory on its own.
+  const chipGroupNames = [...new Set(SHOWN_CHIPS.map((d) => d.group))]
+    .filter((g) => g !== "Memory")
+    .sort(byRank);
   assert.deepEqual(groups, [
     ...chipGroupNames,
     "Switches",
     "Resistors",
+    "Capacitors",
     "LEDs",
     "Displays",
     "Oscillators",
@@ -89,18 +102,27 @@ test("logic chips nest under CHIPS; Memory + parts are their own sections", () =
     [...root.querySelectorAll(".palette-group")].map((g) => g.textContent);
 
   // Logic chips (minus Memory) fill the CHIPS folder; the parts fill COMPONENTS.
-  const chipGroupNames = [...new Set(CHIP_DEFS.map((d) => d.group))].filter(
-    (g) => g !== "Memory",
-  );
+  const chipGroupNames = [...new Set(SHOWN_CHIPS.map((d) => d.group))]
+    .filter((g) => g !== "Memory")
+    .sort(byRank);
   assert.deepEqual(groupsIn(bodies[0]), chipGroupNames);
   assert.deepEqual(groupsIn(bodies[1]), [
     "Switches",
     "Resistors",
+    "Capacitors",
     "LEDs",
     "Displays",
     "Oscillators",
     "Power",
   ]);
+
+  // The 555 is a chip, and its shelf is CHIPS ▸ Timer — not COMPONENTS, even
+  // though it is family-less and its crystal-can neighbours are there.
+  const refsIn = (root) =>
+    [...root.querySelectorAll(".palette-item")].map((i) => i.dataset.ref);
+  assert.deepEqual(refsUnder(host, "Timer"), ["NE555"]);
+  assert.ok(refsIn(bodies[0]).includes("NE555"), "NE555 under CHIPS");
+  assert.ok(!refsIn(bodies[1]).includes("NE555"), "NE555 not in COMPONENTS");
 
   // Memory is pulled OUT of both folders into its own top-level group.
   assert.ok(!groupsIn(bodies[0]).includes("Memory"), "not under CHIPS");
@@ -110,10 +132,10 @@ test("logic chips nest under CHIPS; Memory + parts are their own sections", () =
   // The CHIPS folder holds exactly the non-memory chip items; memory items are
   // NOT under it (they moved to the top-level Memory group).
   const memIds = new Set(
-    CHIP_DEFS.filter((d) => d.group === "Memory").map((d) => d.id),
+    SHOWN_CHIPS.filter((d) => d.group === "Memory").map((d) => d.id),
   );
   const chipIds = new Set(
-    CHIP_DEFS.map((d) => d.id).filter((id) => !memIds.has(id)),
+    SHOWN_CHIPS.map((d) => d.id).filter((id) => !memIds.has(id)),
   );
   const idsIn = (root) =>
     new Set(
@@ -171,7 +193,7 @@ test("filter matches id, title, and blurb (case-insensitive)", () => {
   assert.ok(host.querySelector(".palette-empty"));
 
   typeFilter(panel.element, "");
-  assert.equal(ids().length, PALETTE_DEFS.length);
+  assert.equal(ids().length, SHOWN_DEFS.length);
 });
 
 test("group titles expand/collapse the parts beneath them", () => {
@@ -252,8 +274,9 @@ test("every section starts collapsed, and opening one is session-only", () => {
     sections.filter((h) => h.getAttribute("aria-expanded") === "true"),
     [],
   );
-  // Every group name in the catalog is represented.
-  const groups = new Set(PALETTE_DEFS.map((d) => d.group));
+  // Every group the tray shows is represented (a CD4000-only group — Timer —
+  // waits for its family).
+  const groups = new Set(SHOWN_DEFS.map((d) => d.group));
   assert.equal(host.querySelectorAll(".palette-group").length, groups.size);
 
   // Opening one sticks for this panel…
@@ -297,7 +320,7 @@ test("the board selector is pinned at the top and reports the kit key", () => {
   // Board entries are NOT counted as parts (distinct class).
   assert.equal(
     host.querySelectorAll(".palette-item").length,
-    PALETTE_DEFS.length,
+    SHOWN_DEFS.length,
   );
 
   host.querySelector('.palette-board-item[data-kit="full"]').click();
@@ -858,4 +881,226 @@ test("every section-header class the palette renders has a CSS rule behind it", 
       `.${base}--collapsed is missing from the caret-rotation list`,
     );
   }
+});
+
+// ── Logic families (Feature 400) ───────────────────────────────────────────
+
+/** The chip groups that belong to no family (shown in every mode). */
+const FAMILY_LESS = new Set(
+  CHIP_DEFS.filter((def) => !def.family).map((def) => def.group),
+);
+
+/** The palette-item refs under a section's body, in order. */
+function refsUnder(host, section) {
+  const header = host.querySelector(`[data-section="${section}"]`);
+  const body = header?.nextElementSibling;
+  return body
+    ? [...body.querySelectorAll(".palette-item")].map((i) => i.dataset.ref)
+    : [];
+}
+
+test("74LS mode (the default) shows no CD4000 part and no family tier", () => {
+  resetDom();
+  const host = document.createElement("div");
+  document.body.append(host);
+  new PalettePanel(host, {});
+  const refs = [...host.querySelectorAll(".palette-item")].map(
+    (i) => i.dataset.ref,
+  );
+  assert.ok(!refs.some((r) => r.startsWith("CD4")), "no CD4000 part");
+  assert.ok(refs.includes("74LS00"));
+  assert.equal(host.querySelector(".palette-family"), null);
+  // The family-less chip groups and Memory show in every mode.
+  assert.ok(refs.includes("Z80A") && refs.includes("W65C22"));
+  assert.ok(refs.includes("HM62256"));
+});
+
+test("CD4000 mode: the same flat tree, holding only CD4000 logic chips", () => {
+  resetDom();
+  const host = document.createElement("div");
+  document.body.append(host);
+  const panel = new PalettePanel(host, {});
+  panel.setFamilyMode("CD4000");
+  assert.equal(host.querySelector(".palette-family"), null, "no family tier");
+  const nand = refsUnder(host, "NAND");
+  assert.ok(nand.length > 0 && nand.every((r) => r.startsWith("CD4")), nand);
+  assert.ok(refsUnder(host, "NAND").includes("CD4011B"));
+  // A function group CD4000 has no part in is hidden, not shown empty.
+  assert.equal(host.querySelector('[data-section="Latch"]'), null);
+  // …but the family-less groups stay.
+  assert.ok(refsUnder(host, "PROCESSOR").includes("Z80A"));
+  // The 555 shares the CD4000 RC timers' Timer group, after them.
+  assert.deepEqual(refsUnder(host, "Timer"), [
+    "CD4047B",
+    "CD4098B",
+    "CD4538B",
+    "NE555",
+  ]);
+});
+
+test("Combined mode inserts a 74LS and a CD4000 folder under CHIPS", () => {
+  resetDom();
+  const host = document.createElement("div");
+  document.body.append(host);
+  const panel = new PalettePanel(host, {});
+  panel.setFamilyMode("combined");
+  const families = [...host.querySelectorAll(".palette-family")].map(
+    (h) => h.textContent,
+  );
+  assert.deepEqual(families, ["74LS", "CD4000"]);
+  assert.deepEqual(refsUnder(host, "74LS/NAND").slice(0, 1), ["74LS00"]);
+  assert.ok(refsUnder(host, "CD4000/NAND").includes("CD4011B"));
+  assert.ok(!refsUnder(host, "CD4000/NAND").includes("74LS00"));
+  // Empty function folders are hidden per family.
+  assert.ok(host.querySelector('[data-section="74LS/Latch"]'));
+  assert.equal(host.querySelector('[data-section="CD4000/Latch"]'), null);
+  // The family-less groups sit straight under CHIPS, after the two folders —
+  // the 555's Timer among them, apart from the CD4000 folder's own Timer.
+  const chipsBody = host.querySelector(
+    '[data-section="CHIPS"]',
+  ).nextElementSibling;
+  const kids = [...chipsBody.children]
+    .filter((c) => c.dataset.section)
+    .map((c) => c.dataset.section);
+  assert.deepEqual(kids, ["74LS", "CD4000", "Timer", "Interface", "PROCESSOR"]);
+  assert.deepEqual(refsUnder(host, "Timer"), ["NE555"]);
+  assert.ok(!refsUnder(host, "CD4000/Timer").includes("NE555"));
+  assert.ok(refsUnder(host, "CD4000/Timer").includes("CD4047B"));
+});
+
+test("a CD4000 tray lists its groups in the 74LS tray's order", () => {
+  resetDom();
+  const host = document.createElement("div");
+  document.body.append(host);
+  const panel = new PalettePanel(host, {});
+  /** The section keys directly under `key`'s body, in order. */
+  const sectionsUnder = (key) =>
+    [
+      ...host.querySelector(`[data-section="${key}"]`).nextElementSibling
+        .children,
+    ]
+      .map((c) => c.dataset.section)
+      .filter(Boolean);
+  const ls = sectionsUnder("CHIPS").filter((g) => !FAMILY_LESS.has(g));
+  // The catalog numbers the CD4000 parts from the CD4001B, a NOR — so the
+  // part-number order would open the tray on NOR. It must not.
+  panel.setFamilyMode("CD4000");
+  const cmos = sectionsUnder("CHIPS").filter((g) => !FAMILY_LESS.has(g));
+  assert.equal(cmos[0], "NAND");
+  assert.deepEqual(
+    cmos.filter((g) => ls.includes(g)),
+    ls.filter((g) => cmos.includes(g)),
+    "CD4000 groups in the 74LS order",
+  );
+  // Combined: each family folder in that same order.
+  panel.setFamilyMode("combined");
+  const strip = (family) =>
+    sectionsUnder(family).map((k) => k.slice(family.length + 1));
+  assert.deepEqual(strip("74LS"), ls);
+  // A group only CD4000 has (the RC timers) falls after every shared one. Only
+  // the family folder shows it as CD4000's alone: a single-family tray shares
+  // the Timer group with the family-less 555.
+  assert.deepEqual(strip("CD4000"), [...cmos, "Timer"]);
+  // The family-less groups still close the list, in every mode.
+  assert.deepEqual(sectionsUnder("CHIPS").slice(-2), [
+    "Interface",
+    "PROCESSOR",
+  ]);
+});
+
+test("Combined mode: the two NAND groups open and shut independently", () => {
+  resetDom();
+  const host = document.createElement("div");
+  document.body.append(host);
+  const panel = new PalettePanel(host, {});
+  panel.setFamilyMode("combined");
+  const header = (key) => host.querySelector(`[data-section="${key}"]`);
+  header("CD4000/NAND").click();
+  assert.equal(header("CD4000/NAND").getAttribute("aria-expanded"), "true");
+  assert.equal(header("74LS/NAND").getAttribute("aria-expanded"), "false");
+  // Switching modes keeps each layout's remembered state.
+  panel.setFamilyMode("74LS");
+  assert.equal(header("NAND").getAttribute("aria-expanded"), "false");
+  panel.setFamilyMode("combined");
+  assert.equal(header("CD4000/NAND").getAttribute("aria-expanded"), "true");
+});
+
+test("auto-close keeps the whole path to a family's group open", () => {
+  resetDom();
+  const host = document.createElement("div");
+  document.body.append(host);
+  const panel = new PalettePanel(host, {});
+  panel.setAutoClose(true);
+  panel.setFamilyMode("combined");
+  const expanded = (key) =>
+    host
+      .querySelector(`[data-section="${key}"]`)
+      ?.getAttribute("aria-expanded");
+  host.querySelector('[data-section="CHIPS"]').click();
+  host.querySelector('[data-section="CD4000"]').click();
+  host.querySelector('[data-section="CD4000/NAND"]').click();
+  assert.equal(expanded("CD4000/NAND"), "true");
+  assert.equal(expanded("CD4000"), "true");
+  assert.equal(expanded("CHIPS"), "true");
+  assert.equal(expanded("74LS"), "false");
+});
+
+test("Combined filter: matches from both families, each under its own folder", () => {
+  resetDom();
+  const host = document.createElement("div");
+  document.body.append(host);
+  const panel = new PalettePanel(host, {});
+  panel.setFamilyMode("combined");
+  typeFilter(panel.element, "quad 2-input nand");
+  const refs = [...host.querySelectorAll(".palette-item")].map(
+    (i) => i.dataset.ref,
+  );
+  assert.ok(refs.includes("74LS00") && refs.includes("CD4011B"), refs);
+  assert.ok(refsUnder(host, "CD4000/NAND").includes("CD4011B"));
+});
+
+test("a filter matching only a hidden family says where the part is", () => {
+  resetDom();
+  const host = document.createElement("div");
+  document.body.append(host);
+  const panel = new PalettePanel(host, {});
+  typeFilter(panel.element, "CD4011B");
+  assert.equal(host.querySelectorAll(".palette-item").length, 0);
+  const empty = host.querySelector(".palette-empty").textContent;
+  assert.match(empty, /CD4011B/);
+  assert.match(empty, /Settings/);
+  // Several hidden matches are counted rather than listed.
+  typeFilter(panel.element, "CD40");
+  assert.match(host.querySelector(".palette-empty").textContent, /\d+ CD4000/);
+  typeFilter(panel.element, "zzz");
+  assert.doesNotMatch(host.querySelector(".palette-empty").textContent, /CD4/);
+});
+
+test("a family the open project uses is shown whatever the mode, until reset", () => {
+  resetDom();
+  const host = document.createElement("div");
+  document.body.append(host);
+  const panel = new PalettePanel(host, {});
+  panel.noteProjectFamilies(["CD4000"]);
+  // Shown as if Combined: both family folders.
+  assert.equal(host.querySelectorAll(".palette-family").length, 2);
+  assert.ok(refsUnder(host, "CD4000/NAND").includes("CD4011B"));
+  // Sticky: noting nothing new keeps it.
+  panel.noteProjectFamilies([]);
+  assert.equal(host.querySelectorAll(".palette-family").length, 2);
+  // A new project forgets it.
+  panel.resetProjectFamilies(["74LS"]);
+  assert.equal(host.querySelector(".palette-family"), null);
+  assert.equal(host.querySelector('.palette-item[data-ref="CD4011B"]'), null);
+});
+
+test("an unknown family mode reads as the default", () => {
+  resetDom();
+  const host = document.createElement("div");
+  document.body.append(host);
+  const panel = new PalettePanel(host, {});
+  panel.setFamilyMode("combined");
+  panel.setFamilyMode("bogus");
+  assert.equal(host.querySelector(".palette-family"), null);
+  assert.equal(host.querySelector('.palette-item[data-ref="CD4011B"]'), null);
 });

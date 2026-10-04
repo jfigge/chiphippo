@@ -46,6 +46,7 @@
 
 import { tf } from "../i18n.js";
 import { outputEnables, partDef } from "../catalog/index.js";
+import { floatsUnknown, supplyText } from "../catalog/families.js";
 import { partTitle } from "../catalog/labels.js";
 import { partPinAddresses } from "./occupancy.js";
 import { buildPlan } from "./build-plan.js";
@@ -53,6 +54,8 @@ import { tristateEnables } from "./autobuild-verify.js";
 import { settle } from "../sim/engine.js";
 import { junctionState } from "../sim/junction.js";
 import { L, Z } from "../sim/levels.js";
+import { rcTrace } from "../sim/rc-trace.js";
+import { timingProblemSentences } from "./timing-summary.js";
 
 /** A finding that stops the circuit working as built. */
 export const FAULT = "fault";
@@ -170,6 +173,7 @@ export function reviewDesk(document, netlist) {
     doc.components.filter((c) => c.kind === "clock").map((c) => [c.id, L]),
   );
   const settled = settle({ document: doc, netlist, clockPhase });
+  const trace = rcTrace(doc, netlist);
 
   for (const w of settled.warnings ?? []) {
     findings.push(engineFinding(w, doc));
@@ -226,23 +230,37 @@ export function reviewDesk(document, netlist) {
       count: blame.plural ? 2 : 1,
     };
     const unwired = blame.unwired === true;
+    // The CD4094B's enable is active HIGH, so the advice turns over with it.
+    let message;
+    if (blame.activeHigh) {
+      message = unwired
+        ? tf(
+            "review.outputsDisabledUnwiredActiveHigh",
+            "{chip}'s outputs are not enabled: its active-high output enable {pin} is not wired at all. Tie it HIGH.",
+            params,
+          )
+        : tf(
+            "review.outputsDisabledLow",
+            "{chip} is switched off right now: its active-high output enable {pin} is LOW, so its outputs float. Drive it HIGH to enable them.",
+            params,
+          );
+    } else {
+      message = unwired
+        ? tf(
+            "review.outputsDisabledUnwired",
+            "{chip} drives nothing: its active-low output enable {pin} is not wired at all, and an unwired input reads HIGH. Tie it to GND.",
+            params,
+          )
+        : tf(
+            "review.outputsDisabledHigh",
+            "{chip} is switched off right now: its active-low output enable {pin} is HIGH, so its outputs float. Drive it LOW to enable them.",
+            params,
+          );
+    }
     findings.push(
-      finding(
-        "OUTPUTS_DISABLED",
-        unwired ? FAULT : WARNING,
-        unwired
-          ? tf(
-              "review.outputsDisabledUnwired",
-              "{chip} drives nothing: its active-low output enable {pin} is not wired at all, and an unwired input reads HIGH. Tie it to GND.",
-              params,
-            )
-          : tf(
-              "review.outputsDisabledHigh",
-              "{chip} is switched off right now: its active-low output enable {pin} is HIGH, so its outputs float. Drive it LOW to enable them.",
-              params,
-            ),
-        { componentId: blame.componentId },
-      ),
+      finding("OUTPUTS_DISABLED", unwired ? FAULT : WARNING, message, {
+        componentId: blame.componentId,
+      }),
     );
   }
 
@@ -273,9 +291,15 @@ export function reviewDesk(document, netlist) {
   // one `output` pin); a part with no units block — a counter, a latch, a
   // memory — is judged whole, on whether any of its outputs is wired to
   // anything.
+  //
+  // A CMOS part (Feature 400) is not judged here at all: the ENGINE reports
+  // its floating inputs itself (`floating-input`, spare gates included, since
+  // a CMOS input reads unknown and the datasheets say to tie every one), and
+  // that warning becomes the same INPUT_FLOATING finding above.
   for (const comp of doc.components) {
     const def = partDef(comp.ref);
     if (!def?.pins?.length) continue;
+    if (floatsUnknown(def)) continue;
     if (settled.chipStatus?.get(comp.id)?.status !== "ok") continue;
     const pins = partPinAddresses(doc, comp);
     if (!pins) continue;
@@ -295,6 +319,9 @@ export function reviewDesk(document, netlist) {
       if (outputEnables(def).includes(p.n)) continue;
       if (live && !live.has(p.n)) continue;
       const address = addressOf.get(p.n);
+      // A capacitor on the pin's net counts as a connection (a 555's TRIG on
+      // its timing capacitor is wired, whatever DC level it settles at).
+      if (address != null && trace.hasCapacitor(netlist.netOfPoint.get(address))) continue; // prettier-ignore
       const level =
         address == null
           ? Z
@@ -435,18 +462,30 @@ function junctionAt(netlist, settled, anodeAt, cathodeAt) {
  * mid-run should not be described differently when they ask about it.
  */
 function engineFinding(w, doc) {
+  const compOf = (id) => doc.components.find((c) => c.id === id);
   const chipName = (id) => {
-    const comp = doc.components.find((c) => c.id === id);
+    const comp = compOf(id);
     return comp ? `${label(comp)} (${id})` : id;
   };
+  const rating = (id) => supplyText(partDef(compOf(id)?.ref));
   switch (w.type) {
     case "short":
       return finding(
         "SHORT",
         FAULT,
-        tf("sim.shortMessage", "Opposing supplies meet on one net ({net}).", {
-          net: w.net,
-        }),
+        w.via === "switch"
+          ? tf(
+              "sim.shortThroughSwitchMessage",
+              "Opposing supplies meet through an analog switch ({net}).",
+              { net: w.net },
+            )
+          : tf(
+              "sim.shortMessage",
+              "Opposing supplies meet on one net ({net}).",
+              {
+                net: w.net,
+              },
+            ),
         { netId: w.net },
       );
     case "conflict":
@@ -474,9 +513,15 @@ function engineFinding(w, doc) {
       return finding(
         "UNDERPOWERED",
         WARNING,
-        tf("sim.underpoweredMessage", "{chip} is at 3 V — running inert.", {
-          chip: chipName(w.chip),
-        }),
+        tf(
+          "sim.underpoweredMessage",
+          "{chip} is at {volts} V, below the {rating} it needs — running inert.",
+          {
+            chip: chipName(w.chip),
+            volts: w.volts ?? "?",
+            rating: rating(w.chip),
+          },
+        ),
         { componentId: w.chip },
       );
     case "reversed":
@@ -488,14 +533,90 @@ function engineFinding(w, doc) {
         }),
         { componentId: w.chip },
       );
+    case "floating-input": {
+      // Feature 400 — the engine's CMOS sweep (every input, spare gates
+      // included). The same finding code the TTL sweep below uses.
+      const def = partDef(compOf(w.chip)?.ref);
+      return finding(
+        "INPUT_FLOATING",
+        WARNING,
+        tf(
+          "review.inputFloatingCmos",
+          "{ref} ({id}) has inputs nothing drives: {pins}. A floating CMOS input reads neither HIGH nor LOW, so what the chip does is anybody's guess. Tie every input to VCC or GND — spare gates included — or wire it to whatever should drive it.",
+          {
+            ref: compOf(w.chip) ? label(compOf(w.chip)) : w.chip,
+            id: w.chip,
+            pins: (w.pins ?? []).map((n) => pinLabel(def, n)).join(", "),
+          },
+        ),
+        { componentId: w.chip },
+      );
+    }
+    case "marginal-high":
+      return finding(
+        "MARGINAL_HIGH",
+        WARNING,
+        tf(
+          "sim.marginalHighMessage",
+          "A 74LS output drives a CD4000 input on {net}. Its HIGH (about 3.4 V) is below the 3.5 V a CMOS input needs at 5 V — add a pull-up resistor to VCC.",
+          { net: w.net },
+        ),
+        { netId: w.net },
+      );
+    case "ls-fanout":
+      return finding(
+        "LS_FANOUT",
+        WARNING,
+        tf(
+          "sim.lsFanoutMessage",
+          "{chip} drives {loads} 74LS inputs on {net}, but can only hold {count} LOW. Buffer it with a CD4049UB or CD4050B.",
+          {
+            chip: chipName(w.chip),
+            net: w.net,
+            loads: w.loads,
+            count: w.max,
+          },
+        ),
+        { componentId: w.chip, netId: w.net },
+      );
+    case "timing":
+      // A timer that cannot read its own R and C — the SimController's
+      // sentence, so the toast and the review say it the same way.
+      return finding(
+        "TIMING_UNRECOGNISED",
+        FAULT,
+        tf("sim.timingMessage", "{chip}: {problems}.", {
+          chip: chipName(w.chip),
+          problems: timingProblemSentences(w).join("; "),
+        }),
+        { componentId: w.chip },
+      );
+    case "mixed-supply":
+      return finding(
+        "MIXED_SUPPLY",
+        FAULT,
+        tf(
+          "sim.mixedSupplyMessage",
+          "{net} joins chips powered at {volts}. A signal crossing between supplies needs a level shifter.",
+          {
+            net: w.net,
+            volts: (w.volts ?? []).map((v) => `${v} V`).join(" / "),
+          },
+        ),
+        { netId: w.net },
+      );
     default:
       return finding(
         "DAMAGED",
         FAULT,
         tf(
           "sim.damagedMessage",
-          "{chip} was damaged by 12 V. Delete it and place a fresh one to continue.",
-          { chip: chipName(w.chip) },
+          "{chip} was damaged by {volts} V — it is rated for {rating}. Stopping the simulation restores it.",
+          {
+            chip: chipName(w.chip),
+            volts: w.volts ?? "?",
+            rating: rating(w.chip),
+          },
         ),
         { componentId: w.chip },
       );

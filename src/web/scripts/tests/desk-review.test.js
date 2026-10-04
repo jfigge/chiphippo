@@ -201,6 +201,31 @@ test("a tri-state part with its enable unwired names the pin to tie LOW", () => 
   if (floating) assert.doesNotMatch(floating.message, /1G|2G/);
 });
 
+test("the CD4094B's active-HIGH enable is reported the other way up", () => {
+  // Its OUTPUT ENABLE floats Q1–Q8 while LOW — the one enable in the catalog
+  // whose fix is "tie it HIGH", and the review must not say "tie it to GND".
+  const doc = powered();
+  const chip = seatChip(doc, "CD4094B", "e5");
+  wirePower(doc, "CD4094B", chip.pins);
+  const unwired = review(doc.toJSON()).findings.find(
+    (f) => f.code === "OUTPUTS_DISABLED",
+  );
+  assert.match(unwired.message, /active-high output enable OUTPUT ENABLE/);
+  assert.match(unwired.message, /Tie it HIGH/);
+  assert.equal(unwired.severity, FAULT);
+  // Wired LOW: a warning that it is switched off, and how to switch it on.
+  doc.addWire({
+    from: nodeHole(chip.pins.get(15)),
+    to: "bb1.-9",
+    color: "black",
+  });
+  const low = review(doc.toJSON()).findings.find(
+    (f) => f.code === "OUTPUTS_DISABLED",
+  );
+  assert.match(low.message, /is LOW, so its outputs float\. Drive it HIGH/);
+  assert.equal(low.severity, WARNING);
+});
+
 test("two outputs on one net are a bus fight whatever they are driving", () => {
   const doc = powered();
   const a = seatChip(doc, "74LS04", "e5");

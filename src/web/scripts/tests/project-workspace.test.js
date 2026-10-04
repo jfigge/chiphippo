@@ -1316,6 +1316,80 @@ test("a part's example arrives as a desktop named for it", async () => {
   );
 });
 
+/** A hand-built example of three desktops, the 555's shape. */
+const threeModes = () => ({
+  ref: "NE555",
+  title: "555 timer",
+  desktops: [
+    { name: "Monostable", doc: someDesign("bb4") },
+    { name: "Bistable", doc: someDesign("bb5") },
+    { name: "Astable", doc: someDesign("bb6") },
+  ],
+});
+const NE555_TABS = [
+  "NE555 Monostable example",
+  "NE555 Bistable example",
+  "NE555 Astable example",
+];
+
+test("an example of several desktops adds them all, in order, on the first", async () => {
+  const h = await harness();
+  h.seedExample("NE555", threeModes());
+  const atBoot = h.fits.count;
+  assert.equal(await h.workspace.openExample("NE555"), "added");
+  await settle();
+  assert.deepEqual(h.strip(), ["Desktop 1", ...NE555_TABS]);
+  assert.equal(h.workspace.activeTab.name, "NE555 Monostable example");
+  assert.equal(h.workspace.activeTab.description, "555 timer");
+  assert.deepEqual(
+    h.doc.boards.map((b) => b.id),
+    ["bb4"],
+  );
+  assert.equal(h.fits.count, atBoot + 1, "the desk on screen was framed");
+  assert.equal(h.workspace.dirty, false, "and all three landed clean");
+  // Each desktop holds its own circuit.
+  await h.workspace.selectTab("t4");
+  await settle();
+  assert.equal(h.workspace.activeTab.name, "NE555 Astable example");
+  assert.deepEqual(
+    h.doc.boards.map((b) => b.id),
+    ["bb6"],
+  );
+});
+
+test("asking again with every desktop open switches to the first, adding none", async () => {
+  const h = await harness();
+  h.seedExample("NE555", threeModes());
+  await h.workspace.openExample("NE555");
+  await settle();
+  await h.workspace.selectTab("t1");
+  await settle();
+  assert.equal(await h.workspace.openExample("NE555"), "switched");
+  await settle();
+  assert.deepEqual(h.strip(), ["Desktop 1", ...NE555_TABS]);
+  assert.equal(h.workspace.activeTab.name, "NE555 Monostable example");
+});
+
+test("a desktop of an example that was deleted comes back on its own", async () => {
+  const h = await harness();
+  h.seedExample("NE555", threeModes());
+  await h.workspace.openExample("NE555");
+  await settle();
+  await h.workspace.deleteTab("t3"); // the Bistable desktop
+  await settle();
+  clickButton("Delete");
+  await settle();
+  assert.deepEqual(h.strip(), ["Desktop 1", NE555_TABS[0], NE555_TABS[2]]);
+  assert.equal(await h.workspace.openExample("NE555"), "added");
+  await settle();
+  assert.deepEqual(
+    h.strip(),
+    ["Desktop 1", NE555_TABS[0], NE555_TABS[2], NE555_TABS[1]],
+    "only the missing one is added — the open two are not copied",
+  );
+  assert.equal(h.workspace.activeTab.name, "NE555 Bistable example");
+});
+
 test("asking for the same example twice switches to it, never copies it", async () => {
   const h = await harness();
   h.seedExample("74LS00", { ref: "74LS00", title: "NAND", doc: someDesign() });
@@ -1375,6 +1449,20 @@ test("a NEW example desktop is centred and lands clean", async () => {
   // Editing it is still an unsaved change, exactly like any other desktop.
   h.doc.load(someDesign("bb3"));
   assert.equal(h.workspace.dirty, true);
+});
+
+// Landing clean means an example ADDS no unsaved change — never that it takes
+// one away. Re-baselining a project that was already dirty would hide the
+// edits it held from the leave guard, and a close would then discard them
+// without asking.
+test("an example opened over unsaved work leaves that work unsaved", async () => {
+  const h = await harness();
+  h.seedExample("74LS00", { ref: "74LS00", title: "NAND", doc: someDesign() });
+  h.doc.load(someDesign("bb3")); // an edit nobody has saved
+  assert.equal(h.workspace.dirty, true);
+  assert.equal(await h.workspace.openExample("74LS00"), "added");
+  await settle();
+  assert.equal(h.workspace.dirty, true, "the edit is still unsaved");
 });
 
 test("switching back to an open example neither re-centres nor re-baselines", async () => {

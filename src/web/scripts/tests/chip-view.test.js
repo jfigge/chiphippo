@@ -135,7 +135,7 @@ test("ChipView flags an unprogrammed ROM at design time, no sim status needed", 
   assert.ok(partEl.classList.contains("part-chip--unprogrammed"));
   assert.equal(
     partEl.querySelector(".part-chip-status > title").textContent,
-    "Not programmed — load an image",
+    "Not programmed — no image is loaded, so this chip reads random noise.",
   );
 
   // Programming the chip (a Save/Load in the memory inspector) clears it
@@ -180,7 +180,7 @@ test("ChipView: a burn fault (reversed/damaged) wins over the unprogrammed hint,
   const partEl = layer.querySelector(".part-chip");
   assert.ok(partEl.classList.contains("part-chip--unprogrammed"));
 
-  view.setStatus("damaged");
+  view.setStatus("damaged", 12);
   assert.ok(partEl.classList.contains("part-chip--damaged"));
   assert.ok(
     !partEl.classList.contains("part-chip--unprogrammed"),
@@ -188,7 +188,8 @@ test("ChipView: a burn fault (reversed/damaged) wins over the unprogrammed hint,
   );
   assert.equal(
     partEl.querySelector(".part-chip-status > title").textContent,
-    "Damaged — replace this part",
+    "Damaged — 12 V is over this part's 5 V, and it let the smoke out. " +
+      "Stopping the simulation restores it.",
   );
 
   // Stopping the sim clears the engine status; the design-time warning
@@ -196,4 +197,31 @@ test("ChipView: a burn fault (reversed/damaged) wins over the unprogrammed hint,
   view.setStatus(null);
   assert.ok(!partEl.classList.contains("part-chip--damaged"));
   assert.ok(partEl.classList.contains("part-chip--unprogrammed"));
+});
+
+test("a fault's hover hint states the volts the chip saw and its family's rating", () => {
+  resetDom();
+  const layer = document.createElement("div");
+  document.body.append(layer);
+  const title = () =>
+    layer.querySelector(".part-chip-status > title").textContent;
+
+  // The hint is the Properties card's own sentence, never a fixed English
+  // string: a 74LS part on 3 V says 3 V and its 5 V rating…
+  const ls = new ChipView(layer, { id: "c1", ref: "74LS00", params: {} });
+  ls.setStatus("underpowered", 3);
+  assert.match(title(), /3 V/);
+  assert.match(title(), /5 V/);
+  ls.remove();
+
+  // …and a CD4000 part burnt on 18+ V states the CMOS range.
+  const cmos = new ChipView(layer, { id: "c2", ref: "CD4011B", params: {} });
+  cmos.setStatus("damaged", 20);
+  assert.match(title(), /20 V/);
+  assert.match(title(), /3–18 V/);
+  assert.doesNotMatch(title(), /replace/i, "Stop restores a burnt chip");
+
+  // No status, no hint.
+  cmos.setStatus(null);
+  assert.equal(title(), "");
 });

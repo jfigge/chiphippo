@@ -314,7 +314,7 @@ test("a PSU's Properties dialog shows Voltage as a live-applying select", () => 
   assert.ok(select, "the Voltage select is in the dialog");
   assert.deepEqual(
     [...select.options].map((o) => o.value),
-    ["3", "5", "12"],
+    ["3", "5", "9", "12", "15"],
   );
   assert.equal(select.value, "5", "seeded from the current volts");
 

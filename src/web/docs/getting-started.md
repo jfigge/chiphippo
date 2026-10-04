@@ -58,8 +58,9 @@ board; it's a free-standing part with two wireable terminals, **+** and
 **−**.
 
 Right-click the placed PSU and choose **Properties…** to confirm it's set to
-**5 V** (new PSUs default to 5 V, but 3 V and 12 V are also there — 12 V is
-enough to damage a chip, so save it for parts rated to take it). **Delete
+**5 V** (new PSUs default to 5 V, but 3 V, 9 V, 12 V and 15 V are also there —
+anything over 5 V damages a 74LS chip, so save those for CD4000 CMOS parts,
+which are rated for 3–18 V). **Delete
 Component**, further down the same context menu, removes the PSU if you want
 to start over.
 
@@ -78,7 +79,9 @@ Give an LED a series resistor, just as you would on a bench. Wired straight
 between a supply rail and ground it has nothing to limit the current, and the
 simulation shows it **burnt** rather than lit. One resistor anywhere in the
 loop is enough — including a single one in a display's common leg, which
-protects all of its segments at once.
+protects all of its segments at once. (The one thing that limits the current
+by itself is a CD4000 output at 5 V or below — see
+[Mixing logic families](simulation.md#mixing-logic-families).)
 
 ## Wire it up
 
@@ -125,6 +128,6 @@ badge.
 - **[Wiring, Nets & Buses](wiring.md)** — the wire tool in depth, cross-board
   wires, colors, and multi-bit buses.
 - **[Power & Clock Sources](power-and-clocks.md)** — PSU voltage and the
-  12 V damage rule, plus clock sources for sequential circuits.
+  over-voltage damage rule, plus clock sources for sequential circuits.
 - **[Running a Simulation](simulation.md)** — Run/Pause/Step, the settle
   model, and how live views (LEDs, chip badges) work.

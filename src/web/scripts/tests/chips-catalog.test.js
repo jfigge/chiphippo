@@ -31,6 +31,7 @@ import { packageSpec } from "../model/footprints.js";
 import { Z } from "../sim/levels.js";
 import {
   hasLogic,
+  isAnalogSwitch,
   isSequential,
   isMemory,
   hasBehavior,
@@ -43,7 +44,9 @@ import {
 
 // `io` is a BIDIRECTIONAL pin (the 74245 transceiver's bus lines): a unit both
 // reads it and drives it, so it counts as an input AND an output below.
-const ROLES = new Set(["input", "output", "vcc", "gnd", "nc", "io"]);
+// `timing` is a timer's RC terminal (pin-builders.js): where its resistor and
+// capacitor connect — neither a logic input nor an output.
+const ROLES = new Set(["input", "output", "vcc", "gnd", "nc", "io", "timing"]);
 
 const GATE_WAVE = [
   "74LS00",
@@ -126,8 +129,61 @@ const IO_WAVE = ["W65C21", "W65C22"];
 // real M-cycle/T-state machine off a single CLK — which is exactly why they are
 // two files in sim/ and not one shared shape.
 const CPU_WAVE = ["W65C02", "Z80A"];
+// The CD4000 CMOS family (Feature 400): the basic gates and buffers, a D
+// flip-flop and two counters — every pinout from its TI datasheet.
+const CD4000_WAVE = [
+  "CD4001B",
+  "CD4002B",
+  "CD4025B",
+  "CD4078B",
+  "CD4011B",
+  "CD4012B",
+  "CD4023B",
+  "CD4068B",
+  "CD4093B",
+  "CD4081B",
+  "CD4082B",
+  "CD4073B",
+  "CD4071B",
+  "CD4072B",
+  "CD4075B",
+  "CD4030B",
+  "CD4070B",
+  "CD4077B",
+  "CD4069UB",
+  "CD40106B",
+  "CD4049UB",
+  "CD4050B",
+  "CD4013B",
+  "CD4017B",
+  "CD4040B",
+  // CD4000 batch 2 (Feature 410): the MSI parts.
+  "CD4027B",
+  "CD4022B",
+  "CD4020B",
+  "CD4024B",
+  "CD4029B",
+  "CD4510B",
+  "CD4516B",
+  "CD4094B",
+  "CD4028B",
+  "CD4511B",
+  // …and phase 2b: the analog switches.
+  "CD4066B",
+  "CD4051B",
+  "CD4052B",
+  "CD4053B",
+  // The RC-timed parts: the 4047 multivibrator, the 4060 counter with its own
+  // oscillator, the 4098/4538 dual one-shots.
+  "CD4047B",
+  "CD4060B",
+  "CD4098B",
+  "CD4538B",
+];
+// The 555 timer: a chip, family-less, shelved under CHIPS ▸ Timer.
+const TIMER_WAVE = ["NE555"];
 
-test("the catalog contains the gate wave plus the sequential/MSI + 74LS + memory + io + cpu waves", () => {
+test("the catalog contains the gate wave plus the sequential/MSI + 74LS + memory + io + cpu + CD4000 waves", () => {
   assert.deepEqual(
     CHIP_DEFS.map((d) => d.id).sort(),
     [
@@ -137,6 +193,8 @@ test("the catalog contains the gate wave plus the sequential/MSI + 74LS + memory
       ...MEM_WAVE,
       ...IO_WAVE,
       ...CPU_WAVE,
+      ...CD4000_WAVE,
+      ...TIMER_WAVE,
     ].sort(),
   );
   for (const id of [
@@ -146,10 +204,26 @@ test("the catalog contains the gate wave plus the sequential/MSI + 74LS + memory
     ...MEM_WAVE,
     ...IO_WAVE,
     ...CPU_WAVE,
+    ...CD4000_WAVE,
+    ...TIMER_WAVE,
   ]) {
     assert.ok(chipDef(id), id);
   }
   assert.equal(chipDef("9999"), null);
+});
+
+test("every logic chip carries its family; memory, peripherals and CPUs carry none", () => {
+  for (const id of [...GATE_WAVE, ...SEQ_WAVE, ...LS_WAVE]) {
+    assert.equal(chipDef(id).family, "74LS", id);
+  }
+  for (const id of CD4000_WAVE) {
+    assert.equal(chipDef(id).family, "CD4000", id);
+  }
+  // Family-less on purpose: none of these is a 74LS part, and tagging one
+  // would hide it in CD4000 mode (catalog/families.js).
+  for (const id of [...MEM_WAVE, ...IO_WAVE, ...CPU_WAVE, ...TIMER_WAVE]) {
+    assert.equal(chipDef(id).family, undefined, id);
+  }
 });
 
 for (const def of CHIP_DEFS) {
@@ -172,9 +246,13 @@ for (const def of CHIP_DEFS) {
     // Position may be non-standard (the 74LS73/74LS75/74LS76 skip the corners).
     for (const p of def.pins) assert.ok(ROLES.has(p.role), `${def.id} ${p.n}`);
     assert.equal(def.pins.filter((p) => p.role === "vcc").length, 1);
+    // …and a CD405x carries VEE beside VSS: a ground-role pin, since
+    // single-supply use ties it to VSS.
     const gndCount = def.pins.filter((p) => p.role === "gnd").length;
     if (isMemory(def)) assert.ok(gndCount >= 1, `${def.id} has ≥1 gnd`);
-    else assert.equal(gndCount, 1, `${def.id} gnd`);
+    else if (def.pins.some((p) => p.name === "VEE")) {
+      assert.equal(gndCount, 2, `${def.id} VSS + VEE`);
+    } else assert.equal(gndCount, 1, `${def.id} gnd`);
 
     // Names unique among functional SIGNAL pins (NC and the power rails — which
     // may legitimately repeat, e.g. a dual VSS — are excluded).
@@ -241,6 +319,29 @@ for (const def of CHIP_DEFS) {
       for (const [pin, lv] of off) {
         assert.equal(lv, Z, `${def.id} data pin ${pin} floats when deselected`);
       }
+    } else if (isAnalogSwitch(def)) {
+      // ── Analog switch: channels between real io terminals, read from real
+      //    input controls. Every io pin is a terminal of some channel, every
+      //    input a control of some channel, and nothing is an output.
+      const terminals = new Set();
+      const controls = new Set();
+      for (const ch of def.logic.channels) {
+        for (const p of [ch.a, ch.b]) {
+          assert.equal(pinRole.get(p), "io", `${def.id} terminal ${p}`);
+          terminals.add(p);
+        }
+        assert.notEqual(ch.a, ch.b, `${def.id} channel joins two pins`);
+        for (const p of ch.inputs) {
+          assert.equal(pinRole.get(p), "input", `${def.id} control ${p}`);
+          controls.add(p);
+        }
+        assert.equal(typeof ch.on, "function");
+      }
+      for (const p of ioPins) assert.ok(terminals.has(p), `${def.id} io ${p}`);
+      for (const p of inputPins) {
+        assert.ok(controls.has(p), `${def.id} input ${p} controls nothing`);
+      }
+      assert.equal(outputPins.length, 0, `${def.id} drives nothing`);
     } else if (hasLogic(def)) {
       // ── Combinational: units reference real pins; a unit may only READ an
       //    input/io pin and only DRIVE an output/io pin. Every input is used

@@ -112,10 +112,13 @@ export function canonical(name) {
     low = true;
     s = s.replace(TRAILING_LOW, "");
   }
+  // Letters are kept whatever their script: a CD4060B's φO and φ̄O are not
+  // the bare "O" that stripping to ASCII left of them (and a 4020's lone φ
+  // was the empty string).
   const key = s
     .replace(/[̀-ͯ]/g, "")
     .replace(/[><=≥≤≠]/g, (c) => RELATIONS[c])
-    .replace(/[^a-zA-Z0-9]/g, "")
+    .replace(/[^\p{L}\p{N}]/gu, "")
     .toUpperCase();
   return { key, low };
 }
@@ -227,6 +230,12 @@ export function resolvePin(ref, pinToken) {
   const role = ROLE_TOKENS[token.toUpperCase()];
   if (role) {
     const byRole = pins.filter((p) => p.role === role);
+    // A part with two DIFFERENT ground pins (a CD405x's VSS and VEE): the
+    // one the token names, in any case, before falling back on the role.
+    const named = byRole.filter(
+      (p) => p.name.toUpperCase() === token.toUpperCase(),
+    );
+    if (named.length) return oneOf(named, ref, token);
     if (byRole.length) return oneOf(byRole, ref, token);
   }
 

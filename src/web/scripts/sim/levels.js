@@ -25,7 +25,9 @@
 //   X  conflict / unknown
 //
 // TTL authenticity: a FLOATING TTL input reads HIGH — `asInput(Z) === H` — a
-// deliberate, documented choice (real 74xx inputs pull themselves high). `X`
+// deliberate, documented choice (real 74xx inputs pull themselves high). A
+// CMOS input has nothing to pull it anywhere, so a CD4000 part reads its
+// floating inputs through `asCmosInput` instead (Z → X; Feature 400). `X`
 // propagates as `X` except where a dominant input forces the result (a NAND
 // with any `L` is `H` regardless of an `X` on another pin — the standard
 // ternary-logic shortcut).
@@ -45,6 +47,16 @@ export const X = "X";
  */
 export function asInput(level) {
   return level === Z ? H : level;
+}
+
+/**
+ * Read a pin as a CMOS gate input: a floating pin (`Z`) is UNKNOWN — a gate
+ * with nothing on it reads whatever the air puts there — so it becomes `X`;
+ * H/L/X pass through. The CMOS twin of `asInput`, chosen per part by its
+ * family (catalog/families.js `floatsUnknown`).
+ */
+export function asCmosInput(level) {
+  return level === Z ? X : level;
 }
 
 const some = (arr, v) => arr.some((x) => x === v);
@@ -83,6 +95,16 @@ export function xor(...ins) {
   return ins.filter((x) => x === H).length % 2 === 1 ? H : L;
 }
 
+/** XNOR: the complement of XOR — any X → X; else even count of H → H. */
+export function xnor(...ins) {
+  return inv(xor(...ins));
+}
+
+/** BUF: a non-inverting buffer — H/L pass through, X stays X. */
+export function buf(a) {
+  return a === H || a === L ? a : X;
+}
+
 /** INV: H↔L; X → X (Z is asInput'd to H before it reaches here). */
 export function inv(a) {
   if (a === H) return L;
@@ -99,4 +121,27 @@ export function buf3(data, enable) {
   if (enable === L) return data;
   if (enable === H) return Z;
   return X;
+}
+
+/**
+ * `fn` over every clean reading of `levels` (H/L/X), each X tried both ways:
+ * the level every reading agrees on, or X where they differ. So an unknown
+ * that cannot change the answer does not spoil it — a 4028 with D floating
+ * still holds outputs 2–7 LOW, since neither reading of D selects them.
+ * @param {string[]} levels
+ * @param {(clean: string[]) => string} fn
+ */
+export function overUnknowns(levels, fn) {
+  const unknown = levels.flatMap((lv, i) => (lv === X ? [i] : []));
+  let result = null;
+  for (let k = 0; k < 1 << unknown.length; k++) {
+    const clean = levels.slice();
+    unknown.forEach((at, bit) => {
+      clean[at] = (k >> bit) & 1 ? H : L;
+    });
+    const value = fn(clean);
+    result = result === null || result === value ? value : X;
+    if (result === X) return X;
+  }
+  return result;
 }

@@ -103,8 +103,8 @@ scratch and begins driving live views from the result.</p>
 <p>Press <strong>Stop</strong> (same shortcut) to freeze the simulation and return to editing.
 Stopping clears all run-volatile state — net levels, chip health badges, any
 sequential state (counter values, shift-register contents, clock phase), and
-<strong>12 V chip damage</strong>, so a chip you burnt out is whole again the moment you
-stop. Nothing that happens during a run outlives it.</p>
+<strong>over-voltage chip damage</strong>, so a chip you burnt out is whole again the moment
+you stop. Nothing that happens during a run outlives it.</p>
 <p><code>Space</code> is disabled while a placement, wire, or bus tool is armed (it might
 want the key for its own gesture) or while a text field has focus — use
 <code>Cmd/Ctrl+R</code> in that case, or just click <strong>Run</strong>.</p>
@@ -115,13 +115,24 @@ vocabulary (see <a href="probing.html">Probing &amp; Net Names</a>):</p>
 <ul>
 <li><strong><code>H</code></strong> — logic high, driven by a supply or a chip output.</li>
 <li><strong><code>L</code></strong> — logic low, driven the same way.</li>
-<li><strong><code>Z</code></strong> — floating: nothing is actively driving this point. Chip Hippo
-models real 74xx TTL behavior here — <strong>a floating input reads as HIGH</strong>,
-so an unconnected chip input doesn&#39;t just do nothing, it behaves as if
-tied high.</li>
-<li><strong><code>X</code></strong> — a conflict: two drivers disagree on a net (two chip outputs
-fighting, or opposing supplies wired together), or the net never settled
-to a stable value at all (an oscillation — see below).</li>
+<li><strong><code>Z</code></strong> — floating: nothing is actively driving this point. What a chip
+input makes of that depends on its <strong>logic family</strong>, exactly as on a real
+bench:<ul>
+<li>a <strong>74LS (TTL)</strong> input pulls itself up — <strong>a floating input reads as
+HIGH</strong>, so an unconnected input doesn&#39;t just do nothing, it behaves as if
+tied high;</li>
+<li>a <strong>CD4000 (CMOS)</strong> input has nothing to pull it anywhere — <strong>a floating
+input reads as unknown (<code>X</code>)</strong>, so whatever it feeds is unknown too. A
+gate whose other input already decides it still answers (a NOR with one
+input HIGH is LOW whatever the floating one does), and a counter or
+flip-flop whose reset or clock floats loses track of its count until a
+clean reset. Tie every CMOS input — spare gates included.</li>
+</ul>
+</li>
+<li><strong><code>X</code></strong> — unknown: two drivers disagree on a net (two chip outputs
+fighting, or opposing supplies wired together), a floating CMOS input, or
+the net never settled to a stable value at all (an oscillation — see
+below).</li>
 </ul>
 <p>You don&#39;t need to know how the engine computes these to use the app, but
 recognizing <code>X</code> on a probe reading is the fastest way to spot a wiring
@@ -134,6 +145,10 @@ net carries triggers a fresh settle while you&#39;re running:</p>
 <li>Turning a <strong>PSU</strong> on/off or changing its voltage.</li>
 <li>Changing a <strong>clock</strong>&#39;s rate or manual/free-running mode.</li>
 <li>A manual clock click, or (for sequential circuits) a <strong>Step</strong> advance.</li>
+<li>A <strong>timer</strong> reaching its next edge — a 555 or an RC-timed CD4000 part keeps
+its own time and re-settles the circuit at exactly the moment its output
+changes, with no clock brick involved (see
+<a href="chip-library.html#timers">Timers</a>).</li>
 </ul>
 <p>Each re-settle starts from the <em>previous</em> stable state rather than from
 scratch — this warm start is what lets a cross-coupled latch or a counter
@@ -160,6 +175,14 @@ with more than one clock keeps their relative timing. A clock never runs
 faster than 100 Hz, the top of its own rate list, so <code>×4</code> applied to a rate
 that is already a quarter of the way there has nothing further to give.</li>
 </ul>
+<p><strong>Timers keep simulated time, and the transport owns it.</strong> A 555 or a CD4000
+timer is told how long the circuit has been running — real seconds since
+<strong>Run</strong>, scaled by the speed. <strong>Pause</strong> stops that clock along with the clock
+bricks, so a pulse in progress is frozen where it is; <strong>Speed</strong> scales it, so
+a 1 Hz 555 blinks four times a second at <code>×4</code>; and <strong>Step</strong> moves it on with
+the clocks — by the fastest clock&#39;s half-period, or, with no clock brick on
+the desk, straight to the next moment a timer&#39;s output changes, so a circuit
+built round a 555 can be single-stepped edge by edge too.</p>
 <p>See <a href="power-and-clocks.html">Power &amp; Clock Sources</a> for placing and configuring
 a clock brick, and <a href="logic-analyzer.html">Logic Analyzer &amp; Timing</a> for
 capturing what these edges actually do to your signals over time.</p>
@@ -174,10 +197,12 @@ loop, shows a distinct <strong>burnt</strong> cue instead of lighting: that conn
 would fry a real LED, so it fries this one. A net reached through a resistor
 is only weakly pulled rather than strongly driven, which is what makes the
 resistor count. This is a physical rule, not a logical one — the levels
-alone would happily light it.</li>
+alone would happily light it. A <strong>CD4000 output at 5 V or below</strong> limits
+the current by itself, so an LED wired straight onto one lights rather than
+burns — see <a href="#mixing-logic-families">Mixing logic families</a>.</li>
 <li><strong>Chips</strong> show a small health badge the moment they&#39;re powered: normal
-chips show nothing extra, an <strong>underpowered</strong> chip (running at 3 V) gets
-an amber corner dot, and a chip killed by 12 V shows <strong>damaged</strong> — a red X
+chips show nothing extra, an <strong>underpowered</strong> chip (a 74LS part at 3 V) gets
+an amber corner dot, and a chip killed by over-voltage shows <strong>damaged</strong> — a red X
 with a smoke cue. Hover the badge for the exact reason (also unpowered or
 reversed VCC/GND). A damaged chip stays dead for the rest of that run, and
 <strong>Stop</strong> restores it — see <a href="power-and-clocks.html">Power &amp; Clock Sources</a>.</li>
@@ -186,6 +211,10 @@ detail on reading and naming nets lives in
 <a href="probing.html">Probing &amp; Net Names</a> — this page won&#39;t duplicate it.</li>
 <li><strong>Clock bricks</strong> carry a small pulse lamp that tracks their own current
 output level in real time.</li>
+<li><strong>Timers</strong> print their rate or pulse length under their part number — in
+amber when it is faster than the desk can draw — and show a warning triangle
+when they cannot make out their own wiring. Hover either for the full
+sentence; see <a href="chip-library.html#timers">Timers</a>.</li>
 </ul>
 <h2 id="interacting-live">Interacting live</h2>
 <p>Switches, push buttons, and clock bricks stay fully interactive while
@@ -208,7 +237,10 @@ perceive.</p>
 <ul>
 <li><strong>A conflict or short</strong> — two chip outputs disagreeing on the same net, or
 opposing supplies tied together — settles immediately, but to <code>X</code>, and the
-app raises a warning naming the net.</li>
+app raises a warning naming the net. An analog switch (CD4066B, CD405x) can
+make one too: a closed channel joins the nets on its two sides, a supply
+crossing it counts as an ordinary output, so a rail switched onto an output
+is a conflict, and a channel joining + to − is reported as a short.</li>
 <li><strong>An oscillation</strong> — a circuit that never stops changing (an unbuffered
 ring of inverters, for instance) can&#39;t reach a fixed point at all. Chip
 Hippo detects this — after a bounded number of attempts it gives up,
@@ -217,9 +249,38 @@ hanging.</li>
 </ul>
 <p>Either way, the affected nets read <code>X</code> on the probe and in the logic
 analyzer, which is your cue to go find the wiring mistake causing it.</p>
+<h2 id="mixing-logic-families">Mixing logic families</h2>
+<p>A 74LS (TTL) chip and a CD4000 (CMOS) chip can share a board, and at 5 V they
+can share signals — but the two were not designed to the same voltages, and
+Chip Hippo says so where it matters. None of these changes a level; each is a
+warning naming the net, with the fix:</p>
+<ul>
+<li><strong>A floating CMOS input</strong> — a CD4000 input nothing drives. Spare gates count:
+their datasheets say to tie every unused input.</li>
+<li><strong>A 74LS output into a CMOS input</strong> — a 74LS HIGH is about 3.4 V, below the
+3.5 V a CD4000 input needs at 5 V. It usually works on a bench, which is why
+it is marginal rather than wrong; a pull-up resistor from the net to VCC is
+the textbook fix, and clears the warning.</li>
+<li><strong>Too many TTL loads</strong> — a standard CD4000 output can hold only one 74LS
+input LOW. The CD4049UB and CD4050B buffers exist for exactly this: one of
+their outputs drives eight.</li>
+<li><strong>Two supplies on one net</strong> — chips on different supply voltages joined by
+a signal, which needs a level shifter.</li>
+</ul>
+<p>One difference works the other way. A standard CD4000 output is too weak to
+burn an LED: at 5 V it can push only about 4 mA through one, a fifth of what
+an LED is rated for, so an LED wired straight onto a CD4000 output with no
+resistor <strong>lights</strong> — on the desk as on a bench. The same goes for an LED fed
+through a CD4066B or CD4051B/52B/53B switch at 5 V, whose on-resistance
+(about 470 Ω) does the limiting. Above 5 V it stops being true: at 9 V the
+output would pass about 15 mA and overheat the chip, and at 12–15 V the LED
+too, so there the LED burns as it would off a 74LS output. Two parts are
+built to drive hard and burn an LED at any supply: the CD4049UB/CD4050B
+buffers when their output is LOW, and the CD4511B&#39;s segment outputs. A
+resistor is still good practice.</p>
 <hr>
 <p>Next: <a href="power-and-clocks.html">Power &amp; Clock Sources</a> for supply voltages, the
-12 V damage rule, and clock bricks in depth, or
+over-voltage damage rule, and clock bricks in depth, or
 <a href="probing.html">Probing &amp; Net Names</a> to read exactly what&#39;s happening on any
 net.</p>
 

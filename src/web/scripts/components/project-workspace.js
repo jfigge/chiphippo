@@ -103,6 +103,7 @@ import {
   setProjectField,
   setProjectWheelLock,
 } from "../model/project-doc.js";
+import { exampleDesktops } from "../model/example-desktops.js";
 
 /**
  * How often the open project is stashed for crash recovery.
@@ -155,6 +156,7 @@ export class ProjectWorkspace {
   #fitView;
   #onActiveChange;
   #onWheelLock;
+  #onProjectAdopted;
   #projectConnections; // (docs, previous) → the connections the file carries
   #onConnections; // a project arrived carrying these connections
   #project = null; // the normalized meta (model/project-doc.js) + `location`
@@ -239,6 +241,9 @@ export class ProjectWorkspace {
    * @param {(connections: object[]) => void} [opts.onConnections] - a project
    *   was LOADED carrying these connections; the ones this machine lacks go
    *   into its settings, flagged (app.js).
+   * @param {(docs: object[]) => void} [opts.onProjectAdopted] - a project was
+   *   LOADED (boot, New, Open, Open Recent); these are its desktops'
+   *   documents. app.js re-derives which logic families the tray must show.
    */
   constructor({
     bridge,
@@ -254,6 +259,7 @@ export class ProjectWorkspace {
     onWheelLock,
     projectConnections,
     onConnections,
+    onProjectAdopted,
     autoSaveMs = AUTO_SAVE_MS,
   }) {
     this.#bridge = bridge;
@@ -268,6 +274,7 @@ export class ProjectWorkspace {
     this.#onWheelLock = onWheelLock;
     this.#projectConnections = projectConnections;
     this.#onConnections = onConnections;
+    this.#onProjectAdopted = onProjectAdopted;
     this.#autoSaveMs = Number(autoSaveMs) > 0 ? Number(autoSaveMs) : 0;
     if (boot?.project) {
       this.#adopt(boot.project);
@@ -913,10 +920,12 @@ export class ProjectWorkspace {
   }
 
   /**
-   * Put a part's EXAMPLE CIRCUIT on the desk as a desktop of its own — the
-   * demonstration bench `make demos` builds for every benchable 74xx part,
-   * asked for from that part's pin-assignments window (which has a ref and
-   * nothing else, so the request reaches here through main).
+   * Put a part's EXAMPLE CIRCUIT on the desk as desktops of its own — the
+   * demonstration bench `make demos` builds for every benchable 74xx part, or
+   * a hand-built example with a desktop per thing the part does (the 555's
+   * three modes; model/example-desktops.js reads both), asked for from that
+   * part's pin-assignments window (which has a ref and nothing else, so the
+   * request reaches here through main).
    *
    * It arrives the way an IMPORT does — an addition, landing on the new desk,
    * with its ROM guids reseated — with ONE difference: an example is a fixed,
@@ -925,12 +934,18 @@ export class ProjectWorkspace {
    * back on the desk instead. The NAME is the whole identity test, which is
    * also its cost: rename the tab and the next ask brings a fresh one. That is
    * the honest answer, since the project schema keeps no per-tab marker a
-   * rename could not erase.
+   * rename could not erase. For an example of several desktops the test is
+   * per desktop: only the ones not open are added (so one closed by mistake
+   * comes back on its own), and with every one still open the first is put on
+   * the desk.
    *
-   * A NEW example desktop is centred and framed on the way in and lands CLEAN
-   * (`#frameLoaded` + `#markClean`, exactly as a loaded project does); one
-   * that was already open is neither, since its camera and its state are the
-   * user's. Which is what the three-valued answer is for.
+   * NEW example desktops are added together — all prepared before the project
+   * changes, so a failure adds none — and the first of them is centred and
+   * framed on the way in, exactly as a loaded project is. Adding them is no
+   * unsaved change of the user's (`#markClean`), though it never hides one
+   * that was already there. A desktop that was already open is neither framed
+   * nor re-baselined, since its camera and its state are the user's. Which is
+   * what the three-valued answer is for.
    *
    * @param {string} ref - a catalog id ("74LS00").
    * @returns {Promise<"added"|"switched"|null>} null when it could not (already
@@ -952,12 +967,6 @@ export class ProjectWorkspace {
   }
 
   async #addExample(ref) {
-    const name = `${ref} example`;
-    const open = this.#project.tabs.find((tab) => tab.name === name);
-    if (open) {
-      await this.selectTab(open.id); // a no-op when it is already on the desk
-      return "switched";
-    }
     const failed = (err) => {
       this.#fail(t("workspace.failExample", { ref }), err);
       return null;
@@ -968,38 +977,60 @@ export class ProjectWorkspace {
     } catch (err) {
       return failed(err);
     }
-    if (!demo?.doc) {
+    const desktops = exampleDesktops(ref, demo);
+    if (!desktops.length) {
       return failed(new Error("no example circuit is bundled for that part"));
+    }
+    const tabNamed = (name) =>
+      this.#project.tabs.find((tab) => tab.name === name);
+    const missing = desktops.filter((d) => !tabNamed(d.name));
+    if (!missing.length) {
+      // a no-op when it is already on the desk
+      await this.selectTab(tabNamed(desktops[0].name).id);
+      return "switched";
     }
     // A COPIED desktop is reseated, with no exception. No shipped example
     // carries a memory chip today (the Memory, Interface and PROCESSOR groups
     // have no bench), but "two chips can never share a ROM guid" is a rule
     // that must not have a door in it — opening the same example twice would
-    // walk straight through one.
-    let doc;
-    try {
-      doc = (await this.#bridge.desktop.duplicate(demo.doc))?.doc;
-    } catch (err) {
-      return failed(err);
+    // walk straight through one. Every copy is made BEFORE the project
+    // changes, so a failure part-way adds nothing rather than half an example.
+    const copies = [];
+    for (const desktop of missing) {
+      let doc;
+      try {
+        doc = (await this.#bridge.desktop.duplicate(desktop.doc))?.doc;
+      } catch (err) {
+        return failed(err);
+      }
+      if (!doc) return failed(new Error("the example could not be prepared"));
+      copies.push({ ...desktop, doc: canonical(doc) });
     }
-    if (!doc) return failed(new Error("the example could not be prepared"));
+    // Whether the project held unsaved work before any of this — read after
+    // the awaits above, so it is the state the additions actually land on.
+    const wasDirty = this.dirty;
     this.#stash();
-    const next = importDesktop(this.#project, {
-      name,
-      description: demo.title ?? "",
-      doc: canonical(doc),
-    });
+    let meta = this.#project;
+    let first = null;
+    for (const { name, description, doc } of copies) {
+      const next = importDesktop(meta, { name, description, doc });
+      meta = next.meta;
+      first ??= next.tab.id;
+    }
     await this.#leaveActiveDesk();
-    this.#project = next.meta;
+    this.#project = setActiveDesktop(meta, first);
     this.#loadActive();
     this.#frameLoaded();
     // An example is a SHIPPED circuit, reproducible from its part's pinout
     // window in one click — so it arrives on the same terms a loaded project
     // does: centred, and clean. Looking one up is not work to keep or throw
     // away, and it must not put a save-or-discard question in front of the
-    // next New or Open. (A desktop that was already open keeps its camera and
-    // whatever the user has since made of it — this path is a NEW one.)
-    this.#markClean();
+    // next New or Open. But only an example lands clean, never the project:
+    // re-baselining one that already held unsaved work would hide that work
+    // from the leave guard, and a close would discard it without asking. (A
+    // desktop that was already open keeps its camera and whatever the user has
+    // since made of it — this path is for NEW ones.)
+    if (!wasDirty) this.#markClean();
     this.#renderTabs();
     this.#announce();
     return "added";
@@ -1133,6 +1164,13 @@ export class ProjectWorkspace {
     this.#renderTabs();
     // The padlock is the project's, so a project arriving brings its own.
     this.#onWheelLock?.(this.wheelLocked);
+    // …and the tray learns which logic families this project uses (Feature
+    // 400), forgetting the last project's.
+    try {
+      this.#onProjectAdopted?.(this.#project.tabs.map((tab) => tab.doc));
+    } catch (err) {
+      console.error("[renderer] project-adopted hook failed:", err);
+    }
     // …and so are the serial connections its elements talk over: any this
     // machine does not know yet join its settings, flagged to be verified.
     if (this.#project.connections?.length) {

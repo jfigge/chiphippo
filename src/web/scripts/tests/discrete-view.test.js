@@ -493,6 +493,6 @@ test("PsuView: badge shows volts, terminals render, position in world px", () =>
 
 test("buildPsuSvg coerces junk volts to the default badge", () => {
   resetDom();
-  const svg = buildPsuSvg({ volts: 9 });
+  const svg = buildPsuSvg({ volts: 7 });
   assert.equal(svg.querySelector(".part-psu-badge").textContent, "5 V");
 });
