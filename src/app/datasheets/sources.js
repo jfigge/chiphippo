@@ -214,6 +214,10 @@ const LIBRARIES = Object.freeze([
       CD4094B: "cd4094b.pdf", // SCHS063B
       CD4028B: "cd4028b.pdf", // SCHS033C
       CD4511B: "cd4511b.pdf", // SCHS072B
+      CD4066B: "cd4066b.pdf", // SCHS051J
+      CD4051B: "cd4051b.pdf", // SCHS047O: CD4051B, CD4052B, CD4053B
+      CD4052B: "cd4051b.pdf",
+      CD4053B: "cd4051b.pdf",
     },
   },
   {

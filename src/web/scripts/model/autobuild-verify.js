@@ -75,7 +75,8 @@ import { floatingInputs } from "./spec-lint.js";
 import { buildNetlist } from "../sim/netlist.js";
 import { settle, tick } from "../sim/engine.js";
 import { isLit, junctionState } from "../sim/junction.js";
-import { H, L } from "../sim/levels.js";
+import { channelStates, isAnalogSwitch } from "../sim/chip-eval.js";
+import { H, L, Z } from "../sim/levels.js";
 
 const ABORT = "abort";
 const REPAIR = "repair";
@@ -362,12 +363,17 @@ export function* verifySteps(compiled, spec = null) {
   // the netlist it wrote. So a net whose only driver is a tri-state output
   // names the enable pin instead, which is a fault a repair round can act on.
   const disabledBy = tristateEnables(doc, netlist, first, nameOf);
+  const opened = openChannelNets(doc, netlist, first);
   for (const net of compiled.nets ?? []) {
     if (net.rail) continue;
     const id = netIdOfDeclared.get(net.name);
     if (id == null) continue;
     const level = first.netLevels.get(id);
     if (level !== undefined && level !== "Z" && level !== "X") continue;
+    // A net on an analog switch's OPEN channel is MEANT to float: it is driven
+    // exactly while its channel is on (seven of a 4051's eight channels are
+    // off at any moment). Calling it undriven would condemn the part working.
+    if (level === "Z" && opened.has(id)) continue;
     // X is not "undriven": it is a net fought over or never settling, which
     // L5 has already reported as the conflict or oscillation it is. Saying
     // "nothing drives it" here sent a repair round looking for a missing wire
@@ -530,7 +536,10 @@ function describeWarning(w, where) {
   }
   const ids = w.nets ?? (w.net != null ? [w.net] : []);
   const nets = [...new Set(ids.map((id) => (where ? where.net(id) : id)))];
-  const said = NET_WARNINGS[w.type];
+  const said =
+    w.type === "short" && w.via === "switch"
+      ? (n) => `VCC and GND meet through an ON analog switch channel at ${n}`
+      : NET_WARNINGS[w.type];
   if (!nets.length) return w.type;
   return said ? said(nets.join(", ")) : `${w.type} on ${nets.join(", ")}`;
 }
@@ -729,6 +738,39 @@ export function tristateEnables(
     }
   }
   return out;
+}
+
+/**
+ * The nets that hold a terminal of an analog switch channel that is OPEN (or
+ * might be — a floating control) in the settled state: nets whose floating is
+ * the switch doing its job, not a missing wire.
+ */
+export function openChannelNets(doc, netlist, settled) {
+  const open = new Set();
+  for (const comp of doc.components ?? []) {
+    const def = partDef(comp.ref);
+    if (!isAnalogSwitch(def)) continue;
+    const pins = partPinAddresses(doc, comp);
+    if (!pins) continue;
+    const netOfPin = new Map(
+      pins.map((p) => [p.pin, netlist.netOfPoint.get(p.address)]),
+    );
+    const levels = new Map(
+      [...netOfPin].map(([pin, net]) => [
+        pin,
+        net ? (settled.netLevels.get(net) ?? Z) : Z,
+      ]),
+    );
+    const powered = settled.chipStatus?.get(comp.id)?.status === "ok";
+    for (const ch of channelStates(def, levels)) {
+      if (powered && ch.on === H) continue;
+      for (const pin of [ch.a, ch.b]) {
+        const net = netOfPin.get(pin);
+        if (net) open.add(net);
+      }
+    }
+  }
+  return open;
 }
 
 /** Resolve a compiled net member to a desk address. */

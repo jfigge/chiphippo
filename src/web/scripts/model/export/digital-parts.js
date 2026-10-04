@@ -42,7 +42,7 @@
  * pinout the CD4069UB/CD40106B share with the 7404/7414. Pin tables are held
  * to the library like every other mapping, and the CLI test runs each bench
  * against our engine — which is what proves the FUNCTION matches, since a pin
- * table only says which pins are inputs. The other 29 have no twin there
+ * table only says which pins are inputs. The other 33 have no twin there
  * (DIGITAL_UNSUPPORTED).
  */
 export const DIGITAL_FILES = Object.freeze({
@@ -144,6 +144,10 @@ export const DIGITAL_UNSUPPORTED = Object.freeze({
   CD4094B: "noDigitalModel",
   CD4028B: "noDigitalModel",
   CD4511B: "noDigitalModel",
+  CD4066B: "noDigitalModel",
+  CD4051B: "noDigitalModel",
+  CD4052B: "noDigitalModel",
+  CD4053B: "noDigitalModel",
   "rom-8k": "memory",
   "ram-8k": "memory",
   "28C16": "memory",

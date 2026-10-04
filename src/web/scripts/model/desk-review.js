@@ -467,9 +467,19 @@ function engineFinding(w, doc) {
       return finding(
         "SHORT",
         FAULT,
-        tf("sim.shortMessage", "Opposing supplies meet on one net ({net}).", {
-          net: w.net,
-        }),
+        w.via === "switch"
+          ? tf(
+              "sim.shortThroughSwitchMessage",
+              "Opposing supplies meet through an analog switch ({net}).",
+              { net: w.net },
+            )
+          : tf(
+              "sim.shortMessage",
+              "Opposing supplies meet on one net ({net}).",
+              {
+                net: w.net,
+              },
+            ),
         { netId: w.net },
       );
     case "conflict":

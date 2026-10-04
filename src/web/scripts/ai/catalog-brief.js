@@ -34,6 +34,7 @@
 // explicit for that reason, not for brevity.
 
 import { PALETTE_DEFS, outputEnablePins } from "../catalog/index.js";
+import { isAnalogSwitch } from "../sim/chip-eval.js";
 import { familyOf } from "../catalog/families.js";
 import { MIN_TESTS } from "./generate.js";
 
@@ -71,7 +72,10 @@ function pinMark(def, p) {
   const enable = outputEnablePins(def).find((e) => e.n === p.n);
   if (enable) return enable.on === "H" ? "^" : "!";
   if (p.role === "output") return ">";
-  if (p.role === "io") return "<>";
+  // An analog switch's terminal is bidirectional in a different sense: it does
+  // not drive at all, it CONNECTS — told apart so the model never counts on it
+  // as a source.
+  if (p.role === "io") return isAnalogSwitch(def) ? "~" : "<>";
   return "";
 }
 
@@ -172,9 +176,10 @@ Every logic chip in the catalog belongs to ONE family, named in its bracket:
 
 # Rules the compiler enforces
 
-* NEVER list a power pin. Every part declares its own VCC/GND, and the
-  compiler wires them, plants the PSU, and bridges the rails. Listing them is
-  an error, not a courtesy.
+* NEVER list a power pin. Every part declares its own VCC/GND (VDD/VSS on a
+  CD4000 part, and VEE as well on a CD4051B/52B/53B), and the compiler wires
+  them, plants the PSU, and bridges the rails. Listing them is an error, not a
+  courtesy.
 * Every net needs at least two members.
 * A pin belongs to at most one net.
 * Two outputs must not share a net — that is a bus fight, and the engine
@@ -202,10 +207,15 @@ Every logic chip in the catalog belongs to ONE family, named in its bracket:
   it to \`VCC\`. Do NOT put either on a switch — a netlist cannot state which
   way a switch RESTS, so the part comes up disabled. A circuit that only works
   after the user finds the right switch is not one worth handing over.
+* An analog switch (CD4066B, CD4051B/52B/53B — pins marked \`~\`) drives
+  NOTHING. A channel that is ON joins its two pins, so whatever drives one side
+  drives the other, either way; OFF, each side floats unless something else
+  drives it. So the level it passes has to come from somewhere — a rail, an
+  output, a switch — and a net hung only on an OFF channel floats.
 * LEDs and displays do NOT need you to add a series resistor — the compiler
   interposes one in every lamp leg that goes to VCC or GND, because an
   unlimited LED burns rather than lights. Do not put one in the netlist, and
-  do not wire a lamp between two outputs: nothing can limit it there.
+  do not wire a lamp between two outputs: no resistor can be put there.
 * An ACTIVE-LOW output gets its LED the other way up: anode to \`VCC\`, cathode
   to the pin, so a LIT lamp still means "asserted". An active-high output takes
   the usual way round — anode to the pin, cathode to \`GND\`.
@@ -278,6 +288,8 @@ Every part, its package and (for a logic chip) its family, then its pins as
     (none)  an input — or a passive pin: power, a switch contact, a lamp leg
     >       an output — it DRIVES. Two of these must never share a net.
     <>      bidirectional: it drives in one direction and listens in the other.
+    ~       an analog switch terminal: it drives nothing, it CONNECTS — while
+            its channel is on it is joined to the channel's other terminal.
     !       an ACTIVE-LOW OUTPUT ENABLE — the one thing here you could not
             guess from a pin name. The outputs it gates FLOAT, driving nothing
             at all, until it is LOW; left unwired it reads HIGH, so the part
@@ -355,9 +367,13 @@ what it is:
     (none)  an input
     >       an output — it DRIVES.
     <>      bidirectional.
+    ~       an analog switch terminal: it drives nothing; an ON channel joins
+            it to the channel's other terminal, an OFF one leaves it floating.
     !       an ACTIVE-LOW OUTPUT ENABLE. The outputs it gates float until it is
             LOW, and an unwired input reads HIGH — so a part with one of these
             left unwired is dead while its wiring looks perfect.
+    ^       an ACTIVE-HIGH OUTPUT ENABLE (the CD4094B's): the same, the other
+            way up — its outputs float until it is HIGH.
 
 A logic chip's bracket names its family. The two read a floating input
 differently, which explains many findings: an unwired 74LS (TTL) input reads

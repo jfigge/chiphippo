@@ -30,9 +30,7 @@ groups · 120 net names & labels · 130 buses · 140 build guide & wiring list �
 260 AI circuit builder · 270 example circuits · 280 auto-update · 290 wire-riding part
 drags · 310 Mac App Store · 320 AI desk review · 330 shared memory blobs · 340 cluster
 drags · 370 external signals · 380 Arduino serial integration · language support ·
-400 CD4000 CMOS family · CD4000 batch 2 phase 2a, the MSI parts (plan still at
-`features/chiphippo-cd4000-batch2.md`: phase 2b, the analog switches, waits on an engine
-decision).
+400 CD4000 CMOS family · 410 CD4000 batch 2 (the MSI parts and the analog switches).
 
 **Deferred** (`features/deferred/`): 160 export image & PDF, 300 selection drags.
 **Still open**: 260 step 15 — refactor `make demos` onto `model/autobuild.js` (which
@@ -91,8 +89,10 @@ the repo, only the cropped PNGs.
   and `--strict` exits 1 on a missing one. Its one hand-kept list is `NO_DATASHEET` —
   the four chips with no matching `74LS*` sheet (74LS164, 74LS193, 74LS27, 74LS76) —
   and moving a name in or out of it is how a part leaves or rejoins the to-do list. The
-  35 CD4000 parts are deliberately NOT excused: their crops are to be cut from the TI
-  sheets the downloader fetches, so they stay on the missing list until they are.
+  39 CD4000 parts are deliberately NOT excused, and deliberately NOT cut yet: Jason
+  defers them until the family has proven worthwhile (2026-10-03). When they are, they
+  come from the TI sheets the downloader fetches; until then they stay on the missing
+  list.
 
 ## User guide & docs
 
@@ -198,7 +198,7 @@ the repo, only the cropped PNGs.
     `integration-codegen.js`, `serial-connections.js`.
   - `scripts/sim/` — the DOM-free engine: `union-find.js`, `netlist.js`, `levels.js`,
     `chip-eval.js`, `sequential.js`, `resolve.js`, `engine.js`, `junction.js`,
-    `w65c02.js`, `z80.js`, `z80-ops.js`.
+    `w65c02.js`, `z80.js`, `z80-ops.js`, `analog-switch.js`.
   - `scripts/ai/` — `catalog-brief.js`, `generate.js`, `connection.js`, `usage.js`
     (pure).
   - `scripts/catalog/` — part metadata as pure data + integrity tests; never
@@ -581,7 +581,8 @@ in `doc.boards`; a "breadboard" is a **kit** of them placed in one action.
   vocabulary). Sequential chips carry `{ state0, step, outputs }` built by the pure
   family builders in `sim/sequential.js` (D-FF with active-low OR active-high async
   controls, JK-FF, transparent latch, sync + up/down counters, SIPO/PISO shift, and the
-  CMOS `johnsonCounter`/`binaryCounter`);
+  CMOS `johnsonCounter`/`binaryCounter` and batch-2 MSI builders); analog switches carry
+  `logic.channels` (`sim/analog-switch.js`, below);
   `step(state, inputs, prevInputs)` advances on detected edges + level-sensitive async
   overrides, `outputs(state, inputs)` drives the pins. **A new 74xx part is data** — if
   it can't be expressed, extend the vocabulary, never fork. Zero-delay and
@@ -623,7 +624,8 @@ in `doc.boards`; a "breadboard" is a **kit** of them placed in one action.
   picks a net's level by strength precedence (supply beats chip output; opposing supplies
   → `X` + short; disagreeing outputs → `X` + conflict; `Z`/undriven contributes nothing;
   a clock source drives its `out` net at output strength).
-  `settle({document, netlist, warmStart})` gates each chip on its VCC/GND nets against
+  `settle({document, netlist, warmStart})` gates each chip on its VCC net and EVERY
+  ground-role pin's net (a CD405x's VEE beside its VSS; the AM27C1024's two VSS) against
   its FAMILY's supply range (`catalog/families.js` `supplyRange`: 74LS and every
   family-less part 4.75–5.25 V, CD4000 3–18 V; below → underpowered-inert, above →
   damaged; `chipStatus` entries are `{ status, volts }`), then loops resolve →
@@ -632,6 +634,26 @@ in `doc.boards`; a "breadboard" is a **kit** of them placed in one action.
   **Warm-starting net levels by stable netId is exactly why cross-coupled NAND latches
   HOLD.** The engine is a pure function: it REPORTS `chipStatus` and returns
   run-volatile `state`/`pinLevels`, never mutating `params` and never touching a timer.
+- **Analog switches JOIN nets; they drive none** (CD4066B, CD4051B/52B/53B — Phase 2b
+  of Feature 410). The NETLIST stays static (wiring + hand-set switch positions only),
+  so the probe, schematic, warm-start ids and every netlist consumer are untouched; the
+  join is the SOLVER's, per pass. A def states `logic.channels: [{a, b, inputs, on}]`
+  (terminal pins, control pins, a pure `on(levels)` → H/L/X, built by
+  `bilateralSwitches`/`muxSection`); `chip-eval.js`'s `channelStates` reads the controls
+  through the family reader. `engine.js`'s `channelGroups` unions the nets of every ON
+  channel of a POWERED switch (union-find), from the previous pass's levels exactly as a
+  chip's outputs are, and `resolveAll` resolves each member net from every member's
+  drivers and pulls — but another member's SUPPLY only at OUTPUT strength, so a rail
+  through a switch FIGHTS an output on the far side (conflict, said once per group)
+  where the same rail wired straight on would win, and a group holding both rails warns
+  `short` with `via: "switch"` (its own sentence everywhere). A floating control is
+  "maybe": the pass is resolved with and without those channels and keeps what agrees
+  (X elsewhere). Levels that crossed a channel stay STRONG for every purpose but one:
+  at ≤ 5 V a channel's on-resistance limits an LED's current, so the LED rule's
+  `strongLevels` leave such a switch's joins out (`hardOn`/`hardWide` — see "Logic
+  families"); from 9 V an LED off a switch with no resistor burns, as off an output. Channel
+  terminals are `io` pins the boundary warnings skip, KiCad exports as PASSIVE, and the
+  AI card marks `~`.
 - **`tick(...)`** adds the synchronous two-phase step on the same solver: ① pre-settle
   with the OLD per-component state (propagating the new `clockPhase` + input changes),
   ② sample each sequential chip's inputs and `step` it (edges from the pre-settle vs the
@@ -664,7 +686,7 @@ in `doc.boards`; a "breadboard" is a **kit** of them placed in one action.
     and every paste. `SimController.replaceChip` is GONE: Stop recovers every damaged
     chip.
 
-## Logic families (Feature 400)
+## Logic families (Features 400, 410)
 
 **Two logic families, one catalog**: 74LS TTL (`chips-gates.js`, `chips-seq.js`,
 `chips-74ls.js`) and CD4000 CMOS (`chips-cd4000.js`). `catalog/index.js` stamps
@@ -673,7 +695,7 @@ deliberately FAMILY-LESS (they are not 74LS, and tagging them would hide a Z80 i
 CD4000 mode). The family lives in the catalog ONLY — never in a document — so no
 migration exists or is needed. **Everything that branches on a family asks
 `catalog/families.js`** (`familyOf`, `supplyRange`, `supplyText`, `floatsUnknown`,
-`lsFanoutOf`, `familiesShown`), never `def.family` by hand, and keys off
+`lsFanoutOf`, `limitsLedCurrent`, `familiesShown`), never `def.family` by hand, and keys off
 `family === "CD4000"`, never "is CMOS" (the W65C02 is CMOS and a Z80 test depends on
 its floating bus reading `$FF`).
 
@@ -704,6 +726,30 @@ its floating bus reading `$FF`).
   the CD4029B's sheet says nothing about it, so its decade mode reuses that logic (an
   assumption, flagged in the def). The CD4020B's Q2/Q3 count but have no pin
   (`binaryCounter`'s `q` takes `null`); the CD4024B is a 14-pin part.
+- **A CD405x's VEE is a GROUND-ROLE pin** (`VEE` in `chips-cd4000.js`): the app has no
+  negative supply, single-supply use ties it to VSS, and being a supply pin is what
+  makes every consumer right with no special case — the engine powers the part only
+  with it on the `−` net (else `unpowered`, and the build guide's unconnected-power-pin
+  warning names VEE), the AI compiler and the demo bench wire EVERY supply pin (VCC
+  first, then each ground, so single-ground parts lay out exactly as before), the spec
+  may not list it (`POWER_PIN_LISTED`, which now names the pin), and `pin-resolve`'s
+  role rung prefers the ground pin the token NAMES (`vss` is VSS, not the lower-numbered
+  VEE). The catalog test allows exactly this second ground pin.
+- **A CD4000 output at ≤ 5 V cannot burn an LED** (`ledLimit` 5 /
+  `limitsLedCurrent(def, volts, level)` — the datasheet arithmetic is in its comment:
+  ~4 mA typical at 5 V; at 9 V ~15 mA puts ~105 mW in the output transistor against
+  its 100 mW absolute max; 12–15 V is 22–28 mA, past the LED too). So `strongLevels` —
+  all `junctionState` ever reads, and why no consumer changed — is no longer the
+  relaxation's `strong` map when a limiting part is on the desk (`ctx.limitsLed`): it
+  is resolved AGAIN from the HARD drivers only (`driversFor`'s `hard`, which drops a
+  limiting chip's output levels) across the HARD joins only (`channelGroups`'
+  `hardOn`/`hardWide`, which drop a ≤ 5 V switch's channels — rON 470 Ω, ~6 mA). The
+  resistor relaxation's basis is untouched (a CD4000 output still pulls through a
+  resistor), and a desk with no limiting part resolves nothing twice. A part whose
+  output stage is not the small MOSFET names its hard side: `highCurrent: "sink"`
+  (CD4049UB/CD4050B buffers, ~20 mA at 5 V and climbing) or `"source"` (the CD4511B's
+  bipolar segment drivers). The compiler still puts a resistor in every lamp leg on a
+  rail — good practice, and the prompt's "not between two outputs" holds as advice.
 - **Warnings no level expresses** (the engine has no net voltages), all STRUCTURAL and
   reported once per net/chip: `floating-input` (a powered CD4000 input on a net that
   resolved `Z`, spare gates INCLUDED — computed in `assemble`), and from
@@ -737,7 +783,7 @@ its floating bus reading `$FF`).
   would turn the '193's `D0`…`D3` into four sections.
 - **The Digital export places six CD4000 parts** as their pin-for-pin twins in Digital
   v0.31's library (`DIGITAL_FILES`: CD4002B→744002, CD4017B→744017, CD4069UB→7404,
-  CD4075B→744075, CD4077B→747266, CD40106B→7414); the other 29 are
+  CD4075B→744075, CD4077B→747266, CD40106B→7414); the other 33 are
   `noDigitalModel` (that library has no 4000-series folder). A floating CMOS input
   gets the TTL rule's PullUp — Digital refuses an open input and has no X — and the
   report says so (`cmosFloating`). `export-digital-cli.test.js` runs only with
@@ -1193,10 +1239,15 @@ anchor and wire.
     reports `OUTPUTS_DISABLED`, naming the chip, the pin and "tie it to GND" (or, on a BUS,
     "exactly one enable LOW" — tying two low starts a fight), instead of `NET_NOT_DRIVEN`
     sending a repair round hunting for a wire that was never missing. An `X` net is
-    `NET_UNRESOLVED`, not "undriven". And `INPUT_FLOATING` (`floatingInputs`) names every
+    `NET_UNRESOLVED`, not "undriven". A net on an analog switch's OPEN channel
+    (`openChannelNets`) floats by design and is exempt — seven of a 4051's eight are —
+    while one on a CLOSED channel with nothing on either side is still undriven. And
+    `INPUT_FLOATING` (`floatingInputs`) names every
     input a part USES that no net connects — an input on no net is invisible to a net
     sweep and reads HIGH. "Uses": a unit whose output is wired needs all its inputs (the
-    spare gates of a 7400 may float); a part without units is read by the datasheet's
+    spare gates of a 7400 may float; a switch CHANNEL with a terminal wired needs its
+    controls, so a 4066's spare controls are the compiler's to tie); a part without units
+    is read by the datasheet's
     `1…`/`2…` section numbering, and an unnumbered input (a shared CLK, an address line,
     a counter's load data) is needed once any output is.
   - **L7** is the highest-value one: the spec states its own acceptance tests and the app
@@ -1241,7 +1292,8 @@ anchor and wire.
   minimum, so a repair round re-reads rather than re-pays. Each pin carries a
   one-character MARK (`pinMark`): `>` output, `<>` bidirectional, `!` **active-low output
   enable**, `^` the active-HIGH one (the CD4094B's — "tie every enable LOW" would disable
-  it). The first exists because "two outputs must not share a net" is a rule the
+  it), `~` an analog switch terminal (it CONNECTS and drives nothing, so the model must
+  never count on one as a source). The first exists because "two outputs must not share a net" is a rule the
   compiler ENFORCES; the `!` is the one fact nothing else reveals (the pins are called
   `1G`, `OE`, `M`, `N`) and getting it wrong is silent — the part floats every output it
   gates, an unwired enable reads HIGH, and a datasheet-correct netlist comes up dead. A

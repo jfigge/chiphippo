@@ -109,7 +109,9 @@ computed by the views themselves:
   would fry a real LED, so it fries this one. A net reached through a resistor
   is only weakly pulled rather than strongly driven, which is what makes the
   resistor count. This is a physical rule, not a logical one — the levels
-  alone would happily light it.
+  alone would happily light it. A **CD4000 output at 5 V or below** limits
+  the current by itself, so an LED wired straight onto one lights rather than
+  burns — see [Mixing logic families](#mixing-logic-families).
 - **Chips** show a small health badge the moment they're powered: normal
   chips show nothing extra, an **underpowered** chip (a 74LS part at 3 V) gets
   an amber corner dot, and a chip killed by over-voltage shows **damaged** — a red X
@@ -148,7 +150,10 @@ Two things can go wrong:
 
 - **A conflict or short** — two chip outputs disagreeing on the same net, or
   opposing supplies tied together — settles immediately, but to `X`, and the
-  app raises a warning naming the net.
+  app raises a warning naming the net. An analog switch (CD4066B, CD405x) can
+  make one too: a closed channel joins the nets on its two sides, a supply
+  crossing it counts as an ordinary output, so a rail switched onto an output
+  is a conflict, and a channel joining + to − is reported as a short.
 - **An oscillation** — a circuit that never stops changing (an unbuffered
   ring of inverters, for instance) can't reach a fixed point at all. Chip
   Hippo detects this — after a bounded number of attempts it gives up,
@@ -176,6 +181,18 @@ warning naming the net, with the fix:
   their outputs drives eight.
 - **Two supplies on one net** — chips on different supply voltages joined by
   a signal, which needs a level shifter.
+
+One difference works the other way. A standard CD4000 output is too weak to
+burn an LED: at 5 V it can push only about 4 mA through one, a fifth of what
+an LED is rated for, so an LED wired straight onto a CD4000 output with no
+resistor **lights** — on the desk as on a bench. The same goes for an LED fed
+through a CD4066B or CD4051B/52B/53B switch at 5 V, whose on-resistance
+(about 470 Ω) does the limiting. Above 5 V it stops being true: at 9 V the
+output would pass about 15 mA and overheat the chip, and at 12–15 V the LED
+too, so there the LED burns as it would off a 74LS output. Two parts are
+built to drive hard and burn an LED at any supply: the CD4049UB/CD4050B
+buffers when their output is LOW, and the CD4511B's segment outputs. A
+resistor is still good practice.
 
 ---
 

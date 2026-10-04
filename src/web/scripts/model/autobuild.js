@@ -309,11 +309,16 @@ function resolveSpec(spec) {
       if (r.kind === "pin") {
         const role = part.def.pins?.find((q) => q.n === r.pin)?.role;
         if (role === "vcc" || role === "gnd") {
+          const pinName = part.def.pins.find((q) => q.n === r.pin)?.name;
           errors.push(
             err(
               "POWER_PIN_LISTED",
-              `"${m}" is ${part.ref}'s ${role.toUpperCase()} pin. The compiler ` +
-                `wires power itself — drop it from net "${name}".`,
+              `"${m}" is ${part.ref}'s ${role.toUpperCase()} pin` +
+                (pinName && pinName !== role.toUpperCase()
+                  ? ` (${pinName})`
+                  : "") +
+                `. The compiler wires power itself — drop it from net ` +
+                `"${name}".`,
               { path: mPath },
             ),
           );
@@ -1579,11 +1584,17 @@ function assemble(resolved, title, notes) {
     wire(pair.from, pair.to, colour);
   };
 
+  // EVERY supply pin, not the first of each: a CD405x's VEE is a ground pin
+  // beside its VSS (single-supply use ties it there), and the AM27C1024 has two
+  // VSS pins — a part with one left off does not power up.
   for (const p of seated) {
-    const vcc = p.def.pins?.find((q) => q.role === "vcc");
-    const gnd = p.def.pins?.find((q) => q.role === "gnd");
-    if (vcc) railLink(p.id, vcc.n, "+", "red", `${p.id} (${p.ref}) VCC`);
-    if (gnd) railLink(p.id, gnd.n, "-", "black", `${p.id} (${p.ref}) GND`);
+    const supply = (role) => (p.def.pins ?? []).filter((q) => q.role === role);
+    for (const q of supply("vcc")) {
+      railLink(p.id, q.n, "+", "red", `${p.id} (${p.ref}) ${q.name}`);
+    }
+    for (const q of supply("gnd")) {
+      railLink(p.id, q.n, "-", "black", `${p.id} (${p.ref}) ${q.name}`);
+    }
   }
 
   // ── The supply's own plumbing: the PSU's two leads, and the bridges that

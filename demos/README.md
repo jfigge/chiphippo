@@ -58,6 +58,7 @@ included:
 | `Counter` | 4017B 4022B 4020B 4024B 4040B 4029B 4510B 4516B |
 | `Shift-register` | 4094B |
 | `Decoder` | 4028B |
+| `Multiplexer` | 4066B 4051B 4052B 4053B |
 | `Display-driver` | 4511B |
 
 **File ▸ Open…** one of them, then pick a chip from the **desktop tabs** along the

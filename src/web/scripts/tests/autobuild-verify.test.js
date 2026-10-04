@@ -662,6 +662,28 @@ test("a lamp between two outputs burns, and says so", () => {
   assert.match(burn?.message ?? "", /^L1 \(led\) burns/);
 });
 
+test("a lamp between two CD4000 outputs at 5 V lights — the outputs limit it", () => {
+  // The 74LS04 case above, on a CD4069UB (A → G, B → H): the same lamp,
+  // conducting, but now the outputs are too weak to burn it.
+  const spec = {
+    parts: [
+      { id: "U1", ref: "CD4069UB" },
+      { id: "L1", ref: "led" },
+    ],
+    nets: [
+      { name: "HI_IN", members: ["U1.A", "GND"] },
+      { name: "LO_IN", members: ["U1.B", "VCC"] },
+      { name: "ANODE", members: ["U1.G", "L1.A"] },
+      { name: "CATHODE", members: ["U1.H", "L1.K"] },
+    ],
+  };
+  const v = verifyBuild(compile(spec), spec);
+  assert.deepEqual(
+    v.faults.map((x) => x.code),
+    [],
+  );
+});
+
 test("a test that cannot be run as written is INVALID, not failed", () => {
   const cases = [
     // A short pattern used to leave the missing positions open without a word.
@@ -751,6 +773,60 @@ test("a fight that only a TEST reaches is reported by that test", () => {
 });
 
 // ── The CD4000 family (Feature 400) ─────────────────────────────────────────
+
+test("an analog switch's OPEN channels float by design; a dead ON one does not", () => {
+  // A 4051 demultiplexing a rail onto a bar of lamps: seven of the eight
+  // channel nets float, and that is the part working — not eight wires missing.
+  // VEE is the compiler's to wire, as VSS is.
+  const demux = {
+    parts: [
+      { id: "MX", ref: "CD4051B" },
+      { id: "D", ref: "bar8" },
+    ],
+    nets: [
+      { name: "COM", members: ["MX.COM OUT/IN", "VCC"] },
+      { name: "SEL", members: ["MX.A", "MX.B", "MX.C", "MX.INH", "GND"] },
+      ...Array.from({ length: 8 }, (_, k) => ({
+        name: `CH${k}`,
+        members: [`MX.CH ${k} IN/OUT`, `D.${k + 1}`],
+      })),
+      { name: "K", members: ["D.K", "GND"] },
+    ],
+  };
+  const ok = verifyBuild(compile(demux), demux);
+  assert.deepEqual(ok.faults, [], JSON.stringify(ok.faults));
+
+  // A 4066 switch held ON with nothing driving either side: the channel is
+  // closed, so its nets floating IS a missing driver. Switches B–D are spare,
+  // and their controls the compiler's to tie.
+  const dead = {
+    parts: [
+      { id: "U1", ref: "CD4066B" },
+      { id: "D", ref: "bar8" },
+    ],
+    nets: [
+      { name: "CTL", members: ["U1.CONTROL A", "VCC"] },
+      { name: "X", members: ["U1.SIG A IN/OUT", "D.1"] },
+      { name: "Y", members: ["U1.SIG A OUT/IN", "D.2"] },
+      { name: "K", members: ["D.K", "GND"] },
+    ],
+  };
+  const compiled = compile(dead);
+  const tied = compiled.warnings.find((w) => w.code === "SPARE_INPUTS_TIED");
+  assert.match(tied.message, /CONTROL B, CONTROL C, CONTROL D/);
+  const v = verifyBuild(compiled, dead);
+  const undriven = v.faults.filter((f) => f.code === "NET_NOT_DRIVEN");
+  assert.deepEqual(undriven.map((f) => f.net).sort(), ["X", "Y"]);
+
+  // …and a switch in use needs its own control, which no compiler ties.
+  const loose = {
+    ...dead,
+    nets: dead.nets.filter((n) => n.name !== "CTL"),
+  };
+  const lv = verifyBuild(compile(loose), loose);
+  const floating = lv.faults.find((f) => f.code === "INPUT_FLOATING");
+  assert.match(floating.message, /CONTROL A/);
+});
 
 test("a CD4094B's active-HIGH enable tied LOW is told to go to VCC, not GND", () => {
   const spec = (oe) => ({

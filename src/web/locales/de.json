@@ -733,6 +733,18 @@
     },
     "CD4511B": {
       "title": "BCD-zu-7-Segment-Latch/-Dekoder/-Treiber"
+    },
+    "CD4066B": {
+      "title": "Vierfach-Analogschalter, bilateral"
+    },
+    "CD4051B": {
+      "title": "8-Kanal-Analogmultiplexer/-demultiplexer"
+    },
+    "CD4052B": {
+      "title": "Zweifach-4-Kanal-Analogmultiplexer/-demultiplexer"
+    },
+    "CD4053B": {
+      "title": "Dreifach-2-Kanal-Analogmultiplexer/-demultiplexer"
     }
   },
   "colors": {
@@ -1157,6 +1169,7 @@
     "memLostMessage": "{chip} war programmiert, aber seine Datendatei fehlte — er enthält jetzt Zufallsrauschen. Lade ein Abbild neu.",
     "short": "Kurzschluss",
     "shortMessage": "Gegensätzliche Versorgungen treffen auf einem Netz zusammen ({net}).",
+    "shortThroughSwitchMessage": "Gegensätzliche Versorgungen treffen über einen Analogschalter zusammen ({net}).",
     "conflict": "Treiberkonflikt",
     "conflictMessage": "Zwei Ausgänge kämpfen auf einem Netz ({net}).",
     "oscillation": "Schwingung",

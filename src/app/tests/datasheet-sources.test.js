@@ -153,7 +153,7 @@ test("every CD4000 part names its TI sheet — the family is fully documented", 
 });
 
 test("the CD4000 batch-2 parts download the sheets their feature names", () => {
-  // features/chiphippo-cd4000-batch2.md lists each part's URL, several of them
+  // features/done/410-cd4000-batch2.md lists each part's URL, several of them
   // a sibling's (the 4020/4024 are documented in the 4040's sheet, the 4022 in
   // the 4017's, the 4516 in the 4510's). Each was opened and its part number
   // read off it before it went in; this pins the table to that list.
@@ -169,6 +169,10 @@ test("the CD4000 batch-2 parts download the sheets their feature names", () => {
     CD4020B: "cd4040b.pdf",
     CD4024B: "cd4040b.pdf",
     CD4022B: "cd4017b.pdf",
+    CD4066B: "cd4066b.pdf",
+    CD4051B: "cd4051b.pdf",
+    CD4052B: "cd4051b.pdf",
+    CD4053B: "cd4051b.pdf",
   };
   for (const [ref, file] of Object.entries(wanted)) {
     assert.equal(DATASHEET_SOURCES[ref]?.url, TI + file, ref);

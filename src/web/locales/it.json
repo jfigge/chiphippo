@@ -734,6 +734,18 @@
     },
     "CD4511B": {
       "title": "Latch/decodificatore/driver da BCD a 7 segmenti"
+    },
+    "CD4066B": {
+      "title": "Interruttore bilaterale quadruplo"
+    },
+    "CD4051B": {
+      "title": "Multiplexer/demultiplexer analogico a 8 canali"
+    },
+    "CD4052B": {
+      "title": "Multiplexer/demultiplexer analogico doppio a 4 canali"
+    },
+    "CD4053B": {
+      "title": "Multiplexer/demultiplexer analogico triplo a 2 canali"
     }
   },
   "colors": {
@@ -1158,6 +1170,7 @@
     "memLostMessage": "{chip} era programmato, ma il suo file di dati mancava — ora contiene rumore casuale. Ricarica un'immagine.",
     "short": "Cortocircuito",
     "shortMessage": "Due alimentazioni opposte si incontrano su un net ({net}).",
+    "shortThroughSwitchMessage": "Due alimentazioni opposte si incontrano attraverso un interruttore analogico ({net}).",
     "conflict": "Conflitto di uscite",
     "conflictMessage": "Due uscite si contendono un net ({net}).",
     "oscillation": "Oscillazione",

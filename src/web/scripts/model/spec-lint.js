@@ -155,6 +155,17 @@ const cmosUnitOf = (name) =>
 function requiredInputs(def, on) {
   const pins = def?.pins ?? [];
   const need = new Set();
+  // An analog switch's channel (sim/analog-switch.js) is in use when either
+  // terminal is wired, and then needs every control it reads — a 4066 with one
+  // switch in use leaves the other three controls spare.
+  const channels = def.logic?.channels;
+  if (channels?.length) {
+    for (const ch of channels) {
+      if (!on(ch.a) && !on(ch.b)) continue;
+      for (const n of ch.inputs) need.add(n);
+    }
+    return need;
+  }
   const units = def.logic?.units;
   if (units?.length) {
     for (const u of units) {
@@ -198,7 +209,9 @@ function connectedPins(nets) {
  *
  *   * A part whose behaviour is a list of UNITS (gates, tri-state buffers, the
  *     COMB units of decoders and muxes) says exactly that: a unit whose output
- *     is on a net needs every input and enable it reads.
+ *     is on a net needs every input and enable it reads. An analog switch's
+ *     CHANNELS say it the same way: one with a terminal on a net needs every
+ *     control it reads.
  *   * Anything else — flip-flops, counters, memory, a CPU — is read by the
  *     datasheet's own naming: pins numbered `1…`/`2…` belong to that section,
  *     and a section is in use when one of its outputs is. An input with no

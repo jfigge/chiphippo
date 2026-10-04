@@ -71,6 +71,31 @@ export function isSequential(def) {
   return typeof def?.logic?.step === "function";
 }
 
+/**
+ * Is this an analog switch (CD4066B, CD4051B/52B/53B)? Its channels JOIN nets
+ * rather than driving them (sim/analog-switch.js), so it has no outputs at all.
+ */
+export function isAnalogSwitch(def) {
+  return Array.isArray(def?.logic?.channels);
+}
+
+/**
+ * The state of each of an analog switch's channels for the levels on its pins:
+ * `[{a, b, on}]`, the terminals and H (joined), L (apart) or X (might be
+ * either). Its control pins are read through the family reader, so a floating
+ * CMOS control is X.
+ * @param {object} def
+ * @param {Map<number, string>} pinLevels
+ */
+export function channelStates(def, pinLevels) {
+  const read = readerFor(def);
+  return def.logic.channels.map((ch) => ({
+    a: ch.a,
+    b: ch.b,
+    on: ch.on(ch.inputs.map((pin) => read(pinLevels.get(pin) ?? Z))),
+  }));
+}
+
 /** Does this def carry a memory image (ROM / SRAM / EEPROM — Feature 170)? */
 export function isMemory(def) {
   return Boolean(def?.logic?.memory);
@@ -101,10 +126,15 @@ export function isRomChip(def) {
   return isMemory(def) && !isVolatileMemory(def);
 }
 
-/** Does this def carry ANY simulated behavior (combinational/sequential/memory/oscillator)? */
+/** Does this def carry ANY simulated behavior (combinational/sequential/
+    memory/oscillator/analog switch)? */
 export function hasBehavior(def) {
   return (
-    hasLogic(def) || isSequential(def) || isMemory(def) || isOscillator(def)
+    hasLogic(def) ||
+    isSequential(def) ||
+    isMemory(def) ||
+    isOscillator(def) ||
+    isAnalogSwitch(def)
   );
 }
 

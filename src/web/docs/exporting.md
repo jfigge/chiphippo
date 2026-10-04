@@ -201,7 +201,7 @@ Digital is a logic simulator, so some parts have to be exported as what they
 - Seven 74xx parts that Digital's library doesn't include: 74LS73, 74LS75,
   74LS169, 74LS240, 74LS259, 74LS279 and 74LS533. Each one's place in the
   circuit is marked with a note, and everything wired to it is still exported.
-- The other 29 CD4000 CMOS parts, which have no twin in Digital's library. The
+- The other 33 CD4000 CMOS parts, which have no twin in Digital's library. The
   same note marks each one's place.
 - Memory chips, because their contents are stored in files the export doesn't
   carry.

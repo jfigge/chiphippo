@@ -17,7 +17,7 @@
  * with Chip Hippo. If not, see <https://www.gnu.org/licenses/>.
  */
 
-// The CD4000 MSI parts (batch 2): every rule each one's TI datasheet states,
+// The CD4000 MSI parts (Feature 410): every rule each one's TI datasheet states,
 // one assertion (or one sweep) each, read off the sheet rather than off the
 // catalog — the JK flip-flop, the shift-and-store register, the two decoders
 // and the six counters.

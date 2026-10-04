@@ -54,7 +54,7 @@
 // would leave an un-reset 4017 chaser dark forever, which no real 4017 does.
 // Every rule is idempotent, so a stuck X settles the tick's step fixpoint.
 
-import { H, L, Z, X, and, inv } from "./levels.js";
+import { H, L, Z, X, and, inv, overUnknowns } from "./levels.js";
 
 /** A control/data line reads as a clean bit: H stays H, everything else L. */
 const asBit = (lv) => (lv === H ? H : L);
@@ -80,29 +80,6 @@ function edgeOf(p, c, dir) {
     below to propagate X instead of silently reading it as a clean L, the way
     `asBit`/`high` do for ordinary clocked control lines. */
 const anyX = (levels) => levels.some((lv) => lv === X);
-
-/**
- * `fn` over every clean reading of `levels` (H/L/X), each X tried both ways:
- * the level every reading agrees on, or X where they differ. So an unknown
- * that cannot change the answer does not spoil it — a 4028 with D floating
- * still holds outputs 2–7 LOW, since neither reading of D selects them.
- * @param {string[]} levels
- * @param {(clean: string[]) => string} fn
- */
-function overUnknowns(levels, fn) {
-  const unknown = levels.flatMap((lv, i) => (lv === X ? [i] : []));
-  let result = null;
-  for (let k = 0; k < 1 << unknown.length; k++) {
-    const clean = levels.slice();
-    unknown.forEach((at, bit) => {
-      clean[at] = (k >> bit) & 1 ? H : L;
-    });
-    const value = fn(clean);
-    result = result === null ? value : merge(result, value);
-    if (result === X) return X;
-  }
-  return result;
-}
 
 /** A clean little-endian list of levels → its number. */
 const bitsValue = (bits) =>
@@ -1196,7 +1173,7 @@ export function binaryCounter(m) {
   };
 }
 
-// ── CMOS MSI (CD4000 batch 2) — unknown-aware, see the header ───────────────
+// ── CMOS MSI (Feature 410) — unknown-aware, see the header ──────────────────
 
 /**
  * 8-stage shift-and-store bus register (CD4094B). DATA shifts into stage 1 on

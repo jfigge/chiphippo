@@ -168,6 +168,10 @@ on 1, 4, 10 and 13 — so read the pin-assignments window before wiring one.
 | `CD4094B` | 8-stage shift-and-store register — its 3-state **OUTPUT ENABLE is active HIGH** |
 | `CD4028B` | BCD-to-decimal decoder, ten active-HIGH outputs |
 | `CD4511B` | BCD-to-7-segment latch/decoder/driver for a **common-cathode** display |
+| `CD4066B` | Quad bilateral switch — an **analog switch**, see below |
+| `CD4051B` | 8-channel analog multiplexer/demultiplexer — **VEE on pin 7** |
+| `CD4052B` | Dual 4-channel analog multiplexer/demultiplexer — VEE on pin 7 |
+| `CD4053B` | Triple 2-channel analog multiplexer/demultiplexer — VEE on pin 7 |
 
 What makes the family worth learning on is how it differs from TTL:
 
@@ -181,7 +185,9 @@ What makes the family worth learning on is how it differs from TTL:
 - **Weaker outputs.** One standard CD4000 output can hold only one 74LS input
   LOW; the CD4049UB/CD4050B buffers drive eight. Driving the other way, a 74LS
   HIGH is marginal for a CMOS input. Both are reported — see
-  [Mixing logic families](simulation.md#mixing-logic-families).
+  [Mixing logic families](simulation.md#mixing-logic-families). The weakness
+  has an upside: at 5 V and below a standard output cannot burn an LED wired
+  straight onto it, so one with no resistor lights.
 
 The Schmitt-trigger parts (CD4093B, CD40106B) behave as plain gates here: their
 hysteresis is an analog property, and their classic RC oscillator needs a
@@ -203,6 +209,20 @@ A few of the larger parts have habits of their own:
 - **The CD4511B blanks a code above 9**, where the 74LS47 shows odd symbols.
   Its latch sits before the decoder, so LE HIGH freezes the digit while lamp
   test (LT) and blanking (BL) still work on it.
+- **The analog switches drive nothing — they connect.** A CD4066B switch whose
+  CONTROL is HIGH, or the CD4051B/52B/53B channel that INH and the select pins
+  pick, joins its two pins, so whatever drives one side drives the other, in
+  either direction: the same 4051 multiplexes eight signals onto COM or
+  demultiplexes COM out to eight. An open channel leaves each side to whatever
+  else is on it, so a pin on an open channel with nothing else driving it
+  floats. Chip Hippo passes logic levels only — the switch's on-resistance and
+  analog voltages are out of scope — and a supply that passes through a switch
+  arrives at the strength of an ordinary output: the + rail switched onto an
+  output driving LOW is a fight, and a channel joining + to − is a short.
+- **VEE is a supply pin.** The 405x parts have a negative supply, VEE (pin 7),
+  for analog signals below ground. Chip Hippo has no negative supply, so tie
+  VEE to VSS, as single-supply digital circuits do; until it is, the chip is
+  unpowered.
 - **The CD4094B's outputs follow its shift register only while STROBE is
   HIGH**, and its OUTPUT ENABLE floats them when it is LOW — the opposite sense
   of every 74LS output enable. The serial outputs QS and Q'S are never floated;

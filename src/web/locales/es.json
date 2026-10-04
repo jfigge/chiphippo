@@ -734,6 +734,18 @@
     },
     "CD4511B": {
       "title": "Cerrojo/decodificador/excitador BCD a 7 segmentos"
+    },
+    "CD4066B": {
+      "title": "Conmutador bilateral cuádruple"
+    },
+    "CD4051B": {
+      "title": "Multiplexor/demultiplexor analógico de 8 canales"
+    },
+    "CD4052B": {
+      "title": "Multiplexor/demultiplexor analógico doble de 4 canales"
+    },
+    "CD4053B": {
+      "title": "Multiplexor/demultiplexor analógico triple de 2 canales"
     }
   },
   "colors": {
@@ -1158,6 +1170,7 @@
     "memLostMessage": "{chip} estaba programado, pero faltaba su archivo de datos — ahora contiene ruido aleatorio. Vuelve a cargar una imagen.",
     "short": "Cortocircuito",
     "shortMessage": "Dos alimentaciones opuestas coinciden en una red ({net}).",
+    "shortThroughSwitchMessage": "Dos alimentaciones opuestas coinciden a través de un conmutador analógico ({net}).",
     "conflict": "Conflicto de excitadores",
     "conflictMessage": "Dos salidas pelean en una red ({net}).",
     "oscillation": "Oscilación",

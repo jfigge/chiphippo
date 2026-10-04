@@ -44,6 +44,12 @@
 // claim the opposite: an LED whose cathode reaches a supply rail DOES need a
 // series resistor. "Idealized" only ever held for a junction that wasn't
 // strongly driven on both sides.
+//
+// "Strong" is a question about CURRENT, so the engine answers it and this
+// file does not: its `strongLevels` also leave out a CD4000 output, or a
+// CD4000 switch channel, running from a supply low enough that it limits the
+// current itself — a resistor in all but name (catalog/families.js
+// `limitsLedCurrent`, with the datasheet numbers).
 
 import { H, L } from "./levels.js";
 

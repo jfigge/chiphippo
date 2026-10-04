@@ -493,9 +493,11 @@ export const PART_DEFS = Object.freeze(
         "Light-emitting diode. Needs a series resistor whenever both legs " +
         "reach strongly driven nets (a supply rail, or a chip output) — " +
         "wired straight across the rails it burns out instead of lighting, " +
-        "exactly as it would on a bench. Anode at the anchor hole; press F " +
-        "while placing to flip polarity, R to stand it up and pick two free " +
-        "ends (rail or column).",
+        "exactly as it would on a bench — unless one leg is on a 4000-series " +
+        "CMOS output at 5 V or below, which is weak enough to limit the " +
+        "current itself. Anode at the anchor hole; press F while placing to " +
+        "flip polarity, R to stand it up and pick two free ends (rail or " +
+        "column).",
       group: "LEDs",
       // Legs sit in ADJACENT holes — an LED needs no gap between its pins.
       footprint: Object.freeze({ offsets: Object.freeze([0, 1]) }),

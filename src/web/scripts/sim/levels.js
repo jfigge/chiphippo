@@ -122,3 +122,26 @@ export function buf3(data, enable) {
   if (enable === H) return Z;
   return X;
 }
+
+/**
+ * `fn` over every clean reading of `levels` (H/L/X), each X tried both ways:
+ * the level every reading agrees on, or X where they differ. So an unknown
+ * that cannot change the answer does not spoil it — a 4028 with D floating
+ * still holds outputs 2–7 LOW, since neither reading of D selects them.
+ * @param {string[]} levels
+ * @param {(clean: string[]) => string} fn
+ */
+export function overUnknowns(levels, fn) {
+  const unknown = levels.flatMap((lv, i) => (lv === X ? [i] : []));
+  let result = null;
+  for (let k = 0; k < 1 << unknown.length; k++) {
+    const clean = levels.slice();
+    unknown.forEach((at, bit) => {
+      clean[at] = (k >> bit) & 1 ? H : L;
+    });
+    const value = fn(clean);
+    result = result === null || result === value ? value : X;
+    if (result === X) return X;
+  }
+  return result;
+}

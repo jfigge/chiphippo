@@ -30,7 +30,19 @@
 // family-less part: 5 V only; CD4000: 3–18 V (catalog/families.js).
 // Digital abstraction with drive strengths (resolve.js): supply beats chip
 // output; a clock source and a planted signal flag both drive at output
-// strength; Z contributes nothing.
+// strength; Z contributes nothing. Every ground-role pin must reach the
+// supply's `−` — a CD405x's VEE as well as its VSS (single-supply use ties
+// them together), an AM27C1024's two VSS pins both.
+//
+// Analog switches (CD4066B, CD405x) drive nothing: an ON channel JOINS two
+// nets for the settle, so each resolves from the drivers of both (a supply
+// crossing a switch at output strength). See `channelGroups`/`resolveAll`.
+//
+// The LED rule (sim/junction.js) reads a SECOND resolution, `strongLevels`:
+// each net from the sources that could burn an LED — supplies and outputs,
+// never a resistor's pull, and never a CD4000 output (or channel) running
+// from a supply low enough that it limits the current itself
+// (families.js `limitsLedCurrent`).
 //
 // Tick (Feature 100, extended for ripple in Feature 220):
 //   ① pre-settle with the OLD sequential state (propagates the new clock phase
@@ -57,14 +69,18 @@ import {
   isSequential,
   isMemory,
   isOscillator,
+  isAnalogSwitch,
+  channelStates,
   memoryOutputs,
   memoryWrite,
 } from "./chip-eval.js";
 import { resolveNet } from "./resolve.js";
+import { UnionFind } from "./union-find.js";
 import { partDef } from "../catalog/index.js";
 import {
   familyOf,
   floatsUnknown,
+  limitsLedCurrent,
   lsFanoutOf,
   supplyRange,
 } from "../catalog/families.js";
@@ -229,15 +245,20 @@ function buildContext(doc, netlist) {
       pinNet.set(pin, address ? netOf(address) : null);
     }
     const vccPin = def.pins.find((p) => p.role === "vcc")?.n;
-    const gndPin = def.pins.find((p) => p.role === "gnd")?.n;
     const vccNet = pinNet.get(vccPin);
-    const gndNet = pinNet.get(gndPin);
+    // EVERY ground pin: a 405x's VEE is a supply pin like its VSS, and a chip
+    // with one of them left off does not run.
+    const gndNets = def.pins
+      .filter((p) => p.role === "gnd")
+      .map((p) => pinNet.get(p.n));
     const vccVolts = (vccNet && supplyPlusVolts.get(vccNet)) || [];
     const status = powerStatus({
       vccVolts,
       vccMinus: supplyMinus.has(vccNet),
-      gndVolts: (gndNet && supplyPlusVolts.get(gndNet)) || [],
-      gnd: supplyMinus.has(gndNet),
+      gndVolts: gndNets.flatMap(
+        (net) => (net && supplyPlusVolts.get(net)) || [],
+      ),
+      gnd: gndNets.length > 0 && gndNets.every((net) => supplyMinus.has(net)),
       damaged: comp.params?.damaged === true,
       supply: supplyRange(def),
     });
@@ -246,6 +267,7 @@ function buildContext(doc, netlist) {
     const volts = vccVolts.length ? Math.max(...vccVolts) : null;
     chipStatus.set(comp.id, { status, volts });
     const oscillator = isOscillator(def);
+    const analogSwitch = isAnalogSwitch(def);
     chips.push({
       comp,
       def,
@@ -253,7 +275,16 @@ function buildContext(doc, netlist) {
       status,
       sequential: isSequential(def),
       memory: isMemory(def),
+      analogSwitch,
       oscillator,
+      // The output levels whose drive cannot burn an LED (families.js
+      // `limitsLedCurrent`), and whether the channels cannot either.
+      limitsLevel: new Set(
+        analogSwitch
+          ? []
+          : [H, L].filter((lv) => limitsLedCurrent(def, volts, lv)),
+      ),
+      limitsChannel: analogSwitch && limitsLedCurrent(def, volts),
       // A can has exactly one output pin — resolved once here, not per drive.
       outputPin: oscillator
         ? def.pins.find((p) => p.role === "output")?.n
@@ -270,6 +301,9 @@ function buildContext(doc, netlist) {
     resistors,
     chips,
     chipStatus,
+    // Whether any part limits an LED's current — when none does, the LED
+    // rule's resolution is the ordinary strong one and is not computed twice.
+    limitsLed: chips.some((c) => c.limitsLevel.size > 0 || c.limitsChannel),
     boundaryWarnings: boundaryWarnings(
       chips,
       chipStatus,
@@ -318,6 +352,8 @@ function boundaryWarnings(chips, chipStatus, supplyPlusVolts, resistors) {
       if (!net) continue;
       const r = role.get(pin);
       if (r !== "input" && r !== "output" && r !== "io") continue;
+      // A switch terminal is neither: it passes another part's level.
+      if (c.analogSwitch && r === "io") continue;
       const entry = at(net);
       if (volts != null) entry.volts.add(volts);
       if (family === "74LS") {
@@ -369,14 +405,22 @@ function boundaryWarnings(chips, chipStatus, supplyPlusVolts, resistors) {
   return warnings;
 }
 
-/** Every driver (clock + signal sources, and powered chip outputs) for a set
-    of levels. */
+/**
+ * Every driver (clock + signal sources, and powered chip outputs) for a set
+ * of levels: `drivers` netId → [levels], and `hard`, the same minus each
+ * output whose drive cannot burn an LED (the very same map when no part on
+ * the desk limits one — `ctx.limitsLed`).
+ */
 function driversFor(ctx, levels, state, clockPhase, images, signalLevels) {
   const drivers = new Map(); // netId → [levels]
-  const add = (net, level) => {
+  const hard = ctx.limitsLed ? new Map() : drivers;
+  const add = (net, level, limited = false) => {
     if (!net) return;
     if (!drivers.has(net)) drivers.set(net, []);
     drivers.get(net).push(level);
+    if (hard === drivers || limited) return;
+    if (!hard.has(net)) hard.set(net, []);
+    hard.get(net).push(level);
   };
 
   // Clock sources drive their output net at output strength.
@@ -392,6 +436,7 @@ function driversFor(ctx, levels, state, clockPhase, images, signalLevels) {
 
   for (const c of ctx.chips) {
     if (c.status !== CHIP_STATUS.OK) continue; // inert chips drive nothing
+    if (c.analogSwitch) continue; // it joins nets (channelGroups); drives none
     const pinLevels = new Map();
     for (const [pin, net] of c.pinNet) {
       pinLevels.set(pin, net ? (levels.get(net) ?? Z) : Z);
@@ -417,30 +462,130 @@ function driversFor(ctx, levels, state, clockPhase, images, signalLevels) {
     } else {
       outMap = evaluate(c.def, pinLevels);
     }
-    for (const [outPin, level] of outMap) add(c.pinNet.get(outPin), level);
+    for (const [outPin, level] of outMap) {
+      add(c.pinNet.get(outPin), level, c.limitsLevel.has(level));
+    }
   }
-  return drivers;
+  return { drivers, hard };
 }
 
-/** Resolve every net once from supplies + the given drivers (+ resistor pulls). */
-function resolveAll(ctx, drivers) {
-  const resolveOne = (id, pullLevels) =>
-    resolveNet({
+/**
+ * Which nets the analog switches' channels JOIN for one pass, read off the
+ * levels on their control pins (`levels`, the previous pass's — as every chip
+ * output is computed). Returns null when no channel conducts, else
+ * `{ on, wide, hardOn, hardWide }`: each a Map netId → the member list of its
+ * joined group (itself included; one shared array per group), `on` over the
+ * channels that are ON and `wide` over those that MIGHT be (a floating
+ * control) as well — null when none might. `hardOn`/`hardWide` are the same
+ * joins minus the channels whose on-resistance limits an LED's current: what
+ * the LED rule's resolution joins. Only a POWERED switch conducts.
+ */
+function channelGroups(ctx, levels) {
+  const on = [];
+  const maybe = [];
+  for (const c of ctx.chips) {
+    if (!c.analogSwitch || c.status !== CHIP_STATUS.OK) continue;
+    const pinLevels = new Map();
+    for (const [pin, net] of c.pinNet) {
+      pinLevels.set(pin, net ? (levels.get(net) ?? Z) : Z);
+    }
+    for (const ch of channelStates(c.def, pinLevels)) {
+      const a = c.pinNet.get(ch.a);
+      const b = c.pinNet.get(ch.b);
+      if (!a || !b || a === b || ch.on === L) continue;
+      (ch.on === H ? on : maybe).push({ a, b, limited: c.limitsChannel });
+    }
+  }
+  if (!on.length && !maybe.length) return null;
+  const hard = (pairs) => pairs.filter((p) => !p.limited);
+  const all = [...on, ...maybe];
+  return {
+    on: groupsOf(on),
+    wide: maybe.length ? groupsOf(all) : null,
+    hardOn: groupsOf(hard(on)),
+    hardWide: maybe.length ? groupsOf(hard(all)) : null,
+  };
+}
+
+/** Net pairs → Map netId → its group's (shared) member list; null for none. */
+function groupsOf(pairs) {
+  if (!pairs.length) return null;
+  const uf = new UnionFind();
+  for (const { a, b } of pairs) uf.union(a, b);
+  const byNet = new Map();
+  for (const members of uf.groups().values()) {
+    for (const id of members) byNet.set(id, members);
+  }
+  return byNet;
+}
+
+/** Two candidate level maps → what they agree on, X where they differ. */
+function agreeing(a, b) {
+  const out = new Map();
+  for (const [id, lv] of a) out.set(id, b.get(id) === lv ? lv : X);
+  return out;
+}
+
+/**
+ * Resolve ONE net from supplies + `drivers` (+ the pulls `pullsOf` names),
+ * across the channels `groups` joins (netId → its group's members; null for
+ * none). A joined net hears every member's drivers and pulls — but another
+ * member's SUPPLY only at OUTPUT strength: it arrives through a switch, so a
+ * rail through a 4066 FIGHTS an output on the far side (a conflict there),
+ * where the same rail wired straight on would simply win.
+ */
+function resolveIn(ctx, drivers, groups, id, pullsOf) {
+  const group = groups?.get(id);
+  if (!group) {
+    return resolveNet({
       supplyPlus: ctx.supplyPlusVolts.has(id),
       supplyMinus: ctx.supplyMinus.has(id),
       chipLevels: drivers.get(id) ?? [],
-      pullLevels,
+      pullLevels: pullsOf(id),
     });
+  }
+  const chipLevels = [];
+  const pullLevels = [];
+  for (const member of group) {
+    chipLevels.push(...(drivers.get(member) ?? []));
+    pullLevels.push(...pullsOf(member));
+    if (member === id) continue;
+    if (ctx.supplyPlusVolts.has(member)) chipLevels.push(H);
+    if (ctx.supplyMinus.has(member)) chipLevels.push(L);
+  }
+  return resolveNet({
+    supplyPlus: ctx.supplyPlusVolts.has(id),
+    supplyMinus: ctx.supplyMinus.has(id),
+    chipLevels,
+    pullLevels,
+  });
+}
+
+const noPulls = () => [];
+
+/**
+ * Resolve every net once (`resolveIn`) from supplies + the given drivers +
+ * resistor pulls, across the channels `groups` joins. A channel joining the
+ * two rails themselves is a short through the switch, and said so.
+ *
+ * `burn` (null when no part limits an LED's current) is the `{drivers,
+ * groups}` the LED rule's resolution reads instead: the drivers and joins
+ * that could burn one (`driversFor`'s `hard`, `channelGroups`' `hardOn`).
+ */
+function resolveAll(ctx, drivers, groups = null, burn = null) {
+  const resolveOne = (id, pullsOf) =>
+    resolveIn(ctx, drivers, groups, id, pullsOf);
 
   // With resistors present, first compute each net's STRONG level (supplies +
-  // chip outputs, no pulls) — that's what a resistor conducts, and it's also
-  // what callers use to tell "driven directly" from "fed through a resistor"
-  // (a lit LED vs. a burnt one), so it must never itself include a pull.
+  // chip outputs, no pulls) — that's what a resistor conducts, and (unless a
+  // part limits an LED's current — `burn`) it's also what callers use to
+  // tell "driven directly" from "fed through a resistor" (a lit LED vs. a
+  // burnt one), so it must never itself include a pull.
   let pulls = null;
   let strong = null;
   if (ctx.resistors.length) {
     strong = new Map();
-    for (const id of ctx.netIds) strong.set(id, resolveOne(id, []).level);
+    for (const id of ctx.netIds) strong.set(id, resolveOne(id, noPulls).level);
 
     // Relax the resistor network to a fixpoint: a net one resistor just
     // pulled to H/L can itself feed the NEXT resistor down the chain (R1
@@ -462,7 +607,7 @@ function resolveAll(ctx, drivers) {
       }
       const nextBasis = new Map();
       for (const id of ctx.netIds) {
-        nextBasis.set(id, resolveOne(id, p.get(id) ?? []).level);
+        nextBasis.set(id, resolveOne(id, (net) => p.get(net) ?? []).level);
       }
       pulls = p;
       if (mapsEqual(nextBasis, basis)) break;
@@ -472,15 +617,41 @@ function resolveAll(ctx, drivers) {
 
   const next = new Map();
   const warnings = [];
+  // A joined group's fight is ONE fight, whichever member nets report it.
+  const said = new Map(); // warning type → the groups it was said for
   for (const id of ctx.netIds) {
-    const res = resolveOne(id, pulls?.get(id) ?? []);
+    const res = resolveOne(id, (net) => pulls?.get(net) ?? []);
     next.set(id, res.level);
-    if (res.warning) warnings.push({ type: res.warning, net: id });
+    if (!res.warning) continue;
+    const group = groups?.get(id);
+    if (group) {
+      if (!said.has(res.warning)) said.set(res.warning, new Set());
+      if (said.get(res.warning).has(group)) continue;
+      said.get(res.warning).add(group);
+    }
+    warnings.push({ type: res.warning, net: id });
   }
-  // Without resistors nothing is weakly pulled, so the resolved level IS the
-  // strong one. Callers use this to tell "driven directly" from "fed through a
-  // resistor" — the difference between a lit LED and a burnt one.
-  return { next, warnings, strong: strong ?? next };
+  for (const group of new Set(groups?.values() ?? [])) {
+    const plus = group.find((id) => ctx.supplyPlusVolts.has(id));
+    if (plus && group.some((id) => ctx.supplyMinus.has(id))) {
+      warnings.push({ type: "short", net: plus, via: "switch" });
+    }
+  }
+  // What the LED rule reads (sim/junction.js): the level each net would have
+  // from the sources that can burn an LED. Without a limiting part that is
+  // the strong level — and without resistors nothing is weakly pulled, so
+  // the resolved level IS the strong one. With one, it is resolved again
+  // from the hard drivers across the hard joins: a CD4000 output, or a
+  // channel, that limits the current is no more a burn than a resistor is.
+  const burning = burn
+    ? new Map(
+        ctx.netIds.map((id) => [
+          id,
+          resolveIn(ctx, burn.drivers, burn.groups, id, noPulls).level,
+        ]),
+      )
+    : (strong ?? next);
+  return { next, warnings, strong: burning };
 }
 
 /** Run the warm-started settle loop for a fixed state + clock phase + images
@@ -496,10 +667,30 @@ function solve(ctx, warmStart, state, clockPhase, images, signalLevels) {
   let prev = levels;
   while (iterations < MAX_ITERATIONS) {
     iterations++;
-    const { next, warnings, strong } = resolveAll(
+    const { drivers, hard } = driversFor(
       ctx,
-      driversFor(ctx, levels, state, clockPhase, images, signalLevels),
+      levels,
+      state,
+      clockPhase,
+      images,
+      signalLevels,
     );
+    const groups = channelGroups(ctx, levels);
+    const burn = (joins) =>
+      ctx.limitsLed ? { drivers: hard, groups: joins ?? null } : null;
+    let { next, warnings, strong } = resolveAll(
+      ctx,
+      drivers,
+      groups?.on,
+      burn(groups?.hardOn),
+    );
+    // A channel that MIGHT be on: resolve with it too, and keep only what
+    // both readings agree on.
+    if (groups?.wide) {
+      const wide = resolveAll(ctx, drivers, groups.wide, burn(groups.hardWide));
+      next = agreeing(next, wide.next);
+      strong = agreeing(strong, wide.strong);
+    }
     lastWarnings = warnings;
     lastStrong = strong;
     if (mapsEqual(next, levels)) {

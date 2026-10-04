@@ -20,7 +20,8 @@
 // families.js — the logic FAMILIES a chip can belong to (Feature 400), as
 // pure data. A family is what a part's datasheet has to say about the whole
 // line rather than about the part: the supply it runs from, what a floating
-// input reads, and how many LS inputs one of its outputs can hold LOW.
+// input reads, how many LS inputs one of its outputs can hold LOW, and
+// whether an output is too weak to burn an LED wired straight onto it.
 //
 // Only LOGIC chips carry a family (`def.family`, stamped per module in
 // catalog/index.js). The CPUs, the 65xx peripherals and every memory are
@@ -30,8 +31,10 @@
 // powered by the 5 V envelope it always was.
 //
 // Everything that branches on a family asks THIS module, never `def.family`
-// by hand — the engine's power gate and floating-input rule, the boundary
-// warnings, the tray, the AI builder.
+// by hand — the engine's power gate, floating-input rule and LED current
+// limit, the boundary warnings, the tray, the AI builder.
+
+import { H, L } from "../sim/levels.js";
 
 /** The families a logic chip can declare, in tray order. */
 export const LOGIC_FAMILIES = Object.freeze(["74LS", "CD4000"]);
@@ -61,17 +64,35 @@ export const DEFAULT_FAMILY_MODE = "74LS";
  * 0.51 mA minimum at VOL 0.4 V, VDD 5 V (25 °C) — ONE LS load. A part with a
  * stronger output states its own (`def.lsFanout`; the CD4049UB/CD4050B sink
  * ≥ 3.3 mA there, eight). 74LS outputs are not counted (null).
+ *
+ * `ledLimit` is the highest supply at which the family's outputs — and its
+ * analog switches' channels — limit an LED's current BY THEMSELVES, so one
+ * wired on with no series resistor lights rather than burns (null: never).
+ * A B-series output is a small MOSFET that saturates: TI's typical drain
+ * curves (CD4029B, Figs. 1 and 3, 25 °C) put a red LED (~2 V) straight on an
+ * output at VDD 5 V at about 4 mA sunk or sourced — a fifth of the LED's
+ * 20 mA rating, 12 mW in the output transistor. At 9 V it is about 15 mA and
+ * (9 − 2) V × 15 mA ≈ 105 mW, past the 100 mW absolute maximum per output
+ * transistor, so the CHIP is then the part being burnt; at 12–15 V it is
+ * 22–28 mA, past the LED's rating too. A channel is the same story told in
+ * ohms: a CD4066B/405xB's on-resistance is 470 Ω typical at VDD 5 V (about
+ * 6 mA into an LED, inside its ±10 mA load limit), 180 Ω at 10 V and 125 Ω
+ * at 15 V (SCHS051J). So 5 V, and everything below it. A part whose output
+ * stage is NOT the small MOSFET names the side that is not (`def.highCurrent`,
+ * read by `limitsLedCurrent`). 74LS outputs never limit: IOS is up to 100 mA.
  */
 const FAMILY_FACTS = Object.freeze({
   "74LS": Object.freeze({
     supply: Object.freeze({ min: 4.75, max: 5.25, nominal: 5 }),
     floating: "high",
     lsFanout: null,
+    ledLimit: null,
   }),
   CD4000: Object.freeze({
     supply: Object.freeze({ min: 3, max: 18 }),
     floating: "unknown",
     lsFanout: 1,
+    ledLimit: 5,
   }),
 });
 
@@ -110,6 +131,23 @@ export function floatsUnknown(def) {
 export function lsFanoutOf(def) {
   if (familyOf(def) !== "CD4000") return null;
   return def.lsFanout ?? FAMILY_FACTS.CD4000.lsFanout;
+}
+
+/**
+ * Whether this def, running from `volts`, limits the current of an LED wired
+ * straight onto a pin it drives to `level` (H or L) — or, for an analog
+ * switch, onto the far side of one of its channels (no `level`). See
+ * `ledLimit`. A part with a high-current stage says which side it is on
+ * (`def.highCurrent`: "sink" — the CD4049UB/CD4050B, whose LOW is a buffer's
+ * — or "source", the CD4511B's bipolar segment drivers); the other side is
+ * the family's ordinary output and limits as any does.
+ */
+export function limitsLedCurrent(def, volts, level) {
+  const limit = FAMILY_FACTS[familyOf(def)]?.ledLimit ?? null;
+  if (limit == null || volts == null || volts > limit) return false;
+  if (def.highCurrent === "sink" && level === L) return false;
+  if (def.highCurrent === "source" && level === H) return false;
+  return true;
 }
 
 /**

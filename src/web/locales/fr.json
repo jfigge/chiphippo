@@ -734,6 +734,18 @@
     },
     "CD4511B": {
       "title": "Verrou/décodeur/pilote BCD vers 7 segments"
+    },
+    "CD4066B": {
+      "title": "Quadruple interrupteur bilatéral"
+    },
+    "CD4051B": {
+      "title": "Multiplexeur/démultiplexeur analogique 8 voies"
+    },
+    "CD4052B": {
+      "title": "Double multiplexeur/démultiplexeur analogique 4 voies"
+    },
+    "CD4053B": {
+      "title": "Triple multiplexeur/démultiplexeur analogique 2 voies"
     }
   },
   "colors": {
@@ -1158,6 +1170,7 @@
     "memLostMessage": "{chip} était programmé, mais son fichier de données était absent — il contient maintenant du bruit aléatoire. Recharge une image.",
     "short": "Court-circuit",
     "shortMessage": "Deux alimentations opposées se rejoignent sur un même net ({net}).",
+    "shortThroughSwitchMessage": "Deux alimentations opposées se rejoignent à travers un interrupteur analogique ({net}).",
     "conflict": "Conflit de sorties",
     "conflictMessage": "Deux sorties se disputent un même net ({net}).",
     "oscillation": "Oscillation",

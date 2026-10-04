@@ -9,13 +9,13 @@
        'none'; the inline <style> is what needs 'unsafe-inline'. -->
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'" />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-  <meta name="description" content="Every chip Chip Hippo simulates — 98 74LS TTL and CD4000 CMOS logic, memory, interface and processor parts, each with a datasheet-accurate pinout." />
+  <meta name="description" content="Every chip Chip Hippo simulates — 102 74LS TTL and CD4000 CMOS logic, memory, interface and processor parts, each with a datasheet-accurate pinout." />
   <title>Supported chips — Chip Hippo</title>
   <link rel="canonical" href="https://chiphippo.com/chips.html" />
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="Chip Hippo" />
   <meta property="og:title" content="Supported chips — Chip Hippo" />
-  <meta property="og:description" content="Every chip Chip Hippo simulates — 98 74LS TTL and CD4000 CMOS logic, memory, interface and processor parts, each with a datasheet-accurate pinout." />
+  <meta property="og:description" content="Every chip Chip Hippo simulates — 102 74LS TTL and CD4000 CMOS logic, memory, interface and processor parts, each with a datasheet-accurate pinout." />
   <meta property="og:url" content="https://chiphippo.com/chips.html" />
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -120,10 +120,10 @@
   <p class="page-tag">Catalog</p>
   <h1>Supported chips</h1>
   <p>
-    Chip Hippo ships <strong>98 chips</strong>, every one with a datasheet-accurate
+    Chip Hippo ships <strong>102 chips</strong>, every one with a datasheet-accurate
     pinout and a working simulation you can wire up and run — logic from two families,
     74LS TTL and CD4000 CMOS, listed 74LS first in each table.
-    <strong>87</strong> of them carry a built-in example circuit, marked
+    <strong>91</strong> of them carry a built-in example circuit, marked
     <span class="example-mark" aria-hidden="true">✦</span> below: open the chip's
     <em>Pin Assignment</em> window and click its example button to drop a working bench
     onto a new desktop. The memory, interface and processor chips have none — a RAM or
@@ -140,7 +140,7 @@
     <li><a href="#gates">Gates &amp; buffers <span class="count">41</span></a></li>
     <li><a href="#registers">Flip-flops, latches &amp; registers <span class="count">16</span></a></li>
     <li><a href="#counters">Counters &amp; shift registers <span class="count">16</span></a></li>
-    <li><a href="#decoders">Decoders, encoders &amp; multiplexers <span class="count">8</span></a></li>
+    <li><a href="#decoders">Decoders, encoders &amp; multiplexers <span class="count">12</span></a></li>
     <li><a href="#arithmetic">Arithmetic, comparison &amp; display <span class="count">6</span></a></li>
     <li><a href="#memory">Memory <span class="count">7</span></a></li>
     <li><a href="#processors">Interface &amp; processors <span class="count">4</span></a></li>
@@ -252,7 +252,7 @@
     </table>
   </div>
 
-  <h2 id="decoders">Decoders, encoders &amp; multiplexers <span class="count">8</span></h2>
+  <h2 id="decoders">Decoders, encoders &amp; multiplexers <span class="count">12</span></h2>
   <div class="table-wrap">
     <table class="chip-table">
       <thead>
@@ -267,6 +267,10 @@
         <tr><td><code>74LS157</code> <span class="example-mark" role="img" aria-label="has an example circuit" title="Has a built-in example circuit">✦</span></td><td>Quad 2-to-1 selector</td><td>DIP-16</td></tr>
         <tr><td><code>74LS257</code> <span class="example-mark" role="img" aria-label="has an example circuit" title="Has a built-in example circuit">✦</span></td><td>Quad 2-to-1 selector, tri-state</td><td>DIP-16</td></tr>
         <tr><td><code>CD4028B</code> <span class="example-mark" role="img" aria-label="has an example circuit" title="Has a built-in example circuit">✦</span></td><td>BCD-to-decimal decoder</td><td>DIP-16</td></tr>
+        <tr><td><code>CD4051B</code> <span class="example-mark" role="img" aria-label="has an example circuit" title="Has a built-in example circuit">✦</span></td><td>8-channel analog multiplexer/demultiplexer</td><td>DIP-16</td></tr>
+        <tr><td><code>CD4052B</code> <span class="example-mark" role="img" aria-label="has an example circuit" title="Has a built-in example circuit">✦</span></td><td>Dual 4-channel analog multiplexer/demultiplexer</td><td>DIP-16</td></tr>
+        <tr><td><code>CD4053B</code> <span class="example-mark" role="img" aria-label="has an example circuit" title="Has a built-in example circuit">✦</span></td><td>Triple 2-channel analog multiplexer/demultiplexer</td><td>DIP-16</td></tr>
+        <tr><td><code>CD4066B</code> <span class="example-mark" role="img" aria-label="has an example circuit" title="Has a built-in example circuit">✦</span></td><td>Quad bilateral switch</td><td>DIP-14</td></tr>
       </tbody>
     </table>
   </div>

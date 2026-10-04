@@ -19,7 +19,7 @@
 
 // chips-cd4000.js — the CD4000B CMOS family (Feature 400): the basic gates,
 // the buffers, D and JK flip-flops, the counters, a shift-and-store register,
-// a decoder and a display driver. The family is stamped on in
+// a decoder, a display driver and the analog switches. The family is stamped on in
 // catalog/index.js, which is what makes every floating input here read
 // UNKNOWN rather than HIGH (catalog/families.js) and holds each part to the
 // 3–18 V CMOS supply range instead of TTL's 5 V.
@@ -49,10 +49,18 @@ import {
   bcd7segLatch,
   seqChip,
 } from "../sim/sequential.js";
-import { input, output, nc, gnd, vcc, unit } from "./pin-builders.js";
+import { bilateralSwitches, muxSection } from "../sim/analog-switch.js";
+import { input, output, io, nc, gnd, vcc, unit } from "./pin-builders.js";
 
 const VDD = (n) => vcc(n, "VDD");
 const VSS = (n) => gnd(n, "VSS");
+/**
+ * A CD405x's VEE: the NEGATIVE supply its switches swing down to. A ground-role
+ * pin, because in single-supply digital use it IS tied to VSS — so the engine
+ * powers the part only once it is, and the AI compiler wires it as it wires
+ * VSS. (This app has no negative supply to give it.)
+ */
+const VEE = (n) => gnd(n, "VEE");
 
 /**
  * The quad 2-input layout most of the 14-pin gates share (4001/4011/4081/
@@ -581,6 +589,10 @@ export const CHIPS_CD4000 = Object.freeze([
     package: "DIP-16",
     // IOL ≥ 3.3 mA at VOL 0.4 V, VCC 5 V: eight LS inputs (0.4 mA each).
     lsFanout: 8,
+    // …and a sink that does not saturate where a standard output's does
+    // (Fig. 5-3: ~20 mA at VGS 5 V, VDS 3 V, still climbing), so its LOW does
+    // not limit an LED. Its HIGH is an ordinary B-series source.
+    highCurrent: "sink",
     ...hex16("INV"),
   },
   {
@@ -595,6 +607,7 @@ export const CHIPS_CD4000 = Object.freeze([
     group: "Buffer",
     package: "DIP-16",
     lsFanout: 8,
+    highCurrent: "sink",
     ...hex16("BUF"),
   },
 
@@ -1096,6 +1109,9 @@ export const CHIPS_CD4000 = Object.freeze([
       "LE LOW when unused.",
     group: "Display driver",
     package: "DIP-16",
+    // n-p-n bipolar outputs "capable of sourcing up to 25 mA" (page 1): the
+    // HIGH that lights a segment is not a MOSFET's, and does not limit it.
+    highCurrent: "source",
     pins: [
       input(1, "B"),
       input(2, "C"),
@@ -1124,5 +1140,172 @@ export const CHIPS_CD4000 = Object.freeze([
         font: CD4511_FONT,
       }),
     ]),
+  },
+
+  // ── Multiplexer (analog switches) ───────────────────────────────────────
+  // They DRIVE nothing: an ON channel joins two nets and a level passes either
+  // way (sim/analog-switch.js). Digital only — on-resistance is out of scope.
+  {
+    // SCHS051J (CD4066B), pin functions + function: a HIGH control turns its
+    // switch on, and the signal passes either way; LOW leaves it open (high
+    // impedance).
+    id: "CD4066B",
+    title: "Quad bilateral switch",
+    blurb:
+      "Four independent switches, each joining its IN/OUT and OUT/IN pins " +
+      "while its CONTROL is HIGH — a level passes either way, so either side " +
+      "may be the input. CONTROL LOW opens it, and each side floats unless " +
+      "something else drives it. It drives nothing itself.",
+    group: "Multiplexer",
+    package: "DIP-14",
+    pins: [
+      io(1, "SIG A IN/OUT"),
+      io(2, "SIG A OUT/IN"),
+      io(3, "SIG B OUT/IN"),
+      io(4, "SIG B IN/OUT"),
+      input(5, "CONTROL B"),
+      input(6, "CONTROL C"),
+      VSS(7),
+      io(8, "SIG C IN/OUT"),
+      io(9, "SIG C OUT/IN"),
+      io(10, "SIG D OUT/IN"),
+      io(11, "SIG D IN/OUT"),
+      input(12, "CONTROL D"),
+      input(13, "CONTROL A"),
+      VDD(14),
+    ],
+    logic: {
+      channels: bilateralSwitches([
+        { a: 1, b: 2, control: 13 },
+        { a: 4, b: 3, control: 5 },
+        { a: 8, b: 9, control: 6 },
+        { a: 11, b: 10, control: 12 },
+      ]),
+    },
+  },
+  {
+    // SCHS047O (CD4051B/52B/53B), pin functions + Table 7-1: INH LOW and
+    // C B A = k joins channel k to COM; INH HIGH joins none.
+    id: "CD4051B",
+    title: "8-channel analog multiplexer/demultiplexer",
+    blurb:
+      "One common pin and eight channels: A, B and C pick the channel joined " +
+      "to COM (a level passes either way, so it multiplexes OR " +
+      "demultiplexes), and INH HIGH disconnects them all. VEE (pin 7) is a " +
+      "negative supply — tie it to VSS.",
+    group: "Multiplexer",
+    package: "DIP-16",
+    pins: [
+      io(1, "CH 4 IN/OUT"),
+      io(2, "CH 6 IN/OUT"),
+      io(3, "COM OUT/IN"),
+      io(4, "CH 7 IN/OUT"),
+      io(5, "CH 5 IN/OUT"),
+      input(6, "INH"),
+      VEE(7),
+      VSS(8),
+      input(9, "C"),
+      input(10, "B"),
+      input(11, "A"),
+      io(12, "CH 3 IN/OUT"),
+      io(13, "CH 0 IN/OUT"),
+      io(14, "CH 1 IN/OUT"),
+      io(15, "CH 2 IN/OUT"),
+      VDD(16),
+    ],
+    logic: {
+      channels: muxSection({
+        inh: 6,
+        sel: [11, 10, 9],
+        common: 3,
+        channels: [13, 14, 15, 12, 1, 5, 2, 4],
+      }),
+    },
+  },
+  {
+    // SCHS047O, Table 4-2 + Table 7-1: two 4-channel sections switched
+    // together by B A. The table names pin 13 "X COM IN/OUT", its pin diagram
+    // "COMMON X OUT/IN" — named here as its Y twin is.
+    id: "CD4052B",
+    title: "Dual 4-channel analog multiplexer/demultiplexer",
+    blurb:
+      "Two 4-channel switches, X and Y, steered together: A and B pick the " +
+      "channel joined to each COM (the same number on both — a differential " +
+      "pair), and INH HIGH disconnects them all. VEE (pin 7) is a negative " +
+      "supply — tie it to VSS.",
+    group: "Multiplexer",
+    package: "DIP-16",
+    pins: [
+      io(1, "Y CH 0 IN/OUT"),
+      io(2, "Y CH 2 IN/OUT"),
+      io(3, "Y COM OUT/IN"),
+      io(4, "Y CH 3 IN/OUT"),
+      io(5, "Y CH 1 IN/OUT"),
+      input(6, "INH"),
+      VEE(7),
+      VSS(8),
+      input(9, "B"),
+      input(10, "A"),
+      io(11, "X CH 3 IN/OUT"),
+      io(12, "X CH 0 IN/OUT"),
+      io(13, "X COM OUT/IN"),
+      io(14, "X CH 1 IN/OUT"),
+      io(15, "X CH 2 IN/OUT"),
+      VDD(16),
+    ],
+    logic: {
+      channels: [
+        ...muxSection({
+          inh: 6,
+          sel: [10, 9],
+          common: 13,
+          channels: [12, 14, 15, 11],
+        }),
+        ...muxSection({
+          inh: 6,
+          sel: [10, 9],
+          common: 3,
+          channels: [1, 5, 2, 4],
+        }),
+      ],
+    },
+  },
+  {
+    // SCHS047O, Table 4-3 + Table 7-1: three 2-channel switches, each with
+    // its own select (A → a, B → b, C → c: LOW picks x, HIGH y), one INH.
+    id: "CD4053B",
+    title: "Triple 2-channel analog multiplexer/demultiplexer",
+    blurb:
+      "Three independent changeover switches: A, B and C each join their " +
+      "section's common to its x channel (LOW) or y channel (HIGH), and INH " +
+      "HIGH disconnects them all. VEE (pin 7) is a negative supply — tie it " +
+      "to VSS.",
+    group: "Multiplexer",
+    package: "DIP-16",
+    pins: [
+      io(1, "BY IN/OUT"),
+      io(2, "BX IN/OUT"),
+      io(3, "CY IN/OUT"),
+      io(4, "CX OR CY OUT/IN"),
+      io(5, "CX IN/OUT"),
+      input(6, "INH"),
+      VEE(7),
+      VSS(8),
+      input(9, "C"),
+      input(10, "B"),
+      input(11, "A"),
+      io(12, "AX IN/OUT"),
+      io(13, "AY IN/OUT"),
+      io(14, "AX OR AY OUT/IN"),
+      io(15, "BX OR BY OUT/IN"),
+      VDD(16),
+    ],
+    logic: {
+      channels: [
+        ...muxSection({ inh: 6, sel: [11], common: 14, channels: [12, 13] }),
+        ...muxSection({ inh: 6, sel: [10], common: 15, channels: [2, 1] }),
+        ...muxSection({ inh: 6, sel: [9], common: 4, channels: [5, 3] }),
+      ],
+    },
   },
 ]);

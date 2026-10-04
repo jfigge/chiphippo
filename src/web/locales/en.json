@@ -733,6 +733,18 @@
     },
     "CD4511B": {
       "title": "BCD-to-7-segment latch/decoder/driver"
+    },
+    "CD4066B": {
+      "title": "Quad bilateral switch"
+    },
+    "CD4051B": {
+      "title": "8-channel analog multiplexer/demultiplexer"
+    },
+    "CD4052B": {
+      "title": "Dual 4-channel analog multiplexer/demultiplexer"
+    },
+    "CD4053B": {
+      "title": "Triple 2-channel analog multiplexer/demultiplexer"
     }
   },
   "colors": {
@@ -1157,6 +1169,7 @@
     "memLostMessage": "{chip} was programmed, but its data file was missing — it now holds random noise. Re-load an image.",
     "short": "Short circuit",
     "shortMessage": "Opposing supplies meet on one net ({net}).",
+    "shortThroughSwitchMessage": "Opposing supplies meet through an analog switch ({net}).",
     "conflict": "Driver conflict",
     "conflictMessage": "Two outputs are fighting on one net ({net}).",
     "oscillation": "Oscillation",

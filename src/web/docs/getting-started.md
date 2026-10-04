@@ -79,7 +79,9 @@ Give an LED a series resistor, just as you would on a bench. Wired straight
 between a supply rail and ground it has nothing to limit the current, and the
 simulation shows it **burnt** rather than lit. One resistor anywhere in the
 loop is enough — including a single one in a display's common leg, which
-protects all of its segments at once.
+protects all of its segments at once. (The one thing that limits the current
+by itself is a CD4000 output at 5 V or below — see
+[Mixing logic families](simulation.md#mixing-logic-families).)
 
 ## Wire it up
 

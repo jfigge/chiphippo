@@ -732,6 +732,18 @@
     },
     "CD4511B": {
       "title": "BCD 转七段锁存／译码器／驱动器"
+    },
+    "CD4066B": {
+      "title": "四路双向模拟开关"
+    },
+    "CD4051B": {
+      "title": "8 通道模拟多路复用器／解复用器"
+    },
+    "CD4052B": {
+      "title": "双 4 通道模拟多路复用器／解复用器"
+    },
+    "CD4053B": {
+      "title": "三 2 通道模拟多路复用器／解复用器"
     }
   },
   "colors": {
@@ -1134,6 +1146,7 @@
     "memLostMessage": "{chip} 曾被编程，但它的数据文件已丢失 — 现在里面是随机噪声。请重新载入映像。",
     "short": "短路",
     "shortMessage": "两个相反的电源汇到了同一个网络上（{net}）。",
+    "shortThroughSwitchMessage": "两个相反的电源通过模拟开关汇到了一起（{net}）。",
     "conflict": "驱动冲突",
     "conflictMessage": "两个输出在同一个网络上互相争抢（{net}）。",
     "oscillation": "振荡",

@@ -269,6 +269,27 @@ test("a part's buses and a memory's enables are on its card line", () => {
   assert.match(card, /74LS245 .*\| buses A\[0-7\] B\[0-7\]/);
 });
 
+test("the card marks an active-HIGH enable ^ and an analog switch terminal ~", () => {
+  // The 4094's OUTPUT ENABLE floats its outputs while LOW — "tie every enable
+  // LOW" would disable it, so it is not a \`!\`. And a 4066/405x terminal is
+  // not a \`<>\` bus line: it drives nothing, it connects.
+  const card = buildCatalogCard([
+    partDef("CD4094B"),
+    partDef("CD4066B"),
+    partDef("CD4051B"),
+    partDef("74LS245"),
+  ]);
+  assert.match(card, /CD4094B .*15:OUTPUT ENABLE\^/);
+  assert.match(card, /CD4066B .*1:SIG A IN\/OUT~ .*13:CONTROL A /);
+  assert.match(card, /CD4051B .*3:COM OUT\/IN~ .*7:VEE /);
+  assert.match(card, /74LS245 .*2:A1<>/, "a transceiver's port stays <>");
+  // …and both legends say what the marks mean.
+  for (const prompt of [buildSystemPrompt(), buildReviewSystemPrompt()]) {
+    assert.match(prompt, /\n {4}\^ {7}an ACTIVE-HIGH OUTPUT ENABLE/);
+    assert.match(prompt, /\n {4}~ {7}an analog switch terminal/);
+  }
+});
+
 test("pin names are quoted case-exactly, because the resolver is case-first", () => {
   // 74LS47 distinguishes its A–D inputs from its a–g segment outputs by CASE
   // alone. Folding either way would make the model's spelling ambiguous.

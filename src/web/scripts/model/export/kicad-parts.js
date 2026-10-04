@@ -40,6 +40,7 @@
 import { packageSpec } from "../footprints.js";
 import { formatOhms } from "../ohm-format.js";
 import { switchableOutputs } from "../spec-lint.js";
+import { isAnalogSwitch } from "../../sim/chip-eval.js";
 
 const HEADER = (n) =>
   `Connector_PinHeader_2.54mm:PinHeader_1x${String(n).padStart(2, "0")}_P2.54mm_Vertical`;
@@ -231,7 +232,10 @@ export function pinType(def, port) {
   }
   if (def.kind === "chip" || def.id.startsWith("osc-")) {
     if (role === "input") return "input";
-    if (role === "io") return "bidirectional";
+    // An analog switch's terminal drives nothing — it is a conductor, which
+    // is what KiCad's PASSIVE says (and it may then meet a rail without the
+    // ERC calling it a fight).
+    if (role === "io") return isAnalogSwitch(def) ? "passive" : "bidirectional";
     if (role === "nc") return "no_connect";
     if (role === "output") {
       return def.kind === "chip" && switchableOutputs(def).has(port.pin)

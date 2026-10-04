@@ -984,11 +984,18 @@ export class SimController {
     if (!this.#notifications) return;
     for (const w of warnings) {
       if (w.type === "short") {
+        // Through an analog switch the two rails are still two nets, and the
+        // switch between them is the thing to look at.
         this.#notify({
           key: `short:${w.net}`,
           variant: "danger",
           title: t("sim.short"),
-          message: t("sim.shortMessage", { net: w.net }),
+          message: t(
+            w.via === "switch"
+              ? "sim.shortThroughSwitchMessage"
+              : "sim.shortMessage",
+            { net: w.net },
+          ),
         });
       } else if (w.type === "conflict") {
         this.#notify({

@@ -2128,6 +2128,131 @@ export const DEMOS = Object.freeze([
     digits: { ...SEG7, 10: "", 11: "", 12: "", 13: "", 14: "", 15: "" },
     segments: SEG,
   },
+  // Multiplexer — the analog switches, which DRIVE nothing: an ON channel
+  // joins two pins, so every lamp here is lit by a rail or a switch the part
+  // merely connects it to.
+  {
+    ref: "CD4066B",
+    title: "Quad bilateral switch",
+    note:
+      "CD4066B — Quad bilateral switch (CMOS)\n" +
+      "It drives nothing: a switch whose CTL is\n" +
+      "HIGH joins its two pins, and a level passes\n" +
+      "EITHER way. IN A feeds switch A at IN/OUT;\n" +
+      "IN B feeds switch B at OUT/IN — the same\n" +
+      "part, backwards. Switches C and D are open.",
+    inputs: [
+      { label: "IN A", pins: [1] },
+      { label: "CTL A", pins: [13] },
+      { label: "IN B", pins: [3] },
+      { label: "CTL B", pins: [5] },
+    ],
+    defaults: [true, true, true, false],
+    ties: [{ pins: [6, 12], rail: "-" }], // CONTROL C, D: switches held open
+    leds: [
+      { pin: 2, label: "A", color: "green" },
+      { pin: 4, label: "B", color: "green" },
+    ],
+    // From the sheet: CONTROL HIGH passes the signal, LOW is high impedance —
+    // and an open switch leaves its lamp's net with nothing to light it.
+    expect: ([inA, ctlA, inB, ctlB]) => [inA && ctlA, inB && ctlB],
+  },
+  {
+    ref: "CD4051B",
+    title: "8-channel analog multiplexer/demultiplexer",
+    note:
+      "CD4051B — 8-channel analog mux (CMOS)\n" +
+      "COM is tied HIGH and A, B, C pick which of\n" +
+      "the eight channels it is joined to, so one\n" +
+      "lamp lights — a DEMULTIPLEXER. Turned round\n" +
+      "it multiplexes. INH HIGH disconnects them all.\n" +
+      "VEE is tied to ground with VSS.",
+    inputs: [
+      { label: "A", pins: [11] },
+      { label: "B", pins: [10] },
+      { label: "C", pins: [9] },
+      { label: "INH", pins: [6] },
+    ],
+    defaults: [true, false, true, false], // channel 5
+    ties: [{ pins: [3], rail: "+" }], // COM
+    leds: [13, 14, 15, 12, 1, 5, 2, 4].map((pin, i) => ({
+      pin,
+      label: String(i),
+      color: "green",
+    })),
+    // Table 7-1: INH LOW and C B A = k → channel k on; INH HIGH → none.
+    expect: (v) => {
+      const k = word(v, 0, 3);
+      return Array.from({ length: 8 }, (_, i) => !v[3] && i === k);
+    },
+  },
+  {
+    ref: "CD4052B",
+    title: "Dual 4-channel analog multiplexer/demultiplexer",
+    note:
+      "CD4052B — Dual 4-channel analog mux (CMOS)\n" +
+      "Two switches steered together: A and B pick\n" +
+      "the same channel in X and in Y, so one lamp\n" +
+      "of each row lights. Both commons are tied\n" +
+      "HIGH; INH HIGH disconnects them all. VEE is\n" +
+      "tied to ground with VSS.",
+    inputs: [
+      { label: "A", pins: [10] },
+      { label: "B", pins: [9] },
+      { label: "INH", pins: [6] },
+    ],
+    defaults: [true, false, false], // channel 1
+    ties: [{ pins: [13, 3], rail: "+" }], // X COM, Y COM
+    leds: [
+      ...[12, 14, 15, 11].map((pin, i) => ({
+        pin,
+        label: `X${i}`,
+        color: "green",
+      })),
+      ...[1, 5, 2, 4].map((pin, i) => ({
+        pin,
+        label: `Y${i}`,
+        color: "yellow",
+      })),
+    ],
+    // Table 7-1: INH LOW and B A = k → kx and ky on; INH HIGH → none.
+    expect: (v) => {
+      const k = word(v, 0, 2);
+      const row = Array.from({ length: 4 }, (_, i) => !v[2] && i === k);
+      return [...row, ...row];
+    },
+  },
+  {
+    ref: "CD4053B",
+    title: "Triple 2-channel analog multiplexer/demultiplexer",
+    note:
+      "CD4053B — Triple 2-channel analog mux (CMOS)\n" +
+      "Three changeover switches, each with its own\n" +
+      "select: A, B and C send their section's\n" +
+      "common (tied HIGH) to x when LOW, y when\n" +
+      "HIGH. INH HIGH disconnects them all. VEE is\n" +
+      "tied to ground with VSS.",
+    inputs: [
+      { label: "A", pins: [11] },
+      { label: "B", pins: [10] },
+      { label: "C", pins: [9] },
+      { label: "INH", pins: [6] },
+    ],
+    defaults: [false, true, false, false],
+    ties: [{ pins: [14, 15, 4], rail: "+" }], // the three commons
+    leds: [
+      { pin: 12, label: "ax", color: "green" },
+      { pin: 13, label: "ay", color: "yellow" },
+      { pin: 2, label: "bx", color: "green" },
+      { pin: 1, label: "by", color: "yellow" },
+      { pin: 5, label: "cx", color: "green" },
+      { pin: 3, label: "cy", color: "yellow" },
+    ],
+    // Table 7-1: each section's x while its select is LOW, y while HIGH;
+    // INH HIGH → none.
+    expect: ([a, b, c, inh]) =>
+      [a, b, c].flatMap((sel) => (inh ? [false, false] : [!sel, sel])),
+  },
 ]);
 
 // ── Spec shapes shared by a whole family ─────────────────────────────────

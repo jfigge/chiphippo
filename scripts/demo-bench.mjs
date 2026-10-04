@@ -356,7 +356,8 @@ export class Bench {
   /**
    * Seat the chip under test and wire its power pins to the rails — whichever
    * rail each pin's own row faces, so a part with non-standard power pins (a
-   * '76, a '83) needs no special case.
+   * '76, a '83) needs no special case. EVERY supply pin: a CD405x's VEE is a
+   * ground pin beside its VSS, tied with it in single-supply use.
    */
   chip(ref, col = LAYOUT.chipCol) {
     const def = partDef(ref);
@@ -365,10 +366,13 @@ export class Bench {
     const holes = new Map(
       partPinHoles(ref, anchor, {}).map((p) => [p.pin, p.hole]),
     );
-    const vcc = def.pins.find((p) => p.role === "vcc").n;
-    const gnd = def.pins.find((p) => p.role === "gnd").n;
-    this.wireToRail(holes.get(vcc), "+", WIRE.power);
-    this.wireToRail(holes.get(gnd), "-", WIRE.ground);
+    const supply = (role) => def.pins.filter((p) => p.role === role);
+    for (const p of supply("vcc")) {
+      this.wireToRail(holes.get(p.n), "+", WIRE.power);
+    }
+    for (const p of supply("gnd")) {
+      this.wireToRail(holes.get(p.n), "-", WIRE.ground);
+    }
     return {
       id: comp.id,
       holeOf: (pin) => holes.get(pin),
