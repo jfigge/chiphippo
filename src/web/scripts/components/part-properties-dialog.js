@@ -47,8 +47,19 @@
 // below), `"pin-fields"` (an Output/Input element's ordered bit/byte/word
 // fields — pin-fields-editor.js; its value is the whole list), `"quantity"`
 // (a typed physical value — a resistor's Resistance, a capacitor's
-// Capacitance — see below), and `"separator"` (a plain divider, no
-// key/control).
+// Capacitance — see below), `"range"` (a slider over `min`…`max` in `step`s —
+// a potentiometer's Position; see below), and `"separator"` (a plain
+// divider, no key/control).
+//
+// `"range"` is the one value control that applies AS IT MOVES (the `input`
+// event, not `change`): it stands for a knob, and turning one while the
+// circuit runs and watching what it does is the point of having it. Each
+// step is still one coalesced undo entry, as every live change here is. Its
+// value is read out as a percentage beside it — unless the field carries
+// `ends(values)`, returning the two texts to show at either END of the track
+// instead (a pot's `1.5k ⟵⟶ 8.5k`: what the position MEANS). Those are asked
+// with the card's current values after every change, not just the slider's,
+// since what they say can rest on another field — a pot's on its Resistance.
 //
 // `"quantity"` is a text box whose descriptor carries its own `parse(text)`
 // (→ a number, or null) and `format(value)` (→ the text shown), so the value
@@ -107,7 +118,7 @@
 // closes the dialog — it's a command, not a value the dialog needs to keep
 // showing.
 
-import { t, tf } from "../i18n.js";
+import { formatNumber, t, tf } from "../i18n.js";
 import { el, svgEl } from "../dom.js";
 import { PopupManager } from "../popup-manager.js";
 import { buildColorSwatches } from "./color-swatches.js";
@@ -303,6 +314,56 @@ function buildQuantity(field, value, onChange) {
   return el("span", { class: "properties-quantity" }, [input, error]);
 }
 
+/**
+ * A slider (see the note at the top of this file): `min`…`max` in `step`s,
+ * committing on every `input` so the part follows the thumb. With no `ends`
+ * the value is read out beside it as a percentage of the range — locale-
+ * formatted, since "50 %" is how several of the shipped languages write it.
+ * With `ends`, a readout stands at each end of the track instead, left EMPTY
+ * here: what they say can rest on other fields, so the dialog fills them
+ * (`refreshEnds` in `open`) from its current values.
+ */
+function buildRange(field, value, onChange) {
+  const min = field.min ?? 0;
+  const max = field.max ?? 100;
+  const start = Number.isFinite(value) ? value : min;
+  const input = el("input", {
+    type: "range",
+    class: "properties-range-input",
+    min,
+    max,
+    step: field.step ?? 1,
+    value: start,
+    "aria-label": fieldLabel(field),
+  });
+  if (typeof field.ends === "function") {
+    input.addEventListener("input", () =>
+      onChange(field.key, Number(input.value)),
+    );
+    return el("span", { class: "properties-range" }, [
+      el("output", {
+        class: "properties-range-end properties-range-end--start",
+      }),
+      input,
+      el("output", { class: "properties-range-end properties-range-end--end" }),
+    ]);
+  }
+  const percent = (v) =>
+    formatNumber((v - min) / (max - min || 1), { style: "percent" });
+  const readout = el("output", {
+    class: "properties-range-value",
+    text: percent(start),
+  });
+  input.addEventListener("input", () => {
+    const v = Number(input.value);
+    readout.textContent = percent(v);
+    input.setAttribute("aria-valuetext", readout.textContent);
+    onChange(field.key, v);
+  });
+  input.setAttribute("aria-valuetext", readout.textContent);
+  return el("span", { class: "properties-range" }, [input, readout]);
+}
+
 /** Build one field's control by its declared `type`. New types extend this
     switch alone — the dialog shell and every part's catalog def stay
     untouched. An unrecognized type falls back to a read-only value. */
@@ -338,6 +399,9 @@ function buildControl(field, value, onChange) {
   if (field.type === "quantity") {
     return buildQuantity(field, value, onChange);
   }
+  if (field.type === "range") {
+    return buildRange(field, value, onChange);
+  }
   if (field.type === "textarea") {
     return buildTextarea(field, value, onChange);
   }
@@ -359,6 +423,7 @@ const STACKED_TYPES = new Set([
   "readonly",
   "pin-fields",
   "quantity",
+  "range",
 ]);
 
 function buildRow(field, value, onChange, onAction) {
@@ -450,7 +515,7 @@ export class PartPropertiesDialog {
    * Name/Description always come first; `fields` (if any) follow a separator.
    * @param {object} opts
    * @param {string} opts.title - the dialog header (e.g. "LED Properties").
-   * @param {Array<{key?:string,label?:string,type:string,options?:Array<{value,label}>,actionLabel?:string,action?:{key:string,label?:string,icon:string},color?:string,measure?:() => number,disabledWhen?:(values: object) => boolean}>} [opts.fields] -
+   * @param {Array<{key?:string,label?:string,type:string,options?:Array<{value,label}>,actionLabel?:string,action?:{key:string,label?:string,icon:string},color?:string,measure?:() => number,disabledWhen?:(values: object) => boolean,ends?:(values: object) => string[]}>} [opts.fields] -
    *   the part's catalog `properties` list (plus any instance-conditional
    *   action fields desk-controller.js appends) — empty/omitted for a board
    *   or a part with nothing beyond Name/Description.
@@ -506,10 +571,26 @@ export class PartPropertiesDialog {
         setRowDisabled(row, Boolean(field.disabledWhen(current)));
       }
     };
+    // A slider's end readouts (`"range"` with `ends`), re-asked after EVERY
+    // change for the wire gauge's reason: what they say may rest on another
+    // field, and this card never rebuilds its rows. The thumb's own value goes
+    // to assistive tech as the same two texts.
+    const ranges = [];
+    const refreshEnds = () => {
+      for (const { row, field } of ranges) {
+        const [start, end] = field.ends(current);
+        row.querySelector(".properties-range-end--start").textContent = start;
+        row.querySelector(".properties-range-end--end").textContent = end;
+        row
+          .querySelector(".properties-range-input")
+          .setAttribute("aria-valuetext", `${start} – ${end}`);
+      }
+    };
     const change = (key, value) => {
       onChange(key, value);
       current[key] = value;
       refreshDisabled();
+      refreshEnds();
       for (const { svg, field } of gauges) {
         if (colorKeys.has(key)) setWireGaugeColor(svg, value);
         setWireGaugeRun(svg, field.measure());
@@ -524,8 +605,12 @@ export class PartPropertiesDialog {
       if (typeof field.disabledWhen === "function") {
         dependents.push({ row: rows[i], field });
       }
+      if (field.type === "range" && typeof field.ends === "function") {
+        ranges.push({ row: rows[i], field });
+      }
     });
     refreshDisabled();
+    refreshEnds();
 
     // The warnings section (see the note at the top of this file): the LAST
     // thing in the card, gone entirely while the part is healthy. Its divider

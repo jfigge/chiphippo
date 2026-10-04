@@ -48,6 +48,7 @@ export function designatorPrefix(comp) {
   if (comp.kind === "psu" || comp.kind === "clock") return "J";
   if (ref === "resistor") return "R";
   if (ref === "rnet9") return "RN";
+  if (ref === "pot") return "RV"; // KiCad's own for R_Potentiometer
   if (ref === "cap-ceramic" || ref === "cap-electrolytic") return "C";
   if (ref === "led") return "D";
   if (ref.startsWith("sw-")) return "SW";

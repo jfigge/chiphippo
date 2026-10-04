@@ -268,7 +268,9 @@ function buildEdge(edge) {
 
 /** The small value text for a shape symbol (volts / ohms / Hz), or "". */
 function shapeText(shape, params) {
-  if (shape === "resistor") return formatOhms(Number(params?.ohms));
+  if (shape === "resistor" || shape === "potentiometer") {
+    return formatOhms(Number(params?.ohms));
+  }
   if (shape === "capacitor" || shape === "capacitor-polarized") {
     const v = formatFarads(Number(params?.farads));
     return v ? `${v}F` : "";
@@ -327,6 +329,34 @@ function buildShapeBody(g, shape, geo, node) {
     }
     d += ` L ${x1} ${mid} L ${w} ${mid}`;
     g.append(svgEl("path", { class: "schematic-shape-line", d }));
+  } else if (shape === "potentiometer") {
+    // The resistor's zigzag (pin 1 left, pin 3 right), and the wiper coming
+    // down from its top stub to an arrowhead on the track.
+    const a = 0.6;
+    const x0 = w * 0.22;
+    const x1 = w * 0.78;
+    const step = (x1 - x0) / 6;
+    let d = `M 0 ${cy} L ${x0} ${cy}`;
+    for (let i = 0; i < 6; i++) {
+      d += ` L ${x0 + step * (i + 0.5)} ${i % 2 === 0 ? cy - a : cy + a}`;
+    }
+    d += ` L ${x1} ${cy} L ${w} ${cy}`;
+    const tip = cy - a - 0.08;
+    g.append(
+      svgEl("path", { class: "schematic-shape-line", d }),
+      line(cx, 0, cx, tip - 0.3),
+      svgEl("path", {
+        class: "schematic-shape-arrow",
+        d: `M ${cx - 0.3} ${tip - 0.45} L ${cx} ${tip} L ${cx + 0.3} ${tip - 0.45} Z`,
+      }),
+      svgText(
+        shapeText(shape, node.params),
+        cx,
+        h * 0.95,
+        "schematic-shape-value",
+        0.8,
+      ),
+    );
   } else if (shape === "capacitor" || shape === "capacitor-polarized") {
     // Two plates across the leads; a polarised part's negative plate is the
     // curved one, with a + by the positive lead (pin 1, on the left).

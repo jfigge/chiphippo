@@ -614,6 +614,9 @@
     "rnet9": {
       "title": "Rete di resistenze (con bus comune, 9 pin)"
     },
+    "pot": {
+      "title": "Potenziometro"
+    },
     "psu": {
       "title": "Alimentatore"
     },
@@ -1357,6 +1360,7 @@
       "fields": "Pin",
       "ohms": "Resistenza",
       "farads": "Capacità",
+      "position": "Posizione",
       "timing": "Temporizzazione"
     },
     "option": {

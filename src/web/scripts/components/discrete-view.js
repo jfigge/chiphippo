@@ -80,6 +80,9 @@ const BOXES = Object.freeze({
   // A 9-pin SIP standing over one row of holes (like the displays), body above
   // so every hole stays clickable for wiring.
   rnet9: Object.freeze({ minX: -0.7, minY: -2.9, width: 9.4, height: 3.5 }),
+  // A trimmer potentiometer, its body centred over its three holes as a slide
+  // switch's is (see buildPotentiometer).
+  pot: Object.freeze({ minX: -1, minY: -1, width: 4, height: 2 }),
   // Nine holes along one row (x 0…8) with the display block standing ABOVE
   // them, so each anode's lower column holes stay clickable for wiring.
   seg8cc: Object.freeze({ minX: -0.7, minY: -7.7, width: 9.4, height: 8.3 }),
@@ -706,6 +709,81 @@ function buildResistorNetwork(svg, ohms, rot) {
 }
 
 /**
+ * A trimmer potentiometer (pot): a Bourns 3296-style blue block seen from
+ * above, CENTRED over its three pins as the real part is — the row of pins
+ * runs under the middle of the body, the wiper (hole 1) dead centre — so, like
+ * a slide switch's, its pins are hidden beneath it. Only the body takes the
+ * pointer; the holes around it stay clickable. It is printed with the track's
+ * value, and its brass adjusting screw shows the wiper: the slot turns through
+ * 270° as the Position goes 0 → 100 %, a dot on its rim marking which end is
+ * the pointer (a bare slot reads the same both ways round).
+ */
+function buildPotentiometer(svg, { ohms, position }) {
+  // About the middle pin (1, 0): a 3296W's full 9.5 mm long (3.7 pitch), but
+  // 1.5 pitch deep against its 4.8 mm (1.9), so the body — outline included —
+  // stops short of the holes in the rows either side (their squares start
+  // 0.78 out), the ones a wire to its pins plugs into, rather than covering
+  // part of them.
+  const bodyW = 3.7;
+  const bodyH = 1.5;
+  const bodyX = 1 - bodyW / 2;
+  const bodyY = -bodyH / 2;
+  svg.append(
+    svgEl("rect", {
+      class: "part-pot-body",
+      x: bodyX,
+      y: bodyY,
+      width: bodyW,
+      height: bodyH,
+      rx: 0.2,
+    }),
+  );
+  const label = svgEl("text", {
+    class: "part-pot-label",
+    x: 0.55,
+    y: 0.21,
+    "text-anchor": "middle",
+  });
+  label.textContent = formatOhms(ohms);
+  svg.append(label);
+  // The screw, at the body's right-hand end as on the real part.
+  const screw = { x: 2.25, y: 0 };
+  const r = 0.42;
+  const turn = ((-135 + 2.7 * position) * Math.PI) / 180;
+  const along = { x: Math.sin(turn), y: -Math.cos(turn) };
+  svg.append(
+    svgEl("circle", {
+      class: "part-pot-screw",
+      cx: screw.x,
+      cy: screw.y,
+      r,
+    }),
+    svgEl("line", {
+      class: "part-pot-slot",
+      x1: screw.x - along.x * r * 0.8,
+      y1: screw.y - along.y * r * 0.8,
+      x2: screw.x + along.x * r * 0.8,
+      y2: screw.y + along.y * r * 0.8,
+    }),
+    svgEl("circle", {
+      class: "part-pot-pointer",
+      cx: screw.x + along.x * r * 0.62,
+      cy: screw.y + along.y * r * 0.62,
+      r: 0.07,
+    }),
+    // Body-only hit target: the block drags, the holes around it stay
+    // clickable.
+    svgEl("rect", {
+      class: "part-display-hit",
+      x: bodyX,
+      y: bodyY,
+      width: bodyW,
+      height: bodyH,
+    }),
+  );
+}
+
+/**
  * A DIP switch's body is TALLER than a chip's, because the real part is: a
  * 0.3-in DIP switch measures around 9.9 mm across its body against a plastic
  * DIP's 6.35, so it stands proud of its own pin rows where a chip sits well
@@ -1205,6 +1283,8 @@ export function buildDiscreteSvg(ref, params = {}) {
     buildCharacterDisplay(svg, def, normalized);
   } else if (ref === "rnet9") {
     buildResistorNetwork(svg, normalized.ohms, normalized.rot);
+  } else if (ref === "pot") {
+    buildPotentiometer(svg, normalized);
   } else if (def.switchBank) {
     buildDipSwitchBank(svg, def, normalized);
   } else {

@@ -82,6 +82,7 @@ export const DIGITAL_ELEMENTS = Object.freeze([
   "osc-half",
   "resistor",
   "rnet9",
+  "pot",
   "led",
   "bar8",
   "bar8iso",

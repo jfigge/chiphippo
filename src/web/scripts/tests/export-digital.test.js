@@ -41,6 +41,7 @@ import {
 import { DIGITAL_LIB } from "../model/export/digital-lib.js";
 import { digitalMapped, exportDigital } from "../model/export/digital.js";
 import { bench, demoDocs } from "./export-fixtures.js";
+import { bench as timingBench } from "./timing-fixtures.js";
 import { compileNetlist } from "../model/autobuild.js";
 import { normalizeDocument } from "../model/desk-doc.js";
 
@@ -230,6 +231,36 @@ test("a lamp resistor to a rail becomes a pull on the lamp's side", () => {
     circuit.elements.filter((el) => el.name === "Resistor").length,
     0,
   );
+});
+
+test("a potentiometer is its sides: a pull, or at the end of its track a wire", () => {
+  // The wiper on GND, pin 1 on a NAND input, pin 3 open.
+  const circuitAt = (position) => {
+    const b = timingBench();
+    const u = b.seat("u1", "74LS00", "e10");
+    b.vcc(u.get(14));
+    b.gnd(u.get(7));
+    const rv = b.seat("rv1", "pot", "a30", { ohms: 1e4, position });
+    b.gnd(rv.get(2));
+    b.link(rv.get(1), u.get(1));
+    const res = exportOf(b.doc);
+    const circuit = parse(res.files[0].text);
+    const reach = tunnelAt(circuit);
+    const chip = circuit.elements.find((el) => el.name === "7400.dig");
+    const pin = dilPin("7400.dig", chip.x, chip.y, 1);
+    const input = reach(pin.x, pin.y);
+    const pulledDown = circuit.elements.some(
+      (el) => el.name === "PullDown" && reach(el.x, el.y) === input,
+    );
+    return { report: res.report, input, pulledDown };
+  };
+  const mid = circuitAt(50);
+  assert.equal(mid.pulledDown, true, "a side with track left pulls");
+  assert.notEqual(mid.input, "GND");
+  assert.ok(!mid.report.some((e) => e.code === "unmapped"), "it comes across");
+  const end = circuitAt(0);
+  assert.equal(end.input, "GND", "a side with none left is a wire to it");
+  assert.equal(end.pulledDown, false);
 });
 
 test("an unconnected chip input is tied HIGH right on its pin", () => {

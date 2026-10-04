@@ -614,6 +614,9 @@
     "rnet9": {
       "title": "Red de resistencias (con bus común, 9 pines)"
     },
+    "pot": {
+      "title": "Potenciómetro"
+    },
     "psu": {
       "title": "Fuente de alimentación"
     },
@@ -1357,6 +1360,7 @@
       "fields": "Pines",
       "ohms": "Resistencia",
       "farads": "Capacidad",
+      "position": "Posición",
       "timing": "Temporización"
     },
     "option": {

@@ -614,6 +614,9 @@
     "rnet9": {
       "title": "Réseau de résistances (à bus commun, 9 broches)"
     },
+    "pot": {
+      "title": "Potentiomètre"
+    },
     "psu": {
       "title": "Alimentation"
     },
@@ -1357,6 +1360,7 @@
       "fields": "Broches",
       "ohms": "Résistance",
       "farads": "Capacité",
+      "position": "Position",
       "timing": "Temporisation"
     },
     "option": {

@@ -45,11 +45,17 @@ import { MIN_TESTS } from "./generate.js";
  * VALUE — a capacitor, and the timers that read their R and C off the wiring
  * (`isTimed`): a netlist spec says which pins share a net and nothing about
  * ohms or farads, so the compiler could seat a 555 but never make it keep the
- * time asked for. The desk REVIEW still sees every part — a hand-built desk
- * can hold anything the palette has.
+ * time asked for. Nor a part with a KNOB (a `"range"` property — the
+ * potentiometer's wiper): what it connects depends on where it is turned, at
+ * an end it is a wire, and a spec has nowhere to say. The desk REVIEW still
+ * sees every part — a hand-built desk can hold anything the palette has.
  */
+const hasKnob = (d) => (d.properties ?? []).some((f) => f.type === "range");
+
 export const BUILDABLE_DEFS = Object.freeze(
-  PALETTE_DEFS.filter((d) => !d.can && !d.capacitor && !isTimed(d)),
+  PALETTE_DEFS.filter(
+    (d) => !d.can && !d.capacitor && !isTimed(d) && !hasKnob(d),
+  ),
 );
 
 /**

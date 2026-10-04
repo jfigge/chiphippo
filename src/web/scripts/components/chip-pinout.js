@@ -130,6 +130,8 @@ const ROLE_TAG = Object.freeze({
   contact: "contact",
   common: "common",
   lead: "lead",
+  // A potentiometer's middle pin: the contact that taps its track.
+  wiper: "wiper",
   // A timer's RC terminal (pin-builders.js `timing`): where its resistor and
   // capacitor go.
   timing: "RC",

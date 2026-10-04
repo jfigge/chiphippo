@@ -44,7 +44,7 @@ import {
 } from "../model/export/kicad.js";
 import { parseSexpr } from "../model/export/sexpr.js";
 import { bench, demoDocs } from "./export-fixtures.js";
-import { astable555 } from "./timing-fixtures.js";
+import { astable555, bench as timingBench } from "./timing-fixtures.js";
 
 // ── Reading a sheet back ─────────────────────────────────────────────────────
 
@@ -371,6 +371,84 @@ test("capacitors and resistors export with their values and the right symbols", 
   const sheet = readSheet(text);
   assert.equal(sheet[`${electrolytic.ref}.2`], "GND");
   assert.notEqual(sheet[`${electrolytic.ref}.1`], "GND");
+});
+
+test("a potentiometer exports as an RV on a 3296W, its wiper coming down onto the track", () => {
+  // The astable again, with RB a 100k pot used as a rheostat — wiper on
+  // DISCH, pin 1 on TRIG+THRES, pin 3 open — and turned to an END, where the
+  // engine reads that side as a wire: on a board it is still the pot between
+  // two nets, never a short drawn on the sheet.
+  const b = timingBench();
+  const u = b.seat("u1", "NE555", "e10");
+  b.vcc(u.get(8));
+  b.gnd(u.get(1));
+  b.vcc(u.get(4));
+  b.link(u.get(2), u.get(6));
+  const c = b.seat("c1", "cap-electrolytic", "a30", { farads: 10e-6 });
+  b.link(c.get(1), u.get(6));
+  b.gnd(c.get(2));
+  const rv = b.seat("rv1", "pot", "a40", { ohms: 1e5, position: 0 });
+  b.link(rv.get(2), u.get(7));
+  b.link(rv.get(1), u.get(6));
+  const ra = b.seat("r1", "resistor", "a50", { ohms: 1e3 });
+  b.link(ra.get(1), u.get(7));
+  b.vcc(ra.get(2));
+
+  const res = exportKicad(b.doc, { tabId: "t1", name: "pot" });
+  const text = sheetOf(res).text;
+  // Every pin — the wiper on the symbol's TOP edge included — on the net the
+  // model says.
+  assert.deepEqual(readSheet(text), expected(b.doc));
+
+  const sch = parseSexpr(text);
+  const [pot] = kids(sch, "symbol")
+    .filter((s) => str(kid(s, "lib_id")[1]) === `${KICAD_LIB}:pot`)
+    .map((s) => {
+      const prop = (name) =>
+        str(kids(s, "property").find((p) => str(p[1]) === name)?.[2]);
+      return {
+        ref: prop("Reference"),
+        value: prop("Value"),
+        footprint: prop("Footprint"),
+      };
+    });
+  assert.ok(pot, "the pot is on the sheet");
+  assert.equal(pot.ref, "RV1");
+  assert.equal(pot.value, "100k");
+  assert.equal(
+    pot.footprint,
+    "Potentiometer_THT:Potentiometer_Bourns_3296W_Vertical",
+  );
+  const sheet = readSheet(text);
+  assert.notEqual(
+    sheet["RV1.1"],
+    sheet["RV1.2"],
+    "the wiper's side is a part, not a wire",
+  );
+  assert.equal(sheet["RV1.3"], undefined, "pin 3 is wired to nothing");
+
+  // The library symbol: three passive pins, the wiper's arrowhead filled.
+  const sym = kids(kid(sch, "lib_symbols"), "symbol").find(
+    (s) => str(s[1]) === `${KICAD_LIB}:pot`,
+  );
+  const pins = [];
+  const walk = (n) => {
+    for (const child of n) {
+      if (!Array.isArray(child)) continue;
+      if (child[0] === "pin")
+        pins.push([child[1], str(kid(child, "number")[1])]);
+      else walk(child);
+    }
+  };
+  walk(sym);
+  assert.deepEqual(
+    pins.sort((a, b) => a[1].localeCompare(b[1])),
+    [
+      ["passive", "1"],
+      ["passive", "2"],
+      ["passive", "3"],
+    ],
+  );
 });
 
 test("a timer's RC terminal is a PASSIVE pin, its trigger an input", () => {

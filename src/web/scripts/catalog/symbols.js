@@ -166,6 +166,16 @@ const SHAPE_DEFS = Object.freeze({
       { name: "2", side: "right", pin: 2 },
     ],
   },
+  // The track left to right like a resistor's body, the wiper's arrow coming
+  // down onto it from above.
+  pot: {
+    shape: "potentiometer",
+    terminals: [
+      { name: "1", side: "left", pin: 1 },
+      { name: "3", side: "right", pin: 3 },
+      { name: "W", side: "top", pin: 2 },
+    ],
+  },
   "cap-ceramic": {
     shape: "capacitor",
     terminals: [

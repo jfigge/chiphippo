@@ -613,6 +613,9 @@
     "rnet9": {
       "title": "Widerstandsnetzwerk (gebündelt, 9-polig)"
     },
+    "pot": {
+      "title": "Potentiometer"
+    },
     "psu": {
       "title": "Netzteil"
     },
@@ -1354,6 +1357,7 @@
       "fields": "Pins",
       "ohms": "Widerstandswert",
       "farads": "Kapazität",
+      "position": "Position",
       "timing": "Zeitverhalten"
     },
     "option": {

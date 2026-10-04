@@ -107,6 +107,12 @@
   --color-part-cap-can: #2a4a8c;
   --color-part-cap-stripe: #b8c4dc;
   --color-part-cap-text: #e9eef8;
+  /* A trimmer potentiometer: the blue moulded body a Bourns 3296 has, its
+     white printing, and the brass adjusting screw with its slot. */
+  --color-part-trimpot: #2f62b5;
+  --color-part-trimpot-text: #eef2fa;
+  --color-part-screw: #c9a347;
+  --color-part-screw-slot: #4a3a12;
   /* Magic smoke from a burnt-out part. Sooty, but it has to read against BOTH
      the dark and light desk (parts are theme-invariant), so it can't go much
      darker than this without vanishing on #1c1c1c. */

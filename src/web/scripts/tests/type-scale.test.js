@@ -55,6 +55,7 @@ const WORLD_UNITS = new Map([
   [".part-can-badge", "printed on the part, SVG user units"],
   [".part-rnet-label", "printed on the part, SVG user units"],
   [".part-cap-label", "printed on the capacitor, SVG user units"],
+  [".part-pot-label", "printed on the potentiometer, SVG user units"],
   [".part-chip-timing", "printed on the chip, SVG user units"],
   [".part-dip-on-label", "printed on the part, SVG user units"],
   [".part-psu-badge", "printed on the brick, SVG user units"],

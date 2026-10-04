@@ -124,6 +124,37 @@ A resistor's value changes nothing in the simulation: a resistor is a weak pull
 whatever it measures, and a lamp is lit or burnt by whether one is in the
 loop. Only the timing chips read it (below).
 
+## Potentiometers
+
+**COMPONENTS ▸ Resistors ▸ Potentiometer** is a three-pin trimmer: a
+resistive track between the two outer pins and a **wiper** on the middle pin
+that taps it. It seats along one row like a switch, pins 1, W and 3 in three
+holes side by side.
+
+Its **Properties…** card has the track's **Resistance** (typed like any
+resistor's) and the wiper's **Position**, a slider from 0 % to 100 %. The
+resistance from the wiper to pin 1 is Position × Resistance, and to pin 3 is
+what is left of the track:
+
+| Position | Wiper ↔ pin 1 | Wiper ↔ pin 3 |
+| --- | --- | --- |
+| 0 % | 0 — a wire | 100k |
+| 10 % | 10k | 90k |
+| 50 % | 50k | 50k |
+| 90 % | 90k | 10k |
+| 100 % | 100k | 0 — a wire |
+
+(for a 100k part). The slider shows exactly that as you move it — the
+resistance to pin 1 at its left end and to pin 3 at its right, `15k ━●━━━ 85k`
+— and changing the Resistance updates both. It applies as you drag it, while the
+circuit runs as well, and the brass screw on the part turns to show where the
+wiper is.
+
+Each side with track left behaves exactly like a resistor: a weak pull, and a
+value the timing chips read — a pot as a 555's RB tunes its rate. A side with
+**none** left is the wiper resting on that pin: a plain wire, so the two nets
+join, and an LED fed through it with nothing else in the loop **burns**.
+
 ## Capacitors
 
 **COMPONENTS ▸ Capacitors** holds two:

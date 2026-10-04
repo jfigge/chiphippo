@@ -112,9 +112,11 @@ export function rcTrace(doc, netlist) {
       push(caps, b, { id: comp.id, value: farads, far: a, polarized, plus: plusNet }); // prettier-ignore
     }
     if (isRes) {
-      const ohms = Number(comp.params?.ohms);
-      if (!(ohms > 0)) continue;
-      for (const [pa, pb] of def.weakBridges(comp.params)) {
+      // Each coupled pair is the part's `ohms` — unless the pair states its
+      // own (a third element): a potentiometer's two sides divide one track.
+      for (const [pa, pb, own] of def.weakBridges(comp.params)) {
+        const ohms = Number(own ?? comp.params?.ohms);
+        if (!(ohms > 0)) continue;
         const a = netOfPin.get(pa) ?? null;
         const b = netOfPin.get(pb) ?? null;
         push(res, a, { id: comp.id, value: ohms, far: b });

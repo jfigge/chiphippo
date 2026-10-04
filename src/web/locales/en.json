@@ -613,6 +613,9 @@
     "rnet9": {
       "title": "Resistor array (bussed, 9-pin)"
     },
+    "pot": {
+      "title": "Potentiometer"
+    },
     "psu": {
       "title": "Power supply"
     },
@@ -1354,6 +1357,7 @@
       "fields": "Pins",
       "ohms": "Resistance",
       "farads": "Capacitance",
+      "position": "Position",
       "timing": "Timing"
     },
     "option": {

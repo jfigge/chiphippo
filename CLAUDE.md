@@ -832,6 +832,23 @@ in the wiring and turns them into seconds by its datasheet's formula.
   stripe). First placement from the tray raises a one-time toast (`desk.capacitorNote.*`,
   "Don't show again" → `settings.capacitorNoteDismissed`), through DeskController's
   `onPartPlaced` option.
+- **The potentiometer** (`pot`, group Resistors, offsets [0,1,2]: pin 1 `1` · pin 2 `W`,
+  role `wiper` · pin 3 `3`; a Bourns 3296W) has `ohms` (the whole track) and `position`
+  (a whole percent, default 50 — the `"range"` field). `potentiometerSplit` is the ONE
+  statement of its arithmetic: wiper↔pin 1 = position × ohms, wiper↔pin 3 = the rest. A
+  side with track left is a `weakBridges` pair carrying its OWN ohms as a third element
+  (`[2, 1, toPin1]` — `rc-trace.js` reads it in place of `params.ohms`; every other
+  consumer destructures two and ignores it); a side with NONE left is an
+  `internalBridges` pair — a WIRE — so at 0 % / 100 % the nets join and an LED fed through
+  that side burns, with no special case anywhere (the LED rule reads `strongLevels`). The
+  desk draws a blue block CENTRED over its three pins, as the real part is (the pins run
+  under the middle of the body, hidden like a slide switch's; body-only hit rect),
+  printed with its value, whose brass screw's slot turns through 270° with the position.
+  Exports: KiCad `RV` on `Potentiometer_THT:Potentiometer_Bourns_3296W_Vertical` (pads
+  1·2·3 = ours, verified in KiCad's library), symbol `"potentiometer"` (the resistor body,
+  the wiper's arrow from a TOP pin); Digital treats it as its sides, through the same
+  `weakBridges`-driven pull/merge every resistive part now takes (no id checks), a dead
+  side merged as a wire. Not offered to the AI builder (`hasKnob`).
 - **The trace** (`sim/rc-trace.js`, `rcTrace(doc, netlist)`) is the ONE reader every timed
   part shares: capacitors and resistors indexed by net, PARALLEL parts between the same
   two nets combined (series is not followed — stated, not guessed), `toRail("+"/"-")`
@@ -1408,9 +1425,10 @@ anchor and wire.
   deliberately no `applyBatch`.
 - **The prompt is DERIVED, never hand-written** (`ai/catalog-brief.js`):
   `buildCatalogCard()` projects `BUILDABLE_DEFS` for the builder (`PALETTE_DEFS` minus the
-  `can` oscillators the compiler refuses, the capacitors and every `isTimed` part — a
-  netlist spec has nowhere to state a VALUE, and a timer is nothing without its R and C;
-  the review keeps them all) — ids, packages,
+  `can` oscillators the compiler refuses, the capacitors, every `isTimed` part and every
+  part with a KNOB — a `"range"` property, the potentiometer's wiper — since a netlist spec
+  has nowhere to state a VALUE or a setting, a timer is nothing without its R and C, and a
+  pot at the end of its track is a wire; the review keeps them all) — ids, packages,
   exact `n:name` pin lists, and a part's `buses` for the `A[3]` member form —
   `JSON.stringify` would silently drop the FUNCTION fields), so a new 74xx part reaches
   the model the moment it lands in `catalog/`. ~4.4 K tokens, over the prompt-cache
@@ -2475,7 +2493,7 @@ the ×'s box) in one `.popup-header-actions` group LEFT of the ×.
   options }]`) and the dialog is a pure renderer over that list (one
   `buildControl`/`buildRow` dispatch per `type`) that knows nothing about any specific
   part. A future part's properties are purely a catalog change, plus one more `type` case
-  only for a genuinely new control shape. Six types:
+  only for a genuinely new control shape. Seven types:
   - `"color"` — every coloured discrete (LED, `seg8cc`/`seg8ca`, `bar8`/`bar8iso`) shares
     one `LED_COLOR_OPTIONS` list of 5 and a row of swatches reusing the
     `--color-wire-<name>` tokens. Any def with a `colors` list arms placement directly with
@@ -2503,6 +2521,14 @@ the ×'s box) in one `.popup-header-actions` group LEFT of the ×.
     dialog's `values` rather than read off `params`.
   - `"wire-gauge"` — a PICTURE, not an editor (below); the one type named after what it
     draws rather than after a kind of control.
+  - `"range"` — a slider over `min`…`max` in `step`s (the potentiometer's Position). The
+    ONE value control that applies on `input` rather than `change`: it stands for a knob,
+    and turning it while the circuit runs and watching the result is the point. Each step
+    is a coalesced undo entry. Read out as a locale-formatted percentage — unless the
+    field carries `ends(values)`, two texts for either END of the track (the pot's
+    `1.5k ━●━ 8.5k`: wiper↔pin 1 left, wiper↔pin 3 right, a dead side "0"). The DIALOG
+    fills those (`refreshEnds`), re-asking with its current values after EVERY change, since
+    they rest on another field (a new Resistance moves them); `aria-valuetext` is the pair.
   - Like Settings, value fields apply live (`onChange(key, value)` per control change, no
     Save/Cancel). `#setComponentProperty` applies the patch via
     `DeskDoc.setComponentParams` and **remounts** the part view (`#remountPart`, not

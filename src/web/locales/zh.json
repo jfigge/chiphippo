@@ -612,6 +612,9 @@
     "rnet9": {
       "title": "排阻（共端，9 脚）"
     },
+    "pot": {
+      "title": "电位器"
+    },
     "psu": {
       "title": "电源"
     },
@@ -1328,6 +1331,7 @@
       "fields": "引脚",
       "ohms": "阻值",
       "farads": "容值",
+      "position": "位置",
       "timing": "定时"
     },
     "option": {

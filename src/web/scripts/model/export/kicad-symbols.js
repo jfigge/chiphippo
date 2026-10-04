@@ -275,6 +275,60 @@ function resistorSymbol(name) {
 }
 
 /**
+ * A potentiometer: the resistor's body between pins 1 and 3, and the wiper
+ * (pin 2) coming down onto it from above, ending in an arrowhead — KiCad's
+ * Device:R_Potentiometer turned on its side to match the resistor here. The
+ * Reference sits beside the wiper rather than over it, and the Value below.
+ */
+function potentiometerSymbol(name) {
+  const pins = [
+    { number: "1", name: "~", type: "passive", x: -5.08, y: 0, side: "left" },
+    { number: "3", name: "~", type: "passive", x: 5.08, y: 0, side: "right" },
+    { number: "2", name: "~", type: "passive", x: 0, y: 3.81, side: "top" },
+  ];
+  const ANGLE = { left: 0, right: 180, top: 270 };
+  const map = new Map();
+  const pinNodes = pins.map((p) => {
+    map.set(p.number, { x: p.x, y: p.y, side: p.side });
+    const len = p.side === "top" ? GRID : PIN_LEN;
+    return pinNode(p, p.x, p.y, ANGLE[p.side], len);
+  });
+  return {
+    name,
+    graphics: [
+      [
+        "rectangle",
+        ["start", -2.54, 1.016],
+        ["end", 2.54, -1.016],
+        stroke(),
+        fill("none"),
+      ],
+      poly([
+        [0, 2.54],
+        [0, 1.778],
+      ]),
+      poly(
+        [
+          [-0.508, 1.778],
+          [0, 1.016],
+          [0.508, 1.778],
+          [-0.508, 1.778],
+        ],
+        "outline",
+      ),
+    ],
+    pinNodes,
+    pins: map,
+    box: { minX: -2.54, maxX: 2.54, minY: -1.016, maxY: 1.016 },
+    compact: true,
+    fields: {
+      reference: { x: GRID, y: 2.54, justify: ["left"] },
+      value: { x: 0, y: -1.016 - 2 * GRID, justify: [] },
+    },
+  };
+}
+
+/**
  * A capacitor: two plates across a gap — KiCad's Device:C shape — or, for a
  * polarised one, Device:C_Polarized's open box for the + plate and a filled
  * one for −, with a + mark on pin 1's side.
@@ -457,6 +511,7 @@ function spdtSymbol(name) {
 export function symbolFor(part, kp, widestValue = part.def.id) {
   const name = symbolName(part.def);
   if (kp.shape === "resistor") return resistorSymbol(name);
+  if (kp.shape === "potentiometer") return potentiometerSymbol(name);
   if (kp.shape === "led") return ledSymbol(name);
   if (kp.shape === "capacitor") return capacitorSymbol(name, false);
   if (kp.shape === "capacitor-polarized") return capacitorSymbol(name, true);

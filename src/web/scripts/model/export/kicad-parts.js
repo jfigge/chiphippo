@@ -72,6 +72,13 @@ export const KICAD_PARTS = Object.freeze({
     shape: "resistor",
     value: (comp) => formatOhms(comp.params?.ohms) || "R",
   },
+  // A Bourns 3296W: three pads in a row at 2.54 mm, the wiper in the middle,
+  // numbered as ours are (1 · 2 wiper · 3) — so no pad map.
+  pot: {
+    footprint: "Potentiometer_THT:Potentiometer_Bourns_3296W_Vertical",
+    shape: "potentiometer",
+    value: (comp) => formatOhms(comp.params?.ohms) || "RV",
+  },
   rnet9: {
     footprint: "Resistor_THT:R_Array_SIP9",
     shape: "box",

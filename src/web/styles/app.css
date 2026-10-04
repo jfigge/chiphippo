@@ -1444,6 +1444,7 @@
 .part-discrete--bar8,
 .part-discrete--bar8iso,
 .part-discrete--rnet9,
+.part-discrete--pot,
 .part-discrete--osc-full,
 .part-discrete--osc-half,
 .part-discrete--sw-dip1,
@@ -1655,6 +1656,40 @@
   font-size: 0.8px; /* SVG user units = pitch units */
   letter-spacing: 0.04px;
   user-select: none;
+}
+
+/* Trimmer potentiometer (pot): a blue block centred over its three pins,
+   printed with its value, and the brass screw whose slot says where the wiper
+   is. */
+.part-pot-body {
+  fill: var(--color-part-trimpot);
+  stroke: var(--color-part-inset);
+  stroke-width: 0.08;
+}
+
+.part-pot-label {
+  fill: var(--color-part-trimpot-text);
+  font-family: var(--font-mono);
+  font-size: 0.6px; /* SVG user units = pitch units */
+  font-weight: 600;
+  user-select: none;
+  pointer-events: none;
+}
+
+.part-pot-screw {
+  fill: var(--color-part-screw);
+  stroke: var(--color-part-screw-slot);
+  stroke-width: 0.05;
+}
+
+.part-pot-slot {
+  stroke: var(--color-part-screw-slot);
+  stroke-width: 0.11;
+  stroke-linecap: round;
+}
+
+.part-pot-pointer {
+  fill: var(--color-part-trimpot-text);
 }
 
 /* ── PSU brick (desk-level) ──────────────────────────────────────────────── */
@@ -3606,6 +3641,42 @@ textarea.annotation-editor {
   display: none;
 }
 
+/* A slider (a potentiometer's Position): the track takes the row, and the
+   value read out beside it in fixed-width figures, so the thumb's neighbour
+   does not jitter as it moves from 9 % to 10 %. */
+.properties-range {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.properties-range-input {
+  flex: 1;
+  min-width: 0;
+  accent-color: var(--color-accent);
+}
+
+.properties-range-value,
+.properties-range-end {
+  min-width: 4.5ch;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text);
+}
+
+/* A slider whose ENDS are read out (a pot's two sides): each readout hugs its
+   own end of the track, wide enough for the longest value ("4.75k") so the
+   track does not shift as the values change length. */
+.properties-range-end {
+  min-width: 6ch;
+}
+
+.properties-range-end--end {
+  text-align: left;
+}
+
 /* The shared segmented picker (components/segmented-picker.js): a DIALOG's
    form of the toolbar pill — one bordered track, borderless segments, the
    chosen one filled. Used by the Settings dialog (Theme, Wire layout, AI
@@ -5046,6 +5117,11 @@ textarea.annotation-editor {
 }
 
 .schematic-shape-dot {
+  fill: var(--color-subtext);
+}
+
+/* A potentiometer's wiper arrowhead, in the line colour. */
+.schematic-shape-arrow {
   fill: var(--color-subtext);
 }
 

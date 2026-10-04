@@ -439,6 +439,57 @@ const CAPACITANCE_FIELD = Object.freeze({
 });
 
 /**
+ * A potentiometer's wiper Position, 0–100 % — a slider in its Properties card
+ * (part-properties-dialog.js's `"range"` type), applied as it is dragged. Its
+ * two ENDS say what the slider means rather than where it is: the resistance
+ * from the wiper to pin 1 on the left and to pin 3 on the right, `1.5k ⟵⟶
+ * 8.5k` — read from the card's current values, so a new Resistance moves them
+ * too. A side with no track left reads "0" (formatOhms prints nothing for
+ * zero, which is right on a part's body and wrong here).
+ */
+const POSITION_FIELD = Object.freeze({
+  key: "position",
+  label: "Position",
+  type: "range",
+  min: 0,
+  max: 100,
+  step: 1,
+  ends: (values) => {
+    const side = (ohms) => (ohms > 0 ? formatOhms(ohms) : "0");
+    const { toPin1, toPin3 } = potentiometerSplit(values);
+    return [side(toPin1), side(toPin3)];
+  },
+});
+
+/** A potentiometer's params: the whole track's value (a resistor's default)
+    and the wiper's position, a whole percent, centred unless said. */
+function potentiometerParams(raw) {
+  const ohms = Number(raw?.ohms);
+  const position = Number(raw?.position);
+  return {
+    ohms: Number.isFinite(ohms) && ohms > 0 ? ohms : 10000,
+    position: Number.isFinite(position)
+      ? Math.min(100, Math.max(0, Math.round(position)))
+      : 50,
+  };
+}
+
+/**
+ * How a potentiometer's track divides at its wiper: the resistance from the
+ * wiper (pin 2) to each end — `toPin1` grows with the position, `toPin3` is the
+ * rest of the track. 100k at 10 % is 10k and 90k; at 0 % pin 1's side is 0, a
+ * wire. Pure arithmetic; the params are coerced first, so a half-filled object
+ * divides like the part it would load as.
+ * @param {{ohms?: number, position?: number}} params
+ * @returns {{toPin1: number, toPin3: number}} ohms
+ */
+export function potentiometerSplit(params) {
+  const { ohms, position } = potentiometerParams(params);
+  const toPin1 = (ohms * position) / 100;
+  return { toPin1, toPin3: ohms - toPin1 };
+}
+
+/**
  * A capacitor's params: its value, plus the same two-free-ends geometry the
  * resistor and LED keep (`rot`, `end` — see normalizeLeadOffset). A value
  * that is not a capacitance in range falls back to the part's default.
@@ -963,6 +1014,69 @@ export const PART_DEFS = Object.freeze(
       // move, the elements they name do not.
       weakBridges() {
         return Array.from({ length: 8 }, (_, i) => [i + 2, 1]);
+      },
+    },
+    {
+      id: "pot",
+      kind: "discrete",
+      title: "Potentiometer",
+      blurb:
+        "Three-pin trimmer potentiometer: a resistive track between pins 1 " +
+        "and 3, and a wiper (pin 2, the middle) that taps it. Set its " +
+        "Resistance — the whole track — and the wiper's Position, 0–100 %, " +
+        "in Properties. From the wiper to pin 1 is Position × Resistance and " +
+        "to pin 3 the rest: 100k at 10 % is 10k to pin 1 and 90k to pin 3. " +
+        "Like a resistor, each side is a WEAK coupler, read by the timing " +
+        "parts — except a side with nothing left of the track (pin 1 at 0 %, " +
+        "pin 3 at 100 %), which is a wire, and an LED fed through it burns.",
+      group: "Resistors",
+      // A Bourns 3296W-style trimmer: three pins in a row at 0.1 in, the
+      // wiper in the middle.
+      footprint: Object.freeze({ offsets: Object.freeze([0, 1, 2]) }),
+      properties: [RESISTANCE_FIELD, POSITION_FIELD],
+      pins: [
+        {
+          n: 1,
+          name: "1",
+          role: "lead",
+          detail: "track end — Position × R from the wiper",
+        },
+        {
+          n: 2,
+          name: "W",
+          role: "wiper",
+          detail: "wiper — taps the track",
+        },
+        {
+          n: 3,
+          name: "3",
+          role: "lead",
+          detail: "track end — (100 % − Position) × R from the wiper",
+        },
+      ],
+      // Whole percent, clamped: the slider's own steps, and the one number
+      // the two sides' arithmetic is stated in.
+      normalizeParams: potentiometerParams,
+      // A side with NONE of the track left is not a resistor at all but the
+      // wiper's contact sitting on the end terminal — a WIRE, so the nets
+      // join and nothing limits the current through them.
+      internalBridges(params) {
+        const { toPin1, toPin3 } = potentiometerSplit(params);
+        return [
+          ...(toPin1 === 0 ? [[2, 1]] : []),
+          ...(toPin3 === 0 ? [[2, 3]] : []),
+        ];
+      },
+      // Every other side is a resistor: a weak coupler from the wiper to that
+      // end. Each pair carries its OWN ohms (third element), since the two
+      // sides divide one track — sim/rc-trace.js reads it in place of the
+      // part's single `ohms`, which every other consumer can ignore.
+      weakBridges(params) {
+        const { toPin1, toPin3 } = potentiometerSplit(params);
+        return [
+          ...(toPin1 > 0 ? [[2, 1, toPin1]] : []),
+          ...(toPin3 > 0 ? [[2, 3, toPin3]] : []),
+        ];
       },
     },
     {

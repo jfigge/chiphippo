@@ -35,7 +35,10 @@
 //     cathode, and a switch's resistor to GND a pulled-down throw;
 //   · a resistor between two signals is a wire (reported: it no longer
 //     limits anything);
-//   · a resistor from rail to rail does nothing in logic and is left out.
+//   · a resistor from rail to rail does nothing in logic and is left out;
+//   · a potentiometer is its two sides, each such a resistor — except a side
+//     with none of its track left, which the engine reads as a wire, as this
+//     does.
 //
 // FLOATING TTL INPUTS READ HIGH (sim/levels.js `asInput`); in Digital an input
 // with nothing driving it is an ERROR. So a net that holds a chip input and
@@ -119,6 +122,10 @@ export function digitalMapped(def) {
   return def.id in DIGITAL_FILES || DIGITAL_ELEMENTS.includes(def.id);
 }
 
+/** A part the engine reads as resistors (catalog `weakBridges`), which comes
+    across as pulls and wires rather than as an element of its own. */
+const resistive = (def) => typeof def.weakBridges === "function";
+
 // ── Elements as data ─────────────────────────────────────────────────────────
 
 const str = (s) => ({ string: String(s) });
@@ -161,15 +168,23 @@ export function exportDigital(doc, desktop) {
   const uf = new UnionFind();
   for (const id of model.nets.keys()) uf.add(id);
   const pullOn = []; // { id, up } — a net id from before the merges
-  const legs = (part) => {
-    const port = (key) => part.ports.find((p) => p.key === key)?.net ?? null;
-    if (part.def.id === "resistor") return [[port("1"), port("2")]];
-    // rnet9: COM (pin 1) to each lead
-    return part.ports.filter((p) => p.pin !== 1).map((p) => [port("1"), p.net]);
-  };
+  // Each element as the catalog states it: `weakBridges`' pin pairs (the
+  // resistor's one, the array's eight, a potentiometer's sides) as nets.
+  const pinNet = (part, n) => part.ports.find((p) => p.pin === n)?.net ?? null;
+  const pairs = (part, list) =>
+    list.map(([a, b]) => [pinNet(part, a), pinNet(part, b)]);
   for (const part of model.parts) {
-    if (part.def.id !== "resistor" && part.def.id !== "rnet9") continue;
-    for (const [a, b] of legs(part)) {
+    if (!resistive(part.def)) continue;
+    const params = part.comp.params;
+    // A potentiometer side with none of its track left is a WIRE in the
+    // engine (its `internalBridges`), so it is one here too — unless it joins
+    // two rails, a short the engine already reports and no wire can carry.
+    for (const [a, b] of pairs(part, part.def.internalBridges(params))) {
+      if (!a || !b) continue;
+      if (model.nets.get(a).polarity && model.nets.get(b).polarity) continue;
+      uf.union(a, b);
+    }
+    for (const [a, b] of pairs(part, part.def.weakBridges(params))) {
       if (!a || !b) continue; // a floating leg connects nothing
       const pa = model.nets.get(a).polarity;
       const pb = model.nets.get(b).polarity;
@@ -214,7 +229,7 @@ export function exportDigital(doc, desktop) {
   const cmosInputs = []; // { part, name } — a CMOS input and the net it reads
 
   for (const part of model.parts) {
-    if (part.def.id === "resistor" || part.def.id === "rnet9") continue;
+    if (resistive(part.def)) continue;
     if (!digitalMapped(part.def)) {
       const reason =
         DIGITAL_UNSUPPORTED[part.def.id] ??
