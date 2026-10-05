@@ -165,8 +165,19 @@ test("the desk-tool pill is built in full; AI and Generate are the disabled ones
   const tools = qa("#app-toolbar .toolbar-pill")[1];
   const segments = [...tools.querySelectorAll(".toolbar-pill-btn")];
   // Wire · Bus · Auto-route · Fade · Probe · Analyzer · Fit · BOM · Schematic ·
-  // AI · Generate.
-  assert.equal(segments.length, 11);
+  // 3D view · AI · Generate.
+  assert.equal(segments.length, 12);
+  // The 3D view's segment is built, but HIDDEN until Settings ▸ Appearance ▸
+  // 3D enabled is On (Off by default), and the app opens on the breadboard:
+  // the segment offers the 3D view, it is not showing it.
+  const view3d = segments.find(
+    (b) => b.getAttribute("aria-label") === t("toolbar.view3d.show"),
+  );
+  assert.ok(view3d, "the 3D view segment exists");
+  assert.equal(view3d.hidden, true, "hidden while 3D is not enabled");
+  assert.equal(view3d.disabled, false);
+  assert.equal(view3d.getAttribute("aria-pressed"), "false");
+  assert.ok(q(".desk3d-viewport").hidden, "the 3D view starts hidden");
   const disabled = segments.filter((b) => b.disabled);
   // AI has no connection to ask; Generate has no Output or Input on an empty
   // desk to write a header for. Nothing else starts disabled.
@@ -186,6 +197,36 @@ test("the desk-tool pill is built in full; AI and Generate are the disabled ones
     t("toolbar.generate.none"),
     "and so does Generate",
   );
+});
+
+test("3D enabled shows the 3D segment; switching it off hides it and leaves the 3D view", () => {
+  const segment = () =>
+    qa("#app-toolbar .toolbar-pill-btn").find(
+      (b) =>
+        b.getAttribute("aria-label") === t("toolbar.view3d.show") ||
+        b.getAttribute("aria-label") === t("toolbar.view3d.hide"),
+    );
+  const setting = (view3dEnabled) =>
+    window.dispatchEvent(
+      new CustomEvent("chiphippo:settings-changed", {
+        detail: { view3dEnabled },
+      }),
+    );
+  assert.equal(segment().hidden, true, "Off by default");
+
+  setting(true);
+  assert.equal(segment().hidden, false, "On shows it");
+  segment().click();
+  assert.equal(segment().getAttribute("aria-pressed"), "true");
+  assert.ok(q(".desk-viewport").hidden, "the 3D view is showing");
+
+  // Off while the 3D view is up: the segment goes, and so does the view —
+  // the segment was the way back to the breadboard.
+  setting(false);
+  assert.equal(segment().hidden, true, "Off hides it");
+  assert.equal(segment().getAttribute("aria-pressed"), "false");
+  assert.equal(q(".desk-viewport").hidden, false, "back on the breadboard");
+  assert.ok(q(".desk3d-viewport").hidden);
 });
 
 test("the Wire and Bus segments carry their readouts", () => {

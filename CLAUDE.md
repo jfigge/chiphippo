@@ -37,7 +37,9 @@ drags · 370 external signals · 380 Arduino serial integration · language supp
 now has `centreDocument` and a second output to honour); 360 auto-routing (plan still in
 `features/`; `model/autoroute.js` + `route-*.js`, the toolbar's Auto-route action).
 **Landed without a plan file**: Desktop ▸ Export To — KiCad schematic and Digital `.dig`
-(`model/export/`, `app/ipc/export.js`, "Feature 390" in its comments).
+(`model/export/`, `app/ipc/export.js`, "Feature 390" in its comments); the **3D view**
+(the toolbar's cube segment — `scripts/scene3d/` + `components/desk-3d-view.js` +
+`components/gl-renderer.js`, 2026-10-05; see "3D view").
 **Landed without a feature number**: capacitors, typed resistor/capacitor values and the
 RC timers — the 555 and the CD4047B/4060B/4098B/4538B (plan
 `features/chiphippo-capacitors-555.md`; see "Values, capacitors & timed parts"); the
@@ -214,6 +216,10 @@ the repo, only the cropped PNGs.
     `timer-555.js`, `monostable.js`, `ripple-oscillator.js`, `programmable-timer.js`.
   - `scripts/ai/` — `catalog-brief.js`, `generate.js`, `connection.js`, `usage.js`
     (pure).
+  - `scripts/scene3d/` — the 3D view's pure half (see "3D view"): `mat4.js`, `mesh.js`
+    (`MeshBuilder`), `orbit-camera.js`, `palette.js`, `scene-builder.js`, `scene.js`
+    (`buildScene`, `lampState`), `board-model.js`, `part-models.js`, `wire-model.js`,
+    `annotation-model.js`.
   - `scripts/catalog/` — part metadata as pure data + integrity tests; never
     part-specific code paths. `index.js`, `parts.js` (+ `discretes.js`,
     `lead-offset.js`, `value-fields.js`), `chips-*.js` (`chips-seq.js`, `chips-io.js`, `chips-cpu.js`, …),
@@ -366,6 +372,81 @@ invisible lock either), shares the desk's camera / probe / live sim tint, and pe
 only a per-symbol **`schematicPos`** layout nudge — **never a second source of truth**.
 Its own `fit()` is camera-only, since its symbol positions are derived and there is
 nothing to move.
+
+## 3D view
+
+**The desk, stood up — to LOOK at, never to edit.** A cube segment in the desk-tool pill,
+after Schematic, toggles it. It is a RUNTIME control, not a setting — Jason moved it out of
+Settings ▸ Appearance (2026-10-05): it is switched on and off while looking at a desktop,
+so it belongs where the Schematic toggle is. Whether that segment is OFFERED is a setting,
+though: Settings ▸ Appearance ▸ **3D enabled** (`view3dEnabled`, default Off — see
+"Settings") hides it, and Off while the view is up returns to the breadboard. The app always opens on the breadboard, and
+the mode is not persisted. app.js's `setMode` grows a third mode, `"3d"`, beside `"desk"`
+and `"schematic"`. Each view's segment goes TO its
+view from either other one and back to the breadboard from its own (`Tab` is
+Schematic's key, so it does the same) — which keeps every icon and label, "where this
+takes you", true in all three modes. `getActiveView`/`fitActiveView` include it, so Fit, ⇧⌘F and ⌥⌘=/−/0
+reach it; the desk padlock locks its wheel too (`applyWheelLock` + DeskLock's onChange).
+
+- **Nothing GPU happens at boot**: the `GlRenderer` is made on the view's first SHOW
+  (`#ensureRenderer`), and its `#init` catches every failure (no context, a shader that
+  will not compile, a GPU reset mid-compile) into `supported === false` — a GPU must never
+  be able to touch startup for a view the user may never open. A restored context
+  re-uploads the scene and calls back (`onRestored`) so the view repaints.
+- **A projection, like the schematic**: `components/desk-3d-view.js` (`Desk3DView`) reads
+  the same `DeskDoc`, stores nothing, and REBUILDS the whole scene from the document on
+  `chiphippo:doc-changed` / `:part-state` — lazily: a hidden view only marks itself stale,
+  and draws on demand (one coalesced animation frame per change), so a hidden or idle view
+  costs nothing. It frames the desk on its first draw and again on `frameNext()` —
+  `frameLoadedView` (a project/example landing) and `onActiveChange` (a desktop switch).
+- **No WebGL library** — the app takes no framework and has no bundler, so
+  `components/gl-renderer.js` is the ONE file that touches WebGL: two GLSL-100 programs
+  (lit triangles; textured quads), plain non-indexed buffers, `webgl2` then `webgl`, a
+  sun + sky ambient, BOTH faces drawn with each normal turned toward the camera (so a
+  primitive's winding never matters — `scene3d/mesh.js` says why), context loss
+  rebuilt. No WebGL → a `view3d.unsupported` sentence instead of a canvas.
+- **Pure scene, DOM-free** (`scripts/scene3d/`, all testable under `node --test`):
+  `buildScene(doc, palette)` → `{mesh, lamps, labels, screens, bounds, modelled, errors}`.
+  WORLD coordinates throughout — x = desk x, **z = desk y**, y up, one unit one pitch,
+  board tops at y 0, the desk at `DESK_Y` (−8.5 mm of board). The STATIC `mesh` is one
+  buffer, one draw; a LAMP is geometry the SIMULATION colours (LED lens, display segment,
+  clock lamp, transistor lamp) with its own small buffer; a LABEL is text on a face (part
+  numbers, values, annotations) drawn into a canvas texture shared per text/colour/font;
+  a SCREEN is an LCD's glass, repainted from the module's framebuffer (`glyphRows`, the
+  desk's own font). One part that throws is REPORTED (`errors`) and skipped, not fatal.
+- **Every model is the desk's drawing given height** (`part-models.js`): WHERE pins are
+  comes from `partPinsWorld` / `holePosition` (a leg goes into the hole the netlist
+  joins); OUTLINES the 2D views state are IMPORTED, not restated — `chipBodyBox`/`chipBox`,
+  and from `discrete-view.js` (exported for this) `TO220`, `inductorSize`,
+  `DIP_BODY_TOP/BOTTOM`, `TYPE_LABEL` and `resistorBandLayout` (the band layout the desk
+  now draws from too). Colours are the theme's tokens (`scene3d/palette.js`
+  `readPalette(getVar)`, dark-theme fallbacks), re-read on a light/dark flip.
+  **`modelKind(def)` must name a model for EVERY `PALETTE_DEFS` entry** — the
+  `tests/scene3d.test.js` ratchet, alongside a fixture with one of every part
+  (`tests/scene3d-fixture.js`, seated through DeskDoc's own placement API) and every
+  shipped demo desktop. A new part without a model fails there.
+- **Wires** (`wire-model.js`) end at `addressWorld` — a hole's top, or a brick's binding
+  post — with tinned tips down into the holes: a DIRECT wire arches (higher the longer),
+  a ROUTED one lies flat through its waypoints, a BUS is a ribbon whose collars and
+  per-member spread are `desk/ribbon-path.js`'s (`ribbonLayout`/`ribbonSpread`, in world
+  px exactly as WireLayer calls them), so the conductors keep the desk's order. Signal
+  flags and Output/Input tags are post-and-pennant flags; labels and notes lie flat at
+  board-top height (on the desk floor they would hide behind the board they caption).
+- **COLLISIONS ARE IGNORED (first pass)** — a jumper may pass through a chip, as on the
+  flat desk.
+- **Lamps never re-decide anything**: `lampState(lamp, live)` lights an LED or segment from
+  the desk's OWN verdict — `SimOverlay` now KEEPS what it hands its views
+  (`ledOf`/`segmentOf`, read through `DeskController.ledOf`/`segmentOf`; the controller's
+  sim-state listener is registered first, so the verdicts are current when the 3D view's
+  runs) — and a clock's / transistor's straight off `chiphippo:sim-state`
+  (`clockLevels`, `channels`). A tick that changes no lamp and no glass draws no frame
+  (`#liveKey`).
+- **Gestures**: drag orbits, right/middle/Shift-drag pans along the desk, wheel/pinch
+  dollies, double-click frames — through `pointer-gesture.js` like every desk drag (a
+  move with no button down also ends it) (`scene3d/orbit-camera.js`: yaw 0 looks up the desk from
+  its bottom edge as the breadboard is seen; pitch clamped 5°–88°; `fitBounds` SEARCHES
+  the distance at which all eight corners of the bounds are on screen, then centres the
+  picture, since a bounding sphere frames mostly floor).
 
 ## Domain reference (shared vocabulary)
 
@@ -2527,7 +2608,7 @@ over the desk, its active tab filling exactly as an armed segment does.
 Three pills:
 
 - **Desk tools** — Wire · Bus · Fade · Probe · Analyzer · Fit · **BOM** · **Schematic** ·
-  **AI** · **Generate** (the Arduino headers — disabled with no Output/Input on the desk, and
+  **3D** (hidden unless Settings ▸ Appearance ▸ 3D enabled is On) · **AI** · **Generate** (the Arduino headers — disabled with no Output/Input on the desk, and
   carrying a dot while one is out of date). BOM lives here rather than with the file actions because it toggles a desk panel
   exactly as Analyzer does, and like Analyzer its armed state comes from the panel's own
   `onVisibilityChange`, so the segment tracks the panel however it was closed. AI is the
@@ -2843,8 +2924,7 @@ Serial I/O is the one panel that is NOT live-apply (see "Arduino serial integrat
   **`defaultWireLayout`** (Direct / Routed, default `"direct"`) — both **not live-apply**,
   read only at placement time (`applySettings` just keeps
   `DeskController.setDefaultWireLayout` current).
-- **`paletteAutoClose`** ("Auto-close tray folders", On / Off, default Off — Appearance's
-  last row). On, opening a parts-tray section shuts every section NOT ON THE WAY TO IT:
+- **`paletteAutoClose`** ("Auto-close tray folders", On / Off, default Off). On, opening a parts-tray section shuts every section NOT ON THE WAY TO IT:
   `PalettePanel.#openOnly` collapses everything bar the section and the folder it is
   shelved under (`folderOf`, the same bucketing `#render` does — Memory is top-level), so
   a nested group opened elsewhere is shut too, and a folder reopened later shows tidy. A
@@ -2852,12 +2932,19 @@ Serial I/O is the one panel that is NOT live-apply (see "Arduino serial integrat
   other TOP-LEVEL entries). Closing is only ever closing, and switching it on closes
   nothing — which of several open sections is "the" one is only known at the next opening.
   `applySettings` keeps `palette.setAutoClose` current.
+- **`view3dEnabled`** ("3D enabled", On / Off, default Off — Appearance's last row):
+  whether the toolbar OFFERS the 3D view. `applySettings` hides or shows the cube segment
+  (`.toolbar-pill-btn[hidden]`), and switching it Off while the 3D view is up returns to
+  the breadboard (that segment was the way back). The view itself stays a toolbar toggle,
+  never persisted — this decides only whether the toggle is there.
 - **The card's height is Appearance's.** `.settings-popup` is `max(520px, 34 lines)`: the
   Appearance rows grow additively with the type while the lines grow 34 px a step, so the
   px floor binds up to 14px. 520 was MEASURED in the running app across every shipped
-  language and size so the tab never scrolls (tightest: Italian at 13px, 29px spare) — a
-  new Appearance row means measuring again, with the panel NOT scrolling (a scrollbar
-  narrows it and wraps more labels, overstating the need).
+  language and size so the tab never scrolls — and the eighth row (3D enabled) fit only by
+  tightening every `.settings-row` from `--space-3` to `--space-2` padding (2026-10-05:
+  tightest Italian at 13px, 37px spare). A new Appearance row means measuring again, with
+  the panel NOT scrolling (a scrollbar narrows it and wraps more labels, overstating the
+  need).
 - **`fontSize` — ONE BASE, AND EVERY OTHER SIZE DERIVED FROM IT**
   (`web/scripts/font-scale.js` + the type scale in `theme.css`). Six steps
   `11 · 12 · 13 · 14 · 16 · 18`, default 13, a segmented picker under Language, plus

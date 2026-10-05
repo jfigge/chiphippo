@@ -25,6 +25,7 @@
     "openSettings": "Ouvrir les réglages",
     "desk": "Plan de travail",
     "schematic": "Schéma",
+    "view3d": "Vue 3D",
     "deskHint": "Ouvre le tiroir de composants et ajoute une platine d'essai pour commencer"
   },
   "menu": {
@@ -170,6 +171,12 @@
       "breadboard": "Vue platine d'essai",
       "breadboardTitle": "Revenir à la platine d'essai (Tab)"
     },
+    "view3d": {
+      "show": "Vue 3D",
+      "showTitle": "Afficher le plan de travail en 3D",
+      "hide": "Vue platine d'essai",
+      "hideTitle": "Revenir à la platine d'essai"
+    },
     "ai": {
       "label": "Constructeur IA",
       "title": "Constructeur de circuits par IA — décris un circuit et fais-le concevoir, monter et tester pour toi",
@@ -231,7 +238,11 @@
       "trayAutoClose": "Fermer automatiquement les dossiers du tiroir",
       "trayAutoCloseOn": "Activé",
       "trayAutoCloseOff": "Désactivé",
-      "trayAutoCloseHint": "Lorsque cette option est activée, ouvrir un dossier du tiroir de composants ferme tous les autres : seul celui sur lequel vous travaillez reste ouvert, avec le dossier qui le contient. Cliquer sur une icône de la barre du tiroir fermé fait de même."
+      "trayAutoCloseHint": "Lorsque cette option est activée, ouvrir un dossier du tiroir de composants ferme tous les autres : seul celui sur lequel vous travaillez reste ouvert, avec le dossier qui le contient. Cliquer sur une icône de la barre du tiroir fermé fait de même.",
+      "view3d": "3D activée",
+      "view3dOn": "Activé",
+      "view3dOff": "Désactivé",
+      "view3dHint": "Affiche le bouton de la vue 3D dans la barre d'outils, pour regarder le plan de travail en trois dimensions ; Désactivé le masque. La vue 3D nécessite WebGL."
     },
     "datasheets": {
       "family": "Famille de puces",
@@ -1030,6 +1041,10 @@
   "schematic": {
     "hint": "Ajoute des puces sur le plan de travail pour voir le schéma",
     "autoLayout": "Disposition automatique"
+  },
+  "view3d": {
+    "hint": "Glisser pour tourner · Glisser clic droit pour déplacer · Défiler pour zoomer · Double-clic pour cadrer",
+    "unsupported": "La vue 3D nécessite WebGL, qui n'est pas disponible sur cet ordinateur."
   },
   "desk": {
     "lockWheel": "Verrouiller le plan de travail — la molette ne le déplace plus ({mod}+L)",

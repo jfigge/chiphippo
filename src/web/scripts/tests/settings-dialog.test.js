@@ -129,6 +129,11 @@ const activeSegment = (label) =>
   document.querySelector(
     `.segmented-picker[aria-label="${label}"] .segmented-option--active`,
   );
+/** The row of `panel` whose label reads `label`. */
+const rowLabelled = (panel, label) =>
+  [...panel.querySelectorAll(":scope > .settings-row")].find(
+    (r) => r.querySelector(".settings-label")?.textContent === label,
+  );
 
 test("SettingsDialog: an absent or junk theme falls back to System", () => {
   resetDom();
@@ -173,9 +178,9 @@ test("SettingsDialog: Auto-close tray folders seeds, emits a boolean, and defaul
   SettingsDialog.open({ paletteAutoClose: true });
   const label = "Auto-close tray folders";
   const panel = document.querySelector('.settings-panel[data-panel="appearance"]'); // prettier-ignore
-  // Appearance's last row, with its note behind an (i) like its neighbours.
-  const row = panel.lastElementChild;
-  assert.equal(row.querySelector(".settings-label").textContent, label);
+  // Its note behind an (i) like its neighbours.
+  const row = rowLabelled(panel, label);
+  assert.ok(row, "the row is on Appearance");
   assert.ok(row.querySelector(".settings-note"), "the row carries a note");
 
   const segments = [
@@ -200,6 +205,43 @@ test("SettingsDialog: Auto-close tray folders seeds, emits a boolean, and defaul
 
   // Absent — or anything but `true` — is Off: how the tray always behaved.
   for (const seed of [{}, { paletteAutoClose: "yes" }]) {
+    resetDom();
+    SettingsDialog.open(seed);
+    assert.equal(activeSegment(label).textContent, "Off");
+    PopupManager.close();
+  }
+});
+
+test("SettingsDialog: 3D enabled is Appearance's last row, emits a boolean, and defaults Off", () => {
+  resetDom();
+  SettingsDialog.open({ view3dEnabled: true });
+  const label = "3D enabled";
+  const panel = document.querySelector('.settings-panel[data-panel="appearance"]'); // prettier-ignore
+  const row = panel.lastElementChild;
+  assert.equal(row.querySelector(".settings-label").textContent, label);
+  assert.ok(row.querySelector(".settings-note"), "the row carries a note");
+
+  const segments = [
+    ...row.querySelectorAll(
+      `.segmented-picker[aria-label="${label}"] .segmented-option`,
+    ),
+  ];
+  assert.deepEqual(
+    segments.map((b) => b.textContent),
+    ["On", "Off"],
+  );
+  assert.equal(activeSegment(label).textContent, "On");
+
+  const patches = [];
+  window.addEventListener("chiphippo:settings-changed", (e) =>
+    patches.push(e.detail),
+  );
+  segments[1].click();
+  assert.deepEqual(patches, [{ view3dEnabled: false }]);
+  PopupManager.close();
+
+  // Absent — or anything but `true` — is Off.
+  for (const seed of [{}, { view3dEnabled: "yes" }]) {
     resetDom();
     SettingsDialog.open(seed);
     assert.equal(activeSegment(label).textContent, "Off");
@@ -356,7 +398,7 @@ test("SettingsDialog: a click outside an open note closes it", () => {
 
 test("SettingsDialog: every (i) is labelled by the row it documents", () => {
   // The button carries no text, so its accessible name is the only thing
-  // telling one (i) from the four others on the same panel.
+  // telling one (i) from the others on the same panel.
   resetDom();
   SettingsDialog.open({});
   const panel = document.querySelector('.settings-panel[data-panel="appearance"]'); // prettier-ignore
@@ -368,6 +410,7 @@ test("SettingsDialog: every (i) is labelled by the row it documents", () => {
     "More about Editor font size",
     "More about Wire layout",
     "More about Auto-close tray folders",
+    "More about 3D enabled",
   ]);
   assert.ok(
     [...panel.querySelectorAll(".info-btn")].every(

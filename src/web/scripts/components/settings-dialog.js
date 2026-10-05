@@ -93,6 +93,11 @@ const trayAutoCloseOptions = () => [
   { value: true, label: t("settings.appearance.trayAutoCloseOn") },
   { value: false, label: t("settings.appearance.trayAutoCloseOff") },
 ];
+/** Whether the toolbar offers the 3D view: On / Off, the tray row's shape. */
+const view3dOptions = () => [
+  { value: true, label: t("settings.appearance.view3dOn") },
+  { value: false, label: t("settings.appearance.view3dOff") },
+];
 /** The parts tray's logic families (Feature 400). The two family names are
     part-number prefixes and stay as they are in every language; only "Both"
     is a word. Values are catalog/families.js `FAMILY_MODES`. */
@@ -740,6 +745,15 @@ export class SettingsDialog {
       onPick: (paletteAutoClose) => SettingsDialog.#emit({ paletteAutoClose }),
     });
 
+    // Whether the toolbar carries the 3D view's segment. Absent (or anything
+    // but `true`) is Off, the default: the view is there to be switched on.
+    const view3dPicker = buildSegmented({
+      options: view3dOptions(),
+      value: settings.view3dEnabled === true,
+      ariaLabel: t("settings.appearance.view3d"),
+      onPick: (view3dEnabled) => SettingsDialog.#emit({ view3dEnabled }),
+    });
+
     // Which family the parts tray shows. Live like the rest of the panel: the
     // tray rebuilds while this card is still open.
     const familyPicker = buildSegmented({
@@ -924,6 +938,11 @@ export class SettingsDialog {
             label: t("settings.appearance.trayAutoClose"),
             control: trayAutoClosePicker,
             notes: [t("settings.appearance.trayAutoCloseHint")],
+          }),
+          rowWithNote({
+            label: t("settings.appearance.view3d"),
+            control: view3dPicker,
+            notes: [t("settings.appearance.view3dHint")],
           }),
         ],
       ),

@@ -25,6 +25,7 @@
     "openSettings": "打开设置",
     "desk": "工作台",
     "schematic": "原理图",
+    "view3d": "3D 视图",
     "deskHint": "打开元件库并添加一块面包板即可开始"
   },
   "menu": {
@@ -170,6 +171,12 @@
       "breadboard": "面包板视图",
       "breadboardTitle": "回到面包板（Tab）"
     },
+    "view3d": {
+      "show": "3D 视图",
+      "showTitle": "以 3D 显示工作台",
+      "hide": "面包板视图",
+      "hideTitle": "回到面包板"
+    },
     "ai": {
       "label": "AI 构建器",
       "title": "AI 电路构建器 — 描述一个电路，让它替你设计、搭建并测试",
@@ -231,7 +238,11 @@
       "trayAutoClose": "自动折叠元件库文件夹",
       "trayAutoCloseOn": "开",
       "trayAutoCloseOff": "关",
-      "trayAutoCloseHint": "开启后，在元件库中展开一个文件夹时会折叠其他所有文件夹，只保留正在使用的文件夹及其所在的上级文件夹。点击收起的元件库侧栏中的图标时也是如此。"
+      "trayAutoCloseHint": "开启后，在元件库中展开一个文件夹时会折叠其他所有文件夹，只保留正在使用的文件夹及其所在的上级文件夹。点击收起的元件库侧栏中的图标时也是如此。",
+      "view3d": "启用 3D",
+      "view3dOn": "开",
+      "view3dOff": "关",
+      "view3dHint": "在工具栏中显示 3D 视图按钮，用于以三维方式查看工作台；关闭时隐藏该按钮。3D 视图需要 WebGL。"
     },
     "datasheets": {
       "family": "芯片系列",
@@ -1017,6 +1028,10 @@
   "schematic": {
     "hint": "在工作台上添加芯片即可看到原理图",
     "autoLayout": "自动布局"
+  },
+  "view3d": {
+    "hint": "拖动旋转 · 右键拖动平移 · 滚动缩放 · 双击框选全部",
+    "unsupported": "3D 视图需要 WebGL，但这台电脑上不可用。"
   },
   "desk": {
     "lockWheel": "锁定桌面 — 滚轮不再移动桌面（{mod}+L）",

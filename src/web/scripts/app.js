@@ -39,6 +39,7 @@ import { ZoomControl } from "./components/zoom-control.js";
 import { DeskLock } from "./components/desk-lock.js";
 import { DeskController } from "./components/desk-controller.js";
 import { SchematicView } from "./components/schematic-view.js";
+import { Desk3DView } from "./components/desk-3d-view.js";
 import { PalettePanel } from "./components/palette-panel.js";
 import { ProjectTabs } from "./components/project-tabs.js";
 import { ProjectWorkspace } from "./components/project-workspace.js";
@@ -244,6 +245,13 @@ const BREADBOARD_SVG =
   '<line x1="7" y1="16" x2="7.01" y2="16"/>' +
   '<line x1="12" y1="16" x2="12.01" y2="16"/>' +
   '<line x1="17" y1="16" x2="17.01" y2="16"/></svg>';
+
+/** 3D-view icon: a cube seen from above a corner — the view it swaps to. */
+const VIEW3D_SVG =
+  ICON_SVG_OPEN +
+  '<path d="M12 2.5 20.5 7v10L12 21.5 3.5 17V7Z"/>' +
+  '<path d="M3.5 7 12 11.5 20.5 7"/>' +
+  '<line x1="12" y1="11.5" x2="12" y2="21.5"/></svg>';
 
 /** Build-guide (clipboard-list) icon for the Guide toolbar toggle. */
 const GUIDE_SVG =
@@ -784,6 +792,7 @@ function createRelabeller({
   desk,
   hint,
   schematicViewport,
+  view3dViewport,
   filePill,
   fileButtons,
   toolPill,
@@ -802,6 +811,7 @@ function createRelabeller({
     desk.setAttribute("aria-label", t("app.desk"));
     hint.textContent = t("app.deskHint");
     schematicViewport.setAttribute("aria-label", t("app.schematic"));
+    view3dViewport.setAttribute("aria-label", t("app.view3d"));
 
     filePill.setAttribute("aria-label", t("toolbar.file.group"));
     for (const [btn, label, title, params] of [
@@ -1003,7 +1013,19 @@ function buildDeskToolPill({
     SCHEMATIC_SVG,
     t("toolbar.mode.schematic"),
     t("toolbar.mode.schematicTitle"),
-    () => setMode(getMode() === "desk" ? "schematic" : "desk"),
+    () => setMode(getMode() === "schematic" ? "desk" : "schematic"),
+  );
+  // The 3D view. Like Schematic it swaps the viewport rather than arming a
+  // tool — a way of LOOKING at the desk, toggled on and off while looking at
+  // it, so the view itself is a toolbar control and not a setting. Whether the
+  // segment is OFFERED is one, though (Settings ▸ Appearance ▸ 3D enabled, Off
+  // by default — `applySettings` shows or hides it). The app always opens on
+  // the breadboard. `setMode` owns its armed state and label.
+  const view3d = iconSegment(
+    VIEW3D_SVG,
+    t("toolbar.view3d.show"),
+    t("toolbar.view3d.showTitle"),
+    () => setMode(getMode() === "3d" ? "desk" : "3d"),
   );
   // AI builder. Its armed state comes from the panel's own onVisibilityChange,
   // and it stays available while the circuit runs — the panel itself refuses to
@@ -1022,7 +1044,19 @@ function buildDeskToolPill({
   );
   ai.disabled = true;
 
-  pill.append(wire, bus, route, fade, probe, scope, fit, guide, modeBtn, ai);
+  pill.append(
+    wire,
+    bus,
+    route,
+    fade,
+    probe,
+    scope,
+    fit,
+    guide,
+    modeBtn,
+    view3d,
+    ai,
+  );
   return {
     pill,
     relabelFit,
@@ -1038,6 +1072,7 @@ function buildDeskToolPill({
       fit,
       guide,
       mode: modeBtn,
+      view3d,
       ai,
     },
   };
@@ -1049,6 +1084,16 @@ function buildSchematicViewport() {
   const view = document.createElement("section");
   view.className = "schematic-viewport";
   view.setAttribute("aria-label", t("app.schematic"));
+  view.hidden = true;
+  return view;
+}
+
+/** The 3D view's surface — a sibling of the desk and the schematic, hidden
+    until the 3D segment switches to it. */
+function buildView3dViewport() {
+  const view = document.createElement("section");
+  view.className = "desk3d-viewport";
+  view.setAttribute("aria-label", t("app.view3d"));
   view.hidden = true;
   return view;
 }
@@ -1475,6 +1520,13 @@ async function init() {
   const schematicViewport = buildSchematicViewport();
   stage.append(schematicViewport);
   let schematicView = null;
+  // …and so does the 3D view, built with the schematic once the controller
+  // exists (it reads the desk's own LED verdicts through it).
+  const view3dViewport = buildView3dViewport();
+  stage.append(view3dViewport);
+  let view3d = null;
+  // The desktop the 3D view last framed (see the workspace's onActiveChange).
+  let view3dTab = null;
   let mode = "desk";
 
   // Build guide (Feature 140): a right-docked panel deriving the BOM / wiring
@@ -1603,6 +1655,7 @@ async function init() {
   let routeBtn = null; // the one-shot Auto-route action
   let fadeBtn = null; // the "Fade wires" toggle
   let modeBtn = null; // the Breadboard ⇄ Schematic segment
+  let view3dBtn = null; // the 3D view segment
   let sim = null; // the SimController (created after the toolbar below)
   let memoryBridge = null; // memory-inspector coordinator (created with sim)
   const onWireStateChange = ({ armed, color }) => {
@@ -1712,11 +1765,29 @@ async function init() {
 
   const toolbar = document.getElementById("app-toolbar");
 
+  // Three views of the one desk: the breadboard ("desk"), the schematic, and
+  // the 3D view. Exactly one is showing. The Schematic segment (and Tab, its key) goes TO the schematic
+  // from either other view and back to the breadboard from it, so its icon and
+  // label — "where this takes you" — are true from the 3D view too; the 3D
+  // segment does the same for the 3D view.
   function setMode(next) {
-    mode = next === "schematic" ? "schematic" : "desk";
+    mode = next === "schematic" || next === "3d" ? next : "desk";
     const schematic = mode === "schematic";
-    desk.hidden = schematic;
+    const in3d = mode === "3d";
+    desk.hidden = mode !== "desk";
     schematicView?.setVisible(schematic);
+    view3d?.setVisible(in3d);
+    if (view3dBtn) {
+      view3dBtn.classList.toggle("toolbar-btn--active", in3d);
+      view3dBtn.setAttribute("aria-pressed", String(in3d));
+      view3dBtn.setAttribute(
+        "aria-label",
+        in3d ? t("toolbar.view3d.hide") : t("toolbar.view3d.show"),
+      );
+      view3dBtn.title = in3d
+        ? t("toolbar.view3d.hideTitle")
+        : t("toolbar.view3d.showTitle");
+    }
     if (!modeBtn) return;
     modeBtn.classList.toggle("toolbar-btn--active", schematic);
     modeBtn.innerHTML = schematic ? BREADBOARD_SVG : SCHEMATIC_SVG;
@@ -1760,9 +1831,14 @@ async function init() {
   // either: the desk's lives on the controller because it RECENTRES the
   // document as well, and the schematic's is the diagram's own (its symbol
   // positions are derived, so there is nothing to move — fitting IS centring).
-  const getActiveView = () => (mode === "schematic" ? schematicView : deskView);
+  const getActiveView = () =>
+    mode === "schematic" ? schematicView : mode === "3d" ? view3d : deskView;
   const fitActiveView = () =>
-    mode === "schematic" ? schematicView.fit() : controller.fitToScreen();
+    mode === "schematic"
+      ? schematicView.fit()
+      : mode === "3d"
+        ? view3d.fit()
+        : controller.fitToScreen();
   // The same move for a desk that has JUST BEEN LOADED — a project opening, an
   // example desktop landing. The DESK is always recentred and framed, whichever
   // view is showing: centring is a fact about the document. It goes through the
@@ -1772,6 +1848,8 @@ async function init() {
   const frameLoadedView = () => {
     controller.fitLoadedDesk();
     if (mode === "schematic") schematicView.fit();
+    // A different circuit: the 3D view frames it the next time it draws.
+    view3d?.frameNext();
   };
 
   const deskTools = buildDeskToolPill({
@@ -1786,7 +1864,7 @@ async function init() {
     onAutoRoute: (debug) => autoRoute(debug),
   });
   const toolPill = deskTools.pill;
-  ({ wire: wireBtn, wireDot, bus: busBtn, busWidth, route: routeBtn, fade: fadeBtn, probe: probeBtn, scope: scopeBtn, guide: guideBtn, mode: modeBtn, ai: aiBtn } = deskTools.buttons); // prettier-ignore
+  ({ wire: wireBtn, wireDot, bus: busBtn, busWidth, route: routeBtn, fade: fadeBtn, probe: probeBtn, scope: scopeBtn, guide: guideBtn, mode: modeBtn, view3d: view3dBtn, ai: aiBtn } = deskTools.buttons); // prettier-ignore
   const updateLocateIcon = deskTools.relabelFit;
   toolbar.append(toolPill);
   // The segments that mirror state the app already holds, synced once now that
@@ -2039,6 +2117,7 @@ async function init() {
   // before the padlock is built).
   const applyWheelLock = (locked) => {
     deskView.setWheelLocked(locked);
+    view3d?.setWheelLocked(locked);
     deskLock?.setLocked(locked);
   };
   workspace = new ProjectWorkspace({
@@ -2051,9 +2130,17 @@ async function init() {
     setCamera: (camera) => deskView.setCamera(camera),
     fitView: frameLoadedView,
     boot: projectBoot,
-    onActiveChange: () => {
+    onActiveChange: (tab) => {
       updateTitle();
       integration?.refresh();
+      // Another desktop is another circuit — the 3D view frames it afresh.
+      // Only on a SWITCH: this also fires for a save, a rename or the padlock,
+      // none of which should throw away where the user has orbited to. (A
+      // whole project arriving is framed by `frameLoadedView`.)
+      if (tab?.id !== view3dTab) {
+        view3dTab = tab?.id ?? null;
+        view3d?.frameNext();
+      }
     },
     onWheelLock: applyWheelLock,
     // The tray shows every logic family the open project uses, whatever its
@@ -2107,6 +2194,7 @@ async function init() {
     mod: MOD_KEY,
     onChange: (locked) => {
       deskView.setWheelLocked(locked);
+      view3d?.setWheelLocked(locked);
       workspace?.setWheelLocked(locked);
     },
   });
@@ -2160,6 +2248,14 @@ async function init() {
     onSetSchematicPos: (id, x, y) => controller.setSchematicPos(id, x, y),
     onAutoLayout: () => controller.autoLayoutSchematic(),
   });
+  // The 3D view: the same document, stood up. It lights its LEDs and segments from the desk's OWN verdicts, read
+  // through the controller, so the two views can never disagree about a lamp.
+  view3d = new Desk3DView(view3dViewport, {
+    doc: deskDoc,
+    ledOf: (id) => controller.ledOf(id),
+    segmentOf: (id, seg) => controller.segmentOf(id, seg),
+  });
+  view3d.setWheelLocked(workspace?.wheelLocked === true);
   setMode("desk"); // sync the initial toggle state
 
   releaseSignalKeys = bindShortcuts(
@@ -2169,7 +2265,7 @@ async function init() {
     togglePalette,
     getActiveView,
     fitActiveView,
-    () => setMode(mode === "desk" ? "schematic" : "desk"),
+    () => setMode(mode === "schematic" ? "desk" : "schematic"),
     () => deskLock.toggle(),
     // ⇧⌘O drops the recent-projects menu under the Open segment — the same
     // place a secondary click on it would, so the key and the pointer put the
@@ -2204,6 +2300,7 @@ async function init() {
     desk,
     hint,
     schematicViewport,
+    view3dViewport,
     filePill,
     fileButtons,
     toolPill,
@@ -2220,6 +2317,7 @@ async function init() {
       () => signalRail,
       () => integration,
       () => schematicView,
+      () => view3d,
     ],
     // Four relabel functions the app ALREADY had, for their own reasons: each
     // owns a control whose label depends on state, so re-running it with the
@@ -2249,6 +2347,13 @@ async function init() {
     palette.setAutoClose(s.paletteAutoClose === true);
     // Which logic family the tray shows (Feature 400) — rebuilt at once.
     palette.setFamilyMode(s.logicFamily);
+    // Whether the toolbar offers the 3D view (Settings ▸ Appearance ▸ 3D
+    // enabled; absent or anything but `true` is Off). Off HIDES the segment,
+    // and leaves the 3D view if it is showing — its own segment is the way
+    // back to the breadboard, and that has just gone.
+    const view3dOn = s.view3dEnabled === true;
+    if (view3dBtn) view3dBtn.hidden = !view3dOn;
+    if (!view3dOn && mode === "3d") setMode("desk");
     // The base of the type scale. This window applies it itself — main fans the
     // same value out to the three auxiliary windows, which have no settings UI
     // and only ever follow.

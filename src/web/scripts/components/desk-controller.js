@@ -2546,6 +2546,19 @@ export class DeskController {
     else if (key === "programMemory") this.#onProgramMemory?.(id);
   }
 
+  // ── Live lamp verdicts (read by the 3D view) ────────────────────────────
+
+  /** An LED's lit/burnt verdict on the last sim-state, or null — the one the
+      desk is showing (SimOverlay.ledOf), so a second view never re-decides. */
+  ledOf(id) {
+    return this.#simOverlay.ledOf(id);
+  }
+
+  /** One display segment's verdict on the last sim-state, or null. */
+  segmentOf(id, segId) {
+    return this.#simOverlay.segmentOf(id, segId);
+  }
+
   // ── Central keyboard hooks (wired by app.js) ────────────────────────────
 
   /** @returns {boolean} true when the key was consumed. */

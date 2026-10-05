@@ -65,6 +65,10 @@ The **Appearance** tab is the one the dialog opens on:
   section you're working in stays open, along with the folder it sits inside.
   Clicking an icon on the shut tray's strip does the same. It acts on the next
   folder you open, so switching it on doesn't close anything by itself.
+- **3D enabled** — **On** or **Off** (the default). When it's on, the toolbar
+  shows the **3D** button that switches to the [3D view](3d-view.md); off
+  hides the button, and if the 3D view is showing at the time, Chip Hippo goes
+  back to the breadboard.
 
 Everything but the LED colour and the wire layout takes effect immediately —
 there's no separate Apply or OK step. (Changing the language is the one

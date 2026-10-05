@@ -25,6 +25,7 @@
     "openSettings": "Einstellungen öffnen",
     "desk": "Arbeitsfläche",
     "schematic": "Schaltplan",
+    "view3d": "3D-Ansicht",
     "deskHint": "Öffne die Bauteilablage und füge ein Steckbrett hinzu, um zu beginnen"
   },
   "menu": {
@@ -170,6 +171,12 @@
       "breadboard": "Steckbrettansicht",
       "breadboardTitle": "Zurück zum Steckbrett (Tab)"
     },
+    "view3d": {
+      "show": "3D-Ansicht",
+      "showTitle": "Die Arbeitsfläche in 3D zeigen",
+      "hide": "Steckbrettansicht",
+      "hideTitle": "Zurück zum Steckbrett"
+    },
     "ai": {
       "label": "KI-Baumeister",
       "title": "KI-Schaltungsbaumeister — beschreibe eine Schaltung und lass sie entwerfen, aufbauen und testen",
@@ -231,7 +238,11 @@
       "trayAutoClose": "Ablageordner automatisch schließen",
       "trayAutoCloseOn": "Ein",
       "trayAutoCloseOff": "Aus",
-      "trayAutoCloseHint": "Ist dies aktiviert, schließt das Öffnen eines Ordners in der Bauteilablage alle anderen Ordner, sodass nur der Ordner geöffnet bleibt, in dem Sie gerade arbeiten – zusammen mit dem Ordner, in dem er liegt. Ein Klick auf ein Symbol in der Leiste der geschlossenen Ablage wirkt genauso."
+      "trayAutoCloseHint": "Ist dies aktiviert, schließt das Öffnen eines Ordners in der Bauteilablage alle anderen Ordner, sodass nur der Ordner geöffnet bleibt, in dem Sie gerade arbeiten – zusammen mit dem Ordner, in dem er liegt. Ein Klick auf ein Symbol in der Leiste der geschlossenen Ablage wirkt genauso.",
+      "view3d": "3D aktiviert",
+      "view3dOn": "Ein",
+      "view3dOff": "Aus",
+      "view3dHint": "Zeigt die Schaltfläche für die 3D-Ansicht in der Werkzeugleiste, mit der Sie die Arbeitsfläche dreidimensional betrachten; Aus blendet sie aus. Die 3D-Ansicht benötigt WebGL."
     },
     "datasheets": {
       "family": "Chip-Familie",
@@ -1029,6 +1040,10 @@
   "schematic": {
     "hint": "Füge Chips auf die Arbeitsfläche, um den Schaltplan zu sehen",
     "autoLayout": "Auto-Layout"
+  },
+  "view3d": {
+    "hint": "Ziehen zum Drehen · Rechts ziehen zum Verschieben · Scrollen zum Zoomen · Doppelklick zum Einrahmen",
+    "unsupported": "Die 3D-Ansicht braucht WebGL, das auf diesem Computer nicht verfügbar ist."
   },
   "desk": {
     "lockWheel": "Arbeitsfläche sperren — das Mausrad bewegt sie nicht mehr ({mod}+L)",

@@ -47,6 +47,12 @@ export class SimOverlay {
   #timing = new Map(); // compId → a timed part's reading of its R and C
   #channels = new Map(); // compId → a channel part's channels (engine `channels`)
   #pinCache = new Map(); // compId → partPinAddresses (cleared on a topology change)
+  // compId → { lit, burnt } for every LED, and compId → (segId → { lit, burnt })
+  // for every multi-segment display — the verdicts the views were just given,
+  // KEPT so a second view (the 3D desk) shows exactly what this one decided
+  // rather than deciding again. Empty when stopped.
+  #leds = new Map();
+  #segments = new Map();
 
   /**
    * @param {import("../model/desk-doc.js").DeskDoc} doc
@@ -131,6 +137,22 @@ export class SimOverlay {
     this.#updateDiodes();
     this.#updateDisplays();
     this.#updateLcds();
+  }
+
+  /**
+   * An LED's verdict on the last sim-state — `{lit, burnt}` — or null
+   * (stopped, not an LED, or a rotated LED whose far end resolves nowhere).
+   * The 3D view (components/desk-3d-view.js) lights its lenses from this, so
+   * the junction rule is applied ONCE, here, for both.
+   */
+  ledOf(id) {
+    return this.#leds.get(id) ?? null;
+  }
+
+  /** One display segment's verdict on the last sim-state — `{lit, burnt}` —
+      or null. See ledOf. */
+  segmentOf(id, segId) {
+    return this.#segments.get(id)?.get(segId) ?? null;
   }
 
   /** A transistor's channel on the last sim-state — `{on, held}` — or null
@@ -218,6 +240,7 @@ export class SimOverlay {
   /** An LED lights when its anode net is H and its cathode net is L. */
   #updateLeds() {
     const def = partDef("led");
+    this.#leds.clear();
     for (const comp of this.#doc.components) {
       if (comp.ref !== "led") continue;
       const view = this.#partViews.get(comp.id);
@@ -232,6 +255,7 @@ export class SimOverlay {
       if (!pins) continue; // a rotated LED with an unresolved far end
       const at = (pin) => pins.find((p) => p.pin === pin)?.address;
       const state = this.#junctionState(at(anodePin), at(cathodePin));
+      this.#leds.set(comp.id, { lit: isLit(state), burnt: state.unlimited });
       view.setBurnt?.(state.unlimited);
       view.setLit(isLit(state));
     }
@@ -269,6 +293,7 @@ export class SimOverlay {
    * and the whole block gets the burn cue if any does.
    */
   #updateDisplays() {
+    this.#segments.clear();
     for (const comp of this.#doc.components) {
       const def = partDef(comp.ref);
       if (!def?.segments) continue;
@@ -285,8 +310,11 @@ export class SimOverlay {
       const pins = this.#pinsFor(comp);
       const at = (pin) => pins?.find((p) => p.pin === pin)?.address;
       let anyBurnt = false;
+      const verdicts = new Map();
+      this.#segments.set(comp.id, verdicts);
       for (const seg of def.segments) {
         const state = this.#junctionState(at(seg.anodePin), at(seg.cathodePin));
+        verdicts.set(seg.id, { lit: isLit(state), burnt: state.unlimited });
         view.setSegmentLit(seg.id, isLit(state));
         view.setSegmentBurnt?.(seg.id, state.unlimited);
         if (state.unlimited) anyBurnt = true;

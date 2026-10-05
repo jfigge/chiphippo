@@ -79,6 +79,8 @@ of the same glue logic.
 - [Logic Analyzer & Timing](logic-analyzer.md) — capturing and reading
   waveforms.
 - [Schematic View](schematic-view.md) — the derived logical diagram.
+- [3D View](3d-view.md) — the desk stood up in three dimensions, to orbit
+  round.
 - [AI Circuit Builder](ai-builder.md) — describe a circuit in words and get a
   simulation-proven design, using your own AI connection.
 - [Arduino Integration](arduino.md) — pass values between the running circuit

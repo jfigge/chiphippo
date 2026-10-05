@@ -25,6 +25,7 @@
     "openSettings": "Open settings",
     "desk": "Desk",
     "schematic": "Schematic",
+    "view3d": "3D view",
     "deskHint": "Open the parts tray and add a breadboard to get started"
   },
   "menu": {
@@ -170,6 +171,12 @@
       "breadboard": "Breadboard view",
       "breadboardTitle": "Back to the breadboard (Tab)"
     },
+    "view3d": {
+      "show": "3D view",
+      "showTitle": "Show the desk in 3D",
+      "hide": "Breadboard view",
+      "hideTitle": "Back to the breadboard"
+    },
     "ai": {
       "label": "AI builder",
       "title": "AI circuit builder — describe a circuit and have it designed, built and tested for you",
@@ -231,7 +238,11 @@
       "trayAutoClose": "Auto-close tray folders",
       "trayAutoCloseOn": "On",
       "trayAutoCloseOff": "Off",
-      "trayAutoCloseHint": "When this is on, opening a folder in the parts tray closes every other folder, so only the one you're working in stays open — along with the folder it sits inside. Clicking an icon on the shut tray's strip does the same."
+      "trayAutoCloseHint": "When this is on, opening a folder in the parts tray closes every other folder, so only the one you're working in stays open — along with the folder it sits inside. Clicking an icon on the shut tray's strip does the same.",
+      "view3d": "3D enabled",
+      "view3dOn": "On",
+      "view3dOff": "Off",
+      "view3dHint": "Shows the 3D view button in the toolbar, for looking at the desk in three dimensions; Off hides it. The 3D view needs WebGL."
     },
     "datasheets": {
       "family": "Chip family",
@@ -1029,6 +1040,10 @@
   "schematic": {
     "hint": "Add chips to the desk to see the schematic",
     "autoLayout": "Auto-layout"
+  },
+  "view3d": {
+    "hint": "Drag to orbit · Right-drag to pan · Scroll to zoom · Double-click to frame",
+    "unsupported": "The 3D view needs WebGL, which isn't available on this computer."
   },
   "desk": {
     "lockWheel": "Lock the desk — the mouse wheel stops moving it ({mod}+L)",

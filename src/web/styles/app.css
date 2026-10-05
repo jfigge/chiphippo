@@ -3230,13 +3230,16 @@ textarea.annotation-editor {
    proportion at 11px squeezed the label column harder than 13px ever did — the
    same reason the type ramp itself carries a floor. `max-*` still clamps it to
    the window.
-   The HEIGHT floor is what the tallest tab needs: Appearance, whose seven rows
+   The HEIGHT floor is what the tallest tab needs: Appearance, whose eight rows
    must all show without the panel scrolling. Its rows grow ADDITIVELY with the
    type (a control is one line plus padding) while 34 lines grows by 34 px a
    step, so the floor is what binds up to 14px and the lines take over above.
-   Measured in the running app, every shipped language at every size: up to
-   14px the tallest needs 491px (Italian at 13px, whose longer labels wrap),
-   and at 16 and 18 the 34 lines clear what is needed by 40px or more. A new
+   The eighth row (3D enabled) fits only because every `.settings-row` was
+   tightened from --space-3 to --space-2 padding at the same time. Measured in
+   the running app, every shipped language at every size, as the panel's rows
+   plus its padding against the 469px the 520 floor leaves it: the tallest
+   needs 432px (Italian at 13px, whose font-size label wraps — 37px spare),
+   and at 16 and 18 the 34 lines clear what is needed by 46px or more. A new
    Appearance row means measuring again — with the panel NOT scrolling, since
    a scrollbar narrows it and wraps more labels, overstating the need. */
 .settings-popup {
@@ -3409,7 +3412,9 @@ textarea.annotation-editor {
   display: flex;
   align-items: center;
   gap: var(--space-4);
-  padding: var(--space-3) 0;
+  /* --space-2, not -3: Appearance's eighth row (3D enabled) fits the card at
+     every size only with the rows this close (see .settings-popup). */
+  padding: var(--space-2) 0;
 }
 
 .settings-label {
@@ -5332,6 +5337,65 @@ textarea.annotation-editor {
 }
 
 .schematic-hint[hidden] {
+  display: none;
+}
+
+/* ── 3D view (the toolbar's cube segment) ────────────────────────────────
+   A sibling of the desk and the schematic, filling the stage when it is the
+   view showing. The canvas is the whole surface; the hint sits along the
+   bottom edge, pointer-inert, so the canvas takes every gesture. */
+.desk3d-viewport {
+  position: relative;
+  flex: 1 1 auto;
+  overflow: hidden;
+  background-color: var(--color-base);
+  cursor: grab;
+}
+
+.desk3d-viewport[hidden] {
+  display: none;
+}
+
+.desk3d-viewport--dragging {
+  cursor: grabbing;
+}
+
+.desk3d-canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+}
+
+.desk3d-hint {
+  position: absolute;
+  left: var(--space-3);
+  bottom: var(--space-3);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--color-surface-0) 80%, transparent);
+  color: var(--color-subtext);
+  font-size: var(--font-size-sm);
+  user-select: none;
+  pointer-events: none;
+}
+
+.desk3d-fallback {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: var(--space-3);
+  color: var(--color-muted);
+  font-size: var(--font-size-lg);
+  text-align: center;
+  user-select: none;
+}
+
+.desk3d-hint[hidden],
+.desk3d-fallback[hidden] {
   display: none;
 }
 

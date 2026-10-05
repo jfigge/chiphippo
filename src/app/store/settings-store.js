@@ -60,6 +60,13 @@ const DEFAULTS = Object.freeze({
   // nothing by itself — it acts on the NEXT section opened.
   paletteAutoClose: false,
 
+  // Whether the toolbar offers the 3D view at all (Settings ▸ Appearance ▸
+  // "3D enabled"). Off by default: the segment is hidden until it is switched
+  // on, and switching it off while the 3D view is showing returns to the
+  // breadboard. The view itself is still a toolbar toggle — this only decides
+  // whether that toggle is there.
+  view3dEnabled: false,
+
   // ── Pin-assignments window (Feature 100) ──────────────────────────────────
   // Whether a chip's pin-out window floats above the main app. A de-facto
   // global preference: the window's right-click menu toggles it, every open

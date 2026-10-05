@@ -25,6 +25,7 @@
     "openSettings": "Apri le impostazioni",
     "desk": "Piano di lavoro",
     "schematic": "Schema",
+    "view3d": "Vista 3D",
     "deskHint": "Apri il cassetto dei componenti e aggiungi una breadboard per iniziare"
   },
   "menu": {
@@ -170,6 +171,12 @@
       "breadboard": "Vista breadboard",
       "breadboardTitle": "Torna alla breadboard (Tab)"
     },
+    "view3d": {
+      "show": "Vista 3D",
+      "showTitle": "Mostra il piano di lavoro in 3D",
+      "hide": "Vista breadboard",
+      "hideTitle": "Torna alla breadboard"
+    },
     "ai": {
       "label": "Costruttore IA",
       "title": "Costruttore di circuiti con IA — descrivi un circuito e fallo progettare, montare e collaudare per te",
@@ -231,7 +238,11 @@
       "trayAutoClose": "Chiudi automaticamente le cartelle del cassetto",
       "trayAutoCloseOn": "Sì",
       "trayAutoCloseOff": "No",
-      "trayAutoCloseHint": "Se attivo, aprire una cartella nel cassetto dei componenti chiude tutte le altre, così resta aperta solo quella su cui stai lavorando, insieme alla cartella che la contiene. Fare clic su un'icona nella barra del cassetto chiuso ha lo stesso effetto."
+      "trayAutoCloseHint": "Se attivo, aprire una cartella nel cassetto dei componenti chiude tutte le altre, così resta aperta solo quella su cui stai lavorando, insieme alla cartella che la contiene. Fare clic su un'icona nella barra del cassetto chiuso ha lo stesso effetto.",
+      "view3d": "3D attivato",
+      "view3dOn": "Sì",
+      "view3dOff": "No",
+      "view3dHint": "Mostra il pulsante della vista 3D nella barra degli strumenti, per guardare il piano di lavoro in tre dimensioni; No lo nasconde. La vista 3D richiede WebGL."
     },
     "datasheets": {
       "family": "Famiglia di chip",
@@ -1030,6 +1041,10 @@
   "schematic": {
     "hint": "Aggiungi dei chip sul piano di lavoro per vedere lo schema",
     "autoLayout": "Disposizione automatica"
+  },
+  "view3d": {
+    "hint": "Trascina per ruotare · Trascina col tasto destro per spostare · Scorri per lo zoom · Doppio clic per inquadrare",
+    "unsupported": "La vista 3D richiede WebGL, che non è disponibile su questo computer."
   },
   "desk": {
     "lockWheel": "Blocca il piano di lavoro: la rotellina non lo muove più ({mod}+L)",

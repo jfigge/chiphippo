@@ -119,7 +119,7 @@ const BOXES = Object.freeze({
  * body centred on the middle hole and its metal tab behind — so it reaches a
  * pitch past the outer holes and over the row behind, as the real one does.
  */
-const TO220 = Object.freeze({
+export const TO220 = Object.freeze({
   left: -0.97,
   width: 3.94,
   back: -1.24, // the tab's back face
@@ -366,7 +366,8 @@ const INDUCTOR_SIZE = Object.freeze({
   2: Object.freeze({ length: 3.2, width: 1.35, drum: 1.06 }),
   3: Object.freeze({ length: 4.3, width: 1.7, drum: 1.6 }),
 });
-const inductorSize = (params) => INDUCTOR_SIZE[params?.bodyHoles === 3 ? 3 : 2];
+export const inductorSize = (params) =>
+  INDUCTOR_SIZE[params?.bodyHoles === 3 ? 3 : 2];
 
 /** Turns round a toroid's ring, all the way round — about one every 0.13
     pitch along its top, which is what reads as close-wound wire. */
@@ -495,22 +496,35 @@ function diodeBody(m, zener = false) {
 }
 
 /**
- * A resistor's colour code (model/resistor-bands.js) as band rects across a
- * body two units long centred on `m`: the value bands grouped from the left
- * end, the tolerance band set apart at the right — which is how the real
- * part says which end to read from.
+ * Where each colour band sits along a resistor's 2-pitch body, measured from
+ * its middle: `[{color, at}]`, value bands from the left end and the tolerance
+ * band set apart at the right. The ONE statement of the layout — the desk
+ * draws it from here, and so does the 3D view (scene3d/part-models.js), so a
+ * resistor reads the same from either.
+ * @param {number} ohms
+ * @returns {Array<{color: string, at: number}>}
  */
-function resistorBandRects(m, ohms) {
+export function resistorBandLayout(ohms) {
   const bands = resistorBands(ohms);
   if (!bands.length) return [];
   const value = bands.slice(0, -1);
   const pitch = value.length > 3 ? 0.22 : 0.26;
   const first = -0.62;
   const at = [...value.map((_, i) => first + i * pitch), 0.62];
-  return bands.map((color, i) =>
+  return bands.map((color, i) => ({ color, at: at[i] }));
+}
+
+/**
+ * A resistor's colour code (model/resistor-bands.js) as band rects across a
+ * body two units long centred on `m`: the value bands grouped from the left
+ * end, the tolerance band set apart at the right — which is how the real
+ * part says which end to read from.
+ */
+function resistorBandRects(m, ohms) {
+  return resistorBandLayout(ohms).map(({ color, at }) =>
     svgEl("rect", {
       class: `part-resistor-band part-resistor-band--${color}`,
-      x: m.x + at[i] - 0.065,
+      x: m.x + at - 0.065,
       y: m.y - 0.47,
       width: 0.13,
       height: 0.94,
@@ -1033,7 +1047,7 @@ function buildResistorNetwork(svg, ohms, rot) {
 
 /** What a transistor with no part number says on its face. Identity, like a
     part number, so never translated. */
-const TYPE_LABEL = Object.freeze({
+export const TYPE_LABEL = Object.freeze({
   npn: "NPN",
   pnp: "PNP",
   nmos: "NMOS",
@@ -1309,8 +1323,8 @@ function buildPotentiometer(svg, { ohms, position }) {
 // Row f's centre (-3) + the hole square's half-width (0.22, breadboard-view's
 // HOLE_SIZE) + 0.08 of board left showing, and the mirror of that at row e —
 // so the two are symmetric about y -1.5, the centre the 180° flip turns about.
-const DIP_BODY_TOP = -2.7;
-const DIP_BODY_BOTTOM = -0.3;
+export const DIP_BODY_TOP = -2.7;
+export const DIP_BODY_BOTTOM = -0.3;
 /** How far a leg reaches past its hole's centre, so the seat still reads. */
 const DIP_LEG_OVERSHOOT = 0.1;
 
