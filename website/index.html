@@ -16,13 +16,13 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <meta name="theme-color" content="#2F855A" />
   <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-  <meta name="description" content="Chip Hippo — design and simulate 74xx TTL logic circuits on a virtual desktop. Place chips, wire them up, hit Run, and watch electricity ripple through every net. macOS, Windows, and Linux — fully offline." />
-  <title>Chip Hippo — TTL Breadboard Designer &amp; Simulator</title>
+  <meta name="description" content="Chip Hippo — design and simulate 74xx TTL and CD4000 CMOS logic circuits on a virtual desktop. Place chips, wire them up, hit Run, and watch electricity ripple through every net. macOS, Windows, and Linux — fully offline." />
+  <title>Chip Hippo — TTL &amp; CMOS Breadboard Designer &amp; Simulator</title>
   <link rel="canonical" href="https://chiphippo.com/" />
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="Chip Hippo" />
-  <meta property="og:title" content="Chip Hippo — TTL Breadboard Designer & Simulator" />
-  <meta property="og:description" content="Design and simulate 74xx TTL logic circuits on a virtual desktop. Place chips, wire them, hit Run, and watch the circuit come alive — all offline." />
+  <meta property="og:title" content="Chip Hippo — TTL & CMOS Breadboard Designer & Simulator" />
+  <meta property="og:description" content="Design and simulate 74xx TTL and CD4000 CMOS logic circuits on a virtual desktop. Place chips, wire them, hit Run, and watch the circuit come alive — all offline." />
   <meta property="og:url" content="https://chiphippo.com/" />
   <!-- Share card. The URL must be ABSOLUTE: a crawler or chat client resolves
        these against nothing. It reuses a hero screenshot rather than shipping a
@@ -34,8 +34,8 @@
   <meta property="og:image:height" content="802" />
   <meta property="og:image:alt" content="A Chip Hippo breadboard: four slide switches feed a 74LS00 quad NAND through pull-down resistors, and its four outputs drive LEDs." />
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="Chip Hippo — TTL Breadboard Designer & Simulator" />
-  <meta name="twitter:description" content="Design and simulate 74xx TTL logic circuits on a virtual desktop — for macOS, Windows, and Linux, all offline." />
+  <meta name="twitter:title" content="Chip Hippo — TTL & CMOS Breadboard Designer & Simulator" />
+  <meta name="twitter:description" content="Design and simulate 74xx TTL and CD4000 CMOS logic circuits on a virtual desktop — for macOS, Windows, and Linux, all offline." />
   <meta name="twitter:image" content="https://chiphippo.com/hero-breadboard2.png" />
   <meta name="twitter:image:alt" content="A Chip Hippo breadboard: four slide switches feed a 74LS00 quad NAND through pull-down resistors, and its four outputs drive LEDs." />
   <script type="application/ld+json">
@@ -45,7 +45,7 @@
     "name": "Chip Hippo",
     "applicationCategory": "DeveloperApplication",
     "operatingSystem": "macOS, Windows, Linux",
-    "description": "Design and simulate 74xx TTL logic circuits on a virtual desktop. Place chips, wire them up, and simulate the whole circuit — all offline.",
+    "description": "Design and simulate 74xx TTL and CD4000 CMOS logic circuits on a virtual desktop. Place chips, wire them up, and simulate the whole circuit — all offline.",
     "url": "https://chiphippo.com/",
     "downloadUrl": "https://github.com/jfigge/chiphippo/releases/latest",
     "installUrl": "https://apps.apple.com/us/app/chip-hippo/id6797996411",
@@ -765,10 +765,10 @@
     <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><circle cx="12" cy="12" r="10"/></svg>
     <span id="hero-version">v1.2.0</span> — Now Available
   </div>
-  <h1>Build 74xx logic<br>on <span class="accent">virtual breadboards</span></h1>
+  <h1>Build 74xx &amp; CD4000 logic<br>on <span class="accent">virtual breadboards</span></h1>
   <p class="hero-desc">
-    Chip Hippo is a desktop playground for TTL circuits. Drop 74-series chips onto an
-    infinite desktop, wire them up, hit Run — and watch electricity ripple through
+    Chip Hippo is a desktop playground for TTL and CMOS circuits. Drop 74LS and CD4000
+    chips onto an infinite desktop, wire them up, hit Run — and watch electricity ripple through
     every net until it settles. LEDs light, counters count, magic smoke. All offline.
   </p>
   <div class="hero-actions">
@@ -822,7 +822,7 @@
   <div class="section-inner">
     <p class="section-tag">Features</p>
     <h2 class="section-title">A real bench, without the wire mess</h2>
-    <p class="section-body">Everything you need to design a 74xx circuit, prove it out, and take it to a real breadboard — fast, keyboard-friendly, and fully offline.</p>
+    <p class="section-body">Everything you need to design a 74xx or CD4000 circuit, prove it out, and take it to a real breadboard — fast, keyboard-friendly, and fully offline.</p>
 
     <div class="feature-grid">
 
@@ -854,8 +854,8 @@
         <div class="feature-icon">
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M9 2v2M15 2v2M9 20v2M15 20v2M2 9h2M2 15h2M20 9h2M20 15h2"/></svg>
         </div>
-        <h3><a href="/chips.html">50+ 74xx chips</a></h3>
-        <p>Gates, flip-flops, counters, decoders, muxes, shift registers, comparators, and bus drivers — a data-driven catalog with datasheet-exact pinouts. Add a chip; it's just data.</p>
+        <h3><a href="/chips.html">50+ 74LS &amp; 45+ CD4000 chips</a></h3>
+        <p>Gates, flip-flops, counters, decoders, muxes, shift registers, comparators, and bus drivers in 74LS TTL — plus the CD4000 CMOS family, with its analog switches, display drivers, and RC timers, from 3 to 18&nbsp;V. Datasheet-exact pinouts; add a chip, it's just data.</p>
       </div>
 
       <div class="feature-card">
@@ -1046,7 +1046,7 @@
     <p class="section-tag">Feedback</p>
     <h2 class="section-title">Got an idea for Chip Hippo?</h2>
     <p class="section-body">
-      Missing a 74xx part, a tool, or a workflow you rely on at the bench? Feature
+      Missing a 74xx or CD4000 part, a tool, or a workflow you rely on at the bench? Feature
       requests are tracked on GitHub, out in the open — open one and it goes on the list.
     </p>
     <div class="feedback-actions">
