@@ -1,6 +1,6 @@
 {
   "name": "chiphippo",
-  "version": "1.1.2",
+  "version": "1.2.0",
   "description": "Design and simulate 74xx TTL logic circuits on virtual breadboards",
   "homepage": "https://github.com/jfigge/chiphippo",
   "repository": {
