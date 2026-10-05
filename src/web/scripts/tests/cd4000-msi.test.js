@@ -325,7 +325,7 @@ test("CD4511B: lamp test lights everything; blanking darkens everything", () => 
   assert.deepEqual(showing(b), lit(FONT11[2]), "back to the digit");
 });
 
-test("CD4511B: LE HIGH holds the code it had; LE LOW follows the inputs", () => {
+test("CD4511B: LE/STROBE HIGH holds the code it had; LOW follows the inputs", () => {
   const b = bench("CD4511B", DISPLAY_REST);
   setCode(b, 7);
   b.set({ 5: H });

@@ -1171,17 +1171,18 @@ export const CHIPS_CD4000 = Object.freeze([
   // ── Display driver ──────────────────────────────────────────────────────
   {
     // SCHS072B (CD4511B), terminal assignment + truth table: LT LOW lights
-    // every segment; BL LOW blanks them; LE LOW decodes the inputs live and
-    // LE HIGH holds the code applied while it was LOW; codes 10–15 blank;
-    // outputs active HIGH. Its 6 has no top bar and its 9 no bottom bar.
+    // every segment; BL LOW blanks them; LE/STROBE (pin 5, the sheet's name)
+    // LOW decodes the inputs live and HIGH holds the code applied while it
+    // was LOW; codes 10–15 blank; outputs active HIGH. Its 6 has no top bar
+    // and its 9 no bottom bar.
     id: "CD4511B",
     title: "BCD-to-7-segment latch/decoder/driver",
     blurb:
       "Decodes the BCD code on D C B A for a COMMON-CATHODE display — its " +
       "outputs drive HIGH. LT LOW lights every segment (lamp test), BL LOW " +
-      "blanks them, and LE HIGH freezes the digit shown while the inputs " +
-      "change. A code of 10–15 shows nothing at all. Tie LT and BL HIGH and " +
-      "LE LOW when unused.",
+      "blanks them, and LE/STROBE HIGH freezes the digit shown while the " +
+      "inputs change. A code of 10–15 shows nothing at all. Tie LT and BL " +
+      "HIGH and LE/STROBE LOW when unused.",
     group: "Display driver",
     package: "DIP-16",
     // n-p-n bipolar outputs "capable of sourcing up to 25 mA" (page 1): the
@@ -1192,7 +1193,7 @@ export const CHIPS_CD4000 = Object.freeze([
       input(2, "C"),
       input(3, "LT"),
       input(4, "BL"),
-      input(5, "LE"),
+      input(5, "LE/STROBE"),
       input(6, "D"),
       input(7, "A"),
       VSS(8),

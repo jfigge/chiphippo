@@ -215,8 +215,8 @@ A few of the larger parts have habits of their own:
   down, and Chip Hippo follows that part's logic gates to get there; the
   CD4029B's decade mode uses the same logic.
 - **The CD4511B blanks a code above 9**, where the 74LS47 shows odd symbols.
-  Its latch sits before the decoder, so LE HIGH freezes the digit while lamp
-  test (LT) and blanking (BL) still work on it.
+  Its latch sits before the decoder, so LE/STROBE HIGH freezes the digit while
+  lamp test (LT) and blanking (BL) still work on it.
 - **The analog switches drive nothing — they connect.** A CD4066B switch whose
   CONTROL is HIGH, or the CD4051B/52B/53B channel that INH and the select pins
   pick, joins its two pins, so whatever drives one side drives the other, in
