@@ -62,10 +62,20 @@ chip (or the dot beside pin 1) marks pin 1 and always faces left. Move the
 ghost over a pin-board and it snaps to the nearest legal seat; it turns red
 if the seat is already occupied or falls off the edge of the board.
 
-Because a chip's footprint always occupies rows e/f no matter how it's
-turned, placing one is a matter of picking the column — there's no
-click-to-rotate step while placing a chip the way there is for a rail or a
-resistor; instead, rotation happens afterward (see below).
+The **wide chips** — the 24-, 28-, 32- and 40-pin packages: the memories, the
+6502 and its peripherals, the Z80 and the 74LS181 — are 0.6 inch across, twice
+a small chip, and seat at that true width: pin 1 in row **d**, the other row
+of pins in row **h**, six holes apart. The chip's body covers rows e, f and g
+between them, so those holes can't take a wire or another part's lead — wire
+to each pin from the rows outside it instead (a–c below, i–j above). A desk
+saved before wide chips seated this way keeps them in rows e and f just as
+they were; move one on its own and it takes its true width, bringing the wires
+you carry with **Option** out from under its body.
+
+Because a chip's footprint is the same two rows no matter how it's turned,
+placing one is a matter of picking the column — there's no click-to-rotate
+step while placing a chip the way there is for a rail or a resistor; instead,
+rotation happens afterward (see below).
 
 ## Placing a discrete
 

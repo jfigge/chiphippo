@@ -78,7 +78,9 @@ export function memberAnchorWorld(boards, comp) {
  * Capture a fresh cluster from a set of source components. Each member keeps
  * only its kind/ref/params (deep-copied, with run-volatile 12 V damage stripped
  * — a paste is a brand-new part, never a reference to its source) and the world
- * point it is anchored at, so the arrangement can be re-stamped rigidly.
+ * point it is anchored at, so the arrangement can be re-stamped rigidly. A DIP
+ * also keeps the ROW its pin 1 is in (`chipRow`), which is its seat's width
+ * (footprints.js `dipRows`): rigid means it lands the width it was.
  * Members whose anchor can't resolve are skipped; null when nothing usable
  * remains.
  *
@@ -94,7 +96,11 @@ export function captureCluster(boards, comps) {
     if (!anchorWorld) continue;
     const params = comp.params ? JSON.parse(JSON.stringify(comp.params)) : {};
     delete params.damaged; // run-volatile — a fresh part is never pre-damaged
-    members.push({ kind: comp.kind, ref: comp.ref, params, anchorWorld });
+    const member = { kind: comp.kind, ref: comp.ref, params, anchorWorld };
+    if (memberForm(comp.ref, params) === "chip") {
+      member.chipRow = String(comp.anchor).charAt(0);
+    }
+    members.push(member);
   }
   if (members.length === 0) return null;
   // The grab reference: the arrangement's bounding-box centre, so the cluster
@@ -113,7 +119,10 @@ export function captureCluster(boards, comps) {
  * target seat and whether it lands legally. A board part is legal when it lands
  * with EVERY pin over a free hole (occupancy's canPlacePart); a brick when
  * `canPlaceBrick`. A member over bare desk (no hole under its anchor) is
- * illegal. See the module note on why no member-vs-member check is needed.
+ * illegal, and so is a DIP whose pin 1 lands in any row but the one it was
+ * captured in — a shift of whole rows would otherwise re-seat a 600-mil chip
+ * at the other width, which no rigid move does. See the module note on why no
+ * member-vs-member check is needed.
  *
  * @param {{boards:Array, components:Array, wires?:Array}} doc - the live document
  * @param {Array} members - from captureCluster
@@ -141,6 +150,9 @@ export function resolveCluster(doc, members, shift, canPlaceBrick) {
     const parsed = parseAddress(addressAtWorld(boards, ax, ay));
     if (!parsed) return { ...m, form, seat: null, legal: false };
     const seat = { board: parsed.boardId, anchor: parsed.hole };
+    if (m.chipRow != null && seat.anchor.charAt(0) !== m.chipRow) {
+      return { ...m, form, seat, legal: false };
+    }
     const legal = canPlacePart(doc, {
       ref: m.ref,
       board: seat.board,

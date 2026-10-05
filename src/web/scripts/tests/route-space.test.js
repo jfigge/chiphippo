@@ -180,6 +180,30 @@ test("a chip closes the rows it occupies and leaves the next one open", () => {
   assert.ok(!space.nodeBlockers.has(at(13, 3.5 + 4.51)), "row g is clear");
 });
 
+test("the holes under a 600-mil chip's body are lead nodes — no route stands in one", () => {
+  // occupancy.js claims rows e–g under a wide chip for its body, and the router
+  // reads that same map, so it cannot count one of them as a free hole.
+  const doc = kit();
+  const json0 = doc.toJSON();
+  const board = json0.boards.find((b) => b.type === "pins-full");
+  doc.addComponent({
+    kind: "chip",
+    ref: "HM62256",
+    board: board.id,
+    anchor: "d10",
+  });
+  const space = buildRouteSpace(doc.toJSON(), {});
+  const node = (hole) => {
+    const p = holePosition(board.type, hole);
+    return space.nodeAt(board.x + p.x, board.y + p.y);
+  };
+  for (const hole of ["e10", "f15", "g23"]) {
+    assert.ok(space.leadNodes.has(node(hole)), `${hole} is covered`);
+  }
+  assert.ok(!space.leadNodes.has(node("c10")), "row c is free");
+  assert.ok(!space.leadNodes.has(node("i10")), "row i is free");
+});
+
 test("a wire's own terminal part is exempt — but only that one", () => {
   const doc = kit();
   const pins = doc.boards.find((b) => b.type === "pins-full").id;

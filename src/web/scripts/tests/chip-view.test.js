@@ -26,7 +26,7 @@ import { resetDom } from "./jsdom-setup.js";
 import { PX_PER_UNIT } from "../desk/desk-geometry.js";
 import { holePosition } from "../model/breadboard.js";
 
-const { buildChipSvg, ChipView, chipBox } =
+const { buildChipSvg, ChipView, chipBodyBox, chipBox, chipSpan } =
   await import("../components/chip-view.js");
 
 test("buildChipSvg: legs, body, notch, pin-1 dot, and the part number", () => {
@@ -60,6 +60,82 @@ test("buildChipSvg: the wide memory packages (DIP-24…40) render, one leg per p
     // The footprint box widens with the pin count (a DIP-40 is far longer).
     assert.ok(chipBox("DIP-40").width > chipBox("DIP-14").width);
   }
+});
+
+test("a 600-mil chip is drawn six pitches across, its body over rows e, f and g", () => {
+  // The span between the pin rows is the board's own: d → h is six pitches,
+  // e → f three — measured, so the drawing can never drift from the holes.
+  const y = (hole) => holePosition("pins-full", hole).y;
+  assert.ok(Math.abs(y("d5") - y("h5") - chipSpan("DIP-28")) < 1e-9);
+  assert.ok(Math.abs(y("e5") - y("f5") - chipSpan("DIP-14")) < 1e-9);
+  assert.equal(chipSpan("DIP-28"), 6);
+  assert.equal(
+    chipSpan("DIP-28", "e5"),
+    3,
+    "the narrow seat an older desk kept",
+  );
+  assert.equal(chipSpan("DIP-14"), 3);
+
+  // The footprint box: the upper row's legs at the top, the lower's at the
+  // bottom; the narrow seat keeps the old 4.2-pitch box exactly.
+  assert.deepEqual(
+    [chipBox("DIP-28").minY, chipBox("DIP-28").height],
+    [-6.6, 7.2],
+  );
+  assert.deepEqual(
+    [chipBox("DIP-28", "e5").minY, chipBox("DIP-28", "e5").height],
+    [-3.6, 4.2],
+  );
+  assert.deepEqual(chipBox("DIP-14"), chipBox("DIP-14", "e5"));
+
+  // The slab stands over every covered row and stops short of both pin rows.
+  const body = chipBodyBox("DIP-28", "d5");
+  const top = body.minY;
+  const bottom = body.minY + body.height;
+  for (const row of ["e", "f", "g"]) {
+    const local = y(`${row}5`) - y("d5");
+    assert.ok(local > top && local < bottom, `row ${row} under the body`);
+  }
+  for (const row of ["d", "h"]) {
+    const local = y(`${row}5`) - y("d5");
+    assert.ok(local < top || local > bottom, `row ${row} clear of the body`);
+  }
+
+  resetDom();
+  const svg = buildChipSvg("HM62256", {}, "d5");
+  assert.equal(svg.querySelectorAll(".part-chip-leg").length, 28);
+  const slab = svg.querySelector(".part-chip-body");
+  assert.equal(Number(slab.getAttribute("y")), top);
+  assert.equal(Number(slab.getAttribute("height")), body.height);
+  assert.equal(svg.getAttribute("viewBox").split(" ")[3], "7.2");
+  // With no anchor yet (a ghost being placed), it is drawn as it will seat.
+  assert.equal(buildChipSvg("HM62256").getAttribute("viewBox"), svg.getAttribute("viewBox")); // prettier-ignore
+  assert.equal(
+    buildChipSvg("HM62256", {}, "e5").getAttribute("viewBox").split(" ")[3],
+    "4.2",
+  );
+});
+
+test("ChipView redraws at the new width when a narrow-seated 600-mil chip moves", () => {
+  resetDom();
+  const layer = document.createElement("div");
+  document.body.append(layer);
+  const view = new ChipView(layer, { id: "c1", ref: "HM62256", anchor: "e5" });
+  const board = { type: "pins-full", x: 0, y: 0 };
+  view.updatePlacement(board, "e5");
+  const height = () =>
+    layer.querySelector(".part-chip-svg").getAttribute("viewBox").split(" ")[3];
+  assert.equal(height(), "4.2");
+  view.updatePlacement(board, "d9");
+  assert.equal(height(), "7.2");
+  const pos = holePosition("pins-full", "d9");
+  assert.equal(
+    layer.querySelector(".part-chip").style.top,
+    `${(pos.y + chipBox("DIP-28", "d9").minY) * PX_PER_UNIT}px`,
+  );
+  // A flip redraws at the width it is seated at, not the one it started with.
+  view.updateParams({ rot: 180 });
+  assert.equal(height(), "7.2");
 });
 
 test("buildChipSvg: fault symbols stay OUTSIDE the 180° flip group", () => {

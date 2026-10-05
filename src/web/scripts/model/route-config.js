@@ -262,9 +262,11 @@ export function makeRouteConfig(overrides = {}) {
 
   // How far an obstacle grows so a wire's BODY clears it, not just its
   // centreline: half the wire, plus the clearance. A chip's slab stops 0.45
-  // pitch short of rows e and f, so at 0.492 the inflated body still leaves row
-  // d free to route along and row e properly closed — which is the whole
-  // difference between "beside the chip" and "over it".
+  // pitch short of its two pin rows (e and f; d and h for a 600-mil part at its
+  // true width), so at 0.492 the inflated body still leaves the row beyond each
+  // free to route along (d below a narrow chip, c below a wide one) and the pin
+  // row itself properly closed — which is the whole difference between "beside
+  // the chip" and "over it".
   const inflation = u(c.wireDiameterMm / 2 + c.clearanceMm);
 
   // Centre-to-centre distance two parallel runs need to read as two runs. See

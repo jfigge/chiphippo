@@ -266,6 +266,22 @@ test("hoverHitAt: a pin outranks the hole under it; else the bare hole", () => {
   assert.equal(hoverHitAt(BOARDS, [], { x: 500, y: 500 }), null);
 });
 
+test("hoverHitAt: a hole under a wide chip's body is not offered; one beside it is", () => {
+  const wide = {
+    id: "c2",
+    kind: "chip",
+    ref: "HM62256",
+    board: "bb1",
+    anchor: "d20",
+    params: {},
+  };
+  // Row f, under the slab between pin rows d and h: nothing to hover.
+  assert.equal(hoverHitAt(BOARDS, [wide], { x: 25, y: ROW.f }), null);
+  // Its pins are still hoverable, and row c beside its lower pins is a hole.
+  assert.equal(hoverHitAt(BOARDS, [wide], { x: 20, y: ROW.d }).key, "c2#1");
+  assert.equal(hoverHitAt(BOARDS, [wide], { x: 25, y: ROW.c }).key, "bb1.c25");
+});
+
 test("hoverHitAt: a brick terminal is hoverable and labelled with its voltage", () => {
   const hit = hoverHitAt(BOARDS, [PSU], { x: 82, y: 4 });
   assert.equal(hit.key, "psu1#+");

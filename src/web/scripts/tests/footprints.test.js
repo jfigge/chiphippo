@@ -25,9 +25,13 @@ import assert from "node:assert/strict";
 import {
   DIP_PACKAGES,
   allPinHoles,
+  coveredHoles,
+  dipRows,
   flippedPin,
+  isWidePackage,
   packageSpec,
   pinOffset,
+  seatRow,
 } from "../model/footprints.js";
 
 test("packageSpec: known packages; junk throws INVALID_PACKAGE", () => {
@@ -87,6 +91,57 @@ test("pinOffset: standard counterclockwise DIP numbering, notch left", () => {
   assert.deepEqual(pinOffset("DIP-8", 8), { row: "f", dcol: 0 });
 });
 
+test("pinOffset: a 600-mil package seats six pitches across, rows d and h", () => {
+  // DIP-28: 1…14 left→right along d; 15…28 right→left along h.
+  assert.deepEqual(pinOffset("DIP-28", 1), { row: "d", dcol: 0 });
+  assert.deepEqual(pinOffset("DIP-28", 14), { row: "d", dcol: 13 });
+  assert.deepEqual(pinOffset("DIP-28", 15), { row: "h", dcol: 13 });
+  assert.deepEqual(pinOffset("DIP-28", 28), { row: "h", dcol: 0 });
+  assert.deepEqual(pinOffset("DIP-40", 21), { row: "h", dcol: 19 });
+  // …unless anchored in row e: the narrow seat a desk saved before wide
+  // seating gave it, kept as it was.
+  assert.deepEqual(pinOffset("DIP-28", 1, "e"), { row: "e", dcol: 0 });
+  assert.deepEqual(pinOffset("DIP-28", 28, "e"), { row: "f", dcol: 0 });
+  // A 300-mil package has no wide seat, and nothing anchors in another row.
+  assert.equal(pinOffset("DIP-14", 1, "d"), null);
+  assert.equal(pinOffset("DIP-28", 1, "c"), null);
+});
+
+test("seatRow / dipRows: the body width decides the rows, the anchor row the seat", () => {
+  for (const pkg of Object.keys(DIP_PACKAGES)) {
+    const wide = packageSpec(pkg).body === 600;
+    assert.equal(isWidePackage(pkg), wide, pkg);
+    assert.equal(seatRow(pkg), wide ? "d" : "e", pkg);
+    // A new seat: 300-mil straight across the trench, 600-mil six pitches.
+    const rows = dipRows(pkg);
+    assert.deepEqual(
+      [rows.lower, rows.upper, rows.span],
+      wide ? ["d", "h", 6] : ["e", "f", 3],
+      pkg,
+    );
+    assert.deepEqual([...rows.covers], wide ? ["e", "f", "g"] : [], pkg);
+    // Row e is a seat every package can have.
+    assert.deepEqual([dipRows(pkg, "e").lower, dipRows(pkg, "e").upper], ["e", "f"]); // prettier-ignore
+    assert.equal(dipRows(pkg, "d") !== null, wide, pkg);
+  }
+  assert.throws(() => dipRows("DIP-12", "e"), { code: "INVALID_PACKAGE" });
+});
+
+test("coveredHoles: rows e, f and g in every column under a wide body; nothing under a narrow one", () => {
+  const holes = coveredHoles("DIP-24", 10);
+  assert.equal(holes.length, 3 * 12);
+  assert.deepEqual([...new Set(holes.map((h) => h.row))], ["e", "f", "g"]);
+  assert.deepEqual(
+    [...new Set(holes.map((h) => h.col))],
+    Array.from({ length: 12 }, (_, i) => 10 + i),
+  );
+  // None of them is a pin's.
+  const pins = new Set(allPinHoles("DIP-24", 10).map((h) => `${h.row}${h.col}`)); // prettier-ignore
+  assert.ok(holes.every((h) => !pins.has(`${h.row}${h.col}`)));
+  assert.deepEqual(coveredHoles("DIP-24", 10, "e"), []);
+  assert.deepEqual(coveredHoles("DIP-14", 10), []);
+});
+
 test("pinOffset: out-of-range pins are null", () => {
   assert.equal(pinOffset("DIP-14", 0), null);
   assert.equal(pinOffset("DIP-14", 15), null);
@@ -114,10 +169,19 @@ test("allPinHoles: every pin exactly once, anchored at the given column", () => 
     const holes = allPinHoles(pkg, 12);
     assert.equal(holes.length, pins);
     assert.equal(new Set(holes.map((h) => `${h.row}${h.col}`)).size, pins);
-    // Row split: half in e, half in f; columns span 12 … 12+halfPins-1.
-    assert.equal(holes.filter((h) => h.row === "e").length, halfPins);
+    // Row split: half in each pin row — e/f across the trench for a 300-mil
+    // part, d/h for a 600-mil one; columns span 12 … 12+halfPins-1.
+    const { lower, upper } = dipRows(pkg);
+    assert.equal(holes.filter((h) => h.row === lower).length, halfPins);
+    assert.equal(holes.filter((h) => h.row === upper).length, halfPins);
     const cols = holes.map((h) => h.col);
     assert.equal(Math.min(...cols), 12);
     assert.equal(Math.max(...cols), 12 + halfPins - 1);
+    // The narrow seat an older desk kept is still every package's.
+    const narrow = allPinHoles(pkg, 12, "e");
+    assert.equal(narrow.filter((h) => h.row === "e").length, halfPins);
+    assert.equal(narrow.filter((h) => h.row === "f").length, halfPins);
   }
+  // A row the package cannot anchor in seats nothing.
+  assert.deepEqual(allPinHoles("DIP-14", 12, "d"), []);
 });

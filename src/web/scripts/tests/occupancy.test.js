@@ -31,6 +31,8 @@ import {
   canReendWire,
   holeAtWorld,
   isFreeHole,
+  partCoverAddresses,
+  partCoverHoles,
   partPinAddresses,
   partPinHoles,
 } from "../model/occupancy.js";
@@ -64,8 +66,111 @@ test("partPinHoles: derives the 14 seated holes of a 74LS00 at e5", () => {
 test("partPinHoles: unknown ref or non-e anchor is null", () => {
   assert.equal(partPinHoles("9999", "e5"), null);
   assert.equal(partPinHoles("74LS00", "f5"), null);
+  // Row d is a 600-mil part's seat only.
+  assert.equal(partPinHoles("74LS00", "d5"), null);
   assert.equal(partPinHoles("74LS00", "+3"), null);
   assert.equal(partPinHoles("74LS00", null), null);
+});
+
+// ── 600-mil packages: six pitches across, the body over rows e–g ────────────
+
+test("partPinHoles: a 600-mil chip at d5 seats rows d and h; the e-row seat an older desk kept still resolves", () => {
+  // HM62256 is a DIP-28: 1…14 along d, 15…28 back along h.
+  const wide = new Map(partPinHoles("HM62256", "d5").map((p) => [p.pin, p.hole])); // prettier-ignore
+  assert.equal(wide.size, 28);
+  assert.equal(wide.get(1), "d5");
+  assert.equal(wide.get(14), "d18");
+  assert.equal(wide.get(15), "h18");
+  assert.equal(wide.get(28), "h5");
+  // Saved before wide seating: rows e and f, exactly as it was.
+  const narrow = new Map(partPinHoles("HM62256", "e5").map((p) => [p.pin, p.hole])); // prettier-ignore
+  assert.equal(narrow.get(1), "e5");
+  assert.equal(narrow.get(28), "f5");
+  // Flipped, the wide footprint maps onto itself too.
+  const flipped = partPinHoles("HM62256", "d5", { rot: 180 });
+  assert.deepEqual(new Set(flipped.map((p) => p.hole)), new Set(wide.values()));
+  assert.equal(flipped.find((p) => p.pin === 1).hole, "h18");
+});
+
+test("partCoverHoles: rows e, f and g under a wide chip, and nothing else covers anything", () => {
+  const covered = partCoverHoles("W65C02", "d10"); // DIP-40, 20 columns
+  assert.equal(covered.length, 60);
+  assert.ok(covered.includes("e10") && covered.includes("g29"));
+  assert.ok(!covered.includes("d10") && !covered.includes("h10"));
+  assert.deepEqual(partCoverHoles("W65C02", "e10"), []); // the narrow seat
+  assert.deepEqual(partCoverHoles("74LS00", "e10"), []);
+  assert.deepEqual(partCoverHoles("led", "a10"), []);
+  assert.deepEqual(partCoverHoles("9999", "d10"), []);
+  // As addresses — only holes the board really has.
+  const doc = docWith({ boards: [FULL] });
+  const addresses = partCoverAddresses(doc, {
+    ref: "W65C02",
+    board: "bb1",
+    anchor: "d10",
+  });
+  assert.equal(addresses.length, 60);
+  assert.ok(addresses.every((a) => a.startsWith("bb1.")));
+});
+
+test("buildOccupancy: a wide chip claims the holes under its body, so no wire or part may use one", () => {
+  const doc = docWith({
+    boards: [FULL],
+    components: [
+      { id: "c1", kind: "chip", ref: "HM62256", board: "bb1", anchor: "d5" },
+    ],
+  });
+  doc.wires = [];
+  const occ = buildOccupancy(doc);
+  assert.deepEqual(occ.get("bb1.f8"), { kind: "body", componentId: "c1" });
+  assert.equal(occ.get("bb1.d5")?.kind, "pin");
+  // Rows e, f, g under it: no wire end lands there…
+  for (const hole of ["e5", "f12", "g18"]) {
+    assert.equal(isFreeHole(doc, `bb1.${hole}`), false, hole);
+    assert.equal(canPlaceWire(doc, `bb1.${hole}`, "bb1.a40"), false, hole);
+  }
+  // …while the rows outside the pins, and the columns beside it, stay free.
+  assert.equal(isFreeHole(doc, "bb1.c5"), true);
+  assert.equal(isFreeHole(doc, "bb1.i5"), true);
+  assert.equal(isFreeHole(doc, "bb1.f4"), true);
+  assert.equal(isFreeHole(doc, "bb1.f19"), true);
+  // …nor does another part's lead.
+  assert.equal(
+    canPlacePart(doc, { ref: "led", board: "bb1", anchor: "f10" }),
+    false,
+  );
+  assert.equal(
+    canPlacePart(doc, { ref: "74LS00", board: "bb1", anchor: "e12" }),
+    false, // its pins would sit under the wide chip's body
+  );
+  // The chip itself moves within its own footprint, body and all.
+  assert.equal(
+    canPlacePart(doc, {
+      ref: "HM62256",
+      board: "bb1",
+      anchor: "d6",
+      ignoreId: "c1",
+    }),
+    true,
+  );
+});
+
+test("canPlacePart: a wide chip refuses to land its BODY over a lead already there", () => {
+  const doc = docWith({ boards: [FULL] });
+  doc.wires = [{ id: "w1", from: "bb1.g9", to: "bb1.a40", color: "red" }];
+  // HM62256 at d5 covers g5…g18 — g9 is a wire end.
+  assert.equal(
+    canPlacePart(doc, { ref: "HM62256", board: "bb1", anchor: "d5" }),
+    false,
+  );
+  // Clear of it, it seats — and the narrow seat never covered g at all.
+  assert.equal(
+    canPlacePart(doc, { ref: "HM62256", board: "bb1", anchor: "d20" }),
+    true,
+  );
+  assert.equal(
+    canPlacePart(doc, { ref: "HM62256", board: "bb1", anchor: "e5" }),
+    true,
+  );
 });
 
 test("partPinHoles: a reversible part turned round keeps its holes, reverses its pins", () => {

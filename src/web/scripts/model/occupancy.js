@@ -35,7 +35,12 @@
 // with that leg floating.
 
 import { footprintOffsets, partDef } from "../catalog/index.js";
-import { allPinHoles, flippedPin } from "./footprints.js";
+import {
+  allPinHoles,
+  coveredHoles,
+  dipRows,
+  flippedPin,
+} from "./footprints.js";
 import {
   boardSize,
   formatAddress,
@@ -48,7 +53,9 @@ import {
   rotateOffset,
 } from "./breadboard.js";
 
-const CHIP_ANCHOR_RE = /^e([1-9]\d*)$/; // a chip anchor: pin 1's hole, row e
+// A chip anchor: pin 1's hole — row e, or row d for a 600-mil part at its true
+// width (footprints.js `dipRows` says which rows a given package may take).
+const CHIP_ANCHOR_RE = /^([de])([1-9]\d*)$/;
 const GRID_ANCHOR_RE = /^([a-j])([1-9]\d*)$/; // a discrete anchors in ANY row
 // A TURNED two-terminal part (resistor / LED) anchors pin 1 in ANY hole — a
 // grid row OR a power rail — so BOTH leads can reach rails (e.g. a resistor
@@ -71,7 +78,8 @@ export function canCornerOffset(def) {
  * The seated hole of every pin of a board part (chip OR discrete):
  * `ref` + `anchor` → derived `[{ pin, hole }]`, or null when the ref is
  * unknown, isn't a board-seated part, or the anchor doesn't fit its
- * footprint (chips: row e; discretes: any grid row). Whether each hole
+ * footprint (chips: row e, or d for a 600-mil part; discretes: any grid row).
+ * Whether each hole
  * exists on a given board type is the caller's check — this is pure
  * footprint arithmetic.
  *
@@ -83,15 +91,15 @@ export function partPinHoles(ref, anchor, params) {
   const def = partDef(ref);
   if (!def || typeof anchor !== "string") return null;
   if (def.package) {
-    // DIP chip straddling the trench.
+    // DIP chip straddling the trench, at the width its anchor row says.
     const m = CHIP_ANCHOR_RE.exec(anchor);
-    if (!m) return null;
-    const seated = allPinHoles(def.package, Number(m[1])).map(
+    if (!m || !dipRows(def.package, m[1])) return null;
+    const seated = allPinHoles(def.package, Number(m[2]), m[1]).map(
       ({ pin, row, col }) => ({ pin, hole: `${row}${col}` }),
     );
     if (params?.rot !== 180) return seated;
     // Flipped 180°: a DIP's footprint maps onto ITSELF (same two rows, same
-    // columns), so only the pin numbering turns half a lap — pin 1 lands where
+    // columns, at either width), so only the pin numbering turns half a lap — pin 1 lands where
     // the opposite corner pin sat (footprints.js's flippedPin, its own inverse).
     const holeOfPin = new Map(seated.map((s) => [s.pin, s.hole]));
     return seated.map(({ pin }) => ({
@@ -164,6 +172,45 @@ export function partPinHoles(ref, anchor, params) {
     }));
   }
   return null; // a PSU has terminals, not board pins
+}
+
+/**
+ * The holes a seated part's BODY stands over without a pin in them — rows e, f
+ * and g under a 600-mil chip at its true width (footprints.js `coveredHoles`),
+ * and nothing for any other part or seat. `[]` (never null) when there is
+ * nothing to cover, an unknown ref included: a body that covers nothing claims
+ * nothing.
+ * @returns {string[]} hole ids on the part's own board
+ */
+export function partCoverHoles(ref, anchor) {
+  const def = partDef(ref);
+  if (!def?.package || typeof anchor !== "string") return [];
+  const m = CHIP_ANCHOR_RE.exec(anchor);
+  if (!m) return [];
+  return coveredHoles(def.package, Number(m[2]), m[1]).map(
+    ({ row, col }) => `${row}${col}`,
+  );
+}
+
+/**
+ * `partCoverHoles` as DESK ADDRESSES on the part's own board — only the holes
+ * that board really has.
+ * @param {{ boards: Array }} doc
+ * @param {{ ref:string, board:string, anchor:string }} comp
+ * @returns {string[]}
+ */
+export function partCoverAddresses(doc, comp) {
+  const board = (doc?.boards ?? []).find((b) => b.id === comp?.board);
+  if (!board) return [];
+  return partCoverHoles(comp.ref, comp.anchor)
+    .filter((hole) => {
+      try {
+        return parseHole(board.type, hole) !== null;
+      } catch {
+        return false; // a junk board type covers nothing
+      }
+    })
+    .map((hole) => formatAddress(board.id, hole));
 }
 
 /**
@@ -306,6 +353,9 @@ export function partPinAddresses(doc, comp) {
 /**
  * Build the address → occupant index for a document. Occupants:
  *   { kind: "pin", componentId, pin }   — a seated chip pin
+ *   { kind: "body", componentId }       — a hole a chip's body stands over
+ *                                         (`partCoverAddresses`: rows e–g
+ *                                         under a 600-mil part)
  *   { kind: "wire", wireId, end }       — a wire end ("from" | "to")
  *   { kind: "signal", signalId }        — a planted signal flag's POINT
  *   { kind: "tag", elementId, key }     — a planted Output/Input tag's point
@@ -316,7 +366,9 @@ export function partPinAddresses(doc, comp) {
  * ORDER MATTERS, and it is the inverse of the loader's. normalizeDocument
  * claims a hole PINS → WIRES → FLAGS and keeps the FIRST; this map is
  * last-writer-wins, so the same precedence is spelled backwards: tags and
- * flags first, then wires, then pins. A normalized document never collides, but this also
+ * flags first, then wires, then pins. A body's cover goes in before all of
+ * them: it holds no lead, so any lead a hand-edited file left under one is what
+ * the hole reads as. A normalized document never collides, but this also
  * runs against live mid-mutation documents, and of the two ways a collision
  * could read, a flag masking a WIRE end is the harmful one — canReendWire
  * would then refuse to move that wire's own end, wedging it for good, where
@@ -327,6 +379,13 @@ export function partPinAddresses(doc, comp) {
  */
 export function buildOccupancy(doc) {
   const map = new Map();
+  // The holes a chip's body covers: nothing may be plugged into one.
+  for (const comp of doc.components ?? []) {
+    if (comp?.kind !== "chip" && comp?.kind !== "discrete") continue;
+    for (const address of partCoverAddresses(doc, comp)) {
+      map.set(address, { kind: "body", componentId: comp.id });
+    }
+  }
   // A planted flag's point is a lead like any other — one hole, one lead.
   for (const sig of doc.signals ?? []) {
     const address = sig?.flag?.anchor;
@@ -511,9 +570,12 @@ export function worldOfAddress(boards, address) {
 
 /**
  * May a board part (chip or discrete) seat here? True when the board exists,
- * the anchor fits the footprint (chips row e; discretes any grid row), EVERY
- * lead lands in a real hole, and every one of those holes is free — ignoring
- * the pins of `ignoreId` (a part may move within its own footprint).
+ * the anchor fits the footprint (chips row e, or d at a 600-mil part's true
+ * width; discretes any grid row), EVERY lead lands in a real hole, and every
+ * one of those holes is free — and so is every hole its BODY would cover (rows
+ * e–g under a wide chip: a wire, a flag or another part's lead there would be
+ * under the plastic) — ignoring the pins and body of `ignoreId` (a part may
+ * move within its own footprint).
  *
  * Note a rotated part's free lead may legally land on a DIFFERENT board (a
  * power rail alongside the pin-board); it must still land in a real hole.
@@ -560,7 +622,8 @@ export function canPlacePart(
     if (Math.hypot(pb.x - pa.x, pb.y - pa.y) < def.minSpan) return false;
   }
   const index = occupancy ?? buildOccupancy(doc);
-  for (const { address } of pins) {
+  const covered = partCoverAddresses(doc, { ref, board: boardId, anchor });
+  for (const address of [...pins.map((p) => p.address), ...covered]) {
     const occupant = index.get(address);
     if (occupant && occupant.componentId !== ignoreId) return false;
   }

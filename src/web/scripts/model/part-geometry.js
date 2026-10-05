@@ -37,6 +37,7 @@ import { formatAddress, holePosition, parseAddress } from "./breadboard.js";
 import {
   holeAtWorld,
   holesNearWorld,
+  partCoverAddresses,
   partPinAddresses,
   partPinHoles,
   worldOfAddress,
@@ -380,6 +381,11 @@ export function wirePointNear(wires, world, radius = WIRE_POINT_GRAB_RADIUS) {
  * What a hover is over: a part pin/terminal (they sit above), else a bare
  * hole, as `{ key, label, address, x, y }`, or null. `key` is a stable hover
  * identity; `address` is the conductive point (null for a floating lead).
+ *
+ * A hole under a chip's BODY (rows e–g beneath a 600-mil part at its true
+ * width — occupancy.js `partCoverAddresses`) is not offered: the plastic is
+ * over it, so nothing on the desk can reach it, and a ring there would point
+ * at a hole no lead may use.
  */
 export function hoverHitAt(boards, components, world) {
   const pin = pinHitAt(boards, components, world);
@@ -387,6 +393,12 @@ export function hoverHitAt(boards, components, world) {
   const hole = holeAtWorld(boards, world.x, world.y);
   if (!hole) return null;
   const address = formatAddress(hole.board.id, hole.hole);
+  const docLike = { boards };
+  if (
+    components.some((c) => partCoverAddresses(docLike, c).includes(address))
+  ) {
+    return null;
+  }
   return { key: address, label: address, address, x: hole.x, y: hole.y };
 }
 

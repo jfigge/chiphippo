@@ -31,7 +31,7 @@
 // question (canPlacePart), not this module's.
 
 import { footprintOffsets, partDef } from "../catalog/index.js";
-import { packageSpec } from "./footprints.js";
+import { dipRows, packageSpec, seatRow } from "./footprints.js";
 import {
   boardSize,
   clampColumn,
@@ -70,6 +70,9 @@ export const ROW_BAND = 0.8;
  * @param {{rot?:number}|null} [params] - a `def.can` part's current
  *   quarter-turn, and a linear part's size where it has one (an inductor's
  *   holes between its leads — catalog/index.js `footprintOffsets`).
+ * @param {{chipRow?:string}} [opts] - `chipRow` seats a DIP with pin 1 in
+ *   THAT row rather than the one its package is placed in now (`seatRow`): a
+ *   chip carried in a rigid group keeps the width it has — see cluster-move.js.
  * @returns {{board:string, anchor:string}|null}
  */
 export function partSeatAt(
@@ -78,6 +81,7 @@ export function partSeatAt(
   world,
   grabOffsetCols = 0,
   params = null,
+  { chipRow = null } = {},
 ) {
   const def = partDef(ref);
   if (!def) return null;
@@ -87,7 +91,7 @@ export function partSeatAt(
     const seat = def.can
       ? canSeat(board, def, local, grabOffsetCols, params?.rot ?? 0)
       : def.package
-        ? chipSeat(board, def.package, local, grabOffsetCols)
+        ? chipSeat(board, def.package, local, grabOffsetCols, chipRow)
         : discreteSeat(board, def, local, grabOffsetCols, params);
     if (seat) return seat;
   }
@@ -113,9 +117,16 @@ function localPoint(board, world) {
   return unrotatePoint(board.type, { x: dx, y: dy }, rot);
 }
 
-/** A DIP straddles the trench, so its anchor is always row e. */
-function chipSeat(board, pkg, local, grabOffsetCols) {
+/**
+ * A DIP straddles the trench: pin 1 in row e for a 300-mil package, row d for a
+ * 600-mil one at its true width (footprints.js `seatRow`) — its pins then in
+ * rows d and h, six pitches apart. `chipRow` asks for another row the package
+ * can anchor in (`dipRows`); one it cannot seats nowhere.
+ */
+function chipSeat(board, pkg, local, grabOffsetCols, chipRow = null) {
   const { halfPins } = packageSpec(pkg);
+  const row = chipRow ?? seatRow(pkg);
+  if (!dipRows(pkg, row)) return null;
   // Rails carry no trench at all — nothing can straddle them.
   const offset = trenchOffset(board.type, local.y);
   if (offset == null || offset > SEAT_BAND) return null;
@@ -125,7 +136,7 @@ function chipSeat(board, pkg, local, grabOffsetCols) {
       ? cursorCol - (halfPins - 1) / 2 // ghost: chip centred on the cursor
       : cursorCol + grabOffsetCols; // drag: keep the grab point
   const anchor = clampColumn(board.type, col, halfPins - 1);
-  return anchor == null ? null : { board: board.id, anchor: `e${anchor}` };
+  return anchor == null ? null : { board: board.id, anchor: `${row}${anchor}` };
 }
 
 /** A discrete lies along ONE grid row — whichever row the cursor is nearest. */

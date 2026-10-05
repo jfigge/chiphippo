@@ -510,8 +510,33 @@ in `doc.boards`; a "breadboard" is a **kit** of them placed in one action.
   pinned to its top-left corner, so `board.x/y` mean the same at every angle.
 - **Rows** of a pin-board, top to bottom: `j i h g f` · **trench** · `e d c b a`. Each
   column-half (`a–e`, `f–j`) is one internal 5-hole node; the trench isolates the halves;
-  DIPs straddle it (pins in rows `e` and `f`). A rail strip carries both polarities, `+`
-  and `−`, each one continuous node for its length.
+  DIPs straddle it (pins in rows `e` and `f`; a 600-mil part's in `d` and `h` — below). A
+  rail strip carries both polarities, `+` and `−`, each one continuous node for its length.
+- **A DIP seats at its package's real width** (`model/footprints.js`, 2026-10-05, plan
+  `features/done/chiphippo-600mil-chip-rendering.md`). `body` in `DIP_PACKAGES` decides it: a
+  300-mil part (≤ DIP-20, the DIP switch banks) takes rows `e`/`f`, 3 pitches straight
+  across the trench; a 600-mil one (DIP-24…40 — memories, 65xx, Z80, 74LS181) takes rows
+  `d`/`h`, 6 pitches, its BODY standing over rows `e`–`g` between them. **The anchor's
+  row says which** (`dipRows(pkg, anchorRow)`; `seatRow(pkg)` is the row a NEW seat
+  takes): a 600-mil part anchored in `e` is the narrow seat every DIP had before, and a
+  saved desk keeps it exactly — no migration. `chipSeat` (palette placement, a solo
+  drag, ⌘V) gives the true width, so moving an old narrow chip on its own re-seats it
+  wide; a GROUP move or cluster paste is rigid, so each chip keeps the row (and width)
+  it had (`partSeatAt`'s `chipRow`, `resolveClusterTargets`/`resolveCluster` refuse a
+  chip carried out of its row). The covered holes are the body's (`coveredHoles` →
+  occupancy.js `partCoverHoles`/`partCoverAddresses`): `buildOccupancy` claims them as
+  `{kind: "body", componentId}` FIRST (lowest precedence), so `canPlaceWire`/
+  `canReendWire`/flags/tags, the auto-router (`leadNodes`, `rail-reseat`) and
+  `normalizeDocument` all refuse them for nothing more than reading the one map;
+  `canPlacePart` also refuses a wide chip whose body would land on a lead already there;
+  `prepareClusterMove` adds them to its claim set; `hoverHitAt` offers no ring there; and
+  `partRideShift` keeps a rider out from under the body (and, when a chip CHANGES width,
+  off its new pin holes — the rider travels with its pin instead). Drawing:
+  `chip-view.js`'s `chipSpan(pkg, anchor)` (3 or 6, equal to the board's own `d`→`h`
+  distance, which a test measures) sizes `chipBox`/`chipBodyBox`/`buildChipSvg`, and a
+  `ChipView` redraws when a move changes its width; the 3D model reads the same
+  `chipBodyBox`. The generators — the AI compiler, the demo benches — still seat every
+  DIP in `e`/`f`, a seat that stays legal.
 - **Addresses** are the only cross-module currency for holes: `<ownerId>.<point>` —
   `bb1.a12` (grid hole), `bb2.+7` (rail hole), `psu1.+` (component terminal). One hole
   holds at most one lead. **Nothing outside `model/breadboard.js` does row/column

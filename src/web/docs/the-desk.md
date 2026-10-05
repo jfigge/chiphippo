@@ -74,8 +74,8 @@ The palette offers three assembled kits:
 On a pin-board, rows run top to bottom as `j i h g f`, then the **trench**,
 then `e d c b a`. The trench is the gap down the centre that isolates the top
 half of each column from the bottom half electrically — a DIP chip **straddles
-the trench**, with one row of pins in `f` and the other in `e`, exactly as it
-would seat on a real board. A power-rail strip carries both a `+` and a `−`
+the trench**, with one row of pins in `f` and the other in `e` (or, for the
+wide 600-mil chips, in `h` and `d`), exactly as it would seat on a real board. A power-rail strip carries both a `+` and a `−`
 line, each one continuous connection along its whole length, independent of
 every other strip.
 

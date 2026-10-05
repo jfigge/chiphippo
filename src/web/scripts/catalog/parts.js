@@ -302,7 +302,8 @@ function normalizeOscillatorParams(raw) {
  * trench like a chip: switch k bridges pin k (row e) to pin 2n+1-k (row f) —
  * the pin DIRECTLY ACROSS the trench from it (model/footprints.js's
  * pinOffset: pin p ≤ n sits at dcol p-1 in row e, pin p > n at dcol 2n-p in
- * row f, so the two share a column exactly when q = 2n+1-p). Every
+ * row f — every bank is a 300-mil body, so always those two rows — and the two
+ * share a column exactly when q = 2n+1-p). Every
  * position's state is durable (params.states[i]) — the CONTROLLER owns the
  * write, the view only draws it (components/discrete-view.js's house rule).
  */

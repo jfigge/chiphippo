@@ -40,6 +40,28 @@ test("a DIP centres on the cursor and anchors in row e", () => {
   assert.deepEqual(seat, { board: "bb1", anchor: "e7" });
 });
 
+test("a 600-mil DIP anchors in row d — six pitches across, at its true width", () => {
+  // DIP-28 is 14 columns wide: centring on column 20 anchors at 20 − 6.5 → 14.
+  assert.deepEqual(at([FULL], "HM62256", 20, 6.5), { board: "bb1", anchor: "d14" }); // prettier-ignore
+  for (const ref of ["74LS181", "28C16", "AS6C1024", "W65C02", "Z80A"]) {
+    assert.equal(at([FULL], ref, 30, 6.5)?.anchor.charAt(0), "d", ref);
+  }
+  // A 300-mil part is untouched: row e, straight across the trench.
+  for (const ref of ["74LS00", "74LS138", "CD4011B"]) {
+    assert.equal(at([FULL], ref, 30, 6.5)?.anchor.charAt(0), "e", ref);
+  }
+});
+
+test("a chip can be asked to keep the width it is seated at", () => {
+  // A rigid group move keeps a narrow-seated 600-mil chip narrow (row e) —
+  // and a 300-mil part has no wide seat to be asked for.
+  const keep = (ref, chipRow) =>
+    partSeatAt([FULL], ref, { x: 20, y: 6.5 }, 0, null, { chipRow });
+  assert.equal(keep("HM62256", "e")?.anchor, "e14");
+  assert.equal(keep("HM62256", "d")?.anchor, "d14");
+  assert.equal(keep("74LS00", "d"), null);
+});
+
 test("a DIP seats from anywhere inside the trench band, and nowhere beyond", () => {
   const { trench } = spec("pins-full");
   assert.ok(at([FULL], "74LS00", 10, trench.centerY + SEAT_BAND));

@@ -107,6 +107,7 @@ import {
   canReendWire,
   isFreeHole,
   isRealPoint,
+  partCoverAddresses,
   partPinAddresses,
   partPinHoles,
 } from "./occupancy.js";
@@ -617,10 +618,16 @@ export function normalizeDocument(raw) {
     // loser FREES holes rather than removing any, so every wire that was legal
     // stays legal — which is why the wire loop below still re-derives occupancy
     // from the surviving parts instead of reading this set.
+    //
+    // A 600-mil chip at its true width claims the holes its BODY covers too
+    // (rows e–g between its pins — `partCoverAddresses`): nothing may be
+    // plugged in under the plastic, so a part whose lead is there, or a chip
+    // whose body would land on an earlier part's lead, is the loser here.
     const claims = [];
     for (const { address } of partPinAddresses(doc, record) ?? []) {
       if (address != null) claims.push(address);
     }
+    claims.push(...partCoverAddresses(doc, record));
     if (claims.some((a) => claimedPoints.has(a))) continue;
     for (const a of claims) claimedPoints.add(a);
     compIds.add(c.id);
@@ -649,7 +656,8 @@ export function normalizeDocument(raw) {
   };
   // One lead per point: validEndpoint only proves an endpoint is a REAL hole/
   // terminal, not that it is FREE. Seed the claimed set with the seated parts'
-  // pin holes (doc.wires is still empty, so buildOccupancy yields pins only),
+  // pin holes and the holes their bodies cover (doc.wires is still empty, so
+  // buildOccupancy yields parts only),
   // then claim each wire's ends as they load. A foreign/hand-edited doc with
   // two leads on one hole would otherwise have the loser silently hidden by
   // buildOccupancy's last-writer-wins.
@@ -2483,6 +2491,12 @@ export class DeskDoc {
         if (!pins) return false;
         for (const { address } of pins) {
           if (address == null || claimed.has(address)) return false;
+          claimed.add(address);
+        }
+        // The holes its body will stand over are its too: no other mover's
+        // pin, and no riding wire, may land under it.
+        for (const address of partCoverAddresses(reduced, seat)) {
+          if (claimed.has(address)) return false;
           claimed.add(address);
         }
       }

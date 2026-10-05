@@ -21,22 +21,30 @@
 // across the trench with the standard counterclockwise numbering, notch LEFT
 // (no rotation in v1):
 //
-//     f:  2n … n+1        ← pins n+1…2n run right→left along row f
+//     f:  2n … n+1        ← pins n+1…2n run right→left along the UPPER row
 //         ┌─────────┐
 //       ◖ │  74xx   │      ← notch at the left end
 //         └─────────┘
-//     e:  1  2  …  n       ← pins 1…n run left→right along row e
+//     e:  1  2  …  n       ← pins 1…n run left→right along the LOWER row
 //
-// Pin 1 sits at the component's ANCHOR hole (always row e); every other pin
-// position is DERIVED from the package + anchor column — never stored.
+// Pin 1 sits at the component's ANCHOR hole; every other pin position is
+// DERIVED from the package + anchor — never stored.
 //
-// `body` is the package's real body width in mils: the small logic DIPs are
-// 300-mil (0.3-in row spacing), the wide memory DIPs (DIP-24…40) are 600-mil.
-// The board geometry pins EVERY DIP to rows e/f (exactly 3 pitches apart,
-// straddling the single trench), so `body` never changes the derived hole
-// arithmetic — a real 600-mil part is wider than one trench, and this stage
-// models it trench-straddling anyway (Feature 170). The hint drives only the
-// drawn body + the build-guide note; a true two-board straddle is out of scope.
+// `body` is the package's real body width in mils, and it decides which two
+// rows the pins take (`dipRows`). A 300-mil part (0.3-in row spacing — every
+// logic DIP up to DIP-20, and the DIP switch banks) seats in rows e and f, the
+// 3 pitches straight across the trench. A 600-mil part (DIP-24…40: the wide
+// memories and the processors) is twice that: rows d and h, 6 pitches apart,
+// its body standing over rows e, f and g between them — holes nothing else may
+// use (`coveredHoles`; occupancy.js claims them for the chip).
+//
+// THE ANCHOR'S ROW SAYS WHICH. A 600-mil part anchored in row e is the seat
+// every DIP took before wide seating existed (2026-10-05), and a desk saved
+// then keeps it exactly — there is no migration. Placing a part, or moving one
+// on its own, seats it at its true width (`seatRow`); a selection dragged or
+// pasted as a group moves rigidly, so each chip in it keeps the form it had;
+// and the generators (the AI builder's compiler, the demo benches) still seat
+// every DIP in rows e and f, which stays a legal seat.
 
 /** The DIP packages the catalog may reference. `body` is the width in mils.
     DIP-2/DIP-4 aren't logic chips — they're the bodies the 1- and 2-position
@@ -69,30 +77,101 @@ export function packageSpec(pkg) {
   return { pins: p.pins, halfPins: p.pins / 2, body: p.body };
 }
 
+/** The two pin rows of a DIP seated across the trench, the span between
+    them in pitches (integer by design — one pitch per row, three across the
+    channel), and the rows its body covers. */
+const NARROW = Object.freeze({
+  lower: "e",
+  upper: "f",
+  span: 3,
+  covers: Object.freeze([]),
+});
+const WIDE = Object.freeze({
+  lower: "d",
+  upper: "h",
+  span: 6,
+  covers: Object.freeze(["e", "f", "g"]),
+});
+
+/** Is this a 600-mil package (its pins six pitches apart, not three)? */
+export function isWidePackage(pkg) {
+  return packageSpec(pkg).body >= 600;
+}
+
+/**
+ * The row pin 1 takes when a package is PLACED (or moved) now: d for a 600-mil
+ * package, e for everything else.
+ * @returns {"d"|"e"}
+ */
+export function seatRow(pkg) {
+  return isWidePackage(pkg) ? WIDE.lower : NARROW.lower;
+}
+
+/**
+ * The rows a package's pins take with pin 1 anchored in `anchorRow` —
+ * `{ lower, upper, span, covers }` — or null for a row it cannot anchor in.
+ * Row e is every package's narrow seat (a 600-mil one's only from a document
+ * saved before wide seating); row d is a 600-mil package's true width.
+ */
+export function dipRows(pkg, anchorRow = seatRow(pkg)) {
+  if (anchorRow === NARROW.lower) {
+    packageSpec(pkg); // junk still throws INVALID_PACKAGE
+    return NARROW;
+  }
+  if (anchorRow === WIDE.lower && isWidePackage(pkg)) return WIDE;
+  return null;
+}
+
 /**
  * Row + column offset of one pin relative to the anchor column (pin 1's
- * column). Returns null for a pin number outside the package.
- * @returns {{ row: "e"|"f", dcol: number }|null}
+ * column), for a package anchored in `anchorRow` (by default the row it is
+ * placed in now — `seatRow`). Returns null for a pin number outside the
+ * package, or an anchor row it cannot seat in.
+ * @returns {{ row: string, dcol: number }|null}
  */
-export function pinOffset(pkg, pin) {
+export function pinOffset(pkg, pin, anchorRow = seatRow(pkg)) {
   const { pins, halfPins } = packageSpec(pkg);
+  const rows = dipRows(pkg, anchorRow);
+  if (!rows) return null;
   if (!Number.isInteger(pin) || pin < 1 || pin > pins) return null;
   return pin <= halfPins
-    ? { row: "e", dcol: pin - 1 } // 1…n left→right along e
-    : { row: "f", dcol: pins - pin }; // n+1…2n right→left along f
+    ? { row: rows.lower, dcol: pin - 1 } // 1…n left→right along the lower row
+    : { row: rows.upper, dcol: pins - pin }; // n+1…2n right→left along the upper
 }
 
 /**
  * Every pin's seated hole for a package anchored at `anchorCol` (pin 1's
- * column, row e).
- * @returns {Array<{ pin: number, row: "e"|"f", col: number }>}
+ * column) in `anchorRow` — empty when it cannot anchor there.
+ * @returns {Array<{ pin: number, row: string, col: number }>}
  */
-export function allPinHoles(pkg, anchorCol) {
+export function allPinHoles(pkg, anchorCol, anchorRow = seatRow(pkg)) {
   const { pins } = packageSpec(pkg);
+  if (!dipRows(pkg, anchorRow)) return [];
   const out = [];
   for (let pin = 1; pin <= pins; pin++) {
-    const { row, dcol } = pinOffset(pkg, pin);
+    const { row, dcol } = pinOffset(pkg, pin, anchorRow);
     out.push({ pin, row, col: anchorCol + dcol });
+  }
+  return out;
+}
+
+/**
+ * The holes a seated package's BODY stands over — between its two pin rows, in
+ * each of its columns: rows e, f and g under a 600-mil part at its true width,
+ * nothing under a narrow seat (only the trench lies between rows e and f). A
+ * real part's plastic is in the way of those holes, so nothing may be plugged
+ * into one.
+ * @returns {Array<{ row: string, col: number }>}
+ */
+export function coveredHoles(pkg, anchorCol, anchorRow = seatRow(pkg)) {
+  const { halfPins } = packageSpec(pkg);
+  const rows = dipRows(pkg, anchorRow);
+  if (!rows) return [];
+  const out = [];
+  for (const row of rows.covers) {
+    for (let dcol = 0; dcol < halfPins; dcol++) {
+      out.push({ row, col: anchorCol + dcol });
+    }
   }
   return out;
 }
@@ -100,7 +179,8 @@ export function allPinHoles(pkg, anchorCol) {
 /**
  * The pin number that CURRENTLY occupies the position pin `pin` held at rot 0,
  * after flipping a DIP-packaged part 180° in place. A DIP's footprint maps
- * onto itself under a half lap (same two rows, same columns) — only the pin
+ * onto itself under a half lap (same two rows, same columns — at either
+ * width) — only the pin
  * numbering turns half the package, so pin `p` trades places with pin
  * `p ± halfPins`. Its own inverse: applying it twice returns the original.
  * Shared by model/occupancy.js's `def.package` rotate (which hole a pin

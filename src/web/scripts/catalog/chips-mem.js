@@ -29,10 +29,9 @@
 // for the read-only EPROM. A part's address/data buses are exposed as Feature
 // 130 `pinGroups` so a whole bus wires in one gesture.
 //
-// Real 600-mil memories are wider than one breadboard trench; this stage models
-// every DIP straddling the standard e/f rows (pin 1 at row e) so a part is
-// buildable on one board — the `body: 600` hint in footprints.js is drawn/notes
-// only. A true two-board straddle is a later footprint stage.
+// These are 600-mil packages (footprints.js `body: 600`), and a part placed now
+// seats at that true width: rows d and h, six pitches across, its body over rows
+// e–g. One saved before wide seating keeps the e/f seat it was given.
 
 import { memUnit } from "../sim/sequential.js";
 import { input, output, io, nc, gnd, vcc } from "./pin-builders.js";

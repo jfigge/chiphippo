@@ -316,6 +316,39 @@ test("part drag: a chip re-seats to the anchor under the pointer, once", () => {
   assert.equal(changes, 1);
 });
 
+test("part drag: a narrow-seated 600-mil chip re-seats at its true width; Option carries a rider out from under its body", () => {
+  // A desk saved before wide seating: HM62256 in rows e/f at e5, a wire in g8
+  // (pin 22's node above the trench). Wide, the body stands over rows e–g.
+  const setup = () => {
+    resetDom();
+    const doc = new DeskDoc(null);
+    const world = { x: 0, y: 0 };
+    const { surface, controller } = makeDesk(doc, world);
+    controller.addBoardAt("pins-full", 0, 0);
+    const chip = controller.addComponentAt("HM62256", "bb1", "e5");
+    const wire = doc.addWire({ from: "bb1.g8", to: "bb1.a50" });
+    return { doc, world, surface, chip, wire };
+  };
+
+  // Plain: the wire would end up under the plastic — refused, nothing moves.
+  let t = setup();
+  drag(partEl(t.surface, t.chip.id), t.world, { x: 8, y: 6.5 }, { x: 9, y: 6.5 }); // prettier-ignore
+  assert.equal(t.doc.getComponent(t.chip.id).anchor, "e5", "reverted");
+
+  // Option: the wire rides — out of row g, to row i, two holes from its pin as
+  // it was — and the chip lands at its true width.
+  t = setup();
+  drag(
+    partEl(t.surface, t.chip.id),
+    t.world,
+    { x: 8, y: 6.5 },
+    { x: 9, y: 6.5 },
+    { mods: { altKey: true } },
+  );
+  assert.equal(t.doc.getComponent(t.chip.id).anchor, "d6");
+  assert.equal(t.doc.getWire(t.wire.id).from, "bb1.i9");
+});
+
 test("part drag: a sub-threshold press selects the chip but does not move it", () => {
   resetDom();
   const doc = new DeskDoc(null);

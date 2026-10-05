@@ -406,7 +406,7 @@ export class DeskPlacement {
       CHIP_DEFS, so it's drawn via the discrete path like every other part. */
   #buildMemberGhostSvg(m) {
     const def = partDef(m.ref);
-    if (def?.kind === "chip") return buildChipSvg(m.ref, m.params);
+    if (def?.kind === "chip") return buildChipSvg(m.ref, m.params, m.chipRow);
     switch (memberForm(m.ref, m.params)) {
       case "turned":
         return buildSpanSvg(m.ref, m.params.end.dx, m.params.end.dy, m.params);
@@ -457,7 +457,7 @@ export class DeskPlacement {
     const ay = member.anchorWorld.y + shift.dy;
     const def = partDef(member.ref);
     if (def?.kind === "chip") {
-      const box = chipBox(def.package);
+      const box = chipBox(def.package, member.chipRow);
       return { x: ax + box.minX, y: ay + box.minY };
     }
     switch (member.form ?? memberForm(member.ref, member.params)) {

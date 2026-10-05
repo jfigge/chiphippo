@@ -181,12 +181,17 @@ export function clusterDelta(boards, grab, world, members) {
     if (!hit) return null;
     return { dx: hit.x - grab.anchorWorld.x, dy: hit.y - grab.anchorWorld.y };
   }
+  // A chip keeps the row its pin 1 is in, and so the WIDTH it is seated at
+  // (footprints.js `dipRows`): a 600-mil part an older desk seated narrow would
+  // otherwise re-seat a row away at its true width, and the whole selection
+  // would follow it down by that row.
   const seat = partSeatAt(
     boards,
     grab.ref,
     world,
     grab.grabOffsetCols ?? 0,
     grab.params,
+    { chipRow: chipRowOf(grab) },
   );
   if (!seat) return null;
   const landed = worldOfAddress(boards, formatAddress(seat.board, seat.anchor));
@@ -197,12 +202,23 @@ export function clusterDelta(boards, grab, world, members) {
   };
 }
 
+/** The row a DIP member's pin 1 is in — which says how wide it is seated —
+    or null for any other part. */
+function chipRowOf(member) {
+  if (!partDef(member?.ref)?.package || typeof member.anchor !== "string") {
+    return null;
+  }
+  return member.anchor.charAt(0);
+}
+
 /**
  * Where every member lands under one rigid delta.
  *
  * A board part's anchor either falls squarely on a hole or on nothing — no hole
  * means nowhere to seat, and `resolved` goes false for the WHOLE cluster, since
- * a group drag that quietly left one part behind would be a silent edit. A desk
+ * a group drag that quietly left one part behind would be a silent edit. So
+ * does a DIP carried out of the row its pin 1 is in: that row is the WIDTH it
+ * is seated at, and no rigid move changes a chip's width. A desk
  * brick has no lattice to miss and always resolves; whether it OVERLAPS anything
  * is legality's question, not this one.
  *
@@ -232,7 +248,8 @@ export function resolveClusterTargets(boards, members, delta) {
         m.anchorWorld.y + delta.dy,
       ),
     );
-    if (!parsed) {
+    const row = chipRowOf(m);
+    if (!parsed || (row != null && parsed.hole.charAt(0) !== row)) {
       resolved = false;
       targets.push({ id: m.id, form: m.form, board: null, anchor: null });
       continue;

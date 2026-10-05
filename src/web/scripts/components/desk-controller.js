@@ -179,7 +179,7 @@ function partBodyBox(comp) {
     if (!def) return null;
     if (def.rotatable && comp.params?.rot === 90) return null;
     if (comp.kind === "chip") {
-      return def.package ? chipBodyBox(def.package) : null;
+      return def.package ? chipBodyBox(def.package, comp.anchor) : null;
     }
     return discreteBox(comp.ref, comp.params?.rot, comp.params);
   } catch {
@@ -3370,6 +3370,8 @@ export class DeskController {
       form: grab.form,
       ref: grab.ref,
       params: grab.params,
+      // Its seat too: a chip's anchor row is the width it keeps on the move.
+      anchor: grab.anchor,
       anchorWorld: grab.anchorWorld,
       grabOffsetCols,
       pointerId: e.pointerId,
@@ -3545,12 +3547,21 @@ export class DeskController {
       see #onPartPointerUp. */
   #resolvePartSeat(d, world) {
     const seat = this.#partSeatAt(world, d.ref, d.grabOffsetCols, d.params);
+    const riding = Boolean(d.riding || d.ridingParts);
     if (seat) {
       d.seat = seat;
-      d.legal = this.#doc.canPlacePart(d.ref, seat.board, seat.anchor, {
-        ignoreId: d.id,
-        params: d.params,
-      });
+      // With riders the BATCH check below is the whole verdict: it seats the
+      // part against the document with every mover lifted out, riders
+      // included. Asked alone, the part would still see a rider in the hole it
+      // is about to leave — and a 600-mil chip re-seating at its true width
+      // covers rows e–g, where a rider of its narrow seat may be standing until
+      // the plan carries it out from under the body.
+      d.legal =
+        riding ||
+        this.#doc.canPlacePart(d.ref, seat.board, seat.anchor, {
+          ignoreId: d.id,
+          params: d.params,
+        });
     } else {
       d.legal = false; // off-board / off-row: stay at the last seat
     }
@@ -3560,7 +3571,7 @@ export class DeskController {
     // drop exactly as an unseatable pin does — one refusal, one visual language.
     // Planned against `d.seat` even when the pointer fell off-board, so the
     // riders keep drawing where the part does.
-    if (d.riding || d.ridingParts) {
+    if (riding) {
       d.plan = this.#doc.planPartMove(d.id, {
         board: d.seat.board,
         anchor: d.seat.anchor,

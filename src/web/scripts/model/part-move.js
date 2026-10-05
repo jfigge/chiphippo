@@ -73,7 +73,11 @@ import {
   parseHole,
   rowsBetween,
 } from "./breadboard.js";
-import { partPinAddresses, worldOfAddress } from "./occupancy.js";
+import {
+  partCoverAddresses,
+  partPinAddresses,
+  worldOfAddress,
+} from "./occupancy.js";
 import { partPinsWorld } from "./part-geometry.js";
 
 /** A refused plan — the caller reddens the drop rather than inventing a hole. */
@@ -297,6 +301,21 @@ export function partRideShift(doc, before, after) {
   const was = partPinAddresses(doc, before);
   const now = partPinAddresses(doc, after);
   if (!was || !now || was.length !== now.length) return null;
+  // Holes a rider may not stay in. The ones the part's BODY will stand over
+  // (rows e–g under a 600-mil chip at its true width) are never a rider's:
+  // that is under the plastic. And when a DIP changes WIDTH — a 600-mil part an
+  // older desk seated narrow, rows e/f, re-seats wide at d/h the moment it is
+  // moved — its new pin holes are not either: the pins moved rows under riders
+  // that stayed in theirs. (Otherwise a rider that stays in its row is the
+  // design, and one a pin lands on is the claim set's to refuse — see
+  // prepareClusterMove.)
+  const reseated =
+    Boolean(partDef(after.ref)?.package) &&
+    before.anchor?.charAt(0) !== after.anchor?.charAt(0);
+  const own = new Set([
+    ...partCoverAddresses(doc, after),
+    ...(reseated ? now.map((p) => p?.address).filter(Boolean) : []),
+  ]);
 
   // One entry per node the part's pins occupy BEFORE the move: which strip that
   // pin lands on, how far along it travels, and the node it has to end up in.
@@ -367,6 +386,7 @@ export function partRideShift(doc, before, after) {
     ]) {
       if (!candidate) continue;
       const landed = formatAddress(entry.toBoardId, candidate);
+      if (own.has(landed)) continue;
       if (nodeKeyOf(boards, landed) === entry.afterKey) return landed;
     }
     return null;

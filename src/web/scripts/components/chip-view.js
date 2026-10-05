@@ -23,14 +23,16 @@
 // chip (crisp at all zooms, no rebuilds on camera moves); NO per-pin DOM —
 // pin hover is math over derived positions in DeskController.
 //
-// Local SVG coordinates are pitch units with the ORIGIN AT PIN 1's hole
-// (row e, the component anchor); row f is exactly 3 pitches above (fixed by
-// the board geometry every DIP relies on).
+// Local SVG coordinates are pitch units with the ORIGIN AT PIN 1's hole (the
+// component anchor), and the upper row of pins `span` pitches above it: 3 for a
+// 300-mil part (rows e and f, straight across the trench), 6 for a 600-mil one
+// at its true width (rows d and h — footprints.js `dipRows`). Whole pitches by
+// design: one per row, three across the channel.
 
 import { el, svgEl } from "../dom.js";
 import { PX_PER_UNIT } from "../desk/desk-geometry.js";
 import { holePosition } from "../model/breadboard.js";
-import { packageSpec } from "../model/footprints.js";
+import { dipRows, packageSpec } from "../model/footprints.js";
 import { chipDef } from "../catalog/index.js";
 import { isRomChip, isTimed } from "../sim/chip-eval.js";
 import {
@@ -45,47 +47,71 @@ import {
   statusHint,
 } from "./part-symbols.js";
 
-/** Footprint-box geometry shared by the builder and the ghost/controller. */
-export function chipBox(pkg) {
+/**
+ * The pitches between a chip's two rows of pins, read off its ANCHOR: the row
+ * pin 1 is in says which seat it has (a 600-mil part anchored in row e kept the
+ * narrow seat an older desk gave it). With no anchor — a ghost not yet over a
+ * board — it is the seat the part will be PLACED in.
+ * @param {string} pkg
+ * @param {string|null} [anchor] - pin 1's hole id, e.g. "d12" — or just its
+ *   row ("d"), which is all this reads
+ * @returns {number} 3 or 6
+ */
+export function chipSpan(pkg, anchor = null) {
+  const row = typeof anchor === "string" ? anchor[0] : undefined;
+  return (dipRows(pkg, row) ?? dipRows(pkg)).span;
+}
+
+/** Footprint-box geometry shared by the builder and the ghost/controller —
+    for a chip seated at `anchor` (see `chipSpan`). */
+export function chipBox(pkg, anchor = null) {
   const { halfPins } = packageSpec(pkg);
-  // x spans the pin columns ± body overhang; y spans row f → row e ± legs.
+  const span = chipSpan(pkg, anchor);
+  // x spans the pin columns ± body overhang; y spans the upper row → the
+  // lower (anchor) row ± legs.
   return {
     minX: -0.6,
-    minY: -3.6,
+    minY: -span - 0.6,
     width: halfPins - 1 + 1.2,
-    height: 4.2,
+    height: span + 1.2,
   };
 }
 
 /** Body edges (pitch units, local coords): between the rows, inset a full
-    HOLE_HIT_RADIUS, so a chip's slab never covers a point the board would
-    resolve to a hole. (A DIP SWITCH bank is drawn chip-shaped but states its
-    own, taller edges — see discrete-view.js's DIP_BODY_TOP: the holes under
-    its overhang are all its own pins, so it has nothing to keep clear of.) */
-const CHIP_BODY_TOP = -2.55;
-const CHIP_BODY_BOTTOM = -0.45;
+    HOLE_HIT_RADIUS from each pin row. Across the trench (a 300-mil part) that
+    leaves no hole under the slab at all; a 600-mil part at its true width
+    stands over rows e, f and g, and those holes are its to cover — occupancy.js
+    claims them for it (`partCoverAddresses`). (A DIP SWITCH bank is drawn
+    chip-shaped but states its own, taller edges — see discrete-view.js's
+    DIP_BODY_TOP: the holes under its overhang are all its own pins, so it has
+    nothing to keep clear of.) */
+const BODY_INSET = 0.45;
+const bodyTop = (span) => -span + BODY_INSET;
+const CHIP_BODY_BOTTOM = -BODY_INSET;
 const LEG_WIDTH = 0.28;
 
 /**
  * A chip's BODY slab alone — `chipBox` without the legs it allows room for.
  *
  * The two are not interchangeable, and the auto-router (Feature 360) is why the
- * distinction has to be exported. `chipBox` reaches 0.6 pitch PAST rows e and f
+ * distinction has to be exported. `chipBox` reaches 0.6 pitch PAST its pin rows
  * so the drawn legs have somewhere to be; treat that as the obstacle, inflate it
- * by a wire's clearance, and row d — the row every wire on a chip's lower node
- * actually leaves from — closes up, which would make a seated chip unwireable.
- * The slab is the plastic, and the plastic is what a jumper has to go round.
+ * by a wire's clearance, and the row just outside them — the row every wire on a
+ * chip's lower node actually leaves from — closes up, which would make a seated
+ * chip unwireable. The slab is the plastic, and the plastic is what a jumper has
+ * to go round.
  *
  * The legs need no allowance of their own: each one stands in its own pin's
  * hole, and a hole with a pin in it is already spoken for.
  */
-export function chipBodyBox(pkg) {
+export function chipBodyBox(pkg, anchor = null) {
   const { halfPins } = packageSpec(pkg);
+  const top = bodyTop(chipSpan(pkg, anchor));
   return {
     minX: -0.6,
-    minY: CHIP_BODY_TOP,
+    minY: top,
     width: halfPins - 1 + 1.2,
-    height: CHIP_BODY_BOTTOM - CHIP_BODY_TOP,
+    height: CHIP_BODY_BOTTOM - top,
   };
 }
 
@@ -93,9 +119,12 @@ export function chipBodyBox(pkg) {
  * Build a chip's complete SVG from its catalog def. Pure DOM construction
  * (unit-testable under jsdom).
  * @param {string} ref - catalog id, e.g. "74LS00"
+ * @param {object} [params]
+ * @param {string|null} [anchor] - pin 1's hole, which says how wide the chip
+ *   is seated (`chipSpan`); none draws it as it would be placed
  * @returns {SVGSVGElement}
  */
-export function buildChipSvg(ref, params = {}) {
+export function buildChipSvg(ref, params = {}, anchor = null) {
   const def = chipDef(ref);
   if (!def) {
     const err = new Error(`unknown catalog ref: ${ref}`);
@@ -103,7 +132,10 @@ export function buildChipSvg(ref, params = {}) {
     throw err;
   }
   const { halfPins } = packageSpec(def.package);
-  const box = chipBox(def.package);
+  const span = chipSpan(def.package, anchor);
+  const box = chipBox(def.package, anchor);
+  const top = bodyTop(span);
+  const mid = -span / 2; // halfway between the two pin rows
 
   const svg = svgEl("svg", {
     class: "part-chip-svg",
@@ -114,12 +146,13 @@ export function buildChipSvg(ref, params = {}) {
   });
 
   // Legs first (under the body edge): stubs from the body to each hole.
-  // Row e holes sit at local y=0, row f at y=-3; the body spans between.
+  // The lower row's holes sit at local y=0, the upper row's at y=-span; the
+  // body spans between.
   const legs = svgEl("g", { class: "part-chip-legs" });
   for (let dcol = 0; dcol < halfPins; dcol++) {
     for (const [y, h] of [
-      [CHIP_BODY_BOTTOM - 0.05, 0.6], // down over the row-e holes
-      [-3.1, CHIP_BODY_TOP + 3.1], // up from the row-f holes to the body
+      [CHIP_BODY_BOTTOM - 0.05, 0.6], // down over the lower row's holes
+      [-span - 0.1, top + span + 0.1], // up from the upper row's to the body
     ]) {
       legs.append(
         svgEl("rect", {
@@ -139,9 +172,9 @@ export function buildChipSvg(ref, params = {}) {
     svgEl("rect", {
       class: "part-chip-body",
       x: box.minX + 0.1,
-      y: CHIP_BODY_TOP,
+      y: top,
       width: box.width - 0.2,
-      height: CHIP_BODY_BOTTOM - CHIP_BODY_TOP,
+      height: CHIP_BODY_BOTTOM - top,
       rx: 0.18,
     }),
   );
@@ -150,7 +183,7 @@ export function buildChipSvg(ref, params = {}) {
   svg.append(
     svgEl("path", {
       class: "part-chip-notch",
-      d: `M ${box.minX + 0.1} -1.82 A 0.32 0.32 0 0 1 ${box.minX + 0.1} -1.18 Z`,
+      d: `M ${box.minX + 0.1} ${mid - 0.32} A 0.32 0.32 0 0 1 ${box.minX + 0.1} ${mid + 0.32} Z`,
     }),
   );
   svg.append(
@@ -166,7 +199,7 @@ export function buildChipSvg(ref, params = {}) {
   const label = svgEl("text", {
     class: "part-chip-label",
     x: (halfPins - 1) / 2,
-    y: -1.28,
+    y: mid + 0.22,
     "text-anchor": "middle",
   });
   label.textContent = def.id;
@@ -178,7 +211,7 @@ export function buildChipSvg(ref, params = {}) {
   if (params?.rot === 180) {
     const turned = svgEl("g", {
       class: "part-chip-flipped",
-      transform: `rotate(180 ${(halfPins - 1) / 2} -1.5)`,
+      transform: `rotate(180 ${(halfPins - 1) / 2} ${mid})`,
     });
     while (svg.firstChild) turned.append(svg.firstChild);
     svg.append(turned);
@@ -193,7 +226,7 @@ export function buildChipSvg(ref, params = {}) {
     const readout = svgEl("text", {
       class: "part-chip-timing",
       x: cx,
-      y: -0.66,
+      y: mid + 0.84,
       "text-anchor": "middle",
     });
     readout.append(svgEl("title"), svgEl("tspan"));
@@ -204,7 +237,7 @@ export function buildChipSvg(ref, params = {}) {
   // group above so they stay in screen space: smoke must rise, and an
   // upside-down warning triangle would read as a delta. CSS reveals exactly
   // one per .part-chip--<status> class and hides both otherwise.
-  const cy = (CHIP_BODY_TOP + CHIP_BODY_BOTTOM) / 2;
+  const cy = (top + CHIP_BODY_BOTTOM) / 2;
   const status = svgEl("g", { class: "part-chip-status" });
   status.append(
     svgEl("title"), // the hover hint; text set by ChipView.setStatus
@@ -220,6 +253,7 @@ export class ChipView {
   #id;
   #ref;
   #params = {}; // latest params (the 180° flip changes the drawn orientation)
+  #anchor = null; // pin 1's hole — its row says how wide the chip is seated
   #status = null; // last engine-reported power/health status (Feature 90)
   #volts = null; // …and the supply volts the engine saw (Feature 400)
   #unprogrammed = false; // a ROM/EPROM/EEPROM with no image loaded (Feature 190)
@@ -240,7 +274,8 @@ export class ChipView {
       dataset: { componentId: component.id },
     });
     this.#params = component.params ?? {};
-    this.#el.append(buildChipSvg(component.ref, this.#params));
+    this.#anchor = component.anchor ?? null;
+    this.#el.append(buildChipSvg(component.ref, this.#params, this.#anchor));
     this.#el.addEventListener("pointerdown", (e) =>
       onPointerDown?.(this.#id, e),
     );
@@ -266,8 +301,13 @@ export class ChipView {
   /** Rebuild the SVG for new params (the 180° flip). */
   updateParams(params) {
     this.#params = params ?? {};
+    this.#rebuild();
+  }
+
+  /** Redraw the SVG from the current params and seat. */
+  #rebuild() {
     this.#el.querySelector("svg")?.remove();
-    this.#el.prepend(buildChipSvg(this.#ref, this.#params));
+    this.#el.prepend(buildChipSvg(this.#ref, this.#params, this.#anchor));
     this.#refresh();
     this.#paintTiming();
   }
@@ -301,13 +341,20 @@ export class ChipView {
   /**
    * Seat the element: the SVG box is anchored on pin 1's hole, so the world
    * position is board origin + anchor hole position + the box offsets.
+   * A seat at another WIDTH redraws the chip first — a 600-mil part an older
+   * desk seated narrow takes its true width the moment it is moved, and the
+   * live drag shows it doing so.
    * @param {{type:string,x:number,y:number}} board
-   * @param {string} anchor - pin 1's hole id (row e)
+   * @param {string} anchor - pin 1's hole id (row e, or d at 600-mil width)
    */
   updatePlacement(board, anchor) {
     const pos = holePosition(board.type, anchor, board.rot ?? 0);
     if (!pos) return; // defensive: never seat a view on a phantom hole
-    const box = chipBox(chipDef(this.#ref).package);
+    const pkg = chipDef(this.#ref).package;
+    const widthChanged = chipSpan(pkg, anchor) !== chipSpan(pkg, this.#anchor);
+    this.#anchor = anchor;
+    if (widthChanged) this.#rebuild();
+    const box = chipBox(pkg, anchor);
     this.#el.style.left = `${(board.x + pos.x + box.minX) * PX_PER_UNIT}px`;
     this.#el.style.top = `${(board.y + pos.y + box.minY) * PX_PER_UNIT}px`;
   }

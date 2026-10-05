@@ -259,7 +259,7 @@ function buildChip(sb, doc, comp, def, params) {
   if (!o) return false;
   const p = sb.palette;
   const { halfPins } = packageSpec(def.package);
-  const box = chipBodyBox(def.package);
+  const box = chipBodyBox(def.package, comp.anchor);
   const x0 = box.minX;
   const x1 = box.minX + box.width;
   const z0 = box.minY;
