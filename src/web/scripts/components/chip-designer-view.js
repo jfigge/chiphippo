@@ -141,6 +141,8 @@ export class ChipDesignerView {
         const tab = this.#focusedTab();
         if (tab) this.#send({ kind: "unit", compId: tab.compId, unit });
       },
+      onMemoryRange: (compId, slot, from, count, req) =>
+        this.#send({ kind: "memory-range", compId, slot, from, count, req }),
     });
     // The package stays at the top, always in view; only the form under the
     // rule scrolls (the package scrolls itself only when it is too tall to
@@ -201,13 +203,20 @@ export class ChipDesignerView {
     this.#setHeaderHeight(layout.headerHeight ?? null);
     this.#empty = el("div", { class: "cd-empty", hidden: true });
     root.append(this.#tabs, this.#bar.element, this.#notice, this.#main, this.#empty); // prettier-ignore
-    window.addEventListener("chiphippo:font-size-changed", () =>
-      this.#editor.refreshMetrics(),
-    );
+    window.addEventListener("chiphippo:font-size-changed", () => {
+      this.#editor.refreshMetrics();
+      this.#watch.refreshMetrics();
+    });
   }
 
   /** A message from the host. */
   receive(msg) {
+    // An array's words, for the memory view that asked (never part of the
+    // state: a 32K memory would ride every step).
+    if (msg?.kind === "memory-range") {
+      this.#watch.memoryRange(msg);
+      return;
+    }
     if (msg?.kind !== "state") return;
     this.#state = msg;
     // An echo that has caught up with the local edits retires them.

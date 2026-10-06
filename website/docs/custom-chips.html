@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'none'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; object-src 'none'; base-uri 'self'; form-action 'none'; frame-ancestors 'none'" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#2F855A" />
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <title>Custom Chips · Chip Hippo Guide</title>
+  <meta name="description" content="Custom Chips — the Chip Hippo user guide." />
+  <link rel="canonical" href="https://chiphippo.com/docs/custom-chips.html" />
+  <meta property="og:type" content="article" />
+  <meta property="og:site_name" content="Chip Hippo" />
+  <meta property="og:title" content="Custom Chips · Chip Hippo Guide" />
+  <meta property="og:description" content="Custom Chips — the Chip Hippo user guide." />
+  <meta property="og:url" content="https://chiphippo.com/docs/custom-chips.html" />
+  <meta name="twitter:card" content="summary" />
+  <meta name="twitter:title" content="Custom Chips · Chip Hippo Guide" />
+  <meta name="twitter:description" content="Custom Chips — the Chip Hippo user guide." />
+  <style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--bg:#1c1c1c;--mantle:#161616;--crust:#101010;--surface-0:#2a2a2a;--surface-1:#383838;--overlay-0:#686868;--text:#e8e8e8;--subtext:#b0b0b0;--accent:#3fb950;--green:#56d364}
+html{scroll-behavior:smooth}
+body{font-family:"Segoe UI",system-ui,-apple-system,BlinkMacSystemFont,sans-serif;background:var(--bg);color:var(--text);line-height:1.65}
+a{color:var(--accent);text-decoration:none}
+a:hover{text-decoration:underline}
+code{font-family:"Cascadia Code","JetBrains Mono","Fira Code",monospace;font-size:.88em;background:var(--surface-0);padding:1px 6px;border-radius:4px;color:var(--text)}
+pre{background:var(--crust);border:1px solid var(--surface-0);border-radius:10px;padding:14px 16px;overflow:auto;margin:16px 0}
+pre code{background:none;padding:0}
+kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px solid var(--surface-1);border-bottom-width:2px;border-radius:5px;padding:1px 6px}
+.topbar{position:sticky;top:0;z-index:10;height:58px;display:flex;align-items:center;justify-content:space-between;padding:0 24px;background:var(--mantle);border-bottom:1px solid var(--surface-0)}
+.brand{display:flex;align-items:center;gap:10px;font-weight:800;color:var(--accent);font-size:1.1rem}
+.brand:hover{text-decoration:none}
+.topbar .back{color:var(--subtext);font-size:.85rem}
+.layout{max-width:1180px;margin:0 auto;display:grid;grid-template-columns:260px 1fr;gap:40px;padding:32px 24px 80px}
+.sidebar{position:sticky;top:90px;align-self:start;max-height:calc(100vh - 110px);overflow:auto}
+.sidebar-title{font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--overlay-0);padding:0 12px 8px}
+.doc-nav-link{display:block;padding:7px 12px;border-radius:7px;color:var(--subtext);font-size:.9rem;margin-bottom:2px}
+.doc-nav-link:hover{background:var(--surface-0);color:var(--text);text-decoration:none}
+.doc-nav-link--active{background:color-mix(in srgb,var(--accent) 16%,transparent);color:var(--accent);font-weight:600}
+.content{min-width:0;max-width:760px}
+.content h1{font-size:2.1rem;font-weight:800;letter-spacing:-1px;margin:0 0 20px;line-height:1.2}
+.content h2{font-size:1.45rem;font-weight:700;margin:36px 0 12px;padding-top:12px;border-top:1px solid var(--surface-0)}
+.content h3{font-size:1.12rem;font-weight:700;margin:26px 0 10px}
+.content p,.content ul,.content ol,.content blockquote,.content table{margin:0 0 16px}
+.content ul,.content ol{padding-left:24px}
+.content li{margin:4px 0}
+.content img{max-width:100%;height:auto;border:1px solid var(--surface-0);border-radius:10px;margin:8px 0}
+.content blockquote{border-left:3px solid var(--accent);background:var(--mantle);padding:10px 16px;border-radius:0 8px 8px 0;color:var(--subtext)}
+.content blockquote p:last-child{margin:0}
+.content table{border-collapse:collapse;width:100%;font-size:.9rem;display:block;overflow:auto}
+.content th,.content td{border:1px solid var(--surface-0);padding:8px 12px;text-align:left}
+.content th{background:var(--mantle)}
+.content hr{border:none;border-top:1px solid var(--surface-0);margin:28px 0}
+@media(max-width:820px){.layout{grid-template-columns:1fr;gap:20px}.sidebar{position:static;max-height:none;border-bottom:1px solid var(--surface-0);padding-bottom:16px}}
+</style>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/"><svg width="24" height="24" viewBox="0 0 512 512" role="img" aria-label="Chip Hippo"><rect x="0" y="0" width="512" height="512" rx="114" fill="#2F855A"/><circle cx="170" cy="146" r="40" fill="#FFFFFF"/><circle cx="342" cy="146" r="40" fill="#FFFFFF"/><rect x="144" y="140" width="224" height="190" rx="74" fill="#FFFFFF"/><rect x="118" y="260" width="276" height="150" rx="74" fill="#FFFFFF"/><circle cx="201" cy="198" r="17" fill="#1C1C1C"/><circle cx="311" cy="198" r="17" fill="#1C1C1C"/><rect x="186" y="320" width="140" height="52" rx="8" fill="#23272B"/><circle cx="186" cy="346" r="11" fill="#FFFFFF"/></svg><span>Chip Hippo</span></a>
+    <a class="back" href="/">← Back to site</a>
+  </header>
+  <div class="layout">
+    <nav class="sidebar" aria-label="User guide">
+      <div class="sidebar-title">User Guide</div>
+        <a class="doc-nav-link" href="index.html">Overview</a>
+        <a class="doc-nav-link" href="getting-started.html">Getting Started</a>
+        <a class="doc-nav-link" href="the-desk.html">The Desk &amp; Breadboards</a>
+        <a class="doc-nav-link" href="components.html">Chips &amp; Components</a>
+        <a class="doc-nav-link" href="wiring.html">Wiring, Nets &amp; Buses</a>
+        <a class="doc-nav-link" href="power-and-clocks.html">Power &amp; Clock Sources</a>
+        <a class="doc-nav-link" href="chip-library.html">The Chip Library</a>
+        <a class="doc-nav-link doc-nav-link--active" href="custom-chips.html">Custom Chips</a>
+        <a class="doc-nav-link" href="simulation.html">Running a Simulation</a>
+        <a class="doc-nav-link" href="probing.html">Probing &amp; Net Names</a>
+        <a class="doc-nav-link" href="memory.html">Memory Chips &amp; the Inspector</a>
+        <a class="doc-nav-link" href="logic-analyzer.html">Logic Analyzer &amp; Timing</a>
+        <a class="doc-nav-link" href="build-guide.html">Build Guide &amp; BOM</a>
+        <a class="doc-nav-link" href="schematic-view.html">Schematic View</a>
+        <a class="doc-nav-link" href="3d-view.html">3D View</a>
+        <a class="doc-nav-link" href="ai-builder.html">AI Circuit Builder</a>
+        <a class="doc-nav-link" href="arduino.html">Arduino Integration</a>
+        <a class="doc-nav-link" href="serial-protocol.html">Serial Protocol</a>
+        <a class="doc-nav-link" href="files-and-undo.html">Files, Saving &amp; Undo</a>
+        <a class="doc-nav-link" href="projects-and-desktops.html">Projects &amp; Desktops</a>
+        <a class="doc-nav-link" href="exporting.html">Exporting to Other Tools</a>
+        <a class="doc-nav-link" href="settings.html">Settings</a>
+        <a class="doc-nav-link" href="keyboard-shortcuts.html">Keyboard Shortcuts</a>
+    </nav>
+    <main class="content">
+<h1>Custom Chips</h1>
+<p>When the part you need isn&#39;t in the library, design it. A <strong>custom chip</strong> is a
+DIP package you lay out yourself — how many pins, which is which — with its
+behaviour written in a small, strict subset of <strong>Verilog</strong>. It sits in the
+parts tray beside the library, places like any chip, and runs in the
+simulation like any chip. While the circuit runs you can stop inside it and
+step through its code a statement at a time.</p>
+<p><img src="images/chip-designer.png" alt="The Chip Designer: a custom chip&#39;s package and ports on the left, its Verilog on the right"></p>
+<p>Custom chips are <strong>yours, not one project&#39;s</strong>: every chip you design is kept
+in Chip Hippo&#39;s own chip library on this computer, so it is in the tray of
+every project you open. A project file carries the chips its desktops use, so
+it opens complete on another computer — and opening a project that uses a
+chip your library doesn&#39;t have adds that chip to your library. Exporting a
+desktop takes the chips it uses with it, and importing one brings them in the
+same way.</p>
+<p>If a project carries its own, older copy of a chip you have since changed,
+that project keeps using its copy while it is open, so its circuit is built
+exactly as it was. Editing the chip there saves the edit to your library too.</p>
+<h2 id="making-a-chip">Making a chip</h2>
+<p>In the parts tray, open <strong>CHIPS ▸ CUSTOM</strong> (after the library&#39;s chips, or
+beside the 74LS and CD4000 folders when the tray shows both families) and
+click <strong>New chip…</strong>. The
+<strong>Chip Designer</strong> window opens on a fresh design — a two-input NAND on a
+14-pin package, so there is something working to change. Right-click a chip
+in the tray for <strong>Edit Design…</strong>, <strong>Duplicate Design</strong> and <strong>Delete Design</strong>.
+Deleting a design removes it from your library; a chip placed on a desktop of
+the open project can&#39;t be deleted until it has been removed from the desk.</p>
+<p>The designer is one window with a tab per open design. The left half is the
+package — its pinout drawn as a datasheet draws it, which stays in view at the
+top, and under a line the fields that define it, which scroll on their own.
+The right half is the code. Drag the divider between the halves to give the
+package more room (a chip of several units has a wide pin table); double-click
+it to put it back. Chip Hippo remembers where you left it.</p>
+<h3 id="the-package">The package</h3>
+<ul>
+<li><strong>Part number</strong> — what is printed on the chip, up to 16 letters, digits,
+<code>-</code> and <code>_</code>. It is also the Verilog module&#39;s name.</li>
+<li><strong>Description</strong> — a line shown beside it in the tray and in the BOM.</li>
+<li><strong>Logic family</strong> — 74LS or CD4000. It decides what an input left open reads
+(HIGH for 74LS, unknown for CD4000) and the supply the chip needs, exactly
+as for the library&#39;s parts of that family.</li>
+<li><strong>Body width</strong> — 300 mil or 600 mil, which is where it seats on the board:
+a 300-mil chip straddles the trench in rows e and f, a 600-mil one in rows d
+and h.</li>
+<li><strong>Pins per side</strong> — from 2 to 20, so from 4 to 40 pins.</li>
+<li><strong>Units</strong> — how many copies of the module the package holds, up to six
+(see <a href="#units">Units</a>).</li>
+<li><strong>Power pins</strong> — which pins are VCC and GND (VDD and VSS for CD4000).</li>
+<li><strong>Ports</strong> — the module&#39;s inputs and outputs: a name, a direction (input,
+output, or <strong>inout</strong> for a pin the chip both reads and drives, such as a
+data bus) and a width
+of 1 to 16 bits, and at the end of the row the pin it is on — one column
+per unit. A port wider than one bit takes one pin per bit, so its bits are
+listed under it, each with its own pins. <strong>Auto-assign</strong> puts every bit
+that has no pin on the next free one. When there are more units than the
+pane has room for, the pin columns scroll sideways while each port&#39;s name
+stays in view.</li>
+</ul>
+<p>While a chip is placed on any desktop of the open project its <strong>size and
+width are fixed</strong> — its instances are seated in holes, and moving their pins
+would silently rewire every desk it is on. Everything else, the code included,
+can still change. To change the package of a chip in use, remove it from the
+desk first, or duplicate the design. (Other projects that use the chip are not
+rewired by a change made here: each keeps its own copy in its file.)</p>
+<h3 id="the-code">The code</h3>
+<p>The <strong>module header</strong> — <code>module</code>, the port list, <code>endmodule</code> — is generated
+from the package and shown above and below the editor, read-only. You write
+only the <strong>body</strong>: declarations, <code>assign</code> statements and <code>always</code> blocks. So
+the code&#39;s pins can never drift from the chip&#39;s: rename a port in the package
+and the header follows. The header takes up to two fifths of the code area
+and scrolls past that; drag the line under it to make it taller or shorter,
+and double-click the line to put it back.</p>
+<p>The code is checked as you type. Problems are listed under the editor with
+their line numbers, and the line is marked in the gutter. A chip whose
+package or code has a problem still places, but it <strong>drives nothing</strong> (every
+output floats), and pressing Run says which chips those are.</p>
+<p>Hover a pin on the package to light every use of it in the code; hover a name
+in the code to light its pins on the package.</p>
+<h2 id="the-verilog-subset">The Verilog subset</h2>
+<p>What is supported behaves as real Verilog does, so code written here reads
+correctly to anyone who knows the language — and anything outside the subset
+is <strong>refused with a message saying so</strong>, never approximated.</p>
+<pre><code class="language-verilog">// Ports: CLK, RST_N in; Q[3:0] out — a 4-bit binary counter with an
+// asynchronous reset.
+reg [3:0] count = 4&#39;d0;
+
+always @(posedge CLK or negedge RST_N)
+  if (!RST_N)
+    count &lt;= 4&#39;d0;
+  else
+    count &lt;= count + 1;
+
+assign Q = count;
+</code></pre>
+<p><strong>Supported</strong></p>
+<ul>
+<li><code>wire</code> and <code>reg</code> declarations, with a constant range (<code>reg [7:0] r;</code>) and
+an optional initial value (<code>reg q = 1&#39;b0;</code>); <code>integer</code> (a signed 32-bit
+variable); <code>parameter</code> and <code>localparam</code> (and <code>parameter integer</code>).</li>
+<li><strong>Arrays</strong> of <code>reg</code> or <code>integer</code> — memories — with one dimension:
+<code>reg [7:0] mem [0:32767];</code>. Read or write one word at a time,
+<code>mem[address]</code>; an address that is unknown or out of range reads <code>x</code> and
+writes nothing. An array may hold up to 32,768 words, and a chip&#39;s arrays
+up to 65,536 words between them. Only an <code>always @(posedge …)</code> or an
+<code>initial</code> block may write an array (from <code>always @(*)</code> it would be a
+latch), and an array can&#39;t be given a value where it is declared — fill it
+from an <code>initial</code> block. A word starts as <code>x</code>, as in a real simulator.</li>
+<li>Continuous <code>assign</code>.</li>
+<li><code>always @(*)</code> (or a full list of signals, <code>@(a or b)</code>) for combinational
+logic.</li>
+<li><code>always @(posedge CLK)</code>, with <code>negedge</code> as needed, and asynchronous controls
+in the same list: <code>@(posedge CLK or negedge RST_N)</code>, tested in the block&#39;s
+leading <code>if</code>, as a synthesis tool expects.</li>
+<li><code>initial</code> blocks, for a starting value.</li>
+<li><code>begin … end</code>, <code>if</code> / <code>else</code>, and <code>case</code> / <code>casez</code> / <code>casex</code> with <code>default</code>.</li>
+<li><strong>Named blocks</strong> with variables of their own:
+<code>begin : fill integer i; … end</code>. The declarations come first, take no
+initial value, and are seen only inside the block — the watch panel shows
+them as <code>fill.i</code>.</li>
+<li><strong><code>for</code> and <code>repeat</code> loops</strong> whose bounds are constants (see
+<a href="#loops">Loops</a>).</li>
+<li>Blocking <code>=</code> and non-blocking <code>&lt;=</code>, with Verilog&#39;s semantics: a
+non-blocking assignment takes effect after every block triggered by the same
+edge has run.</li>
+<li>Operators: bitwise <code>&amp; | ^ ~ ~^</code>, reduction (<code>&amp;a</code>, <code>|a</code>, <code>^a</code> and their
+negations), logical <code>&amp;&amp; || !</code>, equality <code>== != === !==</code>, comparison
+<code>&lt; &lt;= &gt; &gt;=</code>, shifts <code>&lt;&lt; &gt;&gt; &lt;&lt;&lt; &gt;&gt;&gt;</code>, arithmetic <code>+ - * / % **</code>, the ternary
+<code>?:</code>, concatenation <code>{a, b}</code> and replication <code>{4{a}}</code>, and bit, part and
+indexed part selects (<code>a[3]</code>, <code>a[7:4]</code>, <code>a[i +: 4]</code>, <code>a[i -: 4]</code>).</li>
+<li>Numbers in Verilog&#39;s forms — <code>13</code>, <code>4&#39;b1010</code>, <code>8&#39;hFF</code>, <code>&#39;d9</code> — with <code>x</code>
+and <code>z</code> digits.</li>
+</ul>
+<p>Values are four-state (<code>0</code>, <code>1</code>, <code>x</code>, <code>z</code>) and up to 32 bits wide. A <code>reg</code>
+with no initial value starts as <code>x</code>, as in a real simulator. Signedness is
+Verilog&#39;s: a plain number such as <code>13</code>, an <code>integer</code>, and a parameter given
+one of them are signed, everything else is unsigned, and an expression is
+signed only when every value in it is — so <code>(0 - 1) &lt; 2</code> is true, while
+<code>(count - 1) &lt; 2</code> with an 8-bit <code>count</code> compares unsigned.</p>
+<p><strong>Not supported</strong> — <code>while</code> and <code>forever</code> loops (every evaluation has to
+finish), delays (<code>#</code>; the simulation is zero-delay), functions and tasks,
+system tasks such as <code>$display</code> (the debugger&#39;s watch panel shows every
+value), <code>signed</code> declarations (use <code>integer</code>), arrays of more than one
+dimension or of wires, gate primitives, module instances (use units instead),
+and compiler directives.</p>
+<p><strong>Also refused, because they are mistakes</strong>: assigning an input; driving one
+signal from two places; a <code>reg</code> driven by <code>assign</code> or a <code>wire</code> set in an
+<code>always</code> block; an <code>always @(*)</code> that leaves a signal unset on some path (it
+would be a latch); an event list that misses a signal the block reads; and a
+combinational loop (<code>assign</code> and <code>always @(*)</code> cannot hold state — a clocked
+block can). Undriven outputs and unused registers are warnings rather than
+errors.</p>
+<h3 id="inout-pins">Inout pins</h3>
+<p>An <strong>inout</strong> port is a pin the chip both reads and drives, as a memory&#39;s or a
+processor&#39;s data bus is. Drive it with <code>assign</code>, giving <code>z</code> whenever the chip
+should let go of it; reading it reads the <strong>pin</strong> — whatever the board has
+settled it to, the chip&#39;s own drive included. An inout can&#39;t be set from an
+<code>always</code> block, and, like an output, can&#39;t share a pin with another unit.</p>
+<pre><code class="language-verilog">// Ports: A[14:0], CE_N, OE_N, WE_N in; D[7:0] inout — a 32K × 8 static
+// RAM on the HM62256&#39;s pins. A write takes the byte on the bus as WE_N
+// rises.
+reg [7:0] mem [0:32767];
+
+always @(posedge WE_N)
+  if (!CE_N)
+    mem[A] &lt;= D;
+
+assign D = (!CE_N &amp;&amp; !OE_N &amp;&amp; WE_N) ? mem[A] : 8&#39;bz;
+</code></pre>
+<h3 id="loops">Loops</h3>
+<p>A <code>for</code> or <code>repeat</code> loop is accepted only when Chip Hippo can tell, before
+anything runs, how many times it goes round — so that every evaluation is
+sure to finish:</p>
+<ul>
+<li>A <code>for</code> loop sets <strong>one counter</strong> in its first and last parts —
+<code>for (i = 0; i &lt; 8; i = i + 1)</code> — and its start, condition and step use
+only numbers, parameters and the counter itself. The body may not change
+the counter.</li>
+<li>A <code>repeat (n)</code> count is a constant.</li>
+<li>Declare the counter first: at the top (<code>integer i;</code>) or in a named block.
+Declaring it in the loop header, <code>for (integer i = 0; …)</code>, is
+SystemVerilog, not Verilog. A counter declared at the top may count loops
+in only one <code>always</code> block; give each block a counter of its own.</li>
+<li>In an <code>always @(*)</code> a loop may go round at most 1,024 times in all; in a
+clocked or <code>initial</code> block, 65,536 — enough to clear two of the largest
+arrays. A loop that would never end (a 4-bit counter counting to 16) is
+refused.</li>
+</ul>
+<pre><code class="language-verilog">// Ports: IN[7:0] in; ONES[3:0] out — how many inputs are high.
+always @(*) begin : count
+  integer i;
+  ONES = 0;
+  for (i = 0; i &lt; 8; i = i + 1)
+    ONES = ONES + IN[i];
+end
+</code></pre>
+<p>When the debugger is stopped inside a loop, the counter&#39;s value is in the
+watch panel; a breakpoint in the loop&#39;s body stops once for each time round,
+and one on the <code>for</code> line stops each time the counter is set.</p>
+<h3 id="one-clock-per-module">One clock per module</h3>
+<p>A module has at most <strong>one clock</strong>. Every edge-triggered block uses the same
+clock input, and any other signal in an edge list must be an asynchronous
+control tested first in the block. Logic on a second clock belongs in a
+second chip.</p>
+<h3 id="units">Units</h3>
+<p>A multi-unit package — a quad NAND, a dual flip-flop — is the <strong>same module
+repeated</strong> on separate pins. Write the module once, set <strong>Units</strong>, then give
+each unit its own pins in its column of the Ports table. The pinout prefixes each unit&#39;s pin
+names with its number, as the datasheets do (<code>1A</code>, <code>2A</code>, …). A port can share
+one pin between units — a common clock or enable — in which case that pin
+keeps the bare name. An output or inout can never share a pin.</p>
+<h3 id="examples">Examples</h3>
+<p>Every construct the subset accepts appears in at least one of the snippets
+below, and most show several. Each is a module body as you would type it in
+the designer; its first comment names the ports it expects — add them in the
+package, and the generated header declares them. Every snippet compiles as
+it stands.</p>
+<ul>
+<li><a href="#gates-and-reductions">Gates and reductions</a> — comments, a <code>wire</code>
+declared with its value, <code>assign</code> (several in one statement), bitwise
+<code>~ &amp; | ^ ~^</code>, reduction <code>^a ~^a |a ~|a ~&amp;a</code>, logical <code>! &amp;&amp; ||</code>.</li>
+<li><a href="#comparisons-and-a-multiplexer">Comparisons and a multiplexer</a> —
+<code>&gt; &gt;= == != &lt; &lt;=</code>, the ternary <code>?:</code>, and <code>===</code> (with <code>!==</code>).</li>
+<li><a href="#arithmetic">Arithmetic</a> — <code>+ - * / %</code>, unary minus, and a
+concatenation on the left of <code>assign</code>.</li>
+<li><a href="#shifts-and-selects">Shifts and selects</a> — <code>&lt;&lt; &gt;&gt;</code>, part selects
+<code>D[3:0]</code>, bit selects <code>D[N]</code>, indexed part selects <code>D[N +: 2]</code>,
+concatenation <code>{a, b}</code> and replication <code>{4{a}}</code>.</li>
+<li><a href="#numbers">Numbers</a> — every way of writing a number, <code>x</code>, <code>z</code> and <code>?</code>
+digits, and <code>localparam</code>.</li>
+<li><a href="#a-decoder">A decoder</a> — <code>always @(*)</code>, <code>case</code>, several values on one
+item, and <code>default</code>.</li>
+<li><a href="#a-priority-encoder">A priority encoder</a> — <code>casez</code>, <code>casex</code>, and
+<code>begin … end</code> inside a <code>case</code>.</li>
+<li><a href="#sensitivity-lists">Sensitivity lists</a> — <code>always @(a or b)</code> and
+<code>always @(a, b)</code>.</li>
+<li><a href="#a-counter">A counter</a> — <code>parameter</code>, <code>**</code>, a <code>reg</code> with a starting
+value, <code>always @(posedge … or negedge …)</code> with an asynchronous clear,
+<code>if</code> / <code>else if</code>, and <code>&lt;=</code>.</li>
+<li><a href="#a-shift-register">A shift register</a> — <code>initial</code>, <code>negedge</code>, and the
+difference between <code>&lt;=</code> and <code>=</code>.</li>
+<li><a href="#signed-values">Signed values</a> — <code>integer</code>, <code>parameter integer</code>, a
+signed comparison and <code>&gt;&gt;&gt;</code>.</li>
+<li><a href="#a-rom-and-a-register-file">A ROM and a register file</a> — arrays, filling
+one from <code>initial</code> with a <code>for</code> loop, and a named block with a counter of
+its own.</li>
+<li><a href="#repeating-a-statement">Repeating a statement</a> — <code>repeat</code>.</li>
+<li><a href="#inout-pins">Inout pins</a> and <a href="#loops">Loops</a> above have their own: an
+inout data bus, and a <code>for</code> loop in <code>always @(*)</code>.</li>
+</ul>
+<h4 id="gates-and-reductions">Gates and reductions</h4>
+<p>Bitwise operators work bit by bit, as the gates in a 74LS00 do; reduction
+operators fold a whole vector down to one bit; logical operators read a
+vector as simply true (any bit 1) or false.</p>
+<pre><code class="language-verilog">// Ports: A[3:0], B[3:0] in;
+//        NAND4[3:0], XNOR4[3:0], MIX4[3:0], ODD, EVEN, ANY, NONE, NOTALL,
+//        IDLE, EITHER out.
+
+/* Bitwise operators work bit by bit, as a gate package does: four
+   2-input gates per line here. */
+wire [3:0] both = A &amp; B;         // a wire declared with its value
+assign NAND4 = ~both,            // ~ inverts; one assign can set several
+       XNOR4 = A ~^ B;           // XNOR (^~ is the same operator)
+assign MIX4  = (A | B) ^ 4&#39;b0101;
+
+// Reduction operators fold a whole vector down to one bit.
+assign ODD    = ^A;              // 1 when A has an odd number of 1s
+assign EVEN   = ~^A;
+assign ANY    = |A;
+assign NONE   = ~|A;
+assign NOTALL = ~&amp;A;             // and &amp;A: every bit is 1
+
+// Logical operators read a vector as true (any bit 1) or false.
+assign IDLE   = !A &amp;&amp; !B;
+assign EITHER = A || B;
+</code></pre>
+<h4 id="comparisons-and-a-multiplexer">Comparisons and a multiplexer</h4>
+<p>A comparison answers 1 or 0 — or <code>x</code>, when an <code>x</code> bit leaves it unable to
+tell. The
+ternary picks one of two values, and with an <code>x</code> condition keeps the bits
+both values agree on.</p>
+<pre><code class="language-verilog">// Ports: A[3:0], B[3:0], SEL in; GT, GE, EQ, NE, LT, LE, Y[3:0], SEL_OPEN out.
+
+// A 74LS85-style magnitude comparator…
+assign GT = A &gt; B;
+assign GE = A &gt;= B;
+assign EQ = A == B;
+assign NE = A != B;
+assign LT = A &lt; B;
+assign LE = A &lt;= B;
+
+// …and a 2-to-1 multiplexer: SEL high picks A, low picks B.
+assign Y = SEL ? A : B;
+
+// === and !== compare x and z bits exactly, and never answer x
+// themselves. A CD4000-family chip reads an open input as x, so on one
+// this says whether SEL is connected.
+assign SEL_OPEN = (SEL === 1&#39;bx);
+</code></pre>
+<p>On a 74LS-family chip an open input reads 1 instead, as a TTL input does.</p>
+<h4 id="arithmetic">Arithmetic</h4>
+<p>An expression is worked out as wide as the widest thing in it — the left-hand
+side included — so a sum keeps its carry when there is room for it.</p>
+<pre><code class="language-verilog">// Ports: A[3:0], B[3:0], CIN in;
+//        SUM[3:0], COUT, DIFF[3:0], NEG[3:0], PROD[7:0], QUOT[3:0], REM[3:0] out.
+
+assign {COUT, SUM} = A + B + CIN;  // a concatenation on the left: the sum is
+                                   // worked out 5 bits wide, and its top bit
+                                   // lands in COUT
+assign DIFF = A - B;               // wraps round, as 4-bit hardware does
+assign NEG  = -A;                  // two&#39;s complement (unary + also exists)
+assign PROD = A * B;               // PROD is 8 bits, so nothing is lost
+assign QUOT = A / B;               // dividing by 0 gives x
+assign REM  = A % B;
+</code></pre>
+<h4 id="shifts-and-selects">Shifts and selects</h4>
+<pre><code class="language-verilog">// Ports: D[7:0], N[2:0] in; ROTL[7:0], SWAP[7:0], BIT, PAIR[1:0], FILL[3:0] out.
+
+assign ROTL = (D &lt;&lt; N) | (D &gt;&gt; (8 - N)); // rotate left by N: &lt;&lt; and &gt;&gt;
+                                         // shift 0s in (&lt;&lt;&lt; and &gt;&gt;&gt; are
+                                         // the same on unsigned values)
+assign SWAP = {D[3:0], D[7:4]};          // part selects, joined the other
+                                         // way round by a concatenation
+assign BIT  = D[N];                      // one bit, picked by an input
+assign PAIR = D[N +: 2];                 // two bits from bit N upwards;
+                                         // D[N -: 2] counts down. A bit
+                                         // past the end reads x
+assign FILL = {4{D[0]}};                 // replication: D[0] four times
+</code></pre>
+<h4 id="numbers">Numbers</h4>
+<p>A number may be a plain decimal, or a size, an apostrophe, a base (<code>b</code>, <code>o</code>,
+<code>d</code>, <code>h</code>) and digits. With no size it is 32 bits wide.</p>
+<pre><code class="language-verilog">// Ports: Y[7:0] out.
+localparam TEN    = 10;            // a plain number: 32 bits, signed
+localparam MASK   = 8&#39;b1010_0101;  // 8 bits in binary; _ is only for reading
+localparam LIMIT  = 8&#39;hFF;         // hex — and 8&#39;o377 octal, 8&#39;d255 decimal
+localparam SEVEN  = &#39;d7;           // a base with no size: 32 bits, unsigned
+localparam FLOAT  = 8&#39;bz;          // all z: a leading x or z fills the width
+localparam ENDS   = 4&#39;b1??1;       // ? is z, read as &quot;don&#39;t care&quot; by casez
+localparam HALF_X = 8&#39;hx5;         // an x digit is 4 x bits in hex
+assign Y = MASK &amp; LIMIT;
+</code></pre>
+<h4 id="a-decoder">A decoder</h4>
+<p>An <code>always @(*)</code> block is combinational: it runs whenever anything it reads
+changes, and it must set its outputs on every path through it, or it would
+be a latch. A <code>case</code> with a <code>default</code> covers every path.</p>
+<pre><code class="language-verilog">// Ports: BCD[3:0] in; SEG[6:0] out — segments g…a, 1 = lit, as a
+// common-cathode display wants them.
+always @(*)
+  case (BCD)
+    4&#39;d0: SEG = 7&#39;b011_1111;
+    4&#39;d1: SEG = 7&#39;b000_0110;
+    4&#39;d2: SEG = 7&#39;b101_1011;
+    4&#39;d3: SEG = 7&#39;b100_1111;
+    4&#39;d4: SEG = 7&#39;b110_0110;
+    4&#39;d5: SEG = 7&#39;b110_1101;
+    4&#39;d6: SEG = 7&#39;b111_1101;
+    4&#39;d7: SEG = 7&#39;b000_0111;
+    4&#39;d8: SEG = 7&#39;b111_1111;
+    4&#39;d9: SEG = 7&#39;b110_1111;
+    4&#39;d10, 4&#39;d11, 4&#39;d12, 4&#39;d13, 4&#39;d14, 4&#39;d15:
+      SEG = 7&#39;b000_0000;         // several values, one statement: blank,
+                                 // as a CD4511 blanks them
+    default:
+      SEG = 7&#39;bxxx_xxxx;         // BCD has an x or z bit
+  endcase
+</code></pre>
+<h4 id="a-priority-encoder">A priority encoder</h4>
+<p><code>casez</code> treats a <code>z</code> or <code>?</code> bit, on either side, as matching anything;
+setting <code>VALID</code> before the <code>case</code> gives it a value on every path.</p>
+<pre><code class="language-verilog">// Ports: REQ[7:0] in; CODE[2:0], VALID out — the highest request wins,
+// as on a 74LS148 (here active high).
+always @(*) begin
+  VALID = 1&#39;b1;                  // a value first, so every path sets it
+  casez (REQ)
+    8&#39;b1???_????: CODE = 3&#39;d7;   // casez: a ? (or z) bit matches anything
+    8&#39;b01??_????: CODE = 3&#39;d6;
+    8&#39;b001?_????: CODE = 3&#39;d5;
+    8&#39;b0001_????: CODE = 3&#39;d4;
+    8&#39;b0000_1???: CODE = 3&#39;d3;
+    8&#39;b0000_01??: CODE = 3&#39;d2;
+    8&#39;b0000_001?: CODE = 3&#39;d1;
+    8&#39;b0000_0001: CODE = 3&#39;d0;
+    default: begin
+      CODE  = 3&#39;d0;
+      VALID = 1&#39;b0;              // no request at all
+    end
+  endcase
+end
+</code></pre>
+<p><code>casex</code> does the same for <code>x</code> bits too:</p>
+<pre><code class="language-verilog">// Ports: OP[3:0] in; KIND[1:0] out.
+always @(*)
+  casex (OP)
+    4&#39;b1xxx: KIND = 2&#39;d3;        // casex: x bits match anything too
+    4&#39;b01xx: KIND = 2&#39;d2;
+    default: KIND = 2&#39;d0;
+  endcase
+</code></pre>
+<h4 id="sensitivity-lists">Sensitivity lists</h4>
+<p><code>@(*)</code> is the easy way, but a block may list what it reads instead — and
+must then list all of it.</p>
+<pre><code class="language-verilog">// Ports: A, B, C in; MAJ, ODD out.
+always @(A or B or C)             // a list naming everything the block reads…
+  MAJ = (A &amp; B) | (A &amp; C) | (B &amp; C);
+
+always @(A, B, C)                 // …the same with commas; @(*) or @*
+  ODD = A ^ B ^ C;                // works it out for you
+</code></pre>
+<h4 id="a-counter">A counter</h4>
+<p>A clocked block runs on its clock&#39;s edge. Any other signal in its event list
+is an asynchronous control, and must be tested first, in the block&#39;s leading
+<code>if</code>; a clocked block may leave a <code>reg</code> unset, and it keeps its value.</p>
+<pre><code class="language-verilog">// Ports: CLK, CLR_N, LOAD_N, EN, D[3:0] in; Q[3:0], TC out — a
+// 74LS161-style counter.
+parameter  WIDTH = 4;                  // a named constant…
+localparam TOP   = 2 ** WIDTH - 1;     // …and one worked out from it (15)
+
+reg [WIDTH-1:0] count = 0;             // a reg, with its value at power-up
+
+always @(posedge CLK or negedge CLR_N)
+  if (!CLR_N)                          // the asynchronous clear, tested first
+    count &lt;= 0;
+  else if (!LOAD_N)
+    count &lt;= D;
+  else if (EN)
+    count &lt;= count + 1;
+  // with none of them, count keeps its value — a clocked block may
+
+assign Q  = count;
+assign TC = (count == TOP) &amp;&amp; EN;      // terminal count: about to roll over
+</code></pre>
+<h4 id="a-shift-register">A shift register</h4>
+<pre><code class="language-verilog">// Ports: CLK, D in; Q1, Q2, Q3 out — on each FALLING clock edge every
+// stage takes what the stage before it held before the edge.
+reg s1, s2, s3;
+
+initial begin                     // power-up values, set once before
+  s1 = 1&#39;b0;                      // the circuit runs
+  s2 = 1&#39;b0;
+  s3 = 1&#39;b0;
+end
+
+always @(negedge CLK) begin
+  s1 &lt;= D;                        // &lt;= (non-blocking): all three are read
+  s2 &lt;= s1;                       // first, and written together when the
+  s3 &lt;= s2;                       // block is done
+end
+
+assign Q1 = s1;
+assign Q2 = s2;
+assign Q3 = s3;
+</code></pre>
+<p>Written with <code>=</code> instead — <code>s1 = D; s2 = s1; s3 = s2;</code> — each assignment
+would take effect before the next line read it, and one edge would copy <code>D</code>
+into all three stages.</p>
+<h4 id="signed-values">Signed values</h4>
+<p>An <code>integer</code> is a signed 32-bit variable. An expression is signed only when
+everything in it is signed: <code>temp &lt; FREEZE</code> compares signed numbers, while
+<code>T &lt; FREEZE</code> would compare <code>T</code> with -5 read as an unsigned 32-bit number.</p>
+<pre><code class="language-verilog">// Ports: T[7:0] in; COLD, HOT, HALF[7:0] out — T is a temperature in
+// two&#39;s complement, -128 to 127.
+integer temp;                     // a signed 32-bit variable
+parameter integer FREEZE = -5;    // a signed constant (a plain -5 is too)
+
+always @(*) begin
+  temp = T;                       // T is unsigned: 8&#39;hFB becomes 251, not -5…
+  if (T[7])
+    temp = temp - 256;            // …so a negative reading is made so here
+  COLD = temp &lt; FREEZE;           // both signed: a signed comparison
+  HOT  = temp &gt; 40;
+  HALF = temp &gt;&gt;&gt; 1;              // &gt;&gt;&gt; keeps a signed value&#39;s sign
+end
+</code></pre>
+<h4 id="a-rom-and-a-register-file">A ROM and a register file</h4>
+<p>An array holds words; read or write one at a time. An <code>initial</code> block can
+fill one before the circuit runs — here with a <code>for</code> loop:</p>
+<pre><code class="language-verilog">// Ports: ADDR[3:0] in; DATA[7:0] out — a 16-word ROM of squares.
+reg [7:0] rom [0:15];
+integer i;
+
+initial                           // filled once, before the circuit runs
+  for (i = 0; i &lt; 16; i = i + 1)
+    rom[i] = i * i;
+
+assign DATA = rom[ADDR];          // read a word: any address, any time
+</code></pre>
+<p>A clocked block writes its words, a whole array of them in a loop if it
+likes:</p>
+<pre><code class="language-verilog">// Ports: CLK, CLR, WE, WA[2:0], RA[2:0], D[7:0] in; Q[7:0] out — eight
+// 8-bit registers: write one on a rising edge, read any one at any time.
+reg [7:0] regs [0:7];
+
+always @(posedge CLK)
+  if (CLR) begin : clear          // a named block, with a variable of its own
+    integer r;
+    for (r = 0; r &lt; 8; r = r + 1)
+      regs[r] &lt;= 8&#39;d0;            // an array is written a word at a time
+  end else if (WE)
+    regs[WA] &lt;= D;
+
+assign Q = regs[RA];
+</code></pre>
+<h4 id="repeating-a-statement">Repeating a statement</h4>
+<pre><code class="language-verilog">// Ports: X[3:0] in; X4[15:0] out — X to the fourth power.
+always @(*) begin
+  X4 = X;
+  repeat (2)                      // a fixed number of times
+    X4 = X4 * X4;                 // squared, then squared again
+end
+</code></pre>
+<h2 id="debugging-a-chip-while-it-runs">Debugging a chip while it runs</h2>
+<p>Place the chip, wire it up and press <strong>Run</strong>. The Chip Designer window turns
+into the <strong>debugger</strong> while the circuit runs, and back into the designer when
+you press Stop. (A design can&#39;t be edited while the circuit runs.)</p>
+<h3 id="breakpoints">Breakpoints</h3>
+<p>A custom chip runs like any other until you give it somewhere to stop. Two
+kinds of breakpoint do that:</p>
+<ul>
+<li><strong>A line of code.</strong> Click a line number in the editor&#39;s margin (or press
+<strong>F9</strong> on the line) and the number turns into a solid red circle. When a
+change on a chip&#39;s pins makes its code run that line, the chip stops there,
+before the line executes. Click the circle to take the breakpoint off. A
+breakpoint belongs to the design, so it stops every placed copy of the chip,
+and you can set it before you press Run or while the circuit is running. It
+stays with its line as you edit the code above it.</li>
+<li><strong>Break on Settled</strong> — pause at the moment the board settles after the chip
+has changed, to inspect where everything ended up. Switch it on for one
+placed chip from its right-click menu on the desk, or from the debugger bar.</li>
+</ul>
+<p>A breakpoint on a line that can never stop the chip — a comment, a
+declaration, <code>begin</code> or <code>end</code>, the second line of a statement — is drawn as a
+<strong>hollow</strong> circle and ignored. Click it to take it off. While the package or
+the code has an error, the chip runs no code, so every breakpoint is hollow
+until the error is fixed.</p>
+<p>A chip with a breakpoint it can reach carries a small red badge on the board,
+and a chip paused in its code pulses. When a breakpoint fires the board
+<strong>stalls</strong> — clock edges wait, nothing else moves — and the debugger window
+comes forward with the paused statement highlighted.</p>
+<h3 id="the-debugger-bar">The debugger bar</h3>
+<p>The global Run / Stop / Pause / Step controls are unchanged, and remain the
+only ones that act on the whole simulation. The debugger has its own bar,
+scoped to the chip in view:</p>
+<table>
+<thead>
+<tr>
+<th>Control</th>
+<th>What it does</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Continue</strong></td>
+<td>Run on until the next breakpoint — later in the same block, or on any chip.</td>
+</tr>
+<tr>
+<td><strong>Step</strong></td>
+<td>Execute one statement. Stepping past the end of a chip&#39;s reaction stops at the next statement it runs.</td>
+</tr>
+<tr>
+<td><strong>Step Out</strong></td>
+<td>Finish this chip&#39;s reaction and hand its outputs to the board.</td>
+</tr>
+<tr>
+<td><strong>To Settled</strong></td>
+<td>Run until the board settles, ignoring breakpoints, and stop there.</td>
+</tr>
+<tr>
+<td><strong>Detach</strong></td>
+<td>Stop debugging this chip and let it run — the simulation carries on.</td>
+</tr>
+<tr>
+<td><strong>Break on Settled</strong></td>
+<td>The settled breakpoint, for the chip in view.</td>
+</tr>
+<tr>
+<td><strong>Settled</strong> lamp</td>
+<td>Green when the board has settled: every chip idle, nothing held.</td>
+</tr>
+</tbody></table>
+<p>Detach is not Stop: the chip just ignores its breakpoints for the rest of the
+run. Switch on <strong>Break on Settled</strong>, or set a breakpoint while its tab is
+showing, and it stops again. The next Run debugs it as usual.</p>
+<h3 id="tabs">Tabs</h3>
+<p>Each chip being debugged has its own tab — several chips reacting to the same
+change each get one, so you can step them in any order. Tabs are ordered by
+when their change arrived, alphabetically when changes arrive together.
+Selecting a custom chip on the desk switches the window to its tab, and a new
+tab never takes the focus from the one you are stepping. A tab&#39;s badge says
+what it is doing:</p>
+<table>
+<thead>
+<tr>
+<th>Badge</th>
+<th>Meaning</th>
+</tr>
+</thead>
+<tbody><tr>
+<td><strong>Paused</strong></td>
+<td>Stopped at a breakpoint, waiting for you.</td>
+</tr>
+<tr>
+<td><strong>Paused · N held</strong></td>
+<td>Paused, with N changes from other chips waiting for it.</td>
+</tr>
+<tr>
+<td><strong>Idle</strong></td>
+<td>Its reaction is finished and its outputs are written; it keeps its last values until a new change arrives.</td>
+</tr>
+<tr>
+<td><strong>Settled</strong></td>
+<td>Stopped at the settled breakpoint.</td>
+</tr>
+<tr>
+<td><strong>Detached</strong></td>
+<td>Nothing will stop it (no breakpoint it can reach, and Break on Settled off), or it was detached — it runs normally and never pauses.</td>
+</tr>
+</tbody></table>
+<h3 id="how-changes-are-ordered">How changes are ordered</h3>
+<p>Within one pass, every chip that reacts reads its inputs <strong>as they were when
+the pass began</strong>, and its outputs reach the board when it finishes — the
+same rule as Verilog&#39;s non-blocking assignment. A change that arrives at a
+chip while it is paused mid-reaction is <strong>held</strong>, not dropped and not applied
+halfway through; when the chip finishes, it reacts to the held value only if
+it differs from the one it used. The board is settled only when every tab is
+idle and nothing is held.</p>
+<h3 id="the-watch-panel">The watch panel</h3>
+<p>Under the code, the <strong>Watch</strong> panel lists every pin and every internal <code>wire</code>,
+<code>reg</code> and <code>integer</code> of the chip with its current value — in Verilog&#39;s
+notation, with the decimal beside it when no bit is unknown (an <code>integer</code>&#39;s
+can be negative) — updating as you step. A value a non-blocking assignment is
+about to write is shown after an arrow beside the old one. An inout pin shows
+its level, with what the chip <strong>drives</strong> onto it beside it. An array is one
+row giving its size, with how many of its words are about to be written;
+<strong>Show words</strong> opens its contents below it, in hex, the words about to change
+marked. For a multi-unit chip, pick which unit to watch.</p>
+<h2 id="on-the-desk">On the desk</h2>
+<p><img src="images/custom-chip-desk.png" alt="A custom chip running on a breadboard beside library parts, the logic analyzer watching its pins"></p>
+<p>A placed custom chip is the design you drew. Its <strong>Properties…</strong> card shows
+the design&#39;s <strong>part number</strong> as its <em>Name</em> and the design&#39;s <em>Description</em>.
+Changing either one there changes the design, so the desk, the tray and the
+Chip Designer all show the change, and a change made in the designer shows on
+the card too. The part number follows the same rule in both places. Neither
+can be changed while the circuit runs.</p>
+<p><strong>Pin Assignment</strong> opens the same floating pin-assignments window every chip
+has, drawn from the design&#39;s pins and headed by its part number. It stays up
+to date while you change the design. Where a library chip&#39;s window has its
+datasheet and example-circuit buttons, a custom chip&#39;s has one button, which
+opens the chip in the <strong>Chip Designer</strong>. The right-click menu also has
+<strong>Open in Chip Designer</strong>.</p>
+<h2 id="elsewhere-in-the-app">Elsewhere in the app</h2>
+<p>A custom chip appears as itself in the schematic, the 3D view, the build
+guide and the BOM (by its part number and description), and in a KiCad
+export as a DIP of its size, valued with its part number. The Digital export
+leaves it out, and says so — Digital has no way to run its Verilog. The AI
+circuit builder does not use custom chips.</p>
+
+    </main>
+  </div>
+</body>
+</html>

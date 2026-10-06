@@ -198,6 +198,7 @@ export function tokenize(source) {
           signed: based[2] !== "",
           base: based[3].toLowerCase(),
           digits: based[4],
+          based: true,
         });
         continue;
       }
@@ -216,6 +217,9 @@ export function tokenize(source) {
           signed: false,
           base: "d",
           digits: dec[0],
+          // A plain decimal is a SIGNED integer (IEEE 1364 §3.5.1); a
+          // based one ('d7, 4'd7) is unsigned.
+          based: false,
         });
         continue;
       }

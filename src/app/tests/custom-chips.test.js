@@ -145,3 +145,20 @@ test("the shape is the one project files are held to", () => {
   const [one] = sanitizeCustomChips([chip("custom-0000aaaa", { extra: 1 })]);
   assert.equal("extra" in one, false);
 });
+
+test("a port's direction is input, output or inout — anything else reads as input", () => {
+  const [one] = sanitizeCustomChips([
+    chip("custom-0000bbbb", {
+      ports: [
+        { name: "A", dir: "input", width: 1 },
+        { name: "D", dir: "inout", width: 8 },
+        { name: "Y", dir: "output", width: 1 },
+        { name: "Q", dir: "sideways", width: 1 },
+      ],
+    }),
+  ]);
+  assert.deepEqual(
+    one.ports.map((p) => p.dir),
+    ["input", "inout", "output", "input"],
+  );
+});

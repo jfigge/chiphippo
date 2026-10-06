@@ -218,7 +218,8 @@ the repo, only the cropped PNGs.
     designed chip's shape, pins and problems) + `chip-debug.js` (the debugger's pure
     replay).
   - `scripts/hdl/` — the custom chips' Verilog subset, pure and DOM-free: `lexer.js`,
-    `parser.js`, `analyze.js`, `values.js` (4-state arithmetic), `program.js` (the
+    `parser.js`, `analyze.js`, `values.js` (4-state arithmetic), `memory.js` (an array's
+    persistent copy-on-write contents), `program.js` (the
     interpreter + the debugger's traces), `compile.js`, `header.js`, `highlight.js`.
   - `scripts/sim/` — the DOM-free engine: `union-find.js`, `netlist.js`, `levels.js`,
     `chip-eval.js`, `sequential.js`, `resolve.js`, `engine.js`, `junction.js`,
@@ -1336,17 +1337,53 @@ DOM-free throughout, so `tests/hdl.test.js` exercises it under `node --test`.
   resyncs at the next item keyword so one typo does not hide the rest) → `analyze.js`
   (names, widths, drivers, ordering) → `program.js` (closures over 4-state values) →
   `compile.js` (`compileModule(source, ports, {name})`, LRU-cached by source + ports).
-- **Values are 4-state and unsigned, ≤ 32 bits** (`values.js`: `{w, v, x, z}` masks),
-  sized by Verilog's context-determined rules. A `reg` starts `x` unless an initializer
-  or `initial` block says otherwise.
-- **Accepted**: `wire`/`reg` (constant range, initializer), `parameter`/`localparam`,
-  `assign`, `always @(*)` / `@(a or b)` / `@(a, b)`, `always @(posedge … or negedge …)`,
-  `initial`, `begin…end`, `if`/`else`, `case`/`casez`/`casex` + `default`, `=` and `<=`
-  (non-blocking updates land after every block the edge woke), and the expression
-  language down to concatenation, replication and constant selects.
-- **Refused as unsupported**: loops (every evaluation must terminate — the spec's one
-  hard rule), delays, functions/tasks, system tasks, arrays, `signed`, `**`, `+:`/`-:`,
-  gate primitives, instances, directives, `module`/port declarations in the body.
+- **Values are 4-state, ≤ 32 bits** (`values.js`: `{w, v, x, z}` masks), sized by
+  Verilog's context-determined rules. A `reg` starts `x` unless an initializer or
+  `initial` block says otherwise. **Signedness is IEEE 1364's (§5.5)**: a plain decimal
+  (the lexer's `based: false`), an `integer`, an array of integers and a parameter given
+  a signed value are signed; an expression is signed only when every context-determined
+  operand is (`selfSigned`, propagated down by `build`'s `signed`). It decides `<`/`/`/
+  `%`/`>>>`/`**` and extension, nothing else; no signed leaf is narrower than 32 bits, so
+  extension never actually widens. Round 2 (2026-10-06) found the old analyzer reading
+  `(0 - 1) < 2` as unsigned — false, where Verilog says true.
+- **Accepted**: `wire`/`reg` (constant range, initializer), `integer` (a general signed
+  32-bit variable), `parameter`/`localparam` (+ `parameter integer`), `assign`,
+  `always @(*)` / `@(a or b)` / `@(a, b)`, `always @(posedge … or negedge …)`, `initial`,
+  `begin…end` — a NAMED block may declare its own `reg`/`integer` first (no initialiser;
+  slot named `block.var`, resolved before compiling by `resolveScopes`, which stamps
+  `_sym` on the AST ids) — `if`/`else`, `case`/`casez`/`casex` + `default`, `=` and `<=`,
+  `for`/`repeat` (below), and the expression language incl. `**` (Table 5-6) and indexed
+  part-selects `+:`/`-:` (the AST field is `from`: `start` is the span's offset).
+- **`inout` ports** are two slots behind one name: the PIN's level (an input slot every
+  read sees — so `assign D = oe ? q : 8'bz; assign y = D;` is no false comb loop) and
+  the DRIVEN value (a hidden `drive` slot only `assign` may set — `inoutProcedural`).
+  The package gives their pins role `io` (the CPUs'/RAMs' role, which the engine already
+  reads and drives); an inout never shares a pin across units.
+- **Arrays (memories)**: `reg [w] m [a:b]` (or integer), one dimension, ≤
+  `MAX_MEMORY_DEPTH` 32K words, ≤ `MAX_MEMORY_WORDS` 64K per module, written only from
+  edge and `initial` blocks (`memoryInComb`), `m[i]` only (`wholeArray`). The value is
+  `hdl/memory.js`'s persistent 32-way trie (≤ 3 levels): a write copies one path, an
+  untouched memory stays the SAME object (engine `sameState` stops at `===`), and a
+  TRANSACTION (`newTx`, `ctx.tx`) lets one evaluation write nodes it made in place —
+  never while a trace takes frames. Leaf numbers are compared within the word width (the
+  shared all-x leaf holds 32 bits of x). A frame's `pending` is LAZY (a getter over the
+  NBA queue and its length): a 32K-iteration loop takes a frame per statement.
+- **Loops are proved to finish before anything runs**: a `for` sets ONE counter in its
+  first and last parts (`loopCounterForm`), its start reads only constants and its
+  condition/step only the counter (`loopNotStatic`), the body never sets it
+  (`loopCounterAssigned`); `loopSequence` runs the counter at compile time. In
+  `always @(*)` the loop is UNROLLED (each copy sees the counter as a constant through
+  `loopEnv`, so the latch and per-bit loop checks see constant indices; a copy's index
+  off the end reads x / writes nothing rather than refusing), cap `MAX_UNROLL` 1024; in
+  edge/initial blocks it RUNS (`exec` "for", stopping at the proved count), cap
+  `MAX_LOOP` 65,536 per loop statement, nesting multiplied (`ctx.cost`). The counter is
+  really set at the `for` line, so the watch shows it and that line is a breakpoint. A
+  module-level counter used by two blocks is `loopCounterShared`; `for (integer i…` is
+  SystemVerilog (`loopHeaderDeclaration`).
+- **Refused as unsupported**: `while`/`forever` (every evaluation must terminate — the
+  spec's one hard rule), delays, functions/tasks, system tasks (`$display` included —
+  Jason, 2026-10-06), `signed` declarations, multi-dimensional and wire arrays, gate
+  primitives, instances, directives, `module`/port declarations in the body.
 - **Refused as MISTAKES** (`analyze.js`): assigning an input, a parameter or a reg from
   `assign`; a wire set procedurally; two drivers, checked PER BIT (two assigns to
   different bits of one bus are fine); an `always @(*)` that leaves a signal unset on a
@@ -1358,7 +1395,7 @@ DOM-free throughout, so `tests/hdl.test.js` exercises it under `node --test`.
   synthesis convention) — otherwise `clockAmbiguous` / `multipleClocks`.
 - **The module header is GENERATED** (`header.js` `moduleHeader`), never typed: the user
   edits only the body, so the code's pins cannot drift from the package. An output an
-  `always` block drives is declared `output reg`. The module name is the part number made
+  `always` block drives is declared `output reg`; an inout is always `inout wire`. The module name is the part number made
   an identifier (`moduleName`).
 
 ### The designer window
@@ -1497,7 +1534,12 @@ while the circuit is stopped, the debugger while it runs.**
   what could STOP it (no reachable breakpoint and no Settled, a never-armed chip
   included, or detached this run), not kept as history. An idle tab follows
   the live board (`LIVE_INTERVAL_MS`). The watch panel lists every pin and internal
-  signal (`watchRows`), a pending non-blocking value after an arrow.
+  signal (`watchRows`), a pending non-blocking value after an arrow, an inout's driven
+  value beside its pin level. An ARRAY is one row (its shape, its pending writes); its
+  words NEVER ride the state message — **Show words** opens `hdl-memory-view.js`, a
+  virtualized grid that asks for the rows on screen (`memory-range` window → bridge →
+  `ChipDebugger.memoryRange` → `memoryWords`, answered to the window alone, stale
+  replies dropped by `req`) and asks again on every redraw.
 
 ## Memory chips
 

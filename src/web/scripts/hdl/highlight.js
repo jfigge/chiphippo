@@ -112,7 +112,8 @@ export function runAt(runs, offset) {
 }
 
 /**
- * The names a body DECLARES — its regs, wires and parameters — read straight
+ * The names a body DECLARES — its regs, wires, integers, arrays and
+ * parameters, a named block's own among them — read straight
  * off the tokens, so the editor can colour them even while the code does not
  * compile (when the analyzer has nothing to say).
  * @param {string} source
@@ -124,7 +125,7 @@ export function declaredNames(source) {
   for (let i = 0; i < tokens.length; i++) {
     const t = tokens[i];
     if (t.type !== "keyword") continue;
-    if (!["reg", "wire", "localparam", "parameter"].includes(t.text)) continue;
+    if (!["reg", "wire", "integer", "localparam", "parameter"].includes(t.text)) continue; // prettier-ignore
     let depth = 0;
     let expectName = true;
     for (let j = i + 1; j < tokens.length; j++) {

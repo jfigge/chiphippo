@@ -279,8 +279,23 @@ export class ChipDesignBridge {
       case "unit":
         if (Number.isInteger(msg.unit)) this.#debugger?.setUnit(msg.compId, msg.unit); // prettier-ignore
         return;
+      // The memory view scrolled, or the state it shows moved on: the words
+      // it has on screen, answered to it alone (a memory is never part of
+      // the state message).
+      case "memory-range":
+        this.#memoryRange(msg);
+        return;
       default:
     }
+  }
+
+  #memoryRange(msg) {
+    if (typeof msg.compId !== "string") return;
+    if (![msg.slot, msg.from, msg.count].every(Number.isInteger)) return;
+    const range = this.#debugger?.memoryRange(msg.compId, msg.slot, msg.from, msg.count) ?? null; // prettier-ignore
+    if (!this.#ready) return;
+    const reply = { kind: "memory-range", compId: msg.compId, slot: msg.slot, req: msg.req ?? null, range }; // prettier-ignore
+    Promise.resolve(this.#bridge?.chipDesign?.toWindow?.(reply)).catch(() => {}); // prettier-ignore
   }
 
   /** An edit from the window: the project takes it, or says why not. */

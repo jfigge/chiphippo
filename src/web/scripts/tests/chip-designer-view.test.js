@@ -330,3 +330,69 @@ test("a line number clicked asks for a breakpoint; one is drawn solid or hollow"
   );
   assert.equal(sent.at(-1).line, 2);
 });
+
+test("an array's words open under its row and are asked for, a screenful at a time", () => {
+  const { root, view, sent, a } = mount();
+  const tab = {
+    compId: "c1",
+    ref: a.id,
+    label: "U1",
+    state: "paused",
+    armed: { lines: true, settled: false },
+    pinLevels: [],
+    unit: 0,
+    watch: [
+      { name: "D", kind: "inout", value: "8'b00111110", decimal: 62, pending: null, drives: "8'bzzzzzzzz" }, // prettier-ignore
+      {
+        name: "mem",
+        kind: "memory",
+        value: "[0:255] × 8",
+        decimal: null,
+        pending: null,
+        memory: { slot: 7, lo: 0, hi: 255, w: 8, pendingCount: 1, pendingWords: [[3, "8'b00000001"]] }, // prettier-ignore
+      },
+    ],
+  };
+  const debugState = () => ({
+    kind: "state",
+    mode: "debug",
+    designs: [a],
+    open: [a.id],
+    focus: a.id,
+    uses: {},
+    tokens: {},
+    notice: null,
+    debug: { running: true, tabs: [tab], focus: "c1", settled: false },
+  });
+  view.receive(debugState());
+  const drives = root.querySelector(".cd-watch-row--inout .cd-watch-drives");
+  assert.match(drives.textContent, /8'bzzzzzzzz/);
+  const memRow = root.querySelector(".cd-watch-row--memory");
+  assert.match(memRow.textContent, /\[0:255\] × 8/);
+  assert.equal(root.querySelector(".cd-memory"), null); // shut until asked
+  sent.length = 0;
+  memRow.querySelector(".cd-watch-toggle").click();
+  const ask = sent.find((m) => m.kind === "memory-range");
+  assert.deepEqual(
+    { compId: ask.compId, slot: ask.slot, from: ask.from },
+    { compId: "c1", slot: 7, from: 0 },
+  );
+  assert.ok(ask.count >= 8);
+  view.receive({
+    kind: "memory-range",
+    compId: "c1",
+    slot: 7,
+    req: ask.req,
+    range: { from: 0, words: ["00", "11", "22", "33", "44", "55", "66", "77"], pending: [[3, "01"]] }, // prettier-ignore
+  });
+  const words = [...root.querySelectorAll(".cd-memory-word")].filter((w) => !w.hidden); // prettier-ignore
+  assert.deepEqual(words.slice(0, 8).map((w) => w.textContent), ["00", "11", "22", "33", "44", "55", "66", "77"]); // prettier-ignore
+  assert.ok(words[3].classList.contains("cd-memory-word--pending"));
+  // A stale answer (an older request) is not taken.
+  view.receive({ kind: "memory-range", compId: "c1", slot: 7, req: ask.req - 1, range: { from: 0, words: ["FF"], pending: [] } }); // prettier-ignore
+  assert.equal(root.querySelector(".cd-memory-word").textContent, "00");
+  // The state moving on asks again, from the open view.
+  sent.length = 0;
+  view.receive(debugState());
+  assert.ok(sent.some((m) => m.kind === "memory-range"));
+});

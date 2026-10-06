@@ -28,16 +28,20 @@
 // three tokens later. So the parser recognises the constructs it rejects as
 // carefully as the ones it accepts.
 //
-//   items       reg / wire declarations (an optional [msb:lsb] range and an
-//               initialiser), localparam / parameter, `assign`, `always`,
+//   items       reg / wire / integer declarations (an optional [msb:lsb]
+//               range, an initialiser, and for a reg or integer an array
+//               dimension), localparam / parameter, `assign`, `always`,
 //               `initial`
-//   statements  begin…end (an optional label), if / else, case / casez /
-//               casex with default, blocking `=` and non-blocking `<=`
-//   expressions every Verilog operator but `**`, bit and constant part
-//               selects, concatenation and replication, the ternary
+//   statements  begin…end (a named block may declare its own reg and
+//               integer variables), if / else, case / casez / casex with
+//               default, blocking `=` and non-blocking `<=`, and the two
+//               loops whose bounds can be constants: `for` and `repeat`
+//   expressions every Verilog operator, bit, part and indexed part selects,
+//               an array's word, concatenation and replication, the ternary
 //
-// No loops of any kind (every evaluation must finish), no delays, no event
-// controls inside statements, no functions, tasks or instances.
+// No `while` or `forever` (every evaluation must finish — the analyzer proves
+// a for or repeat does), no delays, no event controls inside statements, no
+// functions, tasks or instances.
 //
 // An error abandons the item it is in (one diagnostic per item — the first is
 // the one worth reading) and parsing resumes at the next item keyword.
@@ -52,6 +56,7 @@ const ITEM_START = new Set([
   "initial",
   "reg",
   "wire",
+  "integer",
   "localparam",
   "parameter",
 ]);
@@ -65,7 +70,6 @@ const ITEM_REFUSED = {
   input: "portInBody",
   output: "portInBody",
   inout: "portInBody",
-  integer: "integerUnsupported",
   real: "realUnsupported",
   realtime: "realUnsupported",
   time: "realUnsupported",
@@ -100,9 +104,7 @@ const GATE_PRIMITIVES = new Set([
 
 /** Statement-position keywords that are Verilog but not this subset. */
 const STATEMENT_REFUSED = {
-  for: "loopUnsupported",
   while: "loopUnsupported",
-  repeat: "loopUnsupported",
   forever: "loopUnsupported",
   wait: "waitUnsupported",
   fork: "unsupportedStatement",
@@ -113,8 +115,8 @@ const STATEMENT_REFUSED = {
   deassign: "proceduralAssign",
 };
 
-/** Binary operators by precedence level, loosest first (IEEE 1364 §5.1.2;
-    `**` is refused before it gets here). */
+/** Binary operators by precedence level, loosest first (IEEE 1364-2005
+    §5.1.2 — every one left-associative, `**` included). */
 const BINARY_LEVELS = [
   ["||"],
   ["&&"],
@@ -126,6 +128,7 @@ const BINARY_LEVELS = [
   ["<<", ">>", "<<<", ">>>"],
   ["+", "-"],
   ["*", "/", "%"],
+  ["**"],
 ];
 
 const UNARY_OPS = new Set(["+", "-", "!", "~", "&", "~&", "|", "~|", "^", "~^", "^~"]); // prettier-ignore
@@ -214,7 +217,6 @@ export function parse(allTokens) {
     let left = binary(level + 1);
     for (;;) {
       const t = peek();
-      if (t?.type === "op" && t.text === "**") fail("powerUnsupported", t);
       if (!t || t.type !== "op" || !BINARY_LEVELS[level].includes(t.text)) {
         return left;
       }
@@ -259,16 +261,24 @@ export function parse(allTokens) {
     return fail("unexpected", t, { found: t.text });
   }
 
-  /** `name[i]` or `name[m:l]` after an identifier (one select only). */
+  /** `name[i]`, `name[m:l]` or `name[b +: w]` / `name[b -: w]` after an
+      identifier (one select only — an array's word is `name[i]` too). */
   function selectAfter(id) {
     if (!is("[")) return id;
     next();
     const first = expression();
-    if (is("+:") || is("-:")) fail("indexedPartSelect", peek());
+    if (is("+:") || is("-:")) {
+      const dir = next().text[0];
+      const width = expression();
+      expect("]");
+      if (is("[")) fail("multiDimensional", peek());
+      return { kind: "ipsel", base: id, from: first, width, dir, ...span(id) }; // prettier-ignore
+    }
     if (is(":")) {
       next();
       const second = expression();
       expect("]");
+      if (is("[")) fail("multiDimensional", peek());
       return { kind: "range", base: id, msb: first, lsb: second, ...span(id) };
     }
     expect("]");
@@ -342,29 +352,83 @@ export function parse(allTokens) {
     if (is("begin")) {
       next();
       let label = null;
+      let labelTok = null;
       if (is(":")) {
         next();
         const name = next();
         if (name.type !== "ident") fail("expectedName", name, { found: name.text }); // prettier-ignore
         label = name.text;
+        labelTok = name;
       }
+      const decls = [];
       const stmts = [];
       while (!is("end")) {
         if (atEnd()) fail("expected", null, { what: "end" });
         const inner = peek();
         if (
           inner.type === "keyword" &&
-          (inner.text === "reg" ||
-            inner.text === "wire" ||
-            inner.text === "integer")
+          (inner.text === "reg" || inner.text === "integer")
         ) {
           // prettier-ignore
-          fail("declarationInBlock", inner, { word: inner.text });
+          // A NAMED block may declare variables of its own, ahead of its
+          // statements (IEEE 1364-2001 §9.8.1); an unnamed one may not.
+          // (The keyword is consumed first, so recovery resumes past it
+          // rather than reading it as a declaration of the module's own.)
+          if (label == null || stmts.length) {
+            next();
+            fail(label == null ? "declarationInBlock" : "declarationAfterStatement", inner, { word: inner.text }); // prettier-ignore
+          }
+          decls.push(declaration(true));
+          continue;
+        }
+        if (
+          inner.type === "keyword" &&
+          ["wire", "localparam", "parameter"].includes(inner.text)
+        ) {
+          // prettier-ignore
+          next();
+          fail("declarationAtTop", inner, { word: inner.text });
         }
         stmts.push(statement());
       }
       next();
-      return { kind: "block", label, stmts, ...span(t) };
+      return { kind: "block", label, labelAt: labelTok ? span(labelTok) : null, decls, stmts, ...span(t) }; // prettier-ignore
+    }
+    if (is("for")) {
+      next();
+      expect("(");
+      // `for (integer i = 0; …)` is SystemVerilog: Verilog declares the
+      // counter beforehand — in the module, or in a named block.
+      const first = peek();
+      if (
+        (first?.type === "keyword" && ["integer", "reg", "genvar"].includes(first.text)) || // prettier-ignore
+        (first?.type === "ident" && peek(1)?.type === "ident")
+      ) {
+        next();
+        fail("loopHeaderDeclaration", first, { word: first.text });
+      }
+      const initLhs = lvalue();
+      expect("=");
+      const initRhs = expression();
+      expect(";");
+      const cond = expression();
+      expect(";");
+      const stepLhs = lvalue();
+      expect("=");
+      const stepRhs = expression();
+      const close = expect(")");
+      const header = span(t, close);
+      const body = statement();
+      return { kind: "for", initLhs, initRhs, cond, stepLhs, stepRhs, body, header, ...span(t) }; // prettier-ignore
+    }
+    if (is("repeat")) {
+      next();
+      expect("(");
+      const count = expression();
+      const close = expect(")");
+      const header = span(t, close);
+      const body = statement();
+      return { kind: "repeat", count, body, header, ...span(t) };
     }
     if (is("if")) {
       next();
@@ -437,6 +501,51 @@ export function parse(allTokens) {
     return { msb, lsb };
   }
 
+  /**
+   * `reg [7:0] a, b = 1;`, `wire w;`, `integer i;`, `reg [7:0] mem [0:255];`
+   * — at the top of the body, or (`inBlock`) at the head of a named block,
+   * where a variable takes no initialiser (IEEE 1364-2001 §9.8.1).
+   */
+  function declaration(inBlock) {
+    const t = next();
+    const net = t.text;
+    if (is("signed")) fail("signedUnsupported", peek());
+    const r = net === "integer" ? null : range();
+    const names = [];
+    do {
+      if (names.length) next(); // the comma
+      const n = peek();
+      if (!n) fail("unexpectedEnd");
+      if (n.type !== "ident") {
+        if (n.type === "keyword") fail("keywordAsName", n, { word: n.text });
+        fail("expectedName", n, { found: n.text });
+      }
+      next();
+      // An array (a memory): one dimension, of reg or integer words.
+      let dims = null;
+      if (is("[")) {
+        if (net === "wire") fail("arrayUnsupported", peek());
+        const open = next();
+        const a = expression();
+        expect(":");
+        const b = expression();
+        expect("]");
+        dims = { a, b, ...span(open) };
+        if (is("[")) fail("multiDimensional", peek());
+      }
+      let init = null;
+      if (is("=")) {
+        if (dims) fail("arrayInitialiser", peek(), { name: n.text });
+        if (inBlock) fail("blockInitialiser", peek(), { name: n.text });
+        next();
+        init = expression();
+      }
+      names.push({ name: n.text, init, dims, ...span(n) });
+    } while (is(","));
+    expect(";");
+    return { kind: "decl", net, range: r, names, ...span(t) };
+  }
+
   function item() {
     const t = peek();
     refuseToken(t);
@@ -450,38 +559,17 @@ export function parse(allTokens) {
     if (t.type === "keyword" && GATE_PRIMITIVES.has(t.text)) {
       fail("gateUnsupported", t, { word: t.text });
     }
-    if (is("reg") || is("wire")) {
-      next();
-      if (is("signed")) fail("signedUnsupported", peek());
-      const r = range();
-      const names = [];
-      do {
-        if (names.length) next(); // the comma
-        const n = peek();
-        if (!n) fail("unexpectedEnd");
-        if (n.type !== "ident") {
-          if (n.type === "keyword") fail("keywordAsName", n, { word: n.text });
-          fail("expectedName", n, { found: n.text });
-        }
-        next();
-        if (is("[")) fail("arrayUnsupported", peek());
-        let init = null;
-        if (is("=")) {
-          next();
-          init = expression();
-        }
-        names.push({ name: n.text, init, ...span(n) });
-      } while (is(","));
-      expect(";");
-      return { kind: "decl", net: t.text, range: r, names, ...span(t) };
-    }
+    if (is("reg") || is("wire") || is("integer")) return declaration(false);
     if (is("localparam") || is("parameter")) {
       next();
       if (is("signed")) fail("signedUnsupported", peek());
-      if (peek()?.type === "keyword" && peek().text === "integer") {
-        fail("integerUnsupported", peek());
+      // `parameter integer N = 4;` — a 32-bit signed parameter.
+      let integer = false;
+      if (is("integer")) {
+        next();
+        integer = true;
       }
-      const r = range();
+      const r = integer ? null : range();
       const assigns = [];
       do {
         if (assigns.length) next();
@@ -493,7 +581,7 @@ export function parse(allTokens) {
         assigns.push({ name: n.text, value: expression(), ...span(n) });
       } while (is(","));
       expect(";");
-      return { kind: "param", range: r, assigns, ...span(t) };
+      return { kind: "param", range: r, integer, assigns, ...span(t) };
     }
     if (is("assign")) {
       next();

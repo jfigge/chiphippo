@@ -39,15 +39,43 @@
 //   · an edge-triggered block is clocked from an INPUT pin, and the module has
 //     ONE clock (asynchronous set/reset beside it allowed, read off the
 //     block's leading if-chain the way synthesis reads it);
-//   · nothing is wider than 32 bits.
+//   · nothing is wider than 32 bits;
+//   · an `inout` pin is driven by `assign` only (its value let go with z),
+//     and reading it reads the PIN — what the board resolved;
+//   · an array (a memory) is written only by clocked and initial blocks — a
+//     memory written from always @(*) would be a latch — and holds at most
+//     MAX_MEMORY_DEPTH words, MAX_MEMORY_WORDS in the whole module;
+//   · a `for` or `repeat` loop's bounds are constants, so the analyzer runs
+//     its counter to the end before anything executes: every evaluation is
+//     proved to finish. In an always @(*) the loop is UNROLLED (each copy
+//     sees its counter as a constant, which is what lets the latch and loop
+//     checks see which bits each copy writes); in a clocked or initial block
+//     it runs as written, at most the number of times it was proved to.
+//
+// SIGNEDNESS is IEEE 1364's (§5.5): a plain decimal, an `integer` and a
+// parameter given a signed value are signed, everything else unsigned, and an
+// expression is signed only when every operand it is made of is. It decides
+// `<`, `/`, `%`, `>>>`, `**` and extension, and nothing else.
 //
 // Pure: no DOM, no time, no I/O. Diagnostics are `{code, args, …span}`
 // records (lexer.js `diag`), worded by the renderer.
 
 import { diag } from "./lexer.js";
 import * as V from "./values.js";
+import { readWord } from "./memory.js";
 
 const { MAX_WIDTH } = V;
+
+/** The most words one array may hold (a 62256's 32K × 8). */
+export const MAX_MEMORY_DEPTH = 32768;
+/** The most words all of a module's arrays may hold together. */
+export const MAX_MEMORY_WORDS = 65536;
+/** The most times an always @(*) may run a loop body — every copy is
+    compiled, since the copies are what the latch and loop checks read. */
+export const MAX_UNROLL = 1024;
+/** The most times a clocked or initial block's loop may run its body (two
+    full passes over the largest memory). */
+export const MAX_LOOP = 65536;
 
 /** Thrown to abandon one construct; carries its diagnostic. */
 class Refusal extends Error {
@@ -144,73 +172,238 @@ export function analyze(ast, ports) {
   };
 
   // ── Symbols ────────────────────────────────────────────────────────────
-  const symbols = new Map(); // name → symbol
+  const symbols = new Map(); // name → symbol (the module's own scope)
+  // The loop counters an unrolled loop has bound to constants right now
+  // (slot → value): inside the copy of a body for one pass, reading the
+  // counter IS reading that number.
+  const loopEnv = new Map();
   const slots = []; // slot → symbol
-  const addSignal = (sym) => {
+  const addSlot = (sym) => {
     sym.slot = slots.length;
     slots.push(sym);
+    return sym;
+  };
+  const addSignal = (sym) => {
+    addSlot(sym);
     symbols.set(sym.name, sym);
     return sym;
   };
   for (const p of ports ?? []) {
     const w = Math.max(1, Math.min(MAX_WIDTH, p.width ?? 1));
-    addSignal({
-      name: p.name,
-      kind: p.dir === "output" ? "output" : "input",
-      w,
-      msb: w - 1,
-      lsb: 0,
-      port: true,
-      decl: null,
-    });
+    const kind = p.dir === "output" ? "output" : p.dir === "inout" ? "inout" : "input"; // prettier-ignore
+    const sym = addSignal({ name: p.name, kind, w, msb: w - 1, lsb: 0, port: true, decl: null }); // prettier-ignore
+    // An inout is two things behind one name: the PIN's level, which every
+    // read sees (whatever the board resolved — this chip's own drive among
+    // it), and the value the chip DRIVES onto it, a net of its own that only
+    // `assign` sets. Keeping them apart is what makes `assign D = oe ? q :
+    // 8'bz; assign y = D;` read the bus rather than loop on itself.
+    if (kind === "inout") {
+      sym.drive = addSlot({ name: p.name, kind: "drive", w, msb: w - 1, lsb: 0, port: false, hidden: true, decl: null, of: sym }); // prettier-ignore
+    }
   }
 
   // Parameters first (in order — each may use the ones before it), then the
-  // nets, so a range may name a parameter wherever it is declared.
+  // nets, so a range may name a parameter wherever it is declared. A
+  // parameter with no range or type takes the type of its value — signed for
+  // a plain number (§12.2); `parameter integer` is 32 signed bits; one with a
+  // range is unsigned.
   for (const it of ast.items) {
     if (it.kind !== "param") continue;
     for (const a of it.assigns) {
       attempt(() => {
         if (symbols.has(a.name)) refuse("redeclared", a, { name: a.name });
         let value = constValue(a.value);
-        if (it.range) {
+        let signed = selfSigned(a.value);
+        if (it.integer) {
+          value = signed ? V.signExtend(value, 32) : V.resize(value, 32);
+          signed = true;
+        } else if (it.range) {
           const { w } = rangeOf(it.range, a);
           value = V.resize(value, w);
+          signed = false;
         }
-        symbols.set(a.name, { name: a.name, kind: "param", value, w: value.w, decl: a }); // prettier-ignore
+        symbols.set(a.name, { name: a.name, kind: "param", value, w: value.w, signed, decl: a }); // prettier-ignore
       });
     }
   }
   const initialisers = []; // {sym, expr, at}
   const netAssigns = []; // `wire w = expr;` → a continuous assign
+  let memoryWords = 0;
+
+  /**
+   * The symbols a declaration makes: `reg`/`wire` with their range, `integer`
+   * as 32 signed bits, and a reg or integer with an array dimension as a
+   * MEMORY of such words. `scope` is the named block it is declared in (null:
+   * the module), whose path prefixes each name — `fill.i`.
+   */
+  function declare(it, scope) {
+    const integer = it.net === "integer";
+    const r = integer
+      ? { w: 32, msb: 31, lsb: 0 }
+      : it.range
+        ? rangeOf(it.range, it)
+        : { w: 1, msb: 0, lsb: 0 };
+    const made = [];
+    for (const n of it.names) {
+      attempt(() => {
+        const into = scope ? scope.names : symbols;
+        const existing = into.get(n.name);
+        if (existing?.port) {
+          refuse({ output: "outputRedeclared", inout: "inoutRedeclared" }[existing.kind] ?? "inputRedeclared", n, { name: n.name }); // prettier-ignore
+        }
+        if (existing) refuse("redeclared", n, { name: n.name });
+        const sym = {
+          name: scope ? `${scope.path}.${n.name}` : n.name,
+          kind: n.dims ? "memory" : integer ? "reg" : it.net,
+          w: r.w,
+          msb: r.msb,
+          lsb: r.lsb,
+          signed: integer,
+          integer,
+          local: Boolean(scope),
+          port: false,
+          decl: n,
+        };
+        if (n.dims) {
+          const a = constInt(n.dims.a);
+          const b = constInt(n.dims.b);
+          sym.lo = Math.min(a, b);
+          sym.hi = Math.max(a, b);
+          sym.depth = sym.hi - sym.lo + 1;
+          if (sym.depth > MAX_MEMORY_DEPTH) {
+            refuse("memoryTooDeep", n.dims, { name: n.name, depth: sym.depth, max: MAX_MEMORY_DEPTH }); // prettier-ignore
+          }
+          if (memoryWords + sym.depth > MAX_MEMORY_WORDS) {
+            refuse("memoryTooLarge", n.dims, { total: memoryWords + sym.depth, max: MAX_MEMORY_WORDS }); // prettier-ignore
+          }
+          memoryWords += sym.depth;
+        }
+        addSlot(sym);
+        into.set(n.name, sym);
+        made.push(sym);
+        if (n.init) {
+          if (it.net === "wire")
+            netAssigns.push({ lhs: { kind: "id", name: n.name, ...spanOf(n) }, rhs: n.init, ...spanOf(n) }); // prettier-ignore
+          else initialisers.push({ sym, expr: n.init, at: n });
+        }
+      });
+    }
+    return made;
+  }
+
   for (const it of ast.items) {
     if (it.kind !== "decl") continue;
-    attempt(() => {
-      const r = it.range ? rangeOf(it.range, it) : { w: 1, msb: 0, lsb: 0 };
-      for (const n of it.names) {
-        attempt(() => {
-          const existing = symbols.get(n.name);
-          if (existing?.port) {
-            refuse(existing.kind === "output" ? "outputRedeclared" : "inputRedeclared", n, { name: n.name }); // prettier-ignore
+    attempt(() => declare(it, null));
+  }
+
+  // Named blocks' own variables, and every name inside a block resolved
+  // against them (innermost first) before anything is compiled: the
+  // statements are compiled more than once (the latch check walks them
+  // again), and an annotated name means the same thing every time.
+  const blockPaths = new Set();
+  for (const it of ast.items) {
+    if (it.kind === "always" || it.kind === "initial") {
+      attempt(() => resolveScopes(it.body, null, []));
+    }
+  }
+
+  function resolveScopes(stmt, path, scopes) {
+    if (!stmt) return;
+    const names = (e) => resolveNames(e, scopes);
+    switch (stmt.kind) {
+      case "block": {
+        let inner = scopes;
+        let innerPath = path;
+        if (stmt.label != null) {
+          innerPath = path ? `${path}.${stmt.label}` : stmt.label;
+          if (blockPaths.has(innerPath)) {
+            refuse("duplicateBlockName", stmt.labelAt ?? stmt, { name: stmt.label }); // prettier-ignore
           }
-          if (existing) refuse("redeclared", n, { name: n.name });
-          const sym = addSignal({
-            name: n.name,
-            kind: it.net,
-            w: r.w,
-            msb: r.msb,
-            lsb: r.lsb,
-            port: false,
-            decl: n,
-          });
-          if (n.init) {
-            if (it.net === "wire")
-              netAssigns.push({ lhs: { kind: "id", name: n.name, ...spanOf(n) }, rhs: n.init, ...spanOf(n) }); // prettier-ignore
-            else initialisers.push({ sym, expr: n.init, at: n });
+          blockPaths.add(innerPath);
+          if (stmt.decls?.length) {
+            const scope = { path: innerPath, names: new Map() };
+            for (const d of stmt.decls) declare(d, scope);
+            inner = [scope, ...scopes];
           }
-        });
+        }
+        for (const x of stmt.stmts) resolveScopes(x, innerPath, inner);
+        return;
       }
-    });
+      case "if":
+        names(stmt.cond);
+        resolveScopes(stmt.then, path, scopes);
+        resolveScopes(stmt.else, path, scopes);
+        return;
+      case "case":
+        names(stmt.subject);
+        for (const item of stmt.items) {
+          item.labels.forEach(names);
+          resolveScopes(item.body, path, scopes);
+        }
+        resolveScopes(stmt.default, path, scopes);
+        return;
+      case "assign":
+        names(stmt.lhs);
+        names(stmt.rhs);
+        return;
+      case "for":
+        [stmt.initLhs, stmt.initRhs, stmt.cond, stmt.stepLhs, stmt.stepRhs].forEach(names); // prettier-ignore
+        resolveScopes(stmt.body, path, scopes);
+        return;
+      case "repeat":
+        names(stmt.count);
+        resolveScopes(stmt.body, path, scopes);
+        return;
+      default:
+    }
+  }
+
+  /** Mark each name in an expression (or target) that a block declares. */
+  function resolveNames(e, scopes) {
+    if (!e || !scopes.length) return;
+    switch (e.kind) {
+      case "id":
+        for (const scope of scopes) {
+          const sym = scope.names.get(e.name);
+          if (sym) {
+            e._sym = sym;
+            return;
+          }
+        }
+        return;
+      case "index":
+        resolveNames(e.base, scopes);
+        resolveNames(e.index, scopes);
+        return;
+      case "range":
+        resolveNames(e.base, scopes);
+        resolveNames(e.msb, scopes);
+        resolveNames(e.lsb, scopes);
+        return;
+      case "ipsel":
+        resolveNames(e.base, scopes);
+        resolveNames(e.from, scopes);
+        resolveNames(e.width, scopes);
+        return;
+      case "concat":
+      case "repl":
+        resolveNames(e.count, scopes);
+        e.parts.forEach((p) => resolveNames(p, scopes));
+        return;
+      case "unary":
+        resolveNames(e.arg, scopes);
+        return;
+      case "binary":
+        resolveNames(e.left, scopes);
+        resolveNames(e.right, scopes);
+        return;
+      case "cond":
+        resolveNames(e.cond, scopes);
+        resolveNames(e.then, scopes);
+        resolveNames(e.else, scopes);
+        return;
+      default:
+    }
   }
 
   /** `[msb:lsb]` → `{w, msb, lsb}` (constant, at most 32 bits wide). */
@@ -227,17 +420,24 @@ export function analyze(ast, ports) {
     const node = compileExpr(expr, null, { constant: true });
     return node.fn([]);
   }
+  /** A constant as a number — a signed one (a plain `-4`) as a negative
+      number, so a range like `[3:-4]` means what it says. */
   function constInt(expr) {
     const v = constValue(expr);
     if (v.x) refuse("unknownConstant", expr);
-    return v.v;
+    return selfSigned(expr) ? V.toSigned(v.v, v.w) : v.v;
   }
 
   // ── Expressions ────────────────────────────────────────────────────────
 
+  /** The symbol a name means where it is: a named block's own first. */
+  function symbolOf(id) {
+    return id._sym ?? symbols.get(id.name);
+  }
+
   /** A name read in an expression. */
   function lookup(id, opts) {
-    const sym = symbols.get(id.name);
+    const sym = symbolOf(id);
     if (!sym) refuse("undeclared", id, { name: id.name });
     if (opts?.constant && sym.kind !== "param") {
       refuse("notConstant", id, { name: id.name });
@@ -247,10 +447,62 @@ export function analyze(ast, ports) {
 
   /** A declared bit index → its position from bit 0, or null when out of
       range. */
-  const bitPosition = (sym, index) => {
-    const pos = sym.msb >= sym.lsb ? index - sym.lsb : sym.lsb - index;
+  function bitPosition(sym, index) {
+    const pos = linearPosition(sym, index);
     return pos >= 0 && pos < sym.w ? pos : null;
-  };
+  }
+  /** The same, unbounded — where a declared index WOULD sit (an indexed
+      part-select may run off either end of its vector). */
+  function linearPosition(sym, index) {
+    return sym.msb >= sym.lsb ? index - sym.lsb : sym.lsb - index;
+  }
+  /** An array index → the word's 0-based address, or -1 when there is none. */
+  function addressOf(sym, index) {
+    return index >= sym.lo && index <= sym.hi ? index - sym.lo : -1;
+  }
+  /** An index VALUE as the number it names (a signed index read as such). */
+  function indexNumber(value, signed) {
+    return signed ? V.toSigned(value.v, value.w) : value.v;
+  }
+
+  /**
+   * An expression's own signedness (§5.5.1), before any context: a plain
+   * decimal, an integer, a parameter given a signed value and an integer
+   * array's word are signed; selects, concatenations, comparisons,
+   * reductions and logical results are not; an operator is signed when all
+   * of its context-determined operands are. Memoised on the node.
+   */
+  function selfSigned(e) {
+    if (e._ss != null) return e._ss;
+    let s = false;
+    switch (e.kind) {
+      case "num":
+        s = !e.token.based;
+        break;
+      case "id":
+        s = symbolOf(e)?.signed === true;
+        break;
+      case "index": {
+        const sym = symbolOf(e.base);
+        s = sym?.kind === "memory" && sym.signed === true;
+        break;
+      }
+      case "unary":
+        s = ["+", "-", "~"].includes(e.op) && selfSigned(e.arg);
+        break;
+      case "binary":
+        if (ARITH_BITWISE.has(e.op))
+          s = selfSigned(e.left) && selfSigned(e.right); // prettier-ignore
+        else if (SHIFT.has(e.op) || e.op === "**") s = selfSigned(e.left);
+        break;
+      case "cond":
+        s = selfSigned(e.then) && selfSigned(e.else);
+        break;
+      default:
+    }
+    e._ss = s;
+    return s;
+  }
 
   /**
    * The self-determined width of an expression (§5.4.1, Table 5-22), and
@@ -265,17 +517,21 @@ export function analyze(ast, ports) {
         break;
       case "id": {
         const sym = lookup(e, opts);
+        if (sym.kind === "memory") refuse("wholeArray", e, { name: e.name });
         w = sym.w;
         break;
       }
-      case "index":
-        lookup(e.base, opts);
+      case "index": {
+        const sym = lookup(e.base, opts);
         selfWidth(e.index, opts);
-        w = 1;
+        // A memory's index picks a WORD; any other a bit.
+        w = sym.kind === "memory" ? sym.w : 1;
         break;
+      }
       case "range": {
         const sym = lookup(e.base, opts);
         if (sym.kind === "param") refuse("selectOfParameter", e);
+        if (sym.kind === "memory") refuse("wholeArray", e, { name: e.base.name }); // prettier-ignore
         const m = constInt(e.msb);
         const l = constInt(e.lsb);
         const pm = bitPosition(sym, m);
@@ -286,6 +542,21 @@ export function analyze(ast, ports) {
         if (pm < pl) refuse("reversedSelect", e, { name: sym.name });
         w = pm - pl + 1;
         e._lo = pl;
+        break;
+      }
+      case "ipsel": {
+        const sym = lookup(e.base, opts);
+        if (sym.kind === "param") refuse("selectOfParameter", e);
+        if (sym.kind === "memory") refuse("wholeArray", e, { name: e.base.name }); // prettier-ignore
+        selfWidth(e.from, opts);
+        const n = constValue(e.width);
+        const width = n.x
+          ? 0
+          : selfSigned(e.width)
+            ? V.toSigned(n.v, n.w)
+            : n.v;
+        if (width < 1 || width > MAX_WIDTH) refuse("badSelectWidth", e.width, { max: MAX_WIDTH }); // prettier-ignore
+        w = width;
         break;
       }
       case "concat": {
@@ -316,7 +587,7 @@ export function analyze(ast, ports) {
         const l = selfWidth(e.left, opts);
         const r = selfWidth(e.right, opts);
         if (ARITH_BITWISE.has(e.op)) w = Math.max(l, r);
-        else if (SHIFT.has(e.op)) w = l;
+        else if (SHIFT.has(e.op) || e.op === "**") w = l;
         else w = 1; // comparisons and logical operators
         break;
       }
@@ -334,52 +605,99 @@ export function analyze(ast, ports) {
 
   /**
    * Compile an expression evaluated at width `ctx` (null: self-determined)
-   * into `{w, fn, reads}` — `fn(vals)` a closure returning a value of width
-   * `w`, `reads` the `{slot, mask}` bits it reads (a variable index reads the
-   * whole vector).
+   * into `{w, fn, reads, loop}` — `fn(vals)` a closure returning a value of
+   * width `w`, `reads` the `{slot, mask}` bits it reads (a variable index
+   * reads the whole vector), `loop` whether an unrolled loop's counter was
+   * read as a constant in it. Its signedness is its own: the left-hand side
+   * of an assignment never changes it (§5.5.1).
    */
   function compileExpr(e, ctx, opts) {
     const sw = selfWidth(e, opts);
     const w = ctx == null ? sw : Math.max(sw, ctx);
     const reads = [];
-    const fn = build(e, w, reads, opts);
-    return { w, fn, reads };
+    const meta = { loop: false };
+    const fn = build(e, w, reads, opts, selfSigned(e), meta);
+    return { w, fn, reads, loop: meta.loop };
   }
 
-  /** The closure for `e` evaluated at width `w` (already ≥ its own). */
-  function build(e, w, reads, opts) {
+  /** A self-determined operand inside `build`: compiled on its own, its
+      reads and loop use joining the enclosing expression's. */
+  function operand(e, reads, opts, meta) {
+    const c = compileExpr(e, null, opts);
+    reads.push(...c.reads);
+    if (c.loop) meta.loop = true;
+    return c;
+  }
+
+  /** Widen a leaf to the expression's width — sign-extending when the
+      EXPRESSION is signed (§5.5.2), zero-extending otherwise. */
+  function widen(v, w, signed) {
+    if (v.w === w) return v;
+    return signed ? V.signExtend(v, w) : V.resize(v, w);
+  }
+
+  /** The closure for `e` evaluated at width `w` (already ≥ its own) as a
+      `signed` or unsigned expression. */
+  function build(e, w, reads, opts, signed, meta) {
     switch (e.kind) {
       case "num": {
-        const value = V.resize(literalValue(e.token), w);
+        const value = widen(literalValue(e.token), w, signed);
         return () => value;
       }
       case "id": {
         const sym = lookup(e, opts);
         if (sym.kind === "param") {
-          const value = V.resize(sym.value, w);
+          const value = widen(sym.value, w, signed);
+          return () => value;
+        }
+        if (!opts?.constant && loopEnv.has(sym.slot)) {
+          meta.loop = true;
+          const value = widen(loopEnv.get(sym.slot), w, signed);
           return () => value;
         }
         reads.push({ slot: sym.slot, mask: V.mask(sym.w) });
         const slot = sym.slot;
-        return sym.w === w ? (vals) => vals[slot] : (vals) => V.resize(vals[slot], w); // prettier-ignore
+        if (sym.w === w) return (vals) => vals[slot];
+        return (vals) => widen(vals[slot], w, signed);
       }
       case "index": {
         const sym = lookup(e.base, opts);
-        const idx = compileExpr(e.index, null, opts);
-        reads.push(...idx.reads);
+        const idx = operand(e.index, reads, opts, meta);
+        const idxSigned = selfSigned(e.index);
+        if (sym.kind === "memory") {
+          // A word of an array: any address may be the one, so the whole
+          // array is read (a memory is never a combinational signal, so
+          // this only ever feeds the sensitivity a block reads).
+          reads.push({ slot: sym.slot, mask: 1 });
+          const slot = sym.slot;
+          return (vals) => {
+            const i = idx.fn(vals);
+            const word = i.x ? V.allX(sym.w) : readWord(vals[slot], addressOf(sym, indexNumber(i, idxSigned))); // prettier-ignore
+            return widen(word, w, signed);
+          };
+        }
         // A constant index is checked here and reads one bit; a variable one
-        // reads the whole vector (any bit of it may be the one).
+        // reads the whole vector (any bit of it may be the one). A loop
+        // counter's copy is constant too, but out of range it reads x, as the
+        // loop would have read it running.
         if (!idx.reads.length) {
           const index = idx.fn([]);
-          if (index.x) refuse("unknownConstant", e.index);
+          if (index.x) {
+            if (!idx.loop) refuse("unknownConstant", e.index);
+            const value = V.resize(V.allX(1), w);
+            return () => value;
+          }
+          const n = indexNumber(index, idxSigned);
           if (sym.kind === "param") {
-            const pos = index.v < sym.w ? index.v : null;
+            const pos = n >= 0 && n < sym.w ? n : null;
             const value = V.resize(pos == null ? V.allX(1) : V.bit(sym.value, pos), w); // prettier-ignore
             return () => value;
           }
-          const pos = bitPosition(sym, index.v);
+          const pos = bitPosition(sym, n);
           if (pos == null) {
-            refuse("selectOutOfRange", e, { name: sym.name, msb: sym.msb, lsb: sym.lsb }); // prettier-ignore
+            if (!idx.loop) refuse("selectOutOfRange", e, { name: sym.name, msb: sym.msb, lsb: sym.lsb }); // prettier-ignore
+            const value = V.resize(V.allX(1), w);
+            return () => value;
           }
           reads.push({ slot: sym.slot, mask: 2 ** pos });
           const slot = sym.slot;
@@ -389,14 +707,15 @@ export function analyze(ast, ports) {
           const value = sym.value;
           return (vals) => {
             const i = idx.fn(vals);
-            return V.resize(i.x || i.v >= value.w ? V.allX(1) : V.bit(value, i.v), w); // prettier-ignore
+            const n = i.x ? -1 : indexNumber(i, idxSigned);
+            return V.resize(n < 0 || n >= value.w ? V.allX(1) : V.bit(value, n), w); // prettier-ignore
           };
         }
         reads.push({ slot: sym.slot, mask: V.mask(sym.w) });
         const slot = sym.slot;
         return (vals) => {
           const i = idx.fn(vals);
-          const pos = i.x ? null : bitPosition(sym, i.v);
+          const pos = i.x ? null : bitPosition(sym, indexNumber(i, idxSigned));
           return V.resize(pos == null ? V.allX(1) : V.bit(vals[slot], pos), w);
         };
       }
@@ -411,10 +730,44 @@ export function analyze(ast, ports) {
         const slot = sym.slot;
         return (vals) => V.resize(V.slice(vals[slot], lo, width), w);
       }
+      case "ipsel": {
+        // `v[b +: n]` is bits b … b+n-1 of v by its declared numbering, and
+        // `v[b -: n]` bits b-n+1 … b — whichever way v is declared. Bits off
+        // either end read x (§5.2.1).
+        const sym = lookup(e.base, opts);
+        const width = e._sw;
+        const start = operand(e.from, reads, opts, meta);
+        const startSigned = selfSigned(e.from);
+        const loOf = (b) => {
+          const first = e.dir === "+" ? b : b - width + 1;
+          return Math.min(linearPosition(sym, first), linearPosition(sym, first + width - 1)); // prettier-ignore
+        };
+        const slot = sym.slot;
+        if (!start.reads.length) {
+          const b = start.fn([]);
+          if (b.x) {
+            if (!start.loop) refuse("unknownConstant", e.from);
+            const value = V.resize(V.allX(width), w);
+            return () => value;
+          }
+          const lo = loOf(indexNumber(b, startSigned));
+          if (!start.loop && (lo < 0 || lo + width > sym.w)) {
+            refuse("selectOutOfRange", e, { name: sym.name, msb: sym.msb, lsb: sym.lsb }); // prettier-ignore
+          }
+          const m = bitsMask(lo, width, sym.w);
+          if (m) reads.push({ slot, mask: m });
+          return (vals) => V.resize(V.slice(vals[slot], lo, width), w);
+        }
+        reads.push({ slot, mask: V.mask(sym.w) });
+        return (vals) => {
+          const b = start.fn(vals);
+          if (b.x) return V.resize(V.allX(width), w);
+          return V.resize(V.slice(vals[slot], loOf(indexNumber(b, startSigned)), width), w); // prettier-ignore
+        };
+      }
       case "concat":
       case "repl": {
-        const parts = e.parts.map((p) => compileExpr(p, null, opts));
-        for (const p of parts) reads.push(...p.reads);
+        const parts = e.parts.map((p) => operand(p, reads, opts, meta));
         const count = e.kind === "repl" ? e._count : 1;
         return (vals) => {
           const values = parts.map((p) => p.fn(vals));
@@ -425,14 +778,13 @@ export function analyze(ast, ports) {
       }
       case "unary": {
         if (["+", "-", "~"].includes(e.op)) {
-          const arg = build(e.arg, w, reads, opts);
+          const arg = build(e.arg, w, reads, opts, signed, meta);
           if (e.op === "+") return arg;
           if (e.op === "-") return (vals) => V.negate(arg(vals));
           return (vals) => V.not(arg(vals));
         }
         // Reductions and `!`: a self-determined operand, a 1-bit result.
-        const arg = compileExpr(e.arg, null, opts);
-        reads.push(...arg.reads);
+        const arg = operand(e.arg, reads, opts, meta);
         const op = {
           "!": V.logicalNot,
           "&": V.reduceAnd,
@@ -448,14 +800,14 @@ export function analyze(ast, ports) {
       }
       case "binary": {
         if (ARITH_BITWISE.has(e.op)) {
-          const l = build(e.left, w, reads, opts);
-          const r = build(e.right, w, reads, opts);
+          const l = build(e.left, w, reads, opts, signed, meta);
+          const r = build(e.right, w, reads, opts, signed, meta);
           const op = {
             "+": V.add,
             "-": V.sub,
             "*": V.mul,
-            "/": V.div,
-            "%": V.mod,
+            "/": signed ? V.sdiv : V.div,
+            "%": signed ? V.smod : V.mod,
             "&": V.and,
             "|": V.or,
             "^": V.xor,
@@ -465,42 +817,55 @@ export function analyze(ast, ports) {
           return (vals) => op(l(vals), r(vals));
         }
         if (COMPARISON.has(e.op)) {
+          // The operands size and sign each other, not the result (§5.5.1):
+          // a signed comparison only when both sides are signed.
           const inner = Math.max(e.left._sw, e.right._sw);
-          const l = build(e.left, inner, reads, opts);
-          const r = build(e.right, inner, reads, opts);
+          const both = selfSigned(e.left) && selfSigned(e.right);
+          const l = build(e.left, inner, reads, opts, both, meta);
+          const r = build(e.right, inner, reads, opts, both, meta);
           const op = {
             "==": V.eq,
             "!=": V.ne,
             "===": V.caseEq,
             "!==": V.caseNe,
-            "<": V.lt,
-            "<=": V.le,
-            ">": V.gt,
-            ">=": V.ge,
+            "<": both ? V.slt : V.lt,
+            "<=": both ? V.sle : V.le,
+            ">": both ? V.sgt : V.gt,
+            ">=": both ? V.sge : V.ge,
           }[e.op];
           return (vals) => V.resize(op(l(vals), r(vals)), w);
         }
         if (LOGICAL.has(e.op)) {
-          const l = compileExpr(e.left, null, opts);
-          const r = compileExpr(e.right, null, opts);
-          reads.push(...l.reads, ...r.reads);
+          const l = operand(e.left, reads, opts, meta);
+          const r = operand(e.right, reads, opts, meta);
           const op = e.op === "&&" ? V.logicalAnd : V.logicalOr;
           return (vals) => V.resize(op(l.fn(vals), r.fn(vals)), w);
         }
         if (SHIFT.has(e.op)) {
-          const l = build(e.left, w, reads, opts);
-          const r = compileExpr(e.right, null, opts);
-          reads.push(...r.reads);
-          const op = e.op === "<<" || e.op === "<<<" ? V.shl : V.shr;
+          const l = build(e.left, w, reads, opts, signed, meta);
+          const r = operand(e.right, reads, opts, meta);
+          const op =
+            e.op === "<<" || e.op === "<<<"
+              ? V.shl
+              : e.op === ">>>" && signed
+                ? V.ashr
+                : V.shr;
           return (vals) => op(l(vals), r.fn(vals));
+        }
+        if (e.op === "**") {
+          // The exponent is self-determined: its own signedness says whether
+          // it can be negative (Table 5-6).
+          const l = build(e.left, w, reads, opts, signed, meta);
+          const r = operand(e.right, reads, opts, meta);
+          const rSigned = selfSigned(e.right);
+          return (vals) => V.pow(l(vals), r.fn(vals), signed, rSigned);
         }
         return refuse("unexpected", e, { found: e.op });
       }
       case "cond": {
-        const c = compileExpr(e.cond, null, opts);
-        reads.push(...c.reads);
-        const a = build(e.then, w, reads, opts);
-        const b = build(e.else, w, reads, opts);
+        const c = operand(e.cond, reads, opts, meta);
+        const a = build(e.then, w, reads, opts, signed, meta);
+        const b = build(e.else, w, reads, opts, signed, meta);
         return (vals) => {
           const t = V.truthOf(c.fn(vals));
           if (t === "1") return a(vals);
@@ -513,14 +878,22 @@ export function analyze(ast, ports) {
     }
   }
 
+  /** The bits [lo, lo + width) that exist in a `w`-bit vector, as a mask. */
+  function bitsMask(lo, width, w) {
+    let m = 0;
+    for (let b = Math.max(0, lo); b < Math.min(w, lo + width); b++) m += 2 ** b;
+    return m;
+  }
+
   // ── Assignment targets ─────────────────────────────────────────────────
 
   /**
    * Compile an lvalue: `{w, segments(vals), parts}` — `segments` the
    * `{slot, lo, w}` runs it writes this time, most significant first (a
    * variable index with an unknown or out-of-range value writes nothing, as
-   * Verilog's does); `parts` the static `{sym, mask}` view the driver checks
-   * use (a variable index claims the whole vector).
+   * Verilog's does; an array word is `{slot, mem: true, addr, w}`); `parts`
+   * the static `{sym, mask}` view the driver checks use (a variable index
+   * claims the whole vector, an array word the whole array).
    */
   function compileTarget(lv) {
     if (lv.kind === "concat") {
@@ -537,12 +910,29 @@ export function analyze(ast, ports) {
       };
     }
     const id = lv.kind === "id" ? lv : lv.base;
-    const sym = symbols.get(id.name);
-    if (!sym) refuse("undeclared", id, { name: id.name });
-    if (sym.kind === "param")
+    const named = symbolOf(id);
+    if (!named) refuse("undeclared", id, { name: id.name });
+    if (named.kind === "param")
       refuse("assignToParameter", id, { name: id.name });
-    if (sym.kind === "input") refuse("assignToInput", id, { name: id.name });
+    if (named.kind === "input") refuse("assignToInput", id, { name: id.name });
+    // An inout is assigned through the value it DRIVES.
+    const sym = named.kind === "inout" ? named.drive : named;
     const slot = sym.slot;
+    if (sym.kind === "memory") {
+      if (lv.kind !== "index") refuse("wholeArray", lv, { name: id.name });
+      const idx = compileExpr(lv.index, null);
+      const idxSigned = selfSigned(lv.index);
+      return {
+        w: sym.w,
+        parts: [{ sym, mask: 1, at: lv, variable: true }],
+        indexReads: idx.reads,
+        resolve: (vals) => {
+          const i = idx.fn(vals);
+          const addr = i.x ? -1 : addressOf(sym, indexNumber(i, idxSigned));
+          return [addr < 0 ? { slot: -1, lo: 0, w: sym.w } : { slot, mem: true, addr, w: sym.w }]; // prettier-ignore
+        },
+      };
+    }
     if (lv.kind === "id") {
       const seg = { slot, lo: 0, w: sym.w };
       return {
@@ -562,14 +952,66 @@ export function analyze(ast, ports) {
         resolve: () => [seg],
       };
     }
+    if (lv.kind === "ipsel") {
+      const width = selfWidth(lv);
+      const start = compileExpr(lv.from, null);
+      const startSigned = selfSigned(lv.from);
+      const loOf = (b) => {
+        const first = lv.dir === "+" ? b : b - width + 1;
+        return Math.min(linearPosition(sym, first), linearPosition(sym, first + width - 1)); // prettier-ignore
+      };
+      // Bits off either end are written nowhere: the value's bits for them
+      // go to `slot: -1` segments, most significant first.
+      const segmentsAt = (lo) => {
+        const segs = [];
+        const top = lo + width;
+        if (top > sym.w) segs.push({ slot: -1, lo: 0, w: Math.min(width, top - Math.max(lo, sym.w)) }); // prettier-ignore
+        const from = Math.max(lo, 0);
+        const to = Math.min(top, sym.w);
+        if (to > from) segs.push({ slot, lo: from, w: to - from });
+        if (lo < 0) segs.push({ slot: -1, lo: 0, w: Math.min(width, -lo) });
+        return segs;
+      };
+      if (!start.reads.length) {
+        const b = start.fn([]);
+        if (b.x && !start.loop) refuse("unknownConstant", lv.from);
+        const lo = b.x ? null : loOf(indexNumber(b, startSigned));
+        if (lo != null && !start.loop && (lo < 0 || lo + width > sym.w)) {
+          refuse("selectOutOfRange", lv, { name: sym.name, msb: sym.msb, lsb: sym.lsb }); // prettier-ignore
+        }
+        const segs = lo == null ? [{ slot: -1, lo: 0, w: width }] : segmentsAt(lo); // prettier-ignore
+        const mask = lo == null ? 0 : bitsMask(lo, width, sym.w);
+        return {
+          w: width,
+          parts: mask ? [{ sym, mask, at: lv }] : [],
+          resolve: () => segs,
+        };
+      }
+      return {
+        w: width,
+        parts: [{ sym, mask: V.mask(sym.w), at: lv, variable: true }],
+        indexReads: start.reads,
+        resolve: (vals) => {
+          const b = start.fn(vals);
+          if (b.x) return [{ slot: -1, lo: 0, w: width }];
+          return segmentsAt(loOf(indexNumber(b, startSigned)));
+        },
+      };
+    }
     // A bit select, constant or variable.
     const idx = compileExpr(lv.index, null);
+    const idxSigned = selfSigned(lv.index);
     if (!idx.reads.length) {
       const index = idx.fn([]);
-      if (index.x) refuse("unknownConstant", lv.index);
-      const pos = bitPosition(sym, index.v);
+      if (index.x && !idx.loop) refuse("unknownConstant", lv.index);
+      const pos = index.x ? null : bitPosition(sym, indexNumber(index, idxSigned)); // prettier-ignore
       if (pos == null) {
-        refuse("selectOutOfRange", lv, { name: sym.name, msb: sym.msb, lsb: sym.lsb }); // prettier-ignore
+        if (!idx.loop) {
+          refuse("selectOutOfRange", lv, { name: sym.name, msb: sym.msb, lsb: sym.lsb }); // prettier-ignore
+        }
+        // A loop counter's copy off the end of the vector: as the loop
+        // running would, it writes nothing.
+        return { w: 1, parts: [], resolve: () => [{ slot: -1, lo: 0, w: 1 }] };
       }
       const seg = { slot, lo: pos, w: 1 };
       return {
@@ -584,7 +1026,7 @@ export function analyze(ast, ports) {
       indexReads: idx.reads,
       resolve: (vals) => {
         const i = idx.fn(vals);
-        const pos = i.x ? null : bitPosition(sym, i.v);
+        const pos = i.x ? null : bitPosition(sym, indexNumber(i, idxSigned));
         return [
           pos == null ? { slot: -1, lo: 0, w: 1 } : { slot, lo: pos, w: 1 },
         ];
@@ -669,9 +1111,191 @@ export function analyze(ast, ports) {
           loc: locOf(s),
         };
       }
+      case "for":
+        return compileFor(s, ctx);
+      case "repeat":
+        return compileRepeat(s, ctx);
       default:
         return refuse("unexpected", s, { found: s.kind });
     }
+  }
+
+  // ── Loops ──────────────────────────────────────────────────────────────
+  // A loop is accepted only when the analyzer can run it to its end before
+  // anything executes: its counter's sequence (a `for`) or its count (a
+  // `repeat`) follows from constants alone, and nothing in the body moves
+  // it. `ctx.cost` counts every body execution, nested loops included, so a
+  // nest of loops is held to the block's one limit (`ctx.cap`).
+
+  /** A `for`'s counter: ONE plain variable, set by both the first and the
+      last part, that the body never sets. */
+  function loopCounter(s) {
+    if (s.initLhs.kind !== "id" || s.stepLhs.kind !== "id") {
+      refuse("loopCounterForm", s.header);
+    }
+    const sym = symbolOf(s.initLhs);
+    if (!sym) refuse("undeclared", s.initLhs, { name: s.initLhs.name });
+    if (symbolOf(s.stepLhs) !== sym) refuse("loopCounterForm", s.header);
+    const moved = assignmentTo(s.body, sym);
+    if (moved) refuse("loopCounterAssigned", moved, { name: s.initLhs.name });
+    return sym;
+  }
+
+  /** The first assignment in `stmt` that sets any bit of `sym`, or null. */
+  function assignmentTo(stmt, sym) {
+    if (!stmt) return null;
+    const hits = (lv) =>
+      lv.kind === "concat"
+        ? lv.parts.some(hits)
+        : symbolOf(lv.kind === "id" ? lv : lv.base) === sym;
+    switch (stmt.kind) {
+      case "assign":
+        return hits(stmt.lhs) ? stmt : null;
+      case "block":
+        for (const x of stmt.stmts) {
+          const found = assignmentTo(x, sym);
+          if (found) return found;
+        }
+        return null;
+      case "if":
+        return assignmentTo(stmt.then, sym) ?? assignmentTo(stmt.else, sym);
+      case "case":
+        for (const item of stmt.items) {
+          const found = assignmentTo(item.body, sym);
+          if (found) return found;
+        }
+        return assignmentTo(stmt.default, sym);
+      case "for":
+        if (hits(stmt.initLhs)) return stmt;
+        return assignmentTo(stmt.body, sym);
+      case "repeat":
+        return assignmentTo(stmt.body, sym);
+      default:
+        return null;
+    }
+  }
+
+  /**
+   * Run a `for`'s counter to the end: `{values, exit}` — the value it holds
+   * for each pass through the body, and the one it is left with. Its first
+   * part may read only constants, its condition and last part only the
+   * counter itself. Memoised on the node (the latch check walks it again).
+   */
+  function loopSequence(s, sym, cap) {
+    if (s._seq) return s._seq;
+    const init = compileExpr(s.initRhs, sym.w);
+    if (init.loop || init.reads.length) refuse("loopNotStatic", s.initRhs);
+    const onlyCounter = (c, at) => {
+      if (c.loop || c.reads.some((r) => r.slot !== sym.slot)) {
+        refuse("loopNotStatic", at);
+      }
+    };
+    const cond = compileExpr(s.cond, null);
+    onlyCounter(cond, s.cond);
+    const step = compileExpr(s.stepRhs, sym.w);
+    onlyCounter(step, s.stepRhs);
+    const scratch = [];
+    let value = V.resize(init.fn(scratch), sym.w);
+    const values = [];
+    for (;;) {
+      scratch[sym.slot] = value;
+      // An unknown condition ends a loop, as a false one does (§9.6).
+      if (V.truthOf(cond.fn(scratch)) !== "1") break;
+      values.push(value);
+      if (values.length > cap) refuse("loopTooLong", s.header, { max: cap });
+      value = V.resize(step.fn(scratch), sym.w);
+    }
+    s._seq = { values, exit: value, init, cond, step };
+    return s._seq;
+  }
+
+  function compileFor(s, ctx) {
+    const header = locOf(s.header);
+    const counter = loopCounter(s);
+    const target = compileTarget(s.initLhs);
+    for (const p of target.parts) {
+      p.counter = true;
+      ctx.writeTarget(p, s.initLhs);
+    }
+    const seq = loopSequence(s, counter, ctx.cap);
+    const n = seq.values.length;
+    const saved = ctx.cost;
+    ctx.cost = 0;
+    let node;
+    let total;
+    if (ctx.unroll) {
+      // One copy of the body per pass, the counter a constant in each — with
+      // the counter really SET before each copy and after the last, at the
+      // loop's own line, as a loop running sets it (the watch panel shows
+      // it; a breakpoint on the `for` line stops there).
+      const set = (value) => ({
+        kind: "assign",
+        blocking: true,
+        target,
+        value: () => value,
+        valueReads: [],
+        w: counter.w,
+        loc: header,
+      });
+      const stmts = [set(seq.values[0] ?? seq.exit)];
+      seq.values.forEach((value, k) => {
+        loopEnv.set(counter.slot, value);
+        try {
+          stmts.push(compileStmt(s.body, ctx));
+        } finally {
+          loopEnv.delete(counter.slot);
+        }
+        stmts.push(set(seq.values[k + 1] ?? seq.exit));
+      });
+      node = { kind: "block", stmts, loc: header };
+      total = n + ctx.cost;
+    } else {
+      node = {
+        kind: "for",
+        target,
+        init: seq.init.fn,
+        cond: seq.cond.fn,
+        step: seq.step.fn,
+        w: counter.w,
+        max: n,
+        body: compileStmt(s.body, ctx),
+        loc: header,
+      };
+      total = n * (1 + ctx.cost);
+    }
+    if (total > ctx.cap) refuse("loopTooLong", s.header, { max: ctx.cap });
+    ctx.cost = saved + total;
+    return node;
+  }
+
+  function compileRepeat(s, ctx) {
+    const header = locOf(s.header);
+    const count = compileExpr(s.count, null);
+    if (count.loop || count.reads.length) refuse("loopNotStatic", s.count);
+    const v = count.fn([]);
+    // An unknown count runs nothing (§9.6), and so does a negative one.
+    const n = v.x ? 0 : Math.max(0, selfSigned(s.count) ? V.toSigned(v.v, v.w) : v.v); // prettier-ignore
+    if (n > ctx.cap) refuse("loopTooLong", s.header, { max: ctx.cap });
+    s._times = n;
+    const saved = ctx.cost;
+    ctx.cost = 0;
+    let node;
+    let total;
+    if (ctx.unroll) {
+      const stmts = [{ kind: "mark", loc: header }];
+      for (let k = 0; k < n; k++) {
+        if (k) stmts.push({ kind: "mark", loc: header });
+        stmts.push(compileStmt(s.body, ctx));
+      }
+      node = { kind: "block", stmts, loc: header };
+      total = n + ctx.cost;
+    } else {
+      node = { kind: "repeat", times: n, body: compileStmt(s.body, ctx), loc: header }; // prettier-ignore
+      total = n * (1 + ctx.cost);
+    }
+    if (total > ctx.cap) refuse("loopTooLong", s.header, { max: ctx.cap });
+    ctx.cost = saved + total;
+    return node;
   }
 
   // ── Drivers ────────────────────────────────────────────────────────────
@@ -681,24 +1305,38 @@ export function analyze(ast, ports) {
   const blockOf = new Map(); // slot → index of the one always block driving it
   const initialOnly = new Set(); // slots written by initial blocks/initialisers
 
+  const counterSlots = new Set(); // slots some `for` uses as its counter
+
   function claimAssign(part, at) {
     const { sym, mask } = part;
-    if (sym.kind === "reg") refuse("assignToReg", part.at ?? at, { name: sym.name }); // prettier-ignore
+    if (sym.kind === "reg" || sym.kind === "memory") refuse("assignToReg", part.at ?? at, { name: sym.name }); // prettier-ignore
     if (blockOf.has(sym.slot)) refuse("mixedDrivers", part.at ?? at, { name: sym.name }); // prettier-ignore
     const had = assignBits.get(sym.slot) ?? 0;
     if ((had & mask) >>> 0) refuse("multipleDrivers", part.at ?? at, { name: sym.name }); // prettier-ignore
     assignBits.set(sym.slot, (had | mask) >>> 0);
   }
 
-  function claimProcedural(part, at, blockIndex) {
+  /** Who may set a signal from a procedural block — the checks an always
+      block and an initial block share. */
+  function claimVariable(part, at) {
     const { sym } = part;
     if (sym.kind === "wire") refuse("proceduralToWire", part.at ?? at, { name: sym.name }); // prettier-ignore
+    if (sym.kind === "drive") refuse("inoutProcedural", part.at ?? at, { name: sym.name }); // prettier-ignore
     if (assignBits.has(sym.slot)) refuse("mixedDrivers", part.at ?? at, { name: sym.name }); // prettier-ignore
+  }
+
+  function claimProcedural(part, at, blockIndex) {
+    const { sym } = part;
+    claimVariable(part, at);
     const owner = blockOf.get(sym.slot);
     if (owner != null && owner !== blockIndex) {
-      refuse("multipleAlwaysDrivers", part.at ?? at, { name: sym.name });
+      // A counter shared between blocks gets its own sentence: the fix is a
+      // counter declared inside each block.
+      const code = part.counter || counterSlots.has(sym.slot) ? "loopCounterShared" : "multipleAlwaysDrivers"; // prettier-ignore
+      refuse(code, part.at ?? at, { name: sym.name });
     }
     blockOf.set(sym.slot, blockIndex);
+    if (part.counter) counterSlots.add(sym.slot);
   }
 
   // ── Items ──────────────────────────────────────────────────────────────
@@ -747,8 +1385,7 @@ export function analyze(ast, ports) {
     } else if (it.kind === "initial") {
       attempt(() => {
         const ctx = procedural((part, at) => {
-          if (part.sym.kind === "wire") refuse("proceduralToWire", part.at ?? at, { name: part.sym.name }); // prettier-ignore
-          if (assignBits.has(part.sym.slot)) refuse("mixedDrivers", part.at ?? at, { name: part.sym.name }); // prettier-ignore
+          claimVariable(part, at);
           initialOnly.add(part.sym.slot);
         });
         const body = compileStmt(it.body, ctx);
@@ -784,9 +1421,14 @@ export function analyze(ast, ports) {
   }
   initial.unshift(...inits);
 
+  /** A procedural block's compile context. A loop in it runs as written,
+      at most MAX_LOOP times (an always @(*) unrolls it — compileAlways). */
   function procedural(onWrite) {
     return {
       procedural: true,
+      unroll: false,
+      cap: MAX_LOOP,
+      cost: 0,
       reads: [],
       writes: [],
       writeTarget(part, at) {
@@ -801,7 +1443,19 @@ export function analyze(ast, ports) {
     const edges = sens.star ? [] : sens.list.filter((e) => e.edge);
     const levels = sens.star ? [] : sens.list.filter((e) => !e.edge);
     if (edges.length && levels.length) refuse("mixedSensitivity", it.sens);
-    const ctx = procedural((part, at) => claimProcedural(part, at, index));
+    const combinational = !edges.length;
+    const ctx = procedural((part, at) => {
+      // An array set from always @(*) would hold its words between
+      // evaluations — a latch the size of a memory.
+      if (combinational && part.sym.kind === "memory") {
+        refuse("memoryInComb", part.at ?? at, { name: part.sym.name });
+      }
+      claimProcedural(part, at, index);
+    });
+    if (combinational) {
+      ctx.unroll = true;
+      ctx.cap = MAX_UNROLL;
+    }
     const body = compileStmt(it.body, ctx);
     if (edges.length) {
       const events = edges.map((e) => edgeEvent(e));
@@ -970,6 +1624,27 @@ export function analyze(ast, ports) {
           }
           return next;
         }
+        case "for": {
+          // As it was unrolled: the counter is set before anything else, and
+          // each pass's copy sees its counter as a constant.
+          const sym = symbolOf(s.initLhs);
+          let cur = new Map(assigned);
+          cur.set(sym.slot, V.mask(sym.w));
+          for (const value of s._seq?.values ?? []) {
+            loopEnv.set(sym.slot, value);
+            try {
+              cur = walk(s.body, cur);
+            } finally {
+              loopEnv.delete(sym.slot);
+            }
+          }
+          return cur;
+        }
+        case "repeat": {
+          let cur = assigned;
+          for (let k = 0; k < (s._times ?? 0); k++) cur = walk(s.body, cur);
+          return cur;
+        }
         default:
           return assigned;
       }
@@ -1032,7 +1707,7 @@ export function analyze(ast, ports) {
       warnings.push(diag("wireUndriven", sym.decl, { name: sym.name }, "warning")); // prettier-ignore
     }
     if (
-      sym.kind === "reg" &&
+      (sym.kind === "reg" || sym.kind === "memory") &&
       !blockOf.has(sym.slot) &&
       !initialOnly.has(sym.slot)
     ) {
@@ -1042,15 +1717,16 @@ export function analyze(ast, ports) {
   }
 
   // What each slot IS at run time: STATE persists between evaluations (an
-  // edge-driven reg, or one only ever set by `initial`); everything else is
-  // COMBINATIONAL, recomputed from the inputs and the state every time.
+  // edge-driven reg, one only ever set by `initial`, and every array);
+  // everything else is COMBINATIONAL, recomputed from the inputs and the
+  // state every time.
   const edgeSlots = new Set();
   for (const b of edge) for (const w of b.writes) edgeSlots.add(w.slot);
   const combSlots = new Set();
   for (const b of comb) for (const w of b.writes) combSlots.add(w.slot);
   const state = [];
   for (const sym of slots) {
-    if (sym.kind !== "reg" && !(sym.kind === "output" && outputKind.get(sym.name) === "reg")) continue; // prettier-ignore
+    if (sym.kind !== "reg" && sym.kind !== "memory" && !(sym.kind === "output" && outputKind.get(sym.name) === "reg")) continue; // prettier-ignore
     if (combSlots.has(sym.slot)) continue;
     state.push(sym.slot);
   }
@@ -1082,8 +1758,16 @@ export function analyze(ast, ports) {
         msb: s.msb,
         lsb: s.lsb,
         port: s.port,
+        signed: s.signed === true,
+        integer: s.integer === true,
+        local: s.local === true,
+        // An inout's driven value: a slot of its own, named for the pin.
+        hidden: s.hidden === true,
+        // An array's index range and size.
+        ...(s.kind === "memory" ? { lo: s.lo, hi: s.hi, depth: s.depth } : {}), // prettier-ignore
       })),
-      ports: slots.filter((s) => s.port).map((s) => ({ name: s.name, dir: s.kind, w: s.w, slot: s.slot })), // prettier-ignore
+      // In port order; an inout names its pin's slot and its driven one.
+      ports: slots.filter((s) => s.port).map((s) => ({ name: s.name, dir: s.kind, w: s.w, slot: s.slot, drive: s.drive?.slot ?? null })), // prettier-ignore
       params: [...symbols.values()]
         .filter((s) => s.kind === "param")
         .map((s) => ({ name: s.name, value: s.value })),

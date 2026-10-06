@@ -7898,6 +7898,13 @@ button.integration-lamp:hover {
   color: var(--color-code-pin);
 }
 
+/* An inout pin is both: the pin colour, and italic so it is told apart from
+   an output by more than a hue. */
+.cd-pin--io.cd-pin-name {
+  color: var(--color-code-pin);
+  font-style: italic;
+}
+
 .cd-pin--vcc.cd-pin-name {
   color: var(--color-rail-plus);
 }
@@ -8178,6 +8185,11 @@ button.integration-lamp:hover {
 
 .cd-map-port--output {
   color: var(--color-code-pin);
+}
+
+.cd-map-port--inout {
+  color: var(--color-code-pin);
+  font-style: italic;
 }
 
 /* ── The code ─────────────────────────────────────────────────────────── */
@@ -8522,8 +8534,80 @@ button.integration-lamp:hover {
   color: var(--color-code-signal);
 }
 
-.cd-watch-row--output .cd-watch-name {
+.cd-watch-row--output .cd-watch-name,
+.cd-watch-row--inout .cd-watch-name {
   color: var(--color-code-pin);
+}
+
+.cd-watch-row--inout .cd-watch-name {
+  font-style: italic;
+}
+
+.cd-watch-drives {
+  color: var(--color-muted);
+}
+
+.cd-watch-toggle {
+  padding: 0 var(--space-2);
+  border: 1px solid var(--color-overlay);
+  border-radius: var(--radius-sm);
+  background: var(--color-surface-0);
+  color: var(--color-text);
+  font: inherit;
+  font-family: var(--font-sans);
+  cursor: pointer;
+}
+
+.cd-watch-toggle:hover {
+  background: var(--color-surface-1);
+}
+
+/* An array's words: a virtualized grid (hdl-memory-view.js) in a row of its
+   own under the array's, tall enough for a dozen rows and scrolling past
+   that. The rows are placed absolutely by the view, which sets their top
+   and height. */
+.cd-watch-memory-row td {
+  padding: 0 0 var(--space-1) var(--space-4);
+}
+
+.cd-memory-scroll {
+  position: relative;
+  max-height: 14em;
+  overflow: auto;
+  overflow-anchor: none;
+  border: 1px solid var(--color-surface-0);
+  border-radius: var(--radius-sm);
+}
+
+.cd-memory-canvas {
+  position: relative;
+}
+
+.cd-memory-row {
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0 var(--space-2);
+  font-family: var(--font-mono);
+  white-space: nowrap;
+}
+
+.cd-memory-row[hidden],
+.cd-memory-word[hidden] {
+  display: none;
+}
+
+.cd-memory-index {
+  min-width: 4ch;
+  color: var(--color-muted);
+}
+
+.cd-memory-word--pending {
+  color: var(--color-debug-pause);
+  font-weight: 600;
 }
 
 .cd-watch-kind,

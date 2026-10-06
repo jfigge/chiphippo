@@ -306,3 +306,24 @@ test("a channel keeps its color wherever it is moved", () => {
   view.setVisible(true);
   assert.deepEqual(dotOf(), before);
 });
+
+test("a channel's own color is drawn through its theme token", () => {
+  resetDom();
+  const { doc, view } = makeView();
+  // What a signal flag's "Add to analyzer" stores: its color TOKEN.
+  doc.addScopeChannel("net", "bb1.a1", { color: "red" });
+  doc.addScopeChannel("net", "bb1.a2", { color: "chartreuse" }); // not a token
+  view.setVisible(true);
+  window.dispatchEvent(simEvent("running", "bb1.a1", "n1", "H"));
+  view.setVisible(true);
+
+  const [own, junk] = view.element.querySelectorAll(".scope-chan-dot");
+  assert.equal(own.style.background, "var(--color-wire-red)");
+  assert.equal(
+    junk.style.background,
+    "var(--color-wire-green)",
+    "a value the app never stores takes the palette's color for sc2",
+  );
+  const lane = view.element.querySelector(".scope-svg > path");
+  assert.equal(lane.style.stroke, "var(--color-wire-red)");
+});

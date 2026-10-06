@@ -70,12 +70,14 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
         <a class="doc-nav-link" href="wiring.html">Wiring, Nets &amp; Buses</a>
         <a class="doc-nav-link" href="power-and-clocks.html">Power &amp; Clock Sources</a>
         <a class="doc-nav-link" href="chip-library.html">The Chip Library</a>
+        <a class="doc-nav-link" href="custom-chips.html">Custom Chips</a>
         <a class="doc-nav-link" href="simulation.html">Running a Simulation</a>
         <a class="doc-nav-link" href="probing.html">Probing &amp; Net Names</a>
         <a class="doc-nav-link" href="memory.html">Memory Chips &amp; the Inspector</a>
         <a class="doc-nav-link" href="logic-analyzer.html">Logic Analyzer &amp; Timing</a>
         <a class="doc-nav-link" href="build-guide.html">Build Guide &amp; BOM</a>
         <a class="doc-nav-link" href="schematic-view.html">Schematic View</a>
+        <a class="doc-nav-link" href="3d-view.html">3D View</a>
         <a class="doc-nav-link" href="ai-builder.html">AI Circuit Builder</a>
         <a class="doc-nav-link" href="arduino.html">Arduino Integration</a>
         <a class="doc-nav-link" href="serial-protocol.html">Serial Protocol</a>
@@ -139,7 +141,15 @@ each part one:</p>
 </tr>
 <tr>
 <td><code>D</code></td>
-<td>LEDs</td>
+<td>LEDs, diodes and Zener diodes</td>
+</tr>
+<tr>
+<td><code>L</code></td>
+<td>Inductors</td>
+</tr>
+<tr>
+<td><code>Q</code></td>
+<td>Transistors</td>
 </tr>
 <tr>
 <td><code>SW</code></td>
@@ -211,8 +221,28 @@ cans and the 16×2 LCD each get their matching standard footprint.</li>
 KiCad Value, drawn the way KiCad draws them — the plain capacitor for a
 ceramic, the polarised one for an electrolytic, whose <code>+</code> is pin 1 — on a
 5 mm ceramic disc or a 5 mm radial electrolytic footprint. Resistors carry their value the
-same way. On the breadboard a capacitor connects nothing; in KiCad it is
+same way (<code>4.7k</code>). Every value keeps the figures the part&#39;s <strong>Properties…</strong>
+card shows, written in plain ASCII — <code>u</code> for µ, and no <code>Ω</code> — as SPICE and
+BOM tools expect. On the breadboard a capacitor connects nothing; in KiCad it is
 wired where it sits, which is the point of exporting it.</li>
+<li>Diodes, inductors and transistors come across as KiCad&#39;s own shapes — the
+diode, the Zener (its bar bent), the inductor&#39;s coil, and the NPN, PNP and
+N- and P-channel MOSFET symbols. A diode or a transistor&#39;s <strong>Value</strong> is its
+part number (<code>1N4148</code>, <code>2N2222</code>), or the plain type (<code>D</code>, <code>NPN</code>) until it has
+one; a Zener adds its voltage (<code>1N4733A 5.1V</code>); an inductor&#39;s is its
+inductance (<code>10uH</code>). Any part number also rides along as an <strong>MPN</strong> field
+for KiCad&#39;s BOM tools. Diodes get a DO-35 footprint on 7.62 mm, its pad 1
+the cathode.</li>
+<li>An inductor&#39;s footprint is the part its <strong>Style</strong> says, on the pitch its
+<strong>Holes between leads</strong> says: a <strong>Coil</strong> is a standing toroid, on exactly
+7.62 or 10.16 mm; a <strong>Can</strong> is a radial drum, and KiCad&#39;s round radial
+inductors are on metric pitches, so it gets the nearest (7.00 or 10.00 mm)
+and the report lists it under <strong>footprints to check</strong>.</li>
+<li>Transistors get a <strong>TO-92</strong> footprint on 2.54 mm — or, for a MOSFET whose
+<strong>Package</strong> is TO-220, a standing <strong>TO-220</strong> — its pads numbered in the
+order the desk prints the pins (<code>E B C</code>, <code>S G D</code>). That is no one maker&#39;s
+pinout, so the report lists every transistor under <strong>footprints to check</strong>:
+make sure the pads match the real part&#39;s datasheet before laying out.</li>
 <li>The power supply and the clock source become 2-pin headers labelled
 <strong>POWER</strong> and <strong>CLOCK IN</strong>. That&#39;s where power and a clock come in on a real
 board. The clock needs an oscillator in its place, which the report points
@@ -323,6 +353,11 @@ same note marks each one&#39;s place.</li>
 <li>The 555 timer, which Digital&#39;s library doesn&#39;t have either.</li>
 <li>Capacitors. A capacitor connects nothing in Chip Hippo, so leaving it out
 changes nothing about the circuit.</li>
+<li>Diodes and transistors: Digital has none that pass a level one way, or
+switch, the way Chip Hippo&#39;s do.</li>
+<li>Inductors. An inductor is a wire in Chip Hippo, so the two nets it joins
+come across <strong>apart</strong> — the report says so; join them in Digital if you
+need them joined.</li>
 <li>Memory chips, because their contents are stored in files the export doesn&#39;t
 carry.</li>
 <li>The processors and their peripheral chips (W65C02, Z80, W65C21, W65C22).</li>

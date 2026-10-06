@@ -70,12 +70,14 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
         <a class="doc-nav-link" href="wiring.html">Wiring, Nets &amp; Buses</a>
         <a class="doc-nav-link" href="power-and-clocks.html">Power &amp; Clock Sources</a>
         <a class="doc-nav-link" href="chip-library.html">The Chip Library</a>
+        <a class="doc-nav-link" href="custom-chips.html">Custom Chips</a>
         <a class="doc-nav-link" href="simulation.html">Running a Simulation</a>
         <a class="doc-nav-link" href="probing.html">Probing &amp; Net Names</a>
         <a class="doc-nav-link" href="memory.html">Memory Chips &amp; the Inspector</a>
         <a class="doc-nav-link doc-nav-link--active" href="logic-analyzer.html">Logic Analyzer &amp; Timing</a>
         <a class="doc-nav-link" href="build-guide.html">Build Guide &amp; BOM</a>
         <a class="doc-nav-link" href="schematic-view.html">Schematic View</a>
+        <a class="doc-nav-link" href="3d-view.html">3D View</a>
         <a class="doc-nav-link" href="ai-builder.html">AI Circuit Builder</a>
         <a class="doc-nav-link" href="arduino.html">Arduino Integration</a>
         <a class="doc-nav-link" href="serial-protocol.html">Serial Protocol</a>
@@ -117,12 +119,18 @@ reach, named or not — it&#39;s the way to watch a signal you haven&#39;t bothe
 to name. Using it also opens the panel automatically if it was closed.</li>
 </ul>
 <p>Each channel gets a row in the left-hand gutter: a color dot (cycled from a
-fixed palette unless the channel has its own color), the net or bus name,
-its current value, and three small controls — <strong>↑</strong> / <strong>↓</strong> to reorder the
-channel, and <strong>×</strong> to remove it. Channels are saved with the document
-(<code>doc.scopeChannels</code>), so a desktop reopens with its analyzer setup
-intact, and adding/removing/reordering a channel rides the normal undo/redo
-stack. A channel that loses its target (the net was deleted, the bus was
+fixed palette unless the channel has its own color — either way the channel
+keeps it wherever you move it), the net or bus name, its current value, and
+three small controls — <strong>↑</strong> / <strong>↓</strong> to move the channel one row, and <strong>×</strong>
+to remove it.</p>
+<p>To move a channel further, <strong>drag its row</strong> up or down the gutter. The rows
+and their waveforms make room as you go, so you see the new order before you
+let go; drop the row where you want it, or press <code>Esc</code> to put it back. Hold
+it against the top or bottom of the list to scroll a long list along.
+Reordering works while the simulation runs, too.</p>
+<p>Channels are saved with the document (<code>doc.scopeChannels</code>), so a desktop
+reopens with its analyzer setup intact, and adding/removing/reordering a
+channel rides the normal undo/redo stack — a drag is one undo step. A channel that loses its target (the net was deleted, the bus was
 removed) simply reads as undriven rather than disappearing — it comes back
 to life if the target returns.</p>
 <h2 id="reading-a-waveform">Reading a waveform</h2>

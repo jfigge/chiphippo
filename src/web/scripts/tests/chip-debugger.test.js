@@ -427,3 +427,76 @@ test("detach drops a chip's later pauses in the same tick", () => {
   s.detach("a");
   assert.equal(s.done, true);
 });
+
+test("an array's write is pending at the update, and its words are read on demand", async () => {
+  const code = [
+    "reg [7:0] mem [0:3];", //             1
+    "reg [1:0] p = 2'd0;", //              2
+    "always @(posedge A) begin", //        3
+    "  mem[p] <= 8'h40 + p;", //           4
+    "  p <= p + 1;", //                    5
+    "end", //                              6
+    "wire [7:0] w = mem[0];", //           7
+    "assign Y = w[6];", //                 8
+  ].join("\n");
+  const { doc, chip } = nandBench(code);
+  const { sim, debug } = rig(doc);
+  sim.start();
+  debug.toggleBreakpoint(chip.id, 4);
+  sim.manualToggle("clk1"); // A rises
+  let tab = debug.state.tabs[0];
+  assert.equal(tab.loc.line, 4);
+  const row = tab.watch.find((r) => r.name === "mem");
+  assert.equal(row.kind, "memory");
+  assert.equal(row.value, "[0:3] × 8");
+  assert.equal(row.memory.pendingCount, 0);
+  debug.step("c1"); // line 5
+  debug.step("c1"); // the non-blocking updates
+  tab = debug.state.tabs[0];
+  assert.equal(tab.phase, "nba");
+  const mem = tab.watch.find((r) => r.name === "mem").memory;
+  assert.equal(mem.pendingCount, 1);
+  assert.deepEqual(mem.pendingWords, [[0, "8'b01000000"]]);
+  const range = debug.memoryRange("c1", mem.slot, 0, 4);
+  assert.deepEqual(range, { from: 0, words: ["xx", "xx", "xx", "xx"], pending: [[0, "40"]] }); // prettier-ignore
+  assert.equal(debug.memoryRange("c1", mem.slot + 99, 0, 4), null);
+  while (debug.state.paused) debug.step("c1");
+  await settleTurn();
+  assert.deepEqual(debug.memoryRange("c1", mem.slot, 0, 2).words, ["40", "xx"]); // prettier-ignore
+  sim.stop();
+  setCustomChips([]);
+});
+
+test("a breakpoint in a loop body stops once per pass, the counter in the watch", async () => {
+  const code = [
+    "integer i;", //                          1
+    "reg [7:0] acc = 8'd0;", //               2
+    "always @(posedge A) begin", //           3
+    "  for (i = 0; i < 3; i = i + 1)", //     4
+    "    acc = acc + i;", //                  5
+    "end", //                                 6
+    "assign Y = acc[0];", //                  7
+  ].join("\n");
+  const { doc, chip } = nandBench(code);
+  const { sim, debug } = rig(doc);
+  sim.start();
+  debug.toggleBreakpoint(chip.id, 5);
+  sim.manualToggle("clk1");
+  const seen = [];
+  let guard = 0;
+  while (debug.state.paused && guard++ < 10) {
+    const tab = debug.state.tabs[0];
+    const i = tab.watch.find((r) => r.name === "i");
+    assert.equal(i.kind, "integer");
+    seen.push([tab.loc.line, i.decimal]);
+    debug.continue();
+  }
+  await settleTurn();
+  assert.deepEqual(seen, [
+    [5, 0],
+    [5, 1],
+    [5, 2],
+  ]);
+  sim.stop();
+  setCustomChips([]);
+});

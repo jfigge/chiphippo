@@ -54,6 +54,7 @@
 // shown are the controller's (components/chip-debugger.js).
 
 import * as V from "../hdl/values.js";
+import { isMemory, readWords, sameMemory } from "../hdl/memory.js";
 
 /**
  * An engine observer that records a tick: `rounds`, each `{phase, levels,
@@ -74,10 +75,15 @@ export function recorder(watch) {
   };
 }
 
+/** Two packed states the same? (An array's entry is its memory.) */
 const samePacked = (a, b) => {
   if (a === b) return true;
   if (!a || !b || a.length !== b.length) return false;
-  return a.every((p, i) => p[0] === b[i][0] && p[1] === b[i][1] && p[2] === b[i][2]); // prettier-ignore
+  return a.every((p, i) => {
+    const q = b[i];
+    if (isMemory(p) || isMemory(q)) return sameMemory(p, q);
+    return p[0] === q[0] && p[1] === q[1] && p[2] === q[2];
+  });
 };
 const sameValues = (a, b) =>
   a.length === b.length && a.every((v, i) => V.same(v, b[i]));
@@ -457,29 +463,92 @@ export class DebugSession {
   }
 }
 
+/** How many of an array's queued writes a watch row spells out. */
+const PENDING_WORDS_SHOWN = 4;
+
 /**
- * A unit's values for the watch panel: every port, reg and wire with its
- * value as Verilog prints it (and the value a queued non-blocking write
- * will give it, when there is one).
+ * A unit's values for the watch panel: every port, reg, integer and wire
+ * with its value as Verilog prints it (and the value a queued non-blocking
+ * write will give it, when there is one). An inout shows its pin's level
+ * with what the chip drives onto it beside it (`drives`); an ARRAY is one
+ * row saying its shape — its words are read on demand (`memoryWords`), never
+ * carried here, since a 32K memory would ride every step to the window.
  * @param {object} program - hdl/program.js.
  * @param {object[]} vals - values by slot.
- * @param {Array<[number, object]>|null} [pending] - `[slot, value]` pairs.
+ * @param {Array<[number, object]>|null} [pending] - a frame's `pending`.
  * @returns {Array<{name: string, kind: string, value: string,
- *   decimal: number|null, pending: string|null}>}
+ *   decimal: number|null, pending: string|null, drives?: string,
+ *   memory?: object}>}
  */
 export function watchRows(program, vals, pending = null) {
   const after = new Map(pending ?? []);
-  return program.signals.map((s, slot) => {
-    const v = vals?.[slot] ?? V.allX(s.w);
+  const signals = program.signals;
+  const rows = [];
+  signals.forEach((s, slot) => {
+    if (s.hidden) return; // an inout's driven value — shown on its row
     const p = after.get(slot);
-    return {
+    if (s.kind === "memory") {
+      const writes = p?.writes ?? [];
+      rows.push({
+        name: s.name,
+        kind: "memory",
+        value: `[${s.lo}:${s.hi}] × ${s.w}`,
+        decimal: null,
+        pending: null,
+        memory: {
+          slot,
+          lo: s.lo,
+          hi: s.hi,
+          w: s.w,
+          pendingCount: writes.length,
+          pendingWords: writes
+            .slice(0, PENDING_WORDS_SHOWN)
+            .map(([addr, v]) => [addr + s.lo, V.format(v)]),
+        },
+      });
+      return;
+    }
+    const v = vals?.[slot] ?? V.allX(s.w);
+    const row = {
       name: s.name,
-      kind: s.kind,
+      kind: s.integer ? "integer" : s.kind,
       value: V.format(v),
-      decimal: s.w > 1 ? V.decimal(v) : null,
+      decimal: s.w > 1 ? (s.signed ? V.signedDecimal(v) : V.decimal(v)) : null,
       pending: p ? V.format(p) : null,
     };
+    if (s.kind === "inout") {
+      const drive = signals.findIndex((d) => d.hidden && d.name === s.name);
+      if (drive >= 0) row.drives = V.format(vals?.[drive] ?? V.allZ(s.w));
+    }
+    rows.push(row);
   });
+  return rows;
+}
+
+/**
+ * Words of an array as a unit's values hold them, for a memory view:
+ * `{from, words: [hex…], pending: [[index, hex]…]}` — `from` and the
+ * pending writes' indices in the array's own numbering, the words in Verilog
+ * `%h` digits. At most `count` words, from index `from`.
+ * @param {object} program
+ * @param {object[]} vals - values by slot.
+ * @param {number} slot - the array's slot.
+ * @param {number} from - the first index (as declared).
+ * @param {number} count
+ * @param {Array<[number, object]>|null} [pending] - a frame's `pending`.
+ */
+export function memoryWords(program, vals, slot, from, count, pending = null) {
+  const s = program.signals[slot];
+  const m = vals?.[slot];
+  if (s?.kind !== "memory" || !isMemory(m)) return null;
+  const start = Math.max(s.lo, Math.min(s.hi, Math.floor(from)));
+  const n = Math.max(0, Math.min(count, s.hi - start + 1, 4096));
+  const words = readWords(m, start - s.lo, n).map(V.hexDigits);
+  const queued = new Map(pending ?? []).get(slot)?.writes ?? [];
+  const inRange = queued
+    .filter(([addr]) => addr >= start - s.lo && addr < start - s.lo + n)
+    .map(([addr, v]) => [addr + s.lo, V.hexDigits(v)]);
+  return { from: start, words, pending: inRange };
 }
 
 /**
@@ -494,7 +563,11 @@ export function pinLevelsOf(def, unitVals) {
   const rt = def?.customRuntime;
   if (!rt) return [];
   const chip = def.customChip;
-  const slotOf = new Map(rt.program.signals.map((s, slot) => [s.name, slot]));
+  // A port's own slot — an inout's PIN level, not the value it drives.
+  const slotOf = new Map();
+  rt.program.signals.forEach((s, slot) => {
+    if (s.port) slotOf.set(s.name, slot);
+  });
   const out = new Map();
   chip.units.forEach((map, u) => {
     const vals = unitVals?.[u];

@@ -70,12 +70,14 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
         <a class="doc-nav-link" href="wiring.html">Wiring, Nets &amp; Buses</a>
         <a class="doc-nav-link" href="power-and-clocks.html">Power &amp; Clock Sources</a>
         <a class="doc-nav-link" href="chip-library.html">The Chip Library</a>
+        <a class="doc-nav-link" href="custom-chips.html">Custom Chips</a>
         <a class="doc-nav-link doc-nav-link--active" href="simulation.html">Running a Simulation</a>
         <a class="doc-nav-link" href="probing.html">Probing &amp; Net Names</a>
         <a class="doc-nav-link" href="memory.html">Memory Chips &amp; the Inspector</a>
         <a class="doc-nav-link" href="logic-analyzer.html">Logic Analyzer &amp; Timing</a>
         <a class="doc-nav-link" href="build-guide.html">Build Guide &amp; BOM</a>
         <a class="doc-nav-link" href="schematic-view.html">Schematic View</a>
+        <a class="doc-nav-link" href="3d-view.html">3D View</a>
         <a class="doc-nav-link" href="ai-builder.html">AI Circuit Builder</a>
         <a class="doc-nav-link" href="arduino.html">Arduino Integration</a>
         <a class="doc-nav-link" href="serial-protocol.html">Serial Protocol</a>
@@ -265,7 +267,10 @@ the textbook fix, and clears the warning.</li>
 input LOW. The CD4049UB and CD4050B buffers exist for exactly this: one of
 their outputs drives eight.</li>
 <li><strong>Two supplies on one net</strong> — chips on different supply voltages joined by
-a signal, which needs a level shifter.</li>
+a signal, which needs a level shifter. The CD4049UB and CD4050B are one:
+their inputs may be driven from a higher supply than their own, so a signal
+coming DOWN into them is not reported. (Ground is shared by every supply,
+and is never a signal.)</li>
 </ul>
 <p>One difference works the other way. A standard CD4000 output is too weak to
 burn an LED: at 5 V it can push only about 4 mA through one, a fifth of what

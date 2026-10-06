@@ -70,12 +70,14 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
         <a class="doc-nav-link" href="wiring.html">Wiring, Nets &amp; Buses</a>
         <a class="doc-nav-link" href="power-and-clocks.html">Power &amp; Clock Sources</a>
         <a class="doc-nav-link" href="chip-library.html">The Chip Library</a>
+        <a class="doc-nav-link" href="custom-chips.html">Custom Chips</a>
         <a class="doc-nav-link" href="simulation.html">Running a Simulation</a>
         <a class="doc-nav-link" href="probing.html">Probing &amp; Net Names</a>
         <a class="doc-nav-link" href="memory.html">Memory Chips &amp; the Inspector</a>
         <a class="doc-nav-link" href="logic-analyzer.html">Logic Analyzer &amp; Timing</a>
         <a class="doc-nav-link" href="build-guide.html">Build Guide &amp; BOM</a>
         <a class="doc-nav-link" href="schematic-view.html">Schematic View</a>
+        <a class="doc-nav-link" href="3d-view.html">3D View</a>
         <a class="doc-nav-link" href="ai-builder.html">AI Circuit Builder</a>
         <a class="doc-nav-link" href="arduino.html">Arduino Integration</a>
         <a class="doc-nav-link" href="serial-protocol.html">Serial Protocol</a>
@@ -89,7 +91,8 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
 <h1>Chips &amp; Components</h1>
 <p>Everything that isn&#39;t a breadboard strip lives in the <strong>Parts</strong> palette on the
 left: 74LS and CD4000 logic chips, CPUs, 65xx interface chips, memory chips, switches, LEDs,
-displays, resistors, capacitors, oscillators, the 555 timer, and power/clock bricks. This page covers
+displays, resistors, capacitors, inductors, diodes, transistors, oscillators, the 555 timer,
+and power/clock bricks. This page covers
 finding a part, seating it on a board, and the (surprisingly varied) ways
 different parts rotate and flip once they&#39;re down.</p>
 <p><img src="images/components.png" alt="Chips and discretes placed on a breadboard"></p>
@@ -99,14 +102,20 @@ different parts rotate and flip once they&#39;re down.</p>
 <li><strong>BOARDS</strong> — the breadboard kits and loose strips, pinned at the top (see
 <a href="the-desk.html">The Desk &amp; Breadboards</a>).</li>
 <li><strong>CHIPS</strong> — the logic chips, folder-grouped by function, ending with the
-<strong>Interface</strong> group (the 65xx PIA/VIA) and the <strong>PROCESSOR</strong> group (the
-W65C02 and Z80A CPUs). Which logic family it shows — 74LS, CD4000, or both,
-each in a folder of its own — is <strong>Settings → Data Sheets → Chip family</strong>
-(see <a href="chip-library.html#choosing-a-logic-family">Choosing a logic family</a>).</li>
-<li><strong>COMPONENTS</strong> — <strong>Switches</strong>, <strong>Resistors</strong>, <strong>Capacitors</strong>, <strong>LEDs</strong>,
-<strong>Displays</strong>, <strong>Oscillators</strong>, and <strong>Power</strong>, in that shelf order. The <strong>555
-timer</strong> is under <strong>Oscillators</strong>: it belongs to neither logic family, so it
-sits with the parts that make a clock rather than in CHIPS.</li>
+<strong>Timer</strong> group (the <strong>555 timer</strong>), the <strong>Interface</strong> group (the 65xx
+PIA/VIA) and the <strong>PROCESSOR</strong> group (the W65C02 and Z80A CPUs). Which logic
+family it shows — 74LS, CD4000, or both, each in a folder of its own — is
+<strong>Settings → Data Sheets → Chip family</strong> (see
+<a href="chip-library.html#choosing-a-logic-family">Choosing a logic family</a>). The 555
+belongs to neither family, so it shows in every mode; showing CD4000 alone,
+it shares the <strong>Timer</strong> group with the CD4000 timers.</li>
+<li><strong>COMPONENTS</strong> — <strong>Switches</strong>, <strong>Resistors</strong>, <strong>Capacitors</strong>,
+<strong>Inductors</strong>, <strong>Diodes</strong>, <strong>Transistors</strong>, <strong>LEDs</strong>, <strong>Displays</strong>,
+<strong>Oscillators</strong>, and <strong>Power</strong>, in that shelf order. Capacitors, Inductors,
+Diodes and Transistors carry a red <strong>(i)</strong> beside their names: these parts
+do only part of what the real ones do, and are there for the export and a
+complete design (see
+<a href="#inductors-diodes-and-transistors">Inductors, diodes and transistors</a>).</li>
 <li><strong>Memory</strong> — the ROM/RAM chips, pulled out of CHIPS into a top-level group
 of their own.</li>
 <li><strong>ANNOTATIONS</strong> — labels and notes (see
@@ -134,10 +143,19 @@ along e, then wrapping back right to left along f. The <strong>notch</strong> en
 chip (or the dot beside pin 1) marks pin 1 and always faces left. Move the
 ghost over a pin-board and it snaps to the nearest legal seat; it turns red
 if the seat is already occupied or falls off the edge of the board.</p>
-<p>Because a chip&#39;s footprint always occupies rows e/f no matter how it&#39;s
-turned, placing one is a matter of picking the column — there&#39;s no
-click-to-rotate step while placing a chip the way there is for a rail or a
-resistor; instead, rotation happens afterward (see below).</p>
+<p>The <strong>wide chips</strong> — the 24-, 28-, 32- and 40-pin packages: the memories, the
+6502 and its peripherals, the Z80 and the 74LS181 — are 0.6 inch across, twice
+a small chip, and seat at that true width: pin 1 in row <strong>d</strong>, the other row
+of pins in row <strong>h</strong>, six holes apart. The chip&#39;s body covers rows e, f and g
+between them, so those holes can&#39;t take a wire or another part&#39;s lead — wire
+to each pin from the rows outside it instead (a–c below, i–j above). A desk
+saved before wide chips seated this way keeps them in rows e and f just as
+they were; move one on its own and it takes its true width, bringing the wires
+you carry with <strong>Option</strong> out from under its body.</p>
+<p>Because a chip&#39;s footprint is the same two rows no matter how it&#39;s turned,
+placing one is a matter of picking the column — there&#39;s no click-to-rotate
+step while placing a chip the way there is for a rail or a resistor; instead,
+rotation happens afterward (see below).</p>
 <h2 id="placing-a-discrete">Placing a discrete</h2>
 <p>Most discretes — slide switches, push buttons, toggle buttons, LEDs (in
 their default horizontal form), single-digit 7/8-segment displays, and LED
@@ -162,47 +180,117 @@ anywhere on the grid, including straddling the trench, since its shape
 16-way header along 16 adjacent holes in one row — but the module itself
 is much bigger than that row. See below.</li>
 </ul>
-<h2 id="resistor-and-capacitor-values">Resistor and capacitor values</h2>
-<p>A <strong>resistor</strong> has a <strong>Resistance</strong>, and a <strong>capacitor</strong> a <strong>Capacitance</strong>:
-right-click the part, choose <strong>Properties…</strong>, and type the value the way it is
-printed on a parts drawer or a schematic.</p>
+<h2 id="component-values">Component values</h2>
+<p>A <strong>resistor</strong> has a <strong>Resistance</strong>, a <strong>capacitor</strong> a <strong>Capacitance</strong>, an
+<strong>inductor</strong> an <strong>Inductance</strong>, a <strong>Zener diode</strong> a <strong>Zener voltage</strong> and a
+<strong>transistor</strong> a <strong>Part number</strong>. Right-click the part, choose
+<strong>Properties…</strong>, and either pick from the field&#39;s list — the ▾ beside it, or
+↓ — or type any value at all, the way it is printed on a parts drawer or a
+schematic. Typing narrows the list to the entries holding what you have typed
+(<code>4</code> leaves 47Ω, 470Ω, 4.7kΩ, 47kΩ and 470kΩ; <code>u</code> finds µ).</p>
 <table>
 <thead>
 <tr>
-<th>Resistance</th>
-<th>Capacitance</th>
+<th>Typed</th>
+<th>Reads as</th>
 </tr>
 </thead>
 <tbody><tr>
 <td><code>470</code>, <code>470R</code>, <code>470Ω</code>, <code>470 ohms</code></td>
-<td><code>100p</code>, <code>100pF</code></td>
+<td>470Ω</td>
 </tr>
 <tr>
-<td><code>4.7k</code>, <code>4k7</code></td>
-<td><code>10n</code>, <code>100nF</code></td>
+<td><code>4.7k</code>, <code>4k7</code>, <code>4.7 k</code>, <code>4.7 kilo ohms</code></td>
+<td>4.7kΩ</td>
 </tr>
 <tr>
-<td><code>1M</code>, <code>2M2</code>, <code>1G</code></td>
-<td><code>4.7µ</code>, <code>4.7u</code>, <code>4u7</code>, <code>100µF</code></td>
+<td><code>1M</code>, <code>1meg</code>, <code>2M2</code></td>
+<td>1MΩ, 2.2MΩ</td>
 </tr>
 <tr>
-<td><code>0R1</code> (0.1 Ω)</td>
-<td><code>1m</code> (1 mF)</td>
+<td><code>2R2</code>, <code>0.47</code></td>
+<td>2.2Ω, 0.47Ω</td>
+</tr>
+<tr>
+<td><code>100n</code>, <code>100nF</code>, <code>0.1uF</code>, <code>0.1µF</code></td>
+<td>100nF</td>
+</tr>
+<tr>
+<td><code>4n7</code>, <code>10 microfarads</code></td>
+<td>4.7nF, 10µF</td>
+</tr>
+<tr>
+<td><code>10uH</code>, <code>1 millihenry</code></td>
+<td>10µH, 1mH</td>
+</tr>
+<tr>
+<td><code>5.1</code>, <code>5.1V</code>, <code>5V1</code></td>
+<td>5.1V</td>
 </tr>
 </tbody></table>
-<p>The letter can stand in for the decimal point (<code>4k7</code>, <code>2M2</code>, <code>4u7</code>), and a
-space before the unit is ignored. A resistance can be a bare number of ohms; a
-capacitance needs its prefix, because a bare <code>100</code> means 100 pF to one reader
-and 100 µF to another, and guessing would be off by a factor of a million.
-For the same reason a lowercase <code>m</code> on a resistor (milli-ohms) and an
-uppercase <code>M</code> on a capacitor (mega-farads, or the old &quot;MF&quot; for microfarads)
-are refused. Resistances run from 0.1 Ω to 1 GΩ, capacitances from 1 pF to
-1 F.</p>
-<p>Press Enter or move out of the field to apply it. A value that can&#39;t be read
-is marked in red under the field with examples of what it takes, and the part
-keeps the value it had, so nothing changes until you type one that reads. The
-value is stored exactly, and shown back in its tidy form (<code>4k7</code> becomes
-<code>4.7kΩ</code>).</p>
+<p>A plain number is in the field&#39;s own unit — ohms, farads, henries or volts —
+so <code>100</code> in a Capacitance is a hundred farads, which is out of range and says
+so. The prefixes are <code>p</code> <code>n</code> <code>u</code>/<code>µ</code> <code>m</code> <code>k</code> <code>M</code> <code>G</code>, or spelled out (<code>pico</code>
+… <code>giga</code>, and <code>meg</code> as SPICE writes it). A lowercase <code>m</code> is always milli and
+an uppercase <code>M</code> always mega: <code>1m</code> on a resistor is a milliohm, refused as out
+of range rather than guessed at. A prefix letter — or <code>R</code> for ohms, <code>V</code> for
+volts — can stand in for the decimal point (<code>4k7</code>, <code>2R2</code>, <code>4n7</code>, <code>5V1</code>). A
+unit belonging to something else is refused by name: <code>10uF</code> in a Resistance
+is &quot;a capacitance, not a resistance&quot;.</p>
+<p>Press Enter or move out of the field to apply it. A value that reads is shown
+back in its tidy form — <code>100 kilo ohms</code> becomes <code>100kΩ</code> — to three figures,
+or to as many as you typed (<code>4753</code> is <code>4.753kΩ</code>; nothing is rounded away). One
+that doesn&#39;t stays as you typed it, in red with the reason under it (&quot;Not a
+resistance value&quot;, &quot;Out of range: 0.1Ω to 100MΩ&quot;), and the part keeps the
+value it had. Any value in range is taken, on the list or not.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Range</th>
+<th>List</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>Resistance</td>
+<td>0.1Ω – 100MΩ</td>
+<td>the E12 series, 10Ω – 1MΩ</td>
+</tr>
+<tr>
+<td>Capacitance (ceramic)</td>
+<td>1pF – 100µF</td>
+<td>10pF – 1µF</td>
+</tr>
+<tr>
+<td>Capacitance (electrolytic)</td>
+<td>100nF – 100mF</td>
+<td>1µF – 1mF</td>
+</tr>
+<tr>
+<td>Inductance</td>
+<td>1nH – 10H</td>
+<td>1µH – 100mH</td>
+</tr>
+<tr>
+<td>Zener voltage</td>
+<td>1.8V – 200V</td>
+<td>2.4V – 30V, each with its part</td>
+</tr>
+</tbody></table>
+<p>A <strong>Zener</strong>&#39;s list pairs each voltage with its part — <code>5.1V (1N4733A)</code> — and
+picking one sets both. Typing a voltage on the list (<code>5.1</code>, <code>5V1</code>) brings its
+part number with it, typing a part number on it (<code>1n4742</code>) picks its entry,
+and any other voltage stands alone, with no part number.</p>
+<p>A capacitor&#39;s <strong>Type</strong> (Ceramic or Electrolytic) and a transistor&#39;s <strong>Type</strong>
+(NPN, PNP, N- or P-channel MOSFET) swap the part where it stands and reopen
+its card as the new one; like any change to the wiring, the Type is greyed
+while the circuit runs. The value comes across untouched, so a capacitance
+outside the new type&#39;s range shows red rather than being changed. A
+transistor&#39;s list holds the parts of its own type, and a part number from
+another type&#39;s list is cleared by the swap (one you typed yourself is kept).
+Typing another type&#39;s part number is allowed, with a warning — <code>2N3906 is a PNP transistor</code>.</p>
+<p>An older project&#39;s values load as they were. One that cannot be read is kept
+exactly as written, and shows red when you open the card.</p>
 <p>On the desk a resistor wears its <strong>colour code</strong> — four bands for a value two
 figures say (<code>4.7k</code>: yellow, violet, red, gold), five for one that needs three
 (<code>4.99k</code>) — and a capacitor has its value printed on it. Both values appear in
@@ -211,10 +299,62 @@ the <a href="schematic-view.html">Schematic View</a>, the <a href="build-guide.h
 <p>A resistor&#39;s value changes nothing in the simulation: a resistor is a weak pull
 whatever it measures, and a lamp is lit or burnt by whether one is in the
 loop. Only the timing chips read it (below).</p>
+<h2 id="potentiometers">Potentiometers</h2>
+<p><strong>COMPONENTS ▸ Resistors ▸ Potentiometer</strong> is a three-pin trimmer: a
+resistive track between the two outer pins and a <strong>wiper</strong> on the middle pin
+that taps it. It seats along one row like a switch, pins 1, W and 3 in three
+holes side by side.</p>
+<p>Its <strong>Properties…</strong> card has the track&#39;s <strong>Resistance</strong> (picked or typed
+like any resistor&#39;s) and the wiper&#39;s <strong>Position</strong>, a slider from 0 % to 100 %. The
+resistance from the wiper to pin 1 is Position × Resistance, and to pin 3 is
+what is left of the track:</p>
+<table>
+<thead>
+<tr>
+<th>Position</th>
+<th>Wiper ↔ pin 1</th>
+<th>Wiper ↔ pin 3</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>0 %</td>
+<td>0 — a wire</td>
+<td>100k</td>
+</tr>
+<tr>
+<td>10 %</td>
+<td>10k</td>
+<td>90k</td>
+</tr>
+<tr>
+<td>50 %</td>
+<td>50k</td>
+<td>50k</td>
+</tr>
+<tr>
+<td>90 %</td>
+<td>90k</td>
+<td>10k</td>
+</tr>
+<tr>
+<td>100 %</td>
+<td>100k</td>
+<td>0 — a wire</td>
+</tr>
+</tbody></table>
+<p>(for a 100k part). The slider shows exactly that as you move it — the
+resistance to pin 1 at its left end and to pin 3 at its right, <code>15k ━●━━━ 85k</code>
+— and changing the Resistance updates both. It applies as you drag it, while the
+circuit runs as well, and the brass screw on the part turns to show where the
+wiper is.</p>
+<p>Each side with track left behaves exactly like a resistor: a weak pull, and a
+value the timing chips read — a pot as a 555&#39;s RB tunes its rate. A side with
+<strong>none</strong> left is the wiper resting on that pin: a plain wire, so the two nets
+join, and an LED fed through it with nothing else in the loop <strong>burns</strong>.</p>
 <h2 id="capacitors">Capacitors</h2>
 <p><strong>COMPONENTS ▸ Capacitors</strong> holds two:</p>
 <ul>
-<li><strong>Capacitor (ceramic)</strong> — a disc, not polarised, leads two holes apart.</li>
+<li><strong>Capacitor (ceramic)</strong> — a disc, not polarised, leads one hole apart.</li>
 <li><strong>Capacitor (electrolytic)</strong> — a can with a stripe down its <strong>negative</strong>
 side, leads one hole apart. Pin 1 is <code>+</code>, pin 2 is <code>−</code>.</li>
 </ul>
@@ -233,6 +373,107 @@ the checks ask whether a net has anything on it.</p>
 stripe anyway if you mean to build it.</p>
 <p>The first time you place a capacitor a note says all this; <strong>Don&#39;t show
 again</strong> puts it away for good.</p>
+<h2 id="inductors-diodes-and-transistors">Inductors, diodes and transistors</h2>
+<p>These parts do as much as a logic simulator can honestly do, and no more: no
+forward drop, no gain, no thresholds, no Zener breakdown, no inductive kick.
+What they always do is <strong>export to KiCad as the real part</strong> (see
+<a href="exporting.html#kicad">Exporting</a>). Every one of them — and the capacitors —
+has an optional <strong>Part number</strong> in <strong>Properties…</strong> (<code>1N4148</code>, <code>2N2222</code>,
+<code>2N7000</code>…). It is printed on the part, listed in the
+<a href="build-guide.html">BOM</a> and written to the export, and it changes nothing about
+how the part behaves.</p>
+<p><strong>Inductors</strong> (<strong>COMPONENTS ▸ Inductors</strong>) take an optional <strong>Inductance</strong>
+(see <a href="#component-values">Component values</a>); leave it blank for a bare
+inductor.
+Its <strong>Style</strong> is the part it is, seen from above like everything on the
+desk: a <strong>Coil</strong> — a toroid standing on edge over its leads, copper wound
+round a dark ferrite ring — or a <strong>Can</strong>, a drum in a black sleeve, its value
+printed on top. <strong>Holes between
+leads</strong> is <strong>2</strong> (leads 0.3 in apart) or <strong>3</strong> (0.4 in apart, and a bigger
+part). On a part lying along a row, 3 moves its second lead one hole further
+on, so it is refused — with the reason under the choice — where that hole is
+taken or off the end of the board, and it is greyed while the circuit runs,
+like any other change to the wiring. In the simulation an inductor <strong>conducts
+like a wire</strong>: its two leads are one net, whatever it looks like. So one
+across the rails is a short, exactly as a wire would be.</p>
+<p><strong>Diodes</strong> (<strong>COMPONENTS ▸ Diodes</strong>) are the <strong>Diode</strong> and the <strong>Zener
+diode</strong>. Pin 1 is the anode; pin 2, the cathode, is the end the band marks. A
+diode is <strong>one-way</strong>: a HIGH on its anode passes to its cathode, and nothing
+ever passes back. A LOW or undriven anode leaves the cathode to whatever else
+is on it — so two diodes into one net, with a pull-down resistor there, make a
+<strong>diode-OR</strong>. The HIGH passes at the strength it arrived with: from a rail or a
+chip output it drives the cathode, through a resistor it only pulls it. Like an
+LED, a diode wired forward straight across two strongly driven nets (rail to
+rail, or an output into ground) <strong>burns</strong>. A Zener takes an optional <strong>Zener
+voltage</strong>, picked with its part number or typed (see
+<a href="#component-values">Component values</a>), printed and exported, but in
+the simulation it is exactly a diode: reverse breakdown is analog, so it
+regulates nothing here.</p>
+<p><strong>Transistors</strong> (<strong>COMPONENTS ▸ Transistors</strong>) are an <strong>NPN</strong> and a <strong>PNP</strong>
+bipolar transistor and an <strong>N-channel</strong> and a <strong>P-channel MOSFET</strong>, each
+standing over three holes in a row with its pin letters printed on it: <code>E B C</code>
+for the BJTs, <code>S G D</code> for the MOSFETs. A BJT is a TO-92. A MOSFET is a
+<strong>TO-220</strong> — the power part, its metal tab behind it — unless you pick
+<strong>TO-92</strong> under <strong>Package</strong> in its <strong>Properties…</strong>; the package is how it is
+drawn, listed in the BOM and exported, never how it behaves. Its <strong>Type</strong>
+turns it into any of the four where it stands. Real pinouts differ by part number
+(a 2N2222 is E·B·C, a BC547 C·B·E, an IRLZ44N G·D·S), so select one and press
+<code>R</code> to turn it end-for-end. In the simulation each is a <strong>switch</strong>:</p>
+<table>
+<thead>
+<tr>
+<th>Part</th>
+<th>Control</th>
+<th>Joins</th>
+<th>On while the control is</th>
+</tr>
+</thead>
+<tbody><tr>
+<td>NPN</td>
+<td>Base <code>B</code></td>
+<td>Collector <code>C</code> and emitter <code>E</code></td>
+<td>HIGH</td>
+</tr>
+<tr>
+<td>PNP</td>
+<td>Base <code>B</code></td>
+<td>Emitter <code>E</code> and collector <code>C</code></td>
+<td>LOW</td>
+</tr>
+<tr>
+<td>N-channel MOSFET</td>
+<td>Gate <code>G</code></td>
+<td>Drain <code>D</code> and source <code>S</code></td>
+<td>HIGH</td>
+</tr>
+<tr>
+<td>P-channel MOSFET</td>
+<td>Gate <code>G</code></td>
+<td>Source <code>S</code> and drain <code>D</code></td>
+<td>LOW</td>
+</tr>
+</tbody></table>
+<p>When it is on, the two switched pins are joined as a closed switch joins them;
+when it is off, they are apart. What an <strong>undriven</strong> or undefined control does
+is where the two kinds differ, as they do on a bench:</p>
+<ul>
+<li>A <strong>BJT</strong> follows its base and remembers nothing: with its base floating or
+undefined it is <strong>off</strong>.</li>
+<li>A <strong>MOSFET&#39;s gate holds charge</strong>: it stays in the last state its gate was
+driven to — <strong>off</strong> until the gate has been driven at all. So a gate left
+floating (or driven by a floating CMOS output) keeps the MOSFET on or off
+rather than passing the confusion down the channel. While it runs on that
+held charge, the lamp on its face is ringed in amber, its hover says so, and
+its <strong>Properties…</strong> card warns you: a real gate leaks that charge away, so
+tie it to a defined level with a resistor.</li>
+</ul>
+<p>While the circuit runs, a transistor&#39;s lamp lights while it conducts. Put a
+resistor in an LED&#39;s leg as you would on a bench — with none, the LED burns —
+and a transistor switched on straight across the rails is a short.</p>
+<p>A pin wired only to one of these parts <strong>counts as connected</strong>, conducting
+or not: a reversed diode or an off transistor is a valid board, not a floating
+input. Supplies don&#39;t pass through them, though — a chip powered through a
+diode or a transistor sees no supply and stays unpowered.</p>
 <h2 id="character-lcd-modules">Character LCD modules</h2>
 <p>The <strong>Displays</strong> group holds two HD44780 character-LCD modules: a 16×2
 (the standard 1602A) and a 20×4 (the 2004A). They&#39;re drawn to their real
@@ -270,7 +511,7 @@ numbering per position reverses (a switch bank&#39;s own position states don&#39
 move — position 1 is still position 1, just wired to the opposite pins now).
 Neither has the turn-in-hand behavior of a plain LED — treat them as chips
 for rotation purposes.</p>
-<p><strong>Resistor, capacitor and LED (<code>R</code>, both while placing and once placed).</strong> These
+<p><strong>Resistor, capacitor, inductor, diode and LED (<code>R</code>, both while placing and once placed).</strong> These
 two-lead parts start in a horizontal <strong>footprint</strong> form (pin 1 and pin 2 a
 fixed span apart along one row). Press <code>R</code> while the ghost is armed to turn
 it into a vertical <strong>two-free-ends</strong> form instead: pin 1 stays at the anchor
@@ -281,6 +522,10 @@ turn, cycling through all four compass directions before repeating. Once the
 part is placed, select it and press <code>R</code> to rotate it 90° at a time — pin 1
 stays put and pin 2&#39;s lead swings around it, hunting for the next free hole
 to land in.</p>
+<p><strong>Transistors (<code>R</code> while selected, or while placing).</strong> A transistor turns
+end-for-end in place, as the bussed resistor array does: the same three
+holes, with the pin order reversed (<code>E B C</code> becomes <code>C B E</code>), which is how
+its letters read on its face.</p>
 <p><strong>Oscillator cans (<code>R</code>, but the exact step differs by state).</strong> A can spins
 around its own centre, not around one pin, and the step size changes
 depending on whether you&#39;re still placing it:</p>

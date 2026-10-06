@@ -76,7 +76,7 @@ function sanitizeCustomChips(list) {
       .slice(0, 64)
       .map((p) => ({
         name: p.name.slice(0, 32),
-        dir: p.dir === "output" ? "output" : "input",
+        dir: ["output", "inout"].includes(p.dir) ? p.dir : "input",
         width: intIn(p.width, 1, 16, 1),
       }));
     const units = (Array.isArray(c.units) ? c.units : [])

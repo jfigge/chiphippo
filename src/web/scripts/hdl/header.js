@@ -19,7 +19,8 @@
 
 // header.js — the module header ChipHippo writes for a custom chip, from its
 // package (the port list) and its body (whether each output is driven by an
-// always block — `output reg` — or by `assign` — `output wire`). The user
+// always block — `output reg` — or by `assign` — `output wire`; an inout is
+// always `inout wire`). The user
 // never edits it, which is what keeps the code's pins and the package's from
 // drifting apart: rename a pin and the header follows.
 
@@ -42,7 +43,8 @@ export const rangeText = (w) => (w > 1 ? `[${w - 1}:0]` : "");
 export function moduleHeader(name, ports, outputKind = new Map()) {
   if (!ports.length) return `module ${name};`;
   const rows = ports.map((p) => {
-    const dir = p.dir === "output" ? "output" : "input";
+    const dir = p.dir === "output" || p.dir === "inout" ? p.dir : "input";
+    // An inout is always a net: it is driven by `assign` alone.
     const kind = p.dir === "output" ? (outputKind.get(p.name) ?? "wire") : "wire"; // prettier-ignore
     return [dir, kind, rangeText(p.width ?? 1), p.name];
   });

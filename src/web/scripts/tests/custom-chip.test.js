@@ -159,6 +159,24 @@ test("a duplicate gets a new id and a free name", () => {
   assert.equal(b.code, a.code);
 });
 
+test("an inout port's pins are io pins, never shared between units", () => {
+  let c = chipWith({
+    ports: [
+      { name: "D", dir: "inout", width: 2 },
+      { name: "OE", dir: "input", width: 1 },
+    ],
+    units: [{ D: [1, 2], OE: [3] }],
+    code: "assign D = OE ? 2'b10 : 2'bz;\n",
+  });
+  assert.deepEqual(customChipProblems(c), []);
+  const pins = customPins(c);
+  assert.deepEqual([pins[0].role, pins[1].role, pins[2].role], ["io", "io", "input"]); // prettier-ignore
+  assert.equal(normalizeCustomChip(c).ports[0].dir, "inout");
+  c = setUnitCount(c, 2);
+  c.units[1] = { D: [1, 4], OE: [3] };
+  assert.ok(customChipProblems(c).some((p) => p.code === "outputShared" && p.args.pin === 1)); // prettier-ignore
+});
+
 test("reserved and bad port names are problems", () => {
   const c = chipWith({ ports: [{ name: "VCC", dir: "input", width: 1 }, { name: "2x", dir: "input", width: 1 }], units: [{ VCC: [1], "2x": [2] }] }); // prettier-ignore
   const codes = customChipProblems(c).map((p) => p.code);
@@ -351,6 +369,165 @@ test("a ripple: one custom toggle clocking another inside one tick", () => {
     seen.push(`${b.pin(2)}${b.pin(5)}`);
   }
   assert.deepEqual(seen, ["HL", "LH", "HH", "LL"]);
+  setCustomChips([]);
+});
+
+// ── An inout bus and a memory, through the engine ─────────────────────────
+
+test("a 32K×8 SRAM written in Verilog behaves as the catalog's HM62256 beside it", () => {
+  // The HM62256's own pinout: A0…A14, DQ0…DQ7, /CE 20, /OE 22, /WE 27.
+  const ADDR = [10, 9, 8, 7, 6, 5, 4, 3, 25, 24, 21, 23, 2, 26, 1];
+  const DATA = [11, 12, 13, 15, 16, 17, 18, 19];
+  const chip = chipWith({
+    name: "SRAM32K",
+    pinsPerSide: 14,
+    wide: true,
+    ports: [
+      { name: "A", dir: "input", width: 15 },
+      { name: "D", dir: "inout", width: 8 },
+      { name: "CE_N", dir: "input", width: 1 },
+      { name: "OE_N", dir: "input", width: 1 },
+      { name: "WE_N", dir: "input", width: 1 },
+    ],
+    units: [{ A: ADDR, D: DATA, CE_N: [20], OE_N: [22], WE_N: [27] }],
+    vcc: 28,
+    gnd: 14,
+    code: [
+      "reg [7:0] mem [0:32767];",
+      "always @(posedge WE_N) if (!CE_N) mem[A] <= D;",
+      "assign D = (!CE_N && !OE_N && WE_N) ? mem[A] : 8'bz;",
+      "",
+    ].join("\n"),
+  });
+  assert.deepEqual(customChipProblems(chip), []);
+  setCustomChips([chip]);
+  const def = partDef(chip.id);
+  assert.equal(def.customCompiled.ok, true);
+  assert.deepEqual(
+    DATA.map((n) => def.pins[n - 1].role),
+    Array(8).fill("io"),
+  );
+
+  const ram = holesOf("HM62256", "e5");
+  const twin = holesOf(chip.id, "e25");
+  const flag = (id, hole) => ({ id, color: "red", type: "toggle", rest: "high", flag: { anchor: `bb1.${hole}`, rot: 0 } }); // prettier-ignore
+  const signals = [
+    flag("a0", mates(ram.get(10))[1]),
+    flag("a14", mates(ram.get(1))[1]),
+    flag("oe", mates(ram.get(22))[1]),
+    flag("we", mates(ram.get(27))[1]),
+    flag("ceRam", mates(ram.get(20))[1]),
+    flag("ceTwin", mates(twin.get(20))[1]),
+    ...DATA.map((n, b) => flag(`d${b}`, mates(ram.get(n))[1])),
+  ];
+  let rail = 2;
+  const wires = [
+    wire("psu1.+", HI(1)),
+    wire("psu1.-", LO(1)),
+    ...[ram, twin].flatMap((h) => [
+      wire(strip(h, 28), HI(++rail)),
+      wire(strip(h, 14), LO(rail)),
+    ]),
+    // Every pin of one chip to the same pin of the other — except /CE, so
+    // each can be selected on its own.
+    ...[...ADDR, ...DATA, 22, 27].map((n) => wire(strip(ram, n), strip(twin, n))), // prettier-ignore
+    // The address lines no signal drives held low: A1…A13.
+    ...ADDR.slice(1, 14).map((n) => wire(strip(ram, n, 1), LO(++rail))),
+  ];
+  const doc = {
+    boards,
+    components: [
+      {
+        id: "psu1",
+        kind: "psu",
+        ref: "psu",
+        x: 80,
+        y: 0,
+        params: { volts: 5 },
+      },
+      { id: "ram", kind: "chip", ref: "HM62256", board: "bb1", anchor: "e5", params: {} }, // prettier-ignore
+      { id: "c1", kind: "chip", ref: chip.id, board: "bb1", anchor: "e25", params: {} }, // prettier-ignore
+    ],
+    wires,
+    signals,
+  };
+  const netlist = buildNetlist(doc);
+  const image = new Uint8Array(32768);
+  const images = new Map([["ram", image]]);
+  const s = { warm: new Map(), state: new Map(), prev: new Map() };
+  const levels = new Map();
+  const set = (patch) => {
+    for (const [id, level] of Object.entries(patch)) levels.set(id, level);
+    const r = engineTick({
+      document: doc,
+      netlist,
+      warmStart: s.warm,
+      state: s.state,
+      prevPinLevels: s.prev,
+      signalLevels: new Map(levels),
+      images,
+    });
+    s.warm = r.netLevels;
+    s.state = r.state;
+    s.prev = r.pinLevels;
+    for (const w of r.memWrites)
+      if (w.compId === "ram") image[w.addr] = w.value;
+    return r;
+  };
+  const bus = () =>
+    DATA.map((n) => s.warm.get(netlist.netOfPoint.get(`bb1.${ram.get(n)}`)))
+      .reverse()
+      .join("");
+  const byte = (v) =>
+    Array.from({ length: 8 }, (_v, b) => ((v >> (7 - b)) & 1 ? H : L)).join("");
+  const drive = (v) =>
+    Object.fromEntries(Array.from({ length: 8 }, (_v, b) => [`d${b}`, v == null ? Z : (v >> b) & 1 ? H : L])); // prettier-ignore
+  const address = (a14, a0) => ({ a14: a14 ? H : L, a0: a0 ? H : L });
+
+  // Deselected: nothing drives the bus.
+  set({ ...address(0, 0), oe: H, we: H, ceRam: H, ceTwin: H, ...drive(null) });
+  assert.equal(bus(), "ZZZZZZZZ");
+  for (const r of [set({}), set({})]) {
+    assert.equal(r.chipStatus.get("c1").status, "ok");
+    assert.equal(r.chipStatus.get("ram").status, "ok");
+  }
+
+  // Write the same two bytes into both: a /WE pulse with both selected.
+  const write = (a14, a0, v) => {
+    set({ ...address(a14, a0), ...drive(v), ceRam: L, ceTwin: L });
+    set({ we: L });
+    set({ we: H });
+    set({ ...drive(null), ceRam: H, ceTwin: H });
+  };
+  write(0, 1, 0x3e);
+  write(1, 1, 0xc5);
+  assert.equal(image[1], 0x3e);
+  assert.equal(image[16385], 0xc5);
+
+  // Read back from each alone, then from both at once — two drivers
+  // agreeing, so no conflict: the twin answers exactly as the HM62256 does.
+  for (const [a14, a0, v] of [
+    [0, 1, 0x3e],
+    [1, 1, 0xc5],
+  ]) {
+    set({ ...address(a14, a0), oe: L, ceRam: H, ceTwin: L });
+    assert.equal(bus(), byte(v), "the twin alone");
+    set({ ceRam: L, ceTwin: H });
+    assert.equal(bus(), byte(v), "the HM62256 alone");
+    const r = set({ ceTwin: L });
+    assert.equal(bus(), byte(v), "both");
+    assert.deepEqual(
+      r.warnings.filter((w) => w.type === "conflict"),
+      [],
+    );
+    set({ oe: H, ceRam: H, ceTwin: H });
+    assert.equal(bus(), "ZZZZZZZZ");
+  }
+
+  // Something else driving the bus while the twin reads onto it: a fight.
+  set({ ...address(0, 1), oe: L, ceTwin: L, ...drive(0x00) });
+  const r = set({});
+  assert.ok(r.warnings.some((w) => w.type === "conflict"));
   setCustomChips([]);
 });
 

@@ -27,11 +27,11 @@
 // hdl/) joined by a PIN MAP: which physical pin each port bit lands on, for
 // each of up to six UNITS — the same module replicated across separate pin
 // groups, as a quad NAND is four NANDs. A unit's input may share a pin with
-// another unit's (a common clock); an output never shares.
+// another unit's (a common clock); an output or an inout never shares.
 //
 //     { id: "custom-1a2b3c4d", name: "MY74", description,
 //       family: "74LS"|"CD4000", pinsPerSide: 7, wide: false,
-//       ports: [{name, dir: "input"|"output", width}],
+//       ports: [{name, dir: "input"|"output"|"inout", width}],
 //       units: [{ <port>: [pin per bit, LSB first; 0 = not on a pin] }],
 //       vcc: 14, gnd: 7, code: "assign Y = ~(A & B);" }
 //
@@ -64,6 +64,9 @@ export const MIN_PER_SIDE = MIN_CUSTOM_PINS / 2;
 export const MAX_PER_SIDE = MAX_CUSTOM_PINS / 2;
 
 export const CUSTOM_FAMILIES = Object.freeze(["74LS", "CD4000"]);
+
+/** A port's direction: an inout pin is read AND driven (a data bus). */
+export const PORT_DIRS = Object.freeze(["input", "output", "inout"]);
 
 /** What a custom chip's id looks like — and so what its ref does. */
 export const CUSTOM_ID_RE = /^custom-[0-9a-f]{8}$/;
@@ -119,7 +122,7 @@ export function normalizeCustomChip(raw) {
     seen.add(portName);
     ports.push({
       name: portName.slice(0, 32),
-      dir: p.dir === "output" ? "output" : "input",
+      dir: PORT_DIRS.includes(p.dir) ? p.dir : "input",
       width: int(p.width, 1, MAX_PORT_WIDTH, 1),
     });
   }
@@ -201,8 +204,9 @@ export function pinUses(chip) {
 
 /**
  * The chip's pinout, pin 1 to 2N, as a catalog def's `pins`: power, then
- * every port bit where the map puts it (an output's pin is its own; inputs
- * may share), and NC wherever nothing is. A pin two things claim in a way
+ * every port bit where the map puts it (an output's or inout's pin is its
+ * own; inputs may share), and NC wherever nothing is. An inout's pin is an
+ * `io` pin, read and driven as a memory's data bus is. A pin two things claim in a way
  * that cannot be (an output shared, a port bit on a power pin) is still
  * listed — named for its first claimant — and `customChipProblems` says why.
  * @returns {Array<{n: number, name: string, role: string, uses: object[]}>}
@@ -227,7 +231,7 @@ export function customPins(chip) {
       continue;
     }
     const first = here[0];
-    const role = here.some((u) => u.port.dir === "output") ? "output" : "input"; // prettier-ignore
+    const role = here.some((u) => u.port.dir === "inout") ? "io" : here.some((u) => u.port.dir === "output") ? "output" : "input"; // prettier-ignore
     const label = bitLabel(first.port, first.bit);
     // One unit: the port's own name. Several: the unit's number in front,
     // unless every unit shares this one pin for the same port bit (a common
@@ -291,7 +295,7 @@ export function customChipProblems(chip) {
       err("portOnPower", { pin, name: bitLabel(here[0].port, here[0].bit) });
       continue;
     }
-    if (here.length > 1 && here.some((u) => u.port.dir === "output")) {
+    if (here.length > 1 && here.some((u) => u.port.dir !== "input")) {
       err("outputShared", { pin });
     }
   }

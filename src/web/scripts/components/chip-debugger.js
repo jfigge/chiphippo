@@ -58,6 +58,7 @@ import { partDef, chipMarking } from "../catalog/index.js";
 import {
   DebugSession,
   collectEvents,
+  memoryWords,
   nextBreak,
   pinLevelsOf,
   recorder,
@@ -303,6 +304,28 @@ export class ChipDebugger {
     this.#tabs.delete(compId);
     if (this.#focus === compId) this.#focus = this.#order()[0] ?? null;
     this.#emit();
+  }
+
+  /**
+   * Words of an array as a tab's watch panel shows it — the paused frame's
+   * values, else the ones the tab last saw, of the unit on show — for the
+   * window's memory view, which asks a screenful at a time (a 32K memory
+   * never rides the debugger's state). Null when there is no such array.
+   * @param {string} compId
+   * @param {number} slot - the array's slot (its watch row says).
+   * @param {number} from - the first index, as the array declares it.
+   * @param {number} count
+   */
+  memoryRange(compId, slot, from, count) {
+    const tab = this.#tabs.get(compId);
+    const def = this.#defOf(compId);
+    const program = def?.customRuntime?.program;
+    if (!tab || !program) return null;
+    const frame = this.#session?.frameOf(compId) ?? null;
+    const units = def.customChip?.units.length ?? 1;
+    const unit = frame ? frame.unit : Math.min(tab.unit ?? 0, units - 1);
+    const vals = frame ? frame.vals : tab.vals?.[unit];
+    return memoryWords(program, vals, slot, from, count, frame?.pending ?? null); // prettier-ignore
   }
 
   /** Which unit's values a tab's watch panel shows (a replicated chip). */

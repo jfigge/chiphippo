@@ -41,8 +41,29 @@
 // statement, for the debugger: `traceComb` is event-driven (only the blocks
 // a change reaches run, in order, as a simulator would schedule them), and
 // `traceStep` adds the edge blocks and their non-blocking updates in front.
+//
+// An ARRAY's value is a memory (memory.js), not a vector, and is state like
+// any edge-driven reg — held by reference, since a memory is immutable. Its
+// writes go through a TRANSACTION (`ctx.tx`) while nothing is watching, so a
+// loop filling 32K words copies each node once; while a trace records
+// frames a write never changes a memory a frame already holds.
 
 import * as V from "./values.js";
+import {
+  changedWords,
+  isMemory,
+  newMemory,
+  newTx,
+  sameMemory,
+  writeWord,
+} from "./memory.js";
+
+/** One slot's value as state data: a vector as `[v, x, z]`, a memory as
+    itself (it is immutable already). */
+const packOne = (value) => (isMemory(value) ? value : V.pack(value));
+/** Two slot values the same? (A memory compares its words.) */
+const sameValue = (a, b) =>
+  isMemory(a) || isMemory(b) ? sameMemory(a, b) : V.same(a, b);
 
 /** Bits of a 1-bit-at-`pos` read: "0" | "1" | "x" | "z". */
 function bitState(value, pos) {
@@ -66,6 +87,7 @@ export class Program {
   #outputSlots; // output port index → slot
   #inputIndexOf = new Map(); // slot → input port index
   #maxPasses;
+  #blanks = new Map(); // slot → an array's all-x memory
   #initial = null;
   #lines = null; // the lines a debugger can stop at (see executableLines)
   #readers; // slot → comb block indices reading it
@@ -73,8 +95,10 @@ export class Program {
   /** @param {object} module - analyze.js's `module`. */
   constructor(module) {
     this.#m = module;
-    this.#inputSlots = module.ports.filter((p) => p.dir === "input").map((p) => p.slot); // prettier-ignore
-    this.#outputSlots = module.ports.filter((p) => p.dir === "output").map((p) => p.slot); // prettier-ignore
+    // An inout is read like an input (its pin's level) and drives like an
+    // output (its driven slot), each in port order among its kind.
+    this.#inputSlots = module.ports.filter((p) => p.dir === "input" || p.dir === "inout").map((p) => p.slot); // prettier-ignore
+    this.#outputSlots = module.ports.filter((p) => p.dir === "output" || p.dir === "inout").map((p) => p.drive ?? p.slot); // prettier-ignore
     this.#inputSlots.forEach((slot, i) => this.#inputIndexOf.set(slot, i));
     let bits = 0;
     for (const slot of module.combSlots) bits += module.slots[slot].w;
@@ -93,12 +117,14 @@ export class Program {
     return this.#m.slots;
   }
 
-  /** The input ports, in port order (what `ins` arrays are aligned with). */
+  /** The input ports, in port order (what `ins` arrays are aligned with) —
+      an inout's pin among them. */
   get inputs() {
     return this.#inputSlots.map((s) => this.#m.slots[s]);
   }
 
-  /** The output ports, in port order. */
+  /** The output ports, in port order — an inout's driven value among them,
+      under the inout's name. */
   get outputs() {
     return this.#outputSlots.map((s) => this.#m.slots[s]);
   }
@@ -147,6 +173,14 @@ export class Program {
           for (const item of stmt.items) walk(item.body);
           walk(stmt.default);
           return;
+        case "for":
+        case "repeat":
+          lines.add(stmt.loc.line);
+          walk(stmt.body);
+          return;
+        case "mark":
+          lines.add(stmt.loc.line);
+          return;
         default:
       }
     };
@@ -164,7 +198,7 @@ export class Program {
   initialState() {
     if (this.#initial) return this.#initial;
     const vals = this.#fresh(this.#inputSlots.map((s) => V.allX(this.#m.slots[s].w)), null); // prettier-ignore
-    const ctx = { vals, nba: [], trace: null };
+    const ctx = { vals, nba: [], trace: null, tx: newTx() };
     for (const block of this.#m.initial) exec(block.body, ctx);
     applyNba(ctx);
     this.#initial = Object.freeze(this.#pack(vals));
@@ -210,7 +244,7 @@ export class Program {
     const fired = this.firedBlocks(ins, prev);
     if (!fired.length) return state;
     const vals = this.evaluate(ins, state);
-    const ctx = { vals, nba: [], trace: null };
+    const ctx = { vals, nba: [], trace: null, tx: newTx() };
     for (const block of fired) exec(block.body, ctx);
     applyNba(ctx);
     const next = this.#pack(vals);
@@ -241,7 +275,7 @@ export class Program {
       const fresh = this.#fresh(ins, st);
       changed = new Set();
       for (const slot of [...this.#inputSlots, ...this.#m.state]) {
-        if (!V.same(vals[slot], fresh[slot])) {
+        if (!sameValue(vals[slot], fresh[slot])) {
           vals[slot] = fresh[slot];
           changed.add(slot);
         }
@@ -266,7 +300,10 @@ export class Program {
     const vals = this.evaluate(ins, st);
     if (!fired.length) return { frames: [], state, vals };
     const frames = [];
-    const ctx = { vals, nba: [], trace: null };
+    // No transaction while frames are taken: a memory a frame holds must
+    // stay as it was. The non-blocking updates land after the last frame
+    // before them, so they may share one.
+    const ctx = { vals, nba: [], trace: null, tx: null };
     for (const block of fired) {
       const index = this.#m.edge.indexOf(block);
       ctx.trace = (stmt) =>
@@ -274,6 +311,7 @@ export class Program {
       exec(block.body, ctx);
     }
     if (ctx.nba.length) frames.push(frame("nba", -1, null, vals, ctx.nba));
+    ctx.tx = newTx();
     applyNba(ctx);
     const next = this.#pack(vals);
     const changed = new Set();
@@ -296,17 +334,33 @@ export class Program {
     const m = this.#m;
     const vals = new Array(m.slots.length);
     m.slots.forEach((s, slot) => {
-      vals[slot] = s.kind === "wire" || (s.kind === "output" && m.outputKind.get(s.name) === "wire") ? V.allZ(s.w) : V.allX(s.w); // prettier-ignore
+      if (s.kind === "memory") {
+        vals[slot] = this.#blank(slot);
+        return;
+      }
+      vals[slot] = s.kind === "wire" || s.kind === "drive" || (s.kind === "output" && m.outputKind.get(s.name) === "wire") ? V.allZ(s.w) : V.allX(s.w); // prettier-ignore
     });
     this.#inputSlots.forEach((slot, i) => {
       vals[slot] = V.resize(ins?.[i] ?? V.allX(m.slots[slot].w), m.slots[slot].w); // prettier-ignore
     });
     if (state) {
       m.state.forEach((slot, i) => {
-        vals[slot] = V.unpack(m.slots[slot].w, state[i]);
+        const p = state[i];
+        vals[slot] = isMemory(p) ? p : V.unpack(m.slots[slot].w, p);
       });
     }
     return vals;
+  }
+
+  /** An array's all-x memory — one per slot, shared (it is immutable). */
+  #blank(slot) {
+    let blank = this.#blanks.get(slot);
+    if (!blank) {
+      const s = this.#m.slots[slot];
+      blank = newMemory(s.w, s.depth);
+      this.#blanks.set(slot, blank);
+    }
+    return blank;
   }
 
   /** Settle the comb blocks in place: passes in dependency order until a
@@ -347,23 +401,49 @@ export class Program {
   }
 
   #pack(vals) {
-    return this.#m.state.map((slot) => V.pack(vals[slot]));
+    return this.#m.state.map((slot) => packOne(vals[slot]));
   }
 }
 
-/** One debugger frame: where execution is about to go, and every value as
-    it stands (plus what the queued non-blocking writes would make of them). */
+/**
+ * One debugger frame: where execution is about to go, and every value as it
+ * stands — plus `pending`, what the queued non-blocking writes would make of
+ * them: `[slot, value]` for a vector, `[slot, {mem: true, writes: [[addr,
+ * value]]}]` for an array. Worked out only when asked for (a loop queueing
+ * thousands of writes takes a frame per statement, and only the frame on
+ * screen is ever read), from the queue as it stood: the frame keeps the
+ * queue and its length, and the queue is only ever appended to.
+ */
 function frame(phase, block, loc, vals, nba) {
-  let pending = null;
-  if (nba?.length) {
-    const after = vals.slice();
-    applyWrites(after, nba);
-    pending = [];
-    after.forEach((v, slot) => {
-      if (!V.same(v, vals[slot])) pending.push([slot, v]);
-    });
-  }
-  return { phase, block, loc, vals: vals.slice(), pending };
+  const snapshot = vals.slice();
+  const queued = nba?.length ?? 0;
+  let pending;
+  return {
+    phase,
+    block,
+    loc,
+    vals: snapshot,
+    get pending() {
+      if (pending === undefined) pending = pendingOf(snapshot, nba, queued);
+      return pending;
+    },
+  };
+}
+
+/** What the first `count` queued writes would change, or null for none. */
+function pendingOf(vals, nba, count) {
+  if (!count) return null;
+  const after = vals.slice();
+  const tx = newTx();
+  for (let k = 0; k < count; k++) writeSegments(after, nba[k][0], nba[k][1], tx); // prettier-ignore
+  const out = [];
+  after.forEach((v, slot) => {
+    if (sameValue(v, vals[slot])) return;
+    if (isMemory(v))
+      out.push([slot, { mem: true, writes: changedWords(vals[slot], v) }]); // prettier-ignore
+    else out.push([slot, v]);
+  });
+  return out.length ? out : null;
 }
 
 /**
@@ -373,13 +453,13 @@ function frame(phase, block, loc, vals, nba) {
  */
 function runComb(block, vals, record) {
   const before = block.writes.map((w) => vals[w.slot]);
-  const ctx = { vals, nba: [], trace: null };
+  const ctx = { vals, nba: [], trace: null, tx: null };
   if (record) ctx.trace = (stmt) => record(stmt, ctx);
   exec(block.body, ctx);
   applyNba(ctx);
   let changed = null;
   block.writes.forEach((w, k) => {
-    if (!V.same(before[k], vals[w.slot])) (changed ??= new Set()).add(w.slot);
+    if (!sameValue(before[k], vals[w.slot])) (changed ??= new Set()).add(w.slot); // prettier-ignore
   });
   return changed;
 }
@@ -396,10 +476,40 @@ export function exec(stmt, ctx) {
       ctx.trace?.(stmt);
       const value = V.resize(stmt.value(ctx.vals), stmt.w);
       const segments = stmt.target.resolve(ctx.vals);
-      if (stmt.blocking) writeSegments(ctx.vals, segments, value);
+      if (stmt.blocking) writeSegments(ctx.vals, segments, value, ctx.tx);
       else ctx.nba.push([segments, value]);
       return;
     }
+    case "for": {
+      // A loop the analyzer ran to its end already: it stops after the
+      // number of passes it was proved to make (`max`), at the latest.
+      ctx.trace?.(stmt);
+      const segments = stmt.target.resolve(ctx.vals);
+      writeSegments(ctx.vals, segments, V.resize(stmt.init(ctx.vals), stmt.w), ctx.tx); // prettier-ignore
+      for (
+        let n = 0;
+        n < stmt.max && V.truthOf(stmt.cond(ctx.vals)) === "1";
+        n++
+      ) {
+        // prettier-ignore
+        exec(stmt.body, ctx);
+        ctx.trace?.(stmt);
+        writeSegments(ctx.vals, segments, V.resize(stmt.step(ctx.vals), stmt.w), ctx.tx); // prettier-ignore
+      }
+      return;
+    }
+    case "repeat": {
+      ctx.trace?.(stmt);
+      for (let n = 0; n < stmt.times; n++) {
+        if (n) ctx.trace?.(stmt);
+        exec(stmt.body, ctx);
+      }
+      return;
+    }
+    case "mark":
+      // A loop's own line in an unrolled loop: somewhere to stop.
+      ctx.trace?.(stmt);
+      return;
     case "if": {
       ctx.trace?.(stmt);
       // An unknown condition takes the else branch, as Verilog's does.
@@ -439,27 +549,30 @@ function matches(mode, a, b) {
 }
 
 /** Write a value across segments (most significant first); a `slot: -1`
-    segment (an unknown index) consumes its bits and writes nothing. */
-function writeSegments(vals, segments, value) {
+    segment (an unknown index) consumes its bits and writes nothing, and an
+    array word's segment (`mem`) writes that word. */
+function writeSegments(vals, segments, value, tx = null) {
   let offset = value.w;
   for (const seg of segments) {
     offset -= seg.w;
     if (seg.slot < 0) continue;
-    vals[seg.slot] = V.withBits(vals[seg.slot], seg.lo, V.slice(value, offset, seg.w)); // prettier-ignore
+    const bits = V.slice(value, offset, seg.w);
+    if (seg.mem) vals[seg.slot] = writeWord(vals[seg.slot], seg.addr, bits, tx);
+    else vals[seg.slot] = V.withBits(vals[seg.slot], seg.lo, bits);
   }
-}
-
-function applyWrites(vals, nba) {
-  for (const [segments, value] of nba) writeSegments(vals, segments, value);
 }
 
 function applyNba(ctx) {
   if (!ctx.nba.length) return;
-  applyWrites(ctx.vals, ctx.nba);
+  const tx = ctx.tx ?? newTx();
+  for (const [segments, value] of ctx.nba) writeSegments(ctx.vals, segments, value, tx); // prettier-ignore
   ctx.nba = [];
 }
 
-const samePackedOne = (a, b) => a[0] === b[0] && a[1] === b[1] && a[2] === b[2];
+const samePackedOne = (a, b) => {
+  if (isMemory(a) || isMemory(b)) return sameMemory(a, b);
+  return a[0] === b[0] && a[1] === b[1] && a[2] === b[2];
+};
 
 function samePacked(a, b) {
   if (a === b) return true;

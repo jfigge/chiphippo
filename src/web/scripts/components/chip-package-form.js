@@ -350,6 +350,7 @@ export class ChipPackageForm {
         [
           ["input", t("chipdesign.form.dirInput")],
           ["output", t("chipdesign.form.dirOutput")],
+          ["inout", t("chipdesign.form.dirInout")],
         ],
         port.dir,
         (value) =>

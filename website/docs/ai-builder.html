@@ -70,12 +70,14 @@ kbd{font-family:inherit;font-size:.8em;background:var(--surface-0);border:1px so
         <a class="doc-nav-link" href="wiring.html">Wiring, Nets &amp; Buses</a>
         <a class="doc-nav-link" href="power-and-clocks.html">Power &amp; Clock Sources</a>
         <a class="doc-nav-link" href="chip-library.html">The Chip Library</a>
+        <a class="doc-nav-link" href="custom-chips.html">Custom Chips</a>
         <a class="doc-nav-link" href="simulation.html">Running a Simulation</a>
         <a class="doc-nav-link" href="probing.html">Probing &amp; Net Names</a>
         <a class="doc-nav-link" href="memory.html">Memory Chips &amp; the Inspector</a>
         <a class="doc-nav-link" href="logic-analyzer.html">Logic Analyzer &amp; Timing</a>
         <a class="doc-nav-link" href="build-guide.html">Build Guide &amp; BOM</a>
         <a class="doc-nav-link" href="schematic-view.html">Schematic View</a>
+        <a class="doc-nav-link" href="3d-view.html">3D View</a>
         <a class="doc-nav-link doc-nav-link--active" href="ai-builder.html">AI Circuit Builder</a>
         <a class="doc-nav-link" href="arduino.html">Arduino Integration</a>
         <a class="doc-nav-link" href="serial-protocol.html">Serial Protocol</a>
@@ -236,10 +238,14 @@ so when it offers the design; load the image through the chip&#39;s
 <li><strong>Multi-corner cans</strong> — the oscillator packages. The model isn&#39;t offered
 them.</li>
 <li><strong>Capacitors and the timers</strong> (the 555, CD4047B, CD4060B, CD4098B,
-CD4538B). A timer&#39;s rate lives in the values of its resistors and capacitor,
-and a netlist has nowhere to state a value, so the model isn&#39;t offered them.
-Build a timer by hand and wire the rest with the builder, or ask for a
-circuit clocked by a clock brick.</li>
+CD4528B, CD4538B, CD4541B). A timer&#39;s rate lives in the values of its
+resistors and capacitor, and a netlist has nowhere to state a value, so the
+model isn&#39;t offered them. Build a timer by hand and wire the rest with the
+builder, or ask for a circuit clocked by a clock brick.</li>
+<li><strong>Transistors, diodes, inductors and the potentiometer</strong>, and the
+CD4007UB&#39;s bare MOSFETs with them. What these do depends on how they are
+wired, which way round they go, or where a knob is turned — none of which a
+netlist can say — so the model isn&#39;t offered them either.</li>
 </ul>
 <h2 id="review-asking-whats-wrong-with-a-circuit">Review: asking what&#39;s wrong with a circuit</h2>
 <p>The panel has two modes, picked with the <strong>Build / Review</strong> switch in its

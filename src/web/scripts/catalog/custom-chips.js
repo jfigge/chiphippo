@@ -26,7 +26,9 @@
 // `{state0, step, outputs}` — so a custom chip is "genuine per-part code
 // behind the standard sequential contract", the CPUs' arrangement, with the
 // code written by the user. Each UNIT (a replicated module) has its own state
-// and reads and drives its own pins through the chip's pin map.
+// and reads and drives its own pins through the chip's pin map. An inout's
+// pins are `io` pins, as a memory's data bus is: the engine hands the chip
+// their level (what the board resolved) and takes back what it drives.
 //
 // A chip whose package is wrong or whose code does not compile is still a
 // chip: it seats, it is powered, and it drives NOTHING (every output Z) —
@@ -124,8 +126,8 @@ function inertLogic(pins) {
  * engine's calls do.
  */
 function customRuntime(chip, program, pins) {
-  const inputs = program.inputs; // input ports, in port order
-  const outputs = program.outputs;
+  const inputs = program.inputs; // input (and inout) ports, in port order
+  const outputs = program.outputs; // output (and inout) ports
   const units = chip.units.map((map) => ({
     ins: inputs.map((p) => map[p.name] ?? []),
     outs: outputs.map((p) => map[p.name] ?? []),
@@ -133,7 +135,7 @@ function customRuntime(chip, program, pins) {
   // A port bit on no pin reads as the family reads a pin left open: a TTL
   // input floats HIGH, a CMOS one is unknown.
   const open = floatsUnknown({ family: chip.family }) ? [0, 1] : [1, 0];
-  const inputPins = pins.filter((p) => p.role === "input").map((p) => p.n);
+  const inputPins = pins.filter((p) => p.role === "input" || p.role === "io").map((p) => p.n); // prettier-ignore
 
   /** One unit's input port values from the engine's pin levels. */
   const unitInputs = (u, ins) =>

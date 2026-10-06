@@ -64,6 +64,8 @@ function harness() {
     focusChip: (id) => calls.focused.push(id),
     toggleBreakpoint: (...args) => calls.breakpoints.push(args),
     setArmed: (...args) => calls.armed.push(args),
+    memoryRange: (compId, slot, from, count) =>
+      compId === "c1" ? { from, words: Array(count).fill("00"), pending: [], slot } : null, // prettier-ignore
   };
   const host = new ChipDesignBridge({
     bridge,
@@ -179,4 +181,33 @@ test("a custom chip's pinout window opens its design", async () => {
   debug({ running: true, paused: false, tabs: [], focus: null });
   ask(chip.id);
   assert.deepEqual(calls.focused.at(-1), "c1");
+});
+
+test("an array's words are answered to the window that asked, alone", async () => {
+  const { calls, fromWindow } = harness();
+  fromWindow({ kind: "ready" });
+  await tick();
+  calls.sent.length = 0;
+  fromWindow({ kind: "memory-range", compId: "c1", slot: 4, from: 16, count: 8, req: 3 }); // prettier-ignore
+  await tick();
+  const reply = calls.sent.find((m) => m.kind === "memory-range");
+  assert.equal(reply.compId, "c1");
+  assert.equal(reply.req, 3);
+  assert.equal(reply.range.from, 16);
+  assert.equal(reply.range.words.length, 8);
+  assert.equal(
+    calls.sent.some((m) => m.kind === "state"),
+    false,
+  );
+  // A malformed ask is dropped.
+  calls.sent.length = 0;
+  fromWindow({
+    kind: "memory-range",
+    compId: "c1",
+    slot: "4",
+    from: 0,
+    count: 8,
+  });
+  await tick();
+  assert.equal(calls.sent.length, 0);
 });

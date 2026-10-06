@@ -78,6 +78,27 @@ export function resize(a, w) {
   return norm(w, a.v, a.x, a.z);
 }
 
+/** Sign-extend or truncate to `w`: the top bit — 0, 1, x or z — fills the
+    new bits (a SIGNED operand widened to its context, IEEE 1364 §5.5.2). */
+export function signExtend(a, w) {
+  if (w <= a.w) return resize(a, w);
+  const fill = ((mask(w) - mask(a.w)) >>> 0) >>> 0;
+  const top = a.w - 1;
+  const has = (bits) => ((bits >>> top) & 1) === 1;
+  return norm(
+    w,
+    has(a.v) ? (a.v | fill) >>> 0 : a.v,
+    has(a.x) ? (a.x | fill) >>> 0 : a.x,
+    has(a.z) ? (a.z | fill) >>> 0 : a.z,
+  );
+}
+
+/** A known w-bit pattern read as a two's-complement number. */
+export function toSigned(v, w) {
+  if (w >= 32) return v | 0;
+  return v >= 2 ** (w - 1) ? v - 2 ** w : v;
+}
+
 /** One bit of a value, as a 1-bit value (an out-of-range bit is x). */
 export function bit(a, pos) {
   if (pos < 0 || pos >= a.w) return allX(1);
@@ -242,6 +263,50 @@ export function negate(a) {
   return a.x ? allX(a.w) : known(a.w, -a.v >>> 0);
 }
 
+/** SIGNED `/`: the quotient truncated toward zero (§5.1.5); ÷0 is x. */
+export function sdiv(a, b) {
+  if (a.x || b.x || b.v === 0) return allX(a.w);
+  return known(a.w, Math.trunc(toSigned(a.v, a.w) / toSigned(b.v, b.w)) >>> 0); // prettier-ignore
+}
+
+/** SIGNED `%`: the remainder takes the sign of the first operand. */
+export function smod(a, b) {
+  if (a.x || b.x || b.v === 0) return allX(a.w);
+  return known(a.w, (toSigned(a.v, a.w) % toSigned(b.v, b.w)) >>> 0);
+}
+
+/**
+ * `**` (IEEE 1364-2005 §5.1.5, Table 5-6): any unknown bit → all x; a
+ * negative exponent (only a SIGNED one can be) gives 0, 1 or -1 by the
+ * table, and x for a zero base. Otherwise the power wrapped to the width.
+ * @param {object} a - the base, at the result's width.
+ * @param {object} b - the exponent, self-determined.
+ * @param {boolean} aSigned
+ * @param {boolean} bSigned
+ */
+export function pow(a, b, aSigned = false, bSigned = false) {
+  if (a.x || b.x) return allX(a.w);
+  const base = aSigned ? toSigned(a.v, a.w) : a.v;
+  const exp = bSigned ? toSigned(b.v, b.w) : b.v;
+  if (exp < 0) {
+    if (base === 0) return allX(a.w);
+    if (base === 1) return known(a.w, 1);
+    if (base === -1) return known(a.w, exp % 2 ? -1 >>> 0 : 1);
+    return known(a.w, 0);
+  }
+  // Square-and-multiply, every product kept to 32 bits: exact for the bits
+  // a width of at most 32 keeps.
+  let result = 1;
+  let sq = a.v >>> 0;
+  let e = exp;
+  while (e > 0) {
+    if (e & 1) result = Math.imul(result, sq) >>> 0;
+    sq = Math.imul(sq, sq) >>> 0;
+    e = Math.floor(e / 2);
+  }
+  return known(a.w, result);
+}
+
 // ── Comparison (1-bit results) ─────────────────────────────────────────────
 
 export function lt(a, b) {
@@ -256,6 +321,15 @@ export function gt(a, b) {
 export function ge(a, b) {
   return a.x || b.x ? X1 : bool(a.v >= b.v);
 }
+
+/** The SIGNED comparisons — both operands signed (§5.5.1), so each is read
+    as a two's-complement number of the comparison's width. */
+const signedCompare = (fn) => (a, b) =>
+  a.x || b.x ? X1 : bool(fn(toSigned(a.v, a.w), toSigned(b.v, b.w)));
+export const slt = signedCompare((p, q) => p < q);
+export const sle = signedCompare((p, q) => p <= q);
+export const sgt = signedCompare((p, q) => p > q);
+export const sge = signedCompare((p, q) => p >= q);
 
 /** `==`: 0 as soon as two KNOWN bits differ, x if any bit is unknown,
     else 1. */
@@ -292,6 +366,19 @@ export function shr(a, n) {
   const k = n.v;
   if (k >= a.w) return known(a.w, 0);
   return norm(a.w, a.v >>> k, a.x >>> k, a.z >>> k);
+}
+
+/** `>>>` on a SIGNED operand: the vacated bits take the sign bit's state. */
+export function ashr(a, n) {
+  if (n.x) return allX(a.w);
+  const k = Math.min(n.v, a.w);
+  const top = a.w - 1;
+  const fill = ((mask(a.w) - mask(a.w - k)) >>> 0) >>> 0;
+  const spread = (bits) => {
+    const shifted = k >= 32 ? 0 : bits >>> k;
+    return ((bits >>> top) & 1 ? shifted | fill : shifted) >>> 0;
+  };
+  return norm(a.w, spread(a.v), spread(a.x), spread(a.z));
 }
 
 // ── The ternary ─────────────────────────────────────────────────────────────
@@ -338,4 +425,28 @@ export function format(a) {
 /** The value as an unsigned decimal, or null when any bit is unknown. */
 export function decimal(a) {
   return a.x ? null : a.v;
+}
+
+/** The value as a two's-complement decimal (an `integer`), or null. */
+export function signedDecimal(a) {
+  return a.x ? null : toSigned(a.v, a.w);
+}
+
+/**
+ * The value in hex digits as Verilog's `%h` prints it — no size or base, a
+ * nibble that is all x `x` (all z `z`), and one only partly unknown `X`
+ * (`Z` when its unknown bits are all z). What a memory view shows per word.
+ */
+export function hexDigits(a) {
+  let s = "";
+  for (let lo = Math.ceil(a.w / 4) * 4 - 4; lo >= 0; lo -= 4) {
+    const n = Math.min(4, a.w - lo);
+    const m = (2 ** n - 1) * 2 ** lo;
+    const xs = (a.x & m) >>> 0;
+    const zs = (a.z & m) >>> 0;
+    if (!xs) s += (((a.v & m) >>> 0) / 2 ** lo).toString(16).toUpperCase();
+    else if (xs === m) s += zs === m ? "z" : zs ? "X" : "x";
+    else s += zs === xs ? "Z" : "X";
+  }
+  return s;
 }

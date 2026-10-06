@@ -33,6 +33,7 @@
 import { clear, el } from "../dom.js";
 import { t } from "../i18n.js";
 import { parseBusName } from "../model/desk-doc.js";
+import { WIRE_COLORS } from "../model/wire-colors.js";
 import { ScopeRecorder, decodeBus, readNet } from "../model/scope-recorder.js";
 import { PopupManager } from "../popup-manager.js";
 import { beginPointerGesture } from "./pointer-gesture.js";
@@ -71,9 +72,16 @@ const CHANNEL_COLORS = [
  * id NUMBER — never for its row, or every channel without a color of its own
  * would change color whenever one is moved past it. `index` is only a fallback
  * for an id that is not `sc<n>`, which a loaded document never holds.
+ *
+ * Its own color is a stored WIRE_COLORS token (a signal flag hands over its
+ * own, so flag, button dot and lane are one hue), drawn through the theme's
+ * `--color-wire-<token>` like every wire and flag on the desk. Handed to CSS
+ * bare, `"red"` was the CSS named color of that name, which no theme defines;
+ * a value that is not a token is no color the app ever stores, so it takes the
+ * palette's.
  */
 function channelColor(ch, index) {
-  if (ch.color) return ch.color;
+  if (WIRE_COLORS.includes(ch.color)) return `var(--color-wire-${ch.color})`;
   const m = /^sc(\d+)$/.exec(ch.id ?? "");
   const n = m ? Number(m[1]) - 1 : index;
   return CHANNEL_COLORS[n % CHANNEL_COLORS.length];

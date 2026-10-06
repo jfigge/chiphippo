@@ -8,6 +8,8 @@ way of *looking* at a design, not of building one: like the
 [Schematic View](schematic-view.md) it is a **projection** of the desk, and
 nothing you do in it changes a part, a hole or a wire.
 
+![A circuit on three breadboards, turned round in the 3D view](images/3d-view.png)
+
 ## Switching to it
 
 The 3D view is switched off until you turn it on: in **Settings ▸ Appearance**,
